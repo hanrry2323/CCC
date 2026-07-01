@@ -6,8 +6,9 @@
 #   1. 检测平台 (macOS / Linux / Windows WSL)
 #   2. 在 ~/.mavis/skills/ccc-protocol 创建 symlink → ~/program/CCC
 #   3. 在 ~/.claude/skills/ccc-protocol/ 创建 symlink（如果 Claude Code skills 路径存在）
-#   4. --check 模式: 验证安装状态
-#   5. 输出 Cursor/AGENTS.md 引用片段
+#   4. 在 ~/.zcode/skills/ccc-protocol 创建 symlink（如果 ZCode skills 路径存在）
+#   5. --check 模式: 验证安装状态 (6 项)
+#   6. 输出 Cursor/AGENTS.md 引用片段
 #
 # 用法:
 #   bash install-ccc-as-skill.sh          # 执行安装
@@ -19,6 +20,7 @@ CCC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SKILL_FILE="$CCC_DIR/SKILL.md"
 MAVIS_TARGET="$HOME/.mavis/skills/ccc-protocol"
 CLAUDE_TARGET="$HOME/.claude/skills/ccc-protocol"
+ZCODE_TARGET="$HOME/.zcode/skills/ccc-protocol"
 
 # ---- Platform detection ----
 detect_platform() {
@@ -84,7 +86,22 @@ check_install() {
     echo "  [WARN] Claude Code symlink not found: $CLAUDE_TARGET (optional — skip if not using Claude Code)"
   fi
 
-  # 5. references/ structure
+  # 5. ZCode symlink
+  if [ -L "$ZCODE_TARGET" ]; then
+    local zcode_real
+    zcode_real="$(readlink "$ZCODE_TARGET")"
+    if [ "$zcode_real" = "$CCC_DIR" ]; then
+      echo "  [OK]   ZCode symlink: $ZCODE_TARGET → $CCC_DIR"
+    else
+      echo "  [FAIL] ZCode symlink target mismatch: $zcode_real (expected $CCC_DIR)"
+      errors=$((errors + 1))
+    fi
+  else
+    echo "  [WARN] ZCode symlink not found: $ZCODE_TARGET"
+    echo "         Run without --check to install, or link manually: ln -sfn $CCC_DIR $ZCODE_TARGET"
+  fi
+
+  # 6. references/ structure
   local ref_count
   ref_count="$(find "$CCC_DIR/references" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
   if [ "$ref_count" -ge 6 ]; then
@@ -131,6 +148,14 @@ do_install() {
   else
     echo "  [WARN] ~/.claude/skills/ not accessible — skipping Claude Code symlink"
   fi
+
+  # --- ZCode symlink ---
+  mkdir -p "$(dirname "$ZCODE_TARGET")"
+  if [ -L "$ZCODE_TARGET" ] || [ -d "$ZCODE_TARGET" ]; then
+    rm -f "$ZCODE_TARGET"
+  fi
+  ln -sfn "$CCC_DIR" "$ZCODE_TARGET"
+  echo "  [OK] ZCode: $ZCODE_TARGET → $CCC_DIR"
 
   echo ""
 
