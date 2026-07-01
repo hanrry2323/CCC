@@ -1141,3 +1141,49 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 4. Report 是否有 Platform Actual 段
 5. 是否避免任何单用户 agent 锁定 (红线 9 持续适用, minimax fallback 在任何 agent 里都禁)
 ```
+
+---
+
+### Lesson 23 — FastAPI 路由顺序 + L1 task_id 协议格式 (2026-07-02)
+
+**触发场景**: 2026-07-02 V9.S0 验收发现 2 个 Critical (Verdict: CONDITIONAL_PASS). daily-snapshot 自动分流功能整体逻辑正确, 但 2 个实现缺陷导致功能实际不可用.
+
+**2 Critical 详情**:
+
+| # | 严重度 | 现象 | 根因 |
+|---|--------|------|------|
+| C1 | Critical | 46 个 auto 项全部死信 | `daily_dispatch.py:113` task_id 格式 `auto-{date}-{sha[:12]}` 不匹配 L1 协议 `^qx-[0-9a-f]{1,8}$`, dispatcher 拒收 |
+| C2 | Critical | GET /api/daily-snapshot/projects → 404 | FastAPI 路由 `/{date_str}` 定义在 `/projects` 之前, `projects` 被解析为 `date_str` 参数, 查无此日期快照 |
+
+**修法**:
+- C1: `daily_dispatch.py:113` `task_id = f"auto-{snapshot.date}-{ci.sha[:12]}"` → `f"qx-{ci.sha[:8]}"`
+- C2: `daily_snapshot.py` 将 `/projects` 路由定义块移到 `/{date_str}` 之前
+
+**教训要点 (4 条)**:
+1. **L1 协议 task_id 格式必须匹配** (任何任务投递系统都适用) — 实现前先 grep 协议定义文件 (`re.compile(...)` 段), 列出接受格式
+2. **FastAPI 路由顺序敏感** — 通配符 `/{}` 必须排在具体路径之后 (如 `/projects`); 否则会"吞掉"具体路径
+3. **plan 文档要写精确路由顺序** — 用户/AI 写 API 时, plan 阶段就明示具体路径在通配符前
+4. **验收独立** — VERIFIER 必先跑协议 regex 测试, 否则死信任务进了 queue 用户不知道
+
+**与 Lesson 18+19+20+21+22 的关系**:
+
+| Lesson | 主题 | 层面 |
+|--------|------|------|
+| Lesson 18 | Planner 越界 | 流程纪律 |
+| Lesson 19 | claude-p 通路 | 工具选择 |
+| Lesson 20 | 三轮修订 | 报告质量 |
+| Lesson 21 | skill 通用化 | 跨平台交付 |
+| Lesson 22 | multi-platform orchestration | 跨平台 + 跨模型 |
+| **Lesson 23** | **FastAPI 路由 + L1 协议** | **API 路由顺序 + 协议字段约束 (跨项目通用)** |
+
+**适用范围**: 任何 FastAPI 项目 + 任何 L1/L2 协议层任务投递系统.
+
+**自我检查 (5 项)**:
+```
+1. 写 API plan 时是否列出所有具体路径与通配符顺序?
+2. 修 task_id 前是否 grep 协议 regex 段?
+3. 验收时是否跑过协议 regex 单元测试?
+4. commit message 是否含 L1 协议不兼容的明确说明?
+5. 是否有兜底机制 (死信转人工队列)?
+```
+
