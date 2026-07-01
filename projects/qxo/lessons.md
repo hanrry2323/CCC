@@ -1088,3 +1088,56 @@ Executor ← 跑 Claude Code CLI + ANTHROPIC_BASE_URL=4000 + ANTHROPIC_MODEL=fla
 5. 是否 commit +（选择）push？                                                      [ ] 是（本地 commit，不 push）
 ```
 
+---
+
+
+### Lesson 22 — CCC = Multi-Platform LLM Orchestration Framework (2026-07-02)
+
+**触发场景**：2026-07-02 与 ZCode 对话 + 用户纠正"Mavis 是代号, 应抽象"后得到的洞察.
+
+**核心洞察 4 条**:
+1. 任何"用户常用 agent"都锁定单一 LLM 的封闭生态 (Mavis 默认 minimax, ZCode 默认 GLM 智谱, Codex 默认 GPT, Claude Code 默认 Anthropic - 但这 4 个只是举例, 不同用户常用 agent 不同). 用户想用不同模型做不同子任务时只能二选一.
+2. CCC 不是任何单平台的替代品, 是**跨平台跨模型调度层** (multi-platform LLM orchestration framework). 在用户常用 agent 工具集之上做整合.
+3. 用户 killer use case: **用户常用 agent (按 LLM 偏好) 制定 plan + CCC 串联多平台做深度开发** (两层架构). 这里的"用户常用 agent" 是抽象类, 不是某固定平台.
+4. CCC v0.3.0-dev 已有的 multi-platform 基础设施: references/adapters/runtime-*.md + scheduler-*.md + scripts/install-ccc-as-skill.sh (按用户 agent 配置激活).
+
+**用户两层架构 (用 "用户常用 agent" 抽象)**:
+
+```
+Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
+──────────────────────             ─────────────────────────
+用户常用 agent A 草图 plan  →   CCC 拆 phases 写到 .ccc/phases/
+用户常用 agent B 中文 UI     →   每个 phase 指定 platform 字段
+用户常用 agent C 深度开发    →   按 phases 串行执行
+                              跨平台 Report / Verdict 汇集
+```
+注: 用户常用 agent A/B/C 按用户 LLM 偏好配置, 不是固定 4 平台.
+
+**v0.3.0-dev 已有 multi-platform 基础设施 (按用户 agent 配置激活)**:
+- references/adapters/runtime-{claude-p,claude-code,zcode,mavis}.md (4 个 runtime adapter, 默认值, 可扩展)
+- references/adapters/scheduler-{mavis-cron,launchd,github-actions}.md (3 个 scheduler adapter)
+- scripts/install-ccc-as-skill.sh (按用户 agent 路径自动 symlink + 6 项 check)
+
+**v0.4.0 路线设计 (按用户 agent 配置扩展)**:
+1. phases.json schema 加 `platform` 字段 (允许任意用户自定义 agent name, 不绑定 4 平台)
+2. plan 模板加 "Platform Routing" 段 (按用户 LLM 偏好路由每个 phase)
+3. Report 加 "Platform Actual" 段 (记录实际 platform + cost)
+4. Verifier 跨平台一致性 (同一 Verdict 可调用不同用户 agent 确认)
+
+**与 Lesson 18+19+20+21 关系**:
+- Lesson 18 (Planner 越界) = 流程纪律红线
+- Lesson 19 (mavis session new 陷阱) = 工具选择红线 (历史教训, 警惕 minimax fallback 在用户常用 agent 里)
+- Lesson 20 (三轮修订) = 报告质量最佳实践
+- Lesson 21 (skill 通用化 + 多端分发) = 跨平台交付
+- **Lesson 22 (multi-platform orchestration) = 跨用户 agent + 跨模型编排 (战略定位, 按用户 agent 配置)**
+
+**适用范围**: 所有需要跨平台 LLM 调度的项目 (master+worker + CCC-like), **不绑定任何特定 agent 平台**.
+
+**自我检查 (5 项)**:
+```
+1. 是否区分"工具"和"协议"概念 (CCC 是协议层, 不是工具层)
+2. phases.json 是否有 platform 字段 (允许自定义 agent name)
+3. plan 模板是否有 Platform Routing 段
+4. Report 是否有 Platform Actual 段
+5. 是否避免任何单用户 agent 锁定 (红线 9 持续适用, minimax fallback 在任何 agent 里都禁)
+```
