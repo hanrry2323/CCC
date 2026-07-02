@@ -1282,3 +1282,59 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 5. 测试通过是否就等于没问题? (44 tests 全过但 hang 仍在的教训) [ ] 否, 需要 e2e 验证
 ```
 
+---
+
+### Lesson 26 — V9.S0 资源洪水 + 诊断协作 (2026-07-02)
+
+**触发场景**: 2026-07-02 08:50 V9.S0 daily-snapshot skill 触发后, 55+ 并行 Claude 子进程, 物理内存空余 73MB, swap 抖动 115M I/O, macOS compressor 启动, load avg 4.00 满载.
+
+**背景**: 08:50 资源洪水事件 — dispatch 无并发限流 → 55×300MB=16.5GB → M1 8GB 崩盘. CC 抓到真因 (dispatch 限流), qxo-CC 抓到 3 个二级 bug. 协作: 用户交叉对比 + 互补盲点. 修法: CC f4d63ec 修真因 (Semaphore(3) + journal only), Planner 清理 88.5 MB worker + 1 GB ~/.claude/.
+
+**根因**:
+1. `dispatch_snapshot()` 在 `daily_dispatch.py:108-114` 用 `loop.create_task()` fire-and-forget 一次性创建 55+ 并发子进程
+2. worker `call_worker()` 用 `asyncio.create_subprocess_exec` 创建 Claude 子进程, 每个 ~300MB
+3. 55×300MB ≈ 16.5GB, 8GB M1 直接 swap thrashing
+4. uvicorn 在 swap 抖动中 00:50 被 OS kill
+
+**诊断协作** (**新视角**):
+1. **Claude Code 抓到真因**: dispatch 无并发限流 + 55×300MB 计算 + 物理证据 (73MB 空余、115M swap I/O)
+2. **qxo-CC 抓到 3 个二级 bug** (CC 没看到): `_submit_to_queue_safe` 同 thread 死锁 30s / `PipelineService._on_task_failed` NoneType+int / dead_pileup 累积 233
+3. **互补盲点**: CC 漏看 qx-observer 3 个二级 bug, qxo-CC 漏看 1GB `~/.claude/` 残留 + 物理内存量化
+4. **用户价值**: 用户做交叉对比, **5 分钟**敲定根因 + 修复方向
+
+**修法** (CC 已修):
+1. f4d63ec: dispatch_snapshot 改 async + `asyncio.Semaphore(MAX_CONCURRENT_AUTO=3)` 限流
+2. e403439: auto items **不再 spawn Claude subprocesses**, 改为写 journal (最简化方案)
+3. 4662125: journal 输出到 `~/Desktop/日报/` (用户友好)
+4. Planner 清理: 88.5 MB worker 残留 + 1 GB `~/.claude/` 安全目录 (保留 skills/)
+
+**教训**:
+1. **测试通过 ≠ 没问题**: 44 tests PASS 但 16.5GB 内存压力看不见
+2. **必须看物理资源限制**: N×300MB ≤ 物理内存 80% 是 dispatch 前的硬约束
+3. **多 agent 协作** (qxo-CC + Claude Code + 用户) 效率 > 单 agent 1-2h 排查
+4. **journal 优于 re-execute**: auto 项本质是"摘要", 不需要重新跑
+
+**预防**:
+1. 任何 dispatch 前算 `N × avg_worker_mem ≤ 0.8 × 物理内存`
+2. daily-snapshot SKILL.md 加 "concurrency limit" 警告
+3. 跨 agent 协作 (qxo-CC + Claude Code) 做交叉验证
+
+**与以往 Lessons 的关系**:
+
+| Lesson | 主题 | 关系 |
+|--------|------|------|
+| Lesson 25 | V9.S0 同 thread 死锁 | 同 V9.S0 资源洪水事件链, Lesson 25 是死锁, 本 Lesson 是 OOM |
+| Lesson 23 | FastAPI 路由 + L1 协议 | 同 V9.S0 验收事件链 (本 Lesson 是资源洪水, Lesson 23 是 task_id + 路由) |
+| Lesson 12 | spawn 失败 vs 卡死 | CC 用 create_subprocess_exec 创建 55+ 子进程是 spawn 失败的极端形式 |
+
+**适用范围**: 任何有并发子进程调度的系统. 跨项目 (不依赖 qx-observer).
+
+**自我检查 (5 项)**:
+```
+1. dispatch 前是否算 N × avg_worker_mem ≤ 0.8 × 物理内存?       [ ] 是
+2. 并发子进程是否有 Semaphore/concurrency limit?                  [ ] 是
+3. auto/摘要类任务是否用 journal 而非 re-execute?                 [ ] 是
+4. 多 agent 协作是否做交叉验证 (互补盲点检查)?                    [ ] 是
+5. 物理内存不足时是否有 fallback (journal only / 降级)?           [ ] 是
+```
+
