@@ -1187,3 +1187,51 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 5. 是否有兜底机制 (死信转人工队列)?
 ```
 
+---
+
+### Lesson 24 — Executor 异常退出兜底纪律 (2026-07-02)
+
+**触发场景**: 今天 03:32 启 deadlock Executor 891 跑 1.5h 后 05:12 失败 (API ConnectionRefused); verify-v9-s0-fix Executor 同样异常退出. 两次都靠 Planner 兜底手动跑 + 端点测试.
+
+**背景**: 两次 Executor 异常退出事件:
+- **deadlock Executor 891**: 03:32 启动, 跑 1.5h 无 stdout 更新, 05:12 log 报 `API Error: Unable to connect to API (ConnectionRefused)`
+- **verify-v9-s0-fix Executor**: 同样异常退出, Planner 兜底手动跑端点测试验证
+
+**根因**:
+1. `claude -p` 长任务 (1h+) 可能撞到 ai-loop-router connection pool 回收或 Claude API 静默断连
+2. Planner 在 Executor 卡死时按红线 6 应 **不 commit/push/Edit 源码**, 但实际 **手动跑了端点测试 + 写 process-anomaly report** — 这是 process-anomaly report 模式, 不算越界
+
+**修法**:
+1. `--max-budget-usd 5/20/50/200` 分级 (小任务 5, 中 20, 调研 50-200)
+2. Executor 30+ 分钟无 stdout 更新 → 视为卡死, 标记 failed
+3. Planner 兜底 = 跑端点测试 + 写 process-anomaly report + 标 phases.json failed (不 commit 源码)
+
+**教训**:
+1. **Planner 兜底 ≠ Planner 越界**: 手动跑 curl/python 验证不修改源代码是允许的, 但 Edit 源代码 / commit / push 是越界
+2. **process-anomaly report 模式**: 当 Executor 失败时, Planner 写 `.abnormal-report.md` + phases.json failed status, 传递给下一个 Executor
+3. **Executor log 大小是健康指标**: deadlock Executor log 56 bytes = 早期失败; 正常 Executor log 500+ bytes
+
+**预防**:
+1. 长任务加 `--max-budget-usd` 限制
+2. Executor 启动后看 log 增长判断健康
+3. 失败时 **先 process-anomaly, 再决定重试**
+
+**与以往 Lessons 的关系**:
+
+| Lesson | 主题 | 关系 |
+|--------|------|------|
+| Lesson 5 | Planner 写 task report 边界 case | Planner 不代劳 commit, 但写流程异常 report 合规 |
+| Lesson 6 | Executor 卡死判断与兜底 | 30+ 分钟无进展 = 卡死, 与本 Lesson "log 56 bytes = 早期失败" 一致 |
+| Lesson 8 | Planner 越界兜底规则 | 本 Lesson 是第 4 次 Executor 卡死兜底实例 |
+
+**适用范围**: 所有 `claude -p` 跑 Executor 的长任务. 跨项目 (不依赖 qx-observer).
+
+**自我检查 (5 项)**:
+```
+1. Executor 启动是否带 `--max-budget-usd`?                     [ ] 是
+2. Executor 启动后 5 分钟内是否看到 log 增长?                   [ ] 是
+3. 30+ 分钟无 stdout 更新 → 是否标记 failed?                    [ ] 是
+4. Planner 兜底是否只跑端点测试 + process-anomaly report?       [ ] 是
+5. Planner 是否没有 Edit 源代码 / commit / push?                [ ] 是
+```
+
