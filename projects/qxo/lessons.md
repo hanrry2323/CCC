@@ -1235,3 +1235,50 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 5. Planner 是否没有 Edit 源代码 / commit / push?                [ ] 是
 ```
 
+---
+
+### Lesson 25 — V9.S0 同 thread 死锁 debug (2026-07-02)
+
+**触发场景**: 2026-07-02 V9.S0 daily-snapshot dispatch 报 50 次 `daily_dispatch_submit_failed` warning (30s 一次), `error=""` 字段空, 看 log 找不到真因.
+
+**背景**: V9.S0 daily-snapshot dispatch 持续报 warning. commit 54f7c2e 改错方向 (from `asyncio.run` 改 `run_coroutine_threadsafe` 但没意识到同 thread 问题). CC f4d63ec 真修法: `_submit_to_queue_safe` 改 `_submit_to_queue_async` + `asyncio.wait_for(coro, 10.0)` + 全 dispatch_snapshot 改 async.
+
+**根因**:
+1. `app/services/daily_dispatch.py:180-213` `_submit_to_queue_safe` 在 uvicorn event loop 中调 `asyncio.get_running_loop()` + `run_coroutine_threadsafe(coro, loop)` + `fut.result(timeout=30)` — **同 thread 死锁** pattern
+2. `run_coroutine_threadsafe` 设计给 **跨 thread**, 同 thread 应该用 `await coro` 或 `create_task`
+3. commit 54f7c2e 之前用 `asyncio.run` 失败 (RuntimeError: asyncio.run() in running event loop), 改成 `run_coroutine_threadsafe` 但没意识到同 thread 死锁
+4. `error=str(e)` 当 e 是 TimeoutError 时 `str(e)=""` — log 空字段, 误导排查方向
+
+**修法** (CC f4d63ec):
+1. `_submit_to_queue_safe` 改 async 名为 `_submit_to_queue_async` + `await asyncio.wait_for(submit_to_queue(...), timeout=10.0)` + `except asyncio.TimeoutError`
+2. `dispatch_snapshot` 改 async + 调 `await _submit_to_queue_async(...)` 而不是 `_submit_to_queue_safe(...)`
+3. `error=str(e)` 改 `error=repr(e)` 含 traceback
+
+**教训**:
+1. **Python async safety 模板**: 检测 running loop → `await coro`; 无 loop → `asyncio.run(coro)`; timeout → `asyncio.wait_for(coro, N)`; 跨 thread → `run_coroutine_threadsafe`
+2. **测试通过 ≠ 没问题**: 44 tests 全过但 hang 仍在 (commit 54f7c2e 后 50 次 warning)
+3. **`error=str(e)` 是个坑**: 当 e 是 TimeoutError / 自定义 Exception 时 str(e) 可能为空, 应用 `repr(e)`
+
+**预防**:
+1. async 函数封装时 **先写 `asyncio.wait_for` + 异常处理** 再写业务逻辑
+2. uvicorn 内调 async 协程 **必须 await**, 不能 `run_coroutine_threadsafe` + `fut.result` 阻塞
+3. 单元测试要覆盖 **同 event loop + 跨 event loop + 超时** 三种场景
+
+**与以往 Lessons 的关系**:
+
+| Lesson | 主题 | 关系 |
+|--------|------|------|
+| Lesson 23 | FastAPI 路由 + L1 协议 | 同 V9.S0 验收事件链 (本 Lesson 是 deadlock, Lesson 23 是 task_id + 路由) |
+| Lesson 16 | L3 LoopEngine 切换 | 都涉及 asyncio 集成 (Lesson 16 是 new_event_loop + close, 本 Lesson 是同 thread deadlock) |
+
+**适用范围**: 任何 FastAPI + asyncio 项目. 跨项目 (不依赖 qx-observer).
+
+**自我检查 (5 项)**:
+```
+1. async 函数写之前是否先写 `asyncio.wait_for` + except?      [ ] 是
+2. uvicorn event loop 内调 async 是否用 await 而非 fut.result?   [ ] 是
+3. error 日志是否用 `repr(e)` 而非 `str(e)`?                    [ ] 是
+4. 是否覆盖同 event loop + 跨 event loop + 超时 3 种测试场景? [ ] 是
+5. 测试通过是否就等于没问题? (44 tests 全过但 hang 仍在的教训) [ ] 否, 需要 e2e 验证
+```
+
