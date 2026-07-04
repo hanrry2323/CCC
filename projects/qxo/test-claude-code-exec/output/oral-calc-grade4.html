@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四年级口算练习卡</title>
+<style>
+  @page { size: A4; margin: 15mm 18mm; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "SimHei", sans-serif;
+    font-size: 14px; line-height: 1.6; color: #222;
+    max-width: 210mm; margin: 0 auto; padding: 20px 30px;
+  }
+  .header { text-align: center; margin-bottom: 18px; }
+  .header h1 { font-size: 22px; letter-spacing: 2px; }
+  .header .sub { font-size: 15px; color: #555; margin-top: 4px; }
+  .header .divider { border: none; border-top: 2px solid #333; margin: 10px 0 6px; }
+  .section { margin-bottom: 16px; }
+  .section-title {
+    font-size: 14px; font-weight: 700; margin-bottom: 6px;
+    padding: 4px 10px; background: #f0f0f0; border-radius: 4px;
+    display: inline-block;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px 18px;
+  }
+  .problem {
+    font-size: 14px; font-family: "Courier New", monospace;
+    padding: 4px 0; border-bottom: 1px dashed #ccc;
+    white-space: nowrap;
+  }
+  .problem .space { display: inline-block; width: 36px; border-bottom: 1px solid #222; margin-left: 2px; }
+  .bottom-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 20px; padding-top: 10px; border-top: 2px solid #333;
+    font-size: 15px;
+  }
+  .bottom-bar span { margin-right: 20px; }
+  .bottom-bar .line { display: inline-block; width: 70px; border-bottom: 1px solid #222; margin-left: 4px; }
+  .footer { text-align: center; font-size: 11px; color: #999; margin-top: 10px; }
+
+  /* 打印优化 */
+  @media print {
+    body { padding: 0; max-width: 100%; }
+    .section { page-break-inside: avoid; }
+    .grid { page-break-inside: auto; }
+    .problem { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>成都市泡桐树小学四年级数学口算练习卡</h1>
+  <p class="sub">100 道口算题 · 班主任用</p>
+  <hr class="divider">
+</div>
+
+<!-- 三位数加减法 30 道 -->
+<div class="section">
+  <span class="section-title">一、三位数加减法（30 道）</span>
+  <div class="grid">
+    <div class="problem">128 + 346 = <span class="space"></span></div>
+    <div class="problem">457 + 283 = <span class="space"></span></div>
+    <div class="problem">689 + 124 = <span class="space"></span></div>
+    <div class="problem">273 + 518 = <span class="space"></span></div>
+    <div class="problem">736 + 197 = <span class="space"></span></div>
+    <div class="problem">812 + 149 = <span class="space"></span></div>
+    <div class="problem">345 + 278 = <span class="space"></span></div>
+    <div class="problem">564 + 389 = <span class="space"></span></div>
+    <div class="problem">627 + 295 = <span class="space"></span></div>
+    <div class="problem">431 + 576 = <span class="space"></span></div>
+    <div class="problem">823 − 456 = <span class="space"></span></div>
+    <div class="problem">741 − 328 = <span class="space"></span></div>
+    <div class="problem">605 − 247 = <span class="space"></span></div>
+    <div class="problem">932 − 675 = <span class="space"></span></div>
+    <div class="problem">814 − 569 = <span class="space"></span></div>
+    <div class="problem">503 − 278 = <span class="space"></span></div>
+    <div class="problem">700 − 453 = <span class="space"></span></div>
+    <div class="problem">946 − 588 = <span class="space"></span></div>
+    <div class="problem">381 − 196 = <span class="space"></span></div>
+    <div class="problem">652 − 374 = <span class="space"></span></div>
+    <div class="problem">489 + 326 = <span class="space"></span></div>
+    <div class="problem">574 + 298 = <span class="space"></span></div>
+    <div class="problem">665 + 277 = <span class="space"></span></div>
+    <div class="problem">354 + 489 = <span class="space"></span></div>
+    <div class="problem">742 + 189 = <span class="space"></span></div>
+    <div class="problem">900 − 567 = <span class="space"></span></div>
+    <div class="problem">834 − 298 = <span class="space"></span></div>
+    <div class="problem">721 − 486 = <span class="space"></span></div>
+    <div class="problem">618 − 349 = <span class="space"></span></div>
+    <div class="problem">507 − 238 = <span class="space"></span></div>
+  </div>
+</div>
+
+<!-- 两位数乘两位数 25 道 -->
+<div class="section">
+  <span class="section-title">二、两位数乘两位数（25 道）</span>
+  <div class="grid">
+    <div class="problem">12 × 34 = <span class="space"></span></div>
+    <div class="problem">23 × 15 = <span class="space"></span></div>
+    <div class="problem">31 × 27 = <span class="space"></span></div>
+    <div class="problem">42 × 18 = <span class="space"></span></div>
+    <div class="problem">56 × 13 = <span class="space"></span></div>
+    <div class="problem">25 × 24 = <span class="space"></span></div>
+    <div class="problem">37 × 19 = <span class="space"></span></div>
+    <div class="problem">48 × 26 = <span class="space"></span></div>
+    <div class="problem">63 × 14 = <span class="space"></span></div>
+    <div class="problem">72 × 35 = <span class="space"></span></div>
+    <div class="problem">18 × 46 = <span class="space"></span></div>
+    <div class="problem">29 × 32 = <span class="space"></span></div>
+    <div class="problem">54 × 21 = <span class="space"></span></div>
+    <div class="problem">67 × 11 = <span class="space"></span></div>
+    <div class="problem">38 × 25 = <span class="space"></span></div>
+    <div class="problem">41 × 28 = <span class="space"></span></div>
+    <div class="problem">59 × 17 = <span class="space"></span></div>
+    <div class="problem">76 × 12 = <span class="space"></span></div>
+    <div class="problem">84 × 23 = <span class="space"></span></div>
+    <div class="problem">33 × 33 = <span class="space"></span></div>
+    <div class="problem">47 × 16 = <span class="space"></span></div>
+    <div class="problem">62 × 29 = <span class="space"></span></div>
+    <div class="problem">95 × 14 = <span class="space"></span></div>
+    <div class="problem">78 × 22 = <span class="space"></span></div>
+    <div class="problem">36 × 45 = <span class="space"></span></div>
+  </div>
+</div>
+
+<!-- 除数是两位数的除法 25 道 -->
+<div class="section">
+  <span class="section-title">三、除数是两位数的除法（25 道）</span>
+  <div class="grid">
+    <div class="problem">144 ÷ 12 = <span class="space"></span></div>
+    <div class="problem">260 ÷ 13 = <span class="space"></span></div>
+    <div class="problem">325 ÷ 25 = <span class="space"></span></div>
+    <div class="problem">378 ÷ 14 = <span class="space"></span></div>
+    <div class="problem">512 ÷ 16 = <span class="space"></span></div>
+    <div class="problem">420 ÷ 15 = <span class="space"></span></div>
+    <div class="problem">504 ÷ 21 = <span class="space"></span></div>
+    <div class="problem">648 ÷ 24 = <span class="space"></span></div>
+    <div class="problem">306 ÷ 18 = <span class="space"></span></div>
+    <div class="problem">550 ÷ 22 = <span class="space"></span></div>
+    <div class="problem">192 ÷ 16 = <span class="space"></span></div>
+    <div class="problem">286 ÷ 26 = <span class="space"></span></div>
+    <div class="problem">460 ÷ 23 = <span class="space"></span></div>
+    <div class="problem">374 ÷ 17 = <span class="space"></span></div>
+    <div class="problem">588 ÷ 28 = <span class="space"></span></div>
+    <div class="problem">442 ÷ 13 = <span class="space"></span></div>
+    <div class="problem">672 ÷ 32 = <span class="space"></span></div>
+    <div class="problem">252 ÷ 18 = <span class="space"></span></div>
+    <div class="problem">480 ÷ 15 = <span class="space"></span></div>
+    <div class="problem">720 ÷ 24 = <span class="space"></span></div>
+    <div class="problem">330 ÷ 22 = <span class="space"></span></div>
+    <div class="problem">576 ÷ 36 = <span class="space"></span></div>
+    <div class="problem">756 ÷ 27 = <span class="space"></span></div>
+    <div class="problem">864 ÷ 32 = <span class="space"></span></div>
+    <div class="problem">936 ÷ 26 = <span class="space"></span></div>
+  </div>
+</div>
+
+<!-- 简单小数加减 20 道 -->
+<div class="section">
+  <span class="section-title">四、简单小数加减（20 道）</span>
+  <div class="grid">
+    <div class="problem">3.5 + 2.4 = <span class="space"></span></div>
+    <div class="problem">6.8 + 1.7 = <span class="space"></span></div>
+    <div class="problem">4.3 + 3.9 = <span class="space"></span></div>
+    <div class="problem">7.2 + 1.8 = <span class="space"></span></div>
+    <div class="problem">5.6 + 4.5 = <span class="space"></span></div>
+    <div class="problem">9.4 − 3.6 = <span class="space"></span></div>
+    <div class="problem">8.1 − 5.7 = <span class="space"></span></div>
+    <div class="problem">6.5 − 2.8 = <span class="space"></span></div>
+    <div class="problem">7.3 − 4.9 = <span class="space"></span></div>
+    <div class="problem">10.0 − 6.4 = <span class="space"></span></div>
+    <div class="problem">4.7 + 3.6 = <span class="space"></span></div>
+    <div class="problem">8.4 + 1.2 = <span class="space"></span></div>
+    <div class="problem">2.9 + 5.8 = <span class="space"></span></div>
+    <div class="problem">6.3 + 2.7 = <span class="space"></span></div>
+    <div class="problem">5.1 + 4.9 = <span class="space"></span></div>
+    <div class="problem">8.6 − 3.2 = <span class="space"></span></div>
+    <div class="problem">9.5 − 6.8 = <span class="space"></span></div>
+    <div class="problem">7.0 − 2.3 = <span class="space"></span></div>
+    <div class="problem">4.8 − 1.9 = <span class="space"></span></div>
+    <div class="problem">10.0 − 3.5 = <span class="space"></span></div>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <span>日期 <span class="line"></span></span>
+  <span>姓名 <span class="line"></span></span>
+  <span>用时 <span class="line"></span></span>
+  <span>正确率 <span class="line"></span></span>
+</div>
+
+<div class="footer">
+  本题卡由 CCC 框架调度 Claude Code CLI 自动生成 · 2026-07-04
+</div>
+
+</body>
+</html>
