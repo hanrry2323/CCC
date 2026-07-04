@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成都市泡桐树小学四年级数学学习手册 · 班主任用</title>
+<style>
+  /* ===== 基础重置与排版 ===== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: #f5f5f0;
+    line-height: 1.75;
+    font-size: 16px;
+  }
+
+  /* ===== 颜色变量（泡桐树秋叶暖色系） ===== */
+  :root {
+    --primary: #c0392b;        /* 主色：枫叶红 */
+    --primary-dark: #8b2820;
+    --secondary: #d4a373;      /* 辅色：秋木黄 */
+    --accent: #2c5f2d;         /* 强调：常青绿 */
+    --bg-soft: #fdfaf3;        /* 浅纸色 */
+    --bg-card: #ffffff;
+    --border: #e6dfd0;
+    --text-soft: #5a5a5a;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  /* ===== 容器 ===== */
+  .container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+  /* ===== 封面 ===== */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #fff;
+    padding: 60px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: "";
+    position: absolute;
+    top: -50px; right: -50px;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    bottom: -80px; left: -80px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .cover-school { font-size: 1.4rem; letter-spacing: 4px; margin-bottom: 12px; opacity: 0.95; }
+  .cover-title { font-size: 3.2rem; font-weight: 700; margin-bottom: 18px; line-height: 1.2; }
+  .cover-subtitle { font-size: 1.3rem; font-weight: 300; margin-bottom: 60px; opacity: 0.95; }
+  .cover-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; max-width: 480px; margin: 0 auto; }
+  .cover-meta-item {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(8px);
+    padding: 16px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+  .cover-meta-label { font-size: 0.85rem; opacity: 0.85; margin-bottom: 4px; }
+  .cover-meta-value { font-size: 1.1rem; font-weight: 500; }
+
+  /* ===== 章节通用 ===== */
+  section.chapter {
+    background: var(--bg-soft);
+    padding: 60px 0 40px;
+    border-bottom: 1px solid var(--border);
+  }
+  section.chapter:last-of-type { border-bottom: none; }
+  .chapter-header { margin-bottom: 32px; }
+  .chapter-number {
+    display: inline-block;
+    font-size: 0.9rem;
+    color: var(--primary);
+    font-weight: 600;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  .chapter-title {
+    font-size: 2rem;
+    color: var(--primary-dark);
+    font-weight: 700;
+    margin-bottom: 8px;
+    border-bottom: 3px solid var(--secondary);
+    padding-bottom: 12px;
+  }
+  .chapter-intro { color: var(--text-soft); font-size: 1rem; }
+
+  /* ===== 目录 ===== */
+  .toc-list { list-style: none; }
+  .toc-list li {
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border-left: 4px solid var(--secondary);
+    margin-bottom: 8px;
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, border-left-color 0.2s;
+  }
+  .toc-list li:hover {
+    transform: translateX(4px);
+    border-left-color: var(--primary);
+  }
+  .toc-list a {
+    text-decoration: none;
+    color: #1a1a1a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.05rem;
+  }
+  .toc-list a:hover { color: var(--primary); }
+  .toc-chapter-num {
+    color: var(--primary);
+    font-weight: 600;
+    margin-right: 12px;
+  }
+
+  /* ===== 前言 / 内容卡片 ===== */
+  .prose { background: var(--bg-card); padding: 32px; border-radius: 8px; box-shadow: var(--shadow); margin-bottom: 24px; }
+  .prose h3 { color: var(--primary-dark); margin: 20px 0 10px; font-size: 1.2rem; }
+  .prose h3:first-child { margin-top: 0; }
+  .prose p { margin-bottom: 12px; color: #2a2a2a; }
+  .prose ul, .prose ol { margin: 12px 0 12px 24px; }
+  .prose li { margin-bottom: 6px; }
+  .prose .source-declaration {
+    background: #fff8e1;
+    border-left: 4px solid #ffa000;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 0.95rem;
+    color: #5d4037;
+  }
+
+  /* ===== 知识单元卡片 ===== */
+  .unit-card {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border-top: 4px solid var(--accent);
+  }
+  .unit-title { color: var(--accent); font-size: 1.25rem; font-weight: 600; margin-bottom: 16px; }
+  .unit-element { margin-bottom: 14px; }
+  .unit-element-label {
+    display: inline-block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    padding: 2px 10px;
+    border-radius: 12px;
+    margin-right: 8px;
+    margin-bottom: 4px;
+  }
+  .unit-element-label.difficulty { background: var(--primary); }
+  .unit-element-label.easy-err { background: #e67e22; }
+  .unit-element-label.suggest { background: #2980b9; }
+  .unit-element-content { color: #2a2a2a; }
+
+  /* ===== 领域标题 ===== */
+  .domain-title {
+    color: var(--primary-dark);
+    font-size: 1.4rem;
+    margin: 28px 0 16px;
+    padding-left: 12px;
+    border-left: 5px solid var(--primary);
+  }
+
+  /* ===== 错题卡片 ===== */
+  .error-card {
+    background: #fff5f5;
+    border-left: 4px solid var(--primary);
+    padding: 18px 22px;
+    margin-bottom: 14px;
+    border-radius: 4px;
+  }
+  .error-card .error-q { font-weight: 600; color: var(--primary-dark); margin-bottom: 6px; }
+  .error-card .error-a { color: var(--accent); }
+  .error-card .error-strategy { margin-top: 8px; font-size: 0.95rem; color: var(--text-soft); }
+
+  /* ===== 表格 ===== */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; box-shadow: var(--shadow); }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--primary); color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #faf8f1; }
+
+  /* ===== 附录 ===== */
+  .appendix-block { background: #fff; padding: 20px; border-radius: 6px; margin-bottom: 18px; box-shadow: var(--shadow); }
+  .appendix-block h4 { color: var(--primary-dark); margin-bottom: 10px; }
+
+  /* ===== 页脚 ===== */
+  footer {
+    background: var(--primary-dark);
+    color: #fff;
+    padding: 32px 0;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  footer p { margin-bottom: 6px; opacity: 0.9; }
+
+  /* ===== 返回顶部 ===== */
+  .back-to-top {
+    position: fixed;
+    bottom: 30px; right: 30px;
+    background: var(--primary);
+    color: #fff;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+    z-index: 999;
+  }
+  .back-to-top:hover { transform: translateY(-2px); background: var(--primary-dark); }
+
+  /* ===== 打印优化 ===== */
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    .cover { min-height: auto; page-break-after: always; }
+    section.chapter { padding: 20px 0; }
+    .back-to-top { display: none; }
+    .unit-card, .prose { box-shadow: none; border: 1px solid #ccc; }
+    a { color: #000; text-decoration: none; }
+  }
+
+  /* ===== 移动端 ===== */
+  @media (max-width: 640px) {
+    .cover-title { font-size: 2.2rem; }
+    .cover-meta { grid-template-columns: 1fr; }
+    .chapter-title { font-size: 1.5rem; }
+    .container { padding: 0 16px; }
+    .prose, .unit-card { padding: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 封面 ============ -->
+<section class="cover" id="cover">
+  <div class="cover-school">成都市泡桐树小学</div>
+  <h1 class="cover-title">四年级数学学习手册</h1>
+  <div class="cover-subtitle">—— 班主任教学参考 ——</div>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">适用学段</div>
+      <div class="cover-meta-value">小学四年级</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">适用学年</div>
+      <div class="cover-meta-value">2025—2026 学年</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">教材版本</div>
+      <div class="cover-meta-value">人教版（参考）</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">使用对象</div>
+      <div class="cover-meta-value">四年级数学班主任</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第一章 前言 ============ -->
+<section class="chapter" id="chapter-1">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第一章</div>
+      <h2 class="chapter-title">前言 · 写给四年级数学班主任</h2>
+      <p class="chapter-intro">本手册的定位、使用方法与内容来源声明。</p>
+    </div>
+    <div class="prose">
+      <h3>一、手册定位</h3>
+      <p>本手册是面向成都市泡桐树小学四年级数学班主任的<strong>教学参考工具书</strong>，旨在为班主任提供一份系统化、可查询、可复用的学期教学速查资料。它不是教材的替代品，而是基于国家课程标准和公开教学大纲整理的<strong>教学组织参考</strong>，帮助班主任在学期规划、单元备课、错题分析、评价设计等环节快速定位信息。</p>
+
+      <h3>二、使用方法</h3>
+      <ul>
+        <li><strong>学期初</strong>：参阅"第六章 学年教学建议"完成学期规划与课时分配</li>
+        <li><strong>单元备课</strong>：查阅"第四章 / 第五章"对应知识单元，获取学习目标、教学难点、易错点</li>
+        <li><strong>阶段性评价</strong>：参阅"第七章 评价建议"设计过程性评价工具</li>
+        <li><strong>错题复盘</strong>：参阅"第八章 常见错题与对策"针对性辅导</li>
+        <li><strong>家长沟通</strong>：可基于本手册内容向家长解释学习目标与评价方式</li>
+      </ul>
+
+      <h3>三、内容来源声明</h3>
+      <div class="source-declaration">
+        <strong>⚠️ 内容依据</strong><br>
+        本手册内容依据以下公开资料整理：<br>
+        1. 《义务教育数学课程标准（2022 年版）》—— 中华人民共和国教育部制定<br>
+        2. 人教版小学数学四年级（上、下册）公开知识点大纲<br>
+        3. 公开教学参考资料与教研成果<br><br>
+        <strong>本手册不包含任何教材原文复制</strong>。教师在教学中应以最新版教材为准，本手册仅作为教学组织的参考。
+      </div>
+
+      <h3>四、特色说明</h3>
+      <p>本手册在组织上有以下三个特点，便于班主任高效使用：</p>
+      <ol>
+        <li><strong>四大领域贯通</strong>：按"数与代数 / 图形与几何 / 统计与概率 / 综合与实践"四大领域组织，与新课标核心素养对接</li>
+        <li><strong>五要素知识单元</strong>：每个知识单元含"学习目标 / 知识要点 / 教学难点 / 易错点 / 教学建议"五个要素，结构统一</li>
+        <li><strong>本地化适配</strong>：结合泡桐树小学成都市区域背景，融入本地教学节奏与学情特点的考量</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第二章 目录 ============ -->
+<section class="chapter" id="chapter-2">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第二章</div>
+      <h2 class="chapter-title">目录</h2>
+      <p class="chapter-intro">点击条目跳转至对应章节。</p>
+    </div>
+    <ul class="toc-list">
+      <li><a href="#chapter-1"><span><span class="toc-chapter-num">第一章</span>前言 · 写给四年级数学班主任</span><span>↑</span></a></li>
+      <li><a href="#chapter-2"><span><span class="toc-chapter-num">第二章</span>目录</span><span>↑</span></a></li>
+      <li><a href="#chapter-3"><span><span class="toc-chapter-num">第三章</span>课程标准与核心素养</span><span>→</span></a></li>
+      <li><a href="#chapter-4"><span><span class="toc-chapter-num">第四章</span>上册知识点详解</span><span>→</span></a></li>
+      <li><a href="#chapter-5"><span><span class="toc-chapter-num">第五章</span>下册知识点详解</span><span>→</span></a></li>
+      <li><a href="#chapter-6"><span><span class="toc-chapter-num">第六章</span>学年教学建议</span><span>→</span></a></li>
+      <li><a href="#chapter-7"><span><span class="toc-chapter-num">第七章</span>评价建议</span><span>→</span></a></li>
+      <li><a href="#chapter-8"><span><span class="toc-chapter-num">第八章</span>常见错题与对策</span><span>→</span></a></li>
+      <li><a href="#appendix"><span><span class="toc-chapter-num">附录</span>课标核心素养对照表 · 推荐教具清单</span><span>→</span></a></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 第三章 课程标准与核心素养 ============ -->
+<section class="chapter" id="chapter-3">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第三章</div>
+      <h2 class="chapter-title">课程标准与核心素养</h2>
+      <p class="chapter-intro">基于《义务教育数学课程标准（2022 年版）》，明确四年级数学的核心素养与课程目标。</p>
+    </div>
+    <div class="prose">
+      <h3>一、数学核心素养（2022 课标）</h3>
+      <p>根据 2022 版课标，小学数学核心素养主要包括以下三个方面，贯穿四年级教学全过程：</p>
+      <ul>
+        <li><strong>会用数学的眼光观察现实世界</strong>：能从生活情境中抽象出数量关系与空间形式</li>
+        <li><strong>会用数学的思维思考现实世界</strong>：能运用归纳、演绎、类比等推理方式分析问题</li>
+        <li><strong>会用数学的语言表达现实世界</strong>：能用数学符号、图表、模型等表达和交流</li>
+      </ul>
+
+      <h3>二、第二学段（4-6 年级）课程目标</h3>
+      <p>四年级属于第二学段，本学段在"数与代数 / 图形与几何 / 统计与概率 / 综合与实践"四大领域有如下总体要求：</p>
+      <ul>
+        <li><strong>数与代数</strong>：扩展对自然数的认识，理解大数的意义；掌握三位数乘两位数、除数是两位数的除法；初步认识分数与含义；探索运算规律</li>
+        <li><strong>图形与几何</strong>：认识线段、直线、射线与角；理解平行与垂直；认识三角形、平行四边形、梯形的特征；体会图形的运动</li>
+        <li><strong>统计与概率</strong>：经历简单的数据收集、整理、描述和分析过程；认识条形统计图与折线统计图</li>
+        <li><strong>综合与实践</strong>：在真实情境中综合运用所学知识解决问题，体会数学与生活的联系</li>
+      </ul>
+
+      <h3>三、四年级教学重点</h3>
+      <p>四年级是小学数学从"具体运算"向"抽象运算"过渡的关键年级，教学应重点关注：</p>
+      <ol>
+        <li>从算术思维向代数思维的早期渗透（用字母表示数、等量关系）</li>
+        <li>空间观念的发展（从立体到平面、从直观到抽象）</li>
+        <li>数据处理意识的建立（从单一数据到多源数据的分析）</li>
+        <li>数学应用意识的培养（综合与实践领域的真实问题解决）</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第四章 上册知识点详解（占位，phase 2 填充） ============ -->
+<section class="chapter" id="chapter-4">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第四章</div>
+      <h2 class="chapter-title">上册知识点详解</h2>
+      <p class="chapter-intro">人教版四年级上册，按四大领域组织。每个知识单元含学习目标 / 知识要点 / 教学难点 / 易错点 / 教学建议五要素。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本章节内容将在 phase 2 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第五章 下册知识点详解（占位，phase 3 填充） ============ -->
+<section class="chapter" id="chapter-5">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第五章</div>
+      <h2 class="chapter-title">下册知识点详解</h2>
+      <p class="chapter-intro">人教版四年级下册，结构同上册。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本章节内容将在 phase 3 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第六章 学年教学建议（占位） ============ -->
+<section class="chapter" id="chapter-6">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第六章</div>
+      <h2 class="chapter-title">学年教学建议</h2>
+      <p class="chapter-intro">学期规划、课时分配与单元衔接建议。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本章节内容将在 phase 3 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第七章 评价建议（占位） ============ -->
+<section class="chapter" id="chapter-7">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第七章</div>
+      <h2 class="chapter-title">评价建议</h2>
+      <p class="chapter-intro">过程性评价、终结性评价与评价工具示例。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本章节内容将在 phase 3 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 第八章 常见错题与对策（占位） ============ -->
+<section class="chapter" id="chapter-8">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">第八章</div>
+      <h2 class="chapter-title">常见错题与对策</h2>
+      <p class="chapter-intro">按知识点分类的错题案例与教学对策。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本章节内容将在 phase 3 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 附录（占位） ============ -->
+<section class="chapter" id="appendix">
+  <div class="container">
+    <div class="chapter-header">
+      <div class="chapter-number">附录</div>
+      <h2 class="chapter-title">附录</h2>
+      <p class="chapter-intro">课标核心素养对照表与推荐教具清单。</p>
+    </div>
+    <div class="prose">
+      <p><em>（本附录内容将在 phase 3 中填充。）</em></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 页脚 ============ -->
+<footer>
+  <p>成都市泡桐树小学 · 四年级数学学习手册（班主任用）</p>
+  <p>内容依据：《义务教育数学课程标准（2022 年版）》+ 人教版四年级公开知识点大纲</p>
+  <p>本手册不包含教材原文复制 · 教学使用时请以最新版教材为准</p>
+</footer>
+
+<a href="#cover" class="back-to-top" title="返回顶部">↑</a>
+
+</body>
+</html>
