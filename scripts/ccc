@@ -1,0 +1,78 @@
+#!/bin/bash
+set -euo pipefail
+
+CCC_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="$(basename "$0")"
+
+# cccq alias → default to status
+if [ "$SCRIPT_NAME" = "cccq" ]; then
+  exec "$CCC_HOME/scripts/ccc" status "$@"
+fi
+
+case "${1:-help}" in
+  status)
+    shift
+    # Show status: active Claude processes + recent tasks
+    echo "=== CCC 任务状态 ==="
+    echo ""
+
+    # Check for active Claude processes
+    CLAUDE_PIDS="$(pgrep -f 'claude.*CCC' 2>/dev/null || true)"
+    if [ -n "$CLAUDE_PIDS" ]; then
+      echo "后台 Claude 进程: 活跃中"
+      echo "  PID: $(echo "$CLAUDE_PIDS" | tr '\n' ' ')"
+    else
+      echo "后台 Claude 进程: 无"
+    fi
+    echo ""
+
+    # List recent tasks from .ccc/
+    for pd in "$CCC_HOME"/.ccc/plans/*.plan.md "$CCC_HOME"/.ccc/reports/*.report.md "$CCC_HOME"/.ccc/verdicts/*.verdict.md; do
+      [ -f "$pd" ] || continue
+      base="$(basename "$pd")"
+      echo "  $base"
+    done 2>/dev/null | head -20 || echo "  无最近任务 (CCC 尚未执行)"
+    ;;
+  search)
+    shift
+    exec python3 "$CCC_HOME/scripts/ccc-search.py" "$@"
+    ;;
+  init)
+    shift
+    exec python3 "$CCC_HOME/scripts/ccc-init.py" "$@"
+    ;;
+  diff)
+    shift
+    cd "$CCC_HOME"
+    echo "=== Working Tree Status ==="
+    git status --short 2>/dev/null || echo "(not a git repository)"
+    echo ""
+    echo "=== Diff (stat) ==="
+    git diff --stat 2>/dev/null || echo "(no diff)"
+    ;;
+  help|--help|-h|"")
+    cat <<'EOF'
+ccc — CCC Framework CLI
+
+Usage: ccc <command> [options]
+
+Commands:
+  status           Task status (background Claude + CCC task progress + Chinese description)
+  search <query>   Cross-project .ccc/ search for <query>
+  init <name>      New project initialization (AGENTS.md + .ccc/profile.md)
+  diff             Working tree concise diff
+  help             Show this help
+
+Examples:
+  ccc status
+  ccc search "Verdict"
+  ccc init /tmp/my-project
+  ccc diff
+EOF
+    ;;
+  *)
+    echo "Error: unknown command 'ccc $1'" >&2
+    echo "Run 'ccc help' for available commands." >&2
+    exit 1
+    ;;
+esac
