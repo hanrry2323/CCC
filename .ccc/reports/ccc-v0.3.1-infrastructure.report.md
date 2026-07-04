@@ -195,3 +195,39 @@ $ echo '{"tool_name":"Read"}' | ccc-hook.sh
 - 实际耗时: 3 个 Executor session, 总预算 ~70 USD (50 + 30 + 20)
 - 踩坑: Executor 第 1 轮产出 buggy code (path resolution), 第 2 轮引入无限循环, 第 3 轮才修复全
 - 经验: 自测必须跑端到端 (不只是 syntax + py_compile), raw output 留证
+---
+
+## Addendum (17:50) — cccq -w 修复
+
+**Bug**: `cccq -w` 报 "Error: unknown command 'ccc -w'" — Executor 把 watch 逻辑放在 `status)` case 内,但 cccq 直接调用没前缀 `status`,无法路由。
+
+**修复** (commit `8da7af5`): 在 ccc 脚本 case 之前加 cccq alias routing 逻辑 (~10 行),把 `cccq -w` 映射到 `status -w`。
+
+**测试** (`TERM=xterm` 是终端需要, 非 TTY 跑会报 "TERM environment variable not set"):
+
+```
+$ TERM=xterm cccq -w
+=== 后台 Claude 进程 ===
+  PID 2117  跑了 03:17:29  CPU 0.0%  RAM 130MB
+  PID 7552  跑了 03:01:46  CPU 0.0%  RAM 114MB
+
+=== 最近 CCC 任务 (本项目) ===
+  [4/4] clean-uncommitted-and-orphan-resources-2026-07-04
+    目标: 清理工作区残留脏数据...
+    ✓ phase 1: 提交 V8.5-FIX worktree...
+  ...
+
+=== 最近 3 个 git commit ===
+  f1e6ffd merge worker/worker/qx-e9eb3c3a
+  ...
+
+(10 秒后,自动 refresh)
+=== 后台 Claude 进程 ===
+  PID 2117  跑了 03:17:39  CPU 0.0%  RAM 130MB
+  PID 7552  跑了 03:01:56  CPU 0.0%  RAM 114MB
+  ...
+```
+
+✅ 第一次 refresh 显示真实内容 (进程 + 任务 + commit)
+✅ 10 秒后自动 refresh 第二次 (PID 时间戳从 03:17:29 → 03:17:39)
+✅ Ctrl+C 退出干净
