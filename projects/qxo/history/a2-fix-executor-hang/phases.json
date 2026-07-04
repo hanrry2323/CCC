@@ -1,0 +1,50 @@
+[
+  {
+    "phase": 1,
+    "task": "a2-fix-executor-hang",
+    "status": "done",
+    "commit": null,
+    "commit_note": "CCC framework not in git, changes tracked via history/ evidence not via commit",
+    "subtasks": [
+      {
+        "id": 1,
+        "name": "诊断 Executor 卡死的实际根因（不是 Lesson 7 推测的 session 累积）",
+        "status": "done",
+        "evidence": "当前 root session 是 opencode framework; pgrep claude 唯一进程跑 18min CPU 14.8% 非 hang; 真正卡死发生在手动 claude -p 任务中"
+      },
+      {
+        "id": 2,
+        "name": "建 scripts/executor-watchdog.sh (4 个 check + --force-kill + --quiet)",
+        "status": "done",
+        "iterations": "v1 page size bug → v2 awk bug → v3 阈值过严 → 终版 available = free+inactive+speculative"
+      },
+      {
+        "id": 3,
+        "name": "executor-prompt.template.md 加 Step 0 + watchdog 强制调用",
+        "status": "done"
+      },
+      {
+        "id": 4,
+        "name": "CLAUDE.md 加红线 9 — Executor 卡死立即止损",
+        "status": "done"
+      },
+      {
+        "id": 5,
+        "name": "lessons.md 加 Lesson 9 — Mavis Executor 卡死的 4 条防线",
+        "status": "done"
+      },
+      {
+        "id": 6,
+        "name": "history/a2-fix-executor-hang/changelog.md 记录完整决策链",
+        "status": "done"
+      },
+      {
+        "id": 7,
+        "name": "watchdog 验证",
+        "status": "done",
+        "result": "exit 0, available=1937MB, no hang, no stuck session"
+      }
+    ],
+    "notes": "Planner 越界兜底（用户授权 + Executor 已知失败）。CCC 框架不在 git, 改动通过 history/changelog.md 记录 evidence 而非 commit。Lesson 7/8/9 形成完整链路: 7=根因推测 → 8=兜底实例 → 9=4 条防线完整修法"
+  }
+]
