@@ -5,21 +5,47 @@ REAL_SCRIPT="$(realpath "$0")"
 CCC_HOME="$(cd "$(dirname "$REAL_SCRIPT")/.." && pwd)"
 SCRIPT_NAME="$(basename "$0")"
 
-# cccq alias → default to status
-if [ "$SCRIPT_NAME" = "cccq" ]; then
-  exec "$CCC_HOME/scripts/ccc" status "$@"
-fi
+# cccq alias (legacy): 已合并到 ccc status, cccq symlink 直接 fallback 到 ccc status
+# 不再需要 redirect (避免无限循环)
 
 case "${1:-help}" in
   status)
     shift
-    CCCQ_BIN="/Users/apple/bin/cccq"
-    if [ -x "$CCCQ_BIN" ]; then
-      exec "$CCCQ_BIN" "$@"
-    else
-      echo "cccq not found at $CCCQ_BIN"
-      exit 1
-    fi
+    # Inline status: show claude procs + recent CCC tasks
+    echo "=== 后台 Claude 进程 ==="
+    ps -eo pid,etime,pcpu,rss,command | grep -E "claude$|claude -p" | grep -v "grep\|cccq\|bash -c" | head -5 | awk '{printf "  PID %s  跑了 %s  CPU %s%%  RAM %sMB\n", $1, $2, $3, int($4/1024)}'
+    echo ""
+    echo "=== 最近 CCC 任务 (本项目) ==="
+    for f in $(ls -t .ccc/phases/*.phases.json 2>/dev/null | head -3); do
+      python3 - "$f" <<'PYEOF'
+import json, os, sys
+fp = sys.argv[1]
+try:
+    d = json.load(open(fp))
+    ps = d.get('phases') or []
+    name = os.path.basename(fp).replace('.phases.json','')
+    if not ps: sys.exit()
+    done = sum(1 for p in ps if p.get('status') in ('done','verified','skipped'))
+    plan = '.ccc/plans/' + name + '.plan.md'
+    goal = ''
+    if os.path.exists(plan):
+        for line in open(plan):
+            if line.startswith('| **目标**'):
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) >= 3: goal = parts[2]; break
+    print(f'  [{done}/{len(ps)}] {name}')
+    if goal: print(f'    目标: {goal[:80]}')
+    for p in ps:
+        st = (p.get('status') or '?')
+        sym = {'pending':'○ 等','in_progress':'◐ 跑','verifying':'◑ 验','verified':'✓','done':'✓','failed':'✗'}.get(st,'?')
+        title = (p.get('title') or '')[:60]
+        print(f'    {sym} phase {p.get("id","?")}: {title}')
+except: pass
+PYEOF
+    done
+    echo ""
+    echo "=== 最近 3 个 git commit ==="
+    git log --oneline -3 2>/dev/null | sed 's/^/  /'
     ;;
   search)
     shift
