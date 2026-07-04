@@ -66,3 +66,63 @@ claude -p "$(cat /tmp/<task>-verifier.txt)" \
 - `mavis session new` 会 fallback 到非 Claude 模型 → **绝对禁止**。始终用 `claude -p`
 - 如果提示 "permission denied"，检查 claude binary 路径
 - Subprocess 卡死处理见 `references/red-lines.md` 红线 9
+
+---
+
+## qxo 执行模式（替代 mavis cron）
+
+> 当运行时环境为 qxo（Claude Code CLI，无 mavis daemon）时，适配以下方案。
+
+### 完成通知
+
+不用 mavis cron。用 Bash 工具的 `run_in_background` 机制：
+
+```bash
+# ❌ 错误：bash & 后台 + 等万能通知
+claude -p "$(cat /tmp/prompt.txt)" ... > /tmp/executor.log 2>&1 &
+
+# ✅ 正确：Bash 的 run_in_background 管理生命周期
+# Bash 命令不带 &，用 --max-budget-usd 做上限
+# claude 完成 → Bash 退出 → 系统通知
+ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
+claude -p "$(cat /tmp/prompt.txt)" \
+  --permission-mode bypassPermissions \
+  --max-budget-usd N
+```
+
+### 预算管理
+
+不一次性给全部 budget。每个 phase 独立分配，避免"半路超预算停"：
+
+| Phase 类型 | 预算 | 说明 |
+|-----------|------|------|
+| 单文件修复 | 5 USD | 改 ≤10 行 |
+| 多文件修改 | 10 USD | 改 1-3 个文件 |
+| 调研/审计 | 50 USD | 只读不写 |
+| 新功能开发 | 20-30 USD | 按 complexity 定 |
+
+### 自动验收链
+
+executor 写 report.md → 自动启 verifier。用 Bash 链式调用来实现：
+
+```bash
+# Executor
+claude -p "$EXECUTOR_PROMPT" ... --max-budget-usd 10 \
+  && \
+# Verifier（executor 成功后自动启）
+claude -p "$VERIFIER_PROMPT" ... --max-budget-usd 5
+```
+
+### qxo 发单流程
+
+```
+qxo 厂长
+  └── 写 plan.md + phases.json
+       └── Bash run_in_background
+            └── claude -p executor
+                 ├── Phase 1 → commit
+                 ├── Phase 2 → commit
+                 ├── 写 report.md
+                 └── exit 0 → 通知 qxo
+                      └── qxo 读 report.md 写 verdict.md
+```
