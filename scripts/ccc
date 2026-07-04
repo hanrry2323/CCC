@@ -7,9 +7,7 @@ SCRIPT_NAME="$(basename "$0")"
 
 # cccq alias: cccq [args] = ccc status [args] (向后兼容)
 if [ "$SCRIPT_NAME" = "cccq" ]; then
-    if [ "${1:-}" = "-w" ] || [ "${1:-}" = "--watch" ]; then
-        set -- status -w
-    elif [ -z "${1:-}" ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
         set -- help
     elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ]; then
         set -- status "$@"
@@ -19,13 +17,27 @@ fi
 case "${1:-help}" in
   status)
     shift
-    # -w/--watch: 每 10 秒自动刷新
+    # -w/--watch [N]: 每 N 秒自动刷新 (默认 10)
     WATCH_MODE=0
+    INTERVAL=10
     if [[ "${1:-}" == "-w" || "${1:-}" == "--watch" ]]; then
         WATCH_MODE=1
+        shift
+        if [[ -n "${1:-}" && ! "${1:-}" =~ ^[0-9]+$ ]]; then
+            echo "Error: -w expects seconds (got '$1')" >&2
+            exit 1
+        fi
+        if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+            INTERVAL=$1
+            shift
+        fi
+    fi
+    if ! [[ "$INTERVAL" =~ ^[0-9]+$ ]] || (( INTERVAL < 1 )); then
+        echo "Error: -w interval must be positive integer (got: '$INTERVAL')" >&2
+        exit 1
     fi
     while true; do
-        [[ "$WATCH_MODE" == "1" ]] && clear
+        [[ "$WATCH_MODE" == "1" ]] && clear 2>/dev/null || true
         echo "=== 后台 Claude 进程 ==="
         ps -eo pid,etime,pcpu,rss,command | grep -E "claude$|claude -p" | grep -v "grep\|cccq\|bash -c" | head -5 | awk '{printf "  PID %s  跑了 %s  CPU %s%%  RAM %sMB\n", $1, $2, $3, int($4/1024)}'
         echo ""
@@ -60,7 +72,7 @@ PYEOF
         echo ""
         echo "=== 最近 3 个 git commit ==="
         git log --oneline -3 2>/dev/null | sed 's/^/  /'
-        [[ "$WATCH_MODE" == "1" ]] && sleep 10 || break
+        [[ "$WATCH_MODE" == "1" ]] && sleep "$INTERVAL" || break
     done
     ;;
   search)
@@ -90,14 +102,15 @@ ccc — CCC Framework CLI
 Usage: ccc <command> [options]
 
 Commands:
-  status           Task status (background Claude + CCC task progress + Chinese description)
-  search <query>   Cross-project .ccc/ search for <query>
-  init <name>      New project initialization (AGENTS.md + .ccc/profile.md)
-  diff             Working tree concise diff
-  help             Show this help
+  status [-w [N]]    Task status (background Claude + CCC task progress + Chinese description). -w [N] for watch refresh every N seconds (default 10)
+  search <query>     Cross-project .ccc/ search for <query>
+  init <name>        New project initialization (AGENTS.md + .ccc/profile.md)
+  diff               Working tree concise diff
+  help               Show this help
 
 Examples:
   ccc status
+  ccc status -w 5
   ccc search "Verdict"
   ccc init /tmp/my-project
   ccc diff
