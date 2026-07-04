@@ -5,6 +5,32 @@ All notable changes to CCC (Codex Claude Collaboration) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-04
+
+### Added
+- `scripts/ccc` — 统一 CLI 入口（status/search/init/diff/help）
+- `scripts/ccc-search.py` — 跨项目 `.ccc/` 关键词搜索
+- `scripts/ccc-init.py` — 新项目初始化（AGENTS.md + .ccc/profile.md）
+- `scripts/ccc-hook.sh` — Claude Code pre-tool hook（区分源码/元数据）
+- `scripts/executor-watchdog.sh` — Executor 启动前健康检查
+- `scripts/install-ccc-as-skill.sh` — 跨平台 skill 安装（Mavis/Claude Code/ZCode）
+- `templates/AGENTS.md` + `templates/.ccc-profile.md` — 项目模板
+- `cccq` alias（ccc status 的简写）
+- `ccc status -w [N]` — 可配置间隔的 watch 模式
+
+### Fixed
+- CCC_HOME symlink 解析（realpath 替代 dirname）
+- ccc status 内联实现（避免 cccq symlink 循环）
+- ccc diff 不跳仓（用当前目录而非 CCC_HOME）
+- ccc-hook.sh 绝对路径兼容（匹配 `*/.ccc/*`）
+- cccq -w 参数丢失 bug（改为转发全部位置参数）
+- `clear` 在无 TERM 环境触发 set -e 退出的问题
+
+### Validated (Verifier 独立验证)
+- 13/13 功能验收通过
+- 5/5 adversarial probes 通过
+- VERDICT: PASS
+
 ## [0.3.0-dev] - 2026-07-01
 
 ### Added

@@ -161,7 +161,7 @@ Planner (出 plan) → Executor (执行) → Verifier (验收)
 | Executor | `.ccc/reports/<task>.report.md` | Markdown | 20-80 行 | 执行摘要 + 验收结果 + 回滚指令 |
 | Verifier | `.ccc/verdicts/<task>.verdict.md` | Markdown | 40-120 行 | 逐项核对 + 三级严重度 + VERDICT |
 
-文件契约详细规范见 `references/file-contract.md`。模板见 `references/templates/`。
+文件契约详细规范见 `references/file-contract.md`。模板见 `templates/`。
 
 ---
 
@@ -228,10 +228,10 @@ verifier: 确认 .ccc/hello.md 存在 + git commit 含 "hello"
 |------|------|
 | 4 文件契约详解 | `references/file-contract.md` |
 | 9 条红线（含后果） | `references/red-lines.md` |
-| 模板 — plan.md | `references/templates/plan.md` |
-| 模板 — phases.json | `references/templates/phases.json` |
-| 模板 — report.md | `references/templates/report.md` |
-| 模板 — verdict.md | `references/templates/verdict.md` |
+| 模板 — plan.md | `templates/plan.plan.md` |
+| 模板 — phases.json | `templates/phases.phases.json` |
+| 模板 — report.md | `templates/report.report.md` |
+| 模板 — verdict.md | `templates/verdict.verdict.md` |
 | Scheduler — Mavis cron (默认) | `references/adapters/scheduler-mavis-cron.md` |
 | Scheduler — launchd (macOS) | `references/adapters/scheduler-launchd.md` |
 | Scheduler — GitHub Actions | `references/adapters/scheduler-github-actions.md` |
