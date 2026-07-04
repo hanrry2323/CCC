@@ -11,13 +11,19 @@ SCRIPT_NAME="$(basename "$0")"
 case "${1:-help}" in
   status)
     shift
-    # Inline status: show claude procs + recent CCC tasks
-    echo "=== 后台 Claude 进程 ==="
-    ps -eo pid,etime,pcpu,rss,command | grep -E "claude$|claude -p" | grep -v "grep\|cccq\|bash -c" | head -5 | awk '{printf "  PID %s  跑了 %s  CPU %s%%  RAM %sMB\n", $1, $2, $3, int($4/1024)}'
-    echo ""
-    echo "=== 最近 CCC 任务 (本项目) ==="
-    for f in $(ls -t .ccc/phases/*.phases.json 2>/dev/null | head -3); do
-      python3 - "$f" <<'PYEOF'
+    # -w/--watch: 每 10 秒自动刷新
+    WATCH_MODE=0
+    if [[ "${1:-}" == "-w" || "${1:-}" == "--watch" ]]; then
+        WATCH_MODE=1
+    fi
+    while true; do
+        [[ "$WATCH_MODE" == "1" ]] && clear
+        echo "=== 后台 Claude 进程 ==="
+        ps -eo pid,etime,pcpu,rss,command | grep -E "claude$|claude -p" | grep -v "grep\|cccq\|bash -c" | head -5 | awk '{printf "  PID %s  跑了 %s  CPU %s%%  RAM %sMB\n", $1, $2, $3, int($4/1024)}'
+        echo ""
+        echo "=== 最近 CCC 任务 (本项目) ==="
+        for f in $(ls -t .ccc/phases/*.phases.json 2>/dev/null | head -3); do
+          python3 - "$f" <<'PYEOF'
 import json, os, sys
 fp = sys.argv[1]
 try:
@@ -42,10 +48,12 @@ try:
         print(f'    {sym} phase {p.get("id","?")}: {title}')
 except: pass
 PYEOF
+        done
+        echo ""
+        echo "=== 最近 3 个 git commit ==="
+        git log --oneline -3 2>/dev/null | sed 's/^/  /'
+        [[ "$WATCH_MODE" == "1" ]] && sleep 10 || break
     done
-    echo ""
-    echo "=== 最近 3 个 git commit ==="
-    git log --oneline -3 2>/dev/null | sed 's/^/  /'
     ;;
   search)
     shift
