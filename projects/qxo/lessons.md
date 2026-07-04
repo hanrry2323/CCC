@@ -1338,3 +1338,51 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 5. 物理内存不足时是否有 fallback (journal only / 降级)?           [ ] 是
 ```
 
+---
+
+## Lesson 19 — Planner 预写代码体（Option E 变通）的豁免条件（2026-07-04）
+
+**背景**: ccc-v0.3.2 status-ux 任务两次执行期，Executor 连续两次 hang（R1 全程无输出、R2 step 4b FAIL），Planner 采用"Option E"方案：预先写好 159 行 scripts/ccc 完整代码体，交由 Executor 只做机械 cp + chmod + 验证 + commit。这本质上是 Planner 越界写代码（红线 8 C1），但作为连续卡死的紧急情况下被当作合法变通。
+
+**根因**:
+1. Executor 在 Mavis 环境下存在偶发 hang，没有更优角色没有兜底
+2. 红线 8 只说了"不能写代码"，没定义什么情况下可以豁免
+3. Option E 本质是"把 Executor 降级为"机械装配工"，Planner 承担设计+编码，Executor 只做执行验证
+
+**豁免条件（必须同时满足）**:
+1. **连续卡死**: Executor 连续 2 次 hang/fail（同 Lesson 24 连续卡死模式）
+2. **纯机械组装**: 代码体无 design decision，只是把已有功能组合，无新设计
+3. **Planner 自测**: Planner 写完后自行跑全部功能验证，确认通过
+4. **异常记录**: 写 abnormal report 明确记录越界原因 + 豁免依据
+5. **Executor 仍 commit**: 最终 git commit 仍由 Executor 完成，Planner 不碰 git
+
+**不豁免（仍是越界）**:
+- 只挂 1 次就 Option E → 不满足"连续"
+- 代码含新架构/新算法/新 API 设计 → 不是"纯机械"
+- Planner 直接 git commit → 完全跳过 Executor 角色
+- 不写 abnormal report → 无记录的暗箱操作
+
+**预防**:
+1. 优先走正常三角色流程，Option E 是最后手段，不是常规操作
+2. 每次使用后复盘：记录在 abnormal report，事后复盘能否从根因上解决（提升 Executor 稳定性）
+
+**与以往 Lessons 的关系**:
+
+| Lesson | 主题 | 关系 |
+|--------|------|------|
+| Lesson 2 | Executor 超时后 planner 不应越界 commit | 本 Lesson 是 Lesson 2 的"紧急豁免 |
+| Lesson 8 | Planner 越界兜底第二次实例 | 同属 Planner 越界系列，本 Lesson 明确定义豁免条件 |
+| Lesson 18 | Planner 越界 · 第三次 | 同属越界系列 |
+| Lesson 24 | 连续卡死模式 | 连续卡死是触发豁免的前提条件 |
+
+**适用范围**: 所有 CCC 项目。跨角色边界规则。
+
+**自我检查 (5 项)**:
+```
+1. Executor 是否连续 ≥2 次 hang/fail?                            [ ] 是
+2. 代码体是否纯机械组装（无新设计决策）?                           [ ] 是
+3. Planner 是否自行验证全部功能?                                        [ ] 是
+4. 是否写了 abnormal report 记录越界?                                [ ] 是
+5. 最终 commit 是否仍由 Executor 完成?                              [ ] 是
+```
+

@@ -1,6 +1,8 @@
 # ⚠️ 已退役 / DEPRECATED
 
-> **本文件已合并进 [`../CLAUDE.md`](../CLAUDE.md)，请改读那个。**
+> **本文件是 CCC 框架自身的旧 AGENTS.md，已合并进 [`CLAUDE.md`](./CLAUDE.md)，请改读那个。**
+>
+> **新项目模板**：见 [`templates/AGENTS.md`](./templates/AGENTS.md)（`ccc init` 生成新项目时使用的模板）
 
 归档原因：
 - 早期版本（Codex × Codex 术语），已过时
