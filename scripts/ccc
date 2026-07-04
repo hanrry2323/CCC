@@ -5,8 +5,16 @@ REAL_SCRIPT="$(realpath "$0")"
 CCC_HOME="$(cd "$(dirname "$REAL_SCRIPT")/.." && pwd)"
 SCRIPT_NAME="$(basename "$0")"
 
-# cccq alias (legacy): 已合并到 ccc status, cccq symlink 直接 fallback 到 ccc status
-# 不再需要 redirect (避免无限循环)
+# cccq alias: cccq [args] = ccc status [args] (向后兼容)
+if [ "$SCRIPT_NAME" = "cccq" ]; then
+    if [ "${1:-}" = "-w" ] || [ "${1:-}" = "--watch" ]; then
+        set -- status -w
+    elif [ -z "${1:-}" ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+        set -- help
+    elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ]; then
+        set -- status "$@"
+    fi
+fi
 
 case "${1:-help}" in
   status)
