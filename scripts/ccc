@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-CCC_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+REAL_SCRIPT="$(realpath "$0")"
+CCC_HOME="$(cd "$(dirname "$REAL_SCRIPT")/.." && pwd)"
 SCRIPT_NAME="$(basename "$0")"
 
 # cccq alias → default to status
@@ -12,26 +13,13 @@ fi
 case "${1:-help}" in
   status)
     shift
-    # Show status: active Claude processes + recent tasks
-    echo "=== CCC 任务状态 ==="
-    echo ""
-
-    # Check for active Claude processes
-    CLAUDE_PIDS="$(pgrep -f 'claude.*CCC' 2>/dev/null || true)"
-    if [ -n "$CLAUDE_PIDS" ]; then
-      echo "后台 Claude 进程: 活跃中"
-      echo "  PID: $(echo "$CLAUDE_PIDS" | tr '\n' ' ')"
+    CCCQ_BIN="/Users/apple/bin/cccq"
+    if [ -x "$CCCQ_BIN" ]; then
+      exec "$CCCQ_BIN" "$@"
     else
-      echo "后台 Claude 进程: 无"
+      echo "cccq not found at $CCCQ_BIN"
+      exit 1
     fi
-    echo ""
-
-    # List recent tasks from .ccc/
-    for pd in "$CCC_HOME"/.ccc/plans/*.plan.md "$CCC_HOME"/.ccc/reports/*.report.md "$CCC_HOME"/.ccc/verdicts/*.verdict.md; do
-      [ -f "$pd" ] || continue
-      base="$(basename "$pd")"
-      echo "  $base"
-    done 2>/dev/null | head -20 || echo "  无最近任务 (CCC 尚未执行)"
     ;;
   search)
     shift
@@ -43,12 +31,15 @@ case "${1:-help}" in
     ;;
   diff)
     shift
-    cd "$CCC_HOME"
-    echo "=== Working Tree Status ==="
-    git status --short 2>/dev/null || echo "(not a git repository)"
-    echo ""
-    echo "=== Diff (stat) ==="
-    git diff --stat 2>/dev/null || echo "(no diff)"
+    if git -C . rev-parse --git-dir >/dev/null 2>&1; then
+      echo "=== Working Tree ($(git -C . rev-parse --show-toplevel)) ==="
+      git -C . status --short | head -20
+      echo ""
+      echo "=== Diff stat ==="
+      git -C . diff --stat | head -20
+    else
+      echo "(当前目录不在 git 仓库里)"
+    fi
     ;;
   help|--help|-h|"")
     cat <<'EOF'

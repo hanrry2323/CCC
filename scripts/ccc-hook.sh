@@ -30,7 +30,7 @@ if [ -z "$FILE_PATH" ]; then
 fi
 
 # Allow .ccc/ paths (Planner-managed metadata)
-if [[ "$FILE_PATH" == .ccc/* ]]; then
+if [[ "$FILE_PATH" == .ccc/* ]] || [[ "$FILE_PATH" == */.ccc/* ]]; then
   echo "{\"decision\": \"allow\", \"reason\": \"ccc metadata: $FILE_PATH\"}"
   exit 0
 fi
