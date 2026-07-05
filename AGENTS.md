@@ -5,7 +5,7 @@
 > **新项目模板**：见 [`templates/AGENTS.md`](./templates/AGENTS.md)（`ccc init` 生成新项目时使用的模板）
 
 归档原因：
-- 早期版本（Codex × Codex 术语），已过时
+- 早期版本架构（Codex = 两 Agent 同名，概念混淆），已过时。当前名称 "Codex Claude Collaboration" 指 Planner(任意LLM) + Executor(Claude) + Verifier(Claude) 三角色协作。
 - 内容已被新版 `CLAUDE.md` 完全覆盖（三阶段管线、目录布局、红线、文件桥接）
 - 新增了项目隔离规范、verifier 角色、执行方式术语统一、验收口径修正等
 

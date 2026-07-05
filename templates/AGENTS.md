@@ -18,7 +18,7 @@ Agent name: `{{PROJECT_NAME}}-CC`
 1. Read `~/program/CCC/CLAUDE.md` — framework protocol, terminology, red lines 1-10
 2. Read `{{PROJECT_PATH}}/.ccc/profile.md` — project-specific constraints
 3. **Read `{{PROJECT_PATH}}/.ccc/state.md`** — relay index (Red Line 10 mandatory)
-4. Read most recent verdict under `.ccc/verdicts/` (last 7 days)
+4. Read most recent verdict under `.ccc/verdicts/` (latest by timestamp)
 5. Begin task execution
 
 > ⚠️ **Red Line 10**: Never rely on session-level memory. All historical claims must be grep'd from files.

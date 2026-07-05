@@ -1,6 +1,8 @@
 # CCC — Codex Claude Collaboration
 
 > Mavis (MiniMax) 规划 + 监控 + 验收 → Claude 长任务自主执行。全文件桥接，零对话回合。
+>
+> **角色澄清**：Planner 由 Mavis 桌面端（MiniMax 模型）承担；Executor/Verifier 用 `claude -p` CLI（Claude 模型）。"红线 9 禁止 mavis session new"仅禁止命令行 `mavis session new <agent>` 启动子会话——Mavis 桌面端本身不受限。
 
 ## 近期实战更新 (2026-07-01)
 
@@ -36,6 +38,7 @@
 ### 必建 cron 自提醒 (async-audit)
 - 每次启 Executor/Verifier 立即 `mavis cron self qxo-<task> --every 5m`
 - 完成即 `mavis cron delete`
+- 替代方案（无 mavis 时）：crontab/launchd 手动配置
 
 ### Verifier 必做 (不信任 report 自报)
 - ≥3 个 adversarial probes 强制找问题
@@ -268,6 +271,7 @@ Plan 中必须明确指定其一。**禁止出现其他术语**（如 "codeloop"
 6. planner 不写 verdict；verifier 不写 plan
 7. agent 启动必须先读 `~/program/CCC/CLAUDE.md` 再读项目 `.ccc/profile.md`
 8. **每步必须 commit**（P4 强化）：任何 working tree 中的改动必须在该 phase 内 commit，不准攒着等"全部做完"再 commit。任何未 commit 改动 = 该 phase 未完成
+   > 红线 8 同时包含 Planner 越界规则（C1-C6），详见 `references/red-lines.md#红线-8`
 9. **Executor 卡死必须立即止损**（A2 新增 · Lesson 7 + Lesson 9 + Lesson 12 修复）：
    - 触发条件：`bash ~/program/CCC/scripts/executor-watchdog.sh` 返回非零，或 claude 子进程 `etime > 15min && pcpu < 1%`
    - 立即动作：caller 立即 `kill -9 <claude_pid>` 或 `mavis session abort <session_id>`，不要等自然结束
