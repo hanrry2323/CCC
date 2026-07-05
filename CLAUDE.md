@@ -274,7 +274,7 @@ Plan 中必须明确指定其一。**禁止出现其他术语**（如 "codeloop"
    > 红线 8 同时包含 Planner 越界规则（C1-C6），详见 `references/red-lines.md#红线-8`
 9. **Executor 卡死必须立即止损**（A2 新增 · Lesson 7 + Lesson 9 + Lesson 12 修复）：
    - 触发条件：`bash ~/program/CCC/scripts/executor-watchdog.sh` 返回非零，或 claude 子进程 `etime > 15min && pcpu < 1%`
-   - 立即动作：caller 立即 `kill -9 <claude_pid>` 或 `mavis session abort <session_id>`，不要等自然结束
+   - 立即动作：caller 立即 `kill -TERM <claude_pid>`（超时 2s 未响应则 `kill -KILL`），或 `mavis session abort <session_id>`，不要等自然结束
    - 决策路径：
      - 1 次卡死 → watchdog --force-kill + 重试
      - 连续 2 次同 session 卡死 → 不再尝试第 3 次，**Planner 接管**（参考 Lesson 8 越界兜底判定标准）

@@ -132,7 +132,7 @@
 - 或 watchdog script 返回非零退出码
 
 **动作流水线**：
-1. 立即 `kill -9 <claude_pid>` 或 `mavis session abort <session_id>`
+1. 立即 `kill -TERM <claude_pid>`（超时 2s 未响应则 `kill -KILL`），或 `mavis session abort <session_id>`
 2. 本 session 首次卡死 → 重试一次（同 prompt 重跑）
 3. 连续 2 次同 session 卡死 → 不再重试，Planner 接手评估新方案
 4. 端口冲突 / OOM 等硬件层卡死 → 先重启 daemon：`pkill -f opencode && opencode serve`

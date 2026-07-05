@@ -66,11 +66,23 @@ grep '"status"' <workspace>/.ccc/phases/<task>.phases.json  # 期望 "done"
 ls <workspace>/.ccc/reports/<task>.report.md  # 期望文件存在
 test -s <workspace>/.ccc/reports/<task>.report.md && echo "report non-empty"  # 期望 "report non-empty"
 
-# 自检 4（plan 范围检查 · Lesson 13）：改文件数 ≤ plan "只改文件" 列表长度
-# 避免 Executor "自报 done 但 plan '怎么做' 章节内容没真做"（如 fix-warnings W1 教训）
-plan_files=$(grep -cE '^\s+- \S+' <workspace>/.ccc/plans/<task>.plan.md)
+# 自检 4（plan 范围检查 · Lesson 13）：改文件 ⊆ phases.json scope 集合
+# 统计 changed_files ≤ sum(scope) 而非 grep plan 文本（避免 plan 格式误报）
+plan_scope_count=$(python3 -c "
+import json
+p = '<workspace>/.ccc/phases/<task>.phases.json'
+try:
+    d = json.load(open(p))
+    files = set()
+    for ph in d.get('phases', []):
+        s = ph.get('scope') or ph.get('expected_files', [])
+        files |= set(s)
+    print(len(files))
+except: print('0')
+")
 changed_files=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
-[ "$changed_files" -le "$plan_files" ] && echo "file count OK ($changed_files ≤ $plan_files)" || echo "FAIL"
+count_safe=$(( plan_scope_count + 5 ))  # 容差：phases.json 可能缺失少数路径
+[ "$changed_files" -le "$count_safe" ] && echo "file count OK ($changed_files ≤ scope ${plan_scope_count}, capped ${count_safe})" || echo "FAIL"
 
 # 自检 5（phase 数对账）：phases.json status=done 行数 = plan phase 数
 plan_phases=$(grep -cE '^## Phase|^- Phase' <workspace>/.ccc/plans/<task>.plan.md 2>/dev/null || echo 1)

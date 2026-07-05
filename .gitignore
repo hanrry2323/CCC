@@ -5,3 +5,4 @@ __pycache__/
 *.swp
 *~
 .ccc/
+!.claude/worktrees/**/.ccc/reports/*.md

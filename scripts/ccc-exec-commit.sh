@@ -128,13 +128,18 @@ for p in phases:
         print(f"  ⚠️  phase {pid}: commit_message 为空，使用默认消息")
         commit_msg = f"chore({os.path.basename(workspace)}): phase {pid} auto-commit"
 
-    # B3: scope 重叠检测（多 phase 改同一文件提示）
+    # B3: scope 重叠阻断（多 phase 改同一文件时前 phase 改动会污染当前 phase）
     if scope and pid > 1:
+        overlap_detected = False
         for prev_scope in all_committed_scopes:
             overlap = set(scope) & set(prev_scope)
             if overlap:
-                print(f"  ⚠️  phase {pid}: scope overlaps prior phase: {overlap}")
-                print(f"     Multi-phase edits to same file may include prior content")
+                print(f"  ❌ phase {pid}: scope 与之前 phase 重叠: {overlap}")
+                print(f"     Git working tree 线性，同一文件跨 phase 改会污染 commit")
+                overlap_detected = True
+        if overlap_detected:
+            errors += 1
+            continue
 
     # git add
     if scope_marker == "--all":
