@@ -118,7 +118,7 @@ EOF
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `-p "<prompt>"` | ✅ | 非交互模式启动，prompt 是自然语言指令 |
-| `--permission-mode auto` | 推荐 | 自动批准安全操作，不弹权限窗 |
+| `--permission-mode bypassPermissions` | 推荐 | 跳过弹窗，自动审批 |
 
 **注意**：
 - `claude -p` 与 `claude --print` 等价（`-p` 是 `--print` 的简写）。`claude --help` 显示 `-p, --print` 都是合法参数。
