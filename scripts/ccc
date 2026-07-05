@@ -9,7 +9,7 @@ SCRIPT_NAME="$(basename "$0")"
 if [ "$SCRIPT_NAME" = "cccq" ]; then
     if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
         set -- help
-    elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ]; then
+    elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ] && [ "${1:-}" != "commit" ]; then
         set -- status "$@"
     fi
 fi
@@ -95,7 +95,19 @@ PYEOF
       echo "(当前目录不在 git 仓库里)"
     fi
     ;;
-  help|--help|-h|"")
+
+  commit)
+    shift
+    if [[ $# -lt 2 ]]; then
+        echo "用法: ccc commit <workspace> <task> [--phase N]" >&2
+        echo "  自动 commit Executor 输出的改动（委托 ccc-exec-commit.sh）" >&2
+        echo "  详见: ccc-exec-commit.sh --help" >&2
+        exit 2
+    fi
+    exec "$CCC_HOME/scripts/ccc-exec-commit.sh" "$@"
+    ;;
+
+    help|--help|-h|"")
     cat <<'EOF'
 ccc — CCC Framework CLI
 
@@ -106,6 +118,7 @@ Commands:
   search <query>     Cross-project .ccc/ search for <query>
   init <name>        New project initialization (AGENTS.md + .ccc/profile.md)
   diff               Working tree concise diff
+  commit <ws> <task> Auto-commit Executor output (delegates to ccc-exec-commit.sh)
   help               Show this help
 
 Examples:
@@ -114,6 +127,7 @@ Examples:
   ccc search "Verdict"
   ccc init /tmp/my-project
   ccc diff
+  ccc commit . ccc-exec-commit-20260705
 EOF
     ;;
   *)

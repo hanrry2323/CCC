@@ -5,6 +5,23 @@ All notable changes to CCC (Codex Claude Collaboration) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-07-05
+
+### Added
+- `scripts/ccc-exec-commit.sh` — Executor 退出后自动 commit（替代 LLM 做机械操作）
+- `ccc commit` 子命令 — 委托给 ccc-exec-commit.sh
+
+### Changed
+- **拆分 Executor commit 职责**（P0.2）：Executor 只做文件编辑，commit 由外部脚本自动处理
+- `templates/executor-prompt.template.md` — 删除所有 git add/commit 指令，更新完成定义，自检从 6 项调为 5 项
+- `CLAUDE.md` — Executor 启动标准新增 commit 调用步骤，C2 从 "commit-push" 缩为 "push"，新增兜底 commit 段落
+- `references/red-lines.md` — C2 改为 push，新增"红线 8 Fallback"段允许 Planner 兜底 commit
+
+### Fixed
+- Executor 自检 4（commit hash 检查）移除——commit 由外部处理，自检不再校验
+- Executor 自检 1（git status）改为确认无已暂存内容
+- 示例 section 同步删除 commit 相关行
+
 ## [0.3.1] - 2026-07-04
 
 ### Added

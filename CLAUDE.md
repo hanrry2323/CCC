@@ -14,6 +14,7 @@
 
 ### Executor / Verifier 启动标准 (红线 9)
 - 用 `claude -p "$(cat prompt)" --permission-mode bypassPermissions --max-budget-usd N`
+- Executor 退出后必须调用 `ccc commit <workspace> <task>` 自动处理 commit（详见 P0.2 拆分 commit 职责）
 - **绝对禁止** `mavis session new <agent>` (会 fallback minimax/MiniMax-M3 = 三角色失效, 记 Lesson 19 / 红线 8 C6 = Critical)
 
 ### 默认预算
@@ -25,7 +26,7 @@
 ### Plan 硬性结构 (红线 2)
 - 范围 (目标/只改文件/不改文件/执行方式/Phase 数)
 - 改动 N: 做什么 / 怎么做 / 验收
-- Commit 计划 + 全局验收清单 (红线 1-9)
+- Commit 计划 + 全局验收清单 (红线 1-10)
 
 ### phases.json 必写 (红线 5)
 - 单 phase 至少写 1 行 phase 1
@@ -43,8 +44,15 @@
 - 结尾必 VERDICT: PASS / CONDITIONAL_PASS / FAIL 三选一
 
 ### Planner 越界 = Critical (红线 8)
-- C1 Edit 源代码 / C2 commit-push / C3 ssh / C4 rsync / C5 sed 盲改 / **C6 mavis session new**
-- 兜底: Executor 卡死 → 告诉用户 + 标 failed + 写 anomaly report, **不自己动手**
+- C1 Edit 源代码 / C2 push（commit 由 `ccc-exec-commit.sh` 自动处理，不算越界）/ C3 ssh / C4 rsync / C5 sed 盲改 / **C6 mavis session new**
+- 兜底: Executor 卡死 → 告诉用户 + 标 failed + 写 anomaly report
+- 如果 Executor 已生成文件但未 commit（working tree 非空），Planner 允许调用 `ccc commit` 完成提交，记入 anomaly report 的 Fallback 段，不算 C2 越界
+
+### 禁止跨会话隐式记忆 (红线 10, 2026-07-04 新增)
+- 决策/产出禁止依赖会话级记忆
+- 所有"上次结论"必须落到 `.ccc/state.md` + plan/report/verdict
+- 启动时第一个读 `.ccc/state.md`，禁止"凭印象"复述上一会话
+- 详见 `references/red-lines.md` 红线 10
 
 ### 实战经验沉淀
 - 修订 v2 比一次性写更有价值 (Verdict 反馈驱动精确修复)

@@ -15,9 +15,13 @@ Agent name: `{{PROJECT_NAME}}-CC`
 
 ## Startup Sequence (for any `<project>-CC` agent)
 
-1. Read `~/program/CCC/CLAUDE.md` — framework protocol, terminology, red lines
+1. Read `~/program/CCC/CLAUDE.md` — framework protocol, terminology, red lines 1-10
 2. Read `{{PROJECT_PATH}}/.ccc/profile.md` — project-specific constraints
-3. Begin task execution
+3. **Read `{{PROJECT_PATH}}/.ccc/state.md`** — relay index (Red Line 10 mandatory)
+4. Read most recent verdict under `.ccc/verdicts/` (last 7 days)
+5. Begin task execution
+
+> ⚠️ **Red Line 10**: Never rely on session-level memory. All historical claims must be grep'd from files.
 
 ## Layer Config Precedence
 
@@ -31,6 +35,7 @@ Agent name: `{{PROJECT_NAME}}-CC`
 ```
 {{PROJECT_PATH}}/.ccc/
 ├── profile.md           Project profile
+├── state.md             Relay index (Red Line 10) — read FIRST on every session start
 ├── plans/               Execution plans
 ├── phases/              Phase status tracking
 ├── reports/             Execution reports
@@ -43,3 +48,4 @@ Agent name: `{{PROJECT_NAME}}-CC`
 - Each phase makes one commit
 - Commit messages include the phase number
 - Verifier runs independently — Planner does not write verdicts
+- **Red Line 10**: No implicit memory. All context must come from `.ccc/state.md` + plan/report/verdict files

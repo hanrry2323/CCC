@@ -30,20 +30,23 @@ claude -p "$(cat <<'EOF'
 
 按 plan 执行。完成后：
 - 写实施报告到 <workspace>/.ccc/reports/<task>.report.md
-- 更新 phases.json，把完成的 phase 标记为 done（多 phase 逐个追加）
-- 每个 phase 独立 commit（红线 4），commit message 参考 plan 的"Commit 计划"表
+- 更新 phases.json，把完成的 phase 标记为 done（多 phase 逐个追加），commit_message 填写 plan 的"Commit 计划"表对应消息
+- **不执行 git commit**——commit 由外部脚本 `ccc-exec-commit.sh` 自动处理
 
 **完成定义**（必须全部满足才能退出 session · Lesson 3 + Lesson 4 修复）：
 1. **report.md 已写入并含全部验收结果**（前置 · Lesson 4 修复：先写报告再做事，避免"主工作做完就退"导致漏报告）
-2. 所有改动已 `git add` + `git commit`（commit hash 记入 phases.json 的 `commit` 字段）
-3. `phases.json` 对应 phase `status = done`
+2. **working tree 已就绪**（`git status --short` 显示仅 plan 范围文件改动，无已暂存内容）
+3. `phases.json` 对应 phase `status = done`，`commit_message` 字段已填写
 4. **退出前自检**（见下方）全部 PASS
+
+> **commit 由外部处理**：Executor 不执行 `git commit`，退出后 Planner 调用 `ccc-exec-commit.sh` 自动完成。
+> 所有改动只需在 working tree 中存在即可，不要暂存或提交。
 
 **完成执行顺序**（Lesson 4 修复 · 必须按此顺序）：
 ```
 Step 0（前置 · Lesson 9 修复）：Caller 已跑 `executor-watchdog.sh`，如果返回 warning 必须在 report.md 顶部标注并 echo 确认
 Step 1：先创建空的 report.md 框架（含验收表格骨架）
-Step 2：执行 plan 的所有改动 + 每个 phase 独立 commit
+Step 2：执行 plan 的所有改动（不包含 commit——commit 由外部完成）
 Step 3：填实 report.md（每条验收命令的证据输出）
 Step 4：更新 phases.json status=done
 Step 5：跑退出前自检
@@ -52,26 +55,23 @@ Step 6：自检通过 → 才准退出
 
 **退出前必跑自检**（必须全部 PASS 才准退出 session）：
 ```bash
-# 自检 1：所有改动已 commit
-git status --short  # 期望除 plan 范围外文件外为空
+# 自检 1：working tree 仅改动 plan 范围文件（无已暂存内容）
+git status --short  # 期望仅 plan 声明文件为未暂存修改，无 staged 内容
 
 # 自检 2：phases.json 已 done
-cat <workspace>/.ccc/phases/<task>.phases.json | grep status  # 期望 "done"
+grep '"status"' <workspace>/.ccc/phases/<task>.phases.json  # 期望 "done"
 
 # 自检 3：report.md 已存在且非空
 ls <workspace>/.ccc/reports/<task>.report.md  # 期望文件存在
 test -s <workspace>/.ccc/reports/<task>.report.md && echo "report non-empty"  # 期望 "report non-empty"
 
-# 自检 4：commit hash 已记录
-grep '"commit"' <workspace>/.ccc/phases/<task>.phases.json  # 期望有 hash
-
-# 自检 5（plan 范围检查 · Lesson 13）：commit 改文件数 = plan "只改文件" 列表长度
+# 自检 4（plan 范围检查 · Lesson 13）：改文件数 ≤ plan "只改文件" 列表长度
 # 避免 Executor "自报 done 但 plan '怎么做' 章节内容没真做"（如 fix-warnings W1 教训）
 plan_files=$(grep -cE '^\s+- .*\.(py|sh|md|json|ya?ml|toml)$' <workspace>/.ccc/plans/<task>.plan.md)
-commit_files=$(git diff HEAD~N..HEAD --name-only 2>/dev/null | wc -l | tr -d ' ')
-[ "$commit_files" -le "$plan_files" ] && echo "file count OK ($commit_files ≤ $plan_files)" || echo "FAIL"
+changed_files=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
+[ "$changed_files" -le "$plan_files" ] && echo "file count OK ($changed_files ≤ $plan_files)" || echo "FAIL"
 
-# 自检 6（phase 数对账）：phases.json status=done 行数 = plan phase 数
+# 自检 5（phase 数对账）：phases.json status=done 行数 = plan phase 数
 plan_phases=$(grep -cE '^## Phase|^- Phase' <workspace>/.ccc/plans/<task>.plan.md 2>/dev/null || echo 1)
 done_phases=$(grep -c '"status":\s*"done"' <workspace>/.ccc/phases/<task>.phases.json 2>/dev/null || echo 0)
 [ "$done_phases" -ge "$plan_phases" ] && echo "phase count OK ($done_phases ≥ $plan_phases)" || echo "FAIL"
@@ -79,23 +79,20 @@ done_phases=$(grep -c '"status":\s*"done"' <workspace>/.ccc/phases/<task>.phases
 
 **自检输出格式**（每条自检必须 echo PASS 或 FAIL）：
 ```
-[Self-check 1/6] git status: PASS
-[Self-check 2/6] phases.json: PASS
-[Self-check 3/6] report.md exists: PASS
-[Self-check 4/6] commit hash recorded: PASS
-[Self-check 5/6] file count scope: PASS
-[Self-check 6/6] phase count match: PASS
+[Self-check 1/5] git status (no staged): PASS
+[Self-check 2/5] phases.json: PASS
+[Self-check 3/5] report.md exists: PASS
+[Self-check 4/5] file count scope: PASS
+[Self-check 5/5] phase count match: PASS
 ALL SELF-CHECKS PASSED — 退出 session
 ```
 
-如果任一自检 FAIL：**不准退出**。必须先修复（创建 report / 重跑 commit / 更新 phases.json），再重跑自检，直到全部 PASS。
-
-如果任一自检 FAIL：**不准退出**。必须先修复（创建 report / 重跑 commit / 更新 phases.json），再重跑自检，直到全部 PASS。
+如果任一自检 FAIL：**不准退出**。必须先修复（创建 report / 检查 working tree / 更新 phases.json），再重跑自检，直到全部 PASS。
 
 红线（不要违反）：
 - 不动 plan 范围外的文件（额外问题记入 report 但不修改）
 - 不写 verdict（那是 Verifier 的活）
-- 一个 phase 一个 commit（不准 phase 跨 commit，不准 commit 含多 phase）
+- 每个 phase 的改动在 working tree 中保持独立（外部脚本按 phase 逐条 commit）
 - 不跳阶段更新 phases.json（pending → done 必须经过 in_progress）
 - plan 里的"参考命令"是 hint，自己决定用什么命令实现
 - **report.md 必须 Step 1 创建（前置）**，不能 Step 4 写
@@ -145,13 +142,12 @@ claude -p "$(cat <<'EOF'
 
 按 plan 执行。完成后：
 - 写实施报告到 /Users/apple/program/qx-observer/.ccc/reports/migrate-agents-md-to-ccc.report.md
-- 更新 phases.json，把 phase 1 标记为 done
-- 每个 phase 独立 commit（红线 4），commit message 参考 plan 的"Commit 计划"表
+- 更新 phases.json，把 phase 1 标记为 done，commit_message 填写计划消息
+- **不执行 git commit**——commit 由外部脚本处理
 
 红线（不要违反）：
 - 不动 plan 范围外的文件
 - 不写 verdict（那是 Verifier 的活）
-- 一个 phase 一个 commit（红线 4）
 - 不跳阶段更新 phases.json（红线 5）
 - plan 里的"参考命令"是 hint，自己决定用什么命令实现
 EOF
