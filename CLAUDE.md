@@ -281,3 +281,4 @@ Plan 中必须明确指定其一。**禁止出现其他术语**（如 "codeloop"
      - spawn 失败：`bash wrapper PID 显示 claude -p "$PROMPT"` 但 `pgrep -lf claude` 找不到真 binary → bash shim 接管 → stdin 处理错
      - spawn 失败处理：检查 shell wrapper（避免 stdin redirect / bash shim），避免 `--add-dir` 扫大目录，必要时改 `nohup` background + log redirect 到 `/tmp/executor-*.log`
      - **判定**：`pgrep -lf claude` 显示真 binary 进程 → 真正 spawn 成功；否则 spawn 失败（即使 bash wrapper 在跑）
+10. **禁止跨会话隐式记忆**（详见 `references/red-lines.md#红线-10`）：所有历史结论必须落到文件并显式读取。启动时第一个读 `.ccc/state.md`。

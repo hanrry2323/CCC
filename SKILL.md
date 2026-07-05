@@ -227,7 +227,7 @@ verifier: 确认 .ccc/hello.md 存在 + git commit 含 "hello"
 | 用途 | 文件 |
 |------|------|
 | 4 文件契约详解 | `references/file-contract.md` |
-| 9 条红线（含后果） | `references/red-lines.md` |
+| 10 条红线（含后果） | `references/red-lines.md` |
 | 模板 — plan.md | `templates/plan.plan.md` |
 | 模板 — phases.json | `templates/phases.phases.json` |
 | 模板 — report.md | `templates/report.report.md` |
