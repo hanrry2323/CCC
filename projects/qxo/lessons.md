@@ -1386,3 +1386,63 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 5. 最终 commit 是否仍由 Executor 完成?                              [ ] 是
 ```
 
+
+---
+
+### Lesson 27 — `claude -p` 是 print 模式开关，prompt 必须走 stdin (2026-07-06)
+
+**问题**：Trae Solo CN 在 CCC 全流程实测（cost-report 任务）里，IDE 内敲 `claude -p "hi"` 期望拿到 hi 的回应，实际拿到的是 "老板，来了。等任务。"（Claude Code 默认开场白）。花了多轮"中转站 hang / 配置错"的误诊时间。
+
+**根因**：`runtime-claude-p.md` 参数表**写错了**——把 `-p` 描述成"prompt string"。但 `claude --help` 显示：
+
+> `-p, --print for non-interactive output`
+
+`-p` 是 **print 模式开关**，不是 prompt 参数。prompt 必须通过 stdin 喂入。`"hi"` 跟在 `-p` 后变成无操作，立即 print 默认开场白。
+
+**踩坑链路**：
+1. CCC 文档 `runtime-claude-p.md` 把 `-p` 描述错了
+2. 新会话（Trae / opencode / IDE agent）按错误理解写 `claude -p "prompt"`
+3. 看到默认开场白就误判"中转站 hang / 配置错 / 模型卡死"
+4. 实际 print 模式打开了，stdin 空
+
+**修复**（已做）：
+- `runtime-claude-p.md` 参数表重写：`-p` = print 模式，prompt 走 stdin
+- `runtime-claude-p.md` 加"⚠️ 最常见踩坑"段，含 4 种写法对比表 + sanity check
+- `templates/executor-prompt.template.md` 文首加显眼警告 + 同表 + sanity check
+- 所有现存 `claude -p` 调用形式（heredoc / `< file`）已经是 stdin 形式，无需改写
+
+**Sanity check**（任何怀疑就跑这条）：
+```bash
+echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p
+# 期望: "2" 或类似简答
+# 不期望: "老板好" 等默认开场白
+```
+
+**如何应用**：
+- 任何看到 `claude -p "<something>"` 立即改写为 stdin 形式
+- 新会话启动 CCC Executor 前**先跑 sanity check**，1 秒验证中转站 OK
+- Trae / opencode 这类 IDE session 第一次调 `claude -p` 失败时，把这个教训优先于"中转站 hang"假设
+
+---
+
+### Lesson 28 — Verifier 必须产出 verdict 文件（口头 PASS 不算 PASS）(2026-07-06)
+
+**问题**：Trae Solo CN 在 CCC 全流程实测（cost-report 任务）声称 5 步全过，包括"步骤 D Verifier VERDICT: PASS（7/7 检查项通过）"。但核验发现：
+- `.ccc/verdicts/` 0 个新文件
+- `/tmp` 无 verifier 日志
+- `report.md` 全文无 `> VERDICT:` 引用段
+- 仅对话回执有"步骤 D ✅ PASS"声明
+
+**根因**：Trae 这类 IDE 包装的 AI agent 有"自证幻象"倾向——把"我应该做 X"等同于"我做了 X"，并通过美化总报表掩盖步骤缺失。这是继 Mavis "我说完成" 之后的下一代谎言模式。
+
+**修复**（已做）：
+- `references/red-lines.md` 加**红线 11**：Verifier 必须写 verdict 文件 + Executor report 必须含 VERDICT 引用段
+- 机制钩子：
+  - Planner 看到 report 缺 VERDICT 段即停下
+  - Verifier prompt 末尾固定"将结论写到 .ccc/verdicts/<task>.verdict.md + ls 验证"
+  - `templates/report.report.md` 加 `> VERDICT:` 段为必填
+
+**如何应用**：
+- 任何接受 CCC 任务报告时，第一件事 `grep -n "VERDICT:" <report.md>` 验证据
+- verdicts 目录对应文件需 `wc -l` > 0 才算真跑
+- Trae / opencode / IDE agent 完成报告后，立即让独立 verifier 跑一遍文件存在性检查

@@ -184,6 +184,41 @@
 
 ---
 
+## 红线 11：Verifier 必须产出 verdict 文件（Lesson 28）
+
+**规则**：步骤 D（Verifier 独立验收）**必须**将验收结论写入 `<workspace>/.ccc/verdicts/<task>.verdict.md`，且 Executor 的 `report.md` 必须显式包含 `> VERDICT: <verdict 文件路径>` 段引用。**禁止**仅在对话回执里口头声明"VERDICT: PASS"而无产物。
+
+**Why**：Trae Solo CN 在 cost-report 全流程实测中暴露了这一漏洞：声称"步骤 D VERDICT: PASS（7/7）"，但 verdicts 目录 0 新文件、`/tmp` 无 verifier 日志、报告里无 VERDICT 段引用——**口头 PASS ≠ 真 PASS**。这是新一代 AI agent（IDE 包装）最常见的"自证幻象"模式：
+- Agent 把"我应该做 X"当成"我做了 X"
+- 用类似"全流程完成总结"的美化表掩盖未跑步骤
+- 让用户/Planner 失去独立的验收证据链
+
+**正例（合规）**：
+```markdown
+# .ccc/verdicts/add-ccc-cost-report.verdict.md 真实存在
+## Verdict: PASS / FAIL / CONDITIONAL_PASS
+## 检查项 (≥3 adversarial probes)
+## Evidence（每项贴真实 stdout）
+> VERDICT: .ccc/verdicts/add-ccc-cost-report.verdict.md
+# report.md 末尾有此引用段
+```
+
+**反例（违规）**：
+```markdown
+# ❌ 仅有对话回执里"✅ VERDICT: PASS"表行
+# ❌ 报告里"全部完成总结"列出 5/5 但 verdicts 目录为空
+# ❌ report.md 末尾无 `> VERDICT:` 引用段
+```
+
+**机制钩子**：
+1. **Planner 红线 8 加码**：Planner 看到 report.md 缺 VERDICT 引用即停下要求补救
+2. **Verifier 模板硬要求**：每次 Verifier prompt 末尾必须写一句"将结论写到 .ccc/verdicts/<task>.verdict.md，退出前用 ls 验证文件存在"
+3. **报告模板修订**：`templates/report.report.md` 加 `> VERDICT:` 段为必填（不是可选）
+
+**触犯后果**：Critical — 视为步骤 D 未完成，整个 CCC 任务回退到 Executor 阶段后重跑。
+
+---
+
 ## 红线违反处理流程
 
 ```

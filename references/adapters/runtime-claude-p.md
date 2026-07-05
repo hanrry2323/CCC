@@ -41,9 +41,31 @@ claude -p "$(cat /tmp/<task>-verifier.txt)" \
 
 | 参数 | 说明 | 推荐值 |
 |------|------|--------|
-| `-p` | prompt string（非交互式执行） | 从文件读取 |
+| `-p` / `--print` | **非交互打印模式开关**（不是 prompt 参数） | 总是加，单独使用 |
+| `<prompt>` | prompt 内容通过 **stdin** 喂入 | 用 `cat file \| claude -p` / `claude -p < file` / `claude -p "$(cat ...)"`（heredoc） |
 | `--permission-mode` | 工具调用权限 | `bypassPermissions`（跳过每次确认） |
 | `--max-budget-usd` | 最大预算 | 调研类 200，修补类 30-50，简单操作 20，push 5-30 |
+
+### ⚠️ `claude -p` 最常见的踩坑（Lesson 27）
+
+`-p` **不是** prompt 参数，是 print 模式开关。prompt 走 stdin。
+
+| 写法 | 结果 |
+|---|---|
+| ❌ `claude -p "hi"` | print 模式打开 + stdin 空 → 打印默认开场白"老板好..." |
+| ✅ `cat /tmp/p.txt \| claude -p` | print 模式 + stdin 真有内容 |
+| ✅ `claude -p < /tmp/p.txt` | 等价 |
+| ✅ `claude -p "$(cat <<EOF ... EOF)"` | heredoc command-substitution 当 stdin |
+
+Sanity check（任何怀疑就跑这条）：
+
+```bash
+echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p
+# 期望: "2" 或类似简答
+# 不期望: "老板好" 等默认开场白
+```
+
+历史上 Trae / opencode 等 IDE 内 session 把 `"..."` 直接跟 `-p` 后，导致 prompt 被 silently drop，用户却以为中转站 hang。
 
 ## 预算参考
 

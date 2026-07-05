@@ -5,6 +5,31 @@
 
 ---
 
+## ⚠️ 启动前必读：`claude -p` 的真实行为（Lesson 27）
+
+`claude -p` / `claude --print` **不是 prompt 参数**，是**非交互打印模式开关**。真正的 prompt **必须通过 stdin 喂入**。
+
+| 写法 | 行为 |
+|---|---|
+| `claude -p "hi"` | ❌ print 模式打开，但 stdin 空，打印默认开场白（"老板好。今天要做什么？"） |
+| `cat /tmp/p.txt \| claude -p` | ✅ print 模式 + stdin 真有内容 |
+| `claude -p < /tmp/p.txt` | ✅ 等价 |
+| `claude -p "$(cat <<EOF ... EOF)"` | ✅ 等价（command substitution 当 stdin pipe） |
+
+**快速 sanity check**（任何不确认的时候跑这条）：
+
+```bash
+echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p
+# 期望输出：2（或类似的简短回答）
+# 不期望输出："老板好" 等默认开场白
+```
+
+> 历史上 Trae / opencode / 新会话都因为写成 `claude -p "..."` 而把 prompt 当成 silently-drops 误以为是中转站 hang。Lesson 27 沉淀这条。
+
+**模板内所有 `claude -p` 调用都是 stdin 形式，可以直接用。**
+
+---
+
 ## 标准模板
 
 ```bash
@@ -129,7 +154,8 @@ EOF
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `-p "<prompt>"` | ✅ | 非交互模式启动，prompt 是自然语言指令 |
+| `-p` / `--print` | ✅ | **非交互打印模式开关**（prompt 通过 stdin 喂入，**不是**跟在这个 flag 后） |
+| `< /tmp/executor-prompt.txt` | ✅ | prompt 内容来源（bash heredoc / 文件 / pipeline 都行） |
 | `--permission-mode bypassPermissions` | 推荐 | 跳过弹窗，自动审批 |
 
 **注意**：
