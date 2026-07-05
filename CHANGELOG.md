@@ -85,3 +85,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 早期间脚本集阶段
 - 多个项目实验性使用 (qx-observer / qb / xianyu)
 - 形成 templates/ + skills/ + projects/ 雏形
+
+---
+
+## [0.5.0] - 2026-07-06 — Connect–Claude Code 重构
+
+### Changed (BREAKING)
+
+- **CCC 重新定位**：从 "Codex Claude Collaboration" framework 代码库 → **Connect–Claude Code SKILL 资产**
+- **含义**：**C**onnect — **C**laude **C**ode（连接 Claude Code 能力到任意 IDE 工具）
+- **SKILL.md**：重写为唯一 prompt 注入资产，244 行 → 169 行（精简）
+- **README.md / CLAUDE.md**：重写，文档分层清晰（SKILL / README / CLAUDE / docs/）
+- **与 qxo 解耦**：`projects/qxo/lessons.md` 迁移到 `docs/lessons.md`，CCC 不再绑任何项目
+
+### Added
+
+- `docs/roadmap.md`：v0.5 / v0.6 / v0.7 / v1.0 + 扩展阶段四阶段路线
+- `docs/architecture.md`：v0.5 框架说明书（重写）
+- `docs/lessons.md`：framework 级教训沉淀（从 projects/qxo/ 迁 1448 行）
+- 红线 11：Verifier 必须写 verdict 文件（Lesson 28 配套）
+- 红线 12：禁止 agent 自主启用 CCC（用户显式触发）
+- Lesson 27：`claude -p` 是 print 模式，prompt 必须走 stdin（CCC 文档自洽修复）
+- Lesson 28：口头 PASS 不算 PASS，verdict 必须有产物证据
+
+### Fixed
+
+- `references/adapters/runtime-claude-p.md`：`claude -p` 参数表从错误描述（"-p = prompt 参数"）改成正确描述（"print 模式开关 + stdin 喂内容"）
+- `templates/executor-prompt.template.md`：文首加显眼警告 + 参数表重写
+- `templates/report.report.md`：加 `> VERDICT:` 占位段为必填（红线 11 强制）
+
+### Removed
+
+- `projects/qxo/lessons.md`（迁至 docs/lessons.md，原始保留为 `.archived-2026-07-06`）
+- 根 `AGENTS.md`（标记 DEPRECATED，已合并进 CLAUDE.md）
+- v0.3.x 残留 framework-style 调用约定
+
+### Migration
+
+- v0.5 升级不需要任何代码改动 —— CCC 是 SKILL 资产，不存在 import
+- 用户在 IDE 内**重新加载 CCC skill** 即可生效
+- 已有 4 文件契约（plans/phases/reports/verdicts）路径保持不变
+
+### Verification
+
+```bash
+# SKILL 注入验证
+cat ~/program/CCC/SKILL.md | head -3
+# 期望: SKILL frontmatter + "CCC — Connect–Claude Code" 标题
+
+# 红旗线验证
+grep -E '红线 (11|12)' ~/program/CCC/references/red-lines.md
+# 期望: 2 行命中
+
+# 框架文档完整
+ls ~/program/CCC/docs/
+# 期望: lessons.md / roadmap.md / architecture.md / plan-spec.md / verification-spec.md ...
+```

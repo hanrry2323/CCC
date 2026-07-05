@@ -5,6 +5,11 @@
 
 ---
 
+> **VERDICT: <workspace>/.ccc/verdicts/<task>.verdict.md**
+> *(占位符 — Executor 必须把 verifier 实际写出的 verdict 文件路径填到这里。**红线 11**：verdict 必须真存在，否则不算 PASS)*
+
+---
+
 ## 执行摘要
 
 [一句话总结本任务的实施内容]

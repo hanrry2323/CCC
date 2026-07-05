@@ -1,44 +1,78 @@
-# CCC — Codex Claude Collaboration
+# CCC — Connect–Claude Code
 
-> AI Agent 协作框架 · 三角色 (Planner/Executor/Verifier) · 自然语言契约 · 文件级持久化
-> 当前版本: v0.3.2 (2026-07-05)
+> **One skill, every IDE, every model.** A skill that turns any coding agent
+> into a Plan → Execute → Verify pipeline.
 
-## 框架定位
+---
 
-CCC 是一个**编程框架**（不是脚本集），用于让多个 LLM agent 角色协作完成复杂任务：
-- **Planner**：用户意图 → 写 plan.md + phases.json + 启 Executor/Verifier
-- **Executor**：按 plan 自主执行 + 写 report + 1 phase 1 commit
-- **Verifier**：独立验收 + ≥3 adversarial probes + 写 verdict
+## 含义
 
-三角色严格分离，任何角色越界都是 Critical 违规。
+**C**onnect — **C**laude **C**ode
 
-## 快速上手
+把 Claude Code 的执行能力**连接到任何 IDE 工具**：
+- Trae / Cursor / Zed / VS Code / OpenCode — 都能用同一份 SKILL
+- SKILL 一次性注入 prompt，不污染 agent 上下文
+- 中转站路由（`ANTHROPIC_BASE_URL`）— 任务类型自动选模型
 
-1. **启动 Planner**：用任何能调起 LLM 的 agent 读 CCC CLAUDE.md，按 plan 模板写 `.ccc/plans/<task>.plan.md`
-2. **启 Executor**：用 `claude -p "$(cat plan+phases)" --permission-mode bypassPermissions --max-budget-usd 200` 后台跑
-3. **启 Verifier**：同 Executor 命令，prompt 要求 ≥3 adversarial probes + VERDICT 三选一
-4. **自动监控**：每启 Executor 必建 `mavis cron self qxo-<task> --every 5m`
+## 核心
 
-## 核心红线
+```
+CCC = 1 个 SKILL.md
+      + 11 条红线
+      + 4 文件契约
+      + IDE 定时任务（可选）
+      + 知识飞轮（可选）
+```
 
-红线 1-9 详见 `~/program/CCC/CLAUDE.md` 顶部"近期实战更新"段。最关键：
-- **红线 8**：Planner 越界 = Critical（C1 Edit 源码 / C2 commit-push / C3 ssh / C4 rsync / C5 sed 盲改 / **C6 mavis session new**）
-- **红线 9**：Executor/Verifier 必须用 `claude -p`，禁止用 `mavis session new <agent>`（会 fallback minimax/MiniMax-M3 = 三角色失效）
+CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀**。
+
+## 30 秒上手
+
+```
+1. 把 ~/program/CCC/ 作为 skill 加载到 IDE
+2. 在项目目录下开新对话
+3. 用户说："按 ccc full 跑 X 任务"
+4. agent 加载 4 文件契约 + 红线，跑 Planner/Executor/Verifier
+```
+
+## 三角色
+
+| 角色 | 谁 | 产出 |
+|------|----|------|
+| **Planner** | 你 + agent 对话 | `.ccc/plans/<task>.plan.md` + `phases/<task>.phases.json` |
+| **Executor** | agent 自主 | `.ccc/reports/<task>.report.md` |
+| **Verifier** | 独立 session | `.ccc/verdicts/<task>.verdict.md`（≥3 probes） |
+
+严格分离：**Planner 不写 verdict，Verifier 不写 plan**。
+
+## 关键纪律（详见 `references/red-lines.md`）
+
+- **红线 11**: Verifier 必须写 verdict 文件（口头 PASS 不算）
+- **红线 12**: 禁止 agent 自主启用 CCC（必须用户显式触发）
+- **Lesson 27**: `claude -p` 是 print 模式，prompt 必须走 stdin
+- **Lesson 28**: Verdict 强证据红线 11 的来历
+
+## 路由决策（用户拍板）
+
+| 任务 | 谁处理 |
+|------|-------|
+| 单文件 / 调试 / 查信息 | agent 直接处理（**不**走 CCC） |
+| 多文件 / 跨模块 | CCC 启用 1-2 phase |
+| 多阶段 / 跨会话 | CCC 强制 + 完整 4 文件 |
+
+## 配套
+
+- **知识飞轮**：`quality_flywheel.py` 自动沉淀失败模式 → 丰富红线
+- **IDE 定时**：cron / launchd 自动唤起 CCC
+- **跨设备**：mavis session / ssh 集群扩展
+- **跨模型**：`ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 走中转站路由
 
 ## 链接
 
-- 总纲: `~/program/CCC/CLAUDE.md`
-- 架构文档: `~/program/CCC/docs/architecture.md`
-- 协议决策: `~/program/CCC/docs/adr/`
-- 实战案例: `~/program/CCC/examples/`
-- 项目模板: `~/program/CCC/templates/`
-- 框架技能: `~/program/CCC/skills/`
-
-## 版本
-
-```
-cat ~/program/CCC/VERSION
-# 0.3.2
-```
-
-详细历史见 `~/program/CCC/CHANGELOG.md`.
+- 唯一 SKILL 资产：`~/program/CCC/SKILL.md`
+- 红线清单：`~/program/CCC/references/red-lines.md`
+- 发展路线：`~/program/CCC/docs/roadmap.md`
+- 框架说明书：`~/program/CCC/docs/architecture.md`
+- 教训沉淀：`~/program/CCC/docs/lessons.md`
+- 模板库：`~/program/CCC/templates/`
+- 当前版本：`0.5.0`（v0.5 重构：CCC 从 framework 改造成 SKILL）
