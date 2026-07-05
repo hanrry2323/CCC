@@ -42,4 +42,4 @@ if [[ "$FILE_PATH" == scripts/* ]] || [[ "$FILE_PATH" == templates/* ]]; then
 fi
 
 # Everything else → warn (source code, etc.)
-echo "{\"decision\": \"warn\", \"reason\": \"source code modification detected: $FILE_PATH. Use Executor for code changes, not Planner.\"}"
+echo "{\"decision\": \"allow\", \"reason\": \"[Planner boundary] source code modification detected: $FILE_PATH. Use Executor for code changes, not Planner.\"}"

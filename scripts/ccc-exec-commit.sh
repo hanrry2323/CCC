@@ -94,6 +94,7 @@ if not phases:
     sys.exit(0)
 changed = False
 errors = 0
+all_committed_scopes = []
 
 for p in phases:
     pid = p.get('id')
@@ -125,6 +126,14 @@ for p in phases:
     if not commit_msg:
         print(f"  ⚠️  phase {pid}: commit_message 为空，使用默认消息")
         commit_msg = f"chore({os.path.basename(workspace)}): phase {pid} auto-commit"
+
+    # B3: scope 重叠检测（多 phase 改同一文件提示）
+    if scope and pid > 1:
+        for prev_scope in all_committed_scopes:
+            overlap = set(scope) & set(prev_scope)
+            if overlap:
+                print(f"  ⚠️  phase {pid}: scope overlaps prior phase: {overlap}")
+                print(f"     Multi-phase edits to same file may include prior content")
 
     # git add
     if scope_marker == "--all":
@@ -161,7 +170,8 @@ for p in phases:
         subprocess.call(["git", "reset", "HEAD"], cwd=workspace,
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         errors += 1
-        continue
+        print(f"    停止处理后续 phase — 修复后重新执行")
+        break
 
     # 取 hash
     result = subprocess.run(
@@ -173,6 +183,7 @@ for p in phases:
     # 写回 phases.json
     p['commit'] = commit_hash
     changed = True
+    all_committed_scopes.append(scope)
     print(f"  ✓ phase {pid}: committed {commit_hash[:12]} — {commit_msg[:50]}")
 
 if changed:

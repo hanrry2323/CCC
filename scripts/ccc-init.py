@@ -64,23 +64,32 @@ def detect_language(proj_path: Path) -> str:
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     force = "--force" in sys.argv
 
-    if not args:
+    # 解析 --lang 并过滤位置参数（修复 --lang 在前时值被吞的 bug）
+    lang_override = None
+    skip_next = False
+    filtered_args = []
+    for i, a in enumerate(sys.argv[1:]):
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--lang" and i + 2 < len(sys.argv):
+            lang_override = sys.argv[i + 2]
+            skip_next = True
+            continue
+        if not a.startswith("--"):
+            filtered_args.append(a)
+
+    if not filtered_args:
         print("Usage: ccc init <project_path> [--force] [--lang <lang>]", file=sys.stderr)
         sys.exit(1)
 
-    proj_path = Path(args[0]).expanduser().resolve()
+    proj_path = Path(filtered_args[0]).expanduser().resolve()
 
     if not proj_path.is_dir():
         print(f"Error: target path '{proj_path}' does not exist or is not a directory.", file=sys.stderr)
         sys.exit(1)
-
-    lang_override = None
-    for i, a in enumerate(sys.argv[1:]):
-        if a == "--lang" and i + 2 < len(sys.argv):
-            lang_override = sys.argv[i + 2]
 
     primary_lang = lang_override or detect_language(proj_path)
 
