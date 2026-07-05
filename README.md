@@ -64,7 +64,7 @@ CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀*
 
 - **知识飞轮**：`quality_flywheel.py` 自动沉淀失败模式 → 丰富红线
 - **IDE 定时**：cron / launchd 自动唤起 CCC
-- **跨设备**：mavis session / ssh 集群扩展
+- **跨设备**：CCC 调度器 / ssh 集群扩展（v1.0 路线）
 - **跨模型**：`ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 走中转站路由
 
 ## 链接

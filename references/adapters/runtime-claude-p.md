@@ -85,19 +85,19 @@ echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 cla
 
 ## 注意事项
 
-- `mavis session new` 会 fallback 到非 Claude 模型 → **绝对禁止**。始终用 `claude -p`
+- IPC 通道（如 `mavis session new`）会 fallback 到非 Claude 模型 → **绝对禁止**。始终用 `claude -p`
 - 如果提示 "permission denied"，检查 claude binary 路径
 - Subprocess 卡死处理见 `references/red-lines.md` 红线 9
 
 ---
 
-## qxo 执行模式（替代 mavis cron）
+## qxo/Claude Code CLI 执行模式（替代 Mavis cron）
 
-> 当运行时环境为 qxo（Claude Code CLI，无 mavis daemon）时，适配以下方案。
+> 当运行时环境为 Claude Code CLI（无 IPC daemon）时，适配以下方案。
 
 ### 完成通知
 
-不用 mavis cron。用 Bash 工具的 `run_in_background` 机制：
+不用 IPC daemon 的轮询。用 Bash 工具的 `run_in_background` 机制：
 
 ```bash
 # ❌ 错误：bash & 后台 + 等万能通知

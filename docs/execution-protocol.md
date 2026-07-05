@@ -33,8 +33,8 @@ Claude 运行完成后进程退出，不需要人在终端等待。
 
 ## Planner 边界（重要）
 
-**Planner 不能在自己 mavis session 里 spawn `claude -p`**：
-- Planner 是 mavis agent，跑在 MiniMax Code 框架里，没有独立 Claude Code CLI 终端
+**Planner 不能在自己 IPC session 里 spawn `claude -p`**（v0.5 重构表述）：
+- Planner 是 IPC daemon (mavis) 内的 agent，没有独立 Claude Code CLI 终端
 - `claude -p` 会 block Planner session（auto 多 phase = 1200s + 网络 = 1500s），期间 Planner 无法响应用户
 - 必须**用户在另一个 Claude Code CLI 终端**跑 `claude -p "<prompt>"` 启动 Executor
 - 替代方案（仅兜底）：Planner 直接执行任务（Lesson 8/11 越界兜底规则），但默认严格走 Plan → Executor → Verifier 三角色分离

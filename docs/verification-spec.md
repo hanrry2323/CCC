@@ -1,12 +1,15 @@
-# MiniMax 验收协议
+# CCC 验收协议
 
-> 来源：MiniMax Code verifier agent + ccg-workflow spec-review.md。
+> 来源：CCC verifier 协议 + 工程实践沉淀（v0.5 重构表述）。
+> v0.3 时期是 "MiniMax Code verifier agent"，v0.5 起 CCC 不绑特定 daemon，
+> verifier 通过 `claude -p` 在独立 session 跑（见红线 11）。
 
 ---
 
 ## 验收者
 
-MiniMax Code 内置 `verifier` agent（`~/.mavis/agents/verifier`），提示词 200+ 行，核心信条：
+CCC verifier 通过独立 `claude -p` session 跑，写产物到 `.ccc/verdicts/<task>.verdict.md`。
+核心信条（从 v0.3 沉淀）：
 
 > "默认不信，先查证再下结论。误判 PASS 是你最大的失败；误判 FAIL 顶多让人烦一下。"
 

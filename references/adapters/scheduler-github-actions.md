@@ -19,7 +19,7 @@ name: CCC <task>
 on:
   workflow_dispatch:       # 手动触发
   schedule:
-    - cron: '0 */2 * * *'  # 每 2 小时（替代 mavis cron）
+    - cron: '0 */2 * * *'  # 每 2 小时（替代 IPC cron / launchd）
 
 jobs:
   ccc-executor:

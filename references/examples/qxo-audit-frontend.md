@@ -13,7 +13,7 @@ qx-observer 是 CCC 框架的主要消费方。2026-07-01 任务：
 
 | 版本 | 模型/方法 | 报告大小 | Verifier 结果 |
 |------|-----------|----------|--------------|
-| v0 | minimax Mavis | 54 KB | — 用户直接判定 minimax ≠ Claude, 备份隔离 |
+| v0 | minimax/Mavis（**已废弃**，v0.3 时期） | 54 KB | — 用户判定 minimax ≠ Claude，备份隔离 |
 | v1 | claude-p (claude Code CLI 走 ai-loop-router :4000) | 57 KB | CONDITIONAL_PASS — 7 Warning + 5 Info (0 Critical) |
 | v2 | claude-p REVISED | 57 KB | **PASS** — 0C/0W/2I |
 

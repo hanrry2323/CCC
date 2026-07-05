@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/ccc-init.py` — 新项目初始化（AGENTS.md + .ccc/profile.md）
 - `scripts/ccc-hook.sh` — Claude Code pre-tool hook（区分源码/元数据）
 - `scripts/executor-watchdog.sh` — Executor 启动前健康检查
-- `scripts/install-ccc-as-skill.sh` — 跨平台 skill 安装（Mavis/Claude Code/ZCode）
+- `scripts/install-ccc-as-skill.sh` — 跨平台 skill 安装（CCC / Claude Code / ZCode）
 - `templates/AGENTS.md` + `templates/.ccc-profile.md` — 项目模板
 - `cccq` alias（ccc status 的简写）
 - `ccc status -w [N]` — 可配置间隔的 watch 模式
@@ -74,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Red Lines Verified (红线已验证有效)
 - Planner 越界 = Critical (Lesson 18)
-- mavis session new C6 = Critical (Lesson 19, 红线 8)
+- mavis session new C6 = Critical (Lesson 19, 红线 8) — **v0.5 起改红线 9 表述**
 - 默认预算 200 USD (5 USD 历史 bug 已修)
 - 一个 phase 一个 commit (红线 4)
 - phases.json 必写全 (红线 5)

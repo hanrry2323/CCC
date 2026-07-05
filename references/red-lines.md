@@ -8,7 +8,7 @@
 
 **规则**：不修改项目源代码以外的任何系统文件（`.env`、密钥文件、`/etc/hosts`、系统日志、`/tmp/` 非本任务文件等）。
 
-**Why**：系统文件影响面不可控——改错可能导致环境损坏或安全漏洞。`~/.claude/` 和 `~/.mavis/` 等 agent 配置也在此列（除非任务明确要求）。
+**Why**：系统文件影响面不可控——改错可能导致环境损坏或安全漏洞。`~/.claude/` 等 agent 配置也在此列（除非任务明确要求）。
 
 **触犯后果**：Critical — 立即回滚。叠加 Lesson，后续 agent 检查涉及 `~/.` 或 `/etc` 的改动提示用户。
 
@@ -62,9 +62,9 @@
 
 **规则**：每个 plan 无论改动多少都必须生成 phases.json。单 phase 改动至少写 1 行 `phase 1`。不许不生成或跳过。
 
-**Why**：Mavis/Planner 跟踪进度依赖 phases.json。没有它 = 没有进度可见性。
+**Why**：Planner 跟踪进度依赖 phases.json。没有它 = 没有进度可见性。
 
-**触犯后果**：Warning — Mavis 控制台无进度显示。Plan 不完整。CONDITIONAL_PASS 并补全。
+**触犯后果**：Warning — 进度不可见。Plan 不完整。CONDITIONAL_PASS 并补全。
 
 ---
 
@@ -106,7 +106,7 @@
 | C3 | SSH 到远程 | 不连接外部服务器操作源文件 |
 | C4 | rsync/scp | 不通过文件同步工具直接改项目 |
 | C5 | sed 盲改 | 不通过正则替换无审查直接修改文件（问题：不可审查 + 不可控） |
-| C6 | mavis session new | 不用 `mavis session new <agent>` 启动子会话（会导致非目标模型执行） |
+| C6 | mavis session new | 不用 `mavis session new <agent>` 启动子会话（会导致非目标模型执行）— **v0.5 起改红线 9 表述为：禁止用 IPC 通道绕过 CCC dispatch** |
 
 **触犯后果**：C1–C6 均为 Critical — 该 phase 无效，回滚并重跑。
 
@@ -132,7 +132,7 @@
 - 或 watchdog script 返回非零退出码
 
 **动作流水线**：
-1. 立即 `kill -TERM <claude_pid>`（超时 2s 未响应则 `kill -KILL`），或 `mavis session abort <session_id>`
+1. 立即 `kill -TERM <claude_pid>`（超时 2s 未响应则 `kill -KILL`），或用 IPC 控制通道的对应 abort 命令
 2. 本 session 首次卡死 → 重试一次（同 prompt 重跑）
 3. 连续 2 次同 session 卡死 → 不再重试，Planner 接手评估新方案
 4. 端口冲突 / OOM 等硬件层卡死 → 先重启 daemon：`pkill -f opencode && opencode serve`

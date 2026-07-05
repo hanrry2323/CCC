@@ -1,12 +1,12 @@
 # Scheduler: launchd (macOS)
 
-macOS 原生守护进程管理。当 Mavis cron 不可用或需要系统级持久化调度时使用。
+macOS 原生守护进程管理。当 IPC cron 不可用或需要系统级持久化调度时使用。
 
 ---
 
 ## 何时使用
 
-- Mavis cron 未运行或不稳定
+- IPC cron 未运行或不稳定
 - 需要系统重启后自动恢复轮询
 - 任务需要在用户未登录时执行
 

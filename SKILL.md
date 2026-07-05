@@ -155,6 +155,6 @@ Agent（加载 SKILL 后）的行为：
 
 - **IDE 定时任务**：cron / launchd 自动唤起 CCC 跑下一阶段
 - **知识飞轮**：`quality_flywheel.py` 对接报告，沉淀 lessons 自动丰富红线
-- **跨设备**：mavis session / ssh 调用 qb / feiniu / M1 集群
+- **跨设备**：CCC cluster bus / ssh 调用 qb / feiniu / M1 集群（v1.0 路线）
 - **跨工具**：SKILL 不绑 IDE，可在 Trae / Cursor / Zed 间移植
 - **模型路由**：通过 `ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 选模型

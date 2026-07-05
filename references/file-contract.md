@@ -9,9 +9,9 @@ CCC 协议通过 4 个文件在不同 agent 间传递状态。每个任务 `<tas
 | 文件 | 路径模板 | 创建者 | 消费者 |
 |------|----------|--------|--------|
 | Plan | `.ccc/plans/<task>.plan.md` | Planner | Executor |
-| Phases | `.ccc/phases/<task>.phases.json` | Planner | Executor + Mavis 跟踪 |
+| Phases | `.ccc/phases/<task>.phases.json` | Planner | Executor + Planner 跟踪 |
 | Report | `.ccc/reports/<task>.report.md` | Executor | Verifier |
-| Verdict | `.ccc/verdicts/<task>.verdict.md` | Verifier | Mavis + Planner |
+| Verdict | `.ccc/verdicts/<task>.verdict.md` | Verifier | Planner + Executor |
 
 **命名规则**：`<task>` 用 kebab-case（如 `audit-frontend-and-locate-loopcode`），与用户任务描述一一对应。
 

@@ -1,26 +1,37 @@
 # 命令速查（规划者参考）
 
-> Mavis + Claude 两端的命令。规划者写 plan 时参考这些能力来指定执行方式。
+> 规划者写 plan 时参考这些命令能力来指定执行方式。
+> 工具代际迁移说明：本节中 `mavis session new` / `mavis cron` 等命令在 v0.5
+> 前是默认调度路径，v0.5 起改用 `scripts/ccc-scheduler.sh` + launchd cron +
+> CCC cluster bus（v1.0 路线）。本节保留 IPC 命令名作为**已废弃命名**用于
+> 阅读历史 plan。
 
 ---
 
-## Mavis 端（规划 / 监控 / 验收）
+## IPC 端（已废弃——v0.3 时期使用，v0.5 起改 CCC dispatcher）
+
+> 以下命令名出现在历史 plan 中。**v0.5 起新规划应改用 `scripts/ccc-scheduler.sh` + launchd**。
+> 列出它们仅供参考。
 
 | 命令 | 作用 | 在 plan 中怎么写 |
 |------|------|------------------|
-| `mavis session new <项目简称>-CC -p "..." -w <路径>` | 触发项目规划师生成 plan | "项目 CC 规划师出 plan" |
-| `mavis session new verifier -p "..." -w <路径>` | 触发验收师终验 | "verifier 做验收" |
-| `claude -p "..." --permission-mode auto`（在 Claude Code CLI 终端跑，**不是** mavis session） | Executor 角色 — 执行 plan 的自主长任务 session | "执行方式 auto" |
-
-**注意**：Executor **不是** Mavis agent。Mavis 端没有 Executor agent。Executor 必须在用户自己的 Claude Code CLI 终端运行 `claude -p`，Planner 不能在自己的 mavis session 里同步 spawn `claude -p`（会 block session 25 分钟）。
-| `mavis cron create <agent> <name> --schedule "..." --prompt "..."` | 定时监控执行 | "每 5 分钟检查一次进度" |
+| `mavis session new <项目简称>-CC -p "..." -w <路径>` | 触发项目规划师生成 plan | **v0.5 起改**: "按 ccc full 跑 X 任务" |
+| `mavis session new verifier -p "..." -w <路径>` | 触发验收师终验 | **v0.5 起改**: Verifier 自起 + 必写 verdict 文件（红线 11） |
+| `claude -p "..." --permission-mode auto` | Executor 角色（在 Claude Code CLI 终端跑） | **仍是正确写法** |
+| `mavis cron create <agent> <name> --schedule "..." --prompt "..."` | 定时监控执行 | **v0.5 起改**: `scripts/ccc-scheduler.sh` + launchd |
 | `mavis session diff <sessionId>` | 查看某次 session 的文件改动 | 终验时对照 |
-| `mavis session list <agent>` | 列出 agent 的所有 session | |
-| `mavis agent info <name>` | 查看 agent 详情 | |
+| `mavis session list <agent>` | 列出 agent 的所有 session | — |
+| `mavis agent info <name>` | 查看 agent 详情 | — |
+
+**红线提醒**：
+
+> 红线 9（v0.5 起改述）：禁止用 IPC 通道（如 `mavis session new`）绕过 CCC
+> dispatch。所有 Executor/Verifier 必须直接 `claude -p` 或通过 CCC dispatcher
+> 调度。这是为什么 minimax 模型在 v0 阶段产出不可信、v0.3 时期踩过 Lesson 19。
 
 ---
 
-## Claude 端（执行）
+## Claude 端（执行 / 仍有效）
 
 ### 长任务自主执行（按执行方式）
 
@@ -59,12 +70,6 @@
 | `/code-review` | 内置代码审查（子 agent 新鲜上下文） |
 | `/code-review ultra` | 深度审查，跟踪式 review |
 
-### 自定义命令（CCC 框架独有）
-
-| 命令 | 作用 |
-|------|------|
-| `/codex-executor <task>` | 加载 plan 并执行：读 plan → 逐 Phase → phases → report |
-
 ### 启动选项
 
 | 选项 | 作用 |
@@ -72,7 +77,7 @@
 | `--permission-mode auto` | 自动模式，权限不弹窗 |
 | `--model <model>` | 指定模型（默认 flash） |
 | `--effort <level>` | 努力程度：low / medium / high / max |
-| `-p "<指令>"` | 非交互模式，执行完退出 |
+| `-p "<指令>"` | 非交互模式，执行完退出（Lesson 27：注意参数语义） |
 | `--continue` | 继续上次的会话 |
 
 ---
