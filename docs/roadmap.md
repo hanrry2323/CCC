@@ -178,6 +178,61 @@ clawmed-ai 已经做过 worker 调度 / 能力标签 / 任务队列的尝试，*
 - 心跳协议：30 秒一次，90 秒超时假死
 - 没有 Agent 互调（**单一调度器**，自证 v1.0 禁互调合理）
 
+### 借鉴来源扩展：agentmesh 社区共识（2025-11 同期 GitHub 真实项目）
+
+> 研究日期：2026-07-06
+> 输出位置：`~/research-bundles/ccc-v0.5-validation/C-cluster-distributed-agents.md`
+> 状态：snippet 级确认，受 GFW 限制无法直接 fetch 原 README
+
+CCC v1.0 的 capability-based cluster bus 设计在 GitHub 上有 **6+ 个 2025-2026 真实项目**：
+
+| 项目 | 关键设计点 | 借鉴价值 |
+|------|-----------|---------|
+| [mesha-framework/mesha](https://github.com/mesha-framework/mesha) | "Kubernetes for agent runtimes"，多 runtime（Claude/Codex/Cursor）统一协议 | **直接对标** CCC v1.0——其抽象正是 CCC 想要的 |
+| [agentmesh-labs/agentmesh](https://github.com/agentmesh-labs/agentmesh) | **TCP service registration + capability-based task routing** | **直接复用**——和 CCC v1.0 第 2 件事 1:1 |
+| [dmontgomery40/agent-mesh](https://github.com/dmontgomery40/agent-mesh) | Python + MCP integration + 角色 dispatcher + eval system | **借鉴**：CCC 已是 MCP-heavy（`mcp__code-review-graph`）——可融合 |
+| [Abinesh-Mathivanan/agentmesh](https://github.com/Abinesh-Mathivanan/agentmesh) | **mDNS-style service registration + capability routing** | 同模式，PoC 起点 |
+| [rusty-robot/agent-mesh](https://github.com/rusty-robot/agent-mesh) | Distributed agent orchestration | 主题同 |
+| [cnchenhaibin/agentMesh](https://github.com/cnchenhaibin/agentMesh) | Java LLM 分布式多 agent 协作（2024-01 老牌） | 跨语言实现参考 |
+
+### agentmesh 社区共识（**借鉴参考**）vs CCC v1.0
+
+| 设计点 | agentmesh 共识 | CCC v1.0 路线 |
+|-------|---------------|--------------|
+| **Discovery 协议** | TCP / mDNS service registration |  ✓ 已规划 |
+| **Capability declaration** | node 注册时声明 `capabilities: []` |  ✓ 已规划（3 档 L1/L2/L3） |
+| **Task routing** | capability-based + dynamic load balancing |  ✓ 已规划 |
+| **Multi-backend** | Claude / OpenAI / local 都支持 |  ✓ ai-loop-router 已有 |
+| **MCP integration** | dmontgomery40 已实现 |  ✓ CCC 已 MCP-heavy |
+
+### agentmesh 社区**没共识**（= CCC 创新点 / 反借鉴）
+
+| 设计点 | 社区状态 | CCC v1.0 反借鉴 |
+|-------|---------|---------------|
+| **跨设备 sync 冲突处理** | 几乎无项目严肃实现——假设 single-machine |  CCC 必须新设计（FSM + abnormal-reports） |
+| **commit 幂等性**（红 15） | 较少提及 |  ✓ CCC 已计划（chunk_id 思路） |
+| **cluster bus auth (mTLS)** | **所有项目均未做** |  ✓ CCC 反借鉴（必做） |
+| **任务队列持久化 + retry 决策字段** | 大多在内存里 |  ✓ CCC 已计划（借鉴 clawmed 失败教训） |
+| **跨 IDE / 跨 SKILL 抽象** | 仅 MESHA 对准 |  ✓ CCC 与 MESHA 同方向（MESH A = agent runtime orchestrator，**这是 CCC 的对标项目**） |
+| **第一类公民 = "cluster bus"** | **无** |  CCC v1.0 跑出来 = 该领域早期 production |
+
+### CCC v1.0 借鉴评估表修订
+
+| 雷 | clawmed 借鉴 | agentmesh 借鉴 | 综合策略 |
+|---|-------------|---------------|---------|
+| 1. git sync 冲突 | 思路可用（中） | 几乎无借鉴 | 借鉴 clawmed chunk_id 思路 + 新 FSM + abnormal-reports |
+| 2. Agent 互调成环 | 空（clawmed 单一调度） | 共识倾向"不互调" | **直接禁** |
+| 3. 算力路由伪优化 | 部分借鉴（capability） | **强借鉴**（agentmesh 共识） | capability-based dispatch + **红 18 防失效** |
+| 4. 模型 + 算力耦合 | 无 | dmontgomery40 启发 | dispatcher [node_id, model_tier, est_cost] 三元组 |
+| 5. PoC 不切实际 | 强借鉴失败教训 | 几乎所有 agentmesh 都没严肃 PoC | **降级 1 任务** |
+| 6. cluster bus 安全 | 反借鉴（clawmed 无 auth） | **强反借鉴**（6 项目均无 auth） | mTLS + node fingerprint 必备 |
+
+### v1.0 实操补单已含 agentmesh 视角
+
+`scripts/cluster-bus.py` 的 discovery 协议可**直接借鉴** agentmesh-labs/agentmesh
+的 TCP service registration 设计（无需重发明）。`scripts/ccc-dispatch.py` 的
+capability matching 可参考 dmontgomery40/agent-mesh 的 role dispatcher 思路。
+
 **借鉴评估表**（详见对话历史）：
 
 | 雷 | 借鉴度 | 策略 |
