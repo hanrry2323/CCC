@@ -8,8 +8,14 @@
 
 set -euo pipefail
 
-# Read stdin (single JSON line)
-INPUT="$(cat)"
+# Read stdin (single JSON line) with 5s timeout
+INPUT=$(python3 -c "
+import sys, select
+if select.select([sys.stdin], [], [], 5)[0]:
+    print(sys.stdin.read())
+else:
+    print('{\"fallback\":\"timeout\",\"reason\":\"stdin_read_timeout\"}')
+")
 
 # Extract file_path using python for robust JSON parsing
 FILE_PATH="$(echo "$INPUT" | python3 -c "

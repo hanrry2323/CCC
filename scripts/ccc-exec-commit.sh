@@ -117,8 +117,9 @@ for p in phases:
     commit_msg = p.get('commit_message', '').strip()
 
     if not scope:
-        print(f"  ⚠️  phase {pid}: 无 scope 字段，git add --all")
-        scope_marker = "--all"
+        print(f"  ❌ phase {pid}: scope 为空，跳过（无安全 fallback）")
+        errors += 1
+        continue
     else:
         print(f"  → phase {pid}: git add {len(scope)} 文件")
         scope_marker = "-- " + " ".join(scope)
