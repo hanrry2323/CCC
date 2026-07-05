@@ -83,7 +83,7 @@
 | Report 路径 | `.ccc/reports/<task>.report.md` |
 | Verdict 路径 | `.ccc/verdicts/<task>.verdict.md` |
 | 默认 timeout | 单文件 manual 600s · 多文件 auto 1200s · 长任务 goal/loop 3600s |
-| `claude -p` 调用 | `claude -p "<executor-prompt>" --permission-mode auto` |
+| `claude -p` 调用 | `ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p "<executor-prompt>" --permission-mode bypassPermissions --max-budget-usd 10` |
 
 ---
 

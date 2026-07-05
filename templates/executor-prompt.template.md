@@ -16,6 +16,7 @@ bash ~/program/CCC/scripts/executor-watchdog.sh || {
   exit $?
 }
 
+ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
 claude -p "$(cat <<'EOF'
 你是 CCC 框架的 Executor（独立 Claude session，不是 Planner）。
 
@@ -98,7 +99,7 @@ ALL SELF-CHECKS PASSED — 退出 session
 - **report.md 必须 Step 1 创建（前置）**，不能 Step 4 写
 - **未跑自检 + 自检全 PASS = 不准退出 session**
 EOF
-)" --permission-mode auto
+)" --permission-mode bypassPermissions --max-budget-usd 10
 ```
 
 ---
@@ -131,6 +132,7 @@ EOF
 
 ```bash
 # qxo 项目 migrate-agents-md-to-ccc 任务
+ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
 claude -p "$(cat <<'EOF'
 你是 CCC 框架的 Executor（独立 Claude session，不是 Planner）。
 
@@ -151,7 +153,7 @@ claude -p "$(cat <<'EOF'
 - 不跳阶段更新 phases.json（红线 5）
 - plan 里的"参考命令"是 hint，自己决定用什么命令实现
 EOF
-)" --permission-mode auto
+)" --permission-mode bypassPermissions --max-budget-usd 10
 ```
 
 ---
