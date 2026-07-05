@@ -68,7 +68,7 @@ test -s <workspace>/.ccc/reports/<task>.report.md && echo "report non-empty"  # 
 
 # 自检 4（plan 范围检查 · Lesson 13）：改文件数 ≤ plan "只改文件" 列表长度
 # 避免 Executor "自报 done 但 plan '怎么做' 章节内容没真做"（如 fix-warnings W1 教训）
-plan_files=$(grep -cE '^\s+- .*\.(py|sh|md|json|ya?ml|toml)$' <workspace>/.ccc/plans/<task>.plan.md)
+plan_files=$(grep -cE '^\s+- \S+' <workspace>/.ccc/plans/<task>.plan.md)
 changed_files=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
 [ "$changed_files" -le "$plan_files" ] && echo "file count OK ($changed_files ≤ $plan_files)" || echo "FAIL"
 

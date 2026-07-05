@@ -116,7 +116,7 @@ Usage: ccc <command> [options]
 Commands:
   status [-w [N]]    Task status (background Claude + CCC task progress + Chinese description). -w [N] for watch refresh every N seconds (default 10)
   search <query>     Cross-project .ccc/ search for <query>
-  init <name>        New project initialization (AGENTS.md + .ccc/profile.md)
+  init <path>        New project initialization (AGENTS.md + .ccc/profile.md)
   diff               Working tree concise diff
   commit <ws> <task> Auto-commit Executor output (delegates to ccc-exec-commit.sh)
   help               Show this help
