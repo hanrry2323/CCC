@@ -73,9 +73,8 @@ while IFS= read -r line; do
     etime_min=${BASH_REMATCH[1]}
   fi
 
-  # 判定：etime > threshold && pcpu < 1.0 && state 在 S 类（sleeping）
-  pcpu_int=$(printf "%.0f" "$pcpu" 2>/dev/null || echo "0")
-  if [[ $etime_min -gt $HANG_THRESHOLD_MINUTES && $pcpu_int -lt 1 ]]; then
+  # 判定：etime > threshold && pcpu < 1.0（精确浮点比较）
+  if (( $(echo "$etime_min > $HANG_THRESHOLD_MINUTES && $pcpu < 1.0" | bc -l) )); then
     HANG_PIDS+=("$pid:$etime:$pcpu:$state")
   fi
 done < <(pgrep -f 'claude$' 2>/dev/null || pgrep 'claude' 2>/dev/null || true)
@@ -88,16 +87,22 @@ if [[ ${#HANG_PIDS[@]} -gt 0 ]]; then
   done
 
   if [[ $FORCE_KILL -eq 1 ]]; then
-    warn "--force-kill set: killing all hang claude processes"
+    warn "--force-kill set: killing all hang claude processes (TERM→KILL)"
     for entry in "${HANG_PIDS[@]}"; do
       IFS=: read -r pid _ _ _ <<< "$entry"
-      kill -9 "$pid" 2>/dev/null && warn "  → killed $pid" || warn "  → kill $pid failed"
+      kill -TERM "$pid" 2>/dev/null
+      sleep 2
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null && warn "  → force killed $pid (grace_TERM_timeout)" || warn "  → force kill $pid failed"
+      else
+        warn "  → graceful kill $pid succeeded"
+      fi
     done
     log "Check 1: cleaned hang processes → exit 3"
     exit 3
   fi
 
-  warn "Suggested: rerun with --force-kill, or kill manually: kill -9 <pid>"
+  warn "Suggested: rerun with --force-kill, or kill manually: kill -KILL <pid>"
   log "Check 1: warning only → exit 1"
   exit 1
 fi
