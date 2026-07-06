@@ -64,17 +64,24 @@ def post_json(url: str, payload: dict, timeout: float = REGISTER_TIMEOUT_S) -> d
 
 
 def build_register_payload(args: argparse.Namespace) -> dict:
-    """Build the /api/node/register payload."""
+    """Build the /api/node/register payload.
+
+    cluster-bus Pydantic schema requires port >= 1 (validated). ZCode
+    doesn't directly listen on a TCP port, so we use a sentinel port
+    65535 (max valid TCP) to satisfy validation while not claiming a
+    real service port. Real dispatch happens via spawn, not inbound conn.
+    """
     return {
         "node_id": args.node_id,
         "host": socket.gethostname(),
-        "port": 0,  # ZCode 不直接对外 listen,只作为执行节点
+        "port": 65535,  # sentinel: max TCP port, ZCode doesn't listen
         "capabilities": args.capabilities,
         "metadata": {
             "role": "dispatcher",
             "provider": "glm",
             "anthropic_base_url": args.anthropic_base_url,
             "model": args.model,
+            "listens_on_tcp": False,  # ZCode = outbound spawn, no inbound
         },
     }
 

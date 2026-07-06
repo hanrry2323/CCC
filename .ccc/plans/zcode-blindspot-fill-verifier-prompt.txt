@@ -1,0 +1,91 @@
+你是 CCC Verifier(独立 `claude -p` session,**新 UUID**,与 Executor 隔离)。
+
+# 任务: 验收 zcode-blindspot-fill
+
+## 红线 6 验证(必跑,首先执行)
+
+```bash
+EXEC_SID=$(cat /Users/apple/program/CCC/.ccc/plans/zcode-blindspot-fill-executor-session-id.txt)
+MY_SID=$(cat /Users/apple/program/CCC/.ccc/plans/zcode-blindspot-fill-verifier-session-id.txt)
+test "$EXEC_SID" != "$MY_SID" && echo "ISOLATION_OK exec=$EXEC_SID me=$MY_SID" || echo "ISOLATION_FAIL"
+```
+
+期望: `ISOLATION_OK`
+
+## 启动顺序(必读)
+
+1. 读 `/Users/apple/program/CCC/.ccc/plans/zcode-blindspot-fill.plan.md`
+2. 读 `/Users/apple/program/CCC/.ccc/reports/zcode-blindspot-fill.report.md`
+3. 读 `/Users/apple/program/CCC/.ccc/phases/zcode-blindspot-fill.phases.json`
+
+## 验收(≥3 adversarial probes)
+
+### Probe 1: cluster-bus 真在跑
+```bash
+curl -s http://127.0.0.1:9100/api/health
+```
+期望: `"status":"ok"` + `"service":"ccc-cluster-bus"`
+
+### Probe 2: zcode 节点已注册
+```bash
+curl -s "http://127.0.0.1:9100/api/node/list?active_only=false" | python3 -m json.tool
+```
+期望: `zcode-blindspot-test` 节点存在,capabilities 含 `[zcode, glm-5, claude-p, shell, git, python]`
+
+### Probe 3: Executor 报告含 VERDICT 引用段
+```bash
+grep -E "^> VERDICT:" /Users/apple/program/CCC/.ccc/reports/zcode-blindspot-fill.report.md
+```
+期望: 1 行引用 `.ccc/verdicts/zcode-blindspot-fill.verdict.md`
+
+### Probe 4: JSONL bug 诊断完整
+```bash
+grep -E "json.load|Extra data|JSONDecodeError" /Users/apple/program/CCC/.ccc/reports/zcode-blindspot-fill.report.md
+```
+期望: 报告里有 JSONL bug 诊断 + 修复建议
+
+## 写 verdict.md
+
+写到 `/Users/apple/program/CCC/.ccc/verdicts/zcode-blindspot-fill.verdict.md`,格式:
+
+```markdown
+# Verdict — zcode-blindspot-fill
+
+> Plan: .ccc/plans/zcode-blindspot-fill.plan.md
+> Report: .ccc/reports/zcode-blindspot-fill.report.md
+> Verifier session: <YOUR_UUID>
+> Executor session: <EXEC_UUID>
+
+## VERDICT: PASS|CONDITIONAL_PASS|FAIL
+
+## Probe 1 — cluster-bus 真启
+- 结果: ...
+- 证据: (上面命令的真实 stdout)
+
+## Probe 2 — zcode 节点注册
+- ...
+
+## Probe 3 — Executor 报告含 VERDICT 引用
+- ...
+
+## Probe 4 — JSONL bug 诊断
+- ...
+
+## 总结
+- probe 通过数: X/4
+- 最终: VERDICT
+```
+
+## 完成定义
+
+1. verdict.md 真文件存在(红线 11)
+2. 含 ISOLATION_OK 验证证据
+3. ≥3 probes
+4. 末行 `## VERDICT: PASS|CONDITIONAL_PASS|FAIL`
+
+退出前 echo:
+```
+VERIFIER_RESULT: success
+VERDICT_FILE: /Users/apple/program/CCC/.ccc/verdicts/zcode-blindspot-fill.verdict.md
+PROBES_PASSED: <N>/<total>
+```

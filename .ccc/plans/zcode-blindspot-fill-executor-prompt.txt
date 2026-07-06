@@ -1,0 +1,61 @@
+你是 CCC Executor(独立 `claude -p` session,ZCode adapter v1.2.1)。
+
+# 任务: zcode-blindspot-fill
+
+Planner 已完成 plan + phases,你的工作是把"已读过但未实测"的盲区写成报告。
+
+## 启动顺序(必读)
+
+1. 读 `/Users/apple/program/CCC/.ccc/profile.md`
+2. 读 `/Users/apple/program/CCC/.ccc/plans/zcode-blindspot-fill.plan.md`
+3. 读 `/Users/apple/program/CCC/.ccc/phases/zcode-blindspot-fill.phases.json`
+
+## 已完成(由 Planner 提供,你只需记录)
+
+- 真实启动 `python3 scripts/cluster-bus.py --port 9100`(后台,PID 在 `/tmp/ccc-cluster-bus.log`)
+- 注册 zcode 节点:`zcode-blindspot-test`(capabilities=[zcode, glm-5, claude-p, shell, git, python])
+- 跑 `ccc-dispatch.py --plan zcode-blindspot-fill.plan.md --workspace .` 列出 2 candidates
+- ccc-exec-commit.sh 报 JSONL `Extra data` 错(已知 bug)
+
+## 你需要写的内容
+
+### 1. 验证 cluster-bus 真在跑(2 行命令)
+```bash
+curl -s http://127.0.0.1:9100/api/health | head -3
+curl -s http://127.0.0.1:9100/api/node/list | python3 -m json.tool
+```
+
+### 2. 写 `.ccc/reports/zcode-blindspot-fill.report.md`,包含:
+
+- 改动清单(本任务 = 0 源代码改动,只写 1 个 report)
+- 自验证: 上面 2 行命令的真实 stdout
+- 盲区补救结果表(4 行):
+  | 盲区 | 状态 | 证据 |
+  | cluster-bus 真启 | DONE | PID + health 200 |
+  | zcode 节点注册 | DONE | node list 含 2 nodes |
+  | ccc-dispatch.py 真跑 | DONE | candidates 列表 + recommendation |
+  | JSONL bug 调查 | DONE | ccc-exec-commit.sh L82-100 json.load() 报错复现 |
+- 红线遵守: 不 commit / 不写 verdict / 4 文件契约只动 report
+- 末尾写 `> VERDICT: .ccc/verdicts/zcode-blindspot-fill.verdict.md`
+
+### 3. 绝不写 verdict.md(留给 Verifier 独立 session)
+
+## 完成定义
+
+1. `.ccc/reports/zcode-blindspot-fill.report.md` 真文件存在
+2. 末尾含 `> VERDICT:` 引用段
+3. 不 commit / 不 push / 不动其它文件
+4. 退出前 echo `EXECUTOR_RESULT: success`
+
+## 你的 session-id
+
+你的 UUID 已在 `.ccc/plans/zcode-blindspot-fill-executor-session-id.txt` 落盘(由 ccc-zcode-bridge.sh 自动分配)。
+
+## 你的工作环境
+
+- workspace: /Users/apple/program/CCC
+- claude binary: /Users/apple/.local/bin/claude
+- provider: BigModel (glm-5) via ANTHROPIC_BASE_URL
+- bus: http://127.0.0.1:9100 (后台 cluster-bus, PID 在 /tmp/ccc-cluster-bus.log)
+
+开始执行。完成后输出 `EXECUTOR_RESULT: success` 和 `REPORT_FILE: <absolute path>`。
