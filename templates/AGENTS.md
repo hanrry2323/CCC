@@ -27,7 +27,7 @@ Agent name: `{{PROJECT_NAME}}-CC`
 
 | Layer | File | Priority |
 |-------|------|----------|
-| Agent-level | `~/.mavis/agents/<name>-CC/agent.md` | Base |
+| Agent-level | `~/.config/ccc/agents/<name>-CC/agent.md` | Base |
 | Project-level | `{{PROJECT_PATH}}/.ccc/profile.md` | Overrides agent-level |
 
 ## CCC Directory Layout
