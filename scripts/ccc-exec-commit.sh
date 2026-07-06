@@ -89,11 +89,16 @@ workspace = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.dirnam
 with open(fp) as f:
     data = json.load(f)
 
-# --- 红线 15: 读取顶层 task_id 字段 ---
+changed = False
+
+# --- 红线 15: 读取/自动注入顶层 task_id 字段 ---
+import uuid
 task_id = data.get('task_id', '').strip()
 if not task_id:
-    print("  ❌ phases.json 缺少顶层 'task_id' 字段（红线 15 强制）")
-    sys.exit(1)
+    task_id = str(uuid.uuid4())
+    data['task_id'] = task_id
+    changed = True
+    print("  🔧 自动注入 task_id=" + task_id)
 
 # --- 红线 15: 幂等检测：git log 中已有同 task_id 的 commit 则整体跳过 ---
 # re-run 命中 fast-forward，不产生重复 commit
@@ -114,8 +119,13 @@ except Exception as e:
 
 phases = data.get('phases', [])
 if not phases:
+    # 空 phases 也要写回自动注入的 task_id
+    if changed:
+        with open(fp, 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        print("  ✅ phases.json 已更新: " + fp)
     sys.exit(0)
-changed = False
 errors = 0
 all_committed_scopes = []
 
