@@ -1,4 +1,5 @@
-{"phase": 1, "status": "done", "subtasks": {"1.1": "done", "1.2": "done", "1.3": "done"}, "commit": "6af9121", "notes": "P0-1: cluster-bus.py (DONE)"}
-{"phase": 2, "status": "done", "subtasks": {"2.1": "done", "2.2": "done", "2.3": "done"}, "commit": "fa0fa2e", "notes": "P0-2: ccc-dispatch.py (DONE)"}
-{"phase": 3, "status": "done", "subtasks": {"3.1": "done", "3.2": "done", "3.3": "done"}, "commit": "p3-commit", "notes": "P1-1: cluster-protocol.md (DONE — 229 行, 10 章节)"}
-{"phase": 4, "status": "pending", "subtasks": {"4.1": "pending", "4.2": "pending"}, "commit": null, "notes": "P1-2: test-capability-required.py"}
+{"phase": 1, "status": "done", "subtasks": {"1.1": "done", "1.2": "done", "1.3": "done"}, "commit": "6af9121", "notes": "P0-1 cluster-bus.py"}
+{"phase": 2, "status": "done", "subtasks": {"2.1": "done", "2.2": "done", "2.3": "done"}, "commit": "fa0fa2e", "notes": "P0-2 ccc-dispatch.py"}
+{"phase": 3, "status": "done", "subtasks": {"3.1": "done", "3.2": "done", "3.3": "done"}, "commit": "376e2b9", "notes": "P1-1 cluster-protocol.md"}
+{"phase": 4, "status": "done", "subtasks": {"4.1": "done", "4.2": "done"}, "commit": "p4-commit", "notes": "P1-2 test-capability-required.py"}
+{"phase": 5, "status": "pending", "subtasks": {"5.1": "pending"}, "commit": null, "notes": "P2-1 yaml examples"}
