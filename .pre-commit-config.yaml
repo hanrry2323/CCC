@@ -1,0 +1,42 @@
+# CCC pre-commit hooks
+# 4 hooks enforce red lines + engineering disciplines:
+#   - ruff (Python lint, optional)
+#   - bash -n + v3 portability (red line 20) — via inline shell call
+#   - verdict length >= 50 (red line 11)
+#
+# Install: pip install pre-commit && pre-commit install
+# Run: pre-commit run --all-files
+#
+# Each bash hook uses an external script in scripts/ instead of inline YAML
+# (avoids YAML escape hell).
+repos:
+  - repo: local
+    hooks:
+      # Python lint (if ruff installed — graceful skip if absent)
+      - id: ruff
+        name: ruff check (Python lint)
+        entry: ruff check scripts/ tests/ examples/
+        language: system
+        pass_filenames: false
+        files: \.(py|pyi)$
+        types: [file]
+
+      # Bash script: syntax + v3 portability
+      # runs scripts/precommit-bash-quality.sh (avoid YAML escape)
+      - id: bash-quality
+        name: bash -n + v3 portability (red line 20)
+        entry: bash scripts/precommit-bash-quality.sh
+        language: system
+        pass_filenames: false
+        files: \.sh$
+        types: [file]
+
+      # Verdict file >= 50 lines (red line 11)
+      # runs scripts/precommit-verdict-length.sh
+      - id: verdict-length
+        name: verdict file >= 50 lines (red line 11)
+        entry: bash scripts/precommit-verdict-length.sh
+        language: system
+        pass_filenames: false
+        files: \.verdict\.md$
+        stages: [pre-commit]
