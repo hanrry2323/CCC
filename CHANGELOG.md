@@ -318,3 +318,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Test
 - **精简前**:21/21 smoke tests PASS(测的是被删功能)
 - **精简后**:42/42 smoke tests PASS(测的是保留功能)
+
+## [v0.7a] — 2026-07-07 — 修 plan 阈值 + 清理 qxo 归档
+
+**里程碑**:修正 v0.7-slim plan 拍脑袋写的"60-80 文件"验收数字为按 sections 实绩对照;删除 qxo 归档(已解耦)。
+
+参见 `.ccc/plans/v0.7a.plan.md` + `.ccc/reports/v0.7a.report.md` + `docs/lessons.md` Lesson 30。
+
+### Changed
+- **`.ccc/plans/v0.7-slim.plan.md`**:改动 4 验收段 + 全局验收清单:"60-80 文件" → "scripts/ 30+ → 8、tests/ 21 → 8、adapters/ 7 → 1" 实绩对照(原数字已废除,标注为 Planner 拍脑袋)
+
+### Added
+- **`docs/lessons.md` Lesson 30**:不要拍脑袋写验收数字(可执行规则 = sections 分项对照,避免单一全局数字)
+- **`.archived-2026-07-06/README.md`**:归档边界说明(CCC v0.7 起不再维护,删子目录需先 grep CLAUDE.md)
+
+### Removed
+- **`.archived-2026-07-06/qxo-project/`**:qxo 已与 CCC v0.5 解耦(CLAUDE.md 明文),删除整个归档子目录(保留 `.archived-2026-07-06/` 目录本身)

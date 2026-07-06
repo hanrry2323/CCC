@@ -1601,3 +1601,33 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 路线图 = 文档里的 `docs/roadmap.md` / `.ccc/profile.md` 文字描述，**不是 `scripts/` 里的真实代码**
 - 每个脚本要有"今天被谁调用"的证据（grep 引用 + git log），没引用 = 删
 - 测试是为了**今天的代码**写的，不是为了**想象中的未来功能**写的
+
+---
+
+## Lesson 30：不要拍脑袋写验收数字（v0.7a）
+
+**问题**：v0.7-slim plan "改动 4 验收" 写"精简后文件数在 60-80 之间",Planner 没算以下三个真实负担:
+- `.ccc/` 31 历史文件(phases.json + reports + verdicts + plans,精简不动)
+- `docs/lessons.md` 已经 1571 行(每加一条 lesson 都在堆)
+- `.archived-2026-07-06/` 归档目录(随时间累积,不删)
+
+把这三块加进来,"60-80" 是拍脑袋,真数 = 137(脚本/测试/适配器另算)。
+
+**根因**:验收给单一全局数字 = 鼓励 Planner 跳过实数统计。**没有按 sections 分项 = 责任空心**。
+
+**修复**(v0.7a):
+- 修订 `v0.7-slim.plan.md` 改动 4 验收段:单一"60-80" → "scripts/ 30+ → 8、tests/ 21 → 8、adapters/ 7 → 1" 的实绩对照
+- 修订全局验收清单对应条目
+- 删除 `.archived-2026-07-06/qxo-project/`(qxo v0.5 已解耦,CLAUDE.md 明文)
+- 在 `.archived-2026-07-06/` 留 README 标注归档边界
+
+**教训**(可执行规则):
+- 验收数字 = **sections 分项实绩对照**,不给单一全局数字
+- 写"X 文件以内"前先 `find` + `wc -l` 算现状
+- 涉及历史负担(`.ccc/` / `docs/` / 归档)必须在 acceptance 里单列,不能混进"文件总数"
+- 删归档目录前先 grep `CLAUDE.md` / `README.md` 确认 "已解耦 / 已废弃" 字样,找不到依据 = 不动
+
+**应用方式**:
+- 后续 Planner 写 plan 时,每个验收数字 = `sections 分项对照表`,绝不写 "total ≤ N"
+- Executor 跑 `find ... | wc -l` 后,如果总数跟 plan 数字差 > 20% = 立即 STOP 问 Planner
+- `.archived-*` 目录每 90 天复审一次,确认归档边界注释未腐烂
