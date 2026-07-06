@@ -1446,3 +1446,79 @@ echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 cla
 - 任何接受 CCC 任务报告时，第一件事 `grep -n "VERDICT:" <report.md>` 验证据
 - verdicts 目录对应文件需 `wc -l` > 0 才算真跑
 - Trae / opencode / IDE agent 完成报告后，立即让独立 verifier 跑一遍文件存在性检查
+
+---
+
+### Lesson 29 — bash 脚本跨设备可移植性：单引号 + bash -c 不展开变量 (2026-07-06)
+
+**问题**：abc v1.0-validation.sh v2 写错了 25 处硬编码 `/Users/apple/program/abc`。改成 `$ABC_ROOT` 看似 OK，但在 Mac2017 (192.168.3.116) 跑时所有 check() 都 FAIL。
+
+**根因**：脚本里 `bash -c 'cd $ABC_ROOT && ...'` 使用了**单引号字符串**作为 `bash -c` 参数——单引号在 bash 里是字面量，**外层的 `$ABC_ROOT` 在执行 `bash -c` 时根本不展开**。结果内层 bash 看到的是字面 `$ABC_ROOT`，变量是空的，命令失败。
+
+**深挖 3 个版本的演化**：
+- v1（M1）: 硬编码路径 `/Users/apple/program/abc` — Mac2017 跑即挂
+- v2: 加 `SCRIPT_DIR` + `ABC_ROOT`，但嵌 `bash -c 'cd $ABC_ROOT ...'` 单引号 — 变量不展开
+- **v3 (PASS)**: 把所有 check 改成顶层双引号 `eval "$cmd"` + 单 shell 调用，变量在外层 bash 就展开
+
+**为什么 Mac2017 的独立 Verifier session 能发现这个问题**：
+- 内部自证 = "我跑我测我也通过"（单设备盲区）
+- 跨设备独立 = "我第一次跑就遇到全新环境，新环境不一定是 M1 那条路径"
+
+**修复路径**：
+```bash
+# ❌ 错
+check "X" bash -c 'cd $ABC_ROOT && grep -q foo $ABC_ROOT/file'
+
+# ✅ 对
+check "X" "grep -q foo $ABC_ROOT/file"
+# 或
+check "X" "cd $ABC_ROOT && grep -q foo file"
+```
+
+**如何应用**：
+- 任何被独立 verifier / CI / 同事跑的 bash 脚本，**必须**避免 `bash -c '...$VAR...'` 单引号嵌套
+- 跨设备工具脚本交付前**强制**跑一遍独立 session 验证
+- P2 阶段会做 `scripts/git-bundle-stream.sh`，所有脚本都用 v3 模板写
+
+---
+
+### Lesson 30 — 独立 Verifier session 的工程价值（v1.0 跨设备 PoC, 2026-07-06）
+
+**问题**：abc v1.0 自证阶段（M1 单端）显示 25 PASS / 0 FAIL。等到跨设备 PoC 阶段 (Mac2017) 跑同一个 v1.0-validation.sh，**3 个真 bug 立刻被独立 verifier 找出**：
+- A3: `.ccc/plans/` 目录不存在（违反 CCC 4 文件契约第一条）
+- A4: `.ccc/profile.md` 文件不存在（违反红线 7 启动顺序）
+- B2: `frontend/node_modules` 未安装（v1.0 部署阻塞）
+
+**M1 自检为什么没发现**：
+- M1 写代码 + M1 跑测试 = 同视角
+- 同视角 = 盲区（agent 容易把"我创建过的文件"当成"文件存在"）
+- 同视角 = 自证 PASS 容易充满"我**以为**这个写了"
+
+**Mac2017 verifier 为什么能立刻发现**：
+- 全新工作区（`~/app/abc` 来自 git bundle clone）
+- 新用户（`fan` ≠ `apple`）
+- 新路径展开（验证脚本 portability 触发）
+- 新 commit hash（看到 `c543245` 不一样，触发 cross-check）
+
+**Lesson 核心论点（v1.0 cluster bus 设计验证）**：
+- 红线 11（Verifier 必须写 verdict 文件）在 PoC 中**实证成立**
+- 没有 verdict 文件 = 自证幻象；有了 = 独立证据链
+- 跨设备 cluster 设计的价值不在性能，在**视角多样性**
+
+**如何应用**：
+- 任何 v1.0 工作（不只是 abc）：**至少 1 个独立 session 跑 verifier**（M1 写，Mac2017 验；或 Claude A 写，Claude B 验）
+- Verifier 输出**必须**写 verdict 文件（红线 11 强制）
+- Verifier 4 个 probes 至少 3 个独立 grep（不信主验证脚本）
+- 失败 = M1 修复 → 复跑 → 再 verdict = 工程纪律闭环
+
+**v1.0 PoC 数据**：
+- 第一次 verifier: 9317 字节, 259 行, FAIL
+- 第二次 verifier: 5151 字节, 160 行, PASS
+- 找出 3 个真 bug + 1 个 portability bug
+- 全部修复后零 FAIL
+- 完整 pipeline 复用性 100%
+
+**数据 → 反哺**：
+- 这条 Lesson 直接证明 `references/cluster-protocol.md` v1.0 集群设计的"dual session verifier"价值
+- 应作为 roadmap v1.0 完结判定的硬证据
+

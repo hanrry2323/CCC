@@ -233,3 +233,30 @@
   └─ Info → 记录到 Verdict 的 Info 段
       └─ 不驱动修订，仅备查
 ```
+
+#### 红线 18：飞轮候选必须经过人工 review 才合并
+
+- **Why**：AI 自动归纳失败模式容易"伪发现"——把一次性 / 边缘 case / 项目专属问题误判为通用模式
+- **机制**：`scripts/flywheel-scan.py` 只生成 `.ccc/abnormal-reports/flywheel-candidate-<date>.md`，**不直接写** `references/red-lines.md`
+- **触犯后果**：Warning — 减少人工 gate 必经入口；如果直接合入，1 周内回滚
+
+#### 红线 19：跨设备 / 跨 session 必须有独立 Verifier 验收（v1.0 配套）
+
+- **Why**：开发者自检容易产生"自证幻象"，跨视角才能发现盲区（abc v1.0 PoC 实证）
+- **机制**：
+  1. M1 写代码后，**至少 1 个独立 session** 跑验收（Mac2017 / 不同 IDE / 不同模型）
+  2. Verifier 输出**必须**写 `<workspace>/.ccc/verdicts/<task>.verdict.md` 文件（红线 11）
+  3. 文件 ≥ 50 行、含 ≥3 adversarial probes、末行 `## VERDICT: PASS|FAIL|CONDITIONAL_PASS`
+- **触犯后果**：Critical — 视为 executor-only 流程，等同于不验收
+
+#### 红线 20：跨设备 bash 脚本必须用 v3 portability 模板（v0.5 配套，实测 Lesson 29）
+
+- **Why**：v3 之前的 `bash -c '...$VAR...'` 单引号模式不展开变量，跨设备立刻挂
+- **机制**：跨设备 / 跨用户 / 跨路径执行的 bash 脚本**禁止**单引号 `bash -c` 嵌套 `$VAR`
+- **正确模板**：
+  ```bash
+  check "X" "grep -q foo \$ABC_ROOT/file"   # 双引号让外层 bash 展开 \$VAR
+  # 或
+  check "X" "cd \$ABC_ROOT && grep -q foo file"   # 单一 shell 调用
+  ```
+- **触犯后果**：Critical — 跨设备运行必定 FAIL（已实测验证）
