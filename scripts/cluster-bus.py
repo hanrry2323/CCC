@@ -18,6 +18,7 @@ Borrowed from: clawmed-ai T1.2_worker_analysis heartbeat protocol
   (TCP service registration + capability-based routing).
 """
 from __future__ import annotations
+import argparse
 import json
 import sys
 import time
@@ -29,9 +30,15 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import uvicorn
 
-# --- Config ------------------------------------------------------------
-PORT = 9100
-HOSTBIND = "0.0.0.0"
+# --- Config (CLI overridable) -------------------------------------------
+_parser = argparse.ArgumentParser(description="CCC cluster bus")
+_parser.add_argument("--port", type=int, default=9100, help="listen port")
+_parser.add_argument("--host", type=str, default="0.0.0.0", help="bind address")
+# Parse known args only so pytest can import the module without --port
+_args, _ = _parser.parse_known_args()
+PORT = _args.port
+HOSTBIND = _args.host
+
 HEARTBEAT_TTL_SECONDS = 90
 CHECKPOINT_PATH = Path("/tmp/ccc-cluster-bus.json")
 
