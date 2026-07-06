@@ -89,6 +89,65 @@ Planner → Executor → Verifier
 
 ---
 
+## Planner 启动顺序（红线 7 + 10 强制 · 机器化门控）
+
+按以下顺序启动,缺一即视为启动失败:
+
+```
+0. 读 .ccc/state.md    ← 红线 10: 唯一允许的"上下文输入"
+1. 读 .ccc/profile.md  ← 项目背景 + 红线清单
+2. 读 templates/plan.plan.md（plan 格式规范）
+3. 跑 bash scripts/ccc-precheck.sh  ← 5 项前置门控
+4. 写 .ccc/plans/<task>.plan.md + .ccc/phases/<task>.phases.json
+5. 写 executor-prompt 文件,准备启动 Executor
+6. 启动 Executor (claude -p, stdin 喂 prompt, Lesson 27)
+```
+
+**门控脚本** (v1.2.0 新增):
+- `scripts/ccc-precheck.sh` — 5 项前置门控: 读 state.md / 读 profile.md / 范围白名单 / plan 路径 / watchdog
+- `scripts/ccc-finish.sh` — 5 项后置门控: report 已写 / ≥3 probes / VERDICT 引用 / 范围检查 / 单 phase 单 commit
+
+**失败兜底**: 门控脚本 exit 非零 → 必须修复后重跑,**禁止跳过**。
+
+---
+
+## 强制 watchdog（红线 9 配套 · v1.2.0 新增）
+
+任何 Executor 启动前**必须**先跑:
+
+```bash
+bash scripts/executor-watchdog.sh || { echo "[caller] watchdog failed, exit"; exit 1; }
+```
+
+退出码:
+- `0` = 健康可启动
+- `1` = warning,让 caller 决定
+- `2` = 严重,放弃
+- `3` = 已自动清理(--force-kill 模式)
+
+**禁越界**: 跳过 watchdog 启动 Executor = 红线 9 触犯。
+
+---
+
+## 闭环:`ccc commit` 替代手动 git commit（v1.2.0 新增）
+
+Planner **不直接 `git commit`**,必须走:
+
+```bash
+# Executor 退出后,Planner 自动跑:
+ccc commit <workspace> <task>           # 处理所有待 commit phase
+ccc commit <workspace> <task> --phase N # 仅指定 phase
+```
+
+**理由**:
+- 自动化 commit hash 回写 phases.json
+- 机器化检查"单 phase 单 commit" + 范围白名单 + ccc-task-id 前缀
+- 幂等性: 已填 hash 的 phase 自动 skip (红线 15 配套)
+
+**禁越界**: Planner 手动 `git add` + `git commit` = 红线 4/8 触犯,应改用 `ccc commit`。
+
+---
+
 ## 红线（详见 `references/red-lines.md`）
 
 | # | 红线 | 一句话 |
