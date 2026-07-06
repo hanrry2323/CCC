@@ -11,6 +11,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] — 2026-07-06 — 流程跑通 (CCC v1.0 Closure)
+
+**里程碑**:Planner → Executor → Verifier 三角色**完整流程**首次跑通,5+5 机器化门控闭环。
+
+参见 `.ccc/plans/ccc-engineering-foundation.plan.md` §T1.1-T1.7 + `.ccc/plans/hello-ccc-demo-v2.plan.md`。
+
+### Added
+- **`.ccc/state.md`**: Planner 接力文件(红线 10 强制,Lesson 13 schema)
+- **`scripts/ccc-precheck.sh`**: 5 项前置门控(状态/项目/计划/相位/看门狗)
+- **`scripts/ccc-finish.sh`**: 5 项后置门控(报告/验收/引用/范围/相位闭环)
+- **`tests/scripts/test_ccc_precheck_finish_smoke.py`**: 10 个 smoke test
+- **`hello-ccc-demo-v2`**: 3 phase + 独立 Verifier session 完整闭环 demo
+- **`scripts/ccc-status.sh`**: 4 文件契约健康检查 CLI(105 行)
+- **`scripts/ccc-cost.sh`**: 单任务 cost summary CLI(85 行)
+- **`tests/scripts/test_ccc_status_smoke.py`**: 3 个 status smoke test
+- **`docs/E2E-DEMO.md`**: 完整跑通 trace 文档
+
+### Changed
+- **SKILL.md**: 新增 §Planner 启动顺序 + §强制 watchdog + §ccc commit 闭环
+- **`templates/executor-prompt.template.md`**: 集成 ccc-precheck/finish + ccc commit 引用
+- **`templates/AGENTS.md`**: agent config 路径 `~/.mavis/` → `~/.config/ccc/` (mavis 清理配套)
+- **`scripts/ccc-finish.sh`**: 排除 `.claude/` 元数据(范围白名单)
+
+### Verified
+- `pytest tests/scripts/test_ccc_precheck_finish_smoke.py` → 10/10 PASS
+- `bash scripts/ccc-precheck.sh . hello-ccc-demo-v2` → 7/7 PASS
+- `bash scripts/ccc-finish.sh . hello-ccc-demo-v2` → 7/7 PASS(完整 4 文件契约)
+- Verifier 独立 session: 4/4 probes PASS
+- 3 phase 任务: ccc-task-id=hello-ccc-demo-v2 phase=1/2-3/final
+
+### Red Lines Enforced (v1.2.0)
+| 红线 | v1.2.0 机器化 |
+|------|---------------|
+| 7 启动顺序固定 | ccc-precheck Gate 1-3 |
+| 9 Executor 卡死止损 | ccc-precheck Gate 5 = watchdog |
+| 10 跨会话不隐式记忆 | ccc-precheck Gate 1 = state.md |
+| 11 Verifier 必写文件 | ccc-finish Gate 2+3 |
+| 4+8 单 phase 单 commit | ccc-finish Gate 5 + ccc commit 闭环 |
+| 3 范围白名单 | ccc-finish Gate 4 |
+
+---
+
 ## [1.1.0] — 2026-07-06 — Engineering Foundation
 
 **里程碑**：v1.0 release gate open + 工程化补漏 + 移交准备。
