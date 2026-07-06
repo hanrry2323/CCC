@@ -289,3 +289,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.1.0]: https://github.com/hanrry2323/CCC/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hanrry2323/CCC/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/hanrry2323/CCC/releases/tag/v0.5.0
+
+## [v0.7-slim] — 2026-07-07 — 精简 80→15 (slim route closure)
+
+**里程碑**:CCC 从 80+ 文件瘦身到 15 个核心文件。砍掉为"路线预留"而存在的过度工程化代码。
+
+参见 `.ccc/plans/v0.7-slim.plan.md` + `.ccc/reports/v0.7-slim.report.md` + `docs/lessons.md` Lesson 29。
+
+### Removed
+- **cluster 总线整套** (phase 1):`scripts/cluster-bus.py` + `ccc-znode-register.py` + `ccc-zcode-bridge.sh` + `ccc-zcode-orchestrate.sh` + `tools/cluster-doctor.sh` + `references/cluster-protocol.md` + `tests/cluster/`
+- **多 IDE 适配器整套** (phase 2):`references/adapters/runtime-{cursor,claude-p,zcode,claude-code}.md` + `scheduler-{launchd,github-actions}.md` (保留 `runtime-opencode.md`)
+- **派单/飞轮/成本/precommit** (phase 3):`scripts/ccc-dispatch.py` + `ccc-hook.sh` + `ccc-scheduler.sh` + `hello-ccc.sh` + `flywheel-scan.py` + `ccc-cost-report.sh` + `ccc-cost.sh` + `precommit-{bash-quality,verdict-length}.sh` + `.ccc/dispatches/` + 9 测试
+- **worktree 副本** (phase 4):`.claude/worktrees/oral-calc-commit/`
+
+### Changed
+- **CLAUDE.md**:精简"工程纪律配套扩展"段
+- **README.md**:精简"配套"段 + 删除 ZCode Adapter 整段
+- **.ccc/profile.md**:精简"关键资产清单"表(8 脚本 + 8 测试)
+- **.ccc/state.md**:追加"v0.7-slim 精简决策"到关键历史决策
+- **scripts/ccc**:删除 `run` 子命令(ccc-zcode-orchestrate.sh 已删)
+- **scripts/ccc-exec-commit.sh** + 测试:历史任务名 "cluster-bus-bugfixes" → "historical task phase 1"
+
+### Added
+- **docs/lessons.md** Lesson 29:路线图当现实做 = 过度工程化
+- **references/red-lines.md** 红线 13 (v0.7-slim 配套):禁止未使用路线代码
+- **.ccc/reports/v0.7-slim.report.md**:执行报告 + 验收证据
+
+### Test
+- **精简前**:21/21 smoke tests PASS(测的是被删功能)
+- **精简后**:42/42 smoke tests PASS(测的是保留功能)
