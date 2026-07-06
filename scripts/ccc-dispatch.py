@@ -235,8 +235,9 @@ def main(argv=None):
             return 4
 
     # If confirmed: emit a dispatch artifact (dry-run only for v1.0 PoC)
-    dispatch_dir = workspace / "dispatches"
-    dispatch_dir.mkdir(exist_ok=True)
+    # Writes to <workspace>/.ccc/dispatches/ (project CCC artifact dir).
+    dispatch_dir = workspace / ".ccc" / "dispatches"
+    dispatch_dir.mkdir(parents=True, exist_ok=True)
     artifact = dispatch_dir / f"dispatch-{plan_path.stem}.json"
     artifact.write_text(json.dumps({
         "plan": str(plan_path),
