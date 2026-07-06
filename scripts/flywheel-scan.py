@@ -12,13 +12,24 @@ becomes a real lesson. This script ONLY writes to abnormal-reports/.
 from __future__ import annotations
 import hashlib
 import re
+import os
 from pathlib import Path
 from datetime import date
 
-CCC = Path(__file__).resolve().parent.parent / ".ccc"
-REPORTS = CCC / "reports"
-VERDICTS = CCC / "verdicts"
-ABNORMAL = CCC / "abnormal-reports"
+
+def _resolve_ccc_dirs() -> tuple[Path, Path, Path, Path]:
+    """Resolve .ccc/ based on $CCC_HOME env var or cwd (default cwd)."""
+    base = Path(os.environ.get("CCC_HOME", Path.cwd()))
+    ccc = base / ".ccc"
+    return (
+        ccc,
+        ccc / "reports",
+        ccc / "verdicts",
+        ccc / "abnormal-reports",
+    )
+
+
+CCC, REPORTS, VERDICTS, ABNORMAL = _resolve_ccc_dirs()
 ABNORMAL.mkdir(parents=True, exist_ok=True)
 
 # Common failure markers — these are the patterns we want to surface
