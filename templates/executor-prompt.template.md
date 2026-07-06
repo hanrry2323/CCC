@@ -30,6 +30,67 @@ echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 cla
 
 ---
 
+## ⚠️ 启动前必跑：`ccc-precheck.sh` 5 项前置门控（v1.2.0 新增 · T1.3）
+
+**任何 Executor 启动前必须先跑 `ccc-precheck.sh`**（红线 7 + 9 + 10 机器化强制）:
+
+```bash
+# Caller 跑的（Planner 或启动脚本）
+bash ~/program/CCC/scripts/ccc-precheck.sh <workspace> <task> || {
+  echo "[caller] precheck FAIL, 禁止启动 Executor"
+  exit 1
+}
+```
+
+5 项门控:
+- **Gate 1**: `.ccc/state.md` 存在（红线 10 · 跨会话接力）
+- **Gate 2**: `.ccc/profile.md` 存在（红线 7 · 启动顺序）
+- **Gate 3**: `plan.md` 含必填字段（目标/Phase/只改文件/Commit 计划）
+- **Gate 4**: `phases.json` 合法 JSONL（红线 5）
+- **Gate 5**: `executor-watchdog.sh` 健康（红线 9）
+
+**任一 FAIL → 禁止启动 Executor**。Executor 自身也应在启动顺序首步调用此脚本确认。
+
+---
+
+## ⚠️ 退出前必跑：`ccc-finish.sh` 5 项后置门控（v1.2.0 新增 · T1.4）
+
+**Executor 退出前**必须跑 `ccc-finish.sh` 验证 5 项后置门控:
+
+```bash
+bash ~/program/CCC/scripts/ccc-finish.sh <workspace> <task>
+# 或含自动回填 VERDICT 引用
+bash ~/program/CCC/scripts/ccc-finish.sh <workspace> <task> --fill-verdict-ref
+```
+
+5 项门控:
+- **Gate 1**: `report.md` 已写且非空（Lesson 4）
+- **Gate 2**: `verdict.md` 存在 + ≥3 probes + VERDICT 三选一（红线 11）
+- **Gate 3**: `report.md` 含 `> VERDICT:` 引用段（红线 11 · 闭环）
+- **Gate 4**: 改动文件 ⊆ plan 范围白名单（红线 3）
+- **Gate 5**: phases.json done 行数 ≥ plan phase 数（红线 4+8）
+
+**任一 FAIL → 禁止宣告完成, 必须修复后重跑**。
+
+---
+
+## ⚠️ Executor 不直接 git commit（v1.2.0 新增 · T1.6 配套）
+
+**Executor 退出后, commit 由外部脚本 `ccc-exec-commit.sh` 自动化处理**（红线 4 + 8 + 15 配套):
+
+```bash
+# Executor 退出后, Planner 跑:
+ccc commit <workspace> <task>           # 处理所有待 commit phase
+ccc commit <workspace> <task> --phase N # 仅指定 phase
+```
+
+**禁越界**:
+- ❌ Executor 自己 `git add` + `git commit` = 触犯红线 4/8
+- ❌ Planner 跳过 `ccc commit` 直接 `git commit` = 触犯红线 4/8 + 失去 commit hash 自动回写
+- ✅ 唯一通路: Executor 把改动放在 working tree (无 staged), Planner 调 `ccc commit` 兜底
+
+---
+
 ## 标准模板
 
 ```bash
