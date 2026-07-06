@@ -1,0 +1,96 @@
+# CCC CI — GitHub Actions
+# 4 jobs: pytest, ruff, shellcheck, pre-commit (when ready)
+# Triggers: push, PR
+# NOTE: CCC is a SKILL not a Python project — most jobs run on `push` only,
+# PRs are documented but optional (because main branch is the source of truth).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    name: pytest (scripts + cluster)
+    runs-on: macos-latest  # Bash scripts need macOS for `stat -f` (P0-1 cluster-bus uses it)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
+      - name: Run smoke tests
+        run: |
+          echo "=== Smoke: scripts/*.py syntax ==="
+          for f in scripts/*.py; do python -m py_compile "$f" || exit 1; done
+          echo "=== Smoke: scripts/*.sh syntax ==="
+          for f in scripts/*.sh tools/*.sh; do bash -n "$f" || exit 1; done
+          echo "=== pytest tests/scripts ==="
+          pytest tests/scripts/ -v --tb=short
+          echo "=== pytest tests/cluster ==="
+          pytest tests/cluster/ -v --tb=short
+
+  ruff:
+    name: ruff (Python lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v1
+        with:
+          version: "0.8.6"
+          args: "check scripts/ tests/ examples/"
+
+  shellcheck:
+    name: shellcheck (bash lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Run shellcheck
+        run: shellcheck scripts/*.sh tools/*.sh
+
+  precommit:
+    name: pre-commit hooks (if installed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Run pre-commit (best-effort, no fail on missing hook scripts)
+        run: |
+          if [ -f .pre-commit-config.yaml ]; then
+            pre-commit run --all-files || true
+          fi
+        continue-on-error: true  # don't block on missing pre-commit fixtures
+
+  cluster-doctor:
+    name: cluster-doctor (smoke PoC)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install fastapi uvicorn pydantic
+      - name: Start cluster-bus in background
+        run: |
+          python scripts/cluster-bus.py &
+          BUS_PID=$!
+          sleep 2
+      - name: Run cluster-doctor
+        run: |
+          bash scripts/cluster-bus.py > /tmp/cbus.log 2>&1 &
+          sleep 2
+          bash tools/cluster-doctor.sh
