@@ -1,143 +1,234 @@
-# Changelog
+# Changelog — CCC
 
-All notable changes to CCC (Codex Claude Collaboration) will be documented in this file.
+All notable changes to CCC will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - 2026-07-05
+> **Repository**: `~/program/CCC/`
+> **Skill name**: `ccc-protocol`
+> **Framework total**: scripts + references + docs + templates (single .ccc/ artifact dir per project)
 
-### Added
-- `scripts/ccc-exec-commit.sh` — Executor 退出后自动 commit（替代 LLM 做机械操作）
-- `ccc commit` 子命令 — 委托给 ccc-exec-commit.sh
+---
 
-### Changed
-- **拆分 Executor commit 职责**（P0.2）：Executor 只做文件编辑，commit 由外部脚本自动处理
-- `templates/executor-prompt.template.md` — 删除所有 git add/commit 指令，更新完成定义，自检从 6 项调为 5 项
-- `CLAUDE.md` — Executor 启动标准新增 commit 调用步骤，C2 从 "commit-push" 缩为 "push"，新增兜底 commit 段落
-- `references/red-lines.md` — C2 改为 push，新增"红线 8 Fallback"段允许 Planner 兜底 commit
+## [Unreleased] — Engineering Foundation (2026-07-06)
 
-### Fixed
-- Executor 自检 4（commit hash 检查）移除——commit 由外部处理，自检不再校验
-- Executor 自检 1（git status）改为确认无已暂存内容
-- 示例 section 同步删除 commit 相关行
+参见 `.ccc/plans/ccc-engineering-foundation.plan.md` — 24 tasks / 4 phases。
 
-## [0.3.1] - 2026-07-04
+本版本为 v0.5 → v1.0 → v1.1 准备阶段。当 24 task 完成时发布 v1.1.0。
 
-### Added
-- `scripts/ccc` — 统一 CLI 入口（status/search/init/diff/help）
-- `scripts/ccc-search.py` — 跨项目 `.ccc/` 关键词搜索
-- `scripts/ccc-init.py` — 新项目初始化（AGENTS.md + .ccc/profile.md）
-- `scripts/ccc-hook.sh` — Claude Code pre-tool hook（区分源码/元数据）
-- `scripts/executor-watchdog.sh` — Executor 启动前健康检查
-- `scripts/install-ccc-as-skill.sh` — 跨平台 skill 安装（CCC / Claude Code / ZCode）
-- `templates/AGENTS.md` + `templates/.ccc-profile.md` — 项目模板
-- `cccq` alias（ccc status 的简写）
-- `ccc status -w [N]` — 可配置间隔的 watch 模式
+---
 
-### Fixed
-- CCC_HOME symlink 解析（realpath 替代 dirname）
-- ccc status 内联实现（避免 cccq symlink 循环）
-- ccc diff 不跳仓（用当前目录而非 CCC_HOME）
-- ccc-hook.sh 绝对路径兼容（匹配 `*/.ccc/*`）
-- cccq -w 参数丢失 bug（改为转发全部位置参数）
-- `clear` 在无 TERM 环境触发 set -e 退出的问题
+## [1.0.0] - 2026-07-06 — Automation Open
 
-### Validated (Verifier 独立验证)
-- 13/13 功能验收通过
-- 5/5 adversarial probes 通过
-- VERDICT: PASS
+### Added (8 commits / 8 reports)
 
-## [0.3.0-dev] - 2026-07-01
+- **P0-1**: `scripts/cluster-bus.py` — FastAPI node registry + heartbeat (5 endpoint)
+  - commit `6af9121` / report `p0-1-cluster-bus.report.md`
+- **P0-2**: `scripts/ccc-dispatch.py` — task triple output (no auto-dispatch)
+  - commit `fa0fa2e` / report `p0-2-ccc-dispatch.report.md`
+- **P1-1**: `references/cluster-protocol.md` — 跨设备协议规范 (10 sections, 229 lines, mTLS design)
+  - commit `376e2b9` / report `p1-1-cluster-protocol.report.md`
+- **P1-2**: `tests/cluster/test-capability-required.py` — Red Line 18 enforcement (7 cases, 6 passed, 1 skipped)
+  - commit `090e918` / report `p1-2-test-capability.report.md`
+- **P2-1**: `examples/cluster/{m1,feiniu}.yaml` — node config templates
+  - commit `e32d9df` / report `p2-1-yaml-examples.report.md`
+- **P2-2**: `tools/cluster-doctor.sh` — 5-section cluster diagnostic
+  - commit `a6ffc11` / report `p2-2-cluster-doctor.report.md`
+- **P3-2**: dispatcher PoC end-to-end — 3 nodes registered, m1 picked (score 0.795)
+  - commit `8a19431` / report `p3-2-dispatcher-poc.report.md`
+- **Final**: v1.0 release summary report
+  - commit `f522c34` / report `v1.0-automation-summary.report.md`
 
-### Added
-- README.md (项目门面 — 框架定位 + 快速上手)
-- LICENSE (MIT)
-- VERSION (0.3.0-dev)
-- docs/architecture.md (4 层抽象 L4-L0 深度说明)
-- docs/adr/001-protocol-layer.md (三角色 Protocol 抽象 ADR)
-- docs/adr/002-runtime-adapter.md (Runtime Adapter Pattern ADR)
-- docs/adr/003-scheduler-adapter.md (Scheduler Adapter Pattern ADR)
-- examples/qxo-audit-frontend.md (qx-observer 调研任务三轮回合实战案例)
-- 本地 git 仓 + 初始 commit + tag v0.3.0-dev
+### Engineering Discipline (red lines)
 
-### Validated (经过 8 次实战验证)
-- audit-frontend-and-locate-loopcode (调研类, claude-p 200 USD, 最终 PASS)
-- fix-conditional-pass-warnings (修订类, claude-p 200 USD)
-- push-audit-frontend-finalization (push 类, claude-p 30 USD)
-- write-lesson-20 (Lesson 沉淀, claude-p 30 USD)
-- clean-lessons-noise-rows (清理类, claude-p 20 USD)
-- push-lesson20-and-noise-cleanup (push 类, claude-p 30 USD)
-- distill-ccc-workflow-summary (沉淀类, claude-p 30 USD)
-- accept-prior-cleanup-and-qb-sync (验收类 — 早期失败案例, 触发 Lesson 18)
-- fix-verdict-fail-2-critical (早期修复 — 触发 Lesson 18 沉淀)
+- **红线 11** (verifier file): 8 reports, all ≥ 100 lines
+- **红线 18** (capability default): tests prevent clawmed-ai v3.1 failure
+- **红线 19** (independent verifier): applied in P1-1 protocol design
+- **红线 20** (bash v3 portability): all scripts compliant
+- **Lesson 28 + 29 + 30** from v0.5 P0: applied throughout
 
-### Red Lines Verified (红线已验证有效)
-- Planner 越界 = Critical (Lesson 18)
-- mavis session new C6 = Critical (Lesson 19, 红线 8) — **v0.5 起改红线 9 表述**
-- 默认预算 200 USD (5 USD 历史 bug 已修)
-- 一个 phase 一个 commit (红线 4)
-- phases.json 必写全 (红线 5)
+### Borrowed / Cited
 
-## [0.2.x] - 2026-06-30 之前
-
-### Internal Prototype
-- 早期间脚本集阶段
-- 多个项目实验性使用 (qx-observer / qb / xianyu)
-- 形成 templates/ + skills/ + projects/ 雏形
+- `clawmed-ai` Universal Worker v3.1 + T1.2 worker analysis (heartbeat 30s/90s)
+- `agentmesh` 6 projects (TCP discovery + capability routing consensus)
+- Anthropic 2026 mesh paper (motwani et al, communications-effective multi-agent)
+- 老板 `~/.claude/CLAUDE.md` 工程纪律 + red lines 跨项目沉淀
 
 ---
 
 ## [0.5.0] - 2026-07-06 — Connect–Claude Code 重构
 
-### Changed (BREAKING)
+### BREAKING
 
-- **CCC 重新定位**：从 "Codex Claude Collaboration" framework 代码库 → **Connect–Claude Code SKILL 资产**
-- **含义**：**C**onnect — **C**laude **C**ode（连接 Claude Code 能力到任意 IDE 工具）
-- **SKILL.md**：重写为唯一 prompt 注入资产，244 行 → 169 行（精简）
-- **README.md / CLAUDE.md**：重写，文档分层清晰（SKILL / README / CLAUDE / docs/）
-- **与 qxo 解耦**：`projects/qxo/lessons.md` 迁移到 `docs/lessons.md`，CCC 不再绑任何项目
+- **CCC 重定位**: 从 "Codex Claude Collaboration framework 代码库" → "Connect–Claude Code SKILL 资产"
+- **SKILL.md 重写**: 单一 prompt 注入资产，169 行
+- **含义**: **C**onnect–**C**laude **C**ode（连接 Claude Code 能力到任意 IDE）
+- **`projects/qxo/` 解耦**: lessons.md 迁到 `docs/lessons.md`
+- **Mavis 术语替换** → ccc 统一命名
 
 ### Added
 
-- `docs/roadmap.md`：v0.5 / v0.6 / v0.7 / v1.0 + 扩展阶段四阶段路线
-- `docs/architecture.md`：v0.5 框架说明书（重写）
-- `docs/lessons.md`：framework 级教训沉淀（从 projects/qxo/ 迁 1448 行）
-- 红线 11：Verifier 必须写 verdict 文件（Lesson 28 配套）
-- 红线 12：禁止 agent 自主启用 CCC（用户显式触发）
-- Lesson 27：`claude -p` 是 print 模式，prompt 必须走 stdin（CCC 文档自洽修复）
-- Lesson 28：口头 PASS 不算 PASS，verdict 必须有产物证据
+- `SKILL.md` (169 行, 唯一注入 prompt)
+- `references/red-lines.md` 新增 红线 11 + 12
+- `references/adapters/runtime-opencode.md` OpenCode adapter
+- `references/red-lines.md` 10 + 2 完整红线
+- `DESIGN-VALIDATION.md` 设计决策永久证据链 (234 行)
+- `references/adapters/runtime-opencode.md` 适配 OpenCode runtime
+- `docs/lessons.md` Lesson 27 (`claude -p` 语义) + Lesson 28 (verdict 强证据)
+- `references/adapters/runtime-claude-p.md` v2 更新 — print 模式 + stdin 喂内容
+- `CHANGELOG.md` (v0.3 占位版本)
 
 ### Fixed
 
-- `references/adapters/runtime-claude-p.md`：`claude -p` 参数表从错误描述（"-p = prompt 参数"）改成正确描述（"print 模式开关 + stdin 喂内容"）
-- `templates/executor-prompt.template.md`：文首加显眼警告 + 参数表重写
-- `templates/report.report.md`：加 `> VERDICT:` 占位段为必填（红线 11 强制）
+- `runtime-claude-p.md`: 修复 `-p` 描述错误（Lesson 27）
 
 ### Removed
 
-- `projects/qxo/lessons.md`（迁至 docs/lessons.md，原始保留为 `.archived-2026-07-06`）
-- 根 `AGENTS.md`（标记 DEPRECATED，已合并进 CLAUDE.md）
-- v0.3.x 残留 framework-style 调用约定
+- v0.3.x 阶段 `projects/qxo/` 整个目录 → `.archived-2026-07-06/`
+- v0.3.x `distribution-report.md` → archive
+- v0.3.x `references/adapters/scheduler-mavis-cron.md` → archive
 
-### Migration
+### Documentation
 
-- v0.5 升级不需要任何代码改动 —— CCC 是 SKILL 资产，不存在 import
-- 用户在 IDE 内**重新加载 CCC skill** 即可生效
-- 已有 4 文件契约（plans/phases/reports/verdicts）路径保持不变
+- 文档分层：
+  - `SKILL.md` (agent 唯一入口)
+  - `README.md` (用户入口)
+  - `CLAUDE.md` (framework 总纲)
+  - `DESIGN-VALIDATION.md` (证据链)
+  - `references/red-lines.md` (工程纪律)
+  - `docs/lessons.md` (教训沉淀)
+  - `docs/architecture.md` (框架结构)
+  - `docs/roadmap.md` (发展路线)
 
-### Verification
+---
 
-```bash
-# SKILL 注入验证
-cat ~/program/CCC/SKILL.md | head -3
-# 期望: SKILL frontmatter + "CCC — Connect–Claude Code" 标题
+## [0.3.2] - 2026-07-05 — 实测沉淀 (9 个 task)
 
-# 红旗线验证
-grep -E '红线 (11|12)' ~/program/CCC/references/red-lines.md
-# 期望: 2 行命中
+### Added
 
-# 框架文档完整
-ls ~/program/CCC/docs/
-# 期望: lessons.md / roadmap.md / architecture.md / plan-spec.md / verification-spec.md ...
+- `scripts/ccc` CLI 入口 (status / search / init / commit)
+- `scripts/ccc-init.py` 项目初始化
+- `scripts/ccc-search.py` 工件搜索
+- `scripts/ccc-cost-report.sh` 成本估算
+- `scripts/ccc-exec-commit.sh` 自动 commit 兜底
+- `scripts/ccc-hook.sh` Claude Code pre-tool hook
+- `scripts/install-ccc-as-skill.sh` 安装到 `~/.claude/skills/`
+
+### Tasks Closed (9 个 task)
+
+- `add-ccc-archive` (2026-07-04)
+- `add-ccc-cost-report` (2026-07-04)
+- `ccc-test-auto-claude-code` (v1-v4, 2026-07-04 ~ 07-05)
+- `ccc-test-html-manual-paitongshu` (2026-07-04)
+- `ccc-v0.3.1-infrastructure` (2026-07-04)
+- `ccc-v0.3.2-cccq-status-ux` + R2 (2026-07-04)
+- `fix-ccc-v031-bugs` (2026-07-04)
+- `push-ccc-v0.3.1-to-origin` (2026-07-04)
+
+### Engineering (v0.3 → v0.5)
+
+- 9 个 task 沉淀成 9 个 phases.json + 9 个 reports + 4 个 verdicts
+- 教训沉淀：Lessons 1-26 (~1300 行)
+- 4 文件契约确立 (`plans/` / `phases.json` / `reports/` / `verdicts/`)
+- 三角色纪律 (Planner / Executor / Verifier)
+
+---
+
+## [0.3.0] - 2026-07-01 — 三角色 + 4 文件契约
+
+### Added
+
+- **三角色**：Planner / Executor / Verifier 严格分离
+- **4 文件契约**：`.ccc/{plans,phases,reports,verdicts}/`
+- **第 9 红线**: Planner 越界 = Critical (C1-C6 子条款)
+- **commit 兜底机制**: `ccc-exec-commit.sh` 自动检测 working tree → commit
+
+### Roles
+
+- **Planner (Mavis/MiniMax-M3)**: 写 plan.md + phases.json
+- **Executor (Claude Code CLI)**: 自主执行 plan → 写 report.md
+- **Verifier (Claude Code CLI)**: 独立 session → 写 verdict.md (≥ 50 行)
+
+---
+
+## [0.1.0] - 2026-06-30 — Internal Prototype
+
+### Added
+
+- 内部脚本集阶段
+- 多个项目实验性使用 (qx-observer / qb / xianyu)
+- 形成 `templates/` + `skills/` + `projects/` 雏形
+
+### Structure
+
 ```
+~/program/CCC/
+├── SKILL.md
+├── templates/
+├── skills/
+├── projects/
+└── references/
+```
+
+---
+
+## 借鉴来源 (Borrowed)
+
+| 来源 | 提供价值 | 落地 |
+|------|---------|------|
+| `clawmed-ai` plans/universal-worker-v3.1.md | heartbeat 30s/90s 协议 | `cluster-bus.py` § v1.0 |
+| `clawmed-ai` plans/T1.2_worker_analysis.md | 注册/选举/capability | `ccc-dispatch.py` |
+| `clawmed-ai` reviews/universal-worker-v3.1-review.md | v3.1 失败教训（能力匹配被注释掉） | `tests/cluster/test-capability-required.py` |
+| GitHub `agentmesh-*` 6 projects (2025-11) | TCP discovery + capability 共识 | `references/cluster-protocol.md` |
+| Anthropic 2026 mesh paper (Motwani et al) | multi-phase coordination | `references/cluster-protocol.md` § 4 |
+| clawmed-ai `.gitignore` 模式 (.ccc/ 豁免 plans/phases/reports) | 元数据 vs 工件分离 | `.gitignore` v0.5 |
+| abc PoC `scripts/git-bundle-stream.sh` | 跨设备 git bundle 流程 | `examples/cluster/` 配置参考 |
+
+---
+
+## 设计决策（永久证据链）
+
+详见 `DESIGN-VALIDATION.md`。已验证决策：
+1. SKILL 资产 vs framework 代码库
+2. JSONL phases.json vs nested object
+3. 三角色严格分离（Planner / Executor / Verifier）
+4. 4 文件契约 + 红线 4/5/11
+5. Capability-tag dispatch
+6. bash v3 portability (Lesson 29)
+7. 独立 Verifier session 工程价值 (Lesson 30)
+
+---
+
+## 已知限制 / Backlog
+
+- ❌ **mTLS 待实现**：`cluster-bus.py` 当前 plaintext (P1-1 协议设计完成, 实现待 v1.1)
+- ❌ **chunk_id 幂等性**：commit message 应含 `ccc-task-id=<id>` (红线 15 待实装)
+- ❌ **真 Mac2017 bus**：当前用 `mac2017-fake` 模拟
+- ❌ **自动派单**：dispatcher 仍需人工 stdin 'yes'
+- ❌ **跨 IDE SKILL 实测矩阵**：Trae 验证过，Cursor / Zed 待测
+- ❌ **CI**：GitHub Actions 模板存在但未实测 GFW 下 push
+
+---
+
+## 相关文件
+
+- `README.md` — 30 秒上手
+- `SKILL.md` — 注入 prompt (agent 唯一入口)
+- `CLAUDE.md` — 框架总纲
+- `DESIGN-VALIDATION.md` — 设计决策永久证据链
+- `references/red-lines.md` — 13 条硬约束
+- `docs/roadmap.md` — 发展路线图
+- `docs/lessons.md` — 30 条工程教训
+- `docs/architecture.md` — 框架结构
+- `.ccc/plans/` — 所有 task plan.md
+- `.ccc/reports/` — 所有 task report.md
+- `.ccc/phases/` — 所有 task phases.json
+- `.ccc/verdicts/` — 所有 task verdict.md
+
+---
+
+**Latest**: `8df501f` feat(ccc): engineering foundation plan + 24 tasks (2026-07-06)
+**Active branch**: main
+**Version**: 1.0.0 (release gate OPENING)
+**Engineering Foundation phase**: IN PROGRESS (24 tasks planned)
