@@ -331,3 +331,69 @@ fi
 - ❌ "成本报告以后做 SaaS 会用到" → 删，按需重写更简单
 
 **触犯后果**：Warning → 该 phase 无效，删多余代码后重跑。Critical → 整个 plan 回退到精简前重做。
+
+---
+
+## 红线 14：Executor 必须配 monitor + 5min 轮询（v0.7d-prime 配套）
+
+**规则**：任何 Executor 任务启动时**必须**同时起 tmux monitor 窗口 + 5 分钟轮询进程。两者缺一即视为盲跑。
+
+**Why**：
+- v0.5–v0.7 期间，Executor 启动后用户经常需要手动 `tmux capture-pane` 查进度，体验差且容易漏看异常
+- 5 分钟轮询可自动检测完成信号（`❯` prompt + 无 `esc to interrupt`），减少手动检查
+- Monitor 窗口提供"全景视图"（每 10s 刷新所有窗口尾部输出），单窗口轮询看不到其他窗口状态
+
+**机制钩子**：
+1. **三件套入口**：所有 Executor 任务必须通过 `bash scripts/ccc-exec-launcher.sh <window> <prompt-file>` 启动，禁止裸 `claude --bare` 启动
+2. **Monitor 幂等**：脚本检测到 monitor 窗口已存在则跳过，不重复开窗
+3. **Poll 自动终止**：检测到完成信号（`❯` prompt + 无 `esc to interrupt`）后自动 break，不残留后台进程
+4. **失败兜底**：若 Poll 异常退出，下次 Executor 启动必须由 launcher 重新拉起（不会自动恢复）
+
+**正例（合规）**：
+```bash
+bash scripts/ccc-exec-launcher.sh 1 /tmp/executor-prompt.txt
+# 等价于：
+#   bash scripts/ccc-monitor.sh claude-code
+#   tmux send-keys -t claude-code:1 "cat /tmp/executor-prompt.txt | claude --bare --model deepseek-v4-flash" Enter
+#   nohup bash scripts/ccc-poll.sh 1 claude-code 300 &
+```
+
+**反例（违规）**：
+- ❌ 裸 `tmux send-keys "claude --bare" Enter` 起 Executor（没 monitor 也没 poll）
+- ❌ 仅开 monitor 但不跑 poll（无法自动检测完成）
+- ❌ 仅跑 poll 但没 monitor（看不到其他窗口状态）
+
+**触犯后果**：Warning — 该 Executor 任务视为盲跑，报告需在 Lessons 段记录"下次必须用 launcher"
+
+---
+
+## 红线 15：轮询进程完成自动终止（v0.7d-prime 配套）
+
+**规则**：`scripts/ccc-poll.sh` 检测到完成信号后**必须**自动 `break` 并退出。下次 Executor 任务必须重新调用 launcher 拉起新的 poll。
+
+**Why**：
+- Poll 进程若不自动终止，会一直占着 sleep/grep 循环直到手工 kill
+- 同一窗口若启动新一轮 Executor，旧 poll 还会捕获新 Executor 的 pane，污染完成判断
+- 自动终止 + 重新拉起 = 每次任务独立状态，避免跨任务串扰
+
+**机制钩子**：
+1. **完成信号定义**：pane 最后 5 行同时满足 `❯`（prompt 符）+ 无 `esc to interrupt`（无运行中提示）
+2. **自动 break**：检测到完成信号后写入 `/tmp/poll-final-<ts>.txt` → break → 退出码 0
+3. **重启契约**：下次 Executor 启动必须由 `ccc-exec-launcher.sh` 重新起 poll，不依赖自动恢复
+4. **PID 记录**：`/tmp/poll-<WINDOW>.pid` 记录当前 poll PID，便于手工 `kill -9` 兜底
+
+**正例（合规）**：
+```bash
+# poll 内部：检测到完成信号
+if echo "$PANE" | grep -q "❯" && ! echo "$PANE" | grep -q "esc to interrupt"; then
+  echo "[poll] 完成检测 elapsed=${ELAPSED}s"
+  echo "$PANE" > "/tmp/poll-final-$(date +%s).txt"
+  break
+fi
+```
+
+**反例（违规）**：
+- ❌ Poll 检测到完成信号后不 break，继续 sleep → 残留后台进程
+- ❌ Poll 检测到完成信号后 `kill -9 <executor_pid>`（红线 15 只要求 poll 自身退出，不要求杀 Executor；杀 Executor 由红线条 9 处理）
+
+**触犯后果**：Warning — poll 残留导致下一轮 Executor 状态判断污染。需手工 `kill $(cat /tmp/poll-<WINDOW>.pid)` 后重跑。

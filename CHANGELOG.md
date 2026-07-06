@@ -334,3 +334,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - **`.archived-2026-07-06/qxo-project/`**:qxo 已与 CCC v0.5 解耦(CLAUDE.md 明文),删除整个归档子目录(保留 `.archived-2026-07-06/` 目录本身)
+
+## [v0.7d-prime] — 2026-07-07 — 红线 14+15 工程化 (monitor + 5min 轮询)
+
+**里程碑**:把"自动开 monitor + 5 分钟轮询 + 完成自动终止"沉淀为 CCC 工具链。未来所有 Executor 任务通过 `ccc-exec-launcher.sh` 一键起 monitor + Executor + poll 三件套。
+
+参见 `.ccc/plans/v0.7d-prime.plan.md` + `.ccc/reports/v0.7d-prime.report.md`。
+
+### Added
+- **`scripts/ccc-monitor.sh`**:幂等开 tmux monitor 窗口(已存在则跳过,避免重复开窗)
+- **`scripts/ccc-poll.sh`**:5 分钟轮询指定窗口 + 完成信号检测(`❯` prompt + 无 `esc to interrupt`)+ 自动 `break` 退出
+- **`scripts/ccc-exec-launcher.sh`**:三件套整合(开 monitor → send-keys 触发 Executor → 后台 nohup 启动 poll,PID 写入 `/tmp/poll-<WINDOW>.pid`)
+- **`references/red-lines.md` 红线 14 + 红线 15**:Executor 必须配 monitor + 5min 轮询 / 轮询进程完成自动终止
+- **`docs/engineer-flow.md`**:串行 vs 并行投递模式 + ccc-exec-launcher.sh 三件套用法 + 失败兜底(poll 异常退出)
