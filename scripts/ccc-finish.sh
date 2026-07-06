@@ -156,11 +156,12 @@ if ! git -C "$WORKSPACE" rev-parse --git-dir >/dev/null 2>&1; then
   log_fail "workspace 不是 git 仓库: $WORKSPACE"
 else
   # 收集实际改动（working tree + 已暂存 + 范围从上次 commit 到 HEAD 的 diff）
-  CHANGED_FILES=$(git -C "$WORKSPACE" status --short | awk '{print $2}' | grep -vE '^\.ccc/' | sort -u)
+  # 排除 .ccc/ (Plan 产物) + .claude/ (工具 metadata, 不属于源码)
+  CHANGED_FILES=$(git -C "$WORKSPACE" status --short | awk '{print $2}' | grep -vE '^\.ccc/' | grep -vE '^\.claude/' | sort -u)
 
   # 如果无未提交改动, 改看最近 1 个 commit 的 diff (针对已 commit 的任务)
   if [[ -z "$CHANGED_FILES" ]]; then
-    LAST_COMMIT_FILES=$(git -C "$WORKSPACE" show --name-only --format= HEAD | tail -n +2 | grep -vE '^\.ccc/' | sort -u)
+    LAST_COMMIT_FILES=$(git -C "$WORKSPACE" show --name-only --format= HEAD | tail -n +2 | grep -vE '^\.ccc/' | grep -vE '^\.claude/' | sort -u)
     if [[ -n "$LAST_COMMIT_FILES" ]] && echo "$LAST_COMMIT_FILES" | grep -q "ccc-task-id=$TASK"; then
       CHANGED_FILES="$LAST_COMMIT_FILES"
       log_info "无 working tree 改动, 改用最近 ccc-task-id=$TASK 的 commit diff"

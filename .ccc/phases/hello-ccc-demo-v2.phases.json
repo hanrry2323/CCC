@@ -1,0 +1,3 @@
+{"phase": 1, "name": "create-ccc-status-sh", "status": "done", "subtasks": {"1.1": "done"}, "commit": "de101f8", "notes": "scripts/ccc-status.sh 105 行"}
+{"phase": 2, "name": "create-ccc-cost-sh", "status": "done", "subtasks": {"2.1": "done"}, "commit": "4341e99", "notes": "scripts/ccc-cost.sh 85 行"}
+{"phase": 3, "name": "create-test-smoke", "status": "done", "subtasks": {"3.1": "done"}, "commit": "4341e99", "notes": "tests/scripts/test_ccc_status_smoke.py 55 行, pytest 3/3"}
