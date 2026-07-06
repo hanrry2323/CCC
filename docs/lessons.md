@@ -1631,3 +1631,52 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 后续 Planner 写 plan 时,每个验收数字 = `sections 分项对照表`,绝不写 "total ≤ N"
 - Executor 跑 `find ... | wc -l` 后,如果总数跟 plan 数字差 > 20% = 立即 STOP 问 Planner
 - `.archived-*` 目录每 90 天复审一次,确认归档边界注释未腐烂
+
+---
+
+## Lesson 31:验收数字按 sections 分项 (Verifier 教训,v0.7c → v0.7f)
+
+**问题**:v0.7c 验收脚本时写"8 脚本"(沿用 v0.7-slim 末态数字),Verifier 跑时实际是 **12 个脚本** —— 因为 v0.7d-prime 新增了 `ccc-monitor.sh` / `ccc-poll.sh` / `ccc-exec-launcher.sh` 三件套。Verifier 报告"数字不一致,CONDITIONAL_PASS",需要回头解释时间线。
+
+**根因**:写"X 脚本"时没标注**这是哪个 phase 当时的数字**。v0.7c 验收时是 v0.7d-prime 之前,确实 8 个;但 v0.7f 总结时已过去多个 phase,数字必须**按时间分项**而非单值。
+
+**修复**(v0.7f):
+- CHANGELOG v0.7.0 段列出 sections 分项表(子任务 × 关键产出 × 教训)
+- 文件改动汇总按 sections 列(VERSION / CHANGELOG / state.md / lessons.md / reports / phases.json)
+- 任何"X 文件" / "Y 脚本" / "Z 行" 类数字 = 必带 (Phase 当时 / 累计至今) 双值
+
+**可执行规则**:
+- Plan / Report 写数字必须分项:`{scripts: N1, tests: N2, adapters: N3}` 替代 `total: N`
+- 跨 phase 累加时按 `(phase, section)` 列表分项,不写"项目至今总计"
+- Verifier 看到单值数字 → **立即 CONDITIONAL_PASS + 标注** 数字模糊性,要求 Executor 按 sections 重报
+
+**应用方式**:
+- 任何 plan / report 出现 "X 文件" / "N 脚本" 单值 → 自动转 sections 分项表
+- Verifier probe 必须包含 "数字来源 phase" 字段(`grep <plan> | grep X → phase=v0.7Y`)
+- umbrella release 段落(本条 v0.7.0)强制 sections 表,禁止 `total ≤ N` 单值
+
+---
+
+## Lesson 32:tmux send-keys + Enter 偶发丢失 (poll 教训,v0.7d-prime → v0.7e)
+
+**问题**:v0.7e 验 ccc-poll.sh 跑 5 分钟轮询时,**第一次 send-keys Enter 后约 3% 概率不触发 submit** —— claude REPL 还在 digest 上一段,直接 Enter 被吞掉,下一轮才补。表现为"轮询多一轮" / "完成信号延后 ~5min"。
+
+**根因**(猜测,未复现锁定):
+- claude REPL 内部状态机对 "Enter + 当前输出未 flush" 容忍度低
+- tmux send-keys 串行 send,无 ack 机制,不等 REPL 实际接收
+- 长 prompt 文本 + Enter 之间间隔 < 50ms 时概率上升
+
+**修复**(实测有效):
+- poll 脚本 send-keys 后 `sleep 1.5` 再下一轮(原 0.5 → 1.5s,失败率从 ~3% 降到 ~0.1%)
+- send-keys "C-m" 二次兜底:如果下一轮 prompt 仍显示"上一段",自动补发一次 Enter
+- poll 完成检测不只看"无 esc to interrupt",加看 "❯ + 上一轮输出 hash 不变 ≥ 2 轮" 双条件
+
+**可执行规则**:
+- `ccc-poll.sh` send-keys 默认 `sleep 1.5` 间隔(可调,但 < 1.0 视为激进配置)
+- 完成检测双条件:`❯` prompt **且** `(esc to interrupt 不存在) **或** (上次输出 hash ≥ 2 轮未变)`
+- 任何未来"send-keys + 自动轮询"类工具,**禁止** sleep < 1.0s,除非有 ack 协议
+
+**应用方式**:
+- 新增轮询 / 监控脚本 → 默认间隔 1.5s + 完成双条件,模板化
+- 红线 15 续:除"自动 break"外,加 "send-keys 间隔 ≥ 1.0s" 细则(下次红线复审时合并)
+- tmux send-keys 后跟 C-m 兜底作为通用最佳实践,记入 `docs/engineer-flow.md` "tmux 交互模式" 段

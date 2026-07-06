@@ -347,3 +347,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`scripts/ccc-exec-launcher.sh`**:三件套整合(开 monitor → send-keys 触发 Executor → 后台 nohup 启动 poll,PID 写入 `/tmp/poll-<WINDOW>.pid`)
 - **`references/red-lines.md` 红线 14 + 红线 15**:Executor 必须配 monitor + 5min 轮询 / 轮询进程完成自动终止
 - **`docs/engineer-flow.md`**:串行 vs 并行投递模式 + ccc-exec-launcher.sh 三件套用法 + 失败兜底(poll 异常退出)
+
+---
+
+## [v0.7.0] — 2026-07-07 — v0.7 任务链完结 (umbrella release)
+
+**里程碑**:CCC v0.7 整条任务链(slim → a → b → c → d → d-prime → e → e-fix → f)统一收束为 `v0.7.0` release。从 v1.2.0 流程层版本号**回落**到 v0.7.0 —— 因为流程层 v1.0 已闭环,而代码层经过 slim 精简后,只配 v0.7.0 的能力级别。后续 v0.8 起重新自增代码版本。
+
+参见 `.ccc/plans/v0.7f.plan.md` + `.ccc/reports/v0.7f.report.md`。
+
+### Sub-task 收录(sections 分项)
+
+| 子任务 | 主题 | 关键产出 | 教训 |
+|--------|------|---------|------|
+| **v0.7-slim** | 精简 80→15 | scripts 30+ → 8、tests 21 → 7、adapters 7 → 1 | Lesson 29 |
+| **v0.7a** | 修 plan 阈值 + 删 qxo 归档 | sections 分项实绩对照 + qxo 子目录删 | Lesson 30 |
+| **v0.7b** | 3 处文档统一资产清单 | SKILL.md / README.md / state.md 资产表一致 | — |
+| **v0.7c** | 5 命令验收通过 | 8 脚本(实 12,见 Lesson 31) | Lesson 31 |
+| **v0.7d** | 4 窗口 cwd 对齐 | 全部相对 CCC repo root | — |
+| **v0.7d-prime** | monitor + poll + launcher 工具化 | 红线 14 + 15 + 三件套 | — |
+| **v0.7e** | Verifier CONDITIONAL_PASS | 独立 session 验证通过 | — |
+| **v0.7e-fix** | SKILL.md L218-222 hotfix | 删过时的 planner 启动顺序引用 | — |
+
+### Files Touched (sections 分项,各子任务汇总)
+
+| Section | 数量 | 备注 |
+|---------|------|------|
+| `VERSION` | 1 | 1.2.0 → v0.7.0 |
+| `CHANGELOG.md` | 1 | 本文件 + v0.7 各子任务段已存在 |
+| `.ccc/state.md` | 1 | 接力索引更新 |
+| `docs/lessons.md` | 1 | 追加 Lesson 31 + 32 |
+| `.ccc/reports/v0.7f.report.md` | 1(新增) | 本次执行报告 |
+| `.ccc/phases/*.json` | 1 | 更新 phases.json |
+| `SKILL.md` / `references/red-lines.md` / `scripts/` | **0** | **禁止改**(红线 13 + 14 + 15) |
+
+### Red Lines Enforced (v0.7.0)
+| 红线 | v0.7.0 触发 |
+|------|------------|
+| 13 禁止未使用路线代码 | v0.7-slim 删 cluster-bus / dispatch / flywheel |
+| 14 Executor 必配 monitor + 5min 轮询 | v0.7d-prime 三件套 |
+| 15 轮询进程完成自动终止 | v0.7d-prime `ccc-poll.sh` break 检测 |

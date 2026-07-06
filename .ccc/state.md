@@ -12,7 +12,7 @@
 |------|----|
 | 项目名 | CCC (Connect–Claude Code) |
 | 路径 | `/Users/apple/program/CCC` |
-| 形态 | SKILL 资产型框架(v1.2.0) |
+| 形态 | SKILL 资产型框架(v0.7.0) |
 | 主语言 | Bash + Python 3.11+ |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
@@ -23,17 +23,27 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
-| 2026-07-06 | hello-ccc-demo | [plan](plans/hello-ccc-demo.plan.md) | [report](reports/hello-ccc-demo.report.md) | [verdict](verdicts/hello-ccc-demo.verdict.md) | CONDITIONAL_PASS |
+| 2026-07-07 | v0.7f | [plan](plans/v0.7f.plan.md) | [report](reports/v0.7f.report.md) | (umbrella release) | PASS |
+| 2026-07-07 | v0.7e-fix | [plan](plans/v0.7e-fix.plan.md) | [report](reports/v0.7e-fix.report.md) | — | PASS |
+| 2026-07-07 | v0.7e | [plan](plans/v0.7e.plan.md) | [report](reports/v0.7e.report.md) | [verdict](verdicts/v0.7-slim.verdict.md) | CONDITIONAL_PASS |
+| 2026-07-07 | v0.7d-prime | [plan](plans/v0.7d-prime.plan.md) | [report](reports/v0.7d-prime.report.md) | — | PASS |
+| 2026-07-07 | v0.7d | [plan](plans/v0.7d.plan.md) | [report](reports/v0.7d.report.md) | — | PASS |
 
 > 表格为空表示项目无历史任务。新任务开始时,Executor 完成前应追加本表。
 
 ---
 
-## 进行中任务(活跃)
+## 当前任务(进行中)
 
-| 任务 ID | 当前 phase | owner | 启动时间 | 上次更新 |
-|---------|-----------|-------|----------|----------|
-| hello-ccc-demo-v2 | phase 1/3 (pending) | executor | 2026-07-06 | 2026-07-06 (precheck 7/7 PASS) |
+**v0.7 任务链**:✅ **已完结**(2026-07-07,umbrella release v0.7.0)
+
+下一阶段决策点(待用户拍板):
+
+- **v0.8a**:定时调度优先 —— 更自动化(本地 cron / launchd 调 ccc-exec-launcher)
+- **v0.8b**:知识飞轮 + 队列模式优先 —— 更适合长期(flywheel 简化版 + goal-mode 重启)
+- **v0.8c**:先消化当前 v0.7,等用户派新活
+
+> 当前**不启动** v0.8 任何任务,等用户拍板。Planner 收到决策后,在本节追加"启动: v0.8X — 主题 — 启动日期"行。
 
 ---
 
@@ -76,6 +86,7 @@
 3. **红线 11** (2026-07-06): Verifier 必须写真 verdict 文件,口头 PASS 不算 PASS (Lesson 28)
 4. **执行方式 4 选 1** (2026-07-06): `manual` / `auto` / `loop` / `goal` (其他术语禁止)
 5. **v0.7-slim 精简决策** (2026-07-07): 删除 cluster-bus / dispatch / flywheel / 成本报告 / precommit / 多 IDE adapter 等"路线预留"代码。砍掉为未来预留的过度工程化，回到"1 个 SKILL.md + 5 个核心脚本"的小型框架定位。如需这些功能,按需从头重写更简单的版本。
+6. **v0.7 完结 + v0.8 待拍板** (2026-07-07): v0.7-slim → v0.7a → v0.7b → v0.7c → v0.7d → v0.7d-prime → v0.7e → v0.7e-fix → v0.7f 共 9 子任务全部 PASS / CONDITIONAL_PASS,统一收束为 `v0.7.0` umbrella release。流程层版本从 1.2.0 回落至代码层 v0.7.0(代码能力级别)。后续 v0.8 起重新自增。
 
 ---
 
@@ -88,7 +99,7 @@
 
 ---
 
-**最后更新**: 2026-07-06 (CCC v1.2.0 流程跑通初始化)
+**最后更新**: 2026-07-07 (v0.7 任务链完结,v0.7.0 umbrella release)
 **下次启动必读顺序**:
 1. 读本文件(state.md)
 2. 读 `.ccc/profile.md`
