@@ -89,6 +89,29 @@ workspace = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.dirnam
 with open(fp) as f:
     data = json.load(f)
 
+# --- 红线 15: 读取顶层 task_id 字段 ---
+task_id = data.get('task_id', '').strip()
+if not task_id:
+    print("  ❌ phases.json 缺少顶层 'task_id' 字段（红线 15 强制）")
+    sys.exit(1)
+
+# --- 红线 15: 幂等检测：git log 中已有同 task_id 的 commit 则整体跳过 ---
+# re-run 命中 fast-forward，不产生重复 commit
+try:
+    grep_pattern = "ccc-task-id=" + task_id
+    existing = subprocess.run(
+        ["git", "log", "--grep=" + grep_pattern, "--oneline", "-1"],
+        cwd=workspace, capture_output=True, text=True
+    )
+    if existing.returncode == 0 and existing.stdout.strip():
+        first_token = existing.stdout.strip().split()[0] if existing.stdout.strip() else ""
+        print("  ⏭  IDEMPOTENT: task 已提交 (ccc-task-id=" + task_id + ")，跳过整次 commit")
+        print("     已有 commit: " + first_token)
+        sys.exit(0)
+except Exception as e:
+    # git log 失败不应阻断流程，继续往下走
+    print("  ⚠️  git log 幂等检测失败 (exit " + str(e) + ")，继续执行")
+
 phases = data.get('phases', [])
 if not phases:
     sys.exit(0)
@@ -115,6 +138,14 @@ for p in phases:
 
     scope = p.get('scope') or p.get('expected_files', [])
     commit_msg = p.get('commit_message', '').strip()
+
+    # --- 红线 15: 标记检测：commit_message 必须含 ccc-task-id=<task_id> ---
+    marker = f"ccc-task-id={task_id}"
+    if marker not in commit_msg:
+        print(f"  ❌ phase {pid}: commit_message 缺少标记 '{marker}'（红线 15 强制）")
+        print(f"     当前 message: {commit_msg[:60]}")
+        errors += 1
+        continue
 
     if not scope:
         print(f"  ❌ phase {pid}: scope 为空，跳过（无安全 fallback）")
