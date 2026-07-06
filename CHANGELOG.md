@@ -11,11 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — Engineering Foundation (2026-07-06)
+## [1.1.0] — 2026-07-06 — Engineering Foundation
+
+**里程碑**：v1.0 release gate open + 工程化补漏 + 移交准备。
 
 参见 `.ccc/plans/ccc-engineering-foundation.plan.md` — 24 tasks / 4 phases。
 
-本版本为 v0.5 → v1.0 → v1.1 准备阶段。当 24 task 完成时发布 v1.1.0。
+### Added
+- **T14**: `docs/handoff-checklist.md` — 12 项移交验收 checklist
+- **T13**: `tests/scripts/test_cluster_bus_benchmark.py` — 100 node 压测 (1000 hb avg 0.83ms)
+- **T11**: `tests/scripts/test_integration_business_flows.py` — 3 条端到端集成测试
+
+### Changed
+- VERSION 0.5.0 → 1.1.0
+- `scripts/cluster-bus.py`: h11 协议, atomic checkpoint, `--port` 参数
+- `tests/scripts/test_integration_business_flows.py`: fix bytes/str Python 3.14 compat
 
 ---
 
@@ -228,7 +238,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-**Latest**: `8df501f` feat(ccc): engineering foundation plan + 24 tasks (2026-07-06)
+**Latest**: `bf88077` docs(ccc): T14 handoff-checklist.md (2026-07-06)
 **Active branch**: main
-**Version**: 1.0.0 (release gate OPENING)
-**Engineering Foundation phase**: IN PROGRESS (24 tasks planned)
+**Version**: 1.1.0 (engineering foundation)
+**Status**: v1.1 release — 24 tasks (T1-T14 done, T15+ pending Trae IDE)
+
+[Unreleased]: https://github.com/hanrry2323/CCC/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/hanrry2323/CCC/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/hanrry2323/CCC/compare/v0.5.0...v1.0.0
+[0.5.0]: https://github.com/hanrry2323/CCC/releases/tag/v0.5.0

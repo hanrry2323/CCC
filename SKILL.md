@@ -1,4 +1,4 @@
-# CCC — Connect–Claude Code
+# CCC — Connect–Claude Code (v1.1)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent
 > into a Planner → Executor → Verifier pipeline. Loads cleanly into Trae,

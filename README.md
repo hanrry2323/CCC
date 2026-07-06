@@ -75,4 +75,4 @@ CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀*
 - 框架说明书：`~/program/CCC/docs/architecture.md`
 - 教训沉淀：`~/program/CCC/docs/lessons.md`
 - 模板库：`~/program/CCC/templates/`
-- 当前版本：`0.5.0`（v0.5 重构：CCC 从 framework 改造成 SKILL）
+- 当前版本：`1.1.0`（v1.1：工程化 + 自动化底座就绪）
