@@ -4,6 +4,7 @@ __pycache__/
 .DS_Store
 *.swp
 *~
-.ccc/
-!.claude/worktrees/**/.ccc/
-!.claude/worktrees/**/.ccc/reports/
+.ccc/abnormal-reports/
+
+# Track project-level CCC artifacts (plans, phases, reports, verdicts)
+# except abnormal-reports/ which is for transient anomalies
