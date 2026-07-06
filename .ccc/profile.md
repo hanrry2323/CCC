@@ -22,15 +22,20 @@ CCC 是一个 **SKILL 资产**，不是传统 framework 代码库。
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `CLAUDE.md` | 框架总纲（维护者视角） |
-| `references/red-lines.md` | 红线强约束 |
-| `references/adapters/runtime-opencode.md` | OpenCode 加载说明 |
-| `docs/lessons.md` | 历史教训沉淀 |
-| `scripts/ccc-precheck.sh` / `ccc-finish.sh` / `executor-watchdog.sh` / `ccc-exec-commit.sh` | 4 个核心门控脚本 |
-| `scripts/ccc-init.py` / `ccc-search.py` / `ccc-status.sh` / `ccc-task-done.sh` | 4 个核心工具脚本 |
-| `scripts/ccc` | CLI wrapper（status / search / init / diff / commit） |
-| `templates/` | 4 文件契约模板 |
-| `tests/scripts/` | 8 个 pytest 核心 smoke 测试 |
+| `references/red-lines.md` | 13 红线强约束（v0.7 新增红线 13） |
+| `scripts/ccc-precheck.sh` | 5 项前置门控（红线 7+10） |
+| `scripts/ccc-finish.sh` | 5 项后置门控 |
+| `scripts/executor-watchdog.sh` | Executor 健康检查（红线 9） |
+| `scripts/ccc-exec-commit.sh` | 单 phase 单 commit（红线 4+8） |
+| `scripts/ccc` | CLI wrapper |
+| `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` + `ccc-task-done.sh` | 基础运维 |
+| `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
+| `tests/scripts/` | 8 个 pytest 核心测试 |
+| `references/adapters/runtime-opencode.md` | opencode 适配器（其他 IDE 适配器已精简） |
+| `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引（红线 7+10） |
+| `docs/lessons.md` | 历史教训沉淀（含 lesson 30：验收数字规则） |
+| `docs/roadmap.md` | 路线图（v0.5 → v1.0） |
+| `CHANGELOG.md` | 版本变更 |
 
 ## 4 文件契约路径
 
