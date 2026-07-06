@@ -76,3 +76,34 @@ CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀*
 - 教训沉淀：`~/program/CCC/docs/lessons.md`
 - 模板库：`~/program/CCC/templates/`
 - 当前版本：`1.1.0`（v1.1：工程化 + 自动化底座就绪）
+
+---
+
+## ZCode Adapter (v1.2.1, 2026-07-06)
+
+ZCode 桌面应用底层是 Claude Code CLI 的 GLM-branded 包装。本仓库提供 CCC 在 ZCode 环境下的完整 adapter:
+
+- `scripts/ccc-zcode-bridge.sh` — spawn 独立 Executor/Verifier session（`claude -p` + BigModel/GLM provider + UUID session-id）
+- `scripts/ccc-znode-register.py` — 把当前机器注册到 cluster-bus，capability = `[zcode, glm-5, claude-p, shell, git, python]`
+- `scripts/ccc-zcode-orchestrate.sh` — 6 步端到端编排器（precheck → register → executor → commit → watchdog → verifier → finish）
+
+### 一键跑
+
+```bash
+ccc run <workspace> <task-id>
+```
+
+### 手动分步
+
+```bash
+bash scripts/ccc-zcode-bridge.sh <ws> <task> executor
+ccc commit <ws> <task>
+bash scripts/ccc-zcode-bridge.sh <ws> <task> verifier
+bash scripts/ccc-finish.sh <ws> <task>
+```
+
+详见 `references/adapters/runtime-zcode.md` v1.2.1。
+
+---
+
+**测试覆盖**: 21/21 smoke tests PASS,含本地 HTTP mock cluster-bus 验证。

@@ -1,0 +1,2 @@
+{"phase": 1, "phase_id": "executor-readme-edit", "status": "done", "commit": null, "files": ["README.md"], "notes": "Executor: 真调 claude -p 改 README"}
+{"phase": 2, "phase_id": "verifier-acceptance", "status": "done", "commit": null, "files": [".ccc/verdicts/readme-zcode-update.verdict.md"], "notes": "独立 Verifier session 验收"}
