@@ -145,9 +145,22 @@ def heartbeat(req: HeartbeatRequest) -> dict:
 
 
 @app.get("/api/node/list")
-def list_nodes(active_only: bool = True) -> dict:
-    """Returns active nodes (last_heartbeat < 90s) by default. Set active_only=false for all-known."""
+def list_nodes(
+    active_only: bool = True,
+    include_stale: bool = False,
+) -> dict:
+    """Returns active nodes (last_heartbeat < 90s) by default.
+
+    Query params:
+      - active_only=true  (default): exclude stale nodes
+      - active_only=false            : include all known nodes
+      - include_stale=true           : alias for active_only=false (used by ccc-dispatch)
+
+    Both controls are kept for back-compat; `include_stale` is the canonical name
+    going forward (plan: cluster-bus-bugfixes Phase 2).
+    """
     now = _now()
+    effective_active_only = active_only and not include_stale
     with state_lock:
         items = [
             {
@@ -160,9 +173,14 @@ def list_nodes(active_only: bool = True) -> dict:
                 "registered_at": n["registered_at"],
             }
             for n in nodes.values()
-            if (not active_only) or _is_active(n, now)
+            if (not effective_active_only) or _is_active(n, now)
         ]
-    return {"count": len(items), "active_only": active_only, "nodes": items}
+    return {
+        "count": len(items),
+        "active_only": effective_active_only,
+        "include_stale": include_stale,
+        "nodes": items,
+    }
 
 
 @app.get("/api/node/{node_id}")
@@ -211,6 +229,24 @@ def _startup():
             print(f"[cluster-bus] restored {len(nodes)} nodes from {CHECKPOINT_PATH}")
         except Exception as e:
             print(f"[cluster-bus] restore failed: {e}", file=sys.stderr)
+
+    # GC stale nodes on startup (Bug 3 fix): remove nodes whose last_heartbeat
+    # is older than HEARTBEAT_TTL_SECONDS * 10 (= 900s = 15 min).
+    # Rationale: stale entries accumulate on disk/memory from killed sessions
+    # (e.g. previous zcode-debug nodes). Without GC, restart pollution persists.
+    gc_threshold_s = HEARTBEAT_TTL_SECONDS * 10
+    now = _now()
+    gc_count = 0
+    with state_lock:
+        for node_id, node in list(nodes.items()):
+            age = now - node.get("last_heartbeat", 0)
+            if age > gc_threshold_s:
+                print(f"[cluster-bus] GC stale node {node_id} (age={age:.0f}s)")
+                del nodes[node_id]
+                gc_count += 1
+    if gc_count > 0:
+        print(f"[cluster-bus] GC removed {gc_count} stale nodes on startup")
+
     threading.Thread(target=_checkpoint_loop, daemon=True).start()
 
 

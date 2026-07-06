@@ -221,10 +221,12 @@ def test_empty_task_id_auto_injects(fake_workspace):
     proc = _run_commit(fake_workspace, task)
     assert proc.returncode == 0, f"空 phases 应正常退出，实际 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
 
-    # 验证 phases.json 中 task_id 字段存在且是有效 UUID
-    data = json.loads(phases.read_text())
-    assert "task_id" in data, f"task_id 未注入: {data!r}"
-    tid = data["task_id"]
+    # Bug fix (cluster-bus-bugfixes phase 1): task_id moved to sidecar
+    # file `<phases>.task_id` to avoid polluting phases.json with metadata
+    # lines that ccc-precheck would reject (lines without phase/status fields).
+    sidecar = phases.with_suffix(phases.suffix + ".task_id")
+    assert sidecar.exists(), f"task_id sidecar 未生成: {sidecar}"
+    tid = sidecar.read_text().strip()
     # UUID v4 格式: 8-4-4-4-12 hex chars
     parts = tid.split("-")
     assert len(parts) == 5, f"不是 UUID 格式: {tid!r}"

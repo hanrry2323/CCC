@@ -1,0 +1,4 @@
+{"phase": 1, "phase_id": "fix-jsonl-commit-bug", "status": "done", "commit": null, "files": ["scripts/ccc-exec-commit.sh"], "notes": "修 ccc-exec-commit.sh JSONL 解析 bug + sidecar task_id + JSONL 紧凑输出"}
+{"phase": 2, "phase_id": "fix-active-only-default", "status": "done", "commit": null, "files": ["scripts/cluster-bus.py", "scripts/ccc-dispatch.py"], "notes": "修 cluster-bus active_only 默认过滤 (HIGH) - include_stale=true"}
+{"phase": 3, "phase_id": "add-stale-node-gc", "status": "done", "commit": null, "files": ["scripts/cluster-bus.py"], "notes": "加 stale 节点 GC 机制 (LOW) - 启动时清 900s+ stale 节点"}
+{"phase": 4, "phase_id": "verifier-acceptance", "status": "done", "commit": null, "files": [".ccc/reports/cluster-bus-bugfixes.report.md", ".ccc/verdicts/cluster-bus-bugfixes.verdict.md", "SKILL.md"], "notes": "独立 Verifier session 验收 (3/4 PASS + 1 LOW format drift 已修)"}

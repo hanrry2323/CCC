@@ -1,0 +1,57 @@
+你是 CCC Executor(独立 `claude -p` session)。
+
+# 任务: cluster-bus-bugfixes phase 1 - 修 JSONL bug
+
+## 改 1 个文件
+
+`/Users/apple/program/CCC/scripts/ccc-exec-commit.sh` L82-100 的 Python heredoc。
+
+把:
+```python
+with open(fp) as f:
+    data = json.load(f)
+```
+
+改成(兼容 JSON 文档 + JSONL 两种格式):
+```python
+with open(fp) as f:
+    content = f.read().strip()
+if not content:
+    data = {}
+elif content.startswith('['):
+    data = {"phases": json.loads(content)}
+elif '\n' in content and not (content.startswith('{') and content.endswith('}')):
+    phases = [json.loads(line) for line in content.splitlines() if line.strip()]
+    data = {"phases": phases}
+else:
+    data = json.loads(content)
+```
+
+后面用 `data.get('phases', [data])` 兼容两种 schema。
+
+## 改 1 个测试文件
+
+新建 `/Users/apple/program/CCC/tests/scripts/test_ccc_exec_commit_jsonl_smoke.py`,≥3 测试:
+1. JSONL 格式 phases.json 不报 JSONDecodeError
+2. 单 JSON 格式 phases.json 仍能解析
+3. 空文件不挂
+
+## 写 1 个报告
+
+`/Users/apple/program/CCC/.ccc/reports/cluster-bus-bugfixes.report.md`:
+- 改动清单 (2 文件: ccc-exec-commit.sh + 新测试)
+- 自验证: pytest 全部 PASS 的输出
+- 末尾 `> VERDICT: .ccc/verdicts/cluster-bus-bugfixes.verdict.md`
+
+## 完成定义
+1. ccc-exec-commit.sh 已修
+2. 新测试 3/3 PASS
+3. report.md 含 `> VERDICT:` 引用
+4. 不 commit / 不写 verdict
+
+## 退出前 echo
+```
+EXECUTOR_RESULT: success
+BUGS_FIXED: 1
+REPORT_FILE: /Users/apple/program/CCC/.ccc/reports/cluster-bus-bugfixes.report.md
+```

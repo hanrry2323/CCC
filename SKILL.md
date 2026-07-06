@@ -1,3 +1,8 @@
+---
+name: ccc-protocol
+description: "CCC — Connect–Claude Code. A Planner → Executor → Verifier pipeline for multi-phase coding tasks. Trigger when user says: '按 CCC 流程跑 X', '用 plan-execute-verify 模式', 'ccc 跑一下 X', '调度一个多阶段任务', '按 ccc full 跑'"
+---
+
 # CCC — Connect–Claude Code (v1.1)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent

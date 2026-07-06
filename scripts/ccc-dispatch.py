@@ -91,9 +91,17 @@ def infer_needed_capabilities(plan_path: Path) -> list[str]:
 
 
 # --- Cluster-bus client ------------------------------------------------
-def fetch_active_nodes(bus_url: str, timeout: float = 3.0) -> list[dict]:
-    """GET /api/node/list from cluster-bus. Returns [] on unreachable."""
+def fetch_active_nodes(bus_url: str, timeout: float = 3.0, include_stale: bool = True) -> list[dict]:
+    """GET /api/node/list from cluster-bus. Returns [] on unreachable.
+
+    Default behavior (Bug 2 fix): include_stale=True so dispatcher sees candidates
+    even when heartbeat TTL has elapsed. Rationale: a node may have just been
+    registered and is about to heartbeat; dispatcher shouldn't refuse to route.
+    Set include_stale=False to get strictly-active nodes.
+    """
     url = f"{bus_url.rstrip('/')}/api/node/list"
+    if include_stale:
+        url += "?include_stale=true"
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=timeout) as resp:

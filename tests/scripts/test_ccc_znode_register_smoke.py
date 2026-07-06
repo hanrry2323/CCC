@@ -133,7 +133,10 @@ def test_register_payload_has_required_fields(mock_bus):
     payload = register_calls[0]["payload"]
     assert payload["node_id"] == "zcode-payload"
     assert payload["host"] == socket.gethostname()
-    assert payload["port"] == 0  # ZCode 不对外 listen
+    # Bug fix (zcode-blindspot-fill): cluster-bus Pydantic schema requires port >= 1,
+    # so ZCode uses 65535 sentinel + listens_on_tcp=false metadata
+    assert payload["port"] == 65535
+    assert payload["metadata"]["listens_on_tcp"] is False
     assert "zcode" in payload["capabilities"]
     assert "glm-5" in payload["capabilities"]
     assert "claude-p" in payload["capabilities"]

@@ -86,8 +86,102 @@ fp = sys.argv[1]
 phase_filter = sys.argv[2] if sys.argv[2] else None
 workspace = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(fp))))
 
+
+def _write_phases(path, data, orig_format):
+    """Write phases.json preserving the original input format.
+
+    Bug fix (cluster-bus-bugfixes phase 1): previously ccc-exec-commit
+    always wrote `{"phases": [...]}` JSON wrapper, causing JSONL →
+    JSON format drift on every commit. Now we detect input format and
+    write back in the same format to keep diffs minimal and tests stable.
+
+    task_id is stored in a sidecar `.task_id` file to avoid polluting
+    phases.json with metadata lines that ccc-precheck would reject.
+
+    Args:
+        path: phases.json file path
+        data: dict with 'phases' list (and possibly 'task_id')
+        orig_format: 'jsonl' | 'json' | 'array' | 'empty'
+    """
+    phases = data.get('phases', [])
+    task_id = data.get('task_id', '')
+
+    # Write task_id to sidecar (one line, plain UUID)
+    if task_id:
+        sidecar = path + '.task_id'
+        with open(sidecar, 'w') as f:
+            f.write(task_id + '\n')
+
+    with open(path, 'w') as f:
+        if orig_format == 'jsonl':
+            # JSONL: write each phase as one JSON object per line (no header)
+            # Use compact separators (',', ':') to preserve diff-compatibility
+            # with the typical input format (no extra spaces). Verifier note:
+            # bug fix for Probe 1 format drift.
+            for p in phases:
+                f.write(json.dumps(p, ensure_ascii=False, separators=(',', ':')) + '\n')
+        elif orig_format == 'array':
+            # JSON 数组: 顶层是 [...]
+            json.dump(phases, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        else:
+            # 'json' 或 'empty': 写标准 {"phases": [...]} wrapper
+            # 不内嵌 task_id(已在 sidecar)
+            json.dump({"phases": phases}, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+
 with open(fp) as f:
-    data = json.load(f)
+    content = f.read().strip()
+
+# 兼容 3 种格式: 单 JSON 对象 / JSON 数组 / JSONL (每行一个对象)
+# 检测策略: 先尝试整个 content 作为 single JSON 解析,
+# 只有当 JSON 解析失败 + 每行都各自独立是 JSON 对象时,才走 JSONL 路径
+# 同时记录原始格式 _ORIG_FORMAT 用于写回时保持一致,避免 JSONL → JSON 漂移
+# task_id 从 .task_id sidecar 读取,避免污染 phases.json
+sidecar = fp + '.task_id'
+task_id_from_sidecar = ''
+if os.path.exists(sidecar):
+    try:
+        task_id_from_sidecar = open(sidecar).read().strip()
+    except Exception:
+        pass
+
+if not content:
+    data = {"task_id": task_id_from_sidecar} if task_id_from_sidecar else {}
+    _ORIG_FORMAT = "empty"
+elif content.startswith('['):
+    # JSON 数组格式(顶层是数组)
+    data = {"phases": json.loads(content)}
+    _ORIG_FORMAT = "array"
+else:
+    # 尝试作为单 JSON 对象/包装对象解析(支持 multi-line indented JSON)
+    try:
+        data = json.loads(content)
+        # 兼容"整个对象即单 phase"的旧 schema
+        if 'phase' in data and 'phases' not in data:
+            data = {"phases": [data]}
+        elif 'phases' not in data:
+            # 单 JSON 对象但没有 phases 数组 → 当作单 phase
+            data = {"phases": [data]}
+        _ORIG_FORMAT = "json"
+    except json.JSONDecodeError:
+        # 回退到 JSONL(每行一个独立 JSON 对象)
+        phases = []
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                phases.append(json.loads(line))
+            except json.JSONDecodeError:
+                # 整段都不能解析,放弃
+                raise
+        data = {"phases": phases}
+        _ORIG_FORMAT = "jsonl"
+
+# 优先用 sidecar 里的 task_id(避免污染 phases.json)
+if task_id_from_sidecar:
+    data['task_id'] = task_id_from_sidecar
 
 changed = False
 
@@ -121,9 +215,7 @@ phases = data.get('phases', [])
 if not phases:
     # 空 phases 也要写回自动注入的 task_id
     if changed:
-        with open(fp, 'w') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write('\n')
+        _write_phases(fp, data, _ORIG_FORMAT)
         print("  ✅ phases.json 已更新: " + fp)
     sys.exit(0)
 errors = 0
@@ -234,9 +326,7 @@ for p in phases:
     print(f"  ✓ phase {pid}: committed {commit_hash[:12]} — {commit_msg[:50]}")
 
 if changed:
-    with open(fp, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write('\n')
+    _write_phases(fp, data, _ORIG_FORMAT)
     print(f"  ✅ phases.json 已更新: {fp}")
 
 sys.exit(0 if errors == 0 else 1)
