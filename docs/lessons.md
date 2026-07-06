@@ -1522,3 +1522,50 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 这条 Lesson 直接证明 `references/cluster-protocol.md` v1.0 集群设计的"dual session verifier"价值
 - 应作为 roadmap v1.0 完结判定的硬证据
 
+## Lesson 20 — ZCode 实际是 Claude Code + GLM provider 包装（2026-07-06，zcode-adapter-v121 任务触发）
+
+**教训**: 不要被 IDE 桌面包装迷惑。ZCode 不是独立 runtime,而是 Claude Code CLI 的 GLM-branded Electron 包装。
+
+**错误前提**:
+- `references/adapters/runtime-zcode.md` v1.2.0 之前写"ZCode 没有 `claude -p` 等价的非交互 CLI"
+- 导致 Planner 在设计 ZCode adapter 时陷入"找不到 spawn 机制"的死胡同
+- 差点去 reverse-engineer ZCode IPC(无公开 spec,风险高)
+
+**实测真相** (本系统 2026-07-06):
+- `which claude` → `/Users/apple/.local/bin/claude` (Anthropic Claude Code CLI)
+- `ls /Users/apple/.zcode/cli/` → 是 Claude Code 自己的数据目录(`exec/`、`agents/`、`plugins/`、`rollout/`)
+- `~/.zcode/v2/config.json` → `providerFamilyDomain: "bigmodel"`,`enabledBuiltinAgentCliProviders: ["glm"]`
+- `cat /Users/apple/.zcode/v2/credentials.json` → 已有 BigModel API key
+- ZCode 只是把 `claude -p` 的 provider 切到 BigModel (Anthropic-compatible),加 Electron UI
+
+**正确做法**:
+- spawn 独立 session: `claude -p` + `ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic` + `--model glm-5` + `--session-id $(uuidgen)`
+- 隔离: `--session-id UUID` 每个 session 独立,UUID 落盘 `.ccc/plans/<task>-{executor,verifier}-session-id.txt` 可追溯
+- Provider 切换: `export ANTHROPIC_BASE_URL=...` 即可,不改 `claude` binary
+- 凭证: 优先从 `~/.zcode/v2/credentials.json` 读 GLM API key,fallback 到环境变量 `ANTHROPIC_AUTH_TOKEN`
+
+**避免**:
+- ❌ 不要 reverse-engineer ZCode IPC / WebSocket 协议(无公开 spec,每次升级会破)
+- ❌ 不要走 `mavis session new`(红线 8 C6 + Lesson 27 双重禁)
+- ❌ 不要假设 IDE 桌面包装 = 独立 runtime(下次升级可能又换底层)
+- ❌ 不要相信 `runtime-*.md` 中的"无 X 等效"陈述而不实测
+
+**验证方法** (本次 zcode-adapter-v121 任务实测):
+1. `which claude && claude --help | head -5`
+2. `ls -la /Users/apple/.zcode/cli/` 看是否是 Claude Code 数据结构
+3. `cat /Users/apple/.zcode/v2/config.json | jq .` 看 provider
+4. `claude -p --help 2>&1 | grep -E "session-id|permission-mode|max-budget"` 看参数矩阵
+
+**反哺**:
+- `references/adapters/runtime-zcode.md` v1.2.1 重写,修正错误说法
+- 新增 `scripts/ccc-zcode-bridge.sh` 包装 spawn,9/9 smoke PASS
+- 新增 `scripts/ccc-znode-register.py` 注册 cluster-bus 节点
+- 新增 `scripts/ccc-zcode-orchestrate.sh` 6 步编排器
+- 21 项新 smoke 测试全 PASS
+- `scripts/ccc` 主 CLI 加 `run` 子命令
+
+**数据 → 反哺**:
+- 这条 Lesson 直接证明 adapter 设计第一原则:**先实测当前系统的真实能力,再下结论**
+- 任何"X 没有 Y 等效"的陈述,必须配实测证据(`/usr/bin/which` / `binary --help` / 实际文件路径)
+- 适配器文档应自带 "How I verified this" 段,标明实测日期与命令
+
