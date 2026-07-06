@@ -1,0 +1,4 @@
+{"phase": 1, "status": "in_progress", "subtasks": {"1.1": "done", "1.2": "done"}, "commit": null, "notes": "remove cluster-bus / znode / zcode / doctor / cluster-protocol"}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending", "2.2": "pending"}, "commit": null, "notes": "trim adapters to opencode-only"}
+{"phase": 3, "status": "pending", "subtasks": {"3.1": "pending", "3.2": "pending", "3.3": "pending"}, "commit": null, "notes": "remove dispatch/flywheel/cost/precommit"}
+{"phase": 4, "status": "pending", "subtasks": {"4.1": "pending", "4.2": "pending", "4.3": "pending"}, "commit": null, "notes": "cleanup worktree and sync docs"}
