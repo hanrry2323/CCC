@@ -72,11 +72,12 @@ class NodeRecord(BaseModel):
     port: int
     capabilities: list[str]
     load: float
-    last_heartbeat: float
+    last_heartbeat_age_s: float
     registered_at: float
+    metadata: dict = Field(default_factory=dict)
 
 
-# --- App ---------------------------------------------------------------
+# --- FastAPI app -------------------------------------------------------
 app = FastAPI(title="ccc-cluster-bus", version="0.1.0")
 
 
@@ -170,39 +171,43 @@ def get_node(node_id: str) -> dict:
         if node_id not in nodes:
             raise HTTPException(status_code=404, detail=f"node {node_id!r} not found")
         n = nodes[node_id]
-        return {
-            "node_id": n["node_id"],
-            "host": n["host"],
-            "port": n["port"],
-            "capabilities": n["capabilities"],
-            "load": n["load"],
-            "active": _is_active(n),
-            "last_heartbeat_age_s": round(_now() - n["last_heartbeat"], 1),
-            "registered_at": n["registered_at"],
-        }
+    return {
+        "node_id": n["node_id"],
+        "host": n["host"],
+        "port": n["port"],
+        "capabilities": n["capabilities"],
+        "load": n["load"],
+        "last_heartbeat_age_s": round(_now() - n["last_heartbeat"], 1),
+        "registered_at": n["registered_at"],
+    }
 
 
-# --- Background checkpoint (anti-restart-loss) --------------------------
+# --- Checkpoint helpers ------------------------------------------------
+def _write_checkpoint():
+    with state_lock:
+        data = {"nodes": dict(nodes), "written_at": _now()}
+    import tempfile
+    tmp = CHECKPOINT_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, default=str))
+    tmp.rename(CHECKPOINT_PATH)
+
+
 def _checkpoint_loop():
     while True:
         time.sleep(60)
         try:
-            with state_lock:
-                snapshot = json.loads(json.dumps(nodes))  # deep copy
-            tmp = CHECKPOINT_PATH.with_suffix(".tmp")
-            tmp.write_text(json.dumps(snapshot))
-            tmp.rename(CHECKPOINT_PATH)
-        except Exception as e:
-            print(f"[cluster-bus] checkpoint failed: {e}", file=sys.stderr)
+            _write_checkpoint()
+        except Exception:
+            pass
 
 
 @app.on_event("startup")
-def _restore_from_checkpoint():
+def _startup():
     if CHECKPOINT_PATH.exists():
         try:
             data = json.loads(CHECKPOINT_PATH.read_text())
             with state_lock:
-                nodes.update(data)
+                nodes.update(data.get("nodes", {}))
             print(f"[cluster-bus] restored {len(nodes)} nodes from {CHECKPOINT_PATH}")
         except Exception as e:
             print(f"[cluster-bus] restore failed: {e}", file=sys.stderr)
@@ -211,4 +216,6 @@ def _restore_from_checkpoint():
 
 # --- Main --------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host=HOSTBIND, port=PORT, log_level="info")
+    # Use h11 instead of httptools to avoid macOS connection accumulation issues
+    # httptools can stall after ~900 rapid keep-alive requests (macOS asyncio quirk)
+    uvicorn.run(app, host=HOSTBIND, port=PORT, log_level="info", http="h11")
