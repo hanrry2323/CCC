@@ -99,7 +99,12 @@
 
 ---
 
-**最后更新**: 2026-07-07 (v0.7 任务链完结,v0.7.0 umbrella release)
+**最后更新**: 2026-07-07 (v0.7.0 closure — tagged, 94 commits ahead of origin, ready to push)
+**v0.7.0 收尾**:
+- 8 个 verdict 齐全(v0.7-slim + v0.7a/b/c/d/d-prime/e-fix/f),主干 42 pytest passed
+- V0.8 半成品(worktree ../CCC-v0.8-wip,branch `v0.8-wip`)留给后续,不阻塞 v0.7.0 收尾
+- 拍板:v0.8 不进 v0.7.0 release,独立版本号
+- Tag:v0.7.0 + push(待用户执行)
 **下次启动必读顺序**:
 1. 读本文件(state.md)
 2. 读 `.ccc/profile.md`

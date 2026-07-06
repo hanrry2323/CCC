@@ -387,3 +387,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 13 禁止未使用路线代码 | v0.7-slim 删 cluster-bus / dispatch / flywheel |
 | 14 Executor 必配 monitor + 5min 轮询 | v0.7d-prime 三件套 |
 | 15 轮询进程完成自动终止 | v0.7d-prime `ccc-poll.sh` break 检测 |
+
+---
+
+## [v0.7.0-closure] — 2026-07-07 — 收尾完成,等待 tag + push
+
+**里程碑**:v0.7.0 收尾。V0.8 加固(窗口识别/空闲选择/冲突拦截/完成回写 + 红线 16 + 3 pytest)因 Claude 在 fake tmux 调试卡 32m+,被用户叫停 → 半成品全部迁出到 worktree `../CCC-v0.8-wip`(branch `v0.8-wip`),main 干净。
+
+**8 个 verdict 全部 PASS / CONDITIONAL_PASS**:v0.7-slim + v0.7a/b/c/d/d-prime/e-fix/f(独立 Verifier session 写 verdict.md,≥3 probes,红线 11)。
+
+**主干验收**:42 pytest passed(`pytest tests/ -q --ignore=...v0.8 untracked`)。V0.8 新加 3 测试留在 worktree,不阻塞 v0.7.0。
+
+**Tag + push 清单(待用户执行)**:
+```bash
+cd /Users/apple/program/CCC
+git tag -a v0.7.0 -m "v0.7.0 umbrella release: slim + a/b/c/d/d-prime/e/e-fix/f"
+git push origin main --tags
+```
+
+**为什么 V0.8 不进 v0.7.0**:
+- V0.8 是**加固**(新增能力),不是 v0.7 的修复
+- V0.8 半成品含未验证代码(3 个 fail pytest + 未跑通的手动调试)
+- 独立版本号 `v0.8.0` 更清晰,review 也更干净
