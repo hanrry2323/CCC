@@ -201,3 +201,59 @@ def test_script_syntax():
     """bash -n 语法零错误."""
     proc = subprocess.run(["bash", "-n", str(SCRIPT)], capture_output=True, text=True)
     assert proc.returncode == 0, f"语法错误: {proc.stderr}"
+
+
+# ============================================================
+# Auto-inject: 缺 task_id → 自动注入 UUID
+# ============================================================
+def test_empty_task_id_auto_injects(fake_workspace):
+    """phases.json 缺 task_id → 脚本自动注入 UUID，写回 phases.json."""
+    task = "task-auto-1"
+    target = fake_workspace / "autofile.txt"
+    target.write_text("auto-inject test\n")
+
+    # 构造: 无 task_id 顶层字段，commit_message 也不带标记
+    # （按新行为: task_id 会被自动注入，但 commit_message 缺标记 → 标记检测会拒绝）
+    # 本测试只验证 task_id 自动注入并写回，所以用空 phases 数组
+    phases = fake_workspace / ".ccc" / "phases" / f"{task}.phases.json"
+    phases.write_text(json.dumps({"phases": []}) + "\n")
+
+    proc = _run_commit(fake_workspace, task)
+    assert proc.returncode == 0, f"空 phases 应正常退出，实际 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
+
+    # 验证 phases.json 中 task_id 字段存在且是有效 UUID
+    data = json.loads(phases.read_text())
+    assert "task_id" in data, f"task_id 未注入: {data!r}"
+    tid = data["task_id"]
+    # UUID v4 格式: 8-4-4-4-12 hex chars
+    parts = tid.split("-")
+    assert len(parts) == 5, f"不是 UUID 格式: {tid!r}"
+    assert all(len(p) in (8, 4, 4, 4, 12) for p in parts), f"UUID 段长不对: {tid!r}"
+    # 打印提示应含自动注入
+    out = proc.stdout + proc.stderr
+    assert "自动注入" in out or "auto" in out.lower() or "inject" in out.lower(), \
+        f"缺自动注入提示:\n{out}"
+
+
+# ============================================================
+# Auto-inject: 有 task_id → 不覆盖
+# ============================================================
+def test_existing_task_id_not_overwritten(fake_workspace):
+    """phases.json 已有 task_id → 脚本不覆盖，值保持不变."""
+    task = "task-auto-2"
+    fixed_id = "fixed-uuid-999"
+
+    phases = fake_workspace / ".ccc" / "phases" / f"{task}.phases.json"
+    # 用空 phases 数组，避免 commit 流程干扰
+    phases.write_text(json.dumps({
+        "task_id": fixed_id,
+        "phases": [],
+    }) + "\n")
+
+    proc = _run_commit(fake_workspace, task)
+    assert proc.returncode == 0, f"空 phases 应正常退出，实际 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
+
+    # 验证 task_id 未被覆盖
+    data = json.loads(phases.read_text())
+    assert data.get("task_id") == fixed_id, \
+        f"task_id 被覆盖了: 期望 {fixed_id!r}, 实际 {data.get('task_id')!r}"
