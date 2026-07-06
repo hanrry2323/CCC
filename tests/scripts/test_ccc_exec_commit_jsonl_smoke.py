@@ -7,7 +7,7 @@ This test verifies the fix: script accepts JSONL, JSON-array, and single-object 
 without raising JSONDecodeError.
 
 See: zcode-blindspot-fill.verdict.md (Probe 4) — bug confirmed
-     cluster-bus-bugfixes.plan.md §3 Phase 1 — fix
+     historical task plan §3 Phase 1 — fix
 """
 from __future__ import annotations
 import json
@@ -148,10 +148,10 @@ def test_phases_empty_file_handled(tmp_path):
     assert "JSONDecodeError" not in combined, combined
 
 
-# -------- Real cluster-bus-bugfixes.phases.json (sanity check on actual file) --------
-def test_real_cluster_bus_bugfixes_phases_jsonl(tmp_path):
-    """The actual cluster-bus-bugfixes.phases.json must parse via the script."""
-    real_phases = ROOT / ".ccc" / "phases" / "cluster-bus-bugfixes.phases.json"
+# -------- Real historical phases.json (sanity check on actual file) --------
+def test_real_historical_phases_jsonl(tmp_path):
+    """The actual historical phases.json must parse via the script."""
+    real_phases = ROOT / ".ccc" / "phases" / "zcode-blindspot-fill.phases.json"
     if not real_phases.exists():
         pytest.skip(f"real phases file not present: {real_phases}")
 

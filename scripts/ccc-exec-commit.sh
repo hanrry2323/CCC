@@ -90,7 +90,7 @@ workspace = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.dirnam
 def _write_phases(path, data, orig_format):
     """Write phases.json preserving the original input format.
 
-    Bug fix (cluster-bus-bugfixes phase 1): previously ccc-exec-commit
+    Bug fix (historical task phase 1, 2026-07): previously ccc-exec-commit
     always wrote `{"phases": [...]}` JSON wrapper, causing JSONL →
     JSON format drift on every commit. Now we detect input format and
     write back in the same format to keep diffs minimal and tests stable.

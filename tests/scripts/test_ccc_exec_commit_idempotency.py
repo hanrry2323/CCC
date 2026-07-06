@@ -221,7 +221,7 @@ def test_empty_task_id_auto_injects(fake_workspace):
     proc = _run_commit(fake_workspace, task)
     assert proc.returncode == 0, f"空 phases 应正常退出，实际 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
 
-    # Bug fix (cluster-bus-bugfixes phase 1): task_id moved to sidecar
+    # Bug fix (historical task phase 1, 2026-07): task_id moved to sidecar
     # file `<phases>.task_id` to avoid polluting phases.json with metadata
     # lines that ccc-precheck would reject (lines without phase/status fields).
     sidecar = phases.with_suffix(phases.suffix + ".task_id")

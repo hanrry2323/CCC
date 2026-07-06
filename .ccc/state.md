@@ -75,6 +75,7 @@
 2. **三角色边界** (2026-07-06): Planner / Executor / Verifier 严格分离,禁止互串 (红线 6)
 3. **红线 11** (2026-07-06): Verifier 必须写真 verdict 文件,口头 PASS 不算 PASS (Lesson 28)
 4. **执行方式 4 选 1** (2026-07-06): `manual` / `auto` / `loop` / `goal` (其他术语禁止)
+5. **v0.7-slim 精简决策** (2026-07-07): 删除 cluster-bus / dispatch / flywheel / 成本报告 / precommit / 多 IDE adapter 等"路线预留"代码。砍掉为未来预留的过度工程化，回到"1 个 SKILL.md + 5 个核心脚本"的小型框架定位。如需这些功能,按需从头重写更简单的版本。
 
 ---
 

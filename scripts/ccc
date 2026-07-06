@@ -9,7 +9,7 @@ SCRIPT_NAME="$(basename "$0")"
 if [ "$SCRIPT_NAME" = "cccq" ]; then
     if [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
         set -- help
-elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ] && [ "${1:-}" != "commit" ] && [ "${1:-}" != "run" ]; then
+elif [ "${1:-}" != "status" ] && [ "${1:-}" != "search" ] && [ "${1:-}" != "init" ] && [ "${1:-}" != "diff" ] && [ "${1:-}" != "commit" ]; then
       set -- status "$@"
     fi
 fi
@@ -107,17 +107,6 @@ PYEOF
     exec "$CCC_HOME/scripts/ccc-exec-commit.sh" "$@"
     ;;
 
-  run)
-    shift
-    if [[ $# -lt 2 ]]; then
-        echo "用法: ccc run <workspace> <task> [--dry-run] [--skip-register]" >&2
-        echo "  ZCode 端到端编排器（Planner→Executor→Verifier→commit→finish）" >&2
-        echo "  详见: ccc-zcode-orchestrate.sh --help" >&2
-        exit 2
-    fi
-    exec "$CCC_HOME/scripts/ccc-zcode-orchestrate.sh" "$@"
-    ;;
-
     help|--help|-h|"")
     cat <<'EOF'
 ccc — CCC Framework CLI
@@ -130,7 +119,6 @@ Commands:
   init <path>        New project initialization (AGENTS.md + .ccc/profile.md)
   diff               Working tree concise diff
   commit <ws> <task> Auto-commit Executor output (delegates to ccc-exec-commit.sh)
-  run <ws> <task>    ZCode end-to-end orchestrator (Planner→Executor→Verifier→commit→finish). See ccc-zcode-orchestrate.sh
   help               Show this help
 
 Examples:
@@ -140,7 +128,6 @@ Examples:
   ccc init /tmp/my-project
   ccc diff
   ccc commit . ccc-exec-commit-20260705
-  ccc run . hello-ccc-demo-v2 --dry-run  # dry-run the full 6-step pipeline
 EOF
     ;;
   *)

@@ -28,8 +28,7 @@ python3 scripts/ccc-init.py /Users/apple/program/my-new-project
 ├── phases/                 # JSONL 格式
 ├── reports/                # Executor 产物
 ├── verdicts/               # Verifier 产物（≥50 行红线 11）
-├── abnormal-reports/       # 异常 / 红线违反
-└── dispatches/             # ccc-dispatch.py 产物（v1.0）
+├── abnormal-reports/       # 异常 / 红线违反（gitignored）
 
 <workspace>/.gitignore     # 增量追加 .ccc/abnormal-reports/ 豁免
 ```

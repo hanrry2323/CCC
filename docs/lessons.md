@@ -1569,3 +1569,35 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 任何"X 没有 Y 等效"的陈述,必须配实测证据(`/usr/bin/which` / `binary --help` / 实际文件路径)
 - 适配器文档应自带 "How I verified this" 段,标明实测日期与命令
 
+
+---
+
+## Lesson 29：路线图当现实做 = 过度工程化（v0.7-slim）
+
+**问题**：v0.5–v1.0 期间，CCC 文档里写了"路线"（知识飞轮、IDE 定时任务、跨设备集群、ZCode adapter），但本地 4 窗口日常跑 CCC 根本用不上。结果：
+
+- `scripts/cluster-bus.py` 257 行 + `cluster-bus-bugfixes` 任务带 4 个 verifier session 修了 N 个 bug
+- `scripts/ccc-dispatch.py` 266 行派单系统，写了从未用过的 UUID 命名 + 状态文件
+- `scripts/flywheel-scan.py` 123 行自动扫描失败模式，但生成的候选从未合并
+- `scripts/ccc-cost-report.sh` 86 行成本追踪，本地单跑用不上
+- 6 套 adapter md（cursor / claude-p / claude-code / zcode / launchd / mavis-cron / github-actions）覆盖了 0 个用户的实际 IDE
+- 14 个 smoke test 测的是被删脚本的子组件
+
+**根因**：路线图 = 想做的事 ≠ 该做的事。**没有用户的路线是噪音**。
+
+**修复**（v0.7-slim 4 phase）：
+- Phase 1: 删 cluster-bus + znode-register + zcode-bridge + zcode-orchestrate + cluster-doctor（11 文件 / 1754 行）
+- Phase 2: 删 6 套 adapter md，只留 `runtime-opencode.md`（1 文件 / 628 行）
+- Phase 3: 删 dispatch + flywheel + cost + precommit + dispatches/ + 7 测试（22 文件 / 2526 行）
+- Phase 4: 清 worktree + 文档同步 + 新增红线 13 "禁止未使用路线代码"
+
+**结果**：
+- pytest 42/42 PASS（精简前 21/21 测试的是派单/集群/ZCode 等被删功能）
+- 路线代码 = 0（grep cluster-bus / dispatch / flywheel 在 scripts/ + tests/ 返回空 active code）
+- 框架回归"1 个 SKILL.md + 8 个核心脚本 + 8 个核心测试"的小型形态
+
+**如何应用**：
+- 看到 PR / plan 里出现"未来用得上 / 预留 / 路线" → 立即退回去问"今天有用户吗？没有就删"
+- 路线图 = 文档里的 `docs/roadmap.md` / `.ccc/profile.md` 文字描述，**不是 `scripts/` 里的真实代码**
+- 每个脚本要有"今天被谁调用"的证据（grep 引用 + git log），没引用 = 删
+- 测试是为了**今天的代码**写的，不是为了**想象中的未来功能**写的

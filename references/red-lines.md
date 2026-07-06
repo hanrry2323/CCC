@@ -219,7 +219,43 @@
 
 ---
 
-## 红线违反处理流程
+### 红线 13：调度器启动前必须跑 watchdog（v0.6 配套）
+
+**规则**：任何以"调度循环 / 自动 cron / launchd / GitHub Actions"形式运行的 CCC Executor（典型: `scripts/ccc-scheduler.sh`、`examples/scheduler/ccc-queue.plist`），**启动主循环前必须**先跑 `bash scripts/executor-watchdog.sh`，watchdog 非零退出 → 立刻 exit，禁止带病进主循环。
+
+**Why**：v0.5 实测教训: 调度器进入主循环后遭遇 hang session，循环本身没有"自杀机制"——会死锁 / 烧预算 / 留下半截 task 状态。Lesson 9 已经定义了 Executor 卡死止损，但**调度器是"叠加层"，必须有第二道护栏**。watchdog 是 v0.6 红线。
+
+**机制钩子**：
+1. `scripts/ccc-scheduler.sh` 启动后第一件事就是 `bash scripts/executor-watchdog.sh`，watchdog 退出非 0 立即 `exit 2`，主循环根本不进
+2. `examples/scheduler/ccc-queue.plist` 的 `ProgramArguments` 第一项必须是 `ccc-scheduler.sh`（或带 watchdog 等效兜底），**禁止**裸 `claude -p` 启动 Executor
+3. `examples/scheduler/ccc-queue.yml` (GitHub Actions) 同理,workflow 第一 step 跑 watchdog
+4. `references/adapters/scheduler-*.md` 每个模板顶部必须写明"启动前先 watchdog OK 才加载"
+
+**正例（合规）**：
+```bash
+# scheduler 第一段(已落在 scripts/ccc-scheduler.sh)
+if ! bash scripts/executor-watchdog.sh; then
+  err "watchdog unhealthy, refusing to start scheduler"
+  exit 2
+fi
+```
+
+**反例（违规）**：
+```xml
+<!-- ❌ 裸 claude -p,不跑 watchdog -->
+<key>ProgramArguments</key>
+<array>
+  <string>/Users/apple/.local/bin/claude</string>
+  <string>-p</string>
+  <string>$(cat /path/to/prompt.txt)</string>
+</array>
+```
+
+**触犯后果**：Critical — 调度循环死锁、半截任务残留、预算浪费。视为 scheduler 配置无效，必须重写 plist/workflow + 重跑 ccc-precheck。
+
+---
+
+#### 红线 18：飞轮候选必须经过人工 review 才合并
 
 ```
 发现违规
@@ -260,3 +296,38 @@
   check "X" "cd \$ABC_ROOT && grep -q foo file"   # 单一 shell 调用
   ```
 - **触犯后果**：Critical — 跨设备运行必定 FAIL（已实测验证）
+
+---
+
+## 红线 13（v0.7-slim 配套）：禁止未使用路线代码
+
+**规则**：`scripts/` + `tests/` + `references/adapters/` 中**禁止保留**"路线预留"代码——任何只为未来功能、不被当前 plan/profile/state.md 显式使用的脚本、测试、文档，必须删除或迁出。
+
+**Why**（Lesson 29）：
+- v0.5–v1.0 期间，路线图（cluster-bus / dispatch / flywheel / ZCode adapter / IDE 定时）写进了 docs/，但本地 4 窗口日常跑 CCC 根本用不上
+- 结果：80+ 文件中有 ~50% 是"路线预留"代码，从未被任何 user 触发
+- 维护负担 + 测试噪声 + 红线违反风险都来自这些死代码
+- "路线 = 文档里的文字描述"，**不是 `scripts/` 里的真实代码**
+
+**机制钩子**：
+1. **新增脚本必须配引用证据**：每个 `scripts/*.sh` / `*.py` 在 PR 中必须贴"今天被谁调用"的 grep/git log 证据（`scripts/ccc` wrapper / `phases.json` / 测试 / hooks）
+2. **adapter md 准入**：新增 `references/adapters/runtime-*.md` 必须先有 ≥1 个用户实测过的 IDE 配置 + 截图，否则不收
+3. **测试是为今天的代码写的**：删除某个功能 → 同步删其所有测试，**禁止**保留"为未来测试"占位
+4. **每 phase precheck 必跑**：
+   ```bash
+   find scripts tests -type f \( -name "*.sh" -o -name "*.py" \) | \
+     xargs grep -lE "(cluster-bus|ccc-dispatch|flywheel)" 2>/dev/null
+   ```
+   返回空才算通过（v0.7 之后的 phase 全套此检查）
+
+**正例（合规）**：
+- v0.7-slim 精简后，`scripts/` 从 30+ 个脚本降到 8 个核心脚本，每个都有今天的引用证据（grep `ccc-exec-commit.sh` 在 `scripts/ccc` / `tests/` / `references/red-lines.md` 都有命中）
+- `references/adapters/` 从 7 个 md 降到 1 个（`runtime-opencode.md`），只覆盖今天实测可用的 IDE
+
+**反例（违规）**：
+- ❌ "v0.8 路线会用到，先留着" → 删，今天没用就是死代码
+- ❌ "也许未来有用户用 Cursor，先写好 adapter" → 删，等真有用户再写
+- ❌ "测试先留着，万一以后加回来" → 删，git history 永远可查
+- ❌ "成本报告以后做 SaaS 会用到" → 删，按需重写更简单
+
+**触犯后果**：Warning → 该 phase 无效，删多余代码后重跑。Critical → 整个 plan 回退到精简前重做。
