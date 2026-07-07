@@ -138,7 +138,7 @@ async function loadRoles(){
   if(!r)return;
   const b=document.getElementById('rbar');
   b.innerHTML=r.roles.map(x=>{
-    const s=x.status||'idle',cn={'product':'PM','dev':'DEV','reviewer':'CR','tester':'QA','ops':'OPS','kb':'KB'}[x.role]||x.role;
+    const s=x.status||'idle',cn={'product':'PM(产品)','dev':'DEV(开发)','reviewer':'CR(审查)','tester':'QA(测试)','ops':'OPS(运维)','kb':'KB(归档)','regress':'RGR(回测)'}[x.role]||x.role;
     const t=x.last_run?x.last_run.slice(11,19):'--:--';
     return `<div class="role"><span class="dot ${s}"></span>${cn}<span class="tm">${t}</span><span class="cn">${x.exit_code||''}</span></div>`;
   }).join('');
@@ -146,7 +146,7 @@ async function loadRoles(){
 function render(){
   const ws=document.getElementById('ws').value;
   const cols=Object.keys(S.columns);
-  const labels={'backlog':'待办','planned':'计划','in_progress':'开发','testing':'测试','verified':'验证','released':'发布'};
+  const labels={'backlog':'待办(backlog)','planned':'计划(planned)','in_progress':'开发(in_progress)','testing':'测试(testing)','verified':'验证(verified)','released':'发布(released)'};
   const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
   const next={'backlog':'planned','planned':'in_progress','in_progress':'testing','testing':'verified','verified':'released'};
   const prev={'planned':'backlog','in_progress':'planned','testing':'in_progress','verified':'testing','released':'verified'};
@@ -177,7 +177,7 @@ async function loadTL(){
   const r=await get('/api/timeline?limit=30');
   if(!r)return;
   const b=document.getElementById('tl');
-  const labels={'backlog':'待办','planned':'计划','in_progress':'开发','testing':'测试','verified':'验证','released':'发布'};
+  const labels={'backlog':'待办(backlog)','planned':'计划(planned)','in_progress':'开发(in_progress)','testing':'测试(testing)','verified':'验证(verified)','released':'发布(released)'};
   const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
   b.innerHTML='<h3>活动</h3>'+r.events.slice(0,30).map(e=>{
     if(e.type==='role_run'){
