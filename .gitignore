@@ -9,3 +9,6 @@ __pycache__/
 # Track project-level CCC artifacts (plans, phases, reports, verdicts)
 # except abnormal-reports/ which is for transient anomalies
 .ccc/logs/
+# board artifact dirs
+v0.18-*-p1/
+*.p1/

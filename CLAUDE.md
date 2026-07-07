@@ -37,7 +37,7 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | **11** | Verdict 必须写 verdict 文件 | 口头 PASS 不算 PASS（Lesson 28） |
 | **12** | 禁止 agent 自主启用 CCC | 用户显式触发 |
 
-**X 系列**：X1 OpenCode ≤3 并发 / X2 每 phase 必杀 opencode / X3 启动前 watchdog / X4 看板流转 / X5 6 plist 必装 / X6 角色频率不许改
+**X 系列**：X1 OpenCode ≤3 并发 / X2 每 phase 必杀 opencode / X3 启动前 watchdog / X4 看板流转 / X5 7 plist 必装 / X6 角色频率不许改
 
 **Lesson 27**: `claude -p` 是 print 模式开关，prompt 必须走 stdin。
 
@@ -80,14 +80,15 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | 角色 | 频率 | 看板列 | 职责 |
 |------|------|--------|------|
 | product | 4h | backlog → planned | 拆任务、写 plan、SPEC 门禁 |
-| dev | 30min | planned → in_progress → testing | 调 opencode 写代码 |
+| dev | 10min | planned → in_progress → testing | 调 opencode 写代码 |
 | reviewer | 2h | testing → verified | 只读静态检查 + 范围核对 |
 | tester | 4h | testing → verified | pytest + plan 逐条验收 |
 | ops | 30min | 所有列 | 健康检查 + 告警 |
 | kb | 23:00 | verified → released | git tag + push + changelog |
+| regress | 23:30 | released → backlog(回归bug) | 每日回测 + 回归建 bug |
 
 **频率 = 老板拍板，不许改**（红线 X6）。
-**6 plist 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
+**7 plist 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
 
 ### 任务流转
 

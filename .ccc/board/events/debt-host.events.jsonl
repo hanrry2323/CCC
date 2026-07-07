@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "debt-host", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T13:04:03Z"}
+{"event": "move", "task_id": "debt-host", "from": "in_progress", "to": "testing", "timestamp": "2026-07-07T13:04:16Z"}
+{"event": "move", "task_id": "debt-host", "from": "testing", "to": "verified", "timestamp": "2026-07-07T13:06:09Z"}
+{"event": "move", "task_id": "debt-host", "from": "verified", "to": "released", "timestamp": "2026-07-07T13:06:14Z"}

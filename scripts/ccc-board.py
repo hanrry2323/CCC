@@ -434,6 +434,74 @@ def kb_role() -> dict:
     return {"role": "kb", "moved": moved, "counts": update_index()}
 
 
+def regress_role() -> dict:
+    """回测工程师: 每日扫 released → py_compile + git diff → 发现回归→建 bug"""
+    import subprocess as sp
+    from datetime import date
+
+    results = {"checked": 0, "passed": 0, "failed": 0, "regressions": []}
+    tasks = list_tasks("released")
+    if not tasks:
+        return {"role": "regress", "info": "无已发布任务", "results": results}
+
+    today = date.today().isoformat()
+    scripts_dir = ROOT / "scripts"
+    py_files = list(scripts_dir.rglob("*.py"))
+
+    for task in tasks:
+        tid = task["id"]
+        results["checked"] += 1
+
+        # 1. py_compile
+        py_ok = True
+        for py in py_files:
+            r = sp.run(
+                ["python3", "-m", "py_compile", str(py)],
+                capture_output=True, text=True, timeout=10,
+            )
+            if r.returncode != 0:
+                py_ok = False
+                break
+
+        # 2. git diff 检查是否代码被意外改过
+        diff_ok = True
+        r = sp.run(
+            ["git", "diff", "--stat"],
+            cwd=ROOT, capture_output=True, text=True, timeout=10,
+        )
+        if r.stdout.strip():
+            diff_ok = False
+
+        if py_ok and diff_ok:
+            results["passed"] += 1
+            print(f"[regress] ✓ {tid}")
+        else:
+            results["failed"] += 1
+            bug_id = f"regression-{tid}-{results['failed']}"
+            bug_title = f"回归: {task.get('title', tid)} ({today})"
+            bug_desc = f"原任务 {tid} 在 {today} 回测失败\n"
+            if not py_ok:
+                bug_desc += "- py_compile 失败：代码有语法错误\n"
+            if not diff_ok:
+                bug_desc += "- git diff 非空：代码有意外改动\n"
+            create_task({"id": bug_id, "title": bug_title, "description": bug_desc})
+            results["regressions"].append(bug_id)
+            print(f"[regress] ✗ {tid} → {bug_id}")
+
+    # 写回测日报
+    report_dir = ROOT / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report = report_dir / f"regression-{today}.md"
+    report.write_text(
+        f"# 回测日报 {today}\n\n"
+        f"- 检查任务: {results['checked']}\n"
+        f"- 通过: {results['passed']}\n"
+        f"- 失败: {results['failed']}\n"
+        f"- 新建回归 bug: {len(results['regressions'])}\n"
+    )
+    return {"role": "regress", "results": results, "report": str(report)}
+
+
 ROLES = {
     "product": product_role,
     "dev": dev_role,
@@ -441,6 +509,7 @@ ROLES = {
     "tester": tester_role,
     "ops": ops_role,
     "kb": kb_role,
+    "regress": regress_role,
 }
 
 

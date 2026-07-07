@@ -1,8 +1,8 @@
 {
   "backlog": 0,
-  "planned": 11,
-  "in_progress": 0,
-  "testing": 1,
+  "planned": 9,
+  "in_progress": 1,
+  "testing": 0,
   "verified": 0,
-  "released": 3
+  "released": 5
 }

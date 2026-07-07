@@ -37,7 +37,7 @@ PID_DIR = Path.home() / ".ccc" / "opencode-pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def check_opencode_binary() -> str | None:
+def check_opencode_binary() -> str:
     """验 opencode 在 PATH 里"""
     from shutil import which
     return which("opencode")
@@ -58,8 +58,8 @@ async def run_opencode(
     phase_id: str,
     prompt_text: str,
     timeout: int,
-    cwd: str | None,
-    cmd: list[str] | None = None,
+    cwd: None = None,
+    cmd: None = None,
 ) -> dict:
     """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
 

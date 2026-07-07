@@ -7,11 +7,12 @@
 #
 # 频率表 (老板指定):
 #   product:  4h      = 14400s
-#   dev:      30min   = 1800s
+#   dev:      10min   = 600s
 #   reviewer: 2h      = 7200s
 #   tester:   4h      = 14400s
 #   ops:      30min   = 1800s
 #   kb:       23:00   (StartCalendarInterval)
+#   regress:  23:30   (StartCalendarInterval, 每日回测)
 set -uo pipefail
 
 # ── 参数 ──
@@ -54,7 +55,7 @@ else
 fi
 
 ROLES=(product dev reviewer tester ops)
-INTERVALS=(14400 1800 7200 14400 1800)
+INTERVALS=(14400 600 7200 14400 1800)
 
 install_role() {
   local role=$1
@@ -81,7 +82,10 @@ install_role() {
 '
   fi
 
-  if [[ "$role" == "kb" ]]; then
+  if [[ "$role" == "kb" ]] || [[ "$role" == "regress" ]]; then
+    local cb_hour=23
+    local cb_min=0
+    [[ "$role" == "regress" ]] && cb_min=30
     cat > "$plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -98,9 +102,9 @@ ${ENV_BLOCK}  <key>WorkingDirectory</key>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>23</integer>
+    <integer>${cb_hour}</integer>
     <key>Minute</key>
-    <integer>0</integer>
+    <integer>${cb_min}</integer>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -149,8 +153,8 @@ PLIST_EOF
 }
 
 echo ""
-echo "=== 安装 6 角色 ==="
-for role in "${ROLES[@]}" kb; do
+echo "=== 安装角色 ==="
+for role in "${ROLES[@]}" kb regress; do
   install_role "$role"
 done
 
