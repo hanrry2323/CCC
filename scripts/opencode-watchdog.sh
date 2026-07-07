@@ -77,16 +77,26 @@ for pf in "$PID_DIR"/*.pid; do
 done
 
 # --- 兜底：扫所有 opencode exec 子进程（无 pid 文件登记的孤儿）---
-# 只匹配 `opencode exec`，不匹配 `opencode serve`（虽然 v0.8 已停，但稳妥起见）
-ORPHAN_PIDS=$(pgrep -f "opencode exec" 2>/dev/null || true)
+# 兜底：扫所有 opencode 子进程（孤儿）。v0.11b-fix 加 run（之前漏了）
+# 排除 pgrep 自身（pgrep -f "opencode" 会匹配 pgrep 命令行）
+ORPHAN_PIDS=$(pgrep -f "opencode (run|exec)" 2>/dev/null | grep -v "^$$\$" | grep -v "^${PPID}\$" || true)
 for opid in $ORPHAN_PIDS; do
-  # 是否有对应 pid 文件
-  if ! grep -q "^$opid$" "$PID_DIR"/*.pid 2>/dev/null; then
+  # 是否有对应 pid 文件（精确匹配行内容 = pid）
+  HAS_PID_FILE=0
+  for pf in "$PID_DIR"/*.pid; do
+    [[ -f "$pf" ]] || continue
+    if [[ "$(cat "$pf" 2>/dev/null)" == "$opid" ]]; then
+      HAS_PID_FILE=1
+      break
+    fi
+  done
+  if [[ $HAS_PID_FILE -eq 0 ]]; then
     log_warn "孤儿进程: pid=$opid → 杀"
-    kill -TERM "$opid" 2>/dev/null || true
+    # 杀整个 process group（opencode 启的 node 孙子进程）
+    kill -TERM -"$opid" 2>/dev/null || kill -TERM "$opid" 2>/dev/null || true
     sleep 1
     if kill -0 "$opid" 2>/dev/null; then
-      kill -KILL "$opid" 2>/dev/null || true
+      kill -KILL -"$opid" 2>/dev/null || kill -KILL "$opid" 2>/dev/null || true
     fi
     ORPHAN=$((ORPHAN+1))
   fi

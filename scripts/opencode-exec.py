@@ -91,12 +91,17 @@ async def run_opencode(
         else:
             short_prompt = prompt_text if prompt_text else "execute"
             cmd = ["opencode", "run", "--model", "loop/flash", short_prompt]
+    # 红线 X2 修（v0.11b-fix）：用 process group 启动
+    # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
+    import os as _os
+    import signal as _sig
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
+        start_new_session=True,  # 新 session, pgid = pid
     )
 
     pid_file = PID_DIR / f"{phase_id}.pid"
@@ -119,12 +124,18 @@ async def run_opencode(
             "killed": False,
         }
     except asyncio.TimeoutError:
-        # 红线 X2: 超时必杀
-        proc.terminate()
+        # 红线 X2: 超时必杀（用 killpg 级联到整个 process group）
+        try:
+            _os.killpg(proc.pid, _sig.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
         try:
             await asyncio.wait_for(proc.wait(), timeout=5)
         except asyncio.TimeoutError:
-            proc.kill()
+            try:
+                _os.killpg(proc.pid, _sig.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
             await proc.wait()
         return {
             "phase_id": phase_id,
