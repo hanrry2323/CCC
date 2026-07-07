@@ -91,7 +91,8 @@ fi
 
 # --- Step 5: post-exec 钩子 ---
 log "Step 5: post-exec hook"
-if ! bash "$SCRIPT_DIR/ccc-hook.sh" post-exec "$PHASE_ID" >> "$LOG_FILE" 2>&1; then
+# v0.15b: 传 workspace 给 post-exec（它要知道在哪个仓库 commit）
+if ! bash "$SCRIPT_DIR/ccc-hook.sh" post-exec "$PHASE_ID" "$CWD" >> "$LOG_FILE" 2>&1; then
   log "❌ post-exec 钩子阻断"
   exit 5
 fi

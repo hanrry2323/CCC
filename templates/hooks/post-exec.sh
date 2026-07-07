@@ -12,8 +12,10 @@
 # Env:   CCC_PHASE_INDEX, CCC_PLAN_NAME, CCC_DRY_RUN
 set -euo pipefail
 
-WORKSPACE="${1:-${CCC_WORKSPACE:-$PWD}}"
-PHASE_INDEX="${2:-${CCC_PHASE_INDEX:-?}}"
+# v0.15b: launcher 传 <phase_id> <workspace> 2 个参数
+# 之前 $1=phase_id 当 workspace 是错的; 现在 $1=phase_id $2=workspace
+WORKSPACE="${2:-${CCC_WORKSPACE:-$PWD}}"
+PHASE_INDEX="${1:-${CCC_PHASE_INDEX:-?}}"
 PLAN_NAME="${CCC_PLAN_NAME:-unknown}"
 DRY_RUN="${CCC_DRY_RUN:-0}"
 
