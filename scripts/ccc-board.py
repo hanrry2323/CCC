@@ -336,11 +336,23 @@ def dev_role() -> dict:
             )
             bug_id = f"emergency-{task_id}"
             bug_title = f"紧急修复: {task.get('title', task_id)}（opencloud 重试{MAX_RETRY}次失败）"
-            create_task({"id": bug_id, "title": bug_title,
-                         "description": f"自动升舱:\n{task_id} 重试{MAX_RETRY}次均失败。"})
-            print(f"[dev] {task_id} 重试{MAX_RETRY}次失败 → 升舱 {bug_id}", file=sys.stderr)
-            return {"role": "dev", "moved": [], "error": "escalated",
-                    "counts": update_index()}
+            create_task(
+                {
+                    "id": bug_id,
+                    "title": bug_title,
+                    "description": f"自动升舱:\n{task_id} 重试{MAX_RETRY}次均失败。",
+                }
+            )
+            print(
+                f"[dev] {task_id} 重试{MAX_RETRY}次失败 → 升舱 {bug_id}",
+                file=sys.stderr,
+            )
+            return {
+                "role": "dev",
+                "moved": [],
+                "error": "escalated",
+                "counts": update_index(),
+            }
 
         # 更新 retry 计数
         try:
@@ -357,7 +369,12 @@ def dev_role() -> dict:
     if not task:
         planned = list_tasks("planned")
         if not planned:
-            return {"role": "dev", "moved": [], "counts": update_index(), "info": "无任务"}
+            return {
+                "role": "dev",
+                "moved": [],
+                "counts": update_index(),
+                "info": "无任务",
+            }
         task = planned[-1]
         task_id = task["id"]
         from_col = "planned"
@@ -367,8 +384,12 @@ def dev_role() -> dict:
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not plan.exists() or not phases_file.exists():
         print(f"[dev] {task_id} 缺 plan/phases, 跳过")
-        return {"role": "dev", "moved": [], "counts": update_index(),
-                "info": f"{task_id} 缺 plan/phases"}
+        return {
+            "role": "dev",
+            "moved": [],
+            "counts": update_index(),
+            "info": f"{task_id} 缺 plan/phases",
+        }
 
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(phases_file, default=600)
@@ -394,42 +415,123 @@ def dev_role() -> dict:
     prompt_file = tmp.name
 
     try:
-        print(f"[dev] {task_id} phase={phase_id} timeout={timeout_s}s retry={retry if from_col=='in_progress' else 0}")
+        print(
+            f"[dev] {task_id} phase={phase_id} timeout={timeout_s}s retry={retry if from_col == 'in_progress' else 0}"
+        )
         # PID 检查：opencode 还在跑就不重复启动
         pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
         if pid_path.exists():
             try:
                 old_pid = int(pid_path.read_text().strip())
                 import os as _os
+
                 try:
                     _os.kill(old_pid, 0)
                     print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
-                    return {"role": "dev", "moved": [], "counts": update_index(), "info": f"opencode PID={old_pid} 运行中"}
+                    return {
+                        "role": "dev",
+                        "moved": [],
+                        "counts": update_index(),
+                        "info": f"opencode PID={old_pid} 运行中",
+                    }
                 except OSError:
                     pass
             except (ValueError, OSError):
                 pass
 
+        done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
+        exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
+        result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
+        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
+
+        # 检查上一轮 opencode 是否跑完
+        if done_path.exists():
+            exit_code = (
+                exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
+            )
+            result_raw = result_path.read_text() if result_path.exists() else "{}"
+            report_dir = ROOT / ".ccc" / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_dir.joinpath(f"{task_id}.report.md").write_text(
+                f"# {task_id} 执行报告\n\n## 信息\n- Phase: {phase_id}\n"
+                f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n"
+            )
+            for p in [done_path, exitcode_path, pid_path, result_path]:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            if exit_code == "0":
+                move_task(task_id, "in_progress", "testing")
+                moved.append(task_id)
+                print(f"[dev] {task_id} ✓ → testing")
+            else:
+                print(
+                    f"[dev] {task_id} ✗ rc={exit_code}（留在 in_progress 下轮重试）",
+                    file=sys.stderr,
+                )
+            return {"role": "dev", "moved": moved, "counts": update_index()}
+
+        # PID 存活检测
+        if pid_path.exists():
+            try:
+                old_pid = int(pid_path.read_text().strip())
+                import os as _os
+
+                try:
+                    _os.kill(old_pid, 0)
+                    print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
+                    return {
+                        "role": "dev",
+                        "moved": [],
+                        "counts": update_index(),
+                        "info": f"opencode PID={old_pid} 运行中",
+                    }
+                except OSError:
+                    print(
+                        f"[dev] {task_id} PID {old_pid} 异常退出，清理后重试",
+                        file=sys.stderr,
+                    )
+                    for p in [pid_path]:
+                        try:
+                            p.unlink()
+                        except OSError:
+                            pass
+            except (ValueError, OSError):
+                pass
+
+        # 启动 opencode（通过 runner.sh 持久化结果）
         report_dir = ROOT / ".ccc" / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{task_id}.report.md"
 
         proc = sp.Popen(
-            [sys.executable, str(ROOT / "scripts" / "opencode-exec.py"),
-             "--phase", phase_id, "--prompt", prompt_file, "--timeout", str(timeout_s)],
-            stdout=sp.PIPE, stderr=sp.PIPE, start_new_session=True,
+            [
+                str(ROOT / "scripts" / "opencode-runner.sh"),
+                task_id,
+                str(ROOT),
+                "--phase",
+                phase_id,
+                "--prompt",
+                prompt_file,
+                "--timeout",
+                str(timeout_s),
+            ],
+            start_new_session=True,
         )
         pid_dir = ROOT / ".ccc" / "pids"
         pid_dir.mkdir(parents=True, exist_ok=True)
         pid_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-
-        report_path.write_text(f"# {task_id} 执行报告\n\n## 信息\n- 状态: 运行中\n- PID: {proc.pid}\n- Started: {now_iso()}\n")
+        report_path.write_text(
+            f"# {task_id} 执行报告\n\n## 信息\n- 状态: 运行中\n- PID: {proc.pid}\n- Started: {now_iso()}\n"
+        )
         print(f"[dev] {task_id} 后台启动 PID={proc.pid}，下轮检查结果")
 
     except Exception as e:
         print(f"[dev] {task_id} 启动失败: {e}", file=sys.stderr)
     finally:
-        os.unlink(prompt_file)
+        # prompt 保留给后台读
+        pass
 
     return {"role": "dev", "moved": moved, "counts": update_index()}
 
@@ -449,7 +551,9 @@ def _parse_plan_scope(task_id: str) -> list[str]:
             continue
         if in_scope and line.startswith("## "):
             break
-        if in_scope and (line.strip().startswith("- ") or line.strip().startswith("* ")):
+        if in_scope and (
+            line.strip().startswith("- ") or line.strip().startswith("* ")
+        ):
             f = line.strip()[2:].strip()
             # 支持 glob 模式
             if f and not f.startswith("不"):
@@ -482,11 +586,16 @@ def reviewer_role() -> dict:
         for py in py_files:
             r = sp.run(
                 ["python3", "-m", "py_compile", str(py)],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if r.returncode != 0:
                 all_ok = False
-                print(f"[reviewer] {task_id} py_compile {Path(py).name} FAIL: {r.stderr[:200]}", file=sys.stderr)
+                print(
+                    f"[reviewer] {task_id} py_compile {Path(py).name} FAIL: {r.stderr[:200]}",
+                    file=sys.stderr,
+                )
                 break
 
         if not py_files:
@@ -517,7 +626,11 @@ def tester_role() -> dict:
                     continue
                 if in_verify and line.startswith("## "):
                     break
-                if in_verify and line.strip().startswith("- ") and not line.strip().startswith("- 不"):
+                if (
+                    in_verify
+                    and line.strip().startswith("- ")
+                    and not line.strip().startswith("- 不")
+                ):
                     cmd = line.strip()[2:].strip()
                     verify_commands.append(cmd)
 
@@ -575,11 +688,36 @@ def ops_role() -> dict:
     return {"role": "ops", "health": health}
 
 
+def _extract_agents_suggestions(
+    filepath: Path, task_id: str, source: str
+) -> list[dict]:
+    """从 report/verdict 文件中提取 AGENTS.md 建议"""
+    import re
+
+    suggestions = []
+    if not filepath.exists():
+        return suggestions
+    content = filepath.read_text()
+    # tempered dot: match content until next marker or end
+    pattern = re.compile(
+        r"> \*\*AGENTS\.md 建议:\*\*\s*((?:(?!> \*\*AGENTS\.md 建议:).)*)",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(content):
+        text = match.group(1).strip()
+        text = re.sub(r"^\s*>\s*", "", text, flags=re.MULTILINE)
+        text = text.strip()
+        if text:
+            suggestions.append({"task_id": task_id, "source": source, "content": text})
+    return suggestions
+
+
 def kb_role() -> dict:
-    """知识管理员: 扫 verified → 归档 + git tag → 挪 released"""
+    """知识管理员: 扫 verified → 归档 + git tag → 挪 released → 收集 AGENTS.md 建议"""
     import subprocess as sp
 
     moved = []
+    all_suggestions: list[dict] = []
     for task in list_tasks("verified"):
         task_id = task["id"]
         # git tag
@@ -603,10 +741,65 @@ def kb_role() -> dict:
             capture_output=True,
             timeout=30,
         )
+
+        # 收集 AGENTS.md 建议
+        report_file = ROOT / ".ccc" / "reports" / f"{task_id}.report.md"
+        all_suggestions.extend(
+            _extract_agents_suggestions(report_file, task_id, source="dev")
+        )
+        verdict_file = ROOT / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
+        all_suggestions.extend(
+            _extract_agents_suggestions(verdict_file, task_id, source="reviewer")
+        )
+
         # 挪 released
         move_task(task_id, "verified", "released")
         moved.append(task_id)
-    return {"role": "kb", "moved": moved, "counts": update_index()}
+
+    # 去重 → 写 pending-agents-suggestions.md
+    if all_suggestions:
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for s in all_suggestions:
+            key = s["content"].strip()
+            if key and key not in seen:
+                seen.add(key)
+                unique.append(s)
+
+        pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
+        template_file = ROOT / "templates" / "pending-agents-suggestions.md"
+
+        new_blocks: list[str] = []
+        now_str = now_iso()[:10]
+        for s in unique:
+            block = (
+                f"## 来源 task: {s['task_id']}\n\n"
+                f"归档日期: {now_str}\n\n"
+                f"### 来自 {s['source']}\n\n"
+                f"{s['content']}\n\n"
+                f"---\n"
+            )
+            new_blocks.append(block)
+
+        new_content = "\n".join(new_blocks)
+        if pending_file.exists():
+            existing = pending_file.read_text().rstrip()
+            pending_file.write_text(existing + "\n" + new_content + "\n")
+        else:
+            header = (
+                template_file.read_text()
+                if template_file.exists()
+                else "# Pending AGENTS.md Suggestions\n\n"
+            )
+            pending_file.write_text(header + "\n" + new_content + "\n")
+        print(f"[kb] ✓ 收集 {len(unique)} 条 AGENTS.md 建议到 {pending_file}")
+
+    return {
+        "role": "kb",
+        "moved": moved,
+        "suggestions_collected": len(all_suggestions),
+        "counts": update_index(),
+    }
 
 
 def regress_role() -> dict:
@@ -797,17 +990,22 @@ def main():
 if __name__ == "__main__":
     main()
 
-def _run_via_pool(phase_id: str, prompt_file: str, timeout_s: int) -> subprocess.CompletedProcess:
+
+def _run_via_pool(
+    phase_id: str, prompt_file: str, timeout_s: int
+) -> subprocess.CompletedProcess:
     """走 opencode-pool（单任务）"""
     import subprocess as sp, json, tempfile
+
     tasks = [{"phase_id": phase_id, "prompt_file": prompt_file, "timeout": timeout_s}]
     tf = tempfile.NamedTemporaryFile(mode="w", suffix=".pool.json", delete=False)
     json.dump(tasks, tf)
     tf.close()
     result = sp.run(
         [sys.executable, str(ROOT / "scripts" / "opencode-pool.py"), tf.name],
-        capture_output=True, text=True, timeout=timeout_s + 30,
+        capture_output=True,
+        text=True,
+        timeout=timeout_s + 30,
     )
     os.unlink(tf.name)
     return result
-
