@@ -141,23 +141,24 @@ PYEOF
   fi
 fi
 
-# --- Gate 5: watchdog 健康（红线 9 配套）---
-echo "──── Gate 5: executor-watchdog 健康（红线 9） ────"
+# --- Gate 5: watchdog 健康（红线 9 / X3 配套）---
+# v0.8 起 executor-watchdog.sh 已删，替换为 opencode-watchdog.sh
+echo "──── Gate 5: opencode-watchdog 健康（红线 9 / X3 · v0.8 起） ────"
 if [[ $SKIP_WATCHDOG -eq 1 ]]; then
   log_pass "watchdog 跳过（--skip-watchdog）"
 else
-  if [[ -x "$CCC_DIR/scripts/executor-watchdog.sh" ]]; then
+  if [[ -x "$CCC_DIR/scripts/opencode-watchdog.sh" ]]; then
     WD_EXIT=0
-    bash "$CCC_DIR/scripts/executor-watchdog.sh" >/dev/null 2>&1 || WD_EXIT=$?
+    bash "$CCC_DIR/scripts/opencode-watchdog.sh" >/dev/null 2>&1 || WD_EXIT=$?
     case $WD_EXIT in
       0) log_pass "watchdog 健康（exit 0）";;
-      1) log_fail "watchdog warning（exit 1）— 建议加 --force-kill 或人工决策";;
+      1) log_fail "watchdog warning（exit 1）— 残留进程需 review";;
       2) log_fail "watchdog 严重（exit 2）— 放弃本次启动";;
-      3) log_fail "watchdog 已自动清理（exit 3）— 启动条件已修复, 可重试";;
+      3) log_pass "watchdog 已自动清理（exit 3）— 启动条件已修复, 可重试";;
       *) log_fail "watchdog 退出码异常: $WD_EXIT";;
     esac
   else
-    log_fail "executor-watchdog.sh 不可执行: $CCC_DIR/scripts/executor-watchdog.sh"
+    log_fail "opencode-watchdog.sh 不可执行: $CCC_DIR/scripts/opencode-watchdog.sh"
   fi
 fi
 
