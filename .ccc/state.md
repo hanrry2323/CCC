@@ -51,23 +51,22 @@
 
 ## 当前任务(进行中)
 
-**v0.9b 任务链**:✅ **已完结**(2026-07-07,飞轮 + 队列简化版)
+**v0.10 任务链**:✅ **已完结**(2026-07-07,修 v0.9b 雷 + 队列补全)
 
-- 启动: v0.9b — flywheel + queue — 2026-07-07
-- 完结: v0.9b — 2026-07-07
-- 新增: `scripts/flywheel-scan.sh`(扫失败模式,红线 18 强制人工 review)
-- 新增: `scripts/ccc-queue.sh`(多 phase 队列,3 次失败升级 L3)
-- 测试: 63 passed(57 + 6 新增)
-- 飞轮扫描: 1 候选(FAIL: × 6,来自历史 alert)
-
-**v0.9c 任务链**:✅ **已完结**(2026-07-07,e2e smoke 验证)
-
-**v0.9a 任务链**:✅ **已完结**(2026-07-07,model provider 修复)
+- 启动: v0.10 — 修雷 + 补全 — 2026-07-07
+- 完结: v0.10 — 2026-07-07
+- 关键修复:
+  - precheck Gate 5: 旧 executor-watchdog.sh → opencode-watchdog.sh(v0.8 尾巴)
+  - 飞轮伪发现: 加白名单 + 阈值 3 + 排除 alerts/
+  - 队列接 commit + phases.json 状态回写
+  - roadmap.md 同步到 v0.9.0
+- 测试: 63 passed
+- Verdict: PASS (.ccc/verdicts/v0.10-verdict.md)
 
 下一阶段决策点(待用户拍板):
 
-- **v0.9d**:消化 v0.8/v0.9a/b/c,等新活
-- **v0.10**:飞轮候选 review 合并 / 队列 hook 补全 / e2e 加 verifier 验收
+- **v0.11**:消化 v0.10,等新活
+- **v0.12**:飞轮候选 review 合并 / e2e 加 verifier 验收 / 跨项目支持
 
 > 当前**不启动** 任何新任务,等用户拍板。
 
