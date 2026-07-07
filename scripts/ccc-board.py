@@ -698,9 +698,9 @@ def _extract_agents_suggestions(
     if not filepath.exists():
         return suggestions
     content = filepath.read_text()
-    # tempered dot: match content until next marker or end
+    # tempered dot: match content until blank line, ---, next marker, or end
     pattern = re.compile(
-        r"> \*\*AGENTS\.md 建议:\*\*\s*((?:(?!> \*\*AGENTS\.md 建议:).)*)",
+        r"> \*\*AGENTS\.md 建议:\*\*\s*((?:(?!> \*\*AGENTS\.md 建议:|\n\n|\n---).)*)",
         re.DOTALL,
     )
     for match in pattern.finditer(content):
