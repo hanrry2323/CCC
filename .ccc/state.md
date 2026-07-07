@@ -109,6 +109,62 @@
 
 ---
 
+**v0.14 任务链**:✅ **已完结**(2026-07-07,真落地: 35 commit push + scheduler 装)
+
+- 35 commit qx-observer 推远端 (7e5fd57..d10cf23)
+- qx-observer lessons.md 42 行 task-test-001 噪声清
+- qx-observer profile.md 接 v0.12 section
+- CCC scheduler (com.ccc.flywheel-scan) 装 launchd 跑 3600s 周期
+- 远端 5 tag: v0.7.0/v0.8.0/v0.9.0/v0.10.0/v0.11.0
+
+**v0.15 任务链**:✅ **已完结**(2026-07-07,真自动化开发)
+
+- 启动: v0.15 — 自动化开发 — 2026-07-07
+- 完结: v0.15.0 — 2026-07-07
+- 关键产出:
+  - `scripts/ccc-auto-dev.sh` — 你说"按 CCC 跑 X"的入口
+  - `templates/hooks/post-exec.sh` — 加 git push (v0.15d)
+  - 修 launcher 传 workspace + post-exec 改用 $2 (Lesson 38)
+  - 真验: qx-observer v0.15b-test5 8 分钟, post-exec 自动落远端
+- 测试: 69 passed (无关 v0.15)
+- 远端 8 tag
+
+**v0.16 任务链**:✅ **已完结**(2026-07-07,6 角色 + 任务看板)
+
+- 启动: v0.16 — 6 角色定时开发系统 — 2026-07-07
+- 完结: v0.16.0 — 2026-07-07
+- 关键产出:
+  - `.ccc/board/` 6 列任务看板
+  - `scripts/ccc-board.py` 6 角色核心
+  - `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` × 6
+  - `scripts/install-ccc-roles.sh` 一键装 6 launchd plist
+  - 频率: product 4h / dev 30min / reviewer 2h / tester 4h / ops 30min / kb 每天 23:00
+  - e2e: 1 个 task backlog→released 全 6 步
+- 测试: 69 passed (无关 v0.16)
+
+**v0.17 任务链**:✅ **已完结**(2026-07-07,战略地图 + 文档体系对齐)
+
+- 启动: v0.17 — 战略地图 — 2026-07-07
+- 完结: v0.17.0 — 2026-07-07
+- 关键产出:
+  - `docs/STRATEGY-MAP.md` — 战略地图 (启动必读第一)
+  - `SKILL.md` v1.1 → v1.6, 加启动必读段
+  - `CLAUDE.md` 6 角色矩阵 (替换 3 角色旧路由)
+  - `references/red-lines.md` 加 X4 (看板流转) / X5 (plist 必装) / X6 (频率不许改)
+  - `docs/roadmap.md` 5 次范式转变标注
+  - `docs/lessons.md` Lesson 37 (战略地图教训) + 38 (post-exec workspace bug)
+- 远端 9 tag 完整: v0.7.0 → v0.16.0
+
+下一阶段决策点(待用户拍板):
+
+- **v0.18**:跨项目任务 (qx-observer / xianyu / qx 用 6 角色系统)
+- **v0.19**:跑 1 个真 backlog task 看 6 角色端到端流转 (harness 配合)
+- **v0.20**:消化,等新活
+
+> 当前**不启动** 任何新任务,等用户拍板。
+
+---
+
 ## 待办任务(用户已承诺,未启动)
 
 > 当前无待办任务。Planner 接受新任务时追加。

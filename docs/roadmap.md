@@ -9,15 +9,22 @@
 > - **v0.11 阶段**(开箱即用调度 + 队列真测试):全部 PASS,**v0.11.0** 2026-07-07
 > - **v0.12 阶段**(bug fix sweep):全部 PASS,**v0.12.0** 2026-07-07
 > - **v0.13 阶段**(跨项目支持 qx-observer):全部 PASS,**v0.13.0** 2026-07-07
-> - **当前最新版本**:v0.13.0(push + tag 已打,见 git ls-remote)
+> - **v0.14 阶段**(真落地: 35 commit push + scheduler 装):全部 PASS,**v0.14.0** 2026-07-07
+> - **v0.15 阶段**(真自动化开发: ccc-auto-dev + post-exec 自动 commit+push):全部 PASS,**v0.15.0** 2026-07-07
+> - **v0.16 阶段**(6 角色定时开发系统 + 任务看板):全部 PASS,**v0.16.0** 2026-07-07
+> - **v0.17 阶段**(战略地图 + 文档体系对齐):**当前进行中**
+> - **当前最新版本**:v0.16.0 (push + tag 已打,见 git ls-remote)
 >
-> **范式转变(2026-07-07)**:v0.11 起,CCC 默认模式 = "opencode 写 + 人工 review"。
-> opencode loop/flash 写工程代码质量已超 v0.7 时代人工基线(Lesson 35)。
+> **范式转变(2026-07-07)**:
+> 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
+> 2. **v0.12**: bug 扫描 → 必修 → 复查 → 沉淀 4 步标准化 (Lesson 36)
+> 3. **v0.15**: 真自动化开发 (opencode 写代码 + post-exec 自动 commit+push)
+> 4. **v0.16**: **6 角色 + 任务看板** — 任务在 6 列流转, 6 launchd plist 周期跑
+> 5. **v0.17**: **战略地图** — 任何 cloud agent 启动必读第一份文件
 >
-> **质量纪律(2026-07-07)**:v0.12 起,bug 扫描 → 必修 → 复查 → 沉淀 4 步标准化。
-> 3 类 bug 修复模式(数据泄漏 / 静默失败 / 配置硬编码)+ lesson 36。
+> 详细战略地图见 `docs/STRATEGY-MAP.md` (v0.17 必读)。
 >
-> 本文件保留作为 v0.5 时期路线设计的历史存档。**新任务参考 `.ccc/state.md`** + `CHANGELOG.md`。
+> 本文件保留作为 v0.5 时期路线设计的历史存档。**新任务参考 `.ccc/state.md`** + `CHANGELOG.md` + `docs/STRATEGY-MAP.md`。
 
 ---
 

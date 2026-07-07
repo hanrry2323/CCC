@@ -1822,3 +1822,43 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 任何 spawn 子进程的工具，必加 finally 块清理临时文件
 - 任何 except 必显式类型，不用 bare except
 - 任何 timeout 必 env 可配，不写死
+
+---
+
+## Lesson 37 — v0.16 6 角色定时开发系统，文档必须先于代码 (2026-07-07)
+
+**问题**：v0.16 装完 6 角色 + 任务看板 + 6 plist，但**没有任何单一文档**告诉新 agent "这是什么"。SKILL.md / CLAUDE.md / roadmap.md / state.md 各自只讲一面。
+
+**教训**：
+1. 范式转变 = 文档体系重写（不是 1 行改动）
+2. 战略地图必须是**第一份**启动必读文件
+3. 任何 cloud agent 启动前 4 步: STRATEGY-MAP → red-lines → lessons → state
+
+**可执行规则**（v0.17 起）：
+- 范式转变（如 v0.16 6 角色）后必须新建 docs/STRATEGY-MAP.md
+- STRATEGY-MAP.md 是"全景"，SKILL.md 是"触发"，CLAUDE.md 是"路由"，state.md 是"接力" — 不混
+- 文档 commit 必须包含"启动顺序"段（红线 7 升级）
+
+**应用方式**：
+- 任何 v0.18+ 范式转变先写 STRATEGY-MAP.md
+- 已有 36 lesson 仍有效，新规则叠加不覆盖
+
+---
+
+## Lesson 38 — v0.15b post-exec workspace 路径 bug（args 顺序错）(2026-07-07)
+
+**问题**：post-exec 钩子 `WORKSPACE="${1:-...}"` 默认取 `$1` 当 workspace，但 launcher 调 `ccc-hook.sh post-exec $PHASE_ID $WORKSPACE` —— `$1=phase_id`, `$2=workspace`。钩子拿 phase_id 当路径报"is not a git repo"。
+
+**教训**：
+1. 钩子参数顺序必须**显式**（不能用 positional $1 默认）
+2. 任何钩子的 args 应在 SKILL.md / template header 注释清楚说明
+3. e2e 测钩子时必须验"参数能不能正确传递"（不只验钩子本身）
+
+**可执行规则**（v0.15d 修）：
+- post-exec.sh header 注释: "launcher 传 <phase_id> <workspace> 2 个参数"
+- 修: `WORKSPACE="${2:-${CCC_WORKSPACE:-$PWD}}"` 显式取 $2
+- 配套: launcher 加 `--cwd` 传 workspace, post-exec 才能 commit+push
+
+**应用方式**：
+- 任何钩子模板必带 args 顺序注释
+- 钩子 ccc-auto-dev.sh 调 launcher 时必传 `--cwd`

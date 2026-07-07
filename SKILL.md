@@ -3,17 +3,32 @@ name: ccc-protocol
 description: "CCC — Connect–Claude Code. A Planner → Executor → Verifier pipeline for multi-phase coding tasks. Trigger when user says: '按 CCC 流程跑 X', '用 plan-execute-verify 模式', 'ccc 跑一下 X', '调度一个多阶段任务', '按 ccc full 跑'"
 ---
 
-# CCC — Connect–Claude Code (v1.1)
+# CCC — Connect–Claude Code (v1.6)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent
-> into a Planner → Executor → Verifier pipeline. Loads cleanly into Trae,
+> into a 6-role multi-agent pipeline. Loads cleanly into Trae,
 > Cursor, Zed, VS Code, OpenCode, or any tool that supports system-prompt
 > files.
 >
 > **含义**：**C**onnect–**C**laude **C**ode。把 Claude Code 的能力连接到
 > 任何 IDE 工具，让 agent 自己调度自己。
+>
+> **v0.16 起 范式转变**：CCC 从 3 角色（Plan/Exec/Verify）扩到 **6 角色
+> 定时开发系统**（product / dev / reviewer / tester / ops / kb），用任务看板
+> 流转。**所有 cloud agent 启动第一件事** = 读 `docs/STRATEGY-MAP.md`。
 
 ---
+
+## 启动必读（红线 7 + 战略地图）
+
+任何 agent 启动时按以下顺序读：
+
+1. **`docs/STRATEGY-MAP.md`** — 战略地图（v0.16 6 角色 + 看板 + 全部资产）
+2. **`references/red-lines.md`** — 13+2+X3+X4/X5/X6 红线（v0.17 加 3 条）
+3. **`docs/lessons.md`** — 36 条教训（避免重复踩坑）
+4. **`.ccc/state.md`**（项目侧）— 接力索引
+
+**没读 STRATEGY-MAP.md = 没读 CCC**（v0.17 强制）。
 
 ## 触发（用户显式调用）
 
@@ -24,6 +39,7 @@ description: "CCC — Connect–Claude Code. A Planner → Executor → Verifier
 - "ccc 跑一下 X"
 - "调度一个多阶段任务"
 - "按 ccc full 跑"
+- **"按 CCC 跑 X"**（v0.15b 入口，6 角色会自动接）
 
 **默认不触发**。agent 不自主判断是否启用 CCC——避免意识漂移
 （参见 `references/red-lines.md` 红线 12：禁止 agent 自主启用 CCC）。

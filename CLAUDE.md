@@ -75,7 +75,31 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 
 ---
 
-## 三角色（路由决策表）
+## 6 角色（v0.16 起）/ 3 角色旧路由
+
+### 6 角色（v0.16 当前范式）
+
+| 角色 | 频率 | 扫哪列 | 干 |
+|------|------|--------|-----|
+| product | 4h | backlog | 写 plan.md + phases.json，挪 planned |
+| dev | 30min | planned | 调 opencode 写代码，挪 testing |
+| reviewer | 2h | testing | py_compile 静态检查，挪 verified |
+| tester | 4h | testing | pytest，挪 verified |
+| ops | 30min | 所有列 | 健康检查 + 告警 |
+| kb | 23:00 | verified | git tag + push，挪 released |
+
+**频率 = 老板拍板，不许改**（红线 X6）。
+**6 plist 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
+
+### 任务流转（看板）
+
+```
+backlog → planned → in_progress → testing → verified → released
+```
+
+详细见 `docs/STRATEGY-MAP.md`（v0.17 起必读第一文件）。
+
+### 旧 3 角色路由（兼容）
 
 | 任务规模 | 处理方式 | 谁 |
 |---------|---------|----|

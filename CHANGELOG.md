@@ -537,3 +537,47 @@ git push origin main --tags
 - V0.8 是**加固**(新增能力),不是 v0.7 的修复
 - V0.8 半成品含未验证代码(3 个 fail pytest + 未跑通的手动调试)
 - 独立版本号 `v0.8.0` 更清晰,review 也更干净
+
+---
+
+## [Unreleased] — v0.17 — 战略地图 + 文档体系对齐 6 角色
+
+**里程碑**：v0.16 6 角色系统落地后, 沉淀战略地图, 所有 cloud agent 启动第一件事读 STRATEGY-MAP.md。
+
+### Added
+- `docs/STRATEGY-MAP.md` — 战略地图（启动必读第一份）
+  - 10 段: CCC 是什么 / 范式演进史 / 6 角色系统 / 看板 / 完整调用链 / 红线 / 自动化 / 模型路由 / 教训 / 怎么用
+- `SKILL.md` — 加"启动必读战略地图"段（红线 7 升级）
+- `CLAUDE.md` — 6 角色矩阵（替换 3 角色旧路由）
+- `references/red-lines.md` — X4/X5/X6 三条新红线（v0.16 配套）
+  - X4: 每 phase 必走看板流转
+  - X5: 6 角色 plist 必装
+  - X6: 角色频率不许改
+- `docs/roadmap.md` — 5 次范式转变标注（v0.11 / v0.12 / v0.15 / v0.16 / v0.17）
+
+### Changed
+- SKILL.md version: v1.1 → v1.6
+- 编号索引表加 X4/X5/X6 三行
+
+### Verified
+- 启动必读链验证: STRATEGY-MAP.md → red-lines.md → lessons.md → state.md
+- 6 plist 装上 + 频率正确
+- 9 tag 完整: v0.7.0 → v0.16.0
+
+---
+
+## [Unreleased] — v0.16 — 6 角色定时开发系统 + 任务看板
+
+**里程碑**：CCC 从 3 角色扩到 6 角色定时开发系统。任务在 6 列看板流转, 6 launchd plist 周期跑。
+
+### Added
+- `.ccc/board/` 6 列任务看板 (backlog/planned/in_progress/testing/verified/released)
+- `scripts/ccc-board.py` 6 角色核心
+- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` × 6
+- `scripts/install-ccc-roles.sh` 一键装 6 plist
+
+### Verified
+- 6 plist 装上, launchctl list 6 行
+- 看板 e2e: backlog→planned→in_progress→testing→verified→released
+- pytest: 69 passed
+
