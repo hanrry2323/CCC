@@ -169,8 +169,12 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
 _CLAUDE_CLI = "claude"
 
 
+def _get_relay_url() -> str:
+    return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
+
+
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
-    """调 claude CLI 生成 plan.md + phases.json"""
+    """调 claude CLI 生成 plan.md + phases.json（通过中转站 127.0.0.1:4000）"""
     plan_dir = ROOT / ".ccc" / "plans"
     ref_plans = ""
     if plan_dir.exists():
@@ -203,6 +207,9 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
     )
 
+    relay_url = _get_relay_url()
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = relay_url
     try:
         result = subprocess.run(
             [_CLAUDE_CLI, "-p"],
@@ -210,6 +217,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -240,6 +248,27 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         raise RuntimeError("claude CLI timed out after 120s")
 
 
+def _generate_fallback_plan(task: dict) -> str:
+    """API 不可用时生成 fallback plan"""
+    return (
+        f"# {task['id']}\n\n"
+        f"> 此 plan 由 fallback 自动生成（product API 不可用）\n\n"
+        f"## 目标\n"
+        f"- {task.get('title', task['id'])}\n"
+        f"- {task.get('description', '请手动补充详细描述')}\n\n"
+        f"## 文件白名单\n"
+        f"- （待补充）\n\n"
+        f"## 验收\n"
+        f"1. 完成任务目标\n"
+        f"2. 相关测试通过\n"
+    )
+
+
+def _generate_fallback_phases() -> list:
+    """API 不可用时生成 fallback phases（单 phase）"""
+    return [{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": None, "notes": "fallback"}]
+
+
 def product_role(task_id: str = "") -> dict:
     """产品经理：扫 backlog，或 --promote 调 Claude API 写 SPEC-合规 plan"""
     tasks = list_tasks("backlog")
@@ -255,11 +284,17 @@ def product_role(task_id: str = "") -> dict:
             }
 
         print(f"[product] 正在拆解 {task_id}（调 Claude API 生成 plan）...")
+        plan_content = None
+        phases = None
+        fallback = False
         try:
             plan_content, phases = _call_claude_for_plan(task)
         except RuntimeError as e:
             print(f"[product] API 调用失败: {e}", file=sys.stderr)
-            return {"role": "product", "error": str(e), "counts": update_index()}
+            print(f"[product] 使用 fallback plan（API 不可用）")
+            plan_content = _generate_fallback_plan(task)
+            phases = _generate_fallback_phases()
+            fallback = True
 
         plan_dir = ROOT / ".ccc" / "plans"
         plan_dir.mkdir(parents=True, exist_ok=True)
@@ -277,7 +312,8 @@ def product_role(task_id: str = "") -> dict:
 
         move_task(task_id, "backlog", "planned")
 
-        return {"role": "product", "promoted": task_id, "counts": update_index()}
+        result = {"role": "product", "promoted": task_id, "fallback": fallback, "counts": update_index()}
+        return result
 
     report = {
         "backlog_count": len(tasks),
