@@ -313,9 +313,15 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 # ── 启动 ──
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=6666)
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--port", type=int, default=None)
+    ap.add_argument("--host", default=None)
     args = ap.parse_args()
+
+    # fallback: 环境变量 → 硬编码默认
+    if args.port is None:
+        args.port = int(os.environ.get("BOARD_PORT", "7777"))
+    if args.host is None:
+        args.host = os.environ.get("BOARD_HOST", "127.0.0.1")
 
     ui_dir = CCC_HOME / "scripts" / "ccc-board-ui"
     ui_dir.mkdir(parents=True, exist_ok=True)

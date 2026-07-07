@@ -15,6 +15,16 @@
 #   regress:  23:30   (StartCalendarInterval, 每日回测)
 set -uo pipefail
 
+# ── 默认配置（source 前先有铺垫变量，防 errexit）──
+DEFAULT_CONFIG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/templates/ccc-config.sh"
+if [ -f "$DEFAULT_CONFIG" ]; then
+  source "$DEFAULT_CONFIG"
+fi
+# ROLES 必须是数组；source 后仍是空则 fallback
+if [[ ${#ROLES[@]} -eq 0 ]]; then
+  ROLES=(product dev reviewer tester ops kb regress)
+fi
+
 # ── 参数 ──
 WORKSPACE=""
 while [[ $# -gt 0 ]]; do
@@ -38,6 +48,10 @@ if [[ -n "$WORKSPACE" ]]; then
   PROJECT_NAME="$(basename "$WORKSPACE")"
   LABEL_PREFIX="com.ccc.${PROJECT_NAME}."
   PROJECT_TAG="${PROJECT_NAME}"
+  # source 项目内配置
+  if [ -f "$WORKSPACE/.ccc/config.sh" ]; then
+    source "$WORKSPACE/.ccc/config.sh"
+  fi
 
   # 初始化目标项目的看板
   mkdir -p "${WORKSPACE}/.ccc/board/"{backlog,planned,in_progress,testing,verified,released}
@@ -54,8 +68,19 @@ else
   echo "→ 项目: CCC (默认)"
 fi
 
-ROLES=(product dev reviewer tester ops)
-INTERVALS=(14400 600 7200 14400 1800)
+# ── 从配置获取间隔 ──
+get_interval() {
+  local role=$1
+  case "$role" in
+    product) echo "${PRODUCT_INTERVAL:-14400}" ;;
+    dev) echo "${DEV_INTERVAL:-600}" ;;
+    reviewer) echo "${REVIEWER_INTERVAL:-7200}" ;;
+    tester) echo "${TESTER_INTERVAL:-14400}" ;;
+    ops) echo "${OPS_INTERVAL:-1800}" ;;
+    kb|regress) echo "" ;;  # calendar-based
+    *) echo "" ;;
+  esac
+}
 
 install_role() {
   local role=$1
@@ -63,13 +88,7 @@ install_role() {
   local script="${SCRIPT_DIR}/roles/${role}.sh"
   local out_log="${LOG_DIR}/${PROJECT_NAME}-role-${role}.out.log"
   local err_log="${LOG_DIR}/${PROJECT_NAME}-role-${role}.err.log"
-  local interval=0
-  for i in "${!ROLES[@]}"; do
-    if [[ "${ROLES[$i]}" == "$role" ]]; then
-      interval=${INTERVALS[$i]}
-      break
-    fi
-  done
+  local interval=$(get_interval "$role")
 
   # 环境变量段（仅非默认项目需要）
   local ENV_BLOCK=""
@@ -83,9 +102,9 @@ install_role() {
   fi
 
   if [[ "$role" == "kb" ]] || [[ "$role" == "regress" ]]; then
-    local cb_hour=23
-    local cb_min=0
-    [[ "$role" == "regress" ]] && cb_min=30
+    local cb_hour="${KB_HOUR:-23}"
+    local cb_min="${KB_MINUTE:-0}"
+    [[ "$role" == "regress" ]] && cb_min="${REGRESS_MINUTE:-30}" && cb_hour="${REGRESS_HOUR:-23}"
     cat > "$plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -154,7 +173,7 @@ PLIST_EOF
 
 echo ""
 echo "=== 安装角色 ==="
-for role in "${ROLES[@]}" kb regress; do
+for role in "${ROLES[@]}"; do
   install_role "$role"
 done
 
