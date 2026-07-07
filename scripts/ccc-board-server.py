@@ -13,6 +13,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from typing import Optional
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -50,7 +51,7 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def board_path(workspace: str) -> Path | None:
+def board_path(workspace: str) -> Optional[Path]:
     ws = discover_workspaces().get(workspace)
     if ws is None:
         return None
@@ -230,7 +231,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
-    def _body(self) -> dict | None:
+    def _body(self) -> Optional[dict]:
         n = int(self.headers.get("Content-Length", 0))
         if n > MAX_CONTENT_LENGTH:
             self.send_error(413)

@@ -22,6 +22,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 ROOT = (
     Path(os.environ.get("CCC_WORKSPACE", ""))
@@ -31,7 +32,15 @@ ROOT = (
 BOARD = ROOT / ".ccc" / "board"
 EVENTS_DIR = BOARD / "events"
 
-COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
+COLUMNS = [
+    "backlog",
+    "planned",
+    "in_progress",
+    "testing",
+    "verified",
+    "released",
+    "abnormal",
+]
 
 # 列迁移白名单：{目标列: [允许的源列列表]}
 # 不在白名单中的迁移会被拒绝
@@ -41,13 +50,22 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
     "testing": ["in_progress"],
     "verified": ["testing"],
     "released": ["verified"],
-    "backlog": ["released", "in_progress", "abnormal"],  # regress 回归 / dev 升舱 / 手动回退
-    "abnormal": ["in_progress", "testing", "verified", "released"],  # 任何列都可转入异常
+    "backlog": [
+        "released",
+        "in_progress",
+        "abnormal",
+    ],  # regress 回归 / dev 升舱 / 手动回退
+    "abnormal": [
+        "in_progress",
+        "testing",
+        "verified",
+        "released",
+    ],  # 任何列都可转入异常
 }
 
 # 容错参数
-MAX_RETRY = 5           # 最大重试次数 → 异常隔离
-MAX_STALE_HOURS = 6      # in_progress 卡住超时 → 异常隔离
+MAX_RETRY = 5  # 最大重试次数 → 异常隔离
+MAX_STALE_HOURS = 6  # in_progress 卡住超时 → 异常隔离
 STALE_CHECK_INTERVAL = 6  # ops_role 每次扫描间隔（判断是否该扫描）
 
 
@@ -60,7 +78,7 @@ def _backoff_seconds(retry: int) -> int:
 
     retry=0→60s, 1→120s, 2→240s, 3→480s, 4→960s, 5→1920s, 6+→3600s
     """
-    return min(60 * (2 ** retry), 3600)
+    return min(60 * (2**retry), 3600)
 
 
 def _quarantine(task_id: str, reason: str) -> None:
@@ -188,8 +206,7 @@ def move_task(task_id: str, from_col: str, to_col: str) -> bool:
     allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
     if from_col not in allowed_from:
         print(
-            f"[board] 拒绝迁移: {from_col} → {to_col} "
-            f"(允许的源列: {allowed_from})",
+            f"[board] 拒绝迁移: {from_col} → {to_col} (允许的源列: {allowed_from})",
             file=sys.stderr,
         )
         return False
@@ -348,7 +365,16 @@ def _generate_fallback_plan(task: dict) -> str:
 
 def _generate_fallback_phases() -> list:
     """API 不可用时生成 fallback phases（单 phase）"""
-    return [{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": None, "notes": "fallback"}]
+    return [
+        {
+            "phase": 1,
+            "status": "pending",
+            "subtasks": {"1.1": "pending"},
+            "timeout": 300,
+            "commit": None,
+            "notes": "fallback",
+        }
+    ]
 
 
 def product_role(task_id: str = "") -> dict:
@@ -394,7 +420,12 @@ def product_role(task_id: str = "") -> dict:
 
         move_task(task_id, "backlog", "planned")
 
-        result = {"role": "product", "promoted": task_id, "fallback": fallback, "counts": update_index()}
+        result = {
+            "role": "product",
+            "promoted": task_id,
+            "fallback": fallback,
+            "counts": update_index(),
+        }
         return result
 
     report = {
@@ -442,19 +473,24 @@ def dev_role() -> dict:
                         if not _line:
                             continue
                         parsed = json.loads(_line)
-                        retry = parsed.get("retry", 0)
+                        # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
+                        if isinstance(parsed, list):
+                            parsed = parsed[0] if parsed else {}
                         retry_at = parsed.get("retry_at")
                         break
-        except (json.JSONDecodeError):
+        except json.JSONDecodeError:
             pass
 
         # 退避检查：如果在退避期内，跳过此任务的这一轮
         if retry_at:
             from datetime import datetime as _dt
+
             try:
                 wait_until = _dt.fromisoformat(retry_at)
                 if _dt.now(timezone.utc) < wait_until.replace(tzinfo=timezone.utc):
-                    remaining = (wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)).total_seconds()
+                    remaining = (
+                        wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)
+                    ).total_seconds()
                     print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮")
                     return {
                         "role": "dev",
@@ -471,7 +507,9 @@ def dev_role() -> dict:
             _quarantine(task_id, f"重试{MAX_RETRY}次全部失败，已移入异常列")
             # 同时创建紧急修复任务到 backlog
             bug_id = f"emergency-{task_id}"
-            bug_title = f"紧急修复: {task.get('title', task_id)}（重试{MAX_RETRY}次失败）"
+            bug_title = (
+                f"紧急修复: {task.get('title', task_id)}（重试{MAX_RETRY}次失败）"
+            )
             create_task(
                 {
                     "id": bug_id,
@@ -492,11 +530,7 @@ def dev_role() -> dict:
 
         # 计算退避时间
         backoff = _backoff_seconds(retry - 1)  # retry 已自增，用增量前的值计算
-        retry_at_iso = (
-            datetime.now(timezone.utc).isoformat()
-            if retry >= 1
-            else None
-        )
+        retry_at_iso = datetime.now(timezone.utc).isoformat() if retry >= 1 else None
         # 更新 retry 计数 + retry_at（JSONL，更新第一行）
         try:
             if phases_file.exists():
@@ -506,12 +540,15 @@ def dev_role() -> dict:
                     if not _line_s:
                         continue
                     phase = json.loads(_line_s)
+                    # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
+                    if isinstance(phase, list):
+                        phase = phase[0] if phase else {}
                     phase["retry"] = retry
                     phase["retry_at"] = retry_at_iso
                     lines[i] = json.dumps(phase, ensure_ascii=False)
                     break
                 phases_file.write_text("\n".join(lines))
-        except (json.JSONDecodeError):
+        except json.JSONDecodeError:
             pass
         print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试，退避 {backoff}s")
 
@@ -798,6 +835,7 @@ def ops_role() -> dict:
 
     # 1. Stale 检测：in_progress 超时 → 异常列
     from datetime import datetime as _dt
+
     now = _dt.now(timezone.utc)
     for task in list_tasks("in_progress"):
         updated_str = task.get("updated_at", task.get("created_at", ""))
@@ -845,6 +883,7 @@ def ops_role() -> dict:
 
     # 4. git ahead check
     import subprocess as sp
+
     for proj in [
         ROOT,
         ROOT.parent / "qx-observer",
@@ -921,7 +960,9 @@ def kb_role() -> dict:
             timeout=30,
         )
         if push_r.returncode != 0:
-            print(f"[kb] {task_id} git push 失败 rc={push_r.returncode}", file=sys.stderr)
+            print(
+                f"[kb] {task_id} git push 失败 rc={push_r.returncode}", file=sys.stderr
+            )
             fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
             fail_log.write_text(
                 f"# {task_id} git push 失败\n\n"
@@ -1082,7 +1123,13 @@ def regress_role() -> dict:
             move_task(tid, "released", "backlog")
             # macOS 桌面通知
             subprocess.run(
-                ["bash", str(ROOT / "scripts" / "ccc-notify.sh"), "L2", bug_title, bug_desc[:200]],
+                [
+                    "bash",
+                    str(ROOT / "scripts" / "ccc-notify.sh"),
+                    "L2",
+                    bug_title,
+                    bug_desc[:200],
+                ],
                 capture_output=True,
                 timeout=10,
             )
@@ -1101,7 +1148,7 @@ def regress_role() -> dict:
     return {"role": "regress", "results": results, "report": str(report)}
 
 
-def get_timeline(task_id: str | None = None) -> list[dict]:
+def get_timeline(task_id: Optional[str] = None) -> list[dict]:
     """从 .ccc/board/events/<task_id>.events.jsonl 读取 timeline 事件
 
     Args:
@@ -1134,6 +1181,114 @@ def get_timeline(task_id: str | None = None) -> list[dict]:
     return events
 
 
+def approve_agents() -> dict:
+    """人类审批: 读 pending-agents-suggestions.md → 追加到 .ccc/AGENTS.md"""
+    import re
+
+    pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
+    if not pending_file.exists():
+        msg = f"[approve-agents] 无待审批建议文件: {pending_file}"
+        print(msg)
+        return {"role": "approve-agents", "approved": 0, "error": "no pending file"}
+
+    content = pending_file.read_text()
+
+    # 分割：migration_idx 之前是建议块，之后是迁移记录
+    migration_idx = content.find("\n## 迁移记录")
+    suggestions_text = content[:migration_idx] if migration_idx != -1 else content
+
+    # 按 ## 来源 task: 分割每个建议块
+    raw_blocks = re.split(r"\n(?=## 来源 task:)", suggestions_text)
+    suggestions = []
+    for block in raw_blocks:
+        block = block.strip()
+        if not block or block.startswith("# Pending") or block.startswith("> "):
+            continue
+
+        task_m = re.search(r"## 来源 task:\s*(\S+)", block)
+        source_m = re.search(r"### 来自\s+(\w+)", block)
+        if not task_m or not source_m:
+            continue
+        task_id = task_m.group(1)
+        source = source_m.group(1)
+
+        # 提取 ### 来自 <source> 之后到 --- 之前的内容
+        after_source = block.split(f"### 来自 {source}")[-1].strip()
+        content_text = re.split(r"\n---|\n## ", after_source)[0].strip()
+        if content_text:
+            suggestions.append(
+                {
+                    "task_id": task_id,
+                    "source": source,
+                    "content": content_text,
+                }
+            )
+
+    if not suggestions:
+        print("[approve-agents] 无新建议需审批")
+        return {"role": "approve-agents", "approved": 0, "info": "nothing new"}
+
+    # 写入/追加 .ccc/AGENTS.md
+    agents_file = ROOT / ".ccc" / "AGENTS.md"
+    if not agents_file.exists():
+        template_file = ROOT / "templates" / "AGENTS.md"
+        if template_file.exists():
+            agents_content = template_file.read_text()
+            profile_file = ROOT / ".ccc" / "profile.md"
+            if profile_file.exists():
+                pf = profile_file.read_text()
+                name_m = re.search(r"项目名[：:]\s*(.+)", pf)
+                if name_m:
+                    agents_content = agents_content.replace(
+                        "{{PROJECT_NAME}}", name_m.group(1).strip()
+                    )
+            agents_content = agents_content.replace("{{PROJECT_PATH}}", str(ROOT))
+            agents_content = agents_content.replace(
+                "{{PRIMARY_LANGUAGE}}", "Python+Bash"
+            )
+            agents_content = agents_content.replace("{{DATE}}", now_iso()[:10])
+        else:
+            agents_content = f"# CCC Agent Guide\n"
+        agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
+        print(f"[approve-agents] 创建 {agents_file}")
+
+    existing = agents_file.read_text().rstrip()
+    new_entries = []
+    for s in suggestions:
+        entry = f"### 来自 {s['source']} ({s['task_id']})\n\n{s['content']}\n"
+        new_entries.append(entry)
+    agents_file.write_text(existing + "\n" + "\n".join(new_entries) + "\n")
+
+    # 从 pending 文件中移除已审批的建议块（保留 header + 迁移记录）
+    now = now_iso()[:10]
+    n = len(suggestions)
+    # 提取 header（截止到第一个建议块之前）
+    header_lines = []
+    for line in content.split("\n"):
+        if line.strip().startswith("## 来源 task:") or line.strip().startswith("---"):
+            break
+        header_lines.append(line)
+    header = "\n".join(header_lines).rstrip()
+
+    migration_line = f"| {now} | approve-agents | ✅ (已写入 {n} 条) | 自动审批 |\n"
+    if migration_idx != -1:
+        existing_migration = content[migration_idx:].rstrip()
+        pending_file.write_text(
+            header + "\n\n" + existing_migration + "\n" + migration_line
+        )
+    else:
+        pending_file.write_text(
+            header
+            + "\n\n## 迁移记录\n\n"
+            + "| 日期 | 迁移人 | 写入 AGENTS.md? | 备注 |\n"
+            + "|------|--------|----------------|------|\n"
+            + migration_line
+        )
+
+    print(f"[approve-agents] ✓ {n} 条建议已写入 {agents_file}")
+    return {"role": "approve-agents", "approved": n, "file": str(agents_file)}
+
+
 ROLES = {
     "product": product_role,
     "dev": dev_role,
@@ -1142,6 +1297,7 @@ ROLES = {
     "ops": ops_role,
     "kb": kb_role,
     "regress": regress_role,
+    "approve-agents": approve_agents,
 }
 
 
