@@ -43,3 +43,20 @@ fi
 COMMIT_MSG="phase $PHASE_INDEX done (plan: $PLAN_NAME)"
 git commit -m "$COMMIT_MSG" >/dev/null
 echo "[post-exec] committed: $COMMIT_MSG"
+
+# v0.15d: 自动 push 远端（如果配了 remote 且 fast-forward）
+# 失败不阻断（可能没 remote / 远端无写权 / 网络问题）
+CCC_PUSH="${CCC_PUSH:-1}"  # 默认开, 设 CCC_PUSH=0 关
+if [[ "$CCC_PUSH" == "1" ]]; then
+  REMOTE=$(git remote 2>/dev/null | head -1)
+  BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [[ -n "$REMOTE" && -n "$BRANCH" ]]; then
+    if git push "$REMOTE" "$BRANCH" 2>/dev/null; then
+      echo "[post-exec] pushed to $REMOTE/$BRANCH"
+    else
+      echo "[post-exec] push failed (non-fatal): $REMOTE/$BRANCH"
+    fi
+  else
+    echo "[post-exec] no remote/branch, skip push"
+  fi
+fi
