@@ -90,8 +90,20 @@ def update_index() -> dict:
     return counts
 
 
+def _load_timeout(phases_file: Path, default: int = 300) -> int:
+    """从 phases.json 的第一条 phase 读 timeout"""
+    try:
+        with open(phases_file) as f:
+            data = json.load(f)
+            if isinstance(data, list) and data:
+                return data[0].get("timeout", default)
+    except (FileNotFoundError, json.JSONDecodeError, IndexError):
+        pass
+    return default
+
+
 def product_role() -> dict:
-    """产品经理: 扫 backlog → 写 plan.md → 挪 planned"""
+    """产品经理: 扫 backlog → 写 plan.md + phases.json（含 timeout）→ 挪 planned"""
     moved = []
     for task in list_tasks("backlog"):
         task_id = task["id"]
@@ -110,8 +122,10 @@ def product_role() -> dict:
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         if not phases_file.exists():
             phases_file.parent.mkdir(parents=True, exist_ok=True)
+            # 默认 300s timeout，大任务调大
+            timeout = task.get("timeout", 300)
             phases_file.write_text(
-                json.dumps([{"phase": f"{task_id}-p1", "status": "pending"}]) + "\n"
+                json.dumps([{"phase": f"{task_id}-p1", "status": "pending", "timeout": timeout}]) + "\n"
             )
         if move_task(task_id, "backlog", "planned"):
             moved.append(task_id)
@@ -119,34 +133,43 @@ def product_role() -> dict:
 
 
 def dev_role() -> dict:
-    """开发工程师: 扫 planned + in_progress → 调 opencode 写代码 → 挪 testing"""
+    """开发工程师: 每次取 1 个 planned 任务 → opencode → 失败留 in_progress 下轮重试"""
     import subprocess as sp
 
     moved = []
-    for task in list_tasks("planned"):
-        task_id = task["id"]
-        plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
-        phases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-        if not plan.exists() or not phases.exists():
-            print(f"[dev] {task_id} 缺 plan/phases, 跳过")
-            continue
-        # 挪到 in_progress
-        move_task(task_id, "planned", "in_progress")
-        # 调 launcher (90s timeout, 防止 harness 2min 杀)
-        result = sp.run(
-            [
-                "bash", str(ROOT / "scripts" / "ccc-exec-launcher.sh"),
-                f"{task_id}-p1", str(plan),
-                "--timeout", "90",
-            ],
-            capture_output=True, text=True, timeout=180,
-        )
-        if result.returncode == 0:
-            move_task(task_id, "in_progress", "testing")
-            moved.append(task_id)
-        else:
-            print(f"[dev] {task_id} launcher 失败: {result.returncode}", file=sys.stderr)
-            # 留在 in_progress, 下次再试
+    tasks = list_tasks("planned")
+    if not tasks:
+        return {"role": "dev", "moved": [], "counts": update_index(), "info": "无任务"}
+
+    # 每次只处理 1 个，避免单次超时
+    task = tasks[-1]
+    task_id = task["id"]
+    plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not plan.exists() or not phases_file.exists():
+        print(f"[dev] {task_id} 缺 plan/phases, 跳过")
+        return {"role": "dev", "moved": [], "counts": update_index(), "info": f"{task_id} 缺 plan/phases"}
+
+    move_task(task_id, "planned", "in_progress")
+
+    # 从 phases.json 读 timeout，默认 300s
+    timeout_s = _load_timeout(phases_file, default=300)
+    print(f"[dev] {task_id} timeout={timeout_s}s")
+
+    # 调 opencode-exec.py（单任务不经过 pool，pool 留给多 phase 并发）
+    result = sp.run(
+        [
+            sys.executable, str(ROOT / "scripts" / "opencode-exec.py"),
+            str(plan),
+        ],
+        capture_output=True, text=True, timeout=timeout_s + 30,
+    )
+    if result.returncode == 0:
+        move_task(task_id, "in_progress", "testing")
+        moved.append(task_id)
+        print(f"[dev] {task_id} → testing")
+    else:
+        print(f"[dev] {task_id} rc={result.returncode} {result.stderr[:200]}", file=sys.stderr)
     return {"role": "dev", "moved": moved, "counts": update_index()}
 
 

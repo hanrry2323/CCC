@@ -1,1 +1,0 @@
-{"id": "v0.18-docs", "title": "文档体系对齐 v0.18", "description": "更新文档反映纯 6 角色系统：\n1. README.md 检查（已做一次，需确认完整）\n2. docs/roadmap.md 更新 v0.18 进度\n3. docs/GLOSSARY.md 更新 6 角色术语\n4. 确保所有文档不再引用三角色\n5. skills/README.md 确认索引完整", "status": "planned", "created_at": "2026-07-07T11:10:55Z", "updated_at": "2026-07-07T11:11:11Z", "moves": []}
