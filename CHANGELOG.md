@@ -64,6 +64,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — v0.11 消化 — 范式转变标记
+
+**里程碑**：v0.11 完结后消化，标记 CCC 范式转变 = "opencode 写 + 人工 review"。
+
+### Added
+- `docs/lessons.md` Lesson 34 — opencode run 起 node 孙子进程，killpg 在 macOS 不可靠
+- `docs/lessons.md` Lesson 35 — opencode 写代码质量超过 v0.7 时代人工基线
+- `docs/roadmap.md` 范式转变段（v0.11 起默认 opencode 写）
+
+### Verified
+- install-ccc-scheduler install/uninstall 闭环烟测：plist 生成 + plutil lint OK + 卸载干净
+- 远端 5 tag 完整：v0.7.0 / v0.8.0 / v0.9.0 / v0.10.0 / v0.11.0
+
+---
+
+## [Unreleased] — v0.11 — 开箱即用调度 + 队列真测试
+
+**里程碑**：v0.11 落地 a（钩子模板 + scheduler 安装器）+ b（队列 N phase 真测试）+ b-fix（红线 X2 必杀修）。v0.11 完结后，CCC 具备了从"用户启 launcher" → "launchd 周期调 launcher" → "队列跑多 phase" 的全链路。
+
+### Added
+- `templates/hooks/post-exec.sh` — phase 完成自动 git add+commit
+- `templates/hooks/on-error.sh` — phase 失败 L2 通知 + 落 abnormal report
+- `templates/hooks/pre-commit.sh` — soft lint (TODO/print/debugger)
+- `scripts/install-ccc-scheduler.sh` — install/uninstall/status/--dry-run 一键装 launchd
+- `tests/scripts/test_queue_e2e_3phase_pass.py` — 3 phase 全成功
+- `tests/scripts/test_queue_e2e_mid_fail.py` — 中间失败 pause
+- `tests/scripts/test_queue_e2e_resume.py` — pause 后续跑
+- `docs/lessons.md` Lesson 33 — opencode run positionals 截断 200 字符
+
+### Changed
+- `scripts/opencode-exec.py` — 长 prompt 走 --file 协议（positionals 截断修复）
+- `scripts/opencode-exec.py` — `start_new_session=True` + `os.killpg`（kill 级联）
+- `scripts/opencode-watchdog.sh` — 扫 `opencode (run|exec)` + pkill -f 兜底
+- `scripts/ccc-queue.sh` — `CCC_LAUNCHER_OVERRIDE` env var 支持（mock 测试）
+
+### Fixed
+- **红线 X2 失守修复**：launcher 杀 opencode 不级联到孙子 node 进程（macOS killpg 不可靠）
+  - 修法 1: opencode-exec 用 killpg
+  - 修法 2: watchdog 加 pkill -f 兜底
+
+### Verified
+- pytest: 66 passed (63 + 3 新增)
+- 真实模型调用: 11.9s 返 exit 0
+- launchd 调度: 装/卸/触发全通
+- 队列 3 场景: pass / mid_fail(exit 5) / resume 全验
+- 必杀: 30s sleep + 2s timeout 必杀
+
+---
+
+---
+
 ## [1.2.0] — 2026-07-06 — 流程跑通 (CCC v1.0 Closure)
 
 **里程碑**:Planner → Executor → Verifier 三角色**完整流程**首次跑通,5+5 机器化门控闭环。

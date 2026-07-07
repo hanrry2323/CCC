@@ -51,22 +51,30 @@
 
 ## 当前任务(进行中)
 
-**v0.10 任务链**:✅ **已完结**(2026-07-07,修 v0.9b 雷 + 队列补全)
+**v0.11 任务链**:✅ **已完结**(2026-07-07,开箱即用调度 + 队列真测试 + bfix)
 
-- 启动: v0.10 — 修雷 + 补全 — 2026-07-07
-- 完结: v0.10 — 2026-07-07
-- 关键修复:
-  - precheck Gate 5: 旧 executor-watchdog.sh → opencode-watchdog.sh(v0.8 尾巴)
-  - 飞轮伪发现: 加白名单 + 阈值 3 + 排除 alerts/
-  - 队列接 commit + phases.json 状态回写
-  - roadmap.md 同步到 v0.9.0
-- 测试: 63 passed
-- Verdict: PASS (.ccc/verdicts/v0.10-verdict.md)
+- 启动: v0.11 — a+b — 2026-07-07
+- 完结: v0.11.0 — 2026-07-07
+- 关键产出:
+  - 3 个钩子模板(post-exec / on-error / pre-commit)
+  - install-ccc-scheduler.sh(install/uninstall/status/--dry-run)
+  - 队列 N phase 真测试(3 pytest: pass/mid_fail/resume)
+  - 修红线 X2 失守(killpg + pkill -f 兜底)
+  - 修 opencode run positionals 截断(--file 协议)
+- 测试: 66 passed
+- Verdict: PASS (.ccc/verdicts/v0.11-verdict.md)
+
+**v0.11 消化(本次)**:✅
+- 追加 lessons 34(killpg 不可靠) + 35(opencode 写代码超人工)
+- 验 scheduler install/uninstall 闭环
+- roadmap 标 v0.11 + 范式转变(opencode 写 + 人工 review)
+- 远端 5 tag: v0.7.0/v0.8.0/v0.9.0/v0.10.0/v0.11.0
 
 下一阶段决策点(待用户拍板):
 
-- **v0.11**:消化 v0.10,等新活
-- **v0.12**:飞轮候选 review 合并 / e2e 加 verifier 验收 / 跨项目支持
+- **v0.12**:跨项目支持(qx-observer / qx / xianyu 调 CCC 验通用性)
+- **v0.13**:飞轮候选 review 合并 / e2e 加 verifier 验收
+- **v0.14**:消化,等新活
 
 > 当前**不启动** 任何新任务,等用户拍板。
 

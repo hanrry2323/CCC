@@ -1737,3 +1737,56 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 **应用方式**：
 - 接入新 provider 后，必须 smoke test 一次 `opencode run --model <provider>/<model> "smoke"` 确认通
 - 写 `references/adapters/runtime-opencode.md` 时**禁止**直接抄 CLAUDE.md 的"flash"对外名，**必须**写 opencode 内部全名
+
+---
+
+## Lesson 34 — opencode run 起 node 孙子进程，killpg 在 macOS 不可靠（v0.11b-fix 实测，2026-07-07）
+
+**问题**：v0.11b1 实测，opencode `run` 命令启动后，opencode binary 本身很快就 exit，
+但它 fork 出来的 node 孙子进程仍活着。`opencode-exec.py` 用 `os.killpg(pid, SIGTERM)`
+杀整个 process group，macOS 上 **不可靠**——子进程没归到 opencode 的 pgid 下。
+
+**真相**：
+- `start_new_session=True` 让 pgid = opencode pid
+- 但 opencode `run` 的 node 子进程是 fork 出来的，pgid 继承父（=opencode pgid）
+- macOS `kill -- -<pid>` 偶尔杀不干净（BSD vs Linux 信号语义差异）
+
+**修复**（v0.11b-fix）：
+1. `opencode-exec.py`: 仍用 `killpg`（兜底）
+2. `opencode-watchdog.sh`: 加 `pkill -9 -f "opencode run"` 兜底二次
+3. watchdog 排除 pgrep 自身（`grep -v "^\$\$\$\|PPID"`）
+
+**可执行规则**：
+- 任何 spawn opencode 的 wrapper，**必须**有 watchdog 兜底（不要只信 killpg）
+- watchdog 必扫 `pgrep -f "opencode (run|exec)"`，**不只** pid 文件登记
+- pid 文件检查用精确 `==` 匹配（之前用 `grep -q "^$pid$"` 假阳）
+
+**应用方式**：
+- 任何新工具接入 CCC（不只是 opencode），watchdog 兜底必写
+- v0.12 决策点：是否把所有 spawn 路径都加 pkill -f 兜底
+
+---
+
+## Lesson 35 — opencode 写代码质量超过我手写（v0.11 实测，2026-07-07）
+
+**观察**：v0.11a1/a2/b1 三次让 opencode 写代码，对比人工：
+
+| 维度 | opencode 输出 | 人工 |
+|------|---------------|------|
+| post-exec.sh 边界 | 自动加 DRY_RUN / empty stage marker / 多 env var 支持 | 容易漏 |
+| on-error.sh 鲁棒性 | 自动加 stderr tail 落档 + notify 缺失兜底 | 单条通知 |
+| pre-commit.sh 覆盖 | 3 类 lint + strict mode 可选 | 通常 1 类 |
+| install-ccc-scheduler | --target/--phase/--prompt/--dry-run 全套 | 通常 3-4 个 |
+| queue e2e 3 个 pytest | 含 fake-launcher 抽象 + env 隔离 | 通常 1-2 个 |
+
+**真相**：opencode loop/flash 写工程代码的细致度已经超过 v0.7 时代的人工基线。
+
+**可执行规则**：
+- v0.12 起，**默认让 opencode 写第一版代码**，人工 review + 修边界
+- 不再"我手写 + opencode review"（v0.7 时代模式）
+- 人工专注：plan + 验收 + 修 opencode 的接口偏差（v0.11 修了 3 处）
+
+**应用方式**：
+- CCC 的 v0.12+ 任务，**默认走 "opencode 写 + 人工 review" 模式**
+- 钩子模板、scheduler、queue 接入都让 opencode 起手
+- 人工只在 prompt 里指定"接口必须兼容 ccc-notify positional 而不是 --level flag"等红线
