@@ -1,3 +1,4 @@
 {"event": "move", "task_id": "test-task", "from": "none", "to": "backlog", "timestamp": "2026-07-07T14:25:36Z"}
 {"event": "move", "task_id": "test-task", "from": "backlog", "to": "planned", "timestamp": "2026-07-07T14:27:35Z"}
 {"event": "move", "task_id": "test-task", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T14:28:17Z"}
+{"event": "move", "task_id": "test-task", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T14:38:18Z"}

@@ -295,30 +295,80 @@ def product_role(task_id: str = "") -> dict:
 
 
 def dev_role() -> dict:
-    """开发工程师: 每次取 1 个 planned 任务 → 生成 prompt → opencode 执行 → 产 report → testing"""
+    """开发工程师: 查 in_progress（重试）→ 查 planned（新的）→ opencode 执行"""
     import subprocess as sp
     import tempfile
 
     moved = []
-    tasks = list_tasks("planned")
-    if not tasks:
-        return {"role": "dev", "moved": [], "counts": update_index(), "info": "无任务"}
+    task = None
+    task_id = ""
+    from_col = ""
+    MAX_RETRY = 3
 
-    # 每次只处理 1 个
-    task = tasks[-1]
-    task_id = task["id"]
+    # Step 1: 有卡在 in_progress 的任务吗？
+    stuck = list_tasks("in_progress")
+    if stuck:
+        task = stuck[-1]
+        task_id = task["id"]
+        from_col = "in_progress"
+        print(f"[dev] 发现卡住任务 {task_id}，准备重试")
+
+        # 读 phases 里的 retry 计数
+        phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        retry = 0
+        try:
+            if phases_file.exists():
+                raw = json.loads(phases_file.read_text())
+                if isinstance(raw, list) and raw:
+                    retry = raw[0].get("retry", 0)
+        except (json.JSONDecodeError, IndexError):
+            pass
+
+        retry += 1
+        if retry > MAX_RETRY:
+            # 升舱：移 abnormal + 建紧急修复任务
+            abnormal_dir = ROOT / ".ccc" / "abnormal-reports"
+            abnormal_dir.mkdir(parents=True, exist_ok=True)
+            abnormal_dir.joinpath(f"{task_id}.abnormal.md").write_text(
+                f"# {task_id} 升舱报告\n\n"
+                f"重试 {MAX_RETRY} 次全部失败，已升舱。\n"
+                f"请人工介入。\n"
+            )
+            bug_id = f"emergency-{task_id}"
+            bug_title = f"紧急修复: {task.get('title', task_id)}（opencloud 重试{MAX_RETRY}次失败）"
+            create_task({"id": bug_id, "title": bug_title,
+                         "description": f"自动升舱:\n{task_id} 重试{MAX_RETRY}次均失败。"})
+            print(f"[dev] {task_id} 重试{MAX_RETRY}次失败 → 升舱 {bug_id}", file=sys.stderr)
+            return {"role": "dev", "moved": [], "error": "escalated",
+                    "counts": update_index()}
+
+        # 更新 retry 计数
+        try:
+            if phases_file.exists():
+                raw = json.loads(phases_file.read_text())
+                if isinstance(raw, list) and raw:
+                    raw[0]["retry"] = retry
+                    phases_file.write_text(json.dumps(raw, ensure_ascii=False) + "\n")
+        except (json.JSONDecodeError, IndexError):
+            pass
+        print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试")
+
+    # Step 2: in_progress 无事，取 planned
+    if not task:
+        planned = list_tasks("planned")
+        if not planned:
+            return {"role": "dev", "moved": [], "counts": update_index(), "info": "无任务"}
+        task = planned[-1]
+        task_id = task["id"]
+        from_col = "planned"
+        move_task(task_id, "planned", "in_progress")
+
     plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not plan.exists() or not phases_file.exists():
         print(f"[dev] {task_id} 缺 plan/phases, 跳过")
-        return {
-            "role": "dev",
-            "moved": [],
-            "counts": update_index(),
-            "info": f"{task_id} 缺 plan/phases",
-        }
-
-    move_task(task_id, "planned", "in_progress")
+        return {"role": "dev", "moved": [], "counts": update_index(),
+                "info": f"{task_id} 缺 plan/phases"}
 
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(phases_file, default=600)
@@ -344,25 +394,17 @@ def dev_role() -> dict:
     prompt_file = tmp.name
 
     try:
-        print(
-            f"[dev] {task_id} prompt={prompt_file} phase={phase_id} timeout={timeout_s}s"
-        )
+        print(f"[dev] {task_id} phase={phase_id} timeout={timeout_s}s retry={retry if from_col=='in_progress' else 0}")
         result = sp.run(
             [
-                sys.executable,
-                str(ROOT / "scripts" / "opencode-exec.py"),
-                "--phase",
-                phase_id,
-                "--prompt",
-                prompt_file,
-                "--timeout",
-                str(timeout_s),
+                sys.executable, str(ROOT / "scripts" / "opencode-exec.py"),
+                "--phase", phase_id,
+                "--prompt", prompt_file,
+                "--timeout", str(timeout_s),
             ],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s + 30,
+            capture_output=True, text=True, timeout=timeout_s + 30,
         )
-        # 写 report
+        # 写 report（无论成败）
         report_dir = ROOT / ".ccc" / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         report = report_dir / f"{task_id}.report.md"
@@ -381,10 +423,14 @@ def dev_role() -> dict:
             moved.append(task_id)
             print(f"[dev] {task_id} ✓ → testing")
         else:
-            print(
-                f"[dev] {task_id} ✗ rc={result.returncode} {result.stderr[:200]}",
-                file=sys.stderr,
-            )
+            print(f"[dev] {task_id} ✗ rc={result.returncode}（停留在 in_progress，下轮重试）", file=sys.stderr)
+    except sp.TimeoutExpired:
+        print(f"[dev] {task_id} 超时（停留在 in_progress，下轮重试）", file=sys.stderr)
+        report_dir = ROOT / ".ccc" / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_dir.joinpath(f"{task_id}.report.md").write_text(
+            f"# {task_id} 执行报告\n\n## 信息\n- 状态: 超时\n"
+        )
     finally:
         os.unlink(prompt_file)
 

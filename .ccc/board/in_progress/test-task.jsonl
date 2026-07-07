@@ -1,0 +1,1 @@
+{"id": "test-task", "title": "测试任务 — product 改 Claude API", "description": "验证 product_role --promote 能调 Claude API 写 plan/phases", "status": "in_progress", "created_at": "2026-07-07T14:25:36Z", "updated_at": "2026-07-07T14:38:18Z", "assignee": null, "tags": []}
