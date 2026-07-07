@@ -1,7 +1,7 @@
 #!/bin/bash
 # ccc-hook.sh — 通用钩子入口（v0.8 新增）
 #
-# 职责：提供 4 个标准钩子点，ccc-exec-launcher.sh / ccc-finish.sh 调用。
+# 职责：提供 4 个标准钩子点，ccc-exec-launcher.sh 调用。
 #       每个钩子点执行 ~/.ccc/hooks/<hook-name>.sh（用户自定义）。
 #       用户脚本 exit 0 = 通过，非 0 = 阻断。
 #

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """ccc-board.py — 任务看板核心 (v0.18)
 
-6 角色都通过这个 core 操作 .ccc/board/:
+7 角色都通过这个 core 操作 .ccc/board/:
 - product: backlog → planned
 - dev: planned → in_progress → testing
 - reviewer: testing → verified (过 ruff/mypy)
 - tester: testing → verified (过 pytest)
 - ops: 健康检查 (不动 board)
 - kb: verified → released (归档)
+- regress: released → backlog (回归回测)
 
 任务流转规则见 .ccc/board/README.md
 """
@@ -31,6 +32,17 @@ BOARD = ROOT / ".ccc" / "board"
 EVENTS_DIR = BOARD / "events"
 
 COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released"]
+
+# 列迁移白名单：{目标列: [允许的源列列表]}
+# 不在白名单中的迁移会被拒绝
+COLUMN_TRANSITIONS: dict[str, list[str]] = {
+    "planned": ["backlog"],
+    "in_progress": ["planned"],
+    "testing": ["in_progress"],
+    "verified": ["testing"],
+    "released": ["verified"],
+    "backlog": ["released", "in_progress"],  # regress 回归回退 / dev 升舱回退
+}
 
 
 def now_iso() -> str:
@@ -113,7 +125,16 @@ def list_tasks(column: str) -> list[dict]:
 
 
 def move_task(task_id: str, from_col: str, to_col: str) -> bool:
-    """把 task 从 from_col 挪到 to_col"""
+    """把 task 从 from_col 挪到 to_col（受 COLUMN_TRANSITIONS 白名单约束）"""
+    # 列迁移门控
+    allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
+    if from_col not in allowed_from:
+        print(
+            f"[board] 拒绝迁移: {from_col} → {to_col} "
+            f"(允许的源列: {allowed_from})",
+            file=sys.stderr,
+        )
+        return False
     src = BOARD / from_col / f"{task_id}.jsonl"
     if not src.exists():
         print(f"[board] {task_id} not in {from_col}", file=sys.stderr)
@@ -155,13 +176,16 @@ def update_index() -> dict:
 
 
 def _load_timeout(phases_file: Path, default: int = 300) -> int:
-    """从 phases.json 的第一条 phase 读 timeout"""
+    """从 phases.jsonl 的第一行读 timeout（JSONL 格式，每行一个 JSON）"""
     try:
         with open(phases_file) as f:
-            data = json.load(f)
-            if isinstance(data, list) and data:
-                return data[0].get("timeout", default)
-    except (FileNotFoundError, json.JSONDecodeError, IndexError):
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                phase = json.loads(line)
+                return phase.get("timeout", default)
+    except (FileNotFoundError, json.JSONDecodeError):
         pass
     return default
 
@@ -349,15 +373,19 @@ def dev_role() -> dict:
         from_col = "in_progress"
         print(f"[dev] 发现卡住任务 {task_id}，准备重试")
 
-        # 读 phases 里的 retry 计数
+        # 读 phases 里的 retry 计数（JSONL 格式，取第一行）
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         retry = 0
         try:
             if phases_file.exists():
-                raw = json.loads(phases_file.read_text())
-                if isinstance(raw, list) and raw:
-                    retry = raw[0].get("retry", 0)
-        except (json.JSONDecodeError, IndexError):
+                with open(phases_file) as _pf:
+                    for _line in _pf:
+                        _line = _line.strip()
+                        if not _line:
+                            continue
+                        retry = json.loads(_line).get("retry", 0)
+                        break
+        except (json.JSONDecodeError):
             pass
 
         retry += 1
@@ -383,6 +411,8 @@ def dev_role() -> dict:
                 f"[dev] {task_id} 重试{MAX_RETRY}次失败 → 升舱 {bug_id}",
                 file=sys.stderr,
             )
+            # 升舱后移回 backlog，防止下一轮再升舱
+            move_task(task_id, from_col, "backlog")
             return {
                 "role": "dev",
                 "moved": [],
@@ -390,14 +420,20 @@ def dev_role() -> dict:
                 "counts": update_index(),
             }
 
-        # 更新 retry 计数
+        # 更新 retry 计数（JSONL，更新第一行）
         try:
             if phases_file.exists():
-                raw = json.loads(phases_file.read_text())
-                if isinstance(raw, list) and raw:
-                    raw[0]["retry"] = retry
-                    phases_file.write_text(json.dumps(raw, ensure_ascii=False) + "\n")
-        except (json.JSONDecodeError, IndexError):
+                lines = phases_file.read_text().split("\n")
+                for i, _line in enumerate(lines):
+                    _line_s = _line.strip()
+                    if not _line_s:
+                        continue
+                    phase = json.loads(_line_s)
+                    phase["retry"] = retry
+                    lines[i] = json.dumps(phase, ensure_ascii=False)
+                    break
+                phases_file.write_text("\n".join(lines))
+        except (json.JSONDecodeError):
             pass
         print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试")
 
@@ -459,10 +495,8 @@ def dev_role() -> dict:
         if pid_path.exists():
             try:
                 old_pid = int(pid_path.read_text().strip())
-                import os as _os
-
                 try:
-                    _os.kill(old_pid, 0)
+                    os.kill(old_pid, 0)
                     print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
                     return {
                         "role": "dev",
@@ -471,7 +505,15 @@ def dev_role() -> dict:
                         "info": f"opencode PID={old_pid} 运行中",
                     }
                 except OSError:
-                    pass
+                    # stale PID, clean up and fall through to done check
+                    print(
+                        f"[dev] {task_id} PID {old_pid} 异常退出，清理后重试",
+                        file=sys.stderr,
+                    )
+                    try:
+                        pid_path.unlink()
+                    except OSError:
+                        pass
             except (ValueError, OSError):
                 pass
 
@@ -507,34 +549,6 @@ def dev_role() -> dict:
                     file=sys.stderr,
                 )
             return {"role": "dev", "moved": moved, "counts": update_index()}
-
-        # PID 存活检测
-        if pid_path.exists():
-            try:
-                old_pid = int(pid_path.read_text().strip())
-                import os as _os
-
-                try:
-                    _os.kill(old_pid, 0)
-                    print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
-                    return {
-                        "role": "dev",
-                        "moved": [],
-                        "counts": update_index(),
-                        "info": f"opencode PID={old_pid} 运行中",
-                    }
-                except OSError:
-                    print(
-                        f"[dev] {task_id} PID {old_pid} 异常退出，清理后重试",
-                        file=sys.stderr,
-                    )
-                    for p in [pid_path]:
-                        try:
-                            p.unlink()
-                        except OSError:
-                            pass
-            except (ValueError, OSError):
-                pass
 
         # 启动 opencode（通过 runner.sh 持久化结果）
         report_dir = ROOT / ".ccc" / "reports"
@@ -756,7 +770,9 @@ def kb_role() -> dict:
     all_suggestions: list[dict] = []
     for task in list_tasks("verified"):
         task_id = task["id"]
-        # git tag
+        # 从 VERSION 读版本号
+        version = Path(ROOT / "VERSION").read_text().strip()
+        # git tag（版本号动态读取，不硬编码）
         sp.run(
             [
                 "git",
@@ -764,19 +780,38 @@ def kb_role() -> dict:
                 "-a",
                 f"board-{task_id}",
                 "-m",
-                f"v0.16: {task_id} 看板发布",
+                f"{version}: {task_id} 看板发布",
             ],
             cwd=ROOT,
             capture_output=True,
             timeout=10,
         )
         # git push tag
-        sp.run(
+        push_r = sp.run(
             ["git", "push", "origin", f"board-{task_id}"],
             cwd=ROOT,
             capture_output=True,
             timeout=30,
         )
+        if push_r.returncode != 0:
+            print(f"[kb] {task_id} git push 失败 rc={push_r.returncode}", file=sys.stderr)
+            fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+            fail_log.write_text(
+                f"# {task_id} git push 失败\n\n"
+                f"rc={push_r.returncode}\n"
+                f"{push_r.stderr[:500]}\n"
+            )
+            continue
+
+        # CHANGELOG.md 追加
+        today_str = now_iso()[:10]
+        changelog_path = ROOT / "CHANGELOG.md"
+        entry = f"\n## [{version}] - {today_str}\n\n- {task_id}: {task.get('title', '')} 看板发布\n"
+        if changelog_path.exists():
+            changelog_path.write_text(changelog_path.read_text() + entry)
+        else:
+            changelog_path.write_text(f"# CHANGELOG\n\n{entry}")
+        print(f"[kb] ✓ CHANGELOG 追加 {task_id} ({version})")
 
         # 收集 AGENTS.md 建议
         report_file = ROOT / ".ccc" / "reports" / f"{task_id}.report.md"
@@ -886,7 +921,8 @@ def regress_role() -> dict:
             print(f"[regress] ✓ {tid}")
         else:
             results["failed"] += 1
-            bug_id = f"regression-{tid}-{results['failed']}"
+            today_compact = date.today().strftime("%Y%m%d")
+            bug_id = f"regression-{tid}-{today_compact}-{results['failed']}"
             bug_title = f"回归: {task.get('title', tid)} ({today})"
             bug_desc = f"原任务 {tid} 在 {today} 回测失败\n"
             if not py_ok:
@@ -896,6 +932,33 @@ def regress_role() -> dict:
             create_task({"id": bug_id, "title": bug_title, "description": bug_desc})
             results["regressions"].append(bug_id)
             print(f"[regress] ✗ {tid} → {bug_id}")
+            # 把原任务移回 backlog 并加 regression 标签
+            src_path = BOARD / "released" / f"{tid}.jsonl"
+            if src_path.exists():
+                _lines = src_path.read_text().split("\n")
+                for _i, _line in enumerate(_lines):
+                    _ls = _line.strip()
+                    if not _ls:
+                        continue
+                    try:
+                        _obj = json.loads(_ls)
+                        _tags = _obj.get("tags", [])
+                        if "regression" not in _tags:
+                            _tags.append("regression")
+                        _obj["tags"] = _tags
+                        _obj["updated_at"] = now_iso()
+                        _lines[_i] = json.dumps(_obj, ensure_ascii=False)
+                        break
+                    except json.JSONDecodeError:
+                        pass
+                src_path.write_text("\n".join(_lines))
+            move_task(tid, "released", "backlog")
+            # macOS 桌面通知
+            subprocess.run(
+                ["bash", str(ROOT / "scripts" / "ccc-notify.sh"), "L2", bug_title, bug_desc[:200]],
+                capture_output=True,
+                timeout=10,
+            )
 
     # 写回测日报
     report_dir = ROOT / ".ccc" / "reports"
@@ -909,6 +972,39 @@ def regress_role() -> dict:
         f"- 新建回归 bug: {len(results['regressions'])}\n"
     )
     return {"role": "regress", "results": results, "report": str(report)}
+
+
+def get_timeline(task_id: str | None = None) -> list[dict]:
+    """从 .ccc/board/events/<task_id>.events.jsonl 读取 timeline 事件
+
+    Args:
+        task_id: 指定 task，None 则返回所有 task 的 events
+    """
+    if not EVENTS_DIR.exists():
+        return []
+    events: list[dict] = []
+    if task_id:
+        event_file = EVENTS_DIR / f"{task_id}.events.jsonl"
+        if event_file.exists():
+            for line in event_file.read_text().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    else:
+        for f in sorted(EVENTS_DIR.glob("*.events.jsonl")):
+            for line in f.read_text().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    return events
 
 
 ROLES = {
@@ -969,7 +1065,7 @@ def batch_process(lines: list[dict]) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="CCC 任务看板 6 角色核心")
+    ap = argparse.ArgumentParser(description="CCC 任务看板 7 角色核心")
     ap.add_argument(
         "role",
         nargs="?",
@@ -1025,23 +1121,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-def _run_via_pool(
-    phase_id: str, prompt_file: str, timeout_s: int
-) -> subprocess.CompletedProcess:
-    """走 opencode-pool（单任务）"""
-    import subprocess as sp, json, tempfile
-
-    tasks = [{"phase_id": phase_id, "prompt_file": prompt_file, "timeout": timeout_s}]
-    tf = tempfile.NamedTemporaryFile(mode="w", suffix=".pool.json", delete=False)
-    json.dump(tasks, tf)
-    tf.close()
-    result = sp.run(
-        [sys.executable, str(ROOT / "scripts" / "opencode-pool.py"), tf.name],
-        capture_output=True,
-        text=True,
-        timeout=timeout_s + 30,
-    )
-    os.unlink(tf.name)
-    return result

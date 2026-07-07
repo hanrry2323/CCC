@@ -1,10 +1,17 @@
 #!/bin/bash
 # install-board-plist.sh — 装 CCC 看板 HTTP 服务器 launchd plist (v0.18)
 #
-# 绑定 :6666（0.0.0.0，局域网可访问），随用户登录自动启动。
+# 从 ccc-config.sh 读取 BOARD_PORT/BOARD_HOST，默认 :7777（127.0.0.1），随用户登录自动启动。
 set -uo pipefail
 
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# ── 加载配置（BOARD_PORT / BOARD_HOST）──
+DEFAULT_CONFIG="${CCC_HOME}/templates/ccc-config.sh"
+if [ -f "$DEFAULT_CONFIG" ]; then
+  source "$DEFAULT_CONFIG"
+fi
+
 PLIST_DIR="${HOME}/Library/LaunchAgents"
 PLIST="${PLIST_DIR}/com.ccc.board.plist"
 LOG_DIR="${HOME}/.ccc/logs"
@@ -21,9 +28,9 @@ cat > "$PLIST" <<PLIST_EOF
   <array>
     <string>${CCC_HOME}/scripts/ccc-board-server.py</string>
     <string>--port</string>
-    <string>6666</string>
+    <string>${BOARD_PORT:-7777}</string>
     <string>--host</string>
-    <string>0.0.0.0</string>
+    <string>${BOARD_HOST:-127.0.0.1}</string>
   </array>
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
@@ -50,6 +57,5 @@ launchctl unload "$PLIST" 2>/dev/null || true
 sleep 1
 launchctl load -w "$PLIST"
 
-echo "✓ com.ccc.board 已装 → http://localhost:6666"
-echo "  局域网: http://192.168.3.140:6666"
+echo "✓ com.ccc.board 已装 → http://localhost:${BOARD_PORT:-7777}"
 echo "  日志: ${LOG_DIR}/ccc-board.{out,err}.log"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-ccc-roles.sh — 一键装 6 角色 launchd plist (v0.18)
+# install-ccc-roles.sh — 一键装 7 角色 launchd plist (v0.18)
 #
 # 用法:
 #   ./install-ccc-roles.sh                          # 装到 CCC 自身

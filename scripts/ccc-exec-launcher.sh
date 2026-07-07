@@ -39,6 +39,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+CWD="${CWD:-$PWD}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "$LOG_DIR"
@@ -73,6 +75,8 @@ fi
 # --- Step 3: opencode-exec ---
 log "Step 3: opencode-exec"
 EXEC_ARGS=(--phase "$PHASE_ID" --prompt "$PROMPT_FILE" --timeout "$TIMEOUT")
+# Step 1 已跑 watchdog，不重复（红线 X3 在 launcher 层满足）
+EXEC_ARGS+=(--skip-watchdog)
 [[ -n "$CWD" ]] && EXEC_ARGS+=(--cwd "$CWD")
 
 set +e
@@ -86,7 +90,8 @@ if [[ $EXEC_RC -ne 0 ]]; then
   log "Step 4a: on-error hook + L2 通知"
   bash "$SCRIPT_DIR/ccc-hook.sh" on-error "$PHASE_ID" "$EXEC_RC" >> "$LOG_FILE" 2>&1 || true
   bash "$SCRIPT_DIR/ccc-notify.sh" L2 "opencode FAIL: $PHASE_ID" "exit=$EXEC_RC log=$LOG_FILE" >/dev/null 2>&1 || true
-  exit $(( EXEC_RC == 124 ? 4 : 3 ))
+  # opencode-exec.py 超时返回 -1（bash wrap → 255），非 124
+  exit $(( EXEC_RC == 255 ? 4 : 3 ))
 fi
 
 # --- Step 5: post-exec 钩子 ---
@@ -96,6 +101,12 @@ if ! bash "$SCRIPT_DIR/ccc-hook.sh" post-exec "$PHASE_ID" "$CWD" >> "$LOG_FILE" 
   log "❌ post-exec 钩子阻断"
   exit 5
 fi
+
+# post-exec 已做 git commit → 写标记，防止 exec-commit.sh 重复 commit
+COMMIT_MARKER_DIR="$HOME/.ccc/committed-phases"
+mkdir -p "$COMMIT_MARKER_DIR"
+touch "$COMMIT_MARKER_DIR/${PHASE_ID}.marker"
+log "已写 commit 标记: $COMMIT_MARKER_DIR/${PHASE_ID}.marker"
 
 log "✅ phase $PHASE_ID 完成"
 exit 0

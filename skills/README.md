@@ -1,13 +1,13 @@
 # CCC Skills 索引
 
-6 角色定时开发系统，v0.18 唯一范式。
+7 角色定时开发系统，v0.18 唯一范式。
 
-## 6 角色
+## 7 角色
 
 | 角色 | 技能目录 | 看板列 | 频率 | 职责 |
 |------|---------|--------|------|------|
 | product | `skills/ccc-product/SKILL.md` | backlog → planned | 4h | 拆任务、写 plan、SPEC 门禁 |
-| dev | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | 30min | 调 opencode 写代码 |
+| dev | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | 10min | 调 opencode 写代码 |
 | reviewer | `skills/ccc-reviewer/SKILL.md` | testing → verified | 2h | py_compile + 静态检查 + 范围核对 |
 | tester | `skills/ccc-tester/SKILL.md` | testing → verified | 4h | pytest + plan 验收项逐条验证 |
 | ops | `skills/ccc-ops/SKILL.md` | 不动 board | 30min | 健康检查 + 告警 |

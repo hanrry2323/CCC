@@ -62,8 +62,8 @@ def test_commit_empty_phases_noop(fake_workspace):
         ["bash", str(SCRIPT), str(fake_workspace), "testtask"],
         capture_output=True, text=True, timeout=10,
     )
-    # Should not fail catastrophically
-    assert proc.returncode in (0, 1), proc.stderr
+    # Should noop (exit 0)
+    assert proc.returncode == 0, f"expected exit 0, got {proc.returncode}: {proc.stderr}"
 
 
 def test_script_syntax_only():
@@ -92,5 +92,5 @@ def test_exit_code_3_for_already_committed(fake_workspace):
         ["bash", str(SCRIPT), str(fake_workspace), "testtask"],
         capture_output=True, text=True, timeout=10,
     )
-    # Skip + exit 0 OR 3 (per docs) acceptable
-    assert proc.returncode in (0, 1, 3)
+    # Must exit 3 per docs
+    assert proc.returncode == 3, f"expected exit 3, got {proc.returncode}: {proc.stderr}"

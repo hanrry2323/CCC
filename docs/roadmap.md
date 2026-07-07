@@ -1,41 +1,45 @@
 # CCC 发展路线图
 
-> **当前状态(2026-07-07)**:
-> - **v0.6 调度器集成阶段**:已完成(v0.6-ide-scheduler, git history)
-> - **v0.7 阶段**(v0.7-slim → v0.7f 共 9 子任务):全部 PASS,**v0.7.0** 2026-07-07 收束
-> - **v0.8 阶段**(OpenCode CLI 执行端重构):全部 PASS,**v0.8.0** 2026-07-07
-> - **v0.9 阶段**(model provider 修复 + 飞轮/队列简化版):全部 PASS,**v0.9.0** 2026-07-07
-> - **v0.10 阶段**(修 v0.9b 雷 + 队列 commit/状态):全部 PASS,**v0.10.0** 2026-07-07
-> - **v0.11 阶段**(开箱即用调度 + 队列真测试):全部 PASS,**v0.11.0** 2026-07-07
-> - **v0.12 阶段**(bug fix sweep):全部 PASS,**v0.12.0** 2026-07-07
-> - **v0.13 阶段**(跨项目支持 qx-observer):全部 PASS,**v0.13.0** 2026-07-07
-> - **v0.14 阶段**(真落地: 35 commit push + scheduler 装):全部 PASS,**v0.14.0** 2026-07-07
-> - **v0.15 阶段**(真自动化开发: ccc-auto-dev + post-exec 自动 commit+push):全部 PASS,**v0.15.0** 2026-07-07
-> - **v0.16 阶段**(6 角色定时开发系统 + 任务看板):全部 PASS,**v0.16.0** 2026-07-07
-> - **v0.17 阶段**(战略地图 + 文档体系对齐):**当前进行中**
-> - **当前最新版本**:v0.16.0 (push + tag 已打,见 git ls-remote)
+> **当前状态(2026-07-08)**:
+> - **v0.16 阶段**(7 角色定时开发系统 + 任务看板):全部 PASS,**v0.16.0** 2026-07-07
+> - **v0.17 阶段**(战略地图 + 文档体系对齐):全部 PASS,**v0.17.0**
+> - **v0.18 阶段**(regress 角色加入 + 文档对齐 7 角色):**当前版本**
+> - **当前最新版本**:v0.18.0
 >
-> **范式转变(2026-07-07)**:
+> **范式转变**:
 > 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
 > 2. **v0.12**: bug 扫描 → 必修 → 复查 → 沉淀 4 步标准化 (Lesson 36)
 > 3. **v0.15**: 真自动化开发 (opencode 写代码 + post-exec 自动 commit+push)
-> 4. **v0.16**: **6 角色 + 任务看板** — 任务在 6 列流转, 6 launchd plist 周期跑
+> 4. **v0.16**: **7 角色 + 任务看板** — 任务在 6 列流转, 7 launchd plist 周期跑
 > 5. **v0.17**: **战略地图** — 任何 cloud agent 启动必读第一份文件
+> 6. **v0.18**: **7 角色文档对齐** — regress 角色正式加入, 全文档 6→7 角色更新
 >
 > 详细战略地图见 `docs/STRATEGY-MAP.md` (v0.17 必读)。
 >
-> 本文件保留作为 v0.5 时期路线设计的历史存档。**新任务参考 `.ccc/state.md`** + `CHANGELOG.md` + `docs/STRATEGY-MAP.md`。
+> 本文件保留作为路线设计的历史存档。**新任务参考 `.ccc/state.md`** + `CHANGELOG.md` + `docs/STRATEGY-MAP.md`。
 
 ---
 
-## v0.5 时期路线设计(历史存档)
+## 历史存档:v0.5 时期路线设计及后续版本
 
 > v0.5 是关键转折：CCC 从「framework 代码库」转型为「SKILL 资产」。
-> 本节记录当时规划的方向,实际执行进度见上方"过期标注"。
+> 本节记录 v0.5–v0.15 的完整演进轨迹。
+
+| 版本 | 关键产出 |
+|------|----------|
+| v0.5–v0.7 | 4 文件契约 + 3 角色流水线、13 红线 |
+| v0.8 | OpenCode CLI 切换 + 进程管理红线 X1/X2/X3 |
+| v0.9 | model provider 修复, loop/flash 中转站 |
+| v0.10 | 飞轮 + 队列简化, 失败模式扫描 |
+| v0.11 | 开箱即用调度, 3 钩子模板 + install-ccc-scheduler |
+| v0.12 | bug fix sweep, 3 类 bug 修复模式 |
+| v0.13 | 跨项目支持 qx-observer 接入 |
+| v0.14 | 真正落地, 35 commit push + scheduler 装 |
+| v0.15 | 真自动化开发, ccc-auto-dev + post-exec 自动 commit+push |
 
 ---
 
-## 当前版本:v0.7.0(2026-07-07,见 CHANGELOG.md)
+## 历史存档:v0.5.0 重构(2026-07-07,见 CHANGELOG.md)
 
 ### 已完成（v0.5.0 重构）
 
@@ -465,7 +469,7 @@ CCC **不再扩张**（不写 framework 代码库）的条件：
 
 - `SKILL.md` — 注入 prompt
 - `CLAUDE.md` — 框架总纲
-- `references/red-lines.md` — 11+2 红线
+- `references/red-lines.md` — 12+X6 红线
 - `docs/lessons.md` — 教训沉淀
 - `docs/architecture.md` — 框架说明书
 - `CHANGELOG.md` — 版本历史

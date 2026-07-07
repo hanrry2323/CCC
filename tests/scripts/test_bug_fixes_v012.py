@@ -2,8 +2,7 @@
 
 测试：
   1. opencode-exec 长 prompt 跑完 → 临时文件被 unlink（Bug 1+3）
-  2. ccc-finish phases.json 含坏行 → 不静默, exit 非 0 (Bug 2)
-  3. ccc-hook CCC_HOOK_TIMEOUT=2 + sleep 3 → exit 124 (Bug 6)
+  2. ccc-hook CCC_HOOK_TIMEOUT=2 + sleep 3 → exit 124 (Bug 6)
 """
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent.parent
 EXEC = ROOT / "scripts" / "opencode-exec.py"
 HOOK = ROOT / "scripts" / "ccc-hook.sh"
-FINISH = ROOT / "scripts" / "ccc-finish.sh"
 
 
 def _load_module():
@@ -57,31 +55,6 @@ def test_bug_1_3_long_prompt_tmp_file_cleaned():
     assert not bug_files, f"残留临时文件: {bug_files}"
 
 
-def test_bug_2_finish_bad_json_not_silent():
-    """phases.json 含坏行 → ccc-finish 不应静默"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        workspace = Path(tmpdir)
-        (workspace / ".ccc" / "phases").mkdir(parents=True)
-        (workspace / ".ccc" / "plans").mkdir(parents=True)
-        (workspace / ".ccc" / "reports").mkdir(parents=True)
-        (workspace / ".ccc" / "verdicts").mkdir(parents=True)
-        # 写坏行
-        (workspace / ".ccc" / "phases" / "test-bad.phases.json").write_text(
-            '{"phase":"p1","status":"done"}\n'
-            'this is not valid json\n'
-            '{"phase":"p2","status":"pending"}\n'
-        )
-        # ccc-finish 在 phases.json 有坏行时, 应输出 warning
-        proc = subprocess.run(
-            ["bash", str(FINISH), str(workspace), "test-bad"],
-            capture_output=True, timeout=10,
-        )
-        # 必出 Gate 1 FAIL（缺 report.md）
-        out = proc.stdout.decode("utf-8", errors="replace")
-        # 关键: 不能静默（不光是 exit code, stderr 应有内容）
-        err = proc.stderr.decode("utf-8", errors="replace")
-        # ccc-finish 应输出 Gate 1 失败（缺 report.md）
-        assert "report.md" in out or "Gate 1" in out
 
 
 def test_bug_6_hook_timeout_override():

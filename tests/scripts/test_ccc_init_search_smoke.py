@@ -54,9 +54,9 @@ def test_init_creates_profile_md(fake_workspace):
         [sys.executable, str(INIT_SCRIPT), str(fake_workspace)],
         capture_output=True, timeout=10, check=True,
     )
-    # profile.md may be at .ccc/profile.md OR not created depending on template
-    # Just check no crash
-    assert True
+    profile = fake_workspace / ".ccc" / "profile.md"
+    assert profile.is_file(), f"missing .ccc/profile.md at {profile}"
+    assert len(profile.read_text()) > 0, "profile.md is empty"
 
 
 def test_init_skips_existing_ccc(fake_workspace):
@@ -89,8 +89,8 @@ def test_search_finds_pattern(tmp_path):
         [sys.executable, str(SEARCH_SCRIPT), "shell", "--workspace", str(workspace)],
         capture_output=True, text=True, timeout=10,
     )
-    # Allow 0 (match) or 2 (arg error) — focus on no crash
-    assert proc.returncode in (0, 1, 2)
+    # Script exits 0 on no match (falls through main)
+    assert proc.returncode == 0, f"exit {proc.returncode}: {proc.stderr}"
 
 
 def test_search_no_match_returns_1_or_2(tmp_path):
@@ -103,5 +103,5 @@ def test_search_no_match_returns_1_or_2(tmp_path):
         [sys.executable, str(SEARCH_SCRIPT), "nonexistent_pattern_xyz", "--workspace", str(workspace)],
         capture_output=True, text=True, timeout=10,
     )
-    # Just verify no crash; exact exit code depends on impl
-    assert proc.returncode in (0, 1, 2, 3)
+    # Script exits 0 on no match (falls through main)
+    assert proc.returncode == 0, f"exit {proc.returncode}: {proc.stderr}"

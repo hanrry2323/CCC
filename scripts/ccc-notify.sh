@@ -23,7 +23,7 @@ if [[ -z "$LEVEL" || -z "$TITLE" || -z "$MESSAGE" ]]; then
   exit 1
 fi
 
-ALERT_DIR="${HOME}/.ccc/alerts"
+ALERT_DIR="${CCC_ALERT_DIR:-${HOME}/.ccc/alerts}"
 mkdir -p "$ALERT_DIR"
 
 # 验 level

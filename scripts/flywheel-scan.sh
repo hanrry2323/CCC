@@ -75,7 +75,7 @@ else
   echo "" >> "$OUT_FILE"
   echo "## 下一步" >> "$OUT_FILE"
   echo "1. 人工 review 本清单" >> "$OUT_FILE"
-  echo "2. 拍板合并 → 编辑 references/red-lines.md" >> "$OUT_FILE"
+  echo "2. 拍板合并 → 编辑 ${CCC_DIR}/references/red-lines.md" >> "$OUT_FILE"
   echo "3. 或标记 false positive 忽略" >> "$OUT_FILE"
   echo "" >> "$OUT_FILE"
   echo "红线 18：飞轮候选必须人工 review 才合并。**禁止**自动写 red-lines.md。" >> "$OUT_FILE"

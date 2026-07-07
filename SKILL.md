@@ -1,12 +1,12 @@
 ---
 name: ccc-protocol
-description: "CCC — Connect–Claude Code. A 6-role automated development pipeline with kanban board. Trigger when user says: '按 CCC 流程跑 X', 'ccc 跑一下 X', '调度一个多阶段任务', '用看板跑 X'"
+description: "CCC — Connect–Claude Code. A 7-role automated development pipeline with kanban board. Trigger when user says: '按 CCC 流程跑 X', 'ccc 跑一下 X', '调度一个多阶段任务', '用看板跑 X'"
 ---
 
 # CCC — Connect–Claude Code (v0.18)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent
-> into a **6-role automated development system** with kanban board and skill-based
+> into a **7-role automated development system** with kanban board and skill-based
 > role definitions. Loads cleanly into Trae, Cursor, Zed, VS Code, OpenCode,
 > or any tool that supports system-prompt files.
 >
@@ -32,7 +32,7 @@ cat STARTUP-BRIEF.md
 grep -A 15 "## 红线 11" references/red-lines.md
 grep -A 8  "## Lesson 36" docs/lessons.md
 python3 scripts/ccc-board.py index     # 查看板状态
-cat skills/README.md                   # 查 6 角色 skill 索引
+cat skills/README.md                   # 查 7 角色 skill 索引
 ```
 
 **黄金规则**：
@@ -41,20 +41,21 @@ cat skills/README.md                   # 查 6 角色 skill 索引
 
 ---
 
-## 6 角色系统（唯一范式）
+## 7 角色系统（唯一范式）
 
-CCC 是 **6 角色看板自动化系统**，不再支持旧 3 角色（Plan/Exec/Verify）流程。
+CCC 是 **7 角色看板自动化系统**，不再支持旧 3 角色（Plan/Exec/Verify）流程。
 
 ### 角色矩阵
 
 | 角色 | Skill 文件 | 看板列 | 频率 | 职责 |
 |------|-----------|--------|------|------|
 | **product** | `skills/ccc-product/SKILL.md` | backlog → planned | 4h | 拆任务、写 plan、SPEC 门禁 |
-| **dev** | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | 30min | 调 opencode 写代码 |
+| **dev** | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | 10min | 调 opencode 写代码 |
 | **reviewer** | `skills/ccc-reviewer/SKILL.md` | testing → verified | 2h | 只读静态检查 + 范围核对 |
 | **tester** | `skills/ccc-tester/SKILL.md` | testing → verified | 4h | pytest + plan 逐条验收 |
 | **ops** | `skills/ccc-ops/SKILL.md` | 不动 board | 30min | 健康检查 + 告警 |
 | **kb** | `skills/ccc-kb/SKILL.md` | verified → released | 23:00 | git tag + push + changelog |
+| **regress** | `skills/ccc-regress/SKILL.md` | released → backlog(回归bug) | 23:30 | 每日回测 + 回归建 bug |
 
 **频率 = 老板拍板，不许改**（红线 X6）。
 **skill 详细定义** = 对应 `skills/ccc-<role>/SKILL.md`。
@@ -63,6 +64,8 @@ CCC 是 **6 角色看板自动化系统**，不再支持旧 3 角色（Plan/Exec
 
 ```
 backlog → planned → in_progress → testing → verified → released
+                                                              ↓ (regress 23:30)
+                                                         backlog(回归bug)
 ```
 
 ### 触发方式（用户显式调用）
@@ -80,7 +83,7 @@ backlog → planned → in_progress → testing → verified → released
 |---------|---------|
 | 小（单文件改 1-5 行、查信息） | agent 直接处理，**不走 CCC** |
 | 中（多文件 / 跨模块） | CCC 启用，指定 1-2 角色 |
-| 大（多阶段 / 需完整看板流转） | CCC 启用，6 角色全链跑 |
+| 大（多阶段 / 需完整看板流转） | CCC 启用，7 角色全链跑 |
 
 ---
 
@@ -142,11 +145,12 @@ backlog → planned → in_progress → testing → verified → released
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt |
-| `skills/ccc-<role>/SKILL.md` × 6 | 各角色 skill 定义 |
+| `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
 | `references/red-lines.md` | 12 + X6 红线强约束 |
-| `scripts/ccc-board.py` | 6 角色看板核心 |
-| `scripts/roles/<role>.sh` × 6 | 各角色 launchd 入口 |
-| `scripts/install-ccc-roles.sh` | 一键装 6 plist |
+| `scripts/ccc-board.py` | 7 角色看板核心 |
+| `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
+| `scripts/roles/<role>.sh` × 7 | 各角色 launchd 入口 |
+| `scripts/install-ccc-roles.sh` | 一键装 7 plist |
 | `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口 |
 | `scripts/ccc-exec-commit.sh` | 单 phase 单 commit |
 | `scripts/ccc-notify.sh` | macOS 桌面通知 |
@@ -154,6 +158,7 @@ backlog → planned → in_progress → testing → verified → released
 | `scripts/opencode-exec.py` | OpenCode CLI 执行器 |
 | `scripts/opencode-pool.py` | 进程池 |
 | `scripts/opencode-watchdog.sh` | 残留扫描 |
+| `scripts/opencode-runner.sh` | OpenCode 运行器 |
 | `templates/` | plan/phases/report/verdict/AGENTS 模板 |
 | `tests/scripts/` | pytest 核心测试 |
 | `.ccc/state.md` | 接力索引（红线 10） |

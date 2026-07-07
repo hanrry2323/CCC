@@ -152,10 +152,10 @@ function render(){
         const tm=(t.updated_at||t.created_at||'').slice(11,19);
         const pv=prev[col],nx=next[col];
         const rnCls=(col==='in_progress'?' running':'');
-        return '<div class="card'+rnCls+'"><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
+        return '<div class="card'+rnCls+'" data-id="'+esc(t.id)+'" data-col="'+col+'" data-prev="'+(pv||'')+'" data-next="'+(nx||'')+'"><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
           '</div><div class="ac">'+
-          (pv?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+pv+'\')">←</button>':'')+
-          (nx?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+nx+'\')">→</button>':'')+
+          (pv?'<button class="mv-btn mv-prev">←</button>':'')+
+          (nx?'<button class="mv-btn mv-next">→</button>':'')+
           '</div></div>';
       }).join(''):'<div class="emp">-</div>')+
       '</div>';
@@ -206,7 +206,29 @@ async function mk(){
   await load();
   loadTL();loadLogs();
 }
+async function loadRoles(){
+  const r=await get('/api/roles');
+  if(!r||!r.roles)return;
+  const b=document.getElementById('rbar');
+  b.innerHTML=r.roles.map(role=>{
+    const s=role.status||'idle';
+    const tm=role.last_run?role.last_run.slice(11,19):'--:--:--';
+    const ec=role.exit_code||'-';
+    return '<div class="role"><span class="dot '+s+'"></span>'+role.role.toUpperCase()+'<span class="tm">'+tm+'</span><span class="cn">'+ec+'</span></div>';
+  }).join('');
+}
 function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+document.getElementById('bb').addEventListener('click',function(e){
+  const btn=e.target.closest('.mv-btn');
+  if(!btn)return;
+  const card=btn.closest('.card');
+  if(!card)return;
+  const id=card.dataset.id;
+  const col=card.dataset.col;
+  const target=btn.classList.contains('mv-prev')?card.dataset.prev:card.dataset.next;
+  if(target)mv(id,col,target);
+});
 
 document.addEventListener('DOMContentLoaded',async()=>{
   const c=await get('/api/config');

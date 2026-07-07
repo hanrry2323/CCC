@@ -1,7 +1,7 @@
 # CCC 战略地图 (v0.16 起)
 
 > **必读**：所有 cloud agent 启动时**第一件事**读本文件。
-> 这是 CCC 的"全景路线图"——5 段范式演进 + 6 角色 + 看板。
+> 这是 CCC 的"全景路线图"——5 段范式演进 + 7 角色 + 看板。
 
 ---
 
@@ -10,11 +10,11 @@
 **CCC = Connect–Claude Code** = 单节点的 SKILL 资产型多角色定时开发框架。
 
 **核心能力**：
-- 6 角色（product/dev/reviewer/tester/ops/kb）按频率定时启动
+- 7 角色（product/dev/reviewer/tester/ops/kb/regress）按频率定时启动
 - 任务在 6 列看板上流转（backlog → planned → in_progress → testing → verified → released）
 - opencode CLI（loop/flash）作执行器
 - post-exec 钩子自动 commit + push 远端
-- launchd 装 6 plist 周期跑
+- launchd 装 7 plist 周期跑
 
 **不做**（红线）：
 - 跨设备集群调度
@@ -36,23 +36,24 @@
 | v0.13 | 跨项目支持 | qx-observer 接入 |
 | v0.14 | 真正落地 | 35 commit push + scheduler 装 |
 | v0.15 | 真自动化开发 | ccc-auto-dev.sh + post-exec 自动 commit+push |
-| **v0.16** | **6 角色定时开发系统** | **任务看板 + 6 launchd plist** |
-| v0.17 | 战略地图（本文件）| 所有文档对齐 6 角色 |
+| **v0.16** | **7 角色定时开发系统** | **任务看板 + 7 launchd plist** |
+| v0.17 | 战略地图（本文件）| 所有文档对齐 7 角色 |
 
 ---
 
-## 2. 6 角色系统（v0.16 起核心）
+## 2. 7 角色系统（v0.16 起核心）
 
 ### 2.1 角色矩阵
 
 | 角色 | 频率 | 扫哪列 | 处理后挪到 | Skill 入口 |
 |------|------|--------|------------|------------|
 | **product** | 4h | backlog | planned（写 plan.md + phases.json）| `scripts/roles/product.sh` |
-| **dev** | 30min | planned + in_progress | in_progress → testing（调 opencode-exec）| `scripts/roles/dev.sh` |
+| **dev** | 10min | planned + in_progress | in_progress → testing（调 opencode-exec）| `scripts/roles/dev.sh` |
 | **reviewer** | 2h | testing | testing → verified（py_compile 静态检查）| `scripts/roles/reviewer.sh` |
 | **tester** | 4h | testing | testing → verified（pytest 69 passed）| `scripts/roles/tester.sh` |
 | **ops** | 30min | 所有列 | 健康检查 + 异常告警 | `scripts/roles/ops.sh` |
 | **kb** | 每天 23:00 | verified | verified → released（归档 + git tag）| `scripts/roles/kb.sh` |
+| **regress** | 每天 23:30 | released | released → backlog（回归回测 + 建 bug）| `scripts/roles/regress.sh` |
 
 **频率 = 老板拍板，不许改**（红线 X6）。
 
@@ -79,18 +80,23 @@
                               ┌──────────────┐
                               │   released    │ → git tag + push
                               └──────────────┘
+                                     ↓ (regress 23:30)
+                              ┌──────────────────────┐
+                              │   backlog(回归bug)    │ → regress 建 bug task
+                              └──────────────────────┘
 ```
 
-### 2.3 6 plist 装上后
+### 2.3 7 plist 装上后
 
 ```bash
 $ launchctl list | grep com.ccc
 com.ccc.product    # 4h
-com.ccc.dev        # 30min
+com.ccc.dev        # 10min
 com.ccc.reviewer   # 2h
 com.ccc.tester     # 4h
 com.ccc.ops        # 30min
 com.ccc.kb         # 每天 23:00
+com.ccc.regress    # 每天 23:30
 com.ccc.flywheel-scan  # 老的（保留作 1h 周期飞轮备份）
 ```
 
@@ -130,8 +136,9 @@ python3 ~/program/CCC/scripts/ccc-board.py reviewer
 python3 ~/program/CCC/scripts/ccc-board.py tester
 python3 ~/program/CCC/scripts/ccc-board.py ops
 python3 ~/program/CCC/scripts/ccc-board.py kb
+python3 ~/program/CCC/scripts/ccc-board.py regress
 
-# 一键装 6 plist
+# 一键装 7 plist
 bash ~/program/CCC/scripts/install-ccc-roles.sh
 ```
 
@@ -148,7 +155,7 @@ launchd (每 4h 启动 com.ccc.product)
   ↓ product role
   写 .ccc/plans/<task>.plan.md + .ccc/phases/<task>.phases.json
   挪 task → planned/
-launchd (每 30min 启动 com.ccc.dev)
+launchd (每 10min 启动 com.ccc.dev)
   ↓ dev role
   调 opencode run --model loop/flash (loop 中转站)
   opencode 写代码 + 写 report
@@ -165,6 +172,10 @@ launchd (每天 23:00 启动 com.ccc.kb)
   ↓ kb role
   git tag board-<task> + git push
   挪 task → released/
+launchd (每天 23:30 启动 com.ccc.regress)
+  ↓ regress role
+  从 released 取任务，每日回测
+  发现回归 bug → 建 bug task → 挪到 backlog/
 ```
 
 ---
@@ -190,7 +201,7 @@ launchd (每天 23:00 启动 com.ccc.kb)
 | X2 | 每 phase 必杀 opencode | finally + watchdog |
 | X3 | OpenCode 启动前必跑残留 watchdog | launcher Step 1 |
 | **X4** | **每 phase 必走看板流转** | 跨角色不可跳列 |
-| **X5** | **6 plist 必装** | install-ccc-roles.sh |
+| **X5** | **7 plist 必装** | install-ccc-roles.sh |
 | **X6** | **角色频率不许改** | 老板拍板 |
 
 ---
@@ -202,12 +213,12 @@ launchd (每天 23:00 启动 com.ccc.kb)
 | 单 phase 启动 | `scripts/ccc-exec-launcher.sh` | 5 步：watchdog → pre-exec → exec → on-error → post-exec |
 | 多 phase 队列 | `scripts/ccc-queue.sh` | 3 次失败升级 L3 |
 | 周期飞轮 | launchd `com.ccc.flywheel-scan` | 3600s |
-| **6 角色周期** | launchd `com.ccc.{product,dev,reviewer,tester,ops,kb}` | 老板指定频率 |
+| **7 角色周期** | launchd `com.ccc.{product,dev,reviewer,tester,ops,kb,regress}` | 老板指定频率 |
 | 进程池 | `scripts/opencode-pool.py` | Semaphore(3) |
 | 必杀 | `scripts/opencode-watchdog.sh` | killpg + pkill -f 兜底 |
 | 钩子 | `~/.ccc/hooks/{pre-exec,post-exec,on-error}.sh` | 模板在 `templates/hooks/` |
 | 通知 | `scripts/ccc-notify.sh` | L1/L2/L3 桌面通知 + 告警存档 |
-| **看板流转** | `scripts/ccc-board.py` | 6 角色核心 |
+| **看板流转** | `scripts/ccc-board.py` | 7 角色核心 |
 | **自动 commit+push** | `templates/hooks/post-exec.sh` | CCC_PUSH=1 默认 |
 | **入口** | `scripts/ccc-auto-dev.sh` | 你说"按 CCC 跑 X"后调 |
 
@@ -254,10 +265,10 @@ opencode run --model loop/flash "<msg>"     # 唯一允许
 
 ## 10. 下一步（v0.17+ 决策点）
 
-- **v0.17a**：跑 1 个真 backlog task 看 6 角色端到端流转（要 harness 配合）
+- **v0.17a**：跑 1 个真 backlog task 看 7 角色端到端流转（要 harness 配合）
 - **v0.17b**：加红线 X4/X5/X6 到 red-lines.md 正式版
 - **v0.17c**：让 product 角色能根据 .ccc/board/backlog/ 自动生成 plan（不只读 task）
-- **v0.18**：跨项目任务（qx-observer / xianyu 也能用这 6 角色系统）
+- **v0.18**：跨项目任务（qx-observer / xianyu 也能用这 7 角色系统）
 
 ---
 

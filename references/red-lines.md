@@ -30,7 +30,7 @@
 | **X2** | **每 phase 必杀 opencode 进程** | v0.8 |
 | **X3** | **OpenCode 启动前必跑残留 watchdog** | v0.8 |
 | **X4** | **每 phase 必走看板流转** | v0.16 |
-| **X5** | **6 角色 plist 必装** | v0.16 |
+| **X5** | **7 角色 plist 必装** | v0.16 |
 | **X6** | **角色频率不许改** | v0.16（老板拍板）|
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
@@ -256,7 +256,7 @@
 
 ## 红线 12：禁止 agent 自主启用 CCC（Lesson 28 配套）
 
-**规则**：Agent **禁止**自行判断"现在该走 CCC 流程"并主动启用 6 角色看板流水线。CCC 流程的启用**必须**由用户显式触发（"走 CCC"、"按 CCC 流程做"、"用看板跑"等明确指令）。
+**规则**：Agent **禁止**自行判断"现在该走 CCC 流程"并主动启用 7 角色看板流水线。CCC 流程的启用**必须**由用户显式触发（"走 CCC"、"按 CCC 流程做"、"用看板跑"等明确指令）。
 
 **Why**：
 - 用户上下文：CCC 流程引入额外开销（4 文件契约 + Verifier 独立 session），不是每个任务都需要
@@ -505,36 +505,38 @@ fi
 
 ---
 
-## 6 角色 + 看板系统红线（v0.16）
+## 7 角色 + 看板系统红线（v0.16）
 
-> v0.16 起 CCC 改 6 角色定时开发系统（product/dev/reviewer/tester/ops/kb），
+> v0.16 起 CCC 改 7 角色定时开发系统（product/dev/reviewer/tester/ops/kb/regress），
 > 任务在 6 列看板流转（backlog → planned → in_progress → testing → verified → released）。
+> regress 从 released 列取出已发布成果，每日回测，回归 bug 任务回到 backlog。
 > 三个红线配套。
 
 #### 红线 X4：每 phase 必走看板流转
 
-- **规则**：任何任务必走 6 列看板，不可跳列。backlog → planned → in_progress → testing → verified → released 顺序强制。
+- **规则**：任何任务必走 6 列看板，不可跳列。backlog → planned → in_progress → testing → verified → released 顺序强制。regress 创建的回归 bug 任务从 released 进入 backlog，同样不可跳列。
 - **Why**：
   - 跳列（如 backlog 直接 → testing）绕过 reviewer/tester 质检 = 不可见 bug 进远端
-  - 看板是 6 角色的"工作清单"，跳列 = 跳过对应角色的责任
+  - 看板是 7 角色的"工作清单"，跳列 = 跳过对应角色的责任
 - **机制**：
   1. `scripts/ccc-board.py` 提供 `move_task(from, to)` API，强制调用
-  2. launchd 6 plist 各扫自己该扫的列（product 看 backlog，dev 看 planned+in_progress，依此类推）
+  2. launchd 7 plist 各扫自己该扫的列（product 看 backlog，dev 看 planned+in_progress，依此类推；regress 看 released）
   3. 任何 task 在某列停留 > N 天 → ops 告警
 - **触犯后果**：Critical — 跳过 reviewer/tester 直接 released 的 task，强制回退到 testing 重检
 
-#### 红线 X5：6 角色 plist 必装
+#### 红线 X5：7 角色 plist 必装
 
-- **规则**：`com.ccc.{product,dev,reviewer,tester,ops,kb}` 6 个 launchd plist 必须装上。
-- **Why**：6 角色是 v0.16 核心，缺一个 = 流程断链
+- **规则**：`com.ccc.{product,dev,reviewer,tester,ops,kb,regress}` 7 个 launchd plist 必须装上。
+- **Why**：7 角色是 v0.16 核心，缺一个 = 流程断链
   - 缺 product：backlog 永远不处理
   - 缺 dev：plan 写完不写代码
   - 缺 reviewer/tester：代码不质检
   - 缺 ops：异常无告警
   - 缺 kb：verified 永远不 release
+  - 缺 regress：已发布成果无人回测
 - **机制**：
-  1. `bash scripts/install-ccc-roles.sh` 一键装 6 plist
-  2. `launchctl list | grep com.ccc` 应返 6 行（+ flywheel-scan 第 7 行）
+  1. `bash scripts/install-ccc-roles.sh` 一键装 7 plist
+  2. `launchctl list | grep com.ccc` 应返 7 行（+ flywheel-scan 第 8 行）
   3. ops role 每 30min 检查 plist 状态，缺一个 → L2 告警
 - **触犯后果**：Critical — 缺哪个角色，那个角色的功能全断
 
@@ -545,11 +547,12 @@ fi
 | 角色 | 频率 | StartInterval |
 |------|------|---------------|
 | product | 4h | 14400s |
-| dev | 30min | 1800s |
+| dev | 10min | 600s |
 | reviewer | 2h | 7200s |
 | tester | 4h | 14400s |
 | ops | 30min | 1800s |
 | kb | 每天 23:00 | StartCalendarInterval |
+| regress | 每天 23:30 | StartCalendarInterval |
 
 - **Why**：频率 = 老板拍板（v0.16 拍板）。改频率 = 改老板意图 = 违规
 - **机制**：

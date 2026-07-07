@@ -18,7 +18,14 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 WD = ROOT / "scripts" / "opencode-watchdog.sh"
 LAUNCHER = ROOT / "scripts" / "ccc-exec-launcher.sh"
 NOTIFY = ROOT / "scripts" / "ccc-notify.sh"
-ALERT_DIR = Path.home() / ".ccc" / "alerts"
+
+
+@pytest.fixture
+def alert_dir(tmp_path):
+    """Isolated alert directory for each test (avoids writing to ~/.ccc/alerts/)."""
+    d = tmp_path / "alerts"
+    d.mkdir()
+    return d
 
 
 def test_watchdog_clean_exit_0():
@@ -61,36 +68,36 @@ def test_launcher_runs_watchdog_first():
         prompt.unlink(missing_ok=True)
 
 
-def _run_notify(*args):
+def _run_notify(*args, env=None):
     """用 bytes 模式跑 notify（避免中文 locale 解码问题）"""
     return subprocess.run(
         ["bash", str(NOTIFY), *args],
-        capture_output=True, timeout=5,
+        capture_output=True, timeout=5, env=env,
     )
 
 
-def test_notify_l1_creates_alert_file():
+def test_notify_l1_creates_alert_file(alert_dir):
     """L1 通知：仅日志 + 落告警文件"""
-    ALERT_DIR.mkdir(parents=True, exist_ok=True)
-    proc = _run_notify("L1", "test L1", "smoke test message")
+    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir)}
+    proc = _run_notify("L1", "test L1", "smoke test message", env=env)
     assert proc.returncode == 0
-    l1_files = sorted(ALERT_DIR.glob("*-L1.md"), key=lambda p: p.stat().st_mtime)
-    assert l1_files, f"应创建 L1 告警文件，实际目录：{list(ALERT_DIR.glob('*'))}"
+    l1_files = sorted(alert_dir.glob("*-L1.md"), key=lambda p: p.stat().st_mtime)
+    assert l1_files, f"应创建 L1 告警文件，实际目录：{list(alert_dir.glob('*'))}"
 
 
-def test_notify_l2_creates_alert_file():
-    ALERT_DIR.mkdir(parents=True, exist_ok=True)
-    proc = _run_notify("L2", "test L2", "smoke test")
+def test_notify_l2_creates_alert_file(alert_dir):
+    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir)}
+    proc = _run_notify("L2", "test L2", "smoke test", env=env)
     assert proc.returncode == 0
-    l2_files = sorted(ALERT_DIR.glob("*-L2.md"), key=lambda p: p.stat().st_mtime)
+    l2_files = sorted(alert_dir.glob("*-L2.md"), key=lambda p: p.stat().st_mtime)
     assert l2_files
 
 
-def test_notify_l3_creates_alert_file():
-    ALERT_DIR.mkdir(parents=True, exist_ok=True)
-    proc = _run_notify("L3", "test L3", "smoke test")
+def test_notify_l3_creates_alert_file(alert_dir):
+    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir)}
+    proc = _run_notify("L3", "test L3", "smoke test", env=env)
     assert proc.returncode == 0
-    l3_files = sorted(ALERT_DIR.glob("*-L3.md"), key=lambda p: p.stat().st_mtime)
+    l3_files = sorted(alert_dir.glob("*-L3.md"), key=lambda p: p.stat().st_mtime)
     assert l3_files
 
 

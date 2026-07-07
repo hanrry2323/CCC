@@ -7,28 +7,29 @@
 
 ## 1. CCC 一句话
 
-CCC = 单节点 + 6 角色定时开发 + 任务看板 + opencode CLI 执行器 + launchd 周期。
+CCC = 单节点 + 7 角色定时开发 + 任务看板 + opencode CLI 执行器 + launchd 周期。
 
 **4 个数字必记**：
-- **6 角色** = product / dev / reviewer / tester / ops / kb
+- **7 角色** = product / dev / reviewer / tester / ops / kb / regress
 - **6 列看板** = backlog → planned → in_progress → testing → verified → released
-- **19 红线** = 13 经典 + 2 历史 + 3 v0.8 进程 + 3 v0.16 看板
-- **6 plist** = com.ccc.{product,dev,reviewer,tester,ops,kb} + 1 老的 flywheel-scan
+- **20 红线** = 13 经典 + 2 历史 + 3 v0.8 进程 + 3 v0.16 看板
+- **7 plist** = com.ccc.{product,dev,reviewer,tester,ops,kb,regress} + 1 老的 flywheel-scan
 
 ---
 
-## 2. 6 角色（频率不许改 — 红线 X6）
+## 2. 7 角色（频率不许改 — 红线 X6）
 
 | 角色 | 频率 | 干 |
 |------|------|-----|
 | product | 4h | 扫 backlog → 写 plan.md + phases.json，挪 planned |
-| dev | 30min | 调 opencode 写代码，挪 in_progress → testing |
+| dev | 10min | 调 opencode 写代码，挪 in_progress → testing |
 | reviewer | 2h | py_compile，挪 testing → verified |
 | tester | 4h | pytest，挪 testing → verified |
 | ops | 30min | 健康检查 + 告警（不动 board）|
 | kb | 23:00 | git tag + push，挪 verified → released |
+| regress | 23:30 | released → backlog(回归bug)，每日回测 |
 
-**入口**：`python3 scripts/ccc-board.py {product|dev|reviewer|tester|ops|kb}`
+**入口**：`python3 scripts/ccc-board.py {product|dev|reviewer|tester|ops|kb|regress}`
 
 ---
 
@@ -36,8 +37,8 @@ CCC = 单节点 + 6 角色定时开发 + 任务看板 + opencode CLI 执行器 +
 
 ```
 backlog → planned → in_progress → testing → verified → released
-   ↑          ↓          ↓            ↓          ↓
- 老板建     product      dev     reviewer    tester    kb
+   ↑          ↓          ↓            ↓          ↓               ↓
+ 老板建     product      dev     reviewer    tester    kb     regress
                                   +tester
 ```
 
@@ -45,7 +46,7 @@ backlog → planned → in_progress → testing → verified → released
 
 ---
 
-## 4. 19 红线（极简，**正文按需 grep**）
+## 4. 20 红线（极简，**正文按需 grep**）
 
 - **1-15**: `references/red-lines.md` §编号索引表
 - **18-20**: 同表
@@ -87,10 +88,10 @@ grep -B 1 -A 3 "## Lesson 36" docs/lessons.md
 | 能力 | 入口 | 触发 |
 |------|------|------|
 | 你说"按 CCC 跑 X" | `scripts/ccc-auto-dev.sh <ws> <task> "<goal>"` | 你手触发 |
-| 6 角色轮询 | launchd 6 plist | 自动定时 |
+| 7 角色轮询 | launchd 7 plist | 自动定时 |
 | 看板状态总览 | `python3 scripts/ccc-board.py index` | 任何时候 |
 | 跑单个角色 | `python3 scripts/ccc-board.py <role>` | 任何时候 |
-| 装 6 plist | `bash scripts/install-ccc-roles.sh` | 首次 / 重新装 |
+| 装 7 plist | `bash scripts/install-ccc-roles.sh` | 首次 / 重新装 |
 | 周期飞轮备份 | `com.ccc.flywheel-scan` (3600s) | 自动 |
 
 ---

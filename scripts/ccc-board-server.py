@@ -9,6 +9,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -27,6 +28,11 @@ COLUMN_COLORS = {
     "testing": "#f97316", "verified": "#22c55e", "released": "#3b82f6",
 }
 ROLES = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
+MAX_CONTENT_LENGTH = 1_048_576
+
+
+def sanitize_id(tid: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_-]', '', os.path.basename(tid))
 
 
 # ── Workspace ──
@@ -42,30 +48,42 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def board_path(workspace: str) -> Path:
-    ws = discover_workspaces().get(workspace, str(CCC_HOME))
+def board_path(workspace: str) -> Path | None:
+    ws = discover_workspaces().get(workspace)
+    if ws is None:
+        return None
     return Path(ws) / ".ccc" / "board"
+
+
+def validate_workspace(workspace: str) -> bool:
+    return workspace in discover_workspaces()
 
 
 # ── 看板操作 ──
 def list_tasks(column: str, workspace: str) -> list[dict]:
-    col_dir = board_path(workspace) / column
+    col_dir = board_path(workspace)
+    if col_dir is None:
+        return []
+    col_dir = col_dir / column
     if not col_dir.exists():
         return []
     tasks = []
     for f in sorted(col_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
-        with open(f) as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    obj["_file"] = f.name
-                    obj["_column"] = column
-                    tasks.append(obj)
-                except json.JSONDecodeError:
-                    pass
+        try:
+            with open(f) as fp:
+                for line in fp:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        obj["_file"] = f.name
+                        obj["_column"] = column
+                        tasks.append(obj)
+                    except json.JSONDecodeError:
+                        print(f"bad jsonl line in {f}: {line}", file=sys.stderr)
+        except FileNotFoundError:
+            pass
     return tasks
 
 
@@ -74,41 +92,55 @@ def get_board_state(workspace: str) -> dict:
 
 
 def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
+    task_id = sanitize_id(task_id)
     board = board_path(workspace)
+    if board is None:
+        return False
     src = board / from_col / f"{task_id}.jsonl"
     if not src.exists():
         return False
     task = None
-    with open(src) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("id") == task_id:
-                    task = obj
-                    break
-            except json.JSONDecodeError:
-                pass
+    try:
+        with open(src) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if obj.get("id") == task_id:
+                        task = obj
+                        break
+                except json.JSONDecodeError:
+                    print(f"bad jsonl line in {src}: {line}", file=sys.stderr)
+    except FileNotFoundError:
+        return False
     if not task:
         return False
     task["status"] = to_col
     task["updated_at"] = now_iso()
+    task.setdefault("moves", []).append({"from": from_col, "to": to_col, "at": now_iso()})
     dst = board / to_col / f"{task_id}.jsonl"
-    with open(dst, "w") as f:
-        f.write(json.dumps(task, ensure_ascii=False) + "\n")
+    try:
+        with open(dst, "w") as f:
+            f.write(json.dumps(task, ensure_ascii=False) + "\n")
+    except FileNotFoundError:
+        return False
     src.unlink(missing_ok=True)
     return True
 
 
 def create_task(task_id: str, title: str, description: str = "", workspace: str = "CCC") -> bool:
+    task_id = sanitize_id(task_id)
+    bp = board_path(workspace)
+    if bp is None:
+        return False
     task = {
         "id": task_id, "title": title, "description": description,
         "status": "backlog", "created_at": now_iso(), "updated_at": now_iso(),
         "moves": [],
     }
-    dst = board_path(workspace) / "backlog" / f"{task_id}.jsonl"
+    dst = bp / "backlog" / f"{task_id}.jsonl"
     dst.parent.mkdir(parents=True, exist_ok=True)
     with open(dst, "w") as f:
         f.write(json.dumps(task, ensure_ascii=False) + "\n")
@@ -135,11 +167,13 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
     log_dir = Path.home() / ".ccc" / "logs"
     if log_dir.exists():
         for f in sorted(log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:30]:
-            with open(f) as fp:
-                content = fp.read()
+            try:
+                with open(f) as fp:
+                    content = fp.read()
+            except FileNotFoundError:
+                continue
             fname = f.name
             role = fname.split("-")[1] if "-" in fname else "?"
-            exit_match = content.strip().split()[-1] if content.strip() else "?"
             exit_code = "?"
             for line in content.strip().split("\n"):
                 if "exit=" in line:
@@ -157,7 +191,7 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
 
 
 def get_role_status() -> list[dict]:
-    """6 角色最新执行状态"""
+    """7 角色最新执行状态"""
     status = []
     log_dir = Path.home() / ".ccc" / "logs"
     for role in ROLES:
@@ -166,8 +200,11 @@ def get_role_status() -> list[dict]:
             logs = sorted(log_dir.glob(f"role-{role}-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
             if logs:
                 latest = logs[0]
-                with open(latest) as f:
-                    content = f.read()
+                try:
+                    with open(latest) as f:
+                        content = f.read()
+                except FileNotFoundError:
+                    continue
                 for line in content.split("\n"):
                     if "exit=" in line:
                         ec = line.split("exit=")[-1].strip()
@@ -191,8 +228,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
-    def _body(self) -> dict:
+    def _body(self) -> dict | None:
         n = int(self.headers.get("Content-Length", 0))
+        if n > MAX_CONTENT_LENGTH:
+            self.send_error(413)
+            return None
         b = self.rfile.read(n) if n else b"{}"
         try:
             return json.loads(b) if b else {}
@@ -212,6 +252,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         ws = qs.get("workspace", ["CCC"])[0]
 
+        if not validate_workspace(ws):
+            self._json({"error": f"unknown workspace: {ws}"}, 400)
+            return
+
         if path == "/api":
             self._json({"api": "CCC Board v0.18", "endpoints": [
                 "GET /api/board", "GET /api/config", "GET /api/timeline",
@@ -228,10 +272,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json({"workspaces": discover_workspaces(), "columns": COLUMNS,
                         "labels": COLUMN_LABELS, "colors": COLUMN_COLORS,
                         "roles": ROLES, "labels_cn": dict(product="产品经理", dev="开发",
-                            reviewer="审查", tester="测试", ops="运维", kb="归档")})
+                            reviewer="审查", tester="测试", ops="运维", kb="归档", regress="回归")})
 
         elif path.startswith("/api/tasks/") and len(path.split("/")) == 4:
-            task_id = path.split("/")[-1]
+            task_id = sanitize_id(path.split("/")[-1])
             # 在所有列中找这个 task
             found = None
             for col in COLUMNS:
@@ -258,8 +302,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             log_dir = Path.home() / ".ccc" / "logs"
             if log_dir.exists():
                 for f in sorted(log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:25]:
-                    with open(f) as fp:
-                        content = fp.read()
+                    try:
+                        with open(f) as fp:
+                            content = fp.read()
+                    except FileNotFoundError:
+                        continue
                     fname = f.name
                     role = fname.split("-")[1] if "-" in fname else "?"
                     rc = "?"
@@ -281,17 +328,24 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         data = self._body()
+        if data is None:
+            return  # 413 already sent by _body
         ws = data.get("workspace", "CCC")
 
+        if not validate_workspace(ws):
+            self._json({"error": f"unknown workspace: {ws}"}, 400)
+            return
+
         if path == "/api/tasks":
-            tid = data.get("id", f"t{int(datetime.now().timestamp())}")
+            tid = sanitize_id(data.get("id", f"t{int(datetime.now().timestamp())}"))
             if create_task(tid, data.get("title", ""), data.get("description", ""), ws):
                 self._json({"ok": True, "id": tid})
             else:
                 self._json({"error": "create failed"}, 500)
 
         elif path == "/api/tasks/move":
-            tid, fr, to = data.get("id"), data.get("from"), data.get("to")
+            tid = sanitize_id(data.get("id"))
+            fr, to = data.get("from"), data.get("to")
             if not all([tid, fr, to]):
                 self._json({"error": "missing id/from/to"}, 400)
             elif to not in COLUMNS:

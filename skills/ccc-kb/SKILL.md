@@ -69,7 +69,7 @@ CHANGELOG 追加格式：
 
 ### 3. 知识沉淀（AGENTS.md 最终收集）
 
-kb 是 6 角色的最后一道，负责收集各角色报告里的 `AGENTS.md 建议`：
+kb 是 7 角色的最后一道，负责收集各角色报告里的 `AGENTS.md 建议`：
 
 1. 从 report.md 提取 `> **AGENTS.md 建议:**` 段
 2. 从 ops log 提取模式化的告警

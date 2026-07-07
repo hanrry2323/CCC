@@ -87,11 +87,13 @@ async def run_opencode(
 
     cmd 参数：可注入自定义命令（测试用）。默认调 opencode run --model flash。
     """
+    tmp_path = None
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
         # 模型映射：对外 = flash（红线：唯一对外模型名）→ 内部 = loop/flash
         # opencode 1.17 的 flash 必须用 loop/flash 前缀（localhost:4002 中转站）
+        model = os.environ.get("OPENCODE_MODEL", "loop/flash")
         prompt_text = prompt_text.strip()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
@@ -107,13 +109,13 @@ async def run_opencode(
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
             cmd = [
                 opencode_bin, "run",
-                "--model", "loop/flash",
+                "--model", model,
                 "Read attached file and execute the instructions inside.",
                 "--file", tmp_path,
             ]
         else:
             short_prompt = prompt_text if prompt_text else "execute"
-            cmd = [opencode_bin, "run", "--model", "loop/flash", short_prompt]
+            cmd = [opencode_bin, "run", "--model", model, short_prompt]
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import os as _os
@@ -129,6 +131,9 @@ async def run_opencode(
 
     pid_file = PID_DIR / f"{phase_id}.pid"
     pid_file.write_text(str(proc.pid))
+    # 注：先启动进程再写 pid，窗口极小。若在此间隙 pool 或 watchdog 扫描，
+    # 可能误判为无人认领的残留。接受此竞态，换一种顺序（先写 pid 再创建
+    # 进程）则需预知 pid，不可行。
 
     started = time.time()
     try:
@@ -146,8 +151,8 @@ async def run_opencode(
             "pid": proc.pid,
             "killed": False,
         }
-    except asyncio.TimeoutError:
-        # 红线 X2: 超时必杀（用 killpg 级联到整个 process group）
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+        # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         try:
             _os.killpg(proc.pid, _sig.SIGTERM)
         except (ProcessLookupError, PermissionError):
@@ -159,12 +164,16 @@ async def run_opencode(
                 _os.killpg(proc.pid, _sig.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
-            await proc.wait()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                pass  # best-effort, 不阻塞
+        killed_reason = "cancelled" if isinstance(exc, asyncio.CancelledError) else f"timeout after {timeout}s"
         return {
             "phase_id": phase_id,
             "exit_code": -1,
             "stdout": "",
-            "stderr": f"timeout after {timeout}s — killed",
+            "stderr": f"{killed_reason} — killed",
             "duration_s": round(time.time() - started, 2),
             "pid": proc.pid,
             "killed": True,
@@ -175,7 +184,7 @@ async def run_opencode(
             pid_file.unlink()
         # Bug 1+3 修：长 prompt 临时文件必须 unlink
         # 否则磁盘泄漏 + 隐私（prompt 可能含密钥）
-        if 'tmp_path' in dir() and tmp_path and Path(tmp_path).exists():
+        if tmp_path is not None and Path(tmp_path).exists():
             try:
                 Path(tmp_path).unlink()
             except OSError:
@@ -185,7 +194,7 @@ async def run_opencode(
 async def main() -> int:
     ap = argparse.ArgumentParser(description="OpenCode CLI 执行器（单 phase）")
     ap.add_argument("--phase", required=True, help="phase ID（用于 pid 文件）")
-    ap.add_argument("--prompt", required=True, help="prompt 文件路径（stdin 喂入）")
+    ap.add_argument("--prompt", required=True, help="prompt 文件路径（文件读取）")
     ap.add_argument("--timeout", type=int, default=1800, help="超时秒数，默认 1800")
     ap.add_argument("--cwd", default=None, help="工作目录")
     ap.add_argument("--skip-watchdog", action="store_true", help="跳过残留扫描（仅调试）")

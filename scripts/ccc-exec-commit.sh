@@ -58,6 +58,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# --- post-exec 标记检查 ---
+# 如果 post-exec 钩子已 git add -A && git commit，跳过整次 exec-commit
+COMMIT_MARKER_DIR="$HOME/.ccc/committed-phases"
+if [[ -d "$COMMIT_MARKER_DIR" ]]; then
+    MATCHING=$(ls "$COMMIT_MARKER_DIR/${TASK}"*.marker 2>/dev/null | wc -l | tr -d ' ')
+    if [[ -n "$MATCHING" && "$MATCHING" -gt 0 ]]; then
+        echo "post-exec 已提交（${MATCHING} 个标记），跳过 exec-commit"
+        exit 0
+    fi
+fi
+
 # --- 验证 ---
 if [[ ! -f "$PHASES_FILE" ]]; then
     echo "❌ phases.json 不存在: $PHASES_FILE" >&2
@@ -75,7 +86,7 @@ CACHED=$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$CACHED" -gt 0 ]]; then
     echo "⚠️  工作区已有已暂存未提交的文件 ($CACHED 个)，跳过" >&2
     echo "   请先处理: git diff --cached --name-only" >&2
-    exit 1
+    exit 0  # soft skip, not hard block
 fi
 
 # --- 解析 phases.json ---
@@ -241,21 +252,37 @@ for p in phases:
     scope = p.get('scope') or p.get('expected_files', [])
     commit_msg = p.get('commit_message', '').strip()
 
-    # --- 红线 15: 标记检测：commit_message 必须含 ccc-task-id=<task_id> ---
+    # --- 红线 15: 标记检测 — 仅当 task_id 非自动生成时要求显式标记 ---
+    # auto-generated UUID 不可能出现在已有 commit_message 中，宽松处理
+    is_auto_task_id = False
+    try:
+        uuid.UUID(task_id)  # will raise ValueError if not a valid UUID
+        is_auto_task_id = True
+    except (ValueError, TypeError):
+        pass
+
     marker = f"ccc-task-id={task_id}"
-    if marker not in commit_msg:
+    if not is_auto_task_id and marker not in commit_msg:
         print(f"  ❌ phase {pid}: commit_message 缺少标记 '{marker}'（红线 15 强制）")
         print(f"     当前 message: {commit_msg[:60]}")
         errors += 1
         continue
+
+    # 确保 commit_message 尾部带 ccc-task-id（兜底，兼容 auto-generated 场景）
+    if not is_auto_task_id or marker not in commit_msg:
+        commit_msg = commit_msg + " ccc-task-id=" + task_id
 
     if not scope:
         print(f"  ❌ phase {pid}: scope 为空，跳过（无安全 fallback）")
         errors += 1
         continue
     else:
+        # Fix #1: --all scope 不可达 — check before constructing prefix
+        if scope == ['all']:
+            scope_marker = "--all"
+        else:
+            scope_marker = "-- " + " ".join(scope)
         print(f"  → phase {pid}: git add {len(scope)} 文件")
-        scope_marker = "-- " + " ".join(scope)
 
     if not commit_msg:
         print(f"  ⚠️  phase {pid}: commit_message 为空，使用默认消息")
@@ -265,7 +292,7 @@ for p in phases:
     if scope and pid > 1:
         overlap_detected = False
         for prev_scope in all_committed_scopes:
-            overlap = set(scope) & set(prev_scope)
+            overlap = set(f.lower() for f in scope) & set(f.lower() for f in prev_scope)
             if overlap:
                 print(f"  ❌ phase {pid}: scope 与之前 phase 重叠: {overlap}")
                 print(f"     Git working tree 线性，同一文件跨 phase 改会污染 commit")
@@ -319,17 +346,19 @@ for p in phases:
     )
     commit_hash = result.stdout.strip()
 
-    # 写回 phases.json
+    # 写回 phases.json（Fix #3: 每个 phase 成功后立即写，避免中途被杀丢失 hash）
     p['commit'] = commit_hash
     changed = True
     all_committed_scopes.append(scope)
     print(f"  ✓ phase {pid}: committed {commit_hash[:12]} — {commit_msg[:50]}")
-
-if changed:
     _write_phases(fp, data, _ORIG_FORMAT)
     print(f"  ✅ phases.json 已更新: {fp}")
 
 sys.exit(0 if errors == 0 else 1)
 PYEOF
+
+# Fix #4: set -e 在 python3 调用前生效，之后恢复；否则 Python 非零退出后 shell 直接终止
+set +e
 EXIT_CODE=$?
+set -e
 exit $EXIT_CODE

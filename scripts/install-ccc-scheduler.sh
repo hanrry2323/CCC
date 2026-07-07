@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
-CCC_HOME="$(realpath "${SCRIPT_DIR}/..")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CCC_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ACTION="install"
 TARGET="ccc-exec-launcher.sh"

@@ -59,7 +59,7 @@ for pf in "$PID_DIR"/*.pid; do
   fi
 
   # 活着：名字对吗？
-  proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+  proc_name=$(ps -p "$pid" -o command= 2>/dev/null || true)
   if [[ "$proc_name" == *opencode* ]]; then
     ALIVE=$((ALIVE+1))
     log_info "存活: $phase (pid=$pid, name=$proc_name) — 保留"
@@ -80,7 +80,7 @@ done
 # 兜底：扫所有 opencode 子进程（孤儿）。v0.11b-fix 加 run（之前漏了）
 # 排除 pgrep 自身（pgrep -f "opencode" 会匹配 pgrep 命令行）
 ORPHAN_PIDS=$(pgrep -f "opencode (run|exec)" 2>/dev/null | grep -v "^$$\$" | grep -v "^${PPID}\$" || true)
-for opid in $ORPHAN_PIDS; do
+while read -r opid; do
   # 是否有对应 pid 文件（精确匹配行内容 = pid）
   HAS_PID_FILE=0
   for pf in "$PID_DIR"/*.pid; do
@@ -100,15 +100,7 @@ for opid in $ORPHAN_PIDS; do
     fi
     ORPHAN=$((ORPHAN+1))
   fi
-done
-
-# 兜底 2：pkill -f 整个 opencode 进程树（v0.11b-fix 二次失守补救）
-# macOS 上 killpg 不可靠，必须用 pkill 杀命令行匹配
-if pgrep -f "opencode run" | grep -v "^$$\$" >/dev/null 2>&1; then
-  pkill -9 -f "opencode run" 2>/dev/null || true
-  log_warn "pkill -f 兜底清 opencode run 进程树"
-  PIDS_CLEANED=$((PIDS_CLEANED+1))
-fi
+done <<< "$ORPHAN_PIDS"
 
 echo ""
 log_info "汇总: alive=$ALIVE cleaned=$CLEANED orphan_killed=$ORPHAN"

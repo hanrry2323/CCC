@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 HOME = Path.home()
-SEARCH_DIRS = ["plans", "phases", "reports", "verdicts", "abnormal-reports"]
+SEARCH_DIRS = ["plans", "phases", "reports", "verdicts", "abnormal-reports", "board"]
 
 
 def main():

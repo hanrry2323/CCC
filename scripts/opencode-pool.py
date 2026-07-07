@@ -20,6 +20,7 @@
 import argparse
 import asyncio
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -36,6 +37,15 @@ _spec = importlib.util.spec_from_file_location(
 _opencode_exec = importlib.util.module_from_spec(_spec)  # type: ignore
 _spec.loader.exec_module(_opencode_exec)  # type: ignore
 run_opencode = _opencode_exec.run_opencode
+
+# 全局 task 列表，用于 SIGTERM 清理
+_active_tasks = []
+
+
+def _sigterm_handler(signum, frame):
+    """SIGTERM — cancel all active tasks for cleanup"""
+    for t in _active_tasks:
+        t.cancel()
 
 
 async def run_task(task: dict, sem: asyncio.Semaphore) -> dict:
@@ -73,16 +83,23 @@ async def main() -> int:
         return 3
 
     sem = asyncio.Semaphore(args.max_parallel)
-    results = await asyncio.gather(
-        *(run_task(t, sem) for t in tasks),
-        return_exceptions=True,
-    )
+    # TODO: 当前 Semaphore 限制"一次只跑 N 个 task"，但实际 pool 是单次
+    #       asyncio.gather 一次性投递所有 task。要给 pool 加排队/限流能力
+    #       需改为队列 + worker 模式（见 opencode-pool-v2 分支）。
+    try:
+        results = await asyncio.gather(
+            *(run_task(t, sem) for t in tasks),
+            return_exceptions=True,
+        )
+    except asyncio.CancelledError:
+        # Python 3.12+ asyncio.run 将 KeyboardInterrupt 转为 CancelledError
+        return 130
 
     # 每行输出一个 task 结果
     ok_count = 0
     fail_count = 0
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
             fail_count += 1
             print(json.dumps({"error": str(r)}, ensure_ascii=False))
         else:
@@ -98,6 +115,7 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _sigterm_handler)
     try:
         sys.exit(asyncio.run(main()))
     except KeyboardInterrupt:

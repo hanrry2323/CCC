@@ -6,8 +6,8 @@
 
 ## 一句话定义
 
-**CCC = 6 角色看板自动化系统**（`SKILL.md` + `skills/ccc-<role>/SKILL.md` × 6），
-加载到任意 IDE → 启动 6 个角色定时轮询看板。
+**CCC = 7 角色看板自动化系统**（`SKILL.md` + `skills/ccc-<role>/SKILL.md` × 7），
+加载到任意 IDE → 启动 7 个角色定时轮询看板。
 
 不绑死 IDE，不绑死模型，不绑死工作目录。
 
@@ -19,10 +19,11 @@
 launchd (macOS 定时器)
   │
   ├─ product (4h):  backlog → plan.md + phases.json → planned          ── skill: ccc-product
-  ├─ dev (30min):    planned → opencode write code → testing             ── skill: ccc-dev
+  ├─ dev (10min):    planned → opencode write code → testing             ── skill: ccc-dev
   ├─ reviewer (2h):  testing → py_compile + diff + static check → verified  ── skill: ccc-reviewer
   ├─ tester (4h):    testing → pytest + plan 逐条验收 → verified          ── skill: ccc-tester
   ├─ ops (30min):    健康检查 + 告警 (不动 board)                        ── skill: ccc-ops
+  └─ regress (23:30): released → backlog (回归回测 + 建 bug)              ── skill: ccc-regress
   └─ kb (23:00):     git tag + push + changelog → released               ── skill: ccc-kb
 
 每个角色:
@@ -37,15 +38,16 @@ launchd (macOS 定时器)
 
 ```
 ~/program/CCC/                                  # 本目录（唯一交付物）
-├── SKILL.md                                    # ★ 唯一注入 prompt（6 角色系统总纲）
-├── skills/                                     # ★ 6 角色 skill 定义
+├── SKILL.md                                    # ★ 唯一注入 prompt（7 角色系统总纲）
+├── skills/                                     # ★ 7 角色 skill 定义
 │   ├── README.md                               # skill 索引
 │   ├── ccc-product/SKILL.md                    # 产品经理 skill
 │   ├── ccc-dev/SKILL.md                        # 开发工程师 skill
 │   ├── ccc-reviewer/SKILL.md                   # 代码审查员 skill
 │   ├── ccc-tester/SKILL.md                     # 测试工程师 skill
 │   ├── ccc-ops/SKILL.md                        # 运维工程师 skill
-│   └── ccc-kb/SKILL.md                         # 知识管理员 skill
+│   ├── ccc-kb/SKILL.md                         # 知识管理员 skill
+│   └── ccc-regress/SKILL.md                    # 回归测试 skill
 ├── README.md
 ├── CLAUDE.md                                   # 框架总纲（维护者用）
 ├── CHANGELOG.md                                # 版本历史
@@ -73,18 +75,19 @@ launchd (macOS 定时器)
 │   ├── verdict.verdict.md
 │   ├── executor-prompt.template.md
 │   ├── AGENTS.md
-│   ├── profile.profile.md
+│   ├── .ccc-profile.md
 │   └── pending-agents-suggestions.md
 │
 ├── scripts/
-│   ├── ccc-board.py                            # ★ 6 角色看板核心
-│   ├── roles/                                  # ★ 6 角色 launchd 入口
+│   ├── ccc-board.py                            # ★ 7 角色看板核心
+│   ├── roles/                                  # ★ 7 角色 launchd 入口
 │   │   ├── product.sh
 │   │   ├── dev.sh
 │   │   ├── reviewer.sh
 │   │   ├── tester.sh
 │   │   ├── ops.sh
-│   │   └── kb.sh
+│   │   ├── kb.sh
+│   │   └── regress.sh
 │   ├── install-ccc-roles.sh
 │   ├── ccc-exec-launcher.sh
 │   ├── ccc-exec-commit.sh
@@ -235,7 +238,7 @@ reviewer + tester 同时扫 testing 列：
 ## 相关文件
 
 - `SKILL.md` — 注入 prompt（总纲）
-- `skills/README.md` — 6 角色 skill 索引
+- `skills/README.md` — 7 角色 skill 索引
 - `CLAUDE.md` — 框架总纲（维护者）
 - `references/red-lines.md` — 红线细则
 - `docs/roadmap.md` — 发展路线图

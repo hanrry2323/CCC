@@ -6,6 +6,7 @@
 set -uo pipefail
 
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export CCC_WORKSPACE="$CCC_HOME"
 CCC_ROLE="ops"
 export CCC_ROLE
 export CCC_ROLE_SKILL="${CCC_HOME}/skills/ccc-${CCC_ROLE}/SKILL.md"

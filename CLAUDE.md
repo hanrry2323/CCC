@@ -10,7 +10,7 @@
 **C**onnect — **C**laude **C**ode
 
 CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
-- 是一个 **SKILL 资产套件**（`SKILL.md` + 6 角色 `skills/`），不是 framework 代码库
+- 是一个 **SKILL 资产套件**（`SKILL.md` + 7 角色 `skills/`），不是 framework 代码库
 - 每个角色有独立 skill 定义（`skills/ccc-<role>/SKILL.md`）
 - 能加载到 Trae / Cursor / Zed / VS Code / OpenCode 任意工具
 
@@ -50,12 +50,10 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `skills/ccc-<role>/SKILL.md` × 6 | 各角色 skill 定义 |
+| `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
 | `references/red-lines.md` | 12+X6 红线强约束 |
-| `scripts/ccc-board.py` | 6 角色看板核心 |
-| `scripts/roles/<role>.sh` × 6 | 各角色 launchd 入口 |
-| `scripts/ccc-precheck.sh` | 前置门控 |
-| `scripts/ccc-finish.sh` | 后置门控 |
+| `scripts/ccc-board.py` | 7 角色看板核心 |
+| `scripts/roles/<role>.sh` × 7 | 各角色 launchd 入口 |
 | `scripts/opencode-exec.py` | OpenCode CLI 执行器 |
 | `scripts/opencode-pool.py` | 进程池（max 3 并发） |
 | `scripts/opencode-watchdog.sh` | 残留扫描 |
@@ -69,9 +67,11 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | `docs/roadmap.md` | 路线图 |
 | `CHANGELOG.md` | 版本变更 |
 
+> `ccc-precheck.sh` / `ccc-finish.sh` 已移除（不再使用）
+
 ---
 
-## 6 角色系统（唯一范式）
+## 7 角色系统（唯一范式）
 
 **v0.18 起不再支持旧 3 角色（Plan/Exec/Verify）流程。**
 
@@ -104,7 +104,7 @@ backlog → planned → in_progress → testing → verified → released
 |---------|---------|----|
 | 小（单文件 1-5 行 / 调试 / 查信息） | agent 直接处理 | — |
 | 中（多文件 / 跨模块） | CCC skill 启用，指定角色 | agent + user |
-| 大（多阶段 / 需完整看板） | CCC skill 启用，全链跑 | 6 角色自动流转 |
+| 大（多阶段 / 需完整看板） | CCC skill 启用，全链跑 | 7 角色自动流转 |
 
 **红线 12**：agent 不自主启用 CCC。用户显式触发。
 
