@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -165,18 +166,129 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
     return default
 
 
-def product_role() -> dict:
-    """产品经理: 扫 backlog 报告概况，不自动挪（待办 = 收件箱）"""
+_CLAUDE_CLI = "claude"
+
+
+def _call_claude_for_plan(task: dict) -> tuple[str, list]:
+    """调 claude CLI 生成 plan.md + phases.json"""
+    plan_dir = ROOT / ".ccc" / "plans"
+    ref_plans = ""
+    if plan_dir.exists():
+        plan_files = sorted(
+            plan_dir.glob("*.plan.md"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for pf in plan_files[:2]:
+            ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
+
+    template_plan = (ROOT / "templates" / "plan.plan.md").read_text()
+    profile = (ROOT / ".ccc" / "profile.md").read_text()
+
+    prompt = (
+        f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
+        f"## 项目概况\n{profile[:1500]}\n\n"
+        f"## 任务\n"
+        f"- id: {task['id']}\n"
+        f"- title: {task.get('title', '')}\n"
+        f"- description: {task.get('description', '')}\n\n"
+        f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
+        f"## Phases 格式\n"
+        f"每行一个 JSON object：\n"
+        f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
+        f"## 参考历史 plan\n{ref_plans if ref_plans else '（无）'}\n\n"
+        f"## 输出要求\n"
+        f"输出以下两部分，用分隔符包裹：\n\n"
+        f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
+        f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
+    )
+
+    try:
+        result = subprocess.run(
+            [_CLAUDE_CLI, "-p"],
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
+            )
+
+        output = result.stdout
+
+        plan_match = re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, re.DOTALL)
+        if not plan_match:
+            raise RuntimeError("---PLAN--- section not found in Claude output")
+        plan_content = plan_match.group(1).strip()
+
+        phases_match = re.search(
+            r"---PHASES---\n(.*?)\n---END_PHASES---", output, re.DOTALL
+        )
+        if not phases_match:
+            raise RuntimeError("---PHASES--- section not found in Claude output")
+
+        phases = []
+        for line in phases_match.group(1).strip().split("\n"):
+            line = line.strip()
+            if line:
+                phases.append(json.loads(line))
+
+        return plan_content, phases
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("claude CLI timed out after 120s")
+
+
+def product_role(task_id: str = "") -> dict:
+    """产品经理：扫 backlog，或 --promote 调 Claude API 写 SPEC-合规 plan"""
     tasks = list_tasks("backlog")
+
+    if task_id:
+        task = next((t for t in tasks if t["id"] == task_id), None)
+        if not task:
+            print(f"[product] backlog 中未找到 task '{task_id}'", file=sys.stderr)
+            return {
+                "role": "product",
+                "error": f"task '{task_id}' not found",
+                "counts": update_index(),
+            }
+
+        print(f"[product] 正在拆解 {task_id}（调 Claude API 生成 plan）...")
+        try:
+            plan_content, phases = _call_claude_for_plan(task)
+        except RuntimeError as e:
+            print(f"[product] API 调用失败: {e}", file=sys.stderr)
+            return {"role": "product", "error": str(e), "counts": update_index()}
+
+        plan_dir = ROOT / ".ccc" / "plans"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        plan_file = plan_dir / f"{task_id}.plan.md"
+        plan_file.write_text(plan_content)
+        print(f"[product] ✓ 写入 {plan_file}")
+
+        phases_dir = ROOT / ".ccc" / "phases"
+        phases_dir.mkdir(parents=True, exist_ok=True)
+        phases_file = phases_dir / f"{task_id}.phases.json"
+        phases_file.write_text(
+            "\n".join(json.dumps(p, ensure_ascii=False) for p in phases) + "\n"
+        )
+        print(f"[product] ✓ 写入 {phases_file} ({len(phases)} phases)")
+
+        move_task(task_id, "backlog", "planned")
+
+        return {"role": "product", "promoted": task_id, "counts": update_index()}
+
     report = {
         "backlog_count": len(tasks),
         "tasks": [{"id": t["id"], "title": t.get("title", "")} for t in tasks],
-        "message": "待办是收件箱。商讨确定后手动移入 planned。",
+        "message": "待办是收件箱。使用 --promote <task_id> 拆解。",
     }
     if tasks:
         print(f"[product] backlog 有 {len(tasks)} 个待处理:")
         for t in tasks:
             print(f"  • {t['id']}: {t.get('title', '?')}")
+        print(f"[product] 提示: 使用 --promote <task_id> 拆解")
     else:
         print("[product] backlog 空")
     return {"role": "product", "report": report, "counts": update_index()}
@@ -435,7 +547,9 @@ def regress_role() -> dict:
         for py in py_files:
             r = sp.run(
                 ["python3", "-m", "py_compile", str(py)],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if r.returncode != 0:
                 py_ok = False
@@ -445,7 +559,10 @@ def regress_role() -> dict:
         diff_ok = True
         r = sp.run(
             ["git", "diff", "--stat"],
-            cwd=ROOT, capture_output=True, text=True, timeout=10,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.stdout.strip():
             diff_ok = False
@@ -549,6 +666,11 @@ def main():
         "--batch", action="store_true", help="批量模式（从 stdin 读 JSONL）"
     )
     ap.add_argument("--file", type=str, help="批量模式输入文件（替代 stdin）")
+    ap.add_argument(
+        "--promote",
+        type=str,
+        help="product: 处理指定 backlog task → 写 plan/phases → 挪 planned",
+    )
     ap.add_argument("--json", action="store_true", help="JSON 输出（角色模式下）")
     args = ap.parse_args()
 
@@ -577,7 +699,13 @@ def main():
         ap.print_help()
         sys.exit(1)
 
-    result = ROLES[args.role]()
+    if args.promote:
+        if args.role != "product":
+            print("[board] --promote 仅适用于 product 角色", file=sys.stderr)
+            sys.exit(1)
+        result = product_role(task_id=args.promote)
+    else:
+        result = ROLES[args.role]()
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
