@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-ccc-roles.sh — 一键装 6 角色 launchd plist (v0.16c)
+# install-ccc-roles.sh — 一键装 6 角色 launchd plist (v0.18)
 #
 # 频率表 (老板指定):
 #   product:  4h      = 14400s
@@ -16,7 +16,6 @@ PLIST_DIR="${HOME}/Library/LaunchAgents"
 LOG_DIR="${CCC_HOME}/.ccc/logs"
 mkdir -p "$LOG_DIR"
 
-# 角色列表 (parallel arrays, bash 3.2 兼容)
 ROLES=(product dev reviewer tester ops)
 INTERVALS=(14400 1800 7200 14400 1800)
 
@@ -35,7 +34,6 @@ install_role() {
   done
 
   if [[ "$role" == "kb" ]]; then
-    # kb 每天 23:00 用 StartCalendarInterval
     cat > "$plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

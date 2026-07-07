@@ -5,415 +5,234 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CCC 看板</title>
 <style>
-  :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface-hover: #334155;
-    --border: #334155;
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --text-muted: #64748b;
-    --col-border: rgba(255,255,255,0.06);
-    --radius: 10px;
-    --radius-sm: 6px;
-    --shadow: 0 2px 8px rgba(0,0,0,0.3);
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg); color: var(--text);
-    min-height: 100vh;
-  }
-  /* Header */
-  .header {
-    padding: 20px 24px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  }
-  .header h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .header h1 span { color: var(--text-dim); font-weight: 400; font-size: 14px; }
-  .header .controls { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-  .header select {
-    background: var(--surface); color: var(--text); border: 1px solid var(--border);
-    padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px;
-    cursor: pointer;
-  }
-  .header .new-btn {
-    background: #6366f1; color: white; border: none; padding: 6px 16px;
-    border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
-    cursor: pointer;
-  }
-  .header .new-btn:hover { background: #4f46e5; }
-  .header .status-badge {
-    font-size: 12px; color: var(--text-muted);
-    padding: 4px 10px; background: var(--surface); border-radius: 12px;
-  }
-  /* Board */
-  .board {
-    display: flex; gap: 12px; padding: 16px 24px;
-    overflow-x: auto; min-height: calc(100vh - 140px);
-  }
-  .column {
-    min-width: 260px; max-width: 300px; flex: 1;
-    background: var(--surface); border-radius: var(--radius);
-    border: 1px solid var(--col-border);
-    display: flex; flex-direction: column; max-height: calc(100vh - 160px);
-  }
-  .column-header {
-    padding: 12px 14px;
-    display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-  }
-  .column-header .col-info { display: flex; align-items: center; gap: 8px; }
-  .column-header .col-dot {
-    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
-  }
-  .column-header .col-name { font-size: 13px; font-weight: 600; }
-  .column-header .col-count {
-    font-size: 12px; color: var(--text-muted); background: var(--surface-hover);
-    padding: 1px 8px; border-radius: 10px;
-  }
-  .column-cards {
-    padding: 8px; overflow-y: auto; flex: 1;
-    display: flex; flex-direction: column; gap: 6px;
-    min-height: 60px;
-  }
-  /* Card */
-  .card {
-    background: var(--bg); border-radius: var(--radius-sm);
-    padding: 10px 12px; cursor: pointer;
-    border-left: 3px solid var(--text-muted);
-    transition: all 0.15s;
-  }
-  .card:hover { background: var(--surface-hover); transform: translateY(-1px); }
-  .card-id {
-    font-size: 11px; font-family: monospace; color: var(--text-muted);
-    margin-bottom: 2px;
-  }
-  .card-title { font-size: 13px; font-weight: 500; line-height: 1.4; }
-  .card-meta {
-    font-size: 11px; color: var(--text-muted); margin-top: 4px;
-    display: flex; gap: 8px;
-  }
-  .card-actions {
-    display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;
-  }
-  .card-actions button {
-    font-size: 11px; padding: 2px 8px; border-radius: 4px;
-    border: 1px solid var(--border); background: var(--surface);
-    color: var(--text-dim); cursor: pointer;
-  }
-  .card-actions button:hover { background: var(--surface-hover); color: var(--text); }
-  /* Modal */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(0,0,0,0.6); justify-content: center; align-items: center;
-  }
-  .modal-overlay.active { display: flex; }
-  .modal {
-    background: var(--surface); border-radius: var(--radius); padding: 24px;
-    width: 460px; max-width: 90vw; max-height: 80vh; overflow-y: auto;
-  }
-  .modal h2 { font-size: 16px; margin-bottom: 16px; }
-  .modal label { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 4px; }
-  .modal input, .modal textarea, .modal select {
-    width: 100%; padding: 8px 10px; margin-bottom: 12px;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); color: var(--text); font-size: 13px;
-  }
-  .modal textarea { min-height: 80px; resize: vertical; font-family: inherit; }
-  .modal .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
-  .modal .btns button {
-    padding: 6px 16px; border-radius: var(--radius-sm); font-size: 13px;
-    cursor: pointer; border: none;
-  }
-  .modal .btns .btn-primary { background: #6366f1; color: white; }
-  .modal .btns .btn-cancel { background: var(--surface-hover); color: var(--text); }
-  /* Log panel */
-  .log-panel {
-    border-top: 1px solid var(--border); padding: 10px 24px;
-    background: var(--surface); max-height: 120px; overflow-y: auto;
-    font-family: monospace; font-size: 11px; line-height: 1.5;
-    color: var(--text-muted);
-  }
-  .log-panel .log-entry { display: flex; gap: 8px; }
-  .log-panel .log-time { color: var(--text-muted); white-space: nowrap; }
-  .log-panel .log-role { color: #6366f1; min-width: 60px; }
-  .log-panel .log-msg { color: var(--text-dim); }
-  .log-panel .log-badge {
-    display: inline-block; padding: 0 4px; border-radius: 3px;
-    font-size: 10px; font-weight: 600;
-  }
-  .log-panel .log-badge.ok { background: rgba(34,197,94,0.2); color: #22c55e; }
-  .log-panel .log-badge.fail { background: rgba(239,68,68,0.2); color: #ef4444; }
-  /* Empty */
-  .empty-col {
-    text-align: center; color: var(--text-muted); font-size: 12px;
-    padding: 20px 0;
-  }
-  /* Animation */
-  .card.just-moved { animation: flash 1s ease-out; }
-  @keyframes flash { 0% { background: rgba(99,102,241,0.3); } 100% { background: transparent; } }
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#e2e8f0;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+:root{--bg:#0b1120;--srf:#1a2332;--srf2:#1e2a3a;--bd:#2a3a4a;--txt:#e2e8f0;--dim:#7e93a5;--mt:#4a5a6a;--r:8px;--rs:6px}
+/* header */
+.hdr{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--bd);background:var(--srf)}
+.hdr h1{font-size:16px;font-weight:700;letter-spacing:.3px}
+.hdr h1 em{font-style:normal;color:var(--dim);font-weight:400}
+.hdr .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+.hdr select{background:var(--bg);color:var(--txt);border:1px solid var(--bd);padding:5px 10px;border-radius:var(--rs);font-size:12px}
+.hdr .nb{background:#6366f1;color:#fff;border:none;padding:5px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer}
+.hdr .nb:hover{background:#4f46e5}
+.hdr .st{font-size:11px;color:var(--mt);padding:3px 10px;background:var(--bg);border-radius:10px}
+/* role bar */
+.rbar{display:flex;gap:8px;padding:8px 20px;background:var(--srf);border-bottom:1px solid var(--bd)}
+.role{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--rs);background:var(--bg);font-size:11px;font-weight:500;min-width:70px}
+.role .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.role .dot.ok{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.4)}
+.role .dot.fail{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.4)}
+.role .dot.idle{background:var(--mt)}
+.role .tm{font-size:10px;color:var(--dim);margin-left:auto;font-family:monospace}
+.role .cn{color:var(--dim);font-size:10px;margin-left:2px}
+/* main */
+.m{display:flex;flex:1;overflow:hidden}
+/* board */
+.bb{flex:1;display:flex;gap:8px;padding:10px 16px;overflow-x:auto;min-width:0}
+.col{min-width:220px;max-width:280px;flex:1;display:flex;flex-direction:column;background:var(--srf);border-radius:var(--r);border:1px solid var(--bd)}
+.ch{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);flex-shrink:0}
+.ch .l{display:flex;align-items:center;gap:6px}
+.ch .dt{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ch .nm{font-size:12px;font-weight:600}
+.ch .ct{font-size:11px;color:var(--dim);background:var(--bg);padding:0 7px;border-radius:8px}
+.cd{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:4px;min-height:50px}
+/* card */
+.card{background:var(--bg);border-radius:var(--rs);padding:8px 10px;border-left:3px solid var(--mt);cursor:default;transition:transform .1s,box-shadow .1s}
+.card:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.card .id{font-size:10px;font-family:monospace;color:var(--mt);margin-bottom:1px}
+.card .ti{font-size:12px;font-weight:500;line-height:1.35;word-break:break-word}
+.card .tm{font-size:10px;color:var(--dim);margin-top:3px;font-family:monospace}
+.card .ac{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap}
+.card .ac button{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--bd);background:var(--srf2);color:var(--dim);cursor:pointer}
+.card .ac button:hover{background:var(--bd);color:var(--txt)}
+.emp{text-align:center;color:var(--mt);font-size:11px;padding:16px 0}
+/* right panel */
+.rp{width:320px;border-left:1px solid var(--bd);display:flex;flex-direction:column;background:var(--srf);flex-shrink:0}
+.rt{flex:1;overflow-y:auto;border-bottom:1px solid var(--bd)}
+.rt h3,.rl h3{font-size:11px;font-weight:600;padding:8px 12px;color:var(--dim);border-bottom:1px solid var(--bd);text-transform:uppercase;letter-spacing:.5px}
+.ev{display:flex;gap:6px;padding:5px 12px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.03)}
+.ev:hover{background:rgba(255,255,255,.03)}
+.ev .t{font-family:monospace;color:var(--mt);white-space:nowrap;font-size:10px;min-width:48px}
+.ev .b{display:inline-block;font-size:9px;padding:0 4px;border-radius:3px;font-weight:600;min-width:20px;text-align:center}
+.ev .b.ok{background:rgba(34,197,94,.2);color:#22c55e}
+.ev .b.go{background:rgba(99,102,241,.2);color:#818cf8}
+.ev .b.fa{background:rgba(239,68,68,.2);color:#ef4444}
+.ev .m{color:var(--txt);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev .m .hl{color:var(--dim)}
+/* log panel */
+.rl{height:160px;overflow-y:auto}
+.lg{display:flex;gap:6px;padding:3px 12px;font-size:10px;font-family:monospace;color:var(--dim)}
+.lg:hover{background:rgba(255,255,255,.03)}
+.lg .t{color:var(--mt);min-width:36px}
+/* modal */
+.mo{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);justify-content:center;align-items:center}
+.mo.a{display:flex}
+.mo .box{background:var(--srf);border-radius:var(--r);padding:24px;width:420px;max-width:90vw}
+.mo .box h2{font-size:15px;margin-bottom:14px}
+.mo .box label{font-size:11px;color:var(--dim);display:block;margin-bottom:3px}
+.mo .box input,.mo .box textarea,.mo .box select{width:100%;padding:7px 9px;margin-bottom:10px;background:var(--bg);border:1px solid var(--bd);border-radius:var(--rs);color:var(--txt);font-size:12px}
+.mo .box textarea{min-height:60px;resize:vertical;font-family:inherit}
+.mo .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.mo .btns button{padding:5px 14px;border-radius:var(--rs);font-size:12px;cursor:pointer;border:none}
+.mo .btns .p{background:#6366f1;color:#fff}
+.mo .btns .c{background:var(--bd);color:var(--txt)}
+/* keyframes */
+@keyframes pop{0%{opacity:0;transform:scale(.95)}100%{opacity:1;transform:scale(1)}}
+.card.ju{animation:pop .2s ease-out}
+/* scrollbars */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>CCC <span>看板</span></h1>
-  <div class="controls">
-    <select id="workspace-select" onchange="switchWorkspace()"></select>
-    <span class="status-badge" id="refresh-status">实时</span>
-    <button class="new-btn" onclick="openNewTask()">+ 新建任务</button>
+<div class="hdr">
+  <h1>◈ CCC <em>看板</em></h1>
+  <div class="r">
+    <select id="ws" onchange="load()"></select>
+    <span class="st" id="st">·</span>
+    <button class="nb" onclick="nm()">+ 新建</button>
   </div>
 </div>
 
-<div class="board" id="board"></div>
+<div class="rbar" id="rbar"></div>
 
-<div class="log-panel" id="log-panel"></div>
+<div class="m">
+  <div class="bb" id="bb"></div>
+  <div class="rp">
+    <div class="rt" id="tl"><h3>活动</h3></div>
+    <div class="rl" id="rl"><h3>日志</h3></div>
+  </div>
+</div>
 
-<!-- Modal -->
-<div class="modal-overlay" id="modal">
-  <div class="modal">
-    <h2 id="modal-title">新建任务</h2>
-    <label>任务 ID</label>
-    <input id="task-id" placeholder="如 v0.19-feature-x" value="task-">
-    <label>标题</label>
-    <input id="task-title" placeholder="简短描述">
-    <label>描述</label>
-    <textarea id="task-desc" placeholder="详细说明"></textarea>
-    <label>目标看板</label>
-    <select id="task-workspace"></select>
-    <div class="btns">
-      <button class="btn-cancel" onclick="closeModal()">取消</button>
-      <button class="btn-primary" onclick="createTask()">创建</button>
-    </div>
+<div class="mo" id="mo">
+  <div class="box">
+    <h2>新建任务</h2>
+    <label>ID</label><input id="fid" placeholder="v0.19-xxx">
+    <label>标题</label><input id="fti" placeholder="一句话描述">
+    <label>描述</label><textarea id="fde" placeholder="详情"></textarea>
+    <label>看板</label><select id="fws"></select>
+    <div class="btns"><button class="c" onclick="document.getElementById('mo').classList.remove('a')">取消</button><button class="p" onclick="mk()">创建</button></div>
   </div>
 </div>
 
 <script>
-// ── 状态 ──
-let config = {};
-let boardState = {};
-let autoRefresh = null;
-const COLORS = {
-  backlog: "#94a3b8", planned: "#6366f1", in_progress: "#f59e0b",
-  testing: "#f97316", verified: "#22c55e", released: "#3b82f6",
-};
-const LABELS = {
-  backlog: "待办", planned: "已计划", in_progress: "开发中",
-  testing: "测试中", verified: "已验证", released: "已发布",
-};
-const NEXT_COL = {
-  backlog: "planned", planned: "in_progress", in_progress: "testing",
-  testing: "verified", verified: "released", released: null,
-};
-const PREV_COL = {
-  backlog: null, planned: "backlog", in_progress: "planned",
-  testing: "in_progress", verified: "testing", released: "verified",
-};
-
-// ── 加载配置 ──
-async function loadConfig() {
-  const r = await fetch("/api/config");
-  config = await r.json();
-  // workspace 选择器
-  const sel = document.getElementById("workspace-select");
-  sel.innerHTML = "";
-  for (const [name, path] of Object.entries(config.workspaces)) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = `${name} (${path.split("/").pop()})`;
-    sel.appendChild(opt);
-  }
-  // 模态框 workspace 选择
-  const wsSel = document.getElementById("task-workspace");
-  wsSel.innerHTML = "";
-  for (const name of Object.keys(config.workspaces)) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    wsSel.appendChild(opt);
-  }
-  // 默认 task id
-  document.getElementById("task-id").value = "task-" + Math.floor(Date.now() / 1000);
+let C={},S={};
+async function get(p){const r=await fetch(p);return r.ok?r.json():null}
+async function load(){
+  const ws=document.getElementById('ws').value;
+  const r=await get(`/api/board?workspace=${ws}`);
+  if(!r)return;
+  S=r;
+  document.getElementById('st').textContent=ws+' · '+
+    Object.values(r.counts).reduce((a,b)=>a+b,0)+' 个';
+  render();
+  loadRoles();
+  loadTL();
+  loadLogs();
 }
-
-// ── 加载看板 ──
-async function loadBoard() {
-  const ws = document.getElementById("workspace-select").value;
-  try {
-    const r = await fetch(`/api/board?workspace=${ws}`);
-    boardState = await r.json();
-    renderBoard();
-    document.getElementById("refresh-status").textContent =
-      `${ws} · ${Object.values(boardState.counts).reduce((a,b)=>a+b,0)} 个任务`;
-  } catch(e) {
-    document.getElementById("refresh-status").textContent = "❌ 连接失败";
+async function loadRoles(){
+  const r=await get('/api/roles');
+  if(!r)return;
+  const b=document.getElementById('rbar');
+  b.innerHTML=r.roles.map(x=>{
+    const s=x.status||'idle',cn={'product':'PM','dev':'DEV','reviewer':'CR','tester':'QA','ops':'OPS','kb':'KB'}[x.role]||x.role;
+    const t=x.last_run?x.last_run.slice(11,19):'--:--';
+    return `<div class="role"><span class="dot ${s}"></span>${cn}<span class="tm">${t}</span><span class="cn">${x.exit_code||''}</span></div>`;
+  }).join('');
+}
+function render(){
+  const ws=document.getElementById('ws').value;
+  const cols=Object.keys(S.columns);
+  const labels={'backlog':'待办','planned':'计划','in_progress':'开发','testing':'测试','verified':'验证','released':'发布'};
+  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
+  const next={'backlog':'planned','planned':'in_progress','in_progress':'testing','testing':'verified','verified':'released'};
+  const prev={'planned':'backlog','in_progress':'planned','testing':'in_progress','verified':'testing','released':'verified'};
+  const bb=document.getElementById('bb');bb.innerHTML='';
+  for(const col of cols){
+    const tasks=S.columns[col]||[];
+    const d=document.createElement('div');d.className='col';
+    d.innerHTML='<div class="ch"><div class="l"><span class="dt" style="background:'+colors[col]+'"></span><span class="nm">'+labels[col]+'</span></div><span class="ct">'+tasks.length+'</span></div><div class="cd">'+
+      (tasks.length?tasks.map(t=>{
+        const tm=(t.updated_at||t.created_at||'').slice(11,19);
+        const pv=prev[col],nx=next[col];
+        return '<div class="card"><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
+          '</div><div class="ac">'+
+          (pv?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+pv+'\')">←</button>':'')+
+          (nx?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+nx+'\')">→</button>':'')+
+          '</div></div>';
+      }).join(''):'<div class="emp">-</div>')+
+      '</div>';
+    bb.appendChild(d);
   }
 }
+async function mv(id,f,t){
+  const ws=document.getElementById('ws').value;
+  await fetch('/api/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,from:f,to:t,workspace:ws})});
+  load();loadTL();loadLogs();
+}
+async function loadTL(){
+  const r=await get('/api/timeline?limit=30');
+  if(!r)return;
+  const b=document.getElementById('tl');
+  const labels={'backlog':'待办','planned':'计划','in_progress':'开发','testing':'测试','verified':'验证','released':'发布'};
+  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
+  b.innerHTML='<h3>活动</h3>'+r.events.slice(0,30).map(e=>{
+    if(e.type==='role_run'){
+      const s=e.exit_code==='0'?'ok':e.exit_code==='?'?'':'fa';
+      return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b '+(s||'')+'">'+
+        (e.exit_code||'?')+'</span><span class="m">'+(e.role||'?').toUpperCase()+' <span class="hl">执行</span></span></div>';
+    }
+    const cl=e.column||'';
+    return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b go">→</span><span class="m">'+esc(e.task_id)+' <span class="hl">'+labels[cl]+'</span></span></div>';
+  }).join('');
+}
+async function loadLogs(){
+  const r=await get('/api/logs');
+  if(!r)return;
+  const b=document.getElementById('rl');
+  b.innerHTML='<h3>日志</h3>'+r.logs.slice(0,25).map(l=>{
+    const s=l.exit_code==='0'?'ok':l.exit_code==='?||'?'':'fa';
+    return '<div class="lg"><span class="t">'+(l.mtime||'').slice(11,19)+'</span><span class="b '+(s||'')+'" style="display:inline-block;font-size:9px;padding:0 4px;border-radius:3px;min-width:16px;text-align:center">'+
+      (l.exit_code||'?')+'</span>'+l.role.toUpperCase()+' · '+(l.size||0)+'B</div>';
+  }).join('');
+}
+function nm(){
+  document.getElementById('fid').value='task-'+Math.floor(Date.now()/1000);
+  document.getElementById('fti').value='';
+  document.getElementById('fde').value='';
+  document.getElementById('mo').classList.add('a');
+}
+async function mk(){
+  const id=document.getElementById('fid').value.trim();
+  const ti=document.getElementById('fti').value.trim();
+  const de=document.getElementById('fde').value.trim();
+  const ws=document.getElementById('fws').value;
+  if(!id||!ti){alert('ID 和标题必填');return}
+  await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,title:ti,description:de,workspace:ws})});
+  document.getElementById('mo').classList.remove('a');
+  await load();
+  loadTL();loadLogs();
+}
+function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
-// ── 渲染 ──
-function renderBoard() {
-  const board = document.getElementById("board");
-  board.innerHTML = "";
-  for (const col of config.columns) {
-    const tasks = boardState.columns[col] || [];
-    const colDiv = document.createElement("div");
-    colDiv.className = "column";
-    colDiv.innerHTML = `
-      <div class="column-header">
-        <div class="col-info">
-          <span class="col-dot" style="background:${COLORS[col]}"></span>
-          <span class="col-name">${LABELS[col]}</span>
-        </div>
-        <span class="col-count">${tasks.length}</span>
-      </div>
-      <div class="column-cards" data-col="${col}">
-        ${tasks.length === 0 ? '<div class="empty-col">空</div>' :
-          tasks.map(t => renderCard(t, col)).join("")}
-      </div>
-    `;
-    board.appendChild(colDiv);
+document.addEventListener('DOMContentLoaded',async()=>{
+  const c=await get('/api/config');
+  if(!c)return; C=c;
+  const sel=document.getElementById('ws');
+  sel.innerHTML='';
+  for(const[n,p]of Object.entries(c.workspaces)){
+    const o=document.createElement('option');o.value=n;o.textContent=n+' ('+p.split('/').pop()+')';sel.appendChild(o);
   }
-  // 移动按钮绑定
-  document.querySelectorAll(".move-btn").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      const { taskId, from, to } = btn.dataset;
-      await moveTask(taskId, from, to);
-    });
-  });
-  // 新建任务按钮绑定（从卡片）
-  document.querySelectorAll(".new-subtask").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      const { id, title } = btn.dataset;
-      openNewTaskFrom(id, title);
-    });
-  });
-}
-
-function renderCard(task, col) {
-  const prev = PREV_COL[col];
-  const next = NEXT_COL[col];
-  const time = (task.updated_at || task.created_at || "").split("T")[1]?.slice(0,5) || "";
-  return `
-    <div class="card" style="border-left-color:${COLORS[col]}">
-      <div class="card-id">${task.id}</div>
-      <div class="card-title">${escapeHtml(task.title)}</div>
-      <div class="card-meta">
-        <span>${time}</span>
-        ${task.tags?.length ? task.tags.map(t => `<span>#${t}</span>`).join("") : ""}
-      </div>
-      <div class="card-actions">
-        ${prev ? `<button class="move-btn" data-task-id="${task.id}" data-from="${col}" data-to="${prev}">← ${LABELS[prev]}</button>` : ""}
-        ${next ? `<button class="move-btn" data-task-id="${task.id}" data-from="${col}" data-to="${next}">${LABELS[next]} →</button>` : ""}
-      </div>
-    </div>
-  `;
-}
-
-// ── 移动 ──
-async function moveTask(id, from, to) {
-  const ws = document.getElementById("workspace-select").value;
-  await fetch("/api/tasks/move", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ id, from, to, workspace: ws }),
-  });
-  await loadBoard();
-  await loadLogs();
-}
-
-// ── 新建 ──
-function openNewTask() {
-  document.getElementById("modal-title").textContent = "新建任务";
-  document.getElementById("task-id").value = "task-" + Math.floor(Date.now() / 1000);
-  document.getElementById("task-title").value = "";
-  document.getElementById("task-desc").value = "";
-  document.getElementById("modal").classList.add("active");
-}
-
-function openNewTaskFrom(parentId, parentTitle) {
-  document.getElementById("modal-title").textContent = `子任务 (${parentId})`;
-  document.getElementById("task-id").value = parentId + "-sub";
-  document.getElementById("task-title").value = "";
-  document.getElementById("task-desc").value = `父任务: ${parentTitle}`;
-  document.getElementById("modal").classList.add("active");
-}
-
-function closeModal() {
-  document.getElementById("modal").classList.remove("active");
-}
-
-async function createTask() {
-  const id = document.getElementById("task-id").value.trim();
-  const title = document.getElementById("task-title").value.trim();
-  const desc = document.getElementById("task-desc").value.trim();
-  const ws = document.getElementById("task-workspace").value;
-  if (!id || !title) { alert("ID 和标题必填"); return; }
-  await fetch("/api/tasks", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ id, title, description: desc, workspace: ws }),
-  });
-  closeModal();
-  await switchWorkspace();
-}
-
-// ── 日志 ──
-async function loadLogs() {
-  try {
-    const r = await fetch("/api/logs?lines=20");
-    const data = await r.json();
-    const panel = document.getElementById("log-panel");
-    panel.innerHTML = data.logs.slice(0, 15).map(log => {
-      const exitMatch = log.snippet.match(/(\w+) exit=(\d+)/);
-      const tickMatch = log.snippet.match(/===== (\w+) tick =====/);
-      const role = exitMatch?.[1] || tickMatch?.[1] || log.role;
-      const exitCode = exitMatch?.[2];
-      const badge = exitCode === "0"
-        ? `<span class="log-badge ok">OK</span>`
-        : exitCode ? `<span class="log-badge fail">E${exitCode}</span>` : "";
-      return `<div class="log-entry">
-        <span class="log-time">${log.mtime.slice(11,19)}</span>
-        <span class="log-role">${role}</span>
-        ${badge}
-        <span class="log-msg">${log.size > 0 ? `${log.size}B` : "空"}</span>
-      </div>`;
-    }).join("");
-  } catch(e) {}
-}
-
-// ── 切换 workspace ──
-async function switchWorkspace() {
-  await loadBoard();
-  await loadLogs();
-  startAutoRefresh();
-}
-
-// ── 定时刷新 ──
-function startAutoRefresh() {
-  if (autoRefresh) clearInterval(autoRefresh);
-  autoRefresh = setInterval(async () => {
-    await loadBoard();
-    await loadLogs();
-  }, 5000);
-}
-
-// ── 工具 ──
-function escapeHtml(s) {
-  if (!s) return "";
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-// ── 启动 ──
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadConfig();
-  await switchWorkspace();
+  const fs=document.getElementById('fws');
+  fs.innerHTML='';
+  for(const n of Object.keys(c.workspaces)){
+    const o=document.createElement('option');o.value=n;o.textContent=n;fs.appendChild(o);
+  }
+  setInterval(()=>{load();loadTL();loadLogs()},5000);
+  await load();
 });
 </script>
 </body>
