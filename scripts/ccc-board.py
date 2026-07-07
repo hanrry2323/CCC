@@ -609,11 +609,11 @@ def dev_role() -> dict:
         f"5. 不超出 plan 文件白名单\n"
     )
 
-    # 写 temp prompt 文件
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".prompt.md", delete=False)
-    tmp.write(prompt)
-    tmp.close()
-    prompt_file = tmp.name
+    # 写 prompt 文件到 .ccc/pids/（跟其他 task 文件一起清理，不泄漏）
+    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = str(pids_dir / f"{task_id}.prompt.md")
+    Path(prompt_file).write_text(prompt)
 
     try:
         print(
@@ -637,7 +637,7 @@ def dev_role() -> dict:
                 f"# {task_id} 执行报告\n\n## 信息\n- Phase: {phase_id}\n"
                 f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n"
             )
-            for p in [done_path, exitcode_path, pid_path, result_path]:
+            for p in [done_path, exitcode_path, pid_path, result_path, ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md"]:
                 try:
                     p.unlink()
                 except OSError:
@@ -713,27 +713,74 @@ def dev_role() -> dict:
 
 
 def _parse_plan_scope(task_id: str) -> list[str]:
-    """从 plan.md 读文件白名单"""
+    """从 plan.md 读文件白名单
+
+    兼容两种格式：
+      新模板：## 范围 → - **只改文件**： → 后续 - file 行
+      旧格式：## 文件白名单 → 直接 - file 行
+    """
     plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
     if not plan.exists():
         return []
     content = plan.read_text()
-    # 找 ## 文件白名单 后面的行，按 - 或 * 开头的
+
+    def _clean(f: str) -> str:
+        """提取纯文件路径（去掉尾部注释/说明）"""
+        f = f.strip().strip("`\"'*")
+        # 去掉尾部中文/括号说明（product_role 增强 → 空）
+        m = re.match(r'^([\w./~@+\-\[\]]+)', f)
+        if m:
+            f = m.group(1)
+        # 如果还多出来尾缀（如括号前有空格）
+        for sep in ("（", "(", "`（", "`("):
+            idx = f.find(sep)
+            if idx > 0:
+                f = f[:idx]
+        return f.strip().rstrip(".")
+
     in_scope = False
+    collecting_only = False
+    old_format = False
     files = []
     for line in content.split("\n"):
+        if line.startswith("## 范围"):
+            in_scope = True
+            old_format = False
+            continue
         if line.startswith("## 文件白名单") or line.startswith("## 文件"):
             in_scope = True
+            old_format = True
             continue
         if in_scope and line.startswith("## "):
             break
-        if in_scope and (
-            line.strip().startswith("- ") or line.strip().startswith("* ")
-        ):
-            f = line.strip()[2:].strip()
-            # 支持 glob 模式
-            if f and not f.startswith("不"):
-                files.append(f)
+        if not in_scope:
+            continue
+        stripped = line.strip()
+
+        if not old_format:
+            # 新模板格式
+            if "**只改文件" in stripped and (stripped.startswith("- ") or stripped.startswith("* ")):
+                collecting_only = True
+                after_label = stripped.split("**")[-1].lstrip("：:").strip()
+                if after_label:
+                    for f in after_label.split():
+                        f_clean = _clean(f)
+                        if f_clean:
+                            files.append(f_clean)
+                continue
+            if "**不改文件" in stripped and (stripped.startswith("- ") or stripped.startswith("* ")):
+                break
+            if collecting_only:
+                if stripped.startswith("- ") or stripped.startswith("* "):
+                    f = _clean(stripped[2:])
+                    if f and not f.startswith("(") and not f.startswith("不") and f not in ("只改文件", "不改文件"):
+                        files.append(f)
+        else:
+            # 旧格式：直接收集 - 条目
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                f = _clean(stripped[2:])
+                if f and not f.startswith("不"):
+                    files.append(f)
     return files
 
 
@@ -1086,7 +1133,7 @@ def regress_role() -> dict:
         # 2. git diff 检查是否代码被意外改过
         diff_ok = True
         r = sp.run(
-            ["git", "diff", "--stat"],
+            ["git", "diff", "HEAD", "--stat"],
             cwd=ROOT,
             capture_output=True,
             text=True,
