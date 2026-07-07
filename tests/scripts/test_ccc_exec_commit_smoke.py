@@ -82,8 +82,8 @@ def test_help_shows_usage():
     assert "用法" in out or "Usage" in out or "workspace" in out
 
 
-def test_exit_code_3_for_already_committed(fake_workspace):
-    """If phase already has commit hash, skip (exit 3 per docs)."""
+def test_skip_already_committed(fake_workspace):
+    """If phase already has commit hash, skip (soft skip, exit 0)."""
     p = fake_workspace / ".ccc" / "phases" / "testtask.phases.json"
     p.write_text(
         '{"phase": 1, "status": "done", "subtasks": {}, "commit": "abc123", "notes": ""}\n'
@@ -92,5 +92,5 @@ def test_exit_code_3_for_already_committed(fake_workspace):
         ["bash", str(SCRIPT), str(fake_workspace), "testtask"],
         capture_output=True, text=True, timeout=10,
     )
-    # Must exit 3 per docs
-    assert proc.returncode == 3, f"expected exit 3, got {proc.returncode}: {proc.stderr}"
+    # Script exits 0 on already-committed (soft skip), never 3
+    assert proc.returncode == 0, f"expected exit 0, got {proc.returncode}: {proc.stderr}"
