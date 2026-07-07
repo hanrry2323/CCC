@@ -1,0 +1,5 @@
+{"phase":"v0.11-a1","status":"pending","description":"默认钩子模板"}
+{"phase":"v0.11-a2","status":"pending","description":"一键安装器"}
+{"phase":"v0.11-b1","status":"pending","description":"队列 3 phase 全成功"}
+{"phase":"v0.11-b2","status":"pending","description":"队列中间失败升级"}
+{"phase":"v0.11-b3","status":"pending","description":"续跑恢复"}
