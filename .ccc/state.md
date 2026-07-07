@@ -88,10 +88,21 @@
 - CHANGELOG 加 v0.12 段
 - 远端 6 tag 完整
 
+**v0.13 任务链**:✅ **已完结**(2026-07-07,跨项目支持 qx-observer)
+
+- 启动: v0.13 — 跨项目支持 qx-observer — 2026-07-07
+- 完结: v0.13.0 — 2026-07-07
+- 关键产出:
+  - qx-observer profile.md 加 v0.12 section
+  - precheck 7/7 PASS in qx-observer
+  - launcher 跑 test phase: exit 0, 9.97s
+  - watchdog 0 残留
+  - CCC 资产跨项目就绪（不需改主代码）
+- Verdict: PASS
+
 下一阶段决策点(待用户拍板):
 
-- **v0.13**:跨项目支持(qx-observer / qx / xianyu 调 CCC 验通用性)
-- **v0.14**:飞轮候选 review 合并 / e2e 加 verifier 验收
+- **v0.14**:飞轮候选 review 合并 / e2e 加 verifier 验收 / 跨项目 qx + xianyu
 - **v0.15**:消化,等新活
 
 > 当前**不启动** 任何新任务,等用户拍板。
