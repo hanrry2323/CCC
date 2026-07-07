@@ -1,0 +1,1 @@
+{"id": "v0.18-board-py", "title": "ccc-board.py 扩展：加 timeline 事件记录 + 批量操作", "description": "ccc-board.py 当前 move_task 不记历史。需要：\n1. move 时追加一条 event 到 .ccc/board/events/\n2. 支持批量创建/移动（CLI 参数 --batch）\n3. 支持 --json 输出（现有已支持）\n4. 校验 task_id 不重复", "status": "testing", "created_at": "2026-07-07T11:10:55Z", "updated_at": "2026-07-07T13:02:24Z", "moves": []}
