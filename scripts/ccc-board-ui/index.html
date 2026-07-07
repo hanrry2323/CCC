@@ -151,7 +151,8 @@ function render(){
       (tasks.length?tasks.map(t=>{
         const tm=(t.updated_at||t.created_at||'').slice(11,19);
         const pv=prev[col],nx=next[col];
-        return '<div class="card '+runCls+'><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
+        const rnCls=(col==='in_progress'?' running':'');
+        return '<div class="card'+rnCls+'"><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
           '</div><div class="ac">'+
           (pv?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+pv+'\')">←</button>':'')+
           (nx?'<button onclick="mv(\''+t.id+'\',\''+col+'\',\''+nx+'\')">→</button>':'')+
