@@ -29,6 +29,8 @@ ROOT = (
     if os.environ.get("CCC_WORKSPACE")
     else Path(__file__).resolve().parent.parent
 )
+# CCC 安装目录（独立于 workspace，用于定位安装脚本）
+CCC_HOME = Path(__file__).resolve().parent.parent
 BOARD = ROOT / ".ccc" / "board"
 EVENTS_DIR = BOARD / "events"
 
@@ -683,7 +685,7 @@ def dev_role() -> dict:
 
         proc = sp.Popen(
             [
-                str(ROOT / "scripts" / "opencode-runner.sh"),
+                str(CCC_HOME / "scripts" / "opencode-runner.sh"),
                 task_id,
                 str(ROOT),
                 "--phase",
@@ -1183,7 +1185,7 @@ def regress_role() -> dict:
             subprocess.run(
                 [
                     "bash",
-                    str(ROOT / "scripts" / "ccc-notify.sh"),
+                    str(CCC_HOME / "scripts" / "ccc-notify.sh"),
                     "L2",
                     bug_title,
                     bug_desc[:200],

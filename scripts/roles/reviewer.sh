@@ -6,7 +6,7 @@
 set -uo pipefail
 
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export CCC_WORKSPACE="$CCC_HOME"
+export CCC_WORKSPACE="${CCC_WORKSPACE:-$CCC_HOME}"  # 保留环境变量传入值（如 qxo plist），默认 CCC
 CCC_ROLE="reviewer"
 export CCC_ROLE
 export CCC_ROLE_SKILL="${CCC_HOME}/skills/ccc-${CCC_ROLE}/SKILL.md"
