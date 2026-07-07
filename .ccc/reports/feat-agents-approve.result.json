@@ -1,9 +1,0 @@
-{
-  "phase_id": "feat-agents-approve-p1",
-  "exit_code": -1,
-  "stdout": "",
-  "stderr": "timeout after 300s — killed",
-  "duration_s": 299.92,
-  "pid": 87384,
-  "killed": true
-}
