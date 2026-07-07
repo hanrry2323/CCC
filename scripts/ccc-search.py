@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """ccc-search — cross-project .ccc/ keyword search.
 
-Usage: ccc search <query>
-Searches all ~/program/*/.ccc/{plans,phases,reports,verdicts,abnormal-reports}/*.md
+Usage: ccc search <query> [--workspace <path>]
+
+Searches all ~/program/*/.ccc/{plans,phases,reports,verdicts,abnormal-reports,board}/*.md
 for the given keyword and prints matches with one-line context.
+With --workspace, only searches that specific project.
 """
 
+import argparse
 import os
 import re
 import sys
@@ -16,15 +19,23 @@ SEARCH_DIRS = ["plans", "phases", "reports", "verdicts", "abnormal-reports", "bo
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: ccc search <query>")
-        sys.exit(0 if len(sys.argv) < 2 else 1)
+    parser = argparse.ArgumentParser(description="Search .ccc/ files for keywords")
+    parser.add_argument("query", nargs="?", help="Search keyword")
+    parser.add_argument("--workspace", help="Scope search to specific project path")
+    args = parser.parse_args()
 
-    query = " ".join(sys.argv[1:])
-    project_dirs = sorted(HOME.glob("program/*"))
+    if not args.query:
+        parser.print_help()
+        sys.exit(0)
+
+    query = args.query
+    if args.workspace:
+        project_dirs = [Path(args.workspace)]
+    else:
+        project_dirs = sorted(HOME.glob("program/*"))
 
     if not project_dirs:
-        print("No projects found under ~/program/")
+        print("No projects found")
         return
 
     total_hits = 0
