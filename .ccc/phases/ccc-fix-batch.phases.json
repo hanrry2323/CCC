@@ -1,0 +1,9 @@
+{"phase":1,"name":"CLAUDE.md 恢复 v0.7","status":"done"}
+{"phase":2,"name":"red-lines.md 编号修复","status":"done"}
+{"phase":3,"name":"ccc-task-done.sh L93 bug","status":"done"}
+{"phase":4,"name":"scripts/__pycache__ pyc 清理","status":"done"}
+{"phase":5,"name":".ccc/ 工作产物归档 + state.md 更新","status":"done"}
+{"phase":6,"name":"docs/roadmap.md 过期 banner","status":"done"}
+{"phase":7,"name":"SKILL.md L47 红线描述对齐","status":"done"}
+{"phase":8,"name":"docs/lessons.md qxo→CCC banner","status":"done"}
+{"phase":9,"name":"pytest + ccc-precheck 全跑","status":"done"}
