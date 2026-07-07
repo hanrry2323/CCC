@@ -437,70 +437,112 @@ def dev_role() -> dict:
     return {"role": "dev", "moved": moved, "counts": update_index()}
 
 
-def reviewer_role() -> dict:
-    """代码审查员: 扫 testing → ruff/mypy → 通过则挪 verified
+def _parse_plan_scope(task_id: str) -> list[str]:
+    """从 plan.md 读文件白名单"""
+    plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    if not plan.exists():
+        return []
+    content = plan.read_text()
+    # 找 ## 文件白名单 后面的行，按 - 或 * 开头的
+    in_scope = False
+    files = []
+    for line in content.split("\n"):
+        if line.startswith("## 文件白名单") or line.startswith("## 文件"):
+            in_scope = True
+            continue
+        if in_scope and line.startswith("## "):
+            break
+        if in_scope and (line.strip().startswith("- ") or line.strip().startswith("* ")):
+            f = line.strip()[2:].strip()
+            # 支持 glob 模式
+            if f and not f.startswith("不"):
+                files.append(f)
+    return files
 
-    简化版: ruff 不一定装, 用 python3 -m py_compile 替代 (所有 .py 能 compile)
-    """
+
+def reviewer_role() -> dict:
+    """代码审查员: 扫 testing → 按 plan 文件白名单检查 py_compile → 通过则挪 verified"""
     import subprocess as sp
+    import glob
 
     moved = []
     for task in list_tasks("testing"):
         task_id = task["id"]
-        # 用 py_compile 替代 ruff (跨 IDE 兼容)
-        scripts_dir = ROOT / "scripts"
-        py_files = list(scripts_dir.rglob("*.py"))
+        files = _parse_plan_scope(task_id)
+
+        if not files:
+            # 没有文件白名单 → 传统模式：扫全部 scripts/*.py
+            files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+
+        py_files = []
+        for f in files:
+            # glob 展开（支持 scripts/**/*.py 模式）
+            matched = glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+            py_files.extend(matched)
+        py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+
         all_ok = True
         for py in py_files:
             r = sp.run(
                 ["python3", "-m", "py_compile", str(py)],
-                capture_output=True,
-                text=True,
-                timeout=10,
+                capture_output=True, text=True, timeout=10,
             )
             if r.returncode != 0:
                 all_ok = False
-                print(
-                    f"[reviewer] {task_id} py_compile {py.name} FAIL: {r.stderr[:200]}",
-                    file=sys.stderr,
-                )
+                print(f"[reviewer] {task_id} py_compile {Path(py).name} FAIL: {r.stderr[:200]}", file=sys.stderr)
                 break
+
+        if not py_files:
+            all_ok = True  # 无 .py 文件不需要审查
+
         if all_ok:
             move_task(task_id, "testing", "verified")
             moved.append(task_id)
+            print(f"[reviewer] {task_id} ✓（检查 {len(py_files)} 文件）")
     return {"role": "reviewer", "moved": moved, "counts": update_index()}
 
 
 def tester_role() -> dict:
-    """测试工程师: 扫 testing → pytest → 通过则挪 verified"""
+    """测试工程师: 扫 testing → 按 plan 跑验证 → 通过则挪 verified"""
     import subprocess as sp
 
     moved = []
     for task in list_tasks("testing"):
         task_id = task["id"]
-        # pytest (带 timeout, 不跑 e2e, 4min cap)
-        result = sp.run(
-            [
-                "python3",
-                "-m",
-                "pytest",
-                str(ROOT / "tests" / "scripts"),
-                "-q",
-                "--tb=line",
-                "--timeout=60",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-        if result.returncode == 0:
+        plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+        verify_commands = []
+        if plan_file.exists():
+            content = plan_file.read_text()
+            in_verify = False
+            for line in content.split("\n"):
+                if line.startswith("## 验收") or line.startswith("## 验证"):
+                    in_verify = True
+                    continue
+                if in_verify and line.startswith("## "):
+                    break
+                if in_verify and line.strip().startswith("- ") and not line.strip().startswith("- 不"):
+                    cmd = line.strip()[2:].strip()
+                    verify_commands.append(cmd)
+
+        # fallback: 如果没有验收项，跑 pytest
+        if not verify_commands:
+            verify_commands = [
+                f"python3 -m pytest {ROOT / 'tests' / 'scripts'} -q --tb=line --timeout=60"
+            ]
+
+        all_ok = True
+        for cmd in verify_commands:
+            if not all_ok:
+                break
+            r = sp.run(cmd, shell=True, capture_output=True, text=True, timeout=180)
+            if r.returncode != 0:
+                all_ok = False
+                print(f"[tester] {task_id} FAIL: {r.stdout[-200:]}", file=sys.stderr)
+
+        if all_ok:
             move_task(task_id, "testing", "verified")
             moved.append(task_id)
-        else:
-            print(
-                f"[tester] {task_id} pytest FAIL: {result.stdout[-200:]}",
-                file=sys.stderr,
-            )
+            print(f"[tester] {task_id} ✓（验证 {len(verify_commands)} 项）")
     return {"role": "tester", "moved": moved, "counts": update_index()}
 
 
