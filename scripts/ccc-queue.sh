@@ -80,6 +80,31 @@ EOF
     if bash "$SCRIPT_DIR/ccc-exec-launcher.sh" "$PHASE_ID" "$PROMPT_FILE" --timeout 120; then
       echo "  ✅ phase $PHASE_ID 成功 (retry=$RETRY)"
       SUCCESS=1
+
+      # 状态回写：更新 phases.json 该 phase 为 done
+      python3 -c "
+import json
+fp = '$PHASES_FILE'
+lines = []
+with open(fp) as f:
+    for line in f:
+        line = line.rstrip()
+        if not line: continue
+        obj = json.loads(line)
+        pid = obj.get('phase') or obj.get('phase_id')
+        if pid == '$PHASE_ID':
+            obj['status'] = 'done'
+        lines.append(json.dumps(obj, ensure_ascii=False))
+with open(fp, 'w') as f:
+    f.write('\n'.join(lines) + '\n')
+print(f'  [phases.json] $PHASE_ID → done')
+" 2>&1 | sed 's/^/  /'
+
+      # 单 phase 单 commit（红线 4+8 配套）
+      if [[ -x "$SCRIPT_DIR/ccc-exec-commit.sh" ]]; then
+        bash "$SCRIPT_DIR/ccc-exec-commit.sh" "$PHASE_ID" 2>&1 | sed 's/^/  [commit] /' || true
+      fi
+
       break
     else
       RC=$?
