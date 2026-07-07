@@ -240,7 +240,10 @@ with open(fp) as f:
         try:
             json.loads(line)
             count += 1
-        except: pass
+        except json.JSONDecodeError as e:
+            # Bug 2 修：原来 bare except 吞所有异常（包括 KeyboardInterrupt）
+            # 改 except JSONDecodeError, 错误行 stderr 输出但不阻断计数
+            print(f"  [WARN] phases.json 第 {count+1} 行 JSON 解析失败: {e}", file=sys.stderr)
 print(count)
 PYEOF
 )
