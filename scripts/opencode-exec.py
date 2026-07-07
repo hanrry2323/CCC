@@ -74,6 +74,7 @@ async def run_opencode(
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
             # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
+            # Bug 1+3 修：临时文件必须在 run 完 unlink（finally 兜底）
             import tempfile
             tmp = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".md", delete=False, encoding="utf-8"
@@ -150,6 +151,13 @@ async def run_opencode(
         # 红线 X2: 不管成功失败都清 pid
         if pid_file.exists():
             pid_file.unlink()
+        # Bug 1+3 修：长 prompt 临时文件必须 unlink
+        # 否则磁盘泄漏 + 隐私（prompt 可能含密钥）
+        if 'tmp_path' in dir() and tmp_path and Path(tmp_path).exists():
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass  # best-effort, 不阻断
 
 
 async def main() -> int:
