@@ -1,6 +1,33 @@
-# 10 条红线 — CCC 协议不可触犯的约束
+# 红线清单 — CCC 协议不可触犯的约束（v0.5 起累积，含历史编号映射）
 
 违反任何红线即记 Critical 违规。叠加入项目 `docs/lessons.md` 并触发修订流程。
+
+---
+
+## 编号索引表
+
+| # | 一句话 | 版本来源 |
+|---|--------|----------|
+| 1 | 不动系统文件 | v0.5 |
+| 2 | 验收必须可执行 | v0.5 |
+| 3 | 不超出 plan 文件范围 | v0.5 |
+| 4 | 单 phase 单 commit | v0.5 |
+| 5 | phases.json 必写全 | v0.5 |
+| 6 | Planner/Verifier 不互串 | v0.5 |
+| 7 | 代理启动顺序固定 | v0.5 |
+| 8 | 每步必 commit（不攒） | v0.5 |
+| 9 | Executor 卡死立即止损 | v0.5 |
+| 10 | 禁止跨会话隐式记忆 | v0.5 |
+| 11 | Verifier 必须写 verdict 文件 | v0.5（Lesson 28 配套） |
+| 12 | 禁止 agent 自主启用 CCC | v0.5（Lesson 28 配套） |
+| 13 | 禁止未使用路线代码 | v0.7-slim（含旧 v0.6 watchdog 子条） |
+| 14 | Executor 必须配 monitor + 5min 轮询 | v0.7d-prime |
+| 15 | 轮询进程完成自动终止 | v0.7d-prime |
+| 18 | 飞轮候选必须经过人工 review 才合并 | v0.6 |
+| 19 | 跨设备 / 跨 session 必须有独立 Verifier 验收 | v1.0 配套 |
+| 20 | 跨设备 bash 脚本必须用 v3 portability 模板 | v0.5 配套（Lesson 29） |
+
+> 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
 
 ---
 
@@ -219,56 +246,39 @@
 
 ---
 
-### 红线 13：调度器启动前必须跑 watchdog（v0.6 配套）
+## 红线 12：禁止 agent 自主启用 CCC（Lesson 28 配套）
 
-**规则**：任何以"调度循环 / 自动 cron / launchd / GitHub Actions"形式运行的 CCC Executor（典型: `scripts/ccc-scheduler.sh`、`examples/scheduler/ccc-queue.plist`），**启动主循环前必须**先跑 `bash scripts/executor-watchdog.sh`，watchdog 非零退出 → 立刻 exit，禁止带病进主循环。
+**规则**：Agent **禁止**自行判断"现在该走 CCC 流程"并主动启用 Planner/Executor/Verifier 三角色流水线。CCC 流程的启用**必须**由用户显式触发（"走 CCC"、"按 CCC 流程做"、"补一次验收"等明确指令）。
 
-**Why**：v0.5 实测教训: 调度器进入主循环后遭遇 hang session，循环本身没有"自杀机制"——会死锁 / 烧预算 / 留下半截 task 状态。Lesson 9 已经定义了 Executor 卡死止损，但**调度器是"叠加层"，必须有第二道护栏**。watchdog 是 v0.6 红线。
-
-**机制钩子**：
-1. `scripts/ccc-scheduler.sh` 启动后第一件事就是 `bash scripts/executor-watchdog.sh`，watchdog 退出非 0 立即 `exit 2`，主循环根本不进
-2. `examples/scheduler/ccc-queue.plist` 的 `ProgramArguments` 第一项必须是 `ccc-scheduler.sh`（或带 watchdog 等效兜底），**禁止**裸 `claude -p` 启动 Executor
-3. `examples/scheduler/ccc-queue.yml` (GitHub Actions) 同理,workflow 第一 step 跑 watchdog
-4. `references/adapters/scheduler-*.md` 每个模板顶部必须写明"启动前先 watchdog OK 才加载"
+**Why**：
+- 用户上下文：CCC 流程引入额外开销（4 文件契约 + Verifier 独立 session），不是每个任务都需要
+- 如果 agent 自行启用，会出现"判断错" + "用户被绕过"双重问题——用户可能想要更轻量的处理方式
+- 用户决策权优先于 agent 自主判断（与 `references/red-lines.md` 整体定位一致）
 
 **正例（合规）**：
-```bash
-# scheduler 第一段(已落在 scripts/ccc-scheduler.sh)
-if ! bash scripts/executor-watchdog.sh; then
-  err "watchdog unhealthy, refusing to start scheduler"
-  exit 2
-fi
-```
+- 用户说"这个 bug 走 CCC 修一下" → Planner 启动 → 写 plan → 跑 Executor
+- 用户说"补一次验收流程" → Planner 启动补验 phase
+- 用户说"按 Lesson 11 的 checklist 自检" → Planner 启动自检 phase
 
 **反例（违规）**：
-```xml
-<!-- ❌ 裸 claude -p,不跑 watchdog -->
-<key>ProgramArguments</key>
-<array>
-  <string>/Users/apple/.local/bin/claude</string>
-  <string>-p</string>
-  <string>$(cat /path/to/prompt.txt)</string>
-</array>
-```
+- ❌ Agent 看到任务多文件 → 自行启用 CCC（用户没要求）
+- ❌ Agent 看到"用户授权 + Executor 已知失败" → Planner 越界 commit（Lesson 8 / 11 已禁）
+- ❌ Agent 在自主修复过程中悄悄建 `.ccc/plans/*.plan.md`（无用户授权）
 
-**触犯后果**：Critical — 调度循环死锁、半截任务残留、预算浪费。视为 scheduler 配置无效，必须重写 plist/workflow + 重跑 ccc-precheck。
+**机制钩子**：
+1. CLAUDE.md / SKILL.md 头部写明"CCC 启用 = 用户显式触发"
+2. Planner session 启动时**先**确认 `.ccc/state.md` 中"用户决策点"段有用户指令痕迹
+3. Verifier session 启动时**先**确认 `.ccc/plans/<task>.plan.md` 存在（即 Planner 已走完流程）
+
+**触犯后果**：Warning — 用户可能被绕过决策。立即停止 CCC 流程，回到单角色直接处理模式，由用户重新决策。
 
 ---
 
-#### 红线 18：飞轮候选必须经过人工 review 才合并
+### 红线 13（v0.6 watchdog 子条，已并入下方 v0.7-slim 主条）：调度器启动前必须跑 watchdog
 
-```
-发现违规
-  ├─ Critical → 立即停止所有操作
-  │   ├─ 回滚相关 commit
-  │   ├─ 记录到项目 docs/lessons.md
-  │   └─ 重启对应 phase
-  ├─ Warning → 记入 Verdict 的 Warning 段
-  │   ├─ CONDITIONAL_PASS + 修订 v2
-  │   └─ 修订中修复
-  └─ Info → 记录到 Verdict 的 Info 段
-      └─ 不驱动修订，仅备查
-```
+> 本节内容已并入下方"红线 13（v0.7-slim 配套）"主条作为子条保留。本占位段仅作历史指针，不再重复规则。
+
+---
 
 #### 红线 18：飞轮候选必须经过人工 review 才合并
 
@@ -331,6 +341,11 @@ fi
 - ❌ "成本报告以后做 SaaS 会用到" → 删，按需重写更简单
 
 **触犯后果**：Warning → 该 phase 无效，删多余代码后重跑。Critical → 整个 plan 回退到精简前重做。
+
+**v0.6 子条（已并入主线）**：调度器启动前必须跑 watchdog。原 v0.6 期间作为独立红线 13 发布，v0.7-slim 精简后并入本条作为调度器场景的强制要求：
+- 任何以"调度循环 / 自动 cron / launchd / GitHub Actions"形式运行的 CCC Executor（典型: `scripts/ccc-scheduler.sh`、`examples/scheduler/ccc-queue.plist`），**启动主循环前必须**先跑 `bash scripts/executor-watchdog.sh`，watchdog 非零退出 → 立刻 exit
+- `examples/scheduler/ccc-queue.plist` 的 `ProgramArguments` 第一项必须是 `ccc-scheduler.sh`（或带 watchdog 等效兜底），**禁止**裸 `claude -p` 启动 Executor
+- 调度器场景 v0.7-slim 后已无活跃用户，本子条作为历史存档保留（红线 13 主条"无使用 = 删"的例外说明）
 
 ---
 
