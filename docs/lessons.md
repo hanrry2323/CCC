@@ -1790,3 +1790,35 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - CCC 的 v0.12+ 任务，**默认走 "opencode 写 + 人工 review" 模式**
 - 钩子模板、scheduler、queue 接入都让 opencode 起手
 - 人工只在 prompt 里指定"接口必须兼容 ccc-notify positional 而不是 --level flag"等红线
+
+---
+
+## Lesson 36 — v0.12 bug 扫描发现 7 个，分 3 类（v0.12 实测，2026-07-07）
+
+**Bug 分类**：
+- **数据泄漏类**（Bug 1+3）：opencode-exec 长 prompt 临时文件永久不删
+  - 后果：磁盘泄漏 + 隐私（prompt 可能含密钥）
+  - 修：finally 块 unlink + best-effort
+- **静默失败类**（Bug 2）：ccc-finish `except: pass` 吞所有异常
+  - 后果：phases.json 坏行找不到
+  - 修：except json.JSONDecodeError as e + stderr 输出
+- **配置硬编码类**（Bug 6）：钩子 timeout=30 写死
+  - 后果：慢钩子挂死整个 pipeline
+  - 修：CCC_HOOK_TIMEOUT env + macOS perl alarm 兜底
+
+**Bug 4-5 不是 bug**（检查后）：
+- watchdog 空目录 `for pf in *.pid` bash 默认不展开字面 = 安全
+- ccc-precheck `open(fp)` 没指定 encoding 但 macOS 默认 UTF-8 = OK
+
+**Bug 7 不是 bug**（复查后）：
+- launcher log 命名已含 phase_id, 并发不交错
+- 加注释说明，避免未来误判
+
+**可执行规则**：
+- 任何 v0.12+ phase 必跑 `pytest tests/scripts/test_bug_fixes_v012.py`
+- bug 扫描脚本化（v0.13 决策点）
+
+**应用方式**：
+- 任何 spawn 子进程的工具，必加 finally 块清理临时文件
+- 任何 except 必显式类型，不用 bare except
+- 任何 timeout 必 env 可配，不写死
