@@ -166,42 +166,20 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
 
 
 def product_role() -> dict:
-    """产品经理: 扫 backlog → 写 plan.md + phases.json（含 timeout）→ 挪 planned"""
-    moved = []
-    for task in list_tasks("backlog"):
-        task_id = task["id"]
-        plan_dir = ROOT / ".ccc" / "plans"
-        plan_dir.mkdir(parents=True, exist_ok=True)
-        plan_file = plan_dir / f"{task_id}.plan.md"
-        if not plan_file.exists():
-            plan_file.write_text(
-                f"# {task_id}\n\n"
-                f"> 标题: {task['title']}\n"
-                f"> 创建: {task['created_at']}\n\n"
-                f"## 目标\n\n{task.get('description', '待细化')}\n\n"
-                f"## Phase\n\n(由 dev 拆)\n\n"
-                f"## Commit 计划\n\n- dev 完成后自动 commit + push\n"
-            )
-        phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-        if not phases_file.exists():
-            phases_file.parent.mkdir(parents=True, exist_ok=True)
-            # 默认 300s timeout，大任务调大
-            timeout = task.get("timeout", 300)
-            phases_file.write_text(
-                json.dumps(
-                    [
-                        {
-                            "phase": f"{task_id}-p1",
-                            "status": "pending",
-                            "timeout": timeout,
-                        }
-                    ]
-                )
-                + "\n"
-            )
-        if move_task(task_id, "backlog", "planned"):
-            moved.append(task_id)
-    return {"role": "product", "moved": moved, "counts": update_index()}
+    """产品经理: 扫 backlog 报告概况，不自动挪（待办 = 收件箱）"""
+    tasks = list_tasks("backlog")
+    report = {
+        "backlog_count": len(tasks),
+        "tasks": [{"id": t["id"], "title": t.get("title", "")} for t in tasks],
+        "message": "待办是收件箱。商讨确定后手动移入 planned。",
+    }
+    if tasks:
+        print(f"[product] backlog 有 {len(tasks)} 个待处理:")
+        for t in tasks:
+            print(f"  • {t['id']}: {t.get('title', '?')}")
+    else:
+        print("[product] backlog 空")
+    return {"role": "product", "report": report, "counts": update_index()}
 
 
 def dev_role() -> dict:
