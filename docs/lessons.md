@@ -1,4 +1,13 @@
-# qxo 项目经验沉淀
+# qxo → CCC 项目经验沉淀
+
+> **来源标注 (2026-07-07)**：本文件起源于 qxo (qx-observer) 项目内部的工程教训沉淀，
+> 2026-06 月 CCC 从 qxo 子项目独立为立项项目后,所有教训随代码迁入 CCC 仓库,
+> 文件从 `projects/qxo/lessons.md` 迁移至 `docs/lessons.md` (Lesson 21)。
+>
+> 当前归属:**CCC 框架级教训库**(跨项目通用)。qxo 项目自身的教训已合并入本文件,
+> 但**前 ~20 条 Lesson 仍带 qxo 上下文**——阅读时注意 Lesson 编号上下文是 qxo 还是 CCC。
+>
+> Lesson 21 起为 CCC 独立阶段的新增教训,Lesson 28-32 主要服务 CCC 工程化。
 
 > 每次 pipeline 异常记录一条，防止重蹈覆辙。
 
