@@ -283,7 +283,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             for col in COLUMNS:
                 for t in list_tasks(col, ws):
                     if t.get("id") == task_id:
-                        found = t
+                        found = dict(t)
                         found["_column"] = col
                         break
                 if found:
@@ -292,6 +292,43 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 self._json(found)
             else:
                 self._json({"error": "not found"}, 404)
+
+        elif path.startswith("/api/tasks/") and path.endswith("/events") and len(path.split("/")) == 5:
+            # GET /api/tasks/<id>/events — 返回任务详情 + 事件流
+            task_id = sanitize_id(path.split("/")[-2])
+            found = None
+            for col in COLUMNS:
+                for t in list_tasks(col, ws):
+                    if t.get("id") == task_id:
+                        found = dict(t)
+                        found["_column"] = col
+                        break
+                if found:
+                    break
+            if not found:
+                self._json({"error": "task not found"}, 404)
+                return
+            # 读 events 文件
+            board = board_path(ws)
+            if board is None:
+                self._json({"error": "board not found"}, 500)
+                return
+            events = []
+            ev_file = board / "events" / f"{task_id}.events.jsonl"
+            if ev_file.exists():
+                try:
+                    with open(ev_file) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    events.append(json.loads(line))
+                                except json.JSONDecodeError:
+                                    pass
+                except FileNotFoundError:
+                    pass
+            found["events"] = events
+            self._json(found)
 
         elif path == "/api/timeline":
             self._json({"events": get_timeline(ws, int(qs.get("limit", [20])[0]))})

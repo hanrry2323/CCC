@@ -8,7 +8,6 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#e2e8f0;overflow:hidden;height:100vh;display:flex;flex-direction:column}
 :root{--bg:#0b1120;--srf:#1a2332;--srf2:#1e2a3a;--bd:#2a3a4a;--txt:#e2e8f0;--dim:#7e93a5;--mt:#4a5a6a;--r:8px;--rs:6px}
-/* header */
 .hdr{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--bd);background:var(--srf)}
 .hdr h1{font-size:16px;font-weight:700;letter-spacing:.3px}
 .hdr h1 em{font-style:normal;color:var(--dim);font-weight:400}
@@ -17,7 +16,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .hdr .nb{background:#6366f1;color:#fff;border:none;padding:5px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer}
 .hdr .nb:hover{background:#4f46e5}
 .hdr .st{font-size:11px;color:var(--mt);padding:3px 10px;background:var(--bg);border-radius:10px}
-/* role bar */
 .rbar{display:flex;gap:8px;padding:8px 20px;background:var(--srf);border-bottom:1px solid var(--bd)}
 .role{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--rs);background:var(--bg);font-size:11px;font-weight:500;min-width:70px}
 .role .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
@@ -26,9 +24,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .role .dot.idle{background:var(--mt)}
 .role .tm{font-size:10px;color:var(--dim);margin-left:auto;font-family:monospace}
 .role .cn{color:var(--dim);font-size:10px;margin-left:2px}
-/* main */
 .m{display:flex;flex:1;overflow:hidden}
-/* board */
 .bb{flex:1;display:flex;gap:8px;padding:10px 16px;overflow-x:auto;min-width:0}
 .col{min-width:220px;max-width:280px;flex:1;display:flex;flex-direction:column;background:var(--srf);border-radius:var(--r);border:1px solid var(--bd)}
 .ch{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);flex-shrink:0}
@@ -37,8 +33,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .ch .nm{font-size:12px;font-weight:600}
 .ch .ct{font-size:11px;color:var(--dim);background:var(--bg);padding:0 7px;border-radius:8px}
 .cd{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:4px;min-height:50px}
-/* card */
-.card{background:var(--bg);border-radius:var(--rs);padding:8px 10px;border-left:3px solid var(--mt);cursor:default;transition:transform .1s,box-shadow .1s}
+.card{background:var(--bg);border-radius:var(--rs);padding:8px 10px;border-left:3px solid var(--mt);cursor:pointer;transition:transform .1s,box-shadow .1s}
 .card:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .card .id{font-size:10px;font-family:monospace;color:var(--mt);margin-bottom:1px}
 .card .ti{font-size:12px;font-weight:500;line-height:1.35;word-break:break-word}
@@ -47,7 +42,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .card .ac button{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--bd);background:var(--srf2);color:var(--dim);cursor:pointer}
 .card .ac button:hover{background:var(--bd);color:var(--txt)}
 .emp{text-align:center;color:var(--mt);font-size:11px;padding:16px 0}
-/* right panel */
 .rp{width:320px;border-left:1px solid var(--bd);display:flex;flex-direction:column;background:var(--srf);flex-shrink:0}
 .rt{flex:1;overflow-y:auto;border-bottom:1px solid var(--bd)}
 .rt h3,.rl h3{font-size:11px;font-weight:600;padding:8px 12px;color:var(--dim);border-bottom:1px solid var(--bd);text-transform:uppercase;letter-spacing:.5px}
@@ -60,12 +54,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .ev .b.fa{background:rgba(239,68,68,.2);color:#ef4444}
 .ev .m{color:var(--txt);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ev .m .hl{color:var(--dim)}
-/* log panel */
 .rl{height:160px;overflow-y:auto}
 .lg{display:flex;gap:6px;padding:3px 12px;font-size:10px;font-family:monospace;color:var(--dim)}
 .lg:hover{background:rgba(255,255,255,.03)}
 .lg .t{color:var(--mt);min-width:36px}
-/* modal */
 .mo{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);justify-content:center;align-items:center}
 .mo.a{display:flex}
 .mo .box{background:var(--srf);border-radius:var(--r);padding:24px;width:420px;max-width:90vw}
@@ -77,26 +69,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .mo .btns button{padding:5px 14px;border-radius:var(--rs);font-size:12px;cursor:pointer;border:none}
 .mo .btns .p{background:#6366f1;color:#fff}
 .mo .btns .c{background:var(--bd);color:var(--txt)}
-/* keyframes */
 @keyframes pop{0%{opacity:0;transform:scale(.95)}100%{opacity:1;transform:scale(1)}}
 .card.ju{animation:pop .2s ease-out}
-/* scrollbars */
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
-/* running card */
 .card.running{animation:running-pulse 1.5s ease-in-out infinite;box-shadow:0 0 12px rgba(245,158,11,.5)}
 @keyframes running-pulse{0%,100%{box-shadow:0 0 8px rgba(245,158,11,.3)}50%{box-shadow:0 0 20px rgba(245,158,11,.7)}}
+/* detail panel */
+.det-box{width:520px;max-width:92vw}
+.det-box h2{font-size:15px;margin-bottom:14px}
+.det-body{font-size:12px;line-height:1.6;max-height:60vh;overflow-y:auto}
+.det-id{font-family:monospace;font-size:11px;color:var(--dim);padding:4px 0}
+.det-title{font-weight:500;padding:6px 0;font-size:13px}
+.det-desc{padding:6px 0;white-space:pre-wrap;border-top:1px solid var(--bd);margin-top:4px;color:var(--txt)}
+.det-meta{padding:6px 0;border-top:1px solid var(--bd);margin-top:4px;font-size:11px}
+.det-meta span{color:var(--dim)}
+.det-meta .vl{color:var(--txt);margin-right:12px}
+.det-events{padding-top:4px;margin-top:4px;border-top:1px solid var(--bd)}
+.det-events h3{font-size:11px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.det-ev{display:flex;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(255,255,255,.03)}
+.det-ev .t{font-family:monospace;color:var(--mt);font-size:10px;min-width:42px}
 </style>
 </head>
 <body>
 
 <div class="hdr">
-  <h1>◈ CCC <em>看板</em></h1>
+  <h1>&#x25C8; CCC <em>&#x770B;&#x677F;</em></h1>
   <div class="r">
     <select id="ws" onchange="load()"></select>
-    <span class="st" id="st">·</span>
-    <button class="nb" onclick="nm()">+ 新建</button>
+    <span class="st" id="st">&#x00B7;</span>
+    <button class="nb" onclick="nm()">+ &#x65B0;&#x5EFA;</button>
   </div>
 </div>
 
@@ -105,19 +108,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <div class="m">
   <div class="bb" id="bb"></div>
   <div class="rp">
-    <div class="rt" id="tl"><h3>活动</h3></div>
-    <div class="rl" id="rl"><h3>日志</h3></div>
+    <div class="rt" id="tl"><h3>&#x6D3B;&#x52A8;</h3></div>
+    <div class="rl" id="rl"><h3>&#x65E5;&#x5FD7;</h3></div>
   </div>
 </div>
 
 <div class="mo" id="mo">
   <div class="box">
-    <h2>新建任务</h2>
+    <h2>&#x65B0;&#x5EFA;&#x4EFB;&#x52A1;</h2>
     <label>ID</label><input id="fid" placeholder="v0.19-xxx">
-    <label>标题</label><input id="fti" placeholder="一句话描述">
-    <label>描述</label><textarea id="fde" placeholder="详情"></textarea>
-    <label>看板</label><select id="fws"></select>
-    <div class="btns"><button class="c" onclick="document.getElementById('mo').classList.remove('a')">取消</button><button class="p" onclick="mk()">创建</button></div>
+    <label>&#x6807;&#x9898;</label><input id="fti" placeholder="&#x4E00;&#x53E5;&#x8BDD;&#x63CF;&#x8FF0;">
+    <label>&#x63CF;&#x8FF0;</label><textarea id="fde" placeholder="&#x8BE6;&#x60C5;"></textarea>
+    <label>&#x770B;&#x677F;</label><select id="fws"></select>
+    <div class="btns"><button class="c" onclick="closeMo('mo')">&#x53D6;&#x6D88;</button><button class="p" onclick="mk()">&#x521B;&#x5EFA;</button></div>
+  </div>
+</div>
+
+<div class="mo" id="dm">
+  <div class="box det-box">
+    <h2 id="dti">&#x4EFB;&#x52A1;&#x8BE6;&#x60C5;</h2>
+    <div class="det-body">
+      <div class="det-id" id="did"></div>
+      <div class="det-title" id="dtt"></div>
+      <div class="det-desc" id="dde"></div>
+      <div class="det-meta" id="dmt"></div>
+      <div class="det-events" id="devs"><h3>&#x6D3B;&#x52A8;&#x6D41;</h3></div>
+    </div>
+    <div class="btns" style="margin-top:10px"><button class="c" onclick="closeDetail()">&#x5173;&#x95ED;</button></div>
   </div>
 </div>
 
@@ -139,8 +156,8 @@ async function load(){
 function render(){
   const ws=document.getElementById('ws').value;
   const cols=Object.keys(S.columns);
-  const labels={'backlog':'待办(backlog)','planned':'计划(planned)','in_progress':'开发(in_progress)','testing':'测试(testing)','verified':'验证(verified)','released':'发布(released)'};
-  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
+  const labels={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
+  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6','abnormal':'#ef4444'};
   const next={'backlog':'planned','planned':'in_progress','in_progress':'testing','testing':'verified','verified':'released'};
   const prev={'planned':'backlog','in_progress':'planned','testing':'in_progress','verified':'testing','released':'verified'};
   const bb=document.getElementById('bb');bb.innerHTML='';
@@ -217,17 +234,51 @@ async function loadRoles(){
     return '<div class="role"><span class="dot '+s+'"></span>'+role.role.toUpperCase()+'<span class="tm">'+tm+'</span><span class="cn">'+ec+'</span></div>';
   }).join('');
 }
+function closeMo(id){document.getElementById(id).classList.remove('a')}
+function closeDetail(){document.getElementById('dm').classList.remove('a')}
+
+async function showDetail(id){
+  const ws=document.getElementById('ws').value;
+  const r=await get(`/api/tasks/${id}/events?workspace=${ws}`);
+  if(!r){alert('任务未找到');return}
+  document.getElementById('dti').textContent='任务: '+r.id;
+  document.getElementById('did').textContent=r.id;
+  document.getElementById('dtt').textContent=r.title||'(无标题)';
+  document.getElementById('dde').textContent=r.description||'(无描述)';
+  colLabel={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
+  const st=colLabel[r._column]||r._column||'?';
+  const cr=(r.created_at||'').slice(0,19).replace('T',' ');
+  const up=(r.updated_at||'').slice(0,19).replace('T',' ');
+  const tg=r.tags&&r.tags.length?' | '+r.tags.join(', '):'';
+  document.getElementById('dmt').innerHTML='<span>状态:</span><span class="vl">'+st+'</span><span>创建:</span><span class="vl">'+cr+'</span><span>更新:</span><span class="vl">'+up+tg+'</span>';
+  const evBox=document.getElementById('devs');
+  if(r.events&&r.events.length){
+    evBox.innerHTML='<h3>活动流</h3>'+r.events.map(e=>{
+      const tm=(e.timestamp||'').slice(11,19);
+      return '<div class="det-ev"><span class="t">'+tm+'</span><span style="color:var(--dim)">'+(e.from||'?')+'</span><span style="color:var(--mt)"> → </span><span style="color:var(--txt)">'+(e.to||'?')+'</span></div>';
+    }).join('');
+  }else{
+    evBox.innerHTML='<h3>活动流</h3><div style="color:var(--mt);font-size:11px;padding:4px 0">无记录</div>';
+  }
+  document.getElementById('dm').classList.add('a');
+}
+
 function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 document.getElementById('bb').addEventListener('click',function(e){
   const btn=e.target.closest('.mv-btn');
-  if(!btn)return;
-  const card=btn.closest('.card');
+  const card=e.target.closest('.card');
   if(!card)return;
-  const id=card.dataset.id;
-  const col=card.dataset.col;
-  const target=btn.classList.contains('mv-prev')?card.dataset.prev:card.dataset.next;
-  if(target)mv(id,col,target);
+  if(btn){
+    e.stopPropagation();
+    const id=card.dataset.id;
+    const col=card.dataset.col;
+    const target=btn.classList.contains('mv-prev')?card.dataset.prev:card.dataset.next;
+    if(target)mv(id,col,target);
+  }else{
+    // 点击卡片本身 → 显示详情
+    showDetail(card.dataset.id);
+  }
 });
 
 document.addEventListener('DOMContentLoaded',async()=>{
