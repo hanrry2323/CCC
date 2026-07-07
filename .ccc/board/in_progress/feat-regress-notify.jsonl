@@ -1,0 +1,1 @@
+{"id": "feat-regress-notify", "title": "回测失败通知：regress 发现回归时，除了建 bug 还要发桌面通知（ccc-notify.sh）", "description": "", "status": "in_progress", "created_at": "2026-07-07T15:21:15Z", "updated_at": "2026-07-07T16:49:19Z", "moves": []}
