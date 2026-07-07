@@ -61,15 +61,18 @@ async def run_opencode(
     cwd: str | None,
     cmd: list[str] | None = None,
 ) -> dict:
-    """起 opencode exec 子进程，prompt 走 stdin（Lesson 27）
+    """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
 
-    cmd 参数：可注入自定义命令（测试用）。默认调 opencode exec。
+    cmd 参数：可注入自定义命令（测试用）。默认调 opencode run --model flash。
     """
     if cmd is None:
-        cmd = ["opencode", "exec", "--model", "flash", "-"]
+        # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
+        # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
+        short_prompt = prompt_text.strip()[:200] if prompt_text.strip() else "execute"
+        cmd = ["opencode", "run", "--model", "flash", short_prompt]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
-        stdin=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
@@ -81,7 +84,7 @@ async def run_opencode(
     started = time.time()
     try:
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=prompt_text.encode("utf-8")),
+            proc.communicate(),
             timeout=timeout,
         )
         duration = time.time() - started

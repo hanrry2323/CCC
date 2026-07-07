@@ -1689,3 +1689,28 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - 新增轮询 / 监控脚本 → 默认间隔 1.5s + 完成双条件,模板化
 - 红线 15 续:除"自动 break"外,加 "send-keys 间隔 ≥ 1.0s" 细则(下次红线复审时合并)
 - tmux send-keys 后跟 C-m 兜底作为通用最佳实践,记入 `docs/engineer-flow.md` "tmux 交互模式" 段
+
+---
+
+## Lesson 31 — opencode 1.17 真实命令是 `run`，不是 `exec`（v0.8 实测，2026-07-07）
+
+**问题**：v0.8 重构时，trae 对话里建议 `opencode exec --model flash -` 作为执行入口。**实测** opencode 1.17.13 **没有 `exec` 子命令**，真实命令是 `opencode run [message..]`（message 走 positionals，不走 stdin）。
+
+**教训**：
+
+1. **不要从对话/方案文档抄命令，必须实跑 `xxx --help` 确认**。方案文档经常过期/想象。
+2. opencode 1.17 的 `run` 命令：
+   - message 走 positionals：`opencode run "say hi"`
+   - **不支持 stdin**（与 `claude -p` 的 stdin 协议不同，Lesson 27 不适用）
+   - `--model provider/model` 格式（我们用 `flash`）
+3. prompt 太长会被命令行截断（shell ARG_MAX）—— 实战中 prompt 应该写文件、用 `--file` 附件，不要塞命令行
+4. 旧 `claude -p` 风格的 `prompt 走 stdin` **不要套到 opencode run**——协议完全不同
+
+**可执行规则**：
+- 任何新工具接入 CCC 前，先 `tool --help` 确认子命令 + 参数
+- 写 `scripts/opencode-exec.py` 时 prompt 截断到 200 字符 + `positionals` 传参
+- 后续 phase 接 opencode 时，**先跑 `opencode run --help` 确认**（API 可能变）
+
+**应用方式**：
+- v0.9 决策点：是否在 `references/adapters/runtime-opencode.md` 加 "opencode 1.17 协议说明" 段固化此教训
+- 任何新工具接入前，必须有 `.tools/<tool>-smoke.md` 记录 `tool --help` 输出 + 实跑命令

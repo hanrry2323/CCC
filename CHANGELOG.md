@@ -11,6 +11,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — v0.8 — OpenCode CLI 执行端重构
+
+**里程碑**：CCC 执行器从 claude CLI 切到 **OpenCode CLI**（CLI 模式，禁用 HTTP/serve），新增 3 条 OpenCode 进程管理红线（X1/X2/X3）。
+
+### Added
+- `scripts/opencode-exec.py` — OpenCode CLI 执行器（asyncio 子进程 + 必杀兜底 + pid 文件）
+- `scripts/opencode-pool.py` — 进程池（asyncio.Semaphore(3) 硬限，红线 X1）
+- `scripts/opencode-watchdog.sh` — 残留扫描（pid 文件 + pgrep 兜底，红线 X2/X3）
+- `scripts/ccc-notify.sh` — macOS 桌面通知（L1/L2/L3）
+- `scripts/ccc-hook.sh` — 通用钩子（pre-exec / post-exec / on-error / pre-commit）
+- 红线 X1（OpenCode 进程池最多 3 并发）
+- 红线 X2（每 phase 必杀 opencode 进程）
+- 红线 X3（OpenCode 启动前必跑残留 watchdog）
+- `tests/scripts/test_opencode_pool_max_parallel.py` — 验 X1
+- `tests/scripts/test_opencode_pool_kill_residual.py` — 验 X2
+- `tests/scripts/test_opencode_watchdog_cleanup.py` — 验 X3
+
+### Changed
+- `scripts/ccc-exec-launcher.sh` — 从 tmux+claude 改为 opencode CLI 串联
+- `references/adapters/runtime-opencode.md` — 重写为执行器契约（CLI 模式，弃用 4096 serve）
+- `SKILL.md` / `CLAUDE.md` / `README.md` — 资产清单 + 红线表同步更新
+
+### Removed
+- `DESIGN-VALIDATION.md`（v0.7 历史 design review）
+- `examples/cluster/` `examples/scheduler/` `examples/qxo-audit-frontend.md`（旧路线预留）
+- `scripts/ccc-monitor.sh` `scripts/executor-watchdog.sh` `scripts/install-ccc-as-skill.sh`（旧 monitor/watchdog/installer）
+- `scripts/*.md` 副本（每个脚本旁的重复文档）
+- `tests/scripts/test_executor_watchdog_smoke.py`（旧 watchdog 已删）
+- 卸载 `com.opencode.serve` launchd 守护（v0.8 不用 HTTP）
+
+### Verified
+- pytest: 57 passed, 0 failed in 10.73s
+- smoke test: 10 项能力 9 项直接通过，1 项模型 provider（已知）
+- launchd 调度: load → start → 告警落文件 → unload 全链路通
+
+---
+
 ## [1.2.0] — 2026-07-06 — 流程跑通 (CCC v1.0 Closure)
 
 **里程碑**:Planner → Executor → Verifier 三角色**完整流程**首次跑通,5+5 机器化门控闭环。
