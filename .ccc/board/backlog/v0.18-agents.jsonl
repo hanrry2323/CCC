@@ -1,1 +1,0 @@
-{"id": "v0.18-agents", "title": "AGENTS.md 自动积累管道打通", "description": "完成 kb 角色的 AGENTS.md 建议收集链路：\n1. dev report.md 末尾写 AGENTS.md 建议段\n2. kb 归档时收集到 pending-agents-suggestions.md\n3. 看板 UI 增加\"待审批建议\"面板\n4. 人类审批后一键写入 .ccc/AGENTS.md\n5. skills/ 下的 SKILL.md 引用新建议", "status": "backlog", "created_at": "2026-07-07T11:10:55Z", "updated_at": "2026-07-07T11:10:55Z", "moves": []}
