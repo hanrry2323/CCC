@@ -115,14 +115,21 @@
 
 ---
 
-**最后更新**: 2026-07-07 (v0.7.0 closure — tagged, 94 commits ahead of origin, ready to push)
+**最后更新**: 2026-07-07 (v0.7.0 closure — tagged, pushed, working tree clean, v0.8 路线全部终止)
 **v0.7.0 收尾**:
 - 8 个 verdict 齐全(v0.7-slim + v0.7a/b/c/d/d-prime/e-fix/f),主干 42 pytest passed
-- V0.8 半成品(worktree ../CCC-v0.8-wip,branch `v0.8-wip`)留给后续,不阻塞 v0.7.0 收尾
-- 拍板:v0.8 不进 v0.7.0 release,独立版本号
-- Tag:v0.7.0 + push(待用户执行)
+- 8 commits 已 push 到 origin/main (96d14ca..171eea9)
+- Tag `v0.7.0` 已打 + push(已于更早完成,本轮确认存在)
+- `fix(scripts): ccc-finish.sh whitelist regex` commit 171eea9 已合入
+- **v0.8 路线终止** (2026-07-07 拍板):
+  - 删除分支: `v0.8-wip` / `worktree-agent-a7965bfee02705990` / `worktree-agent-aab121d485296969d` / `worktree-oral-calc-commit`
+  - 删除 worktree: `.claude/worktrees/agent-{a7965bfee02705990,aab121d485296969d}` + `/Users/apple/program/CCC-v0.8-wip`
+  - 丢弃 v0.8 WIP 代码(stash 已 drop): ccc-exec-launcher.sh / ccc-poll.sh / ccc-window-init.sh + 3 个新测试
+  - main 分支不再含任何 v0.8 路线代码,版本停止在 v0.7.0
+- 当前状态: `git status` 干净,origin/main 与本地同步,版本 v0.7.0
 **下次启动必读顺序**:
 1. 读本文件(state.md)
 2. 读 `.ccc/profile.md`
 3. 读最近一条 plan + report + verdict
 4. 才开工
+**v0.8+ 路线决策**: 当前无任何活跃 v0.8 任务,等用户重新派活才启动新流程。
