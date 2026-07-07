@@ -42,8 +42,11 @@ export REGRESS_LABEL="回测"
 export OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
 export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/flash}"
 
-# === 重试 ===
-export DEV_MAX_RETRY="${DEV_MAX_RETRY:-3}"
+# === 重试与容错 ===
+export DEV_MAX_RETRY="${DEV_MAX_RETRY:-5}"        # 最大重试次数 → 异常列
+export DEV_BACKOFF_INIT="${DEV_BACKOFF_INIT:-60}"  # 退避初始秒数
+export MAX_STALE_HOURS="${MAX_STALE_HOURS:-6}"      # in_progress 超时阈值
+export DEV_MAX_EXEC_TIME="${DEV_MAX_EXEC_TIME:-3600}"  # 单次执行最大秒数
 
 # === opencode CLI 调用 ===
 export AGENT_PLANNER="${AGENT_PLANNER:-claude}"

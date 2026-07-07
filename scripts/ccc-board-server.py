@@ -18,14 +18,16 @@ from urllib.parse import urlparse, parse_qs
 
 # ── 配置 ──
 CCC_HOME = Path(__file__).resolve().parent.parent
-COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released"]
+COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
 COLUMN_LABELS = {
     "backlog": "待办", "planned": "已计划", "in_progress": "开发中",
     "testing": "测试中", "verified": "已验证", "released": "已发布",
+    "abnormal": "异常",
 }
 COLUMN_COLORS = {
     "backlog": "#94a3b8", "planned": "#6366f1", "in_progress": "#f59e0b",
     "testing": "#f97316", "verified": "#22c55e", "released": "#3b82f6",
+    "abnormal": "#ef4444",
 }
 ROLES = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
 MAX_CONTENT_LENGTH = 1_048_576

@@ -54,7 +54,7 @@ if [[ -n "$WORKSPACE" ]]; then
   fi
 
   # 初始化目标项目的看板
-  mkdir -p "${WORKSPACE}/.ccc/board/"{backlog,planned,in_progress,testing,verified,released}
+  mkdir -p "${WORKSPACE}/.ccc/board/"{backlog,planned,in_progress,testing,verified,released,abnormal,events}
   if [ ! -f "${WORKSPACE}/.ccc/board/index.json" ]; then
     echo '{"backlog":0,"planned":0,"in_progress":0,"testing":0,"verified":0,"released":0}' \
       > "${WORKSPACE}/.ccc/board/index.json"

@@ -31,7 +31,7 @@ ROOT = (
 BOARD = ROOT / ".ccc" / "board"
 EVENTS_DIR = BOARD / "events"
 
-COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released"]
+COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
 
 # 列迁移白名单：{目标列: [允许的源列列表]}
 # 不在白名单中的迁移会被拒绝
@@ -41,12 +41,70 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
     "testing": ["in_progress"],
     "verified": ["testing"],
     "released": ["verified"],
-    "backlog": ["released", "in_progress"],  # regress 回归回退 / dev 升舱回退
+    "backlog": ["released", "in_progress", "abnormal"],  # regress 回归 / dev 升舱 / 手动回退
+    "abnormal": ["in_progress", "testing", "verified", "released"],  # 任何列都可转入异常
 }
+
+# 容错参数
+MAX_RETRY = 5           # 最大重试次数 → 异常隔离
+MAX_STALE_HOURS = 6      # in_progress 卡住超时 → 异常隔离
+STALE_CHECK_INTERVAL = 6  # ops_role 每次扫描间隔（判断是否该扫描）
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _backoff_seconds(retry: int) -> int:
+    """指数退避：60 * 2^retry，封顶 3600s（1h）
+
+    retry=0→60s, 1→120s, 2→240s, 3→480s, 4→960s, 5→1920s, 6+→3600s
+    """
+    return min(60 * (2 ** retry), 3600)
+
+
+def _quarantine(task_id: str, reason: str) -> None:
+    """将任务移入异常列（abnormal），附带原因
+
+    跳过 create_task 的唯一性校验（可能已在 abnormal），
+    如果已在 abnormal 则只更新。
+    """
+    from_col = ""
+    for col in COLUMNS:
+        if col == "abnormal":
+            continue
+        src = BOARD / col / f"{task_id}.jsonl"
+        if src.exists():
+            from_col = col
+            break
+
+    if not from_col:
+        print(f"[quarantine] {task_id} not found in any column, skip")
+        return
+
+    task = json.loads((BOARD / from_col / f"{task_id}.jsonl").read_text())
+    task["status"] = "abnormal"
+    task["updated_at"] = now_iso()
+    if "tags" not in task:
+        task["tags"] = []
+    if "abnormal" not in task["tags"]:
+        task["tags"].append("abnormal")
+    if "automated" not in task["tags"]:
+        task["tags"].append("automated")
+    task["title"] = f"[ABNORMAL] {task.get('title', task_id)}"
+    if "note" not in task:
+        task["note"] = reason
+    else:
+        task["note"] += f"\n{reason}"
+
+    dst = BOARD / "abnormal" / f"{task_id}.jsonl"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with open(dst, "w") as f:
+        f.write(json.dumps(task, ensure_ascii=False) + "\n")
+
+    (BOARD / from_col / f"{task_id}.jsonl").unlink()
+    _record_event(task_id, from_col, "abnormal")
+    print(f"[quarantine] {task_id} {from_col} → abnormal: {reason}")
 
 
 def _record_event(task_id: str, from_col: str, to_col: str) -> None:
@@ -363,7 +421,6 @@ def dev_role() -> dict:
     task = None
     task_id = ""
     from_col = ""
-    MAX_RETRY = 3
 
     # Step 1: 有卡在 in_progress 的任务吗？
     stuck = list_tasks("in_progress")
@@ -373,9 +430,10 @@ def dev_role() -> dict:
         from_col = "in_progress"
         print(f"[dev] 发现卡住任务 {task_id}，准备重试")
 
-        # 读 phases 里的 retry 计数（JSONL 格式，取第一行）
+        # 读 phases 里的 retry 计数 + retry_at（JSONL 格式，取第一行）
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         retry = 0
+        retry_at = None
         try:
             if phases_file.exists():
                 with open(phases_file) as _pf:
@@ -383,44 +441,63 @@ def dev_role() -> dict:
                         _line = _line.strip()
                         if not _line:
                             continue
-                        retry = json.loads(_line).get("retry", 0)
+                        parsed = json.loads(_line)
+                        retry = parsed.get("retry", 0)
+                        retry_at = parsed.get("retry_at")
                         break
         except (json.JSONDecodeError):
             pass
 
+        # 退避检查：如果在退避期内，跳过此任务的这一轮
+        if retry_at:
+            from datetime import datetime as _dt
+            try:
+                wait_until = _dt.fromisoformat(retry_at)
+                if _dt.now(timezone.utc) < wait_until.replace(tzinfo=timezone.utc):
+                    remaining = (wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)).total_seconds()
+                    print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮")
+                    return {
+                        "role": "dev",
+                        "moved": [],
+                        "counts": update_index(),
+                        "info": f"{task_id} 退避中",
+                    }
+            except (ValueError, TypeError):
+                pass
+
         retry += 1
         if retry > MAX_RETRY:
-            # 升舱：移 abnormal + 建紧急修复任务
-            abnormal_dir = ROOT / ".ccc" / "abnormal-reports"
-            abnormal_dir.mkdir(parents=True, exist_ok=True)
-            abnormal_dir.joinpath(f"{task_id}.abnormal.md").write_text(
-                f"# {task_id} 升舱报告\n\n"
-                f"重试 {MAX_RETRY} 次全部失败，已升舱。\n"
-                f"请人工介入。\n"
-            )
+            # 达到最大重试 → 异常隔离
+            _quarantine(task_id, f"重试{MAX_RETRY}次全部失败，已移入异常列")
+            # 同时创建紧急修复任务到 backlog
             bug_id = f"emergency-{task_id}"
-            bug_title = f"紧急修复: {task.get('title', task_id)}（opencloud 重试{MAX_RETRY}次失败）"
+            bug_title = f"紧急修复: {task.get('title', task_id)}（重试{MAX_RETRY}次失败）"
             create_task(
                 {
                     "id": bug_id,
                     "title": bug_title,
-                    "description": f"自动升舱:\n{task_id} 重试{MAX_RETRY}次均失败。",
+                    "description": f"自动升舱:\n{task_id} 重试{MAX_RETRY}次均失败，已移入异常列。",
                 }
             )
             print(
-                f"[dev] {task_id} 重试{MAX_RETRY}次失败 → 升舱 {bug_id}",
+                f"[dev] {task_id} 重试{MAX_RETRY}次失败 → {_quarantine.__name__} + 升舱 {bug_id}",
                 file=sys.stderr,
             )
-            # 升舱后移回 backlog，防止下一轮再升舱
-            move_task(task_id, from_col, "backlog")
             return {
                 "role": "dev",
                 "moved": [],
-                "error": "escalated",
+                "error": "quarantined",
                 "counts": update_index(),
             }
 
-        # 更新 retry 计数（JSONL，更新第一行）
+        # 计算退避时间
+        backoff = _backoff_seconds(retry - 1)  # retry 已自增，用增量前的值计算
+        retry_at_iso = (
+            datetime.now(timezone.utc).isoformat()
+            if retry >= 1
+            else None
+        )
+        # 更新 retry 计数 + retry_at（JSONL，更新第一行）
         try:
             if phases_file.exists():
                 lines = phases_file.read_text().split("\n")
@@ -430,12 +507,13 @@ def dev_role() -> dict:
                         continue
                     phase = json.loads(_line_s)
                     phase["retry"] = retry
+                    phase["retry_at"] = retry_at_iso
                     lines[i] = json.dumps(phase, ensure_ascii=False)
                     break
                 phases_file.write_text("\n".join(lines))
         except (json.JSONDecodeError):
             pass
-        print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试")
+        print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试，退避 {backoff}s")
 
     # Step 2: in_progress 无事，取 planned
     if not task:
@@ -707,17 +785,66 @@ def tester_role() -> dict:
 
 
 def ops_role() -> dict:
-    """运维监控: 健康检查 + 告警 (不动 board)"""
+    """运维监控: 健康检查 + stale 检测 + 孤儿 PID 清理 + 告警"""
     health = {
         "opencode_pids": len(
             list((Path.home() / ".ccc" / "opencode-pids").glob("*.pid"))
         ),
         "alerts_today": len(list((Path.home() / ".ccc" / "alerts").glob(f"*-L*.md"))),
         "git_ahead": 0,
+        "stale_detected": 0,
+        "orphan_pids_cleaned": 0,
     }
-    # git ahead check
-    import subprocess as sp
 
+    # 1. Stale 检测：in_progress 超时 → 异常列
+    from datetime import datetime as _dt
+    now = _dt.now(timezone.utc)
+    for task in list_tasks("in_progress"):
+        updated_str = task.get("updated_at", task.get("created_at", ""))
+        if not updated_str:
+            continue
+        try:
+            updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
+            hours_stale = (now - updated).total_seconds() / 3600
+            if hours_stale > MAX_STALE_HOURS:
+                _quarantine(
+                    task["id"],
+                    f"in_progress 滞留 {hours_stale:.1f}h（阈值 {MAX_STALE_HOURS}h），自动隔离",
+                )
+                health["stale_detected"] += 1
+                print(
+                    f"[ops] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # 2. 孤儿 PID 清理
+    pid_dir = ROOT / ".ccc" / "pids"
+    if pid_dir.exists():
+        for f in pid_dir.glob("*.pid"):
+            try:
+                pid = int(f.read_text().strip())
+                os.kill(pid, 0)  # 检查进程是否存在
+            except (ValueError, OSError, ProcessLookupError):
+                stem = f.stem
+                f.unlink()
+                for suffix in [".done", ".exitcode", ".report.md", ".result.json"]:
+                    extra = pid_dir.parent / "reports" / f"{stem}{suffix}"
+                    if extra.exists():
+                        extra.unlink(missing_ok=True)
+                health["orphan_pids_cleaned"] += 1
+                print(f"[ops] 清理孤儿 PID: {stem}")
+
+    # 3. 检查 abnormal 列任务（上报）
+    abnormal_tasks = list_tasks("abnormal")
+    if abnormal_tasks:
+        print(f"[ops] ⚠ abnormal 列有 {len(abnormal_tasks)} 个任务需处理:")
+        for t in abnormal_tasks:
+            print(f"  • {t['id']}: {t.get('note', '?')[:120]}")
+        health["abnormal_count"] = len(abnormal_tasks)
+
+    # 4. git ahead check
+    import subprocess as sp
     for proj in [
         ROOT,
         ROOT.parent / "qx-observer",
