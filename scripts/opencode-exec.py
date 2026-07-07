@@ -37,17 +37,30 @@ PID_DIR = Path.home() / ".ccc" / "opencode-pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def check_opencode_binary() -> str:
-    """验 opencode 在 PATH 里（含 npm global 回退）"""
+def resolve_opencode() -> str:
+    """解析 opencode 可执行文件路径
+
+    优先级: OPENCODE_BIN env > shutil.which > ~/.npm-global/bin/opencode
+    launchd 的 PATH 不含 ~/.npm-global/bin，所以必须显式回退。
+    """
     from shutil import which
     from os.path import expanduser
+
+    env_bin = os.environ.get("OPENCODE_BIN")
+    if env_bin:
+        # 环境变量可能是相对/绝对路径
+        resolved = which(env_bin) or (env_bin if "/" in env_bin and Path(env_bin).exists() else None)
+        if resolved:
+            return resolved
+
     path = which("opencode")
     if path:
         return path
-    # launchd 没有 ~/.npm-global/bin
+
     npm_path = expanduser("~/.npm-global/bin/opencode")
     if Path(npm_path).exists():
         return npm_path
+
     return None
 
 
@@ -68,6 +81,7 @@ async def run_opencode(
     timeout: int,
     cwd: None = None,
     cmd: None = None,
+    opencode_bin: str = "opencode",
 ) -> dict:
     """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
 
@@ -92,14 +106,14 @@ async def run_opencode(
             tmp_path = tmp.name
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
             cmd = [
-                "opencode", "run",
+                opencode_bin, "run",
                 "--model", "loop/flash",
                 "Read attached file and execute the instructions inside.",
                 "--file", tmp_path,
             ]
         else:
             short_prompt = prompt_text if prompt_text else "execute"
-            cmd = ["opencode", "run", "--model", "loop/flash", short_prompt]
+            cmd = [opencode_bin, "run", "--model", "loop/flash", short_prompt]
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import os as _os
@@ -178,8 +192,9 @@ async def main() -> int:
     args = ap.parse_args()
 
     # 二进制检查
-    if not check_opencode_binary():
-        print(json.dumps({"error": "opencode not in PATH"}), file=sys.stderr)
+    opencode_bin = resolve_opencode()
+    if not opencode_bin:
+        print(json.dumps({"error": "opencode not found (try: set OPENCODE_BIN env)"}), file=sys.stderr)
         return 10
 
     # prompt 文件检查
@@ -196,7 +211,7 @@ async def main() -> int:
             return 12
 
     prompt_text = prompt_path.read_text(encoding="utf-8")
-    result = await run_opencode(args.phase, prompt_text, args.timeout, args.cwd)
+    result = await run_opencode(args.phase, prompt_text, args.timeout, args.cwd, opencode_bin=opencode_bin)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result["exit_code"]
 
