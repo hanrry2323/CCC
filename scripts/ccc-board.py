@@ -757,3 +757,18 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def _run_via_pool(phase_id: str, prompt_file: str, timeout_s: int) -> subprocess.CompletedProcess:
+    """走 opencode-pool（单任务）"""
+    import subprocess as sp, json, tempfile
+    tasks = [{"phase_id": phase_id, "prompt_file": prompt_file, "timeout": timeout_s}]
+    tf = tempfile.NamedTemporaryFile(mode="w", suffix=".pool.json", delete=False)
+    json.dump(tasks, tf)
+    tf.close()
+    result = sp.run(
+        [sys.executable, str(ROOT / "scripts" / "opencode-pool.py"), tf.name],
+        capture_output=True, text=True, timeout=timeout_s + 30,
+    )
+    os.unlink(tf.name)
+    return result
+

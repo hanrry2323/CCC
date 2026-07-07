@@ -133,16 +133,6 @@ async function load(){
   loadTL();
   loadLogs();
 }
-async function loadRoles(){
-  const r=await get('/api/roles');
-  if(!r)return;
-  const b=document.getElementById('rbar');
-  b.innerHTML=r.roles.map(x=>{
-    const s=x.status||'idle',cn={'product':'PM(产品)','dev':'DEV(开发)','reviewer':'CR(审查)','tester':'QA(测试)','ops':'OPS(运维)','kb':'KB(归档)','regress':'RGR(回测)'}[x.role]||x.role;
-    const t=x.last_run?x.last_run.slice(11,19):'--:--';
-    return `<div class="role"><span class="dot ${s}"></span>${cn}<span class="tm">${t}</span><span class="cn">${x.exit_code||''}</span></div>`;
-  }).join('');
-}
 function render(){
   const ws=document.getElementById('ws').value;
   const cols=Object.keys(S.columns);
@@ -172,22 +162,6 @@ async function mv(id,f,t){
   const ws=document.getElementById('ws').value;
   await fetch('/api/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,from:f,to:t,workspace:ws})});
   load();loadTL();loadLogs();
-}
-async function loadTL(){
-  const r=await get('/api/timeline?limit=30');
-  if(!r)return;
-  const b=document.getElementById('tl');
-  const labels={'backlog':'待办(backlog)','planned':'计划(planned)','in_progress':'开发(in_progress)','testing':'测试(testing)','verified':'验证(verified)','released':'发布(released)'};
-  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6'};
-  b.innerHTML='<h3>活动</h3>'+r.events.slice(0,30).map(e=>{
-    if(e.type==='role_run'){
-      const s=e.exit_code==='0'?'ok':e.exit_code==='?'?'':'fa';
-      return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b '+(s||'')+'">'+
-        (e.exit_code||'?')+'</span><span class="m">'+(e.role||'?').toUpperCase()+' <span class="hl">执行</span></span></div>';
-    }
-    const cl=e.column||'';
-    return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b go">→</span><span class="m">'+esc(e.task_id)+' <span class="hl">'+labels[cl]+'</span></span></div>';
-  }).join('');
 }
 async function loadLogs(){
   const r=await get('/api/logs');
