@@ -44,7 +44,7 @@ description: "CCC — Connect–Claude Code. A Planner → Executor → Verifier
 
 1. **三角色纪律** — Planner / Executor / Verifier 严格分离
 2. **4 文件契约** — plans / phases / reports / verdicts 路径与字段
-3. **红线清单** — 11 条硬约束（见 `references/red-lines.md`）+ Lesson 27/28
+3. **红线清单** — 红线清单 — 见 `references/red-lines.md`（v0.5 起累积共 18 条，含历史编号映射）+ Lesson 27/28
 4. **完成定义** — 不写假报告、不口头 PASS
 5. **退出标准** — report.md + verdict.md 双产出，引用关系正确
 
