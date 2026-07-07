@@ -30,6 +30,17 @@ COLUMN_COLORS = {
     "testing": "#f97316", "verified": "#22c55e", "released": "#3b82f6",
     "abnormal": "#ef4444",
 }
+# 列流转白名单 — 防止绕过管线完整性
+# key=源列, value=允许的目标列
+COLUMN_TRANSITIONS = {
+    "backlog": ["planned"],
+    "planned": ["in_progress", "backlog"],
+    "in_progress": ["testing", "planned", "backlog"],
+    "testing": ["verified", "in_progress", "backlog"],
+    "verified": ["released", "testing", "backlog"],
+    "released": ["backlog"],
+    "abnormal": ["backlog", "planned"],
+}
 ROLES = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
 MAX_CONTENT_LENGTH = 1_048_576
 
@@ -98,6 +109,11 @@ def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
     task_id = sanitize_id(task_id)
     board = board_path(workspace)
     if board is None:
+        return False
+    # 列流转白名单检查
+    allowed = COLUMN_TRANSITIONS.get(from_col, [])
+    if to_col not in allowed:
+        print(f"move_task 拒绝: {from_col} → {to_col}（不在白名单）", file=sys.stderr)
         return False
     src = board / from_col / f"{task_id}.jsonl"
     if not src.exists():
