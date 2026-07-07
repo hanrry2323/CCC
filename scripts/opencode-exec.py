@@ -68,8 +68,10 @@ async def run_opencode(
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
+        # 模型映射：对外 = flash（红线：唯一对外模型名）→ 内部 = loop/flash
+        # opencode 1.17 的 flash 必须用 loop/flash 前缀（localhost:4002 中转站）
         short_prompt = prompt_text.strip()[:200] if prompt_text.strip() else "execute"
-        cmd = ["opencode", "run", "--model", "flash", short_prompt]
+        cmd = ["opencode", "run", "--model", "loop/flash", short_prompt]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin

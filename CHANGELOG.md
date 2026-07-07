@@ -43,8 +43,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verified
 - pytest: 57 passed, 0 failed in 10.73s
-- smoke test: 10 项能力 9 项直接通过，1 项模型 provider（已知）
+- smoke test: 10 项能力 9 项直接通过，1 项模型 provider（v0.9a 修复）
 - launchd 调度: load → start → 告警落文件 → unload 全链路通
+
+---
+
+## [Unreleased] — v0.9a — model provider 修复 + v0.9b/c 决策
+
+**里程碑**：v0.9a 修复 opencode 调模型失败（`--model flash` → `--model loop/flash`），跑通真实模型调用。v0.9b 飞轮和 v0.9c 收尾按用户节奏。
+
+### Fixed
+- `scripts/opencode-exec.py` — `--model flash` → `--model loop/flash`（v0.9a 实测修复）
+- `references/adapters/runtime-opencode.md` §六 — 模型映射段更新（对外 flash / 内部 loop/flash）
+- `docs/lessons.md` — 追加 Lesson 32（opencode 模型名必须带 provider 前缀）
+
+### Verified
+- 真实模型调用: `opencode run --model loop/flash` exit 0，52s 返回
+- pytest: 57 passed
+- 中转站: localhost:4002（loop provider）确认工作
 
 ---
 

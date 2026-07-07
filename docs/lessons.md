@@ -1714,3 +1714,26 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 **应用方式**：
 - v0.9 决策点：是否在 `references/adapters/runtime-opencode.md` 加 "opencode 1.17 协议说明" 段固化此教训
 - 任何新工具接入前，必须有 `.tools/<tool>-smoke.md` 记录 `tool --help` 输出 + 实跑命令
+
+---
+
+## Lesson 32 — opencode 模型名必须带 provider 前缀（v0.9a 实测，2026-07-07）
+
+**问题**：v0.8 重构时 `opencode run --model flash` 一直返回 `Unexpected server error`。**v0.9a 排查**发现：
+- `~/.opencode/opencode.json` 注册的 `flash` 全名是 `loop/flash`（provider `loop` + model `flash`）
+- `loop` provider 走 `http://localhost:4002/v1` 中转站
+- 裸 `flash` → opencode 找不到该 model → 返 server error
+
+**真相**：
+- opencode 1.17 的模型命名 = `provider/model`
+- 本机 `flash` 在 `loop` provider 下，全名 `loop/flash`
+- CLAUDE.md 红线"唯一对外模型名 flash"在 CCC 层成立；**opencode exec 内部必须用 `loop/flash`**
+
+**可执行规则**：
+- `scripts/opencode-exec.py` 必须用 `--model loop/flash`（已修）
+- 新加 provider 时同步更新 `references/adapters/runtime-opencode.md` §六
+- 任何"找不到模型"错误 → 第一步查 `opencode models | grep <keyword>`
+
+**应用方式**：
+- 接入新 provider 后，必须 smoke test 一次 `opencode run --model <provider>/<model> "smoke"` 确认通
+- 写 `references/adapters/runtime-opencode.md` 时**禁止**直接抄 CLAUDE.md 的"flash"对外名，**必须**写 opencode 内部全名

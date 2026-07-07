@@ -132,16 +132,22 @@ bash ccc-notify.sh L3 "需要老板拍板" "phase 升级 L3"
 
 ## 六、模型选择（硬规则）
 
-**所有 opencode exec 必须显式指定 `--model flash`**。
+**所有 opencode exec 必须显式指定 `--model loop/flash`**。
 
 ```bash
-opencode exec --model flash -    # 唯一允许
+opencode run --model loop/flash "msg"   # 唯一允许
 ```
 
+**模型映射**（v0.9a 实测）：
+- 对外名称：`flash`（CLAUDE.md 红线：唯一对外模型名）
+- 实际 opencode 模型：`loop/flash`（走 `localhost:4002` 中转站，~/.opencode/opencode.json 注册）
+- 中转站：AI Loop Router `http://localhost:4002/v1`
+
 **禁止**：
-- 省略 `--model`（落到 opencode 默认值，可能不命中 flash）
-- 硬编码 `claude-opus-*` / `claude-sonnet-*` / `claude-haiku-*`
-- 硬编码 `minimax-*` / `deepseek-*` / `gpt-*`
+- 省略 `--model`（落到 opencode 默认值 `loop/code`，不是 flash）
+- 写成 `--model flash`（v0.9a 前 v0.8 踩坑：opencode 没注册名为 `flash` 的模型，会报 Unexpected server error）
+- 硬编码 `claude-opus-*` / `claude-sonnet-*` / `claude-haiku-*` / `claude-fable-*`
+- 硬编码 `minimax-*` / `deepseek-*` / `gpt-*` / `gemini-*` / `glm-*`
 
 ---
 

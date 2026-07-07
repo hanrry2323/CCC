@@ -51,23 +51,22 @@
 
 ## 当前任务(进行中)
 
+**v0.9a 任务链**:✅ **已完结**(2026-07-07,model provider 修复)
+
+- 启动: v0.9a — model provider 修复 — 2026-07-07
+- 完结: v0.9a — 2026-07-07
+- 关键修复: `--model flash` → `--model loop/flash`(走 localhost:4002 中转站)
+- 验证: 真实模型调用 exit 0,52s 返回,loop/flash 工作正常
+
 **v0.8 任务链**:✅ **已完结**(2026-07-07,umbrella release v0.8.0)
-
-- 启动: v0.8 — OpenCode CLI 执行端重构 — 2026-07-07
-- 完结: v0.8.0 — 2026-07-07
-- 关键变更: 执行器从 claude CLI 切到 opencode CLI(CLI 模式,禁用 HTTP)
-- 新增红线: X1(进程池 max 3)/ X2(必杀)/ X3(启动前 watchdog)
-- 验证: pytest 57 passed, smoke test 10 项能力 9 项通过
-
-**v0.7 任务链**:✅ **已完结**(2026-07-07,umbrella release v0.7.0)
 
 下一阶段决策点(待用户拍板):
 
-- **v0.9a**:接 opencode model provider(目前 opencode 调模型返回 Unexpected server error,需配 ANTHROPIC_BASE_URL 中转站或 opencode providers auth)
-- **v0.9b**:飞轮 + 队列模式优先
-- **v0.9c**:先消化当前 v0.8,等用户派新活
+- **v0.9b**:飞轮 + 队列模式(quality_flywheel 简化移植到 CC 端)
+- **v0.9c**:v0.8 收尾(跑完整 e2e 一次 + 整理 v0.8 文档缺口)
+- **v0.9d**:消化 v0.8/v0.9a,等新活
 
-> 当前**不启动** v0.9 任何任务,等用户拍板。Planner 收到决策后,在本节追加"启动: v0.9X — 主题 — 启动日期"行。
+> 当前**不启动** v0.9b/c/d 任何任务,等用户拍板。Planner 收到决策后,在本节追加"启动: v0.9X — 主题 — 启动日期"行。
 
 ---
 
