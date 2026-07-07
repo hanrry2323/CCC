@@ -70,11 +70,29 @@
 - roadmap 标 v0.11 + 范式转变(opencode 写 + 人工 review)
 - 远端 5 tag: v0.7.0/v0.8.0/v0.9.0/v0.10.0/v0.11.0
 
+**v0.12 任务链**:✅ **已完结**(2026-07-07,bug fix sweep)
+
+- 启动: v0.12 — bug fix — 2026-07-07
+- 完结: v0.12.0 — 2026-07-07
+- 修 3 真 bug + 复查 4 非 bug:
+  - Bug 1+3: opencode-exec 长 prompt 临时文件泄漏
+  - Bug 2: ccc-finish bare except → JSONDecodeError
+  - Bug 6: 钩子 timeout=30 写死 → CCC_HOOK_TIMEOUT + perl 兜底
+  - Bug 4-5,7: 复查后非 bug, 加注释说明
+- 测试: 69 passed (66 + 3 新增)
+- 远端 6 tag: v0.7.0/v0.8.0/v0.9.0/v0.10.0/v0.11.0/v0.12.0
+
+**v0.12 消化(本次)**:✅
+- 追加 lesson 36(bug 分类 + 修复模式)
+- roadmap 标 v0.12 + 质量纪律段(bug 扫描 → 必修 → 复查 → 沉淀 4 步)
+- CHANGELOG 加 v0.12 段
+- 远端 6 tag 完整
+
 下一阶段决策点(待用户拍板):
 
-- **v0.12**:跨项目支持(qx-observer / qx / xianyu 调 CCC 验通用性)
-- **v0.13**:飞轮候选 review 合并 / e2e 加 verifier 验收
-- **v0.14**:消化,等新活
+- **v0.13**:跨项目支持(qx-observer / qx / xianyu 调 CCC 验通用性)
+- **v0.14**:飞轮候选 review 合并 / e2e 加 verifier 验收
+- **v0.15**:消化,等新活
 
 > 当前**不启动** 任何新任务,等用户拍板。
 

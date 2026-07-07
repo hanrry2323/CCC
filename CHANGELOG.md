@@ -79,6 +79,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — v0.12 — bug fix sweep
+
+**里程碑**：v0.12 全量扫 bug（7 个发现，3 真 bug 修，4 复查非 bug 加注释）。3 类修复模式：数据泄漏 / 静默失败 / 配置硬编码。
+
+### Fixed
+- **Bug 1+3**: `opencode-exec.py` 长 prompt 临时文件永久泄漏（磁盘 + 隐私）— finally 块 unlink
+- **Bug 2**: `ccc-finish.sh` bare `except: pass` 吞所有异常 — 改 `except json.JSONDecodeError as e` + stderr 输出
+- **Bug 6**: `ccc-hook.sh` timeout=30 写死 — 加 `CCC_HOOK_TIMEOUT` env + macOS perl alarm 兜底
+
+### Verified (非 bug, 加注释说明)
+- **Bug 4**: watchdog `for pf in *.pid` 空目录不进 loop（bash 默认行为）
+- **Bug 5**: ccc-precheck `open(fp)` 没指定 encoding（macOS UTF-8 默认）
+- **Bug 7**: launcher log 命名已含 phase_id，并发不交错
+
+### Added
+- `tests/scripts/test_bug_fixes_v012.py` — 3 个 test 覆盖
+- `docs/lessons.md` Lesson 36 — bug 分类 + 修复模式
+
+### Verified
+- pytest: 69 passed (66 + 3 新增)
+- 远端 6 tag: v0.7.0 / v0.8.0 / v0.9.0 / v0.10.0 / v0.11.0 / v0.12.0
+
+---
+
 ## [Unreleased] — v0.11 — 开箱即用调度 + 队列真测试
 
 **里程碑**：v0.11 落地 a（钩子模板 + scheduler 安装器）+ b（队列 N phase 真测试）+ b-fix（红线 X2 必杀修）。v0.11 完结后，CCC 具备了从"用户启 launcher" → "launchd 周期调 launcher" → "队列跑多 phase" 的全链路。
