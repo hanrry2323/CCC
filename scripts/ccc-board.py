@@ -395,42 +395,39 @@ def dev_role() -> dict:
 
     try:
         print(f"[dev] {task_id} phase={phase_id} timeout={timeout_s}s retry={retry if from_col=='in_progress' else 0}")
-        result = sp.run(
-            [
-                sys.executable, str(ROOT / "scripts" / "opencode-exec.py"),
-                "--phase", phase_id,
-                "--prompt", prompt_file,
-                "--timeout", str(timeout_s),
-            ],
-            capture_output=True, text=True, timeout=timeout_s + 30,
-        )
-        # 写 report（无论成败）
+        # PID 检查：opencode 还在跑就不重复启动
+        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
+        if pid_path.exists():
+            try:
+                old_pid = int(pid_path.read_text().strip())
+                import os as _os
+                try:
+                    _os.kill(old_pid, 0)
+                    print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
+                    return {"role": "dev", "moved": [], "counts": update_index(), "info": f"opencode PID={old_pid} 运行中"}
+                except OSError:
+                    pass
+            except (ValueError, OSError):
+                pass
+
         report_dir = ROOT / ".ccc" / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
-        report = report_dir / f"{task_id}.report.md"
-        report.write_text(
-            f"# {task_id} 执行报告\n\n"
-            f"## 信息\n"
-            f"- Phase: {phase_id}\n"
-            f"- Timeout: {timeout_s}s\n"
-            f"- 退出码: {result.returncode}\n"
-            f"- 时长: -\n\n"
-            f"## stdout\n```\n{result.stdout[:2000]}\n```\n\n"
-            f"## stderr\n```\n{result.stderr[:1000]}\n```\n"
+        report_path = report_dir / f"{task_id}.report.md"
+
+        proc = sp.Popen(
+            [sys.executable, str(ROOT / "scripts" / "opencode-exec.py"),
+             "--phase", phase_id, "--prompt", prompt_file, "--timeout", str(timeout_s)],
+            stdout=sp.PIPE, stderr=sp.PIPE, start_new_session=True,
         )
-        if result.returncode == 0:
-            move_task(task_id, "in_progress", "testing")
-            moved.append(task_id)
-            print(f"[dev] {task_id} ✓ → testing")
-        else:
-            print(f"[dev] {task_id} ✗ rc={result.returncode}（停留在 in_progress，下轮重试）", file=sys.stderr)
-    except sp.TimeoutExpired:
-        print(f"[dev] {task_id} 超时（停留在 in_progress，下轮重试）", file=sys.stderr)
-        report_dir = ROOT / ".ccc" / "reports"
-        report_dir.mkdir(parents=True, exist_ok=True)
-        report_dir.joinpath(f"{task_id}.report.md").write_text(
-            f"# {task_id} 执行报告\n\n## 信息\n- 状态: 超时\n"
-        )
+        pid_dir = ROOT / ".ccc" / "pids"
+        pid_dir.mkdir(parents=True, exist_ok=True)
+        pid_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
+
+        report_path.write_text(f"# {task_id} 执行报告\n\n## 信息\n- 状态: 运行中\n- PID: {proc.pid}\n- Started: {now_iso()}\n")
+        print(f"[dev] {task_id} 后台启动 PID={proc.pid}，下轮检查结果")
+
+    except Exception as e:
+        print(f"[dev] {task_id} 启动失败: {e}", file=sys.stderr)
     finally:
         os.unlink(prompt_file)
 
