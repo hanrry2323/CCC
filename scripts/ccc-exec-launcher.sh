@@ -42,6 +42,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "$LOG_DIR"
+# 日志按 phase_id 隔离（不是真 bug，验证过）
+# 多 phase 并发时各自 LOG_FILE 不同，不交错
 LOG_FILE="$LOG_DIR/launcher-${PHASE_ID}-$(date +%s).log"
 
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }

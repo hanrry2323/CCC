@@ -39,17 +39,29 @@ fi
 echo "[ccc-hook] running $HOOK_POINT: $USER_HOOK $*"
 START=$(date +%s)
 
-# 钩子超时 30s（红线：钩子必须轻量）
+# 钩子超时：默认 30s（红线：钩子必须轻量），可被 CCC_HOOK_TIMEOUT 覆盖
+HOOK_TIMEOUT="${CCC_HOOK_TIMEOUT:-30}"
+TIMEOUT_CMD=""
 if command -v gtimeout >/dev/null 2>&1; then
   TIMEOUT_CMD="gtimeout"
 elif command -v timeout >/dev/null 2>&1; then
   TIMEOUT_CMD="timeout"
-else
-  TIMEOUT_CMD=""
+elif command -v perl >/dev/null 2>&1; then
+  # macOS 没 coreutils timeout, 用 perl 兜底
+  TIMEOUT_CMD="perl"
 fi
 
-if [[ -n "$TIMEOUT_CMD" ]]; then
-  "$TIMEOUT_CMD" 30 bash "$USER_HOOK" "$@"
+if [[ "$TIMEOUT_CMD" == "gtimeout" || "$TIMEOUT_CMD" == "timeout" ]]; then
+  "$TIMEOUT_CMD" "$HOOK_TIMEOUT" bash "$USER_HOOK" "$@"
+  RC=$?
+elif [[ "$TIMEOUT_CMD" == "perl" ]]; then
+  # perl alarm 实现 timeout: 父进程 alarm N 秒后给子进程组发 SIGTERM
+  # 用 'bash' 把 USER_HOOK 后的所有 args 当 bash 命令执行
+  perl -e '
+    $SIG{ALRM} = sub { kill TERM => -$$; };
+    alarm shift @ARGV;
+    exec @ARGV;
+  ' "$HOOK_TIMEOUT" bash "$USER_HOOK" "$@"
   RC=$?
 else
   bash "$USER_HOOK" "$@"
