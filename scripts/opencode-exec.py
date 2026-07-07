@@ -85,15 +85,15 @@ async def run_opencode(
 ) -> dict:
     """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
 
-    cmd 参数：可注入自定义命令（测试用）。默认调 opencode run --model flash。
+    cmd 参数：可注入自定义命令（测试用）。默认调 opencode run --model code。
     """
     tmp_path = None
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
-        # 模型映射：对外 = flash（红线：唯一对外模型名）→ 内部 = loop/flash
-        # opencode 1.17 的 flash 必须用 loop/flash 前缀（localhost:4002 中转站）
-        model = os.environ.get("OPENCODE_MODEL", "loop/flash")
+        # 自动任务走 code 通道（oppencode 原生默认），不走 flash
+        # 如需切换可设 OPENCODE_MODEL 环境变量
+        model = os.environ.get("OPENCODE_MODEL", "code")
         prompt_text = prompt_text.strip()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
