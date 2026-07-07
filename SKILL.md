@@ -19,16 +19,32 @@ description: "CCC — Connect–Claude Code. A Planner → Executor → Verifier
 
 ---
 
-## 启动必读（红线 7 + 战略地图）
+## 启动必读（v0.18 懒加载）
 
-任何 agent 启动时按以下顺序读：
+**只读 1 个文件**：`STARTUP-BRIEF.md`（147 行 / ~700 token）。
 
-1. **`docs/STRATEGY-MAP.md`** — 战略地图（v0.16 6 角色 + 看板 + 全部资产）
-2. **`references/red-lines.md`** — 13+2+X3+X4/X5/X6 红线（v0.17 加 3 条）
-3. **`docs/lessons.md`** — 36 条教训（避免重复踩坑）
-4. **`.ccc/state.md`**（项目侧）— 接力索引
+**其他文件按需 grep**，**不预先全读**（v0.17 4 文件 11k token 浪费）。
 
-**没读 STRATEGY-MAP.md = 没读 CCC**（v0.17 强制）。
+```bash
+# 1. 必读（启动第 1 件事）
+cat STARTUP-BRIEF.md
+
+# 2. 按需 grep（看不懂 brief 里某段时）
+grep -A 15 "## 红线 11" references/red-lines.md      # 查红线 11 细节
+grep -A 8  "## Lesson 36" docs/lessons.md            # 查教训 36
+python3 scripts/ccc-board.py index                    # 查看板状态
+cat docs/STRATEGY-MAP.md                              # 查战略地图全貌
+```
+
+**黄金规则**：
+- **不读 4 文件**（brief 够了）
+- **brief 漏了什么** → grep 那个文件
+- **不要完整 Read** `docs/STRATEGY-MAP.md` / `red-lines.md` / `lessons.md`（除非必要）
+
+**v0.17 4 文件 vs v0.18 1 brief**：
+- v0.17 启动：4 文件 11k token
+- v0.18 启动：1 brief ~700 token
+- **省 94%**
 
 ## 触发（用户显式调用）
 
