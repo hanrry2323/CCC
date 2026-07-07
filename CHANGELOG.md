@@ -540,6 +540,37 @@ git push origin main --tags
 
 ---
 
+## [Unreleased] — v0.18 — 6 角色独立 SKILL + 知识库监理逻辑
+
+**里程碑**：每个角色拥有独立 SKILL.md（职责/方法论/红线/知识库注入），参考 `agent-teams.md` + `practitioner-insights.md` 等行业最佳实践。
+
+### Added
+- `skills/ccc-product/SKILL.md` — 产品经理 skill + **SPEC 门禁**
+- `skills/ccc-dev/SKILL.md` — 开发工程师 skill + **steer don't launch-and-forget** + 迭代检索
+- `skills/ccc-reviewer/SKILL.md` — 代码审查员 skill + **只读不写** + **1:4 比例**
+- `skills/ccc-tester/SKILL.md` — 测试工程师 skill + **双门禁验证**（pytest + plan 验收逐条）
+- `skills/ccc-ops/SKILL.md` — 运维工程师 skill + **告警升级链 L1/L2/L3**
+- `skills/ccc-kb/SKILL.md` — 知识管理员 skill + **AGENTS.md 最终收集**
+- `skills/README.md` — skill 索引（6 角色 + 2 遗留角色）
+- `templates/pending-agents-suggestions.md` — kb 收集 AGENTS.md 建议的模板
+
+### Changed
+- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` — 启动时加载对应 SKILL.md（export CCC_ROLE + CCC_ROLE_SKILL）, 记录 skill frontmatter 到 log
+
+### Knowledge Base Injected
+- **SPEC 门禁**（`agent-teams.md:1923`）：product 拆 subtask 必须过 Specific/Programmatically evaluable/Explicit scope/Constrained
+- **Steer don't launch-and-forget**（`practitioner-insights.md:229`）：dev 的监督姿态
+- **Reviewer 只读不写**（`agent-teams.md:1186`）：有写权限就会去修，产生 merge conflict
+- **1 reviewer per 3-4 builders**（`agent-teams.md:1184`）：reviewer 积压监控
+- **AGENTS.md 积累**（`agent-teams.md:1040-1063`）：沉淀跨 session 工程教训，禁止 agent 直接写入
+
+### Verified
+- 6 角色 shell 脚本语法通过（`bash -n`）
+- `ccc-board.py index` 正常返回
+- ops 角色端到端运行验证（加载 skill → 调 board.py → 退出 0）
+
+---
+
 ## [Unreleased] — v0.17 — 战略地图 + 文档体系对齐 6 角色
 
 **里程碑**：v0.16 6 角色系统落地后, 沉淀战略地图, 所有 cloud agent 启动第一件事读 STRATEGY-MAP.md。
