@@ -619,39 +619,13 @@ def dev_role() -> dict:
         print(
             f"[dev] {task_id} phase={phase_id} timeout={timeout_s}s retry={retry if from_col == 'in_progress' else 0}"
         )
-        # PID 检查：opencode 还在跑就不重复启动
-        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
-        if pid_path.exists():
-            try:
-                old_pid = int(pid_path.read_text().strip())
-                try:
-                    os.kill(old_pid, 0)
-                    print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
-                    return {
-                        "role": "dev",
-                        "moved": [],
-                        "counts": update_index(),
-                        "info": f"opencode PID={old_pid} 运行中",
-                    }
-                except OSError:
-                    # stale PID, clean up and fall through to done check
-                    print(
-                        f"[dev] {task_id} PID {old_pid} 异常退出，清理后重试",
-                        file=sys.stderr,
-                    )
-                    try:
-                        pid_path.unlink()
-                    except OSError:
-                        pass
-            except (ValueError, OSError):
-                pass
-
         done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
         exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
         result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
         pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
 
-        # 检查上一轮 opencode 是否跑完
+        # ❗.done 检查必须在 PID 检查之前
+        # stale PID 被回收后 os.kill 返回成功，先查 .done 再查 PID
         if done_path.exists():
             exit_code = (
                 exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
@@ -678,6 +652,29 @@ def dev_role() -> dict:
                     file=sys.stderr,
                 )
             return {"role": "dev", "moved": moved, "counts": update_index()}
+
+        # PID 检查：.done 不存在时确认 opencode 是否还在跑
+        if pid_path.exists():
+            try:
+                old_pid = int(pid_path.read_text().strip())
+                try:
+                    os.kill(old_pid, 0)
+                    print(f"[dev] {task_id} opencode {old_pid} 仍在运行，跳过")
+                    return {
+                        "role": "dev",
+                        "moved": [],
+                        "counts": update_index(),
+                        "info": f"opencode PID={old_pid} 运行中",
+                    }
+                except OSError:
+                    # stale PID
+                    print(f"[dev] {task_id} PID {old_pid} 不存在，清理后重试")
+                    try:
+                        pid_path.unlink()
+                    except OSError:
+                        pass
+            except (ValueError, OSError):
+                pass
 
         # 启动 opencode（通过 runner.sh 持久化结果）
         report_dir = ROOT / ".ccc" / "reports"
