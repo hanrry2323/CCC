@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("CCC_WORKSPACE", "")) if os.environ.get("CCC_WORKSPACE") else Path(__file__).resolve().parent.parent
 BOARD = ROOT / ".ccc" / "board"
 
 COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released"]
