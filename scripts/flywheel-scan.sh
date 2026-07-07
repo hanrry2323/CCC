@@ -35,19 +35,36 @@ PATTERNS=(
 echo "# Flywheel Candidates ($REPORT_DATE)" > "$OUT_FILE"
 echo "" >> "$OUT_FILE"
 echo "扫描源:" >> "$OUT_FILE"
-echo "- $WORKSPACE/.ccc/reports/*.md" >> "$OUT_FILE"
-echo "- $WORKSPACE/.ccc/verdicts/*.md" >> "$OUT_FILE"
-echo "- ~/.ccc/alerts/*.md" >> "$OUT_FILE"
+echo "- $WORKSPACE/.ccc/reports/*.md（Executor 报告）" >> "$OUT_FILE"
+echo "- $WORKSPACE/.ccc/verdicts/*.md（Verifier 验收，**权威**）" >> "$OUT_FILE"
 echo "" >> "$OUT_FILE"
-echo "## 候选失败模式（出现次数 ≥ 2 才列）" >> "$OUT_FILE"
+echo "排除: ~/.ccc/alerts/*.md（告警字面量含 FAIL 字符串但不是真失败，红线 18 防伪发现）" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+echo "## 候选失败模式（出现次数 ≥ 3 才列）" >> "$OUT_FILE"
 echo "" >> "$OUT_FILE"
 
+# 模式 → 搜索范围白名单（并行数组，bash 3.2 兼容）
+# 防止 v0.9b 的伪发现：alert 标题含 "opencode FAIL:" 字样被误判
+SCOPES=(
+  "$WORKSPACE/.ccc/reports/"     # exit_code.*[1-9]
+  "$WORKSPACE/.ccc/verdicts/"    # FAIL:
+  "$WORKSPACE/.ccc/reports/"     # killed.*true
+  "$WORKSPACE/.ccc/reports/"     # timeout after
+  "$WORKSPACE/.ccc/verdicts/"    # VERDICT: FAIL
+  "$WORKSPACE/.ccc/reports/"     # ModuleNotFoundError
+  "$WORKSPACE/.ccc/reports/"     # Permission denied
+  "$WORKSPACE/.ccc/reports/"     # ECONNREFUSED
+  "$WORKSPACE/.ccc/reports/"     # Unexpected server error
+)
+
+THRESHOLD=3
 TOTAL=0
-for pat in "${PATTERNS[@]}"; do
-  # 在 CCC report + alert 目录 grep
-  COUNT=$(grep -rh "$pat" "$WORKSPACE/.ccc/reports/" ~/.ccc/alerts/ 2>/dev/null | wc -l | tr -d ' ')
-  if [[ $COUNT -ge 2 ]]; then
-    echo "- **$pat**: $COUNT 次" >> "$OUT_FILE"
+for i in "${!PATTERNS[@]}"; do
+  pat="${PATTERNS[$i]}"
+  scope="${SCOPES[$i]}"
+  COUNT=$(grep -rh "$pat" "$scope" 2>/dev/null | wc -l | tr -d ' ')
+  if [[ $COUNT -ge $THRESHOLD ]]; then
+    echo "- **$pat**: $COUNT 次 (scope: $(basename $scope))" >> "$OUT_FILE"
     TOTAL=$((TOTAL+1))
   fi
 done
