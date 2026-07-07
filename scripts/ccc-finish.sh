@@ -180,8 +180,11 @@ if not os.path.exists(fp):
 text = open(fp).read()
 
 # 方式 1: 找 "只改文件" 段（plan-spec.md 规范）
+# 兼容两种写法：
+#   - 行内: `- **只改文件**：`（v0.7d-prime / v0.7f 风格）
+#   - 段标题: `## 只改文件白名单` / `## 只改文件清单`（ccc-fix-batch 风格）
 files = []
-m = re.search(r'只改文件[:：].*?(?=\n##|\n- \*\*不改|$)', text, re.DOTALL)
+m = re.search(r'(?:^|\n)\s*(?:[-*]\s*\*\*只改文件\*\*[:：]|##\s*只改文件(?:白名单|清单)?)[\s:：].*?(?=\n##|\n- \*\*不改|$)', text, re.DOTALL)
 if m:
     section = m.group(0)
     files += re.findall(r'`([^`]+)`', section)
