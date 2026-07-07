@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCC 看板</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-hover: #334155;
+    --border: #334155;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --col-border: rgba(255,255,255,0.06);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh;
+  }
+  /* Header */
+  .header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .header h1 span { color: var(--text-dim); font-weight: 400; font-size: 14px; }
+  .header .controls { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .header select {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px;
+    cursor: pointer;
+  }
+  .header .new-btn {
+    background: #6366f1; color: white; border: none; padding: 6px 16px;
+    border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+    cursor: pointer;
+  }
+  .header .new-btn:hover { background: #4f46e5; }
+  .header .status-badge {
+    font-size: 12px; color: var(--text-muted);
+    padding: 4px 10px; background: var(--surface); border-radius: 12px;
+  }
+  /* Board */
+  .board {
+    display: flex; gap: 12px; padding: 16px 24px;
+    overflow-x: auto; min-height: calc(100vh - 140px);
+  }
+  .column {
+    min-width: 260px; max-width: 300px; flex: 1;
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid var(--col-border);
+    display: flex; flex-direction: column; max-height: calc(100vh - 160px);
+  }
+  .column-header {
+    padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .column-header .col-info { display: flex; align-items: center; gap: 8px; }
+  .column-header .col-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  }
+  .column-header .col-name { font-size: 13px; font-weight: 600; }
+  .column-header .col-count {
+    font-size: 12px; color: var(--text-muted); background: var(--surface-hover);
+    padding: 1px 8px; border-radius: 10px;
+  }
+  .column-cards {
+    padding: 8px; overflow-y: auto; flex: 1;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 60px;
+  }
+  /* Card */
+  .card {
+    background: var(--bg); border-radius: var(--radius-sm);
+    padding: 10px 12px; cursor: pointer;
+    border-left: 3px solid var(--text-muted);
+    transition: all 0.15s;
+  }
+  .card:hover { background: var(--surface-hover); transform: translateY(-1px); }
+  .card-id {
+    font-size: 11px; font-family: monospace; color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .card-title { font-size: 13px; font-weight: 500; line-height: 1.4; }
+  .card-meta {
+    font-size: 11px; color: var(--text-muted); margin-top: 4px;
+    display: flex; gap: 8px;
+  }
+  .card-actions {
+    display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;
+  }
+  .card-actions button {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-dim); cursor: pointer;
+  }
+  .card-actions button:hover { background: var(--surface-hover); color: var(--text); }
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.6); justify-content: center; align-items: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: var(--radius); padding: 24px;
+    width: 460px; max-width: 90vw; max-height: 80vh; overflow-y: auto;
+  }
+  .modal h2 { font-size: 16px; margin-bottom: 16px; }
+  .modal label { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 4px; }
+  .modal input, .modal textarea, .modal select {
+    width: 100%; padding: 8px 10px; margin-bottom: 12px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text); font-size: 13px;
+  }
+  .modal textarea { min-height: 80px; resize: vertical; font-family: inherit; }
+  .modal .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .modal .btns button {
+    padding: 6px 16px; border-radius: var(--radius-sm); font-size: 13px;
+    cursor: pointer; border: none;
+  }
+  .modal .btns .btn-primary { background: #6366f1; color: white; }
+  .modal .btns .btn-cancel { background: var(--surface-hover); color: var(--text); }
+  /* Log panel */
+  .log-panel {
+    border-top: 1px solid var(--border); padding: 10px 24px;
+    background: var(--surface); max-height: 120px; overflow-y: auto;
+    font-family: monospace; font-size: 11px; line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .log-panel .log-entry { display: flex; gap: 8px; }
+  .log-panel .log-time { color: var(--text-muted); white-space: nowrap; }
+  .log-panel .log-role { color: #6366f1; min-width: 60px; }
+  .log-panel .log-msg { color: var(--text-dim); }
+  .log-panel .log-badge {
+    display: inline-block; padding: 0 4px; border-radius: 3px;
+    font-size: 10px; font-weight: 600;
+  }
+  .log-panel .log-badge.ok { background: rgba(34,197,94,0.2); color: #22c55e; }
+  .log-panel .log-badge.fail { background: rgba(239,68,68,0.2); color: #ef4444; }
+  /* Empty */
+  .empty-col {
+    text-align: center; color: var(--text-muted); font-size: 12px;
+    padding: 20px 0;
+  }
+  /* Animation */
+  .card.just-moved { animation: flash 1s ease-out; }
+  @keyframes flash { 0% { background: rgba(99,102,241,0.3); } 100% { background: transparent; } }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>CCC <span>看板</span></h1>
+  <div class="controls">
+    <select id="workspace-select" onchange="switchWorkspace()"></select>
+    <span class="status-badge" id="refresh-status">实时</span>
+    <button class="new-btn" onclick="openNewTask()">+ 新建任务</button>
+  </div>
+</div>
+
+<div class="board" id="board"></div>
+
+<div class="log-panel" id="log-panel"></div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">新建任务</h2>
+    <label>任务 ID</label>
+    <input id="task-id" placeholder="如 v0.19-feature-x" value="task-">
+    <label>标题</label>
+    <input id="task-title" placeholder="简短描述">
+    <label>描述</label>
+    <textarea id="task-desc" placeholder="详细说明"></textarea>
+    <label>目标看板</label>
+    <select id="task-workspace"></select>
+    <div class="btns">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="createTask()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 状态 ──
+let config = {};
+let boardState = {};
+let autoRefresh = null;
+const COLORS = {
+  backlog: "#94a3b8", planned: "#6366f1", in_progress: "#f59e0b",
+  testing: "#f97316", verified: "#22c55e", released: "#3b82f6",
+};
+const LABELS = {
+  backlog: "待办", planned: "已计划", in_progress: "开发中",
+  testing: "测试中", verified: "已验证", released: "已发布",
+};
+const NEXT_COL = {
+  backlog: "planned", planned: "in_progress", in_progress: "testing",
+  testing: "verified", verified: "released", released: null,
+};
+const PREV_COL = {
+  backlog: null, planned: "backlog", in_progress: "planned",
+  testing: "in_progress", verified: "testing", released: "verified",
+};
+
+// ── 加载配置 ──
+async function loadConfig() {
+  const r = await fetch("/api/config");
+  config = await r.json();
+  // workspace 选择器
+  const sel = document.getElementById("workspace-select");
+  sel.innerHTML = "";
+  for (const [name, path] of Object.entries(config.workspaces)) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = `${name} (${path.split("/").pop()})`;
+    sel.appendChild(opt);
+  }
+  // 模态框 workspace 选择
+  const wsSel = document.getElementById("task-workspace");
+  wsSel.innerHTML = "";
+  for (const name of Object.keys(config.workspaces)) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    wsSel.appendChild(opt);
+  }
+  // 默认 task id
+  document.getElementById("task-id").value = "task-" + Math.floor(Date.now() / 1000);
+}
+
+// ── 加载看板 ──
+async function loadBoard() {
+  const ws = document.getElementById("workspace-select").value;
+  try {
+    const r = await fetch(`/api/board?workspace=${ws}`);
+    boardState = await r.json();
+    renderBoard();
+    document.getElementById("refresh-status").textContent =
+      `${ws} · ${Object.values(boardState.counts).reduce((a,b)=>a+b,0)} 个任务`;
+  } catch(e) {
+    document.getElementById("refresh-status").textContent = "❌ 连接失败";
+  }
+}
+
+// ── 渲染 ──
+function renderBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  for (const col of config.columns) {
+    const tasks = boardState.columns[col] || [];
+    const colDiv = document.createElement("div");
+    colDiv.className = "column";
+    colDiv.innerHTML = `
+      <div class="column-header">
+        <div class="col-info">
+          <span class="col-dot" style="background:${COLORS[col]}"></span>
+          <span class="col-name">${LABELS[col]}</span>
+        </div>
+        <span class="col-count">${tasks.length}</span>
+      </div>
+      <div class="column-cards" data-col="${col}">
+        ${tasks.length === 0 ? '<div class="empty-col">空</div>' :
+          tasks.map(t => renderCard(t, col)).join("")}
+      </div>
+    `;
+    board.appendChild(colDiv);
+  }
+  // 移动按钮绑定
+  document.querySelectorAll(".move-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const { taskId, from, to } = btn.dataset;
+      await moveTask(taskId, from, to);
+    });
+  });
+  // 新建任务按钮绑定（从卡片）
+  document.querySelectorAll(".new-subtask").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const { id, title } = btn.dataset;
+      openNewTaskFrom(id, title);
+    });
+  });
+}
+
+function renderCard(task, col) {
+  const prev = PREV_COL[col];
+  const next = NEXT_COL[col];
+  const time = (task.updated_at || task.created_at || "").split("T")[1]?.slice(0,5) || "";
+  return `
+    <div class="card" style="border-left-color:${COLORS[col]}">
+      <div class="card-id">${task.id}</div>
+      <div class="card-title">${escapeHtml(task.title)}</div>
+      <div class="card-meta">
+        <span>${time}</span>
+        ${task.tags?.length ? task.tags.map(t => `<span>#${t}</span>`).join("") : ""}
+      </div>
+      <div class="card-actions">
+        ${prev ? `<button class="move-btn" data-task-id="${task.id}" data-from="${col}" data-to="${prev}">← ${LABELS[prev]}</button>` : ""}
+        ${next ? `<button class="move-btn" data-task-id="${task.id}" data-from="${col}" data-to="${next}">${LABELS[next]} →</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+// ── 移动 ──
+async function moveTask(id, from, to) {
+  const ws = document.getElementById("workspace-select").value;
+  await fetch("/api/tasks/move", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ id, from, to, workspace: ws }),
+  });
+  await loadBoard();
+  await loadLogs();
+}
+
+// ── 新建 ──
+function openNewTask() {
+  document.getElementById("modal-title").textContent = "新建任务";
+  document.getElementById("task-id").value = "task-" + Math.floor(Date.now() / 1000);
+  document.getElementById("task-title").value = "";
+  document.getElementById("task-desc").value = "";
+  document.getElementById("modal").classList.add("active");
+}
+
+function openNewTaskFrom(parentId, parentTitle) {
+  document.getElementById("modal-title").textContent = `子任务 (${parentId})`;
+  document.getElementById("task-id").value = parentId + "-sub";
+  document.getElementById("task-title").value = "";
+  document.getElementById("task-desc").value = `父任务: ${parentTitle}`;
+  document.getElementById("modal").classList.add("active");
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.remove("active");
+}
+
+async function createTask() {
+  const id = document.getElementById("task-id").value.trim();
+  const title = document.getElementById("task-title").value.trim();
+  const desc = document.getElementById("task-desc").value.trim();
+  const ws = document.getElementById("task-workspace").value;
+  if (!id || !title) { alert("ID 和标题必填"); return; }
+  await fetch("/api/tasks", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ id, title, description: desc, workspace: ws }),
+  });
+  closeModal();
+  await switchWorkspace();
+}
+
+// ── 日志 ──
+async function loadLogs() {
+  try {
+    const r = await fetch("/api/logs?lines=20");
+    const data = await r.json();
+    const panel = document.getElementById("log-panel");
+    panel.innerHTML = data.logs.slice(0, 15).map(log => {
+      const exitMatch = log.snippet.match(/(\w+) exit=(\d+)/);
+      const tickMatch = log.snippet.match(/===== (\w+) tick =====/);
+      const role = exitMatch?.[1] || tickMatch?.[1] || log.role;
+      const exitCode = exitMatch?.[2];
+      const badge = exitCode === "0"
+        ? `<span class="log-badge ok">OK</span>`
+        : exitCode ? `<span class="log-badge fail">E${exitCode}</span>` : "";
+      return `<div class="log-entry">
+        <span class="log-time">${log.mtime.slice(11,19)}</span>
+        <span class="log-role">${role}</span>
+        ${badge}
+        <span class="log-msg">${log.size > 0 ? `${log.size}B` : "空"}</span>
+      </div>`;
+    }).join("");
+  } catch(e) {}
+}
+
+// ── 切换 workspace ──
+async function switchWorkspace() {
+  await loadBoard();
+  await loadLogs();
+  startAutoRefresh();
+}
+
+// ── 定时刷新 ──
+function startAutoRefresh() {
+  if (autoRefresh) clearInterval(autoRefresh);
+  autoRefresh = setInterval(async () => {
+    await loadBoard();
+    await loadLogs();
+  }, 5000);
+}
+
+// ── 工具 ──
+function escapeHtml(s) {
+  if (!s) return "";
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── 启动 ──
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadConfig();
+  await switchWorkspace();
+});
+</script>
+</body>
+</html>
