@@ -26,8 +26,16 @@ from pathlib import Path
 MAX_PARALLEL = 3  # 红线 X1
 
 # 复用 opencode-exec.py 的 run_opencode（避免重复代码）
-sys.path.insert(0, str(Path(__file__).parent))
-from opencode_exec import run_opencode  # type: ignore  # noqa: E402
+# 文件名带连字符，import 不行，用 importlib 加载
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location(
+    "_opencode_exec",
+    Path(__file__).parent / "opencode-exec.py",
+)
+_opencode_exec = importlib.util.module_from_spec(_spec)  # type: ignore
+_spec.loader.exec_module(_opencode_exec)  # type: ignore
+run_opencode = _opencode_exec.run_opencode
 
 
 async def run_task(task: dict, sem: asyncio.Semaphore) -> dict:

@@ -59,9 +59,14 @@ async def run_opencode(
     prompt_text: str,
     timeout: int,
     cwd: str | None,
+    cmd: list[str] | None = None,
 ) -> dict:
-    """起 opencode exec 子进程，prompt 走 stdin（Lesson 27）"""
-    cmd = ["opencode", "exec", "--model", "flash", "-"]
+    """起 opencode exec 子进程，prompt 走 stdin（Lesson 27）
+
+    cmd 参数：可注入自定义命令（测试用）。默认调 opencode exec。
+    """
+    if cmd is None:
+        cmd = ["opencode", "exec", "--model", "flash", "-"]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.PIPE,

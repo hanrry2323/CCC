@@ -14,12 +14,23 @@
 
 set -uo pipefail
 
-LEVEL="${1:?usage: ccc-notify.sh <L1|L2|L3> <title> <message>}"
-TITLE="${2:?usage: ccc-notify.sh <L1|L2|L3> <title> <message>}"
-MESSAGE="${3:?usage: ccc-notify.sh <L1|L2|L3> <title> <message>}"
+LEVEL="${1:-}"
+TITLE="${2:-}"
+MESSAGE="${3:-}"
+
+if [[ -z "$LEVEL" || -z "$TITLE" || -z "$MESSAGE" ]]; then
+  echo "usage: ccc-notify.sh <L1|L2|L3> <title> <message>" >&2
+  exit 1
+fi
 
 ALERT_DIR="${HOME}/.ccc/alerts"
 mkdir -p "$ALERT_DIR"
+
+# 验 level
+case "$LEVEL" in
+  L1|L2|L3) ;;
+  *) echo "未知 level: $LEVEL（应为 L1/L2/L3）" >&2; exit 1 ;;
+esac
 
 TS=$(date +%Y%m%d-%H%M%S)
 ALERT_FILE="$ALERT_DIR/${TS}-${LEVEL}.md"
@@ -39,22 +50,15 @@ EOF
 # 桌面通知
 case "$LEVEL" in
   L1)
-    # L1: 不发通知，只日志
     echo "[ccc-notify] L1 (log only) $TITLE: $MESSAGE"
     ;;
   L2)
-    # L2: 通知 + 默认声音
     osascript -e "display notification \"$MESSAGE\" with title \"CCC L2: $TITLE\"" >/dev/null 2>&1
     echo "[ccc-notify] L2 sent: $TITLE"
     ;;
   L3)
-    # L3: 通知 + 强烈声音 + subtitle 强调
     osascript -e "display notification \"$MESSAGE\" with title \"CCC L3: $TITLE\" subtitle \"需要老板拍板\" sound name \"Basso\"" >/dev/null 2>&1
     echo "[ccc-notify] L3 sent: $TITLE"
-    ;;
-  *)
-    echo "未知 level: $LEVEL（应为 L1/L2/L3）" >&2
-    exit 1
     ;;
 esac
 
