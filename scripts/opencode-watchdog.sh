@@ -102,6 +102,14 @@ for opid in $ORPHAN_PIDS; do
   fi
 done
 
+# 兜底 2：pkill -f 整个 opencode 进程树（v0.11b-fix 二次失守补救）
+# macOS 上 killpg 不可靠，必须用 pkill 杀命令行匹配
+if pgrep -f "opencode run" | grep -v "^$$\$" >/dev/null 2>&1; then
+  pkill -9 -f "opencode run" 2>/dev/null || true
+  log_warn "pkill -f 兜底清 opencode run 进程树"
+  PIDS_CLEANED=$((PIDS_CLEANED+1))
+fi
+
 echo ""
 log_info "汇总: alive=$ALIVE cleaned=$CLEANED orphan_killed=$ORPHAN"
 

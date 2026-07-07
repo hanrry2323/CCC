@@ -20,6 +20,9 @@ WORKSPACE="${1:-$PWD}"
 TASK="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# 测试钩子：CCC_LAUNCHER_OVERRIDE 可替换 ccc-exec-launcher.sh（用于端到端 mock 测试）
+LAUNCHER="${CCC_LAUNCHER_OVERRIDE:-$SCRIPT_DIR/ccc-exec-launcher.sh}"
+
 if [[ -z "$TASK" ]]; then
   TASK=$(ls -t "$WORKSPACE/.ccc/plans/"*.plan.md 2>/dev/null | head -1 | sed -E 's|.*/(.*)\.plan\.md$|\1|')
   if [[ -z "$TASK" ]]; then
@@ -77,7 +80,7 @@ EOF
     RETRY=$((RETRY+1))
     echo "  [attempt $RETRY/$MAX_RETRIES] launcher..."
     
-    if bash "$SCRIPT_DIR/ccc-exec-launcher.sh" "$PHASE_ID" "$PROMPT_FILE" --timeout 120; then
+    if bash "$LAUNCHER" "$PHASE_ID" "$PROMPT_FILE" --timeout 120; then
       echo "  ✅ phase $PHASE_ID 成功 (retry=$RETRY)"
       SUCCESS=1
 
