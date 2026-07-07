@@ -38,9 +38,17 @@ PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def check_opencode_binary() -> str:
-    """验 opencode 在 PATH 里"""
+    """验 opencode 在 PATH 里（含 npm global 回退）"""
     from shutil import which
-    return which("opencode")
+    from os.path import expanduser
+    path = which("opencode")
+    if path:
+        return path
+    # launchd 没有 ~/.npm-global/bin
+    npm_path = expanduser("~/.npm-global/bin/opencode")
+    if Path(npm_path).exists():
+        return npm_path
+    return None
 
 
 def check_residual_watchdog(script_dir: Path) -> bool:
