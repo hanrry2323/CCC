@@ -31,19 +31,24 @@ CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀*
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `references/red-lines.md` | 13 红线强约束（v0.7 新增红线 13） |
+| `references/red-lines.md` | 13+2+X3 红线强约束（v0.8 新增 X1/X2/X3） |
 | `scripts/ccc-precheck.sh` | 5 项前置门控（红线 7+10） |
 | `scripts/ccc-finish.sh` | 5 项后置门控 |
-| `scripts/executor-watchdog.sh` | Executor 健康检查（红线 9） |
+| `scripts/opencode-exec.py` | **OpenCode CLI 执行器**（v0.8 替换 claude） |
+| `scripts/opencode-pool.py` | **OpenCode 进程池**（max 3 并发，红线 X1） |
+| `scripts/opencode-watchdog.sh` | **OpenCode 残留扫描**（红线 X2/X3） |
+| `scripts/ccc-notify.sh` | **macOS 桌面通知**（升级链 L1/L2/L3） |
+| `scripts/ccc-hook.sh` | **通用钩子**（pre-exec / post-exec / on-error） |
+| `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口（串联 watchdog→hook→opencode） |
 | `scripts/ccc-exec-commit.sh` | 单 phase 单 commit（红线 4+8） |
 | `scripts/ccc` | CLI wrapper |
 | `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` + `ccc-task-done.sh` | 基础运维 |
 | `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
-| `tests/scripts/` | 8 个 pytest 核心测试 |
-| `references/adapters/runtime-opencode.md` | opencode 适配器（其他 IDE 适配器已精简） |
+| `tests/scripts/` | pytest 核心测试 |
+| `references/adapters/runtime-opencode.md` | **OpenCode 执行器契约**（v0.8 重写） |
 | `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引（红线 7+10） |
-| `docs/lessons.md` | 历史教训沉淀（含 lesson 30：验收数字规则） |
-| `docs/roadmap.md` | 路线图（v0.5 → v1.0） |
+| `docs/lessons.md` | 历史教训沉淀 |
+| `docs/roadmap.md` | 路线图 |
 | `CHANGELOG.md` | 版本变更 |
 
 ## 30 秒上手
@@ -69,6 +74,9 @@ CCC 不是 framework 代码库，**是一个 prompt 资产 + 工程纪律沉淀*
 
 - **红线 11**: Verifier 必须写 verdict 文件（口头 PASS 不算）
 - **红线 12**: 禁止 agent 自主启用 CCC（必须用户显式触发）
+- **红线 X1**: OpenCode 进程池最多 3 并发（v0.8）
+- **红线 X2**: 每 phase 必杀 opencode 进程（v0.8）
+- **红线 X3**: OpenCode 启动前必跑残留 watchdog（v0.8）
 - **Lesson 27**: `claude -p` 是 print 模式，prompt 必须走 stdin
 - **Lesson 28**: Verdict 强证据红线 11 的来历
 

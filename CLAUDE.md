@@ -36,6 +36,9 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | 10 | 禁止跨会话隐式记忆 | state.md 强制接力 |
 | **11** | Verifier 必须写 verdict 文件 | 口头 PASS 不算 PASS（Lesson 28） |
 | **12** | 禁止 agent 自主启用 CCC | 用户显式触发（Lesson 28 配套） |
+| **X1** | OpenCode 进程池最多 3 并发 | v0.8：M1 8GB 内存敏感 |
+| **X2** | 每 phase 必杀 opencode 进程 | v0.8：finally + watchdog 兜底 |
+| **X3** | OpenCode 启动前必跑残留 watchdog | v0.8：launcher Step 1 |
 
 **Lesson 27**: `claude -p` 是 print 模式开关，prompt 必须走 stdin（**别写成 `claude -p "..."`**）。
 
@@ -48,16 +51,21 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `references/red-lines.md` | 13 红线强约束（v0.7 新增红线 13） |
+| `references/red-lines.md` | 13+2+X3 红线强约束（v0.8 新增 OpenCode 进程红线 X1/X2/X3） |
 | `scripts/ccc-precheck.sh` | 5 项前置门控（红线 7+10） |
 | `scripts/ccc-finish.sh` | 5 项后置门控 |
-| `scripts/executor-watchdog.sh` | Executor 健康检查（红线 9） |
+| `scripts/opencode-exec.py` | **OpenCode CLI 执行器**（v0.8 替换 claude 直接调用） |
+| `scripts/opencode-pool.py` | **OpenCode 进程池**（max 3 并发，红线 X1） |
+| `scripts/opencode-watchdog.sh` | **OpenCode 残留扫描**（红线 X2/X3） |
+| `scripts/ccc-notify.sh` | **macOS 桌面通知**（升级链 L1/L2/L3） |
+| `scripts/ccc-hook.sh` | **通用钩子**（pre-exec / post-exec / on-error） |
+| `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口 |
 | `scripts/ccc-exec-commit.sh` | 单 phase 单 commit（红线 4+8） |
 | `scripts/ccc` | CLI wrapper |
 | `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` + `ccc-task-done.sh` | 基础运维 |
 | `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
-| `tests/scripts/` | 8 个 pytest 核心测试 |
-| `references/adapters/runtime-opencode.md` | opencode 适配器（其他 IDE 适配器已精简） |
+| `tests/scripts/` | pytest 核心测试 |
+| `references/adapters/runtime-opencode.md` | **OpenCode 执行器契约**（v0.8 重写） |
 | `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引（红线 7+10） |
 | `docs/lessons.md` | 历史教训沉淀（含 lesson 30：验收数字规则） |
 | `docs/roadmap.md` | 路线图（v0.5 → v1.0） |

@@ -215,10 +215,19 @@ Agent（加载 SKILL 后）的行为：
 
 ---
 
-## 配套扩展（按需）
+## 配套扩展（v0.8）
 
-> v0.7-slim 精简：原路线图（IDE 定时任务 / 知识飞轮 / 跨设备集群）代码已删。
-> 如需这些功能，按需从头重写更简单的版本，不预留。
+> v0.8 重构：CCC 执行端从 claude CLI 改为 **OpenCode CLI**（CLI 模式，不用 serve/HTTP）。
+> 详细执行器契约见 `references/adapters/runtime-opencode.md`。
+>
+> **三件配套**：
+> - `scripts/opencode-exec.py` — CLI 执行器（单 phase）
+> - `scripts/opencode-pool.py` — 进程池（max 3 并发，红线 X1）
+> - `scripts/opencode-watchdog.sh` — 残留扫描（红线 X2/X3）
+>
+> **通知**：升级链走 `scripts/ccc-notify.sh`（macOS 桌面通知 + 告警存档）。**不接**飞书/邮件。
+>
+> **钩子**：`scripts/ccc-hook.sh` 提供 pre-exec / post-exec / pre-commit / on-error 4 个点。
 
-- **跨工具**：SKILL 不绑 IDE，可在 Trae / Cursor / Zed 间移植
-- **模型路由**：通过 `ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 选模型
+- **跨工具**：SKILL 不绑 IDE，可在 Trae / Cursor / Zed / OpenCode 间移植
+- **模型路由**：通过 `ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 选模型（opencode exec 时显式 `--model flash`）

@@ -26,8 +26,13 @@
 | 18 | 飞轮候选必须经过人工 review 才合并 | v0.6 |
 | 19 | 跨设备 / 跨 session 必须有独立 Verifier 验收 | v1.0 配套 |
 | 20 | 跨设备 bash 脚本必须用 v3 portability 模板 | v0.5 配套（Lesson 29） |
+| **X1** | **OpenCode 进程池最多 3 并发** | v0.8 |
+| **X2** | **每 phase 必杀 opencode 进程** | v0.8 |
+| **X3** | **OpenCode 启动前必跑残留 watchdog** | v0.8 |
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
+>
+> X1/X2/X3 是 v0.8 配套（OpenCode 执行端），编号用 X 前缀避开数字历史。
 
 ---
 
@@ -306,6 +311,69 @@
   check "X" "cd \$ABC_ROOT && grep -q foo file"   # 单一 shell 调用
   ```
 - **触犯后果**：Critical — 跨设备运行必定 FAIL（已实测验证）
+
+---
+
+## OpenCode 进程管理红线（v0.8 配套）
+
+> v0.8 起 CCC 改用 OpenCode CLI 作执行器，三个红线配套：
+> **opencode 进程是最重的子进程（M1 8GB 内存敏感）**，必须严管。
+
+#### 红线 X1：OpenCode 进程池最多 3 并发
+
+- **规则**：任意时刻，**全局 opencode exec 子进程数 ≤ 3**。超出由 `opencode-pool.py` 排队等，**不杀不抢**。
+- **Why**：
+  - M1 8GB 内存紧张，4+ opencode 进程可能 OOM
+  - 多 phase 并发数 > 3 收益边际递减（人眼也看不过来）
+  - 抢占式调度会让 phase 状态丢失（被杀的 phase 没机会写完 report）
+- **机制**：`scripts/opencode-pool.py` 用 `asyncio.Semaphore(3)` 硬限；`--max-parallel > 3` 拒绝执行
+- **触犯后果**：Warning — 池自动排队，phase 慢但不会丢；改硬塞的脚本直接删除
+
+#### 红线 X2：每 phase 必杀 opencode 进程
+
+- **规则**：每个 phase **结束后**（成功 / 失败 / 超时 / 异常）**必须**杀 opencode 子进程（先 TERM，5s 后 KILL）。**禁止**"等它自己退出"。
+- **Why**：
+  - opencode exec 是子进程，stdin 关闭后会退出，但**不一定**——某些场景下 hung
+  - 残留进程 = 内存泄漏 + 端口占用 + 下次启动污染
+  - 多个残留累积就是"opencode 占满 8GB"的根因
+- **机制**：
+  1. `scripts/opencode-exec.py` 用 `try/finally` 块兜底杀进程
+  2. `scripts/opencode-watchdog.sh` 扫 `~/.ccc/opencode-pids/*.pid` 兜底
+  3. PID 文件启动时写、结束删（不论成败）
+- **触犯后果**：Critical — 残留 > 0 = 红线违反，watchdog 启动即清
+
+#### 红线 X3：OpenCode 启动前必跑残留 watchdog
+
+- **规则**：`scripts/ccc-exec-launcher.sh` **第一步**（在钩子之前）必跑 `bash scripts/opencode-watchdog.sh`。watchdog 退出码非 0/3 → launcher 立即 exit。
+- **Why**：
+  - 上次未清的残留进程 = 这次启动的环境污染源
+  - watchdog 是"开机自检"，必须每次都跑（不是一次性）
+- **机制**：
+  - `ccc-exec-launcher.sh` Step 1 = `opencode-watchdog.sh`
+  - watchdog exit 0/3 = 干净/已自清 = 继续
+  - watchdog exit 1/2 = 残留 / 严重 = 阻断 + L2 通知
+- **触犯后果**：Critical — 跳过 watchdog = 等同于盲跑，launcher 无效
+
+**红线 X1/X2/X3 验证清单**（每次重构必跑）：
+
+```bash
+# 1. 池上限（应 ≤ 3）
+python3 -c "
+import asyncio, subprocess
+async def r():
+    p = await asyncio.create_subprocess_exec('sleep', '5')
+    return p.pid
+async def m():
+    return await asyncio.gather(*(r() for _ in range(5)))
+print('pids:', asyncio.run(m()))
+"  # 同时跑 5 个 opencode exec 应只有 3 真在跑
+
+# 2. 必杀（启动 + 强杀 phase 后 pid 文件不存在）
+ls ~/.ccc/opencode-pids/  # 期望空
+
+# 3. 启动前 watchdog
+bash scripts/opencode-watchdog.sh; echo "exit=$?"  # 期望 0
+```
 
 ---
 
