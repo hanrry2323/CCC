@@ -70,8 +70,27 @@ async def run_opencode(
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
         # 模型映射：对外 = flash（红线：唯一对外模型名）→ 内部 = loop/flash
         # opencode 1.17 的 flash 必须用 loop/flash 前缀（localhost:4002 中转站）
-        short_prompt = prompt_text.strip()[:200] if prompt_text.strip() else "execute"
-        cmd = ["opencode", "run", "--model", "loop/flash", short_prompt]
+        prompt_text = prompt_text.strip()
+        if len(prompt_text) > 200:
+            # 长 prompt：写临时文件，用 --file 附件 + 短指令
+            # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".md", delete=False, encoding="utf-8"
+            )
+            tmp.write(prompt_text)
+            tmp.close()
+            tmp_path = tmp.name
+            # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
+            cmd = [
+                "opencode", "run",
+                "--model", "loop/flash",
+                "Read attached file and execute the instructions inside.",
+                "--file", tmp_path,
+            ]
+        else:
+            short_prompt = prompt_text if prompt_text else "execute"
+            cmd = ["opencode", "run", "--model", "loop/flash", short_prompt]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin
