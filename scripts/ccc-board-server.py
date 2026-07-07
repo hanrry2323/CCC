@@ -296,8 +296,8 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 # ── 启动 ──
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=7777)
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=6666)
+    ap.add_argument("--host", default="0.0.0.0")
     args = ap.parse_args()
 
     ui_dir = CCC_HOME / "scripts" / "ccc-board-ui"
