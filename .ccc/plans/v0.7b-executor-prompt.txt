@@ -1,0 +1,70 @@
+## Goal
+
+End state:
+  CLAUDE.md / README.md / .ccc/profile.md 三处都加统一的"关键资产清单" section（精简后反映），diff 完全一致。
+
+Evidence:
+  ```bash
+  cd /Users/apple/program/CCC
+  
+  # 1. 三处都有"关键资产清单" section
+  for f in CLAUDE.md README.md .ccc/profile.md; do
+    grep -c "^## 关键资产清单" "$f"
+  done
+  
+  # 2. 三处 section 内容 diff 一致
+  awk '/^## 关键资产清单/,/^## [^#]/' CLAUDE.md > /tmp/c.md
+  awk '/^## 关键资产清单/,/^## [^#]/' README.md > /tmp/r.md
+  awk '/^## 关键资产清单/,/^## [^#]/' .ccc/profile.md > /tmp/p.md
+  diff /tmp/c.md /tmp/r.md && diff /tmp/r.md /tmp/p.md && echo "OK 一致"
+  
+  # 3. pytest 还绿
+  pytest tests/scripts/ -q 2>&1 | tail -3
+  
+  # 4. 1 commit
+  git log --oneline | grep "v0.7b" | wc -l   # 1
+  ```
+
+Constraints:
+  - 禁止修改 SKILL.md / references/red-lines.md / CHANGELOG.md
+  - 禁止改 V0.7-slim 已删文件的引用
+  - 单 commit
+
+Budget:
+  最多 2 次重试。
+
+## Phase 1: Plan
+读 `/Users/apple/program/CCC/.ccc/plans/v0.7b.plan.md` 全文。
+
+## Phase 2: Implement
+
+1. CLAUDE.md：在 "## 三角色" 之前插入 "## 关键资产清单" section
+   - 内容按 plan 表格
+   - 用 `Edit` 工具，不要重写整个文件
+
+2. README.md：在 "## 核心" 之后、"## 30 秒上手" 之前插入 "## 关键资产清单" section
+   - 内容同上（必须完全一致）
+
+3. .ccc/profile.md：替换已有"## 关键资产清单" section 内容为上面表格
+   - 保留其他 section 不动
+
+4. 跑 pytest 验证不破回归
+
+5. 写 `.ccc/reports/v0.7b.report.md`（含 > VERDICT: 段占位引用）
+
+6. 更新 phases.json 1 行 → done，填 commit hash
+
+## Phase 3: Test & Document
+- 跑 Evidence 4 条命令
+
+## Phase 4: Commit
+- `bash scripts/ccc-exec-commit.sh . v0.7b`
+- commit message: `docs(slim): unify asset inventory across 3 docs (v0.7b)`
+
+## Phase 5: Self-Verify
+- 跑 Evidence 4 条命令，逐条报告 PASS/FAIL
+
+> **不要做的事**：
+> - 不要碰 SKILL.md / red-lines.md / CHANGELOG.md
+> - 不要重写整个文档（用 Edit 局部插入）
+> - 不要改其他 section 文字

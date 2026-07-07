@@ -1,0 +1,58 @@
+## Goal
+
+End state:
+  5 个验收命令全部 exit 0：pytest + ccc-precheck.sh + ccc-finish.sh + executor-watchdog.sh + ccc-status.sh。
+
+Evidence:
+  ```bash
+  cd /Users/apple/program/CCC
+  
+  pytest tests/scripts/ -q 2>&1 | tail -3   # passed in Xs
+  echo "pytest exit=$?"
+  
+  bash scripts/ccc-precheck.sh 2>&1 | tail -3   # PASS 7/5
+  echo "precheck exit=$?"
+  
+  bash scripts/ccc-finish.sh . v0.7c 2>&1 | tail -5   # PASS
+  echo "finish exit=$?"
+  
+  bash scripts/executor-watchdog.sh 2>&1 | tail -3   # 健康
+  echo "watchdog exit=$?"
+  
+  bash scripts/ccc-status.sh 2>&1 | tail -10   # 全 ok
+  echo "status exit=$?"
+  ```
+
+Constraints:
+  - 禁止修改 SKILL.md / references/red-lines.md
+  - 禁止改 V0.7-slim/a/b/d-prime 已修文件（除非修 wrapper）
+  - 单 commit（仅在修复时）
+
+Budget:
+  最多 2 次重试。
+
+## Phase 1: Plan
+读 `/Users/apple/program/CCC/.ccc/plans/v0.7c.plan.md` 全文。
+
+## Phase 2: Implement
+
+1. 跑 5 个验收命令，记录 exit code
+2. 任一失败 → 修复（最小改动，优先修 scripts/ccc wrapper 残留引用）
+3. 重跑全过 → 写 `.ccc/reports/v0.7c.report.md`（含 > VERDICT: 占位段）
+4. 更新 phases.json 1 行 → done
+5. 如有 commit：`chore(verify): v0.7c 5-command acceptance (v0.7c)`；无则跳
+
+## Phase 3: Test & Document
+- 跑 Evidence 5 条命令
+- 全部 exit 0 → PASS；否则 FAIL 报告哪个挂了
+
+## Phase 4: Commit
+- 仅在修复时走 `bash scripts/ccc-exec-commit.sh . v0.7c`
+
+## Phase 5: Self-Verify
+- 跑 Evidence 5 条命令，逐条报告 PASS/FAIL
+
+> **不要做的事**：
+> - 不要碰 SKILL.md / red-lines.md
+> - 不要重新设计验收脚本（只验收）
+> - 不要引入新依赖

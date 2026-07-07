@@ -24,10 +24,26 @@
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
 | 2026-07-07 | v0.7f | [plan](plans/v0.7f.plan.md) | [report](reports/v0.7f.report.md) | (umbrella release) | PASS |
-| 2026-07-07 | v0.7e-fix | [plan](plans/v0.7e-fix.plan.md) | [report](reports/v0.7e-fix.report.md) | — | PASS |
-| 2026-07-07 | v0.7e | [plan](plans/v0.7e.plan.md) | [report](reports/v0.7e.report.md) | [verdict](verdicts/v0.7-slim.verdict.md) | CONDITIONAL_PASS |
-| 2026-07-07 | v0.7d-prime | [plan](plans/v0.7d-prime.plan.md) | [report](reports/v0.7d-prime.report.md) | — | PASS |
-| 2026-07-07 | v0.7d | [plan](plans/v0.7d.plan.md) | [report](reports/v0.7d.report.md) | — | PASS |
+| 2026-07-07 | v0.7e-fix | [plan](plans/v0.7e-fix.plan.md) | [report](reports/v0.7e-fix.report.md) | [verdict](verdicts/v0.7e-fix.verdict.md) | PASS |
+| 2026-07-07 | v0.7e | [plan](plans/v0.7e.plan.md) | [report](reports/v0.7e.report.md) | (随 v0.7-slim.verdict) | CONDITIONAL_PASS |
+| 2026-07-07 | v0.7d-prime | [plan](plans/v0.7d-prime.plan.md) | [report](reports/v0.7d-prime.report.md) | [verdict](verdicts/v0.7d-prime.verdict.md) | PASS |
+| 2026-07-07 | v0.7d | [plan](plans/v0.7d.plan.md) | [report](reports/v0.7d.report.md) | [verdict](verdicts/v0.7d.verdict.md) | PASS |
+
+### v0.7 子任务全集(2026-07-07 closure,共 9 子任务)
+
+| # | 任务 ID | 报告 | 验收 | 状态 |
+|---|---------|------|------|------|
+| 1 | v0.7-slim | [report](reports/v0.7-slim.report.md) | [verdict](verdicts/v0.7-slim.verdict.md) | PASS |
+| 2 | v0.7a | [report](reports/v0.7a.report.md) | [verdict](verdicts/v0.7a.verdict.md) | PASS |
+| 3 | v0.7b | [report](reports/v0.7b.report.md) | [verdict](verdicts/v0.7b.verdict.md) | PASS |
+| 4 | v0.7c | [report](reports/v0.7c.report.md) | [verdict](verdicts/v0.7c.verdict.md) | PASS |
+| 5 | v0.7d | [report](reports/v0.7d.report.md) | [verdict](verdicts/v0.7d.verdict.md) | PASS |
+| 6 | v0.7d-prime | [report](reports/v0.7d-prime.report.md) | [verdict](verdicts/v0.7d-prime.verdict.md) | PASS |
+| 7 | v0.7e | [report](reports/v0.7e.report.md) | (随 v0.7-slim) | CONDITIONAL_PASS |
+| 8 | v0.7e-fix | [report](reports/v0.7e-fix.report.md) | [verdict](verdicts/v0.7e-fix.verdict.md) | PASS |
+| 9 | v0.7f | [report](reports/v0.7f.report.md) | (umbrella release) | PASS |
+
+> 表中显示的"最近 5 条"按完成时间取尾 5 个,完整 v0.7 子任务链见下方子集。
 
 > 表格为空表示项目无历史任务。新任务开始时,Executor 完成前应追加本表。
 

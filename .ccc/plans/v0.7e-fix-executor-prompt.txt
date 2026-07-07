@@ -1,0 +1,51 @@
+## Goal
+
+End state:
+  SKILL.md L218-222 "配套扩展（v0.5+ 路线）" 段已修改，删去已删功能描述，1 commit。
+
+Evidence:
+  ```bash
+  cd /Users/apple/program/CCC
+  
+  # 1. 关键残留字样不存在
+  grep -c "cron" SKILL.md   # 应该 0（除 "criterion" 等无关词）
+  grep -c "quality_flywheel" SKILL.md   # 0
+  grep -c "cluster bus" SKILL.md   # 0
+  
+  # 2. 新段存在
+  grep -c "按需" SKILL.md   # 1
+  
+  # 3. pytest 还绿
+  pytest tests/scripts/ -q 2>&1 | tail -3
+  
+  # 4. 1 commit
+  git log --oneline | grep "post-v0.7slim" | wc -l   # 1
+  ```
+
+Constraints:
+  - 禁止改 SKILL.md 其他段落（只改 L218-222）
+  - 禁止改任何其他文件
+  - 单 commit
+
+Budget:
+  1 次重试。
+
+## Phase 1: Plan
+读 `/Users/apple/program/CCC/.ccc/plans/v0.7e-fix.plan.md`。
+
+## Phase 2: Implement
+
+1. 用 Edit 工具修改 SKILL.md L218-222 段
+2. 跑 grep 验证
+3. 写 `.ccc/reports/v0.7e-fix.report.md`
+4. 更新 phases.json → done
+
+## Phase 3: Test & Document
+- 跑 Evidence 4 条命令
+
+## Phase 4: Commit
+- `bash scripts/ccc-exec-commit.sh . v0.7e-fix`
+- commit message: `docs(slim): prune SKILL.md stale route mentions (post-v0.7slim)`
+
+## Phase 5: Self-Verify
+- 跑 Evidence 4 条命令，逐条报告 PASS/FAIL

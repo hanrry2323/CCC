@@ -1,0 +1,110 @@
+## Goal
+
+End state:
+  CCC 从 80+ 文件瘦身到 15 个核心文件，4 phase 全部完成，每 phase 1 个 commit，pytest 全绿，三处文档（CLAUDE.md / README.md / profile.md）资产清单一致。
+
+Evidence:
+  ```bash
+  # 1. 4 phase 全部 done（phases.json 中所有 status == done）
+  python3 -c "import json; [print(f'phase {l[\"phase\"]}: {l[\"status\"]}') for l in [json.loads(x) for x in open('.ccc/phases/v0.7-slim.phases.json') if x.strip()]]"
+  
+  # 2. pytest 全绿
+  pytest tests/scripts/ -q
+  
+  # 3. 精简后文件总数在 60-80 之间
+  find . -name "*.py" -o -name "*.sh" -o -name "*.md" | grep -v .git | grep -v node_modules | wc -l
+  
+  # 4. cluster/dispatch/flywheel 关键字搜不到
+  find scripts tests -type f \( -name "*.sh" -o -name "*.py" \) | xargs grep -lE "(cluster-bus|ccc-dispatch|flywheel|znode-register|zcode-bridge|hello-ccc\.sh)" 2>/dev/null
+  # ↑ 这条应该返回空
+  
+  # 5. dispatches 目录删除
+  [ ! -d .ccc/dispatches ] && echo "dispatches gone"
+  
+  # 6. abnormal-reports 目录空
+  [ -d .ccc/abnormal-reports ] && [ -z "$(ls -A .ccc/abnormal-reports)" ] && echo "abnormal-reports empty"
+  
+  # 7. worktree 删除
+  [ ! -d .claude/worktrees/oral-calc-commit ] && echo "worktree gone"
+  
+  # 8. SKILL.md 未改
+  git diff SKILL.md | wc -l   # 应该 0
+  
+  # 9. 4 个 commit 存在
+  git log --oneline -10 | grep "v0.7-slim\|slim)" | wc -l   # 应该 4
+  ```
+
+Constraints:
+  - 禁止保留 cluster-bus / dispatch / flywheel 任何相关文件
+  - 禁止修改 SKILL.md（入口文件，红线）
+  - references/red-lines.md 只允许追加红线 13，禁止改原有 12 条
+  - 禁止超出 plan "只改文件"列表（plan 在 .ccc/plans/v0.7-slim.plan.md）
+  - 禁止一次性 commit 多个 phase
+  - 禁止跳过 watchdog 直接动手
+  - 单 phase 单 commit 规则（红线 4 + 8）
+  - commit message 必含 phase 编号
+
+Budget:
+  最多 4 次重试（每个 phase 1 次）。超出后停下来报告。
+
+## Phase 1: Plan
+读 `.ccc/plans/v0.7-slim.plan.md` 全文，按 plan 4 个 phase 顺序执行。
+
+## Phase 2: Implement
+
+按 plan 顺序执行 4 个 phase：
+
+**Phase 1 - 删 cluster 总线整套**：
+- 删除：`scripts/cluster-bus.py` + `scripts/cluster-bus.py.md` + `scripts/ccc-znode-register.py` + `scripts/ccc-znode-register.py.md` + `scripts/ccc-zcode-bridge.sh` + `scripts/ccc-zcode-orchestrate.sh` + `tools/cluster-doctor.sh` + `tools/cluster-doctor.sh.md` + `tests/cluster/` 整个目录 + `references/cluster-protocol.md`
+- 跑 `git status` 确认范围
+- commit: `chore(slim): remove cluster-bus route (cluster/znode/zcode/doctor) (phase 1/4)`
+
+**Phase 2 - 删多 IDE 适配器整套**：
+- 删除：`references/adapters/runtime-cursor.md` + `runtime-claude-p.md` + `runtime-zcode.md` + `runtime-claude-code.md` + `scheduler-launchd.md` + `scheduler-mavis-cron.md`
+- 保留：`runtime-opencode.md`（如不存在则创建一份精简版 ~30 行）
+- commit: `chore(slim): trim adapters to opencode-only (phase 2/4)`
+
+**Phase 3 - 删派单/飞轮/成本/precommit**：
+- 删除 4 脚本 + .md 文档化版本：`scripts/ccc-dispatch.py` + `scripts/ccc-dispatch.py.md` + `scripts/ccc-hook.sh` + `scripts/ccc-hook.sh.md` + `scripts/ccc-scheduler.sh` + `scripts/ccc-scheduler.sh.md` + `scripts/hello-ccc.sh` + `scripts/hello-ccc.sh.md`
+- 删除整个目录：`.ccc/dispatches/`
+- 删除 3 脚本 + .md 文档化：`scripts/flywheel-scan.py` + `scripts/flywheel-scan.py.md` + `scripts/ccc-cost-report.sh` + `scripts/ccc-cost-report.sh.md` + `scripts/ccc-cost.sh`
+- 删除 2 precommit：`scripts/precommit-bash-quality.sh` + `scripts/precommit-verdict-length.sh`
+- 删除对应测试：`tests/scripts/test_ccc_dispatch_smoke.py` + `test_ccc_zcode_bridge_smoke.py` + `test_ccc_zcode_orchestrate_smoke.py` + `test_ccc_zcode_register_smoke.py` + `test_flywheel_scan_smoke.py` + `test_cluster_bus_smoke.py` + `test_cluster_bus_benchmark.py`
+- 跑 `pytest tests/scripts/ -q` 确认通过
+- 跑 `find scripts tests -type f \( -name "*.sh" -o -name "*.py" \) | xargs grep -lE "(cluster-bus|ccc-dispatch|flywheel)" 2>/dev/null` 返回空
+- commit: `chore(slim): remove dispatch/flywheel/cost/precommit (phase 3/4)`
+
+**Phase 4 - 清理 worktree + 文档同步**：
+- 验证并删除 `.claude/worktrees/oral-calc-commit/`
+- 更新 `CLAUDE.md`：精简"配套扩展"路线部分
+- 更新 `README.md`：精简资产清单和路线图
+- 更新 `.ccc/profile.md`：精简"关键资产清单"表格
+- 更新 `.ccc/state.md`：追加"v0.7 精简决策"
+- 更新 `docs/lessons.md`：追加 lesson 29
+- 追加红线 13 到 `references/red-lines.md`（"禁止未使用路线代码"）
+- 更新 `scripts/ccc` wrapper：删掉对已删脚本的 case 分支
+- 跑 `pytest tests/scripts/ -q` + `bash scripts/ccc-precheck.sh` + `bash scripts/ccc-status.sh` 全绿
+- 跑 Evidence 块中所有 9 条验收命令
+- 写 `.ccc/reports/v0.7-slim.report.md`（含 > VERDICT: 段占位引用）
+- 更新 phases.json：4 行全部 `pending → in_progress → done`，填 commit hash
+- commit: `chore(slim): cleanup worktree and sync docs (phase 4/4)`
+
+## Phase 3: Test & Document
+- 跑所有验收命令（见 Evidence 块）
+- 更新 `CHANGELOG.md`：追加 v0.7-slim 条目
+
+## Phase 4: Commit
+- 4 个 commit 已在 Phase 2 各步骤完成
+- 最后一个 commit 由 `bash scripts/ccc-exec-commit.sh . v0.7-slim` 处理
+
+## Phase 5: Self-Verify
+- 跑 Evidence 9 条命令，逐条报告 PASS/FAIL
+- 报告 verdict: PASS / CONDITIONAL_PASS / FAIL
+- 写完 `.ccc/reports/v0.7-slim.report.md` 后停
+
+> **不要做的事**：
+> - 不要打开 editor / IDE
+> - 不要问问题，按 plan 干
+> - 不要触碰 `/etc/*` / `~/.env` / `~/.aws/*`
+> - 不要回退已删文件
+> - 不要新建脚本/文档（除 plan 明确允许的 opencode adapter）
