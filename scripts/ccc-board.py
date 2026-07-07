@@ -478,6 +478,7 @@ def dev_role() -> dict:
                         # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
                         if isinstance(parsed, list):
                             parsed = parsed[0] if parsed else {}
+                        retry = parsed.get("retry", 0)
                         retry_at = parsed.get("retry_at")
                         break
         except json.JSONDecodeError:
