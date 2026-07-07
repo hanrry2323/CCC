@@ -230,6 +230,23 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                         "roles": ROLES, "labels_cn": dict(product="产品经理", dev="开发",
                             reviewer="审查", tester="测试", ops="运维", kb="归档")})
 
+        elif path.startswith("/api/tasks/") and len(path.split("/")) == 4:
+            task_id = path.split("/")[-1]
+            # 在所有列中找这个 task
+            found = None
+            for col in COLUMNS:
+                for t in list_tasks(col, ws):
+                    if t.get("id") == task_id:
+                        found = t
+                        found["_column"] = col
+                        break
+                if found:
+                    break
+            if found:
+                self._json(found)
+            else:
+                self._json({"error": "not found"}, 404)
+
         elif path == "/api/timeline":
             self._json({"events": get_timeline(ws, int(qs.get("limit", [20])[0]))})
 
