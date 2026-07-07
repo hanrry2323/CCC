@@ -20,7 +20,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -530,7 +530,7 @@ def dev_role() -> dict:
 
         # 计算退避时间
         backoff = _backoff_seconds(retry - 1)  # retry 已自增，用增量前的值计算
-        retry_at_iso = datetime.now(timezone.utc).isoformat() if retry >= 1 else None
+        retry_at_iso = (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat() if retry >= 1 else None
         # 更新 retry 计数 + retry_at（JSONL，更新第一行）
         try:
             if phases_file.exists():
@@ -552,7 +552,7 @@ def dev_role() -> dict:
             pass
         print(f"[dev] {task_id} 第 {retry}/{MAX_RETRY} 次重试，退避 {backoff}s")
 
-    # Step 2: in_progress 无事，取 planned
+    # Step 2: in_progress 无事，取 planned（迭代，跳过错/缺 plan 的任务）
     if not task:
         planned = list_tasks("planned")
         if not planned:
@@ -562,21 +562,31 @@ def dev_role() -> dict:
                 "counts": update_index(),
                 "info": "无任务",
             }
-        task = planned[-1]
-        task_id = task["id"]
-        from_col = "planned"
+        # 迭代 planned 任务，跳过缺 plan/phases 的（移入异常），处理第一个合法的
+        for candidate in planned:
+            cid = candidate["id"]
+            cplan = ROOT / ".ccc" / "plans" / f"{cid}.plan.md"
+            cphases = ROOT / ".ccc" / "phases" / f"{cid}.phases.json"
+            if cplan.exists() and cphases.exists():
+                task = candidate
+                task_id = cid
+                from_col = "planned"
+                break
+            else:
+                # 缺失 plan/phases → 移入异常列，不阻塞其他任务
+                _quarantine(cid, f"dev_role: 缺 plan 或 phases 文件, 无法执行")
+                print(f"[dev] {cid} 缺 plan/phases, 已移入 abnormal")
+        if not task:
+            return {
+                "role": "dev",
+                "moved": [],
+                "counts": update_index(),
+                "info": "planned 任务均缺 plan/phases",
+            }
         move_task(task_id, "planned", "in_progress")
 
     plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not plan.exists() or not phases_file.exists():
-        print(f"[dev] {task_id} 缺 plan/phases, 跳过")
-        return {
-            "role": "dev",
-            "moved": [],
-            "counts": update_index(),
-            "info": f"{task_id} 缺 plan/phases",
-        }
 
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(phases_file, default=600)
