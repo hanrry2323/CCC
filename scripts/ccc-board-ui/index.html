@@ -167,6 +167,18 @@ async function mv(id,f,t){
   await fetch('/api/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,from:f,to:t,workspace:ws})});
   load();loadTL();loadLogs();
 }
+async function loadTL(){
+  const r=await get('/api/timeline?limit=20');
+  if(!r)return;
+  const b=document.getElementById('tl');
+  b.innerHTML='<h3>活动</h3>'+r.events.slice(0,20).map(e=>{
+    if(e.type==='role_run'){
+      const ok=e.exit_code==='0';
+      return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b '+(ok?'ok':'fa')+'">'+(e.exit_code||'?')+'</span><span class="m">'+e.role.toUpperCase()+'</span></div>';
+    }
+    return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b go">→</span><span class="m">'+(e.task_id||'')+'</span></div>';
+  }).join('');
+}
 async function loadLogs(){
   const r=await get('/api/logs');
   if(!r)return;
