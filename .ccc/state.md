@@ -1,7 +1,7 @@
 # .ccc/state.md — CCC 接力索引(红线 10 强制)
 
 > **本文件是 CCC 框架跨会话接力的唯一可信输入**。
-> 任何 Planner / Executor / Verifier session **必须第一个读本文件**(红线 10)。
+> 任何 CCC 角色 session **必须第一个读本文件**(红线 10)。
 > 禁止依赖 session 内隐式记忆;所有历史结论必须显式 grep `.ccc/` 内文件。
 
 ---

@@ -178,7 +178,7 @@ launchd (每天 23:00 启动 com.ccc.kb)
 | 3 | 不超出 plan 文件范围 | 白名单 |
 | 4 | 单 phase 单 commit | 兜底脚本做 |
 | 5 | phases.json 必写全 | JSONL, 不嵌套 |
-| 6 | Planner/Verifier 不互串 | 边界硬性 |
+| 6 | 角色不互串 | 边界硬性 |
 | 7 | 启动顺序固定 | 读 profile 第一 |
 | 8 | 每步必 commit | 不攒 |
 | 9 | Executor 卡死立即止损 | kill + Planner 接管 |

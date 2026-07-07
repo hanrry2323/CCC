@@ -1,6 +1,6 @@
 # Plan: [<task> — 简短描述]
 
-> 撰写：ccc-planner | 执行：Claude（[执行方式]）
+> 撰写：ccc-product | 执行：ccc-dev（[执行方式]）
 
 ---
 

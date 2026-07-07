@@ -1,6 +1,6 @@
 # CCC Dev Workflow
 
-> **我（Claude）→ 你（老板）**：三角色自动跑流程，你只在 milestone 拍板。
+> **我（Claude）→ 你（老板）**：6 角色看板自动流转，你只在 milestone 拍板。
 
 ---
 

@@ -1,6 +1,12 @@
-# Claude 执行协议
+# Claude 执行协议（已废弃 — v0.18 改走 6 角色看板）
 
-> 来源：ccg-workflow spec-impl.md + Claude Code official best-practices。
+> **本文档描述 v0.5-v0.7 的旧 3 角色（Plan/Exec/Verify）执行协议。**
+> **v0.18 起 CCC 统一为 6 角色看板系统，不再使用旧三角色流程。**
+>
+> 保留本文供历史参考。新开发参照：
+> - `SKILL.md` — 6 角色总纲
+> - `skills/ccc-<role>/SKILL.md` — 各角色定义
+> - `scripts/ccc-board.py` — 看板机械逻辑
 
 ---
 

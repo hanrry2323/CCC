@@ -1,6 +1,6 @@
 # Verdict: [<task>]
 
-> 验收人：ccc-verifier
+> 验收人：ccc-reviewer / ccc-tester
 > Plan：[`.ccc/plans/<task>.plan.md`]
 > Report：[`.ccc/reports/<task>.report.md`]
 > Diff 基准：`git diff HEAD~N`

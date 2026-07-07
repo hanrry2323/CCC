@@ -1,8 +1,8 @@
 # CCC Skills 索引
 
-6 角色定时开发系统 + 2 遗留角色（老 3 角色系统）。
+6 角色定时开发系统，v0.18 唯一范式。
 
-## 6 角色（现行）
+## 6 角色
 
 | 角色 | 技能目录 | 看板列 | 频率 | 职责 |
 |------|---------|--------|------|------|
@@ -12,13 +12,6 @@
 | tester | `skills/ccc-tester/SKILL.md` | testing → verified | 4h | pytest + plan 验收项逐条验证 |
 | ops | `skills/ccc-ops/SKILL.md` | 不动 board | 30min | 健康检查 + 告警 |
 | kb | `skills/ccc-kb/SKILL.md` | verified → released | 每天 23:00 | git tag + push + changelog |
-
-## 遗留角色（旧 3 角色系统，兼容）
-
-| 技能目录 | 对应旧角色 |
-|---------|-----------|
-| `skills/ccc-planner/SKILL.md` | Planner |
-| `skills/ccc-verifier/SKILL.md` | Verifier |
 
 ## 使用方式
 

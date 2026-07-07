@@ -1,42 +1,34 @@
 # CCC — 框架说明书
 
-> 本文件解释 CCC 在 v0.5 重构后的形态。面向维护者，agent 不读本文件。
+> 本文件解释 CCC v0.18 的架构。面向维护者，agent 不读本文件。
 
 ---
 
 ## 一句话定义
 
-**CCC = 一个 SKILL 资产**（`SKILL.md`），加载到任意 IDE → 把 agent 变成三角色 pipeline。
+**CCC = 6 角色看板自动化系统**（`SKILL.md` + `skills/ccc-<role>/SKILL.md` × 6），
+加载到任意 IDE → 启动 6 个角色定时轮询看板。
 
 不绑死 IDE，不绑死模型，不绑死工作目录。
-工程纪律沉淀在 `references/red-lines.md`，教训沉淀在 `docs/lessons.md`。
 
 ---
 
 ## 概念模型
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    IDE Tool (Trae / Cursor / Zed)           │
-│                                                             │
-│  user: "按 ccc full 跑 X 任务"                              │
-│    ↓                                                        │
-│  [Skill 加载] ← ~/program/CCC/SKILL.md                      │
-│    ↓                                                        │
-│  [Agent 一次性注入 prompt]                                   │
-│    ↓                                                        │
-│  [Planner] ──对话多轮──> plan.md + phases.json               │
-│    ↓                                                        │
-│  [Executor] ←── user 显式启动（红线 12）                    │
-│    ↓                                                        │
-│  [报告] report.md（含 VERDICT 段引用）                       │
-│    ↓                                                        │
-│  [Verifier] ←── 独立 session                                  │
-│    ↓                                                        │
-│  [verdict.md]（≥3 probes + 真产物证据 / 红线 11）            │
-│    ↓                                                        │
-│  exit（任务结束，注入消息被消化）                            │
-└─────────────────────────────────────────────────────────────┘
+launchd (macOS 定时器)
+  │
+  ├─ product (4h):  backlog → plan.md + phases.json → planned          ── skill: ccc-product
+  ├─ dev (30min):    planned → opencode write code → testing             ── skill: ccc-dev
+  ├─ reviewer (2h):  testing → py_compile + diff + static check → verified  ── skill: ccc-reviewer
+  ├─ tester (4h):    testing → pytest + plan 逐条验收 → verified          ── skill: ccc-tester
+  ├─ ops (30min):    健康检查 + 告警 (不动 board)                        ── skill: ccc-ops
+  └─ kb (23:00):     git tag + push + changelog → released               ── skill: ccc-kb
+
+每个角色:
+  1. 加载 skills/ccc-<role>/SKILL.md (角色定义 + 方法论 + 红线)
+  2. 调 scripts/ccc-board.py <role> (看板操作)
+  3. 写日志到 ~/.ccc/logs/role-<role>-<ts>.log
 ```
 
 ---
@@ -45,185 +37,184 @@
 
 ```
 ~/program/CCC/                                  # 本目录（唯一交付物）
-├── SKILL.md                                    # ★ 唯一注入 prompt
-├── README.md                                   # 项目介绍 / 30 秒上手
+├── SKILL.md                                    # ★ 唯一注入 prompt（6 角色系统总纲）
+├── skills/                                     # ★ 6 角色 skill 定义
+│   ├── README.md                               # skill 索引
+│   ├── ccc-product/SKILL.md                    # 产品经理 skill
+│   ├── ccc-dev/SKILL.md                        # 开发工程师 skill
+│   ├── ccc-reviewer/SKILL.md                   # 代码审查员 skill
+│   ├── ccc-tester/SKILL.md                     # 测试工程师 skill
+│   ├── ccc-ops/SKILL.md                        # 运维工程师 skill
+│   └── ccc-kb/SKILL.md                         # 知识管理员 skill
+├── README.md
 ├── CLAUDE.md                                   # 框架总纲（维护者用）
-├── AGENTS.md                                   # 子 agent 接入模板
 ├── CHANGELOG.md                                # 版本历史
-├── VERSION                                     # 当前版本号
+├── VERSION
 ├── LICENSE
 │
-├── references/                                 # 工程纪律沉淀
-│   ├── red-lines.md                            # 11 + 2 红线条目
-│   └── adapters/                               # LLM CLI 适配器
-│       ├── runtime-claude-p.md                 # claude -p 调用规范
-│       ├── runtime-opencode.md
-│       ├── runtime-cursor.md
-│       ├── runtime-zcode.md
-│       └── scheduler-*.md                      # 调度器适配
+├── references/
+│   ├── red-lines.md                            # 12+X6 红线条目
+│   └── adapters/
+│       └── runtime-opencode.md
 │
-├── docs/                                       # 文档
-│   ├── lessons.md                              # 框架级教训沉淀
+├── docs/
+│   ├── lessons.md
 │   ├── architecture.md                         # 本文件
-│   ├── roadmap.md                              # 发展路线图
-│   ├── plan-spec.md                            # plan.md 字段规范
-│   ├── verification-spec.md                    # verifier ≥3 probes 规范
-│   ├── execution-protocol.md                   # 执行协议
-│   ├── agent-commands.md
-│   └── adr/                                    # 架构决策记录
+│   ├── roadmap.md
+│   ├── STRATEGY-MAP.md
+│   ├── plan-spec.md
+│   ├── STARTUP-BRIEF.md
+│   └── adr/
 │
-├── templates/                                  # 4 文件契约模板
+├── templates/
 │   ├── plan.plan.md
-│   ├── phases.phases.json                      # JSONL（不嵌套）
-│   ├── report.report.md                        # 含 VERDICT 引用段
-│   ├── verdict.verdict.md                      # ≥3 probes 模板
+│   ├── phases.phases.json
+│   ├── report.report.md
+│   ├── verdict.verdict.md
 │   ├── executor-prompt.template.md
-│   ├── AGENTS.md                               # 子 agent prompt 模板
-│   └── profile.profile.md
+│   ├── AGENTS.md
+│   ├── profile.profile.md
+│   └── pending-agents-suggestions.md
 │
-├── scripts/                                    # 机械步骤
-│   ├── ccc-exec-commit.sh                      # 自动 commit（兜底）
-│   ├── executor-watchdog.sh                    # 卡死检测
+├── scripts/
+│   ├── ccc-board.py                            # ★ 6 角色看板核心
+│   ├── roles/                                  # ★ 6 角色 launchd 入口
+│   │   ├── product.sh
+│   │   ├── dev.sh
+│   │   ├── reviewer.sh
+│   │   ├── tester.sh
+│   │   ├── ops.sh
+│   │   └── kb.sh
+│   ├── install-ccc-roles.sh
+│   ├── ccc-exec-launcher.sh
+│   ├── ccc-exec-commit.sh
+│   ├── ccc-notify.sh
 │   ├── ccc-hook.sh
-│   ├── ccc-init.py                             # 项目 .ccc/ 初始化
-│   ├── ccc-search.py
-│   └── install-ccc-as-skill.sh                 # 装到 ~/.claude/skills/
+│   ├── opencode-exec.py
+│   ├── opencode-pool.py
+│   ├── opencode-watchdog.sh
+│   └── ...
 │
-└── examples/                                   # 实战示例
+└── tests/scripts/
 ```
-
-**被删除的**（v0.5 解耦）：
-
-- ❌ `projects/qxo/`（迁移到 `docs/lessons.md`）
-- ❌ `~/.claude/skills/ccc-protocol -> ../CCC` 之外的硬编码目录
 
 ---
 
-## 4 文件契约（绝对路径）
+## 看板文件 & 4 文件契约
 
 ```
-<workspace>/.ccc/                              # 由 agent 自动创建
-├── profile.md                                  # 项目档案（首次接入）
-├── plans/<task>.plan.md                        # Planner 产出
-├── phases/<task>.phases.json                   # Planner 产出
-├── reports/<task>.report.md                    # Executor 产出（含 VERDICT 段）
-├── verdicts/<task>.verdict.md                  # Verifier 产出（强证据红线 11）
-└── abnormal-reports/                           # 异常记录
+<workspace>/.ccc/
+├── profile.md                   # 项目档案（首次接入生成）
+├── plans/<task>.plan.md         # product 产出
+├── phases/<task>.phases.json    # product 产出
+├── reports/<task>.report.md     # dev 产出（含 AGENTS.md 建议段）
+├── verdicts/<task>.verdict.md   # reviewer/tester 产出
+└── board/
+    ├── backlog/
+    ├── planned/
+    ├── in_progress/
+    ├── testing/
+    ├── verified/
+    ├── released/
+    └── index.json
 ```
-
-`<workspace>` 由 agent 当前对话所在目录决定。**不强制 CCC 目录**，所以 CCC 自然支持任意项目。
 
 ---
 
-## 三角色（Protocol）
+## 各角色协议
 
-### Planner Protocol
+### Product Protocol
 
-**Inputs**:
-- 用户意图（一句话任务）
-- `<workspace>/.ccc/profile.md`（项目背景）
-- 知识库（可选）：`~/program/CCC/docs/lessons.md` 关键 lessons
+- **输入**: backlog task（用户需求）
+- **输出**: plan.md + phases.json + 挪 planned
+- **门禁**: SPEC（每个 subtask 必须 Specific / Programmatically evaluable / Explicit scope / Constrained）
+- **约束**: 不写代码，不写 verdict
 
-**Outputs**:
-- `<workspace>/.ccc/plans/<task>.plan.md`
-- `<workspace>/.ccc/phases/<task>.phases.json`
+### Dev Protocol
 
-**约束**:
-- 不写代码
-- 不 commit
-- 不写 verdict
-- 行号 / 文件路径必须真实（用 grep 验证）
+- **输入**: plan.md + phases.json（from planned）
+- **输出**: 代码改动 + report.md + 挪 testing
+- **方法**: 逐 phase 推进，每 phase 单独 commit
+- **约束**: 不超过 plan 范围，不写 plan/verdict
 
-### Executor Protocol
+### Reviewer Protocol
 
-**Inputs**:
-- `plans/<task>.plan.md`
-- `phases/<task>.phases.json`
+- **输入**: testing task（from 看板）
+- **输出**: py_compile + git diff 核对 + 通过→verified
+- **约束**: **只读不写**（有写权限就会去修，破坏并行隔离）
 
-**Outputs**:
-- `<workspace>/.ccc/reports/<task>.report.md`（含 `> VERDICT:` 段）
-- working tree 的 plan 范围文件改动
+### Tester Protocol
 
-**约束**:
-- 不写 Plan（只执行）
-- 不写 verdict
-- 不 commit（由 `ccc-exec-commit.sh` 兜底）
-- 退出前自检：working tree 仅含 plan 文件
+- **输入**: testing task
+- **输出**: pytest 结果 + plan 验收逐条核对 + 通过→verified
+- **约束**: 不做 plan 里的验收项跳过
 
-### Verifier Protocol
+### Ops Protocol
 
-**Inputs**:
-- `plans/<task>.plan.md`
-- `<workspace>/.ccc/reports/<task>.report.md`
+- **输入**: 无（只看不写 board）
+- **输出**: 健康报告 + 告警
+- **约束**: 只告警不处理
 
-**Outputs**:
-- `<workspace>/.ccc/verdicts/<task>.verdict.md`（必须真写，红线 11）
+### KB Protocol
 
-**约束**:
-- ≥3 adversarial probes
-- 每条 Probe：Method / Evidence / Result
-- VERDICT 三选一：PASS / CONDITIONAL_PASS / FAIL
-- **独立 session 调起**（避免 Executor 状态污染）
+- **输入**: verified task
+- **输出**: git tag + push + changelog 追加 + 挪 released
+- **约束**: 不删 tag，不直接写 AGENTS.md
 
 ---
 
-## 红线（11 + 2）
+## 角色启动链
 
-完整见 `references/red-lines.md`。**核心**：
+```
+launchd (macOS)
+  │
+  └── /bin/bash scripts/roles/<role>.sh
+        │
+        ├── export CCC_ROLE=<role>
+        ├── export CCC_ROLE_SKILL=skills/ccc-<role>/SKILL.md
+        ├── echo "[skill] loaded: ..." >> log
+        │
+        └── python3 scripts/ccc-board.py <role>
+              │
+              ├── read/set env (CCC_ROLE)
+              ├── read .ccc/board/<col>/
+              ├── execute role logic
+              └── write result + move columns
+```
+
+---
+
+## 工程质量闭环
+
+### 双门禁验收
+
+reviewer + tester 同时扫 testing 列：
+
+1. **reviewer（静态门禁）**: py_compile + git diff 范围核对 → 通过则 verified
+2. **tester（动态门禁）**: pytest + plan 验收逐条执行 → 通过则 verified
+
+两者任一通过即算 verified（多冗余通道）。
+
+### AGENTS.md 积累
+
+1. dev 在 report 中写 `> **AGENTS.md 建议:**`
+2. kb 归档时收集到 `templates/pending-agents-suggestions.md`
+3. 人类审批后写入 `.ccc/AGENTS.md`
+4. **禁止 agent 直接写入**
+
+---
+
+## 红线（12 + X6）
+
+完整见 `references/red-lines.md`。核心：
 
 | # | 一句话 |
 |---|--------|
-| 1 | 不改 /etc 等系统文件 |
-| 2 | plan 验收必须可执行 |
-| 3 | working tree 仅 plan 范围 |
-| 4 | 单 phase 单 commit |
-| 5 | phases.json 用 JSONL 不用嵌套 |
-| 6 | 三角色不互串 |
-| 7 | 启动时第一个读 profile.md |
-| 8 | 不越界 commit / push |
-| 9 | 卡死立即止损 |
-| 10 | 禁止跨会话隐式记忆（state.md 接力） |
-| **11** | Verifier 必须写 verdict 文件 |
-| **12** | 禁止 agent 自主启用 CCC（用户显式） |
-
-**配套教训**:
-- **Lesson 27**：`claude -p` 是 print 模式，prompt 走 stdin
-- **Lesson 28**：口头 PASS 不算 PASS，verdict 必须有产物证据
-
----
-
-## 与 Loop Engineering 的关系
-
-CCC 是 **Loop Engineering 的最小闭环实现**：
-
-```
-任务投进去
-  ↓
-CCC skill 自动拆解（Planner）
-  ↓
-CCC skill 自动调度（Executor）
-  ↓
-CCC skill 自动验收（Verifier + 红线 11）
-  ↓
-质量飞轮沉淀（quality_flywheel + Lesson）
-  ↓
-IDE 定时任务唤起下一轮（v0.6 路线）
-```
-
-详见 `docs/roadmap.md`。
-
----
-
-## 设计哲学（为什么不绑死工具）
-
-CCC 选 SKILL 形态而非 framework 代码库的 4 个理由：
-
-| 决策 | 理由 |
-|------|------|
-| **不是 framework 代码库** | 维护成本最低，跨 IDE 最容易 |
-| **不绑 IDE** | Trae / Cursor / Zed / VS Code 都能用同一份 SKILL |
-| **不绑模型** | 通过 `ANTHROPIC_BASE_URL` 路由中转站，按任务选 model |
-| **不绑工作目录** | agent 当前目录即项目根，自然迁移 |
+| 1-5 | 改文件限制、验收、commit 规范 |
+| **6** | 角色不互串（核心架构约束） |
+| 7-10 | 启动顺序、commit 纪律、卡死止损、无隐式记忆 |
+| **11** | Verdict 必须写文件（≥3 probes） |
+| **12** | 禁止 agent 自主启用 CCC |
 
 ---
 
@@ -232,17 +223,20 @@ CCC 选 SKILL 形态而非 framework 代码库的 4 个理由：
 新改 CCC 时检查清单：
 
 - [ ] 改了 `references/red-lines.md` → 同步加 Lesson
-- [ ] 改了 SKILL.md → 检查 SKILL 还能加载（Trae / Cursor 各试一次）
-- [ ] 加新模板到 templates/ → README.md 链接同步
-- [ ] 改了 4 文件契约路径 → docs/architecture.md 同步
-- [ ] 跑过 1 个真实任务 → CHANGELOG.md 加 entry
+- [ ] 改了 `skills/` 下任何 SKILL.md → 索引 `skills/README.md` 同步
+- [ ] 加新模板到 `templates/` → 索引同步
+- [ ] 改了 4 文件契约路径 → 本文件 + SKILL.md 同步
+- [ ] 改了角色脚本 → 跑 `bash -n` 验证语法
+- [ ] 跑过 1 次 `ccc-board.py <role>` 验证机械逻辑
+- [ ] `CHANGELOG.md` 加 entry
 
 ---
 
 ## 相关文件
 
-- `SKILL.md` — 注入 prompt（唯一交付）
-- `CLAUDE.md` — 框架总纲
+- `SKILL.md` — 注入 prompt（总纲）
+- `skills/README.md` — 6 角色 skill 索引
+- `CLAUDE.md` — 框架总纲（维护者）
 - `references/red-lines.md` — 红线细则
 - `docs/roadmap.md` — 发展路线图
 - `docs/lessons.md` — 教训沉淀
