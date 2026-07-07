@@ -1,2 +1,2 @@
-{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending"}, "commit": null, "notes": ""}
-{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending", "2.2": "pending", "2.3": "pending"}, "commit": null, "notes": ""}
+{"phase": 1, "phase_id": "p1", "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending"}, "scope": ["scripts/foo.py"], "commit_message": "wip(scope): description (phase 1/N)", "commit": null, "notes": ""}
+{"phase": 2, "phase_id": "p2", "status": "pending", "subtasks": {"2.1": "pending", "2.2": "pending", "2.3": "pending"}, "scope": ["scripts/bar.py"], "commit_message": "wip(scope): description (phase 2/N)", "commit": null, "notes": ""}

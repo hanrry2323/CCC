@@ -8,7 +8,7 @@
 - **项目根**: `/Users/apple/program/CCC`
 - **仓库**: CCC 本体（SKILL 资产型框架）
 - **分支**: main
-- **当前版本**: 见 `VERSION` 文件（1.1.0）
+- **当前版本**: 见 `VERSION` 文件（v0.18.0）
 - **语言/技术栈**: Bash (90% scripts) + Python 3.11+ (cluster bus / dispatcher / search)
 
 ## 项目定位
@@ -22,19 +22,22 @@ CCC 是一个 **SKILL 资产**，不是传统 framework 代码库。
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `references/red-lines.md` | 13 红线强约束（v0.7 新增红线 13） |
-| `scripts/ccc-precheck.sh` | 5 项前置门控（红线 7+10） |
-| `scripts/ccc-finish.sh` | 5 项后置门控 |
-| `scripts/executor-watchdog.sh` | Executor 健康检查（红线 9） |
+| `references/red-lines.md` | 12+X6 红线强约束 |
+| `scripts/ccc-board.py` | 7 角色看板核心 |
 | `scripts/ccc-exec-commit.sh` | 单 phase 单 commit（红线 4+8） |
-| `scripts/ccc` | CLI wrapper |
-| `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` + `ccc-task-done.sh` | 基础运维 |
+| `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口（5 步流程） |
+| `scripts/ccc-notify.sh` | macOS 桌面通知 |
+| `scripts/ccc-hook.sh` | 通用钩子执行器 |
+| `scripts/opencode-exec.py` + `opencode-pool.py` + `opencode-watchdog.sh` + `opencode-runner.sh` | OpenCode 执行器 + 进程池 + 残留扫描 + 运行器 |
+| `scripts/install-ccc-roles.sh` | 一键装 7 角色 plist |
+| `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` | 基础运维 |
+| `scripts/ccc-board-server.py` | 看板 Web 服务器 |
+| `scripts/flywheel-scan.sh` | 飞轮扫描 |
 | `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
-| `tests/scripts/` | 8 个 pytest 核心测试 |
-| `references/adapters/runtime-opencode.md` | opencode 适配器（其他 IDE 适配器已精简） |
+| `tests/scripts/` | pytest 核心测试 |
 | `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引（红线 7+10） |
-| `docs/lessons.md` | 历史教训沉淀（含 lesson 30：验收数字规则） |
-| `docs/roadmap.md` | 路线图（v0.5 → v1.0） |
+| `docs/lessons.md` | 历史教训沉淀 |
+| `docs/roadmap.md` | 路线图 |
 | `CHANGELOG.md` | 版本变更 |
 
 ## 4 文件契约路径

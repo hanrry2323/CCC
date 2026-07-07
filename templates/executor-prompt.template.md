@@ -30,47 +30,14 @@ echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 cla
 
 ---
 
-## ⚠️ 启动前必跑：`ccc-precheck.sh` 5 项前置门控（v1.2.0 新增 · T1.3）
+## ⚠️ 前置门控（由 opencode pipeline 自动处理）
 
-**任何 Executor 启动前必须先跑 `ccc-precheck.sh`**（红线 7 + 9 + 10 机器化强制）:
+**ccc-precheck.sh / ccc-finish.sh / executor-watchdog.sh 已移除**。
+这些门控目前由 opencode pipeline 自动处理：
 
-```bash
-# Caller 跑的（Planner 或启动脚本）
-bash ~/program/CCC/scripts/ccc-precheck.sh <workspace> <task> || {
-  echo "[caller] precheck FAIL, 禁止启动 Executor"
-  exit 1
-}
-```
-
-5 项门控:
-- **Gate 1**: `.ccc/state.md` 存在（红线 10 · 跨会话接力）
-- **Gate 2**: `.ccc/profile.md` 存在（红线 7 · 启动顺序）
-- **Gate 3**: `plan.md` 含必填字段（目标/Phase/只改文件/Commit 计划）
-- **Gate 4**: `phases.json` 合法 JSONL（红线 5）
-- **Gate 5**: `executor-watchdog.sh` 健康（红线 9）
-
-**任一 FAIL → 禁止启动 Executor**。Executor 自身也应在启动顺序首步调用此脚本确认。
-
----
-
-## ⚠️ 退出前必跑：`ccc-finish.sh` 5 项后置门控（v1.2.0 新增 · T1.4）
-
-**Executor 退出前**必须跑 `ccc-finish.sh` 验证 5 项后置门控:
-
-```bash
-bash ~/program/CCC/scripts/ccc-finish.sh <workspace> <task>
-# 或含自动回填 VERDICT 引用
-bash ~/program/CCC/scripts/ccc-finish.sh <workspace> <task> --fill-verdict-ref
-```
-
-5 项门控:
-- **Gate 1**: `report.md` 已写且非空（Lesson 4）
-- **Gate 2**: `verdict.md` 存在 + ≥3 probes + VERDICT 三选一（红线 11）
-- **Gate 3**: `report.md` 含 `> VERDICT:` 引用段（红线 11 · 闭环）
-- **Gate 4**: 改动文件 ⊆ plan 范围白名单（红线 3）
-- **Gate 5**: phases.json done 行数 ≥ plan phase 数（红线 4+8）
-
-**任一 FAIL → 禁止宣告完成, 必须修复后重跑**。
+- **前置门控**：`ccc-board.py dev_role()` 内置了 .done/PID/retry 检查
+- **后置门控**：opencode-runner.sh 写 .exitcode/.done，ccc-exec-commit.sh 处理 commit
+- **范围检查**：`reviewer_role()`（testing → verified）按 plan scope 做 py_compile 范围验证
 
 ---
 
@@ -94,14 +61,6 @@ ccc commit <workspace> <task> --phase N # 仅指定 phase
 ## 标准模板
 
 ```bash
-# Pre-launch watchdog — 检测 hang claude 进程 / stuck mavis session / 低内存
-# Lesson 7 + Lesson 9 修复：避免新任务被旧的卡死状态污染
-# 退出码：0=健康可启动 / 1=warning 让 caller 决定 / 2=严重建议放弃 / 3=已自动清理
-bash ~/program/CCC/scripts/executor-watchdog.sh || {
-  echo "[caller] watchdog returned $?, decide: continue / --force-kill / 放弃"
-  exit $?
-}
-
 ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
 claude -p "$(cat <<'EOF'
 你是 CCC 框架的 Executor（独立 Claude session，不是 Planner）。
@@ -111,9 +70,6 @@ claude -p "$(cat <<'EOF'
 2. 读 <workspace>/.ccc/profile.md — 项目背景
 3. 读 <workspace>/.ccc/plans/<task>.plan.md — 任务 plan
 4. 读 <workspace>/.ccc/phases/<task>.phases.json — phases 初始状态
-5. **确认前置 watchdog 已通过**：如果收到 `[watchdog] warning` 警告但继续启动，
-   必须在你的 report.md 顶部写"watchdog warning acknowledged"段，
-   并在第一条改动前 echo `WATCHDOG_WARNING_ACKNOWLEDGED` 确认你已经看过这个警告。
 
 按 plan 执行。完成后：
 - 写实施报告到 <workspace>/.ccc/reports/<task>.report.md
@@ -131,7 +87,7 @@ claude -p "$(cat <<'EOF'
 
 **完成执行顺序**（Lesson 4 修复 · 必须按此顺序）：
 ```
-Step 0（前置 · Lesson 9 修复）：Caller 已跑 `executor-watchdog.sh`，如果返回 warning 必须在 report.md 顶部标注并 echo 确认
+Step 0（前置）：确认 working tree 干净（仅 plan 声明文件的改动）
 Step 1：先创建空的 report.md 框架（含验收表格骨架）
 Step 2：执行 plan 的所有改动（不包含 commit——commit 由外部完成）
 Step 3：填实 report.md（每条验收命令的证据输出）
