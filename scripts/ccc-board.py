@@ -259,6 +259,8 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
                 if not line:
                     continue
                 phase = json.loads(line)
+                if isinstance(phase, list):
+                    phase = phase[0] if phase else {}
                 return phase.get("timeout", default)
     except (FileNotFoundError, json.JSONDecodeError):
         pass
@@ -491,17 +493,18 @@ def dev_role() -> dict:
                     remaining = (
                         wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)
                     ).total_seconds()
-                    print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮")
-                    return {
-                        "role": "dev",
-                        "moved": [],
-                        "counts": update_index(),
-                        "info": f"{task_id} 退避中",
-                    }
+                    print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮，检查 planned")
+                    # 重置 task，使执行流落入 Step 2（planned）
+                    task = None
+                    task_id = ""
+                    from_col = ""
             except (ValueError, TypeError):
                 pass
 
-        retry += 1
+        # 退避跳过：不增 retry，直接 fall through 到 Step 2（planned）
+        if task is not None:
+            retry += 1
+
         if retry > MAX_RETRY:
             # 达到最大重试 → 异常隔离
             _quarantine(task_id, f"重试{MAX_RETRY}次全部失败，已移入异常列")
@@ -529,7 +532,7 @@ def dev_role() -> dict:
             }
 
         # 计算退避时间
-        backoff = _backoff_seconds(retry - 1)  # retry 已自增，用增量前的值计算
+        backoff = _backoff_seconds(retry - 1) if retry else 0
         retry_at_iso = (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat() if retry >= 1 else None
         # 更新 retry 计数 + retry_at（JSONL，更新第一行）
         try:
