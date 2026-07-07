@@ -65,6 +65,8 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` + `ccc-task-done.sh` | 基础运维 |
 | `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
 | `tests/scripts/` | pytest 核心测试 |
+| `scripts/flywheel-scan.sh` | **飞轮扫描**（v0.9b 简化版，红线 18 强制人工 review） |
+| `scripts/ccc-queue.sh` | **队列执行器**（v0.9b 多 phase + 失败升级） |
 | `references/adapters/runtime-opencode.md` | **OpenCode 执行器契约**（v0.8 重写） |
 | `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引（红线 7+10） |
 | `docs/lessons.md` | 历史教训沉淀（含 lesson 30：验收数字规则） |
