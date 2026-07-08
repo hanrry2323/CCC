@@ -83,7 +83,7 @@ def update_index() -> dict:
 
 
 def _load_timeout(phases_file: Path, default: int = 300) -> int:
-    """从 phases.jsonl 的第一行读 timeout（JSONL 格式，每行一个 JSON）"""
+    """从 phases.jsonl 的第一个 phase 行读 timeout（跳过 schema_version）"""
     try:
         with open(phases_file) as f:
             for line in f:
@@ -93,6 +93,8 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
                 phase = json.loads(line)
                 if isinstance(phase, list):
                     phase = phase[0] if phase else {}
+                if "schema_version" in phase:
+                    continue
                 return phase.get("timeout", default)
     except (FileNotFoundError, json.JSONDecodeError):
         pass
