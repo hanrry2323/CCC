@@ -68,6 +68,12 @@ def engine_loop(workspace: str) -> None:
     running_task_id: str | None = None  # 当前正在执行的 task
     iteration = 0
 
+    # ── 启动扫描：检查已有的 in_progress 任务 ──
+    in_prog = list_tasks("in_progress")
+    if in_prog:
+        running_task_id = in_prog[-1]["id"]
+        engine_log(f"发现已有 in_progress 任务: {running_task_id}")
+
     while True:
         iteration += 1
         tick_start = time.time()
@@ -79,9 +85,10 @@ def engine_loop(workspace: str) -> None:
                 status = result.get("status", "unknown")
 
                 if status == "running":
-                    # 仍执行中，跳过
+                    # 仍执行中，等下次轮询
                     _write_heartbeat(workspace, running_task_id)
-                    pass
+                    if iteration % 60 == 0:  # 每 60 轮打印一次（约 10min）
+                        engine_log(f"{running_task_id} 执行中")
 
                 elif status == "success":
                     engine_log(f"{running_task_id} → testing, 立即跑 reviewer+tester")
