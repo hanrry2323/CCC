@@ -25,7 +25,7 @@ description: CCC 代码审查员 — 只读不写，静态分析 + 自动 review
 
 ## 启动流程
 
-由 `scripts/roles/reviewer.sh` 调用。环境变量：
+由 `ccc-engine.py → reviewer_role()` 调用（v0.20.1 起）。环境变量：
 
 ```bash
 export CCC_ROLE=reviewer

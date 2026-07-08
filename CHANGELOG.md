@@ -11,6 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.20.1] — 2026-07-08 — 串行执行引擎
+
+> `ccc-engine.py` 替代 7 角色 launchd 定时轮询。
+> 有任务即串行执行全链路，无任务休眠。
+
+### 新增
+- `scripts/ccc-engine.py` — CC Engine 串行执行守护进程（~280 行）
+- `scripts/ccc-engine.sh` — Engine launchd 入口
+- `scripts/uninstall-ccc-roles.sh` — 卸载旧 7 角色 plist
+- `scripts/ccc-board.py`: 新增 `dev_role_launch()` + `dev_role_check_complete()` 引擎辅助函数
+- `scripts/_config.py`: 新增 `engine_poll_interval` / `engine_idle_sleep` 配置项
+
+### 重构
+- `scripts/install-ccc-roles.sh`: 改为只装 Engine + board-server plist，支持 `--upgrade` 自动卸载旧角色
+- `references/red-lines.md`: X5（7 plist 必装→Engine+board-server）、X6（角色频率→取消定时）
+- `CLAUDE.md`: 架构文档更新到 v0.20.1
+- `docs/roadmap.md`: 添加 v0.20.1 规划
+
+### 删除（保留向后兼容）
+- `scripts/roles/*.sh` 7 文件标记为 deprecated（不再由 launchd 触发，手动调用仍可用）
+- 旧 launchd plist 14 个（CCC 7 + qxo 7），替换为每个 workspace 1 个 engine plist
+
+### 验证
+- pytest: 49 passed (同 v0.20.0)
+- engine 启动正常，写 `.ccc/engine-heartbeat.json`
+- compile: 全部 Python 文件无语法错误
+
+---
+
 ## [v0.20.0] — 2026-07-08 — Dev 体验 + 运维完备
 
 ### 新增

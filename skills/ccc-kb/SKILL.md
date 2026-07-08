@@ -24,7 +24,7 @@ description: CCC 知识管理员 — 归档已验证任务、git tag、沉淀知
 
 ## 启动流程
 
-由 `scripts/roles/kb.sh` 调用。环境变量：
+由 `ccc-engine.py → kb_role()` 调用（v0.20.1 起）。环境变量：
 
 ```bash
 export CCC_ROLE=kb

@@ -30,8 +30,8 @@
 | **X2** | **每 phase 必杀 opencode 进程** | v0.8 |
 | **X3** | **OpenCode 启动前必跑残留 watchdog** | v0.8 |
 | **X4** | **每 phase 必走看板流转** | v0.16 |
-| **X5** | **7 角色 plist 必装** | v0.16 |
-| **X6** | **角色频率不许改** | v0.16（老板拍板）|
+| **X5** | **Engine + board-server plist 必装（v0.20.1 起）** | v0.16 → v0.20.1 |
+| **X6** | **角色频率不许改（v0.20.1 起不再适用 → 见 X6 正文）** | v0.16 → v0.20.1 |
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
 >
@@ -524,39 +524,28 @@ fi
   3. 任何 task 在某列停留 > N 天 → ops 告警
 - **触犯后果**：Critical — 跳过 reviewer/tester 直接 released 的 task，强制回退到 testing 重检
 
-#### 红线 X5：7 角色 plist 必装
+#### 红线 X5：Engine + board-server plist 必装（v0.20.1 更新）
 
-- **规则**：`com.ccc.{product,dev,reviewer,tester,ops,kb,regress}` 7 个 launchd plist 必须装上。
-- **Why**：7 角色是 v0.16 核心，缺一个 = 流程断链
-  - 缺 product：backlog 永远不处理
-  - 缺 dev：plan 写完不写代码
-  - 缺 reviewer/tester：代码不质检
-  - 缺 ops：异常无告警
-  - 缺 kb：verified 永远不 release
-  - 缺 regress：已发布成果无人回测
+- **规则**：`com.ccc.engine` + `com.ccc.board` 2 个 launchd plist 必须装上。
+- **Why**：v0.20.1 起取消 7 角色定时轮询，改为单一 Engine 常驻进程串行驱动 task 全链路。
+  - 缺 engine：task 永远不看 planned，流程停摆
+  - 缺 board：看板 HTTP 服务不可用
 - **机制**：
-  1. `bash scripts/install-ccc-roles.sh` 一键装 7 plist
-  2. `launchctl list | grep com.ccc` 应返 7 行（+ flywheel-scan 第 8 行）
-  3. ops role 每 30min 检查 plist 状态，缺一个 → L2 告警
-- **触犯后果**：Critical — 缺哪个角色，那个角色的功能全断
+  1. `bash scripts/install-ccc-roles.sh` 一键装 engine + board-server
+  2. `launchctl list | grep com.ccc` 应返 2 行（engine + board + flywheel-scan 第 3 行）
+  3. `ccc-engine.py` 内建轻量健康检查，写 `.ccc/engine-heartbeat.json`
+- **向后兼容**：旧 7 角色 plist 仍可共存，但不会被执行（uninstall-ccc-roles.sh 可清理）
+- **触犯后果**：Critical — 缺哪个服务，对应功能全断
 
-#### 红线 X6：角色频率不许改
+#### 红线 X6：角色频率不许改（v0.20.1 起不再适用）
 
-- **规则**：
-
-| 角色 | 频率 | StartInterval |
-|------|------|---------------|
-| product | 4h | 14400s |
-| dev | 10min | 600s |
-| reviewer | 2h | 7200s |
-| tester | 4h | 14400s |
-| ops | 30min | 1800s |
-| kb | 每天 23:00 | StartCalendarInterval |
-| regress | 每天 23:30 | StartCalendarInterval |
-
-- **Why**：频率 = 老板拍板（v0.16 拍板）。改频率 = 改老板意图 = 违规
+- **历史记录**：v0.16 老板拍板的 7 角色定时频率，在 v0.20.1 中被 Engine 串行执行模型取代。
+- **当前规则（v0.20.1+）**：
+  - Engine 有 task 立即执行，无 task 休眠 5s（`engine_idle_sleep`）
+  - opencode 运行中时 Engine 每 10s 轮询 `.done`（`engine_poll_interval`）
+  - regress 角色（每日回测）保留独立定时触发（见 X5 向后兼容说明）
+- **Why**：v0.20.1 改设计是老板决定（"有任务就直接串行执行，不要定时"）。定时被取消 = 意图已经变了。
 - **机制**：
-  1. `scripts/install-ccc-roles.sh` 写死这些值
-  2. 任何 `StartInterval` / `StartCalendarInterval` 改动需老板显式同意
-  3. `ccc-board.py ops role` 校验 plist 频率与本表一致
-- **触犯后果**：Critical — 改频率 = 改产品决策，强制还原 + 写 abnormal-report
+  1. `ccc-engine.py` 的 poll_interval / idle_sleep 可通过 `CCC_ENGINE_POLL_INTERVAL` / `CCC_ENGINE_IDLE_SLEEP` 环境变量调
+  2. 改动需老板显式同意
+- **触犯后果**：Critical — 改流水线节奏 = 改产品决策，强制还原

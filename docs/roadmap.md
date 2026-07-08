@@ -2,9 +2,10 @@
 
 > **当前状态(2026-07-08)**:
 > - **v0.18 阶段**(7 角色文档对齐 + 架构审查修复):已完结,`v0.18.0`
-> - **v0.19 阶段**(基础加固 + 扩展通路):**开发中**
-> - **v0.20+** (文档标准化 + 执行器接口):规划中
-> - **当前最新版本**:v0.19.0-dev
+> - **v0.19 阶段**(基础加固 + 扩展通路):已完结,`v0.19.0`
+> - **v0.20.0 阶段**(Dev 体验 + 运维完备):已发布,`v0.20.0`
+> - **v0.20.1 阶段**(串行执行引擎):**开发中**
+> - **当前最新版本**:v0.20.0
 >
 > **范式转变**:
 > 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
@@ -14,6 +15,7 @@
 > 5. **v0.17**: **战略地图** — 任何 cloud agent 启动必读第一份文件
 > 6. **v0.18**: **7 角色文档对齐 + 架构审查** — regress 角色正式加入, 全文档 6→7 角色更新; 修复 9 个架构问题
 > 7. **v0.19**: **基础加固 + 扩展通路** — BoardStore/Executor/Config 三抽提取, 消除 board-server.py 代码重复, E2E 集成测试, 定义 task 文件格式共享契约
+> 8. **v0.20.1**: **串行执行引擎** — 取消 7 角色定时轮询，改为单一 Engine 常驻进程，有 task 即串行执行全链路
 
 ---
 
@@ -55,12 +57,40 @@
 
 ---
 
-## v0.20 (规划) — 文档标准化 + 执行器接口
+## v0.20.0 — Dev 体验 + 运维完备
 
-> 待定, 初步方向:
-> - SKILL.md 添加标准化 YAML frontmatter (version / model / gates / frequency)
-> - Executor 接口完善 + 测试
-> - 看板 UI 对接 API (纯前端, 不改后端)
+> 见 `CHANGELOG.md` 完整条目。
+>
+> 新增 ops 扩展、E2E 覆盖、6 项对抗性审查修复。
+
+## v0.20.1 — 串行执行引擎（开发中）
+
+> **定位**: 取消 7 角色 launchd 定时轮询，替换为单一 `ccc-engine.py` 常驻守护进程串行驱动 task 全链路。
+>
+> **决策背景**: 老板明确指示"有任务就直接串行执行，不要定时"。
+>
+> **架构变更**:
+> - 14 plist（CCC 7 + qxo 7） → 每 workspace 1 个 engine plist
+> - 定时轮询 → 有 task 立即执行，无 task 休眠 5s
+> - 7 独立进程各扫各的 → 单一 while 循环串行编排
+>
+> **新增文件**:
+> - `scripts/ccc-engine.py` — 引擎主循环（~280 行）
+> - `scripts/ccc-engine.sh` — engine launchd 入口
+> - `scripts/uninstall-ccc-roles.sh` — 卸载旧角色 plist
+>
+> **修改文件**:
+> - `scripts/_config.py` — 加 engine_poll_interval / engine_idle_sleep
+> - `scripts/ccc-board.py` — 加 dev_role_launch / dev_role_check_complete
+> - `scripts/install-ccc-roles.sh` — 只装 engine + board-server
+> - `references/red-lines.md` — X5/X6 更新
+>
+> **删除文件**:
+> - `scripts/roles/*.sh`（7 文件，保留目录）
+>
+> **验证**:
+> - pytest 49 全通过
+> - engine 启动 → 检测 planned task → 走完 dev→reviewer→tester→kb 全链路
 
 ---
 
@@ -72,9 +102,11 @@
 
 ```
 ┌──────────────────────────────────────┐
-│  7 角色 + 看板 (product/dev/...)     │  ← L3: 业务逻辑层
+│  CCC Engine (串行编排)               │  ← L3: 业务编排层
 ├──────────────────────────────────────┤
-│  BoardStore / Executor / Config      │  ← L2: 抽象接口层
+│  7 角色函数 (ccc-board.py)          │  ← L2b: 角色逻辑层
+├──────────────────────────────────────┤
+│  BoardStore / Executor / Config      │  ← L2a: 抽象接口层
 ├──────────────────────────────────────┤
 │  FileBoardStore / OpenCodeExecutor   │  ← L1: 当前实现层（可替换）
 └──────────────────────────────────────┘
@@ -82,7 +114,7 @@
 
 ### v1.0 验收
 
-- 单节点 7 角色流水线稳定运行 7 天无异常
+- 单节点 Engine 流水线稳定运行 7 天无异常
 - `BoardStore` / `Executor` 抽象层经过至少 1 个替换实现验证
 - E2E 集成测试覆盖完整流水线
 - task 文件格式文档稳定, QXO 可读写

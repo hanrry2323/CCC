@@ -37,7 +37,7 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | **11** | Verdict 必须写 verdict 文件 | 口头 PASS 不算 PASS（Lesson 28） |
 | **12** | 禁止 agent 自主启用 CCC | 用户显式触发 |
 
-**X 系列**：X1 OpenCode ≤3 并发 / X2 每 phase 必杀 opencode / X3 启动前 watchdog / X4 看板流转 / X5 7 plist 必装 / X6 角色频率不许改
+**X 系列**：X1 OpenCode ≤3 并发 / X2 每 phase 必杀 opencode / X3 启动前 watchdog / X4 看板流转 / X5 Engine+board-server plist 必装 / X6 角色频率（v0.20.1 起不再适用）
 
 **Lesson 27**: `claude -p` 是 print 模式开关，prompt 必须走 stdin。
 
@@ -57,8 +57,10 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | `scripts/_board_store.py` | 看板存储抽象 FileBoardStore（v0.19 新增） |
 | `scripts/_executor.py` | 执行器抽象 OpenCodeExecutor（v0.19 新增） |
 | `scripts/ccc-board.py` | 7 角色看板核心 |
-| `scripts/roles/<role>.sh` × 7 | 各角色 launchd 入口 |
+| `scripts/ccc-engine.sh` | CCC Engine launchd 入口 (v0.20.1) |
 | `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
+| `scripts/ccc-engine.py` | CCC Engine 串行执行主循环 (v0.20.1) |
+| `scripts/ccc-engine.sh` | Engine launchd 入口 |
 | `scripts/opencode-exec.py` | OpenCode CLI 执行器 |
 | `scripts/opencode-pool.py` | 进程池（max 3 并发） |
 | `scripts/opencode-watchdog.sh` | 残留扫描 |
@@ -78,24 +80,37 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 
 ---
 
-## 7 角色系统（唯一范式）
+## 7 角色系统 + CCC Engine（v0.20.1 架构）
 
 **v0.18 起不再支持旧 3 角色（Plan/Exec/Verify）流程。**
+**v0.20.1 起取消 7 角色定时轮询，改为 CCC Engine 串行驱动。**
 
-### 角色矩阵
+### 引擎架构
 
-| 角色 | 频率 | 看板列 | 职责 |
-|------|------|--------|------|
-| product | 4h | backlog → planned | 拆任务、写 plan、SPEC 门禁 |
-| dev | 10min | planned → in_progress → testing | 调 opencode 写代码 |
-| reviewer | 2h | testing → verified | 只读静态检查 + 范围核对 |
-| tester | 4h | testing → verified | pytest + plan 逐条验收 |
-| ops | 30min | 所有列 | 健康检查 + 告警 |
-| kb | 23:00 | verified → released | git tag + push + changelog |
-| regress | 23:30 | released → backlog(回归bug) | 每日回测 + 回归建 bug |
+```
+launchd → com.ccc.engine (KeepAlive, 常驻)
+  └─ ccc-engine.py 主循环:
+       loop:
+         in_progress 有 task 在跑?
+           → 检查 .done 完成 → 立即跑 reviewer+tester+kb
+         planned 有 task?
+           → 启 opencode（不走定时器，即刻执行）
+         无事 → sleep 5s
+```
 
-**频率 = 老板拍板，不许改**（红线 X6）。
-**7 plist 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
+### 角色映射（Engine 内部串行调用）
+
+| 角色 | Engine 触发方式 | 看板列 |
+|------|----------------|--------|
+| product | 手动 `--promote`（无变更） | backlog → planned |
+| dev | Engine 自动串行（无定时） | planned → in_progress → testing |
+| reviewer | Engine 在 dev 完成后立即调 | testing → verified |
+| tester | Engine 在 dev 完成后立即调 | testing → verified |
+| ops | Engine 空闲时运行轻度检查 | 所有列（非阻塞） |
+| kb | Engine 在 reviewer+tester 通过后立即调 | verified → released |
+| regress | 保留独立定时（23:30）或嵌在 Engine 内 | released → backlog |
+
+**Engine + board-server 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
 
 ### 任务流转
 
@@ -111,7 +126,7 @@ backlog → planned → in_progress → testing → verified → released
 |---------|---------|----|
 | 小（单文件 1-5 行 / 调试 / 查信息） | agent 直接处理 | — |
 | 中（多文件 / 跨模块） | CCC skill 启用，指定角色 | agent + user |
-| 大（多阶段 / 需完整看板） | CCC skill 启用，全链跑 | 7 角色自动流转 |
+| 大（多阶段 / 需完整看板） | CCC skill 启用，全链跑 | CCC Engine 自动串行 |
 
 **红线 12**：agent 不自主启用 CCC。用户显式触发。
 
@@ -138,15 +153,14 @@ backlog → planned → in_progress → testing → verified → released
 
 ---
 
-## 角色入口架构
+## 角色入口架构（v0.20.1）
 
 ```
-launchd plist
-  → scripts/roles/<role>.sh
-      → export CCC_ROLE=<role>
-      → export CCC_ROLE_SKILL=skills/ccc-<role>/SKILL.md
-      → log skill frontmatter
-      → python3 scripts/ccc-board.py <role>
+launchd plist (com.ccc.engine, KeepAlive)
+  → scripts/ccc-engine.sh
+      → python3 scripts/ccc-engine.py --workspace <path>
+          └→ ccc-board.py 角色函数:
+              dev_role_launch() / reviewer_role() / tester_role() / kb_role()
 ```
 
 **v0.19 架构升级**：`ccc-board.py` 内部依赖三层抽象：
@@ -174,7 +188,7 @@ ccc-board.py → _config.py (配置) + _board_store.py (存储) + _executor.py (
 
 CCC 与 QXO **独立发展，不互相依赖**。
 
-- **CCC** 做"极简的 Prompt 资产"——7 角色看板流水线，SKILL.md + 脚本，不绑任何项目。
+- **CCC** 做"极简的 Prompt 资产"——CCC Engine + 看板流水线，SKILL.md + 脚本，不绑任何项目。
 - **QXO** 做"可扩展的 AI 中台"——FastAPI + React + Tauri，LoopEngine + EventBus。
 
 两者互通通过 `references/board-task-schema.md` 定义的 task JSONL 格式实现：

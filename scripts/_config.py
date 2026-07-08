@@ -41,6 +41,10 @@ class Config:
     # ── 并发 ──
     opencode_max_parallel: int = 3  # 红线 X1
 
+    # ── 引擎（v0.20.1）──
+    engine_poll_interval: int = 10  # 秒，活跃 task 时轮询 .done 间隔
+    engine_idle_sleep: int = 5  # 秒，无 task 时休眠间隔
+
     # ── HTTP 服务 ──
     board_port: int = 7777
     board_host: str = "127.0.0.1"
@@ -54,6 +58,8 @@ class Config:
         _env_override_str(self, "model", "OPENCODE_MODEL")
         _env_override_str(self, "board_host", "BOARD_HOST")
         _env_override_int(self, "board_port", "BOARD_PORT")
+        _env_override_int(self, "engine_poll_interval", "CCC_ENGINE_POLL_INTERVAL")
+        _env_override_int(self, "engine_idle_sleep", "CCC_ENGINE_IDLE_SLEEP")
 
 
 def _resolve_workspace() -> Path:

@@ -1,41 +1,27 @@
 #!/bin/bash
-# install-ccc-roles.sh — 一键装 7 角色 launchd plist (v0.18)
+# install-ccc-roles.sh — 安装 CCC Engine + 看板服务 (v0.20.1)
+#
+# v0.20.1 变更：替代 7 角色定时轮询，改为单一 Engine 常驻进程串行执行。
 #
 # 用法:
-#   ./install-ccc-roles.sh                          # 装到 CCC 自身
-#   ./install-ccc-roles.sh --workspace ~/program/qxo  # 装到 qxo 项目
-#
-# 频率表 (老板指定):
-#   product:  4h      = 14400s
-#   dev:      10min   = 600s
-#   reviewer: 2h      = 7200s
-#   tester:   4h      = 14400s
-#   ops:      30min   = 1800s
-#   kb:       23:00   (StartCalendarInterval)
-#   regress:  23:30   (StartCalendarInterval, 每日回测)
+#   ./install-ccc-roles.sh                            # 安装到 CCC 自身
+#   ./install-ccc-roles.sh --workspace ~/program/qxo  # 安装到 qxo 项目
+#   ./install-ccc-roles.sh --upgrade                  # 先卸载旧角色，再装 engine
+#   ./install-ccc-roles.sh --workspace ~/program/qxo --upgrade
 set -uo pipefail
-
-# ── 默认配置（source 前先有铺垫变量，防 errexit）──
-DEFAULT_CONFIG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/templates/ccc-config.sh"
-if [ -f "$DEFAULT_CONFIG" ]; then
-  source "$DEFAULT_CONFIG"
-fi
-# ROLES 必须是数组；source 后仍是空则 fallback
-if [[ ${#ROLES[@]} -eq 0 ]]; then
-  ROLES=(product dev reviewer tester ops kb regress)
-fi
 
 # ── 参数 ──
 WORKSPACE=""
+UPGRADE=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --workspace) WORKSPACE="$2"; shift 2 ;;
     --workspace=*) WORKSPACE="${1#*=}"; shift ;;
-    *) echo "未知参数: $1 (仅支持 --workspace <path>)"; exit 1 ;;
+    --upgrade) UPGRADE=true; shift ;;
+    *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
 
-# ── 路径 ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCC_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLIST_DIR="${HOME}/Library/LaunchAgents"
@@ -47,16 +33,14 @@ if [[ -n "$WORKSPACE" ]]; then
   WORKSPACE="$(cd "$WORKSPACE" 2>/dev/null && pwd)"  # 解析绝对路径
   PROJECT_NAME="$(basename "$WORKSPACE")"
   LABEL_PREFIX="com.ccc.${PROJECT_NAME}."
-  PROJECT_TAG="${PROJECT_NAME}"
-  # source 项目内配置
+  # source 项目配置
   if [ -f "$WORKSPACE/.ccc/config.sh" ]; then
     source "$WORKSPACE/.ccc/config.sh"
   fi
-
-  # 初始化目标项目的看板
+  # 初始化看板目录
   mkdir -p "${WORKSPACE}/.ccc/board/"{backlog,planned,in_progress,testing,verified,released,abnormal,events}
   if [ ! -f "${WORKSPACE}/.ccc/board/index.json" ]; then
-    echo '{"backlog":0,"planned":0,"in_progress":0,"testing":0,"verified":0,"released":0}' \
+    echo '{"backlog":0,"planned":0,"in_progress":0,"testing":0,"verified":0,"released":0,"abnormal":0}' \
       > "${WORKSPACE}/.ccc/board/index.json"
   fi
   echo "→ 项目: ${PROJECT_NAME} (${WORKSPACE})"
@@ -64,35 +48,41 @@ else
   WORKSPACE="$CCC_HOME"
   PROJECT_NAME="ccc"
   LABEL_PREFIX="com.ccc."
-  PROJECT_TAG=""
   echo "→ 项目: CCC (默认)"
 fi
 
-# ── 从配置获取间隔 ──
-get_interval() {
-  local role=$1
-  case "$role" in
-    product) echo "${PRODUCT_INTERVAL:-14400}" ;;
-    dev) echo "${DEV_INTERVAL:-600}" ;;
-    reviewer) echo "${REVIEWER_INTERVAL:-7200}" ;;
-    tester) echo "${TESTER_INTERVAL:-14400}" ;;
-    ops) echo "${OPS_INTERVAL:-1800}" ;;
-    kb|regress) echo "" ;;  # calendar-based
-    *) echo "" ;;
-  esac
-}
+# ── --upgrade: 先卸载旧角色 ──
+if $UPGRADE; then
+  echo ""
+  echo "=== 卸载旧角色 ==="
+  # 卸载当前项目的旧角色 plist
+  OLD_ROLES=("dev" "reviewer" "tester" "kb" "product" "ops" "regress")
+  for role in "${OLD_ROLES[@]}"; do
+    label="${LABEL_PREFIX}${role}"
+    plist="${PLIST_DIR}/${label}.plist"
+    if [ -f "$plist" ]; then
+      echo -n "  卸载 ${label} ... "
+      launchctl unload "$plist" 2>/dev/null && echo -n "unloaded "
+      rm -f "$plist" && echo "removed" || echo "remove_fail"
+    fi
+  done
 
-install_role() {
-  local role=$1
-  local plist="${PLIST_DIR}/${LABEL_PREFIX}${role}.plist"
-  local script="${SCRIPT_DIR}/roles/${role}.sh"
-  local out_log="${LOG_DIR}/${PROJECT_NAME}-role-${role}.out.log"
-  local err_log="${LOG_DIR}/${PROJECT_NAME}-role-${role}.err.log"
-  local interval=$(get_interval "$role")
+  # 卸载 CCC 自身的旧角色（跨项目）
+  if [[ -n "$WORKSPACE" ]]; then
+    echo "  (保留 CCC 自身的旧角色，单独对 CCC 跑 --upgrade 以清理)"
+  fi
+fi
 
-  # 环境变量段（仅非默认项目需要）
+# ── 安装 Engine plist ──
+install_engine() {
+  local label="${LABEL_PREFIX}engine"
+  local plist="${PLIST_DIR}/${label}.plist"
+  local script="${CCC_HOME}/scripts/ccc-engine.sh"
+  local log="${LOG_DIR}/${PROJECT_NAME}-engine.log"
+
+  # 环境变量（非默认项目需要传递 WORKSPACE）
   local ENV_BLOCK=""
-  if [[ -n "$PROJECT_TAG" ]]; then
+  if [[ "$PROJECT_NAME" != "ccc" ]]; then
     ENV_BLOCK='  <key>EnvironmentVariables</key>
   <dict>
     <key>CCC_WORKSPACE</key>
@@ -101,84 +91,109 @@ install_role() {
 '
   fi
 
-  if [[ "$role" == "kb" ]] || [[ "$role" == "regress" ]]; then
-    local cb_hour="${KB_HOUR:-23}"
-    local cb_min="${KB_MINUTE:-0}"
-    [[ "$role" == "regress" ]] && cb_min="${REGRESS_MINUTE:-30}" && cb_hour="${REGRESS_HOUR:-23}"
-    cat > "$plist" <<PLIST_EOF
+  cat > "$plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LABEL_PREFIX}${role}</string>
+  <string>${label}</string>
   <key>ProgramArguments</key>
   <array>
     <string>${script}</string>
   </array>
 ${ENV_BLOCK}  <key>WorkingDirectory</key>
   <string>${WORKSPACE}</string>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>${cb_hour}</integer>
-    <key>Minute</key>
-    <integer>${cb_min}</integer>
-  </dict>
+  <key>KeepAlive</key>
+  <true/>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${out_log}</string>
+  <string>${log}</string>
   <key>StandardErrorPath</key>
-  <string>${err_log}</string>
+  <string>${log}</string>
   <key>ProcessType</key>
   <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
 </dict>
 </plist>
 PLIST_EOF
-  else
-    cat > "$plist" <<PLIST_EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${LABEL_PREFIX}${role}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${script}</string>
-  </array>
-${ENV_BLOCK}  <key>WorkingDirectory</key>
-  <string>${WORKSPACE}</string>
-  <key>StartInterval</key>
-  <integer>${interval}</integer>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${out_log}</string>
-  <key>StandardErrorPath</key>
-  <string>${err_log}</string>
-  <key>ProcessType</key>
-  <string>Background</string>
-</dict>
-</plist>
-PLIST_EOF
-  fi
 
-  plutil -lint "$plist" >/dev/null || { echo "  ⚠ plist 不合法: ${role}"; return 1; }
+  plutil -lint "$plist" >/dev/null || { echo "  ⚠ engine plist 不合法"; return 1; }
   launchctl unload "$plist" 2>/dev/null || true
   launchctl load -w "$plist"
-  echo "  ✓ ${LABEL_PREFIX}${role}"
+  echo "  ✓ ${label}"
+}
+
+# ── 安装/更新 board-server plist（如不存在）──
+install_board() {
+  local label="com.ccc.board"
+  local plist="${PLIST_DIR}/${label}.plist"
+
+  # 如果已存在且当前项目是 CCC 默认，跳过（避免覆盖）
+  if [ -f "$plist" ] && [[ "$PROJECT_NAME" != "ccc" ]]; then
+    echo "  跳过 board-server（仅 CCC 自身运行）"
+    return
+  fi
+  if [ -f "$plist" ]; then
+    echo "  board-server 已安装，跳过"
+    return
+  fi
+
+  local log="${LOG_DIR}/ccc-board.log"
+  cat > "$plist" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${CCC_HOME}/scripts/ccc-board-server.py</string>
+    <string>--port</string>
+    <string>7777</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${CCC_HOME}</string>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${log}</string>
+  <key>StandardErrorPath</key>
+  <string>${log}</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>
+PLIST_EOF
+
+  plutil -lint "$plist" >/dev/null || { echo "  ⚠ board plist 不合法"; return 1; }
+  launchctl unload "$plist" 2>/dev/null || true
+  launchctl load -w "$plist"
+  echo "  ✓ ${label}"
 }
 
 echo ""
-echo "=== 安装角色 ==="
-for role in "${ROLES[@]}"; do
-  install_role "$role"
-done
+echo "=== 安装服务 ==="
+install_engine
+install_board
 
 echo ""
 echo "=== 状态 ==="
 launchctl list | grep "${LABEL_PREFIX}" | sed 's/^/  /'
 echo ""
+
+if $UPGRADE; then
+  echo "升级完成。旧角色 plist 已卸载。"
+  echo "提示: 如 qxo 项目也需升级，运行:"
+  echo "  $0 --workspace ~/program/qxo --upgrade"
+fi
 echo "Done. (prefix: ${LABEL_PREFIX}, workspace: ${WORKSPACE})"

@@ -1,7 +1,9 @@
 # CCC 战略地图 (v0.16 起)
 
 > **必读**：所有 cloud agent 启动时**第一件事**读本文件。
-> 这是 CCC 的"全景路线图"——5 段范式演进 + 7 角色 + 看板。
+> 这是 CCC 的"全景路线图"——CCC Engine + 7 角色 + 看板。
+>
+> **v0.20.1 架构变更**：取消 7 角色 launchd 定时轮询，改为单一 CCC Engine 常驻进程串行执行。
 
 ---
 
@@ -41,21 +43,24 @@
 
 ---
 
-## 2. 7 角色系统（v0.16 起核心）
+## 2. 7 角色系统（v0.16 起核心 / v0.20.1 引擎化）
+
+> **v0.20.1 变更**：取消 7 角色 launchd 定时轮询，改为 CCC Engine 常驻进程串行驱动。
+> 以下"频率"列是历史角色轮询频率（v0.20.0 及之前），Engine 模式下无定时，有 task 即执行。
 
 ### 2.1 角色矩阵
 
-| 角色 | 频率 | 扫哪列 | 处理后挪到 | Skill 入口 |
-|------|------|--------|------------|------------|
-| **product** | 4h | backlog | planned（写 plan.md + phases.json）| `scripts/roles/product.sh` |
-| **dev** | 10min | planned + in_progress | in_progress → testing（调 opencode-exec）| `scripts/roles/dev.sh` |
-| **reviewer** | 2h | testing | testing → verified（py_compile 静态检查）| `scripts/roles/reviewer.sh` |
-| **tester** | 4h | testing | testing → verified（pytest 69 passed）| `scripts/roles/tester.sh` |
-| **ops** | 30min | 所有列 | 健康检查 + 异常告警 | `scripts/roles/ops.sh` |
-| **kb** | 每天 23:00 | verified | verified → released（归档 + git tag）| `scripts/roles/kb.sh` |
-| **regress** | 每天 23:30 | released | released → backlog（回归回测 + 建 bug）| `scripts/roles/regress.sh` |
+| 角色 | 历史频率(v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 |
+|------|-------------------|-------------|--------|------------|------|
+| **product** | 4h | 手动 `--promote` | backlog | planned | `ccc-board.py product --promote` |
+| **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_launch()` |
+| **reviewer** | 2h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → reviewer_role()` |
+| **tester** | 4h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → tester_role()` |
+| **ops** | 30min | Engine 空闲时 | 所有列 | — | `ccc-engine.py → _check_stale()` |
+| **kb** | 每天 23:00 | Engine 在 reviewer+tester 通过后 | verified | verified → released | `ccc-engine.py → kb_role()` |
+| **regress** | 每天 23:30 | 保留独立定时 / 或嵌在 Engine 内 | released | released → backlog | 待定 |
 
-**频率 = 老板拍板，不许改**（红线 X6）。
+**引擎约束**：有 task 即串行执行全链路，无 task 休眠 5s（红线 X6 更新版）。
 
 ### 2.2 看板流转图
 

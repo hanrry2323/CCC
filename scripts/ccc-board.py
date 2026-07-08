@@ -1206,6 +1206,166 @@ def approve_agents() -> dict:
     return {"role": "approve-agents", "approved": n, "file": str(agents_file)}
 
 
+# ═══════════════════════════════════════════
+# 引擎辅助函数 (v0.20.1)
+# ═══════════════════════════════════════════
+
+
+def dev_role_launch(task_id: str) -> dict:
+    """引擎用：启 opencode 执行 task，返回启动结果
+
+    1. 确认 task 在 planned，有 plan+phases
+    2. 挪 planned → in_progress
+    3. 启 opencode-runner.sh（后台进程）
+    4. 不等待，立即返回
+    """
+
+    planned = list_tasks("planned")
+    task = next((t for t in planned if t["id"] == task_id), None)
+    if not task:
+        return {"error": f"task '{task_id}' not in planned", "task_id": task_id}
+
+    cplan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not cplan.exists() or not cphases.exists():
+        _quarantine(task_id, "engine: 缺 plan 或 phases 文件")
+        return {"error": f"task '{task_id}' missing plan/phases, quarantined", "task_id": task_id}
+
+    move_task(task_id, "planned", "in_progress")
+
+    # 从 phases.json 读 timeout
+    timeout_s = _load_timeout(cphases, default=600)
+    phase_id = f"{task_id}-p1"
+    plan_content = cplan.read_text()
+    prompt = (
+        f"# CCC 执行任务: {task_id}\n\n"
+        f"## Plan\n\n{plan_content}\n\n"
+        f"## 完成定义\n"
+        f"1. 实现所有需求\n"
+        f"2. 跑对应的测试（如有）\n"
+        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"4. 确认代码无语法错误\n"
+        f"5. 不超出 plan 文件白名单\n"
+    )
+
+    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = str(pids_dir / f"{task_id}.prompt.md")
+    Path(prompt_file).write_text(prompt)
+
+    report_dir = ROOT / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    import subprocess as sp
+    proc = sp.Popen(
+        [
+            str(CCC_HOME / "scripts" / "opencode-runner.sh"),
+            task_id,
+            str(ROOT),
+            "--phase", phase_id,
+            "--prompt", prompt_file,
+            "--timeout", str(timeout_s),
+        ],
+        start_new_session=True,
+    )
+    pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
+    print(f"[engine] {task_id} launched PID={proc.pid}")
+
+    return {"ok": True, "task_id": task_id, "pid": proc.pid}
+
+
+def dev_role_check_complete(task_id: str) -> dict:
+    """引擎用：检查 task 的 opencode 是否完成
+
+    返回:
+      {"status": "running"} — 仍在跑
+      {"status": "success"} — 完成，已从 in_progress 移到 testing
+      {"status": "failed", "retry": N} — 可重试
+      {"status": "quarantined"} — 重试耗尽，已隔离
+      {"status": "not_found"} — task 不在 in_progress
+    """
+    in_prog = list_tasks("in_progress")
+    if not any(t["id"] == task_id for t in in_prog):
+        return {"status": "not_found", "task_id": task_id}
+
+    done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
+    if not done_path.exists():
+        return {"status": "running", "task_id": task_id}
+
+    exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
+    result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
+    exit_code = exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
+    result_raw = result_path.read_text() if result_path.exists() else "{}"
+
+    report_dir = ROOT / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.joinpath(f"{task_id}.report.md").write_text(
+        f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
+        f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n"
+    )
+
+    # 清理标记文件
+    for p in [done_path, exitcode_path, ROOT / ".ccc" / "pids" / f"{task_id}.pid",
+              ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md", result_path]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+    if exit_code == "0":
+        move_task(task_id, "in_progress", "testing")
+        print(f"[engine] {task_id} ✓ moved to testing")
+        return {"status": "success", "task_id": task_id}
+    else:
+        # 读 retry 计数
+        phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        retry = 0
+        try:
+            if phases_file.exists():
+                with open(phases_file) as _pf:
+                    for _line in _pf:
+                        _line = _line.strip()
+                        if not _line or not _line.startswith("{"):
+                            continue
+                        phase = json.loads(_line)
+                        if "schema_version" in phase:
+                            continue
+                        retry = phase.get("retry", 0)
+                        break
+        except (json.JSONDecodeError, OSError):
+            pass
+
+        retry += 1
+        # 更新 retry 计数
+        try:
+            if phases_file.exists():
+                lines = phases_file.read_text().split("\n")
+                for i, _line in enumerate(lines):
+                    _ls = _line.strip()
+                    if not _ls or not _ls.startswith("{"):
+                        continue
+                    try:
+                        phase = json.loads(_ls)
+                        if "schema_version" in phase:
+                            continue
+                        phase["retry"] = retry
+                        lines[i] = json.dumps(phase, ensure_ascii=False)
+                        break
+                    except json.JSONDecodeError:
+                        pass
+                phases_file.write_text("\n".join(lines))
+        except OSError:
+            pass
+
+        if retry >= MAX_RETRY:
+            _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
+            print(f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined", file=sys.stderr)
+            return {"status": "quarantined", "task_id": task_id}
+        else:
+            print(f"[engine] {task_id} rc={exit_code} retry={retry}/{MAX_RETRY}")
+            return {"status": "failed", "task_id": task_id, "retry": retry}
+
+
 ROLES = {
     "product": product_role,
     "dev": dev_role,
