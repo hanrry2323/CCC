@@ -45,6 +45,12 @@ class Config:
     engine_poll_interval: int = 10  # 秒，活跃 task 时轮询 .done 间隔
     engine_idle_sleep: int = 5  # 秒，无 task 时休眠间隔
 
+    # ── 审计（v0.22）──
+    audit_interval_hours: int = 2  # audit_role 调用最小间隔
+    audit_workspaces: list[str] = field(  # audit_role 扫描的多 workspace
+        default_factory=lambda: _default_workspaces()
+    )
+
     # ── HTTP 服务 ──
     board_port: int = 7777
     board_host: str = "127.0.0.1"
@@ -69,6 +75,33 @@ def _resolve_workspace() -> Path:
         return Path(env)
     ccc_path = Path(__file__).resolve().parent.parent
     return ccc_path
+
+
+def _default_workspaces() -> list[str]:
+    """audit_role 扫描的 workspace 列表
+
+    优先环境变量 CCC_AUDIT_WORKSPACES（逗号分隔），否则扫描 ~/program/ 下含 .ccc/board 的项目。
+    """
+    env = os.environ.get("CCC_AUDIT_WORKSPACES", "").strip()
+    if env:
+        return [p.strip() for p in env.split(",") if p.strip()]
+    program_dir = Path.home() / "program"
+    if not program_dir.is_dir():
+        return []
+    found: list[str] = []
+    for sub in program_dir.iterdir():
+        if not sub.is_dir():
+            continue
+        if (sub / ".ccc" / "board").exists():
+            found.append(str(sub))
+    projects = program_dir / "projects"
+    if projects.is_dir():
+        for sub in projects.iterdir():
+            if not sub.is_dir():
+                continue
+            if (sub / ".ccc" / "board").exists():
+                found.append(str(sub))
+    return found
 
 
 def _env_override_int(cfg: Config, attr: str, env_key: str) -> None:

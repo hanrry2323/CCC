@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import uuid
 import subprocess
 import sys
 import time
@@ -1143,13 +1144,7 @@ def kb_role() -> dict:
 # ═══════════════════════════════════════════
 
 
-WORKSPACES = [
-    str(Path.home() / "program" / "CCC"),
-    str(Path.home() / "program" / "qx-observer"),
-    str(Path.home() / "program" / "xianyu"),
-    str(Path.home() / "program" / "projects" / "qb"),
-    str(Path.home() / "program" / "projects" / "qx"),
-]
+WORKSPACES = cfg.audit_workspaces  # 复用 Config（v0.22 M7）
 
 
 def _audit_recent_commits(workspace: str, since: str = "2 hours ago") -> str:
@@ -1196,10 +1191,16 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
 
 
 def _audit_classify(workspace: str, recent_commits: str, lint_out: str, mypy_out: str) -> dict:
-    """AI 分类。返回 {"auto": [...], "review": [...], "decision": [...]}。
+    """启发式分类（v0.22 临时方案，v0.23 计划接入 Claude API）。
 
-    简化版：基于 commit message + lint/mypy 输出的启发式分类。
-    生产环境可调 Claude API 做更精细分类。
+    返回 {"auto": [...], "review": [...], "decision": [...]}。
+
+    v0.22 实现是字符串 contains 匹配，**非真正 AI**：
+    - lint warning（无 "error" 字符串）→ auto
+    - mypy "error:" → review
+    - 暂无 decision 分类（保留字段给 v0.23 扩展）
+
+    已知局限：可能误判某些 fixable 安全 warning 为 auto。v0.23 升级。
     """
     findings = {"auto": [], "review": [], "decision": []}
 
@@ -1228,7 +1229,7 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
     posted = 0
     for i, item in enumerate(items):
-        tid = sanitize_id(f"audit-{category}-{date_str}-{i}")
+        tid = sanitize_id(f"audit-{category}-{date_str}-{uuid.uuid4().hex[:8]}")
         title = item[:80]
         store.create_task(
             {
@@ -1243,7 +1244,12 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
     return posted
 
 
-def _audit_write_report(workspace: str, findings: dict, commit_log: str) -> Path:
+def _audit_write_report(
+    workspace: str,
+    findings: dict,
+    commit_log: str,
+    auto_fixed: list | None = None,
+) -> Path:
     """写审计报表到 {workspace}/.ccc/audit-reports/{date}.md"""
     from datetime import datetime as _dt
     name = Path(workspace).name
@@ -1251,6 +1257,9 @@ def _audit_write_report(workspace: str, findings: dict, commit_log: str) -> Path
     report_dir = Path(workspace) / ".ccc" / "audit-reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{date_str}.md"
+
+    n_auto = len(findings.get("auto", []))
+    n_review = len(findings.get("review", []))
 
     lines = [
         f"# Audit Report — {name} — {date_str}",
@@ -1260,12 +1269,16 @@ def _audit_write_report(workspace: str, findings: dict, commit_log: str) -> Path
         commit_log or "(无变更)",
         "```",
         "",
-        f"## Auto (可自动修) — {len(findings.get('auto', []))} 条",
+        f"## Auto (可自动修) — {n_auto} 条",
     ]
     for item in findings.get("auto", []):
         lines.append(f"- {item}")
     lines.append("")
-    lines.append(f"## Review (需审查) — {len(findings.get('review', []))} 条")
+    lines.append(f"## Auto-Fixed — {len(auto_fixed)} 条")
+    for item in auto_fixed:
+        lines.append(f"- {item}")
+    lines.append("")
+    lines.append(f"## Review (需审查) — {n_review} 条")
     for item in findings.get("review", []):
         lines.append(f"- {item}")
     lines.append("")
@@ -1274,15 +1287,23 @@ def _audit_write_report(workspace: str, findings: dict, commit_log: str) -> Path
         lines.append(f"- {item}")
     lines.append("")
     lines.append(f"## Build Gate")
-    lines.append("- ruff: ✓ (无 error)")
-    lines.append("- mypy: 详见上方")
+    lines.append(f"- ruff: {n_auto} auto / {n_review} review")
+    lines.append("- mypy: 详见上方 review 段")
 
     report_path.write_text("\n".join(lines))
     return report_path
 
 
 def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict:
-    """审计角色: 全项目扫描 → AI 分类 → auto 直接修 / review/decision 投 backlog → 写报表
+    """审计角色 (v0.22) — 跨 workspace 全项目扫描
+
+    不同于 dev/reviewer/tester 等单 workspace 角色，audit 跨多个 workspace 调度
+    （依赖 cfg.audit_workspaces）。调用方式：
+    - CLI：python3 ccc-board.py audit
+    - engine：_audit_should_run() 自动触发
+    - main dispatch：单独分支（不在 ROLES 字典中）
+
+    流程: 全项目扫描 → AI 分类 → auto 直接修 / review/decision 投 backlog → 写报表
 
     Args:
         workspace: 指定 workspace；None = 扫所有 WORKSPACES
@@ -1309,12 +1330,22 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         # 3. AI 分类（简化启发式）
         findings = _audit_classify(ws, commits, lint_out, mypy_out)
 
-        # 4. auto 直接修（ruff --fix 限于非 src 改动）
+        # 4. auto 直接修（v0.22 边界：只对 tests/ + 配置/文档/杂项改，
+        #    不动 src/ 业务代码。需要 D4 决策时再开 src 例外）
         auto_fixed = []
         if findings.get("auto"):
             try:
+                # 限制 ruff --fix 只跑在 tests/ + 非 src 目录
+                # 例外用 ruff.toml 或 pyproject.toml 的 [tool.ruff] exclude
                 sp.run(
-                    ["ruff", "check", "--fix", "."],
+                    [
+                        "ruff",
+                        "check",
+                        "--fix",
+                        "--exclude",
+                        "src",
+                        ".",
+                    ],
                     cwd=ws, capture_output=True, text=True, timeout=60,
                 )
                 auto_fixed = findings["auto"]
@@ -1327,7 +1358,7 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
 
         # 6. 写报表
-        report_path = _audit_write_report(ws, findings, commits)
+        report_path = _audit_write_report(ws, findings, commits, auto_fixed=auto_fixed)
 
         results.append(
             {

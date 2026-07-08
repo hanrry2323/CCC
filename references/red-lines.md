@@ -33,7 +33,7 @@
 | **X5** | **Engine + board-server plist 必装（v0.20.1 起）** | v0.16 → v0.20.1 |
 | **X6** | **角色频率不许改（v0.20.1 起不再适用 → 见 X6 正文）** | v0.16 → v0.20.1 |
 | **X7** | **reviewer 必须用 LLM 审查（v0.21 起，fallback 到 py_compile）** | v0.21 |
-| **X8** | **audit 角色必须 2h 内只跑一次（v0.22 起）** | v0.22 |
+| **X8** | **audit 角色必须 ≥ 2h 间隔（v0.22 起）** | v0.22 |
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
 >
@@ -551,3 +551,27 @@ fi
   1. `ccc-engine.py` 的 poll_interval / idle_sleep 可通过 `CCC_ENGINE_POLL_INTERVAL` / `CCC_ENGINE_IDLE_SLEEP` 环境变量调
   2. 改动需老板显式同意
 - **触犯后果**：Critical — 改流水线节奏 = 改产品决策，强制还原
+
+
+#### 红线 X7：reviewer 必须用 LLM 审查（v0.21 起）
+
+- **规则**：reviewer_role 必须调 Claude API 审查 `git diff HEAD~1` + plan `## 验收清单`，输出严格 JSON verdict。
+- **Why**：v0.20.1 reviewer 只是 py_compile，xianyu 接入实测发现 reviewer 报告"检查 0 文件"仍通过——纯静态语法检查不抓逻辑错/安全漏洞/边界条件。
+- **机制**：
+  1. `_review_with_llm()` 构造审查 prompt，含 plan 摘要 + diff stat + diff 详情 + 5 类清单
+  2. 期望输出 JSON：`{"verdict": "pass"|"fail", "findings": [...], "summary": "..."}`
+  3. 写报告到 `.ccc/reports/{tid}.review.md`
+  4. pass → move testing → verified；fail → 留 testing
+- **Fallback**：API 不可达/超时/JSON 解析失败 → 退回 `py_compile` 静态检查，仍能完成流转不阻塞
+- **触犯后果**：High — 退回纯 py_compile 模式必须留痕（review.md 标"fallback"原因）
+
+#### 红线 X8：audit 角色必须 ≥ 2h 间隔（v0.22 起）
+
+- **规则**：audit_role 调用间隔必须 ≥ 2h。`engine_poll_interval` 10s 检测到 `_audit_should_run()` 返回 True 才触发。
+- **Why**：v0.22 audit 是"全项目 git log + lint + mypy + 报表"重型操作，5 workspace 串行最坏 15-25 分钟。如果不限频率，2h 间隔内多次触发会重复跑，浪费算力 + 报表覆盖。
+- **机制**：
+  1. `audit_role()` 自身写 `~/.ccc/audit-last-run.json` 记录时间戳
+  2. `_audit_should_run(interval_hours=2)` 比较当前时间与 last_run 差值
+  3. engine 主循环只在 idle 分支检查（避免阻塞 task 串行）
+- **配置项**：`_audit_should_run(interval_hours=2)` — 改频率需改代码 + 老板同意
+- **触犯后果**：Medium — 双跑会浪费算力，报表被覆盖；engine 不会因 audit 错误而退出

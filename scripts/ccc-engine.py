@@ -184,15 +184,6 @@ def engine_loop(workspace: str) -> None:
             time.sleep(cfg.engine_idle_sleep)
             continue
 
-        # audit 触发检查（v0.22）：每 2h 跑一次全项目审计
-        if _audit_should_run():
-            engine_log("触发 audit_role（全项目扫描）")
-            try:
-                ccc_board.audit_role()
-                _audit_record_run()
-            except Exception as exc:
-                engine_log(f"audit_role 异常: {exc}")
-
         _wait_tick(tick_start)
 
 
@@ -218,11 +209,6 @@ def _audit_should_run(interval_hours: int = 2) -> bool:
         return hours >= interval_hours
     except (json.JSONDecodeError, KeyError, ValueError):
         return True
-
-
-def _audit_record_run() -> None:
-    """记录 audit 运行时间（由 audit_role 自身写入，这里是兜底）"""
-    pass
 
 
 def _check_stale() -> None:
