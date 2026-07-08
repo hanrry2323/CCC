@@ -1,0 +1,15 @@
+{
+  "updated_at": "2026-07-08T07:58:26Z",
+  "tasks_in_flight": 0,
+  "abnormal_count": 0,
+  "pids_count": 0,
+  "alerts_today": 113,
+  "launchd_missing": [
+    "product",
+    "dev",
+    "reviewer",
+    "tester",
+    "kb",
+    "regress"
+  ]
+}

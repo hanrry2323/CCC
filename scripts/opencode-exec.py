@@ -37,26 +37,11 @@ PID_DIR = Path.home() / ".ccc" / "opencode-pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def resolve_opencode() -> str:
-    """解析 opencode 可执行文件路径"""
-    from shutil import which
-    from os.path import expanduser
-
-    env_bin = os.environ.get("OPENCODE_BIN")
-    if env_bin:
-        resolved = which(env_bin) or (env_bin if "/" in env_bin and Path(env_bin).exists() else None)
-        if resolved:
-            return resolved
-
-    path = which("opencode")
-    if path:
-        return path
-
-    npm_path = expanduser("~/.npm-global/bin/opencode")
-    if Path(npm_path).exists():
-        return npm_path
-
-    return None
+import sys as _sys
+_scripts_dir = str(Path(__file__).resolve().parent)
+if _scripts_dir not in _sys.path:
+    _sys.path.insert(0, _scripts_dir)
+from _executor import resolve_opencode
 
 
 def check_residual_watchdog(script_dir: Path) -> bool:

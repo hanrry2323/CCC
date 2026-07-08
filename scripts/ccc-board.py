@@ -386,9 +386,15 @@ def dev_role() -> dict:
                 lines = phases_file.read_text().split("\n")
                 for i, _line in enumerate(lines):
                     _line_s = _line.strip()
-                    if not _line_s or _line_s.startswith('{"schema_version'):
-                        continue  # 跳过 schema_version 元数据行
-                    phase = json.loads(_line_s)
+                    if not _line_s:
+                        continue
+                    try:
+                        _meta = json.loads(_line_s)
+                        if "schema_version" in _meta:
+                            continue  # 跳过 schema_version 元数据行
+                    except json.JSONDecodeError:
+                        continue
+                    phase = _meta
                     # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
                     if isinstance(phase, list):
                         phase = phase[0] if phase else {}
@@ -813,7 +819,7 @@ def ops_role() -> dict:
             ["launchctl", "list", f"com.ccc.{role}"],
             capture_output=True, text=True, timeout=5,
         )
-        if "PID" in r.stdout:
+        if r.returncode == 0 and "PID" in r.stdout:
             launchd_up.append(role)
         else:
             print(f"[ops] ⚠ com.ccc.{role} 未运行")
@@ -822,15 +828,13 @@ def ops_role() -> dict:
 
     # 4.5 日志清理：删除 >30 天的 role 日志
     if (Path.home() / ".ccc" / "logs").exists():
-        import time as _time
-        _now_ts = _time.time()
+        _now_ts = time.time()
         _cutoff = _now_ts - 30 * 86400
         for _lf in (Path.home() / ".ccc" / "logs").glob("role-*.log"):
             if _lf.stat().st_mtime < _cutoff:
                 _lf.unlink(missing_ok=True)
 
     # 6. 指标收集 → .ccc/metrics.json
-    import json as _json
     pid_dir = ROOT / ".ccc" / "pids"
     metrics = {
         "updated_at": now_iso(),
@@ -841,7 +845,7 @@ def ops_role() -> dict:
         "launchd_missing": health["launchd_missing"],
     }
     metrics_file = ROOT / ".ccc" / "metrics.json"
-    metrics_file.write_text(_json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
+    metrics_file.write_text(json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
 
     return {"role": "ops", "health": health}
 
