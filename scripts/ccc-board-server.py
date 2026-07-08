@@ -110,9 +110,9 @@ def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
     board = board_path(workspace)
     if board is None:
         return False
-    # 列流转白名单检查
-    allowed = COLUMN_TRANSITIONS.get(from_col, [])
-    if to_col not in allowed:
+    # 列流转白名单检查（与 board.py 一致：目标列 → 允许的源列）
+    allowed = COLUMN_TRANSITIONS.get(to_col, [])
+    if from_col not in allowed:
         print(f"move_task 拒绝: {from_col} → {to_col}（不在白名单）", file=sys.stderr)
         return False
     src = board / from_col / f"{task_id}.jsonl"

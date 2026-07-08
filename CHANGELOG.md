@@ -616,3 +616,19 @@ git push origin main --tags
 ## [v0.18.0] - 2026-07-07
 
 - feat-agents-approve: AGENTS.md 审批流程 看板发布
+
+## [v0.18.0] - 2026-07-08
+
+- feat-regress-notify: [ABNORMAL] 回测失败通知：regress 发现回归时，除了建 bug 还要发桌面通知（ccc-notify.sh） 看板发布
+
+## [v0.18.0] - 2026-07-08
+
+- feat-product-auto: product 自动调 Claude API 写 plan（--promote 已实现，需测试中转站连通性） 看板发布
+
+## [v0.18.0] - 2026-07-08
+
+- feat-role-bar: 前端角色状态栏对接 /api/roles，实时显示 7 角色最新执行状态（ok/fail/idle+执行时间） 看板发布
+
+## [v0.18.0] - 2026-07-08
+
+- feat-card-detail: [ABNORMAL] 前端卡片点击弹出详情面板，显示任务完整信息（题目/描述/当前列/move事件列表） 看板发布

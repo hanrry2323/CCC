@@ -5,3 +5,4 @@
 {"event": "move", "task_id": "feat-regress-notify", "from": "backlog", "to": "planned", "timestamp": "2026-07-08T03:51:14Z"}
 {"event": "move", "task_id": "feat-regress-notify", "from": "planned", "to": "in_progress", "timestamp": "2026-07-08T03:51:25Z"}
 {"event": "move", "task_id": "feat-regress-notify", "from": "in_progress", "to": "verified", "timestamp": "2026-07-08T12:00:00Z"}
+{"event": "move", "task_id": "feat-regress-notify", "from": "verified", "to": "released", "timestamp": "2026-07-08T03:58:17Z"}

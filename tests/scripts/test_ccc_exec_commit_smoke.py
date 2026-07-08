@@ -51,18 +51,19 @@ def fake_workspace(tmp_path):
 
 
 def test_commit_empty_phases_noop(fake_workspace):
-    """If no phase has commit=null AND status=done, script noop (exit 0)."""
-    # phases has commit=null status=done — should trigger
-    # But we don't have scope files specified, so should still skip gracefully
+    """scope 为空 → script noop (exit 0)."""
     p = fake_workspace / ".ccc" / "phases" / "testtask.phases.json"
-    p.write_text(
-        '{"phase": 1, "status": "done", "subtasks": {}, "commit": null, "notes": ""}\n'
-    )
+    # 合法 schema（含 scope 字段，但为空 → 无改动需 commit → noop）
+    p.write_text(json.dumps({
+        "phases": [
+            {"id": 1, "status": "done", "scope": [], "commit": None,
+             "commit_message": "feat: noop test", "subtasks": {}, "notes": ""}
+        ]
+    }) + "\n")
     proc = subprocess.run(
         ["bash", str(SCRIPT), str(fake_workspace), "testtask"],
         capture_output=True, text=True, timeout=10,
     )
-    # Should noop (exit 0)
     assert proc.returncode == 0, f"expected exit 0, got {proc.returncode}: {proc.stderr}"
 
 

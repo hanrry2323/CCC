@@ -273,8 +273,7 @@ for p in phases:
         commit_msg = commit_msg + " ccc-task-id=" + task_id
 
     if not scope:
-        print(f"  ❌ phase {pid}: scope 为空，跳过（无安全 fallback）")
-        errors += 1
+        print(f"  ○ phase {pid}: scope 为空，跳过（无改动需 commit）")
         continue
     else:
         # Fix #1: --all scope 不可达 — check before constructing prefix

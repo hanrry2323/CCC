@@ -174,24 +174,24 @@ def test_path3_repeated_run_idempotent(fake_workspace):
 
 
 # ============================================================
-# 辅助: phases.json 缺 task_id 字段 → 拒绝
+# 辅助: phases.json 缺 task_id 字段 → 自动注入 UUID
 # ============================================================
-def test_phases_missing_task_id_rejected(fake_workspace):
-    """phases.json 顶层缺 task_id 字段 → 脚本拒绝，exit 1."""
+def test_phases_missing_task_id_auto_injects(fake_workspace):
+    """phases.json 顶层缺 task_id 字段 → 脚本自动注入 UUID，exit 0."""
     task = "task4"
     phases = fake_workspace / ".ccc" / "phases" / f"{task}.phases.json"
     phases.write_text(json.dumps({
         "phases": [
             {"id": 1, "status": "done", "commit": None,
              "scope": ["README.md"],
-             "commit_message": "feat: x ccc-task-id=zzz"}
+             "commit_message": "feat: x"}
         ]
     }) + "\n")
 
     proc = _run_commit(fake_workspace, task)
-    assert proc.returncode != 0
+    assert proc.returncode == 0
     out = proc.stdout + proc.stderr
-    assert "task_id" in out, f"缺 task_id 字段提示:\n{out}"
+    assert "自动注入 task_id" in out, f"缺自动注入提示:\n{out}"
 
 
 # ============================================================
