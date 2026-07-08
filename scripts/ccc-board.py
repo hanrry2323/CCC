@@ -1274,6 +1274,77 @@ def dev_role_launch(task_id: str) -> dict:
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
 
+def dev_role_relaunch(task_id: str) -> dict:
+    """引擎用：失败重试时重新启 opencode（task 已在 in_progress 不挪列）
+
+    与 dev_role_launch 的区别：
+    - 不检查 planned，直接读 plan+phases
+    - 不挪列（已在 in_progress）
+    - 清理旧的 .done/exitcode 后重新启动
+    """
+
+    cplan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not cplan.exists() or not cphases.exists():
+        _quarantine(task_id, "engine relaunch: 缺 plan 或 phases 文件")
+        return {"error": f"task '{task_id}' missing plan/phases", "task_id": task_id}
+
+    # 清理旧的标记文件
+    pids_dir = ROOT / ".ccc" / "pids"
+    for suffix in [".done", ".exitcode", ".pid", ".prompt.md", ".result.json"]:
+        f = pids_dir / f"{task_id}{suffix}"
+        if f.exists():
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        # 也检查 reports/
+        f2 = ROOT / ".ccc" / "reports" / f"{task_id}{suffix}"
+        if f2.exists():
+            try:
+                f2.unlink()
+            except OSError:
+                pass
+
+    timeout_s = _load_timeout(cphases, default=600)
+    phase_id = f"{task_id}-p1"
+    plan_content = cplan.read_text()
+    prompt = (
+        f"# CCC 执行任务: {task_id}\n\n"
+        f"## Plan\n\n{plan_content}\n\n"
+        f"## 完成定义\n"
+        f"1. 实现所有需求\n"
+        f"2. 跑对应的测试（如有）\n"
+        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"4. 确认代码无语法错误\n"
+        f"5. 不超出 plan 文件白名单\n"
+    )
+
+    pids_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = str(pids_dir / f"{task_id}.prompt.md")
+    Path(prompt_file).write_text(prompt)
+
+    report_dir = ROOT / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    import subprocess as sp
+    proc = sp.Popen(
+        [
+            str(CCC_HOME / "scripts" / "opencode-runner.sh"),
+            task_id,
+            str(ROOT),
+            "--phase", phase_id,
+            "--prompt", prompt_file,
+            "--timeout", str(timeout_s),
+        ],
+        start_new_session=True,
+    )
+    pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
+    print(f"[engine] {task_id} relaunched PID={proc.pid}")
+
+    return {"ok": True, "task_id": task_id, "pid": proc.pid}
+
+
 def dev_role_check_complete(task_id: str) -> dict:
     """引擎用：检查 task 的 opencode 是否完成
 
@@ -1304,20 +1375,26 @@ def dev_role_check_complete(task_id: str) -> dict:
         f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n"
     )
 
-    # 清理标记文件
-    for p in [done_path, exitcode_path, ROOT / ".ccc" / "pids" / f"{task_id}.pid",
-              ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md", result_path]:
-        try:
-            p.unlink()
-        except OSError:
-            pass
+    # 标记文件列表（用于清算）
+    marker_files = [
+        done_path, exitcode_path,
+        ROOT / ".ccc" / "pids" / f"{task_id}.pid",
+        ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md",
+        result_path,
+    ]
 
     if exit_code == "0":
+        # 成功：清标记文件 + 挪列
+        for p in marker_files:
+            try:
+                p.unlink()
+            except OSError:
+                pass
         move_task(task_id, "in_progress", "testing")
         print(f"[engine] {task_id} ✓ moved to testing")
         return {"status": "success", "task_id": task_id}
     else:
-        # 读 retry 计数
+        # 失败：读 retry 计数，保留 .done 文件供 engine 下次 check
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         retry = 0
         try:
@@ -1336,7 +1413,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             pass
 
         retry += 1
-        # 更新 retry 计数
+        # 更新 phases.json retry 计数
         try:
             if phases_file.exists():
                 lines = phases_file.read_text().split("\n")
@@ -1358,10 +1435,17 @@ def dev_role_check_complete(task_id: str) -> dict:
             pass
 
         if retry >= MAX_RETRY:
+            # 重试耗尽：清理标记 + 异常隔离
+            for p in marker_files:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
             _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
             print(f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined", file=sys.stderr)
             return {"status": "quarantined", "task_id": task_id}
         else:
+            # 保留 .done 在磁盘，engine 下次 check 时看到 failed 状态就会 relaunch
             print(f"[engine] {task_id} rc={exit_code} retry={retry}/{MAX_RETRY}")
             return {"status": "failed", "task_id": task_id, "retry": retry}
 

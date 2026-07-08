@@ -38,6 +38,7 @@ _spec.loader.exec_module(ccc_board)
 
 # 别名
 dev_role_launch = ccc_board.dev_role_launch
+dev_role_relaunch = ccc_board.dev_role_relaunch
 dev_role_check_complete = ccc_board.dev_role_check_complete
 reviewer_role = ccc_board.reviewer_role
 tester_role = ccc_board.tester_role
@@ -112,8 +113,8 @@ def engine_loop(workspace: str) -> None:
                 elif status == "failed":
                     retry = result.get("retry", 0)
                     engine_log(f"{running_task_id} 失败 (retry={retry}), 重新启动")
-                    # 重新启动（停留在 in_progress）
-                    dev_role_launch(running_task_id)
+                    # 重新启动（task 在 in_progress，用 relaunch）
+                    dev_role_relaunch(running_task_id)
                     # 等下次轮询
                     _wait_tick(tick_start)
                     continue
