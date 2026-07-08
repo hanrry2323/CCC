@@ -157,6 +157,7 @@ def engine_loop(workspace: str) -> None:
                             engine_log(f"启动 {tid} 失败: {launch_r['error']}")
                             running_task_id = None
                             continue  # 试下一个
+                        update_index()  # v0.23.2 fix: 挪列后同步 index
                         break  # 启动了一个, 等下次轮询
 
                 if running_task_id is None:

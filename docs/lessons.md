@@ -1862,3 +1862,17 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 **应用方式**：
 - 任何钩子模板必带 args 顺序注释
 - 钩子 ccc-auto-dev.sh 调 launcher 时必传 `--cwd`
+
+## Lesson 39 — Engine 取 task 后必须更新 index（v0.23.2 实测，2026-07-09）
+
+**问题**：engine 的 `dev_role_launch()` 调了 `move_task()` 将 task 从 planned 挪到 in_progress，但返回后未调 `update_index()`。看板 index.json 仍显示 planned+1、in_progress=0，与真实文件状态不一致。
+
+**教训**：
+1. Engine 内**每次操作看板文件后必须同步 index.json**
+2. `move_task()` 只挪文件，不负责更新 index——这是 call site 的责任
+3. 只看文件是否挪动不够，必须验证 index 数字与实际文件数对得上
+
+**可执行规则**：
+- `dev_role_launch`（计划→进行中）后跟 `update_index()`
+- `dev_role_relaunch` 不需要（不挪列）
+- engine 空闲时也可以加一次 "index 校验" 兜底修复

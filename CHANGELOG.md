@@ -24,6 +24,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
 - `references/red-lines.md`：加 X7（reviewer 必须 LLM）
 
+## [v0.23.2] — 2026-07-09 — engine 取 task 后未更新 index 修复
+
+### 修复
+- `ccc-engine.py` `dev_role_launch` 成功后未调 `update_index()`，导致 index.json 与实际看板列不一致（task 已到 in_progress 但 index 仍显示 planned+1） `ccc-engine.py:160`
+
+### 教训
+- Lesson 37: Engine 每次操作看板文件后必须同步 index.json。`dev_role_launch` 调了 `move_task` 但 call site 没跟 `update_index()`。
+
+### 验证
+- compile: 无语法错误
+- VERSION: v0.23.0 → v0.23.2
+
+---
+
+## [v0.23.1] — 2026-07-09 — v0.23 对抗性审查修复
+
+### 修复
+- A1: VERSION v0.23.0-dev → v0.23.0
+- A2: `_get_code_context` 截断确保代码块闭合
+- A3: 删除冗余 subprocess import（用全局）
+- A4: roadmap.md v0.23 状态改为已发布
+- A5: 入口文件过滤增强（排除 vendor/build/tests）
+- A6: 模块级缓存 `_get_code_context_cache`
+- A7: rglob `follow_symlinks=False`
+
+### 验证
+- compile: 无语法错误
+- pytest: 10 passed
+
+---
+
 ## [v0.23.0] — 2026-07-09 — product 上游智能化
 
 ### 新增
