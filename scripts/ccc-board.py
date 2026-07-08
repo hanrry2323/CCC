@@ -1892,7 +1892,7 @@ def main():
     ap.add_argument(
         "role",
         nargs="?",
-        choices=list(ROLES.keys()) + ["index"],
+        choices=list(ROLES.keys()) + ["index", "audit"],
         help="角色名 或 'index'",
     )
     ap.add_argument(
@@ -1926,6 +1926,11 @@ def main():
 
     if args.role == "index":
         print(json.dumps(update_index(), indent=2, ensure_ascii=False))
+        return
+
+    if args.role == "audit":
+        result = audit_role()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
     if not args.role:
