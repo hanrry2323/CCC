@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "feat-role-bar", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T17:59:28Z"}
+{"event": "move", "task_id": "feat-role-bar", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T20:20:07Z"}
+{"event": "move", "task_id": "feat-role-bar", "from": "in_progress", "to": "testing", "timestamp": "2026-07-07T20:29:40Z"}
+{"event": "move", "task_id": "feat-role-bar", "from": "testing", "to": "verified", "timestamp": "2026-07-07T20:58:50Z"}

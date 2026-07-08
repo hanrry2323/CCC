@@ -1,1 +1,4 @@
 {"event": "move", "task_id": "feat-regress-notify", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T16:49:19Z"}
+{"event": "move", "task_id": "feat-regress-notify", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T21:03:25Z"}
+{"event": "move", "task_id": "feat-regress-notify", "from": "in_progress", "to": "abnormal", "timestamp": "2026-07-08T03:28:18Z"}
+{"event": "move", "task_id": "feat-regress-notify", "from": "abnormal", "to": "backlog", "timestamp": "2026-07-08T03:42:13Z"}

@@ -612,3 +612,7 @@ git push origin main --tags
 - 看板 e2e: backlog→planned→in_progress→testing→verified→released
 - pytest: 69 passed
 
+
+## [v0.18.0] - 2026-07-07
+
+- feat-agents-approve: AGENTS.md 审批流程 看板发布

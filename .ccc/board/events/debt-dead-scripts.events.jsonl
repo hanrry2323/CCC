@@ -1,3 +1,4 @@
 {"event": "move", "task_id": "debt-dead-scripts", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T13:38:13Z"}
 {"event": "move", "task_id": "debt-dead-scripts", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T13:48:14Z"}
 {"event": "move", "task_id": "debt-dead-scripts", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T14:08:16Z"}
+{"event": "move", "task_id": "debt-dead-scripts", "from": "released", "to": "backlog", "timestamp": "2026-07-07T19:02:39Z"}

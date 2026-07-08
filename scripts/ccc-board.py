@@ -508,7 +508,7 @@ def dev_role() -> dict:
         if task is not None:
             retry += 1
 
-        if retry > MAX_RETRY:
+        if retry >= MAX_RETRY:
             # 达到最大重试 → 异常隔离
             _quarantine(task_id, f"重试{MAX_RETRY}次全部失败，已移入异常列")
             # 同时创建紧急修复任务到 backlog

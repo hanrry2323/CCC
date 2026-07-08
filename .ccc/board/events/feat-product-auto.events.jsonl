@@ -1,0 +1,4 @@
+{"event": "move", "task_id": "feat-product-auto", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T18:09:28Z"}
+{"event": "move", "task_id": "feat-product-auto", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T20:16:01Z"}
+{"event": "move", "task_id": "feat-product-auto", "from": "in_progress", "to": "testing", "timestamp": "2026-07-07T20:39:41Z"}
+{"event": "move", "task_id": "feat-product-auto", "from": "testing", "to": "verified", "timestamp": "2026-07-07T20:58:50Z"}

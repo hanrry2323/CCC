@@ -1,1 +1,1 @@
-[{"phase": "feat-card-detail-p1", "status": "pending", "timeout": 300, "retry": 3}]
+{"phase": "feat-card-detail-p1", "status": "pending", "timeout": 300, "retry": 5, "retry_at": "2026-07-07T21:19:25.865849+00:00"}

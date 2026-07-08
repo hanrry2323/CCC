@@ -1,0 +1,1 @@
+{"id": "manual-test-001", "title": "手动测试：能否自动开发", "description": "验证手动移到 planned 后 dev 能否处理", "status": "released", "created_at": "2026-07-07T16:42:29Z", "updated_at": "2026-07-08T03:30:00Z", "moves": [], "tags": ["manual-test"]}

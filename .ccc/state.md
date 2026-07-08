@@ -136,9 +136,9 @@
 - 关键产出:
   - `.ccc/board/` 6 列任务看板
   - `scripts/ccc-board.py` 6 角色核心
-  - `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` × 6
-  - `scripts/install-ccc-roles.sh` 一键装 6 launchd plist
-  - 频率: product 4h / dev 30min / reviewer 2h / tester 4h / ops 30min / kb 每天 23:00
+  - `scripts/roles/{product,dev,reviewer,tester,ops,kb,regress}.sh` × 7
+  - `scripts/install-ccc-roles.sh` 一键装 7 launchd plist
+  - 频率: product 4h / dev 10min / reviewer 2h / tester 4h / ops 30min / kb 每天 23:00
   - e2e: 1 个 task backlog→released 全 6 步
 - 测试: 69 passed (无关 v0.16)
 

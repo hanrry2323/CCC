@@ -14,6 +14,9 @@ export CCC_ROLE_SKILL="${CCC_HOME}/skills/ccc-${CCC_ROLE}/SKILL.md"
 LOG="${HOME}/.ccc/logs/role-${CCC_ROLE}-$(date +%s).log"
 mkdir -p "$(dirname "$LOG")"
 
+# 修复 launchd 环境缺 PATH（opencode/claude 不可达）
+export PATH="/Users/apple/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
 # 加载 skill
 echo "[$(date '+%H:%M:%S')] ===== ${CCC_ROLE} tick =====" >> "$LOG"
 if [ -f "$CCC_ROLE_SKILL" ]; then

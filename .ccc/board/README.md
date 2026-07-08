@@ -1,6 +1,6 @@
 # CCC 任务看板
 
-6 角色多阶段开发系统。任务在 6 列间流转：
+7 角色多阶段开发系统。任务在 6 列间流转：
 
 ```
 backlog → planned → in_progress → testing → verified → released
@@ -37,22 +37,24 @@ JSONL 格式（每行 1 个 task）：
 }
 ```
 
-## 6 角色
+## 7 角色
 
 | 角色 | 频率 | 扫哪列 | 处理后挪到 |
 |------|------|--------|------------|
 | product | 4h | backlog | planned (写 plan.md + phases.json) |
-| dev | 30min | planned + in_progress | in_progress → testing |
+| dev | 10min | planned + in_progress | in_progress → testing |
 | reviewer | 2h | testing | testing → verified (过 ruff/mypy) |
 | tester | 4h | testing | testing → verified (过 pytest) |
 | ops | 30min | (所有列) | 健康检查 + 告警 |
 | kb | 23:00 | verified | verified → released (归档) |
+| regress | 23:30 | released | released → backlog (回归回测 + 建 bug) |
 
 ## 任务流转示例
 
 1. 老板说"按 CCC 跑 X" → product 写 task 到 backlog
 2. 4h 后 product 跑：扫 backlog → 写 plan.md → 挪 planned
-3. 30min 后 dev 跑：扫 planned → 调 opencode-exec → 挪 testing
+3. 10min 后 dev 跑：扫 planned → 调 opencode-exec → 挪 testing
 4. 2h 后 reviewer 跑：扫 testing → ruff/mypy → 通过则挪 verified
 5. 4h 后 tester 跑：扫 testing → pytest → 通过则挪 verified
 6. 23:00 kb 跑：扫 verified → 归档 + tag → 挪 released
+7. 23:30 regress 跑：扫 released → 回测 → 回归 bug 倒回 backlog

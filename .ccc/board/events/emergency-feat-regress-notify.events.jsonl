@@ -1,0 +1,2 @@
+{"event": "move", "task_id": "emergency-feat-regress-notify", "from": "none", "to": "backlog", "timestamp": "2026-07-07T17:29:21Z"}
+{"event": "move", "task_id": "emergency-feat-regress-notify", "from": "planned", "to": "abnormal", "timestamp": "2026-07-07T21:03:25Z"}

@@ -1,1 +1,1 @@
-[{"phase": "feat-regress-notify-p1", "status": "pending", "timeout": 300, "retry": 0}]
+{"phase": "feat-regress-notify-p1", "status": "pending", "timeout": 300, "retry": 5, "retry_at": "2026-07-07T21:45:44.150826+00:00"}
