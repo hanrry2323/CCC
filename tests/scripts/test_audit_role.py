@@ -171,3 +171,28 @@ def test_classify_empty_inputs():
     """全空输入 → 全空 findings"""
     findings = _audit_classify("/any", "", "", "")
     assert findings == {"auto": [], "review": [], "decision": []}
+
+
+# ═══════════════════════════════════════════
+# FileBoardStore 兜底 (N1)
+# ═══════════════════════════════════════════
+
+
+def test_post_backlog_on_bare_workspace(tmp_path):
+    """裸 workspace（无 .ccc/board 目录）→ FileBoardStore 应自动建目录
+
+    修复前会 FileNotFoundError；修复后自动 mkdir 全 7 列 + events。
+    """
+    bare_ws = tmp_path / "bare"
+    bare_ws.mkdir()
+
+    # 验证 .ccc/board/ 不存在
+    assert not (bare_ws / ".ccc" / "board").exists()
+
+    # 直接调 _audit_post_backlog（应不抛错）
+    n = _audit_post_backlog(str(bare_ws), ["item 1", "item 2"], "review")
+    assert n == 2
+
+    # 验证目录被自动建
+    assert (bare_ws / ".ccc" / "board" / "backlog").exists()
+    assert len(list((bare_ws / ".ccc" / "board" / "backlog").glob("*.jsonl"))) == 2

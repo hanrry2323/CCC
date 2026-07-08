@@ -1249,6 +1249,8 @@ def _audit_write_report(
     findings: dict,
     commit_log: str,
     auto_fixed: list | None = None,
+    mypy_raw: str = "",
+    duration_seconds: float = 0.0,
 ) -> Path:
     """写审计报表到 {workspace}/.ccc/audit-reports/{date}.md"""
     from datetime import datetime as _dt
@@ -1289,6 +1291,16 @@ def _audit_write_report(
     lines.append(f"## Build Gate")
     lines.append(f"- ruff: {n_auto} auto / {n_review} review")
     lines.append("- mypy: 详见上方 review 段")
+    if duration_seconds:
+        lines.append(f"- 实测耗时: {duration_seconds:.1f}s")
+
+    # mypy 原始输出附录（v0.22 N3：review 段只取前 5 行前 120 字符，完整输出在附录）
+    if mypy_raw:
+        lines.append("")
+        lines.append("## 附录：mypy 原始输出")
+        lines.append("```")
+        lines.append(mypy_raw[:5000])  # 截断 5KB 防巨型输出
+        lines.append("```")
 
     report_path.write_text("\n".join(lines))
     return report_path
@@ -1310,10 +1322,13 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         since: git log 时间窗口（默认 2h）
     """
     import subprocess as sp
+    import time as _time
+    _t0 = _time.time()
     results = []
     targets = [workspace] if workspace else WORKSPACES
 
     for ws in targets:
+        _t_ws = _time.time()
         ws_path = Path(ws)
         if not (ws_path / ".git").exists():
             continue
@@ -1358,7 +1373,8 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
 
         # 6. 写报表
-        report_path = _audit_write_report(ws, findings, commits, auto_fixed=auto_fixed)
+        _elapsed_ws = _time.time() - _t_ws
+        report_path = _audit_write_report(ws, findings, commits, auto_fixed=auto_fixed, mypy_raw=mypy_out, duration_seconds=_elapsed_ws)
 
         results.append(
             {
@@ -1368,10 +1384,12 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
                 "review_posted": posted_review,
                 "decision_posted": posted_decision,
                 "report": str(report_path),
+                "duration_seconds": round(_elapsed_ws, 1),
             }
         )
 
     # 记录运行时间
+    _elapsed = _time.time() - _t0
     from datetime import datetime as _dt
     last_run = Path.home() / ".ccc" / "audit-last-run.json"
     last_run.parent.mkdir(parents=True, exist_ok=True)
@@ -1380,13 +1398,14 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
             {
                 "last_run": _dt.now(timezone.utc).isoformat(),
                 "results_count": len(results),
+                "duration_seconds": round(_elapsed, 1),
             },
             ensure_ascii=False,
         )
         + "\n"
     )
 
-    return {"role": "audit", "results": results}
+    return {"role": "audit", "results": results, "duration_seconds": round(_elapsed, 1)}
 
 
 def regress_role() -> dict:

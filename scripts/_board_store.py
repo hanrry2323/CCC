@@ -121,6 +121,9 @@ class FileBoardStore:
         self.board = workspace / ".ccc" / "board"
         self.events_dir = self.board / "events"
         self.lockfile = self.board / ".board.lock"
+        # 兜底：裸 workspace 时建全 7 列 + events 目录（v0.22 N1 修）
+        for col in COLUMNS:
+            (self.board / col).mkdir(parents=True, exist_ok=True)
 
     # ── 内部方法 ──
 

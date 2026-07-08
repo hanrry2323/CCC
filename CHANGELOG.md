@@ -24,6 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
 - `references/red-lines.md`：加 X7（reviewer 必须 LLM）
 
+## [v0.22.1] — 2026-07-09 — audit 修复 + 实测耗时记录
+
+### 修复
+- N1: `FileBoardStore` __init__ 兜底建 7 列 + events 目录（裸 workspace 不抛 `FileNotFoundError`） `_board_store.py:126`
+- N3: 审计报表加 mypy 原始输出附录（review 段只取前 5 行前 120 字符，完整输出在附录，防截断误导） `ccc-board.py:1297`
+- N4: `audit_role` 加全程计时（per-workspace + total duration，写 `audit-last-run.json` + 报表 + return dict） `ccc-board.py:1326`
+
+### 验证
+- pytest: 10 passed (test_audit_role.py, 含 N1 裸 workspace 测试)
+- compile: 无语法错误
+
+---
+
 ## [v0.22.0] — 2026-07-09 — audit 角色 + daily-auto-scan 收纳
 
 ### 新增
