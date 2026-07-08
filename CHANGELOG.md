@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.19.0] — 2026-07-08 — 基础加固 + 扩展通路
+
+### 新增
+- `scripts/_config.py`: 集中配置 Config dataclass，消灭散布的硬编码
+- `scripts/_board_store.py`: BoardStore 抽象 + FileBoardStore 实现（含 fcntl.flock 锁 + 原子写入）
+- `scripts/_executor.py`: Executor 协议 + OpenCodeExecutor 实现
+- `references/board-task-schema.md`: task JSONL 格式标准（CCC-QXO 共享契约）
+- `tests/e2e/test_pipeline_smoke.sh`: 完整流水线 E2E 集成测试
+
+### 重构
+- `scripts/ccc-board.py`: 存储操作委托 FileBoardStore，角色业务逻辑与存储层解耦
+- `scripts/ccc-board-server.py`: 消除 list_tasks/move_task/create_task 重复代码，导入 FileBoardStore
+- `scripts/opencode-pool.py`: 消除 importlib hack，导入 OpenCodeExecutor
+- `scripts/ccc-exec-launcher.sh`: 新增 3 次重试（指数退避 60/120/240s）
+
+### 文档
+- `docs/roadmap.md`: 新增 v0.19/v0.20 规划、三层架构图、与 QXO 独立发展说明
+- `docs/architecture.md`: 重写为三层架构（L3 角色 → L2 抽象 → L1 实现）
+- `CLAUDE.md`: 资产清单更新、QXO 关系改为"独立发展共享契约"
+
+### 修复
+- phases.json 写入带 `"schema_version": "1.0"` 元数据行
+- dev_role 读取 phases 时跳过 schema_version 行
+- 看板写操作加文件锁防 race condition
+
 ## [Unreleased] — v0.8 — OpenCode CLI 执行端重构
 
 **里程碑**：CCC 执行器从 claude CLI 切到 **OpenCode CLI**（CLI 模式，禁用 HTTP/serve），新增 3 条 OpenCode 进程管理红线（X1/X2/X3）。

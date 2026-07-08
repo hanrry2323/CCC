@@ -17,9 +17,13 @@ from typing import Optional
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+from _config import Config
+from _board_store import COLUMNS, COLUMN_TRANSITIONS, FileBoardStore
+
+_cfg = Config()
+
 # ── 配置 ──
-CCC_HOME = Path(__file__).resolve().parent.parent
-COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
+CCC_HOME = _cfg.ccc_home
 COLUMN_LABELS = {
     "backlog": "待办", "planned": "已计划", "in_progress": "开发中",
     "testing": "测试中", "verified": "已验证", "released": "已发布",
@@ -29,17 +33,6 @@ COLUMN_COLORS = {
     "backlog": "#94a3b8", "planned": "#6366f1", "in_progress": "#f59e0b",
     "testing": "#f97316", "verified": "#22c55e", "released": "#3b82f6",
     "abnormal": "#ef4444",
-}
-# 列流转白名单 — 防止绕过管线完整性
-# key=源列, value=允许的目标列
-COLUMN_TRANSITIONS = {
-    "backlog": ["planned"],
-    "planned": ["in_progress", "backlog"],
-    "in_progress": ["testing", "planned", "backlog"],
-    "testing": ["verified", "in_progress", "backlog"],
-    "verified": ["released", "testing", "backlog"],
-    "released": ["backlog"],
-    "abnormal": ["backlog", "planned"],
 }
 ROLES = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
 MAX_CONTENT_LENGTH = 1_048_576
@@ -73,31 +66,21 @@ def validate_workspace(workspace: str) -> bool:
     return workspace in discover_workspaces()
 
 
-# ── 看板操作 ──
+# ── 看板操作（委托 FileBoardStore）──
+def _store_for(workspace: str) -> FileBoardStore | None:
+    bp = board_path(workspace)
+    if bp is None:
+        return None
+    return FileBoardStore(bp.parent.parent)  # /workspace/.ccc/board → /workspace
+
+
 def list_tasks(column: str, workspace: str) -> list[dict]:
-    col_dir = board_path(workspace)
-    if col_dir is None:
+    s = _store_for(workspace)
+    if s is None:
         return []
-    col_dir = col_dir / column
-    if not col_dir.exists():
-        return []
-    tasks = []
-    for f in sorted(col_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
-        try:
-            with open(f) as fp:
-                for line in fp:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                        obj["_file"] = f.name
-                        obj["_column"] = column
-                        tasks.append(obj)
-                    except json.JSONDecodeError:
-                        print(f"bad jsonl line in {f}: {line}", file=sys.stderr)
-        except FileNotFoundError:
-            pass
+    tasks = s.list_tasks(column)
+    for t in tasks:
+        t["_column"] = column
     return tasks
 
 
@@ -106,64 +89,20 @@ def get_board_state(workspace: str) -> dict:
 
 
 def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
+    s = _store_for(workspace)
+    if s is None:
+        return False
     task_id = sanitize_id(task_id)
-    board = board_path(workspace)
-    if board is None:
-        return False
-    # 列流转白名单检查（与 board.py 一致：目标列 → 允许的源列）
-    allowed = COLUMN_TRANSITIONS.get(to_col, [])
-    if from_col not in allowed:
-        print(f"move_task 拒绝: {from_col} → {to_col}（不在白名单）", file=sys.stderr)
-        return False
-    src = board / from_col / f"{task_id}.jsonl"
-    if not src.exists():
-        return False
-    task = None
-    try:
-        with open(src) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get("id") == task_id:
-                        task = obj
-                        break
-                except json.JSONDecodeError:
-                    print(f"bad jsonl line in {src}: {line}", file=sys.stderr)
-    except FileNotFoundError:
-        return False
-    if not task:
-        return False
-    task["status"] = to_col
-    task["updated_at"] = now_iso()
-    task.setdefault("moves", []).append({"from": from_col, "to": to_col, "at": now_iso()})
-    dst = board / to_col / f"{task_id}.jsonl"
-    try:
-        with open(dst, "w") as f:
-            f.write(json.dumps(task, ensure_ascii=False) + "\n")
-    except FileNotFoundError:
-        return False
-    src.unlink(missing_ok=True)
-    return True
+    return s.move_task(task_id, from_col, to_col)
 
 
 def create_task(task_id: str, title: str, description: str = "", workspace: str = "CCC") -> bool:
-    task_id = sanitize_id(task_id)
-    bp = board_path(workspace)
-    if bp is None:
+    s = _store_for(workspace)
+    if s is None:
         return False
-    task = {
-        "id": task_id, "title": title, "description": description,
-        "status": "backlog", "created_at": now_iso(), "updated_at": now_iso(),
-        "moves": [],
-    }
-    dst = bp / "backlog" / f"{task_id}.jsonl"
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with open(dst, "w") as f:
-        f.write(json.dumps(task, ensure_ascii=False) + "\n")
-    return True
+    task_id = sanitize_id(task_id)
+    data = {"id": task_id, "title": title, "description": description}
+    return s.create_task(data, column="backlog")
 
 
 # ── 时间线 ──
@@ -427,11 +366,11 @@ def main():
     ap.add_argument("--host", default=None)
     args = ap.parse_args()
 
-    # fallback: 环境变量 → 硬编码默认
+    # fallback: 环境变量 → Config 默认
     if args.port is None:
-        args.port = int(os.environ.get("BOARD_PORT", "7777"))
+        args.port = int(os.environ.get("BOARD_PORT", str(_cfg.board_port)))
     if args.host is None:
-        args.host = os.environ.get("BOARD_HOST", "127.0.0.1")
+        args.host = os.environ.get("BOARD_HOST", _cfg.board_host)
 
     ui_dir = CCC_HOME / "scripts" / "ccc-board-ui"
     ui_dir.mkdir(parents=True, exist_ok=True)

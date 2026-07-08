@@ -26,17 +26,9 @@ from pathlib import Path
 
 MAX_PARALLEL = 3  # 红线 X1
 
-# 复用 opencode-exec.py 的 run_opencode（避免重复代码）
-# 文件名带连字符，import 不行，用 importlib 加载
-import importlib.util  # noqa: E402
+from _executor import OpenCodeExecutor
 
-_spec = importlib.util.spec_from_file_location(
-    "_opencode_exec",
-    Path(__file__).parent / "opencode-exec.py",
-)
-_opencode_exec = importlib.util.module_from_spec(_spec)  # type: ignore
-_spec.loader.exec_module(_opencode_exec)  # type: ignore
-run_opencode = _opencode_exec.run_opencode
+_executor = OpenCodeExecutor()
 
 # 全局 task 列表，用于 SIGTERM 清理
 _active_tasks = []
@@ -48,15 +40,18 @@ def _sigterm_handler(signum, frame):
         t.cancel()
 
 
-async def run_task(task: dict, sem: asyncio.Semaphore) -> dict:
+def run_task(task: dict, sem: asyncio.Semaphore) -> asyncio.coroutine:
     """单 task：拿信号量 → 跑 opencode → 释放"""
-    async with sem:
-        return await run_opencode(
-            phase_id=task["phase_id"],
-            prompt_text=Path(task["prompt_file"]).read_text(encoding="utf-8"),
-            timeout=task.get("timeout", 1800),
-            cwd=task.get("cwd"),
-        )
+    async def _run():
+        async with sem:
+            result = _executor.execute(
+                phase_id=task["phase_id"],
+                prompt=Path(task["prompt_file"]).read_text(encoding="utf-8"),
+                timeout=task.get("timeout", 1800),
+                cwd=task.get("cwd"),
+            )
+            return result
+    return _run()
 
 
 async def main() -> int:

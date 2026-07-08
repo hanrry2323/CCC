@@ -72,18 +72,33 @@ if ! bash "$SCRIPT_DIR/ccc-hook.sh" pre-exec "$PHASE_ID" "$PROMPT_FILE" >> "$LOG
   exit 2
 fi
 
-# --- Step 3: opencode-exec ---
-log "Step 3: opencode-exec"
-EXEC_ARGS=(--phase "$PHASE_ID" --prompt "$PROMPT_FILE" --timeout "$TIMEOUT")
-# Step 1 已跑 watchdog，不重复（红线 X3 在 launcher 层满足）
-EXEC_ARGS+=(--skip-watchdog)
-[[ -n "$CWD" ]] && EXEC_ARGS+=(--cwd "$CWD")
+# --- Step 3: opencode-exec（含重试）---
+MAX_RETRY=3
+BACKOFF=(60 120 240)
+EXEC_RC=1
+log "Step 3: opencode-exec (max ${MAX_RETRY} retries)"
+for attempt in $(seq 1 $MAX_RETRY); do
+  EXEC_ARGS=(--phase "$PHASE_ID" --prompt "$PROMPT_FILE" --timeout "$TIMEOUT")
+  # Step 1 已跑 watchdog，不重复（红线 X3 在 launcher 层满足）
+  EXEC_ARGS+=(--skip-watchdog)
+  [[ -n "$CWD" ]] && EXEC_ARGS+=(--cwd "$CWD")
 
-set +e
-python3 "$SCRIPT_DIR/opencode-exec.py" "${EXEC_ARGS[@]}" > "$LOG_DIR/opencode-${PHASE_ID}.json" 2>> "$LOG_FILE"
-EXEC_RC=$?
-set -e
-log "opencode-exec exit=$EXEC_RC"
+  set +e
+  python3 "$SCRIPT_DIR/opencode-exec.py" "${EXEC_ARGS[@]}" > "$LOG_DIR/opencode-${PHASE_ID}.json" 2>> "$LOG_FILE"
+  EXEC_RC=$?
+  set -e
+  log "opencode-exec attempt=$attempt exit=$EXEC_RC"
+
+  if [[ $EXEC_RC -eq 0 ]]; then
+    break  # 成功，跳出重试
+  fi
+
+  if [[ $attempt -lt $MAX_RETRY ]]; then
+    WAIT=${BACKOFF[$((attempt - 1))]}
+    log "重试 $attempt/$MAX_RETRY，等待 ${WAIT}s…"
+    sleep "$WAIT"
+  fi
+done
 
 # --- Step 4: 失败处理（on-error 钩子 + 通知）---
 if [[ $EXEC_RC -ne 0 ]]; then

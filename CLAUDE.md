@@ -52,16 +52,23 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
 | `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
 | `references/red-lines.md` | 12+X6 红线强约束 |
+| `references/board-task-schema.md` | task JSONL 格式标准（v0.19 新增，CCC-QXO 共享契约） |
+| `scripts/_config.py` | 集中配置（v0.19 新增） |
+| `scripts/_board_store.py` | 看板存储抽象 FileBoardStore（v0.19 新增） |
+| `scripts/_executor.py` | 执行器抽象 OpenCodeExecutor（v0.19 新增） |
 | `scripts/ccc-board.py` | 7 角色看板核心 |
 | `scripts/roles/<role>.sh` × 7 | 各角色 launchd 入口 |
+| `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
 | `scripts/opencode-exec.py` | OpenCode CLI 执行器 |
 | `scripts/opencode-pool.py` | 进程池（max 3 并发） |
 | `scripts/opencode-watchdog.sh` | 残留扫描 |
 | `scripts/ccc-notify.sh` | macOS 桌面通知 |
 | `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口 |
 | `scripts/ccc-exec-commit.sh` | 单 phase 单 commit |
+| `scripts/ccc-hook.sh` | 通用钩子执行器 |
 | `templates/` | plan/phases/report/verdict/AGENTS 模板 |
 | `tests/scripts/` | pytest 核心测试 |
+| `tests/e2e/` | E2E 集成测试（v0.19 新增） |
 | `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引 |
 | `docs/lessons.md` | 历史教训沉淀 |
 | `docs/roadmap.md` | 路线图 |
@@ -142,6 +149,14 @@ launchd plist
       → python3 scripts/ccc-board.py <role>
 ```
 
+**v0.19 架构升级**：`ccc-board.py` 内部依赖三层抽象：
+
+```
+ccc-board.py → _config.py (配置) + _board_store.py (存储) + _executor.py (执行)
+```
+
+所有存储操作收口到 `FileBoardStore`，执行操作收口到 `OpenCodeExecutor`。
+
 ---
 
 ## 默认预算
@@ -155,9 +170,18 @@ launchd plist
 
 ---
 
-## 与 qxo 的关系（已解耦）
+## 与 qxo 的关系（独立发展，共享契约）
 
-v0.5 起 CCC 与 qxo 完全解耦。CCC = 通用 SKILL，不绑任何项目。
+CCC 与 QXO **独立发展，不互相依赖**。
+
+- **CCC** 做"极简的 Prompt 资产"——7 角色看板流水线，SKILL.md + 脚本，不绑任何项目。
+- **QXO** 做"可扩展的 AI 中台"——FastAPI + React + Tauri，LoopEngine + EventBus。
+
+两者互通通过 `references/board-task-schema.md` 定义的 task JSONL 格式实现：
+- QXO 可按标准格式往 `backlog/` 写入任务
+- CCC 产出的 report / verdict 也可被 QXO 读取
+
+v0.5 起 CCC 与 qxo 代码解耦，v0.19 完成**存储抽象 + 共享契约**的正式定义。
 
 ---
 
@@ -167,4 +191,4 @@ v0.5 起 CCC 与 qxo 完全解耦。CCC = 通用 SKILL，不绑任何项目。
 cat ~/program/CCC/VERSION
 ```
 
-详细历史见 `CHANGELOG.md`。当前：`0.18.0`。
+详细历史见 `CHANGELOG.md`。当前：`0.19.0-dev`。

@@ -24,50 +24,19 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-ROOT = (
-    Path(os.environ.get("CCC_WORKSPACE", ""))
-    if os.environ.get("CCC_WORKSPACE")
-    else Path(__file__).resolve().parent.parent
-)
-# CCC 安装目录（独立于 workspace，用于定位安装脚本）
-CCC_HOME = Path(__file__).resolve().parent.parent
+from _config import Config
+from _board_store import COLUMNS, COLUMN_TRANSITIONS, FileBoardStore
+
+cfg = Config()
+store = FileBoardStore(cfg.workspace)
+ROOT = cfg.workspace
+CCC_HOME = cfg.ccc_home
 BOARD = ROOT / ".ccc" / "board"
 EVENTS_DIR = BOARD / "events"
 
-COLUMNS = [
-    "backlog",
-    "planned",
-    "in_progress",
-    "testing",
-    "verified",
-    "released",
-    "abnormal",
-]
-
-# 列迁移白名单：{目标列: [允许的源列列表]}
-# 不在白名单中的迁移会被拒绝
-COLUMN_TRANSITIONS: dict[str, list[str]] = {
-    "planned": ["backlog"],
-    "in_progress": ["planned"],
-    "testing": ["in_progress"],
-    "verified": ["testing"],
-    "released": ["verified"],
-    "backlog": [
-        "released",
-        "in_progress",
-        "abnormal",
-    ],  # regress 回归 / dev 升舱 / 手动回退
-    "abnormal": [
-        "in_progress",
-        "testing",
-        "verified",
-        "released",
-    ],  # 任何列都可转入异常
-}
-
-# 容错参数
-MAX_RETRY = 5  # 最大重试次数 → 异常隔离
-MAX_STALE_HOURS = 6  # in_progress 卡住超时 → 异常隔离
+# 容错参数（从 Config 读取）
+MAX_RETRY = cfg.max_retry
+MAX_STALE_HOURS = cfg.max_stale_hours
 STALE_CHECK_INTERVAL = 6  # ops_role 每次扫描间隔（判断是否该扫描）
 
 
@@ -84,172 +53,33 @@ def _backoff_seconds(retry: int) -> int:
 
 
 def _quarantine(task_id: str, reason: str) -> None:
-    """将任务移入异常列（abnormal），附带原因
-
-    跳过 create_task 的唯一性校验（可能已在 abnormal），
-    如果已在 abnormal 则只更新。
-    """
-    from_col = ""
-    for col in COLUMNS:
-        if col == "abnormal":
-            continue
-        src = BOARD / col / f"{task_id}.jsonl"
-        if src.exists():
-            from_col = col
-            break
-
-    if not from_col:
-        print(f"[quarantine] {task_id} not found in any column, skip")
-        return
-
-    task = json.loads((BOARD / from_col / f"{task_id}.jsonl").read_text())
-    task["status"] = "abnormal"
-    task["updated_at"] = now_iso()
-    if "tags" not in task:
-        task["tags"] = []
-    if "abnormal" not in task["tags"]:
-        task["tags"].append("abnormal")
-    if "automated" not in task["tags"]:
-        task["tags"].append("automated")
-    task["title"] = f"[ABNORMAL] {task.get('title', task_id)}"
-    if "note" not in task:
-        task["note"] = reason
-    else:
-        task["note"] += f"\n{reason}"
-
-    dst = BOARD / "abnormal" / f"{task_id}.jsonl"
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with open(dst, "w") as f:
-        f.write(json.dumps(task, ensure_ascii=False) + "\n")
-
-    (BOARD / from_col / f"{task_id}.jsonl").unlink()
-    _record_event(task_id, from_col, "abnormal")
-    print(f"[quarantine] {task_id} {from_col} → abnormal: {reason}")
-
-
-def _record_event(task_id: str, from_col: str, to_col: str) -> None:
-    """追加 timeline event 到 .ccc/board/events/<task_id>.events.jsonl"""
-    EVENTS_DIR.mkdir(parents=True, exist_ok=True)
-    event = {
-        "event": "move",
-        "task_id": task_id,
-        "from": from_col,
-        "to": to_col,
-        "timestamp": now_iso(),
-    }
-    event_file = EVENTS_DIR / f"{task_id}.events.jsonl"
-    with open(event_file, "a") as f:
-        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    """将任务移入异常列（委托 FileBoardStore）"""
+    store.quarantine(task_id, reason)
 
 
 def _task_id_exists(task_id: str) -> bool:
     """检查 task_id 是否在任意列中已存在"""
-    for col in COLUMNS:
-        col_dir = BOARD / col
-        if (col_dir / f"{task_id}.jsonl").exists():
-            return True
-    return False
+    return store._task_id_exists(task_id)
 
 
 def create_task(data: dict, column: str = "backlog") -> bool:
-    """创建新 task（含 id 唯一性校验）"""
-    task_id = data.get("id", "")
-    if not task_id:
-        print("[board] create_task: missing 'id'", file=sys.stderr)
-        return False
-    if _task_id_exists(task_id):
-        print(f"[board] create_task: duplicate id '{task_id}'", file=sys.stderr)
-        return False
-    if column not in COLUMNS:
-        print(f"[board] create_task: invalid column '{column}'", file=sys.stderr)
-        return False
-
-    now = now_iso()
-    task = {
-        "id": task_id,
-        "title": data.get("title", ""),
-        "description": data.get("description", ""),
-        "status": column,
-        "created_at": now,
-        "updated_at": now,
-        "assignee": data.get("assignee"),
-        "tags": data.get("tags", []),
-    }
-    dst = BOARD / column / f"{task_id}.jsonl"
-    with open(dst, "w") as f:
-        f.write(json.dumps(task, ensure_ascii=False) + "\n")
-    _record_event(task_id, "none", column)
-    print(f"[board] {task_id} created in {column}")
-    return True
+    """创建新 task（委托 FileBoardStore）"""
+    return store.create_task(data, column=column)
 
 
 def list_tasks(column: str) -> list[dict]:
-    """读某列所有 task"""
-    col_dir = BOARD / column
-    if not col_dir.exists():
-        return []
-    tasks = []
-    for f in col_dir.glob("*.jsonl"):
-        with open(f) as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    tasks.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    return tasks
+    """读某列所有 task（委托 FileBoardStore）"""
+    return store.list_tasks(column)
 
 
 def move_task(task_id: str, from_col: str, to_col: str) -> bool:
-    """把 task 从 from_col 挪到 to_col（受 COLUMN_TRANSITIONS 白名单约束）"""
-    # 列迁移门控
-    allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
-    if from_col not in allowed_from:
-        print(
-            f"[board] 拒绝迁移: {from_col} → {to_col} (允许的源列: {allowed_from})",
-            file=sys.stderr,
-        )
-        return False
-    src = BOARD / from_col / f"{task_id}.jsonl"
-    if not src.exists():
-        print(f"[board] {task_id} not in {from_col}", file=sys.stderr)
-        return False
-    task = None
-    with open(src) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("id") == task_id:
-                    task = obj
-                    break
-            except json.JSONDecodeError:
-                pass
-    if not task:
-        return False
-
-    task["status"] = to_col
-    task["updated_at"] = now_iso()
-
-    dst = BOARD / to_col / f"{task_id}.jsonl"
-    with open(dst, "w") as f:
-        f.write(json.dumps(task, ensure_ascii=False) + "\n")
-    src.unlink()
-    _record_event(task_id, from_col, to_col)
-    print(f"[board] {task_id}: {from_col} → {to_col}")
-    return True
+    """把 task 从 from_col 挪到 to_col（委托 FileBoardStore）"""
+    return store.move_task(task_id, from_col, to_col)
 
 
 def update_index() -> dict:
-    """更新 .ccc/board/index.json 状态总览"""
-    counts = {col: len(list_tasks(col)) for col in COLUMNS}
-    index_file = BOARD / "index.json"
-    index_file.write_text(json.dumps(counts, indent=2, ensure_ascii=False) + "\n")
-    return counts
+    """更新 .ccc/board/index.json 状态总览（委托 FileBoardStore）"""
+    return store.update_index()
 
 
 def _load_timeout(phases_file: Path, default: int = 300) -> int:
@@ -417,8 +247,10 @@ def product_role(task_id: str = "") -> dict:
         phases_dir = ROOT / ".ccc" / "phases"
         phases_dir.mkdir(parents=True, exist_ok=True)
         phases_file = phases_dir / f"{task_id}.phases.json"
+        schema_line = json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
         phases_file.write_text(
-            "\n".join(json.dumps(p, ensure_ascii=False) for p in phases) + "\n"
+            schema_line + "\n"
+            + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases) + "\n"
         )
         print(f"[product] ✓ 写入 {phases_file} ({len(phases)} phases)")
 
@@ -465,7 +297,7 @@ def dev_role() -> dict:
         from_col = "in_progress"
         print(f"[dev] 发现卡住任务 {task_id}，准备重试")
 
-        # 读 phases 里的 retry 计数 + retry_at（JSONL 格式，取第一行）
+        # 读 phases 里的 retry 计数 + retry_at（JSONL 格式，跳过 schema_version 元数据行）
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         retry = 0
         retry_at = None
@@ -474,8 +306,8 @@ def dev_role() -> dict:
                 with open(phases_file) as _pf:
                     for _line in _pf:
                         _line = _line.strip()
-                        if not _line:
-                            continue
+                        if not _line or _line.startswith('{"schema_version'):
+                            continue  # 跳过 schema_version 元数据行
                         parsed = json.loads(_line)
                         # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
                         if isinstance(parsed, list):
@@ -542,14 +374,14 @@ def dev_role() -> dict:
         # 计算退避时间
         backoff = _backoff_seconds(retry - 1) if retry else 0
         retry_at_iso = (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat() if retry >= 1 else None
-        # 更新 retry 计数 + retry_at（JSONL，更新第一行）
+        # 更新 retry 计数 + retry_at（JSONL，跳过 schema_version 元数据行）
         try:
             if phases_file.exists():
                 lines = phases_file.read_text().split("\n")
                 for i, _line in enumerate(lines):
                     _line_s = _line.strip()
-                    if not _line_s:
-                        continue
+                    if not _line_s or _line_s.startswith('{"schema_version'):
+                        continue  # 跳过 schema_version 元数据行
                     phase = json.loads(_line_s)
                     # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
                     if isinstance(phase, list):
@@ -1214,36 +1046,8 @@ def regress_role() -> dict:
 
 
 def get_timeline(task_id: Optional[str] = None) -> list[dict]:
-    """从 .ccc/board/events/<task_id>.events.jsonl 读取 timeline 事件
-
-    Args:
-        task_id: 指定 task，None 则返回所有 task 的 events
-    """
-    if not EVENTS_DIR.exists():
-        return []
-    events: list[dict] = []
-    if task_id:
-        event_file = EVENTS_DIR / f"{task_id}.events.jsonl"
-        if event_file.exists():
-            for line in event_file.read_text().split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    else:
-        for f in sorted(EVENTS_DIR.glob("*.events.jsonl")):
-            for line in f.read_text().split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    return events
+    """读取 timeline 事件（委托 FileBoardStore）"""
+    return store.get_timeline(task_id)
 
 
 def approve_agents() -> dict:
