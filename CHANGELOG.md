@@ -16,14 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 新增
 - ops 角色扩展: launchd 7 角色自检 + `.ccc/metrics.json` 指标收集
 - 日志清理: ops 角色自动删除 >30 天的 role-*.log
-- E2E 覆盖: 白名单外语法错误跳过 + 白名单内语法错误拒绝
+- E2E 覆盖: 白名单外语法错误跳过 + 白名单内语法错误拒绝 (7→9 步)
 
-### 修复
-- 对抗性审查 6 项: S1 asyncio 阻塞 / S2 重试日志覆盖 / W1 读锁 / W2 JSON 解析 / N1 代码重复 / N5 文档不一致
+### 重构
+- `scripts/ccc-board.py` ops_role: 新增 launchd 自检、日志清理、metrics 收集
+- `scripts/ccc-board.py`: docstring v0.18 → v0.20
+- `scripts/ccc-board-server.py`: docstring v0.18 → v0.20
+- `VERSION`: v0.19.0 → v0.20.0
+
+### 修复 (v0.19 对抗性审查 6 项)
+- S1: `opencode-pool.py` asyncio 阻塞 — 改为 `run_in_executor` 包装
+- S2: `ccc-exec-launcher.sh` 重试日志覆盖 — 文件名加 `-attempt-${attempt}` 后缀
+- W1: `_board_store.py` list_tasks 无读锁 — 加 `LOCK_SH` 共享读锁
+- W2: `ccc-board.py` schema_version 字符串匹配 — 改用 `json.loads` 检测 (第一处)
+- N1: `_executor.py` 代码重复 — 提取模块级 `resolve_opencode()` 函数
+- N5: `board-task-schema.md` 文档不一致 — 修正为 phases.json 格式章节
+
+### 修复 (v0.20 对抗性审查 4 项)
+- S3: `ccc-board.py` schema_version 第二处仍用 `startswith` — 改为 `json.loads` 检测
+- S4: `opencode-exec.py` 未复用 _executor — 改为 `from _executor import resolve_opencode`
+- W5: ops_role 函数内 `import json as _json` 冗余 — 删除，用文件顶部 `json`
+- W6: ops 角色 launchctl 自检未检查 returncode — 加 `r.returncode == 0`
 
 ### 文档
-- docstring 版本号 v0.18 → v0.20
-- `board-task-schema.md`: phases.json 格式章节
+- docstring 版本号 `scripts/ccc-board.py`: v0.18 → v0.20
+- docstring 版本号 `scripts/ccc-board-server.py`: v0.18 → v0.20
+- `board-task-schema.md`: 新增 phases.json 格式章节
 
 ## [v0.19.0] — 2026-07-08 — 基础加固 + 扩展通路
 
