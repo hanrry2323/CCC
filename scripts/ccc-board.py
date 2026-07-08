@@ -648,50 +648,177 @@ def _parse_plan_scope(task_id: str) -> list[str]:
     return files
 
 
-def reviewer_role() -> dict:
-    """代码审查员: 扫 testing → 按 plan 文件白名单检查 py_compile → 通过则挪 verified"""
-    import subprocess as sp
-    import glob
+def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
+    """取 git diff 改动，返回 (stat, full_diff)。
 
+    Args:
+        workspace: 项目根目录
+        since: git diff 的 ref（默认 HEAD~1 = 最近一次 commit）
+
+    Returns:
+        (stat_output, diff_output)，git 不可用时都为空字符串
+    """
+    import subprocess as sp
+
+    try:
+        stat_r = sp.run(
+            ["git", "diff", since, "--stat"],
+            cwd=workspace, capture_output=True, text=True, timeout=10,
+        )
+        diff_r = sp.run(
+            ["git", "diff", since],
+            cwd=workspace, capture_output=True, text=True, timeout=30,
+        )
+        return stat_r.stdout or "", diff_r.stdout or ""
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"[reviewer] git diff 失败: {exc}", file=sys.stderr)
+        return "", ""
+
+
+def _review_with_llm(task_id: str, diff_stat: str, full_diff: str, plan_text: str) -> dict:
+    """调 Claude API 审查代码。返回 {"verdict": "pass"|"fail", "findings": [...], "summary": "..."}。
+
+    fallback: API 不可用或解析失败 → 返回 {"verdict": "fallback", "reason": "..."}
+    """
+    import os
+    import re as _re
+    import subprocess as _sp
+
+    if not full_diff and not diff_stat:
+        return {"verdict": "fallback", "reason": "no git diff"}
+
+    prompt = (
+        "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
+        "## Plan 验收清单\n"
+        f"{plan_text[:3000]}\n\n"
+        "## 改动概览 (git diff --stat)\n"
+        f"```\n{diff_stat[:2000]}\n```\n\n"
+        "## 改动详情 (git diff)\n"
+        f"```\n{full_diff[:8000]}\n```\n\n"
+        "## 审查清单（逐条核对）\n"
+        "1. 数据流正确性（输入/输出/边界）\n"
+        "2. 错误处理（异常/边界/资源泄漏）\n"
+        "3. 安全（SQL 注入/路径遍历/凭据泄漏/危险函数）\n"
+        "4. 命名与可读性\n"
+        "5. 是否与 plan 验收清单一致\n\n"
+        "## 输出（严格 JSON）\n"
+        '{"verdict": "pass" 或 "fail", '
+        '"findings": [{"severity": "high"|"medium"|"low", "file": "...", "line": N, '
+        '"issue": "...", "suggestion": "..."}], '
+        '"summary": "一句话总评"}\n'
+    )
+
+    relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = relay
+    try:
+        r = _sp.run(
+            [_CLAUDE_CLI, "-p"],
+            input=prompt,
+            capture_output=True, text=True, timeout=120, env=env,
+        )
+        if r.returncode != 0:
+            return {"verdict": "fallback", "reason": f"claude rc={r.returncode}: {r.stderr[:200]}"}
+        output = r.stdout
+        # 尝试从输出抓 JSON
+        m = _re.search(r"\{[\s\S]*\"verdict\"[\s\S]*\}", output)
+        if not m:
+            return {"verdict": "fallback", "reason": "no JSON in Claude output"}
+        try:
+            data = json.loads(m.group(0))
+            if data.get("verdict") in ("pass", "fail"):
+                return data
+            return {"verdict": "fallback", "reason": f"unexpected verdict: {data.get('verdict')}"}
+        except json.JSONDecodeError as exc:
+            return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
+    except _sp.TimeoutExpired:
+        return {"verdict": "fallback", "reason": "claude timeout (120s)"}
+
+
+def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
+    """reviewer LLM 失败时的 fallback：py_compile 静态语法检查。"""
+    import subprocess as sp
+
+    for f in files:
+        if not f.endswith(".py") or not Path(f).exists():
+            continue
+        r = sp.run(
+            ["python3", "-m", "py_compile", str(f)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            print(
+                f"[reviewer-fallback] {task_id} py_compile {Path(f).name} FAIL: {r.stderr[:200]}",
+                file=sys.stderr,
+            )
+            return False
+    return True
+
+
+def reviewer_role() -> dict:
+    """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 通过则挪 verified"""
     moved = []
     for task in list_tasks("testing"):
         task_id = task["id"]
-        files = _parse_plan_scope(task_id)
+        plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+        plan_text = plan_file.read_text() if plan_file.exists() else ""
 
-        if not files:
-            # 没有文件白名单 → 传统模式：扫全部 scripts/*.py
-            files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+        # 1. 取 git diff（看 dev 真实改动，不只 plan 白名单）
+        diff_stat, full_diff = _get_git_diff(ROOT)
 
-        py_files = []
-        for f in files:
-            # glob 展开（支持 scripts/**/*.py 模式）
-            matched = glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
-            py_files.extend(matched)
-        py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+        # 2. LLM 审查
+        verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text)
+        verdict = verdict_data.get("verdict", "fallback")
+        summary = verdict_data.get("summary", "")
 
-        all_ok = True
-        for py in py_files:
-            r = sp.run(
-                ["python3", "-m", "py_compile", str(py)],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if r.returncode != 0:
-                all_ok = False
+        # 写审查报告
+        report_dir = ROOT / ".ccc" / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        review_md = report_dir / f"{task_id}.review.md"
+        review_md.write_text(
+            f"# {task_id} Review\n\n"
+            f"## Verdict: **{verdict.upper()}**\n\n"
+            f"{summary}\n\n"
+            f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
+            f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
+        )
+
+        if verdict in ("pass", "fail"):
+            if verdict == "pass":
+                move_task(task_id, "testing", "verified")
+                moved.append(task_id)
+                print(f"[reviewer] {task_id} ✓ LLM pass")
+            else:
+                # fail：留 testing，让 dev 重试
                 print(
-                    f"[reviewer] {task_id} py_compile {Path(py).name} FAIL: {r.stderr[:200]}",
+                    f"[reviewer] {task_id} ✗ LLM fail（{len(verdict_data.get('findings', []))} issues），留在 testing",
                     file=sys.stderr,
                 )
-                break
+        else:
+            # fallback：跑 py_compile
+            files = _parse_plan_scope(task_id)
+            if not files:
+                files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+            py_files = []
+            for f in files:
+                import glob as _glob
+                matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+                py_files.extend(matched)
+            py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
-        if not py_files:
-            all_ok = True  # 无 .py 文件不需要审查
-
-        if all_ok:
-            move_task(task_id, "testing", "verified")
-            moved.append(task_id)
-            print(f"[reviewer] {task_id} ✓（检查 {len(py_files)} 文件）")
+            if not py_files:
+                move_task(task_id, "testing", "verified")
+                moved.append(task_id)
+                print(f"[reviewer] {task_id} ✓ fallback 无 py 文件")
+            elif _py_compile_fallback(task_id, py_files):
+                move_task(task_id, "testing", "verified")
+                moved.append(task_id)
+                print(f"[reviewer] {task_id} ✓ fallback py_compile ({len(py_files)} 文件)")
+            else:
+                print(
+                    f"[reviewer] {task_id} ✗ fallback py_compile 失败，留在 testing",
+                    file=sys.stderr,
+                )
     return {"role": "reviewer", "moved": moved, "counts": update_index()}
 
 
@@ -727,14 +854,21 @@ def tester_role() -> dict:
                 f"python3 -m pytest {ROOT / 'tests' / 'scripts'} -q --tb=line --timeout=60"
             ]
 
+        # 强制 baseline（v0.21.3）：项目有 tests/ 时追加 pytest + 覆盖率门槛
+        has_pyproject = (ROOT / "pyproject.toml").exists()
+        if has_pyproject and not any("pytest" in c for c in verify_commands):
+            verify_commands.append(
+                f"cd {ROOT} && python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
+            )
+
         all_ok = True
         for cmd in verify_commands:
             if not all_ok:
                 break
-            r = sp.run(cmd, shell=True, capture_output=True, text=True, timeout=180)
+            r = sp.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
             if r.returncode != 0:
                 all_ok = False
-                print(f"[tester] {task_id} FAIL: {r.stdout[-200:]}", file=sys.stderr)
+                print(f"[tester] {task_id} FAIL: {cmd[:80]}... → {r.stdout[-300:]}", file=sys.stderr)
 
         if all_ok:
             move_task(task_id, "testing", "verified")
