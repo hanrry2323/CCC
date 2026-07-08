@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
 - `references/red-lines.md`：加 X7（reviewer 必须 LLM）
 
+## [v0.23.0] — 2026-07-09 — product 上游智能化
+
+### 新增
+- `_get_code_context()` 函数：动态获取当前代码结构（文件树 + git 日志 + 入口文件），注入 `_call_claude_for_plan` prompt `ccc-board.py:121`
+- product 角色启动后第一步读代码结构，再写 plan（SKILL.md 更新）
+- plan 模板强制写 `## 当前代码状态` 段
+
+### 重构
+- `_call_claude_for_plan` prompt 注入代码上下文（`_get_code_context` 输出 <3KB） `ccc-board.py:216`
+- `skills/ccc-product/SKILL.md`: 加 §0 — "先读代码，再写 Plan"
+
+### 验证
+- compile: 无语法错误
+
+---
+
 ## [v0.22.1] — 2026-07-09 — audit 修复 + 实测耗时记录
 
 ### 修复

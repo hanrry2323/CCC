@@ -41,6 +41,26 @@ export CCC_ROLE_SKILL=skills/ccc-product/SKILL.md
 
 ## 核心方法论
 
+### 0. 先读代码，再写 Plan（v0.23 强制）
+
+**启动后第一步**：了解当前代码结构后再写 plan。
+
+```mermaid
+flowchart LR
+    A[读代码结构] --> B[理解入口/模块/路由现状]
+    B --> C[写 plan（含当前代码状态段）]
+    C --> D[过 SPEC 门禁]
+    D --> E[挪 planned]
+```
+
+具体做法：
+1. **查文件树**：哪些源文件（`.py`/`.ts`/`.tsx`）、数量、模块分布
+2. **查入口**：`main.py`/`app.py`/`server.py`/`index.ts` 的内容
+3. **查近期 git 日志**：了解最近改了什么
+4. **写 plan 时**：在 `## 当前代码状态` 段写下分析结论
+
+> 这些上下文已自动注入到你的 prompt（`_get_code_context` 函数）。你不需要手动跑命令——但必须在 plan 中体现对这些代码的理解。
+
 ### 1. SPEC 门禁（每个 subtask 必过）
 
 来自 `agent-teams.md` 第 1923 行（知识库参考）：每个 subtask 必须满足：

@@ -119,6 +119,75 @@ def _get_relay_url() -> str:
     return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
 
 
+def _get_code_context(ws_path: Path) -> str:
+    """动态获取代码上下文：文件树 + 入口文件 + 近期 git 日志
+
+    v0.23 新增：用于注入 product 角色的 plan 生成 prompt。
+    设计原则：轻量（<5KB）、聚焦结构概览、不深入实现细节。
+    """
+    import subprocess as sp
+    parts = []
+    ws = str(ws_path)
+
+    # 1. 代码文件树（Python + TypeScript + 配置）
+    try:
+        tree = sp.run(
+            [
+                "find", ".",
+                "(",
+                "-name", "*.py", "-o", "-name", "*.ts", "-o", "-name", "*.tsx",
+                "-o", "-name", "*.js", "-o", "-name", "*.jsx",
+                "-o", "-name", "*.json", "-o", "-name", "*.yaml", "-o", "-name", "*.yml",
+                ")",
+                "-not", "-path", "./node_modules/*",
+                "-not", "-path", "./.venv/*",
+                "-not", "-path", "./__pycache__/*",
+                "-not", "-path", "./.git/*",
+                "-not", "-path", "./.ccc/*",
+            ],
+            capture_output=True, text=True, timeout=15,
+            cwd=ws,
+        )
+        if tree.returncode == 0:
+            lines = tree.stdout.strip().split("\n")
+            label = f"{len(lines)} 个源文件" + ("，已截断前 80 行" if len(lines) > 80 else "")
+            shown = lines[:80]
+            parts.append(f"## 代码文件树（{label}）\n```\n" + "\n".join(shown) + "\n```")
+    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    # 2. 近期 git 日志
+    try:
+        git_log = sp.run(
+            ["git", "log", "--oneline", "-20", "--no-decorate"],
+            capture_output=True, text=True, timeout=10,
+            cwd=ws,
+        )
+        if git_log.returncode == 0 and git_log.stdout.strip():
+            parts.append("## 近期 git 提交\n```\n" + git_log.stdout.strip() + "\n```")
+    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    # 3. 入口文件（最多 2 个）
+    for entry_pattern in ["main.py", "app.py", "server.py", "cli.py", "index.ts", "index.js"]:
+        if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
+            break
+        entries = sorted(ws_path.rglob(entry_pattern))
+        for ef in entries:
+            if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
+                break
+            try:
+                rel = ef.relative_to(ws_path)
+                if any(part in str(rel) for part in [".venv", "node_modules", ".ccc", "__pycache__"]):
+                    continue
+                content = ef.read_text()[:2000]
+                parts.append(f"## 入口文件 {rel}\n```\n{content}\n```")
+            except (OSError, ValueError):
+                continue
+
+    return "\n\n".join(parts)
+
+
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     """调 claude CLI 生成 plan.md + phases.json（通过中转站 127.0.0.1:4000）"""
     plan_dir = ROOT / ".ccc" / "plans"
@@ -135,9 +204,12 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     template_plan = (ROOT / "templates" / "plan.plan.md").read_text()
     profile = (ROOT / ".ccc" / "profile.md").read_text()
 
+    code_ctx = _get_code_context(ROOT)
+
     prompt = (
         f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
         f"## 项目概况\n{profile[:1500]}\n\n"
+        f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
         f"## 任务\n"
         f"- id: {task['id']}\n"
         f"- title: {task.get('title', '')}\n"
