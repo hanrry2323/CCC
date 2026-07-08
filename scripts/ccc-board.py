@@ -486,23 +486,28 @@ def dev_role() -> dict:
         except json.JSONDecodeError:
             pass
 
-        # 退避检查：如果在退避期内，跳过此任务的这一轮
-        if retry_at:
-            from datetime import datetime as _dt
+        # ★ 退避前先检查 .done（防退避死锁）
+        _done_early = ROOT / ".ccc" / "pids" / f"{task_id}.done"
+        if _done_early.exists():
+            print(f"[dev] {task_id} .done 存在，跳过退避直接处理结果")
+        else:
+            # 退避检查：如果在退避期内，跳过此任务的这一轮
+            if retry_at:
+                from datetime import datetime as _dt
 
-            try:
-                wait_until = _dt.fromisoformat(retry_at)
-                if _dt.now(timezone.utc) < wait_until.replace(tzinfo=timezone.utc):
-                    remaining = (
-                        wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)
-                    ).total_seconds()
-                    print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮，检查 planned")
-                    # 重置 task，使执行流落入 Step 2（planned）
-                    task = None
-                    task_id = ""
-                    from_col = ""
-            except (ValueError, TypeError):
-                pass
+                try:
+                    wait_until = _dt.fromisoformat(retry_at)
+                    if _dt.now(timezone.utc) < wait_until.replace(tzinfo=timezone.utc):
+                        remaining = (
+                            wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)
+                        ).total_seconds()
+                        print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮，检查 planned")
+                        # 重置 task，使执行流落入 Step 2（planned）
+                        task = None
+                        task_id = ""
+                        from_col = ""
+                except (ValueError, TypeError):
+                    pass
 
         # 退避跳过：不增 retry，直接 fall through 到 Step 2（planned）
         if task is not None:
