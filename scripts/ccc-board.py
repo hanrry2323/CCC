@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from _config import Config
-from _board_store import COLUMNS, COLUMN_TRANSITIONS, FileBoardStore
+from _board_store import FileBoardStore
 
 cfg = Config()
 store = FileBoardStore(cfg.workspace)
@@ -233,7 +233,7 @@ def product_role(task_id: str = "") -> dict:
             plan_content, phases = _call_claude_for_plan(task)
         except RuntimeError as e:
             print(f"[product] API 调用失败: {e}", file=sys.stderr)
-            print(f"[product] 使用 fallback plan（API 不可用）")
+            print("[product] 使用 fallback plan（API 不可用）")
             plan_content = _generate_fallback_plan(task)
             phases = _generate_fallback_phases()
             fallback = True
@@ -273,7 +273,7 @@ def product_role(task_id: str = "") -> dict:
         print(f"[product] backlog 有 {len(tasks)} 个待处理:")
         for t in tasks:
             print(f"  • {t['id']}: {t.get('title', '?')}")
-        print(f"[product] 提示: 使用 --promote <task_id> 拆解")
+        print("[product] 提示: 使用 --promote <task_id> 拆解")
     else:
         print("[product] backlog 空")
     return {"role": "product", "report": report, "counts": update_index()}
@@ -282,7 +282,6 @@ def product_role(task_id: str = "") -> dict:
 def dev_role() -> dict:
     """开发工程师: 查 in_progress（重试）→ 查 planned（新的）→ opencode 执行"""
     import subprocess as sp
-    import tempfile
 
     moved = []
     task = None
@@ -429,7 +428,7 @@ def dev_role() -> dict:
                 break
             else:
                 # 缺失 plan/phases → 移入异常列，不阻塞其他任务
-                _quarantine(cid, f"dev_role: 缺 plan 或 phases 文件, 无法执行")
+                _quarantine(cid, "dev_role: 缺 plan 或 phases 文件, 无法执行")
                 print(f"[dev] {cid} 缺 plan/phases, 已移入 abnormal")
         if not task:
             return {
@@ -736,7 +735,7 @@ def ops_role() -> dict:
         "opencode_pids": len(
             list((Path.home() / ".ccc" / "opencode-pids").glob("*.pid"))
         ),
-        "alerts_today": len(list((Path.home() / ".ccc" / "alerts").glob(f"*-L*.md"))),
+        "alerts_today": len(list((Path.home() / ".ccc" / "alerts").glob("*-L*.md"))),
         "git_ahead": 0,
         "stale_detected": 0,
         "orphan_pids_cleaned": 0,
@@ -1166,7 +1165,7 @@ def approve_agents() -> dict:
             )
             agents_content = agents_content.replace("{{DATE}}", now_iso()[:10])
         else:
-            agents_content = f"# CCC Agent Guide\n"
+            agents_content = "# CCC Agent Guide\n"
         agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
         print(f"[approve-agents] 创建 {agents_file}")
 

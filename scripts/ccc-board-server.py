@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from _config import Config
-from _board_store import COLUMNS, COLUMN_TRANSITIONS, FileBoardStore
+from _board_store import COLUMNS, FileBoardStore
 
 _cfg = Config()
 

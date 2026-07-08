@@ -9,8 +9,6 @@ With --workspace, only searches that specific project.
 """
 
 import argparse
-import os
-import re
 import sys
 from pathlib import Path
 

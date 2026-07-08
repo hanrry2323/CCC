@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, TypedDict
 
-from _board_store import FileBoardStore
 from _config import Config
 
 
@@ -98,7 +97,6 @@ class OpenCodeExecutor(Executor):
         model: Optional[str] = None,
     ) -> ExecResult:
         """调 opencode-exec.py 的 run_opencode 执行"""
-        import asyncio
         import os as _os
         import signal as _sig
         import subprocess

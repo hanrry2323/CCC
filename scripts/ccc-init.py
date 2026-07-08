@@ -8,7 +8,6 @@ replaces placeholders, and writes to the target project directory.
 Placeholders: {{PROJECT_NAME}} {{PROJECT_PATH}} {{PRIMARY_LANGUAGE}} {{DATE}}
 """
 
-import os
 import sys
 from datetime import date
 from pathlib import Path

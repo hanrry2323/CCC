@@ -1,9 +1,9 @@
 {
-  "updated_at": "2026-07-08T07:58:26Z",
+  "updated_at": "2026-07-08T08:28:27Z",
   "tasks_in_flight": 0,
   "abnormal_count": 0,
   "pids_count": 0,
-  "alerts_today": 113,
+  "alerts_today": 116,
   "launchd_missing": [
     "product",
     "dev",
