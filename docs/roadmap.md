@@ -3,10 +3,11 @@
 > **当前状态(2026-07-09)**:
 > - **v0.21 阶段**(门控修补):已发布,`v0.21.0`
 > - **v0.22 阶段**(audit 角色):已发布,`v0.22.1`
-> - **v0.23 阶段**(product 上游智能化):**已发布**,`v0.23.0`
+> - **v0.23 阶段**(product 上游智能化):**已发布**,`v0.23.0` + `v0.23.1`
 > - **v0.24 阶段**(Engine phase 感知调度):**已规划暂不实施**
 > - **v0.25 阶段**(全链路对齐):**已规划暂不实施**
-> - **当前最新版本**:v0.23.0
+> - **v0.26 阶段**(CCC Board Protocol / 跨 IDE 开放协议):**已规划暂不实施**
+> - **当前最新版本**:v0.23.1
 >
 > **范式转变**:
 > 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
@@ -145,6 +146,43 @@
 - STRATEGY-MAP.md / roadmap.md / CLAUDE.md 更新
 - 端到端测试：backlog → product → engine phase 调度 → dev → 验收
 - 7 角色 SKILL.md 同步刷新
+
+---
+
+## v0.26 — CCC Board Protocol / 跨 IDE 开放协议（已规划，暂不实施）
+
+> **定位**: CCC 从"框架"变成"协议标准"。任意 IDE 工具（Trae/Cursor/Zed/VS Code/OpenCode）
+> 读协议文档 → 写标准 JSONL → 看板全自动流转。CCC 成为任务编排内核，不绑定执行环境。
+>
+> **决策背景**: 老板希望多工具混合使用（远程临时需求、小任务用方便 IDE、agent 混用写方案
+> 和执行、IDE 自动化定时扩展如纠错/定时管理等）。
+>
+> **依赖**: v0.23 + v0.24 + v0.25
+
+### 改动范围
+
+| # | 要做的事 | 工作量 |
+|---|---------|--------|
+| 1 | `board-task-schema.md` 重写为"CCC Board Protocol v1"（含校验规则 + 多语言示例） | 小 |
+| 2 | `validate_task_jsonl()` 函数，写 task 时自动校验（文件写入即检） | 小 |
+| 3 | dev_role 集成 worktree 隔离（每个 task 独立 worktree 执行） | 中 |
+| 4 | 正向 error feedback（IDE 写 task 失败时有明确反馈） | 中 |
+
+### 设计原则
+
+- CCC 保持**单节点任务编排内核**，不做多用户/权限/Web UI
+- 协议级别 = 只要读 `board-task-schema.md` 就能写出合格的 task
+- 不做耦合（不要求 IDE 装 plugin，不要求 agent 改行为）
+- 扩展靠 IDE 侧的自动化能力（定时器、纠错脚本、事件触发）
+
+### 使用场景
+
+```
+Trae agent           → 写 task.jsonl → backlog → CCC 全自动走完
+Cursor agent         → 写 task.jsonl → backlog → CCC 全自动走完
+OpenCode 定时脚本    → 写纠错 task  → backlog → CCC 走 review 流程
+远程零时需求（手机） → GitHub 写 issue → 同步脚本 → backlog
+```
 
 ---
 
