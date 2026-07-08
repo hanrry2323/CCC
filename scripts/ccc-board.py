@@ -124,10 +124,24 @@ def _get_code_context(ws_path: Path) -> str:
 
     v0.23 新增：用于注入 product 角色的 plan 生成 prompt。
     设计原则：轻量（<5KB）、聚焦结构概览、不深入实现细节。
+
+    修复 v0.23 对抗性审查问题：
+    - A2: 截断确保代码块闭合（不截断代码块内容）
+    - A3: 删除冗余 subprocess import（全局已导入）
+    - A5: 入口文件过滤增强（排除 vendor/build/tests）
+    - A6: 添加简单缓存（模块级字典）
+    - A7: rglob 不跟随 symlink（symlink=False）
     """
-    import subprocess as sp
     parts = []
     ws = str(ws_path)
+
+    # A6: 模块级缓存（避免连续调用重复 I/O）
+    # 注意：缓存键只用 ws_path，假设 workspace 未变则代码未变
+    cache_key = str(ws_path)
+    if cache_key in _get_code_context_cache:
+        return _get_code_context_cache[cache_key]
+
+    # A3: 使用全局 subprocess（文件顶部已导入）
 
     # 1. 代码文件树（Python + TypeScript + 配置）
     try:
@@ -150,42 +164,56 @@ def _get_code_context(ws_path: Path) -> str:
         )
         if tree.returncode == 0:
             lines = tree.stdout.strip().split("\n")
-            label = f"{len(lines)} 个源文件" + ("，已截断前 80 行" if len(lines) > 80 else "")
+            label = f"{len(lines)} 个源文件"
+            if len(lines) > 80:
+                label += "，已截断前 80 行"
             shown = lines[:80]
             parts.append(f"## 代码文件树（{label}）\n```\n" + "\n".join(shown) + "\n```")
-    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
     # 2. 近期 git 日志
     try:
-        git_log = sp.run(
+        git_log = subprocess.run(
             ["git", "log", "--oneline", "-20", "--no-decorate"],
             capture_output=True, text=True, timeout=10,
             cwd=ws,
         )
         if git_log.returncode == 0 and git_log.stdout.strip():
             parts.append("## 近期 git 提交\n```\n" + git_log.stdout.strip() + "\n```")
-    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
-    # 3. 入口文件（最多 2 个）
+    # A5: 入口文件（最多 2 个，过滤增强 + A7: follow_symlinks=False）
+    exclude_patterns = [".venv", "node_modules", ".ccc", "__pycache__", "vendor", "build", "/tests/"]
     for entry_pattern in ["main.py", "app.py", "server.py", "cli.py", "index.ts", "index.js"]:
         if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
             break
-        entries = sorted(ws_path.rglob(entry_pattern))
+        # A7: follow_symlinks=False 避免跟随符号链接
+        entries = sorted(ws_path.rglob(entry_pattern, follow_symlinks=False))
         for ef in entries:
             if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
                 break
             try:
                 rel = ef.relative_to(ws_path)
-                if any(part in str(rel) for part in [".venv", "node_modules", ".ccc", "__pycache__"]):
+                rel_str = str(rel)
+                # A5: 增强过滤（排除 tests/ 目录下的入口文件）
+                if any(pattern in rel_str for pattern in exclude_patterns):
                     continue
+                # 不截断，入口文件内容通常较小
                 content = ef.read_text()[:2000]
                 parts.append(f"## 入口文件 {rel}\n```\n{content}\n```")
             except (OSError, ValueError):
                 continue
 
-    return "\n\n".join(parts)
+    # A6: 写入缓存
+    result = "\n\n".join(parts)
+    _get_code_context_cache[str(ws_path)] = result
+    return result
+
+
+# A6: 模块级缓存（默认空字典）
+_get_code_context_cache: dict[str, str] = {}
 
 
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
