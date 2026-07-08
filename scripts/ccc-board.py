@@ -1261,10 +1261,11 @@ def dev_role_launch(task_id: str) -> dict:
         [
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
-            str(ROOT),
+            str(CCC_HOME),  # ★ CCC_HOME（opencode-exec.py 所在目录）
             "--phase", phase_id,
             "--prompt", prompt_file,
             "--timeout", str(timeout_s),
+            "--cwd", str(ROOT),  # opencode 工作目录 = workspace
         ],
         start_new_session=True,
     )
@@ -1332,10 +1333,11 @@ def dev_role_relaunch(task_id: str) -> dict:
         [
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
-            str(ROOT),
+            str(CCC_HOME),  # ★ CCC_HOME
             "--phase", phase_id,
             "--prompt", prompt_file,
             "--timeout", str(timeout_s),
+            "--cwd", str(ROOT),
         ],
         start_new_session=True,
     )
