@@ -11,6 +11,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.21.0] — 2026-07-09 — 门控修补
+
+### 新增
+- `reviewer_role` 重写：调 Claude API 审查 `git diff HEAD~1` + plan `## 验收清单`
+- `tester_role` 强制 baseline：检测 pyproject.toml 时追加 `pytest tests/ -q --cov=src --cov-fail-under=80`
+- `_get_git_diff()` / `_review_with_llm()` / `_py_compile_fallback()` 辅助函数
+- LLM 审查失败时 fallback 到 py_compile 静态检查
+
+### 重构
+- plan 模板加 `## 验收清单` 段
+- `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
+- `references/red-lines.md`：加 X7（reviewer 必须 LLM）
+
+## [v0.22.0] — 2026-07-09 — audit 角色 + daily-auto-scan 收纳
+
+### 新增
+- `audit_role()` 新角色：全项目扫描 + AI 分类 + auto 直接修 / review 投 backlog
+- `_audit_recent_commits` / `_audit_lint` / `_audit_classify` / `_audit_post_backlog` / `_audit_write_report` 辅助
+- engine 主循环加 `_audit_should_run()` 时间检查（每 2h）
+
+### 重构
+- `FileBoardStore` 白名单 `backlog → planned` 允许（audit 投出直接到 planned）
+- 报表路径：`{workspace}/.ccc/audit-reports/`（替代 `~/Desktop/auto-scans/`）
+- lint baselines 迁到 `~/.ccc/lint_baselines/`
+
+### 清理（v0.22 重点）
+- 删除 `~/.claude/skills/daily-auto-scan/`（功能并入 audit_role）
+- 删除 `~/.claude/scheduled_tasks.json` 中 cron `7 */2 * * *`（改 engine 触发）
+- Memory 文件加迁移说明（链接到 CCC）
+
+### 红线
+- X8：audit 角色必须 2h 内只跑一次
+
+---
+
 ## [v0.20.1] — 2026-07-08 — 串行执行引擎
 
 > `ccc-engine.py` 替代 7 角色 launchd 定时轮询。

@@ -45,6 +45,7 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
         "released",
         "in_progress",
         "abnormal",
+        "planned",
     ],
     "abnormal": [
         "in_progress",

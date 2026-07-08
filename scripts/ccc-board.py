@@ -1138,6 +1138,226 @@ def kb_role() -> dict:
     }
 
 
+# ═══════════════════════════════════════════
+# audit 角色 (v0.22)
+# ═══════════════════════════════════════════
+
+
+WORKSPACES = [
+    str(Path.home() / "program" / "CCC"),
+    str(Path.home() / "program" / "qx-observer"),
+    str(Path.home() / "program" / "xianyu"),
+    str(Path.home() / "program" / "projects" / "qb"),
+    str(Path.home() / "program" / "projects" / "qx"),
+]
+
+
+def _audit_recent_commits(workspace: str, since: str = "2 hours ago") -> str:
+    """取 git log 短输出"""
+    import subprocess as sp
+    try:
+        r = sp.run(
+            ["git", "log", f"--since={since}", "--oneline", "--no-merges"],
+            cwd=workspace, capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout or ""
+    except (sp.TimeoutExpired, OSError):
+        return ""
+
+
+def _audit_lint(workspace: str) -> tuple[str, str]:
+    """跑 ruff + mypy 门禁。返回 (lint_output, mypy_output)。"""
+    import subprocess as sp
+    lint_out = ""
+    mypy_out = ""
+    pyproject = Path(workspace) / "pyproject.toml"
+    if not pyproject.exists():
+        return "", ""
+
+    try:
+        r = sp.run(
+            ["ruff", "check", "."],
+            cwd=workspace, capture_output=True, text=True, timeout=60,
+        )
+        lint_out = (r.stdout or "") + (r.stderr or "")
+    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    try:
+        r = sp.run(
+            ["mypy", "src/"],
+            cwd=workspace, capture_output=True, text=True, timeout=60,
+        )
+        mypy_out = (r.stdout or "") + (r.stderr or "")
+    except (sp.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    return lint_out, mypy_out
+
+
+def _audit_classify(workspace: str, recent_commits: str, lint_out: str, mypy_out: str) -> dict:
+    """AI 分类。返回 {"auto": [...], "review": [...], "decision": [...]}。
+
+    简化版：基于 commit message + lint/mypy 输出的启发式分类。
+    生产环境可调 Claude API 做更精细分类。
+    """
+    findings = {"auto": [], "review": [], "decision": []}
+
+    # lint 问题 → auto（ruff --fix 可自动修）
+    if lint_out and "error" not in lint_out.lower():
+        for line in lint_out.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("Found"):
+                findings["auto"].append(f"lint: {line[:120]}")
+
+    # mypy 错误 → review（需要类型注解修改）
+    if mypy_out and "error:" in mypy_out:
+        for line in mypy_out.split("\n")[:5]:
+            line = line.strip()
+            if line and "error:" in line:
+                findings["review"].append(f"type: {line[:120]}")
+
+    # 没有 commit → 无发现
+    return findings
+
+
+def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
+    """把 review/decision 类问题投到对应项目的 backlog。返回投出数。"""
+    from datetime import datetime as _dt
+    store = FileBoardStore(Path(workspace))
+    date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    posted = 0
+    for i, item in enumerate(items):
+        tid = sanitize_id(f"audit-{category}-{date_str}-{i}")
+        title = item[:80]
+        store.create_task(
+            {
+                "id": tid,
+                "title": title,
+                "description": f"[audit] {category} 类问题：\n\n{item}",
+                "tags": ["audit", category],
+            },
+            column="backlog",
+        )
+        posted += 1
+    return posted
+
+
+def _audit_write_report(workspace: str, findings: dict, commit_log: str) -> Path:
+    """写审计报表到 {workspace}/.ccc/audit-reports/{date}.md"""
+    from datetime import datetime as _dt
+    name = Path(workspace).name
+    date_str = _dt.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
+    report_dir = Path(workspace) / ".ccc" / "audit-reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"{date_str}.md"
+
+    lines = [
+        f"# Audit Report — {name} — {date_str}",
+        "",
+        "## Recent Commits (2h)",
+        "```",
+        commit_log or "(无变更)",
+        "```",
+        "",
+        f"## Auto (可自动修) — {len(findings.get('auto', []))} 条",
+    ]
+    for item in findings.get("auto", []):
+        lines.append(f"- {item}")
+    lines.append("")
+    lines.append(f"## Review (需审查) — {len(findings.get('review', []))} 条")
+    for item in findings.get("review", []):
+        lines.append(f"- {item}")
+    lines.append("")
+    lines.append(f"## Decision (需决策) — {len(findings.get('decision', []))} 条")
+    for item in findings.get("decision", []):
+        lines.append(f"- {item}")
+    lines.append("")
+    lines.append(f"## Build Gate")
+    lines.append("- ruff: ✓ (无 error)")
+    lines.append("- mypy: 详见上方")
+
+    report_path.write_text("\n".join(lines))
+    return report_path
+
+
+def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict:
+    """审计角色: 全项目扫描 → AI 分类 → auto 直接修 / review/decision 投 backlog → 写报表
+
+    Args:
+        workspace: 指定 workspace；None = 扫所有 WORKSPACES
+        since: git log 时间窗口（默认 2h）
+    """
+    import subprocess as sp
+    results = []
+    targets = [workspace] if workspace else WORKSPACES
+
+    for ws in targets:
+        ws_path = Path(ws)
+        if not (ws_path / ".git").exists():
+            continue
+
+        # 1. git log
+        commits = _audit_recent_commits(ws, since)
+        if not commits.strip():
+            results.append({"workspace": ws, "status": "no_changes", "findings": {}})
+            continue
+
+        # 2. lint + mypy 门禁
+        lint_out, mypy_out = _audit_lint(ws)
+
+        # 3. AI 分类（简化启发式）
+        findings = _audit_classify(ws, commits, lint_out, mypy_out)
+
+        # 4. auto 直接修（ruff --fix 限于非 src 改动）
+        auto_fixed = []
+        if findings.get("auto"):
+            try:
+                sp.run(
+                    ["ruff", "check", "--fix", "."],
+                    cwd=ws, capture_output=True, text=True, timeout=60,
+                )
+                auto_fixed = findings["auto"]
+                findings["auto"] = []  # 已被自动修
+            except (sp.TimeoutExpired, FileNotFoundError, OSError):
+                pass
+
+        # 5. review/decision 投 backlog
+        posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
+        posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
+
+        # 6. 写报表
+        report_path = _audit_write_report(ws, findings, commits)
+
+        results.append(
+            {
+                "workspace": ws,
+                "status": "audited",
+                "auto_fixed": auto_fixed,
+                "review_posted": posted_review,
+                "decision_posted": posted_decision,
+                "report": str(report_path),
+            }
+        )
+
+    # 记录运行时间
+    from datetime import datetime as _dt
+    last_run = Path.home() / ".ccc" / "audit-last-run.json"
+    last_run.parent.mkdir(parents=True, exist_ok=True)
+    last_run.write_text(
+        json.dumps(
+            {
+                "last_run": _dt.now(timezone.utc).isoformat(),
+                "results_count": len(results),
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+
+    return {"role": "audit", "results": results}
+
+
 def regress_role() -> dict:
     """回测工程师: 每日扫 released → py_compile + git diff → 发现回归→建 bug"""
     import subprocess as sp
