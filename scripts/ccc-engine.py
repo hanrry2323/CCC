@@ -59,8 +59,12 @@ def engine_log(msg: str) -> None:
     print(f"[engine {ts}] {msg}", flush=True)
 
 
+_engine_shutdown = False  # SIGTERM 标志
+
+
 def engine_loop(workspace: str) -> None:
     """引擎主循环：串行驱动 task backlog→released"""
+    global _engine_shutdown
 
     engine_log(f"CCC Engine 启动 (workspace={workspace})")
     engine_log(f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s")
@@ -76,6 +80,9 @@ def engine_loop(workspace: str) -> None:
         engine_log(f"发现已有 in_progress 任务: {running_task_id}")
 
     while True:
+        if _engine_shutdown:
+            engine_log("收到关闭信号，停止接收新任务")
+            break
         iteration += 1
         tick_start = time.time()
 
@@ -201,6 +208,13 @@ def _check_stale() -> None:
         except (ValueError, TypeError):
             pass
 
+    # events TTL 清理：删 >30 天的事件文件
+    try:
+        store = FileBoardStore(cfg.workspace)
+        store.cleanup_events(max_days=30)
+    except Exception:
+        pass
+
 
 def _write_heartbeat(workspace: str, running_task_id: str | None) -> None:
     """写心跳到 .ccc/engine-heartbeat.json"""
@@ -229,14 +243,32 @@ def main():
     # 覆盖 workspace
     os.environ["CCC_WORKSPACE"] = str(ws)
 
-    # 优雅关闭信号
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    # 优雅关闭信号：设置全局标志，让主循环体面退出
+    def _handle_sigterm(signum, frame):
+        global _engine_shutdown
+        if _engine_shutdown:
+            return  # 二次 SIGTERM 不重复
+        _engine_shutdown = True
+        engine_log("收到 SIGTERM, 优雅关闭中...")
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     try:
         engine_loop(str(ws))
     except KeyboardInterrupt:
         engine_log("Engine 关闭")
-        sys.exit(0)
+    except SystemExit:
+        pass
+
+    # 如果被 SIGTERM 触发关闭，等 10s 让 opencode 写完 .done
+    if _engine_shutdown:
+        remaining = 10
+        while remaining > 0:
+            time.sleep(1)
+            remaining -= 1
+        engine_log("Engine 终止")
+    else:
+        engine_log("Engine 正常退出")
 
 
 if __name__ == "__main__":

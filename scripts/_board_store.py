@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -52,6 +53,12 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
         "released",
     ],
 }
+
+
+def sanitize_id(tid: str) -> str:
+    """净化 task_id：只保留字母、数字、下划线、连字符，防止路径遍历"""
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", str(tid))
+    return safe if safe else "invalid"
 
 
 def now_iso() -> str:
@@ -126,8 +133,8 @@ class FileBoardStore:
 
     def create_task(self, data: dict, column: str = "backlog") -> bool:
         """创建新 task（含 id 唯一性校验 + 文件锁）"""
-        task_id = data.get("id", "")
-        if not task_id:
+        task_id = sanitize_id(data.get("id", ""))
+        if not task_id or task_id == "invalid":
             print("[board] create_task: missing 'id'", file=sys.stderr)
             return False
         if column not in COLUMNS:
@@ -198,6 +205,7 @@ class FileBoardStore:
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
         """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""
+        task_id = sanitize_id(task_id)
         allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
         if from_col not in allowed_from:
             print(
@@ -253,6 +261,7 @@ class FileBoardStore:
 
     def quarantine(self, task_id: str, reason: str) -> None:
         """将任务移入异常列（abnormal），附带原因"""
+        task_id = sanitize_id(task_id)
         lock = self._lock()
         try:
             from_col = ""
@@ -298,6 +307,7 @@ class FileBoardStore:
             return []
         events: list[dict] = []
         if task_id:
+            task_id = sanitize_id(task_id)
             event_file = self.events_dir / f"{task_id}.events.jsonl"
             if event_file.exists():
                 for line in event_file.read_text().split("\n"):
@@ -320,10 +330,29 @@ class FileBoardStore:
                         pass
         return events
 
+    def cleanup_events(self, max_days: int = 30) -> int:
+        """删除超过 max_days 天的 events 文件，返回删除数"""
+        import time as _time
+        if not self.events_dir.exists():
+            return 0
+        cutoff = _time.time() - max_days * 86400
+        removed = 0
+        for f in self.events_dir.glob("*.events.jsonl"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    removed += 1
+            except OSError:
+                pass
+        if removed:
+            print(f"[board] events TTL: 清理 {removed} 个旧 events 文件")
+        return removed
+
     # ── 内部辅助 ──
 
     def _task_id_exists(self, task_id: str) -> bool:
         """检查 task_id 是否在任意列中已存在"""
+        task_id = sanitize_id(task_id)
         for col in COLUMNS:
             col_dir = self.board / col
             if (col_dir / f"{task_id}.jsonl").exists():
@@ -332,6 +361,7 @@ class FileBoardStore:
 
     def _record_event(self, task_id: str, from_col: str, to_col: str) -> None:
         """追加 timeline event 到 events/<task_id>.events.jsonl"""
+        task_id = sanitize_id(task_id)
         self.events_dir.mkdir(parents=True, exist_ok=True)
         event = {
             "event": "move",

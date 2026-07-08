@@ -39,6 +39,16 @@ MAX_RETRY = cfg.max_retry
 MAX_STALE_HOURS = cfg.max_stale_hours
 STALE_CHECK_INTERVAL = 6  # ops_role 每次扫描间隔（判断是否该扫描）
 
+# ═══════════════════════════════════════════
+# 安全辅助函数
+# ═══════════════════════════════════════════
+
+
+def sanitize_id(tid: str) -> str:
+    """净化 task_id：只保留字母、数字、下划线、连字符，防止路径遍历"""
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", str(tid))
+    return safe if safe else "invalid"
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -218,6 +228,7 @@ def product_role(task_id: str = "") -> dict:
     tasks = list_tasks("backlog")
 
     if task_id:
+        task_id = sanitize_id(task_id)
         task = next((t for t in tasks if t["id"] == task_id), None)
         if not task:
             print(f"[product] backlog 中未找到 task '{task_id}'", file=sys.stderr)
@@ -1223,6 +1234,7 @@ def dev_role_launch(task_id: str) -> dict:
     4. 不等待，立即返回
     """
 
+    task_id = sanitize_id(task_id)
     planned = list_tasks("planned")
     task = next((t for t in planned if t["id"] == task_id), None)
     if not task:
@@ -1288,6 +1300,7 @@ def dev_role_relaunch(task_id: str) -> dict:
     - 清理旧的 .done/exitcode 后重新启动
     """
 
+    task_id = sanitize_id(task_id)
     cplan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
     cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not cplan.exists() or not cphases.exists():
@@ -1362,6 +1375,7 @@ def dev_role_check_complete(task_id: str) -> dict:
       {"status": "quarantined"} — 重试耗尽，已隔离
       {"status": "not_found"} — task 不在 in_progress
     """
+    task_id = sanitize_id(task_id)
     in_prog = list_tasks("in_progress")
     if not any(t["id"] == task_id for t in in_prog):
         return {"status": "not_found", "task_id": task_id}
