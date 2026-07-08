@@ -1,1 +1,1 @@
-{"phase": "feat-regress-notify-p1", "status": "pending", "timeout": 300, "retry": 5, "retry_at": "2026-07-07T21:45:44.150826+00:00"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": null, "notes": "fallback"}

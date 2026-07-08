@@ -4,16 +4,18 @@
 
 # feat-regress-notify
 
-> 标题: regress 发现回归时发桌面通知
+> 此 plan 由 fallback 自动生成（product API 不可用）
 
 ## 目标
-regress 发现回归后，除了建 bug 到 backlog，还调 scripts/ccc-notify.sh 发 macOS 通知。
+- [ABNORMAL] 回测失败通知：regress 发现回归时，除了建 bug 还要发桌面通知（ccc-notify.sh）
+- 
 
 ## 文件白名单
-- scripts/ccc-board.py（regress_role 增强）
+- （待补充）
 
 ## 验收
-regress_role() 创建 bug 前调 notify
+1. 完成任务目标
+2. 相关测试通过
 
 
 ## 完成定义

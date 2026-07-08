@@ -1,9 +1,9 @@
 {
-  "backlog": 4,
+  "backlog": 3,
   "planned": 0,
   "in_progress": 0,
   "testing": 0,
-  "verified": 0,
+  "verified": 1,
   "released": 19,
   "abnormal": 1
 }
