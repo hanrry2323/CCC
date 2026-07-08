@@ -195,6 +195,26 @@ OpenCode CLI (dev) → [in_progress]   ← 执行代码
 - 不做耦合（不要求 IDE 装 plugin，不要求 agent 改行为）
 - 扩展靠 IDE 侧的自动化能力（定时器、纠错脚本、事件触发）
 
+### 颜色分层（v0.26.1）
+
+Protocol v1 新增字段 `color_group` + `color_depth`，实现看板任务颜色分层：
+
+```
+大任务 A（color_group: "A", color_depth: 0）→ 蓝色深
+  ├── A1（color_group: "A", color_depth: 1）→ 蓝色浅
+  ├── A2（color_group: "A", color_depth: 1）→ 蓝色浅
+大任务 B（color_group: "B", color_depth: 0）→ 绿色深
+  ├── B1（color_group: "B", color_depth: 1）→ 绿色浅
+  ├── B2（color_group: "B", color_depth: 1）→ 绿色浅
+```
+
+- `color_group`：分配色组（A/B/C…），同一组共享色相
+- `color_depth`：层级深度（0=父任务深色，1=子任务浅色，以此类推）
+- product 角色拆解时自动赋值：父任务 group 继承，depth+1
+- 看板渲染根据 group 算 HSL 色相，depth 算亮度
+
+好处：几十个 task 在板上一眼看出"这些是一个版本"、"这些是另一个版本"。
+
 ### 使用场景
 
 ```
