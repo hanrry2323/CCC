@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ccc-board.py — 任务看板核心 (v0.18)
+"""ccc-board.py — 任务看板核心 (v0.20)
 
 7 角色都通过这个 core 操作 .ccc/board/:
 - product: backlog → planned
@@ -804,6 +804,45 @@ def ops_role() -> dict:
             if r.returncode == 0:
                 ahead = r.stdout.strip().split()[-1] if r.stdout.strip() else "0"
                 health[f"ahead_{proj.name}"] = int(ahead)
+
+    # 5. launchd 自检：检查 7 角色 plist 是否存活
+    roles_check = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
+    launchd_up = []
+    for role in roles_check:
+        r = sp.run(
+            ["launchctl", "list", f"com.ccc.{role}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if "PID" in r.stdout:
+            launchd_up.append(role)
+        else:
+            print(f"[ops] ⚠ com.ccc.{role} 未运行")
+    health["launchd_up"] = launchd_up
+    health["launchd_missing"] = [r for r in roles_check if r not in launchd_up]
+
+    # 4.5 日志清理：删除 >30 天的 role 日志
+    if (Path.home() / ".ccc" / "logs").exists():
+        import time as _time
+        _now_ts = _time.time()
+        _cutoff = _now_ts - 30 * 86400
+        for _lf in (Path.home() / ".ccc" / "logs").glob("role-*.log"):
+            if _lf.stat().st_mtime < _cutoff:
+                _lf.unlink(missing_ok=True)
+
+    # 6. 指标收集 → .ccc/metrics.json
+    import json as _json
+    pid_dir = ROOT / ".ccc" / "pids"
+    metrics = {
+        "updated_at": now_iso(),
+        "tasks_in_flight": len(list_tasks("in_progress")) + len(list_tasks("testing")),
+        "abnormal_count": len(list_tasks("abnormal")),
+        "pids_count": len(list(pid_dir.glob("*.pid"))) if pid_dir.exists() else 0,
+        "alerts_today": len(list((Path.home() / ".ccc" / "alerts").glob("*-L*.md"))),
+        "launchd_missing": health["launchd_missing"],
+    }
+    metrics_file = ROOT / ".ccc" / "metrics.json"
+    metrics_file.write_text(_json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
+
     return {"role": "ops", "health": health}
 
 

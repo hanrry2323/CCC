@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.20.0] — 2026-07-08 — Dev 体验 + 运维完备
+
+### 新增
+- ops 角色扩展: launchd 7 角色自检 + `.ccc/metrics.json` 指标收集
+- 日志清理: ops 角色自动删除 >30 天的 role-*.log
+- E2E 覆盖: 白名单外语法错误跳过 + 白名单内语法错误拒绝
+
+### 修复
+- 对抗性审查 6 项: S1 asyncio 阻塞 / S2 重试日志覆盖 / W1 读锁 / W2 JSON 解析 / N1 代码重复 / N5 文档不一致
+
+### 文档
+- docstring 版本号 v0.18 → v0.20
+- `board-task-schema.md`: phases.json 格式章节
+
 ## [v0.19.0] — 2026-07-08 — 基础加固 + 扩展通路
 
 ### 新增

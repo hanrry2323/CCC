@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ccc-board-server.py — CCC 看板 HTTP 服务 (v0.18)
+"""ccc-board-server.py — CCC 看板 HTTP 服务 (v0.20)
 
 提供 REST API + 前端 UI，绑定 :7777。
 支持多 workspace（CCC / qxo 自动发现）。
