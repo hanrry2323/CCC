@@ -6,6 +6,7 @@
 
 依赖：Python 3.8+ 标准库
 """
+from __future__ import annotations
 import argparse
 import json
 import os
@@ -44,10 +45,55 @@ def sanitize_id(tid: str) -> str:
 
 # ── Workspace ──
 def discover_workspaces() -> dict:
-    ws = {"CCC": str(CCC_HOME)}
-    for name, path in [("qxo", Path.home() / "program" / "qx-observer")]:
-        if (path / ".ccc" / "board").exists():
-            ws[name] = str(path)
+    """自动发现所有已注册的 workspace
+
+    1. 优先读 CCC_WORKSPACES env var（逗号分隔 name:path）
+    2. 回退到默认扫描 ~/program/ 下含 .ccc/board 的项目
+    """
+    # 1. 显式注册
+    ws: dict[str, str] = {"CCC": str(CCC_HOME)}
+    env = os.environ.get("CCC_WORKSPACES", "").strip()
+    if env:
+        for entry in env.split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            name, path = entry.split(":", 1)
+            if Path(path).expanduser().joinpath(".ccc", "board").exists():
+                ws[name] = str(Path(path).expanduser())
+
+    # 2. 自动扫描 ~/program/
+    program_dir = Path.home() / "program"
+    if program_dir.is_dir():
+        for sub in program_dir.iterdir():
+            if not sub.is_dir():
+                continue
+            board = sub / ".ccc" / "board"
+            if not board.exists():
+                continue
+            name = sub.name
+            if name == "qx-observer":
+                name = "qxo"  # 别名兼容
+            # 别占用 qxo 已注册的 slot
+            if name in ws:
+                continue
+            # projects/ 下要带上层目录名（避免 qx 和 projects/qx 冲突）
+            if name == "qx" and ws.get("qxo"):
+                continue
+            ws[name] = str(sub)
+        # projects/ 子目录额外扫描
+        projects = program_dir / "projects"
+        if projects.is_dir():
+            for sub in projects.iterdir():
+                if not sub.is_dir():
+                    continue
+                board = sub / ".ccc" / "board"
+                if not board.exists():
+                    continue
+                name = sub.name
+                if name in ws:
+                    continue
+                ws[name] = str(sub)
     return ws
 
 
