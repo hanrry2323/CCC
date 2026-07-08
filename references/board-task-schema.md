@@ -24,8 +24,6 @@
 | `assignee` | string\|null | 否 | 负责人，缺省 null |
 | `tags` | string[] | 否 | 标签列表，如 `["bug", "urgent"]` |
 | `note` | string\|null | 否 | 额外备注，abnormal 列带异常原因 |
-| `schema_version` | string | 否 | 格式版本号，当前 `"1.0"` |
-
 ### 示例
 
 ```json
@@ -99,7 +97,35 @@
 
 ---
 
-## 4. 列流转规则
+## 4. Phases 文件格式
+
+phases.json 是 product 角色产出的执行计划文件。首行为 schema 元数据，后续每行为一个 phase。
+
+### 格式
+
+```json
+{"schema_version": "1.0"}
+{"phase": 1, "status": "pending", "scope": ["file.py"], "commit_message": "feat: ...", "commit": null, "subtasks": {"1.1": "done"}, "timeout": 300, "notes": "", "retry": 0, "retry_at": null}
+```
+
+### 字段定义
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `schema_version` | string | 元数据行 | 格式版本号，当前 `"1.0"`。仅出现在首行 |
+| `phase` | int | 是 | phase 编号 |
+| `status` | string | 是 | `pending` / `in_progress` / `done` / `verified` / `skipped` |
+| `scope` | string[] | 否 | 此 phase 涉及的文件列表 |
+| `commit_message` | string | 否 | commit message |
+| `commit` | string\|null | 否 | commit hash，执行后填充 |
+| `subtasks` | dict | 否 | 子任务状态 |
+| `timeout` | int | 否 | 超时秒数，默认 600 |
+| `retry` | int | 否 | 当前重试次数 |
+| `retry_at` | string\|null | 否 | 下次可重试的时间点 |
+
+---
+
+## 5. 列流转规则
 
 ```
 backlog → planned → in_progress → testing → verified → released
@@ -113,7 +139,7 @@ backlog → planned → in_progress → testing → verified → released
 
 ---
 
-## 5. 与 QXO 的互通
+## 6. 与 QXO 的互通
 
 QXO 向 CCC 提交任务：
 

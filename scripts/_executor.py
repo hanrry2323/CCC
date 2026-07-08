@@ -12,6 +12,35 @@ from _board_store import FileBoardStore
 from _config import Config
 
 
+def resolve_opencode() -> Optional[str]:
+    """解析 opencode 可执行文件路径
+
+    优先级: OPENCODE_BIN env > shutil.which > ~/.npm-global/bin/opencode
+    launchd 的 PATH 不含 ~/.npm-global/bin，所以必须显式回退。
+    """
+    import os as _os
+    from shutil import which
+    from os.path import expanduser
+
+    env_bin = _os.environ.get("OPENCODE_BIN")
+    if env_bin:
+        resolved = which(env_bin) or (
+            env_bin if "/" in env_bin and Path(env_bin).exists() else None
+        )
+        if resolved:
+            return resolved
+
+    path = which("opencode")
+    if path:
+        return path
+
+    npm_path = expanduser("~/.npm-global/bin/opencode")
+    if Path(npm_path).exists():
+        return npm_path
+
+    return None
+
+
 class ExecResult(TypedDict):
     """执行结果结构"""
     phase_id: str
@@ -168,27 +197,5 @@ class OpenCodeExecutor(Executor):
                 except OSError:
                     pass
 
-    @staticmethod
-    def _resolve_opencode() -> Optional[str]:
-        """解析 opencode 可执行文件路径"""
-        import os as _os
-        from shutil import which
-        from os.path import expanduser
-
-        env_bin = _os.environ.get("OPENCODE_BIN")
-        if env_bin:
-            resolved = which(env_bin) or (
-                env_bin if "/" in env_bin and Path(env_bin).exists() else None
-            )
-            if resolved:
-                return resolved
-
-        path = which("opencode")
-        if path:
-            return path
-
-        npm_path = expanduser("~/.npm-global/bin/opencode")
-        if Path(npm_path).exists():
-            return npm_path
-
-        return None
+    def _resolve_opencode(self) -> Optional[str]:
+        return resolve_opencode()

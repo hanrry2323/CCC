@@ -38,17 +38,12 @@ PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_opencode() -> str:
-    """解析 opencode 可执行文件路径
-
-    优先级: OPENCODE_BIN env > shutil.which > ~/.npm-global/bin/opencode
-    launchd 的 PATH 不含 ~/.npm-global/bin，所以必须显式回退。
-    """
+    """解析 opencode 可执行文件路径"""
     from shutil import which
     from os.path import expanduser
 
     env_bin = os.environ.get("OPENCODE_BIN")
     if env_bin:
-        # 环境变量可能是相对/绝对路径
         resolved = which(env_bin) or (env_bin if "/" in env_bin and Path(env_bin).exists() else None)
         if resolved:
             return resolved

@@ -44,7 +44,8 @@ def run_task(task: dict, sem: asyncio.Semaphore) -> asyncio.coroutine:
     """单 task：拿信号量 → 跑 opencode → 释放"""
     async def _run():
         async with sem:
-            result = _executor.execute(
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, _executor.execute,
                 phase_id=task["phase_id"],
                 prompt=Path(task["prompt_file"]).read_text(encoding="utf-8"),
                 timeout=task.get("timeout", 1800),

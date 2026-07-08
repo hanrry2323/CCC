@@ -84,7 +84,7 @@ for attempt in $(seq 1 $MAX_RETRY); do
   [[ -n "$CWD" ]] && EXEC_ARGS+=(--cwd "$CWD")
 
   set +e
-  python3 "$SCRIPT_DIR/opencode-exec.py" "${EXEC_ARGS[@]}" > "$LOG_DIR/opencode-${PHASE_ID}.json" 2>> "$LOG_FILE"
+  python3 "$SCRIPT_DIR/opencode-exec.py" "${EXEC_ARGS[@]}" > "$LOG_DIR/opencode-${PHASE_ID}-attempt-${attempt}.json" 2>> "$LOG_FILE"
   EXEC_RC=$?
   set -e
   log "opencode-exec attempt=$attempt exit=$EXEC_RC"

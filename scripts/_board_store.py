@@ -161,25 +161,40 @@ class FileBoardStore:
             self._unlock(lock)
 
     def list_tasks(self, column: str) -> list[dict]:
-        """读某列所有 task"""
+        """读某列所有 task（共享读锁，防幻读）"""
         col_dir = self.board / column
         if not col_dir.exists():
             return []
         tasks = []
-        for f in sorted(col_dir.glob("*.jsonl")):
+        lock = None
+        if _HAS_FLOCK:
             try:
-                with open(f) as fp:
-                    for line in fp:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            tasks.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            pass
-            except FileNotFoundError:
-                pass
-        return tasks
+                lock = open(self.lockfile, "w")
+                fcntl.flock(lock, fcntl.LOCK_SH)
+            except Exception:
+                lock = None
+        try:
+            for f in sorted(col_dir.glob("*.jsonl")):
+                try:
+                    with open(f) as fp:
+                        for line in fp:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                tasks.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                pass
+                except FileNotFoundError:
+                    pass
+            return tasks
+        finally:
+            if lock is not None:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                    lock.close()
+                except Exception:
+                    pass
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
         """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""

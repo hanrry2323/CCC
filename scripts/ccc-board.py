@@ -306,9 +306,15 @@ def dev_role() -> dict:
                 with open(phases_file) as _pf:
                     for _line in _pf:
                         _line = _line.strip()
-                        if not _line or _line.startswith('{"schema_version'):
-                            continue  # 跳过 schema_version 元数据行
-                        parsed = json.loads(_line)
+                        if not _line:
+                            continue
+                        try:
+                            _meta = json.loads(_line)
+                            if "schema_version" in _meta:
+                                continue  # 跳过 schema_version 元数据行
+                        except json.JSONDecodeError:
+                            continue
+                        parsed = _meta
                         # phases 可能是 JSON 数组 [{...}] 或 JSONL 单行 {...}
                         if isinstance(parsed, list):
                             parsed = parsed[0] if parsed else {}
