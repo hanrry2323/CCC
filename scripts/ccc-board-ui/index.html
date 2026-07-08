@@ -245,7 +245,7 @@ async function showDetail(id){
   document.getElementById('did').textContent=r.id;
   document.getElementById('dtt').textContent=r.title||'(无标题)';
   document.getElementById('dde').textContent=r.description||'(无描述)';
-  colLabel={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
+  const colLabel={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
   const st=colLabel[r._column]||r._column||'?';
   const cr=(r.created_at||'').slice(0,19).replace('T',' ');
   const up=(r.updated_at||'').slice(0,19).replace('T',' ');
