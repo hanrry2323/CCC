@@ -163,6 +163,15 @@ def engine_loop(workspace: str) -> None:
                     # 彻底无事可做
                     _check_stale()
                     _write_heartbeat(workspace, None)
+
+                    # audit 触发检查（v0.22）：每 2h 跑一次全项目审计
+                    if _audit_should_run():
+                        engine_log("触发 audit_role（全项目扫描）")
+                        try:
+                            ccc_board.audit_role()
+                        except Exception as exc:
+                            engine_log(f"audit_role 异常: {exc}")
+
                     time.sleep(cfg.engine_idle_sleep)
                     continue
 
