@@ -895,8 +895,12 @@ def kb_role() -> dict:
     all_suggestions: list[dict] = []
     for task in list_tasks("verified"):
         task_id = task["id"]
-        # 从 VERSION 读版本号
-        version = Path(ROOT / "VERSION").read_text().strip()
+        # 从 VERSION 读版本号（缺失则 fallback 到 0.0.0）
+        version_file = ROOT / "VERSION"
+        if version_file.exists():
+            version = version_file.read_text().strip()
+        else:
+            version = "0.0.0"
         # git tag（版本号动态读取，不硬编码）
         sp.run(
             [
