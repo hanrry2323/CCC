@@ -159,12 +159,32 @@
 >
 > **依赖**: v0.23 + v0.24 + v0.25
 
+### Agent ↔ 看板列映射（协议核心）
+
+Protocol v1 的核心契约是：**每种 agent 只从一个列取任务，写入另一个列**。
+
+```
+IDE / 任何工具 → [backlog]   ← 我写 JSONL
+                    ↓
+Claude CLI (product) → [planned]   ← 写 plan + phases
+                    ↓
+OpenCode CLI (dev) → [in_progress]   ← 执行代码
+                    ↓
+                    [testing]   ← reviewer + tester 验收
+                    ↓
+                    [verified]
+                    ↓
+                    [released]   ← kb 归档
+```
+
+每步由不同的 CLI/agent 执行，看板列精确反映当前在哪个阶段。
+
 ### 改动范围
 
 | # | 要做的事 | 工作量 |
 |---|---------|--------|
-| 1 | `board-task-schema.md` 重写为"CCC Board Protocol v1"（含校验规则 + 多语言示例） | 小 |
-| 2 | `validate_task_jsonl()` 函数，写 task 时自动校验（文件写入即检） | 小 |
+| 1 | `board-task-schema.md` 重写为"CCC Board Protocol v1"（含 agent 列映射表 + 校验规则 + 多语言示例） | 小 |
+| 2 | `validate_task_jsonl()` 函数，写 task 时自动校验列迁移合法性 | 小 |
 | 3 | dev_role 集成 worktree 隔离（每个 task 独立 worktree 执行） | 中 |
 | 4 | 正向 error feedback（IDE 写 task 失败时有明确反馈） | 中 |
 
