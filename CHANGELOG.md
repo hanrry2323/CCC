@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
 - `references/red-lines.md`：加 X7（reviewer 必须 LLM）
 
+## [v0.23.4] — 2026-07-09 — 流程加固：Trae 报告入站校验
+
+### 新增
+- `scripts/_review_validator.py` — 审查报告格式校验器，校验 JSON 是否符合 SKILL.md 模板规范
+- `ccc-engine.py` 空闲循环加 `_check_new_reviews()` — 自动扫描 `.ccc/reviews/` 新报告，格式不合规即告警
+- `docs/flow-review.md` — 全流程弱点清单（4 层已知弱环 + 修复计划）
+
+### 验证
+- compile: 无语法错误
+- 已用 Trae 实际报告验证：合规报告通过、残缺报告被抓
+- validator 覆盖：缺字段、非法 source、summary.total 不匹配
+
+---
+
 ## [v0.23.3] — 2026-07-09 — 时间戳统一为北京时间
 
 ### 修复
@@ -858,3 +872,19 @@ git push origin main --tags
 ## [v0.23.2] - 2026-07-09
 
 - ccc-gitignore-update: .gitignore 加运行时数据排除 看板发布
+
+## [v0.23.3] - 2026-07-09
+
+- ccc-fix-board-auth: board-server 加最低鉴权 + 绑定白名单 看板发布
+
+## [v0.23.3] - 2026-07-09
+
+- ccc-fix-flock-fallback: _HAS_FLOCK=False 时写操作加文件锁降级防御 看板发布
+
+## [v0.23.3] - 2026-07-09
+
+- ccc-fix-osascript-inject: osascript notify 参数引用加固 看板发布
+
+## [v0.23.3] - 2026-07-09
+
+- ccc-fix-tester-shell-true: tester_role shell=True 改为 shell=False 看板发布

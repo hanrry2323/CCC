@@ -175,6 +175,9 @@ def engine_loop(workspace: str) -> None:
                         except Exception as exc:
                             engine_log(f"audit_role 异常: {exc}")
 
+                    # review 入站校验（v0.23.4）：检查 .ccc/reviews/ 新报告格式
+                    _check_new_reviews()
+
                     time.sleep(cfg.engine_idle_sleep)
                     continue
 
@@ -212,6 +215,22 @@ def _audit_should_run(interval_hours: int = 2) -> bool:
         return hours >= interval_hours
     except (json.JSONDecodeError, KeyError, ValueError):
         return True
+
+
+def _check_new_reviews() -> None:
+    """检查 .ccc/reviews/ 下新报告格式（v0.23.4 流程加固）"""
+    try:
+        from _review_validator import scan_review_dir
+        results = scan_review_dir(str(cfg.workspace))
+        for r in results:
+            if not r.get("valid"):
+                fname = Path(r.get("file", "?")).name
+                errs = "; ".join(r["errors"][:3])
+                engine_log(f"🔴 报告格式错误 {fname}: {errs}")
+    except ImportError:
+        pass  # 没有 _review_validator 时静默跳过
+    except Exception as exc:
+        engine_log(f"review 校验异常: {exc}")
 
 
 def _check_stale() -> None:
