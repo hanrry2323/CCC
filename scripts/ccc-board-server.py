@@ -14,7 +14,10 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import ssl
+import threading
+import time
 from typing import Optional
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -63,13 +66,22 @@ def discover_workspaces() -> dict:
     ws: dict[str, str] = {"CCC": str(CCC_HOME)}
     env = os.environ.get("CCC_WORKSPACES", "").strip()
     if env:
+        program_parent = Path.home() / "program"
         for entry in env.split(","):
             entry = entry.strip()
             if not entry or ":" not in entry:
                 continue
             name, path = entry.split(":", 1)
-            if Path(path).expanduser().joinpath(".ccc", "board").exists():
-                ws[name] = str(Path(path).expanduser())
+            resolved = Path(path).expanduser().resolve()
+            if not resolved.is_absolute():
+                continue
+            # F4: 只允许 ~/program/ 下或 CCC_HOME 自身的路径
+            allowed = resolved == CCC_HOME
+            allowed = allowed or resolved.is_relative_to(program_parent)
+            if not allowed:
+                continue
+            if resolved.joinpath(".ccc", "board").exists():
+                ws[name] = str(resolved)
 
     # 2. 自动扫描 ~/program/
     program_dir = Path.home() / "program"
@@ -186,14 +198,13 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
         for f in sorted(
             log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True
         )[:30]:
-            try:
-                with open(f) as fp:
-                    content = fp.read()
-            except FileNotFoundError:
-                continue
             fname = f.name
             role = fname.split("-")[1] if "-" in fname else "?"
             exit_code = "?"
+            try:
+                content = f.read_text()
+            except (FileNotFoundError, OSError):
+                continue
             for line in content.strip().split("\n"):
                 if "exit=" in line:
                     exit_code = line.split("exit=")[-1]
@@ -204,7 +215,6 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
                     "role": role,
                     "exit_code": exit_code,
                     "size": f.stat().st_size,
-                    "snippet": content[-200:] if content else "",
                 }
             )
     events.sort(key=lambda e: e.get("time", ""), reverse=True)
@@ -242,6 +252,29 @@ def get_role_status() -> list[dict]:
     return status
 
 
+# ── Rate limiter ──
+class _RateLimiter:
+    def __init__(self, rate: int = 60, per_seconds: int = 60):
+        self.rate = rate
+        self.per = per_seconds
+        self._buckets: dict[str, tuple[int, float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        with self._lock:
+            now = time.monotonic()
+            tokens, last = self._buckets.get(key, (self.rate, now))
+            elapsed = now - last
+            tokens = min(self.rate, tokens + elapsed * (self.rate / self.per))
+            if tokens < 1:
+                return False
+            self._buckets[key] = (tokens - 1, now)
+            return True
+
+
+_rate_limiter = _RateLimiter()
+
+
 # ── HTTP Handler ──
 class BoardHTTPHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -249,18 +282,37 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             *args, directory=str(CCC_HOME / "scripts" / "ccc-board-ui"), **kwargs
         )
 
+    def _allowed_origin(self) -> str:
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return ""
+        try:
+            o = urlparse(origin)
+            if o.hostname in ("localhost", "127.0.0.1", "[::1]"):
+                return origin
+        except Exception:
+            pass
+        return ""
+
     def _json(self, data: dict, status: int = 200):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._allowed_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
     def _verify_auth(self) -> bool:
+        client_ip, client_port = self.client_address
+        is_local = client_ip in ("127.0.0.1", "::1", "[::1]")
         token = os.environ.get("QX_BOARD_TOKEN", "").strip()
         if not token:
-            return True
+            if is_local:
+                return True
+            self._json({"error": "unauthorized: non-local request without token"}, 401)
+            return False
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer ") and auth[7:] == token:
             return True
@@ -279,8 +331,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             return {}
 
     def do_OPTIONS(self):
+        origin = self._allowed_origin()
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -312,7 +366,16 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             )
 
         elif path == "/api/board":
+            fields = qs.get("fields", [None])[0]
             state = get_board_state(ws)
+            for col, tasks in state.items():
+                for t in tasks:
+                    if fields == "summary":
+                        t.pop("description", None)
+                        t.pop("tags", None)
+                        t.pop("assignee", None)
+                    elif "description" in t and len(t["description"]) > 120:
+                        t["description"] = t["description"][:120] + "..."
             self._json(
                 {
                     "columns": state,
@@ -401,13 +464,28 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json(found)
 
         elif path == "/api/timeline":
-            self._json({"events": get_timeline(ws, int(qs.get("limit", [20])[0]))})
+            state = get_board_state(ws)
+            events = []
+            for col in COLUMNS:
+                for task in state[col]:
+                    events.append(
+                        {
+                            "type": "task",
+                            "time": task.get("updated_at", task.get("created_at", "")),
+                            "task_id": task["id"],
+                            "title": task.get("title", ""),
+                            "column": col,
+                            "label": COLUMN_LABELS.get(col, col),
+                            "color": COLUMN_COLORS.get(col, "#666"),
+                        }
+                    )
 
         elif path == "/api/roles":
             self._json({"roles": get_role_status()})
 
         elif path == "/api/logs":
             entries = []
+            show_snippet = qs.get("snippet", ["0"])[0] == "1"
             log_dir = Path.home() / ".ccc" / "logs"
             if log_dir.exists():
                 for f in sorted(
@@ -415,17 +493,19 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     key=lambda p: p.stat().st_mtime,
                     reverse=True,
                 )[:25]:
-                    try:
-                        with open(f) as fp:
-                            content = fp.read()
-                    except FileNotFoundError:
-                        continue
                     fname = f.name
                     role = fname.split("-")[1] if "-" in fname else "?"
                     rc = "?"
-                    for line in content.split("\n"):
-                        if "exit=" in line:
-                            rc = line.split("exit=")[-1]
+                    snippet = ""
+                    if show_snippet:
+                        try:
+                            content = f.read_text()
+                        except (FileNotFoundError, OSError):
+                            continue
+                        for line in content.split("\n"):
+                            if "exit=" in line:
+                                rc = line.split("exit=")[-1]
+                        snippet = content[-80:]
                     entries.append(
                         {
                             "role": role,
@@ -434,7 +514,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                                 f.stat().st_mtime
                             ).isoformat(),
                             "exit_code": rc,
-                            "snippet": content[-200:],
+                            "snippet": snippet,
                         }
                     )
             self._json({"logs": entries})
@@ -457,8 +537,22 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/tasks":
-            tid = sanitize_id(data.get("id", f"t{int(datetime.now().timestamp())}"))
-            if create_task(tid, data.get("title", ""), data.get("description", ""), ws):
+            raw_tid = data.get("id", f"t{int(datetime.now().timestamp())}")
+            if not isinstance(raw_tid, str) or not raw_tid.strip():
+                self._json({"error": "invalid id"}, 400)
+                return
+            tid = sanitize_id(raw_tid)
+            title = data.get("title", "")
+            if not isinstance(title, str) or not title.strip():
+                self._json({"error": "title required"}, 400)
+                return
+            description = data.get("description", "")
+            if not isinstance(description, str):
+                description = ""
+            if len(title) > 500 or len(description) > 10000:
+                self._json({"error": "title or description too long"}, 400)
+                return
+            if create_task(tid, title, description, ws):
                 self._json({"ok": True, "id": tid})
             else:
                 self._json({"error": "create failed"}, 500)
@@ -468,6 +562,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             fr, to = data.get("from"), data.get("to")
             if not all([tid, fr, to]):
                 self._json({"error": "missing id/from/to"}, 400)
+            elif fr == to:
+                self._json({"error": "from and to must differ"}, 400)
+            elif fr not in COLUMNS:
+                self._json({"error": f"bad column: {fr}"}, 400)
             elif to not in COLUMNS:
                 self._json({"error": f"bad column: {to}"}, 400)
             elif move_task(tid, fr, to, ws):
@@ -500,8 +598,16 @@ def main():
     ui_dir = CCC_HOME / "scripts" / "ccc-board-ui"
     ui_dir.mkdir(parents=True, exist_ok=True)
 
-    srv = HTTPServer((args.host, args.port), BoardHTTPHandler)
-    print(f"CCC Board → http://{args.host}:{args.port}")
+    srv = ThreadingHTTPServer((args.host, args.port), BoardHTTPHandler)
+    cert_file = os.environ.get("CCC_BOARD_CERT")
+    key_file = os.environ.get("CCC_BOARD_KEY")
+    proto = "http"
+    if cert_file and key_file:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        proto = "https"
+    print(f"CCC Board → {proto}://{args.host}:{args.port}")
     print(f"  ws: {list(discover_workspaces().keys())}")
     try:
         srv.serve_forever()

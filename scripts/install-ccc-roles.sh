@@ -155,7 +155,7 @@ install_board() {
     <string>--port</string>
     <string>7777</string>
     <string>--host</string>
-    <string>0.0.0.0</string>
+    <string>127.0.0.1</string>
   </array>
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
