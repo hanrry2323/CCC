@@ -520,7 +520,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json({"logs": entries})
 
         else:
-            super().do_GET()
+            self._json({"error": "not found"}, 404)
 
     def do_POST(self):
         if not self._verify_auth():
