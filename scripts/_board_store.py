@@ -3,6 +3,7 @@
 提供 BoardStore 抽象和 FileBoardStore 实现。
 所有看板读写操作集中于此，不再散布在 board.py 和 board-server.py 中。
 """
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ from typing import Optional
 _HAS_FLOCK = False
 try:
     import fcntl
+
     _HAS_FLOCK = True
 except ImportError:
     pass
@@ -68,16 +70,46 @@ def now_iso() -> str:
 
 def _acquire_lock(lockfile: Path) -> object:
     """加文件锁（如果平台支持），返回锁对象"""
-    if not _HAS_FLOCK:
-        return None
-    f = open(lockfile, "w")
-    fcntl.flock(f, fcntl.LOCK_EX)
-    return f
+    if _HAS_FLOCK:
+        f = open(lockfile, "w")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f
+    # Fallback: 独占文件创建锁（跨平台原子操作，_HAS_FLOCK=False 时使用）
+    import time as _time
+
+    excl_path = lockfile.with_name(f".{lockfile.name}.excl")
+    for _ in range(60):
+        try:
+            fd = os.open(str(excl_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return excl_path
+        except FileExistsError:
+            # 检测残留锁：检查持有进程是否存活
+            try:
+                pid_str = excl_path.read_text().strip()
+                if pid_str:
+                    pid = int(pid_str)
+                    try:
+                        os.kill(pid, 0)
+                    except OSError:
+                        excl_path.unlink(missing_ok=True)
+                        continue
+            except (ValueError, OSError):
+                pass
+            _time.sleep(0.5)
+    print(
+        f"[board] WARNING: timeout acquiring fallback lock: {excl_path}",
+        file=sys.stderr,
+    )
+    return None
 
 
 def _release_lock(lock_obj) -> None:
     """释放文件锁"""
-    if lock_obj is not None:
+    if lock_obj is None:
+        return
+    if _HAS_FLOCK:
         try:
             fcntl.flock(lock_obj, fcntl.LOCK_UN)
         except Exception:
@@ -85,6 +117,12 @@ def _release_lock(lock_obj) -> None:
         try:
             lock_obj.close()
         except Exception:
+            pass
+    else:
+        # Fallback: 删除独占锁文件
+        try:
+            os.unlink(str(lock_obj))
+        except OSError:
             pass
 
 
@@ -260,7 +298,9 @@ class FileBoardStore:
         """更新 .ccc/board/index.json 状态总览"""
         counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
         index_file = self.board / "index.json"
-        _atomic_write(index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n")
+        _atomic_write(
+            index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
+        )
         return counts
 
     def quarantine(self, task_id: str, reason: str) -> None:
@@ -337,6 +377,7 @@ class FileBoardStore:
     def cleanup_events(self, max_days: int = 30) -> int:
         """删除超过 max_days 天的 events 文件，返回删除数"""
         import time as _time
+
         if not self.events_dir.exists():
             return 0
         cutoff = _time.time() - max_days * 86400
