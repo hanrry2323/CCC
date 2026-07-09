@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import uuid
 import subprocess
 import sys
@@ -54,6 +55,7 @@ def sanitize_id(tid: str) -> str:
 def now_iso() -> str:
     """返回北京时间 ISO 格式时间戳（UTC+8）"""
     from zoneinfo import ZoneInfo
+
     return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
 
@@ -149,19 +151,52 @@ def _get_code_context(ws_path: Path) -> str:
     try:
         tree = sp.run(
             [
-                "find", ".",
+                "find",
+                ".",
                 "(",
-                "-name", "*.py", "-o", "-name", "*.ts", "-o", "-name", "*.tsx",
-                "-o", "-name", "*.js", "-o", "-name", "*.jsx",
-                "-o", "-name", "*.json", "-o", "-name", "*.yaml", "-o", "-name", "*.yml",
+                "-name",
+                "*.py",
+                "-o",
+                "-name",
+                "*.ts",
+                "-o",
+                "-name",
+                "*.tsx",
+                "-o",
+                "-name",
+                "*.js",
+                "-o",
+                "-name",
+                "*.jsx",
+                "-o",
+                "-name",
+                "*.json",
+                "-o",
+                "-name",
+                "*.yaml",
+                "-o",
+                "-name",
+                "*.yml",
                 ")",
-                "-not", "-path", "./node_modules/*",
-                "-not", "-path", "./.venv/*",
-                "-not", "-path", "./__pycache__/*",
-                "-not", "-path", "./.git/*",
-                "-not", "-path", "./.ccc/*",
+                "-not",
+                "-path",
+                "./node_modules/*",
+                "-not",
+                "-path",
+                "./.venv/*",
+                "-not",
+                "-path",
+                "./__pycache__/*",
+                "-not",
+                "-path",
+                "./.git/*",
+                "-not",
+                "-path",
+                "./.ccc/*",
             ],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
             cwd=ws,
         )
         if tree.returncode == 0:
@@ -170,7 +205,9 @@ def _get_code_context(ws_path: Path) -> str:
             if len(lines) > 80:
                 label += "，已截断前 80 行"
             shown = lines[:80]
-            parts.append(f"## 代码文件树（{label}）\n```\n" + "\n".join(shown) + "\n```")
+            parts.append(
+                f"## 代码文件树（{label}）\n```\n" + "\n".join(shown) + "\n```"
+            )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
@@ -178,7 +215,9 @@ def _get_code_context(ws_path: Path) -> str:
     try:
         git_log = subprocess.run(
             ["git", "log", "--oneline", "-20", "--no-decorate"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
             cwd=ws,
         )
         if git_log.returncode == 0 and git_log.stdout.strip():
@@ -187,8 +226,23 @@ def _get_code_context(ws_path: Path) -> str:
         pass
 
     # A5: 入口文件（最多 2 个，过滤增强 + A7: follow_symlinks=False）
-    exclude_patterns = [".venv", "node_modules", ".ccc", "__pycache__", "vendor", "build", "/tests/"]
-    for entry_pattern in ["main.py", "app.py", "server.py", "cli.py", "index.ts", "index.js"]:
+    exclude_patterns = [
+        ".venv",
+        "node_modules",
+        ".ccc",
+        "__pycache__",
+        "vendor",
+        "build",
+        "/tests/",
+    ]
+    for entry_pattern in [
+        "main.py",
+        "app.py",
+        "server.py",
+        "cli.py",
+        "index.ts",
+        "index.js",
+    ]:
         if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
             break
         # A7: follow_symlinks=False 避免跟随符号链接
@@ -365,8 +419,10 @@ def product_role(task_id: str = "") -> dict:
         phases_file = phases_dir / f"{task_id}.phases.json"
         schema_line = json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
         phases_file.write_text(
-            schema_line + "\n"
-            + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases) + "\n"
+            schema_line
+            + "\n"
+            + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
+            + "\n"
         )
         print(f"[product] ✓ 写入 {phases_file} ({len(phases)} phases)")
 
@@ -452,9 +508,12 @@ def dev_role() -> dict:
                     wait_until = _dt.fromisoformat(retry_at)
                     if _dt.now(timezone.utc) < wait_until.replace(tzinfo=timezone.utc):
                         remaining = (
-                            wait_until.replace(tzinfo=timezone.utc) - _dt.now(timezone.utc)
+                            wait_until.replace(tzinfo=timezone.utc)
+                            - _dt.now(timezone.utc)
                         ).total_seconds()
-                        print(f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮，检查 planned")
+                        print(
+                            f"[dev] {task_id} 退避中（还剩 {remaining:.0f}s），跳过本轮，检查 planned"
+                        )
                         # 重置 task，使执行流落入 Step 2（planned）
                         task = None
                         task_id = ""
@@ -494,7 +553,11 @@ def dev_role() -> dict:
 
         # 计算退避时间
         backoff = _backoff_seconds(retry - 1) if retry else 0
-        retry_at_iso = (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat() if retry >= 1 else None
+        retry_at_iso = (
+            (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat()
+            if retry >= 1
+            else None
+        )
         # 更新 retry 计数 + retry_at（JSONL，跳过 schema_version 元数据行）
         try:
             if phases_file.exists():
@@ -603,7 +666,13 @@ def dev_role() -> dict:
                 f"# {task_id} 执行报告\n\n## 信息\n- Phase: {phase_id}\n"
                 f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n"
             )
-            for p in [done_path, exitcode_path, pid_path, result_path, ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md"]:
+            for p in [
+                done_path,
+                exitcode_path,
+                pid_path,
+                result_path,
+                ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md",
+            ]:
                 try:
                     p.unlink()
                 except OSError:
@@ -695,7 +764,7 @@ def _parse_plan_scope(task_id: str) -> list[str]:
         """提取纯文件路径（去掉尾部注释/说明）"""
         f = f.strip().strip("`\"'*")
         # 去掉尾部中文/括号说明（product_role 增强 → 空）
-        m = re.match(r'^([\w./~@+\-\[\]]+)', f)
+        m = re.match(r"^([\w./~@+\-\[\]]+)", f)
         if m:
             f = m.group(1)
         # 如果还多出来尾缀（如括号前有空格）
@@ -726,7 +795,9 @@ def _parse_plan_scope(task_id: str) -> list[str]:
 
         if not old_format:
             # 新模板格式
-            if "**只改文件" in stripped and (stripped.startswith("- ") or stripped.startswith("* ")):
+            if "**只改文件" in stripped and (
+                stripped.startswith("- ") or stripped.startswith("* ")
+            ):
                 collecting_only = True
                 after_label = stripped.split("**")[-1].lstrip("：:").strip()
                 if after_label:
@@ -735,12 +806,19 @@ def _parse_plan_scope(task_id: str) -> list[str]:
                         if f_clean:
                             files.append(f_clean)
                 continue
-            if "**不改文件" in stripped and (stripped.startswith("- ") or stripped.startswith("* ")):
+            if "**不改文件" in stripped and (
+                stripped.startswith("- ") or stripped.startswith("* ")
+            ):
                 break
             if collecting_only:
                 if stripped.startswith("- ") or stripped.startswith("* "):
                     f = _clean(stripped[2:])
-                    if f and not f.startswith("(") and not f.startswith("不") and f not in ("只改文件", "不改文件"):
+                    if (
+                        f
+                        and not f.startswith("(")
+                        and not f.startswith("不")
+                        and f not in ("只改文件", "不改文件")
+                    ):
                         files.append(f)
         else:
             # 旧格式：直接收集 - 条目
@@ -766,11 +844,17 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
     try:
         stat_r = sp.run(
             ["git", "diff", since, "--stat"],
-            cwd=workspace, capture_output=True, text=True, timeout=10,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         diff_r = sp.run(
             ["git", "diff", since],
-            cwd=workspace, capture_output=True, text=True, timeout=30,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return stat_r.stdout or "", diff_r.stdout or ""
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -778,7 +862,9 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
         return "", ""
 
 
-def _review_with_llm(task_id: str, diff_stat: str, full_diff: str, plan_text: str) -> dict:
+def _review_with_llm(
+    task_id: str, diff_stat: str, full_diff: str, plan_text: str
+) -> dict:
     """调 Claude API 审查代码。返回 {"verdict": "pass"|"fail", "findings": [...], "summary": "..."}。
 
     fallback: API 不可用或解析失败 → 返回 {"verdict": "fallback", "reason": "..."}
@@ -818,10 +904,16 @@ def _review_with_llm(task_id: str, diff_stat: str, full_diff: str, plan_text: st
         r = _sp.run(
             [_CLAUDE_CLI, "-p"],
             input=prompt,
-            capture_output=True, text=True, timeout=120, env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
         )
         if r.returncode != 0:
-            return {"verdict": "fallback", "reason": f"claude rc={r.returncode}: {r.stderr[:200]}"}
+            return {
+                "verdict": "fallback",
+                "reason": f"claude rc={r.returncode}: {r.stderr[:200]}",
+            }
         output = r.stdout
         # 尝试从输出抓 JSON
         m = _re.search(r"\{[\s\S]*\"verdict\"[\s\S]*\}", output)
@@ -831,7 +923,10 @@ def _review_with_llm(task_id: str, diff_stat: str, full_diff: str, plan_text: st
             data = json.loads(m.group(0))
             if data.get("verdict") in ("pass", "fail"):
                 return data
-            return {"verdict": "fallback", "reason": f"unexpected verdict: {data.get('verdict')}"}
+            return {
+                "verdict": "fallback",
+                "reason": f"unexpected verdict: {data.get('verdict')}",
+            }
         except json.JSONDecodeError as exc:
             return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
     except _sp.TimeoutExpired:
@@ -847,7 +942,9 @@ def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
             continue
         r = sp.run(
             ["python3", "-m", "py_compile", str(f)],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.returncode != 0:
             print(
@@ -905,6 +1002,7 @@ def reviewer_role() -> dict:
             py_files = []
             for f in files:
                 import glob as _glob
+
                 matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
                 py_files.extend(matched)
             py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
@@ -916,7 +1014,9 @@ def reviewer_role() -> dict:
             elif _py_compile_fallback(task_id, py_files):
                 move_task(task_id, "testing", "verified")
                 moved.append(task_id)
-                print(f"[reviewer] {task_id} ✓ fallback py_compile ({len(py_files)} 文件)")
+                print(
+                    f"[reviewer] {task_id} ✓ fallback py_compile ({len(py_files)} 文件)"
+                )
             else:
                 print(
                     f"[reviewer] {task_id} ✗ fallback py_compile 失败，留在 testing",
@@ -961,17 +1061,27 @@ def tester_role() -> dict:
         has_pyproject = (ROOT / "pyproject.toml").exists()
         if has_pyproject and not any("pytest" in c for c in verify_commands):
             verify_commands.append(
-                f"cd {ROOT} && python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
+                f"python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
             )
 
         all_ok = True
         for cmd in verify_commands:
             if not all_ok:
                 break
-            r = sp.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
+            r = sp.run(
+                shlex.split(cmd),
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=ROOT,
+            )
             if r.returncode != 0:
                 all_ok = False
-                print(f"[tester] {task_id} FAIL: {cmd[:80]}... → {r.stdout[-300:]}", file=sys.stderr)
+                print(
+                    f"[tester] {task_id} FAIL: {cmd[:80]}... → {r.stdout[-300:]}",
+                    file=sys.stderr,
+                )
 
         if all_ok:
             move_task(task_id, "testing", "verified")
@@ -1067,7 +1177,9 @@ def ops_role() -> dict:
     for role in roles_check:
         r = sp.run(
             ["launchctl", "list", f"com.ccc.{role}"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0 and "PID" in r.stdout:
             launchd_up.append(role)
@@ -1252,10 +1364,14 @@ WORKSPACES = cfg.audit_workspaces  # 复用 Config（v0.22 M7）
 def _audit_recent_commits(workspace: str, since: str = "2 hours ago") -> str:
     """取 git log 短输出"""
     import subprocess as sp
+
     try:
         r = sp.run(
             ["git", "log", f"--since={since}", "--oneline", "--no-merges"],
-            cwd=workspace, capture_output=True, text=True, timeout=10,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return r.stdout or ""
     except (sp.TimeoutExpired, OSError):
@@ -1265,6 +1381,7 @@ def _audit_recent_commits(workspace: str, since: str = "2 hours ago") -> str:
 def _audit_lint(workspace: str) -> tuple[str, str]:
     """跑 ruff + mypy 门禁。返回 (lint_output, mypy_output)。"""
     import subprocess as sp
+
     lint_out = ""
     mypy_out = ""
     pyproject = Path(workspace) / "pyproject.toml"
@@ -1274,7 +1391,10 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
     try:
         r = sp.run(
             ["ruff", "check", "."],
-            cwd=workspace, capture_output=True, text=True, timeout=60,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         lint_out = (r.stdout or "") + (r.stderr or "")
     except (sp.TimeoutExpired, FileNotFoundError, OSError):
@@ -1283,7 +1403,10 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
     try:
         r = sp.run(
             ["mypy", "src/"],
-            cwd=workspace, capture_output=True, text=True, timeout=60,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         mypy_out = (r.stdout or "") + (r.stderr or "")
     except (sp.TimeoutExpired, FileNotFoundError, OSError):
@@ -1292,7 +1415,9 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
     return lint_out, mypy_out
 
 
-def _audit_classify(workspace: str, recent_commits: str, lint_out: str, mypy_out: str) -> dict:
+def _audit_classify(
+    workspace: str, recent_commits: str, lint_out: str, mypy_out: str
+) -> dict:
     """启发式分类（v0.22 临时方案，v0.23 计划接入 Claude API）。
 
     返回 {"auto": [...], "review": [...], "decision": [...]}。
@@ -1327,6 +1452,7 @@ def _audit_classify(workspace: str, recent_commits: str, lint_out: str, mypy_out
 def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
     """把 review/decision 类问题投到对应项目的 backlog。返回投出数。"""
     from datetime import datetime as _dt
+
     store = FileBoardStore(Path(workspace))
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
     posted = 0
@@ -1356,6 +1482,7 @@ def _audit_write_report(
 ) -> Path:
     """写审计报表到 {workspace}/.ccc/audit-reports/{date}.md"""
     from datetime import datetime as _dt
+
     name = Path(workspace).name
     date_str = _dt.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
     report_dir = Path(workspace) / ".ccc" / "audit-reports"
@@ -1425,6 +1552,7 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
     """
     import subprocess as sp
     import time as _time
+
     _t0 = _time.time()
     results = []
     targets = [workspace] if workspace else WORKSPACES
@@ -1463,7 +1591,10 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
                         "src",
                         ".",
                     ],
-                    cwd=ws, capture_output=True, text=True, timeout=60,
+                    cwd=ws,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
                 )
                 auto_fixed = findings["auto"]
                 findings["auto"] = []  # 已被自动修
@@ -1472,11 +1603,20 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
 
         # 5. review/decision 投 backlog
         posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
-        posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
+        posted_decision = _audit_post_backlog(
+            ws, findings.get("decision", []), "decision"
+        )
 
         # 6. 写报表
         _elapsed_ws = _time.time() - _t_ws
-        report_path = _audit_write_report(ws, findings, commits, auto_fixed=auto_fixed, mypy_raw=mypy_out, duration_seconds=_elapsed_ws)
+        report_path = _audit_write_report(
+            ws,
+            findings,
+            commits,
+            auto_fixed=auto_fixed,
+            mypy_raw=mypy_out,
+            duration_seconds=_elapsed_ws,
+        )
 
         results.append(
             {
@@ -1493,6 +1633,7 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
     # 记录运行时间
     _elapsed = _time.time() - _t0
     from datetime import datetime as _dt
+
     last_run = Path.home() / ".ccc" / "audit-last-run.json"
     last_run.parent.mkdir(parents=True, exist_ok=True)
     last_run.write_text(
@@ -1754,7 +1895,10 @@ def dev_role_launch(task_id: str) -> dict:
     cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not cplan.exists() or not cphases.exists():
         _quarantine(task_id, "engine: 缺 plan 或 phases 文件")
-        return {"error": f"task '{task_id}' missing plan/phases, quarantined", "task_id": task_id}
+        return {
+            "error": f"task '{task_id}' missing plan/phases, quarantined",
+            "task_id": task_id,
+        }
 
     move_task(task_id, "planned", "in_progress")
 
@@ -1782,16 +1926,21 @@ def dev_role_launch(task_id: str) -> dict:
     report_dir.mkdir(parents=True, exist_ok=True)
 
     import subprocess as sp
+
     proc = sp.Popen(
         [
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
             str(CCC_HOME),  # $2: CCC_HOME（opencode-exec.py 所在目录）
-            str(ROOT),      # $3: ROOT_DIR（结果文件写到 workspace）
-            "--phase", phase_id,
-            "--prompt", prompt_file,
-            "--timeout", str(timeout_s),
-            "--cwd", str(ROOT),  # opencode 工作目录 = workspace
+            str(ROOT),  # $3: ROOT_DIR（结果文件写到 workspace）
+            "--phase",
+            phase_id,
+            "--prompt",
+            prompt_file,
+            "--timeout",
+            str(timeout_s),
+            "--cwd",
+            str(ROOT),  # opencode 工作目录 = workspace
         ],
         start_new_session=True,
     )
@@ -1856,16 +2005,21 @@ def dev_role_relaunch(task_id: str) -> dict:
     report_dir.mkdir(parents=True, exist_ok=True)
 
     import subprocess as sp
+
     proc = sp.Popen(
         [
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
             str(CCC_HOME),  # $2: CCC_HOME
-            str(ROOT),      # $3: ROOT_DIR
-            "--phase", phase_id,
-            "--prompt", prompt_file,
-            "--timeout", str(timeout_s),
-            "--cwd", str(ROOT),
+            str(ROOT),  # $3: ROOT_DIR
+            "--phase",
+            phase_id,
+            "--prompt",
+            prompt_file,
+            "--timeout",
+            str(timeout_s),
+            "--cwd",
+            str(ROOT),
         ],
         start_new_session=True,
     )
@@ -1908,7 +2062,8 @@ def dev_role_check_complete(task_id: str) -> dict:
 
     # 标记文件列表（用于清算）
     marker_files = [
-        done_path, exitcode_path,
+        done_path,
+        exitcode_path,
         ROOT / ".ccc" / "pids" / f"{task_id}.pid",
         ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md",
         result_path,
@@ -1973,7 +2128,10 @@ def dev_role_check_complete(task_id: str) -> dict:
                 except OSError:
                     pass
             _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
-            print(f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined", file=sys.stderr)
+            print(
+                f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined",
+                file=sys.stderr,
+            )
             return {"status": "quarantined", "task_id": task_id}
         else:
             # 保留 .done 在磁盘，engine 下次 check 时看到 failed 状态就会 relaunch
