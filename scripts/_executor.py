@@ -3,6 +3,7 @@
 提供 Executor 协议和 OpenCodeExecutor 实现。
 执行器负责运行指定 phase，返回执行结果。
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -40,8 +41,27 @@ def resolve_opencode() -> Optional[str]:
     return None
 
 
+def _sanitized_env() -> dict:
+    """Strip credential env vars to prevent subprocess leakage (CWE-522).
+
+    Subprocess.Popen inherits the full environment by default, which exposes
+    API keys/tokens/secrets to child processes. Filter out known patterns.
+    """
+    import os as _os
+
+    env = _os.environ.copy()
+    _CREDENTIAL_PATTERNS = ("API_KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
+    keys_to_remove = [
+        key for key in env if any(pat in key.upper() for pat in _CREDENTIAL_PATTERNS)
+    ]
+    for key in keys_to_remove:
+        env.pop(key, None)
+    return env
+
+
 class ExecResult(TypedDict):
     """执行结果结构"""
+
     phase_id: str
     exit_code: int
     stdout: str
@@ -105,9 +125,13 @@ class OpenCodeExecutor(Executor):
         opencode_bin = self._resolve_opencode()
         if not opencode_bin:
             return ExecResult(
-                phase_id=phase_id, exit_code=10,
-                stdout="", stderr="opencode not found",
-                duration_s=0, pid=0, killed=False,
+                phase_id=phase_id,
+                exit_code=10,
+                stdout="",
+                stderr="opencode not found",
+                duration_s=0,
+                pid=0,
+                killed=False,
             )
 
         model = model or self.config.model
@@ -115,18 +139,20 @@ class OpenCodeExecutor(Executor):
         tmp_path = None
 
         if len(prompt_text) > 200:
-            import tempfile
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".md", delete=False, encoding="utf-8"
-            )
-            tmp.write(prompt_text)
-            tmp.close()
-            tmp_path = tmp.name
+            pids_dir = Path.home() / ".ccc" / "pids"
+            pids_dir.mkdir(parents=True, exist_ok=True)
+            import uuid as _uuid
+
+            tmp_path = str(pids_dir / f"prompt-{_uuid.uuid4().hex}.md")
+            Path(tmp_path).write_text(prompt_text, encoding="utf-8")
             cmd = [
-                opencode_bin, "run",
-                "--model", model,
+                opencode_bin,
+                "run",
+                "--model",
+                model,
                 "Read attached file and execute the instructions inside.",
-                "--file", tmp_path,
+                "--file",
+                tmp_path,
             ]
         else:
             cmd = [opencode_bin, "run", "--model", model, prompt_text or "execute"]
@@ -142,6 +168,7 @@ class OpenCodeExecutor(Executor):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,
+                env=_sanitized_env(),
                 start_new_session=True,
             )
             pid_file.write_text(str(proc.pid))
