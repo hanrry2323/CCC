@@ -6,6 +6,7 @@
 
 依赖：Python 3.8+ 标准库
 """
+
 from __future__ import annotations
 import argparse
 import json
@@ -26,13 +27,21 @@ _cfg = Config()
 # ── 配置 ──
 CCC_HOME = _cfg.ccc_home
 COLUMN_LABELS = {
-    "backlog": "待办", "planned": "已计划", "in_progress": "开发中",
-    "testing": "测试中", "verified": "已验证", "released": "已发布",
+    "backlog": "待办",
+    "planned": "已计划",
+    "in_progress": "开发中",
+    "testing": "测试中",
+    "verified": "已验证",
+    "released": "已发布",
     "abnormal": "异常",
 }
 COLUMN_COLORS = {
-    "backlog": "#94a3b8", "planned": "#6366f1", "in_progress": "#f59e0b",
-    "testing": "#f97316", "verified": "#22c55e", "released": "#3b82f6",
+    "backlog": "#94a3b8",
+    "planned": "#6366f1",
+    "in_progress": "#f59e0b",
+    "testing": "#f97316",
+    "verified": "#22c55e",
+    "released": "#3b82f6",
     "abnormal": "#ef4444",
 }
 ROLES = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
@@ -40,7 +49,7 @@ MAX_CONTENT_LENGTH = 1_048_576
 
 
 def sanitize_id(tid: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9_-]', '', os.path.basename(tid))
+    return re.sub(r"[^a-zA-Z0-9_-]", "", os.path.basename(tid))
 
 
 # ── Workspace ──
@@ -142,7 +151,9 @@ def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
     return s.move_task(task_id, from_col, to_col)
 
 
-def create_task(task_id: str, title: str, description: str = "", workspace: str = "CCC") -> bool:
+def create_task(
+    task_id: str, title: str, description: str = "", workspace: str = "CCC"
+) -> bool:
     s = _store_for(workspace)
     if s is None:
         return False
@@ -158,19 +169,23 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
     state = get_board_state(workspace)
     for col in COLUMNS:
         for task in state[col]:
-            events.append({
-                "type": "task",
-                "time": task.get("updated_at", task.get("created_at", "")),
-                "task_id": task["id"],
-                "title": task.get("title", ""),
-                "column": col,
-                "label": COLUMN_LABELS.get(col, col),
-                "color": COLUMN_COLORS.get(col, "#666"),
-            })
+            events.append(
+                {
+                    "type": "task",
+                    "time": task.get("updated_at", task.get("created_at", "")),
+                    "task_id": task["id"],
+                    "title": task.get("title", ""),
+                    "column": col,
+                    "label": COLUMN_LABELS.get(col, col),
+                    "color": COLUMN_COLORS.get(col, "#666"),
+                }
+            )
     # 角色执行日志
     log_dir = Path.home() / ".ccc" / "logs"
     if log_dir.exists():
-        for f in sorted(log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:30]:
+        for f in sorted(
+            log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True
+        )[:30]:
             try:
                 with open(f) as fp:
                     content = fp.read()
@@ -182,14 +197,16 @@ def get_timeline(workspace: str, limit: int = 20) -> list[dict]:
             for line in content.strip().split("\n"):
                 if "exit=" in line:
                     exit_code = line.split("exit=")[-1]
-            events.append({
-                "type": "role_run",
-                "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                "role": role,
-                "exit_code": exit_code,
-                "size": f.stat().st_size,
-                "snippet": content[-200:] if content else "",
-            })
+            events.append(
+                {
+                    "type": "role_run",
+                    "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    "role": role,
+                    "exit_code": exit_code,
+                    "size": f.stat().st_size,
+                    "snippet": content[-200:] if content else "",
+                }
+            )
     events.sort(key=lambda e: e.get("time", ""), reverse=True)
     return events[:limit]
 
@@ -201,7 +218,11 @@ def get_role_status() -> list[dict]:
     for role in ROLES:
         last = {"role": role, "status": "idle", "last_run": None, "exit_code": None}
         if log_dir.exists():
-            logs = sorted(log_dir.glob(f"role-{role}-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+            logs = sorted(
+                log_dir.glob(f"role-{role}-*.log"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
             if logs:
                 latest = logs[0]
                 try:
@@ -214,7 +235,9 @@ def get_role_status() -> list[dict]:
                         ec = line.split("exit=")[-1].strip()
                         last["exit_code"] = ec
                         last["status"] = "ok" if ec == "0" else "fail"
-                last["last_run"] = datetime.fromtimestamp(latest.stat().st_mtime).isoformat()
+                last["last_run"] = datetime.fromtimestamp(
+                    latest.stat().st_mtime
+                ).isoformat()
         status.append(last)
     return status
 
@@ -222,7 +245,9 @@ def get_role_status() -> list[dict]:
 # ── HTTP Handler ──
 class BoardHTTPHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(CCC_HOME / "scripts" / "ccc-board-ui"), **kwargs)
+        super().__init__(
+            *args, directory=str(CCC_HOME / "scripts" / "ccc-board-ui"), **kwargs
+        )
 
     def _json(self, data: dict, status: int = 200):
         self.send_response(status)
@@ -231,6 +256,16 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    def _verify_auth(self) -> bool:
+        token = os.environ.get("QX_BOARD_TOKEN", "").strip()
+        if not token:
+            return True
+        auth = self.headers.get("Authorization", "")
+        if auth.startswith("Bearer ") and auth[7:] == token:
+            return True
+        self._json({"error": "unauthorized"}, 401)
+        return False
 
     def _body(self) -> Optional[dict]:
         n = int(self.headers.get("Content-Length", 0))
@@ -247,7 +282,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self):
@@ -261,22 +296,51 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api":
-            self._json({"api": "CCC Board v0.18", "endpoints": [
-                "GET /api/board", "GET /api/config", "GET /api/timeline",
-                "GET /api/roles", "GET /api/logs",
-                "POST /api/tasks", "POST /api/tasks/move",
-            ]})
+            self._json(
+                {
+                    "api": "CCC Board v0.18",
+                    "endpoints": [
+                        "GET /api/board",
+                        "GET /api/config",
+                        "GET /api/timeline",
+                        "GET /api/roles",
+                        "GET /api/logs",
+                        "POST /api/tasks",
+                        "POST /api/tasks/move",
+                    ],
+                }
+            )
 
         elif path == "/api/board":
             state = get_board_state(ws)
-            self._json({"columns": state, "counts": {c: len(state[c]) for c in COLUMNS},
-                        "workspace": ws, "workspaces": discover_workspaces()})
+            self._json(
+                {
+                    "columns": state,
+                    "counts": {c: len(state[c]) for c in COLUMNS},
+                    "workspace": ws,
+                    "workspaces": discover_workspaces(),
+                }
+            )
 
         elif path == "/api/config":
-            self._json({"workspaces": discover_workspaces(), "columns": COLUMNS,
-                        "labels": COLUMN_LABELS, "colors": COLUMN_COLORS,
-                        "roles": ROLES, "labels_cn": dict(product="产品经理", dev="开发",
-                            reviewer="审查", tester="测试", ops="运维", kb="归档", regress="回归")})
+            self._json(
+                {
+                    "workspaces": discover_workspaces(),
+                    "columns": COLUMNS,
+                    "labels": COLUMN_LABELS,
+                    "colors": COLUMN_COLORS,
+                    "roles": ROLES,
+                    "labels_cn": dict(
+                        product="产品经理",
+                        dev="开发",
+                        reviewer="审查",
+                        tester="测试",
+                        ops="运维",
+                        kb="归档",
+                        regress="回归",
+                    ),
+                }
+            )
 
         elif path.startswith("/api/tasks/") and len(path.split("/")) == 4:
             task_id = sanitize_id(path.split("/")[-1])
@@ -295,7 +359,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             else:
                 self._json({"error": "not found"}, 404)
 
-        elif path.startswith("/api/tasks/") and path.endswith("/events") and len(path.split("/")) == 5:
+        elif (
+            path.startswith("/api/tasks/")
+            and path.endswith("/events")
+            and len(path.split("/")) == 5
+        ):
             # GET /api/tasks/<id>/events — 返回任务详情 + 事件流
             task_id = sanitize_id(path.split("/")[-2])
             found = None
@@ -342,7 +410,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             entries = []
             log_dir = Path.home() / ".ccc" / "logs"
             if log_dir.exists():
-                for f in sorted(log_dir.glob("role-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:25]:
+                for f in sorted(
+                    log_dir.glob("role-*.log"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )[:25]:
                     try:
                         with open(f) as fp:
                             content = fp.read()
@@ -354,18 +426,25 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     for line in content.split("\n"):
                         if "exit=" in line:
                             rc = line.split("exit=")[-1]
-                    entries.append({
-                        "role": role, "size": f.stat().st_size,
-                        "mtime": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                        "exit_code": rc,
-                        "snippet": content[-200:],
-                    })
+                    entries.append(
+                        {
+                            "role": role,
+                            "size": f.stat().st_size,
+                            "mtime": datetime.fromtimestamp(
+                                f.stat().st_mtime
+                            ).isoformat(),
+                            "exit_code": rc,
+                            "snippet": content[-200:],
+                        }
+                    )
             self._json({"logs": entries})
 
         else:
             super().do_GET()
 
     def do_POST(self):
+        if not self._verify_auth():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         data = self._body()
