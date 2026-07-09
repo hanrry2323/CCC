@@ -24,6 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skills/ccc-reviewer/SKILL.md` 重写：5 大类审查清单 + 三级严重度
 - `references/red-lines.md`：加 X7（reviewer 必须 LLM）
 
+## [v0.23.3] — 2026-07-09 — 时间戳统一为北京时间
+
+### 修复
+- `ccc-board.py` `now_iso()` 从 `timezone.utc` 改为 `ZoneInfo("Asia/Shanghai")`，输出后缀从 `Z` 改为 `+08:00`
+- `ccc-engine.py` `now_iso()` 同样改为北京时间
+- 影响：task JSONL 时间戳、engine 心跳、报表日期、事件记录等全部时间输出
+
+### 验证
+- compile: 无语法错误
+- 测试输出: `2026-07-09T11:56:01+08:00`（北京时间，`fromisoformat` 可解析）
+
+---
+
 ## [v0.23.2] — 2026-07-09 — engine 取 task 后未更新 index 修复
 
 ### 修复
@@ -813,3 +826,35 @@ git push origin main --tags
 ## [v0.18.0] - 2026-07-08
 
 - feat-card-detail: [ABNORMAL] 前端卡片点击弹出详情面板，显示任务完整信息（题目/描述/当前列/move事件列表） 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- ccc-changelog-format: CHANGELOG.md 格式统一 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- dialog-latency-optimize: 紧急修复: 对话流式响应延迟优化 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- emergency-dialog-latency-optimize: 升舱: dialog-latency-optimize 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- emergency-quality-flywheel-auto-suggest: 升舱: quality-flywheel-auto-suggest 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- quality-flywheel-auto-suggest: 紧急修复: 质量飞轮自动建议 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- smoke-v020: v0.20 smoke 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- ccc-docstring-sweep: scripts/ 模块级 docstring 补充 看板发布
+
+## [v0.23.2] - 2026-07-09
+
+- ccc-gitignore-update: .gitignore 加运行时数据排除 看板发布
