@@ -748,12 +748,24 @@ def dev_role() -> dict:
     return {"role": "dev", "moved": moved, "counts": update_index()}
 
 
+def _is_path_in_root(p: Path) -> bool:
+    """检查解析后的路径是否在 ROOT 范围内，防止路径穿越 (CWE-22)"""
+    try:
+        resolved = p.resolve()
+        root_resolved = ROOT.resolve()
+        return root_resolved in resolved.parents or resolved == root_resolved
+    except (OSError, RuntimeError):
+        return False
+
+
 def _parse_plan_scope(task_id: str) -> list[str]:
     """从 plan.md 读文件白名单
 
     兼容两种格式：
-      新模板：## 范围 → - **只改文件**： → 后续 - file 行
-      旧格式：## 文件白名单 → 直接 - file 行
+       新模板：## 范围 → - **只改文件**： → 后续 - file 行
+       旧格式：## 文件白名单 → 直接 - file 行
+
+    安全：返回的路径均已校验在 ROOT 范围内，防止路径穿越 (CWE-22/94)。
     """
     plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
     if not plan.exists():
@@ -826,7 +838,13 @@ def _parse_plan_scope(task_id: str) -> list[str]:
                 f = _clean(stripped[2:])
                 if f and not f.startswith("不"):
                     files.append(f)
-    return files
+    # 安全校验：过滤掉穿越 ROOT 的路径 (CWE-22)
+    validated = []
+    for f in files:
+        candidate = ROOT / f
+        if _is_path_in_root(candidate):
+            validated.append(f)
+    return validated
 
 
 def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
@@ -1004,6 +1022,8 @@ def reviewer_role() -> dict:
                 import glob as _glob
 
                 matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+                # 安全：即使 glob 展开或直接拼接，确保每个路径仍在 ROOT 范围内 (CWE-22)
+                matched = [m for m in matched if _is_path_in_root(Path(m))]
                 py_files.extend(matched)
             py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
