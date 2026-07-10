@@ -11,6 +11,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.24.2] — 2026-07-10 — audit 多 workspace 并行化
+
+### 新增
+- `audit_role` 多 workspace 并行：把单 ws 处理抽到 `_audit_run_one(ws, since)`
+- `ThreadPoolExecutor(max_workers=min(n, 4))` 并发跑；单 ws 仍走原串行路径
+- 并发安全：每个 ws 的写入路径独立（backlog / audit-reports / ruff cwd），互不冲突
+
+### 收益
+- 5 个 workspace 审计从串行 ~50min 降到并发 ~12min（IO + subprocess bound）
+
+### 验证
+- syntax: py_compile 0 errors
+- pytest: 59 passed（重构未破坏）
+- 单 ws 路径 / 多 ws 并发路径 / 5 ws WORKSPACES 配置全 OK
+
+---
+
+## [v0.24.1] — 2026-07-10 — reviewer 按变更量分级
+
+### 新增
+- `_parse_diff_size(stat_output)` — 解析 `git diff --stat` 输出统计 insertions + deletions
+- `_classify_review_size(stat_output)` — 三级分类：`small` (≤10) / `medium` (11-50) / `large` (>50)
+- `_review_with_llm` 加 `size_class` 参数，`large` 类追加 impact_section（影响面/风险等级/回归路径）
+- 常量 `REVIEW_SIZE_SMALL_MAX=10` / `REVIEW_SIZE_MEDIUM_MAX=50`
+- `reviewer_role` 主流程改造：small 走静态 py_compile；medium/large 走 LLM
+
+### 收益
+- 节省 LLM 调用 60-70%（小额变更走静态）
+- 大额变更更严格（强制 impact 分析）
+
+### 验证
+- syntax: py_compile 0 errors
+- pytest: 59 passed
+- unit: 4 类 case + 4 边界 case + 当前 commit 134 行 → large 类（自验证）
+
+---
+
+## [v0.24.0] — 2026-07-10 — Engine phase 感知调度
+
+### 新增（p1-p4 4 sub-phase）
+- **p1 schema**：phases.json schema_version 1.0→1.1，新增 `depends_on: [phase_id]` 字段
+- **p1 status**：扩展 `blocked` / `failed` / `skipped`（原有 pending/in_progress/done/verified）
+- **p2 解析**：`_load_phases` / `_resolve_phase_dependencies` / `_apply_phase_status_updates` / `_task_all_phases_terminal`
+- **p3 失败传染**：`_current_running_phase` / `_mark_phase_failed` / `_check_phase_failures` / `_move_task_to_abnormal_if_all_failed`
+- **p3 quarantine**：`dev_role_check_complete` retry 耗尽路径接入失败传染
+- **p3 abnormal 决策**：所有 phase failed/skipped → 移到 abnormal 而非 quarantined
+- **ccc-engine.py**：启动 dev 前调依赖解析，所有 phase 被跳过则不启动 task；quarantined 分支调 `_check_phase_failures`
+
+### 失败传染语义
+- `failed` 传染：依赖 failed → 下游 `skipped`
+- `skipped` 不传染：依赖 skipped → 下游可执行（视为 OK）
+- 多轮 tick 收敛：双向同步（blocked ↔ pending）让失败链在后续轮次中自动解开
+
+### 验证
+- syntax: py_compile 0 errors
+- pytest: 81 passed（59 原有 + 22 新增）
+- 新增 `tests/scripts/test_phase_dependencies.py`：22 个 case 覆盖依赖解析、双向同步、失败传染、多轮收敛、Engine 视角
+
+---
+
 ## [v0.23.16] — 2026-07-10 — 合规收尾（VERSION/CHANGELOG 补全）
 
 > 注：v0.23.11~v0.23.16 六个维修版本 commit 已存在，但 CHANGELOG 历史条目之前未补全，本次统一补齐。

@@ -16,7 +16,7 @@
 | 主语言 | Bash + Python 3.9+（已兼容 3.14） |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
-| 当前版本 | **v0.23.16**（2026-07-10） |
+| 当前版本 | **v0.24.2**（2026-07-10） |
 
 ---
 
@@ -24,6 +24,9 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-10 | v0.24.2 | — | [CHANGELOG §v0.24.2](../CHANGELOG.md) | tag `v0.24.2` + release | PASS |
+| 2026-07-10 | v0.24.1 | — | [CHANGELOG §v0.24.1](../CHANGELOG.md) | tag `v0.24.1` + release | PASS |
+| 2026-07-10 | v0.24.0 | — | [CHANGELOG §v0.24.0](../CHANGELOG.md) | tag `v0.24.0` + release | PASS |
 | 2026-07-10 | v0.23.16 | — | [CHANGELOG §v0.23.16](../CHANGELOG.md) | tag `v0.23.16` + release | PASS |
 | 2026-07-09 | v0.23.15 | — | [CHANGELOG §v0.23.15](../CHANGELOG.md) | tag `v0.23.15` + release | PASS |
 | 2026-07-09 | v0.23.14 | — | [CHANGELOG §v0.23.14](../CHANGELOG.md) | tag `v0.23.14` + release | PASS |
@@ -39,7 +42,7 @@
 > v0.19 起，版本级任务走"commit + tag + CHANGELOG"三件套，不再为每个版本单独建 plan/report/verdict 文件。
 > v0.18 及之前（含 v0.18 的 7 个子任务）的 plan/report/verdict 文件保留在 `.ccc/plans/` `.ccc/reports/` `.ccc/verdicts/`。
 
-### 当前版本族关键 commit（v0.19 ~ v0.23.3 全集）
+### 当前版本族关键 commit（v0.19 ~ v0.24.2 全集）
 
 | 版本 | 关键 commit | 主题 |
 |------|------------|------|
@@ -59,14 +62,17 @@
 | v0.23.14 | `fcb5030` | reviewer bytes/text 冲突 + engine LOG 路径冲突 |
 | v0.23.15 | `1c35417` | OpenCode 模型名 (loop/code) + product 3.9 rglob 兼容 |
 | v0.23.16 | `3d77f16` | reviewer G2 误判 + COLUMN_TRANSITIONS abnormal 重投通路 |
+| v0.24.0 | `6b821a2` | Engine phase 感知调度（依赖解析 + 失败隔离） |
+| v0.24.1 | `7705a09` | reviewer 按变更量分级（small/medium/large） |
+| v0.24.2 | `9b63788` | audit 多 workspace 并行化（ThreadPoolExecutor） |
 
 ---
 
-## 当前状态（v0.23.16 closure, 2026-07-10）
+## 当前状态（v0.24.2 closure, 2026-07-10）
 
-**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象。
+**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度。
 
-**已发布版本族**：v0.7.0 → v0.8.0 → v0.9.0 → v0.10.0 → v0.11.0 → v0.12.0 → v0.13.0 → v0.14.0 → v0.15.0 → v0.16.0 → v0.17.0 → v0.18.0 → v0.19.0 → v0.20.0 → v0.20.1 → v0.21.0 → v0.22.0 → v0.22.1 → v0.23.0 → v0.23.1 → v0.23.2 → v0.23.3 → v0.23.11 → v0.23.12 → v0.23.13 → v0.23.14 → v0.23.15 → **v0.23.16**（共 28 个 release tag）
+**已发布版本族**：v0.7.0 → v0.8.0 → v0.9.0 → v0.10.0 → v0.11.0 → v0.12.0 → v0.13.0 → v0.14.0 → v0.15.0 → v0.16.0 → v0.17.0 → v0.18.0 → v0.19.0 → v0.20.0 → v0.20.1 → v0.21.0 → v0.22.0 → v0.22.1 → v0.23.0 → v0.23.1 → v0.23.2 → v0.23.3 → v0.23.11 → v0.23.12 → v0.23.13 → v0.23.14 → v0.23.15 → v0.23.16 → v0.24.0 → v0.24.1 → **v0.24.2**（共 31 个 release tag）
 
 **已完成范式转变**（roadmap 标注）：
 1. v0.11 — "opencode 写 + 人工 review" 模式
