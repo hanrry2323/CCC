@@ -910,3 +910,9 @@ git push origin main --tags
 ### 修复
 - G1 [critical] reviewer_role: _get_git_diff 加 task_id 参数，优先按 git log --grep 找 task 关联 commit 取 diff，其次 phases.json commit ref，reviewer 只审本 task 的改动而非全仓 HEAD~1
 - G2 [critical] reviewer_role fallback: 无验收清单 `## 验收` + 无 py 文件 → quarantine（防止 dev 绕开审查）；无 py 文件也不再静默 pass，改为 quarantine
+
+## [v0.23.7] - 2026-07-10
+
+### 修复
+- G4 [high] engine 重启恢复: 启动扫描 in_progress 后检查 PID 存活，.pid 指向已死进程时清理并标记 failed 让 engine 自动重启
+- G11 [medium] audit-last-run 跨 workspace 共享: 拆为 `audit-last-run.{workspace}.json`，5 个 engine 实例互不影响

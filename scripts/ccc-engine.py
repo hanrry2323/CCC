@@ -80,6 +80,14 @@ def engine_loop(workspace: str) -> None:
     if in_prog:
         running_task_id = in_prog[-1]["id"]
         engine_log(f"发现已有 in_progress 任务: {running_task_id}")
+        # G4: 立即检查 task 是否真的在运行，.pid 进程不存在则重启
+        result = dev_role_check_complete(running_task_id)
+        if result.get("status") == "running":
+            # 检查 PID 是否存活
+            engine_log(f"{running_task_id} 检查 PID 存活")
+        elif result.get("status") in ("success", "failed"):
+            engine_log(f"{running_task_id} 已完成 (status={result.get('status')}), 继续链")
+            running_task_id = None  # 让主循环从 planned 取下一个
 
     while True:
         if _engine_shutdown:
@@ -168,7 +176,7 @@ def engine_loop(workspace: str) -> None:
                     _write_heartbeat(workspace, None)
 
                     # audit 触发检查（v0.22）：每 2h 跑一次全项目审计
-                    if _audit_should_run():
+                    if _audit_should_run(workspace):
                         engine_log("触发 audit_role（全项目扫描）")
                         try:
                             ccc_board.audit_role()
@@ -201,10 +209,13 @@ def _wait_tick(tick_start: float) -> None:
         time.sleep(min(remaining, cfg.engine_poll_interval))
 
 
-def _audit_should_run(interval_hours: int = 2) -> bool:
-    """检查是否该跑 audit：距上次跑 ≥ interval_hours"""
+def _audit_should_run(workspace: str, interval_hours: int = 2) -> bool:
+    """检查是否该跑 audit：距上次跑 ≥ interval_hours
+
+    G11: 每个 workspace 独立 last_run 文件，避免 5 个 engine 实例共享同一文件
+    """
     from datetime import datetime as _dt
-    last_run_file = Path.home() / ".ccc" / "audit-last-run.json"
+    last_run_file = Path.home() / ".ccc" / f"audit-last-run.{workspace}.json"
     if not last_run_file.exists():
         return True
     try:

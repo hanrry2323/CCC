@@ -1727,11 +1727,12 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
     _elapsed = _time.time() - _t0
     from datetime import datetime as _dt
 
-    last_run = Path.home() / ".ccc" / "audit-last-run.json"
+    last_run = Path.home() / ".ccc" / f"audit-last-run.{workspace or 'CCC'}.json"
     last_run.parent.mkdir(parents=True, exist_ok=True)
     last_run.write_text(
         json.dumps(
             {
+                "workspace": workspace or "CCC",
                 "last_run": _dt.now(timezone.utc).isoformat(),
                 "results_count": len(results),
                 "duration_seconds": round(_elapsed, 1),
@@ -2139,6 +2140,21 @@ def dev_role_check_complete(task_id: str) -> dict:
 
     done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
     if not done_path.exists():
+        # G4: 检查 PID 是否存活（重启后 .pid 可能指向已死进程）
+        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
+        if pid_path.exists():
+            try:
+                pid = int(pid_path.read_text().strip())
+                os.kill(pid, 0)  # 信号 0 = 只检查存活
+            except (ValueError, OSError, ProcessLookupError):
+                # PID 不存在 → 清理标记文件，返回 failed 让 engine 重启
+                for f in [pid_path, done_path, ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"]:
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                print(f"[engine] {task_id} G4: PID 已死，标记为失败", file=sys.stderr)
+                return {"status": "failed", "retry": 0, "task_id": task_id}
         return {"status": "running", "task_id": task_id}
 
     exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
