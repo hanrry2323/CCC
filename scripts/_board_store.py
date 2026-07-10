@@ -218,8 +218,10 @@ class FileBoardStore:
         lock = None
         if _HAS_FLOCK:
             try:
-                lock = open(self.lockfile, "w")
+                lock = open(self.lockfile, "r")
                 fcntl.flock(lock, fcntl.LOCK_SH)
+            except FileNotFoundError:
+                lock = None  # 锁文件不存在，不加锁读
             except Exception:
                 lock = None
         try:
