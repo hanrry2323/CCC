@@ -860,15 +860,22 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
     import subprocess as sp
 
     try:
+        # 先检查 ref 是否存在（首次 commit 没有 HEAD~1）
+        rev_r = sp.run(
+            ["git", "rev-parse", "--verify", since],
+            cwd=workspace, capture_output=True, timeout=5,
+        )
+        ref = since if rev_r.returncode == 0 else "--root"
+
         stat_r = sp.run(
-            ["git", "diff", since, "--stat"],
+            ["git", "diff", ref, "--stat"],
             cwd=workspace,
             capture_output=True,
             text=True,
             timeout=10,
         )
         diff_r = sp.run(
-            ["git", "diff", since],
+            ["git", "diff", ref],
             cwd=workspace,
             capture_output=True,
             text=True,
@@ -908,7 +915,8 @@ def _review_with_llm(
         "3. 安全（SQL 注入/路径遍历/凭据泄漏/危险函数）\n"
         "4. 命名与可读性\n"
         "5. 是否与 plan 验收清单一致\n\n"
-        "## 输出（严格 JSON）\n"
+        "## 输出要求\n"
+        "只输出以下 JSON，不要包装 markdown 代码块，不要附加任何解释：\n"
         '{"verdict": "pass" 或 "fail", '
         '"findings": [{"severity": "high"|"medium"|"low", "file": "...", "line": N, '
         '"issue": "...", "suggestion": "..."}], '
@@ -920,7 +928,7 @@ def _review_with_llm(
     env["ANTHROPIC_BASE_URL"] = relay
     try:
         r = _sp.run(
-            [_CLAUDE_CLI, "-p"],
+            [_CLAUDE_CLI, "-p", "--model", "flash"],
             input=prompt,
             capture_output=True,
             text=True,
@@ -933,8 +941,10 @@ def _review_with_llm(
                 "reason": f"claude rc={r.returncode}: {r.stderr[:200]}",
             }
         output = r.stdout
-        # 尝试从输出抓 JSON
-        m = _re.search(r"\{[\s\S]*\"verdict\"[\s\S]*\}", output)
+        # 尝试从输出抓 JSON：优先 markdown 代码块，其次裸 JSON
+        m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\"verdict\"[\s\S]*?\})\s*\n?```", output)
+        if not m:
+            m = _re.search(r"\{[\s\S]*?\"verdict\"[\s\S]*?\}", output)
         if not m:
             return {"verdict": "fallback", "reason": "no JSON in Claude output"}
         try:

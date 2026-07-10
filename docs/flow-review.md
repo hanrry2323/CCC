@@ -17,15 +17,19 @@
 
 ## 仍未修的弱环（按严重度）
 
-### 🔴 P0: reviewer_role LLM 审查空转
+### 🔴 P0: reviewer_role LLM 审查空转（v0.23.5 已修）
 
 **现象**：24 个完成 task 中 87.5% 的 verdict 是 FALLBACK，reviewer 实际没用。
 
 **影响**：task 未经真审查就从 testing 推到 verified → released。
 
-**原因**：`reviewer_role` 调 `claude -p` 超时或 LLM 返回空判决。v0.21 修过一次但不彻底。
+**原因**：`_review_with_llm` 调 `claude -p` 未指定 `--model flash`（CLAUD.md 要求），且提示词 JSON 指令不够明确导致 LLM 偶尔输出非 JSON。
 
-**修复方案**：v0.24（engine phase 改造时一体化加固）
+**修复方案**（v0.23.5）：
+- `_review_with_llm` 加 `--model flash`（符合子进程规范）
+- 提示词 `` 严格 JSON `` 改为 `不要包装 markdown，不要附加解释`
+- JSON 提取优先抓 markdown 代码块，其次裸 JSON
+- `_get_git_diff` 首次 commit（无 HEAD~1）降级到 `--root`，避免空 diff
 
 ---
 
