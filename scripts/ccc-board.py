@@ -1012,10 +1012,10 @@ def _review_with_llm(
         # prompt 可能很大（>1MB），写临时文件并 shell 重定向，避免 subprocess.PIPE buffer 截断
         import tempfile as _tempfile
 
-        with _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as _pf:
-            _pf.write(prompt)
-            _prompt_file = _pf.name
+        td = _tempfile.TemporaryDirectory(prefix="ccc-review-")
         try:
+            _prompt_file = Path(td.name) / "prompt.md"
+            _prompt_file.write_text(prompt)
             with open(_prompt_file, "rb") as f:
                 data = f.read()
             r = _sp.run(
@@ -1027,10 +1027,7 @@ def _review_with_llm(
                 env=env,
             )
         finally:
-            try:
-                os.unlink(_prompt_file)
-            except OSError:
-                pass
+            td.cleanup()
         if r.returncode != 0:
             stderr = (
                 r.stderr.decode("utf-8", errors="replace")
