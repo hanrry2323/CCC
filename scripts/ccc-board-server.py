@@ -119,7 +119,10 @@ def discover_workspaces() -> dict:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """返回北京时间 ISO 格式时间戳（UTC+8）"""
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
 
 def board_path(workspace: str) -> Optional[Path]:
