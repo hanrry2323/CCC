@@ -47,6 +47,12 @@ list_tasks = ccc_board.list_tasks
 update_index = ccc_board.update_index
 MAX_RETRY = ccc_board.MAX_RETRY
 
+# v0.24: phase 依赖解析
+_load_phases = ccc_board._load_phases
+_resolve_phase_dependencies = ccc_board._resolve_phase_dependencies
+_apply_phase_status_updates = ccc_board._apply_phase_status_updates
+_task_all_phases_terminal = ccc_board._task_all_phases_terminal
+
 cfg = Config()
 
 
@@ -160,6 +166,27 @@ def engine_loop(workspace: str) -> None:
                     plan_file = cfg.workspace / ".ccc" / "plans" / f"{tid}.plan.md"
                     phases_file = cfg.workspace / ".ccc" / "phases" / f"{tid}.phases.json"
                     if plan_file.exists() and phases_file.exists():
+                        # v0.24: 启动前跑一次 phase 依赖解析
+                        phases = _load_phases(tid)
+                        if phases:
+                            executable, blocked, skipped = _resolve_phase_dependencies(phases)
+                            if blocked or skipped:
+                                _apply_phase_status_updates(tid, blocked, skipped)
+                                engine_log(
+                                    f"{tid} phase 依赖解析: executable={sorted(executable)} "
+                                    f"blocked={sorted(blocked)} skipped={sorted(skipped)}"
+                                )
+                            # 如果所有 phase 都被跳过（依赖全失败）→ 把 task 也标 quarantined
+                            if phases and all(
+                                p.get("status") in ("skipped", "failed") or
+                                (p.get("phase") in skipped)
+                                for p in phases
+                            ):
+                                engine_log(
+                                    f"{tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动"
+                                )
+                                continue
+
                         running_task_id = tid
                         engine_log(f"取新 task: {tid}")
                         launch_r = dev_role_launch(tid)

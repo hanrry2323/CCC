@@ -116,6 +116,164 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
     return default
 
 
+# v0.24: phases.json 加载 + 依赖解析
+PHASE_TERMINAL_OK = {"done", "verified", "skipped"}
+PHASE_TERMINAL_FAIL = {"failed"}
+
+
+def _load_phases(task_id: str) -> list[dict]:
+    """v0.24: 加载 phases.jsonl 每行一个 phase dict（跳过 schema_version 行）。
+
+    返回按 phase 编号排序的 list，元素为 phase dict。
+    文件不存在或解析失败返回空 list。
+    """
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return []
+    out: list[dict] = []
+    try:
+        with open(phases_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict) and "schema_version" in obj:
+                    continue
+                if isinstance(obj, dict) and "phase" in obj:
+                    out.append(obj)
+    except OSError:
+        return []
+    out.sort(key=lambda p: p.get("phase", 0))
+    return out
+
+
+def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int], set[int]]:
+    """v0.24: 解析 phase 依赖关系。
+
+    对每个 phase 检查 depends_on 列表中所有前置 phase 的状态：
+    - 所有依赖状态 ∈ {done, verified, skipped} → 本 phase 可执行 (executable)
+    - 任意依赖状态 ∈ {failed} → 本 phase 跳过 (skipped)
+    - 其他依赖未达终态 → 本 phase 阻塞 (blocked)
+
+    Returns:
+        (executable_phase_ids, blocked_phase_ids, skipped_phase_ids)
+
+    注：本函数只标注新状态（pending → blocked/skipped），已 done/verified/in_progress/failed
+    的 phase 不动。Engine 在调用此函数前应已写回 phases.json。
+    """
+    by_id: dict[int, dict] = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+
+    executable: set[int] = set()
+    blocked: set[int] = set()
+    skipped: set[int] = set()
+
+    for pid, phase in by_id.items():
+        status = phase.get("status", "pending")
+        # 已达终态或正在执行 → 不再分类
+        if status in PHASE_TERMINAL_OK or status in PHASE_TERMINAL_FAIL or status == "in_progress":
+            continue
+
+        deps = phase.get("depends_on") or []
+        if not deps:
+            # 无依赖 → 可执行
+            executable.add(pid)
+            continue
+
+        # 检查所有依赖
+        any_failed = False
+        any_unresolved = False
+        for dep_id in deps:
+            dep = by_id.get(dep_id)
+            if dep is None:
+                # 引用了不存在的 phase → 视为未解析（不强行 fail，留给人工处理）
+                any_unresolved = True
+                continue
+            dep_status = dep.get("status", "pending")
+            if dep_status in PHASE_TERMINAL_FAIL:
+                any_failed = True
+            elif dep_status not in PHASE_TERMINAL_OK:
+                any_unresolved = True
+
+        if any_failed:
+            skipped.add(pid)
+        elif any_unresolved:
+            blocked.add(pid)
+        else:
+            executable.add(pid)
+
+    return executable, blocked, skipped
+
+
+def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[int]) -> None:
+    """v0.24: 把解析出的 blocked/skipped 状态写回 phases.jsonl。
+
+    双向同步（Engine 每 tick 调用）：
+    - pending → skipped（依赖失败）
+    - pending → blocked（依赖未满足）
+    - blocked → pending（依赖已满足，下一轮可执行）
+    已 in_progress/done/verified/failed/skipped 的不碰。
+    """
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return
+    try:
+        lines = phases_file.read_text().splitlines()
+    except OSError:
+        return
+    new_lines: list[str] = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            new_lines.append(line)
+            continue
+        if not isinstance(obj, dict) or "schema_version" in obj:
+            new_lines.append(line)
+            continue
+        pid = obj.get("phase")
+        status = obj.get("status")
+        if status == "pending":
+            if pid in skipped:
+                obj["status"] = "skipped"
+                changed = True
+            elif pid in blocked:
+                obj["status"] = "blocked"
+                changed = True
+        elif status == "blocked":
+            # 依赖解除 → 回 pending（让 dev 可以重新拾起）
+            if pid not in blocked and pid not in skipped:
+                obj["status"] = "pending"
+                changed = True
+        new_lines.append(json.dumps(obj, ensure_ascii=False))
+    if changed:
+        phases_file.write_text("\n".join(new_lines) + "\n")
+
+
+def _task_all_phases_terminal(task_id: str) -> bool:
+    """v0.24: 检查 task 的所有 phase 是否都达终态（done/verified/skipped/failed）。
+
+    Engine 用：task 进入 verified/released 前确认 phase 都结束；如果有 phase
+    因依赖失败被 skipped，整体 task 也算结束。
+    """
+    phases = _load_phases(task_id)
+    if not phases:
+        return False  # 无 phases 文件 = 旧格式任务，不算 v0.24 phase 流程
+    for p in phases:
+        st = p.get("status", "pending")
+        if st not in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL | {"blocked"}):
+            return False
+    return True
+
+
 _CLAUDE_CLI = "claude"
 
 
