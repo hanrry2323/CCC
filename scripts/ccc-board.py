@@ -28,6 +28,7 @@ from typing import Optional
 
 from _config import Config
 from _board_store import FileBoardStore
+from _executor import _sanitized_env
 
 cfg = Config()
 store = FileBoardStore(cfg.workspace)
@@ -310,7 +311,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     )
 
     relay_url = _get_relay_url()
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay_url
     try:
         result = subprocess.run(
@@ -1004,7 +1005,7 @@ def _review_with_llm(
     )
 
     relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:
