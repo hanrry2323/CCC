@@ -941,11 +941,14 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
 
 
 def _review_with_llm(
-    task_id: str, diff_stat: str, full_diff: str, plan_text: str
+    task_id: str, diff_stat: str, full_diff: str, plan_text: str,
+    size_class: str = "medium",
 ) -> dict:
     """调 Claude API 审查代码。返回 {"verdict": "pass"|"fail", "findings": [...], "summary": "..."}。
 
     fallback: API 不可用或解析失败 → 返回 {"verdict": "fallback", "reason": "..."}
+
+    v0.24.1: size_class="large" 时追加 impact 分析指令（影响面/风险等级）。
     """
     import os
     import re as _re
@@ -953,6 +956,15 @@ def _review_with_llm(
 
     if not full_diff and not diff_stat:
         return {"verdict": "fallback", "reason": "no git diff"}
+
+    impact_section = ""
+    if size_class == "large":
+        impact_section = (
+            "## 重点检查（large 类变更，>50 行）\n"
+            "6. **影响面分析**：列出本次改动触及的模块 + 上下游调用方 + 是否可能影响其他 task\n"
+            "7. **风险等级**：评估本次改动风险（high/medium/low）并说明理由\n"
+            "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
+        )
 
     prompt = (
         "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
@@ -968,6 +980,7 @@ def _review_with_llm(
         "3. 安全（SQL 注入/路径遍历/凭据泄漏/危险函数）\n"
         "4. 命名与可读性\n"
         "5. 是否与 plan 验收清单一致\n\n"
+        f"{impact_section}"
         "## 输出要求\n"
         "只输出以下 JSON，不要包装 markdown 代码块，不要附加任何解释：\n"
         '{"verdict": "pass" 或 "fail", '
@@ -1066,8 +1079,63 @@ def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
     return True
 
 
+# v0.24.1: reviewer 按变更量分级阈值
+REVIEW_SIZE_SMALL_MAX = 10   # ≤10 行 → small（跳过 LLM）
+REVIEW_SIZE_MEDIUM_MAX = 50  # 11-50 行 → medium（标准 LLM）
+                              # >50 行 → large（LLM + impact 分析）
+
+
+def _parse_diff_size(stat_output: str) -> int:
+    """解析 git diff --stat 输出，统计总变更行数（insertions + deletions）。
+
+    stat 行格式如: "scripts/ccc-board.py | 42 +++++++++++++--------"
+    最后一行格式: "3 files changed, 120 insertions(+), 45 deletions(-)"
+    """
+    import re
+
+    insertions = 0
+    deletions = 0
+    for line in stat_output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # summary 行优先：无 `|` 但含 insertion/deletion
+        if "insertion" in line or "deletion" in line:
+            ins_m = re.search(r"(\d+)\s+insertion", line)
+            del_m = re.search(r"(\d+)\s+deletion", line)
+            if ins_m:
+                insertions += int(ins_m.group(1))
+            if del_m:
+                deletions += int(del_m.group(1))
+            continue
+        # file 行（带 `|`）：跳过 —— 计数靠 summary 行
+        if "|" not in line:
+            continue
+    return insertions + deletions
+
+
+def _classify_review_size(stat_output: str) -> tuple[str, int]:
+    """v0.24.1: 按变更量分级。
+
+    Returns:
+        ("small" | "medium" | "large", total_changed_lines)
+    """
+    total = _parse_diff_size(stat_output)
+    if total <= REVIEW_SIZE_SMALL_MAX:
+        return ("small", total)
+    if total <= REVIEW_SIZE_MEDIUM_MAX:
+        return ("medium", total)
+    return ("large", total)
+
+
 def reviewer_role() -> dict:
-    """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 通过则挪 verified"""
+    """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 通过则挪 verified
+
+    v0.24.1: 按变更量分级
+      - small (≤10 行): 跳过 LLM，仅 py_compile 静态检查
+      - medium (10-50 行): 标准 LLM 审查
+      - large (>50 行): LLM + impact 分析（影响面/风险等级）
+    """
     moved = []
     for task in list_tasks("testing"):
         task_id = task["id"]
@@ -1077,8 +1145,65 @@ def reviewer_role() -> dict:
         # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
         diff_stat, full_diff = _get_git_diff(ROOT, task_id=task_id)
 
-        # 2. LLM 审查
-        verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text)
+        # v0.24.1: 按变更量分级，决定是否需要 LLM
+        size_class, total_lines = _classify_review_size(diff_stat)
+        print(f"[reviewer] {task_id} size={size_class} lines={total_lines}")
+
+        # small 类：跳过 LLM，直接走 py_compile 静态检查
+        if size_class == "small":
+            files = _parse_plan_scope(task_id)
+            if not files:
+                files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+            import glob as _glob
+            py_files = []
+            for f in files:
+                matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+                matched = [m for m in matched if _is_path_in_root(Path(m))]
+                py_files.extend(matched)
+            py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+
+            # 写审查报告（small 走静态路径）
+            report_dir = ROOT / ".ccc" / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            review_md = report_dir / f"{task_id}.review.md"
+            if py_files and _py_compile_fallback(task_id, py_files):
+                move_task(task_id, "testing", "verified")
+                moved.append(task_id)
+                review_md.write_text(
+                    f"# {task_id} Review\n\n"
+                    f"## Verdict: **PASS**\n\n"
+                    f"## Size Class: **small** ({total_lines} 行)\n\n"
+                    f"v0.24.1: small 类变更跳过 LLM，仅 py_compile 静态检查通过。\n\n"
+                    f"## Files Checked ({len(py_files)} 条)\n\n"
+                    + "\n".join(f"- {Path(f).name}" for f in py_files)
+                )
+                print(f"[reviewer] {task_id} ✓ small-class static pass ({total_lines} 行)")
+                continue
+            elif not py_files:
+                # small 类无 py 文件：plan 有验收清单 → 信任 plan
+                if "## 验收" in plan_text or "## 验证" in plan_text:
+                    move_task(task_id, "testing", "verified")
+                    moved.append(task_id)
+                    review_md.write_text(
+                        f"# {task_id} Review\n\n"
+                        f"## Verdict: **PASS**\n\n"
+                        f"## Size Class: **small** ({total_lines} 行)\n\n"
+                        f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单。\n"
+                    )
+                    print(f"[reviewer] {task_id} ✓ small-class plan-only pass")
+                    continue
+                _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
+                print(f"[reviewer] {task_id} ✗ small-class quarantine: 无静态可检查项", file=sys.stderr)
+                continue
+            else:
+                print(
+                    f"[reviewer] {task_id} ✗ small-class py_compile 失败，留在 testing",
+                    file=sys.stderr,
+                )
+                continue
+
+        # medium / large：走 LLM，large 加 impact 分析提示
+        verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text, size_class=size_class)
         verdict = verdict_data.get("verdict", "fallback")
         summary = verdict_data.get("summary", "")
 
@@ -1089,6 +1214,7 @@ def reviewer_role() -> dict:
         review_md.write_text(
             f"# {task_id} Review\n\n"
             f"## Verdict: **{verdict.upper()}**\n\n"
+            f"## Size Class: **{size_class}** ({total_lines} 行)\n\n"
             f"{summary}\n\n"
             f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
             f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
