@@ -1853,13 +1853,18 @@ def regress_role() -> dict:
     # 1. py_compile once, cache result for all tasks
     py_ok_all = True
     for py in py_files:
-        r = sp.run(
-            ["python3", "-m", "py_compile", str(py)],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if r.returncode != 0:
+        try:
+            r = sp.run(
+                ["python3", "-m", "py_compile", str(py)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if r.returncode != 0:
+                py_ok_all = False
+                break
+        except (sp.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            print(f"[regress] py_compile {py} 异常: {exc}", file=sys.stderr)
             py_ok_all = False
             break
 
