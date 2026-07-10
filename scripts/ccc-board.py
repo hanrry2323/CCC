@@ -998,7 +998,9 @@ def _review_with_llm(
         if not m:
             return {"verdict": "fallback", "reason": "no JSON in Claude output"}
         try:
-            data = json.loads(m.group(0))
+            # 优先用捕获组（第一正则 capture group 1 = 干净 JSON），否则用全匹配
+            json_str = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
+            data = json.loads(json_str)
             if data.get("verdict") in ("pass", "fail"):
                 return data
             return {

@@ -916,3 +916,8 @@ git push origin main --tags
 ### 修复
 - G4 [high] engine 重启恢复: 启动扫描 in_progress 后检查 PID 存活，.pid 指向已死进程时清理并标记 failed 让 engine 自动重启
 - G11 [medium] audit-last-run 跨 workspace 共享: 拆为 `audit-last-run.{workspace}.json`，5 个 engine 实例互不影响
+
+## [vv0.23.8] - 2026-07-10
+
+### 修复
+- reviewer JSON 提取: markdown 代码块匹配时用 `m.group(1)` 而非 `m.group(0)`，修复 json.loads 因包含反引号解析失败
