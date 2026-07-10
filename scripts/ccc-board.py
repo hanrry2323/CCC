@@ -246,9 +246,7 @@ def _get_code_context(ws_path: Path) -> str:
         if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
             break
         # A7 兼容 3.9：rglob 不带 follow_symlinks（Python 3.13+ 才支持），用 is_symlink 过滤
-        entries = sorted(
-            p for p in ws_path.rglob(entry_pattern) if not p.is_symlink()
-        )
+        entries = sorted(p for p in ws_path.rglob(entry_pattern) if not p.is_symlink())
         for ef in entries:
             if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
                 break
@@ -743,6 +741,7 @@ def dev_role() -> dict:
 
     except Exception as e:  # debug
         import traceback as _tb
+
         print(f"[dev] {task_id} 启动失败: {e}\n{_tb.format_exc()}", file=sys.stderr)
     finally:
         # prompt 保留给后台读
@@ -850,7 +849,9 @@ def _parse_plan_scope(task_id: str) -> list[str]:
     return validated
 
 
-def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> tuple[str, str]:
+def _get_git_diff(
+    workspace: Path, since: str = "HEAD~1", task_id: str = ""
+) -> tuple[str, str]:
     """取 git diff 改动，返回 (stat, full_diff)。
 
     若 task_id 提供，优先按 task 关联 commit 取 diff（G1 修复：reviewer 只审单个 task 的改动）。
@@ -871,8 +872,20 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
         commit = ""
         if task_id:
             log_r = sp.run(
-                ["git", "log", "--all", "--oneline", "--grep", task_id, "--format=%H", "--max-count=1"],
-                cwd=workspace, capture_output=True, text=True, timeout=10,
+                [
+                    "git",
+                    "log",
+                    "--all",
+                    "--oneline",
+                    "--grep",
+                    task_id,
+                    "--format=%H",
+                    "--max-count=1",
+                ],
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
             # 也查 phases.json 里记录的 commit ref
@@ -895,28 +908,42 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
             # task 级别的 diff
             stat_r = sp.run(
                 ["git", "diff", f"{commit}^..{commit}", "--stat"],
-                cwd=workspace, capture_output=True, text=True, timeout=10,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             diff_r = sp.run(
                 ["git", "diff", f"{commit}^..{commit}"],
-                cwd=workspace, capture_output=True, text=True, timeout=30,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             # 若父 commit 不存在（首次 commit），用 --root
             if stat_r.returncode != 0:
                 stat_r = sp.run(
                     ["git", "diff", "--root", commit, "--stat"],
-                    cwd=workspace, capture_output=True, text=True, timeout=10,
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 diff_r = sp.run(
                     ["git", "diff", "--root", commit],
-                    cwd=workspace, capture_output=True, text=True, timeout=30,
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
             return stat_r.stdout or "", diff_r.stdout or ""
 
         # 无 task_id / 没找到 commit：按 since 走（原逻辑 + HEAD~1 不存在降级）
         rev_r = sp.run(
             ["git", "rev-parse", "--verify", since],
-            cwd=workspace, capture_output=True, timeout=5,
+            cwd=workspace,
+            capture_output=True,
+            timeout=5,
         )
         ref = since if rev_r.returncode == 0 else "--root"
 
@@ -983,9 +1010,8 @@ def _review_with_llm(
     try:
         # prompt 可能很大（>1MB），写临时文件并 shell 重定向，避免 subprocess.PIPE buffer 截断
         import tempfile as _tempfile
-        with _tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
-        ) as _pf:
+
+        with _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as _pf:
             _pf.write(prompt)
             _prompt_file = _pf.name
         try:
@@ -1005,14 +1031,24 @@ def _review_with_llm(
             except OSError:
                 pass
         if r.returncode != 0:
-            stderr = r.stderr.decode("utf-8", errors="replace") if isinstance(r.stderr, bytes) else r.stderr
+            stderr = (
+                r.stderr.decode("utf-8", errors="replace")
+                if isinstance(r.stderr, bytes)
+                else r.stderr
+            )
             return {
                 "verdict": "fallback",
                 "reason": f"claude rc={r.returncode}: {stderr[:200]}",
             }
-        output = r.stdout.decode("utf-8", errors="replace") if isinstance(r.stdout, bytes) else r.stdout
+        output = (
+            r.stdout.decode("utf-8", errors="replace")
+            if isinstance(r.stdout, bytes)
+            else r.stdout
+        )
         # 尝试从输出抓 JSON：优先 markdown 代码块，其次裸 JSON
-        m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\"verdict\"[\s\S]*?\})\s*\n?```", output)
+        m = _re.search(
+            r"```(?:json)?\s*\n?(\{[\s\S]*?\"verdict\"[\s\S]*?\})\s*\n?```", output
+        )
         if not m:
             m = _re.search(r"\{[\s\S]*?\"verdict\"[\s\S]*?\}", output)
         if not m:
@@ -1024,7 +1060,10 @@ def _review_with_llm(
             # 1. 直接 parse
             # 2. 替换常见控制字符再试
             data = None
-            for candidate in (json_str, _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)):
+            for candidate in (
+                json_str,
+                _re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", json_str),
+            ):
                 try:
                     data = json.loads(candidate)
                     break
@@ -1803,22 +1842,25 @@ def regress_role() -> dict:
     scripts_dir = ROOT / "scripts"
     py_files = list(scripts_dir.rglob("*.py"))
 
+    # 1. py_compile once, cache result for all tasks
+    py_ok_all = True
+    for py in py_files:
+        r = sp.run(
+            ["python3", "-m", "py_compile", str(py)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode != 0:
+            py_ok_all = False
+            break
+
     for task in tasks:
         tid = task["id"]
         results["checked"] += 1
 
-        # 1. py_compile
-        py_ok = True
-        for py in py_files:
-            r = sp.run(
-                ["python3", "-m", "py_compile", str(py)],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if r.returncode != 0:
-                py_ok = False
-                break
+        # Reuse cached py_compile result
+        py_ok = py_ok_all
 
         # 2. git diff 检查是否代码被意外改过
         diff_ok = True
@@ -2192,7 +2234,11 @@ def dev_role_check_complete(task_id: str) -> dict:
                 os.kill(pid, 0)  # 信号 0 = 只检查存活
             except (ValueError, OSError, ProcessLookupError):
                 # PID 不存在 → 清理标记文件，返回 failed 让 engine 重启
-                for f in [pid_path, done_path, ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"]:
+                for f in [
+                    pid_path,
+                    done_path,
+                    ROOT / ".ccc" / "pids" / f"{task_id}.exitcode",
+                ]:
                     try:
                         f.unlink()
                     except OSError:
