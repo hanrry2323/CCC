@@ -1729,12 +1729,13 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
     _elapsed = _time.time() - _t0
     from datetime import datetime as _dt
 
-    last_run = Path.home() / ".ccc" / f"audit-last-run.{workspace or 'CCC'}.json"
+    ws_slug = Path(str(workspace)).name if workspace else "CCC"
+    last_run = Path.home() / ".ccc" / f"audit-last-run.{ws_slug}.json"
     last_run.parent.mkdir(parents=True, exist_ok=True)
     last_run.write_text(
         json.dumps(
             {
-                "workspace": workspace or "CCC",
+                "workspace": str(workspace) if workspace else "CCC",
                 "last_run": _dt.now(timezone.utc).isoformat(),
                 "results_count": len(results),
                 "duration_seconds": round(_elapsed, 1),

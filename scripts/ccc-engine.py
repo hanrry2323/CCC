@@ -213,13 +213,33 @@ def _audit_should_run(workspace: str, interval_hours: int = 2) -> bool:
     """检查是否该跑 audit：距上次跑 ≥ interval_hours
 
     G11: 每个 workspace 独立 last_run 文件，避免 5 个 engine 实例共享同一文件
+    用 workspace 目录名（最后一段）做 slug，不用完整路径
     """
     from datetime import datetime as _dt
-    last_run_file = Path.home() / ".ccc" / f"audit-last-run.{workspace}.json"
+    ws_slug = Path(workspace).name if workspace else "CCC"
+    last_run_file = Path.home() / ".ccc" / f"audit-last-run.{ws_slug}.json"
+    # fallback: 兼容旧版无 slug 文件
     if not last_run_file.exists():
+        old_file = Path.home() / ".ccc" / "audit-last-run.json"
+        if old_file.exists():
+            return _audit_check_old(old_file, interval_hours)
         return True
     try:
         data = json.loads(last_run_file.read_text())
+        last = _dt.fromisoformat(data["last_run"].replace("Z", "+00:00"))
+        now = _dt.now(timezone.utc)
+        hours = (now - last).total_seconds() / 3600
+        return hours >= interval_hours
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return True
+
+
+def _audit_check_old(old_file, interval_hours: int = 2) -> bool:
+    """检查旧版 audit-last-run.json（无 workspace slug）"""
+    import json as _json
+    from datetime import datetime as _dt
+    try:
+        data = _json.loads(old_file.read_text())
         last = _dt.fromisoformat(data["last_run"].replace("Z", "+00:00"))
         now = _dt.now(timezone.utc)
         hours = (now - last).total_seconds() / 3600
