@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-10T08:00:00+08:00",
+  "project": "CCC",
+  "source": "daily-scan",
+  "scope": "git log --since='24 hours ago' (13 commits), 涉及 scripts/_executor.py, scripts/ccc-board-server.py, scripts/ccc-board.py, scripts/_board_store.py, scripts/_review_validator.py, scripts/ccc-engine.py, scripts/ccc-notify.sh, scripts/install-ccc-roles.sh, references/trae-agent-prompt.md, docs/flow-review.md, .ccc/state.md, CHANGELOG.md, VERSION, .gitignore",
+  "findings": [],
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 0,
+    "auto_fixable": 0
+  }
+}

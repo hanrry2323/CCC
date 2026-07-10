@@ -13,6 +13,10 @@ __pycache__/
 .ccc/reports/
 .ccc/board/events/
 .ccc/engine-heartbeat.json
+# PWF (planning-with-files) artifacts
+findings.md
+progress.md
+task_plan.md
 # board artifact dirs
 v0.18-*-p1/
 *.p1/
