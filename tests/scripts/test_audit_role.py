@@ -78,36 +78,36 @@ def empty_last_run(tmp_path, monkeypatch):
 def test_should_run_when_no_file(tmp_path, monkeypatch):
     """无 audit-last-run.json → 应该跑（首次）"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    assert _audit_should_run() is True
+    assert _audit_should_run("test") is True
 
 
 def test_should_run_when_corrupt_json(tmp_path, monkeypatch):
     """损坏 JSON → 应该跑（fail-safe）"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    f = tmp_path / ".ccc" / "audit-last-run.json"
+    f = tmp_path / ".ccc" / "audit-last-run.test.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text("{not json")
-    assert _audit_should_run() is True
+    assert _audit_should_run("test") is True
 
 
 def test_should_run_when_over_2h(tmp_path, monkeypatch):
     """距上次跑 > 2h → 应该跑"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    f = tmp_path / ".ccc" / "audit-last-run.json"
+    f = tmp_path / ".ccc" / "audit-last-run.test.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
     f.write_text(json.dumps({"last_run": old}))
-    assert _audit_should_run() is True
+    assert _audit_should_run("test") is True
 
 
 def test_should_not_run_within_2h(tmp_path, monkeypatch):
     """距上次跑 1h → 不应该跑（红线 X8）"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    f = tmp_path / ".ccc" / "audit-last-run.json"
+    f = tmp_path / ".ccc" / "audit-last-run.test.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     f.write_text(json.dumps({"last_run": recent}))
-    assert _audit_should_run(interval_hours=2) is False
+    assert _audit_should_run("test", interval_hours=2) is False
 
 
 # ═══════════════════════════════════════════
