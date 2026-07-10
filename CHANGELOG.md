@@ -11,6 +11,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.24.2] — 2026-07-10 — 第二份对抗审查 6 项维修 + 时区统一
+
+### 修复
+- **#1** (CWE-522) `_call_claude_for_plan` / `_review_with_llm` 改用 `_sanitized_env()` 过滤凭据 (commit `674bf23`)
+- **#2** (CWE-367 TOCTOU) `FileBoardStore.update_and_move_task` 原子方法，regress_role 改用走锁内更新 (commit `cc519d9`)
+- **#3** 4 个 `now_iso()` 实现统一 Beijing `+08:00`：`ccc-board.py` / `ccc-engine.py` (v0.23.3 已修) + `_board_store.py` / `ccc-board-server.py` (本次) (commit `de0a9c3`)
+- **#4** `ccc-engine.sh` 硬编码 `/Users/apple/` → `$HOME`，换机器即可工作 (commit `79f9be1`)
+- **#5** `_review_with_llm` 临时文件改用 `TemporaryDirectory` 容器，进程死自动清理 (commit `a2377ae`)
+- **#8** `regress_role` py_compile 加 `try/except (TimeoutExpired, FileNotFoundError, OSError)`，python3 缺失不再崩溃 (commit `1e6f211`)
+
+### 验证
+- 60 pytest passed（包含 `_sanitized_env` 测试）
+- 6 个 fix task 全 auto 跑通 backlog → released
+- released 46 → 52
+
+---
+
+## [v0.24] — 2026-07-10 — 第一份对抗审查 3 项维修 + reviewer 流程加固
+
+### 修复
+- **C1** `kb_role` push 失败 → `git tag -d board-{task_id}` 回滚本地 tag（commit `8e9e61a`）
+- **C3** `regress_role` py_compile 移出循环，O(n*m) → O(m)（commit `dc4c8ee`）
+- **H1** `_sanitized_env` 补 ACCESS_KEY / CERTIFICATE / PRIVATE_KEY patterns（commit `31aad09`）
+
+### 验证
+- 60 pytest passed
+- 3 个 fix task 全 auto 跑通 backlog → released
+- released 43 → 46
+
+---
+
+## [v0.23.16] — 2026-07-10 — 修 reviewer G2 误判 + COLUMN_TRANSITIONS 加 abnormal 重投通路
+
+### 修复
+- `reviewer_role` L1126/1134 `quarantine_task()` 函数未定义 → `_quarantine()`（commit `3d77f16`）
+- reviewer G2 fallback：plan 有 `## 验收` 段 + 无 py 文件 → 信任 plan 直接 verified，不再误 quarantine（commit `3d77f16`）
+- `COLUMN_TRANSITIONS.testing` 白名单加 `abnormal`，允许 abnormal → testing 重投（commit `3d77f16`）
+
+### 重投流程打通
+- 3 个 retest task（feat-card-detail / feat-regress-notify / smoke）全部 backlog → released
+- released 40 → 43
+
+---
+
+## [v0.23.15] — 2026-07-10 — 修 OpenCode 模型名 + product 兼容性
+
+### 修复
+- `OPENCODE_MODEL` 默认值 `code` → `loop/code`（commit `1c35417`）。`code` 裸名 opencode 不认，会报 `Model not found: code/. Did you mean: opencode, opencode-go, crossmodel?`
+- `_get_code_context` `sp.run` → `subprocess.run`（A3 修复后未同步函数内）
+- `rglob(follow_symlinks=False)` → `is_symlink()` 后过滤（Python 3.13+ 才支持，board-server 跑 3.9 兼容）
+
+---
+
+## [v0.23.14] — 2026-07-10 — 修 reviewer bytes/text 冲突 + engine LOG 路径冲突
+
+### 修复
+- `_review_with_llm` subprocess.run `text=True` + `input=<bytes>` 冲突 → `text=False` + decode（commit `fcb5030`）
+- `ccc-engine.sh` LOG 同秒冲突 → 加 `${WS_SLUG}-${$}` 后缀，5 engine 各自独立 LOG 文件（commit `fcb5030`）
+
+---
+
+## [v0.23.12] — 2026-07-10 — audit_role 修复 per-workspace last_run key
+
+### 修复
+- Engine 调 `audit_role()` 不传 workspace 参数 → audit_role 内部 `ws_slug='CCC'` → 5 个 workspace engine 全写 `audit-last-run.CCC.json` → 互相覆盖导致 G11 死循环
+- 修复：engine 调 `ccc_board.audit_role(workspace=workspace)` 传 workspace 参数
+- 配套：每个 workspace 独立 last_run 文件 `~/.ccc/audit-last-run.{ws_slug}.json`
+
+---
+
+## [v0.23.11] — 2026-07-10 — 根治 fcntl 死锁 + reviewer JSON 宽松解析
+
+### 修复（锁系统重写）
+- 完全去掉 `fcntl.flock`（macOS 上 `open("w")` 截断写 + 杀进程锁不释放 → 死锁根因）
+- 改用 atomic `O_CREAT|O_EXCL` 锁（OS 原生原子创建）作为唯一锁机制
+- `_acquire_lock` 加 pid 残留锁自动检测清理 + 5s 超时强清
+- reviewer JSON 宽松解析：捕获组 1 + 常见转义错误 retry 两次
+
+---
+
+## [v0.23.13] — 2026-07-10 — board-server GET / 路由修
+
+### 修复
+- `BoardHTTPHandler.do_GET` else 分支吞 UI 路径：之前对抗性审查 ADV-F13 修复把 do_GET else 改成 JSON 404，但没有 `super().do_GET()` fallback，导致 `GET /` 和 `GET /index.html` 全 404。修复：新增 `/api/` 专属兜底 + `super().do_GET()` 处理静态文件（commit `3c35afd`）
+
+### 影响
+- 看板 UI `http://localhost:7777/` 重新可访问
+- 不影响 `/api/*` 任何端点
+
+---
+
 ## [v0.21.0] — 2026-07-09 — 门控修补
 
 ### 新增
@@ -922,3 +1013,51 @@ git push origin main --tags
 ### 修复
 - reviewer JSON 提取: markdown 代码块匹配时用 `m.group(1)` 而非 `m.group(0)`，修复 json.loads 因包含反引号解析失败
 - v0.23.14 ABNORMAL smoke OK
+
+## [v0.23.10] - 2026-07-10
+
+- retest-feat-regress-notify-v02315: [RETEST] 回测桌面通知 v0.23.15 复测 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- retest-feat-card-detail-v02315: [ABNORMAL] [RETEST] 卡片详情面板 v0.23.15 复测 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- retest-smoke-v02315: [ABNORMAL] [RETEST] v0.23.15 auto smoke 全链路 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-c3-regress-onm: [FIX C3] regress py_compile 移出循环 O(n*m)→O(m) 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-h1-sanitized-env-keys: [FIX H1] _sanitized_env 补 ACCESS_KEY/CERT/PRIVATE_KEY 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-c1-kb-push-changelog-order: [FIX C1] kb push 失败回滚本地 tag 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-hardcoded-home-path: [FIX #4] 硬编码 /Users/apple → $HOME 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-credential-leak-claude: [FIX #1] claude CLI 调 _sanitized_env 过滤凭据 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-regress-atomic-update-move: [FIX #2] regress 走 FileBoardStore 原子方法 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-regress-py-compile-exception: [FIX #8] regress py_compile 异常处理 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-tmpfile-tmpdir: [FIX #5] review prompt 临时文件用 TemporaryDirectory 看板发布
+
+## [v0.23.10] - 2026-07-10
+
+- fix-tz-unify-all-now-iso: [FIX #3] now_iso 时区统一 Beijing 看板发布
