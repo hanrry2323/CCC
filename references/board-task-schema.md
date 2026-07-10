@@ -104,17 +104,18 @@ phases.json 是 product 角色产出的执行计划文件。首行为 schema 元
 ### 格式
 
 ```json
-{"schema_version": "1.0"}
-{"phase": 1, "status": "pending", "scope": ["file.py"], "commit_message": "feat: ...", "commit": null, "subtasks": {"1.1": "done"}, "timeout": 300, "notes": "", "retry": 0, "retry_at": null}
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "scope": ["file.py"], "commit_message": "feat: ...", "commit": null, "subtasks": {"1.1": "done"}, "timeout": 300, "notes": "", "retry": 0, "retry_at": null, "depends_on": []}
+{"phase": 2, "status": "pending", "scope": ["file2.py"], "depends_on": [1]}
 ```
 
 ### 字段定义
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `schema_version` | string | 元数据行 | 格式版本号，当前 `"1.0"`。仅出现在首行 |
-| `phase` | int | 是 | phase 编号 |
-| `status` | string | 是 | `pending` / `in_progress` / `done` / `verified` / `skipped` |
+| `schema_version` | string | 元数据行 | 格式版本号，当前 `"1.1"`。仅出现在首行 |
+| `phase` | int | 是 | phase 编号（task 内唯一） |
+| `status` | string | 是 | `pending` / `blocked` / `in_progress` / `done` / `verified` / `failed` / `skipped` |
 | `scope` | string[] | 否 | 此 phase 涉及的文件列表 |
 | `commit_message` | string | 否 | commit message |
 | `commit` | string\|null | 否 | commit hash，执行后填充 |
@@ -122,6 +123,18 @@ phases.json 是 product 角色产出的执行计划文件。首行为 schema 元
 | `timeout` | int | 否 | 超时秒数，默认 600 |
 | `retry` | int | 否 | 当前重试次数 |
 | `retry_at` | string\|null | 否 | 下次可重试的时间点 |
+| `depends_on` | int[] | 否 | **v0.24**：依赖的前置 phase 编号列表。`[]` 或缺省 = 无依赖。Engine 在所有依赖 phase 状态为 `done`/`verified`/`skipped` 时才执行 |
+
+### Phase 状态流转（v0.24）
+
+```
+pending → blocked → in_progress → done → verified
+                                  ↘ failed → skipped（下游依赖跳）
+```
+
+- `blocked`：有 `depends_on` 未满足
+- `skipped`：因依赖的 phase `failed`，本 phase 被跳过
+- `failed`：phase 执行失败且重试耗尽；触发下游依赖 `skipped`
 
 ---
 

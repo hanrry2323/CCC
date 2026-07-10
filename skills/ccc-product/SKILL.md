@@ -102,6 +102,32 @@ C — Constrained: 输出格式、长度、schema 已定义
 
 **通过标准**：所有 subtask 过 SPEC + plan 三要素完整 + phases.json 格式正确
 
+### phases.json 格式（v0.24 起 schema_version="1.1"）
+
+首行元数据 + 后续每行一个 phase JSON：
+
+```json
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "scope": ["scripts/_config.py"], "commit_message": "feat: ...", "depends_on": []}
+{"phase": 2, "status": "pending", "scope": ["scripts/ccc-board.py"], "depends_on": [1]}
+{"phase": 3, "status": "pending", "scope": ["scripts/ccc-engine.py"], "depends_on": [1, 2]}
+```
+
+**depends_on 用法**：
+- `[]` 或缺省 = 无依赖，立即可执行
+- `[N]` = 等待 phase N 状态为 `done`/`verified`/`skipped` 才执行
+- 多个依赖 `[N, M]` = 等所有依赖完成才执行
+- 依赖的 phase `failed` → 本 phase 自动 `skipped`（失败隔离）
+
+**status 取值**（v0.24 扩展）：
+- `pending` — 待执行
+- `blocked` — 依赖未满足（Engine 自动设置）
+- `in_progress` — dev 正在执行
+- `done` — dev 完成，待 reviewer 验收
+- `verified` — reviewer/tester 通过
+- `failed` — 执行失败且重试耗尽
+- `skipped` — 因依赖失败被跳过
+
 ---
 
 ## 沉淀 AGENTS.md
