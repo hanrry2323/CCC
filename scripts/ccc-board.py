@@ -1898,27 +1898,18 @@ def regress_role() -> dict:
             create_task({"id": bug_id, "title": bug_title, "description": bug_desc})
             results["regressions"].append(bug_id)
             print(f"[regress] ✗ {tid} → {bug_id}")
+
             # 把原任务移回 backlog 并加 regression 标签
-            src_path = BOARD / "released" / f"{tid}.jsonl"
-            if src_path.exists():
-                _lines = src_path.read_text().split("\n")
-                for _i, _line in enumerate(_lines):
-                    _ls = _line.strip()
-                    if not _ls:
-                        continue
-                    try:
-                        _obj = json.loads(_ls)
-                        _tags = _obj.get("tags", [])
-                        if "regression" not in _tags:
-                            _tags.append("regression")
-                        _obj["tags"] = _tags
-                        _obj["updated_at"] = now_iso()
-                        _lines[_i] = json.dumps(_obj, ensure_ascii=False)
-                        break
-                    except json.JSONDecodeError:
-                        pass
-                src_path.write_text("\n".join(_lines))
-            move_task(tid, "released", "backlog")
+            def _tag_regression(task):
+                tags = task.get("tags", [])
+                if "regression" not in tags:
+                    tags.append("regression")
+                task["tags"] = tags
+                return task
+
+            store.update_and_move_task(
+                tid, "released", "backlog", update_fn=_tag_regression
+            )
             # macOS 桌面通知
             subprocess.run(
                 [

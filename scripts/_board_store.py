@@ -101,7 +101,9 @@ def _acquire_lock(lockfile: Path, timeout_s: float = 5.0) -> object:
                 # 超时强清（生产环境高风险，但死锁场景比丢锁更糟）
                 try:
                     old_pid = excl_path.read_text().strip()
-                    print(f"[board] Force-clearing lock (pid={old_pid})", file=sys.stderr)
+                    print(
+                        f"[board] Force-clearing lock (pid={old_pid})", file=sys.stderr
+                    )
                 except Exception:
                     pass
                 excl_path.unlink(missing_ok=True)
@@ -295,6 +297,66 @@ class FileBoardStore:
                 pass
             self._record_event(task_id, from_col, to_col)
             print(f"[board] {task_id}: {from_col} → {to_col}")
+            return True
+        finally:
+            self._unlock(lock)
+
+    def update_and_move_task(
+        self, task_id: str, from_col: str, to_col: str, update_fn=None
+    ) -> bool:
+        """原子地在锁内完成：读 task → update_fn → 写目标列 → 删源文件
+
+        update_fn 接收 task dict，返回修改后的 dict（或 None 表示不改）。
+        若 update_fn 为 None，等同于 move_task。
+        """
+        task_id = sanitize_id(task_id)
+        allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
+        if from_col not in allowed_from:
+            print(
+                f"[board] 拒绝迁移: {from_col} → {to_col} (允许的源列: {allowed_from})",
+                file=sys.stderr,
+            )
+            return False
+
+        lock = self._lock()
+        try:
+            src = self.board / from_col / f"{task_id}.jsonl"
+            if not src.exists():
+                print(f"[board] {task_id} not in {from_col}", file=sys.stderr)
+                return False
+
+            task = None
+            with open(src) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if obj.get("id") == task_id:
+                            task = obj
+                            break
+                    except json.JSONDecodeError:
+                        pass
+            if not task:
+                return False
+
+            if update_fn:
+                task = update_fn(task)
+                if task is None:
+                    return False
+
+            task["status"] = to_col
+            task["updated_at"] = now_iso()
+
+            dst = self.board / to_col / f"{task_id}.jsonl"
+            _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")
+            try:
+                src.unlink(missing_ok=True)
+            except FileNotFoundError:
+                pass
+            self._record_event(task_id, from_col, to_col)
+            print(f"[board] {task_id}: {from_col} → {to_col} (update_and_move)")
             return True
         finally:
             self._unlock(lock)
