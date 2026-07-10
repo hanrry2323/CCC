@@ -16,7 +16,7 @@
 | 主语言 | Bash + Python 3.9+（已兼容 3.14） |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
-| 当前版本 | **v0.23.3**（2026-07-09） |
+| 当前版本 | **v0.23.16**（2026-07-10） |
 
 ---
 
@@ -24,6 +24,12 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-10 | v0.23.16 | — | [CHANGELOG §v0.23.16](../CHANGELOG.md) | tag `v0.23.16` + release | PASS |
+| 2026-07-09 | v0.23.15 | — | [CHANGELOG §v0.23.15](../CHANGELOG.md) | tag `v0.23.15` + release | PASS |
+| 2026-07-09 | v0.23.14 | — | [CHANGELOG §v0.23.14](../CHANGELOG.md) | tag `v0.23.14` + release | PASS |
+| 2026-07-09 | v0.23.13 | — | [CHANGELOG §v0.23.13](../CHANGELOG.md) | tag `v0.23.13` + release | PASS |
+| 2026-07-09 | v0.23.12 | — | [CHANGELOG §v0.23.12](../CHANGELOG.md) | tag `v0.23.12` + release | PASS |
+| 2026-07-09 | v0.23.11 | — | [CHANGELOG §v0.23.11](../CHANGELOG.md) | tag `v0.23.11` + release | PASS |
 | 2026-07-09 | v0.23.3 | — | [CHANGELOG §v0.23.3](../CHANGELOG.md) | tag `v0.23.3` + release | PASS |
 | 2026-07-09 | v0.23.2 | — | [CHANGELOG §v0.23.2](../CHANGELOG.md) | tag `v0.23.2` + release | PASS |
 | 2026-07-09 | v0.23.1 | — | [CHANGELOG §v0.23.1](../CHANGELOG.md) | tag `v0.23.1` + release | PASS |
@@ -47,14 +53,20 @@
 | v0.23.1 | `d652cbd` | v0.23 对抗性审查修复（A1-A7） |
 | v0.23.2 | `5aeb65a` | engine 取 task 后未 update_index 修复 |
 | v0.23.3 | `785ba7f` | 时间戳统一为北京时间（Asia/Shanghai） |
+| v0.23.11 | `acb2b55` | 根治 fcntl 死锁 + reviewer JSON 宽松解析 |
+| v0.23.12 | `d5ab36d` | audit_role per-workspace last_run key 修复 |
+| v0.23.13 | `3c35afd` | board-server GET / 路由修（do_GET else 兜底吞 UI） |
+| v0.23.14 | `fcb5030` | reviewer bytes/text 冲突 + engine LOG 路径冲突 |
+| v0.23.15 | `1c35417` | OpenCode 模型名 (loop/code) + product 3.9 rglob 兼容 |
+| v0.23.16 | `3d77f16` | reviewer G2 误判 + COLUMN_TRANSITIONS abnormal 重投通路 |
 
 ---
 
-## 当前状态（v0.23.3 closure, 2026-07-09）
+## 当前状态（v0.23.16 closure, 2026-07-10）
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象。
 
-**已发布版本族**：v0.7.0 → v0.8.0 → v0.9.0 → v0.10.0 → v0.11.0 → v0.12.0 → v0.13.0 → v0.14.0 → v0.15.0 → v0.16.0 → v0.17.0 → v0.18.0 → v0.19.0 → v0.20.0 → v0.20.1 → v0.21.0 → v0.22.0 → v0.22.1 → v0.23.0 → v0.23.1 → v0.23.2 → **v0.23.3**（共 22 个 release tag）
+**已发布版本族**：v0.7.0 → v0.8.0 → v0.9.0 → v0.10.0 → v0.11.0 → v0.12.0 → v0.13.0 → v0.14.0 → v0.15.0 → v0.16.0 → v0.17.0 → v0.18.0 → v0.19.0 → v0.20.0 → v0.20.1 → v0.21.0 → v0.22.0 → v0.22.1 → v0.23.0 → v0.23.1 → v0.23.2 → v0.23.3 → v0.23.11 → v0.23.12 → v0.23.13 → v0.23.14 → v0.23.15 → **v0.23.16**（共 28 个 release tag）
 
 **已完成范式转变**（roadmap 标注）：
 1. v0.11 — "opencode 写 + 人工 review" 模式

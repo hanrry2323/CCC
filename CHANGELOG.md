@@ -11,6 +11,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.23.16] — 2026-07-10 — 合规收尾（VERSION/CHANGELOG 补全）
+
+> 注：v0.23.11~v0.23.16 六个维修版本 commit 已存在，但 CHANGELOG 历史条目之前未补全，本次统一补齐。
+
+### v0.23.16 — 修 reviewer G2 误判 + COLUMN_TRANSITIONS 加 abnormal 重投通路
+- Bug 1: `reviewer_role` L1126/1134 调 `quarantine_task()` —— 函数未定义，实际是 `_quarantine()`，NameError 让 reviewer 异常退出
+- Bug 2: reviewer G2 fallback 误隔离 retest 任务 —— plan 有 `## 验收` 段 + 无 py 文件 → 信任 plan 直接 verified
+- Bug 3: COLUMN_TRANSITIONS 不允许 abnormal→testing —— testing 白名单加 abnormal
+- 文件：`scripts/_board_store.py`, `scripts/ccc-board.py`
+- 验证：pytest 59 passed；3 retest task 全部 backlog→released
+
+### v0.23.15 — 修 OpenCode 模型名 (loop/code) + product 兼容性 (3.9 rglob)
+- OpenCode 模型修正 `loop/flash`→`code`
+- 模型 env 透传修复
+- product 兼容性：3.9 rglob 用 `follow_symlinks=False`
+
+### v0.23.14 — 修 reviewer bytes/text 冲突 + engine LOG 路径冲突
+- reviewer input 改用 bytes 注入 + 禁交互
+- reviewer prompt 走临时文件，避开 stdin buffer 截断
+- engine LOG 路径冲突修复
+
+### v0.23.13 — board-server GET / 路由修（do_GET else 兜底吞 UI）
+- 之前 `do_GET` else 分支把 `/` 也吞了，UI 加载不到
+- 修复后 `/` 走 HTML 渲染路径，不影响 `/api/*` 端点
+
+### v0.23.12 — audit_role 修复 per-workspace last_run key
+- Engine 用 `Path(workspace).name='qb'` 读 `audit-last-run.qb.json`，但 audit_role 用全路径 → 永远错配
+- 修复：Engine 调 audit_role 时传 workspace 参数
+
+### v0.23.11 — 根治 fcntl 死锁 + reviewer JSON 宽松解析
+- `_acquire_lock`: pid 残留锁自动检测清理 + 5s 超时强清
+- `list_tasks` 读锁: 3s 超时
+- `_lock` 写锁: 5s 超时
+- reviewer JSON 解析: 转义控制字符容错，避免 Claude 输出 `\` 反斜杠报 Expecting ',' delimiter
+- 锁文件后缀：`..excl`（不在 `.board.lock` 自身，避免截断）
+
+### 验证
+- pytest: 全部维修 commit 累积 59 passed
+- VERSION: v0.23.10 → v0.23.16
+
+---
+
 ## [v0.21.0] — 2026-07-09 — 门控修补
 
 ### 新增
