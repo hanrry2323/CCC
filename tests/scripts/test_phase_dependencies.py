@@ -337,3 +337,107 @@ class TestEngineView:
         assert exec_ == {1}
         assert blocked == {2, 3}
         assert skipped == set()
+
+
+class TestV0243P0Fixes:
+    """v0.24.3 对抗性审查 P0 hotfix 回归测试。"""
+
+    def test_p0_1_check_phase_failures_reload_after_writeback(self, fake_workspace):
+        """P0-1: _check_phase_failures writeback 后必须 reload phases。
+
+        场景：phase 1 failed，phase 2 pending→skipped（依赖失败传染）。
+        writeback 后 all_terminal / all_failed_or_skipped 必须反映磁盘真实状态，
+        否则 Engine 无法识别 task all-failed。
+        """
+        _write_phases(fake_workspace, "p01reload", [
+            {"phase": 1, "status": "failed", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        result = _check_phase_failures("p01reload")
+        # 写回后 phase 2 应是 skipped（磁盘）
+        assert result["skipped"] == [2]
+        assert result["all_failed_or_skipped"] is True, (
+            "writeback 后未 reload，导致 all_failed_or_skipped 仍为 False"
+        )
+        assert result["all_terminal"] is True
+
+    def test_p0_3_phase_file_lock_no_corruption_under_concurrent_writers(
+        self, fake_workspace
+    ):
+        """P0-3: phases.json 文件锁 fcntl.flock 防止并发写覆盖。
+
+        场景：模拟两个 writer 并发调用 _apply_phase_status_updates，
+        写完后磁盘状态必须一致（不能部分行被回滚）。
+        """
+        import threading
+
+        _write_phases(fake_workspace, "p03lock", [
+            {"phase": 1, "status": "done", "depends_on": []},
+            {"phase": 2, "status": "blocked", "depends_on": [1]},
+        ])
+
+        errors = []
+
+        def writer_a():
+            try:
+                _apply_phase_status_updates("p03lock", blocked=set(), skipped=set())
+            except Exception as e:
+                errors.append(("a", e))
+
+        def writer_b():
+            try:
+                _apply_phase_status_updates(
+                    "p03lock", blocked={2}, skipped=set()
+                )
+            except Exception as e:
+                errors.append(("b", e))
+
+        threads = [threading.Thread(target=writer_a) for _ in range(5)] + [
+            threading.Thread(target=writer_b) for _ in range(5)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert not errors, f"并发写报错：{errors}"
+        # 写完必须能 reload 且 JSON 解析无错
+        phases = _load_phases("p03lock")
+        assert len(phases) == 2
+        # phase 2 状态必须是 pending 或 blocked（合法终态），不能损坏
+        phase2 = next(p for p in phases if p.get("phase") == 2)
+        assert phase2.get("status") in ("pending", "blocked")
+
+    def test_p0_7_parse_diff_size_returns_none_on_missing_summary(self):
+        """P0-7: _parse_diff_size 缺 summary 行返回 None（不再静默返回 0）。"""
+        from ccc_board import _parse_diff_size, _classify_review_size
+        # 没有 summary 行（只有 file 行）
+        stat = "scripts/ccc-board.py | 42 +++++++++++++--------"
+        assert _parse_diff_size(stat) is None
+        size_class, total = _classify_review_size(stat)
+        assert size_class == "unknown"
+        assert total is None
+        # 有 summary 行正常
+        stat_ok = "scripts/ccc-board.py | 42 +++++++++++++--------\n1 file changed, 42 insertions(+), 0 deletions(-)"
+        assert _parse_diff_size(stat_ok) == 42
+
+    def test_p0_8_current_running_phase_for_multi_phase_task(self, fake_workspace):
+        """P0-8: dev_role_launch/relaunch 用 _current_running_phase 选 phase。
+
+        验证 _current_running_phase 在多 phase 场景下能正确选下一步 phase
+        （pending/blocked 中按 phase 编号最小）。
+        """
+        _write_phases(fake_workspace, "p08multi", [
+            {"phase": 1, "status": "done", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+            {"phase": 3, "status": "pending", "depends_on": [2]},
+        ])
+        # phase 1 done，phase 2/3 pending → 应返回 2
+        assert _current_running_phase("p08multi") == 2
+
+        # phase 1 in_progress（罕见，但语义上仍应返回 1）
+        _write_phases(fake_workspace, "p08inprog", [
+            {"phase": 1, "status": "in_progress", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        assert _current_running_phase("p08inprog") == 1
