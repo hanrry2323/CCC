@@ -5,6 +5,43 @@ All notable changes to CCC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---
+
+## [v0.24.3] — 2026-07-11 — 对抗性审查 P0 hotfix
+
+### 修复（8 项，1 个 commit）
+v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版本处理 P0 致命/重要 8 项：
+
+1. **`_check_phase_failures` 写回后 reload phases** — writeback 之后返回值仍基于陈旧内存，导致 `all_terminal`/`all_failed_or_skipped` 报错脏数据，Engine 无法识别 all-failed → task 不会移到 abnormal
+2. **删除 `engine_log = print` 局部别名** — `_move_task_to_abnormal_if_all_failed` 中 `engine_log = print` 是局部遮蔽，无全局 logger 引用，关键日志脱管
+3. **`_apply_phase_status_updates` 加文件锁** — `fcntl.flock(LOCK_EX)` 包裹整个 read-modify-write，Engine 与外部 CLI（`ccc-board.py phase update`）并发写不再竞态覆盖
+4. **`ThreadPoolExecutor` 单 ws timeout** — `fut.result(timeout=120)`，单 ws ruff/mypy 卡死不再阻塞整个 audit_role（超时报 `{"status": "timeout"}`）
+5. **`ThreadPoolExecutor max_workers` 降到 2** — 避免 4 ws × (ruff + mypy) = 8 子进程并发 OOM（mypy 单进程 ~300MB，峰值 1.2GB+）
+6. **small 类 reviewer 至少校验 diff 非空** — 防止 dev 提交空 commit + 验收清单全 √ 绕过 reviewer 进 verified
+7. **`_parse_diff_size` 缺 summary 行返回 None** — 不再静默返回 0 让 LLM 审查被永久跳过；调用方 fail-fast 走 quarantine
+8. **`dev_role_launch/relaunch` 读 `_current_running_phase()`** — 不再硬编码 `phase_id=f"{task_id}-p1"`，多 phase 顺序执行真正接入
+
+### 红线检查
+- R-04（reviewer 强制参与）：small 类加 diff 非空校验 ✓
+- R-07（原子写入）：phases.json 加 fcntl.flock ✓
+- R-08（日志统一格式）：移除 print 冒充 ✓
+- R-12（任务卡死可观测）：P0-2 移除脱管日志 ✓
+- R-14（子进程 timeout）：audit 加 120s 单 ws timeout ✓
+
+### 验证
+- syntax: py_compile 0 errors
+- pytest: 81 passed (22 new + 59 old)
+
+### 已知遗留（→ v0.24.4 P1 处理）
+- 循环依赖检测（P1-MAJ-v0.24.0）
+- 多轮收敛上限 max_iter=5（P1-MAJ-v0.24.0）
+- `PHASE_TERMINAL_FAIL` 加 blocked（P1-MIN-v0.24.0）
+- 不存在的依赖 phase 告警（P1-MAJ-v0.24.0）
+- 重试计数器按 phase 独立（P1-P0-3）
+- 阈值常量 / medium impact / timeout 分级 / JSON 正则 / OOM cap / last_run 时间错位（v0.24.1×4 + v0.24.2×2 MINOR）
+
+---
+
 > **Repository**: `~/program/CCC/`
 > **Skill name**: `ccc-protocol`
 > **Framework total**: scripts + references + docs + templates (single .ccc/ artifact dir per project)
