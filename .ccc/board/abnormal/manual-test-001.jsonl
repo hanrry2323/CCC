@@ -1,1 +1,0 @@
-{"id": "manual-test-001", "title": "[ABNORMAL] 手动测试：能否自动开发", "description": "验证手动移到 planned 后 dev 能否处理", "status": "abnormal", "created_at": "2026-07-07T16:42:29Z", "updated_at": "2026-07-10T17:37:55Z", "moves": [], "tags": ["manual-test", "abnormal", "automated"], "note": "engine: in_progress 滞留 62.1h (阈值 6h)"}
