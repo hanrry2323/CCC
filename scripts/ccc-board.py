@@ -977,14 +977,28 @@ def _review_with_llm(
     env = os.environ.copy()
     env["ANTHROPIC_BASE_URL"] = relay
     try:
-        r = _sp.run(
-            [_CLAUDE_CLI, "-p", "--model", "flash"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env=env,
-        )
+        # prompt 可能很大（>1MB），写入临时文件通过 <file stdin 管道传递
+        import tempfile as _tempfile
+        with _tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False
+        ) as _pf:
+            _pf.write(prompt)
+            _prompt_file = _pf.name
+        try:
+            with open(_prompt_file, "rb") as _pf_read:
+                r = _sp.run(
+                    [_CLAUDE_CLI, "-p", "--model", "flash"],
+                    stdin=_pf_read,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    env=env,
+                )
+        finally:
+            try:
+                os.unlink(_prompt_file)
+            except OSError:
+                pass
         if r.returncode != 0:
             return {
                 "verdict": "fallback",
