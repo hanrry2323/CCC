@@ -134,7 +134,7 @@ def _get_code_context(ws_path: Path) -> str:
     - A3: 删除冗余 subprocess import（全局已导入）
     - A5: 入口文件过滤增强（排除 vendor/build/tests）
     - A6: 添加简单缓存（模块级字典）
-    - A7: rglob 不跟随 symlink（symlink=False）
+    - A7: 入口文件过滤跳过 symlink（用 is_symlink 检查，3.9 兼容）
     """
     parts = []
     ws = str(ws_path)
@@ -149,7 +149,7 @@ def _get_code_context(ws_path: Path) -> str:
 
     # 1. 代码文件树（Python + TypeScript + 配置）
     try:
-        tree = sp.run(
+        tree = subprocess.run(
             [
                 "find",
                 ".",
@@ -225,7 +225,7 @@ def _get_code_context(ws_path: Path) -> str:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
-    # A5: 入口文件（最多 2 个，过滤增强 + A7: follow_symlinks=False）
+    # A5: 入口文件（最多 2 个，过滤增强 + A7: 用 is_symlink 检查，3.9 兼容）
     exclude_patterns = [
         ".venv",
         "node_modules",
@@ -245,8 +245,10 @@ def _get_code_context(ws_path: Path) -> str:
     ]:
         if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
             break
-        # A7: follow_symlinks=False 避免跟随符号链接
-        entries = sorted(ws_path.rglob(entry_pattern, follow_symlinks=False))
+        # A7 兼容 3.9：rglob 不带 follow_symlinks（Python 3.13+ 才支持），用 is_symlink 过滤
+        entries = sorted(
+            p for p in ws_path.rglob(entry_pattern) if not p.is_symlink()
+        )
         for ef in entries:
             if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
                 break

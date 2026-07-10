@@ -73,7 +73,7 @@ async def run_opencode(
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
         # 自动任务走 code 通道（oppencode 原生默认），不走 flash
         # 如需切换可设 OPENCODE_MODEL 环境变量
-        model = os.environ.get("OPENCODE_MODEL", "code")
+        model = os.environ.get("OPENCODE_MODEL", "loop/code")
         prompt_text = prompt_text.strip()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
