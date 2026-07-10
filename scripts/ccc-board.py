@@ -216,46 +216,66 @@ def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[in
     - pending → blocked（依赖未满足）
     - blocked → pending（依赖已满足，下一轮可执行）
     已 in_progress/done/verified/failed/skipped 的不碰。
+
+    v0.24.3: 加文件锁 fcntl.flock(LOCK_EX) 防止 Engine 与外部 CLI 并发写竞争。
     """
+    import fcntl
+
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
         return
     try:
-        lines = phases_file.read_text().splitlines()
+        with open(phases_file, "r+") as f:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except (OSError, AttributeError):
+                # 非 POSIX 平台或 flock 不可用，降级无锁（保留旧行为）
+                pass
+            try:
+                lines = f.read().splitlines()
+            except OSError:
+                return
+            new_lines: list[str] = []
+            changed = False
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    new_lines.append(line)
+                    continue
+                try:
+                    obj = json.loads(stripped)
+                except json.JSONDecodeError:
+                    new_lines.append(line)
+                    continue
+                if not isinstance(obj, dict) or "schema_version" in obj:
+                    new_lines.append(line)
+                    continue
+                pid = obj.get("phase")
+                status = obj.get("status")
+                if status == "pending":
+                    if pid in skipped:
+                        obj["status"] = "skipped"
+                        changed = True
+                    elif pid in blocked:
+                        obj["status"] = "blocked"
+                        changed = True
+                elif status == "blocked":
+                    # 依赖解除 → 回 pending（让 dev 可以重新拾起）
+                    if pid not in blocked and pid not in skipped:
+                        obj["status"] = "pending"
+                        changed = True
+                new_lines.append(json.dumps(obj, ensure_ascii=False))
+            if changed:
+                payload = "\n".join(new_lines) + "\n"
+                f.seek(0)
+                f.write(payload)
+                f.truncate()
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (OSError, AttributeError):
+                pass
     except OSError:
         return
-    new_lines: list[str] = []
-    changed = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            new_lines.append(line)
-            continue
-        try:
-            obj = json.loads(stripped)
-        except json.JSONDecodeError:
-            new_lines.append(line)
-            continue
-        if not isinstance(obj, dict) or "schema_version" in obj:
-            new_lines.append(line)
-            continue
-        pid = obj.get("phase")
-        status = obj.get("status")
-        if status == "pending":
-            if pid in skipped:
-                obj["status"] = "skipped"
-                changed = True
-            elif pid in blocked:
-                obj["status"] = "blocked"
-                changed = True
-        elif status == "blocked":
-            # 依赖解除 → 回 pending（让 dev 可以重新拾起）
-            if pid not in blocked and pid not in skipped:
-                obj["status"] = "pending"
-                changed = True
-        new_lines.append(json.dumps(obj, ensure_ascii=False))
-    if changed:
-        phases_file.write_text("\n".join(new_lines) + "\n")
 
 
 def _task_all_phases_terminal(task_id: str) -> bool:
@@ -350,6 +370,9 @@ def _check_phase_failures(task_id: str) -> dict:
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
     _apply_phase_status_updates(task_id, blocked, skipped)
 
+    # v0.24.3: writeback 后必须 reload，否则返回值基于陈旧内存状态计算。
+    phases = _load_phases(task_id)
+
     all_terminal = all(
         p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL)
         for p in phases
@@ -381,8 +404,8 @@ def _move_task_to_abnormal_if_all_failed(task_id: str) -> bool:
     # 所有 phase 都失败或被跳过 → task 整体异常
     try:
         move_task(task_id, "in_progress", "abnormal")
-        engine_log = print  # 用 print 代替（ccc-board 不持 engine_log）
-        engine_log(f"[failure-isolation] {task_id} all phases failed/skipped → abnormal")
+        # v0.24.3: 用 print 直接输出，避免局部 engine_log 别名导致日志脱管
+        print(f"[failure-isolation] {task_id} all phases failed/skipped → abnormal")
         return True
     except Exception as exc:
         print(f"[failure-isolation] {task_id} move to abnormal failed: {exc}",
@@ -1359,16 +1382,20 @@ REVIEW_SIZE_MEDIUM_MAX = 50  # 11-50 行 → medium（标准 LLM）
                               # >50 行 → large（LLM + impact 分析）
 
 
-def _parse_diff_size(stat_output: str) -> int:
+def _parse_diff_size(stat_output: str) -> int | None:
     """解析 git diff --stat 输出，统计总变更行数（insertions + deletions）。
 
     stat 行格式如: "scripts/ccc-board.py | 42 +++++++++++++--------"
     最后一行格式: "3 files changed, 120 insertions(+), 45 deletions(-)"
+
+    v0.24.3: 返回 None 表示无法解析（缺 summary 行 / diff 为空），
+    调用方应 fail-fast 而不是把缺失当成 0 行变更静默通过。
     """
     import re
 
     insertions = 0
     deletions = 0
+    found_summary = False
     for line in stat_output.splitlines():
         line = line.strip()
         if not line:
@@ -1379,22 +1406,29 @@ def _parse_diff_size(stat_output: str) -> int:
             del_m = re.search(r"(\d+)\s+deletion", line)
             if ins_m:
                 insertions += int(ins_m.group(1))
+                found_summary = True
             if del_m:
                 deletions += int(del_m.group(1))
+                found_summary = True
             continue
         # file 行（带 `|`）：跳过 —— 计数靠 summary 行
         if "|" not in line:
             continue
+    if not found_summary:
+        return None
     return insertions + deletions
 
 
-def _classify_review_size(stat_output: str) -> tuple[str, int]:
+def _classify_review_size(stat_output: str) -> tuple[str, int | None]:
     """v0.24.1: 按变更量分级。
 
     Returns:
         ("small" | "medium" | "large", total_changed_lines)
+        total=None 表示无法解析（diff 缺 summary 行），调用方应 fail-fast
     """
     total = _parse_diff_size(stat_output)
+    if total is None:
+        return ("unknown", None)
     if total <= REVIEW_SIZE_SMALL_MAX:
         return ("small", total)
     if total <= REVIEW_SIZE_MEDIUM_MAX:
@@ -1421,6 +1455,14 @@ def reviewer_role() -> dict:
 
         # v0.24.1: 按变更量分级，决定是否需要 LLM
         size_class, total_lines = _classify_review_size(diff_stat)
+        # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
+        if size_class == "unknown":
+            _quarantine(task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级")
+            print(
+                f"[reviewer] {task_id} ✗ diff stat 解析失败（缺 summary），quarantine",
+                file=sys.stderr,
+            )
+            continue
         print(f"[reviewer] {task_id} size={size_class} lines={total_lines}")
 
         # small 类：跳过 LLM，直接走 py_compile 静态检查
@@ -1454,7 +1496,16 @@ def reviewer_role() -> dict:
                 print(f"[reviewer] {task_id} ✓ small-class static pass ({total_lines} 行)")
                 continue
             elif not py_files:
-                # small 类无 py 文件：plan 有验收清单 → 信任 plan
+                # v0.24.3: small 类无 py 时必须做最小动静校验 —
+                # 不能仅凭"有验收清单"就放行；至少确认 diff 非空（防止 dev 提交空 commit 绕过）
+                if not full_diff.strip():
+                    _quarantine(task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空")
+                    print(
+                        f"[reviewer] {task_id} ✗ small-class quarantine: 空 diff",
+                        file=sys.stderr,
+                    )
+                    continue
+                # 有 diff 且 plan 有验收清单 → 信任 plan，但仍记录为 plan-only pass
                 if "## 验收" in plan_text or "## 验证" in plan_text:
                     move_task(task_id, "testing", "verified")
                     moved.append(task_id)
@@ -1462,7 +1513,7 @@ def reviewer_role() -> dict:
                         f"# {task_id} Review\n\n"
                         f"## Verdict: **PASS**\n\n"
                         f"## Size Class: **small** ({total_lines} 行)\n\n"
-                        f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单。\n"
+                        f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
                     )
                     print(f"[reviewer] {task_id} ✓ small-class plan-only pass")
                     continue
@@ -2164,7 +2215,7 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         since: git log 时间窗口（默认 2h）
     """
     import time as _time
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
     _t0 = _time.time()
     targets = [workspace] if workspace else list(WORKSPACES)
@@ -2176,15 +2227,25 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
             results.append(_audit_run_one(targets[0], since))
     else:
         # v0.24.2: 多 ws 并发
-        max_workers = min(len(targets), 4)
+        # v0.24.3: OOM 防护 — max_workers=2 避免 4×(ruff+mypy) 同时跑爆内存
+        max_workers = min(len(targets), 2)
+        # v0.24.3: 单 ws timeout — 单卡死不能阻塞整个 audit 角色
+        ws_timeout = 120
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(_audit_run_one, ws, since) for ws in targets]
-            for fut in futures:
+            futures = {
+                executor.submit(_audit_run_one, ws, since): ws for ws in targets
+            }
+            for fut, ws in futures.items():
                 try:
-                    results.append(fut.result())
+                    results.append(fut.result(timeout=ws_timeout))
+                except FuturesTimeoutError:
+                    results.append(
+                        {"workspace": ws, "status": "timeout",
+                         "error": f"timeout after {ws_timeout}s"}
+                    )
                 except Exception as exc:
                     results.append(
-                        {"workspace": "unknown", "status": "error", "error": str(exc)}
+                        {"workspace": ws, "status": "error", "error": str(exc)}
                     )
 
     # 记录运行时间
@@ -2463,7 +2524,10 @@ def dev_role_launch(task_id: str) -> dict:
 
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(cphases, default=600)
-    phase_id = f"{task_id}-p1"
+    # v0.24.3: 用 _current_running_phase() 决定当前应跑哪个 phase，而不是硬编码 -p1。
+    # phases.json 可能尚未标 in_progress（launch 是入口），退回到 pending/blocked 中的第一个 phase。
+    cur_phase = _current_running_phase(task_id)
+    phase_id = f"{task_id}-p{cur_phase}"
     plan_content = cplan.read_text()
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
@@ -2543,7 +2607,9 @@ def dev_role_relaunch(task_id: str) -> dict:
                 pass
 
     timeout_s = _load_timeout(cphases, default=600)
-    phase_id = f"{task_id}-p1"
+    # v0.24.3: 重启也用 _current_running_phase() 定位当前 phase
+    cur_phase = _current_running_phase(task_id)
+    phase_id = f"{task_id}-p{cur_phase}"
     plan_content = cplan.read_text()
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
