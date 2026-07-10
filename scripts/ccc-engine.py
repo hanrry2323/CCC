@@ -143,7 +143,17 @@ def engine_loop(workspace: str) -> None:
                     continue
 
                 elif status == "quarantined":
-                    engine_log(f"{running_task_id} 重试耗尽, 已隔离, 移向下一个")
+                    # v0.24: 跑失败传染 + 决定 task 是 quarantined 还是 abnormal
+                    failure_summary = _check_phase_failures(running_task_id)
+                    if failure_summary.get("all_failed_or_skipped"):
+                        engine_log(
+                            f"{running_task_id} 所有 phase failed/skipped → abnormal "
+                            f"(skipped_downstream={failure_summary['skipped']})"
+                        )
+                    else:
+                        engine_log(
+                            f"{running_task_id} 重试耗尽, 已隔离, 移向下一个"
+                        )
                     update_index()
                     running_task_id = None
                     continue  # 立即检查下一个

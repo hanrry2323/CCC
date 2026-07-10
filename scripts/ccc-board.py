@@ -274,6 +274,122 @@ def _task_all_phases_terminal(task_id: str) -> bool:
     return True
 
 
+def _current_running_phase(task_id: str) -> int:
+    """v0.24: 找 task 当前正在跑的 phase 编号（status=in_progress 的 phase）。
+
+    没有 in_progress phase 时返回 1（兼容旧 v0.23 行为，task-p1 默认）。
+    """
+    phases = _load_phases(task_id)
+    for p in phases:
+        if p.get("status") == "in_progress":
+            return p.get("phase", 1)
+    # 无 in_progress → 取 pending/blocked 中第一个（按 phase 编号）
+    candidates = [p for p in phases if p.get("status") in ("pending", "blocked")]
+    if candidates:
+        return candidates[0].get("phase", 1)
+    return 1
+
+
+def _mark_phase_failed(task_id: str, phase_id: int) -> None:
+    """v0.24: 标记某个 phase 为 failed（quarantine 时调用）。
+
+    仅当 phase 还在 pending/blocked/in_progress 时才改为 failed；
+    已 done/verified/skipped/failed 不动。
+    """
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return
+    try:
+        lines = phases_file.read_text().splitlines()
+    except OSError:
+        return
+    new_lines: list[str] = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            new_lines.append(line)
+            continue
+        if not isinstance(obj, dict) or "schema_version" in obj:
+            new_lines.append(line)
+            continue
+        if obj.get("phase") == phase_id:
+            current = obj.get("status")
+            if current in ("done", "verified", "skipped", "failed"):
+                new_lines.append(line)
+                continue
+            obj["status"] = "failed"
+            changed = True
+        new_lines.append(json.dumps(obj, ensure_ascii=False))
+    if changed:
+        phases_file.write_text("\n".join(new_lines) + "\n")
+
+
+def _check_phase_failures(task_id: str) -> dict:
+    """v0.24: 检查 task 的 phase 失败传染，更新下游 skipped 状态。
+
+    流程：
+    1. 加载 phases
+    2. 跑 _resolve_phase_dependencies 解析 executable/blocked/skipped
+    3. 写回 blocked/skipped（依赖解除的 blocked → pending）
+    4. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
+            "all_terminal": bool, "all_failed": bool}
+
+    Engine 在每次 dev 完成后调用一次，让失败传染链路在多轮 tick 中收敛。
+    """
+    phases = _load_phases(task_id)
+    if not phases:
+        return {"executable": [], "blocked": [], "skipped": [],
+                "all_terminal": False, "all_failed": False}
+
+    executable, blocked, skipped = _resolve_phase_dependencies(phases)
+    _apply_phase_status_updates(task_id, blocked, skipped)
+
+    all_terminal = all(
+        p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL)
+        for p in phases
+    )
+    all_failed_or_skipped = all(
+        p.get("status") in ("failed", "skipped")
+        for p in phases
+    )
+
+    return {
+        "executable": sorted(executable),
+        "blocked": sorted(blocked),
+        "skipped": sorted(skipped),
+        "all_terminal": all_terminal,
+        "all_failed_or_skipped": all_failed_or_skipped,
+    }
+
+
+def _move_task_to_abnormal_if_all_failed(task_id: str) -> bool:
+    """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
+
+    Returns: True if moved, False otherwise.
+    """
+    phases = _load_phases(task_id)
+    if not phases:
+        return False
+    if not all(p.get("status") in ("failed", "skipped") for p in phases):
+        return False
+    # 所有 phase 都失败或被跳过 → task 整体异常
+    try:
+        move_task(task_id, "in_progress", "abnormal")
+        engine_log = print  # 用 print 代替（ccc-board 不持 engine_log）
+        engine_log(f"[failure-isolation] {task_id} all phases failed/skipped → abnormal")
+        return True
+    except Exception as exc:
+        print(f"[failure-isolation] {task_id} move to abnormal failed: {exc}",
+              file=sys.stderr)
+        return False
+
+
 _CLAUDE_CLI = "claude"
 
 
@@ -2585,9 +2701,22 @@ def dev_role_check_complete(task_id: str) -> dict:
                     p.unlink()
                 except OSError:
                     pass
-            _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
+            # v0.24: 标记 phase failed + 触发失败传染链路
+            _mark_phase_failed(task_id, phase_id=_current_running_phase(task_id))
+            failure_summary = _check_phase_failures(task_id)
+            if failure_summary.get("all_failed_or_skipped"):
+                # 所有 phase 都失败 → task 移到 abnormal（不进 verified）
+                _move_task_to_abnormal_if_all_failed(task_id)
+                _quarantine(
+                    task_id,
+                    f"engine: 重试{MAX_RETRY}次全部失败，"
+                    f"下游 phase {failure_summary['skipped']} 自动跳过 → abnormal",
+                )
+            else:
+                _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
             print(
-                f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined",
+                f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined "
+                f"(skipped_downstream={failure_summary['skipped']})",
                 file=sys.stderr,
             )
             return {"status": "quarantined", "task_id": task_id}
