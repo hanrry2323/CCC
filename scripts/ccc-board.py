@@ -976,8 +976,9 @@ def _review_with_llm(
     relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
     env = os.environ.copy()
     env["ANTHROPIC_BASE_URL"] = relay
+    env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:
-        # prompt 可能很大（>1MB），写入临时文件通过 <file stdin 管道传递
+        # prompt 可能很大（>1MB），写临时文件并 shell 重定向，避免 subprocess.PIPE buffer 截断
         import tempfile as _tempfile
         with _tempfile.NamedTemporaryFile(
             mode="w", suffix=".md", delete=False
@@ -985,15 +986,16 @@ def _review_with_llm(
             _pf.write(prompt)
             _prompt_file = _pf.name
         try:
-            with open(_prompt_file, "rb") as _pf_read:
-                r = _sp.run(
-                    [_CLAUDE_CLI, "-p", "--model", "flash"],
-                    stdin=_pf_read,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    env=env,
-                )
+            with open(_prompt_file, "rb") as f:
+                data = f.read()
+            r = _sp.run(
+                [_CLAUDE_CLI, "-p", "--model", "flash"],
+                input=data,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=env,
+            )
         finally:
             try:
                 os.unlink(_prompt_file)
