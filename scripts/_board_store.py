@@ -11,18 +11,14 @@ import os
 import re
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-# 尝试导入文件锁（非 macOS 系统不强制）
+# fcntl 在 macOS 行为不稳定（open("w") 截断 + 杀进程锁不释放 → 死锁）。
+# 强制使用 atomic rename 锁（O_CREAT|O_EXCL）作为唯一锁机制。
 _HAS_FLOCK = False
-try:
-    import fcntl
-
-    _HAS_FLOCK = True
-except ImportError:
-    pass
 
 
 COLUMNS = [
@@ -68,40 +64,50 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _acquire_lock(lockfile: Path) -> object:
-    """加文件锁（如果平台支持），返回锁对象"""
-    if _HAS_FLOCK:
-        f = open(lockfile, "w")
-        fcntl.flock(f, fcntl.LOCK_EX)
-        return f
-    # Fallback: 独占文件创建锁（跨平台原子操作，_HAS_FLOCK=False 时使用）
-    import time as _time
+def _acquire_lock(lockfile: Path, timeout_s: float = 5.0) -> object:
+    """加文件锁（atomic rename 模式），返回锁对象路径
 
+    只用 atomic 创建（O_CREAT|O_EXCL）：无 fcntl 死锁、无截断写。
+    持锁进程被杀死后锁文件残留，下次获取时检测 pid 失效自动清理。
+    """
     excl_path = lockfile.with_name(f".{lockfile.name}.excl")
-    for _ in range(60):
+    deadline = time.monotonic() + timeout_s
+    while True:
         try:
             fd = os.open(str(excl_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode())
             os.close(fd)
             return excl_path
         except FileExistsError:
-            # 检测残留锁：检查持有进程是否存活
+            # 残留锁检测：持有进程死了就清掉
             try:
                 pid_str = excl_path.read_text().strip()
                 if pid_str:
                     pid = int(pid_str)
                     try:
                         os.kill(pid, 0)
-                    except OSError:
+                    except (OSError, ProcessLookupError):
                         excl_path.unlink(missing_ok=True)
                         continue
             except (ValueError, OSError):
-                pass
-            _time.sleep(0.5)
-    print(
-        f"[board] WARNING: timeout acquiring fallback lock: {excl_path}",
-        file=sys.stderr,
-    )
+                excl_path.unlink(missing_ok=True)
+                continue
+
+            if time.monotonic() > deadline:
+                print(
+                    f"[board] ERROR: lock timeout after {timeout_s}s: {excl_path}",
+                    file=sys.stderr,
+                )
+                # 超时强清（生产环境高风险，但死锁场景比丢锁更糟）
+                try:
+                    old_pid = excl_path.read_text().strip()
+                    print(f"[board] Force-clearing lock (pid={old_pid})", file=sys.stderr)
+                except Exception:
+                    pass
+                excl_path.unlink(missing_ok=True)
+                continue
+            time.sleep(0.1)
+    # 不可达
     return None
 
 
@@ -166,7 +172,12 @@ class FileBoardStore:
     # ── 内部方法 ──
 
     def _lock(self) -> object:
-        return _acquire_lock(self.lockfile)
+        """写锁（5s 超时，强清残留）"""
+        return _acquire_lock(self.lockfile, timeout_s=5.0)
+
+    def _acquire_ro(self, timeout_s: float = 0.5) -> Optional[object]:
+        """读锁占位（atomic O_EXCL 永远独占，只能互斥；读时退化到 0.5s 短锁）"""
+        return _acquire_lock(self.lockfile, timeout_s=timeout_s)
 
     def _unlock(self, lock_obj) -> None:
         _release_lock(lock_obj)
@@ -215,15 +226,8 @@ class FileBoardStore:
         if not col_dir.exists():
             return []
         tasks = []
-        lock = None
-        if _HAS_FLOCK:
-            try:
-                lock = open(self.lockfile, "r")
-                fcntl.flock(lock, fcntl.LOCK_SH)
-            except FileNotFoundError:
-                lock = None  # 锁文件不存在，不加锁读
-            except Exception:
-                lock = None
+        # atomic 锁，3s 超时，读锁
+        excl_path = self._acquire_ro(timeout_s=3.0)
         try:
             for f in sorted(col_dir.glob("*.jsonl")):
                 try:
@@ -240,10 +244,9 @@ class FileBoardStore:
                     pass
             return tasks
         finally:
-            if lock is not None:
+            if excl_path is not None:
                 try:
-                    fcntl.flock(lock, fcntl.LOCK_UN)
-                    lock.close()
+                    excl_path.unlink(missing_ok=True)
                 except Exception:
                     pass
 

@@ -1000,7 +1000,18 @@ def _review_with_llm(
         try:
             # 优先用捕获组（第一正则 capture group 1 = 干净 JSON），否则用全匹配
             json_str = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
-            data = json.loads(json_str)
+            # Claude 输出里可能有控制字符或转义错误，先尝试宽松解析：
+            # 1. 直接 parse
+            # 2. 替换常见控制字符再试
+            data = None
+            for candidate in (json_str, _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)):
+                try:
+                    data = json.loads(candidate)
+                    break
+                except json.JSONDecodeError:
+                    continue
+            if data is None:
+                raise json.JSONDecodeError("all candidates failed", json_str, 0)
             if data.get("verdict") in ("pass", "fail"):
                 return data
             return {
@@ -1010,7 +1021,7 @@ def _review_with_llm(
         except json.JSONDecodeError as exc:
             return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
     except _sp.TimeoutExpired:
-        return {"verdict": "fallback", "reason": "claude timeout (120s)"}
+        return {"verdict": "fallback", "reason": "claude timeout (300s)"}
 
 
 def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
