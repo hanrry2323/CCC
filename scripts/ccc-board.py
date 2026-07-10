@@ -1456,6 +1456,13 @@ def kb_role() -> dict:
                 f"rc={push_r.returncode}\n"
                 f"{push_r.stderr[:500]}\n"
             )
+            # C1: push 失败回滚本地 tag, 避免下次重跑冲突
+            sp.run(
+                ["git", "tag", "-d", f"board-{task_id}"],
+                cwd=ROOT,
+                capture_output=True,
+                timeout=5,
+            )
             continue
 
         # CHANGELOG.md 追加
