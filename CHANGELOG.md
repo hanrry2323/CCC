@@ -921,3 +921,4 @@ git push origin main --tags
 
 ### 修复
 - reviewer JSON 提取: markdown 代码块匹配时用 `m.group(1)` 而非 `m.group(0)`，修复 json.loads 因包含反引号解析失败
+- v0.23.14 ABNORMAL smoke OK

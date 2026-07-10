@@ -1,0 +1,1 @@
+{"id": "smoke-v02314", "title": "[ABNORMAL] smoke test v0.23.14", "description": "验证 dev→reviewer→tester→kb", "status": "released", "created_at": "2026-07-10T10:47:42Z", "updated_at": "2026-07-10T11:05:00+08:00", "assignee": null, "tags": ["abnormal", "manual"], "note": "manual dev: CHANGELOG append ABNORMAL smoke OK; reviewer/tester/kb all pass"}
