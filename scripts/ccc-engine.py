@@ -179,7 +179,8 @@ def engine_loop(workspace: str) -> None:
                     if _audit_should_run(workspace):
                         engine_log("触发 audit_role（全项目扫描）")
                         try:
-                            ccc_board.audit_role()
+                            # 必须传 workspace 让 audit_role 把 last_run 写到 per-workspace 文件
+                            ccc_board.audit_role(workspace=workspace)
                         except Exception as exc:
                             engine_log(f"audit_role 异常: {exc}")
 
@@ -193,7 +194,9 @@ def engine_loop(workspace: str) -> None:
             engine_log("收到 SIGINT, 优雅关闭")
             break
         except Exception as e:
+            import traceback as _tb
             engine_log(f"异常: {e}")
+            engine_log(f"  {_tb.format_exc().splitlines()[-2]}")  # 关键栈行
             # 防止 panic 退出
             time.sleep(cfg.engine_idle_sleep)
             continue

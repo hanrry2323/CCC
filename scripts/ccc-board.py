@@ -739,8 +739,9 @@ def dev_role() -> dict:
         )
         print(f"[dev] {task_id} 后台启动 PID={proc.pid}，下轮检查结果")
 
-    except Exception as e:
-        print(f"[dev] {task_id} 启动失败: {e}", file=sys.stderr)
+    except Exception as e:  # debug
+        import traceback as _tb
+        print(f"[dev] {task_id} 启动失败: {e}\n{_tb.format_exc()}", file=sys.stderr)
     finally:
         # prompt 保留给后台读
         pass
@@ -2330,7 +2331,7 @@ def batch_process(lines: list[dict]) -> dict:
                 results["errors"].append(
                     {"line": i, "id": task_id, "error": f"unknown action '{action}'"}
                 )
-        except Exception as e:
+        except Exception as e:  # debug
             results["errors"].append({"line": i, "id": task_id, "error": str(e)})
     results["counts"] = update_index()
     return results
