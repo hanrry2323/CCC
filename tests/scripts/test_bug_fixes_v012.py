@@ -4,6 +4,7 @@
   1. opencode-exec 长 prompt 跑完 → 临时文件被 unlink（Bug 1+3）
   2. ccc-hook CCC_HOOK_TIMEOUT=2 + sleep 3 → exit 124 (Bug 6)
 """
+
 from __future__ import annotations
 
 import json
@@ -21,6 +22,7 @@ HOOK = ROOT / "scripts" / "ccc-hook.sh"
 
 def _load_module():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("_opencode_exec_v012", str(EXEC))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -30,6 +32,7 @@ def _load_module():
 def test_bug_1_3_long_prompt_tmp_file_cleaned():
     """长 prompt 跑完, 临时文件应被 unlink（不再泄漏）"""
     import asyncio
+
     m = _load_module()
     # 用 echo 模拟 opencode（短 cmd 必不调真模型）
     long_prompt = "X" * 300  # > 200 触发 --file 协议
@@ -55,6 +58,41 @@ def test_bug_1_3_long_prompt_tmp_file_cleaned():
     assert not bug_files, f"残留临时文件: {bug_files}"
 
 
+def test_executor_sanitized_env_catches_access_key():
+    """_sanitized_env 应过滤 ACCESS_KEY / CERTIFICATE / PRIVATE_KEY 等（H1 修复）"""
+    import importlib.util
+    import os
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location(
+        "_executor", str(ROOT / "scripts" / "_executor.py")
+    )
+    executor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(executor)
+
+    os.environ["AWS_ACCESS_KEY_ID"] = "AKIAIOSFODNN7EXAMPLE"
+    os.environ["AZURE_CLIENT_SECRET"] = "secret-value"
+    os.environ["MY_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----"
+    os.environ["SSH_CERTIFICATE"] = "ssh-rsa-cert..."
+    os.environ["SESSION_TOKEN"] = "session-token-value"
+
+    env = executor._sanitized_env()
+
+    assert "AWS_ACCESS_KEY_ID" not in env, "AWS_ACCESS_KEY_ID 应被过滤"
+    assert "AZURE_CLIENT_SECRET" not in env, "AZURE_CLIENT_SECRET 应被过滤"
+    assert "MY_PRIVATE_KEY" not in env, "MY_PRIVATE_KEY 应被过滤"
+    assert "SSH_CERTIFICATE" not in env, "SSH_CERTIFICATE 应被过滤"
+    assert "SESSION_TOKEN" not in env, "SESSION_TOKEN 应被过滤"
+
+    for key in [
+        "AWS_ACCESS_KEY_ID",
+        "AZURE_CLIENT_SECRET",
+        "MY_PRIVATE_KEY",
+        "SSH_CERTIFICATE",
+        "SESSION_TOKEN",
+    ]:
+        os.environ.pop(key, None)
 
 
 def test_bug_6_hook_timeout_override():
@@ -75,10 +113,17 @@ def test_bug_6_hook_timeout_override():
             # CCC_HOOK_TIMEOUT=2 + sleep 3 → 应被 kill (exit 124)
             proc = subprocess.run(
                 ["bash", str(HOOK), "test-bug-6"],
-                capture_output=True, timeout=10,
-                env={"HOME": str(Path.home()), "CCC_HOOK_TIMEOUT": "2", "PATH": "/usr/bin:/bin:/usr/local/bin"},
+                capture_output=True,
+                timeout=10,
+                env={
+                    "HOME": str(Path.home()),
+                    "CCC_HOOK_TIMEOUT": "2",
+                    "PATH": "/usr/bin:/bin:/usr/local/bin",
+                },
             )
             out = proc.stdout.decode("utf-8", errors="replace")
-            assert "exit=124" in out or "❌" in out, f"应被 kill 报 exit=124, 实际: {out[:500]}"
+            assert "exit=124" in out or "❌" in out, (
+                f"应被 kill 报 exit=124, 实际: {out[:500]}"
+            )
         finally:
             target.unlink(missing_ok=True)

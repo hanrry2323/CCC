@@ -50,7 +50,20 @@ def _sanitized_env() -> dict:
     import os as _os
 
     env = _os.environ.copy()
-    _CREDENTIAL_PATTERNS = ("API_KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
+    _CREDENTIAL_PATTERNS = (
+        "API_KEY",
+        "SECRET",
+        "TOKEN",
+        "PASSWORD",
+        "CREDENTIAL",
+        "ACCESS_KEY",
+        "ACCESS_TOKEN",
+        "CERTIFICATE",
+        "PRIVATE_KEY",
+        "SSH_KEY",
+        "SESSION_KEY",
+        "SIGNING_KEY",
+    )
     keys_to_remove = [
         key for key in env if any(pat in key.upper() for pat in _CREDENTIAL_PATTERNS)
     ]
