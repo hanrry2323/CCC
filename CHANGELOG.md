@@ -904,3 +904,9 @@ git push origin main --tags
 - ccc-notify.sh: osascript notify 参数改为 `on run argv` 带索引访问，防止 MESSAGE 拼接注入
 - HP memory-store: 补上 KB_EMBED_URL 配置指向 feiniu:11434，修复重启后 embed 失效
 - memory-store 健康检查 embed 超时从 5s 提到 15s（bge-m3 CPU 模式首次加载 ~12s）
+
+## [v0.23.6] - 2026-07-10
+
+### 修复
+- G1 [critical] reviewer_role: _get_git_diff 加 task_id 参数，优先按 git log --grep 找 task 关联 commit 取 diff，其次 phases.json commit ref，reviewer 只审本 task 的改动而非全仓 HEAD~1
+- G2 [critical] reviewer_role fallback: 无验收清单 `## 验收` + 无 py 文件 → quarantine（防止 dev 绕开审查）；无 py 文件也不再静默 pass，改为 quarantine

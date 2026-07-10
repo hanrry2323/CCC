@@ -847,12 +847,16 @@ def _parse_plan_scope(task_id: str) -> list[str]:
     return validated
 
 
-def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
+def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> tuple[str, str]:
     """取 git diff 改动，返回 (stat, full_diff)。
+
+    若 task_id 提供，优先按 task 关联 commit 取 diff（G1 修复：reviewer 只审单个 task 的改动）。
+    否则按 since ref。
 
     Args:
         workspace: 项目根目录
-        since: git diff 的 ref（默认 HEAD~1 = 最近一次 commit）
+        since: git diff 的 ref（默认 HEAD~1 = 最近一次 commit，task_id 提供时忽略）
+        task_id: 任务 ID，用于过滤 git log --grep
 
     Returns:
         (stat_output, diff_output)，git 不可用时都为空字符串
@@ -860,7 +864,53 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1") -> tuple[str, str]:
     import subprocess as sp
 
     try:
-        # 先检查 ref 是否存在（首次 commit 没有 HEAD~1）
+        # G1: 优先按 task_id 找关联 commit
+        commit = ""
+        if task_id:
+            log_r = sp.run(
+                ["git", "log", "--all", "--oneline", "--grep", task_id, "--format=%H", "--max-count=1"],
+                cwd=workspace, capture_output=True, text=True, timeout=10,
+            )
+            commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
+            # 也查 phases.json 里记录的 commit ref
+            if not commit:
+                phases_file = workspace / ".ccc" / "phases" / f"{task_id}.phases.json"
+                if phases_file.exists():
+                    for line in phases_file.read_text().splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            phase = json.loads(line)
+                            if phase.get("commit"):
+                                commit = phase["commit"]
+                                break
+                        except json.JSONDecodeError:
+                            continue
+
+        if commit:
+            # task 级别的 diff
+            stat_r = sp.run(
+                ["git", "diff", f"{commit}^..{commit}", "--stat"],
+                cwd=workspace, capture_output=True, text=True, timeout=10,
+            )
+            diff_r = sp.run(
+                ["git", "diff", f"{commit}^..{commit}"],
+                cwd=workspace, capture_output=True, text=True, timeout=30,
+            )
+            # 若父 commit 不存在（首次 commit），用 --root
+            if stat_r.returncode != 0:
+                stat_r = sp.run(
+                    ["git", "diff", "--root", commit, "--stat"],
+                    cwd=workspace, capture_output=True, text=True, timeout=10,
+                )
+                diff_r = sp.run(
+                    ["git", "diff", "--root", commit],
+                    cwd=workspace, capture_output=True, text=True, timeout=30,
+                )
+            return stat_r.stdout or "", diff_r.stdout or ""
+
+        # 无 task_id / 没找到 commit：按 since 走（原逻辑 + HEAD~1 不存在降级）
         rev_r = sp.run(
             ["git", "rev-parse", "--verify", since],
             cwd=workspace, capture_output=True, timeout=5,
@@ -991,8 +1041,8 @@ def reviewer_role() -> dict:
         plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
         plan_text = plan_file.read_text() if plan_file.exists() else ""
 
-        # 1. 取 git diff（看 dev 真实改动，不只 plan 白名单）
-        diff_stat, full_diff = _get_git_diff(ROOT)
+        # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
+        diff_stat, full_diff = _get_git_diff(ROOT, task_id=task_id)
 
         # 2. LLM 审查
         verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text)
@@ -1023,7 +1073,7 @@ def reviewer_role() -> dict:
                     file=sys.stderr,
                 )
         else:
-            # fallback：跑 py_compile
+            # fallback：跑 py_compile（G2: 加严 — 无验收项 + 无 py 文件 = quarantine）
             files = _parse_plan_scope(task_id)
             if not files:
                 files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
@@ -1037,10 +1087,23 @@ def reviewer_role() -> dict:
                 py_files.extend(matched)
             py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
+            # G2: 检查 plan 是否有验收清单，无验收项 + 无 py 文件 → quarantine（绕过审查）
+            has_acceptance = "## 验收" in plan_text or "## 验证" in plan_text
+            if not has_acceptance and not py_files:
+                quarantine_task(task_id, "testing", reason="G2 bypass: fallback 无验收项 + 无 py 文件")
+                print(
+                    f"[reviewer] {task_id} ✗ fallback quarantine: 无验收项且无 py 文件",
+                    file=sys.stderr,
+                )
+                continue
+
             if not py_files:
-                move_task(task_id, "testing", "verified")
-                moved.append(task_id)
-                print(f"[reviewer] {task_id} ✓ fallback 无 py 文件")
+                quarantine_task(task_id, "testing", reason="G2 bypass: fallback 无 py 文件可校验")
+                print(
+                    f"[reviewer] {task_id} ✗ fallback quarantine: 无 py 文件",
+                    file=sys.stderr,
+                )
+                continue
             elif _py_compile_fallback(task_id, py_files):
                 move_task(task_id, "testing", "verified")
                 moved.append(task_id)
