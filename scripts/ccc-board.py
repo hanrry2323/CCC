@@ -1797,6 +1797,78 @@ def _audit_write_report(
     return report_path
 
 
+def _audit_run_one(ws: str, since: str) -> dict:
+    """单 workspace 审计流程：git log → lint/mypy → AI 分类 → auto fix → 投 backlog → 写报表
+
+    v0.24.2: 抽出来作为可并发执行的单元，audit_role 用 ThreadPoolExecutor 并行调度。
+
+    每个 ws 的写入路径（backlog / audit-reports）都是 per-workspace 文件名，
+    多 ws 并发互不冲突；auto fix ruff 的 cwd 也是 ws 局部，无共享状态。
+    """
+    import subprocess as sp
+    import time as _time
+
+    _t_ws = _time.time()
+    ws_path = Path(ws)
+    if not (ws_path / ".git").exists():
+        return {"workspace": ws, "status": "no_git", "findings": {}}
+
+    # 1. git log
+    commits = _audit_recent_commits(ws, since)
+    if not commits.strip():
+        return {"workspace": ws, "status": "no_changes", "findings": {}}
+
+    # 2. lint + mypy 门禁
+    lint_out, mypy_out = _audit_lint(ws)
+
+    # 3. AI 分类（简化启发式）
+    findings = _audit_classify(ws, commits, lint_out, mypy_out)
+
+    # 4. auto 直接修（v0.22 边界：只对 tests/ + 配置/文档/杂项改，
+    #    不动 src/ 业务代码。需要 D4 决策时再开 src 例外）
+    auto_fixed = []
+    if findings.get("auto"):
+        try:
+            sp.run(
+                ["ruff", "check", "--fix", "--exclude", "src", "."],
+                cwd=ws,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            auto_fixed = findings["auto"]
+            findings["auto"] = []
+        except (sp.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+    # 5. review/decision 投 backlog
+    posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
+    posted_decision = _audit_post_backlog(
+        ws, findings.get("decision", []), "decision"
+    )
+
+    # 6. 写报表
+    _elapsed_ws = _time.time() - _t_ws
+    report_path = _audit_write_report(
+        ws,
+        findings,
+        commits,
+        auto_fixed=auto_fixed,
+        mypy_raw=mypy_out,
+        duration_seconds=_elapsed_ws,
+    )
+
+    return {
+        "workspace": ws,
+        "status": "audited",
+        "auto_fixed": auto_fixed,
+        "review_posted": posted_review,
+        "decision_posted": posted_decision,
+        "report": str(report_path),
+        "duration_seconds": round(_elapsed_ws, 1),
+    }
+
+
 def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict:
     """审计角色 (v0.22) — 跨 workspace 全项目扫描
 
@@ -1808,89 +1880,38 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
 
     流程: 全项目扫描 → AI 分类 → auto 直接修 / review/decision 投 backlog → 写报表
 
+    v0.24.2: 多 workspace 并行化
+      - 单 workspace（指定 ws）：串行执行（原行为）
+      - 多 workspace：ThreadPoolExecutor 并发跑，单 ws 处理抽到 _audit_run_one
+      - 并发度：min(len(WORKSPACES), 4)，避免 ruff/mypy 进程爆栈
+
     Args:
         workspace: 指定 workspace；None = 扫所有 WORKSPACES
         since: git log 时间窗口（默认 2h）
     """
-    import subprocess as sp
     import time as _time
+    from concurrent.futures import ThreadPoolExecutor
 
     _t0 = _time.time()
+    targets = [workspace] if workspace else list(WORKSPACES)
     results = []
-    targets = [workspace] if workspace else WORKSPACES
 
-    for ws in targets:
-        _t_ws = _time.time()
-        ws_path = Path(ws)
-        if not (ws_path / ".git").exists():
-            continue
-
-        # 1. git log
-        commits = _audit_recent_commits(ws, since)
-        if not commits.strip():
-            results.append({"workspace": ws, "status": "no_changes", "findings": {}})
-            continue
-
-        # 2. lint + mypy 门禁
-        lint_out, mypy_out = _audit_lint(ws)
-
-        # 3. AI 分类（简化启发式）
-        findings = _audit_classify(ws, commits, lint_out, mypy_out)
-
-        # 4. auto 直接修（v0.22 边界：只对 tests/ + 配置/文档/杂项改，
-        #    不动 src/ 业务代码。需要 D4 决策时再开 src 例外）
-        auto_fixed = []
-        if findings.get("auto"):
-            try:
-                # 限制 ruff --fix 只跑在 tests/ + 非 src 目录
-                # 例外用 ruff.toml 或 pyproject.toml 的 [tool.ruff] exclude
-                sp.run(
-                    [
-                        "ruff",
-                        "check",
-                        "--fix",
-                        "--exclude",
-                        "src",
-                        ".",
-                    ],
-                    cwd=ws,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                auto_fixed = findings["auto"]
-                findings["auto"] = []  # 已被自动修
-            except (sp.TimeoutExpired, FileNotFoundError, OSError):
-                pass
-
-        # 5. review/decision 投 backlog
-        posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
-        posted_decision = _audit_post_backlog(
-            ws, findings.get("decision", []), "decision"
-        )
-
-        # 6. 写报表
-        _elapsed_ws = _time.time() - _t_ws
-        report_path = _audit_write_report(
-            ws,
-            findings,
-            commits,
-            auto_fixed=auto_fixed,
-            mypy_raw=mypy_out,
-            duration_seconds=_elapsed_ws,
-        )
-
-        results.append(
-            {
-                "workspace": ws,
-                "status": "audited",
-                "auto_fixed": auto_fixed,
-                "review_posted": posted_review,
-                "decision_posted": posted_decision,
-                "report": str(report_path),
-                "duration_seconds": round(_elapsed_ws, 1),
-            }
-        )
+    if len(targets) <= 1:
+        # 单 ws：保持原串行路径，无线程开销
+        if targets:
+            results.append(_audit_run_one(targets[0], since))
+    else:
+        # v0.24.2: 多 ws 并发
+        max_workers = min(len(targets), 4)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_audit_run_one, ws, since) for ws in targets]
+            for fut in futures:
+                try:
+                    results.append(fut.result())
+                except Exception as exc:
+                    results.append(
+                        {"workspace": "unknown", "status": "error", "error": str(exc)}
+                    )
 
     # 记录运行时间
     _elapsed = _time.time() - _t0
