@@ -36,7 +36,7 @@ COLUMNS = [
 COLUMN_TRANSITIONS: dict[str, list[str]] = {
     "planned": ["backlog"],
     "in_progress": ["planned"],
-    "testing": ["in_progress"],
+    "testing": ["in_progress", "abnormal"],  # v0.23.16: abnormal 重投允许
     "verified": ["testing"],
     "released": ["verified"],
     "backlog": [

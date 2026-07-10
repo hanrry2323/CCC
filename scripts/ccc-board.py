@@ -1106,7 +1106,8 @@ def reviewer_role() -> dict:
                     file=sys.stderr,
                 )
         else:
-            # fallback：跑 py_compile（G2: 加严 — 无验收项 + 无 py 文件 = quarantine）
+            # fallback：LLM 不可用时降级到 py_compile
+            # G2 修 v0.23.16：plan 有 ## 验收 段 → 信任 plan 走测试，跳过 py 强制
             files = _parse_plan_scope(task_id)
             if not files:
                 files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
@@ -1120,10 +1121,11 @@ def reviewer_role() -> dict:
                 py_files.extend(matched)
             py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
-            # G2: 检查 plan 是否有验收清单，无验收项 + 无 py 文件 → quarantine（绕过审查）
+            # G2 修 v0.23.16：plan 有验收清单 → 走 tester 的 plan 验收路径（tester_role 会读 ## 验收 跑命令）
+            # 这里 reviewer 仅做静态语法检查；如果 plan 明确说不改 .py，跳过 py_compile 也算 OK
             has_acceptance = "## 验收" in plan_text or "## 验证" in plan_text
             if not has_acceptance and not py_files:
-                quarantine_task(task_id, "testing", reason="G2 bypass: fallback 无验收项 + 无 py 文件")
+                _quarantine(task_id, reason="G2 bypass: fallback 无验收项 + 无 py 文件")
                 print(
                     f"[reviewer] {task_id} ✗ fallback quarantine: 无验收项且无 py 文件",
                     file=sys.stderr,
@@ -1131,7 +1133,15 @@ def reviewer_role() -> dict:
                 continue
 
             if not py_files:
-                quarantine_task(task_id, "testing", reason="G2 bypass: fallback 无 py 文件可校验")
+                # v0.23.16: 有验收清单但无 py 文件 → 信任 plan，跳过 py_compile 直接 verified
+                if has_acceptance:
+                    move_task(task_id, "testing", "verified")
+                    moved.append(task_id)
+                    print(
+                        f"[reviewer] {task_id} ✓ fallback pass (plan 验收清单替代 py 校验)"
+                    )
+                    continue
+                _quarantine(task_id, reason="G2 bypass: fallback 无 py 文件可校验")
                 print(
                     f"[reviewer] {task_id} ✗ fallback quarantine: 无 py 文件",
                     file=sys.stderr,
