@@ -10,7 +10,9 @@ export CCC_WORKSPACE="${CCC_WORKSPACE:-$CCC_HOME}"
 
 LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "$LOG_DIR"
-LOG="${LOG_DIR}/engine-$(date +%s).log"
+# 用 PID + workspace 末段做 LOG 后缀，避免 5 个 engine 同秒启动写到同一个文件
+WS_SLUG=$(basename "${CCC_WORKSPACE}")
+LOG="${LOG_DIR}/engine-${WS_SLUG}-${$}.log"
 
 # 修复 launchd 环境缺 PATH
 export PATH="/Users/apple/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"

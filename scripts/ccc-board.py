@@ -993,7 +993,7 @@ def _review_with_llm(
                 [_CLAUDE_CLI, "-p", "--model", "flash"],
                 input=data,
                 capture_output=True,
-                text=True,
+                text=False,  # bytes 注入必须 text=False，否则 'bytes' has no 'encode'
                 timeout=300,
                 env=env,
             )
@@ -1003,11 +1003,12 @@ def _review_with_llm(
             except OSError:
                 pass
         if r.returncode != 0:
+            stderr = r.stderr.decode("utf-8", errors="replace") if isinstance(r.stderr, bytes) else r.stderr
             return {
                 "verdict": "fallback",
-                "reason": f"claude rc={r.returncode}: {r.stderr[:200]}",
+                "reason": f"claude rc={r.returncode}: {stderr[:200]}",
             }
-        output = r.stdout
+        output = r.stdout.decode("utf-8", errors="replace") if isinstance(r.stdout, bytes) else r.stdout
         # 尝试从输出抓 JSON：优先 markdown 代码块，其次裸 JSON
         m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\"verdict\"[\s\S]*?\})\s*\n?```", output)
         if not m:
