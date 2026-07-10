@@ -519,8 +519,13 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     )
             self._json({"logs": entries})
 
-        else:
+        elif path.startswith("/api/"):
             self._json({"error": "not found"}, 404)
+
+        else:
+            # 非 /api/* 路径 → 委托父类 serve 静态文件（scripts/ccc-board-ui/）
+            # 修 v0.23.13: 之前 else 兜底返 JSON 404，导致 GET / 和 /index.html 全 404
+            super().do_GET()
 
     def do_POST(self):
         if not self._verify_auth():
