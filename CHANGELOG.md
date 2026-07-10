@@ -1061,3 +1061,18 @@ git push origin main --tags
 ### 修复
 - reviewer JSON 提取: markdown 代码块匹配时用 `m.group(1)` 而非 `m.group(0)`，修复 json.loads 因包含反引号解析失败
 - v0.23.14 ABNORMAL smoke OK
+
+## [v0.24.4] - 2026-07-11 — board zombie 副本修复
+
+### 修复
+- **`_board_store.move_task` 原子迁移**：旧版写 dst 与删 src 之间无原子性，异常时会产生双份 zombie。新版先 unlink dst（清残留）→ 把更新后的 task（status=to_col）写回 src → `shutil.move(src, dst)` 一次性 rename。status 字段与物理位置天然一致，不会再产生双份存在
+- **board-reconcile.py**：新工具，扫描所有列，按 jsonl["status"] 字段与物理位置的一致性清理 zombie（多副本时保留 status 匹配的副本、删其它；status 字段错位时改 status）。以 jsonl 为权威，events 只作审计日志（避免事件缺失或历史回退时误判）
+
+### 清理
+- 手动归档 `retest-feat-card-detail-v02315.jsonl` 到 released（events 已走完）
+- `retest-feat-regress-notify-v02315.jsonl` 保留在 abnormal（audit_role 自动降级，events 最新 `in_progress → abnormal`）
+- 修正 19 个 jsonl 的 status 字段（历史遗留错位：disk 在 backlog 但 status=released 等）
+
+### 测试
+- 新增 `tests/scripts/test_board_zombie_reconcile.py`（7 case）：move_task 原子性、reconcile 多副本清理、status 字段修正、dry-run 不改文件
+- 全量 92 case 通过

@@ -16,7 +16,7 @@
 | 主语言 | Bash + Python 3.9+（已兼容 3.14） |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
-| 当前版本 | **v0.24.3**（2026-07-11） |
+| 当前版本 | **v0.24.4**（2026-07-11） |
 
 ---
 
@@ -24,6 +24,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-11 | v0.24.4 | — | [CHANGELOG §v0.24.4](../CHANGELOG.md) | board zombie 修复 + reconcile 工具 | PASS |
 | 2026-07-11 | v0.24.3 | — | [CHANGELOG §v0.24.3](../CHANGELOG.md) | tag `v0.24.3` + release | PASS |
 | 2026-07-10 | v0.24.2 | — | [CHANGELOG §v0.24.2](../CHANGELOG.md) | tag `v0.24.2` + release | PASS |
 | 2026-07-10 | v0.24.1 | — | [CHANGELOG §v0.24.1](../CHANGELOG.md) | tag `v0.24.1` + release | PASS |

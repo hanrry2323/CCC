@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -288,11 +289,14 @@ class FileBoardStore:
             task["updated_at"] = now_iso()
 
             dst = self.board / to_col / f"{task_id}.jsonl"
-            _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")
+            # 原子迁移：先把更新后的 task 写回 src（status 已更新），再 shutil.move 一次性挪过去。
+            # 这样 dst 的 status 字段和物理位置天然一致。
             try:
-                src.unlink(missing_ok=True)
+                dst.unlink()
             except FileNotFoundError:
                 pass
+            src.write_text(json.dumps(task, ensure_ascii=False) + "\n")
+            shutil.move(str(src), str(dst))
             self._record_event(task_id, from_col, to_col)
             print(f"[board] {task_id}: {from_col} → {to_col}")
             return True
