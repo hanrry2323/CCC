@@ -1,0 +1,2 @@
+{"schema_version": "1.0"}
+{"phase": 1, "status": "done", "scope": ["scripts/hello_v020.py"], "commit_message": "feat: smoke-v020 hello world", "commit": null, "subtasks": {"1.1": "done"}, "timeout": 60, "notes": "", "retry": 0, "retry_at": null}

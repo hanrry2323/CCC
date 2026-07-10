@@ -53,11 +53,21 @@ case "$LEVEL" in
     echo "[ccc-notify] L1 (log only) $TITLE: $MESSAGE"
     ;;
   L2)
-    osascript -e 'on run {m, t}' -e 'display notification m with title t' -e 'end run' -- "$MESSAGE" "CCC L2: $TITLE" >/dev/null 2>&1
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 1 of argv) with title (item 2 of argv)' \
+      -e 'end run' \
+      -- "$MESSAGE" "CCC L2: $TITLE" \
+      >/dev/null 2>&1
     echo "[ccc-notify] L2 sent: $TITLE"
     ;;
   L3)
-    osascript -e 'on run {m, t}' -e 'display notification m with title t subtitle "需要老板拍板" sound name "Basso"' -e 'end run' -- "$MESSAGE" "CCC L3: $TITLE" >/dev/null 2>&1
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 1 of argv) with title (item 2 of argv) subtitle "需要老板拍板" sound name "Basso"' \
+      -e 'end run' \
+      -- "$MESSAGE" "CCC L3: $TITLE" \
+      >/dev/null 2>&1
     echo "[ccc-notify] L3 sent: $TITLE"
     ;;
 esac

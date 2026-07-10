@@ -295,13 +295,17 @@ class FileBoardStore:
             self._unlock(lock)
 
     def update_index(self) -> dict:
-        """更新 .ccc/board/index.json 状态总览"""
-        counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
-        index_file = self.board / "index.json"
-        _atomic_write(
-            index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
-        )
-        return counts
+        """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
+        lock = self._lock()
+        try:
+            counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
+            index_file = self.board / "index.json"
+            _atomic_write(
+                index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
+            )
+            return counts
+        finally:
+            self._unlock(lock)
 
     def quarantine(self, task_id: str, reason: str) -> None:
         """将任务移入异常列（abnormal），附带原因"""

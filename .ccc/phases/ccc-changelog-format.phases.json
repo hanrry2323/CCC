@@ -1,0 +1,2 @@
+{"schema_version": "1.0"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": null, "notes": "CHANGELOG.md 格式统一"}

@@ -2,6 +2,7 @@
 
 所有 CCC 配置参数集中于此。任何脚本需要配置参数时，从这里导入，而不是硬编码。
 """
+
 from __future__ import annotations
 
 import os
@@ -72,7 +73,9 @@ def _resolve_workspace() -> Path:
     """优先环境变量 CCC_WORKSPACE，否则默认为 ccc_home"""
     env = os.environ.get("CCC_WORKSPACE", "").strip()
     if env:
-        return Path(env)
+        p = Path(env).resolve()
+        if p.is_absolute():
+            return p
     ccc_path = Path(__file__).resolve().parent.parent
     return ccc_path
 

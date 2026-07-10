@@ -1,0 +1,2 @@
+{"schema_version": "1.0"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 600, "commit": null, "notes": "board-server 加最低鉴权 + 绑定白名单"}

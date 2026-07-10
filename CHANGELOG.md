@@ -888,3 +888,19 @@ git push origin main --tags
 ## [v0.23.3] - 2026-07-09
 
 - ccc-fix-tester-shell-true: tester_role shell=True 改为 shell=False 看板发布
+
+## [v0.23.4] - 2026-07-09
+
+- adv-ccc-f1: [CRITICAL] 看板 HTTP server 在多 workspace 安装路径中默认绑定 0.0.0.0 且零鉴
+- adv-ccc-f10: [MEDIUM] _parse_plan_scope 解析 plan.md 后直接 ROOT/f 拼接路径遍历 + glob 注入
+- adv-ccc-f13: [MEDIUM] web UI 静态资源目录由 SimpleHTTPRequestHandler 导致目录泄露
+- adv-ccc-f19: [LOW] subprocess 环境未脱敏，凭据可能经 env 泄漏到子进程
+
+## [v0.23.5] - 2026-07-10
+
+### 修复
+- _board_store.py: update_index() 加锁防并发写入导致 index 不一致
+- _config.py: CCC_WORKSPACE 环境变量增加绝对路径校验 + resolve（CWE-22）
+- ccc-notify.sh: osascript notify 参数改为 `on run argv` 带索引访问，防止 MESSAGE 拼接注入
+- HP memory-store: 补上 KB_EMBED_URL 配置指向 feiniu:11434，修复重启后 embed 失效
+- memory-store 健康检查 embed 超时从 5s 提到 15s（bge-m3 CPU 模式首次加载 ~12s）

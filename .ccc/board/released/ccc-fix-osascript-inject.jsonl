@@ -1,0 +1,1 @@
+{"id": "ccc-fix-osascript-inject", "title": "osascript notify 参数引用加固", "status": "released", "description": "[ADV-002] ccc-notify.sh:56,60 用双引号拼接 $MESSAGE/$TITLE 到 osascript -e。改用 printf %s 或 heredoc 传参，阻止 AppleScript 注入", "created_at": "2026-07-09T17:00:00+08:00", "updated_at": "2026-07-09T09:23:05Z", "assignee": null, "tags": ["adversarial-review", "sev-medium", "phase-2"]}

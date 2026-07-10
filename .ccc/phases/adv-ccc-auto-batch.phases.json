@@ -1,0 +1,2 @@
+{"schema_version": "1.0"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 600, "commit": null, "notes": "🔧 CCC auto-fix batch (18 项)", "retry": 5}

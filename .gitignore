@@ -12,6 +12,7 @@ __pycache__/
 .ccc/pids/
 .ccc/reports/
 .ccc/board/events/
+.ccc/engine-heartbeat.json
 # board artifact dirs
 v0.18-*-p1/
 *.p1/
