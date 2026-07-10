@@ -318,7 +318,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
             env=env,
         )
         if result.returncode != 0:
@@ -347,7 +347,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
 
         return plan_content, phases
     except subprocess.TimeoutExpired:
-        raise RuntimeError("claude CLI timed out after 120s")
+        raise RuntimeError("claude CLI timed out after 300s")
 
 
 def _generate_fallback_plan(task: dict) -> str:
@@ -982,7 +982,7 @@ def _review_with_llm(
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
             env=env,
         )
         if r.returncode != 0:
