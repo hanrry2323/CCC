@@ -1,0 +1,1 @@
+smoke-model-2026-07-12 OK with loop/code
