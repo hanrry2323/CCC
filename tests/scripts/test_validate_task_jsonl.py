@@ -265,3 +265,55 @@ class TestCreateTaskIntegration:
         assert not ok
         # 文件不应写入
         assert not (tmp_path / ".ccc" / "board" / "backlog" / "task 001.jsonl").exists()
+
+class TestServerStructuredError:
+    """v0.26: POST /api/tasks 结构化 error feedback（精简版）"""
+
+    @pytest.fixture
+    def server_module(self):
+        """ccc-board-server.py 含连字符，importlib 加载"""
+        server_path = SCRIPTS / "ccc-board-server.py"
+        spec = importlib.util.spec_from_file_location("ccc_board_server", str(server_path))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["ccc_board_server"] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_field_of_extracts_id(self, server_module):
+        assert server_module._field_of("id: required and non-empty") == "id"
+
+    def test_field_of_extracts_status(self, server_module):
+        assert server_module._field_of("status: 'todo' not in COLUMNS") == "status"
+
+    def test_field_of_no_colon_returns_full(self, server_module):
+        assert server_module._field_of("no colon here") == "no colon here"
+
+    def test_rule_of_extracts_rule(self, server_module):
+        assert server_module._rule_of("id: required") == "required"
+        assert server_module._rule_of("status: 'todo' not in COLUMNS") == "'todo' not in COLUMNS"
+
+    def test_got_of_extracts_quoted(self, server_module):
+        assert server_module._got_of("status: 'todo' not in COLUMNS") == "todo"
+        assert server_module._got_of("id: 'task 001' would be sanitized") == "task 001"
+        assert server_module._got_of("plain text") == ""
+
+    def test_fix_hint_for_id_and_status(self, server_module):
+        hint = server_module._fix_hint_for([
+            "id: required",
+            "status: 'todo' not in COLUMNS",
+        ])
+        assert "id" in hint.lower()
+        assert "status" in hint.lower()
+        assert len(hint) <= 200
+
+    def test_fix_hint_for_color_group(self, server_module):
+        hint = server_module._fix_hint_for(["color_group: 'x' must be single A-Z char"])
+        assert "A-Z" in hint or "color" in hint.lower()
+
+    def test_fix_hint_for_empty_errors(self, server_module):
+        assert server_module._fix_hint_for([]) == ""
+
+    def test_fix_hint_truncates_to_200(self, server_module):
+        errors = [f"field_{i}: error msg" for i in range(10)]
+        hint = server_module._fix_hint_for(errors)
+        assert len(hint) <= 200

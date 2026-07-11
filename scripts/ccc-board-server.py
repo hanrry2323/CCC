@@ -547,6 +547,31 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/tasks":
+            # v0.26 Protocol v1: 用 validate_task_jsonl 校验 + 结构化 error
+            try:
+                from _board_store import validate_task_jsonl
+            except ImportError:
+                validate_task_jsonl = None
+            if validate_task_jsonl is not None:
+                # 自动补 created_at/updated_at 以满足校验（IDE 不一定知道）
+                if "created_at" not in data:
+                    data["created_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                if "updated_at" not in data:
+                    data["updated_at"] = data["created_at"]
+                ok, errors = validate_task_jsonl(data)
+                if not ok:
+                    self._json({
+                        "ok": False,
+                        "error": "validation_failed",
+                        "message": "task 校验未通过（CCC Board Protocol v1）",
+                        "details": [
+                            {"field": _field_of(err), "rule": _rule_of(err), "got": _got_of(err)}
+                            for err in errors
+                        ],
+                        "fix_hint": _fix_hint_for(errors),
+                    }, 400)
+                    return
+            # validate 通过或 validate 不可用 → 走原流程
             raw_tid = data.get("id", f"t{int(datetime.now().timestamp())}")
             if not isinstance(raw_tid, str) or not raw_tid.strip():
                 self._json({"error": "invalid id"}, 400)
@@ -563,9 +588,14 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 self._json({"error": "title or description too long"}, 400)
                 return
             if create_task(tid, title, description, ws):
-                self._json({"ok": True, "id": tid})
+                self._json({"ok": True, "task_id": tid}, 201)
             else:
-                self._json({"error": "create failed"}, 500)
+                self._json({
+                    "ok": False,
+                    "error": "create_failed",
+                    "message": "task 写入失败（id 重复或文件锁拒绝）",
+                    "fix_hint": "检查 id 是否已存在；workspace 是否可写",
+                }, 500)
 
         elif path == "/api/tasks/move":
             tid = sanitize_id(data.get("id"))
@@ -590,6 +620,48 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         if "/api/" in str(args[0]):
             return
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
+
+
+# ── v0.26 Protocol v1: 结构化 error helper ──
+
+def _field_of(error: str) -> str:
+    """从 validate_task_jsonl error 字符串提取字段名（'id: required' → 'id'）"""
+    return error.split(":", 1)[0].strip() if ":" in error else error
+
+
+def _rule_of(error: str) -> str:
+    """提取校验规则描述"""
+    return error.split(":", 1)[1].strip() if ":" in error else error
+
+
+def _got_of(error: str) -> str:
+    """提取触发错误的值（如 'todo' / 'task 001'）"""
+    # 匹配 'status: 'todo' not in COLUMNS' → got=todo
+    import re as _re
+    m = _re.search(r"'([^']+)'", error)
+    return m.group(1) if m else ""
+
+
+def _fix_hint_for(errors: list[str]) -> str:
+    """从 errors 列表生成 1-2 句修复建议（≤ 200 字符）"""
+    if not errors:
+        return ""
+    fields = [_field_of(e) for e in errors[:3]]
+    hint_parts = []
+    for f in fields:
+        if f == "id":
+            hint_parts.append("id 仅允许 a-zA-Z0-9_-")
+        elif f == "title":
+            hint_parts.append("title 必填且非空 ≤ 500 字符")
+        elif f == "status":
+            hint_parts.append("status ∈ backlog/planned/in_progress/testing/verified/released/abnormal")
+        elif f in ("created_at", "updated_at"):
+            hint_parts.append(f"{f} 需 ISO 8601 格式 YYYY-MM-DDTHH:MM:SSZ")
+        elif f == "color_group":
+            hint_parts.append("color_group ∈ [A-Z] 单字符")
+        elif f == "color_depth":
+            hint_parts.append("color_depth ≥ 0 整数")
+    return "；".join(hint_parts)[:200]
 
 
 # ── 启动 ──
