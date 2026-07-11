@@ -1240,7 +1240,7 @@ def dev_role() -> dict:
                 phases_file.write_text("\n".join(lines))
         except json.JSONDecodeError as exc:
             _log.debug("phases update failed for %s: %s", task_id, exc)
-        _log.info("%s 第 %d/%d 次重试，退避 %ds", task_id, retry, MAX_RETRY, backoff)
+        _log.info("%s 第 %d/%d 次重试，退避 %s", task_id, retry, MAX_RETRY, backoff)
 
     # Step 2: in_progress 无事，取 planned（迭代，跳过错/缺 plan 的任务）
     if not task:
@@ -1303,12 +1303,7 @@ def dev_role() -> dict:
 
     try:
         _log.info(
-            "%s phase=%s timeout=%ds retry=%d",
-            task_id,
-            phase_id,
-            timeout_s,
-            retry if from_col == "in_progress" else 0,
-        )
+            "%s phase=%s timeout=%s retry=%d", task_id, phase_id, timeout_s, retry if from_col == "in_progress" else 0)
         done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
         exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
         result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
@@ -1401,7 +1396,7 @@ def dev_role() -> dict:
 
     except Exception as e:  # debug
         import traceback as _tb
-        _log.error("%s 启动失败: %s\n%s", task_id, e, _tb.format_exc())
+        _log.error("\n%s 启动失败: %s\n%s", task_id, e, _tb.format_exc())
     finally:
         # prompt 保留给后台读
         pass
@@ -1840,7 +1835,7 @@ def reviewer_role() -> dict:
             )
         except FileExistsError:
             # 另一个 reviewer 实例正在审本 task → 跳过本轮，避免文件竞态覆盖
-            _log.error("[reviewer] %(task_id)s ⏸ 持锁中，跳过本轮", task_id)
+            _log.error("[reviewer] %s ⏸ 持锁中，跳过本轮", task_id)
             continue
         try:
             result = _review_one_task(task_id)
@@ -1881,7 +1876,7 @@ def _review_one_task(task_id: str) -> bool:
             task_id,
         )
         return False
-    _log.info("[reviewer] %(task_id)s size=%(size_class)s lines=%(total_lines)s", task_id, size_class, total_lines)
+    _log.info("[reviewer] %s size=%s lines=%s", task_id, size_class, total_lines)
 
     # 写审查报告（共用目录）
     report_dir = ROOT / ".ccc" / "reports"
@@ -1911,7 +1906,7 @@ def _review_one_task(task_id: str) -> bool:
                 f"## Files Checked ({len(py_files)} 条)\n\n"
                 + "\n".join(f"- {Path(f).name}" for f in py_files)
             )
-            _log.info("[reviewer] %(task_id)s ✓ small-class static pass (%(total_lines)s 行)", task_id, total_lines)
+            _log.info("[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines)
             return True
         elif not py_files:
             if not full_diff.strip():
@@ -1929,10 +1924,10 @@ def _review_one_task(task_id: str) -> bool:
                     f"## Size Class: **small** ({total_lines} 行)\n\n"
                     f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
                 )
-                _log.info("[reviewer] %(task_id)s ✓ small-class plan-only pass", task_id)
+                _log.info("[reviewer] %s ✓ small-class plan-only pass", task_id)
                 return True
             _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
-            _log.error("[reviewer] %(task_id)s ✗ small-class quarantine: 无静态可检查项", task_id)
+            _log.error("[reviewer] %s ✗ small-class quarantine: 无静态可检查项", task_id)
             return False
         else:
             _log.error(
@@ -1957,7 +1952,7 @@ def _review_one_task(task_id: str) -> bool:
 
     if verdict == "pass":
         move_task(task_id, "testing", "verified")
-        _log.info("[reviewer] %(task_id)s ✓ LLM pass", task_id)
+        _log.info("[reviewer] %s ✓ LLM pass", task_id)
         return True
     if verdict == "fail":
         _log.error(
@@ -1995,7 +1990,7 @@ def _review_one_task(task_id: str) -> bool:
             timeout=10,
         )
     except Exception as e:
-        _log.error("[reviewer] notify failed: %(e)s", e)
+        _log.error("[reviewer] notify failed: %s", e)
     return False
 
 
@@ -2062,7 +2057,7 @@ def tester_role() -> dict:
         if all_ok:
             move_task(task_id, "testing", "verified")
             moved.append(task_id)
-            _log.info("[tester] %(task_id)s ✓（验证 {len(verify_commands)} 项）", task_id)
+            _log.info("[tester] %s ✓（验证 {len(verify_commands)} 项）", task_id)
     return {"role": "tester", "moved": moved, "counts": update_index()}
 
 
@@ -2114,7 +2109,7 @@ def ops_role() -> dict:
                     if extra.exists():
                         extra.unlink(missing_ok=True)
                 health["orphan_pids_cleaned"] += 1
-                _log.info("[ops] 清理孤儿 PID: %(stem)s", stem)
+                _log.info("[ops] 清理孤儿 PID: %s", stem)
 
     # 3. 检查 abnormal 列任务（上报）
     abnormal_tasks = list_tasks("abnormal")
@@ -2158,7 +2153,7 @@ def ops_role() -> dict:
         if r.returncode == 0 and "PID" in r.stdout:
             launchd_up.append(role)
         else:
-            _log.info("[ops] ⚠ com.ccc.%(role)s 未运行", role)
+            _log.info("[ops] ⚠ com.ccc.%s 未运行", role)
     health["launchd_up"] = launchd_up
     health["launchd_missing"] = [r for r in roles_check if r not in launchd_up]
 
@@ -2246,7 +2241,7 @@ def kb_role() -> dict:
             timeout=30,
         )
         if push_r.returncode != 0:
-            _log.error("[kb] %(task_id)s git push 失败 rc={push_r.returncode}", task_id)
+            _log.error("[kb] %s git push 失败 rc={push_r.returncode}", task_id)
             fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
             fail_log.write_text(
                 f"# {task_id} git push 失败\n\n"
@@ -2326,7 +2321,7 @@ def kb_role() -> dict:
                 else "# Pending AGENTS.md Suggestions\n\n"
             )
             pending_file.write_text(header + "\n" + new_content + "\n")
-        _log.info("[kb] ✓ 收集 {len(unique)} 条 AGENTS.md 建议到 %(pending_file)s", pending_file)
+        _log.info("[kb] ✓ 收集 {len(unique)} 条 AGENTS.md 建议到 %s", pending_file)
 
     return {
         "role": "kb",
@@ -2879,7 +2874,7 @@ def approve_agents() -> dict:
         else:
             agents_content = "# CCC Agent Guide\n"
         agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
-        _log.info("[approve-agents] 创建 %(agents_file)s", agents_file)
+        _log.info("[approve-agents] 创建 %s", agents_file)
 
     existing = agents_file.read_text().rstrip()
     new_entries = []
@@ -2914,7 +2909,7 @@ def approve_agents() -> dict:
             + migration_line
         )
 
-    _log.info("[approve-agents] ✓ %(n)s 条建议已写入 %(agents_file)s", n, agents_file)
+    _log.info("[approve-agents] ✓ %s 条建议已写入 %s", n, agents_file)
     return {"role": "approve-agents", "approved": n, "file": str(agents_file)}
 
 
@@ -2995,7 +2990,7 @@ def dev_role_launch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %(task_id)s launched PID={proc.pid}", task_id)
+    _log.info("[engine] %s launched PID={proc.pid}", task_id)
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
@@ -3076,7 +3071,7 @@ def dev_role_relaunch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %(task_id)s relaunched PID={proc.pid}", task_id)
+    _log.info("[engine] %s relaunched PID={proc.pid}", task_id)
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
@@ -3111,7 +3106,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                         f.unlink()
                     except OSError:
                         pass
-                _log.error("[engine] %(task_id)s G4: PID 已死，标记为失败", task_id)
+                _log.error("[engine] %s G4: PID 已死，标记为失败", task_id)
                 return {"status": "failed", "retry": 0, "task_id": task_id}
         return {"status": "running", "task_id": task_id}
 
@@ -3144,7 +3139,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             except OSError:
                 pass
         move_task(task_id, "in_progress", "testing")
-        _log.info("[engine] %(task_id)s ✓ moved to testing", task_id)
+        _log.info("[engine] %s ✓ moved to testing", task_id)
         return {"status": "success", "task_id": task_id}
     else:
         # 失败：读 retry 计数，保留 .done 文件供 engine 下次 check
@@ -3217,7 +3212,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             return {"status": "quarantined", "task_id": task_id}
         else:
             # 保留 .done 在磁盘，engine 下次 check 时看到 failed 状态就会 relaunch
-            _log.info("[engine] %(task_id)s rc=%(exit_code)s retry=%(retry)s/%(MAX_RETRY)s", task_id, exit_code, retry, MAX_RETRY)
+            _log.info("[engine] %s rc=%s retry=%s/%s", task_id, exit_code, retry, MAX_RETRY)
             return {"status": "failed", "task_id": task_id, "retry": retry}
 
 
@@ -3309,7 +3304,7 @@ def main():
             try:
                 lines.append(json.loads(line))
             except json.JSONDecodeError as e:
-                _log.error("[board] batch skip invalid JSON: %(e)s", e)
+                _log.error("[board] batch skip invalid JSON: %s", e)
         if args.file:
             fp.close()
         result = batch_process(lines)
@@ -3332,12 +3327,3 @@ def main():
     if args.promote:
         if args.role != "product":
             _log.error("[board] --promote 仅适用于 product 角色")
-            sys.exit(1)
-        result = product_role(task_id=args.promote)
-    else:
-        result = ROLES[args.role]()
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

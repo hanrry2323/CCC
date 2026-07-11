@@ -1398,3 +1398,7 @@ git push origin main --tags
 - `scripts/tests/test_phase_lint.py`：14/14 passed
 - `scripts/tests/test_quarantine_archive.py`：5/5 passed
 - `scripts/tests/test_phase_lint.py` 测试同时验证 legacy API 与 v0.28.0 新 API
+
+## [v0.28.0] - 2026-07-11
+
+- smoke-pipeline-2026-07-12: smoke: 跑通 dev → reviewer → tester → kb 看板发布
