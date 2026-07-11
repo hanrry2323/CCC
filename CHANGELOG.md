@@ -1399,6 +1399,37 @@ git push origin main --tags
 - `scripts/tests/test_quarantine_archive.py`：5/5 passed
 - `scripts/tests/test_phase_lint.py` 测试同时验证 legacy API 与 v0.28.0 新 API
 
-## [v0.28.0] - 2026-07-11
+## [v0.28.0] - 2026-07-11/12
+
+### v0.28.0 审查修复批次（F-1~F-4 核心断点）
+
+#### 修复
+
+- (F1-C1) engine Step 1.5 失败计数器：连续 3 次 product_role 失败 → 移入 abnormal
+  - `scripts/ccc-engine.py` + `.ccc/.product-fail-counter/<tid>.json`
+  - 成功自动清空计数，失败递增，超限 quarantine
+- (F4-H1) auto_approve_agents 重复检测：sha256(content) 指纹 → AGENTS.md hash marker
+  - 旧实现 `"### 来自 {source}" + content[:100]` 因 AGENTS.md 实际写 `({task_id})` 后缀导致 false-negative
+- (F4-H3) auto_approve_agents 事务顺序：先写 cooldown 再写 AGENTS.md
+  - cooldown 写失败 → 不写 AGENTS.md（重启不重复合入）
+- (F3-C1/F3-C2) flywheel-scan.sh ALL_WORKSPACES 去重 + P2 段输出去重
+  - macOS bash 3.2 兼容（declare -A 不可用），P2_WRITTEN 字符串做去重表
+- (N-001/002/004/005) logger / config / json 统一修复
+
+#### 对抗性审查沉淀
+
+- `.ccc/reports/v0.28.0-review-checklist.md` — 28 项跟踪清单
+
+#### 验证
+
+- `tests/e2e/test_f1_backlog_failover.sh` — F-1 失败计数器 + quarantine E2E
+- `tests/e2e/test_f2_size_hint.sh` — F-2 size_hint 阈值边界 E2E
+- `tests/e2e/test_f3_flywheel_dedup.sh` — F-3 workspace/P2 去重 E2E
+- `tests/e2e/test_f4_auto_approve.sh` — F-4 cooldown/sha256/None path E2E
+
+#### 看板发布（smoke）
 
 - smoke-pipeline-2026-07-12: smoke: 跑通 dev → reviewer → tester → kb 看板发布
+- smoke-model-2026-07-12: smoke: 验证 loop/code 模型 看板发布
+- smoke-v0245-test: [ABNORMAL] v0.24.5 smoke 看板发布
+- e2e-mini-2026-07-12: e2e: 小变更验证全链路 看板发布

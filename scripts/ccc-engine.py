@@ -77,6 +77,10 @@ def engine_log(msg: str) -> None:
 
 _engine_shutdown = False  # SIGTERM 标志
 
+# v0.28.0 (F1-C1 修): product_role 失败重试上限
+# product_role 是轻量级 prompt（plan 生成），短时重试 3 次即止损
+_MAX_PRODUCT_RETRIES = 3
+
 
 def engine_loop(workspace: str) -> None:
     """引擎主循环：串行驱动 task backlog→released"""
@@ -189,17 +193,62 @@ def engine_loop(workspace: str) -> None:
             # 老板"我给你任务你来拆"的核心断点：engine idle 时如果 backlog 非空，
             # 自动调 product_role 拆分（生成 plan + phases）→ 挪 planned。
             # 断点已修：现在 user 只需 `create_task` 落 backlog，engine 自动消费。
+            # v0.28.0 (F1-C1 修): 失败计数器 — 连续 _MAX_PRODUCT_RETRIES 次失败移入 abnormal
             if running_task_id is None:
                 backlog = ccc_board.list_tasks("backlog")
                 if backlog:
                     tid = backlog[0]["id"]
-                    engine_log(f"backlog 自动拆分: {tid}")
+                    fail_counter_dir = cfg.workspace / ".ccc" / ".product-fail-counter"
+                    fail_counter_path = fail_counter_dir / f"{tid}.json"
+
+                    # 读当前失败计数
+                    fail_count = 0
+                    if fail_counter_path.exists():
+                        try:
+                            fail_data = json.loads(fail_counter_path.read_text())
+                            fail_count = fail_data.get("fail_count", 0)
+                        except (json.JSONDecodeError, OSError):
+                            fail_count = 0
+
+                    if fail_count >= _MAX_PRODUCT_RETRIES:
+                        engine_log(
+                            f"{tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，"
+                            f"移入 abnormal"
+                        )
+                        store = FileBoardStore(cfg.workspace)
+                        store.quarantine(
+                            tid,
+                            f"product_role 连续失败 {fail_count} 次",
+                        )
+                        continue
+
+                    engine_log(
+                        f"backlog 自动拆分: {tid} (此前失败 {fail_count} 次)"
+                    )
                     try:
                         ccc_board.product_role(task_id=tid)
+                        # 成功：清除失败计数
+                        if fail_counter_path.exists():
+                            fail_counter_path.unlink()
                     except Exception as exc:
-                        engine_log(f"product_role({tid}) 异常: {exc}")
-                        # 失败 1 次 → 跳过此 task，避免死循环占满 idle 窗口
-                        # 下轮再试（可能 product API 临时不可达）
+                        fail_count += 1
+                        fail_counter_dir.mkdir(parents=True, exist_ok=True)
+                        fail_counter_path.write_text(
+                            json.dumps({"fail_count": fail_count}, indent=2)
+                        )
+                        engine_log(
+                            f"product_role({tid}) 异常: {exc} (失败 #{fail_count})"
+                        )
+                        if fail_count >= _MAX_PRODUCT_RETRIES:
+                            engine_log(
+                                f"{tid} 失败 {fail_count} 次 >= "
+                                f"{_MAX_PRODUCT_RETRIES}，移入 abnormal"
+                            )
+                            store = FileBoardStore(cfg.workspace)
+                            store.quarantine(
+                                tid,
+                                f"product_role 连续失败 {fail_count} 次",
+                            )
                     continue  # 立即重检（消费下一个或进 planned）
 
             # ── Step 2: 没有活跃 task，取 planned ──

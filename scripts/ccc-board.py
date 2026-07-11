@@ -3004,15 +3004,23 @@ def auto_approve_agents() -> dict:
         content_text = re.split(r"\n---|\n## ", after_source)[0].strip()
         if not content_text:
             continue
-        # 重复检测：source + content 前 100 字符已在 AGENTS.md
-        sig = f"### 来自 {source}" + content_text[:100]
-        if sig in existing_text:
+        # v0.28.0 (F4-H1 修): 用 sha256(content) 指纹做重复检测
+        # 旧实现 "sig = '### 来自 {source}' + content[:100]" 有 false-negative：
+        # AGENTS.md 实际写为 "### 来自 {source} ({task_id})" 跟 sig 字面不同
+        # → 即使内容 100% 重复也检测不到
+        import hashlib
+        content_hash = hashlib.sha256(content_text.encode("utf-8")).hexdigest()
+        # 标记已写入过的 hash 进 AGENTS.md 时同时写 <!-- @hash:xxx --> 注释
+        # 这里反向检查：现有 AGENTS.md 里是否含此 hash 标记
+        hash_marker = f"<!-- @hash:{content_hash} -->"
+        if hash_marker in existing_text:
             skipped_dup += 1
             continue
         candidates.append({
             "task_id": task_id,
             "source": source,
             "content": content_text,
+            "content_hash": content_hash,
         })
         if len(candidates) >= _AUTO_APPROVE_MAX_PER_RUN:
             break
@@ -3039,21 +3047,51 @@ def auto_approve_agents() -> dict:
         agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
         _log.info("[auto-approve-agents] 创建 %s", agents_file)
 
-    # 合入
+    # v0.28.0 (F4-H3 修): 事务顺序倒过来
+    # 1) 先写 cooldown（防 AGENTS.md 已写但 cooldown 漏写导致下轮重复合入）
+    # 2) 再写 AGENTS.md
+    # 3) 任何中间步失败 → 抛错外层（exit），cooldown 仍在
     new_entries = []
     approved_tasks: list[str] = []
     for s in candidates:
-        entry = f"### 来自 {s['source']} ({s['task_id']})\n\n{s['content']}\n"
+        # v0.28.0 (F4-H1 修): entry 末尾加 sha256 注释，供下次重复检测
+        entry = (
+            f"### 来自 {s['source']} ({s['task_id']})\n\n"
+            f"{s['content']}\n"
+            f"<!-- @hash:{s['content_hash']} -->\n"
+        )
         new_entries.append(entry)
         approved_tasks.append(s["task_id"])
 
-    existing_text = agents_file.read_text().rstrip()
-    agents_file.write_text(existing_text + "\n" + "\n".join(new_entries) + "\n")
-
-    # 更新冷却
+    # Step 1: 写 cooldown（先）
     for tid in approved_tasks:
         cooldown[tid] = today
-    cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False))
+    try:
+        cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False))
+    except OSError as exc:
+        # cooldown 写失败 → 不能继续写 AGENTS.md（下轮会重复合入）
+        _log.error(
+            "cooldown 写入失败: %s — 不写 AGENTS.md，下次重试",
+            exc,
+        )
+        return {
+            "role": "auto-approve-agents",
+            "approved": 0,
+            "error": f"cooldown write failed: {exc}",
+        }
+
+    # Step 2: 写 AGENTS.md
+    try:
+        existing_text = agents_file.read_text().rstrip()
+        agents_file.write_text(existing_text + "\n" + "\n".join(new_entries) + "\n")
+    except OSError as exc:
+        _log.error("AGENTS.md 写入失败: %s — 已写 cooldown，下次重试会跳过", exc)
+        return {
+            "role": "auto-approve-agents",
+            "approved": 0,
+            "approved_task_ids": approved_tasks,
+            "error": f"AGENTS.md write failed: {exc}",
+        }
 
     # 写 pending-agents-suggestions.md 迁移记录
     n = len(candidates)

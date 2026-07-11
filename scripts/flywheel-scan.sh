@@ -68,15 +68,40 @@ SCOPES=(
 )
 
 # 跨 workspace 扫描（多项目聚合）
+# v0.28.0 (F3-C1 修): 用 grep 去重（macOS bash 3.2 不支持 declare -A）
 ALL_WORKSPACES=()
 if [[ -d "$HOME/program" ]]; then
   for ws in "$HOME/program"/*/; do
     if [[ -d "$ws/.ccc/reports" || -d "$ws/.ccc/verdicts" ]]; then
-      ALL_WORKSPACES+=("$ws")
+      # 规范化路径去掉末尾 /
+      ws_norm="${ws%/}"
+      # 去重：检查现有列表里有没有这个路径
+      dup=0
+      for existing in "${ALL_WORKSPACES[@]}"; do
+        if [[ "${existing%/}" == "$ws_norm" ]]; then
+          dup=1
+          break
+        fi
+      done
+      if [[ $dup -eq 0 ]]; then
+        ALL_WORKSPACES+=("$ws")
+      fi
     fi
   done
 fi
-ALL_WORKSPACES+=("$WORKSPACE")  # 当前 workspace 必入
+# 当前 workspace 必入（已去重）
+ws_norm="${WORKSPACE%/}"
+dup=0
+# v0.28.0 fix: set -u 下空数组解引用会失败，加 OR 兜底
+for existing in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
+  if [[ "${existing%/}" == "$ws_norm" ]]; then
+    dup=1
+    break
+  fi
+done
+if [[ $dup -eq 0 ]]; then
+  ALL_WORKSPACES+=("$WORKSPACE")
+fi
 
 echo "# Flywheel Candidates ($REPORT_DATE) — v0.28.0 F-3 升级" > "$OUT_FILE"
 echo "" >> "$OUT_FILE"
@@ -84,7 +109,8 @@ echo "## 扫描范围" >> "$OUT_FILE"
 echo "" >> "$OUT_FILE"
 echo "- 窗口: 最近 ${WINDOW_DAYS} 天" >> "$OUT_FILE"
 echo "- workspace 数: ${#ALL_WORKSPACES[@]}" >> "$OUT_FILE"
-for ws in "${ALL_WORKSPACES[@]}"; do
+# v0.28.0 fix: set -u 下空数组解引用安全模式
+for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
   echo "  - $(basename $ws)" >> "$OUT_FILE"
 done
 echo "- 来源: .ccc/reports/*.md（Executor）+ .ccc/verdicts/*.md（Verifier 权威）" >> "$OUT_FILE"
@@ -101,7 +127,7 @@ for i in "${!PATTERNS[@]}"; do
   # 跨 workspace 统计
   TOTAL=0
   WS_HIT=0
-  for ws in "${ALL_WORKSPACES[@]}"; do
+  for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     # mtime -7 内 + 模式
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
       xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
@@ -126,14 +152,19 @@ echo "## P2 观察中（单 workspace 7 天内 ≥ 3 次）" >> "$OUT_FILE"
 echo "" >> "$OUT_FILE"
 
 P2_COUNT=0
+P2_WRITTEN=""  # v0.28.0 (F3-C2 修): 用普通字符串做去重表（macOS bash 3.2 兼容）
 for i in "${!PATTERNS[@]}"; do
   pat="${PATTERNS[$i]}"
-  for ws in "${ALL_WORKSPACES[@]}"; do
+  for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
       xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
     if [[ $COUNT -ge 3 ]]; then
-      echo "- $pat: $(basename $ws) ${COUNT} 次" >> "$OUT_FILE"
-      P2_COUNT=$((P2_COUNT+1))
+      key="${pat}@${ws}"
+      if ! echo "$P2_WRITTEN" | grep -qF "$key"; then
+        echo "- $pat: $(basename $ws) ${COUNT} 次" >> "$OUT_FILE"
+        P2_WRITTEN="${P2_WRITTEN}${key}"$'\n'
+        P2_COUNT=$((P2_COUNT+1))
+      fi
     fi
   done
 done
