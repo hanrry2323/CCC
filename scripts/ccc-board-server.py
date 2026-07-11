@@ -163,15 +163,14 @@ def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
     return s.move_task(task_id, from_col, to_col)
 
 
-def create_task(
-    task_id: str, title: str, description: str = "", workspace: str = "CCC"
-) -> bool:
+def create_task(data: dict, workspace: str = "CCC", column: str = "backlog") -> bool:
     s = _store_for(workspace)
     if s is None:
         return False
-    task_id = sanitize_id(task_id)
-    data = {"id": task_id, "title": title, "description": description}
-    return s.create_task(data, column="backlog")
+    task_data = dict(data)
+    task_data.pop("workspace", None)           # HTTP 控制字段，非 Board Protocol 数据
+    task_data["id"] = sanitize_id(task_data.get("id", ""))
+    return s.create_task(task_data, column=column)
 
 
 # ── 时间线 ──
@@ -587,7 +586,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             if len(title) > 500 or len(description) > 10000:
                 self._json({"error": "title or description too long"}, 400)
                 return
-            if create_task(tid, title, description, ws):
+            task_data = dict(data)
+            task_data.pop("workspace", None)
+            task_data["id"] = tid
+            if create_task(task_data, workspace=ws, column="backlog"):
                 self._json({"ok": True, "task_id": tid}, 201)
             else:
                 self._json({

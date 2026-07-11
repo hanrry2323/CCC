@@ -358,3 +358,91 @@ class TestAssignColorGroup:
         # 'X' 不在 GROUP_POOL（A-Z）→ fallback to 轮转
         g = assign_color_group(tmp_path, parent_group="X")
         assert g in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+    def test_11_field_wrapper_preservation(self):
+        """H3: HTTP API wrapper 保留所有 11 个 Board Protocol v1 字段"""
+        from cb import assign_color_group
+
+        # 全量 task（包含 all 11 个协议字段）
+        full_task = {
+            "workspace": "smoke",
+            "id": "h3-11-field",
+            "title": "验证11字段保留",
+            "description": "包含所有协议字段",
+            "status": "backlog",
+            "created_at": "2026-07-11T14:00:00Z",
+            "updated_at": "2026-07-11T14:00:00Z",
+            "assignee": "alice",
+            "tags": ["h3", "smoke"],
+            "note": "确保这则 note 不丢失",
+            "schema_version": "1.0",
+            "color_group": "Z",
+            "color_depth": 2,
+        }
+        # wrapper 应 pop workspace 但保留其他 11 个协议字段
+        task_data = dict(full_task)
+        task_data.pop("workspace")
+        task_data["id"] = full_task["id"]
+        assert task_data == {
+            "id": "h3-11-field",
+            "title": "验证11字段保留",
+            "description": "包含所有协议字段",
+            "status": "backlog",
+            "created_at": "2026-07-11T14:00:00Z",
+            "updated_at": "2026-07-11T14:00:00Z",
+            "assignee": "alice",
+            "tags": ["h3", "smoke"],
+            "note": "确保这则 note 不丢失",
+            "schema_version": "1.0",
+            "color_group": "Z",
+            "color_depth": 2,
+        }
+
+    def test_description_length_validation(self):
+        """M7: description 长度超限时应拒绝"""
+        valid_desc = "x" * 9999
+        result, _ = validate_task_jsonl({
+            "id": "test",
+            "title": "x",
+            "description": valid_desc,
+            "status": "backlog",
+            "created_at": "2026-07-11T14:00:00Z",
+            "updated_at": "2026-07-11T14:00:00Z",
+        })
+        assert result, "description <= 10000 应通过"
+
+        invalid_desc = "x" * 10001
+        result, errors = validate_task_jsonl({
+            "id": "test",
+            "title": "x",
+            "description": invalid_desc,
+            "status": "backlog",
+            "created_at": "2026-07-11T14:00:00Z",
+            "updated_at": "2026-07-11T14:00:00Z",
+        })
+        assert not result
+        assert any("description: length" in err for err in errors)
+
+    def test_atomic_color_counter(self, tmp_path):
+        """H5: assign_color_group 使用 _atomic_write"""
+        import cb
+        from cb import assign_color_group
+
+        captured_calls = []
+
+        original_atomic_write = cb._atomic_write
+
+        def mock_atomic_write(path: Path, content: str):
+            captured_calls.append((path, content))
+            original_atomic_write(path, content)
+
+        cb._atomic_write = mock_atomic_write
+        try:
+            g = assign_color_group(tmp_path)
+            assert g in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            # 验证调用了原子写入
+            assert len(captured_calls) == 1
+            counter_path = tmp_path / ".ccc" / "board" / ".color_counter"
+            assert captured_calls[0][0] == counter_path
+        finally:
+            cb._atomic_write = original_atomic_write
