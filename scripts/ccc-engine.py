@@ -371,10 +371,9 @@ def _audit_should_run(workspace: str, interval_hours: int = 2) -> bool:
 
 def _audit_check_old(old_file, interval_hours: int = 2) -> bool:
     """检查旧版 audit-last-run.json（无 workspace slug）"""
-    import json as _json
     from datetime import datetime as _dt
     try:
-        data = _json.loads(old_file.read_text())
+        data = json.loads(old_file.read_text())
         last = _dt.fromisoformat(data["last_run"].replace("Z", "+00:00"))
         now = _dt.now(timezone.utc)
         hours = (now - last).total_seconds() / 3600

@@ -3100,6 +3100,11 @@ def auto_approve_agents() -> dict:
         if hash_marker in existing_text:
             skipped_dup += 1
             continue
+        # v0.28.0 (F4-M3 修): hash 注释被手动编辑破坏时的 fallback
+        # 用 content 前 100 字符做子串检查，避免重复合入
+        if content_text[:100] in existing_text:
+            skipped_dup += 1
+            continue
         candidates.append({
             "task_id": task_id,
             "source": source,
@@ -3151,7 +3156,7 @@ def auto_approve_agents() -> dict:
     for tid in approved_tasks:
         cooldown[tid] = today
     try:
-        cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False))
+        cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False, sort_keys=True))
     except OSError as exc:
         # cooldown 写失败 → 不能继续写 AGENTS.md（下轮会重复合入）
         _log.error(
