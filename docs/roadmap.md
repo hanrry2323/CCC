@@ -6,8 +6,9 @@
 > - **v0.23 阶段**(product 上游智能化):**已发布**,`v0.23.0` + `v0.23.1`
 > - **v0.24 阶段**(Engine phase 感知调度):**已发布**（v0.24.1+2+3+4+5+6+7 累计 7 个 hotfix）
 > - **v0.25 阶段**(全链路对齐 + P1 修复):**已发布**,`v0.25.0`（11 commit）+ `v0.25.1`（3 commit）
-> - **v0.26 阶段**(CCC Board Protocol / 跨 IDE 开放协议):**已规划暂不实施**
-> - **当前最新版本**:v0.25.1
+> - **v0.26 阶段**(CCC Board Protocol / 跨 IDE 开放协议):**已发布**,`v0.26.0`（6 commit）
+> - **v0.27 阶段**(待规划):dev_role worktree 隔离 / WebSocket 推送 / schema_version="1.1"
+> - **当前最新版本**:v0.26.0
 >
 > **范式转变**:
 > 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
@@ -184,7 +185,7 @@
 
 ---
 
-## v0.26 — CCC Board Protocol / 跨 IDE 开放协议（已规划，暂不实施）
+## v0.26 — CCC Board Protocol / 跨 IDE 开放协议（**已完成** v0.26.0）
 
 > **定位**: CCC 从"框架"变成"协议标准"。任意 IDE 工具（Trae/Cursor/Zed/VS Code/OpenCode）
 > 读协议文档 → 写标准 JSONL → 看板全自动流转。CCC 成为任务编排内核，不绑定执行环境。

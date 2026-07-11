@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.26.0] — 2026-07-11 — CCC Board Protocol / 跨 IDE 开放协议
+
+### 修复（6 commit + 41 test case）
+
+CCC 从"框架"升级为"协议标准"：任意 IDE/Trae/Cursor/Zed/VS Code/OpenCode
+读 `references/board-task-schema.md` → 写标准 JSONL → 看板全自动流转。
+
+**Commit 1（0c1c5e9）— Protocol v1 文档重写**
+- `references/board-task-schema.md`：333 行 / 8.6KB，13 章节
+- §0 版本兼容矩阵（CCC ≥ 0.26 接受缺失/schema_version="1.0"）
+- §1 Task 文件格式（7 列目录约定）
+- §2 字段定义（11 条：原 10 + color_group + color_depth）
+- §3 Agent↔列映射表（9 agent 契约）
+- §4 校验规则（11 条规则逐条说明）
+- §5 颜色分层协议（HSL 公式 + 视觉示例）
+- §6 列迁移规则（COLUMN_TRANSITIONS 白名单 + 禁止迁移）
+- §7 事件格式（move/assign/quarantine 3 类）
+- §8 结构化 Error Schema（IDE 错误反馈协议）
+- §9 多语言示例（Python/Bash/Node.js/CLI）
+- §10 向前兼容（缺失字段补默认 / 未知字段忽略）
+- §11 与 QXO 互通示例
+- §12 错误排查 checklist
+
+**Commit 2（7c21996）— validate_task_jsonl() 函数**
+- `scripts/_board_store.py`：validate_task_jsonl(data, *, strict=False)
+- 11 条规则严格执行，return (is_valid, errors)
+- fill_task_defaults(data) 补 schema_version/color_*
+- create_task 集成：失败返回 False + stderr errors
+- 修复 _audit_post_backlog 缺字段（之前被 validate 拒）
+- 27 个新测试
+
+**Commit 3（b943964）— POST /api/tasks 结构化 error**
+- `scripts/ccc-board-server.py`：POST /api/tasks 用 validate_task_jsonl
+- 失败返回 400 + 结构化 error（ok/error/details/fix_hint）
+- 成功返回 201 + {"ok": true, "task_id": tid}
+- 写入失败返回 500 + {"ok": false, "error": "create_failed"}
+- 4 个 helper 函数（_field_of / _rule_of / _got_of / _fix_hint_for）
+- 9 个新测试
+
+**Commit 4（c894ec4）— 颜色分层 server**
+- `scripts/_board_store.py`：assign_color_group(workspace, parent_group=None)
+- GROUP_POOL = A-Z 顺序轮转（持久化 .ccc/board/.color_counter）
+- 单 Engine 串行场景无需 fcntl 锁
+- `scripts/ccc-board.py`：product_role 移 backlog→planned 时自动分配
+  color_group + color_depth=0；phase 继承 depth+1
+- 5 个新测试
+
+**Commit 5（ca55475）— 颜色分层 UI**
+- `scripts/ccc-board-ui/index.html`：taskHue() + taskBg() HSL 计算
+- 卡片渲染：color_group 存在时 border-left-color + width=4px
+- 兼容老 task（无 color_group 字段回退 3px 边框）
+
+### 红线检查
+- R-04 reviewer 强制参与：未触动，test_advisory_lock.py 仍绿
+- R-08 不能 skip 列：未触动，move_task 白名单不变
+- R-12 强制人工介入：未触动，fallback quarantine 路径不变
+- X1-X7 进程/锁/文件：未触动
+
+### 测试统计
+- v0.25.1 baseline: 137 passed
+- v0.26.0 新增: 41 case (validate 27 + server 9 + color 5)
+- v0.26.0 总量: 178 passed + 1 e2e（仍绿）
+- 整体 pytest 全绿，无 regression
+
+### 跳过
+- dev_role worktree 隔离（roadmap v0.26 #3）：属执行层而非协议层，推 v0.27
+- 完整 RFC 7807 error：IDE 不需要
+- 颜色字段强校验（拒绝重复 group）：视觉分组不需要严格唯一
+- 跨 ws color_group 同步：跨 ws 是审计不是开发
+
+---
+
 ## [v0.25.1] — 2026-07-11 — 5 项 P1 遗留修复（3 项代码 + 测试）
 
 ### 修复（3 commit）
