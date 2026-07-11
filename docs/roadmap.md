@@ -1,13 +1,13 @@
 # CCC 发展路线图
 
-> **当前状态(2026-07-09)**:
+> **当前状态(2026-07-11)**:
 > - **v0.21 阶段**(门控修补):已发布,`v0.21.0`
 > - **v0.22 阶段**(audit 角色):已发布,`v0.22.1`
 > - **v0.23 阶段**(product 上游智能化):**已发布**,`v0.23.0` + `v0.23.1`
-> - **v0.24 阶段**(Engine phase 感知调度):**已规划暂不实施**
-> - **v0.25 阶段**(全链路对齐):**已规划暂不实施**
+> - **v0.24 阶段**(Engine phase 感知调度):**已发布**（v0.24.1+2+3+4+5+6+7 累计 7 个 hotfix）
+> - **v0.25 阶段**(全链路对齐):**已发布**,`v0.25.0`（11 commit 文档+测试同步）
 > - **v0.26 阶段**(CCC Board Protocol / 跨 IDE 开放协议):**已规划暂不实施**
-> - **当前最新版本**:v0.23.1
+> - **当前最新版本**:v0.25.0
 >
 > **范式转变**:
 > 1. **v0.11**: "opencode 写 + 人工 review" 模式 (Lesson 35)
@@ -120,27 +120,62 @@
 
 ---
 
-## v0.24 — Engine phase 感知调度（已规划，暂不实施）
+## v0.24 — Engine phase 感知调度（**已完成** v0.24.1+2+3+4+5+6+7）
 
-> **定位**: Engine 从"平铺串行 task"改为"按 phase 依赖串行"。
->
-> **决策**: 当前任务量级小（3-5 task），好的 plan 本身足够应对混乱。
-> 等出现"20+ task 版本级任务、大量依赖编排"场景时再做。
->
-> **依赖**: 依赖 v0.23（engine 读的 phases 标记由 product 产出）
+> **状态**: 7 个 hotfix 已落地，phase 感知 + 失败传染 + advisory lock +
+> fallback quarantine + retry first backoff 全部实现。代码部分完成，
+> 文档/测试同步由 v0.25.0 收尾。
 
-### 改动范围
-- engine 主循环增加 phase 感知：读 phases.json → 按 phase 边界分组
-- 依赖解析：phase 标注 `depends_on: [phase_id]` → 前 phase 未完成不启动
-- 失败隔离：quarantine task → 同 phase 还有 task 则继续；无则标记 phase failed → 跳过依赖它的 phase
+### 实际改动（v0.24.x 累计）
+- v0.24.1 reviewer 按变更量分级（small/medium/large）
+- v0.24.2 audit 多 workspace 并行化
+- v0.24.3 phases.json fcntl lock + writeback reload + audit timeout + max_workers=2 + small-class diff 非空校验 + diff stat None fail-fast
+- v0.24.4 move_task 原子迁移 + reconcile 工具
+- v0.24.5 reviewer per-task advisory lock + medium/large fallback 强制 quarantine + L2 通知（R-04/R-12 红线）
+- v0.24.6 _acquire_lock 30s 强清 + pid mtime 校验 + phases.json commit 字段 + GET /api/* token 校验
+- v0.24.7 prompt 临时文件改 ~/.ccc/prompts/ + mode 0o600 + retry=0 first backoff 60s
+
+### 已知遗留（CHANGELOG v0.24.4:93-99，5 项 P1）
+- 循环依赖检测
+- max_iter=5 收敛
+- PHASE_TERMINAL_FAIL 进入 blocked 状态
+- 依赖 phase 不存在告警
+- 重试计数器按 phase 独立
+
+> v0.25.0 已补**回归测试**（test_phase_dependencies.py:TestV025P1Backlog 5 case），
+> 实际代码实现推 v0.25+ 后续版本。
 
 ---
 
-## v0.25 — 全链路对齐（已规划，暂不实施）
+## v0.25 — 全链路对齐（**已完成** v0.25.0）
 
-> **定位**: 文档 + 测试 + 7 角色 SKILL 全面同步到新架构。
->
-> **依赖**: v0.23 + v0.24
+> **状态**: 11 commit 已落地，文档 + 测试 + 7 角色 SKILL 全面同步到 v0.24.7+ 新架构。
+
+### 11 commit 清单
+| # | commit | 范围 | 估时 |
+|---|--------|------|------|
+| 1 | `fix(skills/reviewer)` | R-12 红线文字防线 | 35 min |
+| 2 | `docs(CLAUDE.md)` | VERSION + 红线 R- + phase 感知架构图 | 35 min |
+| 3 | `docs(SKILL.md)` | VERSION + Engine 触发 + 4 文件契约 + 关键资产 | 25 min |
+| 4 | `docs(skills)` 6 角色 | product/dev/tester/ops/kb/regress Engine 触发 + phase 感知 | 90 min |
+| 5 | `docs(red-lines)` | R-04/07/08/09/12/14 + X7 强化 | 20 min |
+| 6 | `test_advisory_lock.py` | R-04 验证 | 35 min |
+| 7 | `test_fallback_quarantine.py` | R-12 验证 | 35 min |
+| 8 | `test_retry_backoff.py` | v0.24.7 first backoff | 30 min |
+| 9a | `test_phase_dependencies` 增量 | 5 P1 遗留契约 | 50 min |
+| 9b | `test_phase_end_to_end.py` | 3 phase 链式 + 失败传染 | 50 min |
+| 9c | `tests/e2e/test_pipeline_phase_aware.sh` | phase 感知 bash harness | 60 min |
+| 10 | `release: v0.25.0` | CHANGELOG + roadmap + VERSION | 30 min |
+
+### 验收
+- `python3 -m pytest tests/scripts/ -q --tb=line` → 125 passed
+- `bash tests/e2e/test_pipeline_phase_aware.sh` → 8 step 通过
+- 11 commit 单一职责，可独立 revert
+
+### 不在 v0.25 范围（推到 v0.26）
+- Dashboard 首页（4 端点 + HTML，205min）→ v0.26 协议阶段
+- STRATEGY-MAP.md 深度重写 → v0.26
+- 5 项 P1 遗留的代码实现 → v0.25+ 后续
 
 ### 改动范围
 - STRATEGY-MAP.md / roadmap.md / CLAUDE.md 更新

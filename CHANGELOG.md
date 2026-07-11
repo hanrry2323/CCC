@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.25.0] — 2026-07-11 — 全链路对齐
+
+### 修复（11 commit，含文档 + 测试 + 角色 SKILL 同步）
+
+v0.24.7 五轮对抗性审查修复后，文档/SKILL/测试三层严重落后。本版本按 `.ccc/reviews/adversarial-2026-07-11.json` + Explore agent 审计结果做全链路对齐：
+
+**最高危修复（commit 1）**：
+- `skills/ccc-reviewer/SKILL.md:111-117` 与代码完全相反（"fallback = pass" vs `ccc-board.py:1601-1628` medium/large quarantine）——按 SKILL 走的 agent 复活 v0.23 G2 bypass 红线。R-12 红线文字防线修复
+
+**文档同步（commit 2/3/5）**：
+- `CLAUDE.md`：`0.20.0` → `v0.25.0`；加 R- 红线表；架构图补 phase 感知；4 文件契约加 `reviews/` + `review-locks/`
+- `SKILL.md`：`0.18.0` → `v0.25.0`；7 角色 Engine 触发说明；关键资产清单补 `_review_one_task` / `_board_store.py 30s 强清` 等
+- `references/red-lines.md`：加 R-04/07/08/09/12/14（X- alias）；X7 段重写强化 fallback 语义
+
+**角色 SKILL 同步（commit 4）**：6 个角色（product/dev/tester/ops/kb/regress）SKILL.md 同步 Engine 触发 + phase 感知 + retry 退避
+
+**测试新增（commit 6/7/8/9a/9b/9c）**：
+- `test_advisory_lock.py`（6 case）—— R-04 验证 reviewer per-task lock 互斥
+- `test_fallback_quarantine.py`（8 case）—— R-12 验证 medium/large fallback 强制 quarantine + L2 通知
+- `test_retry_backoff.py`（7 case）—— v0.24.7 retry=0 first backoff 60s + 指数序列
+- `test_phase_dependencies.py` 增量（5 case）—— CHANGELOG v0.24.4:93-99 P1 遗留契约
+- `test_phase_end_to_end.py`（7 case）—— 3 phase 链式依赖端到端
+- `tests/e2e/test_pipeline_phase_aware.sh`（8 step）—— phase 感知 bash harness
+
+### 红线检查
+- R-04（reviewer 强制参与 + advisory lock）：commit 1 + test_advisory_lock ✓
+- R-07（phases.json 原子写）：commit 5 + commit 3 (SKILL.md 同步) ✓
+- R-08（日志统一 logger）：commit 5 ✓
+- R-09（认证 GET 路径）：commit 5 ✓
+- R-12（强制人工介入 fallback quarantine）：commit 1 + test_fallback_quarantine ✓
+- R-14（audit 子进程 timeout）：commit 5 ✓
+
+### 测试统计
+- v0.24.7 baseline: 92 passed
+- v0.25.0 新增: 33 case (6 + 8 + 7 + 5 + 7)
+- v0.25.0 总量: 125 passed + 1 e2e（8 step）
+- 整体 pytest 全绿，无 regression
+
+---
+
 ## [v0.24.7] — 2026-07-11 — 对抗性审查 P2 fixes（prompt 临时文件 / 最小退避）
 
 ### 修复（2 项 medium，1 个 commit）

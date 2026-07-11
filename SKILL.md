@@ -3,7 +3,7 @@ name: ccc-protocol
 description: "CCC — Connect–Claude Code. A 7-role automated development pipeline with kanban board. Trigger when user says: '按 CCC 流程跑 X', 'ccc 跑一下 X', '调度一个多阶段任务', '用看板跑 X'"
 ---
 
-# CCC — Connect–Claude Code (v0.24.7, v0.25.0 release commit 10 同步)
+# CCC — Connect–Claude Code (v0.25.0)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent
 > into a **7-role automated development system** with kanban board and skill-based
@@ -200,4 +200,4 @@ Engine 内部直接调 `ccc-board.py` 的角色函数：
 cat ~/program/CCC/VERSION
 ```
 
-详细历史见 `CHANGELOG.md`。当前：`v0.24.7`（v0.25.0 release commit 10 同步）。
+详细历史见 `CHANGELOG.md`。当前：`v0.25.0`。
