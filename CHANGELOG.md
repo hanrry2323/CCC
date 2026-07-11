@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.25.1] — 2026-07-11 — 5 项 P1 遗留修复（3 项代码 + 测试）
+
+### 修复（3 commit）
+
+CHANGELOG v0.24.4:93-99 列了 5 项 P1 遗留，v0.25.0 补契约测试，v0.25.1 落地 3 项核心代码：
+
+1. **循环依赖检测**（commit a71cec2）
+   - `_detect_phase_cycle()` DFS 三色标记扫环
+   - 环上 phase 强标 skipped（防 dev 写错 phases.json 死锁 Engine）
+   - 写 `.ccc/warnings.json` type=`phase_cycle`
+   - 5 个测试 case（TestV0251CycleDetection）
+
+2. **不存在依赖告警**（commit 80918cf）
+   - `_resolve_phase_dependencies` 扫所有 depends_on，引用不存在的 phase_id 写 warnings
+   - `.ccc/warnings.json` type=`unresolved_dep` 含 missing dict
+   - ccc-notify.sh L2 桌面通知
+   - 3 个测试 case（TestV0251UnresolvedDeps）
+
+3. **max_iter=5 强收敛**（commit 4479a2f）
+   - `_check_phase_failures` 加 `PHASE_MAX_ENGINE_ITER=5` + phases.json metadata `engine_iter` 计数器
+   - iter >= 5 时把非终态 phase 强标 skipped（force_converged=True）
+   - 写 warnings + L2 通知
+   - 4 个测试 case（TestV0251MaxIterConvergence）
+
+### 跳过（v0.25.1 不做）
+- **PHASE_TERMINAL_FAIL blocked**（CHANGELOG v0.24.4:96）：当前 PHASE_TERMINAL_FAIL = {"failed"} 已能让 failed phase 不再 retry，影响小
+- **phase 独立 retry 计数**（v0.24.4:98）：retry counter 当前在 task 级；改 phase 级需重构 dev_role 状态机，工作量大
+
+### 红线检查
+- R-12（强制人工介入）：未触动，fallback quarantine 路径仍生效
+- R-04（reviewer 强制参与 + advisory lock）：未触动
+- 测试统计：137 pytest case + 1 e2e 全绿
+
+---
+
 ## [v0.25.0] — 2026-07-11 — 全链路对齐
 
 ### 修复（11 commit，含文档 + 测试 + 角色 SKILL 同步）
