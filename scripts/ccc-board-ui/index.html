@@ -2,309 +2,486 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CCC 看板</title>
+<meta name="viewport" content="width=1280">
+<title>CCC 控制台 · v0.26 草稿 v2</title>
 <style>
+:root{
+  --bg:#0d1117;--card:#161b22;--card2:#1c2128;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;--dim:#6e7681;
+  --accent:#58a6ff;--success:#7ee787;--danger:#f97583;
+  --warning:#d29922;--purple:#bc8cff;
+  --mono:'SF Mono',Menlo,Consolas,'Courier New',monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b1120;color:#e2e8f0;overflow:hidden;height:100vh;display:flex;flex-direction:column}
-:root{--bg:#0b1120;--srf:#1a2332;--srf2:#1e2a3a;--bd:#2a3a4a;--txt:#e2e8f0;--dim:#7e93a5;--mt:#4a5a6a;--r:8px;--rs:6px}
-.hdr{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--bd);background:var(--srf)}
-.hdr h1{font-size:16px;font-weight:700;letter-spacing:.3px}
-.hdr h1 em{font-style:normal;color:var(--dim);font-weight:400}
-.hdr .r{margin-left:auto;display:flex;gap:8px;align-items:center}
-.hdr select{background:var(--bg);color:var(--txt);border:1px solid var(--bd);padding:5px 10px;border-radius:var(--rs);font-size:12px}
-.hdr .nb{background:#6366f1;color:#fff;border:none;padding:5px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer}
-.hdr .nb:hover{background:#4f46e5}
-.hdr .st{font-size:11px;color:var(--mt);padding:3px 10px;background:var(--bg);border-radius:10px}
-.rbar{display:flex;gap:8px;padding:8px 20px;background:var(--srf);border-bottom:1px solid var(--bd)}
-.role{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--rs);background:var(--bg);font-size:11px;font-weight:500;min-width:70px}
-.role .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.role .dot.ok{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.4)}
-.role .dot.fail{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.4)}
-.role .dot.idle{background:var(--mt)}
-.role .tm{font-size:10px;color:var(--dim);margin-left:auto;font-family:monospace}
-.role .cn{color:var(--dim);font-size:10px;margin-left:2px}
-.m{display:flex;flex:1;overflow:hidden}
-.bb{flex:1;display:flex;gap:8px;padding:10px 16px;overflow-x:auto;min-width:0}
-.col{min-width:220px;max-width:280px;flex:1;display:flex;flex-direction:column;background:var(--srf);border-radius:var(--r);border:1px solid var(--bd)}
-.ch{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);flex-shrink:0}
-.ch .l{display:flex;align-items:center;gap:6px}
-.ch .dt{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.ch .nm{font-size:12px;font-weight:600}
-.ch .ct{font-size:11px;color:var(--dim);background:var(--bg);padding:0 7px;border-radius:8px}
-.cd{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:4px;min-height:50px}
-.card{background:var(--bg);border-radius:var(--rs);padding:8px 10px;border-left:3px solid var(--mt);cursor:pointer;transition:transform .1s,box-shadow .1s}
-.card:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.3)}
-.card .id{font-size:10px;font-family:monospace;color:var(--mt);margin-bottom:1px}
-.card .ti{font-size:12px;font-weight:500;line-height:1.35;word-break:break-word}
-.card .tm{font-size:10px;color:var(--dim);margin-top:3px;font-family:monospace}
-.card .ac{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap}
-.card .ac button{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--bd);background:var(--srf2);color:var(--dim);cursor:pointer}
-.card .ac button:hover{background:var(--bd);color:var(--txt)}
-.emp{text-align:center;color:var(--mt);font-size:11px;padding:16px 0}
-.rp{width:320px;border-left:1px solid var(--bd);display:flex;flex-direction:column;background:var(--srf);flex-shrink:0}
-.rt{flex:1;overflow-y:auto;border-bottom:1px solid var(--bd)}
-.rt h3,.rl h3{font-size:11px;font-weight:600;padding:8px 12px;color:var(--dim);border-bottom:1px solid var(--bd);text-transform:uppercase;letter-spacing:.5px}
-.ev{display:flex;gap:6px;padding:5px 12px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.03)}
-.ev:hover{background:rgba(255,255,255,.03)}
-.ev .t{font-family:monospace;color:var(--mt);white-space:nowrap;font-size:10px;min-width:48px}
-.ev .b{display:inline-block;font-size:9px;padding:0 4px;border-radius:3px;font-weight:600;min-width:20px;text-align:center}
-.ev .b.ok{background:rgba(34,197,94,.2);color:#22c55e}
-.ev .b.go{background:rgba(99,102,241,.2);color:#818cf8}
-.ev .b.fa{background:rgba(239,68,68,.2);color:#ef4444}
-.ev .m{color:var(--txt);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ev .m .hl{color:var(--dim)}
-.rl{height:160px;overflow-y:auto}
-.lg{display:flex;gap:6px;padding:3px 12px;font-size:10px;font-family:monospace;color:var(--dim)}
-.lg:hover{background:rgba(255,255,255,.03)}
-.lg .t{color:var(--mt);min-width:36px}
-.mo{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);justify-content:center;align-items:center}
-.mo.a{display:flex}
-.mo .box{background:var(--srf);border-radius:var(--r);padding:24px;width:420px;max-width:90vw}
-.mo .box h2{font-size:15px;margin-bottom:14px}
-.mo .box label{font-size:11px;color:var(--dim);display:block;margin-bottom:3px}
-.mo .box input,.mo .box textarea,.mo .box select{width:100%;padding:7px 9px;margin-bottom:10px;background:var(--bg);border:1px solid var(--bd);border-radius:var(--rs);color:var(--txt);font-size:12px}
-.mo .box textarea{min-height:60px;resize:vertical;font-family:inherit}
-.mo .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
-.mo .btns button{padding:5px 14px;border-radius:var(--rs);font-size:12px;cursor:pointer;border:none}
-.mo .btns .p{background:#6366f1;color:#fff}
-.mo .btns .c{background:var(--bd);color:var(--txt)}
-@keyframes pop{0%{opacity:0;transform:scale(.95)}100%{opacity:1;transform:scale(1)}}
-.card.ju{animation:pop .2s ease-out}
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
-.card.running{animation:running-pulse 1.5s ease-in-out infinite;box-shadow:0 0 12px rgba(245,158,11,.5)}
-@keyframes running-pulse{0%,100%{box-shadow:0 0 8px rgba(245,158,11,.3)}50%{box-shadow:0 0 20px rgba(245,158,11,.7)}}
-/* detail panel */
-.det-box{width:520px;max-width:92vw}
-.det-box h2{font-size:15px;margin-bottom:14px}
-.det-body{font-size:12px;line-height:1.6;max-height:60vh;overflow-y:auto}
-.det-id{font-family:monospace;font-size:11px;color:var(--dim);padding:4px 0}
-.det-title{font-weight:500;padding:6px 0;font-size:13px}
-.det-desc{padding:6px 0;white-space:pre-wrap;border-top:1px solid var(--bd);margin-top:4px;color:var(--txt)}
-.det-meta{padding:6px 0;border-top:1px solid var(--bd);margin-top:4px;font-size:11px}
-.det-meta span{color:var(--dim)}
-.det-meta .vl{color:var(--txt);margin-right:12px}
-.det-events{padding-top:4px;margin-top:4px;border-top:1px solid var(--bd)}
-.det-events h3{font-size:11px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.det-ev{display:flex;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(255,255,255,.03)}
-.det-ev .t{font-family:monospace;color:var(--mt);font-size:10px;min-width:42px}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+.mono{font-family:var(--mono)}
+
+a{color:inherit;text-decoration:none}
+
+/* ===== A. Status bar ===== */
+.statusbar{position:sticky;top:0;z-index:50;height:56px;padding:0 24px;display:flex;align-items:center;gap:16px;background:rgba(13,17,23,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--mono);font-weight:700;font-size:18px;color:var(--accent);letter-spacing:.5px}
+.workspace{padding:5px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:6px}
+.workspace:hover{border-color:var(--accent)}
+.sb-spacer{flex:1}
+.engine-state{display:flex;align-items:center;gap:8px;padding:5px 14px;border:1px solid var(--border);border-radius:20px;font-size:13px;background:var(--card)}
+.engine-state .dot{width:8px;height:8px;border-radius:50%}
+.engine-state .dot.ok{background:var(--success);box-shadow:0 0 8px var(--success);animation:pulse 1.5s ease-in-out infinite}
+.engine-state .dot.no{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+.engine-state .dot.idle{background:var(--muted)}
+@keyframes pulse{50%{opacity:.5}}
+.alert-chip{display:flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(249,117,131,.12);border:1px solid var(--danger);border-radius:20px;font-size:13px;color:var(--danger);cursor:pointer}
+.alert-chip:hover{background:rgba(249,117,131,.2)}
+
+/* ===== Layout ===== */
+main{padding:20px 24px 40px;max-width:1840px;margin:0 auto}
+section{margin-bottom:24px}
+.sh{font-size:13px;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:10px;font-weight:500}
+.sh .badge{font-size:11px;padding:2px 8px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-weight:400}
+.sh .more{margin-left:auto;font-size:12px;color:var(--muted);font-weight:400;cursor:pointer}
+.sh .more:hover{color:var(--accent)}
+.sh .left-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+/* ===== B. KPI grid ===== */
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.kw{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color .15s}
+.kw:hover{border-color:var(--dim)}
+.kw.attention{border-color:var(--danger);background:linear-gradient(180deg,rgba(249,117,131,.04),var(--card))}
+.kw .label{font-size:13px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.kw .label .ico{font-size:14px}
+.kw .big{font-family:var(--mono);font-size:36px;font-weight:700;line-height:1;margin-bottom:8px}
+.kw .big.danger{color:var(--danger)}
+.kw .big.success{color:var(--success)}
+.kw .big.warning{color:var(--warning)}
+.kw .desc{font-size:13px;color:var(--text);line-height:1.5}
+.kw .meta{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+.kw .ctabar{margin-top:8px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.kw .ctabar > div{height:100%;background:var(--success)}
+
+/* ===== C. Active tasks (main) ===== */
+.tasks{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px}
+.tc{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;transition:transform .15s,border-color .15s}
+.tc:hover{transform:translateY(-2px);border-color:var(--accent)}
+.tc .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.tc .title{font-size:16px;font-weight:600;line-height:1.4;flex:1}
+.tc .id{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tc .ws{padding:1px 7px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.3px;background:rgba(188,140,255,.12);color:var(--purple);border:1px solid rgba(188,140,255,.3)}
+.tc .status-pill{padding:3px 10px;border-radius:12px;font-size:11px;background:rgba(88,166,255,.15);color:var(--accent);font-weight:500;flex-shrink:0}
+.tc .status-pill.test{background:rgba(126,231,135,.15);color:var(--success)}
+.tc .status-pill.dev{background:rgba(245,158,11,.15);color:#f59e0b}
+.tc .who{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)}
+.tc .who .avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#58a6ff,#bc8cff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+.tc .who .avatar.auto{background:linear-gradient(135deg,#7ee787,#58a6ff)}
+.tc .who .action{color:var(--muted);font-size:12px;margin-left:auto}
+.tc .time{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:0 -20px;padding-left:20px;padding-right:20px}
+.tc .time b{color:var(--text);font-weight:500;font-family:var(--mono)}
+.tc .phase-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.tc .phase-row b{color:var(--text);font-weight:500}
+.tc .phase-bar{display:flex;gap:2px;flex:1;height:6px}
+.tc .phase-bar .ph{flex:1;background:var(--border);border-radius:1px;transition:background .3s}
+.tc .phase-bar .ph.done{background:var(--success)}
+.tc .phase-bar .ph.cur{background:linear-gradient(90deg,var(--accent),var(--purple));animation:pulse 1.4s ease-in-out infinite}
+.tc .actions{display:flex;gap:8px;margin-top:2px}
+.tc .btn{padding:6px 14px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer;transition:all .15s}
+.tc .btn:hover{background:var(--card2);border-color:var(--accent);color:var(--accent)}
+.tc .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.tc .btn.primary:hover{background:#4090e0}
+
+/* Empty state */
+.empty{background:var(--card);border:1px dashed var(--border);border-radius:10px;padding:48px 24px;text-align:center;color:var(--muted)}
+.empty .icon{font-size:36px;margin-bottom:12px;opacity:.6}
+.empty .msg{font-size:14px;margin-bottom:6px}
+.empty .sub{font-size:12px;color:var(--dim)}
+
+/* ===== D. Need attention (abnormal) ===== */
+.attention-bar{padding:10px 16px;background:rgba(249,117,131,.08);border:1px solid var(--danger);border-radius:8px;margin-bottom:12px;font-size:13px;color:var(--danger);display:flex;align-items:center;gap:10px}
+.atc{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--danger);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.atc .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.atc .title{font-size:15px;font-weight:600;color:var(--danger);flex:1;display:flex;align-items:center;gap:8px}
+.atc .title .warn{font-size:14px}
+.atc .id{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.atc .id .ws{padding:1px 7px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.3px;background:rgba(188,140,255,.12);color:var(--purple);border:1px solid rgba(188,140,255,.3)}
+.atc .reason{font-size:13px;color:var(--text);padding:8px 12px;background:rgba(249,117,131,.06);border-radius:6px;border-left:2px solid var(--danger);line-height:1.6}
+.atc .reason b{color:var(--danger);font-weight:600}
+.atc .reason .mono{font-size:12px;color:var(--muted)}
+.atc .time{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+.atc .actions{display:flex;gap:8px;margin-top:4px}
+
+/* ===== E. Today's activity ===== */
+.feed{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px 0}
+.feed-row{display:grid;grid-template-columns:90px 80px 1fr;align-items:center;padding:10px 18px;border-bottom:1px solid rgba(48,54,61,.5);font-size:13px;gap:14px}
+.feed-row:last-child{border-bottom:none}
+.feed-row .time{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.feed-row .status{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500}
+.feed-row .status.ok{background:rgba(126,231,135,.15);color:var(--success)}
+.feed-row .status.fail{background:rgba(249,117,131,.15);color:var(--danger)}
+.feed-row .status.start{background:rgba(88,166,255,.15);color:var(--accent)}
+.feed-row .status.wait{background:rgba(210,153,34,.15);color:var(--warning)}
+.feed-row .task{color:var(--text);font-weight:500}
+.feed-row .desc{color:var(--muted);font-size:12px;margin-left:8px}
+
+/* ===== F. Technical details (collapsed) ===== */
+.tech-toggle{padding:10px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--sans);width:100%;text-align:left;display:flex;align-items:center;gap:8px}
+.tech-toggle:hover{border-color:var(--dim);color:var(--text)}
+.tech-toggle .arrow{transition:transform .2s}
+.tech-toggle[aria-expanded="true"] .arrow{transform:rotate(90deg)}
+.tech-body{margin-top:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7}
+.tech-body .ts{color:var(--dim)}
+.tech-body .row{padding:2px 0}
+.tech-body .lbl{color:var(--dim);margin-right:8px}
+.tech-body .v{color:var(--text)}
+
+/* ===== Responsive ===== */
+@media (max-width:1100px){
+  .kpi{grid-template-columns:1fr 1fr}
+  .tasks{grid-template-columns:1fr 1fr}
+}
+@media (max-width:640px){
+  .kpi{grid-template-columns:1fr}
+  .tasks{grid-template-columns:1fr}
+  .alert-chip{display:none}
+}
 </style>
 </head>
 <body>
 
-<div class="hdr">
-  <h1>&#x25C8; CCC <em>&#x770B;&#x677F;</em></h1>
-  <div class="r">
-    <select id="ws" onchange="load()"></select>
-    <span class="st" id="st">&#x00B7;</span>
-    <button class="nb" onclick="nm()">+ &#x65B0;&#x5EFA;</button>
+<!-- ========== A. Status bar ========== -->
+<header class="statusbar">
+  <div class="logo">▣ CCC</div>
+  <div class="workspace" id="ws-selector" onclick="cycleWorkspace()" style="cursor:pointer">▾ <span id="ws-current">所有工作区</span></div>
+  <div class="sb-spacer"></div>
+  <div class="engine-state" id="engineState">
+    <span class="dot ok"></span>
+    <span>Engine 工作中 · 自动模式</span>
   </div>
-</div>
-
-<div class="rbar" id="rbar"></div>
-
-<div class="m">
-  <div class="bb" id="bb"></div>
-  <div class="rp">
-    <div class="rt" id="tl"><h3>&#x6D3B;&#x52A8;</h3></div>
-    <div class="rl" id="rl"><h3>&#x65E5;&#x5FD7;</h3></div>
+  <div class="alert-chip" onclick="document.getElementById('attentionSection').scrollIntoView({behavior:'smooth',block:'start'})">
+    ⚠ 有 <b>1</b> 个任务卡住了，点这里看 →
   </div>
-</div>
+</header>
 
-<div class="mo" id="mo">
-  <div class="box">
-    <h2>&#x65B0;&#x5EFA;&#x4EFB;&#x52A1;</h2>
-    <label>ID</label><input id="fid" placeholder="v0.19-xxx">
-    <label>&#x6807;&#x9898;</label><input id="fti" placeholder="&#x4E00;&#x53E5;&#x8BDD;&#x63CF;&#x8FF0;">
-    <label>&#x63CF;&#x8FF0;</label><textarea id="fde" placeholder="&#x8BE6;&#x60C5;"></textarea>
-    <label>&#x770B;&#x677F;</label><select id="fws"></select>
-    <div class="btns"><button class="c" onclick="closeMo('mo')">&#x53D6;&#x6D88;</button><button class="p" onclick="mk()">&#x521B;&#x5EFA;</button></div>
-  </div>
-</div>
+<main>
 
-<div class="mo" id="dm">
-  <div class="box det-box">
-    <h2 id="dti">&#x4EFB;&#x52A1;&#x8BE6;&#x60C5;</h2>
-    <div class="det-body">
-      <div class="det-id" id="did"></div>
-      <div class="det-title" id="dtt"></div>
-      <div class="det-desc" id="dde"></div>
-      <div class="det-meta" id="dmt"></div>
-      <div class="det-events" id="devs"><h3>&#x6D3B;&#x52A8;&#x6D41;</h3></div>
+  <!-- ========== B. KPI grid (4 widgets, 人类语言) ========== -->
+  <section>
+    <div class="sh"><span class="left-dot"></span>实时状态 <span class="badge">5 秒刷新</span></div>
+    <div class="kpi">
+
+      <div class="kw">
+        <div class="label"><span class="ico">🔨</span>现在在做什么</div>
+        <div><span class="big" id="k-flight">0</span><span style="color:var(--muted);font-size:13px;margin-left:6px">个任务</span></div>
+        <div class="desc">正在开发或测试中</div>
+        <div class="meta" id="k-flight-meta">加载中…</div>
+      </div>
+
+      <div class="kw attention" id="kw-attn" style="display:none">
+        <div class="label"><span class="ico">⚠️</span>需要我处理</div>
+        <div><span class="big danger" id="k-abn">0</span><span style="color:var(--muted);font-size:13px;margin-left:6px">个任务</span></div>
+        <div class="desc">卡住了，等你介入</div>
+        <div class="meta">最早的已卡 <b style="color:var(--danger)" id="k-abn-min">0</b></div>
+      </div>
+
+      <div class="kw">
+        <div class="label"><span class="ico">✨</span>快完成了</div>
+        <div><span class="big success" id="k-soon">0</span><span style="color:var(--muted);font-size:13px;margin-left:6px">个任务</span></div>
+        <div class="desc">在验收环节，预计 <b style="color:var(--success)">30 分钟</b> 内完成</div>
+        <div class="ctabar"><div id="k-soon-bar" style="width:0%"></div></div>
+        <div class="meta">通过验收后会自动进入「已发布」</div>
+      </div>
+
+      <div class="kw">
+        <div class="label"><span class="ico">📊</span>今天的状态</div>
+        <div style="font-size:14px;line-height:1.85;margin-top:4px" id="k-today-body">加载中…</div>
+        <div class="meta" id="k-today-meta">系统健康</div>
+      </div>
+
     </div>
-    <div class="btns" style="margin-top:10px"><button class="c" onclick="closeDetail()">&#x5173;&#x95ED;</button></div>
-  </div>
-</div>
+  </section>
+
+  <!-- ========== C. ACTIVE TASKS (the centerpiece) ========== -->
+  <section>
+    <div class="sh">
+      <span class="left-dot" style="background:var(--success)"></span>
+      正在进行 <span class="badge" id="active-count">0 个任务</span>
+      <span class="more" onclick="location.href='/board.html'">查看全部 →</span>
+    </div>
+    <div class="tasks" id="tasks"></div>
+  </section>
+
+  <!-- ========== D. NEED ATTENTION (abnormal > 0) ========== -->
+  <section id="attentionSection" style="display:none">
+    <div class="sh">
+      <span class="left-dot" style="background:var(--danger)"></span>
+      需要处理 <span class="badge" id="abn-count" style="color:var(--danger);border-color:var(--danger)">0 个卡住</span>
+      <span class="more" onclick="location.href='/board.html?column=abnormal'">查看所有异常 →</span>
+    </div>
+    <div class="attention-bar" id="attention-bar">
+      ⚠ 有 <span id="abn-bar-count">0</span> 个任务卡住，请尽快介入处理
+    </div>
+    <div id="abn-list"></div>
+  </section>
+
+  <!-- ========== E. Today's activity ========== -->
+  <section>
+    <div class="sh">
+      <span class="left-dot" style="background:var(--purple)"></span>
+      今天发生了什么 <span class="badge" id="event-count">最近 0 条</span>
+    </div>
+    <div class="feed" id="events"></div>
+  </section>
+
+  <!-- ========== F. Technical details (collapsed) ========== -->
+  <section>
+    <details>
+      <summary class="tech-toggle" id="techSummary">
+        <span class="arrow">▸</span> 查看技术细节（heartbeat / role_run / exit_code）
+      </summary>
+      <div class="tech-body" id="tech-body">
+        <div class="row"><span class="lbl">workspaces:</span><span class="v" id="t-ws">—</span></div>
+        <div class="row"><span class="lbl">filter:</span><span class="v" id="t-filter">—</span></div>
+        <div class="row"><span class="lbl">generated_at:</span><span class="v" id="t-gen">—</span></div>
+        <div class="row"><span class="lbl">kpi_json:</span><span class="v" id="t-kpi">—</span></div>
+        <div class="row"><span class="lbl">api:</span><span class="v">GET /api/dashboard?workspace=...</span></div>
+      </div>
+    </details>
+  </section>
+
+</main>
 
 <script>
-let C={},S={};
-async function get(p){const r=await fetch(p);return r.ok?r.json():null}
-async function load(){
-  const ws=document.getElementById('ws').value;
-  const r=await get(`/api/board?workspace=${ws}`);
-  if(!r)return;
-  S=r;
-  document.getElementById('st').textContent=ws+' · '+
-    Object.values(r.counts).reduce((a,b)=>a+b,0)+' 个';
-  render();
-  loadRoles();
-  loadTL();
-  loadLogs();
+// ====== 真实数据驱动（CCC Board v0.27 控制台首页） ======
+let WORKSPACES = { all: '所有工作区' };
+let CURRENT_WS = 'all';
+let POLL_MS = 10000;
+
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function render(){
-  const ws=document.getElementById('ws').value;
-  const cols=Object.keys(S.columns);
-  const labels={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
-  const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6','abnormal':'#ef4444'};
-  const next={'backlog':'planned','planned':'in_progress','in_progress':'testing','testing':'verified','verified':'released'};
-  const prev={'planned':'backlog','in_progress':'planned','testing':'in_progress','verified':'testing','released':'verified'};
-  // v0.26 Protocol v1 §5: 颜色分层 HSL 计算
-  // hue = (ord(group) - ord('A')) * 360 / 26
-  // lightness = max(20, 55 - depth * 15)
-  function taskHue(t){if(!t||!t.color_group)return null;const c=t.color_group.toUpperCase().charCodeAt(0);if(c<65||c>90)return null;return((c-65)*360/26)|0;}
-  function taskBg(t){const h=taskHue(t);if(h==null)return null;const depth=Math.max(0,parseInt(t.color_depth||0,10)||0);const L=Math.max(20,55-depth*15);return `hsl(${h},55%,${L}%)`;}
-  const bb=document.getElementById('bb');bb.innerHTML='';
-  for(const col of cols){
-    const tasks=S.columns[col]||[];
-    const d=document.createElement('div');d.className='col';
-    d.innerHTML='<div class="ch"><div class="l"><span class="dt" style="background:'+colors[col]+'"></span><span class="nm">'+labels[col]+'</span></div><span class="ct">'+tasks.length+'</span></div><div class="cd">'+
-      (tasks.length?tasks.map(t=>{
-        const tm=(t.updated_at||t.created_at||'').slice(11,19);
-        const pv=prev[col],nx=next[col];
-        const rnCls=(col==='in_progress'?' running':'');
-        // v0.26: color_group 渲染左边框色（border-left-color）
-        const bg=taskBg(t);
-        const styleAttr=bg?` style="border-left-color:${bg};border-left-width:4px"`:'';
-        return '<div class="card'+rnCls+'" data-id="'+esc(t.id)+'" data-col="'+col+'" data-prev="'+(pv||'')+'" data-next="'+(nx||'')+'"'+styleAttr+'><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
-          '</div><div class="ac">'+
-          (pv?'<button class="mv-btn mv-prev">←</button>':'')+
-          (nx?'<button class="mv-btn mv-next">→</button>':'')+
-          '</div></div>';
-      }).join(''):'<div class="emp">-</div>')+
-      '</div>';
-    bb.appendChild(d);
+
+function abbr(name){
+  if(!name) return '?';
+  return name.charAt(0);
+}
+
+function renderKPI(d){
+  document.getElementById('k-flight').textContent = d.kpi.in_progress;
+  const abnEl = document.getElementById('kw-attn');
+  if(d.kpi.abnormal > 0){
+    abnEl.style.display = '';
+    document.getElementById('k-abn').textContent = d.kpi.abnormal;
+    const m = (d.abnormal_tasks[0] && d.abnormal_tasks[0].stuck_minutes) || 0;
+    document.getElementById('k-abn-min').textContent = `最早的已卡 ${m} 分钟`;
+  } else {
+    abnEl.style.display = 'none';
   }
-}
-async function mv(id,f,t){
-  const ws=document.getElementById('ws').value;
-  await fetch('/api/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,from:f,to:t,workspace:ws})});
-  load();loadTL();loadLogs();
-}
-async function loadTL(){
-  const r=await get('/api/timeline?limit=20');
-  if(!r)return;
-  const b=document.getElementById('tl');
-  b.innerHTML='<h3>活动</h3>'+r.events.slice(0,20).map(e=>{
-    if(e.type==='role_run'){
-      const ok=e.exit_code==='0';
-      return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b '+(ok?'ok':'fa')+'">'+(e.exit_code||'?')+'</span><span class="m">'+e.role.toUpperCase()+'</span></div>';
+  document.getElementById('k-soon').textContent = d.kpi.ready_to_release;
+  // 进度条：30 分钟窗口
+  const soon = d.kpi.ready_to_release;
+  const soonBar = document.getElementById('k-soon-bar');
+  if(soonBar){
+    const etaDone = d.today_events.filter(e => e.to_column === 'verified' || e.to_column === 'released').length;
+    const etaTotal = Math.max(soon, 1);
+    soonBar.style.width = Math.min(100, Math.round(etaDone / etaTotal * 100)) + '%';
+  }
+  // W1 详情
+  const flightMeta = document.getElementById('k-flight-meta');
+  if(flightMeta){
+    if(d.active_tasks.length === 0){
+      flightMeta.textContent = '暂时没有任务在跑';
+    } else {
+      const oldest = d.active_tasks[d.active_tasks.length - 1];
+      flightMeta.innerHTML = `最早的已开工 <b>${esc(oldest.elapsed_cn || '——')}</b>`;
     }
-    return '<div class="ev"><span class="t">'+(e.time||'').slice(11,19)+'</span><span class="b go">→</span><span class="m">'+(e.task_id||'')+'</span></div>';
+  }
+  // W1 chips（最多 3 个任务名）
+  const flightList = document.getElementById('k-flight-list');
+  if(flightList){
+    flightList.innerHTML = d.active_tasks.slice(0, 3).map(t =>
+      `<span class="chip">${esc(t.title.length > 8 ? t.title.slice(0, 8) + '…' : t.title)}</span>`
+    ).join('');
+  }
+  // W4 今天的状态
+  const todayBody = document.getElementById('k-today-body');
+  const todayMeta = document.getElementById('k-today-meta');
+  if(todayBody){
+    const t = d.kpi.today;
+    todayBody.innerHTML =
+      `修了 <b style="color:var(--success)">${t.fixed}</b> 个<br>` +
+      `发版 <b style="color:var(--accent)">${t.released}</b> 次<br>` +
+      `产生 <b style="color:var(--warning)">${t.moved}</b> 条状态变更`;
+  }
+  if(todayMeta){
+    const issues = d.kpi.abnormal;
+    todayMeta.textContent = issues > 0
+      ? `系统注意 · ${issues} 个等你处理`
+      : '系统健康';
+  }
+}
+
+function renderActive(tasks){
+  const grid = document.getElementById('tasks');
+  document.getElementById('active-count').textContent = `${tasks.length} 个任务`;
+  if(tasks.length === 0){
+    grid.innerHTML = '<div class="task-empty">✓ 暂无进行中的任务</div>';
+    return;
+  }
+  grid.innerHTML = tasks.map(t => {
+    const phaseBar = [];
+    for(let i=0; i<t.phase_total; i++){
+      let cls = 'ph';
+      if(i < t.phase_index-1) cls += ' done';
+      else if(i === t.phase_index-1) cls += ' cur';
+      phaseBar.push(`<div class="${cls}"></div>`);
+    }
+    const initial = t.assignee ? abbr(t.assignee) : '⚙';
+    const autoCls = t.assignee ? '' : ' auto';
+    const phaseInfo = t.phase_index
+      ? `<b>第 ${t.phase_index} 步 ${esc(t.phase_cn)}</b>`
+      : `<b>卡在 ${esc(t.phase_cn)}</b>`;
+    return `
+      <div class="tc">
+        <div class="head">
+          <div>
+            <div class="title">${esc(t.title)}</div>
+            <div class="id">${esc(t.id)} <span class="ws">${esc(t.workspace)}</span></div>
+          </div>
+          <span class="status-pill">${esc(t.status_pill_cn)}</span>
+        </div>
+        <div class="who">
+          <div class="avatar${autoCls}">${esc(initial)}</div>
+          <div>
+            <div>${esc(t.human_action || '正在执行')}</div>
+            <div class="action">${esc(t.human_who)}</div>
+          </div>
+        </div>
+        <div class="time">
+          <span>已开工 <b>${esc(t.elapsed_cn || '——')}</b></span>
+        </div>
+        <div class="phase-row">
+          <span>当前步骤:</span>
+          ${phaseInfo}
+          <div class="phase-bar">${phaseBar.join('')}</div>
+          <span class="mono" style="font-size:11px">${t.phase_index || 0}/${t.phase_total}</span>
+        </div>
+        <div class="actions">
+          <button class="btn primary" onclick="location.href='/board.html'">查看详情 →</button>
+        </div>
+      </div>`;
   }).join('');
 }
-async function loadLogs(){
-  const r=await get('/api/logs');
-  if(!r)return;
-  const b=document.getElementById('rl');
-  b.innerHTML='<h3>日志</h3>'+r.logs.slice(0,25).map(l=>{
-    const s=l.exit_code==='0'?'ok':l.exit_code==='?||'?'':'fa';
-    return '<div class="lg"><span class="t">'+(l.mtime||'').slice(11,19)+'</span><span class="b '+(s||'')+'" style="display:inline-block;font-size:9px;padding:0 4px;border-radius:3px;min-width:16px;text-align:center">'+
-      (l.exit_code||'?')+'</span>'+l.role.toUpperCase()+' · '+(l.size||0)+'B</div>';
+
+function renderAbnormal(tasks){
+  const sec = document.getElementById('attentionSection');
+  const list = document.getElementById('abn-list');
+  if(tasks.length === 0){ sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  document.getElementById('abn-count').textContent = `${tasks.length} 个卡住`;
+  document.getElementById('abn-bar-count').textContent = tasks.length;
+  list.innerHTML = tasks.map(t => `
+    <div class="atc">
+      <div class="head">
+        <div>
+          <div class="title"><span class="warn">⚠</span> ${esc(t.title || t.id)}</div>
+          <div class="id">${esc(t.id)} <span class="ws">${esc(t.workspace)}</span></div>
+        </div>
+        <span class="status-pill" style="background:rgba(249,117,131,.15);color:var(--danger)">已卡 ${t.stuck_minutes} 分</span>
+      </div>
+      <div class="reason">
+        <b>卡住原因：</b>${esc(t.human_reason)}
+        <br><span class="mono">建议操作：</span>${esc(t.human_suggestion)}
+      </div>
+      <div class="actions">
+        <button class="btn primary" onclick="fetch('/api/tasks/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id:'${esc(t.id)}', from:'abnormal', to:'planned', workspace:'${esc(t.workspace)}')}}).then(r=>r.json()).then(r=>location.reload())">重新执行</button>
+        <button class="btn" onclick="location.href='/board.html'">查看详情</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderEvents(events){
+  const feed = document.getElementById('events');
+  document.getElementById('event-count').textContent = `最近 ${events.length} 条`;
+  if(events.length === 0){
+    feed.innerHTML = '<div class="feed-row"><span class="desc">今天还没有动态</span></div>';
+    return;
+  }
+  feed.innerHTML = events.map(e => {
+    const cls = e.to_column === 'released' || e.to_column === 'verified' ? 'ok'
+              : e.to_column === 'abnormal' ? 'fail' : 'start';
+    const icon = cls === 'ok' ? '✓ ' + (e.to_column === 'released' ? '发版' : '完成')
+              : cls === 'fail' ? '⚠ 卡住' : '▶ 开始';
+    return `
+      <div class="feed-row">
+        <span class="time">${esc(e.time)}</span>
+        <span class="status ${cls}">${icon}</span>
+        <span><span class="task">${esc(e.task_title || e.task_id)}</span><span class="desc">${esc(e.action_cn)}</span></span>
+      </div>`;
   }).join('');
 }
-function nm(){
-  document.getElementById('fid').value='task-'+Math.floor(Date.now()/1000);
-  document.getElementById('fti').value='';
-  document.getElementById('fde').value='';
-  document.getElementById('mo').classList.add('a');
-}
-async function mk(){
-  const id=document.getElementById('fid').value.trim();
-  const ti=document.getElementById('fti').value.trim();
-  const de=document.getElementById('fde').value.trim();
-  const ws=document.getElementById('fws').value;
-  if(!id||!ti){alert('ID 和标题必填');return}
-  await fetch('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,title:ti,description:de,workspace:ws})});
-  document.getElementById('mo').classList.remove('a');
-  await load();
-  loadTL();loadLogs();
-}
-async function loadRoles(){
-  const r=await get('/api/roles');
-  if(!r||!r.roles)return;
-  const b=document.getElementById('rbar');
-  b.innerHTML=r.roles.map(role=>{
-    const s=role.status||'idle';
-    const tm=role.last_run?role.last_run.slice(11,19):'--:--:--';
-    const ec=role.exit_code||'-';
-    return '<div class="role"><span class="dot '+s+'"></span>'+role.role.toUpperCase()+'<span class="tm">'+tm+'</span><span class="cn">'+ec+'</span></div>';
-  }).join('');
-}
-function closeMo(id){document.getElementById(id).classList.remove('a')}
-function closeDetail(){document.getElementById('dm').classList.remove('a')}
 
-async function showDetail(id){
-  const ws=document.getElementById('ws').value;
-  const r=await get(`/api/tasks/${id}/events?workspace=${ws}`);
-  if(!r){alert('任务未找到');return}
-  document.getElementById('dti').textContent='任务: '+r.id;
-  document.getElementById('did').textContent=r.id;
-  document.getElementById('dtt').textContent=r.title||'(无标题)';
-  document.getElementById('dde').textContent=r.description||'(无描述)';
-  const colLabel={'backlog':'待办','planned':'已计划','in_progress':'开发中','testing':'测试中','verified':'已验证','released':'已发布','abnormal':'异常'};
-  const st=colLabel[r._column]||r._column||'?';
-  const cr=(r.created_at||'').slice(0,19).replace('T',' ');
-  const up=(r.updated_at||'').slice(0,19).replace('T',' ');
-  const tg=r.tags&&r.tags.length?' | '+r.tags.join(', '):'';
-  document.getElementById('dmt').innerHTML='<span>状态:</span><span class="vl">'+st+'</span><span>创建:</span><span class="vl">'+cr+'</span><span>更新:</span><span class="vl">'+up+tg+'</span>';
-  const evBox=document.getElementById('devs');
-  if(r.events&&r.events.length){
-    evBox.innerHTML='<h3>活动流</h3>'+r.events.map(e=>{
-      const tm=(e.timestamp||'').slice(11,19);
-      return '<div class="det-ev"><span class="t">'+tm+'</span><span style="color:var(--dim)">'+(e.from||'?')+'</span><span style="color:var(--mt)"> → </span><span style="color:var(--txt)">'+(e.to||'?')+'</span></div>';
-    }).join('');
-  }else{
-    evBox.innerHTML='<h3>活动流</h3><div style="color:var(--mt);font-size:11px;padding:4px 0">无记录</div>';
-  }
-  document.getElementById('dm').classList.add('a');
+function renderTech(d){
+  const wsList = Object.entries(d.workspaces).map(([n,p]) => `${n} → ${p.replace(/^.*\//,'')}`).join('  |  ');
+  document.getElementById('t-ws').textContent = wsList || '（无）';
+  document.getElementById('t-filter').textContent = d.filter;
+  document.getElementById('t-gen').textContent = d.generated_at;
+  document.getElementById('t-kpi').textContent = JSON.stringify(d.kpi);
 }
 
-function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function renderWorkspaceSelector(d){
+  WORKSPACES = { all: '所有工作区' };
+  for(const k of Object.keys(d.workspaces || {})) WORKSPACES[k] = k;
+  const span = document.getElementById('ws-current');
+  if(span){
+    span.textContent = WORKSPACES[CURRENT_WS] || '所有工作区';
+    span.dataset.bound = '1';
+  }
+}
 
-document.getElementById('bb').addEventListener('click',function(e){
-  const btn=e.target.closest('.mv-btn');
-  const card=e.target.closest('.card');
-  if(!card)return;
-  if(btn){
-    e.stopPropagation();
-    const id=card.dataset.id;
-    const col=card.dataset.col;
-    const target=btn.classList.contains('mv-prev')?card.dataset.prev:card.dataset.next;
-    if(target)mv(id,col,target);
-  }else{
-    // 点击卡片本身 → 显示详情
-    showDetail(card.dataset.id);
-  }
-});
+function cycleWorkspace(){
+  const keys = Object.keys(WORKSPACES);
+  if(keys.length === 0) return;
+  const idx = keys.indexOf(CURRENT_WS);
+  CURRENT_WS = keys[(idx + 1) % keys.length];
+  poll();
+}
 
-document.addEventListener('DOMContentLoaded',async()=>{
-  const c=await get('/api/config');
-  if(!c)return; C=c;
-  const sel=document.getElementById('ws');
-  sel.innerHTML='';
-  for(const[n,p]of Object.entries(c.workspaces)){
-    const o=document.createElement('option');o.value=n;o.textContent=n+' ('+p.split('/').pop()+')';sel.appendChild(o);
+async function poll(){
+  try {
+    const r = await fetch(`/api/dashboard?workspace=${encodeURIComponent(CURRENT_WS)}`);
+    if(!r.ok){
+      console.error('dashboard fetch failed', r.status);
+      return;
+    }
+    const d = await r.json();
+    if(!document.getElementById('ws-current').dataset.bound){
+      renderWorkspaceSelector(d);
+      document.getElementById('ws-current').dataset.bound = '1';
+    }
+    renderKPI(d);
+    renderActive(d.active_tasks || []);
+    renderAbnormal(d.abnormal_tasks || []);
+    renderEvents(d.today_events || []);
+    renderTech(d);
+  } catch(e){
+    console.error('poll error', e);
   }
-  const fs=document.getElementById('fws');
-  fs.innerHTML='';
-  for(const n of Object.keys(c.workspaces)){
-    const o=document.createElement('option');o.value=n;o.textContent=n;fs.appendChild(o);
-  }
-  setInterval(()=>{load();loadTL();loadLogs()},5000);
-  await load();
+}
+
+poll();
+setInterval(poll, POLL_MS);
+
+// <details> aria-expanded 同步
+document.querySelectorAll('details').forEach(d => {
+  const sum = d.querySelector('summary');
+  if(sum) sum.setAttribute('aria-expanded', d.open ? 'true' : 'false');
+  d.addEventListener('toggle', () => {
+    if(sum) sum.setAttribute('aria-expanded', d.open ? 'true' : 'false');
+  });
 });
 </script>
+
 </body>
 </html>
