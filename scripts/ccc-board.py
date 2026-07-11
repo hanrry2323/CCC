@@ -2296,6 +2296,7 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
 
     store = FileBoardStore(Path(workspace))
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    now_iso_str = now_iso()
     posted = 0
     for i, item in enumerate(items):
         tid = sanitize_id(f"audit-{category}-{date_str}-{uuid.uuid4().hex[:8]}")
@@ -2306,6 +2307,9 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
                 "title": title,
                 "description": f"[audit] {category} 类问题：\n\n{item}",
                 "tags": ["audit", category],
+                "status": "backlog",
+                "created_at": now_iso_str,
+                "updated_at": now_iso_str,
             },
             column="backlog",
         )

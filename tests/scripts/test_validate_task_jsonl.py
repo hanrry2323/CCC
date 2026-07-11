@@ -1,0 +1,267 @@
+"""test_validate_task_jsonl.py — v0.26 Protocol v1 校验函数测试
+
+覆盖：
+  - 11 条校验规则（每条规则 1 个 pass + 1 个 fail case）
+  - strict 模式拒绝未知字段
+  - 缺失字段补默认（fill_task_defaults）
+  - create_task 集成（实际写文件）
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS = ROOT / "scripts"
+
+os.chdir(str(SCRIPTS))
+sys.path.insert(0, str(SCRIPTS))
+_spec = importlib.util.spec_from_file_location("cb", str(SCRIPTS / "_board_store.py"))
+bs = importlib.util.module_from_spec(_spec)
+sys.modules["cb"] = bs
+_spec.loader.exec_module(bs)
+
+validate_task_jsonl = bs.validate_task_jsonl
+fill_task_defaults = bs.fill_task_defaults
+sanitize_id = bs.sanitize_id
+FileBoardStore = bs.FileBoardStore
+COLUMNS = bs.COLUMNS
+now_iso = bs.now_iso
+
+
+def _valid_task() -> dict:
+    """完整合规 task"""
+    return {
+        "id": "fix-login-500",
+        "title": "修复登录 500 错误",
+        "description": "OAuth callback 返回 500",
+        "status": "backlog",
+        "created_at": "2026-07-11T14:00:00Z",
+        "updated_at": "2026-07-11T14:00:00Z",
+        "assignee": "alice",
+        "tags": ["bug", "auth"],
+        "note": "P1",
+        "schema_version": "1.0",
+        "color_group": "A",
+        "color_depth": 0,
+    }
+
+
+class TestValidateTaskJsonl:
+    """11 条规则 + 容错 + strict 模式"""
+
+    # 规则 1: id
+    def test_rule1_id_valid_passes(self):
+        ok, errs = validate_task_jsonl(_valid_task())
+        assert ok, errs
+
+    def test_rule1_id_missing_fails(self):
+        t = _valid_task()
+        del t["id"]
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("id" in e for e in errs)
+
+    def test_rule1_id_invalid_chars_fails(self):
+        t = _valid_task()
+        t["id"] = "task 001"  # 含空格
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 2: title
+    def test_rule2_title_empty_fails(self):
+        t = _valid_task()
+        t["title"] = ""
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("title" in e for e in errs)
+
+    def test_rule2_title_too_long_fails(self):
+        t = _valid_task()
+        t["title"] = "x" * 501
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 3: status
+    def test_rule3_status_invalid_fails(self):
+        t = _valid_task()
+        t["status"] = "todo"
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("status" in e and "todo" in e for e in errs)
+
+    def test_rule3_status_backlog_passes(self):
+        t = _valid_task()
+        t["status"] = "backlog"
+        ok, _ = validate_task_jsonl(t)
+        assert ok
+
+    # 规则 4: timestamps
+    def test_rule4_created_at_missing_fails(self):
+        t = _valid_task()
+        del t["created_at"]
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("created_at" in e for e in errs)
+
+    def test_rule4_updated_at_invalid_format_fails(self):
+        t = _valid_task()
+        t["updated_at"] = "not-iso-8601"
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 5: description
+    def test_rule5_description_not_string_fails(self):
+        t = _valid_task()
+        t["description"] = 12345
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 6: assignee
+    def test_rule6_assignee_int_fails(self):
+        t = _valid_task()
+        t["assignee"] = 42
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 7: tags
+    def test_rule7_tags_not_list_fails(self):
+        t = _valid_task()
+        t["tags"] = "bug,auth"
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 8: note
+    def test_rule8_note_int_fails(self):
+        t = _valid_task()
+        t["note"] = 999
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    # 规则 9: schema_version
+    def test_rule9_schema_version_int_fails(self):
+        t = _valid_task()
+        t["schema_version"] = 1.0
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    def test_rule9_schema_version_missing_passes(self):
+        """缺失 schema_version 在 strict=False 时补默认"""
+        t = _valid_task()
+        del t["schema_version"]
+        ok, _ = validate_task_jsonl(t)
+        assert ok
+
+    # 规则 10: color_group
+    def test_rule10_color_group_lowercase_fails(self):
+        t = _valid_task()
+        t["color_group"] = "a"  # 必须大写
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    def test_rule10_color_group_missing_passes(self):
+        t = _valid_task()
+        del t["color_group"]
+        ok, _ = validate_task_jsonl(t)
+        assert ok
+
+    # 规则 11: color_depth
+    def test_rule11_color_depth_negative_fails(self):
+        t = _valid_task()
+        t["color_depth"] = -1
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+
+    def test_rule11_color_depth_missing_passes(self):
+        t = _valid_task()
+        del t["color_depth"]
+        ok, _ = validate_task_jsonl(t)
+        assert ok
+
+    # 容错 + strict 模式
+    def test_unknown_field_ignored_in_non_strict(self):
+        t = _valid_task()
+        t["future_field_v027"] = "extra"
+        ok, errs = validate_task_jsonl(t, strict=False)
+        assert ok, errs
+
+    def test_unknown_field_rejected_in_strict(self):
+        t = _valid_task()
+        t["future_field_v027"] = "extra"
+        ok, errs = validate_task_jsonl(t, strict=True)
+        assert not ok
+        assert any("unknown fields" in e for e in errs)
+
+    def test_data_not_dict_fails(self):
+        ok, errs = validate_task_jsonl(["not", "a", "dict"])
+        assert not ok
+
+
+class TestFillTaskDefaults:
+    """fill_task_defaults 补默认字段"""
+
+    def test_fill_minimal_data(self):
+        out = fill_task_defaults({"id": "x"})
+        assert out["schema_version"] == "1.0"
+        assert out["color_group"] is None
+        assert out["color_depth"] == 0
+
+    def test_fill_preserves_existing(self):
+        out = fill_task_defaults({"schema_version": "1.0", "color_group": "B", "color_depth": 2})
+        assert out["schema_version"] == "1.0"
+        assert out["color_group"] == "B"
+        assert out["color_depth"] == 2
+
+
+class TestCreateTaskIntegration:
+    """create_task 集成 validate + fill_defaults"""
+
+    def test_create_valid_task(self, tmp_path):
+        store = FileBoardStore(tmp_path)
+        ok = store.create_task(_valid_task(), column="backlog")
+        assert ok
+        # 验证 task 文件存在且含全部字段
+        task_file = tmp_path / ".ccc" / "board" / "backlog" / "fix-login-500.jsonl"
+        assert task_file.exists()
+        loaded = json.loads(task_file.read_text())
+        assert loaded["id"] == "fix-login-500"
+        assert loaded["color_group"] == "A"
+        assert loaded["color_depth"] == 0
+        assert loaded["schema_version"] == "1.0"
+
+    def test_create_minimal_task_gets_defaults(self, tmp_path):
+        """仅传 id+title+status+timestamps → 默认字段自动补"""
+        store = FileBoardStore(tmp_path)
+        ok = store.create_task(
+            {
+                "id": "minimal-task",
+                "title": "Minimal",
+                "status": "backlog",
+                "created_at": "2026-07-11T14:00:00Z",
+                "updated_at": "2026-07-11T14:00:00Z",
+            },
+            column="backlog",
+        )
+        assert ok
+        loaded = json.loads(
+            (tmp_path / ".ccc" / "board" / "backlog" / "minimal-task.jsonl").read_text()
+        )
+        assert loaded["schema_version"] == "1.0"
+        assert loaded["color_group"] is None
+        assert loaded["color_depth"] == 0
+        assert loaded["description"] == ""
+
+    def test_create_invalid_task_returns_false(self, tmp_path):
+        store = FileBoardStore(tmp_path)
+        bad = _valid_task()
+        bad["id"] = "task 001"  # 含空格，validate 失败
+        ok = store.create_task(bad, column="backlog")
+        assert not ok
+        # 文件不应写入
+        assert not (tmp_path / ".ccc" / "board" / "backlog" / "task 001.jsonl").exists()

@@ -65,6 +65,149 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# v0.26 Protocol v1: 11 条校验规则常量
+VALID_ID_CHARS = re.compile(r"^[a-zA-Z0-9_-]+$")
+TITLE_MAX = 500
+DESCRIPTION_MAX = 10000
+
+
+def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list[str]]:
+    """v0.26 CCC Board Protocol v1 校验入口（事实依据：references/board-task-schema.md §4）
+
+    Returns:
+        (is_valid, errors) — errors 为空列表时 valid
+        第一条 error 必为人类可读摘要（IDE 端 fix_hint）
+
+    11 条规则（与协议文档同步）：
+      1. id 必填，sanitize 后非 "invalid"，仅 [a-zA-Z0-9_-]
+      2. title 必填且非空字符串（≤ TITLE_MAX）
+      3. status 必填 ∈ COLUMNS
+      4. created_at / updated_at 必填，ISO 8601 UTC
+      5. description 类型=str（可空）
+      6. assignee 类型=str|None
+      7. tags 类型=list[str]
+      8. note 类型=str|None
+      9. schema_version 缺省补 "1.0"
+     10. color_group 缺省 None；若存在 ∈ [A-Z] 单字符
+     11. color_depth 缺省 0；若存在 ≥ 0 整数
+
+    strict=True 时：
+      - 不接受未知字段（id/title/status/timestamps/assignee/tags/note/
+        schema_version/color_group/color_depth/description 之外的 key 拒绝）
+      - 类型不符直接拒绝（不允许缺失补默认）
+
+    strict=False（默认）：
+      - 未知字段忽略
+      - 缺失字段补默认
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return False, ["data must be dict"]
+
+    # 规则 1: id
+    raw_id = data.get("id")
+    if raw_id is None or not str(raw_id).strip():
+        errors.append("id: required and non-empty")
+    else:
+        sanitized = sanitize_id(str(raw_id))
+        if sanitized == "invalid":
+            errors.append("id: contains no valid chars (only [a-zA-Z0-9_-] allowed)")
+        elif sanitized != str(raw_id):
+            errors.append(f"id: would be sanitized from '{raw_id}' to '{sanitized}'")
+
+    # 规则 2: title
+    title = data.get("title")
+    if title is None or not str(title).strip():
+        errors.append("title: required and non-empty")
+    elif len(str(title)) > TITLE_MAX:
+        errors.append(f"title: length {len(str(title))} > {TITLE_MAX}")
+
+    # 规则 3: status
+    status = data.get("status")
+    if status is None or str(status).strip() == "":
+        errors.append("status: required")
+    elif status not in COLUMNS:
+        errors.append(f"status: '{status}' not in COLUMNS")
+
+    # 规则 4: created_at / updated_at (ISO 8601)
+    for field in ("created_at", "updated_at"):
+        val = data.get(field)
+        if val is None or str(val).strip() == "":
+            errors.append(f"{field}: required")
+        else:
+            try:
+                datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                errors.append(f"{field}: '{val}' not ISO 8601")
+
+    # 规则 5: description
+    desc = data.get("description", "")
+    if desc is not None and not isinstance(desc, str):
+        errors.append("description: must be string")
+
+    # 规则 6: assignee
+    assignee = data.get("assignee")
+    if assignee is not None and not isinstance(assignee, str):
+        errors.append("assignee: must be string or null")
+
+    # 规则 7: tags
+    tags = data.get("tags", [])
+    if tags is not None:
+        if not isinstance(tags, list):
+            errors.append("tags: must be list")
+        else:
+            for i, t in enumerate(tags):
+                if not isinstance(t, str):
+                    errors.append(f"tags[{i}]: must be string")
+
+    # 规则 8: note
+    note = data.get("note")
+    if note is not None and not isinstance(note, str):
+        errors.append("note: must be string or null")
+
+    # 规则 9: schema_version
+    schema_version = data.get("schema_version")
+    if schema_version is not None and not isinstance(schema_version, str):
+        errors.append("schema_version: must be string")
+
+    # 规则 10: color_group
+    color_group = data.get("color_group")
+    if color_group is not None:
+        if not isinstance(color_group, str):
+            errors.append("color_group: must be string")
+        elif len(color_group) != 1 or not ("A" <= color_group <= "Z"):
+            errors.append(f"color_group: '{color_group}' must be single A-Z char")
+
+    # 规则 11: color_depth
+    color_depth = data.get("color_depth")
+    if color_depth is not None:
+        if not isinstance(color_depth, int) or isinstance(color_depth, bool):
+            errors.append("color_depth: must be int")
+        elif color_depth < 0:
+            errors.append(f"color_depth: must be >= 0, got {color_depth}")
+
+    # strict 模式：拒绝未知字段
+    if strict:
+        allowed = {
+            "id", "title", "description", "status", "created_at", "updated_at",
+            "assignee", "tags", "note", "schema_version", "color_group", "color_depth",
+        }
+        unknown = set(data.keys()) - allowed
+        if unknown:
+            errors.append(f"strict mode: unknown fields: {sorted(unknown)}")
+
+    return (len(errors) == 0), errors
+
+
+def fill_task_defaults(data: dict) -> dict:
+    """v0.26: 补默认字段（缺失 schema_version/color_* 字段补默认）"""
+    out = dict(data)
+    out.setdefault("schema_version", "1.0")
+    out.setdefault("color_group", None)
+    out.setdefault("color_depth", 0)
+    return out
+
+
 def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
     """加文件锁（atomic rename 模式），返回锁对象路径
 
@@ -201,11 +344,14 @@ class FileBoardStore:
     # ── 核心 CRUD ──
 
     def create_task(self, data: dict, column: str = "backlog") -> bool:
-        """创建新 task（含 id 唯一性校验 + 文件锁）"""
-        task_id = sanitize_id(data.get("id", ""))
-        if not task_id or task_id == "invalid":
-            print("[board] create_task: missing 'id'", file=sys.stderr)
+        """创建新 task（v0.26+ 含 validate_task_jsonl 校验 + 11 字段补默认）"""
+        # v0.26 Protocol v1: validate_task_jsonl 校验（11 条规则）
+        is_valid, errors = validate_task_jsonl(data)
+        if not is_valid:
+            for err in errors:
+                print(f"[board] create_task validation: {err}", file=sys.stderr)
             return False
+        task_id = sanitize_id(data["id"])
         if column not in COLUMNS:
             print(f"[board] create_task: invalid column '{column}'", file=sys.stderr)
             return False
@@ -217,15 +363,21 @@ class FileBoardStore:
                 return False
 
             now = now_iso()
+            # v0.26: 补默认 schema_version / color_group / color_depth
+            data_with_defaults = fill_task_defaults(data)
             task = {
                 "id": task_id,
-                "title": data.get("title", ""),
+                "title": data["title"],
                 "description": data.get("description", ""),
                 "status": column,
-                "created_at": now,
-                "updated_at": now,
+                "created_at": data.get("created_at", now),
+                "updated_at": data.get("updated_at", now),
                 "assignee": data.get("assignee"),
                 "tags": data.get("tags", []),
+                "note": data.get("note"),
+                "schema_version": data_with_defaults["schema_version"],
+                "color_group": data_with_defaults["color_group"],
+                "color_depth": data_with_defaults["color_depth"],
             }
             dst = self.board / column / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
