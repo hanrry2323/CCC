@@ -12,7 +12,13 @@ __pycache__/
 .ccc/pids/
 .ccc/reports/
 .ccc/board/events/
+.ccc/board/index.json
 .ccc/engine-heartbeat.json
+# v0.26.1: 运行时产物（自动生成的 reviewer 审计、警告、对比报告）
+.ccc/audit-reports/
+.ccc/warnings.json
+.ccc/report-contrast-*.md
+.ccc/board/backlog/smoke-*.jsonl
 # PWF (planning-with-files) artifacts
 findings.md
 progress.md
