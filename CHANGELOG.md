@@ -1416,6 +1416,11 @@ git push origin main --tags
 - (F1-H2) product_role 原子写: temp → rename 替代直接 write_text
   - 先写 phases (`.tmp` → rename), 再写 plan (`.tmp` → rename)
   - 崩溃时任一文件不存在 → engine Step 2 跳过 → 下一轮重试
+- (F2-C1) ADR 决策: F-2 size_hint 与 R-12 互补非冗余，保留两者
+  - docs/adr/F2-vs-R12-redundancy.md
+- (F2-H1) size_hint 加权判定: lines + file_mentions*20 + section_count*10 替代纯行数
+  - 低行数高引用 plan 也能触发大变更提示
+- (F3-H1) flywheel 报告落盘: scan 结束 cp 到 .ccc/reports/flywheel-YYYY-MM-DD.md
 - (F4-H1) auto_approve_agents 重复检测：sha256(content) 指纹 → AGENTS.md hash marker
   - 旧实现 `"### 来自 {source}" + content[:100]` 因 AGENTS.md 实际写 `({task_id})` 后缀导致 false-negative
 - (F4-H3) auto_approve_agents 事务顺序：先写 cooldown 再写 AGENTS.md
