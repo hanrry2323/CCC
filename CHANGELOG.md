@@ -1410,12 +1410,19 @@ git push origin main --tags
   - 成功自动清空计数，失败递增，超限 quarantine
 - (F1-C2) backlog FIFO: `_board_store.py` `list_tasks()` 按 `created_at` 升序排列
   - 防止 task_id 字典序与创建序不同步导致新 task 被先消费、老 task 永久饿死
+- (F1-H1/H3) product_role 写锁: `_acquire_product_lock` / `_release_product_lock` (fcntl.flock)
+  - 锁文件 `.ccc/.product_role.lock`，30s 超时 + LOCK_NB + 500ms 重试
+  - 防止 Engine 与外部 CLI --promote 并发写 plan+phases 撕裂
+- (F1-H2) product_role 原子写: temp → rename 替代直接 write_text
+  - 先写 phases (`.tmp` → rename), 再写 plan (`.tmp` → rename)
+  - 崩溃时任一文件不存在 → engine Step 2 跳过 → 下一轮重试
 - (F4-H1) auto_approve_agents 重复检测：sha256(content) 指纹 → AGENTS.md hash marker
   - 旧实现 `"### 来自 {source}" + content[:100]` 因 AGENTS.md 实际写 `({task_id})` 后缀导致 false-negative
 - (F4-H3) auto_approve_agents 事务顺序：先写 cooldown 再写 AGENTS.md
   - cooldown 写失败 → 不写 AGENTS.md（重启不重复合入）
 - (F3-C1/F3-C2) flywheel-scan.sh ALL_WORKSPACES 去重 + P2 段输出去重
   - macOS bash 3.2 兼容（declare -A 不可用），P2_WRITTEN 字符串做去重表
+- (F3-H1) flywheel 报告落盘: scan 结束 cp 到 .ccc/reports/flywheel-YYYY-MM-DD.md
 - (N-001/002/004/005) logger / config / json 统一修复
 
 #### 对抗性审查沉淀

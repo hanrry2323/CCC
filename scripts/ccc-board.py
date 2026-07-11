@@ -126,6 +126,46 @@ def _quarantine(task_id: str, reason: str) -> None:
     store.quarantine(task_id, reason)
 
 
+def _acquire_product_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
+    """v0.28.0 (F1-H1/H3): 获取 product_role 写锁（fcntl.flock LOCK_EX）
+
+    与 R-07 _apply_phase_status_updates 同一锁协议。
+    超时后抛 OSError——调用方 catch 后 abort。
+    """
+    import fcntl
+    import errno
+
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            _fd = os.open(str(lockfile), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC)
+            fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # 持锁成功，把 fd 存到 lockfile 上供释放用
+            lockfile._lock_fd = _fd  # type: ignore[attr-defined]
+            return
+        except (OSError, IOError) as e:
+            if hasattr(e, "errno") and e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                if time.monotonic() >= deadline:
+                    raise OSError(f"product_role lock timeout ({timeout_s}s): {lockfile}")
+                time.sleep(0.5)
+                continue
+            os.close(_fd)
+            raise
+
+
+def _release_product_lock(lockfile: Path) -> None:
+    """v0.28.0 (F1-H1/H3): 释放 product_role 写锁"""
+    import fcntl
+
+    fd = getattr(lockfile, "_lock_fd", None)
+    if fd is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+            lockfile._lock_fd = None  # type: ignore[attr-defined]
+
+
 def _task_id_exists(task_id: str) -> bool:
     """检查 task_id 是否在任意列中已存在"""
     return store._task_id_exists(task_id)
@@ -1033,53 +1073,87 @@ def product_role(task_id: str = "") -> dict:
             phases = _generate_fallback_phases()
             fallback = True
 
-        plan_dir = ROOT / ".ccc" / "plans"
-        plan_dir.mkdir(parents=True, exist_ok=True)
-        plan_file = plan_dir / f"{task_id}.plan.md"
-        plan_file.write_text(plan_content)
-        _log.info("✓ 写入 %s", plan_file)
-
-        phases_dir = ROOT / ".ccc" / "phases"
-        phases_dir.mkdir(parents=True, exist_ok=True)
-        phases_file = phases_dir / f"{task_id}.phases.json"
-        schema_line = json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
-        phases_file.write_text(
-            schema_line
-            + "\n"
-            + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
-            + "\n"
-        )
-        _log.info("✓ 写入 %s (%d phases)", phases_file, len(phases))
-
-        move_task(task_id, "backlog", "planned")
-
-        # v0.26 Protocol v1 §5: 自动分配 color_group（首次见 task）
-        # 写 phase 列表时给每个 phase 标 color_depth=1（task 自身是父 depth=0）
+        # v0.28.0 (F1-H1/H3 修): product_role 写 plan+phases 加 advisory lock
+        # R-07 的 _apply_phase_status_updates 已用 fcntl.flock，这里用同一协议。
+        # 锁文件: .ccc/.product_role.lock
+        # F1-H2 (crash 原子性): 先写 temp 文件再 rename，保证两个文件要么都完整要么都不存在
+        product_lock = ROOT / ".ccc" / ".product_role.lock"
+        product_lock.parent.mkdir(parents=True, exist_ok=True)
         try:
-            from _board_store import assign_color_group
-            color_group = assign_color_group(ROOT, parent_group=task.get("color_group"))
-            # 读 task 文件 → 注入 color_group → 写回
-            from pathlib import Path as _P
-            task_file = _P(".ccc/board/planned") / f"{task_id}.jsonl"
-            if task_file.exists():
-                task_data = json.loads(task_file.read_text())
-                task_data["color_group"] = color_group
-                task_data["color_depth"] = 0  # 父任务 depth=0
-                task_file.write_text(json.dumps(task_data, ensure_ascii=False) + "\n")
-                _log.info("%s assigned color_group=%s depth=0", task_id, color_group)
-            # 写 phase color_depth=1（子 phase 继承）
-            if phases:
-                for p in phases:
-                    p.setdefault("color_depth", 1)
-                    p.setdefault("color_group", color_group)
-                phases_file.write_text(
-                    '{"schema_version": "1.1"}'
-                    + "\n"
-                    + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
-                    + "\n"
-                )
-        except Exception as e:
-            _log.warning("color assign failed (non-fatal): %s", e)
+            _acquire_product_lock(product_lock)
+        except Exception as exc:
+            _log.error("product_role 锁获取失败: %s — 放弃写入", exc)
+            return {
+                "role": "product",
+                "error": f"lock acquire failed: {exc}",
+            }
+
+        try:
+            plan_dir = ROOT / ".ccc" / "plans"
+            plan_dir.mkdir(parents=True, exist_ok=True)
+            plan_file = plan_dir / f"{task_id}.plan.md"
+
+            phases_dir = ROOT / ".ccc" / "phases"
+            phases_dir.mkdir(parents=True, exist_ok=True)
+            phases_file = phases_dir / f"{task_id}.phases.json"
+
+            # 写 phases（先，最重要的）
+            schema_line = json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
+            phases_tmp = phases_dir / f".{task_id}.phases.tmp"
+            phases_content = (
+                schema_line
+                + "\n"
+                + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
+                + "\n"
+            )
+            phases_tmp.write_text(phases_content)
+            phases_tmp.rename(phases_file)
+            _log.info("✓ 写入 %s (%d phases)", phases_file, len(phases))
+
+            # 再写 plan
+            plan_tmp = plan_dir / f".{task_id}.plan.tmp"
+            plan_tmp.write_text(plan_content)
+            plan_tmp.rename(plan_file)
+            _log.info("✓ 写入 %s", plan_file)
+
+            move_task(task_id, "backlog", "planned")
+
+            # v0.26 Protocol v1 §5: 自动分配 color_group（首次见 task）
+            # 写 phase 列表时给每个 phase 标 color_depth=1（task 自身是父 depth=0）
+            try:
+                from _board_store import assign_color_group
+                color_group = assign_color_group(ROOT, parent_group=task.get("color_group"))
+                from pathlib import Path as _P
+                task_file = _P(".ccc/board/planned") / f"{task_id}.jsonl"
+                if task_file.exists():
+                    task_data = json.loads(task_file.read_text())
+                    task_data["color_group"] = color_group
+                    task_data["color_depth"] = 0  # 父任务 depth=0
+                    task_file.write_text(json.dumps(task_data, ensure_ascii=False) + "\n")
+                    _log.info("%s assigned color_group=%s depth=0", task_id, color_group)
+                if phases:
+                    for p in phases:
+                        p.setdefault("color_depth", 1)
+                        p.setdefault("color_group", color_group)
+                    phases_tmp = phases_dir / f".{task_id}.phases.tmp"
+                    phases_tmp.write_text(
+                        '{"schema_version": "1.1"}'
+                        + "\n"
+                        + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
+                        + "\n"
+                    )
+                    phases_tmp.rename(phases_file)
+            except Exception as e:
+                _log.warning("color assign failed (non-fatal): %s", e)
+
+            # 清理 temp 文件
+            for tmp in (plan_dir / f".{task_id}.plan.tmp", phases_dir / f".{task_id}.phases.tmp"):
+                if tmp.exists():
+                    tmp.unlink()
+
+        finally:
+            _release_product_lock(product_lock)
+        # ── 锁释放 END ──
 
         result = {
             "role": "product",

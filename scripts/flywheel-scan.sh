@@ -180,7 +180,8 @@ NOISE_COUNT=0
 for i in "${!PATTERNS[@]}"; do
   pat="${PATTERNS[$i]}"
   TOTAL=0
-  for ws in "${ALL_WORKSPACES[@]}"; do
+  # v0.28.0 fix: set -u 下空数组安全
+  for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -1 -name "*.md" 2>/dev/null | \
       xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
     TOTAL=$((TOTAL+COUNT))
@@ -200,5 +201,12 @@ echo "3. 或标记 false positive 忽略" >> "$OUT_FILE"
 echo "" >> "$OUT_FILE"
 echo "红线 18：飞轮候选必须人工 review 才合并。**禁止**自动写 red-lines.md。" >> "$OUT_FILE"
 echo "v0.28.0 F-3：候选质量升级（P1/P2/噪声三级），false-positive 抑制更强。" >> "$OUT_FILE"
+
+# v0.28.0 (F3-H1 修): 落盘到 .ccc/reports/ 供外部消费
+REPORT_DIR="${CCC_DIR:-$WORKSPACE}/.ccc/reports"
+if [[ -d "$REPORT_DIR" ]]; then
+  cp "$OUT_FILE" "$REPORT_DIR/flywheel-${REPORT_DATE}.md"
+  echo "📁 报告已写入: $REPORT_DIR/flywheel-${REPORT_DATE}.md" >&2
+fi
 
 echo "✅ 飞轮扫描完成: $OUT_FILE (P1=${P1_COUNT}, P2=${P2_COUNT}, 噪声=${NOISE_COUNT})"
