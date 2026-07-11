@@ -1165,28 +1165,30 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
 
     try:
         # G1: 优先按 task_id 找关联 commit
+        # v0.24.6 (A24-08): 优先 phases.json 里记录的 commit（防 task_id grep 复用导致
+        # 拿到历史 commit 的 diff，而非当前本次的 diff）；phases.json 缺失再 fallback 到 grep
         commit = ""
         if task_id:
-            log_r = sp.run(
-                ["git", "log", "--all", "--oneline", "--grep", task_id, "--format=%H", "--max-count=1"],
-                cwd=workspace, capture_output=True, text=True, timeout=10,
-            )
-            commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
-            # 也查 phases.json 里记录的 commit ref
+            phases_file = workspace / ".ccc" / "phases" / f"{task_id}.phases.json"
+            if phases_file.exists():
+                for line in phases_file.read_text().splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        phase = json.loads(line)
+                        if phase.get("commit"):
+                            commit = phase["commit"]
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            # fallback: git log --grep task_id（仅在 phases.json 无记录时用）
             if not commit:
-                phases_file = workspace / ".ccc" / "phases" / f"{task_id}.phases.json"
-                if phases_file.exists():
-                    for line in phases_file.read_text().splitlines():
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            phase = json.loads(line)
-                            if phase.get("commit"):
-                                commit = phase["commit"]
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                log_r = sp.run(
+                    ["git", "log", "--all", "--oneline", "--grep", task_id, "--format=%H", "--max-count=1"],
+                    cwd=workspace, capture_output=True, text=True, timeout=10,
+                )
+                commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
 
         if commit:
             # task 级别的 diff

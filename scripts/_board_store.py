@@ -65,53 +65,68 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _acquire_lock(lockfile: Path, timeout_s: float = 5.0) -> object:
+def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
     """加文件锁（atomic rename 模式），返回锁对象路径
 
     只用 atomic 创建（O_CREAT|O_EXCL）：无 fcntl 死锁、无截断写。
     持锁进程被杀死后锁文件残留，下次获取时检测 pid 失效自动清理。
+
+    v0.24.6 (A24-02): 阈值 5s → 30s；锁内容改为 "{pid}|{mtime}"；
+    强清条件：elapsed > 30s 且 pid 已死；活 pid 永不强制清理（防 PID reuse 误杀无辜进程）。
     """
+    import time as _t
     excl_path = lockfile.with_name(f".{lockfile.name}.excl")
-    deadline = time.monotonic() + timeout_s
+    deadline = _t.monotonic() + timeout_s
     while True:
         try:
             fd = os.open(str(excl_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
+            payload = f"{os.getpid()}|{_t.time():.3f}".encode()
+            os.write(fd, payload)
             os.close(fd)
             return excl_path
         except FileExistsError:
-            # 残留锁检测：持有进程死了就清掉
+            # 残留锁检测：持有进程死了 + 锁已超 30s 才清（防 PID reuse 误杀）
             try:
-                pid_str = excl_path.read_text().strip()
-                if pid_str:
+                content = excl_path.read_text().strip()
+                if "|" in content:
+                    pid_str, mtime_str = content.split("|", 1)
                     pid = int(pid_str)
-                    try:
-                        os.kill(pid, 0)
-                    except (OSError, ProcessLookupError):
-                        excl_path.unlink(missing_ok=True)
-                        continue
+                    mtime = float(mtime_str)
+                else:
+                    # 兼容旧格式（无 mtime）：立即清理升级到新格式
+                    pid = int(content)
+                    mtime = 0.0
+                elapsed = _t.time() - mtime if mtime > 0 else 999999
+                try:
+                    os.kill(pid, 0)
+                    pid_alive = True
+                except (OSError, ProcessLookupError):
+                    pid_alive = False
+                # 清理条件：pid 已死 OR (pid 活但锁已超 30s 且 deadline 已过)
+                if not pid_alive:
+                    excl_path.unlink(missing_ok=True)
+                    continue
+                if elapsed > timeout_s and _t.monotonic() > deadline:
+                    print(
+                        f"[board] WARN: force-clearing stale lock pid={pid} elapsed={elapsed:.1f}s",
+                        file=sys.stderr,
+                    )
+                    excl_path.unlink(missing_ok=True)
+                    continue
             except (ValueError, OSError):
+                # 锁文件损坏：直接清理
                 excl_path.unlink(missing_ok=True)
                 continue
 
-            if time.monotonic() > deadline:
+            if _t.monotonic() > deadline:
                 print(
-                    f"[board] ERROR: lock timeout after {timeout_s}s: {excl_path}",
+                    f"[board] ERROR: lock timeout after {timeout_s}s, holder still alive (pid reuse risk). Skipping.",
                     file=sys.stderr,
                 )
-                # 超时强清（生产环境高风险，但死锁场景比丢锁更糟）
-                try:
-                    old_pid = excl_path.read_text().strip()
-                    print(f"[board] Force-clearing lock (pid={old_pid})", file=sys.stderr)
-                except Exception:
-                    pass
-                excl_path.unlink(missing_ok=True)
-                continue
-            time.sleep(0.1)
+                return None
+            _t.sleep(0.1)
     # 不可达
     return None
-
-
 def _release_lock(lock_obj) -> None:
     """释放文件锁"""
     if lock_obj is None:

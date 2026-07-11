@@ -349,6 +349,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json({"error": f"unknown workspace: {ws}"}, 400)
             return
 
+        # v0.24.6 (A24-11): GET /api/* 也走 token 校验（仅在 QX_BOARD_TOKEN 设置时）
+        # 之前只对 POST 校验；远端部署时 GET 可枚举全部 task
+        if not self._verify_auth():
+            return
+
         if path == "/api":
             self._json(
                 {

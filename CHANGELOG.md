@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.24.6] — 2026-07-11 — 对抗性审查 P1 fixes（锁 / diff 来源 / auth）
+
+### 修复（3 项 medium-severity，1 个 commit）
+v0.24.4 对抗性审查 P1 三项：
+
+1. **A24-02: `_acquire_lock` 强清阈值 5s → 30s + owner-pid mtime 校验**
+   - 锁文件内容从 `"{pid}"` 升级为 `"{pid}|{mtime}"`
+   - 强清条件：`pid 已死 OR (pid 活 + elapsed > 30s + deadline 已过)`
+   - 防 PID reuse 误杀无辜进程（仅当 pid 已死 OR 锁超 30s 才清；活 pid 永不强制清理）
+2. **A24-08: `_get_git_diff` 优先读 phases.json commit 字段**
+   - 之前 fallback 路径才查 phases.json；现优先 phases.json（防 task_id grep 复用导致拿到历史 commit 的 diff）
+3. **A24-11: `board-server.py` GET /api/* 加可选 token 校验**
+   - 之前 GET 完全不校验；现在与 POST 一致：local 直通、远端需 `Authorization: Bearer <QX_BOARD_TOKEN>`
+
+### 红线检查
+- R-02（并发写安全）：锁强清逻辑加固，防 PID reuse 误杀 ✓
+- R-04（reviewer 强制参与）：diff 来源准确，与 dev 提交一致 ✓
+- R-09（认证）：GET 路径与 POST 对齐 ✓
+
+---
+
 ## [v0.24.5] — 2026-07-11 — 对抗性审查 P0 hotfix（reviewer 防线加固）
 
 ### 修复（2 项 high-severity，1 个 commit）
