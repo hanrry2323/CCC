@@ -19,28 +19,34 @@ mkdir -p "$WORKSPACE/.ccc/board/"{backlog,planned,in_progress,testing,verified,r
 mkdir -p "$WORKSPACE/.ccc/"{plans,phases,pids,reports,verdicts}
 mkdir -p "$WORKSPACE/scripts"
 
-# 写一个 dummy .py 文件供 reviewer 检查
-echo "x = 1" > "$WORKSPACE/scripts/dummy.py"
-
-# profile.md
+# 写 proflie/state 先，git init
 cat > "$WORKSPACE/.ccc/profile.md" <<'EOF'
 # E2E Test Project
 项目名: e2e-test
 主语言: Python
 EOF
 
-# state.md
 cat > "$WORKSPACE/.ccc/state.md" <<'EOF'
 # .ccc/state.md — E2E Test
 当前版本: v0.19-test
 EOF
+
+echo "x = 1" > "$WORKSPACE/scripts/dummy.py"
+
+# 初始化 git 并 commit 初始状态
+cd "$WORKSPACE" && git init && git config user.email "test@ccc" && git config user.name "test" && git add -A && git commit -m "initial commit" > /dev/null 2>&1
+
+# 创建 reviewer 需要的 diff: 修改 dummy.py
+echo "x = 2" > "$WORKSPACE/scripts/dummy.py"
+
+cd "$SCRIPT_DIR"
 
 export CCC_WORKSPACE="$WORKSPACE"
 BOARD_PY="$SCRIPT_DIR/scripts/ccc-board.py"
 
 echo ""
 echo "1. 创建测试任务"
-echo '{"action":"create","id":"e2e-smoke","title":"E2E Smoke Test","column":"backlog"}' | python3 "$BOARD_PY" --batch
+echo '{"action":"create","id":"e2e-smoke","title":"E2E Smoke Test","column":"backlog","status":"backlog","created_at":"2026-07-12","updated_at":"2026-07-12"}' | python3 "$BOARD_PY" --batch
 RC=$?
 if [[ $RC -ne 0 ]]; then echo "❌ Step 1 FAILED"; exit 1; fi
 echo "✓"
@@ -115,10 +121,14 @@ echo "✓"
 echo ""
 echo "=== 额外场景: 白名单外文件有语法错误 ==="
 echo "8. 创建 task-2，plan 只列 dummy.py，但 scripts/ 下有 bad_syntax.py"
-echo '{"action":"create","id":"e2e-bad-outside-scope","title":"Bad file outside scope","column":"backlog"}' | python3 "$BOARD_PY" --batch
+
+# 先 commit 当前状态，让 reviewer 有基线
+cd "$WORKSPACE" && git add -A && git commit -m "baseline for task-2" > /dev/null 2>&1 && cd "$SCRIPT_DIR"
 
 # 写一个语法错误文件（不在 plan 范围）
 echo "this is not valid python ::" > "$WORKSPACE/scripts/bad_syntax.py"
+
+echo '{"action":"create","id":"e2e-bad-outside-scope","title":"Bad file outside scope","column":"backlog","status":"backlog","created_at":"2026-07-12","updated_at":"2026-07-12"}' | python3 "$BOARD_PY" --batch
 
 # 写 plan — 白名单只有 dummy.py
 cat > "$WORKSPACE/.ccc/plans/e2e-bad-outside-scope.plan.md" <<'EOF'
@@ -154,10 +164,14 @@ echo "✓ 白名单外语法错误跳过"
 
 echo ""
 echo "9. 白名单内文件有语法错误 → reviewer 应拒绝"
-echo '{"action":"create","id":"e2e-bad-in-scope","title":"Bad file in scope","column":"backlog"}' | python3 "$BOARD_PY" --batch
+
+# 先 commit 当前状态
+cd "$WORKSPACE" && git add -A && git commit -m "baseline for task-3" > /dev/null 2>&1 && cd "$SCRIPT_DIR"
 
 # 写一个语法错误文件在计划范围内
 echo "also bad :::::" > "$WORKSPACE/scripts/in_scope_bad.py"
+
+echo '{"action":"create","id":"e2e-bad-in-scope","title":"Bad file in scope","column":"backlog","status":"backlog","created_at":"2026-07-12","updated_at":"2026-07-12"}' | python3 "$BOARD_PY" --batch
 
 cat > "$WORKSPACE/.ccc/plans/e2e-bad-in-scope.plan.md" <<'EOF'
 # e2e-bad-in-scope
@@ -175,14 +189,14 @@ echo '{"action":"move","id":"e2e-bad-in-scope","from":"backlog","to":"planned"}'
 echo '{"action":"move","id":"e2e-bad-in-scope","from":"planned","to":"in_progress"}' | python3 "$BOARD_PY" --batch
 echo '{"action":"move","id":"e2e-bad-in-scope","from":"in_progress","to":"testing"}' | python3 "$BOARD_PY" --batch
 
-# reviewer 应拒绝
+# reviewer 应拒绝并 quarantine
 python3 "$BOARD_PY" reviewer
 
-# 确认任务仍在 testing（reviewer 拒绝）
-python3 "$BOARD_PY" index 2>&1 | grep -q '"testing": 1'
+# 确认任务被移入 abnormal（v0.28+ reviewer 对语法错误 quarantine）
+python3 "$BOARD_PY" index 2>&1 | grep -q '"abnormal": 1'
 RC=$?
-if [[ $RC -ne 0 ]]; then echo "❌ Step 9 FAILED: reviewer 应拒绝白名单内的语法错误"; python3 "$BOARD_PY" index; exit 1; fi
-echo "✓ 白名单内语法错误被正确拒绝"
+if [[ $RC -ne 0 ]]; then echo "❌ Step 9 FAILED: reviewer 应 quarantine 白名单内语法错误"; python3 "$BOARD_PY" index; exit 1; fi
+echo "✓ 白名单内语法错误被正确 quarantine"
 
 echo ""
 echo "=============================="

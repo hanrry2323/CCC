@@ -3635,3 +3635,12 @@ def main():
     if args.promote:
         if args.role != "product":
             _log.error("[board] --promote 仅适用于 product 角色")
+            sys.exit(1)
+        result = product_role(task_id=args.promote)
+    else:
+        result = ROLES[args.role]()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
