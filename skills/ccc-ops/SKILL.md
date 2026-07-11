@@ -9,7 +9,7 @@ description: CCC 运维工程师 — 健康检查、告警、进程守护
 
 - **看板列**: 不操作 board（只读所有列）
 - **权限**: 只读（健康检查），有通知权限（`ccc-notify.sh`）
-- **频率**: 每 30min 轮询一次（由 launchd com.ccc.ops 触发）
+- **触发**: `ccc-engine.py → ops_role()`（v0.20.1 起 Engine 空闲时运行，非阻塞）
 
 ### 职责边界
 
@@ -86,3 +86,12 @@ ops 每轮读 `index.json`，检查队列积压：
 - ❌ 改系统配置（红线 1）
 - ❌ 推代码（那是 kb 的活）
 - ❌ 跳过 `.ccc/board/index.json` 读取（不看板状态就告警是盲检）
+
+---
+
+## Phase 状态健康检查（v0.24+）
+
+健康检查清单增项：
+- phase 状态异常（≥1 phase blocked ≥1h）
+- phase retry 计数器 > MAX_RETRY 但未标 failed
+- Engine heartbeat (`engine-heartbeat.json`) 缺失或超 60s 未更新

@@ -9,7 +9,7 @@ description: CCC 知识管理员 — 归档已验证任务、git tag、沉淀知
 
 - **看板列**: verified → released
 - **权限**: 读写（git tag + push），只读 board
-- **频率**: 每天 23:00（由 launchd com.ccc.kb 触发）
+- **触发**: `ccc-engine.py → kb_role()`（v0.20.1 起 reviewer+tester 都 verified 后立即调，不再定时）
 
 ### 职责边界
 
@@ -106,3 +106,10 @@ kb 是 AGENTS.md 建议流的终点：
 - ❌ 删 tag（已发布的 tag 不删除）
 - ❌ 跳过 git push（只打 tag 不推 = 本地标签，远端不可见）
 - ❌ 自己写 AGENTS.md（只能建议，不能绕过人类审批）
+
+---
+
+## 失败 task 不归档（v0.24+）
+
+kb_role 仅处理 `verified` 列 task；`abnormal` 列由 ops_role 健康检查告警，不归档。
+quarantined / abnormal task 不打 git tag，不写 CHANGELOG 段。

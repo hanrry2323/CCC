@@ -9,7 +9,7 @@ description: CCC 产品经理 — 扫 backlog、拆任务、写 plan、过 SPEC 
 
 - **看板列**: backlog → planned
 - **权限**: 只读写 plan/phases 文件，不写源码
-- **频率**: 每 4h 轮询一次（由 launchd com.ccc.product 触发）
+- **触发**: 手动 `--promote` 或 `product_role()`（v0.20.1 起不再定时轮询，product 不在 Engine 主循环）
 
 ### 职责边界
 
@@ -149,3 +149,15 @@ C — Constrained: 输出格式、长度、schema 已定义
 - ❌ 验收项只写命令没有意图（违反红线 2）
 - ❌ 跳过 `.ccc/state.md` 读取（红线 10）
 - ❌ 替 dev 选技术实现（只写"做什么"，不写"怎么做"的技术细节）
+
+---
+
+## Phase 依赖传染（v0.24+）
+
+写 `phases/<task>.phases.json` 时使用 `depends_on: [<phase_id>]` 字段（schema_version="1.1"）：
+
+- phase A 失败 → 依赖 A 的 phase B 自动标 `skipped`
+- phase B `skipped` → 任务整体无法 verified
+- `Engine 主循环` 会跳过 blocked phase；不要靠"手动等"做依赖管理
+
+事实依据：`scripts/ccc-board.py:154-294` (`_resolve_phase_dependencies` + `_check_phase_failures`)

@@ -9,7 +9,7 @@ description: CCC 测试工程师 — 跑 pytest，按 SPEC 逐条验证
 
 - **看板列**: testing → verified
 - **权限**: 只读（run tests、read plan/report），不写源码
-- **频率**: 每 4h 轮询一次（由 launchd com.ccc.tester 触发）
+- **触发**: `ccc-engine.py → tester_role()`（v0.20.1 起 dev 完成后立即调）
 
 ### 职责边界
 
@@ -98,3 +98,14 @@ python3 -m pytest tests/scripts/ -q --tb=line --timeout=60
 - ❌ 信任 report 自报的验收结果（必须独立验证，红线 11）
 - ❌ 通过有任意验收项 FAIL 的 task
 - ❌ 跳过 `.ccc/state.md` 读取（红线 10）
+
+---
+
+## Phase-aware 测试（v0.24+）
+
+`tester_role()` 调度逻辑：
+- 读 `.ccc/phases/<task>.phases.json` 取 phase 列表
+- 跑完 phase 验证 → 写 `phase_tested` 标记
+- 全 phase verified → task testing → verified
+
+每个 phase 独立验收，phase failed 立即退 dev 重试，不影响其它 phase。
