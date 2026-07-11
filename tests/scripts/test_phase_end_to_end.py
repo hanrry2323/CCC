@@ -129,7 +129,13 @@ class TestPhaseFailurePropagation:
         ])
         r1 = _check_phase_failures("idemp")
         r2 = _check_phase_failures("idemp")
-        assert r1 == r2
+        # v0.25.1+ engine_iter 字段每轮 +1；其他字段应稳定
+        # 关键 invariant：核心 status 分类（executable/blocked/skipped/
+        # all_terminal/all_failed_or_skipped）必须稳定
+        for key in ("executable", "blocked", "skipped", "all_terminal", "all_failed_or_skipped"):
+            assert r1[key] == r2[key], f"{key}: {r1[key]} vs {r2[key]}"
+        # engine_iter 必须单调递增
+        assert r2["engine_iter"] == r1["engine_iter"] + 1, f"engine_iter not monotonic: {r1['engine_iter']} → {r2['engine_iter']}"
 
 
 class TestCurrentRunningPhaseEndToEnd:

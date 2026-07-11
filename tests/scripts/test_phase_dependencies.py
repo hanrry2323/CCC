@@ -656,3 +656,62 @@ class TestV0251UnresolvedDeps:
         missing_str = latest.get("missing", {})
         assert "1" in missing_str  # phase 1 → dep 99
         assert "2" in missing_str  # phase 2 → dep 98+97
+
+
+class TestV0251MaxIterConvergence:
+    """v0.25.1 max_iter=5 收敛：多轮 tick 不收敛时强制 failed（CHANGELOG v0.24.4:94 P1）"""
+
+    def test_engine_iter_increments(self, fake_workspace):
+        """每次 _check_phase_failures 调用 engine_iter +1"""
+        _write_phases(fake_workspace, "iter1", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+        ])
+        r1 = _check_phase_failures("iter1")
+        r2 = _check_phase_failures("iter1")
+        r3 = _check_phase_failures("iter1")
+        assert r1["engine_iter"] == 1
+        assert r2["engine_iter"] == 2
+        assert r3["engine_iter"] == 3
+
+    def test_force_converged_after_max_iter(self, fake_workspace):
+        """连续 ≥ 5 轮 tick → 强制收敛（pending phase 标 skipped）"""
+        # 构造一个"永远 stuck"的场景：phase 1 没 done，但 dev 不动它
+        _write_phases(fake_workspace, "stuck", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+        ])
+        # 跑 6 轮
+        results = [_check_phase_failures("stuck") for _ in range(6)]
+        # 第 5 轮强制收敛
+        assert results[4]["force_converged"] is True
+        # 第 6 轮 all_terminal=True 后跳过 iter 分支（已收敛，无需再强制）
+        assert results[5]["all_terminal"] is True
+        assert results[5]["force_converged"] is False
+        # 强收敛后 all_terminal=True
+        assert results[4]["all_terminal"] is True
+        # phase 1 标 skipped
+        phases = _load_phases("stuck")
+        assert phases[0]["status"] == "skipped"
+
+    def test_no_force_converged_when_terminal(self, fake_workspace):
+        """phase 已 all_terminal → 不递增 iter，不强收敛"""
+        _write_phases(fake_workspace, "done", [
+            {"phase": 1, "status": "done", "depends_on": []},
+        ])
+        r1 = _check_phase_failures("done")
+        # all_terminal=True 时不进入 iter 分支
+        assert r1["all_terminal"] is True
+        assert r1["engine_iter"] == 0
+        assert r1["force_converged"] is False
+
+    def test_force_converged_writes_warnings(self, fake_workspace):
+        """强收敛必写 .ccc/warnings.json"""
+        _write_phases(fake_workspace, "warn2", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+        ])
+        for _ in range(5):
+            _check_phase_failures("warn2")
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        assert warnings_file.exists()
+        import json
+        content = json.loads(warnings_file.read_text())
+        assert any(w.get("type") == "phase_force_converged" for w in content)

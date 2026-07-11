@@ -466,6 +466,9 @@ def _mark_phase_failed(task_id: str, phase_id: int) -> None:
         phases_file.write_text("\n".join(new_lines) + "\n")
 
 
+PHASE_MAX_ENGINE_ITER = 5  # v0.25.1: 多轮 tick 不收敛时强制 failed
+
+
 def _check_phase_failures(task_id: str) -> dict:
     """v0.24: 检查 task 的 phase 失败传染，更新下游 skipped 状态。
 
@@ -473,15 +476,19 @@ def _check_phase_failures(task_id: str) -> dict:
     1. 加载 phases
     2. 跑 _resolve_phase_dependencies 解析 executable/blocked/skipped
     3. 写回 blocked/skipped（依赖解除的 blocked → pending）
-    4. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
-            "all_terminal": bool, "all_failed": bool}
+    4. v0.25.1: 多轮 tick 不收敛（>= PHASE_MAX_ENGINE_ITER）→ 强收敛
+       （pending/blocked 标 failed/skipped）
+    5. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
+            "all_terminal": bool, "all_failed": bool, "engine_iter": int,
+            "force_converged": bool}
 
     Engine 在每次 dev 完成后调用一次，让失败传染链路在多轮 tick 中收敛。
     """
     phases = _load_phases(task_id)
     if not phases:
         return {"executable": [], "blocked": [], "skipped": [],
-                "all_terminal": False, "all_failed": False}
+                "all_terminal": False, "all_failed_or_skipped": False,
+                "engine_iter": 0, "force_converged": False}
 
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
     _apply_phase_status_updates(task_id, blocked, skipped)
@@ -498,15 +505,130 @@ def _check_phase_failures(task_id: str) -> dict:
         for p in phases
     )
 
+    # v0.25.1: 多轮 tick 不收敛强失败（CHANGELOG v0.24.4:94 P1）
+    engine_iter = _read_engine_iter(task_id)
+    force_converged = False
+    if not all_terminal:
+        engine_iter += 1
+        _write_engine_iter(task_id, engine_iter)
+        if engine_iter >= PHASE_MAX_ENGINE_ITER:
+            # 强收敛：把所有非终态 phase 标 skipped
+            new_skipped: set[int] = set()
+            for p in phases:
+                pid = p.get("phase")
+                st = p.get("status", "pending")
+                if st in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL):
+                    continue
+                if pid is not None:
+                    new_skipped.add(pid)
+            _apply_phase_status_updates(task_id, set(), new_skipped)
+            phases = _load_phases(task_id)
+            all_terminal = True
+            all_failed_or_skipped = all(
+                p.get("status") in ("failed", "skipped") for p in phases
+            )
+            force_converged = True
+            # 写 warnings.json + L2 通知
+            try:
+                warnings_file = ROOT / ".ccc" / "warnings.json"
+                existing = []
+                if warnings_file.exists():
+                    try:
+                        existing = json.loads(warnings_file.read_text())
+                        if not isinstance(existing, list):
+                            existing = []
+                    except json.JSONDecodeError:
+                        existing = []
+                existing.append({
+                    "type": "phase_force_converged",
+                    "engine_iter": engine_iter,
+                    "task_id": task_id,
+                    "detected_at": now_iso(),
+                })
+                warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
+                try:
+                    subprocess.run(
+                        [
+                            "bash",
+                            str(CCC_HOME / "scripts" / "ccc-notify.sh"),
+                            "L2",
+                            f"phases.json: force converged ({task_id})",
+                            f"engine_iter={engine_iter} 达到 PHASE_MAX_ENGINE_ITER={PHASE_MAX_ENGINE_ITER}",
+                        ],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+            except OSError:
+                pass
+
     return {
         "executable": sorted(executable),
         "blocked": sorted(blocked),
         "skipped": sorted(skipped),
         "all_terminal": all_terminal,
         "all_failed_or_skipped": all_failed_or_skipped,
+        "engine_iter": engine_iter,
+        "force_converged": force_converged,
     }
 
 
+def _read_engine_iter(task_id: str) -> int:
+    """v0.25.1: 读 phases.json metadata 行里的 engine_iter 计数。"""
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return 0
+    try:
+        for line in phases_file.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict) and "engine_iter" in obj:
+                    return int(obj["engine_iter"])
+            except json.JSONDecodeError:
+                continue
+    except OSError:
+        pass
+    return 0
+
+
+def _write_engine_iter(task_id: str, value: int) -> None:
+    """v0.25.1: 把 engine_iter 写到 phases.json 顶层 metadata 行（独立 JSONL line）。"""
+    import fcntl
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return
+    try:
+        with open(phases_file, "r+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                lines = f.readlines()
+                found = False
+                for i, line in enumerate(lines):
+                    line_s = line.strip()
+                    if not line_s:
+                        continue
+                    try:
+                        obj = json.loads(line_s)
+                        if isinstance(obj, dict) and "engine_iter" in obj:
+                            obj["engine_iter"] = value
+                            lines[i] = json.dumps(obj, ensure_ascii=False) + chr(10)
+                            found = True
+                            break
+                    except json.JSONDecodeError:
+                        continue
+                if not found:
+                    lines.insert(0, json.dumps({"engine_iter": value}, ensure_ascii=False) + chr(10))
+                f.seek(0)
+                f.truncate()
+                f.writelines(lines)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except OSError:
+        pass
 def _move_task_to_abnormal_if_all_failed(task_id: str) -> bool:
     """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
 
