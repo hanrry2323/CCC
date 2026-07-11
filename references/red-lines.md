@@ -32,12 +32,20 @@
 | **X4** | **每 phase 必走看板流转** | v0.16 |
 | **X5** | **Engine + board-server plist 必装（v0.20.1 起）** | v0.16 → v0.20.1 |
 | **X6** | **角色频率不许改（v0.20.1 起不再适用 → 见 X6 正文）** | v0.16 → v0.20.1 |
-| **X7** | **reviewer 必须用 LLM 审查（v0.21 起，fallback 到 py_compile）** | v0.21 |
+| **X7** | **reviewer 必须用 LLM 审查（v0.21 起，v0.24.5+ medium/large fallback 强制 quarantine = R-12）** | v0.21 → v0.24.5 |
 | **X8** | **audit 角色必须 ≥ 2h 间隔（v0.22 起）** | v0.22 |
+| **R-04** | **reviewer 强制参与 + advisory lock（v0.24.5+）** | v0.24.5 |
+| **R-07** | **phases.json 原子写（fcntl.flock v0.24.3+）** | v0.24.3 |
+| **R-08** | **日志统一 logger（v0.24.3+，移除 print 冒充）** | v0.24.3 |
+| **R-09** | **认证 GET 路径（v0.24.6+）** | v0.24.6 |
+| **R-12** | **强制人工介入（medium/large fallback quarantine v0.24.5+）** | v0.24.5 |
+| **R-14** | **audit 子进程 timeout（v0.24.3+ max_workers=2 + 120s）** | v0.24.3 |
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
 >
 > X1/X2/X3 是 v0.8 配套（OpenCode 执行端），编号用 X 前缀避开数字历史。
+>
+> **R- 编号说明（v0.24.5+）**：v0.24.5 起新增 R- 编号（v0.25.0 落地），与 X- 编号并存。R- 编号对应 v0.20.1 X- 编号的子规则（角色系统 + review 细化），由 v0.24.3+ 对抗性审查引入。CHANGELOG v0.24.5/6/7 已使用 R- 编号回改 CHANGELOG 成本更高，故 R- 作为 v0.24.5+ 标准编号、X- 保留为历史索引。
 
 ---
 
@@ -553,17 +561,77 @@ fi
 - **触犯后果**：Critical — 改流水线节奏 = 改产品决策，强制还原
 
 
-#### 红线 X7：reviewer 必须用 LLM 审查（v0.21 起）
+#### 红线 X7 / R-12：reviewer 必须用 LLM 审查（v0.21 起，v0.24.5+ 强化 fallback 行为）
 
 - **规则**：reviewer_role 必须调 Claude API 审查 `git diff HEAD~1` + plan `## 验收清单`，输出严格 JSON verdict。
 - **Why**：v0.20.1 reviewer 只是 py_compile，xianyu 接入实测发现 reviewer 报告"检查 0 文件"仍通过——纯静态语法检查不抓逻辑错/安全漏洞/边界条件。
 - **机制**：
   1. `_review_with_llm()` 构造审查 prompt，含 plan 摘要 + diff stat + diff 详情 + 5 类清单
   2. 期望输出 JSON：`{"verdict": "pass"|"fail", "findings": [...], "summary": "..."}`
-  3. 写报告到 `.ccc/reports/{tid}.review.md`
+  3. 写报告到 `.ccc/reviews/{tid}.review.md`（v0.24.5+ 改路径）
   4. pass → move testing → verified；fail → 留 testing
-- **Fallback**：API 不可达/超时/JSON 解析失败 → 退回 `py_compile` 静态检查，仍能完成流转不阻塞
-- **触犯后果**：High — 退回纯 py_compile 模式必须留痕（review.md 标"fallback"原因）
+- **Fallback（v0.24.5+ 强化 = R-12 红线）**：
+  - **small 类**（≤10 行）：LLM 不可达时退化 `py_compile` 静态检查，verdict = pass
+  - **medium/large 类**（>10 行）：LLM 不可达时**强制 quarantine + L2 桌面通知**，禁止静默 verified
+  - **Why 强化**：v0.23 时期 "fallback = py_compile pass" 路径在 v0.24.5 对抗性审查中暴露 v0.23 G2 bypass 红线（LLM 故障下 dev 提交语法 OK 但逻辑有 bug，仅 py_compile 通过会让 bug 进 verified）。medium/large 必须人工介入
+  - 事实依据：`scripts/ccc-board.py:1601-1628`
+- **触犯后果**：
+  - X7 部分（退回纯 py_compile 模式必须留痕）：High — review.md 标"fallback"原因
+  - R-12 部分（medium/large 静默 verified）：**Critical** — 视为 v0.23 G2 bypass 复发，回退到 testing 重检
+
+---
+
+#### 红线 R-04：reviewer 强制参与 + advisory lock（v0.24.5+）
+
+- **规则**：reviewer_role 处理每个 task 前必须申请 `.ccc/review-locks/<task_id>.lock` 互斥锁（O_CREAT|O_EXCL|O_RDWR 模式 0o600）；持锁中遇到 FileExistsError → 跳过本轮；`_review_one_task()` 完成后立即 `os.unlink()` 释放。
+- **Why**：并发 reviewer 实例（如 engine 重叠 tick、ops 误触）会同时写 `<task>.review.md` → 文件竞态覆盖 → 静默丢审查证据。
+- **机制**：事实依据 `scripts/ccc-board.py:1456-1487`。macOS 用 `O_EXCL|O_RDWR`（BSD `O_WRLOCK` 在 macOS Python 不可用）。
+- **触犯后果**：Critical — 丢审查证据 = R-12 红线旁路。
+
+---
+
+#### 红线 R-07：phases.json 原子写（v0.24.3+）
+
+- **规则**：`_apply_phase_status_updates` 写 `phases/<task>.phases.json` 必须包 `fcntl.flock(LOCK_EX)`，read-modify-write 全程持锁。
+- **Why**：Engine 与外部 CLI（`ccc-board.py phase update`）并发写 phases.json 会丢失 update、撕裂 JSONL、phase 状态错位。
+- **机制**：事实依据 `scripts/ccc-board.py:_apply_phase_status_updates:226-246`。
+- **触犯后果**：Critical — phase 状态错位 → 任务流转卡死或跳过 reviewer/tester。
+
+---
+
+#### 红线 R-08：日志统一 logger（v0.24.3+）
+
+- **规则**：所有 ccc-* 脚本必须用统一 logger（`logging` 模块或项目约定格式），禁止用 `print()` 冒充日志输出。
+- **Why**：v0.24.3 暴露 `_move_task_to_abnormal_if_all_failed` 中 `engine_log = print` 局部遮蔽，关键日志脱管 → all-failed 状态引擎无法识别。
+- **机制**：事实依据 `scripts/ccc-board.py:2358` (`ccc-notify.sh L2` 注入修复)。
+- **触犯后果**：High — 异常状态不可观测，ops 健康检查失效。
+
+---
+
+#### 红线 R-09：认证 GET 路径（v0.24.6+）
+
+- **规则**：`ccc-board-server.py` 所有 `/api/*` 路径必须走 `_verify_auth()`（GET + POST 一致）。本地（127.0.0.1）直通；远端需 `Authorization: Bearer <QX_BOARD_TOKEN>`。
+- **Why**：v0.24.6 前 GET 不校验 token，远端部署时同 LAN 嗅探者枚举全部 task（含 description 中的密钥 / 凭据）。
+- **机制**：事实依据 `scripts/ccc-board-server.py:307-320`。
+- **触犯后果**：Critical — 凭据泄漏。
+
+---
+
+#### 红线 R-12：强制人工介入（medium/large fallback quarantine，v0.24.5+）
+
+- **规则**：见 X7 Fallback 部分。medium/large 类 LLM 不可达时 reviewer 必须 `_quarantine(task_id)` + `ccc-notify.sh L2`，**禁止**仅凭 py_compile / plan 验收清单静默 verified。
+- **Why**：v0.23 G2 bypass 红线——dev 提交语法 OK 但逻辑有 bug 时，仅 py_compile 通过会让 bug 进 verified，绕过 reviewer。
+- **同时维护 SKILL.md**：文档是事实源头（与代码同步），`skills/ccc-reviewer/SKILL.md` 必须描述 quarantine 路径（不能写 fallback=pass）。
+- **触犯后果**：Critical — 静默 verified 的逻辑 bug = 高危。
+
+---
+
+#### 红线 R-14：audit 子进程 timeout（v0.24.3+）
+
+- **规则**：audit_role 调 ruff / mypy 子进程必须有 timeout（单 ws 120s）+ `max_workers=2`。
+- **Why**：v0.24.2 audit 多 ws 并发 4 × 2 子进程 = 8 并发，mypy 单进程 ~300MB 峰值 1.2GB+ → 8 核机器 OOM 风险。
+- **机制**：事实依据 `scripts/ccc-board.py:_audit_run_one:2228-2250`（v0.24.3 max_workers=2 + 120s timeout）。
+- **触犯后果**：High — OOM 杀进程，audit 报表不完整。
 
 #### 红线 X8：audit 角色必须 ≥ 2h 间隔（v0.22 起）
 
