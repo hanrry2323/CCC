@@ -144,6 +144,8 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
     desc = data.get("description", "")
     if desc is not None and not isinstance(desc, str):
         errors.append("description: must be string")
+    elif isinstance(desc, str) and len(desc) > DESCRIPTION_MAX:
+        errors.append(f"description: length {len(desc)} > {DESCRIPTION_MAX}")
 
     # 规则 6: assignee
     assignee = data.get("assignee")
@@ -221,7 +223,7 @@ def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
         return parent_group
     counter_file = workspace / ".ccc" / "board" / ".color_counter"
     counter_file.parent.mkdir(parents=True, exist_ok=True)
-    # 简化版：顺序轮转，无并发锁（CCC 是单 Engine 串行，无需锁）
+    # v0.26.1 (H5): 原子写入（HTTP server 也可调用 → 防崩溃时计数器损坏）
     if counter_file.exists():
         try:
             current = counter_file.read_text().strip() or "A"
@@ -233,7 +235,7 @@ def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
         next_idx = 0
     next_group = GROUP_POOL[next_idx]
     try:
-        counter_file.write_text(next_group)
+        _atomic_write(counter_file, next_group)
     except OSError:
         pass
     return next_group
@@ -388,6 +390,9 @@ class FileBoardStore:
             return False
 
         lock = self._lock()
+        if lock is None:
+            print("[board] create_task: lock unavailable; aborting", file=sys.stderr)
+            return False
         try:
             if self._task_id_exists(task_id):
                 print(f"[board] create_task: duplicate id '{task_id}'", file=sys.stderr)
@@ -461,6 +466,9 @@ class FileBoardStore:
             return False
 
         lock = self._lock()
+        if lock is None:
+            print("[board] move_task: lock unavailable; aborting", file=sys.stderr)
+            return False
         try:
             src = self.board / from_col / f"{task_id}.jsonl"
             if not src.exists():
@@ -504,6 +512,9 @@ class FileBoardStore:
     def update_index(self) -> dict:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
         lock = self._lock()
+        if lock is None:
+            print("[board] update_index: lock unavailable; aborting", file=sys.stderr)
+            return {}
         try:
             counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
             index_file = self.board / "index.json"
@@ -518,6 +529,9 @@ class FileBoardStore:
         """将任务移入异常列（abnormal），附带原因"""
         task_id = sanitize_id(task_id)
         lock = self._lock()
+        if lock is None:
+            print(f"[board] quarantine: lock unavailable; aborting {task_id}", file=sys.stderr)
+            return
         try:
             from_col = ""
             for col in COLUMNS:
