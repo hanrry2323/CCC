@@ -75,11 +75,13 @@ async def run_opencode(
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
-        # v0.28.0: 默认走 loop/flash（opencode 套餐 P1/P2，中转站主用）。
-        # 之前默认 loop/code 实际路由到 xfyun-code P5 末位（老板指令"xfyun 放到最后"），
-        # 慢 + 不可用，是 v0280 / 后续 task 失败的根因之一。
-        # 如需切到 code（xfyun P5 末位），显式设 OPENCODE_MODEL=loop/code。
-        model = os.environ.get("OPENCODE_MODEL", "loop/flash")
+        # v0.28.0: 默认 loop/code。
+        # opencode CLI 通过 4002 端口（v3.6.0+ 单进程双端口架构）调用中转站；
+        # model=code 路由到 xfyun-code (P5 末位，老板指令"xfyun 放到最后"，
+        # 但 v3.6.0+ 提升为"仅供 4002 自动化开发专用"，给 opencode CLI 用)。
+        # 4000 端口是 anthropic 协议（主对话用 flash tier → MiniMax-M3 P0）。
+        # 如需切到 flash，显式设 OPENCODE_MODEL=loop/flash。
+        model = os.environ.get("OPENCODE_MODEL", "loop/code")
         prompt_text = prompt_text.strip()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
