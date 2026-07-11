@@ -850,11 +850,11 @@ def dev_role() -> dict:
                 "counts": update_index(),
             }
 
-        # 计算退避时间
-        backoff = _backoff_seconds(retry - 1) if retry else 0
+        # 计算退避时间（v0.24.7 A24-14: retry=0 也强制 60s 最小退避 first backoff）
+        backoff = _backoff_seconds(retry - 1) if retry else 60
         retry_at_iso = (
             (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat()
-            if retry >= 1
+            if retry >= 0
             else None
         )
         # 更新 retry 计数 + retry_at（JSONL，跳过 schema_version 元数据行）
@@ -1294,12 +1294,19 @@ def _review_with_llm(
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:
         # prompt 可能很大（>1MB），写临时文件并 shell 重定向，避免 subprocess.PIPE buffer 截断
+        # v0.24.7 (A24-24): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600，
+        # 防 /tmp 下被同用户其他进程读取（review prompt 可能含 plan 描述）
         import tempfile as _tempfile
-        with _tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
-        ) as _pf:
-            _pf.write(prompt)
-            _prompt_file = _pf.name
+        _review_prompt_dir = Path.home() / ".ccc" / "prompts"
+        _review_prompt_dir.mkdir(parents=True, exist_ok=True)
+        _prompt_fd, _prompt_file = _tempfile.mkstemp(
+            suffix=".md", prefix="review-prompt-", dir=str(_review_prompt_dir)
+        )
+        try:
+            os.write(_prompt_fd, prompt.encode("utf-8"))
+            os.chmod(_prompt_file, 0o600)
+        finally:
+            os.close(_prompt_fd)
         try:
             with open(_prompt_file, "rb") as f:
                 data = f.read()

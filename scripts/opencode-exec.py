@@ -36,6 +36,10 @@ from pathlib import Path
 PID_DIR = Path.home() / ".ccc" / "opencode-pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
+# v0.24.7 (A24-12): 长 prompt 临时文件落点（私有目录 + mode 0o600）
+PROMPT_DIR = Path.home() / ".ccc" / "prompts"
+PROMPT_DIR.mkdir(parents=True, exist_ok=True)
+
 
 import sys as _sys
 _scripts_dir = str(Path(__file__).resolve().parent)
@@ -79,13 +83,17 @@ async def run_opencode(
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
             # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
             # Bug 1+3 修：临时文件必须在 run 完 unlink（finally 兜底）
+            # v0.24.7 (A24-12): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600，
+            # 防 /tmp 下被同用户其他进程读取 prompt（可能含 plan/凭据）
             import tempfile
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".md", delete=False, encoding="utf-8"
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".md", prefix="opencode-prompt-", dir=str(PROMPT_DIR)
             )
-            tmp.write(prompt_text)
-            tmp.close()
-            tmp_path = tmp.name
+            try:
+                os.write(tmp_fd, prompt_text.encode("utf-8"))
+            finally:
+                os.close(tmp_fd)
+            os.chmod(tmp_path, 0o600)
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
             cmd = [
                 opencode_bin, "run",

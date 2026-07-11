@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.24.7] — 2026-07-11 — 对抗性审查 P2 fixes（prompt 临时文件 / 最小退避）
+
+### 修复（2 项 medium，1 个 commit）
+v0.24.4 对抗性审查 P2 中处理 2 项：
+
+1. **A24-12/A24-24: prompt 临时文件改私有目录 + mode 0o600**
+   - `opencode-exec.py` 与 `ccc-board.py` 的 LLM prompt 临时文件统一写到 `~/.ccc/prompts/`
+   - 显式 `os.chmod(tmp_path, 0o600)` 防同用户其他进程读取（prompt 可能含 plan/凭据）
+   - macOS `NamedTemporaryFile` 的默认 mode 0o644 风险消除
+2. **A24-14: `retry=0` 强制 60s 最小退避（first backoff）**
+   - 之前 `backoff = _backoff_seconds(retry - 1) if retry else 0`，retry=0 → backoff=0，retry_at=None
+   - 改为 `backoff = _backoff_seconds(retry - 1) if retry else 60`，retry_at 必填
+   - opencode 刚失败立刻再启浪费 retry 机会的问题消除
+
+### 跳过
+- **A24-13**（全局 file-level lock 防并发 commit 同文件）：工作量超 P2 估时（需 engine + exec-commit 协同改造），转入 v0.25 排期
+
+---
+
 ## [v0.24.6] — 2026-07-11 — 对抗性审查 P1 fixes（锁 / diff 来源 / auth）
 
 ### 修复（3 项 medium-severity，1 个 commit）
