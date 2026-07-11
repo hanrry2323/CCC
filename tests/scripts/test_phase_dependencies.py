@@ -528,3 +528,75 @@ class TestV025P1Backlog:
         # retry 计数独立
         assert p1.get("retry", 0) == 3
         assert p2.get("retry", 0) == 0
+
+
+class TestV0251CycleDetection:
+    """v0.25.1 循环依赖检测：环上 phase 全部 skipped（强失败隔离）"""
+
+    def test_cycle_two_phase_mutual_skip(self, fake_workspace):
+        """phase 1 depends_on [2] + phase 2 depends_on [1] → cycle → 1+2 全 skipped"""
+        _write_phases(fake_workspace, "cyc2", [
+            {"phase": 1, "status": "pending", "depends_on": [2]},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        phases = _load_phases("cyc2")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        # 环上 1 + 2 都应 skipped
+        assert 1 in skipped
+        assert 2 in skipped
+        assert 1 not in executable
+        assert 2 not in executable
+
+    def test_cycle_three_phase_partial(self, fake_workspace):
+        """phase 1 ↔ 2 互引 + phase 3 无依赖 → 1+2 skipped, 3 executable"""
+        _write_phases(fake_workspace, "cyc3", [
+            {"phase": 1, "status": "pending", "depends_on": [2]},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+            {"phase": 3, "status": "pending", "depends_on": []},
+        ])
+        phases = _load_phases("cyc3")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        assert 1 in skipped
+        assert 2 in skipped
+        assert 3 in executable
+        assert 3 not in skipped
+
+    def test_cycle_self_dependency(self, fake_workspace):
+        """phase 1 depends_on [1]（自环） → 1 skipped"""
+        _write_phases(fake_workspace, "self", [
+            {"phase": 1, "status": "pending", "depends_on": [1]},
+            {"phase": 2, "status": "pending", "depends_on": []},
+        ])
+        phases = _load_phases("self")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        assert 1 in skipped
+        assert 2 in executable
+
+    def test_no_cycle_no_skipped(self, fake_workspace):
+        """正常 DAG（1 → 2 → 3） → 0 skipped"""
+        _write_phases(fake_workspace, "dag", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+            {"phase": 3, "status": "pending", "depends_on": [2]},
+        ])
+        phases = _load_phases("dag")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        assert len(skipped) == 0
+        assert 1 in executable
+        assert 2 in blocked
+        assert 3 in blocked
+
+    def test_cycle_writes_warnings_json(self, fake_workspace):
+        """环检测到时必写 .ccc/warnings.json"""
+        _write_phases(fake_workspace, "warn", [
+            {"phase": 1, "status": "pending", "depends_on": [2]},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        phases = _load_phases("warn")
+        _resolve_phase_dependencies(phases)
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        assert warnings_file.exists(), "warnings.json must be written when cycle detected"
+        import json
+        content = json.loads(warnings_file.read_text())
+        assert isinstance(content, list)
+        assert any(w.get("type") == "phase_cycle" for w in content)

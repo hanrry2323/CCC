@@ -151,13 +151,51 @@ def _load_phases(task_id: str) -> list[dict]:
     return out
 
 
+def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
+    """v0.25.1: 检测 phases.json 中的循环依赖。
+
+    用 DFS 三色标记（WHITE=未访问 / GRAY=在栈上 / BLACK=已完成）。
+    返回所有循环路径（每条路径是 phase_id 列表）。
+
+    注：函数内静默检测，不抛异常。Engine 在 _resolve_phase_dependencies
+    调用时拿到 cycle 列表，把环上 phase 标 skipped + 写 warnings.json。
+    """
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[int, int] = {p.get("phase"): WHITE for p in phases if p.get("phase") is not None}
+    by_id: dict[int, dict] = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+    cycles: list[list[int]] = []
+
+    def dfs(node: int, stack: list[int]) -> None:
+        color[node] = GRAY
+        stack.append(node)
+        for dep_id in by_id.get(node, {}).get("depends_on") or []:
+            if dep_id not in color:
+                continue  # 不存在的依赖由 _resolve_phase_dependencies 处理
+            if color[dep_id] == GRAY:
+                # 找到循环：截取 stack 从 dep_id 起到 node 的部分
+                idx = stack.index(dep_id)
+                cycles.append(stack[idx:] + [dep_id])
+            elif color[dep_id] == WHITE:
+                dfs(dep_id, stack)
+        stack.pop()
+        color[node] = BLACK
+
+    for pid in list(color.keys()):
+        if color[pid] == WHITE:
+            dfs(pid, [])
+
+    return cycles
+
+
 def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int], set[int]]:
     """v0.24: 解析 phase 依赖关系。
 
     对每个 phase 检查 depends_on 列表中所有前置 phase 的状态：
     - 所有依赖状态 ∈ {done, verified, skipped} → 本 phase 可执行 (executable)
     - 任意依赖状态 ∈ {failed} → 本 phase 跳过 (skipped)
-    - 其他依赖未达终态 → 本 phase 阻塞 (blocked)
+    - 其他依赖未达终态 → 本 phase 阻塞 (blocked）
+
+    v0.25.1: 加循环依赖检测。环上 phase 全部归 skipped（强失败隔离）。
 
     Returns:
         (executable_phase_ids, blocked_phase_ids, skipped_phase_ids)
@@ -167,6 +205,13 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
     """
     by_id: dict[int, dict] = {p.get("phase"): p for p in phases if p.get("phase") is not None}
 
+    # v0.25.1: 循环依赖检测 — 环上 phase 强制 skipped
+    cycles = _detect_phase_cycle(phases)
+    cycle_nodes: set[int] = set()
+    for cycle in cycles:
+        # cycle = [a, b, c, a] → 环上节点 = {a, b, c}
+        cycle_nodes.update(cycle[:-1])
+
     executable: set[int] = set()
     blocked: set[int] = set()
     skipped: set[int] = set()
@@ -175,6 +220,11 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
         status = phase.get("status", "pending")
         # 已达终态或正在执行 → 不再分类
         if status in PHASE_TERMINAL_OK or status in PHASE_TERMINAL_FAIL or status == "in_progress":
+            continue
+
+        # v0.25.1: 环上节点直接 skipped（强失败隔离）
+        if pid in cycle_nodes:
+            skipped.add(pid)
             continue
 
         deps = phase.get("depends_on") or []
@@ -204,6 +254,28 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
             blocked.add(pid)
         else:
             executable.add(pid)
+
+    # v0.25.1: 写 warnings.json（让 ops 看见循环依赖路径）
+    if cycles:
+        try:
+            warnings_file = ROOT / ".ccc" / "warnings.json"
+            import json as _json
+            existing = []
+            if warnings_file.exists():
+                try:
+                    existing = _json.loads(warnings_file.read_text())
+                    if not isinstance(existing, list):
+                        existing = []
+                except _json.JSONDecodeError:
+                    existing = []
+            existing.append({
+                "type": "phase_cycle",
+                "cycles": cycles,
+                "detected_at": now_iso(),
+            })
+            warnings_file.write_text(_json.dumps(existing, ensure_ascii=False, indent=2))
+        except OSError:
+            pass
 
     return executable, blocked, skipped
 
