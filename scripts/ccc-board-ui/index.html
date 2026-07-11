@@ -160,6 +160,11 @@ function render(){
   const colors={'backlog':'#94a3b8','planned':'#6366f1','in_progress':'#f59e0b','testing':'#f97316','verified':'#22c55e','released':'#3b82f6','abnormal':'#ef4444'};
   const next={'backlog':'planned','planned':'in_progress','in_progress':'testing','testing':'verified','verified':'released'};
   const prev={'planned':'backlog','in_progress':'planned','testing':'in_progress','verified':'testing','released':'verified'};
+  // v0.26 Protocol v1 §5: 颜色分层 HSL 计算
+  // hue = (ord(group) - ord('A')) * 360 / 26
+  // lightness = max(20, 55 - depth * 15)
+  function taskHue(t){if(!t||!t.color_group)return null;const c=t.color_group.toUpperCase().charCodeAt(0);if(c<65||c>90)return null;return((c-65)*360/26)|0;}
+  function taskBg(t){const h=taskHue(t);if(h==null)return null;const depth=Math.max(0,parseInt(t.color_depth||0,10)||0);const L=Math.max(20,55-depth*15);return `hsl(${h},55%,${L}%)`;}
   const bb=document.getElementById('bb');bb.innerHTML='';
   for(const col of cols){
     const tasks=S.columns[col]||[];
@@ -169,7 +174,10 @@ function render(){
         const tm=(t.updated_at||t.created_at||'').slice(11,19);
         const pv=prev[col],nx=next[col];
         const rnCls=(col==='in_progress'?' running':'');
-        return '<div class="card'+rnCls+'" data-id="'+esc(t.id)+'" data-col="'+col+'" data-prev="'+(pv||'')+'" data-next="'+(nx||'')+'"><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
+        // v0.26: color_group 渲染左边框色（border-left-color）
+        const bg=taskBg(t);
+        const styleAttr=bg?` style="border-left-color:${bg};border-left-width:4px"`:'';
+        return '<div class="card'+rnCls+'" data-id="'+esc(t.id)+'" data-col="'+col+'" data-prev="'+(pv||'')+'" data-next="'+(nx||'')+'"'+styleAttr+'><div class="id">'+esc(t.id)+'</div><div class="ti">'+esc(t.title)+'</div><div class="tm">'+tm+
           '</div><div class="ac">'+
           (pv?'<button class="mv-btn mv-prev">←</button>':'')+
           (nx?'<button class="mv-btn mv-next">→</button>':'')+
