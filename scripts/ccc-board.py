@@ -983,7 +983,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=cfg.default_timeout,
             env=env,
         )
         if result.returncode != 0:
@@ -1370,11 +1370,11 @@ def dev_role() -> dict:
     section_count = len([l for l in plan_lines if l.strip().startswith("##") and " " in l and l.strip() != "##"])
     plan_weight = plan_size + file_mentions * 20 + section_count * 10
     size_hint = ""
-    if plan_weight > 100:
+    if plan_weight > cfg.size_hint_threshold:
         size_hint = (
             f"\n## 大变更提示（v0.28.0 F-2）\n"
             f"plan 加权 {plan_weight}（{plan_size} 行 + {file_mentions} 文件引用×20 + "
-            f"{section_count} 章节×10）> 100，属于大变更。\n"
+            f"{section_count} 章节×10）> {cfg.size_hint_threshold}，属于大变更。\n"
             f"- **必须分批改**：先改一个核心文件 + commit，再继续\n"
             f"- 每个 commit 控制在 50 行内（避免 reviewer LLM timeout）\n"
             f"- 白名单路径一次只动 1-2 个\n"
@@ -3106,7 +3106,7 @@ def auto_approve_agents() -> dict:
             "content": content_text,
             "content_hash": content_hash,
         })
-        if len(candidates) >= _AUTO_APPROVE_MAX_PER_RUN:
+        if len(candidates) >= cfg.auto_approve_max_per_run:
             break
 
     if not candidates:

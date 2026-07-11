@@ -94,6 +94,12 @@ class Config:
     engine_poll_interval: int = 10  # 秒，活跃 task 时轮询 .done 间隔
     engine_idle_sleep: int = 5  # 秒，无 task 时休眠间隔
 
+    # ── 大变更（v0.28.0 F2-M1）──
+    size_hint_threshold: int = 100  # plan 加权分 > 此值注入大变更提示
+
+    # ── auto_approve（v0.28.0 F4-M1）──
+    auto_approve_max_per_run: int = 10  # 每次最多合入建议数
+
     # ── 审计（v0.22）──
     audit_interval_hours: int = 2  # audit_role 调用最小间隔
     audit_workspaces: list[str] = field(  # audit_role 扫描的多 workspace
