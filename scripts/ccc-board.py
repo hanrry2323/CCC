@@ -542,6 +542,7 @@ def _check_phase_failures(task_id: str) -> dict:
                 existing.append({
                     "type": "phase_force_converged",
                     "engine_iter": engine_iter,
+                    "engine_iter_phase": _current_running_phase(task_id),
                     "task_id": task_id,
                     "detected_at": now_iso(),
                 })
@@ -574,11 +575,11 @@ def _check_phase_failures(task_id: str) -> dict:
     }
 
 
-def _read_engine_iter(task_id: str) -> int:
-    """v0.25.1: 读 phases.json metadata 行里的 engine_iter 计数。"""
+def _read_engine_iter_meta(task_id: str) -> dict:
+    """v0.27.1: 读 phases.json metadata 行的完整 engine_iter 元数据。"""
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
-        return 0
+        return {}
     try:
         for line in phases_file.read_text().splitlines():
             line = line.strip()
@@ -587,16 +588,16 @@ def _read_engine_iter(task_id: str) -> int:
             try:
                 obj = json.loads(line)
                 if isinstance(obj, dict) and "engine_iter" in obj:
-                    return int(obj["engine_iter"])
+                    return obj
             except json.JSONDecodeError:
                 continue
     except OSError:
         pass
-    return 0
+    return {}
 
 
-def _write_engine_iter(task_id: str, value: int) -> None:
-    """v0.25.1: 把 engine_iter 写到 phases.json 顶层 metadata 行（独立 JSONL line）。"""
+def _write_engine_iter_meta(task_id: str, meta: dict) -> None:
+    """v0.27.1: 把 engine_iter 元数据写入 phases.json 顶层 metadata 行。"""
     import fcntl
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
@@ -614,14 +615,14 @@ def _write_engine_iter(task_id: str, value: int) -> None:
                     try:
                         obj = json.loads(line_s)
                         if isinstance(obj, dict) and "engine_iter" in obj:
-                            obj["engine_iter"] = value
+                            obj.update(meta)
                             lines[i] = json.dumps(obj, ensure_ascii=False) + chr(10)
                             found = True
                             break
                     except json.JSONDecodeError:
                         continue
                 if not found:
-                    lines.insert(0, json.dumps({"engine_iter": value}, ensure_ascii=False) + chr(10))
+                    lines.insert(0, json.dumps(meta, ensure_ascii=False) + chr(10))
                 f.seek(0)
                 f.truncate()
                 f.writelines(lines)
@@ -629,6 +630,24 @@ def _write_engine_iter(task_id: str, value: int) -> None:
                 fcntl.flock(f, fcntl.LOCK_UN)
     except OSError:
         pass
+
+
+def _read_engine_iter(task_id: str) -> int:
+    """v0.27.1: 读当前 phase 的 engine_iter（phase 切换时自动重置到 0）。"""
+    meta = _read_engine_iter_meta(task_id)
+    cur_phase = _current_running_phase(task_id)
+    if meta.get("engine_iter_phase") != cur_phase:
+        return 0
+    return meta.get("engine_iter", 0)
+
+
+def _write_engine_iter(task_id: str, value: int) -> None:
+    """v0.27.1: 写 engine_iter + 当前 phase 到 metadata。"""
+    cur_phase = _current_running_phase(task_id)
+    _write_engine_iter_meta(task_id, {
+        "engine_iter": value,
+        "engine_iter_phase": cur_phase,
+    })
 def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
     """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
 

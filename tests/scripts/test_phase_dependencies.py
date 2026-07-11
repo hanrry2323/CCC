@@ -715,3 +715,49 @@ class TestV0251MaxIterConvergence:
         import json
         content = json.loads(warnings_file.read_text())
         assert any(w.get("type") == "phase_force_converged" for w in content)
+
+
+class TestV0271EngineIterPhaseReset:
+    """v0.27.1 engine_iter 按 phase 分桶，phase 切换时自动重置"""
+
+    def test_engine_iter_resets_on_phase_change(self, fake_workspace):
+        """phase 1→2 切换后 engine_iter 归零，不会从旧 phase 累计到 PHASE_MAX_ENGINE_ITER"""
+        # 构造两阶段 task：phase 1 done，phase 2 pending
+        _write_phases(fake_workspace, "multi", [
+            {"phase": 1, "status": "done", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        # 模拟旧 phase 1 已跑 4 轮：手动写入 engine_iter metadata
+        phases_dir = fake_workspace / ".ccc" / "phases"
+        phases_file = phases_dir / "multi.phases.json"
+        lines = phases_file.read_text().splitlines()
+        meta = json.dumps({"engine_iter": 4, "engine_iter_phase": 1}, ensure_ascii=False)
+        lines.insert(1, meta)
+        phases_file.write_text("\n".join(lines) + "\n")
+
+        # phase 2 进入时 engine_iter 应重置为 0 → 第 1 次调用后 = 1
+        result = _check_phase_failures("multi")
+        assert result["engine_iter"] == 1, (
+            f"期望 engine_iter=1（phase 重置后首次），实际={result['engine_iter']}"
+        )
+        assert result["force_converged"] is False, (
+            "不应触发强制收敛（engine_iter=1 < PHASE_MAX_ENGINE_ITER=5）"
+        )
+
+    def test_engine_iter_persists_within_same_phase(self, fake_workspace):
+        """同 phase 内 engine_iter 持续递增"""
+        _write_phases(fake_workspace, "single", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+        ])
+        r1 = _check_phase_failures("single")
+        r2 = _check_phase_failures("single")
+        assert r1["engine_iter"] == 1
+        assert r2["engine_iter"] == 2
+
+    def test_engine_iter_meta_not_present_returns_0(self, fake_workspace):
+        """无 engine_iter metadata 行时 _read_engine_iter 返回 0（兼容旧文件）"""
+        _write_phases(fake_workspace, "fresh", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+        ])
+        result = _check_phase_failures("fresh")
+        assert result["engine_iter"] == 1  # 0 + 第一轮递增
