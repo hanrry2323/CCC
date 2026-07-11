@@ -24,6 +24,12 @@ from urllib.parse import urlparse, parse_qs
 
 from _config import Config
 from _board_store import COLUMNS, FileBoardStore
+from human_status import (
+    enrich_task, enrich_abnormal,
+    human_reason, human_suggestion, stuck_minutes,
+    event_action_cn, hhmm, is_today,
+    phase_cn, phase_progress, human_who, human_action, elapsed_cn,
+)
 
 _cfg = Config()
 
@@ -305,7 +311,9 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 
     def _verify_auth(self) -> bool:
         client_ip, client_port = self.client_address
-        is_local = client_ip in ("127.0.0.1", "::1", "[::1]")
+        # 本地回环 + 本机 LAN IP 都视为 local
+        local_ips = {"127.0.0.1", "::1", "[::1]", "192.168.3.140"}
+        is_local = client_ip in local_ips
         token = os.environ.get("QX_BOARD_TOKEN", "").strip()
         if not token:
             if is_local:
@@ -344,7 +352,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         ws = qs.get("workspace", ["CCC"])[0]
 
-        if not validate_workspace(ws):
+        if ws != "all" and not validate_workspace(ws):
             self._json({"error": f"unknown workspace: {ws}"}, 400)
             return
 
@@ -483,6 +491,123 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                             "color": COLUMN_COLORS.get(col, "#666"),
                         }
                     )
+            # 修 v0.27: 之前漏掉 self._json() → 永远 404。这里补上。
+            self._json({"events": events[:50]})
+
+        elif path == "/api/dashboard":
+            # v0.27 控制台首页聚合（多 workspace 合并）
+            # 3s 内存缓存：同样请求在 3s 内直接返回旧数据，不重新扫盘
+            import time as _time
+            _cache = getattr(self.__class__, '_dash_cache', {})
+            _cache_key = qs.get("workspace", ["all"])[0]
+            _now = _time.monotonic()
+            if _cache_key in _cache:
+                cached_data, cached_at = _cache[_cache_key]
+                if _now - cached_at < 3.0:
+                    self._json(cached_data)
+                    return
+
+            ws_filter = _cache_key
+            workspaces = discover_workspaces()
+            if ws_filter != "all" and ws_filter not in workspaces:
+                self._json({"error": f"unknown workspace: {ws_filter}"}, 400)
+                return
+
+            target_ws = list(workspaces.keys()) if ws_filter == "all" else [ws_filter]
+
+            kpi = {
+                "in_progress": 0,
+                "abnormal": 0,
+                "ready_to_release": 0,
+                "today": {"fixed": 0, "released": 0, "moved": 0},
+            }
+            active_tasks = []
+            abnormal_tasks = []
+            today_events = []
+
+            for ws_name in target_ws:
+                s = _store_for(ws_name)
+                if s is None:
+                    continue
+                # 一次性读取各列，避免重复 IO
+                ip_tasks = s.list_tasks("in_progress")
+                te_tasks = s.list_tasks("testing")
+                ab_tasks = s.list_tasks("abnormal")
+                re_tasks = s.list_tasks("released")
+                ve_tasks = s.list_tasks("verified")
+                # KPI
+                kpi["in_progress"] += len(ip_tasks) + len(te_tasks)
+                kpi["abnormal"] += len(ab_tasks)
+                kpi["ready_to_release"] += len(te_tasks) + len(ve_tasks)
+                # Active
+                for t in ip_tasks + te_tasks:
+                    t["workspace"] = ws_name
+                    active_tasks.append(enrich_task(t))
+                # Abnormal
+                for t in ab_tasks:
+                    t["workspace"] = ws_name
+                    abnormal_tasks.append(enrich_abnormal(t))
+                # Today's events
+                for ev in s.get_timeline():
+                    if ev.get("event") != "move":
+                        continue
+                    ts = ev.get("timestamp", "")
+                    if not is_today(ts):
+                        continue
+                    to = ev.get("to", "")
+                    today_events.append({
+                        "time": hhmm(ts),
+                        "task_id": ev.get("task_id", ""),
+                        "to_column": to,
+                        "action_cn": event_action_cn(to),
+                        "workspace": ws_name,
+                    })
+                    if to == "released":
+                        kpi["today"]["released"] += 1
+                    elif to == "verified":
+                        kpi["today"]["fixed"] += 1
+                    else:
+                        kpi["today"]["moved"] += 1
+
+            # 排序 + 补 title
+            today_events.sort(key=lambda e: e.get("time", ""), reverse=True)
+            active_tasks.sort(key=lambda t: t.get("updated_at") or t.get("created_at") or "", reverse=True)
+
+            title_cache = {}
+            for ev in today_events:
+                key = (ev["workspace"], ev["task_id"])
+                if key in title_cache:
+                    ev["task_title"] = title_cache[key]
+                    continue
+                s = _store_for(ev["workspace"])
+                if s is None:
+                    ev["task_title"] = ""
+                    continue
+                title = ""
+                for col in ("in_progress", "testing", "verified", "released", "abnormal", "backlog", "planned"):
+                    for t in s.list_tasks(col):
+                        if t.get("id") == ev["task_id"]:
+                            title = t.get("title", "")
+                            break
+                    if title:
+                        break
+                title_cache[key] = title
+                ev["task_title"] = title
+
+            result = {
+                "kpi": kpi,
+                "workspaces": workspaces,
+                "active_tasks": active_tasks,
+                "abnormal_tasks": abnormal_tasks,
+                "today_events": today_events[:20],
+                "generated_at": now_iso(),
+                "filter": ws_filter,
+            }
+            # 写缓存
+            if not hasattr(self.__class__, '_dash_cache'):
+                self.__class__._dash_cache = {}
+            self.__class__._dash_cache[_cache_key] = (result, _now)
+            self._json(result)
 
         elif path == "/api/roles":
             self._json({"roles": get_role_status()})
