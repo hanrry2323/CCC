@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.26.1] — 2026-07-11 — 代码审查修复批次（H1-H5 + M1/M2/M6/M7/M10）
+
+v0.24 → v0.25 → v0.26 全面代码审查后修复 5 项高危 + 5 项中等问题。
+不影响协议契约，纯实现层加固。
+
+**Commit 1 (1a3b42d) — fix(server): H3 HTTP API 保留 Board Protocol v1 全部 11 字段**
+- `scripts/ccc-board-server.py`: `create_task()` wrapper 改签名为 `(data: dict, workspace, column)`
+- HTTP handler 传入完整 `data` dict（pop `workspace` 控制字段）
+- 修复 IDE 端发完整 11 字段时被静默截断为 3 字段（tags/assignee/note/schema_version/color_group/color_depth 全丢）
+- 新增测试：`test_11_field_wrapper_preservation`（H3）
+
+**Commit 2 (a158d99) — fix(store): H4/H5/M7 锁超时防护 + 颜色计数器原子写 + description 长度校验**
+- `scripts/_board_store.py`:
+  - **H4**: 4 个写操作（create_task/move_task/update_index/quarantine）在 `_lock()` 返回 None 时 abort，避免静默无锁运行
+  - **H5**: `assign_color_group` 用 `_atomic_write()` 替换 `write_text()`，HTTP server 路径调用崩溃时计数器损坏问题修复
+  - **M7**: `validate_task_jsonl` 补 description 长度校验（`DESCRIPTION_MAX=10000`）
+- 新增文件：`tests/scripts/test_board_store_locking.py`（6 用例）
+
+**Commit 3 (79fd12d) — fix(reconcile): H2/M2/M10 原子写入 + 复用 COLUMNS + 过滤 schema 元数据**
+- `scripts/board-reconcile.py`:
+  - **H2**: `fix_status_field` 用 `_atomic_write()` 替换 `path.write_text()`，崩溃时 JSONL 损坏问题修复
+  - **M2**: `COLUMNS` 从 `_board_store` 导入，删除重复定义
+  - **M10**: `load_status`/`fix_status_field` 跳过 `schema_version` 元数据行（避免被错误添加 status 字段）
+- 新增测试：`test_reconcile_uses_atomic_write`、`test_reconcile_skips_schema_metadata_lines`
+
+**Commit 4 (2bbdaa5) — fix(docs/code): H1/M1/M6 review.md 路径统一 + docstring + 函数名修正**
+- **H1**: 4 个顶层文档（CLAUDE.md / SKILL.md / board-task-schema.md / red-lines.md）将 reviewer 产出路径由 `reviews/` 改为 `reports/`（与代码 + skill doc + 实际磁盘一致）
+- **M1**: `_check_phase_failures` docstring `all_failed` → `all_failed_or_skipped`
+- **M6**: `_move_task_to_abnormal_if_all_failed` → `_move_task_to_abnormal_if_all_terminal_failed`
+
+**测试覆盖**：189 个 case 全通过（pytest tests/scripts/ -q: 189 passed in 17.93s）
+**HTTP 端到端**：H3 curl round-trip 验证 11 字段全部保留
+
+未修复（可选/低优先级）：
+- M5：`engine_iter` 不跨 phase 重置 — 架构问题，需单独调研实现 phase-scoped 字段
+- S1-S5：`os.write` 短写检查、isinstance 重写、warnings helper 提取等优化类
+
+---
+
 ## [v0.26.0] — 2026-07-11 — CCC Board Protocol / 跨 IDE 开放协议
 
 ### 修复（6 commit + 41 test case）
