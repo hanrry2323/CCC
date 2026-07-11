@@ -454,6 +454,9 @@ class FileBoardStore:
         v0.28.0 (H-005): JSONL append-only，读时无撕裂。list_tasks 不再获取 O_EXCL 排他锁，
         避免多列扫描（get_board_state 7 列）时 7 次 IPC 开销。list_tasks 返回的快照可能
         落后于并发写（与文件 read 一致），调用方需要快照语义时走 _with_snapshot_lock。
+
+        v0.28.0 (F1-C2 修): 按 created_at 升序排列（FIFO），防止 task_id 字典序不同步
+        导致新 task 被先消费、老 task 永久饿死。created_at 缺失时降级到文件名排序。
         """
         col_dir = self.board / column
         if not col_dir.exists():
@@ -472,6 +475,10 @@ class FileBoardStore:
                             _log.debug("skip malformed line in %s: %s", f.name, exc)
             except FileNotFoundError as exc:
                 _log.debug("task file disappeared during list: %s", exc)
+
+        # v0.28.0 (F1-C2): FIFO sort by created_at ascending
+        # created_at 缺失 → 降级到 task_id 字典序（= 原文件名序）
+        tasks.sort(key=lambda t: t.get("created_at", t.get("id", "")))
         return tasks
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:

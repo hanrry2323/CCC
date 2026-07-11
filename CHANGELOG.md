@@ -1408,6 +1408,8 @@ git push origin main --tags
 - (F1-C1) engine Step 1.5 失败计数器：连续 3 次 product_role 失败 → 移入 abnormal
   - `scripts/ccc-engine.py` + `.ccc/.product-fail-counter/<tid>.json`
   - 成功自动清空计数，失败递增，超限 quarantine
+- (F1-C2) backlog FIFO: `_board_store.py` `list_tasks()` 按 `created_at` 升序排列
+  - 防止 task_id 字典序与创建序不同步导致新 task 被先消费、老 task 永久饿死
 - (F4-H1) auto_approve_agents 重复检测：sha256(content) 指纹 → AGENTS.md hash marker
   - 旧实现 `"### 来自 {source}" + content[:100]` 因 AGENTS.md 实际写 `({task_id})` 后缀导致 false-negative
 - (F4-H3) auto_approve_agents 事务顺序：先写 cooldown 再写 AGENTS.md

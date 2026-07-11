@@ -133,10 +133,39 @@ RC=$?; if [[ $RC -ne 0 ]]; then echo "❌ Step 3 FAILED (quarantine)"; exit 1; f
 echo "✓"
 
 echo ""
+echo "4. 测试 FIFO 排序（v0.28.0 F1-C2）"
+python3 -c "
+import sys
+sys.path.insert(0, '$SCRIPT_DIR/scripts')
+from pathlib import Path
+from _board_store import FileBoardStore
+import _config
+_config._resolve_workspace = lambda: Path('$WORKSPACE')
+
+store = FileBoardStore(Path('$WORKSPACE'))
+
+# 按创建顺序验证 FIFO：旧 → 新
+tasks = store.list_tasks('backlog')
+# 至少剩余 oldest
+if tasks:
+    ids = [t['id'] for t in tasks]
+    print(f'  backlog order: {ids}')
+    # 验证 created_at 升序
+    dates = [t.get('created_at', t.get('id', '')) for t in tasks]
+    assert dates == sorted(dates), f'FIFO breach: {dates} not sorted'
+    print(f'  FIFO order verified ✓ (dates: {dates})')
+else:
+    print('  (backlog empty after previous steps)')
+"
+RC=$?; if [[ $RC -ne 0 ]]; then echo "❌ Step 4 FAILED (FIFO)"; exit 1; fi
+echo "✓"
+
+echo ""
 echo "=== ✓ F-1 全部验证通过 ==="
 echo "覆盖项："
 echo "  - fail_counter 文件读写"
 echo "  - fail_count < MAX → retry"
 echo "  - fail_count >= MAX → quarantine"
 echo "  - success → counter cleared"
+echo "  - FIFO 排序（F1-C2: created_at 升序）"
 exit 0
