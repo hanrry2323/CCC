@@ -766,12 +766,14 @@ def quarantine_store_content(task_id: str, content_path: Optional[Path] = None) 
     - .base_name 属性设为 task_id（供后续引用）
 
     Args:
-        task_id: task ID
+        task_id: task ID（会 sanitize 防止路径穿越）
         content_path: 源路径（文件或目录），None 或不存在时返回 False
 
     Returns:
         True=归档成功；False=无 content 或失败
     """
+    # v0.28.0 P2 安全：sanitize task_id 防路径穿越
+    task_id = sanitize_id(task_id)
     quarantine_store_content.base_name = task_id  # type: ignore[attr-defined]
 
     if not content_path or not content_path.exists():
@@ -809,7 +811,6 @@ def quarantines_cleanup_task(hours_threshold: float = 5.0) -> int:
     now_ts = time.time()
     threshold_s = hours_threshold * 3600
 
-    # 按 base_name 分组
     by_base: dict[str, list[Path]] = {}
     for tar in quarantine_dir.glob("*.tar.gz"):
         m = re.match(r"^(.+?)\.(\d+)\.tar\.gz$", tar.name)

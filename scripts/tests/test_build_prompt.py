@@ -6,8 +6,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import tempfile
 from pathlib import Path
+
+# v0.28.0: 让 _build_prompt 可从 scripts/ 导入
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from _build_prompt import build_product_prompt
 

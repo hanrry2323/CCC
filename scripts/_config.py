@@ -37,18 +37,25 @@ def parse_duration(value, default: int) -> int:
     if isinstance(value, int):
         return max(TIMEOUT_MIN, min(TIMEOUT_MAX, value))
     if not value:
-        return default
+        return max(TIMEOUT_MIN, min(TIMEOUT_MAX, default))
     s = str(value).strip()
     m = _DURATION_RE.match(s)
     if not m:
         try:
             n = int(s)
+            if n <= 0:
+                return max(TIMEOUT_MIN, min(TIMEOUT_MAX, default))
             return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n))
         except ValueError:
-            return default
+            return max(TIMEOUT_MIN, min(TIMEOUT_MAX, default))
     n = int(m.group(1))
-    unit = m.group(2) or "s"
-    return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n * _DURATION_UNITS[unit.lower()]))
+    unit = (m.group(2) or "s").lower()
+    if n <= 0 or unit not in _DURATION_UNITS:
+        return TIMEOUT_MIN
+    # v0.28.0: 先 clamp n 防溢出，再乘单位
+    max_n = TIMEOUT_MAX // _DURATION_UNITS[unit]
+    n = max(1, min(n, max_n))
+    return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n * _DURATION_UNITS[unit]))
 
 
 @dataclass
