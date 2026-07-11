@@ -317,3 +317,44 @@ class TestServerStructuredError:
         errors = [f"field_{i}: error msg" for i in range(10)]
         hint = server_module._fix_hint_for(errors)
         assert len(hint) <= 200
+
+
+class TestAssignColorGroup:
+    """v0.26 Protocol v1 §5: assign_color_group 颜色分组"""
+
+    def test_inherit_parent_group(self, tmp_path):
+        from cb import assign_color_group
+        g = assign_color_group(tmp_path, parent_group="B")
+        assert g == "B"
+
+    def test_assign_new_when_no_parent(self, tmp_path):
+        from cb import assign_color_group
+        g = assign_color_group(tmp_path)
+        assert g in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+    def test_rotate_pool(self, tmp_path):
+        """连续两次分配 → 第二次字母序 +1"""
+        from cb import assign_color_group
+        g1 = assign_color_group(tmp_path)
+        g2 = assign_color_group(tmp_path)
+        assert g1 != g2
+        # 验证从 A 开始轮转
+        assert ord(g2) == ord(g1) + 1 or (g1 == "Z" and g2 == "A")
+
+    def test_persists_across_calls(self, tmp_path):
+        """counter 持久化 → 第二次调用读到上次的值并 +1"""
+        from cb import assign_color_group
+        g1 = assign_color_group(tmp_path)
+        g2 = assign_color_group(tmp_path)
+        g3 = assign_color_group(tmp_path)
+        # A → B → C
+        assert g1 == "A"
+        assert g2 == "B"
+        assert g3 == "C"
+
+    def test_parent_invalid_returns_fresh(self, tmp_path):
+        """parent_group 无效（如 'X'）→ 走轮转路径"""
+        from cb import assign_color_group
+        # 'X' 不在 GROUP_POOL（A-Z）→ fallback to 轮转
+        g = assign_color_group(tmp_path, parent_group="X")
+        assert g in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"

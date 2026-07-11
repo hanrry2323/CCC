@@ -208,6 +208,37 @@ def fill_task_defaults(data: dict) -> dict:
     return out
 
 
+# v0.26 Protocol v1 §5: 颜色分组 pool（A-Z 单字符轮转）
+GROUP_POOL = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
+def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
+    """v0.26 Protocol v1 §5: 分配 color_group
+    - 父任务有 group → 子继承
+    - 无 → 从 pool 取下一个（按字母序轮转，持久化在 .ccc/board/.color_counter）
+    """
+    if parent_group and parent_group in GROUP_POOL:
+        return parent_group
+    counter_file = workspace / ".ccc" / "board" / ".color_counter"
+    counter_file.parent.mkdir(parents=True, exist_ok=True)
+    # 简化版：顺序轮转，无并发锁（CCC 是单 Engine 串行，无需锁）
+    if counter_file.exists():
+        try:
+            current = counter_file.read_text().strip() or "A"
+            idx = GROUP_POOL.index(current) if current in GROUP_POOL else -1
+            next_idx = (idx + 1) % len(GROUP_POOL)
+        except (ValueError, OSError):
+            next_idx = 0
+    else:
+        next_idx = 0
+    next_group = GROUP_POOL[next_idx]
+    try:
+        counter_file.write_text(next_group)
+    except OSError:
+        pass
+    return next_group
+
+
 def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
     """加文件锁（atomic rename 模式），返回锁对象路径
 

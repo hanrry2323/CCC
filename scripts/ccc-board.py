@@ -965,6 +965,35 @@ def product_role(task_id: str = "") -> dict:
 
         move_task(task_id, "backlog", "planned")
 
+        # v0.26 Protocol v1 §5: 自动分配 color_group（首次见 task）
+        # 写 phase 列表时给每个 phase 标 color_depth=1（task 自身是父 depth=0）
+        try:
+            from _board_store import assign_color_group
+            color_group = assign_color_group(ROOT, parent_group=task.get("color_group"))
+            # 读 task 文件 → 注入 color_group → 写回
+            from pathlib import Path as _P
+            task_file = _P(".ccc/board/planned") / f"{task_id}.jsonl"
+            if task_file.exists():
+                import json as _json
+                task_data = _json.loads(task_file.read_text())
+                task_data["color_group"] = color_group
+                task_data["color_depth"] = 0  # 父任务 depth=0
+                task_file.write_text(_json.dumps(task_data, ensure_ascii=False) + "\n")
+                print(f"[product] {task_id} assigned color_group={color_group} depth=0")
+            # 写 phase color_depth=1（子 phase 继承）
+            if phases:
+                for p in phases:
+                    p.setdefault("color_depth", 1)
+                    p.setdefault("color_group", color_group)
+                phases_file.write_text(
+                    '{"schema_version": "1.1"}'
+                    + "\n"
+                    + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
+                    + "\n"
+                )
+        except Exception as e:
+            print(f"[product] color assign failed (non-fatal): {e}", file=sys.stderr)
+
         result = {
             "role": "product",
             "promoted": task_id,
