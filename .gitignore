@@ -11,6 +11,7 @@ __pycache__/
 .ccc/logs/
 .ccc/pids/
 .ccc/reports/
+.ccc/quarantines/
 .ccc/board/events/
 .ccc/board/index.json
 .ccc/engine-heartbeat.json
@@ -29,3 +30,13 @@ v0.18-*-p1/
 *.p1/
 *.p1/
 test-*/
+# v0.28.0: codebase-memory MCP 缓存
+.codebase-memory/
+# v0.28.0: 临时测试遗留
+scripts/test-task-001.*.tar.gz
+# v0.28.0: 临时 phases/plans 文件
+.ccc/phases/*-stream-hardening.phases.json
+.ccc/plans/*-stream-hardening.plan.md
+# v0.28.0: 用户/其他 session 创建的临时测试脚本
+scripts/tests/create_test_phase_lint.py
+scripts/tests/regression_v028.py
