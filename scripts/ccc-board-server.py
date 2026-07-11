@@ -24,12 +24,16 @@ from urllib.parse import urlparse, parse_qs
 
 from _config import Config
 from _board_store import COLUMNS, FileBoardStore
+from _logger import get_logger
+from _utils import sanitize_id as _utils_sanitize_id
 from human_status import (
     enrich_task, enrich_abnormal,
     human_reason, human_suggestion, stuck_minutes,
     event_action_cn, hhmm, is_today,
     phase_cn, phase_progress, human_who, human_action, elapsed_cn,
 )
+
+_log = get_logger("board-server")
 
 _cfg = Config()
 
@@ -58,7 +62,11 @@ MAX_CONTENT_LENGTH = 1_048_576
 
 
 def sanitize_id(tid: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9_-]", "", os.path.basename(tid))
+    """净化 task_id — v0.28.0 (H-003): 委托 _utils 实现。
+
+    保留 os.path.basename 防传入路径形式（外部 input 场景）。
+    """
+    return _utils_sanitize_id(os.path.basename(tid))
 
 
 # ── Workspace ──
@@ -352,11 +360,17 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         if not token:
             if is_local:
                 return True
+            # v0.28.0 (M-005): auth 失败也消耗 token + 记录日志，防暴力枚举
+            _rate_limiter.allow(f"auth:{client_ip}")
+            _log.warning("auth failed: non-local %s without token", client_ip)
             self._json({"error": "unauthorized: non-local request without token"}, 401)
             return False
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer ") and auth[7:] == token:
             return True
+        # v0.28.0 (M-005): bad token 也限速 + log
+        _rate_limiter.allow(f"auth:{client_ip}")
+        _log.warning("auth failed: bad token from %s", client_ip)
         self._json({"error": "unauthorized"}, 401)
         return False
 

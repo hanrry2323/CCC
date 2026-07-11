@@ -18,8 +18,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from _logger import get_logger
+from _utils import now_iso as _utils_now_iso
+from _utils import sanitize_id as _utils_sanitize_id
+
+_log = get_logger("board")
+
 # fcntl 在 macOS 行为不稳定（open("w") 截断 + 杀进程锁不释放 → 死锁）。
 # 强制使用 atomic rename 锁（O_CREAT|O_EXCL）作为唯一锁机制。
+# v0.28.0 (M-007): flock 分支硬编码关闭，删除死代码 → 保留 _HAS_FLOCK 仅作历史索引
 _HAS_FLOCK = False
 
 
@@ -57,13 +64,19 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
 
 
 def sanitize_id(tid: str) -> str:
-    """净化 task_id：只保留字母、数字、下划线、连字符，防止路径遍历"""
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "", str(tid))
-    return safe if safe else "invalid"
+    """净化 task_id：只保留字母、数字、下划线、连字符，防止路径遍历
+
+    v0.28.0 (H-003): 委托 _utils 统一实现，行为保持向后兼容。
+    """
+    return _utils_sanitize_id(tid)
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """UTC ISO 8601 时间戳（Z 后缀）
+
+    v0.28.0 (H-003): 委托 _utils 统一实现。
+    """
+    return _utils_now_iso()
 
 
 # v0.26 Protocol v1: 11 条校验规则常量
@@ -295,9 +308,10 @@ def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
                     excl_path.unlink(missing_ok=True)
                     continue
                 if elapsed > timeout_s and _t.monotonic() > deadline:
-                    print(
-                        f"[board] WARN: force-clearing stale lock pid={pid} elapsed={elapsed:.1f}s",
-                        file=sys.stderr,
+                    _log.warning(
+                        "force-clearing stale lock pid=%d elapsed=%.1fs",
+                        pid,
+                        elapsed,
                     )
                     excl_path.unlink(missing_ok=True)
                     continue
@@ -307,9 +321,9 @@ def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
                 continue
 
             if _t.monotonic() > deadline:
-                print(
-                    f"[board] ERROR: lock timeout after {timeout_s}s, holder still alive (pid reuse risk). Skipping.",
-                    file=sys.stderr,
+                _log.error(
+                    "lock timeout after %.1fs, holder still alive (pid reuse risk). Skipping.",
+                    timeout_s,
                 )
                 return None
             _t.sleep(0.1)
@@ -318,24 +332,17 @@ def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
 
 
 def _release_lock(lock_obj) -> None:
-    """释放文件锁"""
+    """释放文件锁
+
+    v0.28.0 (M-007): _HAS_FLOCK 硬编码为 False，flock 分支已删除（死代码）。
+    仅保留 unlink 路径。
+    """
     if lock_obj is None:
         return
-    if _HAS_FLOCK:
-        try:
-            fcntl.flock(lock_obj, fcntl.LOCK_UN)
-        except Exception:
-            pass
-        try:
-            lock_obj.close()
-        except Exception:
-            pass
-    else:
-        # Fallback: 删除独占锁文件
-        try:
-            os.unlink(str(lock_obj))
-        except OSError:
-            pass
+    try:
+        os.unlink(str(lock_obj))
+    except OSError:
+        pass
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -368,6 +375,9 @@ class FileBoardStore:
     """
 
     def __init__(self, workspace: Path):
+        # v0.28.0 (C-001): 显式保存 workspace，避免 _archive_to_quarantine 靠
+        # parent.parent 推测路径层级（嵌套非标准布局时指向错目录）
+        self.workspace = workspace
         self.board = workspace / ".ccc" / "board"
         self.events_dir = self.board / "events"
         self.lockfile = self.board / ".board.lock"
@@ -396,20 +406,20 @@ class FileBoardStore:
         is_valid, errors = validate_task_jsonl(data)
         if not is_valid:
             for err in errors:
-                print(f"[board] create_task validation: {err}", file=sys.stderr)
+                _log.error("create_task validation: %s", err)
             return False
         task_id = sanitize_id(data["id"])
         if column not in COLUMNS:
-            print(f"[board] create_task: invalid column '{column}'", file=sys.stderr)
+            _log.error("create_task: invalid column '%s'", column)
             return False
 
         lock = self._lock()
         if lock is None:
-            print("[board] create_task: lock unavailable; aborting", file=sys.stderr)
+            _log.error("create_task: lock unavailable; aborting")
             return False
         try:
             if self._task_id_exists(task_id):
-                print(f"[board] create_task: duplicate id '{task_id}'", file=sys.stderr)
+                _log.error("create_task: duplicate id '%s'", task_id)
                 return False
 
             now = now_iso()
@@ -433,60 +443,69 @@ class FileBoardStore:
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")
             self._record_event(task_id, "none", column)
-            print(f"[board] {task_id} created in {column}")
+            _log.info("%s created in %s", task_id, column)
             return True
         finally:
             self._unlock(lock)
 
     def list_tasks(self, column: str) -> list[dict]:
-        """读某列所有 task（共享读锁，防幻读）"""
+        """读某列所有 task
+
+        v0.28.0 (H-005): JSONL append-only，读时无撕裂。list_tasks 不再获取 O_EXCL 排他锁，
+        避免多列扫描（get_board_state 7 列）时 7 次 IPC 开销。list_tasks 返回的快照可能
+        落后于并发写（与文件 read 一致），调用方需要快照语义时走 _with_snapshot_lock。
+        """
         col_dir = self.board / column
         if not col_dir.exists():
             return []
-        tasks = []
-        # atomic 锁，3s 超时，读锁
-        excl_path = self._acquire_ro(timeout_s=3.0)
+        tasks: list[dict] = []
+        for f in sorted(col_dir.glob("*.jsonl")):
+            try:
+                with open(f) as fp:
+                    for line in fp:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            tasks.append(json.loads(line))
+                        except json.JSONDecodeError as exc:
+                            _log.debug("skip malformed line in %s: %s", f.name, exc)
+            except FileNotFoundError as exc:
+                _log.debug("task file disappeared during list: %s", exc)
+        return tasks
+
+    def list_tasks_locked(self, column: str) -> list[dict]:
+        """v0.28.0 (H-005): list_tasks 的"真"加锁变体 — 给 get_board_state 一致性快照用。
+
+        持锁后读所有列再释放（避免 7 列 × 7 次 IPC）。其余路径用 list_tasks()（无锁）。
+        """
+        lock = self._lock()
+        if lock is None:
+            _log.warning("list_tasks_locked: lock unavailable; fallback to lockless list")
+            return self.list_tasks(column)
         try:
-            for f in sorted(col_dir.glob("*.jsonl")):
-                try:
-                    with open(f) as fp:
-                        for line in fp:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                tasks.append(json.loads(line))
-                            except json.JSONDecodeError:
-                                pass
-                except FileNotFoundError:
-                    pass
-            return tasks
+            return self.list_tasks(column)
         finally:
-            if excl_path is not None:
-                try:
-                    excl_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+            self._unlock(lock)
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
         """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""
         task_id = sanitize_id(task_id)
         allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
         if from_col not in allowed_from:
-            print(
-                f"[board] 拒绝迁移: {from_col} → {to_col} (允许的源列: {allowed_from})",
-                file=sys.stderr,
+            _log.error(
+                "拒绝迁移: %s → %s (允许的源列: %s)", from_col, to_col, allowed_from
             )
             return False
 
         lock = self._lock()
         if lock is None:
-            print("[board] move_task: lock unavailable; aborting", file=sys.stderr)
+            _log.error("move_task: lock unavailable; aborting")
             return False
         try:
             src = self.board / from_col / f"{task_id}.jsonl"
             if not src.exists():
-                print(f"[board] {task_id} not in {from_col}", file=sys.stderr)
+                _log.error("%s not in %s", task_id, from_col)
                 return False
 
             task = None
@@ -500,8 +519,8 @@ class FileBoardStore:
                         if obj.get("id") == task_id:
                             task = obj
                             break
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as exc:
+                        _log.debug("skip malformed line in %s: %s", src.name, exc)
             if not task:
                 return False
 
@@ -518,7 +537,7 @@ class FileBoardStore:
             src.write_text(json.dumps(task, ensure_ascii=False) + "\n")
             shutil.move(str(src), str(dst))
             self._record_event(task_id, from_col, to_col)
-            print(f"[board] {task_id}: {from_col} → {to_col}")
+            _log.info("%s: %s → %s", task_id, from_col, to_col)
             return True
         finally:
             self._unlock(lock)
@@ -527,7 +546,7 @@ class FileBoardStore:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
         lock = self._lock()
         if lock is None:
-            print("[board] update_index: lock unavailable; aborting", file=sys.stderr)
+            _log.error("update_index: lock unavailable; aborting")
             return {}
         try:
             counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
@@ -543,17 +562,14 @@ class FileBoardStore:
         """将任务移入异常列（abnormal），附带原因
 
         v0.28.0 P2/P4:
-        - 备份任务内容到 <workspace>/.ccc/quarantines/<task_id>.copy.tar.gz
+        - 备份任务内容到 <workspace>/.ccc/quarantines/<task_id>（目录形式，无 .tar.gz）
         - 写入 quarantines index.json 沉淀统计
         - 用于后续 retry 时判断失败原因和策略
         """
         task_id = sanitize_id(task_id)
         lock = self._lock()
         if lock is None:
-            print(
-                f"[board] quarantine: lock unavailable; aborting {task_id}",
-                file=sys.stderr,
-            )
+            _log.error("quarantine: lock unavailable; aborting %s", task_id)
             return
         try:
             from_col = ""
@@ -590,18 +606,21 @@ class FileBoardStore:
             (self.board / from_col / f"{task_id}.jsonl").unlink()
             self._record_event(task_id, from_col, "abnormal")
 
-            # v0.28.0: archive to <workspace>/.ccc/quarantines/<task_id>.copy.tar.gz
+            # v0.28.0: archive to <workspace>/.ccc/quarantines/<task_id>
             self._archive_to_quarantine(task_id, task, reason, from_col)
 
-            print(f"[quarantine] {task_id} {from_col} → abnormal: {reason}")
+            _log.info("quarantine: %s %s → abnormal: %s", task_id, from_col, reason)
         finally:
             self._unlock(lock)
 
     def _archive_to_quarantine(
         self, task_id: str, task: dict, reason: str, from_col: str
     ) -> Path:
-        """v0.28.0: 内部方法，调模块级 quarantine_store_content"""
-        workspace = self.workspace if hasattr(self, "workspace") else self.board.parent.parent
+        """v0.28.0: 内部方法，调模块级 quarantine_store_content
+
+        v0.28.0 (C-001): 改用显式 self.workspace，不再靠 self.board.parent.parent 推测。
+        """
+        workspace = self.workspace
         plan = workspace / ".ccc" / "plans" / f"{task_id}.plan.md"
         phases = workspace / ".ccc" / "phases" / f"{task_id}.phases.json"
         if not plan.exists() and not phases.exists():
@@ -670,7 +689,7 @@ class FileBoardStore:
             except OSError:
                 pass
         if removed:
-            print(f"[board] events TTL: 清理 {removed} 个旧 events 文件")
+            _log.info("events TTL: 清理 %d 个旧 events 文件", removed)
         return removed
 
     # ── 内部辅助 ──
@@ -685,7 +704,12 @@ class FileBoardStore:
         return False
 
     def _record_event(self, task_id: str, from_col: str, to_col: str) -> None:
-        """追加 timeline event 到 events/<task_id>.events.jsonl"""
+        """追加 timeline event 到 events/<task_id>.events.jsonl
+
+        v0.28.0 (C-002): 改用 read-modify-write + _atomic_write 模式，避免并发追加
+        导致 JSONL 行交错。前提：调用方必须在 _lock() 持锁状态（实际由 move_task /
+        create_task / quarantine 三个调用方保证）。
+        """
         task_id = sanitize_id(task_id)
         self.events_dir.mkdir(parents=True, exist_ok=True)
         event = {
@@ -696,8 +720,16 @@ class FileBoardStore:
             "timestamp": now_iso(),
         }
         event_file = self.events_dir / f"{task_id}.events.jsonl"
-        with open(event_file, "a") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        try:
+            existing = event_file.read_text(encoding="utf-8") if event_file.exists() else ""
+        except OSError as exc:
+            _log.warning("event file read failed for %s: %s", task_id, exc)
+            existing = ""
+        new_content = existing + json.dumps(event, ensure_ascii=False) + "\n"
+        try:
+            _atomic_write(event_file, new_content)
+        except OSError as exc:
+            _log.error("event write failed for %s: %s", task_id, exc)
 
 
 # ═══════════════════════════════════════════
@@ -802,6 +834,9 @@ def quarantines_cleanup_task(hours_threshold: float = 5.0) -> int:
     1. mtime > hours_threshold 的副本直接删除
     2. 同 base_name 下保留 idx 最高的（最新），其余删除（harvesting 启发式）
     返回被删除的文件数。
+
+    v0.28.0 (H-004): quarantine_store_content 改为直接 copy 目录（无 .tar.gz），
+    glob 模式同步改：扫所有条目（文件 / 目录），排除 index.json / 隐藏文件。
     """
     quarantine_dir = _get_quarantine_dir()
     if not quarantine_dir.exists():
@@ -812,32 +847,51 @@ def quarantines_cleanup_task(hours_threshold: float = 5.0) -> int:
     threshold_s = hours_threshold * 3600
 
     by_base: dict[str, list[Path]] = {}
-    for tar in quarantine_dir.glob("*.tar.gz"):
-        m = re.match(r"^(.+?)\.(\d+)\.tar\.gz$", tar.name)
-        if not m:
-            continue
-        by_base.setdefault(m.group(1), []).append(tar)
+    for entry in _iter_quarantine_entries(quarantine_dir):
+        # 副本名 = 目录名 / 文件 stem（与 store_content 的 out_file 命名一致）
+        name = entry.name if entry.is_dir() else entry.stem
+        by_base.setdefault(name, []).append(entry)
 
     for base, files in by_base.items():
-        files.sort(key=lambda p: int(re.search(r"\.(\d+)\.tar\.gz$", p.name).group(1)))
+        files.sort(key=lambda p: p.stat().st_mtime)
         if len(files) <= 1:
             if now_ts - files[0].stat().st_mtime > threshold_s:
                 try:
-                    files[0].unlink()
+                    _remove_quarantine_entry(files[0])
                     removed += 1
-                except OSError:
-                    pass
+                except OSError as exc:
+                    _log.debug("cleanup unlink failed for %s: %s", files[0], exc)
             continue
 
-        # 多副本：保留 idx 最高的（最新），删除其余（harvesting）
+        # 多副本：保留 mtime 最大的（最新），删除其余（harvesting）
         for f in files[:-1]:
             try:
-                f.unlink()
+                _remove_quarantine_entry(f)
                 removed += 1
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("harvest unlink failed for %s: %s", f, exc)
 
+    if removed:
+        _log.info("quarantines_cleanup_task: removed %d entries", removed)
     return removed
+
+
+def _iter_quarantine_entries(quarantine_dir: Path):
+    """v0.28.0 (H-004): 迭代所有非 index.json 的 quarantine 副本（文件或目录）。"""
+    if not quarantine_dir.exists():
+        return
+    for entry in sorted(quarantine_dir.iterdir()):
+        if entry.name == "index.json" or entry.name.startswith("."):
+            continue
+        yield entry
+
+
+def _remove_quarantine_entry(entry: Path) -> None:
+    """v0.28.0 (H-004): 兼容目录 / 文件两种副本形式。"""
+    if entry.is_dir():
+        shutil.rmtree(entry)
+    else:
+        entry.unlink()
 
 
 def quarantines_index_task() -> None:
@@ -845,6 +899,8 @@ def quarantines_index_task() -> None:
 
     扫描 _get_quarantine_dir() + cwd（兼容旧 test 用法）。
     index.json 写到 _get_quarantine_dir()/index.json。
+
+    v0.28.0 (H-004): glob 模式改用 _iter_quarantine_entries（支持目录 / 文件）。
     """
     candidates = [_get_quarantine_dir(), Path.cwd()]
     seen: set[Path] = set()
@@ -854,11 +910,9 @@ def quarantines_index_task() -> None:
         if d in seen or not d.exists():
             continue
         seen.add(d)
-        for tar in d.glob("*.tar.gz"):
-            m = re.match(r"^(.+?)\.(\d+)\.tar\.gz$", tar.name)
-            if not m:
-                continue
-            by_base.setdefault(m.group(1), []).append(tar)
+        for entry in _iter_quarantine_entries(d):
+            name = entry.name if entry.is_dir() else entry.stem
+            by_base.setdefault(name, []).append(entry)
 
     quarantine_dir = _get_quarantine_dir()
     quarantine_dir.mkdir(parents=True, exist_ok=True)
@@ -877,7 +931,7 @@ def quarantines_index_task() -> None:
     for base, files in by_base.items():
         if not files:
             continue
-        files.sort(key=lambda p: int(re.search(r"\.(\d+)\.tar\.gz$", p.name).group(1)))
+        files.sort(key=lambda p: p.stat().st_mtime)
         latest = files[-1]
         first_seen_ts = min(f.stat().st_mtime for f in files)
         last_seen_ts = latest.stat().st_mtime
@@ -898,11 +952,13 @@ def quarantines_harvesting_index() -> dict:
     """v0.28.0 P2: harvesting — 清零后保留单个最近副本
 
     对每个 task_id：
-    - 保留 idx 最大的（最近）副本
+    - 保留 mtime 最大的（最近）副本
     - 删除其他副本
 
     扫描 _get_quarantine_dir() + cwd（兼容旧 test 用法）。生产环境如果 cwd 有同名
-    .tar.gz 文件会被一并清理——这是合理行为（cwd 不应该有 quarantine 文件）。
+    quarantine 文件会被一并清理——这是合理行为（cwd 不应该有 quarantine 文件）。
+
+    v0.28.0 (H-004): glob 模式改用 _iter_quarantine_entries（支持目录 / 文件）。
 
     Returns:
         {"total": int, "completed": int, "remaining": int}
@@ -916,11 +972,9 @@ def quarantines_harvesting_index() -> dict:
         if d in seen or not d.exists():
             continue
         seen.add(d)
-        for tar in d.glob("*.tar.gz"):
-            m = re.match(r"^(.+?)\.(\d+)\.tar\.gz$", tar.name)
-            if not m:
-                continue
-            by_base.setdefault(m.group(1), []).append(tar)
+        for entry in _iter_quarantine_entries(d):
+            name = entry.name if entry.is_dir() else entry.stem
+            by_base.setdefault(name, []).append(entry)
             total += 1
 
     completed = 0
@@ -930,14 +984,14 @@ def quarantines_harvesting_index() -> dict:
         if len(files) <= 1:
             completed += 1
             continue
-        files.sort(key=lambda p: int(re.search(r"\.(\d+)\.tar\.gz$", p.name).group(1)))
+        files.sort(key=lambda p: p.stat().st_mtime)
         keep = files[-1]
         for f in files[:-1]:
             try:
-                f.unlink()
+                _remove_quarantine_entry(f)
                 remaining += 1
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("harvest unlink failed for %s: %s", f, exc)
         completed += 1
 
     quarantines_index_task()

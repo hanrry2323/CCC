@@ -28,8 +28,17 @@ if str(_script_dir) not in sys.path:
 
 from _config import Config
 from _board_store import FileBoardStore
+from _logger import get_logger
+from _utils import now_iso as _utils_now_iso
 
-# ccc-board.py 含连字符，用 importlib 加载
+_log = get_logger("engine")
+
+# ccc-board.py 含连字符，无法用 `import ccc-board` 标准 import。
+# 评估过的替代方案：
+#   1. 改名为 ccc_board.py — 风险高（launchd plist / 文档 / 已发布 skill 引用 ccc-board.py）
+#   2. 创建 ccc_board.py symlink — 维护负担
+#   3. 改用 importlib（当前）— 启动开销 ~5ms，可接受
+# v0.28.0 (L-002): 保留方案 3，加注释说明决策原因。
 import importlib.util as _importlib_util
 _ccc_board_path = str(_script_dir / "ccc-board.py")
 _spec = _importlib_util.spec_from_file_location("ccc_board", _ccc_board_path)
@@ -57,14 +66,13 @@ cfg = Config()
 
 
 def now_iso() -> str:
-    """返回北京时间 ISO 格式时间戳（UTC+8）"""
-    from zoneinfo import ZoneInfo
-    return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%dT%H:%M:%S+08:00")
+    """v0.28.0 (H-003): 委托 _utils 统一实现。"""
+    return _utils_now_iso()
 
 
 def engine_log(msg: str) -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[engine {ts}] {msg}", flush=True)
+    """v0.28.0 (R-08): 改用统一 logger 替代 print。"""
+    _log.info("%s", msg)
 
 
 _engine_shutdown = False  # SIGTERM 标志
