@@ -474,20 +474,6 @@ class FileBoardStore:
                 _log.debug("task file disappeared during list: %s", exc)
         return tasks
 
-    def list_tasks_locked(self, column: str) -> list[dict]:
-        """v0.28.0 (H-005): list_tasks 的"真"加锁变体 — 给 get_board_state 一致性快照用。
-
-        持锁后读所有列再释放（避免 7 列 × 7 次 IPC）。其余路径用 list_tasks()（无锁）。
-        """
-        lock = self._lock()
-        if lock is None:
-            _log.warning("list_tasks_locked: lock unavailable; fallback to lockless list")
-            return self.list_tasks(column)
-        try:
-            return self.list_tasks(column)
-        finally:
-            self._unlock(lock)
-
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
         """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""
         task_id = sanitize_id(task_id)
@@ -594,7 +580,7 @@ class FileBoardStore:
                 tags.append("automated")
             task["tags"] = tags
             task["title"] = f"[ABNORMAL] {task.get('title', task_id)}"
-            if "note" not in task:
+            if not task.get("note"):
                 task["note"] = reason
             else:
                 task["note"] += f"\n{reason}"

@@ -363,7 +363,7 @@ def main():
 
     ws = Path(args.workspace).resolve()
     if not (ws / ".ccc" / "board").exists():
-        print(f"[engine] 错误: {ws} 没有 .ccc/board/ 目录", file=sys.stderr)
+        _log.error("[engine] 错误: %s 没有 .ccc/board/ 目录", ws)
         sys.exit(1)
 
     # 覆盖 workspace

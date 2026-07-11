@@ -1743,8 +1743,12 @@ def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
             timeout=10,
         )
         if r.returncode != 0:
-            _log.error(f"[reviewer-fallback] {task_id} py_compile {Path(f).name} FAIL: {r.stderr[:200]}",
-                file=sys.stderr,)
+            _log.error(
+                "[reviewer-fallback] %s py_compile %s FAIL: %s",
+                task_id,
+                Path(f).name,
+                r.stderr[:200],
+            )
             return False
     return True
 
@@ -1872,8 +1876,10 @@ def _review_one_task(task_id: str) -> bool:
     # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
     if size_class == "unknown":
         _quarantine(task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级")
-        _log.error(f"[reviewer] {task_id} ✗ diff stat 解析失败（缺 summary），quarantine",
-            file=sys.stderr,)
+        _log.error(
+            "[reviewer] %s ✗ diff stat 解析失败（缺 summary），quarantine",
+            task_id,
+        )
         return False
     _log.info("[reviewer] %(task_id)s size=%(size_class)s lines=%(total_lines)s", task_id, size_class, total_lines)
 
@@ -1910,8 +1916,10 @@ def _review_one_task(task_id: str) -> bool:
         elif not py_files:
             if not full_diff.strip():
                 _quarantine(task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空")
-                _log.error(f"[reviewer] {task_id} ✗ small-class quarantine: 空 diff",
-                    file=sys.stderr,)
+                _log.error(
+                    "[reviewer] %s ✗ small-class quarantine: 空 diff",
+                    task_id,
+                )
                 return False
             if "## 验收" in plan_text or "## 验证" in plan_text:
                 move_task(task_id, "testing", "verified")
@@ -1927,8 +1935,10 @@ def _review_one_task(task_id: str) -> bool:
             _log.error("[reviewer] %(task_id)s ✗ small-class quarantine: 无静态可检查项", task_id)
             return False
         else:
-            _log.error(f"[reviewer] {task_id} ✗ small-class py_compile 失败，留在 testing",
-                file=sys.stderr,)
+            _log.error(
+                "[reviewer] %s ✗ small-class py_compile 失败，留在 testing",
+                task_id,
+            )
             return False
 
     # medium / large：走 LLM，large 加 impact 分析提示
@@ -1950,8 +1960,11 @@ def _review_one_task(task_id: str) -> bool:
         _log.info("[reviewer] %(task_id)s ✓ LLM pass", task_id)
         return True
     if verdict == "fail":
-        _log.error(f"[reviewer] {task_id} ✗ LLM fail（{len(verdict_data.get('findings', []))} issues），留在 testing",
-            file=sys.stderr,)
+        _log.error(
+            "[reviewer] %s ✗ LLM fail（%d issues），留在 testing",
+            task_id,
+            len(verdict_data.get("findings", [])),
+        )
         return False
 
     # v0.24.5 (A24-03/A24-04): medium/large fallback 一律 quarantine + L2 告警
@@ -1962,8 +1975,12 @@ def _review_one_task(task_id: str) -> bool:
         f"放弃静默 verified，强制人工介入"
     )
     _quarantine(task_id, reason=reason)
-    _log.error(f"[reviewer] {task_id} ✗ {size_class}-class fallback quarantine: {verdict_data.get('reason', 'unknown')}",
-        file=sys.stderr,)
+    _log.error(
+        "[reviewer] %s ✗ %s-class fallback quarantine: %s",
+        task_id,
+        size_class,
+        verdict_data.get("reason", "unknown"),
+    )
     # L2 桌面通知：fallback bypass 复发是 high-severity，必须人工看见
     try:
         subprocess.run(
@@ -2035,8 +2052,12 @@ def tester_role() -> dict:
             )
             if r.returncode != 0:
                 all_ok = False
-                _log.error(f"[tester] {task_id} FAIL: {cmd[:80]}... → {r.stdout[-300:]}",
-                    file=sys.stderr,)
+                _log.error(
+                    "[tester] %s FAIL: %s... → %s",
+                    task_id,
+                    cmd[:80],
+                    r.stdout[-300:],
+                )
 
         if all_ok:
             move_task(task_id, "testing", "verified")
@@ -2662,7 +2683,18 @@ def regress_role() -> dict:
 
     today = date.today().isoformat()
     scripts_dir = ROOT / "scripts"
-    py_files = list(scripts_dir.rglob("*.py"))
+    # v0.28.0 (N-004): scripts_dir 不存在时 rglob 返回空（不抛错）→ py_ok=True 假阳性。
+    # 显式检查目录存在，缺失则降级：跳过 py_compile 标记 unknown，循环内按 unknown 处理。
+    py_files: list[Path] = []
+    py_check_available = False
+    if scripts_dir.is_dir():
+        py_files = list(scripts_dir.rglob("*.py"))
+        py_check_available = True
+    else:
+        _log.warning(
+            "regress: scripts_dir 不存在 (%s) — 跳过 py_compile 检查",
+            scripts_dir,
+        )
 
     # v0.28.0 (M-004): py_compile 是项目级检查，所有 .py 文件语法问题与 task 无关。
     # 提到循环外，只跑一次，结果在循环内复用。
@@ -2690,7 +2722,12 @@ def regress_role() -> dict:
         results["checked"] += 1
 
         # 1. py_compile — 复用上面的项目级结果
+        # v0.28.0 (N-004): scripts_dir 不存在时 py_check_available=False，
+        # 跳过 py_compile 检查（task_py_ok=True 不归咎 task，但记 skipped_py_check）。
         task_py_ok = py_ok
+        if not py_check_available:
+            results.setdefault("skipped_py_check", 0)
+            results["skipped_py_check"] += 1
 
         # 2. git diff 检查是否代码被意外改过
         diff_ok = True
@@ -3170,9 +3207,13 @@ def dev_role_check_complete(task_id: str) -> dict:
                 )
             else:
                 _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
-            _log.error(f"[engine] {task_id} retry={retry} >= {MAX_RETRY}, quarantined "
-                f"(skipped_downstream={failure_summary['skipped']})",
-                file=sys.stderr,)
+            _log.error(
+                "[engine] %s retry=%d >= %d, quarantined (skipped_downstream=%d)",
+                task_id,
+                retry,
+                MAX_RETRY,
+                failure_summary["skipped"],
+            )
             return {"status": "quarantined", "task_id": task_id}
         else:
             # 保留 .done 在磁盘，engine 下次 check 时看到 failed 状态就会 relaunch
