@@ -97,8 +97,13 @@ def update_index() -> dict:
     return store.update_index()
 
 
-def _load_timeout(phases_file: Path, default: int = 300) -> int:
-    """从 phases.jsonl 的第一个 phase 行读 timeout（跳过 schema_version）"""
+def _load_timeout(phases_file: Path, default: int = None) -> int:
+    """从 phases.jsonl 的第一个 phase 行读 timeout（跳过 schema_version）
+
+    v0.28.0: default 缺省走 cfg.default_timeout（默认 1800）
+    """
+    if default is None:
+        default = cfg.default_timeout
     try:
         with open(phases_file) as f:
             for line in f:
@@ -110,7 +115,14 @@ def _load_timeout(phases_file: Path, default: int = 300) -> int:
                     phase = phase[0] if phase else {}
                 if "schema_version" in phase:
                     continue
-                return phase.get("timeout", default)
+                to = phase.get("timeout")
+                if to is None:
+                    return default
+                try:
+                    from _config import parse_duration
+                    return parse_duration(to, default)
+                except Exception:
+                    return default
     except (FileNotFoundError, json.JSONDecodeError):
         pass
     return default
@@ -1207,7 +1219,7 @@ def dev_role() -> dict:
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
 
     # 从 phases.json 读 timeout
-    timeout_s = _load_timeout(phases_file, default=600)
+    timeout_s = _load_timeout(phases_file, default=cfg.default_timeout)
     phase_id = f"{task_id}-p1"
 
     # 从 plan.md 生成 executor prompt
@@ -2829,7 +2841,7 @@ def dev_role_launch(task_id: str) -> dict:
     move_task(task_id, "planned", "in_progress")
 
     # 从 phases.json 读 timeout
-    timeout_s = _load_timeout(cphases, default=600)
+    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     # v0.24.3: 用 _current_running_phase() 决定当前应跑哪个 phase，而不是硬编码 -p1。
     # phases.json 可能尚未标 in_progress（launch 是入口），退回到 pending/blocked 中的第一个 phase。
     cur_phase = _current_running_phase(task_id)
@@ -2912,7 +2924,7 @@ def dev_role_relaunch(task_id: str) -> dict:
             except OSError:
                 pass
 
-    timeout_s = _load_timeout(cphases, default=600)
+    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     # v0.24.3: 重启也用 _current_running_phase() 定位当前 phase
     cur_phase = _current_running_phase(task_id)
     phase_id = f"{task_id}-p{cur_phase}"

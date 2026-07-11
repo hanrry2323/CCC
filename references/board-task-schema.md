@@ -1,10 +1,10 @@
 # CCC Board Protocol v1 — 跨 IDE 任务编排协议
 
-> **协议版本**: v1.0
+> **协议版本**: v1.2
 > **状态**: stable
 > **最后更新**: 2026-07-11
 > **作用域**: CCC 0.26.0+
->
+
 > **一句话定义**: 任意 IDE 工具（Trae/Cursor/Zed/VS Code/OpenCode）读本协议 → 写标准 JSONL → 看板全自动流转。
 >
 > **设计原则**:
@@ -17,10 +17,10 @@
 
 ## 0. 版本兼容矩阵
 
-| CCC 版本 | 接受 schema_version | 字段兼容 |
-|----------|---------------------|---------|
-| ≥ 0.26.0 | 缺失 / "1.0" | id/title/status/timestamps + 可选 color_group/color_depth |
-| < 0.26.0 | "1.0"（无 color_* 字段） | 不识别 color_* 字段 → 静默忽略 |
+| CCC 版本 | 接受 schema_version | 向后兼容要求 |
+|----------|---------------------|-------------|
+| ≥ 0.28.0 | 缺失 / "1.0" / "1.1" / "1.2" | v1.0 / v1.1 任务仍能识别，在 CE 解决 |
+| < 0.28.0 | 仅 "1.0"（无 color_* 字段） | 不识别 color_* 字段+ phases_schema 校验 → 静默忽略（兼容模式） |
 
 **严格模式（strict=True）**：仅 CCC 内部 validate_task_jsonl 使用。IDE 端写 task 不要求严格模式。
 

@@ -1357,3 +1357,44 @@ git push origin main --tags
 ### 测试
 - 新增 `tests/scripts/test_board_zombie_reconcile.py`（7 case）：move_task 原子性、reconcile 多副本清理、status 字段修正、dry-run 不改文件
 - 全量 92 case 通过
+
+## [v0.28.0] — 2026-07-11 — stream-line hardening 流层加固
+
+修复 v0.27.1 在实际跑 qxo task 时暴露的 6 个流层漏洞。内部硬化、协议透明。
+
+**scripts/_config.py — timeout 可配置**
+- `default_timeout` 默认 600 → 1800
+- 新增 `parse_duration()`：支持 `"15m"` / `"1h"` / `"1d"` duration 类 expr
+- `_env_override_duration()` 处理 env var + clamp `[60, 86400]`
+- `CCC_TIMEOUT=15m` / `CCC_HOOK_TIMEOUT=30s` 环境变量打通
+
+**scripts/ccc-board.py — timeout 默认值**
+- `_load_timeout()` 缺省走 `cfg.default_timeout`
+- 3 处 `default=600` → `default=cfg.default_timeout`
+- phase 内 `timeout` 字段支持 duration expr 字符串
+
+**scripts/phase_lint.py — 校验扩展**
+- 新增 `validate_executor()`：未定义 executor + skip 状态但无说明检测
+- 新增 `validate_empty_phase()`：空白 phase（缺 description / files_touched / subtasks）检测
+- 新增 `validate_v12_fields()`：schema v1.2 三字段（estimated_minutes / files_touched / verification_cmd）软警告
+- 新增 `validate_phases_dict()`：统一入口（新 API）
+- 新增 `validate_phases_jsonl()`：文件级校验（含 schema_version）
+- 修复 `validate_phase_structure` `pid` 变量名 bug
+- 修复 `validate_status_transitions` 跨 phase 误判逻辑
+- 修复 `run_lint` 不存在文件 vs 空 phase 行为
+- `allowed_fields` 加 v1.2 新字段
+
+**scripts/_board_store.py — quarantine 副本归档**
+- 新增模块级函数：
+  - `quarantine_store_content(task_id, content_path)` — 归档内容到 `.ccc/quarantines/<task_id>`
+  - `quarantines_cleanup_task(hours_threshold=5.0)` — 删除同 base_name 下除最新外副本
+  - `quarantines_index_task()` — 扫描写 `index.json` 沉淀统计
+  - `quarantines_harvesting_index()` — 返回 `{total, completed, remaining}`
+- `_get_quarantine_dir()` 多级查找（env > 扫描 tempdir > cwd）
+
+**templates/phases.phases.json** — 升 schema_version 1.2（结构兼容 1.0/1.1）
+
+**测试覆盖**
+- `scripts/tests/test_phase_lint.py`：14/14 passed
+- `scripts/tests/test_quarantine_archive.py`：5/5 passed
+- `scripts/tests/test_phase_lint.py` 测试同时验证 legacy API 与 v0.28.0 新 API

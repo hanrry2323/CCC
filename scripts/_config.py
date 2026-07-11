@@ -1,13 +1,54 @@
-"""ccc — 集中配置 (v0.19)
+"""ccc — 集中配置 (v0.28.0)
 
 所有 CCC 配置参数集中于此。任何脚本需要配置参数时，从这里导入，而不是硬编码。
+
+v0.28.0 新增：
+- default_timeout 默认 600 → 1800
+- 支持 CCC_TIMEOUT / CCC_HOOK_TIMEOUT duration 类 expr（如 "15m" / "1h"）
+- timeout 范围 clamp [60, 86400]
 """
 
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+_DURATION_RE = re.compile(r"^(\d+)\s*(s|sec|m|min|h|hr|d|day)?$", re.IGNORECASE)
+_DURATION_UNITS = {"s": 1, "sec": 1, "m": 60, "min": 60, "h": 3600, "hr": 3600, "d": 86400, "day": 86400}
+TIMEOUT_MIN = 60
+TIMEOUT_MAX = 86400
+
+
+def parse_duration(value, default: int) -> int:
+    """解析 duration 类表达式为秒数。
+
+    支持：
+    - int (直接返回)
+    - "300" → 300
+    - "5m" / "5min" → 300
+    - "2h" / "2hr" → 7200
+    - "1d" / "1day" → 86400
+
+    越界 clamp 到 [60, 86400]。
+    """
+    if isinstance(value, int):
+        return max(TIMEOUT_MIN, min(TIMEOUT_MAX, value))
+    if not value:
+        return default
+    s = str(value).strip()
+    m = _DURATION_RE.match(s)
+    if not m:
+        try:
+            n = int(s)
+            return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n))
+        except ValueError:
+            return default
+    n = int(m.group(1))
+    unit = m.group(2) or "s"
+    return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n * _DURATION_UNITS[unit.lower()]))
 
 
 @dataclass
@@ -31,8 +72,8 @@ class Config:
     # ── 模型 ──
     model: str = "loop/flash"  # 所有子进程默认模型
 
-    # ── 超时 ──
-    default_timeout: int = 600  # 秒，phases 默认超时
+    # ── 超时（v0.28.0）──
+    default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
     hook_timeout: int = 30  # 秒，钩子默认超时
 
     # ── 容错 ──
@@ -57,9 +98,12 @@ class Config:
     board_host: str = "127.0.0.1"
 
     def __post_init__(self):
-        """环境变量覆盖（优先级：环境变量 > 默认值）"""
-        _env_override_int(self, "default_timeout", "CCC_TIMEOUT")
-        _env_override_int(self, "hook_timeout", "CCC_HOOK_TIMEOUT")
+        """环境变量覆盖（优先级：环境变量 > 默认值）
+
+        v0.28.0: timeout 支持 duration 类 expr（5m / 1h / 1d）和 clamp [60, 86400]
+        """
+        _env_override_duration(self, "default_timeout", "CCC_TIMEOUT", self.default_timeout)
+        _env_override_duration(self, "hook_timeout", "CCC_HOOK_TIMEOUT", self.hook_timeout)
         _env_override_int(self, "max_retry", "CCC_MAX_RETRY")
         _env_override_int(self, "max_stale_hours", "CCC_STALE_HOURS")
         _env_override_str(self, "model", "OPENCODE_MODEL")
@@ -120,3 +164,10 @@ def _env_override_str(cfg: Config, attr: str, env_key: str) -> None:
     val = os.environ.get(env_key, "").strip()
     if val:
         setattr(cfg, attr, val)
+
+
+def _env_override_duration(cfg: Config, attr: str, env_key: str, default: int) -> None:
+    """v0.28.0: 支持 duration 类 expr 解析（如 "15m" / "1h"）"""
+    val = os.environ.get(env_key, "").strip()
+    if val:
+        setattr(cfg, attr, parse_duration(val, default))
