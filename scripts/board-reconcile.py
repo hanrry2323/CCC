@@ -18,27 +18,45 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
-COLUMNS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
+from _board_store import COLUMNS, _atomic_write
+
+
+def _is_schema_metadata(obj: object) -> bool:
+    """元数据行检测：仅含 schema_version 无 status（v0.26+ 引入）"""
+    return (
+        isinstance(obj, dict)
+        and "schema_version" in obj
+        and "status" not in obj
+    )
 
 
 def load_status(path: Path) -> str | None:
-    """从 jsonl 末行读 status 字段。失败返回 None。"""
+    """从 jsonl 末行读 status 字段。跳过 schema_version 元数据行。失败返回 None。"""
     try:
         with open(path) as f:
-            last = None
+            status = None
             for line in f:
                 line = line.strip()
-                if line:
-                    last = line
-            if last is None:
-                return None
-            return json.loads(last).get("status")
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if _is_schema_metadata(obj):
+                    continue
+                if isinstance(obj, dict):
+                    status = obj.get("status")
+            return status
     except (OSError, json.JSONDecodeError):
         return None
 
 
 def fix_status_field(path: Path, expected_col: str) -> bool:
-    """修 jsonl 里 status 字段，使其与目录一致。返回是否修改。"""
+    """修 jsonl 里 status 字段，使其与目录一致。返回是否修改。
+
+    v0.26.1: 使用 _atomic_write 防崩溃时 JSONL 损坏；跳过 schema_version 元数据行。
+    """
     try:
         with open(path) as f:
             lines = [ln for ln in f.read().splitlines() if ln.strip()]
@@ -54,12 +72,19 @@ def fix_status_field(path: Path, expected_col: str) -> bool:
         except json.JSONDecodeError:
             new_lines.append(line)
             continue
+        if not isinstance(obj, dict):
+            new_lines.append(line)
+            continue
+        if _is_schema_metadata(obj):
+            # 元数据行：保持原样，不污染 status 字段
+            new_lines.append(json.dumps(obj, ensure_ascii=False))
+            continue
         if obj.get("status") != expected_col:
             obj["status"] = expected_col
             changed = True
         new_lines.append(json.dumps(obj, ensure_ascii=False))
     if changed:
-        path.write_text("\n".join(new_lines) + "\n")
+        _atomic_write(path, "\n".join(new_lines) + "\n")
     return changed
 
 

@@ -166,3 +166,61 @@ def test_reconcile_dry_run_no_changes(tmp_board: Path):
     # 文件未变
     assert (tmp_board / "backlog" / "t8.jsonl").read_text() == before_backlog
     assert (tmp_board / "released" / "t8.jsonl").read_text() == before_released
+
+
+# --- H2: reconcile 使用原子写入 ---
+
+def test_reconcile_uses_atomic_write(tmp_board: Path, monkeypatch):
+    """H2: fix_status_field 必须走 _atomic_write，不直接 write_text"""
+    _write_task(tmp_board, "backlog", "atomic-test", status="released")
+
+    # monkeypatch board_reconcile._atomic_write，记录调用
+    captured_calls = []
+    original_atomic = board_reconcile._atomic_write
+
+    def mock_atomic(path: Path, content: str):
+        captured_calls.append((path, content))
+        original_atomic(path, content)
+
+    monkeypatch.setattr(board_reconcile, "_atomic_write", mock_atomic)
+
+    reconcile(tmp_board, dry_run=False)
+
+    assert len(captured_calls) >= 1, "fix_status_field 应调用 _atomic_write"
+    assert captured_calls[0][0] == tmp_board / "backlog" / "atomic-test.jsonl"
+
+
+# --- M10: schema_version 元数据行不被污染 ---
+
+def test_reconcile_skips_schema_metadata_lines(tmp_board: Path, monkeypatch):
+    """M10: schema_version 元数据行不应被加上 status 字段"""
+    col_dir = tmp_board / "backlog"
+    col_dir.mkdir(parents=True, exist_ok=True)
+    target = col_dir / "meta-test.jsonl"
+
+    # 元数据行 + 任务行（status 错误）
+    target.write_text(
+        '{"schema_version": "1.0"}\n'
+        + json.dumps({
+            "id": "meta-test",
+            "title": "x",
+            "description": "x",
+            "status": "released",   # 故意错误
+            "created_at": "2026-07-11T00:00:00Z",
+            "updated_at": "2026-07-11T00:00:00Z",
+        }, ensure_ascii=False)
+        + "\n"
+    )
+
+    reconcile(tmp_board, dry_run=False)
+
+    lines = target.read_text().strip().split("\n")
+    meta = json.loads(lines[0])
+    task = json.loads(lines[1])
+
+    # 元数据行不应被添加 status 字段
+    assert "status" not in meta
+    assert meta.get("schema_version") == "1.0"
+
+    # 任务行 status 应被修正
+    assert task["status"] == "backlog"
