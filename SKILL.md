@@ -96,7 +96,7 @@ backlog → planned → in_progress → testing → verified → released
 ├── plans/<task>.plan.md         # product 产出
 ├── phases/<task>.phases.json    # product 产出（JSONL, schema_version="1.1"）
 ├── reports/<task>.report.md     # dev 产出（含 AGENTS.md 建议段）
-├── reviews/<task>.review.md     # reviewer 产出（v0.24.5+）
+├── reports/<task>.review.md     # reviewer 产出（v0.24.5+）
 ├── verdicts/<task>.verdict.md   # reviewer/tester 产出（≥3 probes）
 ├── review-locks/<task>.lock     # reviewer per-task advisory lock（v0.24.5+, O_EXCL 互斥）
 └── board/                       # 看板文件（由 ccc-board.py 维护）

@@ -75,7 +75,7 @@
 | **IDE/QXO/外部工具** | (无) | `backlog` | — | **唯一允许直接写 backlog 的来源** |
 | **product** | `backlog` | `planned` | `.ccc/plans/<id>.plan.md` + `.ccc/phases/<id>.phases.json` | 拆任务 + 写 plan + phases |
 | **dev** | `planned` (或 `abnormal`) | `in_progress` | `.ccc/reports/<id>.report.md` | 执行 phase 1..N；R-04 advisory lock |
-| **reviewer** | `in_progress` | `testing` / `abnormal` | `.ccc/reviews/<id>.review.md` | R-04 + R-12 fallback quarantine |
+| **reviewer** | `in_progress` | `testing` / `abnormal` | `.ccc/reports/<id>.review.md` | R-04 + R-12 fallback quarantine |
 | **tester** | `testing` | `verified` / `abnormal` | — | pytest + plan 验收 |
 | **kb** | `verified` | `released` | CHANGELOG + git tag | 归档沉淀 |
 | **regress** | `released` | `backlog` (回归) | — | 发现 bug 移回 backlog |

@@ -568,7 +568,7 @@ fi
 - **机制**：
   1. `_review_with_llm()` 构造审查 prompt，含 plan 摘要 + diff stat + diff 详情 + 5 类清单
   2. 期望输出 JSON：`{"verdict": "pass"|"fail", "findings": [...], "summary": "..."}`
-  3. 写报告到 `.ccc/reviews/{tid}.review.md`（v0.24.5+ 改路径）
+  3. 写报告到 `.ccc/reports/{tid}.review.md`（v0.24.5+ 改路径）
   4. pass → move testing → verified；fail → 留 testing
 - **Fallback（v0.24.5+ 强化 = R-12 红线）**：
   - **small 类**（≤10 行）：LLM 不可达时退化 `py_compile` 静态检查，verdict = pass

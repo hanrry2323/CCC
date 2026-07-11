@@ -479,7 +479,7 @@ def _check_phase_failures(task_id: str) -> dict:
     4. v0.25.1: 多轮 tick 不收敛（>= PHASE_MAX_ENGINE_ITER）→ 强收敛
        （pending/blocked 标 failed/skipped）
     5. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
-            "all_terminal": bool, "all_failed": bool, "engine_iter": int,
+            "all_terminal": bool, "all_failed_or_skipped": bool, "engine_iter": int,
             "force_converged": bool}
 
     Engine 在每次 dev 完成后调用一次，让失败传染链路在多轮 tick 中收敛。
@@ -629,7 +629,7 @@ def _write_engine_iter(task_id: str, value: int) -> None:
                 fcntl.flock(f, fcntl.LOCK_UN)
     except OSError:
         pass
-def _move_task_to_abnormal_if_all_failed(task_id: str) -> bool:
+def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
     """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
 
     Returns: True if moved, False otherwise.
@@ -3059,7 +3059,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             failure_summary = _check_phase_failures(task_id)
             if failure_summary.get("all_failed_or_skipped"):
                 # 所有 phase 都失败 → task 移到 abnormal（不进 verified）
-                _move_task_to_abnormal_if_all_failed(task_id)
+                _move_task_to_abnormal_if_all_terminal_failed(task_id)
                 _quarantine(
                     task_id,
                     f"engine: 重试{MAX_RETRY}次全部失败，"
