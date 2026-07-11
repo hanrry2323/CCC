@@ -20,6 +20,8 @@ __pycache__/
 .ccc/warnings.json
 .ccc/report-contrast-*.md
 .ccc/board/backlog/smoke-*.jsonl
+.ccc/board/released/
+.ccc/board/archive/
 .ccc/reviews/adversarial-*.json
 # PWF (planning-with-files) artifacts
 findings.md
