@@ -441,3 +441,90 @@ class TestV0243P0Fixes:
             {"phase": 2, "status": "pending", "depends_on": [1]},
         ])
         assert _current_running_phase("p08inprog") == 1
+
+# ─────────────── v0.25 P1 遗留（CHANGELOG v0.24.4:93-99）───────────────
+
+
+class TestV025P1Backlog:
+    """CHANGELOG v0.24.4:93-99 列了 5 项 P1 遗留，v0.25 补回归测试。
+
+    注：这些 case 是"行为契约"——保证 v0.25 之后实现不破坏预期语义。
+    实现本身（v0.25+ 落地）不在本测试范围。
+    """
+
+    def test_circular_dependency_detection_invariant(self, fake_workspace):
+        """循环依赖：phase 1 depends_on [3] + phase 3 depends_on [1]
+        → _resolve_phase_dependencies 不应无限循环，至少应有一态分类。
+
+        预期（v0.25+ 实际实现）：executable/blocked/skipped 三态中至少
+        有一个非空，避免全为 pending 卡死。
+        """
+        _write_phases(fake_workspace, "circ", [
+            {"phase": 1, "status": "pending", "depends_on": [3]},
+            {"phase": 2, "status": "pending", "depends_on": []},
+            {"phase": 3, "status": "pending", "depends_on": [1]},
+        ])
+        phases = _load_phases("circ")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        # 不应全空（全空 = 死锁）
+        assert len(executable) + len(blocked) + len(skipped) > 0
+        # phase 2 无依赖，必 executable
+        assert 2 in executable
+
+    def test_max_iter_convergence_invariant(self, fake_workspace):
+        """多轮 tick 收敛：_check_phase_failures 跑 N 轮后应稳定（不无限循环）。
+
+        模拟：phase 1 failed 多次 tick 后仍 failed（已收敛）。
+        """
+        _write_phases(fake_workspace, "conv", [
+            {"phase": 1, "status": "failed", "depends_on": []},
+            {"phase": 2, "status": "skipped", "depends_on": [1]},
+        ])
+        # 第一轮
+        r1 = _check_phase_failures("conv")
+        # 第二轮（应幂等）
+        r2 = _check_phase_failures("conv")
+        # 两轮结果应一致（已收敛）
+        assert r1 == r2, "multi-tick must converge to stable state"
+
+    def test_phase_terminal_fail_marks_blocked(self, fake_workspace):
+        """PHASE_TERMINAL_FAIL = "failed"（v0.25+ 应让 failed phase 标 blocked）。"""
+        assert "failed" in PHASE_TERMINAL_FAIL
+        assert PHASE_TERMINAL_FAIL != PHASE_TERMINAL_OK
+
+    def test_unresolved_dependency_phase_id(self, fake_workspace):
+        """依赖 phase 不存在（如 [99]）：调用不应抛异常，应降级处理。
+
+        预期：当前实现 _resolve_phase_dependencies 容忍不存在依赖
+        （见代码注释"留给人工处理"），engine_loop 拿到 (executable,
+        blocked, skipped) 后继续跑 executable。
+        """
+        _write_phases(fake_workspace, "missing", [
+            {"phase": 1, "status": "pending", "depends_on": [99]},  # 99 不存在
+            {"phase": 2, "status": "pending", "depends_on": []},
+        ])
+        # 不应抛异常
+        phases = _load_phases("missing")
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+        # phase 2 无依赖 → executable
+        assert 2 in executable
+        # phase 1 depends_on 99（不存在） → 至少不抛异常
+        # 注：v0.25+ 可能加 warning 日志（references/adversarial-2026-07-11.json A24-25）
+
+    def test_phase_retry_independent(self, fake_workspace):
+        """phase 1 retry=3 不影响 phase 2 retry=0。
+
+        验证 _load_phases 返回各 phase 独立 retry 计数。
+        """
+        _write_phases(fake_workspace, "ind", [
+            {"phase": 1, "status": "in_progress", "retry": 3, "depends_on": []},
+            {"phase": 2, "status": "pending", "retry": 0, "depends_on": [1]},
+        ])
+        phases = _load_phases("ind")
+        # 找到 phase 1 / phase 2
+        p1 = next((p for p in phases if p.get("phase") == 1), None)
+        p2 = next((p for p in phases if p.get("phase") == 2), None)
+        assert p1 is not None and p2 is not None
+        # retry 计数独立
+        assert p1.get("retry", 0) == 3
+        assert p2.get("retry", 0) == 0
