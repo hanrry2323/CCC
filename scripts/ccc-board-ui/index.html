@@ -261,6 +261,24 @@ function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+async function reExec(id, workspace){
+  try {
+    const r = await fetch('/api/tasks/move', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id, from: 'abnormal', to: 'planned', workspace}),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      alert(`重新执行失败: ${err.message || err.error || r.status}`);
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert(`网络错误: ${e.message}`);
+  }
+}
+
 function abbr(name){
   if(!name) return '?';
   return name.charAt(0);
@@ -394,7 +412,7 @@ function renderAbnormal(tasks){
         <br><span class="mono">建议操作：</span>${esc(t.human_suggestion)}
       </div>
       <div class="actions">
-        <button class="btn primary" onclick="fetch('/api/tasks/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id:'${esc(t.id)}', from:'abnormal', to:'planned', workspace:'${esc(t.workspace)}')}}).then(r=>r.json()).then(r=>location.reload())">重新执行</button>
+        <button class="btn primary" onclick="reExec('${esc(t.id)}', '${esc(t.workspace)}')">重新执行</button>
         <button class="btn" onclick="location.href='/board.html'">查看详情</button>
       </div>
     </div>
