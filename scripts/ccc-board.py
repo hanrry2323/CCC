@@ -277,6 +277,50 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
         except OSError:
             pass
 
+    # v0.25.1: 不存在依赖告警（CHANGELOG v0.24.4:97 P1）
+    # 检测 depends_on 中引用了不存在的 phase_id；写 warnings.json + L2 通知
+    unresolved: dict[int, list[int]] = {}  # phase_id -> [missing dep ids]
+    for pid, phase in by_id.items():
+        deps = phase.get("depends_on") or []
+        for dep_id in deps:
+            if dep_id not in by_id:
+                unresolved.setdefault(pid, []).append(dep_id)
+    if unresolved:
+        try:
+            warnings_file = ROOT / ".ccc" / "warnings.json"
+            import json as _json
+            existing = []
+            if warnings_file.exists():
+                try:
+                    existing = _json.loads(warnings_file.read_text())
+                    if not isinstance(existing, list):
+                        existing = []
+                except _json.JSONDecodeError:
+                    existing = []
+            existing.append({
+                "type": "unresolved_dep",
+                "missing": {str(k): v for k, v in unresolved.items()},
+                "detected_at": now_iso(),
+            })
+            warnings_file.write_text(_json.dumps(existing, ensure_ascii=False, indent=2))
+            # L2 桌面通知（让 dev 立刻看见）
+            try:
+                subprocess.run(
+                    [
+                        "bash",
+                        str(CCC_HOME / "scripts" / "ccc-notify.sh"),
+                        "L2",
+                        "phases.json: unresolved dependency detected",
+                        f"{len(unresolved)} phase 引用了不存在的 phase_id",
+                    ],
+                    capture_output=True,
+                    timeout=5,
+                )
+            except Exception:
+                pass
+        except OSError:
+            pass
+
     return executable, blocked, skipped
 
 

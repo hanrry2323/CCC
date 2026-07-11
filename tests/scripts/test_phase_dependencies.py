@@ -600,3 +600,59 @@ class TestV0251CycleDetection:
         content = json.loads(warnings_file.read_text())
         assert isinstance(content, list)
         assert any(w.get("type") == "phase_cycle" for w in content)
+
+
+class TestV0251UnresolvedDeps:
+    """v0.25.1 不存在依赖告警：depends_on 引用不存在的 phase_id 时写 warnings.json + L2"""
+
+    def test_unresolved_dep_writes_warnings(self, fake_workspace):
+        """phase 1 depends_on [99]（99 不存在）→ 写 warnings.json"""
+        _write_phases(fake_workspace, "unr1", [
+            {"phase": 1, "status": "pending", "depends_on": [99]},
+            {"phase": 2, "status": "pending", "depends_on": []},
+        ])
+        phases = _load_phases("unr1")
+        _resolve_phase_dependencies(phases)
+
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        assert warnings_file.exists()
+        import json
+        content = json.loads(warnings_file.read_text())
+        assert any(w.get("type") == "unresolved_dep" for w in content)
+
+    def test_no_unresolved_no_warnings(self, fake_workspace):
+        """所有依赖都存在 → 不写 unresolved_dep warnings"""
+        _write_phases(fake_workspace, "allok", [
+            {"phase": 1, "status": "pending", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+        ])
+        phases = _load_phases("allok")
+        _resolve_phase_dependencies(phases)
+
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        if warnings_file.exists():
+            import json
+            content = json.loads(warnings_file.read_text())
+            assert not any(w.get("type") == "unresolved_dep" for w in content)
+
+    def test_multiple_unresolved_listed(self, fake_workspace):
+        """多个 phase 引用不存在 → warnings.json 含全部"""
+        _write_phases(fake_workspace, "multi", [
+            {"phase": 1, "status": "pending", "depends_on": [99]},
+            {"phase": 2, "status": "pending", "depends_on": [98, 97]},
+            {"phase": 3, "status": "pending", "depends_on": []},
+        ])
+        phases = _load_phases("multi")
+        _resolve_phase_dependencies(phases)
+
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        assert warnings_file.exists()
+        import json
+        content = json.loads(warnings_file.read_text())
+        unres_entries = [w for w in content if w.get("type") == "unresolved_dep"]
+        assert len(unres_entries) >= 1
+        # 至少 phase 1 和 2 在 missing 列表里
+        latest = unres_entries[-1]
+        missing_str = latest.get("missing", {})
+        assert "1" in missing_str  # phase 1 → dep 99
+        assert "2" in missing_str  # phase 2 → dep 98+97
