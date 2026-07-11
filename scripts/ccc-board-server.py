@@ -280,6 +280,33 @@ class _RateLimiter:
 _rate_limiter = _RateLimiter()
 
 
+# ── Dashboard thread-safe 缓存 ──
+class _DashboardCache:
+    """3s TTL 的 dashboard 缓存，ThreadingHTTPServer 安全"""
+    def __init__(self, ttl_s: float = 3.0):
+        self._cache: dict[str, tuple[dict, float]] = {}
+        self._ttl = ttl_s
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> dict | None:
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            data, ts = entry
+            if time.monotonic() - ts >= self._ttl:
+                del self._cache[key]
+                return None
+            return data
+
+    def set(self, key: str, data: dict) -> None:
+        with self._lock:
+            self._cache[key] = (data, time.monotonic())
+
+
+_dash_cache = _DashboardCache()
+
+
 # ── HTTP Handler ──
 class BoardHTTPHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -311,8 +338,15 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 
     def _verify_auth(self) -> bool:
         client_ip, client_port = self.client_address
-        # 本地回环 + 本机 LAN IP 都视为 local
-        local_ips = {"127.0.0.1", "::1", "[::1]", "192.168.3.140"}
+        # v0.27.1: 之前硬编码 192.168.3.140（作者本机 IP）会让其他用户 auth 失效
+        # 改用 env var CCC_BOARD_LOCAL_IPS（逗号分隔）让用户配置本机 LAN IP
+        local_ips = {"127.0.0.1", "::1", "[::1]"}
+        extra = os.environ.get("CCC_BOARD_LOCAL_IPS", "").strip()
+        if extra:
+            for ip in extra.split(","):
+                ip = ip.strip()
+                if ip:
+                    local_ips.add(ip)
         is_local = client_ip in local_ips
         token = os.environ.get("QX_BOARD_TOKEN", "").strip()
         if not token:
@@ -352,7 +386,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         ws = qs.get("workspace", ["CCC"])[0]
 
-        if ws != "all" and not validate_workspace(ws):
+        if not validate_workspace(ws):
             self._json({"error": f"unknown workspace: {ws}"}, 400)
             return
 
@@ -497,15 +531,11 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         elif path == "/api/dashboard":
             # v0.27 控制台首页聚合（多 workspace 合并）
             # 3s 内存缓存：同样请求在 3s 内直接返回旧数据，不重新扫盘
-            import time as _time
-            _cache = getattr(self.__class__, '_dash_cache', {})
             _cache_key = qs.get("workspace", ["all"])[0]
-            _now = _time.monotonic()
-            if _cache_key in _cache:
-                cached_data, cached_at = _cache[_cache_key]
-                if _now - cached_at < 3.0:
-                    self._json(cached_data)
-                    return
+            cached = _dash_cache.get(_cache_key)
+            if cached is not None:
+                self._json(cached)
+                return
 
             ws_filter = _cache_key
             workspaces = discover_workspaces()
@@ -603,10 +633,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 "generated_at": now_iso(),
                 "filter": ws_filter,
             }
-            # 写缓存
-            if not hasattr(self.__class__, '_dash_cache'):
-                self.__class__._dash_cache = {}
-            self.__class__._dash_cache[_cache_key] = (result, _now)
+            _dash_cache.set(_cache_key, result)
             self._json(result)
 
         elif path == "/api/roles":
