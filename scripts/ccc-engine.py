@@ -133,6 +133,16 @@ def engine_loop(workspace: str) -> None:
                     if any(t["id"] == running_task_id for t in verified):
                         engine_log(f"{running_task_id} → verified, 立即 kb")
                         kb_role()
+                        # v0.28.0 (F-4): kb_role 后自动 approve-agents（7 天冷却 + 重复检测）
+                        # 替代原 100% 人工审批；保留原 approve_agents 函数供手工触发
+                        try:
+                            auto_r = ccc_board.auto_approve_agents()
+                            if auto_r.get("approved", 0) > 0:
+                                engine_log(
+                                    f"auto-approve-agents ✓ {auto_r['approved']} 条建议合入 AGENTS.md"
+                                )
+                        except Exception as exc:
+                            engine_log(f"auto_approve_agents 异常: {exc}")
                         engine_log(f"{running_task_id} 全链路完成")
                     else:
                         engine_log(f"{running_task_id} reviewer/tester 未通过")
@@ -174,6 +184,23 @@ def engine_loop(workspace: str) -> None:
                         engine_log(f"{running_task_id} 未知状态: {status}")
                     running_task_id = None
                     continue
+
+            # ── Step 1.5 (v0.28.0 F-1): backlog 自动消费 ──
+            # 老板"我给你任务你来拆"的核心断点：engine idle 时如果 backlog 非空，
+            # 自动调 product_role 拆分（生成 plan + phases）→ 挪 planned。
+            # 断点已修：现在 user 只需 `create_task` 落 backlog，engine 自动消费。
+            if running_task_id is None:
+                backlog = ccc_board.list_tasks("backlog")
+                if backlog:
+                    tid = backlog[0]["id"]
+                    engine_log(f"backlog 自动拆分: {tid}")
+                    try:
+                        ccc_board.product_role(task_id=tid)
+                    except Exception as exc:
+                        engine_log(f"product_role({tid}) 异常: {exc}")
+                        # 失败 1 次 → 跳过此 task，避免死循环占满 idle 窗口
+                        # 下轮再试（可能 product API 临时不可达）
+                    continue  # 立即重检（消费下一个或进 planned）
 
             # ── Step 2: 没有活跃 task，取 planned ──
             if running_task_id is None:

@@ -1284,9 +1284,21 @@ def dev_role() -> dict:
 
     # 从 plan.md 生成 executor prompt
     plan_content = plan.read_text()
+    # v0.28.0 (F-2): 大变更优化 — 估算 plan 长度，>50 行强制模型分批改
+    plan_size = len(plan_content.splitlines())
+    size_hint = ""
+    if plan_size > 100:
+        size_hint = (
+            f"\n## 大变更提示（v0.28.0 F-2）\n"
+            f"plan 长 {plan_size} 行（>100），属于大变更。\n"
+            f"- **必须分批改**：先改一个核心文件 + commit，再继续\n"
+            f"- 每个 commit 控制在 50 行内（避免 reviewer LLM timeout）\n"
+            f"- 白名单路径一次只动 1-2 个\n"
+        )
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
         f"## Plan\n\n{plan_content}\n\n"
+        f"{size_hint}\n"
         f"## 完成定义\n"
         f"1. 实现所有需求\n"
         f"2. 跑对应的测试（如有）\n"
@@ -2911,6 +2923,175 @@ def approve_agents() -> dict:
 
     _log.info("[approve-agents] ✓ %s 条建议已写入 %s", n, agents_file)
     return {"role": "approve-agents", "approved": n, "file": str(agents_file)}
+
+
+# v0.28.0 (F-4): 自动 approve-agents — 7 天冷却 + 重复检测 + 自动合入 .ccc/AGENTS.md
+# 与原 approve_agents 区别：
+# - 不需要人工触发（engine 自动调）
+# - 7 天冷却：同一 task_id 7 天内已合入过 → 跳过
+# - 重复检测：同一 source 的同一句建议已存在 → 跳过
+# - 安全门：单次最多合入 10 条（防止 backlog 爆炸时一次写太多）
+_AUTO_APPROVE_COOLDOWN_FILE = ".ccc/.auto-approve-cooldown.json"
+_AUTO_APPROVE_COOLDOWN_DAYS = 7
+_AUTO_APPROVE_MAX_PER_RUN = 10
+
+
+def auto_approve_agents() -> dict:
+    """v0.28.0 (F-4): engine idle 时自动跑 approve-agents。
+
+    与原 approve_agents() 的差异：
+    - 不需要人工触发（engine kb_role 完成后自动调）
+    - 7 天冷却：同 task_id 7 天内已合入 → 跳过（防重复）
+    - 重复检测：AGENTS.md 内已有同 source 的同一句建议 → 跳过
+    - 单次最多 10 条（防 backlog 爆炸时一次写太多）
+    - 不替代人工 approve-agents：原函数保留（红线 18 风格）
+    """
+    import re
+    import json as _json
+
+    pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
+    if not pending_file.exists():
+        return {"role": "auto-approve-agents", "approved": 0, "info": "no pending file"}
+
+    # 读冷却文件
+    cooldown_file = ROOT / _AUTO_APPROVE_COOLDOWN_FILE
+    cooldown: dict[str, str] = {}  # task_id → last_approved_date
+    if cooldown_file.exists():
+        try:
+            cooldown = _json.loads(cooldown_file.read_text())
+        except (OSError, _json.JSONDecodeError):
+            cooldown = {}
+
+    # 当前日期（ISO 短）
+    today = now_iso()[:10]
+
+    # 读 AGENTS.md 用于重复检测
+    agents_file = ROOT / ".ccc" / "AGENTS.md"
+    existing_text = agents_file.read_text() if agents_file.exists() else ""
+
+    content = pending_file.read_text()
+    migration_idx = content.find("\n## 迁移记录")
+    suggestions_text = content[:migration_idx] if migration_idx != -1 else content
+
+    raw_blocks = re.split(r"\n(?=## 来源 task:)", suggestions_text)
+    candidates = []
+    skipped_cooldown = 0
+    skipped_dup = 0
+    for block in raw_blocks:
+        block = block.strip()
+        if not block or block.startswith("# Pending") or block.startswith("> "):
+            continue
+        task_m = re.search(r"## 来源 task:\s*(\S+)", block)
+        source_m = re.search(r"### 来自\s+(\w+)", block)
+        if not task_m or not source_m:
+            continue
+        task_id = task_m.group(1)
+        source = source_m.group(1)
+        # 7 天冷却检查
+        last = cooldown.get(task_id)
+        if last:
+            try:
+                from datetime import datetime as _dt
+                last_d = _dt.fromisoformat(last)
+                today_d = _dt.fromisoformat(today)
+                if (today_d - last_d).days < _AUTO_APPROVE_COOLDOWN_DAYS:
+                    skipped_cooldown += 1
+                    continue
+            except ValueError:
+                pass
+        # 提取 content
+        after_source = block.split(f"### 来自 {source}")[-1].strip()
+        content_text = re.split(r"\n---|\n## ", after_source)[0].strip()
+        if not content_text:
+            continue
+        # 重复检测：source + content 前 100 字符已在 AGENTS.md
+        sig = f"### 来自 {source}" + content_text[:100]
+        if sig in existing_text:
+            skipped_dup += 1
+            continue
+        candidates.append({
+            "task_id": task_id,
+            "source": source,
+            "content": content_text,
+        })
+        if len(candidates) >= _AUTO_APPROVE_MAX_PER_RUN:
+            break
+
+    if not candidates:
+        _log.info(
+            "[auto-approve-agents] 无新建议（cooldown=%d, dup=%d）",
+            skipped_cooldown, skipped_dup,
+        )
+        return {
+            "role": "auto-approve-agents",
+            "approved": 0,
+            "skipped_cooldown": skipped_cooldown,
+            "skipped_dup": skipped_dup,
+        }
+
+    # 创建 AGENTS.md（如不存在）
+    if not agents_file.exists():
+        template_file = ROOT / "templates" / "AGENTS.md"
+        agents_content = (
+            template_file.read_text()
+            if template_file.exists() else "# CCC Agent Guide\n"
+        )
+        agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
+        _log.info("[auto-approve-agents] 创建 %s", agents_file)
+
+    # 合入
+    new_entries = []
+    approved_tasks: list[str] = []
+    for s in candidates:
+        entry = f"### 来自 {s['source']} ({s['task_id']})\n\n{s['content']}\n"
+        new_entries.append(entry)
+        approved_tasks.append(s["task_id"])
+
+    existing_text = agents_file.read_text().rstrip()
+    agents_file.write_text(existing_text + "\n" + "\n".join(new_entries) + "\n")
+
+    # 更新冷却
+    for tid in approved_tasks:
+        cooldown[tid] = today
+    cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False))
+
+    # 写 pending-agents-suggestions.md 迁移记录
+    n = len(candidates)
+    header_lines = []
+    for line in content.split("\n"):
+        if line.strip().startswith("## 来源 task:") or line.strip().startswith("---"):
+            break
+        header_lines.append(line)
+    header = "\n".join(header_lines).rstrip()
+    migration_line = (
+        f"| {today} | auto-approve-agents | ✅ (已写入 {n} 条, "
+        f"cooldown={skipped_cooldown}, dup={skipped_dup}) | 7 天冷却 |\n"
+    )
+    if migration_idx != -1:
+        existing_migration = content[migration_idx:].rstrip()
+        pending_file.write_text(
+            header + "\n\n" + existing_migration + "\n" + migration_line
+        )
+    else:
+        pending_file.write_text(
+            header
+            + "\n\n## 迁移记录\n\n"
+            + "| 日期 | 迁移人 | 写入 AGENTS.md? | 备注 |\n"
+            + "|------|--------|----------------|------|\n"
+            + migration_line
+        )
+
+    _log.info(
+        "[auto-approve-agents] ✓ %s 条建议已写入 %s (cooldown=%d, dup=%d)",
+        n, agents_file, skipped_cooldown, skipped_dup,
+    )
+    return {
+        "role": "auto-approve-agents",
+        "approved": n,
+        "skipped_cooldown": skipped_cooldown,
+        "skipped_dup": skipped_dup,
+        "file": str(agents_file),
+    }
 
 
 # ═══════════════════════════════════════════

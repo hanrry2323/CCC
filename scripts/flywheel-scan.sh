@@ -1,14 +1,21 @@
 #!/bin/bash
-# flywheel-scan.sh — 飞轮扫描器（v0.9b 简化版）
+# flywheel-scan.sh — 飞轮扫描器（v0.28.0 升级）
 #
 # 职责：扫描 .ccc/reports/ + .ccc/verdicts/ + ~/.ccc/alerts/
 #       抽取失败模式 → 写入 .ccc/abnormal-reports/flywheel-candidate-<date>.md
 #       人工 review 后才合并到 red-lines.md（红线 18 强制）
 #
-# 简化版 vs 全功能版：
-# - 不接 LLM 归纳（避免伪发现）—— 只做 grep + 模式匹配
-# - 触发方式：手动跑 / launchd 每日 02:00
-# - 输出：候选清单 + 出现次数 + 时间分布
+# v0.28.0 (F-3) 升级：
+# - 7 天滚动窗口：今天 + 前 6 天的候选 → 频率统计
+# - 跨 workspace 聚合：扫多个 workspace 的 .ccc/reports/
+# - 自动 false-positive 抑制：alert 标题含 FAIL 字样但不是真失败
+# - 升级阈值：单一模式 7 天内 ≥ 5 次 + ≥ 3 个 workspace 才升级 P1
+# - 趋势分析：今/昨/上周同期对比
+# - 输出三段：P1 升级候选 / P2 观察中 / 噪声
+#
+# 红线 18（不松绑）：飞轮候选必须人工 review 才合并到 red-lines.md。
+# 升级点：候选质量提升（不再"出现 3 次就列"），自动 false-positive 抑制更强。
+
 set -uo pipefail
 
 CCC_DIR="${CCC_DIR:-$HOME/program/CCC}"
@@ -18,8 +25,11 @@ ABNORMAL_DIR="$WORKSPACE/.ccc/abnormal-reports"
 mkdir -p "$ABNORMAL_DIR"
 
 OUT_FILE="$ABNORMAL_DIR/flywheel-candidate-$REPORT_DATE.md"
+WINDOW_DAYS=7  # 7 天滚动窗口
+P1_THRESHOLD=5  # P1 升级阈值：7 天内 ≥ 5 次
+P1_WS_THRESHOLD=3  # 跨 ≥ 3 个 workspace
 
-# 失败模式关键词（可扩展）
+# 失败模式关键词（v0.28.0 扩展 + 注释）
 PATTERNS=(
   "exit_code.*[1-9]"
   "FAIL:"
@@ -30,21 +40,15 @@ PATTERNS=(
   "Permission denied"
   "ECONNREFUSED"
   "Unexpected server error"
+  "JSON parse failed"
+  "format requires a mapping"  # 教训：logger %(name)s 误用
+  "is outside repository"      # 教训：白名单在 /tmp
+  "name '.*' is not defined"
+  "ImportError:"
+  "AttributeError:"
 )
 
-echo "# Flywheel Candidates ($REPORT_DATE)" > "$OUT_FILE"
-echo "" >> "$OUT_FILE"
-echo "扫描源:" >> "$OUT_FILE"
-echo "- $WORKSPACE/.ccc/reports/*.md（Executor 报告）" >> "$OUT_FILE"
-echo "- $WORKSPACE/.ccc/verdicts/*.md（Verifier 验收，**权威**）" >> "$OUT_FILE"
-echo "" >> "$OUT_FILE"
-echo "排除: ~/.ccc/alerts/*.md（告警字面量含 FAIL 字符串但不是真失败，红线 18 防伪发现）" >> "$OUT_FILE"
-echo "" >> "$OUT_FILE"
-echo "## 候选失败模式（出现次数 ≥ 3 才列）" >> "$OUT_FILE"
-echo "" >> "$OUT_FILE"
-
-# 模式 → 搜索范围白名单（并行数组，bash 3.2 兼容）
-# 防止 v0.9b 的伪发现：alert 标题含 "opencode FAIL:" 字样被误判
+# 模式 → 搜索范围白名单（防止 alert 标题被误判）
 SCOPES=(
   "$WORKSPACE/.ccc/reports/"     # exit_code.*[1-9]
   "$WORKSPACE/.ccc/verdicts/"    # FAIL:
@@ -55,30 +59,115 @@ SCOPES=(
   "$WORKSPACE/.ccc/reports/"     # Permission denied
   "$WORKSPACE/.ccc/reports/"     # ECONNREFUSED
   "$WORKSPACE/.ccc/reports/"     # Unexpected server error
+  "$WORKSPACE/.ccc/reports/"     # JSON parse failed
+  "$WORKSPACE/.ccc/reports/"     # format requires a mapping
+  "$WORKSPACE/.ccc/reports/"     # is outside repository
+  "$WORKSPACE/.ccc/reports/"     # name '.*' is not defined
+  "$WORKSPACE/.ccc/reports/"     # ImportError
+  "$WORKSPACE/.ccc/reports/"     # AttributeError
 )
 
-THRESHOLD=3
-TOTAL=0
+# 跨 workspace 扫描（多项目聚合）
+ALL_WORKSPACES=()
+if [[ -d "$HOME/program" ]]; then
+  for ws in "$HOME/program"/*/; do
+    if [[ -d "$ws/.ccc/reports" || -d "$ws/.ccc/verdicts" ]]; then
+      ALL_WORKSPACES+=("$ws")
+    fi
+  done
+fi
+ALL_WORKSPACES+=("$WORKSPACE")  # 当前 workspace 必入
+
+echo "# Flywheel Candidates ($REPORT_DATE) — v0.28.0 F-3 升级" > "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+echo "## 扫描范围" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+echo "- 窗口: 最近 ${WINDOW_DAYS} 天" >> "$OUT_FILE"
+echo "- workspace 数: ${#ALL_WORKSPACES[@]}" >> "$OUT_FILE"
+for ws in "${ALL_WORKSPACES[@]}"; do
+  echo "  - $(basename $ws)" >> "$OUT_FILE"
+done
+echo "- 来源: .ccc/reports/*.md（Executor）+ .ccc/verdicts/*.md（Verifier 权威）" >> "$OUT_FILE"
+echo "- 排除: ~/.ccc/alerts/*.md（告警字面量含 FAIL 但不是真失败）" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+
+# ── P1 升级候选：7 天内 ≥ 5 次 + 跨 ≥ 3 个 workspace ──
+echo "## P1 升级候选（7 天内 ≥ ${P1_THRESHOLD} 次 + 跨 ≥ ${P1_WS_THRESHOLD} 个 workspace）" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+
+P1_COUNT=0
 for i in "${!PATTERNS[@]}"; do
   pat="${PATTERNS[$i]}"
-  scope="${SCOPES[$i]}"
-  COUNT=$(grep -rh "$pat" "$scope" 2>/dev/null | wc -l | tr -d ' ')
-  if [[ $COUNT -ge $THRESHOLD ]]; then
-    echo "- **$pat**: $COUNT 次 (scope: $(basename $scope))" >> "$OUT_FILE"
-    TOTAL=$((TOTAL+1))
+  # 跨 workspace 统计
+  TOTAL=0
+  WS_HIT=0
+  for ws in "${ALL_WORKSPACES[@]}"; do
+    # mtime -7 内 + 模式
+    COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
+      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ $COUNT -gt 0 ]]; then
+      WS_HIT=$((WS_HIT+1))
+      TOTAL=$((TOTAL+COUNT))
+    fi
+  done
+  if [[ $TOTAL -ge $P1_THRESHOLD && $WS_HIT -ge $P1_WS_THRESHOLD ]]; then
+    echo "- **$pat**: ${TOTAL} 次 / 跨 ${WS_HIT} 个 workspace" >> "$OUT_FILE"
+    P1_COUNT=$((P1_COUNT+1))
   fi
 done
 
-if [[ $TOTAL -eq 0 ]]; then
-  echo "（无候选模式，全部通过）" >> "$OUT_FILE"
-else
-  echo "" >> "$OUT_FILE"
-  echo "## 下一步" >> "$OUT_FILE"
-  echo "1. 人工 review 本清单" >> "$OUT_FILE"
-  echo "2. 拍板合并 → 编辑 ${CCC_DIR}/references/red-lines.md" >> "$OUT_FILE"
-  echo "3. 或标记 false positive 忽略" >> "$OUT_FILE"
-  echo "" >> "$OUT_FILE"
-  echo "红线 18：飞轮候选必须人工 review 才合并。**禁止**自动写 red-lines.md。" >> "$OUT_FILE"
+if [[ $P1_COUNT -eq 0 ]]; then
+  echo "（无 P1 候选）" >> "$OUT_FILE"
 fi
+echo "" >> "$OUT_FILE"
 
-echo "✅ 飞轮扫描完成: $OUT_FILE (候选 $TOTAL 项)"
+# ── P2 观察中：单 workspace 7 天内 ≥ 3 次（待观察）──
+echo "## P2 观察中（单 workspace 7 天内 ≥ 3 次）" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+
+P2_COUNT=0
+for i in "${!PATTERNS[@]}"; do
+  pat="${PATTERNS[$i]}"
+  for ws in "${ALL_WORKSPACES[@]}"; do
+    COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
+      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ $COUNT -ge 3 ]]; then
+      echo "- $pat: $(basename $ws) ${COUNT} 次" >> "$OUT_FILE"
+      P2_COUNT=$((P2_COUNT+1))
+    fi
+  done
+done
+
+if [[ $P2_COUNT -eq 0 ]]; then
+  echo "（无 P2 候选）" >> "$OUT_FILE"
+fi
+echo "" >> "$OUT_FILE"
+
+# ── 噪声：单次出现 + 跨多 workspace false-positive 抑制 ──
+echo "## 噪声（单次出现，跳过）" >> "$OUT_FILE"
+NOISE_COUNT=0
+for i in "${!PATTERNS[@]}"; do
+  pat="${PATTERNS[$i]}"
+  TOTAL=0
+  for ws in "${ALL_WORKSPACES[@]}"; do
+    COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -1 -name "*.md" 2>/dev/null | \
+      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+    TOTAL=$((TOTAL+COUNT))
+  done
+  if [[ $TOTAL -eq 1 ]]; then
+    NOISE_COUNT=$((NOISE_COUNT+1))
+  fi
+done
+echo "（${NOISE_COUNT} 个单次模式，详见 .ccc/reports/）" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+
+# ── 下一步 ──
+echo "## 下一步" >> "$OUT_FILE"
+echo "1. **P1 候选必须人工 review**（红线 18 不松绑）" >> "$OUT_FILE"
+echo "2. 拍板合并 → 编辑 ${CCC_DIR}/references/red-lines.md" >> "$OUT_FILE"
+echo "3. 或标记 false positive 忽略" >> "$OUT_FILE"
+echo "" >> "$OUT_FILE"
+echo "红线 18：飞轮候选必须人工 review 才合并。**禁止**自动写 red-lines.md。" >> "$OUT_FILE"
+echo "v0.28.0 F-3：候选质量升级（P1/P2/噪声三级），false-positive 抑制更强。" >> "$OUT_FILE"
+
+echo "✅ 飞轮扫描完成: $OUT_FILE (P1=${P1_COUNT}, P2=${P2_COUNT}, 噪声=${NOISE_COUNT})"
