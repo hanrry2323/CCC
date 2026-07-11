@@ -81,6 +81,17 @@ _engine_shutdown = False  # SIGTERM 标志
 # product_role 是轻量级 prompt（plan 生成），短时重试 3 次即止损
 _MAX_PRODUCT_RETRIES = 3
 
+# v0.28.0 (X-H1 修): 缓存 FileBoardStore 实例，避免每次调用重新构造
+_store_instance: FileBoardStore | None = None
+
+
+def _get_store(workspace: str | Path) -> FileBoardStore:
+    """返回缓存的 FileBoardStore 实例（惰性初始化）"""
+    global _store_instance
+    if _store_instance is None:
+        _store_instance = FileBoardStore(Path(workspace) if isinstance(workspace, str) else workspace)
+    return _store_instance
+
 
 def engine_loop(workspace: str) -> None:
     """引擎主循环：串行驱动 task backlog→released"""
@@ -215,7 +226,7 @@ def engine_loop(workspace: str) -> None:
                             f"{tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，"
                             f"移入 abnormal"
                         )
-                        store = FileBoardStore(cfg.workspace)
+                        store = _get_store(cfg.workspace)
                         store.quarantine(
                             tid,
                             f"product_role 连续失败 {fail_count} 次",
@@ -244,7 +255,7 @@ def engine_loop(workspace: str) -> None:
                                 f"{tid} 失败 {fail_count} 次 >= "
                                 f"{_MAX_PRODUCT_RETRIES}，移入 abnormal"
                             )
-                            store = FileBoardStore(cfg.workspace)
+                            store = _get_store(cfg.workspace)
                             store.quarantine(
                                 tid,
                                 f"product_role 连续失败 {fail_count} 次",
@@ -401,7 +412,7 @@ def _check_stale() -> None:
             hours_stale = (now - updated).total_seconds() / 3600
             if hours_stale > cfg.max_stale_hours:
                 # 移入异常
-                store = FileBoardStore(cfg.workspace)
+                store = _get_store(cfg.workspace)
                 store.quarantine(
                     task["id"],
                     f"engine: in_progress 滞留 {hours_stale:.1f}h (阈值 {cfg.max_stale_hours}h)"
@@ -412,7 +423,7 @@ def _check_stale() -> None:
 
     # events TTL 清理：删 >30 天的事件文件
     try:
-        store = FileBoardStore(cfg.workspace)
+        store = _get_store(cfg.workspace)
         store.cleanup_events(max_days=30)
     except Exception:
         pass

@@ -457,7 +457,12 @@ class FileBoardStore:
 
         v0.28.0 (F1-C2 修): 按 created_at 升序排列（FIFO），防止 task_id 字典序不同步
         导致新 task 被先消费、老 task 永久饿死。created_at 缺失时降级到文件名排序。
+
+        v0.28.0 (F1-M2 修): 校验 column 在 COLUMNS 中，否则 log warning + 返回 []
         """
+        if column not in COLUMNS:
+            _log.warning("list_tasks: unknown column '%s' (allowed: %s)", column, COLUMNS)
+            return []
         col_dir = self.board / column
         if not col_dir.exists():
             return []
