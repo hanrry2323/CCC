@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.24.5] — 2026-07-11 — 对抗性审查 P0 hotfix（reviewer 防线加固）
+
+### 修复（2 项 high-severity，1 个 commit）
+v0.24.4 对抗性审查（`adversarial-2026-07-11.json`）发现 4 项 high，本版本修 P0 两项：
+
+1. **A24-01: reviewer 加 per-task advisory lock** — `.ccc/review-locks/{task_id}.lock` 锁住写 review.md 的临界区，并发 reviewer 实例持锁中跳过本轮；macOS 兼容（用 `O_EXCL|O_RDWR` 而非 BSD `O_WRLOCK`）
+2. **A24-03/A24-04: medium/large fallback 强制 quarantine** — LLM 不可用时不再"py_compile 通过即 verified"或"plan 有验收清单即 verified"，一律 quarantine + L2 桌面通知（v0.23 G2 bypass 复发红线，high-severity 必须人工介入）
+
+### 抽取
+- `reviewer_role` 把单 task 处理抽出到 `_review_one_task(task_id) -> bool`，便于 advisory lock 包住；外层仅做 lock 生命周期管理 + 计数汇总
+
+### 红线检查
+- R-04（reviewer 强制参与）：fallback 走 quarantine 不静默 verified ✓
+- R-09（卡死可中断）：concurrent reviewer 实例通过 advisory lock 互斥，不再文件竞态 ✓
+- R-12（强制人工介入）：fallback quarantine 触发 L2 桌面通知 ✓
+
+---
+
 ## [v0.24.3] — 2026-07-11 — 对抗性审查 P0 hotfix
 
 ### 修复（8 项，1 个 commit）

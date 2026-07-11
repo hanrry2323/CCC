@@ -1443,173 +1443,180 @@ def reviewer_role() -> dict:
       - small (≤10 行): 跳过 LLM，仅 py_compile 静态检查
       - medium (10-50 行): 标准 LLM 审查
       - large (>50 行): LLM + impact 分析（影响面/风险等级）
+
+    v0.24.5: 加 per-task advisory lock（A24-01 防并发 reviewer 实例写同 task 的 review.md）
+    v0.24.5: medium/large fallback 路径强制 quarantine（A24-03/A24-04 防 v0.23 G2 bypass 复发）
     """
     moved = []
+    lock_dir = ROOT / ".ccc" / "review-locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
     for task in list_tasks("testing"):
         task_id = task["id"]
-        plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
-        plan_text = plan_file.read_text() if plan_file.exists() else ""
-
-        # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
-        diff_stat, full_diff = _get_git_diff(ROOT, task_id=task_id)
-
-        # v0.24.1: 按变更量分级，决定是否需要 LLM
-        size_class, total_lines = _classify_review_size(diff_stat)
-        # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
-        if size_class == "unknown":
-            _quarantine(task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级")
-            print(
-                f"[reviewer] {task_id} ✗ diff stat 解析失败（缺 summary），quarantine",
-                file=sys.stderr,
+        # v0.24.5 (A24-01): per-task advisory lock 防并发 reviewer 写 review.md
+        # macOS 不支持 O_WRLOCK，用 O_EXCL 创建 + 0o600 模拟 advisory lock
+        lock_path = lock_dir / f"{task_id}.lock"
+        try:
+            _lock_fd = os.open(
+                str(lock_path),
+                os.O_CREAT | os.O_EXCL | os.O_RDWR,
+                0o600,
             )
+        except FileExistsError:
+            # 另一个 reviewer 实例正在审本 task → 跳过本轮，避免文件竞态覆盖
+            print(f"[reviewer] {task_id} ⏸ 持锁中，跳过本轮", file=sys.stderr)
             continue
-        print(f"[reviewer] {task_id} size={size_class} lines={total_lines}")
-
-        # small 类：跳过 LLM，直接走 py_compile 静态检查
-        if size_class == "small":
-            files = _parse_plan_scope(task_id)
-            if not files:
-                files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
-            import glob as _glob
-            py_files = []
-            for f in files:
-                matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
-                matched = [m for m in matched if _is_path_in_root(Path(m))]
-                py_files.extend(matched)
-            py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
-
-            # 写审查报告（small 走静态路径）
-            report_dir = ROOT / ".ccc" / "reports"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            review_md = report_dir / f"{task_id}.review.md"
-            if py_files and _py_compile_fallback(task_id, py_files):
-                move_task(task_id, "testing", "verified")
+        try:
+            result = _review_one_task(task_id)
+            if result:
                 moved.append(task_id)
+        finally:
+            try:
+                os.close(_lock_fd)
+                os.unlink(lock_path)
+            except OSError:
+                pass
+    return {"role": "reviewer", "moved": moved, "counts": update_index()}
+
+
+def _review_one_task(task_id: str) -> bool:
+    """单个 task 的 reviewer 处理（v0.24.5 抽取，便于 advisory lock 包住）。返回是否移 verified。
+
+    v0.24.5 (A24-03/A24-04): medium/large 类 LLM fallback 一律 quarantine + L2 告警，
+    禁止仅凭 py_compile 或 plan 验收清单静默 verified（v0.23 G2 bypass 复发红线）。
+    small 类仍走原 py_compile / plan-only 路径。
+    """
+    task = next((t for t in list_tasks("testing") if t["id"] == task_id), None)
+    if task is None:
+        return False
+    plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    plan_text = plan_file.read_text() if plan_file.exists() else ""
+
+    # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
+    diff_stat, full_diff = _get_git_diff(ROOT, task_id=task_id)
+
+    # v0.24.1: 按变更量分级，决定是否需要 LLM
+    size_class, total_lines = _classify_review_size(diff_stat)
+    # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
+    if size_class == "unknown":
+        _quarantine(task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级")
+        print(
+            f"[reviewer] {task_id} ✗ diff stat 解析失败（缺 summary），quarantine",
+            file=sys.stderr,
+        )
+        return False
+    print(f"[reviewer] {task_id} size={size_class} lines={total_lines}")
+
+    # 写审查报告（共用目录）
+    report_dir = ROOT / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    review_md = report_dir / f"{task_id}.review.md"
+
+    # small 类：跳过 LLM，走 py_compile 静态检查（保留原逻辑）
+    if size_class == "small":
+        files = _parse_plan_scope(task_id)
+        if not files:
+            files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+        import glob as _glob
+        py_files = []
+        for f in files:
+            matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+            matched = [m for m in matched if _is_path_in_root(Path(m))]
+            py_files.extend(matched)
+        py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+
+        if py_files and _py_compile_fallback(task_id, py_files):
+            move_task(task_id, "testing", "verified")
+            review_md.write_text(
+                f"# {task_id} Review\n\n"
+                f"## Verdict: **PASS**\n\n"
+                f"## Size Class: **small** ({total_lines} 行)\n\n"
+                f"v0.24.1: small 类变更跳过 LLM，仅 py_compile 静态检查通过。\n\n"
+                f"## Files Checked ({len(py_files)} 条)\n\n"
+                + "\n".join(f"- {Path(f).name}" for f in py_files)
+            )
+            print(f"[reviewer] {task_id} ✓ small-class static pass ({total_lines} 行)")
+            return True
+        elif not py_files:
+            if not full_diff.strip():
+                _quarantine(task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空")
+                print(
+                    f"[reviewer] {task_id} ✗ small-class quarantine: 空 diff",
+                    file=sys.stderr,
+                )
+                return False
+            if "## 验收" in plan_text or "## 验证" in plan_text:
+                move_task(task_id, "testing", "verified")
                 review_md.write_text(
                     f"# {task_id} Review\n\n"
                     f"## Verdict: **PASS**\n\n"
                     f"## Size Class: **small** ({total_lines} 行)\n\n"
-                    f"v0.24.1: small 类变更跳过 LLM，仅 py_compile 静态检查通过。\n\n"
-                    f"## Files Checked ({len(py_files)} 条)\n\n"
-                    + "\n".join(f"- {Path(f).name}" for f in py_files)
+                    f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
                 )
-                print(f"[reviewer] {task_id} ✓ small-class static pass ({total_lines} 行)")
-                continue
-            elif not py_files:
-                # v0.24.3: small 类无 py 时必须做最小动静校验 —
-                # 不能仅凭"有验收清单"就放行；至少确认 diff 非空（防止 dev 提交空 commit 绕过）
-                if not full_diff.strip():
-                    _quarantine(task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空")
-                    print(
-                        f"[reviewer] {task_id} ✗ small-class quarantine: 空 diff",
-                        file=sys.stderr,
-                    )
-                    continue
-                # 有 diff 且 plan 有验收清单 → 信任 plan，但仍记录为 plan-only pass
-                if "## 验收" in plan_text or "## 验证" in plan_text:
-                    move_task(task_id, "testing", "verified")
-                    moved.append(task_id)
-                    review_md.write_text(
-                        f"# {task_id} Review\n\n"
-                        f"## Verdict: **PASS**\n\n"
-                        f"## Size Class: **small** ({total_lines} 行)\n\n"
-                        f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
-                    )
-                    print(f"[reviewer] {task_id} ✓ small-class plan-only pass")
-                    continue
-                _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
-                print(f"[reviewer] {task_id} ✗ small-class quarantine: 无静态可检查项", file=sys.stderr)
-                continue
-            else:
-                print(
-                    f"[reviewer] {task_id} ✗ small-class py_compile 失败，留在 testing",
-                    file=sys.stderr,
-                )
-                continue
-
-        # medium / large：走 LLM，large 加 impact 分析提示
-        verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text, size_class=size_class)
-        verdict = verdict_data.get("verdict", "fallback")
-        summary = verdict_data.get("summary", "")
-
-        # 写审查报告
-        report_dir = ROOT / ".ccc" / "reports"
-        report_dir.mkdir(parents=True, exist_ok=True)
-        review_md = report_dir / f"{task_id}.review.md"
-        review_md.write_text(
-            f"# {task_id} Review\n\n"
-            f"## Verdict: **{verdict.upper()}**\n\n"
-            f"## Size Class: **{size_class}** ({total_lines} 行)\n\n"
-            f"{summary}\n\n"
-            f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
-            f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
-        )
-
-        if verdict in ("pass", "fail"):
-            if verdict == "pass":
-                move_task(task_id, "testing", "verified")
-                moved.append(task_id)
-                print(f"[reviewer] {task_id} ✓ LLM pass")
-            else:
-                # fail：留 testing，让 dev 重试
-                print(
-                    f"[reviewer] {task_id} ✗ LLM fail（{len(verdict_data.get('findings', []))} issues），留在 testing",
-                    file=sys.stderr,
-                )
+                print(f"[reviewer] {task_id} ✓ small-class plan-only pass")
+                return True
+            _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
+            print(f"[reviewer] {task_id} ✗ small-class quarantine: 无静态可检查项", file=sys.stderr)
+            return False
         else:
-            # fallback：LLM 不可用时降级到 py_compile
-            # G2 修 v0.23.16：plan 有 ## 验收 段 → 信任 plan 走测试，跳过 py 强制
-            files = _parse_plan_scope(task_id)
-            if not files:
-                files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
-            py_files = []
-            for f in files:
-                import glob as _glob
+            print(
+                f"[reviewer] {task_id} ✗ small-class py_compile 失败，留在 testing",
+                file=sys.stderr,
+            )
+            return False
 
-                matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
-                # 安全：即使 glob 展开或直接拼接，确保每个路径仍在 ROOT 范围内 (CWE-22)
-                matched = [m for m in matched if _is_path_in_root(Path(m))]
-                py_files.extend(matched)
-            py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+    # medium / large：走 LLM，large 加 impact 分析提示
+    verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text, size_class=size_class)
+    verdict = verdict_data.get("verdict", "fallback")
+    summary = verdict_data.get("summary", "")
 
-            # G2 修 v0.23.16：plan 有验收清单 → 走 tester 的 plan 验收路径（tester_role 会读 ## 验收 跑命令）
-            # 这里 reviewer 仅做静态语法检查；如果 plan 明确说不改 .py，跳过 py_compile 也算 OK
-            has_acceptance = "## 验收" in plan_text or "## 验证" in plan_text
-            if not has_acceptance and not py_files:
-                _quarantine(task_id, reason="G2 bypass: fallback 无验收项 + 无 py 文件")
-                print(
-                    f"[reviewer] {task_id} ✗ fallback quarantine: 无验收项且无 py 文件",
-                    file=sys.stderr,
-                )
-                continue
+    review_md.write_text(
+        f"# {task_id} Review\n\n"
+        f"## Verdict: **{verdict.upper()}**\n\n"
+        f"## Size Class: **{size_class}** ({total_lines} 行)\n\n"
+        f"{summary}\n\n"
+        f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
+        f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
+    )
 
-            if not py_files:
-                # v0.23.16: 有验收清单但无 py 文件 → 信任 plan，跳过 py_compile 直接 verified
-                if has_acceptance:
-                    move_task(task_id, "testing", "verified")
-                    moved.append(task_id)
-                    print(
-                        f"[reviewer] {task_id} ✓ fallback pass (plan 验收清单替代 py 校验)"
-                    )
-                    continue
-                _quarantine(task_id, reason="G2 bypass: fallback 无 py 文件可校验")
-                print(
-                    f"[reviewer] {task_id} ✗ fallback quarantine: 无 py 文件",
-                    file=sys.stderr,
-                )
-                continue
-            elif _py_compile_fallback(task_id, py_files):
-                move_task(task_id, "testing", "verified")
-                moved.append(task_id)
-                print(
-                    f"[reviewer] {task_id} ✓ fallback py_compile ({len(py_files)} 文件)"
-                )
-            else:
-                print(
-                    f"[reviewer] {task_id} ✗ fallback py_compile 失败，留在 testing",
-                    file=sys.stderr,
-                )
-    return {"role": "reviewer", "moved": moved, "counts": update_index()}
+    if verdict == "pass":
+        move_task(task_id, "testing", "verified")
+        print(f"[reviewer] {task_id} ✓ LLM pass")
+        return True
+    if verdict == "fail":
+        print(
+            f"[reviewer] {task_id} ✗ LLM fail（{len(verdict_data.get('findings', []))} issues），留在 testing",
+            file=sys.stderr,
+        )
+        return False
+
+    # v0.24.5 (A24-03/A24-04): medium/large fallback 一律 quarantine + L2 告警
+    # 禁止仅凭 py_compile 或 plan 验收清单静默 verified（v0.23 G2 bypass 复发红线）
+    reason = (
+        f"v0.24.5 fallback quarantine: {size_class}-class LLM 不可用，"
+        f"reason={verdict_data.get('reason', 'unknown')}；"
+        f"放弃静默 verified，强制人工介入"
+    )
+    _quarantine(task_id, reason=reason)
+    print(
+        f"[reviewer] {task_id} ✗ {size_class}-class fallback quarantine: {verdict_data.get('reason', 'unknown')}",
+        file=sys.stderr,
+    )
+    # L2 桌面通知：fallback bypass 复发是 high-severity，必须人工看见
+    try:
+        subprocess.run(
+            [
+                "bash",
+                str(CCC_HOME / "scripts" / "ccc-notify.sh"),
+                "L2",
+                f"reviewer fallback quarantine: {task_id} ({size_class})",
+                reason[:200],
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[reviewer] notify failed: {e}", file=sys.stderr)
+    return False
 
 
 def tester_role() -> dict:
