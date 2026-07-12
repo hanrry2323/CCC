@@ -396,6 +396,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _activate_workspace(ws)
                     _store = _get_store(ws)
                     _check_stale(ws)
+                    _retry_abnormal_dev_failures(ws)
                     test_tasks = _store.list_tasks("testing")
                     if test_tasks:
                         label = _ws_label(ws)
@@ -463,6 +464,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                         except Exception as exc:
                             engine_log(f"[{label}] audit_role 异常: {exc}")
 
+                    _retry_abnormal_dev_failures(ws)
                     _check_new_reviews(ws)
 
                 if not any_active:
@@ -522,6 +524,77 @@ def _audit_check_old(old_file, interval_hours: int = 2) -> bool:
         return hours >= interval_hours
     except (json.JSONDecodeError, KeyError, ValueError):
         return True
+
+
+def _retry_abnormal_dev_failures(ws: Path) -> None:
+    """扫描 abnormal 中因 dev 重试耗尽而隔离的任务，冷却后自动移回 planned 重试。
+
+    避免手动操作，让因 transient 错误（网络、依赖安装、opencode 临时故障）
+    而失败的任务有机会自动恢复。最大自动重试 3 次（与 dev 的 max_retry 独立）。
+    """
+    from datetime import datetime as _dt
+    import json as _json
+
+    _activate_workspace(ws)
+    store = _get_store(ws)
+    label = _ws_label(ws)
+    now = _dt.now(timezone.utc)
+    # auto_retry 计数器文件（每个 ws 一个，记录 task_id→重试次数）
+    retry_counter_file = ws / ".ccc" / ".dev_auto_retry.json"
+    retry_counts: dict[str, int] = {}
+    if retry_counter_file.exists():
+        try:
+            retry_counts = _json.loads(retry_counter_file.read_text())
+        except (_json.JSONDecodeError, OSError):
+            retry_counts = {}
+    MAX_AUTO_RETRY = 3
+    COOLDOWN_MINUTES = 15
+
+    for task in store.list_tasks("abnormal"):
+        tid = task["id"]
+        reason = task.get("note", "")
+        # 仅处理 dev 执行失败类（"重试N次全部失败" 特征）
+        if "重试" not in reason and "all_failed_or_skipped" not in reason:
+            continue
+        updated_str = task.get("updated_at", task.get("created_at", ""))
+        if not updated_str:
+            continue
+        try:
+            updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
+            minutes_since = (now - updated).total_seconds() / 60
+        except (ValueError, TypeError):
+            continue
+        if minutes_since < COOLDOWN_MINUTES:
+            continue  # 冷却中
+        auto_retried = retry_counts.get(tid, 0)
+        if auto_retried >= MAX_AUTO_RETRY:
+            continue  # 超过最大自动重试次数
+        # 移回 planned
+        try:
+            task_json = _json.loads((ws / ".ccc/board/abnormal" / f"{tid}.jsonl").read_text())
+            task_json["status"] = "planned"
+            task_json["updated_at"] = now_iso()
+            task_json["note"] = f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
+            planned_dir = ws / ".ccc/board/planned"
+            planned_dir.mkdir(parents=True, exist_ok=True)
+            (planned_dir / f"{tid}.jsonl").write_text(
+                _json.dumps(task_json, ensure_ascii=False) + "\n"
+            )
+            # 删 abnormal
+            (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").unlink()
+            retry_counts[tid] = auto_retried + 1
+            store.update_index()
+            engine_log(
+                f"[{label}] auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {tid} "
+                f"(冷却 {minutes_since:.0f}min) → planned"
+            )
+        except Exception as e:
+            _log.warning("auto-retry failed for %s: %s", tid, e)
+
+    try:
+        retry_counter_file.write_text(_json.dumps(retry_counts, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def _check_new_reviews(ws: Path) -> None:
