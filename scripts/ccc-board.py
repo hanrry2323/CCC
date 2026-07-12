@@ -1807,18 +1807,27 @@ def _review_with_llm(
                 "reason": f"claude rc={r.returncode}: {stderr[:200]}",
             }
         output = r.stdout.decode("utf-8", errors="replace") if isinstance(r.stdout, bytes) else r.stdout
-        # 尝试从输出抓 JSON：优先 markdown 代码块，其次裸 JSON
-        m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\"verdict\"[\s\S]*?\})\s*\n?```", output)
+        trimmed = output.strip()
+        # 优先：直接尝试解析整个输出（Claude 按指示只返回 JSON）
+        if trimmed.startswith("{"):
+            try:
+                data = json.loads(trimmed)
+                if data.get("verdict") in ("pass", "fail"):
+                    return data
+            except json.JSONDecodeError:
+                pass  # 继续 fallback 解析
+
+        # 次优：从 markdown 代码块提取 JSON（匹配首 { 到末 }）
+        m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```", output, _re.IGNORECASE)
         if not m:
-            m = _re.search(r"\{[\s\S]*?\"verdict\"[\s\S]*?\}", output)
+            # 最后：裸 JSON 对象，匹配首 { 到末 }（greedy，适应嵌套对象）
+            m = _re.search(r"(\{.*\})", output, _re.DOTALL)
         if not m:
+            _log.warning("reviewer no JSON in Claude output. output=[%s]", output[:500])
             return {"verdict": "fallback", "reason": "no JSON in Claude output"}
         try:
-            # 优先用捕获组（第一正则 capture group 1 = 干净 JSON），否则用全匹配
             json_str = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
-            # Claude 输出里可能有控制字符或转义错误，先尝试宽松解析：
-            # 1. 直接 parse
-            # 2. 替换常见控制字符再试
+            json_str = json_str.strip()
             data = None
             for candidate in (json_str, _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)):
                 try:
@@ -1827,6 +1836,8 @@ def _review_with_llm(
                 except json.JSONDecodeError:
                     continue
             if data is None:
+                _log.warning("reviewer JSON parse failed. output=[%s] json_str=[%s]",
+                             output[:500], json_str[:300])
                 raise json.JSONDecodeError("all candidates failed", json_str, 0)
             if data.get("verdict") in ("pass", "fail"):
                 return data

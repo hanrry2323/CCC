@@ -390,11 +390,21 @@ def engine_loop(workspaces: list[Path]) -> None:
                     active_tasks.pop(key, None)
 
 
-            # 每 6 轮（~60s）跑一次 stale check，不受 active_tasks 阻塞
+            # 每 6 轮（~60s）跑一次 stale check + testing 流转
             if iteration % 6 == 0:
                 for ws in workspaces:
                     _activate_workspace(ws)
+                    _store = _get_store(ws)
                     _check_stale(ws)
+                    test_tasks = _store.list_tasks("testing")
+                    if test_tasks:
+                        label = _ws_label(ws)
+                        engine_log(f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester")
+                        try:
+                            reviewer_role()
+                            tester_role()
+                        except Exception as exc:
+                            engine_log(f"[{label}] reviewer/tester 异常: {exc}")
             ws_first_running: dict[str, str | None] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
@@ -432,6 +442,17 @@ def engine_loop(workspaces: list[Path]) -> None:
                 for ws in workspaces:
                     _activate_workspace(ws)
                     _check_stale(ws)
+                    # 空闲时立即处理 testing 任务
+                    _store2 = _get_store(ws)
+                    test_tasks = _store2.list_tasks("testing")
+                    if test_tasks:
+                        label = _ws_label(ws)
+                        engine_log(f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester")
+                        try:
+                            reviewer_role()
+                            tester_role()
+                        except Exception as exc:
+                            engine_log(f"[{label}] reviewer/tester 异常: {exc}")
                     _write_heartbeat(ws, None)
 
                     if _audit_should_run(str(ws)):
