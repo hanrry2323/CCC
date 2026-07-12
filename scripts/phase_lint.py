@@ -23,6 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
+from _config import get_logger
+
+_log = get_logger("phase-lint")
+
 
 phases_schema_version = "1.2"
 
@@ -72,10 +76,8 @@ def validate_schema_version(
                 with open(phases_file, "r+") as f:
                     try:
                         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                    except (OSError, AttributeError):
-                        pass
-                    try:
-                        content = f.readlines()
+                    except (OSError, AttributeError) as e:
+                        _log.warning("flock lock failed: %s", e)
                         metadata_line = (
                             json.dumps({"schema_version": "1.1"}, ensure_ascii=False)
                             + "\n"
@@ -88,9 +90,8 @@ def validate_schema_version(
                     finally:
                         try:
                             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                        except (OSError, AttributeError):
-                            pass
-            errors.append(err)
+                        except (OSError, AttributeError) as e:
+                            _log.warning("flock unlock failed: %s", e)
     return (len(errors) == 0), errors
 
 
@@ -606,6 +607,8 @@ def run_lint(task_id: str, fix: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    args = parse_args()
-
-    sys.exit(run_lint(args.task_id, args.fix))
+    try:
+        args = parse_args()
+        sys.exit(run_lint(args.task_id, args.fix))
+    except KeyboardInterrupt:
+        sys.exit(130)
