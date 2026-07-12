@@ -45,7 +45,10 @@ import sys as _sys
 _scripts_dir = str(Path(__file__).resolve().parent)
 if _scripts_dir not in _sys.path:
     _sys.path.insert(0, _scripts_dir)
+from _config import Config, get_logger
 from _executor import resolve_opencode
+
+_log = get_logger("opencode-exec")
 
 
 def check_residual_watchdog(script_dir: Path) -> bool:
@@ -81,7 +84,8 @@ async def run_opencode(
         # 但 v3.6.0+ 提升为"仅供 4002 自动化开发专用"，给 opencode CLI 用)。
         # 4000 端口是 anthropic 协议（主对话用 flash tier → MiniMax-M3 P0）。
         # 如需切到 flash，显式设 OPENCODE_MODEL=loop/flash。
-        model = os.environ.get("OPENCODE_MODEL", "loop/code")
+        # v0.28.1: 模型名从 Config 统一获取（OPENCODE_MODEL env 可覆盖）
+        model = os.environ.get("OPENCODE_MODEL", Config().model)
         prompt_text = prompt_text.strip()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
@@ -147,19 +151,19 @@ async def run_opencode(
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         try:
             _os.killpg(proc.pid, _sig.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
+        except (ProcessLookupError, PermissionError) as e:
+            _log.warning("SIGTERM killpg failed pid=%s: %s", proc.pid, e)
         try:
             await asyncio.wait_for(proc.wait(), timeout=5)
         except asyncio.TimeoutError:
             try:
                 _os.killpg(proc.pid, _sig.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
+            except (ProcessLookupError, PermissionError) as e:
+                _log.warning("SIGKILL killpg failed pid=%s: %s", proc.pid, e)
             try:
                 await asyncio.wait_for(proc.wait(), timeout=10)
             except asyncio.TimeoutError:
-                pass  # best-effort, 不阻塞
+                _log.warning("proc.wait timeout after SIGKILL pid=%s", proc.pid)
         killed_reason = "cancelled" if isinstance(exc, asyncio.CancelledError) else f"timeout after {timeout}s"
         return {
             "phase_id": phase_id,
@@ -179,8 +183,8 @@ async def run_opencode(
         if tmp_path is not None and Path(tmp_path).exists():
             try:
                 Path(tmp_path).unlink()
-            except OSError:
-                pass  # best-effort, 不阻断
+            except OSError as e:
+                _log.warning("temp prompt unlink failed %s: %s", tmp_path, e)
 
 
 async def main() -> int:
