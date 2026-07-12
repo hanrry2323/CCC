@@ -1799,16 +1799,17 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - **数据泄漏类**（Bug 1+3）：opencode-exec 长 prompt 临时文件永久不删
   - 后果：磁盘泄漏 + 隐私（prompt 可能含密钥）
   - 修：finally 块 unlink + best-effort
-- **静默失败类**（Bug 2）：ccc-finish `except: pass` 吞所有异常
+- **静默失败类**（Bug 2）：`ccc-finish`（已移除，v0.7-slim）`except: pass` 吞所有异常
   - 后果：phases.json 坏行找不到
   - 修：except json.JSONDecodeError as e + stderr 输出
+  - **现状**：脚本已删除；同类问题见 `scripts/_board_store.py` 原子写 + 显式异常
 - **配置硬编码类**（Bug 6）：钩子 timeout=30 写死
   - 后果：慢钩子挂死整个 pipeline
   - 修：CCC_HOOK_TIMEOUT env + macOS perl alarm 兜底
 
 **Bug 4-5 不是 bug**（检查后）：
 - watchdog 空目录 `for pf in *.pid` bash 默认不展开字面 = 安全
-- ccc-precheck `open(fp)` 没指定 encoding 但 macOS 默认 UTF-8 = OK
+- ccc-precheck（已移除，v0.7-slim）`open(fp)` 没指定 encoding 但 macOS 默认 UTF-8 = OK
 
 **Bug 7 不是 bug**（复查后）：
 - launcher log 命名已含 phase_id, 并发不交错
@@ -1861,7 +1862,7 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 
 **应用方式**：
 - 任何钩子模板必带 args 顺序注释
-- 钩子 ccc-auto-dev.sh 调 launcher 时必传 `--cwd`
+- 钩子 `ccc-exec-launcher.sh` 调 post-exec 时必传 `--cwd`（`ccc-auto-dev.sh` 已于 v0.7-slim 移除）
 
 ## Lesson 39 — Engine 取 task 后必须更新 index（v0.23.2 实测，2026-07-09）
 
