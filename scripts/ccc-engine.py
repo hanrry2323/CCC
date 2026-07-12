@@ -61,6 +61,8 @@ _load_phases = ccc_board._load_phases
 _resolve_phase_dependencies = ccc_board._resolve_phase_dependencies
 _apply_phase_status_updates = ccc_board._apply_phase_status_updates
 _task_all_phases_terminal = ccc_board._task_all_phases_terminal
+_check_phase_failures = ccc_board._check_phase_failures
+_current_running_phase = ccc_board._current_running_phase
 
 cfg = Config()
 
@@ -195,10 +197,21 @@ def engine_loop(workspace: str) -> None:
 
                 elif status == "failed":
                     retry = result.get("retry", 0)
-                    engine_log(f"{running_task_id} 失败 (retry={retry}), 重新启动")
-                    # 重新启动（task 在 in_progress，用 relaunch）
+                    failure_summary = _check_phase_failures(running_task_id)
+                    if failure_summary.get("all_failed_or_skipped"):
+                        engine_log(
+                            f"{running_task_id} 所有 phase failed/skipped "
+                            f"(skipped={failure_summary.get('skipped')})"
+                        )
+                        update_index()
+                        running_task_id = None
+                        _wait_tick(tick_start)
+                        continue
+                    cur = _current_running_phase(running_task_id)
+                    engine_log(
+                        f"{running_task_id} 失败 (retry={retry}), relaunch phase {cur}"
+                    )
                     dev_role_relaunch(running_task_id)
-                    # 等下次轮询
                     _wait_tick(tick_start)
                     continue
 
