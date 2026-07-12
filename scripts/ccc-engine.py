@@ -26,9 +26,7 @@ _script_dir = Path(__file__).resolve().parent
 if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
-from _config import Config
-from _board_store import FileBoardStore
-from _logger import get_logger
+from _config import Config, get_logger
 from _utils import now_iso as _utils_now_iso
 
 _log = get_logger("engine")
@@ -422,8 +420,8 @@ def _check_new_reviews() -> None:
                 fname = Path(r.get("file", "?")).name
                 errs = "; ".join(r["errors"][:3])
                 engine_log(f"🔴 报告格式错误 {fname}: {errs}")
-    except ImportError:
-        pass  # 没有 _review_validator 时静默跳过
+    except ImportError as e:
+        _log.warning("_review_validator unavailable, skipping review scan: %s", e)
     except Exception as exc:
         engine_log(f"review 校验异常: {exc}")
 
@@ -447,18 +445,13 @@ def _check_stale() -> None:
                     f"engine: in_progress 滞留 {hours_stale:.1f}h (阈值 {cfg.max_stale_hours}h)"
                 )
                 engine_log(f"stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal")
-        except (ValueError, TypeError):
-            pass
-
-    # events TTL 清理：删 >30 天的事件文件
+        except (ValueError, TypeError) as e:
+            _log.warning("stale task timestamp parse failed for %s: %s", task.get("id"), e)
     try:
         store = _get_store(cfg.workspace)
         store.cleanup_events(max_days=30)
-    except Exception:
-        pass
-
-
-def _write_heartbeat(workspace: str, running_task_id: str | None) -> None:
+    except Exception as e:
+        _log.warning("events TTL cleanup failed: %s", e, exc_info=True)
     """写心跳到 .ccc/engine-heartbeat.json"""
     hb = {
         "workspace": workspace,
