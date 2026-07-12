@@ -26,7 +26,10 @@ from pathlib import Path
 
 MAX_PARALLEL = 3  # 红线 X1
 
+from _config import get_logger
 from _executor import OpenCodeExecutor
+
+_log = get_logger("opencode-pool")
 
 _executor = OpenCodeExecutor()
 
