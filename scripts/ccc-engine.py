@@ -466,6 +466,7 @@ def _check_stale() -> None:
         store.cleanup_events(max_days=30)
     except Exception as e:
         _log.warning("events TTL cleanup failed: %s", e, exc_info=True)
+def _write_heartbeat(workspace: str, running_task_id: str | None) -> None:
     """写心跳到 .ccc/engine-heartbeat.json"""
     hb = {
         "workspace": workspace,
@@ -477,6 +478,9 @@ def _check_stale() -> None:
         hb_file.write_text(json.dumps(hb, ensure_ascii=False) + "\n")
     except OSError as e:
         _log.warning("engine heartbeat write failed: %s", e)
+
+
+def main():
     ap = argparse.ArgumentParser(description="CCC Engine — 串行执行守护进程")
     ap.add_argument("--workspace", default=str(cfg.workspace), help="目标 workspace 路径")
     args = ap.parse_args()
@@ -486,14 +490,12 @@ def _check_stale() -> None:
         _log.error("[engine] 错误: %s 没有 .ccc/board/ 目录", ws)
         sys.exit(1)
 
-    # 覆盖 workspace
     os.environ["CCC_WORKSPACE"] = str(ws)
 
-    # 优雅关闭信号：设置全局标志，让主循环体面退出
     def _handle_sigterm(signum, frame):
         global _engine_shutdown
         if _engine_shutdown:
-            return  # 二次 SIGTERM 不重复
+            return
         _engine_shutdown = True
         engine_log("收到 SIGTERM, 优雅关闭中...")
 
