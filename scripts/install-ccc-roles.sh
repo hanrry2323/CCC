@@ -73,22 +73,19 @@ if $UPGRADE; then
   fi
 fi
 
-# ── 安装 Engine plist ──
+# ── 安装 Engine plist（v0.28.1+ 统一引擎）──
+# 不再按 workspace 安装多 engine，只有 com.ccc.engine 一个统一进程管理所有 workspace。
+# 非 CCC 项目运行此脚本时跳过 engine（由 CCC 的统一引擎管辖）。
 install_engine() {
-  local label="${LABEL_PREFIX}engine"
+  local label="com.ccc.engine"
   local plist="${PLIST_DIR}/${label}.plist"
   local script="${CCC_HOME}/scripts/ccc-engine.sh"
-  local log="${LOG_DIR}/${PROJECT_NAME}-engine.log"
+  local log="${LOG_DIR}/ccc-engine.log"
 
-  # 环境变量（非默认项目需要传递 WORKSPACE）
-  local ENV_BLOCK=""
+  # 非 CCC 项目跳过 engine 安装（统一引擎只装在 CCC 自身）
   if [[ "$PROJECT_NAME" != "ccc" ]]; then
-    ENV_BLOCK='  <key>EnvironmentVariables</key>
-  <dict>
-    <key>CCC_WORKSPACE</key>
-    <string>'"${WORKSPACE}"'</string>
-  </dict>
-'
+    echo "  v0.28.1+ 统一引擎: 跳过（engine 由 CCC 统一管理）"
+    return
   fi
 
   cat > "$plist" <<PLIST_EOF
@@ -102,8 +99,8 @@ install_engine() {
   <array>
     <string>${script}</string>
   </array>
-${ENV_BLOCK}  <key>WorkingDirectory</key>
-  <string>${WORKSPACE}</string>
+  <key>WorkingDirectory</key>
+  <string>${CCC_HOME}</string>
   <key>KeepAlive</key>
   <true/>
   <key>RunAtLoad</key>
@@ -123,7 +120,7 @@ PLIST_EOF
   plutil -lint "$plist" >/dev/null || { echo "  ⚠ engine plist 不合法"; return 1; }
   launchctl unload "$plist" 2>/dev/null || true
   launchctl load -w "$plist"
-  echo "  ✓ ${label}"
+  echo "  ✓ ${label}（统一引擎）"
 }
 
 # ── 安装/更新 board-server plist（如不存在）──

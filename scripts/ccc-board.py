@@ -1800,6 +1800,7 @@ def _review_with_llm(
                 os.unlink(_prompt_file)
             except OSError as e:
                 _log.warning("reviewer prompt temp file unlink failed: %s", e)
+        if r.returncode != 0:
             stderr = r.stderr.decode("utf-8", errors="replace") if isinstance(r.stderr, bytes) else r.stderr
             return {
                 "verdict": "fallback",
@@ -1837,6 +1838,8 @@ def _review_with_llm(
             return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
     except _sp.TimeoutExpired:
         return {"verdict": "fallback", "reason": "claude timeout (300s)"}
+    except NameError:
+        return {"verdict": "fallback", "reason": "r undefined (subprocess crash before assignment)"}
 
 
 def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
