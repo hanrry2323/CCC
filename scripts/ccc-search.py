@@ -12,6 +12,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from _config import get_logger
+
+_log = get_logger("ccc-search")
 HOME = Path.home()
 SEARCH_DIRS = ["plans", "phases", "reports", "verdicts", "abnormal-reports", "board"]
 
@@ -51,7 +54,8 @@ def main():
             for fpath in sorted(sub_dir.glob("*.md")):
                 try:
                     text = fpath.read_text(encoding="utf-8", errors="replace")
-                except Exception:
+                except Exception as e:
+                    _log.warning("skip unreadable file %s: %s", fpath, e)
                     continue
 
                 for lineno, line in enumerate(text.splitlines(), 1):
@@ -67,4 +71,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
