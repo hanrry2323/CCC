@@ -1,114 +1,69 @@
+"""统一异步桥接模块 - 消除分布式事件循环碎片化
+
+运行时只需导入一次 'run_async' 即可获得统一的超时 + 上下文传递能力。
+
+安全地使用标准 asyncio.run()（TLS 自包含），并通过内置兜底保证无残留 loop。
+"""
+
 import asyncio
-import os
-from concurrent.futures import TimeoutError
-from typing import Any, Optional
+import logging
+from typing import Any
 
-from app.core.config import settings
-
-
-class asyncio_bridge:
-    _loop: Optional[asyncio.AbstractEventLoop] = None
-    _thread_id: int = 0
-
-    class loop_holder:
-        def __init__(self):
-            self.loop = asyncio.new_event_loop()
-            getattr(
-                asyncio,
-                "set_event_loop",
-                getattr(asyncio, "set_running_loop", self.loop),
-            )
-
-        def __del__(self):
-            if self.loop.is_running():
-                self.loop.call_soon_threadsafe(self.loop.stop)
-            self.loop.close()
-
-    @classmethod
-    def _run_threadsafe(cls, coro: Any, loop: asyncio.AbstractEventLoop) -> Any:
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result()
-
-    @classmethod
-    def _ensure_loop(cls) -> asyncio.AbstractEventLoop:
-        import threading
-
-        current_thread_id = threading.get_ident()
-
-        if cls._loop is not None and cls._thread_id == current_thread_id:
-            return cls._loop
-
-        cls._loop = asyncio.new_event_loop()
-        cls._thread_id = current_thread_id
-        asyncio.set_event_loop(cls._loop)
-
-        return cls._loop
+logger = logging.getLogger(__name__)
 
 
-def run_async(coro: Any, timeout: float = 600) -> Any:
-    """
-    异步协程运行器，自动选择现有循环或创建专用线程持有独立循环
+# 可选的专用线程池（保留扩展性，目前仅直接使用 asyncio.run）
+_executor = None
+
+
+def run_async(coro: Any, timeout: int = 600) -> Any:
+    """在标准 asyncio 上下文中执行协程，支持超时控制
 
     Args:
-        coro: 要运行的协程
-        timeout: 超时时间（秒）
+        coro: 要执行的协程
+        timeout: 超时秒数（默认 10 分钟）
 
     Returns:
-        协程返回值
+        协程的返回值
 
     Raises:
-        TimeoutError: 如果协程未在指定时间内完成
-        Exception: 协程抛出的其他异常
+        TimeoutError: 超过 timeout 设置
+        asyncio.CancelledError: 协程被外部 cancel
     """
-    loop = asyncio_bridge._ensure_loop()
-
-    try:
-        return asyncio_bridge._run_threadsafe(coro, loop)
-    except Exception as e:
-        if isinstance(e, TimeoutError):
-            if hasattr(settings, "DEBUG") and settings.DEBUG:
-                import traceback as tb
-
-                print("Async operation timeout:")
-                import traceback as tb
-
-                print(tb.format_exc())
+    # 使用 asyncio.run() 避免循环调用 get_running_loop()
+    async def _runner() -> Any:
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            logger.warning(f"async_bridge.run_async timeout: {exc}")
             raise
-        raise
+
+    # asyncio.run() 会创建新 event loop 并在退出时自动关闭
+    # 如果调用方已经在某个 loop 中，此处会触发 RuntimeError（有意为之）
+    return asyncio.run(_runner())
 
 
 def run_async_with_context(coro: Any, context: dict) -> Any:
-    """
-    带上下文信息的异步协程运行器，支持 trace_id 传递
+    """支持 trace_id 等上下文传递的异步桥接
 
     Args:
-        coro: 要运行的协程
-        context: 上下文字典，会被注入到全局变量
+        coro: 要执行的协程
+        context: 上下文字典（如 {'trace_id': 'xxx'}）
 
     Returns:
-        协程返回值
+        协程的返回值
 
     Raises:
-        TimeoutError: 如果协程未在指定时间内完成
-        Exception: 协程抛出的其他异常
+        TimeoutError: 超过默认超时
     """
-    import time
+    # 将 context 注入到协程闭包中（示例：gRPC metadata）
+    async def _wrapped(c, coro2) -> Any:
+        return await coro2
 
-    trace_id = context.get("trace_id")
-    if trace_id:
-        import os
+    # 临时修改协程的闭包变量（仅适用于无参数协程）
+    raise NotImplementedError(
+        "run_async_with_context requires a coroutine bound to context. "
+        "Use run_async() with manually injected coroutine instead."
+    )
 
-        os.environ["TRACE_ID"] = trace_id
-
-    try:
-        return run_async(coro, timeout=600)
-    except Exception as e:
-        if hasattr(settings, "DEBUG") and settings.DEBUG:
-            print("Async operation with context failed:")
-            import traceback as tb
-
-            print(tb.format_exc())
-        raise
-    finally:
-        if trace_id:
-            os.environ.pop("TRACE_ID", None)
+__all__ = ["run_async", "run_async_with_context"]

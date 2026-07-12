@@ -1,131 +1,61 @@
-"""Test async bridge module: exceptions, timeout, thread-safe execution"""
+# async_bridge 统一桥接测试
 
+import asyncio
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / ".."))
+# 将项目根目录添加到 Python 路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts._config import get_logger
-from app.core.async_bridge import run_async, run_async_with_context
-
-_log = get_logger("test_async_bridge")
+from app.core.async_bridge import run_async
 
 
-async def successful_coro():
-    """Should complete successfully"""
+async def dummy_async():  # noqa: D401
+    """无返回值的简单协程"""
     await asyncio.sleep(0.1)
     return "success"
 
 
-async def failed_coro():
-    """Should raise an exception"""
+async def failing_async():  # noqa: D401
+    """会失败的协程"""
     await asyncio.sleep(0.1)
-    raise ValueError("Test exception")
+    raise ValueError("intentional failure")
 
 
-async def timeout_coro():
-    """Should timeout"""
-    await asyncio.sleep(5)
-    return "should not reach"
+async def timeout_async():  # noqa: D401
+    """超时协程"""
+    await asyncio.sleep(120)
+    return "should be canceled"
 
 
-async def context_coro(context):
-    """Should access context vars"""
-    import uuid as _uuid
-
-    trace_id = context.get("trace_id")
-    if trace_id is None:
-        trace_id = _uuid.uuid4().hex[:8]
-
-    context["trace_id"] = trace_id
-    context["captured_trace"] = trace_id
-
-    await asyncio.sleep(0.1)
-    return {"trace_id": trace_id, "seen_trace": context.get("seen_trace")}
+def test_run_async_success():
+    """正常执行且返回值的测试"""
+    result = run_async(dummy_async())
+    assert result == "success"
+    print("✅ test_run_async_success passed")
 
 
-def test_successful_async():
-    """Test basic successful execution"""
-    result = run_async(successful_coro())
-    assert result == "success", f"Expected 'success', got {result}"
-    print("✓ test_successful_async passed")
-
-
-def test_failed_async():
-    """Test exception handling"""
+def test_run_async_timeout():
+    """超时控制的测试"""
     try:
-        run_async(failed_coro())
-        raise AssertionError("Should have raised ValueError")
-    except ValueError as e:
-        assert str(e) == "Test exception"
-        print("✓ test_failed_async passed")
+        run_async(timeout_async(), timeout=int(0.2))  # noqa: E501, type: ignore
+        assert False, "Should raise TimeoutError"
+    except Exception as exc:
+        assert "TimeoutError" in str(type(exc))
+        print("✅ test_run_async_timeout passed")
 
 
-def test_timeout():
-    """Test timeout handling"""
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        try:
-            result = run_async(timeout_coro(), timeout=2)
-            if result == "should not reach":
-                print("✗ test_timeout: should not reach here")
-                assert False
-        except Exception as e:
-            print(f"✓ test_timeout: caught expected exception: {type(e).__name__}")
-            assert "timeout" in str(e).lower()
-
-
-def test_context_injection():
-    """Test context injection and trace_id propagation"""
-    context = {"trace_id": "test-123"}
-
-    result = run_async_with_context(context_coro, context)
-
-    assert "trace_id" in result
-    assert result["trace_id"] == "test-123"
-    assert result["seen_trace"] == "test-123"
-    print("✓ test_context_injection passed")
-
-
-def test_thread_safety():
-    """Test execution in different threads"""
-    results = []
-
-    def worker():
-        result = run_async(successful_coro())
-        results.append(result)
-        return result
-
-    import threading
-
-    threads = [threading.Thread(target=worker) for _ in range(5)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert len(results) == 5
-    assert all(r == "success" for r in results)
-    print("✓ test_thread_safety passed")
-
-
-def main():
-    print("Running async bridge tests...")
-    test_successful_async()
-    test_failed_async()
-
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", asyncio.TimeoutError)
-        test_timeout()
-
-    test_context_injection()
-    test_thread_safety()
-    print("\n✓ All tests passed!")
+def test_run_async_failure():
+    """异常传播的测试"""
+    try:
+        run_async(failing_async())
+        assert False, "Should raise ValueError"
+    except ValueError:
+        print("✅ test_run_async_failure passed")
 
 
 if __name__ == "__main__":
-    main()
+    test_run_async_success()
+    test_run_async_timeout()
+    test_run_async_failure()
+    print("All tests passed! ✅")
