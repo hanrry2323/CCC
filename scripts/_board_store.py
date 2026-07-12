@@ -357,24 +357,32 @@ def _release_lock(lock_obj) -> None:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    """原子写入：临时文件 → rename，防止部分写入"""
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w",
+    """原子写入：同目录 temp 文件 → fsync → os.replace（防部分写入 / TOCTOU）"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
         dir=str(path.parent),
         prefix=".tmp_",
-        suffix=".jsonl",
-        delete=False,
-        encoding="utf-8",
+        suffix=path.suffix if path.suffix else ".jsonl",
     )
     try:
-        tmp.write(content)
-        tmp.close()
-        os.replace(tmp.name, str(path))
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_name, str(path))
+        try:
+            dir_fd = os.open(str(path.parent), os.O_DIRECTORY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError as e:
+            _log.warning("atomic write dir fsync failed for %s: %s", path.parent, e)
     except Exception:
         try:
-            os.unlink(tmp.name)
+            os.unlink(tmp_name)
         except OSError as e:
-            _log.warning("atomic write cleanup failed for %s: %s", tmp.name, e)
+            _log.warning("atomic write cleanup failed for %s: %s", tmp_name, e)
         raise
 
 
@@ -537,14 +545,14 @@ class FileBoardStore:
             task["updated_at"] = now_iso()
 
             dst = self.board / to_col / f"{task_id}.jsonl"
-            # 原子迁移：先把更新后的 task 写回 src（status 已更新），再 shutil.move 一次性挪过去。
-            # 这样 dst 的 status 字段和物理位置天然一致。
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(task, ensure_ascii=False) + "\n"
+            # 原子迁移：先写目标列（temp→replace），再删源，避免读→写非原子 TOCTOU
+            _atomic_write(dst, payload)
             try:
-                dst.unlink()
-            except FileNotFoundError:
-                _log.debug("dst already absent during move: %s", dst)
-            src.write_text(json.dumps(task, ensure_ascii=False) + "\n")
-            shutil.move(str(src), str(dst))
+                src.unlink()
+            except OSError as e:
+                _log.warning("move_task src unlink failed (dst committed) %s: %s", src, e)
             self._record_event(task_id, from_col, to_col)
             _log.info("%s: %s → %s", task_id, from_col, to_col)
             return True
