@@ -27,6 +27,7 @@ if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
 from _config import Config, get_logger
+from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
 
 _log = get_logger("engine")
@@ -461,11 +462,8 @@ def _check_stale() -> None:
     hb_file = cfg.workspace / ".ccc" / "engine-heartbeat.json"
     try:
         hb_file.write_text(json.dumps(hb, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
-def main():
+    except OSError as e:
+        _log.warning("engine heartbeat write failed: %s", e)
     ap = argparse.ArgumentParser(description="CCC Engine — 串行执行守护进程")
     ap.add_argument("--workspace", default=str(cfg.workspace), help="目标 workspace 路径")
     args = ap.parse_args()
@@ -493,9 +491,7 @@ def main():
     except KeyboardInterrupt:
         engine_log("Engine 关闭")
     except SystemExit:
-        pass
-
-    # 如果被 SIGTERM 触发关闭，等 10s 让 opencode 写完 .done
+        _log.debug("engine exiting via SystemExit")
     if _engine_shutdown:
         remaining = 10
         while remaining > 0:
@@ -507,4 +503,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
