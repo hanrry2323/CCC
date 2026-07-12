@@ -1,1 +1,0 @@
-{"id": "ccc-gitignore-update", "title": ".gitignore 加运行时数据排除", "status": "released", "description": "加 .ccc/board/events/ 和 .ccc/pids/ 到 gitignore", "created_at": "2026-07-09T15:00:00Z", "updated_at": "2026-07-09T03:31:35Z", "assignee": null, "tags": ["concurrency-test"]}

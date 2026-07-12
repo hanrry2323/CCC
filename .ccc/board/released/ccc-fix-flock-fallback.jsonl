@@ -1,1 +1,0 @@
-{"id": "ccc-fix-flock-fallback", "title": "_HAS_FLOCK=False 时写操作加文件锁降级防御", "status": "released", "description": "[ADV-006] _board_store.py 在 Linux/macOS 以外平台 _HAS_FLOCK=False 时所有写操作零并发保护。加独占文件创建原子锁（OS-level fallback）", "created_at": "2026-07-09T17:00:00+08:00", "updated_at": "2026-07-09T09:21:43Z", "assignee": null, "tags": ["adversarial-review", "sev-high", "phase-1"]}

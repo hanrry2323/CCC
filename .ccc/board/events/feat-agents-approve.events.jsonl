@@ -1,5 +1,0 @@
-{"event": "move", "task_id": "feat-agents-approve", "from": "released", "to": "backlog", "timestamp": "2026-07-07T19:02:45Z"}
-{"event": "move", "task_id": "feat-agents-approve", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T19:53:01Z"}
-{"event": "move", "task_id": "feat-agents-approve", "from": "in_progress", "to": "testing", "timestamp": "2026-07-07T20:14:08Z"}
-{"event": "move", "task_id": "feat-agents-approve", "from": "testing", "to": "verified", "timestamp": "2026-07-07T20:14:14Z"}
-{"event": "move", "task_id": "feat-agents-approve", "from": "verified", "to": "released", "timestamp": "2026-07-07T20:14:27Z"}

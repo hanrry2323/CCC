@@ -1,2 +1,0 @@
-{"event": "move", "task_id": "manual-test-001", "from": "backlog", "to": "planned", "timestamp": "2026-07-07T19:23:06Z"}
-{"event": "move", "task_id": "manual-test-001", "from": "planned", "to": "in_progress", "timestamp": "2026-07-07T19:23:17Z"}

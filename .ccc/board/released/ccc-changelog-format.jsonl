@@ -1,1 +1,0 @@
-{"id": "ccc-changelog-format", "title": "CHANGELOG.md 格式统一", "status": "released", "description": "检查并修正 CHANGELOG.md 的版本号标题层级，补全 v0.23.2 缺失条目", "created_at": "2026-07-09T15:00:00Z", "updated_at": "2026-07-09T03:24:32Z", "assignee": null, "tags": ["concurrency-test"]}
