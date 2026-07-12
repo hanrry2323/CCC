@@ -24,6 +24,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-12 | v0.28.1 | — | `git log a81be00` | 任务复杂度分流 + 每周总结定时 | PASS |
 | 2026-07-11 | v0.24.4 | — | [CHANGELOG §v0.24.4](../CHANGELOG.md) | board zombie 修复 + reconcile 工具 | PASS |
 | 2026-07-11 | v0.24.3 | — | [CHANGELOG §v0.24.3](../CHANGELOG.md) | tag `v0.24.3` + release | PASS |
 | 2026-07-10 | v0.24.2 | — | [CHANGELOG §v0.24.2](../CHANGELOG.md) | tag `v0.24.2` + release | PASS |
@@ -68,14 +69,19 @@
 | v0.24.1 | `7705a09` | reviewer 按变更量分级（small/medium/large） |
 | v0.24.2 | `9b63788` | audit 多 workspace 并行化（ThreadPoolExecutor） |
 | v0.24.3 | `764be91` | 对抗性审查 P0 hotfix（8 项：写回 reload / 文件锁 / audit timeout / small reviewer 校验 / _parse_diff_size fail-fast / engine 多 phase） |
+| v0.28.1 | `a81be00` | 任务复杂度分流（complexity small/medium/large）+ 每周总结定时任务 |
 
 ---
 
-## 当前状态（v0.24.3 closure, 2026-07-11）
+## 当前状态（v0.28.1 closure, 2026-07-12）
 
-**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度。
+**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流（small/medium/large）**。
 
-**已发布版本族**：v0.7.0 → v0.8.0 → v0.9.0 → v0.10.0 → v0.11.0 → v0.12.0 → v0.13.0 → v0.14.0 → v0.15.0 → v0.16.0 → v0.17.0 → v0.18.0 → v0.19.0 → v0.20.0 → v0.20.1 → v0.21.0 → v0.22.0 → v0.22.1 → v0.23.0 → v0.23.1 → v0.23.2 → v0.23.3 → v0.23.11 → v0.23.12 → v0.23.13 → v0.23.14 → v0.23.15 → v0.23.16 → v0.24.0 → v0.24.1 → v0.24.2 → **v0.24.3**（共 32 个 release tag）
+**复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。product_role 根据 plan_weight 自动推断。small 任务在 Engine 中跳过 reviewer+tester 直通 kb。medium（默认）和 large 走完整 7 角色。详见 `CHANGELOG.md §v0.28.1` 或 `references/board-task-schema.md §12`。
+
+**每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。持久的，重启后仍在。
+
+**已发布版本族**：v0.7.0 → ... → v0.28.0 → **v0.28.1**（共 34 个 release tag）
 
 **已完成范式转变**（roadmap 标注）：
 1. v0.11 — "opencode 写 + 人工 review" 模式
@@ -308,7 +314,9 @@
 **下次启动必读顺序**：
 1. 读本文件（state.md）
 2. 读 `.ccc/profile.md`
-3. 读最近一条 plan + report + verdict（v0.18 及之前的版本）或 `CHANGELOG.md`（v0.19+）
+3. 读 `CHANGELOG.md` §最近（v0.28+）
 4. 才开工
 
-**v0.24+ 路线决策**：当前无任何活跃 v0.24 任务，等用户重新派活才启动新流程。
+**当前活跃**：
+- complexity 分流已生效（v0.28.1）
+- 每周总结定时任务（周日 22:03）

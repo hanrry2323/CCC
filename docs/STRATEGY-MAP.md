@@ -50,15 +50,18 @@
 
 ### 2.1 角色矩阵
 
-| 角色 | 历史频率(v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 |
-|------|-------------------|-------------|--------|------------|------|
-| **product** | 4h | 手动 `--promote` | backlog | planned | `ccc-board.py product --promote` |
-| **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_launch()` |
-| **reviewer** | 2h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → reviewer_role()` |
-| **tester** | 4h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → tester_role()` |
-| **ops** | 30min | Engine 空闲时 | 所有列 | — | `ccc-engine.py → _check_stale()` |
-| **kb** | 每天 23:00 | Engine 在 reviewer+tester 通过后 | verified | verified → released | `ccc-engine.py → kb_role()` |
-| **regress** | 每天 23:30 | 保留独立定时 / 或嵌在 Engine 内 | released | released → backlog | 待定 |
+> **v0.28.1 复杂度分流**：task `complexity` 字段（small/medium/large）影响 reviewer/tester/kb 是否跳过。
+> small → 跳过 reviewer+tester 直通 kb；medium/large → 完整 7 角色。详见 `references/board-task-schema.md §12`。
+
+| 角色 | 历史频率(v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响 |
+|------|-------------------|-------------|--------|------------|------|-----------|
+| **product** | 4h | 手动 `--promote` | backlog | planned | `ccc-board.py product --promote` | 自动写 `complexity` 到 task |
+| **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_launch()` | 不变 |
+| **reviewer** | 2h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → reviewer_role()` | small=跳过 |
+| **tester** | 4h | Engine 在 dev 完成后立即调 | testing | testing → verified | `ccc-engine.py → tester_role()` | small=跳过 |
+| **ops** | 30min | Engine 空闲时 | 所有列 | — | `ccc-engine.py → _check_stale()` | 不变 |
+| **kb** | 每天 23:00 | Engine 在 reviewer+tester 通过后 | verified | verified → released | `ccc-engine.py → kb_role()` | small 也调 |
+| **regress** | 每天 23:30 | 保留独立定时 / 或嵌在 Engine 内 | released | released → backlog | 待定 | 不变 |
 
 **引擎约束**：有 task 即串行执行全链路，无 task 休眠 5s（红线 X6 更新版）。
 
