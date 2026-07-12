@@ -389,6 +389,12 @@ def engine_loop(workspaces: list[Path]) -> None:
                 for key in completed_tasks:
                     active_tasks.pop(key, None)
 
+
+            # 每 6 轮（~60s）跑一次 stale check，不受 active_tasks 阻塞
+            if iteration % 6 == 0:
+                for ws in workspaces:
+                    _activate_workspace(ws)
+                    _check_stale(ws)
             ws_first_running: dict[str, str | None] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
