@@ -3463,12 +3463,40 @@ def dev_role_check_complete(task_id: str) -> dict:
     ]
 
     if exit_code == "0":
-        # 成功：清标记文件 + 挪列
+        # 成功：清标记文件 + 记录 commit hash + 挪列
         for p in marker_files:
             try:
                 p.unlink()
             except OSError as e:
                 _log.warning("success marker unlink failed %s: %s", p, e)
+        # G1: 记录最新 commit hash 到 phases.json（供 reviewer 按 task 过滤 diff）
+        _phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        if _phases_file.exists():
+            try:
+                import subprocess as _sp
+                _r = _sp.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=10)
+                _hash = _r.stdout.strip()
+                if _hash and len(_hash) == 40:
+                    _lines = _phases_file.read_text().splitlines()
+                    _updated = []
+                    for _line in _lines:
+                        _line = _line.strip()
+                        if not _line:
+                            continue
+                        try:
+                            _d = json.loads(_line)
+                            if "schema_version" in _d:
+                                _d["commit"] = _hash
+                            else:
+                                _d.setdefault("commit", _hash)
+                            _updated.append(json.dumps(_d, ensure_ascii=False) + "\n")
+                        except json.JSONDecodeError:
+                            _updated.append(_line + "\n")
+                    _phases_file.write_text("".join(_updated))
+                    _log.info("[engine] %s ✓ commit %s recorded", task_id, _hash[:12])
+            except Exception as _e:
+                _log.warning("record commit hash for %s failed: %s", task_id, _e)
         move_task(task_id, "in_progress", "testing")
         _log.info("[engine] %s ✓ moved to testing", task_id)
         return {"status": "success", "task_id": task_id}
