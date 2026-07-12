@@ -15,6 +15,13 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from _logger import get_logger
+
+_log = get_logger("config")
+
+# 统一入口：脚本应 `from _config import get_logger`
+__all__ = ["Config", "get_logger", "parse_duration", "TIMEOUT_MIN", "TIMEOUT_MAX"]
+
 
 _DURATION_RE = re.compile(r"^(\d+)\s*(s|sec|m|min|h|hr|d|day)?$", re.IGNORECASE)
 _DURATION_UNITS = {"s": 1, "sec": 1, "m": 60, "min": 60, "h": 3600, "hr": 3600, "d": 86400, "day": 86400}
@@ -169,8 +176,8 @@ def _env_override_int(cfg: Config, attr: str, env_key: str) -> None:
     if val:
         try:
             setattr(cfg, attr, int(val))
-        except ValueError:
-            pass
+        except ValueError as e:
+            _log.warning("invalid %s=%r, keeping default", env_key, val, exc_info=True)
 
 
 def _env_override_str(cfg: Config, attr: str, env_key: str) -> None:
