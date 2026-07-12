@@ -9,15 +9,17 @@
 4. **极简 API** — get_logger(name) → 5 个标准方法（debug/info/warning/error/exception）
 
 用法：
-    from _logger import get_logger
+    from _config import get_logger
     log = get_logger("board")
     log.info("task moved")            # → [board] task moved
     log.warning("retry %d", n)        # → [board] retry 1
     log.exception("crash")            # → 打印堆栈
 
 环境变量：
-    CCC_LOG_LEVEL=DEBUG|INFO|WARNING|ERROR  (default WARNING)
+    CCC_LOG_LEVEL=DEBUG|INFO|WARNING|ERROR  (default INFO)
     CCC_LOG_PREFIX=1                         (default 1, [role=xxx] 前缀开关)
+
+v0.28.1: 默认等级从 WARNING→INFO，使 engine 日志默认可见。
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ _LEVELS = {
     "ERROR": logging.ERROR,
 }
 
-_DEFAULT_LEVEL = "WARNING"
+_DEFAULT_LEVEL = "INFO"
 
 
 def _resolve_level() -> int:
