@@ -51,6 +51,36 @@ from _executor import resolve_opencode
 _log = get_logger("opencode-exec")
 
 
+async def _kill_process_group(pgid: int, sig: int) -> None:
+    import signal as _sig
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError) as e:
+        _log.warning("killpg sig=%s pid=%s failed: %s", sig, pgid, e)
+
+
+async def _terminate_zombie(proc, pgid: int, timeout: int, started: float) -> None:
+    """SIGTERM 后等待至 hard_deadline（timeout*1.5）再 SIGKILL 兜底僵死进程。"""
+    import signal as _sig
+
+    hard_deadline = started + timeout * 1.5
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+        return
+    except asyncio.TimeoutError:
+        await _kill_process_group(pgid, _sig.SIGKILL)
+    remaining = hard_deadline - time.time()
+    if remaining > 0 and proc.returncode is None:
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=remaining)
+        except asyncio.TimeoutError:
+            await _kill_process_group(pgid, _sig.SIGKILL)
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                _log.warning("proc.wait timeout after hard SIGKILL pgid=%s", pgid)
+
+
 def check_residual_watchdog(script_dir: Path) -> bool:
     """跑 watchdog 验残留"""
     wd = script_dir / "opencode-watchdog.sh"
@@ -149,21 +179,8 @@ async def run_opencode(
         }
     except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
-        try:
-            _os.killpg(proc.pid, _sig.SIGTERM)
-        except (ProcessLookupError, PermissionError) as e:
-            _log.warning("SIGTERM killpg failed pid=%s: %s", proc.pid, e)
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            try:
-                _os.killpg(proc.pid, _sig.SIGKILL)
-            except (ProcessLookupError, PermissionError) as e:
-                _log.warning("SIGKILL killpg failed pid=%s: %s", proc.pid, e)
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=10)
-            except asyncio.TimeoutError:
-                _log.warning("proc.wait timeout after SIGKILL pid=%s", proc.pid)
+        await _kill_process_group(proc.pid, _sig.SIGTERM)
+        await _terminate_zombie(proc, proc.pid, timeout, started)
         killed_reason = "cancelled" if isinstance(exc, asyncio.CancelledError) else f"timeout after {timeout}s"
         return {
             "phase_id": phase_id,
