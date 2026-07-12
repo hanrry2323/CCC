@@ -32,6 +32,14 @@ from _utils import now_iso as _utils_now_iso
 
 _log = get_logger("engine")
 
+# 必须在加载 ccc-board.py 前从 --workspace 参数设置环境变量，
+# 因为 ccc-board.py 模块级代码会立即初始化 Config() 读取 CCC_WORKSPACE
+import sys as _sys
+for _i, _arg in enumerate(_sys.argv):
+    if _arg == "--workspace" and _i + 1 < len(_sys.argv):
+        os.environ["CCC_WORKSPACE"] = _sys.argv[_i + 1]
+        break
+
 # ccc-board.py 含连字符，无法用 `import ccc-board` 标准 import。
 # 评估过的替代方案：
 #   1. 改名为 ccc_board.py — 风险高（launchd plist / 文档 / 已发布 skill 引用 ccc-board.py）
