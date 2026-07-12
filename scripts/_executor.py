@@ -194,6 +194,7 @@ class OpenCodeExecutor(Executor):
                     _os.killpg(proc.pid, _sig.SIGTERM)
                 except (ProcessLookupError, PermissionError) as e:
                     _log.warning("SIGTERM killpg failed pid=%s: %s", proc.pid, e)
+                hard_deadline = started + timeout * 1.5
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
@@ -201,10 +202,21 @@ class OpenCodeExecutor(Executor):
                         _os.killpg(proc.pid, _sig.SIGKILL)
                     except (ProcessLookupError, PermissionError) as e:
                         _log.warning("SIGKILL killpg failed pid=%s: %s", proc.pid, e)
+                remaining = hard_deadline - time.time()
+                if remaining > 0 and proc.poll() is None:
                     try:
-                        proc.wait(timeout=10)
+                        proc.wait(timeout=remaining)
                     except subprocess.TimeoutExpired:
-                        _log.warning("proc.wait timeout after SIGKILL pid=%s", proc.pid)
+                        try:
+                            _os.killpg(proc.pid, _sig.SIGKILL)
+                        except (ProcessLookupError, PermissionError) as e:
+                            _log.warning("hard SIGKILL failed pid=%s: %s", proc.pid, e)
+                        try:
+                            proc.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            _log.warning(
+                                "proc.wait timeout after hard deadline pid=%s", proc.pid
+                            )
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=-1,
