@@ -83,9 +83,6 @@ _engine_shutdown = False  # SIGTERM 标志
 # product_role 是轻量级 prompt（plan 生成），短时重试 3 次即止损
 _MAX_PRODUCT_RETRIES = 3
 
-# v0.28.1: 当前 task 的 complexity（small/medium/large），影响 reviewer/tester 是否需要
-_current_task_complexity: str | None = None
-
 # 与 opencode-pool.py MAX_PARALLEL 一致
 MAX_CONCURRENT = 3
 
