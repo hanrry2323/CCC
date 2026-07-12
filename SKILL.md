@@ -48,10 +48,10 @@ CCC 是 **7 角色看板自动化系统**，不再支持旧 3 角色（Plan/Exec
 
 | 角色 | Skill 文件 | 看板列 | Engine 触发方式 | 职责 |
 |------|-----------|--------|----------------|------|
-| **product** | `skills/ccc-product/SKILL.md` | backlog → planned | manual `--promote` 或 product_role() | 拆任务、写 plan、SPEC 门禁、phases.json schema 1.1 |
+| **product** | `skills/ccc-product/SKILL.md` | backlog → planned | Engine backlog 自动拆分（v0.28 F-1）或 manual `--promote` | 拆任务、写 plan、SPEC 门禁、phases.json schema 1.1、推断 complexity |
 | **dev** | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | Engine 主循环立即串行 | 调 opencode 写代码、phase 顺序推进、retry 退避 |
-| **reviewer** | `skills/ccc-reviewer/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | LLM 语义审查、advisory lock、fallback quarantine（v0.24.5+） |
-| **tester** | `skills/ccc-tester/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | pytest + plan 逐条验收、phase-aware 测试 |
+| **reviewer** | `skills/ccc-reviewer/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | LLM 语义审查、advisory lock、fallback quarantine（v0.24.5+）；small 跳过 |
+| **tester** | `skills/ccc-tester/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | pytest + plan 逐条验收、phase-aware 测试；small 跳过 |
 | **ops** | `skills/ccc-ops/SKILL.md` | 不动 board | Engine 空闲时运行轻度检查 | 健康检查 + 告警 |
 | **kb** | `skills/ccc-kb/SKILL.md` | verified → released | Engine 在 reviewer+tester 通过后立即调 | git tag + push + changelog |
 | **regress** | `skills/ccc-regress/SKILL.md` | released → backlog(回归bug) | 保留 23:30 定时或嵌 Engine | 每日回测 + 回归建 bug |
@@ -119,6 +119,8 @@ launchd → com.ccc.engine (KeepAlive, 常驻)
            → 检查 .done 完成 → 立即跑 reviewer+tester+kb
          planned 有 task?
            → 读 phases.json → 按 phase 边界调度 → 启 opencode
+         backlog 非空且 idle? (v0.28 F-1)
+           → product_role 自动拆分 → planned
          无事 → sleep 5s
 ```
 
@@ -177,8 +179,8 @@ Engine 内部直接调 `ccc-board.py` 的角色函数：
 | `scripts/opencode-pool.py` | 进程池（max 3 并发） |
 | `scripts/opencode-watchdog.sh` | 残留扫描 |
 | `templates/` | plan/phases/report/verdict/AGENTS 模板 |
-| `tests/scripts/` | pytest 核心测试（92 passed + v0.25 新增 ~15 case） |
-| `tests/e2e/` | E2E bash harness（v0.19+, v0.25 新增 phase_aware.sh） |
+| `tests/scripts/` | pytest 核心测试（260+ passed，v0.28.1） |
+| `tests/e2e/` | E2E bash harness（v0.19+，含 phase_aware.sh） |
 | `.ccc/state.md` | 接力索引（红线 10） |
 | `docs/lessons.md` | 历史教训 |
 | `docs/roadmap.md` | 路线图 |
@@ -200,4 +202,4 @@ Engine 内部直接调 `ccc-board.py` 的角色函数：
 cat ~/program/CCC/VERSION
 ```
 
-详细历史见 `CHANGELOG.md`。当前：`v0.26.0`。
+详细历史见 `CHANGELOG.md`。当前：`v0.28.1`。
