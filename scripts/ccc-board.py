@@ -3469,14 +3469,25 @@ def dev_role_check_complete(task_id: str) -> dict:
                 p.unlink()
             except OSError as e:
                 _log.warning("success marker unlink failed %s: %s", p, e)
-        # G1: 记录最新 commit hash 到 phases.json（供 reviewer 按 task 过滤 diff）
+        # G1: 记录 task 关联 commit hash 到 phases.json（供 reviewer 按 task 过滤 diff）
+        # 优先: git log --grep=task_id（post-exec.sh 已在 commit 消息包含 task_id）
+        # 降级: git rev-parse HEAD
         _phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
         if _phases_file.exists():
             try:
                 import subprocess as _sp
-                _r = _sp.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=10)
-                _hash = _r.stdout.strip()
+                _hash = ""
+                _grep = _sp.run(
+                    ["git", "log", "--all", "--oneline", "--grep", task_id,
+                     "--format=%H", "--max-count=1"],
+                    cwd=ROOT, capture_output=True, text=True, timeout=10,
+                )
+                if _grep.returncode == 0 and _grep.stdout.strip():
+                    _hash = _grep.stdout.strip()
+                else:
+                    _r = _sp.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                 capture_output=True, text=True, timeout=10)
+                    _hash = _r.stdout.strip()
                 if _hash and len(_hash) == 40:
                     _lines = _phases_file.read_text().splitlines()
                     _updated = []
