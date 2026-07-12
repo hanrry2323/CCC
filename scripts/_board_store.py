@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from _logger import get_logger
+from _config import get_logger
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 
@@ -271,8 +271,8 @@ def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
     next_group = GROUP_POOL[next_idx]
     try:
         _atomic_write(counter_file, next_group)
-    except OSError:
-        pass
+    except OSError as e:
+        _log.warning("color counter write failed: %s", e)
     return next_group
 
 
@@ -352,8 +352,8 @@ def _release_lock(lock_obj) -> None:
         return
     try:
         os.unlink(str(lock_obj))
-    except OSError:
-        pass
+    except OSError as e:
+        _log.warning("lock release unlink failed: %s", e)
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -373,8 +373,8 @@ def _atomic_write(path: Path, content: str) -> None:
     except Exception:
         try:
             os.unlink(tmp.name)
-        except OSError:
-            pass
+        except OSError as e:
+            _log.warning("atomic write cleanup failed for %s: %s", tmp.name, e)
         raise
 
 
@@ -542,7 +542,7 @@ class FileBoardStore:
             try:
                 dst.unlink()
             except FileNotFoundError:
-                pass
+                _log.debug("dst already absent during move: %s", dst)
             src.write_text(json.dumps(task, ensure_ascii=False) + "\n")
             shutil.move(str(src), str(dst))
             self._record_event(task_id, from_col, to_col)
@@ -668,8 +668,8 @@ class FileBoardStore:
                         continue
                     try:
                         events.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as e:
+                        _log.warning("skip malformed event line in %s: %s", event_file.name, e)
         else:
             for f in sorted(self.events_dir.glob("*.events.jsonl")):
                 for line in f.read_text().split("\n"):
@@ -678,8 +678,8 @@ class FileBoardStore:
                         continue
                     try:
                         events.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as e:
+                        _log.warning("skip malformed event line in %s: %s", f.name, e)
         return events
 
     def cleanup_events(self, max_days: int = 30) -> int:
@@ -695,8 +695,8 @@ class FileBoardStore:
                 if f.stat().st_mtime < cutoff:
                     f.unlink()
                     removed += 1
-            except OSError:
-                pass
+            except OSError as e:
+                _log.warning("events TTL cleanup failed for %s: %s", f, e)
         if removed:
             _log.info("events TTL: 清理 %d 个旧 events 文件", removed)
         return removed
@@ -782,10 +782,10 @@ def _get_quarantine_dir() -> Path:
                 try:
                     mtime = entry.stat().st_mtime
                     candidates.append((mtime, Path(entry.path)))
-                except OSError:
-                    pass
-    except OSError:
-        pass
+                except OSError as e:
+                    _log.warning("tempdir stat failed for %s: %s", entry.path, e)
+    except OSError as e:
+        _log.warning("tempdir scan failed: %s", e)
 
     if candidates:
         candidates.sort(key=lambda x: x[0], reverse=True)
