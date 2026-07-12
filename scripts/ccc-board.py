@@ -26,9 +26,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from _config import Config
+from _config import Config, get_logger
 from _board_store import FileBoardStore
-from _logger import get_logger
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 
@@ -223,8 +222,8 @@ def _load_timeout(phases_file: Path, default: int = None) -> int:
                     return parse_duration(to, default)
                 except Exception:
                     return default
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        _log.warning("load phase timeout from %s failed: %s", task_id, e)
     return default
 
 
@@ -498,8 +497,8 @@ def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[in
                 f.truncate()
             try:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            except (OSError, AttributeError):
-                pass
+            except (OSError, AttributeError) as e:
+                _log.warning("flock unlock failed: %s", e)
     except OSError:
         return
 
@@ -669,10 +668,10 @@ def _check_phase_failures(task_id: str) -> dict:
                         capture_output=True,
                         timeout=5,
                     )
-                except Exception:
-                    pass
-            except OSError:
-                pass
+                except Exception as e:
+                    _log.warning("ccc-notify force_converged failed for %s: %s", task_id, e, exc_info=True)
+            except OSError as e:
+                _log.warning("write force_converged phases failed for %s: %s", task_id, e)
 
     return {
         "executable": sorted(executable),
@@ -701,12 +700,8 @@ def _read_engine_iter_meta(task_id: str) -> dict:
                     return obj
             except json.JSONDecodeError:
                 continue
-    except OSError:
-        pass
-    return {}
-
-
-def _write_engine_iter_meta(task_id: str, meta: dict) -> None:
+    except OSError as e:
+        _log.warning("read engine_iter meta failed for %s: %s", task_id, e)
     """v0.27.1: 把 engine_iter 元数据写入 phases.json 顶层 metadata 行。"""
     import fcntl
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
@@ -738,8 +733,8 @@ def _write_engine_iter_meta(task_id: str, meta: dict) -> None:
                 f.writelines(lines)
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
-    except OSError:
-        pass
+    except OSError as e:
+        _log.warning("write engine_iter meta failed for %s: %s", task_id, e)
 
 
 def _read_engine_iter(task_id: str) -> int:
@@ -875,10 +870,8 @@ def _get_code_context(ws_path: Path) -> str:
             parts.append(
                 f"## 代码文件树（{label}）\n```\n" + "\n".join(shown) + "\n```"
             )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
-
-    # 2. 近期 git 日志
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("audit context tree failed for %s: %s", ws, e)
     try:
         git_log = subprocess.run(
             ["git", "log", "--oneline", "-20", "--no-decorate"],
@@ -889,10 +882,8 @@ def _get_code_context(ws_path: Path) -> str:
         )
         if git_log.returncode == 0 and git_log.stdout.strip():
             parts.append("## 近期 git 提交\n```\n" + git_log.stdout.strip() + "\n```")
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
-
-    # A5: 入口文件（最多 2 个，过滤增强 + A7: 用 is_symlink 检查，3.9 兼容）
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("audit context git log failed for %s: %s", ws, e)
     exclude_patterns = [
         ".venv",
         "node_modules",
@@ -1802,9 +1793,8 @@ def _review_with_llm(
         finally:
             try:
                 os.unlink(_prompt_file)
-            except OSError:
-                pass
-        if r.returncode != 0:
+            except OSError as e:
+                _log.warning("reviewer prompt temp file unlink failed: %s", e)
             stderr = r.stderr.decode("utf-8", errors="replace") if isinstance(r.stderr, bytes) else r.stderr
             return {
                 "verdict": "fallback",
@@ -1965,9 +1955,8 @@ def reviewer_role() -> dict:
             try:
                 os.close(_lock_fd)
                 os.unlink(lock_path)
-            except OSError:
-                pass
-    return {"role": "reviewer", "moved": moved, "counts": update_index()}
+            except OSError as e:
+                _log.warning("reviewer lock cleanup failed for %s: %s", task_id, e)
 
 
 def _review_one_task(task_id: str) -> bool:
@@ -2211,10 +2200,8 @@ def ops_role() -> dict:
                 )
                 health["stale_detected"] += 1
                 _log.info("[ops] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal")
-        except (ValueError, TypeError):
-            pass
-
-    # 2. 孤儿 PID 清理
+        except (ValueError, TypeError) as e:
+            _log.warning("ops stale timestamp parse failed for %s: %s", task.get("id"), e)
     pid_dir = ROOT / ".ccc" / "pids"
     if pid_dir.exists():
         for f in pid_dir.glob("*.pid"):
@@ -2495,8 +2482,8 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
             timeout=60,
         )
         lint_out = (r.stdout or "") + (r.stderr or "")
-    except (sp.TimeoutExpired, FileNotFoundError, OSError):
-        pass
+    except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("audit ruff failed for %s: %s", workspace, e)
 
     try:
         r = sp.run(
@@ -2507,10 +2494,8 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
             timeout=60,
         )
         mypy_out = (r.stdout or "") + (r.stderr or "")
-    except (sp.TimeoutExpired, FileNotFoundError, OSError):
-        pass
-
-    return lint_out, mypy_out
+    except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("audit mypy failed for %s: %s", workspace, e)
 
 
 def _audit_classify(
@@ -2678,10 +2663,8 @@ def _audit_run_one(ws: str, since: str) -> dict:
             )
             auto_fixed = findings["auto"]
             findings["auto"] = []
-        except (sp.TimeoutExpired, FileNotFoundError, OSError):
-            pass
-
-    # 5. review/decision 投 backlog
+        except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+            _log.warning("audit ruff --fix failed for %s: %s", ws, e)
     posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
     posted_decision = _audit_post_backlog(
         ws, findings.get("decision", []), "decision"
@@ -2889,9 +2872,8 @@ def regress_role() -> dict:
                         _obj["updated_at"] = now_iso()
                         _lines[_i] = json.dumps(_obj, ensure_ascii=False)
                         break
-                    except json.JSONDecodeError:
-                        pass
-                src_path.write_text("\n".join(_lines))
+                    except json.JSONDecodeError as e:
+                        _log.warning("regress tag update JSON failed for %s: %s", tid, e)
             move_task(tid, "released", "backlog")
             # macOS 桌面通知
             subprocess.run(
@@ -3105,9 +3087,8 @@ def auto_approve_agents() -> dict:
                 if (today_d - last_d).days < _AUTO_APPROVE_COOLDOWN_DAYS:
                     skipped_cooldown += 1
                     continue
-            except ValueError:
-                pass
-        # 提取 content
+            except ValueError as e:
+                _log.warning("auto_approve cooldown parse failed for %s: %s", task_id, e)
         after_source = block.split(f"### 来自 {source}")[-1].strip()
         content_text = re.split(r"\n---|\n## ", after_source)[0].strip()
         if not content_text:
@@ -3350,15 +3331,15 @@ def dev_role_relaunch(task_id: str) -> dict:
         if f.exists():
             try:
                 f.unlink()
-            except OSError:
-                pass
+            except OSError as e:
+                _log.warning("relaunch marker unlink failed %s: %s", f, e)
         # 也检查 reports/
         f2 = ROOT / ".ccc" / "reports" / f"{task_id}{suffix}"
         if f2.exists():
             try:
                 f2.unlink()
-            except OSError:
-                pass
+            except OSError as e:
+                _log.warning("relaunch report unlink failed %s: %s", f2, e)
 
     timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     # v0.24.3: 重启也用 _current_running_phase() 定位当前 phase
@@ -3436,9 +3417,8 @@ def dev_role_check_complete(task_id: str) -> dict:
                 for f in [pid_path, done_path, ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"]:
                     try:
                         f.unlink()
-                    except OSError:
-                        pass
-                _log.error("[engine] %s G4: PID 已死，标记为失败", task_id)
+                    except OSError as e:
+                        _log.warning("G4 marker unlink failed %s: %s", f, e)
                 return {"status": "failed", "retry": 0, "task_id": task_id}
         return {"status": "running", "task_id": task_id}
 
@@ -3468,8 +3448,8 @@ def dev_role_check_complete(task_id: str) -> dict:
         for p in marker_files:
             try:
                 p.unlink()
-            except OSError:
-                pass
+            except OSError as e:
+                _log.warning("success marker unlink failed %s: %s", p, e)
         move_task(task_id, "in_progress", "testing")
         _log.info("[engine] %s ✓ moved to testing", task_id)
         return {"status": "success", "task_id": task_id}
@@ -3489,10 +3469,8 @@ def dev_role_check_complete(task_id: str) -> dict:
                             continue
                         retry = phase.get("retry", 0)
                         break
-        except (json.JSONDecodeError, OSError):
-            pass
-
-        retry += 1
+        except (json.JSONDecodeError, OSError) as e:
+            _log.warning("read retry count failed for %s: %s", task_id, e)
         # 更新 phases.json retry 计数
         try:
             if phases_file.exists():
@@ -3508,19 +3486,17 @@ def dev_role_check_complete(task_id: str) -> dict:
                         phase["retry"] = retry
                         lines[i] = json.dumps(phase, ensure_ascii=False)
                         break
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as e:
+                        _log.warning("update retry JSON parse failed for %s: %s", task_id, e)
                 phases_file.write_text("\n".join(lines))
-        except OSError:
-            pass
-
-        if retry >= MAX_RETRY:
+        except OSError as e:
+            _log.warning("write retry count failed for %s: %s", task_id, e)
             # 重试耗尽：清理标记 + 异常隔离
             for p in marker_files:
                 try:
                     p.unlink()
-                except OSError:
-                    pass
+                except OSError as e:
+                    _log.warning("quarantine marker unlink failed %s: %s", p, e)
             # v0.24: 标记 phase failed + 触发失败传染链路
             _mark_phase_failed(task_id, phase_id=_current_running_phase(task_id))
             failure_summary = _check_phase_failures(task_id)
@@ -3667,4 +3643,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
