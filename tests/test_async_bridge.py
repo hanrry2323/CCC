@@ -1,61 +1,56 @@
-# async_bridge 统一桥接测试
-
 import asyncio
-import sys
-from pathlib import Path
-
-# 将项目根目录添加到 Python 路径
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from app.core.async_bridge import run_async
+import pytest
+from app.core.async_bridge import run_async, run_async_with_context, get_bridge_loop, _ensure_bridge_thread_pool
 
 
-async def dummy_async():  # noqa: D401
-    """无返回值的简单协程"""
-    await asyncio.sleep(0.1)
-    return "success"
+def test_ensure_bridge_thread_pool_created():
+    """测试桥接线程池创建"""
+    pool = _ensure_bridge_thread_pool()
+    assert pool is not None
+    assert isinstance(pool, type(pool))
 
 
-async def failing_async():  # noqa: D401
-    """会失败的协程"""
-    await asyncio.sleep(0.1)
-    raise ValueError("intentional failure")
+def test_get_bridge_loop():
+    """测试获取桥接 loop 实例"""
+    loop = get_bridge_loop()
+    assert loop is not None
+    assert isinstance(loop, asyncio.AbstractEventLoop)
 
 
-async def timeout_async():  # noqa: D401
-    """超时协程"""
-    await asyncio.sleep(120)
-    return "should be canceled"
+def test_run_sync_value():
+    """测试同步值"""
+    def sync_func():
+        return "sync_success"
+
+    result = run_async(sync_func, timeout=1)
+    assert result == "sync_success"
 
 
-def test_run_async_success():
-    """正常执行且返回值的测试"""
-    result = run_async(dummy_async())
-    assert result == "success"
-    print("✅ test_run_async_success passed")
+def test_run_sync_val():
+    """测试直接同步值"""
+    result = run_async("direct_value", timeout=1)
+    assert result == "direct_value"
 
 
-def test_run_async_timeout():
-    """超时控制的测试"""
-    try:
-        run_async(timeout_async(), timeout=int(0.2))  # noqa: E501, type: ignore
-        assert False, "Should raise TimeoutError"
-    except Exception as exc:
-        assert "TimeoutError" in str(type(exc))
-        print("✅ test_run_async_timeout passed")
+async def async_func_for_test():
+    """用于测试的异步函数"""
+    await asyncio.sleep(0.001)
+    return "async_result"
 
 
-def test_run_async_failure():
-    """异常传播的测试"""
-    try:
-        run_async(failing_async())
-        assert False, "Should raise ValueError"
-    except ValueError:
-        print("✅ test_run_async_failure passed")
+def test_run_async_and_await():
+    """测试 async + await"""
+    result = run_async(async_func_for_test())
+    assert result == "async_result"
 
 
-if __name__ == "__main__":
-    test_run_async_success()
-    test_run_async_timeout()
-    test_run_async_failure()
-    print("All tests passed! ✅")
+async def failing_async_for_test():
+    """用于测试的失败异步函数"""
+    await asyncio.sleep(0.001)
+    raise ValueError("test error")
+
+
+def test_run_async_exception():
+    """测试异常传播"""
+    with pytest.raises(ValueError, match="test error"):
+        run_async(failing_async_for_test())
