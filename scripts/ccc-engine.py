@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""ccc-engine.py — CCC 串行执行引擎 (v0.20.1)
+"""ccc-engine.py — CCC 并行执行引擎 (v0.20.1+, v0.28.1 起最多 3 task 并发)
 
 替代 7 角色 launchd 定时轮询模式。
-一个常驻守护进程，按 task 级别串行驱动 backlog→released 全链路。
+一个常驻守护进程，驱动 backlog→released 全链路（同 workspace 最多 MAX_CONCURRENT 个 task 并行）。
 
 使用方式:
   python3 ccc-engine.py                              # CCC 自身
@@ -86,6 +86,9 @@ _MAX_PRODUCT_RETRIES = 3
 # v0.28.1: 当前 task 的 complexity（small/medium/large），影响 reviewer/tester 是否需要
 _current_task_complexity: str | None = None
 
+# 与 opencode-pool.py MAX_PARALLEL 一致
+MAX_CONCURRENT = 3
+
 # v0.28.0 (X-H1 修): 缓存 FileBoardStore 实例，避免每次调用重新构造
 _store_instance: FileBoardStore | None = None
 
@@ -99,29 +102,117 @@ def _get_store(workspace: str | Path) -> FileBoardStore:
 
 
 def engine_loop(workspace: str) -> None:
-    """引擎主循环：串行驱动 task backlog→released"""
-    global _engine_shutdown, _current_task_complexity
+    """引擎主循环：并行驱动 task backlog→released（最多 MAX_CONCURRENT 个）"""
+    global _engine_shutdown
 
     engine_log(f"CCC Engine 启动 (workspace={workspace})")
     engine_log(f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s")
-    engine_log(f"  max_retry={MAX_RETRY}")
+    engine_log(f"  max_retry={MAX_RETRY}, max_concurrent={MAX_CONCURRENT}")
 
-    running_task_id: str | None = None  # 当前正在执行的 task
+    active_tasks: dict[str, dict] = {}  # task_id -> {"complexity": ..., "started_at": ...}
     iteration = 0
+
+    def _handle_task_result(tid: str, result: dict, complexity: str) -> bool:
+        """处理 dev_role_check_complete 结果。返回 True 表示从 active_tasks 移除。"""
+        status = result.get("status", "unknown")
+
+        if status == "success":
+            if complexity == "small":
+                engine_log(f"{tid} complexity=small, 跳过 reviewer+tester → 直通 kb")
+                move_task(tid, "in_progress", "testing")
+                move_task(tid, "testing", "verified")
+                verified = list_tasks("verified")
+                if any(t["id"] == tid for t in verified):
+                    engine_log(f"{tid} → verified, 立即 kb")
+                    kb_role()
+                    try:
+                        auto_r = ccc_board.auto_approve_agents()
+                        if auto_r.get("approved", 0) > 0:
+                            engine_log(f"auto-approve-agents ✓ {auto_r['approved']} 条建议")
+                    except Exception as exc:
+                        engine_log(f"auto_approve_agents 异常: {exc}")
+                    engine_log(f"{tid} 全链路完成 (small path)")
+                else:
+                    engine_log(f"{tid} small path: 移入 verified 失败")
+                update_index()
+                return True
+
+            engine_log(f"{tid} → testing, 立即跑 reviewer+tester")
+            reviewer_role()
+            tester_role()
+
+            verified = list_tasks("verified")
+            if any(t["id"] == tid for t in verified):
+                engine_log(f"{tid} → verified, 立即 kb")
+                kb_role()
+                try:
+                    auto_r = ccc_board.auto_approve_agents()
+                    if auto_r.get("approved", 0) > 0:
+                        engine_log(
+                            f"auto-approve-agents ✓ {auto_r['approved']} 条建议合入 AGENTS.md"
+                        )
+                except Exception as exc:
+                    engine_log(f"auto_approve_agents 异常: {exc}")
+                engine_log(f"{tid} 全链路完成")
+            else:
+                engine_log(f"{tid} reviewer/tester 未通过")
+
+            update_index()
+            return True
+
+        if status == "failed":
+            retry = result.get("retry", 0)
+            failure_summary = _check_phase_failures(tid)
+            if failure_summary.get("all_failed_or_skipped"):
+                engine_log(
+                    f"{tid} 所有 phase failed/skipped "
+                    f"(skipped={failure_summary.get('skipped')})"
+                )
+                update_index()
+                return True
+            cur = _current_running_phase(tid)
+            engine_log(f"{tid} 失败 (retry={retry}), relaunch phase {cur}")
+            dev_role_relaunch(tid)
+            return False
+
+        if status == "quarantined":
+            failure_summary = _check_phase_failures(tid)
+            if failure_summary.get("all_failed_or_skipped"):
+                engine_log(
+                    f"{tid} 所有 phase failed/skipped → abnormal "
+                    f"(skipped_downstream={failure_summary['skipped']})"
+                )
+            else:
+                engine_log(f"{tid} 重试耗尽, 已隔离, 移向下一个")
+            update_index()
+            return True
+
+        if status == "not_found":
+            engine_log(f"{tid} 不在 in_progress (可能已被外部移走)")
+        else:
+            engine_log(f"{tid} 未知状态: {status}")
+        return True
 
     # ── 启动扫描：检查已有的 in_progress 任务 ──
     in_prog = list_tasks("in_progress")
     if in_prog:
-        running_task_id = in_prog[-1]["id"]
-        engine_log(f"发现已有 in_progress 任务: {running_task_id}")
-        # G4: 立即检查 task 是否真的在运行，.pid 进程不存在则重启
-        result = dev_role_check_complete(running_task_id)
-        if result.get("status") == "running":
-            # 检查 PID 是否存活
-            engine_log(f"{running_task_id} 检查 PID 存活")
-        elif result.get("status") in ("success", "failed"):
-            engine_log(f"{running_task_id} 已完成 (status={result.get('status')}), 继续链")
-            running_task_id = None  # 让主循环从 planned 取下一个
+        engine_log(f"发现 {len(in_prog)} 个 in_progress 任务，恢复检查")
+    for task in in_prog:
+        tid = task["id"]
+        complexity = task.get("complexity", "medium")
+        result = dev_role_check_complete(tid)
+        status = result.get("status", "unknown")
+        if status == "running":
+            active_tasks[tid] = {"complexity": complexity, "started_at": now_iso()}
+            engine_log(f"{tid} 检查 PID 存活")
+        elif status in ("success", "failed"):
+            engine_log(f"{tid} 已完成 (status={status}), 继续链")
+            if not _handle_task_result(tid, result, complexity):
+                active_tasks[tid] = {"complexity": complexity, "started_at": now_iso()}
+        elif status == "quarantined":
+            _handle_task_result(tid, result, complexity)
+        else:
+            _handle_task_result(tid, result, complexity)
 
     while True:
         if _engine_shutdown:
@@ -131,128 +222,38 @@ def engine_loop(workspace: str) -> None:
         tick_start = time.time()
 
         try:
-            # ── Step 1: 有正在执行的 task？──
-            if running_task_id:
-                result = dev_role_check_complete(running_task_id)
-                status = result.get("status", "unknown")
+            # ── Step 1: 检查所有活跃 task 的完成状态 ──
+            completed_tasks: list[str] = []
+            if active_tasks:
+                for tid, info in list(active_tasks.items()):
+                    result = dev_role_check_complete(tid)
+                    status = result.get("status", "unknown")
+                    complexity = info.get("complexity", "medium")
 
-                if status == "running":
-                    # 仍执行中，等下次轮询
-                    _write_heartbeat(workspace, running_task_id)
-                    if iteration % 60 == 0:  # 每 60 轮打印一次（约 10min）
-                        engine_log(f"{running_task_id} 执行中")
-
-                elif status == "success":
-                    # v0.28.1: complexity=small 跳过 reviewer+tester，直通 kb
-                    if _current_task_complexity == "small":
-                        engine_log(f"{running_task_id} complexity=small, 跳过 reviewer+tester → 直通 kb")
-                        # 先挪到 testing，再立即到 verified（简化流程）
-                        move_task(running_task_id, "in_progress", "testing")
-                        move_task(running_task_id, "testing", "verified")
-                        verified = list_tasks("verified")
-                        if any(t["id"] == running_task_id for t in verified):
-                            engine_log(f"{running_task_id} → verified, 立即 kb")
-                            kb_role()
-                            try:
-                                auto_r = ccc_board.auto_approve_agents()
-                                if auto_r.get("approved", 0) > 0:
-                                    engine_log(f"auto-approve-agents ✓ {auto_r['approved']} 条建议")
-                            except Exception as exc:
-                                engine_log(f"auto_approve_agents 异常: {exc}")
-                            engine_log(f"{running_task_id} 全链路完成 (small path)")
-                        else:
-                            engine_log(f"{running_task_id} small path: 移入 verified 失败")
-                        update_index()
-                        running_task_id = None
-                        _current_task_complexity = None
+                    if status == "running":
+                        if iteration % 60 == 0:
+                            engine_log(f"{tid} 执行中")
                         continue
 
-                    engine_log(f"{running_task_id} → testing, 立即跑 reviewer+tester")
-                    # 串行运行 reviewer + tester
-                    reviewer_role()
-                    tester_role()
+                    if _handle_task_result(tid, result, complexity):
+                        completed_tasks.append(tid)
 
-                    # 检查是否都进了 verified
-                    verified = list_tasks("verified")
-                    if any(t["id"] == running_task_id for t in verified):
-                        engine_log(f"{running_task_id} → verified, 立即 kb")
-                        kb_role()
-                        # v0.28.0 (F-4): kb_role 后自动 approve-agents（7 天冷却 + 重复检测）
-                        # 替代原 100% 人工审批；保留原 approve_agents 函数供手工触发
-                        try:
-                            auto_r = ccc_board.auto_approve_agents()
-                            if auto_r.get("approved", 0) > 0:
-                                engine_log(
-                                    f"auto-approve-agents ✓ {auto_r['approved']} 条建议合入 AGENTS.md"
-                                )
-                        except Exception as exc:
-                            engine_log(f"auto_approve_agents 异常: {exc}")
-                        engine_log(f"{running_task_id} 全链路完成")
-                    else:
-                        engine_log(f"{running_task_id} reviewer/tester 未通过")
+                for tid in completed_tasks:
+                    active_tasks.pop(tid, None)
 
-                    update_index()
-                    running_task_id = None
-                    continue  # 立即检查下一个 task
+                running_ids = list(active_tasks.keys())
+                if running_ids:
+                    _write_heartbeat(workspace, running_ids[0])
 
-                elif status == "failed":
-                    retry = result.get("retry", 0)
-                    failure_summary = _check_phase_failures(running_task_id)
-                    if failure_summary.get("all_failed_or_skipped"):
-                        engine_log(
-                            f"{running_task_id} 所有 phase failed/skipped "
-                            f"(skipped={failure_summary.get('skipped')})"
-                        )
-                        update_index()
-                        running_task_id = None
-                        _wait_tick(tick_start)
-                        continue
-                    cur = _current_running_phase(running_task_id)
-                    engine_log(
-                        f"{running_task_id} 失败 (retry={retry}), relaunch phase {cur}"
-                    )
-                    dev_role_relaunch(running_task_id)
-                    _wait_tick(tick_start)
-                    continue
-
-                elif status == "quarantined":
-                    # v0.24: 跑失败传染 + 决定 task 是 quarantined 还是 abnormal
-                    failure_summary = _check_phase_failures(running_task_id)
-                    if failure_summary.get("all_failed_or_skipped"):
-                        engine_log(
-                            f"{running_task_id} 所有 phase failed/skipped → abnormal "
-                            f"(skipped_downstream={failure_summary['skipped']})"
-                        )
-                    else:
-                        engine_log(
-                            f"{running_task_id} 重试耗尽, 已隔离, 移向下一个"
-                        )
-                    update_index()
-                    running_task_id = None
-                    continue  # 立即检查下一个
-
-                else:
-                    # not_found 或其他异常：task 不在 in_progress 了
-                    if status == "not_found":
-                        engine_log(f"{running_task_id} 不在 in_progress (可能已被外部移走)")
-                    else:
-                        engine_log(f"{running_task_id} 未知状态: {status}")
-                    running_task_id = None
-                    continue
-
-            # ── Step 1.5 (v0.28.0 F-1): backlog 自动消费 ──
-            # 老板"我给你任务你来拆"的核心断点：engine idle 时如果 backlog 非空，
-            # 自动调 product_role 拆分（生成 plan + phases）→ 挪 planned。
-            # 断点已修：现在 user 只需 `create_task` 落 backlog，engine 自动消费。
-            # v0.28.0 (F1-C1 修): 失败计数器 — 连续 _MAX_PRODUCT_RETRIES 次失败移入 abnormal
-            if running_task_id is None:
+            # ── Step 1.5 + Step 2: 池有空位时消费 backlog / 取 planned ──
+            while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
+                # ── Step 1.5 (v0.28.0 F-1): backlog 自动消费 ──
                 backlog = ccc_board.list_tasks("backlog")
                 if backlog:
                     tid = backlog[0]["id"]
                     fail_counter_dir = cfg.workspace / ".ccc" / ".product-fail-counter"
                     fail_counter_path = fail_counter_dir / f"{tid}.json"
 
-                    # 读当前失败计数
                     fail_count = 0
                     if fail_counter_path.exists():
                         try:
@@ -278,7 +279,6 @@ def engine_loop(workspace: str) -> None:
                     )
                     try:
                         ccc_board.product_role(task_id=tid)
-                        # 成功：清除失败计数
                         if fail_counter_path.exists():
                             fail_counter_path.unlink()
                     except Exception as exc:
@@ -300,18 +300,18 @@ def engine_loop(workspace: str) -> None:
                                 tid,
                                 f"product_role 连续失败 {fail_count} 次",
                             )
-                    continue  # 立即重检（消费下一个或进 planned）
+                    continue
 
-            # ── Step 2: 没有活跃 task，取 planned ──
-            if running_task_id is None:
+                # ── Step 2: 从 planned 取新 task ──
                 planned = list_tasks("planned")
-                # 找第一个有 plan+phases 的 task
+                launched = False
                 for task in planned:
                     tid = task["id"]
+                    if tid in active_tasks:
+                        continue
                     plan_file = cfg.workspace / ".ccc" / "plans" / f"{tid}.plan.md"
                     phases_file = cfg.workspace / ".ccc" / "phases" / f"{tid}.phases.json"
                     if plan_file.exists() and phases_file.exists():
-                        # v0.24: 启动前跑一次 phase 依赖解析
                         phases = _load_phases(tid)
                         if phases:
                             executable, blocked, skipped = _resolve_phase_dependencies(phases)
@@ -321,7 +321,6 @@ def engine_loop(workspace: str) -> None:
                                     f"{tid} phase 依赖解析: executable={sorted(executable)} "
                                     f"blocked={sorted(blocked)} skipped={sorted(skipped)}"
                                 )
-                            # 如果所有 phase 都被跳过（依赖全失败）→ 把 task 也标 quarantined
                             if phases and all(
                                 p.get("status") in ("skipped", "failed") or
                                 (p.get("phase") in skipped)
@@ -332,37 +331,38 @@ def engine_loop(workspace: str) -> None:
                                 )
                                 continue
 
-                        running_task_id = tid
-                        # v0.28.1: 读 task complexity 决定后续角色
-                        _current_task_complexity = task.get("complexity", "medium")
-                        engine_log(f"取新 task: {tid} (complexity={_current_task_complexity})")
+                        complexity = task.get("complexity", "medium")
+                        engine_log(f"取新 task: {tid} (complexity={complexity})")
                         launch_r = dev_role_launch(tid)
                         if "error" in launch_r:
                             engine_log(f"启动 {tid} 失败: {launch_r['error']}")
-                            running_task_id = None
-                            continue  # 试下一个
-                        update_index()  # v0.23.2 fix: 挪列后同步 index
-                        break  # 启动了一个, 等下次轮询
+                            continue
+                        active_tasks[tid] = {
+                            "complexity": complexity,
+                            "started_at": now_iso(),
+                        }
+                        update_index()
+                        launched = True
+                        break
 
-                if running_task_id is None:
-                    # 彻底无事可做
-                    _check_stale()
-                    _write_heartbeat(workspace, None)
+                if not launched:
+                    break
 
-                    # audit 触发检查（v0.22）：每 2h 跑一次全项目审计
-                    if _audit_should_run(workspace):
-                        engine_log("触发 audit_role（全项目扫描）")
-                        try:
-                            # 必须传 workspace 让 audit_role 把 last_run 写到 per-workspace 文件
-                            ccc_board.audit_role(workspace=workspace)
-                        except Exception as exc:
-                            engine_log(f"audit_role 异常: {exc}")
+            if not active_tasks:
+                _check_stale()
+                _write_heartbeat(workspace, None)
 
-                    # review 入站校验（v0.23.4）：检查 .ccc/reviews/ 新报告格式
-                    _check_new_reviews()
+                if _audit_should_run(workspace):
+                    engine_log("触发 audit_role（全项目扫描）")
+                    try:
+                        ccc_board.audit_role(workspace=workspace)
+                    except Exception as exc:
+                        engine_log(f"audit_role 异常: {exc}")
 
-                    time.sleep(cfg.engine_idle_sleep)
-                    continue
+                _check_new_reviews()
+
+                time.sleep(cfg.engine_idle_sleep)
+                continue
 
         except KeyboardInterrupt:
             engine_log("收到 SIGINT, 优雅关闭")
@@ -370,8 +370,7 @@ def engine_loop(workspace: str) -> None:
         except Exception as e:
             import traceback as _tb
             engine_log(f"异常: {e}")
-            engine_log(f"  {_tb.format_exc().splitlines()[-2]}")  # 关键栈行
-            # 防止 panic 退出
+            engine_log(f"  {_tb.format_exc().splitlines()[-2]}")
             time.sleep(cfg.engine_idle_sleep)
             continue
 
