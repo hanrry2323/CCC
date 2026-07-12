@@ -18,7 +18,10 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
+from _config import get_logger
 from _board_store import COLUMNS, _atomic_write
+
+_log = get_logger("board-reconcile")
 
 
 def _is_schema_metadata(obj: object) -> bool:
@@ -192,4 +195,7 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
