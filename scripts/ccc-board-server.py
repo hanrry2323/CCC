@@ -22,9 +22,8 @@ from typing import Optional
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from _config import Config
+from _config import Config, get_logger
 from _board_store import COLUMNS, FileBoardStore
-from _logger import get_logger
 from _utils import sanitize_id as _utils_sanitize_id
 from human_status import (
     enrich_task, enrich_abnormal,
@@ -133,7 +132,9 @@ def discover_workspaces() -> dict:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """v0.28.1: 北京时间 +08:00（与 _utils 一致）"""
+    from _utils import now_iso as _utils_now_iso
+    return _utils_now_iso()
 
 
 def board_path(workspace: str) -> Optional[Path]:
@@ -330,9 +331,8 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             o = urlparse(origin)
             if o.hostname in ("localhost", "127.0.0.1", "[::1]"):
                 return origin
-        except Exception:
-            pass
-        return ""
+        except Exception as e:
+            _log.warning("origin parse failed for %r: %s", origin, e)
 
     def _json(self, data: dict, status: int = 200):
         self.send_response(status)
@@ -516,10 +516,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                             if line:
                                 try:
                                     events.append(json.loads(line))
-                                except json.JSONDecodeError:
-                                    pass
-                except FileNotFoundError:
-                    pass
+                                except json.JSONDecodeError as e:
+                                    _log.warning("skip malformed event line for %s: %s", task_id, e)
+                except FileNotFoundError as e:
+                    _log.warning("events file disappeared for %s: %s", task_id, e)
             found["events"] = events
             self._json(found)
 
@@ -720,7 +720,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             if validate_task_jsonl is not None:
                 # 自动补 created_at/updated_at 以满足校验（IDE 不一定知道）
                 if "created_at" not in data:
-                    data["created_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                    data["created_at"] = now_iso()
                 if "updated_at" not in data:
                     data["updated_at"] = data["created_at"]
                 ok, errors = validate_task_jsonl(data)
@@ -866,4 +866,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

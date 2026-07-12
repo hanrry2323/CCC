@@ -185,10 +185,16 @@ def event_action_cn(to_column: str) -> str:
 # ── 今日事件工具 ──
 
 def is_today(iso: str) -> bool:
+    """v0.28.1: 统一用北京时间判断"今天"（避免 +08:00 与 UTC 跨零点日期不一致）"""
     if not iso:
         return False
     try:
-        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).date() == datetime.now(timezone.utc).date()
+        from datetime import timedelta
+        beijing = timezone(timedelta(hours=8))
+        parsed = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(beijing).date() == datetime.now(beijing).date()
     except (ValueError, TypeError):
         return False
 
