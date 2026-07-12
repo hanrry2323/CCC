@@ -591,21 +591,20 @@ def _check_phase_failures(task_id: str) -> dict:
                 "engine_iter": 0, "force_converged": False}
 
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
-    # v0.28.1: 多轮传播直到 blocked/skipped 收敛（phase1 fail → phase2 skip 等同 tick 生效）
-    max_rounds = max(len(phases), 1)
-    for _ in range(max_rounds):
-        if not blocked and not skipped:
-            break
-        prev = {p.get("phase"): p.get("status") for p in phases}
-        _apply_phase_status_updates(task_id, blocked, skipped)
-        phases = _load_phases(task_id)
-        new_states = {p.get("phase"): p.get("status") for p in phases}
-        if new_states == prev:
-            break
-        executable, blocked, skipped = _resolve_phase_dependencies(phases)
+    _apply_phase_status_updates(task_id, blocked, skipped)
 
     # v0.24.3: writeback 后必须 reload，否则返回值基于陈旧内存状态计算。
     phases = _load_phases(task_id)
+    executable, blocked, skipped = _resolve_phase_dependencies(phases)
+    # 回报磁盘真实状态（已写回的 skipped/blocked 不再出现在 resolve 的新增集合里）
+    skipped_on_disk = {
+        p.get("phase") for p in phases
+        if p.get("status") == "skipped" and p.get("phase") is not None
+    }
+    blocked_on_disk = {
+        p.get("phase") for p in phases
+        if p.get("status") == "blocked" and p.get("phase") is not None
+    }
 
     all_terminal = all(
         p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL)
@@ -677,8 +676,8 @@ def _check_phase_failures(task_id: str) -> dict:
 
     return {
         "executable": sorted(executable),
-        "blocked": sorted(blocked),
-        "skipped": sorted(skipped),
+        "blocked": sorted(blocked_on_disk),
+        "skipped": sorted(skipped_on_disk),
         "all_terminal": all_terminal,
         "all_failed_or_skipped": all_failed_or_skipped,
         "engine_iter": engine_iter,
@@ -704,37 +703,41 @@ def _read_engine_iter_meta(task_id: str) -> dict:
                 continue
     except OSError as e:
         _log.warning("read engine_iter meta failed for %s: %s", task_id, e)
+    return {}
+
+
+def _write_engine_iter_meta(task_id: str, meta: dict) -> None:
     """v0.27.1: 把 engine_iter 元数据写入 phases.json 顶层 metadata 行。"""
-    import fcntl
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
         return
     try:
-        with open(phases_file, "r+") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                lines = f.readlines()
-                found = False
-                for i, line in enumerate(lines):
-                    line_s = line.strip()
-                    if not line_s:
-                        continue
-                    try:
-                        obj = json.loads(line_s)
-                        if isinstance(obj, dict) and "engine_iter" in obj:
-                            obj.update(meta)
-                            lines[i] = json.dumps(obj, ensure_ascii=False) + chr(10)
-                            found = True
-                            break
-                    except json.JSONDecodeError:
-                        continue
-                if not found:
-                    lines.insert(0, json.dumps(meta, ensure_ascii=False) + chr(10))
-                f.seek(0)
-                f.truncate()
-                f.writelines(lines)
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+        lines = phases_file.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError as e:
+        _log.warning("read phases for engine_iter meta failed %s: %s", task_id, e)
+        return
+    found = False
+    new_lines: list[str] = []
+    for line in lines:
+        line_s = line.strip()
+        if not line_s:
+            new_lines.append(line)
+            continue
+        try:
+            obj = json.loads(line_s)
+        except json.JSONDecodeError:
+            new_lines.append(line)
+            continue
+        if isinstance(obj, dict) and "engine_iter" in obj:
+            obj.update(meta)
+            new_lines.append(json.dumps(obj, ensure_ascii=False) + "\n")
+            found = True
+        else:
+            new_lines.append(line if line.endswith("\n") else line + "\n")
+    if not found:
+        new_lines.insert(0, json.dumps(meta, ensure_ascii=False) + "\n")
+    try:
+        _store_atomic_write(phases_file, "".join(new_lines))
     except OSError as e:
         _log.warning("write engine_iter meta failed for %s: %s", task_id, e)
 
