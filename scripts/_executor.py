@@ -9,7 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, TypedDict
 
-from _config import Config
+from _config import Config, get_logger
+
+_log = get_logger("executor"), get_logger
 
 
 def resolve_opencode() -> Optional[str]:
@@ -190,19 +192,19 @@ class OpenCodeExecutor(Executor):
                 # 红线 X2: 超时必杀（killpg 级联到 process group）
                 try:
                     _os.killpg(proc.pid, _sig.SIGTERM)
-                except (ProcessLookupError, PermissionError):
-                    pass
+                except (ProcessLookupError, PermissionError) as e:
+                    _log.warning("SIGTERM killpg failed pid=%s: %s", proc.pid, e)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     try:
                         _os.killpg(proc.pid, _sig.SIGKILL)
-                    except (ProcessLookupError, PermissionError):
-                        pass
+                    except (ProcessLookupError, PermissionError) as e:
+                        _log.warning("SIGKILL killpg failed pid=%s: %s", proc.pid, e)
                     try:
                         proc.wait(timeout=10)
                     except subprocess.TimeoutExpired:
-                        pass
+                        _log.warning("proc.wait timeout after SIGKILL pid=%s", proc.pid)
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=-1,
@@ -219,8 +221,8 @@ class OpenCodeExecutor(Executor):
             if tmp_path is not None:
                 try:
                     Path(tmp_path).unlink()
-                except OSError:
-                    pass
+                except OSError as e:
+                    _log.warning("failed to unlink temp prompt %s: %s", tmp_path, e)
 
     def _resolve_opencode(self) -> Optional[str]:
         return resolve_opencode()
