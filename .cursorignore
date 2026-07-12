@@ -1,0 +1,34 @@
+# CCC — Cursor indexing exclusions
+# 这些目录/文件避免被 Cursor 扫描索引，提高加载速度
+
+# Python virtualenv（104MB，含 mypy 等第三方库）
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 构建/分析缓存
+.ruff_cache/
+.pytest_cache/
+pids/
+
+# codebase-memory MCP 本地缓存
+.codebase-memory/
+
+# CCC 运行时产物（自动生成，不参与开发）
+.ccc/board/events/
+.ccc/logs/
+.ccc/pids/
+.ccc/quarantines/
+.ccc/board/archive/
+.ccc/audit-reports/
+.ccc/reviews/
+.ccc/abnormal-reports/
+.ccc/report-contrast-*.md
+
+# macOS 元数据
+.DS_Store
+
+# 归档
+.archived-*/

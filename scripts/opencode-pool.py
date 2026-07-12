@@ -17,6 +17,7 @@
 
 红线 X1: MAX_PARALLEL = 3（硬约束，不允许超）
 """
+
 import argparse
 import asyncio
 import json
@@ -45,23 +46,33 @@ def _sigterm_handler(signum, frame):
 
 def run_task(task: dict, sem: asyncio.Semaphore) -> asyncio.coroutine:
     """单 task：拿信号量 → 跑 opencode → 释放"""
+
     async def _run():
         async with sem:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, _executor.execute,
-                phase_id=task["phase_id"],
-                prompt=Path(task["prompt_file"]).read_text(encoding="utf-8"),
-                timeout=task.get("timeout", 1800),
-                cwd=task.get("cwd"),
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                _executor.execute,
+                task["phase_id"],
+                Path(task["prompt_file"]).read_text(encoding="utf-8"),
+                task.get("timeout", 1800),
+                task.get("cwd"),
             )
             return result
+
     return _run()
 
 
 async def main() -> int:
-    ap = argparse.ArgumentParser(description=f"OpenCode 进程池（max {MAX_PARALLEL} 并发）")
+    ap = argparse.ArgumentParser(
+        description=f"OpenCode 进程池（max {MAX_PARALLEL} 并发）"
+    )
     ap.add_argument("tasks_file", help="tasks JSON 列表文件")
-    ap.add_argument("--max-parallel", type=int, default=MAX_PARALLEL, help=f"并发上限（默认 {MAX_PARALLEL}）")
+    ap.add_argument(
+        "--max-parallel",
+        type=int,
+        default=MAX_PARALLEL,
+        help=f"并发上限（默认 {MAX_PARALLEL}）",
+    )
     args = ap.parse_args()
 
     if args.max_parallel > MAX_PARALLEL:
@@ -109,7 +120,9 @@ async def main() -> int:
                 fail_count += 1
 
     # 汇总行（prefix 便于 grep）
-    print(f"[opencode-pool] total={len(results)} ok={ok_count} fail={fail_count} max_parallel={args.max_parallel}")
+    print(
+        f"[opencode-pool] total={len(results)} ok={ok_count} fail={fail_count} max_parallel={args.max_parallel}"
+    )
     return 0 if fail_count == 0 else 4
 
 
