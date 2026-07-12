@@ -2,7 +2,7 @@
 
 > **协议版本**: v1.2
 > **状态**: stable
-> **最后更新**: 2026-07-11
+> **最后更新**: 2026-07-12
 > **作用域**: CCC 0.26.0+
 
 > **一句话定义**: 任意 IDE 工具（Trae/Cursor/Zed/VS Code/OpenCode）读本协议 → 写标准 JSONL → 看板全自动流转。
@@ -53,14 +53,15 @@
 | `title` | string | ✅ | — | 非空，≤ 500 字符 |
 | `description` | string | ❌ | `""` | 任务描述，≤ 10000 字符 |
 | `status` | string | ✅ | — | 取值 ∈ {backlog, planned, in_progress, testing, verified, released, abnormal} |
-| `created_at` | string (ISO 8601 UTC) | ✅ | — | 格式 `YYYY-MM-DDTHH:MM:SSZ` |
-| `updated_at` | string (ISO 8601 UTC) | ✅ | — | 同上 |
+| `created_at` | string (ISO 8601) | ✅ | — | 格式 `YYYY-MM-DDTHH:MM:SS+08:00`（北京时间） |
+| `updated_at` | string (ISO 8601) | ✅ | — | 同上（北京时间） |
 | `assignee` | string\|null | ❌ | `null` | 负责人 |
 | `tags` | string[] | ❌ | `[]` | 标签数组，元素为字符串 |
 | `note` | string\|null | ❌ | `null` | 备注 |
 | `schema_version` | string | ❌ | `"1.0"` | 协议版本 |
 | `color_group` | string (A-Z 单字符) | ❌ | `null` | 颜色分组（详见 §5） |
 | `color_depth` | int (≥ 0) | ❌ | `0` | 颜色深度（详见 §5） |
+| `complexity` | string | ❌ | `"medium"` | 任务复杂度 v0.28.1: `small`\|`medium`\|`large`（详见 §12） |
 
 **未知字段**：strict=False 时忽略不报错；strict=True 时拒绝。
 
@@ -93,7 +94,7 @@
 | 1 | `id` | 必填；sanitize 后非 "invalid"；仅 `[a-zA-Z0-9_-]` |
 | 2 | `title` | 必填；非空字符串；≤ 500 字符 |
 | 3 | `status` | 必填；∈ COLUMNS |
-| 4 | `created_at` / `updated_at` | 必填；ISO 8601 UTC 格式 |
+| 4 | `created_at` / `updated_at` | 必填；ISO 8601 格式（推荐北京时间 `+08:00`，Validator 接受 `Z` 向后兼容） |
 | 5 | `description` | 类型=str（可空字符串） |
 | 6 | `assignee` | 类型=str\|null |
 | 7 | `tags` | 类型=list[str] |
@@ -101,6 +102,7 @@
 | 9 | `schema_version` | 缺省补 `"1.0"`；仅校验是字符串 |
 | 10 | `color_group` | 缺省 `null`；存在时 ∈ [A-Z] 单字符 |
 | 11 | `color_depth` | 缺省 `0`；存在时 ≥ 0 整数 |
+| 12 | `complexity` | 缺省 `"medium"`；存在时 ∈ {small, medium, large} |
 
 **容错**（strict=False 默认）：
 - 缺失字段 → 补默认（不报错）
@@ -328,6 +330,29 @@ QXO（或其他工具）按本协议写 task 后，CCC Engine 自动拾取：
 
 ---
 
+---
+
+## 12. 复杂度分流协议（v0.28.1）
+
+> **目的**：按 task 规模决定走完整 7 角色 pipeline 还是简化路径，减少不必要的 reviewer/tester 轮次。
+
+| 复杂度 | 含义 | 触发条件 | 角色路径 |
+|--------|------|---------|---------|
+| `small` | 小改 | plan_weight ≤ 50 | dev → released（跳过 reviewer/tester） |
+| `medium` | 常规 | 50 < plan_weight ≤ 200 | 完整 7 角色（默认） |
+| `large` | 大改 | plan_weight > 200 | 完整 7 角色 + 强制分批 |
+
+**plan_weight 计算公式**（product_role 自动计算）：
+```
+plan_weight = lines(plan) + files_mentioned × 20 + sections × 10
+```
+
+**Engine 行为**：
+- `small`：dev 完成后直接 kb 归档，不调 reviewer/tester
+- `medium`：完整 pipeline（与 v0.28.0 一致）
+- `large`：完整 pipeline + dev prompt 注入 `size_hint` 强制分批
+
 **变更历史**:
-- v1.0 (2026-07-11): 初版，CCC 0.26.0 落地（validate_task_jsonl + 结构化 error + 颜色分层）
+- v1.2 (2026-07-12): 新增 §12 复杂度分流协议
+- v1.0 (2026-07-11): 初版，CCC 0.26.0 落地
 - v0.19 旧版: 仅 10 字段 + 1 示例，无协议契约

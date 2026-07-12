@@ -96,7 +96,7 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
       1. id 必填，sanitize 后非 "invalid"，仅 [a-zA-Z0-9_-]
       2. title 必填且非空字符串（≤ TITLE_MAX）
       3. status 必填 ∈ COLUMNS
-      4. created_at / updated_at 必填，ISO 8601 UTC
+      4. created_at / updated_at 必填，ISO 8601（v0.28.1: 接受 +08:00 或 Z）
       5. description 类型=str（可空）
       6. assignee 类型=str|None
       7. tags 类型=list[str]
@@ -202,6 +202,15 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
         elif color_depth < 0:
             errors.append(f"color_depth: must be >= 0, got {color_depth}")
 
+    # 规则 12: complexity（v0.28.1: 任务复杂度分流）
+    # small: 单文件 ≤50 行 → 跳过 reviewer/tester
+    # medium: 默认 → 完整 7 角色
+    # large: 多文件/架构级 → 完整 + 强制分批
+    complexity = data.get("complexity")
+    if complexity is not None:
+        if complexity not in ("small", "medium", "large"):
+            errors.append(f"complexity: must be 'small'|'medium'|'large', got '{complexity}'")
+
     # strict 模式：拒绝未知字段
     if strict:
         allowed = {
@@ -217,6 +226,7 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
             "schema_version",
             "color_group",
             "color_depth",
+            "complexity",
         }
         unknown = set(data.keys()) - allowed
         if unknown:
@@ -226,11 +236,12 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
 
 
 def fill_task_defaults(data: dict) -> dict:
-    """v0.26: 补默认字段（缺失 schema_version/color_* 字段补默认）"""
+    """v0.26: 补默认字段（缺失 schema_version/color_*/complexity 字段补默认）"""
     out = dict(data)
     out.setdefault("schema_version", "1.0")
     out.setdefault("color_group", None)
     out.setdefault("color_depth", 0)
+    out.setdefault("complexity", "medium")  # v0.28.1: 默认完整 7 角色
     return out
 
 

@@ -1399,6 +1399,17 @@ git push origin main --tags
 - `scripts/tests/test_quarantine_archive.py`：5/5 passed
 - `scripts/tests/test_phase_lint.py` 测试同时验证 legacy API 与 v0.28.0 新 API
 
+## [v0.28.1] - 2026-07-12
+
+### 任务复杂度分流（优化方案 A）
+
+- (v0.28.1) 新增 `complexity` 字段：small / medium / large
+  - `_board_store.py`: validate_task_jsonl + fill_task_defaults 支持
+  - `ccc-board.py` product_role: 根据 plan_weight 自动推断复杂度并写入 task
+  - `ccc-engine.py`: small 任务跳过 reviewer+tester，直通 kb
+  - 文档: `references/board-task-schema.md` §12
+- 定时每周总结: CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`
+
 ## [v0.28.0] - 2026-07-11/12
 
 ### v0.28.0 审查修复批次（F-1~F-4 核心断点）

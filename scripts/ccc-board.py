@@ -105,10 +105,10 @@ def sanitize_id(tid: str) -> str:
 
 
 def now_iso() -> str:
-    """UTC ISO 8601 时间戳（Z 后缀）
+    """北京时间 ISO 8601 时间戳（+08:00 后缀）
 
-    v0.28.0 (H-003): 委托 _utils 统一实现（之前此文件返回 Asia/Shanghai +08:00，
-    与 _board_store.py 的 UTC Z 不一致 → 时间比较时区混淆）。
+    v0.28.1: 从 UTC Z 回到 Asia/Shanghai +08:00（对齐用户所在地）。
+    v0.28.0 (H-003): 曾统一为 UTC Z 以消除 +08:00 / Z 混用。
     """
     return _utils_now_iso()
 
@@ -1129,6 +1129,24 @@ def product_role(task_id: str = "") -> dict:
                     task_data = json.loads(task_file.read_text())
                     task_data["color_group"] = color_group
                     task_data["color_depth"] = 0  # 父任务 depth=0
+                    # v0.28.1: 根据 plan 内容推断 complexity
+                    plan_lines = plan_content.splitlines()
+                    plan_size = len(plan_lines)
+                    file_mentions = len(set(
+                        l.strip() for l in plan_lines
+                        if l.strip().startswith(("/", "`/"))
+                        and not l.strip().startswith(("//", "#"))
+                    ))
+                    section_count = len([l for l in plan_lines if l.strip().startswith("##") and " " in l and l.strip() != "##"])
+                    plan_weight = plan_size + file_mentions * 20 + section_count * 10
+                    if plan_weight <= 50:
+                        task_data["complexity"] = "small"
+                    elif plan_weight <= 200:
+                        task_data["complexity"] = "medium"
+                    else:
+                        task_data["complexity"] = "large"
+                    _log.info("%s complexity=%s (weight=%d, lines=%d, files=%d, sections=%d)",
+                        task_id, task_data["complexity"], plan_weight, plan_size, file_mentions, section_count)
                     task_file.write_text(json.dumps(task_data, ensure_ascii=False) + "\n")
                     _log.info("%s assigned color_group=%s depth=0", task_id, color_group)
                 if phases:

@@ -53,6 +53,7 @@ reviewer_role = ccc_board.reviewer_role
 tester_role = ccc_board.tester_role
 kb_role = ccc_board.kb_role
 list_tasks = ccc_board.list_tasks
+move_task = ccc_board.move_task
 update_index = ccc_board.update_index
 MAX_RETRY = ccc_board.MAX_RETRY
 
@@ -66,7 +67,7 @@ cfg = Config()
 
 
 def now_iso() -> str:
-    """v0.28.0 (H-003): 委托 _utils 统一实现。"""
+    """v0.28.1: 委托 _utils（北京时间 +08:00）。"""
     return _utils_now_iso()
 
 
@@ -80,6 +81,9 @@ _engine_shutdown = False  # SIGTERM 标志
 # v0.28.0 (F1-C1 修): product_role 失败重试上限
 # product_role 是轻量级 prompt（plan 生成），短时重试 3 次即止损
 _MAX_PRODUCT_RETRIES = 3
+
+# v0.28.1: 当前 task 的 complexity（small/medium/large），影响 reviewer/tester 是否需要
+_current_task_complexity: str | None = None
 
 # v0.28.0 (X-H1 修): 缓存 FileBoardStore 实例，避免每次调用重新构造
 _store_instance: FileBoardStore | None = None
@@ -95,7 +99,7 @@ def _get_store(workspace: str | Path) -> FileBoardStore:
 
 def engine_loop(workspace: str) -> None:
     """引擎主循环：串行驱动 task backlog→released"""
-    global _engine_shutdown
+    global _engine_shutdown, _current_task_complexity
 
     engine_log(f"CCC Engine 启动 (workspace={workspace})")
     engine_log(f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s")
@@ -138,6 +142,30 @@ def engine_loop(workspace: str) -> None:
                         engine_log(f"{running_task_id} 执行中")
 
                 elif status == "success":
+                    # v0.28.1: complexity=small 跳过 reviewer+tester，直通 kb
+                    if _current_task_complexity == "small":
+                        engine_log(f"{running_task_id} complexity=small, 跳过 reviewer+tester → 直通 kb")
+                        # 先挪到 testing，再立即到 verified（简化流程）
+                        move_task(running_task_id, "in_progress", "testing")
+                        move_task(running_task_id, "testing", "verified")
+                        verified = list_tasks("verified")
+                        if any(t["id"] == running_task_id for t in verified):
+                            engine_log(f"{running_task_id} → verified, 立即 kb")
+                            kb_role()
+                            try:
+                                auto_r = ccc_board.auto_approve_agents()
+                                if auto_r.get("approved", 0) > 0:
+                                    engine_log(f"auto-approve-agents ✓ {auto_r['approved']} 条建议")
+                            except Exception as exc:
+                                engine_log(f"auto_approve_agents 异常: {exc}")
+                            engine_log(f"{running_task_id} 全链路完成 (small path)")
+                        else:
+                            engine_log(f"{running_task_id} small path: 移入 verified 失败")
+                        update_index()
+                        running_task_id = None
+                        _current_task_complexity = None
+                        continue
+
                     engine_log(f"{running_task_id} → testing, 立即跑 reviewer+tester")
                     # 串行运行 reviewer + tester
                     reviewer_role()
@@ -293,7 +321,9 @@ def engine_loop(workspace: str) -> None:
                                 continue
 
                         running_task_id = tid
-                        engine_log(f"取新 task: {tid}")
+                        # v0.28.1: 读 task complexity 决定后续角色
+                        _current_task_complexity = task.get("complexity", "medium")
+                        engine_log(f"取新 task: {tid} (complexity={_current_task_complexity})")
                         launch_r = dev_role_launch(tid)
                         if "error" in launch_r:
                             engine_log(f"启动 {tid} 失败: {launch_r['error']}")
