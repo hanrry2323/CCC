@@ -1,13 +1,15 @@
 #!/bin/bash
-# install-ccc-roles.sh — 安装 CCC Engine + 看板服务 (v0.20.1)
+# install-ccc-roles.sh — 安装 CCC 看板服务 (v0.28.1+)
 #
-# v0.20.1 变更：替代 7 角色定时轮询，改为单一 Engine 常驻进程串行执行。
+# v0.28.1 变更：Engine 5→1 合并，统一 com.ccc.engine 单进程管理所有 workspace，
+# 不再按项目安装 per-workspace engine。非 CCC 项目运行此脚本将跳过 engine 安装。
+# 保留 --workspace 参数仅用于初始化看板目录（backlog/planned 等 7 列 + index.json）。
 #
 # 用法:
-#   ./install-ccc-roles.sh                            # 安装到 CCC 自身
-#   ./install-ccc-roles.sh --workspace ~/program/qxo  # 安装到 qxo 项目
-#   ./install-ccc-roles.sh --upgrade                  # 先卸载旧角色，再装 engine
-#   ./install-ccc-roles.sh --workspace ~/program/qxo --upgrade
+#   ./install-ccc-roles.sh                                       # 安装到 CCC 自身（含统一引擎）
+#   ./install-ccc-roles.sh --workspace ~/program/qxo             # 初始化 qxo 项目看板目录（跳过 engine）
+#   ./install-ccc-roles.sh --upgrade                             # 卸载旧角色 plist + 重装
+#   ./install-ccc-roles.sh --workspace ~/program/qxo --upgrade   # 初始化项目目录 + 卸载旧角色
 set -uo pipefail
 
 # ── 参数 ──

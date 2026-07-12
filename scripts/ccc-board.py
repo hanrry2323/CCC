@@ -55,7 +55,7 @@ def _get_store() -> FileBoardStore:
 
 
 def _reset_lazy() -> None:
-    """测试辅助：重置 lazy 缓存。"""
+    """重置 lazy 缓存（engine 主循环每轮切换 workspace 时调用）。"""
     global _cfg_instance, _store_instance
     _cfg_instance = None
     _store_instance = None
