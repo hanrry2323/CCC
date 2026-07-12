@@ -24,8 +24,7 @@ def run_async(coro, timeout: int = 600):
     async def _runner():
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
-        except asyncio.TimeoutError as exc:
-            print(f"async_bridge.run_async timeout: {exc}")
+        except asyncio.TimeoutError:
             raise
 
     return asyncio.run(_runner())
