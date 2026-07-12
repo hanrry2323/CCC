@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from _config import Config, get_logger
-from _board_store import FileBoardStore
+from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 
@@ -442,65 +442,51 @@ def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[in
     - blocked → pending（依赖已满足，下一轮可执行）
     已 in_progress/done/verified/failed/skipped 的不碰。
 
-    v0.24.3: 加文件锁 fcntl.flock(LOCK_EX) 防止 Engine 与外部 CLI 并发写竞争。
+    v0.28.1: 改用 _store_atomic_write（temp+replace）替代 in-place truncate 写。
     """
-    import fcntl
-
     phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
         return
     try:
-        with open(phases_file, "r+") as f:
-            try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            except (OSError, AttributeError):
-                # 非 POSIX 平台或 flock 不可用，降级无锁（保留旧行为）
-                pass
-            try:
-                lines = f.read().splitlines()
-            except OSError:
-                return
-            new_lines: list[str] = []
-            changed = False
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    new_lines.append(line)
-                    continue
-                try:
-                    obj = json.loads(stripped)
-                except json.JSONDecodeError:
-                    new_lines.append(line)
-                    continue
-                if not isinstance(obj, dict) or "schema_version" in obj:
-                    new_lines.append(line)
-                    continue
-                pid = obj.get("phase")
-                status = obj.get("status")
-                if status == "pending":
-                    if pid in skipped:
-                        obj["status"] = "skipped"
-                        changed = True
-                    elif pid in blocked:
-                        obj["status"] = "blocked"
-                        changed = True
-                elif status == "blocked":
-                    # 依赖解除 → 回 pending（让 dev 可以重新拾起）
-                    if pid not in blocked and pid not in skipped:
-                        obj["status"] = "pending"
-                        changed = True
-                new_lines.append(json.dumps(obj, ensure_ascii=False))
-            if changed:
-                payload = "\n".join(new_lines) + "\n"
-                f.seek(0)
-                f.write(payload)
-                f.truncate()
-            try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            except (OSError, AttributeError) as e:
-                _log.warning("flock unlock failed: %s", e)
-    except OSError:
+        lines = phases_file.read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        _log.warning("read phases for status update failed %s: %s", task_id, e)
         return
+    new_lines: list[str] = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            new_lines.append(line)
+            continue
+        if not isinstance(obj, dict) or "schema_version" in obj:
+            new_lines.append(line)
+            continue
+        pid = obj.get("phase")
+        status = obj.get("status")
+        if status == "pending":
+            if pid in skipped:
+                obj["status"] = "skipped"
+                changed = True
+            elif pid in blocked:
+                obj["status"] = "blocked"
+                changed = True
+        elif status == "blocked":
+            if pid not in blocked and pid not in skipped:
+                obj["status"] = "pending"
+                changed = True
+        new_lines.append(json.dumps(obj, ensure_ascii=False))
+    if changed:
+        payload = "\n".join(new_lines) + "\n"
+        try:
+            _store_atomic_write(phases_file, payload)
+        except OSError as e:
+            _log.warning("atomic write phases status failed %s: %s", task_id, e)
 
 
 def _task_all_phases_terminal(task_id: str) -> bool:
@@ -522,14 +508,19 @@ def _task_all_phases_terminal(task_id: str) -> bool:
 def _current_running_phase(task_id: str) -> int:
     """v0.24: 找 task 当前正在跑的 phase 编号（status=in_progress 的 phase）。
 
-    没有 in_progress phase 时返回 1（兼容旧 v0.23 行为，task-p1 默认）。
+    没有 in_progress phase 时返回第一个可执行的 pending/blocked phase（跳过 skipped）。
     """
     phases = _load_phases(task_id)
     for p in phases:
         if p.get("status") == "in_progress":
             return p.get("phase", 1)
-    # 无 in_progress → 取 pending/blocked 中第一个（按 phase 编号）
-    candidates = [p for p in phases if p.get("status") in ("pending", "blocked")]
+    executable, blocked, _skipped = _resolve_phase_dependencies(phases)
+    if executable:
+        return min(executable)
+    candidates = [
+        p for p in phases
+        if p.get("status") in ("pending", "blocked")
+    ]
     if candidates:
         return candidates[0].get("phase", 1)
     return 1
@@ -600,7 +591,18 @@ def _check_phase_failures(task_id: str) -> dict:
                 "engine_iter": 0, "force_converged": False}
 
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
-    _apply_phase_status_updates(task_id, blocked, skipped)
+    # v0.28.1: 多轮传播直到 blocked/skipped 收敛（phase1 fail → phase2 skip 等同 tick 生效）
+    max_rounds = max(len(phases), 1)
+    for _ in range(max_rounds):
+        if not blocked and not skipped:
+            break
+        prev = {p.get("phase"): p.get("status") for p in phases}
+        _apply_phase_status_updates(task_id, blocked, skipped)
+        phases = _load_phases(task_id)
+        new_states = {p.get("phase"): p.get("status") for p in phases}
+        if new_states == prev:
+            break
+        executable, blocked, skipped = _resolve_phase_dependencies(phases)
 
     # v0.24.3: writeback 后必须 reload，否则返回值基于陈旧内存状态计算。
     phases = _load_phases(task_id)
@@ -3456,6 +3458,7 @@ def dev_role_check_complete(task_id: str) -> dict:
     else:
         # 失败：读 retry 计数，保留 .done 文件供 engine 下次 check
         phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        cur_phase = _current_running_phase(task_id)
         retry = 0
         try:
             if phases_file.exists():
@@ -3467,14 +3470,18 @@ def dev_role_check_complete(task_id: str) -> dict:
                         phase = json.loads(_line)
                         if "schema_version" in phase:
                             continue
-                        retry = phase.get("retry", 0)
-                        break
+                        if phase.get("phase") == cur_phase:
+                            retry = phase.get("retry", 0)
+                            break
         except (json.JSONDecodeError, OSError) as e:
             _log.warning("read retry count failed for %s: %s", task_id, e)
-        # 更新 phases.json retry 计数
+
+        retry += 1
+        # 更新 phases.json 当前 phase 的 retry 计数
         try:
             if phases_file.exists():
                 lines = phases_file.read_text().split("\n")
+                updated = False
                 for i, _line in enumerate(lines):
                     _ls = _line.strip()
                     if not _ls or not _ls.startswith("{"):
@@ -3483,14 +3490,20 @@ def dev_role_check_complete(task_id: str) -> dict:
                         phase = json.loads(_ls)
                         if "schema_version" in phase:
                             continue
+                        if phase.get("phase") != cur_phase:
+                            continue
                         phase["retry"] = retry
                         lines[i] = json.dumps(phase, ensure_ascii=False)
+                        updated = True
                         break
                     except json.JSONDecodeError as e:
                         _log.warning("update retry JSON parse failed for %s: %s", task_id, e)
-                phases_file.write_text("\n".join(lines))
+                if updated:
+                    _store_atomic_write(phases_file, "\n".join(lines) + ("\n" if lines else ""))
         except OSError as e:
             _log.warning("write retry count failed for %s: %s", task_id, e)
+
+        if retry >= MAX_RETRY:
             # 重试耗尽：清理标记 + 异常隔离
             for p in marker_files:
                 try:
@@ -3498,10 +3511,9 @@ def dev_role_check_complete(task_id: str) -> dict:
                 except OSError as e:
                     _log.warning("quarantine marker unlink failed %s: %s", p, e)
             # v0.24: 标记 phase failed + 触发失败传染链路
-            _mark_phase_failed(task_id, phase_id=_current_running_phase(task_id))
+            _mark_phase_failed(task_id, phase_id=cur_phase)
             failure_summary = _check_phase_failures(task_id)
             if failure_summary.get("all_failed_or_skipped"):
-                # 所有 phase 都失败 → task 移到 abnormal（不进 verified）
                 _move_task_to_abnormal_if_all_terminal_failed(task_id)
                 _quarantine(
                     task_id,
@@ -3518,10 +3530,11 @@ def dev_role_check_complete(task_id: str) -> dict:
                 failure_summary["skipped"],
             )
             return {"status": "quarantined", "task_id": task_id}
-        else:
-            # 保留 .done 在磁盘，engine 下次 check 时看到 failed 状态就会 relaunch
-            _log.info("[engine] %s rc=%s retry=%s/%s", task_id, exit_code, retry, MAX_RETRY)
-            return {"status": "failed", "task_id": task_id, "retry": retry}
+
+        # 失败但未耗尽：传播依赖链（上游 fail → 下游 skip），再让 engine relaunch
+        _check_phase_failures(task_id)
+        _log.info("[engine] %s rc=%s retry=%s/%s", task_id, exit_code, retry, MAX_RETRY)
+        return {"status": "failed", "task_id": task_id, "retry": retry}
 
 
 ROLES = {
