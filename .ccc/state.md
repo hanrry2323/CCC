@@ -24,6 +24,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-12 | qb-6tasks | `.ccc/plans/qb-*.plan.md` × 6 | `git diff HEAD~1 -- scripts/ccc-board.py` | 已投递 QB backlog + 修 product_role 锁 bug | DISPATCHED |
 | 2026-07-12 | v0.28.1 | — | `git log a81be00` | 任务复杂度分流 + 每周总结定时 | PASS |
 | 2026-07-11 | v0.24.4 | — | [CHANGELOG §v0.24.4](../CHANGELOG.md) | board zombie 修复 + reconcile 工具 | PASS |
 | 2026-07-11 | v0.24.3 | — | [CHANGELOG §v0.24.3](../CHANGELOG.md) | tag `v0.24.3` + release | PASS |
@@ -242,7 +243,20 @@
 
 ## 待办任务（用户已承诺，未启动）
 
-> 当前无待办任务。Planner 接受新任务时追加。
+### 已投递到 QB backlog（等待 Engine 调度）
+
+| # | 任务 ID | 复杂度 | 来源 |
+|---|---------|--------|------|
+| 1 | `qb-redis-nogroup-fix` | medium | 审查 — Redis 消费组自愈 |
+| 2 | `qb-config-unify` | medium | 审查 — 双配置系统统一 |
+| 3 | `qb-mypy-debt-phase1` | small | 审查 — mypy 债务清理 |
+| 4 | `qb-backtest-smoke` | small | 审查 — 回测冒烟测试 |
+| 5 | `qb-dashboard-unit-tests` | small | 审查 — 前端单元测试 |
+| 6 | `qb-testnet-keys` | small | 审查 — Testnet 密钥补全 |
+
+> 6 个 task 已写入 `~/program/projects/qb/.ccc/board/backlog/`。
+> product 产出：plan × 6 + phases.json × 6 + 看板卡片 × 6。
+> Engine 检测到 planned 转 in_progress 后自动串行执行。
 
 ---
 

@@ -126,6 +126,11 @@ def _quarantine(task_id: str, reason: str) -> None:
     store.quarantine(task_id, reason)
 
 
+# v0.28.1-hotfix (2026-07-12): Python 3.14 PosixPath 是 __slots__ 对象，不支持动态属性赋值。
+# 改用模块级 dict 存储 product_role 锁的 fd，key 为 lockfile 路径字符串。
+_product_lock_fds: dict[str, int] = {}
+
+
 def _acquire_product_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
     """v0.28.0 (F1-H1/H3): 获取 product_role 写锁（fcntl.flock LOCK_EX）
 
@@ -136,12 +141,13 @@ def _acquire_product_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
     import errno
 
     deadline = time.monotonic() + timeout_s
+    lock_key = str(lockfile)
     while True:
         try:
             _fd = os.open(str(lockfile), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC)
             fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            # 持锁成功，把 fd 存到 lockfile 上供释放用
-            lockfile._lock_fd = _fd  # type: ignore[attr-defined]
+            # 持锁成功，把 fd 存到模块级 dict 供释放用
+            _product_lock_fds[lock_key] = _fd
             return
         except (OSError, IOError) as e:
             if hasattr(e, "errno") and e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
@@ -157,13 +163,13 @@ def _release_product_lock(lockfile: Path) -> None:
     """v0.28.0 (F1-H1/H3): 释放 product_role 写锁"""
     import fcntl
 
-    fd = getattr(lockfile, "_lock_fd", None)
+    lock_key = str(lockfile)
+    fd = _product_lock_fds.pop(lock_key, None)
     if fd is not None:
         try:
             fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
             os.close(fd)
-            lockfile._lock_fd = None  # type: ignore[attr-defined]
 
 
 def _task_id_exists(task_id: str) -> bool:

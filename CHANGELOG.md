@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.28.1] — 2026-07-12 — 任务复杂度分流 + Lock 热修复
+
+**Commit 1 (a81be00) — feat: 任务复杂度分流 + 每周总结定时任务**
+- product_role 根据 plan_weight 自动推断 complexity（small/medium/large）
+- small 任务跳过 reviewer+tester 直通 kb（complexity 分流）
+- CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`
+- 持久定时任务（重启后仍在）
+
+**Commit 2 (本次) — fix: product_role 锁 Python 3.14 PosixPath 属性赋值兼容**
+- **根因**: `_acquire_product_lock` 把 fd 挂到 Path 对象上（`lockfile._lock_fd = _fd`），
+  Python 3.14 `PosixPath` 是 `__slots__` 对象，不支持动态属性赋值
+- **表现**: 锁获取成功但 fd 丢失 → 后续所有 `product_role` 调用死锁 30s timeout
+- **修复**: 改用模块级 `_product_lock_fds: dict[str, int]` 替代 Path 属性注入
+- **验证**: 引擎重启后 6 个 backlog 任务全部消费完成（`engine-qb-19121.log`）
+
+---
+
 ## [v0.26.1] — 2026-07-11 — 代码审查修复批次（H1-H5 + M1/M2/M6/M7/M10）
 
 v0.24 → v0.25 → v0.26 全面代码审查后修复 5 项高危 + 5 项中等问题。
