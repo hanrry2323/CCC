@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.2] — 2026-07-14
+
+- ccc-check-gitignore: 看板发布
+
 ## [v0.29.1] — 2026-07-14
 
 - e2e-backlog-auto-2026-07-12: 看板发布
@@ -1532,3 +1536,7 @@ git push origin main --tags
 ## [v0.29.0] - 2026-07-14
 
 - e2e-backlog-auto-2026-07-12: e2e: 验证 backlog 自动拆分 → 全链路 看板发布
+
+## [v0.29.1] - 2026-07-14
+
+- ccc-check-gitignore: [ABNORMAL] [ABNORMAL] 检查 CCC .gitignore 遗漏常见模式 看板发布
