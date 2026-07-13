@@ -206,6 +206,59 @@ def build_cockpit_data() -> dict:
             info["http_status"] = 0
             info["label"] = "探测超时"
 
+    # Parallel probe projects for dynamic metrics
+    project_metrics = {}
+
+    def _probe_project(project_name: str, probe_func):
+        try:
+            project_metrics[project_name] = probe_func()
+        except Exception:
+            project_metrics[project_name] = {"status": "离线", "alive": False}
+
+    def _probe_qb():
+        host = "192.168.3.140"
+        port = 8096
+        alive = probe_port(host, port)
+        return {
+            "status": "运行中" if alive else "离线",
+            "alive": alive,
+        }
+
+    def _probe_medio():
+        host = "192.168.3.131"
+        port = 3000
+        alive = probe_port(host, port)
+        return {
+            "status": "已部署 / 运行中" if alive else "离线",
+            "alive": alive,
+        }
+
+    def _probe_xianyu():
+        return {
+            "status": "等待开发",
+            "alive": None,
+        }
+
+    project_threads = []
+    project_probe_map = {
+        "qb": _probe_qb,
+        "medio-0": _probe_medio,
+        "xianyu": _probe_xianyu,
+    }
+    for project_name, probe_func in project_probe_map.items():
+        t = Thread(target=_probe_project, args=(project_name, probe_func))
+        t.start()
+        project_threads.append(t)
+    for t in project_threads:
+        t.join(timeout=2)
+
+    for project in data["projects"]:
+        name = project["name"]
+        if name in project_metrics:
+            project["metric"] = project_metrics[name]
+        else:
+            project["metric"] = {"status": "—", "alive": None}
+
     data["updated"] = datetime.now().strftime("%H:%M:%S")
     return data
 
@@ -280,11 +333,26 @@ def render_html(data: dict) -> str:
             badge = f'<span class="badge badge-gray">{status}</span>'
         else:
             badge = f'<span class="badge">{status}</span>'
+
+        # Build metric column
+        metric = p.get("metric", {})
+        metric_status = metric.get("status", "—")
+        metric_alive = metric.get("alive")
+        if metric_alive is True:
+            metric_dot = f'<span class="dot dot-green"></span>'
+            metric_html = f"{metric_dot} {metric_status}"
+        elif metric_alive is False:
+            metric_dot = f'<span class="dot dot-red"></span>'
+            metric_html = f"{metric_dot} {metric_status}"
+        else:
+            metric_html = metric_status
+
         projects_html += f"""
         <tr>
             <td><strong>{p["name"]}</strong></td>
             <td class="num">{p["version"]}</td>
             <td>{badge}</td>
+            <td>{metric_html}</td>
         </tr>"""
 
     script_html = """<script>
@@ -438,9 +506,9 @@ tr:last-child td{{border-bottom:none}}
   <div class="tbl-wrap">
     <table>
       <thead>
-        <tr><th>项目</th><th>版本</th><th>状态</th></tr>
+        <tr><th>项目</th><th>版本</th><th>状态</th><th>关键指标</th></tr>
       </thead>
-      <tbody>{projects_html or '<tr><td colspan="3" style="text-align:center;color:#86868b">无数据</td></tr>'}</tbody>
+      <tbody>{projects_html or '<tr><td colspan="4" style="text-align:center;color:#86868b">无数据</td></tr>'}</tbody>
     </table>
   </div>
 
