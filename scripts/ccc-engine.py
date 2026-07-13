@@ -481,9 +481,11 @@ def _process_backlog(ws: Path) -> bool:
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
     if phases_file.exists():
         engine_log(
-            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role（手动拆分）"
+            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role（手动拆分），移入 planned"
         )
-        return False
+        store.move_task(tid, "backlog", "planned")
+        _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
+        return True
 
     fail_counter_dir = ws / ".ccc" / ".product-fail-counter"
     fail_counter_path = fail_counter_dir / f"{tid}.json"
