@@ -11,9 +11,8 @@ Feature P1:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Final, Mapping
+from typing import Final
 
 
 __all__: Final = ["build_product_prompt"]

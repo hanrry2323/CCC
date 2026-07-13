@@ -5,10 +5,8 @@
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 REQUIRED_FIELDS = {"schema_version", "generated_at", "project", "source", "findings", "summary"}
 FINDING_REQUIRED = {"id", "severity", "category", "title", "description"}

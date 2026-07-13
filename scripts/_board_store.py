@@ -10,8 +10,6 @@ import json
 import os
 import re
 import shutil
-import sys
-import tarfile
 import tempfile
 import time
 from datetime import datetime, timezone
