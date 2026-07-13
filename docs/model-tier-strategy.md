@@ -20,10 +20,14 @@
 
 | 层级 | 模型 | 月费 | 用途 | 调用方式 |
 |------|------|------|------|---------|
-| **L1 架构** | MiniMax-M3（当前 flash 路由） | ¥119 | 方案讨论、任务拆解、上下文准备、结果 Review | 主会话 |
-| **L2 执行** | 讯飞 astron-code / DeepSeek-v4-flash | ¥20 | 按 spec 写代码、日常搭建、骨架生成 | CCC 自动化 (dev_role → opencode) |
+| **L1 架构** | DeepSeek-v4-flash（当前 flash 路由） | ¥20 | 方案讨论、任务拆解、上下文准备、结果 Review | 主会话 |
+| **L2 执行** | MiniMax-M3（code tier 主力） | ¥119 | 按 spec 写代码、日常搭建、骨架生成 | CCC 自动化 (dev_role → opencode) |
 | **L3 精修** | Claude Sonnet (Cursor Pro) | ¥140 | 收官重构、质量冲刺、跨文件一致性 | Cursor 终端 Claude Code |
-| **免费备援** | 智谱 GLM-4.7-Flash | ¥0 | CCC 自动化扩容 | 同一套 proxy 路由 |
+| **免费备援** | 讯飞 astron-code / 智谱 GLM-4.7-Flash | ¥20 | CCC 自动化兜底 | 同一套 proxy 路由 |
+
+> 2026-07-13 调整：MiniMax-M3 从 flash（L1）移到 code（L2），作为 CCC 自动化开发的主力模型。
+> flash 路由改为 DeepSeek-v4-flash。原因：opencode 通道稳定后，主会话不需要昂贵的 MiniMax，
+> 反而自动化开发需要更快的模型来提速。
 
 **总预算：~¥279/月**
 
