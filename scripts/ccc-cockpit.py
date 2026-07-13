@@ -333,10 +333,10 @@ tr:last-child td{{border-bottom:none}}
 
   <div class="sec-title" style="margin-top:16px">快速跳转</div>
   <div class="quick-links">
-    <a href="http://localhost:7777/" target="_blank">CCC 看板</a>
-    <a href="http://localhost:8082" target="_blank">CCC Chat</a>
-    <a href="http://localhost:8096" target="_blank">qb Dashboard</a>
-    <a href="http://localhost:4000/dashboard" target="_blank">中转站</a>
+    <a href="http://192.168.3.140:7777/" target="_blank">CCC 看板</a>
+    <a href="http://192.168.3.140:8082" target="_blank">CCC Chat</a>
+    <a href="http://192.168.3.140:8096" target="_blank">qb Dashboard</a>
+    <a href="http://192.168.3.140:4000/dashboard" target="_blank">中转站</a>
     <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>
   </div>
 
