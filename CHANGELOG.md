@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.7] — 2026-07-14
+
+- readme-zcode-update: 看板发布
+
 ## [v0.29.6] — 2026-07-14
 
 - cockpit-v0303d-mobile: 看板发布
@@ -1564,3 +1568,7 @@ git push origin main --tags
 ## [v0.29.5] - 2026-07-14
 
 - cockpit-v0303d-mobile: Plan: cockpit-v0303d-mobile — Mobile 端优化（触摸目标 + 侧栏底栏 + 布局） 看板发布
+
+## [v0.29.6] - 2026-07-14
+
+- readme-zcode-update: Plan: readme-zcode-update (README 加入 ZCode adapter v1.2.1 章节) 看板发布
