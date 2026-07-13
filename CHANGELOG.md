@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.5] — 2026-07-14
+
+- hello-ccc-demo-v2: 看板发布
+
 ## [v0.29.4] — 2026-07-14
 
 - cluster-bus-bugfixes: 看板发布
