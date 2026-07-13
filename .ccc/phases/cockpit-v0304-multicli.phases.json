@@ -1,0 +1,3 @@
+{"engine_iter": 5, "engine_iter_phase": 1}
+{"schema_version": "1.1"}
+{"phase": 1, "status": "completed", "subtasks": {"1.1": "completed"}, "timeout": 300, "commit": "fc46991+1", "notes": "fallback done — CLI_ENGINES registry, _detect_cli_engines(), /api/cli/engines, _list_log_files, _read_log_tail, /api/logs/list, /api/logs/tail, HTML CLI 引擎 + 服务日志 sections", "color_depth": 1, "color_group": "E", "retry": 2}
