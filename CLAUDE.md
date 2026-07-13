@@ -51,6 +51,7 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 
 | 路径 | 角色 |
 |------|------|
+| `.ccc/infrastructure.md` | **基础设施总览** — 所有机器/端口/项目状态（启动时强制读取） |
 | `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
 | `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
 | `references/red-lines.md` | 12+X6 红线强约束 |
