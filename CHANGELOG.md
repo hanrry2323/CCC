@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.1] — 2026-07-14
+
+- e2e-backlog-auto-2026-07-12: 看板发布
+
 ## [v0.29.0] — 2026-07-13 — CCC Chat Mobile Control 三标签重构
 
 移动端 Web 聊天界面（`scripts/ccc-chat-server.py`）三模式重构：Chat / Execute / Board。
@@ -1524,3 +1528,7 @@ git push origin main --tags
 ## [v0.29.0] - 2026-07-13
 
 - cockpit-v0303c-terminal: Cockpit v0.30.3 — 终端格式优化 看板发布
+
+## [v0.29.0] - 2026-07-14
+
+- e2e-backlog-auto-2026-07-12: e2e: 验证 backlog 自动拆分 → 全链路 看板发布
