@@ -32,6 +32,7 @@ CCC 是一个 **SKILL 资产**，不是传统 framework 代码库。
 | `scripts/install-ccc-roles.sh` | 一键装 7 角色 plist |
 | `scripts/ccc-init.py` + `ccc-search.py` + `ccc-status.sh` | 基础运维 |
 | `scripts/ccc-board-server.py` | 看板 Web 服务器 |
+| `scripts/ccc-chat-server.py` | 移动端 Web 聊天界面（Chat/Execute/Board 三模式） |
 | `scripts/flywheel-scan.sh` | 飞轮扫描 |
 | `templates/` | 4 文件契约模板（plan/phases/report/verdict/executor-prompt/AGENTS） |
 | `tests/scripts/` | pytest 核心测试 |

@@ -387,6 +387,56 @@ async def execute_mode(request: Request):
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+
+async def _board_proxy(method: str, path: str, params: dict | None = None, json_body: dict | None = None):
+    url = f"{BOARD_URL}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if method == "GET":
+                resp = await client.get(url, params=params, headers=_board_headers())
+            else:
+                resp = await client.post(url, json=json_body, headers=_board_headers())
+            return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return Response(
+            content=json.dumps({"error": "看板服务离线", "detail": "Board Server 不可用"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+
+@app.get("/api/board/proxy/board")
+async def board_proxy_board(request: Request, workspace: str = "CCC"):
+    check_auth(request)
+    return await _board_proxy("GET", "/api/board", params={"workspace": workspace})
+
+
+@app.get("/api/board/proxy/dashboard")
+async def board_proxy_dashboard(request: Request, workspace: str = "CCC"):
+    check_auth(request)
+    return await _board_proxy("GET", "/api/dashboard", params={"workspace": workspace})
+
+
+@app.get("/api/board/proxy/roles")
+async def board_proxy_roles(request: Request):
+    check_auth(request)
+    return await _board_proxy("GET", "/api/roles")
+
+
+@app.post("/api/board/proxy/tasks")
+async def board_proxy_create_task(request: Request):
+    check_auth(request)
+    body = await request.json()
+    return await _board_proxy("POST", "/api/tasks", json_body=body)
+
+
+@app.post("/api/board/proxy/tasks/move")
+async def board_proxy_move_task(request: Request):
+    check_auth(request)
+    body = await request.json()
+    return await _board_proxy("POST", "/api/tasks/move", json_body=body)
+
+
 @app.get("/api/projects")
 async def list_projects(request: Request):
     check_auth(request)
@@ -1124,7 +1174,36 @@ function newExecChat() {
 }
 
 async function loadBoard() {
-  document.getElementById('board-scroll').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">看板视图占位 — 稍后实现</div>';
+  const scroll = document.getElementById('board-scroll');
+  const offline = document.getElementById('board-offline');
+  scroll.innerHTML = '';
+  offline.style.display = 'none';
+  const ws = PROJECT_WORKSPACE[currentProject] || currentProject;
+  try {
+    const resp = await fetch('/api/board/proxy/board?workspace=' + encodeURIComponent(ws), { headers: { Authorization: AUTH } });
+    if (resp.status === 503) {
+      offline.style.display = 'block';
+      return;
+    }
+    const data = await resp.json();
+    const columns = data.columns || {};
+    for (const col of ['backlog','planned','in_progress','testing','verified','released','abnormal']) {
+      const colEl = document.createElement('div');
+      colEl.className = 'board-col';
+      const tasks = columns[col] || [];
+      colEl.innerHTML = '<div class="board-col-title">' + (COLUMN_LABELS[col]||col) + ' (' + tasks.length + ')</div><div class="board-col-cards"></div>';
+      const cards = colEl.querySelector('.board-col-cards');
+      for (const t of tasks) {
+        const card = document.createElement('div');
+        card.className = 'board-card';
+        card.innerHTML = '<div class="title">' + escapeHtml(t.title || t.id) + '</div><div class="time">' + escapeHtml(t.updated_at || t.created_at || '') + '</div>';
+        cards.appendChild(card);
+      }
+      scroll.appendChild(colEl);
+    }
+  } catch(e) {
+    offline.style.display = 'block';
+  }
 }
 
 function openTaskModal() {

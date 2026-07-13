@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.0] — 2026-07-13 — CCC Chat Mobile Control 三标签重构
+
+移动端 Web 聊天界面（`scripts/ccc-chat-server.py`）三模式重构：Chat / Execute / Board。
+
+**Commit 1 — feat(chat): P0 TabBar refactor + light theme**
+- 底部 TabBar 三标签（Chat / Execute / Board），强制亮色 iOS 风格主题
+- 项目选择器移至顶部导航栏，历史会话左滑侧边栏
+
+**Commit 2 — feat(chat): P1 execute mode backend**
+- `POST /api/execute`：claude -p 子进程 + stream-json SSE 转发
+- 120s 超时 SIGKILL、stderr 仅写日志、危险指令双重过滤、并发限制 429
+
+**Commit 3 — feat(chat): P2 execute mode frontend**
+- Execute Tab 接入执行 API：⚡ 气泡、tool_use 折叠卡片、token/费用显示
+- 输入框模式切换、加载指示器与取消
+
+**Commit 4 — feat(chat): P3 history per-project isolation**
+- 会话存储 `.ccc/chat/{project}/`，历史 API 按 project 过滤
+
+**Commit 5 — feat(chat): P4 board mode**
+- 看板代理 `/api/board/proxy/*` → board-server :7777
+- Board Tab 横向滚动看板列、新建任务、503 离线提示、刷新按钮
+
+---
+
 ## [v0.28.1] — 2026-07-12 — 任务复杂度分流 + Lock 热修复
 
 **Commit 1 (a81be00) — feat: 任务复杂度分流 + 每周总结定时任务**
