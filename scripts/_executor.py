@@ -11,7 +11,7 @@ from typing import Optional, TypedDict
 
 from _config import Config, get_logger
 
-_log = get_logger("executor"), get_logger
+_log = get_logger("executor")
 
 
 def resolve_opencode() -> Optional[str]:
