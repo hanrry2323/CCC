@@ -31,7 +31,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 # Config
 # ---------------------------------------------------------------------------
 HOST = "0.0.0.0"
-PORT = 8082
+PORT = 8084
 PROXY_URL = "http://127.0.0.1:4002/v1/chat/completions"
 BOARD_URL = "http://127.0.0.1:7777"
 AUTH_USER = "ccc"
