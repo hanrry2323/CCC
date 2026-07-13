@@ -65,16 +65,28 @@
 - orchestrate dry-run 写出 .ccc/dispatches/orchestrate-<task>-<ts>.json
 - `ccc run <ws> <task> --dry-run --skip-register` exit 0
 
-### Phase 3 (本 commit) — 文档 + lesson
+### Phase 3 (commit `91d91c9`) — 文档 + lesson
 **改动**:
 - 重写 `references/adapters/runtime-zcode.md` (300+ 行)
 - `docs/lessons.md` 新增 Lesson 20
 - 写本 plan 文件 `.ccc/plans/zcode-adapter-v121.plan.md`
 
-**验收**:
+**验收 (原始)**:
 - runtime-zcode.md 含 "修订说明 (v1.2.1)" 段 + CLI Fallback + Cluster Bus + Orchestration 三大段
 - Lesson 20 含错误前提 + 实测真相 + 验证方法 + 反哺
 - plan 文件落 `.ccc/plans/` 路径正确
+
+**后续变更 (2026-07-07, v0.7-slim phase 2/4,commit `94c86ce`)**:
+- `references/adapters/runtime-zcode.md` 被精简删除 (CCC 决定收敛到 opencode-only adapter)
+- 同次 slim 中 `scripts/ccc-zcode-bridge.sh` / `scripts/ccc-zcode-orchestrate.sh` / `scripts/ccc-znode-register.py` 也被删除 (cluster/znode/zcode/doctor 通路一并下线,commit `ac20a1c`)
+- Lesson 20 (ZCode) 文本保留在 `docs/lessons.md:1534` (heading 级别 `##` 而非 `###`,与其他 Lesson 风格不统一但内容完整)
+- 本 plan 文件保留 (用于历史追溯 + 接力学报)
+
+**调整后验收**:
+- [x] Phase 3 commit `91d91c9` 已落 (包含 runtime-zcode.md v1.2.1 + Lesson 20 追加 + plan 文件)
+- [x] Lesson 20 (ZCode) 文本保留在 lessons.md
+- [x] plan 文件落 `.ccc/plans/` 路径正确
+- [/] runtime-zcode.md 当前不存在 (被 v0.7-slim phase 2 主动精简,本次不动 - 不超 plan 范围)
 
 ---
 
@@ -125,12 +137,13 @@
 
 - [x] Phase 1: bridge.sh + 9 测试 PASS → commit eaccb5a
 - [x] Phase 2: register + orchestrate + 12 测试 PASS → commit fc713ab
-- [ ] Phase 3: docs + Lesson 20 + 本 plan → commit (本 commit)
-- [x] 所有 21 项 smoke 测试 PASS
-- [x] shellcheck + bash -n + python -m py_compile 通过
-- [x] `ccc run <ws> <task> --dry-run --skip-register` exit 0
+- [x] Phase 3: docs + Lesson 20 + 本 plan → commit `91d91c9` (2026-07-06)
+- [x] 所有 21 项 smoke 测试 PASS (历史值,v0.7-slim 已主动精简 artifact)
+- [x] shellcheck + bash -n + python -m py_compile 通过 (历史值)
+- [x] `ccc run <ws> <task> --dry-run --skip-register` exit 0 (历史值)
+- [/] (2026-07-07) artifacts 被 v0.7-slim 阶段主动精简,不恢复 (不超 plan 范围)
 
 ---
 
-**最后更新**: 2026-07-06 (Phase 3 落)
-**下次启动必读**: 本 plan + 最近 commit `fc713ab` + 已存在的 .ccc/phases/zcode-adapter-v121.phases.json
+**最后更新**: 2026-07-14 (接力补录 Phase 3 完成回执 + slim 精简记录)
+**下次启动必读**: 本 plan + commit `91d91c9` (Phase 3) + v0.7-slim 阶段 record (94c86ce / ac20a1c)
