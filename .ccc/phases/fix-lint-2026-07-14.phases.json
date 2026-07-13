@@ -1,0 +1,2 @@
+{"phase": 1, "name": "ruff-auto-fix", "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 600, "commit": null, "notes": "ruff check --fix 自动修 19 处"}
+{"phase": 2, "name": "manual-f841-fix", "status": "pending", "subtasks": {"2.1": "pending"}, "timeout": 600, "commit": null, "notes": "手工处理剩余 13 处 F841"}
