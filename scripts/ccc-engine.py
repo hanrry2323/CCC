@@ -443,6 +443,13 @@ def _process_backlog(ws: Path) -> bool:
         return False
 
     tid = backlog[0]["id"]
+    phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+    if phases_file.exists():
+        engine_log(
+            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role（手动拆分）"
+        )
+        return False
+
     fail_counter_dir = ws / ".ccc" / ".product-fail-counter"
     fail_counter_path = fail_counter_dir / f"{tid}.json"
 
@@ -467,7 +474,7 @@ def _process_backlog(ws: Path) -> bool:
         )
         return True
 
-    engine_log(f"[{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)")
+    engine_log(f"[product] [{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)")
     try:
         ccc_board.product_role(task_id=tid)
         if fail_counter_path.exists():
@@ -476,7 +483,9 @@ def _process_backlog(ws: Path) -> bool:
         fail_count += 1
         fail_counter_dir.mkdir(parents=True, exist_ok=True)
         fail_counter_path.write_text(json.dumps({"fail_count": fail_count}, indent=2))
-        engine_log(f"[{label}] product_role({tid}) 异常: {exc} (失败 #{fail_count})")
+        engine_log(
+            f"[product] [{label}] product_role({tid}) 异常: {exc} (失败 #{fail_count})"
+        )
         if fail_count >= _MAX_PRODUCT_RETRIES:
             engine_log(
                 f"[product] [{label}] {tid} 失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
