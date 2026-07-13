@@ -66,7 +66,6 @@ def validate_schema_version(
 
     for line_idx, phase in enumerate(phases, start=1):
         if "schema_version" in phase:
-            err = f"阶段 {line_idx}: phase 返回类型混淆（应该是 phase num，不是 schema_version）"
 
             if fix:
                 # 修复：把 schema_version 当初一个 phase 删除，并在头部写入 metadata row
@@ -117,7 +116,6 @@ def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
         "engine_iter",
         "engine_iter_phase",
     }
-    duplicates = []
 
     for p in phases:
         pid_val = p.get("phase")
@@ -184,9 +182,6 @@ def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
         last_status = current
         processed += 1
 
-    by_id: Dict[int, dict] = {
-        p.get("phase"): p for p in phases if p.get("phase") is not None
-    }
     return (len(errors) == 0), errors
 
 

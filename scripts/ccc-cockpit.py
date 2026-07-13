@@ -54,9 +54,6 @@ def parse_infra() -> dict:
     }
 
     current_section = None
-    current_machine = None
-    current_ports = []
-    current_projects = []
 
     for line in text.splitlines():
         # Section headers - capture full section name
@@ -88,8 +85,6 @@ def parse_infra() -> dict:
                 "machine": _get_section_machine(current_section),
             }
 
-    # Parse project status table
-    in_projects = False
     for line in text.splitlines():
         m = re.match(r"^\| ([\w/-]+)\s+\| (v[\w.]+)\s+\| (.+?) \s+\|", line)
         if m and "项目状态" in text and _is_project_table(line, text):

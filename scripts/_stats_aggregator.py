@@ -110,8 +110,6 @@ def aggregate_stats(workspace: Path) -> dict:
     task_stats = {}
     task_failures = 0
     task_success = 0
-    total_latency = 0.0
-    latency_count = 0
 
     for tid, events in task_outcomes.items():
         statuses = [e.get("event") for e in events]

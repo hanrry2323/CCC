@@ -574,7 +574,6 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 ip_tasks = s.list_tasks("in_progress")
                 te_tasks = s.list_tasks("testing")
                 ab_tasks = s.list_tasks("abnormal")
-                re_tasks = s.list_tasks("released")
                 ve_tasks = s.list_tasks("verified")
                 # KPI
                 kpi["in_progress"] += len(ip_tasks) + len(te_tasks)

@@ -93,7 +93,6 @@ class TestQuarantineStoreContent:
             # 手动添加一个副本
             copy_file = quarantine_dir / f"{base_tar}.1.tar.gz"
             copy_file.write_text("fake tar content")
-            original_mtime = time.time()
 
             # 更新 mtime
             time.sleep(0.1)

@@ -2611,6 +2611,7 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
     except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
         _log.warning("audit mypy failed for %s: %s", workspace, e)
 
+    return lint_out, mypy_out
 
 def _audit_classify(
     workspace: str, recent_commits: str, lint_out: str, mypy_out: str
