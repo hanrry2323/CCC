@@ -1022,6 +1022,34 @@ HTML_UI = r"""<!DOCTYPE html>
     #input-area { padding:8px 12px; }
     .msg .bubble { max-width:90%; font-size:14px; }
   }
+  .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
+  .file-tree-panel { width:260px; flex-shrink:0; border-right:1px solid var(--border); overflow-y:auto; background:var(--surface); display:flex; flex-direction:column; }
+  .exec-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+  .file-tree-panel .header { padding:8px 12px; font-size:12px; font-weight:600; color:var(--text-secondary); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .file-tree-panel .header button { background:transparent; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:2px 4px; }
+  #file-tree { padding:4px 0; font-size:12px; flex:1; overflow-y:auto; }
+  .file-item { padding:4px 12px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--text); user-select:none; }
+  .file-item:hover { background:var(--code-bg); }
+  .file-item.dir { font-weight:500; }
+  .file-item .icon { width:16px; text-align:center; flex-shrink:0; font-family:monospace; }
+  .file-item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .file-item .meta { font-size:10px; color:var(--text-secondary); flex-shrink:0; margin-left:4px; }
+  .file-item .children { width:100%; }
+  .file-item.collapsed > .icon::before { content:"▶"; }
+  .file-item.dir:not(.collapsed) > .icon::before { content:"▼"; }
+  .file-item:not(.dir) > .icon::before { content:"·"; color:var(--text-secondary); }
+  .file-tree-offline { padding:12px; font-size:11px; color:var(--text-secondary); }
+  .file-tree-meta { padding:8px 12px; font-size:10px; color:var(--text-secondary); border-top:1px solid var(--border); }
+  .file-content-preview { max-height:400px; overflow-y:auto; background:var(--code-bg); border-radius:8px; padding:12px; margin:8px 0; font-size:12px; white-space:pre-wrap; word-break:break-all; font-family:'SF Mono',Monaco,monospace; line-height:1.5; }
+  .file-content-preview .meta-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:8px; font-family:inherit; font-size:11px; color:var(--text-secondary); }
+  .file-content-preview .meta-bar button { background:transparent; border:1px solid var(--border); border-radius:6px; padding:2px 8px; cursor:pointer; font-family:inherit; }
+  @media(max-width:768px) {
+    .exec-layout { flex-direction:column; }
+    .file-tree-panel { width:100%; max-height:180px; border-right:none; border-bottom:1px solid var(--border); }
+  }
+  @media(max-width:480px) {
+    .file-tree-panel { max-height:140px; }
+  }
 </style>
 </head>
 <body>
@@ -1046,7 +1074,20 @@ HTML_UI = r"""<!DOCTYPE html>
   </div>
 
   <div id="exec-panel" class="tab-panel">
-    <div id="exec-messages"></div>
+    <div class="exec-layout">
+      <div class="file-tree-panel">
+        <div class="header"><span>文件</span><button onclick="loadFileTree()" title="刷新">↻</button></div>
+        <div id="file-tree"><div class="file-tree-offline">切换到 Execute 时加载…</div></div>
+        <div id="file-tree-meta" class="file-tree-meta"></div>
+      </div>
+      <div class="exec-main">
+        <div class="exec-meta-bar" id="exec-meta-bar">~ project · execute terminal</div>
+        <div id="exec-terminal" class="terminal-output">
+          <div class="terminal-line"><span class="terminal-info"> CCC Execute Terminal</span></div>
+          <div class="terminal-line"><span class="terminal-info"> 输入指令开始执行...</span></div>
+        </div>
+      </div>
+    </div>
     <div id="input-area">
       <div id="input-wrap">
         <button class="mode-switch-exec" onclick="switchTab('chat')" title="切换到 Chat">💬</button>
@@ -1140,6 +1181,12 @@ messagesEl.addEventListener('scroll', () => {
 execMessagesEl.addEventListener('scroll', () => {
   autoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
 });
+const execTerminalEl = document.getElementById('exec-terminal');
+if (execTerminalEl) {
+  execTerminalEl.addEventListener('scroll', () => {
+    autoScroll = execTerminalEl.scrollTop + execTerminalEl.clientHeight >= execTerminalEl.scrollHeight - 80;
+  });
+}
 
 loadProjects();
 loadHistory();
@@ -1154,6 +1201,7 @@ function switchTab(tab) {
   document.getElementById('header-title').textContent = titles[tab] || 'CCC';
   document.getElementById('newBtn').style.display = tab === 'board' ? 'none' : '';
   if (tab === 'board') loadBoard();
+  if (tab === 'execute') loadFileTree();
 }
 
 function toggleInputMode() {
@@ -1183,6 +1231,168 @@ function onProjectChange() {
   newExecChat();
   loadHistory();
   if (currentTab === 'board') loadBoard();
+  if (currentTab === 'execute') loadFileTree();
+}
+
+const FILE_TREE_RENDER_LIMIT = 300;
+let _fileTreeExpanded = new Set();
+
+async function loadFileTree() {
+  const container = document.getElementById('file-tree');
+  const metaEl = document.getElementById('file-tree-meta');
+  if (!container) return;
+  if (!currentProject) {
+    container.innerHTML = '<div class="file-tree-offline">请先选择项目</div>';
+    if (metaEl) metaEl.textContent = '';
+    return;
+  }
+  container.innerHTML = '<div class="file-tree-offline">加载中…</div>';
+  try {
+    const resp = await fetch('/api/projects/' + encodeURIComponent(currentProject) + '/files', {
+      headers: { Authorization: AUTH },
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    renderFileTree(data.entries || [], container);
+    let meta = (data.entries || []).length + ' 项';
+    if (data.truncated) meta += ' · 已截断';
+    if (data.timed_out) meta += ' · 超时';
+    if (metaEl) metaEl.textContent = meta;
+  } catch (e) {
+    container.innerHTML = '<div class="file-tree-offline">加载失败: ' + (e.message || e) + '</div>';
+    if (metaEl) metaEl.textContent = '';
+  }
+}
+
+function renderFileTree(entries, container) {
+  container.innerHTML = '';
+  if (!entries.length) {
+    container.innerHTML = '<div class="file-tree-offline">（空目录）</div>';
+    return;
+  }
+  const nodes = new Map();
+  const root = { name: '', type: 'dir', path: '', depth: 0, children: [] };
+  const sorted = entries.slice(0, FILE_TREE_RENDER_LIMIT);
+  for (const e of sorted) {
+    const parts = e.path.split('/').filter(Boolean);
+    let cur = root;
+    let acc = [];
+    for (let i = 0; i < parts.length; i++) {
+      acc.push(parts[i]);
+      const key = acc.join('/');
+      let node = nodes.get(key);
+      if (!node) {
+        const isLeaf = (i === parts.length - 1) && e.type === 'file';
+        node = {
+          name: parts[i],
+          type: isLeaf ? 'file' : 'dir',
+          path: key,
+          depth: i + 1,
+          size: isLeaf ? (e.size || 0) : undefined,
+          children: [],
+        };
+        cur.children.push(node);
+        nodes.set(key, node);
+      }
+      cur = node;
+    }
+  }
+  const frag = document.createDocumentFragment();
+  for (const child of root.children) {
+    frag.appendChild(_buildFileItem(child));
+  }
+  container.appendChild(frag);
+}
+
+function _buildFileItem(node) {
+  const wrap = document.createElement('div');
+  wrap.className = 'file-item ' + node.type;
+  wrap.dataset.path = node.path;
+  wrap.dataset.type = node.type;
+  const icon = document.createElement('span');
+  icon.className = 'icon';
+  wrap.appendChild(icon);
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = node.name;
+  wrap.appendChild(name);
+  if (node.type === 'file' && typeof node.size === 'number') {
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = node.size > 1024 ? Math.round(node.size / 1024) + 'KB' : node.size + 'B';
+    wrap.appendChild(meta);
+  }
+  if (node.children && node.children.length) {
+    const childWrap = document.createElement('div');
+    childWrap.className = 'children';
+    for (const c of node.children) {
+      childWrap.appendChild(_buildFileItem(c));
+    }
+    wrap.appendChild(childWrap);
+    if (!_fileTreeExpanded.has(node.path)) wrap.classList.add('collapsed');
+    wrap.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (wrap.classList.toggle('collapsed')) {
+        _fileTreeExpanded.delete(node.path);
+      } else {
+        _fileTreeExpanded.add(node.path);
+      }
+    });
+  } else if (node.type === 'file') {
+    wrap.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      readFile(node.path);
+    });
+  }
+  return wrap;
+}
+
+async function readFile(path) {
+  if (!path) return;
+  try {
+    const resp = await fetch('/api/projects/' + encodeURIComponent(currentProject) + '/file?path=' + encodeURIComponent(path), {
+      headers: { Authorization: AUTH },
+    });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({}));
+      alert('无法读取文件: ' + (detail.detail || ('HTTP ' + resp.status)));
+      return;
+    }
+    const data = await resp.json();
+    showFilePreview(path, data);
+  } catch (e) {
+    alert('读取失败: ' + (e.message || e));
+  }
+}
+
+function showFilePreview(path, data) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.style.maxWidth = '92%';
+  const meta = document.createElement('div');
+  meta.className = 'file-content-preview';
+  const bar = document.createElement('div');
+  bar.className = 'meta-bar';
+  const title = document.createElement('span');
+  title.textContent = path + (data.truncated ? ' · 已截断(' + data.size + 'B)' : ' · ' + data.size + 'B');
+  bar.appendChild(title);
+  const close = document.createElement('button');
+  close.textContent = '关闭';
+  close.onclick = () => wrap.remove();
+  bar.appendChild(close);
+  meta.appendChild(bar);
+  const code = document.createElement('div');
+  code.textContent = data.content || '';
+  meta.appendChild(code);
+  bubble.appendChild(meta);
+  wrap.appendChild(bubble);
+  const messagesEl = document.getElementById('exec-messages');
+  if (messagesEl) {
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
 }
 
 function checkDangerous(text) {
@@ -1220,6 +1430,316 @@ async function sendChat() {
   loadHistory();
 }
 
+const TOOL_ICONS = {
+  Bash:'⚡', Edit:'✎', Read:'📖', Write:'📝', Glob:'🔍', Grep:'🔍',
+  WebFetch:'🌐', WebSearch:'🔎', TodoWrite:'☑', Think:'💭'
+};
+function toolIcon(name) { return TOOL_ICONS[name] || '🔧'; }
+function terminalNow() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function getTerminal() {
+  return document.getElementById('exec-terminal');
+}
+function terminalScrollToBottom() {
+  const t = getTerminal();
+  if (t && autoScroll) t.scrollTop = t.scrollHeight;
+}
+
+function renderTerminalCommand(text) {
+  const t = getTerminal();
+  if (!t) return;
+  const line = document.createElement('div');
+  line.className = 'terminal-line';
+  const prompt = document.createElement('span');
+  prompt.className = 'terminal-prompt';
+  prompt.textContent = '$ ';
+  const cmd = document.createElement('span');
+  cmd.className = 'terminal-command';
+  cmd.textContent = text;
+  line.appendChild(prompt);
+  line.appendChild(cmd);
+  t.appendChild(line);
+  terminalScrollToBottom();
+}
+
+function appendTerminalInfo(text) {
+  const t = getTerminal();
+  if (!t) return;
+  const line = document.createElement('div');
+  line.className = 'terminal-line';
+  const info = document.createElement('span');
+  info.className = 'terminal-info';
+  info.textContent = text;
+  line.appendChild(info);
+  t.appendChild(line);
+  terminalScrollToBottom();
+}
+
+function appendTerminalSeparator() {
+  const t = getTerminal();
+  if (!t) return;
+  const hr = document.createElement('hr');
+  hr.className = 'terminal-separator';
+  t.appendChild(hr);
+}
+
+function parseDiff(text) {
+  const files = [];
+  let currentFile = null;
+  if (!text || typeof text !== 'string') return files;
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const fileMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    if (fileMatch) {
+      currentFile = { path: fileMatch[2], hunks: [], additions: 0, deletions: 0 };
+      files.push(currentFile);
+      continue;
+    }
+    const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)?$/);
+    if (hunkMatch && currentFile) {
+      const hunk = {
+        oldStart: +hunkMatch[1],
+        oldLines: +(hunkMatch[2] || 1),
+        newStart: +hunkMatch[3],
+        newLines: +(hunkMatch[4] || 1),
+        header: (hunkMatch[5] || '').trim(),
+        lines: []
+      };
+      currentFile.hunks.push(hunk);
+      continue;
+    }
+    if (currentFile && currentFile.hunks.length > 0) {
+      const hunk = currentFile.hunks[currentFile.hunks.length - 1];
+      if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
+      if (line.startsWith('\\ No newline')) continue;
+      if (line.startsWith('+')) { hunk.lines.push({ type: 'add', text: line.slice(1) }); currentFile.additions++; }
+      else if (line.startsWith('-')) { hunk.lines.push({ type: 'del', text: line.slice(1) }); currentFile.deletions++; }
+      else if (line.startsWith(' ')) { hunk.lines.push({ type: 'ctx', text: line.slice(1) }); }
+    }
+  }
+  return files;
+}
+
+function renderDiff(files) {
+  if (!files || files.length === 0) return '';
+  let html = '';
+  for (const f of files) {
+    html += '<div class="diff-file">';
+    html += '<div class="diff-file-header"><span>📝 ' + escapeHtml(f.path) + '</span><span class="diff-summary">+' + f.additions + ' -' + f.deletions + '</span></div>';
+    for (const hunk of f.hunks) {
+      html += '<div class="diff-hunk-header">@@ -' + hunk.oldStart + ',' + hunk.oldLines + ' +' + hunk.newStart + ',' + hunk.newLines + ' @@' + (hunk.header ? ' ' + escapeHtml(hunk.header) : '') + '</div>';
+      for (const line of hunk.lines) {
+        const cls = line.type === 'add' ? 'diff-add' : (line.type === 'del' ? 'diff-del' : 'diff-ctx');
+        const prefix = line.type === 'add' ? '+' : (line.type === 'del' ? '-' : ' ');
+        html += '<div class="diff-line ' + cls + '"><span class="diff-prefix">' + prefix + '</span>' + escapeHtml(line.text) + '</div>';
+      }
+    }
+    html += '</div>';
+  }
+  if (files.length > 1) {
+    const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+    const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+    html = '<div class="diff-global-summary">' + files.length + ' 个文件变更，+' + totalAdd + ' -' + totalDel + '</div>' + html;
+  }
+  return html;
+}
+
+async function terminalStream(url, msgs, sid, isExecute) {
+  const terminal = getTerminal();
+  streaming = true;
+  showCancel(true);
+  if (isExecute) execSendBtn.classList.add('loading');
+  else sendBtn.classList.add('loading');
+  abortController = new AbortController();
+
+  let fullContent = '';
+  let costInfo = null;
+  const toolEntries = [];
+  let outputLine = null;
+
+  function ensureOutputLine() {
+    if (outputLine && outputLine.isConnected) return outputLine;
+    const line = document.createElement('div');
+    line.className = 'terminal-line terminal-output-text';
+    line.innerHTML = '<span class="terminal-cursor"></span>';
+    terminal.appendChild(line);
+    outputLine = line;
+    return line;
+  }
+
+  function appendOutput(text) {
+    const line = ensureOutputLine();
+    const cursor = line.querySelector('.terminal-cursor');
+    const textNode = document.createTextNode(text);
+    line.insertBefore(textNode, cursor);
+    fullContent += text;
+    terminalScrollToBottom();
+  }
+
+  function removeCursor() {
+    if (outputLine && outputLine.isConnected) {
+      const c = outputLine.querySelector('.terminal-cursor');
+      if (c) c.remove();
+    }
+  }
+
+  function appendToolHeader(name, inputObj) {
+    removeCursor();
+    const header = document.createElement('div');
+    header.className = 'terminal-tool-header';
+    header.dataset.toolName = name;
+    header.innerHTML = '<span class="terminal-timestamp">' + terminalNow() + '</span><span class="tool-icon">' + toolIcon(name) + '</span><span class="tool-name">' + escapeHtml(name) + '</span><span class="tool-status running">running...</span>';
+    const body = document.createElement('div');
+    body.className = 'terminal-tool-body';
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(inputObj, null, 2);
+    body.appendChild(pre);
+    terminal.appendChild(header);
+    terminal.appendChild(body);
+    toolEntries.push({ name: name, header: header, body: body });
+    terminalScrollToBottom();
+  }
+
+  function appendToolResult(content) {
+    removeCursor();
+    if (!toolEntries.length) return;
+    const entry = toolEntries[toolEntries.length - 1];
+    const status = entry.header.querySelector('.tool-status');
+    if (status) { status.classList.remove('running'); status.textContent = '✓ done'; }
+    const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    const files = parseDiff(text);
+    if (files.length > 0) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = renderDiff(files);
+      entry.body.appendChild(wrapper);
+    } else {
+      const pre = document.createElement('pre');
+      pre.textContent = text;
+      entry.body.appendChild(pre);
+    }
+    terminalScrollToBottom();
+  }
+
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: AUTH },
+      body: JSON.stringify({ messages: msgs, session_id: sid, model: 'flash', project: currentProject, timeout: 120 }),
+      signal: abortController.signal,
+    });
+    if (!resp.ok) {
+      const errText = resp.status === 429 ? '前一个执行中，请稍候' : resp.status === 400 ? '危险指令已被拦截' : '请求失败: HTTP ' + resp.status;
+      appendTerminalInfo('✗ ' + errText);
+      execMessages.push({ role: 'assistant', content: errText, mode: 'execute' });
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'delta') {
+            appendOutput(data.content);
+          } else if (data.type === 'tool_use') {
+            appendToolHeader(data.name || 'tool', data.input || {});
+          } else if (data.type === 'tool_result') {
+            appendToolResult(data.content);
+          } else if (data.type === 'cost') {
+            costInfo = data;
+          } else if (data.type === 'done') {
+            if (data.session_id) execSessionId = data.session_id;
+          } else if (data.type === 'error') {
+            removeCursor();
+            appendTerminalInfo('✗ ' + data.content);
+            fullContent += (fullContent ? '\n' : '') + data.content;
+          }
+        } catch(e) {}
+      }
+    }
+
+    removeCursor();
+    if (costInfo) {
+      appendTerminalSeparator();
+      const info = document.createElement('div');
+      info.className = 'terminal-line';
+      const span = document.createElement('span');
+      span.className = 'terminal-info';
+      span.textContent = 'ⓘ Tokens: ' + (costInfo.tokens || 0) + ' · $' + (costInfo.usd || 0).toFixed(4);
+      info.appendChild(span);
+      terminal.appendChild(info);
+    }
+
+    if (fullContent) {
+      execMessages.push({ role: 'assistant', content: fullContent, mode: 'execute' });
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      removeCursor();
+      appendTerminalInfo('✗ 网络错误: ' + e.message);
+    }
+  }
+  streaming = false;
+  showCancel(false);
+  sendBtn.classList.remove('loading');
+  execSendBtn.classList.remove('loading');
+  abortController = null;
+  terminalScrollToBottom();
+}
+
+function resetTerminal() {
+  const t = getTerminal();
+  if (!t) return;
+  t.innerHTML = '';
+  const line1 = document.createElement('div');
+  line1.className = 'terminal-line';
+  const info1 = document.createElement('span');
+  info1.className = 'terminal-info';
+  info1.textContent = ' CCC Execute Terminal';
+  line1.appendChild(info1);
+  t.appendChild(line1);
+  const line2 = document.createElement('div');
+  line2.className = 'terminal-line';
+  const info2 = document.createElement('span');
+  info2.className = 'terminal-info';
+  info2.textContent = ' 输入指令开始执行...';
+  line2.appendChild(info2);
+  t.appendChild(line2);
+}
+
+function renderTerminalHistory(messages) {
+  const t = getTerminal();
+  if (!t) return;
+  resetTerminal();
+  for (const msg of messages) {
+    if (msg.role === 'user') {
+      renderTerminalCommand(msg.content || '');
+    } else if (msg.role === 'assistant') {
+      const text = msg.content || '';
+      if (text) {
+        const line = document.createElement('div');
+        line.className = 'terminal-line terminal-output-text';
+        line.textContent = text;
+        t.appendChild(line);
+      }
+    }
+  }
+  terminalScrollToBottom();
+}
+
 async function sendExecute() {
   const text = execInput.value.trim();
   if (!text || streaming) return;
@@ -1228,8 +1748,8 @@ async function sendExecute() {
   execInput.style.height = 'auto';
   execSendBtn.disabled = true;
   execMessages.push({ role: 'user', content: text, mode: 'execute' });
-  renderMessage(execMessagesEl, 'user', text, true);
-  await streamRequest('/api/execute', execMessages, execSessionId, execMessagesEl, true);
+  renderTerminalCommand(text);
+  await terminalStream('/api/execute', execMessages, execSessionId, true);
   loadHistory();
 }
 
@@ -1435,7 +1955,7 @@ async function loadSession(id, mode) {
       execSessionId = data.session_id;
       execMessages = data.messages || [];
       execMessagesEl.innerHTML = '';
-      for (const msg of execMessages) renderMessage(execMessagesEl, msg.role, msg.content, msg.role === 'assistant');
+      renderTerminalHistory(execMessages);
     } else {
       switchTab('chat');
       sessionId = data.session_id;
@@ -1463,6 +1983,7 @@ function newExecChat() {
   execSessionId = crypto.randomUUID?.() ?? Date.now().toString(36)+Math.random().toString(36).slice(2);
   execMessages = [];
   execMessagesEl.innerHTML = '';
+  resetTerminal();
   execInput.value = '';
   execSendBtn.disabled = true;
 }
