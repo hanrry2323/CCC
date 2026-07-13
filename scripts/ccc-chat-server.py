@@ -734,6 +734,17 @@ HTML_UI = r"""<!DOCTYPE html>
     --shadow: 0 1px 3px rgba(0,0,0,0.06);
     --radius: 18px;
     --max-w: 720px;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+    --radius-sm: 8px;
+    --radius-lg: 22px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+    --danger: #ff3b30;
+    --accent-hover: #0056b3;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; }
@@ -746,7 +757,7 @@ HTML_UI = r"""<!DOCTYPE html>
   #app { display:flex; flex-direction:column; height:100%; max-width:var(--max-w); margin:0 auto; }
   #header {
     display:flex; align-items:center; gap:10px;
-    padding:12px 16px; padding-top:calc(12px + env(safe-area-inset-top,0px));
+    padding:var(--space-md) var(--space-lg); padding-top:calc(var(--space-md) + env(safe-area-inset-top,0px));
     background:var(--surface); border-bottom:0.5px solid var(--border);
     position:sticky; top:0; z-index:10;
   }
@@ -779,12 +790,24 @@ HTML_UI = r"""<!DOCTYPE html>
   .msg.execute .bubble { max-width:100%; flex:1; }
   .msg.user .bubble {
     background:var(--user-bg); color:var(--user-text);
-    border-bottom-right-radius:4px;
+    border-bottom-right-radius:4px; box-shadow:none;
   }
   .msg.assistant .bubble {
     background:var(--assistant-bg); border:1px solid var(--border);
     border-bottom-left-radius:4px; color:var(--text);
   }
+  .msg.user + .msg.user, .msg.assistant + .msg.assistant { margin-top:-12px; }
+  .msg .ts { font-size:11px; color:var(--text-secondary); margin-top:4px; padding-left:4px; }
+  .msg.user .ts { padding-right:4px; text-align:right; }
+  .code-block-wrap { position:relative; margin:8px 0; }
+  .code-block-wrap pre { margin:0; border-radius:8px 8px 0 0; }
+  .copy-btn {
+    display:block; width:100%; padding:4px 12px; font-size:11px; color:var(--text-secondary);
+    background:var(--code-bg); border:1px solid var(--border); border-top:none;
+    border-radius:0 0 8px 8px; cursor:pointer; transition:background 0.2s;
+    text-align:right;
+  }
+  .copy-btn:hover { background:var(--border); }
   .msg .cost-info { font-size:11px; color:var(--text-secondary); margin-top:6px; padding-left:4px; }
   .tool-card {
     background:var(--code-bg); border-radius:10px; margin:8px 0; overflow:hidden;
@@ -830,6 +853,7 @@ HTML_UI = r"""<!DOCTYPE html>
     -webkit-overflow-scrolling:touch;
   }
   .terminal-line { padding:1px 0; white-space:pre-wrap; word-break:break-word; }
+  .terminal-line + .terminal-line { margin-top:2px; }
   .terminal-prompt { color:#73daca; font-weight:600; }
   .terminal-command { color:#c0caf5; font-weight:500; }
   .terminal-output-text { color:#c0caf5; }
@@ -877,14 +901,8 @@ HTML_UI = r"""<!DOCTYPE html>
     background:#292e42; border-radius:6px; margin-bottom:8px; text-align:center;
     border:1px solid #2f3346;
   }
-  /* Exec layout (compat with v0.30.2 file tree) */
+  /* Exec layout */
   .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
-  .file-tree-panel {
-    width:240px; flex-shrink:0; background:var(--surface);
-    border-right:1px solid var(--border); overflow-y:auto;
-    padding:12px; font-size:13px;
-  }
-  .exec-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
   .exec-meta-bar {
     padding:4px 12px; background:#1f2233; color:#565f89;
     font-size:11px; border-bottom:1px solid #2f3346;
@@ -896,42 +914,72 @@ HTML_UI = r"""<!DOCTYPE html>
   }
   #input-wrap {
     display:flex; gap:8px; align-items:flex-end;
-    background:var(--surface); border-radius:20px; padding:4px 4px 4px 8px;
+    background:var(--surface); border-radius:20px; padding:2px 4px 2px 12px;
     border:1px solid var(--border);
   }
-  #input-wrap:focus-within { border-color:var(--accent); }
+  #input-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,122,255,0.15); }
   #mode-switch {
-    width:32px; height:32px; border-radius:50%; border:1px solid var(--border);
-    background:var(--bg); font-size:14px; cursor:pointer; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center;
+    width:44px; height:44px; border-radius:50%; border:none; background:transparent;
+    color:var(--text); font-size:16px; cursor:pointer; flex-shrink:0; padding:0;
+    display:flex; align-items:center; justify-content:center; transition:background 0.2s;
+  }
+  #mode-switch:hover { background:var(--code-bg); }
+  .mode-switch-exec {
+    width:44px; height:44px; border-radius:50%; border:none;
+    background:var(--bg); color:var(--text); font-size:14px;
+    cursor:pointer; flex-shrink:0; display:flex;
+    align-items:center; justify-content:center; padding:0;
+  }
+  .cancel-exec {
+    background:var(--danger); color:#fff; font-size:12px;
+    width:auto; padding:0 12px; border-radius:18px; border:none;
+    height:36px; min-height:44px; display:none;
   }
   #input, #exec-input {
     flex:1; border:none; outline:none; background:transparent;
     font-size:16px; color:var(--text); resize:none;
     max-height:120px; line-height:1.4; padding:8px 0; font-family:inherit;
   }
+  #input::placeholder, #exec-input::placeholder { color:var(--text-secondary); }
   #send, #exec-send, #cancel-btn {
-    width:36px; height:36px; border-radius:50%; border:none;
+    width:44px; height:44px; border-radius:50%; border:none;
     background:var(--accent); color:#fff; font-size:18px;
     cursor:pointer; display:flex; align-items:center; justify-content:center;
     flex-shrink:0; transition:opacity 0.15s;
   }
-  #cancel-btn { background:#ff3b30; font-size:12px; width:auto; padding:0 12px; border-radius:18px; display:none; }
-  #send:disabled, #exec-send:disabled { opacity:0.4; cursor:default; }
+  #cancel-btn { background:var(--danger); font-size:12px; width:auto; padding:0 12px; border-radius:18px; display:none; }
+  .scroll-bottom-fab {
+    position:absolute; bottom:60px; right:16px;
+    width:40px; height:40px; border-radius:50%;
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--accent); font-size:18px; box-shadow:var(--shadow);
+    cursor:pointer; z-index:8; display:none;
+    align-items:center; justify-content:center;
+    transition:opacity 0.2s, transform 0.2s;
+  }
+  .scroll-bottom-fab.show { display:flex; }
+  #send:disabled, #exec-send:disabled { opacity:0.3; cursor:default; transition:opacity 0.2s; }
   #send.loading, #exec-send.loading { animation:spin 1s linear infinite; }
   @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
   #tabbar {
     display:flex; background:var(--surface);
     border-top:0.5px solid var(--border);
     padding-bottom:env(safe-area-inset-bottom,0px);
+    padding-top:4px;
   }
   .tab-btn {
     flex:1; display:flex; flex-direction:column; align-items:center;
     padding:8px 0 6px; border:none; background:none; cursor:pointer;
     color:var(--text-secondary); font-size:10px; gap:2px;
+    position:relative; min-height:48px;
   }
   .tab-btn.active { color:var(--accent); }
-  .tab-btn .tab-icon { font-size:20px; }
+  .tab-btn.active::after {
+    content:''; position:absolute; bottom:0; left:20%; right:20%;
+    height:3px; background:var(--accent); border-radius:1.5px 1.5px 0 0;
+    transition:all 0.2s;
+  }
+  .tab-btn .tab-icon { font-size:22px; }
   #sidebar {
     position:fixed; top:0; left:-280px; width:280px; height:100%;
     background:var(--surface); border-right:1px solid var(--border);
@@ -944,9 +992,14 @@ HTML_UI = r"""<!DOCTYPE html>
     background:rgba(0,0,0,0.3); z-index:19; display:none;
   }
   #overlay.show { display:block; }
+  .sidebar-handle {
+    width:36px; height:4px; border-radius:2px;
+    background:var(--border); margin:0 auto 12px;
+    position:sticky; top:0;
+  }
   #sidebar h2 { font-size:16px; margin-bottom:12px; }
   .session-item {
-    padding:10px 12px; border-radius:10px; margin-bottom:4px;
+    padding:12px; border-radius:10px; margin-bottom:4px;
     font-size:14px; cursor:pointer; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; color:var(--text);
   }
@@ -973,15 +1026,16 @@ HTML_UI = r"""<!DOCTYPE html>
   }
   .board-col-title {
     padding:10px 12px; font-size:13px; font-weight:600;
-    border-bottom:0.5px solid var(--border); color:var(--text-secondary);
+    border-bottom:0.5px solid var(--border); color:var(--text-secondary); text-decoration:none; transition:color .2s;
   }
   .board-col-cards { overflow-y:auto; padding:8px; flex:1; }
   .board-card {
-    background:var(--bg); border-radius:10px; padding:10px;
+    background:var(--bg); border-radius:10px; padding:12px;
     margin-bottom:8px; border:1px solid var(--border); cursor:pointer;
   }
   .board-card .title { font-size:14px; font-weight:500; margin-bottom:4px; }
   .board-card .time { font-size:11px; color:var(--text-secondary); }
+  .board-scroll-indicator { display:none; }
   #board-offline {
     display:none; text-align:center; padding:40px 20px;
     color:var(--text-secondary); font-size:15px;
@@ -1017,18 +1071,36 @@ HTML_UI = r"""<!DOCTYPE html>
   #task-modal .btn-cancel { background:var(--bg); color:var(--text); }
   #task-modal .btn-submit { background:var(--accent); color:#fff; }
   @media(max-width:480px) {
+    #sidebar {
+      position:fixed; top:auto; bottom:0; left:0; width:100%;
+      height:auto; max-height:80vh;
+      background:var(--surface); border-right:none;
+      border-radius:16px 16px 0 0;
+      transform:translateY(100%);
+      transition:transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+      padding:20px 16px; z-index:20;
+      padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+    }
+    #sidebar.open { left:0; transform:translateY(0); }
     #header { padding:10px 12px; }
     #messages, #exec-messages { padding:10px 12px; }
     #input-area { padding:8px 12px; }
     .msg .bubble { max-width:90%; font-size:14px; }
   }
-  .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
-  .file-tree-panel { width:260px; flex-shrink:0; border-right:1px solid var(--border); overflow-y:auto; background:var(--surface); display:flex; flex-direction:column; }
+  @media(max-width:375px) {
+    #header { padding:8px 10px; }
+    #messages, #exec-messages { padding:8px 10px; }
+    #input-area { padding:6px 10px; }
+    .msg .bubble { max-width:92%; }
+    #header h1 { display:none; }
+    #project-select { width:100px; }
+  }
+  .file-tree-panel { width:260px; flex-shrink:0; border-right:1px solid var(--border); overflow-y:auto; background:var(--surface); display:flex; flex-direction:column; padding:12px; }
   .exec-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
   .file-tree-panel .header { padding:8px 12px; font-size:12px; font-weight:600; color:var(--text-secondary); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
   .file-tree-panel .header button { background:transparent; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:2px 4px; }
   #file-tree { padding:4px 0; font-size:12px; flex:1; overflow-y:auto; }
-  .file-item { padding:4px 12px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--text); user-select:none; }
+  .file-item { padding:6px 12px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--text); user-select:none; }
   .file-item:hover { background:var(--code-bg); }
   .file-item.dir { font-weight:500; }
   .file-item .icon { width:16px; text-align:center; flex-shrink:0; font-family:monospace; }
@@ -1046,9 +1118,30 @@ HTML_UI = r"""<!DOCTYPE html>
   @media(max-width:768px) {
     .exec-layout { flex-direction:column; }
     .file-tree-panel { width:100%; max-height:180px; border-right:none; border-bottom:1px solid var(--border); }
+    #board-scroll {
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling:touch;
+      gap:8px;
+    }
+    .board-col {
+      scroll-snap-align: start;
+      min-width:85vw;
+    }
+    .board-scroll-indicator {
+      display:flex; justify-content:center; gap:6px; padding:6px 0;
+    }
   }
   @media(max-width:480px) {
     .file-tree-panel { max-height:140px; }
+  }
+  @media(orientation:landscape) and (max-width:768px) {
+    .file-tree-panel { width:200px; max-height:none; border-right:1px solid var(--border); border-bottom:none; }
+    .exec-layout { flex-direction:row; }
+  }
+  @media(orientation:landscape) and (max-height:414px) {
+    .tab-btn .tab-icon { font-size:16px; }
+    .tab-btn { padding:4px 0 2px; }
+    #tabbar { height:36px; }
   }
 </style>
 </head>
@@ -1063,6 +1156,7 @@ HTML_UI = r"""<!DOCTYPE html>
 
   <div id="chat-panel" class="tab-panel active">
     <div id="messages"></div>
+    <button id="scroll-bottom-fab-chat" class="scroll-bottom-fab" onclick="scrollFabToBottom('chat')">↓</button>
     <div id="input-area">
       <div id="input-wrap">
         <button id="mode-switch" onclick="toggleInputMode()" title="切换 Chat/Execute">💬</button>
@@ -1086,6 +1180,7 @@ HTML_UI = r"""<!DOCTYPE html>
           <div class="terminal-line"><span class="terminal-info"> CCC Execute Terminal</span></div>
           <div class="terminal-line"><span class="terminal-info"> 输入指令开始执行...</span></div>
         </div>
+        <button id="scroll-bottom-fab-exec" class="scroll-bottom-fab" onclick="scrollFabToBottom('exec')">↓</button>
       </div>
     </div>
     <div id="input-area">
@@ -1093,7 +1188,7 @@ HTML_UI = r"""<!DOCTYPE html>
         <button class="mode-switch-exec" onclick="switchTab('chat')" title="切换到 Chat">💬</button>
         <textarea id="exec-input" rows="1" placeholder="输入执行指令..." onkeydown="onKey(event,'execute')"></textarea>
         <button id="exec-send" onclick="sendExecute()" disabled>⚡</button>
-        <button id="exec-cancel-btn" class="cancel-exec" onclick="cancelStream()" style="display:none;background:#ff3b30;color:#fff;font-size:12px;width:auto;padding:0 12px;border-radius:18px;border:none;height:36px;">取消</button>
+        <button id="exec-cancel-btn" class="cancel-exec" onclick="cancelStream()">取消</button>
       </div>
     </div>
   </div>
@@ -1105,6 +1200,7 @@ HTML_UI = r"""<!DOCTYPE html>
     </div>
     <div id="board-offline">看板服务离线</div>
     <div id="board-scroll"></div>
+    <div id="board-scroll-indicator" class="board-scroll-indicator"></div>
     <button id="fab-new-task" onclick="openTaskModal()">+</button>
   </div>
 
@@ -1123,6 +1219,7 @@ HTML_UI = r"""<!DOCTYPE html>
 
 <div id="overlay" onclick="toggleSidebar()"></div>
 <div id="sidebar">
+  <div class="sidebar-handle"></div>
   <h2>对话历史</h2>
   <div id="sessionList"></div>
 </div>
@@ -1153,7 +1250,8 @@ let execSessionId = crypto.randomUUID?.() ?? Date.now().toString(36)+Math.random
 let currentMessages = [];
 let execMessages = [];
 let streaming = false;
-let autoScroll = true;
+let chatAutoScroll = true;
+let execAutoScroll = true;
 let currentProject = 'ccc';
 let currentTab = 'chat';
 let abortController = null;
@@ -1176,19 +1274,63 @@ setupInput(input, sendBtn);
 setupInput(execInput, execSendBtn);
 
 messagesEl.addEventListener('scroll', () => {
-  autoScroll = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 80;
+  chatAutoScroll = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 80;
 });
 if (execMessagesEl && execMessagesEl.id === 'exec-messages') {
   execMessagesEl.addEventListener('scroll', () => {
-    autoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
+    execAutoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
   });
 }
 const execTerminalEl = document.getElementById('exec-terminal');
 if (execTerminalEl) {
   execTerminalEl.addEventListener('scroll', () => {
-    autoScroll = execTerminalEl.scrollTop + execTerminalEl.clientHeight >= execTerminalEl.scrollHeight - 80;
+    execAutoScroll = execTerminalEl.scrollTop + execTerminalEl.clientHeight >= execTerminalEl.scrollHeight - 80;
   });
 }
+
+const scrollFabChat = document.getElementById('scroll-bottom-fab-chat');
+const scrollFabExec = document.getElementById('scroll-bottom-fab-exec');
+function updateFab(container, fab) {
+  if (!container || !fab) return;
+  const threshold = 200;
+  const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
+  const isMobile = window.innerWidth <= 768;
+  fab.classList.toggle('show', !atBottom && isMobile);
+}
+function scrollFabToBottom(mode) {
+  const el = mode === 'chat' ? messagesEl : (execMessagesEl.id === 'exec-messages' ? execMessagesEl : execTerminalEl);
+  if (el) { el.scrollTop = el.scrollHeight; }
+  const fab = mode === 'chat' ? scrollFabChat : scrollFabExec;
+  if (fab) fab.classList.remove('show');
+}
+messagesEl.addEventListener('scroll', () => updateFab(messagesEl, scrollFabChat));
+if (execTerminalEl) execTerminalEl.addEventListener('scroll', () => updateFab(execTerminalEl, scrollFabExec));
+window.addEventListener('resize', () => { updateFab(messagesEl, scrollFabChat); updateFab(execTerminalEl, scrollFabExec); });
+
+(function setupKeyboardHandler() {
+  if (!window.visualViewport) return;
+  let keyboardActive = false;
+  window.visualViewport.addEventListener('resize', () => {
+    const vp = window.visualViewport;
+    const keyboardHeight = window.innerHeight - vp.height;
+    const inputArea = document.getElementById('input-area');
+    const header = document.getElementById('header');
+    if (!inputArea || !header) return;
+    if (keyboardHeight > 100) {
+      keyboardActive = true;
+      inputArea.style.transform = 'translateY(-' + keyboardHeight + 'px)';
+      header.style.position = 'relative';
+      setTimeout(() => {
+        const el = currentTab === 'chat' ? messagesEl : (execMessagesEl.id === 'exec-messages' ? execMessagesEl : execTerminalEl);
+        if (el) el.scrollTop = el.scrollHeight;
+      }, 50);
+    } else if (keyboardActive) {
+      keyboardActive = false;
+      inputArea.style.transform = '';
+      header.style.position = '';
+    }
+  });
+})();
 
 loadProjects();
 loadHistory();
@@ -1396,10 +1538,11 @@ function showFilePreview(path, data) {
   meta.appendChild(code);
   bubble.appendChild(meta);
   wrap.appendChild(bubble);
-  const messagesEl = document.getElementById('exec-messages');
-  if (messagesEl) {
-    messagesEl.appendChild(wrap);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+  const terminal = document.getElementById('exec-terminal');
+  if (terminal) {
+    wrap.classList.add('terminal-line');
+    terminal.appendChild(wrap);
+    terminal.scrollTop = terminal.scrollHeight;
   }
 }
 
@@ -1424,6 +1567,16 @@ function cancelStream() {
   showCancel(false);
   sendBtn.classList.remove('loading');
   execSendBtn.classList.remove('loading');
+  const terminal = getTerminal();
+  if (currentTab === 'execute' && terminal) {
+    terminal.querySelector('.terminal-cursor')?.remove();
+    const runningTool = terminal.querySelector('.terminal-tool-header .tool-status.running');
+    if (runningTool) {
+      runningTool.classList.remove('running');
+      runningTool.textContent = ' cancelled';
+    }
+    appendTerminalInfo(' 用户终止');
+  }
 }
 
 async function sendChat() {
@@ -1454,7 +1607,7 @@ function getTerminal() {
 }
 function terminalScrollToBottom() {
   const t = getTerminal();
-  if (t && autoScroll) t.scrollTop = t.scrollHeight;
+  if (t && execAutoScroll) t.scrollTop = t.scrollHeight;
 }
 
 function renderTerminalCommand(text) {
@@ -1669,18 +1822,17 @@ async function terminalStream(url, msgs, sid, isExecute) {
           } else if (data.type === 'cost') {
             costInfo = data;
           } else if (data.type === 'done') {
-            if (data.session_id) execSessionId = data.session_id;
-          } else if (data.type === 'error') {
-            removeCursor();
-            appendTerminalInfo('✗ ' + data.content);
-            fullContent += (fullContent ? '\n' : '') + data.content;
-          }
-        } catch(e) {}
+             if (data.session_id) execSessionId = data.session_id;
+           } else if (data.type === 'error') {
+             removeCursor();
+             appendTerminalInfo('✗ ' + data.content);
+              fullContent += (fullContent ? '\n' : '') + data.content;
+            }
+          } catch(e) {}
+        }
       }
-    }
-
-    removeCursor();
-    if (costInfo) {
+    } catch(e) {
+     if (costInfo) {
       appendTerminalSeparator();
       const info = document.createElement('div');
       info.className = 'terminal-line';
@@ -1758,7 +1910,7 @@ async function sendExecute() {
   execMessages.push({ role: 'user', content: text, mode: 'execute' });
   renderTerminalCommand(text);
   await terminalStream('/api/execute', execMessages, execSessionId, true);
-  loadHistory();
+  setTimeout(() => loadHistory(), 300);
 }
 
 async function streamRequest(url, msgs, sid, container, isExecute) {
@@ -1799,6 +1951,7 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
     }
     removeTyping(typingId);
 
+    const now = ts();
     const msgDiv = document.createElement('div');
     msgDiv.className = 'msg assistant' + (isExecute ? ' execute' : '');
     if (isExecute) {
@@ -1807,6 +1960,10 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
       msgDiv.innerHTML = '<div class="bubble"></div>';
     }
     const bubble = isExecute ? msgDiv.querySelector('.bubble') : msgDiv.querySelector('.bubble');
+    const tsEl = document.createElement('div');
+    tsEl.className = 'ts';
+    tsEl.textContent = now;
+    msgDiv.appendChild(tsEl);
     container.appendChild(msgDiv);
 
     const reader = resp.body.getReader();
@@ -1827,7 +1984,7 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
             fullContent += data.content;
             bubble.innerHTML = renderMarkdown(fullContent);
             for (const tc of toolCards) bubble.appendChild(tc);
-            if (autoScroll) scrollToBottom(container);
+            if (chatAutoScroll) scrollToBottom(container);
           } else if (data.type === 'tool_use') {
             const card = document.createElement('details');
             card.className = 'tool-card';
@@ -1894,16 +2051,24 @@ function onKey(e, mode) {
   }
 }
 
+function ts() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
 function renderMessage(container, role, content, isExecute) {
   const div = document.createElement('div');
   div.className = 'msg ' + role + (isExecute && role === 'assistant' ? ' execute' : '');
   if (isExecute && role === 'assistant') {
-    div.innerHTML = '<div class="bubble-wrap"><span class="exec-icon">⚡</span><div class="bubble">' + renderMarkdown(content) + '</div></div>';
+    div.innerHTML = '<div class="bubble-wrap"><span class="exec-icon">⚡</span><div class="bubble">' + renderMarkdown(content) + '</div></div><div class="ts">' + ts() + '</div>';
   } else {
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.innerHTML = renderMarkdown(content);
     div.appendChild(bubble);
+    const tsEl = document.createElement('div');
+    tsEl.className = 'ts';
+    tsEl.textContent = ts();
+    div.appendChild(tsEl);
   }
   container.appendChild(div);
   scrollToBottom(container);
@@ -1912,7 +2077,7 @@ function renderMessage(container, role, content, isExecute) {
 function renderMarkdown(text) {
   if (!text) return '';
   let h = escapeHtml(text);
-  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code class="lang-$1">$2</code></pre>');
+  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<div class="code-block-wrap"><pre><code class="lang-$1">$2</code></pre><button class="copy-btn" onclick="copyCode(this)">复制</button></div>');
   h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
@@ -1922,6 +2087,18 @@ function renderMarkdown(text) {
   h = '<p>' + h + '</p>';
   h = h.replace(/<p><\/p>/g, '');
   return h;
+}
+
+function copyCode(btn) {
+  const pre = btn.closest('.code-block-wrap').querySelector('pre');
+  const code = pre ? (pre.textContent || pre.innerText) : '';
+  navigator.clipboard.writeText(code).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }).catch(() => {
+    btn.textContent = '复制失败';
+  });
 }
 
 function escapeHtml(text) {
@@ -1935,6 +2112,22 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('overlay').classList.toggle('show');
 }
+
+(function setupSidebarSwipe() {
+  const sidebar = document.getElementById('sidebar');
+  let startY = 0;
+  sidebar.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) startY = e.touches[0].clientY;
+  }, {passive:true});
+  sidebar.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1 || !startY) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 80) {
+      startY = 0;
+      if (sidebar.classList.contains('open')) toggleSidebar();
+    }
+  }, {passive:true});
+})();
 
 async function loadHistory() {
   try {
@@ -2023,6 +2216,33 @@ async function loadBoard() {
         cards.appendChild(card);
       }
       scroll.appendChild(colEl);
+    }
+    const indicator = document.getElementById('board-scroll-indicator');
+    if (indicator) {
+      const colCount = ['backlog','planned','in_progress','testing','verified','released','abnormal'].length;
+      indicator.innerHTML = '';
+      if (window.innerWidth <= 768) {
+        for (let i = 0; i < colCount; i++) {
+          const dot = document.createElement('span');
+          dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:var(--border);display:inline-block;transition:background 0.2s;';
+          if (i === 0) dot.style.background = 'var(--accent)';
+          indicator.appendChild(dot);
+        }
+        let ticking = false;
+        scroll.addEventListener('scroll', () => {
+          if (!ticking) {
+            requestAnimationFrame(() => {
+              const scrollLeft = scroll.scrollLeft;
+              const colW = scroll.clientWidth;
+              const idx = Math.round(scrollLeft / colW);
+              const dots = indicator.querySelectorAll('span');
+              dots.forEach((d, i) => { d.style.background = i === idx ? 'var(--accent)' : 'var(--border)'; });
+              ticking = false;
+            });
+            ticking = true;
+          }
+        });
+      }
     }
   } catch(e) {
     offline.style.display = 'block';
