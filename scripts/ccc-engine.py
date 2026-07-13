@@ -69,7 +69,9 @@ def now_iso() -> str:
     return _utils_now_iso()
 
 
-def engine_log(msg: str) -> None:
+def engine_log(msg: str, *args: str) -> None:
+    if args:
+        msg = msg % args
     _log.info("%s", msg)
 
 
