@@ -340,15 +340,24 @@ tr:last-child td{{border-bottom:none}}
   <div class="machines">{machines_html}</div>
 
   <div class="sec-title" style="margin-top:16px">快速跳转</div>
-  <div class="quick-links">
+          <div class="quick-links">
     <a href="http://192.168.3.140:7777/" target="_blank">CCC 看板</a>
     <a href="http://192.168.3.140:8084" target="_blank">CCC Chat</a>
     <a href="http://192.168.3.140:8096" target="_blank">qb Dashboard</a>
     <a href="http://192.168.3.140:4000/dashboard" target="_blank">中转站</a>
     <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>
-  </div>
+          </div>
 
-  <div class="sec-title">端口 & 服务</div>
+    <div class="sec-title">知识库搜索</div>
+    <div class="kb-search-wrap" style="background:{THEME['surface']};border:1px solid {THEME['border']};border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+            <input type="text" id="kb-query" placeholder="搜索关键词…" style="flex:1;padding:8px 12px;border:1px solid {THEME['border']};border-radius:6px;font-size:13px">
+            <button onclick="kbSearch()" style="padding:8px 16px;background:{THEME['accent']};border:none;color:white;border-radius:6px;font-size:13px;cursor:pointer">搜索</button>
+        </div>
+        <div id="kb-results" style="font-size:12px;line-height:1.6"></div>
+    </div>
+
+    <div class="sec-title">端口 & 服务</div>
   {ports_sections}
 
   <div class="sec-title">项目</div>
@@ -362,9 +371,89 @@ tr:last-child td{{border-bottom:none}}
   </div>
 
   <div class="foot" id="foot">
-    数据来源: .ccc/infrastructure.md · 端口探测 · 最后刷新 <span id="ts">{data.get("updated", "")}</span>
+   数据来源: .ccc/infrastructure.md · 端口探测 · 最后刷新 <span id="ts">{data.get('updated', '')}</span>
   </div>
-</div>
+ </div>
+
+ <div id="alert-banner" style="display:none;background:#ffebee;border:2px solid #c62828;color:#c62828;padding:12px;border-radius:8px;margin-bottom:16px;cursor:pointer;font-size:13px">
+  <span id="alert-count">0</span> 个服务离线 — 点击查看详情
+  <div id="alert-details" style="display:none;margin-top:8px;background:white;padding:10px;border-radius:4px;border:1px solid #c62828"></div>
+ </div>
+
+ <script>
+  function checkAlerts() {
+   fetch('/api/alive')
+   .then(function(res) { return res.json(); })
+   .then(function(data) {
+    var ports = data.ports || {};
+    var offlinePorts = Object.entries(ports).filter(function(entry) { var _ref = entry, port = _ref[0], info = _ref[1]; return !info.alive; });
+    if (offlinePorts.length > 0) {
+     var banner = document.getElementById('alert-banner');
+     var countSpan = document.getElementById('alert-count');
+     var detailsDiv = document.getElementById('alert-details');
+     countSpan.textContent = offlinePorts.length;
+     detailsDiv.innerHTML = '<table width="100%" border-collapse:collapse;font-size:12px><thead><tr style="background:#ffebee"><th>端口</th><th>服务</th><th>主机</th></tr></thead><tbody>' + offlinePorts.map(function(entry) { var _ref = entry, port = _ref[0], info = _ref[1]; return '<tr><td>:' + port + '</td><td>' + info.name + '</td><td>' + info.host + '</td></tr>'; }).join('') + '</tbody></table>';
+     banner.style.display = 'block';
+     banner.onclick = function() {
+      var isShown = detailsDiv.style.display === 'block';
+      detailsDiv.style.display = isShown ? 'none' : 'block';
+     };
+         } else {
+      document.getElementById('alert-banner').style.display = 'none';
+     }
+    })
+    .catch(function(err) { console.error('Failed to check alerts:', err); });
+}
+function kbSearch() {
+    var query = document.getElementById('kb-query').value.trim();
+    var resultsDiv = document.getElementById('kb-results');
+    if (!query) {
+        resultsDiv.innerHTML = '<span style="color:{THEME.muted}">请输入关键词</span>';
+        return;
+    }
+    resultsDiv.innerHTML = '<span style="color:{THEME.muted}">搜索中…</span>';
+    fetch('/api/kb/search?q=' + encodeURIComponent(query))
+        .then(function(res) {
+            if (!res.ok) {
+                throw new Error('Search failed');
+            }
+            return res.json();
+        })
+        .then(function(data) {
+            if (data.error) {
+                resultsDiv.innerHTML = '<span style="color:{THEME.red}">搜索失败，请稍后重试</span>';
+                return;
+            }
+            var results = data.results || [];
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<span style="color:{THEME.muted}">未找到相关结果</span>';
+                return;
+            }
+            var html = '<table width="100%" border-collapse:collapse;font-size:12px>';
+            html += '<thead><tr style="background:#fafafa"><th>标题</th><th>链接</th><th>摘要</th></tr></thead>';
+            html += '<tbody>';
+            results.forEach(function(item) {
+                var title = item.title || item.name || item.path || '';
+                var link = item.url || item.path || '#';
+                var snippet = item.snippet || item.description || item.content || '';
+                var safeTitle = title.replace(/</g, '&amp;').replace(/>/g, '&gt;');
+                var safeSnippet = snippet.substring(0, 100).replace(/</g, '&amp;').replace(/>/g, '&gt;');
+                html += '<tr><td><a href="' + link + '" target="_blank" style="color:{THEME.accent};text-decoration:none">' + safeTitle + '</a></td>';
+                html += '<td style="color:{THEME.muted}">' + link + '</td>';
+                html += '<td style="color:{THEME.muted};max-width:300px">' + safeSnippet + '…</td></tr>';
+            });
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+        })
+        .catch(function(err) {
+            console.error('KB search error:', err);
+            resultsDiv.innerHTML = '<span style="color:{THEME.red}">搜索失败，请稍后重试</span>';
+        });
+}
+  }
+  setInterval(checkAlerts, 15000);
+  checkAlerts();
+ </script>
 </body>
 </html>"""
 
