@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.9] — 2026-07-14
+
+- zcode-adapter-v121: 看板发布
+
 ## [v0.29.8] — 2026-07-14
 
 - v10-automation: 看板发布
@@ -1580,3 +1584,7 @@ git push origin main --tags
 ## [v0.29.7] - 2026-07-14
 
 - v10-automation: v10 Automation Implementation Plan — 8 phases 待执行 看板发布
+
+## [v0.29.8] - 2026-07-14
+
+- zcode-adapter-v121: Plan: zcode-adapter-v121 (ZCode IDE Adapter · 配置独立 Session 调度) 看板发布
