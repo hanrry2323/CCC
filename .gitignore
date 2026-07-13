@@ -47,6 +47,16 @@ src-tauri/target/
 src-tauri/gen/
 .workbuddy/
 
+# v0.29.x: CCC Engine 运行时文件（不提交）
+.ccc/.dev_auto_retry.json
+.ccc/board/.color_counter
+.ccc/board/abnormal/
+.ccc/stats/summary.json
+.ccc/stats/events.jsonl
+.ccc/product_fallback/
+.ccc/lessons/
+.ccc/verdicts/
+
 # Python 测试/类型缓存
 .pytest_cache/
 .mypy_cache/
