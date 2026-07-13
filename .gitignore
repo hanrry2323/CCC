@@ -46,3 +46,26 @@ scripts/tests/regression_v028.py
 src-tauri/target/
 src-tauri/gen/
 .workbuddy/
+
+# Python 测试/类型缓存
+.pytest_cache/
+.mypy_cache/
+
+# Ruff 缓存（v0.28+ 使用）
+.ruff_cache/
+
+# Python 虚拟环境
+.venv/
+
+# Python 构建产物
+*.egg-info/
+dist/
+build/
+
+# npm dependencies（Tauri 前端）
+node_modules/
+
+# 覆盖率报告
+.coverage
+.coverage.*
+htmlcov/
