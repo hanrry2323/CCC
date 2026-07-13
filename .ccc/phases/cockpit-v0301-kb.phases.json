@@ -1,0 +1,4 @@
+{"schema_version": "1.2"}
+{"phase": 1, "status": "pending", "subtasks": {"P1-hp-kb": "pending"}, "acceptance": "知识库搜索: 输入关键词 -> 返回结果列表", "timeout": 600, "notes": "HP 知识库搜索面板", "retry": 3}
+{"phase": 2, "status": "pending", "subtasks": {"P2-service-alerts": "pending"}, "acceptance": "停一个服务 -> Cockpit 顶部红色横幅", "timeout": 600, "notes": "服务离线告警横幅", "retry": 3}
+{"phase": 3, "status": "pending", "subtasks": {"P3-project-metrics": "pending"}, "acceptance": "每个项目有状态描述", "timeout": 600, "depends_on": ["P2-service-alerts"], "notes": "项目关键指标", "retry": 3}
