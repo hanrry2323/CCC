@@ -1,0 +1,3 @@
+{"engine_iter": 5, "engine_iter_phase": 1, "commit": "86aa8beabdc6622e584244a7ab9d83af76eb64c8"}
+{"schema_version": "1.1", "commit": "86aa8beabdc6622e584244a7ab9d83af76eb64c8"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending"}, "timeout": 300, "commit": null, "notes": "加 phase 参数 + 4 调用点传实际 phase", "color_depth": 1, "color_group": "L", "retry": 4}

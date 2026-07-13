@@ -1,0 +1,4 @@
+{"engine_iter": 5, "engine_iter_phase": 1, "commit": "8def72566754f4710249bd8c0fd3463554334b4c"}
+{"schema_version": "1.1", "commit": "8def72566754f4710249bd8c0fd3463554334b4c"}
+{"phase": 1, "status": "failed", "subtasks": {"1.1": "pending"}, "timeout": 60, "commit": null, "notes": "删 _executor.py:14 行尾的 , get_logger", "color_depth": 1, "color_group": "K", "retry": 5}
+

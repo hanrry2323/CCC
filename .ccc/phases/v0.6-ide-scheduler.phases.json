@@ -1,3 +1,0 @@
-{"phase":1,"status":"failed","subtasks":{"1.1":"failed","1.2":"failed","1.3":"failed","1.4":"failed"},"commit":null,"notes":"Executor 启动 hang × 2 (2026-07-06 23:39); see .ccc/abnormal-reports/v0.6-ide-scheduler-executor-hang-2026-07-06.abnormal-report.md; 用户决策中"}
-{"phase":2,"status":"pending","subtasks":{"2.1":"pending","2.2":"pending","2.3":"pending"},"commit":null,"notes":"blocked by phase 1 failure"}
-{"phase":3,"status":"pending","subtasks":{"3.1":"pending","3.2":"pending","3.3":"pending"},"commit":null,"notes":"blocked by phase 1+2"}

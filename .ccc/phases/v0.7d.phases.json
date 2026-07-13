@@ -1,1 +1,0 @@
-{"phase": 1, "status": "done", "subtasks": {"1.1": "done", "1.2": "done", "1.3": "done"}, "commit": null, "notes": "rebuild 4 windows with correct cwd + monitor (no code commit needed)"}
