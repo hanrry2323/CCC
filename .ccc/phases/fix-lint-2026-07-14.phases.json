@@ -1,2 +1,3 @@
-{"phase": 1, "name": "ruff-auto-fix", "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 600, "commit": null, "notes": "ruff check --fix 自动修 19 处"}
-{"phase": 2, "name": "manual-f841-fix", "status": "pending", "subtasks": {"2.1": "pending"}, "timeout": 600, "commit": null, "notes": "手工处理剩余 13 处 F841"}
+{"engine_iter": 2, "engine_iter_phase": 2, "commit": "c4ec801a8a8a1ef1e3a25c6d3c1e4d5b2a8c1f7e"}
+{"phase": 1, "name": "ruff-auto-fix", "status": "done", "subtasks": {"1.1": "done"}, "timeout": 600, "commit": "479ac6dcdf27a853f6f991326805d3d1c9ff8c30", "notes": "ruff check --fix 自动修 F401/F841（已由 479ac6d 完成：21 处 import 清理 + except ValueError 去变量绑定 + ccc-board-server import 单行展开）", "color_depth": 1, "color_group": "L", "retry": 1}
+{"phase": 2, "name": "manual-f841-fix", "status": "done", "subtasks": {"2.1": "done"}, "timeout": 600, "commit": "c4ec801a8a8a1ef1e3a25c6d3c1e4d5b2a8c1f7e", "notes": "手工清理 14 处 F841 unused variable + _audit_lint 补 return (latent tuple bug)。6 files / +1 -14。pytest 248 passed / 10 pre-existing fail。"}
