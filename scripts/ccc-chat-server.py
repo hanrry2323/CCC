@@ -883,7 +883,7 @@ async function sendExecute() {
   execSendBtn.disabled = true;
   execMessages.push({ role: 'user', content: text, mode: 'execute' });
   renderMessage(execMessagesEl, 'user', text, true);
-  renderMessage(execMessagesEl, 'assistant', '执行模式将在下一阶段启用', true);
+  await streamRequest('/api/execute', execMessages, execSessionId, execMessagesEl, true);
   loadHistory();
 }
 
