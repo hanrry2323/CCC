@@ -2175,6 +2175,17 @@ def _review_one_task(task_id: str) -> bool:
         f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
     )
 
+    # 写 verdict 文件（Engine _verdict_is_valid 检查此文件）
+    verdict_dir = ROOT / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    verdict_path = verdict_dir / f"{task_id}.verdict.md"
+    verdict_path.write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** {verdict.upper()}\n\n"
+        f"**Size Class:** {size_class}\n\n"
+        f"{summary}\n"
+    )
+
     if verdict == "pass":
         move_task(task_id, "testing", "verified")
         _log.info("[reviewer] %s ✓ LLM pass", task_id)
