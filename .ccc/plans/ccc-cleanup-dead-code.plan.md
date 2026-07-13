@@ -8,7 +8,7 @@
 
 - **入口/核心文件**：`scripts/` 下共 23 个 Python 源文件（不含 `scripts/tests/`）
 - **当前结构要点**：
-  - 8 个文件存在 14 处未使用 import，均为标准库模块（`sys`、`os`、`time`、`json`、`html`、`re`、`tarfile`、`datetime`/`timezone`、`Optional`、`Any`、`Mapping`），移除无运行时影响
+  - 8 个文件存在 16 处未使用 import，均为标准库模块（`sys`、`os`、`time`、`json`、`html`、`re`、`tarfile`、`datetime`/`timezone`、`Optional`、`Any`、`Mapping`），移除无运行时影响
   - 3 个文件存在 8 处 dead code：`_board_store.py`（5 处：`_HAS_FLOCK`、`VALID_ID_CHARS`、`_acquire_ro`、`quarantines_cleanup_task`、`quarantines_harvesting_index`）、`_logger.py`（1 处：`_format` 方法从未被调用）、`ccc-board.py`（2 处：`STALE_CHECK_INTERVAL` 常量、`_task_all_phases_terminal` 函数）
   - `_board_store.py` 中的 `quarantines_cleanup_task` 和 `quarantines_harvesting_index` 仅被 `tests/` 引用——产品代码中无调用者
   - `ccc-board.py` 的 `_task_all_phases_terminal` 仅被 `tests/` 引用——产品代码中已由 phase 依赖解析替代
@@ -35,7 +35,7 @@
 
 ---
 
-## Phase 1：移除全部 14 处未使用 import
+## Phase 1：移除全部 16 处未使用 import
 
 ### 做什么
 
@@ -63,11 +63,10 @@
 | `ccc-cockpit.py` | 16 | `import sys` |
 | `ccc-cockpit.py` | 17 | `import time` |
 | `ccc-chat-server.py` | 16 | `import html` |
-| `_logger.py` | 30 | `from typing import Optional`（整行） |
 
 ### 验收清单
 
-- [ ] 8 个文件中总计 15 个未使用 import 被移除
+- [ ] 8 个文件中总计 16 个未使用 import 被移除
 - [ ] 每个文件移除后 `python3 -c "compileall.compile_file(...)"` 零错误
 - [ ] 移除后全局搜索未发现误删（被删除符号在新 import 列表下确实未使用）
 - [ ] 所有测试仍然通过：`uv run pytest tests/scripts/ -q --ignore=tests/e2e`
@@ -96,7 +95,7 @@
 
 2. **第 83 行 `VALID_ID_CHARS = re.compile(...)`**：删除整行。校验已委托 `_utils_sanitize_id()` 实现，该正则常量未被任何代码引用。
 
-3. **第 413-415 行 `_acquire_ro` 方法**：删除整个方法体。读锁占位方法，从未被任何调用方引用。注意删除后 `Optional` 类型引用随之消失——Phase 1 延迟移除的 `_logger.py:30` 的 `Optional` 此时可清理。
+3. **第 413-415 行 `_acquire_ro` 方法**：删除整个方法体。读锁占位方法，从未被任何调用方引用。（`_board_store.py` 自己的 `from typing import Optional` 中 `Optional` 仍被其他方法使用，保留）。
 
 4. **第 847 行 `quarantines_cleanup_task` 函数**：删除整个函数定义（及其调用者在文件内部的引用）。仅被 `tests/` 引用。
 
@@ -139,7 +138,7 @@
 
 | Phase | 改动 | Commit message 草稿 |
 |-------|------|---------------------|
-| 1 | 移除 8 个文件中 14 处未使用的 import | `chore(scripts): 清除未使用的 import (phase 1/2)` |
+| 1 | 移除 8 个文件中 16 处未使用的 import | `chore(scripts): 清除未使用的 import (phase 1/2)` |
 | 2 | 移除 3 个文件中 8 处死定义 | `chore(scripts): 清除 dead code 定义 (phase 2/2)` |
 
 规则：每个 phase 一个独立 commit，message 含 phase 编号。
@@ -154,7 +153,7 @@
 - [ ] ruff F401 无残留（unused import）
 - [ ] 每个 phase 对应一个 commit
 - [ ] 被删除符号的产品代码引用全部清理
-- [ ] Phase 2 删除 `_acquire_ro` 后同步清理 `_logger.py:30` 的 `Optional` import
+- [ ] `_build_prompt.py` 保留 `Final`（已使用），`_board_store.py` 保留 `from typing import Optional`（仍被其他方法使用）
 
 ---
 
