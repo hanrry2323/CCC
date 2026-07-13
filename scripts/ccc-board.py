@@ -3796,7 +3796,7 @@ def _bump_version(ws_path: Path) -> str:
     version_file = ws_path / "VERSION"
     if not version_file.exists():
         new_version = "v0.0.1"
-        version_file.write_text(new_version + "\n")
+        version_file.write_text(new_version)
         return new_version
     current = version_file.read_text().strip()
     m = re.match(r"^(v?)(\d+)\.(\d+)\.(\d+)$", current, re.IGNORECASE)
@@ -3805,7 +3805,7 @@ def _bump_version(ws_path: Path) -> str:
     prefix = m.group(1) or "v"
     major, minor, patch = int(m.group(2)), int(m.group(3)), int(m.group(4))
     new_version = f"{prefix}{major}.{minor}.{patch + 1}"
-    version_file.write_text(new_version + "\n")
+    version_file.write_text(new_version)
     return new_version
 
 
