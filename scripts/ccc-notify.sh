@@ -7,12 +7,25 @@
 #   - L3: 桌面通知（sound=Basso）+ 告警文件 + 飞书置顶（v0.8 未接）
 #
 # 用法：
-#   bash ccc-notify.sh <level> <title> <message>
-#     level: L1 | L2 | L3
+#   bash ccc-notify.sh <level> <title> <message>   # L1|L2|L3 三级告警
+#   bash ccc-notify.sh <title> <message>           # Engine 简版（桌面通知）
 #
 # 退出码：0 = 成功 / 1 = 参数错
 
 set -uo pipefail
+
+# Engine 简版：2 参数 → 直接发桌面通知，不阻塞
+if [[ $# -eq 2 ]]; then
+  TITLE="$1"
+  MESSAGE="$2"
+  osascript \
+    -e 'on run argv' \
+    -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
+    -e 'end run' \
+    -- "$TITLE" "$MESSAGE" \
+    >/dev/null 2>&1 || true
+  exit 0
+fi
 
 LEVEL="${1:-}"
 TITLE="${2:-}"

@@ -72,6 +72,37 @@ def engine_log(msg: str) -> None:
     _log.info("%s", msg)
 
 
+_NOTIFY_SCRIPT = _script_dir / "ccc-notify.sh"
+
+
+def _ccc_notify(title: str, message: str) -> None:
+    """非阻塞 macOS 桌面通知（Engine 主循环不等待）。"""
+    if not _NOTIFY_SCRIPT.is_file():
+        engine_log(f"notify 跳过: {_NOTIFY_SCRIPT} 不存在")
+        return
+    try:
+        subprocess.Popen(
+            ["bash", str(_NOTIFY_SCRIPT), title, message],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        engine_log(f"notify 失败: {exc}")
+
+
+def _quarantine_with_notify(
+    ws: Path, tid: str, reason: str, store: FileBoardStore | None = None
+) -> None:
+    """移入 abnormal 并触发桌面通知。"""
+    _activate_workspace(ws)
+    if store is None:
+        store = _get_store(ws)
+    store.quarantine(tid, reason)
+    _ccc_notify("CCC", f"任务 {tid} 进入异常状态，原因：{reason}")
+    store.update_index()
+
+
 def _discover_workspaces() -> list[Path]:
     """扫描 ~/program/* 及 ~/program/projects/* 下含 .ccc/board/ 的目录。"""
     program_dir = Path.home() / "program"
@@ -233,8 +264,7 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         _ensure_task_in_testing(store, tid)
         if attempt == 1:
             engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
-            store.quarantine(tid, "reviewer 未产出 verdict")
-            store.update_index()
+            _quarantine_with_notify(ws, tid, "reviewer 未产出 verdict", store)
             return False
 
     _ensure_task_in_testing(store, tid)
@@ -254,6 +284,7 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             engine_log(
                 f"[{label}] {tid} pytest 失败 (exit={exit_code})，留在 testing 等待人工确认"
             )
+            _ccc_notify("CCC", f"任务 {tid} pytest 未通过 (exit={exit_code})，已留在 testing")
             store.update_index()
             return False
     else:
@@ -425,9 +456,15 @@ def _process_backlog(ws: Path) -> bool:
 
     if fail_count >= _MAX_PRODUCT_RETRIES:
         engine_log(
-            f"[{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
+            f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
         )
-        store.quarantine(tid, f"product_role 连续失败 {fail_count} 次")
+        _quarantine_with_notify(
+            ws, tid, f"product_role 连续失败 {fail_count} 次", store
+        )
+        _ccc_notify(
+            "CCC",
+            f"product_role 拆分 {tid} 连续失败 {fail_count} 次",
+        )
         return True
 
     engine_log(f"[{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)")
@@ -442,9 +479,15 @@ def _process_backlog(ws: Path) -> bool:
         engine_log(f"[{label}] product_role({tid}) 异常: {exc} (失败 #{fail_count})")
         if fail_count >= _MAX_PRODUCT_RETRIES:
             engine_log(
-                f"[{label}] {tid} 失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
+                f"[product] [{label}] {tid} 失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
             )
-            store.quarantine(tid, f"product_role 连续失败 {fail_count} 次")
+            _quarantine_with_notify(
+                ws, tid, f"product_role 连续失败 {fail_count} 次", store
+            )
+            _ccc_notify(
+                "CCC",
+                f"product_role 拆分 {tid} 连续失败 {fail_count} 次",
+            )
     return True
 
 
@@ -779,12 +822,14 @@ def _check_stale(ws: Path) -> None:
             updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
             hours_stale = (now - updated).total_seconds() / 3600
             if hours_stale > cfg.max_stale_hours:
-                store.quarantine(
-                    task["id"],
-                    f"engine: in_progress 滞留 {hours_stale:.1f}h (阈值 {cfg.max_stale_hours}h)",
+                reason = (
+                    f"engine: in_progress 滞留 {hours_stale:.1f}h "
+                    f"(阈值 {cfg.max_stale_hours}h)"
                 )
+                _quarantine_with_notify(ws, task["id"], reason, store)
                 engine_log(
-                    f"[{label}] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal"
+                    f"[{label}] stale: {task['id']} in_progress 滞留 "
+                    f"{hours_stale:.1f}h → abnormal"
                 )
         except (ValueError, TypeError) as e:
             _log.warning("stale task timestamp parse failed for %s: %s", task.get("id"), e)
