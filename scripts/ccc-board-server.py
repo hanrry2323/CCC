@@ -11,9 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import ssl
 import threading
@@ -27,9 +26,7 @@ from _board_store import COLUMNS, FileBoardStore
 from _utils import sanitize_id as _utils_sanitize_id
 from human_status import (
     enrich_task, enrich_abnormal,
-    human_reason, human_suggestion, stuck_minutes,
     event_action_cn, hhmm, is_today,
-    phase_cn, phase_progress, human_who, human_action, elapsed_cn,
 )
 
 _log = get_logger("board-server")

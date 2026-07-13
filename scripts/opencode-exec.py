@@ -52,7 +52,6 @@ _log = get_logger("opencode-exec")
 
 
 async def _kill_process_group(pgid: int, sig: int) -> None:
-    import signal as _sig
     try:
         os.killpg(pgid, sig)
     except (ProcessLookupError, PermissionError) as e:
@@ -144,7 +143,6 @@ async def run_opencode(
             cmd = [opencode_bin, "run", "--model", model, short_prompt]
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
-    import os as _os
     import signal as _sig
     proc = await asyncio.create_subprocess_exec(
         *cmd,

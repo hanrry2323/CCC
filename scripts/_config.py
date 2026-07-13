@@ -215,7 +215,7 @@ def _env_override_int(cfg: Config, attr: str, env_key: str) -> None:
     if val:
         try:
             setattr(cfg, attr, int(val))
-        except ValueError as e:
+        except ValueError:
             _log.warning("invalid %s=%r, keeping default", env_key, val, exc_info=True)
 
 

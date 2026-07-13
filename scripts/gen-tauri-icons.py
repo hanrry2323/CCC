@@ -4,7 +4,6 @@
 from PIL import Image, ImageDraw, ImageFont
 import os
 import subprocess
-import sys
 
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "..", "src-tauri", "icons")
 ICONS_DIR = os.path.abspath(ICONS_DIR)

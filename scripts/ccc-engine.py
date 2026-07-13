@@ -17,7 +17,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import timezone
 from pathlib import Path
 
 # 确保当前目录在 path 中

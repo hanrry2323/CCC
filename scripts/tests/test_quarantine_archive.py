@@ -1,7 +1,6 @@
 """test_quarantine_archive.py — v0.28.0 quarantine 副本归档测试"""
 
 import json
-import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -64,7 +63,6 @@ class TestQuarantineStoreContent:
             base_tar = quarantine_store_content.base_name
 
             # 创建两个副本（一个 12 小时前，一个 2 小时前）
-            import os
 
             old_copy = quarantine_dir / f"{base_tar}.1.tar.gz"
             old_copy.touch()
