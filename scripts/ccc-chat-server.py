@@ -46,7 +46,10 @@ PROJECTS = {
     "qxo": {"name": "QXO Observer", "path": "/Users/apple/program/qx-observer"},
     "xianyu": {"name": "xianyu", "path": "/Users/apple/program/xianyu"},
     "hp": {"name": "HP KB", "path": "/Users/apple/program/hp"},
-    "ai-loop-router": {"name": "AI Loop Router", "path": "/Users/apple/program/ai-loop-router"},
+    "ai-loop-router": {
+        "name": "AI Loop Router",
+        "path": "/Users/apple/program/ai-loop-router",
+    },
 }
 
 PROJECT_TO_WORKSPACE = {
@@ -62,8 +65,13 @@ DANGEROUS_PATTERNS = re.compile(
 )
 
 BOARD_COLUMNS = [
-    "backlog", "planned", "in_progress", "testing",
-    "verified", "released", "abnormal",
+    "backlog",
+    "planned",
+    "in_progress",
+    "testing",
+    "verified",
+    "released",
+    "abnormal",
 ]
 
 _log = logging.getLogger("ccc-chat")
@@ -120,7 +128,9 @@ def check_dangerous_command(text: str) -> bool:
 def check_auth(request: Request):
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Basic "):
-        raise HTTPException(status_code=401, headers={"WWW-Authenticate": 'Basic realm="CCC Chat"'})
+        raise HTTPException(
+            status_code=401, headers={"WWW-Authenticate": 'Basic realm="CCC Chat"'}
+        )
     try:
         decoded = base64.b64decode(auth[6:]).decode()
         user, passwd = decoded.split(":", 1)
@@ -206,7 +216,12 @@ async def chat(request: Request):
             async with client.stream(
                 "POST",
                 PROXY_URL,
-                json={"model": model, "messages": messages, "stream": True, "max_tokens": 8192},
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                    "max_tokens": 8192,
+                },
                 headers={"Accept": "text/event-stream"},
             ) as resp:
                 full_content = ""
@@ -232,8 +247,12 @@ async def chat(request: Request):
                     chat_messages = [m for m in messages if m.get("role") != "system"]
                     for m in chat_messages:
                         m.setdefault("mode", "chat")
-                    chat_messages.append({"role": "assistant", "content": full_content, "mode": "chat"})
-                    _save_session(session_id, chat_messages, project=project, mode="chat")
+                    chat_messages.append(
+                        {"role": "assistant", "content": full_content, "mode": "chat"}
+                    )
+                    _save_session(
+                        session_id, chat_messages, project=project, mode="chat"
+                    )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -274,9 +293,14 @@ async def execute_mode(request: Request):
             total_tokens = None
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "claude", "-p", prompt, "--print",
-                    "--output-format", "stream-json",
-                    "--model", "flash",
+                    "claude",
+                    "-p",
+                    prompt,
+                    "--print",
+                    "--output-format",
+                    "stream-json",
+                    "--model",
+                    "flash",
                     cwd=project_path,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -286,7 +310,10 @@ async def execute_mode(request: Request):
                 async def _read_stderr():
                     if proc.stderr:
                         async for line in proc.stderr:
-                            _log.warning("claude stderr: %s", line.decode(errors="replace").rstrip())
+                            _log.warning(
+                                "claude stderr: %s",
+                                line.decode(errors="replace").rstrip(),
+                            )
 
                 stderr_task = asyncio.create_task(_read_stderr())
 
@@ -302,7 +329,9 @@ async def execute_mode(request: Request):
                         yield f"data: {json.dumps({'type': 'error', 'content': '执行超时（120s）'})}\n\n"
                         break
                     try:
-                        chunk = await asyncio.wait_for(proc.stdout.read(4096), timeout=min(remaining, 5.0))
+                        chunk = await asyncio.wait_for(
+                            proc.stdout.read(4096), timeout=min(remaining, 5.0)
+                        )
                     except asyncio.TimeoutError:
                         if proc.returncode is not None:
                             break
@@ -332,7 +361,9 @@ async def execute_mode(request: Request):
                                 elif btype == "tool_use":
                                     name = block.get("name", "tool")
                                     inp = block.get("input", {})
-                                    execution_results.append({"tool": name, "input": inp, "result": ""})
+                                    execution_results.append(
+                                        {"tool": name, "input": inp, "result": ""}
+                                    )
                                     yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp})}\n\n"
                         elif evt_type == "user":
                             msg = event.get("message", {})
@@ -345,7 +376,9 @@ async def execute_mode(request: Request):
                         elif evt_type == "result":
                             total_cost_usd = event.get("total_cost_usd")
                             total_tokens = event.get("usage", {}).get("input_tokens", 0)
-                            total_tokens = (total_tokens or 0) + event.get("usage", {}).get("output_tokens", 0)
+                            total_tokens = (total_tokens or 0) + event.get(
+                                "usage", {}
+                            ).get("output_tokens", 0)
                             result_text = event.get("result", "")
                             if result_text and not full_content:
                                 full_content = result_text
@@ -374,9 +407,18 @@ async def execute_mode(request: Request):
                         continue
                     exec_messages.append({**m, "mode": "execute"})
                 if full_content:
-                    exec_messages.append({"role": "assistant", "content": full_content, "mode": "execute"})
+                    exec_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": full_content,
+                            "mode": "execute",
+                        }
+                    )
                 _save_session(
-                    session_id, exec_messages, project=project, mode="execute",
+                    session_id,
+                    exec_messages,
+                    project=project,
+                    mode="execute",
                     execution_results=execution_results,
                     total_cost_usd=total_cost_usd,
                 )
@@ -388,7 +430,9 @@ async def execute_mode(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-async def _board_proxy(method: str, path: str, params: dict | None = None, json_body: dict | None = None):
+async def _board_proxy(
+    method: str, path: str, params: dict | None = None, json_body: dict | None = None
+):
     url = f"{BOARD_URL}{path}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -396,10 +440,16 @@ async def _board_proxy(method: str, path: str, params: dict | None = None, json_
                 resp = await client.get(url, params=params, headers=_board_headers())
             else:
                 resp = await client.post(url, json=json_body, headers=_board_headers())
-            return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
     except (httpx.ConnectError, httpx.TimeoutException):
         return Response(
-            content=json.dumps({"error": "看板服务离线", "detail": "Board Server 不可用"}),
+            content=json.dumps(
+                {"error": "看板服务离线", "detail": "Board Server 不可用"}
+            ),
             status_code=503,
             media_type="application/json",
         )
@@ -448,20 +498,191 @@ async def list_projects(request: Request):
     }
 
 
+EXCLUDE_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    ".ccc",
+    ".idea",
+    ".vscode",
+    "dist",
+    "build",
+}
+EXCLUDE_FILE_SUFFIXES = (".pyc", ".DS_Store", ".egg-info")
+EXCLUDE_FILE_NAMES = {".DS_Store"}
+BINARY_EXTS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".pyc",
+    ".so",
+    ".dylib",
+}
+MAX_FILE_TREE_ENTRIES = 500
+MAX_FILE_TREE_DEPTH = 4
+MAX_FILE_READ_BYTES = 100 * 1024
+
+
+def _walk_project_files(root: str) -> dict:
+    """Walk project directory with depth + exclusion guards."""
+    import threading
+
+    result = {
+        "project_id": "",
+        "root": root,
+        "entries": [],
+        "truncated": False,
+        "timed_out": False,
+    }
+
+    def _walk():
+        root_path = Path(root).resolve()
+        if not root_path.exists():
+            result["error"] = "root not found"
+            return
+        try:
+            for current, dirs, files in os.walk(root_path, followlinks=False):
+                rel = Path(current).relative_to(root_path)
+                depth = 0 if str(rel) == "." else len(rel.parts)
+                dirs[:] = [
+                    d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")
+                ]
+                if depth > MAX_FILE_TREE_DEPTH:
+                    dirs[:] = []
+                    continue
+                if str(rel) != ".":
+                    if len(result["entries"]) >= MAX_FILE_TREE_ENTRIES:
+                        result["truncated"] = True
+                        dirs[:] = []
+                        continue
+                    result["entries"].append(
+                        {
+                            "name": Path(current).name,
+                            "type": "dir",
+                            "path": str(rel).replace(os.sep, "/"),
+                            "depth": depth,
+                        }
+                    )
+                for fname in files:
+                    if len(result["entries"]) >= MAX_FILE_TREE_ENTRIES:
+                        result["truncated"] = True
+                        break
+                    if fname in EXCLUDE_FILE_NAMES:
+                        continue
+                    if any(fname.endswith(s) for s in EXCLUDE_FILE_SUFFIXES):
+                        continue
+                    if fname.endswith(".egg-info") or ".egg-info" in fname:
+                        continue
+                    full = Path(current) / fname
+                    try:
+                        size = full.stat().st_size
+                    except OSError:
+                        size = 0
+                    file_rel = (rel / fname) if str(rel) != "." else Path(fname)
+                    result["entries"].append(
+                        {
+                            "name": fname,
+                            "type": "file",
+                            "path": str(file_rel).replace(os.sep, "/"),
+                            "depth": depth + 1 if str(rel) != "." else 1,
+                            "size": size,
+                        }
+                    )
+        except Exception as e:
+            result["error"] = f"walk failed: {e}"
+
+    worker = threading.Thread(target=_walk, daemon=True)
+    worker.start()
+    worker.join(timeout=5.0)
+    if worker.is_alive():
+        result["timed_out"] = True
+        result["truncated"] = True
+    return result
+
+
+@app.get("/api/projects/{project_id}/files")
+async def list_project_files(request: Request, project_id: str):
+    check_auth(request)
+    proj = PROJECTS.get(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+    root = Path(proj["path"]).resolve()
+    data = _walk_project_files(str(root))
+    data["project_id"] = project_id
+    return data
+
+
+@app.get("/api/projects/{project_id}/file")
+async def read_project_file(request: Request, project_id: str, path: str):
+    check_auth(request)
+    proj = PROJECTS.get(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+    if not path:
+        raise HTTPException(status_code=400, detail="path is required")
+    if ".." in path.split("/"):
+        raise HTTPException(status_code=400, detail="path traversal not allowed")
+    root = Path(proj["path"]).resolve()
+    target = (root / path).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="path traversal not allowed")
+    parts = Path(path).parts
+    if any(p in EXCLUDE_DIRS for p in parts):
+        raise HTTPException(status_code=400, detail=f"access to {path} is denied")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    ext = target.suffix.lower()
+    if ext in BINARY_EXTS:
+        raise HTTPException(status_code=415, detail="binary file not readable")
+    try:
+        size = target.stat().st_size
+    except OSError:
+        raise HTTPException(status_code=500, detail="stat failed")
+    truncated = False
+    if size > MAX_FILE_READ_BYTES:
+        truncated = True
+        content = target.read_text(errors="replace")[:MAX_FILE_READ_BYTES]
+    else:
+        try:
+            content = target.read_text(errors="replace")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=415, detail="binary file not readable")
+    return {
+        "project_id": project_id,
+        "path": path,
+        "size": size,
+        "truncated": truncated,
+        "content": content,
+    }
+
+
 @app.get("/api/history")
 async def list_sessions(request: Request, project: str = "ccc"):
     check_auth(request)
     chat_dir = _project_chat_dir(project)
     sessions = []
-    for f in sorted(chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for f in sorted(
+        chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         try:
             data = json.loads(f.read_text())
-            sessions.append({
-                "session_id": data.get("session_id", f.stem),
-                "title": data.get("title", "Unknown")[:80],
-                "updated_at": data.get("updated_at", ""),
-                "mode": data.get("mode", "chat"),
-            })
+            sessions.append(
+                {
+                    "session_id": data.get("session_id", f.stem),
+                    "title": data.get("title", "Unknown")[:80],
+                    "updated_at": data.get("updated_at", ""),
+                    "mode": data.get("mode", "chat"),
+                }
+            )
         except (json.JSONDecodeError, OSError):
             pass
     return {"sessions": sessions}
@@ -596,6 +817,79 @@ HTML_UI = r"""<!DOCTYPE html>
   .typing .dot:nth-child(2) { animation-delay:0.2s; }
   .typing .dot:nth-child(3) { animation-delay:0.4s; }
   @keyframes typing { 0%,60%,100% { opacity:0.3; } 30% { opacity:1; } }
+  @keyframes msg-fade-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  .msg { animation: msg-fade-in 0.2s ease-out; }
+  .tool-card { transition: border-color 0.2s, box-shadow 0.2s; }
+  .tool-card:hover { border-color:var(--accent); box-shadow:0 1px 6px rgba(0,122,255,0.1); }
+  /* Terminal mode Execute */
+  .terminal-output {
+    background:#1a1b26; color:#a9b1d6;
+    font-family:'SF Mono','Menlo','Consolas',monospace;
+    font-size:13px; line-height:1.7;
+    padding:14px; overflow-y:auto; flex:1;
+    -webkit-overflow-scrolling:touch;
+  }
+  .terminal-line { padding:1px 0; white-space:pre-wrap; word-break:break-word; }
+  .terminal-prompt { color:#73daca; font-weight:600; }
+  .terminal-command { color:#c0caf5; font-weight:500; }
+  .terminal-output-text { color:#c0caf5; }
+  .terminal-timestamp { color:#565f89; font-size:11px; margin-right:8px; }
+  .terminal-cursor { display:inline-block; }
+  .terminal-cursor::after { content:'▊'; animation:term-blink 1s step-end infinite; color:#73daca; }
+  @keyframes term-blink { 50% { opacity:0; } }
+  .terminal-tool-header {
+    color:#7aa2f7; font-weight:600; margin:8px 0 4px;
+    display:flex; align-items:center; gap:6px; font-size:12px;
+  }
+  .terminal-tool-header .tool-icon { font-size:14px; }
+  .terminal-tool-header .tool-status { font-size:11px; color:#9ece6a; }
+  .terminal-tool-header .tool-status.running { color:#e0af68; animation:term-blink 1s step-end infinite; }
+  .terminal-tool-body {
+    background:#1f2233; border-left:3px solid #7aa2f7; border-radius:4px;
+    padding:8px 12px; margin:4px 0 10px; font-size:12px; overflow-x:auto;
+  }
+  .terminal-tool-body pre { margin:0; font-size:12px; color:#9aa5ce; white-space:pre-wrap; word-break:break-word; }
+  .terminal-separator { border:none; border-top:1px solid #2f3346; margin:6px 0; }
+  .terminal-info { color:#565f89; font-size:11px; padding:4px 0; }
+  /* Diff visualization */
+  .diff-file { margin:12px 0; background:#1f2233; border-radius:6px; overflow:hidden; border:1px solid #2f3346; }
+  .diff-file-header {
+    padding:6px 12px; font-size:12px; color:#7dcfff;
+    background:#292e42; font-weight:500;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .diff-summary { color:#9ece6a; font-size:11px; }
+  .diff-hunk-header {
+    padding:4px 12px; font-size:11px; color:#565f89;
+    background:#24283b; font-family:monospace; border-bottom:1px solid #2f3346;
+  }
+  .diff-line {
+    padding:1px 12px; font-size:12px; line-height:1.6;
+    font-family:'SF Mono','Menlo',monospace; white-space:pre-wrap;
+    display:flex; word-break:break-word;
+  }
+  .diff-prefix { width:14px; flex-shrink:0; text-align:center; user-select:none; }
+  .diff-add { background:rgba(65,179,100,0.12); color:#9ece6a; }
+  .diff-del { background:rgba(245,85,85,0.12); color:#f7768e; }
+  .diff-ctx { color:#a9b1d6; }
+  .diff-global-summary {
+    padding:6px 12px; font-size:12px; color:#c0caf5;
+    background:#292e42; border-radius:6px; margin-bottom:8px; text-align:center;
+    border:1px solid #2f3346;
+  }
+  /* Exec layout (compat with v0.30.2 file tree) */
+  .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
+  .file-tree-panel {
+    width:240px; flex-shrink:0; background:var(--surface);
+    border-right:1px solid var(--border); overflow-y:auto;
+    padding:12px; font-size:13px;
+  }
+  .exec-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+  .exec-meta-bar {
+    padding:4px 12px; background:#1f2233; color:#565f89;
+    font-size:11px; border-bottom:1px solid #2f3346;
+    text-align:right; font-family:'SF Mono','Menlo',monospace;
+  }
   #input-area {
     padding:12px 16px;
     background:var(--surface); border-top:0.5px solid var(--border);
