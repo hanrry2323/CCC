@@ -777,7 +777,7 @@ HTML_UI = r"""<!DOCTYPE html>
     flex:1; overflow-y:auto; padding:16px; padding-bottom:8px;
     -webkit-overflow-scrolling:touch;
   }
-  .msg { margin-bottom:16px; display:flex; flex-direction:column; }
+  .msg { margin-bottom:8px; display:flex; flex-direction:column; }
   .msg.user { align-items:flex-end; }
   .msg.assistant { align-items:flex-start; }
   .msg.execute .bubble-wrap { display:flex; align-items:flex-start; gap:6px; max-width:90%; }
@@ -796,7 +796,7 @@ HTML_UI = r"""<!DOCTYPE html>
     background:var(--assistant-bg); border:1px solid var(--border);
     border-bottom-left-radius:4px; color:var(--text);
   }
-  .msg.user + .msg.user, .msg.assistant + .msg.assistant { margin-top:-12px; }
+  .msg.user + .msg.user, .msg.assistant + .msg.assistant { margin-top:-8px; }
   .msg .ts { font-size:11px; color:var(--text-secondary); margin-top:4px; padding-left:4px; }
   .msg.user .ts { padding-right:4px; text-align:right; }
   .code-block-wrap { position:relative; margin:8px 0; }
@@ -917,7 +917,7 @@ HTML_UI = r"""<!DOCTYPE html>
     background:var(--surface); border-radius:20px; padding:2px 4px 2px 12px;
     border:1px solid var(--border);
   }
-  #input-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,122,255,0.15); }
+  #input-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,122,255,0.15), 0 2px 8px rgba(0,0,0,0.08); }
   #mode-switch {
     width:44px; height:44px; border-radius:50%; border:none; background:transparent;
     color:var(--text); font-size:16px; cursor:pointer; flex-shrink:0; padding:0;
@@ -971,7 +971,7 @@ HTML_UI = r"""<!DOCTYPE html>
     flex:1; display:flex; flex-direction:column; align-items:center;
     padding:8px 0 6px; border:none; background:none; cursor:pointer;
     color:var(--text-secondary); font-size:10px; gap:2px;
-    position:relative; min-height:48px;
+    position:relative; min-height:48px; transition:color 0.2s;
   }
   .tab-btn.active { color:var(--accent); }
   .tab-btn.active::after {
