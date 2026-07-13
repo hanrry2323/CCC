@@ -1,0 +1,15 @@
+{
+  "name": "ccc-cockpit-desktop",
+  "version": "0.29.0",
+  "private": true,
+  "description": "CCC Cockpit — Tauri 桌面端根包",
+  "scripts": {
+    "tauri": "npx @tauri-apps/cli@^1.6.0",
+    "dev": "npx @tauri-apps/cli@^1.6.0 dev",
+    "build": "npx @tauri-apps/cli@^1.6.0 build",
+    "build:debug": "npx @tauri-apps/cli@^1.6.0 build --debug"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.6.0"
+  }
+}

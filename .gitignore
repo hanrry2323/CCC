@@ -42,3 +42,6 @@ scripts/test-task-001.*.tar.gz
 # v0.28.0: 用户/其他 session 创建的临时测试脚本
 scripts/tests/create_test_phase_lint.py
 scripts/tests/regression_v028.py
+# v0.31.0: Tauri 桌面端构建产物
+src-tauri/target/
+src-tauri/gen/
