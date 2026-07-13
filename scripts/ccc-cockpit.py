@@ -16,6 +16,7 @@ import socket
 import sys
 import time
 import urllib.request
+import urllib.parse
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -75,7 +76,11 @@ def parse_infra() -> dict:
 
         # Port table (| 4000 | 中转站 Anthropic | ...)
         m = re.match(r"^\| (\d+)\s+\| ([^|]+)\s+\|", line)
-        if m and current_section and any(x in current_section for x in ["端口", "生产机", "编译站"]):
+        if (
+            m
+            and current_section
+            and any(x in current_section for x in ["端口", "生产机", "编译站"])
+        ):
             port = int(m.group(1))
             name = m.group(2).strip()
             result["ports"][port] = {
@@ -107,11 +112,13 @@ def parse_infra() -> dict:
                     break
                 parts = [p.strip() for p in lines[j].split("|") if p.strip()]
                 if len(parts) >= 3:
-                    result["projects"].append({
-                        "name": parts[0],
-                        "version": parts[1],
-                        "status": parts[2],
-                    })
+                    result["projects"].append(
+                        {
+                            "name": parts[0],
+                            "version": parts[1],
+                            "status": parts[2],
+                        }
+                    )
 
     return result
 
@@ -169,6 +176,7 @@ def build_cockpit_data() -> dict:
 
     # Parallel probe all ports using threads
     results = {}
+
     def _probe_one(port: int, info: dict):
         host = info.get("host", "127.0.0.1")
         alive = probe_port(host, port)
@@ -209,9 +217,9 @@ def render_html(data: dict) -> str:
         badge_color = THEME["green"] if m["name"] == "M1" else THEME["accent"]
         machines_html += f"""
         <div class="machine-chip" style="border-left:3px solid {badge_color}">
-            <strong>{m['name']}</strong>
-            <span class="ip">{m['ip']}</span>
-            <span class="role">{m['role']}</span>
+            <strong>{m["name"]}</strong>
+            <span class="ip">{m["ip"]}</span>
+            <span class="role">{m["role"]}</span>
         </div>"""
 
     # Group ports by machine
@@ -243,7 +251,7 @@ def render_html(data: dict) -> str:
             rows += f"""
             <tr>
                 <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
-                <td>{info['name']}</td>
+                <td>{info["name"]}</td>
                 <td class="host">{host}</td>
                 <td>{dot} {status_text}</td>
             </tr>"""
@@ -274,8 +282,8 @@ def render_html(data: dict) -> str:
             badge = f'<span class="badge">{status}</span>'
         projects_html += f"""
         <tr>
-            <td><strong>{p['name']}</strong></td>
-            <td class="num">{p['version']}</td>
+            <td><strong>{p["name"]}</strong></td>
+            <td class="num">{p["version"]}</td>
             <td>{badge}</td>
         </tr>"""
 
@@ -287,37 +295,37 @@ def render_html(data: dict) -> str:
 <title>CCC Cockpit — 总控台</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:{THEME['bg']};color:{THEME['text']};font-size:14px;line-height:1.5}}
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:{THEME["bg"]};color:{THEME["text"]};font-size:14px;line-height:1.5}}
 .wrap{{max-width:1100px;margin:0 auto;padding:20px}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:2px solid {THEME['border']};margin-bottom:20px}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:2px solid {THEME["border"]};margin-bottom:20px}}
 .hdr h1{{font-size:22px;font-weight:600}}
-.hdr .ts{{color:{THEME['muted']};font-size:12px}}
-.sec-title{{font-size:13px;font-weight:600;color:{THEME['muted']};text-transform:uppercase;letter-spacing:.04em;margin:24px 0 10px}}
+.hdr .ts{{color:{THEME["muted"]};font-size:12px}}
+.sec-title{{font-size:13px;font-weight:600;color:{THEME["muted"]};text-transform:uppercase;letter-spacing:.04em;margin:24px 0 10px}}
 .machines{{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}}
-.machine-chip{{background:{THEME['surface']};border:1px solid {THEME['border']};border-radius:10px;padding:10px 14px;display:flex;gap:12px;align-items:center;font-size:13px}}
-.machine-chip .ip{{color:{THEME['accent']};font-family:ui-monospace,monospace}}
-.machine-chip .role{{color:{THEME['muted']};font-size:12px}}
-.tbl-wrap{{overflow-x:auto;border:1px solid {THEME['border']};border-radius:8px;background:{THEME['surface']}}}
+.machine-chip{{background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:10px;padding:10px 14px;display:flex;gap:12px;align-items:center;font-size:13px}}
+.machine-chip .ip{{color:{THEME["accent"]};font-family:ui-monospace,monospace}}
+.machine-chip .role{{color:{THEME["muted"]};font-size:12px}}
+.tbl-wrap{{overflow-x:auto;border:1px solid {THEME["border"]};border-radius:8px;background:{THEME["surface"]}}}
 table{{width:100%;border-collapse:collapse;min-width:500px}}
 th,td{{padding:8px 14px;text-align:left;border-bottom:1px solid #f0f0f2;vertical-align:middle}}
-th{{font-size:11px;font-weight:600;color:{THEME['muted']};background:#fafafa;white-space:nowrap}}
+th{{font-size:11px;font-weight:600;color:{THEME["muted"]};background:#fafafa;white-space:nowrap}}
 tr:last-child td{{border-bottom:none}}
 .num{{font-family:ui-monospace,monospace;white-space:nowrap}}
-.host{{font-family:ui-monospace,monospace;font-size:12px;color:{THEME['muted']}}}
+.host{{font-family:ui-monospace,monospace;font-size:12px;color:{THEME["muted"]}}}
 .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px}}
-.dot-green{{background:{THEME['green']}}}
-.dot-red{{background:{THEME['red']}}}
-.dot-gray{{background:{THEME['border']}}}
+.dot-green{{background:{THEME["green"]}}}
+.dot-red{{background:{THEME["red"]}}}
+.dot-gray{{background:{THEME["border"]}}}
 .badge{{font-size:11px;padding:2px 8px;border-radius:10px;background:#f0f0f2}}
-.badge-green{{background:#e8f5e9;color:{THEME['green']}}}
-.badge-yellow{{background:#fff3e0;color:{THEME['yellow']}}}
-.badge-gray{{background:#f0f0f2;color:{THEME['muted']}}}
-.port-link{{color:{THEME['accent']};text-decoration:none}}
+.badge-green{{background:#e8f5e9;color:{THEME["green"]}}}
+.badge-yellow{{background:#fff3e0;color:{THEME["yellow"]}}}
+.badge-gray{{background:#f0f0f2;color:{THEME["muted"]}}}
+.port-link{{color:{THEME["accent"]};text-decoration:none}}
 .port-link:hover{{text-decoration:underline}}
 .quick-links{{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 8px}}
-.quick-links a{{background:{THEME['surface']};border:1px solid {THEME['border']};border-radius:8px;padding:8px 16px;text-decoration:none;color:{THEME['text']};font-size:13px}}
-.quick-links a:hover{{background:#f0f4ff;border-color:{THEME['accent']}}}
-.foot{{margin-top:20px;font-size:11px;color:{THEME['muted']};text-align:center}}
+.quick-links a{{background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;padding:8px 16px;text-decoration:none;color:{THEME["text"]};font-size:13px}}
+.quick-links a:hover{{background:#f0f4ff;border-color:{THEME["accent"]}}}
+.foot{{margin-top:20px;font-size:11px;color:{THEME["muted"]};text-align:center}}
 @media(max-width:640px){{.wrap{{padding:12px}}.machine-chip{{width:100%}}}}
 </style>
 </head>
@@ -325,7 +333,7 @@ tr:last-child td{{border-bottom:none}}
 <div class="wrap">
   <div class="hdr">
     <h1>  CCC Cockpit</h1>
-    <span class="ts">{datetime.now().strftime('%H:%M')}</span>
+    <span class="ts">{datetime.now().strftime("%H:%M")}</span>
   </div>
 
   <div class="sec-title">机器</div>
@@ -334,7 +342,7 @@ tr:last-child td{{border-bottom:none}}
   <div class="sec-title" style="margin-top:16px">快速跳转</div>
   <div class="quick-links">
     <a href="http://192.168.3.140:7777/" target="_blank">CCC 看板</a>
-    <a href="http://192.168.3.140:8082" target="_blank">CCC Chat</a>
+    <a href="http://192.168.3.140:8084" target="_blank">CCC Chat</a>
     <a href="http://192.168.3.140:8096" target="_blank">qb Dashboard</a>
     <a href="http://192.168.3.140:4000/dashboard" target="_blank">中转站</a>
     <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>
@@ -354,7 +362,7 @@ tr:last-child td{{border-bottom:none}}
   </div>
 
   <div class="foot" id="foot">
-    数据来源: .ccc/infrastructure.md · 端口探测 · 最后刷新 <span id="ts">{data.get('updated', '')}</span>
+    数据来源: .ccc/infrastructure.md · 端口探测 · 最后刷新 <span id="ts">{data.get("updated", "")}</span>
   </div>
 </div>
 </body>
@@ -379,7 +387,11 @@ class CockpitHandler(BaseHTTPRequestHandler):
             # Strip HTML-only fields
             result = {
                 "ports": {
-                    str(k): {"alive": v["alive"], "name": v["name"], "host": v.get("host", "127.0.0.1")}
+                    str(k): {
+                        "alive": v["alive"],
+                        "name": v["name"],
+                        "host": v.get("host", "127.0.0.1"),
+                    }
                     for k, v in data["ports"].items()
                 },
                 "projects": data["projects"],
@@ -391,6 +403,46 @@ class CockpitHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
+        elif self.path == "/api/kb/search":
+            # KB search proxy endpoint
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            query = params.get("q", [""])[0] if params.get("q") else ""
+            kb_url = (
+                f"http://127.0.0.1:8082/memories?query={urllib.parse.quote_plus(query)}"
+            )
+            try:
+                request = urllib.request.Request(kb_url, method="GET")
+                request.timeout = 3
+                with urllib.request.urlopen(request) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"results": result}).encode("utf-8"))
+            except urllib.error.URLError as e:
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": "KB search failed", "detail": str(e)}).encode(
+                        "utf-8"
+                    )
+                )
+            except Exception:
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "error": "KB search failed",
+                            "detail": "Timeout or network error",
+                        }
+                    ).encode("utf-8")
+                )
         else:
             self.send_response(404)
             self.end_headers()
