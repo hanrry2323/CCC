@@ -1,0 +1,1 @@
+{"id":"cockpit-v031-desktop","title":"Cockpit v0.31.0 — Tauri 桌面端","description":"参考 cdesktop，用 Tauri 将 Chat Server 包装为 Mac 桌面应用，支持原生菜单和通知。","status":"backlog","created_at":"2026-07-13T23:30:00+08:00","updated_at":"2026-07-13T23:30:00+08:00","assignee":null,"tags":["cockpit","desktop","tauri"],"schema_version":"1.2","complexity":"large"}

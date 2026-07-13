@@ -1,0 +1,1 @@
+{"id":"cockpit-v0302-files","title":"Cockpit v0.30.2 — 文件浏览器 + 看板集成","description":"参考 claudecodeui，在 Cockpit 执行模式中嵌入项目文件树，集成 CCC 看板数据展示。","status":"backlog","created_at":"2026-07-13T23:30:00+08:00","updated_at":"2026-07-13T23:30:00+08:00","assignee":null,"tags":["cockpit","file-browser","board"],"schema_version":"1.2","complexity":"medium"}
