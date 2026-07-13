@@ -37,7 +37,6 @@ _load_phases = ccc_board._load_phases
 _mark_phase_failed = ccc_board._mark_phase_failed
 _current_running_phase = ccc_board._current_running_phase
 _check_phase_failures = ccc_board._check_phase_failures
-_task_all_phases_terminal = ccc_board._task_all_phases_terminal
 PHASE_TERMINAL_OK = ccc_board.PHASE_TERMINAL_OK
 PHASE_TERMINAL_FAIL = ccc_board.PHASE_TERMINAL_FAIL
 
@@ -287,32 +286,6 @@ class TestCurrentRunningPhase:
     def test_default_to_1(self, fake_workspace):
         """无 phases 文件或全终态 → 默认返回 1。"""
         assert _current_running_phase("nonexistent") == 1
-
-
-# ─────────────── _task_all_phases_terminal ───────────────
-
-
-class TestTaskAllPhasesTerminal:
-    def test_all_terminal_true(self, fake_workspace):
-        """所有 phase 都达终态 → True。"""
-        _write_phases(fake_workspace, "term1", [
-            {"phase": 1, "status": "done", "depends_on": []},
-            {"phase": 2, "status": "verified", "depends_on": [1]},
-            {"phase": 3, "status": "skipped", "depends_on": [2]},
-        ])
-        assert _task_all_phases_terminal("term1") is True
-
-    def test_pending_in_progress_blocks(self, fake_workspace):
-        """pending/in_progress 任一未完成 → False。"""
-        _write_phases(fake_workspace, "term2", [
-            {"phase": 1, "status": "done", "depends_on": []},
-            {"phase": 2, "status": "in_progress", "depends_on": [1]},
-        ])
-        assert _task_all_phases_terminal("term2") is False
-
-    def test_no_phases_file_returns_false(self, fake_workspace):
-        """无 phases 文件 → False（旧格式任务不算 v0.24 phase 流程）。"""
-        assert _task_all_phases_terminal("missing") is False
 
 
 # ─────────────── 集成：Engine 视角 ───────────────

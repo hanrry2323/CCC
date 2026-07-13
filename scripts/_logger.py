@@ -85,12 +85,6 @@ class _CCCLogger:
         self._name = name
         self._prefix_enabled = prefix_enabled
 
-    def _format(self, msg: str) -> str:
-        # 在 logging.Formatter 之外额外加 role= 前缀（细粒度定位）
-        if self._prefix_enabled:
-            return f"role={self._name}] {msg}"
-        return msg
-
     # 注：handler 的 Formatter 已是 "[%(name)s] %(message)s"，name 包含 ccc. 前缀
     # 这里改走传 args 路径，避免双重格式化。重新设计：直接用 logging 的 extra
     # 但为兼容既有调用 log.info("task %s", t)，保持*args。

@@ -88,8 +88,6 @@ EVENTS_DIR = BOARD / "events"
 # 容错参数（从 Config 读取）
 MAX_RETRY = cfg.max_retry
 MAX_STALE_HOURS = cfg.max_stale_hours
-STALE_CHECK_INTERVAL = 6  # ops_role 每次扫描间隔（判断是否该扫描）
-
 # ═══════════════════════════════════════════
 # 安全辅助函数
 # ═══════════════════════════════════════════
@@ -487,22 +485,6 @@ def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[in
             _store_atomic_write(phases_file, payload)
         except OSError as e:
             _log.warning("atomic write phases status failed %s: %s", task_id, e)
-
-
-def _task_all_phases_terminal(task_id: str) -> bool:
-    """v0.24: 检查 task 的所有 phase 是否都达终态（done/verified/skipped/failed）。
-
-    Engine 用：task 进入 verified/released 前确认 phase 都结束；如果有 phase
-    因依赖失败被 skipped，整体 task 也算结束。
-    """
-    phases = _load_phases(task_id)
-    if not phases:
-        return False  # 无 phases 文件 = 旧格式任务，不算 v0.24 phase 流程
-    for p in phases:
-        st = p.get("status", "pending")
-        if st not in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL | {"blocked"}):
-            return False
-    return True
 
 
 def _current_running_phase(task_id: str) -> int:

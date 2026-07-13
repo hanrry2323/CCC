@@ -24,10 +24,6 @@ _log = get_logger("board")
 
 # fcntl 在 macOS 行为不稳定（open("w") 截断 + 杀进程锁不释放 → 死锁）。
 # 强制使用 atomic rename 锁（O_CREAT|O_EXCL）作为唯一锁机制。
-# v0.28.0 (M-007): flock 分支硬编码关闭，删除死代码 → 保留 _HAS_FLOCK 仅作历史索引
-_HAS_FLOCK = False
-
-
 COLUMNS = [
     "backlog",
     "planned",
@@ -77,8 +73,6 @@ def now_iso() -> str:
     return _utils_now_iso()
 
 
-# v0.26 Protocol v1: 11 条校验规则常量
-VALID_ID_CHARS = re.compile(r"^[a-zA-Z0-9_-]+$")
 TITLE_MAX = 500
 DESCRIPTION_MAX = 10000
 
@@ -407,10 +401,6 @@ class FileBoardStore:
     def _lock(self) -> object:
         """写锁（5s 超时，强清残留）"""
         return _acquire_lock(self.lockfile, timeout_s=5.0)
-
-    def _acquire_ro(self, timeout_s: float = 0.5) -> Optional[object]:
-        """读锁占位（atomic O_EXCL 永远独占，只能互斥；读时退化到 0.5s 短锁）"""
-        return _acquire_lock(self.lockfile, timeout_s=timeout_s)
 
     def _unlock(self, lock_obj) -> None:
         _release_lock(lock_obj)
@@ -842,55 +832,6 @@ def quarantine_store_content(task_id: str, content_path: Optional[Path] = None) 
         return False
 
 
-def quarantines_cleanup_task(hours_threshold: float = 5.0) -> int:
-    """v0.28.0 P2: 清理超龄副本（hoarding 检测）
-
-    双策略：
-    1. mtime > hours_threshold 的副本直接删除
-    2. 同 base_name 下保留 idx 最高的（最新），其余删除（harvesting 启发式）
-    返回被删除的文件数。
-
-    v0.28.0 (H-004): quarantine_store_content 改为直接 copy 目录（无 .tar.gz），
-    glob 模式同步改：扫所有条目（文件 / 目录），排除 index.json / 隐藏文件。
-    """
-    quarantine_dir = _get_quarantine_dir()
-    if not quarantine_dir.exists():
-        return 0
-
-    removed = 0
-    now_ts = time.time()
-    threshold_s = hours_threshold * 3600
-
-    by_base: dict[str, list[Path]] = {}
-    for entry in _iter_quarantine_entries(quarantine_dir):
-        # 副本名 = 目录名 / 文件 stem（与 store_content 的 out_file 命名一致）
-        name = entry.name if entry.is_dir() else entry.stem
-        by_base.setdefault(name, []).append(entry)
-
-    for base, files in by_base.items():
-        files.sort(key=lambda p: p.stat().st_mtime)
-        if len(files) <= 1:
-            if now_ts - files[0].stat().st_mtime > threshold_s:
-                try:
-                    _remove_quarantine_entry(files[0])
-                    removed += 1
-                except OSError as exc:
-                    _log.debug("cleanup unlink failed for %s: %s", files[0], exc)
-            continue
-
-        # 多副本：保留 mtime 最大的（最新），删除其余（harvesting）
-        for f in files[:-1]:
-            try:
-                _remove_quarantine_entry(f)
-                removed += 1
-            except OSError as exc:
-                _log.debug("harvest unlink failed for %s: %s", f, exc)
-
-    if removed:
-        _log.info("quarantines_cleanup_task: removed %d entries", removed)
-    return removed
-
-
 def _iter_quarantine_entries(quarantine_dir: Path):
     """v0.28.0 (H-004): 迭代所有非 index.json 的 quarantine 副本（文件或目录）。"""
     if not quarantine_dir.exists():
@@ -961,57 +902,6 @@ def quarantines_index_task() -> None:
     index_file.write_text(
         json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-
-
-def quarantines_harvesting_index() -> dict:
-    """v0.28.0 P2: harvesting — 清零后保留单个最近副本
-
-    对每个 task_id：
-    - 保留 mtime 最大的（最近）副本
-    - 删除其他副本
-
-    扫描 _get_quarantine_dir() + cwd（兼容旧 test 用法）。生产环境如果 cwd 有同名
-    quarantine 文件会被一并清理——这是合理行为（cwd 不应该有 quarantine 文件）。
-
-    v0.28.0 (H-004): glob 模式改用 _iter_quarantine_entries（支持目录 / 文件）。
-
-    Returns:
-        {"total": int, "completed": int, "remaining": int}
-    """
-    candidates = [_get_quarantine_dir(), Path.cwd()]
-    seen: set[Path] = set()
-
-    by_base: dict[str, list[Path]] = {}
-    total = 0
-    for d in candidates:
-        if d in seen or not d.exists():
-            continue
-        seen.add(d)
-        for entry in _iter_quarantine_entries(d):
-            name = entry.name if entry.is_dir() else entry.stem
-            by_base.setdefault(name, []).append(entry)
-            total += 1
-
-    completed = 0
-    remaining = 0
-
-    for base, files in by_base.items():
-        if len(files) <= 1:
-            completed += 1
-            continue
-        files.sort(key=lambda p: p.stat().st_mtime)
-        keep = files[-1]
-        for f in files[:-1]:
-            try:
-                _remove_quarantine_entry(f)
-                remaining += 1
-            except OSError as exc:
-                _log.debug("harvest unlink failed for %s: %s", f, exc)
-        completed += 1
-
-    quarantines_index_task()
-
-    return {"total": total, "completed": completed, "remaining": remaining}
 
 
 # 默认 base_name（首次调用前）

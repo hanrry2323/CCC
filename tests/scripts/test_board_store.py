@@ -142,7 +142,8 @@ class TestFileBoardStoreCRUD:
 
 class TestHelpers:
     def test_sanitize_id_rejects_traversal(self):
-        assert sanitize_id("../../etc") == "etc"
+        # v0.29.4: '.' 已加入允许字符集，../../etc → ....etc（斜杠被剥，点保留）
+        assert sanitize_id("../../etc") == "....etc"
         assert sanitize_id("!!!") == "invalid"
 
     def test_fill_task_defaults(self):
@@ -208,20 +209,6 @@ class TestQuarantineArchive:
         assert bs.quarantine_store_content("task-q", src) is True
         assert (qdir / "task-q").exists()
 
-    def test_quarantines_index_and_cleanup(self, tmp_path, monkeypatch):
-        qdir = tmp_path / "q"
-        qdir.mkdir()
-        monkeypatch.setenv("CCC_QUARANTINES_DIR", str(qdir))
-        old = qdir / "stale-task"
-        old.mkdir()
-        old_time = time.time() - 10 * 3600
-        os.utime(old, (old_time, old_time))
-        removed = bs.quarantines_cleanup_task(hours_threshold=5.0)
-        assert removed >= 1
-        bs.quarantine_store_content.base_name = "idx-task"
-        bs.quarantines_index_task()
-        assert (qdir / "index.json").exists()
-
 
 class TestEdgeCases:
     def test_create_duplicate_id_rejected(self, store: FileBoardStore):
@@ -270,16 +257,6 @@ class TestEdgeCases:
         monkeypatch.delenv("CCC_QUARANTINES_DIR", raising=False)
         got = bs._get_quarantine_dir()
         assert got == ws / ".ccc" / "quarantines"
-
-    def test_quarantines_harvesting_index(self, tmp_path, monkeypatch):
-        qdir = tmp_path / "q"
-        qdir.mkdir()
-        monkeypatch.setenv("CCC_QUARANTINES_DIR", str(qdir))
-        (qdir / "harv1").write_text("v1")
-        time.sleep(0.01)
-        (qdir / "harv1-old").write_text("v0")
-        result = bs.quarantines_harvesting_index()
-        assert result["total"] >= 1
 
     def test_validate_field_type_errors(self):
         base = _valid_task()
