@@ -122,7 +122,11 @@ def _ccc_notify(title: str, message: str) -> None:
 
 
 def _quarantine_with_notify(
-    ws: Path, tid: str, reason: str, store: FileBoardStore | None = None
+    ws: Path,
+    tid: str,
+    reason: str,
+    store: FileBoardStore | None = None,
+    phase: int = 1,
 ) -> None:
     """移入 abnormal 并触发桌面通知。"""
     _activate_workspace(ws)
@@ -136,7 +140,7 @@ def _quarantine_with_notify(
     try:
         from _lessons import record_failure
 
-        record_failure(ws, tid, 1, reason or "unknown", "")
+        record_failure(ws, tid, phase, reason or "unknown", "")
     except Exception:
         pass
 
@@ -302,7 +306,10 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         _ensure_task_in_testing(store, tid)
         if attempt == 1:
             engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
-            _quarantine_with_notify(ws, tid, "reviewer 未产出 verdict", store)
+            cur_phase = _current_running_phase(tid)
+            _quarantine_with_notify(
+                ws, tid, "reviewer 未产出 verdict", store, phase=cur_phase
+            )
             return False
 
     _ensure_task_in_testing(store, tid)
@@ -323,7 +330,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             engine_log(
                 f"[{label}] {tid} pytest 失败 (exit={exit_code})，留在 testing 等待人工确认"
             )
-            _ccc_notify("CCC", f"任务 {tid} pytest 未通过 (exit={exit_code})，已留在 testing")
+            _ccc_notify(
+                "CCC", f"任务 {tid} pytest 未通过 (exit={exit_code})，已留在 testing"
+            )
             store.update_index()
             return False
     else:
@@ -364,7 +373,9 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
 
     if status == "success":
         if complexity == "small":
-            engine_log(f"[{label}] {tid} complexity=small, 跳过 reviewer+tester → 直通 kb")
+            engine_log(
+                f"[{label}] {tid} complexity=small, 跳过 reviewer+tester → 直通 kb"
+            )
             store.move_task(tid, "in_progress", "testing")
             _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
             store.move_task(tid, "testing", "verified")
@@ -511,7 +522,7 @@ def _process_backlog(ws: Path) -> bool:
             f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
         )
         _quarantine_with_notify(
-            ws, tid, f"product_role 连续失败 {fail_count} 次", store
+            ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
         )
         _ccc_notify(
             "CCC",
@@ -519,7 +530,9 @@ def _process_backlog(ws: Path) -> bool:
         )
         return True
 
-    engine_log(f"[product] [{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)")
+    engine_log(
+        f"[product] [{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)"
+    )
     try:
         _log_stats(ws, "product_start", tid, fail_count=fail_count)
         ccc_board.product_role(task_id=tid)
@@ -539,7 +552,7 @@ def _process_backlog(ws: Path) -> bool:
                 f"[product] [{label}] {tid} 失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
             )
             _quarantine_with_notify(
-                ws, tid, f"product_role 连续失败 {fail_count} 次", store
+                ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
             )
             _ccc_notify(
                 "CCC",
@@ -577,7 +590,9 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 p.get("status") in ("skipped", "failed") or (p.get("phase") in skipped)
                 for p in phases
             ):
-                engine_log(f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动")
+                engine_log(
+                    f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动"
+                )
                 continue
 
         complexity = task.get("complexity", "medium")
@@ -606,7 +621,9 @@ def engine_loop(workspaces: list[Path]) -> None:
     labels = [_ws_label(w, program_dir) for w in workspaces]
     engine_log(f"CCC Engine 启动 ({len(workspaces)} workspace)")
     engine_log(f"  workspaces={labels}")
-    engine_log(f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s")
+    engine_log(
+        f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s"
+    )
     engine_log(f"  max_retry={MAX_RETRY}, max_concurrent={MAX_CONCURRENT}")
 
     active_tasks: dict[str, dict] = {}
@@ -643,7 +660,6 @@ def engine_loop(workspaces: list[Path]) -> None:
 
                 for key in completed_tasks:
                     active_tasks.pop(key, None)
-
 
             # 每 6 轮（~60s）跑一次 stale check + testing 流转 + 统计聚合
             if iteration % 6 == 0:
@@ -686,7 +702,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                         except Exception as exc:
                             engine_log(f"[auto-tune] error: {exc}")
                     except Exception as exc:
-                        engine_log(f"[stats] periodic aggregate error for {ws.name}: {exc}")
+                        engine_log(
+                            f"[stats] periodic aggregate error for {ws.name}: {exc}"
+                        )
             ws_first_running: dict[str, str | None] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
@@ -778,6 +796,7 @@ def engine_loop(workspaces: list[Path]) -> None:
             break
         except Exception as e:
             import traceback as _tb
+
             engine_log(f"异常: {e}")
             engine_log(f"  {_tb.format_exc().splitlines()[-2]}")
             time.sleep(cfg.engine_idle_sleep)
@@ -874,10 +893,14 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
             continue  # 超过最大自动重试次数
         # 移回 planned
         try:
-            task_json = _json.loads((ws / ".ccc/board/abnormal" / f"{tid}.jsonl").read_text())
+            task_json = _json.loads(
+                (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").read_text()
+            )
             task_json["status"] = "planned"
             task_json["updated_at"] = now_iso()
-            task_json["note"] = f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
+            task_json["note"] = (
+                f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
+            )
             planned_dir = ws / ".ccc/board/planned"
             planned_dir.mkdir(parents=True, exist_ok=True)
             (planned_dir / f"{tid}.jsonl").write_text(
@@ -896,7 +919,9 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
             _log.warning("auto-retry failed for %s: %s", tid, e)
 
     try:
-        retry_counter_file.write_text(_json.dumps(retry_counts, ensure_ascii=False) + "\n")
+        retry_counter_file.write_text(
+            _json.dumps(retry_counts, ensure_ascii=False) + "\n"
+        )
     except OSError:
         pass
 
@@ -949,17 +974,21 @@ def _check_stale(ws: Path) -> None:
             updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
             hours_stale = (now - updated).total_seconds() / 3600
             if hours_stale > cfg.max_stale_hours:
+                tid = task["id"]
                 reason = (
                     f"engine: in_progress 滞留 {hours_stale:.1f}h "
                     f"(阈值 {cfg.max_stale_hours}h)"
                 )
-                _quarantine_with_notify(ws, task["id"], reason, store)
+                cur_phase = _current_running_phase(tid)
+                _quarantine_with_notify(ws, tid, reason, store, phase=cur_phase)
                 engine_log(
-                    f"[{label}] stale: {task['id']} in_progress 滞留 "
+                    f"[{label}] stale: {tid} in_progress 滞留 "
                     f"{hours_stale:.1f}h → abnormal"
                 )
         except (ValueError, TypeError) as e:
-            _log.warning("stale task timestamp parse failed for %s: %s", task.get("id"), e)
+            _log.warning(
+                "stale task timestamp parse failed for %s: %s", task.get("id"), e
+            )
     try:
         store.cleanup_events(max_days=30)
     except Exception as e:
