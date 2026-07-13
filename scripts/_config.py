@@ -95,7 +95,7 @@ class Config:
     # 被 board-server.py 依赖的 board_path 函数使用
 
     # ── 模型 ──
-    model: str = "loop/flash"  # 所有子进程默认模型
+    model: str = "loop/code"  # dev_role 默认模型（opencode run --model），可用 OPENCODE_MODEL 覆盖
 
     # ── 超时（v0.28.0）──
     default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
