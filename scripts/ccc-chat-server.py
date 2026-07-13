@@ -1163,7 +1163,7 @@ const execInput = document.getElementById('exec-input');
 const sendBtn = document.getElementById('send');
 const execSendBtn = document.getElementById('exec-send');
 const messagesEl = document.getElementById('messages');
-const execMessagesEl = document.getElementById('exec-messages');
+const execMessagesEl = document.getElementById('exec-messages') || document.getElementById('exec-terminal');
 
 function setupInput(el, btn) {
   el.addEventListener('input', () => {
@@ -1178,9 +1178,11 @@ setupInput(execInput, execSendBtn);
 messagesEl.addEventListener('scroll', () => {
   autoScroll = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 80;
 });
-execMessagesEl.addEventListener('scroll', () => {
-  autoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
-});
+if (execMessagesEl && execMessagesEl.id === 'exec-messages') {
+  execMessagesEl.addEventListener('scroll', () => {
+    autoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
+  });
+}
 const execTerminalEl = document.getElementById('exec-terminal');
 if (execTerminalEl) {
   execTerminalEl.addEventListener('scroll', () => {
@@ -1229,9 +1231,15 @@ function onProjectChange() {
   currentProject = document.getElementById('project-select').value;
   newChat();
   newExecChat();
+  updateExecMetaBar();
   loadHistory();
   if (currentTab === 'board') loadBoard();
   if (currentTab === 'execute') loadFileTree();
+}
+
+function updateExecMetaBar() {
+  const bar = document.getElementById('exec-meta-bar');
+  if (bar) bar.textContent = '~ ' + currentProject + ' · execute terminal';
 }
 
 const FILE_TREE_RENDER_LIMIT = 300;
@@ -2061,14 +2069,54 @@ async def serve_ui(request: Request):
 
 
 def main():
+    global PORT
+    import argparse
+
+    parser = argparse.ArgumentParser(description="CCC Chat Server")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("CCC_CHAT_PORT", PORT)),
+        help=f"绑定端口 (默认 {PORT}, 也可由 CCC_CHAT_PORT 环境变量覆盖)",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("CCC_CHAT_HOST", HOST),
+        help=f"绑定地址 (默认 {HOST})",
+    )
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        default=os.environ.get("CCC_CHAT_NO_OPEN", "0") == "1",
+        help="启动后不自动打开浏览器 (sidecar 模式)",
+    )
+    args = parser.parse_args()
+    PORT = args.port
+    bind_host = args.host
+
     print("  CCC Chat Server v0.29.0")
     print("  ─────────────────────")
-    print(f"  地址: http://0.0.0.0:{PORT}")
+    print(f"  地址: http://{bind_host}:{PORT}")
     print(f"  本地: http://localhost:{PORT}")
     print(f"  账号: {AUTH_USER} / {AUTH_PASS}")
     print(f"  历史: {CHAT_DIR}/{{project}}/")
+    if args.no_open:
+        print("  浏览器: 关闭 (--no-open)")
     print()
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+
+    if not args.no_open and bind_host in ("0.0.0.0", "127.0.0.1", "localhost"):
+        import threading
+        import webbrowser
+
+        def _open():
+            try:
+                webbrowser.open(f"http://localhost:{PORT}")
+            except Exception as exc:
+                print(f"  WARN: 自动打开浏览器失败: {exc}")
+
+        threading.Timer(1.2, _open).start()
+
+    uvicorn.run(app, host=bind_host, port=PORT, log_level="info")
 
 
 if __name__ == "__main__":

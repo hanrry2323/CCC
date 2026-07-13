@@ -1,31 +1,68 @@
 // CCC Cockpit Desktop — Tauri main entry
 //
-// Phase 1 scaffold: 启动 Tauri 窗口加载 http://127.0.0.1:8084
-// Phase 2 会在此基础上增加 Python 服务侧载（见 server.rs）
-// Phase 3 会在此基础上增加菜单、托盘、通知、原生体验
-//
-// 架构说明：
-//   - tauri.conf.json 指向 http://127.0.0.1:8084，WebView 加载 Chat Server
-//   - 8084 服务由独立 Python 进程提供（CCC 现有架构，桌面端仅做窗口壳）
-//   - 此文件最小化 Phase 1 目标：编译通过、窗口打开、加载目标 URL
+// Phase 1: Tauri 窗口骨架 → http://127.0.0.1:8084
+// Phase 2: 启动时 sidecar spawn `python3 scripts/ccc-chat-server.py`，等待就绪
+//          窗口关闭时通过 ServerHandle.stop() 杀子进程
+// Phase 3: 菜单、托盘、通知、原生体验（在 menu.rs / tray.rs 中实现）
+
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
 
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
+
+mod server;
+use server::{spawn_chat_server, ServerHandle, DEFAULT_PORT};
 
 fn main() {
+    let port: u16 = std::env::var("CCC_COCKPIT_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_PORT);
+
+    let project_root = server::project_root();
+    eprintln!("[ccc-cockpit] project_root = {}", project_root.display());
+
+    // Phase 2: 启动 sidecar（如果端口已被占用就复用现有实例）
+    let server_handle: Option<ServerHandle> = match spawn_chat_server(port, &project_root) {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("[ccc-cockpit] WARN: sidecar 启动失败: {e}");
+            eprintln!("[ccc-cockpit] 继续打开窗口，用户可手动启动 chat-server");
+            None
+        }
+    };
+
+    let server_for_setup: Option<ServerHandle> = server_handle.clone();
+    let server_for_close: Option<ServerHandle> = server_handle.clone();
+
     tauri::Builder::default()
-        .setup(|app| {
-            // 启动时记录：哪个窗口打开了、目标 URL 是什么
+        .setup(move |app| {
             if let Some(win) = app.get_window("main") {
                 let url = win.url();
                 eprintln!("[ccc-cockpit] window opened, url={url}");
+                win.set_title("CCC Cockpit").ok();
             } else {
                 eprintln!("[ccc-cockpit] WARN: main window not found in setup");
             }
+
+            if let Some(h) = server_for_setup.as_ref() {
+                eprintln!("[ccc-cockpit] sidecar running on port {}", h.port);
+            } else {
+                eprintln!("[ccc-cockpit] no sidecar (reusing existing or failed)");
+            }
+
             Ok(())
+        })
+        .on_window_event(move |event| {
+            // 窗口关闭时：杀子进程
+            if let WindowEvent::CloseRequested { .. } = event.event() {
+                if let Some(h) = server_for_close.as_ref() {
+                    eprintln!("[ccc-cockpit] window close: stopping sidecar");
+                    h.stop();
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running CCC Cockpit desktop application");
