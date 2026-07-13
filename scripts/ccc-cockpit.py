@@ -260,7 +260,192 @@ def build_cockpit_data() -> dict:
             project["metric"] = {"status": "—", "alive": None}
 
     data["updated"] = datetime.now().strftime("%H:%M:%S")
+    data["board"] = _fetch_board_summary()
     return data
+
+
+def _fetch_board_summary() -> dict:
+    """Fetch board column counts + KPI summary from board-server (:7777).
+
+    Returns a dict ready for render_html, or None when board-server is offline.
+    """
+    base = "http://127.0.0.1:7777"
+    workspace = "CCC"
+    columns = {
+        "backlog": 0,
+        "planned": 0,
+        "in_progress": 0,
+        "testing": 0,
+        "verified": 0,
+        "released": 0,
+        "abnormal": 0,
+    }
+    kpi = {
+        "in_progress": 0,
+        "abnormal": 0,
+        "ready_to_release": 0,
+        "today_released": 0,
+        "today_fixed": 0,
+    }
+    workspaces = {}
+
+    def _http_get_json(url: str):
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+
+    board = _http_get_json(
+        f"{base}/api/board?workspace={urllib.parse.quote(workspace)}"
+    )
+    if isinstance(board, dict):
+        cols = board.get("columns") or {}
+        for k in columns:
+            if k in cols:
+                try:
+                    columns[k] = int(cols[k])
+                except (TypeError, ValueError):
+                    pass
+        ws = board.get("workspaces") or {}
+        for name, path in ws.items():
+            workspaces[name] = path
+
+    dashboard = _http_get_json(
+        f"{base}/api/dashboard?workspace={urllib.parse.quote(workspace)}"
+    )
+    if isinstance(dashboard, dict):
+        d_kpi = dashboard.get("kpi") or {}
+        if "in_progress" in d_kpi:
+            try:
+                kpi["in_progress"] = int(d_kpi["in_progress"])
+            except (TypeError, ValueError):
+                pass
+        if "abnormal" in d_kpi:
+            try:
+                kpi["abnormal"] = int(d_kpi["abnormal"])
+            except (TypeError, ValueError):
+                pass
+        if "ready_to_release" in d_kpi:
+            try:
+                kpi["ready_to_release"] = int(d_kpi["ready_to_release"])
+            except (TypeError, ValueError):
+                pass
+        today = d_kpi.get("today") or {}
+        if "released" in today:
+            try:
+                kpi["today_released"] = int(today["released"])
+            except (TypeError, ValueError):
+                pass
+        if "fixed" in today:
+            try:
+                kpi["today_fixed"] = int(today["fixed"])
+            except (TypeError, ValueError):
+                pass
+        if not workspaces:
+            ws = dashboard.get("workspaces") or {}
+            for name, path in ws.items():
+                workspaces[name] = path
+
+    if board is None and dashboard is None:
+        return None
+
+    return {
+        "columns": columns,
+        "kpi": kpi,
+        "workspaces": workspaces,
+        "last_updated": datetime.now().strftime("%H:%M"),
+    }
+
+
+BOARD_COLUMN_COLORS = {
+    "backlog": "#9aa0a6",
+    "planned": "#1976d2",
+    "in_progress": "#b25000",
+    "testing": "#6a1b9a",
+    "verified": "#1a7d1a",
+    "released": "#0d5d0d",
+    "abnormal": "#c62828",
+}
+BOARD_COLUMN_LABELS = {
+    "backlog": "Backlog",
+    "planned": "Planned",
+    "in_progress": "进行中",
+    "testing": "Testing",
+    "verified": "Verified",
+    "released": "Released",
+    "abnormal": "异常",
+}
+
+
+def _render_board_section(board) -> str:
+    """Render the board overview section. Returns HTML string."""
+    if not board:
+        return '<div style="background:{surface};border:1px solid {border};border-radius:8px;padding:14px;font-size:13px;color:{muted}">看板服务离线</div>'.format(
+            surface=THEME["surface"], border=THEME["border"], muted=THEME["muted"]
+        )
+
+    cols = board.get("columns") or {}
+    kpi = board.get("kpi") or {}
+
+    cards_html = ""
+    for key in [
+        "backlog",
+        "planned",
+        "in_progress",
+        "testing",
+        "verified",
+        "released",
+        "abnormal",
+    ]:
+        count = cols.get(key, 0)
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = 0
+        color = BOARD_COLUMN_COLORS.get(key, THEME["muted"])
+        label = BOARD_COLUMN_LABELS.get(key, key)
+        opacity = "1" if count > 0 else "0.45"
+        cards_html += (
+            f'<div class="board-card" style="border-left:3px solid {color};opacity:{opacity}">'
+            f'<div class="board-card-label">{label}</div>'
+            f'<div class="board-card-count" style="color:{color}">{count}</div>'
+            f"</div>"
+        )
+
+    def _kpi_pair(label: str, value) -> str:
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            v = 0
+        color = "#1a7d1a" if v == 0 else "#b25000"
+        if label == "异常":
+            color = "#c62828" if v > 0 else "#1a7d1a"
+        return f'<div class="kpi-pill"><span class="kpi-lbl">{label}</span><span class="kpi-val" style="color:{color}">{v}</span></div>'
+
+    kpi_html = (
+        _kpi_pair("进行中", kpi.get("in_progress", 0))
+        + _kpi_pair("异常", kpi.get("abnormal", 0))
+        + _kpi_pair("待发布", kpi.get("ready_to_release", 0))
+        + _kpi_pair("今日发布", kpi.get("today_released", 0))
+        + _kpi_pair("今日修复", kpi.get("today_fixed", 0))
+    )
+
+    last_updated = board.get("last_updated", "")
+    return (
+        '<div style="background:{surface};border:1px solid {border};border-radius:8px;padding:14px">'
+        '<div class="board-cards">{cards}</div>'
+        '<div class="board-kpi">{kpi}</div>'
+        '<div class="board-meta">数据更新时间：{ts}</div>'
+        "</div>"
+    ).format(
+        surface=THEME["surface"],
+        border=THEME["border"],
+        cards=cards_html,
+        kpi=kpi_html,
+        ts=last_updated or "—",
+    )
 
 
 def render_html(data: dict) -> str:
@@ -468,7 +653,16 @@ tr:last-child td{{border-bottom:none}}
 .quick-links a{{background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;padding:8px 16px;text-decoration:none;color:{THEME["text"]};font-size:13px}}
 .quick-links a:hover{{background:#f0f4ff;border-color:{THEME["accent"]}}}
 .foot{{margin-top:20px;font-size:11px;color:{THEME["muted"]};text-align:center}}
-@media(max-width:640px){{.wrap{{padding:12px}}.machine-chip{{width:100%}}}}
+.board-cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:12px}}
+.board-card{{background:{THEME["bg"]};border-radius:6px;padding:10px 12px}}
+.board-card-label{{font-size:11px;color:{THEME["muted"]};text-transform:uppercase;letter-spacing:.04em}}
+.board-card-count{{font-size:22px;font-weight:600;font-family:ui-monospace,monospace;margin-top:2px}}
+.board-kpi{{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid {THEME["border"]}}}
+.kpi-pill{{display:flex;align-items:center;gap:6px;background:{THEME["bg"]};padding:4px 10px;border-radius:14px;font-size:12px}}
+.kpi-pill .kpi-lbl{{color:{THEME["muted"]}}}
+.kpi-pill .kpi-val{{font-weight:600;font-family:ui-monospace,monospace}}
+.board-meta{{font-size:10px;color:{THEME["muted"]};margin-top:8px;text-align:right}}
+@media(max-width:640px){{.wrap{{padding:12px}}.machine-chip{{width:100%}}.board-cards{{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}}}
 </style>
 </head>
 <body>
@@ -501,6 +695,9 @@ tr:last-child td{{border-bottom:none}}
 
     <div class="sec-title">端口 & 服务</div>
   {ports_sections}
+
+  <div class="sec-title">看板概览</div>
+  {_render_board_section(data.get("board"))}
 
   <div class="sec-title">项目</div>
   <div class="tbl-wrap">
@@ -565,6 +762,22 @@ class CockpitHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
+        elif path == "/api/board":
+            board = _fetch_board_summary()
+            if board is None:
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"error": "board server unavailable"}).encode("utf-8")
+                )
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(board).encode("utf-8"))
         elif path == "/api/kb/search":
             # KB search proxy endpoint
             parsed = urllib.parse.urlparse(self.path)
