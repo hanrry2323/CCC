@@ -1,0 +1,6 @@
+{"engine_iter": 2, "engine_iter_phase": 1, "commit": "399f5ca5ed9411c75c780af7f00ec8d224345cd4"}
+{"schema_version": "1.1", "commit": "eac379a4348c0829fa0f3da47dba5cbaa16b7e46"}
+{"schema_version": "1.1", "commit": "eac379a4348c0829fa0f3da47dba5cbaa16b7e46", "color_depth": 1, "color_group": "I"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "cancelStream 终端光标清理", "1.2": "工具 running 状态更新", "1.3": "AbortError 静默处理"}, "timeout": 600, "commit": null, "notes": "P1: cancelStream 终端感知 — 光标+工具状态+终止提示", "color_depth": 1, "color_group": "I", "retry": 1}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "CSS 重复定义去重 (exec-layout/file-tree-panel/exec-main)", "2.2": "mode-switch-exec + cancel-exec CSS 类补齐", "2.3": "showFilePreview 改为写入 exec-terminal"}, "timeout": 900, "commit": null, "notes": "P2: CSS 去重 + 样式补齐 + 文件预览修复", "color_depth": 1, "color_group": "I"}
+{"phase": 3, "status": "pending", "subtasks": {"3.1": "autoScroll 分离为 chatAutoScroll / execAutoScroll", "3.2": "loadHistory 300ms 防抖", "3.3": "终端行间距优化"}, "timeout": 600, "commit": null, "notes": "P3: 滚动分离 + 请求防抖 + 间距打磨", "color_depth": 1, "color_group": "I"}

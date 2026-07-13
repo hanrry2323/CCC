@@ -1,0 +1,13 @@
+{"t": "2026-07-13T23:59:00+08:00", "event": "test", "task": "verify-stats", "message": "测试记录"}
+{"t": "2026-07-13T19:17:20+08:00", "event": "move", "task": "cockpit-v0303c-terminal", "workspace": "CCC", "from_col": "in_progress", "to_col": "testing"}
+{"t": "2026-07-13T19:17:57+08:00", "event": "quarantine", "task": "cockpit-v0303c-terminal", "workspace": "CCC", "reason": "reviewer 未产出 verdict"}
+{"t": "2026-07-13T19:25:08+08:00", "event": "move", "task": "cockpit-v0303a-design", "workspace": "CCC", "from_col": "backlog", "to_col": "planned"}
+{"t": "2026-07-13T19:25:08+08:00", "event": "move", "task": "cockpit-v0303b-chatui", "workspace": "CCC", "from_col": "backlog", "to_col": "planned"}
+{"t": "2026-07-13T19:25:08+08:00", "event": "move", "task": "cockpit-v0303c-terminal", "workspace": "CCC", "from_col": "backlog", "to_col": "planned"}
+{"t": "2026-07-13T19:25:08+08:00", "event": "move", "task": "cockpit-v0303d-mobile", "workspace": "CCC", "from_col": "backlog", "to_col": "planned"}
+{"t": "2026-07-13T19:25:18+08:00", "event": "move", "task": "cockpit-v0303b-chatui", "workspace": "CCC", "from_col": "in_progress", "to_col": "testing"}
+{"t": "2026-07-13T19:25:18+08:00", "event": "quarantine", "task": "cockpit-v0303b-chatui", "workspace": "CCC", "reason": "reviewer 未产出 verdict"}
+{"t": "2026-07-13T19:25:28+08:00", "event": "move", "task": "cockpit-v0303d-mobile", "workspace": "CCC", "from_col": "in_progress", "to_col": "testing"}
+{"t": "2026-07-13T19:30:28+08:00", "event": "quarantine", "task": "cockpit-v0303d-mobile", "workspace": "CCC", "reason": "reviewer 未产出 verdict"}
+{"t": "2026-07-13T19:30:28+08:00", "event": "move", "task": "cockpit-v0303c-terminal", "workspace": "CCC", "from_col": "in_progress", "to_col": "testing"}
+{"t": "2026-07-13T19:30:28+08:00", "event": "move", "task": "cockpit-v0303c-terminal", "workspace": "CCC", "from_col": "testing", "to_col": "verified"}

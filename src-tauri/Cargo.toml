@@ -1,30 +1,17 @@
 [package]
 name = "ccc-cockpit-desktop"
 version = "0.29.0"
-description = "CCC Cockpit — Tauri 桌面应用（macOS）"
-authors = ["CCC Project"]
-license = "MIT"
-repository = "https://github.com/anomalyco/opencode"
 edition = "2021"
-rust-version = "1.70"
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-tauri = { version = "1.8", features = ["shell-open", "notification-all", "dialog-message", "dialog-open", "dialog-save", "path-all", "process-exit", "system-tray"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-once_cell = "1.19"
-libc = "0.2"
+tauri = { version = "1.6", features = ["shell-open", "notification-all", "dialog-all"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pico-args = "0.5"
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-
-[profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true

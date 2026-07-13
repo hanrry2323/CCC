@@ -1500,3 +1500,27 @@ git push origin main --tags
 - smoke-model-2026-07-12: smoke: 验证 loop/code 模型 看板发布
 - smoke-v0245-test: [ABNORMAL] v0.24.5 smoke 看板发布
 - e2e-mini-2026-07-12: e2e: 小变更验证全链路 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v0301-kb: Cockpit v0.30.1 — 知识库整合 + 服务告警 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v0303-terminal: Cockpit v0.30.3 — 终端体验 + UI 美化 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v0302-files: Cockpit v0.30.2 — 文件浏览器 + 看板集成 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v0304-multicli: Cockpit v0.30.4 — 多 CLI 引擎 + 日志面板 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v031-desktop: Cockpit v0.31.0 — Tauri 桌面端 看板发布
+
+## [v0.29.0] - 2026-07-13
+
+- cockpit-v0303c-terminal: Cockpit v0.30.3 — 终端格式优化 看板发布

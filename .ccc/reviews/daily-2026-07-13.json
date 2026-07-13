@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-13T08:00:00+08:00",
+  "project": "CCC",
+  "source": "daily-scan",
+  "scope": "git log --since=24h, 61 commits, files: app/core/, scripts/, skills/, tests/, docs/",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "low",
+      "category": "ops",
+      "title": ".bak 备份文件可能被误提交",
+      "file": "app/core/async_bridge.py.bak",
+      "line": null,
+      "description": "git 历史中出现 app/core/async_bridge.py.bak 备份文件，虽后来被删除 (.coverage/.bak)，但需确认 .gitignore 已覆盖 *.bak",
+      "recommendation": "在 .gitignore 中显式忽略 *.bak / *.tmp 防止再次出现",
+      "uncertain": true,
+      "auto_fixable": true
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 1,
+    "info": 0,
+    "auto_fixable": 1
+  }
+}

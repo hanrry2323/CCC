@@ -3,7 +3,7 @@
 // Phase 1: Tauri 窗口骨架 → http://127.0.0.1:8084
 // Phase 2: 启动时 sidecar spawn `python3 scripts/ccc-chat-server.py`，等待就绪
 //          窗口关闭时通过 ServerHandle.stop() 杀子进程
-// Phase 3: 菜单、托盘、通知、原生体验（在 menu.rs / tray.rs 中实现）
+// Phase 3: 菜单、托盘、通知、原生体验（在 menu.rs 中实现）
 
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
@@ -13,7 +13,10 @@
 use tauri::{Manager, WindowEvent};
 
 mod server;
+mod menu;
+
 use server::{spawn_chat_server, ServerHandle, DEFAULT_PORT};
+use menu::{build_app_menu, build_tray, handle_menu_event, handle_tray_event, register_commands};
 
 fn main() {
     let port: u16 = std::env::var("CCC_COCKPIT_PORT")
@@ -37,7 +40,18 @@ fn main() {
     let server_for_setup: Option<ServerHandle> = server_handle.clone();
     let server_for_close: Option<ServerHandle> = server_handle.clone();
 
-    tauri::Builder::default()
+    let app_menu = build_app_menu();
+    let system_tray = build_tray();
+
+    let builder = tauri::Builder::default()
+        .menu(app_menu)
+        .system_tray(system_tray)
+        .on_menu_event(|event| {
+            handle_menu_event_inner(event);
+        })
+        .on_system_tray_event(|app, event| {
+            handle_tray_event(app, event);
+        })
         .setup(move |app| {
             if let Some(win) = app.get_window("main") {
                 let url = win.url();
@@ -56,14 +70,15 @@ fn main() {
             Ok(())
         })
         .on_window_event(move |event| {
-            // 窗口关闭时：杀子进程
             if let WindowEvent::CloseRequested { .. } = event.event() {
                 if let Some(h) = server_for_close.as_ref() {
                     eprintln!("[ccc-cockpit] window close: stopping sidecar");
                     h.stop();
                 }
             }
-        })
+        });
+
+    register_commands(builder)
         .run(tauri::generate_context!())
         .expect("error while running CCC Cockpit desktop application");
 }

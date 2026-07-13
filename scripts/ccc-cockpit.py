@@ -621,49 +621,46 @@ function kbSearch() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CCC Cockpit — 总控台</title>
 <style>
+:root {{
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --muted: #86868b;
+  --accent: #0066cc;
+  --accent-hover: #0052a3;
+  --border: #d2d2d7;
+  --green: #1a7d1a;
+  --green-hover: #146614;
+  --red: #c62828;
+  --red-hover: #a51f1f;
+  --yellow: #b25000;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:{THEME["bg"]};color:{THEME["text"]};font-size:14px;line-height:1.5}}
-.wrap{{max-width:1100px;margin:0 auto;padding:20px}}
-.hdr{{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:2px solid {THEME["border"]};margin-bottom:20px}}
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}}
+.wrap{{max-width:1100px;margin:0 auto;padding:var(--space-xl)}}
+.hdr{{display:flex;justify-content:space-between;align-items:center;padding-bottom:var(--space-md);border-bottom:2px solid var(--border);margin-bottom:var(--space-lg)}}
 .hdr h1{{font-size:22px;font-weight:600}}
-.hdr .ts{{color:{THEME["muted"]};font-size:12px}}
-.sec-title{{font-size:13px;font-weight:600;color:{THEME["muted"]};text-transform:uppercase;letter-spacing:.04em;margin:24px 0 10px}}
-.machines{{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}}
-.machine-chip{{background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:10px;padding:10px 14px;display:flex;gap:12px;align-items:center;font-size:13px}}
-.machine-chip .ip{{color:{THEME["accent"]};font-family:ui-monospace,monospace}}
-.machine-chip .role{{color:{THEME["muted"]};font-size:12px}}
-.tbl-wrap{{overflow-x:auto;border:1px solid {THEME["border"]};border-radius:8px;background:{THEME["surface"]}}}
+.hdr .ts{{color:var(--muted);font-size:12px}}
+.sec-title{{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:var(--space-xl) 0 var(--space-sm)}}
+.machines{{display:flex;gap:var(--space-md);flex-wrap:wrap;margin-bottom:var(--space-sm)}}
+.machine-chip{{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-sm) var(--space-md);display:flex;gap:var(--space-md);align-items:center;font-size:13px}}
+.machine-chip .ip{{color:var(--accent);font-family:ui-monospace,monospace}}
+.machine-chip .role{{color:var(--muted);font-size:12px}}
+.tbl-wrap{{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}}
 table{{width:100%;border-collapse:collapse;min-width:500px}}
-th,td{{padding:8px 14px;text-align:left;border-bottom:1px solid #f0f0f2;vertical-align:middle}}
-th{{font-size:11px;font-weight:600;color:{THEME["muted"]};background:#fafafa;white-space:nowrap}}
+th,td{{padding:var(--space-sm) var(--space-md);text-align:left;border-bottom:1px solid #f0f0f2;vertical-align:middle}}
+th{{font-size:11px;font-weight:600;color:var(--muted);background:#fafafa;white-space:nowrap}}
 tr:last-child td{{border-bottom:none}}
 .num{{font-family:ui-monospace,monospace;white-space:nowrap}}
-.host{{font-family:ui-monospace,monospace;font-size:12px;color:{THEME["muted"]}}}
-.dot{{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:4px}}
-.dot-green{{background:{THEME["green"]}}}
-.dot-red{{background:{THEME["red"]}}}
-.dot-gray{{background:{THEME["border"]}}}
-.badge{{font-size:11px;padding:2px 8px;border-radius:10px;background:#f0f0f2}}
-.badge-green{{background:#e8f5e9;color:{THEME["green"]}}}
-.badge-yellow{{background:#fff3e0;color:{THEME["yellow"]}}}
-.badge-gray{{background:#f0f0f2;color:{THEME["muted"]}}}
-.port-link{{color:{THEME["accent"]};text-decoration:none}}
-.port-link:hover{{text-decoration:underline}}
-.quick-links{{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 8px}}
-.quick-links a{{background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;padding:8px 16px;text-decoration:none;color:{THEME["text"]};font-size:13px}}
-.quick-links a:hover{{background:#f0f4ff;border-color:{THEME["accent"]}}}
-.foot{{margin-top:20px;font-size:11px;color:{THEME["muted"]};text-align:center}}
-.board-cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:12px}}
-.board-card{{background:{THEME["bg"]};border-radius:6px;padding:10px 12px}}
-.board-card-label{{font-size:11px;color:{THEME["muted"]};text-transform:uppercase;letter-spacing:.04em}}
-.board-card-count{{font-size:22px;font-weight:600;font-family:ui-monospace,monospace;margin-top:2px}}
-.board-kpi{{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid {THEME["border"]}}}
-.kpi-pill{{display:flex;align-items:center;gap:6px;background:{THEME["bg"]};padding:4px 10px;border-radius:14px;font-size:12px}}
-.kpi-pill .kpi-lbl{{color:{THEME["muted"]}}}
-.kpi-pill .kpi-val{{font-weight:600;font-family:ui-monospace,monospace}}
-.board-meta{{font-size:10px;color:{THEME["muted"]};margin-top:8px;text-align:right}}
-@media(max-width:640px){{.wrap{{padding:12px}}.machine-chip{{width:100%}}.board-cards{{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}}}
-</style>
+.host{{font-family:ui-monospace,monospace;font-size:12px;color:var
 </head>
 <body>
 <div class="wrap">

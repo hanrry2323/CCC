@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-13T08:00:00+08:00",
+  "project": "CCC",
+  "source": "doc-quality",
+  "scope": "README.md / CHANGELOG.md / VERSION vs git tag, 关键资产路径核实",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "category": "documentation",
+      "title": "README.md 当前版本号过期（0.18.0，实际 v0.28.1）",
+      "file": "README.md",
+      "line": 90,
+      "description": "README.md 末尾标注『当前版本：0.18.0』，但 VERSION 文件、CHANGELOG.md 顶部、SKILL.md/CLAUDE.md 均显示 v0.28.1。版本号落后 10 个 minor，文档与代码事实严重不一致。",
+      "recommendation": "将 README.md 末尾『当前版本：0.18.0』改为『v0.28.1』，与 VERSION 文件同步。",
+      "uncertain": false,
+      "auto_fixable": true
+    },
+    {
+      "id": "F2",
+      "severity": "medium",
+      "category": "documentation",
+      "title": "README.md 架构描述停留在 v0.18『7 launchd plist 周期跑』",
+      "file": "README.md",
+      "line": 17,
+      "description": "README 顶部核心框图写『7 launchd plist 周期跑』，但 v0.20.1 起已取消 7 角色定时轮询，改为 CCC Engine 串行驱动（详见 CLAUDE.md 红线 X6 注脚）。实际 launchd 仅保留 com.ccc.engine / com.ccc.board / com.ccc.flywheel-scan 三个 plist。",
+      "recommendation": "替换为『CCC Engine 串行驱动（launchd 装 Engine + board-server）』，对齐 v0.20.1+ 架构。",
+      "uncertain": false,
+      "auto_fixable": true
+    },
+    {
+      "id": "F3",
+      "severity": "medium",
+      "category": "documentation",
+      "title": "README.md 角色频率表与 v0.20.1+ 实际不符",
+      "file": "README.md",
+      "line": 71,
+      "description": "README 角色表仍写 product 4h / dev 10min / reviewer 2h / tester 4h / ops 30min 等周期，v0.20.1 起这些周期全部取消，改为 Engine 串行触发。",
+      "recommendation": "改为『Engine 串行触发』描述，删除周期列。",
+      "uncertain": false,
+      "auto_fixable": true
+    },
+    {
+      "id": "F4",
+      "severity": "low",
+      "category": "documentation",
+      "title": "CHANGELOG.md 最新条目与 VERSION 标记位置不一致",
+      "file": "CHANGELOG.md",
+      "line": 10,
+      "description": "CHANGELOG 顶部 v0.28.1 提到 Commit 1 / Commit 2，但 git tag 列表中尚未出现 v0.28.1 tag（最近 tag 为 v0.27.0）。本次 patch 流程中 tag 可能尚未推送或未创建。",
+      "recommendation": "确认 kb_role 是否已打 v0.28.1 tag；若未打则补 tag 或在 CHANGELOG 中加『tag pending』。",
+      "uncertain": true,
+      "auto_fixable": false
+    },
+    {
+      "id": "F5",
+      "severity": "low",
+      "category": "documentation",
+      "title": "README.md 关键资产表缺现代脚本（ccc-engine / ccc-init / ccc-status）",
+      "file": "README.md",
+      "line": 36,
+      "description": "资产清单只列 ccc-board.py / opencode-exec.py 等老脚本，缺 ccc-engine.py / ccc-engine.sh / install-ccc-roles.sh / ccc-board-server.py / ccc-status.sh 等 v0.19+ 核心资产。",
+      "recommendation": "补全 v0.19+ 资产行（ccc-engine.py、install-ccc-roles.sh、_board_store.py、_executor.py、_config.py）。",
+      "uncertain": false,
+      "auto_fixable": true
+    },
+    {
+      "id": "F6",
+      "severity": "info",
+      "category": "documentation",
+      "title": "CHANGELOG 跳号（v0.27.x → v0.28.1）",
+      "file": "CHANGELOG.md",
+      "line": 10,
+      "description": "CHANGELOG 顶部直接 v0.28.1，前一版本为 v0.26.1，v0.27.x 没有 release notes。",
+      "recommendation": "在 v0.28.1 上方补 v0.27.0 的 changelog 条目。",
+      "uncertain": false,
+      "auto_fixable": true
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 2,
+    "info": 1,
+    "auto_fixable": 4
+  }
+}
