@@ -99,8 +99,14 @@ def _project_path(project_id: str) -> str:
     return proj["path"]
 
 
-def _session_path(session_id: str) -> Path:
-    return CHAT_DIR / f"{session_id}.json"
+def _project_chat_dir(project_id: str) -> Path:
+    d = CHAT_DIR / project_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _session_path(session_id: str, project_id: str = "ccc") -> Path:
+    return _project_chat_dir(project_id) / f"{session_id}.json"
 
 
 def _now_iso() -> str:
@@ -132,15 +138,43 @@ def _board_headers() -> dict:
     return headers
 
 
-def _save_session(session_id: str, messages: list, reply: str):
-    path = _session_path(session_id)
-    data = {
+def _save_session(
+    session_id: str,
+    messages: list,
+    reply: str = "",
+    project: str = "ccc",
+    mode: str = "chat",
+    execution_results: list | None = None,
+    total_cost_usd: float | None = None,
+):
+    path = _session_path(session_id, project)
+    title_src = ""
+    for m in messages:
+        if m.get("role") == "user" and m.get("content"):
+            title_src = m["content"]
+            break
+    data: dict = {
         "session_id": session_id,
-        "title": messages[0]["content"][:60] if messages else "New Chat",
+        "title": (title_src[:60] if title_src else "New Chat"),
+        "project": project,
         "messages": messages,
-        "reply": reply,
+        "mode": mode,
         "updated_at": _now_iso(),
     }
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            data["created_at"] = existing.get("created_at", _now_iso())
+        except (json.JSONDecodeError, OSError):
+            data["created_at"] = _now_iso()
+    else:
+        data["created_at"] = _now_iso()
+    if reply:
+        data["reply"] = reply
+    if execution_results is not None:
+        data["execution_results"] = execution_results
+    if total_cost_usd is not None:
+        data["total_cost_usd"] = total_cost_usd
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 
@@ -195,12 +229,163 @@ async def chat(request: Request):
                             pass
                 yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
                 if full_content:
-                    _save_session(session_id, messages, full_content)
+                    chat_messages = [m for m in messages if m.get("role") != "system"]
+                    for m in chat_messages:
+                        m.setdefault("mode", "chat")
+                    chat_messages.append({"role": "assistant", "content": full_content, "mode": "chat"})
+                    _save_session(session_id, chat_messages, project=project, mode="chat")
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@app.post("/api/execute")
+async def execute_mode(request: Request):
+    check_auth(request)
+    global _execute_running
 
+    body = await request.json()
+    messages = body.get("messages", [])
+    session_id = body.get("session_id", str(uuid.uuid4()))
+    project = body.get("project", "ccc")
+    timeout = int(body.get("timeout", 120))
+
+    user_msgs = [m for m in messages if m.get("role") == "user"]
+    if not user_msgs:
+        raise HTTPException(status_code=400, detail="messages required")
+    prompt = user_msgs[-1].get("content", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt required")
+    if check_dangerous_command(prompt):
+        raise HTTPException(status_code=400, detail="危险指令已被拦截")
+
+    if _execute_running:
+        raise HTTPException(status_code=429, detail="前一个执行中，请稍候")
+
+    project_path = _project_path(project)
+
+    async def generate():
+        global _execute_running
+        async with _execute_lock:
+            _execute_running = True
+            proc = None
+            full_content = ""
+            execution_results: list = []
+            total_cost_usd = None
+            total_tokens = None
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "claude", "-p", prompt, "--print",
+                    "--output-format", "stream-json",
+                    "--model", "flash",
+                    cwd=project_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env={**os.environ, "CLAUDE_PROJECT_DIR": project_path},
+                )
+
+                async def _read_stderr():
+                    if proc.stderr:
+                        async for line in proc.stderr:
+                            _log.warning("claude stderr: %s", line.decode(errors="replace").rstrip())
+
+                stderr_task = asyncio.create_task(_read_stderr())
+
+                deadline = asyncio.get_event_loop().time() + timeout
+                buffer = b""
+                while True:
+                    if await request.is_disconnected():
+                        proc.kill()
+                        break
+                    remaining = deadline - asyncio.get_event_loop().time()
+                    if remaining <= 0:
+                        proc.kill()
+                        yield f"data: {json.dumps({'type': 'error', 'content': '执行超时（120s）'})}\n\n"
+                        break
+                    try:
+                        chunk = await asyncio.wait_for(proc.stdout.read(4096), timeout=min(remaining, 5.0))
+                    except asyncio.TimeoutError:
+                        if proc.returncode is not None:
+                            break
+                        continue
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        line_str = line.decode(errors="replace").strip()
+                        if not line_str:
+                            continue
+                        try:
+                            event = json.loads(line_str)
+                        except json.JSONDecodeError:
+                            continue
+                        evt_type = event.get("type")
+                        if evt_type == "assistant":
+                            msg = event.get("message", {})
+                            for block in msg.get("content", []):
+                                btype = block.get("type")
+                                if btype == "text":
+                                    text = block.get("text", "")
+                                    if text:
+                                        full_content += text
+                                        yield f"data: {json.dumps({'type': 'delta', 'content': text})}\n\n"
+                                elif btype == "tool_use":
+                                    name = block.get("name", "tool")
+                                    inp = block.get("input", {})
+                                    execution_results.append({"tool": name, "input": inp, "result": ""})
+                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp})}\n\n"
+                        elif evt_type == "user":
+                            msg = event.get("message", {})
+                            for block in msg.get("content", []):
+                                if block.get("type") == "tool_result":
+                                    result = block.get("content", "")
+                                    if execution_results:
+                                        execution_results[-1]["result"] = result
+                                    yield f"data: {json.dumps({'type': 'tool_result', 'content': result})}\n\n"
+                        elif evt_type == "result":
+                            total_cost_usd = event.get("total_cost_usd")
+                            total_tokens = event.get("usage", {}).get("input_tokens", 0)
+                            total_tokens = (total_tokens or 0) + event.get("usage", {}).get("output_tokens", 0)
+                            result_text = event.get("result", "")
+                            if result_text and not full_content:
+                                full_content = result_text
+                                yield f"data: {json.dumps({'type': 'delta', 'content': result_text})}\n\n"
+
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+
+                stderr_task.cancel()
+                try:
+                    await stderr_task
+                except asyncio.CancelledError:
+                    pass
+
+                if total_cost_usd is not None or total_tokens:
+                    yield f"data: {json.dumps({'type': 'cost', 'tokens': total_tokens or 0, 'usd': total_cost_usd or 0})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+
+                exec_messages = []
+                for m in messages:
+                    if m.get("role") == "system":
+                        continue
+                    exec_messages.append({**m, "mode": "execute"})
+                if full_content:
+                    exec_messages.append({"role": "assistant", "content": full_content, "mode": "execute"})
+                _save_session(
+                    session_id, exec_messages, project=project, mode="execute",
+                    execution_results=execution_results,
+                    total_cost_usd=total_cost_usd,
+                )
+            finally:
+                _execute_running = False
+                if proc and proc.returncode is None:
+                    proc.kill()
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/api/projects")
 async def list_projects(request: Request):
