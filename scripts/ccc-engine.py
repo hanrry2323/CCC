@@ -72,6 +72,35 @@ def engine_log(msg: str) -> None:
     _log.info("%s", msg)
 
 
+# ── Stats 日志（结构化 JSONL，供 AI 分析用）──
+_STATS_DIR: Path | None = None
+
+
+def _stats_dir(ws: Path) -> Path:
+    global _STATS_DIR
+    if _STATS_DIR is None:
+        _STATS_DIR = ws / ".ccc" / "stats"
+        _STATS_DIR.mkdir(parents=True, exist_ok=True)
+    return _STATS_DIR
+
+
+def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
+    """写一条结构化事件到 .ccc/stats/events.jsonl。"""
+    sf = _stats_dir(ws) / "events.jsonl"
+    record = {
+        "t": now_iso(),
+        "event": event,
+        "task": tid,
+        "workspace": ws.name,
+    }
+    record.update(extra)
+    try:
+        with sf.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 _NOTIFY_SCRIPT = _script_dir / "ccc-notify.sh"
 
 
@@ -99,6 +128,7 @@ def _quarantine_with_notify(
     if store is None:
         store = _get_store(ws)
     store.quarantine(tid, reason)
+    _log_stats(ws, "quarantine", tid, reason=reason)
     _ccc_notify("CCC", f"任务 {tid} 进入异常状态，原因：{reason}")
     store.update_index()
 
@@ -279,6 +309,7 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     tests_dir = ws / "tests"
     if tests_dir.is_dir():
         exit_code, output = _run_pytest(ws)
+        _log_stats(ws, "pytest", tid, exit_code=exit_code, output_len=len(output))
         if exit_code != 0:
             _record_pytest_failure(ws, tid, exit_code, output)
             engine_log(
@@ -294,6 +325,7 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         col = _find_task_column(store, tid)
         if col == "testing":
             store.move_task(tid, "testing", "verified")
+            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
         store.update_index()
         return _find_task_column(store, tid) == "verified"
 
@@ -326,7 +358,9 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
         if complexity == "small":
             engine_log(f"[{label}] {tid} complexity=small, 跳过 reviewer+tester → 直通 kb")
             store.move_task(tid, "in_progress", "testing")
+            _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
             store.move_task(tid, "testing", "verified")
+            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
             verified = store.list_tasks("verified")
             if any(t["id"] == tid for t in verified):
                 engine_log(f"[{label}] {tid} → verified, 立即 kb")
@@ -343,6 +377,7 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
             store.update_index()
             return True
 
+        _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
         engine_log(f"[{label}] {tid} → testing, 立即跑 reviewer+tester 门禁")
         gate_ok = _run_reviewer_tester_gate(ws, tid)
 
@@ -476,13 +511,16 @@ def _process_backlog(ws: Path) -> bool:
 
     engine_log(f"[product] [{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)")
     try:
+        _log_stats(ws, "product_start", tid, fail_count=fail_count)
         ccc_board.product_role(task_id=tid)
         if fail_counter_path.exists():
             fail_counter_path.unlink()
+        _log_stats(ws, "product_done", tid, fail_count=fail_count)
     except Exception as exc:
         fail_count += 1
         fail_counter_dir.mkdir(parents=True, exist_ok=True)
         fail_counter_path.write_text(json.dumps({"fail_count": fail_count}, indent=2))
+        _log_stats(ws, "product_fail", tid, fail_count=fail_count, error=str(exc)[:200])
         engine_log(
             f"[product] [{label}] product_role({tid}) 异常: {exc} (失败 #{fail_count})"
         )
