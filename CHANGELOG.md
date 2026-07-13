@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.8] — 2026-07-14
+
+- v10-automation: 看板发布
+
 ## [v0.29.7] — 2026-07-14
 
 - readme-zcode-update: 看板发布
@@ -1572,3 +1576,7 @@ git push origin main --tags
 ## [v0.29.6] - 2026-07-14
 
 - readme-zcode-update: Plan: readme-zcode-update (README 加入 ZCode adapter v1.2.1 章节) 看板发布
+
+## [v0.29.7] - 2026-07-14
+
+- v10-automation: v10 Automation Implementation Plan — 8 phases 待执行 看板发布
