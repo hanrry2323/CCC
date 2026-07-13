@@ -36,6 +36,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-14 | fix-lint-2026-07-14 | `.ccc/plans/fix-lint-2026-07-14.plan.md` | `.ccc/reports/fix-lint-2026-07-14.report.md` | ruff F401/F841/F811 全清零（21+14=35 处）+ `_audit_lint` latent tuple bug 顺手修 + 248 passed | PASS |
 | 2026-07-14 | writing-agent-identity-into-state-md | `.ccc/plans/writing-agent-identity-into-state-md.plan.md` | `.ccc/reports/writing-agent-identity-into-state-md.report.md` | state.md 头部加 Agent 身份契约 + 最高接力文件地位 | PASS |
 | 2026-07-12 | qb-6tasks | `.ccc/plans/qb-*.plan.md` × 6 | `git diff HEAD~1 -- scripts/ccc-board.py` | 已投递 QB backlog + 修 product_role 锁 bug | DISPATCHED |
 | 2026-07-12 | v0.28.1 | — | `git log a81be00` | 任务复杂度分流 + 每周总结定时 | PASS |
@@ -84,6 +85,7 @@
 | v0.24.2 | `9b63788` | audit 多 workspace 并行化（ThreadPoolExecutor） |
 | v0.24.3 | `764be91` | 对抗性审查 P0 hotfix（8 项：写回 reload / 文件锁 / audit timeout / small reviewer 校验 / _parse_diff_size fail-fast / engine 多 phase） |
 | v0.28.1 | `a81be00` | 任务复杂度分流（complexity small/medium/large）+ 每周总结定时任务 |
+| fix-lint-2026-07-14 | `c4ec801` (phase 2) + `479ac6d` (phase 1) | scripts/ ruff F401/F841/F811 全面清零（21 自动 + 14 手动）+ `_audit_lint` 补 return |
 
 ---
 
