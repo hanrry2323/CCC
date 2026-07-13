@@ -1,1 +1,0 @@
-{"id": "fix-engine-log-printf", "title": "Plan: fix-engine-log-printf — 修复 engine_log printf 风格调用", "status": "planned", "complexity": "small", "description": "engine_log 只接受 1 参数但多处用 3 参数 printf 调用，导致 silent error。改为支持 *args。", "created_at": "2026-07-14", "color_group": "A", "color_depth": 0, "tags": ["auto-patrol", "bugfix"], "updated_at": "2026-07-14T05:50:00+08:00"}
