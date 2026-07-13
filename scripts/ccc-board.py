@@ -941,6 +941,7 @@ _get_code_context_cache: dict[str, tuple[str, float]] = {}
 
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     """调 claude CLI 生成 plan.md + phases.json（通过中转站 127.0.0.1:4000）"""
+    task_id = task["id"]
     plan_dir = ROOT / ".ccc" / "plans"
     ref_plans = ""
     if plan_dir.exists():
@@ -957,44 +958,101 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
 
     code_ctx = _get_code_context(ROOT)
 
-    prompt = (
-        f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
-        f"## 项目概况\n{profile[:1500]}\n\n"
-        f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
-        f"## 任务\n"
-        f"- id: {task['id']}\n"
-        f"- title: {task.get('title', '')}\n"
-        f"- description: {task.get('description', '')}\n\n"
-        f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
-        f"## Phases 格式\n"
-        f"每行一个 JSON object：\n"
-        f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
-        f"## 参考历史 plan\n{ref_plans if ref_plans else '（无）'}\n\n"
-        f"## 输出要求\n"
-        f"输出以下两部分，用分隔符包裹：\n\n"
-        f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
-        f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
-    )
+    def _build_prompt(include_ref_plans: bool = True) -> str:
+        ref = ref_plans if include_ref_plans else "（无，重试模式）"
+        return (
+            f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
+            f"## 项目概况\n{profile[:1500]}\n\n"
+            f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
+            f"## 任务\n"
+            f"- id: {task['id']}\n"
+            f"- title: {task.get('title', '')}\n"
+            f"- description: {task.get('description', '')}\n\n"
+            f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
+            f"## Phases 格式\n"
+            f"每行一个 JSON object：\n"
+            f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
+            f"## 参考历史 plan\n{ref}\n\n"
+            f"## 输出要求\n"
+            f"输出以下两部分，用分隔符包裹：\n\n"
+            f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
+            f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
+        )
+
+    prompt = _build_prompt(True)
+
+    # v0.31: 注入 lessons 上下文
+    try:
+        from _lessons import get_recent_lessons
+
+        recent = get_recent_lessons(ROOT)
+        if recent:
+            lessons_text = "\n".join(
+                f"- [{l.get('task_id', '?')}] phase={l.get('phase')}: {l.get('error', '')[:100]}"
+                for l in recent[:10]
+                if not l.get("fixed")
+            )
+            if lessons_text:
+                prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
+    except ImportError:
+        pass
 
     relay_url = _get_relay_url()
     env = os.environ.copy()
     env["ANTHROPIC_BASE_URL"] = relay_url
-    try:
-        result = subprocess.run(
-            [_CLAUDE_CLI, "-p"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=cfg.default_timeout,
-            env=env,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
-            )
 
-        output = result.stdout
+    def _run_claude(prompt_text: str) -> str:
+        import tempfile
 
+        prompt_dir = Path.home() / ".ccc" / "prompts"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        tmp_path = None
+        try:
+            if len(prompt_text) > 60000:
+                tmp_fd, tmp_path = tempfile.mkstemp(
+                    suffix=".md", prefix="claude-prompt-", dir=str(prompt_dir)
+                )
+                try:
+                    os.write(tmp_fd, prompt_text.encode("utf-8"))
+                finally:
+                    os.close(tmp_fd)
+                os.chmod(tmp_path, 0o600)
+                cmd = [
+                    _CLAUDE_CLI,
+                    "-p",
+                    "Read attached file and execute the instructions inside.",
+                    "--file",
+                    tmp_path,
+                ]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=cfg.default_timeout,
+                    env=env,
+                )
+            else:
+                result = subprocess.run(
+                    [_CLAUDE_CLI, "-p"],
+                    input=prompt_text,
+                    capture_output=True,
+                    text=True,
+                    timeout=cfg.default_timeout,
+                    env=env,
+                )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
+                )
+            return result.stdout
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+    def _parse_output(output: str) -> tuple[str, list]:
         plan_match = re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, re.DOTALL)
         if not plan_match:
             raise RuntimeError("---PLAN--- section not found in Claude output")
@@ -1011,8 +1069,25 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             line = line.strip()
             if line:
                 phases.append(json.loads(line))
-
         return plan_content, phases
+
+    try:
+        output = _run_claude(prompt)
+        try:
+            return _parse_output(output)
+        except (json.JSONDecodeError, RuntimeError):
+            _log.warning("[product] phases 解析失败，简化 prompt 重试 1 次")
+            retry_prompt = _build_prompt(include_ref_plans=False)
+            output = _run_claude(retry_prompt)
+            try:
+                return _parse_output(output)
+            except (json.JSONDecodeError, RuntimeError) as exc:
+                fallback_dir = ROOT / ".ccc" / "product_fallback"
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                fb_plan = _generate_fallback_plan(task)
+                (fallback_dir / f"{task_id}.plan.md").write_text(fb_plan)
+                (fallback_dir / f"{task_id}.failed").write_text(str(exc))
+                raise RuntimeError(f"phases parse failed after retry: {exc}") from exc
     except subprocess.TimeoutExpired:
         raise RuntimeError("claude CLI timed out after 300s")
 
@@ -2410,6 +2485,11 @@ def kb_role() -> dict:
         # 挪 released
         move_task(task_id, "verified", "released")
         moved.append(task_id)
+        try:
+            new_ver = _bump_version(ROOT)
+            _append_changelog(ROOT, task_id, new_ver)
+        except Exception as exc:
+            _log.warning("version bump failed (non-blocking): %s", exc)
 
     # 去重 → 写 pending-agents-suggestions.md
     if all_suggestions:
@@ -3709,6 +3789,75 @@ def main():
     else:
         result = ROLES[args.role]()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _bump_version(ws_path: Path) -> str:
+    """读取 VERSION 文件，bump patch version，写回。返回新版本号。"""
+    version_file = ws_path / "VERSION"
+    if not version_file.exists():
+        new_version = "v0.0.1"
+        version_file.write_text(new_version + "\n")
+        return new_version
+    current = version_file.read_text().strip()
+    m = re.match(r"^(v?)(\d+)\.(\d+)\.(\d+)$", current, re.IGNORECASE)
+    if not m:
+        return current
+    prefix = m.group(1) or "v"
+    major, minor, patch = int(m.group(2)), int(m.group(3)), int(m.group(4))
+    new_version = f"{prefix}{major}.{minor}.{patch + 1}"
+    version_file.write_text(new_version + "\n")
+    return new_version
+
+
+def _append_changelog(ws_path: Path, tid: str, new_version: str) -> None:
+    """在 CHANGELOG.md 最旧版本条目之上插入新条目。"""
+    changelog_path = ws_path / "CHANGELOG.md"
+    today_str = now_iso()[:10]
+    entry = (
+        f"\n## [{new_version}] — {today_str}\n\n"
+        f"- {tid}: 看板发布\n"
+    )
+    if changelog_path.exists():
+        text = changelog_path.read_text()
+    else:
+        text = "# Changelog — CCC\n\n"
+    # 在最旧 ## [v...] 条目之上插入（第一个版本标题之后）
+    m = re.search(r"\n## \[v", text)
+    if m:
+        insert_at = m.start()
+        new_text = text[:insert_at] + entry + text[insert_at:]
+    else:
+        new_text = text.rstrip() + entry + "\n"
+    if tid in new_text and new_version in text:
+        return
+    changelog_path.write_text(new_text)
+    # git commit VERSION + CHANGELOG（仅有改动时）
+    try:
+        check = subprocess.run(
+            ["git", "diff", "--quiet", "VERSION", "CHANGELOG.md"],
+            cwd=ws_path,
+            capture_output=True,
+        )
+        if check.returncode != 0:
+            subprocess.run(
+                ["git", "add", "VERSION", "CHANGELOG.md"],
+                cwd=ws_path,
+                capture_output=True,
+                timeout=10,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    f"chore: bump {new_version} ({tid})",
+                ],
+                cwd=ws_path,
+                capture_output=True,
+                timeout=30,
+            )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _log.warning("changelog git commit failed (non-blocking): %s", exc)
 
 
 if __name__ == "__main__":

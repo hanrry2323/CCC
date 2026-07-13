@@ -132,6 +132,13 @@ def _quarantine_with_notify(
     _log_stats(ws, "quarantine", tid, reason=reason)
     _ccc_notify("CCC", f"任务 {tid} 进入异常状态，原因：{reason}")
     store.update_index()
+    # v0.31: 记录教训
+    try:
+        from _lessons import record_failure
+
+        record_failure(ws, tid, 1, reason or "unknown", "")
+    except Exception:
+        pass
 
 
 def _discover_workspaces() -> list[Path]:
@@ -591,6 +598,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
 
 
 def engine_loop(workspaces: list[Path]) -> None:
+    global MAX_RETRY
     """引擎主循环：多 workspace 轮询，全局 MAX_CONCURRENT 共享。"""
     global _engine_shutdown
 
@@ -654,6 +662,29 @@ def engine_loop(workspaces: list[Path]) -> None:
                     # v0.30: 定期统计聚合（即使系统忙）
                     try:
                         aggregate_stats(ws)
+                        # v0.31: 自适应调参（读 summary.json → 调整 timeout/retry）
+                        try:
+                            summary = load_summary(ws)
+                            if summary and summary.get("total_events", 0) > 5:
+                                task_stats = summary.get("task_stats", {})
+                                total = task_stats.get("total", 0)
+                                failed = task_stats.get("failed", 0)
+                                if total > 0:
+                                    fail_rate = failed / total
+                                    if fail_rate > 0.4 and MAX_RETRY < 5:
+                                        engine_log(
+                                            f"[auto-tune] fail_rate={fail_rate:.0%}, "
+                                            f"MAX_RETRY={MAX_RETRY} (adjusting)"
+                                        )
+                                        MAX_RETRY = min(MAX_RETRY + 1, 5)
+                                    elif fail_rate < 0.1 and MAX_RETRY > 2:
+                                        engine_log(
+                                            f"[auto-tune] fail_rate={fail_rate:.0%}, "
+                                            f"MAX_RETRY={MAX_RETRY} (reducing)"
+                                        )
+                                        MAX_RETRY = max(MAX_RETRY - 1, 2)
+                        except Exception as exc:
+                            engine_log(f"[auto-tune] error: {exc}")
                     except Exception as exc:
                         engine_log(f"[stats] periodic aggregate error for {ws.name}: {exc}")
             ws_first_running: dict[str, str | None] = {}
@@ -820,6 +851,7 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
             retry_counts = {}
     MAX_AUTO_RETRY = 3
     COOLDOWN_MINUTES = 15
+    moved_tasks: list[str] = []
 
     for task in store.list_tasks("abnormal"):
         tid = task["id"]
@@ -859,12 +891,29 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
                 f"[{label}] auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {tid} "
                 f"(冷却 {minutes_since:.0f}min) → planned"
             )
+            moved_tasks.append(tid)
         except Exception as e:
             _log.warning("auto-retry failed for %s: %s", tid, e)
 
     try:
         retry_counter_file.write_text(_json.dumps(retry_counts, ensure_ascii=False) + "\n")
     except OSError:
+        pass
+
+    # v0.31: 每次移回前检查 lessons 是否有建议
+    try:
+        from _lessons import get_recent_lessons
+
+        recent = get_recent_lessons(ws)
+        for task_id in moved_tasks:
+            for lesson in recent:
+                if lesson.get("task_id") == task_id and not lesson.get("fixed"):
+                    _log.info(
+                        "[lessons-reapply] %s: %s",
+                        task_id,
+                        lesson.get("error", "")[:80],
+                    )
+    except Exception:
         pass
 
 
