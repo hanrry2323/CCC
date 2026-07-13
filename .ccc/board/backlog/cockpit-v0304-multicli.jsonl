@@ -1,1 +1,0 @@
-{"id":"cockpit-v0304-multicli","title":"Cockpit v0.30.4 — 多 CLI 引擎 + 日志面板","description":"参考 claudecodeui，支持切换 claude-p / opencode / cursor CLI，Cockpit 内查看服务日志。","status":"backlog","created_at":"2026-07-13T23:30:00+08:00","updated_at":"2026-07-13T23:30:00+08:00","assignee":null,"tags":["cockpit","multi-cli","logs"],"schema_version":"1.2","complexity":"large"}

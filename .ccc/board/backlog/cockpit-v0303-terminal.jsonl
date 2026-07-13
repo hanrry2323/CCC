@@ -1,1 +1,0 @@
-{"id":"cockpit-v0303-terminal","title":"Cockpit v0.30.3 — 终端体验 + UI 美化","description":"参考 claudecodeui，执行模式改为实时终端输出，显示 diff 和文件变更，UI 美化和移动端适配。","status":"backlog","created_at":"2026-07-13T23:30:00+08:00","updated_at":"2026-07-13T23:30:00+08:00","assignee":null,"tags":["cockpit","terminal","ui"],"schema_version":"1.2","complexity":"medium"}
