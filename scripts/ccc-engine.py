@@ -14,6 +14,7 @@
 import json
 import os
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -129,6 +130,160 @@ def _get_store(workspace: Path) -> FileBoardStore:
     return _stores[key]
 
 
+_BOARD_COLUMNS = (
+    "backlog",
+    "planned",
+    "in_progress",
+    "testing",
+    "verified",
+    "released",
+    "abnormal",
+)
+
+
+def _verdict_file(ws: Path, tid: str) -> Path:
+    return ws / ".ccc" / "verdicts" / f"{tid}.verdict.md"
+
+
+def _verdict_is_valid(ws: Path, tid: str) -> bool:
+    """verdict 文件必须存在且非空（空文件视为未产出）。"""
+    vf = _verdict_file(ws, tid)
+    if not vf.is_file():
+        return False
+    try:
+        return bool(vf.read_text(encoding="utf-8").strip())
+    except OSError:
+        return False
+
+
+def _find_task_column(store: FileBoardStore, tid: str) -> str | None:
+    for col in _BOARD_COLUMNS:
+        if any(t["id"] == tid for t in store.list_tasks(col)):
+            return col
+    return None
+
+
+def _ensure_task_in_testing(store: FileBoardStore, tid: str) -> None:
+    """reviewer 可能提前挪 verified；拉回 testing 以便 tester/pytest 门禁。"""
+    if _find_task_column(store, tid) == "verified":
+        store.move_task(tid, "verified", "testing")
+
+
+def _run_pytest(ws: Path) -> tuple[int, str]:
+    """在 workspace 跑 pytest tests/；有 .venv 则走 .venv/bin/pytest。"""
+    venv_pytest = ws / ".venv" / "bin" / "pytest"
+    if venv_pytest.is_file():
+        cmd = [str(venv_pytest), "tests/", "-q", "--tb=line"]
+    else:
+        cmd = ["python3", "-m", "pytest", "tests/", "-q", "--tb=line"]
+    try:
+        r = subprocess.run(
+            cmd,
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        output = (r.stdout or "") + (r.stderr or "")
+        return r.returncode, output
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        return 124, output or "pytest timeout (600s)"
+    except OSError as exc:
+        return 1, str(exc)
+
+
+def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> None:
+    """pytest 失败时追加记录到 verdict 文件，供人工确认。"""
+    vf = _verdict_file(ws, tid)
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    snippet = output[-2000:] if output else "(无输出)"
+    section = (
+        f"\n\n## Engine pytest 检查\n\n"
+        f"- **退出码**: {exit_code}\n\n"
+        f"```\n{snippet}\n```\n"
+    )
+    try:
+        if vf.is_file():
+            vf.write_text(vf.read_text(encoding="utf-8") + section, encoding="utf-8")
+        else:
+            vf.write_text(
+                f"# Verdict: {tid}\n\n**FAIL** (engine pytest)\n{section}",
+                encoding="utf-8",
+            )
+    except OSError as exc:
+        engine_log(f"写入 pytest 失败记录到 verdict 失败: {exc}")
+
+
+def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
+    """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。"""
+    _activate_workspace(ws)
+    store = _get_store(ws)
+    label = _ws_label(ws)
+
+    verdict_ok = False
+    for attempt in range(2):
+        reviewer_role()
+        if _verdict_is_valid(ws, tid):
+            verdict_ok = True
+            break
+        engine_log(
+            f"[{label}] {tid} reviewer 未产出有效 verdict (attempt {attempt + 1}/2)"
+        )
+        _ensure_task_in_testing(store, tid)
+        if attempt == 1:
+            engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
+            store.quarantine(tid, "reviewer 未产出 verdict")
+            store.update_index()
+            return False
+
+    _ensure_task_in_testing(store, tid)
+
+    try:
+        tester_role()
+    except Exception as exc:
+        engine_log(f"[{label}] {tid} tester_role 异常: {exc}")
+
+    _ensure_task_in_testing(store, tid)
+
+    tests_dir = ws / "tests"
+    if tests_dir.is_dir():
+        exit_code, output = _run_pytest(ws)
+        if exit_code != 0:
+            _record_pytest_failure(ws, tid, exit_code, output)
+            engine_log(
+                f"[{label}] {tid} pytest 失败 (exit={exit_code})，留在 testing 等待人工确认"
+            )
+            store.update_index()
+            return False
+    else:
+        engine_log(f"[{label}] {tid} 无 tests/ 目录，跳过 engine pytest")
+
+    if verdict_ok:
+        col = _find_task_column(store, tid)
+        if col == "testing":
+            store.move_task(tid, "testing", "verified")
+        store.update_index()
+        return _find_task_column(store, tid) == "verified"
+
+    store.update_index()
+    return False
+
+
+def _run_testing_tasks_gate(ws: Path) -> None:
+    """对 testing 列每个 task 跑 reviewer/tester 门禁。"""
+    _activate_workspace(ws)
+    store = _get_store(ws)
+    label = _ws_label(ws)
+    for task in store.list_tasks("testing"):
+        tid = task["id"]
+        engine_log(f"[{label}] testing 门禁: {tid}")
+        try:
+            _run_reviewer_tester_gate(ws, tid)
+        except Exception as exc:
+            engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")
+
+
 def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bool:
     """处理 dev_role_check_complete 结果。返回 True 表示从 active_tasks 移除。"""
     _activate_workspace(ws)
@@ -157,12 +312,11 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
             store.update_index()
             return True
 
-        engine_log(f"[{label}] {tid} → testing, 立即跑 reviewer+tester")
-        reviewer_role()
-        tester_role()
+        engine_log(f"[{label}] {tid} → testing, 立即跑 reviewer+tester 门禁")
+        gate_ok = _run_reviewer_tester_gate(ws, tid)
 
         verified = store.list_tasks("verified")
-        if any(t["id"] == tid for t in verified):
+        if gate_ok and any(t["id"] == tid for t in verified):
             engine_log(f"[{label}] {tid} → verified, 立即 kb")
             kb_role()
             try:
@@ -400,12 +554,10 @@ def engine_loop(workspaces: list[Path]) -> None:
                     test_tasks = _store.list_tasks("testing")
                     if test_tasks:
                         label = _ws_label(ws)
-                        engine_log(f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester")
-                        try:
-                            reviewer_role()
-                            tester_role()
-                        except Exception as exc:
-                            engine_log(f"[{label}] reviewer/tester 异常: {exc}")
+                        engine_log(
+                            f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
+                        )
+                        _run_testing_tasks_gate(ws)
             ws_first_running: dict[str, str | None] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
@@ -448,12 +600,10 @@ def engine_loop(workspaces: list[Path]) -> None:
                     test_tasks = _store2.list_tasks("testing")
                     if test_tasks:
                         label = _ws_label(ws)
-                        engine_log(f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester")
-                        try:
-                            reviewer_role()
-                            tester_role()
-                        except Exception as exc:
-                            engine_log(f"[{label}] reviewer/tester 异常: {exc}")
+                        engine_log(
+                            f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
+                        )
+                        _run_testing_tasks_gate(ws)
                     _write_heartbeat(ws, None)
 
                     if _audit_should_run(str(ws)):
