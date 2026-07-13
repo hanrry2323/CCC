@@ -399,16 +399,18 @@ async def list_projects(request: Request):
 
 
 @app.get("/api/history")
-async def list_sessions(request: Request):
+async def list_sessions(request: Request, project: str = "ccc"):
     check_auth(request)
+    chat_dir = _project_chat_dir(project)
     sessions = []
-    for f in sorted(CHAT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for f in sorted(chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             data = json.loads(f.read_text())
             sessions.append({
                 "session_id": data.get("session_id", f.stem),
                 "title": data.get("title", "Unknown")[:80],
                 "updated_at": data.get("updated_at", ""),
+                "mode": data.get("mode", "chat"),
             })
         except (json.JSONDecodeError, OSError):
             pass
@@ -416,9 +418,9 @@ async def list_sessions(request: Request):
 
 
 @app.get("/api/history/{session_id}")
-async def get_session(request: Request, session_id: str):
+async def get_session(request: Request, session_id: str, project: str = "ccc"):
     check_auth(request)
-    path = _session_path(session_id)
+    path = _session_path(session_id, project)
     if not path.exists():
         raise HTTPException(status_code=404)
     try:
@@ -428,9 +430,9 @@ async def get_session(request: Request, session_id: str):
 
 
 @app.delete("/api/history/{session_id}")
-async def delete_session(request: Request, session_id: str):
+async def delete_session(request: Request, session_id: str, project: str = "ccc"):
     check_auth(request)
-    path = _session_path(session_id)
+    path = _session_path(session_id, project)
     if path.exists():
         path.unlink()
     return {"ok": True}
@@ -1064,7 +1066,7 @@ function toggleSidebar() {
 
 async function loadHistory() {
   try {
-    const resp = await fetch('/api/history', { headers: { Authorization: AUTH } });
+    const resp = await fetch('/api/history?project=' + encodeURIComponent(currentProject), { headers: { Authorization: AUTH } });
     const data = await resp.json();
     const list = document.getElementById('sessionList');
     list.innerHTML = '';
@@ -1081,7 +1083,7 @@ async function loadHistory() {
 
 async function loadSession(id, mode) {
   try {
-    const resp = await fetch('/api/history/' + id, { headers: { Authorization: AUTH } });
+    const resp = await fetch('/api/history/' + id + '?project=' + encodeURIComponent(currentProject), { headers: { Authorization: AUTH } });
     const data = await resp.json();
     const isExec = mode === 'execute' || data.mode === 'execute';
     if (isExec) {
