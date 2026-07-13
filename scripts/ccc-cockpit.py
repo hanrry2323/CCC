@@ -214,29 +214,52 @@ def render_html(data: dict) -> str:
             <span class="role">{m['role']}</span>
         </div>"""
 
-    ports_html = ""
+    # Group ports by machine
+    ports_by_machine: dict[str, list] = {"M1": [], "Mac 2017": [], "feiniu": []}
     for port in sorted(data.get("ports", {}).keys()):
         info = data["ports"][port]
-        if info["alive"] is True:
-            dot = f'<span class="dot dot-green"></span>'
-            status_text = info.get("label", "运行中")
-        elif info["alive"] is False:
-            dot = f'<span class="dot dot-red"></span>'
-            status_text = "离线"
-        else:
-            dot = f'<span class="dot dot-gray"></span>'
-            status_text = "待检测"
+        machine = info.get("machine", "M1")
+        if machine not in ports_by_machine:
+            ports_by_machine[machine] = []
+        ports_by_machine[machine].append((port, info))
 
-        host = info.get("host", "127.0.0.1")
-        url = f"http://{host}:{port}"
-        ports_html += f"""
-        <tr>
-            <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
-            <td>{info['name']}</td>
-            <td class="host">{host}</td>
-            <td>{info.get('machine', '')}</td>
-            <td>{dot} {status_text}</td>
-        </tr>"""
+    def _machine_port_table(machine_name: str, entries: list) -> str:
+        if not entries:
+            return '<div style="color:#86868b;padding:10px;font-size:13px">无端口信息</div>'
+        rows = ""
+        for port, info in entries:
+            alive = info.get("alive")
+            if alive is True:
+                dot = f'<span class="dot dot-green"></span>'
+                status_text = info.get("label", "运行中")
+            elif alive is False:
+                dot = f'<span class="dot dot-red"></span>'
+                status_text = "离线"
+            else:
+                dot = f'<span class="dot dot-gray"></span>'
+                status_text = "待检测"
+            host = info.get("host", "127.0.0.1")
+            url = f"http://{host}:{port}"
+            rows += f"""
+            <tr>
+                <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
+                <td>{info['name']}</td>
+                <td class="host">{host}</td>
+                <td>{dot} {status_text}</td>
+            </tr>"""
+        return f"""<div class="tbl-wrap" style="margin-bottom:8px">
+          <table>
+            <thead><tr><th>端口</th><th>服务</th><th>主机</th><th>状态</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>"""
+
+    ports_sections = ""
+    for m_name in ["M1", "Mac 2017", "feiniu"]:
+        entries = ports_by_machine.get(m_name, [])
+        ports_sections += f"""
+      <div class="sec-title" style="margin-top:12px">{m_name}</div>
+      {_machine_port_table(m_name, entries)}"""
 
     projects_html = ""
     for p in data.get("projects", []):
@@ -275,8 +298,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 .machine-chip .ip{{color:{THEME['accent']};font-family:ui-monospace,monospace}}
 .machine-chip .role{{color:{THEME['muted']};font-size:12px}}
 .tbl-wrap{{overflow-x:auto;border:1px solid {THEME['border']};border-radius:8px;background:{THEME['surface']}}}
-table{{width:100%;border-collapse:collapse;min-width:600px}}
-th,td{{padding:10px 14px;text-align:left;border-bottom:1px solid #f0f0f2;vertical-align:middle}}
+table{{width:100%;border-collapse:collapse;min-width:500px}}
+th,td{{padding:8px 14px;text-align:left;border-bottom:1px solid #f0f0f2;vertical-align:middle}}
 th{{font-size:11px;font-weight:600;color:{THEME['muted']};background:#fafafa;white-space:nowrap}}
 tr:last-child td{{border-bottom:none}}
 .num{{font-family:ui-monospace,monospace;white-space:nowrap}}
@@ -291,7 +314,7 @@ tr:last-child td{{border-bottom:none}}
 .badge-gray{{background:#f0f0f2;color:{THEME['muted']}}}
 .port-link{{color:{THEME['accent']};text-decoration:none}}
 .port-link:hover{{text-decoration:underline}}
-.quick-links{{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}}
+.quick-links{{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 8px}}
 .quick-links a{{background:{THEME['surface']};border:1px solid {THEME['border']};border-radius:8px;padding:8px 16px;text-decoration:none;color:{THEME['text']};font-size:13px}}
 .quick-links a:hover{{background:#f0f4ff;border-color:{THEME['accent']}}}
 .foot{{margin-top:20px;font-size:11px;color:{THEME['muted']};text-align:center}}
@@ -302,21 +325,23 @@ tr:last-child td{{border-bottom:none}}
 <div class="wrap">
   <div class="hdr">
     <h1>  CCC Cockpit</h1>
-    <span class="ts">M1 · &lt;script&gt;document.write(new Date().toLocaleTimeString('zh-CN'))&lt;/script&gt;</span>
+    <span class="ts">{datetime.now().strftime('%H:%M')}</span>
   </div>
 
   <div class="sec-title">机器</div>
   <div class="machines">{machines_html}</div>
 
-  <div class="sec-title">端口 & 服务</div>
-  <div class="tbl-wrap">
-    <table>
-      <thead>
-        <tr><th>端口</th><th>服务</th><th>主机</th><th>机器</th><th>状态</th></tr>
-      </thead>
-      <tbody>{ports_html or '<tr><td colspan="5" style="text-align:center;color:#86868b">无数据</td></tr>'}</tbody>
-    </table>
+  <div class="sec-title" style="margin-top:16px">快速跳转</div>
+  <div class="quick-links">
+    <a href="http://localhost:7777/" target="_blank">CCC 看板</a>
+    <a href="http://localhost:8082" target="_blank">CCC Chat</a>
+    <a href="http://localhost:8096" target="_blank">qb Dashboard</a>
+    <a href="http://localhost:4000/dashboard" target="_blank">中转站</a>
+    <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>
   </div>
+
+  <div class="sec-title">端口 & 服务</div>
+  {ports_sections}
 
   <div class="sec-title">项目</div>
   <div class="tbl-wrap">
@@ -326,15 +351,6 @@ tr:last-child td{{border-bottom:none}}
       </thead>
       <tbody>{projects_html or '<tr><td colspan="3" style="text-align:center;color:#86868b">无数据</td></tr>'}</tbody>
     </table>
-  </div>
-
-  <div class="sec-title">快速跳转</div>
-  <div class="quick-links">
-    <a href="/api/board?workspace=CCC" target="_blank">CCC 看板</a>
-    <a href="http://localhost:8082" target="_blank">CCC Chat</a>
-    <a href="http://localhost:8096" target="_blank">qb Dashboard</a>
-    <a href="http://localhost:4000/dashboard" target="_blank">中转站</a>
-    <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>
   </div>
 
   <div class="foot" id="foot">
