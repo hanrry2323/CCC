@@ -75,7 +75,7 @@ def parse_infra() -> dict:
 
         # Port table (| 4000 | 中转站 Anthropic | ...)
         m = re.match(r"^\| (\d+)\s+\| ([^|]+)\s+\|", line)
-        if m and current_section and "端口" in current_section:
+        if m and current_section and any(x in current_section for x in ["端口", "生产机", "编译站"]):
             port = int(m.group(1))
             name = m.group(2).strip()
             result["ports"][port] = {
