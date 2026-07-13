@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.6] — 2026-07-14
+
+- cockpit-v0303d-mobile: 看板发布
+
 ## [v0.29.5] — 2026-07-14
 
 - hello-ccc-demo-v2: 看板发布
@@ -1556,3 +1560,7 @@ git push origin main --tags
 ## [v0.29.2] - 2026-07-14
 
 - enhance-quarantine-phase: [ABNORMAL] quarantine lessons 追加上报 phase 编号 看板发布
+
+## [v0.29.5] - 2026-07-14
+
+- cockpit-v0303d-mobile: Plan: cockpit-v0303d-mobile — Mobile 端优化（触摸目标 + 侧栏底栏 + 布局） 看板发布
