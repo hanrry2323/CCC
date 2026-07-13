@@ -1862,14 +1862,36 @@ def _review_with_llm(
         try:
             with open(_prompt_file, "rb") as f:
                 data = f.read()
-            r = _sp.run(
-                [_CLAUDE_CLI, "-p", "--model", "flash"],
-                input=data,
-                capture_output=True,
-                text=False,  # bytes 注入必须 text=False，否则 'bytes' has no 'encode'
-                timeout=300,
-                env=env,
-            )
+            # v0.31: flash tier 不稳定，重试 2 次（第 3 次仍失败再 fallback）
+            _r = None
+            _last_review_err = ""
+            for _attempt in range(1, 4):
+                try:
+                    _r = _sp.run(
+                        [_CLAUDE_CLI, "-p", "--model", "flash"],
+                        input=data,
+                        capture_output=True,
+                        text=False,
+                        timeout=300,
+                        env=env,
+                    )
+                    if _r.returncode == 0:
+                        _last_review_err = ""
+                        break
+                    _last_review_err = f"claude rc={_r.returncode}"
+                except _sp.TimeoutExpired:
+                    _last_review_err = "timeout(300s)"
+                except Exception as _e:
+                    _last_review_err = str(_e)[:200]
+                if _attempt < 3:
+                    _log.warning(
+                        "[reviewer] flash tier attempt %d/3: %s",
+                        _attempt, _last_review_err,
+                    )
+                    time.sleep(10)
+            r = _r
+            if _last_review_err:
+                return {"verdict": "fallback", "reason": _last_review_err}
         finally:
             try:
                 os.unlink(_prompt_file)
