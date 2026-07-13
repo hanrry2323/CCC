@@ -45,3 +45,4 @@ scripts/tests/regression_v028.py
 # v0.31.0: Tauri 桌面端构建产物
 src-tauri/target/
 src-tauri/gen/
+.workbuddy/

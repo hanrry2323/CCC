@@ -28,6 +28,7 @@ if str(_script_dir) not in sys.path:
 from _config import Config, get_logger
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
+from _stats_aggregator import aggregate_stats, load_summary
 
 _log = get_logger("engine")
 
@@ -636,7 +637,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     active_tasks.pop(key, None)
 
 
-            # 每 6 轮（~60s）跑一次 stale check + testing 流转
+            # 每 6 轮（~60s）跑一次 stale check + testing 流转 + 统计聚合
             if iteration % 6 == 0:
                 for ws in workspaces:
                     _activate_workspace(ws)
@@ -650,6 +651,11 @@ def engine_loop(workspaces: list[Path]) -> None:
                             f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
                         )
                         _run_testing_tasks_gate(ws)
+                    # v0.30: 定期统计聚合（即使系统忙）
+                    try:
+                        aggregate_stats(ws)
+                    except Exception as exc:
+                        engine_log(f"[stats] periodic aggregate error for {ws.name}: {exc}")
             ws_first_running: dict[str, str | None] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
@@ -708,6 +714,29 @@ def engine_loop(workspaces: list[Path]) -> None:
 
                     _retry_abnormal_dev_failures(ws)
                     _check_new_reviews(ws)
+
+                    # v0.30: 空闲时聚合统计 → 反馈回路（学习飞轮）
+                    try:
+                        summary = aggregate_stats(ws)
+                        if summary:
+                            insights = summary.get("perf_insights", [])
+                            recs = summary.get("recommendations", [])
+                            for ins in insights:
+                                if ins.get("severity") == "warning":
+                                    engine_log(
+                                        "[stats] %s — %s",
+                                        ws.name,
+                                        ins.get("label", ""),
+                                    )
+                            for rec in recs:
+                                if rec.get("action") != "system_healthy":
+                                    engine_log(
+                                        "[stats-recommend] %s: %s",
+                                        rec.get("action", "?"),
+                                        rec.get("suggestion", ""),
+                                    )
+                    except Exception as exc:
+                        engine_log(f"[stats] aggregate error for {ws.name}: {exc}")
 
                 if not any_active:
                     time.sleep(cfg.engine_idle_sleep)
