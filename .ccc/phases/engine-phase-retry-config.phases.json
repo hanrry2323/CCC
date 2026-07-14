@@ -1,1 +1,1 @@
-[{"phase": 1, "status": "pending", "timeout": 600}]
+[{"phase": 1, "status": "pending", "timeout": 600, "max_retry": 5}]
