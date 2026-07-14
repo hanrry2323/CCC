@@ -15,21 +15,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - engine-heartbeat-metrics: 看板发布
 
+
+- board-index-auto-fix: Patrol 同步 index.json 后检查一致性 看板发布
+
 ## [v0.29.32] — 2026-07-14
 
 - state-md-auto-update: 看板发布
+
+
+- engine-heartbeat-metrics: Engine 心跳增加活跃任务数 看板发布
 
 ## [v0.29.31] — 2026-07-14
 
 - patrol-restart-detail: 看板发布
 
+
+- state-md-auto-update: state.md 自动更新 — Engine 每次任务流转后更新 state.md 看板发布
+
 ## [v0.29.30] — 2026-07-14
 
 - fix-debt-import-cleanup-scope: 看板发布
 
+
+- patrol-restart-detail: Patrol 重启 Engine 增加详细 commit 记录 看板发布
+
 ## [v0.29.29] — 2026-07-14
 
 - cockpit-search-filter: 看板发布
+
+
+- fix-debt-import-cleanup-scope: 清理 debt-import-cleanup 越界引入的无关文件（H3） 看板发布
 
 ## [v0.29.28] — 2026-07-14
 
@@ -39,9 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - test-validate-jsonl-edge: 看板发布
 
+
+- test-engine-phase-failover: Engine phase 失败转移集成测试 看板发布
+
 ## [v0.29.26] — 2026-07-14
 
 - cockpit-dead-counter-badge: 看板发布
+
+
+- test-validate-jsonl-edge: task JSONL 校验边界场景测试 看板发布
 
 ## [v0.29.25] — 2026-07-14
 
@@ -55,17 +76,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - test-cockpit-alive-check: 看板发布
 
+
+- engine-phase-parallel-dispatch: 无依赖 phase 支持并行执行 看板发布
+
 ## [v0.29.22] — 2026-07-14
 
 - test-board-events-format: 看板发布
+
+
+- test-cockpit-alive-check: Cockpit /api/alive 端点单元测试 看板发布
 
 ## [v0.29.21] — 2026-07-14
 
 - engine-task-state-persist: 看板发布
 
+
+- test-board-events-format: BoardStore 事件格式一致性测试 看板发布
+
 ## [v0.29.20] — 2026-07-14
 
 - engine-stats-endpoint: 看板发布
+
+
+- engine-task-state-persist: Engine 重启后 task 状态持久化恢复 看板发布
 
 ## [v0.29.19] — 2026-07-14
 
@@ -75,13 +108,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - engine-stats-endpoint: 看板发布
 
+
+- engine-phase-retry-config: phase 重试次数和超时可配置化 看板发布
+
 ## [v0.29.17] — 2026-07-14
 
 - debt-import-cleanup: 看板发布
 
+
+- engine-stats-endpoint: Engine 添加 /api/stats HTTP 健康检查端点 看板发布
+
 ## [v0.29.16] — 2026-07-14
 
 - debt-docstring-sweep: 看板发布
+
+
+- debt-import-cleanup: 清理全部未使用 import 看板发布
 
 ## [v0.29.15] — 2026-07-14
 
@@ -91,13 +133,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - cockpit-dead-counter-badge: 看板发布
 
+
+- cockpit-status-sort: Cockpit 端口列表按健康状态排序分组 看板发布
+
+
+- debt-docstring-sweep: 各模块补全 docstring 看板发布
+
 ## [v0.29.13] — 2026-07-14
 
 - cockpit-search-filter: 看板发布
 
+
+- cockpit-dead-counter-badge: Cockpit 页面标题 dead 端口数量角标 看板发布
+
 ## [v0.29.12] — 2026-07-14
 
 - cockpit-auto-refresh: 看板发布
+
+
+- cockpit-search-filter: Cockpit 实时搜索过滤端口列表 看板发布
 
 ## [v0.29.10] — 2026-07-14
 
@@ -107,21 +161,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - zcode-adapter-v121: 看板发布
 
+
+- fix-lint-2026-07-14: Plan: fix-lint-2026-07-14 — ruff 扫描修复 32 处 lint 问题 看板发布
+
 ## [v0.29.8] — 2026-07-14
 
 - v10-automation: 看板发布
+
+
+- zcode-adapter-v121: Plan: zcode-adapter-v121 (ZCode IDE Adapter · 配置独立 Session 调度) 看板发布
 
 ## [v0.29.7] — 2026-07-14
 
 - readme-zcode-update: 看板发布
 
+
+- v10-automation: v10 Automation Implementation Plan — 8 phases 待执行 看板发布
+
 ## [v0.29.6] — 2026-07-14
 
 - cockpit-v0303d-mobile: 看板发布
 
+
+- readme-zcode-update: Plan: readme-zcode-update (README 加入 ZCode adapter v1.2.1 章节) 看板发布
+
 ## [v0.29.5] — 2026-07-14
 
 - hello-ccc-demo-v2: 看板发布
+
+
+- cockpit-v0303d-mobile: Plan: cockpit-v0303d-mobile — Mobile 端优化（触摸目标 + 侧栏底栏 + 布局） 看板发布
 
 ## [v0.29.4] — 2026-07-14
 
@@ -135,9 +204,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ccc-check-gitignore: 看板发布
 
+
+- enhance-quarantine-phase: [ABNORMAL] quarantine lessons 追加上报 phase 编号 看板发布
+
 ## [v0.29.1] — 2026-07-14
 
 - e2e-backlog-auto-2026-07-12: 看板发布
+
+
+- ccc-check-gitignore: [ABNORMAL] [ABNORMAL] 检查 CCC .gitignore 遗漏常见模式 看板发布
 
 ## [v0.29.0] — 2026-07-13 — CCC Chat Mobile Control 三标签重构
 
@@ -164,6 +239,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+
+- cockpit-v0301-kb: Cockpit v0.30.1 — 知识库整合 + 服务告警 看板发布
+
+
+- cockpit-v0303-terminal: Cockpit v0.30.3 — 终端体验 + UI 美化 看板发布
+
+
+- cockpit-v0302-files: Cockpit v0.30.2 — 文件浏览器 + 看板集成 看板发布
+
+
+- cockpit-v0304-multicli: Cockpit v0.30.4 — 多 CLI 引擎 + 日志面板 看板发布
+
+
+- cockpit-v031-desktop: Cockpit v0.31.0 — Tauri 桌面端 看板发布
+
+
+- cockpit-v0303c-terminal: Cockpit v0.30.3 — 终端格式优化 看板发布
+
+
+- e2e-backlog-auto-2026-07-12: e2e: 验证 backlog 自动拆分 → 全链路 看板发布
+
 ## [v0.28.1] — 2026-07-12 — 任务复杂度分流 + Lock 热修复
 
 **Commit 1 (a81be00) — feat: 任务复杂度分流 + 每周总结定时任务**
@@ -180,6 +276,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **验证**: 引擎重启后 6 个 backlog 任务全部消费完成（`engine-qb-19121.log`）
 
 ---
+
+
+### 任务复杂度分流（优化方案 A）
+
+- (v0.28.1) 新增 `complexity` 字段：small / medium / large
+  - `_board_store.py`: validate_task_jsonl + fill_task_defaults 支持
+  - `ccc-board.py` product_role: 根据 plan_weight 自动推断复杂度并写入 task
+  - `ccc-engine.py`: small 任务跳过 reviewer+tester，直通 kb
+  - 文档: `references/board-task-schema.md` §12
+- 定时每周总结: CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`
 
 ## [v0.26.1] — 2026-07-11 — 代码审查修复批次（H1-H5 + M1/M2/M6/M7/M10）
 
@@ -632,6 +738,12 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 
 ---
 
+
+- adv-ccc-f1: [CRITICAL] 看板 HTTP server 在多 workspace 安装路径中默认绑定 0.0.0.0 且零鉴
+- adv-ccc-f10: [MEDIUM] _parse_plan_scope 解析 plan.md 后直接 ROOT/f 拼接路径遍历 + glob 注入
+- adv-ccc-f13: [MEDIUM] web UI 静态资源目录由 SimpleHTTPRequestHandler 导致目录泄露
+- adv-ccc-f19: [LOW] subprocess 环境未脱敏，凭据可能经 env 泄漏到子进程
+
 ## [v0.23.3] — 2026-07-09 — 时间戳统一为北京时间
 
 ### 修复
@@ -644,6 +756,18 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 - 测试输出: `2026-07-09T11:56:01+08:00`（北京时间，`fromisoformat` 可解析）
 
 ---
+
+
+- ccc-fix-board-auth: board-server 加最低鉴权 + 绑定白名单 看板发布
+
+
+- ccc-fix-flock-fallback: _HAS_FLOCK=False 时写操作加文件锁降级防御 看板发布
+
+
+- ccc-fix-osascript-inject: osascript notify 参数引用加固 看板发布
+
+
+- ccc-fix-tester-shell-true: tester_role shell=True 改为 shell=False 看板发布
 
 ## [v0.23.2] — 2026-07-09 — engine 取 task 后未更新 index 修复
 
@@ -658,6 +782,30 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 - VERSION: v0.23.0 → v0.23.2
 
 ---
+
+
+- ccc-changelog-format: CHANGELOG.md 格式统一 看板发布
+
+
+- dialog-latency-optimize: 紧急修复: 对话流式响应延迟优化 看板发布
+
+
+- emergency-dialog-latency-optimize: 升舱: dialog-latency-optimize 看板发布
+
+
+- emergency-quality-flywheel-auto-suggest: 升舱: quality-flywheel-auto-suggest 看板发布
+
+
+- quality-flywheel-auto-suggest: 紧急修复: 质量飞轮自动建议 看板发布
+
+
+- smoke-v020: v0.20 smoke 看板发布
+
+
+- ccc-docstring-sweep: scripts/ 模块级 docstring 补充 看板发布
+
+
+- ccc-gitignore-update: .gitignore 加运行时数据排除 看板发布
 
 ## [v0.23.1] — 2026-07-09 — v0.23 对抗性审查修复
 
@@ -850,7 +998,6 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 
 ---
 
-## [Unreleased] — v0.9a — model provider 修复 + v0.9b/c 决策
 
 **里程碑**：v0.9a 修复 opencode 调模型失败（`--model flash` → `--model loop/flash`），跑通真实模型调用。v0.9b 飞轮和 v0.9c 收尾按用户节奏。
 
@@ -859,33 +1006,25 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 - `references/adapters/runtime-opencode.md` §六 — 模型映射段更新（对外 flash / 内部 loop/flash）
 - `docs/lessons.md` — 追加 Lesson 32（opencode 模型名必须带 provider 前缀）
 
-### Verified
 - 真实模型调用: `opencode run --model loop/flash` exit 0，52s 返回
 - pytest: 57 passed
 - 中转站: localhost:4002（loop provider）确认工作
 
----
 
-## [Unreleased] — v0.11 消化 — 范式转变标记
 
 **里程碑**：v0.11 完结后消化，标记 CCC 范式转变 = "opencode 写 + 人工 review"。
 
-### Added
 - `docs/lessons.md` Lesson 34 — opencode run 起 node 孙子进程，killpg 在 macOS 不可靠
 - `docs/lessons.md` Lesson 35 — opencode 写代码质量超过 v0.7 时代人工基线
 - `docs/roadmap.md` 范式转变段（v0.11 起默认 opencode 写）
 
-### Verified
 - install-ccc-scheduler install/uninstall 闭环烟测：plist 生成 + plutil lint OK + 卸载干净
 - 远端 5 tag 完整：v0.7.0 / v0.8.0 / v0.9.0 / v0.10.0 / v0.11.0
 
----
 
-## [Unreleased] — v0.12 — bug fix sweep
 
 **里程碑**：v0.12 全量扫 bug（7 个发现，3 真 bug 修，4 复查非 bug 加注释）。3 类修复模式：数据泄漏 / 静默失败 / 配置硬编码。
 
-### Fixed
 - **Bug 1+3**: `opencode-exec.py` 长 prompt 临时文件永久泄漏（磁盘 + 隐私）— finally 块 unlink
 - **Bug 2**: `ccc-finish.sh` bare `except: pass` 吞所有异常 — 改 `except json.JSONDecodeError as e` + stderr 输出
 - **Bug 6**: `ccc-hook.sh` timeout=30 写死 — 加 `CCC_HOOK_TIMEOUT` env + macOS perl alarm 兜底
@@ -895,21 +1034,16 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 - **Bug 5**: ccc-precheck `open(fp)` 没指定 encoding（macOS UTF-8 默认）
 - **Bug 7**: launcher log 命名已含 phase_id，并发不交错
 
-### Added
 - `tests/scripts/test_bug_fixes_v012.py` — 3 个 test 覆盖
 - `docs/lessons.md` Lesson 36 — bug 分类 + 修复模式
 
-### Verified
 - pytest: 69 passed (66 + 3 新增)
 - 远端 6 tag: v0.7.0 / v0.8.0 / v0.9.0 / v0.10.0 / v0.11.0 / v0.12.0
 
----
 
-## [Unreleased] — v0.11 — 开箱即用调度 + 队列真测试
 
 **里程碑**：v0.11 落地 a（钩子模板 + scheduler 安装器）+ b（队列 N phase 真测试）+ b-fix（红线 X2 必杀修）。v0.11 完结后，CCC 具备了从"用户启 launcher" → "launchd 周期调 launcher" → "队列跑多 phase" 的全链路。
 
-### Added
 - `templates/hooks/post-exec.sh` — phase 完成自动 git add+commit
 - `templates/hooks/on-error.sh` — phase 失败 L2 通知 + 落 abnormal report
 - `templates/hooks/pre-commit.sh` — soft lint (TODO/print/debugger)
@@ -919,27 +1053,82 @@ v0.24.0 / v0.24.1 / v0.24.2 三轮对抗性审查共发现 19 项 issue，本版
 - `tests/scripts/test_queue_e2e_resume.py` — pause 后续跑
 - `docs/lessons.md` Lesson 33 — opencode run positionals 截断 200 字符
 
-### Changed
 - `scripts/opencode-exec.py` — 长 prompt 走 --file 协议（positionals 截断修复）
 - `scripts/opencode-exec.py` — `start_new_session=True` + `os.killpg`（kill 级联）
 - `scripts/opencode-watchdog.sh` — 扫 `opencode (run|exec)` + pkill -f 兜底
 - `scripts/ccc-queue.sh` — `CCC_LAUNCHER_OVERRIDE` env var 支持（mock 测试）
 
-### Fixed
 - **红线 X2 失守修复**：launcher 杀 opencode 不级联到孙子 node 进程（macOS killpg 不可靠）
   - 修法 1: opencode-exec 用 killpg
   - 修法 2: watchdog 加 pkill -f 兜底
 
-### Verified
 - pytest: 66 passed (63 + 3 新增)
 - 真实模型调用: 11.9s 返 exit 0
 - launchd 调度: 装/卸/触发全通
 - 队列 3 场景: pass / mid_fail(exit 5) / resume 全验
 - 必杀: 30s sleep + 2s timeout 必杀
 
----
 
----
+
+
+**里程碑**：每个角色拥有独立 SKILL.md（职责/方法论/红线/知识库注入），参考 `agent-teams.md` + `practitioner-insights.md` 等行业最佳实践。
+
+- `skills/ccc-product/SKILL.md` — 产品经理 skill + **SPEC 门禁**
+- `skills/ccc-dev/SKILL.md` — 开发工程师 skill + **steer don't launch-and-forget** + 迭代检索
+- `skills/ccc-reviewer/SKILL.md` — 代码审查员 skill + **只读不写** + **1:4 比例**
+- `skills/ccc-tester/SKILL.md` — 测试工程师 skill + **双门禁验证**（pytest + plan 验收逐条）
+- `skills/ccc-ops/SKILL.md` — 运维工程师 skill + **告警升级链 L1/L2/L3**
+- `skills/ccc-kb/SKILL.md` — 知识管理员 skill + **AGENTS.md 最终收集**
+- `skills/README.md` — skill 索引（6 角色 + 2 遗留角色）
+- `templates/pending-agents-suggestions.md` — kb 收集 AGENTS.md 建议的模板
+
+- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` — 启动时加载对应 SKILL.md（export CCC_ROLE + CCC_ROLE_SKILL）, 记录 skill frontmatter 到 log
+
+### Knowledge Base Injected
+- **SPEC 门禁**（`agent-teams.md:1923`）：product 拆 subtask 必须过 Specific/Programmatically evaluable/Explicit scope/Constrained
+- **Steer don't launch-and-forget**（`practitioner-insights.md:229`）：dev 的监督姿态
+- **Reviewer 只读不写**（`agent-teams.md:1186`）：有写权限就会去修，产生 merge conflict
+- **1 reviewer per 3-4 builders**（`agent-teams.md:1184`）：reviewer 积压监控
+- **AGENTS.md 积累**（`agent-teams.md:1040-1063`）：沉淀跨 session 工程教训，禁止 agent 直接写入
+
+- 6 角色 shell 脚本语法通过（`bash -n`）
+- `ccc-board.py index` 正常返回
+- ops 角色端到端运行验证（加载 skill → 调 board.py → 退出 0）
+
+
+
+**里程碑**：v0.16 6 角色系统落地后, 沉淀战略地图, 所有 cloud agent 启动第一件事读 STRATEGY-MAP.md。
+
+- `docs/STRATEGY-MAP.md` — 战略地图（启动必读第一份）
+  - 10 段: CCC 是什么 / 范式演进史 / 6 角色系统 / 看板 / 完整调用链 / 红线 / 自动化 / 模型路由 / 教训 / 怎么用
+- `SKILL.md` — 加"启动必读战略地图"段（红线 7 升级）
+- `CLAUDE.md` — 6 角色矩阵（替换 3 角色旧路由）
+- `references/red-lines.md` — X4/X5/X6 三条新红线（v0.16 配套）
+  - X4: 每 phase 必走看板流转
+  - X5: 6 角色 plist 必装
+  - X6: 角色频率不许改
+- `docs/roadmap.md` — 5 次范式转变标注（v0.11 / v0.12 / v0.15 / v0.16 / v0.17）
+
+- SKILL.md version: v1.1 → v1.6
+- 编号索引表加 X4/X5/X6 三行
+
+- 启动必读链验证: STRATEGY-MAP.md → red-lines.md → lessons.md → state.md
+- 6 plist 装上 + 频率正确
+- 9 tag 完整: v0.7.0 → v0.16.0
+
+
+
+**里程碑**：CCC 从 3 角色扩到 6 角色定时开发系统。任务在 6 列看板流转, 6 launchd plist 周期跑。
+
+- `.ccc/board/` 6 列任务看板 (backlog/planned/in_progress/testing/verified/released)
+- `scripts/ccc-board.py` 6 角色核心
+- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` × 6
+- `scripts/install-ccc-roles.sh` 一键装 6 plist
+
+- 6 plist 装上, launchctl list 6 行
+- 看板 e2e: backlog→planned→in_progress→testing→verified→released
+- pytest: 69 passed
+
 
 ## [1.2.0] — 2026-07-06 — 流程跑通 (CCC v1.0 Closure)
 
@@ -1342,153 +1531,21 @@ git push origin main --tags
 
 ---
 
-## [Unreleased] — v0.18 — 6 角色独立 SKILL + 知识库监理逻辑
-
-**里程碑**：每个角色拥有独立 SKILL.md（职责/方法论/红线/知识库注入），参考 `agent-teams.md` + `practitioner-insights.md` 等行业最佳实践。
-
-### Added
-- `skills/ccc-product/SKILL.md` — 产品经理 skill + **SPEC 门禁**
-- `skills/ccc-dev/SKILL.md` — 开发工程师 skill + **steer don't launch-and-forget** + 迭代检索
-- `skills/ccc-reviewer/SKILL.md` — 代码审查员 skill + **只读不写** + **1:4 比例**
-- `skills/ccc-tester/SKILL.md` — 测试工程师 skill + **双门禁验证**（pytest + plan 验收逐条）
-- `skills/ccc-ops/SKILL.md` — 运维工程师 skill + **告警升级链 L1/L2/L3**
-- `skills/ccc-kb/SKILL.md` — 知识管理员 skill + **AGENTS.md 最终收集**
-- `skills/README.md` — skill 索引（6 角色 + 2 遗留角色）
-- `templates/pending-agents-suggestions.md` — kb 收集 AGENTS.md 建议的模板
-
-### Changed
-- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` — 启动时加载对应 SKILL.md（export CCC_ROLE + CCC_ROLE_SKILL）, 记录 skill frontmatter 到 log
-
-### Knowledge Base Injected
-- **SPEC 门禁**（`agent-teams.md:1923`）：product 拆 subtask 必须过 Specific/Programmatically evaluable/Explicit scope/Constrained
-- **Steer don't launch-and-forget**（`practitioner-insights.md:229`）：dev 的监督姿态
-- **Reviewer 只读不写**（`agent-teams.md:1186`）：有写权限就会去修，产生 merge conflict
-- **1 reviewer per 3-4 builders**（`agent-teams.md:1184`）：reviewer 积压监控
-- **AGENTS.md 积累**（`agent-teams.md:1040-1063`）：沉淀跨 session 工程教训，禁止 agent 直接写入
-
-### Verified
-- 6 角色 shell 脚本语法通过（`bash -n`）
-- `ccc-board.py index` 正常返回
-- ops 角色端到端运行验证（加载 skill → 调 board.py → 退出 0）
-
----
-
-## [Unreleased] — v0.17 — 战略地图 + 文档体系对齐 6 角色
-
-**里程碑**：v0.16 6 角色系统落地后, 沉淀战略地图, 所有 cloud agent 启动第一件事读 STRATEGY-MAP.md。
-
-### Added
-- `docs/STRATEGY-MAP.md` — 战略地图（启动必读第一份）
-  - 10 段: CCC 是什么 / 范式演进史 / 6 角色系统 / 看板 / 完整调用链 / 红线 / 自动化 / 模型路由 / 教训 / 怎么用
-- `SKILL.md` — 加"启动必读战略地图"段（红线 7 升级）
-- `CLAUDE.md` — 6 角色矩阵（替换 3 角色旧路由）
-- `references/red-lines.md` — X4/X5/X6 三条新红线（v0.16 配套）
-  - X4: 每 phase 必走看板流转
-  - X5: 6 角色 plist 必装
-  - X6: 角色频率不许改
-- `docs/roadmap.md` — 5 次范式转变标注（v0.11 / v0.12 / v0.15 / v0.16 / v0.17）
-
-### Changed
-- SKILL.md version: v1.1 → v1.6
-- 编号索引表加 X4/X5/X6 三行
-
-### Verified
-- 启动必读链验证: STRATEGY-MAP.md → red-lines.md → lessons.md → state.md
-- 6 plist 装上 + 频率正确
-- 9 tag 完整: v0.7.0 → v0.16.0
-
----
-
-## [Unreleased] — v0.16 — 6 角色定时开发系统 + 任务看板
-
-**里程碑**：CCC 从 3 角色扩到 6 角色定时开发系统。任务在 6 列看板流转, 6 launchd plist 周期跑。
-
-### Added
-- `.ccc/board/` 6 列任务看板 (backlog/planned/in_progress/testing/verified/released)
-- `scripts/ccc-board.py` 6 角色核心
-- `scripts/roles/{product,dev,reviewer,tester,ops,kb}.sh` × 6
-- `scripts/install-ccc-roles.sh` 一键装 6 plist
-
-### Verified
-- 6 plist 装上, launchctl list 6 行
-- 看板 e2e: backlog→planned→in_progress→testing→verified→released
-- pytest: 69 passed
-
-
 ## [v0.18.0] - 2026-07-07
 
 - feat-agents-approve: AGENTS.md 审批流程 看板发布
 
-## [v0.18.0] - 2026-07-08
 
 - feat-regress-notify: [ABNORMAL] 回测失败通知：regress 发现回归时，除了建 bug 还要发桌面通知（ccc-notify.sh） 看板发布
 
-## [v0.18.0] - 2026-07-08
 
 - feat-product-auto: product 自动调 Claude API 写 plan（--promote 已实现，需测试中转站连通性） 看板发布
 
-## [v0.18.0] - 2026-07-08
 
 - feat-role-bar: 前端角色状态栏对接 /api/roles，实时显示 7 角色最新执行状态（ok/fail/idle+执行时间） 看板发布
 
-## [v0.18.0] - 2026-07-08
 
 - feat-card-detail: [ABNORMAL] 前端卡片点击弹出详情面板，显示任务完整信息（题目/描述/当前列/move事件列表） 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- ccc-changelog-format: CHANGELOG.md 格式统一 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- dialog-latency-optimize: 紧急修复: 对话流式响应延迟优化 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- emergency-dialog-latency-optimize: 升舱: dialog-latency-optimize 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- emergency-quality-flywheel-auto-suggest: 升舱: quality-flywheel-auto-suggest 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- quality-flywheel-auto-suggest: 紧急修复: 质量飞轮自动建议 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- smoke-v020: v0.20 smoke 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- ccc-docstring-sweep: scripts/ 模块级 docstring 补充 看板发布
-
-## [v0.23.2] - 2026-07-09
-
-- ccc-gitignore-update: .gitignore 加运行时数据排除 看板发布
-
-## [v0.23.3] - 2026-07-09
-
-- ccc-fix-board-auth: board-server 加最低鉴权 + 绑定白名单 看板发布
-
-## [v0.23.3] - 2026-07-09
-
-- ccc-fix-flock-fallback: _HAS_FLOCK=False 时写操作加文件锁降级防御 看板发布
-
-## [v0.23.3] - 2026-07-09
-
-- ccc-fix-osascript-inject: osascript notify 参数引用加固 看板发布
-
-## [v0.23.3] - 2026-07-09
-
-- ccc-fix-tester-shell-true: tester_role shell=True 改为 shell=False 看板发布
-
-## [v0.23.4] - 2026-07-09
-
-- adv-ccc-f1: [CRITICAL] 看板 HTTP server 在多 workspace 安装路径中默认绑定 0.0.0.0 且零鉴
-- adv-ccc-f10: [MEDIUM] _parse_plan_scope 解析 plan.md 后直接 ROOT/f 拼接路径遍历 + glob 注入
-- adv-ccc-f13: [MEDIUM] web UI 静态资源目录由 SimpleHTTPRequestHandler 导致目录泄露
-- adv-ccc-f19: [LOW] subprocess 环境未脱敏，凭据可能经 env 泄漏到子进程
 
 ## [v0.23.5] - 2026-07-10
 
@@ -1511,7 +1568,7 @@ git push origin main --tags
 - G4 [high] engine 重启恢复: 启动扫描 in_progress 后检查 PID 存活，.pid 指向已死进程时清理并标记 failed 让 engine 自动重启
 - G11 [medium] audit-last-run 跨 workspace 共享: 拆为 `audit-last-run.{workspace}.json`，5 个 engine 实例互不影响
 
-## [vv0.23.8] - 2026-07-10
+## [v0.23.8] - 2026-07-10
 
 ### 修复
 - reviewer JSON 提取: markdown 代码块匹配时用 `m.group(1)` 而非 `m.group(0)`，修复 json.loads 因包含反引号解析失败
@@ -1573,18 +1630,6 @@ git push origin main --tags
 - `scripts/tests/test_quarantine_archive.py`：5/5 passed
 - `scripts/tests/test_phase_lint.py` 测试同时验证 legacy API 与 v0.28.0 新 API
 
-## [v0.28.1] - 2026-07-12
-
-### 任务复杂度分流（优化方案 A）
-
-- (v0.28.1) 新增 `complexity` 字段：small / medium / large
-  - `_board_store.py`: validate_task_jsonl + fill_task_defaults 支持
-  - `ccc-board.py` product_role: 根据 plan_weight 自动推断复杂度并写入 task
-  - `ccc-engine.py`: small 任务跳过 reviewer+tester，直通 kb
-  - 文档: `references/board-task-schema.md` §12
-- 定时每周总结: CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`
-
-## [v0.28.0] - 2026-07-11/12
 
 ### v0.28.0 审查修复批次（F-1~F-4 核心断点）
 
@@ -1612,7 +1657,6 @@ git push origin main --tags
   - cooldown 写失败 → 不写 AGENTS.md（重启不重复合入）
 - (F3-C1/F3-C2) flywheel-scan.sh ALL_WORKSPACES 去重 + P2 段输出去重
   - macOS bash 3.2 兼容（declare -A 不可用），P2_WRITTEN 字符串做去重表
-- (F3-H1) flywheel 报告落盘: scan 结束 cp 到 .ccc/reports/flywheel-YYYY-MM-DD.md
 - (N-001/002/004/005) logger / config / json 统一修复
 
 #### 对抗性审查沉淀
@@ -1633,134 +1677,6 @@ git push origin main --tags
 - smoke-v0245-test: [ABNORMAL] v0.24.5 smoke 看板发布
 - e2e-mini-2026-07-12: e2e: 小变更验证全链路 看板发布
 
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v0301-kb: Cockpit v0.30.1 — 知识库整合 + 服务告警 看板发布
-
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v0303-terminal: Cockpit v0.30.3 — 终端体验 + UI 美化 看板发布
-
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v0302-files: Cockpit v0.30.2 — 文件浏览器 + 看板集成 看板发布
-
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v0304-multicli: Cockpit v0.30.4 — 多 CLI 引擎 + 日志面板 看板发布
-
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v031-desktop: Cockpit v0.31.0 — Tauri 桌面端 看板发布
-
-## [v0.29.0] - 2026-07-13
-
-- cockpit-v0303c-terminal: Cockpit v0.30.3 — 终端格式优化 看板发布
-
-## [v0.29.0] - 2026-07-14
-
-- e2e-backlog-auto-2026-07-12: e2e: 验证 backlog 自动拆分 → 全链路 看板发布
-
-## [v0.29.1] - 2026-07-14
-
-- ccc-check-gitignore: [ABNORMAL] [ABNORMAL] 检查 CCC .gitignore 遗漏常见模式 看板发布
-
-## [v0.29.2] - 2026-07-14
-
-- enhance-quarantine-phase: [ABNORMAL] quarantine lessons 追加上报 phase 编号 看板发布
-
-## [v0.29.5] - 2026-07-14
-
-- cockpit-v0303d-mobile: Plan: cockpit-v0303d-mobile — Mobile 端优化（触摸目标 + 侧栏底栏 + 布局） 看板发布
-
-## [v0.29.6] - 2026-07-14
-
-- readme-zcode-update: Plan: readme-zcode-update (README 加入 ZCode adapter v1.2.1 章节) 看板发布
-
-## [v0.29.7] - 2026-07-14
-
-- v10-automation: v10 Automation Implementation Plan — 8 phases 待执行 看板发布
-
-## [v0.29.8] - 2026-07-14
-
-- zcode-adapter-v121: Plan: zcode-adapter-v121 (ZCode IDE Adapter · 配置独立 Session 调度) 看板发布
-
-## [v0.29.9] - 2026-07-14
-
-- fix-lint-2026-07-14: Plan: fix-lint-2026-07-14 — ruff 扫描修复 32 处 lint 问题 看板发布
-
 ## [v0.29.11] - 2026-07-14
 
 - cockpit-auto-refresh: Cockpit 30s 自动轮询刷新端口状态 看板发布
-
-## [v0.29.12] - 2026-07-14
-
-- cockpit-search-filter: Cockpit 实时搜索过滤端口列表 看板发布
-
-## [v0.29.13] - 2026-07-14
-
-- cockpit-dead-counter-badge: Cockpit 页面标题 dead 端口数量角标 看板发布
-
-## [v0.29.14] - 2026-07-14
-
-- cockpit-status-sort: Cockpit 端口列表按健康状态排序分组 看板发布
-
-## [] - 2026-07-14
-
-- debt-docstring-sweep: 各模块补全 docstring 看板发布
-
-## [v0.29.16] - 2026-07-14
-
-- debt-import-cleanup: 清理全部未使用 import 看板发布
-
-## [v0.29.17] - 2026-07-14
-
-- engine-stats-endpoint: Engine 添加 /api/stats HTTP 健康检查端点 看板发布
-
-## [v0.29.18] - 2026-07-14
-
-- engine-phase-retry-config: phase 重试次数和超时可配置化 看板发布
-
-## [v0.29.20] - 2026-07-14
-
-- engine-task-state-persist: Engine 重启后 task 状态持久化恢复 看板发布
-
-## [v0.29.21] - 2026-07-14
-
-- test-board-events-format: BoardStore 事件格式一致性测试 看板发布
-
-## [v0.29.22] - 2026-07-14
-
-- test-cockpit-alive-check: Cockpit /api/alive 端点单元测试 看板发布
-
-## [v0.29.23] - 2026-07-14
-
-- engine-phase-parallel-dispatch: 无依赖 phase 支持并行执行 看板发布
-
-## [v0.29.26] - 2026-07-14
-
-- test-validate-jsonl-edge: task JSONL 校验边界场景测试 看板发布
-
-## [v0.29.27] - 2026-07-14
-
-- test-engine-phase-failover: Engine phase 失败转移集成测试 看板发布
-
-## [v0.29.29] - 2026-07-14
-
-- fix-debt-import-cleanup-scope: 清理 debt-import-cleanup 越界引入的无关文件（H3） 看板发布
-
-## [v0.29.30] - 2026-07-14
-
-- patrol-restart-detail: Patrol 重启 Engine 增加详细 commit 记录 看板发布
-
-## [v0.29.31] - 2026-07-14
-
-- state-md-auto-update: state.md 自动更新 — Engine 每次任务流转后更新 state.md 看板发布
-
-## [v0.29.32] - 2026-07-14
-
-- engine-heartbeat-metrics: Engine 心跳增加活跃任务数 看板发布
-
-## [v0.29.33] - 2026-07-14
-
-- board-index-auto-fix: Patrol 同步 index.json 后检查一致性 看板发布
