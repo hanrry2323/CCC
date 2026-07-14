@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.30] — 2026-07-14
+
+- fix-debt-import-cleanup-scope: 看板发布
+
 ## [v0.29.29] — 2026-07-14
 
 - cockpit-search-filter: 看板发布
@@ -1724,3 +1728,7 @@ git push origin main --tags
 ## [v0.29.27] - 2026-07-14
 
 - test-engine-phase-failover: Engine phase 失败转移集成测试 看板发布
+
+## [v0.29.29] - 2026-07-14
+
+- fix-debt-import-cleanup-scope: 清理 debt-import-cleanup 越界引入的无关文件（H3） 看板发布
