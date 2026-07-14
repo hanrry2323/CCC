@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.25] — 2026-07-14
+
+- cockpit-auto-refresh: 看板发布
+
 ## [v0.29.24] — 2026-07-14
 
 - engine-phase-parallel-dispatch: 看板发布
