@@ -1508,6 +1508,10 @@ def check_product_async(task_id: str) -> dict:
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)
             except (ValueError, ProcessLookupError):
+                # 进程已退出 — 检查输出文件是否有内容
+                if result_file.exists() and result_file.stat().st_size > 0:
+                    output = result_file.read_text()
+                    return _parse_and_finalize_product(task_id, output, pids_dir)
                 pass
             except OSError:
                 pass
@@ -1517,8 +1521,16 @@ def check_product_async(task_id: str) -> dict:
 
     # 读输出
     output = result_file.read_text() if result_file.exists() else ""
+    return _parse_and_finalize_product(task_id, output, pids_dir)
 
-    # 解析 PLAN / PHASES
+
+def _parse_and_finalize_product(
+    task_id: str, output: str, pids_dir: Path
+) -> dict:
+    """解析 product 输出，失败清理标记，成功写 plan+phases 并移 backlog→planned。
+
+    抽出供 check_product_async 共用：进程退出但 output 已生成也可走此路径。
+    """
     import re as _re
 
     plan_match = _re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, _re.DOTALL)
