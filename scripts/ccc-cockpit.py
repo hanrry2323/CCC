@@ -281,6 +281,8 @@ def _fetch_board_summary() -> dict:
         "today_fixed": 0,
     }
     workspaces = {}
+    active_tasks = []
+    today_events = []
 
     def _http_get_json(url: str):
         try:
@@ -308,6 +310,7 @@ def _fetch_board_summary() -> dict:
     dashboard = _http_get_json(
         f"{base}/api/dashboard?workspace={urllib.parse.quote(workspace)}"
     )
+
     if isinstance(dashboard, dict):
         d_kpi = dashboard.get("kpi") or {}
         if "in_progress" in d_kpi:
@@ -341,6 +344,13 @@ def _fetch_board_summary() -> dict:
             for name, path in ws.items():
                 workspaces[name] = path
 
+        raw_active = dashboard.get("active_tasks")
+        if isinstance(raw_active, list):
+            active_tasks = raw_active
+        raw_events = dashboard.get("today_events")
+        if isinstance(raw_events, list):
+            today_events = raw_events
+
     if board is None and dashboard is None:
         return None
 
@@ -348,6 +358,8 @@ def _fetch_board_summary() -> dict:
         "columns": columns,
         "kpi": kpi,
         "workspaces": workspaces,
+        "active_tasks": active_tasks,
+        "today_events": today_events[:10],
         "last_updated": datetime.now().strftime("%H:%M"),
     }
 

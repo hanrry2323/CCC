@@ -1,0 +1,3 @@
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": null, "notes": "扩展 _fetch_board_summary() 获取 active_tasks + today_events；Cockpit /api/board 透传全量", "color_depth": 1, "color_group": "O"}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending"}, "timeout": 300, "commit": null, "notes": "HTML 渲染活跃任务/今日事件 section；JS 30s 自动刷新检测", "color_depth": 1, "color_group": "O"}

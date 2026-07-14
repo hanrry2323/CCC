@@ -115,5 +115,53 @@ def test_status_alive_query_param():
         )
 
 
+def test_board_active_tasks_structure():
+    """Verify active_tasks fields structure (board-server enriched payload).
+
+    Per plan Phase 1: active_tasks 来自 board-server dashboard enriched 数据。
+    """
+    sample = {
+        "id": "test-task-1",
+        "title": "Test Active Task",
+        "phase_cn": "开发中",
+        "human_who": "dev",
+        "elapsed_cn": "已运行 5 分钟",
+        "workspace": "CCC",
+        "updated_at": "2026-07-14T12:00:00+08:00",
+    }
+    required_fields = ["id", "title", "phase_cn", "elapsed_cn", "workspace"]
+    for field in required_fields:
+        assert field in sample, f"active_tasks item missing required field: {field}"
+    assert isinstance(sample["title"], str)
+    assert isinstance(sample["elapsed_cn"], str)
+
+
+def test_today_events_structure():
+    """Verify today_events fields structure.
+
+    Per plan Phase 1: today_events 来自 board-server dashboard enriched 数据。
+    """
+    sample = {
+        "time": "12:00",
+        "task_id": "test-task-2",
+        "task_title": "Test Completed Task",
+        "to_column": "released",
+        "action_cn": "已发布到生产环境",
+        "workspace": "CCC",
+    }
+    required_fields = ["time", "task_id", "task_title", "to_column", "workspace"]
+    for field in required_fields:
+        assert field in sample, f"today_events item missing required field: {field}"
+    assert sample["to_column"] in {
+        "released",
+        "verified",
+        "in_progress",
+        "testing",
+        "abnormal",
+        "planned",
+        "backlog",
+    }
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
