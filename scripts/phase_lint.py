@@ -70,6 +70,8 @@ def validate_schema_version(
             if fix:
                 # 修复：把 schema_version 当初一个 phase 删除，并在头部写入 metadata row
                 with open(phases_file, "r+") as f:
+                    # v0.29: 在 try 前读取 content，使 except 分支也可用（C1）
+                    content = f.readlines()
                     try:
                         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                     except (OSError, AttributeError) as e:
