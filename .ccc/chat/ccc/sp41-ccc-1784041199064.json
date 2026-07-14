@@ -1,0 +1,21 @@
+{
+  "session_id": "sp41-ccc-1784041199064",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nCCC 已就绪 \n\n这是 CCC（Connect–Claude Code）项目，当前处于空闲等待状态。\n\n**几个要点：**\n- CCC 需要**显式触发**（红线 #12）：你说\"启动 CCC 做 XX\"才会启动工作流\n- 简单对话/问答/闲聊不触发 CCC，直接对话即可\n- 若要启动完整工作流（product → dev → review → test → kb），请说：`启动 CCC 做 <任务描述>`\n\n**现在可以：**\n1. 直接问我任何技术问题（不走 CCC 工作流）\n2. 启动 CCC 执行具体任务\n3. 查看项目状态（读 `.ccc/state.md` / `.ccc/infrastructure.md`）\n\n请告诉我你想做什么？",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:59:59+08:00",
+  "created_at": "2026-07-14T22:59:59+08:00"
+}

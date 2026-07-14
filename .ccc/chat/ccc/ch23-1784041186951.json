@@ -1,0 +1,21 @@
+{
+  "session_id": "ch23-1784041186951",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n**CCC — Connect–Claude Code**\n\nIt's a SKILL asset suite (not a framework codebase) that connects Claude Code's execution capability to any IDE tool — Trae, Cursor, Zed, VS Code, OpenCode, etc.\n\n**Core idea**: 7 role-based skills (`SKILL.md` + `skills/ccc-<role>/SKILL.md`) that orchestrate a pipeline (product → dev → reviewer → tester → kb, etc.) backed by a serial Engine (v0.20.1+), with strict red-line discipline (12+ rules covering commit boundaries, phase atomicity, role isolation, etc.).\n\n**Key invariants** (just from the truncated context):\n- Single-commit per phase (兜底 commit 由脚本做)\n- `phases.json` 必须写全 (JSONL, 不嵌套)\n- 禁止角色互串 (product 不写代码, reviewer 不写 plan)\n- `state.md` 强制接力 (no implicit cross-session memory)\n- Verdict 必须落 verdict 文件 (口头 PASS 不算 PASS)\n\nFull picture is in `README.md` + `docs/roadmap.md` (which got truncated). Want me to dig into a specific layer — engine loop, role skills, board schema, or something else?",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:59:46+08:00",
+  "created_at": "2026-07-14T22:59:46+08:00"
+}

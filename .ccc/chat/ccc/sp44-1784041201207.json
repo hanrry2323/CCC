@@ -1,0 +1,21 @@
+{
+  "session_id": "sp44-1784041201207",
+  "title": "fields test",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "fields test",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n收到。\"fields test\" 这条信息比较简短，能补充一下你想测什么吗？例如：\n\n- **CCC 看板的 task 字段**（`references/board-task-schema.md`）？\n- **某个 forms / API 的字段校验**？\n- **UI 输入框 / 表单字段**？\n- 只是在测输入框能不能发消息？\n\n告诉我具体场景，我再帮你定位或验证。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:00:01+08:00",
+  "created_at": "2026-07-14T23:00:01+08:00"
+}

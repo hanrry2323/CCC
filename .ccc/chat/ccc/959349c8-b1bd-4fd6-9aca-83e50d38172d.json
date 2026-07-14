@@ -1,0 +1,21 @@
+{
+  "session_id": "959349c8-b1bd-4fd6-9aca-83e50d38172d",
+  "title": "ping",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\npong\n\nCCC 项目上下文已加载。需要我做什么？",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:00:19+08:00",
+  "created_at": "2026-07-14T23:00:19+08:00"
+}

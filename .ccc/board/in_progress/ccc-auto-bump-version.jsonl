@@ -1,1 +1,0 @@
-{"id": "ccc-auto-bump-version", "title": "Engine released 后自动版本 bump", "description": "task 进入 released 列后自动 VERSION + git tag，不再手动版本管理。", "complexity": "large", "ts": "2026-07-14T14:36:59Z", "note": "v1.0: 自动发布", "status": "in_progress", "updated_at": "2026-07-14T22:59:02+08:00", "color_group": "F", "color_depth": 0}

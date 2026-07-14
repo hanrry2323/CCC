@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -424,6 +425,51 @@ def triage_abnormal(ws_name: str, ws: Path) -> list[str]:
             ops.append(f"{tid}: no verdict/plan → backlog")
 
     return ops
+
+
+def cleanup_zombie_opencode_pids() -> list[str]:
+    """全量扫描 ~/.ccc/opencode-pids/，检测并清理 zombie opencode 进程。
+
+    对每个 .pid 文件：
+    1. 读 PID
+    2. _is_zombie_pid(pid) 检查是否为 Z 状态
+    3. 是 → 先 kill -TERM, sleep 1, 仍存活则 kill -KILL
+    4. 清理 pid 文件（无论 kill 是否成功，文件都可能残留）
+
+    Returns:
+        操作描述列表，每项如 "zombie:{phase_id}(pid=12345) → killed+cleaned"
+    """
+    zombie_ops = []
+
+    if not PID_DIR.exists():
+        return zombie_ops
+
+    try:
+        for pid_file in PID_DIR.glob("*.pid"):
+            try:
+                pid = int(pid_file.read_text().strip())
+                if _is_zombie_pid(pid):
+                    phase_id = pid_file.stem
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        time.sleep(1)
+                        # 再检查一次是否存活
+                        if os.kill(pid, 0):  # kill -0
+                            os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        # 进程可能已经被其他工具清理，忽略
+                        pass
+
+                    zombie_ops.append(f"zombie:{phase_id}(pid={pid}) → killed+cleaned")
+                    pid_file.unlink()
+            except (ValueError, OSError):
+                # pid 文件内容不是有效整数，或读文件失败，跳过
+                continue
+    except OSError:
+        # PID_DIR 不可读
+        pass
+
+    return zombie_ops
 
 
 def _move_task(ws: Path, tid: str, src: str, dst: str) -> bool:
@@ -1042,6 +1088,12 @@ def main() -> int:
             elif "stuck" in o and "no action" not in o:
                 all_stuck_ops.append(f"{name}:{o}")
     _save_stuck_counters(stuck_counters)
+
+    # ── Step 3.5: zombie opencode 进程清理 ──
+    zombie_ops = cleanup_zombie_opencode_pids()
+    if zombie_ops:
+        all_fix_ops.extend(zombie_ops)
+        engine_operated = True
 
     # ── Step 4: 状态持久化 ──
     warn = detect_stagnation(ws_stats)

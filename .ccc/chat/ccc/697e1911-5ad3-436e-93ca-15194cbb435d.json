@@ -1,0 +1,16 @@
+{
+  "session_id": "697e1911-5ad3-436e-93ca-15194cbb435d",
+  "title": "New Chat",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我已收到CCC项目的核心上下文。\n\n**为了准确执行任务，我需要确认当前角色的具体定位。**\n\n根据`references/red-lines.md`（第 7 条石灰线），任何代理在启动执行前，**必须**先读取：\n1.  **`~/.ccc/infrastructure.md`**：基础设施与运行状态。\n2.  **`~/.ccc/profile.md`**：项目档案（包含预定义变量、命令、算法等，不可修改）。\n\n**请确认我应扮演哪个 `ccc-<role>`？**\n目前我看起来像是在等待指令。如果您希望我启动，请提供 role 名字（如 `ccc-product` 或 `ccc-dev`），或者直接告诉我您需要我做什么（但请确保不要违反第 12 条红线：不要自行启用 CCC，需用户显式触发）。\n\n---\n\n### 临时观察\n*   **当前架构**：v0.20.1+，已从定时轮询改为 **CCC Engine** 串行驱动。\n*   **关键文件发现**：prompt 仅需读取 `SKILL.md` 与对应角色的 `skills/ccc-<role>/SKILL.md`。本上下文提到的 `.ccc/` 档案（profile.md）通常是用户维护的，Agent 需警惕不要破坏（红线 1）。\n*   **执行入口**：项目强调 **`scripts/_executor.py`** / OpenCode 执行抽象。\n*   **重要检查**：如果您需要启动一个具体任务，请指定 **Role**，我将首先读取该角色的 `SKILL.md` 和基础设施状态进行初始化。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:00:03+08:00",
+  "created_at": "2026-07-14T23:00:03+08:00"
+}

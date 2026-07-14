@@ -1,0 +1,21 @@
+{
+  "session_id": "ch27-1784041186982",
+  "title": "你好世界 🌍 こんにちは",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好世界 🌍 こんにちは",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n你好！こんにちは！\n\n欢迎！我在这里随时准备帮助你。无论是中文、日文还是英文，都可以畅所欲言。\n\n有什么我可以为你效劳的吗？",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:59:46+08:00",
+  "created_at": "2026-07-14T22:59:46+08:00"
+}

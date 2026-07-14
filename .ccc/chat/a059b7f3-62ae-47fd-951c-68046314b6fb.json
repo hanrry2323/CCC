@@ -1,0 +1,21 @@
+{
+  "session_id": "a059b7f3-62ae-47fd-951c-68046314b6fb",
+  "title": "hi",
+  "project": "",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi there! How can I help you today?",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:00:45+08:00",
+  "created_at": "2026-07-14T23:00:45+08:00"
+}
