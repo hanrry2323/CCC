@@ -1,4 +1,1 @@
-{"id":"fix-debt-import-cleanup-scope","title":"清理 debt-import-cleanup 越界引入的无关文件（H3）","description":"e81ccbb commit 在\"清理无用 import\" 中夹带了 701 行无关新代码：
-- scripts/end_to_end_baseline.py（359行，其他项目的 sqlite 模板，与 CCC 无关）
-- tests/e2e/test_pipeline_backlog_auto.sh（342行，不自动运行的 e2e 测试）
-需要：1) 审查并移除越界文件 2) 确认 F401 清理本身正确","status":"backlog","created_at":"2026-07-14T11:18:33Z","updated_at":"2026-07-14T11:18:33Z","assignee":null,"tags":["debt","cleanup"],"schema_version":"1.0","complexity":"medium"}
+{"id": "fix-debt-import-cleanup-scope", "title": "清理 debt-import-cleanup 越界引入的无关文件（H3）", "description": "e81ccbb commit 在\"清理无用 import\" 中夹带了 701 行无关新代码：scripts/end_to_end_baseline.py（359行，其他项目的 sqlite 模板，与 CCC 无关）；tests/e2e/test_pipeline_backlog_auto.sh（342行，不自动运行的 e2e 测试）。需要：1) 审查并移除越界文件 2) 确认 F401 清理本身正确", "status": "backlog", "created_at": "2026-07-14T11:22:26Z", "updated_at": "2026-07-14T11:22:26Z", "assignee": null, "tags": ["debt", "cleanup"], "schema_version": "1.0", "complexity": "medium"}
