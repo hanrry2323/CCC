@@ -721,9 +721,8 @@ HTML_UI = r"""<!DOCTYPE html>
 <style>
   html { transition: background 0.3s ease; }
   body { transition: var(--transition-theme); }
-  #app, #header, #sidebar, #input-area, #tabbar, .bubble,
-  .board-col, #task-modal, #modal-overlay, .file-tree-panel,
-  .board-card, .tool-card, #input-wrap, .session-item {
+  #app, #header, #sidebar, #input-area, .bubble,
+  .tool-card, #input-wrap, .session-item {
     transition: var(--transition-theme);
   }
   :root {
@@ -752,10 +751,6 @@ HTML_UI = r"""<!DOCTYPE html>
     --space-md: 12px;
     --space-lg: 16px;
     --space-xl: 24px;
-    --terminal-bg: #1a1b26;
-    --terminal-sep: #2f3346;
-    --terminal-body: #1f2233;
-    --terminal-comment: #565f89;
     --transition-theme: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   }
   [data-theme="dark"] {
@@ -775,9 +770,6 @@ HTML_UI = r"""<!DOCTYPE html>
     --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
     --danger: #ff453a;
     --success: #30d158;
-    --terminal-bg: #0d0e15;
-    --terminal-sep: #1a1b2e;
-    --terminal-body: #13141f;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
     --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
@@ -809,23 +801,20 @@ HTML_UI = r"""<!DOCTYPE html>
     background:none; border:none; color:var(--accent);
     font-size:15px; font-weight:500; cursor:pointer; padding:6px 4px;
   }
-  .tab-panel { display:none; flex:1; flex-direction:column; overflow:hidden; }
-  .tab-panel.active { display:flex; }
-  #messages, #exec-messages {
+  #chat-panel { display:flex; flex:1; flex-direction:column; overflow:hidden; }
+
+  #messages {
     flex:1; overflow-y:auto; padding:16px; padding-bottom:8px;
     -webkit-overflow-scrolling:touch;
   }
   .msg { margin-bottom:8px; display:flex; flex-direction:column; }
   .msg.user { align-items:flex-end; }
   .msg.assistant { align-items:flex-start; }
-  .msg.execute .bubble-wrap { display:flex; align-items:flex-start; gap:6px; max-width:90%; }
-  .msg.execute .exec-icon { font-size:16px; flex-shrink:0; margin-top:12px; }
   .msg .bubble {
     max-width:85%; padding:12px 16px; border-radius:var(--radius);
     line-height:1.5; font-size:15px; word-wrap:break-word;
     box-shadow:var(--shadow);
   }
-  .msg.execute .bubble { max-width:100%; flex:1; }
   .msg.user .bubble {
     background:var(--user-bg); color:var(--user-text);
     border-bottom-right-radius:4px; box-shadow:none;
@@ -882,233 +871,10 @@ HTML_UI = r"""<!DOCTYPE html>
   .msg { animation: msg-fade-in 0.2s ease-out; }
   .tool-card { transition: border-color 0.2s, box-shadow 0.2s; }
   .tool-card:hover { border-color:var(--accent); box-shadow:0 1px 6px rgba(0,122,255,0.1); }
-  /* Terminal mode Execute */
-  .terminal-output {
-    background:var(--terminal-bg); color:var(--terminal-text);
-    font-family:'SF Mono','Menlo','Consolas',monospace;
-    font-size:13px; line-height:1.7;
-    padding:14px; overflow-y:auto; flex:1;
-    -webkit-overflow-scrolling:touch;
-    transition: var(--transition-theme);
-  }
-  .terminal-line { padding:1px 0; white-space:pre-wrap; word-break:break-word; }
-  .terminal-line + .terminal-line { margin-top:2px; }
-  .terminal-prompt { color:var(--terminal-prompt); font-weight:600; }
-  .terminal-command { color:var(--terminal-text); font-weight:500; }
-  .terminal-output-text { color:var(--terminal-text); }
-  .terminal-timestamp { color:var(--terminal-comment); font-size:11px; margin-right:8px; }
-  .terminal-cursor { display:inline-block; }
-  .terminal-cursor::after { content:'▊'; animation:term-blink 1s step-end infinite; color:var(--terminal-prompt); }
-  @keyframes term-blink { 50% { opacity:0; } }
-  .terminal-tool-header {
-    color:var(--terminal-header); font-weight:600; margin:8px 0 4px;
-    display:flex; align-items:center; gap:6px; font-size:12px;
-  }
-  .terminal-tool-header .tool-icon { font-size:14px; }
-  .terminal-tool-header .tool-status { font-size:11px; color:var(--success); }
-  .terminal-tool-header .tool-status.running { color:#e0af68; animation:term-blink 1s step-end infinite; }
-  .terminal-tool-body {
-    background:var(--terminal-body); border-left:3px solid var(--terminal-header); border-radius:4px;
-    padding:8px 12px; margin:4px 0 10px; font-size:12px; overflow-x:auto;
-  }
-  .terminal-tool-body pre { margin:0; font-size:12px; color:var(--terminal-text); white-space:pre-wrap; word-break:break-word; }
-  .terminal-separator { border:none; border-top:1px solid var(--terminal-sep); margin:6px 0; }
-  .terminal-info { color:var(--terminal-comment); font-size:11px; padding:4px 0; }
-  /* Diff visualization */
-  .diff-file { margin:12px 0; background:var(--terminal-body); border-radius:6px; overflow:hidden; border:1px solid var(--terminal-sep); }
-  .diff-file-header {
-    padding:6px 12px; font-size:12px; color:var(--terminal-header);
-    background:var(--terminal-info); font-weight:500;
-    display:flex; justify-content:space-between; align-items:center;
-  }
-  .diff-summary { color:var(--success); font-size:11px; }
-  .diff-hunk-header {
-    padding:4px 12px; font-size:11px; color:var(--terminal-comment);
-    background:var(--terminal-body); font-family:monospace; border-bottom:1px solid var(--terminal-sep);
-  }
-  .diff-line {
-    padding:1px 12px; font-size:12px; line-height:1.6;
-    font-family:'SF Mono','Menlo',monospace; white-space:pre-wrap;
-    display:flex; word-break:break-word;
-  }
-  .diff-prefix { width:14px; flex-shrink:0; text-align:center; user-select:none; }
-  .diff-add { background:rgba(65,179,100,0.12); color:var(--success); }
-  .diff-del { background:rgba(245,85,85,0.12); color:var(--danger); }
-  .diff-ctx { color:#a9b1d6; }
-  .diff-global-summary {
-    padding:6px 12px; font-size:12px; color:var(--terminal-text);
-    background:var(--terminal-body); border-radius:6px; margin-bottom:8px; text-align:center;
-    border:1px solid var(--terminal-sep);
-  }
-  /* Exec layout */
-  .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
-  .exec-meta-bar {
-    padding:4px 12px; background:var(--terminal-body); color:var(--terminal-comment);
-    font-size:11px; border-bottom:1px solid var(--terminal-sep);
-    text-align:right; font-family:'SF Mono','Menlo',monospace;
-  }
-  #input-area {
-    padding:12px 16px;
-    background:var(--surface); border-top:0.5px solid var(--border);
-  }
-  #input-wrap {
-    display:flex; gap:8px; align-items:flex-end;
-    background:var(--surface); border-radius:20px; padding:2px 4px 2px 12px;
-    border:1px solid var(--border);
-  }
-  #input-wrap:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,122,255,0.15), 0 2px 8px rgba(0,0,0,0.08); }
-  #mode-switch {
-    width:44px; height:44px; border-radius:50%; border:none; background:transparent;
-    color:var(--text); font-size:16px; cursor:pointer; flex-shrink:0; padding:0;
-    display:flex; align-items:center; justify-content:center; transition:background 0.2s;
-  }
-  #mode-switch:hover { background:var(--code-bg); }
-  .mode-switch-exec {
-    width:44px; height:44px; border-radius:50%; border:none;
-    background:var(--bg); color:var(--text); font-size:14px;
-    cursor:pointer; flex-shrink:0; display:flex;
-    align-items:center; justify-content:center; padding:0;
-  }
-  .cancel-exec {
-    background:var(--danger); color:#fff; font-size:12px;
-    width:auto; padding:0 12px; border-radius:18px; border:none;
-    height:36px; min-height:44px; display:none;
-  }
-  #input, #exec-input {
-    flex:1; border:none; outline:none; background:transparent;
-    font-size:16px; color:var(--text); resize:none;
-    max-height:120px; line-height:1.4; padding:8px 0; font-family:inherit;
-  }
-  #input::placeholder, #exec-input::placeholder { color:var(--text-secondary); }
-  #send, #exec-send, #cancel-btn {
-    width:44px; height:44px; border-radius:50%; border:none;
-    background:var(--accent); color:#fff; font-size:18px;
-    cursor:pointer; display:flex; align-items:center; justify-content:center;
-    flex-shrink:0; transition:opacity 0.15s;
-  }
-  #cancel-btn { background:var(--danger); font-size:12px; width:auto; padding:0 12px; border-radius:18px; display:none; }
-  .scroll-bottom-fab {
-    position:absolute; bottom:60px; right:16px;
-    width:40px; height:40px; border-radius:50%;
-    background:var(--surface); border:1px solid var(--border);
-    color:var(--accent); font-size:18px; box-shadow:var(--shadow);
-    cursor:pointer; z-index:8; display:none;
-    align-items:center; justify-content:center;
-    transition:opacity 0.2s, transform 0.2s;
-  }
-  .scroll-bottom-fab.show { display:flex; }
-  #send:disabled, #exec-send:disabled { opacity:0.3; cursor:default; transition:opacity 0.2s; }
-  #send.loading, #exec-send.loading { animation:spin 1s linear infinite; }
-  @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
-  #tabbar {
-    display:flex; background:var(--surface);
-    border-top:0.5px solid var(--border);
-    padding-bottom:env(safe-area-inset-bottom,0px);
-    padding-top:4px;
-  }
-  .tab-btn {
-    flex:1; display:flex; flex-direction:column; align-items:center;
-    padding:8px 0 6px; border:none; background:none; cursor:pointer;
-    color:var(--text-secondary); font-size:10px; gap:2px;
-    position:relative; min-height:48px; transition:color 0.2s;
-  }
-  .tab-btn.active { color:var(--accent); }
-  .tab-btn.active::after {
-    content:''; position:absolute; bottom:0; left:20%; right:20%;
-    height:3px; background:var(--accent); border-radius:1.5px 1.5px 0 0;
-    transition:all 0.2s;
-  }
-  .tab-btn .tab-icon { font-size:22px; }
-  #sidebar {
-    position:fixed; top:0; left:-280px; width:280px; height:100%;
-    background:var(--surface); border-right:1px solid var(--border);
-    transition:left 0.3s; z-index:20; padding:16px;
-    padding-top:calc(16px + env(safe-area-inset-top,0px)); overflow-y:auto;
-  }
-  #sidebar.open { left:0; }
-  #overlay {
-    position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,0.3); z-index:19; display:none;
-  }
-  #overlay.show { display:block; }
-  .sidebar-handle {
-    width:36px; height:4px; border-radius:2px;
-    background:var(--border); margin:0 auto 12px;
-    position:sticky; top:0;
-  }
-  #sidebar h2 { font-size:16px; margin-bottom:12px; }
-  .session-item {
-    padding:12px; border-radius:10px; margin-bottom:4px;
-    font-size:14px; cursor:pointer; white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; color:var(--text);
-  }
-  .session-item:hover { background:var(--code-bg); }
-  .session-item .date { font-size:11px; color:var(--text-secondary); margin-top:2px; }
-  .session-item .mode-tag { font-size:10px; color:var(--accent); }
-  /* Board tab */
-  #board-panel { position:relative; }
-  #board-header-bar {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 16px; background:var(--surface);
-    border-bottom:0.5px solid var(--border);
-  }
-  #board-scroll {
-    flex:1; overflow-x:auto; overflow-y:hidden;
-    display:flex; gap:12px; padding:12px 16px;
-    -webkit-overflow-scrolling:touch;
-  }
-  .board-col {
-    min-width:220px; max-width:220px; flex-shrink:0;
-    background:var(--surface); border-radius:14px;
-    border:1px solid var(--border); display:flex; flex-direction:column;
-    max-height:100%;
-  }
-  .board-col-title {
-    padding:10px 12px; font-size:13px; font-weight:600;
-    border-bottom:0.5px solid var(--border); color:var(--text-secondary); text-decoration:none; transition:color .2s;
-  }
-  .board-col-cards { overflow-y:auto; padding:8px; flex:1; }
-  .board-card {
-    background:var(--bg); border-radius:10px; padding:12px;
-    margin-bottom:8px; border:1px solid var(--border); cursor:pointer;
-  }
-  .board-card .title { font-size:14px; font-weight:500; margin-bottom:4px; }
-  .board-card .time { font-size:11px; color:var(--text-secondary); }
-  .board-scroll-indicator { display:none; }
-  #board-offline {
-    display:none; text-align:center; padding:40px 20px;
-    color:var(--text-secondary); font-size:15px;
-  }
-  #fab-new-task {
-    position:absolute; bottom:calc(16px + env(safe-area-inset-bottom,0px));
-    right:16px; width:56px; height:56px; border-radius:50%;
-    background:var(--accent); color:#fff; border:none; font-size:28px;
-    box-shadow:0 4px 12px rgba(0,122,255,0.3); cursor:pointer; z-index:5;
-  }
-  #modal-overlay {
-    position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,0.4); z-index:30; display:none;
-    align-items:flex-end; justify-content:center;
-  }
-  #modal-overlay.show { display:flex; }
-  #task-modal {
-    background:var(--surface); border-radius:14px 14px 0 0;
-    width:100%; max-width:var(--max-w); padding:20px;
-    padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  }
-  #task-modal h3 { margin-bottom:16px; font-size:17px; }
-  #task-modal input, #task-modal textarea {
-    width:100%; padding:12px; border:1px solid var(--border);
-    border-radius:10px; font-size:15px; margin-bottom:12px;
-    font-family:inherit; background:var(--surface); color:var(--text);
-  }
-  #task-modal .modal-actions { display:flex; gap:12px; justify-content:flex-end; }
-  #task-modal .modal-actions button {
-    padding:10px 20px; border-radius:10px; border:none;
-    font-size:15px; cursor:pointer;
-  }
-  #task-modal .btn-cancel { background:var(--bg); color:var(--text); }
-  #task-modal .btn-submit { background:var(--accent); color:#fff; }
+
+
+
+
   @media(max-width:480px) {
     #sidebar {
       position:fixed; top:auto; bottom:0; left:0; width:100%;
@@ -1122,24 +888,19 @@ HTML_UI = r"""<!DOCTYPE html>
     }
     #sidebar.open { left:0; transform:translateY(0); }
     #header { padding:10px 12px; }
-    #messages, #exec-messages { padding:10px 12px; }
+    #messages { padding:10px 12px; }
     #input-area { padding:8px 12px; }
     .msg .bubble { max-width:90%; font-size:14px; }
   }
   @media(max-width:375px) {
     #header { padding:8px 10px; }
-    #messages, #exec-messages { padding:8px 10px; }
+    #messages { padding:8px 10px; }
     #input-area { padding:6px 10px; }
     .msg .bubble { max-width:92%; }
     #header h1 { display:none; }
     #project-select { width:100px; }
-  }
-  .file-tree-panel { width:260px; flex-shrink:0; border-right:1px solid var(--border); overflow-y:auto; background:var(--surface); display:flex; flex-direction:column; padding:12px; }
-  .exec-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
-  .file-tree-panel .header { padding:8px 12px; font-size:12px; font-weight:600; color:var(--text-secondary); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .file-tree-panel .header button { background:transparent; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:2px 4px; }
-  #file-tree { padding:4px 0; font-size:12px; flex:1; overflow-y:auto; }
-  .file-item { padding:6px 12px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; color:var(--text); user-select:none; }
+
+
   .file-item:hover { background:var(--code-bg); }
   .file-item.dir { font-weight:500; }
   .file-item .icon { width:16px; text-align:center; flex-shrink:0; font-family:monospace; }
@@ -1148,39 +909,17 @@ HTML_UI = r"""<!DOCTYPE html>
   .file-item .children { width:100%; }
   .file-item.collapsed > .icon::before { content:"▶"; }
   .file-item.dir:not(.collapsed) > .icon::before { content:"▼"; }
-  .file-item:not(.dir) > .icon::before { content:"·"; color:var(--text-secondary); }
-  .file-tree-offline { padding:12px; font-size:11px; color:var(--text-secondary); }
-  .file-tree-meta { padding:8px 12px; font-size:10px; color:var(--text-secondary); border-top:1px solid var(--border); }
-  .file-content-preview { max-height:400px; overflow-y:auto; background:var(--code-bg); border-radius:8px; padding:12px; margin:8px 0; font-size:12px; white-space:pre-wrap; word-break:break-all; font-family:'SF Mono',Monaco,monospace; line-height:1.5; }
-  .file-content-preview .meta-bar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:8px; font-family:inherit; font-size:11px; color:var(--text-secondary); }
+
   .file-content-preview .meta-bar button { background:transparent; border:1px solid var(--border); border-radius:6px; padding:2px 8px; cursor:pointer; font-family:inherit; }
   @media(max-width:768px) {
-    .exec-layout { flex-direction:column; }
-    .file-tree-panel { width:100%; max-height:180px; border-right:none; border-bottom:1px solid var(--border); }
-    #board-scroll {
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling:touch;
-      gap:8px;
-    }
-    .board-col {
-      scroll-snap-align: start;
-      min-width:85vw;
-    }
-    .board-scroll-indicator {
-      display:flex; justify-content:center; gap:6px; padding:6px 0;
-    }
+
   }
-  @media(max-width:480px) {
-    .file-tree-panel { max-height:140px; }
+
   }
-  @media(orientation:landscape) and (max-width:768px) {
-    .file-tree-panel { width:200px; max-height:none; border-right:1px solid var(--border); border-bottom:none; }
-    .exec-layout { flex-direction:row; }
+
   }
-  @media(orientation:landscape) and (max-height:414px) {
-    .tab-btn .tab-icon { font-size:16px; }
-    .tab-btn { padding:4px 0 2px; }
-    #tabbar { height:36px; }
+
+
   }
   /* Skeleton loading */
   @keyframes skeleton-pulse { 0%,100%{opacity:.4} 50%{opacity:.8} }
@@ -1228,55 +967,6 @@ HTML_UI = r"""<!DOCTYPE html>
       </div>
     </div>
   </div>
-
-  <div id="exec-panel" class="tab-panel">
-    <div class="exec-layout">
-      <div class="file-tree-panel">
-        <div class="header"><span>文件</span><button onclick="loadFileTree()" title="刷新">↻</button></div>
-        <div id="file-tree"><div class="file-tree-offline">切换到 Execute 时加载…</div></div>
-        <div id="file-tree-meta" class="file-tree-meta"></div>
-      </div>
-      <div class="exec-main">
-        <div class="exec-meta-bar" id="exec-meta-bar">~ project · execute terminal</div>
-        <div id="exec-terminal" class="terminal-output">
-          <div class="terminal-line"><span class="terminal-info"> CCC Execute Terminal</span></div>
-          <div class="terminal-line"><span class="terminal-info"> 输入指令开始执行...</span></div>
-        </div>
-        <button id="scroll-bottom-fab-exec" class="scroll-bottom-fab" onclick="scrollFabToBottom('exec')">↓</button>
-      </div>
-    </div>
-    <div id="input-area">
-      <div id="input-wrap">
-        <button class="mode-switch-exec" onclick="switchTab('chat')" title="切换到 Chat">💬</button>
-        <textarea id="exec-input" rows="1" placeholder="输入执行指令..." onkeydown="onKey(event,'execute')"></textarea>
-        <button id="exec-send" onclick="sendExecute()" disabled>⚡</button>
-        <button id="exec-cancel-btn" class="cancel-exec" onclick="cancelStream()">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="board-panel" class="tab-panel">
-    <div id="board-header-bar">
-      <span style="font-size:15px;font-weight:600;">看板</span>
-      <button class="icon-btn" onclick="loadBoard()">↻ 刷新</button>
-    </div>
-    <div id="board-offline">看板服务离线</div>
-    <div id="board-scroll"></div>
-    <div id="board-scroll-indicator" class="board-scroll-indicator"></div>
-    <button id="fab-new-task" onclick="openTaskModal()">+</button>
-  </div>
-
-  <div id="tabbar">
-    <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">
-      <span class="tab-icon">💬</span><span>Chat</span>
-    </button>
-    <button class="tab-btn" data-tab="execute" onclick="switchTab('execute')">
-      <span class="tab-icon">⚡</span><span>Execute</span>
-    </button>
-    <button class="tab-btn" data-tab="board" onclick="switchTab('board')">
-      <span class="tab-icon">▦</span><span>Board</span>
-    </button>
-  </div>
 </div>
 
 <div id="overlay" onclick="toggleSidebar()"></div>
@@ -1286,17 +976,6 @@ HTML_UI = r"""<!DOCTYPE html>
   <div id="sessionList"></div>
 </div>
 
-<div id="modal-overlay" onclick="closeTaskModal(event)">
-  <div id="task-modal" onclick="event.stopPropagation()">
-    <h3>新建任务</h3>
-    <input id="task-title" placeholder="任务标题" />
-    <textarea id="task-desc" rows="3" placeholder="任务描述（可选）"></textarea>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeTaskModal()">取消</button>
-      <button class="btn-submit" onclick="createTask()">创建</button>
-    </div>
-  </div>
-</div>
 
 <script>
 const AUTH = 'Basic ' + btoa('ccc:claude2026');
