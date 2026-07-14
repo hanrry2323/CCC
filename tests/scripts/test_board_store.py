@@ -142,8 +142,8 @@ class TestFileBoardStoreCRUD:
 
 class TestHelpers:
     def test_sanitize_id_rejects_traversal(self):
-        # v0.29.4: '.' 已加入允许字符集，../../etc → ....etc（斜杠被剥，点保留）
-        assert sanitize_id("../../etc") == "....etc"
+        # v0.29.4: '.' 未加入允许字符集，../../etc → etc（斜杠和点都被剥）
+        assert sanitize_id("../../etc") == "etc"
         assert sanitize_id("!!!") == "invalid"
 
     def test_fill_task_defaults(self):
