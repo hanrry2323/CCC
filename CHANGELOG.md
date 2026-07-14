@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.28] — 2026-07-14
+
+- test-engine-phase-failover: 看板发布
+
 ## [v0.29.27] — 2026-07-14
 
 - test-validate-jsonl-edge: 看板发布
@@ -1712,3 +1716,7 @@ git push origin main --tags
 ## [v0.29.26] - 2026-07-14
 
 - test-validate-jsonl-edge: task JSONL 校验边界场景测试 看板发布
+
+## [v0.29.27] - 2026-07-14
+
+- test-engine-phase-failover: Engine phase 失败转移集成测试 看板发布
