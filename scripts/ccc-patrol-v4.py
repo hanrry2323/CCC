@@ -439,37 +439,40 @@ def cleanup_zombie_opencode_pids() -> list[str]:
     Returns:
         操作描述列表，每项如 "zombie:{phase_id}(pid=12345) → killed+cleaned"
     """
-    zombie_ops = []
-
-    if not PID_DIR.exists():
-        return zombie_ops
-
+    ops: list[str] = []
+    if not PID_DIR.is_dir():
+        return ops
     try:
-        for pid_file in PID_DIR.glob("*.pid"):
-            try:
-                pid = int(pid_file.read_text().strip())
-                if _is_zombie_pid(pid):
-                    phase_id = pid_file.stem
-                    try:
-                        os.kill(pid, signal.SIGTERM)
-                        time.sleep(1)
-                        # 再检查一次是否存活
-                        if os.kill(pid, 0):  # kill -0
-                            os.kill(pid, signal.SIGKILL)
-                    except OSError:
-                        # 进程可能已经被其他工具清理，忽略
-                        pass
-
-                    zombie_ops.append(f"zombie:{phase_id}(pid={pid}) → killed+cleaned")
-                    pid_file.unlink()
-            except (ValueError, OSError):
-                # pid 文件内容不是有效整数，或读文件失败，跳过
-                continue
+        pid_files = list(PID_DIR.glob("*.pid"))
     except OSError:
-        # PID_DIR 不可读
-        pass
-
-    return zombie_ops
+        return ops
+    for pid_file in pid_files:
+        try:
+            pid_str = pid_file.read_text().strip()
+            pid = int(pid_str)
+            phase_id = pid_file.stem
+        except (OSError, ValueError):
+            continue
+        if not _is_zombie_pid(pid):
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(1)
+            try:
+                os.kill(pid, 0)
+                os.kill(pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+        except (OSError, ProcessLookupError):
+            pass
+        except ValueError:
+            pass
+        try:
+            pid_file.unlink()
+        except OSError:
+            pass
+        ops.append(f"zombie:{phase_id}(pid={pid}) → killed+cleaned")
+    return ops
 
 
 def _move_task(ws: Path, tid: str, src: str, dst: str) -> bool:
@@ -532,56 +535,6 @@ def _detect_crash_loop(tid: str) -> bool:
             except (ValueError, OSError):
                 stale_count += 1
     return stale_count >= 2
-
-
-def cleanup_zombie_opencode_pids() -> list[str]:
-    """全量扫描 ~/.ccc/opencode-pids/，检测并清理 zombie opencode 进程。
-
-    对每个 .pid 文件：
-    1. 读 PID
-    2. _is_zombie_pid(pid) 检查是否为 Z 状态
-    3. 是 → 先 kill -TERM, sleep 1, 仍存活则 kill -KILL
-    4. 清理 pid 文件（无论 kill 是否成功，文件都可能残留）
-
-    Returns:
-        操作描述列表，每项如 "zombie:{phase_id}(pid=12345) → killed+cleaned"
-    """
-    ops: list[str] = []
-    if not PID_DIR.is_dir():
-        return ops
-    try:
-        pid_files = list(PID_DIR.glob("*.pid"))
-    except OSError:
-        return ops
-    for pid_file in pid_files:
-        try:
-            pid_str = pid_file.read_text().strip()
-            pid = int(pid_str)
-            phase_id = pid_file.stem
-        except (OSError, ValueError):
-            continue
-        if not _is_zombie_pid(pid):
-            continue
-        killed = False
-        try:
-            os.kill(pid, signal.SIGTERM)
-            time.sleep(1)
-            try:
-                os.kill(pid, 0)
-                os.kill(pid, signal.SIGKILL)
-                killed = True
-            except (OSError, ProcessLookupError):
-                killed = True
-        except (OSError, ProcessLookupError):
-            killed = True
-        except ValueError:
-            pass
-        try:
-            pid_file.unlink()
-        except OSError:
-            pass
-        ops.append(f"zombie:{phase_id}(pid={pid}) → killed+cleaned")
-    return ops
 
 
 def _load_stuck_counters() -> dict[str, int]:
@@ -1150,24 +1103,6 @@ def main() -> int:
     if warn:
         warnings.append(warn)
     save_patrol_state(ws_stats, engine_status, all_fix_ops, len(all_stuck_ops), warn)
-
-        # ── Step 4.3: Zombie opencode 进程清理（patrol-zombie-cleanup）──
-    if PID_DIR.is_dir():
-        zombie_cleaned = 0
-        for pid_file in sorted(PID_DIR.iterdir()):
-            try:
-                pid_str = pid_file.read_text().strip()
-                pid = int(pid_str)
-                if _is_zombie_pid(pid):
-                    os.kill(pid, 9)
-                    pid_file.unlink(missing_ok=True)
-                    zombie_cleaned += 1
-            except (ValueError, OSError, ProcessLookupError):
-                pid_file.unlink(missing_ok=True)
-            except Exception:
-                pass
-        if zombie_cleaned > 0:
-            all_fix_ops.append(f"patrol:zombie-cleanup {zombie_cleaned} pids")
 
     # ── Step 4.5: index.json 一致性校验 ──
     for name, path in WORKSPACES.items():
