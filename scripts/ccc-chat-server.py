@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -24,6 +25,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
+from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 # ---------------------------------------------------------------------------
@@ -75,6 +77,12 @@ BOARD_COLUMNS = [
 
 _log = logging.getLogger("ccc-chat")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# Resolve claude CLI path (launchd has limited PATH)
+CLAUDE_BIN = shutil.which("claude") or "/Users/apple/.local/bin/claude"
+if not os.path.isfile(CLAUDE_BIN):
+    _log.warning("claude CLI not found at %s — Execute mode will fail", CLAUDE_BIN)
+CLAUDE_ENV = {**os.environ, "PATH": f"{os.environ.get('PATH', '')}:{os.path.dirname(CLAUDE_BIN)}"}
 
 _execute_lock = asyncio.Lock()
 _execute_running = False
@@ -197,6 +205,13 @@ def _save_session(
 # FastAPI app
 # ---------------------------------------------------------------------------
 app = FastAPI(title="CCC Chat", docs_url=None, redoc_url=None)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/api/chat")
@@ -341,10 +356,11 @@ async def execute_mode(request: Request):
             stream_completed = False
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "claude",
+                    CLAUDE_BIN,
                     "-p",
                     prompt,
                     "--print",
+                    "--verbose",
                     "--output-format",
                     "stream-json",
                     "--model",
@@ -352,7 +368,7 @@ async def execute_mode(request: Request):
                     cwd=project_path,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    env={**os.environ, "CLAUDE_PROJECT_DIR": project_path},
+                    env={**CLAUDE_ENV, "CLAUDE_PROJECT_DIR": project_path},
                 )
 
                 async def _read_stderr():
