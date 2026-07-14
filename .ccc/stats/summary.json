@@ -1,21 +1,21 @@
 {
-  "aggregated_at": "2026-07-14T17:45:45.447464+00:00",
+  "aggregated_at": "2026-07-14T17:58:08.797078+00:00",
   "workspace": "CCC",
-  "total_events": 909,
-  "latest_event_ts": "2026-07-15T01:45:44+08:00",
+  "total_events": 1598,
+  "latest_event_ts": "2026-07-15T01:53:20+08:00",
   "events_by_type": {
     "move": 94,
-    "quarantine": 290,
-    "product_start": 338,
+    "quarantine": 376,
+    "product_start": 691,
     "product_done": 29,
     "pytest": 4,
-    "product_fail": 29,
+    "product_fail": 279,
     "hang_detected": 125
   },
   "task_stats": {
-    "total": 78,
+    "total": 113,
     "success": 4,
-    "failed": 27,
+    "failed": 66,
     "details": {
       "fix-version-trailing-newline": {
         "total_events": 4,
@@ -459,22 +459,22 @@
         "last_ts": "2026-07-14T23:39:32+08:00"
       },
       "audio-bgm-auto-mix": {
-        "total_events": 2,
-        "has_failure": false,
-        "has_success": false,
-        "latency_samples": 0,
-        "avg_latency_s": null,
-        "last_event": "product_done",
-        "last_ts": "2026-07-14T21:33:12+08:00"
-      },
-      "qb-bt-custom-fee-config": {
-        "total_events": 4,
+        "total_events": 17,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_fail",
-        "last_ts": "2026-07-14T21:35:23+08:00"
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:55+08:00"
+      },
+      "qb-bt-custom-fee-config": {
+        "total_events": 12,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:15+08:00"
       },
       "fix-applayout-login-flash": {
         "total_events": 4,
@@ -486,13 +486,13 @@
         "last_ts": "2026-07-14T21:51:41+08:00"
       },
       "audio-level-norm": {
-        "total_events": 2,
-        "has_failure": false,
+        "total_events": 16,
+        "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_done",
-        "last_ts": "2026-07-14T21:35:23+08:00"
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:55+08:00"
       },
       "fix-deletejson-silent-swallow": {
         "total_events": 5,
@@ -504,13 +504,13 @@
         "last_ts": "2026-07-14T23:42:34+08:00"
       },
       "audio-tts-enhance": {
-        "total_events": 3,
-        "has_failure": false,
+        "total_events": 17,
+        "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_start",
-        "last_ts": "2026-07-14T22:44:23+08:00"
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:55+08:00"
       },
       "cockpit-queue-display": {
         "total_events": 2,
@@ -612,13 +612,13 @@
         "last_ts": "2026-07-14T23:31:15+08:00"
       },
       "qb-bt-multi-asset-runner": {
-        "total_events": 7,
+        "total_events": 14,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-14T23:49:20+08:00"
+        "last_ts": "2026-07-15T01:52:15+08:00"
       },
       "engine-failure-lessons": {
         "total_events": 2,
@@ -648,22 +648,22 @@
         "last_ts": "2026-07-15T01:34:57+08:00"
       },
       "migrate-cross-validation": {
-        "total_events": 7,
+        "total_events": 15,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:26:30+08:00"
+        "last_ts": "2026-07-15T01:53:18+08:00"
       },
       "qb-bt-param-optimize-cli": {
-        "total_events": 270,
-        "has_failure": false,
+        "total_events": 382,
+        "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_start",
-        "last_ts": "2026-07-15T01:45:44+08:00"
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:15+08:00"
       },
       "engine-task-priority": {
         "total_events": 65,
@@ -675,13 +675,13 @@
         "last_ts": "2026-07-15T01:39:54+08:00"
       },
       "onboard-clawcinema-runner": {
-        "total_events": 7,
+        "total_events": 14,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:26:46+08:00"
+        "last_ts": "2026-07-15T01:53:18+08:00"
       },
       "patrol-git-auto-push": {
         "total_events": 16,
@@ -693,72 +693,387 @@
         "last_ts": "2026-07-15T01:40:33+08:00"
       },
       "onboard-xianyu-runner": {
-        "total_events": 7,
+        "total_events": 15,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:27:02+08:00"
+        "last_ts": "2026-07-15T01:53:20+08:00"
       },
       "refactor-memory-to-class": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:53:19+08:00"
+      },
+      "task-lifecycle-api-endpoint": {
+        "total_events": 15,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:53:19+08:00"
+      },
+      "qb-bt-report-export-html": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:15+08:00"
+      },
+      "qb-bt-slippage-options": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:16+08:00"
+      },
+      "qb-cfg-env-override-all": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:16+08:00"
+      },
+      "qb-cfg-profile-system": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:16+08:00"
+      },
+      "qb-cfg-schema-validator": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:16+08:00"
+      },
+      "qb-mon-alert-rule-ui": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:17+08:00"
+      },
+      "qb-mon-latency-dashboard": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:17+08:00"
+      },
+      "qb-mon-system-healthpage": {
+        "total_events": 15,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:17+08:00"
+      },
+      "qb-test-cluster-election": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:17+08:00"
+      },
+      "qb-test-e2e-smoke": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:18+08:00"
+      },
+      "qb-test-frontend-composables": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:18+08:00"
+      },
+      "qb-test-strategy-corner": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:18+08:00"
+      },
+      "qb-ui-backtest-chart-detail": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:18+08:00"
+      },
+      "qb-ui-dark-mode-persist": {
+        "total_events": 16,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_fail",
+        "last_ts": "2026-07-15T01:52:20+08:00"
+      },
+      "qb-ui-order-filter": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:19+08:00"
+      },
+      "qb-ui-overview-metrics": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:19+08:00"
+      },
+      "qb-ui-worker-table-sort": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:52:20+08:00"
+      },
+      "auto-content-schedule": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:55+08:00"
+      },
+      "auto-cron-content": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:56+08:00"
+      },
+      "auto-platform-route": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:56+08:00"
+      },
+      "resil-disk-metrics": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:56+08:00"
+      },
+      "resil-health-agg": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:56+08:00"
+      },
+      "resil-mpt-circuit": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:56+08:00"
+      },
+      "tmpl-bgm-matching": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:57+08:00"
+      },
+      "tmpl-html-scene": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:57+08:00"
+      },
+      "tmpl-scene-variants": {
+        "total_events": 15,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:57+08:00"
+      },
+      "tmpl-subtitle-style": {
+        "total_events": 15,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:58+08:00"
+      },
+      "tmpl-topic-match": {
+        "total_events": 15,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:58+08:00"
+      },
+      "vid-codec-optimize": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:58+08:00"
+      },
+      "vid-dynamic-bitrate": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:58+08:00"
+      },
+      "vid-frame-quality": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:58+08:00"
+      },
+      "vid-thumbnail-gen": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:59+08:00"
+      },
+      "vid-transition-fx": {
+        "total_events": 14,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:51:59+08:00"
+      },
+      "github-actions-ci": {
         "total_events": 7,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:27:18+08:00"
+        "last_ts": "2026-07-15T01:53:18+08:00"
       },
-      "task-lifecycle-api-endpoint": {
-        "total_events": 8,
+      "lessons-noise-reduction": {
+        "total_events": 7,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:27:34+08:00"
+        "last_ts": "2026-07-15T01:53:18+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 34.6,
+      "value": 58.4,
       "unit": "percent",
-      "label": "Task failure rate: 34.6% (27/78)"
+      "label": "Task failure rate: 58.4% (66/113)"
     },
     {
       "metric": "quarantine_spike",
-      "value": 290,
+      "value": 376,
       "unit": "count",
-      "label": "High quarantine count: 290 (threshold: 3)",
+      "label": "High quarantine count: 376 (threshold: 3)",
       "severity": "warning"
     },
     {
       "metric": "product_fail_spike",
-      "value": 29,
+      "value": 279,
       "unit": "count",
-      "label": "High product_fail count: 29 (threshold: 3)",
+      "label": "High product_fail count: 279 (threshold: 3)",
       "severity": "warning"
     },
     {
       "metric": "total_events",
-      "value": 909,
+      "value": 1598,
       "unit": "count",
-      "label": "Total events recorded: 909",
-      "latest_event": "2026-07-15T01:45:44+08:00"
+      "label": "Total events recorded: 1598",
+      "latest_event": "2026-07-15T01:53:20+08:00"
     }
   ],
   "recommendations": [
     {
       "action": "check_product_role",
-      "reason": "product_role failed 29 times",
+      "reason": "product_role failed 279 times",
       "suggestion": "Consider plan generation model or switch to fallback"
     },
     {
       "action": "enable_fallback_chain",
-      "reason": "290 tasks quarantined",
+      "reason": "376 tasks quarantined",
       "suggestion": "Enable executor fallback chain to reduce quarantine rate"
     }
   ]

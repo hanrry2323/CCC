@@ -874,7 +874,8 @@ def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
         return False
 
 
-_CLAUDE_CLI = "claude"
+import shutil
+_CLAUDE_CLI = shutil.which("claude") or "/Users/apple/.local/bin/claude"
 
 
 def _get_relay_url() -> str:
