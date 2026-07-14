@@ -250,8 +250,8 @@ def _build_queue_detail(backlog_tasks, planned_tasks, rate_per_task_min: float) 
         return {
             "id": task.get("id", ""),
             "title": task.get("title", ""),
-            "waited": _format_duration_minutes(waited_min),
-            "estimate": _format_duration_minutes(estimate_min),
+            "waited": f"已等待 {_format_duration_minutes(waited_min)}",
+            "estimate": f"预估 {_format_duration_minutes(estimate_min)}",
         }
 
     planned_rows = [_row(t, position_offset=i) for i, t in enumerate(planned_list)]
