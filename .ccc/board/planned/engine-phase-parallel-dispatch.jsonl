@@ -1,0 +1,1 @@
+{"id": "engine-phase-parallel-dispatch", "title": "无依赖 phase 支持并行执行", "description": "", "status": "in_progress", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T14:14:37+08:00", "assignee": null, "tags": ["engine"], "note": null, "schema_version": "1.0", "complexity": "small"}
