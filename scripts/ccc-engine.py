@@ -100,6 +100,53 @@ MAX_CONCURRENT = 3
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
 
+# ---------- 上游健康检测 ----------
+_upstream_health_cache: dict = {}  # {"healthy": bool, "checked_at": float}
+
+
+def _get_relay_url() -> str:
+    """复刻 ccc-board.py._get_relay_url：取 AGENT_PLANNER_BASE_URL 或默认 :4000"""
+    return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
+
+
+def _is_upstream_healthy() -> bool:
+    """检查 proxy + 上游是否健康，30s 缓存。
+
+    轻量探测：POST 一条 max_tokens=1 的消息，超时 8s。
+    避免 upstream 全灭时 Engine 疯狂启动 product_role（浪费计数和 wall-clock）。
+    """
+    now = time.time()
+    cached = _upstream_health_cache.get("healthy")
+    cached_at = _upstream_health_cache.get("checked_at", 0)
+    if cached is not None and now - cached_at < 30:
+        return cached
+
+    relay = _get_relay_url()
+    try:
+        import urllib.request
+
+        data = json.dumps({
+            "model": "flash",
+            "messages": [{"role": "user", "content": "ok"}],
+            "max_tokens": 1,
+        }).encode()
+        req = urllib.request.Request(
+            relay,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=8)
+        healthy = resp.status == 200
+    except Exception:
+        healthy = False
+
+    _upstream_health_cache["healthy"] = healthy
+    _upstream_health_cache["checked_at"] = now
+    if not healthy:
+        engine_log("[health] upstream 不可用 — 跳过所有 product_role（缓存 30s）")
+    return healthy
+
 
 def _set_parallel_disabled(val: bool) -> None:
     """Set the global PHASE_PARALLEL_DISABLED toggle (module-level)."""
@@ -759,7 +806,15 @@ def _process_backlog(ws: Path) -> bool:
         _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
         return True
 
-    # 2. 失败计数器
+    # 2. 上游健康检测（避免 upstream 宕机 + fail_counter 永久锁死）
+    if not _is_upstream_healthy():
+        engine_log(
+            f"[product] [{label}] {tid} 跳过 — upstream 不可用，下次 tick 重试（不计数）"
+        )
+        return False
+
+    # 3. 失败计数器（含 15min 自动衰减）
+    _COUNTER_DECAY_SEC = 900  # 15 分钟
     fail_counter_dir = ws / ".ccc" / ".product-fail-counter"
     fail_counter_path = fail_counter_dir / f"{tid}.json"
     fail_count = 0
@@ -767,6 +822,19 @@ def _process_backlog(ws: Path) -> bool:
         try:
             fail_data = json.loads(fail_counter_path.read_text())
             fail_count = fail_data.get("fail_count", 0)
+            # 自动衰减：距上次失败超过 15 分钟 → 重置计数器
+            last_failed = fail_data.get("last_failed_at", 0)
+            if fail_count > 0 and last_failed:
+                elapsed = time.time() - last_failed
+                if elapsed > _COUNTER_DECAY_SEC:
+                    engine_log(
+                        f"[product] [{label}] {tid} fail_counter {fail_count} → 0 "
+                        f"(距上次失败 {elapsed:.0f}s > {_COUNTER_DECAY_SEC}s 衰减窗口)"
+                    )
+                    fail_count = 0
+                    fail_counter_path.write_text(
+                        json.dumps({"fail_count": 0, "last_failed_at": 0}, indent=2)
+                    )
         except (json.JSONDecodeError, OSError):
             fail_count = 0
 
@@ -799,7 +867,7 @@ def _process_backlog(ws: Path) -> bool:
             fail_count += 1
             fail_counter_dir.mkdir(parents=True, exist_ok=True)
             fail_counter_path.write_text(
-                json.dumps({"fail_count": fail_count}, indent=2)
+                json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2)
             )
             _log_stats(
                 ws,
@@ -834,7 +902,7 @@ def _process_backlog(ws: Path) -> bool:
     # 5. 启动失败
     fail_count += 1
     fail_counter_dir.mkdir(parents=True, exist_ok=True)
-    fail_counter_path.write_text(json.dumps({"fail_count": fail_count}, indent=2))
+    fail_counter_path.write_text(json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2))
     _log_stats(
         ws,
         "product_fail",
