@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from _config import Config, get_logger
+from _executor import _sanitized_env
 from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
@@ -511,6 +512,7 @@ def _resolve_phase_dependencies(
                         f"{len(unresolved)} phase 引用了不存在的 phase_id",
                     ],
                     capture_output=True,
+                    env=_sanitized_env(),
                     timeout=5,
                 )
             except Exception as exc:
@@ -749,6 +751,7 @@ def _check_phase_failures(task_id: str) -> dict:
                         ],
                         capture_output=True,
                         timeout=5,
+                        env=_sanitized_env(),
                     )
                 except Exception as e:
                     _log.warning(
@@ -961,6 +964,7 @@ def _get_code_context(ws_path: Path) -> str:
             text=True,
             timeout=15,
             cwd=ws,
+            env=_sanitized_env(),
         )
         if tree.returncode == 0:
             lines = tree.stdout.strip().split("\n")
@@ -980,6 +984,7 @@ def _get_code_context(ws_path: Path) -> str:
             text=True,
             timeout=10,
             cwd=ws,
+            env=_sanitized_env(),
         )
         if git_log.returncode == 0 and git_log.stdout.strip():
             parts.append("## 近期 git 提交\n```\n" + git_log.stdout.strip() + "\n```")
@@ -1512,6 +1517,7 @@ def check_product_async(task_id: str) -> dict:
                     _ps = subprocess.run(
                         ["ps", "-p", str(pid), "-o", "state="],
                         capture_output=True, text=True, timeout=3,
+                        env=_sanitized_env(),
                     )
                     if _ps.stdout.strip() == "Z":
                         _zombie = True
@@ -2040,6 +2046,7 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 cwd=ws,
+                env=_sanitized_env(),
             )
         pids_dir.joinpath(f"{task_id}.tester.pid").write_text(str(proc.pid))
         _log.info("[tester-async] %s launched PID=%d, %d commands", task_id, proc.pid, len(verify_commands))
@@ -2151,6 +2158,7 @@ def launch_pytest_async(task_id: str, ws: Path) -> dict:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 cwd=ws,
+                env=_sanitized_env(),
             )
         pids_dir.joinpath(f"{task_id}.pytest.pid").write_text(str(proc.pid))
         _log.info("[pytest-async] %s launched PID=%d", task_id, proc.pid)
@@ -3270,6 +3278,7 @@ def _review_one_task(task_id: str) -> bool:
             ],
             capture_output=True,
             timeout=10,
+            env=_sanitized_env(),
         )
     except Exception as e:
         _log.error("[reviewer] notify failed: %s", e)
@@ -4051,6 +4060,7 @@ def regress_role() -> dict:
                 ],
                 capture_output=True,
                 timeout=10,
+                env=_sanitized_env(),
             )
 
     # 写回测日报
@@ -4987,6 +4997,7 @@ def _append_changelog(ws_path: Path, tid: str, new_version: str) -> None:
             ["git", "diff", "--quiet", "VERSION", "CHANGELOG.md"],
             cwd=ws_path,
             capture_output=True,
+            env=_sanitized_env(),
         )
         if check.returncode != 0:
             subprocess.run(
@@ -4994,6 +5005,7 @@ def _append_changelog(ws_path: Path, tid: str, new_version: str) -> None:
                 cwd=ws_path,
                 capture_output=True,
                 timeout=10,
+                env=_sanitized_env(),
             )
             subprocess.run(
                 [
@@ -5005,6 +5017,7 @@ def _append_changelog(ws_path: Path, tid: str, new_version: str) -> None:
                 cwd=ws_path,
                 capture_output=True,
                 timeout=30,
+                env=_sanitized_env(),
             )
     except (subprocess.TimeoutExpired, OSError) as exc:
         _log.warning("changelog git commit failed (non-blocking): %s", exc)

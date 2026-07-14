@@ -27,6 +27,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _executor import _sanitized_env
+
 # ── 常量 ──
 HOME = Path.home()
 CCC_HOME = HOME / "program" / "CCC"
@@ -205,6 +207,7 @@ def engine_is_running() -> bool:
             capture_output=True,
             text=True,
             timeout=10,
+            env=_sanitized_env(),
         )
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
@@ -272,6 +275,7 @@ def _try_kill_engine() -> None:
             capture_output=True,
             text=True,
             timeout=10,
+            env=_sanitized_env(),
         )
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
@@ -279,7 +283,7 @@ def _try_kill_engine() -> None:
                 if len(parts) >= 2:
                     pid = parts[1]
                     try:
-                        subprocess.run(["kill", pid], timeout=5)
+                        subprocess.run(["kill", pid], timeout=5, env=_sanitized_env())
                     except OSError:
                         pass
     except (subprocess.TimeoutExpired, OSError):
@@ -290,6 +294,7 @@ def _try_kill_engine() -> None:
             ["launchctl", "bootout", "gui/501", str(ENGINE_PLIST)],
             capture_output=True,
             timeout=10,
+            env=_sanitized_env(),
         )
     except OSError:
         pass
@@ -304,6 +309,7 @@ def _try_start_engine() -> bool:
                 ["launchctl", "bootstrap", "gui/501", str(ENGINE_PLIST)],
                 capture_output=True,
                 timeout=15,
+                env=_sanitized_env(),
             )
             if r.returncode == 0:
                 # 等待进程启动
@@ -320,6 +326,7 @@ def _try_start_engine() -> bool:
                 ["launchctl", "load", str(ENGINE_PLIST)],
                 capture_output=True,
                 timeout=15,
+                env=_sanitized_env(),
             )
             time.sleep(3)
             if engine_is_running():
@@ -336,6 +343,7 @@ def _try_start_engine() -> bool:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=_sanitized_env(),
             )
             time.sleep(3)
             return engine_is_running()
@@ -508,6 +516,7 @@ def _is_zombie_pid(pid: int) -> bool:
             capture_output=True,
             text=True,
             timeout=5,
+            env=_sanitized_env(),
         )
         if r.returncode != 0:
             return False
@@ -616,6 +625,7 @@ def check_stuck_tasks(
                     capture_output=True,
                     text=True,
                     timeout=10,
+                    env=_sanitized_env(),
                 )
                 for line in r.stdout.splitlines():
                     if tid in line and "grep" not in line:
@@ -794,6 +804,7 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
             cwd=ws_path,
             capture_output=True,
             timeout=5,
+            env=_sanitized_env(),
         )
         if r.returncode != 0:
             return
@@ -804,7 +815,7 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
     _sync_board_index(ws_path)
 
     # git add
-    subprocess.run(["git", "add", "-A"], cwd=ws_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "add", "-A"], cwd=ws_path, capture_output=True, timeout=10, env=_sanitized_env())
 
     # 检查是否有改动
     r = subprocess.run(
@@ -813,6 +824,7 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
         capture_output=True,
         text=True,
         timeout=10,
+        env=_sanitized_env(),
     )
     if not r.stdout.strip():
         return
@@ -825,6 +837,7 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
         cwd=ws_path,
         capture_output=True,
         timeout=15,
+        env=_sanitized_env(),
     )
 
 
@@ -864,6 +877,7 @@ def _notify_engine_restart(status: str) -> None:
                     "Patrol-v4 检测到 Engine 已停止，已自动重启完成",
                 ],
                 stdout=subprocess.DEVNULL,
+                env=_sanitized_env(),
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
@@ -877,6 +891,7 @@ def _notify_engine_restart(status: str) -> None:
                     "Patrol-v4 尝试自动重启 Engine 失败，需人工介入",
                 ],
                 stdout=subprocess.DEVNULL,
+                env=_sanitized_env(),
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
@@ -910,6 +925,7 @@ def _get_engine_pid() -> int | None:
             capture_output=True,
             text=True,
             timeout=10,
+            env=_sanitized_env(),
         )
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
@@ -973,6 +989,7 @@ def commit_engine_restart(
             cwd=ws_path,
             capture_output=True,
             timeout=5,
+            env=_sanitized_env(),
         )
         if r.returncode != 0:
             return
@@ -1006,6 +1023,7 @@ def commit_engine_restart(
         cwd=ws_path,
         capture_output=True,
         timeout=15,
+        env=_sanitized_env(),
     )
 
 

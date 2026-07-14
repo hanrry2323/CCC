@@ -31,6 +31,7 @@ if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
 from _config import Config, get_logger
+from _executor import _sanitized_env
 from _logger import add_file_handler
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
@@ -267,6 +268,7 @@ def _ccc_notify(title: str, message: str) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
+            env=_sanitized_env(),
         )
     except OSError as exc:
         engine_log(f"notify 失败: {exc}")
@@ -1079,6 +1081,7 @@ def _launch_parallel_phase(
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=_sanitized_env(),
         )
         pids_dir.joinpath(f"{subid}.pid").write_text(str(proc.pid))
         engine_log(
@@ -2009,6 +2012,7 @@ def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
             capture_output=True,
             timeout=30,
             text=True,
+            env=_sanitized_env(),
         )
     except subprocess.TimeoutExpired:
         _log.warning("git stash timed out for %s", tid)
@@ -2118,6 +2122,7 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                env=_sanitized_env(),
             )
         except subprocess.TimeoutExpired:
             engine_log(f"[{label}] hang-detect: {tid} ps 超时，跳过本次")
