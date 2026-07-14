@@ -23,6 +23,7 @@ CLI 模式（v0.8 定案）：只用 `opencode exec` 子进程调用，不走 HT
   30 = opencode exec 异常崩溃
   非 0 = opencode 本身非零退出（stderr 透传）
 """
+
 import argparse
 import asyncio
 import json
@@ -36,17 +37,20 @@ from pathlib import Path
 PID_DIR = Path.home() / ".ccc" / "opencode-pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
-# v0.24.7 (A24-12): 长 prompt 临时文件落点（私有目录 + mode 0o600）
+# v0.24.7 (A24-12): 长 prompt 临时文件落点（私有目录 + mode 0o600），防止 /tmp 下的非安全读取。
 PROMPT_DIR = Path.home() / ".ccc" / "prompts"
 PROMPT_DIR.mkdir(parents=True, exist_ok=True)
 
-
 import sys as _sys
+
 _scripts_dir = str(Path(__file__).resolve().parent)
 if _scripts_dir not in _sys.path:
     _sys.path.insert(0, _scripts_dir)
 from _config import Config, get_logger
 from _executor import resolve_opencode
+
+_log = get_logger("opencode-exec")
+_log.info("opencode-exec config: exec_timeout=%ds", Config().exec_timeout)
 
 _log = get_logger("opencode-exec")
 
@@ -95,9 +99,10 @@ async def run_opencode(
     phase_id: str,
     prompt_text: str,
     timeout: int,
-    cwd: None = None,
-    cmd: None = None,
+    cwd: Path | None = None,
+    cmd: list[str] | None = None,
     opencode_bin: str = "opencode",
+    cfg: Config | None = None,
 ) -> dict:
     """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
 
@@ -116,6 +121,8 @@ async def run_opencode(
         # v0.28.1: 模型名从 Config 统一获取（OPENCODE_MODEL env 可覆盖）
         model = os.environ.get("OPENCODE_MODEL", Config().model)
         prompt_text = prompt_text.strip()
+        if cfg is None:
+            cfg = Config()
         if len(prompt_text) > 200:
             # 长 prompt：写临时文件，用 --file 附件 + 短指令
             # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
@@ -123,6 +130,7 @@ async def run_opencode(
             # v0.24.7 (A24-12): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600，
             # 防 /tmp 下被同用户其他进程读取 prompt（可能含 plan/凭据）
             import tempfile
+
             tmp_fd, tmp_path = tempfile.mkstemp(
                 suffix=".md", prefix="opencode-prompt-", dir=str(PROMPT_DIR)
             )
@@ -133,10 +141,13 @@ async def run_opencode(
             os.chmod(tmp_path, 0o600)
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
             cmd = [
-                opencode_bin, "run",
-                "--model", model,
+                opencode_bin,
+                "run",
+                "--model",
+                model,
                 "Read attached file and execute the instructions inside.",
-                "--file", tmp_path,
+                "--file",
+                tmp_path,
             ]
         else:
             short_prompt = prompt_text if prompt_text else "execute"
@@ -144,6 +155,7 @@ async def run_opencode(
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import signal as _sig
+
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin
@@ -179,7 +191,11 @@ async def run_opencode(
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         await _kill_process_group(proc.pid, _sig.SIGTERM)
         await _terminate_zombie(proc, proc.pid, timeout, started)
-        killed_reason = "cancelled" if isinstance(exc, asyncio.CancelledError) else f"timeout after {timeout}s"
+        killed_reason = (
+            "cancelled"
+            if isinstance(exc, asyncio.CancelledError)
+            else f"timeout after {cfg.exec_timeout}s"
+        )
         return {
             "phase_id": phase_id,
             "exit_code": -1,
@@ -206,32 +222,54 @@ async def main() -> int:
     ap = argparse.ArgumentParser(description="OpenCode CLI 执行器（单 phase）")
     ap.add_argument("--phase", required=True, help="phase ID（用于 pid 文件）")
     ap.add_argument("--prompt", required=True, help="prompt 文件路径（文件读取）")
-    ap.add_argument("--timeout", type=int, default=1800, help="超时秒数，默认 1800")
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=Config().exec_timeout,
+        help="超时秒数，默认 Config.exec_timeout",
+    )
     ap.add_argument("--cwd", default=None, help="工作目录")
-    ap.add_argument("--skip-watchdog", action="store_true", help="跳过残留扫描（仅调试）")
+    ap.add_argument(
+        "--skip-watchdog", action="store_true", help="跳过残留扫描（仅调试）"
+    )
     args = ap.parse_args()
 
     # 二进制检查
     opencode_bin = resolve_opencode()
     if not opencode_bin:
-        print(json.dumps({"error": "opencode not found (try: set OPENCODE_BIN env)"}), file=sys.stderr)
+        print(
+            json.dumps({"error": "opencode not found (try: set OPENCODE_BIN env)"}),
+            file=sys.stderr,
+        )
         return 10
 
     # prompt 文件检查
     prompt_path = Path(args.prompt)
     if not prompt_path.exists():
-        print(json.dumps({"error": f"prompt not found: {args.prompt}"}), file=sys.stderr)
+        print(
+            json.dumps({"error": f"prompt not found: {args.prompt}"}), file=sys.stderr
+        )
         return 11
 
     # watchdog 残留扫描
     if not args.skip_watchdog:
         script_dir = Path(__file__).parent.resolve()
         if not check_residual_watchdog(script_dir):
-            print(json.dumps({"error": "watchdog FAIL — 残留进程未清理"}), file=sys.stderr)
+            print(
+                json.dumps({"error": "watchdog FAIL — 残留进程未清理"}), file=sys.stderr
+            )
             return 12
 
     prompt_text = prompt_path.read_text(encoding="utf-8")
-    result = await run_opencode(args.phase, prompt_text, args.timeout, args.cwd, opencode_bin=opencode_bin)
+
+    result = await run_opencode(
+        args.phase,
+        prompt_text,
+        args.timeout,
+        args.cwd,
+        opencode_bin=opencode_bin,
+        cfg=Config(),
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result["exit_code"]
 
