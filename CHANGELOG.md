@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.20] — 2026-07-14
+
+- engine-stats-endpoint: 看板发布
+
 ## [v0.29.19] — 2026-07-14
 
 - engine-phase-retry-config: 看板发布
