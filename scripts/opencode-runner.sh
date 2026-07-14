@@ -17,7 +17,10 @@ PID_DIR="${ROOT_DIR}/.ccc/pids"
 mkdir -p "$PID_DIR"
 
 # 跑 opencode-exec，输出写文件
-python3 "${CCC_HOME}/scripts/opencode-exec.py" "$@" > "$RESULT_FILE" 2>&1
+# --skip-watchdog: 引擎已管理并发，多个 opencode-exec.py 的 watchdog
+# 会相互误杀（一个 task 清理 pid 文件后，另一个 task 的 watchdog 将其
+# 视为孤儿进程并 SIGTERM，导致 rc=241）。Lesson 44 实锤。
+python3 "${CCC_HOME}/scripts/opencode-exec.py" --skip-watchdog "$@" > "$RESULT_FILE" 2>&1
 RC=$?
 
 # 写完成标记到 workspace（供 engine 检测）
