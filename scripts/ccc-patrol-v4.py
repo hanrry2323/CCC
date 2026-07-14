@@ -104,6 +104,21 @@ def list_board_tasks(ws: Path, col: str) -> list[dict]:
     return tasks
 
 
+def _sync_board_index(ws: Path) -> None:
+    """同步 workspace 的 .ccc/board/index.json（让 patrol 报告和消费者读到最新数据）
+
+    在 patrol 完成 board 操作后、commit 前调用一次，确保 git 提交包含 index 更新。
+    同步失败时静默跳过，不阻塞 patrol 主流程。
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from _board_store import FileBoardStore
+
+        FileBoardStore(ws).update_index()
+    except (OSError, RuntimeError, ValueError, ImportError):
+        pass
+
+
 def read_board_index(ws: Path) -> dict[str, int]:
     """直接遍历目录统计，避开 stale index.json"""
     counts = {}
@@ -471,8 +486,9 @@ def check_stuck_tasks(
         if age is None:
             continue
 
-        # 检查是否有活进程持有此 task_id
+        # --- 增强：进程存活检测（含 zombie）---
         process_alive = False
+        is_zombie = False
         if PID_DIR.is_dir():
             for pid_file in PID_DIR.iterdir():
                 if tid in pid_file.name:
@@ -481,11 +497,13 @@ def check_stuck_tasks(
                         pid = int(pid_str)
                         os.kill(pid, 0)
                         process_alive = True
+                        if _is_zombie_pid(pid):
+                            is_zombie = True
                         break
                     except (ValueError, OSError, ProcessLookupError):
                         pass
 
-        # 也检查 opencode 进程
+        # ps 兜底
         if not process_alive:
             try:
                 r = subprocess.run(
@@ -501,23 +519,45 @@ def check_stuck_tasks(
             except (subprocess.TimeoutExpired, OSError):
                 pass
 
+        # --- 增强：crash loop 检测 ---
+        is_crash_loop = _detect_crash_loop(tid)
+
+        # --- 增强：stuck 次数决策 ---
+        stuck_count = stuck_counters.get(tid, 0)
+        target: str | None = None
+
         if age > FORCE_MV_THRESHOLD:
-            # > 30min: 强制移回 planned
-            _move_task(ws, tid, "in_progress", "planned")
-            ops.append(f"{tid}: stuck {age}s > {FORCE_MV_THRESHOLD}s → planned (force)")
+            if is_zombie or is_crash_loop or stuck_count >= 3:
+                target = "backlog"
+            else:
+                target = "planned"
+            ops.append(
+                f"{tid}: stuck {age}s > {FORCE_MV_THRESHOLD}s → {target} (force)"
+            )
         elif age > STUCK_THRESHOLD and not process_alive:
-            # > 5min + 无进程: 卡死 → planned
-            _move_task(ws, tid, "in_progress", "planned")
-            ops.append(f"{tid}: stuck {age}s, no process → planned")
+            if stuck_count >= 3 or is_crash_loop:
+                target = "backlog"
+            else:
+                target = "planned"
+            ops.append(f"{tid}: stuck {age}s, no process → {target}")
         elif age > STUCK_THRESHOLD and process_alive:
-            ops.append(f"{tid}: running {age}s (alive, no action)")
+            if is_zombie:
+                if stuck_count >= 3 or is_crash_loop:
+                    target = "backlog"
+                else:
+                    target = "planned"
+                ops.append(f"{tid}: zombie {age}s → {target}")
+            else:
+                ops.append(f"{tid}: running {age}s (alive, no action)")
         else:
             ops.append(f"{tid}: active {age}s (normal)")
 
-    return ops
+        if target:
+            _move_task(ws, tid, "in_progress", target)
+            stuck_count += 1
+            stuck_counters[tid] = stuck_count
 
-
-# ── Step 4: 状态持久化 ──
+    return ops, stuck_counters
 
 
 def save_patrol_state(
@@ -627,6 +667,9 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
     except OSError:
         return
 
+    # 同步 index.json（让 commit 包含最新 board 计数）
+    _sync_board_index(ws_path)
+
     # git add
     subprocess.run(["git", "add", "-A"], cwd=ws_path, capture_output=True, timeout=10)
 
@@ -708,8 +751,70 @@ def _notify_engine_restart(status: str) -> None:
         pass
 
 
-def commit_engine_restart(reason: str) -> None:
-    """Engine 重启后单独 commit（只记一次）"""
+def _get_engine_pid() -> int | None:
+    """从 ps 输出获取 ccc-engine.py 进程 PID。重启后调用以记录新 PID。"""
+    try:
+        r = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        for line in r.stdout.splitlines():
+            if "ccc-engine.py" in line and "grep" not in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        return int(parts[1])
+                    except ValueError:
+                        pass
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def _get_engine_uptime() -> str:
+    """从 engine-heartbeat.json 的 timestamp 计算 Engine 运行时长。
+
+    在重启 Engine 前调用，读取旧心跳的时间戳计算 uptime。
+    返回人类可读字符串如 "45m12s"，无法获取时返回 "unknown"。
+    """
+    hb_file = CCC_HOME / ".ccc" / "engine-heartbeat.json"
+    if not hb_file.exists():
+        return "unknown"
+    hb = json_load(hb_file)
+    if not hb:
+        return "unknown"
+    ts_str = hb.get("timestamp", "")
+    if not ts_str:
+        return "unknown"
+    try:
+        if ts_str.endswith("Z"):
+            hb_ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        elif "+" in ts_str:
+            hb_ts = datetime.fromisoformat(ts_str)
+        else:
+            hb_ts = datetime.fromisoformat(ts_str + "+00:00")
+        age = datetime.now(timezone.utc) - hb_ts
+        total_secs = int(age.total_seconds())
+        if total_secs < 60:
+            return f"{total_secs}s"
+        elif total_secs < 3600:
+            return f"{total_secs // 60}m{total_secs % 60}s"
+        else:
+            h, remainder = divmod(total_secs, 3600)
+            return f"{h}h{remainder // 60}m"
+    except (ValueError, TypeError):
+        return "unknown"
+
+
+def commit_engine_restart(
+    reason: str,
+    ws_stats: dict[str, dict] | None = None,
+    pid: int | None = None,
+    uptime: str = "unknown",
+) -> None:
+    """Engine 重启后 commit，包含 PID/uptime/看板快照正文"""
     ws_path = CCC_HOME
     try:
         r = subprocess.run(
@@ -723,15 +828,28 @@ def commit_engine_restart(reason: str) -> None:
     except OSError:
         return
 
-    r = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
-        cwd=ws_path,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    # 即使无 staged 改动也强行 commit
+    # 构造 commit body
+    body_lines = []
+    if pid is not None:
+        body_lines.append(f"PID: {pid}")
+    body_lines.append(f"Uptime: {uptime} (before restart)")
+    if ws_stats:
+        parts = []
+        for name in sorted(ws_stats.keys()):
+            c = ws_stats.get(name, {})
+            if isinstance(c, dict):
+                parts.append(
+                    f"{name}(pl:{c.get('planned', 0)} ip:{c.get('in_progress', 0)} "
+                    f"rel:{c.get('released', 0)} ab:{c.get('abnormal', 0)})"
+                )
+            else:
+                parts.append(f"{name}:{c}")
+        body_lines.append("Board: " + " ".join(parts))
+
     commit_msg = f"chore: patrol-v4 engine restart ({reason})"
+    if body_lines:
+        commit_msg += "\n\n" + "\n".join(body_lines)
+
     subprocess.run(
         ["git", "commit", "--allow-empty", "-m", commit_msg],
         cwd=ws_path,
@@ -798,11 +916,19 @@ def main() -> int:
 
     if engine_status == "RESTARTED":
         engine_operated = True
+        engine_pid = _get_engine_pid()  # 重启后 PID
+        engine_uptime = _get_engine_uptime()  # 重启前 uptime
+        board_snapshot = scan_all_ws(WORKSPACES)  # 重启前看板快照
         _log_engine_restart(
             "RESTARTED", "patrol-v4 detected Engine dead, auto-restarted"
         )
         _notify_engine_restart("RESTARTED")
-        commit_engine_restart("restarted by patrol-v4")
+        commit_engine_restart(
+            "restarted by patrol-v4",
+            ws_stats=board_snapshot,
+            pid=engine_pid,
+            uptime=engine_uptime,
+        )
 
     # ── Step 1: 扫描 5 workspace ──
     ws_stats = scan_all_ws(WORKSPACES)
