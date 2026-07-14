@@ -138,7 +138,7 @@ def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
         try:
             if pid_from_id != str(pid_val) and pid_int != int(pid_from_id):
                 errors.append(
-                    f"phase 不一致: phase_id={pid_from_id!r} phase={pid_val}"
+                    f"phase_id 与 phase 不一致: phase_id={pid_from_id!r} phase={pid_val}"
                 )
         except (ValueError, TypeError):
             errors.append(
