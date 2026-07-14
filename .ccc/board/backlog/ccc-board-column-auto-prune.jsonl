@@ -1,0 +1,1 @@
+{"id":"ccc-board-column-auto-prune","title":"看板自动清理长时间滞留任务","description":"in_progress >24h 或 planned >72h 或 testing >48h 的任务自动移回 backlog 或发警告。","complexity":"medium","ts":"2026-07-14T15:52:57Z","note":"v1.0: 自动化"}

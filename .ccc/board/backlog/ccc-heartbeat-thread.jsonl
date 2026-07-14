@@ -1,0 +1,1 @@
+{"id":"ccc-heartbeat-thread","title":"Engine 后台线程定期写 heartbeat","description":"Engine 主循环阻塞时（调 Claude API）heartbeat 不更新，patrol 误判 Engine 死。加后台线程每 30s 写一次 heartbeat。","complexity":"medium","ts":"2026-07-14T15:52:57Z","note":"v1.0: 基础设施"}

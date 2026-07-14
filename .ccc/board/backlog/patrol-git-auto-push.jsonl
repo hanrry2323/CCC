@@ -1,0 +1,1 @@
+{"id":"patrol-git-auto-push","title":"Patrol 自动 push 到远端","description":"patrol commit 后自动 git push，确保远端仓库同步看板状态。可配置 CCC_PUSH=1 环境变量控制。","complexity":"small","ts":"2026-07-14T15:52:57Z","note":"v1.0: 自动化"}
