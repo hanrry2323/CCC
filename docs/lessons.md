@@ -2079,3 +2079,13 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 **失败原因**：engine: 重试3次全部失败，下游 phase [] 自动跳过 → abnormal
 
 **待分析**：由 product_role 后续补充根因和修复方案
+
+---
+
+## Lesson 48：ccc-board-column-auto-prune 进入异常状态
+
+**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 16:54:05 UTC
+
+**失败原因**：product_role 连续失败 3 次
+
+**待分析**：由 product_role 后续补充根因和修复方案

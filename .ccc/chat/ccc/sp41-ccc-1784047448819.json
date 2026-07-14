@@ -5,12 +5,82 @@
   "messages": [
     {
       "role": "user",
-      "content": "Test ccc"
+      "content": "Test ccc",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "## CCC 测试\n\n我来检查当前系统状态，然后执行测试。",
+      "mode": "chat",
+      "execution_results": [
+        {
+          "tool": "Skill",
+          "input": {
+            "skill": "ccc-protocol",
+            "args": "Test CCC"
+          },
+          "result": "Launching skill: ccc-protocol"
+        },
+        {
+          "tool": "Read",
+          "input": {
+            "file_path": "/Users/apple/program/CCC/.ccc/state.md"
+          },
+          "result": ""
+        },
+        {
+          "tool": "Read",
+          "input": {
+            "file_path": "/Users/apple/program/CCC/.ccc/infrastructure.md"
+          },
+          "result": ""
+        },
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "ls /Users/apple/program/CCC/.ccc/board/planned/ /Users/apple/program/CCC/.ccc/board/in_progress/ /Users/apple/program/CCC/.ccc/board/testing/ /Users/apple/program/CCC/.ccc/board/verified/ /Users/apple/program/CCC/.ccc/board/released/ 2>/dev/null",
+            "description": "List all board columns"
+          },
+          "result": ""
+        }
+      ],
+      "partial": true
     }
   ],
   "mode": "chat",
-  "updated_at": "2026-07-15T00:44:08+08:00",
-  "status": "pending",
+  "updated_at": "2026-07-15T00:44:21+08:00",
+  "status": "partial",
   "created_at": "2026-07-15T00:44:08+08:00",
-  "execution_results": []
+  "execution_results": [
+    {
+      "tool": "Skill",
+      "input": {
+        "skill": "ccc-protocol",
+        "args": "Test CCC"
+      },
+      "result": "Launching skill: ccc-protocol"
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/apple/program/CCC/.ccc/state.md"
+      },
+      "result": ""
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/apple/program/CCC/.ccc/infrastructure.md"
+      },
+      "result": ""
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "ls /Users/apple/program/CCC/.ccc/board/planned/ /Users/apple/program/CCC/.ccc/board/in_progress/ /Users/apple/program/CCC/.ccc/board/testing/ /Users/apple/program/CCC/.ccc/board/verified/ /Users/apple/program/CCC/.ccc/board/released/ 2>/dev/null",
+        "description": "List all board columns"
+      },
+      "result": ""
+    }
+  ]
 }

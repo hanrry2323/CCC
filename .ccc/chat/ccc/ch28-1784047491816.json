@@ -1,0 +1,25 @@
+{
+  "session_id": "ch28-1784047491816",
+  "title": "Line1\nLine2\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line1\nLine2\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "看到你输入了三个测试行：\n\n```\nLine1\nLine2\nTab\there\n```\n\n看起来是在测试多行输入和 Tab 字符的处理。一切正常 —— 我收到了你的输入。\n\n有什么需要我帮忙的吗？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:44:59+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:44:51+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16518999999999998
+}

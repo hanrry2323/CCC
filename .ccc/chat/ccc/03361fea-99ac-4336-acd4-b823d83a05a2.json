@@ -1,0 +1,17 @@
+{
+  "session_id": "03361fea-99ac-4336-acd4-b823d83a05a2",
+  "title": "ping",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping",
+      "mode": "chat"
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:47:42+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:47:27+08:00",
+  "execution_results": []
+}

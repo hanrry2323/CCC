@@ -297,7 +297,6 @@ async def chat(request: Request):
             proc = await asyncio.create_subprocess_exec(
                 CLAUDE_BIN,
                 "-p",
-                prompt,
                 "--print",
                 "--verbose",
                 "--output-format",
@@ -305,10 +304,15 @@ async def chat(request: Request):
                 "--model",
                 "flash",
                 cwd=project_path,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env={**CLAUDE_ENV, "CLAUDE_PROJECT_DIR": project_path},
             )
+            assert proc.stdin is not None
+            proc.stdin.write(prompt.encode())
+            await proc.stdin.drain()
+            proc.stdin.close()
 
             async def _read_stderr():
                 if proc.stderr:

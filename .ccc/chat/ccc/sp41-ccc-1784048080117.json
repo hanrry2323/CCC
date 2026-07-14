@@ -1,0 +1,42 @@
+{
+  "session_id": "sp41-ccc-1784048080117",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc",
+      "mode": "chat"
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:54:46+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:54:40+08:00",
+  "execution_results": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "cat .ccc/state.md 2>/dev/null || echo \"state.md not found\"",
+        "description": "Check CCC current state"
+      },
+      "result": ""
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "ls .ccc/board/backlog/ .ccc/board/planned/ .ccc/board/in_progress/ .ccc/board/testing/ .ccc/board/verified/ .ccc/board/released/ 2>/dev/null | head -30",
+        "description": "Check CCC board status"
+      },
+      "result": ""
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "for f in .ccc/board/*.jsonl; do echo \"=== $f ===\"; cat \"$f\" 2>/dev/null | python3 -m json.tool 2>/dev/null | head -20; done 2>/dev/null; find .ccc/board/ -name \"*.jsonl\" -newer .ccc/state.md -type f 2>/dev/null | head -5",
+        "description": "Check board index and column files"
+      },
+      "result": ""
+    }
+  ]
+}

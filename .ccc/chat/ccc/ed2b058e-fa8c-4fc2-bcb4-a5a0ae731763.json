@@ -1,0 +1,25 @@
+{
+  "session_id": "ed2b058e-fa8c-4fc2-bcb4-a5a0ae731763",
+  "title": "hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "应该简短回应，按照回复规范：\n- 中文\n- 结论优先\n- 不啰嗦\n- 一句话就能说清的不要展开\n\n按照 CLAUDE.md 的设定，我是架构师角色，但用户只是打招呼，没有具体任务。我应该简短回应，确认在线，等用户给任务。</think>\n\n在。老板请讲任务。",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:49:08+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:49:02+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16444
+}

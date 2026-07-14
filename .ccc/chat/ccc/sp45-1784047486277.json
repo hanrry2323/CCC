@@ -1,0 +1,25 @@
+{
+  "session_id": "sp45-1784047486277",
+  "title": "delete me",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "delete me",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\"delete me\" 具体指什么？\n\n几个可能，你说一下：\n1. **清理 untracked 的 CCC chat 会话文件** — git status 里有 8 个未跟踪的 `.ccc/chat/ccc/*.json` 文件，清掉它们？\n2. **删除当前会话** — 结束这个对话？我无法操作，你直接关终端或开新会话即可。\n3. **别的意思** — 你再说清楚点。",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:44:59+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:44:46+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.17780999999999997
+}
