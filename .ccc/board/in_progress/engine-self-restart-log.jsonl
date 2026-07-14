@@ -1,1 +1,0 @@
-{"id": "engine-self-restart-log", "title": "Engine 自重启写结构化日志", "description": "Engine 在 SIGTERM 或崩溃时写结构化 JSON 日志（pid、uptime、原因），便于 patrol 后续分析重启频率.", "complexity": "large", "ts": "2026-07-14T13:16:41Z", "note": "v1.0: 可观测", "status": "in_progress", "updated_at": "2026-07-14T22:15:03+08:00", "color_group": "B", "color_depth": 0}

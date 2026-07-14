@@ -1596,17 +1596,14 @@ def engine_loop(workspaces: list[Path]) -> None:
                 # v1.0: planned 优先（dev_role），无 planned 才 backlog（product_role）
                 # 避免 60+ backlog 阻塞 dev_role 永远不启动（B1）
                 did_something = False
+                # 规则：保持 3 个任务同时进行（MAX_CONCURRENT）
+                # 每次 tick 尽最大可能填充空槽位：先启动 planned（dev_role），再处理 backlog（product_role）
                 for ws in workspaces:
                     if len(active_tasks) >= MAX_CONCURRENT:
                         break
                     if _try_launch_planned(ws, active_tasks):
                         did_something = True
                         any_active = True
-                        break
-
-                if did_something:
-                    # B4: 不 continue，让本轮也处理 backlog，否则有 planned 时 backlog 永不处理
-                    pass
 
                 for ws in workspaces:
                     if len(active_tasks) >= MAX_CONCURRENT:

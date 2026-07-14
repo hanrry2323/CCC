@@ -1,0 +1,21 @@
+{
+  "session_id": "ch27-1784040215662",
+  "title": "你好世界 🌍 こんにちは",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好世界 🌍 こんにちは",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n你好！ こんにちは！\n\n欢迎来到 CCC 项目～ 有什么我可以帮你的吗？\n\n无论是想了解 CCC 框架、查看某个角色的 skill，还是启动一个 task，都可以告诉我 ",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:43:35+08:00",
+  "created_at": "2026-07-14T22:43:35+08:00"
+}

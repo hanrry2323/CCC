@@ -1,0 +1,21 @@
+{
+  "session_id": "sp41-xianyu-1784040229446",
+  "title": "Test xianyu",
+  "project": "xianyu",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test xianyu",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n已收到。xianyu 上下文已加载，等待指令。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:43:49+08:00",
+  "created_at": "2026-07-14T22:43:49+08:00"
+}

@@ -1,0 +1,21 @@
+{
+  "session_id": "ss141-1784040234731",
+  "title": "test types",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test types",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "基于当前 `Project CCC` 的工程纪律（特别是红线 2：验收必须可执行）和资产清单，对 `test types` 的官方定义如下：\n\n---\n\n###  Test Types — CCC 官方含义\n\n在 CCC 体系中，`test types` 指的是用于量化代码功能完备性的**验收标准文集**。它不是代码，而是对代码行为的自然语言描述。\n\n#### 1. 核心三种类型\n根据项目文档，主要包括：\n*   **自然语言**：人类可读的功能描述（例如：`用户能通过点击登录按钮进入系统`）。\n*   **命令行**：可直接复现的 Shell 命令（例如：`curl -f http://localhost:3000`）。\n*   **跳过**：明确表明不需要进行的功能占位（例如：`TODO: 用户重置密码流程`）。\n\n#### 2. 关键红线\n*   **红线 2：验收必须可执行**\n    *   所有 test type 必须在验收阶段被验证。\n    *   拒绝无意义的描述，必须能通过实际的命令或自然语言描述复现。\n    *   在 `plan` 生成阶段，必须是 JSONL 格式，且 `schema_version=\"1.1\"`（见 `references/board-task-schema.md`）。\n\n#### 3. 角色分工\n*   **Product (卖家)**：编写 test types 中的自然语言需求。\n*   **Reviewer (审计)**：在检查 `plan` 时，评估 test types 是否完整且不可被开发者偷懒跳过。\n*   **Dev (工程师)**：负责**实现**代码，使得代码能自然满足这些 test types，无需 Dev 自己去跑测试命令（那是 Reviewer 或 Tester 的工作）。\n\n#### 4. 指向资产\n*   `tests/scripts/` — 包含具体的自动化测试逻辑。\n*   `templates/plan/` — Plan 文件中应包含 Test Types 章节。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:43:54+08:00",
+  "created_at": "2026-07-14T22:43:54+08:00"
+}

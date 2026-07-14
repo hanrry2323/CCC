@@ -1,0 +1,21 @@
+{
+  "session_id": "ss141-1784040205632",
+  "title": "test types",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test types",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "基于当前 `Project CCC` 的工程纪律（",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:43:26+08:00",
+  "created_at": "2026-07-14T22:43:26+08:00"
+}

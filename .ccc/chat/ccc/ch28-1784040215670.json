@@ -1,0 +1,21 @@
+{
+  "session_id": "ch28-1784040215670",
+  "title": "Line1\nLine2\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line1\nLine2\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "感谢您的输入。我整理了您提供的内容，并按计划执行下一步操作：\n\n**当前状态分析：**\n1.  **上下文截断**：项目上下文已保留前 4000 字符，包含框架总纲（CCC 定义、工程纪律、关键资产清单）和 7 角色系统架构（v0.20.1）。\n2.  **命令行输入**：检测到 `Line1`, `Line2`, `Tab` (此处假设为制表符或缩进表示的另起一行起始)、以及空行。这似乎可能是一个确定输入内容，或者是不完整的测试输入。\n\n**准备好进行下一步：**\n现在可以根据您的意图（通常是读取 `SKILL.md` 或 `skills/ccc-<role>/SKILL.md`）继续操作。\n\n**请问您的下一步指令是什么？**",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:43:35+08:00",
+  "created_at": "2026-07-14T22:43:35+08:00"
+}

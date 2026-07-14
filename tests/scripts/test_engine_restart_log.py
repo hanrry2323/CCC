@@ -60,7 +60,7 @@ def test_global_variables():
     ]
 
     for var in required_globals:
-        pattern = rf'^{_var}: .* = '
+        pattern = rf'^{var}: .* = '
         if re.search(pattern, content, re.MULTILINE):
             print(f'✓ {var}')
         else:
