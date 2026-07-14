@@ -256,7 +256,12 @@ async def chat(request: Request):
 
     context = _get_project_context(project)
     if context:
-        system_msg = {"role": "system", "content": f"当前项目上下文:\n{context}"}
+        instruction = (
+            "## 模式说明\n"
+            "当前是 Chat 模式。禁止调用工具，禁止尝试读写文件，禁止执行命令。"
+            "只回复文字。以下是项目上下文供你参考：\n\n"
+        )
+        system_msg = {"role": "system", "content": instruction + context}
         messages = [system_msg] + messages
 
     if not messages:
@@ -2399,6 +2404,13 @@ function cancelEditInternal(editArea, originalText) {
 
 function renderMarkdown(text) {
   if (!text) return '';
+  // --- Step 0: guard tool_call XML blocks (before HTML escaping) ---
+  const toolCalls = [];
+  text = text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, (match) => {
+    const idx = toolCalls.length;
+    toolCalls.push(match);
+    return '\x00TOOLCALL' + idx + '\x00';
+  });
   // --- Step 1: guard code blocks ---
   const codeBlocks = [];
   let h = escapeHtml(text);
@@ -2511,6 +2523,16 @@ function renderMarkdown(text) {
   h = h.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
   // Inline code
   h = h.replace(/\x00ICODE(\d+)\x00/g, (_, i) => inlineCodes[parseInt(i)] || '');
+  // Tool calls — render as collapsible cards
+  h = h.replace(/\x00TOOLCALL(\d+)\x00/g, (_, i) => {
+    const raw = toolCalls[parseInt(i)] || '';
+    // Extract tool name and arguments
+    const nameMatch = raw.match(/<tool_call>[\s\S]*?"name"\s*:\s*"([^"]+)"/);
+    const argMatch = raw.match(/<tool_call>[\s\S]*?"arguments"\s*:\s*\{([^}]+)\}/);
+    const name = nameMatch ? nameMatch[1] : 'tool';
+    const args = argMatch ? '{' + argMatch[1] + '}' : raw.replace(/<\/?tool_call>/g, '').trim();
+    return '<details class="tool-card" style="margin:8px 0"><summary style="padding:8px 12px;font-size:13px;font-weight:500;cursor:pointer;color:var(--accent);list-style:none;display:flex;align-items:center;gap:6px"><span>🛠</span> ' + escapeHtml(name) + '</summary><pre style="padding:8px 12px;font-size:12px;overflow-x:auto;border-top:1px solid var(--border);margin:0;white-space:pre-wrap">' + escapeHtml(args) + '</pre></details>';
+  });
   // Code blocks (last, to protect content)
   h = h.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i)] || '');
 
