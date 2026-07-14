@@ -8,7 +8,7 @@
 
 用法:
     python3 scripts/ccc-chat-server.py
-    浏览器打开 http://localhost:8082
+    浏览器打开 http://localhost:8084
 """
 
 import asyncio

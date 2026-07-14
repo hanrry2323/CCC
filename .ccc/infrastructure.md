@@ -27,6 +27,7 @@
 | 8080 | HP Proxy | 知识库代理 |
 | 8082 | HP Memory Store | 向量/记忆 |
 | 8083 | HP Bridge | 知识库桥接 |
+| 8084 | CCC Chat Server | 移动端聊天/执行/看板 |
 | 8095 | qb Dashboard API | FastAPI 后端 |
 | 8096 | qb Dashboard Frontend | Vue 3 前端 |
 
