@@ -78,6 +78,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 _execute_lock = asyncio.Lock()
 _execute_running = False
+_EXEC_QUEUE_MAX = 3
+_EXECUTE_WAITERS: list[asyncio.Event] = []
 
 
 def _get_project_context(project_id: str) -> str:
@@ -95,7 +97,11 @@ def _get_project_context(project_id: str) -> str:
         parts.append(home_claude.read_text().strip())
     ctx = "\n\n".join(parts)
     if len(ctx) > 4000:
-        ctx = ctx[:4000] + "\n...(truncated)"
+        truncated_len = len(ctx) - 4000
+        ctx = (
+            ctx[:4000]
+            + f"\n\n> ⚠️ 项目上下文过长，已截断 {truncated_len} 字符（仅保留前 4000 字符）"
+        )
     return ctx
 
 
@@ -211,47 +217,61 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="messages required")
 
     async def generate():
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
-                "POST",
-                PROXY_URL,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": True,
-                    "max_tokens": 8192,
-                },
-                headers={"Accept": "text/event-stream"},
-            ) as resp:
-                full_content = ""
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:]
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            choices = chunk.get("choices", [])
-                            if not choices:
-                                continue
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_content += content
-                                yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
-                        except json.JSONDecodeError:
-                            pass
-                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-                if full_content:
-                    chat_messages = [m for m in messages if m.get("role") != "system"]
-                    for m in chat_messages:
-                        m.setdefault("mode", "chat")
-                    chat_messages.append(
-                        {"role": "assistant", "content": full_content, "mode": "chat"}
-                    )
-                    _save_session(
-                        session_id, chat_messages, project=project, mode="chat"
-                    )
+        stream_completed = False
+        full_content = ""
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    PROXY_URL,
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "stream": True,
+                        "max_tokens": 8192,
+                    },
+                    headers={"Accept": "text/event-stream"},
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                choices = chunk.get("choices", [])
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_content += content
+                                    yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
+                            except json.JSONDecodeError:
+                                pass
+            stream_completed = True
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+        except (GeneratorExit, asyncio.CancelledError):
+            # Client disconnected — save whatever we have
+            if full_content:
+                yield f"data: {json.dumps({'type': 'cancelled', 'session_id': session_id})}\n\n"
+            raise
+        finally:
+            if full_content:
+                chat_messages = [m for m in messages if m.get("role") != "system"]
+                for m in chat_messages:
+                    m.setdefault("mode", "chat")
+                chat_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": full_content,
+                        "mode": "chat",
+                        "partial": not stream_completed,
+                    }
+                )
+                _save_session(
+                    session_id, chat_messages, project=project, mode="chat"
+                )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -276,13 +296,36 @@ async def execute_mode(request: Request):
     if check_dangerous_command(prompt):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
 
-    if _execute_running:
-        raise HTTPException(status_code=429, detail="前一个执行中，请稍候")
-
     project_path = _project_path(project)
+
+    # Queue check — if busy, add to wait list instead of rejecting
+    if _execute_running:
+        if len(_EXECUTE_WAITERS) >= _EXEC_QUEUE_MAX:
+            raise HTTPException(
+                status_code=429,
+                detail=f"执行队列已满（{_EXEC_QUEUE_MAX}个排队上限），请稍候再试",
+            )
 
     async def generate():
         global _execute_running
+        # Queue position tracking
+        waiter_event = None
+        if _execute_running:
+            waiter_event = asyncio.Event()
+            _EXECUTE_WAITERS.append(waiter_event)
+            pos = len(_EXECUTE_WAITERS)
+            yield f"data: {json.dumps({'type': 'queue', 'position': pos, 'max': _EXEC_QUEUE_MAX})}\n\n"
+            try:
+                await asyncio.wait_for(waiter_event.wait(), timeout=180)
+            except asyncio.TimeoutError:
+                _EXECUTE_WAITERS.remove(waiter_event)
+                yield f"data: {json.dumps({'type': 'error', 'content': '排队超时（180s），请重新提交'})}\n\n"
+                return
+            except (GeneratorExit, asyncio.CancelledError):
+                if waiter_event in _EXECUTE_WAITERS:
+                    _EXECUTE_WAITERS.remove(waiter_event)
+                return
+
         async with _execute_lock:
             _execute_running = True
             proc = None
@@ -290,6 +333,7 @@ async def execute_mode(request: Request):
             execution_results: list = []
             total_cost_usd = None
             total_tokens = None
+            stream_completed = False
             try:
                 proc = await asyncio.create_subprocess_exec(
                     "claude",
@@ -383,6 +427,8 @@ async def execute_mode(request: Request):
                                 full_content = result_text
                                 yield f"data: {json.dumps({'type': 'delta', 'content': result_text})}\n\n"
 
+                stream_completed = True
+
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5)
                 except asyncio.TimeoutError:
@@ -400,6 +446,18 @@ async def execute_mode(request: Request):
 
                 yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
+            except (GeneratorExit, asyncio.CancelledError):
+                # Client disconnected — save partial content
+                raise
+            finally:
+                _execute_running = False
+                # Signal next waiter (if any) — inside lock to avoid race
+                if _EXECUTE_WAITERS:
+                    next_waiter = _EXECUTE_WAITERS.pop(0)
+                    next_waiter.set()
+                if proc and proc.returncode is None:
+                    proc.kill()
+
                 exec_messages = []
                 for m in messages:
                     if m.get("role") == "system":
@@ -411,6 +469,7 @@ async def execute_mode(request: Request):
                             "role": "assistant",
                             "content": full_content,
                             "mode": "execute",
+                            "partial": not stream_completed,
                         }
                     )
                 _save_session(
@@ -421,10 +480,6 @@ async def execute_mode(request: Request):
                     execution_results=execution_results,
                     total_cost_usd=total_cost_usd,
                 )
-            finally:
-                _execute_running = False
-                if proc and proc.returncode is None:
-                    proc.kill()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -1888,11 +1943,56 @@ function renderTerminalHistory(messages) {
       renderTerminalCommand(msg.content || '');
     } else if (msg.role === 'assistant') {
       const text = msg.content || '';
+      const results = msg.execution_results || [];
+      const partial = msg.partial || false;
+
+      if (results && results.length > 0) {
+        // Restore tool headers and results
+        appendTerminalSeparator();
+        for (const r of results) {
+          appendTerminalInfo('⚡ ' + (r.tool || 'tool'));
+          const body = document.createElement('div');
+          body.className = 'terminal-tool-body';
+          const pre = document.createElement('pre');
+          pre.textContent = JSON.stringify(r.input || {}, null, 2);
+          body.appendChild(pre);
+          if (r.result) {
+            const files = parseDiff(r.result);
+            if (files.length > 0) {
+              const wrapper = document.createElement('div');
+              wrapper.innerHTML = renderDiff(files);
+              body.appendChild(wrapper);
+            } else {
+              const resultPre = document.createElement('pre');
+              resultPre.textContent = r.result;
+              body.appendChild(resultPre);
+            }
+          }
+          t.appendChild(body);
+          appendTerminalSeparator();
+        }
+      }
+
       if (text) {
-        const line = document.createElement('div');
-        line.className = 'terminal-line terminal-output-text';
-        line.textContent = text;
-        t.appendChild(line);
+        const files = parseDiff(text);
+        if (files.length > 0) {
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = renderDiff(files);
+          t.appendChild(wrapper);
+        } else {
+          const line = document.createElement('div');
+          line.className = 'terminal-line terminal-output-text';
+          if (partial) {
+            const partialTag = document.createElement('span');
+            partialTag.className = 'terminal-info';
+            partialTag.textContent = ' [部分结果 — 用户中断] ';
+            line.appendChild(partialTag);
+          }
+          const textSpan = document.createElement('span');
+          textSpan.textContent = text;
+          line.appendChild(textSpan);
+          t.appendChild(line);
+        }
       }
     }
   }
@@ -2075,16 +2175,125 @@ function renderMessage(container, role, content, isExecute) {
 
 function renderMarkdown(text) {
   if (!text) return '';
+  // --- Step 1: guard code blocks ---
+  const codeBlocks = [];
   let h = escapeHtml(text);
-  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<div class="code-block-wrap"><pre><code class="lang-$1">$2</code></pre><button class="copy-btn" onclick="copyCode(this)">复制</button></div>');
-  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push('<div class="code-block-wrap"><pre><code class="lang-' + lang + '">' + code + '</code></pre><button class="copy-btn" onclick="copyCode(this)">复制</button></div>');
+    return '\x00CODE' + idx + '\x00';
+  });
+  // Guard inline code (must be after code blocks to avoid double-escape)
+  const inlineCodes = [];
+  h = h.replace(/`([^`]+)`/g, (_, c) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push('<code>' + c + '</code>');
+    return '\x00ICODE' + idx + '\x00';
+  });
+
+  // --- Step 2: block-level transforms ---
+  const lines = h.split('\n');
+  const out = [];
+  let inTable = false;
+  let inList = false;
+  let listType = null;
+
+  function closeList() {
+    if (inList) { out.push(listType === 'ol' ? '</ol>' : '</ul>'); inList = false; listType = null; }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw.trimEnd();
+
+    // Horizontal rule
+    if (/^[-*_]{3,}\s*$/.test(line.trim())) { closeList(); inTable = false; out.push('<hr>'); continue; }
+
+    // Headers
+    const h1Match = line.match(/^# (.+)$/);
+    if (h1Match) { closeList(); inTable = false; out.push('<h1>' + h1Match[1] + '</h1>'); continue; }
+    const h2Match = line.match(/^## (.+)$/);
+    if (h2Match) { closeList(); inTable = false; out.push('<h2>' + h2Match[1] + '</h2>'); continue; }
+    const h3Match = line.match(/^### (.+)$/);
+    if (h3Match) { closeList(); inTable = false; out.push('<h3>' + h3Match[1] + '</h3>'); continue; }
+    const h4Match = line.match(/^#### (.+)$/);
+    if (h4Match) { closeList(); inTable = false; out.push('<h4>' + h4Match[1] + '</h4>'); continue; }
+
+    // Blockquote
+    const bqMatch = line.match(/^> ?(.+)$/);
+    if (bqMatch) { closeList(); inTable = false; out.push('<blockquote>' + bqMatch[1] + '</blockquote>'); continue; }
+
+    // Unordered list
+    const ulMatch = line.match(/^[-*+] (.+)$/);
+    if (ulMatch) {
+      if (!inList || listType !== 'ul') { closeList(); out.push('<ul>'); inList = true; listType = 'ul'; }
+      out.push('<li>' + ulMatch[1] + '</li>');
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = line.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      if (!inList || listType !== 'ol') { closeList(); out.push('<ol>'); inList = true; listType = 'ol'; }
+      out.push('<li>' + olMatch[1] + '</li>');
+      continue;
+    }
+
+    // Table — detect header row
+    if (line.includes('|')) {
+      const cells = line.split('|').filter(Boolean);
+      if (!inTable && i + 1 < lines.length && /^[\s|:-]+$/.test(lines[i+1].trim())) {
+        // This is a table header
+        closeList();
+        out.push('<table><thead><tr>' + cells.map(c => '<th>' + c.trim() + '</th>').join('') + '</tr></thead><tbody>');
+        inTable = true;
+        i++; // skip separator row
+        continue;
+      } else if (inTable && cells.length > 1) {
+        out.push('<tr>' + cells.map(c => '<td>' + c.trim() + '</td>').join('') + '</tr>');
+        continue;
+      }
+    } else if (inTable) {
+      out.push('</tbody></table>');
+      inTable = false;
+    }
+
+    closeList();
+
+    // Empty line = paragraph break
+    if (line.trim() === '') { out.push('</p><p>'); continue; }
+
+    // Regular paragraph line
+    out.push(line);
+  }
+  closeList();
+  if (inTable) out.push('</tbody></table>');
+
+  h = out.join('\n');
+
+  // Wrap consecutive non-tag lines in <p>
+  h = h.replace(/^(?!<[a-z/]|$)(.+)$/gm, '<p>$1</p>');
+  // Fix double paragraph from empty lines
+  h = h.replace(/<\/p>\s*<p><\/p>/g, '</p><p>');
+
+  // --- Step 3: inline transforms ---
+  // Links (must come before other inline transforms to avoid escaping URL)
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Images
+  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;">');
+  // Bold
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
-  h = h.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  h = h.replace(/\n\n+/g, '</p><p>');
-  h = '<p>' + h + '</p>';
+  // Italic
+  h = h.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+  // Inline code
+  h = h.replace(/\x00ICODE(\d+)\x00/g, (_, i) => inlineCodes[parseInt(i)] || '');
+  // Code blocks (last, to protect content)
+  h = h.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i)] || '');
+
+  // Clean up empty paragraphs
   h = h.replace(/<p><\/p>/g, '');
+  h = h.replace(/<p>\s*<\/p>/g, '');
+
   return h;
 }
 
@@ -2154,6 +2363,13 @@ async function loadSession(id, mode) {
       switchTab('execute');
       execSessionId = data.session_id;
       execMessages = data.messages || [];
+      // Attach execution_results to the last assistant message for rich replay
+      if (data.execution_results && execMessages.length > 0) {
+        const last = execMessages[execMessages.length - 1];
+        if (last.role === 'assistant') {
+          last.execution_results = data.execution_results;
+        }
+      }
       execMessagesEl.innerHTML = '';
       renderTerminalHistory(execMessages);
     } else {
