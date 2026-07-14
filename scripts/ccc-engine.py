@@ -1395,7 +1395,8 @@ def engine_loop(workspaces: list[Path]) -> None:
                         break
 
                 if did_something:
-                    continue
+                    # B4: 不 continue，让本轮也处理 backlog，否则有 planned 时 backlog 永不处理
+                    pass
 
                 for ws in workspaces:
                     if len(active_tasks) >= MAX_CONCURRENT:
