@@ -1058,6 +1058,10 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"## Phases 格式\n"
             f"每行一个 JSON object：\n"
             f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
+            f"## Phase 数上限\n"
+            f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
+            f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
+            f"每个子 task 不超过 2 phases。\n\n"
             f"## 参考历史 plan\n{ref}\n\n"
             f"## 输出要求\n"
             f"输出以下两部分，用分隔符包裹：\n\n"
@@ -1157,16 +1161,25 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 phases.append(json.loads(line))
         return plan_content, phases
 
+    def _check_phase_limit(phases: list) -> None:
+        max_phases = _get_cfg().max_phases
+        if len(phases) > max_phases:
+            raise RuntimeError(f"phase 数 {len(phases)} 超过上限 {max_phases}")
+
     try:
         output = _run_claude(prompt)
         try:
-            return _parse_output(output)
+            result = _parse_output(output)
+            _check_phase_limit(result[1])
+            return result
         except (json.JSONDecodeError, RuntimeError):
             _log.warning("[product] phases 解析失败，简化 prompt 重试 1 次")
             retry_prompt = _build_prompt(include_ref_plans=False)
             output = _run_claude(retry_prompt)
             try:
-                return _parse_output(output)
+                result = _parse_output(output)
+                _check_phase_limit(result[1])
+                return result
             except (json.JSONDecodeError, RuntimeError) as exc:
                 fallback_dir = ROOT / ".ccc" / "product_fallback"
                 fallback_dir.mkdir(parents=True, exist_ok=True)

@@ -136,6 +136,9 @@ class Config:
     # ── auto_approve（v0.28.0 F4-M1）──
     auto_approve_max_per_run: int = 10  # 每次最多合入建议数
 
+    # ── product_role ──
+    max_phases: int = 2  # product_role 拆解 task 的最大 phase 数，超出抛异常
+
     # ── 模型梯队（v0.31）──
     model_tiers: dict[str, ModelTier] = field(
         default_factory=lambda: {
@@ -200,6 +203,7 @@ class Config:
         _env_override_int(self, "exec_timeout", "CCC_EXEC_TIMEOUT")
         _env_override_int(self, "reviewer_timeout", "CCC_REVIEWER_TIMEOUT")
         _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
+        _env_override_int(self, "max_phases", "CCC_MAX_PHASES")
 
 
 def _resolve_workspace() -> Path:
