@@ -1,0 +1,1 @@
+{"id": "cockpit-queue-display", "title": "Cockpit 显示排队队列深度", "description": "在看板首页增加 backlog/planned 队列计数，显示任务到达时间和预估等待.", "complexity": "large", "ts": "2026-07-14T13:16:41Z", "note": "patrol-v4: in_progress → planned (auto)", "status": "in_progress", "updated_at": "2026-07-14T13:29:33Z", "color_group": "Z", "color_depth": 0}

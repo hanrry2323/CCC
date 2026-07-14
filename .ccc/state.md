@@ -349,3 +349,20 @@
 **当前活跃**：
 - complexity 分流已生效（v0.28.1）
 - 每周总结定时任务（周日 22:03）
+
+<!-- board-status -->
+## 看板状态
+
+> 自动更新 — 最后刷新时间：2026-07-14T21:28:56+08:00
+
+| 列 | 任务数 |
+|---|------:|
+| backlog | 3 |
+| planned | 3 |
+| in_progress | 2 |
+| testing | 0 |
+| verified | 0 |
+| released | 90 |
+| abnormal | 0 |
+
+<!-- /board-status -->
