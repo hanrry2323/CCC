@@ -1,0 +1,1 @@
+{"id": "engine-graceful-quit", "title": "Engine 优雅退出处理 SIGTERM/SIGINT", "description": "", "status": "in_progress", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T13:37:41+08:00", "assignee": null, "tags": ["engine"], "note": null, "schema_version": "1.0", "complexity": "small"}

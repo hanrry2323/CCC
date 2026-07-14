@@ -1,0 +1,1 @@
+{"id": "debt-python-shebang-encoding", "title": "统一 shebang 和 coding 声明", "description": "", "status": "in_progress", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T13:37:41+08:00", "assignee": null, "tags": ["debt"], "note": null, "schema_version": "1.0", "complexity": "small"}

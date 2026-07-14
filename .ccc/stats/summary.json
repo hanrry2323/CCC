@@ -1,14 +1,14 @@
 {
-  "aggregated_at": "2026-07-14T04:46:19.876835+00:00",
+  "aggregated_at": "2026-07-14T05:45:49.715734+00:00",
   "workspace": "CCC",
-  "total_events": 17,
-  "latest_event_ts": "2026-07-14T08:39:28+08:00",
+  "total_events": 21,
+  "latest_event_ts": "2026-07-14T12:50:11+08:00",
   "events_by_type": {
-    "move": 4,
+    "move": 8,
     "quarantine": 13
   },
   "task_stats": {
-    "total": 13,
+    "total": 15,
     "success": 0,
     "failed": 12,
     "details": {
@@ -128,15 +128,33 @@
         "avg_latency_s": null,
         "last_event": "quarantine",
         "last_ts": "2026-07-14T08:39:28+08:00"
+      },
+      "cockpit-status-sort": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T12:50:10+08:00"
+      },
+      "debt-docstring-sweep": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T12:50:11+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 92.3,
+      "value": 80.0,
       "unit": "percent",
-      "label": "Task failure rate: 92.3% (12/13)"
+      "label": "Task failure rate: 80.0% (12/15)"
     },
     {
       "metric": "quarantine_spike",
@@ -147,10 +165,10 @@
     },
     {
       "metric": "total_events",
-      "value": 17,
+      "value": 21,
       "unit": "count",
-      "label": "Total events recorded: 17",
-      "latest_event": "2026-07-14T08:39:28+08:00"
+      "label": "Total events recorded: 21",
+      "latest_event": "2026-07-14T12:50:11+08:00"
     }
   ],
   "recommendations": [

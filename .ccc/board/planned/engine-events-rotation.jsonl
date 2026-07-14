@@ -1,1 +1,0 @@
-{"id": "engine-events-rotation", "title": "events.jsonl 自动轮转防止磁盘膨胀", "description": "", "status": "planned", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T10:47:31+08:00", "assignee": null, "tags": ["engine"], "note": null, "schema_version": "1.0", "complexity": "small"}
