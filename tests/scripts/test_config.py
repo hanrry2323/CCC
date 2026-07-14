@@ -1,10 +1,8 @@
 """test_config.py — _config.py 配置加载与环境变量覆盖"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import pytest
 
 from _config import (
     TIMEOUT_MAX,

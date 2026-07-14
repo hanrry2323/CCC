@@ -2409,7 +2409,7 @@ def tester_role() -> dict:
                 shell=False,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=cfg.exec_timeout,
                 cwd=ROOT,
             )
             if r.returncode != 0:
@@ -3712,9 +3712,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                 return {"status": "failed", "retry": 0, "task_id": task_id}
         # 没有 .done 也没有 .pid → 进程已死且标记丢失，返回 failed 让 engine 重启
         # Lesson 44: 此前返回 "running" 导致任务永久卡在 in_progress
-        _log.warning(
-            "%s 没有 .done 也没有 .pid 标记，视同失败让 engine 重启", task_id
-        )
+        _log.warning("%s 没有 .done 也没有 .pid 标记，视同失败让 engine 重启", task_id)
         return {"status": "failed", "retry": 0, "task_id": task_id}
 
     exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"

@@ -19,8 +19,6 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from _config import Config
-from _board_store import FileBoardStore
 
 # ccc-board.py 含连字符，从 scripts/ 目录加载（脚本里的内部 import 才能解析 _config / _board_store）
 import os as _os

@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from app.core.async_bridge import run_async, run_async_with_context, get_bridge_loop, _ensure_bridge_thread_pool
+from app.core.async_bridge import run_async, get_bridge_loop, _ensure_bridge_thread_pool
 
 
 def test_ensure_bridge_thread_pool_created():

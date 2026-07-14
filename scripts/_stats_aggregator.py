@@ -136,7 +136,9 @@ def aggregate_stats(workspace: Path) -> dict:
             "has_failure": has_fail,
             "has_success": has_success,
             "latency_samples": len(latencies),
-            "avg_latency_s": round(sum(latencies) / len(latencies), 2) if latencies else None,
+            "avg_latency_s": round(sum(latencies) / len(latencies), 2)
+            if latencies
+            else None,
             "last_event": events[-1].get("event") if events else None,
             "last_ts": events[-1].get("t") if events else None,
         }
@@ -148,61 +150,73 @@ def aggregate_stats(workspace: Path) -> dict:
     total_tasks = len(task_stats)
     if total_tasks > 0:
         fail_rate = round(task_failures / total_tasks * 100, 1)
-        perf_insights.append({
-            "metric": "task_failure_rate",
-            "value": fail_rate,
-            "unit": "percent",
-            "label": f"Task failure rate: {fail_rate}% ({task_failures}/{total_tasks})",
-        })
+        perf_insights.append(
+            {
+                "metric": "task_failure_rate",
+                "value": fail_rate,
+                "unit": "percent",
+                "label": f"Task failure rate: {fail_rate}% ({task_failures}/{total_tasks})",
+            }
+        )
 
     # 洞察2: 事件分布异常
     for ev_type, count in sorted(events_by_type.items(), key=lambda x: -x[1]):
         if ev_type in ("product_fail", "quarantine") and count > 3:
-            perf_insights.append({
-                "metric": f"{ev_type}_spike",
-                "value": count,
-                "unit": "count",
-                "label": f"High {ev_type} count: {count} (threshold: 3)",
-                "severity": "warning",
-            })
+            perf_insights.append(
+                {
+                    "metric": f"{ev_type}_spike",
+                    "value": count,
+                    "unit": "count",
+                    "label": f"High {ev_type} count: {count} (threshold: 3)",
+                    "severity": "warning",
+                }
+            )
 
     # 洞察3: 吞吐量
     if latest_ts:
-        perf_insights.append({
-            "metric": "total_events",
-            "value": total,
-            "unit": "count",
-            "label": f"Total events recorded: {total}",
-            "latest_event": latest_ts,
-        })
+        perf_insights.append(
+            {
+                "metric": "total_events",
+                "value": total,
+                "unit": "count",
+                "label": f"Total events recorded: {total}",
+                "latest_event": latest_ts,
+            }
+        )
 
     # ── 生成可执行建议 ──────────────────────────────────────
     recommendations = []
 
     # 如果 product_fail 很多 → 建议检查 plan 生成或切换模型
     if events_by_type.get("product_fail", 0) > 3:
-        recommendations.append({
-            "action": "check_product_role",
-            "reason": f"product_role failed {events_by_type['product_fail']} times",
-            "suggestion": "Consider plan generation model or switch to fallback",
-        })
+        recommendations.append(
+            {
+                "action": "check_product_role",
+                "reason": f"product_role failed {events_by_type['product_fail']} times",
+                "suggestion": "Consider plan generation model or switch to fallback",
+            }
+        )
 
     # 如果 quarantine 很多 → 建议启用 fallback 链
     if events_by_type.get("quarantine", 0) > 5:
-        recommendations.append({
-            "action": "enable_fallback_chain",
-            "reason": f"{events_by_type['quarantine']} tasks quarantined",
-            "suggestion": "Enable executor fallback chain to reduce quarantine rate",
-        })
+        recommendations.append(
+            {
+                "action": "enable_fallback_chain",
+                "reason": f"{events_by_type['quarantine']} tasks quarantined",
+                "suggestion": "Enable executor fallback chain to reduce quarantine rate",
+            }
+        )
 
     # 如果 move 成功率高 → 系统健康
     move_count = events_by_type.get("move", 0)
     if move_count > 10 and task_failures == 0:
-        recommendations.append({
-            "action": "system_healthy",
-            "reason": f"{move_count} successful moves, 0 failures",
-            "suggestion": "System operating normally",
-        })
+        recommendations.append(
+            {
+                "action": "system_healthy",
+                "reason": f"{move_count} successful moves, 0 failures",
+                "suggestion": "System operating normally",
+            }
+        )
 
     # ── 组装输出 ─────────────────────────────────────────────
     summary = {
@@ -227,7 +241,7 @@ def aggregate_stats(workspace: Path) -> dict:
 
 
 def load_summary(workspace: Path) -> dict:
-    """加载已聚合的 summary.json（不出错则返回空 dict）。
+    """加载已聚合的 summary.json（不败时返回空 dict）。
 
     Executor fallback 决策前调用此函数获取历史洞察。
     """
@@ -259,12 +273,14 @@ def _write_summary(ws: Path, data: dict) -> None:
 
 
 def _now_iso() -> str:
+    """生成当前 UTC 时间 ISO8601 字符串（不含时区偏移）。"""
     return datetime.now(timezone.utc).isoformat()
 
 
 # ── CLI 入口（手动触发用）──
 if __name__ == "__main__":
     import sys
+
     ws = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
     result = aggregate_stats(ws)
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -8,10 +8,8 @@ Validates:
 from __future__ import annotations
 import json
 import subprocess
-import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATUS_SH = ROOT / "scripts" / "ccc-status.sh"

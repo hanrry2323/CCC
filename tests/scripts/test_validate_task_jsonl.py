@@ -12,7 +12,6 @@ import importlib.util
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -361,7 +360,6 @@ class TestAssignColorGroup:
 
     def test_11_field_wrapper_preservation(self):
         """H3: HTTP API wrapper 保留所有 11 个 Board Protocol v1 字段"""
-        from cb import assign_color_group
 
         # 全量 task（包含 all 11 个协议字段）
         full_task = {
