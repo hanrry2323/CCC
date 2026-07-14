@@ -334,28 +334,77 @@ def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> N
         engine_log(f"写入 pytest 失败记录到 verdict 失败: {exc}")
 
 
+def _verdict_is_timeout(ws: Path, tid: str) -> bool:
+    """检查 verdict 文件是否标记为 TIMEOUT（reviewer LLM 超时但未 quarantine）。"""
+    vf = _verdict_file(ws, tid)
+    if not vf.is_file():
+        return False
+    try:
+        content = vf.read_text(encoding="utf-8")
+        return "**Verdict:** TIMEOUT" in content
+    except OSError:
+        return False
+
+
+def _clear_verdict(ws: Path, tid: str) -> None:
+    """删除 verdict 文件，使 _verdict_is_valid 返回 False，触发 engine 重试。"""
+    vf = _verdict_file(ws, tid)
+    try:
+        vf.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
-    """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。"""
+    """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。
+
+    v0.31+: 超时情形 engine 层自动重试（不 quarantine），
+    reviewer_retry_on_timeout 次超时后再 quarantine。
+    """
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
 
+    timeout_retries = cfg.reviewer_retry_on_timeout
+    timeout_count = 0
     verdict_ok = False
-    for attempt in range(2):
+    max_attempts = max(2, timeout_retries)
+
+    for attempt in range(max_attempts):
         reviewer_role()
         if _verdict_is_valid(ws, tid):
+            if _verdict_is_timeout(ws, tid):
+                timeout_count += 1
+                if timeout_count >= timeout_retries:
+                    engine_log(
+                        f"[{label}] {tid} reviewer 超时重试 {timeout_count}/{timeout_retries} 耗尽 → abnormal"
+                    )
+                    cur_phase = _current_running_phase(tid)
+                    _quarantine_with_notify(
+                        ws, tid, "reviewer 超时重试耗尽", store, phase=cur_phase
+                    )
+                    return False
+                _clear_verdict(ws, tid)
+                _ensure_task_in_testing(store, tid)
+                engine_log(
+                    f"[{label}] {tid} reviewer 超时，等待重试 (attempt {attempt + 1}/{timeout_retries})"
+                )
+                time.sleep(30)
+                continue
             verdict_ok = True
             break
+
         engine_log(
-            f"[{label}] {tid} reviewer 未产出有效 verdict (attempt {attempt + 1}/2)"
+            f"[{label}] {tid} reviewer 未产出有效 verdict (attempt {attempt + 1}/{max_attempts})"
         )
         _ensure_task_in_testing(store, tid)
-        if attempt == 1:
+        if attempt == max_attempts - 1 and not verdict_ok:
             engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
             cur_phase = _current_running_phase(tid)
             _quarantine_with_notify(
                 ws, tid, "reviewer 未产出 verdict", store, phase=cur_phase
             )
+            store.update_index()
             return False
 
     _ensure_task_in_testing(store, tid)
