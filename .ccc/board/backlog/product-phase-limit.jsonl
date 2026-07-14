@@ -1,1 +1,0 @@
-{"id":"product-phase-limit","title":"限制 product_role phase 拆分不超过 2 个","description":"当前 product_role 为复杂任务拆 3+ phase，opencode 执行进程超时消失。限制 max_phases=2，复杂 task 拆成多个子 task。","complexity":"medium","ts":"2026-07-14T12:39:23Z","note":"v1.0: 优化"}

@@ -1,1 +1,0 @@
-{"id":"patrol-restart-detail","title":"Patrol 重启 Engine 增加详细 commit 记录","description":"当前 patrol 重启 Engine 后 commit 只写原因，增加 PID、uptime、重启前看板快照到 commit message.","complexity":"small","ts":"2026-07-14T12:39:23Z","note":"v1.0: 基础设施"}
