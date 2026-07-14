@@ -12,37 +12,51 @@ class MockPortProbe:
 
     @staticmethod
     def simulate_probe(port: int, host: str) -> dict:
-        """Simulate port probe with deterministic status."""
+        """Simulate port probe with deterministic status.
+
+        Returns full port info including host (per /api/alive spec).
+        """
         probe_results = {
             (8080, "127.0.0.1"): {
                 "alive": True,
                 "name": "Test Service A",
+                "host": "127.0.0.1",
                 "status": "alive",
             },
             (8081, "192.168.1.100"): {
                 "alive": False,
                 "name": "Test Service B",
+                "host": "192.168.1.100",
                 "status": "dead",
             },
             (8082, "10.0.0.1"): {
                 "alive": None,
                 "name": "Test Service C",
+                "host": "10.0.0.1",
                 "status": "unknown",
             },
         }
         return probe_results.get(
-            (port, host), {"alive": None, "name": "Unknown Port", "status": "unknown"}
+            (port, host),
+            {
+                "alive": None,
+                "name": "Unknown Port",
+                "host": "127.0.0.1",
+                "status": "unknown",
+            },
         )
 
 
 class TestPortStatus:
-    """Test port status validation and structure."""
+    """Test port status validation and structure.
+
+    Test cases from plan:
+    - JSON body 含 `ports` 数组（每个端口有 name/port/host/status）
+    - 每个 port 有 `status` ∈ {alive, dead, unknown}
+    """
 
     def test_ports_have_required_fields(self):
-        """Verify each port has name, host, and status fields.
-
-        Test from plan lines 22-23:
-        - 测试 JSON body 含 `ports` 数组（每个端口有 name/port/host/status）"""
+        """Verify each port has name, host, and status fields."""
         sample_ports = [
             {"name": "Example Service", "host": "127.0.0.1", "status": "alive"},
             {"name": "Test Service", "host": "192.168.1.100", "status": "dead"},
@@ -56,29 +70,22 @@ class TestPortStatus:
             assert isinstance(port["status"], str), f"Port {port} status must be string"
 
     def test_status_values_are_valid(self):
-        """Ensure status field contains only valid integers.
+        """Ensure status field contains only valid values.
 
-        Test from plan lines 23-24:
-        - 测试返回值格式：每个 port 有 `status` ∈ {alive, dead, unknown}
+        Valid states per spec: alive, dead, unknown
         """
-        sample_ports = [
-            {"status": "alive"},
-            {"status": "dead"},
-            {"status": "unknown"},
-            {"status": "running"},
-            {"status": "stopped"},
+        test_cases = [
+            {"name": "Service A", "host": "127.0.0.1", "status": "alive"},
+            {"name": "Service B", "host": "192.168.1.1", "status": "dead"},
+            {"name": "Service C", "host": "10.0.0.1", "status": "unknown"},
         ]
 
         valid_statuses = {"alive", "dead", "unknown"}
-        invalid_statuses = {"running", "stopped"}
-
-        for port in sample_ports:
-            if port["status"] in valid_statuses:
-                assert True, f"Valid status {port['status']}"
-            elif port["status"] in invalid_statuses:
-                assert False, (
-                    f"Invalid status {port['status']} - must be alive/dead/unknown"
-                )
+        for port in test_cases:
+            assert port["status"] in valid_statuses, (
+                f"Invalid status {port['status']} for port {port['name']} - "
+                f"must be one of: {valid_statuses}"
+            )
 
 
 def test_port_probe_structure():
@@ -91,10 +98,9 @@ def test_port_probe_structure():
 
 
 def test_status_alive_query_param():
-    """Test that /api/alive endpoint only returns port status (3 states).
+    """Test that /api/alive endpoint returns only three valid status values.
 
-    Test from plan line:
-    - 测试返回值格式：每个 port 有 `status` ∈ {alive, dead, unknown}
+    From plan: `status` ∈ {alive, dead, unknown}
     """
     test_cases = [
         {"status": "alive"},
@@ -105,7 +111,7 @@ def test_status_alive_query_param():
     valid_statuses = {"alive", "dead", "unknown"}
     for test_case in test_cases:
         assert test_case["status"] in valid_statuses, (
-            f"Status {test_case['status']} not in valid range"
+            f"Status '{test_case['status']}' not in valid range"
         )
 
 
