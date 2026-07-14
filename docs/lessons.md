@@ -1877,3 +1877,57 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - `dev_role_launch`（计划→进行中）后跟 `update_index()`
 - `dev_role_relaunch` 不需要（不挪列）
 - engine 空闲时也可以加一次 "index 校验" 兜底修复
+
+---
+
+## Lesson 43：巡检范围必须覆盖所有 workspace
+
+**问题**：20min 巡逻 prompt 写"取 `.ccc/board/index.json`"，CWD 是 CCC，连续 15 次只看了 CCC 自己的看板。qxo 23 个异常、qb 9 个、qx 1 个挂了数天没人发现。
+
+**根因**：
+1. prompt 用相对路径 `.ccc/board/` 未指定 workspace
+2. 架构师没推断出"引擎监控了 5 个 workspace 就要查 5 个"
+3. 没有"跨 workspace 异常汇总"的检查步骤
+
+**修复方案**：
+- 巡逻脚本改为轮询 ALL workspaces（从 engine 发现列表获取）
+- 输出格式改为按 workspace 分组汇总
+- 任意 workspace 有异常必须逐一实查，不只读数字
+
+---
+
+## Lesson 44："排查" ≠ "读数跳过"，必须动手看证据
+
+**问题**：Step 1 的 abnormal 检查连续 10+ 轮只输出了 "abnormal=2，跳过"，未查实际内容。一查发现：`zcode-blindspot-fill` 的 verdict 是 PASS 被误判，`fix-version-trailing-newline` 代码早修了。
+
+**根因**：把"排查"机械理解为"读 index.json + 输出数字"，没去读 actual 文件（verdict / plan / code）。
+
+**修复方案**：
+- abnormal 巡检必须包含：读 note → 读 verdict/report → 读 plan → 查代码 → 才下结论
+- 三步法：打开文件 → 评估 → 执行（fix/clean/release）
+
+---
+
+## Lesson 45：连续 N 轮无操作应自动降频/暂停
+
+**问题**：15 轮 patrol 报告完全一样的内容，浪费用户时间。
+
+**修复方案**：
+- 连续 3 轮无实际变更 → 降频到 1h
+- 连续 6 轮无变更 → 自动暂停并通知用户
+- 巡检输出必须标明本轮是否有实质操作
+
+---
+
+## Lesson 46：abnormal 清理机制不完善
+
+**问题**：33 个异常任务全部因 `in_progress 滞留 6h` 或 `product_role 失败` 累积，无恢复/清理路径。
+
+**根因**：
+1. `_retry_abnormal_dev_failures` 的匹配模式只认"重试"和"all_failed_or_skipped"，不认"滞留"
+2. opencode 进程异常退出后 .done 不写，engine 没有兜底恢复
+
+**修复方案**：
+- `_retry_abnormal_dev_failures` 增加"in_progress 滞留"匹配模式
+- .done 标识改为心跳写（opencode-exec 定期写 alive 标记），异常退出时 engine 可更快发现
+- 无 phases 文件的历史遗留任务：自动清理（隔离 >7 天删除）
