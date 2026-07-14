@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.14] — 2026-07-14
+
+- cockpit-dead-counter-badge: 看板发布
+
 ## [v0.29.13] — 2026-07-14
 
 - cockpit-search-filter: 看板发布
@@ -1612,3 +1616,7 @@ git push origin main --tags
 ## [v0.29.12] - 2026-07-14
 
 - cockpit-search-filter: Cockpit 实时搜索过滤端口列表 看板发布
+
+## [v0.29.13] - 2026-07-14
+
+- cockpit-dead-counter-badge: Cockpit 页面标题 dead 端口数量角标 看板发布
