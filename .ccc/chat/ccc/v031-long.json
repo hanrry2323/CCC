@@ -1,0 +1,24 @@
+{
+  "session_id": "v031-long",
+  "title": "say hi in one word",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "say hi in one word",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:52:31+08:00",
+  "created_at": "2026-07-14T23:52:31+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16622
+}

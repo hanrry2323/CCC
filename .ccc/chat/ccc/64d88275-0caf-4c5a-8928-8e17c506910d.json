@@ -1,0 +1,16 @@
+{
+  "session_id": "64d88275-0caf-4c5a-8928-8e17c506910d",
+  "title": "New Chat",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我知道这个上下文。这是 **CCC (Connect–Claude Code)** 项目的总纲。\n\n根据你提供的 `references/red-lines.md`（红线）和 `Project CCC` 的架构，我清楚以下核心工程纪律：\n\n1.  **红线原则**：不动系统文件、验收必须可执行、单 phase 单 commit、`phases.json` 必须写全、禁止跨会话隐式记忆（依赖 `state.md`）。\n2.  **引擎驱动**：`ccc-engine.py` 串行驱动，无 `phases.json` 跳过。\n3.  **角色隔离**：7 个角色不互串。\n\n请问您需要我基于这个上下文做什么？（例如：编写新 role skill、排查 `ccc-engine` 启动问题、还是撰写 `phases.json` 示例？）",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:12:36+08:00",
+  "created_at": "2026-07-14T23:12:36+08:00"
+}

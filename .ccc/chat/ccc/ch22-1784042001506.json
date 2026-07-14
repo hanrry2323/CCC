@@ -1,0 +1,21 @@
+{
+  "session_id": "ch22-1784042001506",
+  "title": "Hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！请问有什么我可以帮助解决的，或者你想",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:13:21+08:00",
+  "created_at": "2026-07-14T23:13:21+08:00"
+}

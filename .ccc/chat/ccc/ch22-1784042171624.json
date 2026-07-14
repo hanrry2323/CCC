@@ -1,0 +1,21 @@
+{
+  "session_id": "ch22-1784042171624",
+  "title": "Hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！请问有什么我可以帮助解决的，或者你想了解关于 `Project CCC` 的什么信息？\n\n作为 Connect–Claude Code 框架，我知道它的主要目标是把 Claude Code 的执行能力**连接到任何 IDE 工具**。它是一个 **SKILL 资产套件**，包含一个总览的 `SKILL.md` 和 7 个角色（product, dev, reviewer, tester, kb, infra, deploy）的 skill 定义。\n\n如果你想开始使用 CCC，或者想了解如何在你的环境中配置 and 启动 CCC，我可以帮你！",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:16:11+08:00",
+  "created_at": "2026-07-14T23:16:11+08:00"
+}

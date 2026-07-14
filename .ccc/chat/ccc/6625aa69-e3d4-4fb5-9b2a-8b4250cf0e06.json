@@ -1,0 +1,16 @@
+{
+  "session_id": "6625aa69-e3d4-4fb5-9b2a-8b4250cf0e06",
+  "title": "New Chat",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我已收到并理解 `Project CCC` 的核心上下文（作为前 4000 字符内容）。\n\n**关键要点确认：**\n1.  **核心定位**：CCC (Connect-Claude-Code) 是连接 Claude 与任何 IDE 的 Skill 套件，非框架代码库。\n2.  **工程纪律**：12 条红线（不动系统文件、验收可执行、单 Phase 单 Commit 等）和 X 系列扩展（并发、Watchdog）。\n3.  **角色与驱动**：7 角色系统 + CCC Engine (v0.20.1+) 串行驱动。Engine 读取 `phases.json`（v0.24+）进行精细调度。\n4.  **Agent 行为**：需加载 `skills/ccc-<role>/SKILL.md`；遵循 Verdict 强凭证红线；严禁自主启用 CCC。\n\n**当前状态**：\n项目上下文输入在约 9147 字符处截断（仅展示前 4000 字符）。\n\n**等待指令**：\n我已准备好听取您的具体指令。请告诉我需要进行什么操作（如：新增角色设定、审查工程纪律、分析 phases.json 调度逻辑、或执行某个 plan 中的 phase）。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:13:29+08:00",
+  "created_at": "2026-07-14T23:13:29+08:00"
+}

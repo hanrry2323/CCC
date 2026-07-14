@@ -1,0 +1,3 @@
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending"}, "timeout": 600, "commit": null, "notes": "新建 scripts/_webhook.py + _config.py webhook_url 配置", "color_depth": 1, "color_group": "I"}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending", "2.2": "pending"}, "timeout": 600, "commit": null, "notes": "Patrol 集成：_notify_engine_restart() + stagnation webhook", "color_depth": 1, "color_group": "I"}

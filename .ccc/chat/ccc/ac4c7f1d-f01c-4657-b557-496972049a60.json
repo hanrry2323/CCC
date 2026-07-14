@@ -1,0 +1,21 @@
+{
+  "session_id": "ac4c7f1d-f01c-4657-b557-496972049a60",
+  "title": "ping",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "目前无法执行",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:36:21+08:00",
+  "created_at": "2026-07-14T23:36:21+08:00"
+}

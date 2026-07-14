@@ -1,0 +1,21 @@
+{
+  "session_id": "ch28-1784041880307",
+  "title": "Line1\nLine2\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line1\nLine2\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "I can help you parse and display this tabular data correctly. Based on your input, here is the formatted content:\n\n```text\nTab here\n```\n\n---\n\n**Details:**\n- **Total lines:** 3 (Line 1, Line 2, Tab here)\n- **Line 1:** Empty\n- **Line 2:** Empty\n- **Line 3 (`Tab here`):** Contains the text \"Tab here\" and appears to have a tab character separation.",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:11:20+08:00",
+  "created_at": "2026-07-14T23:11:20+08:00"
+}

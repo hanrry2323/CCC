@@ -1,0 +1,21 @@
+{
+  "session_id": "qx-v2",
+  "title": "你是谁",
+  "project": "qx",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你是谁",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "我是 `flash`，基于 Claude/Anthropic 架构的模型实例。\n\n负责承接你的指令，执行 `qx` 项目的 v2.0 重建任务，提供架构设计与落地开发的执行支撑。有问题随时吩咐。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:38:42+08:00",
+  "created_at": "2026-07-14T23:38:42+08:00"
+}

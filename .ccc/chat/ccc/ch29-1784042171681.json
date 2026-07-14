@@ -1,0 +1,21 @@
+{
+  "session_id": "ch29-1784042171681",
+  "title": "persist test",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "persist test",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n\"persist test\" 这个请求太模糊，无法直接执行。\n\n在 CCC 框架里，**任何动作都需要先有 plan 和 scope**（红线 #3：不超出 plan 范围）。请明确以下其中一项：\n\n1. **测试 state 持久化？**\n   - 测试 `state.md` / `profile.md` 写入后能否在下一会话恢复\n   - 需要：明确目标路径 + 测试场景\n\n2. **测试看板 task 持久化？**\n   - 测试 FileBoardStore 写入 `.ccc/board.jsonl` 后能否 reload\n   - 需要：跑 `tests/scripts/test_board_store.py`？还是新写一个 case？\n\n3. **测试 phases.json 持久化？**\n   - 验证 R-07（原子写）是否真的原子\n   - 需要：跑现有 pytest 还是手动 crash 注入？\n\n4. **其他？** — 请补一句意图\n\n---\n\n另外提醒：**红线 #12** 禁止 agent 自主启用 CCC，必须用户显式触发。如果你要的是\"跑一遍 CCC 流程测试持久化\"，请先确认是不是走 CCC 引擎（Engine launchd）路径，还是只是单测。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:16:11+08:00",
+  "created_at": "2026-07-14T23:16:11+08:00"
+}

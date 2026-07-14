@@ -1,0 +1,21 @@
+{
+  "session_id": "sp41-ccc-1784043399251",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n收到 — CCC 在线。\n\n想做什么？几个常见入口：\n\n- **跑任务** — \"启动一个任务\" / \"看 .ccc/state.md\"\n- **问架构** — \"7 角色怎么流转\" / \"Engine 怎么调度\"\n- **查红线** — \"X1 是什么\" / \"R-12 怎么触发\"\n- **看路线** — \"docs",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:36:42+08:00",
+  "created_at": "2026-07-14T23:36:42+08:00"
+}

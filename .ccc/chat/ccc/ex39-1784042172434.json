@@ -1,0 +1,23 @@
+{
+  "session_id": "ex39-1784042172434",
+  "title": "echo safe",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "echo safe",
+      "mode": "execute"
+    },
+    {
+      "role": "assistant",
+      "content": "安全，正常监听中。",
+      "mode": "execute",
+      "partial": false
+    }
+  ],
+  "mode": "execute",
+  "updated_at": "2026-07-14T23:16:26+08:00",
+  "created_at": "2026-07-14T23:16:26+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.158275
+}

@@ -1,0 +1,21 @@
+{
+  "session_id": "ss140-1784042136112",
+  "title": "test sse",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test sse",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "根据当前项目上下文（CCC — Connect–Claude Code），\"test sse\" 可能涉及该项目独特的 **SSE（Server Sent Events）看板服务**。\n\n以下是两个层面的分析：\n\n### 1. 项目内 SSE 概念：看板服务器\nCCC 是一个基于看板的工作流系统，当它使用同源 SSE 技术（通常是浏览器通过 HTTP 持续与 `.ccc/` 目录下的 JSONL 文件通信）时：\n\n*   **核心服务**：`scripts/ccc-board-server.py`\n*   **用途**：为 Trae / Cursor / VS Code 等工具提供**实时看板数据推送**。\n*   **测试方向**：\n    *   检查 Socket 链接是否存活？\n    *   检查数据更新是否实时推送到各 IDE？\n    *   检查 Schema (`board-task-schema.md`) 是否变化时，Old 客户端是否会报错？\n\n### 2. 开发测试：SSE Server Implementation\n如果你是在写基于 SSE 的 Web 服务，测试常见考点：\n\n*   **状态码**：`201 Created` (带 `Location` header) 是首要检查项。\n*   **Header**：必须包含 `Content-Type: text/event-stream` 且 **不能** 包含 gzip（压缩会破坏 SSE 流）。\n*   **数据格式**：严格的 `data: {JSON}` 格式，行尾 `\\n\\n`。\n*   **自动重连**：测试网络波动时的 Retry-After 或服务端自动断开重连机制。\n\n---\n\n**请明确你的目标**：\n1.  你是在验证 **CCC 的看板服务** 是否正常工作吗？\n2.  还是你在测试 **自己实现的 SSE API**？\n\n如果是指项目内的 CCC 看板，系统在 `.ccc/state.md` 中维护任务状态，SSE 客户端监听这些状态变化。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T23:15:36+08:00",
+  "created_at": "2026-07-14T23:15:36+08:00"
+}
