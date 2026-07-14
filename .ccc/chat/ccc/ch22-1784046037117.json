@@ -1,0 +1,24 @@
+{
+  "session_id": "ch22-1784046037117",
+  "title": "Hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi。有什么需要我做的？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:20:43+08:00",
+  "created_at": "2026-07-15T00:20:43+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16486499999999998
+}

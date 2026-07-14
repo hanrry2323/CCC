@@ -1,0 +1,24 @@
+{
+  "session_id": "sp40-1784045933517",
+  "title": "test session",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test session",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "会话正常。当前工作目录 `/Users/apple/program/CCC`，git 分支 `main`，项目 CCC v0.28.1。\n\n需要做什么？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:18:59+08:00",
+  "created_at": "2026-07-15T00:18:59+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16535499999999997
+}

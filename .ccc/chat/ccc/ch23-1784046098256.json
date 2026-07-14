@@ -1,0 +1,24 @@
+{
+  "session_id": "ch23-1784046098256",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "当前项目是 **CCC**（Connect–Claude Code），路径 `~/program/CCC`。\n\n这是一个自动化开发流水线框架（7 角色 + 看板 + Engine），当前版本 **v0.28.1**。它把 Claude Code 的执行能力连接到任意 IDE 工具。\n\n工作树有修改，涉及：\n- `scripts/` 下多个脚本有改动（`ccc-board.py`、`ccc-chat-server.py`、`ccc-cockpit.py`、`ccc-engine.py`、`_lessons.py`）\n- `.ccc/board/` 看板文件有变动\n- 有大量新的 chat 记录文件（`*.json`）\n\n需要我继续做什么？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:21:47+08:00",
+  "created_at": "2026-07-15T00:21:47+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.170535
+}

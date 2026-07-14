@@ -1,0 +1,24 @@
+{
+  "session_id": "ch23-1784046130021",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "当前项目是 **CCC — Connect–Claude Code**。\n\n路径：`/Users/apple/program/CCC`\n\nCCC 是一个 SKILL 资产套件（`SKILL.md` + 7 角色 `skills/`），把 Claude Code 的执行能力连接到任何 IDE 工具。当前版本 v0.28.1，包含看板流水线、CCC Engine 串行调度、7 角色系统（product/dev/reviewer/tester/ops/kb/regress）。\n\n需要我做什么？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:22:20+08:00",
+  "created_at": "2026-07-15T00:22:20+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16956
+}

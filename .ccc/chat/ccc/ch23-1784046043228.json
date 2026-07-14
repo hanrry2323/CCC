@@ -1,0 +1,24 @@
+{
+  "session_id": "ch23-1784046043228",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "当前在 **CCC (Connect–Claude Code)** 项目，路径 `~/program/CCC/`。\n\n这是一个自动化开发流水线框架——7 角色看板 + CCC Engine 串行执行，核心资产是 skill 定义和脚本。当前版本 `v0.28.1`，看板服务跑在 `localhost:7778`。\n\nGit 状态：在 `main` 分支，有若干已修改脚本和新增的 chat 日志文件未 stage。",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:20:50+08:00",
+  "created_at": "2026-07-15T00:20:50+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16845999999999997
+}

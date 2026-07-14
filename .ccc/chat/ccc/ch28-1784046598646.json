@@ -1,0 +1,24 @@
+{
+  "session_id": "ch28-1784046598646",
+  "title": "Line1\nLine2\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line1\nLine2\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "已收到。有什么需要我帮你的？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:30:01+08:00",
+  "created_at": "2026-07-15T00:30:01+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16719
+}

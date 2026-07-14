@@ -1,0 +1,24 @@
+{
+  "session_id": "ch23-1784046588555",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "当前是 **CCC**（Connect–Claude Code）项目。路径 `~/program/CCC/`，一个极简的 Prompt 资产套件 + 7 角色看板流水线（CCC Engine），把 Claude Code 的执行能力连接到任何 IDE 工具。\n\n你看到的是 `CLAUDE.md` 框架总纲的摘要。有什么具体的任务要做？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:29:51+08:00",
+  "created_at": "2026-07-15T00:29:51+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.168185
+}

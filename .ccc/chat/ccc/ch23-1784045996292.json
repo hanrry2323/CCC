@@ -1,0 +1,24 @@
+{
+  "session_id": "ch23-1784045996292",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "**CCC** — Connect–Claude Code。\n\n一个自动化开发流水线框架（SKILL 资产套件 + 7 角色看板 + Engine 串行执行引擎），路径 `~/program/CCC/`，当前版本 v0.28.1。\n\n能把 Claude Code 或 OpenCode 的执行能力连接到 Trae / Cursor / VS Code 等任意 IDE，按 product → dev → reviewer → tester → kb 角色链自动驱动任务流转。\n\n更多见 `CLAUDE.md` 或 `README.md`。需要了解什么？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:20:05+08:00",
+  "created_at": "2026-07-15T00:20:05+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16717999999999997
+}

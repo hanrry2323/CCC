@@ -1,0 +1,24 @@
+{
+  "session_id": "sp40-1784046142358",
+  "title": "test session",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test session",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "测试环境正常。当前会话：\n\n- **工作目录**：`/Users/apple/program/CCC`\n- **项目**：CCC v0.28.1\n- **session**：已加载全部上下文，工具链就绪（Git、MCP codebase memory、Web search/fetch、脚本等）\n- **模型**：`flash`（经中转站 `127.0.0.1:4000`）\n\n有什么需要做的吗？",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:22:34+08:00",
+  "created_at": "2026-07-15T00:22:34+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.168755
+}

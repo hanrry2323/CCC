@@ -200,6 +200,7 @@ def _save_session(
     mode: str = "chat",
     execution_results: list | None = None,
     total_cost_usd: float | None = None,
+    status: str | None = None,
 ):
     path = _session_path(session_id, project)
     title_src = ""
@@ -215,6 +216,8 @@ def _save_session(
         "mode": mode,
         "updated_at": _now_iso(),
     }
+    if status:
+        data["status"] = status
     if path.exists():
         try:
             existing = json.loads(path.read_text())
@@ -265,6 +268,16 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
 
     project_path = _project_path(project)
+
+    # Save initial session immediately (pending) so /api/history finds it
+    _save_session(
+        session_id,
+        messages,
+        project=project,
+        mode="chat",
+        execution_results=[],
+        status="pending",
+    )
 
     # Inject project context into the prompt
     context = _get_project_context(project)

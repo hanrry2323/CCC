@@ -1,0 +1,24 @@
+{
+  "session_id": "ch20-1784046144280",
+  "title": "Say hello in 3 words",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Say hello in 3 words",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "你好世界！",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:22:32+08:00",
+  "created_at": "2026-07-15T00:22:32+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.1655
+}
