@@ -1,4 +1,5 @@
 """test_board_store.py — _board_store.py 原子写/锁/move/CRUD 补测"""
+
 from __future__ import annotations
 
 import json
@@ -108,20 +109,14 @@ class TestFileBoardStoreCRUD:
         store.create_task(_valid_task("i1"), column="backlog")
         counts = store.update_index()
         assert counts["backlog"] == 1
-        index = json.loads(
-            (tmp_path / ".ccc" / "board" / "index.json").read_text()
-        )
+        index = json.loads((tmp_path / ".ccc" / "board" / "index.json").read_text())
         assert index["backlog"] == 1
 
     def test_quarantine_moves_to_abnormal(self, store: FileBoardStore, tmp_path):
         store.create_task(_valid_task("q1"), column="in_progress")
         store.quarantine("q1", "test isolation")
-        assert (
-            tmp_path / ".ccc" / "board" / "abnormal" / "q1.jsonl"
-        ).exists()
-        assert not (
-            tmp_path / ".ccc" / "board" / "in_progress" / "q1.jsonl"
-        ).exists()
+        assert (tmp_path / ".ccc" / "board" / "abnormal" / "q1.jsonl").exists()
+        assert not (tmp_path / ".ccc" / "board" / "in_progress" / "q1.jsonl").exists()
 
     def test_get_timeline_records_move(self, store: FileBoardStore):
         store.create_task(_valid_task("ev1"), column="backlog")
@@ -280,6 +275,7 @@ class TestEdgeCases:
 
     def test_list_tasks_missing_column_dir(self, store: FileBoardStore):
         import shutil
+
         shutil.rmtree(store.board / "released")
         assert store.list_tasks("released") == []
 
@@ -304,3 +300,39 @@ class TestEdgeCases:
 
     def test_quarantine_store_content_missing_returns_false(self):
         assert bs.quarantine_store_content("none", None) is False
+
+
+class TestEventFormat:
+    """test-board-events-format: events.jsonl 字段格式与 board-task-schema.md §7 一致"""
+
+    def test_event_format(self, store: FileBoardStore, tmp_path: Path):
+        store.create_task(_valid_task("fmt-1"), column="backlog")
+        store.move_task("fmt-1", "backlog", "planned")
+        store.move_task("fmt-1", "planned", "in_progress")
+
+        events_file = tmp_path / ".ccc" / "board" / "events" / "fmt-1.events.jsonl"
+        assert events_file.exists(), "events.jsonl 未生成"
+
+        raw_lines = [ln for ln in events_file.read_text().splitlines() if ln.strip()]
+        events = [json.loads(ln) for ln in raw_lines]
+        assert len(events) == 3, f"应写 3 条事件（含创建），实际 {len(events)}"
+
+        required = {"event", "task_id", "from", "to", "timestamp"}
+        for idx, ev in enumerate(events):
+            assert required.issubset(ev.keys()), (
+                f"事件 {idx} 缺失字段：{required - set(ev.keys())}"
+            )
+            assert ev["task_id"] == "fmt-1"
+            assert isinstance(ev["timestamp"], str) and ev["timestamp"]
+            assert ev["event"] in {"move", "assign", "quarantine"}, (
+                f"未知 event 类型：{ev['event']!r}"
+            )
+
+        assert events[0]["from"] == "none", "创建时首条事件 from 应为 'none'"
+        assert events[0]["to"] == "backlog"
+
+        assert events[1]["event"] == "move"
+        assert events[1]["from"] == "backlog" and events[1]["to"] == "planned"
+
+        assert events[2]["event"] == "move"
+        assert events[2]["from"] == "planned" and events[2]["to"] == "in_progress"
