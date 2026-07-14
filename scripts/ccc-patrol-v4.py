@@ -96,11 +96,7 @@ def list_board_tasks(ws: Path, col: str) -> list[dict]:
 
 
 def read_board_index(ws: Path) -> dict[str, int]:
-    """读 board/index.json"""
-    idx = json_load(ws / ".ccc" / "board" / "index.json")
-    if idx:
-        return {c: idx.get(c, 0) for c in BOARD_COLS}
-    # fallback: 遍历目录计数
+    """直接遍历目录统计，避开 stale index.json"""
     counts = {}
     for c in BOARD_COLS:
         d = ws / ".ccc" / "board" / c
