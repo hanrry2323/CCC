@@ -1,0 +1,21 @@
+{
+  "session_id": "4617a17a-172f-4b7a-a491-423999e301da",
+  "title": "ping",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\npong\n\nCCC context loaded. Ready when you are — what's the task?",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:10:27+08:00",
+  "created_at": "2026-07-14T22:10:27+08:00"
+}

@@ -1,0 +1,21 @@
+{
+  "session_id": "test-chat-special-1784038102",
+  "title": "Hello\nLine2\nLine3\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello\nLine2\nLine3\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nHello! How can I help you today?",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:08:25+08:00",
+  "created_at": "2026-07-14T22:08:25+08:00"
+}

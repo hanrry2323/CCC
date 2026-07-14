@@ -1,0 +1,21 @@
+{
+  "session_id": "test-sse-type-1784038222",
+  "title": "test event types",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test event types",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n你的消息\"test event types\"太模糊了，我不确定你想做什么。能具体说明一下吗？例如：\n\n- **测试某个系统的 event 类型？** 比如 macOS launchd 事件、Claude Code 的 hook 事件、CCC Engine 的 phase 事件、看板 task 状态流转事件……哪个？\n- **想列举 CCC 现有的事件/状态类型清单？**（比如 task lifecycle 状态、phase 状态、role 状态）\n- **手滑发错了？** 想问的是",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:10:27+08:00",
+  "created_at": "2026-07-14T22:10:27+08:00"
+}

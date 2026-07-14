@@ -1,0 +1,21 @@
+{
+  "session_id": "test-persist-create-1784038270",
+  "title": "Create a test session",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Create a test session",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nThe request is too brief — I need a bit more context before doing anything.\n\nWhat kind of \"test session\" do you want? For example:\n\n1. **Run the CCC test suite** — execute `pytest tests/` (unit + e2e)\n2. **Create a test task on the board** — push a dummy task through `ccc-board.py` to exercise the engine\n3. **Smoke-test a single role** — launch `opencode` with a specific `skills/ccc-<role>/SKILL.md`\n4. **Spin up the Engine + board-server** locally and verify the plist service\n5. **Something else** — describe what you want to validate\n\nWhich one? (If it's #2 or #3, tell me which role and what the task content should be.)",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:11:10+08:00",
+  "created_at": "2026-07-14T22:11:10+08:00"
+}

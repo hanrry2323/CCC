@@ -477,87 +477,51 @@ def check_stuck_tasks(
     if not ip_dir.is_dir():
         return ops, stuck_counters
 
-    for f in sorted(ip_dir.iterdir()):
-        if f.suffix not in (".jsonl", ".json"):
-            continue
-        tid = f.stem
-
-        age = file_age_seconds(f)
-        if age is None:
-            continue
-
-        # --- 增强：进程存活检测（含 zombie）---
-        process_alive = False
-        is_zombie = False
-        if PID_DIR.is_dir():
-            for pid_file in PID_DIR.iterdir():
-                if tid in pid_file.name:
-                    try:
-                        pid_str = pid_file.read_text().strip()
-                        pid = int(pid_str)
-                        os.kill(pid, 0)
-                        process_alive = True
-                        if _is_zombie_pid(pid):
-                            is_zombie = True
-                        break
-                    except (ValueError, OSError, ProcessLookupError):
-                        pass
-
-        # ps 兜底
-        if not process_alive:
-            try:
-                r = subprocess.run(
-                    ["ps", "aux"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                for line in r.stdout.splitlines():
-                    if tid in line and "grep" not in line:
-                        process_alive = True
-                        break
-            except (subprocess.TimeoutExpired, OSError):
-                pass
-
-        # --- 增强：crash loop 检测 ---
-        is_crash_loop = _detect_crash_loop(tid)
-
-        # --- 增强：stuck 次数决策 ---
-        stuck_count = stuck_counters.get(tid, 0)
-        target: str | None = None
-
-        if age > FORCE_MV_THRESHOLD:
-            if is_zombie or is_crash_loop or stuck_count >= 3:
-                target = "backlog"
-            else:
-                target = "planned"
-            ops.append(
-                f"{tid}: stuck {age}s > {FORCE_MV_THRESHOLD}s → {target} (force)"
-            )
-        elif age > STUCK_THRESHOLD and not process_alive:
-            if stuck_count >= 3 or is_crash_loop:
-                target = "backlog"
-            else:
-                target = "planned"
-            ops.append(f"{tid}: stuck {age}s, no process → {target}")
-        elif age > STUCK_THRESHOLD and process_alive:
-            if is_zombie:
-                if stuck_count >= 3 or is_crash_loop:
-                    target = "backlog"
-                else:
-                    target = "planned"
-                ops.append(f"{tid}: zombie {age}s → {target}")
-            else:
-                ops.append(f"{tid}: running {age}s (alive, no action)")
-        else:
-            ops.append(f"{tid}: active {age}s (normal)")
-
-        if target:
-            _move_task(ws, tid, "in_progress", target)
-            stuck_count += 1
-            stuck_counters[tid] = stuck_count
+    # v0.31: 检测 all-phases-done 但卡在 planned/in_progress 的任务
+    for _col in ("planned", "in_progress"):
+        _check_done_phases_in_wrong_column(ws, ops, _col)
 
     return ops, stuck_counters
+def _check_done_phases_in_wrong_column(ws: Path, ops: list[str], col: str) -> None:
+    """检测 all-phases-done 但卡在 planned/in_progress 的任务 → 移到 testing"""
+    import json as _json
+    col_dir = ws / ".ccc" / "board" / col
+    if not col_dir.is_dir():
+        return
+    phases_dir = ws / ".ccc" / "phases"
+    if not phases_dir.is_dir():
+        return
+    for f in sorted(col_dir.iterdir()):
+        if f.suffix not in (".jsonl", ".json"):
+            continue
+        tid2 = f.stem
+        pf = phases_dir / f"{tid2}.phases.json"
+        if not pf.exists():
+            continue
+        try:
+            lines = pf.read_text().strip().split("\n")
+            all_done = True
+            has_done = False
+            for pl in lines:
+                pl = pl.strip()
+                if not pl or not pl.startswith("{"):
+                    continue
+                try:
+                    po = _json.loads(pl)
+                except _json.JSONDecodeError:
+                    continue
+                if "schema_version" in po or "engine_iter" in po:
+                    continue
+                if po.get("phase") and po.get("status") != "done":
+                    all_done = False
+                    break
+                if po.get("status") == "done":
+                    has_done = True
+            if all_done and has_done:
+                _move_task(ws, tid2, col, "testing")
+                ops.append(f"{tid2}: all phases done but in {col} → testing")
+        except Exception:
+            continue
 
 
 def save_patrol_state(

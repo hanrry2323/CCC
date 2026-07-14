@@ -1,0 +1,21 @@
+{
+  "session_id": "test-sse-fmt-1784038285",
+  "title": "test sse format",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test sse format",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n# SSE 格式测试\n\nServer-Sent Events (SSE) 是一种基于 HTTP 的服务器推送技术。以下是 SSE 的标准格式：\n\n## 基本格式\n\n```\nevent: <event-name>\ndata: <data-content>\nid: <optional-id>\nretry: <reconnect-time-ms>\n\n(blank line)\n```\n\n## 字段说明\n\n| 字段 | 必需 | 说明 |\n|------|------|------|\n| `data:` |  | 消息正文，可多行 |\n| `event:` |  | 事件类型，默认 `message` |\n| `id:` |  | 事件 ID，断线重连时用 |\n| `retry:` |  | 重连间隔（毫秒） |\n\n## 响应头\n\n```http\nContent-Type: text/event-stream\nCache-Control: no-cache\nConnection: keep-alive\n```\n\n## 示例流\n\n```\ndata: {\"time\": \"2024-01-01T00:00:00Z\"}\n\nevent: update\ndata: {\"userId\": 123, \"status\": \"online\"}\n\nevent: heartbeat\ndata: ping\nid: 1\n\nretry: 3000\ndata: {\"msg\": \"reconnecting...\"}\n```\n\n## 客户端使用\n\n```javascript\nconst es = new EventSource('/api/stream');\nes.addEventListener('update', (e) => {\n  console.log(JSON.parse(e.data));\n});\nes.onerror = () => console.log('reconnecting...');\n```\n\n---\n\n需要我用代码演示具体场景（如 Node.js / Python 写入端、curl 测试、或前端 React 接收）吗？",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:11:25+08:00",
+  "created_at": "2026-07-14T22:11:25+08:00"
+}

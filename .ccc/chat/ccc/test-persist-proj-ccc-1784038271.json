@@ -1,0 +1,21 @@
+{
+  "session_id": "test-persist-proj-ccc-1784038271",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n\"Test ccc\" 是比较模糊的指令。在我开始之前，需要澄清几点：\n\n**我能做的 vs 不能做的**\n\n从上下文看，CCC 是一套本地运行在用户机器上的脚本系统（launchd → ccc-engine.py → opencode 进程池）。我作为 MiniMax-M3 模型：\n\n-  无法实际执行 `ccc-engine.sh`、`opencode-exec.py` 等脚本\n-  无法读写 `~/program/CCC/.ccc/state.md` 或 `.ccc/profile.md`\n-  无法启动/查看 launchd 守护进程\n-  无法调用 macOS `osascript` 通知\n-  可以基于已加载的项目上下文，回答架构/流程/红线相关问题\n-  可以帮你 review SKILL.md / phases.json / verdict 文件的**草稿内容**\n\n**请明确你想测什么**（选一个或自定义）：\n\n| 选项 | 含义 | 我能提供什么 |\n|------|------|------------|\n| A | **测试 CCC 知识**：问我关于红线/角色/phase 调度的问题 | 基于上下文回答 |\n| B | **审查某个产出**：你贴 plan / phases.json / verdict / SKILL.md 草稿，我按 R 系列红线 review | 静态分析 |\n| C | **模拟一次 Engine 流程**：你给一个 task，我按 main loop 写出每个 phase 该谁跑、写什么 | 推演，不执行 |\n| D | **排查具体卡点**：你贴错误日志/状态，我帮定位属于哪条红线 | 诊断建议 |\n| E | **真的跑脚本**：执行 `ccc-*.sh` / `pytest` | **不支持，需要你在本地终端运行** |\n\n 项目上下文在加载时被截断了 9147 字符（只保留了前 4000），如果你要问 `references/red-lines.md` 或 `docs/lessons.md` 的细节，我可能答不全。\n\n你想测哪一个？",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:11:11+08:00",
+  "created_at": "2026-07-14T22:11:11+08:00"
+}

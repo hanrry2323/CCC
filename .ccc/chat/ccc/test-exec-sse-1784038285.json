@@ -1,0 +1,16 @@
+{
+  "session_id": "test-exec-sse-1784038285",
+  "title": "safe test command",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "safe test command",
+      "mode": "execute"
+    }
+  ],
+  "mode": "execute",
+  "updated_at": "2026-07-14T22:11:27+08:00",
+  "created_at": "2026-07-14T22:11:27+08:00",
+  "execution_results": []
+}
