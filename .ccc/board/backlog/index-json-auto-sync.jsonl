@@ -1,0 +1,1 @@
+{"id":"index-json-auto-sync","title":"board 操作后自动同步 index.json","description":"patrol 的 _move_task 不更新 index.json，导致 patrol 报告读 stale 数据。在 patrol commit 前补充 index.json 同步。","complexity":"small","ts":"2026-07-14T12:39:23Z","note":"v1.0: 修复"}
