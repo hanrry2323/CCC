@@ -287,7 +287,7 @@ def check_db(task_id: str | None) -> dict | None:
         print_success("Task completed successfully in pipeline.db")
         return result_row
     else:
-        print_error(f"Task did not complete successfully")
+        print_error("Task did not complete successfully")
         return None
 
 

@@ -198,6 +198,24 @@ def update_index() -> dict:
     return store.update_index()
 
 
+def _load_retry_from_phases(phases: list[dict], phase_id: int) -> int:
+    """从已解析的 phases 列表取指定 phase 的 retry 计数。
+
+    避免 re-read JSONL 文件（_load_retry_count 旧版直接读文件，改为复用已解析 phases）。
+    """
+    for p in phases:
+        p_id = p.get("phase")
+        if p_id is None:
+            continue
+        if int(p_id) != phase_id:
+            continue
+        try:
+            return int(p.get("retry", 0))
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
 def _load_timeout(phases_file: Path, default: int = None) -> int:
     """从 phases.jsonl 的第一个 phase 行读 timeout（跳过 schema_version）
 
@@ -1056,9 +1074,9 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         recent = get_recent_lessons(ROOT)
         if recent:
             lessons_text = "\n".join(
-                f"- [{l.get('task_id', '?')}] phase={l.get('phase')}: {l.get('error', '')[:100]}"
-                for l in recent[:10]
-                if not l.get("fixed")
+                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
+                for lesson in recent[:10]
+                if not lesson.get("fixed")
             )
             if lessons_text:
                 prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
@@ -1283,19 +1301,19 @@ def product_role(task_id: str = "") -> dict:
                     plan_size = len(plan_lines)
                     file_mentions = len(
                         set(
-                            l.strip()
-                            for l in plan_lines
-                            if l.strip().startswith(("/", "`/"))
-                            and not l.strip().startswith(("//", "#"))
+                            line.strip()
+                            for line in plan_lines
+                            if line.strip().startswith(("/", "`/"))
+                            and not line.strip().startswith(("//", "#"))
                         )
                     )
                     section_count = len(
                         [
-                            l
-                            for l in plan_lines
-                            if l.strip().startswith("##")
-                            and " " in l
-                            and l.strip() != "##"
+                            line
+                            for line in plan_lines
+                            if line.strip().startswith("##")
+                            and " " in line
+                            and line.strip() != "##"
                         ]
                     )
                     plan_weight = plan_size + file_mentions * 20 + section_count * 10
@@ -1564,9 +1582,9 @@ def dev_role() -> dict:
     )
     section_count = len(
         [
-            l
-            for l in plan_lines
-            if l.strip().startswith("##") and " " in l and l.strip() != "##"
+            line
+            for line in plan_lines
+            if line.strip().startswith("##") and " " in line and line.strip() != "##"
         ]
     )
     plan_weight = plan_size + file_mentions * 20 + section_count * 10
@@ -2441,7 +2459,7 @@ def tester_role() -> dict:
         has_pyproject = (ROOT / "pyproject.toml").exists()
         if has_pyproject and not any("pytest" in c for c in verify_commands):
             verify_commands.append(
-                f"python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
+                "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
             )
 
         all_ok = True
@@ -2677,7 +2695,7 @@ def kb_role() -> dict:
             _log.info("[kb] CHANGELOG 已包含 %s，跳过追加", task_id)
         else:
             entry = f"\n## [{version}] - {today_str}\n\n- {task_id}: {task.get('title', '')} 看板发布\n"
-            new_text = (existing_text if existing_text else f"# CHANGELOG\n\n") + entry
+            new_text = (existing_text if existing_text else "# CHANGELOG\n\n") + entry
             try:
                 changelog_path.write_text(new_text)
                 _log.info("[kb] ✓ CHANGELOG 追加 %s (%s)", task_id, version)
@@ -2917,7 +2935,7 @@ def _audit_write_report(
     for item in findings.get("decision", []):
         lines.append(f"- {item}")
     lines.append("")
-    lines.append(f"## Build Gate")
+    lines.append("## Build Gate")
     lines.append(f"- ruff: {n_auto} auto / {n_review} review")
     lines.append("- mypy: 详见上方 review 段")
     if duration_seconds:
@@ -3587,12 +3605,18 @@ def dev_role_launch(task_id: str) -> dict:
 
     move_task(task_id, "planned", "in_progress")
 
-    # 从 phases.json 读 max_retry + timeout
-    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
-    max_retry_cap = _load_retry_cap(cphases, phase_id=cur_phase, default=getattr(cfg, "DEFAULT_RETRY", 3))
     # v0.24.3: 用 _current_running_phase() 决定当前应跑哪个 phase，而不是硬编码 -p1。
     # phases.json 可能尚未标 in_progress（launch 是入口），退回到 pending/blocked 中的第一个 phase。
     cur_phase = _current_running_phase(task_id)
+
+    # 从 phases.json 读 timeout
+    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
+
+    # 从 phases.json 读 max_retry cap
+    max_retry_cap = _load_retry_cap(
+        cphases, phase_id=cur_phase, default=getattr(cfg, "DEFAULT_RETRY", 3)
+    )
+
     phase_id = f"{task_id}-p{cur_phase}"
     plan_content = cplan.read_text()
     prompt = (
@@ -3634,7 +3658,13 @@ def dev_role_launch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %s launched PID=%d (max_retry=%d, timeout=%ds)", task_id, proc.pid, max_retry_cap, timeout_s)
+    _log.info(
+        "[engine] %s launched PID=%d (retry 0/%d, timeout %ds)",
+        task_id,
+        proc.pid,
+        max_retry_cap,
+        timeout_s,
+    )
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
@@ -3672,10 +3702,15 @@ def dev_role_relaunch(task_id: str) -> dict:
             except OSError as e:
                 _log.warning("relaunch report unlink failed %s: %s", f2, e)
 
-    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     # v0.24.3: 重启也用 _current_running_phase() 定位当前 phase
     cur_phase = _current_running_phase(task_id)
     phase_id = f"{task_id}-p{cur_phase}"
+
+    # 读 phases 列表（一次读，复用给 timeout/retry）
+    phases = _load_phases(task_id)
+
+    # 从 phases.json 读 timeout
+    timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     plan_content = cplan.read_text()
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
@@ -3715,7 +3750,18 @@ def dev_role_relaunch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %s relaunched PID=%d", task_id, proc.pid)
+    max_retry_cap = _load_retry_cap(
+        cphases, phase_id=cur_phase, default=getattr(cfg, "DEFAULT_RETRY", 3)
+    )
+    retry_now = _load_retry_from_phases(phases, phase_id=cur_phase)
+    _log.info(
+        "[engine] %s relaunched PID=%d (retry %d/%d, timeout %ds)",
+        task_id,
+        proc.pid,
+        retry_now,
+        max_retry_cap,
+        timeout_s,
+    )
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
@@ -3765,6 +3811,11 @@ def dev_role_check_complete(task_id: str) -> dict:
     result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
     exit_code = exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
     result_raw = result_path.read_text() if result_path.exists() else "{}"
+
+    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    cur_phase = _current_running_phase(task_id)
+    # engine-phase-retry-config: 从 phases.json 读 timeout 用于日志输出
+    timeout_s = _load_timeout(phases_file, default=cfg.default_timeout)
 
     report_dir = ROOT / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -3850,8 +3901,12 @@ def dev_role_check_complete(task_id: str) -> dict:
         return {"status": "success", "task_id": task_id}
     else:
         # 失败：读 retry 计数，保留 .done 文件供 engine 下次 check
-        phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-        cur_phase = _current_running_phase(task_id)
+        max_retry_cap = _load_retry_cap(
+            phases_file,
+            phase_id=cur_phase,
+            default=getattr(cfg, "DEFAULT_RETRY", 3),
+        )
+
         retry = 0
         try:
             if phases_file.exists():
@@ -3900,7 +3955,7 @@ def dev_role_check_complete(task_id: str) -> dict:
         except OSError as e:
             _log.warning("write retry count failed for %s: %s", task_id, e)
 
-        if retry >= MAX_RETRY:
+        if retry >= max_retry_cap:
             # 重试耗尽：清理标记 + 异常隔离
             for p in marker_files:
                 try:
@@ -3914,23 +3969,30 @@ def dev_role_check_complete(task_id: str) -> dict:
                 _move_task_to_abnormal_if_all_terminal_failed(task_id)
                 _quarantine(
                     task_id,
-                    f"engine: 重试{MAX_RETRY}次全部失败，"
+                    f"engine: 重试{max_retry_cap}次全部失败，"
                     f"下游 phase {failure_summary['skipped']} 自动跳过 → abnormal",
                 )
             else:
-                _quarantine(task_id, f"engine: 重试{MAX_RETRY}次全部失败，隔离")
+                _quarantine(task_id, f"engine: 重试{max_retry_cap}次全部失败，隔离")
             _log.error(
                 "[engine] %s retry=%d >= %d, quarantined (skipped_downstream=%d)",
                 task_id,
                 retry,
-                MAX_RETRY,
+                max_retry_cap,
                 failure_summary["skipped"],
             )
             return {"status": "quarantined", "task_id": task_id}
 
         # 失败但未耗尽：传播依赖链（上游 fail → 下游 skip），再让 engine relaunch
         _check_phase_failures(task_id)
-        _log.info("[engine] %s rc=%s retry=%s/%s", task_id, exit_code, retry, MAX_RETRY)
+        _log.info(
+            "[engine] %s rc=%s retry %d/%d, timeout %ds",
+            task_id,
+            exit_code,
+            retry,
+            max_retry_cap,
+            timeout_s,
+        )
         return {"status": "failed", "task_id": task_id, "retry": retry}
 
 

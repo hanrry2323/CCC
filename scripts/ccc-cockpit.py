@@ -581,10 +581,10 @@ def render_html(data: dict) -> str:
         metric_status = metric.get("status", "—")
         metric_alive = metric.get("alive")
         if metric_alive is True:
-            metric_dot = f'<span class="dot dot-green"></span>'
+            metric_dot = '<span class="dot dot-green"></span>'
             metric_html = f"{metric_dot} {metric_status}"
         elif metric_alive is False:
-            metric_dot = f'<span class="dot dot-red"></span>'
+            metric_dot = '<span class="dot dot-red"></span>'
             metric_html = f"{metric_dot} {metric_status}"
         else:
             metric_html = (
@@ -989,10 +989,10 @@ class CockpitHandler(BaseHTTPRequestHandler):
 
 def main():
     server = HTTPServer((HOST, PORT), CockpitHandler)
-    print(f"  CCC Cockpit 启动")
+    print("  CCC Cockpit 启动")
     print(f"  地址: http://localhost:{PORT}")
     print(f"  来源: {INFRA_FILE}")
-    print(f"  按 Ctrl+C 停止")
+    print("  按 Ctrl+C 停止")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
