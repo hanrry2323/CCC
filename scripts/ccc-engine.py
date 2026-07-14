@@ -1502,7 +1502,6 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if _process_backlog(ws):
                         did_something = True
                         any_active = True
-                        break
 
                 if not did_something:
                     break
