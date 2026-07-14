@@ -449,7 +449,7 @@ def _resolve_phase_dependencies(
         except OSError as exc:
             _log.debug("write warnings.json (unresolved_dep) failed: %s", exc)
 
-    return executable, blocked, skipped
+    return executable, blocked, skipped, groups
 
 
 def _apply_phase_status_updates(
@@ -3698,6 +3698,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             try:
                 pid = int(pid_path.read_text().strip())
                 os.kill(pid, 0)  # 信号 0 = 只检查存活
+                return {"status": "running", "task_id": task_id}
             except (ValueError, OSError, ProcessLookupError):
                 # PID 不存在 → 清理标记文件，返回 failed 让 engine 重启
                 for f in [

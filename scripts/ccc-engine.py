@@ -17,6 +17,7 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timezone
 from pathlib import Path
 
@@ -1052,8 +1053,81 @@ def main() -> None:
         engine_log("Engine 正常退出")
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        sys.exit(130)
+# ── Stats HTTP Endpoint 循环 ──
+_ENGINE_shutdown = False
+_STATS_PORT = 7776
+
+_stats_lock = threading.Lock()
+_stats_data: dict = {
+    "uptime_sec": 0,
+    "current_task": None,
+    "current_phase": None,
+    "phase_status": None,
+    "in_progress_count": 0,
+    "engine_version": "v0.28.1",
+    "last_tick_at": None,
+    "workspace": Path.cwd().name,
+}
+
+
+def _update_stats(ws: Path, task_id: str | None, phase: int, phase_status: str) -> None:
+    global _stats_data
+    now = now_iso()
+    start = time.time()
+    with _stats_lock:
+        if start > _stats_data.get("uptime_start", start):
+            _stats_data["uptime_start"] = start
+            _stats_data["uptime_sec"] = 0
+        else:
+            _stats_data["uptime_sec"] = int(
+                time.time() - _stats_data.get("uptime_start", start)
+            )
+        _stats_data["current_task"] = task_id
+        _stats_data["current_phase"] = phase
+        _stats_data["phase_status"] = phase_status
+        _stats_data["in_progress_count"] = len(
+            [t for t in active_tasks.values() if t.get("task_id")]
+        )
+        _stats_data["last_tick_at"] = now
+        _stats_data["workspace"] = ws.name
+
+
+class StatsHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        engine_log(
+            "[stats-api] %s - - [%s] %s",
+            self.address_string(),
+            self.log_date_time_string(),
+            format % args,
+        )
+
+    def do_GET(self):
+        if self.path == "/api/stats":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with _stats_lock:
+                response = json.dumps(_stats_data, ensure_ascii=False)
+            self.wfile.write(response.encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_OPTIONS(self):
+        if self.path == "/api/stats":
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
+
+def _run_stats_server() -> None:
+    server = HTTPServer(("127.0.0.1", _STATS_PORT), StatsHandler)
+    engine_log("Stats HTTP 服务启动在 http://127.0.0.1:%d/api/stats", _STATS_PORT)
+    while not _ENGINE_shutdown:
+        server.handle_request()
+
+    server.shutdown()
+    engine_log("Stats HTTP 服务关闭")

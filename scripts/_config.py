@@ -107,8 +107,12 @@ class Config:
     # ── 模型 ──
     model: str = "loop/code"  # dev_role 默认模型（opencode run --model），可用 OPENCODE_MODEL 覆盖
 
-    # ── 超时（v0.28.0）──
-    default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
+# ── 标准默认值 ──
+DEFAULT_RETRY: int = 3  # phase 默认重试次数（无 retry 字段时用）
+DEFAULT_TIMEOUT: int = 600  # 秒，phase/执行层默认超时（v0.28.0: 600s）
+
+# ── 超时（v0.28.0）──
+default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
     hook_timeout: int = 30  # 秒，钩子默认超时
     phase_timeout: int = 600  # 秒，phase 执行超时（用于 engine polling）
     exec_timeout: int = 300  # 秒，exec 任务执行超时（opencode-exec）
@@ -170,6 +174,7 @@ class Config:
     # ── HTTP 服务 ──
     board_port: int = 7777
     board_host: str = "127.0.0.1"
+    engine_stats_port: int = 7776  # ccc-engine.py 内置 stats 端点
 
     def __post_init__(self):
         """环境变量覆盖（优先级：环境变量 > 默认值）
@@ -187,6 +192,7 @@ class Config:
         _env_override_str(self, "model", "OPENCODE_MODEL")
         _env_override_str(self, "board_host", "BOARD_HOST")
         _env_override_int(self, "board_port", "BOARD_PORT")
+        _env_override_int(self, "engine_stats_port", "CCC_ENGINE_STATS_PORT")
         _env_override_int(self, "engine_poll_interval", "CCC_ENGINE_POLL_INTERVAL")
         _env_override_int(self, "engine_idle_sleep", "CCC_ENGINE_IDLE_SLEEP")
         _env_override_int(self, "phase_timeout", "CCC_PHASE_TIMEOUT")
