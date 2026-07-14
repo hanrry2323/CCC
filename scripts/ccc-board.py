@@ -226,7 +226,7 @@ def _load_timeout(phases_file: Path, default: int = None) -> int:
                 except Exception:
                     return default
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        _log.warning("load phase timeout from %s failed: %s", task_id, e)
+        _log.warning("load phase timeout from %s failed: %s", phases_file, e)
     return default
 
 
@@ -3589,7 +3589,7 @@ def dev_role_launch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %s launched PID={proc.pid}", task_id)
+    _log.info("[engine] %s launched PID=%d", task_id, proc.pid)
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
@@ -3670,7 +3670,7 @@ def dev_role_relaunch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %s relaunched PID={proc.pid}", task_id)
+    _log.info("[engine] %s relaunched PID=%d", task_id, proc.pid)
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
