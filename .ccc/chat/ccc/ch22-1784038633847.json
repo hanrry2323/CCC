@@ -1,0 +1,21 @@
+{
+  "session_id": "ch22-1784038633847",
+  "title": "Hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nHi!  I'm ready to help with your CCC project. \n\nWhat would you like to work on today? Some quick options:\n- **Read state** — pick up where you left off (`.ccc/state.md`)\n- **New task** — start a plan/product cycle\n- **Check engine** — verify CCC Engine status\n- **Just chat** — questions about CCC architecture/red lines\n\nLet me know what you need.",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:17:13+08:00",
+  "created_at": "2026-07-14T22:17:13+08:00"
+}

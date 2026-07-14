@@ -1,0 +1,21 @@
+{
+  "session_id": "ss140-1784039498051",
+  "title": "test sse",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test sse",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "我注意到您输入了 \"test sse\"，这看起来像是一个测试请求。\n\n根据当前项目的上下文：\n- 这是一个名为 CCC（Connect–Claude Code）的框架\n- 目前处于 **README.md** 项目上下文展示阶段（已被截断）\n- 核心结构包括 7 个角色和 CCC Engine 驱动机制\n- 最新架构（v0.24.1+）引入了 Phases 感知功能\n\n请问您：\n1. **测试 SSE 功能**？是否表示我使用了 SSE 上下文窗口或流式响应？\n2. **提交 System Prompt 测试**？暂无相关 skill 定义。\n3. **其他意图**？请补充说明。\n\n如需我：\n- 展示完整项目上下文或关键视图；\n\n或继续执行 CCC workflow（需显式触发）。\n\n**系统状态**：\n- 当前角色：无\n- 已加载 SKILL：无\n- 状态：活跃",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:31:38+08:00",
+  "created_at": "2026-07-14T22:31:38+08:00"
+}

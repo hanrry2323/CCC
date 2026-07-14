@@ -1,0 +1,16 @@
+{
+  "session_id": "07bd33dc-9e4d-40a9-96ce-fe58e9b8d882",
+  "title": "New Chat",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我已收到核心的 **CCC (Connect–Claude Code)** 系统上下文。\n\n这是一个非常严密的工程框架，核心特征包括：\n1.  **固定 vs 自动**：Agent 已脱离旧版定时轮询，现在依靠 **CCC Engine (串行驱动)** 进行任务调度。\n2.  **Phase 感知**：Engine 并非简单地执行 Plan，而是读取 `phases.json`，智能解析可执行、阻塞、跳过的状态，按需触发 `dev` / `reviewer` / `kb`。\n3.  **强制接力**：`state.md` 是跨会话记忆的唯一合法来源（红线 10）。\n4.  **证据链**： Verdict 必须写入文件（红线 11），口头 Pass 不算数。\n\n由于上下文被截断（剩余了后半部分内容，特别是角色映射表和 engine 逻辑），我需要确认您的意图。通常我需要做什么？\n\n**可能的执行路径：**\n\n1.  **如果我是 `product`**：您要新增需求，我应该生成 Plan → 更新 `planned` 状态。\n2.  **如果我是 `dev`**：需要告诉我当前 `state.md` 中的 `__task_path` 是哪个，Engine 才能针对该 Task 继续推进下一个 Phase。\n3.  **如果我是 `reviewer`**：需要获取最新的 Doc/Code 进行审查并写入 `verdict.md`。\n\n请告诉我您希望我**扮演哪个角色**，或者**下达什么指令**，以便我读取 `SKILL.md` 和 `skills/ccc-<role>/SKILL.md`（如果它们存在的话）并开始工作。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:33:24+08:00",
+  "created_at": "2026-07-14T22:33:24+08:00"
+}

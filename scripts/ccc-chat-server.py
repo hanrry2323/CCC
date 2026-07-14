@@ -2007,7 +2007,12 @@ async function terminalStream(url, msgs, sid, isExecute) {
         }
       }
     } catch(e) {
-     if (costInfo) {
+      if (e.name !== 'AbortError') {
+        removeCursor();
+        appendTerminalInfo('✗ 网络错误: ' + e.message);
+      }
+    }
+    if (costInfo) {
       appendTerminalSeparator();
       const info = document.createElement('div');
       info.className = 'terminal-line';
@@ -2017,16 +2022,9 @@ async function terminalStream(url, msgs, sid, isExecute) {
       info.appendChild(span);
       terminal.appendChild(info);
     }
-
     if (fullContent) {
       execMessages.push({ role: 'assistant', content: fullContent, mode: 'execute' });
     }
-  } catch(e) {
-    if (e.name !== 'AbortError') {
-      removeCursor();
-      appendTerminalInfo('✗ 网络错误: ' + e.message);
-    }
-  }
   streaming = false;
   showCancel(false);
   sendBtn.classList.remove('loading');

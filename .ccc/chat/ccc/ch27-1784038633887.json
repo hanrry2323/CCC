@@ -1,0 +1,21 @@
+{
+  "session_id": "ch27-1784038633887",
+  "title": "你好世界 🌍 こんにちは",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好世界 🌍 こんにちは",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！ 很高兴看到你的消息。\n\n我是基于 **CCC (Connect–Claude Code)** 框架为你服务的智能编码助手。这个框架旨在将 Claude Code 的执行能力连接到任意 IDE，并通过严格的工程纪律来确保交付质量。\n\n如果你是初次使用 CCC，以下是一些我可以帮你做的事情：\n\n1.  **阅读项目文档**：你可以索取 `SKILL.md` 来了解框架的总纲和工程纪律（红线和关键资产）。\n2.  **查看角色定义**：我可以展示 7 个核心角色（Product, Dev, Reviewer, Tester, KB, Grapher, Service）的职责。\n3.  **查看 Roadmap**：通过询问当前的路线图，了解项目的演进方向。\n4.  **执行任务**：如果你有具体的任务需求（例如开发一个新功能、修复 Bug、或者编写测试），请直接描述。\n\n你现在希望通过 CCC 框架做什么呢？请随意提问或给出指令。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:17:13+08:00",
+  "created_at": "2026-07-14T22:17:13+08:00"
+}

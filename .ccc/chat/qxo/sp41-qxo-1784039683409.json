@@ -1,0 +1,21 @@
+{
+  "session_id": "sp41-qxo-1784039683409",
+  "title": "Test qxo",
+  "project": "qxo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test qxo",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n收到，qxob 已就绪。\n\n测试结论： 系统在线\n\n- **MCP 入口**：`code-review-graph` 工具集已加载\n- **规则文件**：`AGENTS.md` 优先（`CLAUDE.md` 已弃用）\n- **模型出口**：统一 `flash`，不外漏上游",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:34:52+08:00",
+  "created_at": "2026-07-14T22:34:52+08:00"
+}

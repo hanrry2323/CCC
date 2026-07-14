@@ -1,0 +1,21 @@
+{
+  "session_id": "sp41-ccc-1784038598404",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "我需要更具体的上下文才能准确测试 `CCC`。\n\n根据 `Project CCC` 的上下文，系统是一个**基于看板（Board）的 7 角色技能套件**，由 **CCC Engine** 串行驱动，旨在连接不同的 IDE 工具（如 Cursor, VS Code）。\n\n为了为您进行测试，请先回答以下问题，或者直接提供指令：\n\n1.  **运行实体**：您希望我在哪里测试？\n    *   *终端*：我可以尝试连接到本地服务。\n    *   *虚拟环境*：您是否有 `scripts/ccc-board.py` 或 `scripts/ccc-engine.py` 的本地运行环境？\n2.  **测试内容**：您想验证什么？\n    *   **单元测试**：测试 `tests/scripts/` 下的脚本逻辑？\n    *   **环境检查**：验证 mcc (`scripts/_config.py`) 是否就绪，以及 `.ccc/infrastructure.md` 是否可读？\n    *   **E2E 集成测试**：模拟一个完整的任务流程（Backlog -> Planned -> Executing）？\n    *   **连接性**：验证 `connect() / disconnect()` 工具是否可用？\n\n---\n\n### 如果您希望我通过代码直接验证\n\n基于文档给出的线索，我可以直接检查代码是否具备测试条件（例如检查 `scripts/ccc-board.py` 或 `config` 加载逻辑）。请确认是否需要我执行以下 **Precheck**：\n\n*   检查 `references/red-lines.md` 是否完整。\n*   检查 `skills/ccc-product/SKILL.md` 等关键文件是否存在。\n*   加载 `.ccc/infrastructure.md` 以确认系统当前状态。\n\n**请回复“Precheck”或指定具体目标。**",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:16:38+08:00",
+  "created_at": "2026-07-14T22:16:38+08:00"
+}

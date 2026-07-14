@@ -1,18 +1,18 @@
 {
-  "aggregated_at": "2026-07-14T13:51:20.486459+00:00",
+  "aggregated_at": "2026-07-14T14:34:45.993075+00:00",
   "workspace": "CCC",
-  "total_events": 143,
-  "latest_event_ts": "2026-07-14T21:47:43+08:00",
+  "total_events": 158,
+  "latest_event_ts": "2026-07-14T22:28:22+08:00",
   "events_by_type": {
-    "move": 76,
+    "move": 81,
     "quarantine": 17,
-    "product_start": 24,
-    "product_done": 20,
+    "product_start": 31,
+    "product_done": 23,
     "pytest": 4,
     "product_fail": 2
   },
   "task_stats": {
-    "total": 53,
+    "total": 60,
     "success": 4,
     "failed": 17,
     "details": {
@@ -368,13 +368,13 @@
         "last_ts": "2026-07-14T20:14:05+08:00"
       },
       "cockpit-dashboard-enhance": {
-        "total_events": 1,
+        "total_events": 2,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "move",
-        "last_ts": "2026-07-14T20:42:10+08:00"
+        "last_ts": "2026-07-14T21:51:48+08:00"
       },
       "in-progress-stuck-recovery": {
         "total_events": 3,
@@ -476,13 +476,13 @@
         "last_ts": "2026-07-14T21:35:23+08:00"
       },
       "fix-applayout-login-flash": {
-        "total_events": 2,
+        "total_events": 4,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_done",
-        "last_ts": "2026-07-14T21:34:18+08:00"
+        "last_event": "move",
+        "last_ts": "2026-07-14T21:51:41+08:00"
       },
       "audio-level-norm": {
         "total_events": 2,
@@ -492,15 +492,78 @@
         "avg_latency_s": null,
         "last_event": "product_done",
         "last_ts": "2026-07-14T21:35:23+08:00"
+      },
+      "fix-deletejson-silent-swallow": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T21:54:24+08:00"
+      },
+      "audio-tts-enhance": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_start",
+        "last_ts": "2026-07-14T22:02:41+08:00"
+      },
+      "cockpit-queue-display": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T22:11:53+08:00"
+      },
+      "fix-is-phase-running-pgrep": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T22:02:41+08:00"
+      },
+      "patrol-readme-doc": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T22:17:51+08:00"
+      },
+      "frontend-strict-null-fixes": {
+        "total_events": 1,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_start",
+        "last_ts": "2026-07-14T22:17:51+08:00"
+      },
+      "patrol-zombie-cleanup": {
+        "total_events": 1,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_start",
+        "last_ts": "2026-07-14T22:28:22+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 32.1,
+      "value": 28.3,
       "unit": "percent",
-      "label": "Task failure rate: 32.1% (17/53)"
+      "label": "Task failure rate: 28.3% (17/60)"
     },
     {
       "metric": "quarantine_spike",
@@ -511,10 +574,10 @@
     },
     {
       "metric": "total_events",
-      "value": 143,
+      "value": 158,
       "unit": "count",
-      "label": "Total events recorded: 143",
-      "latest_event": "2026-07-14T21:47:43+08:00"
+      "label": "Total events recorded: 158",
+      "latest_event": "2026-07-14T22:28:22+08:00"
     }
   ],
   "recommendations": [

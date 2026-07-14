@@ -480,6 +480,68 @@ def check_stuck_tasks(
     for _col in ("planned", "in_progress"):
         _check_done_phases_in_wrong_column(ws, ops, _col)
 
+    # ── 以下为卡死检测逻辑 ──
+    for f in sorted(ip_dir.iterdir()):
+        if f.suffix not in (".jsonl", ".json"):
+            continue
+        tid = f.stem
+        age = file_age_seconds(f)
+        if age is None:
+            continue
+
+        # 检查是否有活进程持有此 task_id
+        process_alive = False
+        is_zombie = False
+        if PID_DIR.is_dir():
+            for pid_file in PID_DIR.iterdir():
+                if tid in pid_file.name:
+                    try:
+                        pid_str = pid_file.read_text().strip()
+                        pid = int(pid_str)
+                        os.kill(pid, 0)
+                        process_alive = True
+                        if _is_zombie_pid(pid):
+                            is_zombie = True
+                        break
+                    except (ValueError, OSError, ProcessLookupError):
+                        pass
+
+        if not process_alive:
+            try:
+                r = subprocess.run(
+                    ["ps", "aux"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                for line in r.stdout.splitlines():
+                    if tid in line and "grep" not in line:
+                        process_alive = True
+                        break
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+
+        stuck_count = stuck_counters.get(tid, 0)
+        target: str | None = None
+
+        if age > FORCE_MV_THRESHOLD:
+            if is_zombie or stuck_count >= 3:
+                target = "backlog"
+            else:
+                target = "planned"
+            ops.append(f"{tid}: stuck {age}s > {FORCE_MV_THRESHOLD}s → {target}")
+        elif age > STUCK_THRESHOLD and not process_alive:
+            if stuck_count >= 3:
+                target = "backlog"
+            else:
+                target = "planned"
+            ops.append(f"{tid}: stuck {age}s, no process → {target}")
+        elif age > STUCK_THRESHOLD and process_alive:
+            ops.append(f"{tid}: running {age}s (alive, no action)")
+
+        if target:
+            _move_task(ws, tid, "in_progress", target)
+            stuck_count += 1
+            stuck_counters[tid] = stuck_count
+
     return ops, stuck_counters
 def _check_done_phases_in_wrong_column(ws: Path, ops: list[str], col: str) -> None:
     """检测 all-phases-done 但卡在 planned/in_progress 的任务 → 移到 testing"""

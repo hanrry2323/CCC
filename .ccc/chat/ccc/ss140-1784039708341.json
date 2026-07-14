@@ -1,0 +1,21 @@
+{
+  "session_id": "ss140-1784039708341",
+  "title": "test sse",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test sse",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "我已准备好继续阅读项目上下文。请",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:35:09+08:00",
+  "created_at": "2026-07-14T22:35:09+08:00"
+}

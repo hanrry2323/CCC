@@ -1,0 +1,21 @@
+{
+  "session_id": "5ad1d419-f317-4ebf-bea6-a76b343db747",
+  "title": "hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi! I am currently constrained from accessing other tools or the full context of your project due to system limitations. However, I can totally help you.\n\nAs described in **SKILL.md**, I am connected to **CCC**, the framework designed to connect Claude Code to any IDE. I would need you to \"load\" (`claude -p`) the specific skill file intended for your current role (e.g., `ccc-product`, `ccc-dev`, `ccc-reviewer`) for me to receive the correct instructions.\n\nDo you feel like loading a role file (with `-p`) right now, or do you have another task for this session?",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:16:34+08:00",
+  "created_at": "2026-07-14T22:16:34+08:00"
+}

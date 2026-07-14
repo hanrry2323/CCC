@@ -1,0 +1,16 @@
+{
+  "session_id": "verify-cors-exec",
+  "title": "echo ok",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "echo ok",
+      "mode": "execute"
+    }
+  ],
+  "mode": "execute",
+  "updated_at": "2026-07-14T22:26:12+08:00",
+  "created_at": "2026-07-14T22:26:12+08:00",
+  "execution_results": []
+}

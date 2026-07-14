@@ -1,0 +1,16 @@
+{
+  "session_id": "3cf5a168-3849-4904-a3ef-e3cc74c15a88",
+  "title": "New Chat",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "我收到项目上下文了。根据提供的 `Project CCC` 文档，我了解到了这是一个名为 **CCC (Connect–Claude Code)** 的系统。\n\n### 这里的关键信息：\n\n1.  **系统架构**：\n    *   它是一个 **SKILL 资产套件**（`SKILL.md` + 7 角色技能），不是传统的框架代码库。\n    *   核心是 **CCC Engine**（v0.20.1 起），使用 launchd 守护进程常驻，通过串行调度去执行.dev、reviewer、tester、kb 等角色。\n    *   支持通过纯 Markdown 配置管理项目（6 大模块：profile.md, state.md, phases.json 等）。\n\n2.  **流程规范（红线）**：\n    *   **12 条工程红线**（如：不动系统文件、验收必须可执行、Phase 单 Commit 等）。\n    *   必须依赖 `.ccc/state.md` 进行显式接力，禁止跨会话隐式记忆。\n    *   **R-07** 要求 `phases.json` 必须原位写入（原子操作）。\n    *   **R-04** Reviewer 角色强制参与。\n\n3.  **你的角色**：\n    根据项目上下文，你目前处于 **扮演 `product`（产品经理）** 的状态。\n    *   **职责**：位于看板“backlog -> planned”阶段，负责定义需求、功能逻辑和 BC（Brief & Context），但不写代码。\n    *   **工具**：使用 `ccc-product` 命令或 Camel 实例。\n\n---\n\n**请问，当前有一个具体的任务(s) 或需求，需要我（作为 Product 角色）来处理吗？**\n\n如果你有新任务，请提供：\n1.  任务的 `brief`（需求描述）。\n2.  任务的 `context` (背景信息)。\n3.  期望的验收标准（Acceptance Criteria）。\n\n我会根据 CCC 的红线（R-07 到 R-12）来规划任务，并生成符合 `skills/ccc-product/SKILL.md` 规范的 FileBoardStore 记录。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:30:59+08:00",
+  "created_at": "2026-07-14T22:30:59+08:00"
+}

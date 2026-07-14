@@ -1,0 +1,21 @@
+{
+  "session_id": "ch27-1784039213926",
+  "title": "你好世界 🌍 こんにちは",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好世界 🌍 こんにちは",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n你好！ こんにちは！\n\n很高兴见到你～我是 MiniMax-M3，随时准备为你提供帮助。\n\n我看到当前项目是 **CCC（Connect–Claude Code）**，这是一个把 Claude Code 的执行能力连接到任意 IDE 工具的 SKILL 资产套件。\n\n如果你：\n-  想了解 CCC 的架构或某个角色的具体工作方式",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:26:59+08:00",
+  "created_at": "2026-07-14T22:26:59+08:00"
+}

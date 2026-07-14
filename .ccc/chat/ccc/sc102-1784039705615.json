@@ -1,0 +1,21 @@
+{
+  "session_id": "sc102-1784039705615",
+  "title": "hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nHi!  有什么我可以帮你的吗？\n\n如果你有具体的问题或任务，随时告诉我——无论是编程、写作、分析，还是其他任何事情，我都乐意帮忙。",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:35:05+08:00",
+  "created_at": "2026-07-14T22:35:05+08:00"
+}
