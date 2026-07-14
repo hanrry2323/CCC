@@ -1,0 +1,2 @@
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": null, "notes": "用 mod._task_key(ws, 't-par') 计算真实 key，替换 tests/scripts/test_engine_phase_parallel_dispatch.py:391 的 active['active_key']['mode']", "color_depth": 1, "color_group": "M"}
