@@ -191,6 +191,9 @@ async def run_opencode(
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         await _kill_process_group(proc.pid, _sig.SIGTERM)
         await _terminate_zombie(proc, proc.pid, timeout, started)
+        # v0.29: 防御性 cfg 初始化（C3），确保 except 路径也有 cfg
+        if cfg is None:
+            cfg = Config()
         killed_reason = (
             "cancelled"
             if isinstance(exc, asyncio.CancelledError)
