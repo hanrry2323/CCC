@@ -1,0 +1,1 @@
+{"id":"patrol-zombie-cleanup","title":"Patrol 僵尸 opencode 进程清理","description":"opencode 进程有时变僵尸（PID 存在但无响应），patrol 检测到 zombie 时 kill + 清理 pid 文件.","complexity":"medium","ts":"2026-07-14T13:16:41Z","note":"v1.0: 容错"}
