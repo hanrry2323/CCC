@@ -201,6 +201,49 @@ class TestValidateTaskJsonl:
         ok, errs = validate_task_jsonl(["not", "a", "dict"])
         assert not ok
 
+    def test_unicode_title(self):
+        t = _valid_task()
+        t["title"] = "修复登录问题 🚀"
+        ok, errs = validate_task_jsonl(t)
+        assert ok, errs
+
+    def test_max_length_title(self):
+        t = _valid_task()
+        t["title"] = "x" * 500
+        ok, errs = validate_task_jsonl(t)
+        assert ok, errs
+
+        t["title"] = "x" * 501
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("title: length 501 > 500" in e for e in errs)
+
+    def test_empty_tags(self):
+        t = _valid_task()
+        t["tags"] = []
+        ok, errs = validate_task_jsonl(t)
+        assert ok, errs
+
+    def test_negative_complexity(self):
+        t = _valid_task()
+        t["complexity"] = "huge"
+        ok, errs = validate_task_jsonl(t)
+        assert not ok
+        assert any("complexity" in e for e in errs)
+
+    def test_unknown_fields_strict(self):
+        t = _valid_task()
+        t["unknown"] = "value"
+        ok, errs = validate_task_jsonl(t, strict=True)
+        assert not ok
+        assert any("unknown fields" in e for e in errs)
+
+    def test_null_assignee(self):
+        t = _valid_task()
+        t["assignee"] = None
+        ok, errs = validate_task_jsonl(t)
+        assert ok, errs
+
 
 class TestFillTaskDefaults:
     """fill_task_defaults 补默认字段"""
@@ -343,6 +386,7 @@ class TestAssignColorGroup:
     def test_persists_across_calls(self, tmp_path):
         """counter 持久化 → 第二次调用读到上次的值并 +1"""
         from cb import assign_color_group
+
         g1 = assign_color_group(tmp_path)
         g2 = assign_color_group(tmp_path)
         g3 = assign_color_group(tmp_path)
