@@ -2069,3 +2069,13 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 - uvicorn / FastAPI / aiohttp / starlette 任何 running-loop context
 
 
+
+---
+
+## Lesson 47：engine-failure-lessons 进入异常状态
+
+**项目**：`/Users/apple/program/CCC` | **Phase**：N/A | **时间**：2026-07-14 16:44:11 UTC
+
+**失败原因**：engine: 重试3次全部失败，下游 phase [] 自动跳过 → abnormal
+
+**待分析**：由 product_role 后续补充根因和修复方案

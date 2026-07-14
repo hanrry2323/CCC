@@ -411,10 +411,10 @@ async def chat(request: Request):
         finally:
             if proc and proc.returncode is None:
                 proc.kill()
+            chat_messages = [m for m in messages if m.get("role") != "system"]
+            for m in chat_messages:
+                m.setdefault("mode", "chat")
             if full_content:
-                chat_messages = [m for m in messages if m.get("role") != "system"]
-                for m in chat_messages:
-                    m.setdefault("mode", "chat")
                 chat_messages.append(
                     {
                         "role": "assistant",
@@ -430,6 +430,18 @@ async def chat(request: Request):
                     project=project,
                     mode="chat",
                     execution_results=execution_results,
+                    total_cost_usd=total_cost_usd,
+                    status="completed" if stream_completed else "partial",
+                )
+            else:
+                # No assistant content — mark pending session as completed anyway
+                _save_session(
+                    session_id,
+                    chat_messages,
+                    project=project,
+                    mode="chat",
+                    execution_results=execution_results,
+                    status="completed",
                     total_cost_usd=total_cost_usd,
                 )
 

@@ -1,0 +1,16 @@
+{
+  "session_id": "sp41-ccc-1784046985804",
+  "title": "Test ccc",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Test ccc"
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:36:41+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:36:26+08:00",
+  "execution_results": []
+}

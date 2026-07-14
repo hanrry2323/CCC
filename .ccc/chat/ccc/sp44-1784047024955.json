@@ -1,0 +1,16 @@
+{
+  "session_id": "sp44-1784047024955",
+  "title": "fields test",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "fields test"
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:37:20+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:37:05+08:00",
+  "execution_results": []
+}

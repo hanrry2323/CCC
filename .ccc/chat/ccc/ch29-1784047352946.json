@@ -1,0 +1,17 @@
+{
+  "session_id": "ch29-1784047352946",
+  "title": "persist test",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "persist test",
+      "mode": "chat"
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:42:49+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:42:33+08:00",
+  "execution_results": []
+}
