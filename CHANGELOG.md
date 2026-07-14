@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.27] — 2026-07-14
+
+- test-validate-jsonl-edge: 看板发布
+
 ## [v0.29.26] — 2026-07-14
 
 - cockpit-dead-counter-badge: 看板发布
@@ -1704,3 +1708,7 @@ git push origin main --tags
 ## [v0.29.23] - 2026-07-14
 
 - engine-phase-parallel-dispatch: 无依赖 phase 支持并行执行 看板发布
+
+## [v0.29.26] - 2026-07-14
+
+- test-validate-jsonl-edge: task JSONL 校验边界场景测试 看板发布
