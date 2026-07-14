@@ -202,6 +202,8 @@ def _load_timeout(phases_file: Path, default: int = None) -> int:
     """从 phases.jsonl 的第一个 phase 行读 timeout（跳过 schema_version）
 
     v0.28.0: default 缺省走 cfg.default_timeout（默认 1800）
+    v0.28.x (engine-phase-retry-config): 当 phase 有 timeout 字段时按 phase 配置；
+    否则用 cfg.default_timeout（1800）。也兼容 phase 内 max_retry（默认 cfg.DEFAULT_RETRY=3）。
     """
     if default is None:
         default = cfg.default_timeout
@@ -228,6 +230,48 @@ def _load_timeout(phases_file: Path, default: int = None) -> int:
     except (FileNotFoundError, json.JSONDecodeError) as e:
         _log.warning("load phase timeout from %s failed: %s", phases_file, e)
     return default
+
+
+def _load_retry_cap(
+    phases_file: Path, phase_id: int = None, default: int = None
+) -> int:
+    """从 phases.jsonl 读指定 phase 的 max_retry（重试上限），跳过 schema_version。
+
+    engine-phase-retry-config: phase.max_retry 配置化重试上限，缺省走 cfg.DEFAULT_RETRY=3。
+    - 传 phase_id 时定位到该 phase 行；不传则取第一个 phase。
+    - 若 phase 行没有 max_retry 字段，使用 default（默认 cfg.DEFAULT_RETRY=3）。
+    - max_retry 必须 ≥ 1，越界或非法时降级为 default。
+    """
+    default_retry = getattr(cfg, "DEFAULT_RETRY", 3) if default is None else default
+    try:
+        with open(phases_file) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, list):
+                    obj = obj[0] if obj else {}
+                if not isinstance(obj, dict) or "schema_version" in obj:
+                    continue
+                if phase_id is not None and obj.get("phase") != phase_id:
+                    continue
+                mr = obj.get("max_retry")
+                if mr is None:
+                    return default_retry
+                try:
+                    n = int(mr)
+                except (TypeError, ValueError):
+                    return default_retry
+                if n < 1:
+                    return default_retry
+                return n
+    except (FileNotFoundError, OSError) as e:
+        _log.warning("load phase max_retry from %s failed: %s", phases_file, e)
+    return default_retry
 
 
 # v0.24: phases.json 加载 + 依赖解析
@@ -449,7 +493,7 @@ def _resolve_phase_dependencies(
         except OSError as exc:
             _log.debug("write warnings.json (unresolved_dep) failed: %s", exc)
 
-    return executable, blocked, skipped, groups
+    return executable, blocked, skipped
 
 
 def _apply_phase_status_updates(
@@ -3543,8 +3587,9 @@ def dev_role_launch(task_id: str) -> dict:
 
     move_task(task_id, "planned", "in_progress")
 
-    # 从 phases.json 读 timeout
+    # 从 phases.json 读 max_retry + timeout
     timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
+    max_retry_cap = _load_retry_cap(cphases, phase_id=cur_phase, default=getattr(cfg, "DEFAULT_RETRY", 3))
     # v0.24.3: 用 _current_running_phase() 决定当前应跑哪个 phase，而不是硬编码 -p1。
     # phases.json 可能尚未标 in_progress（launch 是入口），退回到 pending/blocked 中的第一个 phase。
     cur_phase = _current_running_phase(task_id)
@@ -3589,7 +3634,7 @@ def dev_role_launch(task_id: str) -> dict:
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
-    _log.info("[engine] %s launched PID=%d", task_id, proc.pid)
+    _log.info("[engine] %s launched PID=%d (max_retry=%d, timeout=%ds)", task_id, proc.pid, max_retry_cap, timeout_s)
 
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 

@@ -107,12 +107,12 @@ class Config:
     # ── 模型 ──
     model: str = "loop/code"  # dev_role 默认模型（opencode run --model），可用 OPENCODE_MODEL 覆盖
 
-# ── 标准默认值 ──
-DEFAULT_RETRY: int = 3  # phase 默认重试次数（无 retry 字段时用）
-DEFAULT_TIMEOUT: int = 600  # 秒，phase/执行层默认超时（v0.28.0: 600s）
+    # ── 标准默认值 ──
+    DEFAULT_RETRY: int = 3  # phase 默认重试次数（无 retry 字段时用）
+    DEFAULT_TIMEOUT: int = 600  # 秒，phase/执行层默认超时（v0.28.0: 600s）
 
-# ── 超时（v0.28.0）──
-default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
+    # ── 超时（v0.28.0）──
+    default_timeout: int = 1800  # 秒，phases 默认超时（v0.27.1=600 → v0.28.0=1800）
     hook_timeout: int = 30  # 秒，钩子默认超时
     phase_timeout: int = 600  # 秒，phase 执行超时（用于 engine polling）
     exec_timeout: int = 300  # 秒，exec 任务执行超时（opencode-exec）
