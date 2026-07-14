@@ -1,17 +1,17 @@
 {
-  "aggregated_at": "2026-07-14T12:36:06.465416+00:00",
+  "aggregated_at": "2026-07-14T12:49:52.668137+00:00",
   "workspace": "CCC",
-  "total_events": 93,
-  "latest_event_ts": "2026-07-14T20:14:05+08:00",
+  "total_events": 99,
+  "latest_event_ts": "2026-07-14T20:49:35+08:00",
   "events_by_type": {
-    "move": 59,
+    "move": 63,
     "quarantine": 14,
-    "product_start": 10,
-    "product_done": 9,
+    "product_start": 11,
+    "product_done": 10,
     "pytest": 1
   },
   "task_stats": {
-    "total": 39,
+    "total": 41,
     "success": 1,
     "failed": 13,
     "details": {
@@ -79,13 +79,13 @@
         "last_ts": "2026-07-14T20:11:32+08:00"
       },
       "fix-v9s0-resource-flood-2026-07-02": {
-        "total_events": 5,
+        "total_events": 7,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "move",
-        "last_ts": "2026-07-14T19:11:42+08:00"
+        "last_ts": "2026-07-14T20:49:35+08:00"
       },
       "fix-verdict-cleanup-2026-07-04": {
         "total_events": 1,
@@ -286,13 +286,13 @@
         "last_ts": "2026-07-14T20:02:01+08:00"
       },
       "fix-debt-test-regression": {
-        "total_events": 2,
+        "total_events": 3,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "product_done",
-        "last_ts": "2026-07-14T19:26:18+08:00"
+        "last_event": "move",
+        "last_ts": "2026-07-14T20:42:10+08:00"
       },
       "fix-test-parallel-key": {
         "total_events": 4,
@@ -365,15 +365,33 @@
         "avg_latency_s": null,
         "last_event": "product_done",
         "last_ts": "2026-07-14T20:14:05+08:00"
+      },
+      "cockpit-dashboard-enhance": {
+        "total_events": 1,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T20:42:10+08:00"
+      },
+      "in-progress-stuck-recovery": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T20:44:53+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 33.3,
+      "value": 31.7,
       "unit": "percent",
-      "label": "Task failure rate: 33.3% (13/39)"
+      "label": "Task failure rate: 31.7% (13/41)"
     },
     {
       "metric": "quarantine_spike",
@@ -384,10 +402,10 @@
     },
     {
       "metric": "total_events",
-      "value": 93,
+      "value": 99,
       "unit": "count",
-      "label": "Total events recorded: 93",
-      "latest_event": "2026-07-14T20:14:05+08:00"
+      "label": "Total events recorded: 99",
+      "latest_event": "2026-07-14T20:49:35+08:00"
     }
   ],
   "recommendations": [

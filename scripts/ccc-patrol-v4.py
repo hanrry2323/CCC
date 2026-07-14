@@ -46,12 +46,20 @@ WORKSPACES: dict[str, Path] = {
 }
 READ_ONLY_WS = {"qx"}  # qx 只读不改
 
-HB_STALE_SECONDS = 300       # 心跳 > 300s → stale
-STUCK_THRESHOLD = 300        # in_progress 卡死阈值（秒）
-FORCE_MV_THRESHOLD = 1800   # 强制移回 planned 阈值（秒）
+HB_STALE_SECONDS = 300  # 心跳 > 300s → stale
+STUCK_THRESHOLD = 300  # in_progress 卡死阈值（秒）
+FORCE_MV_THRESHOLD = 1800  # 强制移回 planned 阈值（秒）
 PID_DIR = HOME / ".ccc" / "opencode-pids"
 
-BOARD_COLS = ["backlog", "planned", "in_progress", "testing", "verified", "released", "abnormal"]
+BOARD_COLS = [
+    "backlog",
+    "planned",
+    "in_progress",
+    "testing",
+    "verified",
+    "released",
+    "abnormal",
+]
 
 
 def now_iso() -> str:
@@ -63,6 +71,7 @@ def now_ts() -> int:
 
 
 # ── 辅助工具 ──
+
 
 def json_load(path: Path) -> dict | None:
     try:
@@ -117,12 +126,15 @@ def file_age_seconds(path: Path) -> int | None:
 
 # ── Step 0: Engine 存活检测 ──
 
+
 def engine_is_running() -> bool:
     """检查 ccc-engine.py 进程是否存活"""
     try:
         r = subprocess.run(
             ["ps", "aux"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
@@ -189,7 +201,9 @@ def _try_kill_engine() -> None:
     try:
         r = subprocess.run(
             ["ps", "aux"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
@@ -206,7 +220,8 @@ def _try_kill_engine() -> None:
     try:
         subprocess.run(
             ["launchctl", "bootout", "gui/501", str(ENGINE_PLIST)],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
     except OSError:
         pass
@@ -219,7 +234,8 @@ def _try_start_engine() -> bool:
         try:
             r = subprocess.run(
                 ["launchctl", "bootstrap", "gui/501", str(ENGINE_PLIST)],
-                capture_output=True, timeout=15,
+                capture_output=True,
+                timeout=15,
             )
             if r.returncode == 0:
                 # 等待进程启动
@@ -234,7 +250,8 @@ def _try_start_engine() -> bool:
         try:
             subprocess.run(
                 ["launchctl", "load", str(ENGINE_PLIST)],
-                capture_output=True, timeout=15,
+                capture_output=True,
+                timeout=15,
             )
             time.sleep(3)
             if engine_is_running():
@@ -262,6 +279,7 @@ def _try_start_engine() -> bool:
 
 # ── Step 1: 扫描 5 workspace ──
 
+
 def scan_all_ws(ws_list: dict[str, Path]) -> dict[str, dict]:
     """返回 {ws_name: {col: count}}"""
     result = {}
@@ -274,6 +292,7 @@ def scan_all_ws(ws_list: dict[str, Path]) -> dict[str, dict]:
 
 
 # ── Step 2: 异常排查（三步法）──
+
 
 def triage_abnormal(ws_name: str, ws: Path) -> list[str]:
     """三步法排查异常任务。返回执行的操作列表。"""
@@ -318,9 +337,7 @@ def triage_abnormal(ws_name: str, ws: Path) -> list[str]:
 
         retry_count = note.count("重试") + note.count("retry")
         is_persistent = (
-            retry_count >= 3
-            or "连续失败" in note
-            or "all_failed_or_skipped" in note
+            retry_count >= 3 or "连续失败" in note or "all_failed_or_skipped" in note
         )
 
         if has_fix and not is_persistent:
@@ -367,17 +384,83 @@ def _move_task(ws: Path, tid: str, src: str, dst: str) -> bool:
     return True
 
 
+def _is_zombie_pid(pid: int) -> bool:
+    try:
+        r = subprocess.run(
+            ["ps", "-o", "state=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode != 0:
+            return False
+        state = r.stdout.strip()
+        return state.startswith("Z")
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return False
+
+
+def _detect_crash_loop(tid: str) -> bool:
+    if not PID_DIR.is_dir():
+        return False
+    stale_count = 0
+    for pid_file in PID_DIR.iterdir():
+        if tid in pid_file.name:
+            try:
+                pid_str = pid_file.read_text().strip()
+                pid = int(pid_str)
+                try:
+                    os.kill(pid, 0)
+                    if _is_zombie_pid(pid):
+                        stale_count += 1
+                except (OSError, ProcessLookupError):
+                    stale_count += 1
+            except (ValueError, OSError):
+                stale_count += 1
+    return stale_count >= 2
+
+
+def _load_stuck_counters() -> dict[str, int]:
+    if not PATROL_STATE_FILE.exists():
+        return {}
+    try:
+        state = json.loads(PATROL_STATE_FILE.read_text())
+        return state.get("stuck_tasks", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_stuck_counters(counters: dict[str, int]) -> None:
+    try:
+        state: dict = {"rounds": []}
+        if PATROL_STATE_FILE.exists():
+            try:
+                state = json.loads(PATROL_STATE_FILE.read_text())
+            except (json.JSONDecodeError, OSError):
+                state = {"rounds": []}
+        state["stuck_tasks"] = counters
+        PATROL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PATROL_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 # ── Step 3: 活跃任务卡死检测 ──
 
-def check_stuck_tasks(ws_name: str, ws: Path) -> list[str]:
-    """检查 in_progress 任务卡死。返回操作列表。"""
+
+def check_stuck_tasks(
+    ws_name: str, ws: Path, stuck_counters: dict[str, int] | None = None
+) -> tuple[list[str], dict[str, int]]:
+    """检查 in_progress 任务卡死。返回 (操作列表, 更新后的 stuck_counters)。"""
+    if stuck_counters is None:
+        stuck_counters = {}
     if ws_name in READ_ONLY_WS:
-        return ["skip (read-only)"]
+        return ["skip (read-only)"], stuck_counters
 
     ops: list[str] = []
     ip_dir = ws / ".ccc" / "board" / "in_progress"
     if not ip_dir.is_dir():
-        return ops
+        return ops, stuck_counters
 
     for f in sorted(ip_dir.iterdir()):
         if f.suffix not in (".jsonl", ".json"):
@@ -407,7 +490,9 @@ def check_stuck_tasks(ws_name: str, ws: Path) -> list[str]:
             try:
                 r = subprocess.run(
                     ["ps", "aux"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 for line in r.stdout.splitlines():
                     if tid in line and "grep" not in line:
@@ -434,8 +519,14 @@ def check_stuck_tasks(ws_name: str, ws: Path) -> list[str]:
 
 # ── Step 4: 状态持久化 ──
 
-def save_patrol_state(ws_stats: dict[str, dict], engine_status: str,
-                      fix_ops: list[str], stuck_count: int, warn: str) -> None:
+
+def save_patrol_state(
+    ws_stats: dict[str, dict],
+    engine_status: str,
+    fix_ops: list[str],
+    stuck_count: int,
+    warn: str,
+) -> None:
     """持久化一轮 patrol 状态，保留最多 MAX_ROUNDS 轮"""
     state: dict = {"rounds": []}
     if PATROL_STATE_FILE.exists():
@@ -488,8 +579,7 @@ def detect_stagnation(ws_stats: dict[str, dict]) -> str:
         def to_key(ws_data: dict[str, int]) -> str:
             return json.dumps(ws_data, sort_keys=True)
 
-        first_key = {name: to_key(last_6[0]["ws"].get(name, {}))
-                     for name in ws_stats}
+        first_key = {name: to_key(last_6[0]["ws"].get(name, {})) for name in ws_stats}
         stagnant = True
         for r in last_6[1:]:
             for name in ws_stats:
@@ -507,6 +597,7 @@ def detect_stagnation(ws_stats: dict[str, dict]) -> str:
 
 
 # ── Step 5: 修复后 commit ──
+
 
 def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None:
     """在 workspace 执行 git commit（仅 qx 跳过）"""
@@ -527,7 +618,9 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            cwd=ws_path, capture_output=True, timeout=5,
+            cwd=ws_path,
+            capture_output=True,
+            timeout=5,
         )
         if r.returncode != 0:
             return
@@ -535,13 +628,15 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
         return
 
     # git add
-    subprocess.run(["git", "add", "-A"], cwd=ws_path,
-                   capture_output=True, timeout=10)
+    subprocess.run(["git", "add", "-A"], cwd=ws_path, capture_output=True, timeout=10)
 
     # 检查是否有改动
     r = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        cwd=ws_path, capture_output=True, text=True, timeout=10,
+        cwd=ws_path,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if not r.stdout.strip():
         return
@@ -551,7 +646,9 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
         commit_msg += f" (engine: {engine_action})"
     subprocess.run(
         ["git", "commit", "-m", commit_msg],
-        cwd=ws_path, capture_output=True, timeout=15,
+        cwd=ws_path,
+        capture_output=True,
+        timeout=15,
     )
 
 
@@ -583,16 +680,28 @@ def _notify_engine_restart(status: str) -> None:
     try:
         if status == "RESTARTED":
             subprocess.Popen(
-                ["bash", str(notify_script), "L2", "Engine 自动重启",
-                 "Patrol-v4 检测到 Engine 已停止，已自动重启完成"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                [
+                    "bash",
+                    str(notify_script),
+                    "L2",
+                    "Engine 自动重启",
+                    "Patrol-v4 检测到 Engine 已停止，已自动重启完成",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
         elif status == "DEAD":
             subprocess.Popen(
-                ["bash", str(notify_script), "L3", "Engine 重启失败",
-                 "Patrol-v4 尝试自动重启 Engine 失败，需人工介入"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                [
+                    "bash",
+                    str(notify_script),
+                    "L3",
+                    "Engine 重启失败",
+                    "Patrol-v4 尝试自动重启 Engine 失败，需人工介入",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
     except OSError:
@@ -605,7 +714,9 @@ def commit_engine_restart(reason: str) -> None:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            cwd=ws_path, capture_output=True, timeout=5,
+            cwd=ws_path,
+            capture_output=True,
+            timeout=5,
         )
         if r.returncode != 0:
             return
@@ -614,28 +725,38 @@ def commit_engine_restart(reason: str) -> None:
 
     r = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        cwd=ws_path, capture_output=True, text=True, timeout=10,
+        cwd=ws_path,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     # 即使无 staged 改动也强行 commit
     commit_msg = f"chore: patrol-v4 engine restart ({reason})"
     subprocess.run(
         ["git", "commit", "--allow-empty", "-m", commit_msg],
-        cwd=ws_path, capture_output=True, timeout=15,
+        cwd=ws_path,
+        capture_output=True,
+        timeout=15,
     )
 
 
 # ── Step 6: 一行报告 ──
 
-def format_report(ws_stats: dict[str, dict], engine_status: str,
-                  all_fix_ops: list[str], all_stuck_ops: list[str],
-                  warnings: list[str]) -> str:
+
+def format_report(
+    ws_stats: dict[str, dict],
+    engine_status: str,
+    all_fix_ops: list[str],
+    all_stuck_ops: list[str],
+    warnings: list[str],
+) -> str:
     """输出一行报告"""
     parts = []
     for name in sorted(ws_stats.keys()):
         c = ws_stats.get(name, {})
         parts.append(
-            f"{name}(pl:{c.get('planned',0)} ip:{c.get('in_progress',0)} "
-            f"rel:{c.get('released',0)} ab:{c.get('abnormal',0)})"
+            f"{name}(pl:{c.get('planned', 0)} ip:{c.get('in_progress', 0)} "
+            f"rel:{c.get('released', 0)} ab:{c.get('abnormal', 0)})"
         )
     ws_str = " ".join(parts)
 
@@ -652,6 +773,7 @@ def format_report(ws_stats: dict[str, dict], engine_status: str,
 
 # ── 主流程 ──
 
+
 def main() -> int:
     start = time.time()
     all_fix_ops: list[str] = []
@@ -667,15 +789,18 @@ def main() -> int:
         _log_engine_restart("DEAD", "patrol-v4 failed to restart Engine")
         _notify_engine_restart("DEAD")
         ws_stats = scan_all_ws(WORKSPACES)
-        report = format_report(ws_stats, engine_status, [], [], [
-            "Engine DEAD — cannot continue"])
+        report = format_report(
+            ws_stats, engine_status, [], [], ["Engine DEAD — cannot continue"]
+        )
         print(report)
         save_patrol_state(ws_stats, engine_status, [], 0, "Engine DEAD")
         return 1
 
     if engine_status == "RESTARTED":
         engine_operated = True
-        _log_engine_restart("RESTARTED", "patrol-v4 detected Engine dead, auto-restarted")
+        _log_engine_restart(
+            "RESTARTED", "patrol-v4 detected Engine dead, auto-restarted"
+        )
         _notify_engine_restart("RESTARTED")
         commit_engine_restart("restarted by patrol-v4")
 
@@ -721,7 +846,9 @@ def main() -> int:
         commit_patrol_fix(path, ws_ops, ws_engine_action)
 
     # ── Step 6: 报告 ──
-    report = format_report(ws_stats, engine_status, all_fix_ops, all_stuck_ops, warnings)
+    report = format_report(
+        ws_stats, engine_status, all_fix_ops, all_stuck_ops, warnings
+    )
     elapsed = time.time() - start
     print(f"{report} | took={elapsed:.1f}s")
 
