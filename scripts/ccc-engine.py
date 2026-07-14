@@ -97,6 +97,9 @@ _stores: dict[str, FileBoardStore] = {}
 #   }
 _parallel_phases: dict[str, dict] = {}
 
+# backlog+planned 为空时的补充冷却（per-workspace，单位秒）
+_last_empty_replenish: dict[str, float] = {}
+
 
 def now_iso() -> str:
     return _utils_now_iso()
@@ -676,6 +679,35 @@ def _process_backlog(ws: Path) -> bool:
                 "CCC",
                 f"product_role 拆分 {tid} 连续失败 {fail_count} 次",
             )
+    return True
+
+
+def _auto_replenish_backlog(ws: Path, store, program_dir: Path) -> bool:
+    """backlog + planned 都为空时，立即触发 audit_role 补充新任务。
+
+    绕过 _audit_should_run 的 2h 间隔，但有 5min per-workspace 冷却
+    避免 audit_role 在无变更的项目上空转。
+
+    Returns: True 表示触发了 audit_role
+    """
+    if store.list_tasks("backlog"):
+        return False
+    if store.list_tasks("planned"):
+        return False
+
+    now = time.time()
+    ws_key = str(ws)
+    last = _last_empty_replenish.get(ws_key, 0.0)
+    if now - last <= 300:
+        return False
+
+    _last_empty_replenish[ws_key] = now
+    label = _ws_label(ws, program_dir)
+    engine_log(f"[{label}] backlog+planned 均为空，立即触发 audit_role 补充")
+    try:
+        ccc_board.audit_role(workspace=str(ws))
+    except Exception as exc:
+        engine_log(f"[{label}] audit_role 异常: {exc}")
     return True
 
 
@@ -1431,6 +1463,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                             ccc_board.audit_role(workspace=str(ws))
                         except Exception as exc:
                             engine_log(f"[{label}] audit_role 异常: {exc}")
+
+                    # backlog+planned 为空时立即补充（绕过 2h 间隔，5min 冷却）
+                    _auto_replenish_backlog(ws, _store2, program_dir)
 
                     _retry_abnormal_dev_failures(ws)
                     _check_new_reviews(ws)

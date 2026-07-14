@@ -4,12 +4,15 @@
   - _audit_should_run 边界（文件不存在 / 损坏 JSON / 时间窗刚好 2h）
   - _audit_post_backlog 写 backlog 的 column 正确性
   - audit_role 整体：单 workspace 模式 + 无 git 目录的跳过逻辑
+  - _auto_replenish_backlog：backlog+planned 为空时立即触发 audit_role（v0.29）
 """
+
 from __future__ import annotations
 
 import importlib.util
 import json
 import sys
+import time as _time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -22,8 +25,11 @@ sys.path.insert(0, str(SCRIPTS))
 
 # ccc-board.py 含连字符，从 scripts/ 目录加载（脚本里的内部 import 才能解析 _config / _board_store）
 import os as _os
+
 _os.chdir(str(SCRIPTS))
-_spec = importlib.util.spec_from_file_location("ccc_board", str(SCRIPTS / "ccc-board.py"))
+_spec = importlib.util.spec_from_file_location(
+    "ccc_board", str(SCRIPTS / "ccc-board.py")
+)
 ccc_board = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ccc_board)
 _audit_post_backlog = ccc_board._audit_post_backlog
@@ -31,10 +37,14 @@ _audit_classify = ccc_board._audit_classify
 _audit_recent_commits = ccc_board._audit_recent_commits
 
 # _audit_should_run 在 ccc-engine.py（同名加载）
-_spec2 = importlib.util.spec_from_file_location("ccc_engine", str(SCRIPTS / "ccc-engine.py"))
+_spec2 = importlib.util.spec_from_file_location(
+    "ccc_engine", str(SCRIPTS / "ccc-engine.py")
+)
 ccc_engine = importlib.util.module_from_spec(_spec2)
 _spec2.loader.exec_module(ccc_engine)
 _audit_should_run = ccc_engine._audit_should_run
+_auto_replenish_backlog = ccc_engine._auto_replenish_backlog
+_last_empty_replenish = ccc_engine._last_empty_replenish
 
 
 # ═══════════════════════════════════════════
@@ -49,7 +59,16 @@ def tmp_workspace(tmp_path):
     ws.mkdir()
     (ws / ".git").mkdir()
     (ws / ".ccc" / "board").mkdir(parents=True)
-    for col in ("backlog", "planned", "released", "abnormal", "in_progress", "testing", "verified", "events"):
+    for col in (
+        "backlog",
+        "planned",
+        "released",
+        "abnormal",
+        "in_progress",
+        "testing",
+        "verified",
+        "events",
+    ):
         (ws / ".ccc" / "board" / col).mkdir()
     (ws / ".ccc" / "board" / "index.json").write_text(
         '{"backlog":0,"planned":0,"in_progress":0,"testing":0,"verified":0,"released":0,"abnormal":0}'
@@ -194,3 +213,126 @@ def test_post_backlog_on_bare_workspace(tmp_path):
     # 验证目录被自动建
     assert (bare_ws / ".ccc" / "board" / "backlog").exists()
     assert len(list((bare_ws / ".ccc" / "board" / "backlog").glob("*.jsonl"))) == 2
+
+
+# ═══════════════════════════════════════════════════════════════
+# _auto_replenish_backlog 测试（plan: backlog-auto-replenish, v0.29）
+# ═══════════════════════════════════════════════════════════════
+
+
+class _FakeStore:
+    """极简 store 替身：list_tasks 返回可控结果。"""
+
+    def __init__(self, backlog=None, planned=None):
+        self._backlog = backlog if backlog is not None else []
+        self._planned = planned if planned is not None else []
+
+    def list_tasks(self, column: str):
+        if column == "backlog":
+            return self._backlog
+        if column == "planned":
+            return self._planned
+        return []
+
+
+@pytest.fixture
+def reset_replenish_state():
+    """每个 case 前清空 _last_empty_replenish，避免跨 case 干扰。"""
+    _last_empty_replenish.clear()
+    yield
+    _last_empty_replenish.clear()
+
+
+def test_replenish_triggers_when_empty(
+    tmp_workspace, reset_replenish_state, monkeypatch
+):
+    """backlog + planned 都为空 → 调用 audit_role"""
+    called = []
+
+    def fake_audit_role(workspace=None):
+        called.append(workspace)
+        return []
+
+    monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+
+    store = _FakeStore(backlog=[], planned=[])
+    program_dir = tmp_workspace.parent
+
+    triggered = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+
+    assert triggered is True
+    assert called == [str(tmp_workspace)]
+
+
+def test_replenish_skips_when_backlog_has_items(
+    tmp_workspace, reset_replenish_state, monkeypatch
+):
+    """backlog 不为空 → 不调用 audit_role"""
+    called = []
+
+    def fake_audit_role(workspace=None):
+        called.append(workspace)
+        return []
+
+    monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+
+    store = _FakeStore(backlog=[{"id": "existing"}], planned=[])
+    program_dir = tmp_workspace.parent
+
+    triggered = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+
+    assert triggered is False
+    assert called == []
+
+
+def test_replenish_skips_when_planned_has_items(
+    tmp_workspace, reset_replenish_state, monkeypatch
+):
+    """planned 不为空 → 不调用 audit_role"""
+    called = []
+
+    def fake_audit_role(workspace=None):
+        called.append(workspace)
+        return []
+
+    monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+
+    store = _FakeStore(backlog=[], planned=[{"id": "planned-1"}])
+    program_dir = tmp_workspace.parent
+
+    triggered = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+
+    assert triggered is False
+    assert called == []
+
+
+def test_replenish_cooldown_blocks_repeat(
+    tmp_workspace, reset_replenish_state, monkeypatch
+):
+    """5min 冷却期内重复调用 → 第二次不再触发"""
+    called = []
+
+    def fake_audit_role(workspace=None):
+        called.append(workspace)
+        return []
+
+    monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+
+    store = _FakeStore(backlog=[], planned=[])
+    program_dir = tmp_workspace.parent
+
+    # 第一次触发
+    first = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+    assert first is True
+    assert len(called) == 1
+
+    # 冷却期内第二次应被跳过
+    second = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+    assert second is False
+    assert len(called) == 1
+
+    # 把时间往后推 301s（超过 300s 冷却）→ 应再次触发
+    _last_empty_replenish[str(tmp_workspace)] -= 301
+    third = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+    assert third is True
+    assert len(called) == 2
