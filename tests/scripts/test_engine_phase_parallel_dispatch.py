@@ -377,6 +377,7 @@ def test_try_launch_planned_chooses_parallel_when_conditions_met(tmp_path, monke
 
     monkeypatch.setattr(mod, "_try_launch_planned_parallel", fake_parallel)
 
+    par_key = mod._task_key(ws, "t-par")
     active = {}
     result = mod._try_launch_planned(ws, active)
 
@@ -388,7 +389,7 @@ def test_try_launch_planned_chooses_parallel_when_conditions_met(tmp_path, monke
 
     # task 已在 in_progress
     assert (board / "in_progress" / "t-par.jsonl").exists()
-    assert active["active_key"]["mode"] == "parallel"
+    assert active[par_key]["mode"] == "parallel"
 
 
 def test_try_launch_planned_skips_parallel_when_disabled(tmp_path, monkeypatch):
