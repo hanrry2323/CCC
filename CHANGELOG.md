@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.19] — 2026-07-14
+
+- engine-phase-retry-config: 看板发布
+
 ## [v0.29.18] — 2026-07-14
 
 - engine-stats-endpoint: 看板发布
@@ -1652,3 +1656,7 @@ git push origin main --tags
 ## [v0.29.17] - 2026-07-14
 
 - engine-stats-endpoint: Engine 添加 /api/stats HTTP 健康检查端点 看板发布
+
+## [v0.29.18] - 2026-07-14
+
+- engine-phase-retry-config: phase 重试次数和超时可配置化 看板发布
