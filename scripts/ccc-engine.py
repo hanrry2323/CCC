@@ -108,6 +108,10 @@ _parallel_phases: dict[str, dict] = {}
 # backlog+planned 为空时的补充冷却（per-workspace，单位秒）
 _last_empty_replenish: dict[str, float] = {}
 
+# v0.31+: hang 自动重启（plan: executor-auto-restart）
+_MAX_HANG_RETRY = 2  # 单个 task 最多自动重启 hung 的次数
+_hang_retry_counter: dict[str, int] = {}  # task_key -> retry count
+
 
 def now_iso() -> str:
     return _utils_now_iso()
@@ -1756,6 +1760,169 @@ def _check_stale(ws: Path) -> None:
         store.cleanup_events(max_days=30)
     except Exception as e:
         _log.warning("events TTL cleanup failed: %s", e, exc_info=True)
+
+
+def _kill_pid(pid: int) -> bool:
+    """发 SIGTERM，等 5s，仍存活则 SIGKILL。返回是否最终被 kill。"""
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        _log.warning("kill %d permission denied", pid)
+        return False
+    except OSError as exc:
+        _log.warning("kill %d SIGTERM failed: %s", pid, exc)
+        return False
+    time.sleep(5)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return True  # 进程存在但没权限（macOS root-owned）
+    except OSError:
+        return True
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except OSError as exc:
+        _log.warning("kill %d SIGKILL failed: %s", pid, exc)
+        return False
+    return True
+
+
+def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
+    """cd ws && git stash push -m 'ccc-auto-stash: ...'。返回是否成功。"""
+    try:
+        result = subprocess.run(
+            ["git", "stash", "push", "-m", f"ccc-auto-stash: {tid} phase {phase_num}"],
+            cwd=str(ws),
+            capture_output=True,
+            timeout=30,
+            text=True,
+        )
+    except subprocess.TimeoutExpired:
+        _log.warning("git stash timed out for %s", tid)
+        return False
+    except OSError as exc:
+        _log.warning("git stash failed for %s: %s", tid, exc)
+        return False
+    if result.returncode != 0:
+        _log.warning(
+            "git stash non-zero exit for %s: rc=%d stderr=%s",
+            tid,
+            result.returncode,
+            (result.stderr or "")[:200],
+        )
+        return False
+    return True
+
+
+def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
+    """扫描 active_tasks 中的 hung phase 并自动重启（v0.31+）。
+
+    检测 active_tasks 中每个 task 的当前 phase 是否已被 Phase 4
+    （executor-hang-detection）标记为 hung（.ccc/pids/<subid>.hung）。
+
+    如标记存在：
+      1. 解析 subid → 读 .pid 文件拿到 PID
+      2. kill -TERM → 5s 后存活则 kill -KILL
+      3. cd ws && git stash push -m 'ccc-auto-stash: <tid> phase <n>'
+      4. 清理 .hung 文件
+      5. dev_role_relaunch(tid) 用同一 plan 重启
+      6. 更新 _hang_retry_counter，超限则 quarantine + notify
+    """
+    global _hang_retry_counter
+
+    _activate_workspace(ws)
+    label = _ws_label(ws)
+    pids_dir = ws / ".ccc" / "pids"
+
+    for key, info in list(active_tasks.items()):
+        if info.get("workspace") != ws:
+            continue
+        tid = info["task_id"]
+        try:
+            cur_phase = _current_running_phase(tid)
+        except Exception as exc:
+            engine_log(f"[{label}] hang-auto: 读 {tid} current phase 失败: {exc}")
+            continue
+        if cur_phase is None or cur_phase <= 0:
+            continue
+
+        subid = _phase_market_subid(tid, cur_phase)
+        hung_path = pids_dir / f"{subid}.hung"
+        if not hung_path.is_file():
+            continue
+
+        retries = _hang_retry_counter.get(key, 0)
+        engine_log(
+            f"[{label}] hang-auto: {tid} phase {cur_phase} 标记 hung "
+            f"(auto-retry {retries + 1}/{_MAX_HANG_RETRY})"
+        )
+
+        # 1) 读 PID
+        pid_path = pids_dir / f"{subid}.pid"
+        pid: int | None = None
+        if pid_path.is_file():
+            try:
+                pid = int(pid_path.read_text().strip())
+            except (ValueError, OSError):
+                pid = None
+        else:
+            engine_log(
+                f"[{label}] hang-auto: {tid} 缺 {pid_path.name}（可能已退出），跳过 kill"
+            )
+
+        # 2) kill
+        if pid is not None and pid > 0:
+            if _kill_pid(pid):
+                engine_log(f"[{label}] hang-auto: {tid} PID={pid} 已 kill")
+            else:
+                engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
+
+        # 3) git stash
+        if not _git_stash_ws(ws, tid, cur_phase):
+            engine_log(f"[{label}] hang-auto: {tid} git stash 失败，跳过 restart")
+            # 仍然清理 hung 标记避免无限循环
+            try:
+                hung_path.unlink()
+            except OSError:
+                pass
+            continue
+
+        # 4) 清理 .hung
+        try:
+            hung_path.unlink()
+        except OSError as exc:
+            engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
+
+        # 5) 重启或超限 quarantine
+        if retries >= _MAX_HANG_RETRY:
+            reason = f"hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）— {tid} phase {cur_phase}"
+            engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
+            _quarantine_with_notify(ws, tid, reason, phase=cur_phase)
+            # 不增加计数，避免 dict 无限增长
+            _hang_retry_counter[key] = retries
+            continue
+
+        try:
+            _activate_workspace(ws)
+            result = dev_role_relaunch(tid)
+        except Exception as exc:
+            engine_log(f"[{label}] hang-auto: {tid} relaunch 异常: {exc}")
+            result = {"ok": False}
+
+        _hang_retry_counter[key] = retries + 1
+        if result.get("ok"):
+            engine_log(
+                f"[{label}] hang-auto: {tid} phase {cur_phase} 已重启 "
+                f"(retry {retries + 1}/{_MAX_HANG_RETRY})"
+            )
+        else:
+            engine_log(f"[{label}] hang-auto: {tid} relaunch 返回非 ok: {result}")
 
 
 def _write_heartbeat(ws: Path, running_task_id: str | None) -> None:

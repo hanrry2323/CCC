@@ -501,49 +501,10 @@ class FileBoardStore:
             )
             return False
 
+        success = False
         lock = self._lock()
         if lock is None:
-            _log.error("move_task: lock unavailable; aborting")
-            return False
-        try:
-            src = self.board / from_col / f"{task_id}.jsonl"
-            if not src.exists():
-                _log.error("%s not in %s", task_id, from_col)
-                return False
-
-            task = None
-            with open(src) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                        if obj.get("id") == task_id:
-                            task = obj
-                            break
-                    except json.JSONDecodeError as exc:
-                        _log.debug("skip malformed line in %s: %s", src.name, exc)
-            if not task:
-                return False
-
-            task["status"] = to_col
-            task["updated_at"] = now_iso()
-
-            dst = self.board / to_col / f"{task_id}.jsonl"
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            payload = json.dumps(task, ensure_ascii=False) + "\n"
-            # 原子迁移：先写目标列（temp→replace），再删源，避免读→写非原子 TOCTOU
-            _atomic_write(dst, payload)
-            try:
-                src.unlink()
-            except OSError as e:
-                _log.warning("move_task src unlink failed (dst committed) %s: %s", src, e)
-            self._record_event(task_id, from_col, to_col)
-            _log.info("%s: %s → %s", task_id, from_col, to_col)
-            return True
-        finally:
-            self._unlock(lock)
+            _log
 
     def update_index(self) -> dict:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
