@@ -1,4 +1,3 @@
-{"engine_iter": 2, "engine_iter_phase": 1}
-{"schema_version": "1.1"}
+{"engine_iter": 2, "engine_iter_phase": 1, "commit": "0424b06a017abdd9b782fd33f2c68757ef827e22"}
+{"schema_version": "1.1", "commit": "0424b06a017abdd9b782fd33f2c68757ef827e22"}
 {"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending", "1.5": "pending"}, "timeout": 300, "commit": null, "notes": "创建 docs/patrol-v4.md，5 章 + 文件索引 + 历史教训 + 已知问题", "color_depth": 1, "color_group": "C", "retry": 1}
-
