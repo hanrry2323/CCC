@@ -1100,55 +1100,19 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     env["ANTHROPIC_BASE_URL"] = relay_url
 
     def _run_claude(prompt_text: str) -> str:
-        import tempfile
-
-        prompt_dir = Path.home() / ".ccc" / "prompts"
-        prompt_dir.mkdir(parents=True, exist_ok=True)
-        tmp_path = None
-        try:
-            if len(prompt_text) > 60000:
-                tmp_fd, tmp_path = tempfile.mkstemp(
-                    suffix=".md", prefix="claude-prompt-", dir=str(prompt_dir)
-                )
-                try:
-                    os.write(tmp_fd, prompt_text.encode("utf-8"))
-                finally:
-                    os.close(tmp_fd)
-                os.chmod(tmp_path, 0o600)
-                cmd = [
-                    _CLAUDE_CLI,
-                    "-p",
-                    "Read attached file and execute the instructions inside.",
-                    "--file",
-                    tmp_path,
-                ]
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=cfg.default_timeout,
-                    env=env,
-                )
-            else:
-                result = subprocess.run(
-                    [_CLAUDE_CLI, "-p"],
-                    input=prompt_text,
-                    capture_output=True,
-                    text=True,
-                    timeout=cfg.default_timeout,
-                    env=env,
-                )
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
-                )
-            return result.stdout
-        finally:
-            if tmp_path:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+        result = subprocess.run(
+            [_CLAUDE_CLI, "-p"],
+            input=prompt_text,
+            capture_output=True,
+            text=True,
+            timeout=cfg.default_timeout,
+            env=env,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
+            )
+        return result.stdout
 
     def _parse_output(output: str) -> tuple[str, list]:
         plan_match = re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, re.DOTALL)
@@ -1505,9 +1469,10 @@ def launch_product_async(task_id: str) -> dict:
     env["ANTHROPIC_BASE_URL"] = relay_url
 
     try:
-        with open(result_file, "w") as out_f:
+        with open(result_file, "w") as out_f, open(prompt_file, "r") as in_f:
             proc = subprocess.Popen(
-                [_CLAUDE_CLI, "-p", "--file", str(prompt_file)],
+                [_CLAUDE_CLI, "-p"],
+                stdin=in_f,
                 stdout=out_f,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
@@ -1796,9 +1761,10 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
     try:
-        with open(result_file, "w") as out_f:
+        with open(result_file, "w") as out_f, open(prompt_file, "r") as in_f:
             proc = subprocess.Popen(
-                [_CLAUDE_CLI, "-p", "--file", str(prompt_file)],
+                [_CLAUDE_CLI, "-p"],
+                stdin=in_f,
                 stdout=out_f,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
