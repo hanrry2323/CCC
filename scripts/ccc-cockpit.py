@@ -479,8 +479,9 @@ def render_html(data: dict) -> str:
                 status_text = "待检测"
             host = info.get("host", "127.0.0.1")
             url = f"http://{host}:{port}"
+            search_blob = f"{port} {info['name']} {host} {machine_name}".lower()
             rows += f"""
-            <tr>
+            <tr data-port="{port}">
                 <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
                 <td>{info["name"]}</td>
                 <td class="host">{host}</td>
@@ -523,10 +524,12 @@ def render_html(data: dict) -> str:
             metric_dot = f'<span class="dot dot-red"></span>'
             metric_html = f"{metric_dot} {metric_status}"
         else:
-            metric_html = metric_status
+            metric_html = (
+                f'<span class="dot metric-dot dot-gray"></span> {metric_status}'
+            )
 
         projects_html += f"""
-        <tr>
+        <tr data-project="{p["name"]}">
             <td><strong>{p["name"]}</strong></td>
             <td class="num">{p["version"]}</td>
             <td>{badge}</td>
@@ -534,12 +537,35 @@ def render_html(data: dict) -> str:
         </tr>"""
 
     script_html = """<script>
+  function updateTitleAndFavicon(deadCount) {
+    var base = 'CCC Cockpit';
+    document.title = deadCount > 0 ? base + ' (' + deadCount + ')' : base;
+    var color = deadCount > 0 ? '#c62828' : '#1a7d1a';
+    var canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    var ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    var link = document.getElementById('dynamic-favicon') || document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      link.id = 'dynamic-favicon';
+      document.head.appendChild(link);
+    }
+    link.href = canvas.toDataURL('image/png');
+  }
   function checkAlerts() {
    fetch('/api/alive')
    .then(function(res) { return res.json(); })
    .then(function(data) {
     var ports = data.ports || {};
-    var offlinePorts = Object.entries(ports).filter(function(entry) { var _ref = entry, port = _ref[0], info = _ref[1]; return !info.alive; });
+    var offlinePorts = Object.entries(ports).filter(function(entry) { var _ref = entry, port = _ref[0], info = _ref[1]; return info.alive === false; });
+    var unknownPorts = Object.entries(ports).filter(function(entry) { var _ref = entry, port = _ref[0], info = _ref[1]; return info.alive === null || typeof info.alive === 'undefined'; });
+    updateTitleAndFavicon(offlinePorts.length);
     if (offlinePorts.length > 0) {
      var banner = document.getElementById('alert-banner');
      var countSpan = document.getElementById('alert-count');
@@ -555,7 +581,42 @@ def render_html(data: dict) -> str:
       document.getElementById('alert-banner').style.display = 'none';
      }
     })
-    .catch(function(err) { console.error('Failed to check alerts:', err); });
+     .catch(function(err) { console.error('Failed to check alerts:', err); });
+}
+function fetchAlive() {
+    fetch('/api/alive')
+    .then(function(res) { if (!res.ok) { throw new Error('HTTP ' + res.status); } return res.json(); })
+    .then(function(data) {
+      var ports = data.ports || {};
+      Object.keys(ports).forEach(function(port) {
+        var alive = ports[port].alive;
+        var rows = document.querySelectorAll('tr[data-port="' + port + '"]');
+        rows.forEach(function(row) {
+          var dot = row.querySelector('.dot');
+          if (dot) {
+            dot.className = 'dot ' + (alive === true ? 'dot-green' : alive === false ? 'dot-red' : 'dot-gray');
+          }
+        });
+      });
+      var projects = data.projects || [];
+      projects.forEach(function(p) {
+        if (!p || !p.name) { return; }
+        var alive = p.metric && typeof p.metric.alive !== 'undefined' ? p.metric.alive : null;
+        var row = document.querySelector('tr[data-project="' + p.name + '"]');
+        if (!row) { return; }
+        var dot = row.querySelector('.metric-dot');
+        if (dot) {
+          dot.className = 'dot metric-dot ' + (alive === true ? 'dot-green' : alive === false ? 'dot-red' : 'dot-gray');
+        }
+      });
+      var ts = document.getElementById('ts');
+      if (ts) {
+        var d = new Date();
+        var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        ts.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      }
+    })
+    .catch(function(err) { /* silent */ });
 }
 function kbSearch() {
     var query = document.getElementById('kb-query').value.trim();
@@ -603,8 +664,44 @@ function kbSearch() {
             resultsDiv.innerHTML = '<span style="color:#c62828">搜索失败，请稍后重试</span>';
         });
 }
+ function portFilter() {
+    var input = document.getElementById('port-search');
+    var clearBtn = document.getElementById('port-search-clear');
+    var emptyDiv = document.getElementById('port-search-empty');
+    if (!input) { return; }
+    var query = input.value.trim().toLowerCase();
+    clearBtn.style.display = query ? 'block' : 'none';
+    var rows = document.querySelectorAll('tr.port-row');
+    var visibleCount = 0;
+    rows.forEach(function(row) {
+      var hay = row.getAttribute('data-search') || '';
+      var show = !query || hay.indexOf(query) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) { visibleCount += 1; }
+    });
+    if (emptyDiv) {
+      emptyDiv.style.display = (!query || visibleCount > 0) ? 'none' : 'block';
+    }
+  }
+  (function() {
+    var input = document.getElementById('port-search');
+    var clearBtn = document.getElementById('port-search-clear');
+    if (!input) { return; }
+    input.addEventListener('input', portFilter);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function() {
+        input.value = '';
+        portFilter();
+        input.focus();
+      });
+    }
+  })();
   setInterval(checkAlerts, 15000);
   checkAlerts();
+  setTimeout(function() {
+    fetchAlive();
+    setInterval(fetchAlive, 30000);
+  }, 2000);
  </script>"""
 
     return f"""<!DOCTYPE html>
@@ -684,6 +781,11 @@ tr:last-child td{{border-bottom:none}}
     </div>
 
     <div class="sec-title">端口 & 服务</div>
+    <div class="port-search-wrap" style="background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;padding:10px;margin-bottom:10px;position:relative">
+        <input type="text" id="port-search" placeholder="搜索端口/项目/地址…" style="width:100%;padding:8px 36px 8px 12px;border:1px solid {THEME["border"]};border-radius:6px;font-size:13px">
+        <button id="port-search-clear" type="button" aria-label="清除" style="position:absolute;right:18px;top:50%;transform:translateY(-50%);background:none;border:none;color:{THEME["muted"]};font-size:16px;cursor:pointer;padding:4px 8px;display:none">&times;</button>
+    </div>
+    <div id="port-search-empty" style="display:none;color:{THEME["muted"]};padding:16px;text-align:center;background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;margin-bottom:8px">未匹配任何端口</div>
   {ports_sections}
 
   <div class="sec-title">看板概览</div>
