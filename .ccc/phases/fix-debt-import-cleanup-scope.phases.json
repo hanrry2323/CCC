@@ -1,2 +1,4 @@
+{"engine_iter": 2, "engine_iter_phase": 1}
 {"schema_version": "1.1"}
-{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 120, "commit": null, "notes": "git rm scripts/end_to_end_baseline.py tests/e2e/test_pipeline_backlog_auto.sh", "color_depth": 1, "color_group": "K"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 120, "commit": null, "notes": "git rm scripts/end_to_end_baseline.py tests/e2e/test_pipeline_backlog_auto.sh", "color_depth": 1, "color_group": "K", "retry": 1}
+

@@ -1,14 +1,16 @@
 {
-  "aggregated_at": "2026-07-14T11:22:27.985314+00:00",
+  "aggregated_at": "2026-07-14T11:53:45.159633+00:00",
   "workspace": "CCC",
-  "total_events": 54,
-  "latest_event_ts": "2026-07-14T19:14:44+08:00",
+  "total_events": 71,
+  "latest_event_ts": "2026-07-14T19:41:18+08:00",
   "events_by_type": {
     "move": 41,
-    "quarantine": 13
+    "quarantine": 13,
+    "product_start": 9,
+    "product_done": 8
   },
   "task_stats": {
-    "total": 29,
+    "total": 38,
     "success": 0,
     "failed": 12,
     "details": {
@@ -272,15 +274,96 @@
         "avg_latency_s": null,
         "last_event": "move",
         "last_ts": "2026-07-14T18:56:24+08:00"
+      },
+      "fix-debt-import-cleanup-scope": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:24:33+08:00"
+      },
+      "fix-debt-test-regression": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:26:18+08:00"
+      },
+      "fix-test-parallel-key": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:29:05+08:00"
+      },
+      "add-fts5-dialog-search": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:32:56+08:00"
+      },
+      "add-router-health-check": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:34:35+08:00"
+      },
+      "add-upstreams-fallback-router": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:37:41+08:00"
+      },
+      "clean-boss-py-orig": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:38:45+08:00"
+      },
+      "e2e-playwright-setup": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T19:41:18+08:00"
+      },
+      "eventbus-orphan-warning": {
+        "total_events": 1,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_start",
+        "last_ts": "2026-07-14T19:41:18+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 41.4,
+      "value": 31.6,
       "unit": "percent",
-      "label": "Task failure rate: 41.4% (12/29)"
+      "label": "Task failure rate: 31.6% (12/38)"
     },
     {
       "metric": "quarantine_spike",
@@ -291,10 +374,10 @@
     },
     {
       "metric": "total_events",
-      "value": 54,
+      "value": 71,
       "unit": "count",
-      "label": "Total events recorded: 54",
-      "latest_event": "2026-07-14T19:14:44+08:00"
+      "label": "Total events recorded: 71",
+      "latest_event": "2026-07-14T19:41:18+08:00"
     }
   ],
   "recommendations": [
