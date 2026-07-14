@@ -219,6 +219,11 @@ async def run_opencode(
 
 
 async def main() -> int:
+    """CLI 入口：解析参数、做前置检查、调用 run_opencode 并打印结构化结果。
+
+    Returns:
+        进程退出码：0 成功；10 缺 opencode；11 缺 prompt；12 watchdog 失败；其他为 opencode 自身退出码。
+    """
     ap = argparse.ArgumentParser(description="OpenCode CLI 执行器（单 phase）")
     ap.add_argument("--phase", required=True, help="phase ID（用于 pid 文件）")
     ap.add_argument("--prompt", required=True, help="prompt 文件路径（文件读取）")
