@@ -12,6 +12,7 @@
 """
 
 import argparse
+import atexit
 import json
 import os
 import signal
@@ -2250,6 +2251,13 @@ def main(argv: list[str] | None = None) -> None:
             return
         _engine_shutdown = True
         engine_log("收到 SIGTERM, 优雅关闭中...")
+        _write_engine_restart("shutdown", "SIGTERM")
+
+    def _final_restart_log():
+        if not _restart_log_written:
+            _write_engine_restart("stopped", "exit/by_crash")
+
+    atexit.register(_final_restart_log)
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
@@ -2259,6 +2267,7 @@ def main(argv: list[str] | None = None) -> None:
         engine_loop(workspaces)
     except KeyboardInterrupt:
         engine_log("Engine 关闭")
+        _write_engine_restart("shutdown", "KeyboardInterrupt")
     except SystemExit:
         _log.debug("engine exiting via SystemExit")
     _engine_shutdown = True

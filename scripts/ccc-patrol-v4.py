@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -375,28 +374,28 @@ def triage_abnormal(ws_name: str, ws: Path) -> list[str]:
 
 
 def _move_task(ws: Path, tid: str, src: str, dst: str) -> bool:
-    """在 board 目录间移动 task JSONL"""
-    src_file = ws / ".ccc" / "board" / src / f"{tid}.jsonl"
-    alt_src = ws / ".ccc" / "board" / src / f"{tid}.json"
-    if not src_file.exists() and alt_src.exists():
-        src_file = alt_src
-    if not src_file.exists():
+    """通过 FileBoardStore 在 board 列间移动 task，确保 index.json 同步（R2）"""
+    try:
+        # 先更新 note（读 src 文件改后写回）
+        src_file = ws / ".ccc" / "board" / src / f"{tid}.jsonl"
+        alt_src = ws / ".ccc" / "board" / src / f"{tid}.json"
+        src_path = src_file if src_file.exists() else alt_src
+        if src_path.exists():
+            task = json_load(src_path)
+            if task:
+                task["note"] = f"patrol-v4: {src} → {dst} (auto)"
+                task["updated_at"] = now_iso()
+                src_path.write_text(json.dumps(task, ensure_ascii=False) + "\n")
+
+        sys.path.insert(0, str(CCC_HOME / "scripts"))
+        from _board_store import FileBoardStore
+        store = FileBoardStore(ws)
+        ok = store.move_task(tid, src, dst)
+        store.update_index()
+        return ok
+    except Exception as exc:
+        print(f"[patrol] _move_task({tid}, {src}→{dst}) 失败: {exc}", file=sys.stderr)
         return False
-    dst_dir = ws / ".ccc" / "board" / dst
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst_file = dst_dir / f"{tid}.jsonl"
-
-    # 更新 task 元数据
-    task = jsonl_load(src_file)
-    if task:
-        task["updated_at"] = now_iso()
-        task["note"] = f"patrol-v4: {src} → {dst} (auto)"
-        dst_file.write_text(json.dumps(task, ensure_ascii=False) + "\n")
-    else:
-        shutil.copy2(str(src_file), str(dst_file))
-
-    src_file.unlink(missing_ok=True)
-    return True
 
 
 def _is_zombie_pid(pid: int) -> bool:
