@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.33] — 2026-07-14
+
+- engine-heartbeat-metrics: 看板发布
+
 ## [v0.29.32] — 2026-07-14
 
 - state-md-auto-update: 看板发布
@@ -1748,3 +1752,7 @@ git push origin main --tags
 ## [v0.29.31] - 2026-07-14
 
 - state-md-auto-update: state.md 自动更新 — Engine 每次任务流转后更新 state.md 看板发布
+
+## [v0.29.32] - 2026-07-14
+
+- engine-heartbeat-metrics: Engine 心跳增加活跃任务数 看板发布
