@@ -2675,65 +2675,47 @@ def kb_role() -> dict:
     all_suggestions: list[dict] = []
     for task in list_tasks("verified"):
         task_id = task["id"]
-        # 从 VERSION 读版本号（缺失则 fallback 到 0.0.0）
-        version_file = ROOT / "VERSION"
-        if version_file.exists():
-            version = version_file.read_text().strip()
-        else:
-            version = "0.0.0"
-        # git tag（版本号动态读取，不硬编码）
-        sp.run(
-            [
-                "git",
-                "tag",
-                "-a",
-                f"board-{task_id}",
-                "-m",
-                f"{version}: {task_id} 看板发布",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            timeout=10,
-        )
-        # git push tag
-        push_r = sp.run(
-            ["git", "push", "origin", f"board-{task_id}"],
-            cwd=ROOT,
-            capture_output=True,
-            timeout=30,
-        )
-        if push_r.returncode != 0:
-            _log.error("[kb] %s git push 失败 rc={push_r.returncode}", task_id)
-            fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
-            fail_log.write_text(
-                f"# {task_id} git push 失败\n\n"
-                f"rc={push_r.returncode}\n"
-                f"{push_r.stderr[:500]}\n"
+
+        # ── Step 1: 版本 bump + CHANGELOG ──
+        try:
+            new_ver = _bump_version(ROOT)
+            _append_changelog(ROOT, task_id, new_ver)
+        except Exception as exc:
+            _log.warning("version bump failed, skipping tag: %s", exc)
+            new_ver = "unknown"
+
+        # ── Step 2: git tag v{version} ──
+        if new_ver != "unknown":
+            sp.run(
+                [
+                    "git",
+                    "tag",
+                    "-a",
+                    new_ver,
+                    "-m",
+                    f"{new_ver}: {task_id} 发布",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                timeout=10,
             )
-            continue
+            push_r = sp.run(
+                ["git", "push", "origin", new_ver],
+                cwd=ROOT,
+                capture_output=True,
+                timeout=30,
+            )
+            if push_r.returncode != 0:
+                _log.error("[kb] %s push tag 失败 rc={push_r.returncode}", task_id)
+                fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                fail_log.write_text(
+                    f"# {task_id} push tag 失败\n\n"
+                    f"rc={push_r.returncode}\n"
+                    f"{push_r.stderr[:500]}\n"
+                )
+                continue
 
-        # CHANGELOG.md 追加
-        today_str = now_iso()[:10]
-        changelog_path = ROOT / "CHANGELOG.md"
-        # v0.28.0 (M-006): 写入前检查 task_id 是否已存在（kb_role 重试会重复追加）
-        existing_text = ""
-        if changelog_path.exists():
-            try:
-                existing_text = changelog_path.read_text()
-            except OSError as exc:
-                _log.warning("CHANGELOG read failed: %s", exc)
-        if task_id in existing_text:
-            _log.info("[kb] CHANGELOG 已包含 %s，跳过追加", task_id)
-        else:
-            entry = f"\n## [{version}] - {today_str}\n\n- {task_id}: {task.get('title', '')} 看板发布\n"
-            new_text = (existing_text if existing_text else "# CHANGELOG\n\n") + entry
-            try:
-                changelog_path.write_text(new_text)
-                _log.info("[kb] ✓ CHANGELOG 追加 %s (%s)", task_id, version)
-            except OSError as exc:
-                _log.error("CHANGELOG 追加失败: %s", exc)
-
-        # 收集 AGENTS.md 建议
+        # ── Step 3: 收集 AGENTS.md 建议 ──
         report_file = ROOT / ".ccc" / "reports" / f"{task_id}.report.md"
         all_suggestions.extend(
             _extract_agents_suggestions(report_file, task_id, source="dev")
@@ -2743,14 +2725,9 @@ def kb_role() -> dict:
             _extract_agents_suggestions(verdict_file, task_id, source="reviewer")
         )
 
-        # 挪 released
+        # ── Step 4: 挪 released ──
         move_task(task_id, "verified", "released")
         moved.append(task_id)
-        try:
-            new_ver = _bump_version(ROOT)
-            _append_changelog(ROOT, task_id, new_ver)
-        except Exception as exc:
-            _log.warning("version bump failed (non-blocking): %s", exc)
 
     # 去重 → 写 pending-agents-suggestions.md
     if all_suggestions:
