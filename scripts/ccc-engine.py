@@ -37,6 +37,11 @@ from _stats_aggregator import aggregate_stats, load_summary
 
 _log = get_logger("engine")
 
+_engine_shutdown = False
+_engine_start_ts: float = time.time()
+_restart_log_written: bool = False
+_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
+
 # ccc-board 在 import 时会 eager 绑定 ROOT；默认 workspace 供首次加载
 os.environ.setdefault("CCC_WORKSPACE", str(_script_dir.parent))
 
@@ -66,11 +71,20 @@ _current_running_phase = ccc_board._current_running_phase
 
 cfg = Config()
 
+# Engine 模块加载时间基准，用于计算 runtime_uptime
+_engine_start_ts: float = time.time()
+_restart_log_written: bool = False
+_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
+
 # 日志轮转：engine.log + daily rotate + keep 7 days
 _log_dir = Path(os.environ.get("HOME", str(Path.home()))) / ".ccc" / "logs"
 _log_dir.mkdir(parents=True, exist_ok=True)
 _log_file = str(_log_dir / "engine.log")
 add_file_handler("engine", _log_file, when="midnight", interval=1, backup_count=7)
+
+_engine_start_ts: float = time.time()
+_restart_log_written: bool = False
+_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
 
 _log.info(
     "ccc-engine config: phase_timeout=%ds, exec_timeout=%ds, engine_tick_interval=%ds",
@@ -91,6 +105,33 @@ def _set_parallel_disabled(val: bool) -> None:
     """Set the global PHASE_PARALLEL_DISABLED toggle (module-level)."""
     global PHASE_PARALLEL_DISABLED
     PHASE_PARALLEL_DISABLED = val
+
+
+def _write_engine_restart(status: str, reason: str | None = None) -> None:
+    """写入结构化重启日志到 ~/.ccc/logs/engine-restarts.jsonl。
+
+    Args:
+        status: "started" | "shutdown" | "stopped"
+        reason: 描述原因，如 "SIGTERM" | "KeyboardInterrupt" | None（started 时为 None）
+    """
+    global _restart_log_written
+    if _restart_log_written:
+        return
+    _restart_log_written = True
+    uptime = max(0.001, time.time() - _engine_start_ts)
+    entry = {
+        "ts": _utils_now_iso(),
+        "pid": os.getpid(),
+        "uptime_sec": round(uptime, 3),
+        "status": status,
+        "reason": reason,
+    }
+    try:
+        _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 Engine tick）
@@ -554,6 +595,56 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
     else:
         engine_log(f"[{label}] {tid} 未知状态: {status}")
     return True
+
+
+_ACTIVE_TASKS_FILE = Path.home() / ".ccc" / "engine-active-tasks.json"
+
+
+def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
+    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。"""
+    try:
+        _ACTIVE_TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        serializable = {}
+        for k, v in active_tasks.items():
+            item = dict(v)
+            ws = item.get("workspace")
+            if isinstance(ws, Path):
+                item["workspace"] = str(ws)
+            serializable[k] = item
+        _ACTIVE_TASKS_FILE.write_text(
+            json.dumps(serializable, ensure_ascii=False, indent=2, default=str)
+        )
+    except (OSError, TypeError) as exc:
+        engine_log(f"[persist] save active_tasks 失败: {exc}")
+
+
+def _load_active_tasks() -> dict[str, dict]:
+    """从持久化文件恢复 active_tasks。返回 dict（可能是空的）。"""
+    if not _ACTIVE_TASKS_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(_ACTIVE_TASKS_FILE.read_text())
+        if not isinstance(raw, dict):
+            return {}
+        restored = {}
+        for k, v in raw.items():
+            ws_str = v.get("workspace", "")
+            ws_path = Path(ws_str).resolve() if ws_str else None
+            if ws_path and ws_path.is_dir() and (ws_path / ".ccc" / "board").is_dir():
+                v["workspace"] = ws_path
+                restored[k] = v
+        if restored:
+            engine_log(f"[persist] 恢复 {len(restored)} 个 active_tasks")
+        return restored
+    except (json.JSONDecodeError, OSError, TypeError) as exc:
+        engine_log(f"[persist] load active_tasks 失败: {exc}")
+        return {}
+    finally:
+        # 加载后立即删除，避免下次启动用过期数据
+        try:
+            _ACTIVE_TASKS_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
@@ -1082,6 +1173,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         "started_at": now_iso(),
                         "mode": "parallel",
                     }
+                    _save_active_tasks(active_tasks)
                     store.update_index()
                     return True
                 # 并行启动失败 → 回退串行
@@ -1097,6 +1189,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             "complexity": complexity,
             "started_at": now_iso(),
         }
+        _save_active_tasks(active_tasks)
         store.update_index()
         return True
     return False
@@ -1356,8 +1449,13 @@ def engine_loop(workspaces: list[Path]) -> None:
     )
     engine_log(f"  max_retry={MAX_RETRY}, max_concurrent={MAX_CONCURRENT}")
 
+    _write_engine_restart("started")
+
     active_tasks: dict[str, dict] = {}
     iteration = 0
+
+    # R4: 从持久化文件恢复 active_tasks，避免重启丢上下文
+    active_tasks = _load_active_tasks()
 
     for ws in workspaces:
         _recover_tasks(ws, active_tasks)
@@ -1430,6 +1528,8 @@ def engine_loop(workspaces: list[Path]) -> None:
 
                 for key in completed_tasks:
                     active_tasks.pop(key, None)
+                if completed_tasks:
+                    _save_active_tasks(active_tasks)
                 # tick 边界重置 fallback 标志
                 _reset_parallel_disabled_after_tick()
 
