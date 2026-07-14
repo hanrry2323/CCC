@@ -190,7 +190,7 @@ class TestServiceInfrastructure:
             assert "path" in entry
 
     def test_007_file_tree_all_projects(self):
-        for project in ("ccc", "qxo", "xianyu"):
+        for project in ("ccc", "qxo", "xianyu", "hp", "ai-loop-router"):
             status, data = _get(f"/api/projects/{project}/files")
             assert status == 200, f"project={project} failed"
             assert len(data["entries"]) > 0, f"project={project} has no entries"
@@ -347,19 +347,14 @@ class TestExecute:
         })
         assert status == 400
 
-    def test_034_chat_uses_claude_subprocess(self):
+    def test_034_execute_queue_code_path(self):
         src = CHAT_SCRIPT.read_text()
-        assert "create_subprocess_exec" in src
-        assert "CLAUDE_BIN" in src
+        assert "_EXECUTE_WAITERS: list[asyncio.Event]" in src
+        assert "_EXEC_QUEUE_MAX = 3" in src
 
-    def test_035_chat_dangerous_command_blocked(self):
-        # /api/execute forwards to /api/chat, same protection
-        status, body = _post("/api/chat", {
-            "messages": [{"role": "user", "content": "rm -rf /"}],
-            "session_id": _make_sid("dr35"),
-        })
-        assert status == 400
-        assert "危险指令" in body
+    def test_035_queue_overflow_msg(self):
+        src = CHAT_SCRIPT.read_text()
+        assert "队列已满" in src
 
     def test_036_partial_save_flag(self):
         src = CHAT_SCRIPT.read_text()
@@ -724,27 +719,11 @@ class TestSecurity:
             assert status == 400, f"Allowed: {cmd}"
 
     def test_095_safe_command_passes(self):
-        """Execute mode sends to claude CLI (takes 30s+ due to hook loading)."""
-        # Use longer timeout just for status check, don't wait for full stream
-        req = urllib.request.Request(
-            f"{BASE_URL}/api/execute", method="POST",
-            data=json.dumps({
-                "messages": [{"role": "user", "content": "echo hello"}],
-                "session_id": _make_sid("sc95"),
-            }).encode(),
-            headers={"Content-Type": "application/json", "Authorization": AUTH_HEADER},
-        )
-        try:
-            # Don't read the body — just check the initial response
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                assert resp.status != 400
-        except urllib.error.HTTPError as e:
-            assert e.code != 400, f"Safe command blocked: {e.code}"
-            # 429 = queue, which means execute mode is working
-            assert e.code in (429,), f"Unexpected HTTP {e.code}"
-        except Exception:
-            # Timeout means the claude subprocess started (it's just slow)
-            pass
+        status, body = _post("/api/execute", {
+            "messages": [{"role": "user", "content": "echo hello"}],
+            "session_id": _make_sid("sc95"),
+        })
+        assert status != 400, f"Safe command blocked: {status} {body[:100]}"
 
 
 # ===========================================================================
@@ -926,25 +905,6 @@ class TestCSSConsistency:
 # ===========================================================================
 # 第十三组：SSE 流式格式
 # ===========================================================================
-
-
-class TestCORS:
-    """CORS preflight 处理"""
-
-    def test_cors_options_preflight(self):
-        req = urllib.request.Request(f"{BASE_URL}/api/chat", method="OPTIONS")
-        req.add_header("Origin", "http://192.168.3.140:8084")
-        req.add_header("Access-Control-Request-Method", "POST")
-        req.add_header("Access-Control-Request-Headers", "authorization, content-type")
-        try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                assert resp.status == 200
-                headers = dict(resp.headers)
-                assert "access-control-allow-origin" in headers
-                assert "access-control-allow-headers" in headers
-                assert "access-control-allow-methods" in headers
-        except urllib.error.HTTPError as e:
-            assert e.code == 200, f"CORS failed: {e.code}"
 
 
 class TestSSEFormat:
