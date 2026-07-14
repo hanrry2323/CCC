@@ -52,43 +52,53 @@ def _build_payload(level: str, title: str, message: str, fmt: str) -> dict:
             "msgtype": "markdown",
             "markdown": {
                 "title": f"[CCC {level}] {title}",
-                "text": f"### [CCC {level}] {title}\n\n{message}\n时间: {ts}",
+                "text": f"### [CCC {level}] {title}\n\n{message}\n\n---\n {ts}",
             },
         }
     # generic
     return {
-        "level": level,
         "title": title,
         "message": message,
+        "level": level,
+        "source": "patrol-v4",
         "timestamp": ts,
     }
 
 
 def send_webhook(url: str, level: str, title: str, message: str) -> bool:
-    """发送 webhook 通知。成功返回 True，失败返回 False。
+    """发送 webhook 通知。异常静默处理，返回 True=成功/False=失败/跳过。
 
-    level 通常为 "L0"–"L4" 或 "INFO"/"WARN"/"ERROR"。
+    Args:
+        url: webhook URL（空串或空白 = 跳过）
+        level: "L1" / "L2" / "L3"
+        title: 通知标题
+        message: 通知正文
+
+    Returns:
+        True 表示发送成功（或 url 为空被跳过），False 表示 HTTP 错误
     """
+    url = url.strip()
     if not url:
-        _log.debug("webhook URL 为空，跳过")
-        return False
+        return True  # 未配置 = 跳过，不算失败
+
     fmt = _guess_format(url)
     payload = _build_payload(level, title, message, fmt)
-    body = json.dumps(payload).encode("utf-8")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
     req = urllib.request.Request(
         url,
-        data=body,
-        headers={"Content-Type": "application/json"},
+        data=data,
+        headers={"Content-Type": "application/json; charset=utf-8"},
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            status = resp.status
-            if status < 400:
-                _log.info("webhook 发送成功 [%s] level=%s title=%s", status, level, title)
+            body = resp.read().decode("utf-8", errors="replace")
+            if resp.status == 200:
+                _log.info("webhook ok (%s, %s)", level, title)
                 return True
-            _log.warning("webhook 返回 %s level=%s title=%s", status, level, title)
+            _log.warning("webhook HTTP %d: %s", resp.status, body[:200])
             return False
-    except urllib.error.URLError as e:
-        _log.error("webhook 发送失败: %s", e)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        _log.warning("webhook failed (%s): %s", title, exc)
         return False

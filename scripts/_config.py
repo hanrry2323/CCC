@@ -185,6 +185,11 @@ class Config:
     board_host: str = "127.0.0.1"
     engine_stats_port: int = 7776  # ccc-engine.py 内置 stats 端点
 
+    # ── Webhook（v0.32+）──
+    webhook_url: str = (
+        ""  # Patrol webhook URL，留空禁用；优先级 CCC_WEBHOOK_URL 环境变量
+    )
+
     def __post_init__(self):
         """环境变量覆盖（优先级：环境变量 > 默认值）
 
@@ -210,6 +215,7 @@ class Config:
         _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
         _env_override_int(self, "max_phases", "CCC_MAX_PHASES")
         _env_override_int(self, "reviewer_retry_on_timeout", "CCC_REVIEWER_RETRY")
+        _env_override_str(self, "webhook_url", "CCC_WEBHOOK_URL")
 
 
 def _resolve_workspace() -> Path:
