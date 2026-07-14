@@ -1,0 +1,1 @@
+{"id":"gitkeep-cleanup","title":"CCC 看板 .gitkeep 清理 — 从所有看板列删 .gitkeep","description":"CCC 看板 6 列都有 .gitkeep (0 字节) 空文件, 虽不影响运行但仍需清理.","complexity":"trivial","ts":"2026-07-14T11:50:04Z","note":"v1.0: 清理"}

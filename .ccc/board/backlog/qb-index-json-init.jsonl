@@ -1,0 +1,1 @@
+{"id":"qb-index-json-init","title":"qb 项目初始化 index.json — qb 看板缺少 index.json","description":"qb 的 .ccc/board/ 下没有 index.json, Engine 无法读取 qb 看板. 创建初始 index.json.","complexity":"small","ts":"2026-07-14T11:50:04Z","note":"v1.0: 修复"}

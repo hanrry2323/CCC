@@ -1,0 +1,1 @@
+{"id":"engine-log-rotation","title":"Engine 日志轮转 — 防止 1000+ 日志文件累积","description":"当前 Engine 每次重启写一个新日志文件，已累积 1057 个. 添加日志轮转: 按大小/日期切分, 保留最近 7 天.","complexity":"medium","ts":"2026-07-14T11:50:04Z","note":"v1.0: 基础设施"}
