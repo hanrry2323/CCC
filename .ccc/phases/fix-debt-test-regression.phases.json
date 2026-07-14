@@ -1,3 +1,0 @@
-{"schema_version": "1.1"}
-{"phase": 1, "status": "failed", "subtasks": {"1.1": "恢复 TestEngineHelpers 类（4 个测试方法）", "1.2": "适配 _stores dict 而非旧 _store_instance"}, "timeout": 300, "commit": null, "notes": "在 test_engine.py 末尾追加 TestEngineHelpers，引用 6da7b48 版本代码，仅修正 _get_store 缓存重置方式", "color_depth": 1, "color_group": "L"}
-{"phase": 2, "status": "failed", "subtasks": {"2.1": "菱形依赖分组测试", "2.2": "non-executable phase 过滤测试", "2.3": "_on_parallel_group_complete 错误路径测试"}, "timeout": 300, "commit": null, "notes": "在 test_engine_phase_parallel_dispatch.py 末尾追加 3 个测试函数", "color_depth": 1, "color_group": "L"}

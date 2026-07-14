@@ -1,0 +1,23 @@
+{
+  "session_id": "40d25273-d2c3-427c-9ec6-f037ae70a26b",
+  "title": "这个功能是什么",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "这个功能是什么",
+      "mode": "execute"
+    },
+    {
+      "role": "assistant",
+      "content": "你问的是哪个功能？当前对话里没有指代具体模块或者代码片段。\n\n方便的话：\n- 截个图贴过来\n- 或者说一下是哪个项目/文件的哪个函数/类/路由\n- 或者直接贴代码行范围\n\n我好直接给你答案。",
+      "mode": "execute",
+      "partial": false
+    }
+  ],
+  "mode": "execute",
+  "updated_at": "2026-07-14T23:05:46+08:00",
+  "created_at": "2026-07-14T23:05:46+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16167499999999999
+}
