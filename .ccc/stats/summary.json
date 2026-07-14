@@ -1,16 +1,16 @@
 {
-  "aggregated_at": "2026-07-14T17:34:57.722558+00:00",
+  "aggregated_at": "2026-07-14T17:45:45.447464+00:00",
   "workspace": "CCC",
-  "total_events": 538,
-  "latest_event_ts": "2026-07-15T01:34:57+08:00",
+  "total_events": 909,
+  "latest_event_ts": "2026-07-15T01:45:44+08:00",
   "events_by_type": {
     "move": 94,
-    "quarantine": 111,
-    "product_start": 205,
+    "quarantine": 290,
+    "product_start": 338,
     "product_done": 29,
     "pytest": 4,
     "product_fail": 29,
-    "hang_detected": 66
+    "hang_detected": 125
   },
   "task_stats": {
     "total": 78,
@@ -630,22 +630,22 @@
         "last_ts": "2026-07-14T23:37:59+08:00"
       },
       "patrol-alert-webhook": {
-        "total_events": 133,
+        "total_events": 306,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:45:04+08:00"
+      },
+      "cockpit-phase-timeline": {
+        "total_events": 26,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
         "last_ts": "2026-07-15T01:34:57+08:00"
-      },
-      "cockpit-phase-timeline": {
-        "total_events": 25,
-        "has_failure": true,
-        "has_success": false,
-        "latency_samples": 0,
-        "avg_latency_s": null,
-        "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:34:53+08:00"
       },
       "migrate-cross-validation": {
         "total_events": 7,
@@ -657,22 +657,22 @@
         "last_ts": "2026-07-15T01:26:30+08:00"
       },
       "qb-bt-param-optimize-cli": {
-        "total_events": 137,
+        "total_events": 270,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "product_start",
-        "last_ts": "2026-07-15T01:34:53+08:00"
+        "last_ts": "2026-07-15T01:45:44+08:00"
       },
       "engine-task-priority": {
-        "total_events": 8,
+        "total_events": 65,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:33:07+08:00"
+        "last_ts": "2026-07-15T01:39:54+08:00"
       },
       "onboard-clawcinema-runner": {
         "total_events": 7,
@@ -684,13 +684,13 @@
         "last_ts": "2026-07-15T01:26:46+08:00"
       },
       "patrol-git-auto-push": {
-        "total_events": 9,
+        "total_events": 16,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "quarantine",
-        "last_ts": "2026-07-15T01:33:07+08:00"
+        "last_ts": "2026-07-15T01:40:33+08:00"
       },
       "onboard-xianyu-runner": {
         "total_events": 7,
@@ -730,9 +730,9 @@
     },
     {
       "metric": "quarantine_spike",
-      "value": 111,
+      "value": 290,
       "unit": "count",
-      "label": "High quarantine count: 111 (threshold: 3)",
+      "label": "High quarantine count: 290 (threshold: 3)",
       "severity": "warning"
     },
     {
@@ -744,10 +744,10 @@
     },
     {
       "metric": "total_events",
-      "value": 538,
+      "value": 909,
       "unit": "count",
-      "label": "Total events recorded: 538",
-      "latest_event": "2026-07-15T01:34:57+08:00"
+      "label": "Total events recorded: 909",
+      "latest_event": "2026-07-15T01:45:44+08:00"
     }
   ],
   "recommendations": [
@@ -758,7 +758,7 @@
     },
     {
       "action": "enable_fallback_chain",
-      "reason": "111 tasks quarantined",
+      "reason": "290 tasks quarantined",
       "suggestion": "Enable executor fallback chain to reduce quarantine rate"
     }
   ]
