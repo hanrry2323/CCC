@@ -347,14 +347,19 @@ class TestExecute:
         })
         assert status == 400
 
-    def test_034_execute_queue_code_path(self):
+    def test_034_chat_uses_claude_subprocess(self):
         src = CHAT_SCRIPT.read_text()
-        assert "_EXECUTE_WAITERS: list[asyncio.Event]" in src
-        assert "_EXEC_QUEUE_MAX = 3" in src
+        assert "create_subprocess_exec" in src
+        assert "CLAUDE_BIN" in src
 
-    def test_035_queue_overflow_msg(self):
-        src = CHAT_SCRIPT.read_text()
-        assert "队列已满" in src
+    def test_035_chat_dangerous_command_blocked(self):
+        # /api/execute forwards to /api/chat, same protection
+        status, body = _post("/api/chat", {
+            "messages": [{"role": "user", "content": "rm -rf /"}],
+            "session_id": _make_sid("dr35"),
+        })
+        assert status == 400
+        assert "危险指令" in body
 
     def test_036_partial_save_flag(self):
         src = CHAT_SCRIPT.read_text()
