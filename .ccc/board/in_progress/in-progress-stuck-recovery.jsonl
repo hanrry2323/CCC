@@ -1,1 +1,0 @@
-{"id": "in-progress-stuck-recovery", "title": "in_progress 卡死任务自动恢复增强", "description": "当前 patrol 只检测 300s + 无进程。增强：检测 pid 是否 zombie、opencode 是否 crash loop、超过 3 次卡死直接退回 backlog 而非 planned。", "complexity": "large", "ts": "2026-07-14T12:39:23Z", "note": "v1.0: 容错", "status": "in_progress", "updated_at": "2026-07-14T20:44:53+08:00", "color_group": "T", "color_depth": 0}
