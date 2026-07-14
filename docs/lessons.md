@@ -1931,3 +1931,141 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 - `_retry_abnormal_dev_failures` 增加"in_progress 滞留"匹配模式
 - .done 标识改为心跳写（opencode-exec 定期写 alive 标记），异常退出时 engine 可更快发现
 - 无 phases 文件的历史遗留任务：自动清理（隔离 >7 天删除）
+
+---
+
+## Lesson 25 — V9.S0 同 thread 死锁 debug 全过程（qx-observer `daily_dispatch.py`，2026-07-14 修复完成）
+
+**触发任务**：`fix-v9s0-deadlock-and-add-tests`（qx-observer）
+- 主线补全 V9.S0 修真法 + 8 unit tests + .gitignore worker 防污染
+- 关联 V9.S0 修复 commit chain：`54f7c2e` → `f4d63ec` → `bdeb2dc` → 后续修真法 commit（同 PR）
+
+### 背景
+
+qx-observer daily-dispatch 链路（V9.S0 推出的"daily git snapshot auto-dispatch"）在生产环境持续触发 `daily_dispatch_submit_failed` warning 高频（≥50 次/天），日志里 `error=""` 字段全部空字符串。**这是一条隐性 hang** —— warning 没标红、也没 timeout 报错，但实际每次 submit 都在等 30 秒才返回 False。
+
+定位过程（多 agent 协作）：
+1. **CC 抓到主因**：`asyncio.run_coroutine_threadsafe(coro, loop)` + `fut.result(timeout=30)` 在 **同 thread** 上 = 死锁 30s（loop 自己就是提交 thread，`fut.result` 阻塞同 thread → loop 无法调度 coro）
+2. **qx-observer-CC 抓二级 bug**：`error=str(e)` 当 e 是 `asyncio.TimeoutError` 时 `str(e)=""`
+3. **用户抓到业务痛点**：50 次 submit_failed × 30s hang = 25 分钟/天的隐性浪费
+
+### 根因（共 3 层）
+
+**Layer A — 同 thread 死锁**：
+```python
+# 旧 commit 54f7c2e 改错方向（从 asyncio.run 改成 run_coroutine_threadsafe）
+loop = asyncio.get_event_loop()                       # ← uvicorn 已有的 running loop
+fut = asyncio.run_coroutine_threadsafe(coro, loop)    # ← 提交到 *同* thread 的 loop
+result = fut.result(timeout=30)                       # ← 阻塞 *同* thread 等 loop 调度
+# → loop 等不到 thread 空闲，coro 永远不被调度 → 30s timeout → 返回 False
+```
+
+**Layer B — error 字段空字符串**：
+```python
+except asyncio.TimeoutError as e:
+    logger.warning("daily_dispatch_submit_failed", error=str(e))  # ← str(TimeoutError()) == ""
+```
+
+**Layer C — 测试覆盖盲区**：
+旧 unit tests 是 **mock** `submit_to_queue` 返回值，从未真测过 deadlock 路径。即使在 mocking 下跑通，**生产路径上 hang 仍在**。44 tests 全 PASS 但实测仍 hang 30s。
+
+### 修法（commit 链：`54f7c2e` → 修真法 commit，2026-07-14）
+
+**核心原则**：检测 running loop — 同 loop → `await`（**不跨 thread**），跨 thread → `run_coroutine_threadsafe`。
+
+```python
+async def _submit_to_queue_async(workspace, task_id, exec_prompt, verify_prompt=""):
+    """async 版本：用 asyncio.wait_for 替代 timeout（避免同 thread 死锁）。"""
+    from app.api.dispatcher import submit_to_queue
+    try:
+        return await asyncio.wait_for(
+            submit_to_queue(workspace=workspace, task_id=task_id,
+                            exec_prompt=exec_prompt, verify_prompt=verify_prompt),
+            timeout=10.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("daily_dispatch_submit_timeout", task_id=task_id, error=repr(e))
+        return False
+    except Exception as e:
+        logger.warning("daily_dispatch_submit_failed", task_id=task_id, error=repr(e))
+        return False
+
+
+def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
+    """sync wrapper：检测 event loop 决定走哪条路径。"""
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+        # Running loop — 用 create_tracked_task fire-and-forget
+        from app.core.asyncio_tasks import create_tracked_task
+        create_tracked_task(_submit_to_queue_async(...), loop=loop)
+        return True
+    except RuntimeError:
+        # No running loop — 用 asyncio.run 包装
+        return asyncio.run(_submit_to_queue_async(...))
+    except Exception as e:
+        logger.warning("daily_dispatch_submit_failed", task_id=task_id, error=repr(e))
+        return False
+```
+
+**关键点**：
+1. **拆分 async / sync**：async 函数命名 `_async` 后缀，sync wrapper 命名 `_safe` 后缀（避免 4 类 caller 调错）
+2. **`create_tracked_task`**（app/core/asyncio_tasks.py）：解决 RUF006 — 防止 task 被 GC 回收导致异常静默
+3. **`asyncio.wait_for` 替代 `fut.result(timeout)`**：协程级 timeout，cross-loop 不会阻塞
+4. **`repr(e)` 替代 `str(e)`**：`asyncio.TimeoutError()` 的 `__str__()` 返回空串，必须用 `repr()` 才能拿到 traceback
+
+### 测试覆盖（tests/test_daily_dispatch.py — 11 case 全 PASS）
+
+| Case | 覆盖场景 |
+|------|----------|
+| `test_mark_dispatched_and_read_back` | sentinel 文件写入 + 防重 |
+| `test_was_dispatched_false_for_unmarked` | 读未标记返回 False |
+| `test_was_dispatched_true_after_mark` | 标记后读回 True |
+| `test_sync_no_running_loop` | sync context 走 `asyncio.run` 分支 |
+| `test_async_with_running_loop` | async context 走 `create_tracked_task` fire-and-forget |
+| `test_exception_caught_returns_false` | 异常捕获返回 False（不 hang） |
+| `test_timeout_caught_returns_false` | `asyncio.wait_for` timeout 返回 False |
+| `test_db_success_no_file_written` | `_add_decision_safe` DB 成功路径 |
+| `test_file_fallback_when_db_raises` | DB 不可用时 file fallback |
+| `test_dispatch_one_project_dry` | 端到端 1 个 project 干跑 |
+| `test_dispatch_skips_empty_project` | `commit_count=0` 跳过整个 project |
+
+### 教训
+
+1. **同 thread 死锁检测规则**：`asyncio.run_coroutine_threadsafe` **必须** 在不同 thread 上提交。同 thread 提交 = 死锁。判断方法：检查 `loop._thread` 是否等于 `threading.current_thread()`。
+2. **sync/async 拆分的命名规范**：async 函数用 `_async` 后缀，sync wrapper 用 `_safe` 后缀（或 `_sync`），让 caller 一眼看出。
+3. **mock 测试 ≠ 真路径测试**：mock 路径会跳过真实 await，所以 deadlock / hang 类 bug **必须** 用真路径 + 真 loop 测试。Lesson 28 反直觉：`pytest-asyncio` 配 `@pytest.mark.asyncio` 才能测 running-loop 场景。
+4. **`str(e) == ""` 是隐藏地雷**：`asyncio.TimeoutError()`, `Empty()`, `CancelledError()` 等异常 `__str__()` 都返回空串。诊断 / 日志场景**永远** 用 `repr(e)` 或 `traceback.format_exc()`。
+5. **提交 commit 必须覆盖 plan 验收清单每条**：plan `fix(daily-dispatch): resolve V9.S0 deadlock` 写"修真法"，commit 修真法 — 但**没修真法对应的测试场景**（测试场景挂在 commit 里但不是 plan 强制范围）。下次 plan 必须把"覆盖测试场景"列进验收清单。
+
+### 预防
+
+- **Python async safety 模板**（cc/process/agent.md）：
+  ```python
+  # ✅ 同 loop 调用
+  await some_coro()
+  # ✅ 跨 thread 调用
+  loop.call_soon_threadsafe(coro)
+  fut = asyncio.run_coroutine_threadsafe(coro, other_loop)
+  # ❌ 同 thread 调 run_coroutine_threadsafe（死锁）
+  loop = asyncio.get_event_loop()  # in uvicorn
+  fut = asyncio.run_coroutine_threadsafe(coro, loop)  # ← 死锁
+  ```
+- **unit test 必须覆盖 sync + async 两条路径**：mock `submit_to_queue` 时**真跑** `asyncio.run()` 或真跑 `@pytest.mark.asyncio` — 不是只 mock 路径 PASS 就行
+- **日志字段强制 `repr(e)`**：linter 规则 RUF015 扩展版 — `logger.warning("xxx", error=str(e))` 必须 `warning("xxx", error=repr(e))`
+- **fixer 必须复读 plan 验收清单**：commit 前对照 plan "验收" 段，逐条 grep commit hash / file diff，确保每条验收都有对应落地
+
+### 与已有 Lesson 关系
+
+- 关联 Lesson 24（qx-observer docs/lessons.md）：V9.S0 同 thread 死锁 debug（早期识别）— 本 Lesson 25 是**完整修真法 + 测试 + 教训** 的延伸
+- 关联 Lesson 28：测试 PASS ≠ 没问题 — 修真法 commit 必须覆盖 mock + 真路径测试
+- 关联 Lesson 27：plan 改向 + commit 修真法 + Plan 红线 3（不超 plan 范围）的边界 case — Lesson 25 是"修真法但测试漏场景"的实例
+
+### 适用范围
+
+- 所有 Python asyncio 项目（qx-observer / qb / xianyu / OpenMontage / ai-loop-router / 任何 FastAPI app）
+- 所有用 `run_coroutine_threadsafe` 跨 thread 调度的代码
+- 所有用 mock 测 async 代码的测试（必须配 `pytest-asyncio` 真路径测试）
+- uvicorn / FastAPI / aiohttp / starlette 任何 running-loop context
+
+
