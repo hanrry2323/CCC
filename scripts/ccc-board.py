@@ -2034,7 +2034,7 @@ def _review_with_llm(
                         input=data,
                         capture_output=True,
                         text=False,
-                        timeout=cfg.exec_timeout,
+                        timeout=cfg.reviewer_timeout,
                         env=env,
                     )
                     if _r.returncode == 0:

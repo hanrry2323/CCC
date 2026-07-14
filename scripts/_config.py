@@ -116,6 +116,7 @@ class Config:
     hook_timeout: int = 30  # 秒，钩子默认超时
     phase_timeout: int = 600  # 秒，phase 执行超时（用于 engine polling）
     exec_timeout: int = 300  # 秒，exec 任务执行超时（opencode-exec）
+    reviewer_timeout: int = 600  # 秒，reviewer LLM 调用超时（large diff 需要更长）
     engine_tick_interval: int = 5  # 秒，engine idle sleep 时间
 
     # ── 容错 ──
@@ -197,6 +198,7 @@ class Config:
         _env_override_int(self, "engine_idle_sleep", "CCC_ENGINE_IDLE_SLEEP")
         _env_override_int(self, "phase_timeout", "CCC_PHASE_TIMEOUT")
         _env_override_int(self, "exec_timeout", "CCC_EXEC_TIMEOUT")
+        _env_override_int(self, "reviewer_timeout", "CCC_REVIEWER_TIMEOUT")
         _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
 
 
