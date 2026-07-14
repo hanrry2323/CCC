@@ -1384,6 +1384,11 @@ def engine_loop(workspaces: list[Path]) -> None:
         try:
             completed_tasks: list[str] = []
             if active_tasks:
+                # v0.31+: hang 自动重启（Phase 4 + Phase 5 联合投递）
+                # 先扫一轮 hung marker，触发 kill+stash+relaunch，再做完成判定
+                for ws in workspaces:
+                    _activate_workspace(ws)
+                    _run_hang_auto_restart(ws, active_tasks)
                 for key, info in list(active_tasks.items()):
                     ws = info["workspace"]
                     tid = info["task_id"]
