@@ -1383,22 +1383,24 @@ def engine_loop(workspaces: list[Path]) -> None:
                 _write_heartbeat(ws, ws_first_running.get(ws_key))
 
             while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
+                # v1.0: planned 优先（dev_role），无 planned 才 backlog（product_role）
+                # 避免 60+ backlog 阻塞 dev_role 永远不启动（B1）
                 did_something = False
                 for ws in workspaces:
                     if len(active_tasks) >= MAX_CONCURRENT:
                         break
-                    if _process_backlog(ws):
+                    if _try_launch_planned(ws, active_tasks):
                         did_something = True
+                        any_active = True
                         break
 
                 if did_something:
-                    any_active = True
                     continue
 
                 for ws in workspaces:
                     if len(active_tasks) >= MAX_CONCURRENT:
                         break
-                    if _try_launch_planned(ws, active_tasks):
+                    if _process_backlog(ws):
                         did_something = True
                         any_active = True
                         break
