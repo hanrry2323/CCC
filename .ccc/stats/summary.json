@@ -1,19 +1,20 @@
 {
-  "aggregated_at": "2026-07-14T13:24:45.769235+00:00",
+  "aggregated_at": "2026-07-14T13:51:20.486459+00:00",
   "workspace": "CCC",
-  "total_events": 121,
-  "latest_event_ts": "2026-07-14T21:14:47+08:00",
+  "total_events": 143,
+  "latest_event_ts": "2026-07-14T21:47:43+08:00",
   "events_by_type": {
-    "move": 70,
+    "move": 76,
     "quarantine": 17,
-    "product_start": 17,
-    "product_done": 15,
-    "pytest": 2
+    "product_start": 24,
+    "product_done": 20,
+    "pytest": 4,
+    "product_fail": 2
   },
   "task_stats": {
-    "total": 47,
-    "success": 2,
-    "failed": 16,
+    "total": 53,
+    "success": 4,
+    "failed": 17,
     "details": {
       "fix-version-trailing-newline": {
         "total_events": 4,
@@ -286,13 +287,13 @@
         "last_ts": "2026-07-14T20:02:01+08:00"
       },
       "fix-debt-test-regression": {
-        "total_events": 3,
+        "total_events": 4,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "move",
-        "last_ts": "2026-07-14T20:42:10+08:00"
+        "last_ts": "2026-07-14T21:33:13+08:00"
       },
       "fix-test-parallel-key": {
         "total_events": 4,
@@ -430,22 +431,76 @@
         "last_ts": "2026-07-14T21:13:05+08:00"
       },
       "state-md-auto-update": {
-        "total_events": 3,
+        "total_events": 5,
+        "has_failure": false,
+        "has_success": true,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "pytest",
+        "last_ts": "2026-07-14T21:37:24+08:00"
+      },
+      "engine-heartbeat-metrics": {
+        "total_events": 5,
+        "has_failure": false,
+        "has_success": true,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T21:47:43+08:00"
+      },
+      "executor-hang-detection": {
+        "total_events": 4,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "move",
+        "last_ts": "2026-07-14T21:41:02+08:00"
+      },
+      "audio-bgm-auto-mix": {
+        "total_events": 2,
         "has_failure": false,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
         "last_event": "product_done",
-        "last_ts": "2026-07-14T21:13:05+08:00"
+        "last_ts": "2026-07-14T21:33:12+08:00"
+      },
+      "qb-bt-custom-fee-config": {
+        "total_events": 4,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_fail",
+        "last_ts": "2026-07-14T21:35:23+08:00"
+      },
+      "fix-applayout-login-flash": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T21:34:18+08:00"
+      },
+      "audio-level-norm": {
+        "total_events": 2,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_done",
+        "last_ts": "2026-07-14T21:35:23+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 34.0,
+      "value": 32.1,
       "unit": "percent",
-      "label": "Task failure rate: 34.0% (16/47)"
+      "label": "Task failure rate: 32.1% (17/53)"
     },
     {
       "metric": "quarantine_spike",
@@ -456,10 +511,10 @@
     },
     {
       "metric": "total_events",
-      "value": 121,
+      "value": 143,
       "unit": "count",
-      "label": "Total events recorded: 121",
-      "latest_event": "2026-07-14T21:14:47+08:00"
+      "label": "Total events recorded: 143",
+      "latest_event": "2026-07-14T21:47:43+08:00"
     }
   ],
   "recommendations": [

@@ -1,0 +1,1 @@
+{"id": "cockpit-dashboard-enhance", "title": "Cockpit 仪表盘增强 — 显示活跃任务实时状态", "description": "当前 cockpit 显示看板数量但不显示哪些任务在跑. 添加活跃进程列表 + 执行时间 + 最近完成记录.", "complexity": "large", "ts": "2026-07-14T11:50:04Z", "note": "broken phases → backlog for re-split", "status": "planned", "updated_at": "2026-07-14T21:51:48+08:00", "color_group": "O", "color_depth": 0}

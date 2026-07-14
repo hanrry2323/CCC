@@ -1,2 +1,3 @@
-{"schema_version": "1.1"}
-{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending"}, "timeout": 600, "commit": null, "notes": "新增 _get_running_pids 辅助 + _write_heartbeat 参数增强 + 两个调用点更新", "color_depth": 1, "color_group": "A"}
+{"engine_iter": 2, "engine_iter_phase": 1, "commit": "7a598dd3a7bd8408a6468dc8222c8558a5257ee8"}
+{"schema_version": "1.1", "commit": "7a598dd3a7bd8408a6468dc8222c8558a5257ee8"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending"}, "timeout": 600, "commit": null, "notes": "新增 _get_running_pids 辅助 + _write_heartbeat 参数增强 + 两个调用点更新", "color_depth": 1, "color_group": "A", "retry": 1}

@@ -318,12 +318,17 @@ async def execute_mode(request: Request):
             try:
                 await asyncio.wait_for(waiter_event.wait(), timeout=180)
             except asyncio.TimeoutError:
-                _EXECUTE_WAITERS.remove(waiter_event)
+                try:
+                    _EXECUTE_WAITERS.remove(waiter_event)
+                except ValueError:
+                    pass  # already removed by colliding finally
                 yield f"data: {json.dumps({'type': 'error', 'content': '排队超时（180s），请重新提交'})}\n\n"
                 return
             except (GeneratorExit, asyncio.CancelledError):
-                if waiter_event in _EXECUTE_WAITERS:
+                try:
                     _EXECUTE_WAITERS.remove(waiter_event)
+                except ValueError:
+                    pass
                 return
 
         async with _execute_lock:
@@ -451,10 +456,12 @@ async def execute_mode(request: Request):
                 raise
             finally:
                 _execute_running = False
-                # Signal next waiter (if any) — inside lock to avoid race
-                if _EXECUTE_WAITERS:
+                # Signal next waiter (if any) — inside lock; defensively guard IndexError
+                try:
                     next_waiter = _EXECUTE_WAITERS.pop(0)
                     next_waiter.set()
+                except IndexError:
+                    pass
                 if proc and proc.returncode is None:
                     proc.kill()
 

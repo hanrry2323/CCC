@@ -1,1 +1,0 @@
-{"id": "engine-heartbeat-metrics", "title": "Engine 心跳增加活跃任务数", "description": "当前 heartbeat 只记录 timestamp，增加 active_task_count、running_pids 字段便于 patrol 判断 Engine 真实健康度.", "complexity": "large", "ts": "2026-07-14T13:16:41Z", "note": "v1.0: 指标", "status": "in_progress", "updated_at": "2026-07-14T21:33:12+08:00", "color_group": "A", "color_depth": 0}
