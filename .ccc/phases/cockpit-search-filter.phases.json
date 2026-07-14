@@ -1,1 +1,1 @@
-[{"phase": 1, "status": "pending", "timeout": 600}]
+[{"phase": 1, "status": "done", "timeout": 600, "completed_at": "2026-07-14T18:53:00+08:00", "commit": "192a774", "note": "Implementation already committed in 192a774 (bundled with cockpit-auto-refresh); verified in-place per plan."}]
