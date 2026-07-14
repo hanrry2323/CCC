@@ -122,6 +122,8 @@ def _is_upstream_healthy() -> bool:
         return cached
 
     relay = _get_relay_url()
+    # Proxy 走 anthropic 模式，需要 POST /v1/messages 加必要 header
+    messages_url = relay.rstrip("/") + "/v1/messages"
     try:
         import urllib.request
 
@@ -131,9 +133,13 @@ def _is_upstream_healthy() -> bool:
             "max_tokens": 1,
         }).encode()
         req = urllib.request.Request(
-            relay,
+            messages_url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": "health-check",
+                "anthropic-version": "2023-06-01",
+            },
             method="POST",
         )
         resp = urllib.request.urlopen(req, timeout=8)
