@@ -36,6 +36,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-15 | engine-failure-lessons | `.ccc/plans/engine-failure-lessons.plan.md` | `.ccc/reports/engine-failure-lessons.report.md` | `auto_append_lesson_md()` + engine/board 双入口调用（代码已在 4b9e09d/fd71dd7/e343cb8 v0.32 series 落地，dev 验证通过：compileall 0 errors + pytest 56 子集 + 端到端 5/5 边角 case） | PASS |
 | 2026-07-14 | fix-lint-2026-07-14 | `.ccc/plans/fix-lint-2026-07-14.plan.md` | `.ccc/reports/fix-lint-2026-07-14.report.md` | ruff F401/F841/F811 全清零（21+14=35 处）+ `_audit_lint` latent tuple bug 顺手修 + 248 passed | PASS |
 | 2026-07-14 | writing-agent-identity-into-state-md | `.ccc/plans/writing-agent-identity-into-state-md.plan.md` | `.ccc/reports/writing-agent-identity-into-state-md.report.md` | state.md 头部加 Agent 身份契约 + 最高接力文件地位 | PASS |
 | 2026-07-12 | qb-6tasks | `.ccc/plans/qb-*.plan.md` × 6 | `git diff HEAD~1 -- scripts/ccc-board.py` | 已投递 QB backlog + 修 product_role 锁 bug | DISPATCHED |
