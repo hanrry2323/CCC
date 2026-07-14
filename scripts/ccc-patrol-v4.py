@@ -849,7 +849,7 @@ def _log_engine_restart(status: str, reason: str) -> None:
 
 
 def _notify_engine_restart(status: str) -> None:
-    """Engine 重启/死亡时发桌面通知。非阻塞，不抛异常。"""
+    """Engine 重启/死亡时发桌面通知 + webhook。非阻塞，不抛异常。"""
     notify_script = CCC_HOME / "scripts" / "ccc-notify.sh"
     if not notify_script.is_file():
         return
@@ -881,6 +881,24 @@ def _notify_engine_restart(status: str) -> None:
                 start_new_session=True,
             )
     except OSError:
+        pass
+
+    # v0.32: webhook 通知（无论 RESTARTED 还是 DEAD）
+    try:
+        from _config import Config
+        from _webhook import send_webhook
+
+        cfg = Config()
+        if cfg.webhook_url:
+            level = "L3" if status == "DEAD" else "L2"
+            title = "Engine 自动重启" if status == "RESTARTED" else "Engine 重启失败"
+            msg = (
+                "Patrol-v4 检测到 Engine 已停止，已自动重启完成"
+                if status == "RESTARTED"
+                else "Patrol-v4 尝试自动重启 Engine 失败，需人工介入"
+            )
+            send_webhook(cfg.webhook_url, level, title, msg)
+    except Exception:
         pass
 
 
@@ -1102,6 +1120,21 @@ def main() -> int:
     warn = detect_stagnation(ws_stats)
     if warn:
         warnings.append(warn)
+        # v0.32: stagnation webhook
+        try:
+            from _config import Config
+            from _webhook import send_webhook
+
+            cfg = Config()
+            if cfg.webhook_url:
+                send_webhook(
+                    cfg.webhook_url,
+                    "L2",
+                    "Patrol 持续停滞",
+                    f"连续 6 轮状态无变化: {warn}",
+                )
+        except Exception:
+            pass
     save_patrol_state(ws_stats, engine_status, all_fix_ops, len(all_stuck_ops), warn)
 
     # ── Step 4.5: index.json 一致性校验 ──
