@@ -62,7 +62,7 @@ done
 # 如果 post-exec 钩子已 git add -A && git commit，跳过整次 exec-commit
 COMMIT_MARKER_DIR="$HOME/.ccc/committed-phases"
 if [[ -d "$COMMIT_MARKER_DIR" ]]; then
-    MATCHING=$(ls "$COMMIT_MARKER_DIR/${TASK}"*.marker 2>/dev/null | wc -l | tr -d ' ')
+    MATCHING=$( (ls "$COMMIT_MARKER_DIR/${TASK}"*.marker 2>/dev/null || true) | wc -l | tr -d ' ')
     if [[ -n "$MATCHING" && "$MATCHING" -gt 0 ]]; then
         echo "post-exec 已提交（${MATCHING} 个标记），跳过 exec-commit"
         exit 0
