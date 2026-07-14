@@ -30,6 +30,7 @@ if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
 from _config import Config, get_logger
+from _logger import add_file_handler
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
 from _stats_aggregator import aggregate_stats, load_summary
@@ -64,6 +65,13 @@ _check_phase_failures = ccc_board._check_phase_failures
 _current_running_phase = ccc_board._current_running_phase
 
 cfg = Config()
+
+# 日志轮转：engine.log + daily rotate + keep 7 days
+_log_dir = Path(os.environ.get("HOME", str(Path.home()))) / ".ccc" / "logs"
+_log_dir.mkdir(parents=True, exist_ok=True)
+_log_file = str(_log_dir / "engine.log")
+add_file_handler("engine", _log_file, when="midnight", interval=1, backup_count=7)
+
 _log.info(
     "ccc-engine config: phase_timeout=%ds, exec_timeout=%ds, engine_tick_interval=%ds",
     cfg.phase_timeout,

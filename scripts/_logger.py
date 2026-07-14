@@ -25,6 +25,7 @@ v0.28.1: 默认等级从 WARNING→INFO，使 engine 日志默认可见。
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import sys
 
@@ -102,12 +103,75 @@ class _CCCLogger:
 
     def exception(self, msg: str, *args, exc_info: bool = True, **kwargs) -> None:
         """记录异常堆栈。exc_info 默认 True（与标准库不同：CCC 默认打印堆栈）"""
-        self._log.exception(msg, *args, **kwargs) if exc_info else self._log.error(msg, *args, **kwargs)
+        self._log.exception(msg, *args, **kwargs) if exc_info else self._log.error(
+            msg, *args, **kwargs
+        )
 
 
 def get_logger(name: str) -> _CCCLogger:
     """获取 CCC logger 实例。name 通常为角色名（board / engine / store / ...）。"""
     return _CCCLogger(name, prefix_enabled=_resolve_prefix_enabled())
+
+
+# 已安装 file handler 集合：(logger_full_name, absolute_file_path) — 用于幂等去重
+_installed_file_handlers: set[tuple[str, str]] = set()
+
+
+def add_file_handler(
+    name: str,
+    file_path: str,
+    when: str = "midnight",
+    interval: int = 1,
+    backup_count: int = 7,
+    encoding: str = "utf-8",
+) -> logging.Handler | None:
+    """给指定 CCC logger 添加 TimedRotatingFileHandler（与现有 handler 并存，双路输出）。
+
+    此函数是幂等的：同 (logger_name, file_path) 组合只挂一次 handler，重复调用
+    直接返回已挂的 handler。日志格式与 StreamHandler 保持一致 `[%(name)s] %(message)s`。
+
+    Args:
+        name: logger name（即 get_logger(name) 的 name，如 "engine"）
+        file_path: 日志文件路径（如 ~/.ccc/logs/engine.log）
+        when: 切分时间单位（"midnight" / "H" / "D" / "W0"-"W6"）
+        interval: 切分间隔
+        backup_count: 保留备份数（超期自动删除）
+        encoding: 文件编码
+
+    Returns:
+        新挂上的 handler 实例（首次调用）或已存在的 handler（重复调用），
+        创建失败返回 None 且不影响 Engine 启动。
+    """
+    abs_path = os.path.abspath(file_path)
+    key = (name, abs_path)
+    if key in _installed_file_handlers:
+        logger = logging.getLogger(f"ccc.{name}")
+        for h in logger.handlers:
+            if (
+                isinstance(h, logging.handlers.TimedRotatingFileHandler)
+                and os.path.abspath(h.baseFilename) == abs_path
+            ):
+                return h
+        return None
+
+    try:
+        _configure_root()
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        handler = logging.handlers.TimedRotatingFileHandler(
+            abs_path,
+            when=when,
+            interval=interval,
+            backupCount=backup_count,
+            encoding=encoding,
+        )
+        handler.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
+        logger = logging.getLogger(f"ccc.{name}")
+        logger.addHandler(handler)
+        _installed_file_handlers.add(key)
+        return handler
+    except OSError as exc:
+        sys.stderr.write(f"[ccc.{name}] add_file_handler 失败: {exc}\n")
+        return None
 
 
 def reset_for_test() -> None:
@@ -117,3 +181,4 @@ def reset_for_test() -> None:
     root = logging.getLogger("ccc")
     for h in list(root.handlers):
         root.removeHandler(h)
+    _installed_file_handlers.clear()
