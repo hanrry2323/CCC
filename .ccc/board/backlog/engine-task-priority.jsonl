@@ -1,1 +1,0 @@
-{"id":"engine-task-priority","title":"Engine 任务优先级调度","description":"支持 task 设置 priority 字段（high/medium/low），Engine 按优先级排序 planned 任务，高优先级先启动。","complexity":"medium","ts":"2026-07-14T15:52:57Z","note":"v1.0: 调度"}
