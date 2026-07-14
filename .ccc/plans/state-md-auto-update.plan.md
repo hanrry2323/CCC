@@ -1,4 +1,4 @@
-# Plan: state-md-auto-update — Engine 每次任务流转后自动更新 state.md 看板快照
+# Plan: state-md-auto-update — 每次任务流转后自动更新 state.md
 
 > 撰写：ccc-product | 执行：ccc-dev（manual）
 
@@ -6,138 +6,154 @@
 
 ## 当前代码状态
 
-- **入口/核心文件**：`scripts/_board_store.py`（FileBoardStore 核心）、`scripts/ccc-engine.py`（Engine 主循环）
+- **入口/核心文件**：`scripts/_board_store.py`（~740 行）、`scripts/_config.py`（~270 行）
 - **当前结构要点**：
-  1. `_board_store.py` 的 `FileBoardStore.update_index()`（L548-562）已计算全列计数（`counts = {col: len(self.list_tasks(col)) for col in COLUMNS}`），但只写 `index.json`，不写 `.ccc/state.md`
-  2. `FileBoardStore.move_task()`（L494-546）执行列迁移后调 `update_index()`，数据链完整：`move_task` → `update_index` → 计数就绪但未写入 state.md
-  3. `ccc-engine.py` 有 11+ 处 `store.update_index()` 调用点（L184/382/392/395/442/465/476/492/1028/1043/1626），覆盖所有 task 流转路径（含 quarantine / 恢复 / 自动重试）
-  4. `.ccc/state.md` 是手动维护的接力索引文件（红线 10），Engine 重启后看板列计数不反映当前状态
-  5. `FileBoardStore` 有 `self.workspace` 属性（L389）可直接定位 `.ccc/state.md`
+  1. `FileBoardStore`（`_board_store.py:386`）管理看板底层操作——`move_task()`（L494）、`quarantine()`（L564）、`create_task()`（L408）。所有状态变更入都经过此层
+  2. `ccc-engine.py` 有 8+ 处 `store.move_task()` 调用，`ccc-board.py` 有 7+ 处 `move_task()` 调用，`ccc-board-server.py` 也有 1 处——散布在各处
+  3. `store.update_index()`（L548）已经做了类似的事（更新 `index.json`），但 `state.md` 无人维护——当前 state.md 的"当前状态"节是手写的，Engine 重启后过时
+  4. `_board_store.py` 已拥有 `_atomic_write()`（L349）、`now_iso()`、`COLUMNS` 等全部基础工具
+  5. `_utils.py` 提供 `now_iso()` 和 `sanitize_id()`——`_board_store.py` 已导入
+  6. `_config.py`：当前没有 state.md 相关配置字段
 - **待改动点**：
-  - `_board_store.py:update_index()` 末尾追加写入 `.ccc/state.md` 看板快照段，幂等替换
+  - `scripts/_board_store.py`：新增 `_sync_state_md()` 方法 + `move_task()`/`quarantine()` 成功后调用
 
 ---
 
 ## 范围
 
-- **目标**：Engine 每次 update_index（即每次任务流转）后自动更新 `.ccc/state.md` 的看板列任务计数快照
-- **只改文件**：`scripts/_board_store.py`
-- **不改文件**：`scripts/ccc-engine.py`、`scripts/ccc-board.py`、`.ccc/state.md`（快照段由引擎自动维护，不手动改）
+- **目标**：每次看板 move_task / quarantine 操作后自动更新 `.ccc/state.md` 中的看板状态节（列名 + 任务数），确保 Engine 重启后 state.md 反映真实看板状态
+- **只改文件**：`["scripts/_board_store.py"]`
+- **不改文件**：`["scripts/ccc-engine.py", "scripts/ccc-board.py", "scripts/ccc-board-server.py", "scripts/_config.py"]`
 - **执行方式**：`manual`
 - **Phase 数**：1
 
 ---
 
-## 改动 1（Phase 1）：update_index() 追加 state.md 看板快照
+## 改动 1（Phase 1）：FileBoardStore 中 hook _sync_state_md 到 move_task / quarantine
 
 ### 做什么
 
-Engine 重启后 `.ccc/state.md` 不反映当前看板状态，因为 state.md 是手动维护的。改为让 `update_index()` 在写完 `index.json` 后自动更新 `.ccc/state.md` 末尾的"看板自动快照"段。
+当前看板状态完全靠手工维护在 `state.md` 中，Engine 启动后不知道哪些 task 在哪些列。改造为每次 `move_task()` 和 `quarantine()` 成功后自动写/更新 `state.md` 的"看板状态"节。
 
-HTML 注释标记包围确保幂等替换：标记已存在时原地覆盖，不存在时追加到文件末尾。利用 `update_index()` 中已计算的 `counts` dict，避免二次扫描。
+**核心设计**：在 `FileBoardStore` 内部 hook（而非在外层 15+ 个调用点逐个加），保证：
+- Engine、board-server、board.py、手工脚本——所有通路都自动同步
+- 零侵入调用方：无需改 engine.py/board.py
+- `_sync_state_md()` 在锁释放后执行，不延长看板写锁持有时间
 
-格式：
-```
-<!-- AUTO-BOARD-SNAPSHOT-START -->
-
-## 看板自动快照（Engine 自动维护）
-
-**最后更新**: 2026-07-14T20:00:00+08:00
-
-| 列 | 任务数 |
-|---|------:|
-| backlog | 0 |
-| planned | 0 |
-| in_progress | 0 |
-| testing | 0 |
-| verified | 0 |
-| released | 0 |
-| abnormal | 0 |
-
-<!-- AUTO-BOARD-SNAPSHOT-END -->
-```
+**state.md 格式**：用 `<!-- board-status -->` 和 `<!-- /board-status -->` HTML 注释作锚点标记，`_sync_state_md()` 找到标记后替换其间的全部内容。如果没有标记则追加到文件末尾。
 
 ### 怎么做
 
-**`scripts/_board_store.py`**：
-
-**1. 在文件底部新增模块级函数 `_update_state_md_board_snapshot()`**（before EOF，L906 `quarantine_store_content.base_name = ""` 之后）：
+**1a. `scripts/_board_store.py:FileBoardStore`** — 新增 `_sync_state_md()` 方法（建议插入在 `_record_event()` 后、`get_timeline()` 前，约 L736）：
 
 ```python
-def _update_state_md_board_snapshot(workspace: Path, counts: dict) -> None:
-    """更新 .ccc/state.md 看板自动快照段（幂等替换，不抛异常）。
+def _sync_state_md(self) -> None:
+    """更新 .ccc/state.md 看板状态节（move_task/quarantine 成功后自动触发）
 
-    Args:
-        workspace: 项目根路径
-        counts: {列名: 任务数} dict，来自 update_index 已计算的 COLUMNS 计数
+    使用 <!-- board-status --> / <!-- /board-status --> 配对标记
+    做确定性替换；无标记时追加末尾。
     """
-    state_md = workspace / ".ccc" / "state.md"
-    if not state_md.is_file():
-        return
-
-    start_marker = "<!-- AUTO-BOARD-SNAPSHOT-START -->"
-    end_marker = "<!-- AUTO-BOARD-SNAPSHOT-END -->"
+    state_md = self.workspace / ".ccc" / "state.md"
+    counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
     now = now_iso()
-    lines = [f"\n\n{start_marker}\n"]
-    lines.append("## 看板自动快照（Engine 自动维护）\n")
-    lines.append(f"\n**最后更新**: {now}\n")
-    lines.append("\n| 列 | 任务数 |")
-    lines.append("\n|---|------:|")
+
+    lines = [
+        "<!-- board-status -->",
+        "## 看板状态",
+        "",
+        f"> 自动更新 — 最后刷新时间：{now}",
+        "",
+        "| 列 | 任务数 |",
+        "|---|------:|",
+    ]
     for col in COLUMNS:
-        lines.append(f"\n| {col} | {counts.get(col, 0)} |")
-    lines.append(f"\n\n{end_marker}\n")
-    snapshot = "".join(lines)
+        lines.append(f"| {col} | {counts[col]} |")
+    lines.append("")
+    lines.append("<!-- /board-status -->")
+    block = "\n".join(lines)
+
+    if state_md.exists():
+        content = state_md.read_text(encoding="utf-8")
+        if "<!-- board-status -->" in content and "<!-- /board-status -->" in content:
+            pre = content.split("<!-- board-status -->")[0]
+            post = content.split("<!-- /board-status -->", 1)[1]
+            new_content = pre + block + "\n" + post
+        else:
+            # 无标记：追加到末尾
+            new_content = content.rstrip() + "\n\n" + block + "\n"
+    else:
+        new_content = block + "\n"
 
     try:
-        content = state_md.read_text(encoding="utf-8")
-        if start_marker in content and end_marker in content:
-            si = content.index(start_marker)
-            ei = content.index(end_marker) + len(end_marker)
-            new_content = content[:si] + snapshot + content[ei:]
-        else:
-            new_content = content.rstrip() + "\n\n---\n" + snapshot
-        state_md.write_text(new_content, encoding="utf-8")
-    except OSError:
-        _log.warning("state.md board snapshot update failed: %s", state_md)
+        _atomic_write(state_md, new_content)
+    except OSError as exc:
+        _log.warning("_sync_state_md: 写入 %s 失败: %s", state_md, exc)
 ```
 
-**2. 修改 `update_index()` 方法末尾**（`_atomic_write(index_file, ...)` 之后、`return counts` 之前）：
+**1b. `scripts/_board_store.py:FileBoardStore.move_task()`** — 成功路径后调用 `_sync_state_md()`。
 
-原代码（约 L557-559）：
+在 L542-546 附近，将 `finally` 中的 `self._unlock(lock)` + 后续清理改为：
+
 ```python
-            _atomic_write(
-                index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
-            )
-            return counts
+success = False
+lock = self._lock()
+if lock is None:
+    _log.error("move_task: lock unavailable; aborting")
+    return False
+try:
+    # ... 现有 logic（L509-542），将 return True → success = True
+    ...
+    success = True
+finally:
+    self._unlock(lock)
+if success:
+    self._sync_state_md()  # 锁释放后执行，不延长锁持有时间
+return success
 ```
 
-改为：
+注意：现有 `move_task()` 在 lock = None 时直接 return False（在 try 前），这部分不动。只重构 try 块内的 return 为 success 赋值。
+
+**1c. `scripts/_board_store.py:FileBoardStore.quarantine()`** — 同样模式：
+
 ```python
-            _atomic_write(
-                index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
-            )
-            _update_state_md_board_snapshot(self.workspace, counts)
-            return counts
+success = False
+lock = self._lock()
+if lock is None:
+    _log.error("quarantine: lock unavailable; aborting %s", task_id)
+    return
+try:
+    # ... 现有 logic（L578-615），末尾加 success = True
+    success = True
+finally:
+    self._unlock(lock)
+if success:
+    self._sync_state_md()
 ```
 
-这样每次 Engine 内部或外部经 `update_index()` 的任意流转都会自动反映到 state.md。
+注意：quarantine 现有代码 L576 处的 `if lock is None: ... return` 在 try 前，不动；try 块内部原本无 return（quarantine 返回 None），所以只需在 try 块末尾加 `success = True`。
 
 ### 验收清单
 
-- [ ] `update_index()` 调用后 `.ccc/state.md` 末尾出现看板快照段，列计数正确
-- [ ] 二次调用时快照段被原地替换（不追加副本），计数更新
-- [ ] `.ccc/state.md` 不存在时 `update_index()` 不抛异常
-- [ ] 非 `COLUMNS` 的目录（如 `events/`）不出现在快照中
-- [ ] 某列为空 → 计数显示 0
-- [ ] `state.md` 文件不可写 → 静默忽略，不影响 index.json 写入
-- [ ] `scripts/_board_store.py` 编译无错误
+- [ ] `_sync_state_md()` 在 move_task/quarantine 成功后自动写入 state.md
+- [ ] state.md 标记 `<!-- board-status -->` 存在时，替换其间的全部内容
+- [ ] state.md 无标记时，追加到末尾
+- [ ] state.md 不存在时，创建新文件
+- [ ] 写入内容符合预期格式（列名 + 任务数表格 + 更新时间）
+- [ ] 看板写锁在 `_sync_state_md()` 调用前已释放（不延长锁持有）
+- [ ] `_sync_state_md()` 写入失败（如权限不足）时仅 warn，不抛异常影响主流程
+- [ ] `python3 -m compileall -q scripts/_board_store.py` 零错误
+- [ ] 现有测试全部通过
+- [ ] Engine 重启后，state.md 看板状态反映真实看板列
 
 ### 验收
 
-- [快照标记] `grep -c 'AUTO-BOARD-SNAPSHOT' .ccc/state.md` = 2（start+end marker 各 1）
-- [列完整性] `python3 -c "import json; d=json.load(open('.ccc/board/index.json')); assert set(d.keys())=={'backlog','planned','in_progress','testing','verified','released','abnormal'}; print({k: d[k] for k in sorted(d)})"` — 7 列非负整数
-- [一致性与幂等性] `python3 -c "from pathlib import Path; import sys; sys.path.insert(0,'scripts'); from _board_store import FileBoardStore; f=FileBoardStore(Path('.')); f.update_index(); f.update_index()"` → `grep -c 'AUTO-BOARD-SNAPSHOT' .ccc/state.md` 仍为 2
-- [编译] `python3 -m compileall -q scripts/_board_store.py` → 0
+- [编译检查] `python3 -m compileall -q scripts/_board_store.py` → 0 errors
+- [集成检查] `python3 -m pytest tests/scripts/ -q --timeout=60` → 全部通过
+- [引入 import ok] `python3 -c "import sys; sys.path.insert(0,'scripts/'); from _board_store import FileBoardStore; print('import ok')"` → import ok
+- [state.md 格式] 任意 move 后 state.md 尾部出现 `## 看板状态` 节，包含 7 列计数 + `<!-- board-status -->` 标记
+- [替换生效] 再次 move 后 `<!-- board-status -->` → `<!-- /board-status -->` 之间内容被新数据替换
+- [锁时序验证] 走读 `move_task()` 中 `_sync_state_md()` 在 `self._unlock(lock)` 之后调用
+- [错误容忍] `chmod 444 .ccc/state.md` 后触发 move → 日志 warn 而非 crash
 
 ---
 
@@ -145,15 +161,24 @@ def _update_state_md_board_snapshot(workspace: Path, counts: dict) -> None:
 
 | Phase | 改动 | Commit message 草稿 |
 |-------|------|---------------------|
-| 1 | update_index() 追加 .ccc/state.md 看板自动快照段 | `feat(engine): update_index 自动更新 state.md 看板快照 (phase 1/1)` |
+| 1 | FileBoardStore 新增 _sync_state_md() + move_task/quarantine 成功后自动写入 state.md | `feat(board): 每次 move_task/quarantine 后自动更新 state.md 看板状态 (phase 1/1)` |
 
 ---
 
 ## 全局验收清单
 
-- [ ] 编译零错误（`python3 -m compileall -q scripts/_board_store.py`）
-- [ ] 全部测试通过（`python3 -m pytest tests/scripts/ -q`）
+- [ ] 编译/类型检查，零错误（`python3 -m compileall -q scripts/_board_store.py`）
+- [ ] 全部测试通过（`python3 -m pytest tests/scripts/ -q --timeout=60`）
 - [ ] diff 范围仅限 `scripts/_board_store.py`
 - [ ] 1 个 commit（phase 1/1）
 - [ ] phases.json phase 数 = 1
 - [ ] Plan 中所有验收意图全部达成
+
+---
+
+## 后续步骤
+
+后续可考虑：
+- 若 state.md 写入频率过高（高频 move 场景），可在 Config 中加 `state_md_sync_interval` 做节流
+- 类似地，`create_task()` 也可 hook _sync_state_md()，但创建 backlog task 不变更列状态，当前不必要
+- 将来 `update_index()` 和 `_sync_state_md()` 可统一为 `_sync_board_state()` 一次性完成 index.json + state.md 两份状态文件

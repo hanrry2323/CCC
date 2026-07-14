@@ -1,4 +1,3 @@
-{"engine_iter": 2, "engine_iter_phase": 1}
-{"schema_version": "1.1"}
+{"engine_iter": 2, "engine_iter_phase": 1, "commit": "01d27b81d7f51bcb3ead72bbead3d0acdea0b9fc"}
+{"schema_version": "1.1", "commit": "01d27b81d7f51bcb3ead72bbead3d0acdea0b9fc"}
 {"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending", "1.5": "pending", "1.6": "pending", "1.7": "pending"}, "timeout": 600, "commit": null, "notes": "zombie检测+crash-loop检测+≥3次卡死退backlog", "color_depth": 1, "color_group": "T", "retry": 1}
-

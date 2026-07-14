@@ -734,6 +734,55 @@ class FileBoardStore:
         except OSError as exc:
             _log.error("event write failed for %s: %s", task_id, exc)
 
+    def _sync_state_md(self) -> None:
+        """更新 .ccc/state.md 看板状态节（move_task/quarantine 成功后自动触发）
+
+        使用 <!-- board-status --> / <!-- /board-status --> 配对标记
+        做确定性替换；无标记时追加末尾。调用方必须在锁释放后再调，
+        以避免延长看板写锁持有时间。
+        """
+        state_md = self.workspace / ".ccc" / "state.md"
+        counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
+        now = now_iso()
+
+        lines = [
+            "<!-- board-status -->",
+            "## 看板状态",
+            "",
+            f"> 自动更新 — 最后刷新时间：{now}",
+            "",
+            "| 列 | 任务数 |",
+            "|---|------:|",
+        ]
+        for col in COLUMNS:
+            lines.append(f"| {col} | {counts[col]} |")
+        lines.append("")
+        lines.append("<!-- /board-status -->")
+        block = "\n".join(lines)
+
+        try:
+            if state_md.exists():
+                content = state_md.read_text(encoding="utf-8")
+                if (
+                    "<!-- board-status -->" in content
+                    and "<!-- /board-status -->" in content
+                ):
+                    pre = content.split("<!-- board-status -->")[0]
+                    post = content.split("<!-- /board-status -->", 1)[1]
+                    new_content = pre + block + "\n" + post
+                else:
+                    new_content = content.rstrip() + "\n\n" + block + "\n"
+            else:
+                new_content = block + "\n"
+        except OSError as exc:
+            _log.warning("_sync_state_md: 读取 %s 失败: %s", state_md, exc)
+            return
+
+        try:
+            _atomic_write(state_md, new_content)
+        except OSError as exc:
+            _log.warning("_sync_state_md: 写入 %s 失败: %s", state_md, exc)
+
 
 # ═══════════════════════════════════════════
 # v0.28.0 quarantine 模块级函数（cleanup_task / index_task / harvesting）
