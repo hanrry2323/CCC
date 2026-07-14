@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.24] — 2026-07-14
+
+- engine-phase-parallel-dispatch: 看板发布
+
 ## [v0.29.23] — 2026-07-14
 
 - test-cockpit-alive-check: 看板发布
@@ -1688,3 +1692,7 @@ git push origin main --tags
 ## [v0.29.22] - 2026-07-14
 
 - test-cockpit-alive-check: Cockpit /api/alive 端点单元测试 看板发布
+
+## [v0.29.23] - 2026-07-14
+
+- engine-phase-parallel-dispatch: 无依赖 phase 支持并行执行 看板发布
