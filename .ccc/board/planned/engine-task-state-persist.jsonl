@@ -1,0 +1,1 @@
+{"id": "engine-task-state-persist", "title": "Engine 重启后 task 状态持久化恢复", "description": "", "status": "planned", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T10:47:31+08:00", "assignee": null, "tags": ["engine"], "note": null, "schema_version": "1.0", "complexity": "small"}

@@ -1,5 +1,3 @@
 {"engine_iter": 2, "engine_iter_phase": 1, "commit": "ba153134701532d21b6a200deb684135de95f0c5"}
-{"schema_version": "1.1", "commit": "ba153134701532d21b6a200deb684135de95f0c5"}
+{"schema_version": "1.1", "commit": "479ac6dcdf27a853f6f991326805d3d1c9ff8c30"}
 {"phase": 1, "status": "done", "subtasks": {"1.1": "pending"}, "timeout": 120, "commit": "87e3a4e263c13ea2fb3e13384e0b1c457e8a03a0", "notes": "去掉 _bump_version 两处 write_text 的 +\"\\n\"", "color_depth": 1, "color_group": "M", "retry": 7}
-
-

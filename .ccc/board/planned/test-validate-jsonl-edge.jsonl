@@ -1,0 +1,1 @@
+{"id": "test-validate-jsonl-edge", "title": "task JSONL 校验边界场景测试", "description": "", "status": "planned", "created_at": "2026-07-14T10:47:31+08:00", "updated_at": "2026-07-14T10:47:31+08:00", "assignee": null, "tags": ["test"], "note": null, "schema_version": "1.0", "complexity": "small"}

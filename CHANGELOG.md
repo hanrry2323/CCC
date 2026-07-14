@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.12] — 2026-07-14
+
+- cockpit-auto-refresh: 看板发布
+
 ## [v0.29.10] — 2026-07-14
 
 - fix-lint-2026-07-14: 看板发布
@@ -1596,3 +1600,7 @@ git push origin main --tags
 ## [v0.29.9] - 2026-07-14
 
 - fix-lint-2026-07-14: Plan: fix-lint-2026-07-14 — ruff 扫描修复 32 处 lint 问题 看板发布
+
+## [v0.29.11] - 2026-07-14
+
+- cockpit-auto-refresh: Cockpit 30s 自动轮询刷新端口状态 看板发布

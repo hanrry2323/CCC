@@ -1,0 +1,8 @@
+{"phase": 1, "status": "done", "subtasks": {"1.1": "done", "1.2": "done", "1.3": "done"}, "commit": "6af9121", "notes": "P0-1 cluster-bus.py"}
+{"phase": 2, "status": "done", "subtasks": {"2.1": "done", "2.2": "done", "2.3": "done"}, "commit": "fa0fa2e", "notes": "P0-2 ccc-dispatch.py"}
+{"phase": 3, "status": "done", "subtasks": {"3.1": "done", "3.2": "done", "3.3": "done"}, "commit": "376e2b9", "notes": "P1-1 cluster-protocol.md"}
+{"phase": 4, "status": "done", "subtasks": {"4.1": "done", "4.2": "done"}, "commit": "090e918", "notes": "P1-2 test-capability-required.py"}
+{"phase": 5, "status": "done", "subtasks": {"5.1": "done"}, "commit": "e32d9df", "notes": "P2-1 yaml examples"}
+{"phase": 6, "status": "done", "subtasks": {"6.1": "done"}, "commit": "a6ffc11", "notes": "P2-2 cluster-doctor.sh"}
+{"phase": 7, "status": "done", "subtasks": {"7.1": "done"}, "commit": "dd2a65c", "notes": "P3-1 abc report CONDITIONAL_PASS (abc project)"}
+{"phase": 8, "status": "done", "subtasks": {"8.1": "done", "8.2": "done"}, "commit": "8a19431", "notes": "P3-2 dispatcher PoC end-to-end"}
