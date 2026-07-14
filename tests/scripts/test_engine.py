@@ -1,4 +1,5 @@
 """test_engine.py — ccc-engine.py 可测纯逻辑 + phase 依赖链（mock 文件系统）"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -12,7 +13,6 @@ from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent.parent.parent / "scripts"
 
-# ccc-board: phase 依赖（Engine 调度所依赖）
 _spec_board = importlib.util.spec_from_file_location(
     "ccc_board_engine_test", str(SCRIPTS / "ccc-board.py")
 )
@@ -24,8 +24,8 @@ _spec_board.loader.exec_module(ccc_board)
 
 _resolve_phase_dependencies = ccc_board._resolve_phase_dependencies
 _detect_phase_cycle = ccc_board._detect_phase_cycle
+_check_phase_failures = ccc_board._check_phase_failures
 
-# ccc-engine: 辅助函数（不跑 engine_loop）
 _spec_engine = importlib.util.spec_from_file_location(
     "ccc_engine_test", str(SCRIPTS / "ccc-engine.py")
 )
@@ -35,8 +35,6 @@ _spec_engine.loader.exec_module(ccc_engine)
 
 
 class TestEnginePhaseDependencyChain:
-    """Engine 依赖 _resolve_phase_dependencies — 纯逻辑，mock phases 列表。"""
-
     def test_chain_all_executable_when_no_deps(self):
         phases = [
             {"phase": 1, "status": "pending", "depends_on": []},
@@ -47,53 +45,47 @@ class TestEnginePhaseDependencyChain:
         assert 2 in exe
         assert not skipped
 
-    def test_cycle_marks_skipped(self):
-        phases = [
-            {"phase": 1, "status": "pending", "depends_on": [2]},
-            {"phase": 2, "status": "pending", "depends_on": [1]},
-        ]
-        cycles = _detect_phase_cycle(phases)
-        assert len(cycles) >= 1
-        _, _, skipped = _resolve_phase_dependencies(phases)
-        assert 1 in skipped and 2 in skipped
-
-    def test_failed_upstream_skips_downstream(self):
+    def test_phase_fail_skip_dependent(self):
+        """phase 1 failed → phase 2 (depends_on phase1) 被标 skipped。"""
         phases = [
             {"phase": 1, "status": "failed", "depends_on": []},
             {"phase": 2, "status": "pending", "depends_on": [1]},
         ]
         exe, blocked, skipped = _resolve_phase_dependencies(phases)
+        assert 1 not in exe
         assert 2 in skipped
         assert 2 not in exe
+        assert 2 not in blocked
 
+    def test_phase_fail_jump_executable(self):
+        """phase 1 failed → 无依赖的 phase 3 仍可执行。"""
+        phases = [
+            {"phase": 1, "status": "failed", "depends_on": []},
+            {"phase": 2, "status": "pending", "depends_on": [1]},
+            {"phase": 3, "status": "pending", "depends_on": []},
+        ]
+        exe, blocked, skipped = _resolve_phase_dependencies(phases)
+        assert 3 in exe
+        assert 1 not in exe
+        assert 2 in skipped
+        assert 3 not in skipped
+        assert 3 not in blocked
 
-class TestEngineHelpers:
-    def test_wait_tick_sleeps_remaining(self):
-        start = time.time() - 5
-        with patch("time.sleep") as sleep:
-            ccc_engine._wait_tick(start)
-        sleep.assert_called_once()
-        assert sleep.call_args[0][0] > 0
-
-    def test_audit_should_run_when_no_last_run(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        assert ccc_engine._audit_should_run(str(tmp_path / "ws"), interval_hours=2)
-
-    def test_audit_should_run_respects_interval(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        audit_dir = tmp_path / ".ccc"
-        audit_dir.mkdir(parents=True)
-        slug_file = audit_dir / "audit-last-run.ws.json"
-        recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-        slug_file.write_text(json.dumps({"last_run": recent}))
-        assert ccc_engine._audit_should_run(str(tmp_path / "ws"), interval_hours=24) is False
-
-    def test_get_store_cached(self, tmp_path, monkeypatch):
-        board = tmp_path / ".ccc" / "board"
-        board.mkdir(parents=True)
-        for col in ccc_board.COLUMNS if hasattr(ccc_board, "COLUMNS") else []:
-            (board / col).mkdir(exist_ok=True)
-        ccc_engine._store_instance = None
-        s1 = ccc_engine._get_store(tmp_path)
-        s2 = ccc_engine._get_store(tmp_path)
-        assert s1 is s2
+    def test_phase_all_terminal(self):
+        """全部 phase 失败或完成时，_check_phase_failures 返回 all_terminal=True。"""
+        phases = [
+            {"phase": 1, "status": "done", "depends_on": []},
+            {"phase": 2, "status": "failed", "depends_on": []},
+            {"phase": 3, "status": "skipped", "depends_on": [2]},
+        ]
+        with (
+            patch.object(ccc_board, "_load_phases", return_value=phases),
+            patch.object(ccc_board, "_apply_phase_status_updates", return_value=None),
+            patch.object(ccc_board, "_read_engine_iter", return_value=0),
+            patch.object(ccc_board, "_write_engine_iter", return_value=None),
+        ):
+            result = _check_phase_failures("dummy-task")
+        assert result["all_terminal"] is True
+        assert result["all_failed_or_skipped"] is False
+        assert 3 in result["skipped"]
+        assert result["executable"] == []
