@@ -130,6 +130,61 @@ def read_board_index(ws: Path) -> dict[str, int]:
     return counts
 
 
+def verify_board_index(ws: Path) -> list[str]:
+    """验证 workspace 的 index.json 与 board 目录一致性，自动修复。
+
+    Args:
+        ws: workspace 根路径
+
+    Returns:
+        操作描述列表：不一致时返回修复摘要，一致时返回 []
+    """
+    repairs = []
+    board_path = ws / ".ccc" / "board"
+    if not board_path.is_dir():
+        return repairs
+
+    try:
+        index_path = board_path / "index.json"
+        if not index_path.exists():
+            return repairs
+
+        idx_data = json_load(index_path)
+        if not isinstance(idx_data, dict):
+            idx_data = {}
+
+        for c in BOARD_COLS:
+            actual = read_board_index(ws).get(c, 0)
+            idx = idx_data.get(c, 0)
+            if actual != idx:
+                diffs = []
+                if actual != 0:
+                    diffs.append(f"{c}(实际={actual})")
+                if idx != 0:
+                    diffs.append(f"{c}(idx={idx})")
+                warning = f"{ws.name}:index 不一致 {','.join(diffs)}"
+                repairs.append(warning)
+                print(f"[patrol] {warning}", file=sys.stderr)
+
+        if repairs:
+            print(
+                f"[patrol] {ws.name}: 正在同步 index.json 修复不一致", file=sys.stderr
+            )
+            _sync_board_index(ws)
+            repairs.append(f"{ws.name}:index 已修复 ({len(repairs)}列不一致)")
+            print(f"[patrol] {ws.name}:index 同步修复完成", file=sys.stderr)
+    except Exception as exc:
+        print(
+            f"[patrol] 验证 workspace {ws.name} 的 index 健全性失败: {exc}",
+            file=sys.stderr,
+        )
+        repair = f"[验证失败]{ws.name}: {exc}"
+        repairs.append(repair)
+
+    return repairs
+    return counts
+
+
 def file_age_seconds(path: Path) -> int | None:
     """文件最后修改距现在的秒数"""
     try:
@@ -191,16 +246,14 @@ def ensure_engine_healthy() -> str:
     """
     alive = engine_is_running()
     if alive:
-        # 检查 heartbeat 是否 stale
+        # 检查 heartbeat 是否 stale（如果进程活着但心跳超时，不重启，只记 warning）
         hb_status, hb = check_heartbeat(CCC_HOME)
         if hb_status == "stale":
-            # heartbeat stale → 可能 Engine 挂了但 zombie 残留？先 kill 再启
-            action = "heartbeat stale"
-            _try_kill_engine()
-            time.sleep(2)
-            if _try_start_engine():
-                return "RESTARTED"
-            return "DEAD"
+            # 进程 alive + 心跳 stale = Engine 忙（如 Claude API call），不杀
+            print(
+                f"[patrol] heartbeat stale ({hb.get('timestamp', '?')}) but PID alive, skipping restart",
+                file=sys.stderr,
+            )
         return "OK"
 
     # Engine 完全死了，启动
@@ -389,6 +442,7 @@ def _move_task(ws: Path, tid: str, src: str, dst: str) -> bool:
 
         sys.path.insert(0, str(CCC_HOME / "scripts"))
         from _board_store import FileBoardStore
+
         store = FileBoardStore(ws)
         ok = store.move_task(tid, src, dst)
         store.update_index()
@@ -510,7 +564,9 @@ def check_stuck_tasks(
             try:
                 r = subprocess.run(
                     ["ps", "aux"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 for line in r.stdout.splitlines():
                     if tid in line and "grep" not in line:
@@ -543,9 +599,12 @@ def check_stuck_tasks(
             stuck_counters[tid] = stuck_count
 
     return ops, stuck_counters
+
+
 def _check_done_phases_in_wrong_column(ws: Path, ops: list[str], col: str) -> None:
     """检测 all-phases-done 但卡在 planned/in_progress 的任务 → 移到 testing"""
     import json as _json
+
     col_dir = ws / ".ccc" / "board" / col
     if not col_dir.is_dir():
         return
@@ -989,6 +1048,17 @@ def main() -> int:
     if warn:
         warnings.append(warn)
     save_patrol_state(ws_stats, engine_status, all_fix_ops, len(all_stuck_ops), warn)
+
+    # ── Step 4.5: index.json 一致性校验 ──
+    for name, path in WORKSPACES.items():
+        if not path.is_dir():
+            continue
+        repairs = verify_board_index(path)
+        if repairs:
+            all_fix_ops.extend(repairs)
+            for r in repairs:
+                if "不一致" in r:
+                    warnings.append(f"{name}:{r}")
 
     # ── Step 5: 修复后 commit ──
     for name, path in WORKSPACES.items():
