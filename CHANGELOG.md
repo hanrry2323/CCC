@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.21] — 2026-07-14
+
+- engine-task-state-persist: 看板发布
+
 ## [v0.29.20] — 2026-07-14
 
 - engine-stats-endpoint: 看板发布
@@ -1664,3 +1668,7 @@ git push origin main --tags
 ## [v0.29.18] - 2026-07-14
 
 - engine-phase-retry-config: phase 重试次数和超时可配置化 看板发布
+
+## [v0.29.20] - 2026-07-14
+
+- engine-task-state-persist: Engine 重启后 task 状态持久化恢复 看板发布
