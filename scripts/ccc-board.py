@@ -1506,7 +1506,27 @@ def check_product_async(task_id: str) -> dict:
         if pid_file.exists():
             try:
                 pid = int(pid_file.read_text().strip())
-                os.kill(pid, 0)
+                # v0.29.35: 检测 zombie 进程（STAT=Z）→ 视为已退出
+                _zombie = False
+                try:
+                    _ps = subprocess.run(
+                        ["ps", "-p", str(pid), "-o", "state="],
+                        capture_output=True, text=True, timeout=3,
+                    )
+                    if _ps.stdout.strip() == "Z":
+                        _zombie = True
+                except Exception:
+                    pass
+
+                if not _zombie:
+                    os.kill(pid, 0)
+                else:
+                    # 回收 zombie 进程表条目，然后视为已退出
+                    try:
+                        os.waitpid(pid, os.WNOHANG)
+                    except (ChildProcessError, OSError):
+                        pass
+                    raise ProcessLookupError(f"zombie pid {pid}")
             except (ValueError, ProcessLookupError):
                 # 进程已退出 — 检查输出文件是否有内容
                 if result_file.exists() and result_file.stat().st_size > 0:
