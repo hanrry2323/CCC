@@ -112,6 +112,10 @@ _last_empty_replenish: dict[str, float] = {}
 _MAX_HANG_RETRY = 2  # 单个 task 最多自动重启 hung 的次数
 _hang_retry_counter: dict[str, int] = {}  # task_key -> retry count
 
+# v0.31+: hang 检测（plan: executor-hang-detection）
+# Phase 4 of the pipeline: detect → write .hung → Phase 5 consumes it.
+_HANG_CHECK_INTERVAL_SEC = 300  # 5 分钟无活动判定为 hung
+
 
 def now_iso() -> str:
     return _utils_now_iso()
@@ -1385,9 +1389,11 @@ def engine_loop(workspaces: list[Path]) -> None:
             completed_tasks: list[str] = []
             if active_tasks:
                 # v0.31+: hang 自动重启（Phase 4 + Phase 5 联合投递）
-                # 先扫一轮 hung marker，触发 kill+stash+relaunch，再做完成判定
+                # Phase 4 先检测并写 .hung marker，Phase 5 再消费 marker 触发
+                # kill+stash+relaunch，最后再做完成判定。
                 for ws in workspaces:
                     _activate_workspace(ws)
+                    _check_and_mark_hung(ws, active_tasks)
                     _run_hang_auto_restart(ws, active_tasks)
                 for key, info in list(active_tasks.items()):
                     ws = info["workspace"]
@@ -1472,13 +1478,18 @@ def engine_loop(workspaces: list[Path]) -> None:
                             f"[stats] periodic aggregate error for {ws.name}: {exc}"
                         )
             ws_first_running: dict[str, str | None] = {}
+            ws_active_counts: dict[str, int] = {}
             for info in active_tasks.values():
                 ws_key = str(info["workspace"])
                 if ws_key not in ws_first_running:
                     ws_first_running[ws_key] = info["task_id"]
+                ws_active_counts[ws_key] = ws_active_counts.get(ws_key, 0) + 1
             for ws in workspaces:
                 ws_key = str(ws)
-                _write_heartbeat(ws, ws_first_running.get(ws_key))
+                running_task_id = ws_first_running.get(ws_key)
+                ws_count = ws_active_counts.get(ws_key, 0)
+                ws_pids = _get_running_pids(ws) if running_task_id else []
+                _write_heartbeat(ws, running_task_id, ws_count, ws_pids)
 
             while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
                 # v1.0: planned 优先（dev_role），无 planned 才 backlog（product_role）
@@ -1519,7 +1530,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                             f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
                         )
                         _run_testing_tasks_gate(ws)
-                    _write_heartbeat(ws, None)
+                    _write_heartbeat(ws, None, 0, [])
 
                     if _audit_should_run(str(ws)):
                         label = _ws_label(ws, program_dir)
@@ -1824,6 +1835,147 @@ def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
     return True
 
 
+def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
+    """扫描 active_tasks 中的 running phase，检测 hung 条件并写 .hung marker。
+
+    Phase 4 of executor-hang-detection plan（与 Phase 5 `_run_hang_auto_restart`
+    配对）。同一 tick 内 Phase 4 先跑、Phase 5 后跑：
+
+      Phase 4 (本函数): 检测 → 写 `.ccc/pids/<subid>.hung`（JSON）
+      Phase 5 (_run_hang_auto_restart): 读 .hung → kill + git stash + relaunch
+
+    判定条件（全部满足才写 marker）：
+      1. PID 存活（`os.kill(pid, 0)`，已退出抛 ProcessLookupError → 跳过）
+      2. CPU 0%（`ps -p PID -o %cpu=`，非 0 → 跳过，进程仍在工作）
+      3. 运行时长 > _HANG_CHECK_INTERVAL_SEC（`info["started_at"]`，不足 → 跳过）
+
+    排除项：
+      - 已存在 `.hung` → 不重复标记
+      - 已存在 `.done` → 任务已正常完成（race-safe）
+    """
+    from datetime import datetime as _dt
+
+    _activate_workspace(ws)
+    label = _ws_label(ws)
+    pids_dir = ws / ".ccc" / "pids"
+    now = _dt.now(timezone.utc)
+
+    for key, info in list(active_tasks.items()):
+        if info.get("workspace") != ws:
+            continue
+        tid = info["task_id"]
+        try:
+            cur_phase = _current_running_phase(tid)
+        except Exception as exc:
+            engine_log(f"[{label}] hang-detect: 读 {tid} current phase 失败: {exc}")
+            continue
+        if cur_phase is None or cur_phase <= 0:
+            continue
+
+        subid = _phase_market_subid(tid, cur_phase)
+        hung_path = pids_dir / f"{subid}.hung"
+        done_path = pids_dir / f"{subid}.done"
+        pid_path = pids_dir / f"{subid}.pid"
+
+        # 已标记或已完成 → 跳过
+        if hung_path.is_file():
+            continue
+        if done_path.is_file():
+            continue
+
+        # 读 PID
+        if not pid_path.is_file():
+            continue
+        try:
+            pid = int(pid_path.read_text().strip())
+        except (ValueError, OSError) as exc:
+            engine_log(f"[{label}] hang-detect: {tid} 读 PID 失败: {exc}")
+            continue
+        if pid <= 0:
+            continue
+
+        # PID 存活检查
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            # 进程存在但没权限（macOS root-owned），视为仍存活
+            pass
+        except OSError as exc:
+            engine_log(f"[{label}] hang-detect: {tid} PID={pid} 检查异常: {exc}")
+            continue
+
+        # 运行时长检查
+        started_str = info.get("started_at", "")
+        if not started_str:
+            continue
+        try:
+            started = _dt.fromisoformat(str(started_str).replace("Z", "+00:00"))
+            elapsed = (now - started).total_seconds()
+        except (ValueError, TypeError) as exc:
+            engine_log(f"[{label}] hang-detect: {tid} started_at 解析失败: {exc}")
+            continue
+        if elapsed < _HANG_CHECK_INTERVAL_SEC:
+            continue
+
+        # CPU 检查（仅在存活 + 足够久的 phase 上跑）
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "%cpu="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            engine_log(f"[{label}] hang-detect: {tid} ps 超时，跳过本次")
+            continue
+        except OSError as exc:
+            engine_log(f"[{label}] hang-detect: {tid} ps 异常: {exc}")
+            continue
+        if result.returncode != 0:
+            # 进程刚退出，ps 返回非 0 → 不算 hung
+            continue
+        try:
+            cpu = float(result.stdout.strip())
+        except ValueError:
+            engine_log(
+                f"[{label}] hang-detect: {tid} ps 输出无法解析: {result.stdout!r}"
+            )
+            continue
+        if cpu > 0.0:
+            continue
+
+        # 全部条件满足 → 写 .hung marker
+        marker = {
+            "task_id": tid,
+            "phase": cur_phase,
+            "pid": pid,
+            "cpu": cpu,
+            "elapsed_sec": int(elapsed),
+            "detected_at": now_iso(),
+        }
+        try:
+            hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            engine_log(f"[{label}] hang-detect: {tid} 写 .hung 失败: {exc}")
+            continue
+
+        _log_stats(
+            ws,
+            "hang_detected",
+            tid,
+            phase=cur_phase,
+            pid=pid,
+            cpu=cpu,
+            elapsed_sec=int(elapsed),
+        )
+        engine_log(
+            f"[{label}] hang-detect: {tid} phase {cur_phase} PID={pid} "
+            f"CPU={cpu:.1f}% 运行时长={int(elapsed)}s → 标记 .hung"
+        )
+
+
 def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
     """扫描 active_tasks 中的 hung phase 并自动重启（v0.31+）。
 
@@ -1929,11 +2081,39 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
             engine_log(f"[{label}] hang-auto: {tid} relaunch 返回非 ok: {result}")
 
 
-def _write_heartbeat(ws: Path, running_task_id: str | None) -> None:
+def _get_running_pids(ws: Path) -> list[int]:
+    """扫描 .ccc/pids/ 目录，返回没有对应 .done 标记的 PID 列表。"""
+    pids_dir = ws / ".ccc" / "pids"
+    if not pids_dir.is_dir():
+        return []
+    result: list[int] = []
+    for f in sorted(pids_dir.iterdir()):
+        if f.suffix != ".pid":
+            continue
+        subid = f.stem
+        if (pids_dir / f"{subid}.done").exists():
+            continue
+        try:
+            pid = int(f.read_text().strip())
+            if pid > 0:
+                result.append(pid)
+        except (ValueError, OSError):
+            pass
+    return result
+
+
+def _write_heartbeat(
+    ws: Path,
+    running_task_id: str | None,
+    active_task_count: int = 0,
+    running_pids: list[int] | None = None,
+) -> None:
     ws = ws.resolve()
     hb = {
         "workspace": str(ws),
         "running": running_task_id or None,
+        "active_task_count": active_task_count,
+        "running_pids": running_pids or [],
         "timestamp": now_iso(),
     }
     hb_file = ws / ".ccc" / "engine-heartbeat.json"
