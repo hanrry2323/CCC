@@ -18,6 +18,7 @@
 #   3  = opencode-exec 调用失败
 #   4  = opencode exec 本身非零退出
 #   5  = post-exec 钩子阻断
+#   6  = router 健康检查失败（127.0.0.1:4000 无 2xx 响应）
 #   10 = on-error 钩子失败（仅日志，不阻断）
 #
 # v0.8 配套：从 tmux + claude 改为直接 opencode CLI
@@ -52,6 +53,17 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 log "=== launcher start: phase=$PHASE_ID prompt=$PROMPT_FILE timeout=${TIMEOUT}s ==="
 
+ROUTER_HEALTH_URL="${ROUTER_HEALTH_URL:-http://127.0.0.1:4000/health}"
+
+check_router_health() {
+  local code
+  code="$(curl -sS --connect-timeout 3 --max-time 8 -o /dev/null -w '%{http_code}' "$ROUTER_HEALTH_URL" 2>>"$LOG_FILE" || echo "000")"
+  if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+    return 0
+  fi
+  return 1
+}
+
 # --- Step 1: 残留扫描（红线 X3）---
 log "Step 1: opencode-watchdog"
 if ! bash "$SCRIPT_DIR/opencode-watchdog.sh" >> "$LOG_FILE" 2>&1; then
@@ -64,6 +76,16 @@ if ! bash "$SCRIPT_DIR/opencode-watchdog.sh" >> "$LOG_FILE" 2>&1; then
     exit 1
   fi
 fi
+
+# --- Step 1.5: router 健康检查（红线：阻止在 down router 上浪费重试）---
+log "Step 1.5: router health check ($ROUTER_HEALTH_URL)"
+if ! check_router_health; then
+  log " router 健康检查 FAIL — $ROUTER_HEALTH_URL 返回非 2xx，拒绝启动 executor"
+  bash "$SCRIPT_DIR/ccc-notify.sh" L2 "router DOWN: $PHASE_ID" \
+    "url=$ROUTER_HEALTH_URL 拒绝启动 phase=$PHASE_ID" >/dev/null 2>&1 || true
+  exit 6
+fi
+log " router 健康: $ROUTER_HEALTH_URL"
 
 # --- Step 2: pre-exec 钩子 ---
 log "Step 2: pre-exec hook"
