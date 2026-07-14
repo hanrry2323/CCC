@@ -779,19 +779,6 @@ HTML_UI = r"""<!DOCTYPE html>
     --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
     --danger: #ff453a;
     --success: #30d158;
-    --terminal-bg: #0d0e15;
-    --terminal-text: #a9b1d6;
-    --terminal-prompt: #73daca;
-    --terminal-header: #7aa2f7;
-    --terminal-sep: #1a1b2e;
-    --terminal-info: #565f89;
-    --terminal-body: #13141f;
-    --terminal-comment: #3b3d55;
-  }
-  * { margin:0; padding:0; box-sizing:border-box; }
-    --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
-    --danger: #ff3b30;
-    --accent-hover: #0056b3;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; }
