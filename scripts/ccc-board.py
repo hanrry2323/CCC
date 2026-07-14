@@ -123,6 +123,13 @@ def _backoff_seconds(retry: int) -> int:
 def _quarantine(task_id: str, reason: str) -> None:
     """将任务移入异常列（委托 FileBoardStore）"""
     store.quarantine(task_id, reason)
+    # v0.32: 自动追加到 docs/lessons.md
+    try:
+        from _lessons import auto_append_lesson_md
+
+        auto_append_lesson_md(ROOT, task_id, phase=None, error=reason)
+    except Exception:
+        pass
 
 
 # v0.28.1-hotfix (2026-07-12): Python 3.14 PosixPath 是 __slots__ 对象，不支持动态属性赋值。

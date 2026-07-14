@@ -753,11 +753,7 @@ HTML_UI = r"""<!DOCTYPE html>
     --space-lg: 16px;
     --space-xl: 24px;
     --terminal-bg: #1a1b26;
-    --terminal-text: #a9b1d6;
-    --terminal-prompt: #73daca;
-    --terminal-header: #7aa2f7;
     --terminal-sep: #2f3346;
-    --terminal-info: #565f89;
     --terminal-body: #1f2233;
     --terminal-comment: #565f89;
     --transition-theme: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
@@ -780,13 +776,8 @@ HTML_UI = r"""<!DOCTYPE html>
     --danger: #ff453a;
     --success: #30d158;
     --terminal-bg: #0d0e15;
-    --terminal-text: #a9b1d6;
-    --terminal-prompt: #73daca;
-    --terminal-header: #7aa2f7;
     --terminal-sep: #1a1b2e;
-    --terminal-info: #565f89;
     --terminal-body: #13141f;
-    --terminal-comment: #3b3d55;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
     --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
