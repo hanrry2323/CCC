@@ -253,90 +253,7 @@ async def chat(request: Request):
     session_id = body.get("session_id", str(uuid.uuid4()))
     model = body.get("model", "flash")
     project = body.get("project", "ccc")
-
-    context = _get_project_context(project)
-    if context:
-        instruction = (
-            "## 模式说明\n"
-            "当前是 Chat 模式。禁止调用工具，禁止尝试读写文件，禁止执行命令。"
-            "只回复文字。以下是项目上下文供你参考：\n\n"
-        )
-        system_msg = {"role": "system", "content": instruction + context}
-        messages = [system_msg] + messages
-
-    if not messages:
-        raise HTTPException(status_code=400, detail="messages required")
-
-    async def generate():
-        stream_completed = False
-        full_content = ""
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    PROXY_URL,
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "stream": True,
-                        "max_tokens": 8192,
-                    },
-                    headers={"Accept": "text/event-stream"},
-                ) as resp:
-                    async for line in resp.aiter_lines():
-                        if line.startswith("data: "):
-                            data = line[6:]
-                            if data == "[DONE]":
-                                break
-                            try:
-                                chunk = json.loads(data)
-                                choices = chunk.get("choices", [])
-                                if not choices:
-                                    continue
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    full_content += content
-                                    yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
-                            except json.JSONDecodeError:
-                                pass
-            stream_completed = True
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-        except (GeneratorExit, asyncio.CancelledError):
-            # Client disconnected — save whatever we have
-            if full_content:
-                yield f"data: {json.dumps({'type': 'cancelled', 'session_id': session_id})}\n\n"
-            raise
-        finally:
-            if full_content:
-                chat_messages = [m for m in messages if m.get("role") != "system"]
-                for m in chat_messages:
-                    m.setdefault("mode", "chat")
-                chat_messages.append(
-                    {
-                        "role": "assistant",
-                        "content": full_content,
-                        "mode": "chat",
-                        "partial": not stream_completed,
-                    }
-                )
-                _save_session(
-                    session_id, chat_messages, project=project, mode="chat"
-                )
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.post("/api/execute")
-async def execute_mode(request: Request):
-    check_auth(request)
-    global _execute_running
-
-    body = await request.json()
-    messages = body.get("messages", [])
-    session_id = body.get("session_id", str(uuid.uuid4()))
-    project = body.get("project", "ccc")
-    timeout = int(body.get("timeout", 120))
+    timeout = int(body.get("timeout", 180))
 
     user_msgs = [m for m in messages if m.get("role") == "user"]
     if not user_msgs:
@@ -349,198 +266,167 @@ async def execute_mode(request: Request):
 
     project_path = _project_path(project)
 
-    # Queue check — if busy, add to wait list instead of rejecting
-    if _execute_running:
-        if len(_EXECUTE_WAITERS) >= _EXEC_QUEUE_MAX:
-            raise HTTPException(
-                status_code=429,
-                detail=f"执行队列已满（{_EXEC_QUEUE_MAX}个排队上限），请稍候再试",
-            )
+    # Inject project context into the prompt
+    context = _get_project_context(project)
+    if context:
+        prompt = (
+            f"## 项目上下文\n{context}\n\n---\n\n## 用户问题\n{prompt}"
+        )
 
     async def generate():
-        global _execute_running
-        # Queue position tracking
-        waiter_event = None
-        if _execute_running:
-            waiter_event = asyncio.Event()
-            _EXECUTE_WAITERS.append(waiter_event)
-            pos = len(_EXECUTE_WAITERS)
-            yield f"data: {json.dumps({'type': 'queue', 'position': pos, 'max': _EXEC_QUEUE_MAX})}\n\n"
-            try:
-                await asyncio.wait_for(waiter_event.wait(), timeout=180)
-            except asyncio.TimeoutError:
-                try:
-                    _EXECUTE_WAITERS.remove(waiter_event)
-                except ValueError:
-                    pass  # already removed by colliding finally
-                yield f"data: {json.dumps({'type': 'error', 'content': '排队超时（180s），请重新提交'})}\n\n"
-                return
-            except (GeneratorExit, asyncio.CancelledError):
-                try:
-                    _EXECUTE_WAITERS.remove(waiter_event)
-                except ValueError:
-                    pass
-                return
+        proc = None
+        full_content = ""
+        execution_results: list = []
+        total_cost_usd = None
+        total_tokens = None
+        stream_completed = False
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                CLAUDE_BIN,
+                "-p",
+                prompt,
+                "--print",
+                "--verbose",
+                "--output-format",
+                "stream-json",
+                "--model",
+                "flash",
+                cwd=project_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env={**CLAUDE_ENV, "CLAUDE_PROJECT_DIR": project_path},
+            )
 
-        async with _execute_lock:
-            _execute_running = True
-            proc = None
-            full_content = ""
-            execution_results: list = []
-            total_cost_usd = None
-            total_tokens = None
-            stream_completed = False
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    CLAUDE_BIN,
-                    "-p",
-                    prompt,
-                    "--print",
-                    "--verbose",
-                    "--output-format",
-                    "stream-json",
-                    "--model",
-                    "flash",
-                    cwd=project_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env={**CLAUDE_ENV, "CLAUDE_PROJECT_DIR": project_path},
-                )
-
-                async def _read_stderr():
-                    if proc.stderr:
-                        async for line in proc.stderr:
-                            _log.warning(
-                                "claude stderr: %s",
-                                line.decode(errors="replace").rstrip(),
-                            )
-
-                stderr_task = asyncio.create_task(_read_stderr())
-
-                deadline = asyncio.get_event_loop().time() + timeout
-                buffer = b""
-                while True:
-                    if await request.is_disconnected():
-                        proc.kill()
-                        break
-                    remaining = deadline - asyncio.get_event_loop().time()
-                    if remaining <= 0:
-                        proc.kill()
-                        yield f"data: {json.dumps({'type': 'error', 'content': '执行超时（120s）'})}\n\n"
-                        break
-                    try:
-                        chunk = await asyncio.wait_for(
-                            proc.stdout.read(4096), timeout=min(remaining, 5.0)
+            async def _read_stderr():
+                if proc.stderr:
+                    async for line in proc.stderr:
+                        _log.warning(
+                            "claude stderr: %s",
+                            line.decode(errors="replace").rstrip(),
                         )
-                    except asyncio.TimeoutError:
-                        if proc.returncode is not None:
-                            break
-                        continue
-                    if not chunk:
-                        break
-                    buffer += chunk
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        line_str = line.decode(errors="replace").strip()
-                        if not line_str:
-                            continue
-                        try:
-                            event = json.loads(line_str)
-                        except json.JSONDecodeError:
-                            continue
-                        evt_type = event.get("type")
-                        if evt_type == "assistant":
-                            msg = event.get("message", {})
-                            for block in msg.get("content", []):
-                                btype = block.get("type")
-                                if btype == "text":
-                                    text = block.get("text", "")
-                                    if text:
-                                        full_content += text
-                                        yield f"data: {json.dumps({'type': 'delta', 'content': text})}\n\n"
-                                elif btype == "tool_use":
-                                    name = block.get("name", "tool")
-                                    inp = block.get("input", {})
-                                    execution_results.append(
-                                        {"tool": name, "input": inp, "result": ""}
-                                    )
-                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp})}\n\n"
-                        elif evt_type == "user":
-                            msg = event.get("message", {})
-                            for block in msg.get("content", []):
-                                if block.get("type") == "tool_result":
-                                    result = block.get("content", "")
-                                    if execution_results:
-                                        execution_results[-1]["result"] = result
-                                    yield f"data: {json.dumps({'type': 'tool_result', 'content': result})}\n\n"
-                        elif evt_type == "result":
-                            total_cost_usd = event.get("total_cost_usd")
-                            total_tokens = event.get("usage", {}).get("input_tokens", 0)
-                            total_tokens = (total_tokens or 0) + event.get(
-                                "usage", {}
-                            ).get("output_tokens", 0)
-                            result_text = event.get("result", "")
-                            if result_text and not full_content:
-                                full_content = result_text
-                                yield f"data: {json.dumps({'type': 'delta', 'content': result_text})}\n\n"
 
-                stream_completed = True
+            stderr_task = asyncio.create_task(_read_stderr())
 
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5)
-                except asyncio.TimeoutError:
+            deadline = asyncio.get_event_loop().time() + timeout
+            buffer = b""
+            while True:
+                if await request.is_disconnected():
                     proc.kill()
-                    await proc.wait()
-
-                stderr_task.cancel()
-                try:
-                    await stderr_task
-                except asyncio.CancelledError:
-                    pass
-
-                if total_cost_usd is not None or total_tokens:
-                    yield f"data: {json.dumps({'type': 'cost', 'tokens': total_tokens or 0, 'usd': total_cost_usd or 0})}\n\n"
-
-                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
-
-            except (GeneratorExit, asyncio.CancelledError):
-                # Client disconnected — save partial content
-                raise
-            finally:
-                _execute_running = False
-                # Signal next waiter (if any) — inside lock; defensively guard IndexError
-                try:
-                    next_waiter = _EXECUTE_WAITERS.pop(0)
-                    next_waiter.set()
-                except IndexError:
-                    pass
-                if proc and proc.returncode is None:
+                    break
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
                     proc.kill()
-
-                exec_messages = []
-                for m in messages:
-                    if m.get("role") == "system":
-                        continue
-                    exec_messages.append({**m, "mode": "execute"})
-                if full_content:
-                    exec_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": full_content,
-                            "mode": "execute",
-                            "partial": not stream_completed,
-                        }
+                    yield f"data: {json.dumps({'type': 'error', 'content': '响应超时（180s），请重试'})}\n\n"
+                    break
+                try:
+                    chunk = await asyncio.wait_for(
+                        proc.stdout.read(4096), timeout=min(remaining, 5.0)
                     )
+                except asyncio.TimeoutError:
+                    if proc.returncode is not None:
+                        break
+                    continue
+                if not chunk:
+                    break
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    line_str = line.decode(errors="replace").strip()
+                    if not line_str:
+                        continue
+                    try:
+                        event = json.loads(line_str)
+                    except json.JSONDecodeError:
+                        continue
+                    evt_type = event.get("type")
+                    if evt_type == "assistant":
+                        msg = event.get("message", {})
+                        for block in msg.get("content", []):
+                            btype = block.get("type")
+                            if btype == "text":
+                                text = block.get("text", "")
+                                if text:
+                                    full_content += text
+                                    yield f"data: {json.dumps({'type': 'delta', 'content': text})}\n\n"
+                            elif btype == "tool_use":
+                                name = block.get("name", "tool")
+                                inp = block.get("input", {})
+                                execution_results.append(
+                                    {"tool": name, "input": inp, "result": ""}
+                                )
+                                yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp})}\n\n"
+                    elif evt_type == "user":
+                        msg = event.get("message", {})
+                        for block in msg.get("content", []):
+                            if block.get("type") == "tool_result":
+                                result = block.get("content", "")
+                                if execution_results:
+                                    execution_results[-1]["result"] = result
+                                yield f"data: {json.dumps({'type': 'tool_result', 'content': result})}\n\n"
+                    elif evt_type == "result":
+                        total_cost_usd = event.get("total_cost_usd")
+                        total_tokens = event.get("usage", {}).get("input_tokens", 0)
+                        total_tokens = (total_tokens or 0) + event.get(
+                            "usage", {}
+                        ).get("output_tokens", 0)
+                        result_text = event.get("result", "")
+                        if result_text and not full_content:
+                            full_content = result_text
+                            yield f"data: {json.dumps({'type': 'delta', 'content': result_text})}\n\n"
+
+            stream_completed = True
+
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+
+            stderr_task.cancel()
+            try:
+                await stderr_task
+            except asyncio.CancelledError:
+                pass
+
+            if total_cost_usd is not None or total_tokens:
+                yield f"data: {json.dumps({'type': 'cost', 'tokens': total_tokens or 0, 'usd': total_cost_usd or 0})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+
+        except (GeneratorExit, asyncio.CancelledError):
+            raise
+        finally:
+            if proc and proc.returncode is None:
+                proc.kill()
+            if full_content:
+                chat_messages = [m for m in messages if m.get("role") != "system"]
+                for m in chat_messages:
+                    m.setdefault("mode", "chat")
+                chat_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": full_content,
+                        "mode": "chat",
+                        "execution_results": execution_results,
+                        "partial": not stream_completed,
+                    }
+                )
                 _save_session(
                     session_id,
-                    exec_messages,
+                    chat_messages,
                     project=project,
-                    mode="execute",
+                    mode="chat",
                     execution_results=execution_results,
                     total_cost_usd=total_cost_usd,
                 )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.post("/api/execute")
+async def execute_mode(request: Request):
+    """Alias for /api/chat — merged single-channel."""
+    return await chat(request)
 
 
 async def _board_proxy(
