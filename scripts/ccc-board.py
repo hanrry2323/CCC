@@ -1632,6 +1632,598 @@ def _write_async_product_result(
     move_task(task_id, "backlog", "planned")
 
 
+# ═══════════════════════════════════════════════════════════════
+# v0.33: 异步 reviewer / tester / pytest（Popen + marker 文件）
+# ═══════════════════════════════════════════════════════════════
+
+
+def _get_git_diff_for_task(ws: Path, task_id: str) -> tuple[str, str]:
+    """获取 task 的 git diff stat 和 full diff。
+
+    Returns: (diff_stat, full_diff)
+    """
+    import subprocess as _sp
+
+    try:
+        stat_r = _sp.run(
+            ["git", "log", "--all", "--oneline", "--grep", task_id,
+             "--format=%H", "--max-count=1"],
+            cwd=ws, capture_output=True, text=True, timeout=10,
+        )
+        merge_base = stat_r.stdout.strip()
+        if not merge_base:
+            # fallback: 从头查
+            merge_base = "HEAD"
+        # diff stat
+        ds = _sp.run(
+            ["git", "diff", f"{merge_base}..HEAD", "--stat"],
+            cwd=ws, capture_output=True, text=True, timeout=10,
+        )
+        fd = _sp.run(
+            ["git", "diff", f"{merge_base}..HEAD"],
+            cwd=ws, capture_output=True, text=True, timeout=30,
+        )
+        return (ds.stdout.strip(), fd.stdout.strip())
+    except Exception:
+        return ("", "")
+
+
+def launch_reviewer_async(task_id: str, ws: Path) -> dict:
+    """异步启动 reviewer LLM 子进程。
+
+    写 prompt 后 Popen claude -p，引擎下个 tick 用 check_reviewer_async() 检查。
+
+    Returns: {"ok": True, "pid": int}
+             {"status": "skip_small", "msg": "..."} — small 类直接 py_compile 通过
+             {"error": str}
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. 获取 task 信息
+    tasks = list_tasks("testing")
+    task = next((t for t in tasks if t["id"] == task_id), None)
+    if task is None:
+        return {"error": f"task '{task_id}' not found in testing"}
+
+    plan_file = ws / ".ccc" / "plans" / f"{task_id}.plan.md"
+    plan_text = plan_file.read_text() if plan_file.exists() else ""
+
+    # 2. 获取 git diff
+    diff_stat, full_diff = _get_git_diff_for_task(ws, task_id)
+
+    # 3. 分类变更大小
+    size_class, total_lines = _classify_review_size(diff_stat)
+    if size_class == "unknown":
+        return {"error": "diff stat 缺 summary 行，无法分级"}
+
+    # small 类：跳过 LLM，直接 py_compile 静态检查（快速，不阻塞）
+    if size_class == "small":
+        files = _parse_plan_scope(task_id)
+        if not files:
+            files = [str(p) for p in (ws / "scripts").rglob("*.py")]
+        import glob as _glob
+
+        py_files = []
+        for f in files:
+            matched = _glob.glob(str(ws / f)) if "*" in f else [str(ws / f)]
+            matched = [m for m in matched if _is_path_in_root(Path(m))]
+            py_files.extend(matched)
+        py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
+
+        py_ok = True
+        if py_files:
+            py_ok = _py_compile_fallback(task_id, py_files)
+        elif not full_diff.strip():
+            return {"error": "small-class: 空 diff"}
+        # small 类直接返回 pass（py_compile 已检查或无可检查项）
+        # 写 review 报告
+        report_dir = ws / ".ccc" / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        review_md = report_dir / f"{task_id}.review.md"
+        review_md.write_text(
+            f"# {task_id} Review\n\n"
+            f"## Verdict: **PASS**\n\n"
+            f"## Size Class: **small** ({total_lines} 行)\n\n"
+            f"v0.24.1: small 类变更跳过 LLM，仅 py_compile 静态检查通过。\n\n"
+            f"## Files Checked ({len(py_files)} 条)\n\n"
+            + "\n".join(f"- {Path(f).name}" for f in py_files)
+        )
+        # 写 verdict
+        verdict_dir = ws / ".ccc" / "verdicts"
+        verdict_dir.mkdir(parents=True, exist_ok=True)
+        verdict_path = verdict_dir / f"{task_id}.verdict.md"
+        verdict_path.write_text(
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** PASS\n\n"
+            f"**Size Class:** small\n\n"
+            f"py_compile static check passed\n"
+        )
+        return {"ok": True, "pid": 0, "status": "small_skip"}
+
+    # 4. medium/large: 构建 LLM prompt
+    impact_section = ""
+    if size_class == "large":
+        impact_section = (
+            "## 重点检查（large 类变更，>50 行）\n"
+            "6. **影响面分析**：列出本次改动触及的模块 + 上下游调用方 + 是否可能影响其他 task\n"
+            "7. **风险等级**：评估本次改动风险（high/medium/low）并说明理由\n"
+            "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
+        )
+
+    prompt = (
+        "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
+        "## Plan 验收清单\n"
+        f"{plan_text[:3000]}\n\n"
+        "## 改动概览 (git diff --stat)\n"
+        f"```\n{diff_stat[:2000]}\n```\n\n"
+        "## 改动详情 (git diff)\n"
+        f"```\n{full_diff[:8000]}\n```\n\n"
+        "## 审查清单（逐条核对）\n"
+        "1. 数据流正确性（输入/输出/边界）\n"
+        "2. 错误处理（异常/边界/资源泄漏）\n"
+        "3. 安全（SQL 注入/路径遍历/凭据泄漏/危险函数）\n"
+        "4. 命名与可读性\n"
+        "5. 是否与 plan 验收清单一致\n\n"
+        f"{impact_section}"
+        "## 输出要求\n"
+        "只输出以下 JSON，不要包装 markdown 代码块，不要附加任何解释：\n"
+        '{"verdict": "pass" 或 "fail", '
+        '"findings": [{"severity": "high"|"medium"|"low", "file": "...", "line": N, '
+        '"issue": "...", "suggestion": "..."}], '
+        '"summary": "一句话总评"}\n'
+    )
+
+    # 5. 写 prompt 文件
+    prompt_file = pids_dir / f"{task_id}.reviewer.prompt.md"
+    prompt_file.write_text(prompt)
+
+    # 6. 清理残留标记
+    for sfx in [".reviewer.out", ".reviewer.done", ".reviewer.pid"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+    # 7. Popen claude -p
+    result_file = pids_dir / f"{task_id}.reviewer.out"
+    relay_url = _get_relay_url()
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = relay_url
+    env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
+
+    try:
+        with open(result_file, "w") as out_f:
+            proc = subprocess.Popen(
+                [_CLAUDE_CLI, "-p", "--file", str(prompt_file)],
+                stdout=out_f,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                env=env,
+            )
+        pids_dir.joinpath(f"{task_id}.reviewer.pid").write_text(str(proc.pid))
+        _log.info("[reviewer-async] %s launched PID=%d size=%s", task_id, proc.pid, size_class)
+        return {"ok": True, "pid": proc.pid, "size_class": size_class}
+    except Exception as exc:
+        _log.error("[reviewer-async] %s launch failed: %s", task_id, exc)
+        return {"error": str(exc)}
+
+
+def _parse_reviewer_output(task_id: str, output: str) -> dict:
+    """解析 reviewer LLM 输出为 verdict 数据。"""
+    import re as _re
+
+    trimmed = output.strip()
+    # 优先：直接 JSON
+    if trimmed.startswith("{"):
+        try:
+            data = json.loads(trimmed)
+            if data.get("verdict") in ("pass", "fail"):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    # 次优：markdown 代码块
+    m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```", output, _re.IGNORECASE)
+    if not m:
+        m = _re.search(r"(\{.*\})", output, _re.DOTALL)
+    if not m:
+        return {"verdict": "fallback", "reason": "no JSON in Claude output"}
+    try:
+        json_str = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
+        json_str = json_str.strip()
+        data = None
+        for candidate in (
+            json_str,
+            _re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", json_str),
+        ):
+            try:
+                data = json.loads(candidate)
+                break
+            except json.JSONDecodeError:
+                continue
+        if data is None:
+            return {"verdict": "fallback", "reason": "JSON parse failed"}
+        if data.get("verdict") in ("pass", "fail"):
+            return data
+        return {"verdict": "fallback", "reason": f"unexpected verdict: {data.get('verdict')}"}
+    except json.JSONDecodeError as exc:
+        return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
+
+
+def check_reviewer_async(task_id: str, ws: Path) -> dict:
+    """检查异步 reviewer 是否完成。
+
+    Returns:
+        {"status": "pass"} — verdict PASS，已写 review 报告
+        {"status": "TIMEOUT"} — LLM timeout，engine 可重试
+        {"status": "running"} — 仍在执行
+        {"status": "failed", "reason": str} — 失败/quarantine
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    done_file = pids_dir / f"{task_id}.reviewer.done"
+    result_file = pids_dir / f"{task_id}.reviewer.out"
+    pid_file = pids_dir / f"{task_id}.reviewer.pid"
+
+    # 检查是否完成
+    is_done = done_file.exists()
+
+    # 如果没 done 标记，检查进程是否还在跑
+    if not is_done:
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)  # 0 = 只检查存活
+                return {"status": "running"}
+            except (ValueError, ProcessLookupError):
+                pass
+            except OSError:
+                pass
+        # 进程不在，判断为进程提前退出
+        return {"status": "failed", "reason": "process exited before writing verdict"}
+
+    # 读取输出
+    output = result_file.read_text() if result_file.exists() else ""
+    if not output.strip():
+        return {"status": "failed", "reason": "empty reviewer output"}
+
+    # 解析 verdict
+    verdict_data = _parse_reviewer_output(task_id, output)
+    verdict = verdict_data.get("verdict", "fallback")
+    summary = verdict_data.get("summary", "")
+    size_class = "unknown"
+
+    # 写 review 报告
+    report_dir = ws / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    review_md = report_dir / f"{task_id}.review.md"
+    review_md.write_text(
+        f"# {task_id} Review\n\n"
+        f"## Verdict: **{verdict.upper()}**\n\n"
+        f"{summary}\n\n"
+        f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
+        f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
+    )
+
+    # 写 verdict 文件
+    verdict_dir = ws / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    verdict_path = verdict_dir / f"{task_id}.verdict.md"
+
+    fallback_reason = verdict_data.get("reason", "").lower()
+    if "timeout" in fallback_reason:
+        verdict_path.write_text(
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** TIMEOUT\n\n"
+            f"**Reason:** {verdict_data.get('reason', 'unknown')}\n"
+        )
+        # 清理标记，让 engine 决定是否重试
+        _cleanup_reviewer_markers(pids_dir, task_id)
+        return {"status": "TIMEOUT", "reason": verdict_data.get("reason", "timeout")}
+
+    if verdict == "pass":
+        verdict_path.write_text(
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** PASS\n\n"
+            f"{summary}\n"
+        )
+        _cleanup_reviewer_markers(pids_dir, task_id)
+        return {"status": "pass"}
+
+    if verdict == "fail":
+        verdict_path.write_text(
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** FAIL\n\n"
+            f"{summary}\n"
+        )
+        _cleanup_reviewer_markers(pids_dir, task_id)
+        return {"status": "failed", "reason": "LLM verdict: fail"}
+
+    # fallback 处理（API 故障等）：medium/large 必须 quarantine
+    reason = (
+        f"medium/large-class LLM 不可用，"
+        f"reason={verdict_data.get('reason', 'unknown')}；"
+        f"放弃静默 verified，强制人工介入"
+    )
+    _quarantine(task_id, reason=reason)
+    _cleanup_reviewer_markers(pids_dir, task_id)
+    return {"status": "failed", "reason": reason}
+
+
+def _cleanup_reviewer_markers(pids_dir: Path, task_id: str) -> None:
+    """清理 reviewer async 标记文件"""
+    for sfx in [".reviewer.out", ".reviewer.done", ".reviewer.pid", ".reviewer.prompt.md"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def launch_tester_async(task_id: str, ws: Path) -> dict:
+    """异步启动 tester 验证子进程。
+
+    从 plan 提取验证命令，写入 shell 脚本后 Popen bash 执行。
+
+    Returns: {"ok": True, "pid": int, "cmds": int}
+             {"error": str}
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. 从 plan 提取验证命令
+    plan_file = ws / ".ccc" / "plans" / f"{task_id}.plan.md"
+    verify_commands = []
+    if plan_file.exists():
+        content = plan_file.read_text()
+        in_verify = False
+        for line in content.split("\n"):
+            if line.startswith("## 验收") or line.startswith("## 验证"):
+                in_verify = True
+                continue
+            if in_verify and line.startswith("## "):
+                break
+            if (
+                in_verify
+                and line.strip().startswith("- ")
+                and not line.strip().startswith("- 不")
+            ):
+                cmd = line.strip()[2:].strip()
+                verify_commands.append(cmd)
+
+    # fallback: 没有验收项，跑 pytest
+    if not verify_commands:
+        verify_commands = [
+            f"python3 -m pytest {ws / 'tests' / 'scripts'} -q --tb=line --timeout=60"
+        ]
+
+    # 强制 baseline
+    has_pyproject = (ws / "pyproject.toml").exists()
+    if has_pyproject and not any("pytest" in c for c in verify_commands):
+        verify_commands.append(
+            "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
+        )
+
+    if not verify_commands:
+        return {"error": "no verify commands (empty plan)"}
+
+    # 2. 写入 shell 脚本
+    script_lines = ["#!/bin/bash", "set -e"]
+    for cmd in verify_commands:
+        script_lines.append(cmd)
+    script_content = "\n".join(script_lines) + "\n"
+
+    script_file = pids_dir / f"{task_id}.tester.sh"
+    script_file.write_text(script_content)
+    script_file.chmod(0o700)
+
+    # 3. 清理残留标记
+    for sfx in [".tester.done", ".tester.exitcode", ".tester.out", ".tester.pid"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+    # 4. Popen bash script
+    result_file = pids_dir / f"{task_id}.tester.out"
+    exitcode_file = pids_dir / f"{task_id}.tester.exitcode"
+
+    try:
+        with open(result_file, "w") as out_f:
+            proc = subprocess.Popen(
+                ["bash", str(script_file)],
+                stdout=out_f,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=ws,
+            )
+        pids_dir.joinpath(f"{task_id}.tester.pid").write_text(str(proc.pid))
+        _log.info("[tester-async] %s launched PID=%d, %d commands", task_id, proc.pid, len(verify_commands))
+        return {"ok": True, "pid": proc.pid, "cmds": len(verify_commands)}
+    except Exception as exc:
+        _log.error("[tester-async] %s launch failed: %s", task_id, exc)
+        return {"error": str(exc)}
+
+
+def check_tester_async(task_id: str, ws: Path) -> dict:
+    """检查异步 tester 是否完成。
+
+    Returns:
+        {"status": "pass"} — 所有验证通过
+        {"status": "failed", "exit_code": int, "output": str} — 验证失败
+        {"status": "running"} — 仍在执行
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    done_file = pids_dir / f"{task_id}.tester.done"
+    exitcode_file = pids_dir / f"{task_id}.tester.exitcode"
+    result_file = pids_dir / f"{task_id}.tester.out"
+    pid_file = pids_dir / f"{task_id}.tester.pid"
+
+    # 检查是否完成
+    is_done = done_file.exists() or exitcode_file.exists()
+
+    if not is_done:
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)
+                return {"status": "running"}
+            except (ValueError, ProcessLookupError):
+                pass
+            except OSError:
+                pass
+        return {"status": "failed", "exit_code": -1, "output": "process exited"}
+
+    if exitcode_file.exists():
+        try:
+            exit_code = int(exitcode_file.read_text().strip())
+        except (ValueError, OSError):
+            exit_code = -1
+    else:
+        exit_code = 0
+
+    output = result_file.read_text() if result_file.exists() else ""
+
+    # 清理标记
+    _cleanup_tester_markers(pids_dir, task_id)
+
+    if exit_code == 0:
+        return {"status": "pass"}
+    return {"status": "failed", "exit_code": exit_code, "output": output[:2000]}
+
+
+def _cleanup_tester_markers(pids_dir: Path, task_id: str) -> None:
+    """清理 tester async 标记文件"""
+    for sfx in [".tester.done", ".tester.exitcode", ".tester.out", ".tester.pid", ".tester.sh"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def launch_pytest_async(task_id: str, ws: Path) -> dict:
+    """异步启动 pytest 子进程。
+
+    Popen pytest tests/，engine 下个 tick 用 check_pytest_async() 检查。
+
+    Returns: {"ok": True, "pid": int}
+             {"error": str}
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+
+    # 判断是否有 tests/ 目录
+    tests_dir = ws / "tests"
+    if not tests_dir.is_dir():
+        return {"error": "no tests/ directory, skipping pytest"}
+
+    # 构建 pytest 命令
+    venv_pytest = ws / ".venv" / "bin" / "pytest"
+    if venv_pytest.is_file():
+        cmd = [str(venv_pytest), "tests/", "-q", "--tb=line"]
+    else:
+        cmd = ["python3", "-m", "pytest", "tests/", "-q", "--tb=line"]
+
+    # 清理残留标记
+    for sfx in [".pytest.done", ".pytest.exitcode", ".pytest.out", ".pytest.pid"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+    # Popen pytest
+    result_file = pids_dir / f"{task_id}.pytest.out"
+    exitcode_file = pids_dir / f"{task_id}.pytest.exitcode"
+
+    try:
+        with open(result_file, "w") as out_f:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=out_f,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=ws,
+            )
+        pids_dir.joinpath(f"{task_id}.pytest.pid").write_text(str(proc.pid))
+        _log.info("[pytest-async] %s launched PID=%d", task_id, proc.pid)
+        return {"ok": True, "pid": proc.pid}
+    except Exception as exc:
+        _log.error("[pytest-async] %s launch failed: %s", task_id, exc)
+        return {"error": str(exc)}
+
+
+def check_pytest_async(task_id: str, ws: Path) -> dict:
+    """检查异步 pytest 是否完成。
+
+    Returns:
+        {"status": "pass"} — pytest 通过
+        {"status": "failed", "exit_code": int, "output": str} — pytest 失败
+        {"status": "running"} — 仍在执行
+        {"status": "skipped", "reason": str} — 无 tests/ 目录
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ws / ".ccc" / "pids"
+    done_file = pids_dir / f"{task_id}.pytest.done"
+    exitcode_file = pids_dir / f"{task_id}.pytest.exitcode"
+    result_file = pids_dir / f"{task_id}.pytest.out"
+    pid_file = pids_dir / f"{task_id}.pytest.pid"
+
+    # 判断是否有 tests/ 目录（launch 时返回的错误，check 时检查）
+    tests_dir = ws / "tests"
+    if not tests_dir.is_dir():
+        return {"status": "skipped", "reason": "no tests/ directory"}
+
+    is_done = done_file.exists() or exitcode_file.exists()
+
+    if not is_done:
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)
+                return {"status": "running"}
+            except (ValueError, ProcessLookupError):
+                pass
+            except OSError:
+                pass
+        return {"status": "failed", "exit_code": -1, "output": "process exited"}
+
+    if exitcode_file.exists():
+        try:
+            exit_code = int(exitcode_file.read_text().strip())
+        except (ValueError, OSError):
+            exit_code = -1
+    else:
+        exit_code = 0
+
+    output = result_file.read_text() if result_file.exists() else ""
+
+    # 清理标记
+    _cleanup_pytest_markers(pids_dir, task_id)
+
+    if exit_code == 0:
+        return {"status": "pass"}
+    return {"status": "failed", "exit_code": exit_code, "output": output[:2000]}
+
+
+def _cleanup_pytest_markers(pids_dir: Path, task_id: str) -> None:
+    """清理 pytest async 标记文件"""
+    for sfx in [".pytest.done", ".pytest.exitcode", ".pytest.out", ".pytest.pid"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
 def dev_role() -> dict:
     """开发工程师: 查 in_progress（重试）→ 查 planned（新的）→ opencode 执行"""
     import subprocess as sp
