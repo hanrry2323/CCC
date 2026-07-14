@@ -47,6 +47,10 @@ src-tauri/target/
 src-tauri/gen/
 .workbuddy/
 
+# 聊天会话日志（运行时数据，不提交）
+.ccc/chat/
+.ccc/.product-fail-counter/
+
 # v0.29.x: CCC Engine 运行时文件（不提交）
 .ccc/.dev_auto_retry.json
 .ccc/board/.color_counter
