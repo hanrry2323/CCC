@@ -1,0 +1,43 @@
+{
+  "session_id": "ex39-1784048157670",
+  "title": "echo safe",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "echo safe",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "`safe`",
+      "mode": "chat",
+      "execution_results": [
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "echo safe",
+            "description": "Echo the word safe"
+          },
+          "result": "safe"
+        }
+      ],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:56:06+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:55:57+08:00",
+  "execution_results": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "echo safe",
+        "description": "Echo the word safe"
+      },
+      "result": "safe"
+    }
+  ],
+  "total_cost_usd": 0.3337
+}

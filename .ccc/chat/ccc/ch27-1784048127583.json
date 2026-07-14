@@ -1,0 +1,25 @@
+{
+  "session_id": "ch27-1784048127583",
+  "title": "你好世界 🌍 こんにちは",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好世界 🌍 こんにちは",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！世界很大，但在这里只有你和我。\n\n有什么需要我做的吗？—— 写代码、查架构、跑任务、还是单纯聊聊方向？一句话就行。",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:55:36+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:55:27+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16479
+}

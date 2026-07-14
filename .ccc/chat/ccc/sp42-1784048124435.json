@@ -1,0 +1,25 @@
+{
+  "session_id": "sp42-1784048124435",
+  "title": "get me",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "get me",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "没有上下文，你这个 \"get me\" 想表达什么？\n\n要清单、取数据、查状态、拉代码、还是别的？请说清楚。",
+      "mode": "chat",
+      "execution_results": [],
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-15T00:55:30+08:00",
+  "status": "completed",
+  "created_at": "2026-07-15T00:55:24+08:00",
+  "execution_results": [],
+  "total_cost_usd": 0.16487000000000002
+}
