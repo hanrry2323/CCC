@@ -9,12 +9,14 @@
     浏览器打开 http://localhost:7778
 """
 
+import html
 import json
 import os
 import re
 import socket
-import urllib.request
+import urllib.error
 import urllib.parse
+import urllib.request
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -137,6 +139,133 @@ def _is_project_table(line: str, text: str) -> bool:
     return "项目状态" in before
 
 
+def _extract_queue_tasks(tasks, *, prefer: str) -> list:
+    """Normalize a list of task dicts into the queue shape used by the UI."""
+    if not isinstance(tasks, list):
+        return []
+    normalized: list = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        ts_value = (
+            t.get(prefer)
+            or t.get("created_at")
+            or t.get("updated_at")
+            or t.get("ts")
+            or ""
+        )
+        ts_str = str(ts_value)[:19] if ts_value else ""
+        normalized.append(
+            {
+                "id": str(t.get("id", "")),
+                "title": str(t.get("title", "")),
+                "ts": ts_str,
+            }
+        )
+    normalized.sort(key=lambda item: (item["ts"] == "", item["ts"]))
+    return normalized
+
+
+def _parse_iso_timestamp(value: str):
+    """Parse an ISO-ish timestamp into a datetime, or None on failure."""
+    if not isinstance(value, str) or not value:
+        return None
+    raw = value[:19]
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _format_duration_minutes(minutes: float) -> str:
+    """Render a wait-time estimate in a human-friendly Chinese string."""
+    if minutes is None or minutes < 0:
+        minutes = 0
+    if minutes < 30:
+        return f"约 {int(round(minutes))} 分钟"
+    if minutes < 120:
+        hours = int(minutes // 60)
+        mins = int(round(minutes - hours * 60))
+        if mins == 0:
+            return f"约 {hours} 小时"
+        return f"约 {hours} 小时 {mins} 分"
+    return "> 2 小时"
+
+
+def _estimate_rate_per_task_min(today_events) -> float:
+    """Estimate average minutes-per-task from today's in_progress events."""
+    default_rate = 30.0
+    cap_rate = 120.0
+    if not isinstance(today_events, list) or not today_events:
+        return default_rate
+    completed = 0
+    earliest_hour = None
+    now = datetime.now()
+    for ev in today_events:
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("to_column") != "in_progress":
+            continue
+        completed += 1
+        time_str = ev.get("time", "")
+        if isinstance(time_str, str) and len(time_str) >= 4 and time_str[2] == ":":
+            try:
+                hh = int(time_str[0:2])
+                mm = int(time_str[3:5])
+                candidate = hh + mm / 60.0
+                if earliest_hour is None or candidate < earliest_hour:
+                    earliest_hour = candidate
+            except ValueError:
+                continue
+    if completed <= 0:
+        return default_rate
+    current = now.hour + now.minute / 60.0
+    if earliest_hour is None:
+        hours_today = 1.0
+    else:
+        hours_today = max(current - earliest_hour, 1.0)
+    rate = hours_today * 60.0 / completed
+    if rate > cap_rate:
+        rate = cap_rate
+    if rate < 1.0:
+        rate = 1.0
+    return rate
+
+
+def _build_queue_detail(backlog_tasks, planned_tasks, rate_per_task_min: float) -> dict:
+    """Build per-task wait/estimate rows for the board queue display."""
+    backlog_list = backlog_tasks if isinstance(backlog_tasks, list) else []
+    planned_list = planned_tasks if isinstance(planned_tasks, list) else []
+    now = datetime.now()
+
+    def _row(task: dict, *, position_offset: int) -> dict:
+        ts = _parse_iso_timestamp(task.get("ts", ""))
+        waited_min = 0.0
+        if ts is not None:
+            diff = (now - ts).total_seconds() / 60.0
+            waited_min = max(diff, 0.0)
+        estimate_min = (position_offset + 1) * rate_per_task_min
+        return {
+            "id": task.get("id", ""),
+            "title": task.get("title", ""),
+            "waited": _format_duration_minutes(waited_min),
+            "estimate": _format_duration_minutes(estimate_min),
+        }
+
+    planned_rows = [_row(t, position_offset=i) for i, t in enumerate(planned_list)]
+    backlog_rows = [
+        _row(t, position_offset=len(planned_list) + i)
+        for i, t in enumerate(backlog_list)
+    ]
+    return {
+        "backlog": backlog_rows,
+        "planned": planned_rows,
+        "rate_per_task_min": rate_per_task_min,
+    }
+
+
 def probe_port(host: str, port: int) -> bool:
     """Check if a TCP port is open."""
     try:
@@ -257,7 +386,7 @@ def build_cockpit_data() -> dict:
     return data
 
 
-def _fetch_board_summary() -> dict:
+def _fetch_board_summary() -> dict | None:
     """Fetch board column counts + KPI summary from board-server (:7777).
 
     Returns a dict ready for render_html, or None when board-server is offline.
@@ -283,6 +412,8 @@ def _fetch_board_summary() -> dict:
     workspaces = {}
     active_tasks = []
     today_events = []
+    backlog_tasks: list = []
+    planned_tasks: list = []
 
     def _http_get_json(url: str):
         try:
@@ -299,10 +430,30 @@ def _fetch_board_summary() -> dict:
         cols = board.get("columns") or {}
         for k in columns:
             if k in cols:
-                try:
-                    columns[k] = int(cols[k])
-                except (TypeError, ValueError):
-                    pass
+                value = cols[k]
+                if isinstance(value, list):
+                    columns[k] = len(value)
+                    if k == "backlog":
+                        backlog_tasks = _extract_queue_tasks(value, prefer="ts")
+                    elif k == "planned":
+                        planned_tasks = _extract_queue_tasks(value, prefer="updated_at")
+                else:
+                    try:
+                        columns[k] = int(value)
+                    except (TypeError, ValueError):
+                        pass
+        if (
+            not backlog_tasks
+            and "backlog" in cols
+            and isinstance(cols["backlog"], list)
+        ):
+            backlog_tasks = _extract_queue_tasks(cols["backlog"], prefer="ts")
+        if (
+            not planned_tasks
+            and "planned" in cols
+            and isinstance(cols["planned"], list)
+        ):
+            planned_tasks = _extract_queue_tasks(cols["planned"], prefer="updated_at")
         ws = board.get("workspaces") or {}
         for name, path in ws.items():
             workspaces[name] = path
@@ -354,14 +505,100 @@ def _fetch_board_summary() -> dict:
     if board is None and dashboard is None:
         return None
 
+    rate_per_task_min = _estimate_rate_per_task_min(today_events)
+    queue_detail = _build_queue_detail(backlog_tasks, planned_tasks, rate_per_task_min)
+
     return {
         "columns": columns,
         "kpi": kpi,
         "workspaces": workspaces,
         "active_tasks": active_tasks,
         "today_events": today_events[:10],
+        "queue_detail": queue_detail,
         "last_updated": datetime.now().strftime("%H:%M"),
     }
+
+
+def _render_queue_detail(queue_detail: dict) -> str:
+    """Render the backlog/planned queue tables for the board overview."""
+    backlog_rows = (
+        queue_detail.get("backlog") if isinstance(queue_detail, dict) else None
+    )
+    planned_rows = (
+        queue_detail.get("planned") if isinstance(queue_detail, dict) else None
+    )
+    if backlog_rows is None:
+        backlog_rows = []
+    if planned_rows is None:
+        planned_rows = []
+    rate = (
+        queue_detail.get("rate_per_task_min")
+        if isinstance(queue_detail, dict)
+        else None
+    )
+    try:
+        rate_value = float(rate) if rate is not None else 30.0
+    except (TypeError, ValueError):
+        rate_value = 30.0
+
+    def _truncate(text: str, limit: int = 40) -> str:
+        s = str(text or "")
+        if len(s) <= limit:
+            return html.escape(s)
+        return html.escape(s[:limit] + "...")
+
+    def _column_block(column_key: str, title: str, color: str, rows: list) -> str:
+        body = ""
+        if not rows:
+            body = (
+                '<tr><td colspan="4" style="text-align:center;color:#86868b;'
+                'font-size:12px;padding:10px 0">队列为空</td></tr>'
+            )
+        else:
+            for idx, row in enumerate(rows, start=1):
+                if not isinstance(row, dict):
+                    continue
+                body += (
+                    f'<tr style="border-bottom:1px solid #f0f0f2">'
+                    f'<td style="padding:6px 8px;color:#86868b;font-size:12px;width:32px">{idx}</td>'
+                    f'<td style="padding:6px 8px;font-size:13px" title="{html.escape(str(row.get("title", "")))}">{_truncate(row.get("title", ""))}</td>'
+                    f'<td style="padding:6px 8px;color:#86868b;font-size:12px;white-space:nowrap">{html.escape(str(row.get("waited", "")))}</td>'
+                    f'<td style="padding:6px 8px;font-size:12px;white-space:nowrap">{html.escape(str(row.get("estimate", "")))}</td>'
+                    f"</tr>"
+                )
+        return (
+            f'<div style="border-left:3px solid {color};padding:6px 0 6px 10px;margin:8px 0">'
+            f'<div style="font-size:12px;font-weight:600;color:{color};margin-bottom:4px">{title} ({len(rows)})</div>'
+            f'<table style="width:100%;border-collapse:collapse">'
+            f'<thead><tr style="background:#fafafa">'
+            f'<th style="text-align:left;padding:4px 8px;font-size:11px;color:#86868b;width:32px">#</th>'
+            f'<th style="text-align:left;padding:4px 8px;font-size:11px;color:#86868b">任务</th>'
+            f'<th style="text-align:left;padding:4px 8px;font-size:11px;color:#86868b">等待</th>'
+            f'<th style="text-align:left;padding:4px 8px;font-size:11px;color:#86868b">预估</th>'
+            f"</tr></thead>"
+            f"<tbody>{body}</tbody>"
+            f"</table>"
+            f"</div>"
+        )
+
+    if not backlog_rows and not planned_rows:
+        body = '<div style="color:#86868b;font-size:12px;padding:8px 0">队列为空</div>'
+    else:
+        body = _column_block(
+            "planned", "Planned", BOARD_COLUMN_COLORS["planned"], planned_rows
+        ) + _column_block(
+            "backlog", "Backlog", BOARD_COLUMN_COLORS["backlog"], backlog_rows
+        )
+
+    rate_text = _format_duration_minutes(rate_value)
+    rate_label = f"速率推算: {rate_text}/任务"
+    return (
+        '<div class="queue-detail" style="margin-top:14px;padding-top:10px;border-top:1px dashed #e0e0e3">'
+        '<div style="font-size:13px;font-weight:600;margin-bottom:4px">队列详情</div>'
+        f'<div style="font-size:11px;color:#86868b;margin-bottom:6px">{rate_label}</div>'
+        f"{body}"
+        "</div>"
+    )
 
 
 BOARD_COLUMN_COLORS = {
@@ -438,11 +675,14 @@ def _render_board_section(board) -> str:
     )
 
     last_updated = board.get("last_updated", "")
+    queue_html = _render_queue_detail(board.get("queue_detail") or {})
+
     return (
         '<div style="background:{surface};border:1px solid {border};border-radius:8px;padding:14px">'
         '<div class="board-cards">{cards}</div>'
         '<div class="board-kpi">{kpi}</div>'
         '<div class="board-meta">数据更新时间：{ts}</div>'
+        '<div class="board-queue">{queue}</div>'
         "</div>"
     ).format(
         surface=THEME["surface"],
@@ -450,6 +690,7 @@ def _render_board_section(board) -> str:
         cards=cards_html,
         kpi=kpi_html,
         ts=last_updated or "—",
+        queue=queue_html,
     )
 
 
