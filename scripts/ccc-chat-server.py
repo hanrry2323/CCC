@@ -771,9 +771,16 @@ HTML_UI = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <title>CCC Chat</title>
 <style>
+  html { transition: background 0.3s ease; }
+  body { transition: var(--transition-theme); }
+  #app, #header, #sidebar, #input-area, #tabbar, .bubble,
+  .board-col, #task-modal, #modal-overlay, .file-tree-panel,
+  .board-card, .tool-card, #input-wrap, .session-item {
+    transition: var(--transition-theme);
+  }
   :root {
     --bg: #f8f8fa;
     --surface: #ffffff;
@@ -781,21 +788,62 @@ HTML_UI = r"""<!DOCTYPE html>
     --text-secondary: #86868b;
     --border: #e5e5ea;
     --accent: #007aff;
+    --accent-hover: #0056b3;
     --user-bg: #007aff;
     --user-text: #ffffff;
     --assistant-bg: #ffffff;
     --code-bg: #f0f0f5;
     --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+    --danger: #ff3b30;
+    --success: #34c759;
     --radius: 18px;
+    --radius-sm: 8px;
+    --radius-lg: 22px;
     --max-w: 720px;
     --space-xs: 4px;
     --space-sm: 8px;
     --space-md: 12px;
     --space-lg: 16px;
     --space-xl: 24px;
-    --radius-sm: 8px;
-    --radius-lg: 22px;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --terminal-bg: #1a1b26;
+    --terminal-text: #a9b1d6;
+    --terminal-prompt: #73daca;
+    --terminal-header: #7aa2f7;
+    --terminal-sep: #2f3346;
+    --terminal-info: #565f89;
+    --terminal-body: #1f2233;
+    --terminal-comment: #565f89;
+    --transition-theme: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  [data-theme="dark"] {
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --text: #f5f5f7;
+    --text-secondary: #98989d;
+    --border: #38383a;
+    --accent: #0a84ff;
+    --accent-hover: #409cff;
+    --user-bg: #0a84ff;
+    --user-text: #ffffff;
+    --assistant-bg: #2c2c2e;
+    --code-bg: #3a3a3c;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+    --danger: #ff453a;
+    --success: #30d158;
+    --terminal-bg: #0d0e15;
+    --terminal-text: #a9b1d6;
+    --terminal-prompt: #73daca;
+    --terminal-header: #7aa2f7;
+    --terminal-sep: #1a1b2e;
+    --terminal-info: #565f89;
+    --terminal-body: #13141f;
+    --terminal-comment: #3b3d55;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
     --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
     --danger: #ff3b30;
     --accent-hover: #0056b3;
@@ -900,46 +948,47 @@ HTML_UI = r"""<!DOCTYPE html>
   .tool-card:hover { border-color:var(--accent); box-shadow:0 1px 6px rgba(0,122,255,0.1); }
   /* Terminal mode Execute */
   .terminal-output {
-    background:#1a1b26; color:#a9b1d6;
+    background:var(--terminal-bg); color:var(--terminal-text);
     font-family:'SF Mono','Menlo','Consolas',monospace;
     font-size:13px; line-height:1.7;
     padding:14px; overflow-y:auto; flex:1;
     -webkit-overflow-scrolling:touch;
+    transition: var(--transition-theme);
   }
   .terminal-line { padding:1px 0; white-space:pre-wrap; word-break:break-word; }
   .terminal-line + .terminal-line { margin-top:2px; }
-  .terminal-prompt { color:#73daca; font-weight:600; }
-  .terminal-command { color:#c0caf5; font-weight:500; }
-  .terminal-output-text { color:#c0caf5; }
-  .terminal-timestamp { color:#565f89; font-size:11px; margin-right:8px; }
+  .terminal-prompt { color:var(--terminal-prompt); font-weight:600; }
+  .terminal-command { color:var(--terminal-text); font-weight:500; }
+  .terminal-output-text { color:var(--terminal-text); }
+  .terminal-timestamp { color:var(--terminal-comment); font-size:11px; margin-right:8px; }
   .terminal-cursor { display:inline-block; }
-  .terminal-cursor::after { content:'▊'; animation:term-blink 1s step-end infinite; color:#73daca; }
+  .terminal-cursor::after { content:'▊'; animation:term-blink 1s step-end infinite; color:var(--terminal-prompt); }
   @keyframes term-blink { 50% { opacity:0; } }
   .terminal-tool-header {
-    color:#7aa2f7; font-weight:600; margin:8px 0 4px;
+    color:var(--terminal-header); font-weight:600; margin:8px 0 4px;
     display:flex; align-items:center; gap:6px; font-size:12px;
   }
   .terminal-tool-header .tool-icon { font-size:14px; }
-  .terminal-tool-header .tool-status { font-size:11px; color:#9ece6a; }
+  .terminal-tool-header .tool-status { font-size:11px; color:var(--success); }
   .terminal-tool-header .tool-status.running { color:#e0af68; animation:term-blink 1s step-end infinite; }
   .terminal-tool-body {
-    background:#1f2233; border-left:3px solid #7aa2f7; border-radius:4px;
+    background:var(--terminal-body); border-left:3px solid var(--terminal-header); border-radius:4px;
     padding:8px 12px; margin:4px 0 10px; font-size:12px; overflow-x:auto;
   }
-  .terminal-tool-body pre { margin:0; font-size:12px; color:#9aa5ce; white-space:pre-wrap; word-break:break-word; }
-  .terminal-separator { border:none; border-top:1px solid #2f3346; margin:6px 0; }
-  .terminal-info { color:#565f89; font-size:11px; padding:4px 0; }
+  .terminal-tool-body pre { margin:0; font-size:12px; color:var(--terminal-text); white-space:pre-wrap; word-break:break-word; }
+  .terminal-separator { border:none; border-top:1px solid var(--terminal-sep); margin:6px 0; }
+  .terminal-info { color:var(--terminal-comment); font-size:11px; padding:4px 0; }
   /* Diff visualization */
-  .diff-file { margin:12px 0; background:#1f2233; border-radius:6px; overflow:hidden; border:1px solid #2f3346; }
+  .diff-file { margin:12px 0; background:var(--terminal-body); border-radius:6px; overflow:hidden; border:1px solid var(--terminal-sep); }
   .diff-file-header {
-    padding:6px 12px; font-size:12px; color:#7dcfff;
-    background:#292e42; font-weight:500;
+    padding:6px 12px; font-size:12px; color:var(--terminal-header);
+    background:var(--terminal-info); font-weight:500;
     display:flex; justify-content:space-between; align-items:center;
   }
-  .diff-summary { color:#9ece6a; font-size:11px; }
+  .diff-summary { color:var(--success); font-size:11px; }
   .diff-hunk-header {
-    padding:4px 12px; font-size:11px; color:#565f89;
-    background:#24283b; font-family:monospace; border-bottom:1px solid #2f3346;
+    padding:4px 12px; font-size:11px; color:var(--terminal-comment);
+    background:var(--terminal-body); font-family:monospace; border-bottom:1px solid var(--terminal-sep);
   }
   .diff-line {
     padding:1px 12px; font-size:12px; line-height:1.6;
@@ -947,19 +996,19 @@ HTML_UI = r"""<!DOCTYPE html>
     display:flex; word-break:break-word;
   }
   .diff-prefix { width:14px; flex-shrink:0; text-align:center; user-select:none; }
-  .diff-add { background:rgba(65,179,100,0.12); color:#9ece6a; }
-  .diff-del { background:rgba(245,85,85,0.12); color:#f7768e; }
+  .diff-add { background:rgba(65,179,100,0.12); color:var(--success); }
+  .diff-del { background:rgba(245,85,85,0.12); color:var(--danger); }
   .diff-ctx { color:#a9b1d6; }
   .diff-global-summary {
-    padding:6px 12px; font-size:12px; color:#c0caf5;
-    background:#292e42; border-radius:6px; margin-bottom:8px; text-align:center;
-    border:1px solid #2f3346;
+    padding:6px 12px; font-size:12px; color:var(--terminal-text);
+    background:var(--terminal-body); border-radius:6px; margin-bottom:8px; text-align:center;
+    border:1px solid var(--terminal-sep);
   }
   /* Exec layout */
   .exec-layout { display:flex; flex:1; overflow:hidden; min-height:0; }
   .exec-meta-bar {
-    padding:4px 12px; background:#1f2233; color:#565f89;
-    font-size:11px; border-bottom:1px solid #2f3346;
+    padding:4px 12px; background:var(--terminal-body); color:var(--terminal-comment);
+    font-size:11px; border-bottom:1px solid var(--terminal-sep);
     text-align:right; font-family:'SF Mono','Menlo',monospace;
   }
   #input-area {
@@ -1197,6 +1246,28 @@ HTML_UI = r"""<!DOCTYPE html>
     .tab-btn { padding:4px 0 2px; }
     #tabbar { height:36px; }
   }
+  /* Skeleton loading */
+  @keyframes skeleton-pulse { 0%,100%{opacity:.4} 50%{opacity:.8} }
+  .skeleton { background:var(--code-bg); border-radius:8px; animation:skeleton-pulse 1.5s ease-in-out infinite; }
+  .skeleton-line { height:14px; margin-bottom:8px; width:100%; }
+  .skeleton-line:nth-child(2) { width:85%; }
+  .skeleton-line:nth-child(3) { width:60%; }
+  .skeleton-card { height:60px; margin-bottom:8px; border-radius:10px; }
+  /* Message editing */
+  .msg.user .bubble .edit-textarea {
+    width:100%; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.3);
+    background:rgba(255,255,255,0.15); color:#fff; font-size:14px; font-family:inherit;
+    resize:vertical; min-height:60px; outline:none;
+  }
+  .msg.user .bubble .edit-actions { display:flex; gap:6px; margin-top:6px; justify-content:flex-end; }
+  .msg.user .bubble .edit-actions button {
+    padding:4px 12px; border-radius:12px; border:none; font-size:12px; cursor:pointer;
+  }
+  .msg.user .bubble .edit-actions .edit-save { background:rgba(255,255,255,0.9); color:#007aff; }
+  .msg.user .bubble .edit-actions .edit-cancel { background:rgba(255,255,255,0.2); color:rgba(255,255,255,0.8); }
+  [data-theme="dark"] .msg.user .bubble .edit-textarea {
+    background:rgba(255,255,255,0.1);
+  }
 </style>
 </head>
 <body>
@@ -1204,6 +1275,7 @@ HTML_UI = r"""<!DOCTYPE html>
   <div id="header">
     <button id="menuBtn" onclick="toggleSidebar()" aria-label="Menu">☰</button>
     <h1 id="header-title">CCC Chat</h1>
+    <button id="themeBtn" onclick="toggleTheme()" aria-label="切换主题" style="font-size:18px;background:none;border:none;cursor:pointer;padding:4px 2px;line-height:1;">🌙</button>
     <select id="project-select" onchange="onProjectChange()"></select>
     <button id="newBtn" onclick="newChat()">新对话</button>
   </div>
@@ -1385,6 +1457,32 @@ window.addEventListener('resize', () => { updateFab(messagesEl, scrollFabChat); 
     }
   });
 })();
+
+// Theme initialization
+(function initTheme() {
+  const saved = localStorage.getItem('ccc-chat-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = saved ? saved === 'dark' : prefersDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+})();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (!localStorage.getItem('ccc-chat-theme')) {
+    const isDark = e.matches;
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    const btn = document.getElementById('themeBtn');
+    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+  }
+});
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('ccc-chat-theme', next);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌙';
+}
 
 loadProjects();
 loadHistory();
@@ -2169,8 +2267,81 @@ function renderMessage(container, role, content, isExecute) {
     tsEl.textContent = ts();
     div.appendChild(tsEl);
   }
+  // Double-click on user message to edit
+  if (role === 'user') {
+    div.style.cursor = 'pointer';
+    div.title = '双击编辑';
+    div.addEventListener('dblclick', function(ev) {
+      if (ev.target.closest('.edit-textarea, .edit-actions, button')) return;
+      editMessage(this, container);
+    });
+  }
   container.appendChild(div);
   scrollToBottom(container);
+}
+
+function editMessage(msgEl, container) {
+  const bubble = msgEl.querySelector('.bubble');
+  if (!bubble) return;
+  const currentText = bubble.textContent || '';
+  // Replace bubble content with edit area
+  const safeText = escapeHtml(currentText).replace(/'/g, "\\'");
+  bubble.innerHTML = '<div class="edit-area"><textarea class="edit-textarea">' + safeText + '</textarea><div class="edit-actions"><button class="edit-save" onclick="saveEdit(this)">保存</button><button class="edit-cancel" onclick="cancelEdit(this)">取消</button></div></div>';
+  const textarea = bubble.querySelector('.edit-textarea');
+  textarea.dataset.original = currentText;
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+function saveEdit(btn) {
+  const editArea = btn.closest('.edit-area');
+  const textarea = editArea.querySelector('.edit-textarea');
+  const newText = textarea.value.trim();
+  const originalText = textarea.dataset.original || '';
+  if (!newText || newText === originalText) {
+    cancelEditInternal(editArea, originalText);
+    return;
+  }
+  // Find the message element and all following messages
+  const msgEl = btn.closest('.msg');
+  if (!msgEl) return;
+  // Find which messages container this belongs to
+  const container = msgEl.closest('#messages, #exec-messages, #exec-terminal') || document.getElementById('messages');
+  const siblings = [];
+  let next = msgEl.nextElementSibling;
+  while (next) {
+    if (next.classList.contains('msg') && !next.classList.contains('typing')) {
+      siblings.push(next);
+    }
+    next = next.nextElementSibling;
+  }
+  // Remove all following messages (the old response chain)
+  siblings.forEach(s => s.remove());
+  // Restore bubble content
+  const bubble = msgEl.querySelector('.bubble');
+  if (bubble) bubble.innerHTML = renderMarkdown(newText);
+  // Update messages array
+  const idx = currentMessages.findIndex(m => m.role === 'user');
+  if (idx !== -1) {
+    currentMessages = currentMessages.slice(0, idx + 1);
+    currentMessages[idx].content = newText;
+  }
+  // Re-send
+  input.value = newText;
+  sendChat();
+}
+
+function cancelEdit(btn) {
+  const editArea = btn.closest('.edit-area');
+  const textarea = editArea ? editArea.querySelector('.edit-textarea') : null;
+  const originalText = textarea ? (textarea.dataset.original || '') : '';
+  cancelEditInternal(editArea, originalText);
+}
+
+function cancelEditInternal(editArea, originalText) {
+  if (!editArea) return;
+  const bubble = editArea.closest('.bubble');
+  if (bubble) bubble.innerHTML = renderMarkdown(originalText || '');
 }
 
 function renderMarkdown(text) {
@@ -2338,10 +2509,13 @@ function toggleSidebar() {
 })();
 
 async function loadHistory() {
+  const list = document.getElementById('sessionList');
+  if (list) {
+    list.innerHTML = '<div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>';
+  }
   try {
     const resp = await fetch('/api/history?project=' + encodeURIComponent(currentProject), { headers: { Authorization: AUTH } });
     const data = await resp.json();
-    const list = document.getElementById('sessionList');
     list.innerHTML = '';
     for (const s of data.sessions) {
       const item = document.createElement('div');
