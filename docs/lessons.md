@@ -2099,3 +2099,23 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 **失败原因**：product_role 连续失败 3 次
 
 **待分析**：由 product_role 后续补充根因和修复方案
+
+---
+
+## Lesson 50：patrol-alert-webhook 进入异常状态
+
+**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:34:57 UTC
+
+**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
+
+**待分析**：由 product_role 后续补充根因和修复方案
+
+---
+
+## Lesson 51：cockpit-phase-timeline 进入异常状态
+
+**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 17:34:57 UTC
+
+**失败原因**：product_role 连续失败 3 次
+
+**待分析**：由 product_role 后续补充根因和修复方案

@@ -1,1 +1,0 @@
-{"id":"cockpit-phase-timeline","title":"Cockpit 显示任务 phase 执行时间线","description":"在仪表盘显示每个任务的历史 phase 流转时间线（backlog→planned→ip→testing→verified→released），带时间戳。","complexity":"medium","ts":"2026-07-14T15:52:57Z","note":"v1.0: 仪表盘"}

@@ -354,19 +354,22 @@
 <!-- board-status -->
 ## 看板状态
 
-> 自动更新 — 最后刷新时间：2026-07-15T01:25:36+08:00
+> 自动更新 — 最后刷新时间：2026-07-15T01:35:01+08:00
 
 | 列 | 任务数 |
 |---|------:|
-| backlog | 3 |
+| backlog | 2 |
 | planned | 0 |
-| in_progress | 1 |
+| in_progress | 0 |
 | testing | 0 |
 | verified | 0 |
-| released | 99 |
-| abnormal | 2 |
+| released | 100 |
+| abnormal | 5 |
 
 <!-- /board-status -->
+
+
+
 
 
 

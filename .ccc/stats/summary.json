@@ -1,21 +1,21 @@
 {
-  "aggregated_at": "2026-07-14T17:12:31.262324+00:00",
+  "aggregated_at": "2026-07-14T17:34:57.722558+00:00",
   "workspace": "CCC",
-  "total_events": 299,
-  "latest_event_ts": "2026-07-15T00:03:40+08:00",
+  "total_events": 538,
+  "latest_event_ts": "2026-07-15T01:34:57+08:00",
   "events_by_type": {
     "move": 94,
-    "quarantine": 69,
-    "product_start": 42,
+    "quarantine": 111,
+    "product_start": 205,
     "product_done": 29,
     "pytest": 4,
-    "product_fail": 5,
-    "hang_detected": 56
+    "product_fail": 29,
+    "hang_detected": 66
   },
   "task_stats": {
-    "total": 69,
+    "total": 78,
     "success": 4,
-    "failed": 19,
+    "failed": 27,
     "details": {
       "fix-version-trailing-newline": {
         "total_events": 4,
@@ -630,54 +630,135 @@
         "last_ts": "2026-07-14T23:37:59+08:00"
       },
       "patrol-alert-webhook": {
-        "total_events": 109,
+        "total_events": 133,
         "has_failure": true,
         "has_success": false,
         "latency_samples": 0,
         "avg_latency_s": null,
-        "last_event": "hang_detected",
-        "last_ts": "2026-07-15T00:03:40+08:00"
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:34:57+08:00"
+      },
+      "cockpit-phase-timeline": {
+        "total_events": 25,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:34:53+08:00"
+      },
+      "migrate-cross-validation": {
+        "total_events": 7,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:26:30+08:00"
+      },
+      "qb-bt-param-optimize-cli": {
+        "total_events": 137,
+        "has_failure": false,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "product_start",
+        "last_ts": "2026-07-15T01:34:53+08:00"
+      },
+      "engine-task-priority": {
+        "total_events": 8,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:33:07+08:00"
+      },
+      "onboard-clawcinema-runner": {
+        "total_events": 7,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:26:46+08:00"
+      },
+      "patrol-git-auto-push": {
+        "total_events": 9,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:33:07+08:00"
+      },
+      "onboard-xianyu-runner": {
+        "total_events": 7,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:27:02+08:00"
+      },
+      "refactor-memory-to-class": {
+        "total_events": 7,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:27:18+08:00"
+      },
+      "task-lifecycle-api-endpoint": {
+        "total_events": 8,
+        "has_failure": true,
+        "has_success": false,
+        "latency_samples": 0,
+        "avg_latency_s": null,
+        "last_event": "quarantine",
+        "last_ts": "2026-07-15T01:27:34+08:00"
       }
     }
   },
   "perf_insights": [
     {
       "metric": "task_failure_rate",
-      "value": 27.5,
+      "value": 34.6,
       "unit": "percent",
-      "label": "Task failure rate: 27.5% (19/69)"
+      "label": "Task failure rate: 34.6% (27/78)"
     },
     {
       "metric": "quarantine_spike",
-      "value": 69,
+      "value": 111,
       "unit": "count",
-      "label": "High quarantine count: 69 (threshold: 3)",
+      "label": "High quarantine count: 111 (threshold: 3)",
       "severity": "warning"
     },
     {
       "metric": "product_fail_spike",
-      "value": 5,
+      "value": 29,
       "unit": "count",
-      "label": "High product_fail count: 5 (threshold: 3)",
+      "label": "High product_fail count: 29 (threshold: 3)",
       "severity": "warning"
     },
     {
       "metric": "total_events",
-      "value": 299,
+      "value": 538,
       "unit": "count",
-      "label": "Total events recorded: 299",
-      "latest_event": "2026-07-15T00:03:40+08:00"
+      "label": "Total events recorded: 538",
+      "latest_event": "2026-07-15T01:34:57+08:00"
     }
   ],
   "recommendations": [
     {
       "action": "check_product_role",
-      "reason": "product_role failed 5 times",
+      "reason": "product_role failed 29 times",
       "suggestion": "Consider plan generation model or switch to fallback"
     },
     {
       "action": "enable_fallback_chain",
-      "reason": "69 tasks quarantined",
+      "reason": "111 tasks quarantined",
       "suggestion": "Enable executor fallback chain to reduce quarantine rate"
     }
   ]
