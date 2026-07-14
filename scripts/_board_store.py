@@ -199,7 +199,9 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
     complexity = data.get("complexity")
     if complexity is not None:
         if complexity not in ("small", "medium", "large"):
-            errors.append(f"complexity: must be 'small'|'medium'|'large', got '{complexity}'")
+            errors.append(
+                f"complexity: must be 'small'|'medium'|'large', got '{complexity}'"
+            )
 
     # strict 模式：拒绝未知字段
     if strict:
@@ -466,7 +468,9 @@ class FileBoardStore:
         v0.28.0 (F1-M2 修): 校验 column 在 COLUMNS 中，否则 log warning + 返回 []
         """
         if column not in COLUMNS:
-            _log.warning("list_tasks: unknown column '%s' (allowed: %s)", column, COLUMNS)
+            _log.warning(
+                "list_tasks: unknown column '%s' (allowed: %s)", column, COLUMNS
+            )
             return []
         col_dir = self.board / column
         if not col_dir.exists():
@@ -504,7 +508,52 @@ class FileBoardStore:
         success = False
         lock = self._lock()
         if lock is None:
-            _log
+            _log.error("move_task: lock unavailable; aborting")
+            return False
+        try:
+            src = self.board / from_col / f"{task_id}.jsonl"
+            if not src.exists():
+                _log.error("%s not in %s", task_id, from_col)
+                return False
+
+            task = None
+            with open(src) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if obj.get("id") == task_id:
+                            task = obj
+                            break
+                    except json.JSONDecodeError as exc:
+                        _log.debug("skip malformed line in %s: %s", src.name, exc)
+            if not task:
+                return False
+
+            task["status"] = to_col
+            task["updated_at"] = now_iso()
+
+            dst = self.board / to_col / f"{task_id}.jsonl"
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(task, ensure_ascii=False) + "\n"
+            # 原子迁移：先写目标列（temp→replace），再删源，避免读→写非原子 TOCTOU
+            _atomic_write(dst, payload)
+            try:
+                src.unlink()
+            except OSError as e:
+                _log.warning(
+                    "move_task src unlink failed (dst committed) %s: %s", src, e
+                )
+            self._record_event(task_id, from_col, to_col)
+            _log.info("%s: %s → %s", task_id, from_col, to_col)
+            success = True
+        finally:
+            self._unlock(lock)
+        if success:
+            self._sync_state_md()
+        return success
 
     def update_index(self) -> dict:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
@@ -531,6 +580,7 @@ class FileBoardStore:
         - 用于后续 retry 时判断失败原因和策略
         """
         task_id = sanitize_id(task_id)
+        success = False
         lock = self._lock()
         if lock is None:
             _log.error("quarantine: lock unavailable; aborting %s", task_id)
@@ -574,8 +624,11 @@ class FileBoardStore:
             self._archive_to_quarantine(task_id, task, reason, from_col)
 
             _log.info("quarantine: %s %s → abnormal: %s", task_id, from_col, reason)
+            success = True
         finally:
             self._unlock(lock)
+        if success:
+            self._sync_state_md()
 
     def _archive_to_quarantine(
         self, task_id: str, task: dict, reason: str, from_col: str
@@ -624,7 +677,9 @@ class FileBoardStore:
                     try:
                         events.append(json.loads(line))
                     except json.JSONDecodeError as e:
-                        _log.warning("skip malformed event line in %s: %s", event_file.name, e)
+                        _log.warning(
+                            "skip malformed event line in %s: %s", event_file.name, e
+                        )
         else:
             for f in sorted(self.events_dir.glob("*.events.jsonl")):
                 for line in f.read_text().split("\n"):
@@ -685,7 +740,9 @@ class FileBoardStore:
         }
         event_file = self.events_dir / f"{task_id}.events.jsonl"
         try:
-            existing = event_file.read_text(encoding="utf-8") if event_file.exists() else ""
+            existing = (
+                event_file.read_text(encoding="utf-8") if event_file.exists() else ""
+            )
         except OSError as exc:
             _log.warning("event file read failed for %s: %s", task_id, exc)
             existing = ""
@@ -902,8 +959,12 @@ def quarantines_index_task() -> None:
 
         existing = quarantines.get(base, {})
         existing["file"] = latest.name
-        existing["first_seen"] = datetime.fromtimestamp(first_seen_ts, timezone.utc).isoformat()
-        existing["last_seen"] = datetime.fromtimestamp(last_seen_ts, timezone.utc).isoformat()
+        existing["first_seen"] = datetime.fromtimestamp(
+            first_seen_ts, timezone.utc
+        ).isoformat()
+        existing["last_seen"] = datetime.fromtimestamp(
+            last_seen_ts, timezone.utc
+        ).isoformat()
         existing["count"] = len(files)
         quarantines[base] = existing
 
