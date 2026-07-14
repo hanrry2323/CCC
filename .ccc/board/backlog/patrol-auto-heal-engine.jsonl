@@ -1,1 +1,0 @@
-{"id":"patrol-auto-heal-engine","title":"Patrol 自动修复 Engine — Engine 崩溃时自动重启并记录","description":"当前 patrol-v4 只检测 Engine 状态但只建议. 改为: 检测到 Engine 死亡时自动重启 + 写日志 + 通知.","complexity":"medium","ts":"2026-07-14T11:50:04Z","note":"v1.0: 功能"}
