@@ -1408,6 +1408,230 @@ def product_role(task_id: str = "") -> dict:
     return {"role": "product", "report": report, "counts": update_index()}
 
 
+# ═══════════════════════════════════════════════════════════════
+# v0.33: product_role 异步化（Popen + marker 文件）
+# ═══════════════════════════════════════════════════════════════
+
+
+def launch_product_async(task_id: str) -> dict:
+    """异步启动 product_role 子进程。
+
+    写 prompt 文件后 Popen claude -p，不在引擎 tick 内阻塞。
+    后续由 check_product_async() 在另一 tick 检查结果。
+
+    Returns: {"ok": True, "pid": int} 或 {"error": str}
+    """
+    task_id = sanitize_id(task_id)
+    tasks = list_tasks("backlog")
+    task = next((t for t in tasks if t["id"] == task_id), None)
+    if not task:
+        return {"error": f"task '{task_id}' not found in backlog"}
+
+    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Build prompt（从 _call_claude_for_plan 提取的核心逻辑）
+    ref_plans = ""
+    plan_dir_obj = ROOT / ".ccc" / "plans"
+    if plan_dir_obj.exists():
+        plan_files = sorted(
+            plan_dir_obj.glob("*.plan.md"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for pf in plan_files[:2]:
+            ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
+
+    template_plan = (ROOT / "templates" / "plan.plan.md").read_text()
+    profile = (ROOT / ".ccc" / "profile.md").read_text()
+    code_ctx = _get_code_context(ROOT)
+
+    prompt = (
+        f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
+        f"## 项目概况\n{profile[:1500]}\n\n"
+        f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
+        f"## 任务\n"
+        f"- id: {task['id']}\n"
+        f"- title: {task.get('title', '')}\n"
+        f"- description: {task.get('description', '')}\n\n"
+        f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
+        f"## Phases 格式\n"
+        f"每行一个 JSON object：\n"
+        f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
+        f"## Phase 数上限\n"
+        f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
+        f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
+        f"每个子 task 不超过 2 phases。\n\n"
+        f"## 参考历史 plan\n{ref_plans}\n\n"
+        f"## 输出要求\n"
+        f"输出以下两部分，用分隔符包裹：\n\n"
+        f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
+        f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
+    )
+
+    # 2. 注入 lessons 上下文
+    try:
+        from _lessons import get_recent_lessons
+
+        recent = get_recent_lessons(ROOT)
+        if recent:
+            lessons_text = "\n".join(
+                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
+                for lesson in recent[:10]
+                if not lesson.get("fixed")
+            )
+            if lessons_text:
+                prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
+    except ImportError:
+        pass
+
+    # 3. 写 prompt 文件
+    prompt_file = pids_dir / f"{task_id}.product.prompt.md"
+    prompt_file.write_text(prompt)
+
+    # 4. 清理残留标记
+    for sfx in [".product.out", ".product.done", ".product.pid", ".product.exitcode"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+    # 5. Popen claude -p（异步）
+    result_file = pids_dir / f"{task_id}.product.out"
+    relay_url = _get_relay_url()
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = relay_url
+
+    try:
+        with open(result_file, "w") as out_f:
+            proc = subprocess.Popen(
+                [_CLAUDE_CLI, "-p", "--file", str(prompt_file)],
+                stdout=out_f,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                env=env,
+            )
+        pids_dir.joinpath(f"{task_id}.product.pid").write_text(str(proc.pid))
+        _log.info("[product-async] %s launched PID=%d", task_id, proc.pid)
+        return {"ok": True, "pid": proc.pid}
+    except Exception as exc:
+        _log.error("[product-async] %s launch failed: %s", task_id, exc)
+        return {"error": str(exc)}
+
+
+def check_product_async(task_id: str) -> dict:
+    """检查异步 product_role 是否完成。
+
+    Returns:
+        {"status": "running"} — 仍在跑
+        {"status": "success"} — 完成，已写 plan+phases 并移 backlog→planned
+        {"status": "failed", "error": str} — 失败
+    """
+    task_id = sanitize_id(task_id)
+    pids_dir = ROOT / ".ccc" / "pids"
+    done_file = pids_dir / f"{task_id}.product.done"
+    result_file = pids_dir / f"{task_id}.product.out"
+    pid_file = pids_dir / f"{task_id}.product.pid"
+    prompt_file = pids_dir / f"{task_id}.product.prompt.md"
+
+    # 检查完成标记
+    if not done_file.exists():
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)
+            except (ValueError, ProcessLookupError):
+                pass
+            except OSError:
+                pass
+            else:
+                return {"status": "running"}
+        return {"status": "failed", "error": "process not running"}
+
+    # 读输出
+    output = result_file.read_text() if result_file.exists() else ""
+
+    # 解析 PLAN / PHASES
+    import re as _re
+
+    plan_match = _re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, _re.DOTALL)
+    phases_match = _re.search(
+        r"---PHASES---\n(.*?)\n---END_PHASES---", output, _re.DOTALL
+    )
+    if not plan_match or not phases_match:
+        _log.error("[product-async] %s output parse failed, mark failed", task_id)
+        _cleanup_async_product_markers(pids_dir, task_id)
+        return {"status": "failed", "error": "output parse failed"}
+
+    plan_content = plan_match.group(1).strip()
+    phases_data = []
+    for line in phases_match.group(1).strip().split("\n"):
+        line = line.strip()
+        if line:
+            try:
+                phases_data.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                _log.error("[product-async] %s phases JSON parse error: %s", task_id, exc)
+                _cleanup_async_product_markers(pids_dir, task_id)
+                return {"status": "failed", "error": f"phases JSON parse: {exc}"}
+
+    if len(phases_data) > _get_cfg().max_phases:
+        _log.error(
+            "[product-async] %s phases %d > max %d",
+            task_id,
+            len(phases_data),
+            _get_cfg().max_phases,
+        )
+        _cleanup_async_product_markers(pids_dir, task_id)
+        return {"status": "failed", "error": f"phases > max {_get_cfg().max_phases}"}
+
+    # 写 plan + phases 文件 + 移 backlog → planned
+    _write_async_product_result(task_id, plan_content, phases_data)
+
+    # 清理标记
+    _cleanup_async_product_markers(pids_dir, task_id)
+
+    _log.info("[product-async] %s ✓ plan+phases written", task_id)
+    return {"status": "success"}
+
+
+def _cleanup_async_product_markers(pids_dir: Path, task_id: str) -> None:
+    """清理 product_role 异步标记文件"""
+    for sfx in [".product.out", ".product.done", ".product.pid", ".product.prompt.md"]:
+        f = pids_dir / f"{task_id}{sfx}"
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def _write_async_product_result(
+    task_id: str, plan_content: str, phases_data: list
+) -> None:
+    """写 plan + phases 文件 + 移 backlog → planned（无锁，engine 单线程保证互斥）"""
+    plan_dir = ROOT / ".ccc" / "plans"
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    phases_dir = ROOT / ".ccc" / "phases"
+    phases_dir.mkdir(parents=True, exist_ok=True)
+
+    phases_tmp = phases_dir / f".{task_id}.phases.tmp"
+    phases_content = (
+        json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
+        + "\n"
+        + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases_data)
+        + "\n"
+    )
+    phases_tmp.write_text(phases_content)
+    phases_tmp.rename(phases_dir / f"{task_id}.phases.json")
+
+    plan_tmp = plan_dir / f".{task_id}.plan.tmp"
+    plan_tmp.write_text(plan_content)
+    plan_tmp.rename(plan_dir / f"{task_id}.plan.md")
+
+    move_task(task_id, "backlog", "planned")
+
+
 def dev_role() -> dict:
     """开发工程师: 查 in_progress（重试）→ 查 planned（新的）→ opencode 执行"""
     import subprocess as sp

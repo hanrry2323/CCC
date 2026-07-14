@@ -61,7 +61,6 @@ dev_role_relaunch = ccc_board.dev_role_relaunch
 dev_role_check_complete = ccc_board.dev_role_check_complete
 reviewer_role = ccc_board.reviewer_role
 tester_role = ccc_board.tester_role
-kb_role = ccc_board.kb_role
 MAX_RETRY = ccc_board.MAX_RETRY
 
 _load_phases = ccc_board._load_phases
@@ -146,6 +145,9 @@ _stores: dict[str, FileBoardStore] = {}
 #     "phase_meta": {phase_num: {subid, pid, started_at}}
 #   }
 _parallel_phases: dict[str, dict] = {}
+
+# v0.33: product_role 异步 inflight 表（task_key -> {tid, started_at}）
+_product_inflight: dict[str, dict] = {}
 
 # backlog+planned 为空时的补充冷却（per-workspace，单位秒）
 _last_empty_replenish: dict[str, float] = {}
@@ -237,6 +239,13 @@ def _quarantine_with_notify(
         from _lessons import record_failure
 
         record_failure(ws, tid, phase, reason or "unknown", "")
+    except Exception:
+        pass
+    # v0.32: 自动追加到 docs/lessons.md
+    try:
+        from _lessons import auto_append_lesson_md
+
+        auto_append_lesson_md(ws, tid, phase, reason or "unknown")
     except Exception:
         pass
 
@@ -509,7 +518,7 @@ def _run_testing_tasks_gate(ws: Path) -> None:
             engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")
 
 
-def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bool:
+def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     """处理 dev_role_check_complete 结果。返回 True 表示从 active_tasks 移除。"""
     _activate_workspace(ws)
     store = _get_store(ws)
@@ -517,50 +526,10 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
     status = result.get("status", "unknown")
 
     if status == "success":
-        if complexity == "small":
-            engine_log(
-                f"[{label}] {tid} complexity=small, 跳过 reviewer+tester → 直通 kb"
-            )
-            store.move_task(tid, "in_progress", "testing")
-            _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
-            store.move_task(tid, "testing", "verified")
-            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
-            verified = store.list_tasks("verified")
-            if any(t["id"] == tid for t in verified):
-                engine_log(f"[{label}] {tid} → verified, 立即 kb")
-                kb_role()
-                try:
-                    auto_r = ccc_board.auto_approve_agents()
-                    if auto_r.get("approved", 0) > 0:
-                        engine_log(f"auto-approve-agents ✓ {auto_r['approved']} 条建议")
-                except Exception as exc:
-                    engine_log(f"auto_approve_agents 异常: {exc}")
-                engine_log(f"[{label}] {tid} 全链路完成 (small path)")
-            else:
-                engine_log(f"[{label}] {tid} small path: 移入 verified 失败")
-            store.update_index()
-            return True
-
+        # v0.33: 不再同步跑 reviewer+tester+pytest+kb，只移入 testing 让
+        # _run_testing_tasks_gate（每 6 轮 ~60s）异步处理。
+        store.move_task(tid, "in_progress", "testing")
         _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
-        engine_log(f"[{label}] {tid} → testing, 立即跑 reviewer+tester 门禁")
-        gate_ok = _run_reviewer_tester_gate(ws, tid)
-
-        verified = store.list_tasks("verified")
-        if gate_ok and any(t["id"] == tid for t in verified):
-            engine_log(f"[{label}] {tid} → verified, 立即 kb")
-            kb_role()
-            try:
-                auto_r = ccc_board.auto_approve_agents()
-                if auto_r.get("approved", 0) > 0:
-                    engine_log(
-                        f"auto-approve-agents ✓ {auto_r['approved']} 条建议合入 AGENTS.md"
-                    )
-            except Exception as exc:
-                engine_log(f"auto_approve_agents 异常: {exc}")
-            engine_log(f"[{label}] {tid} 全链路完成")
-        else:
-            engine_log(f"[{label}] {tid} reviewer/tester 未通过")
-
         store.update_index()
         return True
 
@@ -699,7 +668,7 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
                 }
                 engine_log(f"[recover] [{label}] {tid} PID 仍存活，继续监控")
             else:
-                _handle_task_result(ws, tid, result, complexity)
+                _handle_task_result(ws, tid, result)
         except Exception as exc:
             engine_log(f"[recover] [{label}] {tid} in_progress 恢复异常: {exc}")
 
@@ -754,7 +723,7 @@ def _startup_scan_workspace(ws: Path, active_tasks: dict[str, dict]) -> None:
             engine_log(f"[{label}] {tid} 检查 PID 存活")
         elif status in ("success", "failed"):
             engine_log(f"[{label}] {tid} 已完成 (status={status}), 继续链")
-            if not _handle_task_result(ws, tid, result, complexity):
+            if not _handle_task_result(ws, tid, result):
                 active_tasks[key] = {
                     "workspace": ws,
                     "task_id": tid,
@@ -762,11 +731,14 @@ def _startup_scan_workspace(ws: Path, active_tasks: dict[str, dict]) -> None:
                     "started_at": now_iso(),
                 }
         else:
-            _handle_task_result(ws, tid, result, complexity)
+            _handle_task_result(ws, tid, result)
 
 
 def _process_backlog(ws: Path) -> bool:
-    """消费 backlog 首条 task。返回 True 表示做了操作。"""
+    """消费 backlog 首条 task。返回 True 表示做了操作。
+
+    v0.33: 异步 product_role — 不阻塞引擎 tick。Popen 后返回，后续 tick 检查完成。
+    """
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
@@ -775,18 +747,21 @@ def _process_backlog(ws: Path) -> bool:
         return False
 
     tid = backlog[0]["id"]
+    key = _task_key(ws, tid)
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+
+    # 1. phases.json 已存在（手动拆分），直通 planned
     if phases_file.exists():
         engine_log(
-            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role（手动拆分），移入 planned"
+            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role，移入 planned"
         )
         store.move_task(tid, "backlog", "planned")
         _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
         return True
 
+    # 2. 失败计数器
     fail_counter_dir = ws / ".ccc" / ".product-fail-counter"
     fail_counter_path = fail_counter_dir / f"{tid}.json"
-
     fail_count = 0
     if fail_counter_path.exists():
         try:
@@ -802,40 +777,79 @@ def _process_backlog(ws: Path) -> bool:
         _quarantine_with_notify(
             ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
         )
-        _ccc_notify(
-            "CCC",
-            f"product_role 拆分 {tid} 连续失败 {fail_count} 次",
-        )
+        _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
         return True
 
-    engine_log(
-        f"[product] [{label}] backlog 自动拆分: {tid} (此前失败 {fail_count} 次)"
-    )
-    try:
-        _log_stats(ws, "product_start", tid, fail_count=fail_count)
-        ccc_board.product_role(task_id=tid)
-        if fail_counter_path.exists():
-            fail_counter_path.unlink()
-        _log_stats(ws, "product_done", tid, fail_count=fail_count)
-    except Exception as exc:
-        fail_count += 1
-        fail_counter_dir.mkdir(parents=True, exist_ok=True)
-        fail_counter_path.write_text(json.dumps({"fail_count": fail_count}, indent=2))
-        _log_stats(ws, "product_fail", tid, fail_count=fail_count, error=str(exc)[:200])
-        engine_log(
-            f"[product] [{label}] product_role({tid}) 异常: {exc} (失败 #{fail_count})"
-        )
-        if fail_count >= _MAX_PRODUCT_RETRIES:
+    # 3. 检查 inflight 异步 product
+    if key in _product_inflight:
+        engine_log(f"[product] [{label}] {tid} 异步 product 检查...")
+        result = ccc_board.check_product_async(tid)
+        if result["status"] == "success":
+            _product_inflight.pop(key, None)
+            try:
+                if fail_counter_path.exists():
+                    fail_counter_path.unlink()
+            except OSError:
+                pass
+            _log_stats(ws, "product_done", tid, fail_count=fail_count)
+            engine_log(f"[product] [{label}] {tid} ✓ 异步 product 完成")
+            return True
+        elif result["status"] == "failed":
+            _product_inflight.pop(key, None)
+            fail_count += 1
+            fail_counter_dir.mkdir(parents=True, exist_ok=True)
+            fail_counter_path.write_text(
+                json.dumps({"fail_count": fail_count}, indent=2)
+            )
+            _log_stats(
+                ws,
+                "product_fail",
+                tid,
+                fail_count=fail_count,
+                error=(result.get("error", "")[:200]),
+            )
             engine_log(
-                f"[product] [{label}] {tid} 失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
+                f"[product] [{label}] product_role({tid}) 异步失败 #{fail_count}: {result.get('error', '?')}"
             )
-            _quarantine_with_notify(
-                ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
-            )
-            _ccc_notify(
-                "CCC",
-                f"product_role 拆分 {tid} 连续失败 {fail_count} 次",
-            )
+            if fail_count >= _MAX_PRODUCT_RETRIES:
+                _quarantine_with_notify(
+                    ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
+                )
+                _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
+            return True
+        # status == "running"
+        engine_log(f"[product] [{label}] {tid} 异步 product 执行中...")
+        return False
+
+    # 4. 启动异步 product_role（不阻塞引擎 tick）
+    engine_log(
+        f"[product] [{label}] backlog 异步拆分: {tid} (此前失败 {fail_count} 次)"
+    )
+    _log_stats(ws, "product_start", tid, fail_count=fail_count)
+    launch_r = ccc_board.launch_product_async(tid)
+    if launch_r.get("ok"):
+        _product_inflight[key] = {"tid": tid, "started_at": now_iso()}
+        return True
+
+    # 5. 启动失败
+    fail_count += 1
+    fail_counter_dir.mkdir(parents=True, exist_ok=True)
+    fail_counter_path.write_text(json.dumps({"fail_count": fail_count}, indent=2))
+    _log_stats(
+        ws,
+        "product_fail",
+        tid,
+        fail_count=fail_count,
+        error=(launch_r.get("error", "")[:200]),
+    )
+    engine_log(
+        f"[product] [{label}] product_role({tid}) 启动失败 #{fail_count}: {launch_r.get('error', '')}"
+    )
+    if fail_count >= _MAX_PRODUCT_RETRIES:
+        _quarantine_with_notify(
+            ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
+        )
+        _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
     return True
 
 
@@ -1524,7 +1538,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                         any_active = True
                         continue
 
-                    if _handle_task_result(ws, tid, result, complexity):
+                    if _handle_task_result(ws, tid, result):
                         completed_tasks.append(key)
 
                 for key in completed_tasks:
@@ -1591,6 +1605,12 @@ def engine_loop(workspaces: list[Path]) -> None:
                 ws_count = ws_active_counts.get(ws_key, 0)
                 ws_pids = _get_running_pids(ws) if running_task_id else []
                 _write_heartbeat(ws, running_task_id, ws_count, ws_pids)
+
+            # v0.33: 即使 active_tasks 满了，也要检查 inflight product 完成
+            if _product_inflight:
+                for ws in workspaces:
+                    _activate_workspace(ws)
+                    _process_backlog(ws)
 
             while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
                 # v1.0: planned 优先（dev_role），无 planned 才 backlog（product_role）
