@@ -588,6 +588,7 @@ function fetchAlive() {
     .then(function(res) { if (!res.ok) { throw new Error('HTTP ' + res.status); } return res.json(); })
     .then(function(data) {
       var ports = data.ports || {};
+      var deadCount = 0;
       Object.keys(ports).forEach(function(port) {
         var alive = ports[port].alive;
         var rows = document.querySelectorAll('tr[data-port="' + port + '"]');
@@ -597,7 +598,9 @@ function fetchAlive() {
             dot.className = 'dot ' + (alive === true ? 'dot-green' : alive === false ? 'dot-red' : 'dot-gray');
           }
         });
+        if (alive === false) { deadCount += 1; }
       });
+      if (typeof updateTitleAndFavicon === 'function') { updateTitleAndFavicon(deadCount); }
       var projects = data.projects || [];
       projects.forEach(function(p) {
         if (!p || !p.name) { return; }
