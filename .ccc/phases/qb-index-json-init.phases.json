@@ -1,0 +1,2 @@
+{"schema_version": "1.1", "commit": "3b07e0eb7ad4bee4eb8bbdef7edef1a262b274fc"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending"}, "timeout": 120, "commit": null, "notes": "检查 index.json 是否存在/合法 → 逐列比对计数 → 写入/修正", "color_depth": 1, "color_group": "S"}

@@ -33,6 +33,7 @@ CCC_HOME = HOME / "program" / "CCC"
 ENGINE_SCRIPT = CCC_HOME / "scripts" / "ccc-engine.py"
 ENGINE_PLIST = HOME / "Library" / "LaunchAgents" / "com.ccc.engine.plist"
 PATROL_STATE_FILE = HOME / ".ccc" / "patrol-state.json"
+RESTART_LOG = HOME / ".ccc" / "logs" / "engine-restarts.jsonl"
 MAX_ROUNDS = 6
 
 # 注意：qx 对应 ~/program/projects/qx（不是 ~/program/qx）
@@ -558,6 +559,50 @@ def commit_patrol_fix(ws_path: Path, ops: list[str], engine_action: str) -> None
     )
 
 
+def _log_engine_restart(status: str, reason: str) -> None:
+    """记录 Engine 重启/死亡事件到 JSONL 日志。幂等不抛异常。
+
+    Args:
+        status: "RESTARTED"（重启成功）或 "DEAD"（无法重启）
+        reason: 描述原因，如 "patrol-v4 detected Engine dead, auto-restarted"
+    """
+    try:
+        RESTART_LOG.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": now_iso(),
+            "status": status,
+            "reason": reason,
+        }
+        with RESTART_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _notify_engine_restart(status: str) -> None:
+    """Engine 重启/死亡时发桌面通知。非阻塞，不抛异常。"""
+    notify_script = CCC_HOME / "scripts" / "ccc-notify.sh"
+    if not notify_script.is_file():
+        return
+    try:
+        if status == "RESTARTED":
+            subprocess.Popen(
+                ["bash", str(notify_script), "L2", "Engine 自动重启",
+                 "Patrol-v4 检测到 Engine 已停止，已自动重启完成"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        elif status == "DEAD":
+            subprocess.Popen(
+                ["bash", str(notify_script), "L3", "Engine 重启失败",
+                 "Patrol-v4 尝试自动重启 Engine 失败，需人工介入"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+    except OSError:
+        pass
+
+
 def commit_engine_restart(reason: str) -> None:
     """Engine 重启后单独 commit（只记一次）"""
     ws_path = CCC_HOME
@@ -623,6 +668,8 @@ def main() -> int:
     engine_status = ensure_engine_healthy()
     if engine_status in ("DEAD",):
         # Engine 修不好，报告死信后退出（不做后续步骤）
+        _log_engine_restart("DEAD", "patrol-v4 failed to restart Engine")
+        _notify_engine_restart("DEAD")
         ws_stats = scan_all_ws(WORKSPACES)
         report = format_report(ws_stats, engine_status, [], [], [
             "Engine DEAD — cannot continue"])
@@ -632,6 +679,8 @@ def main() -> int:
 
     if engine_status == "RESTARTED":
         engine_operated = True
+        _log_engine_restart("RESTARTED", "patrol-v4 detected Engine dead, auto-restarted")
+        _notify_engine_restart("RESTARTED")
         commit_engine_restart("restarted by patrol-v4")
 
     # ── Step 1: 扫描 5 workspace ──
