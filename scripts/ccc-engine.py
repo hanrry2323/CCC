@@ -488,6 +488,89 @@ def _handle_task_result(ws: Path, tid: str, result: dict, complexity: str) -> bo
     return True
 
 
+def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
+    """Engine 启动后扫描 board，恢复 in_progress/testing 列的 task 上下文。
+
+    验收点：
+      - in_progress 列 task: 调 dev_role_check_complete 恢复 phase 执行状态
+      - testing 列 task: 调 reviewer_role + tester_role 恢复验收流程
+      - 每恢复一个 task 间隔 5s，避免并发重启风暴
+      - board 为空时静默跳过，无日志噪声
+
+    Args:
+        ws: workspace 路径
+        active_tasks: 引擎活跃 task 表（恢复后的 task 会填充到此 dict）
+    """
+    _activate_workspace(ws)
+    store = _get_store(ws)
+    label = _ws_label(ws)
+
+    in_prog = store.list_tasks("in_progress")
+    testing = store.list_tasks("testing")
+
+    if not in_prog and not testing:
+        engine_log(f"[{label}] board 为空，跳过 task 恢复")
+        return
+
+    if in_prog:
+        engine_log(
+            f"[recover] [{label}] 恢复 {len(in_prog)} 个 in_progress task "
+            f"（间隔 5s 避免并发）"
+        )
+
+    for idx, task in enumerate(in_prog):
+        tid = task["id"]
+        complexity = task.get("complexity", "medium")
+        cur_phase = _current_running_phase(tid)
+        engine_log(
+            f"[recover] [{label}] Recovered task {tid} at phase {cur_phase} "
+            f"（in_progress → dev 检查）"
+        )
+        try:
+            result = dev_role_check_complete(tid)
+            status = result.get("status", "unknown")
+            key = _task_key(ws, tid)
+            if status == "running":
+                active_tasks[key] = {
+                    "workspace": ws,
+                    "task_id": tid,
+                    "complexity": complexity,
+                    "started_at": now_iso(),
+                }
+                engine_log(f"[recover] [{label}] {tid} PID 仍存活，继续监控")
+            else:
+                _handle_task_result(ws, tid, result, complexity)
+        except Exception as exc:
+            engine_log(f"[recover] [{label}] {tid} in_progress 恢复异常: {exc}")
+
+        if idx < len(in_prog) - 1:
+            time.sleep(5)
+
+    if testing:
+        engine_log(
+            f"[recover] [{label}] 恢复 {len(testing)} 个 testing task "
+            f"（间隔 5s 避免并发）"
+        )
+
+    for idx, task in enumerate(testing):
+        tid = task["id"]
+        engine_log(f"[recover] [{label}] Recovered task {tid} at phase reviewing")
+        try:
+            try:
+                reviewer_role()
+            except Exception as exc:
+                engine_log(f"[recover] [{label}] {tid} reviewer 异常: {exc}")
+            try:
+                tester_role()
+            except Exception as exc:
+                engine_log(f"[recover] [{label}] {tid} tester 异常: {exc}")
+        except Exception as exc:
+            engine_log(f"[recover] [{label}] {tid} testing 恢复异常: {exc}")
+
+        if idx < len(testing) - 1:
+            time.sleep(5)
+
+
 def _startup_scan_workspace(ws: Path, active_tasks: dict[str, dict]) -> None:
     _activate_workspace(ws)
     store = _get_store(ws)
@@ -722,7 +805,8 @@ def _launch_parallel_phase(
         )
         pids_dir.joinpath(f"{subid}.pid").write_text(str(proc.pid))
         engine_log(
-            f"[{label}] {task_id}-p{phase_num} launched PID={proc.pid} (subid={subid})"
+            f"[{label}] {task_id}-p{phase_num} launched PID={proc.pid} "
+            f"(subid={subid}, retry 0/{cfg.DEFAULT_RETRY}, timeout {timeout_s}s)"
         )
         return {"subid": subid, "pid": proc.pid, "proc": proc}
     except Exception as exc:
@@ -835,7 +919,11 @@ def _launch_parallel_group(
 
 
 def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
-    """从 planned 启动一个 task。返回 True 表示已启动。"""
+    """从 planned 启动一个 task。返回 True 表示已启动。
+
+    v0.28.2: 当 executable phase 数 >= 2 且未禁用并行时，走并行分支；
+    失败时 fallback 到单 phase 串行 dev_role_launch。
+    """
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
@@ -851,6 +939,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         phases = _load_phases(tid)
+        executable: set[int] = set()
         if phases:
             executable, blocked, skipped = _resolve_phase_dependencies(phases)
             if blocked or skipped:
@@ -870,6 +959,36 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
 
         complexity = task.get("complexity", "medium")
         engine_log(f"[{label}] 取新 task: {tid} (complexity={complexity})")
+
+        # ── v0.28.2: 并行分支 ──
+        # 条件：executable phase >= 2 + 未被全局禁用
+        # 不满足则直接走单 phase dev_role_launch（原有路径）
+        if (
+            phases
+            and executable
+            and len(executable) >= 2
+            and not PHASE_PARALLEL_DISABLED
+        ):
+            groups = _group_parallel_phases(phases, executable)
+            if groups and len(groups[0]) >= 2:
+                plan_content = plan_file.read_text(encoding="utf-8")
+                timeout_s = _lookup_phase_timeout(tid, phases)
+                ok = _try_launch_planned_parallel(
+                    ws, tid, groups, plan_content, timeout_s
+                )
+                if ok:
+                    active_tasks[key] = {
+                        "workspace": ws,
+                        "task_id": tid,
+                        "complexity": complexity,
+                        "started_at": now_iso(),
+                        "mode": "parallel",
+                    }
+                    store.update_index()
+                    return True
+                # 并行启动失败 → 回退串行
+                engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
+
         launch_r = dev_role_launch(tid)
         if "error" in launch_r:
             engine_log(f"[{label}] 启动 {tid} 失败: {launch_r['error']}")
@@ -883,6 +1002,246 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         store.update_index()
         return True
     return False
+
+
+def _lookup_phase_timeout(tid: str, phases: list[dict]) -> int:
+    """查 phases 里 phase 1 的 timeout，单位秒；找不到走 cfg.default_timeout。
+
+    engine-phase-retry-config: 缺省 600 → cfg.default_timeout（1800），
+    与 ccc-board._load_timeout 默认值保持一致。
+    """
+    default_to = cfg.default_timeout
+    for p in phases:
+        if p.get("phase") == 1:
+            try:
+                return int(p.get("timeout", default_to))
+            except (TypeError, ValueError):
+                return default_to
+    return default_to
+
+
+def _store_atomic_write_phases(path: Path, payload: str) -> None:
+    """原子写 phases.json：写 temp + os.replace。容错 fallback 直写。"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            path.write_text(payload, encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _try_launch_planned_parallel(
+    ws: Path,
+    task_id: str,
+    groups: list[list[int]],
+    plan_content: str,
+    timeout_s: int,
+) -> bool:
+    """启并行 task 的首个 group，剩余 group 等当前 group 全部完成后再启。
+
+    Args:
+        ws: workspace 路径
+        task_id: task 名
+        groups: 分组后的并行 phase 列表（每组内无相互依赖）
+        plan_content: 完整 plan 文本
+        timeout_s: 单 phase 超时秒数
+
+    Returns:
+        True 至少启了一个 phase；False 全部失败。
+    """
+    global _parallel_phases
+
+    label = _ws_label(ws)
+    key = _task_key(ws, task_id)
+    first_group = groups[0]
+    engine_log(
+        f"[parallel] [{label}] {task_id} 并行调度: {len(groups)} 个 group "
+        f"(size={[len(g) for g in groups]}, max_workers={min(PHASE_PARALLEL_MAX_WORKERS, len(first_group))})"
+    )
+    success, phase_meta = _launch_parallel_group(
+        ws, task_id, first_group, plan_content, timeout_s, label
+    )
+    if not success:
+        engine_log(f"[parallel][error] [{label}] {task_id} 全部 phase 启动失败")
+        return False
+    _parallel_phases[key] = {
+        "groups": groups,
+        "current_group": first_group,
+        "phase_meta": phase_meta,
+        "any_group_fail": False,
+        "ws_path": str(ws),
+    }
+    engine_log(
+        f"[parallel] [{label}] {task_id} 当前 group={first_group} 启动 {len(phase_meta)} phase OK"
+    )
+    return True
+
+
+def _on_parallel_group_complete(ws: Path, task_id: str, phase_nums: list[int]) -> str:
+    """检一组并行 phase 是否都写完 marker。
+
+    Returns:
+        "still_running" — 仍有 phase 没标 done
+        "group_done_ok" — 全部 phase 成功
+        "group_done_fail" — 至少 1 条失败
+    """
+    ws = ws.resolve()
+    pids_dir = ws / ".ccc" / "pids"
+    exitcodes: dict[int, int] = {}
+    for pid in phase_nums:
+        subid = _phase_market_subid(task_id, pid)
+        done_path = pids_dir / f"{subid}.done"
+        exit_path = pids_dir / f"{subid}.exitcode"
+        if not done_path.exists():
+            return "still_running"
+        try:
+            ec = int(exit_path.read_text().strip()) if exit_path.exists() else 1
+        except (ValueError, OSError):
+            ec = 1
+        exitcodes[pid] = ec
+    label = _ws_label(ws)
+    any_fail = any(ec != 0 for ec in exitcodes.values())
+    engine_log(
+        f"[parallel][group-done] [{label}] {task_id} group {phase_nums} → "
+        f"{'fail' if any_fail else 'ok'} (exitcodes={exitcodes})"
+    )
+    # 写回 phases.json：pending → done/failed
+    phases_file = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if phases_file.exists():
+        try:
+            raw = phases_file.read_text(encoding="utf-8")
+            new_lines: list[str] = []
+            changed = False
+            for line in raw.splitlines():
+                s = line.strip()
+                if not s:
+                    new_lines.append(line)
+                    continue
+                try:
+                    obj = json.loads(s)
+                except json.JSONDecodeError:
+                    new_lines.append(line)
+                    continue
+                if not isinstance(obj, dict) or "phase" not in obj:
+                    new_lines.append(line)
+                    continue
+                pid = obj.get("phase")
+                if pid in exitcodes:
+                    new_status = "done" if exitcodes[pid] == 0 else "failed"
+                    if obj.get("status") != new_status:
+                        obj["status"] = new_status
+                        changed = True
+                new_lines.append(json.dumps(obj, ensure_ascii=False))
+            if changed:
+                _store_atomic_write_phases(phases_file, "\n".join(new_lines) + "\n")
+        except OSError as exc:
+            engine_log(f"[parallel][status] 写 phases.json 失败: {exc}")
+    return "group_done_fail" if any_fail else "group_done_ok"
+
+
+def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
+    """Engine tick 调用：推进并行 task 状态。
+
+    Returns:
+        "still_running" — 当前 group 未完 / 等待下一 group
+        "task_complete_ok" — 全部 group 完成且全成功
+        "task_complete_fail" — 有 group 失败
+    """
+    global _parallel_phases
+
+    ws = ws.resolve()
+    key = _task_key(ws, task_id)
+    state = _parallel_phases.get(key)
+    if not state:
+        return "still_running"
+
+    current_group = state.get("current_group") or []
+    if not current_group:
+        return "still_running"
+
+    group_state = _on_parallel_group_complete(ws, task_id, current_group)
+    if group_state == "still_running":
+        return "still_running"
+    if group_state == "group_done_fail":
+        state["any_group_fail"] = True
+
+    # 推进到下一 group
+    groups = state.get("groups") or [current_group]
+    current_group_idx = groups.index(current_group) if current_group in groups else -1
+    next_group = None
+    for i in range(current_group_idx + 1, len(groups)):
+        if groups[i]:
+            next_group = groups[i]
+            break
+    if next_group and len(next_group) >= 2:
+        # 启动下一 group
+        plan_file = ws / ".ccc" / "plans" / f"{task_id}.plan.md"
+        if plan_file.exists():
+            plan_content = plan_file.read_text(encoding="utf-8")
+            # 拿当前 timeout
+            timeout_s = 600
+            phases = _load_phases(task_id)
+            if phases:
+                timeout_s = _lookup_phase_timeout(task_id, phases)
+            label = _ws_label(ws)
+            ok, meta = _launch_parallel_group(
+                ws,
+                task_id,
+                next_group,
+                plan_content,
+                timeout_s,
+                label,
+            )
+            if ok:
+                state["current_group"] = next_group
+                state["phase_meta"] = meta
+                engine_log(
+                    f"[parallel][next-group] {task_id} 下一 group {next_group} 启动"
+                )
+                return "still_running"
+            engine_log(f"[parallel][warn] {task_id} 下一 group 启动失败，标 group fail")
+            state["any_group_fail"] = True
+
+    # 全部 group 完成（或后续 group 启不动）
+    any_fail = bool(state.get("any_group_fail"))
+    _parallel_phases.pop(key, None)
+    pids_dir = ws / ".ccc" / "pids"
+    try:
+        (pids_dir / f"{task_id}.done").write_text("ok")
+        (pids_dir / f"{task_id}.exitcode").write_text("1" if any_fail else "0")
+    except OSError as exc:
+        engine_log(f"[parallel][marker-write] {task_id} 写完成 marker 失败: {exc}")
+    label = _ws_label(ws)
+    engine_log(
+        f"[parallel][task-done] [{label}] {task_id} 全部 group 完成 (any_fail={any_fail})"
+    )
+    return "task_complete_fail" if any_fail else "task_complete_ok"
+
+
+def _parallel_task_marker_to_result(ws: Path, task_id: str) -> dict:
+    """类似 dev_role_check_complete: 把并行 task 的 done/exitcode 映射成 status dict。"""
+    ws = ws.resolve()
+    pids_dir = ws / ".ccc" / "pids"
+    done_path = pids_dir / f"{task_id}.done"
+    exit_path = pids_dir / f"{task_id}.exitcode"
+    if not done_path.exists():
+        return {"status": "running", "retry": 0}
+    try:
+        ec = int(exit_path.read_text().strip()) if exit_path.exists() else 1
+    except (ValueError, OSError):
+        ec = 1
+    if ec == 0:
+        return {"status": "success", "retry": 0}
+    return {"status": "failed", "retry": 0}
+
+
+def _reset_parallel_disabled_after_tick() -> None:
+    """tick 边界 reset PHASE_PARALLEL_DISABLED（fallback 只对当次 tick 生效）。"""
+    global PHASE_PARALLEL_DISABLED
+    PHASE_PARALLEL_DISABLED = False
 
 
 def engine_loop(workspaces: list[Path]) -> None:
@@ -903,19 +1262,28 @@ def engine_loop(workspaces: list[Path]) -> None:
     iteration = 0
 
     for ws in workspaces:
-        _startup_scan_workspace(ws, active_tasks)
+        _recover_tasks(ws, active_tasks)
 
     while not _engine_shutdown:
         iteration += 1
         tick_start = time.time()
         any_active = bool(active_tasks)
 
-        first_task_id = next(iter(active_tasks.values()), {}).get("task_id")
-        first_task_ws = next(iter(active_tasks.values()), {}).get("workspace")
+        first_task = next(iter(active_tasks.values()), {})
+        first_task_id = first_task.get("task_id")
+        first_task_ws = first_task.get("workspace")
+        current_phase = None
+        if first_task_id and first_task_ws:
+            try:
+                _activate_workspace(first_task_ws)
+                current_phase = _current_running_phase(first_task_id)
+            except Exception as exc:
+                engine_log(f"stats phase lookup failed for {first_task_id}: {exc}")
         _update_stats(
             active_count=len(active_tasks),
             current_task=first_task_id,
-            phase_status="running" if any_active else "idle",
+            current_phase=current_phase,
+            phase_status="running" if any_active else "done",
             workspace_name=first_task_ws.name if first_task_ws else None,
         )
 
@@ -927,7 +1295,22 @@ def engine_loop(workspaces: list[Path]) -> None:
                     tid = info["task_id"]
                     label = _ws_label(ws, program_dir)
                     _activate_workspace(ws)
-                    result = dev_role_check_complete(tid)
+                    mode = info.get("mode", "serial")
+                    if mode == "parallel":
+                        # v0.28.2: 并行 task 走专用检查器
+                        par_state = _check_parallel_task_complete(ws, tid)
+                        if par_state == "still_running":
+                            if iteration % 60 == 0:
+                                engine_log(f"[parallel] [{label}] {tid} 执行中")
+                            any_active = True
+                            continue
+                        # task_complete_ok / task_complete_fail → 包装成 result
+                        if par_state == "task_complete_ok":
+                            result = {"status": "success", "retry": 0}
+                        else:
+                            result = {"status": "failed", "retry": 0}
+                    else:
+                        result = dev_role_check_complete(tid)
                     status = result.get("status", "unknown")
                     complexity = info.get("complexity", "medium")
 
@@ -942,6 +1325,8 @@ def engine_loop(workspaces: list[Path]) -> None:
 
                 for key in completed_tasks:
                     active_tasks.pop(key, None)
+                # tick 边界重置 fallback 标志
+                _reset_parallel_disabled_after_tick()
 
             # 每 6 轮（~60s）跑一次 stale check + testing 流转 + 统计聚合
             if iteration % 6 == 0:
@@ -1330,30 +1715,27 @@ def main(argv: list[str] | None = None) -> None:
     except SystemExit:
         _log.debug("engine exiting via SystemExit")
     _engine_shutdown = True
-    if _engine_shutdown:
-        remaining = 10
-        while remaining > 0:
-            time.sleep(1)
-            remaining -= 1
-        engine_log("Engine 终止")
-    else:
-        engine_log("Engine 正常退出")
-
-
-if __name__ == "__main__":
-    main()
+    engine_log("Engine 终止")
 
 
 # ── Stats HTTP Endpoint（plan: engine-stats-endpoint） ──
-_stats_started_at: float | None = None
+def _read_engine_version() -> str:
+    try:
+        return (_script_dir.parent / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
+
+_ENGINE_VERSION = _read_engine_version()
+_stats_started_at: float | None = time.time()
 _stats_lock = threading.Lock()
 _stats_data: dict = {
-    "uptime_sec": 0,
+    "uptime_sec": 0.001,
     "current_task": None,
     "current_phase": None,
-    "phase_status": None,
+    "phase_status": "pending",
     "in_progress_count": 0,
-    "engine_version": "v0.28.1",
+    "engine_version": _ENGINE_VERSION,
     "last_tick_at": None,
     "workspace": Path.cwd().name,
 }
@@ -1374,13 +1756,12 @@ def _update_stats(
             _stats_started_at = now_ts
             _stats_data["uptime_sec"] = 0
         else:
-            _stats_data["uptime_sec"] = int(now_ts - _stats_started_at)
-        if current_task is not None:
-            _stats_data["current_task"] = current_task
-        if current_phase is not None:
-            _stats_data["current_phase"] = current_phase
-        if phase_status is not None:
-            _stats_data["phase_status"] = phase_status
+            _stats_data["uptime_sec"] = max(0.001, now_ts - _stats_started_at)
+        _stats_data["current_task"] = current_task
+        _stats_data["current_phase"] = current_phase
+        _stats_data["phase_status"] = phase_status or (
+            "running" if active_count else "done"
+        )
         _stats_data["in_progress_count"] = active_count
         _stats_data["last_tick_at"] = now
         if workspace_name:
@@ -1450,3 +1831,7 @@ def _run_stats_server(port: int) -> None:
 
     t = threading.Thread(target=_serve, name="ccc-stats-http", daemon=True)
     t.start()
+
+
+if __name__ == "__main__":
+    main()
