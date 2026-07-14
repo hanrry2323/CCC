@@ -57,6 +57,12 @@ _check_phase_failures = ccc_board._check_phase_failures
 _current_running_phase = ccc_board._current_running_phase
 
 cfg = Config()
+_log.info(
+    "ccc-engine config: phase_timeout=%ds, exec_timeout=%ds, engine_tick_interval=%ds",
+    cfg.phase_timeout,
+    cfg.exec_timeout,
+    cfg.engine_tick_interval,
+)
 
 _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
@@ -257,7 +263,7 @@ def _run_pytest(ws: Path) -> tuple[int, str]:
             cwd=ws,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=cfg.phase_timeout,
         )
         output = (r.stdout or "") + (r.stderr or "")
         return r.returncode, output
@@ -789,9 +795,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                     except Exception as exc:
                         engine_log(f"[stats] aggregate error for {ws.name}: {exc}")
 
-                if not any_active:
-                    time.sleep(cfg.engine_idle_sleep)
-                    continue
+            if not any_active:
+                time.sleep(cfg.engine_tick_interval)
+                continue
 
         except KeyboardInterrupt:
             engine_log("收到 SIGINT, 优雅关闭")

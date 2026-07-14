@@ -89,8 +89,10 @@ EVENTS_DIR = BOARD / "events"
 MAX_RETRY = cfg.max_retry
 MAX_STALE_HOURS = cfg.max_stale_hours
 # ═══════════════════════════════════════════
-# 安全辅助函数
+# 超时配置（v0.28.0 F2-M1）
 # ═══════════════════════════════════════════
+
+_log.info("ccc-board config: exec_timeout=%ds", cfg.exec_timeout)
 
 
 def sanitize_id(tid: str) -> str:
@@ -149,7 +151,9 @@ def _acquire_product_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
         except (OSError, IOError) as e:
             if hasattr(e, "errno") and e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
                 if time.monotonic() >= deadline:
-                    raise OSError(f"product_role lock timeout ({timeout_s}s): {lockfile}")
+                    raise OSError(
+                        f"product_role lock timeout ({timeout_s}s): {lockfile}"
+                    )
                 time.sleep(0.5)
                 continue
             os.close(_fd)
@@ -217,6 +221,7 @@ def _load_timeout(phases_file: Path, default: int = None) -> int:
                     return default
                 try:
                     from _config import parse_duration
+
                     return parse_duration(to, default)
                 except Exception:
                     return default
@@ -270,8 +275,12 @@ def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
     调用时拿到 cycle 列表，把环上 phase 标 skipped + 写 warnings.json。
     """
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[int, int] = {p.get("phase"): WHITE for p in phases if p.get("phase") is not None}
-    by_id: dict[int, dict] = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+    color: dict[int, int] = {
+        p.get("phase"): WHITE for p in phases if p.get("phase") is not None
+    }
+    by_id: dict[int, dict] = {
+        p.get("phase"): p for p in phases if p.get("phase") is not None
+    }
     cycles: list[list[int]] = []
 
     def dfs(node: int, stack: list[int]) -> None:
@@ -296,7 +305,9 @@ def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
     return cycles
 
 
-def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int], set[int]]:
+def _resolve_phase_dependencies(
+    phases: list[dict],
+) -> tuple[set[int], set[int], set[int]]:
     """v0.24: 解析 phase 依赖关系。
 
     对每个 phase 检查 depends_on 列表中所有前置 phase 的状态：
@@ -312,7 +323,9 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
     注：本函数只标注新状态（pending → blocked/skipped），已 done/verified/in_progress/failed
     的 phase 不动。Engine 在调用此函数前应已写回 phases.json。
     """
-    by_id: dict[int, dict] = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+    by_id: dict[int, dict] = {
+        p.get("phase"): p for p in phases if p.get("phase") is not None
+    }
 
     # v0.25.1: 循环依赖检测 — 环上 phase 强制 skipped
     cycles = _detect_phase_cycle(phases)
@@ -328,7 +341,11 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
     for pid, phase in by_id.items():
         status = phase.get("status", "pending")
         # 已达终态或正在执行 → 不再分类
-        if status in PHASE_TERMINAL_OK or status in PHASE_TERMINAL_FAIL or status == "in_progress":
+        if (
+            status in PHASE_TERMINAL_OK
+            or status in PHASE_TERMINAL_FAIL
+            or status == "in_progress"
+        ):
             continue
 
         # v0.25.1: 环上节点直接 skipped（强失败隔离）
@@ -376,11 +393,13 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
                         existing = []
                 except json.JSONDecodeError:
                     existing = []
-            existing.append({
-                "type": "phase_cycle",
-                "cycles": cycles,
-                "detected_at": now_iso(),
-            })
+            existing.append(
+                {
+                    "type": "phase_cycle",
+                    "cycles": cycles,
+                    "detected_at": now_iso(),
+                }
+            )
             warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
         except OSError as exc:
             _log.debug("write warnings.json (phase_cycle) failed: %s", exc)
@@ -404,11 +423,13 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
                         existing = []
                 except json.JSONDecodeError:
                     existing = []
-            existing.append({
-                "type": "unresolved_dep",
-                "missing": {str(k): v for k, v in unresolved.items()},
-                "detected_at": now_iso(),
-            })
+            existing.append(
+                {
+                    "type": "unresolved_dep",
+                    "missing": {str(k): v for k, v in unresolved.items()},
+                    "detected_at": now_iso(),
+                }
+            )
             warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
             # L2 桌面通知（让 dev 立刻看见）
             try:
@@ -431,7 +452,9 @@ def _resolve_phase_dependencies(phases: list[dict]) -> tuple[set[int], set[int],
     return executable, blocked, skipped
 
 
-def _apply_phase_status_updates(task_id: str, blocked: set[int], skipped: set[int]) -> None:
+def _apply_phase_status_updates(
+    task_id: str, blocked: set[int], skipped: set[int]
+) -> None:
     """v0.24: 把解析出的 blocked/skipped 状态写回 phases.jsonl。
 
     双向同步（Engine 每 tick 调用）：
@@ -499,10 +522,7 @@ def _current_running_phase(task_id: str) -> int:
     executable, blocked, _skipped = _resolve_phase_dependencies(phases)
     if executable:
         return min(executable)
-    candidates = [
-        p for p in phases
-        if p.get("status") in ("pending", "blocked")
-    ]
+    candidates = [p for p in phases if p.get("status") in ("pending", "blocked")]
     if candidates:
         return candidates[0].get("phase", 1)
     return 1
@@ -568,9 +588,15 @@ def _check_phase_failures(task_id: str) -> dict:
     """
     phases = _load_phases(task_id)
     if not phases:
-        return {"executable": [], "blocked": [], "skipped": [],
-                "all_terminal": False, "all_failed_or_skipped": False,
-                "engine_iter": 0, "force_converged": False}
+        return {
+            "executable": [],
+            "blocked": [],
+            "skipped": [],
+            "all_terminal": False,
+            "all_failed_or_skipped": False,
+            "engine_iter": 0,
+            "force_converged": False,
+        }
 
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
     _apply_phase_status_updates(task_id, blocked, skipped)
@@ -580,21 +606,21 @@ def _check_phase_failures(task_id: str) -> dict:
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
     # 回报磁盘真实状态（已写回的 skipped/blocked 不再出现在 resolve 的新增集合里）
     skipped_on_disk = {
-        p.get("phase") for p in phases
+        p.get("phase")
+        for p in phases
         if p.get("status") == "skipped" and p.get("phase") is not None
     }
     blocked_on_disk = {
-        p.get("phase") for p in phases
+        p.get("phase")
+        for p in phases
         if p.get("status") == "blocked" and p.get("phase") is not None
     }
 
     all_terminal = all(
-        p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL)
-        for p in phases
+        p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL) for p in phases
     )
     all_failed_or_skipped = all(
-        p.get("status") in ("failed", "skipped")
-        for p in phases
+        p.get("status") in ("failed", "skipped") for p in phases
     )
 
     # v0.25.1: 多轮 tick 不收敛强失败（CHANGELOG v0.24.4:94 P1）
@@ -631,14 +657,18 @@ def _check_phase_failures(task_id: str) -> dict:
                             existing = []
                     except json.JSONDecodeError:
                         existing = []
-                existing.append({
-                    "type": "phase_force_converged",
-                    "engine_iter": engine_iter,
-                    "engine_iter_phase": _current_running_phase(task_id),
-                    "task_id": task_id,
-                    "detected_at": now_iso(),
-                })
-                warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
+                existing.append(
+                    {
+                        "type": "phase_force_converged",
+                        "engine_iter": engine_iter,
+                        "engine_iter_phase": _current_running_phase(task_id),
+                        "task_id": task_id,
+                        "detected_at": now_iso(),
+                    }
+                )
+                warnings_file.write_text(
+                    json.dumps(existing, ensure_ascii=False, indent=2)
+                )
                 try:
                     subprocess.run(
                         [
@@ -652,9 +682,16 @@ def _check_phase_failures(task_id: str) -> dict:
                         timeout=5,
                     )
                 except Exception as e:
-                    _log.warning("ccc-notify force_converged failed for %s: %s", task_id, e, exc_info=True)
+                    _log.warning(
+                        "ccc-notify force_converged failed for %s: %s",
+                        task_id,
+                        e,
+                        exc_info=True,
+                    )
             except OSError as e:
-                _log.warning("write force_converged phases failed for %s: %s", task_id, e)
+                _log.warning(
+                    "write force_converged phases failed for %s: %s", task_id, e
+                )
 
     return {
         "executable": sorted(executable),
@@ -736,10 +773,15 @@ def _read_engine_iter(task_id: str) -> int:
 def _write_engine_iter(task_id: str, value: int) -> None:
     """v0.27.1: 写 engine_iter + 当前 phase 到 metadata。"""
     cur_phase = _current_running_phase(task_id)
-    _write_engine_iter_meta(task_id, {
-        "engine_iter": value,
-        "engine_iter_phase": cur_phase,
-    })
+    _write_engine_iter_meta(
+        task_id,
+        {
+            "engine_iter": value,
+            "engine_iter_phase": cur_phase,
+        },
+    )
+
+
 def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
     """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
 
@@ -754,7 +796,9 @@ def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
     try:
         move_task(task_id, "in_progress", "abnormal")
         # v0.28.0 (R-08): 改用 _log 统一 logger
-        _log.error("failure-isolation: %s all phases failed/skipped → abnormal", task_id)
+        _log.error(
+            "failure-isolation: %s all phases failed/skipped → abnormal", task_id
+        )
         return True
     except Exception as exc:
         _log.error("failure-isolation: %s move to abnormal failed: %s", task_id, exc)
@@ -891,9 +935,7 @@ def _get_code_context(ws_path: Path) -> str:
         if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
             break
         # A7 兼容 3.9：rglob 不带 follow_symlinks（Python 3.13+ 才支持），用 is_symlink 过滤
-        entries = sorted(
-            p for p in ws_path.rglob(entry_pattern) if not p.is_symlink()
-        )
+        entries = sorted(p for p in ws_path.rglob(entry_pattern) if not p.is_symlink())
         for ef in entries:
             if len([p for p in parts if p.startswith("## 入口文件")]) >= 2:
                 break
@@ -1181,8 +1223,12 @@ def product_role(task_id: str = "") -> dict:
             # 写 phase 列表时给每个 phase 标 color_depth=1（task 自身是父 depth=0）
             try:
                 from _board_store import assign_color_group
-                color_group = assign_color_group(ROOT, parent_group=task.get("color_group"))
+
+                color_group = assign_color_group(
+                    ROOT, parent_group=task.get("color_group")
+                )
                 from pathlib import Path as _P
+
                 task_file = _P(".ccc/board/planned") / f"{task_id}.jsonl"
                 if task_file.exists():
                     task_data = json.loads(task_file.read_text())
@@ -1191,12 +1237,23 @@ def product_role(task_id: str = "") -> dict:
                     # v0.28.1: 根据 plan 内容推断 complexity
                     plan_lines = plan_content.splitlines()
                     plan_size = len(plan_lines)
-                    file_mentions = len(set(
-                        l.strip() for l in plan_lines
-                        if l.strip().startswith(("/", "`/"))
-                        and not l.strip().startswith(("//", "#"))
-                    ))
-                    section_count = len([l for l in plan_lines if l.strip().startswith("##") and " " in l and l.strip() != "##"])
+                    file_mentions = len(
+                        set(
+                            l.strip()
+                            for l in plan_lines
+                            if l.strip().startswith(("/", "`/"))
+                            and not l.strip().startswith(("//", "#"))
+                        )
+                    )
+                    section_count = len(
+                        [
+                            l
+                            for l in plan_lines
+                            if l.strip().startswith("##")
+                            and " " in l
+                            and l.strip() != "##"
+                        ]
+                    )
                     plan_weight = plan_size + file_mentions * 20 + section_count * 10
                     if plan_weight <= 50:
                         task_data["complexity"] = "small"
@@ -1204,10 +1261,21 @@ def product_role(task_id: str = "") -> dict:
                         task_data["complexity"] = "medium"
                     else:
                         task_data["complexity"] = "large"
-                    _log.info("%s complexity=%s (weight=%d, lines=%d, files=%d, sections=%d)",
-                        task_id, task_data["complexity"], plan_weight, plan_size, file_mentions, section_count)
-                    task_file.write_text(json.dumps(task_data, ensure_ascii=False) + "\n")
-                    _log.info("%s assigned color_group=%s depth=0", task_id, color_group)
+                    _log.info(
+                        "%s complexity=%s (weight=%d, lines=%d, files=%d, sections=%d)",
+                        task_id,
+                        task_data["complexity"],
+                        plan_weight,
+                        plan_size,
+                        file_mentions,
+                        section_count,
+                    )
+                    task_file.write_text(
+                        json.dumps(task_data, ensure_ascii=False) + "\n"
+                    )
+                    _log.info(
+                        "%s assigned color_group=%s depth=0", task_id, color_group
+                    )
                 if phases:
                     for p in phases:
                         p.setdefault("color_depth", 1)
@@ -1224,7 +1292,10 @@ def product_role(task_id: str = "") -> dict:
                 _log.warning("color assign failed (non-fatal): %s", e)
 
             # 清理 temp 文件
-            for tmp in (plan_dir / f".{task_id}.plan.tmp", phases_dir / f".{task_id}.phases.tmp"):
+            for tmp in (
+                plan_dir / f".{task_id}.plan.tmp",
+                phases_dir / f".{task_id}.phases.tmp",
+            ):
                 if tmp.exists():
                     tmp.unlink()
 
@@ -1439,12 +1510,21 @@ def dev_role() -> dict:
     # v0.28.0 (F2-H1 修): 加权判定 — 纯行数 + 文件引用数×20 + section 数×10
     plan_lines = plan_content.splitlines()
     plan_size = len(plan_lines)
-    file_mentions = len(set(
-        line.strip() for line in plan_lines
-        if line.strip().startswith(("/", "`/"))
-        and not line.strip().startswith(("//", "#"))
-    ))
-    section_count = len([l for l in plan_lines if l.strip().startswith("##") and " " in l and l.strip() != "##"])
+    file_mentions = len(
+        set(
+            line.strip()
+            for line in plan_lines
+            if line.strip().startswith(("/", "`/"))
+            and not line.strip().startswith(("//", "#"))
+        )
+    )
+    section_count = len(
+        [
+            l
+            for l in plan_lines
+            if l.strip().startswith("##") and " " in l and l.strip() != "##"
+        ]
+    )
     plan_weight = plan_size + file_mentions * 20 + section_count * 10
     size_hint = ""
     if plan_weight > cfg.size_hint_threshold:
@@ -1476,7 +1556,12 @@ def dev_role() -> dict:
 
     try:
         _log.info(
-            "%s phase=%s timeout=%s retry=%d", task_id, phase_id, timeout_s, retry if from_col == "in_progress" else 0)
+            "%s phase=%s timeout=%s retry=%d",
+            task_id,
+            phase_id,
+            timeout_s,
+            retry if from_col == "in_progress" else 0,
+        )
         done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
         exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
         result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
@@ -1569,6 +1654,7 @@ def dev_role() -> dict:
 
     except Exception as e:  # debug
         import traceback as _tb
+
         _log.error("\n%s 启动失败: %s\n%s", task_id, e, _tb.format_exc())
     finally:
         # prompt 保留给后台读
@@ -1676,7 +1762,9 @@ def _parse_plan_scope(task_id: str) -> list[str]:
     return validated
 
 
-def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> tuple[str, str]:
+def _get_git_diff(
+    workspace: Path, since: str = "HEAD~1", task_id: str = ""
+) -> tuple[str, str]:
     """取 git diff 改动，返回 (stat, full_diff)。
 
     若 task_id 提供，优先按 task 关联 commit 取 diff（G1 修复：reviewer 只审单个 task 的改动）。
@@ -1714,8 +1802,20 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
             # fallback: git log --grep task_id（仅在 phases.json 无记录时用）
             if not commit:
                 log_r = sp.run(
-                    ["git", "log", "--all", "--oneline", "--grep", task_id, "--format=%H", "--max-count=1"],
-                    cwd=workspace, capture_output=True, text=True, timeout=10,
+                    [
+                        "git",
+                        "log",
+                        "--all",
+                        "--oneline",
+                        "--grep",
+                        task_id,
+                        "--format=%H",
+                        "--max-count=1",
+                    ],
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
 
@@ -1723,28 +1823,42 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
             # task 级别的 diff
             stat_r = sp.run(
                 ["git", "diff", f"{commit}^..{commit}", "--stat"],
-                cwd=workspace, capture_output=True, text=True, timeout=10,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             diff_r = sp.run(
                 ["git", "diff", f"{commit}^..{commit}"],
-                cwd=workspace, capture_output=True, text=True, timeout=30,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             # 若父 commit 不存在（首次 commit），用 --root
             if stat_r.returncode != 0:
                 stat_r = sp.run(
                     ["git", "diff", "--root", commit, "--stat"],
-                    cwd=workspace, capture_output=True, text=True, timeout=10,
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 diff_r = sp.run(
                     ["git", "diff", "--root", commit],
-                    cwd=workspace, capture_output=True, text=True, timeout=30,
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
             return stat_r.stdout or "", diff_r.stdout or ""
 
         # 无 task_id / 没找到 commit：按 since 走（原逻辑 + HEAD~1 不存在降级）
         rev_r = sp.run(
             ["git", "rev-parse", "--verify", since],
-            cwd=workspace, capture_output=True, timeout=5,
+            cwd=workspace,
+            capture_output=True,
+            timeout=5,
         )
         ref = since if rev_r.returncode == 0 else "--root"
 
@@ -1774,7 +1888,10 @@ def _get_git_diff(workspace: Path, since: str = "HEAD~1", task_id: str = "") -> 
 
 
 def _review_with_llm(
-    task_id: str, diff_stat: str, full_diff: str, plan_text: str,
+    task_id: str,
+    diff_stat: str,
+    full_diff: str,
+    plan_text: str,
     size_class: str = "medium",
 ) -> dict:
     """调 Claude API 审查代码。返回 {"verdict": "pass"|"fail", "findings": [...], "summary": "..."}。
@@ -1831,6 +1948,7 @@ def _review_with_llm(
         # v0.24.7 (A24-24): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600，
         # 防 /tmp 下被同用户其他进程读取（review prompt 可能含 plan 描述）
         import tempfile as _tempfile
+
         _review_prompt_dir = Path.home() / ".ccc" / "prompts"
         _review_prompt_dir.mkdir(parents=True, exist_ok=True)
         _prompt_fd, _prompt_file = _tempfile.mkstemp(
@@ -1854,7 +1972,7 @@ def _review_with_llm(
                         input=data,
                         capture_output=True,
                         text=False,
-                        timeout=300,
+                        timeout=cfg.exec_timeout,
                         env=env,
                     )
                     if _r.returncode == 0:
@@ -1868,7 +1986,8 @@ def _review_with_llm(
                 if _attempt < 3:
                     _log.warning(
                         "[reviewer] flash tier attempt %d/3: %s",
-                        _attempt, _last_review_err,
+                        _attempt,
+                        _last_review_err,
                     )
                     time.sleep(10)
             r = _r
@@ -1880,12 +1999,20 @@ def _review_with_llm(
             except OSError as e:
                 _log.warning("reviewer prompt temp file unlink failed: %s", e)
         if r.returncode != 0:
-            stderr = r.stderr.decode("utf-8", errors="replace") if isinstance(r.stderr, bytes) else r.stderr
+            stderr = (
+                r.stderr.decode("utf-8", errors="replace")
+                if isinstance(r.stderr, bytes)
+                else r.stderr
+            )
             return {
                 "verdict": "fallback",
                 "reason": f"claude rc={r.returncode}: {stderr[:200]}",
             }
-        output = r.stdout.decode("utf-8", errors="replace") if isinstance(r.stdout, bytes) else r.stdout
+        output = (
+            r.stdout.decode("utf-8", errors="replace")
+            if isinstance(r.stdout, bytes)
+            else r.stdout
+        )
         trimmed = output.strip()
         # 优先：直接尝试解析整个输出（Claude 按指示只返回 JSON）
         if trimmed.startswith("{"):
@@ -1897,7 +2024,9 @@ def _review_with_llm(
                 pass  # 继续 fallback 解析
 
         # 次优：从 markdown 代码块提取 JSON（匹配首 { 到末 }）
-        m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```", output, _re.IGNORECASE)
+        m = _re.search(
+            r"```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```", output, _re.IGNORECASE
+        )
         if not m:
             # 最后：裸 JSON 对象，匹配首 { 到末 }（greedy，适应嵌套对象）
             m = _re.search(r"(\{.*\})", output, _re.DOTALL)
@@ -1908,15 +2037,21 @@ def _review_with_llm(
             json_str = m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0)
             json_str = json_str.strip()
             data = None
-            for candidate in (json_str, _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)):
+            for candidate in (
+                json_str,
+                _re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", json_str),
+            ):
                 try:
                     data = json.loads(candidate)
                     break
                 except json.JSONDecodeError:
                     continue
             if data is None:
-                _log.warning("reviewer JSON parse failed. output=[%s] json_str=[%s]",
-                             output[:500], json_str[:300])
+                _log.warning(
+                    "reviewer JSON parse failed. output=[%s] json_str=[%s]",
+                    output[:500],
+                    json_str[:300],
+                )
                 raise json.JSONDecodeError("all candidates failed", json_str, 0)
             if data.get("verdict") in ("pass", "fail"):
                 return data
@@ -1929,7 +2064,10 @@ def _review_with_llm(
     except _sp.TimeoutExpired:
         return {"verdict": "fallback", "reason": "claude timeout (300s)"}
     except NameError:
-        return {"verdict": "fallback", "reason": "r undefined (subprocess crash before assignment)"}
+        return {
+            "verdict": "fallback",
+            "reason": "r undefined (subprocess crash before assignment)",
+        }
 
 
 def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
@@ -1957,9 +2095,9 @@ def _py_compile_fallback(task_id: str, files: list[str]) -> bool:
 
 
 # v0.24.1: reviewer 按变更量分级阈值
-REVIEW_SIZE_SMALL_MAX = 10   # ≤10 行 → small（跳过 LLM）
+REVIEW_SIZE_SMALL_MAX = 10  # ≤10 行 → small（跳过 LLM）
 REVIEW_SIZE_MEDIUM_MAX = 50  # 11-50 行 → medium（标准 LLM）
-                              # >50 行 → large（LLM + impact 分析）
+# >50 行 → large（LLM + impact 分析）
 
 
 def _parse_diff_size(stat_output: str) -> int | None:
@@ -2077,7 +2215,9 @@ def _review_one_task(task_id: str) -> bool:
     size_class, total_lines = _classify_review_size(diff_stat)
     # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
     if size_class == "unknown":
-        _quarantine(task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级")
+        _quarantine(
+            task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级"
+        )
         _log.error(
             "[reviewer] %s ✗ diff stat 解析失败（缺 summary），quarantine",
             task_id,
@@ -2096,6 +2236,7 @@ def _review_one_task(task_id: str) -> bool:
         if not files:
             files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
         import glob as _glob
+
         py_files = []
         for f in files:
             matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
@@ -2113,11 +2254,15 @@ def _review_one_task(task_id: str) -> bool:
                 f"## Files Checked ({len(py_files)} 条)\n\n"
                 + "\n".join(f"- {Path(f).name}" for f in py_files)
             )
-            _log.info("[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines)
+            _log.info(
+                "[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines
+            )
             return True
         elif not py_files:
             if not full_diff.strip():
-                _quarantine(task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空")
+                _quarantine(
+                    task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空"
+                )
                 _log.error(
                     "[reviewer] %s ✗ small-class quarantine: 空 diff",
                     task_id,
@@ -2134,7 +2279,9 @@ def _review_one_task(task_id: str) -> bool:
                 _log.info("[reviewer] %s ✓ small-class plan-only pass", task_id)
                 return True
             _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
-            _log.error("[reviewer] %s ✗ small-class quarantine: 无静态可检查项", task_id)
+            _log.error(
+                "[reviewer] %s ✗ small-class quarantine: 无静态可检查项", task_id
+            )
             return False
         else:
             _log.error(
@@ -2144,7 +2291,9 @@ def _review_one_task(task_id: str) -> bool:
             return False
 
     # medium / large：走 LLM，large 加 impact 分析提示
-    verdict_data = _review_with_llm(task_id, diff_stat, full_diff, plan_text, size_class=size_class)
+    verdict_data = _review_with_llm(
+        task_id, diff_stat, full_diff, plan_text, size_class=size_class
+    )
     verdict = verdict_data.get("verdict", "fallback")
     summary = verdict_data.get("summary", "")
 
@@ -2308,9 +2457,13 @@ def ops_role() -> dict:
                     f"in_progress 滞留 {hours_stale:.1f}h（阈值 {MAX_STALE_HOURS}h），自动隔离",
                 )
                 health["stale_detected"] += 1
-                _log.info("[ops] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal")
+                _log.info(
+                    "[ops] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal"
+                )
         except (ValueError, TypeError) as e:
-            _log.warning("ops stale timestamp parse failed for %s: %s", task.get("id"), e)
+            _log.warning(
+                "ops stale timestamp parse failed for %s: %s", task.get("id"), e
+            )
     pid_dir = ROOT / ".ccc" / "pids"
     if pid_dir.exists():
         for f in pid_dir.glob("*.pid"):
@@ -2613,6 +2766,7 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
 
     return lint_out, mypy_out
 
+
 def _audit_classify(
     workspace: str, recent_commits: str, lint_out: str, mypy_out: str
 ) -> dict:
@@ -2781,9 +2935,7 @@ def _audit_run_one(ws: str, since: str) -> dict:
         except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
             _log.warning("audit ruff --fix failed for %s: %s", ws, e)
     posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
-    posted_decision = _audit_post_backlog(
-        ws, findings.get("decision", []), "decision"
-    )
+    posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
 
     # 6. 写报表
     _elapsed_ws = _time.time() - _t_ws
@@ -2828,7 +2980,10 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         since: git log 时间窗口（默认 2h）
     """
     import time as _time
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+    from concurrent.futures import (
+        ThreadPoolExecutor,
+        TimeoutError as FuturesTimeoutError,
+    )
 
     _t0 = _time.time()
     targets = [workspace] if workspace else list(WORKSPACES)
@@ -2845,16 +3000,17 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         # v0.24.3: 单 ws timeout — 单卡死不能阻塞整个 audit 角色
         ws_timeout = 120
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(_audit_run_one, ws, since): ws for ws in targets
-            }
+            futures = {executor.submit(_audit_run_one, ws, since): ws for ws in targets}
             for fut, ws in futures.items():
                 try:
                     results.append(fut.result(timeout=ws_timeout))
                 except FuturesTimeoutError:
                     results.append(
-                        {"workspace": ws, "status": "timeout",
-                         "error": f"timeout after {ws_timeout}s"}
+                        {
+                            "workspace": ws,
+                            "status": "timeout",
+                            "error": f"timeout after {ws_timeout}s",
+                        }
                     )
                 except Exception as exc:
                     results.append(
@@ -2988,7 +3144,9 @@ def regress_role() -> dict:
                         _lines[_i] = json.dumps(_obj, ensure_ascii=False)
                         break
                     except json.JSONDecodeError as e:
-                        _log.warning("regress tag update JSON failed for %s: %s", tid, e)
+                        _log.warning(
+                            "regress tag update JSON failed for %s: %s", tid, e
+                        )
             move_task(tid, "released", "backlog")
             # macOS 桌面通知
             subprocess.run(
@@ -3197,13 +3355,16 @@ def auto_approve_agents() -> dict:
         if last:
             try:
                 from datetime import datetime as _dt
+
                 last_d = _dt.fromisoformat(last)
                 today_d = _dt.fromisoformat(today)
                 if (today_d - last_d).days < _AUTO_APPROVE_COOLDOWN_DAYS:
                     skipped_cooldown += 1
                     continue
             except ValueError as e:
-                _log.warning("auto_approve cooldown parse failed for %s: %s", task_id, e)
+                _log.warning(
+                    "auto_approve cooldown parse failed for %s: %s", task_id, e
+                )
         after_source = block.split(f"### 来自 {source}")[-1].strip()
         content_text = re.split(r"\n---|\n## ", after_source)[0].strip()
         if not content_text:
@@ -3213,6 +3374,7 @@ def auto_approve_agents() -> dict:
         # AGENTS.md 实际写为 "### 来自 {source} ({task_id})" 跟 sig 字面不同
         # → 即使内容 100% 重复也检测不到
         import hashlib
+
         content_hash = hashlib.sha256(content_text.encode("utf-8")).hexdigest()
         # 标记已写入过的 hash 进 AGENTS.md 时同时写 <!-- @hash:xxx --> 注释
         # 这里反向检查：现有 AGENTS.md 里是否含此 hash 标记
@@ -3225,19 +3387,22 @@ def auto_approve_agents() -> dict:
         if content_text[:100] in existing_text:
             skipped_dup += 1
             continue
-        candidates.append({
-            "task_id": task_id,
-            "source": source,
-            "content": content_text,
-            "content_hash": content_hash,
-        })
+        candidates.append(
+            {
+                "task_id": task_id,
+                "source": source,
+                "content": content_text,
+                "content_hash": content_hash,
+            }
+        )
         if len(candidates) >= cfg.auto_approve_max_per_run:
             break
 
     if not candidates:
         _log.info(
             "[auto-approve-agents] 无新建议（cooldown=%d, dup=%d）",
-            skipped_cooldown, skipped_dup,
+            skipped_cooldown,
+            skipped_dup,
         )
         return {
             "role": "auto-approve-agents",
@@ -3251,7 +3416,8 @@ def auto_approve_agents() -> dict:
         template_file = ROOT / "templates" / "AGENTS.md"
         agents_content = (
             template_file.read_text()
-            if template_file.exists() else "# CCC Agent Guide\n"
+            if template_file.exists()
+            else "# CCC Agent Guide\n"
         )
         agents_file.write_text(agents_content + "\n\n## AGENTS.md 建议积累\n\n")
         _log.info("[auto-approve-agents] 创建 %s", agents_file)
@@ -3276,7 +3442,9 @@ def auto_approve_agents() -> dict:
     for tid in approved_tasks:
         cooldown[tid] = today
     try:
-        cooldown_file.write_text(_json.dumps(cooldown, indent=2, ensure_ascii=False, sort_keys=True))
+        cooldown_file.write_text(
+            _json.dumps(cooldown, indent=2, ensure_ascii=False, sort_keys=True)
+        )
     except OSError as exc:
         # cooldown 写失败 → 不能继续写 AGENTS.md（下轮会重复合入）
         _log.error(
@@ -3330,7 +3498,10 @@ def auto_approve_agents() -> dict:
 
     _log.info(
         "[auto-approve-agents] ✓ %s 条建议已写入 %s (cooldown=%d, dup=%d)",
-        n, agents_file, skipped_cooldown, skipped_dup,
+        n,
+        agents_file,
+        skipped_cooldown,
+        skipped_dup,
     )
     return {
         "role": "auto-approve-agents",
@@ -3529,13 +3700,22 @@ def dev_role_check_complete(task_id: str) -> dict:
                 os.kill(pid, 0)  # 信号 0 = 只检查存活
             except (ValueError, OSError, ProcessLookupError):
                 # PID 不存在 → 清理标记文件，返回 failed 让 engine 重启
-                for f in [pid_path, done_path, ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"]:
+                for f in [
+                    pid_path,
+                    done_path,
+                    ROOT / ".ccc" / "pids" / f"{task_id}.exitcode",
+                ]:
                     try:
                         f.unlink()
                     except OSError as e:
                         _log.warning("G4 marker unlink failed %s: %s", f, e)
                 return {"status": "failed", "retry": 0, "task_id": task_id}
-        return {"status": "running", "task_id": task_id}
+        # 没有 .done 也没有 .pid → 进程已死且标记丢失，返回 failed 让 engine 重启
+        # Lesson 44: 此前返回 "running" 导致任务永久卡在 in_progress
+        _log.warning(
+            "%s 没有 .done 也没有 .pid 标记，视同失败让 engine 重启", task_id
+        )
+        return {"status": "failed", "retry": 0, "task_id": task_id}
 
     exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
     result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
@@ -3572,17 +3752,34 @@ def dev_role_check_complete(task_id: str) -> dict:
         if _phases_file.exists():
             try:
                 import subprocess as _sp
+
                 _hash = ""
                 _grep = _sp.run(
-                    ["git", "log", "--all", "--oneline", "--grep", task_id,
-                     "--format=%H", "--max-count=1"],
-                    cwd=ROOT, capture_output=True, text=True, timeout=10,
+                    [
+                        "git",
+                        "log",
+                        "--all",
+                        "--oneline",
+                        "--grep",
+                        task_id,
+                        "--format=%H",
+                        "--max-count=1",
+                    ],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if _grep.returncode == 0 and _grep.stdout.strip():
                     _hash = _grep.stdout.strip()
                 else:
-                    _r = _sp.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
-                                 capture_output=True, text=True, timeout=10)
+                    _r = _sp.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=ROOT,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
                     _hash = _r.stdout.strip()
                 if _hash and len(_hash) == 40:
                     _lines = _phases_file.read_text().splitlines()
@@ -3649,9 +3846,13 @@ def dev_role_check_complete(task_id: str) -> dict:
                         updated = True
                         break
                     except json.JSONDecodeError as e:
-                        _log.warning("update retry JSON parse failed for %s: %s", task_id, e)
+                        _log.warning(
+                            "update retry JSON parse failed for %s: %s", task_id, e
+                        )
                 if updated:
-                    _store_atomic_write(phases_file, "\n".join(lines) + ("\n" if lines else ""))
+                    _store_atomic_write(
+                        phases_file, "\n".join(lines) + ("\n" if lines else "")
+                    )
         except OSError as e:
             _log.warning("write retry count failed for %s: %s", task_id, e)
 
@@ -3829,10 +4030,7 @@ def _append_changelog(ws_path: Path, tid: str, new_version: str) -> None:
     """在 CHANGELOG.md 最旧版本条目之上插入新条目。"""
     changelog_path = ws_path / "CHANGELOG.md"
     today_str = now_iso()[:10]
-    entry = (
-        f"\n## [{new_version}] — {today_str}\n\n"
-        f"- {tid}: 看板发布\n"
-    )
+    entry = f"\n## [{new_version}] — {today_str}\n\n- {tid}: 看板发布\n"
     if changelog_path.exists():
         text = changelog_path.read_text()
     else:
