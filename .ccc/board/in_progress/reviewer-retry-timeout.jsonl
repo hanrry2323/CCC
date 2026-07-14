@@ -1,0 +1,1 @@
+{"id": "reviewer-retry-timeout", "title": "reviewer 门禁超时后自动重试", "description": "reviewer 检查有时超时或卡死，当前无重试机制。在 engine 中加 reviewer timeout 检测 + 自动重试。", "complexity": "large", "ts": "2026-07-14T12:39:23Z", "note": "v1.0: 容错", "status": "in_progress", "updated_at": "2026-07-14T21:06:40+08:00", "color_group": "X", "color_depth": 0}

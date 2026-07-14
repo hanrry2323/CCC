@@ -136,6 +136,11 @@ class Config:
     # ── auto_approve（v0.28.0 F4-M1）──
     auto_approve_max_per_run: int = 10  # 每次最多合入建议数
 
+    # ── reviewer 超时重试（v0.31+）──
+    reviewer_retry_on_timeout: int = (
+        3  # reviewer LLM 超时最大重试次数（含首次），超过则 quarantine
+    )
+
     # ── product_role ──
     max_phases: int = 2  # product_role 拆解 task 的最大 phase 数，超出抛异常
 
@@ -204,6 +209,7 @@ class Config:
         _env_override_int(self, "reviewer_timeout", "CCC_REVIEWER_TIMEOUT")
         _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
         _env_override_int(self, "max_phases", "CCC_MAX_PHASES")
+        _env_override_int(self, "reviewer_retry_on_timeout", "CCC_REVIEWER_RETRY")
 
 
 def _resolve_workspace() -> Path:

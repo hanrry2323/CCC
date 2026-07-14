@@ -1,0 +1,2 @@
+{"schema_version": "1.1"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending"}, "timeout": 1800, "commit": null, "notes": "3 subtasks: (1.1) _config.py 新增 reviewer_retry_on_timeout, (1.2) ccc-board.py timeout 写 TIMEOUT verdict 不 quarantine, (1.3) ccc-engine.py _run_reviewer_tester_gate 增加 timeout 检测+重试", "color_depth": 1, "color_group": "X"}

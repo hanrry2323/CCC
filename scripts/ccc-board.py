@@ -2404,6 +2404,24 @@ def _review_one_task(task_id: str) -> bool:
         )
         return False
 
+    # ── fallback / timeout 分类处理（v0.31+）──
+    fallback_reason = verdict_data.get("reason", "").lower()
+    if "timeout" in fallback_reason:
+        # 超时情形：不 quarantine，写 "TIMEOUT" verdict 让 engine 层重试
+        _log.warning(
+            "[reviewer] %s ✗ %s-class timeout（reason=%s），留在 testing 等待 engine 重试",
+            task_id,
+            size_class,
+            verdict_data.get("reason", "unknown"),
+        )
+        verdict_path.write_text(
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** TIMEOUT\n\n"
+            f"**Size Class:** {size_class}\n\n"
+            f"**Reason:** {verdict_data.get('reason', 'unknown')}\n"
+        )
+        return False
+
     # v0.24.5 (A24-03/A24-04): medium/large fallback 一律 quarantine + L2 告警
     # 禁止仅凭 py_compile 或 plan 验收清单静默 verified（v0.23 G2 bypass 复发红线）
     reason = (
