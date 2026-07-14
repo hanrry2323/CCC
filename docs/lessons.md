@@ -2072,110 +2072,31 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 
 ---
 
-## Lesson 47：engine-failure-lessons 进入异常状态
+## 附录：待分析异常模板（自动生成，非有效 Lesson）
 
-**项目**：`/Users/apple/program/CCC` | **Phase**：N/A | **时间**：2026-07-14 16:44:11 UTC
+> 以下 11 条由 patrol-v4 `_record_failure_lesson()` 自动生成，无根因分析/修复措施/检查清单。
+> 以"待分析：由 product_role 后续补充"收尾，但 product_role 从未补充。
+> **不编入 Lesson 编号序列**。保留故障时间戳供调试参考，不视为有效 Lessons。
 
-**失败原因**：engine: 重试3次全部失败，下游 phase [] 自动跳过 → abnormal
+**Lesson 47（stub）**：engine-failure-lessons — 2026-07-14 16:44:11 UTC — engine 重试 3 次全部失败
 
-**待分析**：由 product_role 后续补充根因和修复方案
+**Lesson 48（stub）**：ccc-board-column-auto-prune — 2026-07-14 16:54:05 UTC — product_role 连续失败 3 次
 
----
+**Lesson 49（stub）**：ccc-heartbeat-thread — 2026-07-14 17:01:57 UTC — product_role 连续失败 3 次
 
-## Lesson 48：ccc-board-column-auto-prune 进入异常状态
+**Lesson 50（stub）**：patrol-alert-webhook — 2026-07-14 17:34:57 UTC — hang auto-restart 耗尽
 
-**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 16:54:05 UTC
+**Lesson 51（stub）**：cockpit-phase-timeline — 2026-07-14 17:39:54 UTC — product_role 连续失败 3 次
 
-**失败原因**：product_role 连续失败 3 次
+**Lesson 52（stub）**：patrol-alert-webhook — 2026-07-14 17:39:54 UTC — hang auto-restart 耗尽
 
-**待分析**：由 product_role 后续补充根因和修复方案
+**Lesson 53（stub）**：engine-task-priority — 2026-07-14 17:39:54 UTC — product_role 连续失败 3 次
 
----
+**Lesson 54（stub）**：patrol-alert-webhook — 2026-07-14 17:40:33 UTC — hang auto-restart 耗尽
 
-## Lesson 49：ccc-heartbeat-thread 进入异常状态
+**Lesson 55（stub）**：patrol-git-auto-push — 2026-07-14 17:40:33 UTC — product_role 连续失败 3 次
 
-**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 17:01:57 UTC
+**Lesson 56（stub）**：patrol-alert-webhook — 2026-07-14 17:44:54 UTC — hang auto-restart 耗尽
 
-**失败原因**：product_role 连续失败 3 次
+**Lesson 57（stub）**：patrol-alert-webhook — 2026-07-14 17:45:04 UTC — hang auto-restart 耗尽
 
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 50：patrol-alert-webhook 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:34:57 UTC
-
-**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 51：cockpit-phase-timeline 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 17:34:57 UTC
-
-**失败原因**：product_role 连续失败 3 次
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 52：patrol-alert-webhook 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:39:54 UTC
-
-**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 53：engine-task-priority 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 17:39:54 UTC
-
-**失败原因**：product_role 连续失败 3 次
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 54：patrol-alert-webhook 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:40:33 UTC
-
-**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 55：patrol-git-auto-push 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：0 | **时间**：2026-07-14 17:40:33 UTC
-
-**失败原因**：product_role 连续失败 3 次
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 56：patrol-alert-webhook 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:44:54 UTC
-
-**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
-
-**待分析**：由 product_role 后续补充根因和修复方案
-
----
-
-## Lesson 57：patrol-alert-webhook 进入异常状态
-
-**项目**：`/Users/apple/program/CCC` | **Phase**：1 | **时间**：2026-07-14 17:45:04 UTC
-
-**失败原因**：hang auto-restart 耗尽（2 次）— patrol-alert-webhook phase 1
-
-**待分析**：由 product_role 后续补充根因和修复方案
