@@ -42,24 +42,55 @@ CHAT_DIR.mkdir(parents=True, exist_ok=True)
 
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
 
-PROJECTS = {
+# ---------- Projects: dynamic from board server, fallback to static ----------
+PROJECTS: dict[str, dict] = {}
+PROJECT_TO_WORKSPACE: dict[str, str] = {}
+
+_PROJECTS_FALLBACK = {
     "ccc": {"name": "CCC", "path": str(Path(__file__).resolve().parent.parent)},
-    "qxo": {"name": "QXO Observer", "path": "/Users/apple/program/qx-observer"},
-    "xianyu": {"name": "xianyu", "path": "/Users/apple/program/xianyu"},
-    "hp": {"name": "HP KB", "path": "/Users/apple/program/hp"},
-    "ai-loop-router": {
-        "name": "AI Loop Router",
-        "path": "/Users/apple/program/ai-loop-router",
-    },
 }
 
-PROJECT_TO_WORKSPACE = {
-    "ccc": "CCC",
-    "qxo": "qxo",
-    "xianyu": "xianyu",
-    "hp": "hp",
-    "ai-loop-router": "ai-loop-router",
-}
+
+def _reload_projects():
+    """Fetch workspace list from Board Server and rebuild PROJECTS dict."""
+    global PROJECTS, PROJECT_TO_WORKSPACE
+    new_projects = {}
+    new_mapping = {}
+    try:
+        import httpx
+        resp = httpx.get(f"{BOARD_URL}/api/board", timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            workspaces = data.get("workspaces", {})
+            for ws_id, ws_path in workspaces.items():
+                # Skip internal/system workspaces
+                if ws_id.startswith("."):
+                    continue
+                # Build a human-readable name from the ID
+                name_map = {
+                    "CCC": "CCC",
+                    "qxo": "QXO Observer",
+                    "xianyu": "xianyu",
+                    "qb": "qb Dashboard",
+                    "qx": "qx",
+                }
+                name = name_map.get(ws_id, ws_id.capitalize())
+                pid = ws_id.lower().replace(" ", "-")
+                new_projects[pid] = {"name": name, "path": ws_path}
+                new_mapping[pid] = ws_id
+    except Exception as exc:
+        _log.warning("Board server unreachable, using fallback projects: %s", exc)
+
+    if not new_projects:
+        _log.info("Using fallback project list")
+        new_projects.update(_PROJECTS_FALLBACK)
+
+    PROJECTS = new_projects
+    PROJECT_TO_WORKSPACE = new_mapping
+
+
+# Initial load at module import
+_reload_projects()
 
 DANGEROUS_PATTERNS = re.compile(
     r"(?i)\b(rm\s+-rf|rm\s+/|sudo\b|dd\s+if=|format\b|mkfs\b|>\s*/dev/)",
