@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.17] — 2026-07-14
+
+- debt-import-cleanup: 看板发布
+
 ## [v0.29.16] — 2026-07-14
 
 - debt-docstring-sweep: 看板发布
@@ -1636,3 +1640,7 @@ git push origin main --tags
 ## [] - 2026-07-14
 
 - debt-docstring-sweep: 各模块补全 docstring 看板发布
+
+## [v0.29.16] - 2026-07-14
+
+- debt-import-cleanup: 清理全部未使用 import 看板发布
