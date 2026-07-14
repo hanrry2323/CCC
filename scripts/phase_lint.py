@@ -66,6 +66,10 @@ def validate_schema_version(
 
     for line_idx, phase in enumerate(phases, start=1):
         if "schema_version" in phase:
+            errors.append(
+                f"phase {phase.get('phase', '?')}: "
+                "phase 返回类型混淆（schema_version 不应出现在 phase 行中）"
+            )
 
             if fix:
                 # 修复：把 schema_version 当初一个 phase 删除，并在头部写入 metadata row

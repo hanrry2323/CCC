@@ -21,28 +21,14 @@ class TestValidateSchemaVersion:
 
     def test_schema_version_mixed_periods(self):
         """phase 中包含 schema_version 字段应报错"""
-        phases = [
-            {
-                "phase": 1,
-                "phase_id": "1.1",
-                "status": "pending",
-                "schema_version": "1.1",
-            }
-        ]
+        phases = [{"phase": 1, "phase_id": "1.1", "status": "pending", "schema_version": "1.1"}]
         is_valid, errors = validate_schema_version(phases, "test_task")
         assert not is_valid
         assert any("phase 返回类型混淆" in e for e in errors)
 
     def test_schema_version_valid(self):
         """schema_version 在 phase 字段中会被 phase_lint.py 标记为错误"""
-        phases = [
-            {
-                "phase": 1,
-                "phase_id": "1.1",
-                "status": "pending",
-                "schema_version": "1.1",
-            }
-        ]
+        phases = [{"phase": 1, "phase_id": "1.1", "status": "pending", "schema_version": "1.1"}]
         is_valid, errors = validate_schema_version(phases, "test_task")
         assert any("phase 返回类型混淆" in e for e in errors)
 
@@ -58,17 +44,15 @@ class TestValidatePhaseStructure:
         assert any("phase 缺少 field: phase" in e for e in errors)
 
     def test_phase_id_mismatch(self):
-        """phase_id 与 phase 不一致应报错"""
+        """phase_id 与 phase 不一致时应存在错误"""
         phases = [{"phase": 1, "phase_id": "2", "status": "pending"}]
         is_valid, errors = validate_phase_structure(phases)
         assert not is_valid
-        assert any("phase 不一致" in str(e) for e in errors)
+        assert any("phase 不一致" in e for e in errors)
 
     def test_unknown_fields(self):
         """未知字段应报错"""
-        phases = [
-            {"phase": 1, "phase_id": "1", "status": "pending", "unknown_field": "value"}
-        ]
+        phases = [{"phase": 1, "phase_id": "1", "status": "pending", "unknown_field": "value"}]
         is_valid, errors = validate_phase_structure(phases)
         assert not is_valid
         assert any("未知字段" in e for e in errors)
@@ -136,7 +120,7 @@ class TestRunLint:
 
     def test_valid_phases_file(self):
         phases_file = Path.cwd() / ".ccc" / "phases" / "valid.phases.json"
-        phases_content = '{"schema_version": "1.1"}\\n{"phase": 1, "phase_id": "1", "status": "pending"}\\n'
+        phases_content = '{"schema_version": "1.1"}\n{"phase": 1, "phase_id": "1", "status": "pending"}\n'
         phases_file.write_text(phases_content)
         exit_code = run_lint("valid_task")
         # phase_lint 应该通过校验
