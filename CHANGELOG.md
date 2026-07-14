@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.29.16] — 2026-07-14
+
+- debt-docstring-sweep: 看板发布
+
 ## [v0.29.15] — 2026-07-14
 
 - cockpit-status-sort: 看板发布
@@ -1628,3 +1632,7 @@ git push origin main --tags
 ## [v0.29.14] - 2026-07-14
 
 - cockpit-status-sort: Cockpit 端口列表按健康状态排序分组 看板发布
+
+## [] - 2026-07-14
+
+- debt-docstring-sweep: 各模块补全 docstring 看板发布
