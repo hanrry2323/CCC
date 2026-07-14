@@ -977,6 +977,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     ws, tid, groups, plan_content, timeout_s
                 )
                 if ok:
+                    store.move_task(tid, "planned", "in_progress")
                     active_tasks[key] = {
                         "workspace": ws,
                         "task_id": tid,
