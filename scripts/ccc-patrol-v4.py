@@ -944,10 +944,11 @@ def main() -> int:
                 engine_operated = True
 
     # ── Step 3: 活跃任务卡死检测 ──
+    stuck_counters: dict[str, int] = _load_stuck_counters()
     for name, path in WORKSPACES.items():
         if not path.is_dir():
             continue
-        ops = check_stuck_tasks(name, path)
+        ops, stuck_counters = check_stuck_tasks(name, path, stuck_counters)
         for o in ops:
             if "→ planned" in o or "→ backlog" in o:
                 all_stuck_ops.append(f"{name}:{o}")
@@ -956,6 +957,7 @@ def main() -> int:
                     engine_operated = True
             elif "stuck" in o and "no action" not in o:
                 all_stuck_ops.append(f"{name}:{o}")
+    _save_stuck_counters(stuck_counters)
 
     # ── Step 4: 状态持久化 ──
     warn = detect_stagnation(ws_stats)
