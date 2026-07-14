@@ -11,14 +11,17 @@
   Ctrl+C 或 SIGTERM → 优雅关闭
 """
 
+import argparse
 import json
 import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 # 确保当前目录在 path 中
@@ -35,6 +38,9 @@ _log = get_logger("engine")
 
 # ccc-board 在 import 时会 eager 绑定 ROOT；默认 workspace 供首次加载
 os.environ.setdefault("CCC_WORKSPACE", str(_script_dir.parent))
+
+# v0.28.2: Stats HTTP 默认端口（plan: engine-stats-endpoint）
+_STATS_PORT = 7776
 
 import importlib.util as _importlib_util
 
@@ -69,7 +75,27 @@ _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
 MAX_CONCURRENT = 3
 
+# v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
+PHASE_PARALLEL_MAX_WORKERS = 2
+
+
+def _set_parallel_disabled(val: bool) -> None:
+    """Set the global PHASE_PARALLEL_DISABLED toggle (module-level)."""
+    global PHASE_PARALLEL_DISABLED
+    PHASE_PARALLEL_DISABLED = val
+
+
+PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 Engine tick）
+
 _stores: dict[str, FileBoardStore] = {}
+
+# Per-task 并行 phase 状态：
+#   task_key -> {
+#     "groups": [[phase_num, ...], ...],   # 待执行的 group 列表（每组内并行）
+#     "current_group": [phase_num, ...] | None,  # 当前正在跑的 group
+#     "phase_meta": {phase_num: {subid, pid, started_at}}
+#   }
+_parallel_phases: dict[str, dict] = {}
 
 
 def now_iso() -> str:
@@ -570,6 +596,244 @@ def _process_backlog(ws: Path) -> bool:
     return True
 
 
+# ═══════════════════════════════════════════════════════════════
+# v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
+# ═══════════════════════════════════════════════════════════════
+
+
+def _phase_market_subid(tid: str, phase_num: int) -> str:
+    """Per-phase marker subid，避免并行 phase 写在同 task_id.{done,pid,exitcode}。
+
+    用「task_id__p{N}」双下划线，与 ccc-board 的「task_id-p{N}」区分。
+    """
+    return f"{tid}__p{phase_num}"
+
+
+def _group_parallel_phases(phases: list[dict], executable: set[int]) -> list[list[int]]:
+    """将 executable phases 分组：同组内 phase 之间无 depends_on 关系。
+
+    Args:
+        phases: 所有 phase dict（来自 _load_phases）
+        executable: 当前可执行的 phase id 集合（来自 _resolve_phase_dependencies）
+
+    Returns:
+        list[list[int]]：每个内层 list 是一组可并行 phase（组内相位无依赖）。
+        多组间必须先后顺序执行（前组全部完成才执行下一组）。
+
+    算法：贪心。每个 phase 顺序遍历 — 能加入最后一个 group 当存在互不依赖，
+    否则开新 group。
+    """
+    if not executable:
+        return []
+    by_id = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+    sorted_executable = sorted(executable)
+    groups: list[list[int]] = []
+    for pid in sorted_executable:
+        phase_deps = set(by_id.get(pid, {}).get("depends_on") or [])
+        placed = False
+        # 尝试放入最后一个 group
+        if groups:
+            last_group = groups[-1]
+            last_group_ids = set(last_group)
+            # 若本 phase 与组内所有 phase 不互依赖（last_group_ids ∩ phase_deps == ∅）
+            # 且组内其他 phase 也不依赖本 phase（避免环）
+            conflicts = last_group_ids & phase_deps
+            reverse_deps_conflict = any(
+                pid in set(by_id.get(g, {}).get("depends_on") or []) for g in last_group
+            )
+            if not conflicts and not reverse_deps_conflict:
+                last_group.append(pid)
+                placed = True
+        if not placed:
+            groups.append([pid])
+    return groups
+
+
+def _phase_to_pgroup(p: int) -> str:
+    """OpenCode pool / marker 用的 phase id（与 ccc-board 一致：task_id-pN）。"""
+    # 注：当前 _try_launch_planned 调 dev_role_launch，里头 phase_id=task_id-pN。
+    # 本 dispatcher 用 pgroup = task_id__pN 双下划线以隔离 task-level 标记。
+    return f"p{p}"
+
+
+def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
+    """构造单 phase 的 prompt（与 ccc-board.dev_role_launch 相同模板，确保 dev 行为一致）。"""
+    return (
+        f"# CCC 执行任务: {task_id}\n\n"
+        f"## Plan\n\n{plan_content}\n\n"
+        f"## 完成定义\n"
+        f"1. 实现所有需求\n"
+        f"2. 跑对应的测试（如有）\n"
+        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"4. 确认代码无语法错误\n"
+        f"5. 不超出 plan 文件白名单\n"
+    )
+
+
+def _launch_parallel_phase(
+    ws: Path,
+    task_id: str,
+    phase_num: int,
+    plan_content: str,
+    timeout_s: int,
+    label: str,
+) -> dict | None:
+    """启单个 phase 的 opencode-runner.sh 后台进程，用 per-phase 命名空间隔离。
+
+    Returns:
+        {"subid": str, "pid": int, "proc": Popen} 或 None（失败）。
+    """
+    import subprocess as _sp
+
+    subid = _phase_market_subid(task_id, phase_num)
+    pids_dir = ws / ".ccc" / "pids"
+    pids_dir.mkdir(parents=True, exist_ok=True)
+    prompt_dir = Path.home() / ".ccc" / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = prompt_dir / f"{subid}.prompt.md"
+    prompt_file.write_text(
+        _build_phase_prompt(task_id, phase_num, plan_content),
+        encoding="utf-8",
+    )
+    try:
+        # 用 phase_id = subid 命名 opencode-runner.sh 的输出 marker
+        # opencode-runner.sh 内部会写 ${PID_DIR}/${TASK_ID}.{done,exitcode}
+        # 这里 TASK_ID 用 subid，故 marker 也隔离。
+        proc = _sp.Popen(
+            [
+                "bash",
+                str(_script_dir / "opencode-runner.sh"),
+                subid,
+                str(_script_dir.parent),  # CCC_HOME
+                str(ws),  # ROOT_DIR
+                "--phase",
+                f"{task_id}-p{phase_num}",  # 与 ccc-board 一致 phase_id 命名
+                "--prompt",
+                str(prompt_file),
+                "--timeout",
+                str(timeout_s),
+                "--cwd",
+                str(ws),
+            ],
+            cwd=ws,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        pids_dir.joinpath(f"{subid}.pid").write_text(str(proc.pid))
+        engine_log(
+            f"[{label}] {task_id}-p{phase_num} launched PID={proc.pid} (subid={subid})"
+        )
+        return {"subid": subid, "pid": proc.pid, "proc": proc}
+    except Exception as exc:
+        engine_log(f"[{label}] {task_id}-p{phase_num} launch failed: {exc}")
+        return None
+
+
+def _check_parallel_phase_done(ws: Path, subid: str) -> dict:
+    """检查单个并行 phase 完成状态。
+
+    Returns:
+        {"status": "running" | "success" | "failed", "exit_code": int}
+    """
+    pids_dir = ws / ".ccc" / "pids"
+    done_file = pids_dir / f"{subid}.done"
+    if not done_file.exists():
+        # 检查 PID 是否存活
+        pid_file = pids_dir / f"{subid}.pid"
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)
+                return {"status": "running", "exit_code": -1}
+            except (ValueError, OSError, ProcessLookupError):
+                pass
+        return {"status": "running", "exit_code": -1}
+    exit_file = pids_dir / f"{subid}.exitcode"
+    try:
+        exit_code = int(exit_file.read_text().strip()) if exit_file.exists() else 1
+    except ValueError:
+        exit_code = 1
+    return {
+        "status": "success" if exit_code == 0 else "failed",
+        "exit_code": exit_code,
+    }
+
+
+def _launch_parallel_group(
+    ws: Path,
+    task_id: str,
+    phase_nums: list[int],
+    plan_content: str,
+    timeout_s: int,
+    label: str,
+) -> tuple[bool, dict[int, dict]]:
+    """并行启一组 phase（max_workers 个线程）。返回 (success, phase_meta)。
+
+    Args:
+        phase_nums: 这组 phase 编号列表
+        plan_content: 完整 plan 文本（每个 phase 都用同一份 prompt）
+        timeout_s: 超时秒数
+
+    Returns:
+        (True, {phase_num: {"subid": ..., "pid": ...}}) 全部成功
+        (False, {...}) 部分/全部失败
+    """
+    if not phase_nums:
+        return True, {}
+
+    max_w = min(PHASE_PARALLEL_MAX_WORKERS, len(phase_nums))
+    engine_log(
+        f"[parallel] [{label}] {task_id} 并行启动 "
+        f"phase {' + '.join(f'phase-{n}' for n in phase_nums)} "
+        f"(max_workers={max_w})"
+    )
+    phase_meta: dict[int, dict] = {}
+    try:
+        with ThreadPoolExecutor(max_workers=max_w) as ex:
+            futures = {
+                ex.submit(
+                    _launch_parallel_phase,
+                    ws,
+                    task_id,
+                    pn,
+                    plan_content,
+                    timeout_s,
+                    label,
+                ): pn
+                for pn in phase_nums
+            }
+            for fut, pn in futures.items():
+                try:
+                    res = fut.result(timeout=15)
+                except Exception as exc:
+                    engine_log(
+                        f"[{label}] {task_id}-p{pn} parallel submit exception: {exc}"
+                    )
+                    res = None
+                if res is None:
+                    engine_log(
+                        f"[parallel][warn] {task_id}-p{pn} 启动失败，"
+                        f"此 phase 将被跳过（其他 phase 继续）"
+                    )
+                    continue
+                phase_meta[pn] = res
+        success = len(phase_meta) > 0
+        if success:
+            engine_log(
+                f"[parallel] [{label}] {task_id} 并行 phase 已启动: "
+                f"{[(pn, phase_meta[pn]['pid']) for pn in sorted(phase_meta)]}"
+            )
+        return success, phase_meta
+    except Exception as exc:
+        engine_log(
+            f"[parallel][warn] {task_id} ThreadPoolExecutor 异常: {exc}，"
+            f"fallback 串行模式"
+        )
+        _set_parallel_disabled(True)
+        return False, {}
+
+
 def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
     """从 planned 启动一个 task。返回 True 表示已启动。"""
     _activate_workspace(ws)
@@ -645,6 +909,15 @@ def engine_loop(workspaces: list[Path]) -> None:
         iteration += 1
         tick_start = time.time()
         any_active = bool(active_tasks)
+
+        first_task_id = next(iter(active_tasks.values()), {}).get("task_id")
+        first_task_ws = next(iter(active_tasks.values()), {}).get("workspace")
+        _update_stats(
+            active_count=len(active_tasks),
+            current_task=first_task_id,
+            phase_status="running" if any_active else "idle",
+            workspace_name=first_task_ws.name if first_task_ws else None,
+        )
 
         try:
             completed_tasks: list[str] = []
@@ -1018,7 +1291,18 @@ def _write_heartbeat(ws: Path, running_task_id: str | None) -> None:
         _log.warning("engine heartbeat write failed for %s: %s", ws, e)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="CCC Engine — multi-workspace scheduler"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=_STATS_PORT,
+        help=f"Stats HTTP 端点端口（默认 {_STATS_PORT}）",
+    )
+    args = parser.parse_args(argv)
+
     program_dir = Path.home() / "program"
     workspaces = _discover_workspaces()
     if not workspaces:
@@ -1037,12 +1321,15 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
+    _run_stats_server(args.port)
+
     try:
         engine_loop(workspaces)
     except KeyboardInterrupt:
         engine_log("Engine 关闭")
     except SystemExit:
         _log.debug("engine exiting via SystemExit")
+    _engine_shutdown = True
     if _engine_shutdown:
         remaining = 10
         while remaining > 0:
@@ -1053,10 +1340,12 @@ def main() -> None:
         engine_log("Engine 正常退出")
 
 
-# ── Stats HTTP Endpoint 循环 ──
-_ENGINE_shutdown = False
-_STATS_PORT = 7776
+if __name__ == "__main__":
+    main()
 
+
+# ── Stats HTTP Endpoint（plan: engine-stats-endpoint） ──
+_stats_started_at: float | None = None
 _stats_lock = threading.Lock()
 _stats_data: dict = {
     "uptime_sec": 0,
@@ -1070,32 +1359,38 @@ _stats_data: dict = {
 }
 
 
-def _update_stats(ws: Path, task_id: str | None, phase: int, phase_status: str) -> None:
-    global _stats_data
+def _update_stats(
+    active_count: int,
+    current_task: str | None = None,
+    current_phase: int | None = None,
+    phase_status: str | None = None,
+    workspace_name: str | None = None,
+) -> None:
+    global _stats_started_at
     now = now_iso()
-    start = time.time()
+    now_ts = time.time()
     with _stats_lock:
-        if start > _stats_data.get("uptime_start", start):
-            _stats_data["uptime_start"] = start
+        if _stats_started_at is None:
+            _stats_started_at = now_ts
             _stats_data["uptime_sec"] = 0
         else:
-            _stats_data["uptime_sec"] = int(
-                time.time() - _stats_data.get("uptime_start", start)
-            )
-        _stats_data["current_task"] = task_id
-        _stats_data["current_phase"] = phase
-        _stats_data["phase_status"] = phase_status
-        _stats_data["in_progress_count"] = len(
-            [t for t in active_tasks.values() if t.get("task_id")]
-        )
+            _stats_data["uptime_sec"] = int(now_ts - _stats_started_at)
+        if current_task is not None:
+            _stats_data["current_task"] = current_task
+        if current_phase is not None:
+            _stats_data["current_phase"] = current_phase
+        if phase_status is not None:
+            _stats_data["phase_status"] = phase_status
+        _stats_data["in_progress_count"] = active_count
         _stats_data["last_tick_at"] = now
-        _stats_data["workspace"] = ws.name
+        if workspace_name:
+            _stats_data["workspace"] = workspace_name
 
 
-class StatsHandler(BaseHTTPRequestHandler):
+class _StatsHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         engine_log(
-            "[stats-api] %s - - [%s] %s",
+            "[stats-api] %s - [%s] %s",
             self.address_string(),
             self.log_date_time_string(),
             format % args,
@@ -1103,31 +1398,55 @@ class StatsHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/stats":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            with _stats_lock:
-                response = json.dumps(_stats_data, ensure_ascii=False)
-            self.wfile.write(response.encode("utf-8"))
+            try:
+                with _stats_lock:
+                    payload = json.dumps(_stats_data, ensure_ascii=False).encode(
+                        "utf-8"
+                    )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                engine_log(f"[stats-api] 响应失败: {exc}")
+                try:
+                    self.send_response(500)
+                    self.end_headers()
+                except Exception:
+                    pass
         else:
             self.send_response(404)
             self.end_headers()
 
-    def do_OPTIONS(self):
-        if self.path == "/api/stats":
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
+
+def _stats_snapshot() -> dict:
+    """HTTP 线程用的快照方法：与 _update_stats 共享锁。"""
+    with _stats_lock:
+        return dict(_stats_data)
 
 
-def _run_stats_server() -> None:
-    server = HTTPServer(("127.0.0.1", _STATS_PORT), StatsHandler)
-    engine_log("Stats HTTP 服务启动在 http://127.0.0.1:%d/api/stats", _STATS_PORT)
-    while not _ENGINE_shutdown:
-        server.handle_request()
+def _run_stats_server(port: int) -> None:
+    """在独立线程跑轻量 HTTP 服务，仅 127.0.0.1。"""
+    try:
+        server = HTTPServer(("127.0.0.1", port), _StatsHandler)
+    except OSError as exc:
+        engine_log(f"Stats HTTP 启动失败 (port={port}): {exc}")
+        return
+    engine_log(f"Stats HTTP 服务启动在 http://127.0.0.1:{port}/api/stats")
 
-    server.shutdown()
-    engine_log("Stats HTTP 服务关闭")
+    def _serve():
+        try:
+            while not _engine_shutdown:
+                server.handle_request()
+        except Exception as exc:
+            engine_log(f"Stats HTTP 服务异常: {exc}")
+        finally:
+            try:
+                server.server_close()
+            except Exception:
+                pass
+            engine_log("Stats HTTP 服务关闭")
+
+    t = threading.Thread(target=_serve, name="ccc-stats-http", daemon=True)
+    t.start()
