@@ -41,6 +41,15 @@ THEME = {
 }
 
 
+def tail_file(filepath: Path, n: int = 20) -> list[str]:
+    """Read the last n lines from a file efficiently."""
+    if not filepath.exists():
+        return []
+    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    return lines[-n:] if len(lines) >= n else lines
+
+
 def parse_infra() -> dict:
     """Parse infrastructure.md into a structured dict."""
     if not INFRA_FILE.exists():
@@ -694,6 +703,20 @@ def _render_board_section(board) -> str:
     )
 
 
+def _render_log_panel() -> str:
+    """Render the engine log viewer panel (placeholder, populated by JS)."""
+    return (
+        '<div class="sec-title">Engine 实时日志</div>'
+        f'<div id="log-panel" style="background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:var(--radius-md);padding:12px;margin-bottom:8px">'
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:#86868b;text-transform:uppercase;letter-spacing:.04em">'
+        "<span>~/.ccc/logs/engine.log</span>"
+        '<span id="log-ts"></span>'
+        "</div>"
+        '<pre id="log-content" style="margin:0;font-family:ui-monospace,monospace;font-size:12px;line-height:1.6;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;background:#1d1d1f;color:#e0e0e0;padding:12px;border-radius:4px">加载中…</pre>'
+        "</div>"
+    )
+
+
 def render_html(data: dict) -> str:
     """Render the full Cockpit HTML page."""
     machines_html = ""
@@ -1002,6 +1025,26 @@ function kbSearch() {
       emptyDiv.style.display = (!query || visibleCount > 0) ? 'none' : 'block';
     }
   }
+  function fetchLogs() {
+    fetch('/api/logs')
+    .then(function(res) { if (!res.ok) { throw new Error('HTTP ' + res.status); } return res.json(); })
+    .then(function(data) {
+        var content = document.getElementById('log-content');
+        var ts = document.getElementById('log-ts');
+        if (!content) { return; }
+        if (!data.exists || data.lines.length === 0) {
+            content.innerHTML = '<span style="color:#86868b">日志文件不存在或为空</span>';
+            if (ts) { ts.textContent = ''; }
+            return;
+        }
+        content.innerHTML = data.lines.map(function(l) {
+            return l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }).join('');
+        if (ts) { ts.textContent = data.updated || ''; }
+        content.scrollTop = content.scrollHeight;
+    })
+    .catch(function(err) { console.error('Failed to fetch logs:', err); });
+  }
   (function() {
     var input = document.getElementById('port-search');
     var clearBtn = document.getElementById('port-search-clear');
@@ -1021,6 +1064,10 @@ function kbSearch() {
     fetchAlive();
     setInterval(fetchAlive, 30000);
   }, 2000);
+  setTimeout(function() {
+    fetchLogs();
+    setInterval(fetchLogs, 10000);
+  }, 500);
  </script>"""
 
     return f"""<!DOCTYPE html>
@@ -1120,6 +1167,8 @@ tr:last-child td{{border-bottom:none}}
       <tbody>{projects_html or '<tr><td colspan="4" style="text-align:center;color:#86868b">无数据</td></tr>'}</tbody>
     </table>
   </div>
+
+  {_render_log_panel()}
 
   <div class="foot" id="foot">
    数据来源: .ccc/infrastructure.md · 端口探测 · 最后刷新 <span id="ts">{data.get("updated", "")}</span>
@@ -1230,6 +1279,24 @@ class CockpitHandler(BaseHTTPRequestHandler):
                         }
                     ).encode("utf-8")
                 )
+        elif path == "/api/logs":
+            log_path = Path.home() / ".ccc" / "logs" / "engine.log"
+            lines = tail_file(log_path, 20)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "lines": lines,
+                        "file": str(log_path),
+                        "exists": log_path.exists(),
+                        "updated": datetime.now().strftime("%H:%M:%S"),
+                    }
+                ).encode("utf-8")
+            )
         else:
             self.send_response(404)
             self.end_headers()

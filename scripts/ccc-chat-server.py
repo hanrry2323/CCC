@@ -50,6 +50,9 @@ _PROJECTS_FALLBACK = {
     "ccc": {"name": "CCC", "path": str(Path(__file__).resolve().parent.parent)},
 }
 
+_log = logging.getLogger("ccc-chat")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
 
 def _reload_projects():
     """Fetch workspace list from Board Server and rebuild PROJECTS dict."""
@@ -105,9 +108,6 @@ BOARD_COLUMNS = [
     "released",
     "abnormal",
 ]
-
-_log = logging.getLogger("ccc-chat")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # Resolve claude CLI path (launchd has limited PATH)
 CLAUDE_BIN = shutil.which("claude") or "/Users/apple/.local/bin/claude"
@@ -874,7 +874,6 @@ HTML_UI = r"""<!DOCTYPE html>
 
 
 
-
   @media(max-width:480px) {
     #sidebar {
       position:fixed; top:auto; bottom:0; left:0; width:100%;
@@ -910,7 +909,6 @@ HTML_UI = r"""<!DOCTYPE html>
   .file-item.collapsed > .icon::before { content:"▶"; }
   .file-item.dir:not(.collapsed) > .icon::before { content:"▼"; }
 
-  .file-content-preview .meta-bar button { background:transparent; border:1px solid var(--border); border-radius:6px; padding:2px 8px; cursor:pointer; font-family:inherit; }
   @media(max-width:768px) {
 
   }
@@ -955,12 +953,11 @@ HTML_UI = r"""<!DOCTYPE html>
     <button id="newBtn" onclick="newChat()">新对话</button>
   </div>
 
-  <div id="chat-panel" class="tab-panel active">
+  <div id="chat-panel">
     <div id="messages"></div>
     <button id="scroll-bottom-fab-chat" class="scroll-bottom-fab" onclick="scrollFabToBottom('chat')">↓</button>
     <div id="input-area">
       <div id="input-wrap">
-        <button id="mode-switch" onclick="toggleInputMode()" title="切换 Chat/Execute">💬</button>
         <textarea id="input" rows="1" placeholder="输入消息..." onkeydown="onKey(event,'chat')"></textarea>
         <button id="send" onclick="sendChat()" disabled>↑</button>
         <button id="cancel-btn" onclick="cancelStream()">取消</button>
@@ -979,30 +976,17 @@ HTML_UI = r"""<!DOCTYPE html>
 
 <script>
 const AUTH = 'Basic ' + btoa('ccc:claude2026');
-const DANGEROUS = /\b(rm\s+-rf|rm\s+\/|sudo\b|dd\s+if=|format\b|mkfs\b|>\s*\/dev\/)/i;
-const COLUMN_LABELS = {
-  backlog:'Backlog', planned:'Planned', in_progress:'In Progress',
-  testing:'Testing', verified:'Verified', released:'Released', abnormal:'Abnormal'
-};
-const PROJECT_WORKSPACE = {ccc:'CCC', qxo:'qxo', xianyu:'xianyu', hp:'hp', 'ai-loop-router':'ai-loop-router'};
 
 let sessionId = crypto.randomUUID?.() ?? Date.now().toString(36)+Math.random().toString(36).slice(2);
-let execSessionId = crypto.randomUUID?.() ?? Date.now().toString(36)+Math.random().toString(36).slice(2);
 let currentMessages = [];
-let execMessages = [];
 let streaming = false;
 let chatAutoScroll = true;
-let execAutoScroll = true;
 let currentProject = 'ccc';
-let currentTab = 'chat';
 let abortController = null;
 
 const input = document.getElementById('input');
-const execInput = document.getElementById('exec-input');
 const sendBtn = document.getElementById('send');
-const execSendBtn = document.getElementById('exec-send');
 const messagesEl = document.getElementById('messages');
-const execMessagesEl = document.getElementById('exec-messages') || document.getElementById('exec-terminal');
 
 function setupInput(el, btn) {
   el.addEventListener('input', () => {
@@ -1012,25 +996,12 @@ function setupInput(el, btn) {
   });
 }
 setupInput(input, sendBtn);
-setupInput(execInput, execSendBtn);
 
 messagesEl.addEventListener('scroll', () => {
   chatAutoScroll = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 80;
 });
-if (execMessagesEl && execMessagesEl.id === 'exec-messages') {
-  execMessagesEl.addEventListener('scroll', () => {
-    execAutoScroll = execMessagesEl.scrollTop + execMessagesEl.clientHeight >= execMessagesEl.scrollHeight - 80;
-  });
-}
-const execTerminalEl = document.getElementById('exec-terminal');
-if (execTerminalEl) {
-  execTerminalEl.addEventListener('scroll', () => {
-    execAutoScroll = execTerminalEl.scrollTop + execTerminalEl.clientHeight >= execTerminalEl.scrollHeight - 80;
-  });
-}
 
 const scrollFabChat = document.getElementById('scroll-bottom-fab-chat');
-const scrollFabExec = document.getElementById('scroll-bottom-fab-exec');
 function updateFab(container, fab) {
   if (!container || !fab) return;
   const threshold = 200;
@@ -1038,15 +1009,12 @@ function updateFab(container, fab) {
   const isMobile = window.innerWidth <= 768;
   fab.classList.toggle('show', !atBottom && isMobile);
 }
-function scrollFabToBottom(mode) {
-  const el = mode === 'chat' ? messagesEl : (execMessagesEl.id === 'exec-messages' ? execMessagesEl : execTerminalEl);
-  if (el) { el.scrollTop = el.scrollHeight; }
-  const fab = mode === 'chat' ? scrollFabChat : scrollFabExec;
-  if (fab) fab.classList.remove('show');
+function scrollFabToBottom() {
+  if (messagesEl) { messagesEl.scrollTop = messagesEl.scrollHeight; }
+  if (scrollFabChat) scrollFabChat.classList.remove('show');
 }
 messagesEl.addEventListener('scroll', () => updateFab(messagesEl, scrollFabChat));
-if (execTerminalEl) execTerminalEl.addEventListener('scroll', () => updateFab(execTerminalEl, scrollFabExec));
-window.addEventListener('resize', () => { updateFab(messagesEl, scrollFabChat); updateFab(execTerminalEl, scrollFabExec); });
+window.addEventListener('resize', () => { updateFab(messagesEl, scrollFabChat); });
 
 (function setupKeyboardHandler() {
   if (!window.visualViewport) return;
@@ -1062,8 +1030,7 @@ window.addEventListener('resize', () => { updateFab(messagesEl, scrollFabChat); 
       inputArea.style.transform = 'translateY(-' + keyboardHeight + 'px)';
       header.style.position = 'relative';
       setTimeout(() => {
-        const el = currentTab === 'chat' ? messagesEl : (execMessagesEl.id === 'exec-messages' ? execMessagesEl : execTerminalEl);
-        if (el) el.scrollTop = el.scrollHeight;
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
       }, 50);
     } else if (keyboardActive) {
       keyboardActive = false;
@@ -1102,25 +1069,6 @@ function toggleTheme() {
 loadProjects();
 loadHistory();
 
-function switchTab(tab) {
-  currentTab = tab;
-  const panelIds = {chat:'chat-panel', execute:'exec-panel', board:'board-panel'};
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(panelIds[tab] || tab + '-panel').classList.add('active');
-  document.querySelector('.tab-btn[data-tab="'+tab+'"]').classList.add('active');
-  const titles = {chat:'CCC Chat', execute:'CCC Execute', board:'CCC Board'};
-  document.getElementById('header-title').textContent = titles[tab] || 'CCC';
-  document.getElementById('newBtn').style.display = tab === 'board' ? 'none' : '';
-  if (tab === 'board') loadBoard();
-  if (tab === 'execute') loadFileTree();
-}
-
-function toggleInputMode() {
-  if (currentTab === 'chat') switchTab('execute');
-  else switchTab('chat');
-}
-
 async function loadProjects() {
   try {
     const resp = await fetch('/api/projects', { headers: { Authorization: AUTH } });
@@ -1140,193 +1088,17 @@ async function loadProjects() {
 function onProjectChange() {
   currentProject = document.getElementById('project-select').value;
   newChat();
-  newExecChat();
-  updateExecMetaBar();
   loadHistory();
-  if (currentTab === 'board') loadBoard();
-  if (currentTab === 'execute') loadFileTree();
 }
 
-function updateExecMetaBar() {
-  const bar = document.getElementById('exec-meta-bar');
-  if (bar) bar.textContent = '~ ' + currentProject + ' · execute terminal';
-}
 
-const FILE_TREE_RENDER_LIMIT = 300;
-let _fileTreeExpanded = new Set();
 
-async function loadFileTree() {
-  const container = document.getElementById('file-tree');
-  const metaEl = document.getElementById('file-tree-meta');
-  if (!container) return;
-  if (!currentProject) {
-    container.innerHTML = '<div class="file-tree-offline">请先选择项目</div>';
-    if (metaEl) metaEl.textContent = '';
-    return;
-  }
-  container.innerHTML = '<div class="file-tree-offline">加载中…</div>';
-  try {
-    const resp = await fetch('/api/projects/' + encodeURIComponent(currentProject) + '/files', {
-      headers: { Authorization: AUTH },
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    renderFileTree(data.entries || [], container);
-    let meta = (data.entries || []).length + ' 项';
-    if (data.truncated) meta += ' · 已截断';
-    if (data.timed_out) meta += ' · 超时';
-    if (metaEl) metaEl.textContent = meta;
-  } catch (e) {
-    container.innerHTML = '<div class="file-tree-offline">加载失败: ' + (e.message || e) + '</div>';
-    if (metaEl) metaEl.textContent = '';
-  }
-}
 
-function renderFileTree(entries, container) {
-  container.innerHTML = '';
-  if (!entries.length) {
-    container.innerHTML = '<div class="file-tree-offline">（空目录）</div>';
-    return;
-  }
-  const nodes = new Map();
-  const root = { name: '', type: 'dir', path: '', depth: 0, children: [] };
-  const sorted = entries.slice(0, FILE_TREE_RENDER_LIMIT);
-  for (const e of sorted) {
-    const parts = e.path.split('/').filter(Boolean);
-    let cur = root;
-    let acc = [];
-    for (let i = 0; i < parts.length; i++) {
-      acc.push(parts[i]);
-      const key = acc.join('/');
-      let node = nodes.get(key);
-      if (!node) {
-        const isLeaf = (i === parts.length - 1) && e.type === 'file';
-        node = {
-          name: parts[i],
-          type: isLeaf ? 'file' : 'dir',
-          path: key,
-          depth: i + 1,
-          size: isLeaf ? (e.size || 0) : undefined,
-          children: [],
-        };
-        cur.children.push(node);
-        nodes.set(key, node);
-      }
-      cur = node;
-    }
-  }
-  const frag = document.createDocumentFragment();
-  for (const child of root.children) {
-    frag.appendChild(_buildFileItem(child));
-  }
-  container.appendChild(frag);
-}
 
-function _buildFileItem(node) {
-  const wrap = document.createElement('div');
-  wrap.className = 'file-item ' + node.type;
-  wrap.dataset.path = node.path;
-  wrap.dataset.type = node.type;
-  const icon = document.createElement('span');
-  icon.className = 'icon';
-  wrap.appendChild(icon);
-  const name = document.createElement('span');
-  name.className = 'name';
-  name.textContent = node.name;
-  wrap.appendChild(name);
-  if (node.type === 'file' && typeof node.size === 'number') {
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    meta.textContent = node.size > 1024 ? Math.round(node.size / 1024) + 'KB' : node.size + 'B';
-    wrap.appendChild(meta);
-  }
-  if (node.children && node.children.length) {
-    const childWrap = document.createElement('div');
-    childWrap.className = 'children';
-    for (const c of node.children) {
-      childWrap.appendChild(_buildFileItem(c));
-    }
-    wrap.appendChild(childWrap);
-    if (!_fileTreeExpanded.has(node.path)) wrap.classList.add('collapsed');
-    wrap.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      if (wrap.classList.toggle('collapsed')) {
-        _fileTreeExpanded.delete(node.path);
-      } else {
-        _fileTreeExpanded.add(node.path);
-      }
-    });
-  } else if (node.type === 'file') {
-    wrap.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      readFile(node.path);
-    });
-  }
-  return wrap;
-}
-
-async function readFile(path) {
-  if (!path) return;
-  try {
-    const resp = await fetch('/api/projects/' + encodeURIComponent(currentProject) + '/file?path=' + encodeURIComponent(path), {
-      headers: { Authorization: AUTH },
-    });
-    if (!resp.ok) {
-      const detail = await resp.json().catch(() => ({}));
-      alert('无法读取文件: ' + (detail.detail || ('HTTP ' + resp.status)));
-      return;
-    }
-    const data = await resp.json();
-    showFilePreview(path, data);
-  } catch (e) {
-    alert('读取失败: ' + (e.message || e));
-  }
-}
-
-function showFilePreview(path, data) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg';
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.style.maxWidth = '92%';
-  const meta = document.createElement('div');
-  meta.className = 'file-content-preview';
-  const bar = document.createElement('div');
-  bar.className = 'meta-bar';
-  const title = document.createElement('span');
-  title.textContent = path + (data.truncated ? ' · 已截断(' + data.size + 'B)' : ' · ' + data.size + 'B');
-  bar.appendChild(title);
-  const close = document.createElement('button');
-  close.textContent = '关闭';
-  close.onclick = () => wrap.remove();
-  bar.appendChild(close);
-  meta.appendChild(bar);
-  const code = document.createElement('div');
-  code.textContent = data.content || '';
-  meta.appendChild(code);
-  bubble.appendChild(meta);
-  wrap.appendChild(bubble);
-  const terminal = document.getElementById('exec-terminal');
-  if (terminal) {
-    wrap.classList.add('terminal-line');
-    terminal.appendChild(wrap);
-    terminal.scrollTop = terminal.scrollHeight;
-  }
-}
-
-function checkDangerous(text) {
-  if (DANGEROUS.test(text)) {
-    alert('检测到危险指令（rm/sudo/dd/format/mkfs/>/dev/），已拦截。');
-    return true;
-  }
-  return false;
-}
 
 function showCancel(show) {
   document.getElementById('cancel-btn').style.display = show ? 'flex' : 'none';
-  document.getElementById('exec-cancel-btn').style.display = show ? 'inline-flex' : 'none';
   sendBtn.style.display = show ? 'none' : 'flex';
-  execSendBtn.style.display = show ? 'none' : 'flex';
 }
 
 function cancelStream() {
@@ -1334,17 +1106,6 @@ function cancelStream() {
   streaming = false;
   showCancel(false);
   sendBtn.classList.remove('loading');
-  execSendBtn.classList.remove('loading');
-  const terminal = getTerminal();
-  if (currentTab === 'execute' && terminal) {
-    terminal.querySelector('.terminal-cursor')?.remove();
-    const runningTool = terminal.querySelector('.terminal-tool-header .tool-status.running');
-    if (runningTool) {
-      runningTool.classList.remove('running');
-      runningTool.textContent = ' cancelled';
-    }
-    appendTerminalInfo(' 用户终止');
-  }
 }
 
 async function sendChat() {
@@ -1355,390 +1116,24 @@ async function sendChat() {
   sendBtn.disabled = true;
   currentMessages.push({ role: 'user', content: text, mode: 'chat' });
   renderMessage(messagesEl, 'user', text);
-  await streamRequest('/api/chat', currentMessages, sessionId, messagesEl, false);
+  await streamRequest('/api/chat', currentMessages, sessionId, messagesEl);
   loadHistory();
 }
 
-const TOOL_ICONS = {
-  Bash:'⚡', Edit:'✎', Read:'📖', Write:'📝', Glob:'🔍', Grep:'🔍',
-  WebFetch:'🌐', WebSearch:'🔎', TodoWrite:'☑', Think:'💭'
-};
-function toolIcon(name) { return TOOL_ICONS[name] || '🔧'; }
-function terminalNow() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-}
 
-function getTerminal() {
-  return document.getElementById('exec-terminal');
-}
-function terminalScrollToBottom() {
-  const t = getTerminal();
-  if (t && execAutoScroll) t.scrollTop = t.scrollHeight;
-}
 
-function renderTerminalCommand(text) {
-  const t = getTerminal();
-  if (!t) return;
-  const line = document.createElement('div');
-  line.className = 'terminal-line';
-  const prompt = document.createElement('span');
-  prompt.className = 'terminal-prompt';
-  prompt.textContent = '$ ';
-  const cmd = document.createElement('span');
-  cmd.className = 'terminal-command';
-  cmd.textContent = text;
-  line.appendChild(prompt);
-  line.appendChild(cmd);
-  t.appendChild(line);
-  terminalScrollToBottom();
-}
-
-function appendTerminalInfo(text) {
-  const t = getTerminal();
-  if (!t) return;
-  const line = document.createElement('div');
-  line.className = 'terminal-line';
-  const info = document.createElement('span');
-  info.className = 'terminal-info';
-  info.textContent = text;
-  line.appendChild(info);
-  t.appendChild(line);
-  terminalScrollToBottom();
-}
-
-function appendTerminalSeparator() {
-  const t = getTerminal();
-  if (!t) return;
-  const hr = document.createElement('hr');
-  hr.className = 'terminal-separator';
-  t.appendChild(hr);
-}
-
-function parseDiff(text) {
-  const files = [];
-  let currentFile = null;
-  if (!text || typeof text !== 'string') return files;
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const fileMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-    if (fileMatch) {
-      currentFile = { path: fileMatch[2], hunks: [], additions: 0, deletions: 0 };
-      files.push(currentFile);
-      continue;
-    }
-    const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)?$/);
-    if (hunkMatch && currentFile) {
-      const hunk = {
-        oldStart: +hunkMatch[1],
-        oldLines: +(hunkMatch[2] || 1),
-        newStart: +hunkMatch[3],
-        newLines: +(hunkMatch[4] || 1),
-        header: (hunkMatch[5] || '').trim(),
-        lines: []
-      };
-      currentFile.hunks.push(hunk);
-      continue;
-    }
-    if (currentFile && currentFile.hunks.length > 0) {
-      const hunk = currentFile.hunks[currentFile.hunks.length - 1];
-      if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
-      if (line.startsWith('\\ No newline')) continue;
-      if (line.startsWith('+')) { hunk.lines.push({ type: 'add', text: line.slice(1) }); currentFile.additions++; }
-      else if (line.startsWith('-')) { hunk.lines.push({ type: 'del', text: line.slice(1) }); currentFile.deletions++; }
-      else if (line.startsWith(' ')) { hunk.lines.push({ type: 'ctx', text: line.slice(1) }); }
-    }
-  }
-  return files;
-}
-
-function renderDiff(files) {
-  if (!files || files.length === 0) return '';
-  let html = '';
-  for (const f of files) {
-    html += '<div class="diff-file">';
-    html += '<div class="diff-file-header"><span>📝 ' + escapeHtml(f.path) + '</span><span class="diff-summary">+' + f.additions + ' -' + f.deletions + '</span></div>';
-    for (const hunk of f.hunks) {
-      html += '<div class="diff-hunk-header">@@ -' + hunk.oldStart + ',' + hunk.oldLines + ' +' + hunk.newStart + ',' + hunk.newLines + ' @@' + (hunk.header ? ' ' + escapeHtml(hunk.header) : '') + '</div>';
-      for (const line of hunk.lines) {
-        const cls = line.type === 'add' ? 'diff-add' : (line.type === 'del' ? 'diff-del' : 'diff-ctx');
-        const prefix = line.type === 'add' ? '+' : (line.type === 'del' ? '-' : ' ');
-        html += '<div class="diff-line ' + cls + '"><span class="diff-prefix">' + prefix + '</span>' + escapeHtml(line.text) + '</div>';
-      }
-    }
-    html += '</div>';
-  }
-  if (files.length > 1) {
-    const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-    const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-    html = '<div class="diff-global-summary">' + files.length + ' 个文件变更，+' + totalAdd + ' -' + totalDel + '</div>' + html;
-  }
-  return html;
-}
-
-async function terminalStream(url, msgs, sid, isExecute) {
-  const terminal = getTerminal();
-  streaming = true;
-  showCancel(true);
-  if (isExecute) execSendBtn.classList.add('loading');
-  else sendBtn.classList.add('loading');
-  abortController = new AbortController();
-
-  let fullContent = '';
-  let costInfo = null;
-  const toolEntries = [];
-  let outputLine = null;
-
-  function ensureOutputLine() {
-    if (outputLine && outputLine.isConnected) return outputLine;
-    const line = document.createElement('div');
-    line.className = 'terminal-line terminal-output-text';
-    line.innerHTML = '<span class="terminal-cursor"></span>';
-    terminal.appendChild(line);
-    outputLine = line;
-    return line;
-  }
-
-  function appendOutput(text) {
-    const line = ensureOutputLine();
-    const cursor = line.querySelector('.terminal-cursor');
-    const textNode = document.createTextNode(text);
-    line.insertBefore(textNode, cursor);
-    fullContent += text;
-    terminalScrollToBottom();
-  }
-
-  function removeCursor() {
-    if (outputLine && outputLine.isConnected) {
-      const c = outputLine.querySelector('.terminal-cursor');
-      if (c) c.remove();
-    }
-  }
-
-  function appendToolHeader(name, inputObj) {
-    removeCursor();
-    const header = document.createElement('div');
-    header.className = 'terminal-tool-header';
-    header.dataset.toolName = name;
-    header.innerHTML = '<span class="terminal-timestamp">' + terminalNow() + '</span><span class="tool-icon">' + toolIcon(name) + '</span><span class="tool-name">' + escapeHtml(name) + '</span><span class="tool-status running">running...</span>';
-    const body = document.createElement('div');
-    body.className = 'terminal-tool-body';
-    const pre = document.createElement('pre');
-    pre.textContent = JSON.stringify(inputObj, null, 2);
-    body.appendChild(pre);
-    terminal.appendChild(header);
-    terminal.appendChild(body);
-    toolEntries.push({ name: name, header: header, body: body });
-    terminalScrollToBottom();
-  }
-
-  function appendToolResult(content) {
-    removeCursor();
-    if (!toolEntries.length) return;
-    const entry = toolEntries[toolEntries.length - 1];
-    const status = entry.header.querySelector('.tool-status');
-    if (status) { status.classList.remove('running'); status.textContent = '✓ done'; }
-    const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-    const files = parseDiff(text);
-    if (files.length > 0) {
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = renderDiff(files);
-      entry.body.appendChild(wrapper);
-    } else {
-      const pre = document.createElement('pre');
-      pre.textContent = text;
-      entry.body.appendChild(pre);
-    }
-    terminalScrollToBottom();
-  }
-
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: AUTH },
-      body: JSON.stringify({ messages: msgs, session_id: sid, model: 'flash', project: currentProject, timeout: 120 }),
-      signal: abortController.signal,
-    });
-    if (!resp.ok) {
-      const errText = resp.status === 429 ? '前一个执行中，请稍候' : resp.status === 400 ? '危险指令已被拦截' : '请求失败: HTTP ' + resp.status;
-      appendTerminalInfo('✗ ' + errText);
-      execMessages.push({ role: 'assistant', content: errText, mode: 'execute' });
-      return;
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const data = JSON.parse(line.slice(6));
-          if (data.type === 'delta') {
-            appendOutput(data.content);
-          } else if (data.type === 'tool_use') {
-            appendToolHeader(data.name || 'tool', data.input || {});
-          } else if (data.type === 'tool_result') {
-            appendToolResult(data.content);
-          } else if (data.type === 'cost') {
-            costInfo = data;
-          } else if (data.type === 'done') {
-             if (data.session_id) execSessionId = data.session_id;
-           } else if (data.type === 'error') {
-             removeCursor();
-             appendTerminalInfo('✗ ' + data.content);
-              fullContent += (fullContent ? '\n' : '') + data.content;
-            }
-          } catch(e) {}
-        }
-      }
-    } catch(e) {
-      if (e.name !== 'AbortError') {
-        removeCursor();
-        appendTerminalInfo('✗ 网络错误: ' + e.message);
-      }
-    }
-    if (costInfo) {
-      appendTerminalSeparator();
-      const info = document.createElement('div');
-      info.className = 'terminal-line';
-      const span = document.createElement('span');
-      span.className = 'terminal-info';
-      span.textContent = 'ⓘ Tokens: ' + (costInfo.tokens || 0) + ' · $' + (costInfo.usd || 0).toFixed(4);
-      info.appendChild(span);
-      terminal.appendChild(info);
-    }
-    if (fullContent) {
-      execMessages.push({ role: 'assistant', content: fullContent, mode: 'execute' });
-    }
-  streaming = false;
-  showCancel(false);
-  sendBtn.classList.remove('loading');
-  execSendBtn.classList.remove('loading');
-  abortController = null;
-  terminalScrollToBottom();
-}
-
-function resetTerminal() {
-  const t = getTerminal();
-  if (!t) return;
-  t.innerHTML = '';
-  const line1 = document.createElement('div');
-  line1.className = 'terminal-line';
-  const info1 = document.createElement('span');
-  info1.className = 'terminal-info';
-  info1.textContent = ' CCC Execute Terminal';
-  line1.appendChild(info1);
-  t.appendChild(line1);
-  const line2 = document.createElement('div');
-  line2.className = 'terminal-line';
-  const info2 = document.createElement('span');
-  info2.className = 'terminal-info';
-  info2.textContent = ' 输入指令开始执行...';
-  line2.appendChild(info2);
-  t.appendChild(line2);
-}
-
-function renderTerminalHistory(messages) {
-  const t = getTerminal();
-  if (!t) return;
-  resetTerminal();
-  for (const msg of messages) {
-    if (msg.role === 'user') {
-      renderTerminalCommand(msg.content || '');
-    } else if (msg.role === 'assistant') {
-      const text = msg.content || '';
-      const results = msg.execution_results || [];
-      const partial = msg.partial || false;
-
-      if (results && results.length > 0) {
-        // Restore tool headers and results
-        appendTerminalSeparator();
-        for (const r of results) {
-          appendTerminalInfo('⚡ ' + (r.tool || 'tool'));
-          const body = document.createElement('div');
-          body.className = 'terminal-tool-body';
-          const pre = document.createElement('pre');
-          pre.textContent = JSON.stringify(r.input || {}, null, 2);
-          body.appendChild(pre);
-          if (r.result) {
-            const files = parseDiff(r.result);
-            if (files.length > 0) {
-              const wrapper = document.createElement('div');
-              wrapper.innerHTML = renderDiff(files);
-              body.appendChild(wrapper);
-            } else {
-              const resultPre = document.createElement('pre');
-              resultPre.textContent = r.result;
-              body.appendChild(resultPre);
-            }
-          }
-          t.appendChild(body);
-          appendTerminalSeparator();
-        }
-      }
-
-      if (text) {
-        const files = parseDiff(text);
-        if (files.length > 0) {
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = renderDiff(files);
-          t.appendChild(wrapper);
-        } else {
-          const line = document.createElement('div');
-          line.className = 'terminal-line terminal-output-text';
-          if (partial) {
-            const partialTag = document.createElement('span');
-            partialTag.className = 'terminal-info';
-            partialTag.textContent = ' [部分结果 — 用户中断] ';
-            line.appendChild(partialTag);
-          }
-          const textSpan = document.createElement('span');
-          textSpan.textContent = text;
-          line.appendChild(textSpan);
-          t.appendChild(line);
-        }
-      }
-    }
-  }
-  terminalScrollToBottom();
-}
-
-async function sendExecute() {
-  const text = execInput.value.trim();
-  if (!text || streaming) return;
-  if (checkDangerous(text)) return;
-  execInput.value = '';
-  execInput.style.height = 'auto';
-  execSendBtn.disabled = true;
-  execMessages.push({ role: 'user', content: text, mode: 'execute' });
-  renderTerminalCommand(text);
-  await terminalStream('/api/execute', execMessages, execSessionId, true);
-  setTimeout(() => loadHistory(), 300);
-}
-
-async function streamRequest(url, msgs, sid, container, isExecute) {
+async function streamRequest(url, msgs, sid, container) {
   const typingId = 'typing-' + Date.now();
   const typingEl = document.createElement('div');
-  typingEl.className = 'msg assistant typing' + (isExecute ? ' execute' : '');
+  typingEl.className = 'msg assistant typing';
   typingEl.id = typingId;
-  typingEl.innerHTML = isExecute
-    ? '<div class="bubble-wrap"><span class="exec-icon">⚡</span><div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>'
-    : '<div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
+  typingEl.innerHTML = '<div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
   container.appendChild(typingEl);
   scrollToBottom(container);
 
   streaming = true;
   showCancel(true);
-  if (isExecute) execSendBtn.classList.add('loading');
-  else sendBtn.classList.add('loading');
+  sendBtn.classList.add('loading');
   abortController = new AbortController();
 
   let fullContent = '';
@@ -1755,22 +1150,17 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
     if (!resp.ok) {
       removeTyping(typingId);
       const errText = resp.status === 429 ? '前一个执行中，请稍候' : resp.status === 400 ? '危险指令已被拦截' : '请求失败: HTTP ' + resp.status;
-      renderMessage(container, 'assistant', errText, isExecute);
-      if (isExecute) execMessages.push({ role: 'assistant', content: errText, mode: 'execute' });
-      else currentMessages.push({ role: 'assistant', content: errText, mode: 'chat' });
+      renderMessage(container, 'assistant', errText);
+      currentMessages.push({ role: 'assistant', content: errText, mode: 'chat' });
       return;
     }
     removeTyping(typingId);
 
     const now = ts();
     const msgDiv = document.createElement('div');
-    msgDiv.className = 'msg assistant' + (isExecute ? ' execute' : '');
-    if (isExecute) {
-      msgDiv.innerHTML = '<div class="bubble-wrap"><span class="exec-icon">⚡</span><div class="bubble"></div></div>';
-    } else {
-      msgDiv.innerHTML = '<div class="bubble"></div>';
-    }
-    const bubble = isExecute ? msgDiv.querySelector('.bubble') : msgDiv.querySelector('.bubble');
+    msgDiv.className = 'msg assistant';
+    msgDiv.innerHTML = '<div class="bubble"></div>';
+    const bubble = msgDiv.querySelector('.bubble');
     const tsEl = document.createElement('div');
     tsEl.className = 'ts';
     tsEl.textContent = now;
@@ -1813,10 +1203,7 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
           } else if (data.type === 'cost') {
             costInfo = data;
           } else if (data.type === 'done') {
-            if (data.session_id) {
-              if (isExecute) execSessionId = data.session_id;
-              else sessionId = data.session_id;
-            }
+            if (data.session_id) sessionId = data.session_id;
           } else if (data.type === 'error') {
             fullContent += (fullContent ? '\n' : '') + data.content;
             bubble.innerHTML = renderMarkdown(fullContent);
@@ -1828,27 +1215,23 @@ async function streamRequest(url, msgs, sid, container, isExecute) {
     if (costInfo) {
       const costEl = document.createElement('div');
       costEl.className = 'cost-info';
-      costEl.textContent = 'Tokens: ' + (costInfo.tokens||0) + ' · $' + (costInfo.usd||0).toFixed(4);
+      costEl.textContent = 'Tokens: ' + (costInfo.tokens||0) + ' \u00b7 $' + (costInfo.usd||0).toFixed(4);
       msgDiv.appendChild(costEl);
     }
 
-    const assistantMsg = { role: 'assistant', content: fullContent, mode: isExecute ? 'execute' : 'chat' };
-    if (isExecute) execMessages.push(assistantMsg);
-    else currentMessages.push(assistantMsg);
+    currentMessages.push({ role: 'assistant', content: fullContent, mode: 'chat' });
   } catch(e) {
     if (e.name !== 'AbortError') {
       removeTyping(typingId);
-      renderMessage(container, 'assistant', '网络错误: ' + e.message, isExecute);
+      renderMessage(container, 'assistant', '\u7f51\u7edc\u9519\u8bef: ' + e.message);
     }
   }
   streaming = false;
   showCancel(false);
   sendBtn.classList.remove('loading');
-  execSendBtn.classList.remove('loading');
   abortController = null;
   scrollToBottom(container);
 }
-
 function removeTyping(id) {
   const el = document.getElementById(id);
   if (el) el.remove();
@@ -1857,8 +1240,7 @@ function removeTyping(id) {
 function onKey(e, mode) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    if (mode === 'execute') sendExecute();
-    else sendChat();
+    sendChat();
   }
 }
 
@@ -1866,21 +1248,17 @@ function ts() {
   const d = new Date();
   return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
-function renderMessage(container, role, content, isExecute) {
+function renderMessage(container, role, content) {
   const div = document.createElement('div');
-  div.className = 'msg ' + role + (isExecute && role === 'assistant' ? ' execute' : '');
-  if (isExecute && role === 'assistant') {
-    div.innerHTML = '<div class="bubble-wrap"><span class="exec-icon">⚡</span><div class="bubble">' + renderMarkdown(content) + '</div></div><div class="ts">' + ts() + '</div>';
-  } else {
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.innerHTML = renderMarkdown(content);
-    div.appendChild(bubble);
-    const tsEl = document.createElement('div');
-    tsEl.className = 'ts';
-    tsEl.textContent = ts();
-    div.appendChild(tsEl);
-  }
+  div.className = 'msg ' + role;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = renderMarkdown(content);
+  div.appendChild(bubble);
+  const tsEl = document.createElement('div');
+  tsEl.className = 'ts';
+  tsEl.textContent = ts();
+  div.appendChild(tsEl);
   // Double-click on user message to edit
   if (role === 'user') {
     div.style.cursor = 'pointer';
@@ -1893,7 +1271,6 @@ function renderMessage(container, role, content, isExecute) {
   container.appendChild(div);
   scrollToBottom(container);
 }
-
 function editMessage(msgEl, container) {
   const bubble = msgEl.querySelector('.bubble');
   if (!bubble) return;
@@ -1920,7 +1297,7 @@ function saveEdit(btn) {
   const msgEl = btn.closest('.msg');
   if (!msgEl) return;
   // Find which messages container this belongs to
-  const container = msgEl.closest('#messages, #exec-messages, #exec-terminal') || document.getElementById('messages');
+  const container = document.getElementById('messages');
   const siblings = [];
   let next = msgEl.nextElementSibling;
   while (next) {
@@ -2153,7 +1530,7 @@ async function loadHistory() {
       item.className = 'session-item';
       const modeTag = s.mode === 'execute' ? '<span class="mode-tag">⚡ Execute</span> ' : '';
       item.innerHTML = modeTag + '<div>' + escapeHtml(s.title) + '</div><div class="date">' + (s.updated_at||'') + '</div>';
-      item.onclick = () => loadSession(s.session_id, s.mode);
+      item.onclick = () => loadSession(s.session_id);
       list.appendChild(item);
     }
   } catch(e) {}
@@ -2163,30 +1540,13 @@ async function loadSession(id, mode) {
   try {
     const resp = await fetch('/api/history/' + id + '?project=' + encodeURIComponent(currentProject), { headers: { Authorization: AUTH } });
     const data = await resp.json();
-    const isExec = mode === 'execute' || data.mode === 'execute';
-    if (isExec) {
-      switchTab('execute');
-      execSessionId = data.session_id;
-      execMessages = data.messages || [];
-      // Attach execution_results to the last assistant message for rich replay
-      if (data.execution_results && execMessages.length > 0) {
-        const last = execMessages[execMessages.length - 1];
-        if (last.role === 'assistant') {
-          last.execution_results = data.execution_results;
-        }
-      }
-      execMessagesEl.innerHTML = '';
-      renderTerminalHistory(execMessages);
-    } else {
-      switchTab('chat');
-      sessionId = data.session_id;
-      currentMessages = data.messages || [];
-      messagesEl.innerHTML = '';
-      for (const msg of currentMessages) renderMessage(messagesEl, msg.role, msg.content, false);
-      if (data.reply && !currentMessages.some(m => m.role === 'assistant')) {
-        renderMessage(messagesEl, 'assistant', data.reply, false);
-        currentMessages.push({role:'assistant', content: data.reply, mode:'chat'});
-      }
+    sessionId = data.session_id;
+    currentMessages = data.messages || [];
+    messagesEl.innerHTML = '';
+    for (const msg of currentMessages) renderMessage(messagesEl, msg.role, msg.content);
+    if (data.reply && !currentMessages.some(m => m.role === 'assistant')) {
+      renderMessage(messagesEl, 'assistant', data.reply);
+      currentMessages.push({role:'assistant', content: data.reply, mode:'chat'});
     }
     toggleSidebar();
   } catch(e) {}
@@ -2200,104 +1560,9 @@ function newChat() {
   sendBtn.disabled = true;
 }
 
-function newExecChat() {
-  execSessionId = crypto.randomUUID?.() ?? Date.now().toString(36)+Math.random().toString(36).slice(2);
-  execMessages = [];
-  execMessagesEl.innerHTML = '';
-  resetTerminal();
-  execInput.value = '';
-  execSendBtn.disabled = true;
-}
 
-async function loadBoard() {
-  const scroll = document.getElementById('board-scroll');
-  const offline = document.getElementById('board-offline');
-  scroll.innerHTML = '';
-  offline.style.display = 'none';
-  const ws = PROJECT_WORKSPACE[currentProject] || currentProject;
-  try {
-    const resp = await fetch('/api/board/proxy/board?workspace=' + encodeURIComponent(ws), { headers: { Authorization: AUTH } });
-    if (resp.status === 503) {
-      offline.style.display = 'block';
-      return;
-    }
-    const data = await resp.json();
-    const columns = data.columns || {};
-    for (const col of ['backlog','planned','in_progress','testing','verified','released','abnormal']) {
-      const colEl = document.createElement('div');
-      colEl.className = 'board-col';
-      const tasks = columns[col] || [];
-      colEl.innerHTML = '<div class="board-col-title">' + (COLUMN_LABELS[col]||col) + ' (' + tasks.length + ')</div><div class="board-col-cards"></div>';
-      const cards = colEl.querySelector('.board-col-cards');
-      for (const t of tasks) {
-        const card = document.createElement('div');
-        card.className = 'board-card';
-        card.innerHTML = '<div class="title">' + escapeHtml(t.title || t.id) + '</div><div class="time">' + escapeHtml(t.updated_at || t.created_at || '') + '</div>';
-        cards.appendChild(card);
-      }
-      scroll.appendChild(colEl);
-    }
-    const indicator = document.getElementById('board-scroll-indicator');
-    if (indicator) {
-      const colCount = ['backlog','planned','in_progress','testing','verified','released','abnormal'].length;
-      indicator.innerHTML = '';
-      if (window.innerWidth <= 768) {
-        for (let i = 0; i < colCount; i++) {
-          const dot = document.createElement('span');
-          dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:var(--border);display:inline-block;transition:background 0.2s;';
-          if (i === 0) dot.style.background = 'var(--accent)';
-          indicator.appendChild(dot);
-        }
-        let ticking = false;
-        scroll.addEventListener('scroll', () => {
-          if (!ticking) {
-            requestAnimationFrame(() => {
-              const scrollLeft = scroll.scrollLeft;
-              const colW = scroll.clientWidth;
-              const idx = Math.round(scrollLeft / colW);
-              const dots = indicator.querySelectorAll('span');
-              dots.forEach((d, i) => { d.style.background = i === idx ? 'var(--accent)' : 'var(--border)'; });
-              ticking = false;
-            });
-            ticking = true;
-          }
-        });
-      }
-    }
-  } catch(e) {
-    offline.style.display = 'block';
-  }
-}
 
-function openTaskModal() {
-  document.getElementById('modal-overlay').classList.add('show');
-  document.getElementById('task-title').value = '';
-  document.getElementById('task-desc').value = '';
-}
 
-function closeTaskModal(e) {
-  if (e && e.target !== document.getElementById('modal-overlay')) return;
-  document.getElementById('modal-overlay').classList.remove('show');
-}
-
-async function createTask() {
-  const title = document.getElementById('task-title').value.trim();
-  if (!title) { alert('请输入标题'); return; }
-  const desc = document.getElementById('task-desc').value.trim();
-  const ws = PROJECT_WORKSPACE[currentProject] || currentProject;
-  const id = 'chat-' + Date.now();
-  try {
-    const resp = await fetch('/api/board/proxy/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: AUTH },
-      body: JSON.stringify({ id, title, description: desc, workspace: ws }),
-    });
-    if (resp.status === 503) { alert('看板服务离线'); return; }
-    if (!resp.ok) { alert('创建失败: HTTP ' + resp.status); return; }
-    closeTaskModal();
-    loadBoard();
-  } catch(e) { alert('网络错误'); }
-}
 </script>
 </body>
 </html>"""
