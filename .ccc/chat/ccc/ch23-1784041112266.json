@@ -1,0 +1,21 @@
+{
+  "session_id": "ch23-1784041112266",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n**CCC — Connect–Claude Code**\n\nIt's a SKILL asset suite (not a framework codebase) that connects Claude Code's execution capability to any IDE tool — Trae, Cursor, Zed, VS Code, OpenCode, etc.\n\n**Core idea**: 7 role-based skills (`SKILL.md` + `skills/ccc-<role>/",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:58:36+08:00",
+  "created_at": "2026-07-14T22:58:36+08:00"
+}

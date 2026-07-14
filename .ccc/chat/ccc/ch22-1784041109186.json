@@ -1,0 +1,21 @@
+{
+  "session_id": "ch22-1784041109186",
+  "title": "Hi",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nHi!  I'm MiniMax-M3, here to help. \n\nWhat would",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:58:32+08:00",
+  "created_at": "2026-07-14T22:58:32+08:00"
+}

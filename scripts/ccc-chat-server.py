@@ -1512,9 +1512,10 @@ loadHistory();
 
 function switchTab(tab) {
   currentTab = tab;
+  const panelIds = {chat:'chat-panel', execute:'exec-panel', board:'board-panel'};
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(tab + '-panel').classList.add('active');
+  document.getElementById(panelIds[tab] || tab + '-panel').classList.add('active');
   document.querySelector('.tab-btn[data-tab="'+tab+'"]').classList.add('active');
   const titles = {chat:'CCC Chat', execute:'CCC Execute', board:'CCC Board'};
   document.getElementById('header-title').textContent = titles[tab] || 'CCC';

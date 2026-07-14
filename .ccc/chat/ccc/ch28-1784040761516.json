@@ -1,0 +1,21 @@
+{
+  "session_id": "ch28-1784040761516",
+  "title": "Line1\nLine2\nTab\there",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Line1\nLine2\nTab\there",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "我已收到您的输入",
+      "mode": "chat",
+      "partial": true
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:52:41+08:00",
+  "created_at": "2026-07-14T22:52:41+08:00"
+}

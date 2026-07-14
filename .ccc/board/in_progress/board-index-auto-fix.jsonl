@@ -1,1 +1,0 @@
-{"id": "board-index-auto-fix", "title": "Patrol 同步 index.json 后检查一致性", "description": "patrol 移动 task 后已通过 FileBoardStore 更新 index.json，添加校验步骤确保 index 与目录一致。", "complexity": "large", "ts": "2026-07-14T14:36:59Z", "note": "v1.0: 验证", "status": "in_progress", "updated_at": "2026-07-14T22:46:26+08:00", "color_group": "E", "color_depth": 0}

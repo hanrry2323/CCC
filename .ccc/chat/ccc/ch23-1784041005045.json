@@ -1,0 +1,21 @@
+{
+  "session_id": "ch23-1784041005045",
+  "title": "What project?",
+  "project": "ccc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What project?",
+      "mode": "chat"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\nThis is the **CCC (Connect–Claude Code)** project.\n\n## What it is\n\nCCC is a **SKILL asset suite** (not a framework codebase) that connects Claude Code's execution capabilities to any IDE tool — Trae, Cursor, Zed, VS Code, OpenCode, etc.\n\n## Core structure\n\n- **`SKILL.md`** — the single prompt injected when an agent starts\n- **`skills/ccc-<role>/SKILL.md`** × 7 — per-role skill definitions\n- **`references/red-lines.md`** — 12+ hard constraints (R-04, R-07, R-08, R-09, R-12, R-14, etc.)\n- **`scripts/`** — Python + bash tooling (Engine, board, executor, watchdog)\n- **`.ccc/state.md` + `.ccc/profile.md`** — handoff index + project profile\n\n## 7-role system + CCC Engine (v0.20.1+)\n\n```\nlaunchd → com.ccc.engine (KeepAlive, daemon)\n  └─ ccc-engine.py main loop:\n       - in_progress tasks have a phase running? → check .done → run reviewer+tester+kb\n       - planned tasks exist? → spawn opencode immediately (no cron)\n       - nothing to do → sleep 5s\n```\n\nRoles: **product → dev → reviewer → tester → kb** (plus ship/watcher), driven serially by the Engine with **phase-aware scheduling** via `<task>.phases.json` (JSONL, `schema_version=\"1.1\"`).\n\n## Versions in context\n\n- Current: **v0.24.5+** (R-series red lines, Engine+board-server plist)\n- Architecture pivot at **v0.20.1**: dropped cron-based 7-role polling, replaced with Engine daemon\n- **v0.19**: introduced `board-task-schema.md`, `_config.py`, `_board_store.py`, `_executor.py` abstractions\n- **v0.18**: dropped legacy 3-role (Plan/Exec/Verify) flow\n\n## Key red lines (摘要)\n\n| # | Rule |\n|---|------|\n| 6 | Roles don't cross-talk (product doesn't code, reviewer doesn't plan) |\n| 7 | Boot order is fixed: read `state.md` + `profile.md` first |\n| 9 | If stuck, kill immediately, next role takes over |\n| 11 | Verdict must be written to a verdict file — verbal PASS ≠ PASS (Lesson 28 origin) |\n| 12 | Agent cannot auto-enable CCC — must be user-triggered |\n\nIf you want the full picture, check `README.md` for positioning and `docs/roadmap.md` for the direction.",
+      "mode": "chat",
+      "partial": false
+    }
+  ],
+  "mode": "chat",
+  "updated_at": "2026-07-14T22:56:45+08:00",
+  "created_at": "2026-07-14T22:56:45+08:00"
+}
