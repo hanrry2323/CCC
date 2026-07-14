@@ -571,7 +571,7 @@ def run_lint(task_id: str, fix: bool = False) -> int:
         if phases_file.stat().st_size == 0:
             print(f"[phase_lint] phases.jsonl 为空: {phases_file}", file=sys.stderr)
             return 1
-        print(f"[phase_lint] 无 phases 数据")
+        print("[phase_lint] 无 phases 数据")
         return 0
 
     results = []
