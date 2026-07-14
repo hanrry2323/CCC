@@ -31,6 +31,7 @@ from _executor import _sanitized_env
 from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
+from _utils import sanitize_prompt_input as _sanitize_prompt_input
 
 _log = get_logger("board")
 
@@ -1065,8 +1066,8 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
             f"## 任务\n"
             f"- id: {task['id']}\n"
-            f"- title: {task.get('title', '')}\n"
-            f"- description: {task.get('description', '')}\n\n"
+            f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
+            f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
             f"每行一个 JSON object：\n"
@@ -1101,7 +1102,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         pass
 
     relay_url = _get_relay_url()
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay_url
 
     def _run_claude(prompt_text: str) -> str:
@@ -1422,8 +1423,8 @@ def launch_product_async(task_id: str) -> dict:
         f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
         f"## 任务\n"
         f"- id: {task['id']}\n"
-        f"- title: {task.get('title', '')}\n"
-        f"- description: {task.get('description', '')}\n\n"
+        f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
+        f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
         f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
         f"## Phases 格式\n"
         f"每行一个 JSON object：\n"
@@ -1470,7 +1471,7 @@ def launch_product_async(task_id: str) -> dict:
     # 5. Popen claude -p（异步）
     result_file = pids_dir / f"{task_id}.product.out"
     relay_url = _get_relay_url()
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay_url
 
     try:
@@ -1794,7 +1795,7 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     # 7. Popen claude -p
     result_file = pids_dir / f"{task_id}.reviewer.out"
     relay_url = _get_relay_url()
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay_url
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
@@ -2845,7 +2846,7 @@ def _review_with_llm(
     )
 
     relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
-    env = os.environ.copy()
+    env = _sanitized_env()
     env["ANTHROPIC_BASE_URL"] = relay
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:

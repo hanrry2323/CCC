@@ -72,10 +72,6 @@ _current_running_phase = ccc_board._current_running_phase
 
 cfg = Config()
 
-# Engine 模块加载时间基准，用于计算 runtime_uptime
-_engine_start_ts: float = time.time()
-_restart_log_written: bool = False
-_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
 
 # 日志轮转：engine.log + daily rotate + keep 7 days
 _log_dir = Path(os.environ.get("HOME", str(Path.home()))) / ".ccc" / "logs"
@@ -83,9 +79,6 @@ _log_dir.mkdir(parents=True, exist_ok=True)
 _log_file = str(_log_dir / "engine.log")
 add_file_handler("engine", _log_file, when="midnight", interval=1, backup_count=7)
 
-_engine_start_ts: float = time.time()
-_restart_log_written: bool = False
-_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
 
 _log.info(
     "ccc-engine config: phase_timeout=%ds, exec_timeout=%ds, engine_tick_interval=%ds",

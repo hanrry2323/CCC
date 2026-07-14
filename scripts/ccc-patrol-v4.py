@@ -417,9 +417,9 @@ def triage_abnormal(ws_name: str, ws: Path) -> list[str]:
         )
 
         if has_fix and not is_persistent:
-            # 已修复 → released
-            _move_task(ws, tid, "abnormal", "released")
-            ops.append(f"{tid}: has verdict/report → released")
+            # 已修复 → testing（需 reviewer/tester 验收，不跳过看板门禁）
+            _move_task(ws, tid, "abnormal", "testing")
+            ops.append(f"{tid}: has verdict/report → testing (await review)")
         elif has_plan and not is_persistent:
             # 有 plan，非反复失败 → planned（重新调度）
             _move_task(ws, tid, "abnormal", "planned")

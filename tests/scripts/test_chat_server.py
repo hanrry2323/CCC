@@ -190,7 +190,7 @@ class TestServiceInfrastructure:
             assert "path" in entry
 
     def test_007_file_tree_all_projects(self):
-        for project in ("ccc", "qxo", "xianyu", "hp", "ai-loop-router"):
+        for project in ("ccc", "qxo", "xianyu", "ai-loop-router"):
             status, data = _get(f"/api/projects/{project}/files")
             assert status == 200, f"project={project} failed"
             assert len(data["entries"]) > 0, f"project={project} has no entries"

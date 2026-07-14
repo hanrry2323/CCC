@@ -77,7 +77,7 @@ if [[ -d "$HOME/program" ]]; then
       ws_norm="${ws%/}"
       # 去重：检查现有列表里有没有这个路径
       dup=0
-      for existing in "${ALL_WORKSPACES[@]}"; do
+      for existing in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
         if [[ "${existing%/}" == "$ws_norm" ]]; then
           dup=1
           break

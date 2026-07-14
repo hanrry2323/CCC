@@ -21,6 +21,30 @@ from datetime import datetime, timezone, timedelta
 _BEIJING_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 
 
+def sanitize_prompt_input(text: str, max_len: int = 500) -> str:
+    """净化用户提供的文本，防止 prompt injection。
+
+    适用范围：task title/description 等用户输入插入 LLM prompt 之前。
+    """
+    if not text:
+        return ""
+    # 1. 截断
+    text = str(text)[:max_len]
+    # 2. 移除控制字符和 null bytes
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    # 3. 移除 markdown 代码块分隔符（防止逃逸）
+    text = text.replace("```", "`` `")
+    # 4. 移除再训练/忽略指令等注入模式（常见的中英文） — 仅在末尾出现时才移除，
+    #    避免误伤正常含"你对"的文本
+    text = re.sub(
+        r"(?i)(忽略(以上|掉|所有).*|ignore\s+(all\s+)?(previous|above).*|"
+        r"forget\s+(all\s+)?(previous|above).*)$",
+        "[REDACTED]",
+        text,
+    )
+    return text
+
+
 def sanitize_id(tid: str) -> str:
     """净化 task_id：只保留 [a-zA-Z0-9_-]，防止路径遍历。
 
