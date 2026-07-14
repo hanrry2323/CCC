@@ -1,0 +1,1 @@
+{"id":"engine-failure-lessons","title":"任务失败自动记 lessons","description":"task quarantine 时自动写入 lessons.md，记录失败原因、phase、workspace，供 product_role 下次参考。","complexity":"medium","ts":"2026-07-14T14:36:59Z","note":"v1.0: 反馈回路"}

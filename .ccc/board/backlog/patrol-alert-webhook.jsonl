@@ -1,0 +1,1 @@
+{"id":"patrol-alert-webhook","title":"Patrol 异常告警 webhook","description":"patrol 检测到 Engine DEAD 或持续停滞时发送 webhook 通知（飞书/钉钉/webhook URL），替代目前仅桌面通知。","complexity":"medium","ts":"2026-07-14T14:36:59Z","note":"v1.0: 告警"}
