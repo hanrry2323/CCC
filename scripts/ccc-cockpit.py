@@ -453,53 +453,116 @@ def render_html(data: dict) -> str:
             <span class="role">{m["role"]}</span>
         </div>"""
 
-    # Group ports by machine
+    # Group ports by machine, keep original parse order within each group
     ports_by_machine: dict[str, list] = {"M1": [], "Mac 2017": [], "feiniu": []}
-    for port in sorted(data.get("ports", {}).keys()):
+    for port in data.get("ports", {}).keys():
         info = data["ports"][port]
         machine = info.get("machine", "M1")
         if machine not in ports_by_machine:
             ports_by_machine[machine] = []
         ports_by_machine[machine].append((port, info))
 
-    def _machine_port_table(machine_name: str, entries: list) -> str:
+    # Top-level statistics (counts per status across all machines)
+    status_counts = {"alive": 0, "warning": 0, "dead": 0, "unknown": 0}
+    for port, info in data.get("ports", {}).items():
+        alive = info.get("alive")
+        if alive is True:
+            status_counts["alive"] += 1
+        elif alive is False:
+            status_counts["dead"] += 1
+        else:
+            status_counts["unknown"] += 1
+    stats_alive = status_counts["alive"]
+    stats_warning = status_counts["warning"]
+    stats_dead = status_counts["dead"]
+    stats_unknown = status_counts["unknown"]
+    stats_total = stats_alive + stats_warning + stats_dead + stats_unknown
+    stats_html = (
+        f'<div class="port-stats" style="display:flex;gap:12px;flex-wrap:wrap;'
+        f"background:{THEME['surface']};border:1px solid {THEME['border']};"
+        f'border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">'
+        f"<span>· 总计 <strong>{stats_total}</strong> 个端口</span>"
+        f'<span style="color:{THEME["green"]}">● Alive <strong>{stats_alive}</strong></span>'
+        f'<span style="color:{THEME["yellow"]}">● Warning <strong>{stats_warning}</strong></span>'
+        f'<span style="color:{THEME["red"]}">● Dead <strong>{stats_dead}</strong></span>'
+        f'<span style="color:{THEME["muted"]}">● Unknown <strong>{stats_unknown}</strong></span>'
+        f"</div>"
+    )
+
+    def _machine_port_group_html(machine_name: str, entries: list) -> list:
         if not entries:
-            return '<div style="color:#86868b;padding:10px;font-size:13px">无端口信息</div>'
-        rows = ""
+            return []
+        # Group by status: alive, warning, dead, unknown
+        grouped = {status: [] for status in ["alive", "warning", "dead", "unknown"]}
         for port, info in entries:
             alive = info.get("alive")
             if alive is True:
-                dot = f'<span class="dot dot-green"></span>'
-                status_text = info.get("label", "运行中")
+                status_key = "alive"
             elif alive is False:
-                dot = f'<span class="dot dot-red"></span>'
-                status_text = "离线"
+                status_key = "dead"
             else:
-                dot = f'<span class="dot dot-gray"></span>'
-                status_text = "待检测"
-            host = info.get("host", "127.0.0.1")
-            url = f"http://{host}:{port}"
-            search_blob = f"{port} {info['name']} {host} {machine_name}".lower()
-            rows += f"""
-            <tr data-port="{port}">
-                <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
-                <td>{info["name"]}</td>
-                <td class="host">{host}</td>
-                <td>{dot} {status_text}</td>
-            </tr>"""
-        return f"""<div class="tbl-wrap" style="margin-bottom:8px">
-          <table>
-            <thead><tr><th>端口</th><th>服务</th><th>主机</th><th>状态</th></tr></thead>
-            <tbody>{rows}</tbody>
-          </table>
-        </div>"""
+                status_key = "unknown"
+            grouped[status_key].append((port, info))
+        # Build each status group table (status order per plan: alive → warning → dead → unknown)
+        result = []
+        group_titles = {
+            "alive": "Alive",
+            "warning": "Warning",
+            "dead": "Dead",
+            "unknown": "Unknown",
+        }
+        for status in ["alive", "warning", "dead", "unknown"]:
+            status_entries = grouped.get(status, [])
+            if not status_entries:
+                continue
+            status_grouped_port_rows = []
+            for port, info in status_entries:
+                alive = info.get("alive")
+                if alive is True:
+                    dot = '<span class="dot dot-green"></span>'
+                    status_text = info.get("label", "运行中")
+                elif alive is False:
+                    dot = '<span class="dot dot-red"></span>'
+                    status_text = "离线"
+                else:
+                    dot = '<span class="dot dot-gray"></span>'
+                    status_text = "待检测"
+                host = info.get("host", "127.0.0.1")
+                url = f"http://{host}:{port}"
+                search_blob = f"{port} {info['name']} {host} {machine_name}".lower()
+                status_grouped_port_rows.append(f"""
+                <tr class="port-row" data-port="{port}" data-search="{search_blob}">
+                    <td class="num"><a href="{url}" target="_blank" class="port-link">:{port}</a></td>
+                    <td>{info["name"]}</td>
+                    <td class="host">{host}</td>
+                    <td>{dot} {status_text}</td>
+                </tr>""")
+            # Group header with actual count
+            group_title = f"{group_titles[status]} ({len(status_entries)})"
+            result.append(f"""
+            <div class="group-wrapper" style="margin-bottom:16px">
+                <div class="group-header" style="font-size:12px;font-weight:600;color:#86868b;margin-bottom:6px;padding:0">{group_title}</div>
+                <div class="tbl-wrap">
+                    <table>
+                        <thead><tr><th>端口</th><th>服务</th><th>主机</th><th>状态</th></tr></thead>
+                        <tbody>{"".join(status_grouped_port_rows)}</tbody>
+                    </table>
+                </div>
+            </div>""")
+        return result
 
-    ports_sections = ""
+    def _machine_html(machine_name: str, entries: list) -> str:
+        group_htmls = _machine_port_group_html(machine_name, entries)
+        groups_html = "".join(group_htmls)
+        return f"""
+      <div class="sec-title" style="margin-top:12px">{machine_name}</div>
+      {groups_html}"""
+
+    ports_sections_list = []
     for m_name in ["M1", "Mac 2017", "feiniu"]:
         entries = ports_by_machine.get(m_name, [])
-        ports_sections += f"""
-      <div class="sec-title" style="margin-top:12px">{m_name}</div>
-      {_machine_port_table(m_name, entries)}"""
+        ports_sections_list.append(_machine_html(m_name, entries))
+    ports_sections = "".join(ports_sections_list)
 
     projects_html = ""
     for p in data.get("projects", []):
@@ -784,6 +847,7 @@ tr:last-child td{{border-bottom:none}}
     </div>
 
     <div class="sec-title">端口 & 服务</div>
+    {stats_html}
     <div class="port-search-wrap" style="background:{THEME["surface"]};border:1px solid {THEME["border"]};border-radius:8px;padding:10px;margin-bottom:10px;position:relative">
         <input type="text" id="port-search" placeholder="搜索端口/项目/地址…" style="width:100%;padding:8px 36px 8px 12px;border:1px solid {THEME["border"]};border-radius:6px;font-size:13px">
         <button id="port-search-clear" type="button" aria-label="清除" style="position:absolute;right:18px;top:50%;transform:translateY(-50%);background:none;border:none;color:{THEME["muted"]};font-size:16px;cursor:pointer;padding:4px 8px;display:none">&times;</button>
