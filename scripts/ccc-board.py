@@ -879,6 +879,7 @@ def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
 
 
 import shutil
+
 _CLAUDE_CLI = shutil.which("claude") or "/Users/apple/.local/bin/claude"
 
 
@@ -1517,7 +1518,9 @@ def check_product_async(task_id: str) -> dict:
                 try:
                     _ps = subprocess.run(
                         ["ps", "-p", str(pid), "-o", "state="],
-                        capture_output=True, text=True, timeout=3,
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
                         env=_sanitized_env(),
                     )
                     if _ps.stdout.strip() == "Z":
@@ -1551,9 +1554,7 @@ def check_product_async(task_id: str) -> dict:
     return _parse_and_finalize_product(task_id, output, pids_dir)
 
 
-def _parse_and_finalize_product(
-    task_id: str, output: str, pids_dir: Path
-) -> dict:
+def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> dict:
     """解析 product 输出，失败清理标记，成功写 plan+phases 并移 backlog→planned。
 
     抽出供 check_product_async 共用：进程退出但 output 已生成也可走此路径。
@@ -1577,7 +1578,9 @@ def _parse_and_finalize_product(
             try:
                 phases_data.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                _log.error("[product-async] %s phases JSON parse error: %s", task_id, exc)
+                _log.error(
+                    "[product-async] %s phases JSON parse error: %s", task_id, exc
+                )
                 _cleanup_async_product_markers(pids_dir, task_id)
                 return {"status": "failed", "error": f"phases JSON parse: {exc}"}
 
@@ -1651,9 +1654,20 @@ def _get_git_diff_for_task(ws: Path, task_id: str) -> tuple[str, str]:
 
     try:
         stat_r = _sp.run(
-            ["git", "log", "--all", "--oneline", "--grep", task_id,
-             "--format=%H", "--max-count=1"],
-            cwd=ws, capture_output=True, text=True, timeout=10,
+            [
+                "git",
+                "log",
+                "--all",
+                "--oneline",
+                "--grep",
+                task_id,
+                "--format=%H",
+                "--max-count=1",
+            ],
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         merge_base = stat_r.stdout.strip()
         if not merge_base:
@@ -1662,11 +1676,17 @@ def _get_git_diff_for_task(ws: Path, task_id: str) -> tuple[str, str]:
         # diff stat
         ds = _sp.run(
             ["git", "diff", f"{merge_base}..HEAD", "--stat"],
-            cwd=ws, capture_output=True, text=True, timeout=10,
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         fd = _sp.run(
             ["git", "diff", f"{merge_base}..HEAD"],
-            cwd=ws, capture_output=True, text=True, timeout=30,
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return (ds.stdout.strip(), fd.stdout.strip())
     except Exception:
@@ -1810,7 +1830,9 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
                 env=env,
             )
         pids_dir.joinpath(f"{task_id}.reviewer.pid").write_text(str(proc.pid))
-        _log.info("[reviewer-async] %s launched PID=%d size=%s", task_id, proc.pid, size_class)
+        _log.info(
+            "[reviewer-async] %s launched PID=%d size=%s", task_id, proc.pid, size_class
+        )
         return {"ok": True, "pid": proc.pid, "size_class": size_class}
     except Exception as exc:
         _log.error("[reviewer-async] %s launch failed: %s", task_id, exc)
@@ -1854,7 +1876,10 @@ def _parse_reviewer_output(task_id: str, output: str) -> dict:
             return {"verdict": "fallback", "reason": "JSON parse failed"}
         if data.get("verdict") in ("pass", "fail"):
             return data
-        return {"verdict": "fallback", "reason": f"unexpected verdict: {data.get('verdict')}"}
+        return {
+            "verdict": "fallback",
+            "reason": f"unexpected verdict: {data.get('verdict')}",
+        }
     except json.JSONDecodeError as exc:
         return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
 
@@ -1932,18 +1957,14 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
 
     if verdict == "pass":
         verdict_path.write_text(
-            f"# {task_id} Verdict\n\n"
-            f"**Verdict:** PASS\n\n"
-            f"{summary}\n"
+            f"# {task_id} Verdict\n\n**Verdict:** PASS\n\n{summary}\n"
         )
         _cleanup_reviewer_markers(pids_dir, task_id)
         return {"status": "pass"}
 
     if verdict == "fail":
         verdict_path.write_text(
-            f"# {task_id} Verdict\n\n"
-            f"**Verdict:** FAIL\n\n"
-            f"{summary}\n"
+            f"# {task_id} Verdict\n\n**Verdict:** FAIL\n\n{summary}\n"
         )
         _cleanup_reviewer_markers(pids_dir, task_id)
         return {"status": "failed", "reason": "LLM verdict: fail"}
@@ -1961,7 +1982,12 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
 
 def _cleanup_reviewer_markers(pids_dir: Path, task_id: str) -> None:
     """清理 reviewer async 标记文件"""
-    for sfx in [".reviewer.out", ".reviewer.done", ".reviewer.pid", ".reviewer.prompt.md"]:
+    for sfx in [
+        ".reviewer.out",
+        ".reviewer.done",
+        ".reviewer.pid",
+        ".reviewer.prompt.md",
+    ]:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
@@ -2050,7 +2076,12 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
                 env=_sanitized_env(),
             )
         pids_dir.joinpath(f"{task_id}.tester.pid").write_text(str(proc.pid))
-        _log.info("[tester-async] %s launched PID=%d, %d commands", task_id, proc.pid, len(verify_commands))
+        _log.info(
+            "[tester-async] %s launched PID=%d, %d commands",
+            task_id,
+            proc.pid,
+            len(verify_commands),
+        )
         return {"ok": True, "pid": proc.pid, "cmds": len(verify_commands)}
     except Exception as exc:
         _log.error("[tester-async] %s launch failed: %s", task_id, exc)
@@ -2107,7 +2138,13 @@ def check_tester_async(task_id: str, ws: Path) -> dict:
 
 def _cleanup_tester_markers(pids_dir: Path, task_id: str) -> None:
     """清理 tester async 标记文件"""
-    for sfx in [".tester.done", ".tester.exitcode", ".tester.out", ".tester.pid", ".tester.sh"]:
+    for sfx in [
+        ".tester.done",
+        ".tester.exitcode",
+        ".tester.out",
+        ".tester.pid",
+        ".tester.sh",
+    ]:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
@@ -3654,17 +3691,31 @@ def _audit_lint(workspace: str) -> tuple[str, str]:
     except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
         _log.warning("audit ruff failed for %s: %s", workspace, e)
 
-    try:
-        r = sp.run(
-            ["mypy", "src/"],
-            cwd=workspace,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        mypy_out = (r.stdout or "") + (r.stderr or "")
-    except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
-        _log.warning("audit mypy failed for %s: %s", workspace, e)
+    # 动态检测 mypy 目标目录：src/ → app/ → . (项目根)
+    ws_path = Path(workspace)
+    mypy_targets = []
+    for candidate in ("src", "app"):
+        if (ws_path / candidate).is_dir():
+            mypy_targets.append(candidate)
+    if not mypy_targets:
+        # 兜底：检测根目录是否有 .py 文件，有则用 "."，否则跳过 mypy
+        if list(ws_path.glob("*.py")):
+            mypy_targets.append(".")
+        else:
+            mypy_targets = []  # 无 Python 文件，跳过 mypy
+
+    if mypy_targets:
+        try:
+            r = sp.run(
+                ["mypy"] + mypy_targets,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            mypy_out = (r.stdout or "") + (r.stderr or "")
+        except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+            _log.warning("audit mypy failed for %s: %s", workspace, e)
 
     return lint_out, mypy_out
 
