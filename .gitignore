@@ -60,6 +60,10 @@ src-tauri/gen/
 .ccc/product_fallback/
 .ccc/lessons/
 .ccc/verdicts/
+.ccc/board/planned/
+
+# 运行时数据
+var/
 
 # Python 测试/类型缓存
 .pytest_cache/
