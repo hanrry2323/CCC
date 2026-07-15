@@ -16,10 +16,11 @@ export function renderMarkdown(text) {
   let h = escapeHtml(text);
   h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const i = codeBlocks.length;
-    const langClass = lang ? ' class="lang-' + lang + '"' : '';
+    const langLabel = lang ? '<span class="code-lang-label">' + lang + '</span>' : '';
     codeBlocks.push(
       '<div class="code-block-wrap">' +
-      '<pre><code' + langClass + '>' + code + '</code></pre>' +
+      langLabel +
+      '<pre><code>' + code + '</code></pre>' +
       '<button class="copy-btn" onclick="copyCode(this)">复制</button>' +
       '</div>'
     );
@@ -127,7 +128,7 @@ export function renderMarkdown(text) {
 
   // Inline transforms
   h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:8px 0;">');
+  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;margin:8px 0;">');
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   h = h.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
 

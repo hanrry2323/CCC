@@ -1,6 +1,5 @@
 import { state } from '../state.js';
 import { loadProjects } from '../api.js';
-import { setupProjectSelect } from './composer.js';
 
 export async function openSettings() {
   // Remove existing dialog if any
@@ -12,9 +11,18 @@ export async function openSettings() {
   overlay.addEventListener('click', closeSettings);
   document.body.appendChild(overlay);
 
+  // Show loading state
+  const dialog = document.createElement('div');
+  dialog.innerHTML = '<div class="settings-panel"><div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div></div>';
+  dialog.className = 'settings-dialog';
+  dialog.style.cssText = 'position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;';
+  document.body.appendChild(dialog);
+
   const projects = await loadProjects();
 
-  const dialog = document.createElement('div');
+  // Remove loading, render real content
+  dialog.innerHTML = '';
+  dialog.style.cssText = '';
   dialog.className = 'settings-dialog';
   dialog.innerHTML =
     '<div class="settings-panel">' +
@@ -50,8 +58,6 @@ export async function openSettings() {
     '</div>' +
     '</div>' +
     '</div>';
-
-  document.body.appendChild(dialog);
 
   // Theme select
   const themeSelect = document.getElementById('settings-theme');

@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { sendMessage } from './message.js';
+import { sendMessage, removeTyping } from './message.js';
 
 export function initComposer() {
   const input = document.getElementById('composer-input');
@@ -23,13 +23,11 @@ export function initComposer() {
 
   sendBtn.addEventListener('click', doSend);
   cancelBtn.addEventListener('click', () => {
-    import('./message.js').then(m => {
-      m.removeTyping();
-      state.set('streaming', false);
-      sendBtn.style.display = 'flex';
-      cancelBtn.style.display = 'none';
-      sendBtn.disabled = !input.value.trim();
-    });
+    removeTyping();
+    state.set('streaming', false);
+    sendBtn.style.display = 'flex';
+    cancelBtn.style.display = 'none';
+    sendBtn.disabled = !input.value.trim();
   });
 
   // Model select

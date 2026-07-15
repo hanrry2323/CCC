@@ -1,5 +1,4 @@
 import { state } from '../state.js';
-import { generateId } from '../utils.js';
 
 export function initTitlebar() {
   const tabsEl = document.getElementById('tabs');
@@ -67,13 +66,10 @@ export function renderTabs(tabs, activeId) {
   tabsEl.innerHTML = tabs.map(t => {
     const isActive = t.id === activeId;
     const title = t.title || '新对话';
+    const safeTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return '<div class="titlebar-tab' + (isActive ? ' active' : '') + '" data-tab-id="' + t.id + '">' +
-      '<span>' + escapeDisplay(title) + '</span>' +
+      '<span>' + safeTitle + '</span>' +
       (tabs.length > 1 ? '<button class="close-btn">×</button>' : '') +
       '</div>';
   }).join('');
-}
-
-function escapeDisplay(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

@@ -15,6 +15,7 @@
   <div id="titlebar">
     <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
     <div class="titlebar-spacer"></div>
+    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" onclick="toggleMobileSidebar()">☰</button>
     <button class="titlebar-btn" id="new-tab-btn" title="新对话">+</button>
     <button class="titlebar-btn" id="settings-btn" title="设置">⚙️</button>
     <button class="titlebar-btn" id="theme-btn" title="切换主题">🌙</button>
@@ -58,8 +59,13 @@
 <script>
 // Mobile sidebar toggle (globally accessible)
 function toggleMobileSidebar() {
-  document.getElementById('sidebar')?.classList.remove('open');
-  document.querySelector('.sidebar-overlay')?.classList.remove('show');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.contains('open');
+  sidebar.classList.toggle('open');
+  if (overlay) overlay.classList.toggle('show');
+  document.body.style.overflow = isOpen ? '' : 'hidden';
 }
 
 // Copy code button (globally accessible)

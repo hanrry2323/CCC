@@ -1,6 +1,6 @@
 import { state } from '../state.js';
 import { apiGet, loadHistory } from '../api.js';
-import { escapeHtml } from '../utils.js';
+import { escapeHtml, debounce } from '../utils.js';
 
 export async function refreshSidebar() {
   const project = state.get('currentProject');
@@ -60,11 +60,11 @@ export function renderSidebar(sessions) {
 export function setupSidebarSearch() {
   const input = document.getElementById('sidebar-search');
   if (!input) return;
-  input.addEventListener('input', () => {
+  input.addEventListener('input', debounce(() => {
     const q = input.value.toLowerCase();
     document.querySelectorAll('.session-item').forEach(el => {
       const title = el.querySelector('.session-item-title')?.textContent?.toLowerCase() || '';
       el.style.display = title.includes(q) ? '' : 'none';
     });
-  });
+  }, 200));
 }

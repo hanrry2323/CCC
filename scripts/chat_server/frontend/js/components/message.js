@@ -1,14 +1,33 @@
 import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml, ts, scrollToBottom } from '../utils.js';
-import { streamChat } from '../api.js';
-import { renderSidebar, refreshSidebar } from './sidebar.js';
+import { streamChat, cancelStream } from '../api.js';
+import { refreshSidebar } from './sidebar.js';
 
 let fullContent = '';
 let toolCards = [];
 let costInfo = null;
 
 export function renderMessage(container, role, content) {
+  // Group consecutive messages from same role
+  const lastMsg = container.lastElementChild;
+  if (lastMsg && lastMsg.classList.contains(role) && role === 'assistant') {
+    const bubble = lastMsg.querySelector('.bubble');
+    if (bubble) {
+      // Append to existing bubble with separator
+      const divider = document.createElement('hr');
+      divider.style.cssText = 'margin:8px 0;border:none;border-top:0.5px solid var(--ccc-border-subtle);';
+      bubble.appendChild(divider);
+      const fragment = document.createElement('span');
+      fragment.innerHTML = renderMarkdown(content);
+      bubble.appendChild(fragment);
+      // Update time
+      const timeEl = lastMsg.querySelector('.time');
+      if (timeEl) timeEl.textContent = ts();
+      return lastMsg;
+    }
+  }
+
   const div = document.createElement('div');
   div.className = 'msg ' + role;
   div.innerHTML = '<div class="bubble">' + renderMarkdown(content) + '</div>' +
@@ -20,8 +39,8 @@ export function renderMessage(container, role, content) {
   if (role === 'user') {
     div.style.cursor = 'pointer';
     div.title = '双击编辑';
-    div.addEventListener('dblclick', function () {
-      if (event.target.closest('.edit-textarea, .edit-actions, button, .copy-btn')) return;
+    div.addEventListener('dblclick', function (e) {
+      if (e.target.closest('.edit-textarea, .edit-actions, button, .copy-btn')) return;
       editMessage(this, container);
     });
   }
@@ -122,6 +141,10 @@ export async function sendMessage(text) {
 
   if (state.get('streaming')) return;
 
+  // Clear empty state before first message
+  const empty = container.querySelector('.empty-state');
+  if (empty) empty.remove();
+
   // Add user message
   msgs.push({ role: 'user', content: text, mode: 'chat' });
   renderMessage(container, 'user', text);
@@ -208,6 +231,13 @@ export function loadMessages(data) {
   const container = document.getElementById('messages');
   container.innerHTML = '';
   const msgs = data.messages || [];
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="empty-state">' +
+      '<div class="empty-state-icon">💬</div>' +
+      '<div class="empty-state-title">开始一个新对话</div>' +
+      '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
+      '</div>';
+  }
   state.set('currentMessages', msgs);
   for (const msg of msgs) {
     renderMessage(container, msg.role, msg.content);
@@ -230,7 +260,7 @@ function updateComposerState() {
 
 export function setupCancel() {
   document.getElementById('cancel-btn')?.addEventListener('click', () => {
-    import('../api.js').then(m => m.cancelStream());
+    cancelStream();
     state.set('streaming', false);
     updateComposerState();
     removeTyping();

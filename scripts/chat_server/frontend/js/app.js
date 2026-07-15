@@ -6,18 +6,26 @@ import { initComposer, setupProjectSelect } from './components/composer.js';
 import { loadMessages, setupCancel } from './components/message.js';
 import { refreshSidebar, setupSidebarSearch } from './components/sidebar.js';
 
+const EMPTY_STATE_HTML = '<div class="empty-state">' +
+  '<div class="empty-state-icon">💬</div>' +
+  '<div class="empty-state-title">开始一个新对话</div>' +
+  '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
+  '</div>';
+
 async function init() {
   initTitlebar();
   initComposer();
   setupCancel();
   setupSidebarSearch();
+  await import('./components/toast.js');
+  import('./components/keyboard.js').then(m => m.initKeyboard());
 
   // Load projects
   try {
     const projects = await loadProjects();
     setupProjectSelect(projects);
   } catch (e) {
-    console.warn('Failed to load projects', e);
+    window.showToast('项目加载失败: ' + e.message, 'error');
   }
 
   // Create initial tab
@@ -27,6 +35,7 @@ async function init() {
   state.set('activeTabId', tabId);
   state.set('currentSessionId', tabId);
   renderTabs(tabs, tabId);
+  document.getElementById('messages').innerHTML = EMPTY_STATE_HTML;
 
   // Refresh history
   refreshSidebar();
@@ -40,7 +49,7 @@ async function init() {
     state.set('activeTabId', id);
     state.set('currentSessionId', id);
     state.set('currentMessages', []);
-    document.getElementById('messages').innerHTML = '';
+    document.getElementById('messages').innerHTML = EMPTY_STATE_HTML;
     document.getElementById('composer-input').value = '';
     document.getElementById('send-btn').disabled = true;
     renderTabs(tabs, id);
@@ -92,13 +101,14 @@ async function init() {
       document.getElementById('sidebar')?.classList.remove('open');
       document.querySelector('.sidebar-overlay')?.classList.remove('show');
     } catch (e) {
-      console.warn('Failed to load session', e);
+      window.showToast('加载对话失败', 'error');
     }
   });
 
   document.addEventListener('project-change', () => {
     const container = document.getElementById('messages');
     container.innerHTML = '';
+    container.innerHTML = EMPTY_STATE_HTML;
     state.set('currentMessages', []);
     state.set('currentSessionId', generateId());
     refreshSidebar();
