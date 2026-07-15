@@ -85,6 +85,17 @@ claude -p "$(cat <<'EOF'
 > **commit 由外部处理**：Executor 不执行 `git commit`，退出后 Planner 调用 `ccc-exec-commit.sh` 自动完成。
 > 所有改动只需在 working tree 中存在即可，不要暂存或提交。
 
+## 超时/失败恢复（v0.31）
+
+如果 session 因超时、LLM 中断、系统异常终止：
+
+1. 读 `<workspace>/.ccc/state.md` 确认当前 phase 和进度
+2. `git status --short` 检查 working tree——有未提交改动则逐文件确认完整性
+3. 不完整的改动 → `git checkout -- <file>` 回退到上一个已知干净状态
+4. phases.json 的当前 phase 标记为 `pending`（移除部分 done 标记）
+5. 重新提交 report 到 `<workspace>/.ccc/reports/<task>.report.md`，标记 phase 为 retry N
+6. **不要跳过自检**——恢复后仍需全部自检 PASS 才能退出
+
 **完成执行顺序**（Lesson 4 修复 · 必须按此顺序）：
 ```
 Step 0（前置）：确认 working tree 干净（仅 plan 声明文件的改动）
@@ -108,41 +119,64 @@ grep '"status"' <workspace>/.ccc/phases/<task>.phases.json  # 期望 "done"
 ls <workspace>/.ccc/reports/<task>.report.md  # 期望文件存在
 test -s <workspace>/.ccc/reports/<task>.report.md && echo "report non-empty"  # 期望 "report non-empty"
 
-# 自检 4（plan 范围检查 · Lesson 13）：改文件 ⊆ phases.json scope 集合
-# 统计 changed_files ≤ sum(scope) 而非 grep plan 文本（避免 plan 格式误报）
-plan_scope_count=$(python3 -c "
-import json
-p = '<workspace>/.ccc/phases/<task>.phases.json'
-try:
-    d = json.load(open(p))
-    files = set()
-    for ph in d.get('phases', []):
-        s = ph.get('scope') or ph.get('expected_files', [])
-        files |= set(s)
-    print(len(files))
-except: print('0')
-")
-changed_files=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
-count_safe=$(( plan_scope_count + 5 ))  # 容差：phases.json 可能缺失少数路径
-[ "$changed_files" -le "$count_safe" ] && echo "file count OK ($changed_files ≤ scope ${plan_scope_count}, capped ${count_safe})" || echo "FAIL"
+# 自检 4（scope 检查 — 零容差路径集制）：改文件 ⊆ phases.json scope 集合
+# 逐文件验证，不允许 scope 外任何文件
+changed_files=$(git diff --name-only 2>/dev/null || true)
+scope_file="<workspace>/.ccc/phases/<task>.phases.json"
+if [ -n "$changed_files" ]; then
+  echo "$changed_files" | python3 -c "
+import json, sys
+changed = set(line.strip() for line in sys.stdin if line.strip())
+with open('${scope_file}') as f:
+    data = json.load(f)
+rows = data if isinstance(data, list) else [data]
+allowed = set()
+for p in rows:
+    allowed |= set(p.get('scope', []) or [])
+extra = changed - allowed
+if extra:
+    print('FATAL: extra files:', ' '.join(sorted(extra)))
+    sys.exit(1)
+print('PASS: all', len(changed), 'changed files in scope (' + str(len(allowed)) + ' allowed)')
+" || echo "FATAL: scope check failed"
+else
+  echo "PASS: no changed files"
+fi
 
-# 自检 5（phase 数对账）：phases.json status=done 行数 = plan phase 数
+# 自检 5（phase 完成验证 — 防跳阶段）：done 的 phase 必须有 commit_message
+python3 -c "
+import json
+with open('${scope_file}') as f:
+    data = json.load(f)
+rows = data if isinstance(data, list) else [data]
+for p in rows:
+    s = p.get('status', '')
+    if s == 'done' and not p.get('commit_message'):
+        print('FATAL: phase', p.get('phase'), 'done but no commit_message')
+        exit(1)
+print('PASS: all done phases have commit_message')
+" || echo "FATAL: phase completion check failed"
+
+# 自检 6（phase 数对账）：phases.json status=done 行数 = plan phase 数
 plan_phases=$(grep -cE '^## Phase|^- Phase' <workspace>/.ccc/plans/<task>.plan.md 2>/dev/null || echo 1)
 done_phases=$(grep -c '"status":\s*"done"' <workspace>/.ccc/phases/<task>.phases.json 2>/dev/null || echo 0)
 [ "$done_phases" -ge "$plan_phases" ] && echo "phase count OK ($done_phases ≥ $plan_phases)" || echo "FAIL"
 ```
 
-**自检输出格式**（每条自检必须 echo PASS 或 FAIL）：
+**自检输出格式**（每条自检必须 echo PASS 或 FATAL）：
 ```
-[Self-check 1/5] git status (no staged): PASS
-[Self-check 2/5] phases.json: PASS
-[Self-check 3/5] report.md exists: PASS
-[Self-check 4/5] file count scope: PASS
-[Self-check 5/5] phase count match: PASS
+[Self-check 1/6] git status (no staged): PASS
+[Self-check 2/6] phases.json: PASS
+[Self-check 3/6] report.md exists: PASS
+[Self-check 4/6] file scope (zero-tolerance): PASS
+[Self-check 5/6] phase completion: PASS
+[Self-check 6/6] phase count match: PASS
 ALL SELF-CHECKS PASSED — 退出 session
 ```
 
-如果任一自检 FAIL：**不准退出**。必须先修复（创建 report / 检查 working tree / 更新 phases.json），再重跑自检，直到全部 PASS。
+**所有 6 条自检必须全部输出 PASS，report.md 末尾必须包含完整自检输出**（engine 会 grep 校验"ALL SELF-CHECKS PASSED"）。
+
+如果任一自检输出 FATAL 或 FAIL：**不准退出**。必须先修复（创建 report / 检查 working tree / 更新 phases.json），再重跑自检，直到全部 PASS。
 
 红线（不要违反）：
 - 不动 plan 范围外的文件（额外问题记入 report 但不修改）
@@ -156,70 +190,4 @@ EOF
 )" --permission-mode bypassPermissions --max-budget-usd 10
 ```
 
----
-
-## 变量替换表
-
-| 占位符 | 替换为 |
-|---|---|
-| `<workspace>` | 项目根绝对路径（如 `/Users/apple/program/qx-observer`） |
-| `<task>` | 任务简称（如 `migrate-agents-md-to-ccc`） |
-
----
-
-## 参数说明
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `-p` / `--print` | ✅ | **非交互打印模式开关**（prompt 通过 stdin 喂入，**不是**跟在这个 flag 后） |
-| `< /tmp/executor-prompt.txt` | ✅ | prompt 内容来源（bash heredoc / 文件 / pipeline 都行） |
-| `--permission-mode bypassPermissions` | 推荐 | 跳过弹窗，自动审批 |
-
-**注意**：
-- `claude -p` 与 `claude --print` 等价（`-p` 是 `--print` 的简写）。`claude --help` 显示 `-p, --print` 都是合法参数。
-- 提示词开头明确说"你不是 Planner"，避免 Claude 误把 Planner 当 Executor。
-- 把红线写在 prompt 末尾提醒，Claude 容易回看。
-- 超时按 `~/program/CCC/docs/execution-protocol.md` §Timeout 分级表 设置。
-
----
-
-## 调用示例
-
-```bash
-# qxo 项目 migrate-agents-md-to-ccc 任务
-ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
-claude -p "$(cat <<'EOF'
-你是 CCC 框架的 Executor（独立 Claude session，不是 Planner）。
-
-启动顺序（必读）：
-1. 读 ~/program/CCC/CLAUDE.md — CCC 流程、术语、红线
-2. 读 /Users/apple/program/qx-observer/.ccc/profile.md — 项目背景
-3. 读 /Users/apple/program/qx-observer/.ccc/plans/migrate-agents-md-to-ccc.plan.md — 任务 plan
-4. 读 /Users/apple/program/qx-observer/.ccc/phases/migrate-agents-md-to-ccc.phases.json — phases 初始状态
-
-按 plan 执行。完成后：
-- 写实施报告到 /Users/apple/program/qx-observer/.ccc/reports/migrate-agents-md-to-ccc.report.md
-- 更新 phases.json，把 phase 1 标记为 done，commit_message 填写计划消息
-- **不执行 git commit**——commit 由外部脚本处理
-
-红线（不要违反）：
-- 不动 plan 范围外的文件
-- 不写 verdict（那是 Verifier 的活）
-- 不跳阶段更新 phases.json（红线 5）
-- plan 里的"参考命令"是 hint，自己决定用什么命令实现
-EOF
-)" --permission-mode bypassPermissions --max-budget-usd 10
-```
-
----
-
-## 配套资源
-
-| 资源 | 文件 |
-|---|---|
-| 框架总纲 | `~/program/CCC/CLAUDE.md` |
-| Plan 格式规范 | `~/program/CCC/docs/plan-spec.md` |
-| Plan 模板 | `~/program/CCC/templates/plan.plan.md` |
-| 项目档案 | `<workspace>/.ccc/profile.md` |
-| Timeout 分级表 | `~/program/CCC/docs/execution-protocol.md` §Timeout 分级表 |
-| Executor 红线清单 | `~/program/CCC/CLAUDE.md` §红线 |
+> 调用说明/变量替换表/参数说明 → 见同目录 `executor-prompt.README.md`

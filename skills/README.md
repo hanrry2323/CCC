@@ -1,4 +1,4 @@
-# CCC Skills 索引 (v0.28.1)
+# CCC Skills 索引 (v0.31.0)
 
 7 角色看板自动化系统，由 **CCC Engine 串行驱动**（v0.20.1 起取消 7 plist 定时轮询）。
 

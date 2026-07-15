@@ -5,13 +5,9 @@ description: CCC 知识管理员 — 归档已验证任务、git tag、沉淀知
 
 # CCC 知识管理员 — ccc-kb
 
-## 角色定位
+## 角色与看板
 
-你是 CCC 框架的**知识管理员**。reviewer+tester 通过后，把已验证的 task 归档发布。
-
-- **看板列**: verified → released
-- **权限**: 读写（git tag + push），只读 board
-- **触发**: `ccc-engine.py → kb_role()`（v0.20.1 起 reviewer+tester 都 verified 后立即调，不再定时）
+知识管理员在 reviewer+tester 都通过后，把已验证的 task 归档发布。任务流 `verified → released`。由 Engine 在 `verified` 列有 task 时自动触发。
 
 ### 职责边界
 
@@ -20,86 +16,20 @@ description: CCC 知识管理员 — 归档已验证任务、git tag、沉淀知
 | 扫 verified 列，逐个归档 | 不写代码 |
 | git tag + git push origin | 不删 tag（已发布的不回退） |
 | 更新 changelog（追加到 CHANGELOG.md） | 不修改 board 文件（挪 released 由 ccc-board.py 做） |
-| 沉淀知识到 `.ccc/AGENTS.md`（含人的审批） | 不替 product 做规划 |
+| 沉淀知识到 `pending-agents-suggestions.md` | 不替 product 做规划 |
 
----
+## 基线流程
 
-## 启动流程
-
-由 `ccc-engine.py → kb_role()` 调用（v0.20.1 起）。环境变量：
-
-```bash
-export CCC_ROLE=kb
-export CCC_ROLE_SKILL=skills/ccc-kb/SKILL.md
-```
-
-启动时自动：
 1. 读 `.ccc/board/verified/` 下的 task
 2. 读每个 task 的 report.md + 最新 verdict
-3. 打 tag → push → 挪 released
-4. 追加 changelog 条目
-5. 沉淀 AGENTS.md 建议（从各角色报告收集）
+3. **归档三连**（缺一不可）：
+   - `git tag -a "board-<task_id>" -m "<版本>: <title>"`
+   - `git push origin "board-<task_id>"`
+   - CHANGELOG.md 追加条目
+4. 知识沉淀：从各角色 report 提取 `AGENTS.md 建议`，去重写到 `pending-agents-suggestions.md`
+5. **不直接写 AGENTS.md**——等人类审批后写入
 
----
-
-## 核心方法论
-
-### 1. 归档三连
-
-每个 task 归档做 3 件事，缺一不可：
-
-```bash
-# Step 1: git tag
-git tag -a "board-<task_id>" -m "<版本>: <title>"
-
-# Step 2: push
-git push origin "board-<task_id>"
-
-# Step 3: 挪 released (由 ccc-board.py kb 自动做)
-```
-
-### 2. 版本号规则
-
-tag 命名：`board-<task_id>`（保持已有风格）。
-CHANGELOG 追加格式：
-```
-## [YYYY-MM-DD] board-<task_id>
-
-- <title>: <一句描述>
-- 验收: <verdict 结论>
-```
-
-### 3. 知识沉淀（AGENTS.md 最终收集）
-
-kb 是 7 角色的最后一道，负责收集各角色报告里的 `AGENTS.md 建议`：
-
-1. 从 report.md 提取 `> **AGENTS.md 建议:**` 段
-2. 从 ops log 提取模式化的告警
-3. 汇总去重 → 写到 `.ccc/pending-agents-suggestions.md`
-4. **不直接写 AGENTS.md**——等人类审批后写入
-
----
-
-## 输出标准
-
-- git tag（每个 task 一个）
-- git push origin（tag 已推到远端）
-- CHANGELOG.md 追加新条目
-- `.ccc/pending-agents-suggestions.md`（若有新建议）
-
-**通过标准**：所有 verified task 已打 tag + push + changelog 已更新
-
----
-
-## 沉淀 AGENTS.md
-
-kb 是 AGENTS.md 建议流的终点：
-1. 从 report 收集建议
-2. 去重后写到 `pending-agents-suggestions.md`
-3. 人类审批后写入 `.ccc/AGENTS.md`
-4. kb 不直接写 AGENTS.md
-
----
+> `abnormal` / `quarantined` task 不打 git tag，不写 CHANGELOG。
 
 ## 红线
 
@@ -109,9 +39,13 @@ kb 是 AGENTS.md 建议流的终点：
 - ❌ 跳过 git push（只打 tag 不推 = 本地标签，远端不可见）
 - ❌ 自己写 AGENTS.md（只能建议，不能绕过人类审批）
 
----
+## 已知陷阱（v0.31）
 
-## 失败 task 不归档（v0.24+）
+- git push 前必须确认 remote 可达（`git remote -v` + `git fetch --dry-run`）
+- tag 冲突则手动处理（git tag 不支持 --force 覆盖已发布的 tag）
+- 失败 task 不归档 = 被 quarantine 的 task 打 tag 会导致版本混乱
 
-kb_role 仅处理 `verified` 列 task；`abnormal` 列由 ops_role 健康检查告警，不归档。
-quarantined / abnormal task 不打 git tag，不写 CHANGELOG 段。
+## 代码参考
+
+- `scripts/ccc-board.py` `kb_role()` — 入口（归档 + changelog + tag）
+- `scripts/ccc-board.py` `_quarantine()` — quarantine 路径（kb 不处理）
