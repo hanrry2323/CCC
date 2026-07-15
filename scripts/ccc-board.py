@@ -1793,11 +1793,13 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
         "5. 是否与 plan 验收清单一致\n\n"
         f"{impact_section}"
         "## 输出要求\n"
-        "只输出以下 JSON，不要包装 markdown 代码块，不要附加任何解释：\n"
-        '{"verdict": "pass" 或 "fail", '
-        '"findings": [{"severity": "high"|"medium"|"low", "file": "...", "line": N, '
+        "只输出 JSON，不要 markdown 代码块，不要附加解释。verdict 必须是小写字符串：\n"
+        '{"verdict": "pass", '
+        '"findings": [{"severity": "high", "file": "...", "line": 0, '
         '"issue": "...", "suggestion": "..."}], '
-        '"summary": "一句话总评"}\n'
+        '"summary": "..."}\n'
+        '或 {"verdict": "fail", "findings": [...], "summary": "..."}\n'
+        "即使缺少 findings 也必须有 verdict 字段。\n"
     )
 
     # 5. 写 prompt 文件
@@ -1874,11 +1876,22 @@ def _parse_reviewer_output(task_id: str, output: str) -> dict:
                 continue
         if data is None:
             return {"verdict": "fallback", "reason": "JSON parse failed"}
-        if data.get("verdict") in ("pass", "fail"):
+        verdict_raw = data.get("verdict")
+        if isinstance(verdict_raw, str):
+            verdict_norm = verdict_raw.strip().lower()
+            if verdict_norm in ("pass", "fail"):
+                data["verdict"] = verdict_norm
+                return data
+        # 容错：boolean true/false 或大写
+        if verdict_raw is True:
+            data["verdict"] = "pass"
+            return data
+        if verdict_raw is False:
+            data["verdict"] = "fail"
             return data
         return {
             "verdict": "fallback",
-            "reason": f"unexpected verdict: {data.get('verdict')}",
+            "reason": f"unexpected verdict: {repr(verdict_raw)[:100]}",
         }
     except json.JSONDecodeError as exc:
         return {"verdict": "fallback", "reason": f"JSON parse failed: {exc}"}
@@ -2875,11 +2888,13 @@ def _review_with_llm(
         "5. 是否与 plan 验收清单一致\n\n"
         f"{impact_section}"
         "## 输出要求\n"
-        "只输出以下 JSON，不要包装 markdown 代码块，不要附加任何解释：\n"
-        '{"verdict": "pass" 或 "fail", '
-        '"findings": [{"severity": "high"|"medium"|"low", "file": "...", "line": N, '
+        "只输出 JSON，不要 markdown 代码块，不要附加解释。verdict 必须是小写字符串：\n"
+        '{"verdict": "pass", '
+        '"findings": [{"severity": "high", "file": "...", "line": 0, '
         '"issue": "...", "suggestion": "..."}], '
-        '"summary": "一句话总评"}\n'
+        '"summary": "..."}\n'
+        '或 {"verdict": "fail", "findings": [...], "summary": "..."}\n'
+        "即使缺少 findings 也必须有 verdict 字段。\n"
     )
 
     relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
@@ -3376,11 +3391,12 @@ def tester_role() -> dict:
             )
             if r.returncode != 0:
                 all_ok = False
+                _out = r.stdout[-300:] if isinstance(r.stdout, str) else r.stdout.decode("utf-8", errors="replace")[-300:] if r.stdout else ""
                 _log.error(
                     "[tester] %s FAIL: %s... → %s",
                     task_id,
                     cmd[:80],
-                    r.stdout[-300:],
+                    _out,
                 )
 
         if all_ok:

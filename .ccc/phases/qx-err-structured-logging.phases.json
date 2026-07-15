@@ -1,0 +1,2 @@
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 300, "commit": null, "notes": "创建 lib/structured_logger.py — 每日滚动 JSONL 写入 + 7 天 housekeeping"}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending"}, "timeout": 300, "commit": null, "notes": "scripts/crawler_logger.py 集成 — log_crawl_result 末尾追加 JSON 日志输出"}

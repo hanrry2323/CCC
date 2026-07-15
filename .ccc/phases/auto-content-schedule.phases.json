@@ -1,0 +1,2 @@
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending", "1.2": "pending", "1.3": "pending", "1.4": "pending"}, "timeout": 1800, "commit": null, "notes": "Schedule ORM + seed_data 建表 + admin API 5 CRUD 端点"}
+{"phase": 2, "status": "pending", "subtasks": {"2.1": "pending", "2.2": "pending", "2.3": "pending"}, "timeout": 1800, "commit": null, "notes": "ScheduleDaemon + CLI schedule 命令组 + 测试"}

@@ -410,11 +410,14 @@ def _run_pytest(ws: Path) -> tuple[int, str]:
             text=True,
             timeout=cfg.phase_timeout,
         )
-        output = (r.stdout or "") + (r.stderr or "")
+        stdout = r.stdout if isinstance(r.stdout, str) else (r.stdout.decode("utf-8", errors="replace") if r.stdout else "")
+        stderr = r.stderr if isinstance(r.stderr, str) else (r.stderr.decode("utf-8", errors="replace") if r.stderr else "")
+        output = stdout + stderr
         return r.returncode, output
     except subprocess.TimeoutExpired as exc:
-        output = (exc.stdout or "") + (exc.stderr or "")
-        return 124, output or "pytest timeout (600s)"
+        stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout.decode("utf-8", errors="replace") if exc.stdout else "")
+        stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr.decode("utf-8", errors="replace") if exc.stderr else "")
+        output = stdout + stderr
     except OSError as exc:
         return 1, str(exc)
 
