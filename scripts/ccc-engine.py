@@ -842,7 +842,9 @@ def _process_backlog(ws: Path) -> bool:
         engine_log(
             f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role，移入 planned"
         )
-        store.move_task(tid, "backlog", "planned")
+        if not store.move_task(tid, "backlog", "planned"):
+            engine_log(f"[product] [{label}] move {tid} backlog→planned 失败，跳过")
+            return False
         _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
         return True
 
@@ -1289,7 +1291,12 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     ws, tid, groups, plan_content, timeout_s
                 )
                 if ok:
-                    store.move_task(tid, "planned", "in_progress")
+                    if not store.move_task(tid, "planned", "in_progress"):
+                        engine_log(
+                            f"[engine] [{_ws_label(ws)}] move {tid} planned→in_progress 失败，"
+                            "不注册 active_task"
+                        )
+                        continue  # 作用于外层 for task in planned
                     active_tasks[key] = {
                         "workspace": ws,
                         "task_id": tid,
