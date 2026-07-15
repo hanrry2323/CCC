@@ -456,6 +456,54 @@ def _verdict_is_timeout(ws: Path, tid: str) -> bool:
         return False
 
 
+def _revert_task_commit(ws: Path, tid: str) -> bool:
+    """Verdict FAIL 时回滚 task 的最后一个 commit。
+
+    读取 phases.json 拿到 commit hash → git revert → 退回 planned。
+    失败仅日志记录，不阻断 engine 主循环。
+
+    Returns:
+        True = 回滚成功；False = 失败
+    """
+    phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+    if not phases_file.exists():
+        return False
+    try:
+        phases_data = _load_phases(tid, ws)
+        commits = [
+            p.get("commit", "")
+            for p in phases_data
+            if p.get("commit") and p.get("commit") not in ("null", "None", "")
+        ]
+        if not commits:
+            return False
+        last_commit = commits[-1]
+    except (OSError, json.JSONDecodeError) as exc:
+        engine_log(f"[verdict-gate] {tid} 读 commit hash 失败: {exc}")
+        return False
+
+    try:
+        result = subprocess.run(
+            ["git", "revert", "--no-edit", last_commit],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(ws),
+            env=_sanitized_env(),
+        )
+        if result.returncode != 0:
+            engine_log(
+                f"[verdict-gate] {tid} revert {last_commit[:12]} 失败: "
+                f"{result.stderr[:200]}"
+            )
+            return False
+        engine_log(f"[verdict-gate] {tid} 已 revert commit {last_commit[:12]}")
+        return True
+    except Exception as exc:
+        engine_log(f"[verdict-gate] {tid} revert 异常: {exc}")
+        return False
+
+
 def _clear_verdict(ws: Path, tid: str) -> None:
     """删除 verdict 文件，使 _verdict_is_valid 返回 False，触发 engine 重试。"""
     vf = _verdict_file(ws, tid)
@@ -542,6 +590,23 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             return False
     else:
         engine_log(f"[{label}] {tid} 无 tests/ 目录，跳过 engine pytest")
+
+    # v0.30.0: Verdict 门禁 — FAIL/FALLBACK 触发回滚
+    if _verdict_is_valid(ws, tid):
+        _vf = _verdict_file(ws, tid)
+        try:
+            _vcontent = _vf.read_text()
+            if "FAIL" in _vcontent or "FALLBACK" in _vcontent:
+                engine_log(
+                    f"[verdict-gate] [{_ws_label(ws)}] {tid} "
+                    "verdict FAIL/FALLBACK — 触发回滚"
+                )
+                _reverted = _revert_task_commit(ws, tid)
+                store.move_task(tid, "testing", "planned")
+                _clear_verdict(ws, tid)
+                return False  # 跳过 verified 推进
+        except OSError:
+            pass
 
     if verdict_ok:
         col = _find_task_column(store, tid)
