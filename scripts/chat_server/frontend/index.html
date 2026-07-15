@@ -14,16 +14,34 @@
 <div id="app">
   <div id="titlebar">
     <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
+    <div id="streaming-indicator">
+      <span class="dot"></span>
+      <span>生成中...</span>
+    </div>
     <div class="titlebar-spacer"></div>
-    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" onclick="toggleMobileSidebar()">☰</button>
-    <button class="titlebar-btn" id="new-tab-btn" title="新对话">+</button>
-    <button class="titlebar-btn" id="settings-btn" title="设置">⚙️</button>
-    <button class="titlebar-btn" id="theme-btn" title="切换主题">🌙</button>
+    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" onclick="toggleMobileSidebar()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <button class="titlebar-btn" id="new-tab-btn" title="新对话">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="titlebar-btn" id="settings-btn" title="设置">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <button class="titlebar-btn" id="theme-btn" title="切换主题">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
   </div>
   <div id="layout">
     <div id="sidebar">
       <div class="sidebar-header">
-        <input class="sidebar-search" id="sidebar-search" type="text" placeholder="搜索对话...">
+        <div class="sidebar-search-wrap">
+          <span class="sidebar-search-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <input class="sidebar-search" id="sidebar-search" type="text" placeholder="搜索对话..." autocomplete="off">
+          <button class="sidebar-search-clear" id="sidebar-search-clear">×</button>
+        </div>
       </div>
       <div class="sidebar-list" id="session-list">
         <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
@@ -33,7 +51,10 @@
     </div>
     <div id="chat-panel">
       <div id="messages"></div>
-      <button class="scroll-fab" id="scroll-fab">↓</button>
+      <button class="scroll-fab" id="scroll-fab">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        底部
+      </button>
       <div id="composer">
         <div id="composer-inner">
           <div class="composer-toolbar">
@@ -41,12 +62,17 @@
               <option value="flash">flash</option>
               <option value="code">code</option>
             </select>
-            <span class="context-indicator" id="context-indicator">项目: <span id="project-display">CCC</span></span>
+            <span class="context-indicator">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              项目: <span id="project-display">CCC</span>
+            </span>
           </div>
           <div class="composer-input-wrap">
             <textarea id="composer-input" rows="1" placeholder="输入消息..." autofocus></textarea>
             <button class="composer-btn" id="cancel-btn" title="取消">✕</button>
-            <button class="composer-btn" id="send-btn" title="发送" disabled>↑</button>
+            <button class="composer-btn" id="send-btn" title="发送" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -57,7 +83,6 @@
 <select id="project-select" style="display:none;"></select>
 
 <script>
-// Mobile sidebar toggle (globally accessible)
 function toggleMobileSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.querySelector('.sidebar-overlay');
@@ -68,7 +93,6 @@ function toggleMobileSidebar() {
   document.body.style.overflow = isOpen ? '' : 'hidden';
 }
 
-// Copy code button (globally accessible)
 function copyCode(btn) {
   const pre = btn.closest('.code-block-wrap')?.querySelector('pre');
   const code = pre ? (pre.textContent || pre.innerText) : '';
@@ -81,7 +105,6 @@ function copyCode(btn) {
   });
 }
 
-// Scroll FAB
 document.addEventListener('DOMContentLoaded', function() {
   const fab = document.getElementById('scroll-fab');
   const messages = document.getElementById('messages');

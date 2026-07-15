@@ -1,27 +1,25 @@
 import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
-import { escapeHtml, ts, scrollToBottom } from '../utils.js';
+import { escapeHtml, ts, scrollToBottom, generateId } from '../utils.js';
 import { streamChat, cancelStream } from '../api.js';
 import { refreshSidebar } from './sidebar.js';
+import { createToolCard, updateToolCardStatus, setToolResult, createThinkingIndicator } from './toolCall.js';
 
 let fullContent = '';
 let toolCards = [];
 let costInfo = null;
+let toolIdCounter = 0;
 
-export function renderMessage(container, role, content) {
-  // Group consecutive messages from same role
+export function renderMessage(container, role, content, appendToLast) {
   const lastMsg = container.lastElementChild;
-  if (lastMsg && lastMsg.classList.contains(role) && role === 'assistant') {
+  if (appendToLast && lastMsg && lastMsg.classList.contains(role) && role === 'assistant') {
     const bubble = lastMsg.querySelector('.bubble');
     if (bubble) {
-      // Append to existing bubble with separator
       const divider = document.createElement('hr');
-      divider.style.cssText = 'margin:8px 0;border:none;border-top:0.5px solid var(--ccc-border-subtle);';
       bubble.appendChild(divider);
       const fragment = document.createElement('span');
       fragment.innerHTML = renderMarkdown(content);
       bubble.appendChild(fragment);
-      // Update time
       const timeEl = lastMsg.querySelector('.time');
       if (timeEl) timeEl.textContent = ts();
       return lastMsg;
@@ -33,9 +31,8 @@ export function renderMessage(container, role, content) {
   div.innerHTML = '<div class="bubble">' + renderMarkdown(content) + '</div>' +
     '<div class="time">' + ts() + '</div>';
   container.appendChild(div);
-  scrollToBottom(container);
+  requestAnimationFrame(() => scrollToBottom(container));
 
-  // Double-click edit on user messages
   if (role === 'user') {
     div.style.cursor = 'pointer';
     div.title = '双击编辑';
@@ -117,6 +114,7 @@ function doCancelEdit(area, orig) {
 }
 
 export function showTyping(container) {
+  removeTyping();
   const el = document.createElement('div');
   el.className = 'msg assistant';
   el.id = 'typing-indicator';
@@ -134,6 +132,11 @@ export function removeTyping() {
   if (el) el.remove();
 }
 
+function setStreamingIndicator(active) {
+  const el = document.getElementById('streaming-indicator');
+  if (el) el.classList.toggle('active', active);
+}
+
 export async function sendMessage(text) {
   const container = document.getElementById('messages');
   const project = state.get('currentProject');
@@ -141,22 +144,21 @@ export async function sendMessage(text) {
 
   if (state.get('streaming')) return;
 
-  // Clear empty state before first message
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
 
-  // Add user message
   msgs.push({ role: 'user', content: text, mode: 'chat' });
   renderMessage(container, 'user', text);
 
-  // Show typing
   showTyping(container);
 
   const sid = state.get('currentSessionId');
   fullContent = '';
   toolCards = [];
   costInfo = null;
+  toolIdCounter = 0;
   state.set('streaming', true);
+  setStreamingIndicator(true);
   updateComposerState();
 
   let msgDiv = null;
@@ -166,7 +168,6 @@ export async function sendMessage(text) {
     msgs,
     sid,
     project,
-    // onEvent
     (type, data) => {
       if (type === 'delta') {
         if (!msgDiv) {
@@ -178,29 +179,44 @@ export async function sendMessage(text) {
           bubble = msgDiv.querySelector('.bubble');
         }
         fullContent += data;
-        bubble.innerHTML = renderMarkdown(fullContent);
-        toolCards.forEach(c => bubble.appendChild(c));
-        scrollToBottom(container);
+        if (bubble) {
+          bubble.innerHTML = renderMarkdown(fullContent);
+          toolCards.forEach(c => {
+            if (!c.parentNode) bubble.appendChild(c);
+          });
+          // Add streaming cursor
+          const cursor = document.createElement('span');
+          cursor.className = 'streaming-cursor';
+          bubble.appendChild(cursor);
+        }
+        smartScroll(container);
       } else if (type === 'tool_use') {
-        const card = document.createElement('details');
-        card.className = 'tool-card';
-        card.open = false;
-        card.innerHTML = '<summary>🛠 ' + escapeHtml(data.name || 'tool') + '</summary>' +
-          '<pre>' + escapeHtml(JSON.stringify(data.input, null, 2)) + '</pre>';
+        removeTyping();
+        if (!msgDiv) {
+          msgDiv = document.createElement('div');
+          msgDiv.className = 'msg assistant';
+          msgDiv.innerHTML = '<div class="bubble"></div><div class="time">' + ts() + '</div>';
+          container.appendChild(msgDiv);
+          bubble = msgDiv.querySelector('.bubble');
+        }
+        const toolId = 'tool-' + (++toolIdCounter);
+        const card = createToolCard({ id: toolId, name: data.name, input: data.input });
         toolCards.push(card);
-        if (bubble) bubble.appendChild(card);
+        if (bubble) {
+          bubble.appendChild(card);
+          updateToolCardStatus(card, 'running');
+        }
+        smartScroll(container);
       } else if (type === 'tool_result') {
         if (toolCards.length) {
           const last = toolCards[toolCards.length - 1];
-          const pre = document.createElement('pre');
-          pre.textContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content, null, 2);
-          last.appendChild(pre);
+          setToolResult(last, data.content);
+          updateToolCardStatus(last, 'completed', data);
         }
       } else if (type === 'cost') {
         costInfo = data;
       }
     },
-    // onDone
     (sessionId) => {
       state.set('currentSessionId', sessionId);
       if (costInfo && msgDiv) {
@@ -212,19 +228,27 @@ export async function sendMessage(text) {
       msgs.push({ role: 'assistant', content: fullContent, mode: 'chat' });
       state.set('currentMessages', msgs);
       state.set('streaming', false);
+      setStreamingIndicator(false);
       updateComposerState();
       refreshSidebar();
     },
-    // onError
     (errorText) => {
       removeTyping();
       renderMessage(container, 'assistant', errorText);
       msgs.push({ role: 'assistant', content: errorText, mode: 'chat' });
       state.set('currentMessages', msgs);
       state.set('streaming', false);
+      setStreamingIndicator(false);
       updateComposerState();
     }
   );
+}
+
+let userScrolledUp = false;
+
+function smartScroll(container) {
+  if (userScrolledUp) return;
+  requestAnimationFrame(() => scrollToBottom(container));
 }
 
 export function loadMessages(data) {
@@ -232,17 +256,12 @@ export function loadMessages(data) {
   container.innerHTML = '';
   const msgs = data.messages || [];
   if (msgs.length === 0) {
-    container.innerHTML = '<div class="empty-state">' +
-      '<div class="empty-state-icon">💬</div>' +
-      '<div class="empty-state-title">开始一个新对话</div>' +
-      '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
-      '</div>';
+    container.appendChild(createEmptyState());
   }
   state.set('currentMessages', msgs);
   for (const msg of msgs) {
     renderMessage(container, msg.role, msg.content);
   }
-  // If there's a reply but no assistant message
   if (data.reply && !msgs.some(m => m.role === 'assistant')) {
     renderMessage(container, 'assistant', data.reply);
     msgs.push({ role: 'assistant', content: data.reply, mode: 'chat' });
@@ -262,7 +281,47 @@ export function setupCancel() {
   document.getElementById('cancel-btn')?.addEventListener('click', () => {
     cancelStream();
     state.set('streaming', false);
+    setStreamingIndicator(false);
     updateComposerState();
     removeTyping();
   });
 }
+
+export function createEmptyState() {
+  const el = document.createElement('div');
+  el.className = 'empty-state';
+  el.innerHTML =
+    '<svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="8" y="12" width="56" height="48" rx="10" stroke="currentColor" stroke-width="1.5" fill="none"/>' +
+      '<path d="M24 30h24M24 38h16M24 46h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+      '<circle cx="54" cy="18" r="10" fill="currentColor" opacity="0.15"/>' +
+      '<path d="M52 18h4M54 16v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+    '</svg>' +
+    '<div class="empty-state-title">开始一个新对话</div>' +
+    '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
+    '<div class="empty-state-actions">' +
+      '<button class="empty-state-btn" onclick="document.getElementById(\'composer-input\')?.focus()">开始输入</button>' +
+      '<button class="empty-state-btn" onclick="document.querySelector(\'#sidebar-toggle\')?.click()">查看历史</button>' +
+    '</div>';
+  return el;
+}
+
+// Smart scroll: track if user manually scrolled up
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('messages');
+  if (!container) return;
+  container.addEventListener('scroll', () => {
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 60;
+    userScrolledUp = !atBottom;
+  });
+});
+
+// Titlebar shadow on scroll
+document.addEventListener('DOMContentLoaded', () => {
+  const msgContainer = document.getElementById('messages');
+  const titlebar = document.getElementById('titlebar');
+  if (!msgContainer || !titlebar) return;
+  msgContainer.addEventListener('scroll', () => {
+    titlebar.classList.toggle('scrolled', msgContainer.scrollTop > 10);
+  });
+});

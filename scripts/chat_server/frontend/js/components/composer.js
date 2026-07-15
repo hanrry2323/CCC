@@ -6,14 +6,12 @@ export function initComposer() {
   const sendBtn = document.getElementById('send-btn');
   const cancelBtn = document.getElementById('cancel-btn');
 
-  // Auto-resize
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
     sendBtn.disabled = !input.value.trim() || state.get('streaming');
   });
 
-  // Enter to send
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -30,7 +28,6 @@ export function initComposer() {
     sendBtn.disabled = !input.value.trim();
   });
 
-  // Model select
   const modelSelect = document.getElementById('model-select');
   if (modelSelect) {
     modelSelect.addEventListener('change', () => {
@@ -38,11 +35,12 @@ export function initComposer() {
     });
   }
 
-  // Project select
   const projectSelect = document.getElementById('project-select');
   if (projectSelect) {
     projectSelect.addEventListener('change', () => {
       state.set('currentProject', projectSelect.value);
+      document.getElementById('project-display').textContent =
+        projectSelect.options[projectSelect.selectedIndex]?.text || projectSelect.value;
       const event = new CustomEvent('project-change');
       document.dispatchEvent(event);
     });

@@ -4,7 +4,7 @@ const AUTH = 'Basic ' + btoa('ccc:claude2026');
 
 export async function apiGet(path) {
   const resp = await fetch(path, { headers: { Authorization: AUTH } });
-  if (!resp.ok) throw new Error(`GET ${path} ${resp.status}`);
+  if (!resp.ok) throw new Error('GET ' + path + ' ' + resp.status);
   return resp.json();
 }
 
@@ -19,16 +19,16 @@ export async function loadProjects() {
 }
 
 export async function loadHistory(project) {
-  const data = await apiGet(`/api/history?project=${encodeURIComponent(project)}`);
+  const data = await apiGet('/api/history?project=' + encodeURIComponent(project));
   return data.sessions;
 }
 
 export async function loadSession(id, project) {
-  return await apiGet(`/api/history/${id}?project=${encodeURIComponent(project)}`);
+  return await apiGet('/api/history/' + id + '?project=' + encodeURIComponent(project));
 }
 
 export async function deleteSession(id, project) {
-  return await apiDelete(`/api/history/${id}?project=${encodeURIComponent(project)}`);
+  return await apiDelete('/api/history/' + id + '?project=' + encodeURIComponent(project));
 }
 
 export async function streamChat(messages, sessionId, project, onEvent, onDone, onError) {
@@ -36,6 +36,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
   state.set('abortController', abortController);
 
   try {
+    const model = state.get('model') || 'flash';
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: AUTH },
@@ -43,6 +44,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
         messages,
         session_id: sessionId,
         project,
+        model,
         timeout: 120,
       }),
       signal: abortController.signal,
@@ -51,7 +53,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
     if (!resp.ok) {
       const errText = resp.status === 400 ? '危险指令已被拦截'
         : resp.status === 429 ? '前一个执行中，请稍候'
-        : `请求失败: HTTP ${resp.status}`;
+        : '请求失败: HTTP ' + resp.status;
       onError(errText);
       return;
     }

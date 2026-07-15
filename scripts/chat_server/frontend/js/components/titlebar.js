@@ -6,40 +6,31 @@ export function initTitlebar() {
   const settingsBtn = document.getElementById('settings-btn');
   const themeBtn = document.getElementById('theme-btn');
 
-  // Init theme
-  const saved = localStorage.getItem('ccc-chat-theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark = saved ? saved === 'dark' : prefersDark;
-  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-  if (themeBtn) themeBtn.textContent = isDark ? '☀️' : '🌙';
+  const saved = localStorage.getItem('opencode-color-scheme') || 'system';
+  applyTheme(saved);
 
-  // Theme toggle
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
-      const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('ccc-chat-theme', next);
-      themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
+      const currentScheme = localStorage.getItem('opencode-color-scheme') || 'system';
+      const next = currentScheme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('opencode-color-scheme', next);
+      applyTheme(next);
     });
   }
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (!localStorage.getItem('ccc-chat-theme')) {
-      const isDark = e.matches;
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-      if (themeBtn) themeBtn.textContent = isDark ? '☀️' : '🌙';
+    const scheme = localStorage.getItem('opencode-color-scheme');
+    if (!scheme || scheme === 'system') {
+      applyTheme('system');
     }
   });
 
-  // Settings
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
       import('./settings.js').then(m => m.openSettings());
     });
   }
 
-  // New tab
   if (newBtn) {
     newBtn.addEventListener('click', () => {
       const event = new CustomEvent('new-tab');
@@ -47,7 +38,6 @@ export function initTitlebar() {
     });
   }
 
-  // Tab click delegation
   tabsEl.addEventListener('click', (e) => {
     const tab = e.target.closest('.titlebar-tab');
     if (!tab) return;
@@ -72,4 +62,9 @@ export function renderTabs(tabs, activeId) {
       (tabs.length > 1 ? '<button class="close-btn">×</button>' : '') +
       '</div>';
   }).join('');
+}
+
+function applyTheme(scheme) {
+  const isDark = scheme === 'dark' || (scheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
 }

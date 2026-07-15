@@ -27,10 +27,10 @@ body {
   overflow: hidden;
 }
 
-/* Scrollbar */
+/* ============ Scrollbar ============ */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -43,7 +43,21 @@ body {
   background: var(--ccc-text-muted);
 }
 
-/* Skeleton animation */
+/* ============ Selection ============ */
+::selection {
+  background: var(--ccc-bg-accent);
+  color: var(--ccc-text-inverse);
+}
+
+/* ============ Focus ring ============ */
+:focus-visible {
+  outline: 2px solid var(--ccc-border-accent);
+  outline-offset: 1px;
+}
+
+/* ============ Animations ============ */
+
+/* Skeleton pulse */
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
@@ -54,25 +68,88 @@ body {
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
 
-/* Typing dots */
+/* Typing dots — Apple-style bounce */
 @keyframes typing-dot {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-4px); }
 }
 .typing-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--ccc-text-muted);
-  animation: typing-dot 1.4s infinite;
+  animation: typing-dot 1.4s var(--ccc-ease-spring) infinite;
 }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* Message fade in */
+/* Message entrance — spring-up */
 @keyframes msg-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide up for settings sheet */
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Pulse (for streaming indicator) */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ccc-border-base);
+  border-top-color: var(--ccc-text-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Shimmer for syntax highlight lines */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Tool card slide-in */
+@keyframes tool-card-in {
+  from { opacity: 0; transform: translateY(-4px); max-height: 0; }
+  to { opacity: 1; transform: translateY(0); max-height: 200px; }
+}
+
+/* Cursor blink for streaming */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--ccc-text-accent);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 0.8s step-end infinite;
 }
 
 /* Dialog overlay */
@@ -83,7 +160,12 @@ body {
   background: var(--ccc-overlay-scrim);
   animation: fade-in 0.15s ease;
 }
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -2,8 +2,7 @@ import { state } from '../state.js';
 import { loadProjects } from '../api.js';
 
 export async function openSettings() {
-  // Remove existing dialog if any
-  document.querySelector('.settings-dialog')?.remove();
+  document.querySelector('.settings-sheet')?.remove();
   document.querySelector('.dialog-overlay')?.remove();
 
   const overlay = document.createElement('div');
@@ -11,23 +10,24 @@ export async function openSettings() {
   overlay.addEventListener('click', closeSettings);
   document.body.appendChild(overlay);
 
-  // Show loading state
   const dialog = document.createElement('div');
-  dialog.innerHTML = '<div class="settings-panel"><div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div></div>';
-  dialog.className = 'settings-dialog';
-  dialog.style.cssText = 'position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;';
+  dialog.className = 'settings-sheet';
+  dialog.innerHTML =
+    '<div class="settings-panel"><div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div></div>';
   document.body.appendChild(dialog);
 
   const projects = await loadProjects();
 
-  // Remove loading, render real content
   dialog.innerHTML = '';
-  dialog.style.cssText = '';
-  dialog.className = 'settings-dialog';
-  dialog.innerHTML =
     '<div class="settings-panel">' +
     '<div class="settings-header">' +
-    '<span class="settings-title">设置</span>' +
+    '<span class="settings-title">' +
+      '<svg class="settings-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="12" r="3"/>' +
+        '<path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>' +
+      '</svg>' +
+      '设置' +
+    '</span>' +
     '<button class="settings-close" id="settings-close-btn">×</button>' +
     '</div>' +
     '<div class="settings-body">' +
@@ -53,13 +53,12 @@ export async function openSettings() {
     '<div class="settings-group-title">关于</div>' +
     '<div class="settings-row">' +
     '<span class="settings-label">版本</span>' +
-    '<span style="font-size:13px;color:var(--ccc-text-muted)">CCC Chat v2</span>' +
+    '<span class="settings-row-value">CCC Chat v2</span>' +
     '</div>' +
     '</div>' +
     '</div>' +
     '</div>';
 
-  // Theme select
   const themeSelect = document.getElementById('settings-theme');
   const savedScheme = localStorage.getItem('opencode-color-scheme') || 'system';
   themeSelect.value = savedScheme;
@@ -69,7 +68,6 @@ export async function openSettings() {
     applyTheme(val);
   });
 
-  // Project select
   const projSelect = document.getElementById('settings-project');
   for (const p of projects) {
     const opt = document.createElement('option');
@@ -81,13 +79,14 @@ export async function openSettings() {
   projSelect.addEventListener('change', () => {
     state.set('currentProject', projSelect.value);
     document.getElementById('project-select').value = projSelect.value;
+    document.getElementById('project-display').textContent =
+      projSelect.options[projSelect.selectedIndex]?.text || projSelect.value;
     const event = new CustomEvent('project-change');
     document.dispatchEvent(event);
   });
 
   document.getElementById('settings-close-btn')?.addEventListener('click', closeSettings);
 
-  // Close on Escape
   const escHandler = (e) => {
     if (e.key === 'Escape') { closeSettings(); document.removeEventListener('keydown', escHandler); }
   };
@@ -95,13 +94,11 @@ export async function openSettings() {
 }
 
 function closeSettings() {
-  document.querySelector('.settings-dialog')?.remove();
+  document.querySelector('.settings-sheet')?.remove();
   document.querySelector('.dialog-overlay')?.remove();
 }
 
 function applyTheme(scheme) {
   const isDark = scheme === 'dark' || (scheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-  const themeBtn = document.getElementById('theme-btn');
-  if (themeBtn) themeBtn.textContent = isDark ? '☀️' : '🌙';
 }

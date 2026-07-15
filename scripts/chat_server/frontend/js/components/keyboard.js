@@ -6,7 +6,6 @@ export function initKeyboard() {
     const isMac = navigator.platform.includes('Mac');
     const mod = isMac ? e.metaKey : e.ctrlKey;
 
-    // Cmd/Ctrl + K — 搜索
     if (mod && e.key === 'k') {
       e.preventDefault();
       const searchInput = document.getElementById('sidebar-search');
@@ -16,29 +15,46 @@ export function initKeyboard() {
       }
     }
 
-    // Cmd/Ctrl + N — 新对话
     if (mod && e.key === 'n') {
       e.preventDefault();
       const event = new CustomEvent('new-tab');
       document.dispatchEvent(event);
     }
 
-    // Cmd/Ctrl + Shift + Delete — 清空对话
     if (mod && e.shiftKey && e.key === 'Delete') {
       e.preventDefault();
       const container = document.getElementById('messages');
       if (container) {
-        container.innerHTML = '<div class="empty-state">' +
-          '<div class="empty-state-icon">💬</div>' +
-          '<div class="empty-state-title">开始一个新对话</div>' +
-          '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
-          '</div>';
+        import('./message.js').then(m => {
+          container.innerHTML = '';
+          container.appendChild(m.createEmptyState());
+        });
       }
       state.set('currentMessages', []);
       showToast('对话已清空', 'info');
     }
 
-    // ↑ (在 composer 为空时) — 编辑上一条用户消息
+    // / — focus composer
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const input = document.getElementById('composer-input');
+      if (input && document.activeElement !== input) {
+        e.preventDefault();
+        input.focus();
+      }
+    }
+
+    // ⌘ + [1-9] — switch tabs
+    if (mod && e.key >= '1' && e.key <= '9') {
+      e.preventDefault();
+      const idx = parseInt(e.key) - 1;
+      const tabs = state.get('tabs') || [];
+      if (tabs[idx]) {
+        const event = new CustomEvent('switch-tab', { detail: { id: tabs[idx].id } });
+        document.dispatchEvent(event);
+      }
+    }
+
+    // ↑ (empty composer) — edit last user message
     if (e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       const input = document.getElementById('composer-input');
       if (input && input === document.activeElement && input.value === '') {
@@ -53,9 +69,9 @@ export function initKeyboard() {
       }
     }
 
-    // Escape — 关闭设置 / 取消编辑
+    // Escape — close settings
     if (e.key === 'Escape') {
-      const dialog = document.querySelector('.settings-dialog');
+      const dialog = document.querySelector('.settings-sheet');
       if (dialog) {
         dialog.querySelector('.settings-close')?.click();
       }
