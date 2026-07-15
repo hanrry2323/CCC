@@ -268,83 +268,20 @@ def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
 
 
 def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
-    """加文件锁（atomic rename 模式），返回锁对象路径
+    """加文件锁（统一 fcntl.flock，F-LOCK-02）。
 
-    只用 atomic 创建（O_CREAT|O_EXCL）：无 fcntl 死锁、无截断写。
-    持锁进程被杀死后锁文件残留，下次获取时检测 pid 失效自动清理。
-
-    v0.24.6 (A24-02): 阈值 5s → 30s；锁内容改为 "{pid}|{mtime}"；
-    强清条件：elapsed > 30s 且 pid 已死；活 pid 永不强制清理（防 PID reuse 误杀无辜进程）。
+    进程崩溃后内核自动释放；活锁超时返回 None（不 force-clear）。
     """
-    import time as _t
+    from board.lock import acquire_board_lock
 
-    excl_path = lockfile.with_name(f".{lockfile.name}.excl")
-    deadline = _t.monotonic() + timeout_s
-    while True:
-        try:
-            fd = os.open(str(excl_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            payload = f"{os.getpid()}|{_t.time():.3f}".encode()
-            os.write(fd, payload)
-            os.close(fd)
-            return excl_path
-        except FileExistsError:
-            # 残留锁检测：持有进程死了 + 锁已超 30s 才清（防 PID reuse 误杀）
-            try:
-                content = excl_path.read_text().strip()
-                if "|" in content:
-                    pid_str, mtime_str = content.split("|", 1)
-                    pid = int(pid_str)
-                    mtime = float(mtime_str)
-                else:
-                    # 兼容旧格式（无 mtime）：立即清理升级到新格式
-                    pid = int(content)
-                    mtime = 0.0
-                elapsed = _t.time() - mtime if mtime > 0 else 999999
-                try:
-                    os.kill(pid, 0)
-                    pid_alive = True
-                except (OSError, ProcessLookupError):
-                    pid_alive = False
-                # 清理条件：pid 已死 OR (pid 活但锁已超 30s 且 deadline 已过)
-                if not pid_alive:
-                    excl_path.unlink(missing_ok=True)
-                    continue
-                if elapsed > timeout_s and _t.monotonic() > deadline:
-                    _log.warning(
-                        "force-clearing stale lock pid=%d elapsed=%.1fs",
-                        pid,
-                        elapsed,
-                    )
-                    excl_path.unlink(missing_ok=True)
-                    continue
-            except (ValueError, OSError):
-                # 锁文件损坏：直接清理
-                excl_path.unlink(missing_ok=True)
-                continue
-
-            if _t.monotonic() > deadline:
-                _log.error(
-                    "lock timeout after %.1fs, holder still alive (pid reuse risk). Skipping.",
-                    timeout_s,
-                )
-                return None
-            _t.sleep(0.1)
-    # 不可达
-    return None
+    return acquire_board_lock(lockfile, timeout_s=timeout_s)
 
 
 def _release_lock(lock_obj) -> None:
-    """释放文件锁
+    """释放文件锁（flock unlock）。"""
+    from board.lock import release_board_lock
 
-    v0.28.0 (M-007): _HAS_FLOCK 硬编码为 False，flock 分支已删除（死代码）。
-    仅保留 unlink 路径。
-    """
-    if lock_obj is None:
-        return
-    try:
-        os.unlink(str(lock_obj))
-    except OSError as e:
-        _log.warning("lock release unlink failed: %s", e)
+    release_board_lock(lock_obj)
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -477,17 +414,22 @@ class FileBoardStore:
         tasks: list[dict] = []
         for f in sorted(col_dir.glob("*.jsonl")):
             try:
-                with open(f) as fp:
-                    for line in fp:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            tasks.append(json.loads(line))
-                        except json.JSONDecodeError as exc:
-                            _log.debug("skip malformed line in %s: %s", f.name, exc)
+                raw = f.read_text(encoding="utf-8")
+                # F-ARCH-03: 跳过未以换行结束的脏尾行（并发写撕裂）
+                if raw and not raw.endswith("\n"):
+                    raw = raw.rsplit("\n", 1)[0] if "\n" in raw else ""
+                for line in raw.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        tasks.append(json.loads(line))
+                    except json.JSONDecodeError as exc:
+                        _log.debug("skip malformed line in %s: %s", f.name, exc)
             except FileNotFoundError as exc:
                 _log.debug("task file disappeared during list: %s", exc)
+            except OSError as exc:
+                _log.debug("list_tasks read failed %s: %s", f.name, exc)
 
         # v0.28.0 (F1-C2): FIFO sort by created_at ascending
         # created_at 缺失 → 降级到 task_id 字典序（= 原文件名序）

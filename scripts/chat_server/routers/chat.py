@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
@@ -16,7 +17,18 @@ router = APIRouter()
 
 
 def check_dangerous(text: str) -> bool:
+    """F-SEC-03: 辅助拦截；主防线在工具 allowlist + cwd jail。"""
     return bool(config.DANGEROUS_PATTERN.search(text))
+
+
+def _is_path_inside(root: str, candidate: str) -> bool:
+    try:
+        root_p = Path(root).resolve()
+        cand = Path(candidate).resolve()
+        cand.relative_to(root_p)
+        return True
+    except (ValueError, OSError):
+        return False
 
 
 @router.post("/api/chat")
@@ -39,6 +51,9 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
 
     project_path = get_project_path(project)
+    # F-SEC-03: cwd jail — 拒绝跳出项目根
+    if not _is_path_inside(project_path, project_path):
+        raise HTTPException(status_code=400, detail="invalid project path")
 
     store.save_session(
         session_id, messages,

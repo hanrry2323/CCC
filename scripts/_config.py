@@ -121,7 +121,7 @@ class Config:
 
     # ── 容错 ──
     max_retry: int = 5  # 最大重试次数 → 异常隔离
-    max_stale_hours: int = 6  # in_progress 卡住超时 → 异常隔离
+    max_stale_hours: int = 2  # F-FLOW-04: 原 6h 过长；busy/idle 由 hang 检测互补
 
     # ── 并发 ──
     opencode_max_parallel: int = 3  # 红线 X1

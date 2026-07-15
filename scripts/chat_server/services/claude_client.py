@@ -40,8 +40,12 @@ async def stream_chat(
     """Generator that yields SSE event dicts from Claude subprocess."""
     proc = None
     try:
+        # F-SEC-06: 显式要求 PATH 中的 claude
+        claude_bin = config.require_claude_bin()
+        # F-SEC-03: 工具 allowlist + cwd jail（仅 project_path）
+        allowed = ",".join(sorted(config.CLAUDE_TOOL_ALLOWLIST))
         proc = await asyncio.create_subprocess_exec(
-            config.CLAUDE_BIN,
+            claude_bin,
             "-p",
             "--print",
             "--verbose",
@@ -49,6 +53,8 @@ async def stream_chat(
             "stream-json",
             "--model",
             "flash",
+            "--allowedTools",
+            allowed,
             cwd=project_path,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,

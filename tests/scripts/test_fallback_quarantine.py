@@ -42,10 +42,14 @@ def tmp_workspace(tmp_path):
 
 @pytest.fixture(autouse=True)
 def chdir_workspace(tmp_workspace, monkeypatch):
-    """切到临时 workspace 并 patch ROOT"""
+    """切到临时 workspace 并 set_workspace（F-CON-03：无 ROOT 补丁）"""
     monkeypatch.chdir(tmp_workspace)
-    monkeypatch.setattr(ccc_board, "ROOT", tmp_workspace)
+    monkeypatch.setenv("CCC_WORKSPACE", str(tmp_workspace))
+    ccc_board.set_workspace(tmp_workspace)
+    ccc_board._reset_lazy()
     yield
+    ccc_board.clear_workspace()
+    ccc_board._reset_lazy()
 
 
 def _create_testing_task(task_id: str, size_lines: int) -> str:

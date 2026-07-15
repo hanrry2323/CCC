@@ -46,13 +46,18 @@ def fake_workspace():
     """提供临时 workspace，注入 phases.json 到 .ccc/phases/<task>.phases.json。"""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        # 备份原 ROOT，测试期间替换
-        original_root = ccc_board.ROOT
-        ccc_board.ROOT = tmp
+        prev = os.environ.get("CCC_WORKSPACE")
+        ccc_board.set_workspace(tmp)
+        ccc_board._reset_lazy()
         try:
             yield tmp
         finally:
-            ccc_board.ROOT = original_root
+            if prev:
+                ccc_board.set_workspace(prev)
+            else:
+                ccc_board.clear_workspace()
+                os.environ.pop("CCC_WORKSPACE", None)
+            ccc_board._reset_lazy()
 
 
 def _write_phases(workspace: Path, task_id: str, phases: list[dict]) -> None:

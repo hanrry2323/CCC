@@ -354,13 +354,24 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     local_ips.add(ip)
         is_local = client_ip in local_ips
         token = os.environ.get("QX_BOARD_TOKEN", "").strip()
+        # F-SEC-05: 无 token 时拒绝（即使本机）；开发可设 CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1
         if not token:
-            if is_local:
+            allow_local = os.environ.get("CCC_BOARD_ALLOW_LOCAL_NO_TOKEN", "").strip() == "1"
+            if is_local and allow_local:
                 return True
-            # v0.28.0 (M-005): auth 失败也消耗 token + 记录日志，防暴力枚举
             _rate_limiter.allow(f"auth:{client_ip}")
-            _log.warning("auth failed: non-local %s without token", client_ip)
-            self._json({"error": "unauthorized: non-local request without token"}, 401)
+            _log.warning(
+                "auth failed: QX_BOARD_TOKEN unset (client=%s local=%s)",
+                client_ip,
+                is_local,
+            )
+            self._json(
+                {
+                    "error": "unauthorized: QX_BOARD_TOKEN required "
+                    "(or CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1 for local only)"
+                },
+                401,
+            )
             return False
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer ") and auth[7:] == token:

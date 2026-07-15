@@ -3,7 +3,7 @@ name: ccc-protocol
 description: "CCC — Connect–Claude Code. A 7-role automated development pipeline with kanban board. Trigger when user says: '按 CCC 流程跑 X', 'ccc 跑一下 X', '调度一个多阶段任务', '用看板跑 X'"
 ---
 
-# CCC — Connect–Claude Code (v0.28.1)
+# CCC — Connect–Claude Code (v0.30.0)
 
 > **One SKILL, every IDE, every model.** A skill that turns any coding agent
 > into a **7-role automated development system** with kanban board and skill-based
@@ -48,7 +48,7 @@ CCC 是 **7 角色看板自动化系统**，不再支持旧 3 角色（Plan/Exec
 
 | 角色 | Skill 文件 | 看板列 | Engine 触发方式 | 职责 |
 |------|-----------|--------|----------------|------|
-| **product** | `skills/ccc-product/SKILL.md` | backlog → planned | Engine backlog 自动拆分（v0.28 F-1）或 manual `--promote` | 拆任务、写 plan、SPEC 门禁、phases.json schema 1.1、推断 complexity |
+| **product** | `skills/ccc-product/SKILL.md` | backlog → planned | Engine backlog 自动拆分（v0.28 F-1）或 manual `--promote` | 拆任务、写 plan、SPEC 门禁、phases.json schema 1.2、推断 complexity |
 | **dev** | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | Engine 主循环立即串行 | 调 opencode 写代码、phase 顺序推进、retry 退避 |
 | **reviewer** | `skills/ccc-reviewer/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | LLM 语义审查、advisory lock、fallback quarantine（v0.24.5+）；small 跳过 |
 | **tester** | `skills/ccc-tester/SKILL.md` | testing → verified | Engine 在 dev 完成后立即调 | pytest + plan 逐条验收、phase-aware 测试；small 跳过 |
@@ -94,7 +94,7 @@ backlog → planned → in_progress → testing → verified → released
 <workspace>/.ccc/
 ├── profile.md                   # 项目档案（首次接入生成）
 ├── plans/<task>.plan.md         # product 产出
-├── phases/<task>.phases.json    # product 产出（JSONL, schema_version="1.1"）
+├── phases/<task>.phases.json    # product 产出（JSONL, schema_version="1.2"）
 ├── reports/<task>.report.md     # dev 产出（含 AGENTS.md 建议段）
 ├── reports/<task>.review.md     # reviewer 产出（v0.24.5+）
 ├── verdicts/<task>.verdict.md   # reviewer/tester 产出（≥3 probes）
@@ -202,4 +202,6 @@ Engine 内部直接调 `ccc-board.py` 的角色函数：
 cat ~/program/CCC/VERSION
 ```
 
-详细历史见 `CHANGELOG.md`。当前：`v0.28.1`。
+详细历史见 `CHANGELOG.md`。当前：`v0.30.0`（以仓库根 `VERSION` 为准）。
+
+> **叙事 SSOT**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md)。与 README / CLAUDE.md 冲突时以 Brief + `VERSION` 为准。

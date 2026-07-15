@@ -1,15 +1,24 @@
 import { state } from './state.js';
 
-const AUTH = 'Basic ' + btoa('ccc:claude2026');
+/** F-SEC-01/02: 不硬编码口令；首次从 localStorage / prompt 取。 */
+function _authHeader() {
+  let user = localStorage.getItem('ccc_chat_user') || 'ccc';
+  let pass = localStorage.getItem('ccc_chat_pass') || '';
+  if (!pass) {
+    pass = window.prompt('CCC Chat 密码（写入 localStorage，不会提交到仓库）') || '';
+    if (pass) localStorage.setItem('ccc_chat_pass', pass);
+  }
+  return 'Basic ' + btoa(user + ':' + pass);
+}
 
 export async function apiGet(path) {
-  const resp = await fetch(path, { headers: { Authorization: AUTH } });
+  const resp = await fetch(path, { headers: { Authorization: _authHeader() } });
   if (!resp.ok) throw new Error('GET ' + path + ' ' + resp.status);
   return resp.json();
 }
 
 export async function apiDelete(path) {
-  const resp = await fetch(path, { method: 'DELETE', headers: { Authorization: AUTH } });
+  const resp = await fetch(path, { method: 'DELETE', headers: { Authorization: _authHeader() } });
   return resp.json();
 }
 
@@ -39,7 +48,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
     const model = state.get('model') || 'flash';
     const resp = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: AUTH },
+      headers: { 'Content-Type': 'application/json', Authorization: _authHeader() },
       body: JSON.stringify({
         messages,
         session_id: sessionId,

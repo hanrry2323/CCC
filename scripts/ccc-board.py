@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ccc-board.py — 任务看板核心 (v0.20)
+"""ccc-board.py — 任务看板核心 (v0.30)
 
 7 角色都通过这个 core 操作 .ccc/board/:
 - product: backlog → planned
@@ -11,6 +11,12 @@
 - regress: released → backlog (回归回测)
 
 任务流转规则见 .ccc/board/README.md
+
+Phase 2 架构:
+- 子模块 scripts/board/{context,lock,prompt,store_ops,roles}.py
+- workspace 经 board.context.set_workspace / get_workspace（无全局 get_workspace() 补丁）
+- 锁协议统一 fcntl.flock（board.lock）
+- 本文件保留公开 API re-export，兼容 importlib 加载
 """
 
 import argparse
@@ -33,11 +39,29 @@ from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 from _utils import sanitize_prompt_input as _sanitize_prompt_input
 
+from board.context import (
+    get_workspace,
+    set_workspace,
+    clear_workspace,
+    board_dir,
+    events_dir,
+    ccc_home,
+)
+from board.lock import (
+    acquire_named_lock as _acquire_product_lock,
+    release_named_lock as _release_product_lock,
+)
+from board.prompt import (
+    build_dev_phase_prompt,
+    build_dev_phase_prompt_with_hint,
+)
+from board import store_ops as _store_ops
+
 _log = get_logger("board")
 
 # v0.28.0 (L-001): cfg / store 改为 lazy 初始化 — 避免 import 时即建 FileBoardStore
 # 触发 mkdir（workspace 路径权限问题会直接挂 import）。
-# ROOT / CCC_HOME / BOARD / EVENTS_DIR 仍为 eager（Path() 不触发 I/O，开销可忽略）。
+# get_workspace() / CCC_HOME / board_dir() / events_dir() 仍为 eager（Path() 不触发 I/O，开销可忽略）。
 _cfg_instance: Config | None = None
 _store_instance: FileBoardStore | None = None
 
@@ -61,6 +85,7 @@ def _reset_lazy() -> None:
     global _cfg_instance, _store_instance
     _cfg_instance = None
     _store_instance = None
+    _store_ops.reset_store_cache()
 
 
 # 历史兼容：保留同名 module-level 名称（cfg/store）作为 lazy proxy。
@@ -82,10 +107,9 @@ class _StoreProxy:
 cfg = _CfgProxy()
 store = _StoreProxy()
 
-ROOT = _get_cfg().workspace
-CCC_HOME = _get_cfg().ccc_home
-BOARD = ROOT / ".ccc" / "board"
-EVENTS_DIR = BOARD / "events"
+# Phase 2: workspace 经 get_workspace()/board_dir()；引擎只能 set_workspace()
+
+CCC_HOME = ccc_home()
 
 # 容错参数（从 Config 读取）
 MAX_RETRY = cfg.max_retry
@@ -129,57 +153,10 @@ def _quarantine(task_id: str, reason: str) -> None:
     try:
         from _lessons import auto_append_lesson_md
 
-        auto_append_lesson_md(ROOT, task_id, phase=None, error=reason)
+        auto_append_lesson_md(get_workspace(), task_id, phase=None, error=reason)
     except Exception:
         pass
 
-
-# v0.28.1-hotfix (2026-07-12): Python 3.14 PosixPath 是 __slots__ 对象，不支持动态属性赋值。
-# 改用模块级 dict 存储 product_role 锁的 fd，key 为 lockfile 路径字符串。
-_product_lock_fds: dict[str, int] = {}
-
-
-def _acquire_product_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
-    """v0.28.0 (F1-H1/H3): 获取 product_role 写锁（fcntl.flock LOCK_EX）
-
-    与 R-07 _apply_phase_status_updates 同一锁协议。
-    超时后抛 OSError——调用方 catch 后 abort。
-    """
-    import fcntl
-    import errno
-
-    deadline = time.monotonic() + timeout_s
-    lock_key = str(lockfile)
-    while True:
-        try:
-            _fd = os.open(str(lockfile), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC)
-            fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            # 持锁成功，把 fd 存到模块级 dict 供释放用
-            _product_lock_fds[lock_key] = _fd
-            return
-        except (OSError, IOError) as e:
-            if hasattr(e, "errno") and e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-                if time.monotonic() >= deadline:
-                    raise OSError(
-                        f"product_role lock timeout ({timeout_s}s): {lockfile}"
-                    )
-                time.sleep(0.5)
-                continue
-            os.close(_fd)
-            raise
-
-
-def _release_product_lock(lockfile: Path) -> None:
-    """v0.28.0 (F1-H1/H3): 释放 product_role 写锁"""
-    import fcntl
-
-    lock_key = str(lockfile)
-    fd = _product_lock_fds.pop(lock_key, None)
-    if fd is not None:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        finally:
-            os.close(fd)
 
 
 def _task_id_exists(task_id: str) -> bool:
@@ -301,587 +278,24 @@ def _load_retry_cap(
     return default_retry
 
 
-# v0.24: phases.json 加载 + 依赖解析
-PHASE_TERMINAL_OK = {"done", "verified", "skipped"}
-PHASE_TERMINAL_FAIL = {"failed"}
-
-
-def _load_phases(task_id: str, ws: Path | None = None) -> list[dict]:
-    """v0.24: 加载 phases.jsonl 每行一个 phase dict（跳过 schema_version 行）。
-
-    Args:
-        task_id: 任务 ID
-        ws: workspace 路径。为 None 时回退到 ROOT（兼容旧调用者）。
-
-    返回按 phase 编号排序的 list，元素为 phase dict。
-    文件不存在或解析失败返回空 list。
-    """
-    base = ws if ws else ROOT
-    phases_file = base / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not phases_file.exists():
-        return []
-    out: list[dict] = []
-    try:
-        with open(phases_file) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(obj, dict) and "schema_version" in obj:
-                    continue
-                if isinstance(obj, dict) and "phase" in obj:
-                    out.append(obj)
-    except OSError:
-        return []
-    out.sort(key=lambda p: p.get("phase", 0))
-    return out
-
-
-def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
-    """v0.25.1: 检测 phases.json 中的循环依赖。
-
-    用 DFS 三色标记（WHITE=未访问 / GRAY=在栈上 / BLACK=已完成）。
-    返回所有循环路径（每条路径是 phase_id 列表）。
-
-    注：函数内静默检测，不抛异常。Engine 在 _resolve_phase_dependencies
-    调用时拿到 cycle 列表，把环上 phase 标 skipped + 写 warnings.json。
-    """
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[int, int] = {
-        p.get("phase"): WHITE for p in phases if p.get("phase") is not None
-    }
-    by_id: dict[int, dict] = {
-        p.get("phase"): p for p in phases if p.get("phase") is not None
-    }
-    cycles: list[list[int]] = []
-
-    def dfs(node: int, stack: list[int]) -> None:
-        color[node] = GRAY
-        stack.append(node)
-        for dep_id in by_id.get(node, {}).get("depends_on") or []:
-            if dep_id not in color:
-                continue  # 不存在的依赖由 _resolve_phase_dependencies 处理
-            if color[dep_id] == GRAY:
-                # 找到循环：截取 stack 从 dep_id 起到 node 的部分
-                idx = stack.index(dep_id)
-                cycles.append(stack[idx:] + [dep_id])
-            elif color[dep_id] == WHITE:
-                dfs(dep_id, stack)
-        stack.pop()
-        color[node] = BLACK
-
-    for pid in list(color.keys()):
-        if color[pid] == WHITE:
-            dfs(pid, [])
-
-    return cycles
-
-
-def _resolve_phase_dependencies(
-    phases: list[dict],
-) -> tuple[set[int], set[int], set[int]]:
-    """v0.24: 解析 phase 依赖关系。
-
-    对每个 phase 检查 depends_on 列表中所有前置 phase 的状态：
-    - 所有依赖状态 ∈ {done, verified, skipped} → 本 phase 可执行 (executable)
-    - 任意依赖状态 ∈ {failed} → 本 phase 跳过 (skipped)
-    - 其他依赖未达终态 → 本 phase 阻塞 (blocked）
-
-    v0.25.1: 加循环依赖检测。环上 phase 全部归 skipped（强失败隔离）。
-
-    Returns:
-        (executable_phase_ids, blocked_phase_ids, skipped_phase_ids)
-
-    注：本函数只标注新状态（pending → blocked/skipped），已 done/verified/in_progress/failed
-    的 phase 不动。Engine 在调用此函数前应已写回 phases.json。
-    """
-    by_id: dict[int, dict] = {
-        p.get("phase"): p for p in phases if p.get("phase") is not None
-    }
-
-    # v0.25.1: 循环依赖检测 — 环上 phase 强制 skipped
-    cycles = _detect_phase_cycle(phases)
-    cycle_nodes: set[int] = set()
-    for cycle in cycles:
-        # cycle = [a, b, c, a] → 环上节点 = {a, b, c}
-        cycle_nodes.update(cycle[:-1])
-
-    executable: set[int] = set()
-    blocked: set[int] = set()
-    skipped: set[int] = set()
-
-    for pid, phase in by_id.items():
-        status = phase.get("status", "pending")
-        # 已达终态或正在执行 → 不再分类
-        if (
-            status in PHASE_TERMINAL_OK
-            or status in PHASE_TERMINAL_FAIL
-            or status == "in_progress"
-        ):
-            continue
-
-        # v0.25.1: 环上节点直接 skipped（强失败隔离）
-        if pid in cycle_nodes:
-            skipped.add(pid)
-            continue
-
-        deps = phase.get("depends_on") or []
-        if not deps:
-            # 无依赖 → 可执行
-            executable.add(pid)
-            continue
-
-        # 检查所有依赖
-        any_failed = False
-        any_unresolved = False
-        for dep_id in deps:
-            dep = by_id.get(dep_id)
-            if dep is None:
-                # 引用了不存在的 phase → 视为未解析（不强行 fail，留给人工处理）
-                any_unresolved = True
-                continue
-            dep_status = dep.get("status", "pending")
-            if dep_status in PHASE_TERMINAL_FAIL:
-                any_failed = True
-            elif dep_status not in PHASE_TERMINAL_OK:
-                any_unresolved = True
-
-        if any_failed:
-            skipped.add(pid)
-        elif any_unresolved:
-            blocked.add(pid)
-        else:
-            executable.add(pid)
-
-    # v0.25.1: 写 warnings.json（让 ops 看见循环依赖路径）
-    if cycles:
-        try:
-            warnings_file = ROOT / ".ccc" / "warnings.json"
-            existing = []
-            if warnings_file.exists():
-                try:
-                    existing = json.loads(warnings_file.read_text())
-                    if not isinstance(existing, list):
-                        existing = []
-                except json.JSONDecodeError:
-                    existing = []
-            existing.append(
-                {
-                    "type": "phase_cycle",
-                    "cycles": cycles,
-                    "detected_at": now_iso(),
-                }
-            )
-            warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
-        except OSError as exc:
-            _log.debug("write warnings.json (phase_cycle) failed: %s", exc)
-
-    # v0.25.1: 不存在依赖告警（CHANGELOG v0.24.4:97 P1）
-    # 检测 depends_on 中引用了不存在的 phase_id；写 warnings.json + L2 通知
-    unresolved: dict[int, list[int]] = {}  # phase_id -> [missing dep ids]
-    for pid, phase in by_id.items():
-        deps = phase.get("depends_on") or []
-        for dep_id in deps:
-            if dep_id not in by_id:
-                unresolved.setdefault(pid, []).append(dep_id)
-    if unresolved:
-        try:
-            warnings_file = ROOT / ".ccc" / "warnings.json"
-            existing = []
-            if warnings_file.exists():
-                try:
-                    existing = json.loads(warnings_file.read_text())
-                    if not isinstance(existing, list):
-                        existing = []
-                except json.JSONDecodeError:
-                    existing = []
-            existing.append(
-                {
-                    "type": "unresolved_dep",
-                    "missing": {str(k): v for k, v in unresolved.items()},
-                    "detected_at": now_iso(),
-                }
-            )
-            warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
-            # L2 桌面通知（让 dev 立刻看见）
-            try:
-                subprocess.run(
-                    [
-                        "bash",
-                        str(CCC_HOME / "scripts" / "ccc-notify.sh"),
-                        "L2",
-                        "phases.json: unresolved dependency detected",
-                        f"{len(unresolved)} phase 引用了不存在的 phase_id",
-                    ],
-                    capture_output=True,
-                    env=_sanitized_env(),
-                    timeout=5,
-                )
-            except Exception as exc:
-                _log.debug("ccc-notify.sh L2 unresolved_dep failed: %s", exc)
-        except OSError as exc:
-            _log.debug("write warnings.json (unresolved_dep) failed: %s", exc)
-
-    return executable, blocked, skipped
-
-
-def _apply_phase_status_updates(
-    task_id: str, blocked: set[int], skipped: set[int]
-) -> None:
-    """v0.24: 把解析出的 blocked/skipped 状态写回 phases.jsonl。
-
-    双向同步（Engine 每 tick 调用）：
-    - pending → skipped（依赖失败）
-    - pending → blocked（依赖未满足）
-    - blocked → pending（依赖已满足，下一轮可执行）
-    已 in_progress/done/verified/failed/skipped 的不碰。
-
-    v0.28.1: 改用 _store_atomic_write（temp+replace）替代 in-place truncate 写。
-    """
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not phases_file.exists():
-        return
-    try:
-        lines = phases_file.read_text(encoding="utf-8").splitlines()
-    except OSError as e:
-        _log.warning("read phases for status update failed %s: %s", task_id, e)
-        return
-    new_lines: list[str] = []
-    changed = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            new_lines.append(line)
-            continue
-        try:
-            obj = json.loads(stripped)
-        except json.JSONDecodeError:
-            new_lines.append(line)
-            continue
-        if not isinstance(obj, dict) or "schema_version" in obj:
-            new_lines.append(line)
-            continue
-        pid = obj.get("phase")
-        status = obj.get("status")
-        if status == "pending":
-            if pid in skipped:
-                obj["status"] = "skipped"
-                changed = True
-            elif pid in blocked:
-                obj["status"] = "blocked"
-                changed = True
-        elif status == "blocked":
-            if pid not in blocked and pid not in skipped:
-                obj["status"] = "pending"
-                changed = True
-        new_lines.append(json.dumps(obj, ensure_ascii=False))
-    if changed:
-        payload = "\n".join(new_lines) + "\n"
-        try:
-            _store_atomic_write(phases_file, payload)
-        except OSError as e:
-            _log.warning("atomic write phases status failed %s: %s", task_id, e)
-
-
-def _current_running_phase(task_id: str) -> int:
-    """v0.24: 找 task 当前正在跑的 phase 编号（status=in_progress 的 phase）。
-
-    没有 in_progress phase 时返回第一个可执行的 pending/blocked phase（跳过 skipped）。
-    """
-    phases = _load_phases(task_id)
-    for p in phases:
-        if p.get("status") == "in_progress":
-            return p.get("phase", 1)
-    executable, blocked, _skipped = _resolve_phase_dependencies(phases)
-    if executable:
-        return min(executable)
-    candidates = [p for p in phases if p.get("status") in ("pending", "blocked")]
-    if candidates:
-        return candidates[0].get("phase", 1)
-    return 1
-
-
-def _mark_phase_failed(task_id: str, phase_id: int) -> None:
-    """v0.24: 标记某个 phase 为 failed（quarantine 时调用）。
-
-    仅当 phase 还在 pending/blocked/in_progress 时才改为 failed；
-    已 done/verified/skipped/failed 不动。
-    """
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not phases_file.exists():
-        return
-    try:
-        lines = phases_file.read_text().splitlines()
-    except OSError:
-        return
-    new_lines: list[str] = []
-    changed = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            new_lines.append(line)
-            continue
-        try:
-            obj = json.loads(stripped)
-        except json.JSONDecodeError:
-            new_lines.append(line)
-            continue
-        if not isinstance(obj, dict) or "schema_version" in obj:
-            new_lines.append(line)
-            continue
-        if obj.get("phase") == phase_id:
-            current = obj.get("status")
-            if current in ("done", "verified", "skipped", "failed"):
-                new_lines.append(line)
-                continue
-            obj["status"] = "failed"
-            changed = True
-        new_lines.append(json.dumps(obj, ensure_ascii=False))
-    if changed:
-        phases_file.write_text("\n".join(new_lines) + "\n")
-
-
-PHASE_MAX_ENGINE_ITER = 5  # v0.25.1: 多轮 tick 不收敛时强制 failed
-
-
-def _check_phase_failures(task_id: str) -> dict:
-    """v0.24: 检查 task 的 phase 失败传染，更新下游 skipped 状态。
-
-    流程：
-    1. 加载 phases
-    2. 跑 _resolve_phase_dependencies 解析 executable/blocked/skipped
-    3. 写回 blocked/skipped（依赖解除的 blocked → pending）
-    4. v0.25.1: 多轮 tick 不收敛（>= PHASE_MAX_ENGINE_ITER）→ 强收敛
-       （pending/blocked 标 failed/skipped）
-    5. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
-            "all_terminal": bool, "all_failed_or_skipped": bool, "engine_iter": int,
-            "force_converged": bool}
-
-    Engine 在每次 dev 完成后调用一次，让失败传染链路在多轮 tick 中收敛。
-    """
-    phases = _load_phases(task_id)
-    if not phases:
-        return {
-            "executable": [],
-            "blocked": [],
-            "skipped": [],
-            "all_terminal": False,
-            "all_failed_or_skipped": False,
-            "engine_iter": 0,
-            "force_converged": False,
-        }
-
-    executable, blocked, skipped = _resolve_phase_dependencies(phases)
-    _apply_phase_status_updates(task_id, blocked, skipped)
-
-    # v0.24.3: writeback 后必须 reload，否则返回值基于陈旧内存状态计算。
-    phases = _load_phases(task_id)
-    executable, blocked, skipped = _resolve_phase_dependencies(phases)
-    # 回报磁盘真实状态（已写回的 skipped/blocked 不再出现在 resolve 的新增集合里）
-    skipped_on_disk = {
-        p.get("phase")
-        for p in phases
-        if p.get("status") == "skipped" and p.get("phase") is not None
-    }
-    blocked_on_disk = {
-        p.get("phase")
-        for p in phases
-        if p.get("status") == "blocked" and p.get("phase") is not None
-    }
-
-    all_terminal = all(
-        p.get("status") in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL) for p in phases
-    )
-    all_failed_or_skipped = all(
-        p.get("status") in ("failed", "skipped") for p in phases
-    )
-
-    # v0.25.1: 多轮 tick 不收敛强失败（CHANGELOG v0.24.4:94 P1）
-    engine_iter = _read_engine_iter(task_id)
-    force_converged = False
-    if not all_terminal:
-        engine_iter += 1
-        _write_engine_iter(task_id, engine_iter)
-        if engine_iter >= PHASE_MAX_ENGINE_ITER:
-            # 强收敛：把所有非终态 phase 标 skipped
-            new_skipped: set[int] = set()
-            for p in phases:
-                pid = p.get("phase")
-                st = p.get("status", "pending")
-                if st in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL):
-                    continue
-                if pid is not None:
-                    new_skipped.add(pid)
-            _apply_phase_status_updates(task_id, set(), new_skipped)
-            phases = _load_phases(task_id)
-            all_terminal = True
-            all_failed_or_skipped = all(
-                p.get("status") in ("failed", "skipped") for p in phases
-            )
-            force_converged = True
-            # 写 warnings.json + L2 通知
-            try:
-                warnings_file = ROOT / ".ccc" / "warnings.json"
-                existing = []
-                if warnings_file.exists():
-                    try:
-                        existing = json.loads(warnings_file.read_text())
-                        if not isinstance(existing, list):
-                            existing = []
-                    except json.JSONDecodeError:
-                        existing = []
-                existing.append(
-                    {
-                        "type": "phase_force_converged",
-                        "engine_iter": engine_iter,
-                        "engine_iter_phase": _current_running_phase(task_id),
-                        "task_id": task_id,
-                        "detected_at": now_iso(),
-                    }
-                )
-                warnings_file.write_text(
-                    json.dumps(existing, ensure_ascii=False, indent=2)
-                )
-                try:
-                    subprocess.run(
-                        [
-                            "bash",
-                            str(CCC_HOME / "scripts" / "ccc-notify.sh"),
-                            "L2",
-                            f"phases.json: force converged ({task_id})",
-                            f"engine_iter={engine_iter} 达到 PHASE_MAX_ENGINE_ITER={PHASE_MAX_ENGINE_ITER}",
-                        ],
-                        capture_output=True,
-                        timeout=5,
-                        env=_sanitized_env(),
-                    )
-                except Exception as e:
-                    _log.warning(
-                        "ccc-notify force_converged failed for %s: %s",
-                        task_id,
-                        e,
-                        exc_info=True,
-                    )
-            except OSError as e:
-                _log.warning(
-                    "write force_converged phases failed for %s: %s", task_id, e
-                )
-
-    return {
-        "executable": sorted(executable),
-        "blocked": sorted(blocked_on_disk),
-        "skipped": sorted(skipped_on_disk),
-        "all_terminal": all_terminal,
-        "all_failed_or_skipped": all_failed_or_skipped,
-        "engine_iter": engine_iter,
-        "force_converged": force_converged,
-    }
-
-
-def _read_engine_iter_meta(task_id: str) -> dict:
-    """v0.27.1: 读 phases.json metadata 行的完整 engine_iter 元数据。"""
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not phases_file.exists():
-        return {}
-    try:
-        for line in phases_file.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if isinstance(obj, dict) and "engine_iter" in obj:
-                    return obj
-            except json.JSONDecodeError:
-                continue
-    except OSError as e:
-        _log.warning("read engine_iter meta failed for %s: %s", task_id, e)
-    return {}
-
-
-def _write_engine_iter_meta(task_id: str, meta: dict) -> None:
-    """v0.27.1: 把 engine_iter 元数据写入 phases.json 顶层 metadata 行。"""
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
-    if not phases_file.exists():
-        return
-    try:
-        lines = phases_file.read_text(encoding="utf-8").splitlines(keepends=True)
-    except OSError as e:
-        _log.warning("read phases for engine_iter meta failed %s: %s", task_id, e)
-        return
-    found = False
-    new_lines: list[str] = []
-    for line in lines:
-        line_s = line.strip()
-        if not line_s:
-            new_lines.append(line)
-            continue
-        try:
-            obj = json.loads(line_s)
-        except json.JSONDecodeError:
-            new_lines.append(line)
-            continue
-        if isinstance(obj, dict) and "engine_iter" in obj:
-            obj.update(meta)
-            new_lines.append(json.dumps(obj, ensure_ascii=False) + "\n")
-            found = True
-        else:
-            new_lines.append(line if line.endswith("\n") else line + "\n")
-    if not found:
-        new_lines.insert(0, json.dumps(meta, ensure_ascii=False) + "\n")
-    try:
-        _store_atomic_write(phases_file, "".join(new_lines))
-    except OSError as e:
-        _log.warning("write engine_iter meta failed for %s: %s", task_id, e)
-
-
-def _read_engine_iter(task_id: str) -> int:
-    """v0.27.1: 读当前 phase 的 engine_iter（phase 切换时自动重置到 0）。"""
-    meta = _read_engine_iter_meta(task_id)
-    cur_phase = _current_running_phase(task_id)
-    if meta.get("engine_iter_phase") != cur_phase:
-        return 0
-    return meta.get("engine_iter", 0)
-
-
-def _write_engine_iter(task_id: str, value: int) -> None:
-    """v0.27.1: 写 engine_iter + 当前 phase 到 metadata。"""
-    cur_phase = _current_running_phase(task_id)
-    _write_engine_iter_meta(
-        task_id,
-        {
-            "engine_iter": value,
-            "engine_iter_phase": cur_phase,
-        },
-    )
-
-
-def _move_task_to_abnormal_if_all_terminal_failed(task_id: str) -> bool:
-    """v0.24: 如果 task 所有 phase 都 failed/skipped（依赖失败链），移到 abnormal。
-
-    Returns: True if moved, False otherwise.
-    """
-    phases = _load_phases(task_id)
-    if not phases:
-        return False
-    if not all(p.get("status") in ("failed", "skipped") for p in phases):
-        return False
-    # 所有 phase 都失败或被跳过 → task 整体异常
-    try:
-        move_task(task_id, "in_progress", "abnormal")
-        # v0.28.0 (R-08): 改用 _log 统一 logger
-        _log.error(
-            "failure-isolation: %s all phases failed/skipped → abnormal", task_id
-        )
-        return True
-    except Exception as exc:
-        _log.error("failure-isolation: %s move to abnormal failed: %s", task_id, exc)
-        return False
-
+# v0.24 phase 逻辑 → board.phase（Phase 2 拆包）
+from board.phase import (  # noqa: E402
+    PHASE_TERMINAL_OK,
+    PHASE_TERMINAL_FAIL,
+    PHASE_MAX_ENGINE_ITER,
+    _load_phases,
+    _detect_phase_cycle,
+    _resolve_phase_dependencies,
+    _apply_phase_status_updates,
+    _current_running_phase,
+    _mark_phase_failed,
+    _check_phase_failures,
+    _read_engine_iter_meta,
+    _write_engine_iter_meta,
+    _read_engine_iter,
+    _write_engine_iter,
+    _move_task_to_abnormal_if_all_terminal_failed,
+)
 
 import shutil
 
@@ -1048,7 +462,7 @@ _get_code_context_cache: dict[str, tuple[str, float]] = {}
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     """调 claude CLI 生成 plan.md + phases.json（通过中转站 127.0.0.1:4000）"""
     task_id = task["id"]
-    plan_dir = ROOT / ".ccc" / "plans"
+    plan_dir = get_workspace() / ".ccc" / "plans"
     ref_plans = ""
     if plan_dir.exists():
         plan_files = sorted(
@@ -1059,10 +473,10 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         for pf in plan_files[:2]:
             ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
 
-    template_plan = (ROOT / "templates" / "plan.plan.md").read_text()
-    profile = (ROOT / ".ccc" / "profile.md").read_text()
+    template_plan = (get_workspace() / "templates" / "plan.plan.md").read_text()
+    profile = (get_workspace() / ".ccc" / "profile.md").read_text()
 
-    code_ctx = _get_code_context(ROOT)
+    code_ctx = _get_code_context(get_workspace())
 
     def _build_prompt(include_ref_plans: bool = True) -> str:
         ref = ref_plans if include_ref_plans else "（无，重试模式）"
@@ -1095,7 +509,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     try:
         from _lessons import get_recent_lessons
 
-        recent = get_recent_lessons(ROOT)
+        recent = get_recent_lessons(get_workspace())
         if recent:
             lessons_text = "\n".join(
                 f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
@@ -1165,7 +579,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 _check_phase_limit(result[1])
                 return result
             except (json.JSONDecodeError, RuntimeError) as exc:
-                fallback_dir = ROOT / ".ccc" / "product_fallback"
+                fallback_dir = get_workspace() / ".ccc" / "product_fallback"
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 fb_plan = _generate_fallback_plan(task)
                 (fallback_dir / f"{task_id}.plan.md").write_text(fb_plan)
@@ -1237,7 +651,7 @@ def product_role(task_id: str = "") -> dict:
         # R-07 的 _apply_phase_status_updates 已用 fcntl.flock，这里用同一协议。
         # 锁文件: .ccc/.product_role.lock
         # F1-H2 (crash 原子性): 先写 temp 文件再 rename，保证两个文件要么都完整要么都不存在
-        product_lock = ROOT / ".ccc" / ".product_role.lock"
+        product_lock = get_workspace() / ".ccc" / ".product_role.lock"
         product_lock.parent.mkdir(parents=True, exist_ok=True)
         try:
             _acquire_product_lock(product_lock)
@@ -1249,11 +663,11 @@ def product_role(task_id: str = "") -> dict:
             }
 
         try:
-            plan_dir = ROOT / ".ccc" / "plans"
+            plan_dir = get_workspace() / ".ccc" / "plans"
             plan_dir.mkdir(parents=True, exist_ok=True)
             plan_file = plan_dir / f"{task_id}.plan.md"
 
-            phases_dir = ROOT / ".ccc" / "phases"
+            phases_dir = get_workspace() / ".ccc" / "phases"
             phases_dir.mkdir(parents=True, exist_ok=True)
             phases_file = phases_dir / f"{task_id}.phases.json"
 
@@ -1284,7 +698,7 @@ def product_role(task_id: str = "") -> dict:
                 from _board_store import assign_color_group
 
                 color_group = assign_color_group(
-                    ROOT, parent_group=task.get("color_group")
+                    get_workspace(), parent_group=task.get("color_group")
                 )
                 from pathlib import Path as _P
 
@@ -1404,12 +818,12 @@ def launch_product_async(task_id: str) -> dict:
     if not task:
         return {"error": f"task '{task_id}' not found in backlog"}
 
-    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Build prompt（从 _call_claude_for_plan 提取的核心逻辑）
     ref_plans = ""
-    plan_dir_obj = ROOT / ".ccc" / "plans"
+    plan_dir_obj = get_workspace() / ".ccc" / "plans"
     if plan_dir_obj.exists():
         plan_files = sorted(
             plan_dir_obj.glob("*.plan.md"),
@@ -1419,9 +833,9 @@ def launch_product_async(task_id: str) -> dict:
         for pf in plan_files[:2]:
             ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
 
-    template_plan = (ROOT / "templates" / "plan.plan.md").read_text()
-    profile = (ROOT / ".ccc" / "profile.md").read_text()
-    code_ctx = _get_code_context(ROOT)
+    template_plan = (get_workspace() / "templates" / "plan.plan.md").read_text()
+    profile = (get_workspace() / ".ccc" / "profile.md").read_text()
+    code_ctx = _get_code_context(get_workspace())
 
     prompt = (
         f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
@@ -1450,7 +864,7 @@ def launch_product_async(task_id: str) -> dict:
     try:
         from _lessons import get_recent_lessons
 
-        recent = get_recent_lessons(ROOT)
+        recent = get_recent_lessons(get_workspace())
         if recent:
             lessons_text = "\n".join(
                 f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
@@ -1507,7 +921,7 @@ def check_product_async(task_id: str) -> dict:
         {"status": "failed", "error": str} — 失败
     """
     task_id = sanitize_id(task_id)
-    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir = get_workspace() / ".ccc" / "pids"
     done_file = pids_dir / f"{task_id}.product.done"
     result_file = pids_dir / f"{task_id}.product.out"
     pid_file = pids_dir / f"{task_id}.product.pid"
@@ -1623,9 +1037,9 @@ def _write_async_product_result(
     task_id: str, plan_content: str, phases_data: list
 ) -> None:
     """写 plan + phases 文件 + 移 backlog → planned（无锁，engine 单线程保证互斥）"""
-    plan_dir = ROOT / ".ccc" / "plans"
+    plan_dir = get_workspace() / ".ccc" / "plans"
     plan_dir.mkdir(parents=True, exist_ok=True)
-    phases_dir = ROOT / ".ccc" / "phases"
+    phases_dir = get_workspace() / ".ccc" / "phases"
     phases_dir.mkdir(parents=True, exist_ok=True)
 
     phases_tmp = phases_dir / f".{task_id}.phases.tmp"
@@ -1785,11 +1199,11 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     prompt = (
         "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
         "## Plan 验收清单\n"
-        f"{plan_text[:3000]}\n\n"
+        f"{plan_text[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"
-        f"```\n{diff_stat[:2000]}\n```\n\n"
+        f"```\n{diff_stat[:4000]}\n```\n\n"
         "## 改动详情 (git diff)\n"
-        f"```\n{full_diff[:8000]}\n```\n\n"
+        f"```\n{full_diff[:24000]}\n```\n\n"
         "## 审查清单（逐条核对）\n"
         "1. 数据流正确性（输入/输出/边界）\n"
         "2. 错误处理（异常/边界/资源泄漏）\n"
@@ -2305,7 +1719,7 @@ def dev_role() -> dict:
         _log.info("发现卡住任务 %s，准备重试", task_id)
 
         # 读 phases 里的 retry 计数 + retry_at（JSONL 格式，跳过 schema_version 元数据行）
-        phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
         retry = 0
         retry_at = None
         try:
@@ -2332,7 +1746,7 @@ def dev_role() -> dict:
             _log.debug("phases parse failed for %s: %s", task_id, exc)
 
         # ★ 退避前先检查 .done（防退避死锁）
-        _done_early = ROOT / ".ccc" / "pids" / f"{task_id}.done"
+        _done_early = get_workspace() / ".ccc" / "pids" / f"{task_id}.done"
         if _done_early.exists():
             _log.info("%s .done 存在，跳过退避直接处理结果", task_id)
         else:
@@ -2438,8 +1852,8 @@ def dev_role() -> dict:
         # 迭代 planned 任务，跳过缺 plan/phases 的（移入异常），处理第一个合法的
         for candidate in planned:
             cid = candidate["id"]
-            cplan = ROOT / ".ccc" / "plans" / f"{cid}.plan.md"
-            cphases = ROOT / ".ccc" / "phases" / f"{cid}.phases.json"
+            cplan = get_workspace() / ".ccc" / "plans" / f"{cid}.plan.md"
+            cphases = get_workspace() / ".ccc" / "phases" / f"{cid}.phases.json"
             if cplan.exists() and cphases.exists():
                 task = candidate
                 task_id = cid
@@ -2458,12 +1872,17 @@ def dev_role() -> dict:
             }
         move_task(task_id, "planned", "in_progress")
 
-    plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    plan = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
+    phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
 
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(phases_file, default=cfg.default_timeout)
-    phase_id = f"{task_id}-p1"
+    # F-PROMPT-01: 定位当前 phase（非硬编码 p1）
+    try:
+        _cur = _current_running_phase(task_id) or 1
+    except Exception:
+        _cur = 1
+    phase_id = f"{task_id}-p{_cur}"
 
     # 从 plan.md 生成 executor prompt
     plan_content = plan.read_text()
@@ -2499,18 +1918,22 @@ def dev_role() -> dict:
         )
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
-        f"## Plan\n\n{plan_content}\n\n"
+        f"## 当前 Phase（强制）\n"
+        f"- **只做 Phase {_cur}**，不得实现其他 phase 的需求\n"
+        f"- 不得修改不属于本 phase 白名单的文件\n"
+        f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n\n"
+        f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
         f"{size_hint}\n"
-        f"## 完成定义\n"
-        f"1. 实现所有需求\n"
-        f"2. 跑对应的测试（如有）\n"
-        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"## 完成定义（仅 Phase {_cur}）\n"
+        f"1. 仅实现 Phase {_cur} 对应需求\n"
+        f"2. 跑本 phase 相关测试（如有）\n"
+        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={_cur}`）\n"
         f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单\n"
+        f"5. 不超出 plan 文件白名单，且不提前做后续 phase\n"
     )
 
     # 写 prompt 文件到 .ccc/pids/（跟其他 task 文件一起清理，不泄漏）
-    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
     Path(prompt_file).write_text(prompt)
@@ -2523,10 +1946,10 @@ def dev_role() -> dict:
             timeout_s,
             retry if from_col == "in_progress" else 0,
         )
-        done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
-        exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
-        result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
-        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
+        done_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.done"
+        exitcode_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.exitcode"
+        result_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
+        pid_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.pid"
 
         # ❗.done 检查必须在 PID 检查之前
         # stale PID 被回收后 os.kill 返回成功，先查 .done 再查 PID
@@ -2535,7 +1958,7 @@ def dev_role() -> dict:
                 exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
             )
             result_raw = result_path.read_text() if result_path.exists() else "{}"
-            report_dir = ROOT / ".ccc" / "reports"
+            report_dir = get_workspace() / ".ccc" / "reports"
             report_dir.mkdir(parents=True, exist_ok=True)
             report_dir.joinpath(f"{task_id}.report.md").write_text(
                 f"# {task_id} 执行报告\n\n## 信息\n- Phase: {phase_id}\n"
@@ -2546,7 +1969,7 @@ def dev_role() -> dict:
                 exitcode_path,
                 pid_path,
                 result_path,
-                ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md",
+                get_workspace() / ".ccc" / "pids" / f"{task_id}.prompt.md",
             ]:
                 try:
                     p.unlink()
@@ -2586,7 +2009,7 @@ def dev_role() -> dict:
                 _log.debug("pid check parse failed for %s: %s", task_id, exc)
 
         # 启动 opencode（通过 runner.sh 持久化结果）
-        report_dir = ROOT / ".ccc" / "reports"
+        report_dir = get_workspace() / ".ccc" / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{task_id}.report.md"
 
@@ -2595,7 +2018,7 @@ def dev_role() -> dict:
                 str(CCC_HOME / "scripts" / "opencode-runner.sh"),
                 task_id,
                 str(CCC_HOME),
-                str(ROOT),
+                str(get_workspace()),
                 "--phase",
                 phase_id,
                 "--prompt",
@@ -2605,7 +2028,7 @@ def dev_role() -> dict:
             ],
             start_new_session=True,
         )
-        pid_dir = ROOT / ".ccc" / "pids"
+        pid_dir = get_workspace() / ".ccc" / "pids"
         pid_dir.mkdir(parents=True, exist_ok=True)
         pid_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
         report_path.write_text(
@@ -2625,10 +2048,10 @@ def dev_role() -> dict:
 
 
 def _is_path_in_root(p: Path) -> bool:
-    """检查解析后的路径是否在 ROOT 范围内，防止路径穿越 (CWE-22)"""
+    """检查解析后的路径是否在 get_workspace() 范围内，防止路径穿越 (CWE-22)"""
     try:
         resolved = p.resolve()
-        root_resolved = ROOT.resolve()
+        root_resolved = get_workspace().resolve()
         return root_resolved in resolved.parents or resolved == root_resolved
     except (OSError, RuntimeError):
         return False
@@ -2641,9 +2064,9 @@ def _parse_plan_scope(task_id: str) -> list[str]:
        新模板：## 范围 → - **只改文件**： → 后续 - file 行
        旧格式：## 文件白名单 → 直接 - file 行
 
-    安全：返回的路径均已校验在 ROOT 范围内，防止路径穿越 (CWE-22/94)。
+    安全：返回的路径均已校验在 get_workspace() 范围内，防止路径穿越 (CWE-22/94)。
     """
-    plan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    plan = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
     if not plan.exists():
         return []
     content = plan.read_text()
@@ -2714,10 +2137,10 @@ def _parse_plan_scope(task_id: str) -> list[str]:
                 f = _clean(stripped[2:])
                 if f and not f.startswith("不"):
                     files.append(f)
-    # 安全校验：过滤掉穿越 ROOT 的路径 (CWE-22)
+    # 安全校验：过滤掉穿越 get_workspace() 的路径 (CWE-22)
     validated = []
     for f in files:
-        candidate = ROOT / f
+        candidate = get_workspace() / f
         if _is_path_in_root(candidate):
             validated.append(f)
     return validated
@@ -2880,11 +2303,11 @@ def _review_with_llm(
     prompt = (
         "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
         "## Plan 验收清单\n"
-        f"{plan_text[:3000]}\n\n"
+        f"{plan_text[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"
-        f"```\n{diff_stat[:2000]}\n```\n\n"
+        f"```\n{diff_stat[:4000]}\n```\n\n"
         "## 改动详情 (git diff)\n"
-        f"```\n{full_diff[:8000]}\n```\n\n"
+        f"```\n{full_diff[:24000]}\n```\n\n"
         "## 审查清单（逐条核对）\n"
         "1. 数据流正确性（输入/输出/边界）\n"
         "2. 错误处理（异常/边界/资源泄漏）\n"
@@ -3129,7 +2552,7 @@ def reviewer_role() -> dict:
     v0.24.5: medium/large fallback 路径强制 quarantine（A24-03/A24-04 防 v0.23 G2 bypass 复发）
     """
     moved = []
-    lock_dir = ROOT / ".ccc" / "review-locks"
+    lock_dir = get_workspace() / ".ccc" / "review-locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
     for task in list_tasks("testing"):
         task_id = task["id"]
@@ -3168,11 +2591,11 @@ def _review_one_task(task_id: str) -> bool:
     task = next((t for t in list_tasks("testing") if t["id"] == task_id), None)
     if task is None:
         return False
-    plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+    plan_file = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
     plan_text = plan_file.read_text() if plan_file.exists() else ""
 
     # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
-    diff_stat, full_diff = _get_git_diff(ROOT, task_id=task_id)
+    diff_stat, full_diff = _get_git_diff(get_workspace(), task_id=task_id)
 
     # v0.24.1: 按变更量分级，决定是否需要 LLM
     size_class, total_lines = _classify_review_size(diff_stat)
@@ -3189,7 +2612,7 @@ def _review_one_task(task_id: str) -> bool:
     _log.info("[reviewer] %s size=%s lines=%s", task_id, size_class, total_lines)
 
     # 写审查报告（共用目录）
-    report_dir = ROOT / ".ccc" / "reports"
+    report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     review_md = report_dir / f"{task_id}.review.md"
 
@@ -3197,12 +2620,12 @@ def _review_one_task(task_id: str) -> bool:
     if size_class == "small":
         files = _parse_plan_scope(task_id)
         if not files:
-            files = [str(p) for p in (ROOT / "scripts").rglob("*.py")]
+            files = [str(p) for p in (get_workspace() / "scripts").rglob("*.py")]
         import glob as _glob
 
         py_files = []
         for f in files:
-            matched = _glob.glob(str(ROOT / f)) if "*" in f else [str(ROOT / f)]
+            matched = _glob.glob(str(get_workspace() / f)) if "*" in f else [str(get_workspace() / f)]
             matched = [m for m in matched if _is_path_in_root(Path(m))]
             py_files.extend(matched)
         py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
@@ -3270,7 +2693,7 @@ def _review_one_task(task_id: str) -> bool:
     )
 
     # 写 verdict 文件（Engine _verdict_is_valid 检查此文件）
-    verdict_dir = ROOT / ".ccc" / "verdicts"
+    verdict_dir = get_workspace() / ".ccc" / "verdicts"
     verdict_dir.mkdir(parents=True, exist_ok=True)
     verdict_path = verdict_dir / f"{task_id}.verdict.md"
     verdict_path.write_text(
@@ -3350,7 +2773,7 @@ def tester_role() -> dict:
     moved = []
     for task in list_tasks("testing"):
         task_id = task["id"]
-        plan_file = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
+        plan_file = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
         verify_commands = []
         if plan_file.exists():
             content = plan_file.read_text()
@@ -3372,11 +2795,11 @@ def tester_role() -> dict:
         # fallback: 如果没有验收项，跑 pytest
         if not verify_commands:
             verify_commands = [
-                f"python3 -m pytest {ROOT / 'tests' / 'scripts'} -q --tb=line --timeout=60"
+                f"python3 -m pytest {get_workspace() / 'tests' / 'scripts'} -q --tb=line --timeout=60"
             ]
 
         # 强制 baseline（v0.21.3）：项目有 tests/ 时追加 pytest + 覆盖率门槛
-        has_pyproject = (ROOT / "pyproject.toml").exists()
+        has_pyproject = (get_workspace() / "pyproject.toml").exists()
         if has_pyproject and not any("pytest" in c for c in verify_commands):
             verify_commands.append(
                 "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
@@ -3392,7 +2815,7 @@ def tester_role() -> dict:
                 capture_output=True,
                 text=True,
                 timeout=cfg.exec_timeout,
-                cwd=ROOT,
+                cwd=get_workspace(),
             )
             if r.returncode != 0:
                 all_ok = False
@@ -3447,7 +2870,7 @@ def ops_role() -> dict:
             _log.warning(
                 "ops stale timestamp parse failed for %s: %s", task.get("id"), e
             )
-    pid_dir = ROOT / ".ccc" / "pids"
+    pid_dir = get_workspace() / ".ccc" / "pids"
     if pid_dir.exists():
         for f in pid_dir.glob("*.pid"):
             try:
@@ -3475,10 +2898,10 @@ def ops_role() -> dict:
     import subprocess as sp
 
     for proj in [
-        ROOT,
-        ROOT.parent / "qx-observer",
-        ROOT.parent / "xianyu",
-        ROOT.parent / "projects" / "qx",
+        get_workspace(),
+        get_workspace().parent / "qx-observer",
+        get_workspace().parent / "xianyu",
+        get_workspace().parent / "projects" / "qx",
     ]:
         if (proj / ".git").exists():
             r = sp.run(
@@ -3518,7 +2941,7 @@ def ops_role() -> dict:
                 _lf.unlink(missing_ok=True)
 
     # 6. 指标收集 → .ccc/metrics.json
-    pid_dir = ROOT / ".ccc" / "pids"
+    pid_dir = get_workspace() / ".ccc" / "pids"
     metrics = {
         "updated_at": now_iso(),
         "tasks_in_flight": len(list_tasks("in_progress")) + len(list_tasks("testing")),
@@ -3527,7 +2950,7 @@ def ops_role() -> dict:
         "alerts_today": len(list((Path.home() / ".ccc" / "alerts").glob("*-L*.md"))),
         "launchd_missing": health["launchd_missing"],
     }
-    metrics_file = ROOT / ".ccc" / "metrics.json"
+    metrics_file = get_workspace() / ".ccc" / "metrics.json"
     metrics_file.write_text(json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
 
     return {"role": "ops", "health": health}
@@ -3568,8 +2991,8 @@ def kb_role() -> dict:
 
         # ── Step 1: 版本 bump + CHANGELOG ──
         try:
-            new_ver = _bump_version(ROOT)
-            _append_changelog(ROOT, task_id, new_ver)
+            new_ver = _bump_version(get_workspace())
+            _append_changelog(get_workspace(), task_id, new_ver)
         except Exception as exc:
             _log.warning("version bump failed, skipping tag: %s", exc)
             new_ver = "unknown"
@@ -3585,19 +3008,19 @@ def kb_role() -> dict:
                     "-m",
                     f"{new_ver}: {task_id} 发布",
                 ],
-                cwd=ROOT,
+                cwd=get_workspace(),
                 capture_output=True,
                 timeout=10,
             )
             push_r = sp.run(
                 ["git", "push", "origin", new_ver],
-                cwd=ROOT,
+                cwd=get_workspace(),
                 capture_output=True,
                 timeout=30,
             )
             if push_r.returncode != 0:
                 _log.error("[kb] %s push tag 失败 rc={push_r.returncode}", task_id)
-                fail_log = ROOT / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                fail_log = get_workspace() / ".ccc" / "reports" / f"{task_id}.push-fail.md"
                 fail_log.write_text(
                     f"# {task_id} push tag 失败\n\n"
                     f"rc={push_r.returncode}\n"
@@ -3606,11 +3029,11 @@ def kb_role() -> dict:
                 continue
 
         # ── Step 3: 收集 AGENTS.md 建议 ──
-        report_file = ROOT / ".ccc" / "reports" / f"{task_id}.report.md"
+        report_file = get_workspace() / ".ccc" / "reports" / f"{task_id}.report.md"
         all_suggestions.extend(
             _extract_agents_suggestions(report_file, task_id, source="dev")
         )
-        verdict_file = ROOT / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
+        verdict_file = get_workspace() / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
         all_suggestions.extend(
             _extract_agents_suggestions(verdict_file, task_id, source="reviewer")
         )
@@ -3629,8 +3052,8 @@ def kb_role() -> dict:
                 seen.add(key)
                 unique.append(s)
 
-        pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
-        template_file = ROOT / "templates" / "pending-agents-suggestions.md"
+        pending_file = get_workspace() / ".ccc" / "pending-agents-suggestions.md"
+        template_file = get_workspace() / "templates" / "pending-agents-suggestions.md"
 
         new_blocks: list[str] = []
         now_str = now_iso()[:10]
@@ -4025,7 +3448,7 @@ def regress_role() -> dict:
         return {"role": "regress", "info": "无已发布任务", "results": results}
 
     today = date.today().isoformat()
-    scripts_dir = ROOT / "scripts"
+    scripts_dir = get_workspace() / "scripts"
     # v0.28.0 (N-004): scripts_dir 不存在时 rglob 返回空（不抛错）→ py_ok=True 假阳性。
     # 显式检查目录存在，缺失则降级：跳过 py_compile 标记 unknown，循环内按 unknown 处理。
     py_files: list[Path] = []
@@ -4076,7 +3499,7 @@ def regress_role() -> dict:
         diff_ok = True
         r = sp.run(
             ["git", "diff", "HEAD", "--stat"],
-            cwd=ROOT,
+            cwd=get_workspace(),
             capture_output=True,
             text=True,
             timeout=10,
@@ -4101,7 +3524,7 @@ def regress_role() -> dict:
             results["regressions"].append(bug_id)
             _log.info("[regress] ✗ %s → %s", tid, bug_id)
             # 把原任务移回 backlog 并加 regression 标签
-            src_path = BOARD / "released" / f"{tid}.jsonl"
+            src_path = board_dir() / "released" / f"{tid}.jsonl"
             if src_path.exists():
                 _lines = src_path.read_text().split("\n")
                 for _i, _line in enumerate(_lines):
@@ -4137,7 +3560,7 @@ def regress_role() -> dict:
             )
 
     # 写回测日报
-    report_dir = ROOT / ".ccc" / "reports"
+    report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report = report_dir / f"regression-{today}.md"
     report.write_text(
@@ -4159,7 +3582,7 @@ def approve_agents() -> dict:
     """人类审批: 读 pending-agents-suggestions.md → 追加到 .ccc/AGENTS.md"""
     import re
 
-    pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
+    pending_file = get_workspace() / ".ccc" / "pending-agents-suggestions.md"
     if not pending_file.exists():
         msg = f"[approve-agents] 无待审批建议文件: {pending_file}"
         _log.info(msg)
@@ -4203,12 +3626,12 @@ def approve_agents() -> dict:
         return {"role": "approve-agents", "approved": 0, "info": "nothing new"}
 
     # 写入/追加 .ccc/AGENTS.md
-    agents_file = ROOT / ".ccc" / "AGENTS.md"
+    agents_file = get_workspace() / ".ccc" / "AGENTS.md"
     if not agents_file.exists():
-        template_file = ROOT / "templates" / "AGENTS.md"
+        template_file = get_workspace() / "templates" / "AGENTS.md"
         if template_file.exists():
             agents_content = template_file.read_text()
-            profile_file = ROOT / ".ccc" / "profile.md"
+            profile_file = get_workspace() / ".ccc" / "profile.md"
             if profile_file.exists():
                 pf = profile_file.read_text()
                 name_m = re.search(r"项目名[：:]\s*(.+)", pf)
@@ -4216,7 +3639,7 @@ def approve_agents() -> dict:
                     agents_content = agents_content.replace(
                         "{{PROJECT_NAME}}", name_m.group(1).strip()
                     )
-            agents_content = agents_content.replace("{{PROJECT_PATH}}", str(ROOT))
+            agents_content = agents_content.replace("{{PROJECT_PATH}}", str(get_workspace()))
             agents_content = agents_content.replace(
                 "{{PRIMARY_LANGUAGE}}", "Python+Bash"
             )
@@ -4287,12 +3710,12 @@ def auto_approve_agents() -> dict:
     import re
     import json as _json
 
-    pending_file = ROOT / ".ccc" / "pending-agents-suggestions.md"
+    pending_file = get_workspace() / ".ccc" / "pending-agents-suggestions.md"
     if not pending_file.exists():
         return {"role": "auto-approve-agents", "approved": 0, "info": "no pending file"}
 
     # 读冷却文件
-    cooldown_file = ROOT / _AUTO_APPROVE_COOLDOWN_FILE
+    cooldown_file = get_workspace() / _AUTO_APPROVE_COOLDOWN_FILE
     cooldown: dict[str, str] = {}  # task_id → last_approved_date
     if cooldown_file.exists():
         try:
@@ -4304,7 +3727,7 @@ def auto_approve_agents() -> dict:
     today = now_iso()[:10]
 
     # 读 AGENTS.md 用于重复检测
-    agents_file = ROOT / ".ccc" / "AGENTS.md"
+    agents_file = get_workspace() / ".ccc" / "AGENTS.md"
     existing_text = agents_file.read_text() if agents_file.exists() else ""
 
     content = pending_file.read_text()
@@ -4388,7 +3811,7 @@ def auto_approve_agents() -> dict:
 
     # 创建 AGENTS.md（如不存在）
     if not agents_file.exists():
-        template_file = ROOT / "templates" / "AGENTS.md"
+        template_file = get_workspace() / "templates" / "AGENTS.md"
         agents_content = (
             template_file.read_text()
             if template_file.exists()
@@ -4507,8 +3930,8 @@ def dev_role_launch(task_id: str) -> dict:
     if not task:
         return {"error": f"task '{task_id}' not in planned", "task_id": task_id}
 
-    cplan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
-    cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    cplan = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
+    cphases = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not cplan.exists() or not cphases.exists():
         _quarantine(task_id, "engine: 缺 plan 或 phases 文件")
         return {
@@ -4534,21 +3957,25 @@ def dev_role_launch(task_id: str) -> dict:
     plan_content = cplan.read_text()
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
-        f"## Plan\n\n{plan_content}\n\n"
-        f"## 完成定义\n"
-        f"1. 实现所有需求\n"
-        f"2. 跑对应的测试（如有）\n"
-        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"## 当前 Phase（强制）\n"
+        f"- **只做 Phase {cur_phase}**，不得实现其他 phase 的需求\n"
+        f"- 不得修改不属于本 phase 白名单的文件\n"
+        f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n\n"
+        f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
+        f"## 完成定义（仅 Phase {cur_phase}）\n"
+        f"1. 仅实现 Phase {cur_phase} 对应需求\n"
+        f"2. 跑本 phase 相关测试（如有）\n"
+        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={cur_phase}`）\n"
         f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单\n"
+        f"5. 不超出 plan 文件白名单，且不提前做后续 phase\n"
     )
 
-    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
     Path(prompt_file).write_text(prompt)
 
-    report_dir = ROOT / ".ccc" / "reports"
+    report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     import subprocess as sp
@@ -4558,7 +3985,7 @@ def dev_role_launch(task_id: str) -> dict:
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
             str(CCC_HOME),  # $2: CCC_HOME（opencode-exec.py 所在目录）
-            str(ROOT),  # $3: ROOT_DIR（结果文件写到 workspace）
+            str(get_workspace()),  # $3: ROOT_DIR（结果文件写到 workspace）
             "--phase",
             phase_id,
             "--prompt",
@@ -4566,7 +3993,7 @@ def dev_role_launch(task_id: str) -> dict:
             "--timeout",
             str(timeout_s),
             "--cwd",
-            str(ROOT),  # opencode 工作目录 = workspace
+            str(get_workspace()),  # opencode 工作目录 = workspace
         ],
         start_new_session=True,
     )
@@ -4592,14 +4019,14 @@ def dev_role_relaunch(task_id: str) -> dict:
     """
 
     task_id = sanitize_id(task_id)
-    cplan = ROOT / ".ccc" / "plans" / f"{task_id}.plan.md"
-    cphases = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    cplan = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
+    cphases = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not cplan.exists() or not cphases.exists():
         _quarantine(task_id, "engine relaunch: 缺 plan 或 phases 文件")
         return {"error": f"task '{task_id}' missing plan/phases", "task_id": task_id}
 
     # 清理旧的标记文件
-    pids_dir = ROOT / ".ccc" / "pids"
+    pids_dir = get_workspace() / ".ccc" / "pids"
     for suffix in [".done", ".exitcode", ".pid", ".prompt.md", ".result.json"]:
         f = pids_dir / f"{task_id}{suffix}"
         if f.exists():
@@ -4608,7 +4035,7 @@ def dev_role_relaunch(task_id: str) -> dict:
             except OSError as e:
                 _log.warning("relaunch marker unlink failed %s: %s", f, e)
         # 也检查 reports/
-        f2 = ROOT / ".ccc" / "reports" / f"{task_id}{suffix}"
+        f2 = get_workspace() / ".ccc" / "reports" / f"{task_id}{suffix}"
         if f2.exists():
             try:
                 f2.unlink()
@@ -4627,20 +4054,24 @@ def dev_role_relaunch(task_id: str) -> dict:
     plan_content = cplan.read_text()
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
-        f"## Plan\n\n{plan_content}\n\n"
-        f"## 完成定义\n"
-        f"1. 实现所有需求\n"
-        f"2. 跑对应的测试（如有）\n"
-        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
+        f"## 当前 Phase（强制）\n"
+        f"- **只做 Phase {cur_phase}**，不得实现其他 phase 的需求\n"
+        f"- 不得修改不属于本 phase 白名单的文件\n"
+        f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n\n"
+        f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
+        f"## 完成定义（仅 Phase {cur_phase}）\n"
+        f"1. 仅实现 Phase {cur_phase} 对应需求\n"
+        f"2. 跑本 phase 相关测试（如有）\n"
+        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={cur_phase}`）\n"
         f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单\n"
+        f"5. 不超出 plan 文件白名单，且不提前做后续 phase\n"
     )
 
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
     Path(prompt_file).write_text(prompt)
 
-    report_dir = ROOT / ".ccc" / "reports"
+    report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     import subprocess as sp
@@ -4650,7 +4081,7 @@ def dev_role_relaunch(task_id: str) -> dict:
             str(CCC_HOME / "scripts" / "opencode-runner.sh"),
             task_id,
             str(CCC_HOME),  # $2: CCC_HOME
-            str(ROOT),  # $3: ROOT_DIR
+            str(get_workspace()),  # $3: ROOT_DIR
             "--phase",
             phase_id,
             "--prompt",
@@ -4658,7 +4089,7 @@ def dev_role_relaunch(task_id: str) -> dict:
             "--timeout",
             str(timeout_s),
             "--cwd",
-            str(ROOT),
+            str(get_workspace()),
         ],
         start_new_session=True,
     )
@@ -4694,10 +4125,10 @@ def dev_role_check_complete(task_id: str) -> dict:
     if not any(t["id"] == task_id for t in in_prog):
         return {"status": "not_found", "task_id": task_id}
 
-    done_path = ROOT / ".ccc" / "pids" / f"{task_id}.done"
+    done_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.done"
     if not done_path.exists():
         # G4: 检查 PID 是否存活（重启后 .pid 可能指向已死进程）
-        pid_path = ROOT / ".ccc" / "pids" / f"{task_id}.pid"
+        pid_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.pid"
         if pid_path.exists():
             try:
                 pid = int(pid_path.read_text().strip())
@@ -4708,7 +4139,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                 for f in [
                     pid_path,
                     done_path,
-                    ROOT / ".ccc" / "pids" / f"{task_id}.exitcode",
+                    get_workspace() / ".ccc" / "pids" / f"{task_id}.exitcode",
                 ]:
                     try:
                         f.unlink()
@@ -4720,17 +4151,17 @@ def dev_role_check_complete(task_id: str) -> dict:
         _log.warning("%s 没有 .done 也没有 .pid 标记，视同失败让 engine 重启", task_id)
         return {"status": "failed", "retry": 0, "task_id": task_id}
 
-    exitcode_path = ROOT / ".ccc" / "pids" / f"{task_id}.exitcode"
-    result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
+    exitcode_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.exitcode"
+    result_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
     exit_code = exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
     result_raw = result_path.read_text() if result_path.exists() else "{}"
 
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
     cur_phase = _current_running_phase(task_id)
     # engine-phase-retry-config: 从 phases.json 读 timeout 用于日志输出
     timeout_s = _load_timeout(phases_file, default=cfg.default_timeout)
 
-    report_dir = ROOT / ".ccc" / "reports"
+    report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_dir.joinpath(f"{task_id}.report.md").write_text(
         f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
@@ -4741,14 +4172,14 @@ def dev_role_check_complete(task_id: str) -> dict:
     marker_files = [
         done_path,
         exitcode_path,
-        ROOT / ".ccc" / "pids" / f"{task_id}.pid",
-        ROOT / ".ccc" / "pids" / f"{task_id}.prompt.md",
+        get_workspace() / ".ccc" / "pids" / f"{task_id}.pid",
+        get_workspace() / ".ccc" / "pids" / f"{task_id}.prompt.md",
         result_path,
     ]
 
     if exit_code == "0":
         # v0.30.0: 空报告门禁 — exit_code=0 但报告空或过短，视同失败
-        _result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
+        _result_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
         if _result_path.exists():
             _result_raw = _result_path.read_text()
             if len(_result_raw.strip()) < 50:
@@ -4766,7 +4197,7 @@ def dev_role_check_complete(task_id: str) -> dict:
         # G1: 记录 task 关联 commit hash 到 phases.json（供 reviewer 按 task 过滤 diff）
         # 优先: git log --grep=task_id（post-exec.sh 已在 commit 消息包含 task_id）
         # 降级: git rev-parse HEAD
-        _phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+        _phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
         if _phases_file.exists():
             try:
                 import subprocess as _sp
@@ -4783,7 +4214,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                         "--format=%H",
                         "--max-count=1",
                     ],
-                    cwd=ROOT,
+                    cwd=get_workspace(),
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -4793,7 +4224,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                 else:
                     _r = _sp.run(
                         ["git", "rev-parse", "HEAD"],
-                        cwd=ROOT,
+                        cwd=get_workspace(),
                         capture_output=True,
                         text=True,
                         timeout=10,

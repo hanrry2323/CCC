@@ -73,16 +73,18 @@ class TestEnginePhaseDependencyChain:
 
     def test_phase_all_terminal(self):
         """全部 phase 失败或完成时，_check_phase_failures 返回 all_terminal=True。"""
+        import board.phase as phase_mod
+
         phases = [
             {"phase": 1, "status": "done", "depends_on": []},
             {"phase": 2, "status": "failed", "depends_on": []},
             {"phase": 3, "status": "skipped", "depends_on": [2]},
         ]
         with (
-            patch.object(ccc_board, "_load_phases", return_value=phases),
-            patch.object(ccc_board, "_apply_phase_status_updates", return_value=None),
-            patch.object(ccc_board, "_read_engine_iter", return_value=0),
-            patch.object(ccc_board, "_write_engine_iter", return_value=None),
+            patch.object(phase_mod, "_load_phases", return_value=phases),
+            patch.object(phase_mod, "_apply_phase_status_updates", return_value=None),
+            patch.object(phase_mod, "_read_engine_iter", return_value=0),
+            patch.object(phase_mod, "_write_engine_iter", return_value=None),
         ):
             result = _check_phase_failures("dummy-task")
         assert result["all_terminal"] is True

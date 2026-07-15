@@ -91,12 +91,83 @@ _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
 MAX_CONCURRENT = 3
 
-# v0.30.0: 全局 opencode 并发计数（限制子进程数）
-_GLOBAL_OPENCODE_COUNT = 0
+# v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
 _GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
+
+
+def _opencode_slots_path() -> Path:
+    """共享槽位状态文件（测试可设 CCC_OPENCODE_SLOTS_FILE）。"""
+    from board.slots import default_state_path
+
+    return default_state_path()
+
+
+def _global_opencode_count() -> int:
+    from board.slots import snapshot
+
+    return int(snapshot(_opencode_slots_path()).get("count") or 0)
+
+
+class _OpenCodeCountProxy:
+    """日志友好的实时计数代理（跨进程快照）。"""
+
+    def __int__(self) -> int:
+        return _global_opencode_count()
+
+    def __index__(self) -> int:
+        return _global_opencode_count()
+
+    def __format__(self, spec: str) -> str:
+        return format(_global_opencode_count(), spec)
+
+    def __repr__(self) -> str:
+        return str(_global_opencode_count())
+
+    def __str__(self) -> str:
+        return str(_global_opencode_count())
+
+    def __eq__(self, other: object) -> bool:
+        return _global_opencode_count() == other
+
+    def __lt__(self, other: object) -> bool:
+        return _global_opencode_count() < other  # type: ignore[operator]
+
+
+_GLOBAL_OPENCODE_COUNT = _OpenCodeCountProxy()
 
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
+
+
+def _try_acquire_opencode_slot(task_key: str) -> bool:
+    """F-CON-01 + Phase 2: 跨进程/线程安全获取 1 个 opencode 槽位。"""
+    from board.slots import try_acquire
+
+    return try_acquire(
+        task_key,
+        max_slots=_GLOBAL_OPENCODE_MAX,
+        state_path=_opencode_slots_path(),
+    )
+
+
+def _release_opencode_slot(task_key: str, n: int | None = None) -> int:
+    """F-CON-01/02 + Phase 2: 释放 task 持有的槽位。n=None 表示全部释放。"""
+    from board.slots import release
+
+    return release(task_key, n, state_path=_opencode_slots_path())
+
+
+def _drop_active_task_and_slots(
+    active_tasks: dict[str, dict] | None, task_key: str
+) -> None:
+    """F-CON-02: quarantine/完成时统一释放槽位并从 active_tasks 移除。"""
+    released = _release_opencode_slot(task_key)
+    if active_tasks is not None and task_key in active_tasks:
+        active_tasks.pop(task_key, None)
+        _save_active_tasks(active_tasks)
+    if released:
+        engine_log(f"[slot] released {released} opencode slot(s) for {task_key}")
+
 
 # ---------- 上游健康检测 ----------
 _upstream_health_cache: dict = {}  # {"healthy": bool, "checked_at": float}
@@ -206,10 +277,38 @@ _last_empty_replenish: dict[str, float] = {}
 # v0.31+: hang 自动重启（plan: executor-auto-restart）
 _MAX_HANG_RETRY = 2  # 单个 task 最多自动重启 hung 的次数
 _hang_retry_counter: dict[str, int] = {}  # task_key -> retry count
+_HANG_COUNTER_FILE = Path.home() / ".ccc" / "engine-hang-retries.json"
+
+
+def _load_hang_retry_counter() -> None:
+    """F-ARCH-01: 从磁盘恢复 hang 重试计数。"""
+    global _hang_retry_counter
+    try:
+        if _HANG_COUNTER_FILE.is_file():
+            data = json.loads(_HANG_COUNTER_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _hang_retry_counter = {str(k): int(v) for k, v in data.items()}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        _hang_retry_counter = {}
+
+
+def _save_hang_retry_counter() -> None:
+    """F-ARCH-01: 持久化 hang 重试计数。"""
+    try:
+        _HANG_COUNTER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _HANG_COUNTER_FILE.write_text(
+            json.dumps(_hang_retry_counter, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
 
 # v0.31+: hang 检测（plan: executor-hang-detection）
 # Phase 4 of the pipeline: detect → write .hung → Phase 5 consumes it.
 _HANG_CHECK_INTERVAL_SEC = 300  # 5 分钟无活动判定为 hung
+# F-FLOW-04: busy-loop 互补 — CPU>0 但超过此秒数仍视为 hung（stale 默认已缩短至 2h）
+_HANG_BUSY_MAX_SEC = 3600
 
 
 def now_iso() -> str:
@@ -277,8 +376,9 @@ def _quarantine_with_notify(
     reason: str,
     store: FileBoardStore | None = None,
     phase: int = 1,
+    active_tasks: dict[str, dict] | None = None,
 ) -> None:
-    """移入 abnormal 并触发桌面通知。"""
+    """移入 abnormal 并触发桌面通知。F-CON-02: 同时释放 opencode 槽位。"""
     _activate_workspace(ws)
     if store is None:
         store = _get_store(ws)
@@ -286,6 +386,8 @@ def _quarantine_with_notify(
     _log_stats(ws, "quarantine", tid, reason=reason)
     _ccc_notify("CCC", f"任务 {tid} 进入异常状态，原因：{reason}")
     store.update_index()
+    # F-CON-02: 释放该 task 全部槽位
+    _drop_active_task_and_slots(active_tasks, _task_key(ws, tid))
     # v0.31: 记录教训
     try:
         from _lessons import record_failure
@@ -342,14 +444,18 @@ def _task_key(ws: Path, tid: str) -> str:
     return f"{ws.resolve()}|{tid}"
 
 
+_workspace_switch_lock = threading.RLock()
+
+
 def _activate_workspace(ws: Path) -> Path:
-    """切换当前 workspace：env + ccc-board lazy 缓存 + ROOT 补丁。"""
+    """切换当前 workspace：env + ContextVar + lazy 缓存重置。
+
+    F-CON-03 Phase 2: workspace 经 set_workspace()（废除模块级 ROOT 补丁）。
+    """
     ws = ws.resolve()
-    os.environ["CCC_WORKSPACE"] = str(ws)
-    ccc_board._reset_lazy()
-    ccc_board.ROOT = ws
-    ccc_board.BOARD = ws / ".ccc" / "board"
-    ccc_board.EVENTS_DIR = ccc_board.BOARD / "events"
+    with _workspace_switch_lock:
+        ccc_board.set_workspace(ws)
+        ccc_board._reset_lazy()
     return ws
 
 
@@ -517,15 +623,48 @@ def _clear_verdict(ws: Path, tid: str) -> None:
         pass
 
 
+_PYTEST_FAIL_MAX = 3  # F-FLOW-01: pytest 连续失败上限 → abnormal
+
+
+def _parse_verdict_status(content: str) -> str | None:
+    """F-FLOW-03: 从 verdict 文件解析 **Verdict:** 字段，不使用裸子串。"""
+    for line in content.splitlines():
+        stripped = line.strip()
+        low = stripped.lower()
+        if low.startswith("**verdict:**") or low.startswith("verdict:"):
+            raw = stripped.split(":", 1)[1].strip().strip("*").strip()
+            return raw.split()[0].upper() if raw else None
+    return None
+
+
 def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。
 
     v0.31+: 超时情形 engine 层自动重试（不 quarantine），
     reviewer_retry_on_timeout 次超时后再 quarantine。
+    F-FLOW-02: complexity=small 跳过 reviewer+tester，直通 verified（写简短 verdict）。
     """
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
+
+    # F-FLOW-02: small complexity → skip LLM gate
+    task_meta = next((t for t in store.list_tasks("testing") if t["id"] == tid), None)
+    if task_meta and task_meta.get("complexity") == "small":
+        verdict_dir = ws / ".ccc" / "verdicts"
+        verdict_dir.mkdir(parents=True, exist_ok=True)
+        (verdict_dir / f"{tid}.verdict.md").write_text(
+            f"# {tid} Verdict\n\n**Verdict:** PASS\n\n"
+            f"complexity=small: skipped reviewer+tester per STARTUP-BRIEF\n",
+            encoding="utf-8",
+        )
+        col = _find_task_column(store, tid)
+        if col == "testing":
+            store.move_task(tid, "testing", "verified")
+            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
+        store.update_index()
+        engine_log(f"[{label}] {tid} complexity=small → verified (skip gate)")
+        return _find_task_column(store, tid) == "verified"
 
     timeout_retries = cfg.reviewer_retry_on_timeout
     timeout_count = 0
@@ -584,26 +723,63 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         _log_stats(ws, "pytest", tid, exit_code=exit_code, output_len=len(output))
         if exit_code != 0:
             _record_pytest_failure(ws, tid, exit_code, output)
+            # F-FLOW-01: 连续失败计数 → abnormal
+            pids_dir = ws / ".ccc" / "pids"
+            pids_dir.mkdir(parents=True, exist_ok=True)
+            fail_marker = pids_dir / f"{tid}.pytest_fails"
+            try:
+                fails = int(fail_marker.read_text().strip() or "0")
+            except (OSError, ValueError):
+                fails = 0
+            fails += 1
+            fail_marker.write_text(str(fails))
+            if fails >= _PYTEST_FAIL_MAX:
+                engine_log(
+                    f"[{label}] {tid} pytest 连续失败 {fails}/{_PYTEST_FAIL_MAX} → abnormal"
+                )
+                cur_phase = _current_running_phase(tid)
+                _quarantine_with_notify(
+                    ws,
+                    tid,
+                    f"pytest 连续失败 {fails} 次 (exit={exit_code})",
+                    store,
+                    phase=cur_phase,
+                )
+                try:
+                    fail_marker.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return False
             engine_log(
-                f"[{label}] {tid} pytest 失败 (exit={exit_code})，留在 testing 等待人工确认"
+                f"[{label}] {tid} pytest 失败 (exit={exit_code}) "
+                f"count={fails}/{_PYTEST_FAIL_MAX}，留在 testing"
             )
             _ccc_notify(
-                "CCC", f"任务 {tid} pytest 未通过 (exit={exit_code})，已留在 testing"
+                "CCC",
+                f"任务 {tid} pytest 未通过 (exit={exit_code}) "
+                f"{fails}/{_PYTEST_FAIL_MAX}",
             )
             store.update_index()
             return False
+        # 成功则清计数
+        fail_marker = ws / ".ccc" / "pids" / f"{tid}.pytest_fails"
+        try:
+            fail_marker.unlink(missing_ok=True)
+        except OSError:
+            pass
     else:
         engine_log(f"[{label}] {tid} 无 tests/ 目录，跳过 engine pytest")
 
-    # v0.30.0: Verdict 门禁 — FAIL/FALLBACK 触发回滚
+    # F-FLOW-03: 结构化 Verdict 字段，禁止裸子串
     if _verdict_is_valid(ws, tid):
         _vf = _verdict_file(ws, tid)
         try:
             _vcontent = _vf.read_text()
-            if "FAIL" in _vcontent or "FALLBACK" in _vcontent:
+            status = _parse_verdict_status(_vcontent)
+            if status in ("FAIL", "FALLBACK", "QUARANTINED"):
                 engine_log(
                     f"[verdict-gate] [{_ws_label(ws)}] {tid} "
-                    "verdict FAIL/FALLBACK — 触发回滚"
+                    f"verdict={status} — 触发回滚"
                 )
                 _reverted = _revert_task_commit(ws, tid)
                 store.move_task(tid, "testing", "planned")
@@ -1122,17 +1298,10 @@ def _phase_to_pgroup(p: int) -> str:
 
 
 def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
-    """构造单 phase 的 prompt（与 ccc-board.dev_role_launch 相同模板，确保 dev 行为一致）。"""
-    return (
-        f"# CCC 执行任务: {task_id}\n\n"
-        f"## Plan\n\n{plan_content}\n\n"
-        f"## 完成定义\n"
-        f"1. 实现所有需求\n"
-        f"2. 跑对应的测试（如有）\n"
-        f"3. 提交一个 commit（message 以 {task_id} 开头）\n"
-        f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单\n"
-    )
+    """构造单 phase 的 prompt（委托 board.prompt，与 ccc-board 共用）。"""
+    from board.prompt import build_dev_phase_prompt
+
+    return build_dev_phase_prompt(task_id, phase_num, plan_content)
 
 
 def _launch_parallel_phase(
@@ -1164,14 +1333,13 @@ def _launch_parallel_phase(
         # 用 phase_id = subid 命名 opencode-runner.sh 的输出 marker
         # opencode-runner.sh 内部会写 ${PID_DIR}/${TASK_ID}.{done,exitcode}
         # 这里 TASK_ID 用 subid，故 marker 也隔离。
-        global _GLOBAL_OPENCODE_COUNT
-        if _GLOBAL_OPENCODE_COUNT >= _GLOBAL_OPENCODE_MAX:
+        tkey = _task_key(ws, task_id)
+        if not _try_acquire_opencode_slot(tkey):
             engine_log(
                 f"[engine] 全局 opencode 已达上限 "
                 f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
             )
             return None
-        _GLOBAL_OPENCODE_COUNT += 1
         try:
             proc = _sp.Popen(
                 [
@@ -1196,7 +1364,7 @@ def _launch_parallel_phase(
                 env=_sanitized_env(),
             )
         except Exception:
-            _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - 1)
+            _release_opencode_slot(tkey, 1)
             raise
         pids_dir.joinpath(f"{subid}.pid").write_text(str(proc.pid))
         engine_log(
@@ -1353,6 +1521,18 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 continue
 
         complexity = task.get("complexity", "medium")
+        # F-FLOW-05: task 级 depends_on_tasks — 依赖未 released 则跳过
+        deps = task.get("depends_on_tasks") or []
+        if isinstance(deps, str):
+            deps = [deps]
+        if deps:
+            released_ids = {t["id"] for t in store.list_tasks("released")}
+            blocked = [d for d in deps if d not in released_ids]
+            if blocked:
+                engine_log(
+                    f"[{label}] {tid} 等待 task 依赖: {blocked}（未 released）"
+                )
+                continue
         engine_log(f"[{label}] 取新 task: {tid} (complexity={complexity})")
 
         # ── v0.28.2: 并行分支 ──
@@ -1391,17 +1571,16 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 # 并行启动失败 → 回退串行
                 engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
 
-        global _GLOBAL_OPENCODE_COUNT
-        if _GLOBAL_OPENCODE_COUNT >= _GLOBAL_OPENCODE_MAX:
+        tkey = _task_key(ws, tid)
+        if not _try_acquire_opencode_slot(tkey):
             engine_log(
                 f"[engine] 全局 opencode 已达上限 "
                 f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
             )
             continue
-        _GLOBAL_OPENCODE_COUNT += 1
         launch_r = dev_role_launch(tid)
         if "error" in launch_r:
-            _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - 1)
+            _release_opencode_slot(tkey, 1)
             engine_log(f"[{label}] 启动 {tid} 失败: {launch_r['error']}")
             continue
         active_tasks[key] = {
@@ -1577,11 +1756,10 @@ def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
     group_state = _on_parallel_group_complete(ws, task_id, current_group)
     if group_state == "still_running":
         return "still_running"
-    # v0.30.0: 本组 phase 已结束，释放全局 opencode 槽位
-    global _GLOBAL_OPENCODE_COUNT
+    # v0.30.0: 本组 phase 已结束，释放本组 opencode 槽位（F-CON-01）
     n_launched = len(state.get("phase_meta") or {})
     if n_launched:
-        _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - n_launched)
+        _release_opencode_slot(_task_key(ws, task_id), n_launched)
     if group_state == "group_done_fail":
         state["any_group_fail"] = True
 
@@ -1682,6 +1860,7 @@ def engine_loop(workspaces: list[Path]) -> None:
 
     # R4: 从持久化文件恢复 active_tasks，避免重启丢上下文
     active_tasks = _load_active_tasks()
+    _load_hang_retry_counter()
 
     for ws in workspaces:
         _recover_tasks(ws, active_tasks)
@@ -1750,13 +1929,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                         continue
 
                     if _handle_task_result(ws, tid, result):
-                        # v0.30.0: 串行 task 结束时释放全局 opencode 槽位
-                        # （并行 path 已在 group 完成时递减）
+                        # v0.30.0: 串行 task 结束时释放槽位（并行 path 已在 group 完成时递减）
                         if mode != "parallel":
-                            global _GLOBAL_OPENCODE_COUNT
-                            _GLOBAL_OPENCODE_COUNT = max(
-                                0, _GLOBAL_OPENCODE_COUNT - 1
-                            )
+                            _release_opencode_slot(key, 1)
                         completed_tasks.append(key)
 
                 for key in completed_tasks:
@@ -1771,7 +1946,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                 for ws in workspaces:
                     _activate_workspace(ws)
                     _store = _get_store(ws)
-                    _check_stale(ws)
+                    _check_stale(ws, active_tasks)
                     _retry_abnormal_dev_failures(ws)
                     test_tasks = _store.list_tasks("testing")
                     if test_tasks:
@@ -1798,12 +1973,14 @@ def engine_loop(workspaces: list[Path]) -> None:
                                             f"MAX_RETRY={MAX_RETRY} (adjusting)"
                                         )
                                         MAX_RETRY = min(MAX_RETRY + 1, 5)
+                                        ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
                                     elif fail_rate < 0.1 and MAX_RETRY > 2:
                                         engine_log(
                                             f"[auto-tune] fail_rate={fail_rate:.0%}, "
                                             f"MAX_RETRY={MAX_RETRY} (reducing)"
                                         )
                                         MAX_RETRY = max(MAX_RETRY - 1, 2)
+                                        ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
                         except Exception as exc:
                             engine_log(f"[auto-tune] error: {exc}")
                     except Exception as exc:
@@ -1856,7 +2033,7 @@ def engine_loop(workspaces: list[Path]) -> None:
             if not active_tasks:
                 for ws in workspaces:
                     _activate_workspace(ws)
-                    _check_stale(ws)
+                    _check_stale(ws, active_tasks)
                     # 空闲时立即处理 testing 任务
                     _store2 = _get_store(ws)
                     test_tasks = _store2.list_tasks("testing")
@@ -2077,7 +2254,7 @@ def _check_new_reviews(ws: Path) -> None:
         engine_log(f"review 校验异常: {exc}")
 
 
-def _check_stale(ws: Path) -> None:
+def _check_stale(ws: Path, active_tasks: dict[str, dict] | None = None) -> None:
     from datetime import datetime as _dt
 
     _activate_workspace(ws)
@@ -2098,7 +2275,9 @@ def _check_stale(ws: Path) -> None:
                     f"(阈值 {cfg.max_stale_hours}h)"
                 )
                 cur_phase = _current_running_phase(tid)
-                _quarantine_with_notify(ws, tid, reason, store, phase=cur_phase)
+                _quarantine_with_notify(
+                    ws, tid, reason, store, phase=cur_phase, active_tasks=active_tasks
+                )
                 engine_log(
                     f"[{label}] stale: {tid} in_progress 滞留 "
                     f"{hours_stale:.1f}h → abnormal"
@@ -2281,7 +2460,8 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
                 f"[{label}] hang-detect: {tid} ps 输出无法解析: {result.stdout!r}"
             )
             continue
-        if cpu > 0.0:
+        if cpu > 0.0 and elapsed < _HANG_BUSY_MAX_SEC:
+            # F-FLOW-04: CPU 忙但未超 busy 阈值 → 跳过；超时则仍可标 hung
             continue
 
         # v0.30.0: macOS ps %cpu 是生命周期均值，网络等待型进程可能 CPU≈0 但非 hung
@@ -2296,7 +2476,7 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
                     break
         except OSError:
             pass
-        if _latest and (now.timestamp() - _latest) < 120:
+        if _latest and (now.timestamp() - _latest) < 120 and cpu <= 0.0:
             # 最近 2 分钟有文件活动（如 stdout/result 持续写入）→ 进程活着
             continue
 
@@ -2413,9 +2593,12 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
         if retries >= _MAX_HANG_RETRY:
             reason = f"hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）— {tid} phase {cur_phase}"
             engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
-            _quarantine_with_notify(ws, tid, reason, phase=cur_phase)
+            _quarantine_with_notify(
+                ws, tid, reason, phase=cur_phase, active_tasks=active_tasks
+            )
             # 不增加计数，避免 dict 无限增长
             _hang_retry_counter[key] = retries
+            _save_hang_retry_counter()
             continue
 
         try:
@@ -2426,6 +2609,7 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
             result = {"ok": False}
 
         _hang_retry_counter[key] = retries + 1
+        _save_hang_retry_counter()
         if result.get("ok"):
             engine_log(
                 f"[{label}] hang-auto: {tid} phase {cur_phase} 已重启 "

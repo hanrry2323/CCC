@@ -68,18 +68,23 @@ class TestAtomicWrite:
 
 class TestLocking:
     def test_acquire_and_release_excl_lock(self, tmp_path):
+        """F-LOCK-02: flock 释放后可再次获取（锁文件可保留）。"""
         lockfile = tmp_path / ".board.lock"
         handle = _acquire_lock(lockfile, timeout_s=2.0)
         assert handle is not None
         assert handle.exists()
         _release_lock(handle)
-        assert not handle.exists()
+        again = _acquire_lock(lockfile, timeout_s=2.0)
+        assert again is not None
+        _release_lock(again)
 
     def test_stale_lock_cleared_when_holder_dead(self, tmp_path):
+        """旧 O_EXCL 残留文件不阻挡 flock（锁在 lockfile 本身）。"""
         excl = tmp_path / ".board.lock.excl"
         excl.write_text("999999999|0.0")
         got = _acquire_lock(tmp_path / "board.lock", timeout_s=1.0)
         assert got is not None
+        _release_lock(got)
 
 
 class TestFileBoardStoreCRUD:

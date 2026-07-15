@@ -1,13 +1,13 @@
 {
   "build": {
-    "beforeDevCommand": " npm run tauri dev",
-    "beforeBuildCommand": "npm run tauri build",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
     "devPath": "http://127.0.0.1:8084",
-    "distDir": "../scripts/ccc-chat-server.py"
+    "distDir": "../scripts/chat_server/frontend"
   },
   "package": {
     "productName": "CCC Cockpit",
-    "version": "0.29.0"
+    "version": "0.30.0"
   },
   "tauri": {
     "allowlist": {

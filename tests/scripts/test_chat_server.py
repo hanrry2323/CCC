@@ -31,7 +31,11 @@ import pytest
 CHAT_SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "ccc-chat-server.py"
 PROJECT_ROOT = CHAT_SCRIPT.parent.parent
 BASE_URL = "http://127.0.0.1:18084"
-AUTH_HEADER = "Basic Y2NjOmNsYXVkZTIwMjY="  # base64("ccc:claude2026")
+# F-SEC-01: 测试口令须满足 >=12 且非弱口令默认
+_TEST_PASS = "ccc-test-pass-OK"
+AUTH_HEADER = "Basic " + __import__("base64").b64encode(
+    f"ccc:{_TEST_PASS}".encode()
+).decode()
 AUTH = {"Authorization": AUTH_HEADER}
 TIMEOUT = 15
 
@@ -117,13 +121,21 @@ def _stream_post(path: str, data: dict, read_limit: int = 5):
 
 @pytest.fixture(scope="module", autouse=True)
 def chat_server():
+    env = {
+        **os.environ,
+        "CCC_CHAT_PASS": _TEST_PASS,
+        "CCC_CHAT_HOST": "127.0.0.1",
+        "CCC_CHAT_USER": "ccc",
+    }
     proc = subprocess.Popen(
-        [sys.executable, str(CHAT_SCRIPT), "--port", "18084", "--no-open"],
+        [sys.executable, str(CHAT_SCRIPT), "--port", "18084", "--host", "127.0.0.1", "--no-open"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         cwd=PROJECT_ROOT,
+        env=env,
     )
-    for _ in range(30):
+    # 冷启动含 import uvicorn/fastapi 可能 >15s
+    for _ in range(60):
         try:
             r = urllib.request.urlopen(f"{BASE_URL}/", timeout=2)
             if r.status == 200:
@@ -132,7 +144,7 @@ def chat_server():
             time.sleep(0.5)
     else:
         proc.kill()
-        pytest.fail("chat-server did not start in 15s")
+        pytest.fail("chat-server did not start in 30s")
     yield
     proc.terminate()
     try:

@@ -1,4 +1,4 @@
-# CCC Startup Brief (v0.28.1 启动必读)
+# CCC Startup Brief (v0.30.0 启动必读)
 
 > **读完这个文件 = 知道 CCC 怎么用。** 其他文件按需 grep。
 > **目标：启动 token < 700。** 不预先全读 STRATEGY-MAP / lessons / red-lines。
@@ -124,6 +124,7 @@ head -100 .ccc/state.md
 
 ---
 
-**版本**: v0.28.1
-**替换**: v0.18 7 plist 定时范式
-**维护**: 范式变更时同步 STRATEGY-MAP + SKILL.md
+**版本**: v0.30.0（权威：`VERSION` 文件）
+**替换**: v0.18 7 plist 定时范式 → Engine 串行 + 2 plist
+**维护**: 范式/版本变更时同步 STRATEGY-MAP + SKILL.md + README（均链回本 Brief）
+**约束**: 禁止在 Engine 外并发调用 `ccc-board` 并依赖模块全局 `ROOT`（F-CON-03）

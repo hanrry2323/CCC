@@ -13,7 +13,7 @@ if str(_ROOT) not in sys.path:
 
 import uvicorn
 
-from scripts.chat_server.config import HOST, PORT, AUTH_USER, AUTH_PASS
+from scripts.chat_server.config import HOST, PORT, AUTH_USER, validate_auth_config
 from scripts.chat_server.app import create_app
 
 app = create_app()
@@ -21,6 +21,9 @@ app = create_app()
 
 def main():
     import argparse
+    # F-SEC-01: 未设强口令则拒启
+    validate_auth_config()
+
     bind_host = HOST
     bind_port = PORT
 
@@ -36,7 +39,8 @@ def main():
     print("  ─────────────────────")
     print(f"  地址: http://{bind_host}:{bind_port}")
     print(f"  本地: http://localhost:{bind_port}")
-    print(f"  账号: {AUTH_USER} / {AUTH_PASS}")
+    # F-SEC-02: 永不打印密码
+    print(f"  认证: Basic Auth 已启用（用户 {AUTH_USER}）")
 
     if not args.no_open and bind_host in ("0.0.0.0", "127.0.0.1", "localhost"):
         def _open():
