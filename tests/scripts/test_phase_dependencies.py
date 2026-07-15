@@ -652,23 +652,23 @@ class TestV0251MaxIterConvergence:
         assert r3["engine_iter"] == 3
 
     def test_force_converged_after_max_iter(self, fake_workspace):
-        """连续 ≥ 5 轮 tick → 强制收敛（pending phase 标 skipped）"""
+        """v0.31 (P0.1): 连续 ≥ 5 轮 tick → 标 unresolvable，不再 skip 掩盖"""
         # 构造一个"永远 stuck"的场景：phase 1 没 done，但 dev 不动它
         _write_phases(fake_workspace, "stuck", [
             {"phase": 1, "status": "pending", "depends_on": []},
         ])
         # 跑 6 轮
         results = [_check_phase_failures("stuck") for _ in range(6)]
-        # 第 5 轮强制收敛
-        assert results[4]["force_converged"] is True
-        # 第 6 轮 all_terminal=True 后跳过 iter 分支（已收敛，无需再强制）
-        assert results[5]["all_terminal"] is True
-        assert results[5]["force_converged"] is False
-        # 强收敛后 all_terminal=True
-        assert results[4]["all_terminal"] is True
-        # phase 1 标 skipped
+        # 第 5 轮标 unresolvable
+        assert results[4]["unresolvable"] is True
+        # 第 6 轮 all_terminal=False（不强制收敛，仍 pending）
+        assert results[5]["all_terminal"] is False
+        assert results[5]["unresolvable"] is True
+        # unresolvable 后不强行 all_terminal
+        assert results[4]["all_terminal"] is False
+        # phase 1 保持 pending（不 skip）
         phases = _load_phases("stuck")
-        assert phases[0]["status"] == "skipped"
+        assert phases[0]["status"] == "pending"
 
     def test_no_force_converged_when_terminal(self, fake_workspace):
         """phase 已 all_terminal → 不递增 iter，不强收敛"""
@@ -679,10 +679,10 @@ class TestV0251MaxIterConvergence:
         # all_terminal=True 时不进入 iter 分支
         assert r1["all_terminal"] is True
         assert r1["engine_iter"] == 0
-        assert r1["force_converged"] is False
+        assert r1["unresolvable"] is False
 
     def test_force_converged_writes_warnings(self, fake_workspace):
-        """强收敛必写 .ccc/warnings.json"""
+        """v0.31 (P0.1): unresolvable 必写 .ccc/warnings.json"""
         _write_phases(fake_workspace, "warn2", [
             {"phase": 1, "status": "pending", "depends_on": []},
         ])
@@ -692,7 +692,7 @@ class TestV0251MaxIterConvergence:
         assert warnings_file.exists()
         import json
         content = json.loads(warnings_file.read_text())
-        assert any(w.get("type") == "phase_force_converged" for w in content)
+        assert any(w.get("type") == "phase_graph_unresolvable" for w in content)
 
 
 class TestV0271EngineIterPhaseReset:
@@ -718,7 +718,7 @@ class TestV0271EngineIterPhaseReset:
         assert result["engine_iter"] == 1, (
             f"期望 engine_iter=1（phase 重置后首次），实际={result['engine_iter']}"
         )
-        assert result["force_converged"] is False, (
+        assert result["unresolvable"] is False, (
             "不应触发强制收敛（engine_iter=1 < PHASE_MAX_ENGINE_ITER=5）"
         )
 

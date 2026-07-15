@@ -832,6 +832,15 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     if status == "failed":
         retry = result.get("retry", 0)
         failure_summary = _check_phase_failures(tid)
+        # v0.31 (P0.1): phase 图无法解析 → 退回 planned 重生成
+        if failure_summary.get("unresolvable"):
+            engine_log(
+                f"[{label}] {tid} phase 图无法解析 → 移回 planned 重试 "
+                f"(blocked={failure_summary.get('blocked')})"
+            )
+            store.move_task(tid, "in_progress", "planned")
+            store.update_index()
+            return True
         if failure_summary.get("all_failed_or_skipped"):
             engine_log(
                 f"[{label}] {tid} 所有 phase failed/skipped "
@@ -846,6 +855,15 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
     if status == "quarantined":
         failure_summary = _check_phase_failures(tid)
+        # v0.31 (P0.1): phase 图无法解析 → 退回 planned 重生成
+        if failure_summary.get("unresolvable"):
+            engine_log(
+                f"[{label}] {tid} phase 图无法解析（隔离中）→ 移回 planned "
+                f"(skipped={failure_summary.get('skipped')})"
+            )
+            store.move_task(tid, "in_progress", "planned")
+            store.update_index()
+            return True
         if failure_summary.get("all_failed_or_skipped"):
             engine_log(
                 f"[{label}] {tid} 所有 phase failed/skipped → abnormal "

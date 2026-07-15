@@ -35,6 +35,7 @@ from typing import Optional
 from _config import Config, get_logger
 from _executor import _sanitized_env
 from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
+import phase_lint
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 from _utils import sanitize_prompt_input as _sanitize_prompt_input
@@ -491,11 +492,19 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
             f"每行一个 JSON object：\n"
-            f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
+            f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n'
+            f"可选字段 depends_on（list[int]）：声明 phase 依赖关系。\n"
+            f"合法示例（双 phase）：\n"
+            f'{{"phase": 1, "status": "pending", "subtasks": {{"1.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n'
+            f'{{"phase": 2, "status": "blocked", "depends_on": [1], "subtasks": {{"2.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n\n'
             f"## Phase 数上限\n"
             f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
             f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
             f"每个子 task 不超过 2 phases。\n\n"
+            f"## Depends_on 硬约束\n"
+            f" - depends_on 只能引用本 plan 内已存在的 phase_id\n"
+            f" - 单 phase 任务的 depends_on 留空数组（不填此字段）\n"
+            f" - 多 phase 任务必须声明正确的依赖关系，引擎据此解析执行顺序\n\n"
             f"## 参考历史 plan\n{ref}\n\n"
             f"## 输出要求\n"
             f"输出以下两部分，用分隔符包裹：\n\n"
@@ -569,6 +578,14 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         try:
             result = _parse_output(output)
             _check_phase_limit(result[1])
+            # v0.31 (P0.2): 强制 phase_lint 门禁 — 坏 plan 不许入盘
+            _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(result[1])
+            if not _lint_valid:
+                raise RuntimeError(
+                    f"phase_lint failed: {'; '.join(_lint_errors)}"
+                )
+            if _lint_warnings:
+                _log.warning("[product] phase_lint warnings: %s", _lint_warnings)
             return result
         except (json.JSONDecodeError, RuntimeError):
             _log.warning("[product] phases 解析失败，简化 prompt 重试 1 次")
@@ -577,6 +594,13 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             try:
                 result = _parse_output(output)
                 _check_phase_limit(result[1])
+                _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(result[1])
+                if not _lint_valid:
+                    raise RuntimeError(
+                        f"phase_lint failed (retry): {'; '.join(_lint_errors)}"
+                    )
+                if _lint_warnings:
+                    _log.warning("[product] phase_lint warnings (retry): %s", _lint_warnings)
                 return result
             except (json.JSONDecodeError, RuntimeError) as exc:
                 fallback_dir = get_workspace() / ".ccc" / "product_fallback"
@@ -645,6 +669,28 @@ def product_role(task_id: str = "") -> dict:
             _log.info("使用 fallback plan（API 不可用）")
             plan_content = _generate_fallback_plan(task)
             phases = _generate_fallback_phases()
+            # v0.31 (P0.4): fallback plan 禁止空 scope → 异常隔离，不入 executor
+            if not plan_content or "待补充" in plan_content or not phases:
+                _log.error(
+                    "fallback plan 空 scope → 异常隔离 (task=%s)", task_id
+                )
+                try:
+                    move_task(task_id, "backlog", "abnormal")
+                except Exception as mv_err:
+                    _log.warning("移 abnormal 失败: %s", mv_err)
+                update_index()
+                try:
+                    subprocess.run(
+                        ["bash", str(CCC_HOME / "scripts" / "ccc-notify.sh"),
+                         "L2", f"fallback empty scope ({task_id})",
+                         "planner unavailable, no scope — abnormal"],
+                        capture_output=True, timeout=5,
+                        env=_sanitized_env(),
+                    )
+                except Exception as ntfy_err:
+                    _log.warning("notify 失败: %s", ntfy_err)
+                return {"role": "product", "error": "fallback empty scope",
+                        "task_id": task_id, "abnormal": True}
             fallback = True
 
         # v0.28.0 (F1-H1/H3 修): product_role 写 plan+phases 加 advisory lock
@@ -2846,30 +2892,33 @@ def ops_role() -> dict:
         "orphan_pids_cleaned": 0,
     }
 
-    # 1. Stale 检测：in_progress 超时 → 异常列
+    # 1. Stale 检测：全非终态列（in_progress + testing + planned）→ 异常列
+    # v0.31 (P4.1): 从仅 in_progress 扩大到全非终态，堵 testing/planned 静默死状态
     from datetime import datetime as _dt
 
+    _STALE_COLUMNS = ["in_progress", "testing", "planned"]
     now = _dt.now(timezone.utc)
-    for task in list_tasks("in_progress"):
-        updated_str = task.get("updated_at", task.get("created_at", ""))
-        if not updated_str:
-            continue
-        try:
-            updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
-            hours_stale = (now - updated).total_seconds() / 3600
-            if hours_stale > MAX_STALE_HOURS:
-                _quarantine(
-                    task["id"],
-                    f"in_progress 滞留 {hours_stale:.1f}h（阈值 {MAX_STALE_HOURS}h），自动隔离",
+    for col in _STALE_COLUMNS:
+        for task in list_tasks(col):
+            updated_str = task.get("updated_at", task.get("created_at", ""))
+            if not updated_str:
+                continue
+            try:
+                updated = _dt.fromisoformat(updated_str.replace("Z", "+00:00"))
+                hours_stale = (now - updated).total_seconds() / 3600
+                if hours_stale > MAX_STALE_HOURS:
+                    _quarantine(
+                        task["id"],
+                        f"{col} 滞留 {hours_stale:.1f}h（阈值 {MAX_STALE_HOURS}h），自动隔离",
+                    )
+                    health["stale_detected"] += 1
+                    _log.info(
+                        "[ops] stale: {task['id']} {col} 滞留 {hours_stale:.1f}h → abnormal"
+                    )
+            except (ValueError, TypeError) as e:
+                _log.warning(
+                    "ops stale timestamp parse failed for %s: %s", task.get("id"), e
                 )
-                health["stale_detected"] += 1
-                _log.info(
-                    "[ops] stale: {task['id']} in_progress 滞留 {hours_stale:.1f}h → abnormal"
-                )
-        except (ValueError, TypeError) as e:
-            _log.warning(
-                "ops stale timestamp parse failed for %s: %s", task.get("id"), e
-            )
     pid_dir = get_workspace() / ".ccc" / "pids"
     if pid_dir.exists():
         for f in pid_dir.glob("*.pid"):
@@ -4319,6 +4368,19 @@ def dev_role_check_complete(task_id: str) -> dict:
             # v0.24: 标记 phase failed + 触发失败传染链路
             _mark_phase_failed(task_id, phase_id=cur_phase)
             failure_summary = _check_phase_failures(task_id)
+            # v0.31 (P0.1): phase 图无法解析 → abnormal 标记
+            if failure_summary.get("unresolvable"):
+                _move_task_to_abnormal_if_all_terminal_failed(task_id)
+                _quarantine(
+                    task_id,
+                    f"engine: phase 图无法解析"
+                    f"(blocked={failure_summary.get('blocked')}) → abnormal",
+                )
+                _log.error(
+                    "[engine] %s retry=%d >= %d, phase graph unresolvable → abnormal",
+                    task_id, retry, max_retry_cap,
+                )
+                return {"status": "quarantined", "task_id": task_id}
             if failure_summary.get("all_failed_or_skipped"):
                 _move_task_to_abnormal_if_all_terminal_failed(task_id)
                 _quarantine(
@@ -4338,7 +4400,12 @@ def dev_role_check_complete(task_id: str) -> dict:
             return {"status": "quarantined", "task_id": task_id}
 
         # 失败但未耗尽：传播依赖链（上游 fail → 下游 skip），再让 engine relaunch
-        _check_phase_failures(task_id)
+        fs = _check_phase_failures(task_id)
+        if fs.get("unresolvable"):
+            _log.warning(
+                "[engine] %s phase 图无法解析但仍可重试，继续 retry "
+                "(blocked=%s)", task_id, fs.get("blocked")
+            )
         _log.info(
             "[engine] %s rc=%s retry %d/%d, timeout %ds",
             task_id,

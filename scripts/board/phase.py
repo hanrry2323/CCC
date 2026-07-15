@@ -371,11 +371,11 @@ def _check_phase_failures(task_id: str) -> dict:
     1. 加载 phases
     2. 跑 _resolve_phase_dependencies 解析 executable/blocked/skipped
     3. 写回 blocked/skipped（依赖解除的 blocked → pending）
-    4. v0.25.1: 多轮 tick 不收敛（>= PHASE_MAX_ENGINE_ITER）→ 强收敛
-       （pending/blocked 标 failed/skipped）
+    4. v0.31 (P0.1): 多轮 tick 不收敛（>= PHASE_MAX_ENGINE_ITER）
+       → 标 unresolvable，不再 skip 掩盖
     5. 返回 {"executable": [...], "blocked": [...], "skipped": [...],
             "all_terminal": bool, "all_failed_or_skipped": bool, "engine_iter": int,
-            "force_converged": bool}
+            "unresolvable": bool}
 
     Engine 在每次 dev 完成后调用一次，让失败传染链路在多轮 tick 中收敛。
     """
@@ -388,7 +388,7 @@ def _check_phase_failures(task_id: str) -> dict:
             "all_terminal": False,
             "all_failed_or_skipped": False,
             "engine_iter": 0,
-            "force_converged": False,
+            "unresolvable": False,
         }
 
     executable, blocked, skipped = _resolve_phase_dependencies(phases)
@@ -417,29 +417,21 @@ def _check_phase_failures(task_id: str) -> dict:
     )
 
     # v0.25.1: 多轮 tick 不收敛强失败（CHANGELOG v0.24.4:94 P1）
+    # v0.31 (P0.1): 不再 force-converge（skip 掩盖），改 unresolvable 标记
     engine_iter = _read_engine_iter(task_id)
-    force_converged = False
+    unresolvable = False
     if not all_terminal:
         engine_iter += 1
         _write_engine_iter(task_id, engine_iter)
         if engine_iter >= PHASE_MAX_ENGINE_ITER:
-            # 强收敛：把所有非终态 phase 标 skipped
-            new_skipped: set[int] = set()
-            for p in phases:
-                pid = p.get("phase")
-                st = p.get("status", "pending")
-                if st in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL):
-                    continue
-                if pid is not None:
-                    new_skipped.add(pid)
-            _apply_phase_status_updates(task_id, set(), new_skipped)
-            phases = _load_phases(task_id)
-            all_terminal = True
-            all_failed_or_skipped = all(
-                p.get("status") in ("failed", "skipped") for p in phases
-            )
-            force_converged = True
-            # 写 warnings.json + L2 通知
+            unresolvable = True
+            # 写 unresolvable 诊断到 warnings.json
+            unresolved_phases = [
+                p.get("phase")
+                for p in phases
+                if p.get("status") not in (PHASE_TERMINAL_OK | PHASE_TERMINAL_FAIL)
+                and p.get("phase") is not None
+            ]
             try:
                 warnings_file = get_workspace() / ".ccc" / "warnings.json"
                 existing = []
@@ -452,11 +444,12 @@ def _check_phase_failures(task_id: str) -> dict:
                         existing = []
                 existing.append(
                     {
-                        "type": "phase_force_converged",
+                        "type": "phase_graph_unresolvable",
                         "engine_iter": engine_iter,
-                        "engine_iter_phase": _current_running_phase(task_id),
+                        "phase_ids": unresolved_phases,
                         "task_id": task_id,
                         "detected_at": now_iso(),
+                        "action": "return_to_planned_for_regeneration",
                     }
                 )
                 warnings_file.write_text(
@@ -468,8 +461,9 @@ def _check_phase_failures(task_id: str) -> dict:
                             "bash",
                             str(CCC_HOME / "scripts" / "ccc-notify.sh"),
                             "L2",
-                            f"phases.json: force converged ({task_id})",
-                            f"engine_iter={engine_iter} 达到 PHASE_MAX_ENGINE_ITER={PHASE_MAX_ENGINE_ITER}",
+                            f"phases.json: unresolved dependency ({task_id})",
+                            f"engine_iter={engine_iter} 达到 PHASE_MAX_ENGINE_ITER, "
+                            f"phase {unresolved_phases} 无法解析 → 退回 planned",
                         ],
                         capture_output=True,
                         timeout=5,
@@ -477,14 +471,14 @@ def _check_phase_failures(task_id: str) -> dict:
                     )
                 except Exception as e:
                     _log.warning(
-                        "ccc-notify force_converged failed for %s: %s",
+                        "ccc-notify unresolvable failed for %s: %s",
                         task_id,
                         e,
                         exc_info=True,
                     )
             except OSError as e:
                 _log.warning(
-                    "write force_converged phases failed for %s: %s", task_id, e
+                    "write unresolvable phases failed for %s: %s", task_id, e
                 )
 
     return {
@@ -494,7 +488,7 @@ def _check_phase_failures(task_id: str) -> dict:
         "all_terminal": all_terminal,
         "all_failed_or_skipped": all_failed_or_skipped,
         "engine_iter": engine_iter,
-        "force_converged": force_converged,
+        "unresolvable": unresolvable,
     }
 
 
