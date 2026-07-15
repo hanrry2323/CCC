@@ -2182,6 +2182,22 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
         if cpu > 0.0:
             continue
 
+        # v0.30.0: macOS ps %cpu 是生命周期均值，网络等待型进程可能 CPU≈0 但非 hung
+        # 二次确认：检查 pids 目录下该 subid 附属文件的最后修改时间
+        _latest = 0.0
+        try:
+            for _pf in sorted(
+                pids_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
+            ):
+                if _pf.name.startswith(f"{subid}.") and _pf.name != hung_path.name:
+                    _latest = _pf.stat().st_mtime
+                    break
+        except OSError:
+            pass
+        if _latest and (now.timestamp() - _latest) < 120:
+            # 最近 2 分钟有文件活动（如 stdout/result 持续写入）→ 进程活着
+            continue
+
         # 全部条件满足 → 写 .hung marker
         marker = {
             "task_id": tid,
