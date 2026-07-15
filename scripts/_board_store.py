@@ -64,9 +64,8 @@ def sanitize_id(tid: str) -> str:
 
 
 def now_iso() -> str:
-    """UTC ISO 8601 时间戳（Z 后缀）
-
-    v0.28.0 (H-003): 委托 _utils 统一实现。
+    """北京时间 ISO 8601 时间戳（+08:00）。
+    委托 _utils 统一实现，所有模块保持一致。
     """
     return _utils_now_iso()
 

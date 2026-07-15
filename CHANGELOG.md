@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.30.0] — 2026-07-15
+
+### 定位重定
+- 正式从「Prompt 资产套件」升级为「分布式自动化开发平台」
+- CLAUDE.md 全面同步新定位，版本号 v0.29.34 → v0.30.0
+
+### 修复
+- move_task() 返回值检查（ccc-engine.py:845,1292）— 避免静默丢任务
+- _check_and_mark_hung() CPU=0 误杀（macOS ps %cpu 生命周期均值问题）
+- dev_role_check_complete() 空报告门禁 — exit_code=0 不等于改了代码
+- 全局子进程上限 — 防止资源耗尽
+
+### 流程
+- Verdict FAIL/FALLBACK 现在会触发 commit 回滚 + 任务退回 planned
+
+### 清理
+- 删除 _build_prompt.py（死代码，未被任何生产路径引用）
+- 修正 _board_store.py now_iso docstring（写着 UTC 实际返回 +08:00）
+- 移除 quarantine_store_content.base_name 函数属性反模式
+
 ## [v0.29.34] — 2026-07-14
 
 - board-index-auto-fix: 看板发布
