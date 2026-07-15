@@ -91,6 +91,10 @@ _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
 MAX_CONCURRENT = 3
 
+# v0.30.0: 全局 opencode 并发计数（限制子进程数）
+_GLOBAL_OPENCODE_COUNT = 0
+_GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
+
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
 
@@ -1160,28 +1164,40 @@ def _launch_parallel_phase(
         # 用 phase_id = subid 命名 opencode-runner.sh 的输出 marker
         # opencode-runner.sh 内部会写 ${PID_DIR}/${TASK_ID}.{done,exitcode}
         # 这里 TASK_ID 用 subid，故 marker 也隔离。
-        proc = _sp.Popen(
-            [
-                "bash",
-                str(_script_dir / "opencode-runner.sh"),
-                subid,
-                str(_script_dir.parent),  # CCC_HOME
-                str(ws),  # ROOT_DIR
-                "--phase",
-                f"{task_id}-p{phase_num}",  # 与 ccc-board 一致 phase_id 命名
-                "--prompt",
-                str(prompt_file),
-                "--timeout",
-                str(timeout_s),
-                "--cwd",
-                str(ws),
-            ],
-            cwd=ws,
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=_sanitized_env(),
-        )
+        global _GLOBAL_OPENCODE_COUNT
+        if _GLOBAL_OPENCODE_COUNT >= _GLOBAL_OPENCODE_MAX:
+            engine_log(
+                f"[engine] 全局 opencode 已达上限 "
+                f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
+            )
+            return None
+        _GLOBAL_OPENCODE_COUNT += 1
+        try:
+            proc = _sp.Popen(
+                [
+                    "bash",
+                    str(_script_dir / "opencode-runner.sh"),
+                    subid,
+                    str(_script_dir.parent),  # CCC_HOME
+                    str(ws),  # ROOT_DIR
+                    "--phase",
+                    f"{task_id}-p{phase_num}",  # 与 ccc-board 一致 phase_id 命名
+                    "--prompt",
+                    str(prompt_file),
+                    "--timeout",
+                    str(timeout_s),
+                    "--cwd",
+                    str(ws),
+                ],
+                cwd=ws,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=_sanitized_env(),
+            )
+        except Exception:
+            _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - 1)
+            raise
         pids_dir.joinpath(f"{subid}.pid").write_text(str(proc.pid))
         engine_log(
             f"[{label}] {task_id}-p{phase_num} launched PID={proc.pid} "
@@ -1375,8 +1391,17 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 # 并行启动失败 → 回退串行
                 engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
 
+        global _GLOBAL_OPENCODE_COUNT
+        if _GLOBAL_OPENCODE_COUNT >= _GLOBAL_OPENCODE_MAX:
+            engine_log(
+                f"[engine] 全局 opencode 已达上限 "
+                f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
+            )
+            continue
+        _GLOBAL_OPENCODE_COUNT += 1
         launch_r = dev_role_launch(tid)
         if "error" in launch_r:
+            _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - 1)
             engine_log(f"[{label}] 启动 {tid} 失败: {launch_r['error']}")
             continue
         active_tasks[key] = {
@@ -1552,6 +1577,11 @@ def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
     group_state = _on_parallel_group_complete(ws, task_id, current_group)
     if group_state == "still_running":
         return "still_running"
+    # v0.30.0: 本组 phase 已结束，释放全局 opencode 槽位
+    global _GLOBAL_OPENCODE_COUNT
+    n_launched = len(state.get("phase_meta") or {})
+    if n_launched:
+        _GLOBAL_OPENCODE_COUNT = max(0, _GLOBAL_OPENCODE_COUNT - n_launched)
     if group_state == "group_done_fail":
         state["any_group_fail"] = True
 
@@ -1720,6 +1750,13 @@ def engine_loop(workspaces: list[Path]) -> None:
                         continue
 
                     if _handle_task_result(ws, tid, result):
+                        # v0.30.0: 串行 task 结束时释放全局 opencode 槽位
+                        # （并行 path 已在 group 完成时递减）
+                        if mode != "parallel":
+                            global _GLOBAL_OPENCODE_COUNT
+                            _GLOBAL_OPENCODE_COUNT = max(
+                                0, _GLOBAL_OPENCODE_COUNT - 1
+                            )
                         completed_tasks.append(key)
 
                 for key in completed_tasks:

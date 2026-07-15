@@ -4747,6 +4747,16 @@ def dev_role_check_complete(task_id: str) -> dict:
     ]
 
     if exit_code == "0":
+        # v0.30.0: 空报告门禁 — exit_code=0 但报告空或过短，视同失败
+        _result_path = ROOT / ".ccc" / "reports" / f"{task_id}.result.json"
+        if _result_path.exists():
+            _result_raw = _result_path.read_text()
+            if len(_result_raw.strip()) < 50:
+                _log.warning(
+                    "[gate] %s exit_code=0 但报告 <50 字节，视同失败",
+                    task_id,
+                )
+                return {"status": "failed", "retry": 0, "task_id": task_id}
         # 成功：清标记文件 + 记录 commit hash + 挪列
         for p in marker_files:
             try:
