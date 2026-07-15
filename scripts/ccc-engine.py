@@ -640,7 +640,11 @@ def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
 
 
 def _load_active_tasks() -> dict[str, dict]:
-    """从持久化文件恢复 active_tasks。返回 dict（可能是空的）。"""
+    """从持久化文件恢复 active_tasks。返回 dict（可能是空的）。
+
+    加载后立即删除持久化文件（避免下次重启用过期数据）。
+    加载时校验每个 task 的进程是否存活，死的排除（防止僵尸任务占满并发槽）。
+    """
     if not _ACTIVE_TASKS_FILE.exists():
         return {}
     try:
@@ -651,11 +655,43 @@ def _load_active_tasks() -> dict[str, dict]:
         for k, v in raw.items():
             ws_str = v.get("workspace", "")
             ws_path = Path(ws_str).resolve() if ws_str else None
-            if ws_path and ws_path.is_dir() and (ws_path / ".ccc" / "board").is_dir():
-                v["workspace"] = ws_path
-                restored[k] = v
+            if not ws_path or not ws_path.is_dir() or not (ws_path / ".ccc" / "board").is_dir():
+                engine_log(f"[persist] 忽略 {k}: workspace 不存在")
+                continue
+            v["workspace"] = ws_path
+
+            # 校验进程存活：检查 pids 目录下该 task 的 PID 文件
+            tid = v.get("task_id", "")
+            alive = False
+            if tid:
+                import subprocess as _sp
+                pids_dir = ws_path / ".ccc" / "pids"
+                for pidf in sorted(pids_dir.glob(f"{tid}*.pid")):
+                    if pidf.name.endswith(".done"):
+                        continue
+                    try:
+                        pid = int(pidf.read_text().strip())
+                        r = _sp.run(
+                            ["ps", "-p", str(pid), "-o", "state="],
+                            capture_output=True, text=True, timeout=3,
+                            env=_sanitized_env(),
+                        )
+                        state = r.stdout.strip()
+                        if state and state != "Z":
+                            alive = True
+                            break
+                    except (ValueError, OSError):
+                        continue
+            if not alive:
+                engine_log(
+                    f"[persist] 排除僵尸 active_task {k}: "
+                    f"进程不存活 (tid={tid})"
+                )
+                continue
+            restored[k] = v
+
         if restored:
-            engine_log(f"[persist] 恢复 {len(restored)} 个 active_tasks")
+            engine_log(f"[persist] 恢复 {len(restored)} 个 active_tasks (存活)")
         return restored
     except (json.JSONDecodeError, OSError, TypeError) as exc:
         engine_log(f"[persist] load active_tasks 失败: {exc}")
@@ -1214,7 +1250,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         if not plan_file.exists() or not phases_file.exists():
             continue
 
-        phases = _load_phases(tid)
+        phases = _load_phases(tid, ws)
         executable: set[int] = set()
         if phases:
             executable, blocked, skipped = _resolve_phase_dependencies(phases)
@@ -1462,7 +1498,7 @@ def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
             plan_content = plan_file.read_text(encoding="utf-8")
             # 拿当前 timeout
             timeout_s = 600
-            phases = _load_phases(task_id)
+            phases = _load_phases(task_id, ws)
             if phases:
                 timeout_s = _lookup_phase_timeout(task_id, phases)
             label = _ws_label(ws)

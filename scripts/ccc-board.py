@@ -306,13 +306,18 @@ PHASE_TERMINAL_OK = {"done", "verified", "skipped"}
 PHASE_TERMINAL_FAIL = {"failed"}
 
 
-def _load_phases(task_id: str) -> list[dict]:
+def _load_phases(task_id: str, ws: Path | None = None) -> list[dict]:
     """v0.24: 加载 phases.jsonl 每行一个 phase dict（跳过 schema_version 行）。
+
+    Args:
+        task_id: 任务 ID
+        ws: workspace 路径。为 None 时回退到 ROOT（兼容旧调用者）。
 
     返回按 phase 编号排序的 list，元素为 phase dict。
     文件不存在或解析失败返回空 list。
     """
-    phases_file = ROOT / ".ccc" / "phases" / f"{task_id}.phases.json"
+    base = ws if ws else ROOT
+    phases_file = base / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
         return []
     out: list[dict] = []
