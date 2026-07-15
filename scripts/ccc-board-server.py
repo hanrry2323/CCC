@@ -343,32 +343,37 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 
     def _verify_auth(self) -> bool:
         client_ip, client_port = self.client_address
-        # v0.27.1: 之前硬编码 192.168.3.140（作者本机 IP）会让其他用户 auth 失效
-        # 改用 env var CCC_BOARD_LOCAL_IPS（逗号分隔）让用户配置本机 LAN IP
-        local_ips = {"127.0.0.1", "::1", "[::1]"}
-        extra = os.environ.get("CCC_BOARD_LOCAL_IPS", "").strip()
-        if extra:
-            for ip in extra.split(","):
-                ip = ip.strip()
-                if ip:
-                    local_ips.add(ip)
-        is_local = client_ip in local_ips
         token = os.environ.get("QX_BOARD_TOKEN", "").strip()
-        # F-SEC-05: 无 token 时拒绝（即使本机）；开发可设 CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1
+        # A24-11 + F-SEC-05 调和: 无 token 时仅检查本机 IP
+        # 绑定 0.0.0.0 后 LAN IP 也是本机，用 socket 自动发现所有本机 IP
         if not token:
             allow_local = os.environ.get("CCC_BOARD_ALLOW_LOCAL_NO_TOKEN", "").strip() == "1"
-            if is_local and allow_local:
+            if allow_local:
+                return True
+            # 自动发现本机所有 IP（含 LAN IP），避免硬编码
+            import socket as _sock
+            _own_ips = set()
+            try:
+                _own_ips.update(
+                    info[4][0]
+                    for info in _sock.getaddrinfo(_sock.gethostname(), None)
+                    if info[4] and info[4][0]
+                )
+            except OSError:
+                pass
+            _own_ips.add("127.0.0.1")
+            _own_ips.add("::1")
+            if client_ip in _own_ips:
                 return True
             _rate_limiter.allow(f"auth:{client_ip}")
             _log.warning(
-                "auth failed: QX_BOARD_TOKEN unset (client=%s local=%s)",
+                "auth failed: QX_BOARD_TOKEN unset (client=%s not in own_ips)",
                 client_ip,
-                is_local,
             )
             self._json(
                 {
                     "error": "unauthorized: QX_BOARD_TOKEN required "
-                    "(or CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1 for local only)"
+                    "(or CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1 to allow any origin)"
                 },
                 401,
             )

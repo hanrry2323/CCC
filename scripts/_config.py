@@ -182,7 +182,7 @@ class Config:
 
     # ── HTTP 服务 ──
     board_port: int = 7777
-    board_host: str = "127.0.0.1"
+    board_host: str = "0.0.0.0"
     engine_stats_port: int = 7776  # ccc-engine.py 内置 stats 端点
 
     # ── Webhook（v0.32+）──
