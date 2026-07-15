@@ -96,3 +96,46 @@
 | 中转站 | 直接进程 | 运行中 |
 | HP 服务 (3个) | 直接进程 | 运行中 |
 | qb (5个plist) | launchd | 运行中 |
+
+## CCC Chat Server v2（2026-07-15）
+
+### 架构
+
+```
+scripts/ccc-chat-server.py          # 入口 (uvicorn.run)
+scripts/chat_server/                # 模块化包
+├── config.py                       # Pydantic 配置
+├── models.py                       # 数据模型
+├── auth.py                         # Basic Auth
+├── app.py                          # FastAPI 工厂
+├── routers/                        # 路由层
+│   ├── chat.py                     # POST /api/chat SSE
+│   ├── sessions.py                 # GET/DEL /api/history
+│   ├── files.py                    # 文件浏览
+│   ├── board.py                    # Board 代理
+│   └── projects.py                 # 项目列表
+├── services/                       # 服务层
+│   ├── claude_client.py            # Claude 子进程 SSE
+│   ├── session_store.py            # 会话持久化
+│   └── board_client.py             # Board HTTP 客户端
+└── frontend/                       # 纯前端 SPA
+    ├── index.html
+    ├── css/ (variables, base, themes, components)
+    └── js/ (state, api, markdown, app + 5 components)
+```
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/projects` | 项目列表 |
+| POST | `/api/chat` | SSE 流式聊天 |
+| POST | `/api/execute` | 执行模式 |
+| GET | `/api/history` | 会话列表 |
+| GET | `/api/history/{id}` | 单个会话 |
+| DELETE | `/api/history/{id}` | 删除会话 |
+| GET | `/api/projects/{id}/files` | 文件树 |
+| GET | `/api/projects/{id}/file` | 文件内容 |
+| GET | `/api/board/proxy/*` | Board 代理 |
+| POST | `/api/board/proxy/*` | Board 代理 |
+

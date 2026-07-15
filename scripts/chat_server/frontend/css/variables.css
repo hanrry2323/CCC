@@ -1,0 +1,66 @@
+:root {
+  /* 背景 */
+  --ccc-bg-deep: #f5f5f7;
+  --ccc-bg-base: #ffffff;
+  --ccc-bg-surface: #ffffff;
+  --ccc-bg-layer: #f0f0f2;
+  --ccc-bg-hover: rgba(0, 0, 0, 0.04);
+  --ccc-bg-accent: #007aff;
+  --ccc-bg-user: #007aff;
+  --ccc-bg-code: #f0f0f2;
+
+  /* 文字 */
+  --ccc-text-base: #1d1d1f;
+  --ccc-text-muted: #86868b;
+  --ccc-text-faint: #aeaeb2;
+  --ccc-text-inverse: #ffffff;
+  --ccc-text-accent: #007aff;
+
+  /* 图标 */
+  --ccc-icon-base: #555557;
+  --ccc-icon-muted: #aeaeb2;
+
+  /* 边框 */
+  --ccc-border-subtle: rgba(0, 0, 0, 0.06);
+  --ccc-border-base: rgba(0, 0, 0, 0.1);
+  --ccc-border-accent: #007aff;
+
+  /* 阴影 */
+  --ccc-shadow-sm: 0 0.5px 1px rgba(0, 0, 0, 0.05);
+  --ccc-shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --ccc-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --ccc-shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* 圆角 */
+  --ccc-radius-sm: 4px;
+  --ccc-radius-md: 8px;
+  --ccc-radius-lg: 16px;
+  --ccc-radius-xl: 20px;
+
+  /* 排版 */
+  --ccc-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --ccc-font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+  --ccc-font-size-xs: 11px;
+  --ccc-font-size-sm: 13px;
+  --ccc-font-size-base: 15px;
+
+  /* 间距 */
+  --ccc-space-xs: 4px;
+  --ccc-space-sm: 8px;
+  --ccc-space-md: 12px;
+  --ccc-space-lg: 16px;
+  --ccc-space-xl: 24px;
+
+  /* 布局 */
+  --ccc-sidebar-w: 280px;
+  --ccc-titlebar-h: 44px;
+  --ccc-composer-max-h: 200px;
+  --ccc-max-w: 760px;
+
+  /* 过渡 */
+  --ccc-transition-fast: 0.15s ease;
+  --ccc-transition-normal: 0.25s ease;
+
+  /* 动画 */
+  --ccc-overlay-scrim: rgba(0, 0, 0, 0.3);
+}

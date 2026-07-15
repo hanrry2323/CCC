@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>CCC Chat</title>
+<link rel="stylesheet" href="/css/variables.css">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/themes.css">
+<link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+<div id="app">
+  <div id="titlebar">
+    <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
+    <div class="titlebar-spacer"></div>
+    <button class="titlebar-btn" id="new-tab-btn" title="新对话">+</button>
+    <button class="titlebar-btn" id="settings-btn" title="设置">⚙️</button>
+    <button class="titlebar-btn" id="theme-btn" title="切换主题">🌙</button>
+  </div>
+  <div id="layout">
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <input class="sidebar-search" id="sidebar-search" type="text" placeholder="搜索对话...">
+      </div>
+      <div class="sidebar-list" id="session-list">
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+      </div>
+    </div>
+    <div id="chat-panel">
+      <div id="messages"></div>
+      <button class="scroll-fab" id="scroll-fab">↓</button>
+      <div id="composer">
+        <div id="composer-inner">
+          <div class="composer-toolbar">
+            <select class="model-select" id="model-select">
+              <option value="flash">flash</option>
+              <option value="code">code</option>
+            </select>
+            <span class="context-indicator" id="context-indicator">项目: <span id="project-display">CCC</span></span>
+          </div>
+          <div class="composer-input-wrap">
+            <textarea id="composer-input" rows="1" placeholder="输入消息..." autofocus></textarea>
+            <button class="composer-btn" id="cancel-btn" title="取消">✕</button>
+            <button class="composer-btn" id="send-btn" title="发送" disabled>↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
+<select id="project-select" style="display:none;"></select>
+
+<script>
+// Mobile sidebar toggle (globally accessible)
+function toggleMobileSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.querySelector('.sidebar-overlay')?.classList.remove('show');
+}
+
+// Copy code button (globally accessible)
+function copyCode(btn) {
+  const pre = btn.closest('.code-block-wrap')?.querySelector('pre');
+  const code = pre ? (pre.textContent || pre.innerText) : '';
+  navigator.clipboard.writeText(code).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }).catch(() => {
+    btn.textContent = '复制失败';
+  });
+}
+
+// Scroll FAB
+document.addEventListener('DOMContentLoaded', function() {
+  const fab = document.getElementById('scroll-fab');
+  const messages = document.getElementById('messages');
+  if (fab && messages) {
+    messages.addEventListener('scroll', function() {
+      const atBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 200;
+      fab.classList.toggle('show', !atBottom);
+    });
+    fab.addEventListener('click', function() {
+      messages.scrollTop = messages.scrollHeight;
+      fab.classList.remove('show');
+    });
+  }
+});
+</script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
