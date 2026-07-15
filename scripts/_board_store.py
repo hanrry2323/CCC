@@ -864,7 +864,7 @@ def quarantine_store_content(task_id: str, content_path: Optional[Path] = None) 
     简洁命名（无 idx 后缀，无 .tar.gz 后缀）：
     - 一个 task_id 只对应一个副本
     - 多次调用会覆盖
-    - .base_name 属性设为 task_id（供后续引用）
+    - 通过 get_quarantine_base_name() 读取最近一次 base_name
 
     Args:
         task_id: task ID（会 sanitize 防止路径穿越）
@@ -875,7 +875,8 @@ def quarantine_store_content(task_id: str, content_path: Optional[Path] = None) 
     """
     # v0.28.0 P2 安全：sanitize task_id 防路径穿越
     task_id = sanitize_id(task_id)
-    quarantine_store_content.base_name = task_id  # type: ignore[attr-defined]
+    global _QUARANTINE_BASE_NAME
+    _QUARANTINE_BASE_NAME = task_id
 
     if not content_path or not content_path.exists():
         return False
@@ -972,5 +973,10 @@ def quarantines_index_task() -> None:
     )
 
 
-# 默认 base_name（首次调用前）
-quarantine_store_content.base_name = ""  # type: ignore[attr-defined]
+# v0.30.0: 默认 base_name（首次调用前）
+_QUARANTINE_BASE_NAME: str = ""
+
+
+def get_quarantine_base_name() -> str:
+    """v0.30.0: 替代 quarantine_store_content.base_name 函数属性。"""
+    return _QUARANTINE_BASE_NAME

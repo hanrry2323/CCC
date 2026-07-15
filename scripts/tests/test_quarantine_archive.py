@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from _board_store import (
+    get_quarantine_base_name,
     quarantine_store_content,
     quarantines_cleanup_task,
     quarantines_harvesting_index,
@@ -50,7 +51,7 @@ class TestQuarantineStoreContent:
             assert result is True
 
             # 验证副本存在
-            copy_file = quarantine_dir / f"{quarantine_store_content.base_name}"
+            copy_file = quarantine_dir / f"{get_quarantine_base_name()}"
             assert copy_file.exists()
             assert copy_file.stat().st_size > 0
 
@@ -60,7 +61,7 @@ class TestQuarantineStoreContent:
             quarantine_dir = Path(tmpdir) / ".ccc" / "quarantines"
             quarantine_dir.mkdir(parents=True)
 
-            base_tar = quarantine_store_content.base_name
+            base_tar = get_quarantine_base_name()
 
             # 创建两个副本（一个 12 小时前，一个 2 小时前）
 
@@ -88,7 +89,7 @@ class TestQuarantineStoreContent:
             quarantine_dir = Path(tmpdir) / ".ccc" / "quarantines"
             quarantine_dir.mkdir(parents=True)
 
-            base_tar = quarantine_store_content.base_name
+            base_tar = get_quarantine_base_name()
 
             # 手动添加一个副本
             copy_file = quarantine_dir / f"{base_tar}.1.tar.gz"
@@ -123,7 +124,7 @@ class TestQuarantineStoreContent:
             quarantine_dir = Path(tmpdir) / ".ccc" / "quarantines"
             quarantine_dir.mkdir(parents=True)
 
-            base_tar = quarantine_store_content.base_name
+            base_tar = get_quarantine_base_name()
 
             # 添加多个副本
             for i in range(3):
