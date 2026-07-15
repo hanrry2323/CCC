@@ -123,6 +123,10 @@ class Config:
     max_retry: int = 5  # 最大重试次数 → 异常隔离
     max_stale_hours: int = 2  # F-FLOW-04: 原 6h 过长；busy/idle 由 hang 检测互补
 
+    # ── 墙钟断路器（v0.31 C1）──
+    max_wallclock: int = 7200  # 秒，opencode 子进程最大墙钟运行时间（2h）
+                              # 超时后 SIGTERM→SIGKILL，task 移 backlog 标 timeout
+
     # ── 并发 ──
     opencode_max_parallel: int = 3  # 红线 X1
 
@@ -215,6 +219,9 @@ class Config:
         _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
         _env_override_int(self, "max_phases", "CCC_MAX_PHASES")
         _env_override_int(self, "reviewer_retry_on_timeout", "CCC_REVIEWER_RETRY")
+        _env_override_duration(
+            self, "max_wallclock", "CCC_MAX_WALLCLOCK", self.max_wallclock
+        )
         _env_override_str(self, "webhook_url", "CCC_WEBHOOK_URL")
 
 

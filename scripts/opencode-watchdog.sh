@@ -61,6 +61,24 @@ for pf in "$PID_DIR"/*.pid; do
   # 活着：名字对吗？
   proc_name=$(ps -p "$pid" -o command= 2>/dev/null || true)
   if [[ "$proc_name" == *opencode* ]]; then
+    # v0.31 (C1): 墙钟断路器 — 按 pid 文件 mtime 算运行时长
+    MAX_WALLCLOCK="${CCC_MAX_WALLCLOCK:-7200}"
+    pf_mtime=$(stat -f %m "$pf" 2>/dev/null || echo "0")
+    now=$(date +%s)
+    age=$((now - pf_mtime))
+    if [[ "$pf_mtime" != "0" && $age -gt $MAX_WALLCLOCK ]]; then
+      age_min=$((age / 60))
+      log_warn "墙钟 ${age_min}min > ${MAX_WALLCLOCK}s: $phase (pid=$pid) → 杀"
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 2
+      if kill -0 "$pid" 2>/dev/null; then
+        log_warn "TERM 不够, SIGKILL: $phase (pid=$pid)"
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
+      rm -f "$pf"
+      CLEANED=$((CLEANED+1))
+      continue
+    fi
     ALIVE=$((ALIVE+1))
     log_info "存活: $phase (pid=$pid, name=$proc_name) — 保留"
   else
