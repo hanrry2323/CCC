@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Demo crawler CLI entry point."""
+"""Demo and Sichuan crawler CLI entry point."""
 
 import sys
 import argparse
@@ -8,7 +8,8 @@ from pathlib import Path
 # Add project src/ to path
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from crawlers.demo.demo_crawler import DemoCrawler, probe, DEMO_RECORDS
+from crawlers.demo.demo_crawler import DemoCrawler
+from crawlers.sichuan.sichuan_crawler import SichuanCrawler
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
     args = parser.parse_args()
 
     # Validate crawler name
-    crawler_map = {"demo": DemoCrawler}
+    crawler_map = {"demo": DemoCrawler, "sichuan": SichuanCrawler}
 
     if args.name not in crawler_map:
         print(f"Error: Crawler '{args.name}' not found")
@@ -36,12 +37,17 @@ def main():
     # Print result summary
     print(f"\nResults: {len(results)} rows")
     if results:
-        print(f"Sample (first 3 fields):")
-        for record in results[:1]:
+        first_record = results[0]
+        if args.name == "demo":
+            print(f"Sample (first 3 fields):")
+            sample = f"{first_record.get('product_name')}, {first_record.get('spec')}, {first_record.get('reference_price')}"
+            print(f"  {sample}")
+        else:
+            print(f"Sample:")
             print(
-                f"  {record.get('product_name')}, {record.get('spec')}, ..."
-                f" {record.get('reference_price')}"
+                f"  {first_record.get('product_name')}, {first_record.get('spec')}, ..."
             )
+        print(f"  参考价格: {first_record.get('reference_price')}")
 
     sys.exit(0)
 
