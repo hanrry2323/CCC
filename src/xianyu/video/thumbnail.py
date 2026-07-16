@@ -295,7 +295,9 @@ async def generate_thumbnail(
         output_path = str(vid_dir / f"{vid_stem}_thumb.png")
 
     # Extract frame to temp location
-    frame_hash = hashlib.md5(f"{video_path}:{time_sec}".encode()).hexdigest()[:8]
+    frame_hash = hashlib.md5(
+        f"{video_path}:{time_sec}".encode(), usedforsecurity=False
+    ).hexdigest()[:8]
     tmp_frame = os.path.join(tempfile.gettempdir(), f"xianyu_thumb_{frame_hash}.png")
     await extract_frame(video_path, tmp_frame, time_sec, quality=extract_quality)
 
