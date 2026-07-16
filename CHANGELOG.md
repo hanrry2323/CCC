@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.41.0] — 2026-07-16
+
+### 闭环：下达即开工 + 基线 + 日审骨架
+
+- 修 Hub SSE 双份输出（`result` 不再重复追加 assistant 正文）
+- 下达任务 → `enabled` + `engine.wake` + launchd 拉起（无确认；不打开 invent）
+- 「对齐基线」：`GET /api/projects/{id}/baseline` + 空态按钮
+- product prompt 注入 `ccc-product` skill + 程序基线快照
+- `ccc-daily-diff-review.py`：决策 A–J，`--apply` 建卡并 wake
+- 发布闸继续以 kb 程序化为主（CHANGELOG/tag/state，默认 0 LLM）
+
 ## [v0.40.1] — 2026-07-16
 
 ### 流水线修通：claude PATH / upstream 探针 / reviewer 门禁

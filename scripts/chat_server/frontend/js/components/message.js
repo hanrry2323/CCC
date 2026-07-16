@@ -394,7 +394,7 @@ export function createEmptyState() {
     '<div class="empty-state-title">今天想做什么？</div>' +
     '<div class="empty-state-hint">与 Claude 对话，或用 /task 下达 CCC 看板任务</div>' +
     '<div class="empty-state-actions">' +
-      '<button class="empty-state-btn" data-chip="解释当前项目结构">解释项目结构</button>' +
+      '<button class="empty-state-btn" data-act="baseline">对齐基线</button>' +
       '<button class="empty-state-btn" data-chip="/task">下达任务</button>' +
       '<button class="empty-state-btn" data-chip="/board">查看看板</button>' +
     '</div>';
@@ -413,7 +413,39 @@ export function createEmptyState() {
       }
     });
   });
+  el.querySelector('[data-act="baseline"]')?.addEventListener('click', () => {
+    runBaselineAlign();
+  });
   return el;
+}
+
+async function runBaselineAlign() {
+  const container = document.getElementById('messages');
+  if (!container || state.get('streaming')) return;
+  const empty = container.querySelector('.empty-state');
+  if (empty) empty.remove();
+  try {
+    const { fetchProjectBaseline } = await import('../api.js');
+    const data = await fetchProjectBaseline(state.get('currentProject'));
+    const bl = data.baseline || {};
+    const card = document.createElement('div');
+    card.className = 'msg assistant';
+    const risks = (bl.risks || []).map(r => '<li>' + escapeHtml(r) + '</li>').join('');
+    card.innerHTML =
+      '<div class="msg-label">基线快照</div>' +
+      '<div class="bubble baseline-card">' +
+        '<p>' + escapeHtml(bl.summary || '') + '</p>' +
+        (risks ? '<ul>' + risks + '</ul>' : '') +
+        '<p class="baseline-hint">接着由 Claude 解读结构与下一步…</p>' +
+      '</div>' +
+      '<div class="time">' + ts() + '</div>';
+    container.appendChild(card);
+    smartScroll(container);
+    const prompt = data.prompt || '请对齐当前项目基线并说明结构与风险。';
+    await sendMessage(prompt, []);
+  } catch (err) {
+    window.showToast?.(err.message || '基线采集失败', 'error');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

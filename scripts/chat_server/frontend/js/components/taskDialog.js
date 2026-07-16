@@ -65,7 +65,7 @@ export async function openTaskDialog(prefill = {}) {
         '<button class="settings-close" id="task-close">×</button>' +
       '</div>' +
       '<div class="settings-body">' +
-        '<p class="task-help">写入看板 <code>backlog</code>。默认走 product→dev→reviewer→tester。复杂度仅作提示，不跳过角色。</p>' +
+        '<p class="task-help">写入看板 <code>backlog</code> 并<strong>立即唤醒 Engine</strong>（自动 enabled）。流程：拆分→开发→pytest→验收→发布。</p>' +
         '<div class="settings-group">' +
           '<div class="settings-row"><span class="settings-label">项目</span>' +
             '<select class="settings-select" id="task-project">' + projectOpts + '</select></div>' +
@@ -84,7 +84,7 @@ export async function openTaskDialog(prefill = {}) {
         '</div>' +
         '<div class="task-actions">' +
           '<button type="button" class="btn-secondary" id="task-cancel">取消</button>' +
-          '<button type="button" class="btn-primary" id="task-submit">写入 backlog</button>' +
+          '<button type="button" class="btn-primary" id="task-submit">下达并开工</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -126,7 +126,11 @@ export async function openTaskDialog(prefill = {}) {
       });
       const tid = res.task_id || id;
       const skip = res.skip_product ? '（已预置 plan，跳过 product）' : '';
-      window.showToast?.('已写入 backlog: ' + tid + skip, 'success');
+      const wake = res.engine_wake;
+      const wakeHint = wake && wake.ok !== false
+        ? ' · Engine 已唤醒'
+        : (wake && wake.error ? ' · Engine 唤醒失败' : ' · Engine 已唤醒');
+      window.showToast?.('已下达 ' + tid + skip + wakeHint, 'success');
       close();
       import('./boardPanel.js').then(m => {
         m.openBoardPanel?.();

@@ -499,10 +499,42 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
 
     code_ctx = _get_code_context(get_workspace())
 
+    def _load_product_skill() -> str:
+        """注入 ccc-product skill（harness：身份来自 skill，非口头自称）。"""
+        candidates = [
+            CCC_HOME / "skills" / "ccc-product" / "SKILL.md",
+            Path.home() / ".claude" / "skills" / "ccc-protocol" / "skills" / "ccc-product" / "SKILL.md",
+        ]
+        for p in candidates:
+            try:
+                if p.is_file():
+                    return p.read_text(encoding="utf-8", errors="replace")[:6000]
+            except OSError:
+                continue
+        return ""
+
     def _build_prompt(include_ref_plans: bool = True) -> str:
         ref = ref_plans if include_ref_plans else "（无，重试模式）"
+        skill_text = _load_product_skill()
+        skill_block = (
+            f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
+        )
+        baseline_block = ""
+        try:
+            from _project_baseline import collect_baseline
+
+            bl = collect_baseline(get_workspace())
+            baseline_block = (
+                f"## 项目基线（程序快照）\n{bl.get('summary', '')}\n"
+                f"dirty_sample: {bl.get('git', {}).get('dirty_sample', [])[:15]}\n\n"
+            )
+        except Exception:
+            pass
         return (
-            f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
+            f"你是 CCC 产品经理（product 步骤）。根据 skill + 基线生成 SPEC-合规 plan。\n"
+            f"禁止写源码；每 phase 必须非空 scope；验收须含意图+可执行命令。\n\n"
+            f"{skill_block}"
+            f"{baseline_block}"
             f"## 项目概况\n{profile[:1500]}\n\n"
             f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
             f"## 任务\n"

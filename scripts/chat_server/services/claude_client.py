@@ -92,6 +92,8 @@ async def stream_chat(
 
         deadline = asyncio.get_event_loop().time() + timeout
         buffer = b""
+        # stream-json 的 result.result 常与 assistant.text 重复；有正文则不再追加
+        saw_assistant_text = False
 
         while True:
             if request_disconnected():
@@ -130,6 +132,7 @@ async def stream_chat(
                         if btype == "text":
                             text = block.get("text", "")
                             if text:
+                                saw_assistant_text = True
                                 yield {"type": "delta", "content": text}
                         elif btype == "tool_use":
                             yield {
@@ -154,8 +157,9 @@ async def stream_chat(
                         ),
                         "usd": event.get("total_cost_usd", 0) or 0,
                     }
+                    # 仅当全程未收到 assistant 正文时，用 result 兜底（避免双份输出）
                     result_text = event.get("result", "")
-                    if result_text:
+                    if result_text and not saw_assistant_text:
                         yield {"type": "delta", "content": result_text}
 
         try:

@@ -2702,9 +2702,11 @@ def engine_loop(workspaces: list[Path]) -> None:
                 if iteration % 12 == 1:
                     engine_log(
                         f"CCC control={get_mode()} — queue empty, deep sleep 60s "
-                        f"(invent: python3 scripts/_ccc_control.py invent)"
+                        f"(wake: ~/.ccc/engine.wake)"
                     )
-                time.sleep(60)
+                # v0.41: 可被下任务 wake 文件打断
+                if _sleep_until_wake(60):
+                    engine_log("[wake] 收到 engine.wake，立即进入下一 tick")
                 continue
 
             if not any_active:
@@ -2724,6 +2726,28 @@ def engine_loop(workspaces: list[Path]) -> None:
         _wait_tick(tick_start)
 
     engine_log("收到关闭信号，停止接收新任务")
+
+
+def _sleep_until_wake(seconds: float) -> bool:
+    """深睡可被 ~/.ccc/engine.wake 打断。返回 True=被唤醒。"""
+    try:
+        from _engine_wake import consume_wake
+
+        end = time.time() + max(0.0, seconds)
+        while time.time() < end:
+            payload = consume_wake()
+            if payload is not None:
+                engine_log(
+                    f"[wake] reason={payload.get('reason')} "
+                    f"task={payload.get('task_id')}"
+                )
+                return True
+            time.sleep(min(2.0, max(0.1, end - time.time())))
+        # 超时前再看一眼
+        return consume_wake() is not None
+    except Exception:
+        time.sleep(seconds)
+        return False
 
 
 def _wait_tick(tick_start: float) -> None:

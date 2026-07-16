@@ -69,3 +69,24 @@ async def list_projects(request: Request):
             for pid, info in PROJECTS.items()
         ]
     }
+
+
+@router.get("/api/projects/{project_id}/baseline")
+async def project_baseline(project_id: str, request: Request):
+    """结构化项目对齐基线（程序侧，不调 LLM）。"""
+    check_auth(request)
+    path = get_project_path(project_id)
+    import sys
+    from pathlib import Path
+
+    scripts = Path(__file__).resolve().parents[2]
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _project_baseline import baseline_prompt_for_claude, collect_baseline
+
+    baseline = collect_baseline(Path(path), project_id=project_id)
+    return {
+        "ok": True,
+        "baseline": baseline,
+        "prompt": baseline_prompt_for_claude(baseline),
+    }

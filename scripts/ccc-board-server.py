@@ -778,7 +778,19 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             task_data.pop("workspace", None)
             task_data["id"] = tid
             if create_task(task_data, workspace=ws, column="backlog"):
-                self._json({"ok": True, "task_id": tid}, 201)
+                # v0.41: 下达任务 = 强制 enabled + 唤醒 Engine（无确认）
+                engine_wake = None
+                try:
+                    from _engine_wake import ensure_engine_for_task
+
+                    engine_wake = ensure_engine_for_task(
+                        reason="task_dispatch", task_id=tid
+                    )
+                except Exception as exc:
+                    engine_wake = {"ok": False, "error": str(exc)[:200]}
+                self._json(
+                    {"ok": True, "task_id": tid, "engine_wake": engine_wake}, 201
+                )
             else:
                 self._json({
                     "ok": False,

@@ -1,9 +1,11 @@
-# CCC 运行控制面（v0.40）
+# CCC 运行控制面（v0.41）
 
 > **SSOT**：`~/.ccc/control.json`（[`scripts/_ccc_control.py`](../scripts/_ccc_control.py)）  
 > CLI：`bash scripts/ccc-autostart-guard.sh {status|disable|ui|enable|invent}`  
 > 前端开发：`bash scripts/ccc-hub-dev.sh`（不碰 control / launchd）  
 > 失败查询：见 [`observability.md`](observability.md)
+
+**v0.41 产品规则**：Hub/Board **下达任务成功** → 强制 `enabled`（若非 invent）+ 写 `~/.ccc/engine.wake` + 尝试 launchd 拉起 Engine。**无确认弹窗。** 不打开 invent。
 
 ---
 
@@ -52,13 +54,27 @@ python3 scripts/ccc-failure-report.py --last 20
 
 ---
 
-## 流水线环境变量（v0.40.1）
+## 流水线环境变量（v0.40.1+）
 
 | 变量 | 默认 | 作用 |
 |------|------|------|
 | `CCC_CLAUDE_BIN` | 自动解析 | claude 绝对路径（launchd PATH 不全时必设） |
 | `CCC_UPSTREAM_STRICT` | off | `1` 时 upstream 探针仅 HTTP 200 算健康 |
 | `CCC_REVIEWER_FALLBACK` | `static` | `static`=LLM 挂时 PASS+WARN 过门；`quarantine`=进 abnormal |
+| `CCC_DAILY_REVIEW_LLM` | off | `1` 时日审走 Claude（骨架已留口） |
+
+## 闭环步骤（角色名 = 给人看；自动化 = prompt+skill+harness）
+
+```
+对齐基线 → 下达 backlog → wake Engine
+  → product(Claude) → planned
+  → dev(OpenCode) → testing
+  → pytest 硬门 → reviewer(Claude) → verified
+  → kb 程序发布 → released
+  → daily-diff-review（A–J）→ 必要时再 backlog+wake
+```
+
+日审：`python3 scripts/ccc-daily-diff-review.py --workspace <ws> [--apply]`
 
 ---
 
@@ -68,3 +84,4 @@ python3 scripts/ccc-failure-report.py --last 20
 - v0.39：启停控制面
 - **v0.40**：`enabled`=队列消费者；`invent` 独立；失败账本
 - **v0.40.1**：claude PATH / upstream 4xx / reviewer static fallback / hang 降噪
+- **v0.41**：下任务强制开工；基线对齐；日审骨架；Hub SSE 去重

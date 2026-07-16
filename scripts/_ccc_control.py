@@ -11,6 +11,7 @@
   bash scripts/ccc-hub-dev.sh
 
 红线 12：禁止 agent 自主 enable / invent / ui。
+例外：source=task_dispatch / daily_review — 用户下达任务或日审建卡，强制 enabled+wake（产品规则）。
 """
 
 from __future__ import annotations

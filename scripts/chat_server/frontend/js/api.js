@@ -144,6 +144,11 @@ export async function moveBoardTask(payload) {
   return apiPost('/api/board/proxy/tasks/move', payload);
 }
 
+export async function fetchProjectBaseline(projectId) {
+  const id = projectId || state.get('currentProject') || 'ccc';
+  return apiGet('/api/projects/' + encodeURIComponent(id) + '/baseline');
+}
+
 /** Poll task column until terminal or timeout. Returns final task snapshot. */
 export async function pollTaskUntil(taskId, workspace, options = {}) {
   const {
