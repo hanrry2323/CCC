@@ -223,10 +223,11 @@ def _get_relay_url() -> str:
 
 
 def _is_upstream_healthy() -> bool:
-    """检查 proxy + 上游是否健康，30s 缓存。
+    """检查 relay/proxy 是否可达，30s 缓存。
 
-    轻量探测：POST 一条 max_tokens=1 的消息，超时 8s。
-    避免 upstream 全灭时 Engine 疯狂启动 product_role（浪费计数和 wall-clock）。
+    v0.40.1: 4xx 视为 proxy 在线（鉴权失败 ≠ 进程宕机）。
+    仅连接失败 / 5xx / 超时才判 unhealthy。
+    CCC_UPSTREAM_STRICT=1 时恢复旧行为（仅 HTTP 200 = healthy）。
     """
     now = time.time()
     cached = _upstream_health_cache.get("healthy")
@@ -235,9 +236,12 @@ def _is_upstream_healthy() -> bool:
         return cached
 
     relay = _get_relay_url()
-    # Proxy 走 anthropic 模式，需要 POST /v1/messages 加必要 header
     messages_url = relay.rstrip("/") + "/v1/messages"
+    strict = (os.environ.get("CCC_UPSTREAM_STRICT") or "").strip() in ("1", "true", "yes")
+    status_code: int | None = None
+    err_msg = ""
     try:
+        import urllib.error
         import urllib.request
 
         data = json.dumps({
@@ -255,15 +259,61 @@ def _is_upstream_healthy() -> bool:
             },
             method="POST",
         )
-        resp = urllib.request.urlopen(req, timeout=8)
-        healthy = resp.status == 200
-    except Exception:
+        try:
+            resp = urllib.request.urlopen(req, timeout=8)
+            status_code = getattr(resp, "status", None) or resp.getcode()
+        except urllib.error.HTTPError as http_exc:
+            status_code = http_exc.code
+            err_msg = str(http_exc.reason or http_exc)[:120]
+    except Exception as exc:
+        status_code = None
+        err_msg = str(exc)[:120]
+
+    if status_code is None:
         healthy = False
+    elif strict:
+        healthy = status_code == 200
+    else:
+        # proxy 可达：2xx/4xx；5xx 或无响应 → 不健康
+        healthy = 200 <= status_code < 500
 
     _upstream_health_cache["healthy"] = healthy
     _upstream_health_cache["checked_at"] = now
+    _upstream_health_cache["status_code"] = status_code
+    _upstream_health_cache["error"] = err_msg
+    # 状态变化写全局 probe 事件（~/.ccc/stats/upstream-probe.jsonl）
+    prev = _upstream_health_cache.get("_last_logged")
+    sig = (healthy, status_code)
+    if prev != sig:
+        _upstream_health_cache["_last_logged"] = sig
+        try:
+            probe_dir = Path.home() / ".ccc" / "stats"
+            probe_dir.mkdir(parents=True, exist_ok=True)
+            with (probe_dir / "upstream-probe.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(
+                    json.dumps(
+                        {
+                            "ts": now_iso(),
+                            "healthy": healthy,
+                            "status": status_code,
+                            "error": err_msg or None,
+                            "relay": relay,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
     if not healthy:
-        engine_log("[health] upstream 不可用 — 跳过所有 product_role（缓存 30s）")
+        engine_log(
+            f"[health] upstream 不可用 status={status_code} err={err_msg or '-'} "
+            f"— 跳过 product_role（缓存 30s）"
+        )
+    elif status_code and status_code != 200:
+        engine_log(
+            f"[health] upstream proxy 可达 status={status_code}（视为 healthy）"
+        )
     return healthy
 
 
@@ -3064,10 +3114,14 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
     pids_dir = ws / ".ccc" / "pids"
     now = _dt.now(timezone.utc)
 
+    store = _get_store(ws)
     for key, info in list(active_tasks.items()):
         if info.get("workspace") != ws:
             continue
         tid = info["task_id"]
+        # v0.40.1: 已 quarantine 的任务不再刷 hang 事件
+        if _find_task_column(store, tid) == "abnormal":
+            continue
         try:
             cur_phase = _current_running_phase(tid)
         except Exception as exc:
@@ -3260,10 +3314,16 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
     label = _ws_label(ws)
     pids_dir = ws / ".ccc" / "pids"
 
+    store = _get_store(ws)
     for key, info in list(active_tasks.items()):
         if info.get("workspace") != ws:
             continue
         tid = info["task_id"]
+        # v0.40.1: 已 quarantine → 不再 hang-auto / 不再刷账本
+        if _find_task_column(store, tid) == "abnormal":
+            active_tasks.pop(key, None)
+            _hang_retry_counter.pop(key, None)
+            continue
         try:
             cur_phase = _current_running_phase(tid)
         except Exception as exc:
@@ -3332,9 +3392,10 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 role="engine",
                 from_col="in_progress",
             )
-            # 不增加计数，避免 dict 无限增长
-            _hang_retry_counter[key] = retries
+            # v0.40.1: quarantine 后清计数 + 移出 active，避免重复 hang 事件
+            _hang_retry_counter.pop(key, None)
             _save_hang_retry_counter()
+            active_tasks.pop(key, None)
             continue
 
         try:

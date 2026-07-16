@@ -48,6 +48,8 @@ def _sanitized_env() -> dict:
 
     Subprocess.Popen inherits the full environment by default, which exposes
     API keys/tokens/secrets to child processes. Filter out known patterns.
+
+    v0.40.1: 确保 PATH 含 ~/.local/bin 等，避免 launchd 下找不到 claude/opencode。
     """
     import os as _os
 
@@ -58,6 +60,24 @@ def _sanitized_env() -> dict:
     ]
     for key in keys_to_remove:
         env.pop(key, None)
+
+    # v0.40.1: PATH 前缀（claude / opencode / homebrew）
+    try:
+        from _claude_cli import claude_path_prefixes
+
+        prefixes = claude_path_prefixes()
+    except Exception:
+        prefixes = []
+    npm = str(Path.home() / ".npm-global" / "bin")
+    if Path(npm).is_dir() and npm not in prefixes:
+        prefixes.append(npm)
+    old = env.get("PATH", "")
+    parts = [p for p in prefixes if p]
+    for p in old.split(":"):
+        if p and p not in parts:
+            parts.append(p)
+    if parts:
+        env["PATH"] = ":".join(parts)
     return env
 
 

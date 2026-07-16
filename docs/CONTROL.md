@@ -52,8 +52,19 @@ python3 scripts/ccc-failure-report.py --last 20
 
 ---
 
+## 流水线环境变量（v0.40.1）
+
+| 变量 | 默认 | 作用 |
+|------|------|------|
+| `CCC_CLAUDE_BIN` | 自动解析 | claude 绝对路径（launchd PATH 不全时必设） |
+| `CCC_UPSTREAM_STRICT` | off | `1` 时 upstream 探针仅 HTTP 200 算健康 |
+| `CCC_REVIEWER_FALLBACK` | `static` | `static`=LLM 挂时 PASS+WARN 过门；`quarantine`=进 abnormal |
+
+---
+
 ## 版本关系
 
 - v0.37：空看板 invent 默认 OFF
 - v0.39：启停控制面
 - **v0.40**：`enabled`=队列消费者；`invent` 独立；失败账本
+- **v0.40.1**：claude PATH / upstream 4xx / reviewer static fallback / hang 降噪

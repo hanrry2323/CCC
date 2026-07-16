@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.40.1] — 2026-07-16
+
+### 流水线修通：claude PATH / upstream 探针 / reviewer 门禁
+
+- **Fix1** `scripts/_claude_cli.py`：运行时解析绝对路径；`_sanitized_env` 补 `~/.local/bin`
+- **Fix2** upstream 探针：4xx 视为 proxy 可达；`CCC_UPSTREAM_STRICT=1` 恢复仅 200；写 `~/.ccc/stats/upstream-probe.jsonl`
+- **Fix3** `CCC_REVIEWER_FALLBACK=static|quarantine`（默认 static：PASS+WARN 过门）
+- **Fix4** hang：abnormal 后不再刷 hang 事件；耗尽 quarantine 后清 active/counter
+- **Fix5** `tests/e2e/test_green_pipeline_e2e.sh` mock 绿通
+
 ## [v0.40.0] — 2026-07-16
 
 ### 架构：队列消费者 + 失败账本
