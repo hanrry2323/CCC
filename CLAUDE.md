@@ -1,27 +1,199 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # CCC — 分布式自动化开发平台
 
-> **云原生 AI 开发流水线**。CCC 是 Engine + 看板 + Patrol 三位一体的自动化平台，
-> 通过 SKILL.md prompt 资产连接 Claude Code → 任意 IDE 工具，实现
+> **云原生 AI 开发流水线**。Engine + 看板 + Patrol 三位一体的自动化平台，
 > backlog → planned → in_progress → testing → verified → released 全自动闭环。
 
----
-
-## 名字含义
-
-**C**onnect — **C**laude **C**ode
-
-CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
-- 是一个 **SKILL 资产套件**（`SKILL.md` + 7 角色 `skills/`），不是 framework 代码库
-- 每个角色有独立 skill 定义（`skills/ccc-<role>/SKILL.md`）
-- 能加载到 Trae / Cursor / Zed / VS Code / OpenCode 任意工具
-
-详细定位见 `README.md`，详细路线见 `docs/roadmap.md`。
+**当前版本**: `v0.40.1`（CHANGELOG.md / VERSION）
+**控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
 
 ---
 
-## 工程纪律（12 条核心红线 + X1-X6）
+## 开发命令
 
-完整版：`~/program/CCC/references/red-lines.md`
+```bash
+# Python 语法检查（必做，所有 scripts/*.py）
+python -m py_compile scripts/ccc-engine.py
+
+# Shell 语法检查（所有 *.sh）
+bash -n scripts/ccc-autostart-guard.sh
+
+# 单测（核心测试，464 case）
+pytest tests/scripts/ -q --tb=short
+
+# 单文件测试
+pytest tests/scripts/test_board_store.py -v --tb=short
+
+# 单用例（-k 支持 name 匹配）
+pytest tests/scripts/test_engine.py -v -k test_phase_dependencies
+
+# Ruff lint（CI 级）
+ruff check scripts/ tests/
+
+# E2E 集成测试
+bash tests/e2e/test_pipeline_smoke.sh      # 基础流水线烟测
+bash tests/e2e/test_green_pipeline_e2e.sh  # 绿通 mock 流水线
+bash tests/e2e/test_f1_backlog_failover.sh # 失败计数器 + quarantine
+
+# 自检（完整语法 + 安全扫描，提交前跑）
+bash scripts/ccc-self-check.sh
+
+# 看板状态
+python3 scripts/ccc-board.py index
+
+# 失败报告（上一笔失败）
+python3 scripts/ccc-failure-report.py --last 1
+
+# 引擎状态
+bash scripts/ccc-autostart-guard.sh status
+
+# 前端开发模式（前台 Hub + Board，不碰 launchd）
+bash scripts/ccc-hub-dev.sh
+```
+
+---
+
+## 架构概要
+
+### 7 角色流水线（Engine 串行驱动）
+
+```
+backlog → product(claude) → planned → dev(opencode) → testing
+       → reviewer+tester → verified → kb(git tag) → released
+```
+
+| 角色 | Engine 触发 | 看板列 |
+|------|-------------|--------|
+| product | backlog 非空自动异步拆解 | backlog → planned |
+| dev | Engine 自动串行（多 phase 续跑） | planned → in_progress → testing |
+| reviewer | testing 列门禁（写 verdict.md） | testing → verified |
+| tester | testing 列门禁 | testing → verified |
+| ops | 手动/可选；空闲不默认重扫 | 所有列（非阻塞） |
+| kb | verified 列非空即跑 | verified → released |
+| regress | 保留独立定时（23:30） | released → backlog |
+
+### 控制面状态机（v0.39+）
+
+`~/.ccc/control.json` 是全局开关（SSOT）：
+
+| 模式 | Engine | 自造任务 | 用途 |
+|------|--------|----------|------|
+| `disabled` | 关 | 否 | 默认，完全离线 |
+| `ui` | 关 | 否 | 前端开发 |
+| `enabled` | 队列消费者 | 否 | 日常生产 |
+| `invent` | 全开 | 是 | 自造 evolve/audit |
+
+```
+bash scripts/ccc-autostart-guard.sh enable --start
+```
+
+### 入口架构
+
+```
+launchd(com.ccc.engine) → ccc-engine.sh → ccc-engine.py
+  └→ ccc-board.py 角色函数（dev/reviewer/tester/kb）
+  └→ 三层抽象：_config.py → _board_store.py(FileBoardStore) → _executor.py(OpenCodeExecutor)
+```
+
+### 前端 SPA 架构（v0.38+ 模块化重构）
+
+**入口** → `http://localhost:7777` → `scripts/ccc-chat-server.py` → `scripts/chat_server/`
+
+```
+scripts/chat_server/            # FastAPI 模块化后端
+├── app.py                      # FastAPI 工厂（CORS + Static + 5 路由）
+├── config.py                   # HOST/PORT/AUTH/PROXY/BOARD_URL 配置
+├── auth.py                     # Basic Auth
+├── models.py                   # 数据模型
+├── routers/                    # API 路由
+│   ├── chat.py                 #   对话 SSE + 执行
+│   ├── board.py                #   看板代理 → Board API(:7775)
+│   ├── projects.py             #   项目列表
+│   ├── sessions.py             #   历史会话
+│   └── files.py                #   文件附件
+├── services/                   # 业务逻辑
+│   ├── claude_client.py        #   claude CLI 子进程
+│   ├── board_client.py         #   Board API HTTP 客户端
+│   └── session_store.py        #   会话持久化
+└── frontend/                   # SPA 前端（hash 路由）
+    ├── index.html              # SPA 壳
+    ├── css/                    # 样式（5 个文件：variables/base/themes/components/shell）
+    └── js/
+        ├── router.js           # #/chat | #/board | #/console
+        ├── app.js              # 主应用（tab 管理 + 事件）
+        ├── state.js            # 全局状态
+        ├── api.js              # API 客户端
+        ├── components/         # 14 个 UI 组件
+        └── pages/              # 页面（boardPage.js / consolePage.js）
+```
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 7777 | CCC Hub | SPA 前端（默认 `#/chat` 对话页） |
+| 7775 | Board API | 看板 REST（仅 127.0.0.1，Hub 反代） |
+| 7778 | CCC Cockpit | 可选旧总控（Cockpit，非 SPA） |
+
+`scripts/ccc-board-ui/` 仅含跳转页 → Hub :7777（已废弃）。
+
+---
+
+## 看板 4 文件契约
+
+```
+<workspace>/.ccc/
+├── profile.md                  # 项目档案（首次接入生成）
+├── state.md                    # 接力索引
+├── board/                      # 看板文件
+│   ├── backlog/ / planned/ / in_progress/ / testing/ / verified/ / released/
+│   └── index.json
+├── plans/<tid>.plan.md         # product 产出
+├── phases/<tid>.phases.json    # product 产出（JSONL, schema_version="1.1"）
+├── reports/<tid>.report.md     # dev 产出
+├── reports/<tid>.review.md     # reviewer 产出
+├── verdicts/<tid>.verdict.md   # reviewer/tester 产出（≥3 probes）
+├── review-locks/<tid>.lock     # reviewer per-task advisory lock
+├── stats/                      # 可观测性
+│   ├── events.jsonl            # 事件流
+│   ├── failures.jsonl          # 失败账本（v0.40+）
+│   ├── summary.json            # 聚合
+│   └── upstream-probe.jsonl    # upstream 探针（v0.40.1+）
+└── quarantines/<tid>/          # 归档包 + reason.txt
+```
+
+---
+
+## 关键资产
+
+| 路径 | 角色 |
+|------|------|
+| `SKILL.md` | 注入 prompt 总纲（agent 启动时自动加载） |
+| `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
+| `scripts/ccc-engine.py` | Engine 串行执行主循环 |
+| `scripts/ccc-board.py` | 7 角色看板核心 |
+| `scripts/_ccc_control.py` | 控制面状态机（~/.ccc/control.json） |
+| `scripts/_board_store.py` | FileBoardStore 看板存储抽象 |
+| `scripts/_executor.py` | OpenCodeExecutor 执行器 |
+| `scripts/_failure_ledger.py` | 失败账本（failures.jsonl） |
+| `scripts/_claude_cli.py` | claude CLI 运行时路径解析 |
+| `scripts/_config.py` | 集中配置（Config dataclass） |
+| `scripts/ccc-chat-server.py` | CCC Hub 后端（Chat + Board 代理） |
+| `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
+| `scripts/ccc-cockpit.py` | 旧总控（可选） |
+| `scripts/ccc-autostart-guard.sh` | 控制面 CLI |
+| `scripts/ccc-failure-report.py` | 失败报告 CLI |
+| `references/red-lines.md` | 12 红线 + X 系列 |
+| `references/board-task-schema.md` | Board Protocol v1（跨 IDE 契约） |
+| `docs/CONTROL.md` | 控制面文档 |
+| `docs/observability.md` | 可观测性 / 埋点文档 |
+| `docs/STRATEGY-MAP.md` | 战略地图（角色启动必读） |
+| `templates/` | plan/phases/report/verdict/AGENTS 模板 |
+
+---
+
+## 工程红线（摘要）
 
 | # | 红线 | 一句话 |
 |---|------|--------|
@@ -35,197 +207,25 @@ CCC 把 Claude Code 的执行能力**连接到任何 IDE 工具**。它：
 | 8 | 每步必 commit | exec-commit 兜底 |
 | 9 | 卡死立即止损 | kill + 下一个角色接管 |
 | 10 | 禁止跨会话隐式记忆 | state.md 强制接力 |
-| **11** | Verdict 必须写 verdict 文件 | 口头 PASS 不算 PASS（Lesson 28） |
+| **11** | Verdict 必须写 verdict 文件 | 口头 PASS 不算（Lesson 28） |
 | **12** | 禁止 agent 自主启用 CCC | 用户显式触发 |
 
-**R 系列**（v0.24.5+ 起 alias）：R-04 reviewer 强制参与 / R-07 phases.json 原子写 / R-08 日志统一 logger / R-09 认证 GET 路径 / R-12 强制人工介入（fallback quarantine）/ R-14 audit 子进程 timeout。R- 与 X- 编号并存，详见 `references/red-lines.md`。
-
-**X 系列**（历史索引，v0.30.0 起仅保留参考）：X1-X6（详情见 `references/red-lines.md`）
-
-**Lesson 27**: `claude -p` 是 print 模式开关，prompt 必须走 stdin。
-
-**Lesson 28**: Verdict 强证据红线 11 的来历。
+完整版含 R-/X- 别名 → `references/red-lines.md`。
 
 ---
 
-## 关键资产清单
+## 模型通道
 
-| 路径 | 角色 |
-|------|------|
-| `.ccc/infrastructure.md` | **基础设施总览** — 所有机器/端口/项目状态（启动时强制读取） |
-| `SKILL.md` | 唯一注入 prompt（agent 启动时自动加载） |
-| `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
-| `references/red-lines.md` | 12+X6 红线强约束 |
-| `references/board-task-schema.md` | task JSONL 格式标准（v0.19 新增，CCC-QXO 共享契约） |
-| `scripts/_config.py` | 集中配置（v0.19 新增） |
-| `scripts/_board_store.py` | 看板存储抽象 FileBoardStore（v0.19 新增） |
-| `scripts/_executor.py` | 执行器抽象 OpenCodeExecutor（v0.19 新增） |
-| `scripts/ccc-board.py` | 7 角色看板核心 |
-| `scripts/ccc-engine.sh` | CCC Engine launchd 入口 (v0.20.1) |
-| `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
-| `scripts/ccc-engine.py` | CCC Engine 串行执行主循环 (v0.20.1) |
-| `scripts/ccc-engine.sh` | Engine launchd 入口 |
-| `scripts/opencode-exec.py` | OpenCode CLI 执行器 |
-| `scripts/opencode-pool.py` | 进程池（max 3 并发） |
-| `scripts/opencode-watchdog.sh` | 残留扫描 |
-| `scripts/ccc-notify.sh` | macOS 桌面通知 |
-| `scripts/ccc-exec-launcher.sh` | 单 phase 启动入口 |
-| `scripts/ccc-exec-commit.sh` | 单 phase 单 commit |
-| `scripts/ccc-hook.sh` | 通用钩子执行器 |
-| `templates/` | plan/phases/report/verdict/AGENTS 模板 |
-| `tests/scripts/` | pytest 核心测试 |
-| `tests/e2e/` | E2E 集成测试（v0.19 新增） |
-| `.ccc/profile.md` + `.ccc/state.md` | 项目档案 + 接力索引 |
-| `docs/lessons.md` | 历史教训沉淀 |
-| `docs/roadmap.md` | 路线图 |
-| `CHANGELOG.md` | 版本变更 |
+| 通道 | 用途 | 模型 |
+|------|------|------|
+| `flash` | 主会话交互 | MiniMax-M3 等（:4000 中转站） |
+| `code` | 后台自动任务（dev/opencode） | 讯飞 astron-code / DeepSeek（:4002） |
 
-> `ccc-precheck.sh` / `ccc-finish.sh` 已移除（不再使用）
+子进程统一 `--model flash`（wrapper 入口统一），详见 `docs/model-tier-strategy.md`。
 
 ---
 
-## 7 角色系统 + CCC Engine（v0.20.1 架构）
+## 与 qxo 的关系
 
-**v0.18 起不再支持旧 3 角色（Plan/Exec/Verify）流程。**
-**v0.20.1 起取消 7 角色定时轮询，改为 CCC Engine 串行驱动。**
-
-### 引擎架构
-
-```
-launchd → com.ccc.engine (KeepAlive, 常驻)
-  └─ ccc-engine.py 主循环:
-       loop:
-         in_progress 有 task 在跑?
-           → 检查 .done 完成 → 立即跑 reviewer+tester+kb
-         planned 有 task?
-           → 启 opencode（不走定时器，即刻执行）
-         无事 → sleep 5s
-```
-
-### v0.24+ Phase 感知追加
-
-Engine 主循环对当前 task 读 `<task>.phases.json`（JSONL, schema_version="1.1"），
-按 phase 边界调度：
-
-```
-phases.json → _resolve_phase_dependencies()
-  → 分类 executable / blocked / skipped 三态
-  → executable phase 进入 _current_running_phase()
-  → dev_role_launch / dev_role_relaunch / dev_role_check_complete
-  → phase all_terminal → reviewer_role (advisory lock + fallback quarantine)
-  → phase all_verified → kb_role
-```
-
-失败传染：`_check_phase_failures()` 检测 phase 失败 → 标记 phase failed → 跳过依赖它的后续 phase → task 全 phase failed 时 Engine 移 abnormal。
-
-### 角色映射（Engine 内部串行调用）
-
-| 角色 | Engine 触发方式 | 看板列 |
-|------|----------------|--------|
-| product | backlog 非空自动异步拆分（或 `--promote`） | backlog → planned |
-| dev | Engine 自动串行（多 phase 续跑） | planned → in_progress → testing |
-| reviewer | testing 列门禁（写 verdict.md） | testing → verified |
-| tester | testing 列门禁 | testing → verified |
-| ops | 手动/可选；空闲不默认重扫 | 所有列（非阻塞） |
-| kb | verified 列非空即跑（v0.38） | verified → released |
-| regress | 保留独立定时（23:30）或嵌在 Engine 内 | released → backlog |
-
-**Engine + board-server 装上** = `bash scripts/install-ccc-roles.sh`（红线 X5）。
-
-### 任务流转
-
-```
-backlog → planned → in_progress → testing → verified → released
-```
-
-详细见 `docs/STRATEGY-MAP.md`。
-
-### 用户路由决策
-
-| 任务规模 | 处理方式 | 谁 |
-|---------|---------|----|
-| 小（单文件 1-5 行 / 调试 / 查信息） | agent 直接处理 | — |
-| 中（多文件 / 跨模块） | CCC skill 启用，指定角色 | agent + user |
-| 大（多阶段 / 需完整看板） | CCC skill 启用，全链跑 | CCC Engine 自动串行 |
-
-**红线 12**：agent 不自主启用 CCC。用户显式触发。
-
----
-
-## 4 文件契约路径
-
-```
-<workspace>/.ccc/
-├── profile.md              # 项目档案（首次接入生成）
-├── plans/<task>.plan.md    # product 产出
-├── phases/<task>.phases.json  # product 产出（JSONL, schema_version="1.1"，支持 depends_on）
-├── reports/<task>.report.md   # dev 产出
-├── reports/<task>.review.md   # reviewer 产出（v0.24.5+）
-├── verdicts/<task>.verdict.md # reviewer/tester 产出（≥3 probes）
-├── review-locks/<task>.lock   # reviewer per-task advisory lock（v0.24.5+）
-└── board/                    # 看板文件
-    ├── backlog/
-    ├── planned/
-    ├── in_progress/
-    ├── testing/
-    ├── verified/
-    ├── released/
-    └── index.json
-```
-
----
-
-## 角色入口架构（v0.20.1）
-
-```
-launchd plist (com.ccc.engine, KeepAlive)
-  → scripts/ccc-engine.sh
-      → python3 scripts/ccc-engine.py --workspace <path>
-          └→ ccc-board.py 角色函数:
-              dev_role_launch() / reviewer_role() / tester_role() / kb_role()
-```
-
-**v0.19 架构升级**：`ccc-board.py` 内部依赖三层抽象：
-
-```
-ccc-board.py → _config.py (配置) + _board_store.py (存储) + _executor.py (执行)
-```
-
-所有存储操作收口到 `FileBoardStore`，执行操作收口到 `OpenCodeExecutor`。
-
----
-
-## 模型分级策略
-
-详细见 `docs/model-tier-strategy.md`。
-
-| 层 | 模型 | 月费 | 干什么 |
-|----|------|------|--------|
-| L1 架构 | MiniMax-M3（flash） | ¥119 | 主会话：方案讨论、拆任务、写精准指令 |
-| L2 执行 | 讯飞 astron-code / DeepSeek-v4-flash | ¥20 | CCC 自动化：按 spec 写代码 |
-| L3 精修 | Claude Sonnet (Cursor Pro) | ¥140 | 收官冲刺：重构、测试、跨文件一致性 |
-| 备援 | 智谱 GLM-4.7-Flash | ¥0 | CCC 自动化扩容 |
-
-**总预算 ~¥279/月。** 便宜模型搭骨架，高级模型做精修。
-
----
-
-## 与 qxo 的关系（独立发展，共享契约）
-
-CCC 与 QXO **独立发展，不互相依赖**。
-
-- **CCC** 做"极简的 Prompt 资产"——CCC Engine + 看板流水线，SKILL.md + 脚本，不绑任何项目。
-- **QXO** 做"可扩展的 AI 中台"——FastAPI + React + Tauri，LoopEngine + EventBus。
-
-两者互通通过 `references/board-task-schema.md` 定义的 task JSONL 格式实现：
-- QXO 可按标准格式往 `backlog/` 写入任务
-- CCC 产出的 report / verdict 也可被 QXO 读取
-
-v0.5 起 CCC 与 qxo 代码解耦，v0.19 完成**存储抽象 + 共享契约**的正式定义。
-
----
-
-## 版本
-
-当前：`v0.40.0`。控制面见 `docs/CONTROL.md`（`enabled`=队列消费者，`invent`=自造）。
-埋点见 `docs/observability.md`。历史见 `CHANGELOG.md`。
+独立发展、共享 `board-task-schema.md` 定义的 task JSONL 契约。
+CCC 不依赖 QXO 代码，QXO 可写标准 backlog 投递。
