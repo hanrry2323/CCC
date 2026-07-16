@@ -1,36 +1,60 @@
 import { state } from './state.js';
 
 /** F-SEC-01/02: 不硬编码口令；首次从 localStorage / prompt 取。 */
-function _authHeader() {
+function _authHeader(forcePrompt = false) {
   let user = localStorage.getItem('ccc_chat_user') || 'ccc';
-  let pass = localStorage.getItem('ccc_chat_pass') || '';
+  let pass = forcePrompt ? '' : (localStorage.getItem('ccc_chat_pass') || '');
   if (!pass) {
-    pass = window.prompt('CCC Chat 密码（写入 localStorage，不会提交到仓库）') || '';
+    pass = window.prompt('CCC Chat 密码（用户名默认 ccc）') || '';
     if (pass) localStorage.setItem('ccc_chat_pass', pass);
   }
   return 'Basic ' + btoa(user + ':' + pass);
 }
 
-function _headers(json = true) {
-  const h = { Authorization: _authHeader() };
+function _clearAuth() {
+  localStorage.removeItem('ccc_chat_pass');
+}
+
+function _headers(json = true, forcePrompt = false) {
+  const h = { Authorization: _authHeader(forcePrompt) };
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }
 
+/** On 401: clear stored password, re-prompt once, retry the request. */
+async function _fetchWithAuth(url, options = {}, json = true) {
+  let resp = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), ..._headers(json, false) },
+  });
+  if (resp.status === 401) {
+    _clearAuth();
+    window.showToast?.('认证失败，请重新输入密码', 'error');
+    resp = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ..._headers(json, true) },
+    });
+  }
+  return resp;
+}
+
 export async function apiGet(path) {
-  const resp = await fetch(path, { headers: _headers(false) });
-  if (!resp.ok) throw new Error('GET ' + path + ' ' + resp.status);
+  const resp = await _fetchWithAuth(path, { method: 'GET' }, false);
+  if (!resp.ok) {
+    if (resp.status === 401) throw new Error('认证失败 (401)：密码错误，请刷新后重试');
+    throw new Error('GET ' + path + ' ' + resp.status);
+  }
   return resp.json();
 }
 
 export async function apiPost(path, body) {
-  const resp = await fetch(path, {
+  const resp = await _fetchWithAuth(path, {
     method: 'POST',
-    headers: _headers(true),
     body: JSON.stringify(body || {}),
-  });
+  }, true);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
+    if (resp.status === 401) throw new Error('认证失败 (401)：密码错误，请刷新后重试');
     const msg = data.message || data.error || ('POST ' + path + ' ' + resp.status);
     throw new Error(msg);
   }
@@ -38,7 +62,7 @@ export async function apiPost(path, body) {
 }
 
 export async function apiDelete(path) {
-  const resp = await fetch(path, { method: 'DELETE', headers: _headers(false) });
+  const resp = await _fetchWithAuth(path, { method: 'DELETE' }, false);
   return resp.json();
 }
 
@@ -70,12 +94,51 @@ export async function loadBoardDashboard(workspace) {
   return apiGet('/api/board/proxy/dashboard' + qs);
 }
 
+export async function loadBoardTimeline(workspace) {
+  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
+  return apiGet('/api/board/proxy/timeline' + qs);
+}
+
+export async function getBoardTask(taskId, workspace) {
+  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
+  return apiGet('/api/board/proxy/tasks/' + encodeURIComponent(taskId) + qs);
+}
+
+export async function getBoardTaskEvents(taskId, workspace) {
+  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
+  return apiGet('/api/board/proxy/tasks/' + encodeURIComponent(taskId) + '/events' + qs);
+}
+
 export async function createBoardTask(task) {
   return apiPost('/api/board/proxy/tasks', task);
 }
 
 export async function moveBoardTask(payload) {
   return apiPost('/api/board/proxy/tasks/move', payload);
+}
+
+/** Poll task column until terminal or timeout. Returns final task snapshot. */
+export async function pollTaskUntil(taskId, workspace, options = {}) {
+  const {
+    intervalMs = 4000,
+    timeoutMs = 30 * 60 * 1000,
+    terminal = ['verified', 'released', 'abnormal'],
+    onTick,
+  } = options;
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      last = await getBoardTask(taskId, workspace);
+      const col = last._column || last.status;
+      if (typeof onTick === 'function') onTick(last, col);
+      if (terminal.includes(col)) return last;
+    } catch (err) {
+      if (typeof onTick === 'function') onTick({ error: err.message }, null);
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return last;
 }
 
 export async function listProjectFiles(projectId, path = '') {
@@ -106,15 +169,15 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
       body.attachments = attachments;
     }
 
-    const resp = await fetch('/api/chat', {
+    const resp = await _fetchWithAuth('/api/chat', {
       method: 'POST',
-      headers: _headers(true),
       body: JSON.stringify(body),
       signal: abortController.signal,
-    });
+    }, true);
 
     if (!resp.ok) {
-      const errText = resp.status === 400 ? '危险指令已被拦截或附件无效'
+      const errText = resp.status === 401 ? '认证失败 (401)：请刷新页面，密码输入 ccc-test-pass-OK'
+        : resp.status === 400 ? '危险指令已被拦截或附件无效'
         : resp.status === 429 ? '前一个执行中，请稍候'
         : '请求失败: HTTP ' + resp.status;
       onError(errText);

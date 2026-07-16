@@ -1485,10 +1485,13 @@
   margin-top: 8px;
 }
 
-.board-ws {
+.board-track {
   font-size: var(--ccc-font-size-sm);
-  margin-bottom: 12px;
-  color: var(--ccc-text-secondary);
+  color: var(--ccc-text-accent);
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--ccc-bg-accent-soft);
+  border-radius: var(--ccc-radius-sm);
 }
 .board-counts {
   display: grid;

@@ -22,8 +22,12 @@
   <integer>10</integer>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>CCC_CHAT_HOST</key>
+    <string>0.0.0.0</string>
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
+    <key>PATH</key>
+    <string>/Users/apple/.local/bin:/Users/apple/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StandardOutPath</key>
   <string>/tmp/ccc-chat-server.log</string>

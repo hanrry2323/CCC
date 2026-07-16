@@ -1416,7 +1416,8 @@ def _process_backlog(ws: Path) -> bool:
         else:  # quick
             result = ccc_board._run_quick_fix(_task_data)
             if result.get("ok"):
-                store.move_task(tid, "backlog", "in_progress")
+                # quick-fix 完成后进入 testing，走 reviewer/tester 门禁（勿卡在 in_progress）
+                store.move_task(tid, "backlog", "testing")
             else:
                 store.move_task(tid, "backlog", "abnormal")
             store.update_index()

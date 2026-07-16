@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CHAT_DIR = PROJECT_ROOT / ".ccc" / "chat"
 CHAT_DIR.mkdir(parents=True, exist_ok=True)
 
-HOST = os.environ.get("CCC_CHAT_HOST", "127.0.0.1")
+HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")
 PORT = int(os.environ.get("CCC_CHAT_PORT", "8084"))
 AUTH_USER = os.environ.get("CCC_CHAT_USER", "ccc")
 # F-SEC-01: 无默认弱口令；必须由 CCC_CHAT_PASS 显式提供
@@ -15,6 +15,16 @@ AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "").strip()
 BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7777")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
 PROXY_URL = os.environ.get("CCC_PROXY_URL", "http://127.0.0.1:4002/v1/chat/completions")
+# LAN / localhost CORS regex（SPA 同机访问为 same-origin；跨端口/跨源时启用）
+CORS_ORIGIN_REGEX = os.environ.get(
+    "CCC_CHAT_CORS_ORIGIN_REGEX",
+    r"https?://("
+    r"localhost|127\.0\.0\.1|"
+    r"192\.168\.\d{1,3}\.\d{1,3}|"
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+    r")(:\d+)?$",
+)
 
 _WEAK_PASSWORDS = frozenset({
     "", "claude2026", "password", "ccc", "admin", "123456", "changeme",

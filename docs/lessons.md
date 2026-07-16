@@ -2221,3 +2221,13 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 
 
 
+
+---
+
+## Lesson 47：e2e-chat-greet 进入异常状态
+
+**项目**：`/Users/apple/program/CCC` | **Phase**：N/A | **时间**：2026-07-16 09:19:17 UTC
+
+**失败原因**：v0.24.5 fallback quarantine: medium-class LLM 不可用，reason=claude rc=1；放弃静默 verified，强制人工介入
+
+**待分析**：由 product_role 后续补充根因和修复方案

@@ -27,7 +27,7 @@
 | 8080 | HP Proxy | 知识库代理 |
 | 8082 | HP Memory Store | 向量/记忆 |
 | 8083 | HP Bridge | 知识库桥接 |
-| 8084 | CCC Chat Server | 移动端聊天/执行/看板 |
+| 8084 | CCC Chat Server | 局域网聊天（绑定 0.0.0.0，Basic Auth） |
 | 8095 | qb Dashboard API | FastAPI 后端 |
 | 8096 | qb Dashboard Frontend | Vue 3 前端 |
 
@@ -65,7 +65,7 @@
 
 | 项目 | 开发端口 | 测试端口 | 生产端口 | 页面 |
 |------|----------|----------|----------|------|
-| CCC | 7777(看板) / 7778(总控) / 8084(聊天) | — | — | localhost:7778 |
+| CCC | 7777(看板) / 7778(总控) / 8084(聊天) | — | — | http://192.168.3.140:8084 |
 | qb | 8095(API) / 8096(前端) | — | — | localhost:8096 |
 | medio-0 | — | — | 192.168.3.131:3000 | feiniu:3000 |
 | qx/clawmed | — | — | — | — |
@@ -148,4 +148,6 @@ scripts/chat_server/                # 模块化包
 - 轻量 Artifacts 预览侧栏
 - 模型参数透传 CLI（flash/code/sonnet/haiku）
 - 启动要求：LaunchAgents 需设置 `CCC_CHAT_PASS`（≥12 字符，勿写入仓库 plist）
+- LaunchAgents `PATH` 须包含 `claude`（如 `~/.local/bin`），否则 `/api/chat` 会报 CLI not found
+- 默认绑定 `CCC_CHAT_HOST=0.0.0.0`：局域网访问 `http://<本机IP>:8084`（Basic Auth 必填）
 

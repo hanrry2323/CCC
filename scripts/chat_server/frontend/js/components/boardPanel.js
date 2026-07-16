@@ -6,8 +6,13 @@ const COLUMNS = [
   'backlog', 'planned', 'in_progress', 'testing', 'verified', 'released', 'abnormal',
 ];
 
-function workspaceOf() {
+let pollTimer = null;
+let trackedTask = null;
+
+export function workspaceOf() {
+  const map = state.get('projectWorkspaceMap') || {};
   const p = state.get('currentProject') || 'ccc';
+  if (map[p]) return map[p];
   if (p === 'ccc') return 'CCC';
   return p;
 }
@@ -30,7 +35,7 @@ export async function openBoardPanel() {
       '<div class="board-panel-header">' +
         '<span>看板摘要</span>' +
         '<div class="board-panel-actions">' +
-          '<a class="artifact-btn" id="board-full-link" href="http://127.0.0.1:7777" target="_blank" rel="noopener">完整看板</a>' +
+          '<a class="artifact-btn" id="board-full-link" href="#" target="_blank" rel="noopener">完整看板</a>' +
           '<button type="button" class="artifact-btn" id="board-refresh">刷新</button>' +
           '<button type="button" class="artifact-btn" id="board-close">关闭</button>' +
         '</div>' +
@@ -39,23 +44,74 @@ export async function openBoardPanel() {
         '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>' +
       '</div>';
     document.getElementById('layout')?.appendChild(panel);
+    const boardLink = document.getElementById('board-full-link');
+    if (boardLink) {
+      const host = window.location.hostname || '127.0.0.1';
+      boardLink.href = 'http://' + host + ':7777';
+    }
     document.getElementById('board-close')?.addEventListener('click', closeBoardPanel);
     document.getElementById('board-refresh')?.addEventListener('click', () => refreshBoardPanel());
   }
   panel.classList.add('open');
   document.getElementById('layout')?.classList.add('with-board');
   await refreshBoardPanel();
+  startBoardAutoRefresh();
 }
 
 export function closeBoardPanel() {
+  stopBoardAutoRefresh();
   document.getElementById('board-panel')?.classList.remove('open');
   document.getElementById('layout')?.classList.remove('with-board');
 }
 
-export async function refreshBoardPanel() {
+function startBoardAutoRefresh() {
+  stopBoardAutoRefresh();
+  pollTimer = setInterval(() => {
+    if (document.getElementById('board-panel')?.classList.contains('open')) {
+      refreshBoardPanel({ quiet: true });
+    }
+  }, 5000);
+}
+
+function stopBoardAutoRefresh() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+/** Track a just-created task and toast on column changes / terminal. */
+export function trackDispatchedTask(taskId, workspace) {
+  trackedTask = { id: taskId, workspace, lastCol: 'backlog' };
+  import('../api.js').then(({ pollTaskUntil }) => {
+    pollTaskUntil(taskId, workspace, {
+      intervalMs: 4000,
+      timeoutMs: 45 * 60 * 1000,
+      onTick: (snap, col) => {
+        if (!col || col === trackedTask?.lastCol) return;
+        trackedTask.lastCol = col;
+        window.showToast?.('任务 ' + taskId + ' → ' + col, 'info');
+        refreshBoardPanel({ quiet: true });
+      },
+    }).then((final) => {
+      const col = final?._column || final?.status;
+      if (col === 'verified' || col === 'released') {
+        window.showToast?.('任务完成: ' + taskId + ' (' + col + ')', 'success');
+      } else if (col === 'abnormal') {
+        window.showToast?.('任务异常: ' + taskId, 'error');
+      }
+      trackedTask = null;
+      refreshBoardPanel({ quiet: true });
+    });
+  });
+}
+
+export async function refreshBoardPanel(opts = {}) {
   const body = document.getElementById('board-panel-body');
   if (!body) return;
-  body.innerHTML = '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>';
+  if (!opts.quiet) {
+    body.innerHTML = '<div class="settings-loading"><div class="spinner"></div><span>加载中...</span></div>';
+  }
   const ws = workspaceOf();
   try {
     const data = await loadBoard(ws);
@@ -74,8 +130,14 @@ export async function refreshBoardPanel() {
     recent.sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
     recent = recent.slice(0, 8);
 
+    const trackLine = trackedTask
+      ? '<div class="board-track">跟踪中: <code>' + escapeHtml(trackedTask.id) + '</code> → ' +
+        escapeHtml(trackedTask.lastCol || '?') + '</div>'
+      : '';
+
     body.innerHTML =
       '<div class="board-ws">工作区: <strong>' + escapeHtml(ws) + '</strong></div>' +
+      trackLine +
       '<div class="board-counts">' +
         COLUMNS.map(c =>
           '<div class="board-count-chip"><span class="board-count-n">' + counts[c] + '</span>' +
@@ -99,6 +161,8 @@ export async function refreshBoardPanel() {
       import('./taskDialog.js').then(m => m.openTaskDialog());
     });
   } catch (err) {
-    body.innerHTML = '<div class="board-empty">看板不可用: ' + escapeHtml(err.message || String(err)) + '</div>';
+    if (!opts.quiet) {
+      body.innerHTML = '<div class="board-empty">看板不可用: ' + escapeHtml(err.message || String(err)) + '</div>';
+    }
   }
 }

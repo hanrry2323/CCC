@@ -1,0 +1,2 @@
+{"schema_version": "1.1", "commit": "c8e88ac6d4663e4e62d5604982a039b07d195a50"}
+{"phase": 1, "phase_id": "p1", "status": "done", "subtasks": {"1.1": "pending", "1.2": "pending"}, "scope": ["scripts/_e2e_greet.py", "tests/scripts/test_e2e_greet.py"], "commit_message": "feat(e2e): add greet helper and pytest (phase 1/1)", "commit": null, "notes": "Chat→CCC E2E: greet util", "retry": 0, "timeout": 900}

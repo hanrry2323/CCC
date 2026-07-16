@@ -37,20 +37,41 @@ def main():
 
     print("  CCC Chat Server v2")
     print("  ─────────────────────")
-    print(f"  地址: http://{bind_host}:{bind_port}")
-    print(f"  本地: http://localhost:{bind_port}")
+    print(f"  监听: http://{bind_host}:{bind_port}")
+    print(f"  本地: http://127.0.0.1:{bind_port}")
+    if bind_host in ("0.0.0.0", "::"):
+        lan = _guess_lan_ip()
+        if lan:
+            print(f"  局域网: http://{lan}:{bind_port}")
+        else:
+            print("  局域网: 已绑定 0.0.0.0（用本机 IP 访问）")
     # F-SEC-02: 永不打印密码
     print(f"  认证: Basic Auth 已启用（用户 {AUTH_USER}）")
 
     if not args.no_open and bind_host in ("0.0.0.0", "127.0.0.1", "localhost"):
         def _open():
             try:
-                webbrowser.open(f"http://localhost:{bind_port}")
+                webbrowser.open(f"http://127.0.0.1:{bind_port}")
             except Exception as exc:
                 print(f"  WARN: 自动打开浏览器失败: {exc}")
         threading.Timer(1.2, _open).start()
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+
+
+def _guess_lan_ip() -> str:
+    """Best-effort LAN IPv4 for startup banner (no external traffic)."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+    return ""
 
 
 if __name__ == "__main__":

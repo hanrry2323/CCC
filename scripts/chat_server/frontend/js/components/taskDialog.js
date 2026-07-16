@@ -65,7 +65,7 @@ export async function openTaskDialog(prefill = {}) {
         '<button class="settings-close" id="task-close">×</button>' +
       '</div>' +
       '<div class="settings-body">' +
-        '<p class="task-help">写入看板 <code>backlog</code>，由 product → Engine 自动流转。不跳过角色。</p>' +
+        '<p class="task-help">写入看板 <code>backlog</code>。默认走 product→dev→reviewer→tester。复杂度仅作提示，不跳过角色。</p>' +
         '<div class="settings-group">' +
           '<div class="settings-row"><span class="settings-label">项目</span>' +
             '<select class="settings-select" id="task-project">' + projectOpts + '</select></div>' +
@@ -121,10 +121,18 @@ export async function openTaskDialog(prefill = {}) {
         complexity,
         tags: ['from-chat'],
         workspace,
+        ...(prefill.plan_md ? { plan_md: prefill.plan_md } : {}),
+        ...(prefill.phases_jsonl ? { phases_jsonl: prefill.phases_jsonl } : {}),
       });
-      window.showToast?.('已写入 backlog: ' + (res.task_id || id), 'success');
+      const tid = res.task_id || id;
+      const skip = res.skip_product ? '（已预置 plan，跳过 product）' : '';
+      window.showToast?.('已写入 backlog: ' + tid + skip, 'success');
       close();
-      import('./boardPanel.js').then(m => m.refreshBoardPanel?.());
+      import('./boardPanel.js').then(m => {
+        m.openBoardPanel?.();
+        m.trackDispatchedTask?.(tid, workspace);
+        m.refreshBoardPanel?.();
+      });
     } catch (err) {
       window.showToast?.(err.message || '创建失败', 'error');
       if (btn) btn.disabled = false;

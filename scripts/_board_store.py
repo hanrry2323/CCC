@@ -445,6 +445,7 @@ class FileBoardStore:
                 "schema_version": data_with_defaults["schema_version"],
                 "color_group": data_with_defaults["color_group"],
                 "color_depth": data_with_defaults["color_depth"],
+                "complexity": data_with_defaults.get("complexity", "medium"),
             }
             dst = self.board / column / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
