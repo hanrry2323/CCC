@@ -1,0 +1,16 @@
+# test(probe): OBS1 流程压力探针 — tests 冒烟 + 强制 git commit (phase 1/1, cla-obs1-commit)
+
+## Task
+cla-obs1-commit
+
+## Files
+- tests/test_obs1_smoke.py
+- docs/OBS1.md
+
+## Notes
+ROB-01: commit message header must contain task_id at end after parenthetical clause.
+
+## Verification
+pytest tests/test_obs1_smoke.py --tb=short --quiet
+git log -1 --oneline | grep cla-obs1-commit
+git ls-files tests/test_obs1_smoke.py docs/OBS1.md
