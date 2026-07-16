@@ -2922,7 +2922,8 @@ def ops_role() -> dict:
     now = _dt.now(timezone.utc)
     for col in _STALE_COLUMNS:
         for task in list_tasks(col):
-            updated_str = task.get("updated_at", task.get("created_at", ""))
+            # v0.34 (P4): 优先用 phase_last_advanced_ts（phase 粒度）, 其次 updated_at
+            updated_str = task.get("phase_last_advanced_ts", task.get("updated_at", task.get("created_at", "")))
             if not updated_str:
                 continue
             try:
@@ -2935,7 +2936,7 @@ def ops_role() -> dict:
                     )
                     health["stale_detected"] += 1
                     _log.info(
-                        "[ops] stale: {task['id']} {col} 滞留 {hours_stale:.1f}h → abnormal"
+                        f"[ops] stale: {task['id']} {col} 滞留 {hours_stale:.1f}h → abnormal"
                     )
             except (ValueError, TypeError) as e:
                 _log.warning(
@@ -2960,9 +2961,9 @@ def ops_role() -> dict:
     # 3. 检查 abnormal 列任务（上报）
     abnormal_tasks = list_tasks("abnormal")
     if abnormal_tasks:
-        _log.info("[ops] ⚠ abnormal 列有 {len(abnormal_tasks)} 个任务需处理:")
+        _log.info(f"[ops] ⚠ abnormal 列有 {len(abnormal_tasks)} 个任务需处理:")
         for t in abnormal_tasks:
-            _log.info("  • {t['id']}: {t.get('note', '?')[:120]}")
+            _log.info(f"  • {t['id']}: {t.get('note', '?')[:120]}")
         health["abnormal_count"] = len(abnormal_tasks)
 
     # 4. git ahead check

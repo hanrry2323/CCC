@@ -2357,7 +2357,8 @@ def _check_stale(ws: Path, active_tasks: dict[str, dict] | None = None) -> None:
     label = _ws_label(ws)
     now = _dt.now(timezone.utc)
     for task in store.list_tasks("in_progress"):
-        updated_str = task.get("updated_at", task.get("created_at", ""))
+        # v0.34 (P4): 优先 phase_last_advanced_ts（phase 级别停滞）
+        updated_str = task.get("phase_last_advanced_ts", task.get("updated_at", task.get("created_at", "")))
         if not updated_str:
             continue
         try:

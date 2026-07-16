@@ -474,7 +474,9 @@ class FileBoardStore:
                 return False
 
             task["status"] = to_col
-            task["updated_at"] = now_iso()
+            now = now_iso()
+            task["updated_at"] = now
+            task["phase_last_advanced_ts"] = now
 
             dst = self.board / to_col / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
