@@ -11,7 +11,7 @@
 |------|------|------|
 | **D1 xianyu** | **D1-A** | 先质量门，过线后再产 CCC 介绍片 |
 | **D2 QX 竖切** | **D2-B** | 全新项目，不在旧 qx 上打转 |
-| **新项目** | **clawmed-ccc** | 目录：`~/program/clawmed-ccc` |
+| **新项目** | **clawmed-ccc** | 目录：`~/program/clawmed-ccc` · **任务简称：`cla`** |
 | **第 1 周** | **并行** | A1（xianyu 质量门）+ B0（建仓 clawmed-ccc） |
 | **旧文档** | **全量归档** | qx / clawmed 旧任务文档移出主路径，仅需时参考 |
 
@@ -52,7 +52,8 @@
 
 ## 3. 轨 B — clawmed-ccc（D2-B）
 
-路径：`/Users/apple/program/clawmed-ccc`
+路径：`/Users/apple/program/clawmed-ccc`  
+Hub / 看板任务标题前缀建议：`cla:`（简称，避免每次打全名）
 
 | 顺序 | 任务 | 验收 |
 |------|------|------|
@@ -127,3 +128,48 @@ B 改造中 ──► Hub/看板截图 → docs/assets/intro/
 - [x] 执行 qx / clawmed-ai 归档移动  
 - [x] 创建 `~/program/clawmed-ccc` 骨架并登记 workspace  
 - [ ] Hub 下达 **A1**（xianyu 质量门）、**B1**（迁入最小爬虫；B0 已完成）  
+- [ ] **流程诊断**：批1=OBS1+OBS2（已下达 in_progress）→ 你通知验收 → 批2再下 3 卡；凑 ≥6 样本再修（见 §9）  
+
+---
+
+## 9. CCC 流程观察（样本=7，可开工修）
+
+> 主目的：跑通 CCC 闭环可信度。  
+> 样本：B1 · B1.1 · OBS1 · OBS2（seed）+ OBS3/4/5（全流程 product）+ Engine 卡死一次。
+
+### 9.1 看板终态（2026-07-17）
+
+| 任务 | 路径 | 终态 | 硬交付 |
+|------|------|------|--------|
+| B1 | seed | released | `src/` 空；commit=bootstrap |
+| B1.1 | seed | released | 有骨架但 `src/` 曾未提交；FALLBACK |
+| OBS1 | seed | released | **真 commit** `bfcfd06`；`tests/test_obs1` 已跟踪 |
+| OBS2 | seed | released | **真 commit** `0924d4f`；`tests/test_obs2` 已跟踪 |
+| OBS3/4/5 | **全流程** | **abnormal** | product×3：`Not logged in` / parse failed；无 plan |
+
+并发：OBS1+OBS2 曾双开（2/3）；批2 因 product 挂未打满 3 槽。Engine 曾卡死需 kickstart。
+
+### 9.2 假说结论（够改）
+
+| # | 结论 | 证据强度 | 优先修 |
+|---|------|----------|--------|
+| H1 | 无 task commit 仍可记 HEAD 过门 | B1/B1.1 中；OBS1/2 证明「有真 commit 时也能过」→ 缺的是**门禁强制** | P0 |
+| H2 | FALLBACK 写 `Verdict: PASS` → 不回滚 | OBS1/2/B1/B1.1 全中；根因含 **claude 未登录** | P0（门禁）+ 运维登录 |
+| H5 | 全流程依赖 claude product；未登录必 abnormal | OBS3/4/5 全灭；与 H2 同源 | P0 运维 + product 失败分类 |
+| H7 | Engine 可卡死（日志停更） | 批2 投放后 tick 停；kickstart 后恢复 | P0 看门狗/超时 |
+| H3 | `tests/` 存在后 Engine 不再「跳过」日志 | OBS1/2 后本地 `pytest tests/` 6 passed；门禁日志弱 | P1 |
+| H4 | 无 origin push-fail 仍 released | 每次 kb | P2（WARN 即可） |
+| H6 | SELF-CHECKS 可补记 | OBS2/B1.1 | 绑 H1 |
+
+### 9.3 流程修复（2026-07-17 已落地）
+
+| 项 | 改动 |
+|----|------|
+| H2 | `CCC_REVIEWER_FALLBACK` 默认 `quarantine`；`static`→`stay`；**绝不写 Verdict PASS / 绝不静默 verified** |
+| H1 | launch 记 `pre_head`；过 testing 前必须 `git log --grep=task_id` 且 ≠ pre_head；取消 HEAD 降级 |
+| H5/auth | product 识别 `Not logged in` → `fatal` 立即 quarantine |
+| H7 | Engine tick watchdog（默认 180s 无 tick → exit 78）；patrol 对 stale+alive **kill+restart** |
+
+**更正（鉴权）**：OBS3–5 的 `Not logged in · Please run /login` **不是**要跑 interactive `/login`。  
+根因：`_sanitized_env()` 按 `TOKEN` 误剥 launchd 继承的 `ANTHROPIC_AUTH_TOKEN`（中转站鉴权）。  
+已修：LLM allowlist 保留 `ANTHROPIC_*`；product/reviewer 走 `_claude_env()`。

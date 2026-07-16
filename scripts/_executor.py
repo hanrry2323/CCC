@@ -43,6 +43,22 @@ def resolve_opencode() -> Optional[str]:
     return None
 
 
+# 中转站 / Claude CLI / OpenCode 必需的鉴权变量（剥光会导致假 "Not logged in"）
+_LLM_ENV_ALLOWLIST = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_API_BASE",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENCODE_MODEL",
+        "OPENCODE_API_KEY",
+    }
+)
+
+
 def _sanitized_env() -> dict:
     """Strip credential env vars to prevent subprocess leakage (CWE-522).
 
@@ -50,16 +66,28 @@ def _sanitized_env() -> dict:
     API keys/tokens/secrets to child processes. Filter out known patterns.
 
     v0.40.1: 确保 PATH 含 ~/.local/bin 等，避免 launchd 下找不到 claude/opencode。
+    v0.42+: 保留 LLM 中转站 allowlist（ANTHROPIC_AUTH_TOKEN 等）。
+      旧逻辑按 TOKEN/API_KEY 一刀切，launchd 继承的鉴权被剥掉 → claude -p
+      输出 ``Not logged in · Please run /login``（与是否真的要 /login 无关）。
     """
     import os as _os
 
-    env = _os.environ.copy()
+    original = _os.environ.copy()
+    env = original.copy()
     _CREDENTIAL_PATTERNS = ("API_KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
     keys_to_remove = [
-        key for key in env if any(pat in key.upper() for pat in _CREDENTIAL_PATTERNS)
+        key
+        for key in env
+        if key not in _LLM_ENV_ALLOWLIST
+        and any(pat in key.upper() for pat in _CREDENTIAL_PATTERNS)
     ]
     for key in keys_to_remove:
         env.pop(key, None)
+
+    # 显式从原环境恢复 allowlist（防止模式误伤）
+    for key in _LLM_ENV_ALLOWLIST:
+        if key in original and original[key]:
+            env[key] = original[key]
 
     # v0.40.1: PATH 前缀（claude / opencode / homebrew）
     try:
@@ -78,6 +106,16 @@ def _sanitized_env() -> dict:
             parts.append(p)
     if parts:
         env["PATH"] = ":".join(parts)
+    return env
+
+
+def _claude_env(*, relay_url: str | None = None) -> dict:
+    """product/reviewer 调 claude CLI 用的环境：sanitized + 中转站 URL。"""
+    env = _sanitized_env()
+    if relay_url:
+        env["ANTHROPIC_BASE_URL"] = relay_url
+    elif not env.get("ANTHROPIC_BASE_URL"):
+        env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:4000"
     return env
 
 

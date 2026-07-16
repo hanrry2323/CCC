@@ -64,13 +64,15 @@ def test_upstream_strict_requires_200(monkeypatch):
         assert engine._is_upstream_healthy() is False
 
 
-def test_reviewer_fallback_default_static(monkeypatch):
+def test_reviewer_fallback_default_quarantine(monkeypatch):
     spec = importlib.util.spec_from_file_location(
         "ccc_board", SCRIPTS / "ccc-board.py"
     )
     board = importlib.util.module_from_spec(spec)
     monkeypatch.delenv("CCC_REVIEWER_FALLBACK", raising=False)
     spec.loader.exec_module(board)
-    assert board._reviewer_fallback_mode() == "static"
-    monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "quarantine")
     assert board._reviewer_fallback_mode() == "quarantine"
+    monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "stay")
+    assert board._reviewer_fallback_mode() == "stay"
+    monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "static")
+    assert board._reviewer_fallback_mode() == "stay"

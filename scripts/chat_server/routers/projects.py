@@ -21,13 +21,17 @@ def reload_projects():
             data = resp.json()
             workspaces = data.get("workspaces", {})
             name_map = {
-                "CCC": "CCC", "qxo": "QXO Observer",
-                "xianyu": "xianyu", "qb": "qb Dashboard", "qx": "qx",
+                "CCC": "CCC",
+                "qxo": "QXO Observer",
+                "xianyu": "xianyu",
+                "qb": "qb Dashboard",
+                "qx": "qx (archived parts)",
+                "clawmed-ccc": "cla (clawmed-ccc)",
             }
             for ws_id, ws_path in workspaces.items():
                 if ws_id.startswith("."):
                     continue
-                name = name_map.get(ws_id, ws_id.capitalize())
+                name = name_map.get(ws_id, ws_id)
                 pid = ws_id.lower().replace(" ", "-")
                 new_projects[pid] = {"name": name, "path": ws_path}
                 new_mapping[pid] = ws_id
@@ -48,6 +52,9 @@ reload_projects()
 
 
 def get_project_path(project_id: str) -> str:
+    # 允许迟到登记的 workspace（如新建 clawmed-ccc）
+    if project_id not in PROJECTS:
+        reload_projects()
     proj = PROJECTS.get(project_id)
     if not proj:
         from fastapi import HTTPException
@@ -58,6 +65,8 @@ def get_project_path(project_id: str) -> str:
 @router.get("/api/projects")
 async def list_projects(request: Request):
     check_auth(request)
+    # 每次列表从 Board 重载，避免 Hub 启动后新建 workspace 不出现
+    reload_projects()
     return {
         "projects": [
             {

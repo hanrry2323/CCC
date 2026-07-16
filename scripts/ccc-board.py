@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 from _config import Config, get_logger
-from _executor import _sanitized_env
+from _executor import _claude_env, _sanitized_env
 from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
 import phase_lint
 from _utils import now_iso as _utils_now_iso
@@ -584,8 +584,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         pass
 
     relay_url = _get_relay_url()
-    env = _sanitized_env()
-    env["ANTHROPIC_BASE_URL"] = relay_url
+    env = _claude_env(relay_url=relay_url)
 
     def _run_claude(prompt_text: str) -> str:
         result = subprocess.run(
@@ -1040,17 +1039,19 @@ def launch_product_async(task_id: str) -> dict:
 
     # 5. Popen claude -p（异步）
     result_file = pids_dir / f"{task_id}.product.out"
+    err_file = pids_dir / f"{task_id}.product.err"
     relay_url = _get_relay_url()
-    env = _sanitized_env()
-    env["ANTHROPIC_BASE_URL"] = relay_url
+    env = _claude_env(relay_url=relay_url)
 
     try:
-        with open(result_file, "w") as out_f, open(prompt_file, "r") as in_f:
+        with open(result_file, "w") as out_f, open(err_file, "w") as err_f, open(
+            prompt_file, "r"
+        ) as in_f:
             proc = subprocess.Popen(
                 [_claude_bin(), "-p"],
                 stdin=in_f,
                 stdout=out_f,
-                stderr=subprocess.PIPE,
+                stderr=err_f,
                 start_new_session=True,
                 env=env,
             )
@@ -1158,8 +1159,17 @@ def check_product_async(task_id: str) -> dict:
                 return {"status": "running"}
         return {"status": "failed", "error": "process not running"}
 
-    # 读输出
+    # 读输出（stdout + stderr；鉴权失败常在其一）
     output = result_file.read_text() if result_file.exists() else ""
+    err_file = pids_dir / f"{task_id}.product.err"
+    if err_file.exists():
+        try:
+            err = err_file.read_text()
+            if err.strip():
+                sep = "\n" if output else ""
+                output = (output or "") + sep + err
+        except OSError:
+            pass
     return _parse_and_finalize_product(task_id, output, pids_dir)
 
 
@@ -1178,21 +1188,38 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
     )
     if not plan_match or not phases_match:
         # 保留证据，便于排障（不再静默丢掉 output）
+        _out = output or ""
+        # Claude CLI 在缺 AUTH_TOKEN/API_KEY（曾被 sanitized_env 误剥）时也会吐这句，
+        # 并不等于用户必须跑 interactive /login；中转站场景优先查 env allowlist。
+        _auth = (
+            "Not logged in" in _out
+            or "Please run /login" in _out
+            or "not logged in" in _out.lower()
+        )
+        _err = (
+            "auth: claude CLI rejected request "
+            "(check ANTHROPIC_AUTH_TOKEN/API_KEY reach subprocess; not interactive /login)"
+            if _auth
+            else "output parse failed"
+        )
         try:
             fb = get_workspace() / ".ccc" / "product_fallback"
             fb.mkdir(parents=True, exist_ok=True)
-            (fb / f"{task_id}.last.out").write_text(output or "", encoding="utf-8")
-            (fb / f"{task_id}.failed").write_text(
-                "output parse failed\n", encoding="utf-8"
-            )
+            (fb / f"{task_id}.last.out").write_text(_out, encoding="utf-8")
+            (fb / f"{task_id}.failed").write_text(_err + "\n", encoding="utf-8")
         except OSError:
             pass
         _log.error(
-            "[product-async] %s output parse failed (saved product_fallback), mark failed",
+            "[product-async] %s %s (saved product_fallback), mark failed",
             task_id,
+            _err,
         )
         _cleanup_async_product_markers(pids_dir, task_id)
-        return {"status": "failed", "error": "output parse failed"}
+        return {
+            "status": "failed",
+            "error": _err,
+            "fatal": bool(_auth),
+        }
 
     plan_content = plan_match.group(1).strip()
     phases_data = []
@@ -1260,13 +1287,16 @@ def _write_pass_verdict(task_id: str, reason: str) -> None:
 
 
 def _reviewer_fallback_mode() -> str:
-    """CCC_REVIEWER_FALLBACK=static|quarantine（默认 static）。
+    """CCC_REVIEWER_FALLBACK=quarantine|stay|static（默认 quarantine）。
 
-    static: LLM 不可用时写 PASS+WARN 过门（可观测降级）
-    quarantine: 旧行为，强制 abnormal 人工介入
+    quarantine: Verdict=FALLBACK → abnormal（默认；禁止假 PASS）
+    stay: Verdict=FALLBACK，留 testing（不进 verified）
+    static: 已废弃别名 → 等同 stay（绝不写 PASS / 绝不挪 verified）
     """
-    mode = (os.environ.get("CCC_REVIEWER_FALLBACK") or "static").strip().lower()
-    return mode if mode in ("static", "quarantine") else "static"
+    mode = (os.environ.get("CCC_REVIEWER_FALLBACK") or "quarantine").strip().lower()
+    if mode == "static":
+        return "stay"
+    return mode if mode in ("quarantine", "stay") else "quarantine"
 
 
 def _apply_reviewer_llm_fallback(
@@ -1277,29 +1307,34 @@ def _apply_reviewer_llm_fallback(
     verdict_path: Path,
     review_md: Path | None = None,
 ) -> bool:
-    """处理 medium/large LLM fallback。返回是否移 verified。"""
+    """处理 medium/large LLM fallback。
+
+    返回 True 仅表示「已移 verified」——当前策略下永远为 False
+    （FALLBACK 禁止写成 PASS，禁止静默过门）。
+    """
     mode = _reviewer_fallback_mode()
     detail = reason_detail or "unknown"
-    if mode == "static":
-        warn = (
-            f"FALLBACK/{size_class}: LLM unavailable ({detail}); "
-            f"static gate pass (CCC_REVIEWER_FALLBACK=static)"
-        )
-        verdict_path.write_text(
-            f"# {task_id} Verdict\n\n"
-            f"**Verdict:** PASS\n\n"
-            f"**Warn:** {warn}\n\n"
-            f"{detail}\n",
+    warn = (
+        f"FALLBACK/{size_class}: LLM unavailable ({detail}); "
+        f"mode={mode} (CCC_REVIEWER_FALLBACK)"
+    )
+    verdict_path.write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** FALLBACK\n\n"
+        f"**Warn:** {warn}\n\n"
+        f"{detail}\n",
+        encoding="utf-8",
+    )
+    if review_md is not None:
+        review_md.write_text(
+            f"# {task_id} Review\n\n"
+            f"## Verdict: **FALLBACK**\n\n"
+            f"## Size Class: **{size_class}**\n\n"
+            f"{warn}\n",
             encoding="utf-8",
         )
-        if review_md is not None:
-            review_md.write_text(
-                f"# {task_id} Review\n\n"
-                f"## Verdict: **PASS** (WARN/FALLBACK)\n\n"
-                f"## Size Class: **{size_class}**\n\n"
-                f"{warn}\n",
-                encoding="utf-8",
-            )
+
+    if mode == "stay":
         try:
             from _failure_ledger import record_failure
 
@@ -1307,26 +1342,24 @@ def _apply_reviewer_llm_fallback(
                 get_workspace(),
                 task_id=task_id,
                 role="reviewer",
-                reason=f"static_fallback: {detail}",
+                reason=f"fallback_stay: {detail}",
                 from_col="testing",
-                to_col="verified",
-                related_stats_event="reviewer_fallback_static",
+                to_col="testing",
+                related_stats_event="reviewer_fallback_stay",
             )
         except Exception:
             pass
-        move_task(task_id, "testing", "verified")
-        _log.warning("[reviewer] %s ⚠ %s-class static fallback → verified: %s", task_id, size_class, detail)
-        return True
+        _log.warning(
+            "[reviewer] %s ⚠ %s-class fallback → stay testing: %s",
+            task_id,
+            size_class,
+            detail,
+        )
+        return False
 
     reason = (
         f"v0.40.1 fallback quarantine: {size_class}-class LLM 不可用，"
-        f"reason={detail}；放弃静默 verified，强制人工介入"
-    )
-    verdict_path.write_text(
-        f"# {task_id} Verdict\n\n"
-        f"**Verdict:** FALLBACK\n\n"
-        f"**Reason:** {detail}\n",
-        encoding="utf-8",
+        f"reason={detail}；FALLBACK≠PASS，强制人工介入"
     )
     _quarantine(task_id, reason=reason)
     _log.error(
@@ -1335,6 +1368,20 @@ def _apply_reviewer_llm_fallback(
         size_class,
         detail,
     )
+    try:
+        from _failure_ledger import record_failure
+
+        record_failure(
+            get_workspace(),
+            task_id=task_id,
+            role="reviewer",
+            reason=f"fallback_quarantine: {detail}",
+            from_col="testing",
+            to_col="abnormal",
+            related_stats_event="reviewer_fallback_quarantine",
+        )
+    except Exception:
+        pass
     try:
         subprocess.run(
             [
@@ -1601,8 +1648,7 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     # 7. Popen claude -p
     result_file = pids_dir / f"{task_id}.reviewer.out"
     relay_url = _get_relay_url()
-    env = _sanitized_env()
-    env["ANTHROPIC_BASE_URL"] = relay_url
+    env = _claude_env(relay_url=relay_url)
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
     try:
@@ -1769,7 +1815,7 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
         _cleanup_reviewer_markers(pids_dir, task_id)
         return {"status": "failed", "reason": "LLM verdict: fail"}
 
-    # fallback：默认 static 过门；CCC_REVIEWER_FALLBACK=quarantine 才进 abnormal
+    # fallback：默认 quarantine；CCC_REVIEWER_FALLBACK=stay 则留 testing（绝不 PASS）
     size_hint = size_class if size_class != "unknown" else "medium"
     moved = _apply_reviewer_llm_fallback(
         task_id,
@@ -2728,8 +2774,7 @@ def _review_with_llm(
     )
 
     relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
-    env = _sanitized_env()
-    env["ANTHROPIC_BASE_URL"] = relay
+    env = _claude_env(relay_url=relay)
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:
         # prompt 可能很大（>1MB），写临时文件并 shell 重定向，避免 subprocess.PIPE buffer 截断
@@ -3185,7 +3230,7 @@ def _review_one_task(task_id: str) -> bool:
         )
         return False
 
-    # v0.40.1: 默认 static 过门；CCC_REVIEWER_FALLBACK=quarantine 才进 abnormal
+    # v0.42+: 默认 quarantine；FALLBACK≠PASS，绝不静默 verified
     return _apply_reviewer_llm_fallback(
         task_id,
         size_class,
@@ -4749,6 +4794,95 @@ def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     )
 
 
+
+def _task_pre_head_path(task_id: str) -> Path:
+    return get_workspace() / ".ccc" / "pids" / f"{task_id}.pre_head"
+
+
+def _capture_task_pre_head(task_id: str) -> str:
+    """Launch 时记录 HEAD，供过 testing 前对比（H1）。"""
+    import subprocess as _sp
+
+    pids = get_workspace() / ".ccc" / "pids"
+    pids.mkdir(parents=True, exist_ok=True)
+    head = ""
+    try:
+        r = _sp.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=get_workspace(),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode == 0:
+            head = (r.stdout or "").strip()
+    except Exception as exc:
+        _log.warning("[commit-gate] %s capture pre_head failed: %s", task_id, exc)
+    _task_pre_head_path(task_id).write_text(head + "\n", encoding="utf-8")
+    return head
+
+
+def _find_task_commit_hash(task_id: str) -> str:
+    """仅认 git log --grep=task_id；禁止 HEAD 降级（H1）。"""
+    import subprocess as _sp
+
+    try:
+        r = _sp.run(
+            [
+                "git",
+                "log",
+                "--all",
+                "--grep",
+                task_id,
+                "--format=%H",
+                "--max-count=1",
+            ],
+            cwd=get_workspace(),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode == 0:
+            h = (r.stdout or "").strip().splitlines()
+            if h and len(h[0]) == 40:
+                return h[0]
+    except Exception as exc:
+        _log.warning("[commit-gate] %s git log grep failed: %s", task_id, exc)
+    return ""
+
+
+def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
+    """过 testing 前必须有含 task_id 的新 commit。
+
+    Returns: (ok, reason, commit_hash)
+    """
+    if (os.environ.get("CCC_SKIP_COMMIT_GATE") or "").strip() in ("1", "true", "yes"):
+        return True, "skip", ""
+    commit = _find_task_commit_hash(task_id)
+    if not commit:
+        return (
+            False,
+            "no git commit whose message contains task_id "
+            f"(refuse HEAD fallback; task={task_id})",
+            "",
+        )
+    pre_path = _task_pre_head_path(task_id)
+    pre = ""
+    if pre_path.is_file():
+        try:
+            pre = pre_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            pre = ""
+    if pre and commit == pre:
+        return (
+            False,
+            f"task commit {commit[:12]} equals pre_head — no new commit for {task_id}",
+            commit,
+        )
+    return True, "ok", commit
+
+
+
 def dev_role_launch(task_id: str) -> dict:
     """引擎用：启 opencode 执行 task，返回启动结果
 
@@ -4795,6 +4929,7 @@ def dev_role_launch(task_id: str) -> dict:
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
     Path(prompt_file).write_text(prompt)
+    _capture_task_pre_head(task_id)
 
     report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -4878,6 +5013,9 @@ def dev_role_relaunch(task_id: str) -> dict:
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
     Path(prompt_file).write_text(prompt)
+    # 保留首次 launch 的 pre_head；缺失时补记（H1）
+    if not _task_pre_head_path(task_id).is_file():
+        _capture_task_pre_head(task_id)
 
     report_dir = get_workspace() / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -5003,62 +5141,36 @@ def dev_role_check_complete(task_id: str) -> dict:
                 p.unlink()
             except OSError as e:
                 _log.warning("success marker unlink failed %s: %s", p, e)
-        # G1: 记录 task 关联 commit hash 到 phases.json（供 reviewer 按 task 过滤 diff）
-        # 优先: git log --grep=task_id（post-exec.sh 已在 commit 消息包含 task_id）
-        # 降级: git rev-parse HEAD
+        # G1/H1: 仅记录 git log --grep=task_id 的 commit（禁止 HEAD 降级）
         _phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
-        if _phases_file.exists():
+        _hash = _find_task_commit_hash(task_id)
+        if _phases_file.exists() and _hash:
             try:
-                import subprocess as _sp
-
-                _hash = ""
-                _grep = _sp.run(
-                    [
-                        "git",
-                        "log",
-                        "--all",
-                        "--oneline",
-                        "--grep",
-                        task_id,
-                        "--format=%H",
-                        "--max-count=1",
-                    ],
-                    cwd=get_workspace(),
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if _grep.returncode == 0 and _grep.stdout.strip():
-                    _hash = _grep.stdout.strip()
-                else:
-                    _r = _sp.run(
-                        ["git", "rev-parse", "HEAD"],
-                        cwd=get_workspace(),
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    _hash = _r.stdout.strip()
-                if _hash and len(_hash) == 40:
-                    _lines = _phases_file.read_text().splitlines()
-                    _updated = []
-                    for _line in _lines:
-                        _line = _line.strip()
-                        if not _line:
-                            continue
-                        try:
-                            _d = json.loads(_line)
-                            if "schema_version" in _d:
-                                _d["commit"] = _hash
-                            else:
-                                _d.setdefault("commit", _hash)
-                            _updated.append(json.dumps(_d, ensure_ascii=False) + "\n")
-                        except json.JSONDecodeError:
-                            _updated.append(_line + "\n")
-                    _phases_file.write_text("".join(_updated))
-                    _log.info("[engine] %s ✓ commit %s recorded", task_id, _hash[:12])
+                _lines = _phases_file.read_text().splitlines()
+                _updated = []
+                for _line in _lines:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        _d = json.loads(_line)
+                        if "schema_version" in _d:
+                            _d["commit"] = _hash
+                        else:
+                            _d.setdefault("commit", _hash)
+                        _updated.append(json.dumps(_d, ensure_ascii=False) + "\n")
+                    except json.JSONDecodeError:
+                        _updated.append(_line + "\n")
+                _phases_file.write_text("".join(_updated))
+                _log.info("[engine] %s ✓ commit %s recorded", task_id, _hash[:12])
             except Exception as _e:
                 _log.warning("record commit hash for %s failed: %s", task_id, _e)
+        elif not _hash:
+            _log.warning(
+                "[commit-gate] %s exit_code=0 但无含 task_id 的 commit（不记 HEAD）",
+                task_id,
+            )
+
         # v0.37: SELF-CHECKS 门禁 — 保留 agent report；无 report 时写 stub 并标记通过
         # （exit_code=0 + result.json≥50 已验证）
         if _existing_report:
@@ -5078,7 +5190,24 @@ def dev_role_check_complete(task_id: str) -> dict:
                 f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n\n"
                 f"ALL SELF-CHECKS PASSED\n"
             )
-        # v0.38: 多 phase 续跑 — 标记当前 phase done，若还有 executable 则留 in_progress
+        # v0.38: 多 phase 续跑 — 先 peek 是否终态；终态则 H1 commit 门禁通过后再 mark done
+        _phases_peek = []
+        for _p in _load_phases(task_id):
+            _pc = dict(_p)
+            if _pc.get("phase") == cur_phase:
+                _pc["status"] = "done"
+            _phases_peek.append(_pc)
+        _exec_peek, _blk_peek, _skip_peek = _resolve_phase_dependencies(_phases_peek)
+        if not _exec_peek:
+            _ok, _why, _ch = _require_task_commit_for_testing(task_id)
+            if not _ok:
+                _log.error("[commit-gate] %s 拒绝进 testing: %s", task_id, _why)
+                return {
+                    "status": "failed",
+                    "retry": 0,
+                    "task_id": task_id,
+                    "error": f"commit-gate: {_why}",
+                }
         _mark_phase_done(task_id, cur_phase)
         _phases_now = _load_phases(task_id)
         _executable, _blocked, _skipped = _resolve_phase_dependencies(_phases_now)
@@ -5100,7 +5229,12 @@ def dev_role_check_complete(task_id: str) -> dict:
                 "next_phase": _next,
             }
         move_task(task_id, "in_progress", "testing")
-        _log.info("[engine] %s ✓ all phases done → testing", task_id)
+        _ch = _find_task_commit_hash(task_id)
+        _log.info(
+            "[engine] %s ✓ all phases done → testing (commit=%s)",
+            task_id,
+            (_ch[:12] if _ch else "?"),
+        )
         return {"status": "success", "task_id": task_id}
     else:
         # 失败 stub（仅当无既有 report 时写入，避免覆盖证据）

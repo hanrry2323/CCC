@@ -104,9 +104,10 @@ def test_fallback_quarantine_calls_subprocess():
 
 
 def test_fallback_quarantine_reason_format():
-    """R-12 quarantine reason 必须含 v0.24.5 fallback quarantine"""
+    """R-12 quarantine reason 必须含 fallback quarantine（v0.40.1+）"""
     src = (SCRIPTS / "ccc-board.py").read_text()
-    assert "v0.24.5 fallback quarantine:" in src
+    assert "fallback quarantine" in src
+    assert "FALLBACK" in src
     assert "medium/large" in src or "size_class" in src
 
 
@@ -122,19 +123,17 @@ def test_small_class_keeps_py_compile_path():
 
 
 def test_medium_large_does_not_quarantine_small():
-    """fallback quarantine 仅对 medium/large，small 类不应触发 L2"""
-    # 静态检查：fallback quarantine 段在 medium/large 分支
+    """LLM fallback 走 _apply_reviewer_llm_fallback；small 仍有独立 py_compile 路径"""
     src = (SCRIPTS / "ccc-board.py").read_text()
-    # 找到 fallback quarantine 段位置
-    fallback_quarantine_pos = src.find("fallback quarantine")
-    assert fallback_quarantine_pos > 0
-    # 必须不在 small 分支内（small 分支用 size_class == "small" 标识）
-    # 简单检查：fallback quarantine 不在 "small" 字符串后的 if 块内
-    small_pos = src.find('size_class == "small"')
-    if small_pos > 0:
-        # 查找下一个 size_class 判断
-        next_size_check = src.find("size_class", small_pos + 10)
-        assert fallback_quarantine_pos > next_size_check or next_size_check < 0
+    assert "def _apply_reviewer_llm_fallback" in src
+    assert '**Verdict:** FALLBACK' in src or "**Verdict:** FALLBACK" in src
+    assert 'size_class == "small"' in src
+    assert "_py_compile_fallback" in src
+    # 禁止再把 FALLBACK 伪装成 PASS 过门
+    apply_src = src.split("def _apply_reviewer_llm_fallback", 1)[1].split(
+        "def _infer_complexity_from_plan", 1
+    )[0]
+    assert "**Verdict:** PASS" not in apply_src
 
 
 def test_review_md_contains_quarantine_keyword():

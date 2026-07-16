@@ -11,9 +11,9 @@ v4 新增：
 
 红线：
 - 不动 qx 源码（projects/qx 只读不改）
-- 不杀 Engine 自身
 - 不杀运行中的 opencode
 - 不改 .env
+- H7: heartbeat/loop 卡死且 PID 仍存活时允许 kill+restart Engine
 """
 
 from __future__ import annotations
@@ -276,11 +276,21 @@ def ensure_engine_healthy(*, allow_restart: bool = True) -> str:
     alive = engine_is_running()
     if alive:
         hb_status, hb = check_heartbeat(CCC_HOME)
-        if hb_status == "stale":
+        loop_stale = _loop_heartbeat_stale()
+        if hb_status == "stale" or loop_stale:
             print(
-                f"[patrol] heartbeat stale ({hb.get('timestamp', '?')}) but PID alive, skipping restart",
+                f"[patrol] heartbeat stale "
+                f"(ws={hb.get('timestamp', '?')}, loop_stale={loop_stale}) "
+                f"and PID alive — kill+restart (H7)",
                 file=sys.stderr,
             )
+            if not allow_restart:
+                return "STALE"
+            _try_kill_engine()
+            time.sleep(2)
+            if _try_start_engine():
+                return "RESTARTED"
+            return "DEAD"
         return "OK"
 
     if not allow_restart:
@@ -292,8 +302,40 @@ def ensure_engine_healthy(*, allow_restart: bool = True) -> str:
     return "DEAD"
 
 
+def _loop_heartbeat_stale() -> bool:
+    """~/.ccc/engine-loop-heartbeat.json 超过 HB_STALE_SECONDS 视为卡死。"""
+    p = Path.home() / ".ccc" / "engine-loop-heartbeat.json"
+    if not p.is_file():
+        return False
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        ts_str = data.get("timestamp") or ""
+        if not ts_str:
+            return False
+        if ts_str.endswith("Z"):
+            hb_ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        else:
+            hb_ts = datetime.fromisoformat(ts_str)
+        age = (datetime.now(timezone.utc) - hb_ts).total_seconds()
+        return age > HB_STALE_SECONDS
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
+
+
 def _try_kill_engine() -> None:
-    """尝试优雅 + 强制杀 Engine"""
+    """尝试优雅 + 强制杀 Engine（经 launchd kickstart -k 优先）。"""
+    uid = os.getuid()
+    gui = f"gui/{uid}"
+    try:
+        subprocess.run(
+            ["launchctl", "kill", "SIGTERM", f"{gui}/com.ccc.engine"],
+            capture_output=True,
+            timeout=10,
+            env=_sanitized_env(),
+        )
+    except OSError:
+        pass
+    time.sleep(1)
     try:
         r = subprocess.run(
             ["ps", "aux"],
@@ -308,17 +350,16 @@ def _try_kill_engine() -> None:
                 if len(parts) >= 2:
                     pid = parts[1]
                     try:
-                        subprocess.run(["kill", pid], timeout=5, env=_sanitized_env())
+                        subprocess.run(["kill", "-9", pid], timeout=5, env=_sanitized_env())
                     except OSError:
                         pass
     except (subprocess.TimeoutExpired, OSError):
         pass
-    # 也通过 launchctl 尝试
     try:
         subprocess.run(
-            ["launchctl", "bootout", "gui/501", str(ENGINE_PLIST)],
+            ["launchctl", "kickstart", "-k", f"{gui}/com.ccc.engine"],
             capture_output=True,
-            timeout=10,
+            timeout=15,
             env=_sanitized_env(),
         )
     except OSError:

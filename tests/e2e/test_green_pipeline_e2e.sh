@@ -33,7 +33,7 @@ git add -A && git commit -qm "feat: bump dummy"
 
 cd "$ROOT"
 export CCC_WORKSPACE="$WORKSPACE"
-export CCC_REVIEWER_FALLBACK=static
+export CCC_REVIEWER_FALLBACK=stay
 BOARD_PY="$ROOT/scripts/ccc-board.py"
 
 # 1) create → planned with plan/phases (skip product/claude)
@@ -69,7 +69,7 @@ python3 "$BOARD_PY" --batch <<'EOF'
 {"action":"move","id":"e2e-green","from":"in_progress","to":"testing"}
 EOF
 
-# 3) reviewer: mock LLM fallback → static PASS+WARN → verified（Fix3+Fix5）
+# 3) reviewer: mock LLM fallback → FALLBACK≠PASS，stay testing（H2）
 python3 - <<PY
 import importlib.util
 import sys
@@ -85,7 +85,7 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 set_workspace(Path("$WORKSPACE"))
 
-# 强制 medium 走 LLM，但 mock 成 unavailable → static fallback
+# 强制 medium 走 LLM，但 mock 成 unavailable → stay FALLBACK
 mod._review_with_llm = lambda *a, **k: {
     "verdict": "fallback",
     "reason": "mock claude unavailable",
@@ -93,14 +93,13 @@ mod._review_with_llm = lambda *a, **k: {
 mod._classify_review_size = lambda _stat: ("medium", 20)
 
 result = mod.reviewer_role()
-assert "e2e-green" in (result.get("moved") or []), result
 vf = Path("$WORKSPACE") / ".ccc/verdicts/e2e-green.verdict.md"
 text = vf.read_text()
-assert "**Verdict:** PASS" in text, text
-assert "Warn" in text or "FALLBACK" in text, text
-tasks = mod.list_tasks("verified")
-assert any(t["id"] == "e2e-green" for t in tasks), tasks
-print("PASS green: testing → static fallback → verified")
+assert "**Verdict:** FALLBACK" in text, text
+assert "**Verdict:** PASS" not in text, text
+assert not any(t["id"] == "e2e-green" for t in mod.list_tasks("verified")), result
+assert any(t["id"] == "e2e-green" for t in mod.list_tasks("testing")), result
+print("PASS green: testing → FALLBACK stay testing (no verified)")
 PY
 
 # 4) unit: claude resolve + upstream probe logic smoke

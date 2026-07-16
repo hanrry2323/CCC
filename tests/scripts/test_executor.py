@@ -40,6 +40,23 @@ class TestSanitizedEnv:
         assert "MY_API_KEY" not in env
         assert env.get("SAFE_VAR") == "ok"
 
+    def test_keeps_anthropic_relay_auth(self, monkeypatch):
+        """launchd 继承的 ANTHROPIC_AUTH_TOKEN 不得被 TOKEN 规则误剥。"""
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-trae-test")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-cp-test")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
+        monkeypatch.setenv("RANDOM_TOKEN", "should-strip")
+        env = _sanitized_env()
+        assert env.get("ANTHROPIC_AUTH_TOKEN") == "sk-trae-test"
+        assert env.get("ANTHROPIC_API_KEY") == "sk-cp-test"
+        assert env.get("ANTHROPIC_BASE_URL") == "http://127.0.0.1:4000"
+        assert "RANDOM_TOKEN" not in env
+
+    def test_claude_env_sets_relay(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        env = ex._claude_env(relay_url="http://127.0.0.1:4000")
+        assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:4000"
+
 
 class TestOpenCodeExecutor:
     def test_not_found_returns_exit_10(self, monkeypatch):

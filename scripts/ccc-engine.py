@@ -135,6 +135,11 @@ _MEM_WARN_MB = 400
 _MEM_DEGRADED_MB = 800
 _MEM_KILL_MB = 1500
 
+# H7: 主循环 tick 看门狗（卡死自愈 → exit → launchd KeepAlive）
+_last_tick_mono: float = 0.0
+_TICK_WATCHDOG_STALE_S = float(os.environ.get("CCC_ENGINE_TICK_STALE_S", "180") or "180")
+_TICK_WATCHDOG_POLL_S = 30.0
+
 # v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
 _GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
 
@@ -348,6 +353,77 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError:
         pass
+
+
+def _loop_heartbeat_path() -> Path:
+    return Path.home() / ".ccc" / "engine-loop-heartbeat.json"
+
+
+def _mark_engine_tick() -> None:
+    """记录主循环 tick 进度（H7 看门狗 + patrol 共用）。"""
+    global _last_tick_mono
+    _last_tick_mono = time.monotonic()
+    try:
+        p = _loop_heartbeat_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "timestamp": _utils_now_iso(),
+                    "mono": _last_tick_mono,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _start_tick_watchdog() -> None:
+    """若主循环超过 CCC_ENGINE_TICK_STALE_S 无 tick，exit 让 launchd 拉起。"""
+    global _last_tick_mono
+    _last_tick_mono = time.monotonic()
+
+    def _watch() -> None:
+        while not _engine_shutdown:
+            time.sleep(_TICK_WATCHDOG_POLL_S)
+            if _engine_shutdown:
+                return
+            age = time.monotonic() - _last_tick_mono
+            if age > _TICK_WATCHDOG_STALE_S:
+                engine_log(
+                    f"[watchdog] no tick for {age:.0f}s "
+                    f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — exit for launchd restart"
+                )
+                try:
+                    _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "ts": _utils_now_iso(),
+                                    "pid": os.getpid(),
+                                    "status": "stopped",
+                                    "reason": "tick_watchdog_stale",
+                                    "stale_sec": round(age, 1),
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                except OSError:
+                    pass
+                os._exit(78)
+
+    t = threading.Thread(target=_watch, name="ccc-tick-watchdog", daemon=True)
+    t.start()
+    engine_log(
+        f"[watchdog] tick watchdog on (stale={_TICK_WATCHDOG_STALE_S:.0f}s, "
+        f"poll={_TICK_WATCHDOG_POLL_S:.0f}s)"
+    )
 
 
 PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 Engine tick）
@@ -1641,12 +1717,16 @@ def _process_backlog(ws: Path) -> bool:
             return True
         elif result["status"] == "failed":
             _product_inflight.pop(key, None)
-            fail_count += 1
+            err = result.get("error", "")[:200]
+            # auth 等致命错误：立即 quarantine，勿空烧 3 次
+            if result.get("fatal") or str(err).startswith("auth:"):
+                fail_count = _MAX_PRODUCT_RETRIES
+            else:
+                fail_count += 1
             fail_counter_dir.mkdir(parents=True, exist_ok=True)
             fail_counter_path.write_text(
                 json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2)
             )
-            err = result.get("error", "")[:200]
             _log_stats(
                 ws,
                 "product_fail",
@@ -1675,16 +1755,21 @@ def _process_backlog(ws: Path) -> bool:
                 f"[product] [{label}] product_role({tid}) 异步失败 #{fail_count}: {result.get('error', '?')}"
             )
             if fail_count >= _MAX_PRODUCT_RETRIES:
+                _q_reason = (
+                    f"product_role 致命失败: {err}"
+                    if result.get("fatal") or str(err).startswith("auth:")
+                    else f"product_role 连续失败 {fail_count} 次"
+                )
                 _quarantine_with_notify(
                     ws,
                     tid,
-                    f"product_role 连续失败 {fail_count} 次",
+                    _q_reason,
                     store,
                     phase=0,
                     role="product",
                     from_col="backlog",
                 )
-                _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
+                _ccc_notify("CCC", f"product_role 拆分 {tid}: {_q_reason[:120]}")
             return True
         # status == "running"
         engine_log(f"[product] [{label}] {tid} 异步 product 执行中...")
@@ -2513,8 +2598,11 @@ def engine_loop(workspaces: list[Path]) -> None:
     for ws in workspaces:
         _recover_tasks(ws, active_tasks)
 
+    _start_tick_watchdog()
+
     while not _engine_shutdown:
         iteration += 1
+        _mark_engine_tick()
         tick_start = time.time()
         any_active = bool(active_tasks)
 
