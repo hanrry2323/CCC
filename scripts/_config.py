@@ -200,6 +200,19 @@ class Config:
         ""  # Patrol webhook URL，留空禁用；优先级 CCC_WEBHOOK_URL 环境变量
     )
 
+    # ── 重试策略（v0.36）──
+    retry_base_interval: int = 120  # 指数退避基数（秒）
+    retry_max_interval: int = 3600  # 退避上限（秒）
+    retry_backoff_factor: float = 2.0  # 指数因子
+
+    # ── 内存阈值（v0.36）──
+    mem_warn_mb: int = 800
+    mem_degraded_mb: int = 2000
+    mem_kill_mb: int = 3000
+
+    # ── 熔断（v0.36）──
+    breaker_recovery_seconds: int = 120
+
     def __post_init__(self):
         """环境变量覆盖（优先级：环境变量 > 默认值）
 
@@ -229,6 +242,14 @@ class Config:
             self, "max_wallclock", "CCC_MAX_WALLCLOCK", self.max_wallclock
         )
         _env_override_str(self, "webhook_url", "CCC_WEBHOOK_URL")
+        # v0.36: 重试 / 内存 / 熔断
+        _env_override_int(self, "retry_base_interval", "CCC_RETRY_BASE_INTERVAL")
+        _env_override_int(self, "retry_max_interval", "CCC_RETRY_MAX_INTERVAL")
+        _env_override_float(self, "retry_backoff_factor", "CCC_RETRY_BACKOFF_FACTOR")
+        _env_override_int(self, "mem_warn_mb", "CCC_MEM_WARN_MB")
+        _env_override_int(self, "mem_degraded_mb", "CCC_MEM_DEGRADED_MB")
+        _env_override_int(self, "mem_kill_mb", "CCC_MEM_KILL_MB")
+        _env_override_int(self, "breaker_recovery_seconds", "CCC_BREAKER_RECOVERY_SECONDS")
 
 
 def _resolve_workspace() -> Path:
@@ -282,6 +303,15 @@ def _env_override_str(cfg: Config, attr: str, env_key: str) -> None:
     val = os.environ.get(env_key, "").strip()
     if val:
         setattr(cfg, attr, val)
+
+
+def _env_override_float(cfg: Config, attr: str, env_key: str) -> None:
+    val = os.environ.get(env_key, "").strip()
+    if val:
+        try:
+            setattr(cfg, attr, float(val))
+        except ValueError:
+            _log.warning("invalid %s=%r, keeping default", env_key, val, exc_info=True)
 
 
 def _env_override_duration(cfg: Config, attr: str, env_key: str, default: int) -> None:

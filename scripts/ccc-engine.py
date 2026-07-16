@@ -101,6 +101,39 @@ _DEGRADED_QUARANTINE_THRESHOLD = 10   # 30min 内 quarantine > 此值 → degrad
 _DEGRADED_FAIL_THRESHOLD = 10         # 30min 内 product_fail > 此值 → degraded
 _DEGRADED_RECOVERY_SECONDS = 600      # 10min 无异常 → 自动恢复
 
+# v0.36: 熔断 — upstream 不可用时暂停 abnormal 自动重试
+_breaker_open: bool = False
+_breaker_since: float = 0.0
+_BREAKER_RECOVERY_SECONDS = 120
+
+# v0.36: abnormal 重试（指数退避）
+_RETRY_BASE_INTERVAL = 120    # 2min
+_RETRY_MAX_INTERVAL = 3600    # 1h
+_RETRY_BACKOFF_FACTOR = 2.0
+_ABNORMAL_RETRY_KEYWORDS = [
+    "重试", "all_failed", "失败", "failed", "超时", "timeout",
+    "unhealthy", "不可用", "quarantine", "异常", "exception",
+    "stale", "stalled", "exit code", "opencode",
+    "product_role", "dev_role", "reviewer", "tester",
+]
+_TRANSIENT_KEYWORDS = [
+    "timeout", "超时", "network", "网络", "upstream", "hang", "hung",
+    "连接", "unavailable", "不可用", "econnreset", "temporary",
+    "transient", "unhealthy", "opencode", "rate limit", "429",
+    "502", "503", "504", "connection", "reset by peer",
+]
+_PERMANENT_KEYWORDS = [
+    "syntaxerror", "importerror", "typeerror", "nameerror",
+    "indentationerror", "modulenotfounderror", "attributeerror",
+    "语法错误", "编码错误", "invalid syntax", "cannot import",
+    "compile failed", "assertionerror",
+]
+
+# v0.36: 内存阈值（MB）
+_MEM_WARN_MB = 800
+_MEM_DEGRADED_MB = 2000
+_MEM_KILL_MB = 3000
+
 # v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
 _GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
 
@@ -995,8 +1028,25 @@ def _check_degraded(ws: Path) -> None:
     - 停 backlog→planned intake（新 task 不进 pipeline）
     - 现有 in_progress/testing 继续跑完
     - 维护任务照跑（audit, stale check, cleanup）
+
+    v0.36: upstream 不可用时同步开熔断，暂停 abnormal 自动重试。
     """
-    global _degraded_mode, _degraded_since
+    global _degraded_mode, _degraded_since, _breaker_open, _breaker_since
+
+    # v0.36: upstream 熔断
+    recovery = getattr(cfg, "breaker_recovery_seconds", _BREAKER_RECOVERY_SECONDS)
+    if not _is_upstream_healthy():
+        if not _breaker_open:
+            _breaker_open = True
+            _breaker_since = time.time()
+            engine_log("[breaker] upstream 不可用 → 开熔断，暂停 abnormal 重试")
+            _ccc_notify("CCC", "engine 熔断：upstream 不可用")
+    elif _breaker_open:
+        elapsed = time.time() - _breaker_since
+        if elapsed >= recovery:
+            _breaker_open = False
+            _breaker_since = 0.0
+            engine_log(f"[breaker] upstream 已恢复（熔断 {elapsed:.0f}s）→ 关熔断")
 
     q_count = len(_recent_events(ws, "quarantine", 1800))
     f_count = len(_recent_events(ws, "product_fail", 1800))
@@ -2089,6 +2139,14 @@ def engine_loop(workspaces: list[Path]) -> None:
     for ws in workspaces:
         _recover_tasks(ws, active_tasks)
 
+    # v0.36: 启动时采样一次内存，保证 heartbeat 尽早含 memory_mb
+    for ws in workspaces:
+        try:
+            _check_process_memory(ws)
+            _cleanup_zombie_pid_refs(ws)
+        except Exception as exc:
+            engine_log(f"[mem] startup sample failed for {_ws_label(ws)}: {exc}")
+
     while not _engine_shutdown:
         iteration += 1
         tick_start = time.time()
@@ -2172,7 +2230,17 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _check_degraded(ws)
                     _store = _get_store(ws)
                     _check_stale(ws, active_tasks)
-                    _retry_abnormal_dev_failures(ws)
+                    _retry_abnormal_failures(ws)
+                    # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
+                    if iteration % 36 == 0:
+                        try:
+                            _check_process_memory(ws)
+                        except Exception as exc:
+                            engine_log(f"[mem] {_ws_label(ws)} 异常: {exc}")
+                        try:
+                            _cleanup_zombie_pid_refs(ws)
+                        except Exception as exc:
+                            engine_log(f"[pids] {_ws_label(ws)} cleanup 异常: {exc}")
                     test_tasks = _store.list_tasks("testing")
                     if test_tasks:
                         label = _ws_label(ws)
@@ -2295,7 +2363,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     # backlog+planned 为空时立即补充（绕过 2h 间隔，5min 冷却）
                     _auto_replenish_backlog(ws, _store2, program_dir)
 
-                    _retry_abnormal_dev_failures(ws)
+                    _retry_abnormal_failures(ws)
                     _check_new_reviews(ws)
 
                     # v0.30: 空闲时聚合统计 → 反馈回路（学习飞轮）
@@ -2380,20 +2448,53 @@ def _audit_check_old(old_file, interval_hours: int = 2) -> bool:
         return True
 
 
-def _retry_abnormal_dev_failures(ws: Path) -> None:
-    """扫描 abnormal 中因 dev 重试耗尽而隔离的任务，冷却后自动移回 planned 重试。
+def _classify_failure(reason: str, tid: str, phase_note: str = "") -> str:
+    """将失败原因分为 transient / permanent。
 
-    避免手动操作，让因 transient 错误（网络、依赖安装、opencode 临时故障）
-    而失败的任务有机会自动恢复。最大自动重试 3 次（与 dev 的 max_retry 独立）。
+    不匹配任何关键词时按 transient（宁可错重试也不漏）。
+    """
+    blob = f"{reason} {phase_note} {tid}".lower()
+    for kw in _PERMANENT_KEYWORDS:
+        if kw.lower() in blob:
+            return "permanent"
+    for kw in _TRANSIENT_KEYWORDS:
+        if kw.lower() in blob:
+            return "transient"
+    return "transient"
+
+
+def _retry_cooldown_seconds(retry_count: int) -> int:
+    """第 N 次重试冷却 = base × factor^N，上限 max。"""
+    base = getattr(cfg, "retry_base_interval", _RETRY_BASE_INTERVAL)
+    factor = getattr(cfg, "retry_backoff_factor", _RETRY_BACKOFF_FACTOR)
+    max_iv = getattr(cfg, "retry_max_interval", _RETRY_MAX_INTERVAL)
+    cool = base * (factor ** max(0, int(retry_count)))
+    return min(int(cool), int(max_iv))
+
+
+def _retry_abnormal_failures(ws: Path) -> None:
+    """扫描 abnormal 任务，冷却后自动移回 planned 重试（全阶段）。
+
+    v0.36:
+      - 关键字放宽（不再仅限 "重试"）
+      - transient/permanent 分类；permanent 不重试
+      - 指数退避冷却
+      - upstream 熔断期间跳过
     """
     from datetime import datetime as _dt
     import json as _json
+
+    global _breaker_open, _breaker_since
+
+    recovery = getattr(cfg, "breaker_recovery_seconds", _BREAKER_RECOVERY_SECONDS)
+    if _breaker_open and time.time() - _breaker_since < recovery:
+        engine_log(f"[{_ws_label(ws)}] 熔断中，跳过 abnormal 重试")
+        return
 
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
     now = _dt.now(timezone.utc)
-    # auto_retry 计数器文件（每个 ws 一个，记录 task_id→重试次数）
     retry_counter_file = ws / ".ccc" / ".dev_auto_retry.json"
     retry_counts: dict[str, int] = {}
     if retry_counter_file.exists():
@@ -2402,15 +2503,21 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
         except (_json.JSONDecodeError, OSError):
             retry_counts = {}
     MAX_AUTO_RETRY = 3
-    COOLDOWN_MINUTES = 15
     moved_tasks: list[str] = []
 
     for task in store.list_tasks("abnormal"):
         tid = task["id"]
         reason = task.get("note") or ""
-        # 仅处理 dev 执行失败类（"重试N次全部失败" 特征）
-        if "重试" not in reason and "all_failed_or_skipped" not in reason:
+        if not any(kw in reason for kw in _ABNORMAL_RETRY_KEYWORDS):
             continue
+
+        kind = _classify_failure(reason, tid, task.get("note") or "")
+        if kind == "permanent":
+            engine_log(
+                f"[{label}] skip auto-retry {tid}: 不可恢复错误（permanent）"
+            )
+            continue
+
         updated_str = task.get("updated_at", task.get("created_at", ""))
         if not updated_str:
             continue
@@ -2419,12 +2526,14 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
             minutes_since = (now - updated).total_seconds() / 60
         except (ValueError, TypeError):
             continue
-        if minutes_since < COOLDOWN_MINUTES:
-            continue  # 冷却中
+
         auto_retried = retry_counts.get(tid, 0)
         if auto_retried >= MAX_AUTO_RETRY:
-            continue  # 超过最大自动重试次数
-        # 移回 planned
+            continue
+        needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
+        if minutes_since < needed_minutes:
+            continue  # 冷却中
+
         try:
             task_json = _json.loads(
                 (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").read_text()
@@ -2439,13 +2548,12 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
             (planned_dir / f"{tid}.jsonl").write_text(
                 _json.dumps(task_json, ensure_ascii=False) + "\n"
             )
-            # 删 abnormal
             (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").unlink()
             retry_counts[tid] = auto_retried + 1
             store.update_index()
             engine_log(
                 f"[{label}] auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {tid} "
-                f"(冷却 {minutes_since:.0f}min) → planned"
+                f"(冷却 {minutes_since:.0f}/{needed_minutes:.0f}min, {kind}) → planned"
             )
             moved_tasks.append(tid)
         except Exception as e:
@@ -2458,7 +2566,6 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
     except OSError:
         pass
 
-    # v0.31: 每次移回前检查 lessons 是否有建议
     try:
         from _lessons import get_recent_lessons
 
@@ -2473,6 +2580,10 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
                     )
     except Exception:
         pass
+
+
+# 兼容旧名（测试 / 外部引用）
+_retry_abnormal_dev_failures = _retry_abnormal_failures
 
 
 def _check_new_reviews(ws: Path) -> None:
@@ -2531,35 +2642,105 @@ def _check_stale(ws: Path, active_tasks: dict[str, dict] | None = None) -> None:
         _log.warning("events TTL cleanup failed: %s", e, exc_info=True)
 
 
-def _kill_pid(pid: int) -> bool:
-    """发 SIGTERM，等 5s，仍存活则 SIGKILL。返回是否最终被 kill。"""
+def _collect_grandchildren(pid: int, acc: list[int]) -> None:
+    """递归收集 pid 的全部子孙进程。"""
+    import subprocess as _sp
+
+    try:
+        r = _sp.run(
+            ["pgrep", "-P", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if r.returncode == 0:
+            for line in r.stdout.strip().splitlines():
+                line = line.strip()
+                if not line.isdigit():
+                    continue
+                child = int(line)
+                if child not in acc:
+                    acc.append(child)
+                    _collect_grandchildren(child, acc)
+    except (_sp.TimeoutExpired, FileNotFoundError, OSError, ValueError):
+        pass
+
+
+def _kill_process_tree(pid: int) -> bool:
+    """发 SIGTERM→等→SIGKILL 递归子进程。返回 True 表示进程最终已死。"""
+    import subprocess as _sp
+
+    children: list[int] = []
+    try:
+        r = _sp.run(
+            ["pgrep", "-P", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode == 0:
+            for line in r.stdout.strip().splitlines():
+                line = line.strip()
+                if line.isdigit():
+                    child = int(line)
+                    children.append(child)
+                    _collect_grandchildren(child, children)
+    except (_sp.TimeoutExpired, FileNotFoundError, OSError, ValueError):
+        pass
+
+    # 先杀子，再杀父（叶子优先）
+    for child_pid in reversed(children):
+        try:
+            os.kill(child_pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    if children:
+        time.sleep(3)
+    for child_pid in reversed(children):
+        try:
+            os.kill(child_pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         return True
     except PermissionError:
-        _log.warning("kill %d permission denied", pid)
+        _log.warning("kill tree %d permission denied", pid)
         return False
     except OSError as exc:
-        _log.warning("kill %d SIGTERM failed: %s", pid, exc)
+        _log.warning("kill tree %d SIGTERM failed: %s", pid, exc)
         return False
+
     time.sleep(5)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return True
-    except PermissionError:
-        return True  # 进程存在但没权限（macOS root-owned）
-    except OSError:
+    except (PermissionError, OSError):
         return True
+
     try:
         os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
         return True
     except OSError as exc:
-        _log.warning("kill %d SIGKILL failed: %s", pid, exc)
+        _log.warning("kill tree %d SIGKILL failed: %s", pid, exc)
         return False
-    return True
+
+    time.sleep(1)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except (PermissionError, OSError):
+        return True
+    return False
+
+
+# 兼容旧名
+_kill_pid = _kill_process_tree
 
 
 def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
@@ -2699,6 +2880,29 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
                 f"[{label}] hang-detect: {tid} ps 输出无法解析: {result.stdout!r}"
             )
             continue
+        # v0.36: 即使 CPU 活跃，RSS 超单进程上限也直接标 hung
+        rss_mb = _get_proc_rss_mb(pid)
+        mem_kill = getattr(cfg, "mem_kill_mb", _MEM_KILL_MB)
+        if rss_mb > mem_kill:
+            engine_log(
+                f"[{label}] hang-detect: {tid} RSS={rss_mb:.0f}MB > {mem_kill}MB，标记 hung"
+            )
+            marker = {
+                "task_id": tid,
+                "phase": cur_phase,
+                "pid": pid,
+                "cpu": cpu,
+                "rss_mb": round(rss_mb, 1),
+                "elapsed_sec": int(elapsed),
+                "detected_at": now_iso(),
+                "reason": "rss_over_limit",
+            }
+            try:
+                hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
+            except OSError as exc:
+                engine_log(f"[{label}] hang-detect: {tid} 写 .hung 失败: {exc}")
+            continue
+
         if cpu > 0.0 and elapsed < _HANG_BUSY_MAX_SEC:
             # F-FLOW-04: CPU 忙但未超 busy 阈值 → 跳过；超时则仍可标 hung
             continue
@@ -2725,6 +2929,7 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
             "phase": cur_phase,
             "pid": pid,
             "cpu": cpu,
+            "rss_mb": round(rss_mb, 1),
             "elapsed_sec": int(elapsed),
             "detected_at": now_iso(),
         }
@@ -2805,10 +3010,10 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 f"[{label}] hang-auto: {tid} 缺 {pid_path.name}（可能已退出），跳过 kill"
             )
 
-        # 2) kill
+        # 2) kill 进程树
         if pid is not None and pid > 0:
-            if _kill_pid(pid):
-                engine_log(f"[{label}] hang-auto: {tid} PID={pid} 已 kill")
+            if _kill_process_tree(pid):
+                engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
             else:
                 engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
 
@@ -2879,13 +3084,189 @@ def _get_running_pids(ws: Path) -> list[int]:
     return result
 
 
+def _read_heartbeat(ws: Path) -> dict | None:
+    hb_file = ws / ".ccc" / "engine-heartbeat.json"
+    if hb_file.exists():
+        try:
+            return json.loads(hb_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
+    return None
+
+
+def _get_proc_rss_mb(pid: int) -> float:
+    """取进程 RSS（MB），失败返回 0。"""
+    import subprocess as _sp
+
+    try:
+        r = _sp.run(
+            ["ps", "-o", "rss=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if r.returncode == 0 and r.stdout.strip().isdigit():
+            return int(r.stdout.strip()) / 1024.0
+    except (_sp.TimeoutExpired, FileNotFoundError, OSError, ValueError):
+        pass
+    return 0.0
+
+
+def _cleanup_zombie_pid_refs(ws: Path) -> None:
+    """扫描 .ccc/pids/*.pid，若进程已死且无 .done 标记 → 删残影。"""
+    pids_dir = ws / ".ccc" / "pids"
+    if not pids_dir.is_dir():
+        return
+    cleaned = 0
+    for f in sorted(pids_dir.iterdir()):
+        if f.suffix != ".pid":
+            continue
+        subid = f.stem
+        if (pids_dir / f"{subid}.done").exists():
+            continue
+        try:
+            pid = int(f.read_text().strip())
+        except (ValueError, OSError):
+            pid = 0
+        if pid > 0:
+            try:
+                os.kill(pid, 0)  # 探活
+                continue  # 进程活着 → 跳过
+            except (ProcessLookupError, PermissionError):
+                pass  # 已死或无权限
+            except OSError:
+                pass
+        for sfx in (".pid", ".hung", ".exitcode", ".stdout"):
+            marker = pids_dir / f"{subid}{sfx}"
+            if marker.exists():
+                try:
+                    marker.unlink()
+                    cleaned += 1
+                except OSError:
+                    pass
+    if cleaned:
+        engine_log(f"[{_ws_label(ws)}] 清理 {cleaned} 个残影 PID 标记")
+
+
+def _check_process_memory(ws: Path) -> None:
+    """抽样 CCC 相关进程 RSS → 告警 / degraded / 强杀。
+
+    每 36 轮（~6min）执行一次。聚焦本 workspace `.ccc/pids` + engine 自身，
+    避免把系统其它 Python 进程计入总量。
+    """
+    import subprocess as _sp
+
+    global _degraded_mode, _degraded_since
+
+    warn_mb = getattr(cfg, "mem_warn_mb", _MEM_WARN_MB)
+    degraded_mb = getattr(cfg, "mem_degraded_mb", _MEM_DEGRADED_MB)
+    kill_mb = getattr(cfg, "mem_kill_mb", _MEM_KILL_MB)
+
+    try:
+        tracked = set(_get_running_pids(ws))
+        tracked.add(os.getpid())
+
+        # 补充：本机 python/opencode 中 cmdline 含 ccc 的进程
+        try:
+            import platform as _plat
+
+            if _plat.system() == "Darwin":
+                ps_cmd = ["ps", "-axo", "rss=,pid=,args="]
+            else:
+                ps_cmd = ["ps", "-eo", "rss=,pid=,args=", "--sort=-rss"]
+            r = _sp.run(ps_cmd, capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                parts = line.strip().split(None, 2)
+                if len(parts) < 3:
+                    continue
+                try:
+                    rss_kb = int(parts[0])
+                    pid = int(parts[1])
+                except ValueError:
+                    continue
+                args = parts[2].lower()
+                if pid in tracked:
+                    continue
+                if ("python" in args or "opencode" in args) and "ccc" in args:
+                    tracked.add(pid)
+        except (_sp.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+        total = 0.0
+        offenders: list[tuple[int, float]] = []
+        for pid in tracked:
+            rss_mb = _get_proc_rss_mb(pid)
+            if rss_mb <= 0:
+                continue
+            total += rss_mb
+            if rss_mb > warn_mb:
+                offenders.append((pid, rss_mb))
+
+        offenders.sort(key=lambda x: x[1], reverse=True)
+        memory_mb = {
+            "total": round(total, 1),
+            "top_pid": list(offenders[0]) if offenders else None,
+            "warn_mb": warn_mb,
+            "kill_mb": kill_mb,
+        }
+
+        # 写入 heartbeat（保留 running 等字段）
+        prev = _read_heartbeat(ws) or {}
+        _write_heartbeat(
+            ws,
+            prev.get("running"),
+            int(prev.get("active_task_count") or 0),
+            prev.get("running_pids") or [],
+            memory_mb=memory_mb,
+        )
+
+        our_pids = set(_get_running_pids(ws))
+        for pid, rss_mb in offenders:
+            if rss_mb > kill_mb and (pid in our_pids or pid == os.getpid()):
+                # 不杀 engine 自身
+                if pid == os.getpid():
+                    engine_log(
+                        f"[mem] engine PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB（仅告警，不自杀）"
+                    )
+                    continue
+                engine_log(
+                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB，强杀进程树"
+                )
+                _kill_process_tree(pid)
+                _ccc_notify("CCC", f"[mem] 强杀 PID={pid}（RSS {rss_mb:.0f}MB）")
+
+        if total > degraded_mb:
+            if not _degraded_mode:
+                _degraded_mode = True
+                _degraded_since = time.time()
+                engine_log(
+                    f"[mem] 总RSS={total:.0f}MB > {degraded_mb}MB → degraded mode"
+                )
+                _ccc_notify("CCC", f"engine degraded：总 RSS {total:.0f}MB")
+
+        for pid, rss_mb in offenders[:3]:
+            if rss_mb > warn_mb:
+                engine_log(
+                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB（warning阈值={warn_mb}MB）"
+                )
+
+    except (_sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("[mem] 检查失败: %s", e)
+
+
 def _write_heartbeat(
     ws: Path,
     running_task_id: str | None,
     active_task_count: int = 0,
     running_pids: list[int] | None = None,
+    memory_mb: dict | None = None,
 ) -> None:
     ws = ws.resolve()
+    # 保留上次 memory_mb，避免常规 heartbeat 覆盖掉内存采样
+    if memory_mb is None:
+        prev = _read_heartbeat(ws)
+        if prev and isinstance(prev.get("memory_mb"), dict):
+            memory_mb = prev["memory_mb"]
     hb = {
         "workspace": str(ws),
         "running": running_task_id or None,
@@ -2893,6 +3274,8 @@ def _write_heartbeat(
         "running_pids": running_pids or [],
         "timestamp": now_iso(),
     }
+    if memory_mb is not None:
+        hb["memory_mb"] = memory_mb
     hb_file = ws / ".ccc" / "engine-heartbeat.json"
     try:
         hb_file.write_text(json.dumps(hb, ensure_ascii=False) + "\n")
