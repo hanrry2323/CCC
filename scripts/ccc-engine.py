@@ -1656,6 +1656,20 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 # 并行启动失败 → 回退串行
                 engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
 
+        # v0.34: 系统性失败检测 — 同类 task 在 abnormal 过多则直接熔断
+        _abnormal_tasks = store.list_tasks("abnormal")
+        # 取 task id 前缀（前 3 段）做同类匹配：audit-review-20260716 → 匹配 audit-review-*
+        _prefix = "-".join(tid.split("-")[:3])
+        _similar_failures = sum(1 for t in _abnormal_tasks if isinstance(t.get("id"), str) and t["id"].startswith(_prefix))
+        if _similar_failures >= 5:
+            engine_log(
+                f"[{label}] {tid} 同类任务已有 {_similar_failures} 个在 abnormal，"
+                f"系统性失败 → 直接熔断，不重试"
+            )
+            store.move_task(tid, "planned", "abnormal")
+            store.update_index()
+            continue
+
         # v0.34 (Phase2): 异常流量检测 — 单 task 单角色 1h 内 > 20 次 → 跳闸隔离
         if _check_abnormal_traffic(tid, "executor"):
             engine_log(
