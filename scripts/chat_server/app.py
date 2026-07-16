@@ -10,7 +10,7 @@ from . import config
 from .routers import chat, sessions, files, board, projects
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
-HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260716i")
+HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260716j")
 
 
 class NoStoreStaticMiddleware(BaseHTTPMiddleware):

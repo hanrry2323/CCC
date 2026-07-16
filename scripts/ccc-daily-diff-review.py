@@ -72,6 +72,65 @@ def save_watermark(ws: Path, sha: str) -> None:
     )
 
 
+def claude_decide(diff_stat: str, diff_text: str, mode: str) -> dict | None:
+    """调 claude -p 产出 JSON 决策；失败返回 None（回退 heuristic）。"""
+    catalog = "\n".join(f"- {k}: {v}" for k, v in DECISIONS.items())
+    prompt = (
+        "你是 CCC 日审官。根据 git diff 选择唯一 decision（A–J）。\n"
+        "只输出一个 JSON 对象，不要 markdown：\n"
+        '{"decision":"B","rationale":"...","spawn":null}\n'
+        '或 spawn_fix/reconcile 时：'
+        '{"decision":"C","rationale":"...","spawn":{"title":"...","description":"..."}}\n\n'
+        f"控制面 mode={mode}\n决策目录：\n{catalog}\n\n"
+        f"## Diff stat\n```\n{diff_stat[:3000]}\n```\n\n"
+        f"## Diff（截断）\n```\n{diff_text[:12000]}\n```\n"
+    )
+    try:
+        from _claude_cli import resolve_claude_cli
+        from _executor import _sanitized_env
+
+        cli = resolve_claude_cli(require=True)
+        env = _sanitized_env()
+        env["ANTHROPIC_BASE_URL"] = os.environ.get(
+            "AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000"
+        )
+        r = subprocess.run(
+            [cli, "-p", "--model", "flash"],
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+        if r.returncode != 0:
+            return None
+        text = (r.stdout or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:].strip()
+        # 取首个 JSON 对象
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        data = json.loads(text[start : end + 1])
+        dec = str(data.get("decision", "")).strip().upper()
+        if dec not in DECISIONS:
+            return None
+        spawn = data.get("spawn")
+        if spawn is not None and not isinstance(spawn, dict):
+            spawn = None
+        return {
+            "decision": dec,
+            "rationale": str(data.get("rationale") or "claude")[:500],
+            "spawn": spawn,
+            "llm": "claude",
+        }
+    except Exception:
+        return None
+
+
 def heuristic_decide(diff_stat: str, diff_text: str, mode: str) -> dict:
     """无 LLM 时的保守规则（可被 Claude 覆盖）。"""
     if not diff_stat.strip() and not diff_text.strip():
@@ -170,9 +229,12 @@ def main(argv: list[str] | None = None) -> int:
     mode = get_mode()
     result = heuristic_decide(diff_stat, diff_text, mode)
 
-    # 可选 LLM（骨架：环境开关；未开则跳过）
     if os.environ.get("CCC_DAILY_REVIEW_LLM", "").strip() in ("1", "true", "yes"):
-        result["llm"] = "not_wired_in_skeleton"  # P3 后续接 claude -p JSON
+        llm = claude_decide(diff_stat, diff_text, mode)
+        if llm:
+            result = llm
+        else:
+            result["llm"] = "fallback_heuristic"
 
     spawn_out = maybe_spawn(ws, result.get("spawn"), result["decision"], apply=apply)
 

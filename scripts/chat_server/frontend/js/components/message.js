@@ -236,11 +236,45 @@ export async function sendMessage(text, attachments = []) {
 
   let msgDiv = null;
   let bubble = null;
+  let mdEl = null;
+  let toolsHost = null;
+  let cursorEl = null;
+  let rafPending = false;
   const wireAttachments = (attachments || []).map(a => ({
     name: a.name,
     content_base64: a.content_base64,
     type: a.type,
   }));
+
+  function ensureAssistantShell() {
+    if (msgDiv) return;
+    removeTyping();
+    msgDiv = document.createElement('div');
+    msgDiv.className = 'msg assistant';
+    msgDiv.innerHTML =
+      '<div class="msg-label">Claude</div>' +
+      '<div class="bubble">' +
+        '<div class="md-stream"></div>' +
+        '<div class="tools-host"></div>' +
+        '<span class="streaming-cursor"></span>' +
+      '</div>' +
+      '<div class="time">' + ts() + '</div>';
+    container.appendChild(msgDiv);
+    bubble = msgDiv.querySelector('.bubble');
+    mdEl = msgDiv.querySelector('.md-stream');
+    toolsHost = msgDiv.querySelector('.tools-host');
+    cursorEl = msgDiv.querySelector('.streaming-cursor');
+  }
+
+  function scheduleMarkdownPaint() {
+    if (rafPending || !mdEl) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
+      smartScroll(container);
+    });
+  }
 
   await streamChat(
     msgs,
@@ -248,39 +282,16 @@ export async function sendMessage(text, attachments = []) {
     project,
     (type, data) => {
       if (type === 'delta') {
-        if (!msgDiv) {
-          removeTyping();
-          msgDiv = document.createElement('div');
-          msgDiv.className = 'msg assistant';
-          msgDiv.innerHTML = '<div class="msg-label">Claude</div><div class="bubble"></div><div class="time">' + ts() + '</div>';
-          container.appendChild(msgDiv);
-          bubble = msgDiv.querySelector('.bubble');
-        }
+        ensureAssistantShell();
         fullContent += data;
-        if (bubble) {
-          bubble.innerHTML = renderMarkdown(fullContent);
-          toolCards.forEach(c => {
-            if (!c.parentNode) bubble.appendChild(c);
-          });
-          const cursor = document.createElement('span');
-          cursor.className = 'streaming-cursor';
-          bubble.appendChild(cursor);
-        }
-        smartScroll(container);
+        scheduleMarkdownPaint();
       } else if (type === 'tool_use') {
-        removeTyping();
-        if (!msgDiv) {
-          msgDiv = document.createElement('div');
-          msgDiv.className = 'msg assistant';
-          msgDiv.innerHTML = '<div class="msg-label">Claude</div><div class="bubble"></div><div class="time">' + ts() + '</div>';
-          container.appendChild(msgDiv);
-          bubble = msgDiv.querySelector('.bubble');
-        }
+        ensureAssistantShell();
         const toolId = 'tool-' + (++toolIdCounter);
         const card = createToolCard({ id: toolId, name: data.name, input: data.input });
         toolCards.push(card);
-        if (bubble) {
-          bubble.appendChild(card);
+        if (toolsHost) {
+          toolsHost.appendChild(card);
           updateToolCardStatus(card, 'running');
         }
         smartScroll(container);
@@ -296,6 +307,8 @@ export async function sendMessage(text, attachments = []) {
     },
     (sessionId) => {
       state.set('currentSessionId', sessionId);
+      if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
+      if (cursorEl) cursorEl.remove();
       if (costInfo && msgDiv) {
         const costEl = document.createElement('div');
         costEl.className = 'cost-info';

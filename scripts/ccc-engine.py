@@ -709,7 +709,7 @@ def _run_pytest(ws: Path) -> tuple[int, str]:
 
 
 def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> None:
-    """pytest 失败时追加记录到 verdict 文件，供人工确认。"""
+    """pytest 失败时写 verdict + pids 摘要（供 OpenCode relaunch 回灌）。"""
     vf = _verdict_file(ws, tid)
     vf.parent.mkdir(parents=True, exist_ok=True)
     snippet = output[-2000:] if output else "(无输出)"
@@ -728,6 +728,16 @@ def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> N
             )
     except OSError as exc:
         engine_log(f"写入 pytest 失败记录到 verdict 失败: {exc}")
+    # v0.41.1: 独立摘要供 dev prompt 注入
+    try:
+        pids = ws / ".ccc" / "pids"
+        pids.mkdir(parents=True, exist_ok=True)
+        (pids / f"{tid}.pytest_fail.md").write_text(
+            f"exit_code={exit_code}\n\n{snippet}\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        engine_log(f"写入 pytest_fail.md 失败: {exc}")
 
 
 def _verdict_is_timeout(ws: Path, tid: str) -> bool:
@@ -937,10 +947,12 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             )
             store.update_index()
             return False
-        # 成功则清计数
+        # 成功则清计数 + 失败摘要
         fail_marker = ws / ".ccc" / "pids" / f"{tid}.pytest_fails"
+        fail_summary = ws / ".ccc" / "pids" / f"{tid}.pytest_fail.md"
         try:
             fail_marker.unlink(missing_ok=True)
+            fail_summary.unlink(missing_ok=True)
         except OSError:
             pass
     else:
@@ -1816,7 +1828,32 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     """构造单 phase 的 prompt（委托 board.prompt，与 ccc-board 共用）。"""
     from board.prompt import build_dev_phase_prompt
 
-    return build_dev_phase_prompt(task_id, phase_num, plan_content)
+    scope: list[str] = []
+    pytest_fail = ""
+    try:
+        for p in _load_phases(task_id):
+            if int(p.get("phase", -1)) == int(phase_num):
+                sc = p.get("scope") or []
+                if isinstance(sc, list):
+                    scope = [str(x) for x in sc if x]
+                break
+    except Exception:
+        pass
+    try:
+        from board.context import get_workspace as _gw
+
+        pf = _gw() / ".ccc" / "pids" / f"{task_id}.pytest_fail.md"
+        if pf.is_file():
+            pytest_fail = pf.read_text(encoding="utf-8", errors="replace")[:4000]
+    except Exception:
+        pass
+    return build_dev_phase_prompt(
+        task_id,
+        phase_num,
+        plan_content,
+        scope=scope,
+        pytest_failure=pytest_fail,
+    )
 
 
 def _launch_parallel_phase(

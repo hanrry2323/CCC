@@ -59,8 +59,11 @@ export function updateToolCardStatus(card, status, data) {
     durationEl.textContent = formatDuration(data.duration);
   }
 
-  if (status === 'completed' || status === 'error') {
+  // v0.41.1: 完成后默认折叠（Cursor 风格）；error 才自动展开
+  if (status === 'error') {
     card.classList.add('open');
+  } else if (status === 'completed') {
+    card.classList.remove('open');
   }
 }
 
@@ -69,9 +72,14 @@ export function setToolResult(card, resultContent) {
   const pre = section?.querySelector('pre');
   if (!section || !pre) return;
 
-  const content = typeof resultContent === 'string'
+  let content = typeof resultContent === 'string'
     ? resultContent
     : JSON.stringify(resultContent, null, 2);
+
+  const MAX = 4000;
+  if (content.length > MAX) {
+    content = content.slice(0, MAX) + '\n… (truncated ' + (content.length - MAX) + ' chars, expand header to inspect)';
+  }
 
   pre.textContent = content;
   section.style.display = 'block';

@@ -631,6 +631,12 @@
   margin-bottom: 6px;
   font-weight: 500;
 }
+.md-stream {
+  min-height: 0;
+}
+.tools-host {
+  margin-top: 4px;
+}
 .tool-card-section pre {
   font-size: var(--ccc-font-size-sm);
   font-family: var(--ccc-font-mono);

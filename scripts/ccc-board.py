@@ -4625,6 +4625,42 @@ def auto_approve_agents() -> dict:
 # ═══════════════════════════════════════════
 
 
+def _phase_scope(task_id: str, phase_num: int) -> list[str]:
+    """从 phases.json 取指定 phase 的 scope 列表。"""
+    try:
+        for p in _load_phases(task_id):
+            if int(p.get("phase", -1)) == int(phase_num):
+                scope = p.get("scope") or []
+                if isinstance(scope, list):
+                    return [str(x) for x in scope if x]
+                return []
+    except Exception:
+        pass
+    return []
+
+
+def _read_pytest_failure_feedback(task_id: str) -> str:
+    """读取 pytest 失败摘要（供 relaunch / OpenCode 回灌）。"""
+    path = get_workspace() / ".ccc" / "pids" / f"{task_id}.pytest_fail.md"
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        pass
+    return ""
+
+
+def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
+    """统一 launch/relaunch 的 OpenCode prompt（scope + pytest 回灌）。"""
+    return build_dev_phase_prompt(
+        task_id,
+        phase_num,
+        plan_content,
+        scope=_phase_scope(task_id, phase_num),
+        pytest_failure=_read_pytest_failure_feedback(task_id),
+    )
+
+
 def dev_role_launch(task_id: str) -> dict:
     """引擎用：启 opencode 执行 task，返回启动结果
 
@@ -4665,20 +4701,7 @@ def dev_role_launch(task_id: str) -> dict:
 
     phase_id = f"{task_id}-p{cur_phase}"
     plan_content = cplan.read_text()
-    prompt = (
-        f"# CCC 执行任务: {task_id}\n\n"
-        f"## 当前 Phase（强制）\n"
-        f"- **只做 Phase {cur_phase}**，不得实现其他 phase 的需求\n"
-        f"- 不得修改不属于本 phase 白名单的文件\n"
-        f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n\n"
-        f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
-        f"## 完成定义（仅 Phase {cur_phase}）\n"
-        f"1. 仅实现 Phase {cur_phase} 对应需求\n"
-        f"2. 跑本 phase 相关测试（如有）\n"
-        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={cur_phase}`）\n"
-        f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单，且不提前做后续 phase\n"
-    )
+    prompt = _compose_dev_prompt(task_id, cur_phase, plan_content)
 
     pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
@@ -4762,20 +4785,7 @@ def dev_role_relaunch(task_id: str) -> dict:
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     plan_content = cplan.read_text()
-    prompt = (
-        f"# CCC 执行任务: {task_id}\n\n"
-        f"## 当前 Phase（强制）\n"
-        f"- **只做 Phase {cur_phase}**，不得实现其他 phase 的需求\n"
-        f"- 不得修改不属于本 phase 白名单的文件\n"
-        f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n\n"
-        f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
-        f"## 完成定义（仅 Phase {cur_phase}）\n"
-        f"1. 仅实现 Phase {cur_phase} 对应需求\n"
-        f"2. 跑本 phase 相关测试（如有）\n"
-        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={cur_phase}`）\n"
-        f"4. 确认代码无语法错误\n"
-        f"5. 不超出 plan 文件白名单，且不提前做后续 phase\n"
-    )
+    prompt = _compose_dev_prompt(task_id, cur_phase, plan_content)
 
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")

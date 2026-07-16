@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.41.1] — 2026-07-16
+
+### 流式 UI + OpenCode 交接 + 日审 LLM
+
+- Hub 流式：markdown 与工具卡分槽；RAF 节流渲染；工具默认折叠、结果截断
+- OpenCode prompt：强制注入 phase `scope` + `pytest_fail.md` 回灌
+- 日审：`CCC_DAILY_REVIEW_LLM=1` 时调 Claude 产出 A–J JSON（失败回退启发式）
+
 ## [v0.41.0] — 2026-07-16
 
 ### 闭环：下达即开工 + 基线 + 日审骨架

@@ -61,7 +61,7 @@ python3 scripts/ccc-failure-report.py --last 20
 | `CCC_CLAUDE_BIN` | 自动解析 | claude 绝对路径（launchd PATH 不全时必设） |
 | `CCC_UPSTREAM_STRICT` | off | `1` 时 upstream 探针仅 HTTP 200 算健康 |
 | `CCC_REVIEWER_FALLBACK` | `static` | `static`=LLM 挂时 PASS+WARN 过门；`quarantine`=进 abnormal |
-| `CCC_DAILY_REVIEW_LLM` | off | `1` 时日审走 Claude（骨架已留口） |
+| `CCC_DAILY_REVIEW_LLM` | off | `1` 时日审走 Claude JSON（失败回退启发式） |
 
 ## 闭环步骤（角色名 = 给人看；自动化 = prompt+skill+harness）
 
