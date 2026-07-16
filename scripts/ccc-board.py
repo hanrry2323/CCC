@@ -3510,7 +3510,6 @@ def _audit_run_one(ws: str, since: str) -> dict:
         "workspace": ws,
         "status": "audited",
         "auto_fixed": auto_fixed,
-        "review_posted": posted_review,
         "decision_posted": posted_decision,
         "report": str(report_path),
         "duration_seconds": round(_elapsed_ws, 1),
