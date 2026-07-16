@@ -249,8 +249,10 @@ function wireDockChrome(mount, handlers) {
 }
 
 export function initComposerActionDock(handlers) {
-  const toolbar = document.querySelector('.composer-toolbar');
-  if (!toolbar || document.getElementById('qa-dock')) return;
+  const host =
+    document.getElementById('qa-dock-host') ||
+    document.querySelector('.composer-toolbar');
+  if (!host || document.getElementById('qa-dock')) return;
 
   const fullHandlers = {
     ...handlers,
@@ -265,12 +267,7 @@ export function initComposerActionDock(handlers) {
   const mount = document.createElement('div');
   mount.className = 'qa-dock-slot';
   mount.innerHTML = renderComposerActionDock();
-  const model = toolbar.querySelector('#model-select') || toolbar.firstElementChild;
-  if (model && model.nextSibling) {
-    toolbar.insertBefore(mount, model.nextSibling);
-  } else {
-    toolbar.appendChild(mount);
-  }
+  host.appendChild(mount);
 
   wireDockChrome(mount, fullHandlers);
   bindFixedActions(mount, fullHandlers);
