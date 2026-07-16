@@ -28,6 +28,7 @@ def test_default_mode_is_disabled(control_home):
     assert ctrl.is_disabled() is True
     assert ctrl.may_start_engine() is False
     assert ctrl.may_start_ui() is False
+    assert ctrl.may_invent() is False
 
 
 def test_ui_mode_allows_ui_not_engine(control_home):
@@ -35,26 +36,38 @@ def test_ui_mode_allows_ui_not_engine(control_home):
     assert ctrl.get_mode() == "ui"
     assert ctrl.may_start_ui() is True
     assert ctrl.may_start_engine() is False
+    assert ctrl.may_invent() is False
     assert ctrl.is_enabled() is False
     assert not ctrl.DISABLED_SENTINEL.exists()
 
 
-def test_enable_disable_roundtrip(control_home):
+def test_enable_is_queue_consumer(control_home):
     ctrl.set_mode("enabled", reason="test")
     assert ctrl.get_mode() == "enabled"
     assert ctrl.may_start_engine() is True
+    assert ctrl.may_invent() is False
     assert ctrl.may_start_ui() is True
-    assert not ctrl.DISABLED_SENTINEL.exists()
-
     data = json.loads(ctrl.CONTROL_FILE.read_text())
-    assert data["mode"] == "enabled"
-    assert data["policy"]["forbid_popen_engine"] is True
+    assert data["policy"]["queue_consumer_only"] is True
+    assert data["policy"]["invent_allowed"] is False
 
+
+def test_invent_mode(control_home):
+    ctrl.set_mode("invent", reason="flywheel")
+    assert ctrl.may_invent() is True
+    assert ctrl.may_start_engine() is True
+    s = ctrl.status_dict()
+    assert s["invent_allowed"] is True
+    assert s["engine_allowed"] is True
+
+
+def test_enable_disable_roundtrip(control_home):
+    ctrl.set_mode("enabled", reason="test")
+    assert not ctrl.DISABLED_SENTINEL.exists()
     ctrl.set_mode("disabled", reason="test stop")
     assert ctrl.get_mode() == "disabled"
     assert ctrl.DISABLED_SENTINEL.exists()
     assert ctrl.may_start_engine() is False
-    assert ctrl.may_start_ui() is False
 
 
 def test_legacy_disabled_sentinel_wins(control_home):

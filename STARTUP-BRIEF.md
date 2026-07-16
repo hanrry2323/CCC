@@ -29,23 +29,21 @@ CCC = **7 角色看板** + **CCC Engine 串行驱动** + **Claude（product/revi
 | kb | **verified 列非空即跑**（v0.38） | bump VERSION + tag + CHANGELOG → released |
 | regress | 23:30 定时或手动 | released 回测 → backlog(回归 bug) |
 
-**v0.39 控制面（根源）**：`~/.ccc/control.json` — 默认 **disabled**。  
-详见 [`docs/CONTROL.md`](docs/CONTROL.md)。
+**v0.40 控制面**：`~/.ccc/control.json` — 默认 **disabled**。  
+详见 [`docs/CONTROL.md`](docs/CONTROL.md) · 埋点 [`docs/observability.md`](docs/observability.md)。
 
 | 模式 | 含义 |
 |------|------|
 | `disabled` | 默认。无常驻 |
 | `ui` | 仅 Hub+Board，无 Engine |
-| `enabled` | 全开 Engine |
+| `enabled` | Engine **只消费队列**（禁止自造） |
+| `invent` | 允许 audit/evolve/abnormal 回灌（显式） |
 
 ```bash
-# 前端开发（推荐）— 不改 control、不装 KeepAlive
-bash scripts/ccc-hub-dev.sh
-
-bash scripts/ccc-autostart-guard.sh status
-bash scripts/ccc-autostart-guard.sh disable
-bash scripts/ccc-autostart-guard.sh ui --start       # 仅 UI 常驻
-bash scripts/ccc-autostart-guard.sh enable --start   # 全开 + Engine
+bash scripts/ccc-hub-dev.sh                         # 前端前台
+bash scripts/ccc-autostart-guard.sh enable --start   # 队列消费者
+bash scripts/ccc-autostart-guard.sh invent --start   # 才允许自造
+python3 scripts/ccc-failure-report.py --last 20       # 上一笔为何挂
 ```
 
 **禁止**把 `ccc-loop-monitor.sh` 写入 crontab；patrol **禁止** `Popen` 旁路拉起 Engine。

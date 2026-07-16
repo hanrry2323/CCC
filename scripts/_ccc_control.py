@@ -1,15 +1,16 @@
-"""_ccc_control.py — CCC 运行控制面（v0.39.2）
+"""_ccc_control.py — CCC 运行控制面（v0.40）
 
 业务状态机（SSOT: ~/.ccc/control.json）：
 
   disabled  → 默认。禁止 Engine / 禁止 launchd 常驻 Hub·Board
-  ui        → 仅允许 Hub(:7777) + Board API(:7775)；禁止 Engine / evolve
-  enabled   → 全开；Engine 仅经 launchd:com.ccc.engine
+  ui        → 仅允许 Hub(:7777) + Board API(:7775)；禁止 Engine
+  enabled   → Engine 只消费已有队列（禁止 invent / abnormal 回灌）
+  invent    → Engine + 允许自造任务（audit→backlog / evolve / auto_replenish / abnormal 重试）
 
 前端开发请用前台脚本（不改 control、不装 launchd）：
   bash scripts/ccc-hub-dev.sh
 
-红线 12：禁止 agent 自主 enable / ui。
+红线 12：禁止 agent 自主 enable / invent / ui。
 """
 
 from __future__ import annotations
@@ -20,13 +21,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-Mode = Literal["disabled", "ui", "enabled"]
+Mode = Literal["disabled", "ui", "enabled", "invent"]
 
 CONTROL_DIR = Path.home() / ".ccc"
 CONTROL_FILE = CONTROL_DIR / "control.json"
 DISABLED_SENTINEL = CONTROL_DIR / "DISABLED"
 
-VALID_MODES = frozenset({"disabled", "ui", "enabled"})
+VALID_MODES = frozenset({"disabled", "ui", "enabled", "invent"})
+ENGINE_MODES = frozenset({"enabled", "invent"})
+UI_MODES = frozenset({"ui", "enabled", "invent"})
 
 
 def _now_iso() -> str:
@@ -65,8 +68,12 @@ def get_mode() -> Mode:
 
 
 def is_enabled() -> bool:
-    """全开（含 Engine）。"""
+    """队列消费模式（不含 invent）。"""
     return get_mode() == "enabled"
+
+
+def is_invent_mode() -> bool:
+    return get_mode() == "invent"
 
 
 def is_ui_mode() -> bool:
@@ -78,13 +85,18 @@ def is_disabled() -> bool:
 
 
 def may_start_engine() -> bool:
-    """是否允许任何路径尝试启动 Engine。"""
-    return get_mode() == "enabled"
+    """是否允许启动 Engine（enabled 或 invent）。"""
+    return get_mode() in ENGINE_MODES
+
+
+def may_invent() -> bool:
+    """是否允许自造任务 / abnormal 自动回灌。仅 invent。"""
+    return get_mode() == "invent"
 
 
 def may_start_ui() -> bool:
-    """是否允许 launchd 常驻 Hub/Board（ui 或 enabled）。"""
-    return get_mode() in ("ui", "enabled")
+    """是否允许 launchd 常驻 Hub/Board。"""
+    return get_mode() in UI_MODES
 
 
 def foreground_bypass() -> bool:
@@ -99,21 +111,26 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
     reasons = {
         "disabled": "user disable",
         "ui": "user ui-only",
-        "enabled": "user enable",
+        "enabled": "user enable (queue consumer)",
+        "invent": "user invent (may create work)",
     }
     data = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "mode": mode,
         "updated_at": _now_iso(),
         "reason": reason or reasons[mode],
         "source": source,
         "policy": {
-            "start_paths": ["launchd:com.ccc.engine"] if mode == "enabled" else [],
+            "start_paths": (
+                ["launchd:com.ccc.engine"] if mode in ENGINE_MODES else []
+            ),
             "ui_paths": ["launchd:com.ccc.chat-server", "launchd:com.ccc.board"],
             "forbid_popen_engine": True,
             "forbid_crontab_autostart": True,
             "empty_board_idle": True,
             "auto_replenish_default": False,
+            "queue_consumer_only": mode == "enabled",
+            "invent_allowed": mode == "invent",
             "frontend_dev": "bash scripts/ccc-hub-dev.sh",
         },
     }
@@ -125,7 +142,8 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
             f"# SSOT: {CONTROL_FILE}\n"
             f"# frontend: bash scripts/ccc-hub-dev.sh\n"
             f"# ui only:  bash scripts/ccc-autostart-guard.sh ui [--start]\n"
-            f"# full:     bash scripts/ccc-autostart-guard.sh enable [--start]\n",
+            f"# queue:    bash scripts/ccc-autostart-guard.sh enable [--start]\n"
+            f"# invent:   bash scripts/ccc-autostart-guard.sh invent [--start]\n",
             encoding="utf-8",
         )
     else:
@@ -142,8 +160,10 @@ def status_dict() -> dict[str, Any]:
     return {
         "mode": mode,
         "enabled": mode == "enabled",
-        "ui_allowed": mode in ("ui", "enabled"),
-        "engine_allowed": mode == "enabled",
+        "invent": mode == "invent",
+        "ui_allowed": mode in UI_MODES,
+        "engine_allowed": mode in ENGINE_MODES,
+        "invent_allowed": mode == "invent",
         "control_file": str(CONTROL_FILE),
         "disabled_sentinel": DISABLED_SENTINEL.is_file(),
         "updated_at": data.get("updated_at"),
@@ -169,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         reason = " ".join(args[1:]) if len(args) > 1 else "cli enable"
         print(json.dumps(set_mode("enabled", reason=reason, source="cli"), indent=2))
         return 0
+    if cmd == "invent":
+        reason = " ".join(args[1:]) if len(args) > 1 else "cli invent"
+        print(json.dumps(set_mode("invent", reason=reason, source="cli"), indent=2))
+        return 0
     if cmd == "ui":
         reason = " ".join(args[1:]) if len(args) > 1 else "cli ui"
         print(json.dumps(set_mode("ui", reason=reason, source="cli"), indent=2))
@@ -178,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(set_mode("disabled", reason=reason, source="cli"), indent=2))
         return 0
     print(
-        "usage: _ccc_control.py {status|disable|ui|enable} [reason]",
+        "usage: _ccc_control.py {status|disable|ui|enable|invent} [reason]",
         file=sys.stderr,
     )
     return 2

@@ -421,6 +421,10 @@ def _quarantine_with_notify(
     store: FileBoardStore | None = None,
     phase: int = 1,
     active_tasks: dict[str, dict] | None = None,
+    *,
+    role: str | None = None,
+    exit_code: int | None = None,
+    from_col: str | None = None,
 ) -> None:
     """移入 abnormal 并触发桌面通知。F-CON-02: 同时释放 opencode 槽位。"""
     _activate_workspace(ws)
@@ -428,52 +432,130 @@ def _quarantine_with_notify(
         store = _get_store(ws)
     store.quarantine(tid, reason)
     _log_stats(ws, "quarantine", tid, reason=reason)
+    # v0.40: 统一失败账本（写失败必须可见，禁止静默）
+    try:
+        from _failure_ledger import infer_role_from_reason, record_failure
+
+        record_failure(
+            ws,
+            task_id=tid,
+            role=role or infer_role_from_reason(reason or ""),
+            reason=reason or "unknown",
+            phase=phase,
+            from_col=from_col,
+            to_col="abnormal",
+            exit_code=exit_code,
+            related_stats_event="quarantine",
+        )
+    except Exception:
+        engine_log(f"[failures] record_failure failed for {tid}: {_traceback.format_exc()[:500]}")
     _ccc_notify("CCC", f"任务 {tid} 进入异常状态，原因：{reason}")
     store.update_index()
     # F-CON-02: 释放该 task 全部槽位
     _drop_active_task_and_slots(active_tasks, _task_key(ws, tid))
     # v0.31: 记录教训
     try:
-        from _lessons import record_failure
+        from _lessons import record_failure as _lesson_fail
 
-        record_failure(ws, tid, phase, reason or "unknown", "")
-    except Exception:
-        pass
+        _lesson_fail(ws, tid, phase, reason or "unknown", "")
+    except Exception as exc:
+        engine_log(f"[lessons] record_failure failed for {tid}: {exc}")
     # v0.32: 自动追加到 docs/lessons.md
     try:
         from _lessons import auto_append_lesson_md
 
         auto_append_lesson_md(ws, tid, phase, reason or "unknown")
-    except Exception:
-        pass
+    except Exception as exc:
+        engine_log(f"[lessons] auto_append failed for {tid}: {exc}")
 
 
 def _discover_workspaces() -> list[Path]:
-    """扫描 ~/program/* 及 ~/program/projects/* 下含 .ccc/board/ 的目录。"""
-    program_dir = Path.home() / "program"
-    if not program_dir.is_dir():
-        return []
+    """发现 Engine 管辖的 workspace（v0.40：默认不再扫全 ~/program）。
 
-    candidates: list[Path] = []
-    for p in sorted(program_dir.iterdir()):
-        if p.is_dir():
-            candidates.append(p)
-    projects_dir = program_dir / "projects"
-    if projects_dir.is_dir():
-        for p in sorted(projects_dir.iterdir()):
-            if p.is_dir():
-                candidates.append(p)
+    优先级：
+      1. CCC_WORKSPACES=name:path,name:path 或 path,path
+      2. ~/.ccc/workspaces.json → {"workspaces":[{"path":"..."}]}
+      3. 仅 CCC 自身（cfg.ccc_home / 本仓库）
+    显式全扫：CCC_DISCOVER_ALL=1（兼容旧行为，不推荐）
+    """
+    import os as _os
 
-    workspaces: list[Path] = []
     seen: set[str] = set()
-    for p in candidates:
+    workspaces: list[Path] = []
+
+    def _add(p: Path) -> None:
+        if not p.is_dir():
+            return
+        if not (p / ".ccc" / "board").is_dir():
+            return
         key = str(p.resolve())
         if key in seen:
-            continue
-        if (p / ".ccc" / "board").is_dir():
-            workspaces.append(p.resolve())
-            seen.add(key)
+            return
+        workspaces.append(p.resolve())
+        seen.add(key)
+
+    env = _os.environ.get("CCC_WORKSPACES", "").strip()
+    if env:
+        for part in env.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            path_s = part.split(":", 1)[-1] if ":" in part else part
+            _add(Path(path_s).expanduser())
+        if workspaces:
+            return workspaces
+
+    registry = Path.home() / ".ccc" / "workspaces.json"
+    if registry.is_file():
+        try:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            for item in data.get("workspaces") or []:
+                if isinstance(item, str):
+                    _add(Path(item).expanduser())
+                elif isinstance(item, dict) and item.get("path"):
+                    _add(Path(item["path"]).expanduser())
+        except (OSError, json.JSONDecodeError) as exc:
+            engine_log(f"[workspace] registry parse failed: {exc}")
+        if workspaces:
+            return workspaces
+
+    if _os.environ.get("CCC_DISCOVER_ALL", "").strip() in ("1", "true", "yes"):
+        program_dir = Path.home() / "program"
+        if program_dir.is_dir():
+            for p in sorted(program_dir.iterdir()):
+                if p.is_dir():
+                    _add(p)
+            projects_dir = program_dir / "projects"
+            if projects_dir.is_dir():
+                for p in sorted(projects_dir.iterdir()):
+                    if p.is_dir():
+                        _add(p)
+        return workspaces
+
+    # 默认：仅 CCC 自身
+    home = getattr(cfg, "ccc_home", None)
+    if home:
+        _add(Path(home))
+    if not workspaces:
+        _add(Path(__file__).resolve().parent.parent)
     return workspaces
+
+
+def _queue_has_consumable_work(store: FileBoardStore) -> bool:
+    """enabled 模式可消费列（不含 abnormal — 回灌需 invent）。"""
+    for col in ("backlog", "planned", "in_progress", "testing", "verified"):
+        if store.list_tasks(col):
+            return True
+    return False
+
+
+def _may_invent() -> bool:
+    try:
+        from _ccc_control import may_invent
+
+        return may_invent()
+    except ImportError:
+        return False
 
 
 def _ws_label(ws: Path, program_dir: Path | None = None) -> str:
@@ -1486,19 +1568,43 @@ def _process_backlog(ws: Path) -> bool:
             fail_counter_path.write_text(
                 json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2)
             )
+            err = result.get("error", "")[:200]
             _log_stats(
                 ws,
                 "product_fail",
                 tid,
                 fail_count=fail_count,
-                error=(result.get("error", "")[:200]),
+                error=err,
             )
+            try:
+                from _failure_ledger import record_failure
+
+                record_failure(
+                    ws,
+                    task_id=tid,
+                    role="product",
+                    reason=err or "product_fail",
+                    phase=0,
+                    from_col="backlog",
+                    to_col=None,
+                    related_stats_event="product_fail",
+                )
+            except Exception:
+                engine_log(
+                    f"[failures] product_fail ledger: {_traceback.format_exc()[:300]}"
+                )
             engine_log(
                 f"[product] [{label}] product_role({tid}) 异步失败 #{fail_count}: {result.get('error', '?')}"
             )
             if fail_count >= _MAX_PRODUCT_RETRIES:
                 _quarantine_with_notify(
-                    ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
+                    ws,
+                    tid,
+                    f"product_role 连续失败 {fail_count} 次",
+                    store,
+                    phase=0,
+                    role="product",
+                    from_col="backlog",
                 )
                 _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
             return True
@@ -1520,19 +1626,41 @@ def _process_backlog(ws: Path) -> bool:
     fail_count += 1
     fail_counter_dir.mkdir(parents=True, exist_ok=True)
     fail_counter_path.write_text(json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2))
+    err = launch_r.get("error", "")[:200]
     _log_stats(
         ws,
         "product_fail",
         tid,
         fail_count=fail_count,
-        error=(launch_r.get("error", "")[:200]),
+        error=err,
     )
+    try:
+        from _failure_ledger import record_failure
+
+        record_failure(
+            ws,
+            task_id=tid,
+            role="product",
+            reason=err or "product launch failed",
+            phase=0,
+            from_col="backlog",
+            to_col=None,
+            related_stats_event="product_fail",
+        )
+    except Exception:
+        engine_log(f"[failures] product_fail ledger: {_traceback.format_exc()[:300]}")
     engine_log(
         f"[product] [{label}] product_role({tid}) 启动失败 #{fail_count}: {launch_r.get('error', '')}"
     )
     if fail_count >= _MAX_PRODUCT_RETRIES:
         _quarantine_with_notify(
-            ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
+            ws,
+            tid,
+            f"product_role 连续失败 {fail_count} 次",
+            store,
+            phase=0,
+            role="product",
+            from_col="backlog",
         )
         _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
     return True
@@ -1545,10 +1673,12 @@ def _auto_replenish_backlog(ws: Path, store, program_dir: Path) -> bool:
     避免 audit_role 在无变更的项目上空转。
 
     v0.37: 默认关闭（cfg.auto_replenish / CCC_AUTO_REPLENISH=1）。
-    空看板自动补给会驱动 evolve → claude/radon 爆内存。
+    v0.40: 另需 control=invent（may_invent）；enabled 禁止自造。
 
     Returns: True 表示触发了 audit_role
     """
+    if not _may_invent():
+        return False
     if not getattr(cfg, "auto_replenish", False):
         return False
     if store.list_tasks("backlog"):
@@ -2336,7 +2466,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _check_degraded(ws)
                     _store = _get_store(ws)
                     _check_stale(ws, active_tasks)
-                    _retry_abnormal_failures(ws)
+                    # v0.40: abnormal 自动回灌仅 invent
+                    if _may_invent():
+                        _retry_abnormal_failures(ws)
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
                         try:
@@ -2449,32 +2581,24 @@ def engine_loop(workspaces: list[Path]) -> None:
                         _run_verified_kb_gate(ws)
                     _write_heartbeat(ws, None, 0, [])
 
-                    # v0.37: 真·空闲 — 无任何列任务时不做 audit/evolve/replenish
-                    # （否则每 5s/5min 自造 evolve-* 任务 → 内存爆）
-                    _has_work = any(
-                        _store2.list_tasks(col)
-                        for col in (
-                            "backlog",
-                            "planned",
-                            "in_progress",
-                            "testing",
-                            "verified",
-                            "abnormal",
-                        )
-                    )
-                    if not _has_work:
+                    # v0.40: enabled=只消费；invent 才允许 audit/evolve/replenish/abnormal
+                    _has_consumable = _queue_has_consumable_work(_store2)
+                    if not _has_consumable and not _may_invent():
                         continue
 
-                    if _audit_should_run(str(ws)):
+                    if _may_invent() and _audit_should_run(str(ws)):
                         label = _ws_label(ws, program_dir)
-                        engine_log(f"[{label}] 触发 audit_role（全项目扫描）")
+                        engine_log(f"[{label}] 触发 audit_role（invent 模式）")
                         try:
                             ccc_board.audit_role(workspace=str(ws))
                         except Exception as exc:
                             engine_log(f"[{label}] audit_role 异常: {exc}")
 
-                    # v0.36/v0.37: evolve 默认关闭（CCC_EVOLVE_ON_IDLE=1）
-                    if getattr(cfg, "evolve_on_idle", False) and iteration % 36 == 0:
+                    if (
+                        _may_invent()
+                        and getattr(cfg, "evolve_on_idle", False)
+                        and iteration % 36 == 0
+                    ):
                         try:
                             ev_res = ccc_board._evolve_run_one(str(ws))
                             if ev_res.get("posted", 0) > 0:
@@ -2486,10 +2610,10 @@ def engine_loop(workspaces: list[Path]) -> None:
                             label = _ws_label(ws, program_dir)
                             engine_log(f"[evolve] [{label}] 异常: {exc}")
 
-                    # backlog+planned 为空时立即补充（默认关闭，见 cfg.auto_replenish）
-                    _auto_replenish_backlog(ws, _store2, program_dir)
+                    if _may_invent():
+                        _auto_replenish_backlog(ws, _store2, program_dir)
+                        _retry_abnormal_failures(ws)
 
-                    _retry_abnormal_failures(ws)
                     _check_new_reviews(ws)
 
                     # v0.30: 空闲时聚合统计 → 反馈回路（学习飞轮）
@@ -2514,6 +2638,24 @@ def engine_loop(workspaces: list[Path]) -> None:
                                     )
                     except Exception as exc:
                         engine_log(f"[stats] aggregate error for {ws.name}: {exc}")
+
+            # v0.40: 无可消费队列 → 深睡（≥60s），避免空转造功
+            any_consumable = False
+            for ws in workspaces:
+                try:
+                    if _queue_has_consumable_work(_get_store(ws)):
+                        any_consumable = True
+                        break
+                except Exception:
+                    pass
+            if not any_active and not any_consumable and not _may_invent():
+                if iteration % 12 == 1:
+                    engine_log(
+                        f"CCC control={get_mode()} — queue empty, deep sleep 60s "
+                        f"(invent: python3 scripts/_ccc_control.py invent)"
+                    )
+                time.sleep(60)
+                continue
 
             if not any_active:
                 time.sleep(cfg.engine_tick_interval)
@@ -3074,6 +3216,24 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
             cpu=cpu,
             elapsed_sec=int(elapsed),
         )
+        try:
+            from _failure_ledger import record_failure
+
+            record_failure(
+                ws,
+                task_id=tid,
+                role="engine",
+                reason=f"hang_detected pid={pid} cpu={cpu:.1f}% elapsed={int(elapsed)}s",
+                phase=cur_phase,
+                from_col="in_progress",
+                to_col=None,
+                exit_code=None,
+                related_stats_event="hang_detected",
+            )
+        except Exception:
+            engine_log(
+                f"[failures] hang_detected ledger: {_traceback.format_exc()[:300]}"
+            )
         engine_log(
             f"[{label}] hang-detect: {tid} phase {cur_phase} PID={pid} "
             f"CPU={cpu:.1f}% 运行时长={int(elapsed)}s → 标记 .hung"
@@ -3164,7 +3324,13 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
             reason = f"hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）— {tid} phase {cur_phase}"
             engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
             _quarantine_with_notify(
-                ws, tid, reason, phase=cur_phase, active_tasks=active_tasks
+                ws,
+                tid,
+                reason,
+                phase=cur_phase,
+                active_tasks=active_tasks,
+                role="engine",
+                from_col="in_progress",
             )
             # 不增加计数，避免 dict 无限增长
             _hang_retry_counter[key] = retries

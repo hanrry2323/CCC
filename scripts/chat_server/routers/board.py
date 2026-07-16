@@ -206,6 +206,29 @@ async def native_logs(request: Request, lines: int = 50, workspace: str = "CCC")
     )
 
 
+@router.get("/api/failures")
+async def native_failures(
+    request: Request, last: int = 20, workspace: str = "CCC"
+):
+    """v0.40: 统一失败账本 .ccc/stats/failures.jsonl"""
+    check_auth(request)
+    import sys
+
+    root = Path(__file__).resolve().parents[3]
+    scripts = root / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _failure_ledger import read_failures
+
+    ws_path = _workspace_root(workspace) or root
+    rows = read_failures(ws_path, last=max(1, min(int(last), 100)))
+    return {
+        "workspace": workspace,
+        "path": str(ws_path / ".ccc" / "stats" / "failures.jsonl"),
+        "failures": rows,
+    }
+
+
 @router.get("/api/tasks/{task_id}")
 async def native_get_task(request: Request, task_id: str, workspace: str = "CCC"):
     check_auth(request)

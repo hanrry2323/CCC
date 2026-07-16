@@ -5,15 +5,17 @@
 #
 #   disabled → 禁止一切常驻
 #   ui       → 仅 Hub + Board（无 Engine）
-#   enabled  → 全开（Engine 经 launchd）
+#   enabled  → Engine 只消费队列（禁止自造）
+#   invent   → Engine + 允许 audit/evolve/abnormal 回灌
 #
 # 前端日常开发（推荐，不改 control、不装 KeepAlive）:
 #   bash scripts/ccc-hub-dev.sh
 #
 # 用法:
 #   bash scripts/ccc-autostart-guard.sh disable
-#   bash scripts/ccc-autostart-guard.sh ui [--start]      # 仅 UI 常驻
-#   bash scripts/ccc-autostart-guard.sh enable [--start]  # 全开 + 可选起 Engine
+#   bash scripts/ccc-autostart-guard.sh ui [--start]
+#   bash scripts/ccc-autostart-guard.sh enable [--start]   # 队列消费者
+#   bash scripts/ccc-autostart-guard.sh invent [--start]   # 允许自造
 #   bash scripts/ccc-autostart-guard.sh status
 
 set -uo pipefail
@@ -128,33 +130,46 @@ _ui() {
   _status
 }
 
-_enable() {
-  local do_start=0
-  [[ "${1:-}" == "--start" ]] && do_start=1
-
-  python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "guard enable"
-
+_start_engine() {
   uid=$(id -u)
   launchctl enable "gui/${uid}/com.ccc.engine" 2>/dev/null || true
-
   local src="${HOME}/Library/LaunchAgents/disabled-ccc/com.ccc.engine.plist"
   local dst="${HOME}/Library/LaunchAgents/com.ccc.engine.plist"
   if [[ -f "$src" && ! -f "$dst" ]]; then
     mv "$src" "$dst"
     echo "restored $dst"
   fi
-
-  if [[ "$do_start" == "1" ]]; then
-    if [[ -f "$dst" ]]; then
-      launchctl bootstrap "gui/$(id -u)" "$dst" 2>/dev/null \
-        || launchctl load -w "$dst" 2>/dev/null \
-        || true
-      echo "requested launchd start for com.ccc.engine"
-    else
-      echo "WARN: no engine plist — run: bash scripts/install-ccc-roles.sh"
-    fi
+  if [[ -f "$dst" ]]; then
+    launchctl bootstrap "gui/$(id -u)" "$dst" 2>/dev/null \
+      || launchctl load -w "$dst" 2>/dev/null \
+      || true
+    echo "requested launchd start for com.ccc.engine"
   else
-    echo "control=enabled; Engine NOT started. Use: $0 enable --start"
+    echo "WARN: no engine plist — run: bash scripts/install-ccc-roles.sh"
+  fi
+}
+
+_enable() {
+  local do_start=0
+  [[ "${1:-}" == "--start" ]] && do_start=1
+  python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "guard enable"
+  if [[ "$do_start" == "1" ]]; then
+    _start_engine
+  else
+    echo "control=enabled (queue consumer); Engine NOT started. Use: $0 enable --start"
+  fi
+  _status
+}
+
+_invent() {
+  local do_start=0
+  [[ "${1:-}" == "--start" ]] && do_start=1
+  python3 "${CCC_HOME}/scripts/_ccc_control.py" invent "guard invent"
+  echo "WARN: invent allows audit→backlog / evolve / abnormal retry"
+  if [[ "$do_start" == "1" ]]; then
+    _start_engine
+  else
+    echo "control=invent; Engine NOT started. Use: $0 invent --start"
   fi
   _status
 }
@@ -163,6 +178,7 @@ case "${1:-status}" in
   disable) _disable ;;
   ui)      shift; _ui "$@" ;;
   enable)  shift; _enable "$@" ;;
+  invent)  shift; _invent "$@" ;;
   status)  _status ;;
-  *) echo "usage: $0 {disable|ui [--start]|enable [--start]|status}"; exit 1 ;;
+  *) echo "usage: $0 {disable|ui [--start]|enable [--start]|invent [--start]|status}"; exit 1 ;;
 esac

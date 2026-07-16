@@ -1,32 +1,31 @@
-# CCC 运行控制面（v0.39.2）
+# CCC 运行控制面（v0.40）
 
-> **SSOT**：`~/.ccc/control.json`（模块：`scripts/_ccc_control.py`）  
-> CLI：`bash scripts/ccc-autostart-guard.sh {status|disable|ui|enable}`  
-> 前端开发：**`bash scripts/ccc-hub-dev.sh`**（不碰 control / launchd / Engine）
+> **SSOT**：`~/.ccc/control.json`（[`scripts/_ccc_control.py`](../scripts/_ccc_control.py)）  
+> CLI：`bash scripts/ccc-autostart-guard.sh {status|disable|ui|enable|invent}`  
+> 前端开发：`bash scripts/ccc-hub-dev.sh`（不碰 control / launchd）  
+> 失败查询：见 [`observability.md`](observability.md)
 
 ---
 
 ## 业务状态机
 
 ```
-disabled ──默认──► 无常驻；install 只 stage
-ui       ──显式──► 仅 Hub(:7777)+Board(:7775)；Engine 禁止
-enabled  ──显式──► 全开；Engine 仅 launchd:com.ccc.engine
+disabled ──默认──► 无常驻
+ui       ──显式──► 仅 Hub+Board；无 Engine
+enabled  ──显式──► Engine 只消费已有队列（禁止 invent）
+invent   ──显式──► Engine + audit/evolve/auto_replenish/abnormal 回灌
 ```
 
-| 模式 | Hub/Board launchd | Engine | 适用 |
-|------|-------------------|--------|------|
-| `disabled` | 否 | 否 | 默认 / 停机 |
-| `ui` | 可 | 否 | 只要看板 UI，不要流水线 |
-| `enabled` | 可 | 可 | 跑任务闭环 |
+| 模式 | Hub/Board | Engine | 自造任务 |
+|------|-----------|--------|----------|
+| `disabled` | 否 | 否 | 否 |
+| `ui` | 可 | 否 | 否 |
+| `enabled` | 可 | 可 | **否**（队列消费者） |
+| `invent` | 可 | 可 | **是** |
 
-**前端日常**：不要 `install --start`，用前台：
+**根因纠正**：`enable ≠ 永远在线自造任务`。空队列时 Engine **深睡 60s**，不跑 audit/abnormal。
 
-```bash
-bash scripts/ccc-hub-dev.sh
-```
-
-这会设 `CCC_FOREGROUND=1`，不改 `control.json`，Ctrl-C 即停。
+Workspace 发现默认 **仅 CCC 自身**；全扫需 `CCC_DISCOVER_ALL=1` 或 `~/.ccc/workspaces.json` / `CCC_WORKSPACES`。
 
 ---
 
@@ -35,13 +34,12 @@ bash scripts/ccc-hub-dev.sh
 ```bash
 bash scripts/ccc-autostart-guard.sh status
 bash scripts/ccc-autostart-guard.sh disable
-bash scripts/ccc-autostart-guard.sh ui [--start]       # 仅 UI 常驻
-bash scripts/ccc-autostart-guard.sh enable [--start]  # 全开 + 可选 Engine
+bash scripts/ccc-autostart-guard.sh ui [--start]
+bash scripts/ccc-autostart-guard.sh enable [--start]   # 推荐日常自动化
+bash scripts/ccc-autostart-guard.sh invent [--start]   # 显式允许自造（危险）
+bash scripts/ccc-hub-dev.sh                           # 前端前台
+python3 scripts/ccc-failure-report.py --last 20
 ```
-
-`install-hub-plist.sh --start` / `install-board-plist.sh --start` 只会把 control 设为 **`ui`**，**不会** enable Engine。
-
-`install-ccc-roles.sh --start` 才会 `enabled` + bootstrap Engine；board 在该脚本里只 stage。
 
 ---
 
@@ -49,14 +47,13 @@ bash scripts/ccc-autostart-guard.sh enable [--start]  # 全开 + 可选 Engine
 
 1. crontab 里 `python3 ccc-engine.py &`
 2. patrol `Popen(ccc-engine.py)`
-3. 为「看一下前端」去 `launchctl load` KeepAlive plist
-4. 文档/脚本把 `install-*-plist` 写成默认会自动 load
+3. 为看前端去 `launchctl load` KeepAlive
+4. 把 `invent` 当成默认 enable
 
 ---
 
-## 与版本关系
+## 版本关系
 
-- v0.37：空看板不自造任务
-- v0.39：控制面 + 禁 Popen
-- v0.39.1：install 默认只 stage
-- **v0.39.2**：`ui` 模式 + `ccc-hub-dev.sh`，前端开发与 Engine 解耦
+- v0.37：空看板 invent 默认 OFF
+- v0.39：启停控制面
+- **v0.40**：`enabled`=队列消费者；`invent` 独立；失败账本

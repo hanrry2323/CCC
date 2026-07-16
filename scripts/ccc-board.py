@@ -476,8 +476,9 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         for pf in plan_files[:2]:
             ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
 
-    template_plan = (get_workspace() / "templates" / "plan.plan.md").read_text()
-    profile = (get_workspace() / ".ccc" / "profile.md").read_text()
+    template_plan = _load_plan_template()
+    profile_path = get_workspace() / ".ccc" / "profile.md"
+    profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
 
     code_ctx = _get_code_context(get_workspace())
 
@@ -904,8 +905,9 @@ def launch_product_async(task_id: str) -> dict:
         for pf in plan_files[:2]:
             ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
 
-    template_plan = (get_workspace() / "templates" / "plan.plan.md").read_text()
-    profile = (get_workspace() / ".ccc" / "profile.md").read_text()
+    template_plan = _load_plan_template()
+    profile_path = get_workspace() / ".ccc" / "profile.md"
+    profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
     code_ctx = _get_code_context(get_workspace())
 
     prompt = (
@@ -3677,8 +3679,24 @@ def _intake_failsafe(ws: Path, category: str) -> bool:
 
 
 def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
-    """把 review/decision 类问题投到对应项目的 backlog。返回投出数。"""
+    """把 review/decision 类问题投到对应项目的 backlog。返回投出数。
+
+    v0.40: 仅 control=invent 才允许投 backlog（enabled 为纯队列消费）。
+    """
     from datetime import datetime as _dt
+
+    try:
+        from _ccc_control import may_invent
+
+        if not may_invent():
+            _log.info(
+                "[audit] skip post backlog (%s×%d) — control≠invent",
+                category,
+                len(items),
+            )
+            return 0
+    except ImportError:
+        pass
 
     store = FileBoardStore(Path(workspace))
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
@@ -3701,6 +3719,22 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
         )
         posted += 1
     return posted
+
+
+def _load_plan_template(ws: Path | None = None) -> str:
+    """加载 plan 模板；workspace 缺失时回退 CCC 仓库 templates/。"""
+    ws = ws or get_workspace()
+    candidates = [
+        ws / "templates" / "plan.plan.md",
+        CCC_HOME / "templates" / "plan.plan.md",
+        Path(__file__).resolve().parent.parent / "templates" / "plan.plan.md",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p.read_text(encoding="utf-8")
+    raise FileNotFoundError(
+        f"plan template not found in {[str(c) for c in candidates]}"
+    )
 
 
 def _audit_write_report(
@@ -3935,9 +3969,16 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
     )
 
     # v0.36/v0.37: evolve — 默认关闭（CCC_EVOLVE_ON_AUDIT=1 开启）
-    # 空看板自动 evolve 会反复投 evolve-* 任务并拖垮内存
+    # v0.40: 另需 control=invent
     evolve_results = []
-    if getattr(cfg, "evolve_on_audit", False):
+    _invent_ok = False
+    try:
+        from _ccc_control import may_invent as _may_invent_fn
+
+        _invent_ok = _may_invent_fn()
+    except ImportError:
+        _invent_ok = False
+    if _invent_ok and getattr(cfg, "evolve_on_audit", False):
         for ws_target in targets:
             try:
                 ev_result = _evolve_run_one(ws_target)

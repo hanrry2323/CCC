@@ -1,4 +1,4 @@
-# CCC — Connect–Claude Code (v0.39.0)
+# CCC — Connect–Claude Code (v0.40.0)
 
 > **One skill, every IDE, every model.** A skill that turns any coding agent
 > into a 7-role automated development system with kanban board.
@@ -38,7 +38,7 @@ backlog → product(claude) → planned → dev(opencode) → testing
 
 空看板默认**不**自动 evolve/补任务（`CCC_AUTO_REPLENISH=0`），避免后台内存爆掉。
 
-**运行控制面（v0.39）**：默认 `disabled`；显式 `enable` 后才由 `launchd:com.ccc.engine` 拉起。见 [`docs/CONTROL.md`](docs/CONTROL.md)。
+**运行控制面（v0.40）**：默认 `disabled`；`enable`=只消费队列；`invent`=才允许自造。见 [`docs/CONTROL.md`](docs/CONTROL.md) · [`docs/observability.md`](docs/observability.md)。
 
 ## 关键资产清单
 

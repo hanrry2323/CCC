@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.40.0] — 2026-07-16
+
+### 架构：队列消费者 + 失败账本
+
+- 控制面四态：`disabled` | `ui` | `enabled`（只消费）| `invent`（自造）
+- Engine 空队列深睡 60s；默认只扫 CCC workspace（非全 ~/program）
+- `.ccc/stats/failures.jsonl` + `ccc-failure-report.py` + Hub `/api/failures`
+- plan 模板缺失时回退 CCC `templates/plan.plan.md`
+- 文档：`docs/CONTROL.md` · `docs/observability.md`
+
 ## [v0.39.2] — 2026-07-16
 
 ### 前端开发与 Engine 解耦

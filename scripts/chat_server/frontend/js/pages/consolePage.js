@@ -34,6 +34,10 @@ function html() {
     <div class="console-tasks" id="console-abn"></div>
   </div>
   <div class="console-section">
+    <h3>最近失败 <span class="badge" id="console-fail-n">0</span></h3>
+    <div class="console-feed" id="console-fail"></div>
+  </div>
+  <div class="console-section">
     <h3>今日动态 <span class="badge" id="console-ev-n">0</span></h3>
     <div class="console-feed" id="console-feed"></div>
   </div>
@@ -110,12 +114,43 @@ function renderEvents(events) {
     .join('');
 }
 
+function renderFailures(rows) {
+  const el = _root.querySelector('#console-fail');
+  const n = _root.querySelector('#console-fail-n');
+  if (!el || !n) return;
+  n.textContent = String(rows.length);
+  if (!rows.length) {
+    el.innerHTML = '<div class="console-empty">暂无失败账本记录</div>';
+    return;
+  }
+  el.innerHTML = rows
+    .slice()
+    .reverse()
+    .slice(0, 15)
+    .map(
+      (f) => `<div class="row">
+      <span class="time">${esc((f.ts || '').replace('T', ' ').slice(0, 16))}</span>
+      <span><b>${esc(f.task_id || '')}</b> · ${esc(f.role || '')} · ${esc(f.reason || '')}</span>
+    </div>`
+    )
+    .join('');
+}
+
 async function poll() {
   const r = await apiGet('/api/dashboard?workspace=' + encodeURIComponent(_ws));
   renderKPI(r);
   renderActive(r.active_tasks || []);
   renderAbn(r.abnormal_tasks || []);
   renderEvents(r.today_events || []);
+  try {
+    const wsFail = _ws === 'all' ? 'CCC' : _ws;
+    const fr = await apiGet(
+      '/api/failures?last=15&workspace=' + encodeURIComponent(wsFail)
+    );
+    renderFailures(fr.failures || []);
+  } catch (_) {
+    renderFailures([]);
+  }
   const label = _root.querySelector('#console-ws-label');
   if (label) label.textContent = _ws === 'all' ? '全部' : _ws;
 }
