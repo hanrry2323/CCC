@@ -1,1 +1,4 @@
-{"version": "1.1", "phases": [{"phase": 1, "description": "创建迁移报告 + 硬门验收文档化", "status": "completed", "checkpoint": {"doc": "docs/migration-B1.md", "plan": ".ccc/plans/cla-b1-1-migrate.plan.md", "phases_json": ".ccc/phases/cla-b1-1-migrate.phases.json"}, "acceptance": {"src_nonempty": true, "pytest_green": true, "cli_works": true}}]}
+[
+ {"id":1,"name":"创建迁移报告+硬门验收文档化","manual":true,"description":"创建 B1 迁移审计报告，确认三硬门稳定通过，补全 .ccc 过程产物（plan + phases）","starting_point_type":"initial"},
+ {"id":2,"name":"二次验收三硬门命令","manual":true,"description":"运行三硬门验收并确认结果：src 非空、pytest 全绿、CLI 可跑"}
+]

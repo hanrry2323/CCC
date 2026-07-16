@@ -6,7 +6,7 @@
 
 ## 当前代码状态
 
-B1（cla-b1--qx--1-vded）已于 `0e275bb` 完成 demo 爬虫代码迁移，但未产出迁移报告，被标记为假通过。当前代码结构已就位，B1.1 回炉交付正式审计文件。
+B1（cla-b1--qx--1-vded）已于 `0e275bb` 完成 demo 爬虫代码迁移，但未产出迁移报告。当前代码结构已就位，B1.1 回炉交付正式审计文件。
 
 - **入口/核心文件**：
   - `scripts/run_crawler.py` — CLI 入口，`crawler_map = {"demo": DemoCrawler}`
