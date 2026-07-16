@@ -151,6 +151,12 @@ python3 scripts/run_crawler.py
 
 # 运行爬虫单测
 python3 -m pytest tests/test_crawler_demo.py -q --tb=short
+
+# 运行四川价爬虫（dry-run 模式，不依赖凭证）
+python3 scripts/run_crawler.py --name sichuan
+
+# 运行四川价爬虫单测
+python3 -m pytest tests/test_crawler_sichuan.py -q --tb=short
 ```
 
 ## License
