@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """ccc-board-server.py — CCC 看板 HTTP 服务 (v0.20)
 
-提供 REST API + 前端 UI，绑定 :7777。
+提供 REST API（默认 :7775，本机）；UI 已并入 CCC Hub :7777。
+旧静态页（index/board）仅作 302 重定向到 Hub。
 支持多 workspace（CCC / qxo 自动发现）。
 
 依赖：Python 3.8+ 标准库
@@ -413,7 +414,8 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         ws = qs.get("workspace", ["CCC"])[0]
 
-        if not validate_workspace(ws):
+        # dashboard 支持 workspace=all（多看板聚合）；其余 API 必须是已知 workspace
+        if not (path == "/api/dashboard" and ws == "all") and not validate_workspace(ws):
             self._json({"error": f"unknown workspace: {ws}"}, 400)
             return
 
@@ -705,9 +707,17 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
         else:
-            # 非 /api/* 路径 → 委托父类 serve 静态文件（scripts/ccc-board-ui/）
-            # 修 v0.23.13: 之前 else 兜底返 JSON 404，导致 GET / 和 /index.html 全 404
-            super().do_GET()
+            # UI 已迁入 CCC Hub :7777；Board 仅 API，旧 HTML 一律 302 到 Hub（禁缓存）
+            hub = os.environ.get("CCC_HUB_URL", "http://127.0.0.1:7777").rstrip("/")
+            if "board" in path:
+                loc = hub + "/#/board"
+            else:
+                loc = hub + "/#/console"
+            self.send_response(302)
+            self.send_header("Location", loc)
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
 
     def do_POST(self):
         if not self._verify_auth():
@@ -846,6 +856,19 @@ def _fix_hint_for(errors: list[str]) -> str:
 
 # ── 启动 ──
 def main():
+    # v0.39.1: 控制面 — disabled 时拒绝真正监听（KeepAlive 下 idle hold）
+    try:
+        from _ccc_control import is_disabled, get_mode
+    except ImportError:
+        is_disabled = lambda: (Path.home() / ".ccc" / "DISABLED").is_file()  # noqa: E731
+        get_mode = lambda: "disabled" if is_disabled() else "enabled"  # noqa: E731
+
+    if is_disabled():
+        _log.warning("CCC control=%s — board idle hold (not listening)", get_mode())
+        while is_disabled():
+            time.sleep(60)
+        _log.info("CCC control=enabled — board starting")
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--host", default=None)

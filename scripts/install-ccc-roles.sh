@@ -6,29 +6,36 @@
 # 保留 --workspace 参数仅用于初始化看板目录（backlog/planned 等 7 列 + index.json）。
 #
 # 用法:
-#   ./install-ccc-roles.sh                                       # 安装到 CCC 自身（含统一引擎）
+#   ./install-ccc-roles.sh                                       # 仅写入 plist（默认不 load）
+#   ./install-ccc-roles.sh --start                               # 写 control=enabled 并 bootstrap
 #   ./install-ccc-roles.sh --workspace ~/program/qxo             # 初始化 qxo 项目看板目录（跳过 engine）
 #   ./install-ccc-roles.sh --upgrade                             # 卸载旧角色 plist + 重装
 #   ./install-ccc-roles.sh --workspace ~/program/qxo --upgrade   # 初始化项目目录 + 卸载旧角色
+#
+# v0.39.1: 默认绝不 launchctl load（根因：装完即 KeepAlive 复活）。
 set -uo pipefail
 
 # ── 参数 ──
 WORKSPACE=""
 UPGRADE=false
+DO_START=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --workspace) WORKSPACE="$2"; shift 2 ;;
     --workspace=*) WORKSPACE="${1#*=}"; shift ;;
     --upgrade) UPGRADE=true; shift ;;
+    --start) DO_START=true; shift ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCC_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLIST_DIR="${HOME}/Library/LaunchAgents"
+# shellcheck source=_ccc_launchd.sh
+source "${SCRIPT_DIR}/_ccc_launchd.sh"
+PLIST_DIR="${CCC_PLIST_STAGED}"
 LOG_DIR="${HOME}/.ccc/logs"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$CCC_PLIST_STAGED"
 
 # ── 项目识别 ──
 if [[ -n "$WORKSPACE" ]]; then
@@ -120,9 +127,13 @@ install_engine() {
 PLIST_EOF
 
   plutil -lint "$plist" >/dev/null || { echo "  ⚠ engine plist 不合法"; return 1; }
-  launchctl unload "$plist" 2>/dev/null || true
-  launchctl load -w "$plist"
-  echo "  ✓ ${label}（统一引擎）"
+  if $DO_START; then
+    PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install --start" >/dev/null
+    ccc_launchd_finalize "$label" "$plist" --start
+  else
+    ccc_launchd_finalize "$label" "$plist"
+  fi
 }
 
 # ── 安装/更新 board-server plist（如不存在）──
@@ -175,9 +186,13 @@ install_board() {
 PLIST_EOF
 
   plutil -lint "$plist" >/dev/null || { echo "  ⚠ board plist 不合法"; return 1; }
-  launchctl unload "$plist" 2>/dev/null || true
-  launchctl load -w "$plist"
-  echo "  ✓ ${label}"
+  if $DO_START; then
+    PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install --start" >/dev/null
+    ccc_launchd_finalize "$label" "$plist" --start
+  else
+    ccc_launchd_finalize "$label" "$plist"
+  fi
 }
 
 echo ""
@@ -187,7 +202,7 @@ install_board
 
 echo ""
 echo "=== 状态 ==="
-launchctl list | grep "${LABEL_PREFIX}" | sed 's/^/  /'
+launchctl list 2>/dev/null | grep "${LABEL_PREFIX}" | sed 's/^/  /' || echo "  (no loaded agents)"
 echo ""
 
 if $UPGRADE; then
@@ -196,10 +211,15 @@ if $UPGRADE; then
   echo "  $0 --workspace ~/program/qxo --upgrade"
 fi
 echo ""
-echo "⚠ v0.39 控制面：默认 disabled。启用："
-echo "  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh enable --start"
+if $DO_START; then
+  echo "已 --start：control=enabled 且已尝试 bootstrap。"
+else
+  # 确保不会因历史 active plist 残留而复活
+  bash "${CCC_HOME}/scripts/ccc-autostart-guard.sh" disable >/dev/null 2>&1 || \
+    PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 "${CCC_HOME}/scripts/_ccc_control.py" disable "post-install safe default" >/dev/null 2>&1 || true
+  echo "⚠ v0.39.1：plist 仅 staged，未 load。启用："
+  echo "  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh enable --start"
+fi
 echo "  文档: ${CCC_HOME}/docs/CONTROL.md"
-echo "  禁止 crontab 安装 ccc-loop-monitor；patrol 禁止 Popen 旁路。"
-# 安装后写入 disabled，避免装完即狂跑（用户需显式 enable）
-python3 "${CCC_HOME}/scripts/_ccc_control.py" disable "post-install safe default" >/dev/null 2>&1 || true
 echo "Done. (prefix: ${LABEL_PREFIX}, workspace: ${WORKSPACE})"

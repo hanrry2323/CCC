@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.39.1] — 2026-07-16
+
+### 堵住 install 复活路径
+
+`install-ccc-roles.sh` / hub / board / scheduler 默认**只 stage** 到
+`~/Library/LaunchAgents/disabled-ccc/`，不再 `launchctl load`。
+`--start` 才 enable + bootstrap。board/chat 入口尊重 control（idle hold）。
+
 ## [v0.39.0] — 2026-07-16
 
 ### 根源：运行控制面状态机（非「删自启动」）

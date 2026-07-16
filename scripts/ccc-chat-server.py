@@ -21,6 +21,27 @@ app = create_app()
 
 def main():
     import argparse
+    import time
+
+    # v0.39.1: 控制面 — disabled 时拒绝真正监听
+    _scripts = Path(__file__).resolve().parent
+    if str(_scripts) not in sys.path:
+        sys.path.insert(0, str(_scripts))
+    try:
+        from _ccc_control import is_disabled, get_mode
+    except ImportError:
+        def is_disabled() -> bool:
+            return (Path.home() / ".ccc" / "DISABLED").is_file()
+
+        def get_mode() -> str:
+            return "disabled" if is_disabled() else "enabled"
+
+    if is_disabled():
+        print(f"CCC control={get_mode()} — chat idle hold (not listening)", flush=True)
+        while is_disabled():
+            time.sleep(60)
+        print("CCC control=enabled — chat starting", flush=True)
+
     # F-SEC-01: 未设强口令则拒启
     validate_auth_config()
 
@@ -35,7 +56,7 @@ def main():
     bind_port = args.port
     bind_host = args.host
 
-    print("  CCC Chat Server v2")
+    print("  CCC Hub")
     print("  ─────────────────────")
     print(f"  监听: http://{bind_host}:{bind_port}")
     print(f"  本地: http://127.0.0.1:{bind_port}")

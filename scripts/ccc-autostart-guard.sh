@@ -29,17 +29,22 @@ _disable() {
 
   uid=$(id -u)
   for label in com.ccc.engine com.ccc.board com.ccc.chat-server \
-               com.ccc.flywheel-scan com.ccc.loop-monitor com.opencode.serve; do
+               com.ccc.flywheel-scan com.ccc.loop-monitor com.opencode.serve \
+               com.ccc.ccc-exec-launcher; do
     launchctl bootout "gui/${uid}/${label}" 2>/dev/null || true
+    launchctl disable "gui/${uid}/${label}" 2>/dev/null || true
   done
   mkdir -p "${HOME}/Library/LaunchAgents/disabled-ccc"
+  # zsh/bash: avoid glob fail
+  set +o nomatch 2>/dev/null || true
   for f in "${HOME}/Library/LaunchAgents"/com.ccc.*.plist \
            "${HOME}/Library/LaunchAgents"/com.opencode.serve.plist; do
     [[ -f "$f" ]] || continue
-    mv "$f" "${HOME}/Library/LaunchAgents/disabled-ccc/" 2>/dev/null || true
+    mv -f "$f" "${HOME}/Library/LaunchAgents/disabled-ccc/" 2>/dev/null || true
   done
 
   pkill -9 -f 'ccc-engine\.py' 2>/dev/null || true
+  pkill -9 -f 'ccc-engine\.sh' 2>/dev/null || true
   pkill -9 -f 'ccc-board-server\.py' 2>/dev/null || true
   pkill -9 -f 'ccc-chat-server\.py' 2>/dev/null || true
   pkill -9 -f 'opencode serve' 2>/dev/null || true
@@ -59,6 +64,10 @@ _enable() {
   [[ "${1:-}" == "--start" ]] && do_start=1
 
   python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "guard enable"
+
+  uid=$(id -u)
+  # re-enable launchd disabled overrides for engine
+  launchctl enable "gui/${uid}/com.ccc.engine" 2>/dev/null || true
 
   # 恢复 engine plist（若在 disabled-ccc）
   local src="${HOME}/Library/LaunchAgents/disabled-ccc/com.ccc.engine.plist"

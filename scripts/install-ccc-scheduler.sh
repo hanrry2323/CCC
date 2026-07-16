@@ -14,6 +14,12 @@ DRY_RUN=false
 PHASE_ARG=""
 PROMPT_ARG=""
 
+# v0.39.1: control=disabled 时默认不 load（避免 flywheel/loop 复活）
+if ! PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
+    python3 -c "from _ccc_control import is_enabled; raise SystemExit(0 if is_enabled() else 1)" 2>/dev/null; then
+  ENABLE_NOW=false
+fi
+
 usage() {
   cat <<EOU
 Usage: $(basename "$0") [install|uninstall|status] [options]
@@ -61,7 +67,12 @@ LABEL="${LABEL_BASE}.$(basename "${TARGET}" .sh)"
 TARGET_PATH="${CCC_HOME}/scripts/${TARGET}"
 LOG_OUT="${LOG_DIR}/$(basename "${TARGET}" .sh).out.log"
 LOG_ERR="${LOG_DIR}/$(basename "${TARGET}" .sh).err.log"
-PLIST_DIR="${HOME}/Library/LaunchAgents"
+# v0.39.1: 未 enable 时写到 disabled-ccc，避免登录自动 load
+if ${ENABLE_NOW}; then
+  PLIST_DIR="${HOME}/Library/LaunchAgents"
+else
+  PLIST_DIR="${HOME}/Library/LaunchAgents/disabled-ccc"
+fi
 PLIST="${PLIST_DIR}/${LABEL}.plist"
 
 ensure_target() {
@@ -122,9 +133,15 @@ do_install() {
   echo "${PLIST_CONTENT}" > "${PLIST}"
   plutil -lint "${PLIST}" >/dev/null
 
-  launchctl unload "${PLIST}" 2>/dev/null || true
+  # 清掉 active 目录同名残留，防止登录复活
+  rm -f "${HOME}/Library/LaunchAgents/${LABEL}.plist"
+
+  launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+  launchctl unload "${HOME}/Library/LaunchAgents/${LABEL}.plist" 2>/dev/null || true
   if ${ENABLE_NOW}; then
-    launchctl load -w "${PLIST}"
+    launchctl bootstrap "gui/$(id -u)" "${PLIST}" 2>/dev/null || launchctl load -w "${PLIST}"
+  else
+    echo "Staged only (control disabled or --no-enable): ${PLIST}"
   fi
 
   echo "Installed: ${PLIST}"

@@ -28,8 +28,12 @@ control=enabled   ──显式──► 仅 launchd:com.ccc.engine 可拉起
 
 | 模式 | 含义 |
 |------|------|
-| `disabled` | 安全默认。Engine 若被 KeepAlive 拉起也只 idle sleep。 |
+| `disabled` | 安全默认。任何 install **不得** `launchctl load`；plist 只进 `disabled-ccc/`。 |
 | `enabled` | 用户显式启用。有任务才跑 7 角色闭环。 |
+
+**复活根因（v0.39.1 堵住）**：`install-ccc-roles.sh` / `install-*-plist.sh` 旧逻辑是
+`launchctl load -w` 后再写 `control=disabled` → KeepAlive 仍在跑（engine 空转 + board/chat 真监听）。
+现在默认只 stage，只有 `--start` 或 `guard enable --start` 才 load。
 
 ---
 
