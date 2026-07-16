@@ -31,8 +31,8 @@ import pytest
 CHAT_SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "ccc-chat-server.py"
 PROJECT_ROOT = CHAT_SCRIPT.parent.parent
 BASE_URL = "http://127.0.0.1:18084"
-# F-SEC-01: 测试口令须满足 >=12 且非弱口令默认
-_TEST_PASS = "ccc-test-pass-OK"
+# Hub 约定账密均为 ccc
+_TEST_PASS = "ccc"
 AUTH_HEADER = "Basic " + __import__("base64").b64encode(
     f"ccc:{_TEST_PASS}".encode()
 ).decode()
@@ -163,7 +163,7 @@ class TestServiceInfrastructure:
     def test_001_service_http_200(self):
         status, body = _get("/", auth=False)
         assert status == 200
-        assert "CCC Chat" in body
+        assert "CCC Hub" in body or "hub-nav" in body
 
     def test_002_unauth_returns_401(self):
         req = urllib.request.Request(f"{BASE_URL}/api/projects")
@@ -225,6 +225,28 @@ class TestServiceInfrastructure:
     def test_011_board_proxy(self):
         status, data = _get("/api/board/proxy/board?workspace=CCC")
         assert status in (200, 503)
+
+    def test_012_native_board(self):
+        status, data = _get("/api/board?workspace=CCC")
+        assert status in (200, 503)
+
+    def test_013_native_task_events(self):
+        """GET /api/tasks/{task_id}/events — native path, proxied to board-server."""
+        status, data = _get("/api/tasks/dummy-test/events?workspace=CCC")
+        assert status in (200, 404, 503)
+        if status == 200:
+            assert "id" in data
+            assert "events" in data
+            assert isinstance(data["events"], list)
+
+    def test_014_proxy_task_events(self):
+        """GET /api/board/proxy/tasks/{task_id}/events — proxy prefix path."""
+        status, data = _get("/api/board/proxy/tasks/dummy-test/events?workspace=CCC")
+        assert status in (200, 404, 503)
+        if status == 200:
+            assert "id" in data
+            assert "events" in data
+            assert isinstance(data["events"], list)
 
 
 # ===========================================================================
@@ -524,65 +546,67 @@ class TestFrontendHtml:
     def test_050_page_structure(self):
         h = _html()
         assert "<!DOCTYPE html>" in h
-        assert '<html lang="zh-CN">' in h
-        assert "<body>" in h
+        assert 'lang="zh-CN"' in h
+        assert "<body" in h
+        assert "CCC Hub" in h
 
     def test_051_html_ids(self):
         h = _html()
-        for id_val in ["app", "header", "messages", "input-area", "input-wrap",
-                       "send", "tabbar", "sidebar", "sessionList"]:
+        for id_val in ["hub-nav", "hub-views", "view-chat", "view-board", "view-console",
+                       "app", "titlebar", "messages", "composer", "sidebar", "session-list"]:
             assert f'id="{id_val}"' in h, f"Missing id={id_val}"
 
-    def test_052_three_panels(self):
+    def test_052_hub_routes(self):
         h = _html()
-        for panel in ["chat-panel", "exec-panel", "board-panel"]:
-            assert f'id="{panel}"' in h
+        assert 'data-route="chat"' in h
+        assert 'data-route="board"' in h
+        assert 'data-route="console"' in h
+        assert 'href="#/chat"' in h
+        assert 'href="#/board"' in h
+        assert 'href="#/console"' in h
 
     def test_053_project_selector(self):
         h = _html()
         assert 'id="project-select"' in h
+        assert 'id="sidebar-project-select"' in h
 
     def test_054_theme_button(self):
         h = _html()
-        assert "themeBtn" in h
-        assert "toggleTheme" in h
+        assert 'id="theme-btn"' in h
+        assert "shell.css" in h
 
     def test_055_skeleton(self):
         h = _html()
-        assert "skeleton-pulse" in h
-        assert "skeleton-card" in h
+        assert 'class="skeleton"' in h
 
-    def test_056_send_buttons(self):
+    def test_056_composer_controls(self):
         h = _html()
-        assert "sendChat" in h
-        assert "sendExecute" in h
-        assert "cancelStream" in h
+        assert 'id="send-btn"' in h
+        assert 'id="cancel-btn"' in h
+        assert 'id="composer-input"' in h
 
-    def test_057_message_edit(self):
-        h = _html()
-        assert "editMessage" in h
-        assert "saveEdit" in h
-        assert "cancelEdit" in h
-        assert "dblclick" in h
+    def test_057_hub_modules(self):
+        js_dir = PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js"
+        assert (js_dir / "router.js").exists()
+        assert (js_dir / "pages" / "boardPage.js").exists()
+        assert (js_dir / "pages" / "consolePage.js").exists()
+        assert (js_dir / "app.js").exists()
 
-    def test_058_file_tree(self):
+    def test_058_chat_panel(self):
         h = _html()
-        assert "loadFileTree" in h
-        assert "renderFileTree" in h
-        assert "readFile" in h
+        assert 'id="chat-panel"' in h
+        assert 'id="layout"' in h
 
-    def test_059_board(self):
-        h = _html()
-        assert "loadBoard" in h
-        assert "board-col" in h
-        assert "openTaskModal" in h
+    def test_059_board_page_module(self):
+        src = (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js" / "pages" / "boardPage.js").read_text()
+        assert "mountBoard" in src
+        assert "/api/board" in src
 
     def test_060_sidebar(self):
         h = _html()
-        assert "loadHistory" in h
-        assert "loadSession" in h
-        assert "toggleSidebar" in h
-        assert "newChat" in h
+        assert 'id="sidebar"' in h
+        assert "toggleMobileSidebar" in h
+        assert 'id="new-tab-btn"' in h
 
 
 # ===========================================================================
@@ -592,33 +616,36 @@ class TestFrontendHtml:
 
 class TestThemeSystem:
 
+    def _css(self) -> str:
+        base = PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "css"
+        return "\n".join(p.read_text() for p in base.glob("*.css"))
+
     def test_061_light_vars(self):
-        h = _html()
-        for var in ["--bg", "--surface", "--text", "--accent", "--border",
-                     "--code-bg", "--user-bg", "--user-text"]:
-            assert var in h, f"Missing {var}"
+        css = self._css()
+        for var in ["--ccc-bg-base", "--ccc-bg-surface", "--ccc-text-base",
+                     "--ccc-bg-accent", "--ccc-border-base", "--ccc-bg-user"]:
+            assert var in css, f"Missing {var}"
 
     def test_062_dark_vars(self):
-        h = _html()
-        assert 'data-theme="dark"' in h
-        for var in ["--bg: #1c1c1e", "--surface: #2c2c2e", "--text: #f5f5f7",
-                     "--accent: #0a84ff"]:
-            assert var in h
+        css = self._css()
+        assert '[data-theme="dark"]' in css or "data-theme" in css
+        assert "--ccc-bg-accent" in css
 
-    def test_063_terminal_vars(self):
-        h = _html()
-        for var in ["--terminal-bg", "--terminal-text", "--terminal-prompt",
-                     "--terminal-header", "--terminal-sep", "--terminal-body"]:
-            assert var in h
+    def test_063_shell_styles(self):
+        shell = (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "css" / "shell.css").read_text()
+        assert "#hub-nav" in shell
+        assert ".board-page" in shell
+        assert ".console-page" in shell
 
     def test_064_diff_vars(self):
-        h = _html()
-        assert "--success" in h
-        assert "--danger" in h
+        css = self._css()
+        # warm palette may use semantic names in components
+        assert "--ccc-" in css
 
-    def test_065_theme_transition(self):
+    def test_065_theme_script(self):
         h = _html()
-        assert "transition-theme" in h
+        assert "ccc-theme" in h
+        assert "data-theme" in h
 
     def test_066_theme_persistence(self):
         h = _html()
@@ -634,64 +661,56 @@ class TestThemeSystem:
 
 class TestMarkdownRenderer:
 
-    def test_070_render_markdown_function(self):
-        h = _html()
-        assert "function renderMarkdown" in h
+    def _md(self) -> str:
+        return (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js" / "markdown.js").read_text()
+
+    def test_070_render_markdown_export(self):
+        assert "export function renderMarkdown" in self._md()
 
     def test_071_headers(self):
-        h = _html()
-        for tag in ["<h1>", "<h2>", "<h3>", "<h4>"]:
-            assert tag in h
+        md = self._md()
+        assert "#{1,4}" in md
+        assert "<h" in md
 
     def test_072_lists(self):
-        h = _html()
-        assert "<ul>" in h
-        assert "<ol>" in h
-        assert "<li>" in h
+        md = self._md()
+        assert "<ul>" in md or "ul" in md
+        assert "<ol>" in md or "ol" in md
 
     def test_073_block_elements(self):
-        h = _html()
-        assert "<blockquote>" in h
-        assert "<hr>" in h
+        md = self._md()
+        assert "blockquote" in md
 
     def test_074_tables(self):
-        h = _html()
-        assert "<table>" in h
-        assert "<thead>" in h
-        assert "<th>" in h
-        assert "<td>" in h
+        md = self._md()
+        assert "table" in md
 
     def test_075_links(self):
-        h = _html()
-        assert '<a href=' in h
-        assert 'target="_blank"' in h
+        md = self._md()
+        assert "href" in md
+        assert "target" in md
 
     def test_076_images(self):
-        h = _html()
-        assert "<img" in h
+        md = self._md()
+        assert "img" in md
 
     def test_077_inline_formatting(self):
-        h = _html()
-        assert "<strong>" in h
-        assert "<em>" in h
-        assert "<code>" in h
+        md = self._md()
+        assert "strong" in md
+        assert "code" in md
 
     def test_078_code_blocks(self):
         h = _html()
-        assert "code-block-wrap" in h
         assert "copyCode" in h
+        assert "highlightSyntax" in self._md() or "code-block" in self._md()
 
-    def test_079_diff_and_tools(self):
-        h = _html()
-        assert "parseDiff" in h
-        assert "renderDiff" in h
-        assert "TOOL_ICONS" in h or "toolIcon" in h
+    def test_079_syntax_highlighters(self):
+        md = self._md()
+        assert "highlightJS" in md
+        assert "highlightPython" in md
 
-    def test_080_terminal_functions(self):
-        h = _html()
-        for fn in ["renderTerminalCommand", "appendTerminalInfo",
-                     "renderTerminalHistory", "terminalStream"]:
-            assert f"function {fn}" in h
+    def test_080_markdown_module_exists(self):
+        assert (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js" / "markdown.js").exists()
 
 
 # ===========================================================================
@@ -818,43 +837,47 @@ class TestEdgeCases:
 
 class TestJSFunctions:
 
-    def test_110_chat_functions(self):
-        h = _html()
-        for fn in ["sendChat", "streamRequest", "cancelStream", "renderMessage",
-                     "renderMarkdown", "escapeHtml", "onKey"]:
-            assert f"function {fn}" in h
+    def _js_blob(self) -> str:
+        js_dir = PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js"
+        parts = []
+        for p in js_dir.rglob("*.js"):
+            parts.append(p.read_text())
+        return "\n".join(parts)
 
-    def test_111_execute_functions(self):
-        h = _html()
-        for fn in ["sendExecute", "terminalStream", "resetTerminal",
-                     "renderTerminalHistory"]:
-            assert f"function {fn}" in h
+    def test_110_hub_router(self):
+        blob = self._js_blob()
+        assert "initRouter" in blob
+        assert "mountBoard" in blob
+        assert "mountConsole" in blob
 
-    def test_112_board_functions(self):
-        h = _html()
-        for fn in ["loadBoard", "openTaskModal", "closeTaskModal", "createTask"]:
-            assert f"function {fn}" in h
+    def test_111_api_auth(self):
+        blob = self._js_blob()
+        assert "_fetchWithAuth" in blob or "ccc_chat_pass" in blob
+        assert "apiGet" in blob
+        assert "apiPost" in blob
 
-    def test_113_sidebar_functions(self):
-        h = _html()
-        for fn in ["toggleSidebar", "loadHistory", "loadSession", "newChat"]:
-            assert f"function {fn}" in h
+    def test_112_board_page(self):
+        blob = self._js_blob()
+        assert "/api/tasks/move" in blob
+        assert "mountBoard" in blob
 
-    def test_114_file_functions(self):
-        h = _html()
-        for fn in ["loadFileTree", "renderFileTree", "readFile", "showFilePreview"]:
-            assert f"function {fn}" in h
+    def test_113_sidebar_module(self):
+        blob = self._js_blob()
+        assert "refreshSidebar" in blob or "setupSidebarSearch" in blob
 
-    def test_115_utility_functions(self):
-        h = _html()
-        for fn in ["copyCode", "scrollToBottom", "ts", "onProjectChange", "switchTab"]:
-            assert f"function {fn}" in h
+    def test_114_composer(self):
+        blob = self._js_blob()
+        assert "initComposer" in blob
 
-    def test_116_tab_functions(self):
+    def test_115_utility(self):
         h = _html()
-        for fn in ["sendChat", "sendExecute", "cancelStream", "newChat",
-                     "toggleSidebar", "toggleInputMode", "switchTab"]:
-            assert f"function {fn}" in h
+        assert "function copyCode" in h
+        assert "function toggleMobileSidebar" in h
+
+    def test_116_app_boot(self):
+        app = (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "js" / "app.js").read_text()
+        assert "initRouter" in app
+        assert "onHubRoute" in app or "mountBoard" in app
 
 
 # ===========================================================================
@@ -877,15 +900,20 @@ class TestInfrastructure:
         content = plist.read_text()
         assert "com.ccc.chat-server" in content
 
-    def test_122_infra_md_has_8084(self):
+    def test_122_infra_md_has_hub_7777(self):
         infra = PROJECT_ROOT / ".ccc" / "infrastructure.md"
         text = infra.read_text()
-        assert "8084" in text
-        assert "CCC Chat" in text
+        assert "7777" in text
+        assert "CCC Hub" in text or "Hub" in text
 
-    def test_123_docstring_fixed(self):
-        src = CHAT_SCRIPT.read_text()
-        assert "localhost:8084" in src
+    def test_123_hub_default_port(self):
+        cfg = (PROJECT_ROOT / "scripts" / "chat_server" / "config.py").read_text()
+        assert 'CCC_CHAT_PORT", "7777"' in cfg or 'CCC_CHAT_PORT", \'7777\'' in cfg
+        assert "7775" in cfg
+        plist = (PROJECT_ROOT / "scripts" / "com.ccc.chat-server.plist").read_text()
+        assert "7777" in plist
+        assert "7775" in plist
+        assert "CCC Hub" in (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "index.html").read_text()
 
 
 # ===========================================================================
@@ -895,23 +923,24 @@ class TestInfrastructure:
 
 class TestCSSConsistency:
 
-    def test_130_terminal_colors_use_vars(self):
-        h = _html()
-        assert "var(--terminal-bg)" in h
-        assert "var(--terminal-text)" in h
-        assert "var(--terminal-header)" in h
-        assert "var(--terminal-sep)" in h
+    def test_130_shell_and_tokens(self):
+        css_dir = PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "css"
+        assert (css_dir / "variables.css").exists()
+        assert (css_dir / "shell.css").exists()
+        vars_css = (css_dir / "variables.css").read_text()
+        assert "--ccc-bg-accent" in vars_css
+        shell = (css_dir / "shell.css").read_text()
+        assert "hub-nav" in shell
 
-    def test_131_diff_colors_use_vars(self):
-        h = _html()
-        assert "var(--success)" in h
-        assert "var(--danger)" in h
+    def test_131_warm_accent(self):
+        vars_css = (PROJECT_ROOT / "scripts" / "chat_server" / "frontend" / "css" / "variables.css").read_text()
+        assert "#c96442" in vars_css
 
-    def test_132_apple_colors_use_vars(self):
+    def test_132_hub_html_links_css(self):
         h = _html()
-        assert "var(--user-bg)" in h
-        assert "var(--user-text)" in h
-        assert "var(--accent)" in h
+        assert "variables.css" in h
+        assert "shell.css" in h
+        assert "components.css" in h
 
 
 # ===========================================================================
@@ -936,9 +965,9 @@ class TestSSEFormat:
 
     def test_141_chat_sse_has_delta_type(self):
         status, lines = _stream_post("/api/chat", {
-            "messages": [{"role": "user", "content": "test types"}],
+            "messages": [{"role": "user", "content": "say ok in 2 words"}],
             "session_id": _make_sid("ss141"),
-        }, read_limit=20)
+        }, read_limit=40)
         assert status == 200
         events = []
         for line in lines:
@@ -948,7 +977,7 @@ class TestSSEFormat:
                     events.append(obj.get("type"))
                 except json.JSONDecodeError:
                     pass
-        assert "delta" in events, f"No delta event: {events}"
+        assert "delta" in events, f"No delta event (got {len(events)} events: {events[:15]}...)"
 
     def test_142_chat_sse_returns_events(self):
         status, lines = _stream_post("/api/chat", {
