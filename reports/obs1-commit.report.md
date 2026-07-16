@@ -1,21 +1,15 @@
-# OBS1 执行报告
+# OBS1 流程探针执行报告
 
-## Summary
-OBS1 流程探针执行报告：验证 CCC Engine 的「过门前必须产生含 task_id 新 git commit」机制（H1）
+**Summary**: OBS1 流程压力探针执行报告 — 验证 CCC Engine 的「过门前必须产生含 task_id 的新 git commit」机制（H1）
 
-## Task ID
-cla-obs1-commit
+**Task ID**: cla-obs1-commit
 
-## Files tracked
-tests/test_obs1_smoke.py
-docs/OBS1.md
-reports/obs1-commit.report.md
+**Files tracked**:
 
-## HEAD commit
-[TODO: update after commit]
+**HEAD commit**:
 
-## Latest log
-[TODO: update after commit]
+**Latest log**:
 
-## pytest result
-[TODO: update after commit]
+**pytest result**:
+
+**Execution timestamp**: Phase 1 completed

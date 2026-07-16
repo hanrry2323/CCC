@@ -1,3 +1,4 @@
 # OBS1 — 流程压力探针
 
-触发任务: cla-obs1-commit
+Task ID: cla-obs1-commit
+探针意图：验证 CCC Engine 的「过门前必须产生含 task_id 的新 git commit」机制（H1）
