@@ -127,7 +127,19 @@ flowchart LR
 
 ---
 
-## 9. 故障：打开仍是旧黑皮看板
+## 10. 对话列表：清理测试 + Claude 历史
+
+### 清理测试对话
+- 侧栏「清理」按钮，或 `POST /api/history/cleanup-tests?project=ccc`
+- 会把 `ch*/sc*/sp*/ex*/ss*` 及常见 e2e 标题移到 `.ccc/chat/_trash/`
+- 测试进程请设 `CCC_CHAT_DIR` 到临时目录，避免再污染
+
+### 对接 Claude Code 历史
+- 侧栏来源：`全部` / `Hub` / `Claude`
+- Claude 会话来自 `~/.claude/history.jsonl` + `~/.claude/projects/<escaped-cwd>/*.jsonl`
+- 点击 Claude 会话可读完整 transcript；继续发消息时走 `claude --resume <uuid>`
+- Claude 历史只读展示（不在 Hub 内删除 Claude 本地文件）
+
 
 常见原因（2026-07-16 已踩）：
 

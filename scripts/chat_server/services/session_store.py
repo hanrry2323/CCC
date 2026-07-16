@@ -62,23 +62,71 @@ def save_session(
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def list_sessions(project: str = "ccc") -> list[dict]:
+def list_sessions(project: str = "ccc", *, include_tests: bool = False) -> list[dict]:
     chat_dir = _project_chat_dir(project)
     sessions = []
     for f in sorted(
         chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
     ):
         try:
+            from .claude_history import is_test_session_id
+
+            if not include_tests and is_test_session_id(f.stem):
+                continue
             data = json.loads(f.read_text())
             sessions.append({
                 "session_id": data.get("session_id", f.stem),
                 "title": str(data.get("title", "Unknown"))[:80],
                 "updated_at": data.get("updated_at", ""),
                 "mode": data.get("mode", "chat"),
+                "source": data.get("source", "hub"),
             })
         except (json.JSONDecodeError, OSError):
             pass
     return sessions
+
+
+def purge_test_sessions(project: str = "ccc") -> dict:
+    """Move pytest/e2e session files to .ccc/chat/_trash/<project>/."""
+    from .claude_history import is_test_session_id
+
+    _TRIVIAL_TITLES = frozenset({
+        "hi", "ping", "hello", "test", "ok", "echo hello", "count to 3",
+        "say hello in 3 words", "persist test", "delete test", "disk test",
+        "fields test", "test session", "test ccc", "say hi 1 word",
+        "say hi in 3 words", "say hi in 1 word", "say hello in one word",
+        "say hello in one word only", "up to 3 words about the sky color",
+        "read _config.py and tell me the port",
+        "read _config.py line 12 and tell me the port number",
+    })
+
+    chat_dir = _project_chat_dir(project)
+    trash = config.CHAT_DIR / "_trash" / project
+    trash.mkdir(parents=True, exist_ok=True)
+    moved = 0
+    for f in list(chat_dir.glob("*.json")):
+        move = is_test_session_id(f.stem)
+        if not move:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                title = str(data.get("title") or "").strip().lower()
+                if title in _TRIVIAL_TITLES or (
+                    title.startswith("say hi") or title.startswith("say hello")
+                ):
+                    move = True
+            except (json.JSONDecodeError, OSError):
+                pass
+        if not move:
+            continue
+        dest = trash / f.name
+        if dest.exists():
+            dest = trash / f"{f.stem}-{int(time.time())}.json"
+        try:
+            f.rename(dest)
+            moved += 1
+        except OSError:
+            pass
+    return {"moved": moved, "trash": str(trash)}
 
 
 def get_session(session_id: str, project: str = "ccc") -> dict | None:

@@ -207,6 +207,57 @@
   background: var(--ccc-bg-active);
   color: var(--ccc-text-base);
 }
+.history-source-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.history-source-btn,
+.history-cleanup-btn {
+  appearance: none;
+  border: 1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--ccc-font-sans);
+}
+.history-source-btn:hover,
+.history-cleanup-btn:hover {
+  color: var(--ccc-text-base);
+  border-color: var(--ccc-border-base);
+}
+.history-source-btn.active {
+  background: var(--ccc-bg-accent-soft);
+  color: var(--ccc-text-accent);
+  border-color: var(--ccc-border-accent);
+  font-weight: 560;
+}
+.history-cleanup-btn {
+  margin-left: auto;
+}
+.session-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+.session-badge.claude {
+  background: rgba(201, 100, 66, 0.14);
+  color: var(--ccc-text-accent);
+}
+.session-badge.hub {
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-muted);
+}
 .sidebar-list {
   flex: 1;
   overflow-y: auto;

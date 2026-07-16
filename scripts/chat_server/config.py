@@ -4,8 +4,6 @@ import shutil
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-CHAT_DIR = PROJECT_ROOT / ".ccc" / "chat"
-CHAT_DIR.mkdir(parents=True, exist_ok=True)
 
 HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")
 # Hub 对外端口：7777（用户习惯口）；Board API 内网默认 7775
@@ -16,6 +14,9 @@ AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "ccc").strip()
 BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
 PROXY_URL = os.environ.get("CCC_PROXY_URL", "http://127.0.0.1:4002/v1/chat/completions")
+# 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
+CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))
+CHAT_DIR.mkdir(parents=True, exist_ok=True)
 # LAN / localhost CORS regex（SPA 同机访问为 same-origin；跨端口/跨源时启用）
 CORS_ORIGIN_REGEX = os.environ.get(
     "CCC_CHAT_CORS_ORIGIN_REGEX",
@@ -31,7 +32,6 @@ CORS_ORIGIN_REGEX = os.environ.get(
 _FORBIDDEN_PASSWORDS = frozenset({
     "", "claude2026", "password", "admin", "123456", "changeme",
 })
-
 
 # F-SEC-03: 辅助拦截（主防线=工具 allowlist + cwd jail）；覆盖常见变形，避免裸 \brm\b 误伤
 DANGEROUS_PATTERN = re.compile(

@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260716h">
-<link rel="stylesheet" href="/css/base.css?v=20260716h">
-<link rel="stylesheet" href="/css/themes.css?v=20260716h">
-<link rel="stylesheet" href="/css/components.css?v=20260716h">
-<link rel="stylesheet" href="/css/shell.css?v=20260716h">
+<link rel="stylesheet" href="/css/variables.css?v=20260716i">
+<link rel="stylesheet" href="/css/base.css?v=20260716i">
+<link rel="stylesheet" href="/css/themes.css?v=20260716i">
+<link rel="stylesheet" href="/css/components.css?v=20260716i">
+<link rel="stylesheet" href="/css/shell.css?v=20260716i">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -63,6 +63,12 @@
       <div class="sidebar-header">
         <div class="sidebar-brand">CCC Chat</div>
         <select id="sidebar-project-select" class="sidebar-project" title="切换项目"></select>
+        <div class="history-source-bar" title="对话来源">
+          <button type="button" class="history-source-btn active" data-source="all">全部</button>
+          <button type="button" class="history-source-btn" data-source="hub">Hub</button>
+          <button type="button" class="history-source-btn" data-source="claude">Claude</button>
+          <button type="button" class="history-cleanup-btn" id="cleanup-tests-btn" title="清理测试对话">清理</button>
+        </div>
         <div class="sidebar-search-wrap">
           <span class="sidebar-search-icon">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -160,6 +166,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js?v=20260716h"></script>
+<script type="module" src="/js/app.js?v=20260716i"></script>
 </body>
 </html>

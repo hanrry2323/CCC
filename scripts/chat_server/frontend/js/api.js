@@ -82,17 +82,33 @@ export async function loadProjects() {
   return data.projects;
 }
 
-export async function loadHistory(project) {
-  const data = await apiGet('/api/history?project=' + encodeURIComponent(project));
+export async function loadHistory(project, source = 'all') {
+  const data = await apiGet(
+    '/api/history?project=' + encodeURIComponent(project) +
+    '&source=' + encodeURIComponent(source || 'all')
+  );
   return data.sessions;
 }
 
 export async function loadSession(id, project) {
-  return await apiGet('/api/history/' + id + '?project=' + encodeURIComponent(project));
+  return await apiGet(
+    '/api/history/' + encodeURIComponent(id) +
+    '?project=' + encodeURIComponent(project)
+  );
 }
 
 export async function deleteSession(id, project) {
-  return await apiDelete('/api/history/' + id + '?project=' + encodeURIComponent(project));
+  return await apiDelete(
+    '/api/history/' + encodeURIComponent(id) +
+    '?project=' + encodeURIComponent(project)
+  );
+}
+
+export async function cleanupTestSessions(project) {
+  return await apiPost(
+    '/api/history/cleanup-tests?project=' + encodeURIComponent(project),
+    {}
+  );
 }
 
 export async function loadBoard(workspace) {

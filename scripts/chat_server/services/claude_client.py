@@ -45,6 +45,7 @@ async def stream_chat(
     request_disconnected,
     timeout: int = 180,
     model: str = "flash",
+    resume_session_id: str | None = None,
 ):
     """Generator that yields SSE event dicts from Claude subprocess."""
     proc = None
@@ -54,7 +55,7 @@ async def stream_chat(
         # F-SEC-03: 工具 allowlist + cwd jail（仅 project_path）
         allowed = ",".join(sorted(config.CLAUDE_TOOL_ALLOWLIST))
         cli_model = resolve_model(model)
-        proc = await asyncio.create_subprocess_exec(
+        cmd = [
             claude_bin,
             "-p",
             "--print",
@@ -65,6 +66,12 @@ async def stream_chat(
             cli_model,
             "--allowedTools",
             allowed,
+        ]
+        # 续聊 Claude Code 本地会话（与 CLI -r 对齐）
+        if resume_session_id:
+            cmd.extend(["--resume", resume_session_id])
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             cwd=project_path,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,

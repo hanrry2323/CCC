@@ -120,12 +120,14 @@ def _stream_post(path: str, data: dict, read_limit: int = 5):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def chat_server():
+def chat_server(tmp_path_factory):
+    chat_tmp = tmp_path_factory.mktemp("ccc-chat-test")
     env = {
         **os.environ,
         "CCC_CHAT_PASS": _TEST_PASS,
         "CCC_CHAT_HOST": "127.0.0.1",
         "CCC_CHAT_USER": "ccc",
+        "CCC_CHAT_DIR": str(chat_tmp),
         # 测试前台旁路：不因 control=disabled 进入 idle hold
         "CCC_FOREGROUND": "1",
     }

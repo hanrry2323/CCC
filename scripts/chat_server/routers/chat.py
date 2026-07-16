@@ -12,6 +12,7 @@ from ..auth import check_auth
 from .. import config
 from ..services import session_store as store
 from ..services.claude_client import stream_chat, _get_project_context, resolve_model
+from ..services.claude_history import parse_claude_session_id
 from .projects import PROJECTS, get_project_path
 
 router = APIRouter()
@@ -113,20 +114,22 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="invalid project path")
 
     attachment_notes = _materialize_attachments(
-        attachments, project_path=project_path, session_id=session_id
+        attachments, project_path=project_path, session_id=session_id.replace(":", "_")
     )
     if attachment_notes:
         prompt = (prompt + "\n\n" if prompt else "") + attachment_notes
 
-    store.save_session(
-        session_id, messages,
-        project=project, mode="chat",
-        execution_results=[], status="pending",
-    )
-
-    context = _get_project_context(project, PROJECTS)
-    if context:
-        prompt = f"## 项目上下文\n{context}\n\n---\n\n## 用户问题\n{prompt}"
+    resume_id = parse_claude_session_id(session_id)
+    # 续聊 Claude 会话时不再注入整份项目上下文（避免污染已有 transcript）
+    if not resume_id:
+        store.save_session(
+            session_id, messages,
+            project=project, mode="chat",
+            execution_results=[], status="pending",
+        )
+        context = _get_project_context(project, PROJECTS)
+        if context:
+            prompt = f"## 项目上下文\n{context}\n\n---\n\n## 用户问题\n{prompt}"
 
     async def generate():
         full_content = ""
@@ -140,6 +143,7 @@ async def chat(request: Request):
                 lambda: request.scope.get("disconnect_received", False),
                 timeout,
                 model=model,
+                resume_session_id=resume_id,
             ):
                 evt_type = event.get("type")
 
@@ -176,24 +180,26 @@ async def chat(request: Request):
         except (GeneratorExit, asyncio.CancelledError):
             raise
         finally:
-            chat_messages = [m for m in messages if m.get("role") != "system"]
-            for m in chat_messages:
-                m.setdefault("mode", "chat")
-            if full_content:
-                chat_messages.append({
-                    "role": "assistant",
-                    "content": full_content,
-                    "mode": "chat",
-                    "execution_results": execution_results,
-                    "partial": not stream_completed,
-                })
-            store.save_session(
-                session_id, chat_messages,
-                project=project, mode="chat",
-                execution_results=execution_results,
-                total_cost_usd=total_cost_usd,
-                status="completed" if stream_completed else "partial",
-            )
+            # Hub 自建会话才写本地 JSON；Claude 续聊以 ~/.claude transcript 为准
+            if not resume_id:
+                chat_messages = [m for m in messages if m.get("role") != "system"]
+                for m in chat_messages:
+                    m.setdefault("mode", "chat")
+                if full_content:
+                    chat_messages.append({
+                        "role": "assistant",
+                        "content": full_content,
+                        "mode": "chat",
+                        "execution_results": execution_results,
+                        "partial": not stream_completed,
+                    })
+                store.save_session(
+                    session_id, chat_messages,
+                    project=project, mode="chat",
+                    execution_results=execution_results,
+                    total_cost_usd=total_cost_usd,
+                    status="completed" if stream_completed else "partial",
+                )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
