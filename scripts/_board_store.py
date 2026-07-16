@@ -102,37 +102,76 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
     strict=False（默认）：
       - 未知字段忽略
       - 缺失字段补默认
+
+    实现：每条规则已提取为 `_validate_rule_*` 私有函数，主函数做规则链调用。
     """
     errors: list[str] = []
     if not isinstance(data, dict):
         return False, ["data must be dict"]
 
-    # 规则 1: id
+    for rule in (
+        _validate_rule_id,
+        _validate_rule_title,
+        _validate_rule_status,
+        _validate_rule_timestamps,
+        _validate_rule_description,
+        _validate_rule_assignee,
+        _validate_rule_tags,
+        _validate_rule_note,
+        _validate_rule_schema_version,
+        _validate_rule_color_group,
+        _validate_rule_color_depth,
+        _validate_rule_complexity,
+    ):
+        err = rule(data)
+        if err:
+            errors.append(err)
+
+    if strict:
+        err = _validate_strict_mode(data)
+        if err:
+            errors.append(err)
+
+    return (len(errors) == 0), errors
+
+
+def _validate_rule_id(data: dict) -> str | None:
+    """规则 1: id 必填 + sanitize 后非 invalid + 无特殊字符"""
     raw_id = data.get("id")
     if raw_id is None or not str(raw_id).strip():
-        errors.append("id: required and non-empty")
+        return "id: required and non-empty"
     else:
         sanitized = sanitize_id(str(raw_id))
         if sanitized == "invalid":
-            errors.append("id: contains no valid chars (only [a-zA-Z0-9_-] allowed)")
+            return "id: contains no valid chars (only [a-zA-Z0-9_-] allowed)"
         elif sanitized != str(raw_id):
-            errors.append(f"id: would be sanitized from '{raw_id}' to '{sanitized}'")
+            return f"id: would be sanitized from '{raw_id}' to '{sanitized}'"
+        return None
 
-    # 规则 2: title
+
+def _validate_rule_title(data: dict) -> str | None:
+    """规则 2: title 必填且非空字符串（≤ TITLE_MAX）"""
     title = data.get("title")
     if title is None or not str(title).strip():
-        errors.append("title: required and non-empty")
+        return "title: required and non-empty"
     elif len(str(title)) > TITLE_MAX:
-        errors.append(f"title: length {len(str(title))} > {TITLE_MAX}")
+        return f"title: length {len(str(title))} > {TITLE_MAX}"
+    return None
 
-    # 规则 3: status
+
+def _validate_rule_status(data: dict) -> str | None:
+    """规则 3: status 必填 ∈ COLUMNS"""
     status = data.get("status")
     if status is None or str(status).strip() == "":
-        errors.append("status: required")
+        return "status: required"
     elif status not in COLUMNS:
-        errors.append(f"status: '{status}' not in COLUMNS")
+        return f"status: '{status}' not in COLUMNS"
+    return None
 
-    # 规则 4: created_at / updated_at (ISO 8601)
+
+def _validate_rule_timestamps(data: dict) -> str | None:
+    """规则 4: created_at / updated_at 必填，ISO 8601（v0.28.1: 接受 +08:00 或 Z）"""
+    errors: list[str] = []
     for field in ("created_at", "updated_at"):
         val = data.get(field)
         if val is None or str(val).strip() == "":
@@ -142,88 +181,113 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
                 datetime.fromisoformat(str(val).replace("Z", "+00:00"))
             except (ValueError, TypeError):
                 errors.append(f"{field}: '{val}' not ISO 8601")
+    if errors:
+        return "; ".join(errors)
+    return None
 
-    # 规则 5: description
+
+def _validate_rule_description(data: dict) -> str | None:
+    """规则 5: description 类型=str（可空）"""
     desc = data.get("description", "")
     if desc is not None and not isinstance(desc, str):
-        errors.append("description: must be string")
+        return "description: must be string"
     elif isinstance(desc, str) and len(desc) > DESCRIPTION_MAX:
-        errors.append(f"description: length {len(desc)} > {DESCRIPTION_MAX}")
+        return f"description: length {len(desc)} > {DESCRIPTION_MAX}"
+    return None
 
-    # 规则 6: assignee
+
+def _validate_rule_assignee(data: dict) -> str | None:
+    """规则 6: assignee 类型=str|None"""
     assignee = data.get("assignee")
     if assignee is not None and not isinstance(assignee, str):
-        errors.append("assignee: must be string or null")
+        return "assignee: must be string or null"
+    return None
 
-    # 规则 7: tags
+
+def _validate_rule_tags(data: dict) -> str | None:
+    """规则 7: tags 类型=list[str]"""
     tags = data.get("tags", [])
     if tags is not None:
         if not isinstance(tags, list):
-            errors.append("tags: must be list")
+            return "tags: must be list"
         else:
             for i, t in enumerate(tags):
                 if not isinstance(t, str):
-                    errors.append(f"tags[{i}]: must be string")
+                    return f"tags[{i}]: must be string"
+    return None
 
-    # 规则 8: note
+
+def _validate_rule_note(data: dict) -> str | None:
+    """规则 8: note 类型=str|None"""
     note = data.get("note")
     if note is not None and not isinstance(note, str):
-        errors.append("note: must be string or null")
+        return "note: must be string or null"
+    return None
 
-    # 规则 9: schema_version
+
+def _validate_rule_schema_version(data: dict) -> str | None:
+    """规则 9: schema_version 必填类型检查"""
     schema_version = data.get("schema_version")
     if schema_version is not None and not isinstance(schema_version, str):
-        errors.append("schema_version: must be string")
+        return "schema_version: must be string"
+    return None
 
-    # 规则 10: color_group
+
+def _validate_rule_color_group(data: dict) -> str | None:
+    """规则 10: color_group 缺省 None；若存在 ∈ [A-Z] 单字符"""
     color_group = data.get("color_group")
     if color_group is not None:
         if not isinstance(color_group, str):
-            errors.append("color_group: must be string")
+            return "color_group: must be string"
         elif len(color_group) != 1 or not ("A" <= color_group <= "Z"):
-            errors.append(f"color_group: '{color_group}' must be single A-Z char")
+            return f"color_group: '{color_group}' must be single A-Z char"
+    return None
 
-    # 规则 11: color_depth
+
+def _validate_rule_color_depth(data: dict) -> str | None:
+    """规则 11: color_depth 缺省 0；若存在 ≥ 0 整数"""
     color_depth = data.get("color_depth")
     if color_depth is not None:
         if not isinstance(color_depth, int) or isinstance(color_depth, bool):
-            errors.append("color_depth: must be int")
+            return "color_depth: must be int"
         elif color_depth < 0:
-            errors.append(f"color_depth: must be >= 0, got {color_depth}")
+            return f"color_depth: must be >= 0, got {color_depth}"
+    return None
 
-    # 规则 12: complexity（v0.28.1: 任务复杂度分流）
+
+def _validate_rule_complexity(data: dict) -> str | None:
+    """规则 12: complexity 必须 'small'|'medium'|'large'（v0.28.1: 任务复杂度分流）"""
     # small: 单文件 ≤50 行 → 跳过 reviewer/tester
     # medium: 默认 → 完整 7 角色
     # large: 多文件/架构级 → 完整 + 强制分批
     complexity = data.get("complexity")
     if complexity is not None:
         if complexity not in ("small", "medium", "large"):
-            errors.append(
-                f"complexity: must be 'small'|'medium'|'large', got '{complexity}'"
-            )
+            return f"complexity: must be 'small'|'medium'|'large', got '{complexity}'"
+    return None
 
-    # strict 模式：拒绝未知字段
-    if strict:
-        allowed = {
-            "id",
-            "title",
-            "description",
-            "status",
-            "created_at",
-            "updated_at",
-            "assignee",
-            "tags",
-            "note",
-            "schema_version",
-            "color_group",
-            "color_depth",
-            "complexity",
-        }
-        unknown = set(data.keys()) - allowed
-        if unknown:
-            errors.append(f"strict mode: unknown fields: {sorted(unknown)}")
 
-    return (len(errors) == 0), errors
+def _validate_strict_mode(data: dict) -> str | None:
+    """strict 模式：拒绝未知字段（仅在 validate_task_jsonl(..., strict=True) 时调用）"""
+    allowed = {
+        "id",
+        "title",
+        "description",
+        "status",
+        "created_at",
+        "updated_at",
+        "assignee",
+        "tags",
+        "note",
+        "schema_version",
+        "color_group",
+        "color_depth",
+        "complexity",
+    }
+    unknown = set(data.keys()) - allowed
+    if unknown:
+        return f"strict mode: unknown fields: {sorted(unknown)}"
+    return None
 
 
 def fill_task_defaults(data: dict) -> dict:

@@ -2278,6 +2278,20 @@ def engine_loop(workspaces: list[Path]) -> None:
                         except Exception as exc:
                             engine_log(f"[{label}] audit_role 异常: {exc}")
 
+                    # v0.36: evolve 自动进化循环（跟 audit 错开调度）
+                    # 每 36 次 tick (~6min) 尝试一次，evolve_run 自带去重不重复投
+                    if iteration % 36 == 0:
+                        try:
+                            ev_res = ccc_board._evolve_run_one(str(ws))
+                            if ev_res.get("posted", 0) > 0:
+                                label = _ws_label(ws, program_dir)
+                                engine_log(
+                                    f"[evolve] [{label}] posted {ev_res['posted']} findings"
+                                )
+                        except Exception as exc:
+                            label = _ws_label(ws, program_dir)
+                            engine_log(f"[evolve] [{label}] 异常: {exc}")
+
                     # backlog+planned 为空时立即补充（绕过 2h 间隔，5min 冷却）
                     _auto_replenish_backlog(ws, _store2, program_dir)
 

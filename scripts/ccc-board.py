@@ -3796,7 +3796,40 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         + "\n"
     )
 
-    return {"role": "audit", "results": results, "duration_seconds": round(_elapsed, 1)}
+    # v0.36: evolve — 健康+安全分析 → 转发发现为 backlog 任务
+    # 即使 _audit_run_one 返回 no_changes 也应执行（分析不依赖 git 变更）
+    evolve_results = []
+    for ws_target in targets:
+        try:
+            ev_result = _evolve_run_one(ws_target)
+            evolve_results.append({"workspace": ws_target, **ev_result})
+            if ev_result.get("posted", 0) > 0:
+                _log.info(
+                    "[evolve] %s: posted %d findings to backlog",
+                    Path(ws_target).name,
+                    ev_result["posted"],
+                )
+        except Exception as exc:
+            _log.warning("[evolve] %s 异常: %s", ws_target, exc)
+            evolve_results.append({"workspace": ws_target, "error": str(exc)})
+
+    return {
+        "role": "audit",
+        "results": results,
+        "duration_seconds": round(_elapsed, 1),
+        "evolve": evolve_results,
+    }
+
+
+def _evolve_run_one(ws: str) -> dict:
+    """单 workspace evolve 扫描：健康+安全 → 去重/排序 → 投 backlog"""
+    try:
+        from _evolve import evolve_run
+
+        return evolve_run(ws)
+    except Exception as e:
+        _log.warning("[evolve] %s evolve 异常: %s", ws, e)
+        return {"error": str(e), "posted": 0, "total": 0, "filtered": 0}
 
 
 def regress_role() -> dict:

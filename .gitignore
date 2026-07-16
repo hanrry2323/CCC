@@ -88,3 +88,8 @@ node_modules/
 .coverage.*
 htmlcov/
 dashboard/
+
+# v0.36: evolve 运行时数据
+.ccc/evolve/
+.ccc/board/backlog/evolve-*.jsonl
+.ccc/board/in_progress/
