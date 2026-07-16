@@ -64,16 +64,17 @@
 
 ---
 
-## 2. 7 角色系统（Engine 串行驱动）
+## 2. 阶段能力包（Engine 串行驱动）
 
-> **v0.20.1 起**：以下"历史频率"列仅作 v0.20.0 及之前存档；Engine 模式下无定时，有 task 即执行。
+> **现行口径**：下表是 Engine 调度的**默认阶段能力包**（Skill+Prompt），不是给用户点选的角色菜单。见 [`VISION.md`](VISION.md)。  
+> **v0.20.1 起**：以下「历史频率」列仅作 v0.20.0 及之前存档；Engine 模式下无定时，有 task 即执行。
 
-### 2.1 角色矩阵
+### 2.1 阶段矩阵
 
 > **v0.28.1 复杂度分流**：task `complexity` 字段（small/medium/large）影响 reviewer/tester 是否跳过。
-> small → 跳过 reviewer+tester 直通 kb；medium/large → 完整 7 角色。详见 `references/board-task-schema.md` §12。
+> small → 跳过 reviewer+tester 直通 kb；medium/large → 走完整阶段包。详见 `references/board-task-schema.md` §12。
 
-| 角色 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响 |
+| 阶段 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响 |
 |------|-------------------|-------------|--------|------------|------|-----------|
 | **product** | 4h | backlog 非空自动拆分（v0.28 F-1）或手动 `--promote` | backlog | planned | `ccc-board.py product --promote` / Engine Step 1.5 | 自动写 `complexity` |
 | **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_*()` | 不变 |
@@ -232,7 +233,7 @@ bash ~/program/CCC/scripts/install-ccc-roles.sh [--upgrade]
 | 必杀 | `scripts/opencode-watchdog.sh` | killpg + pkill -f 兜底 |
 | 钩子 | `~/.ccc/hooks/{pre-exec,post-exec,on-error}.sh` | 模板在 `templates/hooks/` |
 | 通知 | `scripts/ccc-notify.sh` | L1/L2/L3 桌面通知 |
-| **看板流转** | `scripts/ccc-board.py` | 7 角色核心 |
+| **看板流转** | `scripts/ccc-board.py` | 阶段能力调度 + 看板 |
 | **自动 commit+push** | `templates/hooks/post-exec.sh` | CCC_PUSH=1 默认 |
 | regress 定时 | 23:30 或 Engine 空闲 | `ccc-board.py regress` |
 

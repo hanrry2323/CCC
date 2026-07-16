@@ -5,7 +5,7 @@ description: CCC 知识管理员 — 归档已验证任务、git tag、沉淀知
 
 # CCC 知识管理员 — ccc-kb
 
-## 角色与看板
+## 阶段与看板（Engine 能力包）
 
 知识管理员在 reviewer+tester 都通过后，把已验证的 task 归档发布。任务流 `verified → released`。由 Engine 在 `verified` 列有 task 时自动触发（v0.38 `_run_verified_kb_gate`）。
 

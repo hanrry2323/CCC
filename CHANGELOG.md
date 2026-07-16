@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增 `docs/VISION.md`（产品叙事 SSOT）：Hub 入口、任务路由、Skill+Prompt=无穷角色
 - 重写 README / STARTUP-BRIEF / SKILL / USAGE / ONBOARDING；新增 GETTING-STARTED、CONTRIBUTING、SECURITY、docs/INDEX
 - 战略地图 / 路线图 / 术语表对齐现行口径；阶段能力包 ≠ 角色超市
+- 完整介绍 `docs/INTRO.md`、Walkthrough/视频脚本、`docs/vertical-qx.md` 竖切蓝图；入口文档清痕（「7 角色」→阶段能力包）
 
 ### Hub：定稿转任务 + Skill 软偏好 + 手机视口
 

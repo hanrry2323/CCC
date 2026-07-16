@@ -95,7 +95,7 @@
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流（small/medium/large）**。
 
-**复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。product_role 根据 plan_weight 自动推断。small 任务在 Engine 中跳过 reviewer+tester 直通 kb。medium（默认）和 large 走完整 7 角色。详见 `CHANGELOG.md §v0.28.1` 或 `references/board-task-schema.md §12`。
+**复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。product_role 根据 plan_weight 自动推断。small 任务在 Engine 中跳过 reviewer+tester 直通 kb。medium（默认）和 large 走**完整阶段能力包**。详见 `CHANGELOG.md §v0.28.1` 或 `references/board-task-schema.md §12`。现行叙事：`docs/VISION.md`（阶段包 ≠ 用户角色菜单）。
 
 **每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。持久的，重启后仍在。
 

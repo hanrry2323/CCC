@@ -109,6 +109,21 @@ Hub (对话/看板/控制台)
 
 ---
 
+## 商用竖切
+
+CCC 是**通用 Loop 底座**，不是单一行业 SaaS。垂直行业配方：
+
+```text
+CCC（Hub + Engine + 通用阶段包）
+  + 行业资产（爬虫 / DB / worker）
+  + Domain Skill + 自定义快捷键
+  = 垂直 AI 工具
+```
+
+完整介绍与 QX 首样板：[`INTRO.md`](INTRO.md) · [`vertical-qx.md`](vertical-qx.md)。
+
+---
+
 ## 开源立场
 
 - License：**MIT**  
@@ -122,6 +137,9 @@ Hub (对话/看板/控制台)
 | 文档 | 用途 |
 |------|------|
 | 本文 `VISION.md` | 产品叙事 SSOT |
+| [`INTRO.md`](INTRO.md) | **对外完整介绍** |
+| [`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) | 截图分镜 |
+| [`vertical-qx.md`](vertical-qx.md) | QX 竖切蓝图 |
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 陌生人 10 分钟跑通 |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent / 维护者启动（省 token） |
@@ -131,5 +149,3 @@ Hub (对话/看板/控制台)
 | [`ccc-hub-ports.md`](ccc-hub-ports.md) | Hub 端口与账密 |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 版本历史 |
 | [`roadmap.md`](roadmap.md) | 历史路线 + 当前方向索引 |
-
-下一步发展目标（产品路线）与开源传播节奏：**与维护者当面同步后写入 roadmap「当前方向」**，不在本文臆造里程碑。

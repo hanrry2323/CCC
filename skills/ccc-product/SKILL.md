@@ -5,7 +5,7 @@ description: CCC 产品经理 — 扫 backlog、拆任务、写 plan、过 SPEC 
 
 # CCC 产品经理 — ccc-product
 
-## 角色与看板
+## 阶段与看板（Engine 能力包）
 
 产品经理是看板的第一道闸：把 backlog 中的需求拆解为可执行的 plan 和 phases.json，任务流 `backlog → planned`。由 Engine 在 backlog 非空时自动触发，或手动 `--promote` 调用。
 
@@ -29,7 +29,7 @@ description: CCC 产品经理 — 扫 backlog、拆任务、写 plan、过 SPEC 
    - `phase_lint.validate_phases_dict()` — phases JSON schema 校验 + depends_on 引用完整性
 5. 写 `plans/<task>.plan.md` + `phases/<task>.phases.json`，挪 task 到 `planned`
 
-> **以上流程由 Engine 自动驱动**，product 角色只负责第一条决策（拆不拆）、第二步阅读能力和第三步的 plan 质量。
+> **以上流程由 Engine 自动驱动**，product 阶段只负责第一条决策（拆不拆）、第二步阅读能力和第三步的 plan 质量。
 
 ## 红线
 

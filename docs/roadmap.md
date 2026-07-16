@@ -14,13 +14,14 @@
 | 无穷角色 | 任务路由 + Skill/Prompt；非角色超市 |
 | 控制面安全默认 | `disabled` → 显式 `enable` / `invent` |
 
-| 开源发布（进行中） | 说明 |
-|--------------------|------|
-| 文档口径统一 | VISION / README / STARTUP / USAGE |
-| GitHub Release | 与 `VERSION` 对齐的 tag |
-| 演示资产 | 截图 / 短视频（传播用） |
+| 开源与介绍 | 说明 |
+|------------|------|
+| 文档口径统一 | VISION / INTRO / README / STARTUP / USAGE |
+| GitHub Release | `v0.42.1` 已发 |
+| 演示资产 | Walkthrough 分镜 + 视频脚本已就位；截图/成片待维护者本地补齐 |
+| 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（CCC 底座 × QX；本阶段不拆 QX 仓） |
 
-**未在此预先锁定的里程碑**（待沟通）：安装体验、多项目 Onboarding、传播渠道、生态 Skill 市场等。
+**未在此预先锁定的里程碑**（待沟通）：QX Phase A 挂载实装、安装体验、传播渠道、生态 Domain Skill 等。
 
 ---
 

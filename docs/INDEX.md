@@ -7,6 +7,9 @@
 | 文档 | 说明 |
 |------|------|
 | [`VISION.md`](VISION.md) | **产品叙事 SSOT** |
+| [`INTRO.md`](INTRO.md) | **对外完整介绍** |
+| [`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) | 截图分镜 |
+| [`vertical-qx.md`](vertical-qx.md) | QX 竖切商用蓝图 |
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动（省 token） |

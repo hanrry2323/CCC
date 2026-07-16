@@ -5,7 +5,7 @@ description: CCC 测试工程师 — 跑 pytest，按 SPEC 逐条验证
 
 # CCC 测试工程师 — ccc-tester
 
-## 角色与看板
+## 阶段与看板（Engine 能力包）
 
 测试工程师是质量第二道门禁：深度验证——不是只通过 pytest，还要按 plan 每条验收项逐条验证。任务流 `testing → verified`。在 reviewer verdict=pass 后由 Engine 立即调用。
 

@@ -176,7 +176,7 @@ scripts/chat_server/            # FastAPI 模块化后端
 | `SKILL.md` | 注入 prompt 总纲（agent 启动时自动加载） |
 | `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
 | `scripts/ccc-engine.py` | Engine 串行执行主循环 |
-| `scripts/ccc-board.py` | 7 角色看板核心 |
+| `scripts/ccc-board.py` | 看板与阶段能力调度 |
 | `scripts/_ccc_control.py` | 控制面状态机（~/.ccc/control.json） |
 | `scripts/_board_store.py` | FileBoardStore 看板存储抽象 |
 | `scripts/_executor.py` | OpenCodeExecutor 执行器 |
