@@ -205,13 +205,19 @@ class Config:
     retry_max_interval: int = 3600  # 退避上限（秒）
     retry_backoff_factor: float = 2.0  # 指数因子
 
-    # ── 内存阈值（v0.36）──
-    mem_warn_mb: int = 800
-    mem_degraded_mb: int = 2000
-    mem_kill_mb: int = 3000
+    # ── 内存阈值（v0.36 → v0.37 生产力默认收紧）──
+    mem_warn_mb: int = 400
+    mem_degraded_mb: int = 800
+    mem_kill_mb: int = 1500
 
     # ── 熔断（v0.36）──
     breaker_recovery_seconds: int = 120
+
+    # ── 空闲补给 / evolve（v0.37 生产力：默认关闭，避免空看板自造任务爆内存）──
+    auto_replenish: bool = False  # CCC_AUTO_REPLENISH=1 开启
+    evolve_on_idle: bool = False  # CCC_EVOLVE_ON_IDLE=1 开启
+    evolve_on_audit: bool = False  # CCC_EVOLVE_ON_AUDIT=1 开启
+    product_async_timeout: int = 600  # 秒；claude -p product 墙钟上限
 
     def __post_init__(self):
         """环境变量覆盖（优先级：环境变量 > 默认值）
@@ -250,6 +256,11 @@ class Config:
         _env_override_int(self, "mem_degraded_mb", "CCC_MEM_DEGRADED_MB")
         _env_override_int(self, "mem_kill_mb", "CCC_MEM_KILL_MB")
         _env_override_int(self, "breaker_recovery_seconds", "CCC_BREAKER_RECOVERY_SECONDS")
+        # v0.37: 空闲补给 / evolve / product 超时
+        _env_override_bool(self, "auto_replenish", "CCC_AUTO_REPLENISH")
+        _env_override_bool(self, "evolve_on_idle", "CCC_EVOLVE_ON_IDLE")
+        _env_override_bool(self, "evolve_on_audit", "CCC_EVOLVE_ON_AUDIT")
+        _env_override_int(self, "product_async_timeout", "CCC_PRODUCT_ASYNC_TIMEOUT")
 
 
 def _resolve_workspace() -> Path:
@@ -288,6 +299,19 @@ def _default_workspaces() -> list[str]:
             if (sub / ".ccc" / "board").exists():
                 found.append(str(sub))
     return found
+
+
+def _env_override_bool(cfg: Config, attr: str, env_key: str) -> None:
+    """解析 1/true/yes/on → True；0/false/no/off → False。"""
+    val = os.environ.get(env_key, "").strip().lower()
+    if not val:
+        return
+    if val in ("1", "true", "yes", "on"):
+        setattr(cfg, attr, True)
+    elif val in ("0", "false", "no", "off"):
+        setattr(cfg, attr, False)
+    else:
+        _log.warning("invalid %s=%r, keeping default", env_key, val)
 
 
 def _env_override_int(cfg: Config, attr: str, env_key: str) -> None:

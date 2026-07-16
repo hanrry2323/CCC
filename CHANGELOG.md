@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.37.0] — 2026-07-16
+
+### 生产力阶段：止血内存与空看板自造任务
+
+空看板时 Engine 仍每 5s/5min 触发 `audit_role` + `_evolve_run_one` + `_auto_replenish_backlog`，
+不断投递 `evolve-*` 任务并拉起 `claude -p` / `radon` / `bandit`，导致本机内存爆掉。
+本版本默认关闭自造任务回路，并修复导致自动化重试风暴的门禁 bug。
+
+### 修复
+- `posted_decision` UnboundLocalError — `audit_role` 每次空决策扫描崩溃
+- `dev_role_check_complete` 用 stub 覆盖 report.md 后强制要求 `ALL SELF-CHECKS PASSED` → 无限 relaunch
+- phase regen 竞态：删 phases.json 后仍被 `_process_backlog` 短接跳过 product（加 `.regen` 标记）
+- 内存监控盲区：此前不计入 `claude`/`radon`/`bandit`/`vulture`/`opencode`，心跳假报 ~75MB
+- `product` 异步无墙钟超时 — `claude -p` 可无限挂起
+
+### 行为变更（默认更安全）
+- `CCC_AUTO_REPLENISH=0`（默认）：空看板不自动 audit 补任务
+- `CCC_EVOLVE_ON_IDLE=0` / `CCC_EVOLVE_ON_AUDIT=0`（默认）：不自动 evolve 投 backlog
+- 真·空闲：无 backlog/planned/in_progress/testing/abnormal 时只写 heartbeat，跳过 audit/evolve/stats
+- 内存默认阈值收紧：warn 400 / degraded 800 / kill 1500 MB；聚合超限强杀最大非-engine 进程
+- `CCC_PRODUCT_ASYNC_TIMEOUT=600`：product 异步超时强杀
+
+需要旧「空看板自动进化」行为时显式开启：
+`CCC_AUTO_REPLENISH=1 CCC_EVOLVE_ON_IDLE=1 CCC_EVOLVE_ON_AUDIT=1`
+
 ## [v0.30.0] — 2026-07-15
 
 ### 定位重定

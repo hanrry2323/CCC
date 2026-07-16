@@ -129,10 +129,10 @@ _PERMANENT_KEYWORDS = [
     "compile failed", "assertionerror",
 ]
 
-# v0.36: 内存阈值（MB）
-_MEM_WARN_MB = 800
-_MEM_DEGRADED_MB = 2000
-_MEM_KILL_MB = 3000
+# v0.36: 内存阈值（MB）— 与 Config 默认对齐；cfg 覆盖优先
+_MEM_WARN_MB = 400
+_MEM_DEGRADED_MB = 800
+_MEM_KILL_MB = 1500
 
 # v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
 _GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
@@ -892,6 +892,13 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
             if _phases_file.exists():
                 _phases_file.unlink()
                 engine_log(f"[{label}] {tid} 删旧 phases.json，触发 regen #{_regen_count + 1}")
+            # v0.37: 写 .regen 标记，防止 _process_backlog 因残留/竞态 phases.json 跳过 product
+            try:
+                _regen_mark = ws / ".ccc" / "pids" / f"{tid}.regen"
+                _regen_mark.parent.mkdir(parents=True, exist_ok=True)
+                _regen_mark.write_text(str(_regen_count + 1))
+            except OSError:
+                pass
             # reset 靠删除新 plan 自然归零，不调 _write_engine_iter_meta（文件已删=no-op）
             _record_regen(ws, tid)
             # 回 backlog（删 phases.json 后 product_role 会看到无 phases.json → 重生成）
@@ -1301,6 +1308,22 @@ def _process_backlog(ws: Path) -> bool:
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
     _task_data = backlog[0]
 
+    # v0.37: regen 标记强制重跑 product（即使残留 phases.json）
+    _regen_mark = ws / ".ccc" / "pids" / f"{tid}.regen"
+    if _regen_mark.exists():
+        if phases_file.exists():
+            try:
+                phases_file.unlink()
+                engine_log(
+                    f"[product] [{label}] {tid} 发现 .regen 标记，删残留 phases.json 强制重生成"
+                )
+            except OSError as exc:
+                engine_log(f"[product] [{label}] {tid} 删 phases.json 失败: {exc}")
+        try:
+            _regen_mark.unlink()
+        except OSError:
+            pass
+
     # 1. phases.json 已存在（手动拆分），直通 planned
     if phases_file.exists():
         engine_log(
@@ -1464,8 +1487,13 @@ def _auto_replenish_backlog(ws: Path, store, program_dir: Path) -> bool:
     绕过 _audit_should_run 的 2h 间隔，但有 5min per-workspace 冷却
     避免 audit_role 在无变更的项目上空转。
 
+    v0.37: 默认关闭（cfg.auto_replenish / CCC_AUTO_REPLENISH=1）。
+    空看板自动补给会驱动 evolve → claude/radon 爆内存。
+
     Returns: True 表示触发了 audit_role
     """
+    if not getattr(cfg, "auto_replenish", False):
+        return False
     if store.list_tasks("backlog"):
         return False
     if store.list_tasks("planned"):
@@ -2338,6 +2366,21 @@ def engine_loop(workspaces: list[Path]) -> None:
                         _run_testing_tasks_gate(ws)
                     _write_heartbeat(ws, None, 0, [])
 
+                    # v0.37: 真·空闲 — 无任何列任务时不做 audit/evolve/replenish
+                    # （否则每 5s/5min 自造 evolve-* 任务 → 内存爆）
+                    _has_work = any(
+                        _store2.list_tasks(col)
+                        for col in (
+                            "backlog",
+                            "planned",
+                            "in_progress",
+                            "testing",
+                            "abnormal",
+                        )
+                    )
+                    if not _has_work:
+                        continue
+
                     if _audit_should_run(str(ws)):
                         label = _ws_label(ws, program_dir)
                         engine_log(f"[{label}] 触发 audit_role（全项目扫描）")
@@ -2346,9 +2389,8 @@ def engine_loop(workspaces: list[Path]) -> None:
                         except Exception as exc:
                             engine_log(f"[{label}] audit_role 异常: {exc}")
 
-                    # v0.36: evolve 自动进化循环（跟 audit 错开调度）
-                    # 每 36 次 tick (~6min) 尝试一次，evolve_run 自带去重不重复投
-                    if iteration % 36 == 0:
+                    # v0.36/v0.37: evolve 默认关闭（CCC_EVOLVE_ON_IDLE=1）
+                    if getattr(cfg, "evolve_on_idle", False) and iteration % 36 == 0:
                         try:
                             ev_res = ccc_board._evolve_run_one(str(ws))
                             if ev_res.get("posted", 0) > 0:
@@ -2360,7 +2402,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                             label = _ws_label(ws, program_dir)
                             engine_log(f"[evolve] [{label}] 异常: {exc}")
 
-                    # backlog+planned 为空时立即补充（绕过 2h 间隔，5min 冷却）
+                    # backlog+planned 为空时立即补充（默认关闭，见 cfg.auto_replenish）
                     _auto_replenish_backlog(ws, _store2, program_dir)
 
                     _retry_abnormal_failures(ws)
@@ -3151,8 +3193,8 @@ def _cleanup_zombie_pid_refs(ws: Path) -> None:
 def _check_process_memory(ws: Path) -> None:
     """抽样 CCC 相关进程 RSS → 告警 / degraded / 强杀。
 
-    每 36 轮（~6min）执行一次。聚焦本 workspace `.ccc/pids` + engine 自身，
-    避免把系统其它 Python 进程计入总量。
+    每 36 轮（~6min）执行一次。v0.37: 纳入 claude/radon/bandit/vulture/opencode，
+    并按聚合 RSS 强杀最大非-engine 进程（此前心跳只看到 ~75MB 假象）。
     """
     import subprocess as _sp
 
@@ -3163,10 +3205,23 @@ def _check_process_memory(ws: Path) -> None:
     kill_mb = getattr(cfg, "mem_kill_mb", _MEM_KILL_MB)
 
     try:
-        tracked = set(_get_running_pids(ws))
-        tracked.add(os.getpid())
+        tracked: dict[int, str] = {}  # pid → label
+        for pid in _get_running_pids(ws):
+            tracked[pid] = "workspace-pid"
+        tracked[os.getpid()] = "engine"
 
-        # 补充：本机 python/opencode 中 cmdline 含 ccc 的进程
+        # 补充：cmdline 含 ccc / claude / radon / bandit / vulture / opencode 的相关进程
+        _MEM_KEYWORDS = (
+            "ccc-",
+            "ccc_",
+            "claude",
+            "radon",
+            "bandit",
+            "vulture",
+            "opencode",
+            "ccc-health-analyzer",
+            "ccc-security-analyzer",
+        )
         try:
             import platform as _plat
 
@@ -3187,25 +3242,27 @@ def _check_process_memory(ws: Path) -> None:
                 args = parts[2].lower()
                 if pid in tracked:
                     continue
-                if ("python" in args or "opencode" in args) and "ccc" in args:
-                    tracked.add(pid)
+                if any(k in args for k in _MEM_KEYWORDS):
+                    tracked[pid] = args[:80]
+                elif ("python" in args) and "ccc" in args:
+                    tracked[pid] = args[:80]
         except (_sp.TimeoutExpired, FileNotFoundError, OSError):
             pass
 
         total = 0.0
-        offenders: list[tuple[int, float]] = []
-        for pid in tracked:
+        offenders: list[tuple[int, float, str]] = []
+        for pid, label in tracked.items():
             rss_mb = _get_proc_rss_mb(pid)
             if rss_mb <= 0:
                 continue
             total += rss_mb
             if rss_mb > warn_mb:
-                offenders.append((pid, rss_mb))
+                offenders.append((pid, rss_mb, label))
 
         offenders.sort(key=lambda x: x[1], reverse=True)
         memory_mb = {
             "total": round(total, 1),
-            "top_pid": list(offenders[0]) if offenders else None,
+            "top_pid": [offenders[0][0], offenders[0][1]] if offenders else None,
             "warn_mb": warn_mb,
             "kill_mb": kill_mb,
         }
@@ -3221,8 +3278,8 @@ def _check_process_memory(ws: Path) -> None:
         )
 
         our_pids = set(_get_running_pids(ws))
-        for pid, rss_mb in offenders:
-            if rss_mb > kill_mb and (pid in our_pids or pid == os.getpid()):
+        for pid, rss_mb, label in offenders:
+            if rss_mb > kill_mb and (pid in our_pids or pid == os.getpid() or "claude" in label or "radon" in label or "bandit" in label or "vulture" in label or "opencode" in label):
                 # 不杀 engine 自身
                 if pid == os.getpid():
                     engine_log(
@@ -3230,10 +3287,25 @@ def _check_process_memory(ws: Path) -> None:
                     )
                     continue
                 engine_log(
-                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB，强杀进程树"
+                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB，强杀进程树 ({label[:60]})"
                 )
                 _kill_process_tree(pid)
                 _ccc_notify("CCC", f"[mem] 强杀 PID={pid}（RSS {rss_mb:.0f}MB）")
+
+        # v0.37: 聚合超限 → 杀最大非-engine 进程
+        if total > kill_mb:
+            for pid, rss_mb, label in offenders:
+                if pid == os.getpid():
+                    continue
+                engine_log(
+                    f"[mem] 聚合 RSS={total:.0f}MB > {kill_mb}MB，强杀最大进程 PID={pid} ({rss_mb:.0f}MB)"
+                )
+                _kill_process_tree(pid)
+                _ccc_notify(
+                    "CCC",
+                    f"[mem] 聚合超限 {total:.0f}MB，强杀 PID={pid}",
+                )
+                break
 
         if total > degraded_mb:
             if not _degraded_mode:
@@ -3244,10 +3316,10 @@ def _check_process_memory(ws: Path) -> None:
                 )
                 _ccc_notify("CCC", f"engine degraded：总 RSS {total:.0f}MB")
 
-        for pid, rss_mb in offenders[:3]:
+        for pid, rss_mb, label in offenders[:3]:
             if rss_mb > warn_mb:
                 engine_log(
-                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB（warning阈值={warn_mb}MB）"
+                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB（warning阈值={warn_mb}MB） label={label[:40]}"
                 )
 
     except (_sp.TimeoutExpired, FileNotFoundError, OSError) as e:

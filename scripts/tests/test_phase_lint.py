@@ -48,7 +48,7 @@ class TestValidatePhaseStructure:
         phases = [{"phase": 1, "phase_id": "2", "status": "pending"}]
         is_valid, errors = validate_phase_structure(phases)
         assert not is_valid
-        assert any("phase 不一致" in e for e in errors)
+        assert any("phase_id 与 phase 不一致" in e for e in errors)
 
     def test_unknown_fields(self):
         """未知字段应报错"""
