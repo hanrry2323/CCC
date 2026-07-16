@@ -832,13 +832,53 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     if status == "failed":
         retry = result.get("retry", 0)
         failure_summary = _check_phase_failures(tid)
-        # v0.31 (P0.1): phase 图无法解析 → 退回 planned 重生成
+        # v0.31 (P0.1): phase 图无法解析 → 删旧 phases.json + 回 backlog 重生成
         if failure_summary.get("unresolvable"):
-            engine_log(
-                f"[{label}] {tid} phase 图无法解析 → 移回 planned 重试 "
-                f"(blocked={failure_summary.get('blocked')})"
-            )
-            store.move_task(tid, "in_progress", "planned")
+            # 读 regen 计数器，cap 2 次
+            _regen_count = _read_regen_count(ws, tid)
+            if _regen_count >= 2:
+                engine_log(
+                    f"[{label}] {tid} phase 图无法解析，regen {_regen_count} 次 ≥ 2 → abnormal"
+                )
+                store.move_task(tid, "in_progress", "abnormal")
+                store.update_index()
+                return True
+            # 删旧 phases.json（product_role 据此判断是否需要重新生成）
+            _phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+            if _phases_file.exists():
+                _phases_file.unlink()
+                engine_log(f"[{label}] {tid} 删旧 phases.json，触发 regen #{_regen_count + 1}")
+            # 重置 engine_iter 元数据
+            try:
+                from board.phase import _write_engine_iter_meta
+                _write_engine_iter_meta(tid, {"engine_iter": 0, "engine_iter_phase": 0})
+            except Exception:
+                pass
+            # 写 regen 计数器到 warnings（供后续诊断）
+            try:
+                _warnings_file = ws / ".ccc" / "warnings.json"
+                _existing = []
+                if _warnings_file.exists():
+                    try:
+                        import json as _json
+                        _existing = _json.loads(_warnings_file.read_text())
+                        if not isinstance(_existing, list):
+                            _existing = []
+                    except Exception:
+                        _existing = []
+                _existing.append({
+                    "type": "phase_graph_regen",
+                    "task_id": tid,
+                    "regen_count": _regen_count + 1,
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                })
+                _warnings_file.write_text(
+                    json.dumps(_existing, ensure_ascii=False, indent=2)
+                )
+            except Exception:
+                pass
+            # 回 backlog（删 phases.json 后 product_role 会看到无 phases.json → 重生成）
+            store.move_task(tid, "in_progress", "backlog")
             store.update_index()
             return True
         if failure_summary.get("all_failed_or_skipped"):
@@ -855,13 +895,21 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
     if status == "quarantined":
         failure_summary = _check_phase_failures(tid)
-        # v0.31 (P0.1): phase 图无法解析 → 退回 planned 重生成
+        # v0.31 (P0.1): phase 图无法解析 → 删旧 phases.json + 回 backlog 重生成
         if failure_summary.get("unresolvable"):
-            engine_log(
-                f"[{label}] {tid} phase 图无法解析（隔离中）→ 移回 planned "
-                f"(skipped={failure_summary.get('skipped')})"
-            )
-            store.move_task(tid, "in_progress", "planned")
+            # 读 regen 计数器，cap 2 次
+            _regen_count = _read_regen_count(ws, tid)
+            if _regen_count >= 2:
+                engine_log(
+                    f"[{label}] {tid} phase 图无法解析（隔离中），regen {_regen_count} 次 ≥ 2 → abnormal"
+                )
+                store.move_task(tid, "in_progress", "abnormal")
+                store.update_index()
+                return True
+            _phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+            if _phases_file.exists():
+                _phases_file.unlink()
+            store.move_task(tid, "in_progress", "backlog")
             store.update_index()
             return True
         if failure_summary.get("all_failed_or_skipped"):
@@ -882,6 +930,22 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
 
 _ACTIVE_TASKS_FILE = Path.home() / ".ccc" / "engine-active-tasks.json"
+
+
+def _read_regen_count(ws: Path, tid: str) -> int:
+    """读 phase_graph_unresolvable regen 计数器（来自 warnings.json）"""
+    try:
+        _wf = ws / ".ccc" / "warnings.json"
+        if not _wf.exists():
+            return 0
+        import json as _json
+        _data = _json.loads(_wf.read_text())
+        if not isinstance(_data, list):
+            return 0
+        _regen = [w for w in _data if w.get("type") == "phase_graph_regen" and w.get("task_id") == tid]
+        return len(_regen)
+    except Exception:
+        return 0
 
 
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:

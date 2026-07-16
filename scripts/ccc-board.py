@@ -584,6 +584,12 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 raise RuntimeError(
                     f"phase_lint failed: {'; '.join(_lint_errors)}"
                 )
+            # v0.31 (P0.2 补): orphan depends_on 引用校验（226 alert 根因）
+            _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(result[1])
+            if not _dep_valid:
+                raise RuntimeError(
+                    f"phase_lint orphan-dep: {'; '.join(_dep_errors)}"
+                )
             if _lint_warnings:
                 _log.warning("[product] phase_lint warnings: %s", _lint_warnings)
             return result
@@ -598,6 +604,11 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 if not _lint_valid:
                     raise RuntimeError(
                         f"phase_lint failed (retry): {'; '.join(_lint_errors)}"
+                    )
+                _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(result[1])
+                if not _dep_valid:
+                    raise RuntimeError(
+                        f"phase_lint orphan-dep (retry): {'; '.join(_dep_errors)}"
                     )
                 if _lint_warnings:
                     _log.warning("[product] phase_lint warnings (retry): %s", _lint_warnings)
