@@ -247,6 +247,8 @@ def test_replenish_triggers_when_empty(
     tmp_workspace, reset_replenish_state, monkeypatch
 ):
     """backlog + planned 都为空 → 调用 audit_role"""
+    # v0.37: auto_replenish 默认关闭，测试需打开
+    ccc_engine.cfg.auto_replenish = True
     called = []
 
     def fake_audit_role(workspace=None):

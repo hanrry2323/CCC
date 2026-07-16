@@ -29,24 +29,32 @@ def _load_config_module(monkeypatch, **env):
     return mod
 
 
-def test_default_host_is_localhost(monkeypatch):
+def test_default_host_is_lan_bind(monkeypatch):
+    """Hub 默认可局域网访问（0.0.0.0）；Board API 仍本机。"""
     cfg = _load_config_module(monkeypatch)
-    assert cfg.HOST == "127.0.0.1"
+    assert cfg.HOST == "0.0.0.0"
 
 
-def test_weak_password_rejected(monkeypatch):
+def test_forbidden_password_rejected(monkeypatch):
     cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="claude2026")
     with pytest.raises(SystemExit):
         cfg.validate_auth_config()
 
 
-def test_short_password_rejected(monkeypatch):
-    cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="short")
+def test_empty_password_rejected(monkeypatch):
+    cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="")
     with pytest.raises(SystemExit):
         cfg.validate_auth_config()
 
 
-def test_strong_password_accepted(monkeypatch):
+def test_canonical_ccc_password_accepted(monkeypatch):
+    cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="ccc")
+    assert cfg.AUTH_USER == "ccc"
+    assert cfg.AUTH_PASS == "ccc"
+    cfg.validate_auth_config()  # no raise
+
+
+def test_custom_password_accepted(monkeypatch):
     cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="a-strong-pass-phrase")
     cfg.validate_auth_config()  # no raise
 
@@ -56,7 +64,7 @@ def test_no_hardcoded_apple_claude_path(monkeypatch):
     src = CONFIG_PATH.read_text(encoding="utf-8")
     assert '"/Users/apple/.local/bin/claude"' not in src
     assert "'/Users/apple/.local/bin/claude'" not in src
-    cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="a-strong-pass-phrase")
+    cfg = _load_config_module(monkeypatch, CCC_CHAT_PASS="ccc")
     # require_claude_bin 在未安装时必须失败而非返回硬编码路径
     if not cfg.CLAUDE_BIN:
         with pytest.raises(RuntimeError):
