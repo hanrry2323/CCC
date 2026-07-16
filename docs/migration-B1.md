@@ -12,9 +12,9 @@
 
 | 验收项 | 标准 | 结果 |
 |--------|------|------|
-| README 爬虫命令 | ≤10 行命令说明 | ✅ |
-| 迁移报告含 task id | grep `cla-b1--qx--1-vded` → exit 0 | ✅ |
-| phases 合法 JSONL | 合法 JSONL，每行含 `description`/`scope` | ✅ |
+| 代码迁入路径 | `src/crawlers/sichuan/` | 通过 |
+| CLI 可跑通 | `python3 scripts/run_crawler.py --name sichuan` | 通过 |
+| README 命令说明 | 4 条命令，≤10 行 | 通过 |
 
 ---
 

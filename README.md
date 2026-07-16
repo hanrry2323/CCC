@@ -143,6 +143,15 @@ open http://127.0.0.1:7777
 | [CONTRIBUTING](CONTRIBUTING.md) | 贡献者 |
 | [CHANGELOG](CHANGELOG.md) | 版本历史 |
 
+## 爬虫快速运行
+
+```bash
+python3 scripts/run_crawler.py
+python3 -m pytest tests/test_crawler_demo.py -q --tb=short
+python3 scripts/run_crawler.py --name sichuan
+python3 -m pytest tests/test_crawler_sichuan.py -q --tb=short
+```
+
 ## License
 
 [MIT](LICENSE) © hanrry2323
