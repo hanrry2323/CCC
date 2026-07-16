@@ -522,7 +522,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         if recent:
             lessons_text = "\n".join(
                 f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
-                for lesson in recent[:10]
+                for lesson in recent[:20]
                 if not lesson.get("fixed")
             )
             if lessons_text:
@@ -936,7 +936,7 @@ def launch_product_async(task_id: str) -> dict:
         if recent:
             lessons_text = "\n".join(
                 f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
-                for lesson in recent[:10]
+                for lesson in recent[:20]
                 if not lesson.get("fixed")
             )
             if lessons_text:

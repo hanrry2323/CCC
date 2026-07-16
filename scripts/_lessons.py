@@ -31,7 +31,7 @@ def record_failure(
     return record
 
 
-def get_recent_lessons(ws_path: Path, count: int = 30) -> list[dict]:
+def get_recent_lessons(ws_path: Path, count: int = 50) -> list[dict]:
     """读取 .ccc/lessons/ 下所有 json，按 timestamp 排序，返回最近 count 条。"""
     lessons_dir = ws_path / ".ccc" / "lessons"
     if not lessons_dir.is_dir():

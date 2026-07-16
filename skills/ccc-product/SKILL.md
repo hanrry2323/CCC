@@ -53,3 +53,15 @@ description: CCC 产品经理 — 扫 backlog、拆任务、写 plan、过 SPEC 
 - `scripts/ccc-board.py` `_call_claude_for_plan()` — plan 生成 + lint 门禁
 - `scripts/ccc-board.py` `_build_prompt()` — prompt 构造模板
 - `scripts/phase_lint.py` `validate_phases_dict()` — schema + depends_on 校验
+
+## 已知陷阱：
+
+  - **engine-failure-lessons** (2026-07-16): 未匹配到已知失败模式：engine-failure-lessons. 修复：需人工分析
+
+  - **ccc-heartbeat-thread** (2026-07-16): 未匹配到已知失败模式：ccc-heartbeat-thread. 修复：需人工分析
+
+## 已知陷阱：
+
+  - **cockpit-phase-timeline** (2026-07-16): 未匹配到已知失败模式：cockpit-phase-timeline. 修复：需人工分析
+
+  - **engine-task-priority** (2026-07-16): 未匹配到已知失败模式：engine-task-priority. 修复：需人工分析

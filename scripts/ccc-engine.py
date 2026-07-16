@@ -37,6 +37,7 @@ from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
 from _stats_aggregator import aggregate_stats, load_summary
 from _cost_telemetry import check_abnormal_traffic as _check_abnormal_traffic
+from _capability_evolver import record_failure_pattern as _record_failure_pattern
 
 _log = get_logger("engine")
 
@@ -841,6 +842,7 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
                 engine_log(
                     f"[{label}] {tid} phase 图无法解析，regen {_regen_count} 次 ≥ 2 → abnormal"
                 )
+                _record_failure_pattern("phase-graph-regen")
                 store.move_task(tid, "in_progress", "abnormal")
                 store.update_index()
                 return True
@@ -1659,6 +1661,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             engine_log(
                 f"[{label}] {tid} executor 调用过于频繁（1h>20），疑似死循环 → abnormal"
             )
+            _record_failure_pattern("abnormal-traffic-executor")
             store.move_task(tid, "planned", "abnormal")
             store.update_index()
             continue

@@ -2078,25 +2078,146 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 > 以"待分析：由 product_role 后续补充"收尾，但 product_role 从未补充。
 > **不编入 Lesson 编号序列**。保留故障时间戳供调试参考，不视为有效 Lessons。
 
-**Lesson 47（stub）**：engine-failure-lessons — 2026-07-14 16:44:11 UTC — engine 重试 3 次全部失败
 
-**Lesson 48（stub）**：ccc-board-column-auto-prune — 2026-07-14 16:54:05 UTC — product_role 连续失败 3 次
+**Lesson（已闭环）**：engine-failure-lessons — 2026-07-16 02:52:42 UTC
 
-**Lesson 49（stub）**：ccc-heartbeat-thread — 2026-07-14 17:01:57 UTC — product_role 连续失败 3 次
+**根因分析**：未匹配到已知失败模式：engine-failure-lessons
 
-**Lesson 50（stub）**：patrol-alert-webhook — 2026-07-14 17:34:57 UTC — hang auto-restart 耗尽
+**修复措施**：需人工分析
 
-**Lesson 51（stub）**：cockpit-phase-timeline — 2026-07-14 17:39:54 UTC — product_role 连续失败 3 次
+**适用角色**：product
 
-**Lesson 52（stub）**：patrol-alert-webhook — 2026-07-14 17:39:54 UTC — hang auto-restart 耗尽
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
 
-**Lesson 53（stub）**：engine-task-priority — 2026-07-14 17:39:54 UTC — product_role 连续失败 3 次
 
-**Lesson 54（stub）**：patrol-alert-webhook — 2026-07-14 17:40:33 UTC — hang auto-restart 耗尽
 
-**Lesson 55（stub）**：patrol-git-auto-push — 2026-07-14 17:40:33 UTC — product_role 连续失败 3 次
 
-**Lesson 56（stub）**：patrol-alert-webhook — 2026-07-14 17:44:54 UTC — hang auto-restart 耗尽
+**Lesson（已闭环）**：ccc-board-column-auto-prune — 2026-07-16 02:52:42 UTC
 
-**Lesson 57（stub）**：patrol-alert-webhook — 2026-07-14 17:45:04 UTC — hang auto-restart 耗尽
+**根因分析**：看板列自动裁剪异常：删除 task 时未同步更新 index.json
+
+**修复措施**：1) FileBoardStore.delete 后必须调 update_index 2) prune 操作加事务锁
+
+**适用角色**：ops
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：ccc-heartbeat-thread — 2026-07-16 02:52:42 UTC
+
+**根因分析**：未匹配到已知失败模式：ccc-heartbeat-thread
+
+**修复措施**：需人工分析
+
+**适用角色**：product
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-alert-webhook — 2026-07-16 02:52:42 UTC
+
+**根因分析**：webhook 成功率低，切换会触发 hang auto-restart 时序冲突
+
+**修复措施**：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：cockpit-phase-timeline — 2026-07-16 02:52:42 UTC
+
+**根因分析**：未匹配到已知失败模式：cockpit-phase-timeline
+
+**修复措施**：需人工分析
+
+**适用角色**：product
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-alert-webhook — 2026-07-16 02:52:42 UTC
+
+**根因分析**：webhook 成功率低，切换会触发 hang auto-restart 时序冲突
+
+**修复措施**：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：engine-task-priority — 2026-07-16 02:52:42 UTC
+
+**根因分析**：未匹配到已知失败模式：engine-task-priority
+
+**修复措施**：需人工分析
+
+**适用角色**：product
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-alert-webhook — 2026-07-16 02:52:42 UTC
+
+**根因分析**：webhook 成功率低，切换会触发 hang auto-restart 时序冲突
+
+**修复措施**：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-git-auto-push — 2026-07-16 02:52:42 UTC
+
+**根因分析**：patrol git auto-push 因工作树脏（未提交改动）而失败
+
+**修复措施**：1) auto-push 前必须先 git status 检查 2) 脏工作树时落盘告警不 push 3) 改 fallback 通道
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-alert-webhook — 2026-07-16 02:52:42 UTC
+
+**根因分析**：webhook 成功率低，切换会触发 hang auto-restart 时序冲突
+
+**修复措施**：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
+
+
+**Lesson（已闭环）**：patrol-alert-webhook — 2026-07-16 02:52:42 UTC
+
+**根因分析**：webhook 成功率低，切换会触发 hang auto-restart 时序冲突
+
+**修复措施**：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+
+**适用角色**：ops, regress
+
+**闭环确认**：2026-07-16 02:52 — capability-evolver 自动分析
+
+
 
