@@ -1,0 +1,1 @@
+{"schema_version": "1.0", "phases": [{"phase_id": "1", "status": "pending", "title": "BGM tag matching engine implementation", "changed_files": "7", "retry_count": 0}, {"phase_id": "2", "status": "pending", "title": "Integration testing and verification", "changed_files": "7", "retry_count": 0}]}
