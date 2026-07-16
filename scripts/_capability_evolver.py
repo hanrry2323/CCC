@@ -86,9 +86,13 @@ _FAILURE_PATTERNS: list[tuple[re.Pattern, str, str, str, list[str]]] = [
 
 
 def analyze_failure(task_id: str, error_text: str) -> dict | None:
-    """对单条 failure 做根因分析，返回 {reason, fix, roles, pattern} 或 None。"""
+    """对单条 failure 做根因分析，返回 {reason, fix, roles, pattern} 或 None。
+
+    同时搜索 task_id 和 error_text（因为 stub 标题可能在 task_id 或 error_text 中）。
+    """
+    _combined = f"{task_id} {error_text}"
     for pat, pattern_name, reason, fix, roles in _FAILURE_PATTERNS:
-        if pat.search(error_text):
+        if pat.search(_combined):
             return {
                 "pattern": pattern_name,
                 "reason": reason,
