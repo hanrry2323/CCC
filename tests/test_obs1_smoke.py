@@ -1,4 +1,4 @@
-# OBS1 流程压力探针 — tests 冒烟 + 强制 git commit
+# OBS1 流程压力探针 — cla-obs1-commit
 
 
 def test_ok():
