@@ -131,6 +131,9 @@ export async function openTaskDialog(prefill = {}) {
         ? ' · Engine 已唤醒'
         : (wake && wake.error ? ' · Engine 唤醒失败' : ' · Engine 已唤醒');
       window.showToast?.('已下达 ' + tid + skip + wakeHint, 'success');
+      document.dispatchEvent(
+        new CustomEvent('ccc-task-dispatched', { detail: { id: tid, workspace } })
+      );
       close();
       import('./boardPanel.js').then(m => {
         m.openBoardPanel?.();

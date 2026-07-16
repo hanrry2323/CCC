@@ -1,6 +1,6 @@
 /** Warm-style console (KPI) for CCC Hub (#/console) */
 
-import { apiGet } from '../api.js';
+import { apiGet, apiPost } from '../api.js';
 
 let _root = null;
 let _timer = null;
@@ -48,7 +48,7 @@ function renderKPI(d) {
   const kpi = d.kpi || {};
   const keys = [
     { k: 'in_progress', label: '开发中', desc: '正在跑的任务' },
-    { k: 'testing', label: '测试中', desc: '等待审查/验收' },
+    { k: 'testing', label: '测试/验收', desc: '等待审查/验收' },
     { k: 'abnormal', label: '异常', desc: '卡住需介入' },
     { k: 'released_today', label: '今日发布', desc: '已归档' },
   ];
@@ -128,12 +128,30 @@ function renderFailures(rows) {
     .reverse()
     .slice(0, 15)
     .map(
-      (f) => `<div class="row">
+      (f) => `<div class="row console-fail-row" data-tid="${esc(f.task_id || '')}">
       <span class="time">${esc((f.ts || '').replace('T', ' ').slice(0, 16))}</span>
       <span><b>${esc(f.task_id || '')}</b> · ${esc(f.role || '')} · ${esc(f.reason || '')}</span>
+      ${f.task_id ? '<button type="button" class="console-reopen-btn" data-tid="' + esc(f.task_id) + '">重开</button>' : ''}
     </div>`
     )
     .join('');
+  el.querySelectorAll('.console-reopen-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const tid = btn.getAttribute('data-tid');
+      if (!tid) return;
+      btn.disabled = true;
+      try {
+        const wsFail = _ws === 'all' ? 'CCC' : _ws;
+        await apiPost('/api/tasks/reopen', { id: tid, workspace: wsFail, to: 'planned' });
+        window.showToast?.('已重开 ' + tid + ' → planned', 'success');
+        await poll();
+      } catch (err) {
+        window.showToast?.(err.message || '重开失败', 'error');
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 async function poll() {

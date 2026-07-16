@@ -631,27 +631,8 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         try:
             result = _parse_output(output)
             _check_phase_limit(result[1])
-            # v0.31 (P0.2): 强制 phase_lint 门禁 — 坏 plan 不许入盘
-            _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(result[1])
-            if not _lint_valid:
-                raise RuntimeError(
-                    f"phase_lint failed: {'; '.join(_lint_errors)}"
-                )
-            # v0.31 (P0.2 补): orphan depends_on 引用校验（226 alert 根因）
-            _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(result[1])
-            if not _dep_valid:
-                raise RuntimeError(
-                    f"phase_lint orphan-dep: {'; '.join(_dep_errors)}"
-                )
-            # v0.31 (P0.2 补): 循环依赖检测（环状 plan→运行时 unresolvable→白烧 dev retry）
-            _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(result[1])
-            if not _cycle_valid:
-                raise RuntimeError(
-                    f"phase_lint cycle: {'; '.join(_cycle_errors)}"
-                )
-            if _lint_warnings:
-                _log.warning("[product] phase_lint warnings: %s", _lint_warnings)
-            return result
+            # v0.31/v0.42: phase_lint + plan 验收硬门 — 坏产物不许入盘
+            return _gate_product_artifacts(result[0], result[1], log_prefix="[product]")
         except (json.JSONDecodeError, RuntimeError):
             _log.warning("[product] phases 解析失败，简化 prompt 重试 1 次")
             retry_prompt = _build_prompt(include_ref_plans=False)
@@ -659,24 +640,9 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             try:
                 result = _parse_output(output)
                 _check_phase_limit(result[1])
-                _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(result[1])
-                if not _lint_valid:
-                    raise RuntimeError(
-                        f"phase_lint failed (retry): {'; '.join(_lint_errors)}"
-                    )
-                _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(result[1])
-                if not _dep_valid:
-                    raise RuntimeError(
-                        f"phase_lint orphan-dep (retry): {'; '.join(_dep_errors)}"
-                    )
-                _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(result[1])
-                if not _cycle_valid:
-                    raise RuntimeError(
-                        f"phase_lint cycle (retry): {'; '.join(_cycle_errors)}"
-                    )
-                if _lint_warnings:
-                    _log.warning("[product] phase_lint warnings (retry): %s", _lint_warnings)
-                return result
+                return _gate_product_artifacts(
+                    result[0], result[1], log_prefix="[product-retry]"
+                )
             except (json.JSONDecodeError, RuntimeError) as exc:
                 fallback_dir = get_workspace() / ".ccc" / "product_fallback"
                 fallback_dir.mkdir(parents=True, exist_ok=True)
@@ -710,12 +676,49 @@ def _generate_fallback_phases() -> list:
         {
             "phase": 1,
             "status": "pending",
+            "description": "fallback — 待人工补全 scope",
+            "scope": [],
             "subtasks": {"1.1": "pending"},
             "timeout": 300,
             "commit": None,
             "notes": "fallback",
         }
     ]
+
+
+def _annotate_plan_git_warn(plan_content: str) -> str:
+    """软探针：workspace 无 git 时在 plan 末尾记 WARN，不阻断。"""
+    try:
+        ws = get_workspace()
+        if (ws / ".git").exists():
+            return plan_content
+    except Exception:
+        return plan_content
+    marker = "WARN: workspace 无 git"
+    if marker in plan_content:
+        return plan_content
+    return plan_content.rstrip() + f"\n\n> {marker}，基线探针跳过（不阻断）\n"
+
+
+def _gate_product_artifacts(
+    plan_content: str, phases: list, *, log_prefix: str = "[product]"
+) -> tuple[str, list]:
+    """v0.42 硬门禁：phase_lint + plan 验收；通过后附软 git WARN。失败 raise RuntimeError。"""
+    _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(phases)
+    if not _lint_valid:
+        raise RuntimeError(f"phase_lint failed: {'; '.join(_lint_errors)}")
+    _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(phases)
+    if not _dep_valid:
+        raise RuntimeError(f"phase_lint orphan-dep: {'; '.join(_dep_errors)}")
+    _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(phases)
+    if not _cycle_valid:
+        raise RuntimeError(f"phase_lint cycle: {'; '.join(_cycle_errors)}")
+    _plan_ok, _plan_errs = phase_lint.validate_plan_acceptance(plan_content)
+    if not _plan_ok:
+        raise RuntimeError(f"plan_lint failed: {'; '.join(_plan_errs)}")
+    if _lint_warnings:
+        _log.warning("%s phase_lint warnings: %s", log_prefix, _lint_warnings)
+    return _annotate_plan_git_warn(plan_content), phases
 
 
 def product_role(task_id: str = "") -> dict:
@@ -740,6 +743,31 @@ def product_role(task_id: str = "") -> dict:
         try:
             plan_content, phases = _call_claude_for_plan(task)
         except RuntimeError as e:
+            err_msg = str(e)
+            # v0.42: 硬门禁失败 — 不写 planned，记 ledger，留 backlog
+            if "phase_lint" in err_msg or "plan_lint" in err_msg:
+                _log.error("product 硬门禁失败: %s", e)
+                try:
+                    from _failure_ledger import record_failure
+
+                    record_failure(
+                        get_workspace(),
+                        task_id=task_id,
+                        role="product",
+                        reason=err_msg[:500],
+                        phase=0,
+                        from_col="backlog",
+                        to_col=None,
+                        related_stats_event="product_lint_fail",
+                    )
+                except Exception as ledger_err:
+                    _log.warning("lint fail ledger: %s", ledger_err)
+                return {
+                    "role": "product",
+                    "error": err_msg,
+                    "task_id": task_id,
+                    "lint_blocked": True,
+                }
             _log.error("API 调用失败: %s", e)
             _log.info("使用 fallback plan（API 不可用）")
             plan_content = _generate_fallback_plan(task)
@@ -1175,34 +1203,14 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
         _cleanup_async_product_markers(pids_dir, task_id)
         return {"status": "failed", "error": f"phases > max {_get_cfg().max_phases}"}
 
-    # v0.38: 与 sync product 对齐 — phase_lint 门禁
-    _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(
-        phases_data
-    )
-    if not _lint_valid:
+    # v0.38/v0.42: 与 sync product 对齐 — phase_lint + plan 验收硬门
+    try:
+        plan_content, phases_data = _gate_product_artifacts(
+            plan_content, phases_data, log_prefix="[product-async]"
+        )
+    except RuntimeError as exc:
         _cleanup_async_product_markers(pids_dir, task_id)
-        return {
-            "status": "failed",
-            "error": f"phase_lint failed: {'; '.join(_lint_errors)}",
-        }
-    _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(
-        phases_data
-    )
-    if not _dep_valid:
-        _cleanup_async_product_markers(pids_dir, task_id)
-        return {
-            "status": "failed",
-            "error": f"phase_lint orphan-dep: {'; '.join(_dep_errors)}",
-        }
-    _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(phases_data)
-    if not _cycle_valid:
-        _cleanup_async_product_markers(pids_dir, task_id)
-        return {
-            "status": "failed",
-            "error": f"phase_lint cycle: {'; '.join(_cycle_errors)}",
-        }
-    if _lint_warnings:
-        _log.warning("[product-async] phase_lint warnings: %s", _lint_warnings)
+        return {"status": "failed", "error": str(exc)}
 
     # 写 plan + phases 文件 + 移 backlog → planned
     _write_async_product_result(task_id, plan_content, phases_data)
@@ -1533,8 +1541,13 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
             "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
         )
 
+    skill_text = _load_reviewer_skill()
+    skill_block = (
+        f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
+    )
     prompt = (
-        "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
+        "你是 CCC 资深代码审查员（reviewer 步骤）。按 skill + plan 验收清单逐条核对。\n\n"
+        f"{skill_block}"
         "## Plan 验收清单\n"
         f"{plan_text[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"
@@ -2618,6 +2631,27 @@ def _get_git_diff(
         return "", ""
 
 
+def _load_reviewer_skill() -> str:
+    """注入 ccc-reviewer skill（对称 product）。"""
+    candidates = [
+        CCC_HOME / "skills" / "ccc-reviewer" / "SKILL.md",
+        Path.home()
+        / ".claude"
+        / "skills"
+        / "ccc-protocol"
+        / "skills"
+        / "ccc-reviewer"
+        / "SKILL.md",
+    ]
+    for p in candidates:
+        try:
+            if p.is_file():
+                return p.read_text(encoding="utf-8", errors="replace")[:6000]
+        except OSError:
+            continue
+    return ""
+
+
 def _review_with_llm(
     task_id: str,
     diff_stat: str,
@@ -2647,8 +2681,14 @@ def _review_with_llm(
             "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
         )
 
+    skill_text = _load_reviewer_skill()
+    skill_block = (
+        f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
+    )
+
     prompt = (
-        "你是 CCC 资深代码审查员。审查下面这次代码改动，按 plan 验收清单逐条核对。\n\n"
+        "你是 CCC 资深代码审查员（reviewer 步骤）。按 skill + plan 验收清单逐条核对。\n\n"
+        f"{skill_block}"
         "## Plan 验收清单\n"
         f"{plan_text[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"

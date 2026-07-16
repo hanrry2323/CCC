@@ -31,8 +31,24 @@ def record_failure(
     return record
 
 
+_STUB_ANALYSIS_MARKERS = (
+    "未匹配到已知失败模式",
+)
+
+
+def _is_stub_lesson(item: dict) -> bool:
+    """v0.42: analysis 空或 stub 文案 → 不注入 product prompt。"""
+    analysis = (item.get("analysis") or "").strip()
+    if not analysis:
+        return True
+    return any(m in analysis for m in _STUB_ANALYSIS_MARKERS)
+
+
 def get_recent_lessons(ws_path: Path, count: int = 50) -> list[dict]:
-    """读取 .ccc/lessons/ 下所有 json，按 timestamp 排序，返回最近 count 条。"""
+    """读取 .ccc/lessons/ 下所有 json，按 timestamp 排序，返回最近 count 条。
+
+    v0.42: 过滤 stub（空 analysis / 「未匹配到已知失败模式」）。
+    """
     lessons_dir = ws_path / ".ccc" / "lessons"
     if not lessons_dir.is_dir():
         return []
@@ -40,7 +56,7 @@ def get_recent_lessons(ws_path: Path, count: int = 50) -> list[dict]:
     for fp in lessons_dir.glob("*.json"):
         try:
             data = json.loads(fp.read_text())
-            if isinstance(data, dict):
+            if isinstance(data, dict) and not _is_stub_lesson(data):
                 items.append(data)
         except (json.JSONDecodeError, OSError):
             continue

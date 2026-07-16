@@ -1973,3 +1973,85 @@
     box-shadow: var(--ccc-shadow-xl);
   }
 }
+
+/* ================================================================
+   v0.42 — runtime 状态条 + 对话旁失败
+   ================================================================ */
+.runtime-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: var(--ccc-max-w);
+  margin: 0 auto;
+  padding: 6px 18px 0;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ccc-text-muted);
+}
+.runtime-status-bar .rs-mode {
+  font-weight: 600;
+  color: var(--ccc-text-base);
+  text-transform: lowercase;
+}
+.runtime-status-bar .rs-sep {
+  opacity: 0.45;
+}
+.runtime-status-bar .rs-ws {
+  margin-left: auto;
+  opacity: 0.7;
+}
+.chat-fail-strip {
+  max-width: var(--ccc-max-w);
+  margin: 4px auto 0;
+  padding: 0 18px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-fail-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ccc-text-muted);
+  opacity: 0.8;
+}
+.chat-fail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ccc-text-base);
+  padding: 4px 0;
+}
+.chat-fail-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-fail-reopen,
+.console-reopen-btn {
+  flex-shrink: 0;
+  border: 0.5px solid var(--ccc-border-base);
+  background: transparent;
+  color: var(--ccc-text-base);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.chat-fail-reopen:hover,
+.console-reopen-btn:hover {
+  border-color: var(--ccc-border-accent, #c96442);
+  color: var(--ccc-border-accent, #c96442);
+}
+.console-fail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.console-fail-row .console-reopen-btn {
+  margin-left: auto;
+}

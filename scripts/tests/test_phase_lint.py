@@ -120,10 +120,16 @@ class TestRunLint:
 
     def test_valid_phases_file(self):
         phases_file = Path.cwd() / ".ccc" / "phases" / "valid.phases.json"
-        phases_content = '{"schema_version": "1.1"}\n{"phase": 1, "phase_id": "1", "status": "pending"}\n'
+        phases_file.parent.mkdir(parents=True, exist_ok=True)
+        phases_content = (
+            '{"schema_version": "1.1"}\n'
+            '{"phase": 1, "phase_id": "1", "status": "pending", '
+            '"description": "ok", "scope": ["scripts/a.py"], '
+            '"subtasks": {"1.1": "pending"}, "timeout": 60}\n'
+        )
         phases_file.write_text(phases_content)
-        exit_code = run_lint("valid_task")
-        # phase_lint 应该通过校验
+        exit_code = run_lint("valid")
+        # phase_lint 应该通过校验（run_lint 用 task_id 拼文件名）
         assert exit_code == 0
         phases_file.unlink()
 

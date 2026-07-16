@@ -40,7 +40,7 @@ COLUMN_LABELS = {
     "backlog": "待办",
     "planned": "已计划",
     "in_progress": "开发中",
-    "testing": "测试中",
+    "testing": "测试/验收",
     "verified": "已验证",
     "released": "已发布",
     "abnormal": "异常",
@@ -814,6 +814,29 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 self._json({"ok": True, "id": tid, "from": fr, "to": to})
             else:
                 self._json({"error": f"{tid} not in {fr}"}, 404)
+
+        elif path == "/api/tasks/reopen":
+            # v0.42: failures → 一键重开 + wake
+            tid = sanitize_id(data.get("id") or data.get("task_id") or "")
+            to_col = data.get("to") or "planned"
+            if not tid:
+                self._json({"error": "missing id"}, 400)
+                return
+            root = discover_workspaces().get(ws)
+            if not root:
+                self._json({"error": f"unknown workspace: {ws}"}, 400)
+                return
+            try:
+                from _task_reopen import reopen_task
+
+                result = reopen_task(Path(root), tid, to_col=str(to_col), wake=True)
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)[:300]}, 500)
+                return
+            if result.get("ok"):
+                self._json(result)
+            else:
+                self._json(result, 400)
 
         else:
             self._json({"error": "not found"}, 404)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
@@ -23,6 +24,11 @@ from typing import Dict, List, Set, Tuple
 from _config import get_logger
 
 _log = get_logger("phase-lint")
+
+_ACCEPTANCE_ITEM_RE = re.compile(
+    r"^\s*(?:[-*]|\d+[.)])\s+\S+"
+)
+_ALL_SCOPE_TOKENS = {"all", "*"}
 
 
 phases_schema_version = "1.2"
@@ -113,6 +119,7 @@ def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
         "executor",
         "subtasks",
         "scope",
+        "allow_all_scope",
         "commit_message",
         "commit",
         "notes",
@@ -300,6 +307,76 @@ def validate_empty_phase(phases: List[dict]) -> Tuple[bool, List[str]]:
     return (len(errors) == 0), errors
 
 
+def _allows_all_scope(phase: dict) -> bool:
+    """显式全仓任务标记：allow_all_scope=true 或 notes/description 含「全仓」。"""
+    if phase.get("allow_all_scope") is True:
+        return True
+    blob = f"{phase.get('notes') or ''} {phase.get('description') or ''}"
+    return "全仓" in blob or "allow_all_scope" in blob.lower()
+
+
+def validate_scope(phases: List[dict]) -> Tuple[bool, List[str], List[str]]:
+    """v0.42: scope 硬门 — 非空，且禁止裸 ['all']（除非全仓标记）。
+
+    返回 (is_valid, errors, warnings)。
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    for p in phases:
+        pid = p.get("phase")
+        scope = p.get("scope")
+        if scope is None:
+            errors.append(f"phase {pid}: empty scope（必须列出文件路径）")
+            continue
+        if not isinstance(scope, list):
+            errors.append(f"phase {pid}: scope 须为 list[str]")
+            continue
+        normalized = [str(s).strip() for s in scope if str(s).strip()]
+        if not normalized:
+            errors.append(f"phase {pid}: empty scope（必须列出文件路径）")
+            continue
+        tokens = {s.lower() for s in normalized}
+        if tokens <= _ALL_SCOPE_TOKENS and not _allows_all_scope(p):
+            errors.append(
+                f"phase {pid}: scope=['all'] 禁止（除非 allow_all_scope/全仓标记）"
+            )
+        notes = (p.get("notes") or "").strip()
+        if notes and len(notes) < 3:
+            warnings.append(f"phase {pid}: notes 过短")
+        vc = p.get("verification_cmd")
+        if vc is not None and len(str(vc).strip()) < 3:
+            warnings.append(f"phase {pid}: verification_cmd 过短")
+    return (len(errors) == 0), errors, warnings
+
+
+def validate_plan_acceptance(plan_text: str) -> Tuple[bool, List[str]]:
+    """v0.42: plan 必须含 ## 验收/## 验证，且 ≥1 条可执行意图/命令。"""
+    errors: List[str] = []
+    if not (plan_text or "").strip():
+        return False, ["plan is empty"]
+
+    has_section = False
+    items: List[str] = []
+    in_section = False
+    for line in plan_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## 验收") or stripped.startswith("## 验证"):
+            has_section = True
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("## "):
+                break
+            if _ACCEPTANCE_ITEM_RE.match(line):
+                items.append(stripped)
+
+    if not has_section:
+        errors.append("plan missing ## 验收 or ## 验证 section")
+    elif not items:
+        errors.append("plan acceptance section has no executable items")
+    return (len(errors) == 0), errors
+
+
 def validate_v12_fields(phases: List[dict]) -> Tuple[bool, List[str]]:
     """校验 schema v1.2 的新增字段（软警告）。
 
@@ -412,6 +489,10 @@ def validate_phases_dict(phases: List[dict]) -> Tuple[bool, List[str], List[str]
 
     _, empty_errors = validate_empty_phase(phases)
     errors.extend(empty_errors)
+
+    _, scope_errors, scope_warnings = validate_scope(phases)
+    errors.extend(scope_errors)
+    warnings.extend(scope_warnings)
 
     _, v12_warnings = validate_v12_fields(phases)
     warnings.extend(v12_warnings)
@@ -587,6 +668,11 @@ def run_lint(task_id: str, fix: bool = False) -> int:
     results.append(("状态流转", *validate_status_transitions(phases)))
     results.append(("循环依赖", *validate_no_cycle_dependencies(phases)))
     results.append(("依赖引用", *suggest_fix_no_missing_dependencies(phases)))
+    # v0.42: scope 硬门（与 validate_phases_dict / product 门禁对齐）
+    scope_ok, scope_errors, scope_warnings = validate_scope(phases)
+    results.append(("scope 硬门", scope_ok, scope_errors))
+    for w in scope_warnings:
+        print(f"[phase_lint] warning: {w}")
 
     all_ok = True
     for name, is_valid, errors in results:

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.42.0] — 2026-07-17
+
+### 全面收官：硬门禁 + 飞轮重开 + Hub 状态条
+
+- **P1** product 硬门：plan 须含 `## 验收/验证` + ≥1 条；phase `scope` 非空且禁止裸 `['all']`（`phase_lint` error）
+- **P2** reviewer 注入 `ccc-reviewer` SKILL；`get_recent_lessons` 过滤 stub；`POST /api/tasks/reopen` + Console/对话旁「重开」+ wake
+- **P3** Hub runtime 状态条（control · Engine/wake · backlog/planned）；看板 `testing` →「测试/验收」
+- E2E：`tests/e2e/test_dispatch_wake_e2e.sh`；单测 lint / lessons / reopen / runtime-status
+- **不做**：Hub/Claude 会话合并；invent 默认；disabled 下达确认
+
+收官闭环：对齐基线 → 下一步 → 下达 → wake → product/dev/pytest/reviewer/kb → 日审
+
 ## [v0.41.1] — 2026-07-16
 
 ### 流式 UI + OpenCode 交接 + 日审 LLM

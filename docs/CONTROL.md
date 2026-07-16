@@ -1,11 +1,17 @@
-# CCC 运行控制面（v0.41）
+# CCC 运行控制面（v0.42）
 
 > **SSOT**：`~/.ccc/control.json`（[`scripts/_ccc_control.py`](../scripts/_ccc_control.py)）  
 > CLI：`bash scripts/ccc-autostart-guard.sh {status|disable|ui|enable|invent}`  
 > 前端开发：`bash scripts/ccc-hub-dev.sh`（不碰 control / launchd）  
 > 失败查询：见 [`observability.md`](observability.md)
 
-**v0.41 产品规则**：Hub/Board **下达任务成功** → 强制 `enabled`（若非 invent）+ 写 `~/.ccc/engine.wake` + 尝试 launchd 拉起 Engine。**无确认弹窗。** 不打开 invent。
+**v0.41+ 产品规则**：Hub/Board **下达任务成功** → 强制 `enabled`（若非 invent）+ 写 `~/.ccc/engine.wake` + 尝试 launchd 拉起 Engine。**无确认弹窗。** 不打开 invent。
+
+**v0.42 收官**：
+- product 硬门：无验收 / 空 scope / 裸 `['all']` **不准进 planned**（记 failure ledger）
+- failures → `POST /api/tasks/reopen`（Console + 对话旁）→ planned + wake
+- Hub `GET /api/runtime-status`：control · wake · 队列计数
+- Hub / Claude 侧栏会话 **保持分开**（不做合并）
 
 ---
 
@@ -66,15 +72,18 @@ python3 scripts/ccc-failure-report.py --last 20
 ## 闭环步骤（角色名 = 给人看；自动化 = prompt+skill+harness）
 
 ```
-对齐基线 → 下达 backlog → wake Engine
-  → product(Claude) → planned
-  → dev(OpenCode) → testing
-  → pytest 硬门 → reviewer(Claude) → verified
+对齐基线 → 下一步 → 下达 backlog → wake Engine
+  → product(Claude+skill) → plan/phases 硬 lint → planned
+  → dev(OpenCode+scope) → testing（测试/验收）
+  → pytest 硬门 → reviewer(Claude+skill) → verified
   → kb 程序发布 → released
   → daily-diff-review（A–J）→ 必要时再 backlog+wake
+失败 → ledger → Hub 重开 → planned+wake
 ```
 
-日审：`python3 scripts/ccc-daily-diff-review.py --workspace <ws> [--apply]`
+日审：`python3 scripts/ccc-daily-diff-review.py --workspace <ws> [--apply]`  
+重开：`POST /api/tasks/reopen` `{"id":"…","workspace":"CCC","to":"planned"}`  
+状态条：`GET /api/runtime-status?workspace=CCC`
 
 ---
 

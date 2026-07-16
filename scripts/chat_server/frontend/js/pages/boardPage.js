@@ -6,7 +6,7 @@ const LABELS = {
   backlog: '待办',
   planned: '已计划',
   in_progress: '开发中',
-  testing: '测试中',
+  testing: '测试/验收',
   verified: '已验证',
   released: '已发布',
   abnormal: '异常',

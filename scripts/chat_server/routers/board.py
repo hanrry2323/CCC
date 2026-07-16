@@ -266,3 +266,107 @@ async def native_move_task(request: Request):
         raise HTTPException(status_code=400, detail="JSON object required")
     body["workspace"] = _resolve_workspace(body, request)
     return await board_proxy("POST", "/api/tasks/move", json_body=body)
+
+
+@router.post("/api/tasks/reopen")
+async def native_reopen_task(request: Request):
+    """v0.42: 从 abnormal/testing 重开到 planned/in_progress + wake Engine。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    workspace = _resolve_workspace(body, request)
+    tid = str(body.get("id") or body.get("task_id") or "").strip()
+    to_col = str(body.get("to") or "planned")
+    if not tid:
+        raise HTTPException(status_code=400, detail="missing id")
+    root = _workspace_root(workspace)
+    if root is None:
+        # fallback: proxy board-server（discover_workspaces）
+        body["workspace"] = workspace
+        body["id"] = tid
+        body["to"] = to_col
+        return await board_proxy("POST", "/api/tasks/reopen", json_body=body)
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _task_reopen import reopen_task
+
+    result = reopen_task(root, tid, to_col=to_col, wake=True)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "reopen failed")
+    return result
+
+
+@router.get("/api/runtime-status")
+async def runtime_status(request: Request, workspace: str = "CCC"):
+    """v0.42: Hub 状态条 — control · wake · 队列计数。"""
+    check_auth(request)
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _ccc_control import status_dict
+    from _engine_wake import WAKE_FILE
+
+    control = status_dict()
+    wake_exists = WAKE_FILE.is_file()
+    wake_payload = None
+    if wake_exists:
+        try:
+            import json
+
+            wake_payload = json.loads(WAKE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            wake_payload = {"raw": True}
+
+    counts = {
+        "backlog": 0,
+        "planned": 0,
+        "in_progress": 0,
+        "testing": 0,
+        "abnormal": 0,
+    }
+    root = _workspace_root(workspace)
+    if root is not None:
+        try:
+            from _board_store import FileBoardStore
+
+            store = FileBoardStore(root)
+            for k in counts:
+                counts[k] = len(store.list_tasks(k))
+        except Exception:
+            pass
+    else:
+        try:
+            board = await board_proxy(
+                "GET", "/api/board", params={"workspace": workspace, "fields": "summary"}
+            )
+            import json as _json
+
+            if board.status_code < 400:
+                payload = _json.loads(
+                    board.body.decode()
+                    if isinstance(board.body, (bytes, bytearray))
+                    else board.body
+                )
+                raw_counts = payload.get("counts") or {}
+                for k in counts:
+                    if k in raw_counts:
+                        counts[k] = int(raw_counts[k])
+        except Exception:
+            pass
+
+    return {
+        "workspace": workspace,
+        "control": control,
+        "mode": control.get("mode"),
+        "engine_allowed": bool(control.get("engine_allowed")),
+        "wake_file": str(WAKE_FILE),
+        "wake_pending": wake_exists,
+        "wake": wake_payload,
+        "counts": counts,
+    }
