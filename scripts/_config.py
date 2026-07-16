@@ -127,6 +127,12 @@ class Config:
     max_wallclock: int = 7200  # 秒，opencode 子进程最大墙钟运行时间（2h）
                               # 超时后 SIGTERM→SIGKILL，task 移 backlog 标 timeout
 
+    # ── FinOps: 每角色单次执行最大成本（美元，v0.34 Phase2）──
+    executor_max_cost: float = 10.0   # executor 已有 $10，正式化
+    planner_max_cost: float = 5.0     # planner 单次 plan 上限
+    reviewer_max_cost: float = 5.0    # reviewer 单次审查上限
+    tester_max_cost: float = 2.0      # tester 便宜模型上限
+
     # ── 并发 ──
     opencode_max_parallel: int = 3  # 红线 X1
 

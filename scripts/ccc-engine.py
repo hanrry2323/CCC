@@ -36,6 +36,7 @@ from _logger import add_file_handler
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
 from _stats_aggregator import aggregate_stats, load_summary
+from _cost_telemetry import check_abnormal_traffic as _check_abnormal_traffic
 
 _log = get_logger("engine")
 
@@ -1652,6 +1653,15 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     return True
                 # 并行启动失败 → 回退串行
                 engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
+
+        # v0.34 (Phase2): 异常流量检测 — 单 task 单角色 1h 内 > 20 次 → 跳闸隔离
+        if _check_abnormal_traffic(tid, "executor"):
+            engine_log(
+                f"[{label}] {tid} executor 调用过于频繁（1h>20），疑似死循环 → abnormal"
+            )
+            store.move_task(tid, "planned", "abnormal")
+            store.update_index()
+            continue
 
         tkey = _task_key(ws, tid)
         if not _try_acquire_opencode_slot(tkey):
