@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback as _traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -2199,9 +2200,8 @@ def engine_loop(workspaces: list[Path]) -> None:
             engine_log("收到 SIGINT, 优雅关闭")
             break
         except Exception as e:
-            import traceback as _tb
-
             engine_log(f"异常: {e}")
+            engine_log(f"{_traceback.format_exc()[:2000]}")
             engine_log(f"  {_tb.format_exc().splitlines()[-2]}")
             time.sleep(cfg.engine_idle_sleep)
             continue
