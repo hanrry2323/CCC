@@ -32,10 +32,20 @@ CCC = **7 角色看板** + **CCC Engine 串行驱动** + **Claude（product/revi
 **v0.39 控制面（根源）**：`~/.ccc/control.json` — 默认 **disabled**。  
 详见 [`docs/CONTROL.md`](docs/CONTROL.md)。
 
+| 模式 | 含义 |
+|------|------|
+| `disabled` | 默认。无常驻 |
+| `ui` | 仅 Hub+Board，无 Engine |
+| `enabled` | 全开 Engine |
+
 ```bash
+# 前端开发（推荐）— 不改 control、不装 KeepAlive
+bash scripts/ccc-hub-dev.sh
+
 bash scripts/ccc-autostart-guard.sh status
-bash scripts/ccc-autostart-guard.sh disable          # 停机（推荐）
-bash scripts/ccc-autostart-guard.sh enable --start   # 显式启用并经 launchd 启动
+bash scripts/ccc-autostart-guard.sh disable
+bash scripts/ccc-autostart-guard.sh ui --start       # 仅 UI 常驻
+bash scripts/ccc-autostart-guard.sh enable --start   # 全开 + Engine
 ```
 
 **禁止**把 `ccc-loop-monitor.sh` 写入 crontab；patrol **禁止** `Popen` 旁路拉起 Engine。

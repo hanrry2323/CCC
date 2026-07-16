@@ -59,13 +59,14 @@ plutil -lint "$PLIST" >/dev/null || { echo "plist 不合法"; exit 1; }
 
 if $DO_START; then
   PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
-    python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install-board --start" >/dev/null
-  ccc_launchd_finalize "com.ccc.board" "$PLIST" --start
-  echo "✓ com.ccc.board loaded → http://127.0.0.1:${BOARD_PORT:-7775}"
+    python3 "${CCC_HOME}/scripts/_ccc_control.py" ui "install-board --start" >/dev/null
+  ccc_launchd_finalize "com.ccc.board" "$PLIST" --start --ui
+  echo "✓ com.ccc.board loaded (control=ui, Engine 未启) → http://127.0.0.1:${BOARD_PORT:-7775}"
 else
-  ccc_launchd_finalize "com.ccc.board" "$PLIST"
+  ccc_launchd_finalize "com.ccc.board" "$PLIST" --ui
   echo "✓ com.ccc.board staged only（未 load）"
-  echo "  启动: $0 --start"
+  echo "  前台开发: bash ${CCC_HOME}/scripts/ccc-hub-dev.sh"
+  echo "  常驻 UI:  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh ui --start"
 fi
 echo "  Hub UI → http://localhost:7777"
 echo "  日志: ${LOG_DIR}/ccc-board.{out,err}.log"

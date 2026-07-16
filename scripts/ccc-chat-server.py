@@ -23,12 +23,12 @@ def main():
     import argparse
     import time
 
-    # v0.39.1: 控制面 — disabled 时拒绝真正监听
+    # v0.39.2: disabled 拒启；CCC_FOREGROUND=1 或 ui/enabled 可跑
     _scripts = Path(__file__).resolve().parent
     if str(_scripts) not in sys.path:
         sys.path.insert(0, str(_scripts))
     try:
-        from _ccc_control import is_disabled, get_mode
+        from _ccc_control import foreground_bypass, is_disabled, get_mode, may_start_ui
     except ImportError:
         def is_disabled() -> bool:
             return (Path.home() / ".ccc" / "DISABLED").is_file()
@@ -36,11 +36,21 @@ def main():
         def get_mode() -> str:
             return "disabled" if is_disabled() else "enabled"
 
-    if is_disabled():
+        def may_start_ui() -> bool:
+            return not is_disabled()
+
+        def foreground_bypass() -> bool:
+            return os.environ.get("CCC_FOREGROUND", "") in ("1", "true", "yes")
+
+    if not foreground_bypass() and is_disabled():
         print(f"CCC control={get_mode()} — chat idle hold (not listening)", flush=True)
-        while is_disabled():
+        while is_disabled() and not foreground_bypass():
             time.sleep(60)
-        print("CCC control=enabled — chat starting", flush=True)
+        print(f"CCC control={get_mode()} — chat starting", flush=True)
+    elif not foreground_bypass() and not may_start_ui():
+        print(f"CCC control={get_mode()} — UI not allowed", flush=True)
+        while not may_start_ui() and not foreground_bypass():
+            time.sleep(60)
 
     # F-SEC-01: 未设强口令则拒启
     validate_auth_config()

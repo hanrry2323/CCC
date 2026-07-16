@@ -28,13 +28,14 @@ done
 
 if $DO_START; then
   PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
-    python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install-hub --start" >/dev/null
-  ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --start
-  echo "✓ com.ccc.chat-server loaded"
+    python3 "${CCC_HOME}/scripts/_ccc_control.py" ui "install-hub --start" >/dev/null
+  ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --start --ui
+  echo "✓ com.ccc.chat-server loaded (control=ui, Engine 未启)"
 else
-  ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED"
+  ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --ui
   echo "✓ com.ccc.chat-server staged only（未 load）"
-  echo "  启动: $0 --start  或  bash scripts/ccc-autostart-guard.sh enable --start"
+  echo "  前台开发: bash ${CCC_HOME}/scripts/ccc-hub-dev.sh"
+  echo "  常驻 UI:  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh ui --start"
 fi
 echo "  Board API 应对齐: http://127.0.0.1:7775"
 echo "  日志: /tmp/ccc-chat-server.{log,err}"

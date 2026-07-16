@@ -1,14 +1,19 @@
 #!/bin/bash
-# ccc-autostart-guard.sh — CCC 控制面 CLI（v0.39）
+# ccc-autostart-guard.sh — CCC 控制面 CLI（v0.39.2）
 #
-# SSOT: ~/.ccc/control.json（见 scripts/_ccc_control.py）
+# SSOT: ~/.ccc/control.json
 #
-#   disabled → 禁止一切拉起；停进程；卸 crontab 自启；挪走 KeepAlive plist
-#   enabled  → 允许经 launchd 单点启动（本脚本 enable 可 bootstrap engine）
+#   disabled → 禁止一切常驻
+#   ui       → 仅 Hub + Board（无 Engine）
+#   enabled  → 全开（Engine 经 launchd）
+#
+# 前端日常开发（推荐，不改 control、不装 KeepAlive）:
+#   bash scripts/ccc-hub-dev.sh
 #
 # 用法:
 #   bash scripts/ccc-autostart-guard.sh disable
-#   bash scripts/ccc-autostart-guard.sh enable [--start]
+#   bash scripts/ccc-autostart-guard.sh ui [--start]      # 仅 UI 常驻
+#   bash scripts/ccc-autostart-guard.sh enable [--start]  # 全开 + 可选起 Engine
 #   bash scripts/ccc-autostart-guard.sh status
 
 set -uo pipefail
@@ -24,9 +29,8 @@ _status() {
   pgrep -fl 'ccc-engine\.py|ccc-board-server|ccc-chat-server|opencode serve' || echo "(no ccc processes)"
 }
 
-_disable() {
-  python3 "${CCC_HOME}/scripts/_ccc_control.py" disable "guard disable"
-
+_bootout_all() {
+  local uid
   uid=$(id -u)
   for label in com.ccc.engine com.ccc.board com.ccc.chat-server \
                com.ccc.flywheel-scan com.ccc.loop-monitor com.opencode.serve \
@@ -35,20 +39,27 @@ _disable() {
     launchctl disable "gui/${uid}/${label}" 2>/dev/null || true
   done
   mkdir -p "${HOME}/Library/LaunchAgents/disabled-ccc"
-  # zsh/bash: avoid glob fail
   set +o nomatch 2>/dev/null || true
   for f in "${HOME}/Library/LaunchAgents"/com.ccc.*.plist \
            "${HOME}/Library/LaunchAgents"/com.opencode.serve.plist; do
     [[ -f "$f" ]] || continue
     mv -f "$f" "${HOME}/Library/LaunchAgents/disabled-ccc/" 2>/dev/null || true
   done
+}
 
+_kill_procs() {
   pkill -9 -f 'ccc-engine\.py' 2>/dev/null || true
   pkill -9 -f 'ccc-engine\.sh' 2>/dev/null || true
   pkill -9 -f 'ccc-board-server\.py' 2>/dev/null || true
   pkill -9 -f 'ccc-chat-server\.py' 2>/dev/null || true
   pkill -9 -f 'opencode serve' 2>/dev/null || true
   pkill -9 -f 'claude -p' 2>/dev/null || true
+}
+
+_disable() {
+  python3 "${CCC_HOME}/scripts/_ccc_control.py" disable "guard disable"
+  _bootout_all
+  _kill_procs
 
   if crontab -l 2>/dev/null | grep -q 'ccc-loop-monitor'; then
     crontab -l 2>/dev/null | grep -v 'ccc-loop-monitor' | crontab -
@@ -59,6 +70,64 @@ _disable() {
   _status
 }
 
+_restore_plist() {
+  local name="$1"
+  local src="${HOME}/Library/LaunchAgents/disabled-ccc/${name}"
+  local dst="${HOME}/Library/LaunchAgents/${name}"
+  if [[ -f "$src" && ! -f "$dst" ]]; then
+    mv "$src" "$dst"
+    echo "restored $dst"
+  fi
+  [[ -f "$dst" ]]
+}
+
+_start_ui_agents() {
+  local uid
+  uid=$(id -u)
+  for name in com.ccc.board.plist com.ccc.chat-server.plist; do
+    _restore_plist "$name" || true
+    local active="${HOME}/Library/LaunchAgents/${name}"
+    if [[ -f "$active" ]]; then
+      local label="${name%.plist}"
+      launchctl enable "gui/${uid}/${label}" 2>/dev/null || true
+      launchctl bootstrap "gui/${uid}" "$active" 2>/dev/null \
+        || launchctl load -w "$active" 2>/dev/null \
+        || true
+      echo "requested start $label"
+    else
+      echo "WARN: missing $active — run: bash scripts/install-board-plist.sh && bash scripts/install-hub-plist.sh"
+    fi
+  done
+}
+
+_ui() {
+  local do_start=0
+  [[ "${1:-}" == "--start" ]] && do_start=1
+
+  python3 "${CCC_HOME}/scripts/_ccc_control.py" ui "guard ui"
+
+  # 确保 Engine 不在跑
+  local uid
+  uid=$(id -u)
+  launchctl bootout "gui/${uid}/com.ccc.engine" 2>/dev/null || true
+  launchctl disable "gui/${uid}/com.ccc.engine" 2>/dev/null || true
+  pkill -9 -f 'ccc-engine\.py' 2>/dev/null || true
+  pkill -9 -f 'ccc-engine\.sh' 2>/dev/null || true
+  if [[ -f "${HOME}/Library/LaunchAgents/com.ccc.engine.plist" ]]; then
+    mkdir -p "${HOME}/Library/LaunchAgents/disabled-ccc"
+    mv -f "${HOME}/Library/LaunchAgents/com.ccc.engine.plist" \
+      "${HOME}/Library/LaunchAgents/disabled-ccc/" 2>/dev/null || true
+  fi
+
+  if [[ "$do_start" == "1" ]]; then
+    _start_ui_agents
+  else
+    echo "control=ui; Hub/Board NOT started. Use: $0 ui --start"
+    echo "或前台开发: bash ${CCC_HOME}/scripts/ccc-hub-dev.sh"
+  fi
+  _status
+}
+
 _enable() {
   local do_start=0
   [[ "${1:-}" == "--start" ]] && do_start=1
@@ -66,10 +135,8 @@ _enable() {
   python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "guard enable"
 
   uid=$(id -u)
-  # re-enable launchd disabled overrides for engine
   launchctl enable "gui/${uid}/com.ccc.engine" 2>/dev/null || true
 
-  # 恢复 engine plist（若在 disabled-ccc）
   local src="${HOME}/Library/LaunchAgents/disabled-ccc/com.ccc.engine.plist"
   local dst="${HOME}/Library/LaunchAgents/com.ccc.engine.plist"
   if [[ -f "$src" && ! -f "$dst" ]]; then
@@ -94,7 +161,8 @@ _enable() {
 
 case "${1:-status}" in
   disable) _disable ;;
+  ui)      shift; _ui "$@" ;;
   enable)  shift; _enable "$@" ;;
   status)  _status ;;
-  *) echo "usage: $0 {disable|enable [--start]|status}"; exit 1 ;;
+  *) echo "usage: $0 {disable|ui [--start]|enable [--start]|status}"; exit 1 ;;
 esac

@@ -1,17 +1,15 @@
-"""_ccc_control.py — CCC 运行控制面（v0.39）
+"""_ccc_control.py — CCC 运行控制面（v0.39.2）
 
 业务状态机（SSOT: ~/.ccc/control.json）：
 
-  disabled  → 任何路径禁止拉起 Engine / opencode / 旁路 python&
-  enabled   → 允许；仅允许经 launchd com.ccc.engine 单点拉起
-              （patrol 不得 Popen；loop-monitor 不得自启）
+  disabled  → 默认。禁止 Engine / 禁止 launchd 常驻 Hub·Board
+  ui        → 仅允许 Hub(:7777) + Board API(:7775)；禁止 Engine / evolve
+  enabled   → 全开；Engine 仅经 launchd:com.ccc.engine
 
-兼容：
-  - 存在 ~/.ccc/DISABLED 文件 → 视为 disabled（旧哨兵）
-  - 无 control.json 且无 DISABLED → 默认 disabled（生产力安全默认）
-    显式 enable 后才进入 enabled
+前端开发请用前台脚本（不改 control、不装 launchd）：
+  bash scripts/ccc-hub-dev.sh
 
-红线对齐：红线 12「禁止 agent 自主启用」→ 代码层禁止旁路自启。
+红线 12：禁止 agent 自主 enable / ui。
 """
 
 from __future__ import annotations
@@ -22,13 +20,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-Mode = Literal["disabled", "enabled"]
+Mode = Literal["disabled", "ui", "enabled"]
 
 CONTROL_DIR = Path.home() / ".ccc"
 CONTROL_FILE = CONTROL_DIR / "control.json"
 DISABLED_SENTINEL = CONTROL_DIR / "DISABLED"
 
-VALID_MODES = frozenset({"disabled", "enabled"})
+VALID_MODES = frozenset({"disabled", "ui", "enabled"})
 
 
 def _now_iso() -> str:
@@ -57,19 +55,22 @@ def _write_raw(data: dict[str, Any]) -> None:
 
 def get_mode() -> Mode:
     """返回当前模式。安全默认：disabled。"""
-    # 旧哨兵优先（disable 脚本可能只写了它）
     if DISABLED_SENTINEL.is_file():
         return "disabled"
     data = _read_raw()
     mode = data.get("mode")
     if mode in VALID_MODES:
-        return mode  # type: ignore[return-value]
-    # 无配置 → 默认 disabled（不自动干活）
+        return mode  # type: ignore[return-type]
     return "disabled"
 
 
 def is_enabled() -> bool:
+    """全开（含 Engine）。"""
     return get_mode() == "enabled"
+
+
+def is_ui_mode() -> bool:
+    return get_mode() == "ui"
 
 
 def is_disabled() -> bool:
@@ -78,25 +79,42 @@ def is_disabled() -> bool:
 
 def may_start_engine() -> bool:
     """是否允许任何路径尝试启动 Engine。"""
-    return is_enabled()
+    return get_mode() == "enabled"
+
+
+def may_start_ui() -> bool:
+    """是否允许 launchd 常驻 Hub/Board（ui 或 enabled）。"""
+    return get_mode() in ("ui", "enabled")
+
+
+def foreground_bypass() -> bool:
+    """前台开发入口：CCC_FOREGROUND=1 时跳过控制面拒启（仍不启 Engine）。"""
+    return os.environ.get("CCC_FOREGROUND", "").strip() in ("1", "true", "yes")
 
 
 def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, Any]:
     """写入控制面。返回新状态 dict。"""
     if mode not in VALID_MODES:
         raise ValueError(f"invalid mode: {mode}")
+    reasons = {
+        "disabled": "user disable",
+        "ui": "user ui-only",
+        "enabled": "user enable",
+    }
     data = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "mode": mode,
         "updated_at": _now_iso(),
-        "reason": reason or ("user enable" if mode == "enabled" else "user disable"),
+        "reason": reason or reasons[mode],
         "source": source,
         "policy": {
-            "start_paths": ["launchd:com.ccc.engine"],
+            "start_paths": ["launchd:com.ccc.engine"] if mode == "enabled" else [],
+            "ui_paths": ["launchd:com.ccc.chat-server", "launchd:com.ccc.board"],
             "forbid_popen_engine": True,
             "forbid_crontab_autostart": True,
             "empty_board_idle": True,
             "auto_replenish_default": False,
+            "frontend_dev": "bash scripts/ccc-hub-dev.sh",
         },
     }
     _write_raw(data)
@@ -105,8 +123,9 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
         DISABLED_SENTINEL.write_text(
             f"# CCC disabled {_now_iso()}\n"
             f"# SSOT: {CONTROL_FILE}\n"
-            f"# enable: python3 scripts/_ccc_control.py enable\n"
-            f"#     or: bash scripts/ccc-autostart-guard.sh enable\n",
+            f"# frontend: bash scripts/ccc-hub-dev.sh\n"
+            f"# ui only:  bash scripts/ccc-autostart-guard.sh ui [--start]\n"
+            f"# full:     bash scripts/ccc-autostart-guard.sh enable [--start]\n",
             encoding="utf-8",
         )
     else:
@@ -123,15 +142,17 @@ def status_dict() -> dict[str, Any]:
     return {
         "mode": mode,
         "enabled": mode == "enabled",
+        "ui_allowed": mode in ("ui", "enabled"),
+        "engine_allowed": mode == "enabled",
         "control_file": str(CONTROL_FILE),
         "disabled_sentinel": DISABLED_SENTINEL.is_file(),
         "updated_at": data.get("updated_at"),
         "reason": data.get("reason"),
         "policy": data.get("policy")
         or {
-            "start_paths": ["launchd:com.ccc.engine"],
             "forbid_popen_engine": True,
             "forbid_crontab_autostart": True,
+            "frontend_dev": "bash scripts/ccc-hub-dev.sh",
         },
     }
 
@@ -148,11 +169,18 @@ def main(argv: list[str] | None = None) -> int:
         reason = " ".join(args[1:]) if len(args) > 1 else "cli enable"
         print(json.dumps(set_mode("enabled", reason=reason, source="cli"), indent=2))
         return 0
+    if cmd == "ui":
+        reason = " ".join(args[1:]) if len(args) > 1 else "cli ui"
+        print(json.dumps(set_mode("ui", reason=reason, source="cli"), indent=2))
+        return 0
     if cmd == "disable":
         reason = " ".join(args[1:]) if len(args) > 1 else "cli disable"
         print(json.dumps(set_mode("disabled", reason=reason, source="cli"), indent=2))
         return 0
-    print("usage: _ccc_control.py {status|enable|disable} [reason]", file=sys.stderr)
+    print(
+        "usage: _ccc_control.py {status|disable|ui|enable} [reason]",
+        file=sys.stderr,
+    )
     return 2
 
 

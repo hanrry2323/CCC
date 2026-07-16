@@ -130,13 +130,15 @@ PLIST_EOF
   if $DO_START; then
     PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
       python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install --start" >/dev/null
-    ccc_launchd_finalize "$label" "$plist" --start
+    ccc_launchd_finalize "$label" "$plist" --start --engine
   else
-    ccc_launchd_finalize "$label" "$plist"
+    ccc_launchd_finalize "$label" "$plist" --engine
   fi
 }
 
 # ── 安装/更新 board-server plist（如不存在）──
+# 注意：board/hub 与 Engine 解耦。本脚本只 stage board，永不因 --start 拉起 UI KeepAlive。
+# 前端开发: bash scripts/ccc-hub-dev.sh ；UI 常驻: guard ui --start
 install_board() {
   local label="com.ccc.board"
   local plist="${PLIST_DIR}/${label}.plist"
@@ -147,7 +149,7 @@ install_board() {
     return
   fi
   if [ -f "$plist" ]; then
-    echo "  board-server 已安装，跳过"
+    echo "  board-server 已 staged，跳过"
     return
   fi
 
@@ -163,7 +165,7 @@ install_board() {
   <array>
     <string>${CCC_HOME}/scripts/ccc-board-server.py</string>
     <string>--port</string>
-    <string>7777</string>
+    <string>7775</string>
     <string>--host</string>
     <string>127.0.0.1</string>
   </array>
@@ -186,13 +188,8 @@ install_board() {
 PLIST_EOF
 
   plutil -lint "$plist" >/dev/null || { echo "  ⚠ board plist 不合法"; return 1; }
-  if $DO_START; then
-    PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
-      python3 "${CCC_HOME}/scripts/_ccc_control.py" enable "install --start" >/dev/null
-    ccc_launchd_finalize "$label" "$plist" --start
-  else
-    ccc_launchd_finalize "$label" "$plist"
-  fi
+  # 始终只 stage — 避免装 Engine 时把 Board KeepAlive 一并拉起
+  ccc_launchd_finalize "$label" "$plist" --ui
 }
 
 echo ""

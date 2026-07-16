@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.39.2] — 2026-07-16
+
+### 前端开发与 Engine 解耦
+
+- 控制面三态：`disabled` | `ui` | `enabled`
+- 新增 `scripts/ccc-hub-dev.sh`：前台 Hub+Board，不改 control、不装 KeepAlive、不启 Engine
+- `install-hub/board --start` 只设 `ui`，绝不 enable Engine
+- `install-ccc-roles` 的 board 只 stage
+
 ## [v0.39.1] — 2026-07-16
 
 ### 堵住 install 复活路径

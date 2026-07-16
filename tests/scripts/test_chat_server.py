@@ -126,6 +126,8 @@ def chat_server():
         "CCC_CHAT_PASS": _TEST_PASS,
         "CCC_CHAT_HOST": "127.0.0.1",
         "CCC_CHAT_USER": "ccc",
+        # 测试前台旁路：不因 control=disabled 进入 idle hold
+        "CCC_FOREGROUND": "1",
     }
     proc = subprocess.Popen(
         [sys.executable, str(CHAT_SCRIPT), "--port", "18084", "--host", "127.0.0.1", "--no-open"],
@@ -202,7 +204,7 @@ class TestServiceInfrastructure:
             assert "path" in entry
 
     def test_007_file_tree_all_projects(self):
-        for project in ("ccc", "qxo", "xianyu", "ai-loop-router"):
+        for project in ("ccc", "qxo", "xianyu", "qb", "qx"):
             status, data = _get(f"/api/projects/{project}/files")
             assert status == 200, f"project={project} failed"
             assert len(data["entries"]) > 0, f"project={project} has no entries"
@@ -895,8 +897,11 @@ class TestInfrastructure:
         assert "KeepAlive" in content
 
     def test_121_plist_installed(self):
-        plist = Path.home() / "Library" / "LaunchAgents" / "com.ccc.chat-server.plist"
-        assert plist.exists()
+        # v0.39+: 默认 staged 在 disabled-ccc；active 仅 ui/enable --start 后存在
+        active = Path.home() / "Library" / "LaunchAgents" / "com.ccc.chat-server.plist"
+        staged = Path.home() / "Library" / "LaunchAgents" / "disabled-ccc" / "com.ccc.chat-server.plist"
+        plist = active if active.exists() else staged
+        assert plist.exists(), f"missing chat-server plist (checked {active} and {staged})"
         content = plist.read_text()
         assert "com.ccc.chat-server" in content
 

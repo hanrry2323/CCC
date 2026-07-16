@@ -2203,22 +2203,22 @@ def engine_loop(workspaces: list[Path]) -> None:
     """引擎主循环：多 workspace 轮询，全局 MAX_CONCURRENT 共享。"""
     global _engine_shutdown
 
-    # v0.39: 控制面 — disabled 时空转，禁止进入业务循环
+    # v0.39.2: 仅 control=enabled 才进业务循环；ui/disabled 均 idle
     try:
-        from _ccc_control import get_mode, is_disabled
+        from _ccc_control import get_mode, may_start_engine
     except ImportError:
-        def is_disabled() -> bool:
-            return (Path.home() / ".ccc" / "DISABLED").is_file()
+        def may_start_engine() -> bool:
+            return not (Path.home() / ".ccc" / "DISABLED").is_file()
 
         def get_mode() -> str:
-            return "disabled" if is_disabled() else "enabled"
+            return "enabled" if may_start_engine() else "disabled"
 
-    if is_disabled():
+    if not may_start_engine():
         engine_log(
             f"CCC control={get_mode()} — idle hold "
-            f"(enable: python3 scripts/_ccc_control.py enable)"
+            f"(full: python3 scripts/_ccc_control.py enable)"
         )
-        while not _engine_shutdown and is_disabled():
+        while not _engine_shutdown and not may_start_engine():
             time.sleep(60)
         if _engine_shutdown:
             return

@@ -856,18 +856,28 @@ def _fix_hint_for(errors: list[str]) -> str:
 
 # ── 启动 ──
 def main():
-    # v0.39.1: 控制面 — disabled 时拒绝真正监听（KeepAlive 下 idle hold）
+    # v0.39.2: disabled 拒启；CCC_FOREGROUND=1（hub-dev）或 ui/enabled 可跑
     try:
-        from _ccc_control import is_disabled, get_mode
+        from _ccc_control import foreground_bypass, is_disabled, get_mode, may_start_ui
     except ImportError:
         is_disabled = lambda: (Path.home() / ".ccc" / "DISABLED").is_file()  # noqa: E731
         get_mode = lambda: "disabled" if is_disabled() else "enabled"  # noqa: E731
+        may_start_ui = lambda: not is_disabled()  # noqa: E731
+        foreground_bypass = lambda: os.environ.get("CCC_FOREGROUND", "") in (  # noqa: E731
+            "1",
+            "true",
+            "yes",
+        )
 
-    if is_disabled():
+    if not foreground_bypass() and is_disabled():
         _log.warning("CCC control=%s — board idle hold (not listening)", get_mode())
-        while is_disabled():
+        while is_disabled() and not foreground_bypass():
             time.sleep(60)
-        _log.info("CCC control=enabled — board starting")
+        _log.info("CCC control=%s — board starting", get_mode())
+    elif not foreground_bypass() and not may_start_ui():
+        _log.warning("CCC control=%s — UI not allowed", get_mode())
+        while not may_start_ui() and not foreground_bypass():
+            time.sleep(60)
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=None)
