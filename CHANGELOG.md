@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.38.4] — 2026-07-16
+
+- e2e-event-test-1784201475: 看板发布
+
 ## [v0.38.3] — 2026-07-16
 
 - test-events-1784200011: 看板发布
