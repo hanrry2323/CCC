@@ -300,6 +300,25 @@ for p in phases:
             errors += 1
             continue
 
+    # v0.31 (C1 fix 外部 scope reject): scope 外文件拒绝提交
+    if scope_marker != "--all":
+        _changed_raw = subprocess.run(
+            ["git", "diff", "--name-only"],
+            cwd=workspace, capture_output=True, text=True
+        ).stdout.strip()
+        if _changed_raw:
+            _changed_set = set(_changed_raw.splitlines())
+            _scope_set = set(scope)
+            _extra = _changed_set - _scope_set
+            if _extra:
+                print(f"  ❌ phase {pid}: scope 外文件被改动: {', '.join(sorted(_extra))}")
+                print(f"     拒绝提交，回退 extra 文件到 HEAD")
+                for _f in _extra:
+                    subprocess.run(["git", "checkout", "--", _f], cwd=workspace,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                errors += 1
+                continue
+
     # git add
     if scope_marker == "--all":
         rc = subprocess.call(["git", "add", "--all"], cwd=workspace)

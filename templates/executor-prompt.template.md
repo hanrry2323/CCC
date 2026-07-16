@@ -174,7 +174,7 @@ done_phases=$(grep -c '"status":\s*"done"' <workspace>/.ccc/phases/<task>.phases
 ALL SELF-CHECKS PASSED — 退出 session
 ```
 
-**所有 6 条自检必须全部输出 PASS，report.md 末尾必须包含完整自检输出**（engine 会 grep 校验"ALL SELF-CHECKS PASSED"）。
+**所有 6 条自检必须全部输出 PASS，report.md 末尾必须包含完整自检输出**。dev_role_check_complete 会在 report.md 中 grep "ALL SELF-CHECKS PASSED" —— 找不到则视同 phase 失败，不回 testing，直接退回 retry。
 
 如果任一自检输出 FATAL 或 FAIL：**不准退出**。必须先修复（创建 report / 检查 working tree / 更新 phases.json），再重跑自检，直到全部 PASS。
 

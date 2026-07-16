@@ -4299,6 +4299,24 @@ def dev_role_check_complete(task_id: str) -> dict:
                     _log.info("[engine] %s ✓ commit %s recorded", task_id, _hash[:12])
             except Exception as _e:
                 _log.warning("record commit hash for %s failed: %s", task_id, _e)
+        # v0.31 (C1 fix 抗辩): 外部校验 report.md 是否含自检输出
+        # prompt 声称 "engine 会 grep 校验 'ALL SELF-CHECKS PASSED'"
+        report_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.report.md"
+        if report_path.exists():
+            _report_body = report_path.read_text()
+            if "ALL SELF-CHECKS PASSED" not in _report_body:
+                _log.warning(
+                    "[gate] %s report.md 缺少 'ALL SELF-CHECKS PASSED'，"
+                    "视同未完成自检 → 退失败",
+                    task_id,
+                )
+                return {"status": "failed", "retry": 0, "task_id": task_id}
+        else:
+            _log.warning(
+                "[gate] %s report.md 不存在，视同失败",
+                task_id,
+            )
+            return {"status": "failed", "retry": 0, "task_id": task_id}
         move_task(task_id, "in_progress", "testing")
         _log.info("[engine] %s ✓ moved to testing", task_id)
         return {"status": "success", "task_id": task_id}
