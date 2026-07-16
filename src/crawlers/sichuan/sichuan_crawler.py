@@ -72,28 +72,28 @@ class SichuanCrawler(BaseCrawler):
         logging.basicConfig(level=logging.INFO)
         return [
             {
-                "product_name": "阿司匹林肠溶片",
+                "name": "阿司匹林肠溶片",
                 "spec": "100mg*30片",
                 "manufacturer": "AdBlue制药",
-                "reference_price": 18.50,
+                "price": 18.50,
                 "unit": "盒",
-                "last_updated": "2026-07-15",
+                "update_time": "2026-07-15",
             },
             {
-                "product_name": "氨氯地平苯磺酸钙",
+                "name": "氨氯地平苯磺酸钙",
                 "spec": "5mg*7片",
                 "manufacturer": "Red Moon Pharma",
-                "reference_price": 32.80,
+                "price": 32.80,
                 "unit": "板",
-                "last_updated": "2026-07-16",
+                "update_time": "2026-07-16",
             },
             {
-                "product_name": "阿莫西林胶囊",
+                "name": "阿莫西林胶囊",
                 "spec": "0.25g*24粒",
                 "manufacturer": "BlueVital",
-                "reference_price": 12.60,
+                "price": 12.60,
                 "unit": "板",
-                "last_updated": "2026-07-14",
+                "update_time": "2026-07-14",
             },
         ]
 

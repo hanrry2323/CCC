@@ -12,6 +12,23 @@ import pytest
 from crawlers.sichuan.sichuan_crawler import SichuanCrawler
 
 
+def test_run_dry_run_total():
+    """Test that run() completes full pipeline and returns valid records."""
+    os.environ["CRAWLER_DRY_RUN"] = "1"
+    try:
+        crawler = SichuanCrawler()
+        results = crawler.run()
+
+        assert isinstance(results, list)
+        assert len(results) >= 1
+
+        record = results[0]
+        assert record["product_name"], "product_name should not be empty"
+        assert record["reference_price"] > 0, "reference_price should be greater than 0"
+    finally:
+        del os.environ["CRAWLER_DRY_RUN"]
+
+
 class TestSichuanCrawler:
     """Tests for SichuanCrawler"""
 
@@ -30,7 +47,7 @@ class TestSichuanCrawler:
         os.environ["CRAWLER_DRY_RUN"] = "1"
         try:
             crawler = SichuanCrawler()
-            results = crawler.crawl()
+            results = crawler.run()
 
             assert isinstance(results, list)
             assert len(results) >= 1
@@ -42,7 +59,7 @@ class TestSichuanCrawler:
         os.environ["CRAWLER_DRY_RUN"] = "1"
         try:
             crawler = SichuanCrawler()
-            results = crawler.crawl()
+            results = crawler.run()
 
             if results:
                 record = results[0]
