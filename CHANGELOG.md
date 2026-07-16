@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.38.1] — 2026-07-16
+
+- e2e-chat-greet: 看板发布
+
 ## [v0.38.0] — 2026-07-16
 
 ### 7 角色闭环生产力升级
