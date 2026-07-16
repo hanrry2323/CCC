@@ -3473,25 +3473,39 @@ def _audit_run_one(ws: str, since: str) -> dict:
     # 3. AI 分类（简化启发式）
     findings = _audit_classify(ws, commits, lint_out, mypy_out)
 
-    # 4. auto 直接修（v0.22 边界：只对 tests/ + 配置/文档/杂项改，
-    #    不动 src/ 业务代码。需要 D4 决策时再开 src 例外）
+    # 4. auto 直接修 + review 类直修（不走 CCC pipeline）
+    # v0.22 旧逻辑：只对 tests/ + 配置/文档/杂项改（--exclude src）
+    # v0.34 扩展：review 类（mypy type error）也尝试 ruff --fix，不走 pipeline
     auto_fixed = []
-    if findings.get("auto"):
-        try:
+    try:
+        if findings.get("auto"):
             sp.run(
                 ["ruff", "check", "--fix", "--exclude", "src", "."],
-                cwd=ws,
-                capture_output=True,
-                text=True,
-                timeout=60,
+                cwd=ws, capture_output=True, text=True, timeout=60,
             )
-            auto_fixed = findings["auto"]
+            auto_fixed.extend(findings["auto"])
             findings["auto"] = []
-        except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
-            _log.warning("audit ruff --fix failed for %s: %s", ws, e)
-    # v0.34 (fix): review 类（mypy/pyright 单行 annotation 错误）不走 CCC pipeline
-    # 这些是单行修，CCC plan→dev→review→test 链路太重，且 product 反复失败
-    # 改为只记入报表（findings["review"] 已在 audit 报表中出现），不投看板
+        if findings.get("review"):
+            # review 类也 ruff --fix（含 src/，因为类型标注在源码里）
+            sp.run(
+                ["ruff", "check", "--fix", "."],
+                cwd=ws, capture_output=True, text=True, timeout=60,
+            )
+            # 修完后重跑 lint 看还剩什么
+            _lint2, _mypy2 = _audit_lint(ws)
+            _remaining = _audit_classify(ws, "", _lint2, _mypy2)
+            _fixed_now = [i for i in findings["review"] if i not in _remaining.get("review", [])]
+            auto_fixed.extend(_fixed_now)
+            findings["review"] = [i for i in findings["review"] if i not in _fixed_now]
+            if auto_fixed:
+                # 有改动 → git commit
+                sp.run(["git", "add", "-A"], cwd=ws, capture_output=True, timeout=10)
+                sp.run(
+                    ["git", "commit", "-m", f"chore(audit): auto-fix {len(auto_fixed)} issues"],
+                    cwd=ws, capture_output=True, timeout=15,
+                )
+    except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("audit auto-fix failed for %s: %s", ws, e)
     # decision 类（架构/配置决策）继续投看板
     posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
 
