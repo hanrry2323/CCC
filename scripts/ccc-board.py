@@ -2996,12 +2996,43 @@ def ops_role() -> dict:
                 health["orphan_pids_cleaned"] += 1
                 _log.info("[ops] 清理孤儿 PID: %s", stem)
 
-    # 3. 检查 abnormal 列任务（上报）
+    # 3. 检查 abnormal 列任务（上报 + v0.34 P6 自动归因）
     abnormal_tasks = list_tasks("abnormal")
     if abnormal_tasks:
         _log.info(f"[ops] ⚠ abnormal 列有 {len(abnormal_tasks)} 个任务需处理:")
         for t in abnormal_tasks:
             _log.info(f"  • {t['id']}: {t.get('note', '?')[:120]}")
+            # v0.34 (P6.1): abnormal > 24h → 自动归因
+            _ts_str = t.get("updated_at", t.get("created_at", ""))
+            if _ts_str:
+                try:
+                    from datetime import datetime as _dt2, timezone as _tz2
+                    _ts = _dt2.fromisoformat(_ts_str.replace("Z", "+00:00"))
+                    if (now - _ts).total_seconds() > 86400:
+                        _note = t.get("note", "")
+                        try:
+                            from _capability_evolver import analyze_failure
+                            _rca = analyze_failure(t["id"], _note)
+                            if _rca:
+                                _log.info(
+                                    f"[ops] auto-heal: {t['id']} → {_rca.get('pattern', '?')}"
+                                )
+                                # 追加分析建议到 note
+                                t["note"] = _note + (
+                                    f"\n[自动归因] pattern={_rca.get('pattern', '?')}"
+                                    f"\n建议: {_rca.get('fix', '需人工')}"
+                                )
+                                # 原地重写 abnormal 列 task
+                                _tp = get_workspace() / ".ccc" / "board" / "abnormal" / f"{t['id']}.jsonl"
+                                if _tp.exists():
+                                    _tp.write_text(
+                                        json.dumps(t, ensure_ascii=False) + "\n"
+                                    )
+                                health["auto_healed"] = health.get("auto_healed", 0) + 1
+                        except ImportError:
+                            pass
+                except (ValueError, TypeError):
+                    pass
         health["abnormal_count"] = len(abnormal_tasks)
 
     # 4. git ahead check
@@ -3024,6 +3055,23 @@ def ops_role() -> dict:
             if r.returncode == 0:
                 ahead = r.stdout.strip().split()[-1] if r.stdout.strip() else "0"
                 health[f"ahead_{proj.name}"] = int(ahead)
+
+    # 6. v0.34 (P6.3): 看板自平衡 — backlog 空 → audit 自动补；planned 堆积 > 5 → 限流
+    _backlog_count = len(list_tasks("backlog"))
+    _planned_count = len(list_tasks("planned"))
+    if _backlog_count == 0:
+        _log.info("[ops] backlog 空，自动触发 audit 补充")
+        try:
+            from _audit import run_audit
+            run_audit(get_workspace())
+            health["audit_refill"] = 1
+        except ImportError:
+            pass
+    if _planned_count > 5:
+        _log.info(f"[ops] planned 堆积（{_planned_count}），报告不阻塞")
+        health["planned_pileup"] = _planned_count
+    health["backlog_count"] = _backlog_count
+    health["planned_count"] = _planned_count
 
     # 5. launchd 自检：检查 7 角色 plist 是否存活
     roles_check = ["product", "dev", "reviewer", "tester", "ops", "kb", "regress"]
