@@ -848,35 +848,8 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
             if _phases_file.exists():
                 _phases_file.unlink()
                 engine_log(f"[{label}] {tid} 删旧 phases.json，触发 regen #{_regen_count + 1}")
-            # 重置 engine_iter 元数据
-            try:
-                from board.phase import _write_engine_iter_meta
-                _write_engine_iter_meta(tid, {"engine_iter": 0, "engine_iter_phase": 0})
-            except Exception:
-                pass
-            # 写 regen 计数器到 warnings（供后续诊断）
-            try:
-                _warnings_file = ws / ".ccc" / "warnings.json"
-                _existing = []
-                if _warnings_file.exists():
-                    try:
-                        import json as _json
-                        _existing = _json.loads(_warnings_file.read_text())
-                        if not isinstance(_existing, list):
-                            _existing = []
-                    except Exception:
-                        _existing = []
-                _existing.append({
-                    "type": "phase_graph_regen",
-                    "task_id": tid,
-                    "regen_count": _regen_count + 1,
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
-                })
-                _warnings_file.write_text(
-                    json.dumps(_existing, ensure_ascii=False, indent=2)
-                )
-            except Exception:
-                pass
+            # reset 靠删除新 plan 自然归零，不调 _write_engine_iter_meta（文件已删=no-op）
+            _record_regen(ws, tid)
             # 回 backlog（删 phases.json 后 product_role 会看到无 phases.json → 重生成）
             store.move_task(tid, "in_progress", "backlog")
             store.update_index()
@@ -909,29 +882,8 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
             _phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
             if _phases_file.exists():
                 _phases_file.unlink()
-            # 写 regen 计数器（同 failed 分支逻辑）
-            try:
-                _warnings_file = ws / ".ccc" / "warnings.json"
-                _existing = []
-                if _warnings_file.exists():
-                    try:
-                        import json as _json
-                        _existing = _json.loads(_warnings_file.read_text())
-                        if not isinstance(_existing, list):
-                            _existing = []
-                    except Exception:
-                        _existing = []
-                _existing.append({
-                    "type": "phase_graph_regen",
-                    "task_id": tid,
-                    "regen_count": _regen_count + 1,
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
-                })
-                _warnings_file.write_text(
-                    json.dumps(_existing, ensure_ascii=False, indent=2)
-                )
-            except Exception:
-                pass
+                engine_log(f"[{label}] {tid} 删旧 phases.json（隔离），触发 regen #{_regen_count + 1}")
+            _record_regen(ws, tid)
             store.move_task(tid, "in_progress", "backlog")
             store.update_index()
             return True
@@ -969,6 +921,31 @@ def _read_regen_count(ws: Path, tid: str) -> int:
         return len(_regen)
     except Exception:
         return 0
+
+
+def _record_regen(ws: Path, tid: str) -> None:
+    """记录一次 phase_graph_regen 到 warnings.json（复用 failed+quarantined 分支）"""
+    try:
+        _regen_count = _read_regen_count(ws, tid) + 1
+        _wf = ws / ".ccc" / "warnings.json"
+        _existing = []
+        if _wf.exists():
+            try:
+                import json as _json
+                _existing = _json.loads(_wf.read_text())
+                if not isinstance(_existing, list):
+                    _existing = []
+            except Exception:
+                _existing = []
+        _existing.append({
+            "type": "phase_graph_regen",
+            "task_id": tid,
+            "regen_count": _regen_count,
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+        })
+        _wf.write_text(json.dumps(_existing, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
 
 
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
