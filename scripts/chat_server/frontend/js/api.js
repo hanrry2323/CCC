@@ -1,12 +1,23 @@
 import { state } from './state.js';
 
-/** F-SEC-01/02: 不硬编码口令；首次从 localStorage / prompt 取。 */
+/** Hub Basic Auth：默认用户名/密码均为 ccc；可被 localStorage 覆盖。 */
 function _authHeader(forcePrompt = false) {
+  // 一次性清掉旧长口令缓存，避免 401 死循环
+  if (!localStorage.getItem('ccc_hub_auth_v2')) {
+    localStorage.removeItem('ccc_chat_pass');
+    localStorage.setItem('ccc_hub_auth_v2', '1');
+  }
   let user = localStorage.getItem('ccc_chat_user') || 'ccc';
-  let pass = forcePrompt ? '' : (localStorage.getItem('ccc_chat_pass') || '');
+  let pass = forcePrompt ? '' : (localStorage.getItem('ccc_chat_pass') || 'ccc');
   if (!pass) {
-    pass = window.prompt('CCC Chat 密码（用户名默认 ccc）') || '';
+    pass = window.prompt('CCC Hub 密码（用户名/密码默认均为 ccc）') || '';
     if (pass) localStorage.setItem('ccc_chat_pass', pass);
+  }
+  if (!localStorage.getItem('ccc_chat_user')) {
+    localStorage.setItem('ccc_chat_user', user);
+  }
+  if (!localStorage.getItem('ccc_chat_pass') && pass === 'ccc') {
+    localStorage.setItem('ccc_chat_pass', 'ccc');
   }
   return 'Basic ' + btoa(user + ':' + pass);
 }
@@ -176,7 +187,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
     }, true);
 
     if (!resp.ok) {
-      const errText = resp.status === 401 ? '认证失败 (401)：请刷新页面，密码输入 ccc-test-pass-OK'
+      const errText = resp.status === 401 ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
         : resp.status === 400 ? '危险指令已被拦截或附件无效'
         : resp.status === 429 ? '前一个执行中，请稍候'
         : '请求失败: HTTP ' + resp.status;

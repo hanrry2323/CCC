@@ -4,11 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>CCC Chat</title>
-<link rel="stylesheet" href="/css/variables.css">
-<link rel="stylesheet" href="/css/base.css">
-<link rel="stylesheet" href="/css/themes.css">
-<link rel="stylesheet" href="/css/components.css">
+<title>CCC Hub</title>
+<link rel="stylesheet" href="/css/variables.css?v=20260716h">
+<link rel="stylesheet" href="/css/base.css?v=20260716h">
+<link rel="stylesheet" href="/css/themes.css?v=20260716h">
+<link rel="stylesheet" href="/css/components.css?v=20260716h">
+<link rel="stylesheet" href="/css/shell.css?v=20260716h">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <script>
 (function() {
   var saved = localStorage.getItem('ccc-theme') || localStorage.getItem('opencode-color-scheme');
@@ -18,7 +21,16 @@
 })();
 </script>
 </head>
-<body>
+<body class="hub-mode">
+<nav id="hub-nav" aria-label="CCC Hub">
+  <div class="hub-brand">CCC<em>Hub</em></div>
+  <a class="hub-nav-link" data-route="chat" href="#/chat">对话</a>
+  <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
+  <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
+  <div class="hub-nav-spacer"></div>
+</nav>
+<div id="hub-views">
+  <div class="hub-view" id="view-chat">
 <div id="app">
   <div id="titlebar">
     <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
@@ -103,6 +115,10 @@
     </div>
   </div>
 </div>
+  </div>
+  <div class="hub-view" id="view-board"></div>
+  <div class="hub-view" id="view-console"></div>
+</div>
 <div class="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
 <select id="project-select" style="display:none;"></select>
 
@@ -144,6 +160,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/app.js?v=20260716h"></script>
 </body>
 </html>

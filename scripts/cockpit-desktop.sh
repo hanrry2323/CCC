@@ -9,7 +9,7 @@
 #
 # 行为:
 #   - 检查 Rust 工具链（缺则提示安装）
-#   - 检查 chat-server 是否在 8084 运行（避免重复启动）
+#   - 检查 Hub 是否在 7777 运行（避免重复启动）
 #   - 调 npx tauri dev / build 启动桌面应用
 #   - 子进程 Tauri 自动 spawn chat-server sidecar（见 src-tauri/src/server.rs）
 set -euo pipefail
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-PORT="${CCC_CHAT_PORT:-8084}"
+PORT="${CCC_CHAT_PORT:-7777}"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }

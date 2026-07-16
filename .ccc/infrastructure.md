@@ -22,12 +22,13 @@
 | 4000 | 中转站 Anthropic | flash tier：minimax → opencode |
 | 4002 | 中转站 OpenAI | code tier：xfyun → 智谱 |
 | 5432 | PostgreSQL | 仅 localhost |
-| 7777 | CCC Board Server | 看板 API + UI |
-| 7778 | CCC Cockpit | **总控台** |
+| **7777** | **CCC Hub** | 唯一对外 UI：对话 / 看板 / 控制台（原 Chat，Basic Auth） |
+| **7775** | CCC Board API | 看板 REST（仅 127.0.0.1；Hub 反代） |
+| 7778 | CCC Cockpit | 旧总控（可选；链接指向 Hub） |
 | 8080 | HP Proxy | 知识库代理 |
 | 8082 | HP Memory Store | 向量/记忆 |
 | 8083 | HP Bridge | 知识库桥接 |
-| 8084 | CCC Chat Server | 局域网聊天（绑定 0.0.0.0，Basic Auth） |
+| ~~8084~~ | （废弃默认） | 旧 Chat 口；现默认并入 Hub 7777 |
 | 8095 | qb Dashboard API | FastAPI 后端 |
 | 8096 | qb Dashboard Frontend | Vue 3 前端 |
 
@@ -65,7 +66,7 @@
 
 | 项目 | 开发端口 | 测试端口 | 生产端口 | 页面 |
 |------|----------|----------|----------|------|
-| CCC | 7777(看板) / 7778(总控) / 8084(聊天) | — | — | http://192.168.3.140:8084 |
+| CCC | 7777(Hub) / 7775(Board API) / 7778(Cockpit 可选) | — | — | http://192.168.3.140:7777 |
 | qb | 8095(API) / 8096(前端) | — | — | localhost:8096 |
 | medio-0 | — | — | 192.168.3.131:3000 | feiniu:3000 |
 | qx/clawmed | — | — | — | — |
@@ -97,31 +98,23 @@
 | HP 服务 (3个) | 直接进程 | 运行中 |
 | qb (5个plist) | launchd | 运行中 |
 
-## CCC Chat Server v2（2026-07-15）
+## CCC Hub（原 Chat Server v2，2026-07-16）
+
+> 端口权威：[`docs/ccc-hub-ports.md`](../docs/ccc-hub-ports.md)
 
 ### 架构
 
 ```
-scripts/ccc-chat-server.py          # 入口 (uvicorn.run)
+scripts/ccc-chat-server.py          # 入口 (uvicorn.run) → Hub :7777
 scripts/chat_server/                # 模块化包
-├── config.py                       # Pydantic 配置
-├── models.py                       # 数据模型
-├── auth.py                         # Basic Auth
-├── app.py                          # FastAPI 工厂
-├── routers/                        # 路由层
-│   ├── chat.py                     # POST /api/chat SSE
-│   ├── sessions.py                 # GET/DEL /api/history
-│   ├── files.py                    # 文件浏览
-│   ├── board.py                    # Board 代理
-│   └── projects.py                 # 项目列表
-├── services/                       # 服务层
-│   ├── claude_client.py            # Claude 子进程 SSE
-│   ├── session_store.py            # 会话持久化
-│   └── board_client.py             # Board HTTP 客户端
-└── frontend/                       # 纯前端 SPA
-    ├── index.html
-    ├── css/ (variables, base, themes, components)
-    └── js/ (state, api, markdown, app + 5 components)
+├── config.py                       # PORT=7777, BOARD_URL=:7775
+├── models.py / auth.py / app.py
+├── routers/                        # chat / sessions / files / board(含原生反代) / projects
+├── services/
+└── frontend/                       # Hub SPA
+    ├── index.html                  # 壳：#/chat #/board #/console
+    ├── css/ (+ shell.css)
+    └── js/ (router + pages/boardPage + pages/consolePage + …)
 ```
 
 ### API 端点
@@ -136,18 +129,14 @@ scripts/chat_server/                # 模块化包
 | DELETE | `/api/history/{id}` | 删除会话 |
 | GET | `/api/projects/{id}/files` | 文件树 |
 | GET | `/api/projects/{id}/file` | 文件内容 |
-| GET | `/api/board/proxy/*` | Board 代理 |
-| POST | `/api/board/proxy/*` | Board 代理 |
+| GET/POST | `/api/board/proxy/*` | Board 代理（含任务 seed） |
+| GET/POST | `/api/board` `/api/tasks` … | 原生 Board 路径（Hub 反代） |
 
-### Chat UI v2.1（2026-07-16）
+### Hub UI
 
-- Claude 暖色视觉（light/dark）
-- 附件（图/文本 → `.ccc/chat-uploads/<session>/`）
-- Slash：`/task` `/board` `/export` `/new`
-- 下达任务 → Board Protocol `backlog`（complexity 可选）
-- 轻量 Artifacts 预览侧栏
-- 模型参数透传 CLI（flash/code/sonnet/haiku）
-- 启动要求：LaunchAgents 需设置 `CCC_CHAT_PASS`（≥12 字符，勿写入仓库 plist）
-- LaunchAgents `PATH` 须包含 `claude`（如 `~/.local/bin`），否则 `/api/chat` 会报 CLI not found
-- 默认绑定 `CCC_CHAT_HOST=0.0.0.0`：局域网访问 `http://<本机IP>:8084`（Basic Auth 必填）
+- Claude 暖色视觉（light/dark）；统一对话 / 看板 / 控制台
+- 附件、Slash、下达任务 → backlog
+- 启动：账密默认 **`ccc` / `ccc`**（`CCC_CHAT_USER` / `CCC_CHAT_PASS`）；`PATH` 含 `claude`
+- 局域网：`http://<本机IP>:7777`
+- 运维权威文档：`docs/ccc-hub-ports.md`；自检：`python3 scripts/verify-ccc-hub.py`
 

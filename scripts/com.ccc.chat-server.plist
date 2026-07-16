@@ -24,6 +24,14 @@
   <dict>
     <key>CCC_CHAT_HOST</key>
     <string>0.0.0.0</string>
+    <key>CCC_CHAT_PORT</key>
+    <string>7777</string>
+    <key>CCC_CHAT_USER</key>
+    <string>ccc</string>
+    <key>CCC_CHAT_PASS</key>
+    <string>ccc</string>
+    <key>CCC_BOARD_URL</key>
+    <string>http://127.0.0.1:7775</string>
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
     <key>PATH</key>

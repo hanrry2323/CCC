@@ -10,8 +10,9 @@ export CCC_HOME="${CCC_HOME:-/Users/apple/program/CCC}"
 export CCC_CONTRACT_DIR="${CCC_CONTRACT_DIR:-.ccc}"
 
 # === 看板 HTTP 服务 ===
-export BOARD_PORT="${BOARD_PORT:-7777}"
-export BOARD_HOST="${BOARD_HOST:-127.0.0.1}"  # 0.0.0.0 = 局域网
+# Board API-only（Hub UI 在 7777）；默认仅本机
+export BOARD_PORT="${BOARD_PORT:-7775}"
+export BOARD_HOST="${BOARD_HOST:-127.0.0.1}"
 
 # === 角色频率（秒）===
 export PRODUCT_INTERVAL="${PRODUCT_INTERVAL:-14400}"   # 4h

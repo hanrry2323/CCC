@@ -6,6 +6,9 @@ import { initTitlebar, renderTabs } from './components/titlebar.js';
 import { initComposer, setupProjectSelect } from './components/composer.js';
 import { loadMessages, setupCancel, createEmptyState } from './components/message.js';
 import { refreshSidebar, setupSidebarSearch } from './components/sidebar.js';
+import { initRouter } from './router.js';
+import { mountBoard, unmountBoard } from './pages/boardPage.js';
+import { mountConsole, unmountConsole } from './pages/consolePage.js';
 
 function snapshotActiveTab() {
   const tabs = state.get('tabs') || [];
@@ -30,8 +33,26 @@ function showTabContent(tab) {
   }
 }
 
+async function onHubRoute(route) {
+  document.title =
+    route === 'board' ? 'CCC Hub · 看板' :
+    route === 'console' ? 'CCC Hub · 控制台' :
+    'CCC Hub';
+  if (route === 'board') {
+    unmountConsole();
+    await mountBoard(document.getElementById('view-board'));
+  } else if (route === 'console') {
+    unmountBoard();
+    await mountConsole(document.getElementById('view-console'));
+  } else {
+    unmountBoard();
+    unmountConsole();
+  }
+}
+
 async function init() {
   applyTheme(getThemeScheme());
+  initRouter(onHubRoute);
   initTitlebar();
   initComposer();
   setupCancel();

@@ -396,11 +396,11 @@ def build_cockpit_data() -> dict:
 
 
 def _fetch_board_summary() -> dict | None:
-    """Fetch board column counts + KPI summary from board-server (:7777).
+    """Fetch board column counts + KPI summary from board-server (:7775).
 
     Returns a dict ready for render_html, or None when board-server is offline.
     """
-    base = "http://127.0.0.1:7777"
+    base = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
     workspace = "CCC"
     columns = {
         "backlog": 0,
@@ -1130,8 +1130,8 @@ tr:last-child td{{border-bottom:none}}
 
   <div class="sec-title" style="margin-top:16px">快速跳转</div>
           <div class="quick-links">
-    <a href="http://192.168.3.140:7777/" target="_blank">CCC 看板</a>
-    <a href="http://192.168.3.140:8084" target="_blank">CCC Chat</a>
+    <a href="http://192.168.3.140:7777/#/board" target="_blank">CCC Hub · 看板</a>
+    <a href="http://192.168.3.140:7777/#/chat" target="_blank">CCC Hub · 对话</a>
     <a href="http://192.168.3.140:8096" target="_blank">qb Dashboard</a>
     <a href="http://192.168.3.140:4000/dashboard" target="_blank">中转站</a>
     <a href="http://192.168.3.131:3000" target="_blank">Medio-0 (HP)</a>

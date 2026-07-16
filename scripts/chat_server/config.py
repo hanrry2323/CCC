@@ -8,11 +8,12 @@ CHAT_DIR = PROJECT_ROOT / ".ccc" / "chat"
 CHAT_DIR.mkdir(parents=True, exist_ok=True)
 
 HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")
-PORT = int(os.environ.get("CCC_CHAT_PORT", "8084"))
+# Hub 对外端口：7777（用户习惯口）；Board API 内网默认 7775
+PORT = int(os.environ.get("CCC_CHAT_PORT", "7777"))
+# Hub 约定账密：用户名与密码均为 ccc（可用环境变量覆盖）
 AUTH_USER = os.environ.get("CCC_CHAT_USER", "ccc")
-# F-SEC-01: 无默认弱口令；必须由 CCC_CHAT_PASS 显式提供
-AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "").strip()
-BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7777")
+AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "ccc").strip()
+BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
 PROXY_URL = os.environ.get("CCC_PROXY_URL", "http://127.0.0.1:4002/v1/chat/completions")
 # LAN / localhost CORS regex（SPA 同机访问为 same-origin；跨端口/跨源时启用）
@@ -26,9 +27,11 @@ CORS_ORIGIN_REGEX = os.environ.get(
     r")(:\d+)?$",
 )
 
-_WEAK_PASSWORDS = frozenset({
-    "", "claude2026", "password", "ccc", "admin", "123456", "changeme",
+# 禁止历史泄漏 / 空口令；产品约定口令 "ccc" 明确允许
+_FORBIDDEN_PASSWORDS = frozenset({
+    "", "claude2026", "password", "admin", "123456", "changeme",
 })
+
 
 # F-SEC-03: 辅助拦截（主防线=工具 allowlist + cwd jail）；覆盖常见变形，避免裸 \brm\b 误伤
 DANGEROUS_PATTERN = re.compile(
@@ -66,11 +69,11 @@ CLAUDE_ENV = {
 
 
 def validate_auth_config() -> None:
-    """F-SEC-01: 强口令门禁；弱口令或未设置则拒绝启动。"""
-    if AUTH_PASS.lower() in _WEAK_PASSWORDS or len(AUTH_PASS) < 12:
+    """Hub 账密门禁：禁止空口令与历史泄漏默认；约定 ccc/ccc 可用。"""
+    if AUTH_PASS.lower() in _FORBIDDEN_PASSWORDS:
         raise SystemExit(
-            "CCC_CHAT_PASS must be set to a strong password "
-            "(>=12 chars, not a well-known default). Refusing to start."
+            "CCC_CHAT_PASS is empty or a forbidden default "
+            "(e.g. claude2026). Use the Hub password 'ccc', or set another non-forbidden value."
         )
 
 

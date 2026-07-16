@@ -35,7 +35,7 @@ export async function openBoardPanel() {
       '<div class="board-panel-header">' +
         '<span>看板摘要</span>' +
         '<div class="board-panel-actions">' +
-          '<a class="artifact-btn" id="board-full-link" href="#" target="_blank" rel="noopener">完整看板</a>' +
+          '<a class="artifact-btn" id="board-full-link" href="#/board">完整看板</a>' +
           '<button type="button" class="artifact-btn" id="board-refresh">刷新</button>' +
           '<button type="button" class="artifact-btn" id="board-close">关闭</button>' +
         '</div>' +
@@ -46,8 +46,7 @@ export async function openBoardPanel() {
     document.getElementById('layout')?.appendChild(panel);
     const boardLink = document.getElementById('board-full-link');
     if (boardLink) {
-      const host = window.location.hostname || '127.0.0.1';
-      boardLink.href = 'http://' + host + ':7777';
+      boardLink.addEventListener('click', () => closeBoardPanel());
     }
     document.getElementById('board-close')?.addEventListener('click', closeBoardPanel);
     document.getElementById('board-refresh')?.addEventListener('click', () => refreshBoardPanel());

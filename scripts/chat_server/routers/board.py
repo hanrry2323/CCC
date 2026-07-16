@@ -119,6 +119,8 @@ async def board_proxy_create_task(request: Request):
 
     workspace = _resolve_workspace(body, request)
     body["workspace"] = workspace
+    if not body.get("status"):
+        body["status"] = "backlog"
 
     plan_md = body.pop("plan_md", None)
     phases_jsonl = body.pop("phases_jsonl", None)
@@ -153,6 +155,88 @@ async def board_proxy_create_task(request: Request):
 
 @router.post("/api/board/proxy/tasks/move")
 async def board_proxy_move_task(request: Request):
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    body["workspace"] = _resolve_workspace(body, request)
+    return await board_proxy("POST", "/api/tasks/move", json_body=body)
+
+
+# --- Native board paths (Hub same-origin for board/console pages) ---
+
+@router.get("/api/board")
+async def native_board(request: Request, workspace: str = "CCC", fields: str | None = None):
+    check_auth(request)
+    params: dict = {"workspace": workspace}
+    if fields:
+        params["fields"] = fields
+    return await board_proxy("GET", "/api/board", params=params)
+
+
+@router.get("/api/config")
+async def native_config(request: Request):
+    check_auth(request)
+    return await board_proxy("GET", "/api/config")
+
+
+@router.get("/api/dashboard")
+async def native_dashboard(request: Request, workspace: str = "CCC"):
+    check_auth(request)
+    return await board_proxy("GET", "/api/dashboard", params={"workspace": workspace})
+
+
+@router.get("/api/roles")
+async def native_roles(request: Request):
+    check_auth(request)
+    return await board_proxy("GET", "/api/roles")
+
+
+@router.get("/api/timeline")
+async def native_timeline(request: Request, workspace: str = "CCC"):
+    check_auth(request)
+    return await board_proxy("GET", "/api/timeline", params={"workspace": workspace})
+
+
+@router.get("/api/logs")
+async def native_logs(request: Request, lines: int = 50, workspace: str = "CCC"):
+    check_auth(request)
+    return await board_proxy(
+        "GET", "/api/logs", params={"lines": lines, "workspace": workspace}
+    )
+
+
+@router.get("/api/tasks/{task_id}")
+async def native_get_task(request: Request, task_id: str, workspace: str = "CCC"):
+    check_auth(request)
+    return await board_proxy(
+        "GET", f"/api/tasks/{task_id}", params={"workspace": workspace}
+    )
+
+
+@router.get("/api/tasks/{task_id}/events")
+async def native_task_events(request: Request, task_id: str, workspace: str = "CCC"):
+    check_auth(request)
+    return await board_proxy(
+        "GET", f"/api/tasks/{task_id}/events", params={"workspace": workspace}
+    )
+
+
+@router.post("/api/tasks")
+async def native_create_task(request: Request):
+    """Thin proxy; Chat task dialog with seed uses /api/board/proxy/tasks."""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    body["workspace"] = _resolve_workspace(body, request)
+    if not body.get("status"):
+        body["status"] = "backlog"
+    return await board_proxy("POST", "/api/tasks", json_body=body)
+
+
+@router.post("/api/tasks/move")
+async def native_move_task(request: Request):
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):
