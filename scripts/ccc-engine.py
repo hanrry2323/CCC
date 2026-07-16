@@ -94,6 +94,13 @@ _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
 MAX_CONCURRENT = 3
 
+# v0.35: degraded mode — 引擎自我保护
+_degraded_mode = False
+_degraded_since: float | None = None
+_DEGRADED_QUARANTINE_THRESHOLD = 10   # 30min 内 quarantine > 此值 → degraded
+_DEGRADED_FAIL_THRESHOLD = 10         # 30min 内 product_fail > 此值 → degraded
+_DEGRADED_RECOVERY_SECONDS = 600      # 10min 无异常 → 自动恢复
+
 # v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
 _GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
 
@@ -952,6 +959,75 @@ def _record_regen(ws: Path, tid: str) -> None:
         pass
 
 
+# ═══════════════════════════════════════════════════════════════
+# v0.35: degraded mode — 引擎自我保护
+# ═══════════════════════════════════════════════════════════════
+
+def _recent_events(ws: Path, event_type: str, window_sec: int) -> list[dict]:
+    """从 events.jsonl 读最近指定类型事件（滑动窗口）。"""
+    ev_file = ws / ".ccc" / "stats" / "events.jsonl"
+    if not ev_file.exists():
+        return []
+    now = time.time()
+    events = []
+    try:
+        for line in ev_file.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("event") == event_type:
+                ts = ev.get("t", 0)
+                if isinstance(ts, (int, float)) and ts > now - window_sec:
+                    events.append(ev)
+    except OSError:
+        pass
+    return events
+
+
+def _check_degraded(ws: Path) -> None:
+    """检查是否需要进入/退出 degraded 模式。
+
+    degraded 模式下:
+    - 停 backlog→planned intake（新 task 不进 pipeline）
+    - 现有 in_progress/testing 继续跑完
+    - 维护任务照跑（audit, stale check, cleanup）
+    """
+    global _degraded_mode, _degraded_since
+
+    q_count = len(_recent_events(ws, "quarantine", 1800))
+    f_count = len(_recent_events(ws, "product_fail", 1800))
+    _any_success = len(_recent_events(ws, "product_done", 1800)) + len(_recent_events(ws, "auto_fixed", 1800))
+
+    should_degrade = (
+        q_count > _DEGRADED_QUARANTINE_THRESHOLD
+        or f_count > _DEGRADED_FAIL_THRESHOLD
+        or (q_count > 0 and _any_success == 0)
+    )
+
+    if should_degrade and not _degraded_mode:
+        _degraded_mode = True
+        _degraded_since = time.time()
+        engine_log(
+            f"[degraded] 30min 异常过高 (q={q_count}, f={f_count}, ok={_any_success}), "
+            f"进入 degraded 模式 — 暂停 intake"
+        )
+        _ccc_notify("CCC", "engine 进入 degraded 模式（异常率过高，暂停 intake）")
+
+    if _degraded_mode and not should_degrade:
+        elapsed = time.time() - (_degraded_since or time.time())
+        if elapsed > _DEGRADED_RECOVERY_SECONDS:
+            _degraded_mode = False
+            _degraded_since = None
+            engine_log(
+                f"[degraded] 异常率已恢复 (q={q_count}, f={f_count}), 退出 degraded 模式"
+            )
+            _ccc_notify("CCC", "engine 退出 degraded 模式（指标恢复正常）")
+
+
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
     """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。"""
     try:
@@ -1156,7 +1232,13 @@ def _process_backlog(ws: Path) -> bool:
     """消费 backlog 首条 task。返回 True 表示做了操作。
 
     v0.33: 异步 product_role — 不阻塞引擎 tick。Popen 后返回，后续 tick 检查完成。
+    v0.35: degraded mode 下暂停 intake。
     """
+    # v0.35: degraded mode → 暂停 backlog intake
+    global _degraded_mode
+    if _degraded_mode:
+        return False
+
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
@@ -1167,6 +1249,7 @@ def _process_backlog(ws: Path) -> bool:
     tid = backlog[0]["id"]
     key = _task_key(ws, tid)
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+    _task_data = backlog[0]
 
     # 1. phases.json 已存在（手动拆分），直通 planned
     if phases_file.exists():
@@ -1178,6 +1261,37 @@ def _process_backlog(ws: Path) -> bool:
             return False
         _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
         return True
+
+    # v0.35: 任务分类 — auto/quick 不走 product_role
+    try:
+        _pipeline_class = ccc_board._classify_task_intake(_task_data)
+    except Exception:
+        _pipeline_class = "full"  # fallback 安全
+    if _pipeline_class in ("auto", "quick"):
+        _log.info(
+            f"[intake] [{label}] {tid} 分类={_pipeline_class}，不走 product_role"
+        )
+        if _pipeline_class == "auto":
+            result = ccc_board._run_auto_fix(_task_data)
+            if result.get("ok"):
+                _log_stats(ws, "auto_fixed", tid, commit=result.get("commit", "")[:12])
+                # 不放到 released（避免污染统计），直接移 abnormal+标记已修
+                store.move_task(tid, "backlog", "released")
+            else:
+                _log.warning(
+                    f"[intake] [{label}] {tid} auto-fix 失败: {result.get('error')}"
+                )
+                store.move_task(tid, "backlog", "abnormal")
+            store.update_index()
+            return True
+        else:  # quick
+            result = ccc_board._run_quick_fix(_task_data)
+            if result.get("ok"):
+                store.move_task(tid, "backlog", "in_progress")
+            else:
+                store.move_task(tid, "backlog", "abnormal")
+            store.update_index()
+            return True
 
     # 2. 上游健康检测（避免 upstream 宕机 + fail_counter 永久锁死）
     if not _is_upstream_healthy():
@@ -2051,10 +2165,11 @@ def engine_loop(workspaces: list[Path]) -> None:
                 # tick 边界重置 fallback 标志
                 _reset_parallel_disabled_after_tick()
 
-            # 每 6 轮（~60s）跑一次 stale check + testing 流转 + 统计聚合
+            # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + testing 流转 + 统计聚合
             if iteration % 6 == 0:
                 for ws in workspaces:
                     _activate_workspace(ws)
+                    _check_degraded(ws)
                     _store = _get_store(ws)
                     _check_stale(ws, active_tasks)
                     _retry_abnormal_dev_failures(ws)

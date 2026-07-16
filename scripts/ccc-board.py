@@ -3356,6 +3356,189 @@ def _audit_classify(
     return findings
 
 
+# ═══════════════════════════════════════════════════════════════
+# v0.35 分级架构：任务分类 + auto/quick 路径 + intake failsafe
+# ═══════════════════════════════════════════════════════════════
+
+def _classify_task_intake(task: dict) -> str:
+    """决定 task 的处理路径：auto | quick | full
+
+    纯规则决策，不调 LLM，不读 phases.json。
+    在 backlog→planned 之前调用，判定后直接走对应路径。
+
+    auto  → ruff --fix + git commit → released（跳过整个 pipeline）
+    quick → dev_role(无 plan) + reviewer(small) → verified → released
+    full  → product_role → dev_role → reviewer+tester → verified（现有流程）
+    """
+    tags = task.get("tags", [])
+    title = task.get("title", "") or ""
+    desc = task.get("description", "") or ""
+    tid = task.get("id", "") or ""
+
+    # auto: audit review / lint 类 — 单行修，不需要 plan
+    if "audit" in tags and "review" in tags:
+        return "auto"
+    if "auto" in tags:
+        return "auto"
+    if tid.startswith("audit-review-"):
+        return "auto"
+    # 描述含 type/lint 特征
+    _auto_keywords = ["type:", "lint:", "ruff:", "mypy:"]
+    if any(kw in title.lower() for kw in _auto_keywords):
+        return "auto"
+
+    # quick: 小改动（fix/clean/typo 关键词 + 短描述）
+    if len(desc) < 100 and any(kw in title.lower() for kw in ["fix", "clean", "typo"]):
+        return "quick"
+    if "audit" in tags and "decision" not in tags:
+        return "quick"
+
+    # full: 全链路（默认）
+    return "full"
+
+
+def _run_auto_fix(task: dict) -> dict:
+    """自动修路径：ruff --fix → git commit → released
+
+    Returns:
+        {"ok": bool, "commit": str|None, "error": str|None}
+    """
+    import subprocess as sp_sub
+
+    ws = get_workspace()
+    _log.info("[auto-fix] %s 开始 ruff --fix", task.get("id", "?"))
+
+    # ruff --fix（含 src/，因类型标注在源码）
+    try:
+        sp_sub.run(
+            ["ruff", "check", "--fix", "."],
+            cwd=ws, capture_output=True, text=True, timeout=60,
+        )
+    except (sp_sub.TimeoutExpired, FileNotFoundError, OSError) as e:
+        _log.warning("[auto-fix] ruff failed for %s: %s", task.get("id", "?"), e)
+        return {"ok": False, "commit": None, "error": f"ruff 失败: {e}"}
+
+    # 检查工作树
+    diff = sp_sub.run(
+        ["git", "diff", "--name-only"], cwd=ws, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    untracked = sp_sub.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=ws, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    if not diff and not untracked:
+        _log.info("[auto-fix] %s ruff 无改动", task.get("id", "?"))
+        return {"ok": False, "commit": None, "error": "ruff 无改动"}
+
+    # git commit
+    sp_sub.run(["git", "add", "-A"], cwd=ws, capture_output=True, timeout=5)
+    msg = f"chore(audit): auto-fix {task.get('id', '?')}"
+    r = sp_sub.run(
+        ["git", "commit", "-m", msg],
+        cwd=ws, capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode != 0:
+        return {"ok": False, "commit": None, "error": f"commit 失败: {r.stderr[:100]}"}
+
+    commit_hash = sp_sub.run(
+        ["git", "rev-parse", "HEAD"], cwd=ws, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    _log.info("[auto-fix] %s ✓ committed %s", task.get("id", "?"), commit_hash[:12])
+    return {"ok": True, "commit": commit_hash, "error": None}
+
+
+def _run_quick_fix(task: dict, timeout: int = 300) -> dict:
+    """快修路径：直接调用 opencode executor（不经过 product_role 写 plan）
+
+    task 的 title/description 直接作为 executor prompt。
+    执行后继 standard reviewer+tester 路径（在 testing 列）。
+    """
+    import subprocess as sp_sub
+
+    ws = get_workspace()
+    tid = task.get("id", "?")
+    prompt = task.get("description", task.get("title", ""))
+    _log.info("[quick-fix] %s 开始 exec（无 plan）", tid)
+
+    # 写临时 prompt 文件
+    prompt_dir = ws / ".ccc" / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = prompt_dir / f"quick-{tid}.md"
+    prompt_file.write_text(
+        f"## 任务\n{prompt}\n\n"
+        f"## 约束\n"
+        f"1. 只改必要的文件\n"
+        f"2. 改完后 git commit（不要 push）\n"
+        f"3. 不改动 scope 外的文件\n"
+    )
+
+    # 调 opencode runner
+    script_dir = Path(__file__).parent
+    launcher = script_dir / "ccc-exec-launcher.sh"
+    try:
+        if launcher.exists():
+            r = sp_sub.run(
+                ["bash", str(launcher), str(ws), tid, "--phase", "1"],
+                capture_output=True, text=True, timeout=timeout,
+            )
+            ok = r.returncode == 0
+        else:
+            # fallback: 直接调 opencode-exec.py
+            r = sp_sub.run(
+                ["python3", str(script_dir / "opencode-exec.py"),
+                 "--phase", tid, "--prompt", str(prompt_file),
+                 "--timeout", str(timeout)],
+                capture_output=True, text=True, timeout=timeout + 30,
+            )
+            ok = r.returncode == 0
+    except sp_sub.TimeoutExpired:
+        _log.warning("[quick-fix] %s 超时 %ds", tid, timeout)
+        return {"ok": False, "error": "timeout"}
+    finally:
+        if prompt_file.exists():
+            prompt_file.unlink()
+
+    if ok:
+        _log.info("[quick-fix] %s ✓ 完成", tid)
+        return {"ok": True, "exit_code": r.returncode, "error": None}
+    else:
+        _log.warning("[quick-fix] %s ✗ 失败 (exit=%d)", tid, r.returncode if 'r' in dir() else -1)
+        return {"ok": False, "error": f"exit={r.returncode if 'r' in dir() else -1}"}
+
+
+def _intake_failsafe(ws: Path, category: str) -> bool:
+    """检查是否应该暂停 intake。返回 True = 允许投，False = 熔断。
+
+    同类 audit-task 在 abnormal 占比 > 60% → 源头熔断。
+    """
+    from _board_store import FileBoardStore
+
+    store = FileBoardStore(ws)
+    prefix = f"audit-{category}"
+    abnormal = store.list_tasks("abnormal")
+    audit_abnormal = [t for t in abnormal if t.get("id", "").startswith(prefix)]
+
+    # 统计所有同类 task（含 backlog+planned+in_progress+testing+abnormal）
+    all_audit = list(audit_abnormal)
+    for col in ("backlog", "planned", "in_progress", "testing"):
+        all_audit.extend(
+            t for t in store.list_tasks(col)
+            if t.get("id", "").startswith(prefix)
+        )
+
+    if not all_audit:
+        return True  # 没有同类 task，允许投
+
+    fail_rate = len(audit_abnormal) / len(all_audit)
+    if fail_rate > 0.6:
+        _log.warning(
+            "[intake-failsafe] %s %s: abnormal=%d total=%d rate=%.0f%% → 熔断",
+            ws.name, category, len(audit_abnormal), len(all_audit), fail_rate * 100,
+        )
+        return False
+    return True
+
+
 def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
     """把 review/decision 类问题投到对应项目的 backlog。返回投出数。"""
     from datetime import datetime as _dt
@@ -3506,8 +3689,13 @@ def _audit_run_one(ws: str, since: str) -> dict:
                 )
     except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
         _log.warning("audit auto-fix failed for %s: %s", ws, e)
-    # decision 类（架构/配置决策）继续投看板
-    posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
+    # decision 类（架构/配置决策）受 intake failsafe 保护
+    _decision_items = findings.get("decision", [])
+    if _decision_items:
+        if _intake_failsafe(Path(ws), "decision"):
+            posted_decision = _audit_post_backlog(ws, _decision_items, "decision")
+        else:
+            _log.warning("[audit] %s decision intake 熔断", ws)
 
     # 6. 写报表
     _elapsed_ws = _time.time() - _t_ws
