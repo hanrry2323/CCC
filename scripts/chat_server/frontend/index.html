@@ -93,17 +93,18 @@
         <div id="composer-inner">
           <div id="attachment-chips" class="attachment-chips" hidden></div>
           <div class="composer-toolbar">
-            <select class="model-select" id="model-select">
+            <select class="model-select" id="model-select" title="模型">
               <option value="flash">flash</option>
               <option value="code">code</option>
               <option value="sonnet">sonnet</option>
               <option value="haiku">haiku</option>
             </select>
-            <span class="context-indicator">
+            <!-- qa-dock 由 JS 插入：对齐 / 下一步 / 起草 / 下达 + 更多 -->
+            <span class="context-indicator" title="当前项目">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
               <span id="project-display">CCC</span>
             </span>
-            <span class="composer-hint">Enter 发送 · / 命令</span>
+            <span class="composer-hint">对齐 → 下一步 → 下达</span>
           </div>
           <div class="composer-input-wrap">
             <button class="composer-btn attach-btn" id="attach-btn" title="附件" type="button">

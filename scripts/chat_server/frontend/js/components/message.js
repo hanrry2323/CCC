@@ -3,11 +3,17 @@ import { renderMarkdown } from '../markdown.js';
 import { escapeHtml, ts, scrollToBottom } from '../utils.js';
 import { streamChat, cancelStream } from '../api.js';
 import { refreshSidebar } from './sidebar.js';
-import { createToolCard, updateToolCardStatus, setToolResult } from './toolCall.js';
+import {
+  createProgressRail,
+  appendProgressStep,
+  completeProgressStep,
+  finishProgressRail,
+} from './toolCall.js';
 import { maybeShowArtifacts } from './artifacts.js';
 
 let fullContent = '';
-let toolCards = [];
+let toolSteps = [];
+let progressRail = null;
 let costInfo = null;
 let toolIdCounter = 0;
 
@@ -227,7 +233,8 @@ export async function sendMessage(text, attachments = []) {
 
   const sid = state.get('currentSessionId');
   fullContent = '';
-  toolCards = [];
+  toolSteps = [];
+  progressRail = null;
   costInfo = null;
   toolIdCounter = 0;
   state.set('streaming', true);
@@ -272,6 +279,10 @@ export async function sendMessage(text, attachments = []) {
     requestAnimationFrame(() => {
       rafPending = false;
       if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
+      // 正文出来后收起进度条，对话保持干净
+      if (fullContent.trim().length > 40 && progressRail) {
+        finishProgressRail(progressRail, { hide: true });
+      }
       smartScroll(container);
     });
   }
@@ -287,19 +298,20 @@ export async function sendMessage(text, attachments = []) {
         scheduleMarkdownPaint();
       } else if (type === 'tool_use') {
         ensureAssistantShell();
-        const toolId = 'tool-' + (++toolIdCounter);
-        const card = createToolCard({ id: toolId, name: data.name, input: data.input });
-        toolCards.push(card);
-        if (toolsHost) {
-          toolsHost.appendChild(card);
-          updateToolCardStatus(card, 'running');
+        toolIdCounter += 1;
+        if (!progressRail && toolsHost) {
+          progressRail = createProgressRail();
+          toolsHost.appendChild(progressRail);
         }
+        const step = appendProgressStep(progressRail, {
+          name: data.name,
+          input: data.input,
+        });
+        toolSteps.push(step);
         smartScroll(container);
       } else if (type === 'tool_result') {
-        if (toolCards.length) {
-          const last = toolCards[toolCards.length - 1];
-          setToolResult(last, data.content);
-          updateToolCardStatus(last, 'completed', data);
+        if (toolSteps.length) {
+          completeProgressStep(toolSteps[toolSteps.length - 1], true);
         }
       } else if (type === 'cost') {
         costInfo = data;
@@ -309,6 +321,7 @@ export async function sendMessage(text, attachments = []) {
       state.set('currentSessionId', sessionId);
       if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
       if (cursorEl) cursorEl.remove();
+      if (progressRail) finishProgressRail(progressRail, { hide: true });
       if (costInfo && msgDiv) {
         const costEl = document.createElement('div');
         costEl.className = 'cost-info';
@@ -405,34 +418,11 @@ export function createEmptyState() {
   el.innerHTML =
     '<div class="empty-brand">CCC</div>' +
     '<div class="empty-state-title">今天想做什么？</div>' +
-    '<div class="empty-state-hint">与 Claude 对话，或用 /task 下达 CCC 看板任务</div>' +
-    '<div class="empty-state-actions">' +
-      '<button class="empty-state-btn" data-act="baseline">对齐基线</button>' +
-      '<button class="empty-state-btn" data-chip="/task">下达任务</button>' +
-      '<button class="empty-state-btn" data-chip="/board">查看看板</button>' +
-    '</div>';
-  el.querySelectorAll('[data-chip]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const chip = btn.dataset.chip;
-      if (chip.startsWith('/')) {
-        import('./slash.js').then(m => m.tryExecuteSlash(chip));
-      } else {
-        const input = document.getElementById('composer-input');
-        if (input) {
-          input.value = chip;
-          input.focus();
-          input.dispatchEvent(new Event('input'));
-        }
-      }
-    });
-  });
-  el.querySelector('[data-act="baseline"]')?.addEventListener('click', () => {
-    runBaselineAlign();
-  });
+    '<div class="empty-state-hint">下方工具条：<b>对齐基线</b> → <b>下一步</b> → 深入对话或 <b>下达任务</b></div>';
   return el;
 }
 
-async function runBaselineAlign() {
+export async function runBaselineAlign() {
   const container = document.getElementById('messages');
   if (!container || state.get('streaming')) return;
   const empty = container.querySelector('.empty-state');

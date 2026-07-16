@@ -1,8 +1,9 @@
 import { state } from '../state.js';
-import { sendMessage, removeTyping, updateComposerState } from './message.js';
+import { sendMessage, removeTyping, updateComposerState, runBaselineAlign } from './message.js';
 import { cancelStream } from '../api.js';
 import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAttachments } from './attachments.js';
 import { handleSlashInput, hideSlashMenu } from './slash.js';
+import { initComposerActionDock } from './fixedActions.js';
 
 export function initComposer() {
   const input = document.getElementById('composer-input');
@@ -10,6 +11,12 @@ export function initComposer() {
   const cancelBtn = document.getElementById('cancel-btn');
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');
+
+  initComposerActionDock({
+    onBaseline: () => runBaselineAlign(),
+    onPrompt: (prompt) => sendMessage(prompt, []),
+    onSlash: (slash) => import('./slash.js').then((m) => m.tryExecuteSlash(slash)),
+  });
 
   input.addEventListener('input', () => {
     input.style.height = 'auto';
