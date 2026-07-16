@@ -1,0 +1,3 @@
+{"engine_iter": 4, "engine_iter_phase": 1, "commit": "1d2bbc58096f16ce8146769a9656e4919a6ec193"}
+{"schema_version": "1.0", "commit": "1d2bbc58096f16ce8146769a9656e4919a6ec193"}
+{"phase": 1, "status": "pending", "subtasks": {"1.1": "pending"}, "timeout": 120, "commit": null, "notes": "验证 usedforsecurity=False 已在 line 205 生效，bandit 编译通过"}
