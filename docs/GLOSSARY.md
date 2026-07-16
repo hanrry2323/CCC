@@ -1,11 +1,42 @@
-# CCC GLOSSARY — 30+ 核心术语
+# CCC GLOSSARY — 核心术语
 
-> CCC 全部术语的中文一句话定义。便于新 contributor / agent 快速对照术语表。
-> 来源：SKILL.md / references/red-lines.md / docs/lessons.md / docs/roadmap.md 沉淀。
+> 新 contributor / agent 快速对照。  
+> **现行叙事**：[`VISION.md`](VISION.md)。下列「A′」为现行优先术语；后文 A/B/… 保留历史三角色等说法作对照。
 
 ---
 
-## A. 三角色
+## A′. 现行核心（v0.42+）
+
+### CCC / Connect–Claude Code
+把 Claude Code 接到可编排的自主执行环上。不是「又一个 IDE」。
+
+### Loop Engineer
+自动编排 + 自主执行 + 验收纠错 + 可进化的引擎形态（Engine + Board）。
+
+### CCC Hub
+自研对话 / 看板 / 控制台 UI；**产品入口**。已替代 zcode / Qoder 等第三方编排壳。
+
+### 任务路由（Tool routing）
+按任务选择执行器与模型（Claude / OpenCode / …），并做 Token 治理。
+
+### 无穷角色 / Skill+Prompt 角色
+`任务 → 工具路由 → Skill + Prompt = 本次角色`。用户不选固定角色、不背 Skill 菜单。
+
+### 阶段能力包（Stage skill pack）
+`skills/ccc-*`：Engine 调度的默认阶段（product/dev/…）。**不是**角色超市货架。
+
+### 定稿 / 转任务 / CCC_DISPATCH
+Hub 上将方案固化为可执行任务（可挂 plan/phases，跳过 product）。
+
+### 控制面（control.json）
+`disabled` | `ui` | `enabled` | `invent`。默认安全关闭常驻与自造。
+
+### Verdict（红线 11）
+`.ccc/verdicts/<task>.verdict.md`；口头 PASS 无效。
+
+---
+
+## A. 历史：三角色（已并入阶段能力包）
 
 ### Planner — 计划者
 负责写 `.ccc/plans/<task>.plan.md` + `.ccc/phases/<task>.phases.json`。

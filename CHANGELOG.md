@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.42.1] — 2026-07-17
 
+### 文档与开源叙事（Loop Engineer）
+
+- 新增 `docs/VISION.md`（产品叙事 SSOT）：Hub 入口、任务路由、Skill+Prompt=无穷角色
+- 重写 README / STARTUP-BRIEF / SKILL / USAGE / ONBOARDING；新增 GETTING-STARTED、CONTRIBUTING、SECURITY、docs/INDEX
+- 战略地图 / 路线图 / 术语表对齐现行口径；阶段能力包 ≠ 角色超市
+
 ### Hub：定稿转任务 + Skill 软偏好 + 手机视口
 
 - **定稿 → 转任务卡**：解析 `CCC_DISPATCH`，挂 plan/phases 后下达并开工（跳过 product）

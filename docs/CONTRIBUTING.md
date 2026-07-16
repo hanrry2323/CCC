@@ -1,6 +1,7 @@
-# CCC CONTRIBUTING — 开发流程与 Review Rules
+# CCC CONTRIBUTING — 开发流程与 Review Rules（详尽工程版）
 
-> 改 CCC 工程本身的守则。**面向 agent maintainer**（开发者贡献 / Trae 自举）。
+> **对外贡献入口请先读根目录 [`CONTRIBUTING.md`](../CONTRIBUTING.md) 与 [`VISION.md`](VISION.md)。**  
+> 本文保留历史详尽流程，供 maintainer 改引擎/看板时对照。  
 > 与 `docs/USAGE.md` §3 对应。
 
 ---

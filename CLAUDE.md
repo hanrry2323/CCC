@@ -2,13 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# CCC — 分布式自动化开发平台
+# CCC — Connect–Claude Code · Loop Engineer
 
-> **云原生 AI 开发流水线**。Engine + 看板 + Patrol 三位一体的自动化平台，
-> backlog → planned → in_progress → testing → verified → released 全自动闭环。
+> **人定意图，系统自动编排与自主执行。** Hub 是入口；任务路由工具；Skill+Prompt = 无穷角色。  
+> 叙事 SSOT：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：根目录 `VERSION`
 
-**当前版本**: `v0.40.1`（CHANGELOG.md / VERSION）
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
+
+**勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色。
 
 ---
 
@@ -58,22 +59,25 @@ bash scripts/ccc-hub-dev.sh
 
 ## 架构概要
 
-### 7 角色流水线（Engine 串行驱动）
+### Loop：Hub → Engine → 阶段能力包 → 执行器
 
 ```
-backlog → product(claude) → planned → dev(opencode) → testing
-       → reviewer+tester → verified → kb(git tag) → released
+Hub（定稿/转任务）→ Board
+  → Engine 串行：product → planned → dev(opencode) → testing
+       → reviewer+tester → verified → kb → released
 ```
 
-| 角色 | Engine 触发 | 看板列 |
+> 「product/dev/…」= **阶段默认 Skill 包**，不是给用户点选的角色列表。见 `docs/VISION.md`。
+
+| 阶段 | Engine 触发 | 看板列 |
 |------|-------------|--------|
-| product | backlog 非空自动异步拆解 | backlog → planned |
-| dev | Engine 自动串行（多 phase 续跑） | planned → in_progress → testing |
-| reviewer | testing 列门禁（写 verdict.md） | testing → verified |
-| tester | testing 列门禁 | testing → verified |
-| ops | 手动/可选；空闲不默认重扫 | 所有列（非阻塞） |
-| kb | verified 列非空即跑 | verified → released |
-| regress | 保留独立定时（23:30） | released → backlog |
+| product | backlog 非空；或已挂 plan 则跳过 | backlog → planned |
+| dev | 串行多 phase | planned → in_progress → testing |
+| reviewer | testing 门禁（verdict.md） | testing → verified |
+| tester | testing 门禁 | testing → verified |
+| ops | 手动/可选 | 非阻塞 |
+| kb | verified 非空 | verified → released |
+| regress | 23:30 / 手动 | released → backlog |
 
 ### 控制面状态机（v0.39+）
 

@@ -1,57 +1,53 @@
-# CCC Skills 索引 (v0.31.0)
+# CCC Skills — 阶段能力包索引
 
-7 角色看板自动化系统，由 **CCC Engine 串行驱动**（v0.20.1 起取消 7 plist 定时轮询）。
+> **不是角色超市。** 这些是 Engine 按任务调度的**默认能力包**（Skill + Prompt）。  
+> 用户不选角色；Hub 可选挂「软偏好」。叙事：[`docs/VISION.md`](../docs/VISION.md)
 
-启动必读：`STARTUP-BRIEF.md` → 按需读各角色 `SKILL.md`。
+版本提示：以根目录 `VERSION` 为准。
 
-## 7 角色
+## 机制
 
-| 角色 | 技能目录 | 看板列 | Engine 触发 | 职责 |
-|------|---------|--------|-------------|------|
-| product | `skills/ccc-product/SKILL.md` | backlog → planned | backlog 非空自动拆分（v0.28 F-1）或 `--promote` | 拆任务、写 plan、SPEC 门禁、推断 complexity |
-| dev | `skills/ccc-dev/SKILL.md` | planned → in_progress → testing | 有 task 即串行 | 调 opencode 写代码、phase 推进 |
-| reviewer | `skills/ccc-reviewer/SKILL.md` | testing → verified | dev 完成后立即 | LLM 语义审查 + plan 验收清单；small 跳过 |
-| tester | `skills/ccc-tester/SKILL.md` | testing → verified | dev 完成后立即 | pytest + plan 逐条验收；small 跳过 |
-| ops | `skills/ccc-ops/SKILL.md` | 不动 board | Engine 空闲时 | 健康检查 + 告警 |
-| kb | `skills/ccc-kb/SKILL.md` | verified → released | reviewer+tester 通过后 | git tag + push + changelog |
-| regress | `skills/ccc-regress/SKILL.md` | released → backlog(回归 bug) | 23:30 定时或 Engine 空闲 | 每日回测 + 回归建 bug |
+```text
+任务 → 路由工具（Claude / OpenCode / …）→ 注入本阶段 Skill(+可选偏好) = 本次角色
+```
 
-**复杂度分流（v0.28.1）**：task `complexity=small` 时 reviewer+tester 跳过，直通 kb。
+## 默认阶段包
 
-## 使用方式
+| 阶段 id | 目录 | 看板 | Engine 触发 | 职责 |
+|---------|------|------|-------------|------|
+| product | `ccc-product/` | backlog → planned | backlog 或已挂 plan 则跳过 | 拆任务、plan、SPEC |
+| dev | `ccc-dev/` | → in_progress → testing | 有可执行 phase | 执行器写代码 |
+| reviewer | `ccc-reviewer/` | testing → verified | testing 门禁 | 语义审查 + verdict |
+| tester | `ccc-tester/` | testing → verified | testing 门禁 | pytest + 验收 |
+| ops | `ccc-ops/` | 不动 board | 可选 | 健康检查 |
+| kb | `ccc-kb/` | verified → released | verified 非空 | tag + changelog |
+| regress | `ccc-regress/` | released → backlog | 定时/手动 | 回测 |
 
-**生产环境**：`com.ccc.engine` launchd → `scripts/ccc-engine.py` 主循环串行调各角色函数。
+`complexity=small` 时可跳过 reviewer+tester（直通 kb）。
 
-**调试 / 手动**：
+## 生产 vs 调试
+
+**生产**：`com.ccc.engine` → `ccc-engine.py` 串行调用。
+
+**调试**：
+
 ```bash
 python3 scripts/ccc-board.py product --promote <task_id>
-python3 scripts/ccc-board.py dev
-python3 scripts/ccc-board.py reviewer
-# … 其他角色同理
+python3 scripts/ccc-board.py index
 ```
 
-`scripts/roles/<role>.sh` 仍可用于单独注入 skill 环境变量（`CCC_ROLE` + `CCC_ROLE_SKILL`），但不再由 7 个 launchd plist 定时触发。
+安装 Engine + Board：
 
-安装 Engine + board-server：
 ```bash
-bash scripts/install-ccc-roles.sh          # 首次
-bash scripts/install-ccc-roles.sh --upgrade  # 从旧 7 plist 迁移
+bash scripts/install-ccc-roles.sh
 ```
+
+Hub：`bash scripts/install-hub-plist.sh --start`
 
 ## 共同规范
 
-所有 skill 遵守：
-- **红线 10**：读 `.ccc/state.md` 接力，不依赖会话级记忆
-- **AGENTS.md 沉淀**：只写建议，不绕过人类审批
-- **SPEC 门禁**（product 特有，但所有人应意识）
-- **只读不写**（dev 除外；reviewer/tester/ops/regress 严格只读）
+- 红线 10：读 `.ccc/state.md` 接力  
+- 红线 6：同任务内阶段职责不互串  
+- reviewer/tester/ops/regress：**只读不写业务代码**（dev 除外）  
 
-## 看板流转
-
-```
-backlog → planned → in_progress → testing → verified → released
-                                                              ↓ (regress)
-                                                         backlog(回归 bug)
-```
-
-详细见根目录 `SKILL.md` 与 `docs/STRATEGY-MAP.md`。
+看板流转见根目录 `SKILL.md` 与 `docs/STRATEGY-MAP.md`。

@@ -1,32 +1,51 @@
-# CCC 战略地图 (v0.28.1)
+# CCC 战略地图
 
-> **按需阅读**：cloud agent 启动时先读 `STARTUP-BRIEF.md`；需要全景时再读本文件。
-> CCC Engine + 7 角色 + 看板 + phase 感知调度。
->
-> **v0.20.1 架构变更**：取消 7 角色 launchd 定时轮询，改为单一 CCC Engine 常驻进程串行执行。
-> **v0.28.0 (F-1)**：Engine idle 时 backlog 非空自动调 `product_role` 拆分。
+> **按需阅读**：先读 [`VISION.md`](VISION.md)（叙事）+ 根目录 `STARTUP-BRIEF.md`；需要全景再读本文。  
+> **当前版本**：以根目录 `VERSION` 为准（本文历史段落可能落后，冲突时以 VERSION / VISION / CHANGELOG 为准）。
 
 ---
 
-## 0. CCC 是什么
+## 0. CCC 是什么（现行口径）
 
-**CCC = Connect–Claude Code** = 单节点的 SKILL 资产型多角色开发框架。
+**CCC = Connect–Claude Code = Loop Engineer**
 
-**核心能力**：
-- 7 角色（product/dev/reviewer/tester/ops/kb/regress）由 **CCC Engine 串行驱动**
-- 任务在 6 列看板上流转（backlog → planned → in_progress → testing → verified → released）
-- opencode CLI（`loop/flash`）作执行器
-- post-exec 钩子自动 commit + push 远端
-- launchd 装 **Engine + board-server** 两个 plist（红线 X5）
+| 层 | 组件 |
+|----|------|
+| 对话面 | **CCC Hub**（入口；已替代第三方 Agent IDE 编排壳） |
+| 编排面 | Engine + Board（串行 Loop、验收、重试、进化） |
+| 执行面 | 工具路由（Claude / OpenCode / …）+ Token 治理 |
+
+**无穷角色**：任务 → 路由工具 → Skill + Prompt = 本次角色。  
+`skills/ccc-*` 是**阶段默认能力包**，不是用户点选的角色菜单。
+
+**看板**：`backlog → planned → in_progress → testing → verified → released`（不可跳列）
 
 **不做**（红线）：
-- 跨设备集群调度
-- agent 自主启用 CCC（必须用户显式触发）
-- 自动合并飞轮候选到 red-lines（必须人工 review）
+
+- agent 自主启用 CCC（须用户显式触发）  
+- 把「固定角色超市」当产品形态  
+- 自动合并飞轮候选到 red-lines（须人工 review）  
+
+下文从 §1 起保留**范式演进史**与实现细节（含历史上的「7 角色」表述）；阅读时请用本节口径翻译：  
+「7 角色」= Engine 的 **7 个默认阶段能力包**。
 
 ---
 
-## 1. 范式演进史（v0.5 → v0.28.1）
+## 0.1 文档索引（现行）
+
+| 文档 | 用途 |
+|------|------|
+| [`VISION.md`](VISION.md) | 产品叙事 SSOT |
+| [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
+| [`USAGE.md`](USAGE.md) | 三类用户 |
+| [`CONTROL.md`](CONTROL.md) | 控制面 |
+| [`ccc-hub-ports.md`](ccc-hub-ports.md) | Hub 端口 |
+
+---
+
+## 1. 范式演进史（v0.5 → v0.28.1+）
+
+> 以下为史实归档。v0.42+ 产品入口以 Hub 为准（见 VISION）。
 
 | 版本 | 范式 | 关键产出 |
 |------|------|----------|
