@@ -143,7 +143,15 @@ open http://127.0.0.1:7777
 | [CONTRIBUTING](CONTRIBUTING.md) | 贡献者 |
 | [CHANGELOG](CHANGELOG.md) | 版本历史 |
 
----
+## 爬虫快速运行
+
+```bash
+# 运行 demo 爬虫
+python3 scripts/run_crawler.py
+
+# 运行爬虫单测
+python3 -m pytest tests/test_crawler_demo.py -q --tb=short
+```
 
 ## License
 
