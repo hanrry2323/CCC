@@ -1,46 +1,57 @@
 # OBS3: 流程压力探针
 
-**Task ID:** cla-obs3-docs  
-**创建时间:** 2026-07-17  
-**探针类型:** 流程压力探针（non-functional, non-feature, non-bug）
+---
+
+**task id**: `cla-obs3-docs`  
+**创建时间**: 2026-07-17  
+**探针类型**: 流程压力探针（Observation Probe，非功能、非 bug、非需求）
+
+---
 
 ## 目的
 
-本探针作为全链路压力测试凭证，独立于具体功能开发或改进，旨在验证 CCC Loop Pipeline 的端到端完整性：
-- backlog → product → dev → commit 全流程可无障碍走通
-- 看板状态转换机制正常
-- 文档/配置/代码交付路径清晰
-- Git 仓库状态管理规范
+本文件是 CCC Loop 全流程的流程压力探针凭证。它的存在本身不引入任何逻辑功能，仅作为 pipeline 完整性校验的资质文件。
 
-通过此类探针的定期运行（OBS1/2/3），可横向校验系统整体健康度，而不依赖业务功能本身。
+当 `Backlog→Product→Dev→Commit` 链路全部正常流转且最终进入 git 索引时，即可认为本次压力探针通过。
+
+本探针属于 `Observation (OBS)` 系列的一部分，用于：
+
+1. **端到端验证**：在不修改任何业务功能的前提下，验证 CCC 自动化的提案 delivering 环路是否可正常工作
+2. **跨角色接力证明**：作为 repo 根而非单个 role 产物，证明 product → dev → commit 的多角色编排有效
+3. **稳定性标记**：在紧急或复杂场景下，快速识别当前执行链路的健康度（有此探针文件 ≠ 有文档 ≠ 有流程）
+
+---
 
 ## 验收
 
-本探针的验收标准依赖于 OCC 文档规范与 Git 约定，而非代码执行结果：
-
 ### 触发条件
 
-1. **Doc 存在性**: `docs/OBS3.md` 已被 Git 索引
-2. **Commit 标识**: 最新 commit message 包含 `cla-obs3-docs`
-3. **范围控制**: Git diff 范围仅包含白名单文件列表指定的文件
-4. **报告完整性**: `.ccc/reports/cla-obs3-docs.report.md` 已写入且包含 HEAD commit hash
+1. `docs/OBS3.md` 已 git add 至索引
+2. commit message 含 `cla-obs3-docs`
+3. 显式写入本文件所承诺的本次交付的 HEAD commit hash
 
 ### 验收标准
 
-| 检查点 | 执行命令 | 预期结果 |
-|--------|----------|----------|
-| OBS3 存在 | `git ls-files docs/OBS3.md` | 返回文件路径（非空） |
-| Commit 含标识 | `git log -1 --oneline \| grep cla-obs3-docs` | 零退出码 |
-| 范围控制 | `git diff --name-only HEAD\~1..HEAD` | 仅含 `docs/OBS3.md` 与 `.ccc/reports/cla-obs3-docs.report.md` |
-| 报告含 HEAD | `head -3 .ccc/reports/cla-obs3-docs.report.md` | 文件首行出现 commit hash |
+- [ ] `git ls-files docs/OBS3.md` 返回非空（文件已索引）
+- [ ] `git log -1 --oneline | grep cla-obs3-docs` 返回 0（commit message 正确）
+- [ ] 文件仅涉及白名单中的 2 个文件：`docs/OBS3.md` + `.ccc/reports/cla-obs3-docs.report.md`
+- [ ] 报告文件含 HEAD commit hash
+- [ ] 本探针未触发任何其他代码改动（静默 pipeline 交付）
 
-## 交付物
+---
 
-- `docs/OBS3.md` — 流程压力探针文档（本文件）
-- `.ccc/reports/cla-obs3-docs.report.md` — 执行报告（含 git log 验证）
+## 历史记录
 
-## 扩展说明
+| 阶段 | 角色 | 产出 | 注意 |
+|------|------|------|------|
+| Product | ccc-product | 计划产出 | 生成 `plan.plan.md` + `phases/*.phases.json` |
+| Dev | ccc-dev | 执行输出 | 仅实现 Phase 1，按清单改文件 |
+| Commit | opencode | 索引 | message 含 `cla-obs3-docs` |
 
-- 本探针不引入新逻辑，仅充当“临床试验”凭证
-- 运行成功后，可在后续轮次中继续交付 OBS1/OBS2 同类探针，作为横切面检查
-- 若后续 pipeline 发生变更（如 phase 流水线结构调整），应同步更新本探针的验收清单
+---
+
+## 自注
+
+- 本卡不替代任何 SPEC/VERDICT
+- 本卡可与其他 OBS 探针（OBS1/OBS2）并列成为健康度横切面
+- 无代码改动、无运行测试、仅文件交付，验证的是「CCC 配置正确 + 环境可触摸」
