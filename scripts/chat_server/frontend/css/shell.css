@@ -4,8 +4,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 40px;
-  padding: 0 12px;
+  min-height: 40px;
+  height: calc(40px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  box-sizing: border-box;
   background: var(--ccc-bg-sidebar);
   border-bottom: 1px solid var(--ccc-border-subtle);
   flex-shrink: 0;
@@ -63,6 +65,7 @@
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 .hub-view {
@@ -81,21 +84,43 @@
 #view-chat.active #app {
   display: flex;
   flex-direction: column;
+  flex: 1;
   height: 100%;
+  max-height: 100%;
   min-height: 0;
 }
 
+/*
+ * iOS：100vh 往往高于可视区（含地址栏后高度），导致整页可滑。
+ * fixed + dvh 把壳锁在可视视口内，只让 #messages 内部滚。
+ */
 body.hub-mode {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: var(--ccc-bg-deep);
+  /* iOS rubber-band 兜底 */
+  touch-action: manipulation;
+}
+
+@supports (height: 100dvh) {
+  body.hub-mode {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
 }
 
 body.hub-mode #app {
   flex: 1;
   min-height: 0;
+  height: auto;
+  max-height: none;
 }
 
 /* ── Board page ── */

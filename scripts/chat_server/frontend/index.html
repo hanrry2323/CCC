@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260717a">
-<link rel="stylesheet" href="/css/base.css?v=20260717a">
-<link rel="stylesheet" href="/css/themes.css?v=20260717a">
-<link rel="stylesheet" href="/css/components.css?v=20260717a">
-<link rel="stylesheet" href="/css/shell.css?v=20260717a">
+<link rel="stylesheet" href="/css/variables.css?v=20260717f">
+<link rel="stylesheet" href="/css/base.css?v=20260717f">
+<link rel="stylesheet" href="/css/themes.css?v=20260717f">
+<link rel="stylesheet" href="/css/components.css?v=20260717f">
+<link rel="stylesheet" href="/css/shell.css?v=20260717f">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -140,10 +140,10 @@ function toggleMobileSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.querySelector('.sidebar-overlay');
   if (!sidebar) return;
-  const isOpen = sidebar.classList.contains('open');
   sidebar.classList.toggle('open');
   if (overlay) overlay.classList.toggle('show');
-  document.body.style.overflow = isOpen ? '' : 'hidden';
+  /* Hub 壳始终锁死 body 滚动（iOS 勿放开，否则整页可滑） */
+  document.body.style.overflow = 'hidden';
 }
 
 function copyCode(btn) {
@@ -173,6 +173,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js?v=20260717a"></script>
+<script type="module" src="/js/app.js?v=20260717f"></script>
 </body>
 </html>

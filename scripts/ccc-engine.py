@@ -1516,7 +1516,23 @@ def _process_backlog(ws: Path) -> bool:
             pass
 
     plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
-    # 1. plan+phases 齐全（手动拆分），直通 planned；残缺则清掉走 product
+    # v0.42.1: description 已引用现成 plan → 收养，跳过 LLM product
+    if not (phases_file.exists() and plan_file.exists()):
+        try:
+            from _plan_adopt import try_adopt_referenced_plan
+
+            adopted = try_adopt_referenced_plan(ws, tid, _task_data)
+            if adopted.get("ok") and adopted.get("reason") in (
+                "adopted",
+                "already_present",
+            ):
+                engine_log(
+                    f"[product] [{label}] {tid} 收养现有 plan: {adopted.get('source') or adopted.get('reason')}"
+                )
+        except Exception as exc:
+            engine_log(f"[product] [{label}] {tid} plan adopt 跳过: {exc}")
+
+    # 1. plan+phases 齐全（手动拆分 / 收养），直通 planned；残缺则清掉走 product
     if phases_file.exists() and plan_file.exists():
         engine_log(
             f"[product] [{label}] {tid} plan+phases 已存在，跳过 product_role，移入 planned"
@@ -1830,12 +1846,22 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
 
     scope: list[str] = []
     pytest_fail = ""
+    skill_hints = ""
     try:
         for p in _load_phases(task_id):
             if int(p.get("phase", -1)) == int(phase_num):
                 sc = p.get("scope") or []
                 if isinstance(sc, list):
                     scope = [str(x) for x in sc if x]
+                # v0.42.1: 空 scope 从 plan 回填，避免 OpenCode「未提供 scope」盲跑
+                if not scope and plan_content:
+                    try:
+                        from _plan_adopt import backfill_scopes
+
+                        filled = backfill_scopes([dict(p)], plan_content)
+                        scope = list(filled[0].get("scope") or [])
+                    except Exception:
+                        pass
                 break
     except Exception:
         pass
@@ -1847,12 +1873,29 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
             pytest_fail = pf.read_text(encoding="utf-8", errors="replace")[:4000]
     except Exception:
         pass
+    try:
+        from board.store_ops import list_tasks as _lt
+        from _skills_catalog import format_skill_hints_block
+
+        tid = str(task_id)
+        for col in ("in_progress", "planned", "testing", "backlog"):
+            task = next((t for t in _lt(col) if t.get("id") == tid), None)
+            if not task:
+                continue
+            hints = task.get("hints") if isinstance(task.get("hints"), dict) else {}
+            skills = hints.get("skills") if isinstance(hints.get("skills"), list) else []
+            note = hints.get("note") if isinstance(hints.get("note"), str) else ""
+            skill_hints = format_skill_hints_block(skills, note)
+            break
+    except Exception:
+        pass
     return build_dev_phase_prompt(
         task_id,
         phase_num,
         plan_content,
         scope=scope,
         pytest_failure=pytest_fail,
+        skill_hints=skill_hints,
     )
 
 

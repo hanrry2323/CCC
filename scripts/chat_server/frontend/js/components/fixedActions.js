@@ -1,11 +1,10 @@
-/** 固定动作：composer 主栏 6 + Dock「更多」（内置 + 可自定义）。
+/** 固定动作：composer 装饰横条 + 「更多」；主栏按宽度自适应。
  *
- * 主 6：对齐基线 · 下一步 · 扫风险 · 起草任务 · 解释未提交 · 下达任务
- * 更多：看板 · 定时任务(占位) · 创建 Skill(占位) · 用户自定义…
- *
- * 自定义存 localStorage: ccc_qa_custom_v1
- * 格式: [{ id, label, kind: 'prompt'|'slash', prompt?, slash? }]
+ * 候选主栏（宽→多显）：对齐基线 · 下一步 · 定稿方案 · 转任务 · 扫风险 · 解释未提交
+ * 更多：装不下的主栏项 + 下达任务 · 看板 · 定时/Skill(占位) · 自定义
  */
+
+import { FINALIZE_PLAN_PROMPT } from './dispatchFormat.js';
 
 const CUSTOM_KEY = 'ccc_qa_custom_v1';
 
@@ -33,13 +32,10 @@ export const FIXED_ACTIONS = [
       '要求：总字数 ≤180；只列会踩坑的项；无则写「无明显风险」；最后给 1 句处理建议。',
   },
   {
-    id: 'draft-task',
-    label: '起草任务',
+    id: 'finalize-plan',
+    label: '定稿方案',
     kind: 'prompt',
-    prompt:
-      '把「当前最值得做的一件事」起草成可下达的 CCC 任务。\n' +
-      '只输出：\n标题：…\n描述：…（≤120字，含验收意图）\n复杂度：small|medium|large\n' +
-      '不要解释过程。',
+    prompt: '', // set from FINALIZE_PLAN_PROMPT below
   },
   {
     id: 'explain-diff',
@@ -48,6 +44,11 @@ export const FIXED_ACTIONS = [
     prompt:
       '解释当前未提交改动在做什么（git status / diff）。\n' +
       '要求：≤180字；按文件点名；风险一句；是否建议先 commit。',
+  },
+  {
+    id: 'transfer-task',
+    label: '转任务',
+    kind: 'transfer',
   },
   {
     id: 'task',
@@ -75,18 +76,34 @@ export const FIXED_ACTIONS = [
   },
 ];
 
-/** 主栏固定 6 个（日常闭环） */
-export const PRIMARY_IDS = [
+/** 主栏候选（优先级从高到低；宽度够则多显示） */
+export const PRIMARY_CANDIDATES = [
   'baseline',
   'next',
+  'finalize-plan',
+  'transfer-task',
   'risks',
-  'draft-task',
   'explain-diff',
-  'task',
 ];
 
-/** 更多里的内置项（不含用户自定义） */
-export const MORE_BUILTIN_IDS = ['board', 'schedule', 'new-skill'];
+/** 兼容旧引用：默认主栏（窄屏基线） */
+export const PRIMARY_IDS = PRIMARY_CANDIDATES.slice(0, 4);
+
+/** 始终放进「更多」的内置项 */
+export const MORE_ALWAYS_IDS = ['task', 'board', 'schedule', 'new-skill'];
+
+/** @deprecated 使用 moreIdsFor(primary) */
+export const MORE_BUILTIN_IDS = [
+  'risks',
+  'explain-diff',
+  ...MORE_ALWAYS_IDS,
+];
+
+const _fp = FIXED_ACTIONS.find((a) => a.id === 'finalize-plan');
+if (_fp) _fp.prompt = FINALIZE_PLAN_PROMPT;
+
+/** 当前主栏（由 ResizeObserver 更新） */
+let _activePrimary = PRIMARY_IDS.slice();
 
 export function loadCustomActions() {
   try {
@@ -139,6 +156,67 @@ function byIds(ids) {
   return ids.map((id) => findAction(id)).filter(Boolean);
 }
 
+/** 粗估 chip 宽度（11px 字号 + 左右 padding） */
+export function estimateChipWidth(label) {
+  let w = 22;
+  for (const c of String(label || '')) {
+    w += /[\u4e00-\u9fff]/.test(c) ? 11 : 6.5;
+  }
+  return Math.ceil(w);
+}
+
+/**
+ * 按可用宽度决定主栏显示哪些按钮（至少 2，最多 6）。
+ * @param {number} hostWidth
+ */
+export function fitPrimaryIds(hostWidth) {
+  const moreBtn = 34;
+  const gap = 4;
+  const dockPad = 14;
+  const width = Math.max(0, Number(hostWidth) || 0);
+  let left = width - moreBtn - dockPad;
+  const fitted = [];
+  for (const id of PRIMARY_CANDIDATES) {
+    const act = findAction(id);
+    if (!act) continue;
+    const w = estimateChipWidth(act.label);
+    if (fitted.length === 0) {
+      if (w > left + moreBtn * 0.5) {
+        // 极窄：仍塞第一个
+        fitted.push(id);
+        break;
+      }
+      fitted.push(id);
+      left -= w + gap;
+      continue;
+    }
+    if (left < w + gap) break;
+    fitted.push(id);
+    left -= w + gap;
+    if (fitted.length >= 6) break;
+  }
+  if (fitted.length < 2) {
+    return PRIMARY_CANDIDATES.slice(0, Math.min(2, PRIMARY_CANDIDATES.length));
+  }
+  return fitted;
+}
+
+export function moreIdsFor(primaryIds) {
+  const inPrimary = new Set(primaryIds || []);
+  const overflow = PRIMARY_CANDIDATES.filter((id) => !inPrimary.has(id));
+  const always = MORE_ALWAYS_IDS.filter((id) => !inPrimary.has(id));
+  return [...overflow, ...always];
+}
+
+function sameIds(a, b) {
+  return (
+    Array.isArray(a) &&
+    Array.isArray(b) &&
+    a.length === b.length &&
+    a.every((id, i) => id === b[i])
+  );
+}
+
 function btnHtml(a, cls) {
   const soon = a.kind === 'soon' ? ' qa-chip-soon' : '';
   return (
@@ -155,12 +233,13 @@ function btnHtml(a, cls) {
   );
 }
 
-export function renderComposerActionDock() {
-  const primary = byIds(PRIMARY_IDS)
+export function renderComposerActionDock(primaryIds) {
+  const primaryList = primaryIds || _activePrimary;
+  const primary = byIds(primaryList)
     .map((a) => btnHtml(a, 'qa-chip qa-chip-primary'))
     .join('');
   const custom = loadCustomActions();
-  const moreBuiltin = byIds(MORE_BUILTIN_IDS)
+  const moreBuiltin = byIds(moreIdsFor(primaryList))
     .map((a) => btnHtml(a, 'qa-chip qa-chip-more'))
     .join('');
   const moreCustom = custom
@@ -172,10 +251,10 @@ export function renderComposerActionDock() {
         primary +
       '</div>' +
       '<div class="qa-more-wrap">' +
-        '<button type="button" class="qa-more-toggle" id="qa-more-toggle" title="更多 / 自定义" aria-expanded="false">' +
+        '<button type="button" class="qa-more-toggle" id="qa-more-toggle" title="更多 / 自定义" aria-expanded="false" aria-haspopup="true">' +
           '<span class="qa-more-dots">···</span>' +
         '</button>' +
-        '<div class="qa-more-tray" id="qa-more-tray" hidden>' +
+        '<div class="qa-more-tray" id="qa-more-tray" hidden role="menu">' +
           moreBuiltin +
           moreCustom +
           '<button type="button" class="qa-chip qa-chip-more qa-chip-add" id="qa-add-custom" title="添加自定义动作">＋ 自定义</button>' +
@@ -200,7 +279,7 @@ function promptAddCustom() {
   });
 }
 
-export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon }) {
+export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon, onTransfer }) {
   if (!root) return;
   root.querySelectorAll('[data-fixed]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -210,41 +289,46 @@ export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon }
       if (act.kind === 'baseline') onBaseline?.();
       else if (act.kind === 'prompt' && act.prompt) onPrompt?.(act.prompt);
       else if (act.kind === 'slash' && act.slash) onSlash?.(act.slash);
+      else if (act.kind === 'transfer') onTransfer?.();
       else if (act.kind === 'soon') onSoon?.(act);
     });
   });
 }
 
-function rebindDock(mount, handlers) {
-  mount.innerHTML = renderComposerActionDock();
+function setTrayOpen(mount, open) {
+  const wrap = mount.querySelector('.qa-more-wrap');
+  const tray = mount.querySelector('#qa-more-tray');
+  const toggle = mount.querySelector('#qa-more-toggle');
+  if (open) wrap?.classList.add('open');
+  else wrap?.classList.remove('open');
+  if (tray) tray.hidden = !open;
+  toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function rebindDock(mount, handlers, { keepOpen = false } = {}) {
+  mount.innerHTML = renderComposerActionDock(_activePrimary);
   wireDockChrome(mount, handlers);
   bindFixedActions(mount, handlers);
+  if (keepOpen) setTrayOpen(mount, true);
 }
 
 function wireDockChrome(mount, handlers) {
   const toggle = mount.querySelector('#qa-more-toggle');
-  const tray = mount.querySelector('#qa-more-tray');
-  const wrap = mount.querySelector('.qa-more-wrap');
   toggle?.addEventListener('click', (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    const open = wrap?.classList.toggle('open');
-    if (tray) tray.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const wrap = mount.querySelector('.qa-more-wrap');
+    const willOpen = !wrap?.classList.contains('open');
+    setTrayOpen(mount, willOpen);
   });
 
   mount.querySelector('#qa-add-custom')?.addEventListener('click', (e) => {
+    e.preventDefault();
     e.stopPropagation();
     const item = promptAddCustom();
     if (!item) return;
     window.showToast?.('已添加：' + item.label, 'success');
-    rebindDock(mount, handlers);
-    // 保持更多展开
-    const w = mount.querySelector('.qa-more-wrap');
-    const t = mount.querySelector('#qa-more-tray');
-    const tg = mount.querySelector('#qa-more-toggle');
-    w?.classList.add('open');
-    if (t) t.hidden = false;
-    tg?.setAttribute('aria-expanded', 'true');
+    rebindDock(mount, handlers, { keepOpen: true });
   });
 }
 
@@ -266,24 +350,48 @@ export function initComposerActionDock(handlers) {
 
   const mount = document.createElement('div');
   mount.className = 'qa-dock-slot';
-  mount.innerHTML = renderComposerActionDock();
   host.appendChild(mount);
 
-  wireDockChrome(mount, fullHandlers);
-  bindFixedActions(mount, fullHandlers);
+  const applyFit = () => {
+    const w = host.clientWidth || host.getBoundingClientRect().width;
+    const next = fitPrimaryIds(w);
+    const keepOpen = mount.querySelector('.qa-more-wrap')?.classList.contains('open');
+    if (sameIds(next, _activePrimary) && mount.querySelector('#qa-dock')) {
+      return;
+    }
+    _activePrimary = next;
+    rebindDock(mount, fullHandlers, { keepOpen });
+  };
 
-  document.addEventListener('click', (e) => {
-    const wrap = mount.querySelector('.qa-more-wrap');
-    const tray = mount.querySelector('#qa-more-tray');
-    const toggle = mount.querySelector('#qa-more-toggle');
-    if (!wrap || wrap.contains(e.target)) return;
-    wrap.classList.remove('open');
-    if (tray) tray.hidden = true;
-    toggle?.setAttribute('aria-expanded', 'false');
-  });
+  // 首次渲染
+  _activePrimary = fitPrimaryIds(host.clientWidth || 320);
+  rebindDock(mount, fullHandlers);
+
+  if (typeof ResizeObserver !== 'undefined') {
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(applyFit);
+    });
+    ro.observe(host);
+  } else {
+    window.addEventListener('resize', applyFit);
+  }
+
+  // 点外侧关闭；用 pointerdown 避免与 toggle 的 click 打架
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const wrap = mount.querySelector('.qa-more-wrap');
+      if (!wrap || !wrap.classList.contains('open')) return;
+      if (wrap.contains(e.target)) return;
+      setTrayOpen(mount, false);
+    },
+    true
+  );
 }
 
 export function renderFixedActionButtons(ids = null) {
-  const list = ids ? byIds(ids) : byIds(PRIMARY_IDS);
+  const list = ids ? byIds(ids) : byIds(_activePrimary.length ? _activePrimary : PRIMARY_IDS);
   return list.map((a) => btnHtml(a, 'empty-state-btn')).join('');
 }

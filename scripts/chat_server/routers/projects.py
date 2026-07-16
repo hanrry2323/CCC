@@ -90,3 +90,25 @@ async def project_baseline(project_id: str, request: Request):
         "baseline": baseline,
         "prompt": baseline_prompt_for_claude(baseline),
     }
+
+
+@router.get("/api/skills")
+async def list_skills(request: Request, project: str | None = None):
+    """扫描本机/项目 Skill 目录，供转任务卡 chips 使用（软偏好）。"""
+    check_auth(request)
+    import sys
+    from pathlib import Path
+
+    scripts = Path(__file__).resolve().parents[2]
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _skills_catalog import discover_skills
+
+    project_path = None
+    if project:
+        try:
+            project_path = get_project_path(project)
+        except Exception:
+            project_path = None
+    skills = discover_skills(project_path=project_path, ccc_home=scripts.parent)
+    return {"ok": True, "skills": skills, "count": len(skills)}

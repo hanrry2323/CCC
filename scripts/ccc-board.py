@@ -1170,12 +1170,27 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
     """
     import re as _re
 
-    plan_match = _re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, _re.DOTALL)
+    plan_match = _re.search(
+        r"---PLAN---\s*\n?(.*?)\n?---END_PLAN---", output, _re.DOTALL
+    )
     phases_match = _re.search(
-        r"---PHASES---\n(.*?)\n---END_PHASES---", output, _re.DOTALL
+        r"---PHASES---\s*\n?(.*?)\n?---END_PHASES---", output, _re.DOTALL
     )
     if not plan_match or not phases_match:
-        _log.error("[product-async] %s output parse failed, mark failed", task_id)
+        # 保留证据，便于排障（不再静默丢掉 output）
+        try:
+            fb = get_workspace() / ".ccc" / "product_fallback"
+            fb.mkdir(parents=True, exist_ok=True)
+            (fb / f"{task_id}.last.out").write_text(output or "", encoding="utf-8")
+            (fb / f"{task_id}.failed").write_text(
+                "output parse failed\n", encoding="utf-8"
+            )
+        except OSError:
+            pass
+        _log.error(
+            "[product-async] %s output parse failed (saved product_fallback), mark failed",
+            task_id,
+        )
         _cleanup_async_product_markers(pids_dir, task_id)
         return {"status": "failed", "error": "output parse failed"}
 
@@ -4666,14 +4681,28 @@ def auto_approve_agents() -> dict:
 
 
 def _phase_scope(task_id: str, phase_num: int) -> list[str]:
-    """从 phases.json 取指定 phase 的 scope 列表。"""
+    """从 phases.json 取指定 phase 的 scope；空则从 plan 回填（v0.42.1）。"""
     try:
+        plan_text = ""
+        try:
+            pf = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
+            if pf.is_file():
+                plan_text = pf.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
         for p in _load_phases(task_id):
             if int(p.get("phase", -1)) == int(phase_num):
                 scope = p.get("scope") or []
                 if isinstance(scope, list):
-                    return [str(x) for x in scope if x]
-                return []
+                    scope = [str(x) for x in scope if x]
+                else:
+                    scope = []
+                if not scope and plan_text:
+                    from _plan_adopt import backfill_scopes
+
+                    filled = backfill_scopes([dict(p)], plan_text)
+                    scope = [str(x) for x in (filled[0].get("scope") or []) if x]
+                return scope
     except Exception:
         pass
     return []
@@ -4690,6 +4719,24 @@ def _read_pytest_failure_feedback(task_id: str) -> str:
     return ""
 
 
+def _task_skill_hints_block(task_id: str) -> str:
+    """从看板 task.hints 读 Skill 软偏好，拼 prompt 段落。"""
+    try:
+        from _skills_catalog import format_skill_hints_block
+    except ImportError:
+        return ""
+    tid = sanitize_id(task_id)
+    for col in ("in_progress", "planned", "testing", "backlog", "verified"):
+        task = next((t for t in list_tasks(col) if t.get("id") == tid), None)
+        if not task:
+            continue
+        hints = task.get("hints") if isinstance(task.get("hints"), dict) else {}
+        skills = hints.get("skills") if isinstance(hints.get("skills"), list) else []
+        note = hints.get("note") if isinstance(hints.get("note"), str) else ""
+        return format_skill_hints_block(skills, note)
+    return ""
+
+
 def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     """统一 launch/relaunch 的 OpenCode prompt（scope + pytest 回灌）。"""
     return build_dev_phase_prompt(
@@ -4698,6 +4745,7 @@ def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
         plan_content,
         scope=_phase_scope(task_id, phase_num),
         pytest_failure=_read_pytest_failure_feedback(task_id),
+        skill_hints=_task_skill_hints_block(task_id),
     )
 
 

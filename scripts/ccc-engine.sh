@@ -8,11 +8,12 @@ set -uo pipefail
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "${HOME}/.ccc/logs"
 
-# v0.39: 控制面 — disabled 则空转（KeepAlive 下不退出，避免狂重启）
-if ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from _ccc_control import is_enabled; raise SystemExit(0 if is_enabled() else 1)"; then
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] CCC control=disabled — idle hold" \
+# v0.39/v0.42.1: 控制面 — disabled/ui 则空转（KeepAlive 下不退出，避免狂重启）
+# invent 与 enabled 均可跑 Engine（may_start_engine）；仅 is_enabled 会把 invent 卡死
+if ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from _ccc_control import may_start_engine; raise SystemExit(0 if may_start_engine() else 1)"; then
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] CCC control blocked Engine — idle hold" \
     >> "${HOME}/.ccc/logs/engine-disabled.log"
-  while ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from _ccc_control import is_enabled; raise SystemExit(0 if is_enabled() else 1)"; do
+  while ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from _ccc_control import may_start_engine; raise SystemExit(0 if may_start_engine() else 1)"; do
     sleep 60
   done
 fi

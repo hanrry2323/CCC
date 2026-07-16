@@ -13,6 +13,11 @@
 - Hub `GET /api/runtime-status`：control · wake · 队列计数
 - Hub / Claude 侧栏会话 **保持分开**（不做合并）
 
+**v0.42.1 下达闭环补强**（UI 面 ≠ 消费面）：
+- Hub **与** Board 均调用 `ensure_engine_for_task`（Hub 双保险，防 Board 旧进程）
+- 下达时把目标项目 path **幂等写入** `~/.ccc/workspaces.json`（Engine 默认只扫 CCC；显式下达才扩权）
+- `install-hub --start` → `ui` 仍正确；**下达**才切 `enabled` 并恢复 `com.ccc.engine` plist
+
 ---
 
 ## 业务状态机

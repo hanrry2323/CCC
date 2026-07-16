@@ -11,8 +11,9 @@ def build_dev_phase_prompt(
     *,
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
+    skill_hints: str = "",
 ) -> str:
-    """F-PROMPT-01 + v0.41.1: 强制 scope 白名单 + 可选 pytest 失败回灌。"""
+    """F-PROMPT-01 + v0.41.1: 强制 scope 白名单 + 可选 pytest 失败回灌 + Skill 软偏好。"""
     scope_list = [str(s).strip() for s in (scope or []) if str(s).strip()]
     if scope_list:
         scope_block = (
@@ -36,6 +37,10 @@ def build_dev_phase_prompt(
             f"```\n{pytest_failure.strip()[-3000:]}\n```\n\n"
         )
 
+    skill_block = ""
+    if skill_hints and skill_hints.strip():
+        skill_block = skill_hints.strip() + "\n\n"
+
     return (
         f"# CCC 执行任务: {task_id}\n\n"
         f"## 当前 Phase（强制）\n"
@@ -45,6 +50,7 @@ def build_dev_phase_prompt(
         f"- 你是执行器（弱模型友好）：按清单改文件，不要重写 plan，不要发明新需求\n\n"
         f"{scope_block}"
         f"{fail_block}"
+        f"{skill_block}"
         f"## Plan（全文供参考；执行范围仍以本 phase 为准）\n\n{plan_content}\n\n"
         f"## 完成定义（仅 Phase {phase_num}）\n"
         f"1. 仅实现 Phase {phase_num} 对应需求\n"
@@ -63,6 +69,7 @@ def build_dev_phase_prompt_with_hint(
     *,
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
+    skill_hints: str = "",
 ) -> str:
     base = build_dev_phase_prompt(
         task_id,
@@ -70,6 +77,7 @@ def build_dev_phase_prompt_with_hint(
         plan_content,
         scope=scope,
         pytest_failure=pytest_failure,
+        skill_hints=skill_hints,
     )
     if not size_hint:
         return base

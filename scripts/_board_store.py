@@ -283,6 +283,7 @@ def _validate_strict_mode(data: dict) -> str | None:
         "color_group",
         "color_depth",
         "complexity",
+        "hints",  # 可选：{skills:[...], note:"..."} 软偏好
     }
     unknown = set(data.keys()) - allowed
     if unknown:
@@ -447,6 +448,24 @@ class FileBoardStore:
                 "color_depth": data_with_defaults["color_depth"],
                 "complexity": data_with_defaults.get("complexity", "medium"),
             }
+            # 可选 hints（Skill 软偏好等）；非法类型忽略
+            hints = data.get("hints")
+            if isinstance(hints, dict):
+                clean_hints: dict = {}
+                skills = hints.get("skills")
+                if isinstance(skills, list):
+                    clean_skills = [
+                        str(s).strip()[:80]
+                        for s in skills
+                        if str(s).strip()
+                    ][:5]
+                    if clean_skills:
+                        clean_hints["skills"] = clean_skills
+                note_h = hints.get("note")
+                if isinstance(note_h, str) and note_h.strip():
+                    clean_hints["note"] = note_h.strip()[:400]
+                if clean_hints:
+                    task["hints"] = clean_hints
             dst = self.board / column / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")

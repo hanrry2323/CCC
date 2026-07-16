@@ -48,7 +48,7 @@ function attachMessageActions(msgEl, role, content) {
     } else if (act === 'preview') {
       maybeShowArtifacts(content || '');
     } else if (act === 'task') {
-      import('./taskDialog.js').then(m => m.openTaskFromReply());
+      import('./dispatchCard.js').then((m) => m.openTransferFromMessage(content || ''));
     }
   });
 }
@@ -330,6 +330,15 @@ export async function sendMessage(text, attachments = []) {
       }
       if (msgDiv) attachMessageActions(msgDiv, 'assistant', fullContent);
       maybeShowArtifacts(fullContent);
+      import('./dispatchFormat.js').then((m) => {
+        const p = m.parseDispatchBlock(fullContent);
+        if (p.ok) {
+          window.showToast?.(
+            '定稿已就绪：点消息「转任务」或工具条「转任务」核实后下达',
+            'success'
+          );
+        }
+      });
       msgs.push({ role: 'assistant', content: fullContent, mode: 'chat' });
       state.set('currentMessages', msgs);
       syncActiveTab();
@@ -418,7 +427,7 @@ export function createEmptyState() {
   el.innerHTML =
     '<div class="empty-brand">CCC</div>' +
     '<div class="empty-state-title">今天想做什么？</div>' +
-    '<div class="empty-state-hint">下方工具条：<b>对齐基线</b> → <b>下一步</b> → 深入对话或 <b>下达任务</b>（共 6 个常用；··· 里可自定义）</div>';
+    '<div class="empty-state-hint">标准投递：聊方案 → <b>定稿方案</b> → 消息上 <b>转任务</b> → 改标题 → <b>下达并开工</b></div>';
   return el;
 }
 

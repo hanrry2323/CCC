@@ -99,10 +99,13 @@ def ensure_engine_for_task(
     reason: str = "task_dispatch",
     task_id: str | None = None,
     start_launchd: bool = True,
+    workspace: Path | str | None = None,
+    workspace_name: str | None = None,
 ) -> dict[str, Any]:
-    """下任务后调用：非 invent → enabled；写 wake；可选 bootstrap launchd。
+    """下任务后调用：非 invent → enabled；登记 workspace；写 wake；可选 bootstrap launchd。
 
     source=task_dispatch 表示用户显式下达（非 agent 自启用）。
+    workspace: 若提供，幂等写入 ~/.ccc/workspaces.json，供 Engine 发现非 CCC 项目。
     """
     from _ccc_control import get_mode, set_mode
 
@@ -121,6 +124,17 @@ def ensure_engine_for_task(
         mode_after = "enabled"
         control_changed = True
 
+    workspace_reg = None
+    if workspace:
+        try:
+            from _workspace_registry import register_workspace
+
+            workspace_reg = register_workspace(
+                workspace, name=workspace_name
+            )
+        except Exception as exc:
+            workspace_reg = {"ok": False, "error": str(exc)[:200]}
+
     wake_path = write_wake(reason=reason, task_id=task_id)
     launched = False
     launch_note = "skipped"
@@ -137,6 +151,7 @@ def ensure_engine_for_task(
         "launch_note": launch_note,
         "task_id": task_id,
         "reason": reason,
+        "workspace_reg": workspace_reg,
     }
     _log.info("ensure_engine_for_task %s", result)
     return result

@@ -69,6 +69,79 @@ def _write_seed_artifacts(
     return written
 
 
+def _hub_ensure_engine(workspace: str, task_id: str | None) -> dict:
+    """v0.42.1 Hub 双保险：即使 Board 旧进程无 wake，Hub 也强制 enabled+登记+wake。
+
+    幂等；与 Board 侧 ensure 重复调用安全。
+    """
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        from _engine_wake import ensure_engine_for_task
+
+        root = _workspace_root(workspace)
+        return ensure_engine_for_task(
+            reason="task_dispatch",
+            task_id=task_id,
+            workspace=root,
+            workspace_name=workspace,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
+def _hub_try_adopt_plan(workspace: str, task_id: str, task_body: dict) -> dict | None:
+    """下达后若 description 引用现成 plan，立即收养，避免 product 白烧。"""
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    root = _workspace_root(workspace)
+    if root is None or not task_id:
+        return None
+    try:
+        from _plan_adopt import try_adopt_referenced_plan
+
+        return try_adopt_referenced_plan(root, task_id, task_body)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
+def _merge_create_payload(
+    resp_body: bytes | str | bytearray,
+    *,
+    workspace: str,
+    fallback_tid: str | None,
+    task_body: dict | None = None,
+) -> dict:
+    """Parse board create JSON and attach Hub-side engine_wake (+ optional plan adopt)."""
+    import json
+
+    try:
+        payload = json.loads(
+            resp_body.decode() if isinstance(resp_body, (bytes, bytearray)) else resp_body
+        )
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    tid = payload.get("task_id") or fallback_tid
+    hub_wake = _hub_ensure_engine(workspace, tid)
+    board_wake = payload.get("engine_wake")
+    payload["engine_wake"] = hub_wake
+    if board_wake is not None:
+        payload["engine_wake_board"] = board_wake
+    if tid and task_body:
+        adopted = _hub_try_adopt_plan(workspace, str(tid), task_body)
+        if adopted:
+            payload["plan_adopt"] = adopted
+    return payload
+
+
 @router.get("/api/board/proxy/board")
 async def board_proxy_board(request: Request, workspace: str = "CCC"):
     check_auth(request)
@@ -132,24 +205,24 @@ async def board_proxy_create_task(request: Request):
     resp = await board_proxy("POST", "/api/tasks", json_body=body)
 
     # Attach seed artifacts only on successful create
-    if resp.status_code in (200, 201) and (plan_md or phases_jsonl):
-        try:
-            import json
-
-            payload = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
-        except Exception:
-            payload = {}
+    if resp.status_code in (200, 201):
+        payload = _merge_create_payload(
+            resp.body,
+            workspace=workspace,
+            fallback_tid=body.get("id"),
+            task_body=body,
+        )
         tid = payload.get("task_id") or body.get("id")
-        if tid:
+        if tid and (plan_md or phases_jsonl):
             try:
                 written = _write_seed_artifacts(workspace, tid, plan_md, phases_jsonl)
                 payload["seeded"] = written
                 payload["skip_product"] = bool(written.get("plan") and written.get("phases"))
-                return JSONResponse(content=payload, status_code=resp.status_code)
             except HTTPException:
                 raise
             except OSError as exc:
                 raise HTTPException(status_code=500, detail=f"seed artifacts failed: {exc}") from exc
+        return JSONResponse(content=payload, status_code=resp.status_code)
     return resp
 
 
@@ -255,7 +328,17 @@ async def native_create_task(request: Request):
     body["workspace"] = _resolve_workspace(body, request)
     if not body.get("status"):
         body["status"] = "backlog"
-    return await board_proxy("POST", "/api/tasks", json_body=body)
+    workspace = body["workspace"]
+    resp = await board_proxy("POST", "/api/tasks", json_body=body)
+    if resp.status_code in (200, 201):
+        payload = _merge_create_payload(
+            resp.body,
+            workspace=workspace,
+            fallback_tid=body.get("id"),
+            task_body=body,
+        )
+        return JSONResponse(content=payload, status_code=resp.status_code)
+    return resp
 
 
 @router.post("/api/tasks/move")

@@ -9,6 +9,7 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 from board.prompt import build_dev_phase_prompt
+from _skills_catalog import format_skill_hints_block, discover_skills
 
 
 def test_prompt_includes_scope_and_pytest_fail():
@@ -28,3 +29,21 @@ def test_prompt_includes_scope_and_pytest_fail():
 def test_prompt_without_scope_warns():
     text = build_dev_phase_prompt("t1", 2, "plan")
     assert "未提供 scope" in text
+
+
+def test_prompt_includes_skill_soft_hints():
+    block = format_skill_hints_block(["ccc-dev", "hyperframes-core"], "偏执行规范")
+    text = build_dev_phase_prompt(
+        "t1", 1, "plan", skill_hints=block
+    )
+    assert "Skill 偏好" in text
+    assert "ccc-dev" in text
+    assert "软提示" in text
+    assert "偏执行规范" in text
+
+
+def test_discover_skills_finds_ccc_roles():
+    skills = discover_skills(ccc_home=SCRIPTS.parent, limit=40)
+    ids = {s["id"] for s in skills}
+    assert "ccc-dev" in ids
+    assert "ccc-product" in ids

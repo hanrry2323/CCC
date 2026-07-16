@@ -778,13 +778,17 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             task_data.pop("workspace", None)
             task_data["id"] = tid
             if create_task(task_data, workspace=ws, column="backlog"):
-                # v0.41: 下达任务 = 强制 enabled + 唤醒 Engine（无确认）
+                # v0.41/v0.42.1: 下达 = enabled + 登记 workspace + 唤醒 Engine
                 engine_wake = None
                 try:
                     from _engine_wake import ensure_engine_for_task
 
+                    root = discover_workspaces().get(ws)
                     engine_wake = ensure_engine_for_task(
-                        reason="task_dispatch", task_id=tid
+                        reason="task_dispatch",
+                        task_id=tid,
+                        workspace=root,
+                        workspace_name=ws,
                     )
                 except Exception as exc:
                     engine_wake = {"ok": False, "error": str(exc)[:200]}

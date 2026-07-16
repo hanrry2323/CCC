@@ -140,6 +140,11 @@ export async function createBoardTask(task) {
   return apiPost('/api/board/proxy/tasks', task);
 }
 
+export async function loadSkills(projectId) {
+  const qs = projectId ? ('?project=' + encodeURIComponent(projectId)) : '';
+  return apiGet('/api/skills' + qs);
+}
+
 export async function moveBoardTask(payload) {
   return apiPost('/api/board/proxy/tasks/move', payload);
 }

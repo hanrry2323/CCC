@@ -115,7 +115,7 @@ def reopen_task(
             from _engine_wake import ensure_engine_for_task
 
             engine_wake = ensure_engine_for_task(
-                reason="task_reopen", task_id=task_id
+                reason="task_reopen", task_id=task_id, workspace=ws
             )
         except Exception as exc:
             engine_wake = {"ok": False, "error": str(exc)[:200]}

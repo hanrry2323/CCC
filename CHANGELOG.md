@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.42.1] — 2026-07-17
+
+### Hub：定稿转任务 + Skill 软偏好 + 手机视口
+
+- **定稿 → 转任务卡**：解析 `CCC_DISPATCH`，挂 plan/phases 后下达并开工（跳过 product）
+- **Skill 软偏好**：转任务卡可选 Skill chips；`hints.skills` 写入看板并注入 OpenCode prompt
+- **快捷栏**：主栏按宽度自适应（2–6）；「更多」向上弹出；扫风险等进 ···
+- **iOS 视口**：Hub 壳 `fixed + 100dvh`，避免整页超高需滑动；仅消息区滚动
+
+### 下达闭环：UI 面与消费面桥接
+
+- Hub 下达成功后 **再调一次** `ensure_engine_for_task`（防 Board 旧进程无 wake）
+- 下达时幂等登记 `~/.ccc/workspaces.json`（Engine 能扫到 qb/xianyu，仍不默认全盘扫描）
+- `ccc-engine.sh` 用 `may_start_engine`（invent 不再被 `is_enabled` 卡死）
+
+### 流转优化（盯任务后）
+
+- **收养现成 plan**：description 引用 `.ccc/plans/*.plan.md` → 复制为 `{tid}.plan.md` + 合成 phases（含 scope），跳过 LLM product
+- **空 scope 回填**：从 plan「涉及文件」/ Phase 段路径补白名单，避免 OpenCode「未提供 scope」盲跑
+- product 解析失败时保留 `product_fallback/{tid}.last.out` 证据
+
 ## [v0.42.0] — 2026-07-17
 
 ### 全面收官：硬门禁 + 飞轮重开 + Hub 状态条
