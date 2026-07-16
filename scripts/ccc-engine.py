@@ -2136,16 +2136,16 @@ def engine_loop(workspaces: list[Path]) -> None:
     active_tasks = _load_active_tasks()
     _load_hang_retry_counter()
 
-    for ws in workspaces:
-        _recover_tasks(ws, active_tasks)
-
-    # v0.36: 启动时采样一次内存，保证 heartbeat 尽早含 memory_mb
+    # v0.36: 启动时先采样内存（在 recover 之前，避免 recover 间隔拖慢 heartbeat）
     for ws in workspaces:
         try:
             _check_process_memory(ws)
             _cleanup_zombie_pid_refs(ws)
         except Exception as exc:
             engine_log(f"[mem] startup sample failed for {_ws_label(ws)}: {exc}")
+
+    for ws in workspaces:
+        _recover_tasks(ws, active_tasks)
 
     while not _engine_shutdown:
         iteration += 1
