@@ -590,6 +590,12 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 raise RuntimeError(
                     f"phase_lint orphan-dep: {'; '.join(_dep_errors)}"
                 )
+            # v0.31 (P0.2 补): 循环依赖检测（环状 plan→运行时 unresolvable→白烧 dev retry）
+            _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(result[1])
+            if not _cycle_valid:
+                raise RuntimeError(
+                    f"phase_lint cycle: {'; '.join(_cycle_errors)}"
+                )
             if _lint_warnings:
                 _log.warning("[product] phase_lint warnings: %s", _lint_warnings)
             return result
@@ -609,6 +615,11 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
                 if not _dep_valid:
                     raise RuntimeError(
                         f"phase_lint orphan-dep (retry): {'; '.join(_dep_errors)}"
+                    )
+                _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(result[1])
+                if not _cycle_valid:
+                    raise RuntimeError(
+                        f"phase_lint cycle (retry): {'; '.join(_cycle_errors)}"
                     )
                 if _lint_warnings:
                     _log.warning("[product] phase_lint warnings (retry): %s", _lint_warnings)

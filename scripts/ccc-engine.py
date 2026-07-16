@@ -909,6 +909,29 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
             _phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
             if _phases_file.exists():
                 _phases_file.unlink()
+            # 写 regen 计数器（同 failed 分支逻辑）
+            try:
+                _warnings_file = ws / ".ccc" / "warnings.json"
+                _existing = []
+                if _warnings_file.exists():
+                    try:
+                        import json as _json
+                        _existing = _json.loads(_warnings_file.read_text())
+                        if not isinstance(_existing, list):
+                            _existing = []
+                    except Exception:
+                        _existing = []
+                _existing.append({
+                    "type": "phase_graph_regen",
+                    "task_id": tid,
+                    "regen_count": _regen_count + 1,
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                })
+                _warnings_file.write_text(
+                    json.dumps(_existing, ensure_ascii=False, indent=2)
+                )
+            except Exception:
+                pass
             store.move_task(tid, "in_progress", "backlog")
             store.update_index()
             return True

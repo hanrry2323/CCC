@@ -318,7 +318,9 @@ for p in phases:
             _all_changed |= set(_untracked_raw.splitlines())
         if _all_changed:
             _scope_set = set(scope)
-            _extra = _all_changed - _scope_set
+            # 排除 .ccc/ 系统文件（phases.json/report.md 等非 executor scope）
+            _ccc_managed = {f for f in _all_changed if f.startswith(".ccc/")}
+            _extra = _all_changed - _scope_set - _ccc_managed
             if _extra:
                 print(f"  ❌ phase {pid}: scope 外文件被改动: {', '.join(sorted(_extra))}")
                 print(f"     拒绝提交，回退 extra 文件到 HEAD")
