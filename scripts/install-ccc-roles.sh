@@ -196,7 +196,10 @@ if $UPGRADE; then
   echo "  $0 --workspace ~/program/qxo --upgrade"
 fi
 echo ""
-echo "⚠ v0.38.1: 若存在 ~/.ccc/DISABLED，Engine 不会真正干活。"
-echo "  启停: bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh {enable|disable|status}"
-echo "  禁止将 ccc-loop-monitor.sh 写入 crontab（会强制复活 Engine）。"
+echo "⚠ v0.39 控制面：默认 disabled。启用："
+echo "  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh enable --start"
+echo "  文档: ${CCC_HOME}/docs/CONTROL.md"
+echo "  禁止 crontab 安装 ccc-loop-monitor；patrol 禁止 Popen 旁路。"
+# 安装后写入 disabled，避免装完即狂跑（用户需显式 enable）
+python3 "${CCC_HOME}/scripts/_ccc_control.py" disable "post-install safe default" >/dev/null 2>&1 || true
 echo "Done. (prefix: ${LABEL_PREFIX}, workspace: ${WORKSPACE})"

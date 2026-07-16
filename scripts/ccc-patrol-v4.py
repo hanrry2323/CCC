@@ -29,6 +29,16 @@ from pathlib import Path
 
 from _executor import _sanitized_env
 
+try:
+    from _ccc_control import is_disabled as _ctrl_disabled
+    from _ccc_control import may_start_engine as _ctrl_may_start
+except ImportError:  # pragma: no cover
+    def _ctrl_disabled() -> bool:
+        return (Path.home() / ".ccc" / "DISABLED").is_file()
+
+    def _ctrl_may_start() -> bool:
+        return not _ctrl_disabled()
+
 # ── 常量 ──
 HOME = Path.home()
 CCC_HOME = HOME / "program" / "CCC"
@@ -244,29 +254,29 @@ def check_heartbeat(ws: Path) -> tuple[str, dict]:
 
 
 def _ccc_disabled() -> bool:
-    """v0.38.1: ~/.ccc/DISABLED 存在时禁止一切自动拉起。"""
-    return (HOME / ".ccc" / "DISABLED").is_file()
+    """v0.39: 控制面 disabled → 禁止一切自动拉起。"""
+    return _ctrl_disabled()
 
 
 def ensure_engine_healthy(*, allow_restart: bool = True) -> str:
-    """Step 0: 确保 Engine 存活。返回 'OK' | 'RESTARTED' | 'DEAD' | 'ALREADY_OK' | 'DISABLED' | 'DOWN'
+    """Step 0: 确保 Engine 存活。
 
-    顺序：CCC workspace 的 Engine 是总管，查它是否活着。
-    v0.38.1: allow_restart=False 或 DISABLED 时只观察，不启动。
+    v0.39 业务规则：
+    - disabled → DISABLED（不拉起）
+    - allow_restart=False → 只观察
+    - 允许重启时：仅经 launchd 单点拉起（禁止 Popen 旁路）
     """
-    if _ccc_disabled():
+    if _ccc_disabled() or not _ctrl_may_start():
         print(
-            "[patrol] CCC DISABLED (~/.ccc/DISABLED) — skip engine restart",
+            "[patrol] CCC control=disabled — skip engine restart",
             file=sys.stderr,
         )
         return "DISABLED"
 
     alive = engine_is_running()
     if alive:
-        # 检查 heartbeat 是否 stale（如果进程活着但心跳超时，不重启，只记 warning）
         hb_status, hb = check_heartbeat(CCC_HOME)
         if hb_status == "stale":
-            # 进程 alive + 心跳 stale = Engine 忙（如 Claude API call），不杀
             print(
                 f"[patrol] heartbeat stale ({hb.get('timestamp', '?')}) but PID alive, skipping restart",
                 file=sys.stderr,
@@ -277,7 +287,6 @@ def ensure_engine_healthy(*, allow_restart: bool = True) -> str:
         print("[patrol] Engine down — restart disabled (--no-restart)", file=sys.stderr)
         return "DOWN"
 
-    # Engine 完全死了，启动
     if _try_start_engine():
         return "RESTARTED"
     return "DEAD"
@@ -317,61 +326,57 @@ def _try_kill_engine() -> None:
 
 
 def _try_start_engine() -> bool:
-    """尝试启动 Engine（后台 python3 + launchctl 双重兜底）
+    """仅经 launchd 单点拉起 Engine（v0.39 禁止 Popen 旁路）。
 
-    v0.38.1: DISABLED 哨兵存在时拒绝启动。
+    旧版方式 3（python3 后台 Popen）是双 engine / 杀不掉的根因之一，已删除。
     """
-    if _ccc_disabled():
+    if not _ctrl_may_start():
+        return False
+
+    uid = os.getuid()
+    gui = f"gui/{uid}"
+
+    if not ENGINE_PLIST.exists():
+        print(
+            f"[patrol] engine plist missing: {ENGINE_PLIST} — refuse Popen fallback",
+            file=sys.stderr,
+        )
         return False
 
     # 方式 1: launchctl bootstrap
-    if ENGINE_PLIST.exists():
-        try:
-            r = subprocess.run(
-                ["launchctl", "bootstrap", "gui/501", str(ENGINE_PLIST)],
-                capture_output=True,
-                timeout=15,
-                env=_sanitized_env(),
-            )
-            if r.returncode == 0:
-                # 等待进程启动
-                time.sleep(3)
-                if engine_is_running():
-                    return True
-        except OSError:
-            pass
-
-    # 方式 2: launchctl load
-    if ENGINE_PLIST.exists():
-        try:
-            subprocess.run(
-                ["launchctl", "load", str(ENGINE_PLIST)],
-                capture_output=True,
-                timeout=15,
-                env=_sanitized_env(),
-            )
+    try:
+        r = subprocess.run(
+            ["launchctl", "bootstrap", gui, str(ENGINE_PLIST)],
+            capture_output=True,
+            timeout=15,
+            env=_sanitized_env(),
+        )
+        if r.returncode == 0:
             time.sleep(3)
             if engine_is_running():
                 return True
-        except OSError:
-            pass
+    except OSError:
+        pass
 
-    # 方式 3: python3 后台启动
-    if ENGINE_SCRIPT.exists():
-        try:
-            subprocess.Popen(
-                [sys.executable, str(ENGINE_SCRIPT)],
-                cwd=CCC_HOME,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-                env=_sanitized_env(),
-            )
-            time.sleep(3)
-            return engine_is_running()
-        except OSError:
-            pass
+    # 方式 2: launchctl load（旧接口兜底）
+    try:
+        subprocess.run(
+            ["launchctl", "load", "-w", str(ENGINE_PLIST)],
+            capture_output=True,
+            timeout=15,
+            env=_sanitized_env(),
+        )
+        time.sleep(3)
+        if engine_is_running():
+            return True
+    except OSError:
+        pass
 
+    # 禁止方式 3: Popen(python ccc-engine.py) — 与 KeepAlive 形成双进程
+    print(
+        "[patrol] launchd start failed — NOT falling back to Popen (v0.39 policy)",
+        file=sys.stderr,
+    )
     return False
 
 

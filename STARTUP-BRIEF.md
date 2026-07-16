@@ -1,4 +1,4 @@
-# CCC Startup Brief (v0.38.0 启动必读)
+# CCC Startup Brief (v0.39.0 启动必读)
 
 > **读完这个文件 = 知道 CCC 怎么用。** 其他文件按需 grep。
 > **目标：启动 token < 700。** 不预先全读 STRATEGY-MAP / lessons / red-lines。
@@ -29,15 +29,18 @@ CCC = **7 角色看板** + **CCC Engine 串行驱动** + **Claude（product/revi
 | kb | **verified 列非空即跑**（v0.38） | bump VERSION + tag + CHANGELOG → released |
 | regress | 23:30 定时或手动 | released 回测 → backlog(回归 bug) |
 
-**v0.37+ 空闲默认**：空看板不 `auto_replenish` / 不 `evolve`（防内存爆）。显式开：`CCC_AUTO_REPLENISH=1` 等。
+**v0.39 控制面（根源）**：`~/.ccc/control.json` — 默认 **disabled**。  
+详见 [`docs/CONTROL.md`](docs/CONTROL.md)。
 
-**v0.38.1 总开关**：`~/.ccc/DISABLED` 存在时，Engine/patrol/loop-monitor **禁止自启**。
 ```bash
-bash scripts/ccc-autostart-guard.sh disable   # 停机 + 卸 crontab 自启
-bash scripts/ccc-autostart-guard.sh enable    # 允许再启（仍需手动 load plist）
 bash scripts/ccc-autostart-guard.sh status
+bash scripts/ccc-autostart-guard.sh disable          # 停机（推荐）
+bash scripts/ccc-autostart-guard.sh enable --start   # 显式启用并经 launchd 启动
 ```
-**禁止**把 `ccc-loop-monitor.sh` 装进 crontab（旧版会每 5 分钟强制 `python3 ccc-engine.py &`）。
+
+**禁止**把 `ccc-loop-monitor.sh` 写入 crontab；patrol **禁止** `Popen` 旁路拉起 Engine。
+
+**v0.37+ 空闲默认**：空看板不 `auto_replenish` / 不 `evolve`。显式开：`CCC_AUTO_REPLENISH=1` 等。
 
 **入口**：`python3 scripts/ccc-board.py {product|dev|reviewer|tester|ops|kb|regress}`（调试用手动；生产靠 Engine）
 

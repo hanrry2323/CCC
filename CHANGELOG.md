@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.39.0] — 2026-07-16
+
+### 根源：运行控制面状态机（非「删自启动」）
+
+旧业务把「永远在线 + 多通道自愈」写成目标：crontab / patrol Popen / launchd /
+opencode KeepAlive 互不知情 → 用户杀掉仍复活。
+
+**新业务**：
+- `~/.ccc/control.json` SSOT：`disabled`（默认）| `enabled`（显式）
+- 唯一合法拉起：`launchd:com.ccc.engine`
+- patrol **删除** `Popen(python ccc-engine.py)` 旁路
+- loop-monitor **永不自启**，只观察
+- 空看板仍真空闲（继承 v0.37）
+
+模块：`scripts/_ccc_control.py`  
+文档：`docs/CONTROL.md`  
+CLI：`bash scripts/ccc-autostart-guard.sh`
+
 ## [v0.38.4] — 2026-07-16
 
 - e2e-event-test-1784201475: 看板发布

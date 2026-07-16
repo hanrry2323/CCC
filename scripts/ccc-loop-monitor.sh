@@ -1,42 +1,32 @@
 #!/bin/bash
-# ccc-loop-monitor.sh — 可选健康观察（默认不自启 Engine）
-#
-# 根因修复 (v0.38.1):
-#   旧版每 5 分钟发现 Engine 死后执行 `python3 ccc-engine.py &`，
-#   导致 plist 已卸/用户已杀仍被强制拉起（双 engine / 内存爆）。
-#   现行为：仅观察写日志；永不自启；尊重 ~/.ccc/DISABLED。
-#
-# 不建议装进 crontab。若需监控，请人工执行或仅在明确启用 CCC 后使用。
+# ccc-loop-monitor.sh — 观察专用（v0.39）
+# 永不自启 Engine。control=disabled 时直接退出。
 
 set -uo pipefail
 
 LOG="${HOME}/.ccc/loop-monitor.log"
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SENTINEL="${HOME}/.ccc/DISABLED"
 mkdir -p "$(dirname "$LOG")"
 cd "$WS"
 
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] === loop-monitor tick ===" >> "$LOG"
 
-if [[ -f "$SENTINEL" ]]; then
-  echo "CCC DISABLED ($SENTINEL) — skip patrol/restart" >> "$LOG"
+if ! python3 -c "import sys; sys.path.insert(0,'scripts'); from _ccc_control import is_enabled; raise SystemExit(0 if is_enabled() else 1)"; then
+  echo "CCC control=disabled — skip" >> "$LOG"
   exit 0
 fi
 
-# Step 1: Patrol check（patrol 自身也不再强制拉起，见 ccc-patrol-v4.py）
+# 仅观察：patrol --no-restart
 if [[ -f scripts/ccc-patrol-v4.py ]]; then
   python3 scripts/ccc-patrol-v4.py --no-restart >> "$LOG" 2>&1 || true
-  echo "patrol exit=$?" >> "$LOG"
 fi
 
-# Step 2: 仅报告 Engine 是否存活 — 绝不后台启动
 if pgrep -f 'ccc-engine\.py' > /dev/null 2>&1; then
-  echo "ENGINE alive: $(pgrep -f 'ccc-engine\.py' | tr '\n' ' ')" >> "$LOG"
+  echo "ENGINE alive" >> "$LOG"
 else
-  echo "ENGINE down (will NOT auto-restart; enable via launchd or ccc-autostart-guard.sh)" >> "$LOG"
+  echo "ENGINE down (no auto-restart by policy)" >> "$LOG"
 fi
 
-# Step 3: 看板摘要
 python3 -c "
 import sys
 sys.path.insert(0, 'scripts')
@@ -60,5 +50,3 @@ for name, ws_path in [
     if parts:
         print(f'{name}: ' + ', '.join(parts))
 " >> "$LOG" 2>&1 || true
-
-tail -3 "$LOG" 2>/dev/null || true
