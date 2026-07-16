@@ -492,11 +492,12 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
             f"每行一个 JSON object：\n"
-            f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n'
+            f'{{"phase": <int>, "status": "pending", "scope": ["改动的文件路径数组"], "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n'
+            f"scope 字段：显式列举本 phase 改动的所有文件路径（路径集，不可用 ['all'] 除非全仓改）。\n"
             f"可选字段 depends_on（list[int]）：声明 phase 依赖关系。\n"
             f"合法示例（双 phase）：\n"
-            f'{{"phase": 1, "status": "pending", "subtasks": {{"1.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n'
-            f'{{"phase": 2, "status": "blocked", "depends_on": [1], "subtasks": {{"2.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n\n'
+            f'{{"phase": 1, "status": "pending", "scope": ["scripts/foo.py"], "subtasks": {{"1.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n'
+            f'{{"phase": 2, "status": "blocked", "depends_on": [1], "scope": ["scripts/bar.py"], "subtasks": {{"2.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n\n'
             f"## Phase 数上限\n"
             f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
             f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
@@ -2750,14 +2751,48 @@ def _review_one_task(task_id: str) -> bool:
     )
     verdict = verdict_data.get("verdict", "fallback")
     summary = verdict_data.get("summary", "")
+    findings = verdict_data.get("findings", [])
+
+    # v0.34 (P5): 数学化评分 rubric（用于 reviewer/shadow 对比）
+    _score = 10  # 基础分 10
+    # JSON 格式（5 分）
+    _score += 5  # LLM 返回了有效 JSON
+    # scope 合规（5 分）
+    _scope_violations = [f for f in findings if "scope" in (f.get("issue", "") or "").lower()]
+    if not _scope_violations:
+        _score += 5
+    # 测试通过（5 分）
+    _test_failures = [f for f in findings if "test" in (f.get("issue", "") or "").lower()]
+    if not _test_failures:
+        _score += 5
+    # 幻觉（-10 分）
+    _hallucinations = [f for f in findings if "hallucinat" in (f.get("issue", "") or "").lower()]
+    _score -= len(_hallucinations) * 10
+    # 越界（-10 分）
+    _boundary = [f for f in findings if any(kw in (f.get("issue", "") or "").lower() for kw in ("越界", "scope 外", "outside scope"))]
+    _score -= len(_boundary) * 10
+    _score = max(0, min(25, _score))
+    rubric = {
+        "score": _score,
+        "score_breakdown": {
+            "json_format": 5,
+            "scope_compliance": 5 if not _scope_violations else 0,
+            "tests_pass": 5 if not _test_failures else 0,
+            "hallucination": -len(_hallucinations) * 10,
+            "scope_violation": -len(_boundary) * 10,
+        },
+        "threshold": 15,
+    }
 
     review_md.write_text(
         f"# {task_id} Review\n\n"
-        f"## Verdict: **{verdict.upper()}**\n\n"
+        f"## Verdict: **{verdict.upper()}** | Score: **{_score}/25**\n\n"
         f"## Size Class: **{size_class}** ({total_lines} 行)\n\n"
         f"{summary}\n\n"
-        f"## Findings ({len(verdict_data.get('findings', []))} 条)\n\n"
+        f"## Findings ({len(findings)} 条)\n\n"
         f"```json\n{json.dumps(verdict_data, ensure_ascii=False, indent=2)}\n```\n"
+        f"\n## Score Rubric\n"
+        f"```json\n{json.dumps(rubric, ensure_ascii=False, indent=2)}\n```\n"
     )
 
     # 写 verdict 文件（Engine _verdict_is_valid 检查此文件）
@@ -2767,8 +2802,11 @@ def _review_one_task(task_id: str) -> bool:
     verdict_path.write_text(
         f"# {task_id} Verdict\n\n"
         f"**Verdict:** {verdict.upper()}\n\n"
+        f"**Score:** {_score}/25\n\n"
         f"**Size Class:** {size_class}\n\n"
         f"{summary}\n"
+        f"\n## Score Rubric\n"
+        f"```json\n{json.dumps(rubric, ensure_ascii=False, indent=2)}\n```\n"
     )
 
     if verdict == "pass":
