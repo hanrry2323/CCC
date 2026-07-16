@@ -149,23 +149,36 @@ def _format_summary(
 
 
 def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
-    """发给 Claude 的对齐提示（结构化上下文 + 任务）。"""
+    """发给 Claude 的对齐提示：短、结构化、带选项与最佳项。"""
     import json
 
+    git = baseline.get("git") or {}
     compact = {
-        "workspace": baseline.get("workspace"),
-        "git": baseline.get("git"),
-        "layout": baseline.get("layout"),
+        "branch": git.get("branch"),
+        "dirty": git.get("dirty"),
+        "dirty_count": git.get("dirty_count"),
+        "dirty_sample": (git.get("dirty_sample") or [])[:12],
+        "ahead_behind": git.get("ahead_behind"),
+        "top": (baseline.get("layout") or {}).get("top_entries", [])[:20],
         "control": baseline.get("control"),
-        "risks": baseline.get("risks"),
+        "risks": baseline.get("risks") or [],
         "ready_for_task": baseline.get("ready_for_task"),
     }
     return (
-        "请根据下列**项目基线快照**对齐当前仓库，用中文输出：\n"
-        "1) 项目结构与模块职责（简明）\n"
-        "2) git / 控制面风险是否阻碍下达任务\n"
-        "3) 若要开发，建议的下一步（方案要点或可执行任务标题）\n"
-        "不要编造快照中没有的文件。\n\n"
-        f"```json\n{json.dumps(compact, ensure_ascii=False, indent=2)}\n```\n\n"
-        f"摘要：\n{baseline.get('summary', '')}\n"
+        "你正在对齐项目基线。根据快照用中文回答，**总字数控制在 280 字以内**。\n"
+        "严格按下面 4 段，每段用一行标题，条目尽量短：\n\n"
+        "### 现状\n"
+        "- 这是什么项目（1 句）\n"
+        "- 顶层模块各一短句（最多 5 条）\n\n"
+        "### 风险\n"
+        "- 只列会阻碍下达任务或发布的项；无则写「无明显风险」\n\n"
+        "### 建议选项\n"
+        "- 给出 2～3 个下一步选项（动词开头，可执行）\n"
+        "- 最后一行必须是：`最佳：<选项编号或标题> — <一句理由>`\n\n"
+        "### 可下达任务\n"
+        "- 若适合开工：给 1 个任务标题（≤20 字）\n"
+        "- 若不适合：写「先处理：…」\n\n"
+        "禁止编造快照没有的文件；禁止长段落与代码块。\n\n"
+        f"快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
+        f"摘要：{baseline.get('summary', '')}\n"
     )

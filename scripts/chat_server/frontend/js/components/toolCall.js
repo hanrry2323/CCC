@@ -1,102 +1,106 @@
-import { escapeHtml } from '../utils.js';
+/** Agent 进度条：对人友好的短文案 + 图标序列（非工具明细卡）。 */
 
-export function createToolCard(toolData) {
-  const card = document.createElement('div');
-  card.className = 'tool-card';
-  card.dataset.toolId = toolData.id || '';
+const TOOL_LABELS = {
+  Read: '查阅文件',
+  Glob: '查找文件',
+  Grep: '搜索代码',
+  Write: '写入文件',
+  Edit: '修改文件',
+  Bash: '运行命令',
+  Shell: '运行命令',
+  Task: '子任务',
+  WebFetch: '读取网页',
+  WebSearch: '检索资料',
+  NotebookEdit: '编辑笔记',
+};
 
+const TOOL_ICONS = {
+  Read: '📄',
+  Glob: '🔎',
+  Grep: '🔎',
+  Write: '✏️',
+  Edit: '✏️',
+  Bash: '⌘',
+  Shell: '⌘',
+  Task: '▸',
+  WebFetch: '🌐',
+  WebSearch: '🌐',
+  default: '•',
+};
+
+export function humanToolLabel(name, input) {
+  const n = name || 'tool';
+  const base = TOOL_LABELS[n] || '处理中';
+  if ((n === 'Read' || n === 'Write' || n === 'Edit') && input && input.file_path) {
+    const leaf = String(input.file_path).split('/').pop();
+    return base + ' · ' + leaf;
+  }
+  if ((n === 'Bash' || n === 'Shell') && input && (input.command || input.cmd)) {
+    const cmd = String(input.command || input.cmd).trim().split(/\s+/)[0];
+    return base + (cmd ? ' · ' + cmd : '');
+  }
+  if (n === 'Grep' && input && input.pattern) {
+    return '搜索 · ' + String(input.pattern).slice(0, 24);
+  }
+  return base;
+}
+
+export function createProgressRail() {
+  const rail = document.createElement('div');
+  rail.className = 'agent-progress';
+  rail.innerHTML =
+    '<div class="agent-progress-label">准备中…</div>' +
+    '<div class="agent-progress-icons" aria-hidden="true"></div>';
+  return rail;
+}
+
+export function appendProgressStep(rail, toolData) {
+  if (!rail) return null;
   const name = toolData.name || 'tool';
-  const input = toolData.input || {};
-  const inputStr = Object.keys(input).length ? JSON.stringify(input, null, 2) : '';
-
-  card.innerHTML =
-    '<div class="tool-card-header">' +
-      '<span class="tool-card-status pending">⏳</span>' +
-      '<span class="tool-card-name">' + escapeHtml(name) + '</span>' +
-      '<span class="tool-card-duration"></span>' +
-      '<span class="tool-card-arrow">›</span>' +
-    '</div>' +
-    '<div class="tool-card-body">' +
-      '<div class="tool-card-section">' +
-        '<div class="tool-card-section-label">Input</div>' +
-        '<pre>' + (inputStr ? escapeHtml(inputStr) : '(no input)') + '</pre>' +
-      '</div>' +
-      '<div class="tool-card-section tool-result-section" style="display:none">' +
-        '<div class="tool-card-section-label">Result</div>' +
-        '<pre></pre>' +
-      '</div>' +
-    '</div>';
-
-  const header = card.querySelector('.tool-card-header');
-  header.addEventListener('click', () => {
-    card.classList.toggle('open');
-  });
-
-  return card;
+  const icons = rail.querySelector('.agent-progress-icons');
+  const label = rail.querySelector('.agent-progress-label');
+  const step = document.createElement('span');
+  step.className = 'agent-progress-step running';
+  step.title = name;
+  step.textContent = TOOL_ICONS[name] || TOOL_ICONS.default;
+  icons.appendChild(step);
+  if (label) {
+    label.textContent = humanToolLabel(name, toolData.input);
+  }
+  rail.classList.remove('done', 'hidden');
+  return step;
 }
 
-export function updateToolCardStatus(card, status, data) {
-  const statusEl = card.querySelector('.tool-card-status');
-  const durationEl = card.querySelector('.tool-card-duration');
+export function completeProgressStep(step, ok = true) {
+  if (!step) return;
+  step.classList.remove('running');
+  step.classList.add(ok ? 'done' : 'error');
+}
 
-  statusEl.className = 'tool-card-status';
-
-  if (status === 'running') {
-    statusEl.textContent = '⋯';
-    statusEl.classList.add('running');
-  } else if (status === 'completed') {
-    statusEl.textContent = '✓';
-    statusEl.classList.add('completed');
-  } else if (status === 'error') {
-    statusEl.textContent = '✗';
-    statusEl.classList.add('error');
-  } else {
-    statusEl.textContent = '⏳';
-    statusEl.classList.add('pending');
-  }
-
-  if (data && data.duration) {
-    durationEl.textContent = formatDuration(data.duration);
-  }
-
-  // v0.41.1: 完成后默认折叠（Cursor 风格）；error 才自动展开
-  if (status === 'error') {
-    card.classList.add('open');
-  } else if (status === 'completed') {
-    card.classList.remove('open');
+export function finishProgressRail(rail, { hide = true } = {}) {
+  if (!rail) return;
+  const label = rail.querySelector('.agent-progress-label');
+  if (label) label.textContent = '完成';
+  rail.classList.add('done');
+  if (hide) {
+    // 等一拍再藏，让用户看到「完成」
+    setTimeout(() => {
+      rail.classList.add('hidden');
+    }, 600);
   }
 }
 
-export function setToolResult(card, resultContent) {
-  const section = card.querySelector('.tool-result-section');
-  const pre = section?.querySelector('pre');
-  if (!section || !pre) return;
-
-  let content = typeof resultContent === 'string'
-    ? resultContent
-    : JSON.stringify(resultContent, null, 2);
-
-  const MAX = 4000;
-  if (content.length > MAX) {
-    content = content.slice(0, MAX) + '\n… (truncated ' + (content.length - MAX) + ' chars, expand header to inspect)';
-  }
-
-  pre.textContent = content;
-  section.style.display = 'block';
+// 兼容旧导入名（避免其它文件炸掉）
+export function createToolCard(toolData) {
+  const rail = createProgressRail();
+  appendProgressStep(rail, toolData);
+  return rail;
 }
-
+export function updateToolCardStatus() {}
+export function setToolResult() {}
 export function createThinkingIndicator() {
   const el = document.createElement('div');
-  el.className = 'thinking-indicator';
-  el.innerHTML = '<div class="spinner" style="width:14px;height:14px;"></div> 正在调用工具...';
+  el.className = 'agent-progress';
+  el.innerHTML = '<div class="agent-progress-label">思考中…</div><div class="agent-progress-icons"></div>';
   return el;
-}
-
-function formatDuration(seconds) {
-  if (!seconds) return '';
-  if (seconds < 1) return Math.round(seconds * 1000) + 'ms';
-  if (seconds < 60) return seconds.toFixed(1) + 's';
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return m + 'm ' + s + 's';
 }
