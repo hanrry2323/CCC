@@ -97,7 +97,7 @@ CCC 底座（Hub + Engine + Board + 通用阶段包）
 | 通用阶段包 | Domain Skill（质检、采价规则…） |
 | 不替代业务库 | 既有 PostgreSQL / 对象存储等 |
 
-首个竖切样板：**QX 分布式爬虫调度平台** — 详见 [`vertical-qx.md`](vertical-qx.md)。
+首个样板：**clawmed-ccc**（`~/program/clawmed-ccc`，由旧 QX/clawmed 资产迁入）— 见 [`vertical-qx.md`](vertical-qx.md) 与 [`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md)。
 
 ---
 

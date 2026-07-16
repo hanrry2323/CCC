@@ -10,6 +10,7 @@
 | [`INTRO.md`](INTRO.md) | **对外完整介绍** |
 | [`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) | 截图分镜 |
 | [`vertical-qx.md`](vertical-qx.md) | QX 竖切商用蓝图 |
+| [`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md) | **下一步：xianyu 视频 + QX 双轨（待拍板）** |
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动（省 token） |

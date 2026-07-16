@@ -21,7 +21,9 @@
 | 演示资产 | Walkthrough 分镜 + 视频脚本已就位；截图/成片待维护者本地补齐 |
 | 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（CCC 底座 × QX；本阶段不拆 QX 仓） |
 
-**未在此预先锁定的里程碑**（待沟通）：QX Phase A 挂载实装、安装体验、传播渠道、生态 Domain Skill 等。
+**下一步双轨（待拍板）**：[`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md) — 用 CCC 带动 xianyu 视频质量门 + QX 全新/原地重构决策。
+
+**未在此预先锁定的里程碑**：安装体验、传播渠道、生态 Domain Skill 等。
 
 ---
 

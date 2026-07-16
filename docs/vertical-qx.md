@@ -1,23 +1,20 @@
-# 竖切蓝图：CCC × QX（及通用垂直行业）
+# 竖切蓝图：CCC × clawmed-ccc（原 QX 资产）
 
-> **本阶段只写蓝图，不拆 QX 大仓。**  
-> 产品叙事见 [`INTRO.md`](INTRO.md) · [`VISION.md`](VISION.md)  
-> QX 路径（本机）：`~/program/projects/qx` · QXO 指挥台：`~/program/qx-observer`（互补，非替代 CCC）
+> **产品名 / 目录（已拍板）**：`clawmed-ccc` @ `~/program/clawmed-ccc`  
+> **策略**：全新仓（D2-B），旧 `projects/qx` / `projects/clawmed-ai` 为归档零件库。  
+> 执行计划：[`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md)
 
 ---
 
 ## 1. 判断
 
-| 已有（QX） | 缺失 | CCC 补上 |
-|------------|------|----------|
-| 爬虫注册表、`crawlers/` | Loop 级编排 | Engine + Board |
-| PostgreSQL `qx_platform` | 人机快捷交接 | Hub + 快捷键 / 自定义动作 |
-| `workers/`、历史 PM2 cron | 失败重试 / 验收门禁 | phase + verdict + 重开 |
-| Dashboard 业务可视化 | 「意图 → 可执行任务」 | 定稿转任务 / 模板下达 |
+| 已有（旧 qx / clawmed） | 缺失 | CCC 补上 |
+|-------------------------|------|----------|
+| 爬虫、PG、worker | Loop 编排 | Engine + Board |
+| 早期 OpenClaw 残留文档 | 人机快捷交接 | Hub + 快捷键 |
+| Dashboard | 干净主开发面 | **新仓 clawmed-ccc** |
 
-结论：QX **不必再造调度 IDE**；以 CCC 为底座，行业资产挂上去即竖切产品。
-
-QXO（qx-observer）偏战略指挥 / 中台，与 CCC **互补**：CCC 跑编排闭环，行业资产与 Domain Skill 挂在 CCC 下。
+旧任务文档已归档至各仓 `_archive/`，**不进入**新仓上下文。
 
 ---
 
