@@ -6,141 +6,187 @@
 
 ## 当前代码状态
 
-B1 首笔提交 `c8c3d31` 已将 demo 爬虫迁入并提交（src + tests），但四川价爬虫代码仍在 untracked 区且存在接口缺陷，run_crawler.py 的 sichuan 分支也未被提交。B1.1 仅写了 docs 未修代码。
+项目 `clawmed-ccc`（简称 cla）已完成 bootstrap + OBS 探针基础，当前有 8 个源文件（见下文文件树）。爬虫基础设施已就位（`BaseCrawler` + `CrawlerConfig` + `DemoCrawler` + CLI），但缺一个来自 qx 的真实爬虫本体。零件库 `/Users/apple/program/projects/qx/crawlers/` 下有 `sichuan_price_adapter/`、`nmpa_adapter/`、`dekyy_adapter/` 等完整生产级适配器，本次选四川价做首个迁入。
+
+### 当前文件树
+```
+./tests/test_crawler_demo.py
+./tests/test_obs4_util.py
+./scripts/run_crawler.py
+./src/crawlers/demo/__init__.py
+./src/crawlers/demo/demo_crawler.py
+./src/crawlers/__init__.py
+./src/crawlers/base.py
+./src/util_obs4.py
+```
+
+### 当前 git HEAD
+```
+dfdd2f6 docs: OBS3 流程压力探针 (phase 1/1, cla-obs3-docs)
+6bd309d feat: OBS4 add util + test (phase 1/1, cla-obs4-util)
+5724330 chore: bootstrap clawmed-ccc (CCC vertical base)
+```
 
 - **入口/核心文件**：
-  - `scripts/run_crawler.py` — CLI 入口（HEAD 只注册 demo；工作区含 sichuan 注册但未提交且有两个 bug：第 25–28 行重复 `sys.path.insert` + import，第 54 行 sichuan 分支用 `generic_name` 但 sichuan dry-run 记录字段为 `product_name`）
-  - `src/crawlers/base.py` — 抽象基类，声明 4 个抽象方法 + `run()` 编排；**未定义 `__init__` 或 `_config()` 工具方法**——子类必须直接设 `self.config`
-  - `src/crawlers/demo/demo_crawler.py` — 已提交，正确实现全部 4 个抽象方法，通过 `self.config = CrawlerConfig(...)` 初始化
-  - `src/crawlers/sichuan/sichuan_crawler.py` — **untracked**，含两个阻塞 bug：
-    1. **`extract()` 缺失** → Python 拒绝实例化抽象类
-    2. **`__init__` 调用 `self._config()`** → BaseCrawler 无此方法（DemoCrawler 用 `self.config = CrawlerConfig(...)`），构造时崩溃
-  - `tests/test_crawler_demo.py` — 4 单测已提交通过
-  - `tests/test_crawler_sichuan.py` — **untracked**，5 单测（因 sichuan 无法实例化，0/5 可通过）
+  - `scripts/run_crawler.py` — CLI 入口，当前仅注册 `DemoCrawler`（demo CLI exit 0，stdout 含 `阿莫西林胶囊`）
+  - `src/crawlers/base.py` — `BaseCrawler` 抽象基类（4 个抽象方法：`_load_credential/login/crawl/extract`）。`run()` 串联全流程：加载凭证 → 登录 → 爬取 → 抽取
+  - `src/crawlers/demo/demo_crawler.py` — `DemoCrawler` 实现（硬编码 3 条药品样本数据，`CrawlerConfig(name="demo", site_url="https://demo.local")`）
+  - `tests/test_crawler_demo.py` — 4 单测（import/probe/run 返回 list/记录含必需字段），全部通过
 
 - **当前结构要点**：
-  1. BaseCrawler 不提供 `__init__` 或 `_config()`，子类必须自行 `self.config = CrawlerConfig(...)`
-  2. DemoCrawler 写法是唯一正确参考——直接设 config + 实现全部 4 个抽象方法
-  3. SichuanCrawler 的 `_extract_price_records()` 已有抽取逻辑但未通过 `extract()` 入口暴露
-  4. `run_crawler.py` 的 unstaged diff 含重复导入和字段名笔误
-  5. README.md 工作区已含 "爬虫快速运行" 4 条命令（demo + sichuan 两套 CLI + 两套测试）——基本就绪
+  1. `BaseCrawler.run()` 串联全流程，子类只需实现 4 个抽象方法
+  2. `run_crawler.py` 用 `--name` 参数 + `crawler_map` dict 路由爬虫，缺 sichuan 注册
+  3. 项目层级已标准化：`src/crawlers/<name>/` 定位爬虫包
+  4. qx 的 `sichuan_price_adapter/` 含完整实现（requests API 调用、SQLite 持久化、CSV 导出、批处理），本次取骨架做最小迁入——聚焦 BaseCrawler 接口适配 + dry-run 模式，不复制持久化逻辑
+  5. `src/util_obs4.py` 和 `tests/test_obs4_util.py` 为 OBS4 探针文件，与本 task 无关
 
 - **待改动点**：
-  - `sichuan_crawler.py`：`__init__` 改 `self.config = CrawlerConfig(...)` | 补 `extract(self, raw)` 委派 `_extract_price_records(raw)` | 加 `CrawlerConfig` import
-  - `run_crawler.py`：删第 25–28 行重复 import | `generic_name` → `product_name`
-  - `test_crawler_sichuan.py`：确认 `__init__` 修复后所有测试通过
-  - 创建 `docs/migration-B1.md` 含 task id + 迁移清单 + 验收结果
+  - 新建 `src/crawlers/sichuan/__init__.py`（包标记）
+  - 新建 `src/crawlers/sichuan/sichuan_crawler.py`（SichuanCrawler extends BaseCrawler）
+  - 新建 `tests/test_crawler_sichuan.py`（5 条测试）
+  - 修改 `scripts/run_crawler.py`：添加 `SichuanCrawler` import + `crawler_map` 注册
+  - 更新 `README.md`：追加「爬虫快速运行」小节（≤10 行命令说明）
+  - 写入迁移报告 `docs/migration-B1.md`（含 task id）
+  - 写入 `.ccc/plans/` + `.ccc/phases/` 过程文件
 
 ---
 
 ## 范围
 
-- **目标**：修复并提交四川价爬虫代码，确保 demo + sichuan 两爬虫 CLI 均可跑通（dry-run），创建 B1 迁移报告
+- **目标**：从 qx `sichuan_price_adapter/` 迁入最小四川价爬虫，适配 `BaseCrawler` 接口，dry-run 模式可跑通，pytest 全绿
 - **只改文件**：
   ```
+  src/crawlers/sichuan/__init__.py
   src/crawlers/sichuan/sichuan_crawler.py
   tests/test_crawler_sichuan.py
   scripts/run_crawler.py
+  README.md
   docs/migration-B1.md
+  .ccc/plans/cla-b1--qx--1-vded.plan.md
+  .ccc/phases/cla-b1--qx--1-vded.phases.json
   ```
-- **不改文件**：`src/crawlers/base.py`、`src/crawlers/demo/`、`tests/test_crawler_demo.py`、`src/util_obs4.py`、`tests/test_obs4_util.py`、`VERSION`、`CLAUDE.md`、`SKILL.md`
+- **不改文件**：`src/crawlers/base.py`、`src/crawlers/demo/`、`tests/test_crawler_demo.py`、`src/util_obs4.py`、`tests/test_obs4_util.py`、`VERSION`、`CLAUDE.md`、`SKILL.md`、`reports/`、`.ccc/board/`、`.ccc/ops/`
 - **执行方式**：`manual`
 - **Phase 数**：2
 
 ---
 
-## 改动 1（Phase 1）：修复 SichuanCrawler + 清理 run_crawler.py + 提交代码
+## 改动 1（Phase 1）：迁入四川价爬虫代码 + 单测 + CLI 注册
 
 ### 做什么
 
-SichuanCrawler 现有两块阻塞缺陷导致无法实例化或运行。本 phase 修复后使其成为 BaseCrawler 完整子类，同时清理 run_crawler.py 在 B1 期间引入的重复导入和字段名笔误。提交后 demo + sichuan 两路单测全绿，两路 CLI exit 0。
+从 qx `sichuan_price_adapter/` 迁入四川药械网价格爬虫，适配 `BaseCrawler` 接口。最小可跑版本：
+- 不复制 qx 的 SQLite 持久化、CSV 导出、批处理等生产逻辑
+- 核心是 4 个抽象方法实现：`_load_credential/login/crawl/extract`
+- 支持 `CRAWLER_DRY_RUN` 环境变量切换 dry-run / real 模式
+- dry-run 返回 3 条硬编码样本数据（不依赖 API 和凭证）
+- 注册到 `run_crawler.py` 的 `crawler_map`，`--name sichuan` 可调用
 
 ### 怎么做
 
-1. **修复 `sichuan_crawler.py`**：
-   - 导入 `CrawlerConfig`（当前缺该 import）：`from crawlers.base import BaseCrawler, CrawlerConfig`
-   - 改 `__init__`：去掉 `self._config(...)` + `super().__init__(cfg)`，改为 `self.config = CrawlerConfig(name="sichuan", site_url="https://ggfw.scyb.org.cn")`——与 DemoCrawler 写法一致
-   - 补 `extract(self, raw) -> List[Dict[str, Any]]`：直接委托 `return self._extract_price_records(raw)`
+1. **创建 `src/crawlers/sichuan/__init__.py`**：
+   - 包标记文件，内容：`"""Sichuan crawler package."""`
 
-2. **清理 `run_crawler.py`**：
-   - 删第 25–28 行内部的 `import sys` + `sys.path.insert(0, ...)` + `from crawlers.sichuan...`——顶部的 import 已经够用
-   - 第 54 行 `generic_name` → `product_name`（sichuan dry-run 记录用 `product_name`）
+2. **创建 `src/crawlers/sichuan/sichuan_crawler.py`**：
+   - 导入 `BaseCrawler`、`CrawlerConfig`
+   - 类 `SichuanCrawler(BaseCrawler)`：
+     - `__init__`：`self.config = CrawlerConfig(name="sichuan", site_url="https://ggfw.scyb.org.cn")`
+     - `_load_credential`：检查 `~/.ccc/credentials/sichuan-001.json`——存在则 `json.load`，不存在返回空 dict
+     - `login`：dry-run（`CRAWLER_DRY_RUN=1`）→ True；real 模式验证 credential 含 `base_url`
+     - `crawl`：dry-run 调用 `_crawl_dry_run`；real 模式调用 `_fetch_price_data` + `_extract_price_records`
+     - `extract`：委托 `_extract_price_records(raw)`
+     - `_crawl_dry_run`：返回 3 条 mock 数据（阿司匹林肠溶片/氨氯地平/阿莫西林胶囊）
+     - `_fetch_price_data`：`requests.post(..., timeout=30)` 到四川药械网 API
+     - `_extract_price_records`：字段归一化（`product_name/spec/manufacturer/reference_price/unit/last_updated`）
 
-3. **确认测试通过**：
-   - `python3 -m pytest tests/test_crawler_demo.py tests/test_crawler_sichuan.py -q --tb=short`
+3. **创建 `tests/test_crawler_sichuan.py`**（5 条测试，`TestSichuanCrawler` class）：
+   - `test_sichuan_import`：验证 `SichuanCrawler` 可导入
+   - `test_sichuan_crawler_initialization`：实例化 + `config.name == "sichuan"`
+   - `test_sichuan_crawl_dry_run_returns_list`：`crawl()` 返回 list，len ≥ 1
+   - `test_sichuan_crawl_dryrun_record_has_required_fields`：记录含 `product_name/spec/manufacturer/reference_price/unit`
+   - `test_sichuan_load_credential_empty_path`：凭证文件不存在时返回空 dict
 
-4. **Stage + commit**：
+4. **修改 `scripts/run_crawler.py`**：
+   - 添加 import：`from crawlers.sichuan.sichuan_crawler import SichuanCrawler`
+   - 在 `crawler_map` 中加入 `"sichuan": SichuanCrawler`
+   - CLI 的 `--name` help 文本同步更新
+
+5. **验证**：
+   - `python3 -m pytest tests/test_crawler_demo.py tests/test_crawler_sichuan.py -q --tb=short` → 9 passed
+   - `python3 scripts/run_crawler.py --name demo` → exit 0，stdout 含 `阿莫西林胶囊`
+   - `python3 scripts/run_crawler.py --name sichuan` → exit 0，stdout 含 `Results: 3 rows`
+
+### 验收清单
+
+- [ ] `src/crawlers/sichuan/sichuan_crawler.py` 文件存在
+- [ ] `SichuanCrawler` 继承 `BaseCrawler`，实现全部 4 个抽象方法
+- [ ] dry-run 模式不需要凭证文件和外部网络
+- [ ] 5 条单测覆盖 import、初始化、dry-run 返回 list、记录含字段、空凭证
+- [ ] `run_crawler.py` 中 sichuan 注册正常（import + crawler_map 条目）
+- [ ] pytest 9 个 case 全部通过
+- [ ] 两 CLI（`--name demo` + `--name sichuan`）均 exit 0
+
+### 验收
+
+- 文件就位（参考：`test -f src/crawlers/sichuan/sichuan_crawler.py && test -f tests/test_crawler_sichuan.py` → exit 0）
+- pytest 全绿（参考：`python3 -m pytest tests/test_crawler_demo.py tests/test_crawler_sichuan.py -q --tb=short` → 9 passed）
+- sichuan CLI 可跑（参考：`python3 scripts/run_crawler.py --name sichuan` → stdout 含 `Results: 3 rows`，exit 0）
+
+---
+
+## 改动 2（Phase 2）：文档 + README + CCC 过程文件
+
+### 做什么
+
+将迁入代码配套的文档和 CCC 控制面过程文件正式提交。Phase 1 与 Phase 2 分离，确保代码 diff 和文档 diff 干净独立。
+
+### 怎么做
+
+1. **Stage + commit Phase 1 代码**：
    - `git add src/crawlers/sichuan/ tests/test_crawler_sichuan.py scripts/run_crawler.py`
-   - commit message: `feat(crawler): 迁入四川价爬虫 — 修复 extract()+__init__ + 注册 CLI (phase 1/2, cla-b1--qx--1-vded)`
+   - `git commit -m "feat(crawler): 迁入四川价爬虫 — sichuan_crawler + run_crawler 注册 + 单测 (phase 1/2, cla-b1--qx--1-vded)"`
+
+2. **更新 `README.md`**：
+   - 在 README 末尾添加「爬虫快速运行」小节，包含 4 条命令：
+     - demo CLI：`python3 scripts/run_crawler.py`
+     - demo 测试：`python3 -m pytest tests/test_crawler_demo.py -q --tb=short`
+     - sichuan CLI（dry-run）：`python3 scripts/run_crawler.py --name sichuan`
+     - sichuan 测试：`python3 -m pytest tests/test_crawler_sichuan.py -q --tb=short`
+
+3. **创建 `docs/migration-B1.md`**：
+   - 标题：`# B1 迁移报告：从 qx 迁入四川价爬虫`
+   - 内容含：
+     - 任务 ID：`cla-b1--qx--1-vded`
+     - 迁移来源：`~/program/projects/qx/crawlers/sichuan_price_adapter/`
+     - 迁入目标：`src/crawlers/sichuan/`
+     - 三硬门验收表（代码迁入路径 / CLI 可跑通 / README ≤10 行）
+     - 技术要点：BaseCrawler 适配、dry-run 模式设计、与 qx 原版差异
+
+4. **写入 `.ccc/phases/cla-b1--qx--1-vded.phases.json`**：
+   - 用本 plan 末尾 PHASES 段的 JSONL 内容覆盖
+
+5. **Stage + commit Phase 2**：
+   - `git add README.md docs/migration-B1.md .ccc/plans/cla-b1--qx--1-vded.plan.md .ccc/phases/cla-b1--qx--1-vded.phases.json`
+   - `git commit -m "docs: B1 迁移报告 — 爬虫迁入闭环 (phase 2/2, cla-b1--qx--1-vded)"`
+
+6. **最终全量验收**：运行全局验收清单中所有命令
 
 ### 验收清单
 
-- [ ] SichuanCrawler 可实例化（_config bug 已修复，extract 已实现）
-- [ ] demo 4 单测 + sichuan 5 单测全部通过
-- [ ] `python3 scripts/run_crawler.py --name demo` → exit 0, stdout 含 "Results: 3 rows"
-- [ ] `python3 scripts/run_crawler.py --name sichuan` → exit 0, stdout 含 "Results: 3 rows"
-- [ ] run_crawler.py 无重复 import
-- [ ] commit message 含 `phase 1/2` + `cla-b1--qx--1-vded`
-- [ ] diff 不越 Phase 1 白名单
+- [ ] `README.md` 含爬虫快速运行小节（共 ≤10 行命令说明）
+- [ ] `docs/migration-B1.md` 存在且含 task id `cla-b1--qx--1-vded`
+- [ ] `.ccc/phases/cla-b1--qx--1-vded.phases.json` 是合法 JSONL，每行含非空 description 与 scope
+- [ ] `.ccc/plans/cla-b1--qx--1-vded.plan.md` 存在
+- [ ] 两笔独立 commit，各含对应 phase 编号 + task id
+- [ ] Phase 2 diff 不含代码文件（仅 `docs/` / `README.md` / `.ccc/`）
+- [ ] Phase 1 diff 不含文档（仅 `src/crawlers/sichuan/` / `tests/` / `scripts/`）
 
 ### 验收
 
-- 四川价可实例化（参考：`python3 -c "from crawlers.sichuan.sichuan_crawler import SichuanCrawler; SichuanCrawler()"` → exit 0）
-- 双爬虫单测全绿（参考：`python3 -m pytest tests/ -q --tb=short` → 9+ passed，0 failed）
-- CLI demo（参考：`python3 scripts/run_crawler.py --name demo` → exit 0，stdout 含 `Sample: 阿莫西林`）
-- CLI sichuan（参考：`python3 scripts/run_crawler.py --name sichuan` → exit 0，stdout 含 `Sample:` 且 `参考价格` > 0）
-- 无重复导入（参考：`grep -c 'import sys' scripts/run_crawler.py` ≤ 1）
-
----
-
-## 改动 2（Phase 2）：B1 迁移报告 + 验收闭环
-
-### 做什么
-
-创建 B1 迁移报告，记录 demo + sichuan 两爬虫迁入情况和验收结果。Phase 2 无代码改动，纯文档。
-
-### 怎么做
-
-1. **创建 `docs/migration-B1.md`**：
-   - 标题含 task id `cla-b1--qx--1-vded`
-   - 迁移清单表：B1 → Phase 1（demo）+ Phase 2（sichuan）
-   - 来源标注：demo 爬虫为新建样例；sichuan 爬虫原始来源为 qx `crawlers/sichuan_price_adapter/`
-   - 验收状态表（三硬门）：src code / pytest / CLI
-   - 实测命令输出（stdout 摘要）
-
-2. **覆盖 `.ccc/plans/cla-b1--qx--1-vded.plan.md`**（内容同本 plan）
-
-3. **覆盖 `.ccc/phases/cla-b1--qx--1-vded.phases.json`**（2 phases JSONL）
-
-4. **Stage + commit**：
-   - `git add docs/migration-B1.md .ccc/plans/cla-b1--qx--1-vded.plan.md .ccc/phases/cla-b1--qx--1-vded.phases.json`
-   - commit message: `docs: B1 迁移报告 — 爬虫迁入闭环 (phase 2/2, cla-b1--qx--1-vded)`
-
-### 验收清单
-
-- [ ] docs/migration-B1.md 存在且含 task id
-- [ ] 迁移清单涵盖 demo + sichuan 两段
-- [ ] 验收状态表显示 src/pytest/CLI 三硬门均 PASS
-- [ ] .ccc/plans 和 .ccc/phases 已覆盖
-- [ ] commit message 含 `phase 2/2` + `cla-b1--qx--1-vded`
-
-### 验收
-
-- 迁移报告含 task id（参考：`grep -q 'cla-b1--qx--1-vded' docs/migration-B1.md` → exit 0）
-- 计划/阶段文件就位（参考：`test -f .ccc/plans/cla-b1--qx--1-vded.plan.md && test -f .ccc/phases/cla-b1--qx--1-vded.phases.json` → exit 0）
-- 两笔独立 commit（参考：`git log --oneline -2` 含 `phase 1/2`、`phase 2/2`）
-
----
-
-## 验收
-
-> 全局独立二级标题，硬门验收。
-
-- **爬虫可运行**：`python3 scripts/run_crawler.py --name demo && python3 scripts/run_crawler.py --name sichuan` → 两次 exit 0
-- **全站测试绿**：`python3 -m pytest tests/ -q --tb=short` → 9+ passed
-- **迁移报告含 task id**：`grep -q 'cla-b1--qx--1-vded' docs/migration-B1.md` → exit 0
-- **两笔 commit 各含 phase 编号**：`git log --oneline -2` 显示 `phase 1/2` 和 `phase 2/2`
-- **diff 不越白名单**：两笔 diff 均不修改 `base.py`、`demo/`、`VERSION` 等禁止文件
+- README 含爬虫命令（参考：`grep -c "run_crawler" README.md` ≥ 1）
+- 迁移报告含 task id（参考：`grep "cla-b1--qx--1-vded" docs/migration-B1.md` → exit 0）
+- phases 合法 JSONL（参考：`python3 -c "import json; [json.loads(l) for l in open('.ccc/phases/cla-b1--qx--1-vded.phases.json')]"` → exit 0）
+- 两笔独立 commit（参考：`git log --oneline -2` 显示两 phase 编号）
 
 ---
 
@@ -148,34 +194,40 @@ SichuanCrawler 现有两块阻塞缺陷导致无法实例化或运行。本 phas
 
 | Phase | 改动 | Commit message 草稿 |
 |-------|------|---------------------|
-| 1 | 修复 SichuanCrawler（extract+__init__）+ 清理 run_crawler.py + 提交 | `feat(crawler): 迁入四川价爬虫 — 修复 extract()+__init__ + 注册 CLI (phase 1/2, cla-b1--qx--1-vded)` |
-| 2 | 创建 B1 迁移报告 + .ccc 过程文件 | `docs: B1 迁移报告 — 爬虫迁入闭环 (phase 2/2, cla-b1--qx--1-vded)` |
+| 1 | 创建 `sichuan_crawler.py` + `__init__.py` + 5 条单测 + `run_crawler.py` 注册 | `feat(crawler): 迁入四川价爬虫 — sichuan_crawler + run_crawler 注册 + 单测 (phase 1/2, cla-b1--qx--1-vded)` |
+| 2 | README 爬虫命令 + migration-B1 报告 + .ccc/plans + .ccc/phases | `docs: B1 迁移报告 — 爬虫迁入闭环 (phase 2/2, cla-b1--qx--1-vded)` |
 
 ---
 
 ## 全局验收清单
 
-- [ ] Phase 1 只改 src/crawlers/sichuan/、tests/test_crawler_sichuan.py、scripts/run_crawler.py
-- [ ] Phase 2 只改 docs/migration-B1.md、.ccc/plans/、.ccc/phases/
-- [ ] demo 爬虫 CLI exit 0 + stdout 含样本数据
-- [ ] sichuan 爬虫 CLI exit 0 + stdout 含样本数据
-- [ ] `python3 -m pytest tests/ -q --tb=short` → 全部通过
-- [ ] docs/migration-B1.md 含 task id
-- [ ] 两笔独立 commit 各含对应 phase 编号 + task id
-- [ ] 不修改 base.py、demo/、VERSION 等禁止文件
+- [ ] 编译/类型检查，零错误
+- [ ] `pytest tests/test_crawler_demo.py tests/test_crawler_sichuan.py -q --tb=short` → 9 passed，0 failed
+- [ ] `python3 scripts/run_crawler.py --name demo` → exit 0，stdout 含 `阿莫西林胶囊`
+- [ ] `python3 scripts/run_crawler.py --name sichuan` → exit 0，stdout 含 `Results: 3 rows`
+- [ ] `git ls-files src/crawlers/sichuan/ | wc -l` ≥ 2
+- [ ] `git ls-files tests/test_crawler_sichuan.py` → exit 0
+- [ ] `git ls-files docs/migration-B1.md` → exit 0
+- [ ] `git log --oneline -2` 显示两笔独立 commit，各含对应 phase 编号 + `cla-b1--qx--1-vded`
+- [ ] 两笔 diff 均不越白名单——不触及 `src/crawlers/base.py`、`src/crawlers/demo/`、`VERSION` 等
+- [ ] 不修改 `src/crawlers/base.py`、`demo/`、`VERSION`、`CLAUDE.md`、`SKILL.md`、`reports/`、`.ccc/board/`、`.ccc/ops/`
+
+---
+
+## 验收
+
+- **src 非空已提交**：`git ls-files src/crawlers/sichuan/ | wc -l` ≥ 2
+- **pytest 全绿**：`python3 -m pytest tests/test_crawler_demo.py tests/test_crawler_sichuan.py -q --tb=short` → 9 passed，0 failed
+- **sichuan CLI 可跑**：`python3 scripts/run_crawler.py --name sichuan` → exit 0，stdout 含 `Results: 3 rows`
+- **迁移报告含 task id**：`grep cla-b1--qx--1-vded docs/migration-B1.md` → exit 0
+- **两笔独立 commit**：`git log --oneline -2` 输出显示两个不同 message，各含 phase 编号
+- **diff 干净**：两笔 diff 合计不修改 `base.py`、`demo/`、`VERSION`、`SKILL.md`、`CLAUDE.md`、`reports/` 等禁止文件
 
 ---
 
 ## 后续步骤
 
-- **B2 方向**：从 qx 迁入 dekyy 浏览器自动化爬虫或 tfydd 适配器
-- **爬虫注册器**：建立 registry 支持按 name 批量调度（替换当前硬编码 dict）
-- **凭证管理**：建立 `~/.ccc/credentials/` 目录支持 real-mode 爬虫
-- **README 爬虫文档**：若工作区版本已有 sichuan 命令则跳过，否则补充
-
-## 完成定义（仅 Phase 2）
-1. 仅实现 Phase 2 对应需求
-2. 跑本 phase 相关测试（如有）
-3. 提交一个 commit（message 含 `cla-b1--qx--1-vded` 与 `phase=2`）
-4. 确认代码无语法错误
-5. 不超出 scope 白名单，且不提前做后续 phase
+- **B2 方向**：从 qx 迁入 `dekyy_adapter` 浏览器自动化爬虫或 `tfydd_adapter`，建立爬虫注册器支持按 name 批量调度
+- **凭证管理**：建立 `~/.ccc/credentials/` 目录，打通 SichuanCrawler real-mode 的凭证加载路径
+- **SichuanCrawler 生产增强**：接入 qx 的 SQLite 持久化层、批处理 ChunkInfo/ProcessResult 模式
+- **OBS 自检集成**：将爬虫烟雾测纳入 `scripts/ccc-self-check.sh`
