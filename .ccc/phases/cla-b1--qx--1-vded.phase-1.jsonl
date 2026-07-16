@@ -1,0 +1,1 @@
+{"schema_version": "1.1", "task_id": "cla-b1--qx--1-vded", "phase_index": 1, "total_phases": 1, "description": "B1 闭环验收 +CCC 过程文件", "scope": "docs/migration-B1.md, .ccc/plans/, .ccc/phases/", "outcome": "success"}
