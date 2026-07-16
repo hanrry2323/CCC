@@ -302,20 +302,36 @@ for p in phases:
 
     # v0.31 (C1 fix 外部 scope reject): scope 外文件拒绝提交
     if scope_marker != "--all":
+        # 查已跟踪修改 + 未跟踪新文件（git diff --name-only 漏新建文件）
         _changed_raw = subprocess.run(
             ["git", "diff", "--name-only"],
             cwd=workspace, capture_output=True, text=True
         ).stdout.strip()
+        _untracked_raw = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=workspace, capture_output=True, text=True
+        ).stdout.strip()
+        _all_changed = set()
         if _changed_raw:
-            _changed_set = set(_changed_raw.splitlines())
+            _all_changed |= set(_changed_raw.splitlines())
+        if _untracked_raw:
+            _all_changed |= set(_untracked_raw.splitlines())
+        if _all_changed:
             _scope_set = set(scope)
-            _extra = _changed_set - _scope_set
+            _extra = _all_changed - _scope_set
             if _extra:
                 print(f"  ❌ phase {pid}: scope 外文件被改动: {', '.join(sorted(_extra))}")
                 print(f"     拒绝提交，回退 extra 文件到 HEAD")
                 for _f in _extra:
+                    # 已跟踪文件 → checkout；未跟踪新文件 → rm
                     subprocess.run(["git", "checkout", "--", _f], cwd=workspace,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if os.path.exists(os.path.join(workspace, _f)):
+                        # git checkout 没修复（未跟踪文件），直接删
+                        try:
+                            os.remove(os.path.join(workspace, _f))
+                        except OSError:
+                            pass
                 errors += 1
                 continue
 
