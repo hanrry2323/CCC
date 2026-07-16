@@ -795,6 +795,27 @@
   gap: 4px;
   flex-wrap: wrap;
 }
+.qa-chip-soon {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.qa-chip-custom {
+  border-color: color-mix(in srgb, var(--ccc-text-accent, #007aff) 28%, var(--ccc-border-base));
+}
+.qa-chip-add {
+  border-style: dashed;
+  color: var(--ccc-text-muted, #666);
+}
+.qa-more-tray {
+  flex-wrap: wrap;
+  max-width: min(420px, 92vw);
+}
+@media (max-width: 900px) {
+  .qa-chip-primary {
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+}
 .qa-chip {
   appearance: none;
   border: 0.5px solid var(--ccc-border-base);

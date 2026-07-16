@@ -418,7 +418,7 @@ export function createEmptyState() {
   el.innerHTML =
     '<div class="empty-brand">CCC</div>' +
     '<div class="empty-state-title">今天想做什么？</div>' +
-    '<div class="empty-state-hint">下方工具条：<b>对齐基线</b> → <b>下一步</b> → 深入对话或 <b>下达任务</b></div>';
+    '<div class="empty-state-hint">下方工具条：<b>对齐基线</b> → <b>下一步</b> → 深入对话或 <b>下达任务</b>（共 6 个常用；··· 里可自定义）</div>';
   return el;
 }
 
