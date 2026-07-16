@@ -65,6 +65,7 @@ dev_role_relaunch = ccc_board.dev_role_relaunch
 dev_role_check_complete = ccc_board.dev_role_check_complete
 reviewer_role = ccc_board.reviewer_role
 tester_role = ccc_board.tester_role
+kb_role = ccc_board.kb_role
 MAX_RETRY = ccc_board.MAX_RETRY
 
 _load_phases = ccc_board._load_phases
@@ -843,6 +844,26 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     return False
 
 
+def _run_verified_kb_gate(ws: Path) -> None:
+    """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。"""
+    _activate_workspace(ws)
+    store = _get_store(ws)
+    verified = store.list_tasks("verified")
+    if not verified:
+        return
+    label = _ws_label(ws)
+    engine_log(f"[{label}] verified 列有 {len(verified)} 个任务，跑 kb_role")
+    try:
+        result = kb_role()
+        moved = (result or {}).get("moved") or []
+        for tid in moved:
+            _log_stats(ws, "move", tid, from_col="verified", to_col="released")
+            engine_log(f"[{label}] {tid} ✓ kb → released")
+        store.update_index()
+    except Exception as exc:
+        engine_log(f"[{label}] kb_role 异常: {exc}")
+
+
 def _run_testing_tasks_gate(ws: Path) -> None:
     """对 testing 列每个 task 跑 reviewer/tester 门禁。"""
     _activate_workspace(ws)
@@ -864,11 +885,37 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     label = _ws_label(ws)
     status = result.get("status", "unknown")
 
+    if status == "phase_done":
+        # v0.38: 当前 phase 完成，仍有后续 phase → relaunch，留在 active_tasks
+        next_phase = result.get("next_phase")
+        engine_log(
+            f"[{label}] {tid} phase {result.get('phase')} done → relaunch phase {next_phase}"
+        )
+        try:
+            relaunch = dev_role_relaunch(tid)
+        except Exception as exc:
+            engine_log(f"[{label}] {tid} phase relaunch 异常: {exc}")
+            return False
+        if relaunch.get("ok") or relaunch.get("status") in ("launched", "ok", "running"):
+            return False
+        # relaunch 失败：留给下一 tick / hang 恢复
+        engine_log(
+            f"[{label}] {tid} phase relaunch 未成功: {relaunch}，保留 active_tasks"
+        )
+        return False
+
     if status == "success":
-        # v0.33: 不再同步跑 reviewer+tester+pytest+kb，只移入 testing 让
-        # _run_testing_tasks_gate（每 6 轮 ~60s）异步处理。
-        store.move_task(tid, "in_progress", "testing")
-        _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
+        # v0.33/v0.38: dev_role_check_complete 可能已移到 testing，避免双重 move
+        col = _find_task_column(store, tid)
+        if col == "in_progress":
+            store.move_task(tid, "in_progress", "testing")
+            _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
+        elif col == "testing":
+            _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
+        else:
+            engine_log(
+                f"[{label}] {tid} success 但列={col}，跳过 in_progress→testing"
+            )
         store.update_index()
         return True
 
@@ -1324,16 +1371,25 @@ def _process_backlog(ws: Path) -> bool:
         except OSError:
             pass
 
-    # 1. phases.json 已存在（手动拆分），直通 planned
-    if phases_file.exists():
+    plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
+    # 1. plan+phases 齐全（手动拆分），直通 planned；残缺则清掉走 product
+    if phases_file.exists() and plan_file.exists():
         engine_log(
-            f"[product] [{label}] {tid} phases.json 已存在，跳过 product_role，移入 planned"
+            f"[product] [{label}] {tid} plan+phases 已存在，跳过 product_role，移入 planned"
         )
         if not store.move_task(tid, "backlog", "planned"):
             engine_log(f"[product] [{label}] move {tid} backlog→planned 失败，跳过")
             return False
         _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
         return True
+    if phases_file.exists() and not plan_file.exists():
+        try:
+            phases_file.unlink()
+            engine_log(
+                f"[product] [{label}] {tid} 有 phases 无 plan，删孤儿 phases 走 product"
+            )
+        except OSError as exc:
+            engine_log(f"[product] [{label}] {tid} 删孤儿 phases 失败: {exc}")
 
     # v0.35: 任务分类 — auto/quick 不走 product_role
     try:
@@ -2276,6 +2332,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                             f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
                         )
                         _run_testing_tasks_gate(ws)
+                    # v0.38: verified → kb → released
+                    if _store.list_tasks("verified"):
+                        _run_verified_kb_gate(ws)
                     # v0.30: 定期统计聚合（即使系统忙）
                     try:
                         aggregate_stats(ws)
@@ -2364,6 +2423,8 @@ def engine_loop(workspaces: list[Path]) -> None:
                             f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
                         )
                         _run_testing_tasks_gate(ws)
+                    if _store2.list_tasks("verified"):
+                        _run_verified_kb_gate(ws)
                     _write_heartbeat(ws, None, 0, [])
 
                     # v0.37: 真·空闲 — 无任何列任务时不做 audit/evolve/replenish
@@ -2375,6 +2436,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                             "planned",
                             "in_progress",
                             "testing",
+                            "verified",
                             "abnormal",
                         )
                     )

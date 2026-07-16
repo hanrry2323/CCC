@@ -321,6 +321,45 @@ def _current_running_phase(task_id: str) -> int:
     return 1
 
 
+def _mark_phase_done(task_id: str, phase_id: int) -> None:
+    """v0.38: 标记某个 phase 为 done（phase 成功完成时调用）。"""
+    phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.exists():
+        return
+    try:
+        lines = phases_file.read_text().splitlines()
+    except OSError:
+        return
+    new_lines: list[str] = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            new_lines.append(line)
+            continue
+        if not isinstance(obj, dict) or "schema_version" in obj:
+            new_lines.append(line)
+            continue
+        if obj.get("phase") == phase_id:
+            current = obj.get("status")
+            if current in ("done", "verified", "skipped", "failed"):
+                new_lines.append(line)
+                continue
+            obj["status"] = "done"
+            changed = True
+        new_lines.append(json.dumps(obj, ensure_ascii=False))
+    if changed:
+        try:
+            _store_atomic_write(phases_file, "\n".join(new_lines) + "\n")
+        except OSError as e:
+            _log.warning("mark phase done failed %s p=%s: %s", task_id, phase_id, e)
+
+
 def _mark_phase_failed(task_id: str, phase_id: int) -> None:
     """v0.24: 标记某个 phase 为 failed（quarantine 时调用）。
 

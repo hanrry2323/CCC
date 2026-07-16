@@ -290,6 +290,7 @@ from board.phase import (  # noqa: E402
     _resolve_phase_dependencies,
     _apply_phase_status_updates,
     _current_running_phase,
+    _mark_phase_done,
     _mark_phase_failed,
     _check_phase_failures,
     _read_engine_iter_meta,
@@ -1120,6 +1121,35 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
         _cleanup_async_product_markers(pids_dir, task_id)
         return {"status": "failed", "error": f"phases > max {_get_cfg().max_phases}"}
 
+    # v0.38: 与 sync product 对齐 — phase_lint 门禁
+    _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(
+        phases_data
+    )
+    if not _lint_valid:
+        _cleanup_async_product_markers(pids_dir, task_id)
+        return {
+            "status": "failed",
+            "error": f"phase_lint failed: {'; '.join(_lint_errors)}",
+        }
+    _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(
+        phases_data
+    )
+    if not _dep_valid:
+        _cleanup_async_product_markers(pids_dir, task_id)
+        return {
+            "status": "failed",
+            "error": f"phase_lint orphan-dep: {'; '.join(_dep_errors)}",
+        }
+    _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(phases_data)
+    if not _cycle_valid:
+        _cleanup_async_product_markers(pids_dir, task_id)
+        return {
+            "status": "failed",
+            "error": f"phase_lint cycle: {'; '.join(_cycle_errors)}",
+        }
+    if _lint_warnings:
+        _log.warning("[product-async] phase_lint warnings: %s", _lint_warnings)
+
     # 写 plan + phases 文件 + 移 backlog → planned
     _write_async_product_result(task_id, plan_content, phases_data)
 
@@ -1140,6 +1170,47 @@ def _cleanup_async_product_markers(pids_dir: Path, task_id: str) -> None:
             pass
 
 
+def _write_pass_verdict(task_id: str, reason: str) -> None:
+    """写 Engine 门禁可读的 PASS verdict（红线 11）。"""
+    verdict_dir = get_workspace() / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    (verdict_dir / f"{task_id}.verdict.md").write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** PASS\n\n"
+        f"{reason}\n",
+        encoding="utf-8",
+    )
+
+
+def _infer_complexity_from_plan(plan_content: str) -> str:
+    """v0.28.1 / v0.38: 根据 plan 内容推断 complexity（small/medium/large）。"""
+    plan_lines = plan_content.splitlines()
+    plan_size = len(plan_lines)
+    file_mentions = len(
+        set(
+            line.strip()
+            for line in plan_lines
+            if line.strip().startswith(("/", "`/"))
+            and not line.strip().startswith(("//", "#"))
+        )
+    )
+    section_count = len(
+        [
+            line
+            for line in plan_lines
+            if line.strip().startswith("##")
+            and " " in line
+            and line.strip() != "##"
+        ]
+    )
+    plan_weight = plan_size + file_mentions * 20 + section_count * 10
+    if plan_weight <= 50:
+        return "small"
+    if plan_weight <= 200:
+        return "medium"
+    return "large"
+
+
 def _write_async_product_result(
     task_id: str, plan_content: str, phases_data: list
 ) -> None:
@@ -1151,7 +1222,7 @@ def _write_async_product_result(
 
     phases_tmp = phases_dir / f".{task_id}.phases.tmp"
     phases_content = (
-        json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
+        json.dumps({"schema_version": "1.1"}, ensure_ascii=False)
         + "\n"
         + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases_data)
         + "\n"
@@ -1164,6 +1235,18 @@ def _write_async_product_result(
     plan_tmp.rename(plan_dir / f"{task_id}.plan.md")
 
     move_task(task_id, "backlog", "planned")
+
+    # v0.38: 写入 complexity（与 sync product_role 对齐）
+    try:
+        task_file = get_workspace() / ".ccc" / "board" / "planned" / f"{task_id}.jsonl"
+        if task_file.exists():
+            task_data = json.loads(task_file.read_text())
+            complexity = _infer_complexity_from_plan(plan_content)
+            task_data["complexity"] = complexity
+            task_file.write_text(json.dumps(task_data, ensure_ascii=False) + "\n")
+            _log.info("[product-async] %s complexity=%s", task_id, complexity)
+    except Exception as exc:
+        _log.warning("[product-async] %s complexity assign failed: %s", task_id, exc)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2686,6 +2769,7 @@ def reviewer_role() -> dict:
                 os.unlink(lock_path)
             except OSError as e:
                 _log.warning("reviewer lock cleanup failed for %s: %s", task_id, e)
+    return {"role": "reviewer", "moved": moved, "counts": update_index()}
 
 
 def _review_one_task(task_id: str) -> bool:
@@ -2738,7 +2822,6 @@ def _review_one_task(task_id: str) -> bool:
         py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
         if py_files and _py_compile_fallback(task_id, py_files):
-            move_task(task_id, "testing", "verified")
             review_md.write_text(
                 f"# {task_id} Review\n\n"
                 f"## Verdict: **PASS**\n\n"
@@ -2747,6 +2830,12 @@ def _review_one_task(task_id: str) -> bool:
                 f"## Files Checked ({len(py_files)} 条)\n\n"
                 + "\n".join(f"- {Path(f).name}" for f in py_files)
             )
+            # v0.38: Engine 门禁读 .ccc/verdicts/{id}.verdict.md（红线 11）
+            _write_pass_verdict(
+                task_id,
+                f"small-class py_compile pass ({total_lines} lines)",
+            )
+            move_task(task_id, "testing", "verified")
             _log.info(
                 "[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines
             )
@@ -2762,13 +2851,17 @@ def _review_one_task(task_id: str) -> bool:
                 )
                 return False
             if "## 验收" in plan_text or "## 验证" in plan_text:
-                move_task(task_id, "testing", "verified")
                 review_md.write_text(
                     f"# {task_id} Review\n\n"
                     f"## Verdict: **PASS**\n\n"
                     f"## Size Class: **small** ({total_lines} 行)\n\n"
                     f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
                 )
+                _write_pass_verdict(
+                    task_id,
+                    f"small-class plan-only pass ({total_lines} lines)",
+                )
+                move_task(task_id, "testing", "verified")
                 _log.info("[reviewer] %s ✓ small-class plan-only pass", task_id)
                 return True
             _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
@@ -3215,14 +3308,20 @@ def kb_role() -> dict:
                 timeout=30,
             )
             if push_r.returncode != 0:
-                _log.error("[kb] %s push tag 失败 rc={push_r.returncode}", task_id)
-                fail_log = get_workspace() / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                # v0.38: push 失败不阻断本地 released（避免永久卡 verified）
+                _log.error(
+                    "[kb] %s push tag 失败 rc=%s（仍挪 released，本地 tag 已建）",
+                    task_id,
+                    push_r.returncode,
+                )
+                fail_log = (
+                    get_workspace() / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                )
                 fail_log.write_text(
                     f"# {task_id} push tag 失败\n\n"
                     f"rc={push_r.returncode}\n"
-                    f"{push_r.stderr[:500]}\n"
+                    f"{(push_r.stderr or b'').decode('utf-8', errors='replace')[:500]}\n"
                 )
-                continue
 
         # ── Step 3: 收集 AGENTS.md 建议 ──
         report_file = get_workspace() / ".ccc" / "reports" / f"{task_id}.report.md"
@@ -4705,8 +4804,29 @@ def dev_role_check_complete(task_id: str) -> dict:
                 f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n\n"
                 f"ALL SELF-CHECKS PASSED\n"
             )
+        # v0.38: 多 phase 续跑 — 标记当前 phase done，若还有 executable 则留 in_progress
+        _mark_phase_done(task_id, cur_phase)
+        _phases_now = _load_phases(task_id)
+        _executable, _blocked, _skipped = _resolve_phase_dependencies(_phases_now)
+        _apply_phase_status_updates(task_id, _blocked, _skipped)
+        _phases_now = _load_phases(task_id)
+        _executable, _blocked, _skipped = _resolve_phase_dependencies(_phases_now)
+        if _executable:
+            _next = min(_executable)
+            _log.info(
+                "[engine] %s phase %s done → 续跑 phase %s（仍留 in_progress）",
+                task_id,
+                cur_phase,
+                _next,
+            )
+            return {
+                "status": "phase_done",
+                "task_id": task_id,
+                "phase": cur_phase,
+                "next_phase": _next,
+            }
         move_task(task_id, "in_progress", "testing")
-        _log.info("[engine] %s ✓ moved to testing", task_id)
+        _log.info("[engine] %s ✓ all phases done → testing", task_id)
         return {"status": "success", "task_id": task_id}
     else:
         # 失败 stub（仅当无既有 report 时写入，避免覆盖证据）
