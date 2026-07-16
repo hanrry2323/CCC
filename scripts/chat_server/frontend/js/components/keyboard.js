@@ -69,12 +69,16 @@ export function initKeyboard() {
       }
     }
 
-    // Escape — close settings
+    // Escape — close settings / panels / slash
     if (e.key === 'Escape') {
       const dialog = document.querySelector('.settings-sheet');
       if (dialog) {
         dialog.querySelector('.settings-close')?.click();
+        return;
       }
+      import('./slash.js').then(m => m.hideSlashMenu());
+      import('./boardPanel.js').then(m => m.closeBoardPanel());
+      import('./artifacts.js').then(m => m.closeArtifactPanel());
     }
   });
 }

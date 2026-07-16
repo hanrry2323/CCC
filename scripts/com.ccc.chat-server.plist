@@ -20,6 +20,11 @@
   <string>Background</string>
   <key>ThrottleInterval</key>
   <integer>10</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CCC_CHAT_NO_OPEN</key>
+    <string>1</string>
+  </dict>
   <key>StandardOutPath</key>
   <string>/tmp/ccc-chat-server.log</string>
   <key>StandardErrorPath</key>

@@ -1,28 +1,24 @@
-import { state } from '../state.js';
+import { getThemeScheme, applyTheme, toggleLightDark } from '../theme.js';
 
 export function initTitlebar() {
   const tabsEl = document.getElementById('tabs');
   const newBtn = document.getElementById('new-tab-btn');
   const settingsBtn = document.getElementById('settings-btn');
   const themeBtn = document.getElementById('theme-btn');
+  const boardBtn = document.getElementById('board-btn');
+  const taskBtn = document.getElementById('task-btn');
 
-  const saved = localStorage.getItem('opencode-color-scheme') || 'system';
-  applyTheme(saved);
+  applyTheme(getThemeScheme());
 
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
-      const currentScheme = localStorage.getItem('opencode-color-scheme') || 'system';
-      const next = currentScheme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('opencode-color-scheme', next);
-      applyTheme(next);
+      toggleLightDark();
     });
   }
 
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    const scheme = localStorage.getItem('opencode-color-scheme');
-    if (!scheme || scheme === 'system') {
-      applyTheme('system');
-    }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const scheme = getThemeScheme();
+    if (scheme === 'system') applyTheme('system');
   });
 
   if (settingsBtn) {
@@ -33,8 +29,19 @@ export function initTitlebar() {
 
   if (newBtn) {
     newBtn.addEventListener('click', () => {
-      const event = new CustomEvent('new-tab');
-      document.dispatchEvent(event);
+      document.dispatchEvent(new CustomEvent('new-tab'));
+    });
+  }
+
+  if (boardBtn) {
+    boardBtn.addEventListener('click', () => {
+      import('./boardPanel.js').then(m => m.toggleBoardPanel());
+    });
+  }
+
+  if (taskBtn) {
+    taskBtn.addEventListener('click', () => {
+      import('./taskDialog.js').then(m => m.openTaskDialog());
     });
   }
 
@@ -42,11 +49,9 @@ export function initTitlebar() {
     const tab = e.target.closest('.titlebar-tab');
     if (!tab) return;
     if (e.target.closest('.close-btn')) {
-      const event = new CustomEvent('close-tab', { detail: { id: tab.dataset.tabId } });
-      document.dispatchEvent(event);
+      document.dispatchEvent(new CustomEvent('close-tab', { detail: { id: tab.dataset.tabId } }));
     } else {
-      const event = new CustomEvent('switch-tab', { detail: { id: tab.dataset.tabId } });
-      document.dispatchEvent(event);
+      document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tab.dataset.tabId } }));
     }
   });
 }
@@ -56,15 +61,14 @@ export function renderTabs(tabs, activeId) {
   tabsEl.innerHTML = tabs.map(t => {
     const isActive = t.id === activeId;
     const title = t.title || '新对话';
-    const safeTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const safeTitle = String(title)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
     return '<div class="titlebar-tab' + (isActive ? ' active' : '') + '" data-tab-id="' + t.id + '">' +
       '<span>' + safeTitle + '</span>' +
-      (tabs.length > 1 ? '<button class="close-btn">×</button>' : '') +
+      (tabs.length > 1 ? '<button class="close-btn" aria-label="关闭">×</button>' : '') +
       '</div>';
   }).join('');
-}
-
-function applyTheme(scheme) {
-  const isDark = scheme === 'dark' || (scheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
 }

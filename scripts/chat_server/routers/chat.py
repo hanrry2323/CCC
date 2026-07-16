@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import re
 import uuid
@@ -10,10 +11,17 @@ from fastapi.responses import StreamingResponse
 from ..auth import check_auth
 from .. import config
 from ..services import session_store as store
-from ..services.claude_client import stream_chat, _get_project_context
+from ..services.claude_client import stream_chat, _get_project_context, resolve_model
 from .projects import PROJECTS, get_project_path
 
 router = APIRouter()
+
+UPLOAD_MAX_BYTES = 8 * 1024 * 1024  # 8MB per file
+ALLOWED_ATTACHMENT_EXTS = frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".html", ".css",
+})
+_SAFE_NAME = re.compile(r"[^a-zA-Z0-9._\-]+")
 
 
 def check_dangerous(text: str) -> bool:
@@ -31,21 +39,70 @@ def _is_path_inside(root: str, candidate: str) -> bool:
         return False
 
 
+def _safe_filename(name: str) -> str:
+    base = Path(name or "file").name
+    cleaned = _SAFE_NAME.sub("_", base).strip("._") or "file"
+    return cleaned[:120]
+
+
+def _materialize_attachments(
+    attachments: list,
+    *,
+    project_path: str,
+    session_id: str,
+) -> str:
+    """Save chat attachments under project .ccc/chat-uploads and return prompt notes."""
+    if not attachments:
+        return ""
+    if len(attachments) > 8:
+        raise HTTPException(status_code=400, detail="最多 8 个附件")
+
+    upload_root = Path(project_path) / ".ccc" / "chat-uploads" / session_id
+    upload_root.mkdir(parents=True, exist_ok=True)
+    if not _is_path_inside(project_path, str(upload_root)):
+        raise HTTPException(status_code=400, detail="invalid upload path")
+
+    notes: list[str] = ["## 用户附件（已保存到项目内，可用 Read 工具打开）"]
+    for idx, att in enumerate(attachments):
+        if not isinstance(att, dict):
+            continue
+        name = _safe_filename(str(att.get("name") or f"attachment-{idx}"))
+        ext = Path(name).suffix.lower()
+        if ext and ext not in ALLOWED_ATTACHMENT_EXTS:
+            raise HTTPException(status_code=400, detail=f"不支持的附件类型: {ext}")
+        raw_b64 = att.get("content_base64") or att.get("data") or ""
+        if not isinstance(raw_b64, str) or not raw_b64.strip():
+            raise HTTPException(status_code=400, detail=f"附件缺少内容: {name}")
+        if "," in raw_b64 and raw_b64.strip().startswith("data:"):
+            raw_b64 = raw_b64.split(",", 1)[1]
+        try:
+            data = base64.b64decode(raw_b64, validate=False)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"附件解码失败: {name}") from exc
+        if len(data) > UPLOAD_MAX_BYTES:
+            raise HTTPException(status_code=400, detail=f"附件过大（>8MB）: {name}")
+        dest = upload_root / f"{idx:02d}-{name}"
+        dest.write_bytes(data)
+        notes.append(f"- `{dest}` ({len(data)} bytes)")
+    return "\n".join(notes) if len(notes) > 1 else ""
+
+
 @router.post("/api/chat")
 async def chat(request: Request):
     check_auth(request)
     body = await request.json()
     messages = body.get("messages", [])
     session_id = body.get("session_id", str(uuid.uuid4()))
-    model = body.get("model", "flash")
+    model = resolve_model(body.get("model", "flash"))
     project = body.get("project", "ccc")
     timeout = int(body.get("timeout", 180))
+    attachments = body.get("attachments") or []
 
     user_msgs = [m for m in messages if m.get("role") == "user"]
     if not user_msgs:
         raise HTTPException(status_code=400, detail="messages required")
     prompt = user_msgs[-1].get("content", "").strip()
-    if not prompt:
+    if not prompt and not attachments:
         raise HTTPException(status_code=400, detail="prompt required")
     if check_dangerous(prompt):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
@@ -54,6 +111,12 @@ async def chat(request: Request):
     # F-SEC-03: cwd jail — 拒绝跳出项目根
     if not _is_path_inside(project_path, project_path):
         raise HTTPException(status_code=400, detail="invalid project path")
+
+    attachment_notes = _materialize_attachments(
+        attachments, project_path=project_path, session_id=session_id
+    )
+    if attachment_notes:
+        prompt = (prompt + "\n\n" if prompt else "") + attachment_notes
 
     store.save_session(
         session_id, messages,
@@ -76,6 +139,7 @@ async def chat(request: Request):
                 prompt, project_path,
                 lambda: request.scope.get("disconnect_received", False),
                 timeout,
+                model=model,
             ):
                 evt_type = event.get("type")
 

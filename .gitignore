@@ -51,6 +51,7 @@ src-tauri/gen/
 
 # 聊天会话日志（运行时数据，不提交）
 .ccc/chat/
+**/.ccc/chat-uploads/
 .ccc/.product-fail-counter/
 
 # v0.29.x: CCC Engine 运行时文件（不提交）

@@ -1,56 +1,54 @@
 :root {
-  /* ============ 背景层级 (light) ============ */
-  --ccc-bg-deep: #f5f5f7;
-  --ccc-bg-base: #ffffff;
-  --ccc-bg-surface: #ffffff;
-  --ccc-bg-layer: #f0f0f2;
-  --ccc-bg-hover: rgba(0, 0, 0, 0.04);
-  --ccc-bg-active: rgba(0, 0, 0, 0.06);
-  --ccc-bg-accent: #007aff;
-  --ccc-bg-user: linear-gradient(135deg, #007aff 0%, #0055cc 100%);
-  --ccc-bg-code: #f0f0f2;
-  --ccc-bg-glass: rgba(255, 255, 255, 0.72);
+  /* Claude-inspired warm palette (light) */
+  --ccc-bg-deep: #f0eee6;
+  --ccc-bg-base: #faf8f5;
+  --ccc-bg-surface: #faf8f5;
+  --ccc-bg-layer: #f0eee6;
+  --ccc-bg-hover: rgba(60, 50, 40, 0.06);
+  --ccc-bg-active: rgba(60, 50, 40, 0.1);
+  --ccc-bg-accent: #c96442;
+  --ccc-bg-accent-soft: rgba(201, 100, 66, 0.12);
+  --ccc-bg-user: #e8e6dc;
+  --ccc-bg-code: #f0eee6;
+  --ccc-bg-glass: rgba(250, 248, 245, 0.85);
+  --ccc-bg-sidebar: #f5f2eb;
 
-  /* ============ 文字色阶 ============ */
-  --ccc-text-base: #1d1d1f;
-  --ccc-text-secondary: #515154;
-  --ccc-text-muted: #86868b;
-  --ccc-text-faint: #aeaeb2;
-  --ccc-text-inverse: #ffffff;
-  --ccc-text-accent: #007aff;
+  --ccc-text-base: #141413;
+  --ccc-text-secondary: #3d3d3a;
+  --ccc-text-muted: #73726c;
+  --ccc-text-faint: #a39e93;
+  --ccc-text-inverse: #faf8f5;
+  --ccc-text-accent: #c96442;
 
-  /* ============ 图标 ============ */
-  --ccc-icon-base: #555557;
-  --ccc-icon-muted: #aeaeb2;
+  --ccc-icon-base: #5c5a52;
+  --ccc-icon-muted: #a39e93;
 
-  /* ============ 边框 ============ */
-  --ccc-border-subtle: rgba(0, 0, 0, 0.06);
-  --ccc-border-base: rgba(0, 0, 0, 0.1);
-  --ccc-border-accent: #007aff;
+  --ccc-border-subtle: rgba(60, 50, 40, 0.08);
+  --ccc-border-base: rgba(60, 50, 40, 0.12);
+  --ccc-border-accent: #c96442;
 
-  /* ============ 阴影 (5 层) ============ */
-  --ccc-shadow-sm: 0 0.5px 1px rgba(0, 0, 0, 0.04);
-  --ccc-shadow-md: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --ccc-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --ccc-shadow-xl: 0 8px 30px rgba(0, 0, 0, 0.1);
-  --ccc-shadow-floating: 0 12px 40px rgba(0, 0, 0, 0.14);
+  --ccc-shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.04);
+  --ccc-shadow-md: 0 2px 8px rgba(40, 30, 20, 0.06);
+  --ccc-shadow-lg: 0 8px 24px rgba(40, 30, 20, 0.08);
+  --ccc-shadow-xl: 0 16px 40px rgba(40, 30, 20, 0.1);
+  --ccc-shadow-floating: 0 20px 50px rgba(40, 30, 20, 0.12);
 
-  /* ============ 圆角 ============ */
-  --ccc-radius-xs: 3px;
-  --ccc-radius-sm: 6px;
-  --ccc-radius-md: 10px;
-  --ccc-radius-lg: 16px;
-  --ccc-radius-xl: 22px;
+  --ccc-radius-xs: 4px;
+  --ccc-radius-sm: 8px;
+  --ccc-radius-md: 12px;
+  --ccc-radius-lg: 18px;
+  --ccc-radius-xl: 24px;
   --ccc-radius-full: 9999px;
 
-  /* ============ 排版 ============ */
-  --ccc-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
-  --ccc-font-mono: "SF Mono", "Menlo", "Consolas", "JetBrains Mono", monospace;
+  --ccc-font-sans: "Anthropic Sans", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --ccc-font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", ui-monospace, monospace;
   --ccc-font-size-xs: 11px;
   --ccc-font-size-sm: 13px;
-  --ccc-font-size-base: 15px;
+  --ccc-font-size-base: 15.5px;
+  --ccc-font-size-lg: 18px;
+  --ccc-font-size-xl: 28px;
 
-  /* ============ 间距 ============ */
   --ccc-space-2xs: 2px;
   --ccc-space-xs: 4px;
   --ccc-space-sm: 8px;
@@ -59,23 +57,23 @@
   --ccc-space-xl: 24px;
   --ccc-space-2xl: 32px;
 
-  /* ============ 布局 ============ */
-  --ccc-sidebar-w: 280px;
+  --ccc-sidebar-w: 260px;
   --ccc-titlebar-h: 44px;
   --ccc-composer-max-h: 200px;
   --ccc-max-w: 760px;
+  --ccc-panel-w: 360px;
 
-  /* ============ 过渡 & 动画 ============ */
   --ccc-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
   --ccc-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ccc-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ccc-transition-fast: 0.15s ease;
   --ccc-transition-normal: 0.25s var(--ccc-ease-out);
   --ccc-transition-slow: 0.4s var(--ccc-ease-out);
-  --ccc-blur-titlebar: 30px;
-  --ccc-blur-glass: 20px;
-  --ccc-blur-overlay: 10px;
+  --ccc-blur-titlebar: 24px;
+  --ccc-blur-glass: 16px;
+  --ccc-blur-overlay: 8px;
 
-  /* ============ 遮盖 ============ */
-  --ccc-overlay-scrim: rgba(0, 0, 0, 0.25);
+  --ccc-overlay-scrim: rgba(40, 30, 20, 0.28);
+  --ccc-success: #3d7a5a;
+  --ccc-danger: #b54a3a;
 }

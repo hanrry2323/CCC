@@ -11,14 +11,34 @@ function _authHeader() {
   return 'Basic ' + btoa(user + ':' + pass);
 }
 
+function _headers(json = true) {
+  const h = { Authorization: _authHeader() };
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
 export async function apiGet(path) {
-  const resp = await fetch(path, { headers: { Authorization: _authHeader() } });
+  const resp = await fetch(path, { headers: _headers(false) });
   if (!resp.ok) throw new Error('GET ' + path + ' ' + resp.status);
   return resp.json();
 }
 
+export async function apiPost(path, body) {
+  const resp = await fetch(path, {
+    method: 'POST',
+    headers: _headers(true),
+    body: JSON.stringify(body || {}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = data.message || data.error || ('POST ' + path + ' ' + resp.status);
+    throw new Error(msg);
+  }
+  return data;
+}
+
 export async function apiDelete(path) {
-  const resp = await fetch(path, { method: 'DELETE', headers: { Authorization: _authHeader() } });
+  const resp = await fetch(path, { method: 'DELETE', headers: _headers(false) });
   return resp.json();
 }
 
@@ -40,27 +60,61 @@ export async function deleteSession(id, project) {
   return await apiDelete('/api/history/' + id + '?project=' + encodeURIComponent(project));
 }
 
-export async function streamChat(messages, sessionId, project, onEvent, onDone, onError) {
+export async function loadBoard(workspace) {
+  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
+  return apiGet('/api/board/proxy/board' + qs);
+}
+
+export async function loadBoardDashboard(workspace) {
+  const qs = workspace ? ('?workspace=' + encodeURIComponent(workspace)) : '';
+  return apiGet('/api/board/proxy/dashboard' + qs);
+}
+
+export async function createBoardTask(task) {
+  return apiPost('/api/board/proxy/tasks', task);
+}
+
+export async function moveBoardTask(payload) {
+  return apiPost('/api/board/proxy/tasks/move', payload);
+}
+
+export async function listProjectFiles(projectId, path = '') {
+  const qs = path ? ('?path=' + encodeURIComponent(path)) : '';
+  return apiGet('/api/projects/' + encodeURIComponent(projectId) + '/files' + qs);
+}
+
+export async function readProjectFile(projectId, path) {
+  return apiGet(
+    '/api/projects/' + encodeURIComponent(projectId) + '/file?path=' + encodeURIComponent(path)
+  );
+}
+
+export async function streamChat(messages, sessionId, project, onEvent, onDone, onError, attachments) {
   const abortController = new AbortController();
   state.set('abortController', abortController);
 
   try {
     const model = state.get('model') || 'flash';
+    const body = {
+      messages,
+      session_id: sessionId,
+      project,
+      model,
+      timeout: 180,
+    };
+    if (attachments && attachments.length) {
+      body.attachments = attachments;
+    }
+
     const resp = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: _authHeader() },
-      body: JSON.stringify({
-        messages,
-        session_id: sessionId,
-        project,
-        model,
-        timeout: 120,
-      }),
+      headers: _headers(true),
+      body: JSON.stringify(body),
       signal: abortController.signal,
     });
 
     if (!resp.ok) {
-      const errText = resp.status === 400 ? '危险指令已被拦截'
+      const errText = resp.status === 400 ? '危险指令已被拦截或附件无效'
         : resp.status === 429 ? '前一个执行中，请稍候'
         : '请求失败: HTTP ' + resp.status;
       onError(errText);

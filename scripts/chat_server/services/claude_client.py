@@ -31,11 +31,20 @@ def _get_project_context(project_id: str, projects: dict) -> str:
     return ctx
 
 
+ALLOWED_MODELS = frozenset({"flash", "code", "sonnet", "opus", "haiku"})
+
+
+def resolve_model(model: str | None) -> str:
+    m = (model or "flash").strip().lower()
+    return m if m in ALLOWED_MODELS else "flash"
+
+
 async def stream_chat(
     prompt: str,
     project_path: str,
     request_disconnected,
     timeout: int = 180,
+    model: str = "flash",
 ):
     """Generator that yields SSE event dicts from Claude subprocess."""
     proc = None
@@ -44,6 +53,7 @@ async def stream_chat(
         claude_bin = config.require_claude_bin()
         # F-SEC-03: 工具 allowlist + cwd jail（仅 project_path）
         allowed = ",".join(sorted(config.CLAUDE_TOOL_ALLOWLIST))
+        cli_model = resolve_model(model)
         proc = await asyncio.create_subprocess_exec(
             claude_bin,
             "-p",
@@ -52,7 +62,7 @@ async def stream_chat(
             "--output-format",
             "stream-json",
             "--model",
-            "flash",
+            cli_model,
             "--allowedTools",
             allowed,
             cwd=project_path,

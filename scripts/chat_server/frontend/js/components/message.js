@@ -1,14 +1,51 @@
 import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
-import { escapeHtml, ts, scrollToBottom, generateId } from '../utils.js';
+import { escapeHtml, ts, scrollToBottom } from '../utils.js';
 import { streamChat, cancelStream } from '../api.js';
 import { refreshSidebar } from './sidebar.js';
-import { createToolCard, updateToolCardStatus, setToolResult, createThinkingIndicator } from './toolCall.js';
+import { createToolCard, updateToolCardStatus, setToolResult } from './toolCall.js';
+import { maybeShowArtifacts } from './artifacts.js';
 
 let fullContent = '';
 let toolCards = [];
 let costInfo = null;
 let toolIdCounter = 0;
+
+function attachMessageActions(msgEl, role, content) {
+  if (!msgEl || msgEl.querySelector('.msg-actions')) return;
+  const actions = document.createElement('div');
+  actions.className = 'msg-actions';
+  if (role === 'assistant') {
+    actions.innerHTML =
+      '<button type="button" class="msg-action-btn" data-act="copy">复制</button>' +
+      '<button type="button" class="msg-action-btn" data-act="regen">重新生成</button>' +
+      '<button type="button" class="msg-action-btn" data-act="preview">预览</button>' +
+      '<button type="button" class="msg-action-btn" data-act="task">转任务</button>';
+  } else {
+    actions.innerHTML =
+      '<button type="button" class="msg-action-btn" data-act="copy">复制</button>' +
+      '<button type="button" class="msg-action-btn" data-act="edit">编辑</button>';
+  }
+  msgEl.appendChild(actions);
+  actions.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === 'copy') {
+      navigator.clipboard.writeText(content || '').then(() => {
+        window.showToast?.('已复制', 'success');
+      }).catch(() => window.showToast?.('复制失败', 'error'));
+    } else if (act === 'edit') {
+      editMessage(msgEl, document.getElementById('messages'));
+    } else if (act === 'regen') {
+      regenerateLast();
+    } else if (act === 'preview') {
+      maybeShowArtifacts(content || '');
+    } else if (act === 'task') {
+      import('./taskDialog.js').then(m => m.openTaskFromReply());
+    }
+  });
+}
 
 export function renderMessage(container, role, content, appendToLast) {
   const lastMsg = container.lastElementChild;
@@ -28,16 +65,19 @@ export function renderMessage(container, role, content, appendToLast) {
 
   const div = document.createElement('div');
   div.className = 'msg ' + role;
-  div.innerHTML = '<div class="bubble">' + renderMarkdown(content) + '</div>' +
+  div.innerHTML =
+    '<div class="msg-label">' + (role === 'user' ? 'You' : 'Claude') + '</div>' +
+    '<div class="bubble">' + renderMarkdown(content) + '</div>' +
     '<div class="time">' + ts() + '</div>';
   container.appendChild(div);
+  attachMessageActions(div, role, content);
   requestAnimationFrame(() => scrollToBottom(container));
 
   if (role === 'user') {
     div.style.cursor = 'pointer';
     div.title = '双击编辑';
     div.addEventListener('dblclick', function (e) {
-      if (e.target.closest('.edit-textarea, .edit-actions, button, .copy-btn')) return;
+      if (e.target.closest('.edit-textarea, .edit-actions, button, .copy-btn, .msg-actions')) return;
       editMessage(this, container);
     });
   }
@@ -52,7 +92,7 @@ function editMessage(msgEl, container) {
   bubble.innerHTML = '<div class="edit-area">' +
     '<textarea class="edit-textarea">' + safeText + '</textarea>' +
     '<div class="edit-actions">' +
-    '<button class="edit-save" onclick="window.saveEdit(this)">保存</button>' +
+    '<button class="edit-save" onclick="window.saveEdit(this)">保存并重发</button>' +
     '<button class="edit-cancel" onclick="window.cancelEdit(this)">取消</button>' +
     '</div></div>';
   const ta = bubble.querySelector('.edit-textarea');
@@ -71,33 +111,35 @@ window.saveEdit = function (btn) {
   const msgEl = btn.closest('.msg');
   if (!msgEl) return;
   const container = document.getElementById('messages');
-  const siblings = [];
   let next = msgEl.nextElementSibling;
   while (next) {
+    const n = next.nextElementSibling;
     if (next.classList.contains('msg') && !next.classList.contains('typing')) {
-      siblings.push(next);
+      next.remove();
     }
-    next = next.nextElementSibling;
+    next = n;
   }
-  siblings.forEach(s => s.remove());
 
   const bubble = msgEl.querySelector('.bubble');
   if (bubble) bubble.innerHTML = renderMarkdown(newText);
 
   let msgs = state.get('currentMessages') || [];
-  const idx = msgs.findIndex(m => m.role === 'user');
-  if (idx !== -1) {
-    msgs = msgs.slice(0, idx + 1);
-    msgs[idx].content = newText;
+  const userNodes = [...container.querySelectorAll('.msg.user')];
+  const userIndex = userNodes.indexOf(msgEl);
+  let seen = -1;
+  let cut = 0;
+  for (let i = 0; i < msgs.length; i++) {
+    if (msgs[i].role === 'user') {
+      seen++;
+      if (seen === userIndex) {
+        cut = i; // drop this user msg and everything after; sendMessage will re-add
+        break;
+      }
+    }
   }
-  state.set('currentMessages', msgs);
-
-  const input = document.getElementById('composer-input');
-  if (input) {
-    input.value = newText;
-    input.dispatchEvent(new Event('input'));
-  }
-  document.getElementById('send-btn')?.click();
+  state.set('currentMessages', msgs.slice(0, cut));
+  msgEl.remove();
+  sendMessage(newText);
 };
 
 window.cancelEdit = function (btn) {
@@ -113,12 +155,43 @@ function doCancelEdit(area, orig) {
   if (bubble) bubble.innerHTML = renderMarkdown(orig || '');
 }
 
+function regenerateLast() {
+  if (state.get('streaming')) return;
+  let msgs = state.get('currentMessages') || [];
+  while (msgs.length && msgs[msgs.length - 1].role === 'assistant') {
+    msgs = msgs.slice(0, -1);
+  }
+  const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+  if (!lastUser) {
+    window.showToast?.('没有可重新生成的用户消息', 'error');
+    return;
+  }
+  state.set('currentMessages', msgs.slice(0, msgs.indexOf(lastUser)));
+  const container = document.getElementById('messages');
+  // Remove trailing assistant bubbles after last user
+  const nodes = [...container.querySelectorAll('.msg')];
+  let lastUserEl = null;
+  for (const n of nodes) {
+    if (n.classList.contains('user')) lastUserEl = n;
+  }
+  if (lastUserEl) {
+    let sib = lastUserEl.nextElementSibling;
+    while (sib) {
+      const n = sib.nextElementSibling;
+      sib.remove();
+      sib = n;
+    }
+    lastUserEl.remove();
+  }
+  sendMessage(lastUser.content);
+}
+
 export function showTyping(container) {
   removeTyping();
   const el = document.createElement('div');
   el.className = 'msg assistant';
   el.id = 'typing-indicator';
-  el.innerHTML = '<div class="bubble" style="display:flex;gap:4px;padding:14px 18px">' +
+  el.innerHTML = '<div class="msg-label">Claude</div><div class="bubble typing-bubble">' +
     '<span class="typing-dot"></span>' +
     '<span class="typing-dot"></span>' +
     '<span class="typing-dot"></span></div>';
@@ -137,7 +210,7 @@ function setStreamingIndicator(active) {
   if (el) el.classList.toggle('active', active);
 }
 
-export async function sendMessage(text) {
+export async function sendMessage(text, attachments = []) {
   const container = document.getElementById('messages');
   const project = state.get('currentProject');
   let msgs = state.get('currentMessages') || [];
@@ -163,6 +236,11 @@ export async function sendMessage(text) {
 
   let msgDiv = null;
   let bubble = null;
+  const wireAttachments = (attachments || []).map(a => ({
+    name: a.name,
+    content_base64: a.content_base64,
+    type: a.type,
+  }));
 
   await streamChat(
     msgs,
@@ -174,7 +252,7 @@ export async function sendMessage(text) {
           removeTyping();
           msgDiv = document.createElement('div');
           msgDiv.className = 'msg assistant';
-          msgDiv.innerHTML = '<div class="bubble"></div><div class="time">' + ts() + '</div>';
+          msgDiv.innerHTML = '<div class="msg-label">Claude</div><div class="bubble"></div><div class="time">' + ts() + '</div>';
           container.appendChild(msgDiv);
           bubble = msgDiv.querySelector('.bubble');
         }
@@ -184,7 +262,6 @@ export async function sendMessage(text) {
           toolCards.forEach(c => {
             if (!c.parentNode) bubble.appendChild(c);
           });
-          // Add streaming cursor
           const cursor = document.createElement('span');
           cursor.className = 'streaming-cursor';
           bubble.appendChild(cursor);
@@ -195,7 +272,7 @@ export async function sendMessage(text) {
         if (!msgDiv) {
           msgDiv = document.createElement('div');
           msgDiv.className = 'msg assistant';
-          msgDiv.innerHTML = '<div class="bubble"></div><div class="time">' + ts() + '</div>';
+          msgDiv.innerHTML = '<div class="msg-label">Claude</div><div class="bubble"></div><div class="time">' + ts() + '</div>';
           container.appendChild(msgDiv);
           bubble = msgDiv.querySelector('.bubble');
         }
@@ -225,8 +302,11 @@ export async function sendMessage(text) {
         costEl.textContent = 'Tokens: ' + (costInfo.tokens || 0) + ' · $' + (costInfo.usd || 0).toFixed(4);
         msgDiv.appendChild(costEl);
       }
+      if (msgDiv) attachMessageActions(msgDiv, 'assistant', fullContent);
+      maybeShowArtifacts(fullContent);
       msgs.push({ role: 'assistant', content: fullContent, mode: 'chat' });
       state.set('currentMessages', msgs);
+      syncActiveTab();
       state.set('streaming', false);
       setStreamingIndicator(false);
       updateComposerState();
@@ -237,11 +317,29 @@ export async function sendMessage(text) {
       renderMessage(container, 'assistant', errorText);
       msgs.push({ role: 'assistant', content: errorText, mode: 'chat' });
       state.set('currentMessages', msgs);
+      syncActiveTab();
       state.set('streaming', false);
       setStreamingIndicator(false);
       updateComposerState();
-    }
+    },
+    wireAttachments
   );
+}
+
+function syncActiveTab() {
+  const tabs = state.get('tabs') || [];
+  const activeId = state.get('activeTabId');
+  const tab = tabs.find(t => t.id === activeId);
+  if (!tab) return;
+  tab.sessionId = state.get('currentSessionId');
+  tab.messages = state.get('currentMessages') || [];
+  const msgs = tab.messages;
+  const firstUser = msgs.find(m => m.role === 'user');
+  if (firstUser && (!tab.title || tab.title === '新对话')) {
+    tab.title = String(firstUser.content || '').slice(0, 28) || '对话';
+    import('./titlebar.js').then(m => m.renderTabs(tabs, activeId));
+  }
+  state.set('tabs', tabs);
 }
 
 let userScrolledUp = false;
@@ -267,46 +365,57 @@ export function loadMessages(data) {
     msgs.push({ role: 'assistant', content: data.reply, mode: 'chat' });
     state.set('currentMessages', msgs);
   }
+  syncActiveTab();
 }
 
-function updateComposerState() {
+export function updateComposerState() {
   const sendBtn = document.getElementById('send-btn');
   const cancelBtn = document.getElementById('cancel-btn');
   const streaming = state.get('streaming');
-  if (sendBtn) sendBtn.style.display = streaming ? 'none' : 'flex';
+  const input = document.getElementById('composer-input');
+  if (sendBtn) {
+    sendBtn.style.display = streaming ? 'none' : 'flex';
+    if (!streaming) {
+      sendBtn.disabled = !input?.value.trim();
+    }
+  }
   if (cancelBtn) cancelBtn.style.display = streaming ? 'flex' : 'none';
 }
 
 export function setupCancel() {
-  document.getElementById('cancel-btn')?.addEventListener('click', () => {
-    cancelStream();
-    state.set('streaming', false);
-    setStreamingIndicator(false);
-    updateComposerState();
-    removeTyping();
-  });
+  // Cancel handled in composer.js to avoid double-binding
 }
 
 export function createEmptyState() {
   const el = document.createElement('div');
   el.className = 'empty-state';
   el.innerHTML =
-    '<svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect x="8" y="12" width="56" height="48" rx="10" stroke="currentColor" stroke-width="1.5" fill="none"/>' +
-      '<path d="M24 30h24M24 38h16M24 46h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
-      '<circle cx="54" cy="18" r="10" fill="currentColor" opacity="0.15"/>' +
-      '<path d="M52 18h4M54 16v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
-    '</svg>' +
-    '<div class="empty-state-title">开始一个新对话</div>' +
-    '<div class="empty-state-hint">在下方输入消息，或从侧栏选择一个已有对话</div>' +
+    '<div class="empty-brand">CCC</div>' +
+    '<div class="empty-state-title">今天想做什么？</div>' +
+    '<div class="empty-state-hint">与 Claude 对话，或用 /task 下达 CCC 看板任务</div>' +
     '<div class="empty-state-actions">' +
-      '<button class="empty-state-btn" onclick="document.getElementById(\'composer-input\')?.focus()">开始输入</button>' +
-      '<button class="empty-state-btn" onclick="document.querySelector(\'#sidebar-toggle\')?.click()">查看历史</button>' +
+      '<button class="empty-state-btn" data-chip="解释当前项目结构">解释项目结构</button>' +
+      '<button class="empty-state-btn" data-chip="/task">下达任务</button>' +
+      '<button class="empty-state-btn" data-chip="/board">查看看板</button>' +
     '</div>';
+  el.querySelectorAll('[data-chip]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const chip = btn.dataset.chip;
+      if (chip.startsWith('/')) {
+        import('./slash.js').then(m => m.tryExecuteSlash(chip));
+      } else {
+        const input = document.getElementById('composer-input');
+        if (input) {
+          input.value = chip;
+          input.focus();
+          input.dispatchEvent(new Event('input'));
+        }
+      }
+    });
+  });
   return el;
 }
 
-// Smart scroll: track if user manually scrolled up
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('messages');
   if (!container) return;
@@ -316,7 +425,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Titlebar shadow on scroll
 document.addEventListener('DOMContentLoaded', () => {
   const msgContainer = document.getElementById('messages');
   const titlebar = document.getElementById('titlebar');

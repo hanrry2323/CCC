@@ -139,3 +139,13 @@ scripts/chat_server/                # 模块化包
 | GET | `/api/board/proxy/*` | Board 代理 |
 | POST | `/api/board/proxy/*` | Board 代理 |
 
+### Chat UI v2.1（2026-07-16）
+
+- Claude 暖色视觉（light/dark）
+- 附件（图/文本 → `.ccc/chat-uploads/<session>/`）
+- Slash：`/task` `/board` `/export` `/new`
+- 下达任务 → Board Protocol `backlog`（complexity 可选）
+- 轻量 Artifacts 预览侧栏
+- 模型参数透传 CLI（flash/code/sonnet/haiku）
+- 启动要求：LaunchAgents 需设置 `CCC_CHAT_PASS`（≥12 字符，勿写入仓库 plist）
+

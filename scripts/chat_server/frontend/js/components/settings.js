@@ -1,5 +1,6 @@
 import { state } from '../state.js';
 import { loadProjects } from '../api.js';
+import { getThemeScheme, setThemeScheme } from '../theme.js';
 
 export async function openSettings() {
   document.querySelector('.settings-sheet')?.remove();
@@ -18,7 +19,7 @@ export async function openSettings() {
 
   const projects = await loadProjects();
 
-  dialog.innerHTML = '';
+  dialog.innerHTML =
     '<div class="settings-panel">' +
     '<div class="settings-header">' +
     '<span class="settings-title">' +
@@ -53,19 +54,16 @@ export async function openSettings() {
     '<div class="settings-group-title">关于</div>' +
     '<div class="settings-row">' +
     '<span class="settings-label">版本</span>' +
-    '<span class="settings-row-value">CCC Chat v2</span>' +
+    '<span class="settings-row-value">CCC Chat v2.1</span>' +
     '</div>' +
     '</div>' +
     '</div>' +
     '</div>';
 
   const themeSelect = document.getElementById('settings-theme');
-  const savedScheme = localStorage.getItem('opencode-color-scheme') || 'system';
-  themeSelect.value = savedScheme;
+  themeSelect.value = getThemeScheme();
   themeSelect.addEventListener('change', () => {
-    const val = themeSelect.value;
-    localStorage.setItem('opencode-color-scheme', val);
-    applyTheme(val);
+    setThemeScheme(themeSelect.value);
   });
 
   const projSelect = document.getElementById('settings-project');
@@ -78,17 +76,20 @@ export async function openSettings() {
   }
   projSelect.addEventListener('change', () => {
     state.set('currentProject', projSelect.value);
-    document.getElementById('project-select').value = projSelect.value;
+    const hidden = document.getElementById('project-select');
+    if (hidden) hidden.value = projSelect.value;
     document.getElementById('project-display').textContent =
       projSelect.options[projSelect.selectedIndex]?.text || projSelect.value;
-    const event = new CustomEvent('project-change');
-    document.dispatchEvent(event);
+    document.dispatchEvent(new CustomEvent('project-change'));
   });
 
   document.getElementById('settings-close-btn')?.addEventListener('click', closeSettings);
 
   const escHandler = (e) => {
-    if (e.key === 'Escape') { closeSettings(); document.removeEventListener('keydown', escHandler); }
+    if (e.key === 'Escape') {
+      closeSettings();
+      document.removeEventListener('keydown', escHandler);
+    }
   };
   document.addEventListener('keydown', escHandler);
 }
@@ -96,9 +97,4 @@ export async function openSettings() {
 function closeSettings() {
   document.querySelector('.settings-sheet')?.remove();
   document.querySelector('.dialog-overlay')?.remove();
-}
-
-function applyTheme(scheme) {
-  const isDark = scheme === 'dark' || (scheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
 }

@@ -60,7 +60,12 @@ async def list_projects(request: Request):
     check_auth(request)
     return {
         "projects": [
-            {"id": pid, "name": info["name"], "path": info["path"]}
+            {
+                "id": pid,
+                "name": info["name"],
+                "path": info["path"],
+                "workspace": PROJECT_TO_WORKSPACE.get(pid, pid),
+            }
             for pid, info in PROJECTS.items()
         ]
     }
