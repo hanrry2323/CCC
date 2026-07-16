@@ -2278,7 +2278,7 @@ def _retry_abnormal_dev_failures(ws: Path) -> None:
 
     for task in store.list_tasks("abnormal"):
         tid = task["id"]
-        reason = task.get("note", "")
+        reason = task.get("note") or ""
         # 仅处理 dev 执行失败类（"重试N次全部失败" 特征）
         if "重试" not in reason and "all_failed_or_skipped" not in reason:
             continue
