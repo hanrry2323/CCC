@@ -243,11 +243,24 @@ def check_heartbeat(ws: Path) -> tuple[str, dict]:
         return "missing", hb
 
 
-def ensure_engine_healthy() -> str:
-    """Step 0: 确保 Engine 存活。返回 'OK' | 'RESTARTED' | 'DEAD' | 'ALREADY_OK'
+def _ccc_disabled() -> bool:
+    """v0.38.1: ~/.ccc/DISABLED 存在时禁止一切自动拉起。"""
+    return (HOME / ".ccc" / "DISABLED").is_file()
+
+
+def ensure_engine_healthy(*, allow_restart: bool = True) -> str:
+    """Step 0: 确保 Engine 存活。返回 'OK' | 'RESTARTED' | 'DEAD' | 'ALREADY_OK' | 'DISABLED' | 'DOWN'
 
     顺序：CCC workspace 的 Engine 是总管，查它是否活着。
+    v0.38.1: allow_restart=False 或 DISABLED 时只观察，不启动。
     """
+    if _ccc_disabled():
+        print(
+            "[patrol] CCC DISABLED (~/.ccc/DISABLED) — skip engine restart",
+            file=sys.stderr,
+        )
+        return "DISABLED"
+
     alive = engine_is_running()
     if alive:
         # 检查 heartbeat 是否 stale（如果进程活着但心跳超时，不重启，只记 warning）
@@ -260,8 +273,11 @@ def ensure_engine_healthy() -> str:
             )
         return "OK"
 
+    if not allow_restart:
+        print("[patrol] Engine down — restart disabled (--no-restart)", file=sys.stderr)
+        return "DOWN"
+
     # Engine 完全死了，启动
-    action = "not running"
     if _try_start_engine():
         return "RESTARTED"
     return "DEAD"
@@ -301,7 +317,13 @@ def _try_kill_engine() -> None:
 
 
 def _try_start_engine() -> bool:
-    """尝试启动 Engine（后台 python3 + launchctl 双重兜底）"""
+    """尝试启动 Engine（后台 python3 + launchctl 双重兜底）
+
+    v0.38.1: DISABLED 哨兵存在时拒绝启动。
+    """
+    if _ccc_disabled():
+        return False
+
     # 方式 1: launchctl bootstrap
     if ENGINE_PLIST.exists():
         try:
@@ -1069,8 +1091,18 @@ def main() -> int:
     engine_operated = False
     engine_status = "OK"
 
+    allow_restart = "--no-restart" not in sys.argv
+    if _ccc_disabled():
+        allow_restart = False
+
     # ── Step 0: Engine 存活检测 ──
-    engine_status = ensure_engine_healthy()
+    engine_status = ensure_engine_healthy(allow_restart=allow_restart)
+    if engine_status == "DISABLED":
+        print("[patrol] CCC DISABLED — observation only")
+        return 0
+    if engine_status == "DOWN":
+        print("[patrol] Engine down (no auto-restart)")
+        return 0
     if engine_status in ("DEAD",):
         # Engine 修不好，报告死信后退出（不做后续步骤）
         _log_engine_restart("DEAD", "patrol-v4 failed to restart Engine")

@@ -195,4 +195,8 @@ if $UPGRADE; then
   echo "提示: 如 qxo 项目也需升级，运行:"
   echo "  $0 --workspace ~/program/qxo --upgrade"
 fi
+echo ""
+echo "⚠ v0.38.1: 若存在 ~/.ccc/DISABLED，Engine 不会真正干活。"
+echo "  启停: bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh {enable|disable|status}"
+echo "  禁止将 ccc-loop-monitor.sh 写入 crontab（会强制复活 Engine）。"
 echo "Done. (prefix: ${LABEL_PREFIX}, workspace: ${WORKSPACE})"

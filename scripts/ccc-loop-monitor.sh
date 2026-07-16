@@ -1,78 +1,64 @@
 #!/bin/bash
-# ccc-loop-monitor.sh — 每 5 分钟检查 CCC pipeline 状态，24h 持续运行
-# 用法: (crontab -l; echo "*/5 * * * * /Users/apple/program/CCC/scripts/ccc-loop-monitor.sh") | crontab -
+# ccc-loop-monitor.sh — 可选健康观察（默认不自启 Engine）
+#
+# 根因修复 (v0.38.1):
+#   旧版每 5 分钟发现 Engine 死后执行 `python3 ccc-engine.py &`，
+#   导致 plist 已卸/用户已杀仍被强制拉起（双 engine / 内存爆）。
+#   现行为：仅观察写日志；永不自启；尊重 ~/.ccc/DISABLED。
+#
+# 不建议装进 crontab。若需监控，请人工执行或仅在明确启用 CCC 后使用。
 
-LOG=/Users/apple/.ccc/loop-monitor.log
-WS=/Users/apple/program/CCC
+set -uo pipefail
+
+LOG="${HOME}/.ccc/loop-monitor.log"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SENTINEL="${HOME}/.ccc/DISABLED"
+mkdir -p "$(dirname "$LOG")"
 cd "$WS"
 
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] === loop-monitor tick ===" >> "$LOG"
 
-# Step 1: Patrol check
-python3 scripts/ccc-patrol-v4.py >> "$LOG" 2>&1
-PATROL_RC=$?
-echo "patrol exit=$PATROL_RC" >> "$LOG"
-
-# Step 2: Check Engine alive
-if ! pgrep -f ccc-engine.py > /dev/null 2>&1; then
-    echo "ENGINE DEAD — restarting" >> "$LOG"
-    python3 scripts/ccc-engine.py &
-    sleep 2
+if [[ -f "$SENTINEL" ]]; then
+  echo "CCC DISABLED ($SENTINEL) — skip patrol/restart" >> "$LOG"
+  exit 0
 fi
 
-# Step 3: Check in_progress tasks 
+# Step 1: Patrol check（patrol 自身也不再强制拉起，见 ccc-patrol-v4.py）
+if [[ -f scripts/ccc-patrol-v4.py ]]; then
+  python3 scripts/ccc-patrol-v4.py --no-restart >> "$LOG" 2>&1 || true
+  echo "patrol exit=$?" >> "$LOG"
+fi
+
+# Step 2: 仅报告 Engine 是否存活 — 绝不后台启动
+if pgrep -f 'ccc-engine\.py' > /dev/null 2>&1; then
+  echo "ENGINE alive: $(pgrep -f 'ccc-engine\.py' | tr '\n' ' ')" >> "$LOG"
+else
+  echo "ENGINE down (will NOT auto-restart; enable via launchd or ccc-autostart-guard.sh)" >> "$LOG"
+fi
+
+# Step 3: 看板摘要
 python3 -c "
-import sys; sys.path.insert(0, 'scripts')
+import sys
+sys.path.insert(0, 'scripts')
 from pathlib import Path
 from _board_store import FileBoardStore
-
-tasks_running = 0
 for name, ws_path in [
     ('CCC', Path.home()/'program/CCC'),
     ('qxo', Path.home()/'program/qx-observer'),
     ('xianyu', Path.home()/'program/xianyu'),
-    ('qb', Path.home()/'program/qb'),
+    ('qb', Path.home()/'program/projects/qb'),
     ('qx', Path.home()/'program/projects/qx'),
 ]:
-    board = ws_path / '.ccc' / 'board'
-    if not board.exists(): continue
+    if not (ws_path/'.ccc'/'board').exists():
+        continue
     store = FileBoardStore(ws_path)
-    ip = store.list_tasks('in_progress')
-    pl = store.list_tasks('planned')
-    bl = store.list_tasks('backlog')
-    if ip: print(f'{name} IN_PROGRESS: {len(ip)} tasks')
-    if pl: print(f'{name} PLANNED: {len(pl)} tasks')
-    if bl: print(f'{name} BACKLOG: {len(bl)} tasks')
-    tasks_running += len(ip)
-print(f'TOTAL RUNNING: {tasks_running}')
-if tasks_running == 0:
-    print('WARN: no tasks running in any workspace')
-" >> "$LOG" 2>&1
+    parts = []
+    for col in ('backlog','planned','in_progress','testing','verified','abnormal'):
+        n = len(store.list_tasks(col))
+        if n:
+            parts.append(f'{col}={n}')
+    if parts:
+        print(f'{name}: ' + ', '.join(parts))
+" >> "$LOG" 2>&1 || true
 
-# Step 4: Check blockages - tasks stuck >30min
-python3 -c "
-import sys; sys.path.insert(0, 'scripts')
-from pathlib import Path
-from _board_store import FileBoardStore
-from _utils import now_iso
-from datetime import datetime, timezone
-
-now = datetime.now(timezone.utc)
-for ws_path in [Path.home()/'program/CCC']:
-    board = ws_path / '.ccc' / 'board'
-    if not board.exists(): continue
-    store = FileBoardStore(ws_path)
-    for col in ['in_progress', 'testing']:
-        tasks = store.list_tasks(col)
-        for t in tasks:
-            ts = t.get('ts', '')
-            if ts:
-                try:
-                    dt = datetime.fromisoformat(ts)
-                    age = (now - dt).total_seconds() / 60
-                    if age > 30:
-                        print(f'STALE: {t[\"id\"]} in {col} for {age:.0f}min')
-                except: pass
-" >> "$LOG" 2>&1
-
-tail -5 "$LOG"
+tail -3 "$LOG" 2>/dev/null || true

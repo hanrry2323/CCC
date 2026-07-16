@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - e2e-chat-greet: 看板发布
 
+## [v0.38.1] — 2026-07-16
+
+### 根因：后台进程被强制复活
+
+**根因链**：`crontab */5 * * * * ccc-loop-monitor.sh` → Engine 死后执行
+`python3 ccc-engine.py &` → 即使用户卸了 launchd / 杀了进程，**最多 5 分钟必复活**；
+叠加 `ccc-patrol-v4` 的 launchctl/Popen 拉起，形成双 engine + 内存打爆。
+
+### 修复
+- 新增 `~/.ccc/DISABLED` 总开关 + `scripts/ccc-autostart-guard.sh`
+- `ccc-loop-monitor.sh`：**永不自启** Engine；尊重 DISABLED
+- `ccc-patrol-v4.py`：支持 `--no-restart`；DISABLED 时拒绝 `_try_start_engine`
+- `ccc-engine.sh` / `engine_loop`：DISABLED 时只空转 sleep，不干活
+- `flywheel-scan.sh`：限制单次 grep 文件数，避免扫全量 reports 卡死 CPU
+- 从 crontab 移除 `ccc-loop-monitor`（由 guard disable 执行）
+
+启用 CCC：`bash scripts/ccc-autostart-guard.sh enable` 后再手动 load plist。
+
 ## [v0.38.0] — 2026-07-16
 
 ### 7 角色闭环生产力升级

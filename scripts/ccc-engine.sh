@@ -1,14 +1,26 @@
 #!/bin/bash
-# ccc-engine.sh — CCC Engine 入口 (v0.29.3+ / v0.37)
+# ccc-engine.sh — CCC Engine 入口 (v0.29.3+ / v0.38.1)
 # 由 launchd com.ccc.engine 守护
 # 单进程多 workspace 引擎 — 自动发现所有 workspace
 
 set -uo pipefail
 
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SENTINEL="${HOME}/.ccc/DISABLED"
 
 # 日志目录确保存在（Python 端 ccc-engine.py 也会 mkdir，这里保留兜底）
 mkdir -p "${HOME}/.ccc/logs"
+
+# v0.38.1: 总开关 — 存在则绝不进入工作循环（防 crontab/patrol/KeepAlive 复活干活）
+if [[ -f "$SENTINEL" ]]; then
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] CCC DISABLED ($SENTINEL) — idle hold" \
+    >> "${HOME}/.ccc/logs/engine-disabled.log"
+  # KeepAlive 下退出会被立刻拉起；改为长睡并周期性检查哨兵是否移除
+  while [[ -f "$SENTINEL" ]]; do
+    sleep 60
+  done
+  # 哨兵已删 → 继续正常启动
+fi
 
 # 修复 launchd 环境缺 PATH（含 .local/bin 供 claude CLI）
 export PATH="/Users/apple/.npm-global/bin:/opt/homebrew/bin:/Users/apple/.local/bin:/usr/local/bin:/usr/bin:/bin"

@@ -31,6 +31,14 @@ CCC = **7 角色看板** + **CCC Engine 串行驱动** + **Claude（product/revi
 
 **v0.37+ 空闲默认**：空看板不 `auto_replenish` / 不 `evolve`（防内存爆）。显式开：`CCC_AUTO_REPLENISH=1` 等。
 
+**v0.38.1 总开关**：`~/.ccc/DISABLED` 存在时，Engine/patrol/loop-monitor **禁止自启**。
+```bash
+bash scripts/ccc-autostart-guard.sh disable   # 停机 + 卸 crontab 自启
+bash scripts/ccc-autostart-guard.sh enable    # 允许再启（仍需手动 load plist）
+bash scripts/ccc-autostart-guard.sh status
+```
+**禁止**把 `ccc-loop-monitor.sh` 装进 crontab（旧版会每 5 分钟强制 `python3 ccc-engine.py &`）。
+
 **入口**：`python3 scripts/ccc-board.py {product|dev|reviewer|tester|ops|kb|regress}`（调试用手动；生产靠 Engine）
 
 ---

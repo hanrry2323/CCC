@@ -2203,6 +2203,16 @@ def engine_loop(workspaces: list[Path]) -> None:
     """引擎主循环：多 workspace 轮询，全局 MAX_CONCURRENT 共享。"""
     global _engine_shutdown
 
+    # v0.38.1: 直接 python 启动也尊重总开关（不依赖 shell 入口）
+    _disabled = Path.home() / ".ccc" / "DISABLED"
+    if _disabled.is_file():
+        engine_log(f"CCC DISABLED ({_disabled}) — idle hold until sentinel removed")
+        while not _engine_shutdown and _disabled.is_file():
+            time.sleep(60)
+        if _engine_shutdown:
+            return
+        engine_log("DISABLED sentinel removed — entering normal loop")
+
     program_dir = Path.home() / "program"
     labels = [_ws_label(w, program_dir) for w in workspaces]
     engine_log(f"CCC Engine 启动 ({len(workspaces)} workspace)")

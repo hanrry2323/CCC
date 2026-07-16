@@ -130,7 +130,7 @@ for i in "${!PATTERNS[@]}"; do
   for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     # mtime -7 内 + 模式
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
-      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+      head -n 80 | xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
     if [[ $COUNT -gt 0 ]]; then
       WS_HIT=$((WS_HIT+1))
       TOTAL=$((TOTAL+COUNT))
@@ -157,7 +157,7 @@ for i in "${!PATTERNS[@]}"; do
   pat="${PATTERNS[$i]}"
   for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -${WINDOW_DAYS} -name "*.md" 2>/dev/null | \
-      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+      head -n 80 | xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
     if [[ $COUNT -ge 3 ]]; then
       key="${pat}@${ws}"
       if ! echo "$P2_WRITTEN" | grep -qF "$key"; then
@@ -183,7 +183,7 @@ for i in "${!PATTERNS[@]}"; do
   # v0.28.0 fix: set -u 下空数组安全
   for ws in "${ALL_WORKSPACES[@]+"${ALL_WORKSPACES[@]}"}"; do
     COUNT=$(find "$ws/.ccc/reports" "$ws/.ccc/verdicts" -type f -mtime -1 -name "*.md" 2>/dev/null | \
-      xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
+      head -n 80 | xargs grep -l "$pat" 2>/dev/null | wc -l | tr -d ' ')
     TOTAL=$((TOTAL+COUNT))
   done
   if [[ $TOTAL -eq 1 ]]; then
