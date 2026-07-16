@@ -325,11 +325,15 @@ for p in phases:
                 print(f"  ❌ phase {pid}: scope 外文件被改动: {', '.join(sorted(_extra))}")
                 print(f"     拒绝提交，回退 extra 文件到 HEAD")
                 for _f in _extra:
-                    # 已跟踪文件 → checkout；未跟踪新文件 → rm
-                    subprocess.run(["git", "checkout", "--", _f], cwd=workspace,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    if os.path.exists(os.path.join(workspace, _f)):
-                        # git checkout 没修复（未跟踪文件），直接删
+                    # 已跟踪文件 → checkout 还原；未跟踪新文件 → rm
+                    _tracked = subprocess.run(
+                        ["git", "ls-files", "--error-unmatch", _f],
+                        cwd=workspace, capture_output=True
+                    ).returncode == 0
+                    if _tracked:
+                        subprocess.run(["git", "checkout", "--", _f], cwd=workspace,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
                         try:
                             os.remove(os.path.join(workspace, _f))
                         except OSError:
