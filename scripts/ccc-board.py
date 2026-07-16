@@ -3489,7 +3489,10 @@ def _audit_run_one(ws: str, since: str) -> dict:
             findings["auto"] = []
         except (sp.TimeoutExpired, FileNotFoundError, OSError) as e:
             _log.warning("audit ruff --fix failed for %s: %s", ws, e)
-    posted_review = _audit_post_backlog(ws, findings.get("review", []), "review")
+    # v0.34 (fix): review 类（mypy/pyright 单行 annotation 错误）不走 CCC pipeline
+    # 这些是单行修，CCC plan→dev→review→test 链路太重，且 product 反复失败
+    # 改为只记入报表（findings["review"] 已在 audit 报表中出现），不投看板
+    # decision 类（架构/配置决策）继续投看板
     posted_decision = _audit_post_backlog(ws, findings.get("decision", []), "decision")
 
     # 6. 写报表
