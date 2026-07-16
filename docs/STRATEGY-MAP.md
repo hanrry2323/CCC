@@ -60,11 +60,11 @@
 | **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_*()` | 不变 |
 | **reviewer** | 2h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → reviewer_role()` | small=跳过 |
 | **tester** | 4h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → tester_role()` | small=跳过 |
-| **ops** | 30min | Engine 空闲时 | 所有列 | — | `ccc-engine.py → ops_role()` | 不变 |
-| **kb** | 每天 23:00 | reviewer+tester 通过后立即 | verified | verified → released | `ccc-engine.py → kb_role()` | small 也调 |
+| **ops** | 30min | 手动/可选（空闲不默认重扫） | 所有列 | — | `ccc-board.py ops` | 不变 |
+| **kb** | 每天 23:00 | **verified 列非空即跑**（v0.38 `_run_verified_kb_gate`） | verified | verified → released | `ccc-engine.py → kb_role()` | small 也调 |
 | **regress** | 每天 23:30 | 独立定时或 Engine 空闲 | released | released → backlog | `ccc-board.py regress` | 不变 |
 
-**引擎约束**：有 task 即串行执行全链路，无 task 休眠 5s。
+**引擎约束**：有 task 即串行执行全链路；真·空闲（无列任务）只写 heartbeat，默认不 auto-replenish/evolve（v0.37+）。
 
 ### 2.2 看板流转图
 
