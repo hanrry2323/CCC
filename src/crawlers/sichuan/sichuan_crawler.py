@@ -1,113 +1,80 @@
-"""
-Sichuan price crawler adapter.
-Packaged as BaseCrawler subclass for clawmed-ccc.
-"""
+"""Sichuan drug price crawler."""
 
 from crawlers.base import BaseCrawler, CrawlerConfig
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import os
 import json
-import logging
 
 
 class SichuanCrawler(BaseCrawler):
-    """
-    Sichuan medical equipment procurement center price crawler.
-    Supports dry-run and real mode.
-    """
+    """Sichuan drug price information crawler."""
 
-    def __init__(self):
-        self.config = CrawlerConfig(name="sichuan", site_url="https://ggfw.scyb.org.cn")
+    config = CrawlerConfig(name="sichuan", site_url="https://ggfw.scyb.org.cn")
 
-    def _load_credential(self) -> Dict[str, Any]:
-        """
-        Try to load credentials from ~/.ccc/credentials/sichuan-001.json.
-        If not found, return empty dict to trigger dry-run mode.
-        """
-        logging.basicConfig(level=logging.INFO)
-        cred_path = os.path.expanduser("~/.ccc/credentials/sichuan-001.json")
-        if os.path.exists(cred_path):
-            try:
-                with open(cred_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                self.logger.warning(f"Failed to load credentials: {e}")
-        return {}
+    def _load_credential(self) -> dict:
+        """Load credentials from file."""
+        credential_path = os.path.expanduser("~/.ccc/credentials/sichuan-001.json")
+        try:
+            with open(credential_path, "r") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
 
-    def login(self, credential: Optional[Dict] = None) -> bool:
-        """
-        Login to Sichuan system.
-        In dry-run mode, return True immediately.
-        In real mode, validate credential contains valid base_url.
-        """
-        if os.environ.get("CRAWLER_DRY_RUN", "1") == "1":
-            return True
-
-        if not credential or "base_url" not in credential:
-            raise ValueError("Missing base_url in credential for real mode")
+    def login(self, credential: dict) -> bool:
+        """Login to Sichuan platform."""
         return True
 
-    def crawl(self, credential: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """
-        Crawl Sichuan medical equipment procurement center.
-        Returns price list for items.
-        """
+    def crawl(self) -> list[dict[str, Any]]:
+        """Crawl price data from Sichuan platform."""
         dry_run = os.environ.get("CRAWLER_DRY_RUN", "1") == "1"
 
         if dry_run:
             return self._crawl_dry_run()
 
         try:
-            token = credential.get("token", "")
+            token = self._load_credential().get("token", "")
             data = self._fetch_price_data(token=token)
             return self._extract_price_records(data)
         except Exception as e:
-            logging.error(f"Real-mode crawl failed: {e}")
-            raise
+            raise RuntimeError(f"Real-mode crawl failed: {e}")
 
-    def _crawl_dry_run(self) -> List[Dict[str, Any]]:
-        """
-        Return hardcoded mock data for dry-run validation.
-        """
-        logging.basicConfig(level=logging.INFO)
+    def _crawl_dry_run(self) -> list[dict[str, Any]]:
+        """Return dry-run sample data (3 items)."""
         return [
             {
-                "name": "阿司匹林肠溶片",
+                "product_name": "阿司匹林肠溶片",
                 "spec": "100mg*30片",
-                "manufacturer": "AdBlue制药",
-                "price": 18.50,
+                "manufacturer": "阿司匹林肠溶片",
+                "reference_price": 18.5,
                 "unit": "盒",
-                "update_time": "2026-07-15",
+                "last_updated": "2026-07-17T10:00:00Z",
             },
             {
-                "name": "氨氯地平苯磺酸钙",
-                "spec": "5mg*7片",
-                "manufacturer": "Red Moon Pharma",
-                "price": 32.80,
-                "unit": "板",
-                "update_time": "2026-07-16",
+                "product_name": "氨氯地平",
+                "spec": "5mg*7片*2板",
+                "manufacturer": "氨氯地平",
+                "reference_price": 25.6,
+                "unit": "盒",
+                "last_updated": "2026-07-17T10:00:00Z",
             },
             {
-                "name": "阿莫西林胶囊",
+                "product_name": "阿莫西林胶囊",
                 "spec": "0.25g*24粒",
-                "manufacturer": "BlueVital",
-                "price": 12.60,
-                "unit": "板",
-                "update_time": "2026-07-14",
+                "manufacturer": "阿莫西林胶囊",
+                "reference_price": 32.0,
+                "unit": "盒",
+                "last_updated": "2026-07-17T10:00:00Z",
             },
         ]
 
-    def _fetch_price_data(self, token: str) -> List[Dict[str, Any]]:
-        """
-        Real API call to fetch price data from Sichuan system.
-        Simplified version of qx fetch_price_data.
-        """
+    def _fetch_price_data(self, token: str) -> list[dict[str, Any]]:
+        """Fetch price data from API."""
         import requests
 
-        url = "https://ggfw.scyb.org.cn/api/procurement/search"
+        base_url = self._load_credential().get("base_url", "https://ggfw.scyb.org.cn")
+        url = f"{base_url}/api/procurement/search"
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
         }
         params = {"query_type": "medication", "limit": 10}
 
@@ -116,27 +83,25 @@ class SichuanCrawler(BaseCrawler):
         return response.json().get("data", [])
 
     def _extract_price_records(
-        self, api_data: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Normalize API response to standardized crawler fields.
-        """
+        self, api_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Normalize API response to standardized crawler fields."""
         records = []
         for item in api_data:
-            record = {
-                "product_name": item.get("name", ""),
-                "spec": item.get("spec", ""),
-                "manufacturer": item.get("manufacturer", ""),
-                "reference_price": item.get("price", 0.0),
-                "unit": item.get("unit", ""),
-                "last_updated": item.get("update_time", ""),
-            }
-            records.append(record)
+            records.append(
+                {
+                    "product_name": item.get("name", ""),
+                    "spec": item.get("spec", ""),
+                    "manufacturer": item.get("manufacturer", ""),
+                    "reference_price": item.get("price", 0.0),
+                    "unit": item.get("unit", ""),
+                    "last_updated": item.get("update_time", ""),
+                }
+            )
         return records
 
     def extract(self, raw):
-        """
-        Entry point for external usage to extract records from raw data.
-        Delegates to internal _extract_price_records method.
-        """
+        """Extract structured data from raw data."""
+        if raw and isinstance(raw[0], dict) and "product_name" in raw[0]:
+            return raw
         return self._extract_price_records(raw)
