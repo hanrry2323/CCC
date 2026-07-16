@@ -1,72 +1,52 @@
-OBS1 流程探针执行报告 (v0.40.1 探针规范)
-
-## Summary
-OBS1 流程压力探针第 6 轮执行完成——确保冒烟测试、文档、执行报告三文件就位且被 git 跟踪，commit message 含 task_id，验证 H1 门禁。
+# OBS1 流程探针执行报告
 
 ## Task Info
-- **Task ID**: cla-obs1-commit
-- **Executed At**: Fri Jul 17 06:05:21 CST 2026
-- **Run Counter**: 6
 
-## Files Tracked
-tests/test_obs1_smoke.py
-docs/OBS1.md
-reports/obs1-commit.report.md
+- **Task ID**: `cla-obs1-commit`
+- **Phase**: 1/1
+- **Executed At**: 2026-07-17 07:06:01 CST
+- **Scope**: 五个白名单文件
 
-## HEAD Commit
-cfcd0c4dbffe49c4c6571d1b4ccfa3e935296e5c
+## Pytest Result
 
-## Latest Log
-test(probe): OBS1 流程压力探针 — tests 冒烟 + 强制 git commit (phase 1/1, cla-obs1-commit)
-
-## PyTest Result
+```text
 .                                                                        [100%]
-1 passed in 0.03s
+1 passed in 0.04s
+```
 
-## Verification Status
-- [x] tests/test_obs1_smoke.py exists with test_ok()
-- [x] docs/OBS1.md contains task id
-- [x] reports/obs1-commit.report.md exists with git HEAD
-- [x] commit message contains cla-obs1-commit
-- [x] all 3 files tracked by git (3 tracked)
-- [x] pytest smoke test passed (1 passed)
-- [x] diff respects white list (0 files in src/ scripts/)
-- [x] non-empty commit (phase 1: 1 file changed: reports/obs1-commit.report.md)
+## Git Verification Snapshot
 
----
-# OBS1 流程探针执行报告 (v0.40.1 探针规范) - 第 7 轮
+以下是 Phase 1 提交前的真实命令输出；该快照对应本次提交前的 HEAD。
 
-## Summary
-OBS1 流程压力探针第 7 轮执行完成——确保冒烟测试、文档、执行报告三文件就位且被 git 跟踪，commit message 含 task_id，验证 H1 门禁，已完成过程文件闭环。
+### `git rev-parse HEAD`
 
-## Task Info
-- **Task ID**: cla-obs1-commit
-- **Executed At**: Fri Jul 17 06:49:19 CST 2026
-- **Run Counter**: 7
+```text
+5663a2bfac4895c053cd5af6cfed8d36fb3546cf
+```
 
-## Files Tracked
-tests/test_obs1_smoke.py
+### `git log -1 --oneline`
+
+```text
+5663a2b Phase 1: Sichuan crawler implementation and testing
+```
+
+### `git ls-files tests/test_obs1_smoke.py docs/OBS1.md`
+
+```text
 docs/OBS1.md
-reports/obs1-commit.report.md
+tests/test_obs1_smoke.py
+```
 
-## HEAD Commit
-7fe1fc91ffa1f5c0e6c6c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7
+## Acceptance Summary
 
-## Latest Log
-test(probe): OBS1 流程压力探针 — 过程文件闭环 + 报告刷新 (phase 1/1, cla-obs1-commit)
+- [x] `tests/test_obs1_smoke.py` contains `Task ID: cla-obs1-commit` and `test_ok()` with `assert True`
+- [x] `pytest tests/test_obs1_smoke.py -q --tb=short` passed: 1 passed, 0 failed
+- [x] `docs/OBS1.md` contains the Task ID and current verification timestamp
+- [x] Git metadata commands were captured in this report
+- [x] Changes are limited to the five-file whitelist
+- [x] H1 commit created with message containing `cla-obs1-commit` and `phase 1/1`
 
-## PyTest Result
-.                                                                        [100%]
-1 passed in 0.03s
+## Commit
 
-## Verification Status
-- [x] tests/test_obs1_smoke.py exists with test_ok()
-- [x] docs/OBS1.md contains task id
-- [x] reports/obs1-commit.report.md exists with git HEAD
-- [x] HEAD commit updated to current (7fe1fc9)
-- [x] commit message contains cla-obs1-commit
-- [x] all 4 files tracked by git (4 tracked: obs1-commit files)
-- [x] pytest smoke test passed (1 passed)
-- [x] diff respects white list (0 files in src/ scripts/)
-- [x] non-empty commit (process files closure)
-- [x] process files updated: phases.json, plan.md, report.md, docs/OBS1.md
+- **Message**: `test(probe): OBS1 流程压力探针 — 测试冒烟 + git commit + 报告 (phase 1/1, cla-obs1-commit)`
+- **Committed files**: `.ccc/phases/cla-obs1-commit.phases.json`, `.ccc/plans/cla-obs1-commit.plan.md`, `docs/OBS1.md`, `reports/obs1-commit.report.md`

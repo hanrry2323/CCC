@@ -1,96 +1,59 @@
-# Plan: cla:OBS1 — 流程探针闭环:验证就绪 + 过程文件 + 强制 commit
+# Plan: cla:OBS1 流程探针 — tests 冒烟 + 强制 git commit
 
-> 撰写:ccc-product | 执行:ccc-dev(manual)
+> 撰写：ccc-product | 执行：ccc-dev（manual）
 
----
+## 当前 Phase
 
-## 前置条件
+只执行 Phase 1。不得修改 scope 白名单外的文件，不提前实现后续 OBS 探针。
 
-- OBS1 核心测试文件已提交: `tests/test_obs1_smoke.py` (34c5c99)
-- docs 文件已提交: `docs/OBS1.md` (34c5c99)
-- 执行报告已提交: `reports/obs1-commit.report.md` (34c5c99)
-- 当前 HEAD: 7fe1fc9 (B1.1正式闭环)
+## 目标
 
----
+完成 OBS1 流程压力探针的 Phase 1 闭环：确认最简 pytest 冒烟测试可运行，追加带 Task ID 的 OBS1 验证时间戳，生成包含 Git 元数据的执行报告，更新 CCC 过程文件，并提交含 `cla-obs1-commit` 与 `phase 1/1` 的 Git commit。
 
-## Phase 1: 过程文件闭环
+## Scope 白名单
 
-### 目标
+- `tests/test_obs1_smoke.py`
+- `docs/OBS1.md`
+- `reports/obs1-commit.report.md`
+- `.ccc/plans/cla-obs1-commit.plan.md`
+- `.ccc/phases/cla-obs1-commit.phases.json`
 
-完成 CCC 过程文件更新:
-1. 刷新报告 Run Counter (6→7)
-2. 更新 HEAD commit 引用
-3. 刷新执行时间戳
-4. 追加验证标记到 `docs/OBS1.md`
-5. 覆写过时的 plan/phases 文件
+不得修改 `scripts/`、`src/`、其他 `tests/` 文件、`README.md`、`CLAUDE.md`、`SKILL.md`、`VERSION` 或其他路径。
 
-### 执行步骤
+## Phase 1：烟雾测试、文档、报告与强制提交
 
-```bash
-# 1. 确认冒烟测试通过
-pytest tests/test_obs1_smoke.py -q --tb=short
+### 执行内容
 
-# 2. 更新报告文件
-sed -i '' 's/Executed At: Fri Jul 17 06:05:21 CST 2026/Executed At: Fri Jul 17 06:49:19 CST 2026/' reports/obs1-commit.report.md
-sed -i '' 's/Run Counter.*/Run Counter: 7/' reports/obs1-commit.report.md
+1. 确认 `tests/test_obs1_smoke.py` 的 docstring 含 `Task ID: cla-obs1-commit`，并保留 `def test_ok():` 与 `assert True`。
+2. 在 `docs/OBS1.md` 末尾追加当前日期 `2026-07-17` 的验证时间戳，保留既有内容。
+3. 生成 `reports/obs1-commit.report.md`，记录 Task ID、pytest 结果、`git rev-parse HEAD`、`git log -1 --oneline` 和 `git ls-files tests/test_obs1_smoke.py docs/OBS1.md`。
+4. 保持本计划与 phases JSONL 文件符合 CCC 过程文件规范。
+5. 仅 stage 白名单文件，创建一条 commit message 含 `cla-obs1-commit` 与 `phase 1/1` 的提交。
 
-# 3. 更新 docs 标记
-echo "Verified at: 2026-07-17 06:49:19" >> docs/OBS1.md
+### 验收清单
 
-# 4. 写入 phases 文件
-cat > .ccc/phases/cla-obs1-commit.phases.json << 'EOF'
-{"phase": 1, "subtasks": {"update_report": "Refresh OBS1-commit report with current timestamp and HEAD commit", "add_doc_marker": "Add verified at marker to docs/OBS1.md", "write_phases_json": "Write current phases.json for cla-obs1-commit", "write_plan_md": "Write current plan.md for cla-obs1-commit"}, "scope": ["docs/OBS1.md", "reports/obs1-commit.report.md", ".ccc/phases/cla-obs1-commit.phases.json", ".ccc/plans/cla-obs1-commit.plan.md"]}
-EOF
+- `python3 -m pytest tests/test_obs1_smoke.py -q --tb=short` 返回 `1 passed`。
+- `docs/OBS1.md` 含 `Task ID: cla-obs1-commit` 与 `Verified at: 2026-07-17`。
+- `git rev-parse HEAD` 输出非空。
+- 最新 commit message 含 `cla-obs1-commit` 与 `phase 1/1`。
+- `git ls-files tests/test_obs1_smoke.py docs/OBS1.md` 输出两行。
+- 报告含 `git rev-parse HEAD`、`git log -1`、`git ls-files` 和验收小结。
+- `.ccc/phases/cla-obs1-commit.phases.json` 为合法 JSONL，每行含非空 `description` 与 `scope`，且 `phase` 为整数。
+- 提交改动仅来自五个白名单路径。
 
-# 5. 写入 plan 文件
-cat > .ccc/plans/cla-obs1-commit.plan.md << 'EOFPLAN'
-# Plan: cla:OBS1 — 流程探针闭环:验证就绪 + 过程文件 + 强制 commit
+## Commit 计划
 
-> 撰写:ccc-product | 执行:ccc-dev(manual)
+| Phase | 改动 | Commit message |
+|---|---|---|
+| 1 | 烟雾测试确认、OBS1 文档、Git 报告与 CCC 过程文件 | `test(probe): OBS1 流程压力探针 — 测试冒烟 + git commit + 报告 (phase 1/1, cla-obs1-commit)` |
 
----
+## 完成定义
 
-## Phase 1: 过程文件闭环
-
-### 目标
-
-完成 CCC 过程文件更新:
-1. 刷新报告 Run Counter (6→7)
-2. 更新 HEAD commit 引用
-3. 刷新执行时间戳
-4. 追加验证标记到 docs/OBS1.md
-5. 覆写过时的 plan/phases 文件
-
-### 执行步骤
-
-见上方 execute_section
-
-### 验收条件
-
-- pytest smoke test passed (1 passed)
-- Run Counter = 7
-- HEAD commit = 7fe1fc9
-- docs/OBS1.md contains "Verified at: 2026-07-17 06:49:19"
-EOFPLAN
-
-# 6. Stage and commit
-git add docs/OBS1.md reports/obs1-commit.report.md .ccc/phases/cla-obs1-commit.phases.json .ccc/plans/cla-obs1-commit.plan.md
-git diff --cached --stat
-git commit -m "test(probe): OBS1 流程压力探针 — 过程文件闭环 + 报告刷新 (phase 1/1, cla-obs1-commit)"
-```
-
-### 白名单约束
-
-- ✓ docs/OBS1.md
-- ✓ reports/obs1-commit.report.md
-- ✓ .ccc/phases/cla-obs1-commit.phases.json
-- ✓ .ccc/plans/cla-obs1-commit.plan.md
-
----
+1. 仅实现 Phase 1。
+2. Phase 1 测试与 JSONL 校验通过。
+3. 产生含 task ID 与 phase 标识的 commit。
+4. 不超出五个文件的 scope 白名单。
 
 ## 后续步骤
 
-- OBS2+ 扩展流程压力探针覆盖 verdict 文件强制写入
-- OBS 自检集成：将 pytest tests/test_obs1_smoke.py 纳入 ccc-self-check.sh
-- OBS 自动化：纳入 Engine enabled 模式的启动前自检
-
+OBS2/OBS3 的测试覆盖升级、多 phase 编排与失败回退闭环留给后续调度。
