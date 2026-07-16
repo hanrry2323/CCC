@@ -1,2 +1,1 @@
-{"phase":1,"status":"done","description":"迁入四川价爬虫、注册 CLI 并补充单测","scope":["src/crawlers/sichuan/__init__.py","src/crawlers/sichuan/sichuan_crawler.py","tests/test_crawler_sichuan.py","scripts/run_crawler.py"]}
-{"phase":2,"status":"done","description":"补充 README 快速运行说明、迁移报告与 CCC 过程文件","scope":["README.md","docs/migration-B1.md",".ccc/plans/cla-b1--qx--1-vded.plan.md",".ccc/phases/cla-b1--qx--1-vded.phases.json"]}
+{"schema_version": "1.1", "task_id": "cla-b1--qx--1-vded", "phase_index": 1, "total_phases": 1, "description": "B1 爬虫迁入闭环验收与过程文件写入", "scope": "docs/migration-B1.md, .ccc/plans/cla-b1--qx--1-vded.plan.md, .ccc/phases/cla-b1--qx--1-vded.phases.json", "outcome": "success"}
