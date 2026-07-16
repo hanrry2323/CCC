@@ -1,4 +1,4 @@
-# CCC — Connect–Claude Code (v0.30.0)
+# CCC — Connect–Claude Code (v0.38.0)
 
 > **One skill, every IDE, every model.** A skill that turns any coding agent
 > into a 7-role automated development system with kanban board.
@@ -15,6 +15,7 @@
 - Trae / Cursor / Zed / VS Code / OpenCode — 都能用同一套 SKILL
 - 7 个角色独立 skill（`skills/ccc-<role>/SKILL.md`），各司其职
 - CCC Engine 串行驱动看板（非 7 角色定时轮询）
+- **Claude** 做 product/reviewer；**OpenCode** 做 dev 写代码
 
 ## 核心
 
@@ -26,9 +27,16 @@ CCC = 1 个 SKILL.md（总纲）
       + 2 plist：com.ccc.engine + com.ccc.board-server
 ```
 
-CCC 不是 framework 代码库，**是一个 prompt 资产套件 + 工程纪律沉淀**。
+CCC 是 **prompt 资产 + Engine 运行时**。运行时 SSOT 在 `scripts/`（`ccc-engine.py` / `ccc-board.py`）。
 
-运行时 SSOT 在 `scripts/`（`ccc-engine.py` / `ccc-board.py`）。`app/`、`lib/`、`src/` 为实验/旁路模块，不替代 Engine。
+### 任务闭环（v0.38）
+
+```
+backlog → product(claude) → planned → dev(opencode) → testing
+       → reviewer+tester → verified → kb → released
+```
+
+空看板默认**不**自动 evolve/补任务（`CCC_AUTO_REPLENISH=0`），避免后台内存爆掉。
 
 ## 关键资产清单
 

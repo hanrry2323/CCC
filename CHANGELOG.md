@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.38.0] — 2026-07-16
+
+### 7 角色闭环生产力升级
+
+打通 `backlog → … → verified → released` 全链路，对齐 Claude + OpenCode 协作模型。
+
+### 修复（流程）
+- Engine 接入 `kb_role`：扫 `verified` → tag/CHANGELOG → `released`（此前任务永久卡 verified）
+- reviewer small-class 通过时写 `.ccc/verdicts/{id}.verdict.md`（红线 11；此前仅写 review.md）
+- 多 phase：`dev_role_check_complete` 标记 phase done 后 `phase_done` → relaunch 下一 phase
+- async product 对齐 sync：`phase_lint` + `complexity` 推断
+- plan+phases 双文件门禁；孤儿 phases 删除后走 product
+- kb `git push` 失败不再 `continue` 卡 verified（本地 tag 仍归档）
+- `reviewer_role()` 补齐返回值
+
+### 文档
+- STARTUP-BRIEF / README / SKILL / 角色 skill / CLAUDE.md 同步 v0.38 行为
+- 默认空看板不自造任务（继承 v0.37）
+
 ## [v0.37.0] — 2026-07-16
 
 ### 生产力阶段：止血内存与空看板自造任务

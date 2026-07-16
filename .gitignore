@@ -4,7 +4,9 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+.claude/
 .ccc/abnormal-reports/
+.ccc/dockets/
 
 # Track project-level CCC artifacts (plans, phases, reports, verdicts)
 # except abnormal-reports/ which is for transient anomalies
