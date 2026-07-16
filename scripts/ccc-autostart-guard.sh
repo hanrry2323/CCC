@@ -34,13 +34,14 @@ _disable() {
 EOF
   echo "wrote $SENTINEL"
 
-  # 卸 launchd
+  # 卸 launchd（含 opencode serve — CCC 执行器常驻，KeepAlive 会复活）
   uid=$(id -u)
-  for label in com.ccc.engine com.ccc.board com.ccc.chat-server com.ccc.flywheel-scan com.ccc.loop-monitor; do
+  for label in com.ccc.engine com.ccc.board com.ccc.chat-server com.ccc.flywheel-scan com.ccc.loop-monitor com.opencode.serve; do
     launchctl bootout "gui/${uid}/${label}" 2>/dev/null || true
   done
   mkdir -p "${HOME}/Library/LaunchAgents/disabled-ccc"
-  for f in "${HOME}/Library/LaunchAgents"/com.ccc.*.plist; do
+  for f in "${HOME}/Library/LaunchAgents"/com.ccc.*.plist \
+           "${HOME}/Library/LaunchAgents"/com.opencode.serve.plist; do
     [[ -f "$f" ]] || continue
     mv "$f" "${HOME}/Library/LaunchAgents/disabled-ccc/" 2>/dev/null || true
   done
