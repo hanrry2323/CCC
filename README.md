@@ -142,6 +142,7 @@ open http://127.0.0.1:7777
 | [STARTUP-BRIEF](STARTUP-BRIEF.md) | Agent |
 | [CONTRIBUTING](CONTRIBUTING.md) | 贡献者 |
 | [CHANGELOG](CHANGELOG.md) | 版本历史 |
+| [B1 迁移报告](docs/migration-B1.md) | 执行员 |
 
 ## 爬虫快速运行
 
