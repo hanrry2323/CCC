@@ -70,7 +70,9 @@ CCC + 爬虫/DB/worker + Domain Skill + 自定义快捷键
 ```
 
 ```text
-backlog → planned → in_progress → testing → verified → released
+backlog(epic 大卡常驻)
+  → Claude 扇出 → planned(work) → in_progress → testing → verified → released
+  → 子卡全 released → 大卡 done 沉底
 ```
 
 ---

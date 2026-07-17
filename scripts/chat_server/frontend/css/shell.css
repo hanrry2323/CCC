@@ -214,6 +214,35 @@ body.hub-mode #app {
   overflow: hidden;
 }
 
+.board-layout {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-epic-col {
+  flex: 0 0 300px;
+  width: 300px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  padding: 10px 0 10px 12px;
+  background: var(--ccc-bg-base);
+  border-right: 1px solid var(--ccc-border-subtle);
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.04);
+}
+
+.board-flow-cols {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
 .board-cols {
   flex: 1;
   display: flex;
@@ -233,6 +262,66 @@ body.hub-mode #app {
   border: 1px solid var(--ccc-border-subtle);
   border-radius: var(--ccc-radius-md);
 }
+
+.board-col-epic {
+  min-width: 280px;
+  max-width: 300px;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--ccc-bg-surface) 0%,
+    var(--ccc-bg-layer) 100%
+  );
+}
+
+.board-card-epic {
+  min-height: 72px;
+  padding: 10px 12px;
+}
+
+.board-card-epic .ti {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.board-card-epic.epic-done {
+  opacity: 0.72;
+}
+
+.epic-prog,
+.parent-tag {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+  font-family: var(--ccc-font-mono);
+}
+
+.board-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.board-empty {
+  text-align: center;
+  color: var(--ccc-text-faint);
+  font-size: 11px;
+  padding: 16px;
+}
+
+.board-toggle {
+  font-size: 11px;
+  color: var(--ccc-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
 
 .board-col-h {
   padding: 10px 12px;
@@ -315,28 +404,7 @@ body.hub-mode #app {
   cursor: pointer;
 }
 
-.board-side {
-  width: 300px;
-  border-left: 1px solid var(--ccc-border-subtle);
-  display: flex;
-  flex-direction: column;
-  background: var(--ccc-bg-surface);
-  flex-shrink: 0;
-}
-
-.board-side h3 {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 8px 12px;
-  color: var(--ccc-text-muted);
-  border-bottom: 1px solid var(--ccc-border-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
-}
-
-.board-tl { flex: 1; overflow-y: auto; }
-.board-logs { height: 160px; overflow-y: auto; border-top: 1px solid var(--ccc-border-subtle); }
+/* 活动/日志侧栏已移除；详情弹窗内活动流仍用 .board-ev */
 
 .board-ev, .board-lg {
   display: flex;
@@ -433,7 +501,7 @@ body.hub-mode #app {
 
 @media (max-width: 900px) {
   .console-kpi { grid-template-columns: repeat(2, 1fr); }
-  .board-side { display: none; }
+  .board-epic-lane { position: relative; left: auto; width: min(100%, 320px); max-width: none; }
 }
 
 .console-kw {

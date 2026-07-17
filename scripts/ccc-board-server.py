@@ -154,18 +154,23 @@ def _store_for(workspace: str) -> FileBoardStore | None:
     return FileBoardStore(bp.parent.parent)  # /workspace/.ccc/board → /workspace
 
 
-def list_tasks(column: str, workspace: str) -> list[dict]:
+def list_tasks(
+    column: str, workspace: str, *, include_hidden: bool = False
+) -> list[dict]:
     s = _store_for(workspace)
     if s is None:
         return []
-    tasks = s.list_tasks(column)
+    tasks = s.list_tasks(column, include_hidden=include_hidden)
     for t in tasks:
         t["_column"] = column
     return tasks
 
 
-def get_board_state(workspace: str) -> dict:
-    return {col: list_tasks(col, workspace) for col in COLUMNS}
+def get_board_state(workspace: str, *, include_hidden: bool = False) -> dict:
+    return {
+        col: list_tasks(col, workspace, include_hidden=include_hidden)
+        for col in COLUMNS
+    }
 
 
 def move_task(task_id: str, from_col: str, to_col: str, workspace: str) -> bool:
@@ -181,9 +186,27 @@ def create_task(data: dict, workspace: str = "CCC", column: str = "backlog") -> 
     if s is None:
         return False
     task_data = dict(data)
-    task_data.pop("workspace", None)           # HTTP 控制字段，非 Board Protocol 数据
+    task_data.pop("workspace", None)  # HTTP 控制字段，非 Board Protocol 数据
     task_data["id"] = sanitize_id(task_data.get("id", ""))
+    if column == "backlog":
+        task_data.setdefault("card_kind", "epic")
+        task_data.setdefault("split_status", "pending")
+    else:
+        task_data.setdefault("card_kind", "work")
     return s.create_task(task_data, column=column)
+
+
+def hide_completed_epics(workspace: str) -> int:
+    """ui_hidden=true for done epics in backlog. Returns count."""
+    s = _store_for(workspace)
+    if s is None:
+        return 0
+    n = 0
+    for t in s.list_tasks("backlog", include_hidden=True):
+        if t.get("card_kind") == "epic" and t.get("split_status") == "done":
+            if s.patch_task(t["id"], {"ui_hidden": True}):
+                n += 1
+    return n
 
 
 # ── 时间线 ──
@@ -442,7 +465,12 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/board":
             fields = qs.get("fields", [None])[0]
-            state = get_board_state(ws)
+            include_hidden = qs.get("include_hidden", ["0"])[0] in (
+                "1",
+                "true",
+                "yes",
+            )
+            state = get_board_state(ws, include_hidden=include_hidden)
             for col, tasks in state.items():
                 for t in tasks:
                     if fields == "summary":
@@ -814,10 +842,23 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 self._json({"error": f"bad column: {fr}"}, 400)
             elif to not in COLUMNS:
                 self._json({"error": f"bad column: {to}"}, 400)
+            elif fr == "backlog" and to != "backlog":
+                # epic 大卡禁止离开待办
+                self._json(
+                    {
+                        "error": "epic_immobile",
+                        "message": "待办大卡不可移入流转列；由 Claude 扇出子卡",
+                    },
+                    400,
+                )
             elif move_task(tid, fr, to, ws):
                 self._json({"ok": True, "id": tid, "from": fr, "to": to})
             else:
-                self._json({"error": f"{tid} not in {fr}"}, 404)
+                self._json({"error": f"{tid} not in {fr} (or epic blocked)"}, 404)
+
+        elif path == "/api/tasks/hide-completed-epics":
+            n = hide_completed_epics(ws)
+            self._json({"ok": True, "hidden": n})
 
         elif path == "/api/tasks/reopen":
             # v0.42: failures → 一键重开 + wake

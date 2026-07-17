@@ -18,7 +18,7 @@
 **无穷角色**：任务 → 路由工具 → Skill + Prompt = 本次角色。  
 `skills/ccc-*` 是**阶段默认能力包**，不是用户点选的角色菜单。
 
-**看板**：`backlog → planned → in_progress → testing → verified → released`（不可跳列）
+**看板**：待办 `backlog(epic)` 常驻；流转 `planned(work) → in_progress → testing → verified → released`（小卡不可跳列；大卡永不离开 backlog）
 
 **不做**（红线）：
 
@@ -76,8 +76,8 @@
 
 | 阶段 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响 |
 |------|-------------------|-------------|--------|------------|------|-----------|
-| **product** | 4h | backlog 非空自动拆分（v0.28 F-1）或手动 `--promote` | backlog | planned | `ccc-board.py product --promote` / Engine Step 1.5 | 自动写 `complexity` |
-| **dev** | 10min | Engine 自动 | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_*()` | 不变 |
+| **product** | 4h | pending epic → Claude 扇出 work×N（v0.42.2） | backlog(epic) | **创建** planned(work)；patch epic | `ccc-board.py product` / Engine | 赋 color_group |
+| **dev** | 10min | Engine 自动（仅 work） | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_*()` | 不变 |
 | **reviewer** | 2h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → reviewer_role()` | small=跳过 |
 | **tester** | 4h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → tester_role()` | small=跳过 |
 | **ops** | 30min | 手动/可选（空闲不默认重扫） | 所有列 | — | `ccc-board.py ops` | 不变 |
@@ -89,31 +89,20 @@
 ### 2.2 看板流转图
 
 ```
-┌──────────┐   ┌──────────┐   ┌──────────────┐
-│ backlog  │ → │ planned  │ → │ in_progress  │
-└──────────┘   └──────────┘   └──────────────┘
-   老板建 task    product         dev
-   (Engine F-1         ↓
-    自动拆分)    ┌──────────────┐
-                │   testing     │
-                └──────────────┘
-                   ↓        ↑
-               reviewer    tester
-                (small 跳过)
-                   ↓        ↓
-                ┌──────────────┐
-                │   verified    │
-                └──────────────┘
-                   ↓
-                  kb
-                   ↓
-                ┌──────────────┐
-                │   released    │ → git tag + push
-                └──────────────┘
-                   ↓ (regress 23:30)
-                ┌──────────────────────┐
-                │   backlog(回归 bug)   │
-                └──────────────────────┘
+┌─────────────────┐  Claude 扇出   ┌──────────┐   ┌──────────────┐
+│ backlog (epic)  │ ─────────────→ │ planned  │ → │ in_progress  │
+│ 大卡常驻不离开   │  work×N        │ (work)   │   │   (work)     │
+└─────────────────┘                └──────────┘   └──────────────┘
+  Hub 定稿 / 回归                              ↓
+                                         ┌──────────────┐
+                                         │   testing     │
+                                         └──────────────┘
+                                            ↓        ↑
+                                        reviewer    tester
+                                            ↓        ↓
+                                         verified → kb → released
+                                                         ↓
+                              全部子卡 released → epic done 沉底
 ```
 
 ### 2.3 Engine + board-server 装上后
@@ -139,22 +128,22 @@ bash ~/program/CCC/scripts/install-ccc-roles.sh --upgrade
 6 列目录：
 ```
 .ccc/board/
-├── backlog/         # 老板提的原始需求
-├── planned/         # product 写好 plan.md
-├── in_progress/     # dev 在写
-├── testing/         # dev 完成，等 reviewer/tester
+├── backlog/         # epic 大卡队列（常驻）
+├── planned/         # work 小卡（各带 plan+phases）
+├── in_progress/     # work：dev 在写
+├── testing/         # work：等 reviewer/tester
 ├── verified/        # 双检查通过
 ├── released/        # kb 归档 + tag
-├── abnormal/        # quarantine 隔离
+├── abnormal/        # work quarantine
 ├── index.json       # 状态总览
 └── README.md        # 流转规则
 ```
 
-**单 task JSONL 格式**（时间戳 v0.23.3+ 用 `+08:00`）：
+**单 task JSONL 格式**（schema 1.2+；时间戳用 `+08:00`）：
 ```json
-{"id":"my-task","title":"...","status":"backlog","complexity":"medium",
- "created_at":"2026-07-12T15:00:00+08:00","updated_at":"...",
- "assignee":null,"tags":["feature"]}
+{"id":"my-epic","title":"...","status":"backlog","card_kind":"epic",
+ "split_status":"pending","complexity":"medium","schema_version":"1.2",
+ "created_at":"2026-07-12T15:00:00+08:00","updated_at":"..."}
 ```
 
 **操作命令**：

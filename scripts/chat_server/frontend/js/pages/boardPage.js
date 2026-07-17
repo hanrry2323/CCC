@@ -1,4 +1,4 @@
-/** Warm-style kanban page for CCC Hub (#/board) */
+/** Warm-style kanban — epic 待办 sticky 左列 + 流转列；无活动/日志侧栏 */
 
 import { apiGet, apiPost } from '../api.js';
 
@@ -11,6 +11,14 @@ const LABELS = {
   released: '已发布',
   abnormal: '异常',
 };
+const FLOW_COLS = [
+  'planned',
+  'in_progress',
+  'testing',
+  'verified',
+  'released',
+  'abnormal',
+];
 const COLORS = {
   backlog: '#a39e93',
   planned: '#c96442',
@@ -21,14 +29,13 @@ const COLORS = {
   abnormal: '#c44',
 };
 const NEXT = {
-  backlog: 'planned',
   planned: 'in_progress',
   in_progress: 'testing',
   testing: 'verified',
   verified: 'released',
 };
 const PREV = {
-  planned: 'backlog',
+  planned: '',
   in_progress: 'planned',
   testing: 'in_progress',
   verified: 'testing',
@@ -39,6 +46,7 @@ let _root = null;
 let _timer = null;
 let _state = { columns: {}, counts: {} };
 let _ws = 'CCC';
+let _showHidden = false;
 
 function esc(s) {
   if (!s) return '';
@@ -47,30 +55,40 @@ function esc(s) {
   return d.innerHTML;
 }
 
+function taskHue(group, depth) {
+  if (!group || group.length !== 1) return null;
+  const code = group.charCodeAt(0);
+  if (code < 65 || code > 90) return null;
+  const hue = ((code - 65) * 360) / 26;
+  const lightness = Math.max(20, 55 - (depth || 0) * 15);
+  return `hsl(${hue.toFixed(1)}, 55%, ${lightness}%)`;
+}
+
 function html() {
   return `
 <div class="board-page">
   <div class="board-toolbar">
     <h2>看板</h2>
     <select id="board-ws"></select>
-    <button type="button" class="primary" id="board-new">+ 新建</button>
+    <button type="button" class="primary" id="board-new">+ 新建大卡</button>
+    <button type="button" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
+    <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
     <span class="st" id="board-st">·</span>
   </div>
   <div class="board-roles" id="board-roles"></div>
   <div class="board-main">
-    <div class="board-cols" id="board-cols"></div>
-    <div class="board-side">
-      <div class="board-tl" id="board-tl"><h3>活动</h3></div>
-      <div class="board-logs" id="board-logs"><h3>日志</h3></div>
+    <div class="board-layout" id="board-layout">
+      <div class="board-epic-col" id="board-epic"></div>
+      <div class="board-flow-cols" id="board-flow"></div>
     </div>
   </div>
 </div>
 <div class="board-modal" id="board-mo">
   <div class="box">
-    <h2>新建任务</h2>
-    <label>ID</label><input id="board-fid" placeholder="task-id">
-    <label>标题</label><input id="board-fti" placeholder="一句话描述">
-    <label>描述</label><textarea id="board-fde" placeholder="详情"></textarea>
+    <h2>新建大卡（待办）</h2>
+    <label>ID</label><input id="board-fid" placeholder="epic-id">
+    <label>标题</label><input id="board-fti" placeholder="一句话意图">
+    <label>描述</label><textarea id="board-fde" placeholder="方案要点 / 给 Claude 拆分的上下文"></textarea>
     <label>看板</label><select id="board-fws"></select>
     <div class="btns">
       <button type="button" id="board-cancel">取消</button>
@@ -114,24 +132,54 @@ async function loadConfig() {
   else _ws = sel.value || 'CCC';
 }
 
-async function loadBoard() {
-  _ws = _root.querySelector('#board-ws').value || 'CCC';
-  const r = await apiGet('/api/board?workspace=' + encodeURIComponent(_ws));
-  _state = r;
-  const total = Object.values(r.counts || {}).reduce((a, b) => a + b, 0);
-  _root.querySelector('#board-st').textContent = _ws + ' · ' + total + ' 个';
-  renderCols();
-  loadRoles();
-  loadTL();
-  loadLogs();
+function epicProgress(t) {
+  const kids = t.child_ids || [];
+  if (!kids.length) return '';
+  const released = Object.values(_state.columns || {})
+    .flat()
+    .filter((x) => kids.includes(x.id) && (x.status === 'released' || x._column === 'released'));
+  // columns API may not tag status; count released column membership
+  const relSet = new Set((_state.columns.released || []).map((x) => x.id));
+  const n = kids.filter((id) => relSet.has(id)).length;
+  return `<div class="epic-prog">${n}/${kids.length} 已发布 · ${esc(t.split_status || 'pending')}</div>`;
 }
 
-function renderCols() {
-  const bb = _root.querySelector('#board-cols');
-  const cols = Object.keys(_state.columns || {});
-  bb.innerHTML = '';
-  for (const col of cols) {
-    const tasks = _state.columns[col] || [];
+function borderFor(t, col) {
+  const ss = t.split_status || 'pending';
+  if (col === 'backlog' && (ss === 'pending' || !t.color_group)) {
+    return '#9a958c'; // 灰：未消费
+  }
+  const hsl = taskHue(t.color_group, t.color_depth || (col === 'backlog' ? 0 : 1));
+  return hsl || COLORS[col] || '#a39e93';
+}
+
+function renderEpicCol() {
+  const host = _root.querySelector('#board-epic');
+  let tasks = _state.columns.backlog || [];
+  if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
+  const cards = tasks.length
+    ? tasks
+        .map((t) => {
+          const border = borderFor(t, 'backlog');
+          const done = (t.split_status || '') === 'done' ? ' epic-done' : '';
+          return `<div class="board-card board-card-epic${done}" data-id="${esc(t.id)}" data-col="backlog" style="border-left-color:${border}">
+            <div class="id">${esc(t.id)}</div>
+            <div class="ti">${esc(t.title)}</div>
+            ${epicProgress(t)}
+          </div>`;
+        })
+        .join('')
+    : '<div class="board-empty">暂无大卡</div>';
+  host.innerHTML = `<div class="board-col board-col-epic"><div class="board-col-h"><span><span class="board-dot" style="background:${COLORS.backlog}"></span>待办 · 大卡</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div></div>`;
+}
+
+function renderFlowCols() {
+  const host = _root.querySelector('#board-flow');
+  host.innerHTML = '';
+  for (const col of FLOW_COLS) {
+    let tasks = (_state.columns[col] || []).filter(
+      (t) => (t.card_kind || 'work') !== 'epic'
+    );
     const d = document.createElement('div');
     d.className = 'board-col';
     const cards = tasks.length
@@ -140,9 +188,14 @@ function renderCols() {
             const pv = PREV[col] || '';
             const nx = NEXT[col] || '';
             const rn = col === 'in_progress' ? ' running' : '';
-            return `<div class="board-card${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${COLORS[col] || '#a39e93'}">
+            const border = borderFor(t, col);
+            const parent = t.parent_id
+              ? `<div class="parent-tag">↩ ${esc(t.parent_id)}</div>`
+              : '';
+            return `<div class="board-card${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
               <div class="id">${esc(t.id)}</div>
               <div class="ti">${esc(t.title)}</div>
+              ${parent}
               <div class="ac">
                 ${pv ? '<button type="button" class="mv-prev">←</button>' : ''}
                 ${nx ? '<button type="button" class="mv-next">→</button>' : ''}
@@ -150,10 +203,38 @@ function renderCols() {
             </div>`;
           })
           .join('')
-      : '<div style="text-align:center;color:var(--ccc-text-faint);font-size:11px;padding:16px">—</div>';
-    d.innerHTML = `<div class="board-col-h"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${COLORS[col] || '#a39e93'};margin-right:6px"></span>${LABELS[col] || col}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
-    bb.appendChild(d);
+      : '<div class="board-empty">—</div>';
+    d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
+    host.appendChild(d);
   }
+}
+
+function updateSummary() {
+  const epics = (_state.columns.backlog || []).filter((t) => !t.ui_hidden);
+  let flow = 0;
+  for (const c of ['planned', 'in_progress', 'testing', 'verified']) {
+    flow += (_state.columns[c] || []).length;
+  }
+  _root.querySelector('#board-st').textContent =
+    _ws + ` · 待办 ${epics.length} · 流转中 ${flow}`;
+}
+
+function renderCols() {
+  renderEpicCol();
+  renderFlowCols();
+  updateSummary();
+}
+
+async function loadBoard() {
+  _ws = _root.querySelector('#board-ws').value || 'CCC';
+  const q =
+    '/api/board?workspace=' +
+    encodeURIComponent(_ws) +
+    (_showHidden ? '&include_hidden=1' : '');
+  const r = await apiGet(q);
+  _state = r;
+  renderCols();
+  loadRoles();
 }
 
 async function loadRoles() {
@@ -172,52 +253,15 @@ async function loadRoles() {
       })
       .join('');
   } catch (_) {
-    /* roles optional */
-  }
-}
-
-async function loadTL() {
-  try {
-    const r = await apiGet('/api/timeline?workspace=' + encodeURIComponent(_ws));
-    const b = _root.querySelector('#board-tl');
-    const events = (r && r.events) || [];
-    b.innerHTML =
-      '<h3>活动</h3>' +
-      events
-        .slice(0, 20)
-        .map((e) => {
-          if (e.type === 'role_run') {
-            const ok = e.exit_code === '0';
-            return `<div class="board-ev"><span class="t">${(e.time || '').slice(11, 19)}</span><span>${ok ? '✓' : '✗'} ${(e.role || '').toUpperCase()}</span></div>`;
-          }
-          return `<div class="board-ev"><span class="t">${(e.time || '').slice(11, 19)}</span><span>→ ${esc(e.task_id || '')}</span></div>`;
-        })
-        .join('');
-  } catch (_) {
-    /* optional */
-  }
-}
-
-async function loadLogs() {
-  try {
-    const r = await apiGet('/api/logs?workspace=' + encodeURIComponent(_ws));
-    const b = _root.querySelector('#board-logs');
-    const logs = (r && r.logs) || [];
-    b.innerHTML =
-      '<h3>日志</h3>' +
-      logs
-        .slice(0, 25)
-        .map(
-          (l) =>
-            `<div class="board-lg"><span class="t">${(l.mtime || '').slice(11, 19)}</span><span>${esc((l.role || '').toUpperCase())} · ${l.exit_code || '?'}</span></div>`
-        )
-        .join('');
-  } catch (_) {
     /* optional */
   }
 }
 
 async function moveTask(id, from, to) {
+  if (from === 'backlog') {
+    window.showToast?.('待办大卡不可移入流转列', 'error');
+    return;
+  }
   await apiPost('/api/tasks/move', { id, from, to, workspace: _ws });
   await loadBoard();
 }
@@ -231,8 +275,15 @@ async function showDetail(id) {
   _root.querySelector('#board-dtt').textContent = r.title || '(无标题)';
   _root.querySelector('#board-dde').textContent = r.description || '(无描述)';
   const st = LABELS[r._column] || r._column || '?';
-  _root.querySelector('#board-dmt').innerHTML =
-    `<span style="color:var(--ccc-text-muted)">状态:</span> ${esc(st)}`;
+  const meta = [
+    `状态: ${esc(st)}`,
+    r.card_kind ? `类型: ${esc(r.card_kind)}` : '',
+    r.split_status ? `拆分: ${esc(r.split_status)}` : '',
+    r.parent_id ? `父卡: ${esc(r.parent_id)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  _root.querySelector('#board-dmt').innerHTML = meta;
   const evBox = _root.querySelector('#board-devs');
   if (r.events && r.events.length) {
     evBox.innerHTML =
@@ -253,7 +304,7 @@ async function showDetail(id) {
 function bind() {
   _root.querySelector('#board-ws').addEventListener('change', () => loadBoard());
   _root.querySelector('#board-new').addEventListener('click', () => {
-    _root.querySelector('#board-fid').value = 'task-' + Math.floor(Date.now() / 1000);
+    _root.querySelector('#board-fid').value = 'epic-' + Math.floor(Date.now() / 1000);
     _root.querySelector('#board-fti').value = '';
     _root.querySelector('#board-fde').value = '';
     _root.querySelector('#board-fws').value = _ws;
@@ -265,6 +316,19 @@ function bind() {
   _root.querySelector('#board-dclose').addEventListener('click', () => {
     _root.querySelector('#board-dm').classList.remove('open');
   });
+  _root.querySelector('#board-show-hidden').addEventListener('change', (e) => {
+    _showHidden = !!e.target.checked;
+    loadBoard();
+  });
+  _root.querySelector('#board-clean-done').addEventListener('click', async () => {
+    try {
+      await apiPost('/api/tasks/hide-completed-epics', { workspace: _ws });
+      window.showToast?.('已隐藏完成大卡', 'ok');
+      await loadBoard();
+    } catch (err) {
+      window.showToast?.('清理失败', 'error');
+    }
+  });
   _root.querySelector('#board-mk').addEventListener('click', async () => {
     const id = _root.querySelector('#board-fid').value.trim();
     const title = _root.querySelector('#board-fti').value.trim();
@@ -274,17 +338,27 @@ function bind() {
       window.showToast?.('ID 和标题必填', 'error');
       return;
     }
-    await apiPost('/api/tasks', { id, title, description, workspace, status: 'backlog' });
+    await apiPost('/api/tasks', {
+      id,
+      title,
+      description,
+      workspace,
+      status: 'backlog',
+      card_kind: 'epic',
+      split_status: 'pending',
+    });
     _root.querySelector('#board-mo').classList.remove('open');
     await loadBoard();
   });
-  _root.querySelector('#board-cols').addEventListener('click', (e) => {
+  _root.querySelector('#board-layout').addEventListener('click', (e) => {
     const btn = e.target.closest('.mv-prev, .mv-next');
     const card = e.target.closest('.board-card');
     if (!card) return;
     if (btn) {
       e.stopPropagation();
-      const target = btn.classList.contains('mv-prev') ? card.dataset.prev : card.dataset.next;
+      const target = btn.classList.contains('mv-prev')
+        ? card.dataset.prev
+        : card.dataset.next;
       if (target) moveTask(card.dataset.id, card.dataset.col, target);
     } else {
       showDetail(card.dataset.id);

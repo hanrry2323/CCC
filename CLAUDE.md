@@ -62,22 +62,23 @@ bash scripts/ccc-hub-dev.sh
 ### Loop：Hub → Engine → 阶段能力包 → 执行器
 
 ```
-Hub（定稿/转任务）→ Board
-  → Engine 串行：product → planned → dev(opencode) → testing
-       → reviewer+tester → verified → kb → released
+Hub（定稿→epic）→ backlog(大卡常驻)
+  → Claude product 扇出 → planned(work×N)
+  → Engine：dev(opencode) → testing → reviewer+tester → verified → kb → released
+  → 全部子卡 released → epic split_status=done 沉底
 ```
 
 > 「product/dev/…」= **阶段默认 Skill 包**，不是给用户点选的角色列表。见 `docs/VISION.md`。
 
 | 阶段 | Engine 触发 | 看板列 |
 |------|-------------|--------|
-| product | backlog 非空；或已挂 plan 则跳过 | backlog → planned |
-| dev | 串行多 phase | planned → in_progress → testing |
+| product | pending epic；Claude 扇出 | 创建 planned(work)；**epic 留 backlog** |
+| dev | 只调度 work | planned → in_progress → testing |
 | reviewer | testing 门禁（verdict.md） | testing → verified |
 | tester | testing 门禁 | testing → verified |
 | ops | 手动/可选 | 非阻塞 |
 | kb | verified 非空 | verified → released |
-| regress | 23:30 / 手动 | released → backlog |
+| regress | 23:30 / 手动 | released → backlog(epic) |
 
 ### 控制面状态机（v0.39+）
 

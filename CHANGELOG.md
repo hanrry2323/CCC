@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.42.2] — 2026-07-17
+
+### 破坏性：待办大卡常驻 + Claude 扇出小卡
+
+- **语义**：`backlog` = epic 队列（不流转）；product 用 Claude 产出 N 张 `work` 直入 `planned`
+- **字段**：`card_kind` / `parent_id` / `split_status` / `child_ids` / `ui_hidden`（schema 1.2）
+- **Engine**：只拆 `pending` epic；只调度 work；子卡全 released → 父 `done` 沉底
+- **Hub**：待办列 sticky 左侧大卡样式；去掉「活动/日志」侧栏；清理已完成（`ui_hidden`）
+- **实现**：`scripts/_product_fanout.py`、`_board_store` 禁 epic 离 backlog
+
 ## [v0.42.1] — 2026-07-17
 
 ### 文档与开源叙事（Loop Engineer）

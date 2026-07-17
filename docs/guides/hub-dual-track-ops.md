@@ -6,6 +6,8 @@
 登录：`http://127.0.0.1:7777` · 账密 `ccc` / `ccc`  
 当前控制面：`enabled`（下达后 Engine 可能立刻消费）
 
+> **看板语义（v0.42.2+）**：Hub「下达」落 **待办大卡（epic）**，常驻左侧待办列；Claude product 扇出 **work 小卡**进 planned 及之后流转。大卡不会进 in_progress。完成后可在待办列头点「清理已完成」（仅 `ui_hidden`，数据仍在）。
+
 ---
 
 ## 任务 1 · A1（xianyu 质量门）

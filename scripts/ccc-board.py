@@ -732,7 +732,84 @@ def product_role(task_id: str = "") -> dict:
                 "counts": update_index(),
             }
 
-        _log.info("正在拆解 %s（调 Claude API 生成 plan）...", task_id)
+        from _board_store import normalize_task_view
+        from _product_fanout import apply_fanout, build_fanout_prompt, parse_fanout_output
+
+        task = normalize_task_view(task, column="backlog")
+        # ── Epic：Claude 扇出子卡，父卡留 backlog ──
+        if task.get("card_kind") != "work":
+            _log.info("正在扇出 epic %s（Claude → N 张 work）...", task_id)
+            product_lock = get_workspace() / ".ccc" / ".product_role.lock"
+            product_lock.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _acquire_product_lock(product_lock)
+            except Exception as exc:
+                return {"role": "product", "error": f"lock: {exc}"}
+            try:
+                profile_path = get_workspace() / ".ccc" / "profile.md"
+                profile = (
+                    profile_path.read_text()
+                    if profile_path.is_file()
+                    else "(no profile.md)"
+                )
+                prompt = build_fanout_prompt(
+                    epic=task,
+                    workspace=get_workspace(),
+                    profile=profile,
+                    code_ctx=_get_code_context(get_workspace()) or "",
+                    template_plan=_load_plan_template(),
+                    ref_plans="",
+                    max_phases=_get_cfg().max_phases,
+                )
+                relay_url = _get_relay_url()
+                env = _claude_env(relay_url=relay_url)
+                result = subprocess.run(
+                    [_claude_bin(), "-p"],
+                    input=prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=cfg.default_timeout,
+                    env=env,
+                )
+                if result.returncode != 0:
+                    return {
+                        "role": "product",
+                        "error": f"claude rc={result.returncode}: {(result.stderr or '')[:300]}",
+                        "task_id": task_id,
+                    }
+                brief, children = parse_fanout_output(result.stdout or "")
+                fr = apply_fanout(
+                    store,
+                    task,
+                    children_raw=children,
+                    epic_brief=brief,
+                    max_phases=_get_cfg().max_phases,
+                )
+                if not fr.get("ok"):
+                    return {
+                        "role": "product",
+                        "error": fr.get("error") or "fanout failed",
+                        "task_id": task_id,
+                    }
+                return {
+                    "role": "product",
+                    "fanout": True,
+                    "epic": task_id,
+                    "child_ids": fr.get("child_ids"),
+                    "counts": update_index(),
+                }
+            except Exception as exc:
+                _log.error("epic fanout failed: %s", exc)
+                return {
+                    "role": "product",
+                    "error": str(exc),
+                    "task_id": task_id,
+                }
+            finally:
+                _release_product_lock(product_lock)
+
+        # ── 兼容 work：单卡 plan+phases → planned ──
+        _log.info("正在拆解 work %s（单卡 plan）...", task_id)
         plan_content = None
         phases = None
         fallback = False
@@ -740,24 +817,8 @@ def product_role(task_id: str = "") -> dict:
             plan_content, phases = _call_claude_for_plan(task)
         except RuntimeError as e:
             err_msg = str(e)
-            # v0.42: 硬门禁失败 — 不写 planned，记 ledger，留 backlog
             if "phase_lint" in err_msg or "plan_lint" in err_msg:
                 _log.error("product 硬门禁失败: %s", e)
-                try:
-                    from _failure_ledger import record_failure
-
-                    record_failure(
-                        get_workspace(),
-                        task_id=task_id,
-                        role="product",
-                        reason=err_msg[:500],
-                        phase=0,
-                        from_col="backlog",
-                        to_col=None,
-                        related_stats_event="product_lint_fail",
-                    )
-                except Exception as ledger_err:
-                    _log.warning("lint fail ledger: %s", ledger_err)
                 return {
                     "role": "product",
                     "error": err_msg,
@@ -765,169 +826,31 @@ def product_role(task_id: str = "") -> dict:
                     "lint_blocked": True,
                 }
             _log.error("API 调用失败: %s", e)
-            _log.info("使用 fallback plan（API 不可用）")
-            plan_content = _generate_fallback_plan(task)
-            phases = _generate_fallback_phases()
-            # v0.31 (P0.4): fallback plan 禁止空 scope → 异常隔离，不入 executor
-            if not plan_content or "待补充" in plan_content or not phases:
-                _log.error(
-                    "fallback plan 空 scope → 异常隔离 (task=%s)", task_id
-                )
-                try:
-                    move_task(task_id, "backlog", "abnormal")
-                except Exception as mv_err:
-                    _log.warning("移 abnormal 失败: %s", mv_err)
-                update_index()
-                try:
-                    subprocess.run(
-                        ["bash", str(CCC_HOME / "scripts" / "ccc-notify.sh"),
-                         "L2", f"fallback empty scope ({task_id})",
-                         "planner unavailable, no scope — abnormal"],
-                        capture_output=True, timeout=5,
-                        env=_sanitized_env(),
-                    )
-                except Exception as ntfy_err:
-                    _log.warning("notify 失败: %s", ntfy_err)
-                return {"role": "product", "error": "fallback empty scope",
-                        "task_id": task_id, "abnormal": True}
-            fallback = True
+            return {
+                "role": "product",
+                "error": f"work promote failed: {e}",
+                "task_id": task_id,
+            }
 
-        # v0.28.0 (F1-H1/H3 修): product_role 写 plan+phases 加 advisory lock
-        # R-07 的 _apply_phase_status_updates 已用 fcntl.flock，这里用同一协议。
-        # 锁文件: .ccc/.product_role.lock
-        # F1-H2 (crash 原子性): 先写 temp 文件再 rename，保证两个文件要么都完整要么都不存在
         product_lock = get_workspace() / ".ccc" / ".product_role.lock"
         product_lock.parent.mkdir(parents=True, exist_ok=True)
         try:
             _acquire_product_lock(product_lock)
         except Exception as exc:
-            _log.error("product_role 锁获取失败: %s — 放弃写入", exc)
-            return {
-                "role": "product",
-                "error": f"lock acquire failed: {exc}",
-            }
+            return {"role": "product", "error": f"lock acquire failed: {exc}"}
 
         try:
-            plan_dir = get_workspace() / ".ccc" / "plans"
-            plan_dir.mkdir(parents=True, exist_ok=True)
-            plan_file = plan_dir / f"{task_id}.plan.md"
-
-            phases_dir = get_workspace() / ".ccc" / "phases"
-            phases_dir.mkdir(parents=True, exist_ok=True)
-            phases_file = phases_dir / f"{task_id}.phases.json"
-
-            # 写 phases（先，最重要的）
-            schema_line = json.dumps({"schema_version": "1.0"}, ensure_ascii=False)
-            phases_tmp = phases_dir / f".{task_id}.phases.tmp"
-            phases_content = (
-                schema_line
-                + "\n"
-                + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
-                + "\n"
-            )
-            phases_tmp.write_text(phases_content)
-            phases_tmp.rename(phases_file)
-            _log.info("✓ 写入 %s (%d phases)", phases_file, len(phases))
-
-            # 再写 plan
-            plan_tmp = plan_dir / f".{task_id}.plan.tmp"
-            plan_tmp.write_text(plan_content)
-            plan_tmp.rename(plan_file)
-            _log.info("✓ 写入 %s", plan_file)
-
-            move_task(task_id, "backlog", "planned")
-
-            # v0.26 Protocol v1 §5: 自动分配 color_group（首次见 task）
-            # 写 phase 列表时给每个 phase 标 color_depth=1（task 自身是父 depth=0）
-            try:
-                from _board_store import assign_color_group
-
-                color_group = assign_color_group(
-                    get_workspace(), parent_group=task.get("color_group")
-                )
-                from pathlib import Path as _P
-
-                task_file = _P(".ccc/board/planned") / f"{task_id}.jsonl"
-                if task_file.exists():
-                    task_data = json.loads(task_file.read_text())
-                    task_data["color_group"] = color_group
-                    task_data["color_depth"] = 0  # 父任务 depth=0
-                    # v0.28.1: 根据 plan 内容推断 complexity
-                    plan_lines = plan_content.splitlines()
-                    plan_size = len(plan_lines)
-                    file_mentions = len(
-                        set(
-                            line.strip()
-                            for line in plan_lines
-                            if line.strip().startswith(("/", "`/"))
-                            and not line.strip().startswith(("//", "#"))
-                        )
-                    )
-                    section_count = len(
-                        [
-                            line
-                            for line in plan_lines
-                            if line.strip().startswith("##")
-                            and " " in line
-                            and line.strip() != "##"
-                        ]
-                    )
-                    plan_weight = plan_size + file_mentions * 20 + section_count * 10
-                    if plan_weight <= 50:
-                        task_data["complexity"] = "small"
-                    elif plan_weight <= 200:
-                        task_data["complexity"] = "medium"
-                    else:
-                        task_data["complexity"] = "large"
-                    _log.info(
-                        "%s complexity=%s (weight=%d, lines=%d, files=%d, sections=%d)",
-                        task_id,
-                        task_data["complexity"],
-                        plan_weight,
-                        plan_size,
-                        file_mentions,
-                        section_count,
-                    )
-                    task_file.write_text(
-                        json.dumps(task_data, ensure_ascii=False) + "\n"
-                    )
-                    _log.info(
-                        "%s assigned color_group=%s depth=0", task_id, color_group
-                    )
-                if phases:
-                    for p in phases:
-                        p.setdefault("color_depth", 1)
-                        p.setdefault("color_group", color_group)
-                    phases_tmp = phases_dir / f".{task_id}.phases.tmp"
-                    phases_tmp.write_text(
-                        '{"schema_version": "1.1"}'
-                        + "\n"
-                        + "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
-                        + "\n"
-                    )
-                    phases_tmp.rename(phases_file)
-            except Exception as e:
-                _log.warning("color assign failed (non-fatal): %s", e)
-
-            # 清理 temp 文件
-            for tmp in (
-                plan_dir / f".{task_id}.plan.tmp",
-                phases_dir / f".{task_id}.phases.tmp",
-            ):
-                if tmp.exists():
-                    tmp.unlink()
-
+            _write_async_product_result(task_id, plan_content, phases)
         finally:
             _release_product_lock(product_lock)
-        # ── 锁释放 END ──
 
-        result = {
+        return {
             "role": "product",
             "promoted": task_id,
             "fallback": fallback,
+            "fanout": False,
             "counts": update_index(),
         }
-        return result
 
     report = {
         "backlog_count": len(tasks),
@@ -963,10 +886,18 @@ def launch_product_async(task_id: str) -> dict:
     if not task:
         return {"error": f"task '{task_id}' not found in backlog"}
 
+    from _board_store import normalize_task_view
+
+    task = normalize_task_view(task, column="backlog")
+    if task.get("card_kind") == "epic" and task.get("split_status") == "active":
+        kids = task.get("child_ids") or []
+        if kids:
+            return {"error": f"epic '{task_id}' already split ({len(kids)} children)"}
+
     pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Build prompt（从 _call_claude_for_plan 提取的核心逻辑）
+    # 1. Build prompt
     ref_plans = ""
     plan_dir_obj = get_workspace() / ".ccc" / "plans"
     if plan_dir_obj.exists():
@@ -983,28 +914,35 @@ def launch_product_async(task_id: str) -> dict:
     profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
     code_ctx = _get_code_context(get_workspace())
 
-    prompt = (
-        f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
-        f"## 项目概况\n{profile[:1500]}\n\n"
-        f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
-        f"## 任务\n"
-        f"- id: {task['id']}\n"
-        f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
-        f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
-        f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
-        f"## Phases 格式\n"
-        f"每行一个 JSON object：\n"
-        f'{{"phase": <int>, "status": "pending", "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n\n'
-        f"## Phase 数上限\n"
-        f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
-        f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
-        f"每个子 task 不超过 2 phases。\n\n"
-        f"## 参考历史 plan\n{ref_plans}\n\n"
-        f"## 输出要求\n"
-        f"输出以下两部分，用分隔符包裹：\n\n"
-        f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
-        f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
-    )
+    if task.get("card_kind") != "work":
+        from _product_fanout import build_fanout_prompt
+
+        prompt = build_fanout_prompt(
+            epic=task,
+            workspace=get_workspace(),
+            profile=profile,
+            code_ctx=code_ctx or "",
+            template_plan=template_plan,
+            ref_plans=ref_plans,
+            max_phases=_get_cfg().max_phases,
+        )
+    else:
+        # 兼容：显式 work 小卡仍走单卡 PLAN/PHASES → planned
+        prompt = (
+            f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
+            f"## 项目概况\n{profile[:1500]}\n\n"
+            f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
+            f"## 任务\n"
+            f"- id: {task['id']}\n"
+            f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
+            f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
+            f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
+            f"## Phases 格式\n"
+            f"每行一个 JSON object，必须含 description 与非空 scope。\n\n"
+            f"## 输出要求\n"
+            f"---PLAN---\n（plan.md）\n---END_PLAN---\n"
+            f"---PHASES---\n（phases JSONL）\n---END_PHASES---\n"
+        )
 
     # 2. 注入 lessons 上下文
     try:
@@ -1171,52 +1109,90 @@ def check_product_async(task_id: str) -> dict:
 
 
 def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> dict:
-    """解析 product 输出，失败清理标记，成功写 plan+phases 并移 backlog→planned。
-
-    抽出供 check_product_async 共用：进程退出但 output 已生成也可走此路径。
-    """
+    """解析 product 输出：epic → 扇出子卡；work → 旧单卡 move planned。"""
     import re as _re
 
-    plan_match = _re.search(
-        r"---PLAN---\s*\n?(.*?)\n?---END_PLAN---", output, _re.DOTALL
+    from _board_store import normalize_task_view
+    from _product_fanout import apply_fanout, parse_fanout_output
+
+    _out = output or ""
+    _auth = (
+        "Not logged in" in _out
+        or "Please run /login" in _out
+        or "not logged in" in _out.lower()
     )
-    phases_match = _re.search(
-        r"---PHASES---\s*\n?(.*?)\n?---END_PHASES---", output, _re.DOTALL
-    )
-    if not plan_match or not phases_match:
-        # 保留证据，便于排障（不再静默丢掉 output）
-        _out = output or ""
-        # Claude CLI 在缺 AUTH_TOKEN/API_KEY（曾被 sanitized_env 误剥）时也会吐这句，
-        # 并不等于用户必须跑 interactive /login；中转站场景优先查 env allowlist。
-        _auth = (
-            "Not logged in" in _out
-            or "Please run /login" in _out
-            or "not logged in" in _out.lower()
-        )
-        _err = (
-            "auth: claude CLI rejected request "
-            "(check ANTHROPIC_AUTH_TOKEN/API_KEY reach subprocess; not interactive /login)"
-            if _auth
-            else "output parse failed"
-        )
+
+    def _fail(err: str, *, fatal: bool = False) -> dict:
         try:
             fb = get_workspace() / ".ccc" / "product_fallback"
             fb.mkdir(parents=True, exist_ok=True)
             (fb / f"{task_id}.last.out").write_text(_out, encoding="utf-8")
-            (fb / f"{task_id}.failed").write_text(_err + "\n", encoding="utf-8")
+            (fb / f"{task_id}.failed").write_text(err + "\n", encoding="utf-8")
         except OSError:
             pass
-        _log.error(
-            "[product-async] %s %s (saved product_fallback), mark failed",
-            task_id,
-            _err,
-        )
+        _log.error("[product-async] %s %s", task_id, err)
         _cleanup_async_product_markers(pids_dir, task_id)
+        return {"status": "failed", "error": err, "fatal": fatal or _auth}
+
+    backlog = list_tasks("backlog")
+    task = next((t for t in backlog if t["id"] == task_id), None)
+    if not task:
+        return _fail("task not in backlog")
+    task = normalize_task_view(task, column="backlog")
+
+    # ── Epic 扇出路径（主路径）──
+    if task.get("card_kind") != "work":
+        try:
+            brief, children = parse_fanout_output(_out)
+        except (ValueError, json.JSONDecodeError) as exc:
+            if _auth:
+                return _fail(
+                    "auth: claude CLI rejected request "
+                    "(check ANTHROPIC_AUTH_TOKEN/API_KEY reach subprocess)",
+                    fatal=True,
+                )
+            return _fail(f"fanout parse failed: {exc}")
+        try:
+            result = apply_fanout(
+                store,
+                task,
+                children_raw=children,
+                epic_brief=brief,
+                max_phases=_get_cfg().max_phases,
+            )
+        except Exception as exc:
+            return _fail(f"fanout apply failed: {exc}")
+        if not result.get("ok"):
+            return _fail(result.get("error") or "fanout failed")
+        _cleanup_async_product_markers(pids_dir, task_id)
+        update_index()
+        _log.info(
+            "[product-async] %s ✓ fanout %d children color=%s",
+            task_id,
+            len(result.get("child_ids") or []),
+            result.get("color_group"),
+        )
         return {
-            "status": "failed",
-            "error": _err,
-            "fatal": bool(_auth),
+            "status": "success",
+            "fanout": True,
+            "child_ids": result.get("child_ids"),
         }
+
+    # ── 兼容：work 单卡 PLAN/PHASES ──
+    plan_match = _re.search(
+        r"---PLAN---\s*\n?(.*?)\n?---END_PLAN---", _out, _re.DOTALL
+    )
+    phases_match = _re.search(
+        r"---PHASES---\s*\n?(.*?)\n?---END_PHASES---", _out, _re.DOTALL
+    )
+    if not plan_match or not phases_match:
+        return _fail(
+            "auth: claude CLI rejected request "
+            "(check ANTHROPIC_AUTH_TOKEN/API_KEY reach subprocess)"
+            if _auth
+            else "output parse failed",
+            fatal=_auth,
+        )
 
     plan_content = plan_match.group(1).strip()
     phases_data = []
@@ -1226,39 +1202,22 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
             try:
                 phases_data.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                _log.error(
-                    "[product-async] %s phases JSON parse error: %s", task_id, exc
-                )
-                _cleanup_async_product_markers(pids_dir, task_id)
-                return {"status": "failed", "error": f"phases JSON parse: {exc}"}
+                return _fail(f"phases JSON parse: {exc}")
 
     if len(phases_data) > _get_cfg().max_phases:
-        _log.error(
-            "[product-async] %s phases %d > max %d",
-            task_id,
-            len(phases_data),
-            _get_cfg().max_phases,
-        )
-        _cleanup_async_product_markers(pids_dir, task_id)
-        return {"status": "failed", "error": f"phases > max {_get_cfg().max_phases}"}
+        return _fail(f"phases > max {_get_cfg().max_phases}")
 
-    # v0.38/v0.42: 与 sync product 对齐 — phase_lint + plan 验收硬门
     try:
         plan_content, phases_data = _gate_product_artifacts(
             plan_content, phases_data, log_prefix="[product-async]"
         )
     except RuntimeError as exc:
-        _cleanup_async_product_markers(pids_dir, task_id)
-        return {"status": "failed", "error": str(exc)}
+        return _fail(str(exc))
 
-    # 写 plan + phases 文件 + 移 backlog → planned
     _write_async_product_result(task_id, plan_content, phases_data)
-
-    # 清理标记
     _cleanup_async_product_markers(pids_dir, task_id)
-
-    _log.info("[product-async] %s ✓ plan+phases written", task_id)
-    return {"status": "success"}
+    _log.info("[product-async] %s ✓ work card plan+phases → planned", task_id)
+    return {"status": "success", "fanout": False}
 
 
 def _cleanup_async_product_markers(pids_dir: Path, task_id: str) -> None:

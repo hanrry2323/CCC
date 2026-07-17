@@ -74,36 +74,15 @@ TITLE_MAX = 500
 DESCRIPTION_MAX = 10000
 
 
+SPLIT_STATUSES = ("pending", "active", "done", "blocked")
+CARD_KINDS = ("epic", "work")
+
+
 def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list[str]]:
-    """v0.26 CCC Board Protocol v1 校验入口（事实依据：references/board-task-schema.md §4）
+    """CCC Board Protocol 校验入口（事实依据：references/board-task-schema.md §4）
 
     Returns:
         (is_valid, errors) — errors 为空列表时 valid
-        第一条 error 必为人类可读摘要（IDE 端 fix_hint）
-
-    11 条规则（与协议文档同步）：
-      1. id 必填，sanitize 后非 "invalid"，仅 [a-zA-Z0-9_-]
-      2. title 必填且非空字符串（≤ TITLE_MAX）
-      3. status 必填 ∈ COLUMNS
-      4. created_at / updated_at 必填，ISO 8601（v0.28.1: 接受 +08:00 或 Z）
-      5. description 类型=str（可空）
-      6. assignee 类型=str|None
-      7. tags 类型=list[str]
-      8. note 类型=str|None
-      9. schema_version 缺省补 "1.0"
-     10. color_group 缺省 None；若存在 ∈ [A-Z] 单字符
-     11. color_depth 缺省 0；若存在 ≥ 0 整数
-
-    strict=True 时：
-      - 不接受未知字段（id/title/status/timestamps/assignee/tags/note/
-        schema_version/color_group/color_depth/description 之外的 key 拒绝）
-      - 类型不符直接拒绝（不允许缺失补默认）
-
-    strict=False（默认）：
-      - 未知字段忽略
-      - 缺失字段补默认
-
-    实现：每条规则已提取为 `_validate_rule_*` 私有函数，主函数做规则链调用。
     """
     errors: list[str] = []
     if not isinstance(data, dict):
@@ -122,6 +101,12 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
         _validate_rule_color_group,
         _validate_rule_color_depth,
         _validate_rule_complexity,
+        _validate_rule_card_kind,
+        _validate_rule_parent_id,
+        _validate_rule_split_status,
+        _validate_rule_child_ids,
+        _validate_rule_ui_hidden,
+        _validate_rule_epic_column,
     ):
         err = rule(data)
         if err:
@@ -257,13 +242,68 @@ def _validate_rule_color_depth(data: dict) -> str | None:
 
 def _validate_rule_complexity(data: dict) -> str | None:
     """规则 12: complexity 必须 'small'|'medium'|'large'（v0.28.1: 任务复杂度分流）"""
-    # small: 单文件 ≤50 行 → 跳过 reviewer/tester
-    # medium: 默认 → 完整 7 角色
-    # large: 多文件/架构级 → 完整 + 强制分批
     complexity = data.get("complexity")
     if complexity is not None:
         if complexity not in ("small", "medium", "large"):
             return f"complexity: must be 'small'|'medium'|'large', got '{complexity}'"
+    return None
+
+
+def _validate_rule_card_kind(data: dict) -> str | None:
+    """规则 13: card_kind ∈ {epic, work}"""
+    kind = data.get("card_kind")
+    if kind is not None and kind not in CARD_KINDS:
+        return f"card_kind: must be 'epic'|'work', got '{kind}'"
+    return None
+
+
+def _validate_rule_parent_id(data: dict) -> str | None:
+    """规则 14: parent_id 为 str|None；若有则须合法 id"""
+    pid = data.get("parent_id")
+    if pid is None:
+        return None
+    if not isinstance(pid, str) or not pid.strip():
+        return "parent_id: must be non-empty string or null"
+    if sanitize_id(pid) != pid:
+        return f"parent_id: invalid id '{pid}'"
+    return None
+
+
+def _validate_rule_split_status(data: dict) -> str | None:
+    """规则 15: split_status ∈ pending|active|done|blocked（epic）；work 可空"""
+    ss = data.get("split_status")
+    if ss is None or ss == "":
+        return None
+    if ss not in SPLIT_STATUSES:
+        return f"split_status: must be one of {SPLIT_STATUSES}, got '{ss}'"
+    return None
+
+
+def _validate_rule_child_ids(data: dict) -> str | None:
+    """规则 16: child_ids 为 list[str]"""
+    kids = data.get("child_ids")
+    if kids is None:
+        return None
+    if not isinstance(kids, list):
+        return "child_ids: must be list"
+    for i, k in enumerate(kids):
+        if not isinstance(k, str) or sanitize_id(k) != k:
+            return f"child_ids[{i}]: must be valid task id"
+    return None
+
+
+def _validate_rule_ui_hidden(data: dict) -> str | None:
+    """规则 17: ui_hidden 为 bool"""
+    h = data.get("ui_hidden")
+    if h is not None and not isinstance(h, bool):
+        return "ui_hidden: must be bool"
+    return None
+
+
+def _validate_rule_epic_column(data: dict) -> str | None:
+    """规则 18: epic 只能停留在 backlog"""
+    if data.get("card_kind") == "epic" and data.get("status") not in (None, "backlog"):
+        return "epic: status must be backlog"
     return None
 
 
@@ -283,7 +323,13 @@ def _validate_strict_mode(data: dict) -> str | None:
         "color_group",
         "color_depth",
         "complexity",
-        "hints",  # 可选：{skills:[...], note:"..."} 软偏好
+        "hints",
+        "card_kind",
+        "parent_id",
+        "split_status",
+        "child_ids",
+        "ui_hidden",
+        "phase_last_advanced_ts",
     }
     unknown = set(data.keys()) - allowed
     if unknown:
@@ -291,18 +337,48 @@ def _validate_strict_mode(data: dict) -> str | None:
     return None
 
 
-def fill_task_defaults(data: dict) -> dict:
-    """v0.26: 补默认字段（缺失 schema_version/color_*/complexity 字段补默认）"""
+def fill_task_defaults(data: dict, *, column: str | None = None) -> dict:
+    """补默认字段；存量无 card_kind 时按列推断 epic/work。"""
     out = dict(data)
-    out.setdefault("schema_version", "1.0")
+    out.setdefault("schema_version", "1.2")
     out.setdefault("color_group", None)
     out.setdefault("color_depth", 0)
-    out.setdefault("complexity", "medium")  # v0.28.1: 默认完整 7 角色
+    out.setdefault("complexity", "medium")
+    out.setdefault("ui_hidden", False)
+    out.setdefault("parent_id", None)
+    out.setdefault("child_ids", [])
+    col = column or out.get("status") or "backlog"
+    if out.get("card_kind") not in CARD_KINDS:
+        # 兼容：backlog 默认 epic；流转列默认 work
+        out["card_kind"] = "epic" if col == "backlog" else "work"
+    if out["card_kind"] == "epic":
+        if out.get("split_status") not in SPLIT_STATUSES:
+            out["split_status"] = "pending"
+        out["parent_id"] = None
+        if not isinstance(out.get("child_ids"), list):
+            out["child_ids"] = []
+    else:
+        # work：split_status 无意义，保持 None
+        out.setdefault("split_status", None)
     return out
+
+
+def normalize_task_view(task: dict, *, column: str | None = None) -> dict:
+    """读路径补齐字段（不写盘）。"""
+    return fill_task_defaults(task, column=column or task.get("status"))
 
 
 # v0.26 Protocol v1 §5: 颜色分组 pool（A-Z 单字符轮转）
 GROUP_POOL = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
+def task_border_hsl(color_group: str | None, color_depth: int = 0) -> str | None:
+    """Protocol §5 HSL；无 group 返回 None（UI 回退列色）。"""
+    if not color_group or color_group not in GROUP_POOL:
+        return None
+    hue = (ord(color_group) - ord("A")) * 360 / 26
+    lightness = max(20, 55 - int(color_depth) * 15)
+    return f"hsl({hue:.1f}, 55%, {lightness}%)"
 
 
 def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
@@ -409,14 +485,22 @@ class FileBoardStore:
     # ── 核心 CRUD ──
 
     def create_task(self, data: dict, column: str = "backlog") -> bool:
-        """创建新 task（v0.26+ 含 validate_task_jsonl 校验 + 11 字段补默认）"""
-        # v0.26 Protocol v1: validate_task_jsonl 校验（11 条规则）
-        is_valid, errors = validate_task_jsonl(data)
+        """创建新 task（含 epic/work 字段补默认）"""
+        now = now_iso()
+        seed = dict(data)
+        seed.setdefault("created_at", now)
+        seed.setdefault("updated_at", now)
+        seed.setdefault("status", column)
+        data_with_defaults = fill_task_defaults(seed, column=column)
+        is_valid, errors = validate_task_jsonl(data_with_defaults)
         if not is_valid:
             for err in errors:
                 _log.error("create_task validation: %s", err)
             return False
-        task_id = sanitize_id(data["id"])
+        if data_with_defaults.get("card_kind") == "epic" and column != "backlog":
+            _log.error("create_task: epic must be created in backlog, got %s", column)
+            return False
+        task_id = sanitize_id(data_with_defaults["id"])
         if column not in COLUMNS:
             _log.error("create_task: invalid column '%s'", column)
             return False
@@ -430,25 +514,26 @@ class FileBoardStore:
                 _log.error("create_task: duplicate id '%s'", task_id)
                 return False
 
-            now = now_iso()
-            # v0.26: 补默认 schema_version / color_group / color_depth
-            data_with_defaults = fill_task_defaults(data)
             task = {
                 "id": task_id,
-                "title": data["title"],
-                "description": data.get("description", ""),
+                "title": data_with_defaults["title"],
+                "description": data_with_defaults.get("description", ""),
                 "status": column,
-                "created_at": data.get("created_at", now),
-                "updated_at": data.get("updated_at", now),
-                "assignee": data.get("assignee"),
-                "tags": data.get("tags", []),
-                "note": data.get("note"),
+                "created_at": data_with_defaults.get("created_at", now),
+                "updated_at": data_with_defaults.get("updated_at", now),
+                "assignee": data_with_defaults.get("assignee"),
+                "tags": data_with_defaults.get("tags") or [],
+                "note": data_with_defaults.get("note"),
                 "schema_version": data_with_defaults["schema_version"],
                 "color_group": data_with_defaults["color_group"],
                 "color_depth": data_with_defaults["color_depth"],
                 "complexity": data_with_defaults.get("complexity", "medium"),
+                "card_kind": data_with_defaults["card_kind"],
+                "parent_id": data_with_defaults.get("parent_id"),
+                "split_status": data_with_defaults.get("split_status"),
+                "child_ids": list(data_with_defaults.get("child_ids") or []),
+                "ui_hidden": bool(data_with_defaults.get("ui_hidden", False)),
             }
-            # 可选 hints（Skill 软偏好等）；非法类型忽略
             hints = data.get("hints")
             if isinstance(hints, dict):
                 clean_hints: dict = {}
@@ -470,22 +555,18 @@ class FileBoardStore:
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")
             self._record_event(task_id, "none", column)
-            _log.info("%s created in %s", task_id, column)
+            _log.info("%s created in %s kind=%s", task_id, column, task["card_kind"])
             return True
         finally:
             self._unlock(lock)
 
-    def list_tasks(self, column: str) -> list[dict]:
-        """读某列所有 task
+    def list_tasks(
+        self, column: str, *, include_hidden: bool = False
+    ) -> list[dict]:
+        """读某列所有 task。
 
-        v0.28.0 (H-005): JSONL append-only，读时无撕裂。list_tasks 不再获取 O_EXCL 排他锁，
-        避免多列扫描（get_board_state 7 列）时 7 次 IPC 开销。list_tasks 返回的快照可能
-        落后于并发写（与文件 read 一致），调用方需要快照语义时走 _with_snapshot_lock。
-
-        v0.28.0 (F1-C2 修): 按 created_at 升序排列（FIFO），防止 task_id 字典序不同步
-        导致新 task 被先消费、老 task 永久饿死。created_at 缺失时降级到文件名排序。
-
-        v0.28.0 (F1-M2 修): 校验 column 在 COLUMNS 中，否则 log warning + 返回 []
+        backlog：pending/active 在前（新→旧），done/blocked 沉底；默认隐藏 ui_hidden。
+        其它列：FIFO by created_at；默认过滤 ui_hidden。
         """
         if column not in COLUMNS:
             _log.warning(
@@ -499,7 +580,6 @@ class FileBoardStore:
         for f in sorted(col_dir.glob("*.jsonl")):
             try:
                 raw = f.read_text(encoding="utf-8")
-                # F-ARCH-03: 跳过未以换行结束的脏尾行（并发写撕裂）
                 if raw and not raw.endswith("\n"):
                     raw = raw.rsplit("\n", 1)[0] if "\n" in raw else ""
                 for line in raw.splitlines():
@@ -515,10 +595,121 @@ class FileBoardStore:
             except OSError as exc:
                 _log.debug("list_tasks read failed %s: %s", f.name, exc)
 
-        # v0.28.0 (F1-C2): FIFO sort by created_at ascending
-        # created_at 缺失 → 降级到 task_id 字典序（= 原文件名序）
-        tasks.sort(key=lambda t: t.get("created_at", t.get("id", "")))
-        return tasks
+        viewed = [normalize_task_view(t, column=column) for t in tasks]
+        if not include_hidden:
+            viewed = [t for t in viewed if not t.get("ui_hidden")]
+
+        if column == "backlog":
+            _rank = {"pending": 0, "active": 1, "blocked": 2, "done": 3}
+
+            def _backlog_key(t: dict):
+                ss = t.get("split_status") or "pending"
+                # 活跃组：新卡靠前（created_at 降序）；done 组沉底后按更新时间旧→新
+                active = _rank.get(ss, 1) < 3
+                ts = t.get("updated_at") or t.get("created_at") or t.get("id", "")
+                return (_rank.get(ss, 1), -1 if active else 1, ts if not active else ts)
+
+            # pending/active: newer first → sort by (-rank already), use reverse on ts
+            viewed.sort(
+                key=lambda t: (
+                    _rank.get(t.get("split_status") or "pending", 1),
+                    # for pending/active use reverse chronological: negate via invert string hack —
+                    # use tuple (rank, 0, -created) numerically where possible
+                    0
+                    if (t.get("split_status") or "pending") in ("pending", "active")
+                    else 1,
+                    # pending/active: newest first → reverse iso string by prefixing
+                    (
+                        ""
+                        if (t.get("split_status") or "pending")
+                        not in ("pending", "active")
+                        else t.get("created_at", t.get("id", ""))
+                    ),
+                    t.get("updated_at") or t.get("created_at") or t.get("id", ""),
+                )
+            )
+            # Fix pending/active order: currently ascending created_at within group.
+            # Split, reverse active groups, concat.
+            active = [
+                t
+                for t in viewed
+                if (t.get("split_status") or "pending") in ("pending", "active")
+            ]
+            rest = [
+                t
+                for t in viewed
+                if (t.get("split_status") or "pending") not in ("pending", "active")
+            ]
+            active.sort(
+                key=lambda t: t.get("created_at", t.get("id", "")), reverse=True
+            )
+            rest.sort(
+                key=lambda t: (
+                    0 if (t.get("split_status") or "") == "blocked" else 1,
+                    t.get("updated_at") or t.get("created_at") or "",
+                )
+            )
+            return active + rest
+
+        viewed.sort(key=lambda t: t.get("created_at", t.get("id", "")))
+        return viewed
+
+    def find_task(self, task_id: str) -> tuple[str | None, dict | None]:
+        """查找 task 所在列与内容。返回 (column, task)。"""
+        task_id = sanitize_id(task_id)
+        for col in COLUMNS:
+            path = self.board / col / f"{task_id}.jsonl"
+            if not path.is_file():
+                continue
+            try:
+                obj = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+                return col, normalize_task_view(obj, column=col)
+            except (OSError, json.JSONDecodeError, IndexError):
+                continue
+        return None, None
+
+    def patch_task(self, task_id: str, fields: dict) -> bool:
+        """原地更新 task 字段（不换列）。用于 epic split_status/child_ids/color 等。"""
+        task_id = sanitize_id(task_id)
+        lock = self._lock()
+        if lock is None:
+            _log.error("patch_task: lock unavailable")
+            return False
+        try:
+            col, task = None, None
+            for c in COLUMNS:
+                src = self.board / c / f"{task_id}.jsonl"
+                if src.is_file():
+                    try:
+                        task = json.loads(
+                            src.read_text(encoding="utf-8").splitlines()[0]
+                        )
+                        col = c
+                        break
+                    except (OSError, json.JSONDecodeError, IndexError):
+                        return False
+            if not task or not col:
+                _log.error("patch_task: %s not found", task_id)
+                return False
+            task.update(fields)
+            task["id"] = task_id
+            task["status"] = col
+            task["updated_at"] = now_iso()
+            task = fill_task_defaults(task, column=col)
+            if task.get("card_kind") == "epic" and col != "backlog":
+                _log.error("patch_task: epic cannot leave backlog")
+                return False
+            ok, errs = validate_task_jsonl(task)
+            if not ok:
+                _log.error("patch_task validation: %s", errs)
+                return False
+            _atomic_write(
+                self.board / col / f"{task_id}.jsonl",
+                json.dumps(task, ensure_ascii=False) + "\n",
+            )
+            return True
+        finally:
+            self._unlock(lock)
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
         """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""
@@ -557,6 +748,14 @@ class FileBoardStore:
             if not task:
                 return False
 
+            task = normalize_task_view(task, column=from_col)
+            # epic 大卡永不可离开 backlog
+            if task.get("card_kind") == "epic" and to_col != "backlog":
+                _log.error(
+                    "拒绝迁移: epic %s 不可离开 backlog → %s", task_id, to_col
+                )
+                return False
+
             task["status"] = to_col
             now = now_iso()
             task["updated_at"] = now
@@ -565,7 +764,6 @@ class FileBoardStore:
             dst = self.board / to_col / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
             payload = json.dumps(task, ensure_ascii=False) + "\n"
-            # 原子迁移：先写目标列（temp→replace），再删源，避免读→写非原子 TOCTOU
             _atomic_write(dst, payload)
             try:
                 src.unlink()

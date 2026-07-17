@@ -351,6 +351,19 @@ async def native_move_task(request: Request):
     return await board_proxy("POST", "/api/tasks/move", json_body=body)
 
 
+@router.post("/api/tasks/hide-completed-epics")
+async def hide_completed_epics(request: Request):
+    """隐藏待办中已完成（split_status=done）的大卡；数据保留。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        body = {}
+    body["workspace"] = _resolve_workspace(body, request)
+    return await board_proxy(
+        "POST", "/api/tasks/hide-completed-epics", json_body=body
+    )
+
+
 @router.post("/api/tasks/reopen")
 async def native_reopen_task(request: Request):
     """v0.42: 从 abnormal/testing 重开到 planned/in_progress + wake Engine。"""

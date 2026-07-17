@@ -1792,14 +1792,29 @@ def _startup_scan_workspace(ws: Path, active_tasks: dict[str, dict]) -> None:
     _recover_tasks(ws, active_tasks)
 
 
-def _process_backlog(ws: Path) -> bool:
-    """消费 backlog（可多条）。返回 True 表示做了操作。
+def _refresh_epic_statuses(ws: Path) -> None:
+    """扫 backlog epic：子卡全 released → done；有 abnormal → blocked。"""
+    try:
+        from _product_fanout import refresh_epic_completion
+    except ImportError:
+        return
+    store = _get_store(ws)
+    for task in store.list_tasks("backlog"):
+        if task.get("card_kind") != "epic":
+            continue
+        if task.get("split_status") not in ("active", "blocked"):
+            continue
+        try:
+            refresh_epic_completion(store, task["id"])
+        except Exception as exc:
+            engine_log(f"[fanout] refresh {task.get('id')}: {exc}")
 
-    v0.33: 异步 product_role — 不阻塞引擎 tick。Popen 后返回，后续 tick 检查完成。
-    v0.35: degraded mode 下暂停 intake。
-    v0.41: 全局 MAX_PRODUCT_INFLIGHT / 每 WS MAX_PRODUCT_PER_WS；不再只取队首。
+
+def _process_backlog(ws: Path) -> bool:
+    """消费 backlog：只对 pending epic 调 Claude 扇出；epic 永不 move 出待办。
+
+    work 误落 backlog：有 plan+phases 则 promote；否则走 product（兼容）。
     """
-    # v0.35: degraded mode → 暂停 backlog intake
     global _degraded_mode
     if _degraded_mode:
         return False
@@ -1807,6 +1822,10 @@ def _process_backlog(ws: Path) -> bool:
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
+    from _board_store import normalize_task_view
+
+    _refresh_epic_statuses(ws)
+
     backlog = store.list_tasks("backlog")
     if not backlog:
         return False
@@ -1815,90 +1834,50 @@ def _process_backlog(ws: Path) -> bool:
     for task in backlog:
         tid = task["id"]
         key = _task_key(ws, tid)
-        phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
-        _task_data = task
+        _task_data = normalize_task_view(task, column="backlog")
+        kind = _task_data.get("card_kind") or "epic"
+        split = _task_data.get("split_status") or "pending"
 
-        # v0.37: regen 标记强制重跑 product（即使残留 phases.json）
-        _regen_mark = ws / ".ccc" / "pids" / f"{tid}.regen"
-        if _regen_mark.exists():
-            if phases_file.exists():
-                try:
-                    phases_file.unlink()
-                    engine_log(
-                        f"[product] [{label}] {tid} 发现 .regen 标记，删残留 phases.json 强制重生成"
-                    )
-                except OSError as exc:
-                    engine_log(f"[product] [{label}] {tid} 删 phases.json 失败: {exc}")
-            try:
-                _regen_mark.unlink()
-            except OSError:
-                pass
-
-        plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
-        # v0.42.1: description 已引用现成 plan → 收养，跳过 LLM product
-        if not (phases_file.exists() and plan_file.exists()):
-            try:
-                from _plan_adopt import try_adopt_referenced_plan
-
-                adopted = try_adopt_referenced_plan(ws, tid, _task_data)
-                if adopted.get("ok") and adopted.get("reason") in (
-                    "adopted",
-                    "already_present",
-                ):
-                    engine_log(
-                        f"[product] [{label}] {tid} 收养现有 plan: {adopted.get('source') or adopted.get('reason')}"
-                    )
-            except Exception as exc:
-                engine_log(f"[product] [{label}] {tid} plan adopt 跳过: {exc}")
-
-        # 1. plan+phases 齐全（手动拆分 / 收养），直通 planned；残缺则清掉走 product
-        if phases_file.exists() and plan_file.exists():
-            engine_log(
-                f"[product] [{label}] {tid} plan+phases 已存在，跳过 product_role，移入 planned"
-            )
-            if not store.move_task(tid, "backlog", "planned"):
-                engine_log(f"[product] [{label}] move {tid} backlog→planned 失败，跳过")
+        # Epic：已拆分/完成 → 不 launch product；仅刷新状态
+        if kind == "epic":
+            if split in ("active", "done"):
                 continue
-            _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
-            did_something = True
-            continue
-        if phases_file.exists() and not plan_file.exists():
-            try:
-                phases_file.unlink()
-                engine_log(
-                    f"[product] [{label}] {tid} 有 phases 无 plan，删孤儿 phases 走 product"
-                )
-            except OSError as exc:
-                engine_log(f"[product] [{label}] {tid} 删孤儿 phases 失败: {exc}")
-
-        # v0.35: 任务分类 — auto/quick 不走 product_role
-        try:
-            _pipeline_class = ccc_board._classify_task_intake(_task_data)
-        except Exception:
-            _pipeline_class = "full"  # fallback 安全
-        if _pipeline_class in ("auto", "quick"):
-            _log.info(
-                f"[intake] [{label}] {tid} 分类={_pipeline_class}，不走 product_role"
-            )
-            if _pipeline_class == "auto":
-                result = ccc_board._run_auto_fix(_task_data)
-                if result.get("ok"):
-                    _log_stats(ws, "auto_fixed", tid, commit=result.get("commit", "")[:12])
-                    store.move_task(tid, "backlog", "released")
-                else:
-                    _log.warning(
-                        f"[intake] [{label}] {tid} auto-fix 失败: {result.get('error')}"
-                    )
-                    store.move_task(tid, "backlog", "abnormal")
-                store.update_index()
-                did_something = True
+            if split == "blocked":
+                # 需人工 reopen；不自动重拆
                 continue
-            else:  # quick
-                result = ccc_board._run_quick_fix(_task_data)
-                if result.get("ok"):
-                    store.move_task(tid, "backlog", "testing")
+            # pending → 下方走 product fanout
+        else:
+            # work 兼容：plan+phases 齐全 → planned
+            phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+            plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
+            if phases_file.exists() and plan_file.exists():
+                if store.move_task(tid, "backlog", "planned"):
+                    engine_log(
+                        f"[product] [{label}] work {tid} → planned（兼容单卡）"
+                    )
+                    _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
+                    did_something = True
+                continue
+
+        # v0.35: auto/quick 仅对非 epic（或显式）—— epic 不做 auto
+        if kind != "epic":
+            try:
+                _pipeline_class = ccc_board._classify_task_intake(_task_data)
+            except Exception:
+                _pipeline_class = "full"
+            if _pipeline_class in ("auto", "quick"):
+                if _pipeline_class == "auto":
+                    result = ccc_board._run_auto_fix(_task_data)
+                    if result.get("ok"):
+                        store.move_task(tid, "backlog", "released")
+                    else:
+                        store.move_task(tid, "backlog", "abnormal")
                 else:
-                    store.move_task(tid, "backlog", "abnormal")
+                    result = ccc_board._run_quick_fix(_task_data)
+                    if result.get("ok"):
+                        store.move_task(tid, "backlog", "testing")
+                    else:
+                        store.move_task(tid, "backlog", "abnormal")
                 store.update_index()
                 did_something = True
                 continue
@@ -1934,14 +1913,31 @@ def _process_backlog(ws: Path) -> bool:
             except (json.JSONDecodeError, OSError):
                 fail_count = 0
 
+        def _mark_product_exhausted(reason: str) -> None:
+            """epic 留 backlog 标 blocked；work 才可 quarantine。"""
+            if kind == "epic":
+                store.patch_task(
+                    tid,
+                    {
+                        "split_status": "blocked",
+                        "note": (_task_data.get("note") or "")
+                        + f"\n[product] {reason}",
+                    },
+                )
+                engine_log(
+                    f"[product] [{label}] epic {tid} → blocked（{reason}），仍留待办"
+                )
+            else:
+                _quarantine_with_notify(
+                    ws, tid, reason, store, phase=0, role="product", from_col="backlog"
+                )
+            _ccc_notify("CCC", f"product 拆分 {tid}: {reason[:120]}")
+
         if fail_count >= _MAX_PRODUCT_RETRIES:
             engine_log(
-                f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}，移入 abnormal"
+                f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}"
             )
-            _quarantine_with_notify(
-                ws, tid, f"product_role 连续失败 {fail_count} 次", store, phase=0
-            )
-            _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
+            _mark_product_exhausted(f"product_role 连续失败 {fail_count} 次")
             did_something = True
             continue
 
@@ -1957,7 +1953,13 @@ def _process_backlog(ws: Path) -> bool:
                 except OSError:
                     pass
                 _log_stats(ws, "product_done", tid, fail_count=fail_count)
-                engine_log(f"[product] [{label}] {tid} ✓ 异步 product 完成")
+                kids = result.get("child_ids") or []
+                if kids:
+                    engine_log(
+                        f"[product] [{label}] {tid} ✓ fanout {len(kids)} work → planned"
+                    )
+                else:
+                    engine_log(f"[product] [{label}] {tid} ✓ 异步 product 完成")
                 did_something = True
                 continue
             elif result["status"] == "failed":
@@ -2007,23 +2009,13 @@ def _process_backlog(ws: Path) -> bool:
                         if result.get("fatal") or str(err).startswith("auth:")
                         else f"product_role 连续失败 {fail_count} 次"
                     )
-                    _quarantine_with_notify(
-                        ws,
-                        tid,
-                        _q_reason,
-                        store,
-                        phase=0,
-                        role="product",
-                        from_col="backlog",
-                    )
-                    _ccc_notify("CCC", f"product_role 拆分 {tid}: {_q_reason[:120]}")
+                    _mark_product_exhausted(_q_reason)
                 did_something = True
                 continue
-            # status == "running" → 本 WS 本轮可尝试下一 tid
             engine_log(f"[product] [{label}] {tid} 异步 product 执行中...")
             continue
 
-        # 4. 启动异步 product_role（受全局/每 WS 上限）
+        # 4. 启动异步 product（epic 扇出 / work 单卡）
         if not _can_launch_product(ws):
             engine_log(
                 f"[product] [{label}] cap 已满 "
@@ -2034,7 +2026,8 @@ def _process_backlog(ws: Path) -> bool:
             continue
 
         engine_log(
-            f"[product] [{label}] backlog 异步拆分: {tid} (此前失败 {fail_count} 次)"
+            f"[product] [{label}] backlog 异步拆分: {tid} "
+            f"kind={kind} (此前失败 {fail_count} 次)"
         )
         _log_stats(ws, "product_start", tid, fail_count=fail_count)
         launch_r = ccc_board.launch_product_async(tid)
@@ -2080,16 +2073,7 @@ def _process_backlog(ws: Path) -> bool:
             f"[product] [{label}] product_role({tid}) 启动失败 #{fail_count}: {launch_r.get('error', '')}"
         )
         if fail_count >= _MAX_PRODUCT_RETRIES:
-            _quarantine_with_notify(
-                ws,
-                tid,
-                f"product_role 连续失败 {fail_count} 次",
-                store,
-                phase=0,
-                role="product",
-                from_col="backlog",
-            )
-            _ccc_notify("CCC", f"product_role 拆分 {tid} 连续失败 {fail_count} 次")
+            _mark_product_exhausted(f"product_role 连续失败 {fail_count} 次")
         did_something = True
 
     return did_something
@@ -2441,6 +2425,13 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         tid = task["id"]
         key = _task_key(ws, tid)
         if key in active_tasks:
+            continue
+        # 只调度 work 小卡（epic 永不进入 planned）
+        from _board_store import normalize_task_view as _norm
+
+        tview = _norm(task, column="planned")
+        if tview.get("card_kind") == "epic":
+            engine_log(f"[{label}] 跳过误入 planned 的 epic {tid}")
             continue
         plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
         phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"

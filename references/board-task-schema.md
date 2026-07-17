@@ -1,17 +1,17 @@
 # CCC Board Protocol v1 — 跨 IDE 任务编排协议
 
-> **协议版本**: v1.2
+> **协议版本**: v1.2（epic/work 扇出）
 > **状态**: stable
-> **最后更新**: 2026-07-12
-> **作用域**: CCC 0.26.0+
+> **最后更新**: 2026-07-17
+> **作用域**: CCC 0.42.2+
 
-> **一句话定义**: 任意 IDE 工具（Trae/Cursor/Zed/VS Code/OpenCode）读本协议 → 写标准 JSONL → 看板全自动流转。
+> **一句话定义**: Hub/IDE 写入**待办大卡（epic）** → Claude product **扇出 work 小卡**进流转列 → 低模开发消费小卡。
 >
 > **设计原则**:
-> 1. **协议级别 = 可独立读懂**: 不需要查代码就能写出合格 task
-> 2. **不耦合**: IDE 不需要装 plugin，agent 不需要改行为
-> 3. **单节点**: CCC 保持单节点任务编排内核，不做多用户/权限
-> 4. **向后兼容**: 缺失字段补默认；新字段写入老 task 不破坏读取
+> 1. **待办 ≠ 流转**：epic 常驻 `backlog`，永不 `move` 到 planned 及之后列
+> 2. **拆分在看板层**：product 产出多张子卡，不是同卡多 phase 假装拆分
+> 3. **协议可独立读懂**；缺失字段补默认（存量 backlog → epic）
+> 4. **单节点**：不做多用户/权限
 
 ---
 
@@ -35,33 +35,39 @@
 ```
 
 7 列（column）：
-- `backlog` — 起点（IDE/QXO/外部工具唯一允许直接写入的列）
-- `planned` — product 拆分后
-- `in_progress` — dev 执行中
+- `backlog` — **大卡队列（epic）常驻**；Hub/IDE 唯一直接写入列；不参与流转
+- `planned` — product 扇出的 **work 小卡**
+- `in_progress` — dev 执行中（仅 work）
 - `testing` — reviewer/tester 验收中
 - `verified` — 验收通过，待 kb 归档
-- `released` — 已发布
-- `abnormal` — quarantine/异常
+- `released` — 已发布（全部子卡 released → 父 epic `split_status=done` 沉底）
+- `abnormal` — work 异常；父 epic 标 `blocked` 仍留 backlog
 
 ---
 
-## 2. 字段定义（11 条）
+## 2. 字段定义
 
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
-| `id` | string | ✅ | — | kebab-case，仅 `[a-zA-Z0-9_-]`，sanitize 后非空非 "invalid" |
+| `id` | string | ✅ | — | kebab-case，仅 `[a-zA-Z0-9_-]` |
 | `title` | string | ✅ | — | 非空，≤ 500 字符 |
-| `description` | string | ❌ | `""` | 任务描述，≤ 10000 字符 |
-| `status` | string | ✅ | — | 取值 ∈ {backlog, planned, in_progress, testing, verified, released, abnormal} |
-| `created_at` | string (ISO 8601) | ✅ | — | 格式 `YYYY-MM-DDTHH:MM:SS+08:00`（北京时间） |
-| `updated_at` | string (ISO 8601) | ✅ | — | 同上（北京时间） |
+| `description` | string | ❌ | `""` | ≤ 10000 字符 |
+| `status` | string | ✅ | — | ∈ 7 列；**epic 必须为 backlog** |
+| `created_at` / `updated_at` | string | ✅ | — | ISO 8601（北京时间推荐） |
 | `assignee` | string\|null | ❌ | `null` | 负责人 |
-| `tags` | string[] | ❌ | `[]` | 标签数组，元素为字符串 |
+| `tags` | string[] | ❌ | `[]` | 标签 |
 | `note` | string\|null | ❌ | `null` | 备注 |
-| `schema_version` | string | ❌ | `"1.0"` | 协议版本 |
-| `color_group` | string (A-Z 单字符) | ❌ | `null` | 颜色分组（详见 §5） |
-| `color_depth` | int (≥ 0) | ❌ | `0` | 颜色深度（详见 §5） |
-| `complexity` | string | ❌ | `"medium"` | 任务复杂度 v0.28.1: `small`\|`medium`\|`large`（详见 §12） |
+| `schema_version` | string | ❌ | `"1.2"` | 协议版本 |
+| `color_group` | A-Z | ❌ | `null` | 未拆分大卡为灰；拆分后赋色（§5） |
+| `color_depth` | int | ❌ | `0` | 0=epic，1=work 略浅 |
+| `complexity` | string | ❌ | `"medium"` | small/medium/large |
+| `card_kind` | string | ❌ | 按列推断 | `epic` \| `work` |
+| `parent_id` | string\|null | ❌ | `null` | work → epic id |
+| `split_status` | string | ❌ | epic:`pending` | epic: `pending`\|`active`\|`done`\|`blocked` |
+| `child_ids` | string[] | ❌ | `[]` | epic 扇出后的子卡 id |
+| `ui_hidden` | bool | ❌ | `false` | Hub「清理已完成」仅藏显示 |
+
+**存量兼容**：无 `card_kind` 时，`backlog`→`epic`+`pending`，其它列→`work`。
 
 **未知字段**：strict=False 时忽略不报错；strict=True 时拒绝。
 
@@ -69,19 +75,17 @@
 
 ## 3. Agent ↔ 列映射表（协议核心契约）
 
-> **不可违反**：每种 agent 只从一个列取任务，写入另一个（或相同）列。
-
 | Agent | 读列 | 写列 | 附加产物 | 备注 |
 |-------|------|------|----------|------|
-| **IDE/QXO/外部工具** | (无) | `backlog` | — | **唯一允许直接写 backlog 的来源** |
-| **product** | `backlog` | `planned` | `.ccc/plans/<id>.plan.md` + `.ccc/phases/<id>.phases.json` | 拆任务 + 写 plan + phases |
-| **dev** | `planned` (或 `abnormal`) | `in_progress` | `.ccc/reports/<id>.report.md` | 执行 phase 1..N；R-04 advisory lock |
-| **reviewer** | `in_progress` | `testing` / `abnormal` | `.ccc/reports/<id>.review.md` | R-04 + R-12 fallback quarantine |
-| **tester** | `testing` | `verified` / `abnormal` | — | pytest + plan 验收 |
-| **kb** | `verified` | `released` | CHANGELOG + git tag | 归档沉淀 |
-| **regress** | `released` | `backlog` (回归) | — | 发现 bug 移回 backlog |
-| **ops** | 全列读 | 仅清理维护 | — | quarantine / cleanup |
-| **audit** | 跨 workspace 读 | `backlog` (跨 ws 投递) | — | v0.22.1 已有 |
+| **Hub/IDE/外部** | (无) | `backlog`（epic） | — | 大卡意图；唯一写 backlog |
+| **product** | `backlog` epic pending | **创建** `planned` work×N；**patch** epic | 各子卡 plan+phases；可选 epic brief | **不 move epic** |
+| **dev** | `planned` work | `in_progress` | report | 只调度 work |
+| **reviewer** | testing 链 | testing / abnormal | review.md | R-04 + R-12 |
+| **tester** | testing | verified / abnormal | — | pytest + plan 验收 |
+| **kb** | verified | released | CHANGELOG + tag | 子卡发布 |
+| **Engine 收尾** | — | epic `done`/`blocked` | — | 全 released→done 沉底 |
+| **regress** | released | backlog (回归 epic) | — | 发现 bug 建大卡 |
+| **ops** | 全列读 | 清理维护 | — | quarantine / cleanup |
 
 ---
 
@@ -99,10 +103,12 @@
 | 6 | `assignee` | 类型=str\|null |
 | 7 | `tags` | 类型=list[str] |
 | 8 | `note` | 类型=str\|null |
-| 9 | `schema_version` | 缺省补 `"1.0"`；仅校验是字符串 |
+| 9 | `schema_version` | 缺省补 `"1.2"`；仅校验是字符串 |
 | 10 | `color_group` | 缺省 `null`；存在时 ∈ [A-Z] 单字符 |
 | 11 | `color_depth` | 缺省 `0`；存在时 ≥ 0 整数 |
 | 12 | `complexity` | 缺省 `"medium"`；存在时 ∈ {small, medium, large} |
+| 13 | `card_kind` | 缺省按列推断；∈ {epic, work}；epic 仅允许 status=backlog |
+| 14 | `parent_id` / `split_status` / `child_ids` / `ui_hidden` | 见 §2；类型不符记 errors |
 
 **容错**（strict=False 默认）：
 - 缺失字段 → 补默认（不报错）
@@ -124,9 +130,10 @@
 | `color_group` | A-Z 单字符 | 标识发布批次（A=批次1, B=批次2, ...） |
 | `color_depth` | ≥ 0 整数 | 0=父任务深色，1=子任务浅色，以此类推 |
 
-**赋值规则**（product 拆解时自动）：
-- 父任务（顶层）：`color_group = assign_color_group(parent)`，depth=0
-- 子任务（拆出的 phase）：`color_group = parent.color_group`，depth=parent.color_depth + 1
+**赋值规则**（product 扇出时）：
+- epic：`split_status=pending` 且无 `color_group` → Hub 显示**灰**
+- 首次扇出成功：`assign_color_group` → epic `color_depth=0`；各 work 同 group、`color_depth=1`
+- `done` 大卡可 `ui_hidden`；排序沉底
 
 **HSL 计算公式**：
 ```
