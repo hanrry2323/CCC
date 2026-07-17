@@ -239,11 +239,18 @@ async def board_proxy_move_task(request: Request):
 # --- Native board paths (Hub same-origin for board/console pages) ---
 
 @router.get("/api/board")
-async def native_board(request: Request, workspace: str = "CCC", fields: str | None = None):
+async def native_board(
+    request: Request,
+    workspace: str = "CCC",
+    fields: str | None = None,
+    include_hidden: str | None = None,
+):
     check_auth(request)
     params: dict = {"workspace": workspace}
     if fields:
         params["fields"] = fields
+    if include_hidden:
+        params["include_hidden"] = include_hidden
     return await board_proxy("GET", "/api/board", params=params)
 
 

@@ -135,16 +135,133 @@ body.hub-mode #app {
 .board-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--ccc-border-subtle);
   background: var(--ccc-bg-surface);
+  flex-wrap: wrap;
 }
 
 .board-toolbar h2 {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
+  flex-shrink: 0;
+}
+
+.board-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.board-ws-btns {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.board-ws-btn {
+  font-family: var(--ccc-font-sans);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--ccc-radius-sm);
+  border: 2px solid var(--ccc-border-base);
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-base);
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.board-ws-btn:hover {
+  border-color: var(--ccc-border-strong, var(--ccc-border-base));
+  color: var(--ccc-text-base);
+}
+
+.board-ws-btn.active {
+  background: var(--ccc-bg-accent);
+  border-color: var(--ccc-bg-accent);
+  color: var(--ccc-text-inverse);
+  font-weight: 600;
+}
+
+/* 开发中：边缘跑马灯 */
+.board-ws-btn.ws-running {
+  border-color: transparent;
+  background-image:
+    linear-gradient(var(--ccc-bg-layer), var(--ccc-bg-layer)),
+    linear-gradient(
+      90deg,
+      #c47a2c 0%,
+      #f0d080 25%,
+      #c47a2c 50%,
+      #f0d080 75%,
+      #c47a2c 100%
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: 100% 100%, 280% 100%;
+  animation: board-ws-marquee 1.1s linear infinite;
+}
+
+.board-ws-btn.ws-running.active {
+  background-image:
+    linear-gradient(var(--ccc-bg-accent), var(--ccc-bg-accent)),
+    linear-gradient(
+      90deg,
+      #ffe0a8 0%,
+      #ffffff 25%,
+      #ffc978 50%,
+      #ffffff 75%,
+      #ffe0a8 100%
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: 100% 100%, 280% 100%;
+  animation: board-ws-marquee 1.1s linear infinite;
+}
+
+@keyframes board-ws-marquee {
+  0% { background-position: 0 0, 0% 0; }
+  100% { background-position: 0 0, 200% 0; }
+}
+
+/* 需人工：常亮暖红描边（优先于跑马灯） */
+.board-ws-btn.ws-alert,
+.board-ws-btn.ws-alert.ws-running {
+  border-color: #c45c4a;
+  border-style: solid;
+  background-image: none;
+  animation: none;
+  box-shadow:
+    0 0 0 1px rgba(196, 92, 74, 0.35),
+    0 0 10px rgba(196, 92, 74, 0.55);
+}
+
+.board-ws-btn.ws-alert.active {
+  background: var(--ccc-bg-accent);
+  color: var(--ccc-text-inverse);
+  border-color: #c45c4a;
+  box-shadow:
+    0 0 0 1px rgba(196, 92, 74, 0.45),
+    0 0 12px rgba(196, 92, 74, 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-ws-btn.ws-running,
+  .board-ws-btn.ws-running.active {
+    animation: none;
+    border-color: #c47a2c;
+    background-image: none;
+    box-shadow: 0 0 0 1px rgba(196, 122, 44, 0.35);
+  }
 }
 
 .board-toolbar select,
@@ -158,6 +275,7 @@ body.hub-mode #app {
   border: 1px solid var(--ccc-border-base);
   background: var(--ccc-bg-layer);
   color: var(--ccc-text-base);
+  cursor: pointer;
 }
 
 .board-toolbar button.primary,
@@ -173,39 +291,8 @@ body.hub-mode #app {
   font-size: 11px;
   color: var(--ccc-text-muted);
   margin-left: auto;
+  flex-shrink: 0;
 }
-
-.board-roles {
-  display: flex;
-  gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--ccc-border-subtle);
-  background: var(--ccc-bg-surface);
-  overflow-x: auto;
-}
-
-.board-role {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--ccc-radius-sm);
-  background: var(--ccc-bg-layer);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.board-role .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ccc-text-faint);
-}
-
-.board-role .dot.ok { background: #3d9a5f; }
-.board-role .dot.fail { background: #c44; }
-.board-role .dot.idle { background: var(--ccc-text-faint); }
 
 .board-main {
   flex: 1;
@@ -424,7 +511,8 @@ body.hub-mode #app {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 4px;
+  cursor: pointer;
+  user-select: none;
 }
 
 

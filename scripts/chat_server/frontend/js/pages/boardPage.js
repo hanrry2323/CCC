@@ -50,6 +50,8 @@ let _timer = null;
 let _state = { columns: {}, counts: {} };
 let _ws = 'CCC';
 let _showHidden = false;
+let _wsNames = [];
+let _indicatorBusy = false;
 
 function esc(s) {
   if (!s) return '';
@@ -172,13 +174,14 @@ function html() {
 <div class="board-page">
   <div class="board-toolbar">
     <h2>看板</h2>
-    <select id="board-ws"></select>
-    <button type="button" class="primary" id="board-new">+ 新建大卡</button>
-    <button type="button" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
-    <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
+    <div class="board-toolbar-actions">
+      <button type="button" class="primary" id="board-new">+ 新建大卡</button>
+      <button type="button" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
+      <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
+    </div>
+    <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <span class="st" id="board-st">·</span>
   </div>
-  <div class="board-roles" id="board-roles"></div>
   <div class="board-main">
     <div class="board-layout" id="board-layout">
       <div class="board-epic-col" id="board-epic"></div>
@@ -216,23 +219,98 @@ function html() {
 
 async function loadConfig() {
   const c = await apiGet('/api/config');
-  const sel = _root.querySelector('#board-ws');
+  const btns = _root.querySelector('#board-ws-btns');
   const fs = _root.querySelector('#board-fws');
-  sel.innerHTML = '';
+  btns.innerHTML = '';
   fs.innerHTML = '';
   const spaces = c.workspaces || { CCC: '.' };
-  for (const n of Object.keys(spaces)) {
-    const o = document.createElement('option');
-    o.value = n;
-    o.textContent = n;
-    sel.appendChild(o);
+  _wsNames = Object.keys(spaces);
+  if (!spaces[_ws] && _wsNames.length) _ws = _wsNames[0];
+  for (const n of _wsNames) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'board-ws-btn' + (n === _ws ? ' active' : '');
+    b.dataset.ws = n;
+    b.textContent = n;
+    b.setAttribute('aria-pressed', n === _ws ? 'true' : 'false');
+    btns.appendChild(b);
     const o2 = document.createElement('option');
     o2.value = n;
     o2.textContent = n;
     fs.appendChild(o2);
   }
-  if (spaces[_ws]) sel.value = _ws;
-  else _ws = sel.value || 'CCC';
+}
+
+function setActiveWorkspace(name) {
+  if (!name || name === _ws) return;
+  _ws = name;
+  _root.querySelectorAll('.board-ws-btn').forEach((b) => {
+    const on = b.dataset.ws === _ws;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  loadBoard();
+}
+
+/** 看板指示态：alert（需人工）> running（开发中）> idle */
+function classifyWsStatus(payload) {
+  const counts = payload.counts || {};
+  const abnormal = Number(counts.abnormal || 0);
+  const inProg = Number(counts.in_progress || 0);
+  const backlog = (payload.columns && payload.columns.backlog) || [];
+  const epicFailed = backlog.some((t) => {
+    const kind = t.card_kind || 'epic';
+    const ss = normalizeEpicSplitStatus(t.split_status || 'pending');
+    return kind === 'epic' && ss === 'failed';
+  });
+  if (abnormal > 0 || epicFailed) {
+    const bits = [];
+    if (abnormal > 0) bits.push(`异常 ${abnormal}`);
+    if (epicFailed) bits.push('大卡失败');
+    return { mode: 'alert', title: '需人工介入 · ' + bits.join(' · ') };
+  }
+  if (inProg > 0) {
+    return { mode: 'running', title: `开发中 · ${inProg} 个任务` };
+  }
+  return { mode: 'idle', title: '' };
+}
+
+function applyWsIndicator(btn, { mode, title }) {
+  btn.classList.remove('ws-running', 'ws-alert');
+  if (mode === 'running') btn.classList.add('ws-running');
+  if (mode === 'alert') btn.classList.add('ws-alert');
+  if (title) btn.title = title;
+  else btn.removeAttribute('title');
+  btn.setAttribute('data-ws-status', mode);
+}
+
+async function refreshAllWsIndicators() {
+  if (!_root || _indicatorBusy || !_wsNames.length) return;
+  _indicatorBusy = true;
+  try {
+    const results = await Promise.all(
+      _wsNames.map(async (name) => {
+        try {
+          const r = await apiGet(
+            '/api/board?workspace=' +
+              encodeURIComponent(name) +
+              '&fields=summary&include_hidden=1'
+          );
+          return { name, status: classifyWsStatus(r) };
+        } catch (_) {
+          return { name, status: { mode: 'idle', title: '' } };
+        }
+      })
+    );
+    for (const { name, status } of results) {
+      const btn = [..._root.querySelectorAll('.board-ws-btn')].find(
+        (el) => el.dataset.ws === name
+      );
+      if (btn) applyWsIndicator(btn, status);
+    }
+  } finally {
+    _indicatorBusy = false;
+  }
 }
 
 function updateSummary() {
@@ -252,7 +330,6 @@ function renderCols() {
 }
 
 async function loadBoard() {
-  _ws = _root.querySelector('#board-ws').value || 'CCC';
   const q =
     '/api/board?workspace=' +
     encodeURIComponent(_ws) +
@@ -260,27 +337,7 @@ async function loadBoard() {
   const r = await apiGet(q);
   _state = r;
   renderCols();
-  loadRoles();
-}
-
-async function loadRoles() {
-  try {
-    const r = await apiGet('/api/roles');
-    const b = _root.querySelector('#board-roles');
-    if (!r || !r.roles) {
-      b.innerHTML = '';
-      return;
-    }
-    b.innerHTML = r.roles
-      .map((role) => {
-        const s = role.status || 'idle';
-        const tm = role.last_run ? role.last_run.slice(11, 19) : '--:--:--';
-        return `<div class="board-role"><span class="dot ${esc(s)}"></span>${esc((role.role || '').toUpperCase())}<span style="margin-left:auto;font-family:var(--ccc-font-mono);font-size:10px;color:var(--ccc-text-muted)">${tm}</span></div>`;
-      })
-      .join('');
-  } catch (_) {
-    /* optional */
-  }
+  refreshAllWsIndicators().catch(() => {});
 }
 
 async function moveTask(id, from, to) {
@@ -328,7 +385,11 @@ async function showDetail(id) {
 }
 
 function bind() {
-  _root.querySelector('#board-ws').addEventListener('change', () => loadBoard());
+  _root.querySelector('#board-ws-btns').addEventListener('click', (e) => {
+    const btn = e.target.closest('.board-ws-btn');
+    if (!btn) return;
+    setActiveWorkspace(btn.dataset.ws);
+  });
   _root.querySelector('#board-new').addEventListener('click', () => {
     _root.querySelector('#board-fid').value = 'epic-' + Math.floor(Date.now() / 1000);
     _root.querySelector('#board-fti').value = '';
