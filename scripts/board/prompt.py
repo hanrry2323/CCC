@@ -61,10 +61,13 @@ def build_dev_phase_prompt(
         f"## 完成定义（仅 Phase {phase_num}）\n"
         f"1. 仅实现 Phase {phase_num} 对应需求\n"
         f"2. 跑本 phase 相关测试（如有）\n"
-        f"3. 在 `{ws}` 内提交一个 commit（message 含 `{task_id}` 与 `phase={phase_num}`）\n"
+        f"3. **硬门**：在 `{ws}` 内 `git add` 相关文件并 `git commit`，"
+        f"message **必须包含** `{task_id}` 与 `phase={phase_num}`；"
+        f"没有含 task_id 的 commit = 本 phase 未完成\n"
         f"4. 确认代码无语法错误\n"
         f"5. 不超出 scope 白名单，且不提前做后续 phase\n"
         f"6. **禁止**向其他 git 仓库（含 CCC 编排仓）写文件或 commit\n"
+        f"7. report 末尾写 `ALL SELF-CHECKS PASSED`\n"
     )
 
 

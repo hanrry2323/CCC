@@ -131,6 +131,82 @@ def record_call(
     return record
 
 
+def estimate_tokens(text: str) -> int:
+    """粗估 token（无上游 usage 时）：约 4 字符 ≈ 1 token。"""
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def summarize_task_calls(task_id: str) -> dict:
+    """按 task_id 汇总 cost-telemetry.jsonl（真实每任务计量）。"""
+    empty = {
+        "task_id": task_id,
+        "calls": 0,
+        "ok_calls": 0,
+        "fail_calls": 0,
+        "tokens_prompt": 0,
+        "tokens_completion": 0,
+        "tokens_total": 0,
+        "cost_usd": 0.0,
+        "latency_ms_total": 0,
+        "by_role": {},
+        "records": [],
+    }
+    if not task_id or not _TELEMETRY_FILE.exists():
+        return empty
+    rows: list[dict] = []
+    try:
+        with open(_TELEMETRY_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("task_id") == task_id:
+                    rows.append(rec)
+    except OSError:
+        return empty
+
+    by_role: dict[str, dict] = {}
+    for rec in rows:
+        role = str(rec.get("role") or "unknown")
+        bucket = by_role.setdefault(
+            role,
+            {
+                "calls": 0,
+                "tokens_total": 0,
+                "cost_usd": 0.0,
+                "latency_ms_total": 0,
+            },
+        )
+        bucket["calls"] += 1
+        bucket["tokens_total"] += int(rec.get("tokens_total") or 0)
+        bucket["cost_usd"] = round(
+            bucket["cost_usd"] + float(rec.get("cost") or 0), 6
+        )
+        bucket["latency_ms_total"] += int(rec.get("latency_ms") or 0)
+
+    return {
+        "task_id": task_id,
+        "calls": len(rows),
+        "ok_calls": sum(1 for r in rows if r.get("ok")),
+        "fail_calls": sum(1 for r in rows if not r.get("ok")),
+        "tokens_prompt": sum(int(r.get("tokens_prompt") or 0) for r in rows),
+        "tokens_completion": sum(
+            int(r.get("tokens_completion") or 0) for r in rows
+        ),
+        "tokens_total": sum(int(r.get("tokens_total") or 0) for r in rows),
+        "cost_usd": round(sum(float(r.get("cost") or 0) for r in rows), 6),
+        "latency_ms_total": sum(int(r.get("latency_ms") or 0) for r in rows),
+        "by_role": by_role,
+        "records": rows[-50:],
+    }
+
+
 # ============================================================
 # 异常流量检测
 # ============================================================

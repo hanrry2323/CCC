@@ -258,14 +258,33 @@ class OpenCodeExecutor(Executor):
             pid_file.write_text(str(proc.pid))
 
             started = time.time()
+            # task_id 从 phase_id 推断：tid 或 tid__pN
+            _tid = phase_id.split("__")[0] if phase_id else ""
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
                 duration = time.time() - started
+                out_s = stdout.decode("utf-8", errors="replace")
+                err_s = stderr.decode("utf-8", errors="replace")
+                try:
+                    from _cost_telemetry import estimate_tokens, record_call
+
+                    record_call(
+                        role="executor",
+                        provider_or_model=model or "opencode",
+                        prompt_tokens=estimate_tokens(prompt_text),
+                        completion_tokens=estimate_tokens(out_s + err_s),
+                        latency_ms=int(duration * 1000),
+                        ok=(proc.returncode == 0),
+                        task_id=_tid,
+                        phase_id=phase_id,
+                    )
+                except Exception:
+                    pass
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=proc.returncode,
-                    stdout=stdout.decode("utf-8", errors="replace"),
-                    stderr=stderr.decode("utf-8", errors="replace"),
+                    stdout=out_s,
+                    stderr=err_s,
                     duration_s=round(duration, 2),
                     pid=proc.pid,
                     killed=False,
@@ -299,12 +318,28 @@ class OpenCodeExecutor(Executor):
                             _log.warning(
                                 "proc.wait timeout after hard deadline pid=%s", proc.pid
                             )
+                duration = time.time() - started
+                try:
+                    from _cost_telemetry import estimate_tokens, record_call
+
+                    record_call(
+                        role="executor",
+                        provider_or_model=model or "opencode",
+                        prompt_tokens=estimate_tokens(prompt_text),
+                        completion_tokens=0,
+                        latency_ms=int(duration * 1000),
+                        ok=False,
+                        task_id=_tid,
+                        phase_id=phase_id,
+                    )
+                except Exception:
+                    pass
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=-1,
                     stdout="",
                     stderr=f"timeout after {timeout}s — killed",
-                    duration_s=round(time.time() - started, 2),
+                    duration_s=round(duration, 2),
                     pid=proc.pid,
                     killed=True,
                 )

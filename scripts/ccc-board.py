@@ -469,7 +469,7 @@ _get_code_context_cache: dict[str, tuple[str, float]] = {}
 
 
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
-    """调 claude CLI 生成 plan.md + phases.json（通过中转站 127.0.0.1:4000）"""
+    """调 Product Sessionful Contract Loop 生成 plan.md + phases.json。"""
     task_id = task["id"]
     plan_dir = get_workspace() / ".ccc" / "plans"
     ref_plans = ""
@@ -485,14 +485,18 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     template_plan = _load_plan_template()
     profile_path = get_workspace() / ".ccc" / "profile.md"
     profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
-
     code_ctx = _get_code_context(get_workspace())
 
     def _load_product_skill() -> str:
-        """注入 ccc-product skill（harness：身份来自 skill，非口头自称）。"""
         candidates = [
             CCC_HOME / "skills" / "ccc-product" / "SKILL.md",
-            Path.home() / ".claude" / "skills" / "ccc-protocol" / "skills" / "ccc-product" / "SKILL.md",
+            Path.home()
+            / ".claude"
+            / "skills"
+            / "ccc-protocol"
+            / "skills"
+            / "ccc-product"
+            / "SKILL.md",
         ]
         for p in candidates:
             try:
@@ -523,53 +527,35 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"你是 CCC 产品经理（product 步骤）。根据 skill + 基线生成 SPEC-合规 plan。\n"
             f"禁止写源码；每 phase 必须非空 scope；验收须含意图+可执行命令。\n"
             f"**工作目录硬门**：workspace=`{get_workspace().resolve()}`；"
-            f"plan/phases 的所有路径必须落在该目录下；"
-            f"禁止把 `/Users/apple/program/CCC` 写成项目根"
-            f"（除非本 workspace 就是 CCC）。\n"
-            f"硬门：plan 必须含独立二级标题 `## 验收` 或 `## 验证`"
-            f"（`### 验收` 会被自动升级，但仍推荐直接写 `## 验收`）。\n\n"
+            f"plan/phases 的所有路径必须落在该目录下。\n"
+            f"硬门：plan 必须含独立二级标题 `## 验收` 或 `## 验证`。\n\n"
             f"{skill_block}"
             f"{baseline_block}"
             f"## 项目概况\n{profile[:1500]}\n\n"
-            f"## 当前代码状态（v0.23：自动注入）\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
+            f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
             f"## 任务\n"
             f"- id: {task['id']}\n"
             f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
             f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
-            f"每行一个 JSON object：\n"
-            f'{{"phase": <int>, "status": "pending", "scope": ["改动的文件路径数组"], "subtasks": {{"1.1": "pending", ...}}, "timeout": <秒>, "commit": null, "notes": ""}}\n'
-            f"scope 字段：显式列举本 phase 改动的所有文件路径（路径集，不可用 ['all'] 除非全仓改）。\n"
-            f"可选字段 depends_on（list[int]）：声明 phase 依赖关系。\n"
-            f"合法示例（双 phase）：\n"
-            f'{{"phase": 1, "status": "pending", "scope": ["scripts/foo.py"], "subtasks": {{"1.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n'
-            f'{{"phase": 2, "status": "blocked", "depends_on": [1], "scope": ["scripts/bar.py"], "subtasks": {{"2.1": "pending"}}, "timeout": 1800, "commit": null, "notes": ""}}\n\n'
-            f"## Phase 数上限\n"
-            f" 重要约束：每个 task 的 phase 数**最多 2 个**。\n"
-            f"如果 task 复杂，应将其拆成多个子 task（每个在 backlog 中独立），\n"
-            f"每个子 task 不超过 2 phases。\n\n"
-            f"## Depends_on 硬约束\n"
-            f" - depends_on 只能引用本 plan 内已存在的 phase_id\n"
-            f" - 单 phase 任务的 depends_on 留空数组（不填此字段）\n"
-            f" - 多 phase 任务必须声明正确的依赖关系，引擎据此解析执行顺序\n\n"
+            f"每行一个 JSON object，必须含 description 与非空 scope。\n\n"
+            f"## Phase 数上限：最多 {_get_cfg().max_phases} 个。\n\n"
             f"## 参考历史 plan\n{ref}\n\n"
             f"## 输出要求\n"
-            f"输出以下两部分，用分隔符包裹：\n\n"
             f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
             f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
         )
 
     prompt = _build_prompt(True)
-
-    # v0.31: 注入 lessons 上下文
     try:
         from _lessons import get_recent_lessons
 
         recent = get_recent_lessons(get_workspace())
         if recent:
             lessons_text = "\n".join(
-                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
+                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: "
+                f"{lesson.get('error', '')[:100]}"
                 for lesson in recent[:20]
                 if not lesson.get("fixed")
             )
@@ -578,74 +564,47 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     except ImportError:
         pass
 
-    relay_url = _get_relay_url()
-    env = _claude_env(relay_url=relay_url)
+    from _product_session import (
+        format_work_artifacts,
+        parse_work_artifacts,
+        run_contract_loop_sync,
+    )
 
-    def _run_claude(prompt_text: str) -> str:
-        result = subprocess.run(
-            [_claude_bin(), "-p"],
-            input=prompt_text,
-            capture_output=True,
-            text=True,
-            timeout=cfg.default_timeout,
-            env=env,
+    def _validate(text: str) -> None:
+        parse_work_artifacts(text)
+
+    def _gate(text: str):
+        plan, phases = parse_work_artifacts(text)
+        plan, phases = _gate_product_artifacts(
+            plan, phases, log_prefix="[product-session]"
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"claude CLI exited {result.returncode}: {result.stderr[:500]}"
-            )
-        return result.stdout
-
-    def _parse_output(output: str) -> tuple[str, list]:
-        plan_match = re.search(r"---PLAN---\n(.*?)\n---END_PLAN---", output, re.DOTALL)
-        if not plan_match:
-            raise RuntimeError("---PLAN--- section not found in Claude output")
-        plan_content = plan_match.group(1).strip()
-
-        phases_match = re.search(
-            r"---PHASES---\n(.*?)\n---END_PHASES---", output, re.DOTALL
-        )
-        if not phases_match:
-            raise RuntimeError("---PHASES--- section not found in Claude output")
-
-        phases = []
-        for line in phases_match.group(1).strip().split("\n"):
-            line = line.strip()
-            if line:
-                phases.append(json.loads(line))
-        return plan_content, phases
-
-    def _check_phase_limit(phases: list) -> None:
         max_phases = _get_cfg().max_phases
         if len(phases) > max_phases:
             raise RuntimeError(f"phase 数 {len(phases)} 超过上限 {max_phases}")
+        return format_work_artifacts(plan, phases), (plan, phases)
 
-    try:
-        output = _run_claude(prompt)
-        try:
-            result = _parse_output(output)
-            _check_phase_limit(result[1])
-            # v0.31/v0.42: phase_lint + plan 验收硬门 — 坏产物不许入盘
-            return _gate_product_artifacts(result[0], result[1], log_prefix="[product]")
-        except (json.JSONDecodeError, RuntimeError):
-            _log.warning("[product] phases 解析失败，简化 prompt 重试 1 次")
-            retry_prompt = _build_prompt(include_ref_plans=False)
-            output = _run_claude(retry_prompt)
-            try:
-                result = _parse_output(output)
-                _check_phase_limit(result[1])
-                return _gate_product_artifacts(
-                    result[0], result[1], log_prefix="[product-retry]"
-                )
-            except (json.JSONDecodeError, RuntimeError) as exc:
-                fallback_dir = get_workspace() / ".ccc" / "product_fallback"
-                fallback_dir.mkdir(parents=True, exist_ok=True)
-                fb_plan = _generate_fallback_plan(task)
-                (fallback_dir / f"{task_id}.plan.md").write_text(fb_plan)
-                (fallback_dir / f"{task_id}.failed").write_text(str(exc))
-                raise RuntimeError(f"phases parse failed after retry: {exc}") from exc
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("claude CLI timed out after 300s")
+    result = run_contract_loop_sync(
+        prompt=prompt,
+        workspace=get_workspace(),
+        task_id=task_id,
+        mode="work",
+        model="flash",
+        validate_fn=_validate,
+        gate_fn=_gate,
+    )
+    if not result.get("ok"):
+        fallback_dir = get_workspace() / ".ccc" / "product_fallback"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        (fallback_dir / f"{task_id}.last.out").write_text(
+            result.get("output") or "", encoding="utf-8"
+        )
+        (fallback_dir / f"{task_id}.failed").write_text(
+            (result.get("error") or "session failed") + "\n", encoding="utf-8"
+        )
+        raise RuntimeError(result.get("error") or "product session failed")
+    plan, phases = parse_work_artifacts(result["output"])
+    return plan, phases
+
 
 
 def _generate_fallback_plan(task: dict) -> str:
@@ -761,23 +720,31 @@ def product_role(task_id: str = "") -> dict:
                     ref_plans="",
                     max_phases=_get_cfg().max_phases,
                 )
-                relay_url = _get_relay_url()
-                env = _claude_env(relay_url=relay_url)
-                result = subprocess.run(
-                    [_claude_bin(), "-p"],
-                    input=prompt,
-                    capture_output=True,
-                    text=True,
-                    timeout=cfg.default_timeout,
-                    env=env,
+                from _product_session import run_contract_loop_sync
+
+                def _validate_epic(text: str) -> None:
+                    parse_fanout_output(text)
+
+                def _gate_epic(text: str):
+                    brief, children = parse_fanout_output(text)
+                    return text, (brief, children)
+
+                sess = run_contract_loop_sync(
+                    prompt=prompt,
+                    workspace=get_workspace(),
+                    task_id=task_id,
+                    mode="epic",
+                    model="flash",
+                    validate_fn=_validate_epic,
+                    gate_fn=_gate_epic,
                 )
-                if result.returncode != 0:
+                if not sess.get("ok"):
                     return {
                         "role": "product",
-                        "error": f"claude rc={result.returncode}: {(result.stderr or '')[:300]}",
+                        "error": sess.get("error") or "epic session failed",
                         "task_id": task_id,
                     }
-                brief, children = parse_fanout_output(result.stdout or "")
+                brief, children = parse_fanout_output(sess.get("output") or "")
                 fr = apply_fanout(
                     store,
                     task,
@@ -873,10 +840,10 @@ def product_role(task_id: str = "") -> dict:
 
 
 def launch_product_async(task_id: str) -> dict:
-    """异步启动 product_role 子进程。
+    """异步启动 product Sessionful Contract Loop。
 
-    写 prompt 文件后 Popen claude -p，不在引擎 tick 内阻塞。
-    后续由 check_product_async() 在另一 tick 检查结果。
+    写 prompt 后 Popen ccc-product-session.py（非 claude -p），
+    不在引擎 tick 内阻塞。后续由 check_product_async() 检查结果。
 
     Returns: {"ok": True, "pid": int} 或 {"error": str}
     """
@@ -972,27 +939,54 @@ def launch_product_async(task_id: str) -> dict:
         except OSError:
             pass
 
-    # 5. Popen claude -p（异步）
+    # 5. Popen product session runner（Sessionful Contract Loop，非 claude -p）
     result_file = pids_dir / f"{task_id}.product.out"
     err_file = pids_dir / f"{task_id}.product.err"
     relay_url = _get_relay_url()
     env = _claude_env(relay_url=relay_url)
 
+    runner = CCC_HOME / "scripts" / "ccc-product-session.py"
+    hub_py = CCC_HOME / ".venv-hub" / "bin" / "python"
+    py = str(hub_py) if hub_py.is_file() else sys.executable
+    mode = "epic" if task.get("card_kind") != "work" else "work"
+    cmd = [
+        py,
+        str(runner),
+        "--workspace",
+        str(get_workspace()),
+        "--task-id",
+        task_id,
+        "--prompt-file",
+        str(prompt_file),
+        "--mode",
+        mode,
+        "--model",
+        "flash",
+        "--out-file",
+        str(result_file),
+        "--err-file",
+        str(err_file),
+    ]
+
     try:
-        with open(result_file, "w") as out_f, open(err_file, "w") as err_f, open(
-            prompt_file, "r"
-        ) as in_f:
-            proc = subprocess.Popen(
-                [_claude_bin(), "-p"],
-                stdin=in_f,
-                stdout=out_f,
-                stderr=err_f,
-                start_new_session=True,
-                env=env,
-            )
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=env,
+            cwd=str(get_workspace()),
+        )
         pids_dir.joinpath(f"{task_id}.product.pid").write_text(str(proc.pid))
-        _log.info("[product-async] %s launched PID=%d", task_id, proc.pid)
-        return {"ok": True, "pid": proc.pid}
+        _log.info(
+            "[product-async] %s session-loop launched PID=%d py=%s mode=%s",
+            task_id,
+            proc.pid,
+            py,
+            mode,
+        )
+        return {"ok": True, "pid": proc.pid, "runner": "product-session"}
     except ClaudeCliMissing as exc:
         _log.error("[product-async] %s claude missing: %s", task_id, exc)
         return {"error": str(exc)}
@@ -1722,6 +1716,22 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
     output = result_file.read_text() if result_file.exists() else ""
     if not output.strip():
         return {"status": "failed", "reason": "empty reviewer output"}
+
+    try:
+        from _cost_telemetry import estimate_tokens, record_call
+
+        record_call(
+            role="reviewer",
+            provider_or_model="claude",
+            prompt_tokens=0,
+            completion_tokens=estimate_tokens(output),
+            latency_ms=0,
+            ok=True,
+            task_id=task_id,
+            phase_id="reviewer",
+        )
+    except Exception:
+        pass
 
     # 解析 verdict
     verdict_data = _parse_reviewer_output(task_id, output)
@@ -4864,6 +4874,9 @@ def _find_task_commit_hash(task_id: str) -> str:
 def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
     """过 testing 前必须有含 task_id 的新 commit，且无跨仓污染。
 
+    DoD 内生化：若工作区有改动但缺 task_id commit，先自动补 commit，
+    再验收——禁止 exit 0 后才突然 quarantine。
+
     Returns: (ok, reason, commit_hash)
     """
     if (os.environ.get("CCC_SKIP_COMMIT_GATE") or "").strip() in ("1", "true", "yes"):
@@ -4876,14 +4889,6 @@ def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
         if not ok_iso:
             return False, "; ".join(iso_errs), ""
 
-    commit = _find_task_commit_hash(task_id)
-    if not commit:
-        return (
-            False,
-            "no git commit whose message contains task_id "
-            f"(refuse HEAD fallback; task={task_id})",
-            "",
-        )
     pre_path = _task_pre_head_path(task_id)
     pre = ""
     if pre_path.is_file():
@@ -4891,6 +4896,26 @@ def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
             pre = pre_path.read_text(encoding="utf-8").strip()
         except OSError:
             pre = ""
+
+    commit = _find_task_commit_hash(task_id)
+    if not commit or (pre and commit == pre):
+        from _task_commit import ensure_task_commit
+
+        cur_phase = None
+        try:
+            cur_phase = _current_running_phase(task_id)
+        except Exception:
+            cur_phase = None
+        ok_auto, why_auto, commit = ensure_task_commit(
+            get_workspace(),
+            task_id,
+            phase_num=cur_phase if isinstance(cur_phase, int) else None,
+            pre_head=pre,
+        )
+        if not ok_auto:
+            return False, why_auto, commit or ""
+        _log.info("[commit-gate] %s DoD auto-commit: %s (%s)", task_id, why_auto, commit[:12])
+
     if pre and commit == pre:
         return (
             False,

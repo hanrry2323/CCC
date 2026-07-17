@@ -309,6 +309,21 @@ async def native_failures(
     }
 
 
+@router.get("/api/task-cost/{task_id}")
+async def native_task_cost(request: Request, task_id: str):
+    """按 task_id 汇总真实 LLM 调用（cost-telemetry.jsonl）。"""
+    check_auth(request)
+    import sys
+
+    root = Path(__file__).resolve().parents[3]
+    scripts = root / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _cost_telemetry import summarize_task_calls
+
+    return summarize_task_calls(task_id)
+
+
 @router.get("/api/tasks/{task_id}")
 async def native_get_task(request: Request, task_id: str, workspace: str = "CCC"):
     check_auth(request)
