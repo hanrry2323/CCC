@@ -174,7 +174,8 @@ class ClaudeSessionManager:
             "cwd": project_path,
             "model": model,
             "allowed_tools": allowed,
-            "permission_mode": "acceptEdits",
+            # Hub 无 TTY：勿用 acceptEdits（Bash 等仍可能卡住等人点许可）
+            "permission_mode": "bypassPermissions",
             "cli_path": claude_bin,
             "env": {
                 **config.CLAUDE_ENV,
@@ -356,6 +357,9 @@ class ClaudeSessionManager:
 
         async with slot.lock:
             slot.last_used = time.monotonic()
+            # 立刻心跳：connect 可能要数秒，避免前端一直空白
+            yield {"type": "ping", "ts": int(time.time())}
+
             try:
                 await self._ensure_connected(
                     slot,
@@ -381,33 +385,27 @@ class ClaudeSessionManager:
             saw_assistant_text = False
             timed_out = False
             turn_error = False
+            reader_task: asyncio.Task | None = None
 
-            await slot.client.query(prompt)
+            # 关键：不可对 receive_response().__anext__ 使用 wait_for——
+            # 超时会 cancel 底层迭代，导致整轮无 delta、只剩空 done。
+            msg_queue: asyncio.Queue = asyncio.Queue()
 
-            async def _consume() -> AsyncIterator[dict[str, Any]]:
-                nonlocal last_activity, saw_assistant_text, turn_error
-                async for message in slot.client.receive_response():
-                    last_activity = time.monotonic()
-                    sid = self._extract_session_id(message)
-                    if sid:
-                        slot.claude_session_id = sid
-                    for event in self._map_message(message):
-                        if event.get("type") == "_result_text":
-                            if not saw_assistant_text and event.get("content"):
-                                saw_assistant_text = True
-                                yield {
-                                    "type": "delta",
-                                    "content": event["content"],
-                                }
-                            continue
-                        if event.get("type") == "delta":
-                            saw_assistant_text = True
-                        if event.get("type") == "error":
-                            turn_error = True
-                        yield event
+            async def _reader() -> None:
+                try:
+                    async for message in slot.client.receive_response():
+                        await msg_queue.put(("msg", message))
+                except Exception as exc:
+                    await msg_queue.put(("err", exc))
+                finally:
+                    await msg_queue.put(("end", None))
 
-            consumer = _consume()
             try:
+                await slot.client.query(prompt)
+                reader_task = asyncio.create_task(
+                    _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
+                )
+
                 while True:
                     if request_disconnected and request_disconnected():
                         try:
@@ -445,12 +443,10 @@ class ClaudeSessionManager:
                         break
 
                     try:
-                        event = await asyncio.wait_for(
-                            consumer.__anext__(),
+                        kind, payload = await asyncio.wait_for(
+                            msg_queue.get(),
                             timeout=min(max(idle_left, 0.1), 5.0),
                         )
-                    except StopAsyncIteration:
-                        break
                     except asyncio.TimeoutError:
                         now = time.monotonic()
                         if now - last_ping >= 15:
@@ -458,7 +454,31 @@ class ClaudeSessionManager:
                             last_ping = now
                         continue
 
-                    yield event
+                    if kind == "end":
+                        break
+                    if kind == "err":
+                        turn_error = True
+                        raise payload
+
+                    message = payload
+                    last_activity = time.monotonic()
+                    sid = self._extract_session_id(message)
+                    if sid:
+                        slot.claude_session_id = sid
+                    for event in self._map_message(message):
+                        if event.get("type") == "_result_text":
+                            if not saw_assistant_text and event.get("content"):
+                                saw_assistant_text = True
+                                yield {
+                                    "type": "delta",
+                                    "content": event["content"],
+                                }
+                            continue
+                        if event.get("type") == "delta":
+                            saw_assistant_text = True
+                        if event.get("type") == "error":
+                            turn_error = True
+                        yield event
             except Exception as exc:
                 turn_error = True
                 _log.exception("stream_turn failed session=%s", hub_session_id)
@@ -469,8 +489,14 @@ class ClaudeSessionManager:
                     "content": f"Claude 会话异常: {exc}",
                 }
             finally:
-                # Drain leftover after interrupt to keep client usable
-                if timed_out:
+                if reader_task is not None and not reader_task.done():
+                    reader_task.cancel()
+                    try:
+                        await reader_task
+                    except asyncio.CancelledError:
+                        pass
+                if timed_out and slot.connected and slot.client is not None:
+                    # interrupt 后尽量排空，保持 client 可复用
                     try:
                         async for _ in slot.client.receive_response():
                             pass
