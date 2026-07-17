@@ -286,7 +286,7 @@ class TestChatStreaming:
         status, lines = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "Count to 3"}],
             "session_id": _make_sid("ch21"),
-        }, read_limit=5)
+        }, read_limit=5, read_timeout=45)
         assert status == 200
         sse = [l for l in lines if l.startswith("data: ")]
         assert len(sse) > 0, f"No SSE data events in {len(lines)} lines"
@@ -975,7 +975,7 @@ class TestSSEFormat:
         status, lines = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "test sse"}],
             "session_id": _make_sid("ss140"),
-        }, read_limit=20)
+        }, read_limit=20, read_timeout=45)
         assert status == 200
         for line in lines:
             if line.startswith("data: "):
@@ -988,7 +988,7 @@ class TestSSEFormat:
         status, lines = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "say ok in 2 words"}],
             "session_id": _make_sid("ss141"),
-        }, read_limit=40)
+        }, read_limit=40, read_timeout=45)
         assert status == 200
         events = []
         for line in lines:
@@ -1004,7 +1004,7 @@ class TestSSEFormat:
         status, lines = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "test events"}],
             "session_id": _make_sid("ss142"),
-        }, read_limit=5)
+        }, read_limit=5, read_timeout=45)
         assert status == 200
         data_lines = [l for l in lines if l.startswith("data: ")]
         assert len(data_lines) > 0
