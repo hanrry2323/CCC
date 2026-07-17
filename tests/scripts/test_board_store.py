@@ -90,17 +90,18 @@ class TestLocking:
 
 class TestFileBoardStoreCRUD:
     def test_create_and_list_fifo(self, store: FileBoardStore):
+        # 非 backlog 列：FIFO by created_at（升序）
         ok = store.create_task(
             _valid_task("aaa") | {"created_at": "2026-01-01T00:00:00+08:00"},
-            column="backlog",
+            column="in_progress",
         )
         assert ok is True
         ok2 = store.create_task(
             _valid_task("bbb") | {"created_at": "2026-01-01T00:00:01+08:00"},
-            column="backlog",
+            column="in_progress",
         )
         assert ok2 is True
-        tasks = store.list_tasks("backlog")
+        tasks = store.list_tasks("in_progress")
         assert [t["id"] for t in tasks] == ["aaa", "bbb"]
 
     def test_move_atomic_dst_then_unlink_src(self, store: FileBoardStore, tmp_path):
