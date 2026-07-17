@@ -122,6 +122,19 @@ def _stream_post(path: str, data: dict, read_limit: int = 5, read_timeout: int =
         return e.code, [e.read().decode()]
 
 
+def _kill_port(port: int):
+    """Kill any process listening on the given TCP port (force)."""
+    try:
+        import subprocess as _sp
+        _sp.run(
+            f"lsof -ti:{port} -sTCP:LISTEN 2>/dev/null | xargs -r kill -9 2>/dev/null",
+            shell=True, capture_output=True,
+        )
+        time.sleep(0.3)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Fixture
 # ---------------------------------------------------------------------------
@@ -129,6 +142,9 @@ def _stream_post(path: str, data: dict, read_limit: int = 5, read_timeout: int =
 
 @pytest.fixture(scope="module", autouse=True)
 def chat_server(tmp_path_factory):
+    # 清理端口残留：确保前序测试的 server 已释放
+    _kill_port(18084)
+
     chat_tmp = tmp_path_factory.mktemp("ccc-chat-test")
     env = {
         **os.environ,
@@ -146,8 +162,8 @@ def chat_server(tmp_path_factory):
         cwd=PROJECT_ROOT,
         env=env,
     )
-    # 冷启动含 import uvicorn/fastapi 可能 >15s
-    for _ in range(60):
+    # 冷启动含 import uvicorn/fastapi + claude CLI 路径检测可能 >35s
+    for _ in range(120):
         try:
             r = urllib.request.urlopen(f"{BASE_URL}/", timeout=2)
             if r.status == 200:
@@ -156,13 +172,14 @@ def chat_server(tmp_path_factory):
             time.sleep(0.5)
     else:
         proc.kill()
-        pytest.fail("chat-server did not start in 30s")
+        pytest.fail("chat-server did not start in 60s")
     yield chat_tmp
     proc.terminate()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
+    _kill_port(18084)
 
 
 # ===========================================================================
@@ -515,14 +532,27 @@ class TestSessionPersistence:
         }, read_limit=0)
         assert status == 200
         time.sleep(0.5)
-        # 调试：列出 chat_server 下所有文件
-        import sys
-        for p in sorted(chat_server.rglob("*")):
-            if p.is_file():
-                print(f"  [debug] chat_tmp/{p.relative_to(chat_server)}", file=sys.stderr)
         sfile = chat_server / "ccc" / f"{sid}.json"
-        assert sfile.exists(), f"Not on disk: {sfile}"
-        data = json.loads(sfile.read_text())
+        # 使用 API 验证会话已建立（非文件系统）
+        import urllib.request as _urllib, json as _json
+        _req = _urllib.request.Request(
+            f"{BASE_URL}/api/history/{sid}",
+            headers={"Authorization": AUTH_HEADER},
+        )
+        try:
+            with _urllib.request.urlopen(_req, timeout=5) as _resp:
+                _data = _json.loads(_resp.read().decode())
+                assert _data["session_id"] == sid, f"API session_id mismatch"
+        except _urllib.error.HTTPError as _e:
+            if _e.code == 404:
+                pass  # API 没有也正常（文件保存后才可通过 API 查到）
+            else:
+                raise
+        assert sfile.exists(), (
+            f"Not on disk: {sfile}\n"
+            f"API reports: {_data if '_data' in dir() else 'not found'}"
+        )
+        data = _json.loads(sfile.read_text())
         assert data["session_id"] == sid
         sfile.unlink(missing_ok=True)
 

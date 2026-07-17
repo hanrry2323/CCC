@@ -92,8 +92,9 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 |------|------|
 | `scripts/ccc-board-server.py` `discover_workspaces` | Hub/Board 项目发现 |
 | `scripts/chat_server/routers/projects.py` | Hub 项目 API |
-| `scripts/chat_server/services/claude_client.py` | 注入 CLAUDE.md + cwd |
-| `scripts/chat_server/routers/chat.py` | 首轮注入 / 续聊跳过 |
+| `scripts/chat_server/services/claude_client.py` | 注入 CLAUDE.md + cwd；委托持续会话 |
+| `scripts/chat_server/services/claude_session.py` | `ClaudeSDKClient` 持续会话（非每轮 `claude -p`） |
+| `scripts/chat_server/routers/chat.py` | 首轮注入 / 续聊跳过；持久化 `claude_session_id` |
 | `scripts/_workspace_registry.py` | Engine 登记 |
 | `scripts/ccc-init.py` | 新项目一键初始化 |
 

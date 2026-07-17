@@ -6,7 +6,7 @@
   <string>com.ccc.chat-server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/python3</string>
+    <string>/Users/apple/program/CCC/.venv-hub/bin/python</string>
     <string>/Users/apple/program/CCC/scripts/ccc-chat-server.py</string>
     <string>--no-open</string>
   </array>

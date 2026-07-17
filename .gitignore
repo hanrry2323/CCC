@@ -4,6 +4,8 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+# Hub chat venv (claude-agent-sdk)
+.venv-hub/
 .claude/
 .ccc/abnormal-reports/
 .ccc/dockets/

@@ -129,14 +129,24 @@ async def chat(request: Request):
     if attachment_notes:
         prompt = (prompt + "\n\n" if prompt else "") + attachment_notes
 
+    # Resume sources: explicit claude:… id, or Hub-stored binding
     resume_id = parse_claude_session_id(session_id)
-    # 续聊 Claude 会话时不再注入整份项目上下文（避免污染已有 transcript）
-    if not resume_id:
+    existing = None if resume_id else store.get_session(session_id, project)
+    if not resume_id and existing:
+        stored = str(existing.get("claude_session_id") or "").strip()
+        if stored:
+            resume_id = stored
+
+    # 续聊（已有 Claude session）不再注入整份项目上下文
+    is_hub_owned = not session_id.startswith("claude:")
+    if is_hub_owned:
         store.save_session(
             session_id, messages,
             project=project, mode="chat",
             execution_results=[], status="pending",
+            claude_session_id=resume_id,
         )
+    if not resume_id:
         context = _get_project_context(project, PROJECTS)
         if context:
             prompt = f"## 项目上下文\n{context}\n\n---\n\n## 用户问题\n{prompt}"
@@ -146,6 +156,7 @@ async def chat(request: Request):
         execution_results: list = []
         total_cost_usd = None
         stream_completed = False
+        claude_session_id = resume_id or ""
 
         try:
             async for event in stream_chat(
@@ -157,6 +168,7 @@ async def chat(request: Request):
                 resume_session_id=resume_id,
                 idle_timeout=idle_s,
                 max_timeout=max_s,
+                hub_session_id=session_id,
             ):
                 evt_type = event.get("type")
 
@@ -193,14 +205,23 @@ async def chat(request: Request):
                     yield f"data: {json.dumps(event)}\n\n"
 
                 elif evt_type == "done":
-                    stream_completed = True
-                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+                    stream_completed = not event.get("partial")
+                    claude_session_id = (
+                        str(event.get("claude_session_id") or "").strip()
+                        or claude_session_id
+                    )
+                    done_payload = {
+                        "type": "done",
+                        "session_id": session_id,
+                        "claude_session_id": claude_session_id,
+                    }
+                    yield f"data: {json.dumps(done_payload)}\n\n"
 
         except (GeneratorExit, asyncio.CancelledError):
             raise
         finally:
-            # Hub 自建会话才写本地 JSON；Claude 续聊以 ~/.claude transcript 为准
-            if not resume_id:
+            # Hub 自建会话写本地 JSON；Claude 侧栏续聊以 ~/.claude transcript 为准
+            if is_hub_owned:
                 chat_messages = [m for m in messages if m.get("role") != "system"]
                 for m in chat_messages:
                     m.setdefault("mode", "chat")
@@ -218,6 +239,7 @@ async def chat(request: Request):
                     execution_results=execution_results,
                     total_cost_usd=total_cost_usd,
                     status="completed" if stream_completed else "partial",
+                    claude_session_id=claude_session_id or None,
                 )
 
     return StreamingResponse(

@@ -28,6 +28,7 @@ def save_session(
     execution_results: list | None = None,
     total_cost_usd: float | None = None,
     status: str | None = None,
+    claude_session_id: str | None = None,
 ):
     path = _session_path(session_id, project)
     title_src = ""
@@ -45,6 +46,7 @@ def save_session(
     }
     if status:
         data["status"] = status
+    existing: dict = {}
     if path.exists():
         try:
             existing = json.loads(path.read_text())
@@ -59,6 +61,12 @@ def save_session(
         data["execution_results"] = execution_results
     if total_cost_usd is not None:
         data["total_cost_usd"] = total_cost_usd
+    # Persist Claude Code session binding for continuous / cold resume
+    bound = (claude_session_id or "").strip() or str(
+        existing.get("claude_session_id") or ""
+    ).strip()
+    if bound:
+        data["claude_session_id"] = bound
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 

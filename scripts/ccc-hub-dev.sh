@@ -18,6 +18,17 @@ set -euo pipefail
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$CCC_HOME"
 
+# Hub 需 claude-agent-sdk（持续会话）；优先 .venv-hub
+HUB_PYTHON="${CCC_HUB_PYTHON:-}"
+if [[ -z "$HUB_PYTHON" ]]; then
+  if [[ -x "$CCC_HOME/.venv-hub/bin/python" ]]; then
+    HUB_PYTHON="$CCC_HOME/.venv-hub/bin/python"
+  else
+    HUB_PYTHON="$(command -v python3)"
+    echo "WARN: missing .venv-hub — run: python3 -m venv .venv-hub && .venv-hub/bin/pip install -r requirements-hub.txt"
+  fi
+fi
+
 BOARD_PORT="${BOARD_PORT:-7775}"
 HUB_PORT="${CCC_CHAT_PORT:-7777}"
 LOG_DIR="${HOME}/.ccc/logs"
@@ -91,5 +102,6 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 0.3
 done
 
-# Hub 前台（阻塞）
-exec python3 scripts/ccc-chat-server.py --host "$CCC_CHAT_HOST" --port "$HUB_PORT" --no-open
+# Hub 前台（阻塞）— 用 .venv-hub 以加载 Claude Agent SDK
+echo "  Hub Python $HUB_PYTHON"
+exec "$HUB_PYTHON" scripts/ccc-chat-server.py --host "$CCC_CHAT_HOST" --port "$HUB_PORT" --no-open

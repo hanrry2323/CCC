@@ -10,6 +10,14 @@ source "${CCC_HOME}/scripts/_ccc_launchd.sh"
 DO_START=false
 [[ "${1:-}" == "--start" ]] && DO_START=true
 
+HUB_PY="${CCC_HOME}/.venv-hub/bin/python"
+if [[ ! -x "$HUB_PY" ]]; then
+  echo "Hub 需要 .venv-hub（claude-agent-sdk 持续会话）:"
+  echo "  python3 -m venv ${CCC_HOME}/.venv-hub"
+  echo "  ${CCC_HOME}/.venv-hub/bin/pip install -r ${CCC_HOME}/requirements-hub.txt"
+  exit 1
+fi
+
 PLIST_STAGED="${CCC_PLIST_STAGED}/com.ccc.chat-server.plist"
 SRC="${CCC_HOME}/scripts/com.ccc.chat-server.plist"
 
