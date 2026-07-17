@@ -377,6 +377,26 @@ Cockpit 功能设计参考了以下开源项目：
 
 ---
 
+## 远期：跨 IDE 投递 + 远程集群 L1/L2（**非紧要 · 规划入库**）
+
+> 写入日期：2026-07-17。  
+> **当前紧要**仍是 Hub + 本机 Engine 多跑真任务（见 `docs/NEXT-DUAL-TRACK.md` §8.0）。
+
+### 架构前提（已验证）
+
+任意上游（Hub / Cursor / 脚本）只写 `backlog` → Engine 编排 → Executor。Hub 对话 ≠ Engine。
+
+### 远程两层
+
+| 层 | 定义 | 难度 |
+|----|------|------|
+| **L1 任务落点跨机** | 看板在哪台，流水线在哪台（SSH 写远程 backlog） | 低 |
+| **L2 执行器跨机** | 看板在 M1，Claude/OpenCode 跑 mac2017 | 高（RemoteExecutor） |
+
+**MiniMax**：自动化高峰期作**兜底**而非全局 P0（配额约 1–2h 抽干）。免费池需分流 + task sticky。
+
+---
+
 ## 历史存档
 
 ### v0.5 – v0.15 演进轨迹

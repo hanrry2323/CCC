@@ -44,9 +44,7 @@ from _utils import sanitize_prompt_input as _sanitize_prompt_input
 from board.context import (
     get_workspace,
     set_workspace,
-    clear_workspace,
     board_dir,
-    events_dir,
     ccc_home,
 )
 from board.lock import (
@@ -55,7 +53,6 @@ from board.lock import (
 )
 from board.prompt import (
     build_dev_phase_prompt,
-    build_dev_phase_prompt_with_hint,
 )
 from board import store_ops as _store_ops
 
@@ -296,21 +293,13 @@ def _load_retry_cap(
 
 # v0.24 phase 逻辑 → board.phase（Phase 2 拆包）
 from board.phase import (  # noqa: E402
-    PHASE_TERMINAL_OK,
-    PHASE_TERMINAL_FAIL,
-    PHASE_MAX_ENGINE_ITER,
     _load_phases,
-    _detect_phase_cycle,
     _resolve_phase_dependencies,
     _apply_phase_status_updates,
     _current_running_phase,
     _mark_phase_done,
     _mark_phase_failed,
     _check_phase_failures,
-    _read_engine_iter_meta,
-    _write_engine_iter_meta,
-    _read_engine_iter,
-    _write_engine_iter,
     _move_task_to_abnormal_if_all_terminal_failed,
 )
 
@@ -532,7 +521,13 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             pass
         return (
             f"你是 CCC 产品经理（product 步骤）。根据 skill + 基线生成 SPEC-合规 plan。\n"
-            f"禁止写源码；每 phase 必须非空 scope；验收须含意图+可执行命令。\n\n"
+            f"禁止写源码；每 phase 必须非空 scope；验收须含意图+可执行命令。\n"
+            f"**工作目录硬门**：workspace=`{get_workspace().resolve()}`；"
+            f"plan/phases 的所有路径必须落在该目录下；"
+            f"禁止把 `/Users/apple/program/CCC` 写成项目根"
+            f"（除非本 workspace 就是 CCC）。\n"
+            f"硬门：plan 必须含独立二级标题 `## 验收` 或 `## 验证`"
+            f"（`### 验收` 会被自动升级，但仍推荐直接写 `## 验收`）。\n\n"
             f"{skill_block}"
             f"{baseline_block}"
             f"## 项目概况\n{profile[:1500]}\n\n"
@@ -712,6 +707,8 @@ def _gate_product_artifacts(
     _cycle_valid, _cycle_errors = phase_lint.validate_no_cycle_dependencies(phases)
     if not _cycle_valid:
         raise RuntimeError(f"phase_lint cycle: {'; '.join(_cycle_errors)}")
+    # 先规范化 ### 验收 → ## 验收，再 lint；写入磁盘用规范化后正文
+    plan_content = phase_lint.normalize_plan_acceptance_headers(plan_content)
     _plan_ok, _plan_errs = phase_lint.validate_plan_acceptance(plan_content)
     if not _plan_ok:
         raise RuntimeError(f"plan_lint failed: {'; '.join(_plan_errs)}")
@@ -2337,8 +2334,15 @@ def dev_role() -> dict:
             f"- 每个 commit 控制在 50 行内（避免 reviewer LLM timeout）\n"
             f"- 白名单路径一次只动 1-2 个\n"
         )
+    _ws = str(get_workspace().resolve())
     prompt = (
         f"# CCC 执行任务: {task_id}\n\n"
+        f"## 工作目录硬门（违者本卡 FAIL）\n"
+        f"- **唯一 cwd**：`{_ws}`\n"
+        f"- 所有 Read/Write/Edit/Bash/git 必须在该目录内；相对路径相对该 cwd\n"
+        f"- **禁止**写到 `/Users/apple/program/CCC` 或其他仓库"
+        f"（除非本 workspace 路径就是该仓库）\n"
+        f"- plan 若误写其他绝对路径，以本 cwd 为准，忽略错误根路径\n\n"
         f"## 当前 Phase（强制）\n"
         f"- **只做 Phase {_cur}**，不得实现其他 phase 的需求\n"
         f"- 不得修改不属于本 phase 白名单的文件\n"
@@ -3374,7 +3378,7 @@ def ops_role() -> dict:
             _ts_str = t.get("updated_at", t.get("created_at", ""))
             if _ts_str:
                 try:
-                    from datetime import datetime as _dt2, timezone as _tz2
+                    from datetime import datetime as _dt2
                     _ts = _dt2.fromisoformat(_ts_str.replace("Z", "+00:00"))
                     if (now - _ts).total_seconds() > 86400:
                         _note = t.get("note", "")

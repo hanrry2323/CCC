@@ -124,11 +124,25 @@ B 改造中 ──► Hub/看板截图 → docs/assets/intro/
 
 ## 8. 下一步动作清单
 
+### 8.0 当前优先级（2026-07-17 拍板）
+
+**紧要：用现有 Hub + Engine 流程多跑真任务**，沉淀稳定规则、门禁数据与失败经验。  
+不扩任意 IDE 适配、不做远程集群实现——那些进 §10 / `docs/roadmap.md` 远期规划。
+
+| 做 | 不做（此刻） |
+|----|----------------|
+| Hub 定稿 → 待办 → 全流程闭环 | 为 ZCode/Qoder 等单独立适配层 |
+| 压力批 / 业务卡积累样本 | 远程 L2 执行器路由编码 |
+| 修门禁与鉴权后复验 | 分散精力做「看起来很分布式」 |
+
+### 8.1 清单
+
 - [x] 本文写入已拍板（D1-A / D2-B / clawmed-ccc / 并行）  
 - [x] 执行 qx / clawmed-ai 归档移动  
 - [x] 创建 `~/program/clawmed-ccc` 骨架并登记 workspace  
-- [ ] Hub 下达 **A1**（xianyu 质量门）、**B1**（迁入最小爬虫；B0 已完成）  
-- [ ] **流程诊断**：批1=OBS1+OBS2（已下达 in_progress）→ 你通知验收 → 批2再下 3 卡；凑 ≥6 样本再修（见 §9）  
+- [ ] Hub / 协作方持续投递 **cla + xianyu** 真任务，跑稳规则与数据（见 §8.0）  
+- [ ] **流程复验**：批2 HARD_FAIL 后已 seed 重开；继续每小时巡检至完成  
+- [ ] 样本够后只改 **门禁/鉴权/稳定性**，不大开新面  
 
 ---
 
@@ -173,3 +187,15 @@ B 改造中 ──► Hub/看板截图 → docs/assets/intro/
 **更正（鉴权）**：OBS3–5 的 `Not logged in · Please run /login` **不是**要跑 interactive `/login`。  
 根因：`_sanitized_env()` 按 `TOKEN` 误剥 launchd 继承的 `ANTHROPIC_AUTH_TOKEN`（中转站鉴权）。  
 已修：LLM allowlist 保留 `ANTHROPIC_*`；product/reviewer 走 `_claude_env()`。
+
+---
+
+## 10. 远期规划（非紧要 · 可行性已证）
+
+> 详情见 `docs/roadmap.md` → **「远期：跨 IDE 投递 + 远程集群 L1/L2」**。
+
+| 层 | 含义 | 可行性 | 何时做 |
+|----|------|--------|--------|
+| **协议 / 任意 IDE** | Hub 与 Engine 分离；合法 JSONL 进 `backlog` 即可 | **已基本达成** | 补投递 Skill；非现优先 |
+| **远程 L1** | SSH 写远程看板 → 该机 Engine 跑 | **易** | Engine 本机稳定后 |
+| **远程 L2** | M1 看板调度 mac2017 的 Claude/OpenCode | **难一档** | v2.0；抽象口子已在 |

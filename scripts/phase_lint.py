@@ -349,11 +349,39 @@ def validate_scope(phases: List[dict]) -> Tuple[bool, List[str], List[str]]:
     return (len(errors) == 0), errors, warnings
 
 
+def normalize_plan_acceptance_headers(plan_text: str) -> str:
+    """若缺 ``## 验收/## 验证`` 但有 ``### 验收/### 验证``，升级为 H2。
+
+    模型常跟模板里的「改动 N → ### 验收」写成三级标题，导致 plan_lint 误杀。
+    """
+    text = plan_text or ""
+    lines = text.splitlines()
+    has_h2 = any(
+        ln.strip().startswith("## 验收") or ln.strip().startswith("## 验证")
+        for ln in lines
+    )
+    if has_h2:
+        return text
+    out: List[str] = []
+    upgraded = False
+    for ln in lines:
+        s = ln.strip()
+        if not upgraded and (s.startswith("### 验收") or s.startswith("### 验证")):
+            # 保留原行其余文案（如「### 验收清单」→「## 验收清单」）
+            out.append("## " + s[4:])
+            upgraded = True
+        else:
+            out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
 def validate_plan_acceptance(plan_text: str) -> Tuple[bool, List[str]]:
     """v0.42: plan 必须含 ## 验收/## 验证，且 ≥1 条可执行意图/命令。"""
     errors: List[str] = []
     if not (plan_text or "").strip():
         return False, ["plan is empty"]
+
+    plan_text = normalize_plan_acceptance_headers(plan_text)
 
     has_section = False
     items: List[str] = []
