@@ -90,9 +90,15 @@ class TestLocking:
 
 class TestFileBoardStoreCRUD:
     def test_create_and_list_fifo(self, store: FileBoardStore):
-        ok = store.create_task(_valid_task("aaa"), column="backlog")
+        ok = store.create_task(
+            _valid_task("aaa") | {"created_at": "2026-01-01T00:00:00+08:00"},
+            column="backlog",
+        )
         assert ok is True
-        ok2 = store.create_task(_valid_task("bbb"), column="backlog")
+        ok2 = store.create_task(
+            _valid_task("bbb") | {"created_at": "2026-01-01T00:00:01+08:00"},
+            column="backlog",
+        )
         assert ok2 is True
         tasks = store.list_tasks("backlog")
         assert [t["id"] for t in tasks] == ["aaa", "bbb"]
