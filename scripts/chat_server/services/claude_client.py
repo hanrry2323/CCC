@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 
 from .. import config
@@ -39,20 +40,56 @@ def resolve_model(model: str | None) -> str:
     return m if m in ALLOWED_MODELS else "flash"
 
 
+def resolve_chat_timeouts(
+    requested: int | None = None,
+    *,
+    idle_default: int | None = None,
+    max_default: int | None = None,
+) -> tuple[int, int]:
+    """返回 (idle_timeout_s, max_timeout_s)。
+
+    - idle：距上次 stdout 活动的静默上限（有输出则重置）
+    - max：整轮墙钟硬上限
+    requested：客户端传入的 timeout，当作 idle 意图并夹紧。
+    """
+    idle = int(idle_default if idle_default is not None else config.CHAT_IDLE_TIMEOUT)
+    hard = int(max_default if max_default is not None else config.CHAT_MAX_TIMEOUT)
+    if requested is not None:
+        try:
+            req = int(requested)
+        except (TypeError, ValueError):
+            req = idle
+        # 客户端旧默认 180：抬到至少服务端 idle 默认，避免前端硬编码拖后腿
+        if req <= 180:
+            req = idle
+        idle = req
+    idle = max(60, min(idle, 3600))
+    hard = max(idle, min(hard, 7200))
+    return idle, hard
+
+
 async def stream_chat(
     prompt: str,
     project_path: str,
     request_disconnected,
-    timeout: int = 180,
+    timeout: int | None = None,
     model: str = "flash",
     resume_session_id: str | None = None,
+    idle_timeout: int | None = None,
+    max_timeout: int | None = None,
 ):
-    """Generator that yields SSE event dicts from Claude subprocess."""
+    """Generator that yields SSE event dicts from Claude subprocess.
+
+    超时策略：空闲超时（有输出重置）+ 硬墙钟上限；等待读时发 ping 保活。
+    """
     proc = None
+    idle_s, max_s = resolve_chat_timeouts(
+        timeout,
+        idle_default=idle_timeout,
+        max_default=max_timeout,
+    )
     try:
-        # F-SEC-06: 显式要求 PATH 中的 claude
         claude_bin = config.require_claude_bin()
-        # F-SEC-03: 工具 allowlist + cwd jail（仅 project_path）
         allowed = ",".join(sorted(config.CLAUDE_TOOL_ALLOWLIST))
         cli_model = resolve_model(model)
         cmd = [
@@ -67,7 +104,6 @@ async def stream_chat(
             "--allowedTools",
             allowed,
         ]
-        # 续聊 Claude Code 本地会话（与 CLI -r 对齐）
         if resume_session_id:
             cmd.extend(["--resume", resume_session_id])
         proc = await asyncio.create_subprocess_exec(
@@ -86,34 +122,65 @@ async def stream_chat(
         async def _read_stderr():
             if proc.stderr:
                 async for line in proc.stderr:
-                    _log.warning("claude stderr: %s", line.decode(errors="replace").rstrip())
+                    _log.warning(
+                        "claude stderr: %s", line.decode(errors="replace").rstrip()
+                    )
 
         stderr_task = asyncio.create_task(_read_stderr())
 
-        deadline = asyncio.get_event_loop().time() + timeout
+        started = time.monotonic()
+        last_activity = started
+        last_ping = started
         buffer = b""
-        # stream-json 的 result.result 常与 assistant.text 重复；有正文则不再追加
         saw_assistant_text = False
+        timed_out = False
 
         while True:
             if request_disconnected():
                 proc.kill()
                 break
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
+
+            now = time.monotonic()
+            if now - started >= max_s:
                 proc.kill()
-                yield {"type": "error", "content": "响应超时（180s），请重试"}
+                timed_out = True
+                yield {
+                    "type": "error",
+                    "content": f"响应超时（整轮上限 {max_s}s），请重试或缩短任务",
+                }
                 break
+            idle_left = idle_s - (now - last_activity)
+            if idle_left <= 0:
+                proc.kill()
+                timed_out = True
+                yield {
+                    "type": "error",
+                    "content": (
+                        f"响应超时（已 {idle_s}s 无新输出；"
+                        f"整轮上限 {max_s}s），请重试"
+                    ),
+                }
+                break
+
             try:
                 chunk = await asyncio.wait_for(
-                    proc.stdout.read(4096), timeout=min(remaining, 5.0)
+                    proc.stdout.read(4096),
+                    timeout=min(max(idle_left, 0.1), 5.0),
                 )
             except asyncio.TimeoutError:
                 if proc.returncode is not None:
                     break
+                # SSE 心跳：避免反向代理 / 浏览器掐掉长时间静默连接
+                now = time.monotonic()
+                if now - last_ping >= 15:
+                    yield {"type": "ping", "ts": int(now)}
+                    last_ping = now
                 continue
+
             if not chunk:
                 break
+
+            last_activity = time.monotonic()
             buffer += chunk
             while b"\n" in buffer:
                 line, buffer = buffer.split(b"\n", 1)
@@ -157,7 +224,6 @@ async def stream_chat(
                         ),
                         "usd": event.get("total_cost_usd", 0) or 0,
                     }
-                    # 仅当全程未收到 assistant 正文时，用 result 兜底（避免双份输出）
                     result_text = event.get("result", "")
                     if result_text and not saw_assistant_text:
                         yield {"type": "delta", "content": result_text}
@@ -174,7 +240,8 @@ async def stream_chat(
         except asyncio.CancelledError:
             pass
 
-        yield {"type": "done", "session_id": ""}
+        if not timed_out:
+            yield {"type": "done", "session_id": ""}
 
     except (GeneratorExit, asyncio.CancelledError):
         raise

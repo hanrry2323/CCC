@@ -14,6 +14,13 @@ AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "ccc").strip()
 BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
 PROXY_URL = os.environ.get("CCC_PROXY_URL", "http://127.0.0.1:4002/v1/chat/completions")
+
+# Hub 对话超时（空闲 / 硬上限）。有工具调用时墙钟 180s 极易误杀。
+# idle：距上次收到 Claude 输出的静默秒数；max：整轮硬上限。
+CHAT_IDLE_TIMEOUT = int(os.environ.get("CCC_CHAT_IDLE_TIMEOUT", "600"))
+CHAT_MAX_TIMEOUT = int(os.environ.get("CCC_CHAT_MAX_TIMEOUT", "1800"))
+CHAT_IDLE_TIMEOUT = max(60, min(CHAT_IDLE_TIMEOUT, 3600))
+CHAT_MAX_TIMEOUT = max(CHAT_IDLE_TIMEOUT, min(CHAT_MAX_TIMEOUT, 7200))
 # 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
 CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))
 CHAT_DIR.mkdir(parents=True, exist_ok=True)

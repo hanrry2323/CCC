@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **文档**：`docs/workspace-binding.md`（Hub cwd / CLAUDE.md / Board 发现 / Engine 登记）
 - **`ccc-init`**：建七列 board + 种子 `CLAUDE.md`/`state.md`；`--register` 写入 `~/.ccc/workspaces.json`
 
+### Hub 对话稳定性
+
+- 超时改为 **空闲 600s（有输出重置）+ 硬上限 1800s**，不再用整轮墙钟 180s 误杀带工具的长对话
+- SSE `ping` 心跳 + `X-Accel-Buffering: no`；`CCC_CHAT_IDLE_TIMEOUT` / `CCC_CHAT_MAX_TIMEOUT` 可配
+
 ## [v0.42.2] — 2026-07-17
 
 ### 破坏性：待办大卡常驻 + Claude 扇出小卡

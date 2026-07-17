@@ -11,7 +11,12 @@ from fastapi.responses import StreamingResponse
 from ..auth import check_auth
 from .. import config
 from ..services import session_store as store
-from ..services.claude_client import stream_chat, _get_project_context, resolve_model
+from ..services.claude_client import (
+    stream_chat,
+    _get_project_context,
+    resolve_model,
+    resolve_chat_timeouts,
+)
 from ..services.claude_history import parse_claude_session_id
 from .projects import PROJECTS, get_project_path
 
@@ -96,7 +101,12 @@ async def chat(request: Request):
     session_id = body.get("session_id", str(uuid.uuid4()))
     model = resolve_model(body.get("model", "flash"))
     project = body.get("project", "ccc")
-    timeout = int(body.get("timeout", 180))
+    raw_timeout = body.get("timeout")
+    try:
+        requested_timeout = int(raw_timeout) if raw_timeout is not None else None
+    except (TypeError, ValueError):
+        requested_timeout = None
+    idle_s, max_s = resolve_chat_timeouts(requested_timeout)
     attachments = body.get("attachments") or []
 
     user_msgs = [m for m in messages if m.get("role") == "user"]
@@ -139,13 +149,22 @@ async def chat(request: Request):
 
         try:
             async for event in stream_chat(
-                prompt, project_path,
+                prompt,
+                project_path,
                 lambda: request.scope.get("disconnect_received", False),
-                timeout,
+                timeout=requested_timeout,
                 model=model,
                 resume_session_id=resume_id,
+                idle_timeout=idle_s,
+                max_timeout=max_s,
             ):
                 evt_type = event.get("type")
+
+                if evt_type == "ping":
+                    # SSE 注释心跳：兼容不识别 ping 的客户端，同时冲刷缓冲
+                    yield f": ping {event.get('ts', '')}\n\n"
+                    yield f"data: {json.dumps(event)}\n\n"
+                    continue
 
                 if evt_type == "delta":
                     text = event.get("content", "")
@@ -201,7 +220,15 @@ async def chat(request: Request):
                     status="completed" if stream_completed else "partial",
                 )
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/api/execute")

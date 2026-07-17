@@ -7,7 +7,7 @@ class ChatRequest(BaseModel):
     session_id: str = ""
     model: str = "flash"
     project: str = "ccc"
-    timeout: int = 180
+    timeout: int = 600
 
 
 class SessionData(BaseModel):

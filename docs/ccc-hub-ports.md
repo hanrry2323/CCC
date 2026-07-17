@@ -54,6 +54,8 @@ http://192.168.3.140:7777/#/console
 | `CCC_CHAT_HOST` | `0.0.0.0` | LAN |
 | `CCC_CHAT_USER` | `ccc` | Basic Auth 用户 |
 | `CCC_CHAT_PASS` | `ccc` | Basic Auth 密码 |
+| `CCC_CHAT_IDLE_TIMEOUT` | `600` | 对话空闲超时（秒；有输出则重置） |
+| `CCC_CHAT_MAX_TIMEOUT` | `1800` | 单轮对话硬上限（秒） |
 | `CCC_BOARD_URL` | `http://127.0.0.1:7775` | Hub→Board |
 | `BOARD_PORT` | `7775` | Board API |
 | `BOARD_HOST` | `127.0.0.1` | Board 仅本机 |

@@ -200,7 +200,8 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
       session_id: sessionId,
       project,
       model,
-      timeout: 180,
+      // 服务端按空闲超时解释；≤180 会被抬到 CCC_CHAT_IDLE_TIMEOUT（默认 600）
+      timeout: 600,
     };
     if (attachments && attachments.length) {
       body.attachments = attachments;
@@ -243,6 +244,8 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
             onEvent('tool_result', data);
           } else if (data.type === 'cost') {
             onEvent('cost', data);
+          } else if (data.type === 'ping') {
+            // SSE keepalive — ignore
           } else if (data.type === 'done') {
             onDone(data.session_id || sessionId);
           } else if (data.type === 'error') {
