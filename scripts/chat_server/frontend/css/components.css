@@ -1577,6 +1577,18 @@
   margin-bottom: var(--ccc-space-sm);
   padding: 0 2px;
 }
+.sidebar-ws-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: var(--ccc-space-sm);
+  flex: 0 0 auto;
+}
+.sidebar-ws-btns .board-ws-btn {
+  flex: 0 0 auto;
+}
 .sidebar-project {
   width: 100%;
   margin-bottom: var(--ccc-space-sm);
@@ -1587,6 +1599,19 @@
   color: var(--ccc-text-base);
   font-size: var(--ccc-font-size-sm);
   font-family: inherit;
+}
+.msg.msg-qa .bubble.qa-user-pill {
+  display: inline-block;
+  max-width: max-content;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 999px;
+  cursor: help;
 }
 
 #chat-panel {

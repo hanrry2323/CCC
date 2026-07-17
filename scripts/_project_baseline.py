@@ -149,7 +149,7 @@ def _format_summary(
 
 
 def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
-    """发给 Claude 的对齐提示：短、结构化、带选项与最佳项。"""
+    """发给 Claude 的对齐提示：功课做足，回复精简。"""
     import json
 
     git = baseline.get("git") or {}
@@ -163,22 +163,37 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "control": baseline.get("control"),
         "risks": baseline.get("risks") or [],
         "ready_for_task": baseline.get("ready_for_task"),
+        "workspace": baseline.get("workspace"),
+        "project_id": baseline.get("project_id"),
     }
+    profile = (baseline.get("profile_excerpt") or "")[:800]
+    state = (baseline.get("state_excerpt") or "")[:800]
     return (
-        "你正在对齐项目基线。根据快照用中文回答，**总字数控制在 280 字以内**。\n"
-        "严格按下面 4 段，每段用一行标题，条目尽量短：\n\n"
+        "【对用户回复】中文、短句；总字数 ≤280；禁止复述工具过程；禁止大段代码。\n\n"
+        "# 任务：对齐项目基线（先探测，再结论）\n"
+        "程序已给出快照，但你必须再做一轮核实，不可只复述 JSON。\n\n"
+        "## 必修探测\n"
+        "1. 读 `.ccc/profile.md`、`.ccc/state.md`、`README.md`/`GOAL.md`/`CLAUDE.md`（存在则读开头）。\n"
+        "2. 核对快照里的 dirty_sample：对可疑文件 Read 或 `git diff` 抽样。\n"
+        "3. **优先**用 codebase-memory / 代码地图：`list_projects` → `get_architecture` "
+        "或 `search_graph` 抓 3～5 个主模块；不可用则 Glob 顶层 + 读入口文件。\n"
+        "4. 若有 `.ccc/board/`：扫 backlog/abnormal 是否有卡死任务。\n"
+        "5. 禁止编造快照与探测都未出现的路径。\n\n"
+        "## 输出格式（严格 4 段）\n"
         "### 现状\n"
-        "- 这是什么项目（1 句）\n"
-        "- 顶层模块各一短句（最多 5 条）\n\n"
+        "- 项目一句话\n"
+        "- 顶层模块 ≤5 条短句（可带路径）\n\n"
         "### 风险\n"
-        "- 只列会阻碍下达任务或发布的项；无则写「无明显风险」\n\n"
+        "- 只列阻碍下达/发布的项；无则「无明显风险」\n\n"
         "### 建议选项\n"
-        "- 给出 2～3 个下一步选项（动词开头，可执行）\n"
-        "- 最后一行必须是：`最佳：<选项编号或标题> — <一句理由>`\n\n"
+        "- 2～3 个可执行下一步（动词开头）\n"
+        "- 最后一行：`最佳：… — <一句理由>`\n\n"
         "### 可下达任务\n"
-        "- 若适合开工：给 1 个任务标题（≤20 字）\n"
-        "- 若不适合：写「先处理：…」\n\n"
-        "禁止编造快照没有的文件；禁止长段落与代码块。\n\n"
-        f"快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
+        "- 适合开工：给 1 个任务标题（≤20 字）\n"
+        "- 不适合：写「先处理：…」\n\n"
+        f"程序快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
         f"摘要：{baseline.get('summary', '')}\n"
+        + (f"\nprofile 摘录：\n{profile}\n" if profile else "")
+        + (f"\nstate 摘录：\n{state}\n" if state else "")
     )
+

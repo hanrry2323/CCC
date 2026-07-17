@@ -14,7 +14,7 @@ export function initComposer() {
 
   initComposerActionDock({
     onBaseline: () => runBaselineAlign(),
-    onPrompt: (prompt) => sendMessage(prompt, []),
+    onPrompt: (prompt, opts) => sendMessage(prompt, [], opts || {}),
     onSlash: (slash) => import('./slash.js').then((m) => m.tryExecuteSlash(slash)),
     onTransfer: () =>
       import('./dispatchCard.js').then((m) => m.openTransferFromLatest()),
@@ -130,33 +130,70 @@ export function initComposer() {
   });
 }
 
+export function setProjectActive(projectId, displayName) {
+  state.set('currentProject', projectId);
+  const sel = document.getElementById('project-select');
+  if (sel) sel.value = projectId;
+  const display = document.getElementById('project-display');
+  if (display) display.textContent = displayName || projectId;
+  document.querySelectorAll('#sidebar-project-btns .board-ws-btn').forEach((b) => {
+    const on = b.dataset.projectId === projectId;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.dispatchEvent(new CustomEvent('project-change'));
+}
+
 export function setupProjectSelect(projects) {
   const sel = document.getElementById('project-select');
-  const sidebarSel = document.getElementById('sidebar-project-select');
-  for (const target of [sel, sidebarSel]) {
-    if (!target) continue;
-    const prev = target.value || state.get('currentProject');
-    target.innerHTML = '';
+  const btnsHost = document.getElementById('sidebar-project-btns');
+  const prev = (sel && sel.value) || state.get('currentProject');
+  let activeId = prev;
+  let activeName = prev;
+
+  if (sel) {
+    sel.innerHTML = '';
     for (const p of projects) {
       const opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.name;
       if (p.id === prev) opt.selected = true;
-      target.appendChild(opt);
+      sel.appendChild(opt);
+    }
+    if (!projects.some((p) => p.id === prev) && projects[0]) {
+      sel.value = projects[0].id;
+      activeId = projects[0].id;
+      activeName = projects[0].name;
+    } else {
+      const cur = projects.find((p) => p.id === sel.value);
+      activeId = sel.value;
+      activeName = cur?.name || sel.value;
     }
   }
-  if (sidebarSel) {
-    sidebarSel.addEventListener('change', () => {
-      state.set('currentProject', sidebarSel.value);
-      if (sel) sel.value = sidebarSel.value;
-      document.getElementById('project-display').textContent =
-        sidebarSel.options[sidebarSel.selectedIndex]?.text || sidebarSel.value;
-      document.dispatchEvent(new CustomEvent('project-change'));
-    });
+
+  if (btnsHost) {
+    btnsHost.innerHTML = '';
+    for (const p of projects) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'board-ws-btn' + (p.id === activeId ? ' active' : '');
+      b.dataset.projectId = p.id;
+      b.dataset.workspace = p.workspace || p.id;
+      b.textContent = p.workspace || p.name || p.id;
+      b.title = (p.name || p.id) + (p.path ? ' · ' + p.path : '');
+      b.setAttribute('aria-pressed', p.id === activeId ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        if (state.get('currentProject') === p.id) return;
+        setProjectActive(p.id, p.name || p.workspace || p.id);
+      });
+      btnsHost.appendChild(b);
+    }
   }
+
   const display = document.getElementById('project-display');
-  if (display && sel) {
-    display.textContent = sel.options[sel.selectedIndex]?.text || state.get('currentProject');
+  if (display) display.textContent = activeName || activeId;
+  if (activeId && activeId !== state.get('currentProject')) {
+    state.set('currentProject', activeId);
   }
 }
 

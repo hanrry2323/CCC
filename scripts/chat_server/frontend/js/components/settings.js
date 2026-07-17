@@ -75,12 +75,17 @@ export async function openSettings() {
     projSelect.appendChild(opt);
   }
   projSelect.addEventListener('change', () => {
-    state.set('currentProject', projSelect.value);
-    const hidden = document.getElementById('project-select');
-    if (hidden) hidden.value = projSelect.value;
-    document.getElementById('project-display').textContent =
-      projSelect.options[projSelect.selectedIndex]?.text || projSelect.value;
-    document.dispatchEvent(new CustomEvent('project-change'));
+    const name = projSelect.options[projSelect.selectedIndex]?.text || projSelect.value;
+    import('./composer.js').then((m) => {
+      if (m.setProjectActive) m.setProjectActive(projSelect.value, name);
+      else {
+        state.set('currentProject', projSelect.value);
+        const hidden = document.getElementById('project-select');
+        if (hidden) hidden.value = projSelect.value;
+        document.getElementById('project-display').textContent = name;
+        document.dispatchEvent(new CustomEvent('project-change'));
+      }
+    });
   });
 
   document.getElementById('settings-close-btn')?.addEventListener('click', closeSettings);

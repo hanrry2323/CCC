@@ -131,7 +131,9 @@ export async function showDispatchCard(opts = {}) {
       import('./fixedActions.js').then((m) => {
         const act = m.FIXED_ACTIONS.find((a) => a.id === 'finalize-plan');
         if (act?.prompt) {
-          import('./message.js').then((msg) => msg.sendMessage(act.prompt, []));
+          import('./message.js').then((msg) =>
+            msg.sendMessage(act.prompt, [], { uiLabel: act.uiLabel || act.label || '定稿方案' })
+          );
         }
       });
     });

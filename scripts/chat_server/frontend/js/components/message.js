@@ -216,7 +216,7 @@ function setStreamingIndicator(active) {
   if (el) el.classList.toggle('active', active);
 }
 
-export async function sendMessage(text, attachments = []) {
+export async function sendMessage(text, attachments = [], opts = {}) {
   const container = document.getElementById('messages');
   const project = state.get('currentProject');
   let msgs = state.get('currentMessages') || [];
@@ -226,8 +226,26 @@ export async function sendMessage(text, attachments = []) {
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
 
-  msgs.push({ role: 'user', content: text, mode: 'chat' });
-  renderMessage(container, 'user', text);
+  const uiLabel = (opts && opts.uiLabel) || '';
+  const displayText = uiLabel
+    ? '【' + uiLabel + '】'
+    : text;
+
+  msgs.push({
+    role: 'user',
+    content: text,
+    mode: 'chat',
+    uiLabel: uiLabel || undefined,
+  });
+  const userEl = renderMessage(container, 'user', displayText);
+  if (uiLabel && userEl) {
+    userEl.classList.add('msg-qa');
+    const bubble = userEl.querySelector('.bubble');
+    if (bubble) {
+      bubble.classList.add('qa-user-pill');
+      bubble.title = text.slice(0, 500) + (text.length > 500 ? '…' : '');
+    }
+  }
 
   showTyping(container);
 
@@ -393,7 +411,20 @@ export function loadMessages(data) {
   }
   state.set('currentMessages', msgs);
   for (const msg of msgs) {
-    renderMessage(container, msg.role, msg.content);
+    const label = msg.uiLabel;
+    const show =
+      label && msg.role === 'user'
+        ? '【' + label + '】'
+        : msg.content;
+    const el = renderMessage(container, msg.role, show);
+    if (label && msg.role === 'user' && el) {
+      el.classList.add('msg-qa');
+      const bubble = el.querySelector('.bubble');
+      if (bubble) {
+        bubble.classList.add('qa-user-pill');
+        bubble.title = String(msg.content || '').slice(0, 500);
+      }
+    }
   }
   if (data.reply && !msgs.some(m => m.role === 'assistant')) {
     renderMessage(container, 'assistant', data.reply);
@@ -454,7 +485,7 @@ export async function runBaselineAlign() {
     container.appendChild(card);
     smartScroll(container);
     const prompt = data.prompt || '请对齐当前项目基线并说明结构与风险。';
-    await sendMessage(prompt, []);
+    await sendMessage(prompt, [], { uiLabel: '对齐基线' });
   } catch (err) {
     window.showToast?.(err.message || '基线采集失败', 'error');
   }

@@ -1,10 +1,16 @@
 /** 固定动作：composer 装饰横条 + 「更多」；主栏按宽度自适应。
  *
- * 候选主栏（宽→多显）：对齐基线 · 下一步 · 定稿方案 · 转任务 · 扫风险 · 解释未提交
+ * 候选主栏（宽→多显）：对齐基线 · 下一步 · 定稿方案 · 转任务 · 扫风险 · 结构审阅 · 解释未提交
  * 更多：装不下的主栏项 + 下达任务 · 看板 · 定时/Skill(占位) · 自定义
  */
 
 import { FINALIZE_PLAN_PROMPT } from './dispatchFormat.js';
+import {
+  EXPLAIN_DIFF_PROMPT,
+  MAP_REVIEW_PROMPT,
+  NEXT_STEP_PROMPT,
+  SCAN_RISKS_PROMPT,
+} from './quickPrompts.js';
 
 const CUSTOM_KEY = 'ccc_qa_custom_v1';
 
@@ -13,37 +19,43 @@ export const FIXED_ACTIONS = [
     id: 'baseline',
     label: '对齐基线',
     kind: 'baseline',
+    uiLabel: '对齐基线',
   },
   {
     id: 'next',
     label: '下一步',
     kind: 'prompt',
-    prompt:
-      '基于当前仓库与本会话已对齐的信息，用中文给出「下一步开发」建议。\n' +
-      '要求：总字数 ≤200；列出 3 个选项 + 一行「最佳：…」；每条≤20字；不要代码块。\n' +
-      '若本会话尚未对齐基线，先用一句点明假设再给建议。',
+    uiLabel: '下一步',
+    prompt: NEXT_STEP_PROMPT,
   },
   {
     id: 'risks',
     label: '扫风险',
     kind: 'prompt',
-    prompt:
-      '快速扫描当前项目风险（git 脏文件、明显坏味道、控制面/自动化隐患）。\n' +
-      '要求：总字数 ≤180；只列会踩坑的项；无则写「无明显风险」；最后给 1 句处理建议。',
+    uiLabel: '扫风险',
+    prompt: SCAN_RISKS_PROMPT,
   },
   {
     id: 'finalize-plan',
     label: '定稿方案',
     kind: 'prompt',
+    uiLabel: '定稿方案',
     prompt: '', // set from FINALIZE_PLAN_PROMPT below
+  },
+  {
+    id: 'map-review',
+    label: '结构审阅',
+    kind: 'prompt',
+    uiLabel: '结构审阅',
+    prompt: MAP_REVIEW_PROMPT,
+    hint: '用代码地图 skill 审架构并给结论',
   },
   {
     id: 'explain-diff',
     label: '解释未提交',
     kind: 'prompt',
-    prompt:
-      '解释当前未提交改动在做什么（git status / diff）。\n' +
-      '要求：≤180字；按文件点名；风险一句；是否建议先 commit。',
+    uiLabel: '解释未提交',
+    prompt: EXPLAIN_DIFF_PROMPT,
   },
   {
     id: 'transfer-task',
@@ -83,6 +95,7 @@ export const PRIMARY_CANDIDATES = [
   'finalize-plan',
   'transfer-task',
   'risks',
+  'map-review',
   'explain-diff',
 ];
 
@@ -287,8 +300,9 @@ export function bindFixedActions(root, { onBaseline, onPrompt, onSlash, onSoon, 
       const act = findAction(id);
       if (!act) return;
       if (act.kind === 'baseline') onBaseline?.();
-      else if (act.kind === 'prompt' && act.prompt) onPrompt?.(act.prompt);
-      else if (act.kind === 'slash' && act.slash) onSlash?.(act.slash);
+      else if (act.kind === 'prompt' && act.prompt) {
+        onPrompt?.(act.prompt, { uiLabel: act.uiLabel || act.label });
+      } else if (act.kind === 'slash' && act.slash) onSlash?.(act.slash);
       else if (act.kind === 'transfer') onTransfer?.();
       else if (act.kind === 'soon') onSoon?.(act);
     });

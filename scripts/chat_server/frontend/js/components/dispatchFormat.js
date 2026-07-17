@@ -4,9 +4,10 @@
  * 流程：讨论 →「定稿方案」→ Claude 输出 CCC_DISPATCH 块 →「转任务」卡片 → 下达并开工
  */
 
+import { FINALIZE_WORK_PREFIX } from './quickPrompts.js';
+
 export const FINALIZE_PLAN_PROMPT =
-  '请把我们刚讨论的方案整理成 **可直接投递 CCC 看板** 的定稿包。\n' +
-  '只输出下面这一个块（不要前后解释、不要省略分隔符）：\n\n' +
+  FINALIZE_WORK_PREFIX +
   '<<<CCC_DISPATCH>>>\n' +
   'title: <一句可执行中文标题，≤40字>\n' +
   'complexity: small|medium|large\n' +
@@ -26,7 +27,7 @@ export const FINALIZE_PLAN_PROMPT =
   '（多 phase 则每行一个 JSON；scope 必须非空，禁止 ["all"]）\n' +
   '---END_PHASES---\n' +
   '<<<END_CCC_DISPATCH>>>\n\n' +
-  '规则：scope 写真实要改的文件；验收必须有 ## 验收 且 ≥1 条；不要写源码正文。';
+  '硬规则：scope 必须真实存在；必须有 ## 验收；不要写源码正文；不要 markdown 围栏包住整块。';
 
 const BLOCK_RE =
   /<<<CCC_DISPATCH>>>\s*([\s\S]*?)\s*<<<END_CCC_DISPATCH>>>/i;

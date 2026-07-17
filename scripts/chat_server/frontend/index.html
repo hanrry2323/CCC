@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260717f">
-<link rel="stylesheet" href="/css/base.css?v=20260717f">
-<link rel="stylesheet" href="/css/themes.css?v=20260717f">
-<link rel="stylesheet" href="/css/components.css?v=20260717f">
-<link rel="stylesheet" href="/css/shell.css?v=20260717f">
+<link rel="stylesheet" href="/css/variables.css?v=20260717h">
+<link rel="stylesheet" href="/css/base.css?v=20260717h">
+<link rel="stylesheet" href="/css/themes.css?v=20260717h">
+<link rel="stylesheet" href="/css/components.css?v=20260717h">
+<link rel="stylesheet" href="/css/shell.css?v=20260717h">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -43,13 +43,13 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <button class="titlebar-btn" id="task-btn" title="下达任务">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 11v6M9 14h6"/></svg>
     </button>
     <button class="titlebar-btn" id="board-btn" title="看板摘要">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg>
     </button>
     <button class="titlebar-btn" id="new-tab-btn" title="新对话">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </button>
     <button class="titlebar-btn" id="settings-btn" title="设置">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -62,7 +62,7 @@
     <div id="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-brand">CCC Chat</div>
-        <select id="sidebar-project-select" class="sidebar-project" title="切换项目"></select>
+        <div class="board-ws-btns sidebar-ws-btns" id="sidebar-project-btns" role="group" aria-label="项目"></div>
         <div class="history-source-bar" title="对话来源">
           <button type="button" class="history-source-btn active" data-source="all">全部</button>
           <button type="button" class="history-source-btn" data-source="hub">Hub</button>
@@ -173,6 +173,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js?v=20260717f"></script>
+<script type="module" src="/js/app.js?v=20260717h"></script>
 </body>
 </html>
