@@ -57,13 +57,20 @@ src-tauri/gen/
 # v0.29.x: CCC Engine 运行时文件（不提交）
 .ccc/.dev_auto_retry.json
 .ccc/board/.color_counter
+.ccc/board/.board.lock
 .ccc/board/abnormal/
+.ccc/offline-lock
+.ccc/scratch/
+.ccc/.product_role.lock
 .ccc/stats/summary.json
 .ccc/stats/events.jsonl
 .ccc/product_fallback/
 .ccc/lessons/
 .ccc/verdicts/
 .ccc/board/planned/
+
+# 误入编排仓根目录的临时工作区（任务产物应在目标仓）
+/workspace/
 
 # 运行时数据
 var/
