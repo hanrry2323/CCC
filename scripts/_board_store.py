@@ -646,7 +646,8 @@ class FileBoardStore:
                 ),
                 reverse=False,
             )
-            # 同 rank 内新→旧
+            # 同 rank 内新→旧；created_at 相同时按 id 升序确定
+            front.sort(key=lambda t: t.get("id", ""))
             front.sort(
                 key=lambda t: t.get("created_at", t.get("id", "")), reverse=True
             )
@@ -655,19 +656,27 @@ class FileBoardStore:
                     t.get("split_status") or "pending", 1
                 )
             )
+            failed.sort(key=lambda t: t.get("id", ""))
             failed.sort(
                 key=lambda t: t.get("updated_at") or t.get("created_at") or "",
                 reverse=True,
             )
+            done.sort(key=lambda t: t.get("id", ""))
             done.sort(
                 key=lambda t: t.get("updated_at") or t.get("created_at") or ""
             )
+            other.sort(key=lambda t: t.get("id", ""))
             other.sort(
                 key=lambda t: t.get("updated_at") or t.get("created_at") or ""
             )
             return front + failed + other + done
 
-        viewed.sort(key=lambda t: t.get("created_at", t.get("id", "")))
+        viewed.sort(
+            key=lambda t: (
+                t.get("created_at", t.get("id", "")),
+                t.get("id", ""),
+            )
+        )
         return viewed
 
     def find_task(self, task_id: str) -> tuple[str | None, dict | None]:
