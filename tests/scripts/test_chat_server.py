@@ -107,7 +107,8 @@ def _stream_post(path: str, data: dict, read_limit: int = 5, read_timeout: int =
             assert "text/event-stream" in resp.headers.get("Content-Type", "")
             # 延长 socket 超时供 SSE 读取阶段使用，补偿 claude CLI 冷启动延迟
             if read_timeout > 0:
-                resp.fp._sock.settimeout(read_timeout)
+                sock = getattr(resp.fp, 'raw', resp.fp)._sock
+                sock.settimeout(read_timeout)
             lines = []
             for i in range(read_limit):
                 line = resp.readline().decode(errors="replace").strip()
@@ -275,7 +276,7 @@ class TestChatStreaming:
         status, lines = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "Say hello in 3 words"}],
             "session_id": _make_sid("ch20"),
-        })
+        }, read_limit=5, read_timeout=45)
         assert status == 200
         assert len(lines) > 0
         sse = [l for l in lines if l.startswith("data: ")]
