@@ -2994,6 +2994,37 @@ def _classify_review_size(stat_output: str) -> tuple[str, int | None]:
     return ("large", total)
 
 
+def clear_stale_review_locks(
+    lock_dir: Path | None = None, *, stale_sec: int | None = None
+) -> list[str]:
+    """清除超龄 review O_EXCL 僵尸锁。返回被删的文件名列表。
+
+    进程崩溃后锁文件残留会导致 reviewer 永久「持锁中，跳过」。
+    """
+    if lock_dir is None:
+        lock_dir = get_workspace() / ".ccc" / "review-locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    if stale_sec is None:
+        stale_sec = int(os.environ.get("CCC_REVIEW_LOCK_STALE_SEC", "600"))
+    cleared: list[str] = []
+    now = time.time()
+    for lp in lock_dir.glob("*.lock"):
+        try:
+            age = now - lp.stat().st_mtime
+            if age >= stale_sec:
+                lp.unlink(missing_ok=True)
+                cleared.append(lp.name)
+                _log.warning(
+                    "[reviewer] 清除僵尸锁 %s (age=%.0fs ≥ %ss)",
+                    lp.name,
+                    age,
+                    stale_sec,
+                )
+        except OSError as exc:
+            _log.warning("[reviewer] 清僵尸锁失败 %s: %s", lp.name, exc)
+    return cleared
+
+
 def reviewer_role() -> dict:
     """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 通过则挪 verified
 
@@ -3008,6 +3039,7 @@ def reviewer_role() -> dict:
     moved = []
     lock_dir = get_workspace() / ".ccc" / "review-locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
+    clear_stale_review_locks(lock_dir)
     for task in list_tasks("testing"):
         task_id = task["id"]
         # v0.24.5 (A24-01): per-task advisory lock 防并发 reviewer 写 review.md
