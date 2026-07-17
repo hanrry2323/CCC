@@ -7,6 +7,7 @@ class State {
       currentMessages: [],
       currentProject: 'ccc',
       streaming: false,
+      streamingCount: 0,
       model: 'flash',
       abortController: null,
       tabs: [],

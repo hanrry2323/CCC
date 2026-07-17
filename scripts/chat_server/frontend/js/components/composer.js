@@ -4,6 +4,7 @@ import { cancelStream } from '../api.js';
 import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAttachments } from './attachments.js';
 import { handleSlashInput, hideSlashMenu } from './slash.js';
 import { initComposerActionDock } from './fixedActions.js';
+import { isCurrentTabStreaming, syncStreamingFlagForActiveTab } from '../streamRegistry.js';
 
 export function initComposer() {
   const input = document.getElementById('composer-input');
@@ -23,7 +24,7 @@ export function initComposer() {
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-    sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || state.get('streaming');
+    sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || isCurrentTabStreaming();
     handleSlashInput(input);
   });
 
@@ -45,11 +46,10 @@ export function initComposer() {
   sendBtn.addEventListener('click', doSend);
 
   cancelBtn.addEventListener('click', () => {
-    cancelStream();
-    state.set('streaming', false);
-    removeTyping();
+    cancelStream(state.get('activeTabId'));
+    syncStreamingFlagForActiveTab();
+    removeTyping(state.get('activeTabId'));
     updateComposerState();
-    document.getElementById('streaming-indicator')?.classList.remove('active');
   });
 
   const modelSelect = document.getElementById('model-select');
@@ -82,7 +82,7 @@ export function initComposer() {
       }
       fileInput.value = '';
       renderAttachmentChips();
-      sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || state.get('streaming');
+      sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || isCurrentTabStreaming();
     });
   }
 
@@ -104,7 +104,7 @@ export function initComposer() {
       }
     }
     renderAttachmentChips();
-    sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || state.get('streaming');
+    sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || isCurrentTabStreaming();
   });
 
   input.addEventListener('paste', async (e) => {
@@ -125,7 +125,7 @@ export function initComposer() {
     }
     if (handled) {
       renderAttachmentChips();
-      sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || state.get('streaming');
+      sendBtn.disabled = (!input.value.trim() && !getPendingAttachments().length) || isCurrentTabStreaming();
     }
   });
 }
@@ -201,7 +201,7 @@ function doSend() {
   const input = document.getElementById('composer-input');
   const text = input.value.trim();
   const attachments = getPendingAttachments();
-  if ((!text && !attachments.length) || state.get('streaming')) return;
+  if ((!text && !attachments.length) || isCurrentTabStreaming()) return;
   if (text.startsWith('/')) {
     import('./slash.js').then(m => {
       if (m.tryExecuteSlash(text)) {

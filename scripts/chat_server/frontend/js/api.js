@@ -189,9 +189,20 @@ export async function readProjectFile(projectId, path) {
   );
 }
 
-export async function streamChat(messages, sessionId, project, onEvent, onDone, onError, attachments) {
-  const abortController = new AbortController();
-  state.set('abortController', abortController);
+export async function streamChat(
+  messages,
+  sessionId,
+  project,
+  onEvent,
+  onDone,
+  onError,
+  attachments,
+  opts = {}
+) {
+  const abortController = opts.abortController || new AbortController();
+  if (!opts.abortController) {
+    state.set('abortController', abortController);
+  }
 
   try {
     const model = state.get('model') || 'flash';
@@ -216,7 +227,7 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
     if (!resp.ok) {
       const errText = resp.status === 401 ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
         : resp.status === 400 ? '危险指令已被拦截或附件无效'
-        : resp.status === 429 ? '前一个执行中，请稍候'
+        : resp.status === 429 ? '该会话仍在执行中，请稍候或新开对话'
         : '请求失败: HTTP ' + resp.status;
       onError(errText);
       return;
@@ -259,11 +270,17 @@ export async function streamChat(messages, sessionId, project, onEvent, onDone, 
       onError('网络错误: ' + e.message);
     }
   } finally {
-    state.set('abortController', null);
+    if (!opts.abortController) {
+      state.set('abortController', null);
+    }
   }
 }
 
-export function cancelStream() {
-  const ac = state.get('abortController');
-  if (ac) ac.abort();
+export function cancelStream(tabId) {
+  import('./streamRegistry.js')
+    .then((m) => m.cancelStream(tabId))
+    .catch(() => {
+      const ac = state.get('abortController');
+      if (ac) ac.abort();
+    });
 }

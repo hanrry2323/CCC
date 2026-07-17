@@ -1,4 +1,5 @@
 import { getThemeScheme, applyTheme, toggleLightDark } from '../theme.js';
+import { isTabStreaming } from '../streamRegistry.js';
 
 export function initTitlebar() {
   const tabsEl = document.getElementById('tabs');
@@ -23,7 +24,7 @@ export function initTitlebar() {
 
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
-      import('./settings.js').then(m => m.openSettings());
+      import('./settings.js').then((m) => m.openSettings());
     });
   }
 
@@ -35,13 +36,13 @@ export function initTitlebar() {
 
   if (boardBtn) {
     boardBtn.addEventListener('click', () => {
-      import('./boardPanel.js').then(m => m.toggleBoardPanel());
+      import('./boardPanel.js').then((m) => m.toggleBoardPanel());
     });
   }
 
   if (taskBtn) {
     taskBtn.addEventListener('click', () => {
-      import('./taskDialog.js').then(m => m.openTaskDialog());
+      import('./taskDialog.js').then((m) => m.openTaskDialog());
     });
   }
 
@@ -49,26 +50,47 @@ export function initTitlebar() {
     const tab = e.target.closest('.titlebar-tab');
     if (!tab) return;
     if (e.target.closest('.close-btn')) {
-      document.dispatchEvent(new CustomEvent('close-tab', { detail: { id: tab.dataset.tabId } }));
+      document.dispatchEvent(
+        new CustomEvent('close-tab', { detail: { id: tab.dataset.tabId } })
+      );
     } else {
-      document.dispatchEvent(new CustomEvent('switch-tab', { detail: { id: tab.dataset.tabId } }));
+      document.dispatchEvent(
+        new CustomEvent('switch-tab', { detail: { id: tab.dataset.tabId } })
+      );
     }
   });
 }
 
 export function renderTabs(tabs, activeId) {
   const tabsEl = document.getElementById('tabs');
-  tabsEl.innerHTML = tabs.map(t => {
-    const isActive = t.id === activeId;
-    const title = t.title || '新对话';
-    const safeTitle = String(title)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-    return '<div class="titlebar-tab' + (isActive ? ' active' : '') + '" data-tab-id="' + t.id + '">' +
-      '<span>' + safeTitle + '</span>' +
-      (tabs.length > 1 ? '<button class="close-btn" aria-label="关闭">×</button>' : '') +
-      '</div>';
-  }).join('');
+  tabsEl.innerHTML = tabs
+    .map((t) => {
+      const isActive = t.id === activeId;
+      const title = t.title || '新对话';
+      const safeTitle = String(title)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      const streaming = isTabStreaming(t.id);
+      return (
+        '<div class="titlebar-tab' +
+        (isActive ? ' active' : '') +
+        (streaming ? ' streaming' : '') +
+        '" data-tab-id="' +
+        t.id +
+        '">' +
+        (streaming
+          ? '<span class="tab-stream-dot" title="生成中"></span>'
+          : '') +
+        '<span>' +
+        safeTitle +
+        '</span>' +
+        (tabs.length > 1
+          ? '<button class="close-btn" aria-label="关闭">×</button>'
+          : '') +
+        '</div>'
+      );
+    })
+    .join('');
 }

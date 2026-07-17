@@ -33,6 +33,10 @@ function showTabContent(tab) {
   } else {
     loadMessages({ messages: msgs, title: tab.title });
   }
+  import('./streamRegistry.js').then((m) => {
+    m.syncStreamingFlagForActiveTab();
+  });
+  import('./components/message.js').then((m) => m.updateComposerState());
 }
 
 async function onHubRoute(route) {
@@ -119,6 +123,7 @@ async function init() {
     const { id } = e.detail;
     if (tabs.length <= 1) return;
     snapshotActiveTab();
+    import('./streamRegistry.js').then((m) => m.cancelStream(id));
     tabs = tabs.filter(t => t.id !== id);
     state.set('tabs', tabs);
     const activeId = state.get('activeTabId');

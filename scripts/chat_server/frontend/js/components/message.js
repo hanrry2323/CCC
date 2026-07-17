@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml, ts, scrollToBottom } from '../utils.js';
-import { streamChat, cancelStream } from '../api.js';
+import { streamChat } from '../api.js';
 import { refreshSidebar } from './sidebar.js';
 import {
   createProgressRail,
@@ -10,12 +10,14 @@ import {
   finishProgressRail,
 } from './toolCall.js';
 import { maybeShowArtifacts } from './artifacts.js';
-
-let fullContent = '';
-let toolSteps = [];
-let progressRail = null;
-let costInfo = null;
-let toolIdCounter = 0;
+import {
+  beginStream,
+  endStream,
+  isCurrentTabStreaming,
+  isTabStreaming,
+  anyStreaming,
+  syncStreamingFlagForActiveTab,
+} from '../streamRegistry.js';
 
 function attachMessageActions(msgEl, role, content) {
   if (!msgEl || msgEl.querySelector('.msg-actions')) return;
@@ -95,8 +97,11 @@ function editMessage(msgEl, container) {
   if (!bubble) return;
   const currentText = bubble.textContent || '';
   const safeText = escapeHtml(currentText).replace(/'/g, "\\'");
-  bubble.innerHTML = '<div class="edit-area">' +
-    '<textarea class="edit-textarea">' + safeText + '</textarea>' +
+  bubble.innerHTML =
+    '<div class="edit-area">' +
+    '<textarea class="edit-textarea">' +
+    safeText +
+    '</textarea>' +
     '<div class="edit-actions">' +
     '<button class="edit-save" onclick="window.saveEdit(this)">保存并重发</button>' +
     '<button class="edit-cancel" onclick="window.cancelEdit(this)">取消</button>' +
@@ -112,7 +117,10 @@ window.saveEdit = function (btn) {
   const ta = area.querySelector('.edit-textarea');
   const newText = ta.value.trim();
   const orig = ta.dataset.original || '';
-  if (!newText || newText === orig) { doCancelEdit(area, orig); return; }
+  if (!newText || newText === orig) {
+    doCancelEdit(area, orig);
+    return;
+  }
 
   const msgEl = btn.closest('.msg');
   if (!msgEl) return;
@@ -138,7 +146,7 @@ window.saveEdit = function (btn) {
     if (msgs[i].role === 'user') {
       seen++;
       if (seen === userIndex) {
-        cut = i; // drop this user msg and everything after; sendMessage will re-add
+        cut = i;
         break;
       }
     }
@@ -151,7 +159,7 @@ window.saveEdit = function (btn) {
 window.cancelEdit = function (btn) {
   const area = btn.closest('.edit-area');
   const ta = area?.querySelector('.edit-textarea');
-  const orig = ta ? (ta.dataset.original || '') : '';
+  const orig = ta ? ta.dataset.original || '' : '';
   doCancelEdit(area, orig);
 };
 
@@ -162,19 +170,18 @@ function doCancelEdit(area, orig) {
 }
 
 function regenerateLast() {
-  if (state.get('streaming')) return;
+  if (isCurrentTabStreaming()) return;
   let msgs = state.get('currentMessages') || [];
   while (msgs.length && msgs[msgs.length - 1].role === 'assistant') {
     msgs = msgs.slice(0, -1);
   }
-  const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+  const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
   if (!lastUser) {
     window.showToast?.('没有可重新生成的用户消息', 'error');
     return;
   }
   state.set('currentMessages', msgs.slice(0, msgs.indexOf(lastUser)));
   const container = document.getElementById('messages');
-  // Remove trailing assistant bubbles after last user
   const nodes = [...container.querySelectorAll('.msg')];
   let lastUserEl = null;
   for (const n of nodes) {
@@ -192,12 +199,17 @@ function regenerateLast() {
   sendMessage(lastUser.content);
 }
 
-export function showTyping(container) {
-  removeTyping();
+function typingId(tabId) {
+  return 'typing-' + (tabId || 'x');
+}
+
+export function showTyping(container, tabId) {
+  removeTyping(tabId);
   const el = document.createElement('div');
   el.className = 'msg assistant';
-  el.id = 'typing-indicator';
-  el.innerHTML = '<div class="msg-label">Claude</div><div class="bubble typing-bubble">' +
+  el.id = typingId(tabId);
+  el.innerHTML =
+    '<div class="msg-label">Claude</div><div class="bubble typing-bubble">' +
     '<span class="typing-dot"></span>' +
     '<span class="typing-dot"></span>' +
     '<span class="typing-dot"></span></div>';
@@ -206,30 +218,62 @@ export function showTyping(container) {
   return el;
 }
 
-export function removeTyping() {
-  const el = document.getElementById('typing-indicator');
+export function removeTyping(tabId) {
+  const el =
+    document.getElementById(typingId(tabId)) ||
+    document.getElementById('typing-indicator');
   if (el) el.remove();
 }
 
-function setStreamingIndicator(active) {
+function setStreamingIndicator() {
   const el = document.getElementById('streaming-indicator');
-  if (el) el.classList.toggle('active', active);
+  if (!el) return;
+  el.classList.toggle('active', anyStreaming());
+  const label = el.querySelector('span:not(.dot)');
+  if (label) {
+    const count = state.get('streamingCount') || 0;
+    label.textContent = count > 1 ? `生成中 (${count})…` : '生成中...';
+  }
+}
+
+function persistTabMessages(tabId, msgs, sessionId) {
+  const tabs = state.get('tabs') || [];
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  if (sessionId) tab.sessionId = sessionId;
+  tab.messages = msgs.slice();
+  const firstUser = msgs.find((m) => m.role === 'user');
+  if (firstUser && (!tab.title || tab.title === '新对话')) {
+    const raw = firstUser.uiLabel
+      ? firstUser.uiLabel
+      : String(firstUser.content || '');
+    tab.title = raw.slice(0, 28) || '对话';
+  }
+  state.set('tabs', tabs);
+  import('./titlebar.js').then((m) =>
+    m.renderTabs(tabs, state.get('activeTabId'))
+  );
+}
+
+function isActiveOwner(tabId) {
+  return state.get('activeTabId') === tabId;
 }
 
 export async function sendMessage(text, attachments = [], opts = {}) {
+  const ownerTabId = state.get('activeTabId');
+  if (!ownerTabId) return;
+  if (isTabStreaming(ownerTabId)) return;
+
   const container = document.getElementById('messages');
   const project = state.get('currentProject');
-  let msgs = state.get('currentMessages') || [];
+  let msgs = (state.get('currentMessages') || []).slice();
+  let sid = state.get('currentSessionId') || ownerTabId;
 
-  if (state.get('streaming')) return;
-
-  const empty = container.querySelector('.empty-state');
+  const empty = container?.querySelector('.empty-state');
   if (empty) empty.remove();
 
   const uiLabel = (opts && opts.uiLabel) || '';
-  const displayText = uiLabel
-    ? '【' + uiLabel + '】'
-    : text;
+  const displayText = uiLabel ? '【' + uiLabel + '】' : text;
 
   msgs.push({
     role: 'user',
@@ -237,76 +281,103 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     mode: 'chat',
     uiLabel: uiLabel || undefined,
   });
-  const userEl = renderMessage(container, 'user', displayText);
-  if (uiLabel && userEl) {
-    userEl.classList.add('msg-qa');
-    const bubble = userEl.querySelector('.bubble');
-    if (bubble) {
-      bubble.classList.add('qa-user-pill');
-      bubble.title = text.slice(0, 500) + (text.length > 500 ? '…' : '');
+  if (isActiveOwner(ownerTabId) && container) {
+    const userEl = renderMessage(container, 'user', displayText);
+    if (uiLabel && userEl) {
+      userEl.classList.add('msg-qa');
+      const bubble = userEl.querySelector('.bubble');
+      if (bubble) {
+        bubble.classList.add('qa-user-pill');
+        bubble.title = text.slice(0, 500) + (text.length > 500 ? '…' : '');
+      }
     }
+    showTyping(container, ownerTabId);
   }
 
-  showTyping(container);
+  persistTabMessages(ownerTabId, msgs, sid);
 
-  const sid = state.get('currentSessionId');
-  fullContent = '';
-  toolSteps = [];
-  progressRail = null;
-  costInfo = null;
-  toolIdCounter = 0;
-  state.set('streaming', true);
-  setStreamingIndicator(true);
-  updateComposerState();
-
+  let fullContent = '';
+  let toolSteps = [];
+  let progressRail = null;
+  let costInfo = null;
   let msgDiv = null;
-  let bubble = null;
   let mdEl = null;
   let toolsHost = null;
   let cursorEl = null;
   let rafPending = false;
-  const wireAttachments = (attachments || []).map(a => ({
+
+  const abort = beginStream(ownerTabId, sid);
+  syncStreamingFlagForActiveTab();
+  setStreamingIndicator();
+  updateComposerState();
+
+  const wireAttachments = (attachments || []).map((a) => ({
     name: a.name,
     content_base64: a.content_base64,
     type: a.type,
   }));
 
   function ensureAssistantShell() {
-    if (msgDiv) return;
-    removeTyping();
+    if (!isActiveOwner(ownerTabId)) return;
+    const c = document.getElementById('messages');
+    if (!c) return;
+    if (msgDiv && c.contains(msgDiv)) return;
+    removeTyping(ownerTabId);
     msgDiv = document.createElement('div');
     msgDiv.className = 'msg assistant';
+    msgDiv.dataset.streamTab = ownerTabId;
     msgDiv.innerHTML =
       '<div class="msg-label">Claude</div>' +
       '<div class="bubble">' +
-        '<div class="md-stream"></div>' +
-        '<div class="tools-host"></div>' +
-        '<span class="streaming-cursor"></span>' +
+      '<div class="md-stream"></div>' +
+      '<div class="tools-host"></div>' +
+      '<span class="streaming-cursor"></span>' +
       '</div>' +
-      '<div class="time">' + ts() + '</div>';
-    container.appendChild(msgDiv);
-    bubble = msgDiv.querySelector('.bubble');
+      '<div class="time">' +
+      ts() +
+      '</div>';
+    c.appendChild(msgDiv);
     mdEl = msgDiv.querySelector('.md-stream');
     toolsHost = msgDiv.querySelector('.tools-host');
     cursorEl = msgDiv.querySelector('.streaming-cursor');
+    if (fullContent && mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
   }
 
   function scheduleMarkdownPaint() {
+    if (!isActiveOwner(ownerTabId)) return;
     if (rafPending || !mdEl) return;
     rafPending = true;
     requestAnimationFrame(() => {
       rafPending = false;
-      if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
-      // 正文出来后收起进度条，对话保持干净
-      if (fullContent.trim().length > 40 && progressRail) {
-        finishProgressRail(progressRail, { hide: true });
+      if (mdEl && isActiveOwner(ownerTabId)) {
+        mdEl.innerHTML = renderMarkdown(fullContent);
+        if (fullContent.trim().length > 40 && progressRail) {
+          finishProgressRail(progressRail, { hide: true });
+        }
+        smartScroll(document.getElementById('messages'));
       }
-      smartScroll(container);
     });
   }
 
+  function bumpPartialAssistant() {
+    const base = msgs.filter((m) => !(m.role === 'assistant' && m.partial));
+    const next = base.slice();
+    if (fullContent) {
+      next.push({
+        role: 'assistant',
+        content: fullContent,
+        mode: 'chat',
+        partial: true,
+      });
+    }
+    persistTabMessages(ownerTabId, next, sid);
+    if (isActiveOwner(ownerTabId)) {
+      state.set('currentMessages', next);
+    }
+  }
+
   await streamChat(
-    msgs,
+    msgs.filter((m) => !(m.role === 'assistant' && m.partial)),
     sid,
     project,
     (type, data) => {
@@ -314,19 +385,21 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         ensureAssistantShell();
         fullContent += data;
         scheduleMarkdownPaint();
+        bumpPartialAssistant();
       } else if (type === 'tool_use') {
         ensureAssistantShell();
-        toolIdCounter += 1;
-        if (!progressRail && toolsHost) {
-          progressRail = createProgressRail();
-          toolsHost.appendChild(progressRail);
+        if (isActiveOwner(ownerTabId)) {
+          if (!progressRail && toolsHost) {
+            progressRail = createProgressRail();
+            toolsHost.appendChild(progressRail);
+          }
+          const step = appendProgressStep(progressRail, {
+            name: data.name,
+            input: data.input,
+          });
+          toolSteps.push(step);
+          smartScroll(document.getElementById('messages'));
         }
-        const step = appendProgressStep(progressRail, {
-          name: data.name,
-          input: data.input,
-        });
-        toolSteps.push(step);
-        smartScroll(container);
       } else if (type === 'tool_result') {
         if (toolSteps.length) {
           completeProgressStep(toolSteps[toolSteps.length - 1], true);
@@ -336,62 +409,97 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       }
     },
     (sessionId) => {
-      state.set('currentSessionId', sessionId);
-      if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
-      if (cursorEl) cursorEl.remove();
-      if (progressRail) finishProgressRail(progressRail, { hide: true });
-      if (costInfo && msgDiv) {
-        const costEl = document.createElement('div');
-        costEl.className = 'cost-info';
-        costEl.textContent = 'Tokens: ' + (costInfo.tokens || 0) + ' · $' + (costInfo.usd || 0).toFixed(4);
-        msgDiv.appendChild(costEl);
+      sid = sessionId || sid;
+      if (isActiveOwner(ownerTabId)) {
+        state.set('currentSessionId', sid);
+        ensureAssistantShell();
+        if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
+        if (cursorEl) cursorEl.remove();
+        if (progressRail) finishProgressRail(progressRail, { hide: true });
+        if (costInfo && msgDiv) {
+          const costEl = document.createElement('div');
+          costEl.className = 'cost-info';
+          costEl.textContent =
+            'Tokens: ' +
+            (costInfo.tokens || 0) +
+            ' · $' +
+            (costInfo.usd || 0).toFixed(4);
+          msgDiv.appendChild(costEl);
+        }
+        if (msgDiv) attachMessageActions(msgDiv, 'assistant', fullContent);
+        maybeShowArtifacts(fullContent);
+        removeTyping(ownerTabId);
       }
-      if (msgDiv) attachMessageActions(msgDiv, 'assistant', fullContent);
-      maybeShowArtifacts(fullContent);
       import('./dispatchFormat.js').then((m) => {
         const p = m.parseDispatchBlock(fullContent);
-        if (p.ok) {
+        if (p.ok && isActiveOwner(ownerTabId)) {
           window.showToast?.(
             '定稿已就绪：点消息「转任务」或工具条「转任务」核实后下达',
             'success'
           );
         }
       });
-      msgs.push({ role: 'assistant', content: fullContent, mode: 'chat' });
-      state.set('currentMessages', msgs);
-      syncActiveTab();
-      state.set('streaming', false);
-      setStreamingIndicator(false);
+      const finalMsgs = msgs
+        .filter((m) => !(m.role === 'assistant' && m.partial))
+        .concat(
+          fullContent
+            ? [{ role: 'assistant', content: fullContent, mode: 'chat' }]
+            : []
+        );
+      msgs = finalMsgs;
+      persistTabMessages(ownerTabId, finalMsgs, sid);
+      if (isActiveOwner(ownerTabId)) {
+        state.set('currentMessages', finalMsgs);
+      }
+      endStream(ownerTabId);
+      syncStreamingFlagForActiveTab();
+      setStreamingIndicator();
       updateComposerState();
       refreshSidebar();
-      import('./runtimeStatus.js').then((m) => m.refreshRuntimeStatus?.()).catch(() => {});
+      import('./runtimeStatus.js')
+        .then((m) => m.refreshRuntimeStatus?.())
+        .catch(() => {});
     },
     (errorText) => {
-      removeTyping();
-      renderMessage(container, 'assistant', errorText);
-      msgs.push({ role: 'assistant', content: errorText, mode: 'chat' });
-      state.set('currentMessages', msgs);
-      syncActiveTab();
-      state.set('streaming', false);
-      setStreamingIndicator(false);
+      if (isActiveOwner(ownerTabId)) {
+        removeTyping(ownerTabId);
+        renderMessage(
+          document.getElementById('messages'),
+          'assistant',
+          errorText
+        );
+      }
+      const finalMsgs = msgs
+        .filter((m) => !(m.role === 'assistant' && m.partial))
+        .concat([{ role: 'assistant', content: errorText, mode: 'chat' }]);
+      persistTabMessages(ownerTabId, finalMsgs, sid);
+      if (isActiveOwner(ownerTabId)) {
+        state.set('currentMessages', finalMsgs);
+      }
+      endStream(ownerTabId);
+      syncStreamingFlagForActiveTab();
+      setStreamingIndicator();
       updateComposerState();
     },
-    wireAttachments
+    wireAttachments,
+    { abortController: abort }
   );
 }
 
 function syncActiveTab() {
   const tabs = state.get('tabs') || [];
   const activeId = state.get('activeTabId');
-  const tab = tabs.find(t => t.id === activeId);
+  const tab = tabs.find((t) => t.id === activeId);
   if (!tab) return;
   tab.sessionId = state.get('currentSessionId');
   tab.messages = state.get('currentMessages') || [];
   const msgs = tab.messages;
-  const firstUser = msgs.find(m => m.role === 'user');
+  const firstUser = msgs.find((m) => m.role === 'user');
   if (firstUser && (!tab.title || tab.title === '新对话')) {
-    tab.title = String(firstUser.content || '').slice(0, 28) || '对话';
-    import('./titlebar.js').then(m => m.renderTabs(tabs, activeId));
+    tab.title =
+      String(firstUser.uiLabel || firstUser.content || '').slice(0, 28) ||
+      '对话';
+    import('./titlebar.js').then((m) => m.renderTabs(tabs, activeId));
   }
   state.set('tabs', tabs);
 }
@@ -399,7 +507,7 @@ function syncActiveTab() {
 let userScrolledUp = false;
 
 function smartScroll(container) {
-  if (userScrolledUp) return;
+  if (!container || userScrolledUp) return;
   requestAnimationFrame(() => scrollToBottom(container));
 }
 
@@ -414,9 +522,7 @@ export function loadMessages(data) {
   for (const msg of msgs) {
     const label = msg.uiLabel;
     const show =
-      label && msg.role === 'user'
-        ? '【' + label + '】'
-        : msg.content;
+      label && msg.role === 'user' ? '【' + label + '】' : msg.content;
     const el = renderMessage(container, msg.role, show);
     if (label && msg.role === 'user' && el) {
       el.classList.add('msg-qa');
@@ -426,8 +532,11 @@ export function loadMessages(data) {
         bubble.title = String(msg.content || '').slice(0, 500);
       }
     }
+    if (msg.partial && msg.role === 'assistant' && el) {
+      el.classList.add('msg-partial');
+    }
   }
-  if (data.reply && !msgs.some(m => m.role === 'assistant')) {
+  if (data.reply && !msgs.some((m) => m.role === 'assistant')) {
     renderMessage(container, 'assistant', data.reply);
     msgs.push({ role: 'assistant', content: data.reply, mode: 'chat' });
     state.set('currentMessages', msgs);
@@ -438,19 +547,20 @@ export function loadMessages(data) {
 export function updateComposerState() {
   const sendBtn = document.getElementById('send-btn');
   const cancelBtn = document.getElementById('cancel-btn');
-  const streaming = state.get('streaming');
+  const streaming = isCurrentTabStreaming();
   const input = document.getElementById('composer-input');
   if (sendBtn) {
     sendBtn.style.display = streaming ? 'none' : 'flex';
     if (!streaming) {
-      sendBtn.disabled = !input?.value.trim();
+      sendBtn.disabled = !(input?.value.trim());
     }
   }
   if (cancelBtn) cancelBtn.style.display = streaming ? 'flex' : 'none';
+  setStreamingIndicator();
 }
 
 export function setupCancel() {
-  // Cancel handled in composer.js to avoid double-binding
+  // Cancel handled in composer.js
 }
 
 export function createEmptyState() {
@@ -465,7 +575,7 @@ export function createEmptyState() {
 
 export async function runBaselineAlign() {
   const container = document.getElementById('messages');
-  if (!container || state.get('streaming')) return;
+  if (!container || isCurrentTabStreaming()) return;
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
   try {
@@ -474,15 +584,21 @@ export async function runBaselineAlign() {
     const bl = data.baseline || {};
     const card = document.createElement('div');
     card.className = 'msg assistant';
-    const risks = (bl.risks || []).map(r => '<li>' + escapeHtml(r) + '</li>').join('');
+    const risks = (bl.risks || [])
+      .map((r) => '<li>' + escapeHtml(r) + '</li>')
+      .join('');
     card.innerHTML =
       '<div class="msg-label">基线快照</div>' +
       '<div class="bubble baseline-card">' +
-        '<p>' + escapeHtml(bl.summary || '') + '</p>' +
-        (risks ? '<ul>' + risks + '</ul>' : '') +
-        '<p class="baseline-hint">接着由 Claude 解读结构与下一步…</p>' +
+      '<p>' +
+      escapeHtml(bl.summary || '') +
+      '</p>' +
+      (risks ? '<ul>' + risks + '</ul>' : '') +
+      '<p class="baseline-hint">接着由 Claude 解读结构与下一步…</p>' +
       '</div>' +
-      '<div class="time">' + ts() + '</div>';
+      '<div class="time">' +
+      ts() +
+      '</div>';
     container.appendChild(card);
     smartScroll(container);
     const prompt = data.prompt || '请对齐当前项目基线并说明结构与风险。';
@@ -496,7 +612,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('messages');
   if (!container) return;
   container.addEventListener('scroll', () => {
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 60;
+    const atBottom =
+      container.scrollTop + container.clientHeight >=
+      container.scrollHeight - 60;
     userScrolledUp = !atBottom;
   });
 });
@@ -508,4 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
   msgContainer.addEventListener('scroll', () => {
     titlebar.classList.toggle('scrolled', msgContainer.scrollTop > 10);
   });
+});
+
+document.addEventListener('ccc-streams-changed', () => {
+  updateComposerState();
+  const tabs = state.get('tabs') || [];
+  import('./titlebar.js').then((m) =>
+    m.renderTabs(tabs, state.get('activeTabId'))
+  );
 });
