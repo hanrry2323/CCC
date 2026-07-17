@@ -37,8 +37,11 @@ _load_phases = ccc_board._load_phases
 _mark_phase_failed = ccc_board._mark_phase_failed
 _current_running_phase = ccc_board._current_running_phase
 _check_phase_failures = ccc_board._check_phase_failures
-PHASE_TERMINAL_OK = ccc_board.PHASE_TERMINAL_OK
-PHASE_TERMINAL_FAIL = ccc_board.PHASE_TERMINAL_FAIL
+
+from board.phase import (  # noqa: E402
+    PHASE_TERMINAL_FAIL,
+    PHASE_TERMINAL_OK,
+)
 
 
 @pytest.fixture
@@ -571,7 +574,7 @@ class TestV0251CycleDetection:
             {"phase": 2, "status": "pending", "depends_on": [1]},
         ])
         phases = _load_phases("warn")
-        _resolve_phase_dependencies(phases)
+        _resolve_phase_dependencies(phases, emit_warnings=True)
         warnings_file = fake_workspace / ".ccc" / "warnings.json"
         assert warnings_file.exists(), "warnings.json must be written when cycle detected"
         import json
@@ -590,7 +593,7 @@ class TestV0251UnresolvedDeps:
             {"phase": 2, "status": "pending", "depends_on": []},
         ])
         phases = _load_phases("unr1")
-        _resolve_phase_dependencies(phases)
+        _resolve_phase_dependencies(phases, emit_warnings=True)
 
         warnings_file = fake_workspace / ".ccc" / "warnings.json"
         assert warnings_file.exists()
@@ -605,7 +608,7 @@ class TestV0251UnresolvedDeps:
             {"phase": 2, "status": "pending", "depends_on": [1]},
         ])
         phases = _load_phases("allok")
-        _resolve_phase_dependencies(phases)
+        _resolve_phase_dependencies(phases, emit_warnings=True)
 
         warnings_file = fake_workspace / ".ccc" / "warnings.json"
         if warnings_file.exists():
@@ -621,7 +624,7 @@ class TestV0251UnresolvedDeps:
             {"phase": 3, "status": "pending", "depends_on": []},
         ])
         phases = _load_phases("multi")
-        _resolve_phase_dependencies(phases)
+        _resolve_phase_dependencies(phases, emit_warnings=True)
 
         warnings_file = fake_workspace / ".ccc" / "warnings.json"
         assert warnings_file.exists()
@@ -634,6 +637,32 @@ class TestV0251UnresolvedDeps:
         missing_str = latest.get("missing", {})
         assert "1" in missing_str  # phase 1 → dep 99
         assert "2" in missing_str  # phase 2 → dep 98+97
+
+    def test_string_phase_ids_not_false_unresolved(self, fake_workspace):
+        """phase/depends_on 为字符串数字时不得误判 missing。"""
+        phases = [
+            {"phase": "1", "status": "done", "depends_on": []},
+            {"phase": "2", "status": "pending", "depends_on": ["1"]},
+        ]
+        exe, blocked, skipped = _resolve_phase_dependencies(
+            phases, emit_warnings=True
+        )
+        assert 2 in exe
+        assert not blocked
+        warnings_file = fake_workspace / ".ccc" / "warnings.json"
+        if warnings_file.exists():
+            content = json.loads(warnings_file.read_text())
+            assert not any(w.get("type") == "unresolved_dep" for w in content)
+
+    def test_unresolved_dedup_same_signature(self, fake_workspace):
+        """同 missing signature 1h 内只写一次 warnings。"""
+        phases = [{"phase": 1, "status": "pending", "depends_on": [99]}]
+        _resolve_phase_dependencies(phases, emit_warnings=True)
+        _resolve_phase_dependencies(phases, emit_warnings=True)
+        content = json.loads(
+            (fake_workspace / ".ccc" / "warnings.json").read_text()
+        )
+        assert len([w for w in content if w.get("type") == "unresolved_dep"]) == 1
 
 
 class TestV0251MaxIterConvergence:

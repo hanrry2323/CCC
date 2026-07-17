@@ -132,8 +132,22 @@ def test_should_not_run_within_2h(tmp_path, monkeypatch):
 # ═══════════════════════════════════════════
 
 
-def test_post_backlog_creates_tasks(tmp_workspace):
-    """投 3 个 review 类 → backlog 出现 3 个 JSONL"""
+def test_post_backlog_hard_disabled_by_default(tmp_workspace):
+    """v0.42.4: 自动投入硬禁 → 不写 backlog。"""
+    items = ["bug 1 in module X", "bug 2 in module Y", "bug 3 in module Z"]
+    n = _audit_post_backlog(str(tmp_workspace), items, "review")
+    assert n == 0
+    backlog = tmp_workspace / ".ccc" / "board" / "backlog"
+    assert list(backlog.glob("*.jsonl")) == []
+
+
+def test_post_backlog_creates_tasks_when_inject_allowed(tmp_workspace, monkeypatch):
+    """投 3 个 review 类 → backlog 出现 3 个 JSONL（仅测试注入路径时临时开闸）。"""
+    import _ccc_control as ctrl
+
+    monkeypatch.setattr(ctrl, "INVENT_HARD_DISABLED", False)
+    monkeypatch.setattr(ctrl, "may_invent", lambda: True)
+    monkeypatch.setattr(ctrl, "may_auto_inject_tasks", lambda: True)
     items = ["bug 1 in module X", "bug 2 in module Y", "bug 3 in module Z"]
     n = _audit_post_backlog(str(tmp_workspace), items, "review")
     assert n == 3
@@ -195,22 +209,25 @@ def test_classify_empty_inputs():
 # ═══════════════════════════════════════════
 
 
-def test_post_backlog_on_bare_workspace(tmp_path):
-    """裸 workspace（无 .ccc/board 目录）→ FileBoardStore 应自动建目录
-
-    修复前会 FileNotFoundError；修复后自动 mkdir 全 7 列 + events。
-    """
+def test_post_backlog_on_bare_workspace_refused(tmp_path, monkeypatch):
+    """裸 workspace：硬禁下不投 backlog（且不抛错）。"""
     bare_ws = tmp_path / "bare"
     bare_ws.mkdir()
-
-    # 验证 .ccc/board/ 不存在
     assert not (bare_ws / ".ccc" / "board").exists()
+    n = _audit_post_backlog(str(bare_ws), ["item 1", "item 2"], "review")
+    assert n == 0
 
-    # 直接调 _audit_post_backlog（应不抛错）
+
+def test_post_backlog_on_bare_workspace_when_allowed(tmp_path, monkeypatch):
+    """开闸后裸 workspace → FileBoardStore 自动建目录并投卡。"""
+    import _ccc_control as ctrl
+
+    monkeypatch.setattr(ctrl, "may_invent", lambda: True)
+    monkeypatch.setattr(ctrl, "may_auto_inject_tasks", lambda: True)
+    bare_ws = tmp_path / "bare"
+    bare_ws.mkdir()
     n = _audit_post_backlog(str(bare_ws), ["item 1", "item 2"], "review")
     assert n == 2
-
-    # 验证目录被自动建
     assert (bare_ws / ".ccc" / "board" / "backlog").exists()
     assert len(list((bare_ws / ".ccc" / "board" / "backlog").glob("*.jsonl"))) == 2
 
@@ -243,11 +260,10 @@ def reset_replenish_state():
     _last_empty_replenish.clear()
 
 
-def test_replenish_triggers_when_empty(
+def test_replenish_hard_disabled(
     tmp_workspace, reset_replenish_state, monkeypatch
 ):
-    """backlog + planned 都为空 → 调用 audit_role"""
-    # v0.37: auto_replenish 默认关闭，测试需打开
+    """v0.42.4: auto_replenish 永久禁用，即使 cfg/invent 打开也不触发。"""
     ccc_engine.cfg.auto_replenish = True
     called = []
 
@@ -256,14 +272,15 @@ def test_replenish_triggers_when_empty(
         return []
 
     monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+    monkeypatch.setattr(ccc_engine, "_may_invent", lambda: True)
 
     store = _FakeStore(backlog=[], planned=[])
     program_dir = tmp_workspace.parent
 
     triggered = _auto_replenish_backlog(tmp_workspace, store, program_dir)
 
-    assert triggered is True
-    assert called == [str(tmp_workspace)]
+    assert triggered is False
+    assert called == []
 
 
 def test_replenish_skips_when_backlog_has_items(
@@ -308,10 +325,10 @@ def test_replenish_skips_when_planned_has_items(
     assert called == []
 
 
-def test_replenish_cooldown_blocks_repeat(
+def test_replenish_cooldown_irrelevant_when_hard_disabled(
     tmp_workspace, reset_replenish_state, monkeypatch
 ):
-    """5min 冷却期内重复调用 → 第二次不再触发"""
+    """硬禁后多次调用均不触发。"""
     called = []
 
     def fake_audit_role(workspace=None):
@@ -319,22 +336,14 @@ def test_replenish_cooldown_blocks_repeat(
         return []
 
     monkeypatch.setattr(ccc_engine.ccc_board, "audit_role", fake_audit_role)
+    ccc_engine.cfg.auto_replenish = True
+    monkeypatch.setattr(ccc_engine, "_may_invent", lambda: True)
 
     store = _FakeStore(backlog=[], planned=[])
     program_dir = tmp_workspace.parent
 
-    # 第一次触发
     first = _auto_replenish_backlog(tmp_workspace, store, program_dir)
-    assert first is True
-    assert len(called) == 1
-
-    # 冷却期内第二次应被跳过
     second = _auto_replenish_backlog(tmp_workspace, store, program_dir)
+    assert first is False
     assert second is False
-    assert len(called) == 1
-
-    # 把时间往后推 301s（超过 300s 冷却）→ 应再次触发
-    _last_empty_replenish[str(tmp_workspace)] -= 301
-    third = _auto_replenish_backlog(tmp_workspace, store, program_dir)
-    assert third is True
-    assert len(called) == 2
+    assert called == []

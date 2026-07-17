@@ -20,9 +20,10 @@ fi
 
 export PATH="/Users/apple/.npm-global/bin:/opt/homebrew/bin:/Users/apple/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/code}"
-export CCC_AUTO_REPLENISH="${CCC_AUTO_REPLENISH:-0}"
-export CCC_EVOLVE_ON_IDLE="${CCC_EVOLVE_ON_IDLE:-0}"
-export CCC_EVOLVE_ON_AUDIT="${CCC_EVOLVE_ON_AUDIT:-0}"
+export CCC_AUTO_REPLENISH=0
+export CCC_EVOLVE_ON_IDLE=0
+export CCC_EVOLVE_ON_AUDIT=0
+# v0.42.4: invent/自动投入硬禁，禁止环境变量重新打开
 export CCC_MEM_WARN_MB="${CCC_MEM_WARN_MB:-400}"
 export CCC_MEM_DEGRADED_MB="${CCC_MEM_DEGRADED_MB:-800}"
 export CCC_MEM_KILL_MB="${CCC_MEM_KILL_MB:-1500}"

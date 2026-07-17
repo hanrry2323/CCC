@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.42.3] — 2026-07-17
 
+### 破坏性：永久禁止「自动识别任务投入」
+
+- **`INVENT_HARD_DISABLED=True`**：`may_invent()` / `may_auto_inject_tasks()` 恒 False
+- **`set_mode("invent")` 强制降级 `enabled`**；CLI `invent` exit 2
+- **禁用路径**：audit→backlog、evolve→backlog、`_auto_replenish_backlog`、abnormal 自动回灌、`CCC_AUTO_REPLENISH`/`CCC_EVOLVE_*` 环境开关
+- **卸载** `com.ccc.batch2-autonomy`（hourly wake 吃内存）
+- **仍允许**：用户 Hub/Board **显式建卡 / 定稿转任务** → enabled + wake
+
+### 修复：commit-gate / epic 子卡失败误跑 product
+
+- **根因**：dev 过 commit-gate 失败后烧 `engine_iter` → `unresolvable` → **删 phases 回 backlog** → `_process_backlog` 对 epic 子卡误调 `product_role` ×3 → quarantine 文案写成「product 连续失败」（掩盖真因）
+- **Engine**：`commit-gate` 与 epic 子卡 `unresolvable` → `abnormal` **保留 phases/plan**，禁止删图 regen
+- **Backlog**：`work`+`parent_id` 缺 phases 直接 abnormal，不再 Claude 扇出重拆
+
+### 修复：「引用不存在的 phase_id」刷屏 + pytest 污染 Engine
+
+- **根因 A**：`_resolve_phase_dependencies` 每次调用都写 `warnings.json` + L2 桌面通知（Engine 每 tick / pytest 无隔离）
+- **根因 B**：`phase`/`depends_on` str/int 混用 → 假阳性「不存在」
+- **根因 C**：并行调度单测 `_save_active_tasks` 未 mock → 写入 `~/.ccc/engine-active-tasks.json`，真人 Engine 恢复假任务
+- **根因 D**：Engine 进主循环后**不再读 control**，切 `ui/disabled` 仍继续拉 opencode/product
+- **修复**：resolve 默认纯函数；`emit_warnings` + 1h 去重；强制 int 规范化；persist 拒绝 pytest/tmp 路径；fanout 补 orphan-dep 硬门；主循环每 tick 检查 `may_start_engine`
+
 ### 修复：看板仓 ↔ CCC 编排仓硬隔离
 
 - **根因**：`opencode run` 未传 `--dir`，session 绑到 Engine `WorkingDirectory=CCC`；全局 MCP filesystem 根为 `~/program`；旧 `dev_role` 路径漏 `--cwd`

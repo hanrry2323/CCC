@@ -21,6 +21,45 @@ CCC_HOME = ccc_home()
 PHASE_TERMINAL_OK = {"done", "verified", "skipped"}
 PHASE_TERMINAL_FAIL = {"failed"}
 
+# unresolved_dep / phase_cycle 告警去重窗口（秒）— 同 signature 不重复写盘/桌面通知
+_WARN_DEDUP_SEC = 3600
+
+
+def _coerce_phase_id(value) -> int | None:
+    """把 phase / depends_on 元素规范成 int。
+
+    LLM 常产出字符串 \"1\"；若不强制转换，by_id 用 int 键时 lookup 失败，
+    会被误判为「引用了不存在的 phase_id」并刷 L2 通知。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _phase_index(phases: list[dict]) -> dict[int, dict]:
+    """phase_id(int) → phase dict；重复 id 保留后者。"""
+    by_id: dict[int, dict] = {}
+    for p in phases:
+        pid = _coerce_phase_id(p.get("phase"))
+        if pid is None:
+            continue
+        by_id[pid] = p
+    return by_id
+
+
+def _normalized_deps(phase: dict) -> list[int]:
+    out: list[int] = []
+    for dep in phase.get("depends_on") or []:
+        d = _coerce_phase_id(dep)
+        if d is not None:
+            out.append(d)
+    return out
+
 
 def _load_phases(task_id: str, ws: Path | None = None) -> list[dict]:
     """v0.24: 加载 phases.jsonl 每行一个 phase dict（跳过 schema_version 行）。
@@ -53,7 +92,7 @@ def _load_phases(task_id: str, ws: Path | None = None) -> list[dict]:
                     out.append(obj)
     except OSError:
         return []
-    out.sort(key=lambda p: p.get("phase", 0))
+    out.sort(key=lambda p: _coerce_phase_id(p.get("phase")) or 0)
     return out
 
 
@@ -67,18 +106,14 @@ def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
     调用时拿到 cycle 列表，把环上 phase 标 skipped + 写 warnings.json。
     """
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[int, int] = {
-        p.get("phase"): WHITE for p in phases if p.get("phase") is not None
-    }
-    by_id: dict[int, dict] = {
-        p.get("phase"): p for p in phases if p.get("phase") is not None
-    }
+    by_id = _phase_index(phases)
+    color: dict[int, int] = {pid: WHITE for pid in by_id}
     cycles: list[list[int]] = []
 
     def dfs(node: int, stack: list[int]) -> None:
         color[node] = GRAY
         stack.append(node)
-        for dep_id in by_id.get(node, {}).get("depends_on") or []:
+        for dep_id in _normalized_deps(by_id.get(node, {})):
             if dep_id not in color:
                 continue  # 不存在的依赖由 _resolve_phase_dependencies 处理
             if color[dep_id] == GRAY:
@@ -97,8 +132,120 @@ def _detect_phase_cycle(phases: list[dict]) -> list[list[int]]:
     return cycles
 
 
+def _collect_unresolved_deps(by_id: dict[int, dict]) -> dict[int, list[int]]:
+    """phase_id → 缺失的 depends_on id 列表。"""
+    unresolved: dict[int, list[int]] = {}
+    for pid, phase in by_id.items():
+        for dep_id in _normalized_deps(phase):
+            if dep_id not in by_id:
+                unresolved.setdefault(pid, []).append(dep_id)
+    return unresolved
+
+
+def _warning_signature(wtype: str, payload: dict) -> str:
+    if wtype == "unresolved_dep":
+        return f"unresolved_dep:{json.dumps(payload.get('missing'), sort_keys=True)}"
+    if wtype == "phase_cycle":
+        return f"phase_cycle:{json.dumps(payload.get('cycles'), sort_keys=True)}"
+    return f"{wtype}:{json.dumps(payload, sort_keys=True, default=str)}"
+
+
+def _recent_warning_exists(existing: list, signature: str, *, within_sec: int) -> bool:
+    """同 signature 在窗口内已写过 → True（跳过）。"""
+    import time
+    from datetime import datetime
+
+    now = time.time()
+    for w in reversed(existing[-50:]):
+        if not isinstance(w, dict):
+            continue
+        wtype = w.get("type") or ""
+        sig = _warning_signature(wtype, w)
+        if sig != signature:
+            continue
+        ts = w.get("detected_at") or ""
+        try:
+            # 兼容 +08:00 / Z
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            age = now - dt.timestamp()
+            if age < within_sec:
+                return True
+        except (TypeError, ValueError):
+            return True  # 无法解析时间戳时保守去重
+    return False
+
+
+def _emit_phase_graph_warnings(
+    cycles: list[list[int]],
+    unresolved: dict[int, list[int]],
+    *,
+    notify: bool = True,
+) -> None:
+    """写 warnings.json +（可选）L2 通知；同 signature 1h 内去重。"""
+    if not cycles and not unresolved:
+        return
+    try:
+        warnings_file = get_workspace() / ".ccc" / "warnings.json"
+    except Exception:
+        return
+    try:
+        existing: list = []
+        if warnings_file.exists():
+            try:
+                existing = json.loads(warnings_file.read_text())
+                if not isinstance(existing, list):
+                    existing = []
+            except json.JSONDecodeError:
+                existing = []
+
+        changed = False
+        if cycles:
+            payload = {"type": "phase_cycle", "cycles": cycles, "detected_at": now_iso()}
+            sig = _warning_signature("phase_cycle", payload)
+            if not _recent_warning_exists(existing, sig, within_sec=_WARN_DEDUP_SEC):
+                existing.append(payload)
+                changed = True
+
+        if unresolved:
+            payload = {
+                "type": "unresolved_dep",
+                "missing": {str(k): v for k, v in unresolved.items()},
+                "detected_at": now_iso(),
+            }
+            sig = _warning_signature("unresolved_dep", payload)
+            if not _recent_warning_exists(existing, sig, within_sec=_WARN_DEDUP_SEC):
+                existing.append(payload)
+                changed = True
+                if notify:
+                    try:
+                        subprocess.run(
+                            [
+                                "bash",
+                                str(CCC_HOME / "scripts" / "ccc-notify.sh"),
+                                "L2",
+                                "phases.json: unresolved dependency detected",
+                                f"{len(unresolved)} phase 引用了不存在的 phase_id",
+                            ],
+                            capture_output=True,
+                            env=_sanitized_env(),
+                            timeout=5,
+                        )
+                    except Exception as exc:
+                        _log.debug("ccc-notify.sh L2 unresolved_dep failed: %s", exc)
+
+        if changed:
+            warnings_file.parent.mkdir(parents=True, exist_ok=True)
+            warnings_file.write_text(
+                json.dumps(existing, ensure_ascii=False, indent=2)
+            )
+    except OSError as exc:
+        _log.debug("write warnings.json (phase graph) failed: %s", exc)
+
+
 def _resolve_phase_dependencies(
     phases: list[dict],
+    *,
+    emit_warnings: bool = False,
 ) -> tuple[set[int], set[int], set[int]]:
     """v0.24: 解析 phase 依赖关系。
 
@@ -108,16 +255,13 @@ def _resolve_phase_dependencies(
     - 其他依赖未达终态 → 本 phase 阻塞 (blocked）
 
     v0.25.1: 加循环依赖检测。环上 phase 全部归 skipped（强失败隔离）。
+    v0.42.4: 默认纯函数（不写盘/不通知）；emit_warnings=True 时去重后告警。
+             phase/depends_on 强制 int，避免 str/int 误判「不存在」。
 
     Returns:
         (executable_phase_ids, blocked_phase_ids, skipped_phase_ids)
-
-    注：本函数只标注新状态（pending → blocked/skipped），已 done/verified/in_progress/failed
-    的 phase 不动。Engine 在调用此函数前应已写回 phases.json。
     """
-    by_id: dict[int, dict] = {
-        p.get("phase"): p for p in phases if p.get("phase") is not None
-    }
+    by_id = _phase_index(phases)
 
     # v0.25.1: 循环依赖检测 — 环上 phase 强制 skipped
     cycles = _detect_phase_cycle(phases)
@@ -145,7 +289,7 @@ def _resolve_phase_dependencies(
             skipped.add(pid)
             continue
 
-        deps = phase.get("depends_on") or []
+        deps = _normalized_deps(phase)
         if not deps:
             # 无依赖 → 可执行
             executable.add(pid)
@@ -173,74 +317,9 @@ def _resolve_phase_dependencies(
         else:
             executable.add(pid)
 
-    # v0.25.1: 写 warnings.json（让 ops 看见循环依赖路径）
-    if cycles:
-        try:
-            warnings_file = get_workspace() / ".ccc" / "warnings.json"
-            existing = []
-            if warnings_file.exists():
-                try:
-                    existing = json.loads(warnings_file.read_text())
-                    if not isinstance(existing, list):
-                        existing = []
-                except json.JSONDecodeError:
-                    existing = []
-            existing.append(
-                {
-                    "type": "phase_cycle",
-                    "cycles": cycles,
-                    "detected_at": now_iso(),
-                }
-            )
-            warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
-        except OSError as exc:
-            _log.debug("write warnings.json (phase_cycle) failed: %s", exc)
-
-    # v0.25.1: 不存在依赖告警（CHANGELOG v0.24.4:97 P1）
-    # 检测 depends_on 中引用了不存在的 phase_id；写 warnings.json + L2 通知
-    unresolved: dict[int, list[int]] = {}  # phase_id -> [missing dep ids]
-    for pid, phase in by_id.items():
-        deps = phase.get("depends_on") or []
-        for dep_id in deps:
-            if dep_id not in by_id:
-                unresolved.setdefault(pid, []).append(dep_id)
-    if unresolved:
-        try:
-            warnings_file = get_workspace() / ".ccc" / "warnings.json"
-            existing = []
-            if warnings_file.exists():
-                try:
-                    existing = json.loads(warnings_file.read_text())
-                    if not isinstance(existing, list):
-                        existing = []
-                except json.JSONDecodeError:
-                    existing = []
-            existing.append(
-                {
-                    "type": "unresolved_dep",
-                    "missing": {str(k): v for k, v in unresolved.items()},
-                    "detected_at": now_iso(),
-                }
-            )
-            warnings_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
-            # L2 桌面通知（让 dev 立刻看见）
-            try:
-                subprocess.run(
-                    [
-                        "bash",
-                        str(CCC_HOME / "scripts" / "ccc-notify.sh"),
-                        "L2",
-                        "phases.json: unresolved dependency detected",
-                        f"{len(unresolved)} phase 引用了不存在的 phase_id",
-                    ],
-                    capture_output=True,
-                    env=_sanitized_env(),
-                    timeout=5,
-                )
-            except Exception as exc:
-                _log.debug("ccc-notify.sh L2 unresolved_dep failed: %s", exc)
-        except OSError as exc:
-            _log.debug("write warnings.json (unresolved_dep) failed: %s", exc)
+    if emit_warnings:
+        unresolved = _collect_unresolved_deps(by_id)
+        _emit_phase_graph_warnings(cycles, unresolved, notify=True)
 
     return executable, blocked, skipped
 
@@ -283,15 +362,16 @@ def _apply_phase_status_updates(
             continue
         pid = obj.get("phase")
         status = obj.get("status")
+        pid_i = _coerce_phase_id(pid)
         if status == "pending":
-            if pid in skipped:
+            if pid_i in skipped:
                 obj["status"] = "skipped"
                 changed = True
-            elif pid in blocked:
+            elif pid_i in blocked:
                 obj["status"] = "blocked"
                 changed = True
         elif status == "blocked":
-            if pid not in blocked and pid not in skipped:
+            if pid_i not in blocked and pid_i not in skipped:
                 obj["status"] = "pending"
                 changed = True
         new_lines.append(json.dumps(obj, ensure_ascii=False))
@@ -435,17 +515,22 @@ def _check_phase_failures(task_id: str) -> dict:
 
     # v0.24.3: writeback 后必须 reload，否则返回值基于陈旧内存状态计算。
     phases = _load_phases(task_id)
-    executable, blocked, skipped = _resolve_phase_dependencies(phases)
+    # 仅第二次 emit（去重），避免同 tick 双写 + 桌面通知刷屏
+    executable, blocked, skipped = _resolve_phase_dependencies(
+        phases, emit_warnings=True
+    )
     # 回报磁盘真实状态（已写回的 skipped/blocked 不再出现在 resolve 的新增集合里）
     skipped_on_disk = {
-        p.get("phase")
+        pid
         for p in phases
-        if p.get("status") == "skipped" and p.get("phase") is not None
+        if p.get("status") == "skipped"
+        and (pid := _coerce_phase_id(p.get("phase"))) is not None
     }
     blocked_on_disk = {
-        p.get("phase")
+        pid
         for p in phases
-        if p.get("status") == "blocked" and p.get("phase") is not None
+        if p.get("status") == "blocked"
+        and (pid := _coerce_phase_id(p.get("phase"))) is not None
     }
 
     all_terminal = all(

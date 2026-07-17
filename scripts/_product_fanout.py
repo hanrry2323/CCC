@@ -252,6 +252,9 @@ def _normalize_child(
     ok, errs, _ = phase_lint.validate_phases_dict(phases)
     if not ok:
         raise ValueError(f"child[{idx}] phase_lint: {'; '.join(errs)}")
+    dep_ok, dep_errs = phase_lint.suggest_fix_no_missing_dependencies(phases)
+    if not dep_ok:
+        raise ValueError(f"child[{idx}] orphan-dep: {'; '.join(dep_errs)}")
     pok, perrs = phase_lint.validate_plan_acceptance(plan_md)
     if not pok:
         raise ValueError(f"child[{idx}] plan_lint: {'; '.join(perrs)}")

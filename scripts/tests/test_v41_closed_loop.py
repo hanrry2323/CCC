@@ -36,7 +36,8 @@ def test_ensure_engine_sets_enabled(tmp_path, monkeypatch):
     assert wake.consume_wake() is None
 
 
-def test_ensure_engine_keeps_invent(tmp_path, monkeypatch):
+def test_ensure_engine_downgrades_invent(tmp_path, monkeypatch):
+    """v0.42.4: invent 硬禁 → ensure_engine 降为 enabled。"""
     monkeypatch.setenv("HOME", str(tmp_path))
     import _ccc_control as ctrl
     import _engine_wake as wake
@@ -46,11 +47,16 @@ def test_ensure_engine_keeps_invent(tmp_path, monkeypatch):
     ctrl.DISABLED_SENTINEL = ctrl.CONTROL_DIR / "DISABLED"
     wake.WAKE_FILE = tmp_path / ".ccc" / "engine.wake"
 
-    ctrl.set_mode("invent", reason="test", source="test")
+    # 先写入残留 invent（绕过 set_mode 硬禁）
+    ctrl.CONTROL_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ctrl.CONTROL_FILE.write_text(
+        json.dumps({"mode": "invent", "schema_version": "1.2"}) + "\n"
+    )
     with patch.object(wake, "_bootstrap_engine_launchd", return_value=(True, "ok")):
         out = wake.ensure_engine_for_task(reason="task_dispatch", task_id="t2")
-    assert out["mode_after"] == "invent"
-    assert out["control_changed"] is False
+    assert out["mode_after"] == "enabled"
+    assert out["control_changed"] is True
+    assert ctrl.may_invent() is False
 
 
 def test_baseline_collect(tmp_path):

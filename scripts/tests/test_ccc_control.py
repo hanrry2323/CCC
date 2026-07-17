@@ -52,12 +52,15 @@ def test_enable_is_queue_consumer(control_home):
     assert data["policy"]["invent_allowed"] is False
 
 
-def test_invent_mode(control_home):
-    ctrl.set_mode("invent", reason="flywheel")
-    assert ctrl.may_invent() is True
-    assert ctrl.may_start_engine() is True
+def test_invent_mode_hard_disabled(control_home):
+    """v0.42.4: invent 永久禁用，set_mode 降级 enabled。"""
+    out = ctrl.set_mode("invent", reason="flywheel")
+    assert out["mode"] == "enabled"
+    assert ctrl.may_invent() is False
+    assert ctrl.may_auto_inject_tasks() is False
     s = ctrl.status_dict()
-    assert s["invent_allowed"] is True
+    assert s["invent_allowed"] is False
+    assert s["invent_hard_disabled"] is True
     assert s["engine_allowed"] is True
 
 

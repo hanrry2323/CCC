@@ -249,10 +249,36 @@ def _post_finding(ws_dir: Path, finding: dict) -> str | None:
 def evolve_run(workspace: str, max_tasks: int = 5) -> dict:
     """全链路：分析 → 去重/排序/限流 → 投 backlog
 
+    v0.42.4: 自动投入永久禁用；仅扫描不写 backlog。
+
     Returns:
         { "posted": int, "total": int, "filtered": int,
           "errors": list[str], "posted_tasks": list[str] }
     """
+    try:
+        from _ccc_control import may_auto_inject_tasks, may_invent
+
+        if not may_auto_inject_tasks() or not may_invent():
+            _log.info(
+                "[evolve] skip post backlog — auto-inject hard-disabled (%s)",
+                workspace,
+            )
+            return {
+                "posted": 0,
+                "total": 0,
+                "filtered": 0,
+                "errors": ["auto-inject hard-disabled"],
+                "posted_tasks": [],
+            }
+    except ImportError:
+        return {
+            "posted": 0,
+            "total": 0,
+            "filtered": 0,
+            "errors": ["control import failed; refuse invent"],
+            "posted_tasks": [],
+        }
+
     ws_dir = Path(workspace).resolve()
     errors: list[str] = []
     posted_tasks: list[str] = []

@@ -214,9 +214,9 @@ class Config:
     breaker_recovery_seconds: int = 120
 
     # ── 空闲补给 / evolve（v0.37 生产力：默认关闭，避免空看板自造任务爆内存）──
-    auto_replenish: bool = False  # CCC_AUTO_REPLENISH=1 开启
-    evolve_on_idle: bool = False  # CCC_EVOLVE_ON_IDLE=1 开启
-    evolve_on_audit: bool = False  # CCC_EVOLVE_ON_AUDIT=1 开启
+    auto_replenish: bool = False  # v0.42.4: 永久关闭，忽略环境变量
+    evolve_on_idle: bool = False  # v0.42.4: 永久关闭，忽略环境变量
+    evolve_on_audit: bool = False  # v0.42.4: 永久关闭，忽略环境变量
     product_async_timeout: int = 600  # 秒；claude -p product 墙钟上限
 
     def __post_init__(self):
@@ -257,9 +257,10 @@ class Config:
         _env_override_int(self, "mem_kill_mb", "CCC_MEM_KILL_MB")
         _env_override_int(self, "breaker_recovery_seconds", "CCC_BREAKER_RECOVERY_SECONDS")
         # v0.37: 空闲补给 / evolve / product 超时
-        _env_override_bool(self, "auto_replenish", "CCC_AUTO_REPLENISH")
-        _env_override_bool(self, "evolve_on_idle", "CCC_EVOLVE_ON_IDLE")
-        _env_override_bool(self, "evolve_on_audit", "CCC_EVOLVE_ON_AUDIT")
+        # v0.42.4: invent/自造相关开关永久 False，不再读环境变量
+        self.auto_replenish = False
+        self.evolve_on_idle = False
+        self.evolve_on_audit = False
         _env_override_int(self, "product_async_timeout", "CCC_PRODUCT_ASYNC_TIMEOUT")
 
 

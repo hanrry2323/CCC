@@ -3914,22 +3914,27 @@ def _intake_failsafe(ws: Path, category: str) -> bool:
 def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
     """把 review/decision 类问题投到对应项目的 backlog。返回投出数。
 
-    v0.40: 仅 control=invent 才允许投 backlog（enabled 为纯队列消费）。
+    v0.42.4: **永久禁用**自动投入（may_auto_inject_tasks=False）。
     """
-    from datetime import datetime as _dt
-
     try:
-        from _ccc_control import may_invent
+        from _ccc_control import may_auto_inject_tasks, may_invent
 
-        if not may_invent():
+        if not may_auto_inject_tasks() or not may_invent():
             _log.info(
-                "[audit] skip post backlog (%s×%d) — control≠invent",
+                "[audit] skip post backlog (%s×%d) — auto-inject hard-disabled",
                 category,
                 len(items),
             )
             return 0
     except ImportError:
-        pass
+        _log.info(
+            "[audit] skip post backlog (%s×%d) — control import failed, refuse",
+            category,
+            len(items),
+        )
+        return 0
+
+    from datetime import datetime as _dt
 
     store = FileBoardStore(Path(workspace))
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")

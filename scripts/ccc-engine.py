@@ -1277,6 +1277,29 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     store = _get_store(ws)
     label = _ws_label(ws)
     status = result.get("status", "unknown")
+    err = str(result.get("error") or "")
+
+    def _quarantine_keep_phases(reason: str) -> bool:
+        """失败隔离：保留 phases/plan，禁止删图回 backlog 触发 product。"""
+        col = _find_task_column(store, tid) or "in_progress"
+        if col != "abnormal":
+            try:
+                store.move_task(tid, col, "abnormal")
+            except Exception as exc:
+                engine_log(f"[{label}] {tid} move→abnormal 失败: {exc}")
+        try:
+            _, task = store.find_task(tid)
+            note = ((task or {}).get("note") or "") + f"\n[{label}] {reason}"
+            store.patch_task(tid, {"note": note[-2000:]})
+        except Exception:
+            pass
+        store.update_index()
+        engine_log(f"[{label}] {tid} → abnormal（{reason}）")
+        return True
+
+    # commit-gate：有产出但无 task_id commit — 不得走 phase-regen/product
+    if status in ("failed", "quarantined") and err.startswith("commit-gate"):
+        return _quarantine_keep_phases(err)
 
     if status == "phase_done":
         # v0.38: 当前 phase 完成，仍有后续 phase → relaunch，留在 active_tasks
@@ -1316,8 +1339,17 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     if status == "failed":
         retry = result.get("retry", 0)
         failure_summary = _check_phase_failures(tid)
-        # v0.31 (P0.1): phase 图无法解析 → 删旧 phases.json + 回 backlog 重生成
+        # v0.31 (P0.1): phase 图无法解析 → 仅对「无 parent 的遗留单卡」允许删 phases 回 backlog
+        # epic 子卡（work+parent_id）禁止：否则会被 _process_backlog 误跑 product
         if failure_summary.get("unresolvable"):
+            _, _task = store.find_task(tid)
+            from _board_store import normalize_task_view as _ntv
+
+            _task = _ntv(_task or {"id": tid}, column="in_progress")
+            if _task.get("card_kind") == "work" and _task.get("parent_id"):
+                return _quarantine_keep_phases(
+                    "phase graph unresolvable（epic 子卡，禁止 product regen）"
+                )
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:
@@ -1372,8 +1404,16 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
     if status == "quarantined":
         failure_summary = _check_phase_failures(tid)
-        # v0.31 (P0.1): phase 图无法解析 → 删旧 phases.json + 回 backlog 重生成
+        # v0.31 (P0.1): phase 图无法解析 — epic 子卡禁止 product regen
         if failure_summary.get("unresolvable"):
+            _, _task = store.find_task(tid)
+            from _board_store import normalize_task_view as _ntv
+
+            _task = _ntv(_task or {"id": tid}, column="in_progress")
+            if _task.get("card_kind") == "work" and _task.get("parent_id"):
+                return _quarantine_keep_phases(
+                    "phase graph unresolvable（epic 子卡，禁止 product regen）"
+                )
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:
@@ -1539,13 +1579,27 @@ def _check_degraded(ws: Path) -> None:
 
 
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
-    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。"""
+    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。
+
+    拒绝写入 pytest/tmp 路径，防止单元测试污染真人 Engine 状态。
+    """
     try:
         _ACTIVE_TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
         serializable = {}
         for k, v in active_tasks.items():
             item = dict(v)
             ws = item.get("workspace")
+            ws_s = str(ws) if ws is not None else ""
+            low = ws_s.lower()
+            if (
+                "/pytest-" in low
+                or "pytest-of-" in low
+                or "/pytest_of_" in low
+                or "/var/folders/" in low
+                or "/tmp/" in low
+            ):
+                engine_log(f"[persist] 跳过测试路径 active_task: {k}")
+                continue
             if isinstance(ws, Path):
                 item["workspace"] = str(ws)
             serializable[k] = item
@@ -1811,7 +1865,10 @@ def _refresh_epic_statuses(ws: Path) -> None:
 def _process_backlog(ws: Path) -> bool:
     """消费 backlog：只对 pending epic 调 Claude 扇出；epic 永不 move 出待办。
 
-    work 误落 backlog：有 plan+phases 则 promote；否则走 product（兼容）。
+    work 误落 backlog：
+    - plan+phases 齐全 → planned
+    - 有 parent_id（epic 子卡）且缺 phases → abnormal（禁止 product 重拆）
+    - 无 parent 的遗留单卡 → 可走 product 补 phases（兼容）
     """
     global _degraded_mode
     if _degraded_mode:
@@ -1845,6 +1902,7 @@ def _process_backlog(ws: Path) -> bool:
             # work 兼容：plan+phases 齐全 → planned
             phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
             plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
+            parent_id = _task_data.get("parent_id")
             if phases_file.exists() and plan_file.exists():
                 if store.move_task(tid, "backlog", "planned"):
                     engine_log(
@@ -1853,6 +1911,20 @@ def _process_backlog(ws: Path) -> bool:
                     _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
                     did_something = True
                 continue
+            # epic 子卡禁止走 Claude product 扇出（扇出只服务 pending epic）
+            if parent_id:
+                engine_log(
+                    f"[product] [{label}] work {tid} parent={parent_id} "
+                    f"缺 phases → abnormal（禁止 product 重拆）"
+                )
+                store.quarantine(
+                    tid,
+                    "epic child missing phases; refuse product regen",
+                )
+                store.update_index()
+                did_something = True
+                continue
+            # 无 parent 的遗留 work：下方可走 product 补 phases
 
         # v0.35: auto/quick 仅对非 epic（或显式）—— epic 不做 auto
         if kind != "epic":
@@ -2077,37 +2149,9 @@ def _process_backlog(ws: Path) -> bool:
 def _auto_replenish_backlog(ws: Path, store, program_dir: Path) -> bool:
     """backlog + planned 都为空时，立即触发 audit_role 补充新任务。
 
-    绕过 _audit_should_run 的 2h 间隔，但有 5min per-workspace 冷却
-    避免 audit_role 在无变更的项目上空转。
-
-    v0.37: 默认关闭（cfg.auto_replenish / CCC_AUTO_REPLENISH=1）。
-    v0.40: 另需 control=invent（may_invent）；enabled 禁止自造。
-
-    Returns: True 表示触发了 audit_role
+    v0.42.4: **永久禁用**（自动识别投入会吃爆内存）。恒返回 False。
     """
-    if not _may_invent():
-        return False
-    if not getattr(cfg, "auto_replenish", False):
-        return False
-    if store.list_tasks("backlog"):
-        return False
-    if store.list_tasks("planned"):
-        return False
-
-    now = time.time()
-    ws_key = str(ws)
-    last = _last_empty_replenish.get(ws_key, 0.0)
-    if now - last <= 300:
-        return False
-
-    _last_empty_replenish[ws_key] = now
-    label = _ws_label(ws, program_dir)
-    engine_log(f"[{label}] backlog+planned 均为空，立即触发 audit_role 补充")
-    try:
-        ccc_board.audit_role(workspace=str(ws))
-    except Exception as exc:
-        engine_log(f"[{label}] audit_role 异常: {exc}")
-    return True
+    return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2886,6 +2930,19 @@ def engine_loop(workspaces: list[Path]) -> None:
     _start_tick_watchdog()
 
     while not _engine_shutdown:
+        # 运行中也能响应 disable/ui：否则 control 切换后仍继续拉任务吃内存
+        if not may_start_engine():
+            engine_log(
+                f"CCC control={get_mode()} — mid-loop idle hold "
+                f"(resume: python3 scripts/_ccc_control.py enable)"
+            )
+            while not _engine_shutdown and not may_start_engine():
+                time.sleep(15)
+            if _engine_shutdown:
+                break
+            engine_log(f"CCC control={get_mode()} — resume engine loop")
+            continue
+
         iteration += 1
         _mark_engine_tick()
         tick_start = time.time()

@@ -1,7 +1,7 @@
-"""_engine_wake.py — 下任务 / 日审建卡 → 强制 enabled + 唤醒 Engine（v0.41）
+"""_engine_wake.py — 下任务 / 日审建卡 → 强制 enabled + 唤醒 Engine（v0.41+）
 
 产品规则：用户下达任务 = 自动化开工信号，无确认弹窗。
-不打开 invent（禁止自造）；已是 invent 则保持。
+禁止 invent / 自造；存量 invent 一律降级 enabled。
 """
 
 from __future__ import annotations
@@ -113,16 +113,16 @@ def ensure_engine_for_task(
     mode_after = mode_before
     control_changed = False
 
-    if mode_before == "invent":
-        pass  # 保持 invent
-    elif mode_before != "enabled":
-        set_mode(
-            "enabled",
-            reason=f"{reason}" + (f":{task_id}" if task_id else ""),
-            source="task_dispatch",
-        )
-        mode_after = "enabled"
-        control_changed = True
+    # v0.42.4: invent 永久禁用 — 任何残留 invent 都降为 enabled
+    if mode_before == "invent" or mode_before != "enabled":
+        if mode_before != "enabled":
+            set_mode(
+                "enabled",
+                reason=f"{reason}" + (f":{task_id}" if task_id else ""),
+                source="task_dispatch",
+            )
+            mode_after = "enabled"
+            control_changed = True
 
     workspace_reg = None
     if workspace:

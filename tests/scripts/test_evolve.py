@@ -210,8 +210,22 @@ def test_post_finding_creates_backlog_task(tmp_path):
     assert "security" in task["tags"]
 
 
-def test_evolve_run_posts_and_dedups(tmp_path, monkeypatch):
-    """mock 分析器：首次投递 top-N，第二次 posted=0"""
+def test_evolve_run_hard_disabled(tmp_path, monkeypatch):
+    """v0.42.4: evolve_run 不投 backlog。"""
+    r1 = evolve_run(str(tmp_path), max_tasks=2)
+    assert r1["posted"] == 0
+    assert "auto-inject" in (r1.get("errors") or [""])[0]
+    assert list((tmp_path / ".ccc" / "board" / "backlog").glob("*.jsonl")) == [] if (tmp_path / ".ccc" / "board" / "backlog").exists() else True
+
+
+def test_evolve_run_posts_when_inject_allowed(tmp_path, monkeypatch):
+    """mock 分析器：开闸后首次投递 top-N，第二次 posted=0"""
+    import _ccc_control as ctrl
+    import _evolve as evolve_mod
+
+    monkeypatch.setattr(ctrl, "may_invent", lambda: True)
+    monkeypatch.setattr(ctrl, "may_auto_inject_tasks", lambda: True)
+
     findings = [
         {
             "file": "a.py",
@@ -254,8 +268,6 @@ def test_evolve_run_posts_and_dedups(tmp_path, monkeypatch):
         if "health" in name:
             return health_mod
         return sec_mod
-
-    import _evolve as evolve_mod
 
     monkeypatch.setattr(evolve_mod, "_load_analyzer", fake_load)
 

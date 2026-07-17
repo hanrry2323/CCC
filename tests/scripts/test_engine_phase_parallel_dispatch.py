@@ -376,6 +376,7 @@ def test_try_launch_planned_chooses_parallel_when_conditions_met(tmp_path, monke
         return True
 
     monkeypatch.setattr(mod, "_try_launch_planned_parallel", fake_parallel)
+    monkeypatch.setattr(mod, "_save_active_tasks", lambda *_a, **_k: None)
 
     par_key = mod._task_key(ws, "t-par")
     active = {}
@@ -448,6 +449,7 @@ def test_try_launch_planned_skips_parallel_when_disabled(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_try_launch_planned_parallel", fake_parallel)
     monkeypatch.setattr(mod, "dev_role_launch", fake_dev)
     monkeypatch.setattr(mod, "_set_parallel_disabled", lambda v: None)
+    monkeypatch.setattr(mod, "_save_active_tasks", lambda *_a, **_k: None)
 
     # 临时把全局标志置 True（构造 disabled 状态）
     mod.PHASE_PARALLEL_DISABLED = True
@@ -514,6 +516,7 @@ def test_try_launch_planned_skips_parallel_when_single_phase(tmp_path, monkeypat
     monkeypatch.setattr(mod, "_try_launch_planned_parallel", fake_parallel)
     monkeypatch.setattr(mod, "dev_role_launch", fake_dev)
     monkeypatch.setattr(mod, "_set_parallel_disabled", lambda v: None)
+    monkeypatch.setattr(mod, "_save_active_tasks", lambda *_a, **_k: None)
 
     active = {}
     mod._try_launch_planned(ws, active)

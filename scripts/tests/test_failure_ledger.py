@@ -24,12 +24,12 @@ def control_home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_invent_mode_allows_engine_and_invent(control_home):
+def test_invent_mode_hard_disabled(control_home):
     ctrl.set_mode("invent", reason="t")
     assert ctrl.may_start_engine() is True
-    assert ctrl.may_invent() is True
+    assert ctrl.may_invent() is False
     assert ctrl.may_start_ui() is True
-    assert ctrl.is_enabled() is False
+    assert ctrl.is_enabled() is True  # invent coerced → enabled
 
 
 def test_enabled_is_queue_consumer_not_invent(control_home):
