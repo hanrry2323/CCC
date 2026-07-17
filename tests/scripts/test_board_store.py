@@ -37,6 +37,7 @@ def _valid_task(task_id: str = "store-t1", status: str = "backlog") -> dict:
         "updated_at": ts,
         "assignee": None,
         "tags": [],
+        "card_kind": "work",
     }
 
 
@@ -148,7 +149,7 @@ class TestHelpers:
 
     def test_fill_task_defaults(self):
         d = fill_task_defaults({"id": "x"})
-        assert d["schema_version"] == "1.0"
+        assert d["schema_version"] == "1.2"
         assert d["complexity"] == "medium"
 
     def test_assign_color_group_rotates(self, tmp_path):
