@@ -86,8 +86,12 @@ def _delete(path: str):
         return e.code, e.read().decode()
 
 
-def _stream_post(path: str, data: dict, read_limit: int = 5):
-    """POST and read the first N SSE lines from a streaming response."""
+def _stream_post(path: str, data: dict, read_limit: int = 5, read_timeout: int = 0):
+    """POST and read the first N SSE lines from a streaming response.
+
+    read_timeout: socket-level timeout for SSE line reads (0 = use TIMEOUT).
+    Increase to 30+ when claude CLI cold start produces first line after >15s.
+    """
     payload = json.dumps(data).encode()
     req = urllib.request.Request(
         f"{BASE_URL}{path}", data=payload, method="POST",
@@ -101,6 +105,9 @@ def _stream_post(path: str, data: dict, read_limit: int = 5):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             assert resp.status == 200
             assert "text/event-stream" in resp.headers.get("Content-Type", "")
+            # 延长 socket 超时供 SSE 读取阶段使用，补偿 claude CLI 冷启动延迟
+            if read_timeout > 0:
+                resp.fp._sock.settimeout(read_timeout)
             lines = []
             for i in range(read_limit):
                 line = resp.readline().decode(errors="replace").strip()
@@ -134,7 +141,7 @@ def chat_server(tmp_path_factory):
     proc = subprocess.Popen(
         [sys.executable, str(CHAT_SCRIPT), "--port", "18084", "--host", "127.0.0.1", "--no-open"],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         cwd=PROJECT_ROOT,
         env=env,
     )
@@ -149,7 +156,7 @@ def chat_server(tmp_path_factory):
     else:
         proc.kill()
         pytest.fail("chat-server did not start in 30s")
-    yield
+    yield chat_tmp
     proc.terminate()
     try:
         proc.wait(timeout=5)
@@ -498,15 +505,21 @@ class TestSessionPersistence:
         status, _ = _delete("/api/history/nonexistent-xyz-999999")
         assert status == 200
 
-    def test_047_session_on_disk(self):
+    def test_047_session_on_disk(self, chat_server):
         sid = _make_sid("sp47")
+        # read_limit=0：只验 HTTP 200（会话已同步落盘），不读 SSE 避免 claude CLI 启动慢导致超时
         status, _ = _stream_post("/api/chat", {
             "messages": [{"role": "user", "content": "disk test"}],
             "session_id": sid,
-        }, read_limit=5)
+        }, read_limit=0)
         assert status == 200
         time.sleep(0.5)
-        sfile = PROJECT_ROOT / ".ccc" / "chat" / "ccc" / f"{sid}.json"
+        # 调试：列出 chat_server 下所有文件
+        import sys
+        for p in sorted(chat_server.rglob("*")):
+            if p.is_file():
+                print(f"  [debug] chat_tmp/{p.relative_to(chat_server)}", file=sys.stderr)
+        sfile = chat_server / "ccc" / f"{sid}.json"
         assert sfile.exists(), f"Not on disk: {sfile}"
         data = json.loads(sfile.read_text())
         assert data["session_id"] == sid
