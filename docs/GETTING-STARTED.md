@@ -87,7 +87,21 @@ bash scripts/ccc-autostart-guard.sh disable
 
 ---
 
-## 5. 验证安装
+## 5. 接入新项目（已有仓 / 空仓）
+
+权威：[`workspace-binding.md`](workspace-binding.md)
+
+```bash
+mkdir -p ~/program/myapp   # 若全新
+python3 scripts/ccc-init.py ~/program/myapp --register
+# 编辑 ~/program/myapp/CLAUDE.md 后，在 Hub 选该项目即可对话 / 转任务
+```
+
+路径须在 `~/program/` 下；`ccc-init` 会建七列看板 + 种子 CLAUDE.md。
+
+---
+
+## 6. 验证安装
 
 ```bash
 # Hub 是否在听
@@ -102,12 +116,14 @@ python3 scripts/ccc-failure-report.py --last 5
 
 ---
 
-## 6. 常见问题
+## 7. 常见问题
 
 | 现象 | 处理 |
 |------|------|
 | 手机整页要滑才能见输入框 | 硬刷新 Hub；≥ v0.42.1 已用 fixed+dvh 锁视口 |
 | 下达后任务不动 | 控制面是否 `enable`？Board/Engine 是否在跑？看控制台与 `docs/observability.md` |
+| Hub 选不到新项目 | 是否有 `.ccc/board`？是否在 `~/program/`？见 [`workspace-binding.md`](workspace-binding.md) |
+| 对话串到别的仓 | 确认侧栏选中的项目；Agent cwd = 该项目根 |
 | 登录失败 | 确认 `CCC_CHAT_USER` / `CCC_CHAT_PASS`；默认 `ccc`/`ccc` |
 | 端口冲突 | 见 `ccc-hub-ports.md`；勿再开废弃 8084 |
 
@@ -115,11 +131,12 @@ python3 scripts/ccc-failure-report.py --last 5
 
 ---
 
-## 7. 下一步读什么
+## 8. 下一步读什么
 
 | 你是… | 读 |
 |-------|-----|
 | 想理解「为什么不是角色超市」 | [`VISION.md`](VISION.md) |
+| 多项目绑定 / 新项目接入 | [`workspace-binding.md`](workspace-binding.md) |
 | 日常怎么用 | [`USAGE.md`](USAGE.md) |
 | Agent 改本仓库 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) |
 | 贡献代码 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |

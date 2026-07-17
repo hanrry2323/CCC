@@ -35,17 +35,27 @@ def test_init_syntax():
 
 
 def test_init_creates_ccc_subdirs(fake_workspace):
-    """init creates .ccc/ + copies profile.md template."""
+    """init creates .ccc/ + board columns + profile + CLAUDE.md."""
     proc = subprocess.run(
         [sys.executable, str(INIT_SCRIPT), str(fake_workspace)],
         capture_output=True, text=True, timeout=10,
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     ccc = fake_workspace / ".ccc"
-    # .ccc/ root created
     assert ccc.is_dir(), f"missing .ccc/ at {ccc}"
-    # .ccc/profile.md copied
     assert (ccc / "profile.md").is_file(), "missing .ccc/profile.md"
+    assert (ccc / "state.md").is_file(), "missing .ccc/state.md"
+    assert (fake_workspace / "CLAUDE.md").is_file(), "missing CLAUDE.md"
+    for col in (
+        "backlog",
+        "planned",
+        "in_progress",
+        "testing",
+        "verified",
+        "released",
+        "abnormal",
+    ):
+        assert (ccc / "board" / col).is_dir(), f"missing board column {col}"
 
 
 def test_init_creates_profile_md(fake_workspace):
@@ -59,15 +69,35 @@ def test_init_creates_profile_md(fake_workspace):
     assert len(profile.read_text()) > 0, "profile.md is empty"
 
 
-def test_init_skips_existing_ccc(fake_workspace):
-    """If .ccc/ exists, skip (exit 2 not crash)."""
-    (fake_workspace / ".ccc").mkdir()
+def test_init_register(tmp_path, fake_workspace, monkeypatch):
+    """--register 幂等写入临时 workspaces.json。"""
+    reg = tmp_path / "workspaces.json"
+    # patch registry via env is not supported — call module after init board
     proc = subprocess.run(
         [sys.executable, str(INIT_SCRIPT), str(fake_workspace)],
         capture_output=True, text=True, timeout=10,
     )
-    # exit 2 per docs; OR exit 0 (if init just overwrites, no skip logic)
-    assert proc.returncode in (0, 1, 2)
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _workspace_registry import register_workspace
+
+    r1 = register_workspace(fake_workspace, name="abc", registry=reg)
+    assert r1["ok"] and r1["added"]
+    r2 = register_workspace(fake_workspace, name="abc", registry=reg)
+    assert r2["ok"] and not r2["added"]
+
+
+def test_init_skips_existing_ccc(fake_workspace):
+    """If files exist, skip overwrite without --force (exit 0)."""
+    (fake_workspace / ".ccc").mkdir()
+    (fake_workspace / ".ccc" / "profile.md").write_text("keep\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(INIT_SCRIPT), str(fake_workspace)],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert (fake_workspace / ".ccc" / "profile.md").read_text() == "keep\n"
+    assert (fake_workspace / ".ccc" / "board" / "backlog").is_dir()
 
 
 def test_search_syntax():

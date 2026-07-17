@@ -45,7 +45,8 @@ Agent name: `{{PROJECT_NAME}}-CC`
 ## Important Notes
 
 - Never modify files outside the scope stated in the current plan
-- Each phase makes one commit
-- Commit messages include the phase number
-- Verifier runs independently — Planner does not write verdicts
+- Each phase makes one commit (message includes task_id; commit in the task workspace `--dir`)
+- Commit messages include the phase number when applicable
+- reviewer/tester produce verdict evidence independently — product/dev do not write PASS verdicts
+- epic cards stay in backlog; Engine only schedules `card_kind=work`
 - **Red Line 10**: No implicit memory. All context must come from `.ccc/state.md` + plan/report/verdict files

@@ -28,8 +28,8 @@ Hub 定稿 → backlog(epic) → Claude 扇出 → planned(work×N) → in_progr
 1. 读 `.ccc/state.md`、`.ccc/profile.md`
 2. 取 epic（仍在 `backlog/`）
 3. Claude 输出 `EPIC_BRIEF`（可选）+ `CHILDREN` JSON
-4. `_product_fanout.apply_fanout`：校验 lint → `create_task(..., planned)` × N → `patch` epic=`active`
-5. Engine 只对 `planned` 里的 **work** 调 dev
+4. `_product_fanout.apply_fanout`：校验 lint → `create_task(..., planned)` × N → `patch` epic=`planned`（首次赋 `color_group`）
+5. Engine 只对 `planned` 里的 **work** 调 dev；每 tick `refresh_epic_lifecycle` 推导五态
 
 ## 红线
 

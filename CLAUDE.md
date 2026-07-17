@@ -63,9 +63,10 @@ bash scripts/ccc-hub-dev.sh
 
 ```
 Hub（定稿→epic）→ backlog(大卡常驻)
-  → Claude product 扇出 → planned(work×N)
-  → Engine：dev(opencode) → testing → reviewer+tester → verified → kb → released
+  → Claude product 扇出 → planned(work×N)；epic split_status=planned
+  → Engine：dev(opencode --dir) → testing → reviewer+tester → verified → kb → released
   → 全部子卡 released → epic split_status=done 沉底
+  → 任子卡 abnormal → epic split_status=failed（仍留 backlog，需人处理）
 ```
 
 > 「product/dev/…」= **阶段默认 Skill 包**，不是给用户点选的角色列表。见 `docs/VISION.md`。
@@ -79,6 +80,8 @@ Hub（定稿→epic）→ backlog(大卡常驻)
 | ops | 手动/可选 | 非阻塞 |
 | kb | verified 非空 | verified → released |
 | regress | 23:30 / 手动 | released → backlog(epic) |
+
+**epic `split_status` 五态**：`pending` → `planned` → `running` → `done`；`failed`（子卡 abnormal）。兼容别名 `active`→`running`、`blocked`→`failed`。
 
 ### 控制面状态机（v0.39+）
 

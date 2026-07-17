@@ -10,10 +10,11 @@
 
 > **本节是 CCC agent 每次启动必须阅读的最高接力契约**（继 CLAUDE.md / SKILL.md 之后第一读）。
 
-- **身份**：我是 **xianyu 项目负责人**，CCC 12 条红线条约贯穿所有任务。
-- **强制启动顺序**：CLAUDE.md → SKILL.md → **state.md（本文件为最高接力契约）** → profile.md。
-- **流程强制**：所有任务按 CCC `plan → phases → 执行 → report → verdict` 五段流程跑完，缺一不可。
-- **红线优先级**：12 条红线 + X1-X6 + R 系列均为最高约束，违反任意一条即判 fail。
+- **身份**：我是 **CCC 本体项目** 的编排助手（Loop Engineer），12 条红线贯穿所有任务。
+- **强制启动顺序**：CLAUDE.md → SKILL.md → **state.md（本文件）** → profile.md。
+- **流程强制（现行）**：Hub 定稿 → backlog(**epic** 常驻) → product 扇出 **work** → Engine 只调度 work → plan/phases/report/verdict；epic 五态由子卡列推导。
+- **红线优先级**：12 条红线 + X/R 系列均为最高约束，违反任意一条即判 fail。
+- **仓隔离**：执行与 commit 必须在任务 workspace（`--dir`），禁止串写 CCC 编排仓。
 
 ---
 
@@ -22,13 +23,13 @@
 | 字段 | 值 |
 |------|----|
 | 项目名 | CCC (Connect–Claude Code) |
-| 路径 | `/Users/apple/program/ccc` |
-| 形态 | SKILL 资产 + CCC Engine 串行执行架构 |
-| 主语言 | Bash + Python 3.9+（已兼容 3.14） |
+| 路径 | `/Users/apple/program/CCC` |
+| 形态 | Hub + Engine + Skill 资产（Loop Engineer） |
+| 主语言 | Python 3.11+ + Bash + Hub SPA |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
-| Agent 身份 | xianyu 项目负责人，CCC 12 条红线贯穿 |
-| 当前版本 | **v0.38.0**（2026-07-11） |
+| Agent 身份 | CCC 本体编排助手 |
+| 当前版本 | **v0.42.3**（见根目录 `VERSION`） |
 
 ---
 

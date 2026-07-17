@@ -32,7 +32,9 @@ export function initComposer() {
       hideSlashMenu();
       return;
     }
+    // IME 组字中（中文输入法选词回车）不得发送；仅确认候选
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.isComposing || e.keyCode === 229) return;
       const menu = document.getElementById('slash-menu');
       if (menu && menu.classList.contains('open')) return;
       e.preventDefault();

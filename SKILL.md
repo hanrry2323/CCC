@@ -42,18 +42,19 @@ Engine 串行调度下列 **默认 Skill 包**——用户**不**需要选择：
 
 | 阶段 | Skill | 看板 |
 |------|-------|------|
-| product | `skills/ccc-product` | backlog → planned |
-| dev | `skills/ccc-dev` | → in_progress → testing |
+| product | `skills/ccc-product` | pending epic → 扇出 work×N 入 planned；**epic 留 backlog** |
+| dev | `skills/ccc-dev` | work: planned → in_progress → testing |
 | reviewer | `skills/ccc-reviewer` | testing → verified |
 | tester | `skills/ccc-tester` | testing → verified |
 | ops | `skills/ccc-ops` | 不动 board |
 | kb | `skills/ccc-kb` | verified → released |
-| regress | `skills/ccc-regress` | released → backlog |
+| regress | `skills/ccc-regress` | released → backlog(epic) |
 
 **无穷角色**：任意任务 = 工具路由 + 额外 Skill/Prompt 偏好（Hub 转任务卡可挂软偏好）。
 
 ```text
-backlog → planned → in_progress → testing → verified → released
+backlog(epic 常驻) ──扇出──► planned(work) → in_progress → testing → verified → released
+epic.split_status: pending → planned → running → done（任 abnormal → failed）
 ```
 
 ---

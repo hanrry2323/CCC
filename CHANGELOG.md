@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Engine**：每 tick `refresh_epic_lifecycle`；仅 `pending` epic 扇出；product 耗尽标 `failed`
 - **Hub**：大卡 chip/进度条/4px 色条；pending 灰；failed 暖红；小卡同 group 浅色 depth1
 
+### 项目绑定 SSOT + 一键接入
+
+- **文档**：`docs/workspace-binding.md`（Hub cwd / CLAUDE.md / Board 发现 / Engine 登记）
+- **`ccc-init`**：建七列 board + 种子 `CLAUDE.md`/`state.md`；`--register` 写入 `~/.ccc/workspaces.json`
+
 ## [v0.42.2] — 2026-07-17
 
 ### 破坏性：待办大卡常驻 + Claude 扇出小卡

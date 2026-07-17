@@ -18,8 +18,8 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 | | |
 |--|--|
 | **Hub** | 对话 / 看板 / 控制台 · `:7777` |
-| **6 列看板** | backlog → planned → in_progress → testing → verified → released |
-| **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（= 默认可插拔 Skill，非角色超市） |
+| **6+1 列看板** | backlog(epic) + planned→…→released(work) + abnormal |
+| **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
 | **2+ plist** | `com.ccc.engine` + Board + Hub（按需） |
 
 ---
@@ -32,7 +32,8 @@ Hub：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达并开
 ```
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
-上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)
+上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
+多项目绑定 / 新项目接入：[`docs/workspace-binding.md`](docs/workspace-binding.md)
 
 ---
 
@@ -42,15 +43,19 @@ Hub：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达并开
 
 | 阶段 | Engine 触发 | 干 |
 |------|-------------|-----|
-| product | backlog 非空 / 或任务已挂 plan 则跳过 | 写 plan + phases → planned |
-| dev | planned / in_progress | OpenCode 等写代码 → testing |
+| product | backlog 中 `pending` epic | Claude 扇出 work×N → planned；**epic 留 backlog**（`split_status=planned`） |
+| dev | 只调度 `card_kind=work` | OpenCode 写代码 → testing（强制 `--dir` 目标仓） |
 | reviewer | testing 门禁 | 语义审查 → **verdict.md** |
 | tester | testing 门禁 | pytest + 验收清单 |
 | ops | 调试 / 可选 | 健康检查（不动 board） |
 | kb | verified 非空 | tag + CHANGELOG → released |
-| regress | 23:30 / 手动 | 回测 → backlog(回归) |
+| regress | 23:30 / 手动 | 回测 → backlog(回归 epic) |
 
 **复杂度**：`small` 可跳过 reviewer+tester（v0.28.1）。
+
+**大卡五态**（`split_status`，epic 永不离 backlog）：
+
+`pending` → `planned` → `running` → `done`；任子卡 `abnormal` → `failed`（不沉底）。存量 `active`/`blocked` 为别名。
 
 ---
 
@@ -80,10 +85,11 @@ python3 scripts/ccc-failure-report.py --last 20
 ## 5. 看板（一行）
 
 ```text
-backlog → planned → in_progress → testing → verified → released
+backlog(epic 常驻) ──扇出──► planned(work) → in_progress → testing → verified → released
+                              └ abnormal ←──（work 失败；父 epic → failed）
 ```
 
-不可跳列（X4）。Hub 定稿转任务可种子 plan/phases，跳过 product。
+不可跳列（X4）。Hub 定稿转任务默认建 **epic**；若已种子 plan/phases 的单卡 work 可跳过 product。
 
 ---
 

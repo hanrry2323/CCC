@@ -13,6 +13,7 @@
 | [`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md) | **下一步：xianyu 视频 + QX 双轨（待拍板）** |
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
+| [`workspace-binding.md`](workspace-binding.md) | **多项目绑定 / 新项目接入 SSOT** |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动（省 token） |
 | [`USAGE.md`](USAGE.md) | 三类用户 |
 | [`CONTROL.md`](CONTROL.md) | 控制面 |
