@@ -41,7 +41,7 @@
 - `testing` — reviewer/tester 验收中
 - `verified` — 验收通过，待 kb 归档
 - `released` — 已发布（全部子卡 released → 父 epic `split_status=done` 沉底）
-- `abnormal` — work 异常；父 epic 标 `blocked` 仍留 backlog
+- `abnormal` — work 异常；父 epic 标 `failed` 仍留 backlog
 
 ---
 
@@ -63,7 +63,7 @@
 | `complexity` | string | ❌ | `"medium"` | small/medium/large |
 | `card_kind` | string | ❌ | 按列推断 | `epic` \| `work` |
 | `parent_id` | string\|null | ❌ | `null` | work → epic id |
-| `split_status` | string | ❌ | epic:`pending` | epic: `pending`\|`active`\|`done`\|`blocked` |
+| `split_status` | string | ❌ | epic:`pending` | epic 五态：`pending`\|`planned`\|`running`\|`done`\|`failed`（存量 `active`→`running`，`blocked`→`failed`） |
 | `child_ids` | string[] | ❌ | `[]` | epic 扇出后的子卡 id |
 | `ui_hidden` | bool | ❌ | `false` | Hub「清理已完成」仅藏显示 |
 
@@ -83,7 +83,7 @@
 | **reviewer** | testing 链 | testing / abnormal | review.md | R-04 + R-12 |
 | **tester** | testing | verified / abnormal | — | pytest + plan 验收 |
 | **kb** | verified | released | CHANGELOG + tag | 子卡发布 |
-| **Engine 收尾** | — | epic `done`/`blocked` | — | 全 released→done 沉底 |
+| **Engine 收尾** | — | epic `done`/`failed` | — | 全 released→done 沉底；任 abnormal→failed |
 | **regress** | released | backlog (回归 epic) | — | 发现 bug 建大卡 |
 | **ops** | 全列读 | 清理维护 | — | quarantine / cleanup |
 
@@ -132,24 +132,23 @@
 
 **赋值规则**（product 扇出时）：
 - epic：`split_status=pending` 且无 `color_group` → Hub 显示**灰**
-- 首次扇出成功：`assign_color_group` → epic `color_depth=0`；各 work 同 group、`color_depth=1`
-- `done` 大卡可 `ui_hidden`；排序沉底
+- 首次扇出成功：`assign_color_group` → epic `color_depth=0`、`split_status=planned`；各 work 同 group、`color_depth=1`
+- 子卡离开 planned → epic `running`；全 released → `done` 沉底；任 abnormal → `failed`（不沉底）
+- `done` 大卡可 `ui_hidden`
 
 **HSL 计算公式**：
 ```
 hue = (ord(group) - ord("A")) * 360 / 26
-lightness = max(20%, 55% - depth * 15%)
+lightness = 48% if depth<=0 else 62%   # epic 更醒目，work 更浅
 ```
 
-**UI 渲染**：每个 task 卡片左边框色 = `hsl(hue, 55%, lightness)`；无 color_group 字段回退默认色。
+**UI 渲染**：epic 左边框 4px / work 3px；色 = `hsl(hue, 58%, lightness)`；无 color_group 回退灰/列色。
 
 **视觉示例**：
 ```
-大任务 A (color_group: "A", color_depth: 0) → hsl(0, 55%, 55%) 橙红深
-  ├── A1 (color_group: "A", color_depth: 1) → hsl(0, 55%, 40%) 橙红更深
-  ├── A2 (color_group: "A", color_depth: 1) → hsl(0, 55%, 40%) 橙红更深
-大任务 B (color_group: "B", color_depth: 0) → hsl(13.8, 55%, 55%) 橙黄深
-  ├── B1 (color_group: "B", color_depth: 1) → ...
+大卡 A (color_group: "A", color_depth: 0) → hsl(0, 58%, 48%) 批次色 + 状态 chip
+  ├── A-w1 (depth 1) → hsl(0, 58%, 62%) 同组浅色
+  ├── A-w2 (depth 1) → hsl(0, 58%, 62%)
 ```
 
 ---

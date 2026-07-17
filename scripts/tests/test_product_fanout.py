@@ -82,7 +82,7 @@ def test_apply_fanout_keeps_epic_in_backlog(tmp_path):
     # parent still backlog
     assert store.find_task("epic-a")[0] == "backlog"
     _, parent = store.find_task("epic-a")
-    assert parent["split_status"] == "active"
+    assert parent["split_status"] == "planned"
     assert parent["color_group"]
     assert parent["child_ids"] == r["child_ids"]
     # children in planned
@@ -110,7 +110,7 @@ def test_refresh_epic_done(tmp_path):
     assert epic["split_status"] == "done"
 
 
-def test_refresh_epic_blocked_on_abnormal(tmp_path):
+def test_refresh_epic_failed_on_abnormal(tmp_path):
     store = FileBoardStore(tmp_path)
     store.create_task({"id": "eb", "title": "E"}, column="backlog")
     apply_fanout(
@@ -120,10 +120,10 @@ def test_refresh_epic_blocked_on_abnormal(tmp_path):
     )
     store.move_task("eb-w1", "planned", "in_progress")
     store.move_task("eb-w1", "in_progress", "abnormal")
-    assert refresh_epic_completion(store, "eb") == "blocked"
+    assert refresh_epic_completion(store, "eb") == "failed"
     assert store.find_task("eb")[0] == "backlog"
     _, epic = store.find_task("eb")
-    assert epic["split_status"] == "blocked"
+    assert epic["split_status"] == "failed"
 
 
 def test_lint_fail_leaves_no_half_children(tmp_path):

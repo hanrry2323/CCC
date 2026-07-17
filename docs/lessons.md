@@ -2241,3 +2241,21 @@ def _submit_to_queue_safe(workspace, task_id, exec_prompt, verify_prompt=""):
 **失败原因**：v0.24.5 fallback quarantine: large-class LLM 不可用，reason=claude rc=1；放弃静默 verified，强制人工介入
 
 **待分析**：由 product_role 后续补充根因和修复方案
+
+---
+
+## Lesson 49：看板仓任务串写 CCC — 进程 cwd ≠ OpenCode `--dir`
+
+**项目**：CCC Engine + xianyu/qb | **时间**：2026-07-17
+
+**现象**：xy 任务 `xy-cli-health-smoke-e2e-w2` 的 `scripts/smoke.sh` 被 commit 进 **CCC** 仓；commit-gate 在 xianyu 找不到 task_id → 死循环 relaunch。OpenCode DB：`session.directory=/Users/apple/program/CCC`（86:3）。
+
+**根因**：
+1. 只设子进程 `cwd=`，未传 `opencode run --dir`（OpenCode 1.18 用自有 session 目录）
+2. Engine launchd `WorkingDirectory=CCC` → 会话默认绑 CCC
+3. 全局 MCP filesystem 根 `~/program` 可跨仓写
+4. 旧 `dev_role` 路径漏传 `--cwd`
+
+**修复（v0.42.3）**：`--dir`+`--pure` 硬门；缺 cwd 拒跑；launch 快照注册仓 HEAD；过 testing 前跨仓 audit；prompt 强制 workspace 硬门。
+
+**如何应用**：任何新执行器必须同时绑「进程 cwd + 工具原生 project/dir 参数 + 事后跨仓审计」三层，缺一不可。

@@ -40,7 +40,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CWD="${CWD:-$PWD}"
+# 隔离硬门：禁止静默回落到 $PWD（Engine WorkingDirectory 常为 CCC）
+if [[ -z "$CWD" ]]; then
+  echo "ERROR: --cwd <workspace> is required (workspace isolation)" >&2
+  exit 2
+fi
+if [[ ! -d "$CWD" ]]; then
+  echo "ERROR: --cwd not a directory: $CWD" >&2
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${HOME}/.ccc/logs"

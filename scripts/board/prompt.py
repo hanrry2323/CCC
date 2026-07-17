@@ -1,7 +1,10 @@
 """board.prompt — phase / role prompt 拼装（纯函数，无副作用）。"""
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from pathlib import Path
+from typing import Optional, Sequence, Union
+
+from _workspace_isolation import cwd_hardgate_block, require_cwd
 
 
 def build_dev_phase_prompt(
@@ -9,11 +12,13 @@ def build_dev_phase_prompt(
     phase_num: int,
     plan_content: str,
     *,
+    workspace: Union[str, Path],
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
     skill_hints: str = "",
 ) -> str:
-    """F-PROMPT-01 + v0.41.1: 强制 scope 白名单 + 可选 pytest 失败回灌 + Skill 软偏好。"""
+    """F-PROMPT-01 + v0.41.1 + isolation：强制 cwd 硬门 + scope 白名单。"""
+    ws = require_cwd(workspace)
     scope_list = [str(s).strip() for s in (scope or []) if str(s).strip()]
     if scope_list:
         scope_block = (
@@ -43,6 +48,7 @@ def build_dev_phase_prompt(
 
     return (
         f"# CCC 执行任务: {task_id}\n\n"
+        f"{cwd_hardgate_block(ws)}"
         f"## 当前 Phase（强制）\n"
         f"- **只做 Phase {phase_num}**，不得实现其他 phase 的需求\n"
         f"- 不得修改不属于本 phase 白名单的文件\n"
@@ -55,9 +61,10 @@ def build_dev_phase_prompt(
         f"## 完成定义（仅 Phase {phase_num}）\n"
         f"1. 仅实现 Phase {phase_num} 对应需求\n"
         f"2. 跑本 phase 相关测试（如有）\n"
-        f"3. 提交一个 commit（message 含 `{task_id}` 与 `phase={phase_num}`）\n"
+        f"3. 在 `{ws}` 内提交一个 commit（message 含 `{task_id}` 与 `phase={phase_num}`）\n"
         f"4. 确认代码无语法错误\n"
         f"5. 不超出 scope 白名单，且不提前做后续 phase\n"
+        f"6. **禁止**向其他 git 仓库（含 CCC 编排仓）写文件或 commit\n"
     )
 
 
@@ -67,6 +74,7 @@ def build_dev_phase_prompt_with_hint(
     plan_content: str,
     size_hint: str = "",
     *,
+    workspace: Union[str, Path],
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
     skill_hints: str = "",
@@ -75,6 +83,7 @@ def build_dev_phase_prompt_with_hint(
         task_id,
         phase_num,
         plan_content,
+        workspace=workspace,
         scope=scope,
         pytest_failure=pytest_failure,
         skill_hints=skill_hints,

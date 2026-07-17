@@ -198,6 +198,27 @@ class OpenCodeExecutor(Executor):
         prompt_text = prompt.strip()
         tmp_path = None
 
+        if not cwd:
+            return ExecResult(
+                phase_id=phase_id,
+                exit_code=11,
+                stdout="",
+                stderr="cwd required for workspace isolation",
+                duration_s=0,
+                pid=0,
+                killed=False,
+            )
+
+        # opencode-exec.py 文件名含连字符，用 importlib 加载 build_opencode_run_cmd
+        import importlib.util
+
+        _exec_py = Path(__file__).resolve().parent / "opencode-exec.py"
+        _spec = importlib.util.spec_from_file_location("_ccc_opencode_exec", _exec_py)
+        _mod = importlib.util.module_from_spec(_spec)
+        assert _spec and _spec.loader
+        _spec.loader.exec_module(_mod)
+        _build_cmd = _mod.build_opencode_run_cmd
+
         if len(prompt_text) > 200:
             pids_dir = Path.home() / ".ccc" / "pids"
             pids_dir.mkdir(parents=True, exist_ok=True)
@@ -205,17 +226,20 @@ class OpenCodeExecutor(Executor):
 
             tmp_path = str(pids_dir / f"prompt-{_uuid.uuid4().hex}.md")
             Path(tmp_path).write_text(prompt_text, encoding="utf-8")
-            cmd = [
+            cmd = _build_cmd(
                 opencode_bin,
-                "run",
-                "--model",
                 model,
-                "Read attached file and execute the instructions inside.",
-                "--file",
-                tmp_path,
-            ]
+                message="Read attached file and execute the instructions inside.",
+                prompt_file=tmp_path,
+                cwd=cwd,
+            )
         else:
-            cmd = [opencode_bin, "run", "--model", model, prompt_text or "execute"]
+            cmd = _build_cmd(
+                opencode_bin,
+                model,
+                message=prompt_text or "execute",
+                cwd=cwd,
+            )
 
         proc = None
         pid_file = Path.home() / ".ccc" / "opencode-pids" / f"{phase_id}.pid"

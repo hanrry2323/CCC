@@ -276,25 +276,130 @@ body.hub-mode #app {
 }
 
 .board-card-epic {
-  min-height: 72px;
-  padding: 10px 12px;
+  min-height: 96px;
+  padding: 12px 14px;
+  border-left-width: 4px;
 }
 
 .board-card-epic .ti {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .board-card-epic.epic-done {
-  opacity: 0.72;
+  opacity: 0.68;
 }
 
-.epic-prog,
+.board-card-epic.epic-st-failed {
+  background: color-mix(in srgb, #c45c4a 8%, var(--ccc-bg-base));
+}
+
+.epic-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.epic-group-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--ccc-font-mono);
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-layer);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.epic-meta {
+  margin-top: 8px;
+}
+
+.epic-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-muted);
+}
+
+.epic-chip-pending {
+  background: #ebe8e2;
+  color: #6b675f;
+}
+
+.epic-chip-planned {
+  background: #efe4d8;
+  color: #8a5a32;
+}
+
+.epic-chip-running {
+  background: #e8f0e4;
+  color: #3d6b45;
+}
+
+.epic-chip-done {
+  background: #e4ebe8;
+  color: #4a6a5a;
+}
+
+.epic-chip-failed {
+  background: #f3ddd8;
+  color: #a33a2c;
+}
+
+.epic-prog {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--ccc-text-muted);
+  font-family: var(--ccc-font-mono);
+}
+
+.epic-prog-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ccc-bg-layer);
+  overflow: hidden;
+}
+
+.epic-prog-bar i {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, currentColor 55%, #3d9a5f);
+  background: #5a9a6e;
+  border-radius: 2px;
+}
+
 .parent-tag {
   margin-top: 6px;
   font-size: 10px;
   color: var(--ccc-text-muted);
   font-family: var(--ccc-font-mono);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.work-group-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.board-card-work {
+  border-left-width: 3px;
 }
 
 .board-dot {

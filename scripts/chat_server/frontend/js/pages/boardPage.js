@@ -1,6 +1,9 @@
 /** Warm-style kanban — epic 待办 sticky 左列 + 流转列；无活动/日志侧栏 */
 
 import { apiGet, apiPost } from '../api.js';
+import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.js';
+
+export { epicLifecycleLabel, normalizeEpicSplitStatus };
 
 const LABELS = {
   backlog: '待办',
@@ -60,8 +63,108 @@ function taskHue(group, depth) {
   const code = group.charCodeAt(0);
   if (code < 65 || code > 90) return null;
   const hue = ((code - 65) * 360) / 26;
-  const lightness = Math.max(20, 55 - (depth || 0) * 15);
-  return `hsl(${hue.toFixed(1)}, 55%, ${lightness}%)`;
+  const lightness = (depth || 0) <= 0 ? 48 : 62;
+  return `hsl(${hue.toFixed(1)}, 58%, ${lightness}%)`;
+}
+
+/** Epic 五态中文标签 — 实现见 epicLifecycle.js */
+
+function epicChip(ss) {
+  const st = normalizeEpicSplitStatus(ss);
+  return `<span class="epic-chip epic-chip-${st}">${epicLifecycleLabel(st)}</span>`;
+}
+
+function epicGroupBadge(group) {
+  if (!group) return '';
+  return `<span class="epic-group-badge" title="批次 ${esc(group)}">${esc(group)}</span>`;
+}
+
+function epicProgress(t) {
+  const kids = t.child_ids || [];
+  if (!kids.length) return '';
+  const relSet = new Set((_state.columns.released || []).map((x) => x.id));
+  const n = kids.filter((id) => relSet.has(id)).length;
+  const pct = Math.round((n / kids.length) * 100);
+  return `<div class="epic-prog">
+    <div class="epic-prog-bar"><i style="width:${pct}%"></i></div>
+    <span>${n}/${kids.length} 已发布</span>
+  </div>`;
+}
+
+function borderFor(t, col) {
+  const ss = t.split_status || 'pending';
+  if (col === 'backlog') {
+    if (ss === 'pending' || !t.color_group) return '#9a958c';
+    if (ss === 'failed' || ss === 'blocked') return '#c45c4a';
+  }
+  const depth = t.color_depth != null ? t.color_depth : col === 'backlog' ? 0 : 1;
+  const hsl = taskHue(t.color_group, depth);
+  return hsl || COLORS[col] || '#a39e93';
+}
+
+function renderEpicCol() {
+  const host = _root.querySelector('#board-epic');
+  let tasks = _state.columns.backlog || [];
+  if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
+  const cards = tasks.length
+    ? tasks
+        .map((t) => {
+          const ss = normalizeEpicSplitStatus(t.split_status || 'pending');
+          const border = borderFor({ ...t, split_status: ss }, 'backlog');
+          const done = ss === 'done' ? ' epic-done' : '';
+          return `<div class="board-card board-card-epic epic-st-${esc(ss)}${done}" data-id="${esc(t.id)}" data-col="backlog" style="border-left-color:${border}">
+            <div class="epic-card-top">
+              <div class="id">${esc(t.id)}</div>
+              ${epicGroupBadge(t.color_group)}
+            </div>
+            <div class="ti">${esc(t.title)}</div>
+            <div class="epic-meta">${epicChip(ss)}</div>
+            ${epicProgress(t)}
+          </div>`;
+        })
+        .join('')
+    : '<div class="board-empty">暂无大卡</div>';
+  host.innerHTML = `<div class="board-col board-col-epic"><div class="board-col-h"><span><span class="board-dot" style="background:${COLORS.backlog}"></span>待办 · 大卡</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div></div>`;
+}
+
+function renderFlowCols() {
+  const host = _root.querySelector('#board-flow');
+  host.innerHTML = '';
+  for (const col of FLOW_COLS) {
+    let tasks = (_state.columns[col] || []).filter(
+      (t) => (t.card_kind || 'work') !== 'epic'
+    );
+    const d = document.createElement('div');
+    d.className = 'board-col';
+    const cards = tasks.length
+      ? tasks
+          .map((t) => {
+            const pv = PREV[col] || '';
+            const nx = NEXT[col] || '';
+            const rn = col === 'in_progress' ? ' running' : '';
+            const border = borderFor(t, col);
+            const hue = taskHue(t.color_group, 1);
+            const dot = hue
+              ? `<span class="work-group-dot" style="background:${hue}"></span>`
+              : '';
+            const parent = t.parent_id
+              ? `<div class="parent-tag">${dot}↩ ${esc(t.parent_id)}</div>`
+              : '';
+            return `<div class="board-card board-card-work${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
+              <div class="id">${esc(t.id)}</div>
+              <div class="ti">${esc(t.title)}</div>
+              ${parent}
+              <div class="ac">
+                ${pv ? '<button type="button" class="mv-prev">←</button>' : ''}
+                ${nx ? '<button type="button" class="mv-next">→</button>' : ''}
+              </div>
+            </div>`;
+          })
+          .join('')
+      : '<div class="board-empty">—</div>';
+    d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
+    host.appendChild(d);
+  }
 }
 
 function html() {
@@ -130,83 +233,6 @@ async function loadConfig() {
   }
   if (spaces[_ws]) sel.value = _ws;
   else _ws = sel.value || 'CCC';
-}
-
-function epicProgress(t) {
-  const kids = t.child_ids || [];
-  if (!kids.length) return '';
-  const released = Object.values(_state.columns || {})
-    .flat()
-    .filter((x) => kids.includes(x.id) && (x.status === 'released' || x._column === 'released'));
-  // columns API may not tag status; count released column membership
-  const relSet = new Set((_state.columns.released || []).map((x) => x.id));
-  const n = kids.filter((id) => relSet.has(id)).length;
-  return `<div class="epic-prog">${n}/${kids.length} 已发布 · ${esc(t.split_status || 'pending')}</div>`;
-}
-
-function borderFor(t, col) {
-  const ss = t.split_status || 'pending';
-  if (col === 'backlog' && (ss === 'pending' || !t.color_group)) {
-    return '#9a958c'; // 灰：未消费
-  }
-  const hsl = taskHue(t.color_group, t.color_depth || (col === 'backlog' ? 0 : 1));
-  return hsl || COLORS[col] || '#a39e93';
-}
-
-function renderEpicCol() {
-  const host = _root.querySelector('#board-epic');
-  let tasks = _state.columns.backlog || [];
-  if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
-  const cards = tasks.length
-    ? tasks
-        .map((t) => {
-          const border = borderFor(t, 'backlog');
-          const done = (t.split_status || '') === 'done' ? ' epic-done' : '';
-          return `<div class="board-card board-card-epic${done}" data-id="${esc(t.id)}" data-col="backlog" style="border-left-color:${border}">
-            <div class="id">${esc(t.id)}</div>
-            <div class="ti">${esc(t.title)}</div>
-            ${epicProgress(t)}
-          </div>`;
-        })
-        .join('')
-    : '<div class="board-empty">暂无大卡</div>';
-  host.innerHTML = `<div class="board-col board-col-epic"><div class="board-col-h"><span><span class="board-dot" style="background:${COLORS.backlog}"></span>待办 · 大卡</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div></div>`;
-}
-
-function renderFlowCols() {
-  const host = _root.querySelector('#board-flow');
-  host.innerHTML = '';
-  for (const col of FLOW_COLS) {
-    let tasks = (_state.columns[col] || []).filter(
-      (t) => (t.card_kind || 'work') !== 'epic'
-    );
-    const d = document.createElement('div');
-    d.className = 'board-col';
-    const cards = tasks.length
-      ? tasks
-          .map((t) => {
-            const pv = PREV[col] || '';
-            const nx = NEXT[col] || '';
-            const rn = col === 'in_progress' ? ' running' : '';
-            const border = borderFor(t, col);
-            const parent = t.parent_id
-              ? `<div class="parent-tag">↩ ${esc(t.parent_id)}</div>`
-              : '';
-            return `<div class="board-card${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
-              <div class="id">${esc(t.id)}</div>
-              <div class="ti">${esc(t.title)}</div>
-              ${parent}
-              <div class="ac">
-                ${pv ? '<button type="button" class="mv-prev">←</button>' : ''}
-                ${nx ? '<button type="button" class="mv-next">→</button>' : ''}
-              </div>
-            </div>`;
-          })
-          .join('')
-      : '<div class="board-empty">—</div>';
-    d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
-    host.appendChild(d);
-  }
 }
 
 function updateSummary() {

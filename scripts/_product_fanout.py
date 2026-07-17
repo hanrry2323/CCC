@@ -277,10 +277,11 @@ def apply_fanout(
     epic_id = epic["id"]
     if epic.get("card_kind") != "epic":
         return {"ok": False, "error": "not an epic"}
-    if epic.get("split_status") not in ("pending", "blocked", None, ""):
-        # active 允许重拆仅当 child_ids 空（异常恢复）
-        if epic.get("split_status") == "active" and epic.get("child_ids"):
-            return {"ok": False, "error": "epic already split (active)"}
+    ss = epic.get("split_status") or "pending"
+    kids_existing = list(epic.get("child_ids") or [])
+    # pending / failed（无子卡）可扇出；已有子卡则拒（含存量 active→running）
+    if kids_existing and ss in ("planned", "running", "done", "failed"):
+        return {"ok": False, "error": f"epic already split ({ss})"}
 
     children: list[dict] = []
     seen: set[str] = set()
@@ -357,7 +358,7 @@ def apply_fanout(
             epic_id,
             {
                 "card_kind": "epic",
-                "split_status": "active",
+                "split_status": "planned",
                 "color_group": color_group,
                 "color_depth": 0,
                 "child_ids": created,
@@ -388,8 +389,13 @@ def apply_fanout(
     return {"ok": True, "child_ids": created, "color_group": color_group}
 
 
-def refresh_epic_completion(store: FileBoardStore, epic_id: str) -> str | None:
-    """根据子卡列状态更新 epic split_status。返回新状态或 None。"""
+_FLOW_PAST_PLANNED = frozenset(
+    {"in_progress", "testing", "verified", "released"}
+)
+
+
+def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
+    """按子卡列推导 epic 五态。返回新状态或 None（非 epic / 不在 backlog）。"""
     col, epic = store.find_task(epic_id)
     if not epic or col != "backlog":
         return None
@@ -397,19 +403,40 @@ def refresh_epic_completion(store: FileBoardStore, epic_id: str) -> str | None:
     if epic.get("card_kind") != "epic":
         return None
     kids = list(epic.get("child_ids") or [])
-    if not kids:
-        return None
     statuses: list[str] = []
-    for kid in kids:
-        kcol, _ = store.find_task(kid)
-        statuses.append(kcol or "missing")
-    if any(s == "abnormal" for s in statuses):
-        new = "blocked"
-    elif all(s == "released" for s in statuses):
-        new = "done"
+    if not kids:
+        new = "pending"
     else:
-        new = "active"
+        for kid in kids:
+            kcol, _ = store.find_task(kid)
+            statuses.append(kcol or "missing")
+        if any(s == "abnormal" for s in statuses):
+            new = "failed"
+        elif all(s == "released" for s in statuses):
+            new = "done"
+        elif all(s == "planned" for s in statuses):
+            new = "planned"
+        elif any(s in _FLOW_PAST_PLANNED for s in statuses):
+            new = "running"
+        else:
+            # missing / 其它列混排：有 planned 且无流转 → planned，否则 running
+            if any(s == "planned" for s in statuses) and not any(
+                s in _FLOW_PAST_PLANNED for s in statuses
+            ):
+                new = "planned"
+            else:
+                new = "running"
     if epic.get("split_status") != new:
         store.patch_task(epic_id, {"split_status": new})
-        _log.info("[fanout] epic %s → %s (kids=%s)", epic_id, new, statuses)
+        _log.info(
+            "[fanout] epic %s → %s (kids=%s)",
+            epic_id,
+            new,
+            statuses,
+        )
     return new
+
+
+def refresh_epic_completion(store: FileBoardStore, epic_id: str) -> str | None:
+    """兼容旧名 → refresh_epic_lifecycle。"""
+    return refresh_epic_lifecycle(store, epic_id)

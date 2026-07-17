@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.42.3] — 2026-07-17
+
+### 修复：看板仓 ↔ CCC 编排仓硬隔离
+
+- **根因**：`opencode run` 未传 `--dir`，session 绑到 Engine `WorkingDirectory=CCC`；全局 MCP filesystem 根为 `~/program`；旧 `dev_role` 路径漏 `--cwd`
+- **执行**：强制 `--dir <workspace>` + 默认 `--pure`；缺 cwd 硬拒；launcher 禁止回落 `$PWD`
+- **审计**：launch 快照注册仓 HEAD；过 testing 前扫跨仓 `task_id` commit / CCC HEAD 异动
+- **Prompt**：`build_dev_phase_prompt(workspace=…)` 注入 cwd 硬门
+- **清理**：移除误提交到 CCC 的 `scripts/smoke.sh`（xy 任务串仓产物）
+
+### 大卡五态 + Hub 视觉
+
+- **`split_status` 五态**：`pending` → `planned` → `running` → `done`；任一子卡 `abnormal` → `failed`
+- **兼容**：存量 `active`→读路径 `running`（refresh 精算）；`blocked`→`failed`
+- **Engine**：每 tick `refresh_epic_lifecycle`；仅 `pending` epic 扇出；product 耗尽标 `failed`
+- **Hub**：大卡 chip/进度条/4px 色条；pending 灰；failed 暖红；小卡同 group 浅色 depth1
+
 ## [v0.42.2] — 2026-07-17
 
 ### 破坏性：待办大卡常驻 + Claude 扇出小卡

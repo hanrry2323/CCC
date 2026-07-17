@@ -2409,7 +2409,10 @@ def dev_role() -> dict:
                 prompt_file,
                 "--timeout",
                 str(timeout_s),
+                "--cwd",
+                str(get_workspace()),
             ],
+            cwd=str(get_workspace()),
             start_new_session=True,
         )
         pid_dir = get_workspace() / ".ccc" / "pids"
@@ -4778,11 +4781,12 @@ def _task_skill_hints_block(task_id: str) -> str:
 
 
 def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
-    """统一 launch/relaunch 的 OpenCode prompt（scope + pytest 回灌）。"""
+    """统一 launch/relaunch 的 OpenCode prompt（cwd 硬门 + scope + pytest 回灌）。"""
     return build_dev_phase_prompt(
         task_id,
         phase_num,
         plan_content,
+        workspace=get_workspace(),
         scope=_phase_scope(task_id, phase_num),
         pytest_failure=_read_pytest_failure_feedback(task_id),
         skill_hints=_task_skill_hints_block(task_id),
@@ -4795,8 +4799,10 @@ def _task_pre_head_path(task_id: str) -> Path:
 
 
 def _capture_task_pre_head(task_id: str) -> str:
-    """Launch 时记录 HEAD，供过 testing 前对比（H1）。"""
+    """Launch 时记录 HEAD + 跨仓隔离基线（H1 + isolation）。"""
     import subprocess as _sp
+
+    from _workspace_isolation import capture_isolation_baseline
 
     pids = get_workspace() / ".ccc" / "pids"
     pids.mkdir(parents=True, exist_ok=True)
@@ -4814,6 +4820,10 @@ def _capture_task_pre_head(task_id: str) -> str:
     except Exception as exc:
         _log.warning("[commit-gate] %s capture pre_head failed: %s", task_id, exc)
     _task_pre_head_path(task_id).write_text(head + "\n", encoding="utf-8")
+    try:
+        capture_isolation_baseline(get_workspace(), task_id)
+    except Exception as exc:
+        _log.warning("[isolation] %s baseline failed: %s", task_id, exc)
     return head
 
 
@@ -4847,12 +4857,20 @@ def _find_task_commit_hash(task_id: str) -> str:
 
 
 def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
-    """过 testing 前必须有含 task_id 的新 commit。
+    """过 testing 前必须有含 task_id 的新 commit，且无跨仓污染。
 
     Returns: (ok, reason, commit_hash)
     """
     if (os.environ.get("CCC_SKIP_COMMIT_GATE") or "").strip() in ("1", "true", "yes"):
         return True, "skip", ""
+
+    from _workspace_isolation import audit_isolation_after, isolation_enabled
+
+    if isolation_enabled():
+        ok_iso, iso_errs = audit_isolation_after(get_workspace(), task_id)
+        if not ok_iso:
+            return False, "; ".join(iso_errs), ""
+
     commit = _find_task_commit_hash(task_id)
     if not commit:
         return (
@@ -4946,6 +4964,7 @@ def dev_role_launch(task_id: str) -> dict:
             "--cwd",
             str(get_workspace()),  # opencode 工作目录 = workspace
         ],
+        cwd=str(get_workspace()),
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))
@@ -5032,6 +5051,7 @@ def dev_role_relaunch(task_id: str) -> dict:
             "--cwd",
             str(get_workspace()),
         ],
+        cwd=str(get_workspace()),
         start_new_session=True,
     )
     pids_dir.joinpath(f"{task_id}.pid").write_text(str(proc.pid))

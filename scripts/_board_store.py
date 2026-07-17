@@ -74,8 +74,23 @@ TITLE_MAX = 500
 DESCRIPTION_MAX = 10000
 
 
-SPLIT_STATUSES = ("pending", "active", "done", "blocked")
+# Epic lifecycle（五态）；active/blocked 为存量别名，读路径归一
+SPLIT_STATUSES = ("pending", "planned", "running", "done", "failed")
+SPLIT_STATUS_ALIASES = {
+    "active": "running",  # 旧「已拆分」；refresh 会精算为 planned/running
+    "blocked": "failed",
+}
 CARD_KINDS = ("epic", "work")
+
+# backlog 排序：进行中组在前，failed 居中可处理，done 沉底
+_BACKLOG_SPLIT_RANK = {
+    "pending": 0,
+    "planned": 1,
+    "running": 2,
+    "failed": 3,
+    "done": 4,
+}
+_BACKLOG_FRONT = frozenset({"pending", "planned", "running"})
 
 
 def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list[str]]:
@@ -270,11 +285,12 @@ def _validate_rule_parent_id(data: dict) -> str | None:
 
 
 def _validate_rule_split_status(data: dict) -> str | None:
-    """规则 15: split_status ∈ pending|active|done|blocked（epic）；work 可空"""
+    """规则 15: split_status ∈ 五态（含存量 active/blocked 别名）；work 可空"""
     ss = data.get("split_status")
     if ss is None or ss == "":
         return None
-    if ss not in SPLIT_STATUSES:
+    canon = SPLIT_STATUS_ALIASES.get(ss, ss)
+    if canon not in SPLIT_STATUSES:
         return f"split_status: must be one of {SPLIT_STATUSES}, got '{ss}'"
     return None
 
@@ -352,8 +368,13 @@ def fill_task_defaults(data: dict, *, column: str | None = None) -> dict:
         # 兼容：backlog 默认 epic；流转列默认 work
         out["card_kind"] = "epic" if col == "backlog" else "work"
     if out["card_kind"] == "epic":
-        if out.get("split_status") not in SPLIT_STATUSES:
+        ss = out.get("split_status")
+        if ss in SPLIT_STATUS_ALIASES:
+            ss = SPLIT_STATUS_ALIASES[ss]
+        if ss not in SPLIT_STATUSES:
             out["split_status"] = "pending"
+        else:
+            out["split_status"] = ss
         out["parent_id"] = None
         if not isinstance(out.get("child_ids"), list):
             out["child_ids"] = []
@@ -373,12 +394,15 @@ GROUP_POOL = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
 def task_border_hsl(color_group: str | None, color_depth: int = 0) -> str | None:
-    """Protocol §5 HSL；无 group 返回 None（UI 回退列色）。"""
+    """Protocol §5 HSL；无 group 返回 None（UI 回退列色）。
+
+    depth0（epic）≈48% 更醒目；depth1（work）≈62% 更浅。
+    """
     if not color_group or color_group not in GROUP_POOL:
         return None
     hue = (ord(color_group) - ord("A")) * 360 / 26
-    lightness = max(20, 55 - int(color_depth) * 15)
-    return f"hsl({hue:.1f}, 55%, {lightness}%)"
+    lightness = 48 if int(color_depth) <= 0 else 62
+    return f"hsl({hue:.1f}, 58%, {lightness}%)"
 
 
 def assign_color_group(workspace: Path, parent_group: str | None = None) -> str:
@@ -565,7 +589,7 @@ class FileBoardStore:
     ) -> list[dict]:
         """读某列所有 task。
 
-        backlog：pending/active 在前（新→旧），done/blocked 沉底；默认隐藏 ui_hidden。
+        backlog：pending/planned/running 在前（新→旧），failed 可处理，done 沉底；默认隐藏 ui_hidden。
         其它列：FIFO by created_at；默认过滤 ui_hidden。
         """
         if column not in COLUMNS:
@@ -600,56 +624,48 @@ class FileBoardStore:
             viewed = [t for t in viewed if not t.get("ui_hidden")]
 
         if column == "backlog":
-            _rank = {"pending": 0, "active": 1, "blocked": 2, "done": 3}
-
-            def _backlog_key(t: dict):
-                ss = t.get("split_status") or "pending"
-                # 活跃组：新卡靠前（created_at 降序）；done 组沉底后按更新时间旧→新
-                active = _rank.get(ss, 1) < 3
-                ts = t.get("updated_at") or t.get("created_at") or t.get("id", "")
-                return (_rank.get(ss, 1), -1 if active else 1, ts if not active else ts)
-
-            # pending/active: newer first → sort by (-rank already), use reverse on ts
-            viewed.sort(
+            front = [
+                t
+                for t in viewed
+                if (t.get("split_status") or "pending") in _BACKLOG_FRONT
+            ]
+            failed = [
+                t for t in viewed if (t.get("split_status") or "") == "failed"
+            ]
+            done = [t for t in viewed if (t.get("split_status") or "") == "done"]
+            other = [
+                t
+                for t in viewed
+                if (t.get("split_status") or "pending")
+                not in _BACKLOG_FRONT | {"failed", "done"}
+            ]
+            front.sort(
                 key=lambda t: (
-                    _rank.get(t.get("split_status") or "pending", 1),
-                    # for pending/active use reverse chronological: negate via invert string hack —
-                    # use tuple (rank, 0, -created) numerically where possible
-                    0
-                    if (t.get("split_status") or "pending") in ("pending", "active")
-                    else 1,
-                    # pending/active: newest first → reverse iso string by prefixing
-                    (
-                        ""
-                        if (t.get("split_status") or "pending")
-                        not in ("pending", "active")
-                        else t.get("created_at", t.get("id", ""))
-                    ),
-                    t.get("updated_at") or t.get("created_at") or t.get("id", ""),
-                )
+                    _BACKLOG_SPLIT_RANK.get(t.get("split_status") or "pending", 1),
+                    t.get("created_at", t.get("id", "")),
+                ),
+                reverse=False,
             )
-            # Fix pending/active order: currently ascending created_at within group.
-            # Split, reverse active groups, concat.
-            active = [
-                t
-                for t in viewed
-                if (t.get("split_status") or "pending") in ("pending", "active")
-            ]
-            rest = [
-                t
-                for t in viewed
-                if (t.get("split_status") or "pending") not in ("pending", "active")
-            ]
-            active.sort(
+            # 同 rank 内新→旧
+            front.sort(
                 key=lambda t: t.get("created_at", t.get("id", "")), reverse=True
             )
-            rest.sort(
-                key=lambda t: (
-                    0 if (t.get("split_status") or "") == "blocked" else 1,
-                    t.get("updated_at") or t.get("created_at") or "",
+            front.sort(
+                key=lambda t: _BACKLOG_SPLIT_RANK.get(
+                    t.get("split_status") or "pending", 1
                 )
             )
-            return active + rest
+            failed.sort(
+                key=lambda t: t.get("updated_at") or t.get("created_at") or "",
+                reverse=True,
+            )
+            done.sort(
+                key=lambda t: t.get("updated_at") or t.get("created_at") or ""
+            )
+            other.sort(
+                key=lambda t: t.get("updated_at") or t.get("created_at") or ""
+            )
+            return front + failed + other + done
 
         viewed.sort(key=lambda t: t.get("created_at", t.get("id", "")))
         return viewed

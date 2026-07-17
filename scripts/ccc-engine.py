@@ -1793,19 +1793,17 @@ def _startup_scan_workspace(ws: Path, active_tasks: dict[str, dict]) -> None:
 
 
 def _refresh_epic_statuses(ws: Path) -> None:
-    """扫 backlog epic：子卡全 released → done；有 abnormal → blocked。"""
+    """扫 backlog epic：按子卡列推导五态（pending/planned/running/done/failed）。"""
     try:
-        from _product_fanout import refresh_epic_completion
+        from _product_fanout import refresh_epic_lifecycle
     except ImportError:
         return
     store = _get_store(ws)
     for task in store.list_tasks("backlog"):
         if task.get("card_kind") != "epic":
             continue
-        if task.get("split_status") not in ("active", "blocked"):
-            continue
         try:
-            refresh_epic_completion(store, task["id"])
+            refresh_epic_lifecycle(store, task["id"])
         except Exception as exc:
             engine_log(f"[fanout] refresh {task.get('id')}: {exc}")
 
@@ -1838,14 +1836,11 @@ def _process_backlog(ws: Path) -> bool:
         kind = _task_data.get("card_kind") or "epic"
         split = _task_data.get("split_status") or "pending"
 
-        # Epic：已拆分/完成 → 不 launch product；仅刷新状态
+        # Epic：仅 pending 走 product；其余五态不自动重拆
         if kind == "epic":
-            if split in ("active", "done"):
+            if split in ("planned", "running", "done", "failed"):
                 continue
-            if split == "blocked":
-                # 需人工 reopen；不自动重拆
-                continue
-            # pending → 下方走 product fanout
+            # pending（含存量 active 已被 refresh 精算）→ 下方走 product fanout
         else:
             # work 兼容：plan+phases 齐全 → planned
             phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
@@ -1914,18 +1909,18 @@ def _process_backlog(ws: Path) -> bool:
                 fail_count = 0
 
         def _mark_product_exhausted(reason: str) -> None:
-            """epic 留 backlog 标 blocked；work 才可 quarantine。"""
+            """epic 留 backlog 标 failed；work 才可 quarantine。"""
             if kind == "epic":
                 store.patch_task(
                     tid,
                     {
-                        "split_status": "blocked",
+                        "split_status": "failed",
                         "note": (_task_data.get("note") or "")
                         + f"\n[product] {reason}",
                     },
                 )
                 engine_log(
-                    f"[product] [{label}] epic {tid} → blocked（{reason}），仍留待办"
+                    f"[product] [{label}] epic {tid} → failed（{reason}），仍留待办"
                 )
             else:
                 _quarantine_with_notify(
@@ -2175,8 +2170,10 @@ def _phase_to_pgroup(p: int) -> str:
     return f"p{p}"
 
 
-def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
-    """构造单 phase 的 prompt（委托 board.prompt，与 ccc-board 共用）。"""
+def _build_phase_prompt(
+    task_id: str, phase_num: int, plan_content: str, *, workspace: Path
+) -> str:
+    """构造单 phase 的 prompt（委托 board.prompt，显式传 workspace）。"""
     from board.prompt import build_dev_phase_prompt
 
     scope: list[str] = []
@@ -2201,9 +2198,7 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     except Exception:
         pass
     try:
-        from board.context import get_workspace as _gw
-
-        pf = _gw() / ".ccc" / "pids" / f"{task_id}.pytest_fail.md"
+        pf = workspace / ".ccc" / "pids" / f"{task_id}.pytest_fail.md"
         if pf.is_file():
             pytest_fail = pf.read_text(encoding="utf-8", errors="replace")[:4000]
     except Exception:
@@ -2228,6 +2223,7 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
         task_id,
         phase_num,
         plan_content,
+        workspace=workspace,
         scope=scope,
         pytest_failure=pytest_fail,
         skill_hints=skill_hints,
@@ -2256,7 +2252,7 @@ def _launch_parallel_phase(
     prompt_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = prompt_dir / f"{subid}.prompt.md"
     prompt_file.write_text(
-        _build_phase_prompt(task_id, phase_num, plan_content),
+        _build_phase_prompt(task_id, phase_num, plan_content, workspace=ws),
         encoding="utf-8",
     )
     try:
@@ -2271,6 +2267,12 @@ def _launch_parallel_phase(
             )
             return None
         try:
+            try:
+                from _workspace_isolation import capture_isolation_baseline
+
+                capture_isolation_baseline(ws, task_id)
+            except Exception as _iso_exc:
+                engine_log(f"[isolation] baseline {task_id}: {_iso_exc}")
             proc = _sp.Popen(
                 [
                     "bash",

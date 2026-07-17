@@ -135,6 +135,7 @@ def test_patch_epic_fields(tmp_path):
         },
     )
     _, t = store.find_task("e")
-    assert t["split_status"] == "active"
+    # 写盘时 fill_task_defaults 将 active → running
+    assert t["split_status"] == "running"
     assert t["child_ids"] == ["e-1", "e-2"]
     assert t["color_group"] == "B"

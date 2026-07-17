@@ -55,6 +55,53 @@ _log.info("opencode-exec config: exec_timeout=%ds", Config().exec_timeout)
 _log = get_logger("opencode-exec")
 
 
+def build_opencode_run_cmd(
+    opencode_bin: str,
+    model: str,
+    *,
+    message: str,
+    prompt_file: str | None = None,
+    cwd: str | Path | None = None,
+    pure: bool | None = None,
+) -> list[str]:
+    """构造 `opencode run` 命令；强制 ``--dir`` 绑定看板 workspace。
+
+    漏洞根因（2026-07-17）：仅设进程 cwd 不够——OpenCode 1.18 用自有
+    session.directory；Engine launchd WorkingDirectory=CCC 时，xy/qb 任务的
+    session 会落到 CCC，把 smoke.sh 等写进 CCC 仓并 commit（实锤
+    opencode.db session.directory=/Users/apple/program/CCC）。
+
+    - ``cwd`` **必填**（缺则 raise）
+    - ``--dir``：会话/工树绑定到目标仓
+    - ``--pure``：默认开，禁用全局 MCP filesystem（根为 ~/program）跨仓写入
+    """
+    from _workspace_isolation import require_cwd
+
+    ws = require_cwd(cwd)
+    if pure is None:
+        pure = os.environ.get("CCC_OPENCODE_PURE", "1") not in (
+            "0",
+            "false",
+            "False",
+            "no",
+        )
+    cmd: list[str] = [opencode_bin, "run", "--model", model]
+    if pure:
+        cmd.append("--pure")
+    cmd.extend(["--dir", str(ws)])
+    if prompt_file:
+        cmd.extend(
+            [
+                message or "Read attached file and execute the instructions inside.",
+                "--file",
+                str(prompt_file),
+            ]
+        )
+    else:
+        cmd.append(message if message else "execute")
+    return cmd
+
+
 async def _kill_process_group(pgid: int, sig: int) -> None:
     try:
         os.killpg(pgid, sig)
@@ -140,18 +187,21 @@ async def run_opencode(
                 os.close(tmp_fd)
             os.chmod(tmp_path, 0o600)
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
-            cmd = [
+            cmd = build_opencode_run_cmd(
                 opencode_bin,
-                "run",
-                "--model",
                 model,
-                "Read attached file and execute the instructions inside.",
-                "--file",
-                tmp_path,
-            ]
+                message="Read attached file and execute the instructions inside.",
+                prompt_file=tmp_path,
+                cwd=cwd,
+            )
         else:
             short_prompt = prompt_text if prompt_text else "execute"
-            cmd = [opencode_bin, "run", "--model", model, short_prompt]
+            cmd = build_opencode_run_cmd(
+                opencode_bin,
+                model,
+                message=short_prompt,
+                cwd=cwd,
+            )
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import signal as _sig
@@ -236,7 +286,7 @@ async def main() -> int:
         default=Config().exec_timeout,
         help="超时秒数，默认 Config.exec_timeout",
     )
-    ap.add_argument("--cwd", default=None, help="工作目录")
+    ap.add_argument("--cwd", required=True, help="工作目录（必填，workspace 隔离）")
     ap.add_argument(
         "--skip-watchdog", action="store_true", help="跳过残留扫描（仅调试）"
     )
