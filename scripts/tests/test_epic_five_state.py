@@ -128,7 +128,27 @@ def test_lifecycle_planned_running_failed(tmp_path):
     assert store.find_task("e")[0] == "backlog"
 
 
-def test_epic_lifecycle_label_js():
+def test_lifecycle_rewrites_blocked_alias_on_disk(tmp_path):
+    """存量 blocked 盘面应被 refresh 改写为 failed（不只读路径归一）。"""
+    import json
+
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    store.move_task("e-w1", "in_progress", "abnormal")
+    # 模拟旧盘面仍写 blocked
+    path = tmp_path / ".ccc/board/backlog/e.jsonl"
+    raw = json.loads(path.read_text().splitlines()[0])
+    raw["split_status"] = "blocked"
+    path.write_text(json.dumps(raw, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert refresh_epic_lifecycle(store, "e") == "failed"
+    disk = json.loads(path.read_text().splitlines()[0])
+    assert disk["split_status"] == "failed"
     """纯函数 epicLifecycleLabel 可被 Node 导入单测。"""
     import subprocess
 

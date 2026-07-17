@@ -426,12 +426,22 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
                 new = "planned"
             else:
                 new = "running"
-    if epic.get("split_status") != new:
+    # 与盘上原始值比较（find_task 已把 active/blocked 归一，不能用来判断是否需写盘）
+    raw_ss = None
+    try:
+        raw_path = store.board / "backlog" / f"{epic_id}.jsonl"
+        raw_ss = json.loads(raw_path.read_text(encoding="utf-8").splitlines()[0]).get(
+            "split_status"
+        )
+    except (OSError, json.JSONDecodeError, IndexError):
+        raw_ss = epic.get("split_status")
+    if raw_ss != new:
         store.patch_task(epic_id, {"split_status": new})
         _log.info(
-            "[fanout] epic %s → %s (kids=%s)",
+            "[fanout] epic %s → %s (was %s, kids=%s)",
             epic_id,
             new,
+            raw_ss,
             statuses,
         )
     return new
