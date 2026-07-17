@@ -1,6 +1,6 @@
-/** CCC Hub hash router — #/chat | #/board | #/console */
+/** CCC Hub hash router — #/chat | #/board | #/console | #/ops */
 
-const ROUTES = ['chat', 'board', 'console'];
+const ROUTES = ['chat', 'board', 'console', 'ops'];
 
 export function currentRoute() {
   const raw = (location.hash || '#/chat').replace(/^#\/?/, '');

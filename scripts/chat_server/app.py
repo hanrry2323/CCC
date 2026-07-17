@@ -7,10 +7,10 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import chat, sessions, files, board, projects
+from .routers import chat, sessions, files, board, projects, ops
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
-HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260717c")
+HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260718ops2")
 
 
 class NoStoreStaticMiddleware(BaseHTTPMiddleware):
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(files.router)
     app.include_router(board.router)
+    app.include_router(ops.router)
 
     if FRONTEND_DIR.exists():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

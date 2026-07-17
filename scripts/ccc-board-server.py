@@ -604,8 +604,10 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
 
             kpi = {
                 "in_progress": 0,
+                "testing": 0,
                 "abnormal": 0,
                 "ready_to_release": 0,
+                "released_today": 0,
                 "today": {"fixed": 0, "released": 0, "moved": 0},
             }
             active_tasks = []
@@ -621,8 +623,9 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 te_tasks = s.list_tasks("testing")
                 ab_tasks = s.list_tasks("abnormal")
                 ve_tasks = s.list_tasks("verified")
-                # KPI
-                kpi["in_progress"] += len(ip_tasks) + len(te_tasks)
+                # KPI — 列计数与控制台字段对齐（不再把 testing 并入 in_progress）
+                kpi["in_progress"] += len(ip_tasks)
+                kpi["testing"] += len(te_tasks)
                 kpi["abnormal"] += len(ab_tasks)
                 kpi["ready_to_release"] += len(te_tasks) + len(ve_tasks)
                 # Active
@@ -650,6 +653,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     })
                     if to == "released":
                         kpi["today"]["released"] += 1
+                        kpi["released_today"] += 1
                     elif to == "verified":
                         kpi["today"]["fixed"] += 1
                     else:

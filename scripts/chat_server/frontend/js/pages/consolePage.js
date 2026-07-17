@@ -19,6 +19,7 @@ function html() {
   <div class="console-bar">
     <h2>控制台</h2>
     <button type="button" class="hub-btn" id="console-ws">工作区: <span id="console-ws-label">全部</span></button>
+    <a class="hub-btn" href="#/ops" id="console-ops-link">运维告警 <span class="badge" id="console-ops-n">0</span></a>
     <span style="flex:1"></span>
     <button type="button" class="hub-btn primary" id="console-to-board">打开看板</button>
   </div>
@@ -46,6 +47,16 @@ function html() {
 
 function renderKPI(d) {
   const kpi = d.kpi || {};
+  const today = kpi.today || {};
+  // Board dashboard: in_progress / testing / abnormal / released_today
+  // 兼容旧字段：ready_to_release、today.released
+  const values = {
+    in_progress: kpi.in_progress ?? d.counts?.in_progress ?? 0,
+    testing: kpi.testing ?? d.counts?.testing ?? 0,
+    abnormal: kpi.abnormal ?? d.counts?.abnormal ?? 0,
+    released_today:
+      kpi.released_today ?? today.released ?? kpi.today_released ?? 0,
+  };
   const keys = [
     { k: 'in_progress', label: '开发中', desc: '正在跑的任务' },
     { k: 'testing', label: '测试/验收', desc: '等待审查/验收' },
@@ -55,7 +66,7 @@ function renderKPI(d) {
   const box = _root.querySelector('#console-kpi');
   box.innerHTML = keys
     .map((item) => {
-      const v = kpi[item.k] ?? d.counts?.[item.k] ?? 0;
+      const v = values[item.k] ?? 0;
       return `<div class="console-kw"><div class="label">${item.label}</div><div class="big">${esc(v)}</div><div class="desc">${item.desc}</div></div>`;
     })
     .join('');
@@ -168,6 +179,13 @@ async function poll() {
     renderFailures(fr.failures || []);
   } catch (_) {
     renderFailures([]);
+  }
+  try {
+    const risks = await apiGet('/api/ops/risks');
+    const badge = _root.querySelector('#console-ops-n');
+    if (badge) badge.textContent = String(risks.high ?? risks.count ?? 0);
+  } catch (_) {
+    /* ops optional */
   }
   const label = _root.querySelector('#console-ws-label');
   if (label) label.textContent = _ws === 'all' ? '全部' : _ws;

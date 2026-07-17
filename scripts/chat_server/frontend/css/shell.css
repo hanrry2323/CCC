@@ -890,3 +890,198 @@ body.hub-mode #app {
   color: var(--ccc-text-faint);
   min-width: 64px;
 }
+
+/* ── Ops page ── */
+.ops-page {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--ccc-bg-base);
+  color: var(--ccc-text-base);
+  padding: 20px 24px 48px;
+}
+
+.ops-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.ops-bar h2 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0;
+}
+
+.ops-sub {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+}
+
+.ops-section {
+  margin-bottom: 22px;
+}
+
+.ops-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-section h3 .badge,
+.console-bar .badge {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-layer);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ops-hint {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin: 0 0 10px;
+}
+
+.ops-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 960px) {
+  .ops-grid-2 { grid-template-columns: 1fr; }
+}
+
+.ops-machines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.ops-machine {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-md);
+  padding: 14px 16px;
+  border-left: 3px solid var(--ccc-border-base);
+}
+
+.ops-machine.up { border-left-color: #2a9d4a; }
+.ops-machine.down { border-left-color: #c44; }
+
+.ops-machine .name { font-weight: 650; font-size: 14px; }
+.ops-machine .meta { font-size: 12px; color: var(--ccc-text-muted); margin: 4px 0 8px; }
+.ops-machine .muted { font-size: 11px; color: var(--ccc-text-faint); margin-left: 6px; }
+
+.ops-card {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-md);
+  padding: 14px 16px;
+}
+
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.ops-table th,
+.ops-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+  vertical-align: top;
+}
+
+.ops-table th {
+  color: var(--ccc-text-muted);
+  font-weight: 500;
+}
+
+.ops-port-group h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--ccc-text-secondary);
+}
+
+.ops-pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ccc-border-subtle);
+}
+
+.ops-pill.ok {
+  color: #1a6b32;
+  background: rgba(42, 157, 74, 0.12);
+  border-color: rgba(42, 157, 74, 0.35);
+}
+
+.ops-pill.bad {
+  color: #a33;
+  background: rgba(196, 68, 68, 0.1);
+  border-color: rgba(196, 68, 68, 0.3);
+}
+
+.ops-empty {
+  border: 1px dashed var(--ccc-border-base);
+  border-radius: var(--ccc-radius-md);
+  padding: 24px;
+  text-align: center;
+  color: var(--ccc-text-muted);
+  font-size: 13px;
+}
+
+.ops-kv { font-size: 13px; margin-bottom: 6px; }
+.ops-pre {
+  margin: 10px 0 0;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 11px;
+  background: var(--ccc-bg-layer);
+  padding: 12px;
+  border-radius: var(--ccc-radius-sm);
+  white-space: pre-wrap;
+}
+
+.ops-risk {
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+  border-left: 3px solid var(--ccc-border-base);
+  border-radius: var(--ccc-radius-md);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.ops-risk.sev-high { border-left-color: #c44; }
+.ops-risk.sev-medium,
+.ops-risk.sev-warn { border-left-color: #c80; }
+.ops-risk.sev-low,
+.ops-risk.sev-info { border-left-color: #888; }
+
+.ops-risk .title { font-weight: 600; font-size: 13px; }
+.ops-risk .meta { font-size: 11px; color: var(--ccc-text-muted); margin: 4px 0; }
+.ops-risk .detail { font-size: 12px; color: var(--ccc-text-secondary); margin-bottom: 8px; }
+
+.ops-auto-row,
+.ops-deploy-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.ops-auto-row .title { font-weight: 600; font-size: 13px; }
+.ops-auto-row .meta { font-size: 11px; color: var(--ccc-text-muted); }
+
+.mono { font-family: var(--ccc-font-mono); }
+.small { font-size: 11px; }
+.muted { color: var(--ccc-text-muted); }

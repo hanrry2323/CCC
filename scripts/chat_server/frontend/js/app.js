@@ -11,6 +11,7 @@ import { initEngineControl } from './components/engineControl.js';
 import { initRouter } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
+import { mountOps, unmountOps } from './pages/opsPage.js';
 
 function snapshotActiveTab() {
   const tabs = state.get('tabs') || [];
@@ -43,16 +44,24 @@ async function onHubRoute(route) {
   document.title =
     route === 'board' ? 'CCC Hub · 看板' :
     route === 'console' ? 'CCC Hub · 控制台' :
+    route === 'ops' ? 'CCC Hub · 运维' :
     'CCC Hub';
   if (route === 'board') {
     unmountConsole();
+    unmountOps();
     await mountBoard(document.getElementById('view-board'));
   } else if (route === 'console') {
     unmountBoard();
+    unmountOps();
     await mountConsole(document.getElementById('view-console'));
+  } else if (route === 'ops') {
+    unmountBoard();
+    unmountConsole();
+    await mountOps(document.getElementById('view-ops'));
   } else {
     unmountBoard();
     unmountConsole();
+    unmountOps();
   }
 }
 

@@ -1,6 +1,6 @@
 /** Per-tab stream registry — enables concurrent Hub conversations. */
 
-import { state } from '../state.js';
+import { state } from './state.js';
 
 /** @type {Map<string, { abort: AbortController, sessionId: string }>} */
 const _streams = new Map();

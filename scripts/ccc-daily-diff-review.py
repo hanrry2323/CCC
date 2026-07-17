@@ -188,7 +188,7 @@ def maybe_spawn(ws: Path, spawn: dict | None, decision: str, *, apply: bool) -> 
         "updated_at": _now(),
         "schema_version": "1.2",
         "complexity": "medium",
-        "tags": ["daily-review", f"decision-{decision}"],
+        "tags": ["ops-auto", "daily-review", f"decision-{decision}"],
     }
     from board.context import set_workspace
     from _board_store import FileBoardStore

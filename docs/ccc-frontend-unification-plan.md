@@ -17,7 +17,7 @@
 
 | 之前 | 之后 |
 |------|------|
-| Chat 8084 / Board UI+API 7777 / Cockpit 7778 | **Hub 7777**（对话+看板+控制台）+ **Board API 7775** |
+| Chat 8084 / Board UI+API 7777 / Cockpit 7778 | **Hub 7777**（对话+看板+控制台+运维）+ **Board API 7775** |
 | 三套皮肤 | 一套 Claude 暖色 |
 | `dashboard.html` 重复 | **已删除**；旧板页 → 重定向 Hub |
 
@@ -53,7 +53,7 @@ http://<IP>:7777/#/console
 - **账密**：`ccc` / `ccc`（见 [`ccc-hub-ports.md`](./ccc-hub-ports.md)）
 - 自检：`python3 scripts/verify-ccc-hub.py`（交付前必须全绿）
 - Board 静态页：`ccc-board-ui/index.html` / `board.html` → 跳转 Hub
-- Phase 4 `/ops`（Cockpit 合并）：未做，可选后续
+- Phase 4 `/ops`（Cockpit 合并）：**已做** Hub `#/ops`；Cockpit 深链保留一期后废弃（见 `docs/hub-ops-console.md`）
 
 ---
 
@@ -66,7 +66,7 @@ http://<IP>:7777/#/console
 | 2 | 暖色看板 `#/board` | ✅ |
 | 3 | 暖色控制台 `#/console` | ✅ |
 | Docs | 端口与相关文档梳理 | ✅ [`ccc-hub-ports.md`](./ccc-hub-ports.md) |
-| 4 | `/ops` + 废弃 Cockpit | ⏳ 可选 |
+| 4 | `/ops` + 废弃 Cockpit | ✅ Hub 运维页已上；Cockpit 迁移说明见 hub-ops-console.md |
 
 ---
 
