@@ -1,6 +1,6 @@
-/** Composer 上方 runtime 状态条 + 对话旁失败可点重开（v0.42） */
+/** Composer 上方：队列摘要 + 工作区改动提示（不含「最近失败」） */
 
-import { apiGet, apiPost } from '../api.js';
+import { apiGet } from '../api.js';
 import { state } from '../state.js';
 
 let _timer = null;
@@ -16,6 +16,9 @@ function workspaceOf() {
 function ensureDom() {
   const composer = document.getElementById('composer');
   if (!composer) return null;
+  // 移除旧「最近失败」条
+  document.getElementById('chat-fail-strip')?.remove();
+
   let bar = document.getElementById('runtime-status-bar');
   if (!bar) {
     bar = document.createElement('div');
@@ -24,15 +27,15 @@ function ensureDom() {
     bar.hidden = true;
     composer.parentNode.insertBefore(bar, composer);
   }
-  let fail = document.getElementById('chat-fail-strip');
-  if (!fail) {
-    fail = document.createElement('div');
-    fail.id = 'chat-fail-strip';
-    fail.className = 'chat-fail-strip';
-    fail.hidden = true;
-    composer.parentNode.insertBefore(fail, composer);
+  let git = document.getElementById('git-dirty-strip');
+  if (!git) {
+    git = document.createElement('div');
+    git.id = 'git-dirty-strip';
+    git.className = 'git-dirty-strip';
+    git.hidden = true;
+    composer.parentNode.insertBefore(git, composer);
   }
-  return { bar, fail };
+  return { bar, git };
 }
 
 function esc(s) {
@@ -41,13 +44,6 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-async function reopen(tid) {
-  const ws = workspaceOf();
-  await apiPost('/api/tasks/reopen', { id: tid, workspace: ws, to: 'planned' });
-  window.showToast?.('已重开 ' + tid, 'success');
-  await refreshRuntimeStatus();
 }
 
 export async function refreshRuntimeStatus() {
@@ -59,64 +55,43 @@ export async function refreshRuntimeStatus() {
       '/api/runtime-status?workspace=' + encodeURIComponent(ws)
     );
     const mode = st.mode || st.control?.mode || '?';
-    const eng = st.engine_allowed ? 'Engine可跑' : 'Engine停';
-    const wake = st.wake_pending ? 'wake待消费' : '无wake';
     const c = st.counts || {};
+    const wake = st.wake_pending ? 'wake待消费' : '';
     dom.bar.hidden = false;
     dom.bar.innerHTML =
       `<span class="rs-mode">${esc(mode)}</span>` +
       `<span class="rs-sep">·</span>` +
-      `<span>${esc(eng)}</span>` +
-      `<span class="rs-sep">·</span>` +
-      `<span>${esc(wake)}</span>` +
-      `<span class="rs-sep">·</span>` +
       `<span>backlog ${esc(c.backlog ?? 0)}</span>` +
       `<span class="rs-sep">/</span>` +
       `<span>planned ${esc(c.planned ?? 0)}</span>` +
+      (c.in_progress
+        ? `<span class="rs-sep">/</span><span>跑 ${esc(c.in_progress)}</span>`
+        : '') +
+      (wake ? `<span class="rs-sep">·</span><span>${esc(wake)}</span>` : '') +
       `<span class="rs-ws">${esc(ws)}</span>`;
+
+    const g = st.git || {};
+    const dirty = Number(g.dirty || 0);
+    const ahead = Number(g.ahead || 0);
+    if (dirty > 0 || ahead > 0) {
+      dom.git.hidden = false;
+      const bits = [];
+      if (dirty > 0) bits.push(`<b>${dirty}</b> 处改动`);
+      if (ahead > 0) bits.push(`领先远端 ${ahead}`);
+      if (g.branch) bits.push(esc(g.branch));
+      dom.git.innerHTML =
+        `<span class="git-dirty-icon" aria-hidden="true">✎</span>` +
+        `<span class="git-dirty-text">工作区 · ${bits.join(' · ')}</span>` +
+        `<span class="git-dirty-hint">建议 commit` +
+        (ahead > 0 ? ' / push' : '') +
+        `</span>`;
+    } else {
+      dom.git.hidden = true;
+      dom.git.innerHTML = '';
+    }
   } catch (_) {
     dom.bar.hidden = true;
-  }
-
-  try {
-    const fr = await apiGet(
-      '/api/failures?last=3&workspace=' + encodeURIComponent(ws)
-    );
-    const rows = (fr.failures || []).slice().reverse().slice(0, 3);
-    if (!rows.length) {
-      dom.fail.hidden = true;
-      dom.fail.innerHTML = '';
-      return;
-    }
-    dom.fail.hidden = false;
-    dom.fail.innerHTML =
-      '<div class="chat-fail-label">最近失败</div>' +
-      rows
-        .map(
-          (f) =>
-            `<div class="chat-fail-item">` +
-            `<span class="chat-fail-meta"><b>${esc(f.task_id || '')}</b> · ${esc(f.role || '')} · ${esc((f.reason || '').slice(0, 80))}</span>` +
-            (f.task_id
-              ? `<button type="button" class="chat-fail-reopen" data-tid="${esc(f.task_id)}">重开</button>`
-              : '') +
-            `</div>`
-        )
-        .join('');
-    dom.fail.querySelectorAll('.chat-fail-reopen').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const tid = btn.getAttribute('data-tid');
-        if (!tid) return;
-        btn.disabled = true;
-        try {
-          await reopen(tid);
-        } catch (err) {
-          window.showToast?.(err.message || '重开失败', 'error');
-          btn.disabled = false;
-        }
-      });
-    });
-  } catch (_) {
-    dom.fail.hidden = true;
+    if (dom.git) dom.git.hidden = true;
   }
 }
 
@@ -129,6 +104,9 @@ export function initRuntimeStatus() {
     refreshRuntimeStatus().catch(() => {});
   });
   document.addEventListener('ccc-task-dispatched', () => {
+    refreshRuntimeStatus().catch(() => {});
+  });
+  document.addEventListener('ccc-engine-status', () => {
     refreshRuntimeStatus().catch(() => {});
   });
 }

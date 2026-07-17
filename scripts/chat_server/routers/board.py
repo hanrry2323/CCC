@@ -428,7 +428,7 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     from _ccc_control import status_dict
-    from _engine_wake import WAKE_FILE
+    from _engine_wake import WAKE_FILE, is_engine_running
 
     control = status_dict()
     wake_exists = WAKE_FILE.is_file()
@@ -478,13 +478,92 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
         except Exception:
             pass
 
+    engine_running = False
+    try:
+        engine_running = is_engine_running()
+    except Exception:
+        engine_running = False
+
+    git_info: dict = {"dirty": 0, "ahead": 0, "behind": 0, "branch": None}
+    if root is not None:
+        try:
+            import subprocess
+
+            br = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            if br.returncode == 0:
+                git_info["branch"] = (br.stdout or "").strip() or None
+            st = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            if st.returncode == 0:
+                git_info["dirty"] = len(
+                    [ln for ln in (st.stdout or "").splitlines() if ln.strip()]
+                )
+            ab = subprocess.run(
+                ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            if ab.returncode == 0 and ab.stdout:
+                parts = ab.stdout.split()
+                if len(parts) >= 2:
+                    git_info["behind"] = int(parts[0])
+                    git_info["ahead"] = int(parts[1])
+        except Exception:
+            pass
+
     return {
         "workspace": workspace,
         "control": control,
         "mode": control.get("mode"),
         "engine_allowed": bool(control.get("engine_allowed")),
+        "engine_running": bool(engine_running),
         "wake_file": str(WAKE_FILE),
         "wake_pending": wake_exists,
         "wake": wake_payload,
         "counts": counts,
+        "git": git_info,
     }
+
+
+@router.post("/api/engine/start")
+async def engine_start(request: Request):
+    """Hub 手动启动 Engine（enabled + launchd）。"""
+    check_auth(request)
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _engine_wake import start_engine
+
+    return start_engine(reason="hub_manual_start", source="hub")
+
+
+@router.post("/api/engine/stop")
+async def engine_stop(request: Request):
+    """Hub 手动停止 Engine（ui + bootout）。"""
+    check_auth(request)
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _engine_wake import stop_engine
+
+    return stop_engine(reason="hub_manual_stop", source="hub")

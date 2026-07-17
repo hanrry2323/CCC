@@ -94,6 +94,108 @@ def _bootstrap_engine_launchd() -> tuple[bool, str]:
         return False, str(exc)[:200]
 
 
+def is_engine_running() -> bool:
+    """检测 ccc-engine 进程是否在跑（pgrep 或 launchctl）。"""
+    try:
+        r = subprocess.run(
+            ["pgrep", "-f", "ccc-engine.py"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ["launchctl", "list", "com.ccc.engine"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if r.returncode != 0 or not r.stdout:
+            return False
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 1 and parts[0].isdigit() and int(parts[0]) > 0:
+                return True
+        import re
+
+        m = re.search(r'"PID"\s*=\s*(\d+)', r.stdout)
+        return bool(m and int(m.group(1)) > 0)
+    except Exception:
+        return False
+
+
+def _stop_engine_launchd() -> tuple[bool, str]:
+    """停掉 com.ccc.engine（bootout），plist 挪到 disabled-ccc。"""
+    uid = os.getuid()
+    label = f"gui/{uid}/com.ccc.engine"
+    dst = Path.home() / "Library" / "LaunchAgents" / "com.ccc.engine.plist"
+    park = Path.home() / "Library" / "LaunchAgents" / "disabled-ccc"
+    notes: list[str] = []
+    try:
+        subprocess.run(
+            ["launchctl", "bootout", label],
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        notes.append("bootout")
+        subprocess.run(
+            ["launchctl", "unload", "-w", str(dst)],
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        if dst.is_file():
+            park.mkdir(parents=True, exist_ok=True)
+            target = park / "com.ccc.engine.plist"
+            try:
+                if target.exists():
+                    target.unlink()
+                dst.rename(target)
+                notes.append("parked_plist")
+            except OSError as exc:
+                notes.append(f"park_fail:{exc}")
+        return True, ",".join(notes)
+    except Exception as exc:
+        _log.warning("stop engine failed: %s", exc)
+        return False, str(exc)[:200]
+
+
+def stop_engine(*, reason: str = "hub_manual_stop", source: str = "hub") -> dict[str, Any]:
+    """Hub 手动停 Engine：控制面 → ui，并 bootout launchd。"""
+    from _ccc_control import get_mode, set_mode
+
+    mode_before = get_mode()
+    set_mode("ui", reason=reason, source=source)
+    ok, note = _stop_engine_launchd()
+    # 给进程一点时间退出
+    import time
+
+    time.sleep(0.4)
+    return {
+        "ok": ok,
+        "action": "stop",
+        "mode_before": mode_before,
+        "mode_after": "ui",
+        "launch_note": note,
+        "engine_running": is_engine_running(),
+    }
+
+
+def start_engine(*, reason: str = "hub_manual_start", source: str = "hub") -> dict[str, Any]:
+    """Hub 手动启 Engine：enabled + bootstrap。"""
+    return ensure_engine_for_task(
+        reason=reason,
+        task_id="hub-manual",
+        start_launchd=True,
+    ) | {"action": "start", "engine_running": is_engine_running()}
+
+
 def ensure_engine_for_task(
     *,
     reason: str = "task_dispatch",
@@ -119,7 +221,7 @@ def ensure_engine_for_task(
             set_mode(
                 "enabled",
                 reason=f"{reason}" + (f":{task_id}" if task_id else ""),
-                source="task_dispatch",
+                source="task_dispatch" if source_is_dispatch(reason) else "hub",
             )
             mode_after = "enabled"
             control_changed = True
@@ -152,6 +254,11 @@ def ensure_engine_for_task(
         "task_id": task_id,
         "reason": reason,
         "workspace_reg": workspace_reg,
+        "engine_running": is_engine_running(),
     }
     _log.info("ensure_engine_for_task %s", result)
     return result
+
+
+def source_is_dispatch(reason: str) -> bool:
+    return not str(reason or "").startswith("hub_manual")

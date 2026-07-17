@@ -319,6 +319,101 @@ body.hub-mode #app {
   background: var(--ccc-bg-base);
   border-right: 1px solid var(--ccc-border-subtle);
   box-shadow: 4px 0 12px rgba(0, 0, 0, 0.04);
+  transition: width 0.2s ease, flex-basis 0.2s ease, padding 0.2s ease, opacity 0.2s ease;
+  overflow: hidden;
+}
+
+.board-layout.epic-collapsed .board-epic-col {
+  flex-basis: 0;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.board-epic-toggle {
+  font-family: var(--ccc-font-sans);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--ccc-radius-sm);
+  border: 1px solid var(--ccc-border-base);
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-base);
+  cursor: pointer;
+}
+
+.card-copy-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--ccc-border-base);
+  border-radius: 6px;
+  background: var(--ccc-bg-surface);
+  color: var(--ccc-text-base);
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 1;
+  box-shadow: var(--ccc-shadow-sm, 0 1px 2px rgba(0,0,0,0.08));
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.card-copy-btn .card-copy-ico {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.card-copy-btn .card-copy-txt {
+  font-weight: 600;
+}
+.card-copy-btn:hover,
+.card-copy-btn:focus {
+  color: var(--ccc-text-accent, #c96442);
+  border-color: var(--ccc-text-accent, #c96442);
+}
+.board-card.just-copied {
+  outline: 2px solid color-mix(in srgb, #3d9a5f 55%, transparent);
+  outline-offset: 1px;
+}
+.board-card-epic,
+.board-card-work {
+  padding-bottom: 34px;
+}
+@media (max-width: 768px) {
+  .card-copy-btn {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .board-epic-col {
+    position: relative;
+    left: auto;
+    flex: 0 0 min(100%, 280px);
+    width: min(100%, 280px);
+    max-width: 86vw;
+    box-shadow: none;
+  }
+  .board-layout {
+    flex-direction: row;
+  }
+  .board-layout:not(.epic-collapsed) {
+    overflow-x: auto;
+  }
+  .board-toolbar .engine-label {
+    display: none;
+  }
 }
 
 .board-flow-cols {
@@ -545,6 +640,7 @@ body.hub-mode #app {
 }
 
 .board-card {
+  position: relative;
   background: var(--ccc-bg-base);
   border-radius: var(--ccc-radius-sm);
   padding: 8px 10px;

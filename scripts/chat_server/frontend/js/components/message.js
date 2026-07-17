@@ -364,6 +364,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       setStreamingIndicator(false);
       updateComposerState();
       refreshSidebar();
+      import('./runtimeStatus.js').then((m) => m.refreshRuntimeStatus?.()).catch(() => {});
     },
     (errorText) => {
       removeTyping();

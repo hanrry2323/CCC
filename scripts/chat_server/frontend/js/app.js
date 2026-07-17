@@ -7,6 +7,7 @@ import { initComposer, setupProjectSelect } from './components/composer.js';
 import { loadMessages, setupCancel, createEmptyState } from './components/message.js';
 import { refreshSidebar, setupSidebarSearch } from './components/sidebar.js';
 import { initRuntimeStatus } from './components/runtimeStatus.js';
+import { initEngineControl } from './components/engineControl.js';
 import { initRouter } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
@@ -57,6 +58,7 @@ async function init() {
   initTitlebar();
   initComposer();
   initRuntimeStatus();
+  initEngineControl();
   setupCancel();
   setupSidebarSearch();
   await import('./components/toast.js');

@@ -104,6 +104,92 @@ function borderFor(t, col) {
   return hsl || COLORS[col] || '#a39e93';
 }
 
+function formatTaskCopy(t, col) {
+  const kind = t.card_kind || (col === 'backlog' ? 'epic' : 'work');
+  const lines = [
+    '<<<CCC_TASK>>>',
+    'id: ' + (t.id || ''),
+    'workspace: ' + _ws,
+    'column: ' + (col || t.status || ''),
+    'kind: ' + kind,
+    'title: ' + (t.title || ''),
+  ];
+  if (t.parent_id) lines.push('parent: ' + t.parent_id);
+  if (t.split_status) lines.push('split_status: ' + t.split_status);
+  if (Array.isArray(t.child_ids) && t.child_ids.length) {
+    lines.push('children: ' + t.child_ids.join(', '));
+  }
+  const desc = (t.description || t.summary || '').trim();
+  if (desc) {
+    lines.push('---');
+    lines.push(desc.slice(0, 1200));
+  }
+  lines.push('<<<END_CCC_TASK>>>');
+  lines.push('（请围绕上述任务与我讨论：现状、风险、下一步）');
+  return lines.join('\n');
+}
+
+function copyBtnHtml() {
+  return (
+    '<button type="button" class="card-copy-btn" title="复制任务信息到对话" aria-label="复制任务">' +
+    '<span class="card-copy-ico" aria-hidden="true">⧉</span>' +
+    '<span class="card-copy-txt">复制</span>' +
+    '</button>'
+  );
+}
+
+/** 兼容 localhost / 局域网 HTTP：clipboard API 不可用时走 execCommand */
+async function copyTextToClipboard(text) {
+  const payload = String(text || '');
+  if (!payload) return false;
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(payload);
+      return true;
+    }
+  } catch (_) {
+    /* fall through */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = payload;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText =
+      'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, payload.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return !!ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function copyCardTask(card) {
+  if (!card) return;
+  const found = findTask(card.dataset.id);
+  const text = found
+    ? formatTaskCopy(found.task, found.col)
+    : formatTaskCopy(
+        {
+          id: card.dataset.id,
+          title: card.querySelector('.ti')?.textContent || '',
+        },
+        card.dataset.col
+      );
+  const ok = await copyTextToClipboard(text);
+  if (ok) {
+    window.showToast?.('已复制任务块，可粘贴到对话', 'success');
+    card.classList.add('just-copied');
+    setTimeout(() => card.classList.remove('just-copied'), 600);
+  } else {
+    window.showToast?.('复制失败：请长按选中后手动复制', 'error');
+  }
+}
+
 function renderEpicCol() {
   const host = _root.querySelector('#board-epic');
   let tasks = _state.columns.backlog || [];
@@ -122,6 +208,7 @@ function renderEpicCol() {
             <div class="ti">${esc(t.title)}</div>
             <div class="epic-meta">${epicChip(ss)}</div>
             ${epicProgress(t)}
+            ${copyBtnHtml()}
           </div>`;
         })
         .join('')
@@ -160,6 +247,7 @@ function renderFlowCols() {
                 ${pv ? '<button type="button" class="mv-prev">←</button>' : ''}
                 ${nx ? '<button type="button" class="mv-next">→</button>' : ''}
               </div>
+              ${copyBtnHtml()}
             </div>`;
           })
           .join('')
@@ -177,6 +265,7 @@ function html() {
     <div class="board-toolbar-actions">
       <button type="button" class="primary" id="board-new">+ 新建大卡</button>
       <button type="button" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
+      <button type="button" id="board-epic-toggle" class="board-epic-toggle" title="收起/展开待办大卡">大卡</button>
       <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
@@ -384,6 +473,41 @@ async function showDetail(id) {
   _root.querySelector('#board-dm').classList.add('open');
 }
 
+function findTask(id) {
+  for (const col of ['backlog', ...FLOW_COLS]) {
+    const t = (_state.columns[col] || []).find((x) => x.id === id);
+    if (t) return { task: t, col };
+  }
+  return null;
+}
+
+function applyEpicCollapsed(collapsed) {
+  const layout = _root?.querySelector('#board-layout');
+  const btn = _root?.querySelector('#board-epic-toggle');
+  if (!layout) return;
+  layout.classList.toggle('epic-collapsed', !!collapsed);
+  if (btn) {
+    btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    btn.textContent = collapsed ? '大卡 ▸' : '大卡 ▾';
+    btn.title = collapsed ? '展开待办大卡' : '收起待办大卡';
+  }
+  try {
+    localStorage.setItem('ccc_board_epic_collapsed', collapsed ? '1' : '0');
+  } catch (_) {}
+}
+
+function initEpicCollapsedDefault() {
+  let collapsed = false;
+  try {
+    const saved = localStorage.getItem('ccc_board_epic_collapsed');
+    if (saved === '1' || saved === '0') collapsed = saved === '1';
+    else collapsed = window.matchMedia('(max-width: 768px)').matches;
+  } catch (_) {
+    collapsed = window.matchMedia('(max-width: 768px)').matches;
+  }
+  applyEpicCollapsed(collapsed);
+}
+
 function bind() {
   _root.querySelector('#board-ws-btns').addEventListener('click', (e) => {
     const btn = e.target.closest('.board-ws-btn');
@@ -406,6 +530,10 @@ function bind() {
   _root.querySelector('#board-show-hidden').addEventListener('change', (e) => {
     _showHidden = !!e.target.checked;
     loadBoard();
+  });
+  _root.querySelector('#board-epic-toggle')?.addEventListener('click', () => {
+    const layout = _root.querySelector('#board-layout');
+    applyEpicCollapsed(!layout?.classList.contains('epic-collapsed'));
   });
   _root.querySelector('#board-clean-done').addEventListener('click', async () => {
     try {
@@ -438,6 +566,14 @@ function bind() {
     await loadBoard();
   });
   _root.querySelector('#board-layout').addEventListener('click', (e) => {
+    const copyBtn = e.target.closest('.card-copy-btn');
+    if (copyBtn) {
+      e.stopPropagation();
+      e.preventDefault();
+      const card = copyBtn.closest('.board-card');
+      copyCardTask(card);
+      return;
+    }
     const btn = e.target.closest('.mv-prev, .mv-next');
     const card = e.target.closest('.board-card');
     if (!card) return;
@@ -451,6 +587,17 @@ function bind() {
       showDetail(card.dataset.id);
     }
   });
+
+  // 捕获阶段拦截，避免冒泡进详情；兼容部分移动端点按
+  _root.querySelector('#board-layout').addEventListener(
+    'pointerdown',
+    (e) => {
+      const copyBtn = e.target.closest('.card-copy-btn');
+      if (!copyBtn) return;
+      e.stopPropagation();
+    },
+    true
+  );
 }
 
 export async function mountBoard(el) {
@@ -462,6 +609,15 @@ export async function mountBoard(el) {
   _root = el;
   el.innerHTML = html();
   bind();
+  initEpicCollapsedDefault();
+  try {
+    const { mountEngineControlInBoard, refreshEngineControl } = await import(
+      '../components/engineControl.js'
+    );
+    const actions = el.querySelector('.board-toolbar-actions');
+    mountEngineControlInBoard(actions);
+    refreshEngineControl().catch(() => {});
+  } catch (_) {}
   await loadConfig();
   await loadBoard();
   _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
