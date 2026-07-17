@@ -71,6 +71,20 @@ src-tauri/gen/
 
 # 误入编排仓根目录的临时工作区（任务产物应在目标仓）
 /workspace/
+/Users/
+/new_directory/
+/verdicts/
+/plans/
+/tasks/
+/projects/
+/src/xianyu/
+/src/backtest_engine/
+distribution-report.md
+
+# 旧执行器会话碎片（不应入库）
+.ccc/plans/*-prompt.txt
+.ccc/plans/*-session-id.txt
+.ccc/metrics.json
 
 # 运行时数据
 var/
