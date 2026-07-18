@@ -158,8 +158,15 @@ async function init() {
   const project =
     state.get('currentProject') ||
     state.get('defaultProject') ||
-    'ccc';
-  if (!state.get('currentProject')) state.set('currentProject', project);
+    (() => {
+      try {
+        return localStorage.getItem('ccc_hub_last_project');
+      } catch (_) {
+        return null;
+      }
+    })() ||
+    null;
+  if (!state.get('currentProject') && project) state.set('currentProject', project);
   const tabId = generateId();
   const tabs = [
     {

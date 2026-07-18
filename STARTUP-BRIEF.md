@@ -1,7 +1,8 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **权威版本**：根目录 `VERSION`（当前应对齐 v0.42.x）
+> **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **权威版本**：根目录 `VERSION`（**v0.51.0**）  
+> **正式启用**：[`docs/ops/GO-LIVE.md`](docs/ops/GO-LIVE.md)
 
 ---
 
@@ -10,6 +11,8 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **Hub（入口）** + **Engine 串行编排** + **看板闭环** + **任务路由工具**（Claude / OpenCode…）  
 **Skill + Prompt = 本次角色**（无穷角色；用户不选角色、不背 Skill）
+
+**v0.51**：CCC 本体 = **orch**（Cursor 改）；Engine **只跑业务 apps**。禁止对 CCC 看板自消费（R-15）。
 
 **勿再说**：「接很多 IDE 当卖点」「用户先选 7 个角色」。
 
@@ -59,7 +62,7 @@ Hub：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达并开
 
 ---
 
-## 4. 控制面（v0.40+）
+## 4. 控制面（v0.51）
 
 `~/.ccc/control.json`：
 
@@ -67,14 +70,14 @@ Hub：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达并开
 |------|------|
 | `disabled` | 默认。无常驻 Engine |
 | `ui` | 仅 Hub+Board |
-| `enabled` | Engine **只消费队列** |
-| `invent` | 允许自造 evolve/audit 等（显式） |
+| `enabled` | Engine **只消费 app 队列**（正式使用保持此项） |
+| `invent` | **已退役**（`invent_hard_disabled`）；勿启用 |
 
 ```bash
 bash scripts/ccc-hub-dev.sh
 bash scripts/ccc-autostart-guard.sh enable --start
-bash scripts/ccc-autostart-guard.sh invent --start
 python3 scripts/ccc-failure-report.py --last 20
+python3 scripts/ccc-workspace-doctor.py
 ```
 
 禁止 crontab 拉 `ccc-loop-monitor`；patrol 禁止旁路 `Popen` 起 Engine。  
@@ -102,6 +105,7 @@ backlog(epic 常驻) ──扇出──► planned(work) → in_progress → tes
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件（口头 PASS 无效）  
 - **12** 禁止 agent 自主启用 CCC  
+- **R-15** 禁止 CCC 本体经看板自消费（平台改动用 Cursor）  
 - **X4** 每 phase 走看板  
 
 ---

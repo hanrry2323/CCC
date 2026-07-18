@@ -109,16 +109,41 @@ def get_project_path(project_id: str) -> str:
 
 
 def default_project_id() -> str | None:
-    """Prefer first engine-eligible app; never prefer orch when apps exist."""
+    """Prefer sticky/env app; never prefer orch when apps exist.
+
+    Order: CCC_HUB_DEFAULT_PROJECT → ~/.ccc/hub-prefs.json last_project
+    → first engine-eligible app.
+    """
+    import json
+    import os
+    from pathlib import Path
+
     reload_projects()
     apps = [
         pid
         for pid, info in PROJECTS.items()
         if info.get("engine_eligible", True) and info.get("role") != "orch"
     ]
-    if apps:
-        return apps[0]
-    return next(iter(PROJECTS), None)
+    if not apps:
+        return next(iter(PROJECTS), None)
+
+    candidates: list[str] = []
+    env = (os.environ.get("CCC_HUB_DEFAULT_PROJECT") or "").strip().lower()
+    if env:
+        candidates.append(env)
+    prefs = Path.home() / ".ccc" / "hub-prefs.json"
+    if prefs.is_file():
+        try:
+            data = json.loads(prefs.read_text(encoding="utf-8"))
+            last = str(data.get("last_project") or "").strip().lower()
+            if last:
+                candidates.append(last)
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    for cand in candidates:
+        if cand in apps:
+            return cand
+    return apps[0]
 
 
 @router.get("/api/projects")

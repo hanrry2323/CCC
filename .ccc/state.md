@@ -39,10 +39,11 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 orch 分离 · 舰队卫生盘点 `docs/ops/fleet-hygiene-2026-07-18.md` · P0–P1 已执行。
+> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 **正式启用就绪** · 见 `docs/ops/GO-LIVE.md` · orch 分离 + 舰队卫生完成。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-18 | go-live-v051 | `docs/ops/GO-LIVE.md` | hygiene + orch | doctor ERROR=0；Engine 7 apps；Hub 拒投 CCC | PASS |
 | 2026-07-18 | m2-orch-separation | `docs/milestones/m2-orch-separation.md` | `docs/releases/v0.51.0.md` | CCC role=orch；Hub reject；VERSION v0.51.0 | PASS |
 | 2026-07-18 | m1-ten-workspaces | `docs/milestones/m1-ten-workspaces.md` | `docs/releases/v0.50.0.md` | doctor ERROR=0；6 仓登记；VERSION v0.50.0 | PASS |
 | 2026-07-18 | board-engine-refactor | `docs/architecture-core.md` | `git log 2952d8c` | `scripts/board/roles/` + `scripts/engine/` 拆包；facade 保留 | PASS（git） |

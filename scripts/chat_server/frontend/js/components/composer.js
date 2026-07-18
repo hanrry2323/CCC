@@ -132,6 +132,11 @@ export function initComposer() {
 
 export function setProjectActive(projectId, displayName) {
   state.set('currentProject', projectId);
+  try {
+    localStorage.setItem('ccc_hub_last_project', projectId);
+  } catch (_) {
+    /* ignore */
+  }
   const sel = document.getElementById('project-select');
   if (sel) sel.value = projectId;
   const display = document.getElementById('project-display');
@@ -147,8 +152,14 @@ export function setProjectActive(projectId, displayName) {
 export function setupProjectSelect(projects) {
   const sel = document.getElementById('project-select');
   const btnsHost = document.getElementById('sidebar-project-btns');
+  let last = null;
+  try {
+    last = localStorage.getItem('ccc_hub_last_project');
+  } catch (_) {
+    last = null;
+  }
   const preferred =
-    state.get('currentProject') || state.get('defaultProject');
+    state.get('currentProject') || last || state.get('defaultProject');
   const pickDefault = () => {
     if (
       preferred &&
