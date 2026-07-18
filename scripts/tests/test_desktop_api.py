@@ -176,3 +176,54 @@ def test_flow_snapshot_empty(client, monkeypatch):
     assert r.status_code == 200
     d = r.json()
     assert d.get("empty") is True
+
+
+def test_flow_snapshot_reads_columns(client, monkeypatch):
+    from chat_server.routers import projects as proj
+    from chat_server.routers import desktop as desk
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setitem(
+        proj.PROJECTS,
+        "demo",
+        {"name": "demo", "path": "/tmp", "role": "app", "engine_eligible": True},
+    )
+    monkeypatch.setitem(proj.PROJECT_TO_WORKSPACE, "demo", "demo")
+    fe.remember_last_epic("demo", "e1", "E")
+
+    class FakeResp:
+        status_code = 200
+        body = json.dumps(
+            {
+                "columns": {
+                    "backlog": [
+                        {
+                            "id": "e1",
+                            "title": "E",
+                            "card_kind": "epic",
+                            "split_status": "planned",
+                        }
+                    ],
+                    "planned": [
+                        {
+                            "id": "e1-w1",
+                            "title": "W",
+                            "parent_id": "e1",
+                            "executor": "python",
+                            "depends_on_tasks": [],
+                        }
+                    ],
+                }
+            }
+        ).encode()
+
+    with patch.object(desk, "board_proxy", new=AsyncMock(return_value=FakeResp())):
+        r = client.get(
+            "/api/desktop/flow/snapshot?project_id=demo&epic_id=e1",
+            auth=_auth(),
+        )
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d.get("empty") is False
+    assert d["epic"]["id"] == "e1"
+    assert d["works"][0]["executor"] == "python"

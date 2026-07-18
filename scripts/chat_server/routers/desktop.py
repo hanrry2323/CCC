@@ -370,10 +370,12 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
         )
     except Exception:
         return {}
+    if isinstance(raw, dict) and isinstance(raw.get("columns"), dict):
+        return raw["columns"]
     if isinstance(raw, dict) and isinstance(raw.get("board"), dict):
         return raw["board"]
     if isinstance(raw, dict):
-        # board-server 可能直接返回 columns
+        # 兜底：值为 list 的键当列
         return {k: v for k, v in raw.items() if isinstance(v, list)}
     return {}
 
