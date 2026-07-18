@@ -21,17 +21,31 @@ actor APIClient {
     private(set) var baseURL: URL
     private(set) var user: String
     private(set) var password: String
+    /// 短请求（列表/看板）
     private let session: URLSession
+    /// 长连接 SSE（对话 / 流程）独立，避免互相掐断
+    private let streamSession: URLSession
 
     init(baseURL: URL, user: String = "ccc", password: String = "ccc") {
         self.baseURL = baseURL
         self.user = user
         self.password = password
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 600
-        cfg.timeoutIntervalForResource = 1800
+        cfg.timeoutIntervalForRequest = 30
+        cfg.timeoutIntervalForResource = 90
         cfg.waitsForConnectivity = true
+        // 短请求严控：防止 Desktop 并发打满 Hub
+        cfg.httpMaximumConnectionsPerHost = 2
         self.session = URLSession(configuration: cfg)
+
+        let streamCfg = URLSessionConfiguration.default
+        streamCfg.timeoutIntervalForRequest = 600
+        streamCfg.timeoutIntervalForResource = 1800
+        streamCfg.waitsForConnectivity = true
+        // 长连接：最多 1 chat + 1 flow
+        streamCfg.httpMaximumConnectionsPerHost = 2
+        streamCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.streamSession = URLSession(configuration: streamCfg)
     }
 
     func update(baseURL: URL, user: String, password: String) {
@@ -63,20 +77,22 @@ actor APIClient {
     }
 
     private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
-        let (data, resp) = try await session.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(code) {
-            if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
-               let gates = err.errors, !gates.isEmpty {
-                throw APIError.gate(gates)
+        try await HubRequestGate.shared.withPermit {
+            let (data, resp) = try await self.session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if !(200..<300).contains(code) {
+                if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
+                   let gates = err.errors, !gates.isEmpty {
+                    throw APIError.gate(gates)
+                }
+                let text = String(data: data, encoding: .utf8) ?? ""
+                throw APIError.http(code, String(text.prefix(400)))
             }
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.http(code, String(text.prefix(400)))
-        }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw APIError.decode(error.localizedDescription)
+            do {
+                return try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                throw APIError.decode(error.localizedDescription)
+            }
         }
     }
 
@@ -161,12 +177,12 @@ actor APIClient {
         return resp.epics
     }
 
-    /// 流式聊天：兼容 delta / text / content 多种 SSE 形态
+    /// 流式聊天：delta + tool_use/tool_result；回调保证在 MainActor
     func streamChat(
         projectId: String,
         sessionId: String,
         messages: [ChatMessage],
-        onDelta: @escaping @Sendable (String) -> Void
+        onEvent: @escaping @MainActor @Sendable (ChatStreamEvent) -> Void
     ) async throws {
         struct Body: Encodable {
             let project: String
@@ -178,7 +194,7 @@ actor APIClient {
             Body(project: projectId, session_id: sessionId, messages: messages, mode: "chat")
         )
         let req = try authedRequest("api/chat", method: "POST", body: data)
-        let (bytes, resp) = try await session.bytes(for: req)
+        let (bytes, resp) = try await streamSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             var errBody = ""
@@ -187,7 +203,11 @@ actor APIClient {
         }
 
         var gotDelta = false
+        var gotTool = false
+        var gotDone = false
+        var donePartial = false
         for try await line in bytes.lines {
+            try Task.checkCancellation()
             let raw = line
             guard raw.hasPrefix("data:") else { continue }
             var payload = String(raw.dropFirst(5))
@@ -197,9 +217,38 @@ actor APIClient {
                   let obj = try? JSONSerialization.jsonObject(with: pdata) as? [String: Any]
             else { continue }
             let type = obj["type"] as? String
+            if type == "ping" { continue }
             if type == "error" {
                 let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
                 throw APIError.http(500, msg)
+            }
+            if type == "tool_use" {
+                gotTool = true
+                let name = (obj["name"] as? String) ?? "tool"
+                var inputStr: [String: String] = [:]
+                if let inp = obj["input"] as? [String: Any] {
+                    for (k, v) in inp {
+                        inputStr[k] = "\(v)"
+                    }
+                }
+                await onEvent(.toolUse(name: name, input: inputStr))
+                continue
+            }
+            if type == "tool_result" {
+                await onEvent(.toolResult(ok: true))
+                continue
+            }
+            if type == "cost" {
+                let tokens = obj["tokens"] as? Int
+                let usd = obj["usd"] as? Double
+                await onEvent(.cost(tokens: tokens, usd: usd))
+                continue
+            }
+            if type == "done" {
+                gotDone = true
+                donePartial = (obj["partial"] as? Bool) ?? false
+                await onEvent(.done(partial: donePartial))
+                continue
             }
             let chunk: String? = {
                 if let c = obj["content"] as? String, !c.isEmpty { return c }
@@ -209,27 +258,51 @@ actor APIClient {
             }()
             if let chunk, type == "delta" || type == "text" || type == nil || type == "content" {
                 gotDelta = true
-                onDelta(chunk)
+                await onEvent(.delta(chunk))
             }
         }
-        if !gotDelta {
+        if !gotDelta && !gotTool {
             throw APIError.decode("空回复（SSE 未解析到内容）")
+        }
+        // 流被掐断却没 done → 半截；有 done.partial → 半截
+        if !gotDone || donePartial {
+            throw APIError.decode("回复中断（连接或生成未完整结束）")
         }
     }
 
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
         let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
-        let (respData, resp) = try await session.data(for: urlReq)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        let decoded = try JSONDecoder().decode(TransferResponse.self, from: respData)
-        if !(200..<300).contains(code) || decoded.ok == false {
-            if let errs = decoded.errors, !errs.isEmpty {
-                throw APIError.gate(errs)
+        return try await HubRequestGate.shared.withPermit {
+            let (respData, resp) = try await self.session.data(for: urlReq)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let decoded = try JSONDecoder().decode(TransferResponse.self, from: respData)
+            if !(200..<300).contains(code) || decoded.ok == false {
+                if let errs = decoded.errors, !errs.isEmpty {
+                    throw APIError.gate(errs)
+                }
+                throw APIError.http(code, decoded.error ?? "transfer failed")
             }
-            throw APIError.http(code, decoded.error ?? "transfer failed")
+            return decoded
         }
-        return decoded
+    }
+
+    func fetchBoard(workspace: String) async throws -> BoardSnapshot {
+        let enc = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+        return try await send(try authedRequest("api/board?workspace=\(enc)"), as: BoardSnapshot.self)
+    }
+
+    func fetchOpsOverview() async throws -> OpsOverview {
+        try await send(try authedRequest("api/ops/overview"), as: OpsOverview.self)
+    }
+
+    func fetchOpsRisks() async throws -> OpsRisksResp {
+        try await send(try authedRequest("api/ops/risks"), as: OpsRisksResp.self)
+    }
+
+    func fetchProjectBaseline(projectId: String) async throws -> ProjectBaselineResp {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
+        return try await send(try authedRequest("api/projects/\(enc)/baseline"), as: ProjectBaselineResp.self)
     }
 
     func flowSnapshot(projectId: String, epicId: String? = nil) async throws -> FlowSnapshot {
@@ -255,7 +328,7 @@ actor APIClient {
             path += "&epic_id=\(e)"
         }
         let req = try authedRequest(path)
-        let (bytes, resp) = try await session.bytes(for: req)
+        let (bytes, resp) = try await streamSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             throw APIError.http(code, "flow events failed")

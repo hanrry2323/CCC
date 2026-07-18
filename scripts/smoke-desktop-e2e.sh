@@ -98,7 +98,12 @@ import json
 d=json.load(open("/tmp/ccc-desk-config.json"))
 assert d.get("threads")=="unified", d
 assert d.get("transfer")=="epic_only", d
-print("config ok", d.get("product"))
+# SSOT：方案 Agent = loop-code
+rt=d.get("agent_runtime") or ""
+cli=(d.get("agent_cli") or "").replace("\\\\", "/")
+assert rt == "loop-code", f"agent_runtime={rt!r} (want loop-code); cli={cli!r}"
+assert "vendor/loop-code/cli" in cli, f"agent_cli not loop-code path: {cli!r}"
+print("config ok", d.get("product"), "agent=loop-code")
 '
 
 # Gate reject

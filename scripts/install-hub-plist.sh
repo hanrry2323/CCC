@@ -65,6 +65,8 @@ cat > "$PLIST_STAGED" <<PLIST_EOF
     <string>1</string>
     <key>ANTHROPIC_BASE_URL</key>
     <string>http://127.0.0.1:4000</string>
+    <key>CCC_EXECUTOR</key>
+    <string>loop-code</string>
     <key>PATH</key>
     <string>${PATH_EXTRA}</string>
   </dict>
@@ -99,4 +101,4 @@ else
 fi
 echo "  Board API 应对齐: http://127.0.0.1:7775"
 echo "  日志: ${LOG_OUT} / ${LOG_ERR}"
-echo "  可选对话 CLI: plist 加 CCC_CLAUDE_BIN 或 CCC_EXECUTOR=loop-code（见 docs/executors/loop-code.md）"
+echo "  方案 Agent CLI: CCC_EXECUTOR=loop-code → vendor/loop-code/cli（SSOT；见 docs/executors/loop-code.md）"

@@ -376,6 +376,7 @@ class ClaudeSessionManager:
                     "type": "done",
                     "session_id": hub_session_id,
                     "claude_session_id": slot.claude_session_id or "",
+                    "partial": True,
                 }
                 return
 
@@ -385,6 +386,7 @@ class ClaudeSessionManager:
             saw_assistant_text = False
             timed_out = False
             turn_error = False
+            client_gone = False
             reader_task: asyncio.Task | None = None
 
             # 关键：不可对 receive_response().__anext__ 使用 wait_for——
@@ -408,6 +410,7 @@ class ClaudeSessionManager:
 
                 while True:
                     if request_disconnected and request_disconnected():
+                        client_gone = True
                         try:
                             await slot.client.interrupt()
                         except Exception:
@@ -508,7 +511,7 @@ class ClaudeSessionManager:
                     "type": "done",
                     "session_id": hub_session_id,
                     "claude_session_id": slot.claude_session_id or "",
-                    "partial": timed_out or turn_error,
+                    "partial": timed_out or turn_error or client_gone,
                 }
 
     async def shutdown(self) -> None:

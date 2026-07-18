@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Codex 三栏 + 系统材质侧栏 + 隐藏标题栏（高级感主来源）
+/// Codex 三栏 + 系统材质侧栏
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
 
@@ -12,12 +12,25 @@ struct ContentView: View {
                     .frame(width: 260)
                     .cccHairline(.trailing)
 
-                CodexChatPane()
-                    .frame(minWidth: 480)
+                Group {
+                    switch model.destination {
+                    case .chat:
+                        CodexChatPane()
+                            .frame(minWidth: 480)
+                    case .board:
+                        BoardView()
+                            .frame(minWidth: 560)
+                    case .ops:
+                        OpsView()
+                            .frame(minWidth: 480)
+                    }
+                }
 
-                FlowRail()
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
-                    .cccHairline(.leading)
+                if model.destination == .chat {
+                    FlowRail()
+                        .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+                        .cccHairline(.leading)
+                }
             }
 
             if let toast = model.toast {
@@ -58,11 +71,10 @@ struct CodexSidebar: View {
                         .padding(.bottom, 4)
                 }
 
-                SoftRow(title: "看板", icon: "square.grid.2x2") {
-                    // 下一版内嵌；本轮仍开网页
-                    model.selectDestination(.hub)
+                SoftRow(title: "看板", icon: "square.grid.2x2", selected: model.destination == .board) {
+                    model.selectDestination(.board)
                 }
-                SoftRow(title: "运维", icon: "wrench.and.screwdriver") {
+                SoftRow(title: "运维", icon: "wrench.and.screwdriver", selected: model.destination == .ops) {
                     model.selectDestination(.ops)
                 }
             }
@@ -243,13 +255,27 @@ struct CodexChatPane: View {
             Circle()
                 .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
-            Text(model.connected ? model.statusText : "未连接")
+            Text(model.connected
+                   ? (model.currentThreadStreaming ? "生成中…" : model.statusText)
+                   : "未连接")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
             Spacer(minLength: 0)
-            if model.busy {
+            if model.busy && !model.currentThreadStreaming {
                 ProgressView().controlSize(.mini)
             }
+            if model.currentThreadStreaming {
+                ProgressView().controlSize(.mini)
+                Button("停止") { model.cancelChat() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent)
+            }
+            Button("导出") { model.exportThreadToPasteboard() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.faint)
+                .disabled(model.messages.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
@@ -308,9 +334,14 @@ struct CodexChatPane: View {
                         .padding(.bottom, 24)
                     }
                     ForEach(model.messages) { msg in
-                        CodexMessageRow(message: msg).id(msg.id)
+                        CodexMessageRow(message: msg)
+                            .id("\(model.selectedThreadId ?? "")-\(msg.id)")
+                            .contextMenu {
+                                Button("复制") { model.copyMessage(msg.content) }
+                            }
                     }
                 }
+                .id(model.selectedThreadId ?? "none") // 切会话强制重建，防工具轨串台
                 .frame(maxWidth: CCCTheme.chatMaxWidth)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 28)
@@ -331,7 +362,9 @@ struct CodexChatPane: View {
 
     /// 矮输入条；草稿用本地 @State，避免 SSE 冲焦点
     private var composerDock: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
+            quickActionBar
+
             HStack {
                 Button {
                     model.openTransferSheet()
@@ -351,29 +384,47 @@ struct CodexChatPane: View {
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
 
-            HStack(alignment: .center, spacing: 8) {
-                TextField("问任何问题…", text: $composerText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(CCCTheme.body)
-                    .lineLimit(1...4)
-                    .focused($composerFocused)
-                    .disabled(model.busy)
-                    .padding(.leading, 12)
-                    .padding(.vertical, 8)
+            HStack(alignment: .bottom, spacing: 8) {
+                ComposerTextView(
+                    text: $composerText,
+                    placeholder: "问任何问题…",
+                    isEnabled: model.connected,
+                    onSubmit: { sendFromComposer() }
+                )
+                .frame(minHeight: 22, idealHeight: 22, maxHeight: 72)
+                .padding(.leading, 8)
+                .padding(.vertical, 6)
 
-                Button {
-                    sendFromComposer()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(canSend ? Color.white : CCCTheme.faint)
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(canSend ? CCCTheme.accent : CCCTheme.hover))
+                if model.currentThreadStreaming && composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        model.cancelChat()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(CCCTheme.nodeFail.opacity(0.9)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 6)
+                    .help("停止生成")
+                } else {
+                    Button {
+                        sendFromComposer()
+                    } label: {
+                        Image(systemName: model.currentThreadStreaming ? "arrow.up.circle.fill" : "arrow.up")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(canSend ? Color.white : CCCTheme.faint)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(canSend ? CCCTheme.accent : CCCTheme.hover))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSend)
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 6)
+                    .help(model.currentThreadStreaming ? "停止当前并发送" : "发送")
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!canSend)
-                .padding(.trailing, 8)
             }
             .frame(minHeight: 36)
             .background(
@@ -382,13 +433,8 @@ struct CodexChatPane: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        composerFocused ? CCCTheme.accent.opacity(0.4) : CCCTheme.border,
-                        lineWidth: 1
-                    )
+                    .stroke(CCCTheme.border, lineWidth: 1)
             )
-            .contentShape(Rectangle())
-            .onTapGesture { composerFocused = true }
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
         }
@@ -396,26 +442,61 @@ struct CodexChatPane: View {
         .padding(.top, 6)
         .padding(.bottom, 36)
         .background(CCCTheme.chatBg)
+        .onChange(of: model.composerBounce) { bounce in
+            // 仅失败回填一次
+            guard let bounce, !bounce.isEmpty else { return }
+            composerText = bounce
+            model.composerBounce = nil
+        }
+    }
+
+    private var quickActionBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                quickChip("对齐基线") {
+                    Task { await model.alignBaseline() }
+                }
+                quickChip("下一步") {
+                    model.applyQuickPrompt(QuickPrompts.nextStep, uiLabel: "下一步")
+                }
+                quickChip("定稿") {
+                    model.applyQuickPrompt(QuickPrompts.finalize, uiLabel: "定稿方案")
+                }
+                quickChip("扫风险") {
+                    model.applyQuickPrompt(QuickPrompts.scanRisks, uiLabel: "扫风险")
+                }
+            }
+        }
+        .frame(maxWidth: CCCTheme.chatMaxWidth)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func quickChip(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(CCCTheme.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(CCCTheme.hover)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.connected)
     }
 
     private var canSend: Bool {
-        !model.busy && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        model.connected && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendFromComposer() {
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        model.draft = text
+        // 立刻清空本地输入；不要经 model.draft，避免 onChange 回填
         composerText = ""
-        Task {
-            await model.sendMessage()
-            // 发送失败时 AppModel 会把 draft 填回
-            if !model.draft.isEmpty {
-                composerText = model.draft
-                model.draft = ""
-            }
-            composerFocused = true
-        }
+        model.sendUserMessage(text, stopAndSend: true)
     }
 }
 
@@ -424,12 +505,17 @@ struct CodexMessageRow: View {
 
     var body: some View {
         let isUser = message.role == "user"
-        let body = message.content.isEmpty && message.isStreaming ? "…" : message.content
+        let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
+            ? "…"
+            : message.content
         Group {
             if isUser {
                 HStack(alignment: .top, spacing: 0) {
                     Spacer(minLength: 80)
-                    MarkdownText(source: body)
+                    Text(body)
+                        .font(CCCTheme.body)
+                        .foregroundStyle(CCCTheme.ink)
+                        .textSelection(.enabled)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
@@ -438,10 +524,18 @@ struct CodexMessageRow: View {
                         )
                 }
             } else {
-                HStack(alignment: .top, spacing: 8) {
-                    MarkdownText(source: body)
-                    if message.isStreaming {
-                        ProgressView().controlSize(.mini)
+                VStack(alignment: .leading, spacing: 8) {
+                    // 生成一开始就显示进度轨（不必等首个 tool_use）
+                    if message.isStreaming || !message.toolSteps.isEmpty {
+                        ToolProgressRail(
+                            steps: message.toolSteps,
+                            filesChanged: message.filesChanged,
+                            finished: message.toolsFinished || !message.isStreaming,
+                            placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil
+                        )
+                    }
+                    if !body.isEmpty && body != "…" {
+                        MarkdownText(source: body)
                     }
                 }
                 .padding(.trailing, 40)
@@ -510,13 +604,44 @@ struct FlowRail: View {
                 }
             }
 
+            if let hint = model.flowFanoutHint {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(hint)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(CCCTheme.nodeFail)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("开运维") {
+                            model.selectDestination(.ops)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(CCCTheme.accent)
+                        .controlSize(.small)
+                        Button("忽略") {
+                            model.clearFanoutHint()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(CCCTheme.nodeFail.opacity(0.08))
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
             FlowCanvasView(
                 epic: model.flowEpic,
                 epicId: model.currentEpicId,
                 works: model.flowWorks,
                 headline: model.flowHeadline,
                 emptyMessage: model.flowEmptyMessage,
-                onOpenOps: { model.openHubInBrowser(route: "#/ops") },
+                onOpenOps: { model.selectDestination(.ops) },
                 onSelectNode: { model.openNodeDetail(id: $0) }
             )
         }
@@ -549,7 +674,7 @@ struct FlowRail: View {
                 if detail.kind == "work", model.flowWorks.contains(where: { $0.workId == detail.id && $0.isFailed }) {
                     Button("在运维中查看") {
                         model.dismissNodeDetail()
-                        model.openHubInBrowser(route: "#/ops")
+                        model.selectDestination(.ops)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)

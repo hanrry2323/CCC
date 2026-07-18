@@ -17,7 +17,10 @@ CCC/vendor/loop-code/
 
 ## 切换（对话路径）
 
-默认：PATH 上的 `claude`（不设下列变量）。
+**产品 SSOT**：Hub 方案 Agent = loop-code。  
+`scripts/install-hub-plist.sh` 默认写入 `CCC_EXECUTOR=loop-code`。
+
+优先级：`CCC_CLAUDE_BIN` > `CCC_EXECUTOR=loop-code` > PATH `claude`。
 
 **方式 A — 显式路径：**
 
@@ -25,28 +28,26 @@ CCC/vendor/loop-code/
 export CCC_CLAUDE_BIN=/Users/fan/program/CCC/vendor/loop-code/cli
 ```
 
-**方式 B — 执行器名：**
+**方式 B — 执行器名（Hub 默认）：**
 
 ```bash
 export CCC_EXECUTOR=loop-code
 # 解析为 <CCC_HOME>/vendor/loop-code/cli
 ```
 
-优先级：`CCC_CLAUDE_BIN` > `CCC_EXECUTOR=loop-code` > PATH `claude`。
-
 ### Hub launchd（Server）
 
-编辑 `~/Library/LaunchAgents/com.ccc.chat-server.plist` 的 `EnvironmentVariables`，增加其一后：
-
 ```bash
+bash scripts/install-hub-plist.sh --start
+# 或 kickstart：
 launchctl kickstart -k "gui/$(id -u)/com.ccc.chat-server"
 ```
 
-或重跑 `bash scripts/install-hub-plist.sh --start` 后再手改环境变量。
+验收：`bash scripts/smoke-desktop-agent.sh`（断言 `/api/desktop/config` 的 `agent_runtime=loop-code`）。
 
 中转仍走 `ANTHROPIC_BASE_URL`（Server 本机 `http://127.0.0.1:4000`）。
 
 ## 替换
 
-同一对话契约可换回官方 `claude`（去掉上述环境变量即可）。  
+调试可临时去掉 `CCC_EXECUTOR` 回退 PATH `claude`；产品交付必须以 loop-code 为准。  
 看板开发换执行器不在本文范围（见 [`overview.md`](overview.md)）。

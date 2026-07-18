@@ -1,3 +1,6 @@
+import asyncio
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -8,12 +11,16 @@ router = APIRouter()
 
 PROJECTS: dict[str, dict] = {}
 PROJECT_TO_WORKSPACE: dict[str, str] = {}
+# Board 同步拉取会堵死 uvicorn 事件循环；TTL 缓存 + 线程池卸载是根治
+_PROJECTS_CACHE_TTL_S = 20.0
+_projects_loaded_at = 0.0
+_reload_lock = asyncio.Lock()
 
 
-def reload_projects():
-    global PROJECTS, PROJECT_TO_WORKSPACE
-    new_projects = {}
-    new_mapping = {}
+def _board_fetch_projects() -> tuple[dict[str, dict], dict[str, str]]:
+    """同步拉取 Board workspace → projects（必须在线程池里跑）。"""
+    new_projects: dict[str, dict] = {}
+    new_mapping: dict[str, str] = {}
     try:
         import httpx
         import sys
@@ -28,7 +35,8 @@ def reload_projects():
             list_registered_entries,
         )
 
-        resp = httpx.get(f"{config.BOARD_URL}/api/board", timeout=3.0)
+        # 短超时：Board 慢时立刻 fallback，别拖死 Hub
+        resp = httpx.get(f"{config.BOARD_URL}/api/board", timeout=1.5)
         if resp.status_code == 200:
             data = resp.json()
             workspaces = data.get("workspaces", {})
@@ -81,19 +89,60 @@ def reload_projects():
                 info.setdefault("engine_eligible", True)
             new_projects[pid] = info
 
+    return new_projects, new_mapping
+
+
+def reload_projects(*, force: bool = False) -> None:
+    """同步入口（启动 / 线程内）。带 TTL，避免每次 API 都打 Board。"""
+    global PROJECTS, PROJECT_TO_WORKSPACE, _projects_loaded_at
+    now = time.monotonic()
+    if (
+        not force
+        and PROJECTS
+        and (now - _projects_loaded_at) < _PROJECTS_CACHE_TTL_S
+    ):
+        return
+    new_projects, new_mapping = _board_fetch_projects()
     PROJECTS.clear()
     PROJECTS.update(new_projects)
     PROJECT_TO_WORKSPACE.clear()
     PROJECT_TO_WORKSPACE.update(new_mapping)
+    _projects_loaded_at = time.monotonic()
 
 
-reload_projects()
+async def reload_projects_async(*, force: bool = False) -> None:
+    """异步安全：Board HTTP 放到线程池，不堵事件循环。"""
+    global PROJECTS, PROJECT_TO_WORKSPACE, _projects_loaded_at
+    now = time.monotonic()
+    if (
+        not force
+        and PROJECTS
+        and (now - _projects_loaded_at) < _PROJECTS_CACHE_TTL_S
+    ):
+        return
+    async with _reload_lock:
+        now = time.monotonic()
+        if (
+            not force
+            and PROJECTS
+            and (now - _projects_loaded_at) < _PROJECTS_CACHE_TTL_S
+        ):
+            return
+        new_projects, new_mapping = await asyncio.to_thread(_board_fetch_projects)
+        PROJECTS.clear()
+        PROJECTS.update(new_projects)
+        PROJECT_TO_WORKSPACE.clear()
+        PROJECT_TO_WORKSPACE.update(new_mapping)
+        _projects_loaded_at = time.monotonic()
+
+
+reload_projects(force=True)
 
 
 def get_project_path(project_id: str) -> str:
     # 允许迟到登记的 workspace（如新建 clawmed-ccc）
     if project_id not in PROJECTS:
-        reload_projects()
+        reload_projects(force=True)
     proj = PROJECTS.get(project_id)
     if not proj:
         from fastapi import HTTPException
@@ -111,7 +160,7 @@ def default_project_id() -> str | None:
     import os
     from pathlib import Path
 
-    reload_projects()
+    # 用已缓存 PROJECTS，禁止再同步打 Board（曾导致每次 list 双倍阻塞）
     apps = [
         pid
         for pid, info in PROJECTS.items()
@@ -142,8 +191,8 @@ def default_project_id() -> str | None:
 @router.get("/api/projects")
 async def list_projects(request: Request):
     check_auth(request)
-    # 每次列表从 Board 重载，避免 Hub 启动后新建 workspace 不出现
-    reload_projects()
+    # TTL 缓存 + 线程池：新建 workspace 最多 20s 可见，但 Hub 不再被 Board 拖死
+    await reload_projects_async()
     default_id = default_project_id()
     return {
         "projects": [

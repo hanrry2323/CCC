@@ -35,24 +35,20 @@ fi
 
 echo "-- resolve_claude_cli (loop-code) --"
 LC="${CCC_HOME}/vendor/loop-code/cli"
-if [[ -x "$LC" ]]; then
+REAL="$(python3 -c "from pathlib import Path; print(Path('${LC}').resolve())" 2>/dev/null || echo "")"
+if [[ ! -x "$LC" ]]; then
+  echo "FAIL loop-code missing executable: $LC (SSOT 方案 Agent; run scripts/install-executor-loop-code.sh)"
+  FAIL=1
+else
   GOT="$(
     CCC_EXECUTOR=loop-code env -u CCC_CLAUDE_BIN python3 -c "from _claude_cli import resolve_claude_cli; print(resolve_claude_cli(require=True))"
   )"
-  if [[ "$GOT" == "$(cd "$(dirname "$LC")" && pwd)/$(basename "$LC")" || "$GOT" == "$(python3 -c "from pathlib import Path; print(Path('$LC').resolve())")" ]]; then
+  if [[ "$GOT" == "$REAL" ]]; then
     echo "OK  CCC_EXECUTOR=loop-code → $GOT"
   else
-    # accept any resolved path that equals realpath of LC
-    REAL="$(python3 -c "from pathlib import Path; print(Path('$LC').resolve())")"
-    if [[ "$GOT" == "$REAL" ]]; then
-      echo "OK  CCC_EXECUTOR=loop-code → $GOT"
-    else
-      echo "FAIL loop-code resolve got=$GOT want=$REAL"
-      FAIL=1
-    fi
+    echo "FAIL loop-code resolve got=$GOT want=$REAL"
+    FAIL=1
   fi
-else
-  echo "SKIP loop-code (missing $LC)"
 fi
 
 echo "-- opencode --"

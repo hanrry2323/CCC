@@ -1,52 +1,70 @@
 import AppKit
 import SwiftUI
 
-/// 可输入的矮输入框：直接包 NSTextView（不用 ScrollView 外壳），点击即聚焦。
+/// Codex/Cursor 式输入：回车发送 · Shift+回车换行 · 可点选聚焦 · 矮条高度
 struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String = "问任何问题…"
-    var onCommandReturn: (() -> Void)?
+    var isEnabled: Bool = true
+    var onSubmit: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeNSView(context: Context) -> CCCComposerNSTextView {
+    func makeNSView(context: Context) -> ComposerScrollView {
+        let scroll = ComposerScrollView()
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+
         let tv = CCCComposerNSTextView()
         tv.delegate = context.coordinator
         tv.isRichText = false
         tv.allowsUndo = true
-        tv.isEditable = true
+        tv.isEditable = isEnabled
         tv.isSelectable = true
-        tv.isFieldEditor = false
         tv.font = .systemFont(ofSize: 14)
         tv.textColor = .labelColor
         tv.insertionPointColor = .labelColor
         tv.backgroundColor = .clear
         tv.drawsBackground = false
         tv.focusRingType = .none
-        tv.textContainerInset = NSSize(width: 0, height: 4)
-        tv.isHorizontallyResizable = true
+        tv.textContainerInset = NSSize(width: 4, height: 6)
+        tv.isHorizontallyResizable = false
         tv.isVerticallyResizable = true
-        tv.autoresizingMask = [.width, .height]
+        tv.autoresizingMask = [.width]
         tv.textContainer?.widthTracksTextView = true
-        tv.textContainer?.heightTracksTextView = false
-        tv.textContainer?.lineFragmentPadding = 0
-        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.textContainer?.containerSize = NSSize(
+            width: 0,
+            height: CGFloat.greatestFiniteMagnitude
+        )
         tv.minSize = .zero
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         tv.string = text
         tv.placeholderText = placeholder
-        tv.onCommandReturn = { context.coordinator.parent.onCommandReturn?() }
+        tv.onSubmit = {
+            context.coordinator.parent.onSubmit?()
+        }
         context.coordinator.textView = tv
-        return tv
+        scroll.documentView = tv
+        scroll.composerTextView = tv
+        return scroll
     }
 
-    func updateNSView(_ tv: CCCComposerNSTextView, context: Context) {
+    func updateNSView(_ scroll: ComposerScrollView, context: Context) {
         context.coordinator.parent = self
+        guard let tv = scroll.composerTextView else { return }
         tv.placeholderText = placeholder
-        tv.onCommandReturn = { context.coordinator.parent.onCommandReturn?() }
+        tv.isEditable = isEnabled
+        tv.onSubmit = {
+            context.coordinator.parent.onSubmit?()
+        }
         if tv.string != text {
-            let ranges = tv.selectedRanges
+            let selected = tv.selectedRanges
             tv.string = text
-            tv.selectedRanges = ranges
+            tv.selectedRanges = selected
         }
     }
 
@@ -63,11 +81,22 @@ struct ComposerTextView: NSViewRepresentable {
     }
 }
 
+/// 点击空白也能把焦点交给内部 TextView
+final class ComposerScrollView: NSScrollView {
+    weak var composerTextView: CCCComposerNSTextView?
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(composerTextView)
+        super.mouseDown(with: event)
+    }
+}
+
 final class CCCComposerNSTextView: NSTextView {
-    var onCommandReturn: (() -> Void)?
+    var onSubmit: (() -> Void)?
     var placeholderText: String = "问任何问题…"
 
     override var acceptsFirstResponder: Bool { true }
+    override var canBecomeKeyView: Bool { true }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -80,13 +109,30 @@ final class CCCComposerNSTextView: NSTextView {
         super.mouseDown(with: event)
     }
 
+    /// 回车发送；Shift+回车换行（Cmd+回车也发送）
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command),
-           event.charactersIgnoringModifiers == "\r" {
-            onCommandReturn?()
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isReturn {
+            if event.modifierFlags.contains(.shift) {
+                insertText("\n", replacementRange: selectedRange())
+                return
+            }
+            onSubmit?()
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        if NSEvent.modifierFlags.contains(.shift) {
+            insertText("\n", replacementRange: selectedRange())
+        } else {
+            onSubmit?()
+        }
+    }
+
+    override func insertNewlineIgnoringFieldEditor(_ sender: Any?) {
+        insertText("\n", replacementRange: selectedRange())
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -96,7 +142,13 @@ final class CCCComposerNSTextView: NSTextView {
             .font: font ?? NSFont.systemFont(ofSize: 14),
             .foregroundColor: NSColor.tertiaryLabelColor,
         ]
-        let r = bounds.insetBy(dx: textContainerInset.width, dy: textContainerInset.height)
+        let inset = textContainerInset
+        let r = NSRect(
+            x: inset.width + 5,
+            y: inset.height,
+            width: max(0, bounds.width - inset.width * 2 - 10),
+            height: 20
+        )
         (placeholderText as NSString).draw(in: r, withAttributes: attrs)
     }
 }

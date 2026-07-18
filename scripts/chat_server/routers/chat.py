@@ -162,12 +162,27 @@ async def chat(request: Request):
         total_cost_usd = None
         stream_completed = False
         claude_session_id = resume_id or ""
+        # Starlette 不会自动写 disconnect_received；必须轮询 is_disconnected
+        client_gone = {"v": False}
 
+        async def _watch_disconnect() -> None:
+            try:
+                while not client_gone["v"]:
+                    if await request.is_disconnected():
+                        client_gone["v"] = True
+                        return
+                    await asyncio.sleep(0.35)
+            except asyncio.CancelledError:
+                return
+
+        watch = asyncio.create_task(
+            _watch_disconnect(), name=f"ccc-chat-disconnect-{session_id[:12]}"
+        )
         try:
             async for event in stream_chat(
                 prompt,
                 project_path,
-                lambda: request.scope.get("disconnect_received", False),
+                lambda: client_gone["v"],
                 timeout=requested_timeout,
                 model=model,
                 resume_session_id=resume_id,
@@ -210,7 +225,8 @@ async def chat(request: Request):
                     yield f"data: {json.dumps(event)}\n\n"
 
                 elif evt_type == "done":
-                    stream_completed = not event.get("partial")
+                    partial = bool(event.get("partial")) or client_gone["v"]
+                    stream_completed = not partial
                     claude_session_id = (
                         str(event.get("claude_session_id") or "").strip()
                         or claude_session_id
@@ -219,12 +235,20 @@ async def chat(request: Request):
                         "type": "done",
                         "session_id": session_id,
                         "claude_session_id": claude_session_id,
+                        "partial": partial,
                     }
                     yield f"data: {json.dumps(done_payload)}\n\n"
 
         except (GeneratorExit, asyncio.CancelledError):
+            client_gone["v"] = True
+            stream_completed = False
             raise
         finally:
+            watch.cancel()
+            try:
+                await watch
+            except (asyncio.CancelledError, Exception):
+                pass
             # Hub 自建会话写本地 JSON；Claude 侧栏续聊以 ~/.claude transcript 为准
             if is_hub_owned:
                 chat_messages = [m for m in messages if m.get("role") != "system"]

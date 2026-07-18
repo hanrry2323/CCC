@@ -57,7 +57,8 @@ Engine 扇出时决定下一步身份 / prompt / skill / executor。
 
 **废弃**：双对话分屏、侧栏 Hub/Claude 双源、固定角色超市、项目/对话上下硬拆。
 
-右栏 UX 方案：[`desktop-flow-rail-ux.md`](desktop-flow-rail-ux.md)。
+右栏 UX 方案：[`desktop-flow-rail-ux.md`](desktop-flow-rail-ux.md)。  
+连接契约（1 chat + 1 flow SSE）：[`desktop-connection.md`](desktop-connection.md)。
 
 ---
 

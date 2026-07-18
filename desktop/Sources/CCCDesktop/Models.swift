@@ -30,12 +30,26 @@ struct ChatMessage: Identifiable, Hashable {
     var role: String
     var content: String
     var isStreaming: Bool
+    var toolSteps: [ToolStep]
+    var filesChanged: Int
+    var toolsFinished: Bool
 
-    init(id: UUID = UUID(), role: String, content: String, isStreaming: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        role: String,
+        content: String,
+        isStreaming: Bool = false,
+        toolSteps: [ToolStep] = [],
+        filesChanged: Int = 0,
+        toolsFinished: Bool = false
+    ) {
         self.id = id
         self.role = role
         self.content = content
         self.isStreaming = isStreaming
+        self.toolSteps = toolSteps
+        self.filesChanged = filesChanged
+        self.toolsFinished = toolsFinished
     }
 }
 
@@ -48,6 +62,9 @@ extension ChatMessage: Codable {
         role = try c.decode(String.self, forKey: .role)
         content = try c.decode(String.self, forKey: .content)
         isStreaming = false
+        toolSteps = []
+        filesChanged = 0
+        toolsFinished = false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -55,6 +72,15 @@ extension ChatMessage: Codable {
         try c.encode(role, forKey: .role)
         try c.encode(content, forKey: .content)
     }
+}
+
+enum ChatStreamEvent: Sendable {
+    case delta(String)
+    case toolUse(name: String, input: [String: String])
+    case toolResult(ok: Bool)
+    case cost(tokens: Int?, usd: Double?)
+    /// partial=true：服务端标明半截（断连/超时/异常），UI 必须标「回复中断」
+    case done(partial: Bool)
 }
 
 struct FlowWork: Identifiable, Codable, Hashable {
@@ -204,13 +230,13 @@ struct APIErrorBody: Decodable {
 }
 
 enum SidebarDestination: String, CaseIterable, Identifiable {
-    case chat, hub, ops
+    case chat, board, ops
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .chat: return "对话"
-        case .hub: return "Hub"
+        case .board: return "看板"
         case .ops: return "运维"
         }
     }
@@ -218,7 +244,7 @@ enum SidebarDestination: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .chat: return "bubble.left.and.bubble.right.fill"
-        case .hub: return "square.grid.2x2.fill"
+        case .board: return "square.grid.2x2.fill"
         case .ops: return "wrench.and.screwdriver.fill"
         }
     }

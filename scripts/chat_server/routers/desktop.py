@@ -545,6 +545,24 @@ async def list_executors(request: Request):
 @router.get("/config")
 async def desktop_config(request: Request):
     check_auth(request)
+    # 只读探测：验收脚本断言方案 Agent = loop-code（不改产品行为）
+    agent_cli = ""
+    agent_runtime = "unknown"
+    try:
+        import sys
+
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _claude_cli import resolve_claude_cli
+
+        agent_cli = resolve_claude_cli(require=False) or ""
+        if agent_cli and "vendor/loop-code/cli" in agent_cli.replace("\\", "/"):
+            agent_runtime = "loop-code"
+        elif agent_cli:
+            agent_runtime = "claude"
+    except Exception:
+        pass
     return {
         "ok": True,
         "product": "CCC Desktop",
@@ -553,4 +571,6 @@ async def desktop_config(request: Request):
         "dual_source_history": False,
         "transfer": "epic_only",
         "flow_events": "sse",
+        "agent_runtime": agent_runtime,
+        "agent_cli": agent_cli,
     }
