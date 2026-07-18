@@ -36,17 +36,21 @@
 
 `ccc-workspace-doctor`：8 仓登记，ERROR=0；WARN=`qx` Hub 可见未挂 Engine（预期）。
 
-## 仍建议（未自动改权限）
+## 第二轮加固（同日已做）
 
-1. **`~/.claude/settings.json`**：`additionalDirectories` 含整个 `~/program` + `Bash(**)` + `bypassPermissions` — 功能便利 vs 爆炸半径。建议日后收窄到活跃仓列表。
-2. **OpenCode MCP `filesystem` → `~/program`**：交互式无 `--pure` 时仍可能跨仓；Engine 路径保持 `CCC_OPENCODE_PURE=1`。
-3. **双配置**：`~/.config/opencode`（1.18）与 `~/.opencode`（legacy）并存 — 以 npm-global 1.18.1 为准。
-4. **定期**：每月 `DELETE FROM event; VACUUM;` 或会话 >7d 裁剪；doctor 周检。
+1. **`scripts/ccc-sync-agent-roots.py`**：舰队路径 → Claude `additionalDirectories` + OpenCode MCP filesystem 多根（不再整棵 `~/program`）。
+2. **`~/.claude.json`**：取消对 `/Users` 的 trust。
+3. **OpenCode**：补 `instructions/workflow.md`；`preserve_recent_tokens` 降至 120k。
+4. **`scripts/ccc-opencode-gc.sh`**：月度/按需 GC（清 event + 旧会话 + VACUUM）。
 
-## 验收
+仍保留（刻意）：Claude `bypassPermissions` / `Bash(**)` — 个人工作室效率优先；爆炸半径已靠目录白名单收窄。
+
+## 验收 / 日常
 
 ```bash
 du -sh ~/.claude ~/.local/share/opencode
 python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
+python3 ~/program/CCC/scripts/ccc-sync-agent-roots.py   # 改舰队后重跑
+bash ~/program/CCC/scripts/ccc-opencode-gc.sh --days 7   # 库又胀时
 opencode --version   # 期望 1.18.1
 ```

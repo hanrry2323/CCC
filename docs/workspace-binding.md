@@ -88,6 +88,9 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 ```bash
 python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
 # 期望 ERROR=0；WARN 仅「有意未登记」时可接受
+
+# 改舰队后：同步 Claude / OpenCode 根目录白名单
+python3 ~/program/CCC/scripts/ccc-sync-agent-roots.py
 ```
 
 ---
