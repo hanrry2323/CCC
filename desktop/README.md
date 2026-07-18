@@ -1,9 +1,18 @@
 # CCC Desktop（SwiftUI）
 
-主产品客户端：三栏 = **项目** / **方案对话** / **编排流程**。  
+主产品客户端：
+
+| 区 | 内容 |
+|----|------|
+| 极左图标栏 | 对话 / **Hub** / **运维**（后两者开浏览器，对齐 Cursor Automations·Customize） |
+| 左树 | **项目 ▸ 对话**（嵌套，非上下两截） |
+| 中 | 方案 Agent |
+| 右 | 活动编排图（Epic/Work 卡片） |
+
 连中心 Server（`CCC_SERVER`，默认 `http://192.168.3.116:7777`）。
 
-架构 SSOT：[`../docs/product/ccc-desktop-architecture.md`](../docs/product/ccc-desktop-architecture.md)
+架构：[`../docs/product/ccc-desktop-architecture.md`](../docs/product/ccc-desktop-architecture.md)  
+右栏 UX：[`../docs/product/desktop-flow-rail-ux.md`](../docs/product/desktop-flow-rail-ux.md)
 
 ## 要求
 

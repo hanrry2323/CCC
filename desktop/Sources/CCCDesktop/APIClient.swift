@@ -18,14 +18,34 @@ enum APIError: LocalizedError {
 }
 
 actor APIClient {
-    var baseURL: URL
-    var user: String
-    var password: String
+    private(set) var baseURL: URL
+    private(set) var user: String
+    private(set) var password: String
+    private let session: URLSession
 
     init(baseURL: URL, user: String = "ccc", password: String = "ccc") {
         self.baseURL = baseURL
         self.user = user
         self.password = password
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 600
+        cfg.timeoutIntervalForResource = 1800
+        cfg.waitsForConnectivity = true
+        self.session = URLSession(configuration: cfg)
+    }
+
+    func update(baseURL: URL, user: String, password: String) {
+        self.baseURL = baseURL
+        self.user = user
+        self.password = password
+    }
+
+    static func makeBaseURL(from raw: String) -> URL? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        if !s.contains("://") { s = "http://" + s }
+        if !s.hasSuffix("/") { s += "/" }
+        return URL(string: s)
     }
 
     private func authedRequest(_ path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
@@ -35,6 +55,7 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
         let token = Data("\(user):\(password)".utf8).base64EncodedString()
         req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = body
@@ -42,7 +63,7 @@ actor APIClient {
     }
 
     private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
@@ -91,8 +112,8 @@ actor APIClient {
     }
 
     func fetchThreads(projectId: String) async throws -> [DesktopThread] {
-        let path = "api/desktop/threads?project_id=\(projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId)"
-        let resp = try await send(try authedRequest(path), as: ThreadsResp.self)
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        let resp = try await send(try authedRequest("api/desktop/threads?project_id=\(enc)"), as: ThreadsResp.self)
         return resp.threads
     }
 
@@ -104,8 +125,11 @@ actor APIClient {
     }
 
     func fetchThread(projectId: String, threadId: String) async throws -> ThreadDetail {
-        let path = "api/desktop/threads/\(threadId)?project_id=\(projectId)"
-        return try await send(try authedRequest(path), as: ThreadDetail.self)
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        return try await send(
+            try authedRequest("api/desktop/threads/\(threadId)?project_id=\(enc)"),
+            as: ThreadDetail.self
+        )
     }
 
     func chat(projectId: String, sessionId: String, messages: [ChatMessage]) async throws -> ChatResp {
@@ -118,9 +142,8 @@ actor APIClient {
         let data = try JSONEncoder().encode(
             Body(project: projectId, session_id: sessionId, messages: messages, mode: "chat")
         )
-        // 复用 Hub 对话 API（loop-code 在 Server）；响应可能是 SSE，取非流式 JSON 或文本
         let req = try authedRequest("api/chat", method: "POST", body: data)
-        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let (respData, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             let text = String(data: respData, encoding: .utf8) ?? ""
@@ -129,34 +152,46 @@ actor APIClient {
         if let decoded = try? JSONDecoder().decode(ChatResp.self, from: respData) {
             return decoded
         }
-        // SSE / 纯文本回落
         let text = String(data: respData, encoding: .utf8) ?? ""
-        let reply = Self.extractSSEReply(text) ?? text
+        let reply = Self.extractSSEReply(text)
+        if reply.isEmpty {
+            throw APIError.decode("空回复（SSE 未解析到 delta）")
+        }
         return ChatResp(reply: reply, session_id: sessionId, messages: nil)
     }
 
-    private static func extractSSEReply(_ text: String) -> String? {
+    /// Hub SSE：`{"type":"delta","content":"..."}` 等
+    private static func extractSSEReply(_ text: String) -> String {
         var chunks: [String] = []
-        for line in text.split(separator: "\n") {
-            if line.hasPrefix("data: ") {
-                let payload = String(line.dropFirst(6))
-                if payload == "[DONE]" { continue }
-                if let data = payload.data(using: .utf8),
-                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    if let c = obj["content"] as? String { chunks.append(c) }
-                    else if let c = obj["delta"] as? String { chunks.append(c) }
-                    else if let c = obj["text"] as? String { chunks.append(c) }
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
+            let raw = String(line)
+            guard raw.hasPrefix("data:") else { continue }
+            var payload = String(raw.dropFirst(5))
+            if payload.hasPrefix(" ") { payload = String(payload.dropFirst()) }
+            if payload == "[DONE]" || payload.isEmpty { continue }
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            let type = obj["type"] as? String
+            if type == "error" {
+                let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
+                chunks.append("\n[错误] \(msg)")
+                continue
+            }
+            if type == "delta" || type == nil {
+                if let c = obj["content"] as? String, !c.isEmpty {
+                    chunks.append(c)
                 }
             }
         }
-        let joined = chunks.joined()
-        return joined.isEmpty ? nil : joined
+        return chunks.joined()
     }
 
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
         let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
-        let (respData, resp) = try await URLSession.shared.data(for: urlReq)
+        let (respData, resp) = try await session.data(for: urlReq)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let decoded = try JSONDecoder().decode(TransferResponse.self, from: respData)
         if !(200..<300).contains(code) || decoded.ok == false {
@@ -169,9 +204,11 @@ actor APIClient {
     }
 
     func flowSnapshot(projectId: String, epicId: String? = nil) async throws -> FlowSnapshot {
-        var path = "api/desktop/flow/snapshot?project_id=\(projectId)"
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        var path = "api/desktop/flow/snapshot?project_id=\(enc)"
         if let epicId, !epicId.isEmpty {
-            path += "&epic_id=\(epicId)"
+            let e = epicId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? epicId
+            path += "&epic_id=\(e)"
         }
         return try await send(try authedRequest(path), as: FlowSnapshot.self)
     }

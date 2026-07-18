@@ -11,6 +11,10 @@ struct DesktopProject: Identifiable, Codable, Hashable {
     var isDispatchable: Bool {
         (engine_eligible ?? true) && (role ?? "app") != "orch"
     }
+
+    var isOrch: Bool {
+        (role ?? "") == "orch" || !(engine_eligible ?? true)
+    }
 }
 
 struct DesktopThread: Identifiable, Codable, Hashable {
@@ -21,10 +25,33 @@ struct DesktopThread: Identifiable, Codable, Hashable {
     let project_id: String?
 }
 
-struct ChatMessage: Identifiable, Codable, Hashable {
-    var id: String { "\(role)-\(content.prefix(40))-\(content.count)" }
+struct ChatMessage: Identifiable, Hashable {
+    let id: UUID
     let role: String
     let content: String
+
+    init(id: UUID = UUID(), role: String, content: String) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
+}
+
+extension ChatMessage: Codable {
+    enum CodingKeys: String, CodingKey { case role, content }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = UUID()
+        role = try c.decode(String.self, forKey: .role)
+        content = try c.decode(String.self, forKey: .content)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(role, forKey: .role)
+        try c.encode(content, forKey: .content)
+    }
 }
 
 struct FlowWork: Identifiable, Codable, Hashable {
@@ -40,6 +67,23 @@ struct FlowWork: Identifiable, Codable, Hashable {
         case title, status, executor
         case dependsOn = "depends_on"
     }
+
+    var isActive: Bool {
+        ["in_progress", "testing", "planned"].contains(status)
+    }
+
+    var isTerminalDone: Bool {
+        ["released", "verified"].contains(status)
+    }
+
+    var isFailed: Bool { status == "abnormal" }
+}
+
+struct FlowEpic: Codable, Hashable {
+    let id: String?
+    let title: String?
+    let split_status: String?
+    let column: String?
 }
 
 struct FlowSnapshot: Codable {
@@ -48,6 +92,7 @@ struct FlowSnapshot: Codable {
     let message: String?
     let project_id: String?
     let epic_id: String?
+    let epic: FlowEpic?
     let works: [FlowWork]?
 }
 
@@ -86,4 +131,28 @@ struct APIErrorBody: Decodable {
     let error: String?
     let errors: [GateError]?
     let detail: String?
+}
+
+enum SidebarDestination: String, CaseIterable, Identifiable {
+    case chat
+    case hub
+    case ops
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chat: return "对话"
+        case .hub: return "Hub"
+        case .ops: return "运维"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .chat: return "bubble.left.and.bubble.right.fill"
+        case .hub: return "square.grid.2x2.fill"
+        case .ops: return "wrench.and.screwdriver.fill"
+        }
+    }
 }
