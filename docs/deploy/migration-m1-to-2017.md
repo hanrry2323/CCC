@@ -79,3 +79,10 @@ curl -sS -o /dev/null -w "%{http_code}\n" http://192.168.3.116:4002/
 | M1 Engine/Hub 已停 | PASS（plist 移至 LaunchAgents/disabled-ccc-server-20260718） | 2026-07-18 |
 | demo 注册 | PASS（2017 registry：orch CCC + app ccc-demo） | 2026-07-18 |
 | vendor/loop-code | PASS（M1+2017 已拷贝 cli，gitignore） | 2026-07-18 |
+| Executor 解析冒烟 | PASS（`smoke-executor-stack.sh` on 2017） | 2026-07-18 |
+| ccc-demo 闭环 | PASS：`demo-readme-line` planned→…→released；README 含 `Status: CCC server demo OK`；耗时约 3min（修 OpenCode `baseURL`→`127.0.0.1:4002` 后） | 2026-07-18 |
+
+### 闭环笔记（2026-07-18）
+
+- 首次挂起：2017 `~/.opencode/opencode.json` 仍指向 M1 `192.168.3.140:4002`（中转已迁走）→ 已改为 `http://127.0.0.1:4002/v1`
+- Server 上 OpenCode / Claude 必须指本机中转，不得再指 Client IP

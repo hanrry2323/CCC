@@ -68,6 +68,14 @@ Hub 客户端：`http://192.168.3.116:7777`
 - 中转：密钥只存 Server；不对公网暴露
 - 第一版非目标：公网入口、多 Server 集群、手机商店分发
 
+### 打不开 :7777 时（Server 本机正常、客户端超时）
+
+1. 在 Server 上确认：`curl -u ccc:ccc http://127.0.0.1:7777/api/projects`
+2. 客户端 `ping 192.168.3.116` 通但 `nc`/浏览器超时 → 多为 macOS 应用防火墙拦了 Python/Node 入站  
+   - 系统设置 → 网络 → 防火墙：关闭，或允许 `Python` / `node` 传入  
+   - 或：`/usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off`
+3. Hub 账号默认：`ccc` / `ccc`（浏览器会弹 Basic Auth）
+
 ---
 
 ## 产品面优先级
