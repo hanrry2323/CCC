@@ -99,3 +99,4 @@ else
 fi
 echo "  Board API 应对齐: http://127.0.0.1:7775"
 echo "  日志: ${LOG_OUT} / ${LOG_ERR}"
+echo "  可选对话 CLI: plist 加 CCC_CLAUDE_BIN 或 CCC_EXECUTOR=loop-code（见 docs/executors/loop-code.md）"

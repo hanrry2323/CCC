@@ -11,7 +11,12 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
-from _claude_cli import ClaudeCliMissing, claude_path_prefixes, resolve_claude_cli  # noqa: E402
+from _claude_cli import (  # noqa: E402
+    ClaudeCliMissing,
+    claude_path_prefixes,
+    loop_code_cli_path,
+    resolve_claude_cli,
+)
 from _executor import _sanitized_env  # noqa: E402
 
 
@@ -20,11 +25,28 @@ def test_resolve_respects_ccc_claude_bin(tmp_path, monkeypatch):
     fake.write_text("#!/bin/sh\necho ok\n")
     fake.chmod(0o755)
     monkeypatch.setenv("CCC_CLAUDE_BIN", str(fake))
+    monkeypatch.delenv("CCC_EXECUTOR", raising=False)
     assert resolve_claude_cli(require=True) == str(fake.resolve())
+
+
+def test_resolve_executor_loop_code(tmp_path, monkeypatch):
+    import _claude_cli as mod
+
+    fake_home = tmp_path / "ccc"
+    vendor = fake_home / "vendor" / "loop-code"
+    vendor.mkdir(parents=True)
+    cli = vendor / "cli"
+    cli.write_text("#!/bin/sh\necho loop\n")
+    cli.chmod(0o755)
+    monkeypatch.delenv("CCC_CLAUDE_BIN", raising=False)
+    monkeypatch.setenv("CCC_EXECUTOR", "loop-code")
+    monkeypatch.setattr(mod, "ccc_home", lambda: fake_home)
+    assert resolve_claude_cli(require=True) == str(cli.resolve())
 
 
 def test_resolve_missing_raises(monkeypatch, tmp_path):
     monkeypatch.delenv("CCC_CLAUDE_BIN", raising=False)
+    monkeypatch.delenv("CCC_EXECUTOR", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))  # empty of claude
     monkeypatch.setenv("HOME", str(tmp_path))
     import _claude_cli as mod
@@ -32,6 +54,7 @@ def test_resolve_missing_raises(monkeypatch, tmp_path):
     # 屏蔽系统绝对路径候选（本机可能真有 /opt/homebrew/bin/claude）
     monkeypatch.setattr(mod, "_candidates", lambda: [tmp_path / "nope-claude"])
     monkeypatch.setattr(mod, "_extra_path_dirs", lambda: [str(tmp_path)])
+    monkeypatch.setattr(mod, "loop_code_cli_path", lambda: tmp_path / "missing-cli")
     with pytest.raises(ClaudeCliMissing):
         resolve_claude_cli(require=True)
     assert resolve_claude_cli(require=False) is None

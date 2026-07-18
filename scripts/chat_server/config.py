@@ -1,9 +1,14 @@
 import os
 import re
-import shutil
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_SCRIPTS = PROJECT_ROOT / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from _claude_cli import ClaudeCliMissing, resolve_claude_cli  # noqa: E402
 
 HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")
 # Hub 对外端口：7777（用户习惯口）；Board API 内网默认 7775
@@ -73,10 +78,17 @@ BOARD_COLUMNS = [
     "testing", "verified", "released", "abnormal",
 ]
 
-CLAUDE_BIN = shutil.which("claude") or ""
+def _resolve_hub_claude_bin() -> str:
+    try:
+        return resolve_claude_cli(require=False) or ""
+    except Exception:
+        return ""
+
+
+CLAUDE_BIN = _resolve_hub_claude_bin()
 CLAUDE_ENV = {
     **os.environ,
-    "PATH": f"{os.environ.get('PATH', '')}:{os.path.dirname(CLAUDE_BIN) if CLAUDE_BIN else ''}"
+    "PATH": f"{os.environ.get('PATH', '')}:{os.path.dirname(CLAUDE_BIN) if CLAUDE_BIN else ''}",
 }
 
 
@@ -90,12 +102,11 @@ def validate_auth_config() -> None:
 
 
 def require_claude_bin() -> str:
-    """F-SEC-06: 仅 which；找不到则显式失败。"""
-    if not CLAUDE_BIN:
-        raise RuntimeError(
-            "claude CLI not found in PATH; install Claude Code or set PATH"
-        )
-    return CLAUDE_BIN
+    """F-SEC-06: 统一走 resolve_claude_cli（支持 CCC_CLAUDE_BIN / loop-code）。"""
+    try:
+        return resolve_claude_cli(require=True)
+    except ClaudeCliMissing as exc:
+        raise RuntimeError(str(exc)) from exc
 
 _PROJECTS_FALLBACK = {
     "ccc": {"name": "CCC", "path": str(PROJECT_ROOT)},

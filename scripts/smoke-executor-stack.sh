@@ -1,0 +1,88 @@
+#!/bin/bash
+# smoke-executor-stack.sh — Server 侧执行器栈冒烟（relay + CLI 解析 + opencode）
+set -euo pipefail
+CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}"
+RELAY_HOST="${CCC_RELAY_HOST:-127.0.0.1}"
+FAIL=0
+
+echo "== CCC smoke-executor-stack =="
+echo "CCC_HOME=$CCC_HOME"
+
+check_http() {
+  local url="$1" label="$2"
+  if curl -sS -m 5 "$url" >/dev/null 2>&1; then
+    echo "OK  $label  $url"
+  else
+    echo "FAIL $label  $url"
+    FAIL=1
+  fi
+}
+
+check_http "http://${RELAY_HOST}:4000/admin/health" "relay:4000"
+check_http "http://${RELAY_HOST}:4002/admin/health" "relay:4002"
+
+echo "-- resolve_claude_cli (default) --"
+DEFAULT_BIN="$(
+  env -u CCC_CLAUDE_BIN -u CCC_EXECUTOR python3 -c "from _claude_cli import resolve_claude_cli; print(resolve_claude_cli(require=False) or '')"
+)"
+if [[ -n "$DEFAULT_BIN" && -x "$DEFAULT_BIN" ]]; then
+  echo "OK  default CLI = $DEFAULT_BIN"
+else
+  echo "FAIL default CLI unresolved"
+  FAIL=1
+fi
+
+echo "-- resolve_claude_cli (loop-code) --"
+LC="${CCC_HOME}/vendor/loop-code/cli"
+if [[ -x "$LC" ]]; then
+  GOT="$(
+    CCC_EXECUTOR=loop-code env -u CCC_CLAUDE_BIN python3 -c "from _claude_cli import resolve_claude_cli; print(resolve_claude_cli(require=True))"
+  )"
+  if [[ "$GOT" == "$(cd "$(dirname "$LC")" && pwd)/$(basename "$LC")" || "$GOT" == "$(python3 -c "from pathlib import Path; print(Path('$LC').resolve())")" ]]; then
+    echo "OK  CCC_EXECUTOR=loop-code → $GOT"
+  else
+    # accept any resolved path that equals realpath of LC
+    REAL="$(python3 -c "from pathlib import Path; print(Path('$LC').resolve())")"
+    if [[ "$GOT" == "$REAL" ]]; then
+      echo "OK  CCC_EXECUTOR=loop-code → $GOT"
+    else
+      echo "FAIL loop-code resolve got=$GOT want=$REAL"
+      FAIL=1
+    fi
+  fi
+else
+  echo "SKIP loop-code (missing $LC)"
+fi
+
+echo "-- opencode --"
+if command -v opencode >/dev/null 2>&1; then
+  echo "OK  opencode = $(command -v opencode)"
+elif [[ -x "${HOME}/.npm-global/bin/opencode" ]]; then
+  echo "OK  opencode = ${HOME}/.npm-global/bin/opencode"
+else
+  echo "FAIL opencode not found"
+  FAIL=1
+fi
+
+if [[ "${SMOKE_CLAUDE_P:-}" == "1" && -n "$DEFAULT_BIN" ]]; then
+  echo "-- claude -p smoke --"
+  if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="http://${RELAY_HOST}:4000" timeout 90 "$DEFAULT_BIN" -p --model flash 2>/dev/null | tail -5; then
+    echo "OK  claude -p"
+  else
+    # macOS may lack timeout
+    if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="http://${RELAY_HOST}:4000" "$DEFAULT_BIN" -p --model flash 2>/dev/null | tail -5; then
+      echo "OK  claude -p"
+    else
+      echo "FAIL claude -p"
+      FAIL=1
+    fi
+  fi
+fi
+
+if [[ "$FAIL" -ne 0 ]]; then
+  echo "RESULT: FAIL"
+  exit 1
+fi
+echo "RESULT: PASS"
+exit 0
