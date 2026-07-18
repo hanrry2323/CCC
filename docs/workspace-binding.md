@@ -1,7 +1,7 @@
 # 项目绑定与接入 — Workspace Binding
 
 > **SSOT**：Hub 对话 Agent / 看板 / Engine 与「哪个文件夹」的绑定规则。  
-> 版本对齐：v0.42.3+ · 相关实现：`scripts/chat_server/`、`scripts/ccc-init.py`、`scripts/_workspace_registry.py`
+> 版本对齐：v0.50.0+ · 相关实现：`scripts/chat_server/`、`scripts/ccc-init.py`、`scripts/_workspace_registry.py`、`scripts/ccc-workspace-doctor.py`
 
 ---
 
@@ -73,7 +73,26 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 
 ---
 
-## 5. 运维对照
+## 5. Board 可见 ≠ Engine 登记
+
+| 现象 | 含义 | 处理 |
+|------|------|------|
+| Hub 下拉有项目，Engine 不跑 | 仅 Board 发现，未进 `workspaces.json` | Hub **下达**一次，或 `ccc-workspace-doctor.py register <path>` |
+| Engine 扫到死路径 | pytest/tmp 污染登记表 | `ccc-workspace-doctor.py prune --apply` |
+| 想暂停某仓自动化 | 仍可对话 | `unregister <path\|name>`（不删 `.ccc/`） |
+
+**舰队规模（对内）**：建议登记仓 **≤10**（含 CCC）。超过后 doctor 报 ERROR；扩容前先归档冷仓。
+
+周检：
+
+```bash
+python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
+# 期望 ERROR=0；WARN 仅「有意未登记」时可接受
+```
+
+---
+
+## 6. 运维对照
 
 | 你想… | 改 / 查 |
 |--------|---------|
@@ -81,12 +100,13 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 | 所有项目都带的个人偏好 | `~/.claude/CLAUDE.md` |
 | Hub 选不到该项目 | 是否有 `.ccc/board`？是否在 `~/program/`？刷新 `/api/projects` |
 | Engine 不跑该项目 | `~/.ccc/workspaces.json` 有无登记；控制面是否 `enable` |
+| 舰队卫生 | `ccc-workspace-doctor.py`；Hub `#/ops` Diff 工作区 |
 | 任务写到哪 | Hub 当前选中项目的 `.ccc/board/` |
 | 防串仓执行 | OpenCode `--dir` = 任务仓；勿在 CCC 仓 commit 业务代码 |
 
 ---
 
-## 6. 相关代码
+## 7. 相关代码
 
 | 文件 | 职责 |
 |------|------|
@@ -95,7 +115,9 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 | `scripts/chat_server/services/claude_client.py` | 注入 CLAUDE.md + cwd；委托持续会话 |
 | `scripts/chat_server/services/claude_session.py` | `ClaudeSDKClient` 持续会话（非每轮 `claude -p`） |
 | `scripts/chat_server/routers/chat.py` | 首轮注入 / 续聊跳过；持久化 `claude_session_id` |
-| `scripts/_workspace_registry.py` | Engine 登记 |
+| `scripts/_workspace_registry.py` | Engine 登记 / prune / 拒 ephemeral |
+| `scripts/ccc-workspace-doctor.py` | 舰队卫生 CLI |
 | `scripts/ccc-init.py` | 新项目一键初始化 |
 
-上手总览仍见 [`GETTING-STARTED.md`](GETTING-STARTED.md)。
+上手总览仍见 [`GETTING-STARTED.md`](GETTING-STARTED.md)。  
+多仓里程碑：[`milestones/m1-ten-workspaces.md`](milestones/m1-ten-workspaces.md)。

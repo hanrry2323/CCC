@@ -18,7 +18,7 @@
 | GET | `/api/ops/overview` | 三机卡片 + 告警数 |
 | GET | `/api/ops/ports` | infrastructure.md + TCP/HTTP 探测（缓存 ≤30s） |
 | GET | `/api/ops/resources` | 本机 load/mem/disk |
-| GET | `/api/ops/workspaces` | 注册仓 branch/dirty/ahead |
+| GET | `/api/ops/workspaces` | 注册仓 branch/dirty/ahead（与 `workspaces.json` 对齐；Hub 发现但未登记的仓用 `ccc-workspace-doctor.py` 看 WARN） |
 | GET | `/api/ops/daily-review` | 最新日审报告索引 |
 | POST | `/api/ops/daily-review/run` | dry-run / apply（鉴权 + 防抖） |
 | GET | `/api/ops/risks` | 聚合风险 |

@@ -7,7 +7,8 @@
 - **项目根**: `/Users/apple/program/CCC`
 - **仓库**: CCC 本体（Hub + Engine + Skill 资产）
 - **分支**: main
-- **当前版本**: 见根目录 `VERSION`（应对齐 CHANGELOG 最新；现为 v0.42.x）
+- **当前版本**: 见根目录 `VERSION`（v0.50.0 多仓生产就绪）
+- **舰队手册**: `docs/milestones/m1-ten-workspaces.md` · 卫生命令 `scripts/ccc-workspace-doctor.py`
 - **语言/技术栈**: Python 3.11+（Engine / Hub / Board）+ Bash 脚本 + 前端 SPA（`scripts/chat_server/`）
 
 ## 项目定位

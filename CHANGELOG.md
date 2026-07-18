@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.50.0] — 2026-07-18
+
+### 里程碑：多仓生产就绪（对内 M1）
+
+- **目标**：个人 Hub 维护约 **10** 个独立业务仓的对齐→下达→Engine 闭环（不 invent）
+- **DoD / runbook**：`docs/milestones/m1-ten-workspaces.md` · 发布说明：`docs/releases/v0.50.0.md`
+
+### 新增：workspace 舰队卫生
+
+- **`scripts/_workspace_registry.py`**：`prune_missing` / `unregister_workspace`；登记拒绝 pytest/tmp ephemeral 路径（测试可用 `CCC_ALLOW_EPHEMERAL_REGISTRY=1`）
+- **`scripts/ccc-workspace-doctor.py`**：`doctor` / `list` / `prune --apply` / `register` / `unregister`；对比 Board 发现 vs Engine 登记
+- 本机 prune 清除 pytest 死路径；舰队登记：CCC、xianyu、qb、clawmed-ccc、qxo、qx
+
+### 文档 / 模板
+
+- 强化 `templates/project-CLAUDE.md`、`templates/project-state.md`（滞后警告、空板闲置、勿串 CCC）
+- 升档 `docs/workspace-binding.md`；`docs/program-housekeeping.md` 活跃表更新
+
+### 业务仓卫生（各仓独立 commit）
+
+- cla：done epic `ui_hidden` + 根 `CLAUDE.md` + state
+- qxo / qx：state 与空板对齐；Hub-first 文档；register
+- xianyu / qb：版本指针与 CCC 启动段
+
+### Hub Agent
+
+- 基线快照强化（`git log` / 热路径 / invent 硬关）见既有 `_project_baseline.py`（v0.42.4 线）
+
+---
+
 ## [v0.42.3] — 2026-07-17
 
 ### 破坏性：永久禁止「自动识别任务投入」

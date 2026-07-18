@@ -19,7 +19,8 @@ def _mk_board_ws(tmp_path: Path, name: str = "proj") -> Path:
     return root
 
 
-def test_register_workspace_idempotent(tmp_path):
+def test_register_workspace_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("CCC_ALLOW_EPHEMERAL_REGISTRY", "1")
     from _workspace_registry import register_workspace, list_registered_paths
 
     root = _mk_board_ws(tmp_path, "qb")
@@ -44,8 +45,66 @@ def test_register_rejects_no_board(tmp_path):
     assert out["ok"] is False
 
 
+def test_register_rejects_ephemeral(tmp_path, monkeypatch):
+    monkeypatch.delenv("CCC_ALLOW_EPHEMERAL_REGISTRY", raising=False)
+    from _workspace_registry import register_workspace, is_ephemeral_path
+
+    # tmp_path itself is under pytest-of-* → ephemeral
+    root = _mk_board_ws(tmp_path, "proj")
+    assert is_ephemeral_path(root) is True
+    reg = tmp_path / "workspaces.json"
+    out = register_workspace(root, registry=reg)
+    assert out["ok"] is False
+    assert "ephemeral" in out.get("error", "")
+
+
+def test_prune_missing_and_unregister(tmp_path, monkeypatch):
+    monkeypatch.setenv("CCC_ALLOW_EPHEMERAL_REGISTRY", "1")
+    from _workspace_registry import (
+        register_workspace,
+        prune_missing,
+        unregister_workspace,
+        list_registered_paths,
+    )
+
+    alive = _mk_board_ws(tmp_path, "alive")
+    reg = tmp_path / "workspaces.json"
+    assert register_workspace(alive, name="alive", registry=reg)["ok"]
+    # Inject ghost (missing) — prune must remove it. alive is under pytest-of
+    # so also ephemeral; after prune fleet may be empty in this fixture.
+    data = json.loads(reg.read_text())
+    data["workspaces"].append({"name": "ghost", "path": str(tmp_path / "no-such")})
+    reg.write_text(json.dumps(data))
+
+    dry = prune_missing(dry_run=True, registry=reg)
+    assert any(p["name"] == "ghost" for p in dry["pruned"])
+    assert any(p.get("reason") == "missing" for p in dry["pruned"])
+
+    applied = prune_missing(dry_run=False, registry=reg)
+    assert any(p["name"] == "ghost" for p in applied["pruned"])
+    assert all(p.name != "ghost" for p in list_registered_paths(reg))
+    # alive pruned as ephemeral under pytest tmp
+    assert applied["kept"] == 0
+
+    # Unregister by name on a fresh registration (allow_ephemeral via env)
+    other = _mk_board_ws(tmp_path, "other")
+    # Direct write to skip ephemeral prune dance
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "workspaces": [{"name": "other", "path": str(other.resolve())}],
+            }
+        )
+    )
+    un = unregister_workspace("other", registry=reg)
+    assert un["ok"] and un["removed"] == 1
+    assert list_registered_paths(reg) == []
+
+
 def test_ensure_engine_registers_workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CCC_ALLOW_EPHEMERAL_REGISTRY", "1")
     import _ccc_control as ctrl
     import _engine_wake as wake
     import _workspace_registry as wr

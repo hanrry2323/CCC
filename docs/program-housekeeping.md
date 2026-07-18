@@ -13,12 +13,15 @@
 | 类别 | 处理 | 示例（按本机习惯调整） |
 |------|------|------------------------|
 | CCC 本体 | 保持 `~/program/CCC`，Hub/Engine 主仓 | CCC |
-| 活跃业务 | 注册 workspace，进看板 | qb、xianyu、clawmed-ccc |
+| 活跃业务（Engine 登记） | `workspaces.json` + Hub；医生周检 | xianyu、qb、clawmed-ccc(cla)、qx-observer(qxo)、qx |
 | 生产部署目标 | 只在运维「部署视角」看状态；代码可在 feiniu | medio-0 on feiniu |
 | 知识库 | 独立 `~/program/hp`；Hub 只 kb-health | HP proxy/store/bridge |
 | 地图/想法 | qx-map 想法折进 Hub 运维，不并码 | `/Users/apple/qx-map` |
 | 编译站源码 | Mac2017 同步副本，M1 为源 | Medio-0 |
-| 冷归档 | 确认后移 `archive/`，从 workspaces 注销 | 长期不动的 fork |
+| 冷归档 | 确认后移 `archive/`，从 workspaces 摘除 | 长期不动的 fork |
+
+舰队上限与 DoD：[`milestones/m1-ten-workspaces.md`](milestones/m1-ten-workspaces.md)。  
+卫生命令：`python3 scripts/ccc-workspace-doctor.py`。
 
 ## 注册检查清单（执行归档前）
 
