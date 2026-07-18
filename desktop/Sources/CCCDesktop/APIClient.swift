@@ -101,12 +101,6 @@ actor APIClient {
         let title: String?
     }
 
-    struct ChatResp: Decodable {
-        let reply: String?
-        let session_id: String?
-        let messages: [ChatMessage]?
-    }
-
     func fetchProjects() async throws -> ProjectsResp {
         try await send(try authedRequest("api/desktop/projects"), as: ProjectsResp.self)
     }
@@ -132,7 +126,13 @@ actor APIClient {
         )
     }
 
-    func chat(projectId: String, sessionId: String, messages: [ChatMessage]) async throws -> ChatResp {
+    /// 流式聊天：每段 delta 回调一次
+    func streamChat(
+        projectId: String,
+        sessionId: String,
+        messages: [ChatMessage],
+        onDelta: @escaping @Sendable (String) -> Void
+    ) async throws {
         struct Body: Encodable {
             let project: String
             let session_id: String
@@ -143,49 +143,37 @@ actor APIClient {
             Body(project: projectId, session_id: sessionId, messages: messages, mode: "chat")
         )
         let req = try authedRequest("api/chat", method: "POST", body: data)
-        let (respData, resp) = try await session.data(for: req)
+        let (bytes, resp) = try await session.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
-            let text = String(data: respData, encoding: .utf8) ?? ""
-            throw APIError.http(code, String(text.prefix(400)))
+            var errBody = ""
+            for try await line in bytes.lines { errBody += line; if errBody.count > 400 { break } }
+            throw APIError.http(code, errBody)
         }
-        if let decoded = try? JSONDecoder().decode(ChatResp.self, from: respData) {
-            return decoded
-        }
-        let text = String(data: respData, encoding: .utf8) ?? ""
-        let reply = Self.extractSSEReply(text)
-        if reply.isEmpty {
-            throw APIError.decode("空回复（SSE 未解析到 delta）")
-        }
-        return ChatResp(reply: reply, session_id: sessionId, messages: nil)
-    }
 
-    /// Hub SSE：`{"type":"delta","content":"..."}` 等
-    private static func extractSSEReply(_ text: String) -> String {
-        var chunks: [String] = []
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
-        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
-            let raw = String(line)
+        var gotDelta = false
+        for try await line in bytes.lines {
+            let raw = line
             guard raw.hasPrefix("data:") else { continue }
             var payload = String(raw.dropFirst(5))
             if payload.hasPrefix(" ") { payload = String(payload.dropFirst()) }
             if payload == "[DONE]" || payload.isEmpty { continue }
-            guard let data = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let pdata = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: pdata) as? [String: Any]
             else { continue }
             let type = obj["type"] as? String
             if type == "error" {
                 let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
-                chunks.append("\n[错误] \(msg)")
-                continue
+                throw APIError.http(500, msg)
             }
-            if type == "delta" || type == nil {
-                if let c = obj["content"] as? String, !c.isEmpty {
-                    chunks.append(c)
-                }
+            if type == "delta" || type == nil, let c = obj["content"] as? String, !c.isEmpty {
+                gotDelta = true
+                onDelta(c)
             }
         }
-        return chunks.joined()
+        if !gotDelta {
+            throw APIError.decode("空回复（SSE 未解析到 delta）")
+        }
     }
 
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
@@ -211,5 +199,41 @@ actor APIClient {
             path += "&epic_id=\(e)"
         }
         return try await send(try authedRequest(path), as: FlowSnapshot.self)
+    }
+
+    /// 消费 flow SSE；每次 fanout/work_status 回调刷新建议
+    func streamFlowEvents(
+        projectId: String,
+        epicId: String?,
+        onEvent: @escaping @Sendable (String, [String: Any]) -> Void
+    ) async throws {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        var path = "api/desktop/flow/events?project_id=\(enc)"
+        if let epicId, !epicId.isEmpty {
+            let e = epicId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? epicId
+            path += "&epic_id=\(e)"
+        }
+        let req = try authedRequest(path)
+        let (bytes, resp) = try await session.bytes(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "flow events failed")
+        }
+        var eventName = "message"
+        for try await line in bytes.lines {
+            if line.hasPrefix("event:") {
+                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            if line.hasPrefix("data:") {
+                var payload = String(line.dropFirst(5))
+                if payload.hasPrefix(" ") { payload = String(payload.dropFirst()) }
+                if let data = payload.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    onEvent(eventName, obj)
+                }
+                eventName = "message"
+            }
+        }
     }
 }

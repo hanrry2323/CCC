@@ -123,7 +123,13 @@ def test_fanout_writes_executor(tmp_path):
 def test_flow_snapshot_from_board():
     board = {
         "backlog": [
-            {"id": "e1", "title": "E", "card_kind": "epic", "split_status": "planned"}
+            {
+                "id": "e1",
+                "title": "E",
+                "card_kind": "epic",
+                "split_status": "planned",
+                "description": "## 目标\n做一件事\n\n## 验收\n- x\n",
+            }
         ],
         "planned": [
             {
@@ -138,3 +144,7 @@ def test_flow_snapshot_from_board():
     snap = flow_events.snapshot_from_board(board, epic_id="e1", project_id="demo")
     assert snap["epic"]["id"] == "e1"
     assert snap["works"][0]["executor"] == "opencode"
+    assert snap["works"][0]["user_status"] == "排队"
+    assert snap["works"][0]["executor_label"] == "写码"
+    assert "goal_summary" in snap["epic"]
+    assert snap.get("headline")

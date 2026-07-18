@@ -1,45 +1,42 @@
-# Desktop 右栏 · 活动流程图优化方案
+# Desktop 右栏 · 活动流程图 SSOT
 
-> 现状：竖线 + 圆点列表。目标：可读的**活动编排图**（卡片 + 边 + 状态动效）。  
-> 与 [`flow-events.md`](flow-events.md) 事件契约对齐。
-
----
-
-## 目标体验
-
-1. **一眼看懂**：Epic（大卡）→ 扇出 Work（小卡）；边表示 `depends_on`
-2. **活的**：`in_progress` / `testing` 有脉冲/进度感；状态变更有过渡
-3. **信息密度**：标题、列状态、executor 徽章；悬停可看 work id
-4. **空态有指引**：未转任务时说明「聊透 → 转任务 → 这里展开」
+> 2026-07-19 · 右栏不是卡片列表，而是 **带动画边的 DAG 流程图**。  
+> 事件契约：[`flow-events.md`](flow-events.md)
 
 ---
 
-## 视觉层级（本迭代已落地雏形）
+## 用户要看见什么
 
-| 层 | 元素 |
-|----|------|
-| 顶 | Epic 卡片（标题 + split_status + id 缩略） |
-| 中 | Work 卡片纵向流；运行中卡片左边色条动画 |
-| 边 | 卡片间连接线；有 `depends_on` 时标注依赖 |
-| 底 | 图例：pending / running / done / fail |
+站在「盯进度」而非「盯列名」：
 
----
+| 阶段 | 主文案 | 次要 |
+|------|--------|------|
+| 空态 | 三步：聊透 → 转任务 → 这里展开 | — |
+| pending | 待拆解 + 目标一句 | pipeline / 执行面 |
+| planned | 已拆 N 步；可跑/被挡 | 依赖用**标题** |
+| running | 置顶「正在：{标题}」 | 执行面白话（写码/脚本） |
+| testing | 验收中 | note 摘要 |
+| done | 已完成 | 子节点可弱化 |
+| failed | 卡住：{标题} + 原因 | 开 Hub 运维 |
 
-## 后续迭代（未做）
-
-| 优先级 | 项 |
-|--------|-----|
-| P1 | 真正 DAG 布局（多列并行 work，而非纯纵向） |
-| P1 | SSE 推送驱动动画（减轮询抖动） |
-| P2 | 点击 Work 打开 plan/report 预览 |
-| P2 | 历史 epic 切换器 |
-| P3 | 缩放 / 小地图 |
+Snapshot 增强字段：`headline`、`user_stage`、`goal_summary`、`user_status`、`executor_label`、`depends_on_titles`、`failure_note`。
 
 ---
 
-## 验收（本迭代）
+## 视觉与动效
 
-- [x] Epic 卡片 + Work 卡片（非纯圆点）
-- [x] 运行中状态有动效
-- [x] executor / status 徽章
-- [ ] 多依赖并行布局（后续）
+- Epic / Work 节点：毛玻璃圆角块 + 状态色点
+- 边：贝塞尔曲线；活动边虚线流动（dash phase）
+- 执行中：节点光晕呼吸
+- 布局：无依赖并排；`depends_on` 分层
+
+实现：`desktop/Sources/CCCDesktop/FlowCanvasView.swift` + `FlowLayout.swift`  
+驱动：SSE `/api/desktop/flow/events` + snapshot 首屏/断线兜底
+
+---
+
+## 后续
+
+- 真多列力导向布局 / 缩放
+- 点击节点预览 plan/report
+- 历史 epic 切换

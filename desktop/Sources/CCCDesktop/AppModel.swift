@@ -15,9 +15,12 @@ final class AppModel: ObservableObject {
     @Published var selectedThreadId: String?
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
-    @Published var statusText: String = ""
+    @Published var statusText: String = "未连接"
     @Published var busy = false
+    @Published var connected = false
     @Published var destination: SidebarDestination = .chat
+    @Published var toast: String?
+    @Published var showSettingsHint = false
 
     @Published var transferTitle = ""
     @Published var transferGoal = ""
@@ -27,14 +30,15 @@ final class AppModel: ObservableObject {
     @Published var showTransferSheet = false
     @Published var transferError: String?
 
-    @Published var flowEmptyMessage = "定稿并转任务后，这里展开活动编排图"
+    @Published var flowEmptyMessage = "聊透后转任务，编排将在此展开"
     @Published var flowWorks: [FlowWork] = []
     @Published var flowEpic: FlowEpic?
+    @Published var flowHeadline: String = ""
     @Published var currentEpicId: String?
     @Published var lastError: String?
     @Published var expandedProjectIds: Set<String> = []
 
-    private var pollTask: Task<Void, Never>?
+    private var flowTask: Task<Void, Never>?
     private var client: APIClient
 
     init() {
@@ -61,11 +65,20 @@ final class AppModel: ObservableObject {
             }
         }
         await refreshProjects()
-        startFlowPoll()
     }
 
     func reconnect() async {
         await refreshProjects()
+    }
+
+    func dismissToast() { toast = nil }
+
+    func showToast(_ msg: String) {
+        toast = msg
+        Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if toast == msg { toast = nil }
+        }
     }
 
     func refreshProjects() async {
@@ -75,6 +88,8 @@ final class AppModel: ObservableObject {
             try await prepareClient()
             let resp = try await client.fetchProjects()
             projects = resp.projects
+            connected = true
+            showSettingsHint = false
             let preferred = persistedProjectId.isEmpty ? nil : persistedProjectId
             if let preferred, projects.contains(where: { $0.id == preferred }) {
                 selectedProjectId = preferred
@@ -89,30 +104,35 @@ final class AppModel: ObservableObject {
                 expandedProjectIds.insert(pid)
                 await refreshThreads(projectId: pid)
                 await refreshFlow()
+                restartFlowSSE()
             }
-            statusText = "已连接 \(serverURLString)"
+            statusText = "已连接"
             lastError = nil
         } catch {
+            connected = false
+            showSettingsHint = true
             lastError = error.localizedDescription
             statusText = "连接失败"
+            showToast(error.localizedDescription)
         }
     }
 
     func selectProject(_ id: String) async {
-        if id == selectedProjectId {
-            expandedProjectIds.insert(id)
-            return
-        }
+        let switching = id != selectedProjectId
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        selectedThreadId = nil
-        messages = []
-        currentEpicId = nil
-        flowEpic = nil
-        flowWorks = []
+        if switching {
+            selectedThreadId = nil
+            messages = []
+            currentEpicId = nil
+            flowEpic = nil
+            flowWorks = []
+            flowHeadline = ""
+        }
         await refreshThreads(projectId: id)
         await refreshFlow()
+        restartFlowSSE()
     }
 
     func toggleProjectExpanded(_ id: String) {
@@ -128,13 +148,13 @@ final class AppModel: ObservableObject {
             try await prepareClient()
             threads = try await client.fetchThreads(projectId: projectId)
         } catch {
-            lastError = error.localizedDescription
+            showToast(error.localizedDescription)
         }
     }
 
     func newThread() async {
         guard let pid = selectedProjectId else {
-            lastError = "请先选择项目"
+            showToast("请先选择项目")
             return
         }
         busy = true
@@ -147,7 +167,7 @@ final class AppModel: ObservableObject {
             await refreshThreads(projectId: pid)
             destination = .chat
         } catch {
-            lastError = error.localizedDescription
+            showToast(error.localizedDescription)
         }
     }
 
@@ -161,17 +181,17 @@ final class AppModel: ObservableObject {
             messages = detail.messages ?? []
             lastError = nil
         } catch {
-            lastError = error.localizedDescription
+            showToast(error.localizedDescription)
         }
     }
 
     func sendMessage() async {
         guard let pid = selectedProjectId else {
-            lastError = "请先选择项目"
+            showToast("请先选择项目")
             return
         }
         if let p = selectedProject, p.isOrch {
-            lastError = "编排仓不可聊业务；请选业务项目（如 ccc-demo）"
+            showToast("编排仓不可聊业务，请选 ccc-demo 等业务项目")
             return
         }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -179,6 +199,7 @@ final class AppModel: ObservableObject {
         busy = true
         defer { busy = false }
         let userMsg = ChatMessage(role: "user", content: text)
+        let assistantId = UUID()
         do {
             try await prepareClient()
             if selectedThreadId == nil {
@@ -191,36 +212,90 @@ final class AppModel: ObservableObject {
             guard let tid = selectedThreadId else { return }
             messages.append(userMsg)
             draft = ""
-            let outbound = messages
-            let resp = try await client.chat(
+            messages.append(ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true))
+            let outbound = messages.filter { $0.id != assistantId }
+
+            try await client.streamChat(
                 projectId: pid,
                 sessionId: tid,
                 messages: outbound
-            )
-            if let reply = resp.reply, !reply.isEmpty {
-                messages.append(ChatMessage(role: "assistant", content: reply))
-            } else if let msgs = resp.messages, !msgs.isEmpty {
-                messages = msgs
-            } else {
-                throw APIError.decode("模型无有效回复")
+            ) { [weak self] delta in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+                        self.messages[idx].content += delta
+                    }
+                }
+            }
+            if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
+                messages[idx].isStreaming = false
+                if messages[idx].content.isEmpty {
+                    messages.remove(at: idx)
+                    throw APIError.decode("模型无有效回复")
+                }
             }
             lastError = nil
             await refreshThreads(projectId: pid)
         } catch {
+            messages.removeAll { $0.id == assistantId }
             if messages.last?.id == userMsg.id {
                 messages.removeLast()
                 if draft.isEmpty { draft = text }
             }
-            lastError = error.localizedDescription
+            showToast(error.localizedDescription)
         }
     }
 
     func openTransferSheet() {
         transferError = nil
-        if transferTitle.isEmpty, let last = messages.last(where: { $0.role == "user" }) {
-            transferTitle = String(last.content.prefix(40))
-        }
+        prefillTransferFromChat()
         showTransferSheet = true
+    }
+
+    /// 从对话启发式预填门禁字段
+    func prefillTransferFromChat() {
+        let users = messages.filter { $0.role == "user" }.map(\.content)
+        let assistants = messages.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
+        let lastUser = users.last ?? ""
+        let blob = (users.suffix(3) + assistants.suffix(2)).joined(separator: "\n")
+
+        if transferTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            transferTitle = String(lastUser.replacingOccurrences(of: "\n", with: " ").prefix(40))
+        }
+        if transferGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let g = extractSection(blob, names: ["目标", "goal"]) {
+                transferGoal = g
+            } else {
+                transferGoal = String(lastUser.prefix(200))
+            }
+        }
+        if transferAcceptance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let a = extractSection(blob, names: ["验收", "验证", "acceptance"]) {
+                transferAcceptance = a
+            } else if !lastUser.isEmpty {
+                transferAcceptance = "按对话约定完成，并可复查结果"
+            }
+        }
+        if transferPipeline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            transferPipeline = "dev"
+        }
+    }
+
+    private func extractSection(_ text: String, names: [String]) -> String? {
+        for name in names {
+            let patterns = ["## \(name)", "**\(name)**", "\(name)：", "\(name):"]
+            for p in patterns {
+                if let r = text.range(of: p, options: .caseInsensitive) {
+                    var rest = String(text[r.upperBound...])
+                    if let next = rest.range(of: #"\n#{1,3}\s|\n\*\*"#, options: .regularExpression) {
+                        rest = String(rest[..<next.lowerBound])
+                    }
+                    let cleaned = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !cleaned.isEmpty { return String(cleaned.prefix(400)) }
+                }
+            }
+        }
+        return nil
     }
 
     func submitTransfer() async {
@@ -229,7 +304,7 @@ final class AppModel: ObservableObject {
             return
         }
         if let p = selectedProject, !p.isDispatchable {
-            transferError = "当前项目不可下达（orch / engine=false）"
+            transferError = "当前项目不可下达"
             return
         }
         let title = transferTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -243,6 +318,11 @@ final class AppModel: ObservableObject {
             transferError = "请填齐：标题、目标、产线、至少一条验收"
             return
         }
+        // 附带对话摘要进 plan
+        let chatDigest = messages
+            .suffix(8)
+            .map { "\($0.role): \(String($0.content.prefix(200)))" }
+            .joined(separator: "\n")
         busy = true
         defer { busy = false }
         let req = TransferRequest(
@@ -264,6 +344,9 @@ final class AppModel: ObservableObject {
 
             ## 验收
             \(accLines.map { "- \($0)" }.joined(separator: "\n"))
+
+            ## 对话摘要
+            \(chatDigest)
             """,
             complexity: "medium"
         )
@@ -273,9 +356,10 @@ final class AppModel: ObservableObject {
             currentEpicId = resp.epic_id
             showTransferSheet = false
             transferError = nil
-            statusText = "已转任务 \(resp.epic_id ?? "")"
-            lastError = nil
+            statusText = "已转任务"
+            showToast("已创建待办 \(resp.epic_id ?? "")")
             await refreshFlow()
+            restartFlowSSE()
         } catch {
             transferError = error.localizedDescription
         }
@@ -286,40 +370,53 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let snap = try await client.flowSnapshot(projectId: pid, epicId: currentEpicId)
-            if snap.empty == true {
-                if currentEpicId == nil {
-                    flowWorks = []
-                    flowEpic = nil
-                    flowEmptyMessage = snap.message ?? "定稿并转任务后，这里展开活动编排图"
-                }
-            } else {
-                flowWorks = snap.works ?? []
-                currentEpicId = snap.epic_id ?? currentEpicId
-                if let epic = snap.epic {
-                    flowEpic = epic
-                } else if let eid = snap.epic_id {
-                    flowEpic = FlowEpic(
-                        id: eid,
-                        title: eid,
-                        split_status: nil,
-                        column: "backlog"
-                    )
-                }
-                flowEmptyMessage = ""
-            }
+            applySnapshot(snap)
         } catch {
-            if flowWorks.isEmpty && currentEpicId == nil {
-                // keep quiet during poll
-            }
+            // SSE 为主；snapshot 失败不刷屏
         }
     }
 
-    func startFlowPoll() {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
+    private func applySnapshot(_ snap: FlowSnapshot) {
+        if snap.empty == true {
+            if currentEpicId == nil {
+                flowWorks = []
+                flowEpic = nil
+                flowHeadline = ""
+                flowEmptyMessage = snap.message ?? "聊透后转任务，编排将在此展开"
+            }
+            return
+        }
+        flowWorks = snap.works ?? []
+        currentEpicId = snap.epic_id ?? currentEpicId
+        flowEpic = snap.epic
+        flowHeadline = snap.headline
+            ?? snap.epic?.headline
+            ?? (flowWorks.first(where: \.isActive).map { "正在：\($0.title)" } ?? "")
+        flowEmptyMessage = ""
+    }
+
+    func restartFlowSSE() {
+        flowTask?.cancel()
+        guard let pid = selectedProjectId else { return }
+        flowTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refreshFlow()
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                do {
+                    try await self?.prepareClient()
+                    try await self?.client.streamFlowEvents(
+                        projectId: pid,
+                        epicId: self?.currentEpicId
+                    ) { event, _ in
+                        if ["fanout", "work_status", "epic_created", "executor"].contains(event) {
+                            Task { @MainActor in
+                                await self?.refreshFlow()
+                            }
+                        }
+                    }
+                } catch {
+                    // 断线后短暂等待再连；期间用 snapshot 兜底
+                    await self?.refreshFlow()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                }
             }
         }
     }

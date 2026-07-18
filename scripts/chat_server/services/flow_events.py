@@ -84,38 +84,152 @@ def latest_transfer_epic_id(project_id: str) -> str | None:
     return None
 
 
+_STATUS_USER = {
+    "backlog": "待办",
+    "planned": "排队",
+    "in_progress": "执行中",
+    "testing": "验收中",
+    "verified": "已通过",
+    "released": "已完成",
+    "abnormal": "异常",
+}
+
+_EXECUTOR_USER = {
+    "opencode": "写码",
+    "python": "脚本",
+    "ollama": "本地模型",
+    "cli": "命令行",
+    "auto": "自动",
+}
+
+
+def _goal_summary_from_epic(epic: dict) -> str:
+    desc = str(epic.get("description") or "")
+    for marker in ("## 目标", "## Goal"):
+        if marker in desc:
+            part = desc.split(marker, 1)[1]
+            for stop in ("## 验收", "## 验证", "## Plan", "## Transfer", "\n## "):
+                if stop in part:
+                    part = part.split(stop, 1)[0]
+            line = " ".join(part.strip().split())
+            if line:
+                return line[:120]
+    title = str(epic.get("title") or "").strip()
+    return title[:120]
+
+
+def _pipeline_from_epic(epic: dict) -> str:
+    note = epic.get("note")
+    if isinstance(note, str) and note.strip().startswith("{"):
+        try:
+            data = json.loads(note)
+            tg = (data or {}).get("transfer_gate") or {}
+            if tg.get("pipeline"):
+                return str(tg["pipeline"])
+        except json.JSONDecodeError:
+            pass
+    desc = str(epic.get("description") or "")
+    for line in desc.splitlines():
+        if "pipeline:" in line.lower():
+            return line.split(":", 1)[-1].strip()[:40]
+    return ""
+
+
 def snapshot_from_board(
     store_board: dict[str, list[dict]],
     *,
     epic_id: str,
     project_id: str,
 ) -> dict[str, Any]:
-    """从看板快照合成右栏图数据。"""
+    """从看板快照合成右栏图数据（含用户向字段）。"""
     epic = None
     works: list[dict] = []
+    title_by_id: dict[str, str] = {}
     for col, tasks in (store_board or {}).items():
         for t in tasks or []:
             if not isinstance(t, dict):
                 continue
             tid = str(t.get("id") or "")
+            if tid:
+                title_by_id[tid] = str(t.get("title") or tid)
             if tid == epic_id:
                 epic = {**t, "column": col}
             elif str(t.get("parent_id") or "") == epic_id:
+                deps = t.get("depends_on_tasks") or []
+                if not isinstance(deps, list):
+                    deps = []
+                status = col
                 works.append(
                     {
                         "id": tid,
                         "title": t.get("title") or tid,
-                        "status": col,
+                        "status": status,
+                        "user_status": _STATUS_USER.get(status, status),
                         "executor": t.get("executor") or "opencode",
-                        "depends_on": t.get("depends_on_tasks") or [],
+                        "executor_label": _EXECUTOR_USER.get(
+                            str(t.get("executor") or "opencode").lower(),
+                            str(t.get("executor") or "opencode"),
+                        ),
+                        "depends_on": deps,
+                        "depends_on_titles": [
+                            title_by_id.get(str(d), str(d)) for d in deps
+                        ],
                         "split_status": t.get("split_status"),
+                        "note": (str(t.get("note") or "")[:200] or None),
+                        "failure_note": (
+                            str(t.get("note") or "")[:200]
+                            if status == "abnormal"
+                            else None
+                        ),
                     }
                 )
+
+    # 二次填充 depends titles（同批创建时第一轮可能缺）
+    for w in works:
+        deps = w.get("depends_on") or []
+        w["depends_on_titles"] = [title_by_id.get(str(d), str(d)) for d in deps]
+
+    split = (epic or {}).get("split_status") or "pending"
+    active = next(
+        (w for w in works if w.get("status") in ("in_progress", "testing")),
+        None,
+    )
+    failed = next((w for w in works if w.get("status") == "abnormal"), None)
+    if failed:
+        headline = f"卡住：{failed.get('title')}"
+        stage = "failed"
+    elif active:
+        headline = f"正在：{active.get('title')}"
+        stage = "running" if active.get("status") == "in_progress" else "testing"
+    elif split == "done" or (
+        works and all(w.get("status") in ("verified", "released") for w in works)
+    ):
+        headline = "已完成"
+        stage = "done"
+    elif works:
+        headline = f"已拆 {len(works)} 步"
+        stage = "planned"
+    else:
+        headline = "待拆解"
+        stage = "pending"
+
+    epic_view = None
+    if epic:
+        epic_view = {
+            **epic,
+            "goal_summary": _goal_summary_from_epic(epic),
+            "pipeline": _pipeline_from_epic(epic),
+            "user_stage": stage,
+            "headline": headline,
+        }
+
     return {
         "project_id": project_id,
         "epic_id": epic_id,
-        "epic": epic,
+        "epic": epic_view,
         "works": works,
+        "headline": headline,
+        "user_stage": stage,
     }
 
 

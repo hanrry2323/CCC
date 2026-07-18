@@ -27,13 +27,15 @@ struct DesktopThread: Identifiable, Codable, Hashable {
 
 struct ChatMessage: Identifiable, Hashable {
     let id: UUID
-    let role: String
-    let content: String
+    var role: String
+    var content: String
+    var isStreaming: Bool
 
-    init(id: UUID = UUID(), role: String, content: String) {
+    init(id: UUID = UUID(), role: String, content: String, isStreaming: Bool = false) {
         self.id = id
         self.role = role
         self.content = content
+        self.isStreaming = isStreaming
     }
 }
 
@@ -45,6 +47,7 @@ extension ChatMessage: Codable {
         id = UUID()
         role = try c.decode(String.self, forKey: .role)
         content = try c.decode(String.self, forKey: .content)
+        isStreaming = false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -61,22 +64,49 @@ struct FlowWork: Identifiable, Codable, Hashable {
     let status: String
     let executor: String
     let dependsOn: [String]
+    let userStatus: String?
+    let executorLabel: String?
+    let dependsOnTitles: [String]?
+    let note: String?
+    let failureNote: String?
 
     enum CodingKeys: String, CodingKey {
         case workId = "id"
-        case title, status, executor
+        case title, status, executor, note
         case dependsOn = "depends_on"
+        case userStatus = "user_status"
+        case executorLabel = "executor_label"
+        case dependsOnTitles = "depends_on_titles"
+        case failureNote = "failure_note"
     }
 
-    var isActive: Bool {
-        ["in_progress", "testing", "planned"].contains(status)
-    }
+    var displayStatus: String { userStatus ?? Self.mapStatus(status) }
+    var displayExecutor: String { executorLabel ?? Self.mapExecutor(executor) }
 
-    var isTerminalDone: Bool {
-        ["released", "verified"].contains(status)
-    }
-
+    var isActive: Bool { ["in_progress", "testing"].contains(status) }
     var isFailed: Bool { status == "abnormal" }
+    var isDone: Bool { ["released", "verified"].contains(status) }
+
+    static func mapStatus(_ s: String) -> String {
+        switch s {
+        case "planned": return "排队"
+        case "in_progress": return "执行中"
+        case "testing": return "验收中"
+        case "verified", "released": return "已完成"
+        case "abnormal": return "异常"
+        default: return s
+        }
+    }
+
+    static func mapExecutor(_ e: String) -> String {
+        switch e.lowercased() {
+        case "opencode": return "写码"
+        case "python": return "脚本"
+        case "ollama": return "本地模型"
+        case "cli": return "命令行"
+        default: return e
+        }
+    }
 }
 
 struct FlowEpic: Codable, Hashable {
@@ -84,6 +114,11 @@ struct FlowEpic: Codable, Hashable {
     let title: String?
     let split_status: String?
     let column: String?
+    let goal_summary: String?
+    let pipeline: String?
+    let user_stage: String?
+    let headline: String?
+    let description: String?
 }
 
 struct FlowSnapshot: Codable {
@@ -94,6 +129,8 @@ struct FlowSnapshot: Codable {
     let epic_id: String?
     let epic: FlowEpic?
     let works: [FlowWork]?
+    let headline: String?
+    let user_stage: String?
 }
 
 struct TransferRequest: Encodable {
@@ -134,10 +171,7 @@ struct APIErrorBody: Decodable {
 }
 
 enum SidebarDestination: String, CaseIterable, Identifiable {
-    case chat
-    case hub
-    case ops
-
+    case chat, hub, ops
     var id: String { rawValue }
 
     var title: String {
@@ -155,4 +189,25 @@ enum SidebarDestination: String, CaseIterable, Identifiable {
         case .ops: return "wrench.and.screwdriver.fill"
         }
     }
+}
+
+/// 流程图布局节点
+struct FlowGraphNode: Identifiable, Hashable {
+    enum Kind: Hashable { case epic, work }
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let statusKey: String
+    let badge: String
+    let detail: String?
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+}
+
+struct FlowGraphEdge: Identifiable, Hashable {
+    var id: String { "\(from)-\(to)" }
+    let from: String
+    let to: String
+    let active: Bool
 }
