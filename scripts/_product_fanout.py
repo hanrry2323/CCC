@@ -258,12 +258,22 @@ def _normalize_child(
     pok, perrs = phase_lint.validate_plan_acceptance(plan_md)
     if not pok:
         raise ValueError(f"child[{idx}] plan_lint: {'; '.join(perrs)}")
+    deps_tasks: list[str] = []
+    raw_deps = raw.get("depends_on_tasks")
+    if isinstance(raw_deps, str) and raw_deps.strip():
+        deps_tasks = [raw_deps.strip()]
+    elif isinstance(raw_deps, list):
+        for d in raw_deps:
+            s = str(d or "").strip()
+            if s and s not in deps_tasks:
+                deps_tasks.append(s)
     return {
         "id": cid,
         "title": title[:500],
         "description": str(raw.get("description") or "")[:10000],
         "plan_md": plan_md,
         "phases": phases,
+        "depends_on_tasks": deps_tasks,
     }
 
 
@@ -317,19 +327,20 @@ def apply_fanout(
             if col_exist:
                 cid = sanitize_id(f"{cid}-{len(created)+1}")
                 ch["id"] = cid
-            ok = store.create_task(
-                {
-                    "id": ch["id"],
-                    "title": ch["title"],
-                    "description": ch["description"],
-                    "card_kind": "work",
-                    "parent_id": epic_id,
-                    "color_group": color_group,
-                    "color_depth": 1,
-                    "complexity": "small" if len(ch["phases"]) <= 1 else "medium",
-                },
-                column="planned",
-            )
+            task_body: dict[str, Any] = {
+                "id": ch["id"],
+                "title": ch["title"],
+                "description": ch["description"],
+                "card_kind": "work",
+                "parent_id": epic_id,
+                "color_group": color_group,
+                "color_depth": 1,
+                "complexity": "small" if len(ch["phases"]) <= 1 else "medium",
+            }
+            deps = ch.get("depends_on_tasks") or []
+            if deps:
+                task_body["depends_on_tasks"] = deps
+            ok = store.create_task(task_body, column="planned")
             if not ok:
                 raise RuntimeError(f"create_task failed for {ch['id']}")
             created.append(ch["id"])
@@ -346,10 +357,11 @@ def apply_fanout(
                 phases_body, encoding="utf-8"
             )
             _log.info(
-                "[fanout] %s → child %s (%d phases)",
+                "[fanout] %s → child %s (%d phases)%s",
                 epic_id,
                 ch["id"],
                 len(ch["phases"]),
+                f" deps={deps}" if deps else "",
             )
 
         if epic_brief:
@@ -397,13 +409,117 @@ _FLOW_PAST_PLANNED = frozenset(
 )
 
 
+def _title_for_seeded_phase(epic: dict, phase: dict, idx: int) -> str:
+    desc = str(phase.get("description") or "").strip()
+    if desc:
+        return desc[:80]
+    base = str(epic.get("title") or epic.get("id") or "work").strip()
+    return f"{base} · P{idx + 1}"[:80]
+
+
+def _plan_md_for_seeded_phase(
+    plan_md: str, phase: dict, *, phase_num: int, title: str
+) -> str:
+    """从 epic plan 切出对应 Phase 段；切不到则按 phase 字段合成可 lint 的 plan。"""
+    src = plan_md or ""
+    # Match ## Phase N / ## Phase N: / ## 阶段 N
+    pat = re.compile(
+        rf"(^|\n)##\s*(?:Phase|阶段)\s*{re.escape(str(phase_num))}\b[^\n]*\n"
+        rf"(.*?)(?=\n##\s*(?:Phase|阶段)\s*\d+\b|\Z)",
+        re.DOTALL | re.IGNORECASE,
+    )
+    m = pat.search(src)
+    body = ""
+    if m:
+        body = m.group(2).strip()
+    scope = phase.get("scope") or []
+    scope_s = ", ".join(str(s) for s in scope if s) or "(见 phase.scope)"
+    desc = str(phase.get("description") or title).strip()
+    if body:
+        # Ensure acceptance section exists
+        if not re.search(r"^##\s*(验收|验证)\s*$", body, re.M):
+            body = (
+                body.rstrip()
+                + "\n\n## 验收\n"
+                + f"- 完成「{desc}」且 scope 内变更可验证\n"
+            )
+        return f"# Plan: {title}\n\n## 目标\n- {desc}\n\n{body}\n"
+    # Synthesize
+    return (
+        f"# Plan: {title}\n\n"
+        f"## 目标\n- {desc}\n\n"
+        f"## 范围\n- **只改文件**: {scope_s}\n\n"
+        f"## 验收\n"
+        f"- 完成本 phase：{desc}\n"
+        f"- scope 内文件变更符合目标\n"
+    )
+
+
+def _children_from_seeded_phases(
+    *,
+    epic: dict,
+    plan_md: str,
+    phases: list[dict],
+) -> list[dict]:
+    """定稿 seed：每个 phase → 一张 work；后续卡 depends_on_tasks 上一张。"""
+    epic_id = epic["id"]
+    capped = phases[: max_children()]
+    children: list[dict] = []
+    prev_id: str | None = None
+    for i, ph in enumerate(capped):
+        if not isinstance(ph, dict):
+            continue
+        raw_num = ph.get("phase", i + 1)
+        try:
+            pnum = int(raw_num)
+        except (TypeError, ValueError):
+            pnum = i + 1
+        wid = f"{epic_id}-w{i + 1}"
+        title = _title_for_seeded_phase(epic, ph, i)
+        plan_slice = _plan_md_for_seeded_phase(
+            plan_md, ph, phase_num=pnum, title=title
+        )
+        new_ph = {
+            k: v
+            for k, v in ph.items()
+            if k not in ("retry", "commit", "engine_iter", "engine_iter_phase")
+        }
+        new_ph["phase"] = 1
+        new_ph["status"] = "pending"
+        new_ph["depends_on"] = []
+        if "timeout" not in new_ph:
+            new_ph["timeout"] = 1800
+        if "subtasks" not in new_ph or not isinstance(new_ph.get("subtasks"), dict):
+            new_ph["subtasks"] = {"1.1": "pending"}
+        if "scope" not in new_ph or not new_ph["scope"]:
+            new_ph["scope"] = ["."]
+        child: dict[str, Any] = {
+            "id": wid,
+            "title": title,
+            "description": (
+                f"来自 epic {epic_id} · 原 phase {pnum}：{title}"
+            )[:8000],
+            "plan_md": plan_slice,
+            "phases": [new_ph],
+        }
+        if prev_id:
+            child["depends_on_tasks"] = [prev_id]
+        children.append(child)
+        prev_id = wid
+    return children
+
+
 def fanout_from_seeded_epic(
     store: FileBoardStore,
     epic: dict,
     *,
-    max_phases: int = 2,
+    max_phases: int = 1,
 ) -> dict:
-    """Hub 定稿投递：epic 已挂 plan+phases 时跳过 Claude，扇出 1 张 work。"""
+    """Hub 定稿投递：epic 已挂 plan+phases 时跳过 Claude。
+
+    每个 phase 扇出一张 work（最多 max_children()）；后续 work 挂
+    depends_on_tasks 指向上一张，保证 Engine 按序消费。
+    """
     epic = normalize_task_view(epic, column="backlog")
     epic_id = epic["id"]
     if epic.get("card_kind") != "epic":
@@ -429,26 +545,23 @@ def fanout_from_seeded_epic(
             phases.append(obj)
     if not phases:
         return {"ok": False, "error": "seed phases empty"}
-    children_raw = [
-        {
-            "id": f"{epic_id}-w1",
-            "title": epic.get("title") or f"{epic_id}-w1",
-            "description": (epic.get("description") or "")[:8000],
-            "plan_md": plan_md,
-            "phases": phases[:max_phases],
-        }
-    ]
+    children_raw = _children_from_seeded_phases(
+        epic=epic, plan_md=plan_md, phases=phases
+    )
+    if not children_raw:
+        return {"ok": False, "error": "no children from seed phases"}
     result = apply_fanout(
         store,
         epic,
         children_raw=children_raw,
         epic_brief="",
-        max_phases=max_phases,
+        max_phases=max(1, int(max_phases or 1)),
     )
     if result.get("ok"):
         _log.info(
-            "[fanout] seeded epic %s → work %s (skip Claude)",
+            "[fanout] seeded epic %s → %d work(s) %s (skip Claude, by-phase)",
             epic_id,
+            len(result.get("child_ids") or []),
             result.get("child_ids"),
         )
     return result

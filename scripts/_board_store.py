@@ -346,6 +346,7 @@ def _validate_strict_mode(data: dict) -> str | None:
         "child_ids",
         "ui_hidden",
         "phase_last_advanced_ts",
+        "depends_on_tasks",
     }
     unknown = set(data.keys()) - allowed
     if unknown:
@@ -558,6 +559,13 @@ class FileBoardStore:
                 "child_ids": list(data_with_defaults.get("child_ids") or []),
                 "ui_hidden": bool(data_with_defaults.get("ui_hidden", False)),
             }
+            deps_tasks = data_with_defaults.get("depends_on_tasks")
+            if isinstance(deps_tasks, list) and deps_tasks:
+                task["depends_on_tasks"] = [
+                    str(d).strip() for d in deps_tasks if str(d).strip()
+                ][:16]
+            elif isinstance(deps_tasks, str) and deps_tasks.strip():
+                task["depends_on_tasks"] = [deps_tasks.strip()]
             hints = data.get("hints")
             if isinstance(hints, dict):
                 clean_hints: dict = {}
