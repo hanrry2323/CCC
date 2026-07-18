@@ -41,13 +41,13 @@ python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
 | CCC | `/Users/apple/program/CCC` | 编排仓 |
 | xianyu | `/Users/apple/program/xianyu` | |
 | qb | `/Users/apple/program/projects/qb` | |
-| clawmed-ccc (cla) | `/Users/apple/program/clawmed-ccc` | 垂直产品（取代 qxo 挂载） |
-| qx | `/Users/apple/program/projects/qx` | 零件/历史仓 |
+| clawmed-ccc (cla) | `/Users/apple/program/clawmed-ccc` | 医药垂直**现行**仓（取代 qx） |
+| qxo | `/Users/apple/program/qx-observer` | 独立产品：observer / loop-code |
 | ai-loop-router | `/Users/apple/program/ai-loop-router` | 模型路由 |
 | hp | `/Users/apple/program/hp` | 知识库 |
 | Medio-0 | `/Users/apple/program/Medio-0` | 媒体中心 |
 
-**已摘除 Engine**：`qxo` / `qx-observer`（Hub 仍可能发现，但不消费）。  
+**已摘除 Engine**：`qx`（`projects/qx`）— 与 cla 同产品线，现为零件库；Hub 仍可能发现。  
 登记 **8 / 10**，预留 **2** 个名额。
 
 ## 故障速查
