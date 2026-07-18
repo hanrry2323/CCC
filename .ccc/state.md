@@ -30,7 +30,7 @@
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | CCC 本体编排助手 |
 | 当前版本 | **v0.50.0**（见根目录 `VERSION`） |
-| 舰队 | CCC · xianyu · qb · clawmed-ccc · qxo · qx（≤10；见 `docs/milestones/m1-ten-workspaces.md`） |
+| 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qx · ai-loop-router · hp · Medio-0（已卸 qxo；预留 2） |
 
 ---
 

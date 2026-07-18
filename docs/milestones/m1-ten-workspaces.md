@@ -34,18 +34,21 @@ python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
 摘除：`python3 scripts/ccc-workspace-doctor.py unregister <path|name>`  
 清死路径：`… prune --apply`
 
-## 初始舰队（2026-07-18）
+## 舰队（2026-07-18 调整后）
 
-| Hub 名 | 路径 |
-|--------|------|
-| CCC | `/Users/apple/program/CCC` |
-| xianyu | `/Users/apple/program/xianyu` |
-| qb | `/Users/apple/program/projects/qb` |
-| cla / clawmed-ccc | `/Users/apple/program/clawmed-ccc` |
-| qxo | `/Users/apple/program/qx-observer` |
-| qx | `/Users/apple/program/projects/qx` |
+| Hub 名 | 路径 | 备注 |
+|--------|------|------|
+| CCC | `/Users/apple/program/CCC` | 编排仓 |
+| xianyu | `/Users/apple/program/xianyu` | |
+| qb | `/Users/apple/program/projects/qb` | |
+| clawmed-ccc (cla) | `/Users/apple/program/clawmed-ccc` | 垂直产品（取代 qxo 挂载） |
+| qx | `/Users/apple/program/projects/qx` | 零件/历史仓 |
+| ai-loop-router | `/Users/apple/program/ai-loop-router` | 模型路由 |
+| hp | `/Users/apple/program/hp` | 知识库 |
+| Medio-0 | `/Users/apple/program/Medio-0` | 媒体中心 |
 
-还可再接 ~4 个仓至上限 10。
+**已摘除 Engine**：`qxo` / `qx-observer`（Hub 仍可能发现，但不消费）。  
+登记 **8 / 10**，预留 **2** 个名额。
 
 ## 故障速查
 

@@ -13,7 +13,8 @@
 | 类别 | 处理 | 示例（按本机习惯调整） |
 |------|------|------------------------|
 | CCC 本体 | 保持 `~/program/CCC`，Hub/Engine 主仓 | CCC |
-| 活跃业务（Engine 登记） | `workspaces.json` + Hub；医生周检 | xianyu、qb、clawmed-ccc(cla)、qx-observer(qxo)、qx |
+| 活跃业务（Engine 登记） | `workspaces.json` + Hub；医生周检 | xianyu、qb、clawmed-ccc(cla)、qx、ai-loop-router、hp、Medio-0 |
+| Hub 可见但不跑 Engine | 有 `.ccc/board`、未登记 | qx-observer（已被 cla 取代挂载） |
 | 生产部署目标 | 只在运维「部署视角」看状态；代码可在 feiniu | medio-0 on feiniu |
 | 知识库 | 独立 `~/program/hp`；Hub 只 kb-health | HP proxy/store/bridge |
 | 地图/想法 | qx-map 想法折进 Hub 运维，不并码 | `/Users/apple/qx-map` |
