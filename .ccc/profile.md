@@ -26,10 +26,13 @@ CCC = **Loop Engineer**：人定意图（Hub），系统自动编排与自主执
 |------|------|
 | `SKILL.md` / `CLAUDE.md` | 协议与 Claude 认知（Hub 注入 CLAUDE.md） |
 | `docs/VISION.md` | 产品叙事 SSOT |
+| `docs/architecture-core.md` | Engine/Board 分层与维护热点 |
 | `references/red-lines.md` | 红线强约束 |
 | `references/board-task-schema.md` | epic/work + 五态契约 |
-| `scripts/ccc-engine.py` | Loop 主循环 |
-| `scripts/ccc-board.py` | 看板阶段函数（product/dev/reviewer/…） |
+| `scripts/ccc-engine.py` | **调度面**：Loop 主循环（维护热点；运行时见 `scripts/engine/`） |
+| `scripts/board/roles/` | **角色实现面**：product/dev/reviewer/…（新逻辑落这里） |
+| `scripts/ccc-board.py` | 兼容入口：CLI + 再导出（勿新增长角色逻辑） |
+| `scripts/board/` | context / phase / store / slots 拆包 |
 | `scripts/ccc-board-server.py` | 看板 HTTP（`:7775`） |
 | `scripts/ccc-chat-server.py` → `scripts/chat_server/` | Hub SPA |
 | `scripts/_product_fanout.py` | Claude 扇出 work |
@@ -39,6 +42,12 @@ CCC = **Loop Engineer**：人定意图（Hub），系统自动编排与自主执
 | `templates/` | plan/phases/report/verdict/AGENTS 模板 |
 | `tests/scripts/` | pytest 核心测试 |
 | `.ccc/profile.md` + `.ccc/state.md` | 本档案 + 接力索引（红线 7+10） |
+
+### 改哪里（一句话）
+
+- 改**角色行为** → `scripts/board/roles/`
+- 改**调度 / tick / hang / slot** → `scripts/ccc-engine.py` 或 `scripts/engine/`
+- 改**看板 HTTP** → `ccc-board-server.py`；改 **Hub UI** → `chat_server/frontend/`
 
 ## 看板语义（现行）
 

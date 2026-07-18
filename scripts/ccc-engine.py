@@ -47,35 +47,122 @@ _engine_start_ts: float = time.time()
 _restart_log_written: bool = False
 _RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
 
-# ccc-board 在 import 时会 eager 绑定 ROOT；默认 workspace 供首次加载
+# board.roles / board.phase 在 import 时可能读 workspace；默认供首次加载
 os.environ.setdefault("CCC_WORKSPACE", str(_script_dir.parent))
 
 # v0.28.2: Stats HTTP 默认端口（plan: engine-stats-endpoint）
 _STATS_PORT = 7776
 
-import importlib.util as _importlib_util
+import types as _types
 
-_ccc_board_path = str(_script_dir / "ccc-board.py")
-_spec = _importlib_util.spec_from_file_location("ccc_board", _ccc_board_path)
-ccc_board = _importlib_util.module_from_spec(_spec)
-_spec.loader.exec_module(ccc_board)
+from board.roles.dev import (  # noqa: E402
+    dev_role_launch,
+    dev_role_relaunch,
+    dev_role_check_complete,
+)
+from board.roles.reviewer import (  # noqa: E402
+    reviewer_role,
+    clear_stale_review_locks,
+)
+from board.roles.tester import tester_role  # noqa: E402
+from board.roles.kb import kb_role  # noqa: E402
+from board.roles.product import (  # noqa: E402
+    launch_product_async,
+    check_product_async,
+)
+from board.roles.audit import (  # noqa: E402
+    audit_role,
+    _classify_task_intake,
+    _run_auto_fix,
+    _run_quick_fix,
+    _evolve_run_one,
+)
+from board.roles.common import MAX_RETRY  # noqa: E402
+from board.phase import (  # noqa: E402
+    _load_phases,
+    _resolve_phase_dependencies,
+    _apply_phase_status_updates,
+    _check_phase_failures,
+    _current_running_phase,
+)
 
-dev_role_launch = ccc_board.dev_role_launch
-dev_role_relaunch = ccc_board.dev_role_relaunch
-dev_role_check_complete = ccc_board.dev_role_check_complete
-reviewer_role = ccc_board.reviewer_role
-tester_role = ccc_board.tester_role
-kb_role = ccc_board.kb_role
-MAX_RETRY = ccc_board.MAX_RETRY
-
-_load_phases = ccc_board._load_phases
-_resolve_phase_dependencies = ccc_board._resolve_phase_dependencies
-_apply_phase_status_updates = ccc_board._apply_phase_status_updates
-_check_phase_failures = ccc_board._check_phase_failures
-_current_running_phase = ccc_board._current_running_phase
+# 兼容测试 monkeypatch：ccc_engine.ccc_board.X（不再 importlib 整文件加载 monolith）
+ccc_board = _types.SimpleNamespace(
+    dev_role_launch=dev_role_launch,
+    dev_role_relaunch=dev_role_relaunch,
+    dev_role_check_complete=dev_role_check_complete,
+    reviewer_role=reviewer_role,
+    tester_role=tester_role,
+    kb_role=kb_role,
+    MAX_RETRY=MAX_RETRY,
+    clear_stale_review_locks=clear_stale_review_locks,
+    launch_product_async=launch_product_async,
+    check_product_async=check_product_async,
+    audit_role=audit_role,
+    _classify_task_intake=_classify_task_intake,
+    _run_auto_fix=_run_auto_fix,
+    _run_quick_fix=_run_quick_fix,
+    _evolve_run_one=_evolve_run_one,
+    _load_phases=_load_phases,
+    _resolve_phase_dependencies=_resolve_phase_dependencies,
+    _apply_phase_status_updates=_apply_phase_status_updates,
+    _check_phase_failures=_check_phase_failures,
+    _current_running_phase=_current_running_phase,
+)
 
 cfg = Config()
 
+from engine.slots import (  # noqa: E402
+    GLOBAL_OPENCODE_COUNT as _GLOBAL_OPENCODE_COUNT,
+    OpenCodeCountProxy as _OpenCodeCountProxy,
+    global_opencode_count as _global_opencode_count,
+    opencode_slots_path as _opencode_slots_path,
+    release_opencode_slot as _release_opencode_slot,
+    try_acquire_opencode_slot as _try_acquire_opencode_slot,
+    _GLOBAL_OPENCODE_MAX,
+)
+from engine import workspace as _engine_workspace  # noqa: E402
+from engine.workspace import (  # noqa: E402
+    _activate_workspace,
+    _ensure_task_in_testing,
+    _find_task_column,
+    _get_store,
+    _ws_label,
+)
+from engine.active_tasks import (  # noqa: E402
+    ACTIVE_TASKS_FILE as _ACTIVE_TASKS_FILE,
+    _drop_active_task_and_slots,
+    _load_active_tasks,
+    _register_active,
+    _save_active_tasks,
+)
+from engine.hang import (  # noqa: E402
+    _HANG_BUSY_MAX_SEC,
+    _HANG_CHECK_INTERVAL_SEC,
+    _HANG_COUNTER_FILE,
+    _MAX_HANG_RETRY,
+    _check_and_mark_hung,
+    _hang_retry_counter,
+    _load_hang_retry_counter,
+    _run_hang_auto_restart,
+    _save_hang_retry_counter,
+)
+from engine.gates import (  # noqa: E402
+    _PYTEST_FAIL_MAX,
+    _clear_verdict,
+    _parse_verdict_status,
+    _record_pytest_failure,
+    _revert_task_commit,
+    _run_pytest,
+    _run_reviewer_tester_gate,
+    _run_testing_tasks_gate,
+    _run_verified_kb_gate,
+    _verdict_file,
+    _verdict_is_timeout,
+    _verdict_is_valid,
+)
+
+_stores = _engine_workspace._stores
 
 # 日志轮转：engine.log + daily rotate + keep 7 days
 _log_dir = Path(os.environ.get("HOME", str(Path.home()))) / ".ccc" / "logs"
@@ -143,82 +230,8 @@ _last_tick_mono: float = 0.0
 _TICK_WATCHDOG_STALE_S = float(os.environ.get("CCC_ENGINE_TICK_STALE_S", "180") or "180")
 _TICK_WATCHDOG_POLL_S = 30.0
 
-# v0.30.0: 全局 opencode 并发计数 — F-CON-01 线程锁 + Phase 2 跨进程 flock
-_GLOBAL_OPENCODE_MAX = 6  # ∑ (MAX_CONCURRENT × PHASE_PARALLEL_MAX_WORKERS)
-
-
-def _opencode_slots_path() -> Path:
-    """共享槽位状态文件（测试可设 CCC_OPENCODE_SLOTS_FILE）。"""
-    from board.slots import default_state_path
-
-    return default_state_path()
-
-
-def _global_opencode_count() -> int:
-    from board.slots import snapshot
-
-    return int(snapshot(_opencode_slots_path()).get("count") or 0)
-
-
-class _OpenCodeCountProxy:
-    """日志友好的实时计数代理（跨进程快照）。"""
-
-    def __int__(self) -> int:
-        return _global_opencode_count()
-
-    def __index__(self) -> int:
-        return _global_opencode_count()
-
-    def __format__(self, spec: str) -> str:
-        return format(_global_opencode_count(), spec)
-
-    def __repr__(self) -> str:
-        return str(_global_opencode_count())
-
-    def __str__(self) -> str:
-        return str(_global_opencode_count())
-
-    def __eq__(self, other: object) -> bool:
-        return _global_opencode_count() == other
-
-    def __lt__(self, other: object) -> bool:
-        return _global_opencode_count() < other  # type: ignore[operator]
-
-
-_GLOBAL_OPENCODE_COUNT = _OpenCodeCountProxy()
-
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
-
-
-def _try_acquire_opencode_slot(task_key: str) -> bool:
-    """F-CON-01 + Phase 2: 跨进程/线程安全获取 1 个 opencode 槽位。"""
-    from board.slots import try_acquire
-
-    return try_acquire(
-        task_key,
-        max_slots=_GLOBAL_OPENCODE_MAX,
-        state_path=_opencode_slots_path(),
-    )
-
-
-def _release_opencode_slot(task_key: str, n: int | None = None) -> int:
-    """F-CON-01/02 + Phase 2: 释放 task 持有的槽位。n=None 表示全部释放。"""
-    from board.slots import release
-
-    return release(task_key, n, state_path=_opencode_slots_path())
-
-
-def _drop_active_task_and_slots(
-    active_tasks: dict[str, dict] | None, task_key: str
-) -> None:
-    """F-CON-02: quarantine/完成时统一释放槽位并从 active_tasks 移除。"""
-    released = _release_opencode_slot(task_key)
-    if active_tasks is not None and task_key in active_tasks:
-        active_tasks.pop(task_key, None)
-        _save_active_tasks(active_tasks)
-    if released:
-        engine_log(f"[slot] released {released} opencode slot(s) for {task_key}")
 
 
 # ---------- 上游健康检测 ----------
@@ -431,8 +444,6 @@ def _start_tick_watchdog() -> None:
 
 PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 Engine tick）
 
-_stores: dict[str, FileBoardStore] = {}
-
 # Per-task 并行 phase 状态：
 #   task_key -> {
 #     "groups": [[phase_num, ...], ...],   # 待执行的 group 列表（每组内并行）
@@ -453,42 +464,6 @@ _relaunch_meta: dict[str, dict] = {}
 
 # backlog+planned 为空时的补充冷却（per-workspace，单位秒）
 _last_empty_replenish: dict[str, float] = {}
-
-# v0.31+: hang 自动重启（plan: executor-auto-restart）
-_MAX_HANG_RETRY = 2  # 单个 task 最多自动重启 hung 的次数
-_hang_retry_counter: dict[str, int] = {}  # task_key -> retry count
-_HANG_COUNTER_FILE = Path.home() / ".ccc" / "engine-hang-retries.json"
-
-
-def _load_hang_retry_counter() -> None:
-    """F-ARCH-01: 从磁盘恢复 hang 重试计数。"""
-    global _hang_retry_counter
-    try:
-        if _HANG_COUNTER_FILE.is_file():
-            data = json.loads(_HANG_COUNTER_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                _hang_retry_counter = {str(k): int(v) for k, v in data.items()}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        _hang_retry_counter = {}
-
-
-def _save_hang_retry_counter() -> None:
-    """F-ARCH-01: 持久化 hang 重试计数。"""
-    try:
-        _HANG_COUNTER_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _HANG_COUNTER_FILE.write_text(
-            json.dumps(_hang_retry_counter, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
-
-
-# v0.31+: hang 检测（plan: executor-hang-detection）
-# Phase 4 of the pipeline: detect → write .hung → Phase 5 consumes it.
-_HANG_CHECK_INTERVAL_SEC = 300  # 5 分钟无活动判定为 hung
-# F-FLOW-04: busy-loop 互补 — CPU>0 但超过此秒数仍视为 hung（stale 默认已缩短至 2h）
-_HANG_BUSY_MAX_SEC = 3600
 
 
 def now_iso() -> str:
@@ -694,14 +669,6 @@ def _may_invent() -> bool:
         return False
 
 
-def _ws_label(ws: Path, program_dir: Path | None = None) -> str:
-    program_dir = program_dir or (Path.home() / "program")
-    try:
-        return ws.relative_to(program_dir).as_posix()
-    except ValueError:
-        return ws.name
-
-
 def _task_key(ws: Path, tid: str) -> str:
     return f"{ws.resolve()}|{tid}"
 
@@ -709,37 +676,6 @@ def _task_key(ws: Path, tid: str) -> str:
 def _can_accept_dev(active_tasks: dict[str, dict]) -> bool:
     """dev 槽未满时可接受新 active_task。"""
     return len(active_tasks) < MAX_CONCURRENT
-
-
-def _register_active(
-    active_tasks: dict[str, dict],
-    ws: Path,
-    tid: str,
-    *,
-    complexity: str = "medium",
-    mode: str | None = None,
-) -> bool:
-    """统一登记 active_tasks；已满则拒绝（保证 len ≤ MAX_CONCURRENT）。"""
-    key = _task_key(ws, tid)
-    if key in active_tasks:
-        return True
-    if not _can_accept_dev(active_tasks):
-        engine_log(
-            f"[slot] refuse register {tid}: "
-            f"dev_slots={len(active_tasks)}/{MAX_CONCURRENT}"
-        )
-        return False
-    info: dict = {
-        "workspace": ws,
-        "task_id": tid,
-        "complexity": complexity,
-        "started_at": now_iso(),
-    }
-    if mode:
-        info["mode"] = mode
-    active_tasks[key] = info
-    _save_active_tasks(active_tasks)
-    return True
 
 
 def _enqueue_pending_relaunch(
@@ -867,408 +803,6 @@ def _rebuild_product_inflight(workspaces: list[Path]) -> None:
             f"[product] 重建 inflight={len(rebuilt)} "
             f"(max_global={MAX_PRODUCT_INFLIGHT}, max_per_ws={MAX_PRODUCT_PER_WS})"
         )
-
-
-_workspace_switch_lock = threading.RLock()
-
-
-def _activate_workspace(ws: Path) -> Path:
-    """切换当前 workspace：env + ContextVar + lazy 缓存重置。
-
-    F-CON-03 Phase 2: workspace 经 set_workspace()（废除模块级 ROOT 补丁）。
-    """
-    ws = ws.resolve()
-    with _workspace_switch_lock:
-        ccc_board.set_workspace(ws)
-        ccc_board._reset_lazy()
-    return ws
-
-
-def _get_store(workspace: Path) -> FileBoardStore:
-    key = str(workspace.resolve())
-    if key not in _stores:
-        _stores[key] = FileBoardStore(workspace)
-    return _stores[key]
-
-
-_BOARD_COLUMNS = (
-    "backlog",
-    "planned",
-    "in_progress",
-    "testing",
-    "verified",
-    "released",
-    "abnormal",
-)
-
-
-def _verdict_file(ws: Path, tid: str) -> Path:
-    return ws / ".ccc" / "verdicts" / f"{tid}.verdict.md"
-
-
-def _verdict_is_valid(ws: Path, tid: str) -> bool:
-    """verdict 文件必须存在且非空（空文件视为未产出）。"""
-    vf = _verdict_file(ws, tid)
-    if not vf.is_file():
-        return False
-    try:
-        return bool(vf.read_text(encoding="utf-8").strip())
-    except OSError:
-        return False
-
-
-def _find_task_column(store: FileBoardStore, tid: str) -> str | None:
-    for col in _BOARD_COLUMNS:
-        if any(t["id"] == tid for t in store.list_tasks(col)):
-            return col
-    return None
-
-
-def _ensure_task_in_testing(store: FileBoardStore, tid: str) -> None:
-    """reviewer 可能提前挪 verified；拉回 testing 以便 tester/pytest 门禁。"""
-    if _find_task_column(store, tid) == "verified":
-        store.move_task(tid, "verified", "testing")
-
-
-def _run_pytest(ws: Path) -> tuple[int, str]:
-    """在 workspace 跑 pytest tests/；有 .venv 则走 .venv/bin/pytest。"""
-    venv_pytest = ws / ".venv" / "bin" / "pytest"
-    if venv_pytest.is_file():
-        cmd = [str(venv_pytest), "tests/", "-q", "--tb=line"]
-    else:
-        cmd = ["python3", "-m", "pytest", "tests/", "-q", "--tb=line"]
-    try:
-        r = subprocess.run(
-            cmd,
-            cwd=ws,
-            capture_output=True,
-            text=True,
-            timeout=cfg.phase_timeout,
-        )
-        stdout = r.stdout if isinstance(r.stdout, str) else (r.stdout.decode("utf-8", errors="replace") if r.stdout else "")
-        stderr = r.stderr if isinstance(r.stderr, str) else (r.stderr.decode("utf-8", errors="replace") if r.stderr else "")
-        output = stdout + stderr
-        return r.returncode, output
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout.decode("utf-8", errors="replace") if exc.stdout else "")
-        stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr.decode("utf-8", errors="replace") if exc.stderr else "")
-        output = stdout + stderr
-    except OSError as exc:
-        return 1, str(exc)
-
-
-def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> None:
-    """pytest 失败时写 verdict + pids 摘要（供 OpenCode relaunch 回灌）。"""
-    vf = _verdict_file(ws, tid)
-    vf.parent.mkdir(parents=True, exist_ok=True)
-    snippet = output[-2000:] if output else "(无输出)"
-    section = (
-        f"\n\n## Engine pytest 检查\n\n"
-        f"- **退出码**: {exit_code}\n\n"
-        f"```\n{snippet}\n```\n"
-    )
-    try:
-        if vf.is_file():
-            vf.write_text(vf.read_text(encoding="utf-8") + section, encoding="utf-8")
-        else:
-            vf.write_text(
-                f"# Verdict: {tid}\n\n**FAIL** (engine pytest)\n{section}",
-                encoding="utf-8",
-            )
-    except OSError as exc:
-        engine_log(f"写入 pytest 失败记录到 verdict 失败: {exc}")
-    # v0.41.1: 独立摘要供 dev prompt 注入
-    try:
-        pids = ws / ".ccc" / "pids"
-        pids.mkdir(parents=True, exist_ok=True)
-        (pids / f"{tid}.pytest_fail.md").write_text(
-            f"exit_code={exit_code}\n\n{snippet}\n",
-            encoding="utf-8",
-        )
-    except OSError as exc:
-        engine_log(f"写入 pytest_fail.md 失败: {exc}")
-
-
-def _verdict_is_timeout(ws: Path, tid: str) -> bool:
-    """检查 verdict 文件是否标记为 TIMEOUT（reviewer LLM 超时但未 quarantine）。"""
-    vf = _verdict_file(ws, tid)
-    if not vf.is_file():
-        return False
-    try:
-        content = vf.read_text(encoding="utf-8")
-        return "**Verdict:** TIMEOUT" in content
-    except OSError:
-        return False
-
-
-def _revert_task_commit(ws: Path, tid: str) -> bool:
-    """Verdict FAIL 时回滚 task 的最后一个 commit。
-
-    读取 phases.json 拿到 commit hash → git revert → 退回 planned。
-    失败仅日志记录，不阻断 engine 主循环。
-
-    Returns:
-        True = 回滚成功；False = 失败
-    """
-    phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
-    if not phases_file.exists():
-        return False
-    try:
-        phases_data = _load_phases(tid, ws)
-        commits = [
-            p.get("commit", "")
-            for p in phases_data
-            if p.get("commit") and p.get("commit") not in ("null", "None", "")
-        ]
-        if not commits:
-            return False
-        last_commit = commits[-1]
-    except (OSError, json.JSONDecodeError) as exc:
-        engine_log(f"[verdict-gate] {tid} 读 commit hash 失败: {exc}")
-        return False
-
-    try:
-        result = subprocess.run(
-            ["git", "revert", "--no-edit", last_commit],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(ws),
-            env=_sanitized_env(),
-        )
-        if result.returncode != 0:
-            engine_log(
-                f"[verdict-gate] {tid} revert {last_commit[:12]} 失败: "
-                f"{result.stderr[:200]}"
-            )
-            return False
-        engine_log(f"[verdict-gate] {tid} 已 revert commit {last_commit[:12]}")
-        return True
-    except Exception as exc:
-        engine_log(f"[verdict-gate] {tid} revert 异常: {exc}")
-        return False
-
-
-def _clear_verdict(ws: Path, tid: str) -> None:
-    """删除 verdict 文件，使 _verdict_is_valid 返回 False，触发 engine 重试。"""
-    vf = _verdict_file(ws, tid)
-    try:
-        vf.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-_PYTEST_FAIL_MAX = 3  # F-FLOW-01: pytest 连续失败上限 → abnormal
-
-
-def _parse_verdict_status(content: str) -> str | None:
-    """F-FLOW-03: 从 verdict 文件解析 **Verdict:** 字段，不使用裸子串。"""
-    for line in content.splitlines():
-        stripped = line.strip()
-        low = stripped.lower()
-        if low.startswith("**verdict:**") or low.startswith("verdict:"):
-            raw = stripped.split(":", 1)[1].strip().strip("*").strip()
-            return raw.split()[0].upper() if raw else None
-    return None
-
-
-def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
-    """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。
-
-    v0.31+: 超时情形 engine 层自动重试（不 quarantine），
-    reviewer_retry_on_timeout 次超时后再 quarantine。
-    F-FLOW-02: complexity=small 跳过 reviewer+tester，直通 verified（写简短 verdict）。
-    """
-    _activate_workspace(ws)
-    store = _get_store(ws)
-    label = _ws_label(ws)
-
-    # F-FLOW-02: small complexity → skip LLM gate
-    task_meta = next((t for t in store.list_tasks("testing") if t["id"] == tid), None)
-    if task_meta and task_meta.get("complexity") == "small":
-        verdict_dir = ws / ".ccc" / "verdicts"
-        verdict_dir.mkdir(parents=True, exist_ok=True)
-        (verdict_dir / f"{tid}.verdict.md").write_text(
-            f"# {tid} Verdict\n\n**Verdict:** PASS\n\n"
-            f"complexity=small: skipped reviewer+tester per STARTUP-BRIEF\n",
-            encoding="utf-8",
-        )
-        col = _find_task_column(store, tid)
-        if col == "testing":
-            store.move_task(tid, "testing", "verified")
-            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
-        store.update_index()
-        engine_log(f"[{label}] {tid} complexity=small → verified (skip gate)")
-        return _find_task_column(store, tid) == "verified"
-
-    timeout_retries = cfg.reviewer_retry_on_timeout
-    timeout_count = 0
-    verdict_ok = False
-    max_attempts = max(2, timeout_retries)
-
-    for attempt in range(max_attempts):
-        reviewer_role()
-        if _verdict_is_valid(ws, tid):
-            if _verdict_is_timeout(ws, tid):
-                timeout_count += 1
-                if timeout_count >= timeout_retries:
-                    engine_log(
-                        f"[{label}] {tid} reviewer 超时重试 {timeout_count}/{timeout_retries} 耗尽 → abnormal"
-                    )
-                    cur_phase = _current_running_phase(tid)
-                    _quarantine_with_notify(
-                        ws, tid, "reviewer 超时重试耗尽", store, phase=cur_phase
-                    )
-                    return False
-                _clear_verdict(ws, tid)
-                _ensure_task_in_testing(store, tid)
-                engine_log(
-                    f"[{label}] {tid} reviewer 超时，等待重试 (attempt {attempt + 1}/{timeout_retries})"
-                )
-                time.sleep(30)
-                continue
-            verdict_ok = True
-            break
-
-        engine_log(
-            f"[{label}] {tid} reviewer 未产出有效 verdict (attempt {attempt + 1}/{max_attempts})"
-        )
-        _ensure_task_in_testing(store, tid)
-        if attempt == max_attempts - 1 and not verdict_ok:
-            engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
-            cur_phase = _current_running_phase(tid)
-            _quarantine_with_notify(
-                ws, tid, "reviewer 未产出 verdict", store, phase=cur_phase
-            )
-            store.update_index()
-            return False
-
-    _ensure_task_in_testing(store, tid)
-
-    try:
-        tester_role()
-    except Exception as exc:
-        engine_log(f"[{label}] {tid} tester_role 异常: {exc}")
-
-    _ensure_task_in_testing(store, tid)
-
-    tests_dir = ws / "tests"
-    if tests_dir.is_dir():
-        exit_code, output = _run_pytest(ws)
-        _log_stats(ws, "pytest", tid, exit_code=exit_code, output_len=len(output))
-        if exit_code != 0:
-            _record_pytest_failure(ws, tid, exit_code, output)
-            # F-FLOW-01: 连续失败计数 → abnormal
-            pids_dir = ws / ".ccc" / "pids"
-            pids_dir.mkdir(parents=True, exist_ok=True)
-            fail_marker = pids_dir / f"{tid}.pytest_fails"
-            try:
-                fails = int(fail_marker.read_text().strip() or "0")
-            except (OSError, ValueError):
-                fails = 0
-            fails += 1
-            fail_marker.write_text(str(fails))
-            if fails >= _PYTEST_FAIL_MAX:
-                engine_log(
-                    f"[{label}] {tid} pytest 连续失败 {fails}/{_PYTEST_FAIL_MAX} → abnormal"
-                )
-                cur_phase = _current_running_phase(tid)
-                _quarantine_with_notify(
-                    ws,
-                    tid,
-                    f"pytest 连续失败 {fails} 次 (exit={exit_code})",
-                    store,
-                    phase=cur_phase,
-                )
-                try:
-                    fail_marker.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return False
-            engine_log(
-                f"[{label}] {tid} pytest 失败 (exit={exit_code}) "
-                f"count={fails}/{_PYTEST_FAIL_MAX}，留在 testing"
-            )
-            _ccc_notify(
-                "CCC",
-                f"任务 {tid} pytest 未通过 (exit={exit_code}) "
-                f"{fails}/{_PYTEST_FAIL_MAX}",
-            )
-            store.update_index()
-            return False
-        # 成功则清计数 + 失败摘要
-        fail_marker = ws / ".ccc" / "pids" / f"{tid}.pytest_fails"
-        fail_summary = ws / ".ccc" / "pids" / f"{tid}.pytest_fail.md"
-        try:
-            fail_marker.unlink(missing_ok=True)
-            fail_summary.unlink(missing_ok=True)
-        except OSError:
-            pass
-    else:
-        engine_log(f"[{label}] {tid} 无 tests/ 目录，跳过 engine pytest")
-
-    # F-FLOW-03: 结构化 Verdict 字段，禁止裸子串
-    if _verdict_is_valid(ws, tid):
-        _vf = _verdict_file(ws, tid)
-        try:
-            _vcontent = _vf.read_text()
-            status = _parse_verdict_status(_vcontent)
-            if status in ("FAIL", "FALLBACK", "QUARANTINED"):
-                engine_log(
-                    f"[verdict-gate] [{_ws_label(ws)}] {tid} "
-                    f"verdict={status} — 触发回滚"
-                )
-                _reverted = _revert_task_commit(ws, tid)
-                store.move_task(tid, "testing", "planned")
-                _clear_verdict(ws, tid)
-                return False  # 跳过 verified 推进
-        except OSError:
-            pass
-
-    if verdict_ok:
-        col = _find_task_column(store, tid)
-        if col == "testing":
-            store.move_task(tid, "testing", "verified")
-            _log_stats(ws, "move", tid, from_col="testing", to_col="verified")
-        store.update_index()
-        return _find_task_column(store, tid) == "verified"
-
-    store.update_index()
-    return False
-
-
-def _run_verified_kb_gate(ws: Path) -> None:
-    """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。"""
-    _activate_workspace(ws)
-    store = _get_store(ws)
-    verified = store.list_tasks("verified")
-    if not verified:
-        return
-    label = _ws_label(ws)
-    engine_log(f"[{label}] verified 列有 {len(verified)} 个任务，跑 kb_role")
-    try:
-        result = kb_role()
-        moved = (result or {}).get("moved") or []
-        for tid in moved:
-            _log_stats(ws, "move", tid, from_col="verified", to_col="released")
-            engine_log(f"[{label}] {tid} ✓ kb → released")
-        store.update_index()
-    except Exception as exc:
-        engine_log(f"[{label}] kb_role 异常: {exc}")
-
-
-def _run_testing_tasks_gate(ws: Path) -> None:
-    """对 testing 列每个 task 跑 reviewer/tester 门禁。"""
-    _activate_workspace(ws)
-    store = _get_store(ws)
-    label = _ws_label(ws)
-    for task in store.list_tasks("testing"):
-        tid = task["id"]
-        engine_log(f"[{label}] testing 门禁: {tid}")
-        try:
-            _run_reviewer_tester_gate(ws, tid)
-        except Exception as exc:
-            engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")
 
 
 def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
@@ -1448,9 +982,6 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     return True
 
 
-_ACTIVE_TASKS_FILE = Path.home() / ".ccc" / "engine-active-tasks.json"
-
-
 def _read_regen_count(ws: Path, tid: str) -> int:
     """读 phase_graph_unresolvable regen 计数器（来自 warnings.json）"""
     try:
@@ -1576,103 +1107,6 @@ def _check_degraded(ws: Path) -> None:
                 f"[degraded] 异常率已恢复 (q={q_count}, f={f_count}), 退出 degraded 模式"
             )
             _ccc_notify("CCC", "engine 退出 degraded 模式（指标恢复正常）")
-
-
-def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
-    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。
-
-    拒绝写入 pytest/tmp 路径，防止单元测试污染真人 Engine 状态。
-    """
-    try:
-        _ACTIVE_TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        serializable = {}
-        for k, v in active_tasks.items():
-            item = dict(v)
-            ws = item.get("workspace")
-            ws_s = str(ws) if ws is not None else ""
-            low = ws_s.lower()
-            if (
-                "/pytest-" in low
-                or "pytest-of-" in low
-                or "/pytest_of_" in low
-                or "/var/folders/" in low
-                or "/tmp/" in low
-            ):
-                engine_log(f"[persist] 跳过测试路径 active_task: {k}")
-                continue
-            if isinstance(ws, Path):
-                item["workspace"] = str(ws)
-            serializable[k] = item
-        _ACTIVE_TASKS_FILE.write_text(
-            json.dumps(serializable, ensure_ascii=False, indent=2, default=str)
-        )
-    except (OSError, TypeError) as exc:
-        engine_log(f"[persist] save active_tasks 失败: {exc}")
-
-
-def _load_active_tasks() -> dict[str, dict]:
-    """从持久化文件恢复 active_tasks。返回 dict（可能是空的）。
-
-    加载后立即删除持久化文件（避免下次重启用过期数据）。
-    加载时校验每个 task 的进程是否存活，死的排除（防止僵尸任务占满并发槽）。
-    """
-    if not _ACTIVE_TASKS_FILE.exists():
-        return {}
-    try:
-        raw = json.loads(_ACTIVE_TASKS_FILE.read_text())
-        if not isinstance(raw, dict):
-            return {}
-        restored = {}
-        for k, v in raw.items():
-            ws_str = v.get("workspace", "")
-            ws_path = Path(ws_str).resolve() if ws_str else None
-            if not ws_path or not ws_path.is_dir() or not (ws_path / ".ccc" / "board").is_dir():
-                engine_log(f"[persist] 忽略 {k}: workspace 不存在")
-                continue
-            v["workspace"] = ws_path
-
-            # 校验进程存活：检查 pids 目录下该 task 的 PID 文件
-            tid = v.get("task_id", "")
-            alive = False
-            if tid:
-                import subprocess as _sp
-                pids_dir = ws_path / ".ccc" / "pids"
-                for pidf in sorted(pids_dir.glob(f"{tid}*.pid")):
-                    if pidf.name.endswith(".done"):
-                        continue
-                    try:
-                        pid = int(pidf.read_text().strip())
-                        r = _sp.run(
-                            ["ps", "-p", str(pid), "-o", "state="],
-                            capture_output=True, text=True, timeout=3,
-                            env=_sanitized_env(),
-                        )
-                        state = r.stdout.strip()
-                        if state and state != "Z":
-                            alive = True
-                            break
-                    except (ValueError, OSError):
-                        continue
-            if not alive:
-                engine_log(
-                    f"[persist] 排除僵尸 active_task {k}: "
-                    f"进程不存活 (tid={tid})"
-                )
-                continue
-            restored[k] = v
-
-        if restored:
-            engine_log(f"[persist] 恢复 {len(restored)} 个 active_tasks (存活)")
-        return restored
-    except (json.JSONDecodeError, OSError, TypeError) as exc:
-        engine_log(f"[persist] load active_tasks 失败: {exc}")
-        return {}
-    finally:
-        # 加载后立即删除，避免下次启动用过期数据
-        try:
-            _ACTIVE_TASKS_FILE.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
@@ -3632,333 +3066,6 @@ def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
         )
         return False
     return True
-
-
-def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
-    """扫描 active_tasks 中的 running phase，检测 hung 条件并写 .hung marker。
-
-    Phase 4 of executor-hang-detection plan（与 Phase 5 `_run_hang_auto_restart`
-    配对）。同一 tick 内 Phase 4 先跑、Phase 5 后跑：
-
-      Phase 4 (本函数): 检测 → 写 `.ccc/pids/<subid>.hung`（JSON）
-      Phase 5 (_run_hang_auto_restart): 读 .hung → kill + git stash + relaunch
-
-    判定条件（全部满足才写 marker）：
-      1. PID 存活（`os.kill(pid, 0)`，已退出抛 ProcessLookupError → 跳过）
-      2. CPU 0%（`ps -p PID -o %cpu=`，非 0 → 跳过，进程仍在工作）
-      3. 运行时长 > _HANG_CHECK_INTERVAL_SEC（`info["started_at"]`，不足 → 跳过）
-
-    排除项：
-      - 已存在 `.hung` → 不重复标记
-      - 已存在 `.done` → 任务已正常完成（race-safe）
-    """
-    from datetime import datetime as _dt
-
-    _activate_workspace(ws)
-    label = _ws_label(ws)
-    pids_dir = ws / ".ccc" / "pids"
-    now = _dt.now(timezone.utc)
-
-    store = _get_store(ws)
-    for key, info in list(active_tasks.items()):
-        if info.get("workspace") != ws:
-            continue
-        tid = info["task_id"]
-        # v0.40.1: 已 quarantine 的任务不再刷 hang 事件
-        if _find_task_column(store, tid) == "abnormal":
-            continue
-        try:
-            cur_phase = _current_running_phase(tid)
-        except Exception as exc:
-            engine_log(f"[{label}] hang-detect: 读 {tid} current phase 失败: {exc}")
-            continue
-        if cur_phase is None or cur_phase <= 0:
-            continue
-
-        subid = _phase_market_subid(tid, cur_phase)
-        hung_path = pids_dir / f"{subid}.hung"
-        done_path = pids_dir / f"{subid}.done"
-        pid_path = pids_dir / f"{subid}.pid"
-
-        # 已标记或已完成 → 跳过
-        if hung_path.is_file():
-            continue
-        if done_path.is_file():
-            continue
-
-        # 读 PID
-        if not pid_path.is_file():
-            continue
-        try:
-            pid = int(pid_path.read_text().strip())
-        except (ValueError, OSError) as exc:
-            engine_log(f"[{label}] hang-detect: {tid} 读 PID 失败: {exc}")
-            continue
-        if pid <= 0:
-            continue
-
-        # PID 存活检查
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            continue
-        except PermissionError:
-            # 进程存在但没权限（macOS root-owned），视为仍存活
-            pass
-        except OSError as exc:
-            engine_log(f"[{label}] hang-detect: {tid} PID={pid} 检查异常: {exc}")
-            continue
-
-        # 运行时长检查
-        started_str = info.get("started_at", "")
-        if not started_str:
-            continue
-        try:
-            started = _dt.fromisoformat(str(started_str).replace("Z", "+00:00"))
-            elapsed = (now - started).total_seconds()
-        except (ValueError, TypeError) as exc:
-            engine_log(f"[{label}] hang-detect: {tid} started_at 解析失败: {exc}")
-            continue
-        if elapsed < _HANG_CHECK_INTERVAL_SEC:
-            continue
-
-        # CPU 检查（仅在存活 + 足够久的 phase 上跑）
-        try:
-            result = subprocess.run(
-                ["ps", "-p", str(pid), "-o", "%cpu="],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                env=_sanitized_env(),
-            )
-        except subprocess.TimeoutExpired:
-            engine_log(f"[{label}] hang-detect: {tid} ps 超时，跳过本次")
-            continue
-        except OSError as exc:
-            engine_log(f"[{label}] hang-detect: {tid} ps 异常: {exc}")
-            continue
-        if result.returncode != 0:
-            # 进程刚退出，ps 返回非 0 → 不算 hung
-            continue
-        try:
-            cpu = float(result.stdout.strip())
-        except ValueError:
-            engine_log(
-                f"[{label}] hang-detect: {tid} ps 输出无法解析: {result.stdout!r}"
-            )
-            continue
-        # v0.36: 即使 CPU 活跃，RSS 超单进程上限也直接标 hung
-        rss_mb = _get_proc_rss_mb(pid)
-        mem_kill = getattr(cfg, "mem_kill_mb", _MEM_KILL_MB)
-        if rss_mb > mem_kill:
-            engine_log(
-                f"[{label}] hang-detect: {tid} RSS={rss_mb:.0f}MB > {mem_kill}MB，标记 hung"
-            )
-            marker = {
-                "task_id": tid,
-                "phase": cur_phase,
-                "pid": pid,
-                "cpu": cpu,
-                "rss_mb": round(rss_mb, 1),
-                "elapsed_sec": int(elapsed),
-                "detected_at": now_iso(),
-                "reason": "rss_over_limit",
-            }
-            try:
-                hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
-            except OSError as exc:
-                engine_log(f"[{label}] hang-detect: {tid} 写 .hung 失败: {exc}")
-            continue
-
-        if cpu > 0.0 and elapsed < _HANG_BUSY_MAX_SEC:
-            # F-FLOW-04: CPU 忙但未超 busy 阈值 → 跳过；超时则仍可标 hung
-            continue
-
-        # v0.30.0: macOS ps %cpu 是生命周期均值，网络等待型进程可能 CPU≈0 但非 hung
-        # 二次确认：检查 pids 目录下该 subid 附属文件的最后修改时间
-        _latest = 0.0
-        try:
-            for _pf in sorted(
-                pids_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
-            ):
-                if _pf.name.startswith(f"{subid}.") and _pf.name != hung_path.name:
-                    _latest = _pf.stat().st_mtime
-                    break
-        except OSError:
-            pass
-        if _latest and (now.timestamp() - _latest) < 120 and cpu <= 0.0:
-            # 最近 2 分钟有文件活动（如 stdout/result 持续写入）→ 进程活着
-            continue
-
-        # 全部条件满足 → 写 .hung marker
-        marker = {
-            "task_id": tid,
-            "phase": cur_phase,
-            "pid": pid,
-            "cpu": cpu,
-            "rss_mb": round(rss_mb, 1),
-            "elapsed_sec": int(elapsed),
-            "detected_at": now_iso(),
-        }
-        try:
-            hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
-        except OSError as exc:
-            engine_log(f"[{label}] hang-detect: {tid} 写 .hung 失败: {exc}")
-            continue
-
-        _log_stats(
-            ws,
-            "hang_detected",
-            tid,
-            phase=cur_phase,
-            pid=pid,
-            cpu=cpu,
-            elapsed_sec=int(elapsed),
-        )
-        try:
-            from _failure_ledger import record_failure
-
-            record_failure(
-                ws,
-                task_id=tid,
-                role="engine",
-                reason=f"hang_detected pid={pid} cpu={cpu:.1f}% elapsed={int(elapsed)}s",
-                phase=cur_phase,
-                from_col="in_progress",
-                to_col=None,
-                exit_code=None,
-                related_stats_event="hang_detected",
-            )
-        except Exception:
-            engine_log(
-                f"[failures] hang_detected ledger: {_traceback.format_exc()[:300]}"
-            )
-        engine_log(
-            f"[{label}] hang-detect: {tid} phase {cur_phase} PID={pid} "
-            f"CPU={cpu:.1f}% 运行时长={int(elapsed)}s → 标记 .hung"
-        )
-
-
-def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
-    """扫描 active_tasks 中的 hung phase 并自动重启（v0.31+）。
-
-    检测 active_tasks 中每个 task 的当前 phase 是否已被 Phase 4
-    （executor-hang-detection）标记为 hung（.ccc/pids/<subid>.hung）。
-
-    如标记存在：
-      1. 解析 subid → 读 .pid 文件拿到 PID
-      2. kill -TERM → 5s 后存活则 kill -KILL
-      3. cd ws && git stash push -m 'ccc-auto-stash: <tid> phase <n>'
-      4. 清理 .hung 文件
-      5. dev_role_relaunch(tid) 用同一 plan 重启
-      6. 更新 _hang_retry_counter，超限则 quarantine + notify
-    """
-    global _hang_retry_counter
-
-    _activate_workspace(ws)
-    label = _ws_label(ws)
-    pids_dir = ws / ".ccc" / "pids"
-
-    store = _get_store(ws)
-    for key, info in list(active_tasks.items()):
-        if info.get("workspace") != ws:
-            continue
-        tid = info["task_id"]
-        # v0.40.1: 已 quarantine → 不再 hang-auto / 不再刷账本
-        if _find_task_column(store, tid) == "abnormal":
-            active_tasks.pop(key, None)
-            _hang_retry_counter.pop(key, None)
-            continue
-        try:
-            cur_phase = _current_running_phase(tid)
-        except Exception as exc:
-            engine_log(f"[{label}] hang-auto: 读 {tid} current phase 失败: {exc}")
-            continue
-        if cur_phase is None or cur_phase <= 0:
-            continue
-
-        subid = _phase_market_subid(tid, cur_phase)
-        hung_path = pids_dir / f"{subid}.hung"
-        if not hung_path.is_file():
-            continue
-
-        retries = _hang_retry_counter.get(key, 0)
-        engine_log(
-            f"[{label}] hang-auto: {tid} phase {cur_phase} 标记 hung "
-            f"(auto-retry {retries + 1}/{_MAX_HANG_RETRY})"
-        )
-
-        # 1) 读 PID
-        pid_path = pids_dir / f"{subid}.pid"
-        pid: int | None = None
-        if pid_path.is_file():
-            try:
-                pid = int(pid_path.read_text().strip())
-            except (ValueError, OSError):
-                pid = None
-        else:
-            engine_log(
-                f"[{label}] hang-auto: {tid} 缺 {pid_path.name}（可能已退出），跳过 kill"
-            )
-
-        # 2) kill 进程树
-        if pid is not None and pid > 0:
-            if _kill_process_tree(pid):
-                engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
-            else:
-                engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
-
-        # 3) git stash
-        if not _git_stash_ws(ws, tid, cur_phase):
-            engine_log(f"[{label}] hang-auto: {tid} git stash 失败，跳过 restart")
-            # 仍然清理 hung 标记避免无限循环
-            try:
-                hung_path.unlink()
-            except OSError:
-                pass
-            continue
-
-        # 4) 清理 .hung
-        try:
-            hung_path.unlink()
-        except OSError as exc:
-            engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
-
-        # 5) 重启或超限 quarantine
-        if retries >= _MAX_HANG_RETRY:
-            reason = f"hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）— {tid} phase {cur_phase}"
-            engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
-            _quarantine_with_notify(
-                ws,
-                tid,
-                reason,
-                phase=cur_phase,
-                active_tasks=active_tasks,
-                role="engine",
-                from_col="in_progress",
-            )
-            # v0.40.1: quarantine 后清计数 + 移出 active，避免重复 hang 事件
-            _hang_retry_counter.pop(key, None)
-            _save_hang_retry_counter()
-            active_tasks.pop(key, None)
-            continue
-
-        try:
-            _activate_workspace(ws)
-            result = dev_role_relaunch(tid)
-        except Exception as exc:
-            engine_log(f"[{label}] hang-auto: {tid} relaunch 异常: {exc}")
-            result = {"ok": False}
-
-        _hang_retry_counter[key] = retries + 1
-        _save_hang_retry_counter()
-        if result.get("ok"):
-            engine_log(
-                f"[{label}] hang-auto: {tid} phase {cur_phase} 已重启 "
-                f"(retry {retries + 1}/{_MAX_HANG_RETRY})"
-            )
-        else:
-            engine_log(f"[{label}] hang-auto: {tid} relaunch 返回非 ok: {result}")
 
 
 def _get_running_pids(ws: Path) -> list[int]:

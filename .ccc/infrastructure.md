@@ -24,7 +24,7 @@
 | 5432 | PostgreSQL | 仅 localhost |
 | **7777** | **CCC Hub** | 唯一对外 UI：对话 / 看板 / 控制台 / **运维**（Basic Auth） |
 | **7775** | CCC Board API | 看板 REST（仅 127.0.0.1；Hub 反代） |
-| 7778 | CCC Cockpit | 旧总控（可选；**迁移中** → Hub `#/ops`，见 docs/hub-ops-console.md） |
+| 7778 | CCC Cockpit | **deprecated** — 勿新开功能；主入口 Hub `#/ops`（docs/hub-ops-console.md） |
 | 8080 | HP Proxy | 知识库代理 |
 | 8082 | HP Memory Store | 向量/记忆 |
 | 8083 | HP Bridge | 知识库桥接 |

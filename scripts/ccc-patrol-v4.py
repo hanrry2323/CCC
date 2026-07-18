@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """ccc-patrol-v4.py — CCC Auto-Patrol 全 workspace 巡检
 
+**定位**：独立运维探针（非 Engine 流水线核心）。
+Hub 运维页可聚合 `~/.ccc/patrol-state.json`；勿与 product/dev/reviewer 角色混为一谈。
+见 docs/architecture-core.md。
+
 在全 workspace 检查 Engine 存活、看板异常、卡死任务。
 v4 新增：
 - Step 0: Engine 存活检测（最优先，Engine 死了不做后续）

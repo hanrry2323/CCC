@@ -7,7 +7,7 @@
   phase     — phases.json 依赖 / 失败传染
   store / store_ops — CRUD / FileBoardStore
   slots     — 跨进程 opencode 槽位
-  roles     — 角色入口稳定 import 路径
+  roles/    — 角色实现包（product/dev/reviewer/…）
 """
 from board.context import (
     board_dir,

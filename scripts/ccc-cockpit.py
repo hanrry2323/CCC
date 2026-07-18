@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""ccc-cockpit.py — CCC 总控台 (v0.1)
+"""ccc-cockpit.py — CCC 总控台 (DEPRECATED)
 
-读取 .ccc/infrastructure.md 并在浏览器中展示所有机器、端口、项目状态。
-绑定 :7778，零外部依赖。
+**已废弃**：主入口改为 Hub 运维页 `#/ops`（:7777）。
+见 docs/hub-ops-console.md / docs/architecture-core.md。
+本文件仅作过渡深链；勿再增加功能。
 
-用法:
+历史：读取 .ccc/infrastructure.md，绑定 :7778。
+
+用法（遗留）:
     python3 scripts/ccc-cockpit.py
     浏览器打开 http://localhost:7778
 """
