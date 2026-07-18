@@ -1,13 +1,13 @@
 /**
- * Dual-pane desktop chat (MVP).
+ * Dual-pane chat — DEPRECATED as product surface (2026-07-19).
+ *
+ * Product main client is SwiftUI `desktop/` (project / plan chat / flow rail).
+ * This module remains for ops/debug only. Do not advertise dual-pane in VISION.
  *
  * Enabled when:
  *   - URL ?desktop=1 / ?dual=1
  *   - localStorage ccc_dual_pane=1
  *   - Tauri (__TAURI__ / userAgent)
- *
- * Background streams already live in streamRegistry; this module only unlocks
- * painting for tabs visible in left/right panes (not only activeTabId).
  */
 
 import { state } from './state.js';

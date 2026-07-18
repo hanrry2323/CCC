@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import chat, sessions, files, board, projects, ops
+from .routers import chat, sessions, files, board, projects, ops, desktop
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
 HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260718ops2")
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
         allow_origins=_cors_origins,
         allow_origin_regex=config.CORS_ORIGIN_REGEX,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     app.add_middleware(NoStoreStaticMiddleware)
@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router)
     app.include_router(board.router)
     app.include_router(ops.router)
+    app.include_router(desktop.router)
 
     if FRONTEND_DIR.exists():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

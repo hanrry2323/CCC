@@ -1,15 +1,15 @@
 # CCC 部署拓扑 — Server / Client
 
-> SSOT：服务端与客户端职责。更新日期：2026-07-18。  
-> 相关：[`server-layout.md`](server-layout.md) · [`migration-m1-to-2017.md`](migration-m1-to-2017.md)
+> SSOT：服务端与客户端职责。更新日期：2026-07-19。  
+> 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)
 
 ---
 
 ## 一句话
 
-**壳在各端，脑和手在服务器。**  
-Mac2017 = 唯一生产服务端（Hub + Engine + Board + 中转 + 工作区）；  
-M1 / 桌面 / 浏览器 / 未来手机 = 客户端，只连服务端。
+**壳在 Desktop，脑和手在服务器。**  
+Mac2017 = 唯一生产服务端（API + Engine + Board + 中转 + 工作区）；  
+**CCC Desktop（SwiftUI）** = 主客户端；网页 Hub = 运维/兼容；M1 本机 CLI 可只连服务端中转。
 
 ---
 
@@ -17,8 +17,10 @@ M1 / 桌面 / 浏览器 / 未来手机 = 客户端，只连服务端。
 
 | 角色 | 机器 | IP | 职责 |
 |------|------|-----|------|
-| **Server** | Mac2017 | `192.168.3.116` | Hub、Board、Engine、ai-loop-router、业务工作区、上游 API key |
-| **Client** | M1（及后续桌面/手机） | `192.168.3.140` 等 | UI、本机 Claude/OpenCode **调用**服务端中转；不跑生产 Engine/中转 |
+| **Server** | Mac2017 | `192.168.3.116` | Desktop API、Board、Engine、ai-loop-router、业务工作区、上游 API key |
+| **Client（主）** | 任意 Mac | LAN | **CCC Desktop** → `CCC_SERVER`（默认 `http://192.168.3.116:7777`） |
+| **Client（运维）** | 浏览器 | — | 网页 Hub（降级，非产品主入口） |
+| **Client（CLI）** | M1 等 | `192.168.3.140` 等 | 本机 Claude/OpenCode **调用**服务端中转；不跑生产 Engine |
 
 同一时刻：**只一台生产中转、只一台 Engine**（均在 Server）。
 
@@ -41,7 +43,8 @@ export ANTHROPIC_BASE_URL=http://192.168.3.116:4000
 # OpenCode / OpenAI 兼容 → http://192.168.3.116:4002
 ```
 
-Hub 客户端：`http://192.168.3.116:7777`
+Desktop / API：`http://192.168.3.116:7777`（`CCC_SERVER`）  
+网页 Hub（运维）：同上，路径 `/`；产品 API 见 `/api/desktop/*`
 
 ---
 
@@ -83,13 +86,12 @@ Hub 客户端：`http://192.168.3.116:7777`
 | 面 | 状态 |
 |----|------|
 | Server + 中转 + Engine | 主线 |
-| 桌面多会话（CCC 自有 Tauri） | 主线（P4） |
-| 网页 Hub | **过渡客户端**；冻结多路大修 |
-| 手机 | 远期；同一 Hub API |
+| **CCC Desktop（SwiftUI）** | **主产品入口**（见 `desktop/`） |
+| 网页 Hub | **运维/兼容**；非产品主叙事 |
+| 手机 | 远期；同一 Desktop API |
 
 ---
 
 ## 执行器
 
-可插拔：官方 Claude Code / `CCC/vendor/loop-code`（可选私有）/ OpenCode 等。  
-中层只认 Executor 契约；不把任一发行版写成唯一地基。详见后续 `docs/executors/`。
+可插拔：OpenCode（默认）/ python / ollama / cli。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)。

@@ -66,6 +66,8 @@
 | `split_status` | string | ❌ | epic:`pending` | epic 五态：`pending`\|`planned`\|`running`\|`done`\|`failed`（存量 `active`→`running`，`blocked`→`failed`） |
 | `child_ids` | string[] | ❌ | `[]` | epic 扇出后的子卡 id |
 | `ui_hidden` | bool | ❌ | `false` | Hub「清理已完成」仅藏显示 |
+| `executor` | string | ❌ | `opencode` | work 执行面：`opencode`\|`python`\|`ollama`\|`cli`（见 `docs/product/executor-plugins.md`） |
+| `executor_spec` | object | ❌ | — | 执行器参数（cwd / entrypoint / args / model） |
 
 **存量兼容**：无 `card_kind` 时，`backlog`→`epic`+`pending`，其它列→`work`。
 

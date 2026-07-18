@@ -267,6 +267,10 @@ def _normalize_child(
             s = str(d or "").strip()
             if s and s not in deps_tasks:
                 deps_tasks.append(s)
+    executor = str(raw.get("executor") or "").strip().lower() or None
+    executor_spec = raw.get("executor_spec")
+    if executor_spec is not None and not isinstance(executor_spec, dict):
+        executor_spec = None
     return {
         "id": cid,
         "title": title[:500],
@@ -274,7 +278,36 @@ def _normalize_child(
         "plan_md": plan_md,
         "phases": phases,
         "depends_on_tasks": deps_tasks,
+        "executor": executor,
+        "executor_spec": executor_spec,
     }
+
+
+def _epic_default_executor(epic: dict) -> str:
+    """从 epic tags/note/description 推断默认 executor（Desktop transfer 写入）。"""
+    tags = epic.get("tags") or []
+    for t in tags:
+        s = str(t or "")
+        if s.startswith("exec:"):
+            return s.split(":", 1)[1].strip().lower() or "opencode"
+    note = epic.get("note")
+    if isinstance(note, str) and note.strip().startswith("{"):
+        try:
+            data = json.loads(note)
+            intent = (
+                (data.get("transfer_gate") or {}).get("executor_intent")
+                if isinstance(data, dict)
+                else None
+            )
+            if intent:
+                return str(intent).strip().lower()
+        except json.JSONDecodeError:
+            pass
+    desc = str(epic.get("description") or "")
+    m = re.search(r"executor_intent:\s*(\w+)", desc)
+    if m:
+        return m.group(1).strip().lower()
+    return "opencode"
 
 
 def apply_fanout(
@@ -284,6 +317,7 @@ def apply_fanout(
     children_raw: list[dict],
     epic_brief: str = "",
     max_phases: int = 2,
+    default_executor: str | None = None,
 ) -> dict:
     """校验并落盘子卡；更新 epic。成功返回 {ok, child_ids, color_group}。"""
     epic = normalize_task_view(epic, column="backlog")
@@ -295,6 +329,16 @@ def apply_fanout(
     # pending / failed（无子卡）可扇出；已有子卡则拒（含存量 active→running）
     if kids_existing and ss in ("planned", "running", "done", "failed"):
         return {"ok": False, "error": f"epic already split ({ss})"}
+
+    try:
+        from executors.registry import normalize_executor
+    except Exception:  # pragma: no cover
+        def normalize_executor(eid, *, pipeline=""):  # type: ignore
+            return (eid or "opencode").strip().lower() or "opencode"
+
+    fallback_exec = normalize_executor(
+        default_executor or _epic_default_executor(epic)
+    )
 
     children: list[dict] = []
     seen: set[str] = set()
@@ -327,6 +371,7 @@ def apply_fanout(
             if col_exist:
                 cid = sanitize_id(f"{cid}-{len(created)+1}")
                 ch["id"] = cid
+            exec_id = normalize_executor(ch.get("executor") or fallback_exec)
             task_body: dict[str, Any] = {
                 "id": ch["id"],
                 "title": ch["title"],
@@ -336,7 +381,10 @@ def apply_fanout(
                 "color_group": color_group,
                 "color_depth": 1,
                 "complexity": "small" if len(ch["phases"]) <= 1 else "medium",
+                "executor": exec_id,
             }
+            if ch.get("executor_spec"):
+                task_body["executor_spec"] = ch["executor_spec"]
             deps = ch.get("depends_on_tasks") or []
             if deps:
                 task_body["depends_on_tasks"] = deps
@@ -400,6 +448,32 @@ def apply_fanout(
                 except OSError:
                     pass
         raise
+
+    # Desktop 右栏：尽力写 fanout 事件（Hub 未启动时静默）
+    try:
+        from chat_server.services import flow_events as _fe
+
+        works_meta = []
+        for cid in created:
+            _col, t = store.find_task(cid)
+            if t:
+                works_meta.append(
+                    {
+                        "id": cid,
+                        "title": t.get("title"),
+                        "executor": t.get("executor") or "opencode",
+                        "depends_on": t.get("depends_on_tasks") or [],
+                    }
+                )
+        _fe.append_event(
+            "fanout",
+            {
+                "epic_id": epic_id,
+                "works": works_meta,
+            },
+        )
+    except Exception:
+        pass
 
     return {"ok": True, "child_ids": created, "color_group": color_group}
 

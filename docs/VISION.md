@@ -1,7 +1,7 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
 > **产品叙事 SSOT（对外/对内统一）**。README、Release、SKOT、Hub 文案冲突时以本文为准。  
-> 版本对齐：`VERSION` · 更新日期：2026-07-18 · **orch 分离 v0.51**（见 `docs/milestones/m2-orch-separation.md`）
+> 版本对齐：`VERSION` · 更新日期：2026-07-19 · **Desktop 主产品**（见 `docs/product/ccc-desktop-architecture.md`）
 
 ---
 
@@ -27,24 +27,26 @@
 
 | 层 | 组件 | 用户感知 |
 |----|------|----------|
-| **对话面** | **CCC Hub**（自研 UI） | 对齐 → 定稿 → 转任务；几个快捷动作完成意图交接 |
-| **编排面** | Engine + Board（看板） | Loop：拆解、调度、重试、重开、进化；人盯结果 |
-| **执行面** | 工具路由（Claude / OpenCode / …） | 按任务选执行器；用户不选「用哪个 IDE」 |
+| **对话面** | **CCC Desktop**（SwiftUI 原生） | 左项目 / 中方案对话 / 右编排流程；定稿 → 转任务（仅 epic） |
+| **编排面** | Engine + Board | 自由扇出 work、赋身份与执行面；右栏实时可视化 |
+| **执行面** | 可插拔 Executors（默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
+
+网页 Hub：**运维与兼容入口**，不是主产品。架构 SSOT：[`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。
 
 ### 已过时的说法（勿再对外使用）
 
-- 「不绑定单一 IDE / 接入 Trae、Zed、Qoder…」——第三方编排壳曾是过渡方案；**Hub 已替代入口**
-- 「7 角色超市，用户先选角色」——易被理解成 ECC 类产品
+- 「Hub 网页是主入口 / 双对话分屏 / Hub·Claude 双源历史」
+- 「7 角色超市，用户先选角色」
 - 「又一个 Claude 前端」
+- 「不绑定单一 IDE / 接入 Trae、Zed…」作为产品主叙事
 
 ### 应坚持说的
 
-- Connect Claude Code  
-- **Loop Engineer**：自动编排 · 自主执行  
-- **Hub 是入口**（对话 + 看板 + 控制台一体；网页为过渡客户端，桌面为主线）  
-- **任务路由工具**；**Skill + Prompt = 本次角色**（无穷角色）  
-- 用户**不选角色、不背 Skill**；只定意图  
-- **Server / Client 分离**：数据与执行在服务端；桌面 / 网页 / 手机只是壳（局域网可自托管）
+- Connect Claude Code · **Loop Engineer**
+- **Desktop 是主入口**（三栏：项目 · 方案对话 · 编排流程）
+- **自由编排 + 多执行面**；Skill + Prompt = 本次角色（无穷角色）
+- 方案 Agent **只写待办大卡**；Engine 负责扇出与执行
+- **Server / Client 分离**；改 `CCC_SERVER` 即可切局域网自托管 → 云 SaaS
 
 ---
 
@@ -52,10 +54,10 @@
 
 | 层 | 放哪 | 说明 |
 |----|------|------|
-| 服务端 | 固定机（现网：Mac2017） | Hub + Engine + Board + 中转 + 工作区 |
-| 客户端 | 桌面 / 浏览器 / 未来手机 | 连服务端；本机 CLI 也可只连服务端中转 |
+| 服务端 | 固定机（现网：Mac2017） | Desktop API + Engine + Board + 中转 + 工作区 |
+| 客户端 | **CCC Desktop（SwiftUI）** | 主入口；网页 Hub 仅运维 |
 
-拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/server-layout.md`](deploy/server-layout.md)。  
+拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/desktop.md`](deploy/desktop.md) · [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。  
 默认注册（demo-only）：[`product/reset-demo-fleet.md`](product/reset-demo-fleet.md)。
 
 ---
@@ -67,12 +69,12 @@
 | 执行器 CLI | OpenCode、部分 agent CLI | **执行面插件**；不是产品入口 |
 | 固定角色工坊 | ECC 等「角色一大堆」 | CCC **不做角色超市**；角色由任务即时生成 |
 | 纯对话 | ChatGPT / Claude.ai | 缺编排与验收闭环 |
-| 第三方 Agent IDE 壳 | zcode、Qoder 等 | 曾考虑作编排器；**现由 Hub 完全替代** |
+| 第三方 Agent IDE 壳 | zcode、Qoder 等 | 曾考虑作编排器；**现由 Desktop + Engine 替代** |
 
 一句话对照：
 
 > OpenCode 等是执行器；ECC 等是固定角色工坊；Chat 是对话。  
-> **CCC 是 Loop Engineer**：对话定意图，看板跑闭环，工具按任务路由，角色由 Skill+Prompt 即时生成。
+> **CCC 是 Loop Engineer**：Desktop 定意图，自由编排扇出，多执行面跑闭环。
 
 ---
 
@@ -86,7 +88,7 @@
 ```
 
 - 仓库里的 `skills/ccc-*` **不是**给用户点选的菜单，而是**流水线阶段的默认能力包**（拆解 / 写码 / 审查 / 测试 / 归档…）
-- Hub「转任务」上的 Skill chips 是**软偏好**，不改变「用户无需记住 Skill」的原则
+- Desktop / 转任务上的 Skill 提示是**软偏好**，不改变「用户无需记住 Skill」的原则
 - 行业与场景差异落在 **Skill / Prompt / 工具路由**，不落在「再做一个新角色产品」
 - 因此可覆盖任意行业复杂工作：**用户始终只面对意图**
 

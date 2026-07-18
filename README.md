@@ -5,9 +5,9 @@
 [![Release](https://img.shields.io/github/v/release/hanrry2323/CCC)](https://github.com/hanrry2323/CCC/releases/latest)
 
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  
-> 自研 **CCC Hub** 做入口；任务路由工具；Skill + Prompt 即角色——用户不选角色、不背 Skill。
+> 主入口 **CCC Desktop**（SwiftUI 三栏）；自由编排 + 多执行面；Skill + Prompt 即角色——用户不选角色、不背 Skill。
 
-**完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md)  
+**完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **Desktop 架构**：[`docs/product/ccc-desktop-architecture.md`](docs/product/ccc-desktop-architecture.md)  
 **启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · 版本：`VERSION`  
 **Release**：[v0.50.0](docs/releases/v0.50.0.md)（对内多仓里程碑）
 
@@ -19,7 +19,7 @@
 
 | 步骤 | 文件 | 一句话 |
 |------|------|--------|
-| 1 | `01-hub-home.png` | 入口是 Hub，不是 IDE |
+| 1 | `01-hub-home.png` | 入口是 Desktop（网页 Hub 仅运维） |
 | 2 | `02-quick-actions.png` | 对齐 / 下一步 / 定稿 / 转任务 |
 | 3 | `03-dispatch-block.png` | 定稿输出可执行契约 |
 | 4 | `04-dispatch-card.png` | 下达并开工 + Skill 软偏好 |
@@ -38,9 +38,9 @@ CCC 不是「又一个 IDE」，也不是「角色超市」。它是一台 **Loo
 
 | 层 | 做什么 |
 |----|--------|
-| **Hub（对话面）** | 对齐基线 → 定稿方案 → 转任务；快捷动作完成人机交接 |
-| **Engine + Board（编排面）** | 看板闭环：拆解、开发、验收、重试、重开、进化 |
-| **工具路由（执行面）** | Claude / OpenCode 等按任务选用；Token 与成本可治理 |
+| **Desktop（对话面）** | 左项目 / 中方案对话 / 右编排流程；定稿 → 转任务（仅 epic） |
+| **Engine + Board（编排面）** | 自由扇出 work、赋身份与执行面；看板闭环 |
+| **Executors（执行面）** | 默认 OpenCode；python / ollama / cli 可插拔 |
 
 仓库中的 `skills/ccc-*` 是 **Engine 阶段默认能力包**（不是给用户点选的角色列表）：
 
@@ -101,7 +101,7 @@ open http://127.0.0.1:7777
 
 | | Chat | OpenCode 等执行器 | ECC 类角色工坊 | **CCC** |
 |--|------|-------------------|----------------|---------|
-| 入口 | 对话 | CLI / 编辑器 | 选角色 | **Hub** |
+| 入口 | 对话 | CLI / 编辑器 | 选角色 | **Desktop** |
 | 编排 | 无 | 弱 | 人工为主 | **Engine Loop** |
 | 角色 | 无 | 无 | 固定一堆 | **任务生成（无穷）** |
 | 验收 | 口头 | 自测 | 看产品 | **verdict 文件门禁** |
@@ -115,7 +115,8 @@ open http://127.0.0.1:7777
 |------|------|
 | `docs/INTRO.md` | 对外完整介绍 |
 | `docs/VISION.md` | 产品叙事 SSOT |
-| `scripts/chat_server/` | CCC Hub |
+| `desktop/` | CCC Desktop（SwiftUI 主客户端） |
+| `scripts/chat_server/` | Center Server API + 网页运维 Hub |
 | `scripts/ccc-engine.py` | Loop 主循环 |
 | `scripts/ccc-board.py` | 看板与阶段能力调度 |
 | `skills/ccc-*/` | 阶段默认能力包 |
