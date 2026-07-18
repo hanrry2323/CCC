@@ -114,7 +114,7 @@ git worktree list
 | P2.2 qb on-hold | README + state 注明非活跃 |
 | P2.3 heartbeat/stats gitignore | 全舰队 apps + CCC |
 | P3.1 credentials.note | 已删 + `.gitignore`（含 secret 关键词，未入库） |
-| P3.2 ahead push | 见各仓 push 结果 |
+| P3.2 ahead push | CCC/qb/qxo/xianyu/ai-loop-router/hp/Medio-0 **已 push**；clawmed-ccc **无 origin**（本地 commit 已做） |
 
 P2/P3 **已执行完毕**。
 
