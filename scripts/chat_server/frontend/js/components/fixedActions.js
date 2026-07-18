@@ -40,6 +40,7 @@ export const FIXED_ACTIONS = [
     label: '定稿方案',
     kind: 'prompt',
     uiLabel: '定稿方案',
+    title: '产出 CCC_DISPATCH（plan+phases）；定稿前可自由讨论',
     prompt: '', // set from FINALIZE_PLAN_PROMPT below
   },
   {
@@ -61,12 +62,14 @@ export const FIXED_ACTIONS = [
     id: 'transfer-task',
     label: '转任务',
     kind: 'transfer',
+    title: '核标题并下达看板（需先定稿）；勿与「下达任务」混淆',
   },
   {
     id: 'task',
     label: '下达任务',
     kind: 'slash',
     slash: '/task',
+    title: '随手建卡（仅 description，会走 product）；方案已对齐请用转任务',
   },
   {
     id: 'board',
@@ -232,6 +235,7 @@ function sameIds(a, b) {
 
 function btnHtml(a, cls) {
   const soon = a.kind === 'soon' ? ' qa-chip-soon' : '';
+  const tip = a.title || a.hint || a.label || '';
   return (
     '<button type="button" class="' +
     cls +
@@ -239,7 +243,7 @@ function btnHtml(a, cls) {
     '" data-fixed="' +
     a.id +
     '" title="' +
-    (a.hint || a.label) +
+    tip.replace(/"/g, '&quot;') +
     '">' +
     a.label +
     '</button>'

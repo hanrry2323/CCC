@@ -57,6 +57,12 @@ export async function refreshRuntimeStatus() {
     const mode = st.mode || st.control?.mode || '?';
     const c = st.counts || {};
     const wake = st.wake_pending ? 'wake待消费' : '';
+    const streamCount = state.get('streamingCount') || 0;
+    const streamMax = state.get('maxLiveStreams') || 4;
+    const streamBit =
+      streamCount > 0
+        ? `<span class="rs-sep">·</span><span class="rs-streams" title="Hub 并发对话">${streamCount}/${streamMax} 路</span>`
+        : '';
     dom.bar.hidden = false;
     dom.bar.innerHTML =
       `<span class="rs-mode">${esc(mode)}</span>` +
@@ -68,6 +74,7 @@ export async function refreshRuntimeStatus() {
         ? `<span class="rs-sep">/</span><span>跑 ${esc(c.in_progress)}</span>`
         : '') +
       (wake ? `<span class="rs-sep">·</span><span>${esc(wake)}</span>` : '') +
+      streamBit +
       `<span class="rs-ws">${esc(ws)}</span>`;
 
     const g = st.git || {};
@@ -107,6 +114,9 @@ export function initRuntimeStatus() {
     refreshRuntimeStatus().catch(() => {});
   });
   document.addEventListener('ccc-engine-status', () => {
+    refreshRuntimeStatus().catch(() => {});
+  });
+  document.addEventListener('ccc-streams-changed', () => {
     refreshRuntimeStatus().catch(() => {});
   });
 }

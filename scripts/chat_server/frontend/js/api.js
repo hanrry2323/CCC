@@ -140,9 +140,35 @@ export async function createBoardTask(task) {
   return apiPost('/api/board/proxy/tasks', task);
 }
 
-export async function loadSkills(projectId) {
-  const qs = projectId ? ('?project=' + encodeURIComponent(projectId)) : '';
+export async function loadSkills(projectId, opts = {}) {
+  const params = new URLSearchParams();
+  if (projectId) params.set('project', projectId);
+  if (opts.includeEngine) params.set('include_engine', 'true');
+  const qs = params.toString() ? '?' + params.toString() : '';
   return apiGet('/api/skills' + qs);
+}
+
+export async function loadHubConfig() {
+  return apiGet('/api/hub-config');
+}
+
+export async function renameSession(id, project, title) {
+  const resp = await _fetchWithAuth(
+    '/api/history/' +
+      encodeURIComponent(id) +
+      '?project=' +
+      encodeURIComponent(project),
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    },
+    true
+  );
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.detail || data.error || '重命名失败');
+  }
+  return data;
 }
 
 export async function moveBoardTask(payload) {
@@ -227,7 +253,7 @@ export async function streamChat(
     if (!resp.ok) {
       const errText = resp.status === 401 ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
         : resp.status === 400 ? '危险指令已被拦截或附件无效'
-        : resp.status === 429 ? '该会话仍在执行中，请稍候或新开对话'
+        : resp.status === 429 ? '并发会话已满或会话忙，请稍候、取消一路或新开对话'
         : '请求失败: HTTP ' + resp.status;
       onError(errText);
       return;

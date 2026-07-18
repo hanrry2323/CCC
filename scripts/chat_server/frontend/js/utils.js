@@ -18,6 +18,34 @@ export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+export function relativeTime(iso) {
+  if (!iso) return '';
+  const raw = String(iso).trim();
+  // Accept "2026-07-18T14:32:00+08:00" or space-separated
+  const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16);
+  const now = new Date();
+  const diffMs = now - d;
+  const pad = (n) => String(n).padStart(2, '0');
+  const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const dayMs = 86400000;
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayDiff = Math.round((startToday - startThat) / dayMs);
+  if (dayDiff === 0) return '今天 ' + hm;
+  if (dayDiff === 1) return '昨天 ' + hm;
+  if (dayDiff > 1 && dayDiff < 7) return dayDiff + '天前';
+  return (
+    d.getFullYear() +
+    '-' +
+    pad(d.getMonth() + 1) +
+    '-' +
+    pad(d.getDate()) +
+    ' ' +
+    hm
+  );
+}
+
 export function debounce(fn, ms) {
   let timer;
   return (...args) => {

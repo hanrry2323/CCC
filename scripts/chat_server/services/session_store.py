@@ -36,23 +36,33 @@ def save_session(
         if m.get("role") == "user" and m.get("content"):
             title_src = m["content"]
             break
+    existing: dict = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    # Keep user-renamed titles
+    if existing.get("renamed") and existing.get("title"):
+        title = str(existing["title"])[:80]
+    else:
+        title = title_src[:60] if title_src else "New Chat"
+
     data: dict = {
         "session_id": session_id,
-        "title": (title_src[:60] if title_src else "New Chat"),
+        "title": title,
         "project": project,
         "messages": messages,
         "mode": mode,
         "updated_at": now_iso(),
     }
+    if existing.get("renamed"):
+        data["renamed"] = True
     if status:
         data["status"] = status
-    existing: dict = {}
-    if path.exists():
-        try:
-            existing = json.loads(path.read_text())
-            data["created_at"] = existing.get("created_at", now_iso())
-        except (json.JSONDecodeError, OSError):
-            data["created_at"] = now_iso()
+    if existing:
+        data["created_at"] = existing.get("created_at", now_iso())
     else:
         data["created_at"] = now_iso()
     if reply:
@@ -69,6 +79,26 @@ def save_session(
         data["claude_session_id"] = bound
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
+
+def rename_session(
+    session_id: str, project: str = "ccc", title: str = ""
+) -> dict | None:
+    """Rename a Hub session; sets renamed=True so save_session won't overwrite."""
+    path = _session_path(session_id, project)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    new_title = (title or "").strip()[:80]
+    if not new_title:
+        return None
+    data["title"] = new_title
+    data["renamed"] = True
+    data["updated_at"] = now_iso()
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    return data
 
 def list_sessions(project: str = "ccc", *, include_tests: bool = False) -> list[dict]:
     chat_dir = _project_chat_dir(project)

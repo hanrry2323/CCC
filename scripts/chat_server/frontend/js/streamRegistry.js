@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 
-/** @type {Map<string, { abort: AbortController, sessionId: string }>} */
+/** @type {Map<string, { abort: AbortController, sessionId: string, projectId?: string }>} */
 const _streams = new Map();
 
 export function isTabStreaming(tabId) {
@@ -21,16 +21,46 @@ export function streamingTabIds() {
   return [..._streams.keys()];
 }
 
-export function beginStream(tabId, sessionId) {
+export function getMaxLiveStreams() {
+  const n = Number(state.get('maxLiveStreams'));
+  return Number.isFinite(n) && n >= 1 ? n : 4;
+}
+
+export function streamingCount() {
+  return _streams.size;
+}
+
+/** Projects that currently have at least one live stream. */
+export function streamingProjectIds() {
+  const ids = new Set();
+  for (const entry of _streams.values()) {
+    if (entry.projectId) ids.add(entry.projectId);
+  }
+  return [...ids];
+}
+
+/**
+ * @param {string} tabId
+ * @param {string} sessionId
+ * @param {{ projectId?: string }} [meta]
+ * @returns {AbortController|null} null if at max concurrent (and not replacing same tab)
+ */
+export function beginStream(tabId, sessionId, meta = {}) {
   if (!tabId) return null;
   const existing = _streams.get(tabId);
   if (existing) {
     try {
       existing.abort.abort();
     } catch (_) {}
+  } else if (_streams.size >= getMaxLiveStreams()) {
+    return null;
   }
   const abort = new AbortController();
-  _streams.set(tabId, { abort, sessionId: sessionId || tabId });
+  _streams.set(tabId, {
+    abort,
+    sessionId: sessionId || tabId,
+    projectId: meta.projectId || state.get('currentProject') || null,
+  });
   _emit();
   return abort;
 }
@@ -65,13 +95,15 @@ export function cancelAllStreams() {
 
 function _emit() {
   state.set('streamingCount', _streams.size);
-  state.set(
-    'streaming',
-    isCurrentTabStreaming()
-  ); // backward-compat for current-tab-only UI
+  state.set('streaming', isCurrentTabStreaming());
   document.dispatchEvent(
     new CustomEvent('ccc-streams-changed', {
-      detail: { ids: streamingTabIds(), count: _streams.size },
+      detail: {
+        ids: streamingTabIds(),
+        count: _streams.size,
+        max: getMaxLiveStreams(),
+        projects: streamingProjectIds(),
+      },
     })
   );
 }
@@ -81,7 +113,12 @@ export function syncStreamingFlagForActiveTab() {
   state.set('streaming', isCurrentTabStreaming());
   document.dispatchEvent(
     new CustomEvent('ccc-streams-changed', {
-      detail: { ids: streamingTabIds(), count: _streams.size },
+      detail: {
+        ids: streamingTabIds(),
+        count: _streams.size,
+        max: getMaxLiveStreams(),
+        projects: streamingProjectIds(),
+      },
     })
   );
 }

@@ -179,7 +179,10 @@ export function setupProjectSelect(projects) {
       b.className = 'board-ws-btn' + (p.id === activeId ? ' active' : '');
       b.dataset.projectId = p.id;
       b.dataset.workspace = p.workspace || p.id;
-      b.textContent = p.workspace || p.name || p.id;
+      b.innerHTML =
+        '<span class="board-ws-label"></span><span class="board-ws-live" hidden aria-hidden="true"></span>';
+      b.querySelector('.board-ws-label').textContent =
+        p.workspace || p.name || p.id;
       b.title = (p.name || p.id) + (p.path ? ' · ' + p.path : '');
       b.setAttribute('aria-pressed', p.id === activeId ? 'true' : 'false');
       b.addEventListener('click', () => {
@@ -188,6 +191,7 @@ export function setupProjectSelect(projects) {
       });
       btnsHost.appendChild(b);
     }
+    syncProjectLiveDots();
   }
 
   const display = document.getElementById('project-display');
@@ -195,6 +199,23 @@ export function setupProjectSelect(projects) {
   if (activeId && activeId !== state.get('currentProject')) {
     state.set('currentProject', activeId);
   }
+}
+
+function syncProjectLiveDots() {
+  import('../streamRegistry.js').then((m) => {
+    const live = new Set(m.streamingProjectIds());
+    document.querySelectorAll('#sidebar-project-btns .board-ws-btn').forEach((b) => {
+      const on = live.has(b.dataset.projectId);
+      const dot = b.querySelector('.board-ws-live');
+      if (dot) dot.hidden = !on;
+      b.classList.toggle('has-live', on);
+    });
+  });
+}
+
+// Keep live dots in sync
+if (typeof document !== 'undefined') {
+  document.addEventListener('ccc-streams-changed', () => syncProjectLiveDots());
 }
 
 function doSend() {

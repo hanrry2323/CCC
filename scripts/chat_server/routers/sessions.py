@@ -88,6 +88,27 @@ async def get_session(request: Request, session_id: str, project: str = "ccc"):
     return data
 
 
+@router.patch("/api/history/{session_id}")
+async def rename_session(request: Request, session_id: str, project: str = "ccc"):
+    """Rename a Hub session title."""
+    check_auth(request)
+    if session_id.startswith("claude:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Claude 历史请在 Claude Code 内管理；Hub 仅只读展示",
+        )
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    title = body.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise HTTPException(status_code=400, detail="title required")
+    data = store.rename_session(session_id, project, title.strip())
+    if data is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {"ok": True, "session_id": session_id, "title": data.get("title")}
+
+
 @router.delete("/api/history/{session_id}")
 async def delete_session(request: Request, session_id: str, project: str = "ccc"):
     check_auth(request)

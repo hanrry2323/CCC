@@ -102,8 +102,15 @@ async def project_baseline(project_id: str, request: Request):
 
 
 @router.get("/api/skills")
-async def list_skills(request: Request, project: str | None = None):
-    """扫描本机/项目 Skill 目录，供转任务卡 chips 使用（软偏好）。"""
+async def list_skills(
+    request: Request,
+    project: str | None = None,
+    include_engine: bool = False,
+):
+    """扫描本机/项目 Skill 目录，供转任务卡 chips 使用（软偏好）。
+
+    默认隐藏 Engine 角色 skill（ccc-product 等）；include_engine=1 可显示。
+    """
     check_auth(request)
     import sys
     from pathlib import Path
@@ -119,5 +126,27 @@ async def list_skills(request: Request, project: str | None = None):
             project_path = get_project_path(project)
         except Exception:
             project_path = None
-    skills = discover_skills(project_path=project_path, ccc_home=scripts.parent)
-    return {"ok": True, "skills": skills, "count": len(skills)}
+    skills = discover_skills(
+        project_path=project_path,
+        ccc_home=scripts.parent,
+        include_engine=include_engine,
+    )
+    return {
+        "ok": True,
+        "skills": skills,
+        "count": len(skills),
+        "include_engine": include_engine,
+    }
+
+
+@router.get("/api/hub-config")
+async def hub_config(request: Request):
+    """Hub chat 客户端配置（并发上限等）。"""
+    check_auth(request)
+    from .. import config as hub_config_mod
+
+    return {
+        "ok": True,
+        "chat_session_max_live": hub_config_mod.CHAT_SESSION_MAX_LIVE,
+        "chat_session_idle_ttl": hub_config_mod.CHAT_SESSION_IDLE_TTL,
+    }

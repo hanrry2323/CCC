@@ -86,6 +86,32 @@ def _delete(path: str):
         return e.code, e.read().decode()
 
 
+def _patch(path: str, data: dict):
+    payload = json.dumps(data).encode()
+    req = urllib.request.Request(
+        f"{BASE_URL}{path}",
+        data=payload,
+        method="PATCH",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": AUTH_HEADER,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            body = resp.read().decode()
+            try:
+                return resp.status, json.loads(body)
+            except json.JSONDecodeError:
+                return resp.status, body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        try:
+            return e.code, json.loads(body)
+        except json.JSONDecodeError:
+            return e.code, body
+
+
 def _stream_post(path: str, data: dict, read_limit: int = 5, read_timeout: int = 0):
     """POST and read the first N SSE lines from a streaming response.
 
@@ -616,7 +642,7 @@ class TestFrontendHtml:
     def test_053_project_selector(self):
         h = _html()
         assert 'id="project-select"' in h
-        assert 'id="sidebar-project-select"' in h
+        assert 'id="sidebar-project-btns"' in h
 
     def test_054_theme_button(self):
         h = _html()
@@ -1038,3 +1064,97 @@ class TestSSEFormat:
         assert status == 200
         data_lines = [l for l in lines if l.startswith("data: ")]
         assert len(data_lines) > 0
+
+
+# ===========================================================================
+# Hub UX：skills tier / hub-config / rename / isolation markers
+# ===========================================================================
+
+
+class TestHubUxOptimizations:
+
+    def test_150_hub_config_max_live(self):
+        status, data = _get("/api/hub-config")
+        assert status == 200
+        assert data.get("ok") is True
+        assert 1 <= int(data["chat_session_max_live"]) <= 16
+
+    def test_151_skills_default_hides_engine(self):
+        status, data = _get("/api/skills")
+        assert status == 200
+        assert data.get("ok") is True
+        for s in data.get("skills") or []:
+            assert s.get("tier") != "engine"
+            assert s.get("hub_visible", True) is True
+            assert not str(s.get("description") or "").startswith(">-")
+
+    def test_152_skills_include_engine(self):
+        status, data = _get("/api/skills?include_engine=true")
+        assert status == 200
+        assert data.get("include_engine") is True
+        # Engine skills exist in CCC/skills — at least one should appear
+        tiers = {s.get("tier") for s in data.get("skills") or []}
+        assert "engine" in tiers or any(
+            str(s.get("id", "")).startswith("ccc-") for s in data.get("skills") or []
+        )
+
+    def test_153_rename_session(self, chat_server):
+        sid = _make_sid("rn153")
+        proj_dir = Path(chat_server) / "ccc"
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        path = proj_dir / f"{sid}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "session_id": sid,
+                    "title": "old title",
+                    "project": "ccc",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "updated_at": "2026-07-18T12:00:00+08:00",
+                    "created_at": "2026-07-18T12:00:00+08:00",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        status, data = _patch(
+            f"/api/history/{sid}?project=ccc", {"title": "新标题 rename"}
+        )
+        assert status == 200, data
+        assert data.get("title") == "新标题 rename"
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        assert saved["title"] == "新标题 rename"
+        assert saved.get("renamed") is True
+
+    def test_154_frontend_isolation_markers(self):
+        js_app = (
+            PROJECT_ROOT
+            / "scripts"
+            / "chat_server"
+            / "frontend"
+            / "js"
+            / "app.js"
+        ).read_text(encoding="utf-8")
+        assert "switchToProjectTab" in js_app
+        assert "projectId" in js_app
+        msg = (
+            PROJECT_ROOT
+            / "scripts"
+            / "chat_server"
+            / "frontend"
+            / "js"
+            / "components"
+            / "message.js"
+        ).read_text(encoding="utf-8")
+        assert "canPaint" in msg
+        assert "ownerProject" in msg
+        reg = (
+            PROJECT_ROOT
+            / "scripts"
+            / "chat_server"
+            / "frontend"
+            / "js"
+            / "streamRegistry.js"
+        ).read_text(encoding="utf-8")
+        assert "getMaxLiveStreams" in reg
+        assert "streamingProjectIds" in reg

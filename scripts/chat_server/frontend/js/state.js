@@ -8,6 +8,8 @@ class State {
       currentProject: 'ccc',
       streaming: false,
       streamingCount: 0,
+      maxLiveStreams: 4,
+      historySource: 'all',
       model: 'flash',
       abortController: null,
       tabs: [],

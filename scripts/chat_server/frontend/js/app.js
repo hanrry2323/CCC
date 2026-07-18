@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { generateId } from './utils.js';
-import { loadProjects, loadSession } from './api.js';
+import { loadProjects, loadSession, loadHubConfig } from './api.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
 import { initComposer, setupProjectSelect } from './components/composer.js';
@@ -16,11 +16,24 @@ import { mountOps, unmountOps } from './pages/opsPage.js';
 function snapshotActiveTab() {
   const tabs = state.get('tabs') || [];
   const activeId = state.get('activeTabId');
-  const tab = tabs.find(t => t.id === activeId);
+  const tab = tabs.find((t) => t.id === activeId);
   if (!tab) return;
   tab.sessionId = state.get('currentSessionId');
   tab.messages = (state.get('currentMessages') || []).slice();
+  tab.projectId = state.get('currentProject') || tab.projectId || 'ccc';
   state.set('tabs', tabs);
+}
+
+/** Tabs belonging to the current project (for titlebar). */
+export function tabsForCurrentProject() {
+  const project = state.get('currentProject') || 'ccc';
+  return (state.get('tabs') || []).filter(
+    (t) => (t.projectId || 'ccc') === project
+  );
+}
+
+function renderProjectTabs(activeId) {
+  renderTabs(tabsForCurrentProject(), activeId || state.get('activeTabId'));
 }
 
 function showTabContent(tab) {
@@ -38,6 +51,52 @@ function showTabContent(tab) {
     m.syncStreamingFlagForActiveTab();
   });
   import('./components/message.js').then((m) => m.updateComposerState());
+}
+
+/**
+ * Switch visible chat to a tab for `projectId` without cancelling other projects' streams.
+ * Creates a fresh tab if none exists for that project.
+ */
+function switchToProjectTab(projectId) {
+  snapshotActiveTab();
+  const pid = projectId || state.get('currentProject') || 'ccc';
+  let tabs = state.get('tabs') || [];
+  // Prefer most recently touched tab for this project (last in list with that projectId)
+  let tab = null;
+  for (let i = tabs.length - 1; i >= 0; i--) {
+    if ((tabs[i].projectId || 'ccc') === pid) {
+      tab = tabs[i];
+      break;
+    }
+  }
+  if (!tab) {
+    const id = generateId();
+    tab = {
+      id,
+      title: '新对话',
+      sessionId: id,
+      messages: [],
+      projectId: pid,
+    };
+    tabs = tabs.concat([tab]);
+    state.set('tabs', tabs);
+  }
+  state.set('activeTabId', tab.id);
+  renderProjectTabs(tab.id);
+  showTabContent(tab);
+  refreshSidebar();
+
+  import('./streamRegistry.js').then((m) => {
+    const others = m.streamingProjectIds().filter((p) => p && p !== pid);
+    if (others.length) {
+      window.showToast?.(
+        '其他项目仍有生成中的对话（' + others.join(', ') + '）',
+        'info'
+      );
+    }
+    // Update project chip live dots
+    document.dispatchEvent(new CustomEvent('ccc-streams-changed'));
+  });
 }
 
 async function onHubRoute(route) {
@@ -75,12 +134,20 @@ async function init() {
   setupCancel();
   setupSidebarSearch();
   await import('./components/toast.js');
-  import('./components/keyboard.js').then(m => m.initKeyboard());
+  import('./components/keyboard.js').then((m) => m.initKeyboard());
+
+  try {
+    const cfg = await loadHubConfig();
+    if (cfg?.chat_session_max_live) {
+      state.set('maxLiveStreams', cfg.chat_session_max_live);
+    }
+  } catch (_) {
+    /* keep default 4 */
+  }
 
   try {
     const projects = await loadProjects();
     setupProjectSelect(projects);
-    // Cache workspace map on state for task dialog
     const map = {};
     for (const p of projects) map[p.id] = p.workspace || p.id;
     state.set('projectWorkspaceMap', map);
@@ -88,12 +155,21 @@ async function init() {
     window.showToast('项目加载失败: ' + e.message, 'error');
   }
 
+  const project = state.get('currentProject') || 'ccc';
   const tabId = generateId();
-  const tabs = [{ id: tabId, title: '新对话', sessionId: tabId, messages: [] }];
+  const tabs = [
+    {
+      id: tabId,
+      title: '新对话',
+      sessionId: tabId,
+      messages: [],
+      projectId: project,
+    },
+  ];
   state.set('tabs', tabs);
   state.set('activeTabId', tabId);
   state.set('currentSessionId', tabId);
-  renderTabs(tabs, tabId);
+  renderProjectTabs(tabId);
   document.getElementById('messages').appendChild(createEmptyState());
 
   refreshSidebar();
@@ -101,9 +177,16 @@ async function init() {
   document.addEventListener('new-tab', () => {
     snapshotActiveTab();
     const id = generateId();
-    const tabs = state.get('tabs') || [];
-    tabs.push({ id, title: '新对话', sessionId: id, messages: [] });
-    state.set('tabs', tabs);
+    const pid = state.get('currentProject') || 'ccc';
+    const tabsNow = state.get('tabs') || [];
+    tabsNow.push({
+      id,
+      title: '新对话',
+      sessionId: id,
+      messages: [],
+      projectId: pid,
+    });
+    state.set('tabs', tabsNow);
     state.set('activeTabId', id);
     state.set('currentSessionId', id);
     state.set('currentMessages', []);
@@ -112,36 +195,41 @@ async function init() {
     container.appendChild(createEmptyState());
     document.getElementById('composer-input').value = '';
     document.getElementById('send-btn').disabled = true;
-    renderTabs(tabs, id);
+    renderProjectTabs(id);
   });
 
   document.addEventListener('switch-tab', (e) => {
     const { id } = e.detail;
     if (id === state.get('activeTabId')) return;
     snapshotActiveTab();
-    const tabs = state.get('tabs') || [];
-    const tab = tabs.find(t => t.id === id);
+    const tabsNow = state.get('tabs') || [];
+    const tab = tabsNow.find((t) => t.id === id);
     if (!tab) return;
     state.set('activeTabId', id);
-    renderTabs(tabs, id);
+    renderProjectTabs(id);
     showTabContent(tab);
   });
 
   document.addEventListener('close-tab', (e) => {
-    let tabs = state.get('tabs') || [];
+    let tabsNow = state.get('tabs') || [];
     const { id } = e.detail;
-    if (tabs.length <= 1) return;
+    const pid = state.get('currentProject') || 'ccc';
+    const projectTabs = tabsNow.filter((t) => (t.projectId || 'ccc') === pid);
+    if (projectTabs.length <= 1) return;
     snapshotActiveTab();
     import('./streamRegistry.js').then((m) => m.cancelStream(id));
-    tabs = tabs.filter(t => t.id !== id);
-    state.set('tabs', tabs);
+    tabsNow = tabsNow.filter((t) => t.id !== id);
+    state.set('tabs', tabsNow);
     const activeId = state.get('activeTabId');
     if (activeId === id) {
-      const newActive = tabs[tabs.length - 1];
-      state.set('activeTabId', newActive.id);
-      showTabContent(newActive);
+      const remaining = tabsNow.filter((t) => (t.projectId || 'ccc') === pid);
+      const newActive = remaining[remaining.length - 1];
+      if (newActive) {
+        state.set('activeTabId', newActive.id);
+        showTabContent(newActive);
+      }
     }
-    renderTabs(tabs, state.get('activeTabId'));
+    renderProjectTabs(state.get('activeTabId'));
   });
 
   document.addEventListener('load-session', async (e) => {
@@ -152,16 +240,17 @@ async function init() {
       state.set('currentSessionId', id);
       loadMessages(data);
 
-      const tabs = state.get('tabs') || [];
-      let tab = tabs.find(t => t.id === state.get('activeTabId'));
+      const tabsNow = state.get('tabs') || [];
+      let tab = tabsNow.find((t) => t.id === state.get('activeTabId'));
       if (tab) {
         tab.title = data.title || '对话';
         tab.sessionId = id;
         tab.messages = data.messages || [];
-        renderTabs(tabs, state.get('activeTabId'));
+        tab.projectId = state.get('currentProject') || tab.projectId;
+        renderProjectTabs(state.get('activeTabId'));
       }
 
-      document.querySelectorAll('.session-item').forEach(el => {
+      document.querySelectorAll('.session-item').forEach((el) => {
         el.classList.toggle('active', el.dataset.sid === id);
       });
 
@@ -173,22 +262,11 @@ async function init() {
   });
 
   document.addEventListener('project-change', () => {
-    snapshotActiveTab();
-    const container = document.getElementById('messages');
-    container.innerHTML = '';
-    container.appendChild(createEmptyState());
-    state.set('currentMessages', []);
-    const id = generateId();
-    state.set('currentSessionId', id);
-    const tabs = state.get('tabs') || [];
-    const tab = tabs.find(t => t.id === state.get('activeTabId'));
-    if (tab) {
-      tab.sessionId = id;
-      tab.messages = [];
-      tab.title = '新对话';
-      renderTabs(tabs, state.get('activeTabId'));
-    }
-    refreshSidebar();
+    switchToProjectTab(state.get('currentProject'));
+  });
+
+  document.addEventListener('ccc-streams-changed', () => {
+    renderProjectTabs(state.get('activeTabId'));
   });
 }
 

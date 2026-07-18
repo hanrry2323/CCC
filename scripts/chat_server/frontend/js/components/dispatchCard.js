@@ -76,24 +76,57 @@ function hideCard() {
 }
 
 function skillChipsHtml(skills) {
-  const list = (skills || []).slice(0, 16);
+  const list = skills || [];
   if (!list.length) {
     return (
-      '<p class="dispatch-skill-empty">未扫描到 Skill；可在下方手写 skill id（逗号分隔）。</p>'
+      '<p class="dispatch-skill-empty">未扫描到可用 Skill；可手写 skill id（逗号分隔）。</p>'
     );
   }
-  return list
-    .map(
-      (s) =>
-        '<button type="button" class="dispatch-skill-chip" data-skill="' +
-        escapeHtml(s.id) +
-        '" title="' +
-        escapeHtml(s.description || s.name || s.id) +
-        '">' +
-        escapeHtml(s.name || s.id) +
-        '</button>'
-    )
-    .join('');
+  const common = list.filter((s) => s.tier === 'common').slice(0, 8);
+  const specialized = list
+    .filter((s) => s.tier !== 'common' && s.tier !== 'engine')
+    .slice(0, 12);
+  const engine = list.filter((s) => s.tier === 'engine').slice(0, 8);
+
+  function chips(items) {
+    return items
+      .map(
+        (s) =>
+          '<button type="button" class="dispatch-skill-chip" data-skill="' +
+          escapeHtml(s.id) +
+          '" title="' +
+          escapeHtml(s.description || s.name || s.id) +
+          '">' +
+          escapeHtml(s.name || s.id) +
+          '</button>'
+      )
+      .join('');
+  }
+
+  let html = '';
+  if (common.length) {
+    html +=
+      '<div class="dispatch-skill-group"><span class="dispatch-skill-group-label">常用</span><div class="dispatch-skill-chips">' +
+      chips(common) +
+      '</div></div>';
+  }
+  if (specialized.length) {
+    html +=
+      '<div class="dispatch-skill-group"><span class="dispatch-skill-group-label">专项</span><div class="dispatch-skill-chips">' +
+      chips(specialized) +
+      '</div></div>';
+  }
+  if (engine.length) {
+    html +=
+      '<div class="dispatch-skill-group"><span class="dispatch-skill-group-label">Engine 角色</span><div class="dispatch-skill-chips">' +
+      chips(engine) +
+      '</div></div>';
+  }
+  if (!html) {
+    html =
+      '<div class="dispatch-skill-chips">' + chips(list.slice(0, 16)) + '</div>';
+  }
+  return html;
 }
 
 /**
@@ -119,8 +152,9 @@ export async function showDispatchCard(opts = {}) {
     host.innerHTML =
       '<div class="dispatch-card dispatch-card--warn">' +
       '<div class="dispatch-card-title">还不能转任务</div>' +
-      '<p class="dispatch-card-help">请先点工具条 <b>定稿方案</b>，让 Claude 输出标准 <code>CCC_DISPATCH</code> 块；' +
-      '核对无误后再点消息上的 <b>转任务</b>。</p>' +
+      '<p class="dispatch-card-help">' +
+      '<b>流程</b>：自由讨论 → <b>定稿方案</b>（产出 CCC_DISPATCH）→ <b>转任务</b>（核标题下达）。' +
+      '<br>请先点工具条 <b>定稿方案</b>；核对无误后再点 <b>转任务</b>。</p>' +
       '<div class="dispatch-card-actions">' +
       '<button type="button" class="btn-secondary" id="dispatch-dismiss">关闭</button>' +
       '<button type="button" class="btn-primary" id="dispatch-finalize">去定稿方案</button>' +
@@ -132,7 +166,9 @@ export async function showDispatchCard(opts = {}) {
         const act = m.FIXED_ACTIONS.find((a) => a.id === 'finalize-plan');
         if (act?.prompt) {
           import('./message.js').then((msg) =>
-            msg.sendMessage(act.prompt, [], { uiLabel: act.uiLabel || act.label || '定稿方案' })
+            msg.sendMessage(act.prompt, [], {
+              uiLabel: act.uiLabel || act.label || '定稿方案',
+            })
           );
         }
       });
@@ -159,9 +195,10 @@ export async function showDispatchCard(opts = {}) {
     .filter((l) => l.trim().startsWith('{') && l.includes('"phase"')).length;
 
   const projectId0 = state.get('currentProject') || 'ccc';
+  let showEngine = false;
   let skillsPayload = { skills: [] };
   try {
-    skillsPayload = await loadSkills(projectId0);
+    skillsPayload = await loadSkills(projectId0, { includeEngine: false });
   } catch {
     skillsPayload = { skills: [] };
   }
@@ -173,12 +210,15 @@ export async function showDispatchCard(opts = {}) {
     '<div class="dispatch-card">' +
     '<div class="dispatch-card-head">' +
     '<span class="dispatch-card-badge">转任务</span>' +
-    '<span class="dispatch-card-meta">已含 plan + ' +
+    '<span class="dispatch-card-meta">定稿已就绪 · plan + ' +
     phaseCount +
-    ' phase · 下达后跳过 product</span>' +
+    ' phase · 下达跳过 product</span>' +
     '<button type="button" class="dispatch-card-x" id="dispatch-dismiss" title="关闭">×</button>' +
     '</div>' +
     '<div class="dispatch-card-body">' +
+    '<p class="dispatch-flow-hint">定稿方案 = 产出方案块；本卡 = 核实标题并下达开工。Skill 为可选软偏好，最多 ' +
+    MAX_SKILLS +
+    ' 个。</p>' +
     '<label class="dispatch-field"><span>标题</span>' +
     '<input type="text" id="dispatch-title" maxlength="500" value="' +
     escapeHtml(parsed.title) +
@@ -208,16 +248,15 @@ export async function showDispatchCard(opts = {}) {
     '</pre></div>' +
     '<div class="dispatch-skills">' +
     '<div class="dispatch-skills-head">' +
-    '<span class="dispatch-preview-label">Skill 偏好（可选，最多 ' +
-    MAX_SKILLS +
-    '，软提示）</span>' +
+    '<span class="dispatch-preview-label">Skill 偏好（可选）</span>' +
     '<span class="dispatch-skills-count" id="dispatch-skills-count">0/' +
     MAX_SKILLS +
     '</span>' +
     '</div>' +
-    '<div class="dispatch-skill-chips" id="dispatch-skill-chips">' +
+    '<div id="dispatch-skill-chips">' +
     skillChipsHtml(skillsPayload.skills || []) +
     '</div>' +
+    '<label class="dispatch-engine-toggle"><input type="checkbox" id="dispatch-show-engine"> 显示 Engine 角色（ccc-*）</label>' +
     '<input type="text" id="dispatch-skill-extra" class="dispatch-skill-extra" ' +
     'placeholder="或手写 skill id，逗号分隔" maxlength="200" autocomplete="off">' +
     '<input type="text" id="dispatch-skill-note" class="dispatch-skill-extra" ' +
@@ -255,18 +294,28 @@ export async function showDispatchCard(opts = {}) {
     syncCount();
   });
 
-  host.querySelector('#dispatch-project')?.addEventListener('change', async (e) => {
-    const pid = e.target.value;
+  async function reloadSkills(pid) {
     const chips = host.querySelector('#dispatch-skill-chips');
     if (!chips) return;
     try {
-      const data = await loadSkills(pid);
+      const data = await loadSkills(pid, { includeEngine: showEngine });
       chips.innerHTML = skillChipsHtml(data.skills || []);
       selected.clear();
       syncCount();
     } catch {
       /* keep */
     }
+  }
+
+  host.querySelector('#dispatch-show-engine')?.addEventListener('change', (e) => {
+    showEngine = !!e.target.checked;
+    const pid =
+      host.querySelector('#dispatch-project')?.value || state.get('currentProject');
+    reloadSkills(pid);
+  });
+
+  host.querySelector('#dispatch-project')?.addEventListener('change', async (e) => {
+    await reloadSkills(e.target.value);
   });
 
   host.querySelector('#dispatch-submit')?.addEventListener('click', async () => {
@@ -318,9 +367,10 @@ export async function showDispatchCard(opts = {}) {
 
       const res = await createBoardTask(payload);
       const tid = res.task_id || id;
-      const skip = res.skip_product || (res.seeded?.plan && res.seeded?.phases)
-        ? '（已挂 plan，跳过 product）'
-        : '';
+      const skip =
+        res.skip_product || (res.seeded?.plan && res.seeded?.phases)
+          ? '（已挂 plan，跳过 product）'
+          : '';
       const wake = res.engine_wake || res.plan_adopt;
       const wakeHint =
         wake && wake.ok !== false ? ' · Engine 已唤醒' : ' · 请确认 Engine';

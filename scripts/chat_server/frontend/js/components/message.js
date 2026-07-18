@@ -93,6 +93,10 @@ export function renderMessage(container, role, content, appendToLast) {
 }
 
 function editMessage(msgEl, container) {
+  if (isCurrentTabStreaming()) {
+    window.showToast?.('生成中不可编辑，请先取消或等完成', 'error');
+    return;
+  }
   const bubble = msgEl.querySelector('.bubble');
   if (!bubble) return;
   const currentText = bubble.textContent || '';
@@ -113,6 +117,10 @@ function editMessage(msgEl, container) {
 }
 
 window.saveEdit = function (btn) {
+  if (isCurrentTabStreaming()) {
+    window.showToast?.('生成中不可重发', 'error');
+    return;
+  }
   const area = btn.closest('.edit-area');
   const ta = area.querySelector('.edit-textarea');
   const newText = ta.value.trim();
@@ -232,15 +240,24 @@ function setStreamingIndicator() {
   const label = el.querySelector('span:not(.dot)');
   if (label) {
     const count = state.get('streamingCount') || 0;
-    label.textContent = count > 1 ? `生成中 (${count})…` : '生成中...';
+    const max = state.get('maxLiveStreams') || 4;
+    if (count > 0) {
+      label.textContent =
+        count > 1
+          ? `生成中 (${count}/${max})…`
+          : `生成中 (1/${max})…`;
+    } else {
+      label.textContent = '生成中...';
+    }
   }
 }
 
-function persistTabMessages(tabId, msgs, sessionId) {
+function persistTabMessages(tabId, msgs, sessionId, projectId) {
   const tabs = state.get('tabs') || [];
   const tab = tabs.find((t) => t.id === tabId);
   if (!tab) return;
   if (sessionId) tab.sessionId = sessionId;
+  if (projectId) tab.projectId = projectId;
   tab.messages = msgs.slice();
   const firstUser = msgs.find((m) => m.role === 'user');
   if (firstUser && (!tab.title || tab.title === '新对话')) {
@@ -250,13 +267,19 @@ function persistTabMessages(tabId, msgs, sessionId) {
     tab.title = raw.slice(0, 28) || '对话';
   }
   state.set('tabs', tabs);
+  const project = state.get('currentProject') || 'ccc';
+  const visible = tabs.filter((t) => (t.projectId || 'ccc') === project);
   import('./titlebar.js').then((m) =>
-    m.renderTabs(tabs, state.get('activeTabId'))
+    m.renderTabs(visible, state.get('activeTabId'))
   );
 }
 
-function isActiveOwner(tabId) {
-  return state.get('activeTabId') === tabId;
+/** Paint only when this stream still owns the visible tab AND project. */
+function canPaint(ownerTabId, ownerProject) {
+  return (
+    state.get('activeTabId') === ownerTabId &&
+    state.get('currentProject') === ownerProject
+  );
 }
 
 export async function sendMessage(text, attachments = [], opts = {}) {
@@ -266,8 +289,20 @@ export async function sendMessage(text, attachments = [], opts = {}) {
 
   const container = document.getElementById('messages');
   const project = state.get('currentProject');
+  const ownerProject = project;
   let msgs = (state.get('currentMessages') || []).slice();
   let sid = state.get('currentSessionId') || ownerTabId;
+
+  // Reserve stream slot before mutating UI (max concurrent)
+  const abort = beginStream(ownerTabId, sid, { projectId: ownerProject });
+  if (!abort) {
+    const max = state.get('maxLiveStreams') || 4;
+    window.showToast?.(
+      '已满 ' + max + ' 路并发，请等待或取消一路后再发',
+      'error'
+    );
+    return;
+  }
 
   const empty = container?.querySelector('.empty-state');
   if (empty) empty.remove();
@@ -281,7 +316,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     mode: 'chat',
     uiLabel: uiLabel || undefined,
   });
-  if (isActiveOwner(ownerTabId) && container) {
+  if (canPaint(ownerTabId, ownerProject) && container) {
     const userEl = renderMessage(container, 'user', displayText);
     if (uiLabel && userEl) {
       userEl.classList.add('msg-qa');
@@ -294,7 +329,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     showTyping(container, ownerTabId);
   }
 
-  persistTabMessages(ownerTabId, msgs, sid);
+  persistTabMessages(ownerTabId, msgs, sid, ownerProject);
 
   let fullContent = '';
   let toolSteps = [];
@@ -306,7 +341,6 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   let cursorEl = null;
   let rafPending = false;
 
-  const abort = beginStream(ownerTabId, sid);
   syncStreamingFlagForActiveTab();
   setStreamingIndicator();
   updateComposerState();
@@ -318,7 +352,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   }));
 
   function ensureAssistantShell() {
-    if (!isActiveOwner(ownerTabId)) return;
+    if (!canPaint(ownerTabId, ownerProject)) return;
     const c = document.getElementById('messages');
     if (!c) return;
     if (msgDiv && c.contains(msgDiv)) return;
@@ -344,12 +378,12 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   }
 
   function scheduleMarkdownPaint() {
-    if (!isActiveOwner(ownerTabId)) return;
+    if (!canPaint(ownerTabId, ownerProject)) return;
     if (rafPending || !mdEl) return;
     rafPending = true;
     requestAnimationFrame(() => {
       rafPending = false;
-      if (mdEl && isActiveOwner(ownerTabId)) {
+      if (mdEl && canPaint(ownerTabId, ownerProject)) {
         mdEl.innerHTML = renderMarkdown(fullContent);
         if (fullContent.trim().length > 40 && progressRail) {
           finishProgressRail(progressRail, { hide: true });
@@ -370,8 +404,8 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         partial: true,
       });
     }
-    persistTabMessages(ownerTabId, next, sid);
-    if (isActiveOwner(ownerTabId)) {
+    persistTabMessages(ownerTabId, next, sid, ownerProject);
+    if (canPaint(ownerTabId, ownerProject)) {
       state.set('currentMessages', next);
     }
   }
@@ -388,7 +422,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         bumpPartialAssistant();
       } else if (type === 'tool_use') {
         ensureAssistantShell();
-        if (isActiveOwner(ownerTabId)) {
+        if (canPaint(ownerTabId, ownerProject)) {
           if (!progressRail && toolsHost) {
             progressRail = createProgressRail();
             toolsHost.appendChild(progressRail);
@@ -410,7 +444,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     },
     (sessionId) => {
       sid = sessionId || sid;
-      if (isActiveOwner(ownerTabId)) {
+      if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentSessionId', sid);
         ensureAssistantShell();
         if (mdEl) mdEl.innerHTML = renderMarkdown(fullContent);
@@ -432,7 +466,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       }
       import('./dispatchFormat.js').then((m) => {
         const p = m.parseDispatchBlock(fullContent);
-        if (p.ok && isActiveOwner(ownerTabId)) {
+        if (p.ok && canPaint(ownerTabId, ownerProject)) {
           window.showToast?.(
             '定稿已就绪：点消息「转任务」或工具条「转任务」核实后下达',
             'success'
@@ -447,21 +481,23 @@ export async function sendMessage(text, attachments = [], opts = {}) {
             : []
         );
       msgs = finalMsgs;
-      persistTabMessages(ownerTabId, finalMsgs, sid);
-      if (isActiveOwner(ownerTabId)) {
+      persistTabMessages(ownerTabId, finalMsgs, sid, ownerProject);
+      if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentMessages', finalMsgs);
       }
       endStream(ownerTabId);
       syncStreamingFlagForActiveTab();
       setStreamingIndicator();
       updateComposerState();
-      refreshSidebar();
+      if (state.get('currentProject') === ownerProject) {
+        refreshSidebar();
+      }
       import('./runtimeStatus.js')
         .then((m) => m.refreshRuntimeStatus?.())
         .catch(() => {});
     },
     (errorText) => {
-      if (isActiveOwner(ownerTabId)) {
+      if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
         renderMessage(
           document.getElementById('messages'),
@@ -472,8 +508,8 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       const finalMsgs = msgs
         .filter((m) => !(m.role === 'assistant' && m.partial))
         .concat([{ role: 'assistant', content: errorText, mode: 'chat' }]);
-      persistTabMessages(ownerTabId, finalMsgs, sid);
-      if (isActiveOwner(ownerTabId)) {
+      persistTabMessages(ownerTabId, finalMsgs, sid, ownerProject);
+      if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentMessages', finalMsgs);
       }
       endStream(ownerTabId);
