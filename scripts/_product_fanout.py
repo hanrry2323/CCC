@@ -397,6 +397,63 @@ _FLOW_PAST_PLANNED = frozenset(
 )
 
 
+def fanout_from_seeded_epic(
+    store: FileBoardStore,
+    epic: dict,
+    *,
+    max_phases: int = 2,
+) -> dict:
+    """Hub 定稿投递：epic 已挂 plan+phases 时跳过 Claude，扇出 1 张 work。"""
+    epic = normalize_task_view(epic, column="backlog")
+    epic_id = epic["id"]
+    if epic.get("card_kind") != "epic":
+        return {"ok": False, "error": "not an epic"}
+    if epic.get("child_ids"):
+        return {"ok": False, "error": "already has children"}
+    ws = store.workspace
+    plan_path = ws / ".ccc" / "plans" / f"{epic_id}.plan.md"
+    phases_path = ws / ".ccc" / "phases" / f"{epic_id}.phases.json"
+    if not plan_path.is_file() or not phases_path.is_file():
+        return {"ok": False, "error": "missing seed plan/phases"}
+    plan_md = plan_path.read_text(encoding="utf-8")
+    phases: list[dict] = []
+    for line in phases_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and "phase" in obj:
+            phases.append(obj)
+    if not phases:
+        return {"ok": False, "error": "seed phases empty"}
+    children_raw = [
+        {
+            "id": f"{epic_id}-w1",
+            "title": epic.get("title") or f"{epic_id}-w1",
+            "description": (epic.get("description") or "")[:8000],
+            "plan_md": plan_md,
+            "phases": phases[:max_phases],
+        }
+    ]
+    result = apply_fanout(
+        store,
+        epic,
+        children_raw=children_raw,
+        epic_brief="",
+        max_phases=max_phases,
+    )
+    if result.get("ok"):
+        _log.info(
+            "[fanout] seeded epic %s → work %s (skip Claude)",
+            epic_id,
+            result.get("child_ids"),
+        )
+    return result
+
+
 def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
     """按子卡列推导 epic 五态。返回新状态或 None（非 epic / 不在 backlog）。"""
     col, epic = store.find_task(epic_id)
@@ -408,7 +465,14 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
     kids = list(epic.get("child_ids") or [])
     statuses: list[str] = []
     if not kids:
-        new = "pending"
+        # 无子卡：保留 failed（product 耗尽后勿每 tick 刷回 pending 空转）
+        raw_keep = epic.get("split_status") or "pending"
+        if raw_keep == "failed":
+            new = "failed"
+        elif raw_keep == "done":
+            new = "done"
+        else:
+            new = "pending"
     else:
         for kid in kids:
             kcol, _ = store.find_task(kid)

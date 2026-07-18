@@ -28,9 +28,14 @@ def _get_cfg() -> Config:
 
 
 def _get_store() -> FileBoardStore:
+    """按当前 get_workspace() 取 store（多仓 Engine 必备；勿钉死 Config.workspace）。"""
     global _store_instance
-    if _store_instance is None:
-        _store_instance = FileBoardStore(_get_cfg().workspace)
+    ws = get_workspace().resolve()
+    if (
+        _store_instance is None
+        or Path(_store_instance.workspace).resolve() != ws
+    ):
+        _store_instance = FileBoardStore(ws)
     return _store_instance
 
 

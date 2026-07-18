@@ -1516,7 +1516,40 @@ def _process_backlog(ws: Path) -> bool:
             engine_log(f"[product] [{label}] {tid} 异步 product 执行中...")
             continue
 
-        # 4. 启动异步 product（epic 扇出 / work 单卡）
+        # 4. Hub 定稿已挂 plan+phases → 跳过 Claude，本地扇出 work
+        if kind == "epic":
+            plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
+            phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
+            if plan_file.is_file() and phases_file.is_file() and not (
+                _task_data.get("child_ids") or []
+            ):
+                try:
+                    from _product_fanout import fanout_from_seeded_epic
+
+                    seed_r = fanout_from_seeded_epic(
+                        store, _task_data, max_phases=cfg.max_phases
+                    )
+                except Exception as exc:
+                    seed_r = {"ok": False, "error": str(exc)}
+                if seed_r.get("ok"):
+                    engine_log(
+                        f"[product] [{label}] epic {tid} seeded fanout → "
+                        f"{seed_r.get('child_ids')}（跳过 Claude）"
+                    )
+                    if fail_counter_path.exists():
+                        try:
+                            fail_counter_path.unlink()
+                        except OSError:
+                            pass
+                    _log_stats(ws, "product_done", tid, fail_count=0, seeded=True)
+                    did_something = True
+                    continue
+                engine_log(
+                    f"[product] [{label}] epic {tid} seeded fanout 失败: "
+                    f"{seed_r.get('error', '?')} — 回退 Claude product"
+                )
+
+        # 5. 启动异步 product（epic 扇出 / work 单卡）
         if not _can_launch_product(ws):
             engine_log(
                 f"[product] [{label}] cap 已满 "
@@ -1541,7 +1574,7 @@ def _process_backlog(ws: Path) -> bool:
             did_something = True
             continue
 
-        # 5. 启动失败
+        # 6. 启动失败
         fail_count += 1
         fail_counter_dir.mkdir(parents=True, exist_ok=True)
         fail_counter_path.write_text(
