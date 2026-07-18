@@ -76,6 +76,7 @@ Engine 扇出时决定下一步身份 / prompt / skill / executor。
 ## 与现有代码关系
 
 - Board / epic-work：[`references/board-task-schema.md`](../../references/board-task-schema.md)
-- Server API：Hub `:7777` 上扩展 Desktop 路由（见 P1）
+- Server API：Hub `:7777` 已提供 `/api/desktop/*`（projects / threads / transfer / flow）
 - Desktop 源码：仓库 [`desktop/`](../../desktop/)（SwiftUI）
+- LAN 上线卡：[`../ops/GO-LIVE-DESKTOP.md`](../ops/GO-LIVE-DESKTOP.md)
 - 旧 Tauri WebView 壳：非主产品线

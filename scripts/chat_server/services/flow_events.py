@@ -289,9 +289,23 @@ def epic_history_file(project_id: str) -> Path:
     return d / "epic_history.json"
 
 
-def remember_last_epic(project_id: str, epic_id: str, title: str = "") -> None:
+def remember_last_epic(
+    project_id: str,
+    epic_id: str,
+    title: str = "",
+    *,
+    thread_id: str | None = None,
+) -> None:
+    """记录项目最近 epic；若带 thread_id，则与对话深度绑定。"""
     updated = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
-    rec = {"epic_id": epic_id, "title": title, "updated_at": updated}
+    tid = (thread_id or "").strip() or None
+    rec: dict[str, Any] = {
+        "epic_id": epic_id,
+        "title": title,
+        "updated_at": updated,
+    }
+    if tid:
+        rec["thread_id"] = tid
     path = project_last_epic_file(project_id)
     path.write_text(
         json.dumps(rec, ensure_ascii=False, indent=2),
@@ -326,8 +340,13 @@ def load_last_epic(project_id: str) -> dict | None:
         return None
 
 
-def list_recent_epics(project_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
-    """项目最近转任务 epic 列表（供 Desktop 右栏切换）。"""
+def list_recent_epics(
+    project_id: str,
+    *,
+    thread_id: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """转任务 epic 列表。传 thread_id 时只返回该对话绑定的任务（右栏深度绑定）。"""
     hist_path = epic_history_file(project_id)
     items: list[dict[str, Any]] = []
     if hist_path.is_file():
@@ -357,8 +376,16 @@ def list_recent_epics(project_id: str, *, limit: int = 20) -> list[dict[str, Any
                     "epic_id": eid,
                     "title": str(data.get("title") or eid),
                     "updated_at": str(rec.get("ts") or ""),
+                    "thread_id": data.get("thread_id"),
                 }
             )
             if len(items) >= limit:
                 break
+    tid = (thread_id or "").strip()
+    if tid:
+        items = [
+            x
+            for x in items
+            if str(x.get("thread_id") or "") == tid
+        ]
     return items[:limit]

@@ -1,38 +1,41 @@
 import SwiftUI
 
-/// 高级感：系统材质 + 发丝线 + 精确字重 + 留白。不堆阴影/圆角/胶囊。
+/// Claude 色调 + Cursor 中栏节奏
 enum CCCTheme {
-    static let chatBg = Color(nsColor: .textBackgroundColor)
-    static let ink = Color(nsColor: .labelColor)
-    static let secondary = Color(nsColor: .secondaryLabelColor)
-    static let faint = Color(nsColor: .tertiaryLabelColor)
-    static let muted = Color(nsColor: .secondaryLabelColor)
+    static let chatBg = Color(red: 0.973, green: 0.961, blue: 0.941)
+    static let sidebar = Color(red: 0.945, green: 0.929, blue: 0.906)
+    static let surface = Color(red: 0.996, green: 0.992, blue: 0.984)
 
-    /// 主操作近黑（跟随系统，暗色下自动变浅）
-    static let accent = Color(nsColor: .labelColor)
-    static let accentSoft = Color(red: 0.22, green: 0.42, blue: 0.95)
+    static let ink = Color(red: 0.165, green: 0.145, blue: 0.125)
+    static let secondary = Color(red: 0.42, green: 0.38, blue: 0.34)
+    static let faint = Color(red: 0.62, green: 0.57, blue: 0.52)
+    static let muted = Color(red: 0.42, green: 0.38, blue: 0.34)
 
-    static let hover = Color.primary.opacity(0.05)
-    static let selected = Color.primary.opacity(0.08)
-    static let border = Color.primary.opacity(0.08)
-    static let borderStrong = Color.primary.opacity(0.12)
+    static let accent = Color(red: 0.851, green: 0.455, blue: 0.333)
+    static let accentSoft = Color(red: 0.90, green: 0.58, blue: 0.45)
 
-    static let bubbleUser = Color.primary.opacity(0.06)
+    static let hover = Color(red: 0.165, green: 0.145, blue: 0.125).opacity(0.05)
+    static let selected = Color(red: 0.165, green: 0.145, blue: 0.125).opacity(0.08)
+    static let border = Color(red: 0.165, green: 0.145, blue: 0.125).opacity(0.10)
+    static let borderStrong = Color(red: 0.165, green: 0.145, blue: 0.125).opacity(0.16)
 
-    static let nodePending = Color.secondary.opacity(0.55)
-    static let nodeRunning = Color(red: 0.22, green: 0.42, blue: 0.95)
-    static let nodeDone = Color(red: 0.20, green: 0.55, blue: 0.38)
-    static let nodeFail = Color(red: 0.86, green: 0.28, blue: 0.24)
+    static let bubbleUser = Color(red: 0.925, green: 0.890, blue: 0.845)
 
-    static let title = Font.system(size: 28, weight: .semibold, design: .default)
-    static let body = Font.system(size: 15, weight: .regular, design: .default)
+    static let nodePending = Color(red: 0.72, green: 0.66, blue: 0.60)
+    static let nodeRunning = Color(red: 0.851, green: 0.455, blue: 0.333)
+    static let nodeDone = Color(red: 0.35, green: 0.55, blue: 0.40)
+    static let nodeFail = Color(red: 0.78, green: 0.28, blue: 0.22)
+
+    static let title = Font.system(size: 22, weight: .medium, design: .serif)
+    static let body = Font.system(size: 14.5, weight: .regular, design: .default)
     static let callout = Font.system(size: 13, weight: .regular, design: .default)
     static let caption = Font.system(size: 11, weight: .medium, design: .default)
 
-    static let radiusComposer: CGFloat = 18
-    static let chatMaxWidth: CGFloat = 720
-    /// 隐藏标题栏后，为交通灯预留
-    static let trafficLightInset: CGFloat = 52
+    /// Cursor 式：输入区略扁、内容区更宽
+    static let radiusComposer: CGFloat = 12
+    static let chatMaxWidth: CGFloat = 760
+    /// 有系统标题栏时侧栏只需小顶距
+    static let trafficLightInset: CGFloat = 12
 }
 
 extension View {

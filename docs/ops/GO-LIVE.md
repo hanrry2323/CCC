@@ -1,23 +1,25 @@
 # CCC 正式启用卡 — Go Live（v0.51.0）
 
-> **日期**：2026-07-18 · **状态**：可正式使用  
+> **日期**：2026-07-19 · **状态**：可正式使用（**主入口 = CCC Desktop**）  
+> Desktop LAN 上线卡：[`GO-LIVE-DESKTOP.md`](./GO-LIVE-DESKTOP.md)  
 > 详细盘点：[`fleet-hygiene-2026-07-18.md`](./fleet-hygiene-2026-07-18.md)
 
 ## 开箱即用（每天这样用）
 
 ```text
-1. 打开 Hub → http://127.0.0.1:7777  （用户/密码默认 ccc / ccc）
-2. 选业务项目（不要选「CCC（编排）」下达）
-3. 对齐基线 → 定稿方案 → 转任务 → 下达并开工
+1. 打开 CCC Desktop（Server = http://192.168.3.116:7777，账号 ccc/ccc）
+2. 选业务项目（不要选编排仓下达）
+3. 对话定稿 → 转任务 → 右栏看编排进度
 4. Engine 自动：product → dev → review/test → kb
-5. 看板看到 released = 完成
+5. 需要看板/运维时用侧栏（浏览器）或网页 Hub
 ```
 
 | 入口 | 地址 |
 |------|------|
-| Hub | http://127.0.0.1:7777 |
-| Board API | http://127.0.0.1:7775 |
-| Engine stats | http://127.0.0.1:7776/api/stats |
+| **CCC Desktop** | `/Applications/CCCDesktop.app` |
+| Hub（运维/兼容） | http://192.168.3.116:7777 |
+| Board API（Server 本机） | http://127.0.0.1:7775 |
+| Engine stats（Server 本机） | http://127.0.0.1:7776/api/stats |
 
 ## 角色分工（记住就够）
 

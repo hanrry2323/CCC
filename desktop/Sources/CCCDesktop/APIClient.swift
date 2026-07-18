@@ -150,12 +150,14 @@ actor APIClient {
         )
     }
 
-    func fetchRecentEpics(projectId: String) async throws -> [FlowEpicRef] {
+    func fetchRecentEpics(projectId: String, threadId: String? = nil) async throws -> [FlowEpicRef] {
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
-        let resp = try await send(
-            try authedRequest("api/desktop/flow/epics?project_id=\(enc)"),
-            as: EpicsResp.self
-        )
+        var path = "api/desktop/flow/epics?project_id=\(enc)"
+        if let threadId, !threadId.isEmpty {
+            let t = threadId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? threadId
+            path += "&thread_id=\(t)"
+        }
+        let resp = try await send(try authedRequest(path), as: EpicsResp.self)
         return resp.epics
     }
 

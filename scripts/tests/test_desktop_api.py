@@ -187,8 +187,8 @@ def test_flow_epics_history(client, monkeypatch):
         "demo",
         {"name": "demo", "path": "/tmp", "role": "app", "engine_eligible": True},
     )
-    fe.remember_last_epic("demo", "e-hist-1", "First")
-    fe.remember_last_epic("demo", "e-hist-2", "Second")
+    fe.remember_last_epic("demo", "e-hist-1", "First", thread_id="t1")
+    fe.remember_last_epic("demo", "e-hist-2", "Second", thread_id="t2")
     r = client.get("/api/desktop/flow/epics?project_id=demo", auth=_auth())
     assert r.status_code == 200, r.text
     d = r.json()
@@ -196,6 +196,14 @@ def test_flow_epics_history(client, monkeypatch):
     ids = [e["epic_id"] for e in d["epics"]]
     assert ids[0] == "e-hist-2"
     assert "e-hist-1" in ids
+
+    r2 = client.get(
+        "/api/desktop/flow/epics?project_id=demo&thread_id=t1",
+        auth=_auth(),
+    )
+    assert r2.status_code == 200
+    ids2 = [e["epic_id"] for e in r2.json()["epics"]]
+    assert ids2 == ["e-hist-1"]
 
 
 def test_flow_snapshot_reads_columns(client, monkeypatch):

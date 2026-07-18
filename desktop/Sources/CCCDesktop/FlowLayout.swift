@@ -2,14 +2,16 @@ import CoreGraphics
 import Foundation
 
 enum FlowLayout {
-    static let nodeWidth: CGFloat = 168
-    static let nodeHeight: CGFloat = 72
-    static let epicHeight: CGFloat = 86
-    static let hGap: CGFloat = 20
-    static let vGap: CGFloat = 36
-    static let pad: CGFloat = 16
+    /// 适配右栏窄宽：节点略瘦、间距收紧、大卡居中
+    static let nodeWidth: CGFloat = 156
+    static let nodeHeight: CGFloat = 68
+    static let epicHeight: CGFloat = 78
+    static let hGap: CGFloat = 14
+    static let vGap: CGFloat = 28
+    static let pad: CGFloat = 14
+    static let railContentWidth: CGFloat = 280
 
-    /// 简单分层 DAG：无依赖并排，有依赖落在下层
+    /// 简单分层 DAG：epic 置顶居中；work 按依赖分层、层内居中
     static func layout(
         epic: FlowEpic?,
         epicId: String?,
@@ -19,13 +21,15 @@ enum FlowLayout {
         var edges: [FlowGraphEdge] = []
 
         let eid = epic?.id ?? epicId ?? "epic"
+        let contentW = max(railContentWidth, nodeWidth + pad * 2)
+
         let epicNode = FlowGraphNode(
             id: eid,
             kind: .epic,
             title: epic?.title ?? eid,
             subtitle: epic?.headline ?? epic?.user_stage.map { stageLabel($0) } ?? "待拆解",
             statusKey: epic?.user_stage ?? "pending",
-            badge: "意图",
+            badge: "任务",
             detail: epic?.goal_summary
         )
         nodes.append(epicNode)
@@ -50,16 +54,19 @@ enum FlowLayout {
         for w in works { _ = computeDepth(w.id) }
 
         let maxDepth = depth.values.max() ?? 0
-        var layers: [[FlowWork]] = Array(repeating: [], count: maxDepth + 1)
-        for w in works {
-            let d = depth[w.id] ?? 0
-            layers[d].append(w)
+        var layers: [[FlowWork]] = Array(repeating: [], count: max(1, maxDepth + 1))
+        if !works.isEmpty {
+            layers = Array(repeating: [], count: maxDepth + 1)
+            for w in works {
+                let d = depth[w.id] ?? 0
+                layers[d].append(w)
+            }
+        } else {
+            layers = []
         }
 
-        var placed: [String: CGPoint] = [:]
-        let epicX = pad
+        let epicX = (contentW - nodeWidth) / 2
         let epicY = pad
-        placed[eid] = CGPoint(x: epicX, y: epicY)
         if var n = nodes.first {
             n.x = epicX
             n.y = epicY
@@ -72,10 +79,7 @@ enum FlowLayout {
         for (layerIdx, layer) in layers.enumerated() {
             let y = pad + epicHeight + vGap + CGFloat(layerIdx) * (nodeHeight + vGap)
             let totalW = CGFloat(layer.count) * nodeWidth + CGFloat(max(0, layer.count - 1)) * hGap
-            var x = pad
-            if layer.count == 1 {
-                x = pad + (nodeWidth) * 0.15
-            }
+            var x = pad + max(0, (contentW - totalW) / 2)
             for w in layer {
                 let node = FlowGraphNode(
                     id: w.id,
@@ -91,7 +95,6 @@ enum FlowLayout {
                     y: y
                 )
                 nodes.append(node)
-                placed[w.id] = CGPoint(x: x, y: y)
                 maxX = max(maxX, x + nodeWidth)
                 maxY = max(maxY, y + nodeHeight)
                 x += nodeWidth + hGap
@@ -105,15 +108,12 @@ enum FlowLayout {
                     }
                 }
             }
-            _ = totalW
         }
 
-        // epic → 所有 depth0
-        if layers.first == nil || (layers.first?.isEmpty ?? true), works.isEmpty {
-            // only epic
-        }
-
-        let size = CGSize(width: max(maxX + pad, 280), height: max(maxY + pad, 200))
+        let size = CGSize(
+            width: max(maxX + pad, contentW),
+            height: max(maxY + pad, epicHeight + pad * 2)
+        )
         return (nodes, edges, size)
     }
 

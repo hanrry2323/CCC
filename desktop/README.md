@@ -43,10 +43,14 @@ swift run CCCDesktop
 
 ```bash
 bash desktop/scripts/package-baseline.sh
-# 产物：
+# 产物（版本读仓库 VERSION）：
 #   desktop/.build/release/CCCDesktop
-#   desktop/.build/CCCDesktop.app   （最小包；签名 / notarize 后置）
+#   desktop/.build/CCCDesktop.app
+rm -rf /Applications/CCCDesktop.app
+cp -R desktop/.build/CCCDesktop.app /Applications/
 ```
+
+LAN 上线卡：[`../docs/ops/GO-LIVE-DESKTOP.md`](../docs/ops/GO-LIVE-DESKTOP.md)
 
 ## 真闭环冒烟
 

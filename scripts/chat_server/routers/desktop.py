@@ -330,6 +330,7 @@ async def transfer_to_epic(request: Request):
     except Exception as exc:
         payload["seed_warning"] = str(exc)[:200]
 
+    thread_id = str(body.get("thread_id") or "").strip() or None
     flow_events.append_event(
         "epic_created",
         {
@@ -338,9 +339,12 @@ async def transfer_to_epic(request: Request):
             "project_id": project_id,
             "workspace": workspace,
             "executor_intent": executor_intent,
+            "thread_id": thread_id,
         },
     )
-    flow_events.remember_last_epic(project_id, tid, title)
+    flow_events.remember_last_epic(
+        project_id, tid, title, thread_id=thread_id
+    )
     _hub_ensure_engine(workspace, tid)
 
     return {
@@ -381,15 +385,26 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
 
 
 @router.get("/flow/epics")
-async def flow_epics(request: Request, project_id: str = "", limit: int = 20):
-    """项目最近 epic 列表（Desktop 右栏切换）。"""
+async def flow_epics(
+    request: Request,
+    project_id: str = "",
+    thread_id: str = "",
+    limit: int = 20,
+):
+    """epic 列表。传 thread_id 时只返回该对话转出的任务（与中栏深度绑定）。"""
     check_auth(request)
     pid = (project_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="project_id required")
     lim = max(1, min(int(limit or 20), 40))
-    items = flow_events.list_recent_epics(pid, limit=lim)
-    return {"ok": True, "project_id": pid, "epics": items}
+    tid = (thread_id or "").strip() or None
+    items = flow_events.list_recent_epics(pid, thread_id=tid, limit=lim)
+    return {
+        "ok": True,
+        "project_id": pid,
+        "thread_id": tid,
+        "epics": items,
+    }
 
 
 @router.get("/flow/snapshot")

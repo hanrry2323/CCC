@@ -126,6 +126,7 @@ struct FlowEpicRef: Identifiable, Codable, Hashable {
     let epic_id: String
     let title: String?
     let updated_at: String?
+    let thread_id: String?
 }
 
 struct FlowSnapshot: Codable {

@@ -65,16 +65,18 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
-        if let env = ProcessInfo.processInfo.environment["CCC_SERVER"], !env.isEmpty {
-            let current = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-            if current.isEmpty || current == "http://192.168.3.116:7777" {
-                serverURLString = env
-            }
+        // 环境变量优先，便于启动时强制指到 Mac2017
+        if let env = ProcessInfo.processInfo.environment["CCC_SERVER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !env.isEmpty {
+            serverURLString = env
+        } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            serverURLString = "http://192.168.3.116:7777"
         }
         await refreshProjects()
     }
 
     func reconnect() async {
+        statusText = "连接中…"
         await refreshProjects()
     }
 
@@ -110,9 +112,7 @@ final class AppModel: ObservableObject {
                 persistedProjectId = pid
                 expandedProjectIds.insert(pid)
                 await refreshThreads(projectId: pid)
-                await refreshEpicList()
-                await refreshFlow()
-                restartFlowSSE()
+                await bindFlowToCurrentThread()
             }
             statusText = "已连接"
             lastError = nil
@@ -120,8 +120,8 @@ final class AppModel: ObservableObject {
             connected = false
             showSettingsHint = true
             lastError = error.localizedDescription
-            statusText = "连接失败"
-            showToast(error.localizedDescription)
+            statusText = "未连接 · \(serverURLString)"
+            showToast("连不上 \(serverURLString)：\(error.localizedDescription)")
         }
     }
 
@@ -141,9 +141,7 @@ final class AppModel: ObservableObject {
             selectedNodeDetail = nil
         }
         await refreshThreads(projectId: id)
-        await refreshEpicList()
-        await refreshFlow()
-        restartFlowSSE()
+        await bindFlowToCurrentThread()
     }
 
     func toggleProjectExpanded(_ id: String) {
@@ -175,8 +173,16 @@ final class AppModel: ObservableObject {
             let resp = try await client.createThread(projectId: pid, title: "方案讨论")
             selectedThreadId = resp.thread_id
             messages = []
+            // 新对话：右栏清空，等本对话转任务后再绑定
+            currentEpicId = nil
+            flowEpic = nil
+            flowWorks = []
+            flowHeadline = ""
+            recentEpics = []
+            flowEmptyMessage = "在本对话中转任务后，编排会出现在这里"
             await refreshThreads(projectId: pid)
             destination = .chat
+            restartFlowSSE()
         } catch {
             showToast(error.localizedDescription)
         }
@@ -191,6 +197,8 @@ final class AppModel: ObservableObject {
             let detail = try await client.fetchThread(projectId: pid, threadId: id)
             messages = detail.messages ?? []
             lastError = nil
+            // 对话 → 右栏：只加载本 thread 转出的 epic
+            await bindFlowToCurrentThread()
         } catch {
             showToast(error.localizedDescription)
         }
@@ -226,8 +234,13 @@ final class AppModel: ObservableObject {
             if selectedThreadId == threadId {
                 selectedThreadId = nil
                 messages = []
+                currentEpicId = nil
+                flowEpic = nil
+                flowWorks = []
+                recentEpics = []
             }
             await refreshThreads(projectId: pid)
+            await bindFlowToCurrentThread()
         } catch {
             showToast(error.localizedDescription)
         }
@@ -462,22 +475,49 @@ final class AppModel: ObservableObject {
                 toastMsg += " · Engine 已唤醒"
             }
             showToast(toastMsg)
-            await refreshEpicList()
-            await refreshFlow()
-            restartFlowSSE()
+            await bindFlowToCurrentThread(preferEpicId: resp.epic_id)
         } catch {
             transferError = error.localizedDescription
         }
     }
 
-    func refreshEpicList() async {
+    /// 右栏与当前对话深度绑定：只展示本 thread 转出的任务
+    func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
         guard let pid = selectedProjectId else { return }
+        selectedNodeDetail = nil
+        guard let tid = selectedThreadId, !tid.isEmpty else {
+            currentEpicId = nil
+            recentEpics = []
+            flowEpic = nil
+            flowWorks = []
+            flowHeadline = ""
+            flowEmptyMessage = "选择或新建对话后，转任务会出现在这里"
+            restartFlowSSE()
+            return
+        }
         do {
             try await prepareClient()
-            recentEpics = try await client.fetchRecentEpics(projectId: pid)
+            recentEpics = try await client.fetchRecentEpics(projectId: pid, threadId: tid)
+            if let prefer = preferEpicId, !prefer.isEmpty {
+                currentEpicId = prefer
+            } else if let first = recentEpics.first?.epic_id {
+                currentEpicId = first
+            } else {
+                currentEpicId = nil
+                flowEpic = nil
+                flowWorks = []
+                flowHeadline = ""
+                flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+            }
+            await refreshFlow()
+            restartFlowSSE()
         } catch {
-            // 非致命
+            flowEmptyMessage = "流程加载失败"
         }
+    }
+
+    func refreshEpicList() async {
+        await bindFlowToCurrentThread()
     }
 
     func selectEpic(_ epicId: String) async {
@@ -501,20 +541,25 @@ final class AppModel: ObservableObject {
     private func applySnapshot(_ snap: FlowSnapshot) {
         if snap.empty == true {
             if currentEpicId == nil {
-                flowWorks = []
-                flowEpic = nil
-                flowHeadline = ""
-                flowEmptyMessage = snap.message ?? "聊透后转任务，编排将在此展开"
+                if !flowWorks.isEmpty { flowWorks = [] }
+                if flowEpic != nil { flowEpic = nil }
+                if !flowHeadline.isEmpty { flowHeadline = "" }
+                let msg = snap.message ?? "聊透后转任务，编排将在此展开"
+                if flowEmptyMessage != msg { flowEmptyMessage = msg }
             }
             return
         }
-        flowWorks = snap.works ?? []
-        currentEpicId = snap.epic_id ?? currentEpicId
-        flowEpic = snap.epic
-        flowHeadline = snap.headline
+        let works = snap.works ?? []
+        let eid = snap.epic_id ?? currentEpicId
+        let headline = snap.headline
             ?? snap.epic?.headline
-            ?? (flowWorks.first(where: \.isActive).map { "正在：\($0.title)" } ?? "")
-        flowEmptyMessage = ""
+            ?? (works.first(where: \.isActive).map { "正在：\($0.title)" } ?? "")
+        // 仅在变化时写入，避免 SSE 重绘冲掉中栏输入焦点
+        if flowWorks != works { flowWorks = works }
+        if currentEpicId != eid { currentEpicId = eid }
+        if flowEpic != snap.epic { flowEpic = snap.epic }
+        if flowHeadline != headline { flowHeadline = headline }
+        if !flowEmptyMessage.isEmpty { flowEmptyMessage = "" }
     }
 
     func openNodeDetail(id: String) {

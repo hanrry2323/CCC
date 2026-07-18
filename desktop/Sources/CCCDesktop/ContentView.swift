@@ -59,6 +59,7 @@ struct CodexSidebar: View {
                 }
 
                 SoftRow(title: "看板", icon: "square.grid.2x2") {
+                    // 下一版内嵌；本轮仍开网页
                     model.selectDestination(.hub)
                 }
                 SoftRow(title: "运维", icon: "wrench.and.screwdriver") {
@@ -93,7 +94,7 @@ struct CodexSidebar: View {
             .padding(.top, 6)
             .padding(.bottom, 12)
         }
-        .background(VibrancyBackground(material: .sidebar))
+        .background(CCCTheme.sidebar)
     }
 
     private var projectMenu: some View {
@@ -211,184 +212,210 @@ struct CodexSidebar: View {
     }
 }
 
-// MARK: - Chat
+// MARK: - Chat（Cursor 节奏：消息区占满 + 输入条贴底）
 
 struct CodexChatPane: View {
     @EnvironmentObject var model: AppModel
+    /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
+    @State private var composerText: String = ""
     @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
-                    .frame(width: 6, height: 6)
-                Text(model.connected ? model.statusText : "未连接")
-                    .font(.system(size: 11))
-                    .foregroundStyle(CCCTheme.faint)
-                Spacer(minLength: 0)
-                if model.busy {
-                    ProgressView().controlSize(.mini)
-                }
-            }
-            .padding(.horizontal, 28)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            statusBar
 
             if !model.connected {
-                Spacer()
-                VStack(spacing: 8) {
-                    Text("连接后开始对话")
-                        .font(CCCTheme.title)
-                        .tracking(-0.8)
-                    Text("在设置中配置 Server")
-                        .font(.system(size: 14))
-                        .foregroundStyle(CCCTheme.faint)
-                    Button("重试") { Task { await model.reconnect() } }
-                        .buttonStyle(.borderedProminent)
-                        .tint(CCCTheme.accent)
-                        .controlSize(.small)
-                        .padding(.top, 6)
-                }
-                Spacer()
+                offlineCenter
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 26) {
-                            if model.messages.isEmpty {
-                                emptyHero
-                            }
-                            ForEach(model.messages) { msg in
-                                CodexMessageRow(message: msg).id(msg.id)
-                            }
-                        }
-                        .frame(maxWidth: CCCTheme.chatMaxWidth)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 40)
-                        .padding(.top, 4)
-                        .padding(.bottom, 28)
-                    }
-                    .onChange(of: model.messages.count) { _ in scroll(proxy) }
-                    .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
-                }
-
-                composer
+                messageArea
+                composerDock
             }
         }
         .background(CCCTheme.chatBg)
-    }
-
-    private func scroll(_ proxy: ScrollViewProxy) {
-        guard let last = model.messages.last else { return }
-        withAnimation(.easeOut(duration: 0.14)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+            composerFocused = true
         }
     }
 
-    private var emptyHero: some View {
-        VStack(spacing: 10) {
-            Spacer().frame(height: 120)
-            Text("有什么可以帮忙的？")
-                .font(CCCTheme.title)
-                .tracking(-0.9)
-                .foregroundStyle(CCCTheme.ink)
-            Text("说明目标与验收，再转任务给编排引擎。")
-                .font(.system(size: 14))
+    private var statusBar: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                .frame(width: 6, height: 6)
+            Text(model.connected ? model.statusText : "未连接")
+                .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-            Spacer().frame(height: 56)
+            Spacer(minLength: 0)
+            if model.busy {
+                ProgressView().controlSize(.mini)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var offlineCenter: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Text("未连接到 Server")
+                .font(CCCTheme.title)
+                .foregroundStyle(CCCTheme.ink)
+            Text(model.serverURLString)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(CCCTheme.secondary)
+            if let err = model.lastError, !err.isEmpty {
+                Text(err)
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.faint)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+            HStack(spacing: 12) {
+                Button("重试") { Task { await model.reconnect() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(CCCTheme.accent)
+                    .controlSize(.small)
+                Button("打开设置") {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(CCCTheme.accent)
+                .controlSize(.small)
+            }
+            .padding(.top, 4)
+            Spacer()
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var composer: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                // 工具条藏进输入框上沿——少一层「胶囊按钮」廉价感
-                HStack(spacing: 12) {
-                    Button {
-                        model.openTransferSheet()
-                    } label: {
-                        Text("转任务")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(
-                                model.selectedProject?.isDispatchable == true
-                                    ? CCCTheme.secondary
-                                    : CCCTheme.faint
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(model.selectedProject?.isDispatchable != true)
-
-                    if model.busy {
-                        ProgressView().controlSize(.mini)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 2)
-
-                HStack(alignment: .bottom, spacing: 10) {
-                    ZStack(alignment: .topLeading) {
-                        if model.draft.isEmpty {
-                            Text("问任何问题…")
-                                .font(CCCTheme.body)
+    private var messageArea: some View {
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    if model.messages.isEmpty {
+                        VStack(spacing: 8) {
+                            Spacer().frame(height: 72)
+                            Text("有什么可以帮忙的？")
+                                .font(CCCTheme.title)
+                                .foregroundStyle(CCCTheme.ink)
+                            Text("说明目标与验收，再转任务。")
+                                .font(.system(size: 13.5))
                                 .foregroundStyle(CCCTheme.faint)
-                                .padding(.top, 10)
-                                .padding(.leading, 5)
-                                .allowsHitTesting(false)
                         }
-                        TextEditor(text: $model.draft)
-                            .font(CCCTheme.body)
-                            .focused($composerFocused)
-                            .frame(minHeight: 44, maxHeight: 140)
-                            .padding(.vertical, 6)
-                            .scrollContentBackground(.hidden)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 24)
                     }
-
-                    Button {
-                        Task { await model.sendMessage() }
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(canSend ? Color(nsColor: .textBackgroundColor) : CCCTheme.faint)
-                            .frame(width: 30, height: 30)
-                            .background(
-                                Circle().fill(canSend ? CCCTheme.accent : CCCTheme.hover)
-                            )
+                    ForEach(model.messages) { msg in
+                        CodexMessageRow(message: msg).id(msg.id)
                     }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!canSend)
-                    .padding(.bottom, 10)
-                    .padding(.trailing, 10)
-                    .animation(.easeOut(duration: 0.12), value: canSend)
                 }
-                .padding(.leading, 12)
+                .frame(maxWidth: CCCTheme.chatMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 28)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
             }
+            .onChange(of: model.messages.count) { _ in scroll(proxy) }
+            .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
+        }
+    }
+
+    private func scroll(_ proxy: ScrollViewProxy) {
+        guard let last = model.messages.last else { return }
+        withAnimation(.easeOut(duration: 0.12)) {
+            proxy.scrollTo(last.id, anchor: .bottom)
+        }
+    }
+
+    /// 矮输入条；草稿用本地 @State，避免 SSE 冲焦点
+    private var composerDock: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Button {
+                    model.openTransferSheet()
+                } label: {
+                    Text("转任务")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(
+                            model.selectedProject?.isDispatchable == true
+                                ? CCCTheme.accent
+                                : CCCTheme.faint
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(model.selectedProject?.isDispatchable != true)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: CCCTheme.chatMaxWidth)
+            .frame(maxWidth: .infinity)
+
+            HStack(alignment: .center, spacing: 8) {
+                TextField("问任何问题…", text: $composerText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(CCCTheme.body)
+                    .lineLimit(1...4)
+                    .focused($composerFocused)
+                    .disabled(model.busy)
+                    .padding(.leading, 12)
+                    .padding(.vertical, 8)
+
+                Button {
+                    sendFromComposer()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(canSend ? Color.white : CCCTheme.faint)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(canSend ? CCCTheme.accent : CCCTheme.hover))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(!canSend)
+                .padding(.trailing, 8)
+            }
+            .frame(minHeight: 36)
             .background(
-                RoundedRectangle(cornerRadius: CCCTheme.radiusComposer, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(CCCTheme.surface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: CCCTheme.radiusComposer, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(
-                        composerFocused ? CCCTheme.borderStrong : CCCTheme.border,
+                        composerFocused ? CCCTheme.accent.opacity(0.4) : CCCTheme.border,
                         lineWidth: 1
                     )
             )
-            .shadow(color: .black.opacity(composerFocused ? 0.07 : 0.04), radius: composerFocused ? 28 : 18, y: 8)
-            .animation(.easeOut(duration: 0.15), value: composerFocused)
+            .contentShape(Rectangle())
+            .onTapGesture { composerFocused = true }
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 40)
-        .padding(.bottom, 22)
+        .padding(.horizontal, 28)
         .padding(.top, 6)
+        .padding(.bottom, 36)
+        .background(CCCTheme.chatBg)
     }
 
     private var canSend: Bool {
-        !model.busy && !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !model.busy && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sendFromComposer() {
+        let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        model.draft = text
+        composerText = ""
+        Task {
+            await model.sendMessage()
+            // 发送失败时 AppModel 会把 draft 填回
+            if !model.draft.isEmpty {
+                composerText = model.draft
+                model.draft = ""
+            }
+            composerFocused = true
+        }
     }
 }
 
@@ -397,45 +424,65 @@ struct CodexMessageRow: View {
 
     var body: some View {
         let isUser = message.role == "user"
-        HStack(alignment: .top, spacing: 0) {
+        let body = message.content.isEmpty && message.isStreaming ? "…" : message.content
+        Group {
             if isUser {
-                Spacer(minLength: 64)
-                Text(message.content)
-                    .font(CCCTheme.body)
-                    .lineSpacing(3.5)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(CCCTheme.bubbleUser)
-                    )
-            } else {
-                Text(message.content.isEmpty && message.isStreaming ? "…" : message.content)
-                    .font(CCCTheme.body)
-                    .lineSpacing(4.5)
-                    .textSelection(.enabled)
-                    .foregroundStyle(CCCTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if message.isStreaming {
-                    ProgressView().controlSize(.mini).padding(.leading, 6)
+                HStack(alignment: .top, spacing: 0) {
+                    Spacer(minLength: 80)
+                    MarkdownText(source: body)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(CCCTheme.bubbleUser)
+                        )
                 }
-                Spacer(minLength: 40)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    MarkdownText(source: body)
+                    if message.isStreaming {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+                .padding(.trailing, 40)
             }
         }
     }
 }
 
-// MARK: - Flow rail
+// MARK: - Flow rail（跟当前对话绑定）
 
 struct FlowRail: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: CCCTheme.trafficLightInset - 16)
+            Color.clear.frame(height: 8)
 
-            if !model.recentEpics.isEmpty {
+            // 标题：说明这是「本对话的编排」，不是全局测试列表
+            VStack(alignment: .leading, spacing: 4) {
+                Text("本对话编排")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(CCCTheme.ink)
+                if let title = boundEpicTitle {
+                    Text(title)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.secondary)
+                        .lineLimit(2)
+                } else {
+                    Text(model.selectedThreadId == nil
+                         ? "先选左侧对话"
+                         : "转任务后显示流程")
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, CCCTheme.trafficLightInset - 8)
+            .padding(.bottom, 8)
+
+            // 仅当本对话有多个转任务时才出现切换（不再甩全项目 smoke 列表）
+            if model.recentEpics.count > 1 {
                 Menu {
                     ForEach(model.recentEpics) { epic in
                         Button {
@@ -450,17 +497,15 @@ struct FlowRail: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Text(currentEpicLabel)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text("切换本对话任务")
+                            .font(.system(size: 11, weight: .medium))
                         Image(systemName: "chevron.down")
                             .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(CCCTheme.faint)
                         Spacer(minLength: 0)
                     }
-                    .foregroundStyle(CCCTheme.secondary)
-                    .padding(.horizontal, 16)
+                    .foregroundStyle(CCCTheme.accent)
+                    .padding(.horizontal, 14)
                     .padding(.bottom, 6)
                 }
             }
@@ -475,11 +520,11 @@ struct FlowRail: View {
                 onSelectNode: { model.openNodeDetail(id: $0) }
             )
         }
-        .background(VibrancyBackground(material: .sidebar))
+        .background(CCCTheme.sidebar)
         .sheet(item: $model.selectedNodeDetail) { detail in
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text(detail.kind == "epic" ? "大卡" : "步骤")
+                    Text(detail.kind == "epic" ? "任务" : "步骤")
                         .font(CCCTheme.caption)
                         .foregroundStyle(CCCTheme.faint)
                     Spacer()
@@ -502,7 +547,7 @@ struct FlowRail: View {
                         .textSelection(.enabled)
                 }
                 if detail.kind == "work", model.flowWorks.contains(where: { $0.workId == detail.id && $0.isFailed }) {
-                    Button("在 Hub 运维中查看") {
+                    Button("在运维中查看") {
                         model.dismissNodeDetail()
                         model.openHubInBrowser(route: "#/ops")
                     }
@@ -515,11 +560,11 @@ struct FlowRail: View {
         }
     }
 
-    private var currentEpicLabel: String {
+    private var boundEpicTitle: String? {
         if let cur = model.recentEpics.first(where: { $0.epic_id == model.currentEpicId }) {
             return cur.title ?? cur.epic_id
         }
-        return model.flowEpic?.title ?? model.currentEpicId ?? "选择编排"
+        return model.flowEpic?.title ?? model.currentEpicId
     }
 }
 
