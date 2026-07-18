@@ -29,7 +29,7 @@
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | CCC 本体编排助手 |
-| 当前版本 | **v0.50.0**（见根目录 `VERSION`） |
+| 当前版本 | **v0.51.0**（见根目录 `VERSION`） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 
 ---
@@ -39,10 +39,11 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-18）**：v0.50.0 多仓生产就绪 · workspace-doctor · 五仓卫生。
+> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 orch 分离 · Engine 跳过 CCC · Hub 拒投编排仓。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-18 | m2-orch-separation | `docs/milestones/m2-orch-separation.md` | `docs/releases/v0.51.0.md` | CCC role=orch；Hub reject；VERSION v0.51.0 | PASS |
 | 2026-07-18 | m1-ten-workspaces | `docs/milestones/m1-ten-workspaces.md` | `docs/releases/v0.50.0.md` | doctor ERROR=0；6 仓登记；VERSION v0.50.0 | PASS |
 | 2026-07-18 | board-engine-refactor | `docs/architecture-core.md` | `git log 2952d8c` | `scripts/board/roles/` + `scripts/engine/` 拆包；facade 保留 | PASS（git） |
 | 2026-07-18 | hub-ops-console | `docs/hub-ops-console.md` | `git log 2f0549c` | Hub `#/ops` + blank-shell fix | PASS（git） |

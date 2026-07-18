@@ -45,6 +45,16 @@ export async function openTaskDialog(prefill = {}) {
     (lastAssistant ? String(lastAssistant.content || '').slice(0, 2000) : '');
 
   const projects = await loadProjects().catch(() => []);
+  const dispatchable = projects.filter(
+    (p) => p.role !== 'orch' && p.engine_eligible !== false
+  );
+  if (!dispatchable.length) {
+    window.showToast?.(
+      '无业务项目可下达。CCC 编排仓请用 Cursor 改；请先登记业务仓。',
+      'error'
+    );
+    return;
+  }
   const overlay = document.createElement('div');
   overlay.className = 'dialog-overlay task-overlay';
   overlay.addEventListener('click', close);
@@ -52,11 +62,22 @@ export async function openTaskDialog(prefill = {}) {
 
   const dialog = document.createElement('div');
   dialog.className = 'task-dialog settings-sheet';
-  const projectOpts = projects.map(p =>
-    '<option value="' + escapeHtml(p.id) + '"' +
-    (p.id === state.get('currentProject') ? ' selected' : '') + '>' +
-    escapeHtml(p.name) + '</option>'
-  ).join('');
+  const prefer =
+    dispatchable.find((p) => p.id === state.get('currentProject')) ||
+    dispatchable.find((p) => p.id === state.get('defaultProject')) ||
+    dispatchable[0];
+  const projectOpts = dispatchable
+    .map(
+      (p) =>
+        '<option value="' +
+        escapeHtml(p.id) +
+        '"' +
+        (p.id === prefer.id ? ' selected' : '') +
+        '>' +
+        escapeHtml(p.name) +
+        '</option>'
+    )
+    .join('');
 
   dialog.innerHTML =
     '<div class="settings-panel">' +
@@ -65,7 +86,7 @@ export async function openTaskDialog(prefill = {}) {
         '<button class="settings-close" id="task-close">×</button>' +
       '</div>' +
       '<div class="settings-body">' +
-        '<p class="task-help">写入看板 <code>backlog</code> 并<strong>立即唤醒 Engine</strong>（自动 enabled）。流程：拆分→开发→pytest→验收→发布。</p>' +
+        '<p class="task-help">写入看板 <code>backlog</code> 并<strong>立即唤醒 Engine</strong>（自动 enabled）。流程：拆分→开发→pytest→验收→发布。CCC 编排仓不可下达。</p>' +
         '<div class="settings-group">' +
           '<div class="settings-row"><span class="settings-label">项目</span>' +
             '<select class="settings-select" id="task-project">' + projectOpts + '</select></div>' +
@@ -102,6 +123,14 @@ export async function openTaskDialog(prefill = {}) {
     const projectId = document.getElementById('task-project')?.value || state.get('currentProject');
     if (!title) {
       window.showToast?.('请填写标题', 'error');
+      return;
+    }
+    const meta = projects.find((p) => p.id === projectId);
+    if (meta && (meta.role === 'orch' || meta.engine_eligible === false)) {
+      window.showToast?.(
+        'CCC 编排仓不可下达。平台请用 Cursor 改 CCC；业务请选登记项目。',
+        'error'
+      );
       return;
     }
     const ts = nowIso();

@@ -229,10 +229,22 @@ def ensure_engine_for_task(
     workspace_reg = None
     if workspace:
         try:
-            from _workspace_registry import register_workspace
+            from _workspace_registry import (
+                ROLE_ORCH,
+                is_orch_path,
+                register_workspace,
+            )
 
+            # v0.51: CCC / orch always registered engine=false (never Engine-consumable)
+            force_orch = is_orch_path(workspace) or (
+                workspace_name
+                and str(workspace_name).strip().upper() in ("CCC",)
+            )
             workspace_reg = register_workspace(
-                workspace, name=workspace_name
+                workspace,
+                name=workspace_name,
+                role=ROLE_ORCH if force_orch else None,
+                engine=False if force_orch else None,
             )
         except Exception as exc:
             workspace_reg = {"ok": False, "error": str(exc)[:200]}

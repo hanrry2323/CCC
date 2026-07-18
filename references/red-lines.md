@@ -40,13 +40,15 @@
 | **R-09** | **认证 GET 路径（v0.24.6+）** | v0.24.6 |
 | **R-12** | **强制人工介入（medium/large fallback quarantine v0.24.5+）** | v0.24.5 |
 | **R-14** | **audit 子进程 timeout（v0.24.3+ max_workers=2 + 120s）** | v0.24.3 |
+| **R-15** | **禁止将 CCC 本体需求投进 CCC 看板由 Engine 执行（orch 分离）** | v0.51.0 |
 
 > 历史说明：v0.6 期间曾预留红线 16 / 17（未发布），v0.7 之后按"禁止未使用路线代码"（红线 13）原则已撤销预留号。本表只列实际生效条目。
 >
 > X1/X2/X3 是 v0.8 配套（OpenCode 执行端），编号用 X 前缀避开数字历史。
 >
 > **R- 编号说明（v0.24.5+）**：v0.24.5 起新增 R- 编号（v0.25.0 落地），与 X- 编号并存。R- 编号对应 v0.20.1 X- 编号的子规则（角色系统 + review 细化），由 v0.24.3+ 对抗性审查引入。CHANGELOG v0.24.5/6/7 已使用 R- 编号回改 CHANGELOG 成本更高，故 R- 作为 v0.24.5+ 标准编号、X- 保留为历史索引。
-
+>
+> **注意**：数字红线 **15**（轮询进程完成自动终止，v0.7d-prime）与 **R-15**（orch 分离，v0.51）编号不同系列，勿混。
 ---
 
 ## 红线 1：不动系统文件
@@ -632,6 +634,17 @@ fi
 - **Why**：v0.24.2 audit 多 ws 并发 4 × 2 子进程 = 8 并发，mypy 单进程 ~300MB 峰值 1.2GB+ → 8 核机器 OOM 风险。
 - **机制**：事实依据 `scripts/ccc-board.py:_audit_run_one:2228-2250`（v0.24.3 max_workers=2 + 120s timeout）。
 - **触犯后果**：High — OOM 杀进程，audit 报表不完整。
+
+#### 红线 R-15：禁止 CCC 本体经看板自消费（v0.51 orch 分离）
+
+- **规则**：不得将 CCC 编排仓（`role=orch` / `engine=false`）的平台需求投进 CCC backlog，由 Engine 跑 product/dev/reviewer/tester/kb。平台缺陷一律在 **CCC 仓用 Cursor（或指定 IDE）改一次**，全局生效。
+- **Why**：自 Loop 把「编排底座」与「业务执行」搅在一起，导致无统一维护窗口、业务仓就地 fork 平台补丁。
+- **机制**：
+  1. `~/.ccc/workspaces.json`：CCC `role=orch`、`engine=false`
+  2. Engine `_discover_workspaces` / `list_engine_paths` 跳过 orch；空 eligible → idle（不 fallback 只跑 CCC）
+  3. Hub 创建任务 API + 前端下达：目标为 orch → 400 / toast 拒绝
+- **允许**：Hub 选 CCC **只聊**运维/设计；控制台 / doctor / runtime 观察
+- **触犯后果**：Critical — 底座自消费 = 维护面分裂。
 
 #### 红线 X8：audit 角色必须 ≥ 2h 间隔（v0.22 起）
 

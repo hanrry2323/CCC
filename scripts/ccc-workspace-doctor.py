@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""ccc-workspace-doctor — 多仓登记卫生检查（v0.50）
+"""ccc-workspace-doctor — 多仓登记卫生检查（v0.51 orch 分离）
 
 Usage:
   python3 scripts/ccc-workspace-doctor.py              # doctor（默认）
   python3 scripts/ccc-workspace-doctor.py list
+  python3 scripts/ccc-workspace-doctor.py migrate [--dry-run]
   python3 scripts/ccc-workspace-doctor.py prune [--apply]
   python3 scripts/ccc-workspace-doctor.py register <path> [--name NAME]
   python3 scripts/ccc-workspace-doctor.py unregister <path|name>
@@ -24,8 +25,11 @@ if str(SCRIPTS) not in sys.path:
 
 from _workspace_registry import (  # noqa: E402
     REGISTRY_FILE,
+    ROLE_ORCH,
+    entry_engine_eligible,
     is_ephemeral_path,
     list_registered_entries,
+    migrate_registry_roles,
     prune_missing,
     register_workspace,
     unregister_workspace,
@@ -127,6 +131,12 @@ def cmd_unregister(args: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_migrate(args: argparse.Namespace) -> int:
+    out = migrate_registry_roles(dry_run=bool(args.dry_run))
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0 if out.get("ok") else 1
+
+
 def cmd_doctor(_: argparse.Namespace) -> int:
     entries = list_registered_entries()
     discovered = _discover_board_paths()
@@ -136,9 +146,17 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     rows: list[dict] = []
     errors = 0
     warns = 0
+    app_n = 0
+    orch_n = 0
 
     for e in entries:
         root = Path(e["path"])
+        role = e.get("role") or "app"
+        engine_ok = entry_engine_eligible(e)
+        if role == ROLE_ORCH or not engine_ok:
+            orch_n += 1
+        else:
+            app_n += 1
         errs: list[str] = []
         warnings: list[str] = []
         if is_ephemeral_path(root):
@@ -154,6 +172,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
             warnings.append("weak_agent_docs")
         counts = _board_counts(root) if root.is_dir() else {}
         active = sum(counts.get(c, 0) for c in ACTIVE_COLS)
+        if role == ROLE_ORCH and active:
+            warnings.append(f"orch_backlog_not_consumed={active}")
         # done epic visible?
         backlog_dir = root / ".ccc" / "board" / "backlog"
         stuck_done = 0
@@ -181,7 +201,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
             {
                 "name": e["name"],
                 "path": e["path"],
-                "engine": True,
+                "role": role,
+                "engine": engine_ok,
                 "board_active": active,
                 "counts": counts,
                 "agent_docs": docs,
@@ -200,6 +221,7 @@ def cmd_doctor(_: argparse.Namespace) -> int:
             {
                 "name": name,
                 "path": key,
+                "role": "?",
                 "engine": False,
                 "board_active": sum(_board_counts(path).get(c, 0) for c in ACTIVE_COLS),
                 "counts": _board_counts(path),
@@ -209,24 +231,24 @@ def cmd_doctor(_: argparse.Namespace) -> int:
             }
         )
 
-    # Registered but not under discover roots (OK for CCC outside scan) — info only
-    fleet_n = len(entries)
-    if fleet_n > 10:
+    # ≤10 applies to engine-eligible apps; orch is extra
+    fleet_warn: list[str] = []
+    if app_n > 10:
         errors += 1
-        fleet_warn = ["fleet_over_10"]
-    else:
-        fleet_warn = []
+        fleet_warn.append("fleet_apps_over_10")
 
     print(f"registry: {REGISTRY_FILE}")
-    print(f"registered: {fleet_n}  discovered_extra: {len(disc_paths - reg_paths)}")
+    print(
+        f"registered: {len(entries)}  apps(engine): {app_n}  orch: {orch_n}  "
+        f"discovered_extra: {len(disc_paths - reg_paths)}"
+    )
     if fleet_warn:
         print(f"FLEET ERROR: {fleet_warn}")
     print()
-    hdr = f"{'name':<16} {'eng':<4} {'active':>6} {'docs':<28} status"
+    hdr = f"{'name':<16} {'role':<5} {'eng':<5} {'active':>6} {'docs':<28} status"
     print(hdr)
     print("-" * len(hdr))
     for r in rows:
-        status = ""
         if r["errors"]:
             status = "ERROR " + ",".join(r["errors"])
         elif r["warnings"]:
@@ -234,8 +256,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         else:
             status = "OK"
         print(
-            f"{r['name']:<16} {str(r['engine']):<4} {r['board_active']:>6} "
-            f"{r['agent_docs']:<28} {status}"
+            f"{r['name']:<16} {str(r.get('role') or '?'):<5} {str(r['engine']):<5} "
+            f"{r['board_active']:>6} {r['agent_docs']:<28} {status}"
         )
 
     print()
@@ -249,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("doctor", help="health check (default)")
     sub.add_parser("list", help="dump registry JSON")
+
+    p_mig = sub.add_parser("migrate", help="normalize role/engine (CCC→orch)")
+    p_mig.add_argument("--dry-run", action="store_true")
 
     p_prune = sub.add_parser("prune", help="remove dead/ephemeral entries")
     p_prune.add_argument("--apply", action="store_true", help="write changes")
@@ -266,6 +291,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_doctor(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "migrate":
+        return cmd_migrate(args)
     if cmd == "prune":
         return cmd_prune(args)
     if cmd == "register":

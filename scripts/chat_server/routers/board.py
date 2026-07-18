@@ -69,10 +69,53 @@ def _write_seed_artifacts(
     return written
 
 
+def _assert_dispatchable_workspace(workspace: str) -> Path:
+    """v0.51: refuse creating Engine-consumable tasks on orch (CCC) workspace."""
+    import sys
+
+    scripts = Path(__file__).resolve().parents[3] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    root = _workspace_root(workspace)
+    if root is None:
+        # Still allow board-server to resolve unknown names; Hub may 404 later
+        return Path()
+    try:
+        from _workspace_registry import entry_engine_eligible, is_orch_path, lookup_entry
+
+        if is_orch_path(root):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "CCC 编排仓不可下达看板任务（v0.51）。"
+                    "平台改动请用 Cursor 打开 CCC 仓；业务请选登记项目。"
+                ),
+            )
+        entry = lookup_entry(root)
+        if entry and not entry_engine_eligible(entry):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"workspace {workspace} engine=false / role=orch，"
+                    "不可下达；请改用业务项目。"
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        if workspace.strip().upper() in ("CCC",) or workspace.strip().lower() == "ccc":
+            raise HTTPException(
+                status_code=400,
+                detail="CCC 编排仓不可下达看板任务（v0.51）。请用 Cursor 改 CCC。",
+            )
+    return root
+
+
 def _hub_ensure_engine(workspace: str, task_id: str | None) -> dict:
     """v0.42.1 Hub 双保险：即使 Board 旧进程无 wake，Hub 也强制 enabled+登记+wake。
 
     幂等；与 Board 侧 ensure 重复调用安全。
+    v0.51: orch 仍可 wake/控制面，但登记为 role=orch engine=false。
     """
     import sys
 
@@ -192,6 +235,7 @@ async def board_proxy_create_task(request: Request):
 
     workspace = _resolve_workspace(body, request)
     body["workspace"] = workspace
+    _assert_dispatchable_workspace(workspace)
     if not body.get("status"):
         body["status"] = "backlog"
 
@@ -348,6 +392,7 @@ async def native_create_task(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
     body["workspace"] = _resolve_workspace(body, request)
+    _assert_dispatchable_workspace(body["workspace"])
     if not body.get("status"):
         body["status"] = "backlog"
     workspace = body["workspace"]

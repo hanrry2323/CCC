@@ -155,7 +155,11 @@ async function init() {
     window.showToast('项目加载失败: ' + e.message, 'error');
   }
 
-  const project = state.get('currentProject') || 'ccc';
+  const project =
+    state.get('currentProject') ||
+    state.get('defaultProject') ||
+    'ccc';
+  if (!state.get('currentProject')) state.set('currentProject', project);
   const tabId = generateId();
   const tabs = [
     {
@@ -177,7 +181,8 @@ async function init() {
   document.addEventListener('new-tab', () => {
     snapshotActiveTab();
     const id = generateId();
-    const pid = state.get('currentProject') || 'ccc';
+    const pid =
+      state.get('currentProject') || state.get('defaultProject') || 'ccc';
     const tabsNow = state.get('tabs') || [];
     tabsNow.push({
       id,

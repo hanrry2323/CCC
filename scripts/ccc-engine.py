@@ -581,28 +581,45 @@ def _quarantine_with_notify(
 
 
 def _discover_workspaces() -> list[Path]:
-    """发现 Engine 管辖的 workspace（v0.40：默认不再扫全 ~/program）。
+    """发现 Engine 管辖的 workspace（v0.51：跳过 orch / engine:false）。
 
     优先级：
-      1. CCC_WORKSPACES=name:path,name:path 或 path,path
-      2. ~/.ccc/workspaces.json → {"workspaces":[{"path":"..."}]}
-      3. 仅 CCC 自身（cfg.ccc_home / 本仓库）
-    显式全扫：CCC_DISCOVER_ALL=1（兼容旧行为，不推荐）
+      1. CCC_WORKSPACES=name:path,name:path 或 path,path（仍尊重 orch 过滤）
+      2. ~/.ccc/workspaces.json → 仅 engine-eligible 条目
+      3. CCC_DISCOVER_ALL=1 全扫（过滤 orch 路径）
+      4. 空 → idle（不再 fallback 只跑 CCC）
     """
     import os as _os
 
     seen: set[str] = set()
     workspaces: list[Path] = []
 
-    def _add(p: Path) -> None:
+    def _is_orch(p: Path) -> bool:
+        try:
+            from _workspace_registry import is_orch_path
+
+            return is_orch_path(p)
+        except ImportError:
+            home = getattr(cfg, "ccc_home", None)
+            if home and Path(home).resolve() == p.resolve():
+                return True
+            return Path(__file__).resolve().parent.parent.resolve() == p.resolve()
+
+    def _add(p: Path, *, allow_orch: bool = False) -> None:
         if not p.is_dir():
             return
         if not (p / ".ccc" / "board").is_dir():
             return
-        key = str(p.resolve())
+        try:
+            resolved = p.resolve()
+        except OSError:
+            return
+        if not allow_orch and _is_orch(resolved):
+            return
+        key = str(resolved)
         if key in seen:
             return
-        workspaces.append(p.resolve())
+        workspaces.append(resolved)
         seen.add(key)
 
     env = _os.environ.get("CCC_WORKSPACES", "").strip()
@@ -616,19 +633,43 @@ def _discover_workspaces() -> list[Path]:
         if workspaces:
             return workspaces
 
-    registry = Path.home() / ".ccc" / "workspaces.json"
-    if registry.is_file():
-        try:
-            data = json.loads(registry.read_text(encoding="utf-8"))
-            for item in data.get("workspaces") or []:
-                if isinstance(item, str):
-                    _add(Path(item).expanduser())
-                elif isinstance(item, dict) and item.get("path"):
-                    _add(Path(item["path"]).expanduser())
-        except (OSError, json.JSONDecodeError) as exc:
-            engine_log(f"[workspace] registry parse failed: {exc}")
+    try:
+        from _workspace_registry import list_engine_paths, migrate_registry_roles
+
+        # Best-effort migrate roles once per process start path
+        migrate_registry_roles(dry_run=False)
+        for p in list_engine_paths():
+            _add(p)
         if workspaces:
             return workspaces
+        # Registry exists but only orch / empty eligible → idle
+        registry = Path.home() / ".ccc" / "workspaces.json"
+        if registry.is_file():
+            engine_log(
+                "[workspace] registry has no engine-eligible apps "
+                "(orch-only or empty) → idle"
+            )
+            return []
+    except ImportError:
+        registry = Path.home() / ".ccc" / "workspaces.json"
+        if registry.is_file():
+            try:
+                data = json.loads(registry.read_text(encoding="utf-8"))
+                for item in data.get("workspaces") or []:
+                    if isinstance(item, str):
+                        _add(Path(item).expanduser())
+                    elif isinstance(item, dict) and item.get("path"):
+                        role = str(item.get("role") or "").lower()
+                        eng = item.get("engine")
+                        if role == "orch" or eng is False:
+                            continue
+                        _add(Path(item["path"]).expanduser())
+            except (OSError, json.JSONDecodeError) as exc:
+                engine_log(f"[workspace] registry parse failed: {exc}")
+            if workspaces:
+                return workspaces
+            engine_log("[workspace] registry parse/empty eligible → idle")
+            return []
 
     if _os.environ.get("CCC_DISCOVER_ALL", "").strip() in ("1", "true", "yes"):
         program_dir = Path.home() / "program"
@@ -643,13 +684,9 @@ def _discover_workspaces() -> list[Path]:
                         _add(p)
         return workspaces
 
-    # 默认：仅 CCC 自身
-    home = getattr(cfg, "ccc_home", None)
-    if home:
-        _add(Path(home))
-    if not workspaces:
-        _add(Path(__file__).resolve().parent.parent)
-    return workspaces
+    # v0.51: no CCC-only fallback — idle until apps are registered
+    engine_log("[workspace] no registry / no eligible apps → idle")
+    return []
 
 
 def _queue_has_consumable_work(store: FileBoardStore) -> bool:

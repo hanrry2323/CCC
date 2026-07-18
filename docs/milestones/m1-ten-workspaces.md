@@ -55,10 +55,15 @@ python3 ~/program/CCC/scripts/ccc-workspace-doctor.py
 | 现象 | 排查 |
 |------|------|
 | Engine 闲置 | 空板？invent 关？→ 正常。有卡？看 registry / control / upstream 熔断 |
-| Hub 有项目 Engine 不跑 | `doctor` 是否 `engine=False` → register 或下达 |
+| Hub 有项目 Engine 不跑 | `doctor` 是否 `engine=False` / `role=orch` → 业务仓需 register 或下达；CCC orch **故意**不跑 |
+| Hub 对 CCC 下达失败 | **正常**（v0.51 R-15）；平台改动用 Cursor 开 CCC |
 | 串仓 commit | 隔离审计；确认 OpenCode `--dir`；查 `~/.ccc/workspaces.json` |
 | upstream 熔断 | Engine 日志；查 `AGENT_PLANNER_BASE_URL` |
-| doctor ERROR | prune；补 CLAUDE.md；压登记数 ≤10 |
+| doctor ERROR | prune；补 CLAUDE.md；压 **apps** 登记数 ≤10 |
+
+## 后继
+
+- **M2（v0.51）**：[`m2-orch-separation.md`](m2-orch-separation.md) — CCC = orch，Engine 不消费编排仓
 
 ## 相关文档
 

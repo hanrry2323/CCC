@@ -147,28 +147,45 @@ export function setProjectActive(projectId, displayName) {
 export function setupProjectSelect(projects) {
   const sel = document.getElementById('project-select');
   const btnsHost = document.getElementById('sidebar-project-btns');
-  const prev = (sel && sel.value) || state.get('currentProject');
-  let activeId = prev;
-  let activeName = prev;
+  const preferred =
+    state.get('currentProject') || state.get('defaultProject');
+  const pickDefault = () => {
+    if (
+      preferred &&
+      projects.some(
+        (p) =>
+          p.id === preferred &&
+          p.role !== 'orch' &&
+          p.engine_eligible !== false
+      )
+    ) {
+      return preferred;
+    }
+    const app = projects.find(
+      (p) => p.role !== 'orch' && p.engine_eligible !== false
+    );
+    if (app) return app.id;
+    if (preferred && projects.some((p) => p.id === preferred)) return preferred;
+    return projects[0]?.id;
+  };
+  let activeId = pickDefault();
+  let activeName = activeId;
 
   if (sel) {
     sel.innerHTML = '';
     for (const p of projects) {
       const opt = document.createElement('option');
       opt.value = p.id;
-      opt.textContent = p.name;
-      if (p.id === prev) opt.selected = true;
+      const tag =
+        p.role === 'orch' || p.engine_eligible === false ? ' · 编排' : '';
+      opt.textContent = (p.name || p.id) + tag;
+      if (p.id === activeId) opt.selected = true;
       sel.appendChild(opt);
     }
-    if (!projects.some((p) => p.id === prev) && projects[0]) {
-      sel.value = projects[0].id;
-      activeId = projects[0].id;
-      activeName = projects[0].name;
-    } else {
-      const cur = projects.find((p) => p.id === sel.value);
-      activeId = sel.value;
-      activeName = cur?.name || sel.value;
-    }
+    if (activeId) sel.value = activeId;
+    const cur = projects.find((p) => p.id === sel.value);
+    activeId = sel.value;
+    activeName = cur?.name || sel.value;
   }
 
   if (btnsHost) {
@@ -179,11 +196,16 @@ export function setupProjectSelect(projects) {
       b.className = 'board-ws-btn' + (p.id === activeId ? ' active' : '');
       b.dataset.projectId = p.id;
       b.dataset.workspace = p.workspace || p.id;
+      b.dataset.role = p.role || 'app';
       b.innerHTML =
         '<span class="board-ws-label"></span><span class="board-ws-live" hidden aria-hidden="true"></span>';
       b.querySelector('.board-ws-label').textContent =
-        p.workspace || p.name || p.id;
-      b.title = (p.name || p.id) + (p.path ? ' · ' + p.path : '');
+        (p.workspace || p.name || p.id) +
+        (p.role === 'orch' ? ' ◆' : '');
+      b.title =
+        (p.name || p.id) +
+        (p.role === 'orch' ? '（编排仓·不可下达）' : '') +
+        (p.path ? ' · ' + p.path : '');
       b.setAttribute('aria-pressed', p.id === activeId ? 'true' : 'false');
       b.addEventListener('click', () => {
         if (state.get('currentProject') === p.id) return;

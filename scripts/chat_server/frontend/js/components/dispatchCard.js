@@ -177,13 +177,28 @@ export async function showDispatchCard(opts = {}) {
   }
 
   const projects = await loadProjects().catch(() => []);
-  const projectOpts = projects
+  const dispatchable = projects.filter(
+    (p) => p.role !== 'orch' && p.engine_eligible !== false
+  );
+  const optsSrc = dispatchable.length ? dispatchable : [];
+  if (!optsSrc.length) {
+    window.showToast?.(
+      '无业务项目可下达。CCC 编排仓请用 Cursor 改；请先登记业务仓。',
+      'error'
+    );
+    return;
+  }
+  const prefer =
+    optsSrc.find((p) => p.id === state.get('currentProject')) ||
+    optsSrc.find((p) => p.id === state.get('defaultProject')) ||
+    optsSrc[0];
+  const projectOpts = optsSrc
     .map(
       (p) =>
         '<option value="' +
         escapeHtml(p.id) +
         '"' +
-        (p.id === state.get('currentProject') ? ' selected' : '') +
+        (p.id === prefer.id ? ' selected' : '') +
         '>' +
         escapeHtml(p.name) +
         '</option>'
@@ -194,7 +209,7 @@ export async function showDispatchCard(opts = {}) {
     .split('\n')
     .filter((l) => l.trim().startsWith('{') && l.includes('"phase"')).length;
 
-  const projectId0 = state.get('currentProject') || 'ccc';
+  const projectId0 = prefer.id;
   let showEngine = false;
   let skillsPayload = { skills: [] };
   try {
@@ -326,6 +341,14 @@ export async function showDispatchCard(opts = {}) {
       host.querySelector('#dispatch-project')?.value || state.get('currentProject');
     if (!title) {
       window.showToast?.('请填写标题', 'error');
+      return;
+    }
+    const meta = projects.find((p) => p.id === projectId);
+    if (meta && (meta.role === 'orch' || meta.engine_eligible === false)) {
+      window.showToast?.(
+        'CCC 编排仓不可下达。平台请用 Cursor 改 CCC；业务请选登记项目。',
+        'error'
+      );
       return;
     }
     const btn = host.querySelector('#dispatch-submit');

@@ -1,7 +1,7 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
 > **产品叙事 SSOT（对外/对内统一）**。README、Release、SKOT、Hub 文案冲突时以本文为准。  
-> 版本对齐：`VERSION` · 更新日期：2026-07-18 · **多仓生产就绪 v0.50**（见 `docs/milestones/m1-ten-workspaces.md`）
+> 版本对齐：`VERSION` · 更新日期：2026-07-18 · **orch 分离 v0.51**（见 `docs/milestones/m2-orch-separation.md`）
 
 ---
 

@@ -79,7 +79,10 @@ export async function apiDelete(path) {
 
 export async function loadProjects() {
   const data = await apiGet('/api/projects');
-  return data.projects;
+  if (data.default_project) {
+    state.set('defaultProject', data.default_project);
+  }
+  return data.projects || [];
 }
 
 export async function loadHistory(project, source = 'all') {

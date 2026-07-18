@@ -129,6 +129,79 @@ def test_ensure_engine_registers_workspace(tmp_path, monkeypatch):
     assert out["workspace_reg"]["ok"] is True
     assert wr.REGISTRY_FILE.is_file()
     assert any(p == root.resolve() for p in wr.list_registered_paths(wr.REGISTRY_FILE))
+    entry = wr.lookup_entry(root, registry=wr.REGISTRY_FILE)
+    assert entry and entry["role"] == "app" and entry["engine"] is True
+
+
+def test_orch_role_and_list_engine_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("CCC_ALLOW_EPHEMERAL_REGISTRY", "1")
+    from _workspace_registry import (
+        ROLE_ORCH,
+        list_engine_paths,
+        list_registered_entries,
+        migrate_registry_roles,
+        register_workspace,
+    )
+
+    app = _mk_board_ws(tmp_path, "app1")
+    orch = _mk_board_ws(tmp_path, "CCC")
+    reg = tmp_path / "workspaces.json"
+    assert register_workspace(app, name="app1", registry=reg)["ok"]
+    assert register_workspace(
+        orch, name="CCC", role=ROLE_ORCH, engine=False, registry=reg
+    )["ok"]
+    eligible = list_engine_paths(reg)
+    assert app.resolve() in eligible
+    assert orch.resolve() not in eligible
+    entries = {e["name"]: e for e in list_registered_entries(reg)}
+    assert entries["CCC"]["role"] == "orch"
+    assert entries["CCC"]["engine"] is False
+
+    # migrate fills role on legacy string entries
+    reg2 = tmp_path / "ws2.json"
+    reg2.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "workspaces": [str(app.resolve()), {"name": "CCC", "path": str(orch)}],
+            }
+        )
+    )
+    out = migrate_registry_roles(registry=reg2, dry_run=False)
+    assert out["changed"] >= 1
+    migrated = {e["path"]: e for e in list_registered_entries(reg2)}
+    assert migrated[str(orch.resolve())]["engine"] is False
+    assert str(app.resolve()) in {str(p) for p in list_engine_paths(reg2)}
+
+
+def test_ensure_engine_forces_orch_false(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CCC_ALLOW_EPHEMERAL_REGISTRY", "1")
+    import _ccc_control as ctrl
+    import _engine_wake as wake
+    import _workspace_registry as wr
+
+    ctrl.CONTROL_DIR = tmp_path / ".ccc"
+    ctrl.CONTROL_FILE = ctrl.CONTROL_DIR / "control.json"
+    ctrl.DISABLED_SENTINEL = ctrl.CONTROL_DIR / "DISABLED"
+    wake.WAKE_FILE = tmp_path / ".ccc" / "engine.wake"
+    wr.REGISTRY_FILE = tmp_path / ".ccc" / "workspaces.json"
+
+    orch = _mk_board_ws(tmp_path, "CCC")
+    monkeypatch.setattr(wr, "orch_home", lambda: orch.resolve())
+    ctrl.set_mode("enabled", reason="t", source="t")
+    with patch.object(wake, "_bootstrap_engine_launchd", return_value=(False, "no_plist")):
+        out = wake.ensure_engine_for_task(
+            reason="task_dispatch",
+            task_id="t-orch",
+            workspace=orch,
+            workspace_name="CCC",
+            start_launchd=False,
+        )
+    assert out["workspace_reg"]["ok"] is True
+    e = wr.lookup_entry(orch, registry=wr.REGISTRY_FILE)
+    assert e["role"] == "orch" and e["engine"] is False
+    assert list(wr.list_engine_paths(wr.REGISTRY_FILE)) == []
 
 
 if __name__ == "__main__":

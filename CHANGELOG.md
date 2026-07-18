@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.51.0] — 2026-07-18
+
+### 里程碑：编排仓与业务仓角色分离（对内 M2）
+
+- **目标**：CCC = orch（Cursor 改底座）；Engine 只消费业务 apps；Hub 拒投 CCC
+- **DoD / runbook**：`docs/milestones/m2-orch-separation.md` · 发布说明：`docs/releases/v0.51.0.md`
+
+### Registry / Engine
+
+- **`_workspace_registry.py`**：`role` / `engine`；`list_engine_paths`；`migrate_registry_roles`；schema 1.1
+- **`ccc-engine.py`**：跳过 orch；空 eligible → idle（不再 fallback 只跑 CCC）
+- **`ccc-workspace-doctor.py`**：展示 role/engine；apps vs orch 计数；`migrate` 子命令
+- **`_engine_wake`**：登记 CCC 时强制 `role=orch` `engine=false`
+
+### Hub
+
+- 创建任务拒投 orch（400）；`/api/projects` 标 `role` / `engine_eligible` / `default_project`
+- 前端下达下拉仅业务仓；默认项目避开 ccc
+
+### 文档 / 红线
+
+- R-15；`docs/cursor-ccc-core.md`；`docs/hygiene/PLAN-TEMPLATE.md`；升档 workspace-binding
+
+---
+
 ## [v0.50.0] — 2026-07-18
 
 ### 里程碑：多仓生产就绪（对内 M1）
