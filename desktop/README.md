@@ -42,9 +42,20 @@ swift run CCCDesktop
 ## 打包基线（P4）
 
 ```bash
-swift build -c release
-# 产物：.build/release/CCCDesktop
-# 正式 .app / 签名 / notarize 可后置
+bash desktop/scripts/package-baseline.sh
+# 产物：
+#   desktop/.build/release/CCCDesktop
+#   desktop/.build/CCCDesktop.app   （最小包；签名 / notarize 后置）
+```
+
+## 真闭环冒烟
+
+```bash
+# 连 Mac2017（Hub 需在线）
+CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-desktop-e2e.sh
+
+# Hub 不可达时：本地 fanout + pytest
+CCC_DESKTOP_SMOKE_LOCAL=1 bash scripts/smoke-desktop-e2e.sh
 ```
 
 ## 非目标

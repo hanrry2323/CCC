@@ -35,8 +35,12 @@ Snapshot 增强字段：`headline`、`user_stage`、`goal_summary`、`user_statu
 
 ---
 
+## 已落地（功能主线）
+
+- 点击节点：popover 看目标/状态/失败原因
+- 历史 epic 切换：`GET /api/desktop/flow/epics` + 右栏菜单
+
 ## 后续
 
 - 真多列力导向布局 / 缩放
-- 点击节点预览 plan/report
-- 历史 epic 切换
+- 节点预览接完整 plan/report 文件

@@ -20,7 +20,7 @@ struct DesktopProject: Identifiable, Codable, Hashable {
 struct DesktopThread: Identifiable, Codable, Hashable {
     var id: String { thread_id }
     let thread_id: String
-    let title: String?
+    var title: String?
     let updated_at: String?
     let project_id: String?
 }
@@ -121,6 +121,13 @@ struct FlowEpic: Codable, Hashable {
     let description: String?
 }
 
+struct FlowEpicRef: Identifiable, Codable, Hashable {
+    var id: String { epic_id }
+    let epic_id: String
+    let title: String?
+    let updated_at: String?
+}
+
 struct FlowSnapshot: Codable {
     let ok: Bool?
     let empty: Bool?
@@ -156,11 +163,36 @@ struct TransferResponse: Decodable {
     let error: String?
     let errors: [GateError]?
     let executor_intent: String?
+    let engine_wake: EngineWakeInfo?
+}
+
+struct EngineWakeInfo: Decodable, Hashable {
+    let ok: Bool?
+    let mode: String?
+    let message: String?
 }
 
 struct GateError: Decodable, Hashable {
     let code: String?
     let message: String?
+
+    /// 门禁错误码中文
+    var localized: String {
+        let c = code ?? ""
+        switch c {
+        case "missing_title": return "缺少标题"
+        case "missing_goal": return "缺少目标"
+        case "missing_acceptance": return "缺少验收"
+        case "missing_pipeline": return "缺少产线"
+        case "feasibility_blocked": return "可行性未通过：\(message ?? "")"
+        case "project_not_dispatchable": return "当前项目不可下达"
+        case "invalid_executor_intent": return "未知执行面"
+        case "invalid_epic_id": return "任务 ID 非法"
+        default:
+            if let message, !message.isEmpty { return message }
+            return c.isEmpty ? "门禁未通过" : c
+        }
+    }
 }
 
 struct APIErrorBody: Decodable {
@@ -210,4 +242,13 @@ struct FlowGraphEdge: Identifiable, Hashable {
     let from: String
     let to: String
     let active: Bool
+}
+
+/// 节点详情（点击右栏节点）
+struct FlowNodeDetail: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let title: String
+    let status: String
+    let body: String
 }

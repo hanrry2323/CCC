@@ -283,18 +283,34 @@ def project_last_epic_file(project_id: str) -> Path:
     return d / "last_epic.json"
 
 
+def epic_history_file(project_id: str) -> Path:
+    d = config.CHAT_DIR / "_desktop" / project_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "epic_history.json"
+
+
 def remember_last_epic(project_id: str, epic_id: str, title: str = "") -> None:
+    updated = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+    rec = {"epic_id": epic_id, "title": title, "updated_at": updated}
     path = project_last_epic_file(project_id)
     path.write_text(
-        json.dumps(
-            {
-                "epic_id": epic_id,
-                "title": title,
-                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps(rec, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    # 追加历史（去重、新在前，最多 40）
+    hist_path = epic_history_file(project_id)
+    items: list[dict[str, Any]] = []
+    if hist_path.is_file():
+        try:
+            raw = json.loads(hist_path.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                items = [x for x in raw if isinstance(x, dict)]
+        except (json.JSONDecodeError, OSError):
+            items = []
+    items = [x for x in items if str(x.get("epic_id") or "") != epic_id]
+    items.insert(0, rec)
+    hist_path.write_text(
+        json.dumps(items[:40], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -308,3 +324,41 @@ def load_last_epic(project_id: str) -> dict | None:
         return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def list_recent_epics(project_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    """项目最近转任务 epic 列表（供 Desktop 右栏切换）。"""
+    hist_path = epic_history_file(project_id)
+    items: list[dict[str, Any]] = []
+    if hist_path.is_file():
+        try:
+            raw = json.loads(hist_path.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                items = [x for x in raw if isinstance(x, dict) and x.get("epic_id")]
+        except (json.JSONDecodeError, OSError):
+            items = []
+    if not items:
+        last = load_last_epic(project_id)
+        if last and last.get("epic_id"):
+            items = [last]
+    # 事件日志兜底
+    if len(items) < limit:
+        seen = {str(x.get("epic_id")) for x in items}
+        for rec in reversed(read_events(project_id=project_id, limit=500)):
+            if rec.get("event") != "epic_created":
+                continue
+            data = rec.get("data") or {}
+            eid = str(data.get("epic_id") or "")
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            items.append(
+                {
+                    "epic_id": eid,
+                    "title": str(data.get("title") or eid),
+                    "updated_at": str(rec.get("ts") or ""),
+                }
+            )
+            if len(items) >= limit:
+                break
+    return items[:limit]

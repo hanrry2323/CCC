@@ -380,6 +380,18 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
     return {}
 
 
+@router.get("/flow/epics")
+async def flow_epics(request: Request, project_id: str = "", limit: int = 20):
+    """项目最近 epic 列表（Desktop 右栏切换）。"""
+    check_auth(request)
+    pid = (project_id or "").strip()
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id required")
+    lim = max(1, min(int(limit or 20), 40))
+    items = flow_events.list_recent_epics(pid, limit=lim)
+    return {"ok": True, "project_id": pid, "epics": items}
+
+
 @router.get("/flow/snapshot")
 async def flow_snapshot(
     request: Request,

@@ -178,6 +178,26 @@ def test_flow_snapshot_empty(client, monkeypatch):
     assert d.get("empty") is True
 
 
+def test_flow_epics_history(client, monkeypatch):
+    from chat_server.routers import projects as proj
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setitem(
+        proj.PROJECTS,
+        "demo",
+        {"name": "demo", "path": "/tmp", "role": "app", "engine_eligible": True},
+    )
+    fe.remember_last_epic("demo", "e-hist-1", "First")
+    fe.remember_last_epic("demo", "e-hist-2", "Second")
+    r = client.get("/api/desktop/flow/epics?project_id=demo", auth=_auth())
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ok"] is True
+    ids = [e["epic_id"] for e in d["epics"]]
+    assert ids[0] == "e-hist-2"
+    assert "e-hist-1" in ids
+
+
 def test_flow_snapshot_reads_columns(client, monkeypatch):
     from chat_server.routers import projects as proj
     from chat_server.routers import desktop as desk

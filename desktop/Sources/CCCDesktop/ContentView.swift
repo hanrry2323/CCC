@@ -166,11 +166,36 @@ struct CodexSidebar: View {
                     ) {
                         Task { await model.openThread(thread.thread_id) }
                     }
+                    .contextMenu {
+                        Button("重命名…") { model.beginRenameThread(thread) }
+                        Button("删除", role: .destructive) {
+                            Task { await model.deleteThread(thread.thread_id) }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 16)
+        }
+        .sheet(isPresented: Binding(
+            get: { model.renameThreadId != nil },
+            set: { if !$0 { model.renameThreadId = nil } }
+        )) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("重命名对话")
+                    .font(.system(size: 16, weight: .semibold))
+                TextField("标题", text: $model.renameDraft)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Spacer()
+                    Button("取消") { model.renameThreadId = nil }
+                    Button("保存") { Task { await model.commitRenameThread() } }
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(20)
+            .frame(width: 360)
         }
     }
 
@@ -194,8 +219,21 @@ struct CodexChatPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶栏几乎隐形：只占位对齐交通灯
-            Color.clear.frame(height: 36)
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                    .frame(width: 6, height: 6)
+                Text(model.connected ? model.statusText : "未连接")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+                Spacer(minLength: 0)
+                if model.busy {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
 
             if !model.connected {
                 Spacer()
@@ -396,16 +434,92 @@ struct FlowRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: CCCTheme.trafficLightInset - 16)
+
+            if !model.recentEpics.isEmpty {
+                Menu {
+                    ForEach(model.recentEpics) { epic in
+                        Button {
+                            Task { await model.selectEpic(epic.epic_id) }
+                        } label: {
+                            HStack {
+                                Text(epic.title ?? epic.epic_id)
+                                if epic.epic_id == model.currentEpicId {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(currentEpicLabel)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(CCCTheme.faint)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(CCCTheme.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+                }
+            }
+
             FlowCanvasView(
                 epic: model.flowEpic,
                 epicId: model.currentEpicId,
                 works: model.flowWorks,
                 headline: model.flowHeadline,
                 emptyMessage: model.flowEmptyMessage,
-                onOpenOps: { model.openHubInBrowser(route: "#/ops") }
+                onOpenOps: { model.openHubInBrowser(route: "#/ops") },
+                onSelectNode: { model.openNodeDetail(id: $0) }
             )
         }
         .background(VibrancyBackground(material: .sidebar))
+        .sheet(item: $model.selectedNodeDetail) { detail in
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(detail.kind == "epic" ? "大卡" : "步骤")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
+                    Spacer()
+                    Button("关闭") { model.dismissNodeDetail() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(CCCTheme.secondary)
+                }
+                Text(detail.title)
+                    .font(.system(size: 16, weight: .semibold))
+                if !detail.status.isEmpty {
+                    Text(detail.status)
+                        .font(.system(size: 12))
+                        .foregroundStyle(CCCTheme.secondary)
+                }
+                ScrollView {
+                    Text(detail.body)
+                        .font(.system(size: 13))
+                        .foregroundStyle(CCCTheme.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                if detail.kind == "work", model.flowWorks.contains(where: { $0.workId == detail.id && $0.isFailed }) {
+                    Button("在 Hub 运维中查看") {
+                        model.dismissNodeDetail()
+                        model.openHubInBrowser(route: "#/ops")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(CCCTheme.accent)
+                }
+            }
+            .padding(22)
+            .frame(width: 420, height: 360)
+        }
+    }
+
+    private var currentEpicLabel: String {
+        if let cur = model.recentEpics.first(where: { $0.epic_id == model.currentEpicId }) {
+            return cur.title ?? cur.epic_id
+        }
+        return model.flowEpic?.title ?? model.currentEpicId ?? "选择编排"
     }
 }
 
@@ -431,6 +545,14 @@ struct TransferSheet: View {
                 TextField("验收（每行一条）", text: $model.transferAcceptance, axis: .vertical)
                     .lineLimit(3...8)
                 TextField("产线", text: $model.transferPipeline)
+                Picker("可行性", selection: $model.transferFeasibility) {
+                    Text("可执行").tag("ok")
+                    Text("阻塞").tag("blocked")
+                }
+                if model.transferFeasibility == "blocked" {
+                    TextField("阻塞原因", text: $model.transferFeasibilityReason, axis: .vertical)
+                        .lineLimit(2...4)
+                }
                 Picker("执行面", selection: $model.transferExecutor) {
                     Text("写码").tag("opencode")
                     Text("脚本").tag("python")
@@ -438,6 +560,8 @@ struct TransferSheet: View {
                     Text("cli").tag("cli")
                     Text("auto").tag("auto")
                 }
+                TextField("方案正文（可选）", text: $model.transferPlanMd, axis: .vertical)
+                    .lineLimit(4...10)
             }
             .formStyle(.grouped)
 
@@ -460,7 +584,7 @@ struct TransferSheet: View {
             }
         }
         .padding(28)
-        .frame(width: 500, height: 540)
+        .frame(width: 520, height: 640)
     }
 }
 

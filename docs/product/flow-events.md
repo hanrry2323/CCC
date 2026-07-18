@@ -7,6 +7,8 @@
 ## 传输
 
 - **SSE**：`GET /api/desktop/flow/events?project_id=…&epic_id=…`  
+- **快照**：`GET /api/desktop/flow/snapshot?project_id=…&epic_id=…`  
+- **历史 epic**：`GET /api/desktop/flow/epics?project_id=…`（右栏切换）  
 - `epic_id` 省略时：Server 解析该项目最近转任务 epic  
 - 认证：与 Hub 相同 Basic Auth  
 - 心跳：每 15s `event: ping`

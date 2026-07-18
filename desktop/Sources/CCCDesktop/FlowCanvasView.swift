@@ -7,6 +7,7 @@ struct FlowCanvasView: View {
     let headline: String
     let emptyMessage: String
     var onOpenOps: (() -> Void)?
+    var onSelectNode: ((String) -> Void)?
 
     @State private var dashPhase: CGFloat = 0
     @State private var pulse = false
@@ -57,7 +58,6 @@ struct FlowCanvasView: View {
         let laid = FlowLayout.layout(epic: epic, epicId: epicId, works: works)
         return ScrollView([.horizontal, .vertical]) {
             ZStack(alignment: .topLeading) {
-                // Edges
                 Canvas { ctx, _ in
                     for edge in laid.edges {
                         guard let a = laid.nodes.first(where: { $0.id == edge.from }),
@@ -92,15 +92,23 @@ struct FlowCanvasView: View {
                 .frame(width: laid.size.width, height: laid.size.height)
 
                 ForEach(laid.nodes) { node in
-                    FlowNodeView(node: node, pulse: pulse && FlowLayout.statusColorKey(node.statusKey) == "running")
-                        .frame(
-                            width: FlowLayout.nodeWidth,
-                            height: node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight
+                    Button {
+                        onSelectNode?(node.id)
+                    } label: {
+                        FlowNodeView(
+                            node: node,
+                            pulse: pulse && FlowLayout.statusColorKey(node.statusKey) == "running"
                         )
-                        .position(
-                            x: node.x + FlowLayout.nodeWidth / 2,
-                            y: node.y + (node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight) / 2
-                        )
+                    }
+                    .buttonStyle(.plain)
+                    .frame(
+                        width: FlowLayout.nodeWidth,
+                        height: node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight
+                    )
+                    .position(
+                        x: node.x + FlowLayout.nodeWidth / 2,
+                        y: node.y + (node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight) / 2
+                    )
                 }
             }
             .frame(width: laid.size.width, height: laid.size.height)
@@ -173,6 +181,7 @@ struct FlowNodeView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(CCCTheme.border, lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .animation(.easeInOut(duration: 0.28), value: node.statusKey)
     }
 }

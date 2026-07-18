@@ -12,7 +12,7 @@ enum APIError: LocalizedError {
         case .http(let code, let body): return "HTTP \(code): \(body)"
         case .decode(let m): return "解析失败: \(m)"
         case .gate(let errs):
-            return errs.map { $0.message ?? $0.code ?? "?" }.joined(separator: "；")
+            return errs.map(\.localized).joined(separator: "；")
         }
     }
 }
@@ -101,6 +101,11 @@ actor APIClient {
         let title: String?
     }
 
+    struct EpicsResp: Decodable {
+        let ok: Bool?
+        let epics: [FlowEpicRef]
+    }
+
     func fetchProjects() async throws -> ProjectsResp {
         try await send(try authedRequest("api/desktop/projects"), as: ProjectsResp.self)
     }
@@ -126,7 +131,35 @@ actor APIClient {
         )
     }
 
-    /// 流式聊天：每段 delta 回调一次
+    func renameThread(projectId: String, threadId: String, title: String) async throws {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        let data = try JSONEncoder().encode(["title": title])
+        struct Ok: Decodable { let ok: Bool?; let thread_id: String? }
+        _ = try await send(
+            try authedRequest("api/desktop/threads/\(threadId)?project_id=\(enc)", method: "PATCH", body: data),
+            as: Ok.self
+        )
+    }
+
+    func deleteThread(projectId: String, threadId: String) async throws {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        struct Ok: Decodable { let ok: Bool? }
+        _ = try await send(
+            try authedRequest("api/desktop/threads/\(threadId)?project_id=\(enc)", method: "DELETE"),
+            as: Ok.self
+        )
+    }
+
+    func fetchRecentEpics(projectId: String) async throws -> [FlowEpicRef] {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
+        let resp = try await send(
+            try authedRequest("api/desktop/flow/epics?project_id=\(enc)"),
+            as: EpicsResp.self
+        )
+        return resp.epics
+    }
+
+    /// 流式聊天：兼容 delta / text / content 多种 SSE 形态
     func streamChat(
         projectId: String,
         sessionId: String,
@@ -166,13 +199,19 @@ actor APIClient {
                 let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
                 throw APIError.http(500, msg)
             }
-            if type == "delta" || type == nil, let c = obj["content"] as? String, !c.isEmpty {
+            let chunk: String? = {
+                if let c = obj["content"] as? String, !c.isEmpty { return c }
+                if let c = obj["delta"] as? String, !c.isEmpty { return c }
+                if let c = obj["text"] as? String, !c.isEmpty { return c }
+                return nil
+            }()
+            if let chunk, type == "delta" || type == "text" || type == nil || type == "content" {
                 gotDelta = true
-                onDelta(c)
+                onDelta(chunk)
             }
         }
         if !gotDelta {
-            throw APIError.decode("空回复（SSE 未解析到 delta）")
+            throw APIError.decode("空回复（SSE 未解析到内容）")
         }
     }
 

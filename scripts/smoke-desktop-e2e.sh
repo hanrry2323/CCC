@@ -87,9 +87,15 @@ if [[ "$LOCAL_ONLY" == "1" ]]; then
   exit 0
 fi
 
-curl -sf --connect-timeout 3 "${AUTH[@]}" "${SERVER}/api/desktop/config" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
+if ! curl -sf --connect-timeout 3 "${AUTH[@]}" "${SERVER}/api/desktop/config" >/tmp/ccc-desk-config.json; then
+  echo "ERROR: Server unreachable: ${SERVER}"
+  echo "Tip: start Hub, or run offline: CCC_DESKTOP_SMOKE_LOCAL=1 bash scripts/smoke-desktop-e2e.sh"
+  exit 1
+fi
+
+python3 -c '
+import json
+d=json.load(open("/tmp/ccc-desk-config.json"))
 assert d.get("threads")=="unified", d
 assert d.get("transfer")=="epic_only", d
 print("config ok", d.get("product"))
