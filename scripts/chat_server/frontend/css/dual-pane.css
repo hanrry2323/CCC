@@ -1,0 +1,69 @@
+/* Dual-pane desktop chat MVP */
+
+body.dual-pane-mode #chat-panes {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0;
+  width: 100%;
+}
+
+body.dual-pane-mode .chat-pane {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.25));
+  min-height: 0;
+}
+
+body.dual-pane-mode .chat-pane:first-child {
+  border-left: none;
+}
+
+body.dual-pane-mode .chat-pane.focused {
+  box-shadow: inset 0 0 0 1px var(--accent, #c45c26);
+}
+
+body.dual-pane-mode .chat-pane-head {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  padding: 4px 10px 2px;
+  user-select: none;
+}
+
+body.dual-pane-mode .messages-pane,
+body.dual-pane-mode #messages,
+body.dual-pane-mode #messages-b {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body.dual-pane-mode #chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#dual-pane-btn.active {
+  color: var(--accent, #c45c26);
+}
+
+@media (max-width: 900px) {
+  body.dual-pane-mode #chat-panes {
+    flex-direction: column;
+  }
+  body.dual-pane-mode .chat-pane {
+    flex: 1 1 50%;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.25));
+  }
+  body.dual-pane-mode .chat-pane:first-child {
+    border-top: none;
+  }
+}

@@ -4,7 +4,11 @@ import { loadProjects, loadSession, loadHubConfig } from './api.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
 import { initComposer, setupProjectSelect } from './components/composer.js';
-import { loadMessages, setupCancel, createEmptyState } from './components/message.js';
+import {
+  loadMessages,
+  setupCancel,
+  createEmptyState,
+} from './components/message.js';
 import { refreshSidebar, setupSidebarSearch } from './components/sidebar.js';
 import { initRuntimeStatus } from './components/runtimeStatus.js';
 import { initEngineControl } from './components/engineControl.js';
@@ -12,6 +16,14 @@ import { initRouter } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
+import {
+  initDualPaneControls,
+  isEnabled as dualPaneEnabled,
+  showTabInFocusedPane,
+  messagesElForTab,
+  paneTabIds,
+  setFocusedPane,
+} from './dualPane.js';
 
 function snapshotActiveTab() {
   const tabs = state.get('tabs') || [];
@@ -36,21 +48,72 @@ function renderProjectTabs(activeId) {
   renderTabs(tabsForCurrentProject(), activeId || state.get('activeTabId'));
 }
 
-function showTabContent(tab) {
-  const container = document.getElementById('messages');
+function renderTabIntoContainer(tab, container) {
+  if (!container) return;
   container.innerHTML = '';
-  state.set('currentSessionId', tab.sessionId || tab.id);
   const msgs = tab.messages || [];
-  state.set('currentMessages', msgs);
   if (!msgs.length) {
     container.appendChild(createEmptyState());
+    return;
+  }
+  // Temporarily point loadMessages at this container via active pane semantics:
+  // loadMessages uses activeMessagesEl(); ensure focus pane matches container.
+  const { left, right } = paneTabIds();
+  if (dualPaneEnabled() && tab.id === right) setFocusedPane('right');
+  else setFocusedPane('left');
+  state.set('currentSessionId', tab.sessionId || tab.id);
+  state.set('currentMessages', msgs);
+  loadMessages({ messages: msgs, title: tab.title });
+}
+
+function showTabContent(tab) {
+  if (dualPaneEnabled()) {
+    showTabInFocusedPane(tab.id);
+    const container = messagesElForTab(tab.id);
+    renderTabIntoContainer(tab, container);
   } else {
-    loadMessages({ messages: msgs, title: tab.title });
+    const container = document.getElementById('messages');
+    renderTabIntoContainer(tab, container);
   }
   import('./streamRegistry.js').then((m) => {
     m.syncStreamingFlagForActiveTab();
   });
   import('./components/message.js').then((m) => m.updateComposerState());
+}
+
+function renderPaneByTabId(tabId) {
+  const tabs = state.get('tabs') || [];
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  const container = messagesElForTab(tabId);
+  if (!container) return;
+  const prevActive = state.get('activeTabId');
+  const prevMsgs = state.get('currentMessages');
+  const prevSid = state.get('currentSessionId');
+  // Render without stealing focus if not focused pane
+  const { left, right } = paneTabIds();
+  const focus = state.get('dualPaneFocus') === 'right' ? 'right' : 'left';
+  const isFocus =
+    (focus === 'right' && tabId === right) || (focus === 'left' && tabId === left);
+  container.innerHTML = '';
+  const msgs = tab.messages || [];
+  if (!msgs.length) {
+    container.appendChild(createEmptyState());
+  } else if (isFocus) {
+    state.set('currentSessionId', tab.sessionId || tab.id);
+    state.set('currentMessages', msgs);
+    loadMessages({ messages: msgs, title: tab.title });
+  } else {
+    // Off-focus pane: paint snapshot without clobbering composer state long-term
+    state.set('currentSessionId', tab.sessionId || tab.id);
+    state.set('currentMessages', msgs);
+    loadMessages({ messages: msgs, title: tab.title });
+    if (prevActive) {
+      state.set('activeTabId', prevActive);
+      state.set('currentMessages', prevMsgs || []);
+      state.set('currentSessionId', prevSid);
+    }
+  }
 }
 
 /**
@@ -128,6 +191,7 @@ async function init() {
   applyTheme(getThemeScheme());
   initRouter(onHubRoute);
   initTitlebar();
+  initDualPaneControls(generateId);
   initComposer();
   initRuntimeStatus();
   initEngineControl();
@@ -135,6 +199,11 @@ async function init() {
   setupSidebarSearch();
   await import('./components/toast.js');
   import('./components/keyboard.js').then((m) => m.initKeyboard());
+
+  document.addEventListener('ccc-render-pane', (e) => {
+    const tabId = e.detail?.tabId;
+    if (tabId) renderPaneByTabId(tabId);
+  });
 
   try {
     const cfg = await loadHubConfig();
@@ -180,8 +249,12 @@ async function init() {
   state.set('tabs', tabs);
   state.set('activeTabId', tabId);
   state.set('currentSessionId', tabId);
+  if (dualPaneEnabled()) {
+    state.set('paneLeftTabId', tabId);
+  }
   renderProjectTabs(tabId);
-  document.getElementById('messages').appendChild(createEmptyState());
+  const bootMsg = messagesElForTab(tabId) || document.getElementById('messages');
+  if (bootMsg) bootMsg.appendChild(createEmptyState());
 
   refreshSidebar();
 
@@ -202,9 +275,12 @@ async function init() {
     state.set('activeTabId', id);
     state.set('currentSessionId', id);
     state.set('currentMessages', []);
-    const container = document.getElementById('messages');
-    container.innerHTML = '';
-    container.appendChild(createEmptyState());
+    if (dualPaneEnabled()) showTabInFocusedPane(id);
+    const container = messagesElForTab(id) || document.getElementById('messages');
+    if (container) {
+      container.innerHTML = '';
+      container.appendChild(createEmptyState());
+    }
     document.getElementById('composer-input').value = '';
     document.getElementById('send-btn').disabled = true;
     renderProjectTabs(id);
@@ -212,7 +288,7 @@ async function init() {
 
   document.addEventListener('switch-tab', (e) => {
     const { id } = e.detail;
-    if (id === state.get('activeTabId')) return;
+    if (id === state.get('activeTabId') && !dualPaneEnabled()) return;
     snapshotActiveTab();
     const tabsNow = state.get('tabs') || [];
     const tab = tabsNow.find((t) => t.id === id);

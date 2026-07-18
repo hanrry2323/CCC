@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260718ops3">
-<link rel="stylesheet" href="/css/base.css?v=20260718ops3">
-<link rel="stylesheet" href="/css/themes.css?v=20260718ops3">
-<link rel="stylesheet" href="/css/components.css?v=20260718ops3">
-<link rel="stylesheet" href="/css/shell.css?v=20260718ops3">
+<link rel="stylesheet" href="/css/variables.css?v=20260718dual1">
+<link rel="stylesheet" href="/css/base.css?v=20260718dual1">
+<link rel="stylesheet" href="/css/themes.css?v=20260718dual1">
+<link rel="stylesheet" href="/css/components.css?v=20260718dual1">
+<link rel="stylesheet" href="/css/shell.css?v=20260718dual1">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260718dual1">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -48,6 +49,9 @@
     </button>
     <button class="titlebar-btn" id="board-btn" title="看板摘要">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg>
+    </button>
+    <button class="titlebar-btn" id="dual-pane-btn" title="分屏（双会话）">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg>
     </button>
     <button class="titlebar-btn" id="new-tab-btn" title="新对话">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -175,6 +179,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js?v=20260718ops3"></script>
+<script type="module" src="/js/app.js?v=20260718dual1"></script>
 </body>
 </html>

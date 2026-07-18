@@ -219,7 +219,7 @@ fn toggle_main_window(app: &AppHandle) {
  /// Tauri 命令：发送 macOS 通知
 #[tauri::command]
 pub fn notify_user(app: AppHandle, title: String, body: String) -> Result<(), String> {
-    let identifier = app.config().tauri.bundle.identifier;
+    let identifier = app.config().tauri.bundle.identifier.clone();
     let id: &str = identifier.as_str();
     tauri::api::notification::Notification::new(id)
         .title(title)

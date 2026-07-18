@@ -18,6 +18,12 @@ import {
   anyStreaming,
   syncStreamingFlagForActiveTab,
 } from '../streamRegistry.js';
+import {
+  isEnabled as dualPaneEnabled,
+  isTabVisible,
+  messagesElForTab,
+  activeMessagesEl,
+} from '../dualPane.js';
 
 function attachMessageActions(msgEl, role, content) {
   if (!msgEl || msgEl.querySelector('.msg-actions')) return;
@@ -44,7 +50,7 @@ function attachMessageActions(msgEl, role, content) {
         window.showToast?.('已复制', 'success');
       }).catch(() => window.showToast?.('复制失败', 'error'));
     } else if (act === 'edit') {
-      editMessage(msgEl, document.getElementById('messages'));
+      editMessage(msgEl, activeMessagesEl());
     } else if (act === 'regen') {
       regenerateLast();
     } else if (act === 'preview') {
@@ -132,7 +138,7 @@ window.saveEdit = function (btn) {
 
   const msgEl = btn.closest('.msg');
   if (!msgEl) return;
-  const container = document.getElementById('messages');
+  const container = activeMessagesEl();
   let next = msgEl.nextElementSibling;
   while (next) {
     const n = next.nextElementSibling;
@@ -189,7 +195,7 @@ function regenerateLast() {
     return;
   }
   state.set('currentMessages', msgs.slice(0, msgs.indexOf(lastUser)));
-  const container = document.getElementById('messages');
+  const container = activeMessagesEl();
   const nodes = [...container.querySelectorAll('.msg')];
   let lastUserEl = null;
   for (const n of nodes) {
@@ -274,12 +280,22 @@ function persistTabMessages(tabId, msgs, sessionId, projectId) {
   );
 }
 
-/** Paint only when this stream still owns the visible tab AND project. */
+/**
+ * Paint when the stream's tab is visible.
+ * Dual-pane: either left/right pane; single: active tab + project.
+ */
 function canPaint(ownerTabId, ownerProject) {
+  if (dualPaneEnabled()) {
+    return isTabVisible(ownerTabId);
+  }
   return (
     state.get('activeTabId') === ownerTabId &&
     state.get('currentProject') === ownerProject
   );
+}
+
+function paintContainer(ownerTabId) {
+  return messagesElForTab(ownerTabId) || activeMessagesEl();
 }
 
 export async function sendMessage(text, attachments = [], opts = {}) {
@@ -287,7 +303,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   if (!ownerTabId) return;
   if (isTabStreaming(ownerTabId)) return;
 
-  const container = document.getElementById('messages');
+  const container = paintContainer(ownerTabId);
   const project = state.get('currentProject');
   const ownerProject = project;
   let msgs = (state.get('currentMessages') || []).slice();
@@ -353,7 +369,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
 
   function ensureAssistantShell() {
     if (!canPaint(ownerTabId, ownerProject)) return;
-    const c = document.getElementById('messages');
+    const c = paintContainer(ownerTabId);
     if (!c) return;
     if (msgDiv && c.contains(msgDiv)) return;
     removeTyping(ownerTabId);
@@ -388,7 +404,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         if (fullContent.trim().length > 40 && progressRail) {
           finishProgressRail(progressRail, { hide: true });
         }
-        smartScroll(document.getElementById('messages'));
+        smartScroll(paintContainer(ownerTabId));
       }
     });
   }
@@ -432,7 +448,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
             input: data.input,
           });
           toolSteps.push(step);
-          smartScroll(document.getElementById('messages'));
+          smartScroll(paintContainer(ownerTabId));
         }
       } else if (type === 'tool_result') {
         if (toolSteps.length) {
@@ -499,11 +515,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     (errorText) => {
       if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
-        renderMessage(
-          document.getElementById('messages'),
-          'assistant',
-          errorText
-        );
+        renderMessage(paintContainer(ownerTabId), 'assistant', errorText);
       }
       const finalMsgs = msgs
         .filter((m) => !(m.role === 'assistant' && m.partial))
@@ -548,7 +560,7 @@ function smartScroll(container) {
 }
 
 export function loadMessages(data) {
-  const container = document.getElementById('messages');
+  const container = activeMessagesEl();
   container.innerHTML = '';
   const msgs = data.messages || [];
   if (msgs.length === 0) {
@@ -610,7 +622,7 @@ export function createEmptyState() {
 }
 
 export async function runBaselineAlign() {
-  const container = document.getElementById('messages');
+  const container = activeMessagesEl();
   if (!container || isCurrentTabStreaming()) return;
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
@@ -645,7 +657,7 @@ export async function runBaselineAlign() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const container = document.getElementById('messages');
+  const container = activeMessagesEl();
   if (!container) return;
   container.addEventListener('scroll', () => {
     const atBottom =
@@ -656,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  const msgContainer = document.getElementById('messages');
+  const msgContainer = activeMessagesEl();
   const titlebar = document.getElementById('titlebar');
   if (!msgContainer || !titlebar) return;
   msgContainer.addEventListener('scroll', () => {

@@ -16,6 +16,10 @@ class State {
       tabs: [],
       activeTabId: null,
       projectWorkspaceMap: {},
+      dualPaneEnabled: false,
+      dualPaneFocus: 'left',
+      paneLeftTabId: null,
+      paneRightTabId: null,
     };
   }
 
