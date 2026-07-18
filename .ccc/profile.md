@@ -85,6 +85,7 @@ Hub 定稿 → backlog(epic 常驻)
 - **卡死止损**: kill + 下一阶段/角色接管（红线 9）
 - **阶段不互串**: product 不写业务代码；reviewer 不写 plan（红线 6）
 - **不自主启用 CCC**: 用户显式触发（红线 12）
+- **Hub 对齐基线**：`state.md` 最近任务可能滞后；必须交叉 `git log` + control（invent 硬关 / queue-only）。空板 + invent 关 ≠ 应降控制面；禁止建议 ui/disabled/关机（除非用户问闲置）
 
 ## 工具链版本
 

@@ -71,6 +71,13 @@ def test_baseline_collect(tmp_path):
         ["git", "config", "user.name", "t"], cwd=tmp_path, check=True, capture_output=True
     )
     (tmp_path / "a.txt").write_text("x")
+    (tmp_path / "VERSION").write_text("v9.9.9\n")
+    (tmp_path / "README.md").write_text(
+        "![v](https://img.shields.io/badge/version-v9.9.8-blue)\n"
+    )
+    (tmp_path / "scripts" / "board" / "roles").mkdir(parents=True)
+    (tmp_path / "scripts" / "engine").mkdir(parents=True)
+    (tmp_path / "scripts" / "ccc-engine.py").write_text("# stub\n")
     subprocess.run(["git", "add", "a.txt"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", "i"], cwd=tmp_path, check=True, capture_output=True
@@ -79,8 +86,16 @@ def test_baseline_collect(tmp_path):
     bl = collect_baseline(tmp_path, project_id="t")
     assert bl["git"]["dirty"] is True
     assert bl["can_dispatch"] is True
+    assert bl["git"].get("recent_commits")
+    assert bl["hot_paths"]["scripts/board/roles"] is True
+    assert bl["hot_paths"]["scripts/engine"] is True
+    assert bl["version"]["VERSION"] == "v9.9.9"
+    assert "control" in bl and "mode" in bl["control"]
     prompt = baseline_prompt_for_claude(bl)
     assert "项目基线" in prompt or "基线" in prompt
+    assert "禁止建议降控制面" in prompt
+    assert "git log -5" in prompt
+    assert "invent_hard_disabled" in prompt
 
 
 def test_daily_review_dry_run(tmp_path):

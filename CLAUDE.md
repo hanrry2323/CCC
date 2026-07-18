@@ -13,6 +13,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Hub Agent 基线硬规则（对齐基线 / 定方案时强制）
+
+1. **控制面读完整 policy**：不只看 `mode`；必须核对 `invent_hard_disabled` / `queue_consumer_only` / `engine_allowed`。`enabled` + invent 硬关 = Engine **只消费队列**，看板空时闲置是正常，不是「等开工」。
+2. **`git log -5` × 目录交叉验证**：`state.md`「最近任务」可能滞后；HEAD 有重构时回头看 `scripts/board/roles/`、`scripts/engine/` 是否已存在。
+3. **热路径（CCC 本体）**：调度 → `scripts/ccc-engine.py` + `scripts/engine/`；角色 → `scripts/board/roles/`；兼容入口 → `scripts/ccc-board.py`（勿新增长逻辑）。`app/` `lib/` `db/` 是浅层附属，**不要**说成主架构。
+4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge；不一致只报「对齐版本」类小任务。
+5. **禁止越界建议**：非用户主动问闲置/省资源时，**禁止**建议降控制面到 `ui`/`disabled` 或关机。
+6. **调度就绪度口径**：空板 + invent 关 → 可派「人确认 plan 的中等任务」（写 epic）；**不可**声称可无人值守 invent。红线 12。
+
+架构细节：`docs/architecture-core.md` · 运维页：Hub `#/ops`。
+
+---
+
 ## 开发命令
 
 ```bash
@@ -102,8 +115,10 @@ bash scripts/ccc-autostart-guard.sh enable --start
 
 ```
 launchd(com.ccc.engine) → ccc-engine.sh → ccc-engine.py
-  └→ ccc-board.py 角色函数（dev/reviewer/tester/kb）
+  └→ board.roles（product/dev/reviewer/…）+ board.phase
+  └→ engine/{slots,active_tasks,hang,gates}
   └→ 三层抽象：_config.py → _board_store.py(FileBoardStore) → _executor.py(OpenCodeExecutor)
+  └→ ccc-board.py = CLI / 兼容再导出（勿新增长角色逻辑）
 ```
 
 ### 前端 SPA 架构（v0.38+ 模块化重构）
@@ -130,19 +145,19 @@ scripts/chat_server/            # FastAPI 模块化后端
     ├── index.html              # SPA 壳
     ├── css/                    # 样式（5 个文件：variables/base/themes/components/shell）
     └── js/
-        ├── router.js           # #/chat | #/board | #/console
+        ├── router.js           # #/chat | #/board | #/console | #/ops
         ├── app.js              # 主应用（tab 管理 + 事件）
         ├── state.js            # 全局状态
         ├── api.js              # API 客户端
-        ├── components/         # 14 个 UI 组件
-        └── pages/              # 页面（boardPage.js / consolePage.js）
+        ├── components/         # UI 组件
+        └── pages/              # boardPage / consolePage / opsPage
 ```
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 7777 | CCC Hub | SPA 前端（默认 `#/chat` 对话页） |
+| 7777 | CCC Hub | SPA：对话 / 看板 / 控制台 / **运维** |
 | 7775 | Board API | 看板 REST（仅 127.0.0.1，Hub 反代） |
-| 7778 | CCC Cockpit | 可选旧总控（Cockpit，非 SPA） |
+| 7778 | CCC Cockpit | **deprecated** → Hub `#/ops` |
 
 `scripts/ccc-board-ui/` 仅含跳转页 → Hub :7777（已废弃）。
 
@@ -179,8 +194,10 @@ scripts/chat_server/            # FastAPI 模块化后端
 |------|------|
 | `SKILL.md` | 注入 prompt 总纲（agent 启动时自动加载） |
 | `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
-| `scripts/ccc-engine.py` | Engine 串行执行主循环 |
-| `scripts/ccc-board.py` | 看板与阶段能力调度 |
+| `scripts/ccc-engine.py` | Engine 主循环（调度面） |
+| `scripts/engine/` | slot / active_tasks / hang / gates |
+| `scripts/board/roles/` | 角色实现（product/dev/…） |
+| `scripts/ccc-board.py` | CLI + 再导出（兼容层） |
 | `scripts/_ccc_control.py` | 控制面状态机（~/.ccc/control.json） |
 | `scripts/_board_store.py` | FileBoardStore 看板存储抽象 |
 | `scripts/_executor.py` | OpenCodeExecutor 执行器 |

@@ -35,8 +35,15 @@
 
 ## 最近任务（按完成时间倒序，最多 5 条）
 
+> **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
+> 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
+>
+> **近 HEAD（手工备忘，2026-07-18）**：`2952d8c` board roles + engine 拆包 · `2f0549c` Hub `#/ops` · invent 硬关 / 空板时 Engine 闲置属正常。
+
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-18 | board-engine-refactor | `docs/architecture-core.md` | `git log 2952d8c` | `scripts/board/roles/` + `scripts/engine/` 拆包；facade 保留 | PASS（git） |
+| 2026-07-18 | hub-ops-console | `docs/hub-ops-console.md` | `git log 2f0549c` | Hub `#/ops` + blank-shell fix | PASS（git） |
 | 2026-07-16 | v0.38.0-pipeline | — | [CHANGELOG §v0.38.0](../CHANGELOG.md) | 7角色闭环：kb接入+verdict+多phase+async product lint；空闲不自造任务 | PASS |
 | 2026-07-15 | engine-failure-lessons | `.ccc/plans/engine-failure-lessons.plan.md` | `.ccc/reports/engine-failure-lessons.report.md` | `auto_append_lesson_md()` + engine/board 双入口调用（代码已在 4b9e09d/fd71dd7/e343cb8 v0.32 series 落地，dev 验证通过：compileall 0 errors + pytest 56 子集 + 端到端 5/5 边角 case） | PASS |
 | 2026-07-14 | fix-lint-2026-07-14 | `.ccc/plans/fix-lint-2026-07-14.plan.md` | `.ccc/reports/fix-lint-2026-07-14.report.md` | ruff F401/F841/F811 全清零（21+14=35 处）+ `_audit_lint` latent tuple bug 顺手修 + 248 passed | PASS |
