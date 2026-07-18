@@ -39,7 +39,7 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 orch 分离 · Engine 跳过 CCC · Hub 拒投编排仓。
+> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 orch 分离 · 舰队卫生盘点 `docs/ops/fleet-hygiene-2026-07-18.md` · P0–P1 已执行。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|

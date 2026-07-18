@@ -20,14 +20,16 @@
 
 ## 清单（勾选）
 
-- [ ] `python3 scripts/ccc-workspace-doctor.py migrate` — CCC = orch
-- [ ] `python3 scripts/ccc-workspace-doctor.py` — ERROR=0；apps≤10
+- [x] `python3 scripts/ccc-workspace-doctor.py migrate` — CCC = orch
+- [x] `python3 scripts/ccc-workspace-doctor.py` — ERROR=0；apps≤10（WARN: qx 未登记预期）
 - [ ] prune 死路径 / ephemeral：`… prune --apply`
 - [ ] Hub / OpenCode / Copilot skill 断链清理
-- [ ] ghost worktree / 残留 agent worktree
-- [ ] 各仓 Agent 入口（CLAUDE.md / AGENTS）与 state 对齐
-- [ ] invent 硬关；控制面 `enabled` 合理
-- [ ] CCC 看板历史积压：人工归档或 `ui_hidden`（**不**让 Engine 消费 orch）
+- [x] ghost worktree / 残留 agent worktree（CCC：移除 2 prunable，留 1 locked）
+- [x] 各仓 Agent 入口（CLAUDE.md / AGENTS）与 state 对齐（见 `docs/ops/fleet-hygiene-2026-07-18.md`）
+- [x] invent 硬关；控制面 `enabled` 合理
+- [x] CCC 看板历史积压：列空；orphan plans 归档属 P2
+
+**最近执行报告**：[docs/ops/fleet-hygiene-2026-07-18.md](../ops/fleet-hygiene-2026-07-18.md) · Playbook：[docs/ops/fleet-cleanup-playbook-2026-07-18.md](../ops/fleet-cleanup-playbook-2026-07-18.md)
 
 ## 执行记录
 

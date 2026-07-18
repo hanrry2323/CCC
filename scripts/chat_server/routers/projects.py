@@ -26,7 +26,6 @@ def reload_projects():
             entry_engine_eligible,
             is_orch_path,
             list_registered_entries,
-            lookup_entry,
         )
 
         resp = httpx.get(f"{config.BOARD_URL}/api/board", timeout=3.0)
@@ -51,15 +50,18 @@ def reload_projects():
                     resolved = str(Path(ws_path).expanduser().resolve())
                 except OSError:
                     resolved = str(ws_path)
-                entry = reg_by_path.get(resolved) or lookup_entry(resolved)
+                reg_entry = reg_by_path.get(resolved)
                 role = "orch" if is_orch_path(resolved) else "app"
-                engine_ok = True
-                if entry:
-                    role = entry.get("role") or role
-                    engine_ok = entry_engine_eligible(entry)
+                if reg_entry:
+                    role = reg_entry.get("role") or role
+                    engine_ok = entry_engine_eligible(reg_entry)
                 elif is_orch_path(resolved):
+                    # Unregistered orch home still non-dispatchable
                     engine_ok = False
                     role = "orch"
+                else:
+                    # Board-visible but not in Engine registry → Hub may chat, not dispatch
+                    engine_ok = False
                 new_projects[pid] = {
                     "name": name,
                     "path": ws_path,

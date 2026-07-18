@@ -119,3 +119,9 @@ dashboard/
 .ccc/evolve/
 .ccc/board/backlog/evolve-*.jsonl
 .ccc/board/in_progress/
+
+# CCC Engine runtime (do not commit)
+.ccc/engine-heartbeat.json
+.ccc/board/engine-heartbeat.json
+.ccc/stats/
+

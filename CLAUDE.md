@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **热路径（CCC 本体）**：调度 → `scripts/ccc-engine.py` + `scripts/engine/`；角色 → `scripts/board/roles/`；兼容入口 → `scripts/ccc-board.py`（勿新增长逻辑）。`app/` `lib/` `db/` 是浅层附属，**不要**说成主架构。
 4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge；不一致只报「对齐版本」类小任务。
 5. **禁止越界建议**：非用户主动问闲置/省资源时，**禁止**建议降控制面到 `ui`/`disabled` 或关机。
-6. **调度就绪度口径**：空板 + invent 关 → 可派「人确认 plan 的中等任务」（写 epic）；**不可**声称可无人值守 invent。红线 12。
+6. **调度就绪度口径（v0.51）**：空板 + invent 硬关 → Engine **闲置正常**。新工作经 Hub 选 **业务仓** 定稿→下达；**禁止**对 CCC orch 写 epic / 投 backlog（R-15）。**不可**声称可无人值守 invent（红线 12）。
 
 架构细节：`docs/architecture-core.md` · 运维页：Hub `#/ops`。
 
@@ -104,8 +104,8 @@ Hub（定稿→epic）→ backlog(大卡常驻)
 |------|--------|----------|------|
 | `disabled` | 关 | 否 | 默认，完全离线 |
 | `ui` | 关 | 否 | 前端开发 |
-| `enabled` | 队列消费者 | 否 | 日常生产 |
-| `invent` | 全开 | 是 | 自造 evolve/audit |
+| `enabled` | 只消费 **app** 队列 | 否 | 日常生产（CCC orch 不在消费名单） |
+| `invent` | **已退役** | 否 | `invent_hard_disabled=true`；勿启用（历史模式名仍可能出现在 JSON） |
 
 ```
 bash scripts/ccc-autostart-guard.sh enable --start
