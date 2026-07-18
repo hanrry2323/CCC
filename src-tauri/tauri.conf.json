@@ -2,12 +2,12 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "devPath": "http://127.0.0.1:8084",
+    "devPath": "http://192.168.3.116:7777",
     "distDir": "../scripts/chat_server/frontend"
   },
   "package": {
-    "productName": "CCC Cockpit",
-    "version": "0.30.0"
+    "productName": "CCC Desktop",
+    "version": "0.51.0"
   },
   "tauri": {
     "allowlist": {
@@ -38,7 +38,7 @@
         "icons/icon.ico"
       ],
       "identifier": "com.ccc.cockpit",
-      "longDescription": "CCC Chat Server 桌面应用",
+      "longDescription": "CCC Desktop — client shell for LAN CCC Server",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
@@ -57,7 +57,7 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8084; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://127.0.0.1:*"
+      "csp": "default-src 'self'; connect-src 'self' http://192.168.3.116:7777 http://127.0.0.1:7777 ws://192.168.3.116:7777 ws://127.0.0.1:7777; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://192.168.3.116:* http://127.0.0.1:*"
     },
     "upgradeAwareness": false,
     "windows": [
@@ -65,7 +65,7 @@
         "fullscreen": false,
         "height": 800,
         "resizable": true,
-        "title": "CCC Cockpit",
+        "title": "CCC Desktop",
         "width": 1200
       }
     ]

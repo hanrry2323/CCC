@@ -94,36 +94,35 @@ def discover_workspaces() -> dict:
             if resolved.joinpath(".ccc", "board").exists():
                 ws[name] = str(resolved)
 
-    # 2. 自动扫描 ~/program/
+    # 2. 自动扫描 ~/program/（含 server-layout: apps/、infra 旁业务仓）
     program_dir = Path.home() / "program"
     if program_dir.is_dir():
-        for sub in program_dir.iterdir():
-            if not sub.is_dir():
-                continue
-            board = sub / ".ccc" / "board"
-            if not board.exists():
-                continue
-            name = sub.name
-            if name == "qx-observer":
-                name = "qxo"  # 别名兼容
-            # 别占用 qxo 已注册的 slot
-            if name in ws:
-                continue
-            # projects/ 下要带上层目录名（避免 qx 和 projects/qx 冲突）
-            if name == "qx" and ws.get("qxo"):
-                continue
-            ws[name] = str(sub)
-        # projects/ 子目录额外扫描
-        projects = program_dir / "projects"
-        if projects.is_dir():
-            for sub in projects.iterdir():
+        scan_roots = [program_dir]
+        for nested in ("apps", "projects"):
+            nested_dir = program_dir / nested
+            if nested_dir.is_dir():
+                scan_roots.append(nested_dir)
+        for root in scan_roots:
+            for sub in root.iterdir():
                 if not sub.is_dir():
+                    continue
+                # 跳过非业务顶层
+                if root == program_dir and sub.name in (
+                    "archive",
+                    "infra",
+                    "apps",
+                    "projects",
+                ):
                     continue
                 board = sub / ".ccc" / "board"
                 if not board.exists():
                     continue
                 name = sub.name
+                if name == "qx-observer":
+                    name = "qxo"  # 别名兼容
                 if name in ws:
+                    continue
+                if name == "qx" and ws.get("qxo"):
                     continue
                 ws[name] = str(sub)
     return ws

@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- TEMPLATE ONLY — do not load as-is.
+     Generate machine-local paths via: bash scripts/install-hub-plist.sh [--start]
+-->
 <plist version="1.0">
 <dict>
   <key>Label</key>
   <string>com.ccc.chat-server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/apple/program/CCC/.venv-hub/bin/python</string>
-    <string>/Users/apple/program/CCC/scripts/ccc-chat-server.py</string>
+    <string>CCC_HOME/.venv-hub/bin/python</string>
+    <string>CCC_HOME/scripts/ccc-chat-server.py</string>
     <string>--no-open</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/apple/program/CCC</string>
+  <string>CCC_HOME</string>
   <key>KeepAlive</key>
   <true/>
   <key>RunAtLoad</key>
@@ -34,12 +37,8 @@
     <string>http://127.0.0.1:7775</string>
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
-    <key>PATH</key>
-    <string>/Users/apple/.local/bin:/Users/apple/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>ANTHROPIC_BASE_URL</key>
+    <string>http://127.0.0.1:4000</string>
   </dict>
-  <key>StandardOutPath</key>
-  <string>/tmp/ccc-chat-server.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/ccc-chat-server.err</string>
 </dict>
 </plist>

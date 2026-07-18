@@ -180,7 +180,7 @@ _log.info(
 
 _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
-MAX_CONCURRENT = 3
+MAX_CONCURRENT = 4  # Server 16G baseline (docs/deploy/topology.md)
 # product 异步并行：全局上限 / 每 workspace 上限（env 可降回串行）
 MAX_PRODUCT_INFLIGHT = int(os.environ.get("CCC_MAX_PRODUCT_INFLIGHT", "3") or "3")
 MAX_PRODUCT_PER_WS = int(os.environ.get("CCC_MAX_PRODUCT_PER_WS", "2") or "2")

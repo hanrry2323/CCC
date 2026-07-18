@@ -32,19 +32,12 @@ def reload_projects():
         if resp.status_code == 200:
             data = resp.json()
             workspaces = data.get("workspaces", {})
-            name_map = {
-                "CCC": "CCC（编排）",
-                "qxo": "QXO Observer",
-                "xianyu": "xianyu",
-                "qb": "qb Dashboard",
-                "qx": "qx (archived parts)",
-                "clawmed-ccc": "cla (clawmed-ccc)",
-            }
             reg_by_path = {e["path"]: e for e in list_registered_entries()}
             for ws_id, ws_path in workspaces.items():
                 if ws_id.startswith("."):
                     continue
-                name = name_map.get(ws_id, ws_id)
+                # Display: orch gets a clear label; apps use registry/workspace id
+                name = "CCC（编排）" if ws_id.upper() == "CCC" else ws_id
                 pid = ws_id.lower().replace(" ", "-")
                 try:
                     resolved = str(Path(ws_path).expanduser().resolve())

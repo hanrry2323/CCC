@@ -41,9 +41,22 @@
 
 - Connect Claude Code  
 - **Loop Engineer**：自动编排 · 自主执行  
-- **Hub 是入口**（对话 + 看板 + 控制台一体）  
+- **Hub 是入口**（对话 + 看板 + 控制台一体；网页为过渡客户端，桌面为主线）  
 - **任务路由工具**；**Skill + Prompt = 本次角色**（无穷角色）  
 - 用户**不选角色、不背 Skill**；只定意图  
+- **Server / Client 分离**：数据与执行在服务端；桌面 / 网页 / 手机只是壳（局域网可自托管）
+
+---
+
+## 部署形态（产品级）
+
+| 层 | 放哪 | 说明 |
+|----|------|------|
+| 服务端 | 固定机（现网：Mac2017） | Hub + Engine + Board + 中转 + 工作区 |
+| 客户端 | 桌面 / 浏览器 / 未来手机 | 连服务端；本机 CLI 也可只连服务端中转 |
+
+拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/server-layout.md`](deploy/server-layout.md)。  
+默认注册（demo-only）：[`product/reset-demo-fleet.md`](product/reset-demo-fleet.md)。
 
 ---
 
@@ -147,5 +160,9 @@ CCC（Hub + Engine + 通用阶段包）
 | [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 架构与演进全景 |
 | [`CONTROL.md`](CONTROL.md) | 运行控制面 |
 | [`ccc-hub-ports.md`](ccc-hub-ports.md) | Hub 端口与账密 |
+| [`deploy/topology.md`](deploy/topology.md) | Server/Client 拓扑 |
+| [`deploy/server-layout.md`](deploy/server-layout.md) | 服务端目录规范 |
+| [`deploy/migration-m1-to-2017.md`](deploy/migration-m1-to-2017.md) | M1→2017 迁移清单 |
+| [`product/reset-demo-fleet.md`](product/reset-demo-fleet.md) | 产品默认注册（demo-only） |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 版本历史 |
 | [`roadmap.md`](roadmap.md) | 历史路线 + 当前方向索引 |

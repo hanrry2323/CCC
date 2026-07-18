@@ -125,3 +125,8 @@ dashboard/
 .ccc/board/engine-heartbeat.json
 .ccc/stats/
 
+# Optional private executor binary (~160MB); keep SHA256/README trackable
+vendor/loop-code/cli
+vendor/loop-code/cli-dev
+
+

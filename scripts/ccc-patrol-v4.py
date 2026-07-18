@@ -8,13 +8,12 @@ Hub 运维页可聚合 `~/.ccc/patrol-state.json`；勿与 product/dev/reviewer 
 在全 workspace 检查 Engine 存活、看板异常、卡死任务。
 v4 新增：
 - Step 0: Engine 存活检测（最优先，Engine 死了不做后续）
-- 5 workspace 统一巡检：CCC / qxo / xianyu / qb / qx
+- 巡检范围：~/.ccc/workspaces.json 已登记仓（产品默认 orch + demo）
 - 异常三步法：读 note → 查 verdict → 分类处理
 - 活跃任务 5min 卡死检测
 - 状态持久化（~/.ccc/patrol-state.json），保留最近 6 轮
 
 红线：
-- 不动 qx 源码（projects/qx 只读不改）
 - 不杀运行中的 opencode
 - 不改 .env
 - H7: heartbeat/loop 卡死且 PID 仍存活时允许 kill+restart Engine
@@ -52,15 +51,25 @@ PATROL_STATE_FILE = HOME / ".ccc" / "patrol-state.json"
 RESTART_LOG = HOME / ".ccc" / "logs" / "engine-restarts.jsonl"
 MAX_ROUNDS = 6
 
-# 注意：qx 对应 ~/program/projects/qx（不是 ~/program/qx）
-WORKSPACES: dict[str, Path] = {
-    "CCC": HOME / "program" / "CCC",
-    "qxo": HOME / "program" / "qx-observer",
-    "xianyu": HOME / "program" / "xianyu",
-    "qb": HOME / "program" / "projects" / "qb",
-    "qx": HOME / "program" / "projects" / "qx",
-}
-READ_ONLY_WS = {"qx"}  # qx 只读不改
+def _load_patrol_workspaces() -> dict[str, Path]:
+    """From ~/.ccc/workspaces.json; fallback CCC only."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from _workspace_registry import list_registered_entries
+
+        out: dict[str, Path] = {}
+        for e in list_registered_entries():
+            name = str(e.get("name") or Path(e["path"]).name)
+            out[name] = Path(e["path"])
+        if out:
+            return out
+    except Exception:
+        pass
+    return {"CCC": HOME / "program" / "CCC"}
+
+
+WORKSPACES: dict[str, Path] = _load_patrol_workspaces()
+READ_ONLY_WS: set[str] = set()  # product default: no hardcoded RO fleet
 
 HB_STALE_SECONDS = 300  # 心跳 > 300s → stale
 STUCK_THRESHOLD = 300  # in_progress 卡死阈值（秒）

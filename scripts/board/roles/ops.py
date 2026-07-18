@@ -164,12 +164,13 @@ def ops_role() -> dict:
     # 4. git ahead check
     import subprocess as sp
 
-    for proj in [
-        get_workspace(),
-        get_workspace().parent / "qx-observer",
-        get_workspace().parent / "xianyu",
-        get_workspace().parent / "projects" / "qx",
-    ]:
+    try:
+        from _workspace_registry import list_registered_entries
+
+        _git_roots = [Path(e["path"]) for e in list_registered_entries()]
+    except Exception:
+        _git_roots = [get_workspace()]
+    for proj in _git_roots:
         if (proj / ".git").exists():
             r = sp.run(
                 ["git", "rev-list", "--left-right", "--count", "origin/main...HEAD"],

@@ -32,13 +32,11 @@ import sys
 sys.path.insert(0, 'scripts')
 from pathlib import Path
 from _board_store import FileBoardStore
-for name, ws_path in [
-    ('CCC', Path.home()/'program/CCC'),
-    ('qxo', Path.home()/'program/qx-observer'),
-    ('xianyu', Path.home()/'program/xianyu'),
-    ('qb', Path.home()/'program/projects/qb'),
-    ('qx', Path.home()/'program/projects/qx'),
-]:
+from _workspace_registry import list_registered_entries
+pairs = [(e.get('name') or Path(e['path']).name, Path(e['path'])) for e in list_registered_entries()]
+if not pairs:
+    pairs = [('CCC', Path.home()/'program'/'CCC')]
+for name, ws_path in pairs:
     if not (ws_path/'.ccc'/'board').exists():
         continue
     store = FileBoardStore(ws_path)

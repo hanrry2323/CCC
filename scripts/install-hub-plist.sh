@@ -1,6 +1,7 @@
 #!/bin/bash
 # install-hub-plist.sh — 安装 CCC Hub (Chat) launchd（v0.39.1 尊重控制面）
 # 默认只 stage，不 load。要启动：--start（会 enable control）
+# 路径按 CCC_HOME / HOME 生成，禁止写死 /Users/apple。
 set -uo pipefail
 
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,13 +20,64 @@ if [[ ! -x "$HUB_PY" ]]; then
 fi
 
 PLIST_STAGED="${CCC_PLIST_STAGED}/com.ccc.chat-server.plist"
-SRC="${CCC_HOME}/scripts/com.ccc.chat-server.plist"
+mkdir -p "$CCC_PLIST_STAGED" "${HOME}/.ccc/logs"
 
-mkdir -p "$CCC_PLIST_STAGED"
-cp "$SRC" "$PLIST_STAGED"
+PATH_EXTRA="${HOME}/.local/bin:${HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+LOG_OUT="${HOME}/.ccc/logs/ccc-chat-server.log"
+LOG_ERR="${HOME}/.ccc/logs/ccc-chat-server.err"
+
+cat > "$PLIST_STAGED" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ccc.chat-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${HUB_PY}</string>
+    <string>${CCC_HOME}/scripts/ccc-chat-server.py</string>
+    <string>--no-open</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${CCC_HOME}</string>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CCC_CHAT_HOST</key>
+    <string>0.0.0.0</string>
+    <key>CCC_CHAT_PORT</key>
+    <string>7777</string>
+    <key>CCC_CHAT_USER</key>
+    <string>ccc</string>
+    <key>CCC_CHAT_PASS</key>
+    <string>ccc</string>
+    <key>CCC_BOARD_URL</key>
+    <string>http://127.0.0.1:7775</string>
+    <key>CCC_CHAT_NO_OPEN</key>
+    <string>1</string>
+    <key>ANTHROPIC_BASE_URL</key>
+    <string>http://127.0.0.1:4000</string>
+    <key>PATH</key>
+    <string>${PATH_EXTRA}</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${LOG_OUT}</string>
+  <key>StandardErrorPath</key>
+  <string>${LOG_ERR}</string>
+</dict>
+</plist>
+PLIST_EOF
+
 plutil -lint "$PLIST_STAGED" >/dev/null || { echo "plist 不合法"; exit 1; }
 
-# 清端口占用（无论是否 start）
 for port in 7777 8084 18084; do
   pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
   if [ -n "$pids" ]; then
@@ -38,7 +90,7 @@ if $DO_START; then
   PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
     python3 "${CCC_HOME}/scripts/_ccc_control.py" ui "install-hub --start" >/dev/null
   ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --start --ui
-  echo "✓ com.ccc.chat-server loaded (control=ui, Engine 未启)"
+  echo "✓ com.ccc.chat-server loaded"
 else
   ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --ui
   echo "✓ com.ccc.chat-server staged only（未 load）"
@@ -46,4 +98,4 @@ else
   echo "  常驻 UI:  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh ui --start"
 fi
 echo "  Board API 应对齐: http://127.0.0.1:7775"
-echo "  日志: /tmp/ccc-chat-server.{log,err}"
+echo "  日志: ${LOG_OUT} / ${LOG_ERR}"
