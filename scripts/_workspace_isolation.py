@@ -182,12 +182,19 @@ def cwd_hardgate_block(workspace: Path) -> str:
     """注入 prompt 的工作目录硬门文案。"""
     ws = str(workspace.resolve())
     orch = str(CCC_ORCH_HOME.resolve())
+    home_ccc = str(Path.home() / ".ccc")
+    ws_ccc = f"{ws}/.ccc"
     return (
         f"## 工作目录硬门（违者本卡 FAIL）\n"
         f"- **唯一 cwd / git 根**：`{ws}`\n"
         f"- 所有 Read/Write/Edit/Bash/`git commit` 必须在该目录内\n"
+        f"- **看板/接力路径（相对 cwd）**：`{ws_ccc}/state.md`、"
+        f"`{ws_ccc}/plans/<task_id>.plan.md`、`{ws_ccc}/phases/`、"
+        f"`{ws_ccc}/reports/` — **禁止**读/写 `{home_ccc}/`（home 控制面，"
+        f"OpenCode 会 external_directory 拒读；误读=本卡 FAIL）\n"
         f"- **禁止**写到编排仓 `{orch}` 或其他仓库\n"
-        f"- 相对路径一律相对上述 cwd；忽略 plan 里错误的绝对根路径\n"
+        f"- 相对路径一律相对上述 cwd；忽略 plan 里错误的绝对根路径"
+        f"（含把 `.ccc/` 解析成 `~/.ccc/`）\n"
         f"- commit message 必须含本 task id；只允许在本仓 commit\n\n"
     )
 

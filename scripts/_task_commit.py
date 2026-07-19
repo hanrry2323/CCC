@@ -10,6 +10,30 @@ from _config import get_logger
 _log = get_logger("task.commit")
 
 
+def porcelain_product_paths(porcelain: str) -> list[str]:
+    """Parse ``git status --porcelain``; drop ``.ccc/`` meta noise.
+
+    Board/state/report churn must not satisfy DoD — only product-file
+    dirty lines count as agent landing changes.
+    """
+    out: list[str] = []
+    for raw in (porcelain or "").splitlines():
+        line = raw.rstrip("\n")
+        if not line.strip():
+            continue
+        # status is 2 chars + space; path may be quoted or ``a -> b``
+        path = line[3:] if len(line) >= 4 else line
+        path = path.strip()
+        if path.startswith('"') and path.endswith('"'):
+            path = path[1:-1]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[-1].strip().strip('"')
+        if path == ".ccc" or path.startswith(".ccc/"):
+            continue
+        out.append(path)
+    return out
+
+
 def find_task_commit(workspace: Path, task_id: str) -> str:
     try:
         r = subprocess.run(
@@ -65,7 +89,15 @@ def ensure_task_commit(
         return False, f"git status failed: {exc}", ""
 
     dirty = (st.stdout or "").strip()
-    if not dirty:
+    product = porcelain_product_paths(dirty)
+    if not product:
+        if dirty:
+            return (
+                False,
+                "no task_id commit and only .ccc/ meta dirty — "
+                "agent did not land product changes",
+                existing,
+            )
         return (
             False,
             "no task_id commit and working tree clean — agent did not land changes",
@@ -73,8 +105,10 @@ def ensure_task_commit(
         )
 
     try:
+        # Stage product paths only — never auto-commit board/state noise as DoD.
+        add_cmd = ["git", "add", "--", *product]
         subprocess.run(
-            ["git", "add", "-A"],
+            add_cmd,
             cwd=str(workspace),
             capture_output=True,
             text=True,

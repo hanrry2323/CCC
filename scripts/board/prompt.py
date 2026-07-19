@@ -67,7 +67,9 @@ def build_dev_phase_prompt(
         f"4. 确认代码无语法错误\n"
         f"5. 不超出 scope 白名单，且不提前做后续 phase\n"
         f"6. **禁止**向其他 git 仓库（含 CCC 编排仓）写文件或 commit\n"
-        f"7. report 末尾写 `ALL SELF-CHECKS PASSED`\n"
+        f"7. 接力只读 `{ws}/.ccc/state.md` 与 `{ws}/.ccc/plans/{task_id}.plan.md`；"
+        f"**禁止** `~/.ccc/`\n"
+        f"8. report 末尾写 `ALL SELF-CHECKS PASSED`（门禁不代写；缺则 FAIL）\n"
     )
 
 

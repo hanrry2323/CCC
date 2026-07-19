@@ -867,6 +867,48 @@ def dev_role_check_complete(task_id: str) -> dict:
                     task_id,
                 )
                 return {"status": "failed", "retry": 0, "task_id": task_id}
+        # v0.52: 空心成功门禁 — 拒读 ~/.ccc / external_directory 仍 exit 0
+        from _opencode_quality_gate import (
+            detect_hollow_opencode_run,
+            report_has_self_checks_passed,
+        )
+
+        _hollow = detect_hollow_opencode_run(result_raw, _existing_report)
+        if _hollow:
+            _log.error("[gate] %s hollow success: %s", task_id, _hollow)
+            if not _existing_report:
+                report_path.write_text(
+                    f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
+                    f"- 退出码: {exit_code}\n- 门禁: HOLLOW FAIL\n\n"
+                    f"## 原因\n{_hollow}\n\n"
+                    f"## 输出\n```\n{result_raw[:2000]}\n```\n"
+                )
+            return {
+                "status": "failed",
+                "retry": 0,
+                "task_id": task_id,
+                "error": f"hollow-gate: {_hollow}",
+            }
+
+        # SELF-CHECKS：必须由 agent 写出；门禁禁止代写假 PASS（2026-07-19）
+        if not report_has_self_checks_passed(_existing_report):
+            _log.error(
+                "[gate] %s report.md 缺少 'ALL SELF-CHECKS PASSED'（不代写）",
+                task_id,
+            )
+            if not _existing_report:
+                report_path.write_text(
+                    f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
+                    f"- 退出码: {exit_code}\n- 门禁: missing SELF-CHECKS\n\n"
+                    f"## 输出\n```\n{result_raw[:2000]}\n```\n"
+                )
+            return {
+                "status": "failed",
+                "retry": 0,
+                "task_id": task_id,
+                "error": "self-checks-gate: missing ALL SELF-CHECKS PASSED",
+            }
+
         # 成功：清标记文件 + 记录 commit hash + 挪列
         for p in marker_files:
             try:
@@ -901,26 +943,6 @@ def dev_role_check_complete(task_id: str) -> dict:
             _log.warning(
                 "[commit-gate] %s exit_code=0 但无含 task_id 的 commit（不记 HEAD）",
                 task_id,
-            )
-
-        # v0.37: SELF-CHECKS 门禁 — 保留 agent report；无 report 时写 stub 并标记通过
-        # （exit_code=0 + result.json≥50 已验证）
-        if _existing_report:
-            _report_body = _existing_report
-            if "ALL SELF-CHECKS PASSED" not in _report_body:
-                _log.warning(
-                    "[gate] %s report.md 缺少 'ALL SELF-CHECKS PASSED'，"
-                    "但 exit_code=0 且 result 充足 → 放行并补记",
-                    task_id,
-                )
-                report_path.write_text(
-                    _report_body.rstrip() + "\n\nALL SELF-CHECKS PASSED\n"
-                )
-        else:
-            report_path.write_text(
-                f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
-                f"- 退出码: {exit_code}\n\n## 输出\n```\n{result_raw[:2000]}\n```\n\n"
-                f"ALL SELF-CHECKS PASSED\n"
             )
         # v0.38: 多 phase 续跑 — 先 peek 是否终态；终态则 H1 commit 门禁通过后再 mark done
         _phases_peek = []

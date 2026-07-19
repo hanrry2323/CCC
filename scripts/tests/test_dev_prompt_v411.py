@@ -29,6 +29,9 @@ def test_prompt_includes_scope_and_pytest_fail():
     assert "弱模型友好" in text
     assert "工作目录硬门" in text
     assert _WS in text
+    assert "门禁不代写" in text
+    assert f"{_WS}/.ccc/state.md" in text
+    assert "~/.ccc/" in text
 
 
 def test_prompt_without_scope_warns():
