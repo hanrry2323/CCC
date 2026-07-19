@@ -372,6 +372,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                 return origin
         except Exception as e:
             _log.warning("origin parse failed for %r: %s", origin, e)
+        return ""
 
     def _json(self, data: dict, status: int = 200):
         self.send_response(status)
@@ -392,19 +393,27 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             allow_local = os.environ.get("CCC_BOARD_ALLOW_LOCAL_NO_TOKEN", "").strip() == "1"
             if allow_local:
                 return True
-            # 自动发现本机所有 IP（含 LAN IP），避免硬编码
+            # 本机 IP：仅 loopback + UDP 探测主网卡（不调 getaddrinfo(hostname)，
+            # 避免 DNS/公网地址进入白名单）
             import socket as _sock
-            _own_ips = set()
+
+            _own_ips = {"127.0.0.1", "::1"}
             try:
-                _own_ips.update(
-                    info[4][0]
-                    for info in _sock.getaddrinfo(_sock.gethostname(), None)
-                    if info[4] and info[4][0]
-                )
+                with _sock.socket(_sock.AF_INET, _sock.SOCK_DGRAM) as _s:
+                    _s.connect(("192.168.0.1", 1))
+                    _lip = _s.getsockname()[0]
+                    if _lip:
+                        _own_ips.add(_lip)
             except OSError:
                 pass
-            _own_ips.add("127.0.0.1")
-            _own_ips.add("::1")
+            try:
+                with _sock.socket(_sock.AF_INET6, _sock.SOCK_DGRAM) as _s6:
+                    _s6.connect(("2001:db8::1", 1))
+                    _lip6 = _s6.getsockname()[0]
+                    if _lip6:
+                        _own_ips.add(_lip6)
+            except OSError:
+                pass
             if client_ip in _own_ips:
                 return True
             if not _rate_limiter.allow(f"auth:{client_ip}"):

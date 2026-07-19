@@ -217,8 +217,9 @@ class OpenCodeExecutor(Executor):
 
         _exec_py = Path(__file__).resolve().parent / "opencode-exec.py"
         _spec = importlib.util.spec_from_file_location("_ccc_opencode_exec", _exec_py)
+        if _spec is None or _spec.loader is None:
+            raise RuntimeError(f"cannot load opencode-exec from {_exec_py}")
         _mod = importlib.util.module_from_spec(_spec)
-        assert _spec and _spec.loader
         _spec.loader.exec_module(_mod)
         _build_cmd = _mod.build_opencode_run_cmd
 
@@ -230,7 +231,7 @@ class OpenCodeExecutor(Executor):
             tmp_path = str(pids_dir / f"prompt-{_uuid.uuid4().hex}.md")
             Path(tmp_path).write_text(prompt_text, encoding="utf-8")
             try:
-                os.chmod(tmp_path, 0o600)
+                _os.chmod(tmp_path, 0o600)
             except OSError:
                 pass
             cmd = _build_cmd(

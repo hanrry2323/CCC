@@ -736,13 +736,6 @@ class FileBoardStore:
                 if (t.get("split_status") or "pending")
                 not in _BACKLOG_FRONT | {"failed", "done"}
             ]
-            front.sort(
-                key=lambda t: (
-                    _BACKLOG_SPLIT_RANK.get(t.get("split_status") or "pending", 1),
-                    t.get("created_at", t.get("id", "")),
-                ),
-                reverse=False,
-            )
             front.sort(key=lambda t: t.get("id", ""))
             front.sort(
                 key=lambda t: t.get("created_at", t.get("id", "")), reverse=True
@@ -1051,7 +1044,7 @@ class FileBoardStore:
 
     def _archive_to_quarantine(
         self, task_id: str, task: dict, reason: str, from_col: str
-    ) -> Path:
+    ) -> Path | None:
         """v0.28.0: 内部方法，调模块级 quarantine_store_content
 
         v0.28.0 (C-001): 改用显式 self.workspace，不再靠 self.board.parent.parent 推测。

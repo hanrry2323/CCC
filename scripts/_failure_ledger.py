@@ -120,8 +120,10 @@ def record_failure(
         try:
             with out.open("a", encoding="utf-8") as f:
                 f.write(line)
-        except OSError:
-            pass
+        except OSError as exc:
+            # append_jsonl 不可用时的降级路径；写失败仍告知调用方（不静默）
+            _log.warning("failure ledger fallback write failed: %s (%s)", out, exc)
+            raise
     return out
 
 

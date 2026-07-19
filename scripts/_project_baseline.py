@@ -7,6 +7,7 @@ v0.42.4：快照含 git log / 热路径 / 完整 control policy，收紧 Claude 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -20,7 +21,14 @@ def _now_iso() -> str:
     return now_iso_utc()
 
 
-def _run_git(ws: Path, *args: str, timeout: int = 15) -> tuple[int, str]:
+def _run_git(ws: Path, *args: str, timeout: int | None = None) -> tuple[int, str]:
+    # 大仓库可 export CCC_BASELINE_GIT_TIMEOUT=60
+    if timeout is None:
+        try:
+            timeout = int(os.environ.get("CCC_BASELINE_GIT_TIMEOUT", "30"))
+        except ValueError:
+            timeout = 30
+        timeout = max(5, min(timeout, 600))
     try:
         r = subprocess.run(
             ["git", *args],

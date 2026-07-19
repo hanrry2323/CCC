@@ -1223,25 +1223,34 @@ def _record_regen(ws: Path, tid: str) -> None:
 # ═══════════════════════════════════════════════════════════════
 
 def _recent_events(ws: Path, event_type: str, window_sec: int) -> list[dict]:
-    """从 events.jsonl 读最近指定类型事件（滑动窗口）。"""
+    """从 events.jsonl 读最近指定类型事件（滑动窗口）。
+
+    大文件只扫尾部（默认 512KiB），避免每 6 tick 全量解析。
+    """
     ev_file = ws / ".ccc" / "stats" / "events.jsonl"
     if not ev_file.exists():
         return []
     now = time.time()
     events = []
+    max_bytes = int(os.environ.get("CCC_RECENT_EVENTS_BYTES", "524288"))
     try:
-        for line in ev_file.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if ev.get("event") == event_type:
-                ts = ev.get("t", 0)
-                if isinstance(ts, (int, float)) and ts > now - window_sec:
-                    events.append(ev)
+        size = ev_file.stat().st_size
+        with ev_file.open("r", encoding="utf-8", errors="replace") as f:
+            if size > max_bytes:
+                f.seek(max(0, size - max_bytes))
+                f.readline()  # 丢弃可能截断的首行
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("event") == event_type:
+                    ts = ev.get("t", 0)
+                    if isinstance(ts, (int, float)) and ts > now - window_sec:
+                        events.append(ev)
     except OSError:
         pass
     return events

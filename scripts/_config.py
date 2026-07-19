@@ -230,38 +230,64 @@ class Config:
         _env_override_duration(
             self, "hook_timeout", "CCC_HOOK_TIMEOUT", self.hook_timeout
         )
-        _env_override_int(self, "max_retry", "CCC_MAX_RETRY")
-        _env_override_int(self, "max_stale_hours", "CCC_STALE_HOURS")
+        _env_override_int(self, "max_retry", "CCC_MAX_RETRY", lo=0, hi=100)
+        _env_override_int(self, "max_stale_hours", "CCC_STALE_HOURS", lo=1, hi=168)
         _env_override_str(self, "model", "OPENCODE_MODEL")
         _env_override_str(self, "board_host", "BOARD_HOST")
-        _env_override_int(self, "board_port", "BOARD_PORT")
-        _env_override_int(self, "engine_stats_port", "CCC_ENGINE_STATS_PORT")
-        _env_override_int(self, "engine_poll_interval", "CCC_ENGINE_POLL_INTERVAL")
-        _env_override_int(self, "engine_idle_sleep", "CCC_ENGINE_IDLE_SLEEP")
-        _env_override_int(self, "phase_timeout", "CCC_PHASE_TIMEOUT")
-        _env_override_int(self, "exec_timeout", "CCC_EXEC_TIMEOUT")
-        _env_override_int(self, "reviewer_timeout", "CCC_REVIEWER_TIMEOUT")
-        _env_override_int(self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL")
-        _env_override_int(self, "max_phases", "CCC_MAX_PHASES")
-        _env_override_int(self, "reviewer_retry_on_timeout", "CCC_REVIEWER_RETRY")
+        _env_override_int(self, "board_port", "BOARD_PORT", lo=1, hi=65535)
+        _env_override_int(
+            self, "engine_stats_port", "CCC_ENGINE_STATS_PORT", lo=1, hi=65535
+        )
+        _env_override_int(
+            self, "engine_poll_interval", "CCC_ENGINE_POLL_INTERVAL", lo=1, hi=3600
+        )
+        _env_override_int(
+            self, "engine_idle_sleep", "CCC_ENGINE_IDLE_SLEEP", lo=1, hi=3600
+        )
+        _env_override_int(self, "phase_timeout", "CCC_PHASE_TIMEOUT", lo=60, hi=86400)
+        _env_override_int(self, "exec_timeout", "CCC_EXEC_TIMEOUT", lo=60, hi=86400)
+        _env_override_int(
+            self, "reviewer_timeout", "CCC_REVIEWER_TIMEOUT", lo=60, hi=86400
+        )
+        _env_override_int(
+            self, "engine_tick_interval", "CCC_ENGINE_TICK_INTERVAL", lo=1, hi=300
+        )
+        _env_override_int(self, "max_phases", "CCC_MAX_PHASES", lo=1, hi=500)
+        _env_override_int(
+            self, "reviewer_retry_on_timeout", "CCC_REVIEWER_RETRY", lo=0, hi=10
+        )
         _env_override_duration(
             self, "max_wallclock", "CCC_MAX_WALLCLOCK", self.max_wallclock
         )
         _env_override_str(self, "webhook_url", "CCC_WEBHOOK_URL")
         # v0.36: 重试 / 内存 / 熔断
-        _env_override_int(self, "retry_base_interval", "CCC_RETRY_BASE_INTERVAL")
-        _env_override_int(self, "retry_max_interval", "CCC_RETRY_MAX_INTERVAL")
+        _env_override_int(
+            self, "retry_base_interval", "CCC_RETRY_BASE_INTERVAL", lo=1, hi=86400
+        )
+        _env_override_int(
+            self, "retry_max_interval", "CCC_RETRY_MAX_INTERVAL", lo=1, hi=86400
+        )
         _env_override_float(self, "retry_backoff_factor", "CCC_RETRY_BACKOFF_FACTOR")
-        _env_override_int(self, "mem_warn_mb", "CCC_MEM_WARN_MB")
-        _env_override_int(self, "mem_degraded_mb", "CCC_MEM_DEGRADED_MB")
-        _env_override_int(self, "mem_kill_mb", "CCC_MEM_KILL_MB")
-        _env_override_int(self, "breaker_recovery_seconds", "CCC_BREAKER_RECOVERY_SECONDS")
+        _env_override_int(self, "mem_warn_mb", "CCC_MEM_WARN_MB", lo=64, hi=1_000_000)
+        _env_override_int(
+            self, "mem_degraded_mb", "CCC_MEM_DEGRADED_MB", lo=64, hi=1_000_000
+        )
+        _env_override_int(self, "mem_kill_mb", "CCC_MEM_KILL_MB", lo=64, hi=1_000_000)
+        _env_override_int(
+            self,
+            "breaker_recovery_seconds",
+            "CCC_BREAKER_RECOVERY_SECONDS",
+            lo=1,
+            hi=86400,
+        )
         # v0.37: 空闲补给 / evolve / product 超时
         # v0.42.4: invent/自造相关开关永久 False，不再读环境变量
         self.auto_replenish = False
         self.evolve_on_idle = False
         self.evolve_on_audit = False
-        _env_override_int(self, "product_async_timeout", "CCC_PRODUCT_ASYNC_TIMEOUT")
+        _env_override_int(
+            self, "product_async_timeout", "CCC_PRODUCT_ASYNC_TIMEOUT", lo=60, hi=86400
+        )
 
 
 def _resolve_workspace() -> Path:
@@ -315,13 +341,29 @@ def _env_override_bool(cfg: Config, attr: str, env_key: str) -> None:
         _log.warning("invalid %s=%r, keeping default", env_key, val)
 
 
-def _env_override_int(cfg: Config, attr: str, env_key: str) -> None:
+def _env_override_int(
+    cfg: Config,
+    attr: str,
+    env_key: str,
+    *,
+    lo: int | None = None,
+    hi: int | None = None,
+) -> None:
     val = os.environ.get(env_key, "").strip()
-    if val:
-        try:
-            setattr(cfg, attr, int(val))
-        except ValueError:
-            _log.warning("invalid %s=%r, keeping default", env_key, val, exc_info=True)
+    if not val:
+        return
+    try:
+        n = int(val)
+    except ValueError:
+        _log.warning("invalid %s=%r, keeping default", env_key, val, exc_info=True)
+        return
+    if lo is not None and n < lo:
+        _log.warning("%s=%r below min %s, keeping default", env_key, val, lo)
+        return
+    if hi is not None and n > hi:
+        _log.warning("%s=%r above max %s, keeping default", env_key, val, hi)
+        return
+    setattr(cfg, attr, n)
 
 
 def _env_override_str(cfg: Config, attr: str, env_key: str) -> None:

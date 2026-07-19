@@ -99,7 +99,7 @@ class TestOpenCodeExecutor:
                 with patch("os.killpg"):
                     with patch("os.wait", side_effect=ProcessLookupError):
                         result = OpenCodeExecutor(Config()).execute(
-                            "phase-t", "x", timeout=1
+                            "phase-t", "x", timeout=1, cwd=str(tmp_path)
                         )
         assert result["killed"] is True
         assert result["exit_code"] == -1
@@ -118,7 +118,9 @@ class TestOpenCodeExecutor:
                 proc.returncode = 0
                 proc.communicate.return_value = (b"", b"")
                 popen.return_value = proc
-                OpenCodeExecutor(Config()).execute("long-p", long_prompt, timeout=5)
+                OpenCodeExecutor(Config()).execute(
+                    "long-p", long_prompt, timeout=5, cwd=str(tmp_path)
+                )
                 cmd = popen.call_args[0][0]
                 assert "--file" in cmd
 
@@ -153,5 +155,7 @@ class TestOpenCodeExecutor:
                 ]
                 popen.return_value = proc
                 with patch("os.killpg"):
-                    result = OpenCodeExecutor(Config()).execute("hard-kill", "x", timeout=2)
+                    result = OpenCodeExecutor(Config()).execute(
+                        "hard-kill", "x", timeout=2, cwd=str(tmp_path)
+                    )
         assert result["killed"] is True
