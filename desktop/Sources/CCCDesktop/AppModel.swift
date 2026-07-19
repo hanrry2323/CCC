@@ -900,7 +900,7 @@ final class AppModel: ObservableObject {
         if let tid = selectedThreadId {
             currentThreadStreaming = streamingThreadIds.contains(tid)
             if currentThreadStreaming, canChat {
-                statusText = "本机生成中…"
+                setStatusImmediate("本机生成中…")
             } else if canChat, statusText.contains("生成中") || statusText.hasPrefix("本条失败") {
                 updateConnectionStatusText(localOK: true, hubOK: hubReachable)
             }
@@ -956,6 +956,47 @@ final class AppModel: ObservableObject {
         var msgs = threadMessages[threadId] ?? (selectedThreadId == threadId ? messages : [])
         body(&msgs)
         persistMessages(for: threadId, msgs)
+    }
+
+    /// Phase 1.4: delta 热路径专用——直接下标改 messages[i].content，避免整数组重赋值。
+    /// 仍触发 @Published willSet（subscript setter），但 SwiftUI 可按 row diff，不重建 LazyVStack。
+    private func applyDeltaInPlace(threadId: String, assistantId: UUID, chunk: String) {
+        if var msgs = threadMessages[threadId],
+           let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
+            msgs[idx].content += chunk
+            threadMessages[threadId] = msgs
+        }
+        if selectedThreadId == threadId,
+           let mIdx = messages.firstIndex(where: { $0.id == assistantId }) {
+            messages[mIdx].content += chunk
+        } else if selectedThreadId == threadId, let msgs = threadMessages[threadId] {
+            // 兜底：messages 与 threadMessages 不同步时整表对齐一次
+            messages = msgs
+        }
+        scheduleDiskSave(threadId: threadId)
+    }
+
+    /// Phase 1.4: statusText 250ms 节流，避免每个 delta 都重绘状态栏
+    private var pendingStatusText: String?
+    private var statusThrottleTask: Task<Void, Never>?
+    private func setStatusThrottled(_ text: String) {
+        pendingStatusText = text
+        if statusThrottleTask != nil { return }
+        statusThrottleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self else { return }
+            self.statusThrottleTask = nil
+            if let pending = self.pendingStatusText {
+                self.pendingStatusText = nil
+                self.statusText = pending
+            }
+        }
+    }
+    private func setStatusImmediate(_ text: String) {
+        pendingStatusText = nil
+        statusThrottleTask?.cancel()
+        statusThrottleTask = nil
+        statusText = text
     }
 
     /// Hub PUT 会话备份（非权威；Engine 不读；失败入重试队列，本机磁盘为准）
@@ -1129,7 +1170,7 @@ final class AppModel: ObservableObject {
 
         do {
             if selectedThreadId == threadId {
-                statusText = "连接 Agent…"
+                setStatusImmediate("连接 Agent…")
             }
             try await prepareClient()
             // 业务仓未绑本机路径时提示一次（不阻断）
@@ -1139,7 +1180,7 @@ final class AppModel: ObservableObject {
             }
             await warmBeforeSendIfNeeded()
             if selectedThreadId == threadId {
-                statusText = "本机生成中…"
+                setStatusImmediate("本机生成中…")
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
             let mode = Self.promptMode(forUserText: text)
@@ -1150,7 +1191,7 @@ final class AppModel: ObservableObject {
                 do {
                     if attempt == 2 {
                         if selectedThreadId == threadId {
-                            statusText = "重连中…"
+                            setStatusImmediate("重连中…")
                         }
                         mutateThreadMessages(threadId: threadId) { msgs in
                             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
@@ -1270,7 +1311,7 @@ final class AppModel: ObservableObject {
             }
             if !cancelled {
                 if selectedThreadId == threadId {
-                    statusText = "本条失败"
+                    setStatusImmediate("本条失败")
                 }
                 showToast("对话失败：\(error.localizedDescription)")
                 if selectedThreadId == threadId {
@@ -1281,11 +1322,18 @@ final class AppModel: ObservableObject {
     }
 
     private func applyChatEvent(threadId: String, assistantId: UUID, event: ChatStreamEvent) {
+        switch event {
+        case .delta(let chunk):
+            applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
+            return
+        case .toolUse, .toolResult, .cost, .done:
+            break
+        }
         mutateThreadMessages(threadId: threadId) { msgs in
             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
             switch event {
-            case .delta(let chunk):
-                msgs[idx].content += chunk
+            case .delta:
+                break
             case .toolUse(let name, let input):
                 let anyInput: [String: Any] = input
                 let step = ToolStep(
@@ -1300,10 +1348,9 @@ final class AppModel: ObservableObject {
                     msgs[idx].filesChanged += 1
                 }
                 if selectedThreadId == threadId {
-                    statusText = "工具执行中…"
+                    setStatusThrottled("工具执行中…")
                 }
             case .toolResult(let ok):
-                // 标记最近一个仍 running 的步骤（不是盲目 last）
                 if let ri = msgs[idx].toolSteps.lastIndex(where: { $0.status == .running }) {
                     msgs[idx].toolSteps[ri].status = ok ? .done : .error
                 } else if let last = msgs[idx].toolSteps.indices.last {
@@ -1325,7 +1372,6 @@ final class AppModel: ObservableObject {
                 }
             }
         }
-        // 强制 SwiftUI 订阅方刷新（LazyVStack 同 id 时偶发不刷 toolSteps）
         if case .toolUse = event {
             objectWillChange.send()
         } else if case .toolResult = event {

@@ -499,6 +499,9 @@ class FileBoardStore:
         # 兜底：裸 workspace 时建全 7 列 + events 目录（v0.22 N1 修）
         for col in COLUMNS:
             (self.board / col).mkdir(parents=True, exist_ok=True)
+        self._list_cache: dict[str, tuple[float, list[dict]]] = {}
+        # update_index() 写入；_sync_state_md() 复用，避免紧跟 move 之后再扫一次。
+        self._index_counts_cache: dict[str, int] | None = None
 
     # ── 内部方法 ──
 
@@ -508,6 +511,32 @@ class FileBoardStore:
 
     def _unlock(self, lock_obj) -> None:
         _release_lock(lock_obj)
+
+    def _column_signature(self, column: str) -> float:
+        """列目录 + 内部 *.jsonl 的合成 mtime：目录增删文件或文件被改都变。"""
+        col_dir = self.board / column
+        try:
+            sig = col_dir.stat().st_mtime
+        except OSError:
+            return 0.0
+        try:
+            for f in col_dir.glob("*.jsonl"):
+                try:
+                    sig = max(sig, f.stat().st_mtime)
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return sig
+
+    def _invalidate_cache(self, *columns: str) -> None:
+        for col in columns:
+            self._list_cache.pop(col, None)
+            # 计数缓存也失效
+            self._index_counts_cache = None
+        if not columns:
+            self._list_cache.clear()
+            self._index_counts_cache = None
 
     # ── 核心 CRUD ──
 
@@ -595,6 +624,7 @@ class FileBoardStore:
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(dst, json.dumps(task, ensure_ascii=False) + "\n")
             self._record_event(task_id, "none", column)
+            self._invalidate_cache(column)
             _log.info("%s created in %s kind=%s", task_id, column, task["card_kind"])
             return True
         finally:
@@ -607,6 +637,9 @@ class FileBoardStore:
 
         backlog：pending/planned/running 在前（新→旧），failed 可处理，done 沉底；默认隐藏 ui_hidden。
         其它列：FIFO by created_at；默认过滤 ui_hidden。
+
+        mtime-indexed 读缓存：缓存 normalize+filter+sort 后的最终结果；
+        写路径主动失效；同 tick 多次读同列由 O(cols×cards) 降为 O(1)。
         """
         if column not in COLUMNS:
             _log.warning(
@@ -615,7 +648,15 @@ class FileBoardStore:
             return []
         col_dir = self.board / column
         if not col_dir.exists():
+            self._list_cache.pop(column, None)
             return []
+        sig = self._column_signature(column)
+        cache_key = column
+        cached = self._list_cache.get(cache_key)
+        # 缓存的是 include_hidden=False 的最终结果；显式 hidden 请求走旁路
+        if cached is not None and cached[0] == sig and not include_hidden:
+            return cached[1]
+
         tasks: list[dict] = []
         for f in sorted(col_dir.glob("*.jsonl")):
             try:
@@ -662,7 +703,6 @@ class FileBoardStore:
                 ),
                 reverse=False,
             )
-            # 同 rank 内新→旧；created_at 相同时按 id 升序确定
             front.sort(key=lambda t: t.get("id", ""))
             front.sort(
                 key=lambda t: t.get("created_at", t.get("id", "")), reverse=True
@@ -685,15 +725,19 @@ class FileBoardStore:
             other.sort(
                 key=lambda t: t.get("updated_at") or t.get("created_at") or ""
             )
-            return front + failed + other + done
-
-        viewed.sort(
-            key=lambda t: (
-                t.get("created_at", t.get("id", "")),
-                t.get("id", ""),
+            result = front + failed + other + done
+        else:
+            viewed.sort(
+                key=lambda t: (
+                    t.get("created_at", t.get("id", "")),
+                    t.get("id", ""),
+                )
             )
-        )
-        return viewed
+            result = viewed
+
+        if not include_hidden:
+            self._list_cache[cache_key] = (sig, result)
+        return result
 
     def find_task(self, task_id: str) -> tuple[str | None, dict | None]:
         """查找 task 所在列与内容。返回 (column, task)。"""
@@ -748,6 +792,7 @@ class FileBoardStore:
                 self.board / col / f"{task_id}.jsonl",
                 json.dumps(task, ensure_ascii=False) + "\n",
             )
+            self._invalidate_cache(col)
             return True
         finally:
             self._unlock(lock)
@@ -813,6 +858,7 @@ class FileBoardStore:
                     "move_task src unlink failed (dst committed) %s: %s", src, e
                 )
             self._record_event(task_id, from_col, to_col)
+            self._invalidate_cache(from_col, to_col)
             _log.info("%s: %s → %s", task_id, from_col, to_col)
             success = True
         finally:
@@ -822,7 +868,11 @@ class FileBoardStore:
         return success
 
     def update_index(self) -> dict:
-        """更新 .ccc/board/index.json 状态总览（加锁防并发）"""
+        """更新 .ccc/board/index.json 状态总览（加锁防并发）
+
+        顺带把 7 列计数回填到 _sync_state_md 可复用的内存缓存，避免紧随其后的
+        _sync_state_md 再次扫全列（Phase 1.3）。
+        """
         lock = self._lock()
         if lock is None:
             _log.error("update_index: lock unavailable; aborting")
@@ -833,6 +883,7 @@ class FileBoardStore:
             _atomic_write(
                 index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
             )
+            self._index_counts_cache = counts
             return counts
         finally:
             self._unlock(lock)
@@ -885,6 +936,7 @@ class FileBoardStore:
 
             (self.board / from_col / f"{task_id}.jsonl").unlink()
             self._record_event(task_id, from_col, "abnormal")
+            self._invalidate_cache(from_col, "abnormal")
 
             # v0.28.0: archive to <workspace>/.ccc/quarantines/<task_id>
             self._archive_to_quarantine(task_id, task, reason, from_col)
@@ -1024,9 +1076,13 @@ class FileBoardStore:
         使用 <!-- board-status --> / <!-- /board-status --> 配对标记
         做确定性替换；无标记时追加末尾。调用方必须在锁释放后再调，
         以避免延长看板写锁持有时间。
+
+        Phase 1.3: 优先复用 update_index() 刚算好的 counts；缺失时再扫一次。
         """
         state_md = self.workspace / ".ccc" / "state.md"
-        counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
+        counts = getattr(self, "_index_counts_cache", None)
+        if counts is None:
+            counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
         now = now_iso()
 
         lines = [

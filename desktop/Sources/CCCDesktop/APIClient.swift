@@ -314,15 +314,16 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
-        // 按字节拼行，避免 AsyncLineSequence 粘包/半包导致漏解析 tool_use
+        // Phase 1.6: 按行切片但用 cursor 一次性丢前缀，避免 removeSubrange 每行 O(n) 共 O(n²)
+        let nlByte = Data([UInt8(ascii: "\n")])
         var buffer = Data()
         for try await chunk in bytes {
             try Task.checkCancellation()
             buffer.append(chunk)
-            while let nl = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                let lineData = buffer.subdata(in: buffer.startIndex..<nl)
-                let after = buffer.index(after: nl)
-                buffer.removeSubrange(buffer.startIndex..<after)
+            var cursor = buffer.startIndex
+            while let r = buffer.range(of: nlByte, in: cursor..<buffer.endIndex) {
+                let lineData = buffer.subdata(in: cursor..<r.lowerBound)
+                cursor = r.upperBound
                 var line = String(data: lineData, encoding: .utf8) ?? ""
                 if line.hasSuffix("\r") { line.removeLast() }
                 guard line.hasPrefix("data:") else { continue }
@@ -386,6 +387,10 @@ actor APIClient {
                     gotDelta = true
                     await onEvent(.delta(textChunk))
                 }
+            }
+            // Phase 1.6: 一次性丢掉已处理前缀，保留未结束的尾巴给下一个 chunk
+            if cursor > buffer.startIndex {
+                buffer = buffer.subdata(in: cursor..<buffer.endIndex)
             }
         }
         if !gotDelta && !gotTool {

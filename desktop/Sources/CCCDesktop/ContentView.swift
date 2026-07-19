@@ -424,8 +424,9 @@ struct CodexChatPane: View {
                     }
                     ForEach(model.messages) { msg in
                         CodexMessageRow(message: msg)
-                            // toolSteps 变化时强制刷新（同 UUID 时 LazyVStack 偶发不刷）
-                            .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)-c\(msg.content.count)")
+                            // Phase 1.5: .id 不含 content.count — delta 不再重建整行；
+                            // toolSteps 计数 + running 计数仍保留以触发工具轨刷新
+                            .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)")
                             .environmentObject(model)
                             .contextMenu {
                                 Button("复制") { model.copyMessage(msg.content) }
@@ -456,8 +457,10 @@ struct CodexChatPane: View {
 
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let last = model.messages.last else { return }
+        // Phase 1.5: scroll 目标与 .id 同构，避免 scrollTo 命中失败
+        let lastId = "\(model.selectedThreadId ?? "")-\(last.id)-t\(last.toolSteps.count)-r\(last.toolSteps.filter { $0.status == .running }.count)"
         withAnimation(.easeOut(duration: 0.12)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
+            proxy.scrollTo(lastId, anchor: .bottom)
         }
     }
 

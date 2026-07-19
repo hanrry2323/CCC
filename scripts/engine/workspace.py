@@ -53,10 +53,9 @@ def _ws_label(ws: Path, program_dir: Path | None = None) -> str:
 
 
 def _find_task_column(store: FileBoardStore, tid: str) -> str | None:
-    for col in _BOARD_COLUMNS:
-        if any(t["id"] == tid for t in store.list_tasks(col)):
-            return col
-    return None
+    """Phase 1.2: 用 find_task 路径探测（O(cols) stat）替代 list_tasks 全扫。"""
+    col, _task = store.find_task(tid)
+    return col
 
 
 def _ensure_task_in_testing(store: FileBoardStore, tid: str) -> None:
