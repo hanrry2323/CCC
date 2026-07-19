@@ -368,16 +368,21 @@ actor APIClient {
             let project: String
             let session_id: String
             let messages: [ChatMessage]
+            let prompt: String?
             let mode: String
             let project_path: String?
             let prompt_mode: String
             let tool_mode: String
         }
+        // prompt: 只发最后一条 user message 的 content，sidecar 优先使用
+        // 避免序列化/传输/解析全量消息历史（可达数 MB）只为取最后一行
+        let promptHint = messages.last(where: { $0.role == "user" })?.content
         let data = try JSONEncoder().encode(
             Body(
                 project: projectId,
                 session_id: sessionId,
                 messages: messages,
+                prompt: promptHint,
                 mode: "chat",
                 project_path: localProjectPath,
                 prompt_mode: promptMode,
@@ -607,6 +612,10 @@ actor APIClient {
 
     func fetchOpsSummary() async throws -> OpsSummary {
         try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
+    }
+
+    func fetchRouterUsage() async throws -> RouterUsageResp {
+        try await send(try authedRequest("api/ops/router-usage"), as: RouterUsageResp.self)
     }
 
     func runDailyReview(workspace: String) async throws {

@@ -208,6 +208,69 @@ def probe_http(host: str, port: int, timeout: float = 1.2) -> tuple[bool, int, s
         return False, 0, "未响应"
 
 
+def _empty_router_tiers() -> dict[str, dict[str, int]]:
+    return {
+        "flash": {"requests_today": 0, "tokens_today": 0},
+        "code": {"requests_today": 0, "tokens_today": 0},
+        "pro": {"requests_today": 0, "tokens_today": 0},
+    }
+
+
+def fetch_router_usage(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 4000,
+    timeout: float = 1.5,
+    use_cache: bool = True,
+) -> dict:
+    """Proxy ai-loop-router GET /admin/stats → flash/code/pro requests_today.
+
+    Fail-soft: unreachable router returns zeros (Desktop shows red 0).
+    """
+    cache_key = f"router_usage:{host}:{port}"
+    if use_cache:
+        cached = _cache_get(cache_key, 3.0)
+        if cached is not None:
+            return cached
+
+    source = f"http://{host}:{port}/admin/stats"
+    out: dict[str, Any] = {
+        "ok": False,
+        "tiers": _empty_router_tiers(),
+        "source": source,
+        "error": None,
+    }
+    try:
+        req = urllib.request.Request(source, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw) if raw else {}
+        tiers_in = data.get("tiers") if isinstance(data, dict) else None
+        tiers = _empty_router_tiers()
+        if isinstance(tiers_in, dict):
+            for name in ("flash", "code", "pro"):
+                row = tiers_in.get(name) or {}
+                if not isinstance(row, dict):
+                    row = {}
+                tiers[name] = {
+                    "requests_today": int(row.get("requests_today") or 0),
+                    "tokens_today": int(row.get("tokens_today") or 0),
+                }
+        out["ok"] = True
+        out["tiers"] = tiers
+        total = data.get("total") if isinstance(data, dict) else None
+        if isinstance(total, dict):
+            out["total"] = {
+                "requests_today": int(total.get("requests_today") or 0),
+                "tokens_today": int(total.get("tokens_today") or 0),
+            }
+    except Exception as exc:
+        out["error"] = str(exc)[:160]
+
+    _cache_set(cache_key, out)
+    return out
+
+
 def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
     cached = _cache_get("ports", _PORT_CACHE_TTL) if use_cache else None
     if cached is not None:

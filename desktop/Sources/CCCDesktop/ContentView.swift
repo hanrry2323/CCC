@@ -55,6 +55,39 @@ struct ContentView: View {
                 .environmentObject(model)
         }
         .animation(.easeOut(duration: 0.18), value: model.toast)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                RouterUsageToolbar()
+            }
+        }
+        .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
+        .toolbarColorScheme(.light, for: .windowToolbar)
+    }
+}
+
+/// 顶栏：flash / code / pro 今日调用（绿 +N / 红 0）
+struct RouterUsageToolbar: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            tierLabel("flash", count: model.routerRequestCount("flash"))
+            tierLabel("code", count: model.routerRequestCount("code"))
+            tierLabel("pro", count: model.routerRequestCount("pro"))
+        }
+        .help("中转站今日调用次数（实时）")
+    }
+
+    private func tierLabel(_ name: String, count: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(name)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(CCCTheme.secondary)
+            Text(count > 0 ? "+\(count)" : "0")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(count > 0 ? CCCTheme.usageActive : CCCTheme.usageIdle)
+        }
     }
 }
 
@@ -292,7 +325,7 @@ struct CodexChatPane: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-                .disabled(model.messages.isEmpty)
+                .disabled(model.chat.messages.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
@@ -349,7 +382,7 @@ struct CodexChatPane: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        if model.messages.isEmpty {
+                        if model.chat.messages.isEmpty {
                             VStack(spacing: 8) {
                                 Spacer().frame(height: 72)
                                 Text("有什么可以帮忙的？")
@@ -362,7 +395,7 @@ struct CodexChatPane: View {
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
                         }
-                        ForEach(model.messages) { msg in
+                        ForEach(model.chat.messages) { msg in
                             CodexMessageRow(message: msg)
                                 // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
                                 .id("\(model.selectedThreadId ?? "")-\(msg.id)")
@@ -390,19 +423,19 @@ struct CodexChatPane: View {
                     .padding(.horizontal, 28)
                     .padding(.top, 8)
                 }
-                .onChange(of: model.messages.count) { _ in scroll(proxy) }
-                .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
-                .onChange(of: model.messages.last?.toolSteps.count) { _ in scroll(proxy) }
+                .onChange(of: model.chat.messages.count) { _ in scroll(proxy) }
+                .onChange(of: model.chat.messages.last?.content) { _ in scroll(proxy) }
+                .onChange(of: model.chat.messages.last?.toolSteps.count) { _ in scroll(proxy) }
                 .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
             }
         }
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
-        guard let last = model.messages.last else { return }
+        guard let last = model.chat.messages.last else { return }
         let lastId = "\(model.selectedThreadId ?? "")-\(last.id)"
         // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
-        guard lastId != lastScrollTargetId || model.messages.last?.isStreaming == true else { return }
+        guard lastId != lastScrollTargetId || model.chat.messages.last?.isStreaming == true else { return }
         // streaming 时节流：仅当内容长度跨过 80 字边界或目标变化才滚
         if last.isStreaming, lastId == lastScrollTargetId {
             let n = last.content.count
@@ -591,7 +624,7 @@ struct CodexMessageRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.gray.opacity(0.12))
+                .fill(CCCTheme.hover)
         )
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
@@ -645,6 +678,13 @@ struct CodexMessageRow: View {
             }
             if !body.isEmpty && body != "…" {
                 MarkdownText(source: body)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(CCCTheme.bubbleAssistant)
+                    )
                     // 末段流式收尾：isStreaming true→false 时淡入上移，去「弹出」
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .animation(.easeOut(duration: 0.25), value: message.isStreaming)
@@ -743,7 +783,7 @@ struct FlowRail: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.top, CCCTheme.trafficLightInset - 8)
+            .padding(.top, 4)
             .padding(.bottom, 8)
 
             // 仅当本对话有多个转任务时才出现切换（不再甩全项目 smoke 列表）

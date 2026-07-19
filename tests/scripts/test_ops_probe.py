@@ -17,7 +17,9 @@ from _ops_probe import (  # noqa: E402
     local_resources,
     docs_debt_scan,
     PORT_GROUPS,
+    fetch_router_usage,
 )
+import _ops_probe as op  # noqa: E402
 
 
 def test_parse_infra_machines_and_ports():
@@ -88,3 +90,53 @@ def test_port_groups_cover_ccc():
     ccc_ports = dict(PORT_GROUPS)["CCC"]
     assert 7777 in ccc_ports
     assert 7775 in ccc_ports
+
+
+def test_fetch_router_usage_fail_soft(monkeypatch):
+    """Router unreachable → zeros, not raise."""
+    import urllib.error
+
+    def boom(*_a, **_k):
+        raise urllib.error.URLError("down")
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", boom)
+    # bypass cache from other tests
+    with op._CACHE_LOCK:
+        op._CACHE.clear()
+    out = op.fetch_router_usage(use_cache=False)
+    assert out["ok"] is False
+    assert out["tiers"]["flash"]["requests_today"] == 0
+    assert out["tiers"]["code"]["requests_today"] == 0
+    assert out["tiers"]["pro"]["requests_today"] == 0
+    assert out.get("error")
+
+
+def test_fetch_router_usage_parses_tiers(monkeypatch):
+    class _Resp:
+        def read(self):
+            return json.dumps(
+                {
+                    "tiers": {
+                        "flash": {"requests_today": 12, "tokens_today": 100},
+                        "code": {"requests_today": 3, "tokens_today": 50},
+                        "pro": {"requests_today": 0, "tokens_today": 0},
+                    },
+                    "total": {"requests_today": 15, "tokens_today": 150},
+                }
+            ).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", lambda *_a, **_k: _Resp())
+    with op._CACHE_LOCK:
+        op._CACHE.clear()
+    out = op.fetch_router_usage(use_cache=False)
+    assert out["ok"] is True
+    assert out["tiers"]["flash"]["requests_today"] == 12
+    assert out["tiers"]["code"]["requests_today"] == 3
+    assert out["tiers"]["pro"]["requests_today"] == 0
+    assert out["total"]["requests_today"] == 15

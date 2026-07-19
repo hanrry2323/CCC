@@ -262,7 +262,6 @@ async def chat(request: Request):
         return denied
 
     body = await request.json()
-    messages = body.get("messages") or []
     session_id = str(body.get("session_id") or body.get("thread_id") or "local")
     model = resolve_model(body.get("model"))
     project_path = (
@@ -280,10 +279,16 @@ async def chat(request: Request):
             status_code=403,
         )
 
-    user_msgs = [m for m in messages if m.get("role") == "user"]
-    if not user_msgs:
-        return JSONResponse({"detail": "messages required"}, status_code=400)
-    prompt = (user_msgs[-1].get("content") or "").strip()
+    # 优先使用 prompt 字段（Desktop 发来的最后一条 user message content）
+    # 避免解析完整 messages 数组只为取最后一行
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        # 兼容旧版 Desktop：回退到 messages 解析
+        messages = body.get("messages") or []
+        user_msgs = [m for m in messages if m.get("role") == "user"]
+        if not user_msgs:
+            return JSONResponse({"detail": "messages required"}, status_code=400)
+        prompt = (user_msgs[-1].get("content") or "").strip()
     if not prompt:
         return JSONResponse({"detail": "prompt required"}, status_code=400)
     # 防恶意超大 prompt 撑爆内存 / 下游 OOM

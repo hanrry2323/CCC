@@ -128,7 +128,80 @@ enum FlowLayout {
         for w in works {
             layers[depth[w.id] ?? 0].append(w)
         }
+        for i in layers.indices {
+            layers[i].sort { a, b in
+                let sa = stageRank(a.status)
+                let sb = stageRank(b.status)
+                if sa != sb { return sa < sb }
+                return a.id < b.id
+            }
+        }
         return layers
+    }
+
+    /// 单列时间线排序：看板阶段 → 依赖深度 → id（阶段分组连续）
+    static func orderedWorks(_ works: [FlowWork]) -> [FlowWork] {
+        let depth = workDepths(works)
+        return works.sorted { a, b in
+            let sa = stageRank(a.status)
+            let sb = stageRank(b.status)
+            if sa != sb { return sa < sb }
+            let da = depth[a.id] ?? 0
+            let db = depth[b.id] ?? 0
+            if da != db { return da < db }
+            return a.id < b.id
+        }
+    }
+
+    /// 阶段分组标题（纵向列表用）
+    static func stageSectionTitle(_ status: String) -> String {
+        switch status {
+        case "planned": return "拆解 / 排队"
+        case "in_progress": return "开发"
+        case "testing": return "验收"
+        case "verified", "released": return "完成"
+        case "abnormal": return "异常"
+        default: return "其它"
+        }
+    }
+
+    static func stageRank(_ status: String) -> Int {
+        switch status {
+        case "planned": return 0
+        case "in_progress": return 1
+        case "testing": return 2
+        case "verified": return 3
+        case "released": return 4
+        case "abnormal": return 5
+        default: return 6
+        }
+    }
+
+    static func graphNode(from work: FlowWork) -> FlowGraphNode {
+        FlowGraphNode(
+            id: work.id,
+            kind: .work,
+            title: work.title,
+            subtitle: work.displayStatus,
+            statusKey: work.status,
+            badge: work.displayExecutor,
+            detail: work.failureNote ?? (work.dependsOnTitles?.isEmpty == false
+                ? "依赖 \(work.dependsOnTitles!.joined(separator: "、"))"
+                : nil)
+        )
+    }
+
+    static func epicGraphNode(epic: FlowEpic?, epicId: String?) -> FlowGraphNode {
+        let eid = epic?.id ?? epicId ?? "epic"
+        return FlowGraphNode(
+            id: eid,
+            kind: .epic,
+            title: epic?.title ?? eid,
+            subtitle: epic?.headline ?? epic?.user_stage.map { stageLabel($0) } ?? "待拆解",
+            statusKey: epic?.user_stage ?? "pending",
+            badge: "任务",
+            detail: epic?.goal_summary
+        )
     }
 
     /// 共享深度计算：环检测 + 深度硬上限 32

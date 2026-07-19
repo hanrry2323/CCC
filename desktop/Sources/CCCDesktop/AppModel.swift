@@ -2,6 +2,15 @@ import AppKit
 import Foundation
 import SwiftUI
 
+// MARK: - ChatState：隔离流式 delta 通知到消息列表区
+// 只有订阅了 chat 的视图（消息列表）在 delta 时重绘，
+// 侧栏/右栏/状态栏不受影响
+@MainActor
+final class ChatState: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+    @Published var draft: String = ""
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     /// 现网默认：M1 Desktop → Mac2017 Hub（可用设置 / CCC_SERVER 覆盖）
@@ -22,8 +31,8 @@ final class AppModel: ObservableObject {
     @Published var threads: [DesktopThread] = []
     @Published var selectedProjectId: String?
     @Published var selectedThreadId: String?
-    @Published var messages: [ChatMessage] = []
-    @Published var draft: String = ""
+    /// 对话状态（messages + draft），独立 ObservableObject 隔离 delta 通知
+    @Published var chat = ChatState()
     @Published var statusText: String = "未连接"
     /// "local" = 本机 sidecar 可聊；"none" = 本机 Agent 未就绪（禁止 Hub 聊天回退）
     @Published var agentMode: String = "none"
@@ -109,12 +118,15 @@ final class AppModel: ObservableObject {
     @Published var opsSummary: OpsSummary?
     @Published var opsAdoptBusy = false
     @Published var opsAdoptError: String?
+    /// 顶栏：中转站 flash/code/pro 今日调用
+    @Published var routerUsage: RouterUsageResp?
 
     private var flowTask: Task<Void, Never>?
     private var flowBackoffNs: UInt64 = 3_000_000_000
     private var flowRefreshTask: Task<Void, Never>?
     private var flowSSEBoundProjectId: String?
     private var flowSnapshotPaused = false
+    private var routerUsageTask: Task<Void, Never>?
     /// 本机 sidecar 可多路并行（对话面；无 Hub chat）
     private var activeChatThreadId: String?
     /// 每会话独立对话流 task
@@ -257,7 +269,8 @@ final class AppModel: ObservableObject {
             agentMode = "local"
             agentBadge = "本机 Agent"
             didToastHubFallback = false
-            await warmLocalAgentNow(base: candidate)
+            // fire-and-forget：不阻塞 ensureLocalAgent 返回
+            Task { await warmLocalAgentNow(base: candidate) }
             startWarmLoopIfNeeded()
             return candidate
         }
@@ -280,7 +293,8 @@ final class AppModel: ObservableObject {
                 agentMode = "local"
                 agentBadge = "本机 Agent"
                 didToastHubFallback = false
-                await warmLocalAgentNow(base: candidate)
+                // fire-and-forget：不阻塞 ensureLocalAgent 返回
+                Task { await warmLocalAgentNow(base: candidate) }
                 startWarmLoopIfNeeded()
                 if connected { statusText = "已连接 · 本机 Agent" }
                 return candidate
@@ -345,10 +359,12 @@ final class AppModel: ObservableObject {
     }
 
     /// 发送前：距上次 warm >90s 则补暖（真预连 slot）
-    private func warmBeforeSendIfNeeded() async {
+    // fire-and-forget：chat stream_turn 内 _ensure_connected 会自动等锁
+    // 不在发送前等 warm 完成，消除 3s SDK connect 阻塞
+    private func warmBeforeSendIfNeeded() {
         guard agentMode == "local" else { return }
         if let last = lastWarmAt, Date().timeIntervalSince(last) < 90 { return }
-        await warmLocalAgentNow()
+        Task { await warmLocalAgentNow() }
     }
 
     private func setAgentModeNone(reason: String) {
@@ -386,6 +402,7 @@ final class AppModel: ObservableObject {
         }
         await flushPendingHubSync()
         startProjectTaskPolling()
+        startRouterUsagePolling()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             await runUISmoke()
         }
@@ -420,9 +437,9 @@ final class AppModel: ObservableObject {
         } else if let p = projects.first(where: \.isDispatchable) {
             await selectProject(p.id)
         }
-        draft = "UI自检：请只回复四个字「自检OK」"
+        chat.draft = "UI自检：请只回复四个字「自检OK」"
         await sendMessage()
-        let assistant = messages.last(where: { $0.role == "assistant" && !$0.isStreaming })?.content ?? ""
+        let assistant = chat.messages.last(where: { $0.role == "assistant" && !$0.isStreaming })?.content ?? ""
         let ok = !assistant.isEmpty
         writeResult(ok: ok, assistant: assistant, error: ok ? nil : (lastError ?? toast ?? "无助手回复"))
         try? await Task.sleep(nanoseconds: 400_000_000)
@@ -552,7 +569,7 @@ final class AppModel: ObservableObject {
             let tid = LocalSessionStore.conversationThreadId(for: id)
             hydrateThreadFromDisk(projectId: id, threadId: tid)
             if let cached = threadMessages[tid], !cached.isEmpty {
-                messages = cached
+                chat.messages = cached
             }
             if let snap = threadFlow[tid] {
                 applyFlowSnapshot(snap)
@@ -584,7 +601,7 @@ final class AppModel: ObservableObject {
             )
             threadFlow[tid] = snap
         }
-        messages = state.messages
+        chat.messages = state.messages
         pendingTransferDraft = nil
         if let lastAsst = state.messages.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
             refreshTransferDraft(from: lastAsst.content)
@@ -619,7 +636,7 @@ final class AppModel: ObservableObject {
         // 通知 sidecar 丢弃 live slot
         await dropSidecarSession(projectId: pid)
         selectedThreadId = convId
-        messages = []
+        chat.messages = []
         applyFlowSnapshot(nil)
         flowSplitGeneration &+= 1
         refreshCurrentThreadStreaming()
@@ -639,12 +656,12 @@ final class AppModel: ObservableObject {
 
     /// 显示压缩：消息超阈值时把最早 N 轮替换为摘要卡；token 超阈值时触发 agent session 重置
     func compactConversationIfNeeded(projectId: String, threadId: String) async {
-        let current = threadMessages[threadId] ?? (selectedThreadId == threadId ? messages : [])
+        let current = threadMessages[threadId] ?? (selectedThreadId == threadId ? chat.messages : [])
         let (compacted, didCompact, rounds) = LocalSessionStore.compactIfNeeded(current)
         guard didCompact else { return }
         threadMessages[threadId] = compacted
         if selectedThreadId == threadId {
-            messages = compacted
+            chat.messages = compacted
         }
         flushDiskSave(threadId: threadId)
         // agent session token 超阈值 → 重置注入摘要（节约 token）
@@ -721,7 +738,7 @@ final class AppModel: ObservableObject {
 
     private func persistCurrentThreadSnapshot(threadId: String) {
         let cached = threadMessages[threadId] ?? []
-        let outgoing = messages
+        let outgoing = chat.messages
         // 禁止空 messages 冲掉更丰富的缓存（切看板/运维竞态）
         let best: [ChatMessage]
         if LocalSessionStore.messageScore(outgoing) >= LocalSessionStore.messageScore(cached) {
@@ -783,8 +800,8 @@ final class AppModel: ObservableObject {
             ?? []
         // 契约：本机 SSOT — 有内容绝不让 Hub 覆盖 UI
         if LocalSessionStore.messageScore(cached) > 0 {
-            if selectedThreadId == threadId, destination == .chat, messages.isEmpty {
-                messages = cached
+            if selectedThreadId == threadId, destination == .chat, chat.messages.isEmpty {
+                chat.messages = cached
             }
             return
         }
@@ -796,7 +813,7 @@ final class AppModel: ObservableObject {
             guard LocalSessionStore.messageScore(loaded) > 0 else { return }
             threadMessages[threadId] = loaded
             if selectedThreadId == threadId, destination == .chat {
-                messages = loaded
+                chat.messages = loaded
             }
             let title = threads.first(where: { $0.thread_id == threadId })?.title
                 ?? detail.title
@@ -812,7 +829,7 @@ final class AppModel: ObservableObject {
         } catch {
             hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
             if selectedThreadId == threadId {
-                messages = threadMessages[threadId] ?? []
+                chat.messages = threadMessages[threadId] ?? []
             }
         }
     }
@@ -905,7 +922,7 @@ final class AppModel: ObservableObject {
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
         threadMessages[threadId] = msgs
         if selectedThreadId == threadId {
-            messages = msgs
+            chat.messages = msgs
         }
         scheduleDiskSave(threadId: threadId)
     }
@@ -945,7 +962,7 @@ final class AppModel: ObservableObject {
     }
 
     private func writeDiskSave(threadId tid: String, projectId pid: String) {
-        let msgs = (threadMessages[tid] ?? (selectedThreadId == tid ? messages : []))
+        let msgs = (threadMessages[tid] ?? (selectedThreadId == tid ? chat.messages : []))
             .filter { !$0.isStreaming || !$0.content.isEmpty }
         let title = threads.first(where: { $0.thread_id == tid })?.title
         var flow = threadFlow[tid]
@@ -963,7 +980,7 @@ final class AppModel: ObservableObject {
     }
 
     private func mutateThreadMessages(threadId: String, _ body: (inout [ChatMessage]) -> Void) {
-        var msgs = threadMessages[threadId] ?? (selectedThreadId == threadId ? messages : [])
+        var msgs = threadMessages[threadId] ?? (selectedThreadId == threadId ? chat.messages : [])
         body(&msgs)
         persistMessages(for: threadId, msgs)
     }
@@ -981,14 +998,14 @@ final class AppModel: ObservableObject {
             threadMessages[threadId] = msgs
         }
         if selectedThreadId == threadId,
-           let mIdx = messages.firstIndex(where: { $0.id == assistantId }) {
-            messages[mIdx].content += chunk
-            if messages[mIdx].transientNote != nil {
-                messages[mIdx].transientNote = nil
+           let mIdx = chat.messages.firstIndex(where: { $0.id == assistantId }) {
+            chat.messages[mIdx].content += chunk
+            if chat.messages[mIdx].transientNote != nil {
+                chat.messages[mIdx].transientNote = nil
             }
         } else if selectedThreadId == threadId, let msgs = threadMessages[threadId] {
             // 兜底：messages 与 threadMessages 不同步时整表对齐一次
-            messages = msgs
+            chat.messages = msgs
         }
         scheduleDiskSave(threadId: threadId)
     }
@@ -1217,8 +1234,8 @@ final class AppModel: ObservableObject {
         if selectedThreadId != tid {
             selectedThreadId = tid
             hydrateThreadFromDisk(projectId: pid, threadId: tid)
-            if messages.isEmpty, let cached = threadMessages[tid] {
-                messages = cached
+            if chat.messages.isEmpty, let cached = threadMessages[tid] {
+                chat.messages = cached
             }
         }
         let threadId = tid
@@ -1258,16 +1275,16 @@ final class AppModel: ObservableObject {
     }
 
     func sendMessageCancellable(stopAndSend: Bool = true) {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        draft = ""
+        chat.draft = ""
         sendUserMessage(text, stopAndSend: stopAndSend)
     }
 
     func sendMessage() async {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        draft = ""
+        chat.draft = ""
         _ = await sendUserMessageAndWait(text, stopAndSend: true)
     }
 
@@ -1308,7 +1325,7 @@ final class AppModel: ObservableObject {
                let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
                 showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
             }
-            await warmBeforeSendIfNeeded()
+            warmBeforeSendIfNeeded()
             if selectedThreadId == threadId {
                 setStatusImmediate("本机生成中…")
             }
@@ -1401,7 +1418,7 @@ final class AppModel: ObservableObject {
             flushDiskSave()
             // 显示压缩（异步，不打断当前流）
             await compactConversationIfNeeded(projectId: projectId, threadId: threadId)
-            let synced = (threadMessages[threadId] ?? messages)
+            let synced = (threadMessages[threadId] ?? chat.messages)
                 .filter { $0.role == "user" || $0.role == "assistant" }
                 .map {
                     ChatMessage(
@@ -1581,7 +1598,7 @@ final class AppModel: ObservableObject {
     }
 
     func exportThreadMarkdown() -> String {
-        messages
+        chat.messages
             .filter { !$0.isStreaming || !$0.content.isEmpty }
             .map { msg in
                 let role = msg.role == "user" ? "用户" : "助手"
@@ -1618,7 +1635,7 @@ final class AppModel: ObservableObject {
     /// 助手消息 → 重发紧邻的上一条用户消息（对齐 Hub「重新生成」）
     func regenerateAssistant(after message: ChatMessage) {
         guard message.role == "assistant", let tid = selectedThreadId else { return }
-        let msgs = threadMessages[tid] ?? messages
+        let msgs = threadMessages[tid] ?? chat.messages
         guard let idx = msgs.firstIndex(where: { $0.id == message.id }) else { return }
         var userText: String?
         var i = idx - 1
@@ -1715,13 +1732,13 @@ final class AppModel: ObservableObject {
 
     /// 从对话启发式预填门禁字段（无 ccc-transfer 时）
     func prefillTransferFromChat() {
-        let assistants = messages.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
+        let assistants = chat.messages.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
         if let last = assistants.last, let d = TransferDraftParser.parse(from: last) {
             applyTransferDraft(d, fallbackContent: nil)
             pendingTransferDraft = d
             return
         }
-        let users = messages.filter { $0.role == "user" }.map(\.content)
+        let users = chat.messages.filter { $0.role == "user" }.map(\.content)
         let lastUser = users.last ?? ""
         let blob = (users.suffix(3) + assistants.suffix(2)).joined(separator: "\n")
         let lastAssistant = assistants.last ?? ""
@@ -1847,7 +1864,7 @@ final class AppModel: ObservableObject {
             showToast("转任务失败：方案评估为不可执行")
             return
         }
-        let chatDigest = messages
+        let chatDigest = chat.messages
             .suffix(8)
             .map { "\($0.role): \(String($0.content.prefix(200)))" }
             .joined(separator: "\n")
@@ -2215,7 +2232,7 @@ final class AppModel: ObservableObject {
                 selectedThreadId = tid
                 hydrateThreadFromDisk(projectId: pid, threadId: tid)
                 if let cached = threadMessages[tid], !cached.isEmpty {
-                    messages = cached
+                    chat.messages = cached
                 }
                 if let snap = threadFlow[tid] {
                     applyFlowSnapshot(snap)
@@ -2320,6 +2337,9 @@ final class AppModel: ObservableObject {
                 opsRisks = summary.risks?.risks ?? []
                 opsRisksCount = summary.risks?.count
                 opsRisksHigh = summary.risks?.high
+                if let router = summary.router {
+                    routerUsage = router
+                }
                 return
             }
             async let overview = client.fetchOpsOverview()
@@ -2356,6 +2376,49 @@ final class AppModel: ObservableObject {
             try await client.adoptSuggestion(workspace: workspace, title: title, description: description, tags: tags)
         } catch {
             opsAdoptError = "采纳失败: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Router usage (toolbar)
+
+    func startRouterUsagePolling() {
+        routerUsageTask?.cancel()
+        routerUsageTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshRouterUsage()
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+    }
+
+    func refreshRouterUsage() async {
+        do {
+            try await prepareClient()
+            routerUsage = try await client.fetchRouterUsage()
+        } catch {
+            // fail-soft：顶栏显示红 0
+            if routerUsage == nil {
+                routerUsage = RouterUsageResp(
+                    ok: false,
+                    tiers: RouterUsageTiers(
+                        flash: RouterTierCount(requests_today: 0, tokens_today: 0),
+                        code: RouterTierCount(requests_today: 0, tokens_today: 0),
+                        pro: RouterTierCount(requests_today: 0, tokens_today: 0)
+                    ),
+                    source: nil,
+                    error: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    func routerRequestCount(_ tier: String) -> Int {
+        guard let t = routerUsage?.tiers else { return 0 }
+        switch tier {
+        case "flash": return t.flash?.requests ?? 0
+        case "code": return t.code?.requests ?? 0
+        case "pro": return t.pro?.requests ?? 0
+        default: return 0
         }
     }
 }

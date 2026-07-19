@@ -145,6 +145,28 @@ struct OpsSummary: Decodable {
     let ports: OpsPortsResp?
     let auto: OpsAutoResp?
     let resources: OpsResourcesResp?
+    let router: RouterUsageResp?
+}
+
+/// 中转站 flash/code/pro 今日调用（Hub 代理 /api/ops/router-usage）
+struct RouterUsageResp: Decodable, Hashable {
+    let ok: Bool?
+    let tiers: RouterUsageTiers?
+    let source: String?
+    let error: String?
+}
+
+struct RouterUsageTiers: Decodable, Hashable {
+    let flash: RouterTierCount?
+    let code: RouterTierCount?
+    let pro: RouterTierCount?
+}
+
+struct RouterTierCount: Decodable, Hashable {
+    let requests_today: Int?
+    let tokens_today: Int?
+
+    var requests: Int { requests_today ?? 0 }
 }
 
 struct OpsWorkspacesResp: Decodable {
