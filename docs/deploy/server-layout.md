@@ -40,9 +40,10 @@
 ## 新项目流程
 
 1. `mkdir -p ~/program/apps/<name> && cd ... && git init`（或 clone）
-2. 在 Server 上：`python3 ~/program/CCC/scripts/ccc-init.py ~/program/apps/<name> --register`（以实际脚本参数为准）
+2. 在 Server 上：`python3 ~/program/CCC/scripts/ccc-init.py ~/program/apps/<name> --register`
 3. `python3 ~/program/CCC/scripts/ccc-workspace-doctor.py`
-4. 更新登记说明；不把路径写死进 CCC 产品代码
+4. M1：同步本机副本 + Desktop `localWorkspaceMap`；点项目卡进入对话  
+   完整清单：[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md)
 
 ---
 

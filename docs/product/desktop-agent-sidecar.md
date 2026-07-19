@@ -42,6 +42,9 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | `ccc.localWorkspaceMap` | `{}` | `projectId → 本机路径` |
 | `ccc.localWorkspace` | 空 | 全局 fallback cwd |
 
+**业务仓迁到 2017 / 注册 / 在 Desktop 开项目对话**：  
+[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md) · Agent 交接：[`desktop-agent-handoff.md`](desktop-agent-handoff.md)。
+
 状态栏徽章：**本机 Agent** / **本机 Agent 未就绪**（**禁止** Hub `/api/chat` 回退）。可聊 ≠ 可转任务。  
 探测成功缓存 30s。App 退出不杀 sidecar（保暖）。
 

@@ -19,6 +19,9 @@ description: "CCC — Connect–Claude Code. Loop Engineer: Hub 定意图 + Engi
 cat STARTUP-BRIEF.md          # 必读
 cat docs/VISION.md            # 定位（对外口径）
 grep -A 15 "## 红线 11" references/red-lines.md
+# 业务仓迁移 / Desktop 开项目对话（Agent 交接）
+# docs/product/desktop-agent-handoff.md
+# docs/runbooks/app-migrate-register-desktop.md
 ```
 
 ---

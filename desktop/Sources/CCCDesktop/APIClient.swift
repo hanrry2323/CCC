@@ -37,11 +37,11 @@ actor APIClient {
         self.user = user
         self.password = password
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
-        cfg.timeoutIntervalForResource = 90
+        cfg.timeoutIntervalForRequest = 45
+        cfg.timeoutIntervalForResource = 120
         cfg.waitsForConnectivity = true
-        // 短请求严控：防止 Desktop 并发打满 Hub
-        cfg.httpMaximumConnectionsPerHost = 2
+        // 短请求：列表/看板/用量；与 flow SSE 分 session，避免互相堵
+        cfg.httpMaximumConnectionsPerHost = 4
         self.session = URLSession(configuration: cfg)
 
         let chatCfg = URLSessionConfiguration.default

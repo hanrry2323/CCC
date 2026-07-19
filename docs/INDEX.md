@@ -16,6 +16,8 @@
 | [`../README.md`](../README.md) | 对外首页 |
 | [`GETTING-STARTED.md`](GETTING-STARTED.md) | 安装与第一条闭环 |
 | [`workspace-binding.md`](workspace-binding.md) | **多项目绑定 / 新项目接入 SSOT** |
+| [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | **业务仓迁移→注册→Desktop 对话（操作 SSOT）** |
+| [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) | **Desktop Agent 短交接（迁移后下一步）** |
 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动（省 token） |
 | [`USAGE.md`](USAGE.md) | 三类用户 |
 | [`CONTROL.md`](CONTROL.md) | 控制面 |

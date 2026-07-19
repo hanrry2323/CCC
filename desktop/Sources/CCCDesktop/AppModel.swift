@@ -127,6 +127,12 @@ final class AppModel: ObservableObject {
     @Published var opsAdoptError: String?
     /// 顶栏：中转站 flash/code/pro 今日调用
     @Published var routerUsage: RouterUsageResp?
+    /// 上一轮拉取的今日总量，用于算「近一轮窗口」增量
+    private var routerLastTotals: [String: Int] = [:]
+    /// 近 5 秒窗口内新增（与轮询周期对齐；+ 号后展示）
+    @Published private(set) var routerWindowDelta: [String: Int] = [
+        "flash": 0, "code": 0, "pro": 0,
+    ]
 
     private var flowTask: Task<Void, Never>?
     private var flowBackoffNs: UInt64 = 3_000_000_000
@@ -2348,7 +2354,7 @@ final class AppModel: ObservableObject {
                 opsRisksCount = summary.risks?.count
                 opsRisksHigh = summary.risks?.high
                 if let router = summary.router {
-                    routerUsage = router
+                    applyRouterUsage(router)
                 }
                 return
             }
@@ -2396,6 +2402,7 @@ final class AppModel: ObservableObject {
         routerUsageTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshRouterUsage()
+                // 5s 窗口：+N = 本窗口内新增调用
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
@@ -2403,27 +2410,70 @@ final class AppModel: ObservableObject {
 
     func refreshRouterUsage() async {
         do {
-            try await prepareClient()
-            routerUsage = try await client.fetchRouterUsage()
+            // 轻量拉取：不走 prepareClient/ensureLocalAgent，避免每 5s 挤占 Hub/Agent
+            let resp = try await client.fetchRouterUsage()
+            applyRouterUsage(resp)
+            if resp.ok == true || resp.tiers != nil {
+                if !hubReachable {
+                    hubReachable = true
+                    updateConnectionStatusText(localOK: agentMode == "local", hubOK: true)
+                }
+            }
         } catch {
-            // fail-soft：顶栏显示红 0
+            // fail-soft：保留上次总量；窗口增量归零；不把整 App 打成离线
             if routerUsage == nil {
-                routerUsage = RouterUsageResp(
-                    ok: false,
-                    tiers: RouterUsageTiers(
-                        flash: RouterTierCount(requests_today: 0, tokens_today: 0),
-                        code: RouterTierCount(requests_today: 0, tokens_today: 0),
-                        pro: RouterTierCount(requests_today: 0, tokens_today: 0)
-                    ),
-                    source: nil,
-                    error: error.localizedDescription
+                applyRouterUsage(
+                    RouterUsageResp(
+                        ok: false,
+                        tiers: RouterUsageTiers(
+                            flash: RouterTierCount(requests_today: 0, tokens_today: 0),
+                            code: RouterTierCount(requests_today: 0, tokens_today: 0),
+                            pro: RouterTierCount(requests_today: 0, tokens_today: 0)
+                        ),
+                        source: nil,
+                        error: error.localizedDescription
+                    )
                 )
+            } else {
+                routerWindowDelta = ["flash": 0, "code": 0, "pro": 0]
             }
         }
     }
 
+    /// 今日总量（中转站 requests_today）
     func routerRequestCount(_ tier: String) -> Int {
         guard let t = routerUsage?.tiers else { return 0 }
+        switch tier {
+        case "flash": return t.flash?.requests ?? 0
+        case "code": return t.code?.requests ?? 0
+        case "pro": return t.pro?.requests ?? 0
+        default: return 0
+        }
+    }
+
+    /// 近 5 秒窗口内新增（+ 号后；无调用则为 0）
+    func routerLiveCount(_ tier: String) -> Int {
+        routerWindowDelta[tier] ?? 0
+    }
+
+    private func applyRouterUsage(_ resp: RouterUsageResp) {
+        routerUsage = resp
+        var window: [String: Int] = [:]
+        for tier in ["flash", "code", "pro"] {
+            let total = routerRequestCount(from: resp, tier: tier)
+            if let prev = routerLastTotals[tier] {
+                window[tier] = max(0, total - prev)
+            } else {
+                // 首轮只定基线，不把全日累计当成「实时」
+                window[tier] = 0
+            }
+            routerLastTotals[tier] = total
+        }
+        routerWindowDelta = window
+    }
+
+    private func routerRequestCount(from resp: RouterUsageResp, tier: String) -> Int {
+        guard let t = resp.tiers else { return 0 }
         switch tier {
         case "flash": return t.flash?.requests ?? 0
         case "code": return t.code?.requests ?? 0

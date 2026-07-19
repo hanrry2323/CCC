@@ -21,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge；不一致只报「对齐版本」类小任务。
 5. **禁止越界建议**：非用户主动问闲置/省资源时，**禁止**建议降控制面到 `ui`/`disabled` 或关机。
 6. **调度就绪度口径（v0.51）**：空板 + invent 硬关 → Engine **闲置正常**。新工作经 Hub 选 **业务仓** 定稿→下达；**禁止**对 CCC orch 写 epic / 投 backlog（R-15）。**不可**声称可无人值守 invent（红线 12）。
+7. **业务仓迁移 / 接入 / Desktop 开项目对话**：搬完文件 ≠ 完成。强制读并执行 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)（详步骤 [`docs/runbooks/app-migrate-register-desktop.md`](docs/runbooks/app-migrate-register-desktop.md)）：2017 `apps/<name>` → `ccc-init --register` → M1 `localWorkspaceMap` → 点项目卡进 `{id}::main`。
 
 架构细节：`docs/architecture-core.md` · 运维页：Hub `#/ops`。
 

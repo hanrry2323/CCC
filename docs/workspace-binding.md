@@ -74,6 +74,9 @@ $EDITOR ~/program/myapp/.ccc/profile.md
 然后：打开 Hub → 刷新项目列表 → 选该项目 → 对齐 / 定稿 / 转任务。  
 要自动跑队列：`bash ~/program/CCC/scripts/ccc-autostart-guard.sh enable --start`。
 
+**M1↔2017 迁移后完整步骤**（落盘 `apps/`、register、Desktop `localWorkspaceMap`、一项目一对话）：  
+[`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) · Agent：[`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md)。
+
 ---
 
 ## 5. Board 可见 ≠ Engine 登记

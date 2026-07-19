@@ -55,39 +55,11 @@ struct ContentView: View {
                 .environmentObject(model)
         }
         .animation(.easeOut(duration: 0.18), value: model.toast)
-        .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                RouterUsageToolbar()
-            }
-        }
+        // 纯文字嵌进顶栏右侧（无 Toolbar 胶囊、不加第二排）
+        .background(TitlebarUsageAccessory(model: model).frame(width: 0, height: 0))
         .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .toolbarColorScheme(.light, for: .windowToolbar)
-    }
-}
-
-/// 顶栏：flash / code / pro 今日调用（绿 +N / 红 0）
-struct RouterUsageToolbar: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        HStack(spacing: 14) {
-            tierLabel("flash", count: model.routerRequestCount("flash"))
-            tierLabel("code", count: model.routerRequestCount("code"))
-            tierLabel("pro", count: model.routerRequestCount("pro"))
-        }
-        .help("中转站今日调用次数（实时）")
-    }
-
-    private func tierLabel(_ name: String, count: Int) -> some View {
-        HStack(spacing: 4) {
-            Text(name)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(CCCTheme.secondary)
-            Text(count > 0 ? "+\(count)" : "0")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(count > 0 ? CCCTheme.usageActive : CCCTheme.usageIdle)
-        }
     }
 }
 

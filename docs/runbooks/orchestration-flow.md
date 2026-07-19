@@ -36,6 +36,9 @@ Desktop（M1）↔ sidecar :7788 ↔ loop-code ↔ 2017 Router :4000
 - 闲聊全文 **不**过桥；只 transfer 结构化 epic 字段
 - 右栏 FlowRail 实时回传编排状态（SSE `/api/desktop/flow/events`）
 
+**新业务仓迁到 2017 / 注册 / Desktop 开项目对话**：  
+[`app-migrate-register-desktop.md`](app-migrate-register-desktop.md) · Agent：[`../product/desktop-agent-handoff.md`](../product/desktop-agent-handoff.md)
+
 ### 2. Mac2017 收 epic
 
 ```text

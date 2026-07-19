@@ -55,6 +55,8 @@ Engine / Board **不读** `thread_id`（编排只认 epic/work）。
 | 重置对话 | 删本机会话文件 + sidecar drop |
 | 转任务 | 写 epic + 本机 `boundEpicId` 落盘 + Hub flow 记录 |
 
+**新仓如何进侧栏 / 如何映射本机路径**：[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md)。
+
 ---
 
 ## 迁移

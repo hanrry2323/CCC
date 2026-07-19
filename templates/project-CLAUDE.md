@@ -12,12 +12,14 @@
 ## CCC 流程
 
 ```text
-Hub 选本项目 → 对齐基线 → 定稿 → 下达 epic → Engine 扇出 work
+Desktop 点本项目卡 → 对齐基线 → 定稿 → 转任务 → Engine 扇出 work
 ```
 
 - 启动必读：`.ccc/profile.md` → `.ccc/state.md`（`state` 可能滞后，交叉 `git log -5`）
 - **空板 + invent 硬关 = Engine 闲置正常**（勿建议降控制面）
 - 热路径在**本仓**业务代码；勿把 `~/program/CCC` 的 `scripts/board` 当成业务架构
+- **一项目一对话** `{本项目 id}::main`；迁移/注册/本机映射见 CCC 仓  
+  `docs/product/desktop-agent-handoff.md` 与 `docs/runbooks/app-migrate-register-desktop.md`
 
 ## 给 Agent 的硬规则
 
