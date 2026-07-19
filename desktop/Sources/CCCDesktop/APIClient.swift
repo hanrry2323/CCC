@@ -388,6 +388,8 @@ actor APIClient {
         messages: [ChatMessage],
         promptMode: String = "full",
         toolMode: String = "discuss",
+        /// 显式路径优先于 client.localProjectPath（多窗并行时禁止抢全局 cwd）
+        projectPath: String? = nil,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         guard let chatBase = chatBaseURL else {
@@ -406,6 +408,7 @@ actor APIClient {
         // prompt: 只发最后一条 user；有 prompt 时 messages 发空数组，减首包开销
         let promptHint = messages.last(where: { $0.role == "user" })?.content
         let outboundMessages: [ChatMessage] = (promptHint?.isEmpty == false) ? [] : messages
+        let path = projectPath ?? localProjectPath
         let data = try JSONEncoder().encode(
             Body(
                 project: projectId,
@@ -413,7 +416,7 @@ actor APIClient {
                 messages: outboundMessages,
                 prompt: promptHint,
                 mode: "chat",
-                project_path: localProjectPath,
+                project_path: path,
                 prompt_mode: promptMode,
                 tool_mode: toolMode
             )

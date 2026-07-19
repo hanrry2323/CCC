@@ -1,5 +1,18 @@
 import Foundation
 
+/// 转任务表单（按 thread 隔离；对齐 OpenCode session 级表单态）
+struct TransferFormState: Equatable {
+    var title: String = ""
+    var goal: String = ""
+    var acceptance: String = ""
+    var pipeline: String = "dev"
+    var executor: String = "opencode"
+    var feasibility: String = "ok"
+    var feasibilityReason: String = ""
+    var planMd: String = ""
+    var error: String?
+}
+
 /// 定稿协议：```ccc-transfer ... ``` JSON，字段对齐 transfer-gate.md
 struct TransferDraft: Equatable {
     var title: String = ""

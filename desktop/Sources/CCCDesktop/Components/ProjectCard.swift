@@ -17,6 +17,7 @@ struct ProjectCard: View {
         Button {
             // 先钉本窗焦点 + 灌 RAM，再异步更新全局选中（他窗显示不受影响）
             window.projectId = project.id
+            window.destination = .chat
             model.ensureThreadHydrated(projectId: project.id)
             Task { await model.openProjectConversation(project.id) }
         } label: {

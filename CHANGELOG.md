@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenCode 式多窗 live 隔离补齐**：各窗 `setWindowFocus` refcount；**每打开项目一条 Flow SSE**（后台窗 `threadFlow` 实时刷新）；warm 覆盖所有焦点项目；转任务表单 `threadTransferForms` + sheet 仅本窗 tid 弹出；侧栏 destination 按窗隔离。
+- **OpenCode 式多窗会话隔离**：`threadStreamStatus` / `threadTransferDraft` 按 `{projectId}::main`；`streamChat` 显式 `project_path`；hydrate 禁止覆盖在途流；FlowRail 读本窗 `threadFlow`；composerBounce 按 tid。
 - **对话切窗串台 / 历史乱串**：每窗只绑 `window.projectId`；消息列表只读 `threadMessages[tid]`，禁用全局 `chat.messages` 当显示源；切项目先 hydrate 目标线程。
 - **sidecar FD 耗尽导致大模型假死**：plist 提高 NumberOfFiles；重启 sidecar 清泄漏。
 - **对话切窗/切项目掉会话**：切回时禁止磁盘盲覆盖流式 RAM；持久化消息 `id`；delta 孤儿气泡可重建；多窗 `WindowChatState` 可并行看不同项目。

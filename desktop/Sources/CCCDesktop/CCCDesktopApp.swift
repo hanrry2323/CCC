@@ -21,10 +21,13 @@ struct CCCDesktopApp: App {
     }
 }
 
-/// 每窗一个 WindowChatState；共享 AppModel。新窗不抢第一窗可见历史。
+/// 每窗一个 WindowChatState；共享 AppModel（OpenCode：共享 session map，每窗选自己的 session）。
+/// 聊天列表 / 流式态 / 定稿条 / 右栏均按 window.projectId → `{id}::main` 隔离。
 private struct WindowRootView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var window = WindowChatState()
+    /// 已向 AppModel 登记的焦点（用于 refcount 差分）
+    @State private var registeredFocus: String?
 
     var body: some View {
         ContentView()
@@ -32,10 +35,19 @@ private struct WindowRootView: View {
             .environmentObject(window)
             .onAppear {
                 bindWindowProjectIfNeeded()
+                syncWindowFocus()
+            }
+            .onDisappear {
+                model.setWindowFocus(from: registeredFocus, to: nil)
+                registeredFocus = nil
+            }
+            .onChange(of: window.projectId) { _ in
+                syncWindowFocus()
             }
             .task {
                 await model.bootstrap()
                 bindWindowProjectIfNeeded()
+                syncWindowFocus()
             }
     }
 
@@ -47,5 +59,12 @@ private struct WindowRootView: View {
         if let pid = window.projectId {
             model.ensureThreadHydrated(projectId: pid)
         }
+    }
+
+    private func syncWindowFocus() {
+        let next = window.projectId
+        guard registeredFocus != next else { return }
+        model.setWindowFocus(from: registeredFocus, to: next)
+        registeredFocus = next
     }
 }

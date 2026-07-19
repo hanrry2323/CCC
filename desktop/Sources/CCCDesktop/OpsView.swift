@@ -3,6 +3,7 @@ import SwiftUI
 /// 原生运维：聚合 summary + 风险 + 工作区 + 日审 + 质量 + 文档债 + 采纳
 struct OpsView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     @State private var showAdoptSheet = false
     @State private var adoptTitle = ""
     @State private var adoptDesc = ""
@@ -60,7 +61,10 @@ struct OpsView: View {
                     .foregroundStyle(CCCTheme.secondary)
             }
             .menuStyle(.borderlessButton)
-            Button("回对话") { model.selectDestination(.chat) }
+            Button("回对话") {
+                window.destination = .chat
+                model.selectDestination(.chat, projectId: window.projectId)
+            }
                 .buttonStyle(.plain)
                 .foregroundStyle(CCCTheme.secondary)
                 .font(.system(size: 12))

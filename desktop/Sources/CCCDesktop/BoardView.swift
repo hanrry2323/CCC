@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 /// 原生看板：多 workspace + 拖拽移动 + 任务详情 + 隐藏/重开
 struct BoardView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     @State private var selectedTask: BoardTask?
     @State private var detail: BoardTaskDetail?
     @State private var detailBusy = false
@@ -93,7 +94,8 @@ struct BoardView: View {
             }
             .menuStyle(.borderlessButton)
             Button("回对话") {
-                model.selectDestination(.chat)
+                window.destination = .chat
+                model.selectDestination(.chat, projectId: window.projectId)
             }
             .buttonStyle(.plain)
             .foregroundStyle(CCCTheme.secondary)

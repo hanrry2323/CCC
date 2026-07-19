@@ -4,6 +4,7 @@ import SwiftUI
 /// Codex 三栏 + 系统材质侧栏
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -13,7 +14,7 @@ struct ContentView: View {
                     .cccHairline(.trailing)
 
                 Group {
-                    switch model.destination {
+                    switch window.destination {
                     case .chat:
                         CodexChatPane()
                             .frame(minWidth: 480)
@@ -26,7 +27,7 @@ struct ContentView: View {
                     }
                 }
 
-                if model.destination == .chat {
+                if window.destination == .chat {
                     FlowRail()
                         .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
                         .cccHairline(.leading)
@@ -44,8 +45,12 @@ struct ContentView: View {
         }
         .foregroundStyle(CCCTheme.ink)
         // bootstrap 在 WindowRootView，避免多窗重复打 Hub
-        .sheet(isPresented: $model.showTransferSheet) {
-            TransferSheet().environmentObject(model)
+        .sheet(isPresented: Binding(
+            get: { model.isTransferSheetPresented(for: window.threadId) },
+            set: { if !$0 { model.dismissTransferSheet(threadId: window.threadId) } }
+        )) {
+            TransferSheet(threadId: window.threadId ?? model.transferSheetThreadId ?? "")
+                .environmentObject(model)
         }
         .sheet(isPresented: Binding(
             get: { model.previewMarkdown != nil },
@@ -83,14 +88,17 @@ struct CodexSidebar: View {
                 .opacity(model.connected ? 1 : 0.4)
                 .padding(.bottom, 6)
 
-                SoftRow(title: "对话", icon: "bubble.left.and.bubble.right", selected: model.destination == .chat) {
-                    model.selectDestination(.chat)
+                SoftRow(title: "对话", icon: "bubble.left.and.bubble.right", selected: window.destination == .chat) {
+                    window.destination = .chat
+                    model.selectDestination(.chat, projectId: window.projectId)
                 }
-                SoftRow(title: "看板", icon: "square.grid.2x2", selected: model.destination == .board) {
-                    model.selectDestination(.board)
+                SoftRow(title: "看板", icon: "square.grid.2x2", selected: window.destination == .board) {
+                    window.destination = .board
+                    model.selectDestination(.board, projectId: window.projectId)
                 }
-                SoftRow(title: "运维", icon: "wrench.and.screwdriver", selected: model.destination == .ops) {
-                    model.selectDestination(.ops)
+                SoftRow(title: "运维", icon: "wrench.and.screwdriver", selected: window.destination == .ops) {
+                    window.destination = .ops
+                    model.selectDestination(.ops, projectId: window.projectId)
                 }
             }
             .padding(.horizontal, 10)
@@ -229,11 +237,11 @@ struct CodexChatPaneBody: View {
         return model.isThreadStreaming(tid)
     }
 
-    /// 状态文案：仅本窗线程在流时用 streamStatus，避免他窗串状态
+    /// 状态文案：只读本窗 thread 的 streamStatus（OpenCode session 隔离）
     private var paneStatusText: String {
-        if paneStreaming, !chat.streamStatus.isEmpty,
-           model.selectedThreadId == paneThreadId {
-            return chat.streamStatus
+        let local = model.streamStatus(for: paneThreadId)
+        if paneStreaming, !local.isEmpty {
+            return local
         }
         return model.statusText
     }
@@ -246,7 +254,7 @@ struct CodexChatPaneBody: View {
                 offlineCenter
             } else {
                 messageArea
-                if model.pendingTransferDraft != nil, model.selectedProjectId == paneProjectId {
+                if model.transferDraft(for: paneThreadId) != nil {
                     transferConfirmBar
                 }
                 composerDock
@@ -279,33 +287,33 @@ struct CodexChatPaneBody: View {
                     Text("确认转任务")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(CCCTheme.ink)
-                    Text(model.pendingTransferDraft?.previewLine ?? "")
+                    Text(model.transferDraft(for: paneThreadId)?.previewLine ?? "")
                         .font(.system(size: 11.5))
                         .foregroundStyle(CCCTheme.secondary)
                         .lineLimit(2)
-                    if let d = model.pendingTransferDraft {
+                    if let d = model.transferDraft(for: paneThreadId) {
                         Text("产线 \(d.pipeline) · 验收 \(d.acceptanceLines.count) 条")
                             .font(.system(size: 10.5))
                             .foregroundStyle(CCCTheme.faint)
                     }
                 }
                 Spacer(minLength: 0)
-                Button("展开编辑") { model.openTransferSheet() }
+                Button("展开编辑") { model.openTransferSheet(projectId: window.projectId) }
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
-                Button("忽略") { model.dismissPendingTransfer() }
+                Button("忽略") { model.dismissPendingTransfer(threadId: paneThreadId) }
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.faint)
-                Button("确认转任务") { model.confirmPendingTransfer() }
+                Button("确认转任务") { model.confirmPendingTransfer(threadId: paneThreadId) }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
                     .controlSize(.small)
                     .disabled(
                         model.busy
                             || !model.canTransfer
-                            || !(model.pendingTransferDraft?.isGateReady ?? false)
+                            || !(model.transferDraft(for: paneThreadId)?.isGateReady ?? false)
                     )
             }
         }
@@ -438,7 +446,7 @@ struct CodexChatPaneBody: View {
                                 .contextMenu {
                                     Button("复制") { model.copyMessage(msg.content) }
                                     if msg.role == "user" {
-                                        Button("编辑") { model.editUserMessage(msg) }
+                                        Button("编辑") { model.editUserMessage(msg, projectId: paneProjectId) }
                                     }
                                     if msg.role == "assistant", !msg.isStreaming {
                                         Button("重新生成") {
@@ -492,18 +500,18 @@ struct CodexChatPaneBody: View {
 
             HStack {
                 Button {
-                    model.openTransferSheet()
+                    model.openTransferSheet(projectId: window.projectId)
                 } label: {
                     Text("转任务")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(
-                            model.canTransfer
+                            model.canTransfer(projectId: window.projectId)
                                 ? CCCTheme.accent
                                 : CCCTheme.faint
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(!model.canTransfer)
+                .disabled(!model.canTransfer(projectId: window.projectId))
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -512,7 +520,7 @@ struct CodexChatPaneBody: View {
             HStack(alignment: .bottom, spacing: 8) {
                 ComposerTextView(
                     text: $composerText,
-                    placeholder: model.selectedProject?.isOrch == true
+                    placeholder: (window.projectId.flatMap { pid in model.projects.first { $0.id == pid } }?.isOrch == true)
                         ? "编排仓可聊方案；转任务请切到业务项目…"
                         : "问任何问题…",
                     isEnabled: model.canChat,
@@ -573,10 +581,13 @@ struct CodexChatPaneBody: View {
         .padding(.bottom, 36)
         .background(CCCTheme.chatBg)
         .onChange(of: model.composerBounce) { bounce in
-            // 仅失败回填一次
+            // 仅失败回填一次，且必须是本窗线程
             guard let bounce, !bounce.isEmpty else { return }
+            guard model.composerBounceThreadId == nil
+                    || model.composerBounceThreadId == paneThreadId else { return }
             composerText = bounce
             model.composerBounce = nil
+            model.composerBounceThreadId = nil
         }
     }
 
@@ -747,14 +758,16 @@ struct MessageActionBar: View {
         HStack(spacing: 10) {
             actionBtn("复制") { model.copyMessage(content) }
             if role == "user" {
-                actionBtn("编辑") { model.editUserMessage(message) }
+                actionBtn("编辑") { model.editUserMessage(message, projectId: window.projectId) }
             } else {
                 actionBtn("重新生成") {
                     model.regenerateAssistant(after: message, projectId: window.projectId)
                 }
                 actionBtn("预览") { model.previewMessage(content) }
-                if model.canTransfer {
-                    actionBtn("转任务") { model.openTransfer(fromAssistantContent: content) }
+                if model.canTransfer(projectId: window.projectId) {
+                    actionBtn("转任务") {
+                        model.openTransfer(fromAssistantContent: content, projectId: window.projectId)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -800,6 +813,18 @@ struct MessagePreviewSheet: View {
 
 struct FlowRail: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
+
+    /// OpenCode 式：右栏跟本窗 session/thread，不跟全局 selectedThreadId
+    private var paneThreadId: String? { window.threadId }
+
+    private var snap: FlowThreadSnapshot? {
+        // 订阅 threadRevision，后台写 threadFlow 时刷新
+        if let tid = paneThreadId {
+            _ = model.threadRevision[tid]
+        }
+        return model.flowSnapshot(for: paneThreadId)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -816,7 +841,7 @@ struct FlowRail: View {
                         .foregroundStyle(CCCTheme.secondary)
                         .lineLimit(2)
                 } else {
-                    Text(model.selectedThreadId == nil
+                    Text(paneThreadId == nil
                          ? "先选左侧对话"
                          : "转任务后显示流程")
                         .font(.system(size: 11))
@@ -828,15 +853,15 @@ struct FlowRail: View {
             .padding(.bottom, 8)
 
             // 仅当本对话有多个转任务时才出现切换（不再甩全项目 smoke 列表）
-            if model.recentEpics.count > 1 {
+            if (snap?.recentEpics ?? model.recentEpics).count > 1 {
                 Menu {
-                    ForEach(model.recentEpics) { epic in
+                    ForEach(snap?.recentEpics ?? model.recentEpics) { epic in
                         Button {
-                            Task { await model.selectEpic(epic.epic_id) }
+                            Task { await model.selectEpic(epic.epic_id, projectId: window.projectId) }
                         } label: {
                             HStack {
                                 Text(epic.title ?? epic.epic_id)
-                                if epic.epic_id == model.currentEpicId {
+                                if epic.epic_id == (snap?.epicId ?? model.currentEpicId) {
                                     Image(systemName: "checkmark")
                                 }
                             }
@@ -856,7 +881,7 @@ struct FlowRail: View {
                 }
             }
 
-            if let hint = model.flowFanoutHint {
+            if let hint = snap?.fanoutHint ?? (model.selectedThreadId == paneThreadId ? model.flowFanoutHint : nil) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(hint)
                         .font(.system(size: 11.5))
@@ -864,13 +889,14 @@ struct FlowRail: View {
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 10) {
                         Button("开运维") {
-                            model.selectDestination(.ops)
+                            window.destination = .ops
+                            model.selectDestination(.ops, projectId: window.projectId)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(CCCTheme.accent)
                         .controlSize(.small)
                         Button("忽略") {
-                            model.clearFanoutHint()
+                            model.clearFanoutHint(projectId: window.projectId)
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -888,14 +914,21 @@ struct FlowRail: View {
             }
 
             FlowCanvasView(
-                epic: model.flowEpic,
-                epicId: model.currentEpicId,
-                works: model.flowWorks,
-                headline: model.flowHeadline,
-                emptyMessage: model.flowEmptyMessage,
+                epic: snap?.epic ?? (model.selectedThreadId == paneThreadId ? model.flowEpic : nil),
+                epicId: snap?.epicId ?? (model.selectedThreadId == paneThreadId ? model.currentEpicId : nil),
+                works: snap?.works ?? (model.selectedThreadId == paneThreadId ? model.flowWorks : []),
+                headline: snap?.headline
+                    ?? (model.selectedThreadId == paneThreadId ? model.flowHeadline : ""),
+                emptyMessage: snap?.emptyMessage
+                    ?? (model.selectedThreadId == paneThreadId
+                        ? model.flowEmptyMessage
+                        : "编排空闲·等定稿下达（与对话故障无关）"),
                 splitGeneration: model.flowSplitGeneration,
-                onOpenOps: { model.selectDestination(.ops) },
-                onSelectNode: { model.openNodeDetail(id: $0) }
+                onOpenOps: {
+                    window.destination = .ops
+                    model.selectDestination(.ops, projectId: window.projectId)
+                },
+                onSelectNode: { model.openNodeDetail(id: $0, projectId: window.projectId) }
             )
         }
         .background(CCCTheme.sidebar)
@@ -924,10 +957,12 @@ struct FlowRail: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                if detail.kind == "work", model.flowWorks.contains(where: { $0.workId == detail.id && $0.isFailed }) {
+                if detail.kind == "work",
+                   (snap?.works ?? model.flowWorks).contains(where: { $0.workId == detail.id && $0.isFailed }) {
                     Button("在运维中查看") {
                         model.dismissNodeDetail()
-                        model.selectDestination(.ops)
+                        window.destination = .ops
+                        model.selectDestination(.ops, projectId: window.projectId)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
@@ -939,10 +974,12 @@ struct FlowRail: View {
     }
 
     private var boundEpicTitle: String? {
-        if let cur = model.recentEpics.first(where: { $0.epic_id == model.currentEpicId }) {
+        let epics = snap?.recentEpics ?? model.recentEpics
+        let eid = snap?.epicId ?? (model.selectedThreadId == paneThreadId ? model.currentEpicId : nil)
+        if let cur = epics.first(where: { $0.epic_id == eid }) {
             return cur.title ?? cur.epic_id
         }
-        return model.flowEpic?.title ?? model.currentEpicId
+        return snap?.epic?.title ?? eid
     }
 }
 
@@ -951,6 +988,7 @@ struct FlowRail: View {
 struct TransferSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    let threadId: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -962,45 +1000,48 @@ struct TransferSheet: View {
                 .foregroundStyle(CCCTheme.faint)
 
             Form {
-                TextField("标题", text: $model.transferTitle)
-                TextField("目标", text: $model.transferGoal, axis: .vertical)
+                TextField("标题", text: model.bindingTransferField(threadId, \.title))
+                TextField("目标", text: model.bindingTransferField(threadId, \.goal), axis: .vertical)
                     .lineLimit(3...6)
-                TextField("验收（每行一条）", text: $model.transferAcceptance, axis: .vertical)
+                TextField("验收（每行一条）", text: model.bindingTransferField(threadId, \.acceptance), axis: .vertical)
                     .lineLimit(3...8)
-                TextField("产线", text: $model.transferPipeline)
-                Picker("可行性", selection: $model.transferFeasibility) {
+                TextField("产线", text: model.bindingTransferField(threadId, \.pipeline))
+                Picker("可行性", selection: model.bindingTransferField(threadId, \.feasibility)) {
                     Text("可执行").tag("ok")
                     Text("阻塞").tag("blocked")
                 }
-                if model.transferFeasibility == "blocked" {
-                    TextField("阻塞原因", text: $model.transferFeasibilityReason, axis: .vertical)
+                if model.transferForm(for: threadId).feasibility == "blocked" {
+                    TextField("阻塞原因", text: model.bindingTransferField(threadId, \.feasibilityReason), axis: .vertical)
                         .lineLimit(2...4)
                 }
-                Picker("执行面", selection: $model.transferExecutor) {
+                Picker("执行面", selection: model.bindingTransferField(threadId, \.executor)) {
                     Text("写码").tag("opencode")
                     Text("脚本").tag("python")
                     Text("ollama").tag("ollama")
                     Text("cli").tag("cli")
                     Text("auto").tag("auto")
                 }
-                TextField("方案正文（可选）", text: $model.transferPlanMd, axis: .vertical)
+                TextField("方案正文（可选）", text: model.bindingTransferField(threadId, \.planMd), axis: .vertical)
                     .lineLimit(4...10)
             }
             .formStyle(.grouped)
 
-            if let err = model.transferError {
+            if let err = model.transferForm(for: threadId).error {
                 Text(err)
                     .font(CCCTheme.callout)
                     .foregroundStyle(CCCTheme.nodeFail)
             }
 
             HStack {
-                Button("取消") { dismiss() }
+                Button("取消") {
+                    model.dismissTransferSheet(threadId: threadId)
+                    dismiss()
+                }
                     .foregroundStyle(CCCTheme.secondary)
                 Spacer()
-                Button("重新预填") { model.prefillTransferFromChat() }
+                Button("重新预填") { model.prefillTransferFromChat(threadId: threadId) }
                     .foregroundStyle(CCCTheme.secondary)
-                Button("确认") { Task { await model.submitTransfer() } }
+                Button("确认") { Task { await model.submitTransfer(threadId: threadId) } }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
                     .disabled(model.busy)
