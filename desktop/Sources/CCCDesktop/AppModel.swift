@@ -123,6 +123,8 @@ final class AppModel: ObservableObject {
     private var didToastHubFallback = false
     /// keep-warm
     private var warmLoopTask: Task<Void, Never>?
+    /// sidecar 未就绪时自动重探（避免启动竞态卡死「未就绪」）
+    private var agentRecoverTask: Task<Void, Never>?
     private var lastWarmAt: Date?
     /// 本机落盘节流
     private var diskSaveTask: Task<Void, Never>?
@@ -207,7 +209,7 @@ final class AppModel: ObservableObject {
         )
     }
 
-    /// 探测（30s 缓存）→ 失败则拉起 sidecar → 再探测；失败回退 Hub 并明示
+    /// 探测（30s 缓存）→ 失败则拉起 sidecar → 再探测；失败标「未就绪」并后台重探
     @discardableResult
     private func ensureLocalAgent() async -> URL? {
         let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
@@ -287,6 +289,31 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 本机 Agent 未就绪时每 3s 重探，sidecar 拉起后自动恢复可聊
+    private func startAgentRecoverLoopIfNeeded() {
+        guard agentMode != "local" else { return }
+        if agentRecoverTask != nil { return }
+        agentRecoverTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard let self, !Task.isCancelled else { break }
+                if self.agentMode == "local" {
+                    self.agentRecoverTask = nil
+                    break
+                }
+                _ = await self.ensureLocalAgent()
+                if self.agentMode == "local" {
+                    self.connected = true
+                    self.updateConnectionStatusText(localOK: true, hubOK: self.hubReachable)
+                    self.startWarmLoopIfNeeded()
+                    self.agentRecoverTask = nil
+                    self.showToast("本机 Agent 已恢复")
+                    break
+                }
+            }
+        }
+    }
+
     /// 发送前：距上次 warm >120s 则补暖
     private func warmBeforeSendIfNeeded() async {
         guard agentMode == "local" else { return }
@@ -297,6 +324,7 @@ final class AppModel: ObservableObject {
     private func setAgentModeNone(reason: String) {
         agentMode = "none"
         agentBadge = "本机 Agent 未就绪"
+        startAgentRecoverLoopIfNeeded()
         if !didToastHubFallback {
             didToastHubFallback = true
             showToast("本机 Agent 未就绪：\(reason)。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
@@ -323,6 +351,9 @@ final class AppModel: ObservableObject {
             }
         }
         await refreshProjects()
+        if agentMode != "local" {
+            startAgentRecoverLoopIfNeeded()
+        }
         await flushPendingHubSync()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             await runUISmoke()

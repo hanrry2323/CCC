@@ -49,7 +49,7 @@ done
 if curl -sf -m 2 "${AGENT%/}/health" >/dev/null 2>&1; then
   echo "sidecar: OK $AGENT"
 else
-  echo "sidecar: FAIL（Desktop 会显示 Hub 回退）"
+  echo "sidecar: FAIL（Desktop 会显示「本机 Agent 未就绪」）"
 fi
 
 if curl -sf -m 4 -u "${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}" "${SERVER%/}/api/desktop/config" >/dev/null 2>&1; then
