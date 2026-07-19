@@ -6,11 +6,10 @@ struct CCCDesktopApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            WindowRootView()
                 .environmentObject(appModel)
                 .frame(minWidth: 1180, minHeight: 700)
         }
-        // hiddenTitleBar 在部分环境会抢键盘；改用统一标题栏保证可输入
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 1360, height: 860)
@@ -19,5 +18,23 @@ struct CCCDesktopApp: App {
             SettingsView()
                 .environmentObject(appModel)
         }
+    }
+}
+
+/// 每窗一个 WindowChatState；共享 AppModel
+private struct WindowRootView: View {
+    @EnvironmentObject var model: AppModel
+    @StateObject private var window = WindowChatState()
+
+    var body: some View {
+        ContentView()
+            .environmentObject(model)
+            .environmentObject(window)
+            .task {
+                await model.bootstrap()
+                if window.projectId == nil {
+                    window.projectId = model.selectedProjectId
+                }
+            }
     }
 }

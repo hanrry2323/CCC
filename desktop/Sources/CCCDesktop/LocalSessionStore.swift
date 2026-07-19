@@ -144,11 +144,15 @@ enum LocalSessionStore {
             .filter { $0.role == "user" || $0.role == "assistant" }
             .map {
                 ChatMessage(
+                    id: $0.id,
                     role: $0.role,
                     content: $0.content,
                     toolSteps: $0.toolSteps,
                     filesChanged: $0.filesChanged,
-                    toolsFinished: $0.toolsFinished
+                    toolsFinished: $0.toolsFinished,
+                    kind: $0.kind,
+                    summaryRounds: $0.summaryRounds,
+                    transientNote: $0.transientNote
                 )
             }
         let nextRev = revision ?? ((existing?.revision ?? 0) &+ 1)

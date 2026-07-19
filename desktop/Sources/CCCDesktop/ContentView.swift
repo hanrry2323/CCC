@@ -43,7 +43,7 @@ struct ContentView: View {
             }
         }
         .foregroundStyle(CCCTheme.ink)
-        .task { await model.bootstrap() }
+        // bootstrap 在 WindowRootView，避免多窗重复打 Hub
         .sheet(isPresented: $model.showTransferSheet) {
             TransferSheet().environmentObject(model)
         }
@@ -71,6 +71,7 @@ struct ContentView: View {
 
 struct CodexSidebar: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -137,7 +138,7 @@ struct CodexSidebar: View {
                 ForEach(model.projects) { project in
                     ProjectCard(
                         project: project,
-                        isSelected: project.id == model.selectedProjectId
+                        isSelected: project.id == (window.projectId ?? model.selectedProjectId)
                     )
                 }
             }
@@ -197,11 +198,34 @@ struct CodexChatPane: View {
 
 struct CodexChatPaneBody: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     @ObservedObject var chat: ChatState
     /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
     @State private var composerText: String = ""
     @State private var lastScrollTargetId: String = ""
     @FocusState private var composerFocused: Bool
+
+    private var paneProjectId: String? {
+        window.projectId ?? model.selectedProjectId
+    }
+
+    private var paneThreadId: String? {
+        paneProjectId.map { ConversationStore.conversationId(for: $0) }
+    }
+
+    /// 本窗消息：按窗绑定项目；观察 threadRevision 以接收后台流式
+    private var displayMessages: [ChatMessage] {
+        let tid = paneThreadId
+        if let tid {
+            _ = model.threadRevision[tid]
+        }
+        return model.messagesForThread(tid)
+    }
+
+    private var paneStreaming: Bool {
+        guard let tid = paneThreadId else { return false }
+        return model.isThreadStreaming(tid)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -298,12 +322,12 @@ struct CodexChatPaneBody: View {
                     in: Capsule()
                 )
             Spacer(minLength: 0)
-            if model.busy && !model.currentThreadStreaming {
+            if model.busy && !paneStreaming {
                 ProgressView().controlSize(.mini)
             }
-            if model.currentThreadStreaming {
+            if paneStreaming {
                 ProgressView().controlSize(.mini)
-                Button("停止") { model.cancelChat() }
+                Button("停止") { model.cancelChat(threadId: paneThreadId) }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(CCCTheme.accent)
@@ -312,7 +336,7 @@ struct CodexChatPaneBody: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-                .disabled(chat.messages.isEmpty)
+                .disabled(displayMessages.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
@@ -369,7 +393,7 @@ struct CodexChatPaneBody: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        if chat.messages.isEmpty {
+                        if displayMessages.isEmpty {
                             VStack(spacing: 8) {
                                 Spacer().frame(height: 72)
                                 Text("有什么可以帮忙的？")
@@ -377,15 +401,16 @@ struct CodexChatPaneBody: View {
                                     .foregroundStyle(CCCTheme.ink)
                                 Text("说明目标与验收，再转任务。")
                                     .font(.system(size: 13.5))
+
                                     .foregroundStyle(CCCTheme.faint)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
                         }
-                        ForEach(chat.messages) { msg in
+                        ForEach(displayMessages) { msg in
                             CodexMessageRow(message: msg)
                                 // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
-                                .id("\(model.selectedThreadId ?? "")-\(msg.id)")
+                                .id("\(paneThreadId ?? "")-\(msg.id)")
                                 .environmentObject(model)
                                 .contextMenu {
                                     Button("复制") { model.copyMessage(msg.content) }
@@ -404,25 +429,26 @@ struct CodexChatPaneBody: View {
                         // Cursor 式底部留白：最新内容居中而非贴底
                         Spacer().frame(height: max(geometry.size.height * 0.35, 120))
                     }
-                    .id(model.selectedThreadId ?? "none") // 切会话强制重建，防工具轨串台
+                    .id(paneThreadId ?? "none") // 切会话强制重建，防工具轨串台
                     .frame(maxWidth: CCCTheme.chatMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 28)
                     .padding(.top, 8)
                 }
-                .onChange(of: chat.messages.count) { _ in scroll(proxy) }
-                .onChange(of: chat.messages.last?.content) { _ in scroll(proxy) }
-                .onChange(of: chat.messages.last?.toolSteps.count) { _ in scroll(proxy) }
+                .onChange(of: displayMessages.count) { _ in scroll(proxy) }
+                .onChange(of: displayMessages.last?.content) { _ in scroll(proxy) }
+                .onChange(of: displayMessages.last?.toolSteps.count) { _ in scroll(proxy) }
+                .onChange(of: model.threadRevision[paneThreadId ?? ""]) { _ in scroll(proxy) }
                 .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
             }
         }
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
-        guard let last = chat.messages.last else { return }
-        let lastId = "\(model.selectedThreadId ?? "")-\(last.id)"
+        guard let last = displayMessages.last else { return }
+        let lastId = "\(paneThreadId ?? "")-\(last.id)"
         // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
-        guard lastId != lastScrollTargetId || chat.messages.last?.isStreaming == true else { return }
+        guard lastId != lastScrollTargetId || displayMessages.last?.isStreaming == true else { return }
         // streaming 时节流：仅当内容长度跨过 80 字边界或目标变化才滚
         if last.isStreaming, lastId == lastScrollTargetId {
             let n = last.content.count
@@ -474,14 +500,14 @@ struct CodexChatPaneBody: View {
                 // 固定同一 Button 身份，避免 if/else 换控件触发 Composer 整行重布局打断 IME
                 Button {
                     if showStopInsteadOfSend {
-                        model.cancelChat()
+                        model.cancelChat(threadId: paneThreadId)
                     } else {
                         sendFromComposer()
                     }
                 } label: {
                     Image(systemName: showStopInsteadOfSend
                           ? "stop.fill"
-                          : (model.currentThreadStreaming ? "arrow.up.circle.fill" : "arrow.up"))
+                          : (paneStreaming ? "arrow.up.circle.fill" : "arrow.up"))
                         .font(.system(size: showStopInsteadOfSend ? 10 : 11, weight: .bold))
                         .foregroundStyle(
                             showStopInsteadOfSend
@@ -503,7 +529,7 @@ struct CodexChatPaneBody: View {
                 .padding(.bottom, 6)
                 .help(showStopInsteadOfSend
                       ? "停止生成"
-                      : (model.currentThreadStreaming ? "停止当前并发送" : "发送"))
+                      : (paneStreaming ? "停止当前并发送" : "发送"))
             }
             .frame(minHeight: 36)
             .background(
@@ -571,7 +597,7 @@ struct CodexChatPaneBody: View {
     }
 
     private var showStopInsteadOfSend: Bool {
-        model.currentThreadStreaming
+        paneStreaming
             && composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -580,7 +606,7 @@ struct CodexChatPaneBody: View {
         guard !text.isEmpty else { return }
         // 立刻清空本地输入；不要经 model.draft，避免 onChange 回填
         composerText = ""
-        model.sendUserMessage(text, stopAndSend: true)
+        model.sendUserMessage(text, projectId: paneProjectId, stopAndSend: true)
     }
 }
 

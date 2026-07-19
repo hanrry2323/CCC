@@ -67,6 +67,7 @@ struct ChatMessage: Identifiable, Hashable {
 
 extension ChatMessage: Codable {
     enum CodingKeys: String, CodingKey {
+        case id
         case role, content
         case tool_steps
         case files_changed
@@ -78,7 +79,12 @@ extension ChatMessage: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = UUID()
+        if let raw = try c.decodeIfPresent(String.self, forKey: .id),
+           let uuid = UUID(uuidString: raw) {
+            id = uuid
+        } else {
+            id = UUID()
+        }
         role = try c.decode(String.self, forKey: .role)
         content = try c.decodeIfPresent(String.self, forKey: .content) ?? ""
         isStreaming = false
@@ -93,6 +99,7 @@ extension ChatMessage: Codable {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id.uuidString, forKey: .id)
         try c.encode(role, forKey: .role)
         try c.encode(content, forKey: .content)
         if !toolSteps.isEmpty {

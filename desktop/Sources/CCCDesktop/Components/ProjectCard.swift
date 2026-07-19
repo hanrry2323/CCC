@@ -9,11 +9,13 @@ import SwiftUI
 /// 空闲不抢视线：字幕空、灯变淡灰点。
 struct ProjectCard: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     let project: DesktopProject
     let isSelected: Bool
 
     var body: some View {
         Button {
+            window.projectId = project.id
             Task { await model.openProjectConversation(project.id) }
         } label: {
             HStack(alignment: .center, spacing: 10) {

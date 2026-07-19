@@ -159,6 +159,8 @@ final class AppModel: ObservableObject {
     private static let maxParallelLocalChats = 3
     /// 会话消息本地缓存（切会话秒开，不堵 HTTP）
     private var threadMessages: [String: [ChatMessage]] = [:]
+    /// 每线程修订号：多窗 / 后台流式更新时驱动 UI 刷新（threadMessages 本身非 @Published）
+    @Published private(set) var threadRevision: [String: UInt64] = [:]
     /// 会话右栏编排缓存（与对话隔离）
     private var threadFlow: [String: FlowThreadSnapshot] = [:]
     /// 防止慢 HTTP 回写错会话
@@ -410,7 +412,13 @@ final class AppModel: ObservableObject {
         projects.first { $0.id == selectedProjectId }
     }
 
+    private var bootstrapStarted = false
+
     func bootstrap() async {
+        if bootstrapStarted {
+            return
+        }
+        bootstrapStarted = true
         // 环境变量优先，便于启动时强制指到 Mac2017
         if let env = ProcessInfo.processInfo.environment["CCC_SERVER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !env.isEmpty {
@@ -613,25 +621,43 @@ final class AppModel: ObservableObject {
         await selectProject(id)
     }
 
-    /// 加载项目的唯一会话（磁盘 SSOT；Hub 仅在本机为空时可选补种，禁止回写覆盖）
+    /// 加载项目的唯一会话。流式中或 RAM 更丰富时禁止磁盘盲覆盖（否则 assistantId 孤儿 → UI 掉会话）。
     private func loadConversation(projectId: String) async {
         let tid = ConversationStore.conversationId(for: projectId)
         threadSwitchGeneration &+= 1
         let gen = threadSwitchGeneration
         selectedThreadId = tid
         let state = ConversationStore.load(projectId: projectId)
-        threadMessages[tid] = state.messages
+        let disk = state.messages
+        let ram = threadMessages[tid] ?? []
+        let keepRam = streamingThreadIds.contains(tid)
+            || chatTasks[tid] != nil
+            || (!ram.isEmpty
+                && LocalSessionStore.messageScore(ram) >= LocalSessionStore.messageScore(disk))
+        if keepRam {
+            // 保留 live RAM（含 isStreaming + 原 UUID）；只补 flow
+            if threadMessages[tid] == nil {
+                threadMessages[tid] = ram
+            }
+        } else {
+            threadMessages[tid] = disk
+        }
         if let flow = state.flow {
-            threadFlow[tid] = flow
-        } else if let bound = state.boundEpicId {
+            if threadFlow[tid] == nil
+                || (threadFlow[tid]?.works.isEmpty == true && !flow.works.isEmpty) {
+                threadFlow[tid] = flow
+            }
+        } else if threadFlow[tid] == nil, let bound = state.boundEpicId {
             let snap = FlowThreadSnapshot(
                 epicId: bound, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: "编排空闲·等定稿下达（与对话故障无关）", fanoutHint: nil            )
+                recentEpics: [], emptyMessage: "编排空闲·等定稿下达（与对话故障无关）", fanoutHint: nil
+            )
             threadFlow[tid] = snap
         }
-        chat.messages = state.messages
+        chat.messages = threadMessages[tid] ?? disk
+        bumpThreadRevision(tid)
         pendingTransferDraft = nil
-        if let lastAsst = state.messages.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+        if let lastAsst = chat.messages.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
             refreshTransferDraft(from: lastAsst.content)
         }
         lastAnimatedEpicId = nil
@@ -640,7 +666,7 @@ final class AppModel: ObservableObject {
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
         lastError = nil
-        // 后台：本机空才从 Hub 补种消息；flow 以本地 boundEpicId 为先
+        // 后台：本机空才从 Hub 补种消息；流式中不同步
         Task { [weak self] in
             guard let self else { return }
             await self.syncThreadFromServer(projectId: projectId, threadId: tid, generation: gen)
@@ -949,10 +975,24 @@ final class AppModel: ObservableObject {
 
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
         threadMessages[threadId] = msgs
+        bumpThreadRevision(threadId)
         if selectedThreadId == threadId {
             chat.messages = msgs
         }
         scheduleDiskSave(threadId: threadId)
+    }
+
+    private func bumpThreadRevision(_ threadId: String) {
+        threadRevision[threadId, default: 0] &+= 1
+    }
+
+    /// 供多窗：取某线程当前消息（优先选中线程的 chat.messages）
+    func messagesForThread(_ threadId: String?) -> [ChatMessage] {
+        guard let threadId, !threadId.isEmpty else { return [] }
+        if selectedThreadId == threadId {
+            return chat.messages
+        }
+        return threadMessages[threadId] ?? []
     }
 
     /// 本机落盘节流 ~300ms；按 threadId 独立任务，禁止互相 cancel
@@ -1013,28 +1053,40 @@ final class AppModel: ObservableObject {
         persistMessages(for: threadId, msgs)
     }
 
-    /// Phase 1.4: delta 热路径专用——直接下标改 messages[i].content，避免整数组重赋值。
-    /// 仍触发 @Published willSet（subscript setter），但 SwiftUI 可按 row diff，不重建 LazyVStack。
+    /// Phase 1.4: delta 热路径——就地改 content；切回后 UUID 仍在 RAM 时可续写。
+    /// 若曾被磁盘 hydrate 弄丢 id：流式中按 assistantId 重建气泡，禁止静默丢字。
     private func applyDeltaInPlace(threadId: String, assistantId: UUID, chunk: String) {
-        if var msgs = threadMessages[threadId],
-           let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
+        var msgs = threadMessages[threadId] ?? []
+        if let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
             msgs[idx].content += chunk
-            // 新 delta 到达 → 清掉阶段性短句
             if msgs[idx].transientNote != nil {
                 msgs[idx].transientNote = nil
             }
-            threadMessages[threadId] = msgs
+            msgs[idx].isStreaming = true
+        } else if streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil {
+            msgs.append(
+                ChatMessage(
+                    id: assistantId,
+                    role: "assistant",
+                    content: chunk,
+                    isStreaming: true
+                )
+            )
+        } else {
+            return
         }
+        threadMessages[threadId] = msgs
+        bumpThreadRevision(threadId)
         if selectedThreadId == threadId {
-            chat.replaceMessage(id: assistantId) { m in
-                m.content += chunk
-                if m.transientNote != nil {
-                    m.transientNote = nil
+            if chat.messages.contains(where: { $0.id == assistantId }) {
+                chat.replaceMessage(id: assistantId) { m in
+                    m.content += chunk
+                    if m.transientNote != nil {
+                        m.transientNote = nil
+                    }
+                    m.isStreaming = true
                 }
-            }
-            // 兜底：messages 与 threadMessages 不同步时整表对齐一次
-            if !chat.messages.contains(where: { $0.id == assistantId }),
-               let msgs = threadMessages[threadId] {
+            } else {
                 chat.messages = msgs
             }
         }
@@ -1146,11 +1198,12 @@ final class AppModel: ObservableObject {
         return "discuss"
     }
 
-    /// 同会话 stop-and-send；仅本机 sidecar，可多路并行
-    func sendUserMessage(_ text: String, stopAndSend: Bool = true) {
+    /// 同会话 stop-and-send；仅本机 sidecar，可多路并行（可指定 projectId 供多窗）
+    func sendUserMessage(_ text: String, projectId: String? = nil, stopAndSend: Bool = true) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        Task { await self.sendUserMessageAndWait(trimmed, stopAndSend: stopAndSend) }
+        let pid = projectId ?? selectedProjectId
+        Task { await self.sendUserMessageAndWait(trimmed, projectId: pid, stopAndSend: stopAndSend) }
     }
 
     func isThreadStreaming(_ threadId: String) -> Bool {
@@ -1264,25 +1317,31 @@ final class AppModel: ObservableObject {
 
     /// 可等待版本：smoke / 自动化必须等整轮 SSE（含 done）结束
     @discardableResult
-    func sendUserMessageAndWait(_ text: String, stopAndSend: Bool = true) async -> Bool {
+    func sendUserMessageAndWait(
+        _ text: String,
+        projectId: String? = nil,
+        stopAndSend: Bool = true
+    ) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        guard let pid = selectedProjectId else {
+        guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             composerBounce = trimmed
             return false
         }
-        // 编排仓可聊方案；仅转任务/下达仍禁（isDispatchable）
         let tid = ConversationStore.conversationId(for: pid)
-        if selectedThreadId != tid {
-            selectedThreadId = tid
+        if selectedProjectId == pid {
+            if selectedThreadId != tid {
+                selectedThreadId = tid
+            }
             hydrateThreadFromDisk(projectId: pid, threadId: tid)
             if chat.messages.isEmpty, let cached = threadMessages[tid] {
                 chat.messages = cached
             }
+        } else if threadMessages[tid] == nil {
+            hydrateThreadFromDisk(projectId: pid, threadId: tid)
         }
         let threadId = tid
-        // 对话面：必须本机 Agent；禁止 Hub /api/chat
         if !canChat {
             showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
             composerBounce = trimmed
