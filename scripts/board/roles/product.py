@@ -280,6 +280,9 @@ def _gate_product_artifacts(
 
 def product_role(task_id: str = "") -> dict:
     """产品经理：扫 backlog，或 --promote 调 Claude API 写 SPEC-合规 plan"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("product", "claude-code")
     tasks = list_tasks("backlog")
 
     if task_id:

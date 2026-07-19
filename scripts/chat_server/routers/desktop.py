@@ -312,6 +312,21 @@ async def transfer_to_epic(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
 
+    # 角色锁（架构对齐 2026-07-19）：Desktop 只能转 epic，禁止直接转 work
+    body_card_kind = str(body.get("card_kind") or "").strip().lower()
+    if body_card_kind and body_card_kind != "epic":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "role_lock_violation",
+                "errors": [{
+                    "code": "role_lock_violation",
+                    "message": f"Desktop transfer 只允许 epic，禁止 card_kind={body_card_kind}",
+                }],
+            },
+        )
+
     ok, errors = transfer_gate.validate_transfer_payload(body)
     if not ok:
         return JSONResponse(

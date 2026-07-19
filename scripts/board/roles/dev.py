@@ -68,6 +68,9 @@ from board.roles.common import (
 
 def dev_role() -> dict:
     """开发工程师: 查 in_progress（重试）→ 查 planned（新的）→ opencode 执行"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("dev", "opencode")
     import subprocess as sp
 
     moved = []
