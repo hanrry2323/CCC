@@ -42,7 +42,18 @@ ROLE_LABELS = {
     "开发机": "开发",
     "编译站": "编译",
     "生产机": "生产",
+    "CCC Server": "CCC Server",
+    "**CCC Server**": "CCC Server",
 }
+
+
+def _strip_md(s: str) -> str:
+    """Strip light markdown emphasis from table cells."""
+    t = (s or "").strip()
+    t = re.sub(r"^\*\*(.+?)\*\*$", r"\1", t)
+    t = re.sub(r"^__(.+?)__$", r"\1", t)
+    t = re.sub(r"^\*(.+?)\*$", r"\1", t)
+    return t.strip()
 
 
 def _now_iso() -> str:
@@ -87,15 +98,19 @@ def parse_infra(path: Path | None = None) -> dict:
             current_section = m.group(1).strip()
             continue
 
+        # Allow **bold** host names (e.g. **Mac 2017**) — \w alone misses them.
         m = re.match(
-            r"^\| (\w[\w ]+?)\s+\| (\d+\.\d+\.\d+\.\d+)\s+\| ([^|]+)\|",
+            r"^\|+\s*(.+?)\s*\|\s*(\d+\.\d+\.\d+\.\d+)\s*\|\s*([^|]+)\|",
             line,
         )
         if m and current_section == "机器清单":
-            role_raw = m.group(3).strip()
+            name = _strip_md(m.group(1))
+            if name.lower() in ("主机", "host", "---") or set(name) <= {"-"}:
+                continue
+            role_raw = _strip_md(m.group(3))
             result["machines"].append(
                 {
-                    "name": m.group(1).strip(),
+                    "name": name,
                     "ip": m.group(2).strip(),
                     "role": ROLE_LABELS.get(role_raw, role_raw),
                     "role_raw": role_raw,
@@ -106,7 +121,18 @@ def parse_infra(path: Path | None = None) -> dict:
         if (
             m
             and current_section
-            and any(x in current_section for x in ("端口", "生产机", "编译站"))
+            and any(
+                x in current_section
+                for x in (
+                    "端口",
+                    "生产机",
+                    "编译站",
+                    "CCC Server",
+                    "Server",
+                    "Mac 2017",
+                    "Mac2017",
+                )
+            )
         ):
             raw_port = re.sub(r"[^\d]", "", m.group(1))
             if not raw_port:
@@ -207,14 +233,20 @@ def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
                     "probed_host": "127.0.0.1",
                 }
         alive = probe_port(host, port)
+        probed = host
+        if not alive and host.startswith("192.168."):
+            # Same-host services may bind 127.0.0.1 only (e.g. Board :7775)
+            if probe_port("127.0.0.1", port):
+                alive = True
+                probed = "127.0.0.1"
         if alive:
-            http_ok, status, label = probe_http(host, port)
+            http_ok, status, label = probe_http(probed, port)
             return port, {
                 **info,
                 "alive": True,
                 "http_status": status if http_ok else 0,
                 "label": label if http_ok else "TCP open",
-                "probed_host": host,
+                "probed_host": probed,
             }
         return port, {
             **info,
@@ -528,17 +560,22 @@ def deploy_targets() -> dict:
         (
             "Mac 2017",
             {
-                "role": "编译",
-                "checks": [(22, "ssh"), (None, None)],
-                "notes": "Rust/Node 编译站；产物 rsync 自 M1",
+                "role": "CCC Server",
+                "checks": [
+                    (7777, "Hub"),
+                    (4000, "router-anthropic"),
+                    (4002, "router-openai"),
+                    (22, "ssh"),
+                ],
+                "notes": "唯一生产：Hub/Board/Engine/中转/业务仓（见 docs/deploy/topology.md）",
             },
         ),
         (
             "feiniu",
             {
-                "role": "生产",
+                "role": "业务生产",
                 "checks": [(3000, "medio-0"), (11434, "ollama"), (18080, "Money Printer")],
-                "notes": "生产部署；只读状态位",
+                "notes": "HP/medio 等业务机；非 CCC 控制面",
             },
         ),
     ):
@@ -569,8 +606,8 @@ def deploy_targets() -> dict:
         "dev": {
             "name": "M1",
             "ip": m1.get("ip"),
-            "role": "开发",
-            "notes": "编码 + CCC Hub/Engine",
+            "role": "Client / 对话面",
+            "notes": "Desktop + sidecar；Hub/Engine 在 Mac 2017，不在本机",
         },
         "targets": targets,
         "generated_at": _now_iso(),

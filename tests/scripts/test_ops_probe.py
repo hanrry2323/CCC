@@ -13,6 +13,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from _ops_probe import (  # noqa: E402
     parse_infra,
+    deploy_targets,
     local_resources,
     docs_debt_scan,
     PORT_GROUPS,
@@ -24,10 +25,29 @@ def test_parse_infra_machines_and_ports():
     assert "machines" in data
     names = {m["name"] for m in data["machines"]}
     assert "M1" in names
+    assert "Mac 2017" in names
+    mac = next(m for m in data["machines"] if m["name"] == "Mac 2017")
+    assert mac["ip"] == "192.168.3.116"
+    assert "Server" in mac["role"] or "CCC" in mac["role"]
     assert 7777 in data["ports"]
     assert 7775 in data["ports"]
+    assert 4000 in data["ports"]
+    assert 4002 in data["ports"]
+    assert data["ports"][7777]["host"] == "192.168.3.116"
+    assert data["ports"][7777]["machine"] == "Mac 2017"
     # deprecated strikethrough port should be skipped
     assert 8084 not in data["ports"]
+
+
+def test_deploy_targets_mac2017_is_ccc_server():
+    d = deploy_targets()
+    assert "Hub/Engine 在 Mac 2017" in d["dev"]["notes"]
+    t = next(x for x in d["targets"] if x["name"] == "Mac 2017")
+    assert t["ip"] == "192.168.3.116"
+    assert t["role"] == "CCC Server"
+    labels = {c["label"] for c in t["checks"]}
+    assert "Hub" in labels
+    assert "router-anthropic" in labels
 
 
 def test_local_resources_shape():
