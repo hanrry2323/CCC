@@ -20,8 +20,8 @@
 | event | data（JSON） | 何时 |
 |-------|----------------|------|
 | `epic_created` | `{epic_id,title,project_id}` | 转任务成功 |
-| `fanout` | `{epic_id,works:[{id,title,executor,depends_on[]}]}` | 扇出完成/更新 |
-| `work_status` | `{epic_id,work_id,status,executor,note?}` | 列迁移或执行态变 |
+| `fanout` | `{project_id,epic_id,works:[{id,title,executor,depends_on[],status?}]}` | 扇出完成/更新 |
+| `work_status` | `{project_id,epic_id,work_id,status,executor,note?}` | 列迁移或执行态变 |
 | `executor` | `{epic_id,work_id,executor,phase?,detail?}` | 执行器启动/结束 |
 | `epic_done` | `{epic_id,split_status}` | epic done/failed |
 | `error` | `{message}` | 订阅错误 |
@@ -39,7 +39,8 @@
 
 ---
 
-## 实现备注
+## 实现备注（95+）
 
-MVP 可用轮询板状态合成事件；生产可改为 Engine 写 event log + SSE 推送。  
-事件日志建议：`~/.ccc/flow-events.jsonl`（Server 机）。
+1. **推送优先**：`product` 扇出写 `~/.ccc/flow-events.jsonl`（含 `project_id`）；SSE 以 `after_ts` 追赶。
+2. **看板轮询兜底**：约每 8s 合成一次（首屏/断线）；不再 2s 狂刷。
+3. Desktop 右栏：`fanout` → 拆分出生动画；`work_status` → 节点态刷新。

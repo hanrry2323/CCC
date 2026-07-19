@@ -20,3 +20,5 @@ def test_wrap_hub_prompt_prefixes_and_idempotent():
     again = wrap_hub_prompt(out)
     assert again.count("【Hub 对话人格") == 1
     assert "禁止" in HUB_BOSS_VOICE
+    assert "ccc-transfer" in HUB_BOSS_VOICE
+    assert "定稿块" in HUB_BOSS_VOICE

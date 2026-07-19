@@ -517,73 +517,95 @@ async def flow_events_sse(
     project_id: str = "",
     epic_id: str = "",
 ):
-    """SSE：fanout / work_status / ping。MVP 轮询看板合成。"""
+    """SSE：优先 JSONL 推送 fanout/work_status；看板轮询仅作断线兜底。"""
     check_auth(request)
     pid = (project_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="project_id required")
 
     async def gen():
+        import asyncio
+
+        last_ts = ""
         last_sig = ""
         last_beat = 0.0
+        last_board_poll = 0.0
+        board_interval = 8.0  # 95+：缩小看板轮询
+
         # 先推历史事件
-        for rec in flow_events.read_events(project_id=pid, epic_id=epic_id or None):
-            yield flow_events.format_sse(str(rec.get("event") or "message"), rec.get("data") or {})
+        for rec in flow_events.read_events(
+            project_id=pid, epic_id=epic_id or None, limit=80
+        ):
+            yield flow_events.format_sse(
+                str(rec.get("event") or "message"), rec.get("data") or {}
+            )
+            ts = str(rec.get("ts") or "")
+            if ts > last_ts:
+                last_ts = ts
 
         while True:
             if await request.is_disconnected():
                 break
-            eid = (epic_id or "").strip()
-            if not eid:
-                last = flow_events.load_last_epic(pid)
-                eid = str((last or {}).get("epic_id") or "")
+            eid_filter = (epic_id or "").strip() or None
+            # 1) JSONL 推送优先
+            for rec in flow_events.read_events(
+                project_id=pid,
+                epic_id=eid_filter,
+                after_ts=last_ts or None,
+                limit=100,
+            ):
+                yield flow_events.format_sse(
+                    str(rec.get("event") or "message"), rec.get("data") or {}
+                )
+                ts = str(rec.get("ts") or "")
+                if ts > last_ts:
+                    last_ts = ts
+
             now = time.time()
-            if eid:
-                try:
-                    workspace = _project_workspace(pid)
-                    board = await _fetch_board_dict(workspace)
-                    snap = flow_events.snapshot_from_board(
-                        board, epic_id=eid, project_id=pid
-                    )
-                    sig = json.dumps(snap, sort_keys=True, ensure_ascii=False)
-                    if sig != last_sig:
-                        last_sig = sig
-                        yield flow_events.format_sse(
-                            "fanout",
-                            {
-                                "epic_id": eid,
-                                "works": snap.get("works") or [],
-                            },
+            # 2) 兜底：低频看板合成（首屏 / 无 JSONL 时）
+            if now - last_board_poll >= board_interval:
+                last_board_poll = now
+                eid = eid_filter or ""
+                if not eid:
+                    last = flow_events.load_last_epic(pid)
+                    eid = str((last or {}).get("epic_id") or "")
+                if eid:
+                    try:
+                        workspace = _project_workspace(pid)
+                        board = await _fetch_board_dict(workspace)
+                        snap = flow_events.snapshot_from_board(
+                            board, epic_id=eid, project_id=pid
                         )
-                        for w in snap.get("works") or []:
+                        sig = json.dumps(snap, sort_keys=True, ensure_ascii=False)
+                        if sig != last_sig:
+                            last_sig = sig
                             yield flow_events.format_sse(
-                                "work_status",
+                                "fanout",
                                 {
+                                    "project_id": pid,
                                     "epic_id": eid,
-                                    "work_id": w.get("id"),
-                                    "status": w.get("status"),
-                                    "executor": w.get("executor"),
+                                    "works": snap.get("works") or [],
                                 },
                             )
-                            yield flow_events.format_sse(
-                                "executor",
-                                {
-                                    "epic_id": eid,
-                                    "work_id": w.get("id"),
-                                    "executor": w.get("executor"),
-                                },
-                            )
-                except Exception as exc:
-                    yield flow_events.format_sse(
-                        "error", {"message": str(exc)[:200]}
-                    )
+                            for w in snap.get("works") or []:
+                                yield flow_events.format_sse(
+                                    "work_status",
+                                    {
+                                        "project_id": pid,
+                                        "epic_id": eid,
+                                        "work_id": w.get("id"),
+                                        "status": w.get("status"),
+                                        "executor": w.get("executor"),
+                                    },
+                                )
+                    except Exception as exc:
+                        yield flow_events.format_sse(
+                            "error", {"message": str(exc)[:200]}
+                        )
             if now - last_beat >= 15:
                 last_beat = now
                 yield flow_events.format_sse("ping", {"t": int(now)})
-            # 短 sleep：用 asyncio
-            import asyncio
-
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(0.5)
 
     return StreamingResponse(
         gen(),

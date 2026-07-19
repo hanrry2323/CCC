@@ -22,6 +22,27 @@ _log = get_logger("product.fanout")
 MAX_CHILDREN = int(os.environ.get("CCC_MAX_CHILDREN_PER_EPIC", "8") or "8")
 
 
+def _project_id_for_workspace(workspace: Path | str | None) -> str | None:
+    """workspace 路径 → Desktop project_id（供 flow-events 过滤）。"""
+    if not workspace:
+        return None
+    try:
+        name = Path(workspace).resolve().name
+    except OSError:
+        name = Path(str(workspace)).name
+    if not name:
+        return None
+    try:
+        from chat_server.routers.projects import PROJECT_TO_WORKSPACE
+
+        for pid, ws in (PROJECT_TO_WORKSPACE or {}).items():
+            if str(ws) == name or Path(str(ws)).name == name:
+                return str(pid)
+    except Exception:
+        pass
+    return name
+
+
 def max_children() -> int:
     return max(1, min(MAX_CHILDREN, 16))
 
@@ -463,15 +484,27 @@ def apply_fanout(
                         "title": t.get("title"),
                         "executor": t.get("executor") or "opencode",
                         "depends_on": t.get("depends_on_tasks") or [],
+                        "status": _col or "planned",
                     }
                 )
-        _fe.append_event(
-            "fanout",
-            {
+        project_id = _project_id_for_workspace(store.workspace)
+        payload = {
+            "epic_id": epic_id,
+            "works": works_meta,
+        }
+        if project_id:
+            payload["project_id"] = project_id
+        _fe.append_event("fanout", payload)
+        for w in works_meta:
+            ws_payload = {
                 "epic_id": epic_id,
-                "works": works_meta,
-            },
-        )
+                "work_id": w.get("id"),
+                "status": w.get("status") or "planned",
+                "executor": w.get("executor"),
+            }
+            if project_id:
+                ws_payload["project_id"] = project_id
+            _fe.append_event("work_status", ws_payload)
     except Exception:
         pass
 

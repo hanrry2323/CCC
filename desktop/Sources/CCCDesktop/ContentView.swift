@@ -248,6 +248,9 @@ struct CodexChatPane: View {
                 offlineCenter
             } else {
                 messageArea
+                if model.pendingTransferDraft != nil {
+                    transferConfirmBar
+                }
                 composerDock
             }
         }
@@ -256,6 +259,56 @@ struct CodexChatPane: View {
             NSApp.activate(ignoringOtherApps: true)
             composerFocused = true
         }
+    }
+
+    /// 定稿 JSON 就绪后的一键转任务条
+    private var transferConfirmBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("确认转任务")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(CCCTheme.ink)
+                    Text(model.pendingTransferDraft?.previewLine ?? "")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(CCCTheme.secondary)
+                        .lineLimit(2)
+                    if let d = model.pendingTransferDraft {
+                        Text("产线 \(d.pipeline) · 验收 \(d.acceptanceLines.count) 条")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(CCCTheme.faint)
+                    }
+                }
+                Spacer(minLength: 0)
+                Button("展开编辑") { model.openTransferSheet() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.secondary)
+                Button("忽略") { model.dismissPendingTransfer() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+                Button("确认转任务") { model.confirmPendingTransfer() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(CCCTheme.accent)
+                    .controlSize(.small)
+                    .disabled(
+                        model.busy
+                            || model.selectedProject?.isDispatchable != true
+                            || !(model.pendingTransferDraft?.isGateReady ?? false)
+                    )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: CCCTheme.chatMaxWidth)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(CCCTheme.accent.opacity(0.08))
+        )
+        .padding(.horizontal, 28)
+        .padding(.bottom, 4)
     }
 
     private var statusBar: some View {
@@ -747,6 +800,7 @@ struct FlowRail: View {
                 works: model.flowWorks,
                 headline: model.flowHeadline,
                 emptyMessage: model.flowEmptyMessage,
+                splitGeneration: model.flowSplitGeneration,
                 onOpenOps: { model.selectDestination(.ops) },
                 onSelectNode: { model.openNodeDetail(id: $0) }
             )

@@ -7,12 +7,34 @@
 ## 流程
 
 ```text
-对话 → 定稿（结构化字段齐全）→ POST /api/desktop/transfer
+对话 → 方案 Agent 输出 ```ccc-transfer``` JSON → Desktop「确认转任务」
+  → POST /api/desktop/transfer
   → Gate 通过 → 仅创建 epic（backlog）
   → Gate 失败 → 不写看板，返回 errors[]
 ```
 
 Engine **之后**才扇出 work；转任务接口禁止直接写 planned work。
+
+## 定稿协议（`ccc-transfer`）
+
+方案 Agent 在聊透后于回复末尾输出**恰好一个** fenced 块：
+
+````markdown
+```ccc-transfer
+{
+  "title": "…",
+  "goal": "…",
+  "acceptance": ["…"],
+  "pipeline": "dev",
+  "feasibility": "ok",
+  "feasibility_reason": "",
+  "executor_intent": "opencode",
+  "plan_md": "# Plan …"
+}
+```
+````
+
+Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单编辑。
 
 ---
 

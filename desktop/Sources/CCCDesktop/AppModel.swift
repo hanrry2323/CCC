@@ -44,6 +44,11 @@ final class AppModel: ObservableObject {
     @Published var transferPlanMd = ""
     @Published var showTransferSheet = false
     @Published var transferError: String?
+    /// 解析到的定稿条（消息下「确认转任务」）
+    @Published var pendingTransferDraft: TransferDraft?
+    /// 右栏拆分动画世代（works 0→N 时递增；切会话重置）
+    @Published var flowSplitGeneration: UInt64 = 0
+    private var lastAnimatedEpicId: String?
 
     @Published var flowEmptyMessage = "聊透后转任务，编排将在此展开"
     @Published var flowWorks: [FlowWork] = []
@@ -421,6 +426,9 @@ final class AppModel: ObservableObject {
             selectedThreadId = resp.thread_id
             messages = []
             threadMessages[resp.thread_id] = []
+            pendingTransferDraft = nil
+            lastAnimatedEpicId = nil
+            flowSplitGeneration &+= 1
             applyFlowSnapshot(nil)
             flowEmptyMessage = "在本对话中转任务后，编排会出现在这里"
             threadFlow[resp.thread_id] = FlowThreadSnapshot(
@@ -451,6 +459,13 @@ final class AppModel: ObservableObject {
         selectedThreadId = id
         destination = .chat
         messages = threadMessages[id] ?? []
+        pendingTransferDraft = nil
+        if let cached = threadMessages[id],
+           let lastAsst = cached.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+            refreshTransferDraft(from: lastAsst.content)
+        }
+        lastAnimatedEpicId = nil
+        flowSplitGeneration &+= 1
         applyFlowSnapshot(threadFlow[id])  // nil → 清空右栏，防串会话
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
@@ -654,13 +669,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 仅当前选中会话在生成时暂停右栏 snapshot；其它路后台跑不挡
+    /// 95+：聊天不再暂停右栏 flow；只挡「覆盖当前 messages」的 HTTP 同步（见 syncThreadFromServer）
     private func updateFlowSnapshotPause() {
-        if let tid = selectedThreadId {
-            flowSnapshotPaused = streamingThreadIds.contains(tid)
-        } else {
-            flowSnapshotPaused = !streamingThreadIds.isEmpty
-        }
+        flowSnapshotPaused = false
     }
 
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
@@ -818,17 +829,59 @@ final class AppModel: ObservableObject {
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
 
-            try await client.streamChat(
-                projectId: projectId,
-                sessionId: threadId,
-                messages: outbound
-            ) { [weak self] event in
-                guard let model = self else { return }
-                // 显式 MainActor：保证 tool_use 即时刷新，不攒到整轮结束
-                await MainActor.run {
-                    model.applyChatEvent(threadId: threadId, assistantId: assistantId, event: event)
+            // 同会话自动重试 1 次（保留已生成的本地内容，清空半截助手再流）
+            var streamError: Error?
+            for attempt in 1...2 {
+                do {
+                    if attempt == 2 {
+                        if selectedThreadId == threadId {
+                            statusText = "重连中…"
+                        }
+                        mutateThreadMessages(threadId: threadId) { msgs in
+                            guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                            msgs[idx].content = ""
+                            msgs[idx].toolSteps = []
+                            msgs[idx].filesChanged = 0
+                            msgs[idx].toolsFinished = false
+                            msgs[idx].isStreaming = true
+                        }
+                        try await prepareClient()
+                    }
+                    let outboundAttempt = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
+                    try await client.streamChat(
+                        projectId: projectId,
+                        sessionId: threadId,
+                        messages: attempt == 1 ? outbound : outboundAttempt
+                    ) { [weak self] event in
+                        guard let model = self else { return }
+                        await MainActor.run {
+                            model.applyChatEvent(threadId: threadId, assistantId: assistantId, event: event)
+                        }
+                    }
+                    streamError = nil
+                    break
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    streamError = error
+                    let cancelled = (error as NSError).code == NSURLErrorCancelled
+                        || error.localizedDescription.lowercased().contains("cancel")
+                    if cancelled { throw error }
+                    // 仅网络/半截可重试
+                    let retryable = error.localizedDescription.contains("中断")
+                        || error.localizedDescription.contains("partial")
+                        || error.localizedDescription.contains("timed out")
+                        || error.localizedDescription.contains("Timeout")
+                        || error.localizedDescription.contains("连接")
+                        || (error as? APIError).map { if case .http = $0 { return true }; return false } ?? false
+                        || (error as NSError).domain == NSURLErrorDomain
+                    if attempt == 1 && retryable {
+                        continue
+                    }
+                    throw error
                 }
             }
+            if let streamError { throw streamError }
 
             var failedEmpty = false
             mutateThreadMessages(threadId: threadId) { msgs in
@@ -850,6 +903,10 @@ final class AppModel: ObservableObject {
             }
             if connected, selectedThreadId == threadId {
                 statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
+            }
+            // 解析定稿块
+            if let asst = (threadMessages[threadId] ?? []).last(where: { $0.id == assistantId }) {
+                refreshTransferDraft(from: asst.content)
             }
             // 落盘含 tool_steps
             let synced = (threadMessages[threadId] ?? messages)
@@ -1087,7 +1144,61 @@ final class AppModel: ObservableObject {
     /// 从某条助手消息打开转任务（预填）
     func openTransfer(fromAssistantContent content: String) {
         transferError = nil
-        let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        applyTransferDraft(TransferDraftParser.parse(from: content), fallbackContent: content)
+        showTransferSheet = true
+    }
+
+    func openTransferSheet() {
+        transferError = nil
+        if let d = pendingTransferDraft {
+            applyTransferDraft(d, fallbackContent: nil)
+        } else {
+            prefillTransferFromChat()
+        }
+        showTransferSheet = true
+    }
+
+    /// 一键确认定稿条 → 直接提交（字段已齐）
+    func confirmPendingTransfer() {
+        guard let d = pendingTransferDraft else {
+            openTransferSheet()
+            return
+        }
+        applyTransferDraft(d, fallbackContent: nil)
+        if d.isGateReady {
+            Task { await submitTransfer() }
+        } else {
+            showTransferSheet = true
+        }
+    }
+
+    func dismissPendingTransfer() {
+        pendingTransferDraft = nil
+    }
+
+    /// 助手回复结束后刷新定稿条
+    func refreshTransferDraft(from content: String) {
+        if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
+            pendingTransferDraft = d
+            applyTransferDraft(d, fallbackContent: nil)
+        }
+    }
+
+    private func applyTransferDraft(_ draft: TransferDraft?, fallbackContent: String?) {
+        if let d = draft {
+            if !d.title.isEmpty { transferTitle = d.title }
+            if !d.goal.isEmpty { transferGoal = d.goal }
+            if !d.acceptance.isEmpty { transferAcceptance = d.acceptance }
+            if !d.pipeline.isEmpty { transferPipeline = d.pipeline }
+            if !d.feasibility.isEmpty { transferFeasibility = d.feasibility }
+            transferFeasibilityReason = d.feasibilityReason
+            if !d.executorIntent.isEmpty { transferExecutor = d.executorIntent }
+            if !d.planMd.isEmpty { transferPlanMd = d.planMd }
+            return
+        }
+        guard let t = fallbackContent?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
+            return
+        }
         if transferGoal.isEmpty { transferGoal = String(t.prefix(2000)) }
         if transferTitle.isEmpty {
             transferTitle = String(t.replacingOccurrences(of: "\n", with: " ").prefix(40))
@@ -1095,19 +1206,17 @@ final class AppModel: ObservableObject {
         if transferAcceptance.isEmpty {
             transferAcceptance = "按对话结论验收；现象符合描述即通过"
         }
-        showTransferSheet = true
     }
 
-    func openTransferSheet() {
-        transferError = nil
-        prefillTransferFromChat()
-        showTransferSheet = true
-    }
-
-    /// 从对话启发式预填门禁字段
+    /// 从对话启发式预填门禁字段（无 ccc-transfer 时）
     func prefillTransferFromChat() {
-        let users = messages.filter { $0.role == "user" }.map(\.content)
         let assistants = messages.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
+        if let last = assistants.last, let d = TransferDraftParser.parse(from: last) {
+            applyTransferDraft(d, fallbackContent: nil)
+            pendingTransferDraft = d
+            return
+        }
+        let users = messages.filter { $0.role == "user" }.map(\.content)
         let lastUser = users.last ?? ""
         let blob = (users.suffix(3) + assistants.suffix(2)).joined(separator: "\n")
         let lastAssistant = assistants.last ?? ""
@@ -1191,15 +1300,18 @@ final class AppModel: ObservableObject {
         transferFeasibilityReason = ""
         transferPlanMd = ""
         transferError = nil
+        pendingTransferDraft = nil
     }
 
     func submitTransfer() async {
         guard let pid = selectedProjectId else {
             transferError = "缺少项目"
+            showToast("转任务失败：缺少项目")
             return
         }
         if let p = selectedProject, !p.isDispatchable {
             transferError = "当前项目不可下达"
+            showToast("转任务失败：当前项目不可下达（请切业务仓）")
             return
         }
         let title = transferTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1211,11 +1323,18 @@ final class AppModel: ObservableObject {
             .filter { !$0.isEmpty }
         if title.isEmpty || goal.isEmpty || pipeline.isEmpty || accLines.isEmpty {
             transferError = "请填齐：标题、目标、产线、至少一条验收"
+            showToast("转任务失败：请填齐标题、目标、产线与验收")
             return
         }
         if transferFeasibility == "blocked",
            transferFeasibilityReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             transferError = "可行性为 blocked 时必须填写原因"
+            showToast("转任务失败：标记为阻塞时需写原因")
+            return
+        }
+        if transferFeasibility != "ok" {
+            transferError = "可行性非 ok，无法转任务"
+            showToast("转任务失败：方案评估为不可执行")
             return
         }
         let chatDigest = messages
@@ -1259,6 +1378,7 @@ final class AppModel: ObservableObject {
             let resp = try await client.transfer(req)
             currentEpicId = resp.epic_id
             showTransferSheet = false
+            pendingTransferDraft = nil
             resetTransferForm()
             statusText = "已转任务"
             var toastMsg = "已创建待办 \(resp.epic_id ?? "")"
@@ -1266,20 +1386,37 @@ final class AppModel: ObservableObject {
                 toastMsg += " · Engine 已唤醒"
             }
             showToast(toastMsg)
+            // 拆解中：先脉冲空 works，等 fanout
+            lastAnimatedEpicId = nil
+            flowSplitGeneration &+= 1
             await bindFlowToCurrentThread(preferEpicId: resp.epic_id)
             startFanoutWatchdog(epicId: resp.epic_id)
         } catch {
-            transferError = error.localizedDescription
+            let plain = plainTransferError(error)
+            transferError = plain
+            showToast("转任务失败：\(plain)")
         }
     }
 
-    /// 转任务后若 30s 仍无 works，右栏明示原因
+    private func plainTransferError(_ error: Error) -> String {
+        let raw = error.localizedDescription
+        if raw.contains("missing_title") { return "缺标题" }
+        if raw.contains("missing_goal") { return "缺目标" }
+        if raw.contains("missing_acceptance") { return "缺验收" }
+        if raw.contains("missing_pipeline") { return "缺产线" }
+        if raw.contains("feasibility_blocked") { return "方案评估不可执行" }
+        if raw.contains("project_not_dispatchable") { return "项目不可下达" }
+        if raw.contains("invalid_executor") { return "执行面无效" }
+        return raw
+    }
+
+    /// 转任务后若 15s 仍无 works，右栏明示原因
     func startFanoutWatchdog(epicId: String?) {
         fanoutWatchTask?.cancel()
         flowFanoutHint = nil
         guard let epicId, !epicId.isEmpty else { return }
         fanoutWatchTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
             guard !Task.isCancelled, let self else { return }
             await MainActor.run {
                 guard self.currentEpicId == epicId else { return }
@@ -1288,7 +1425,7 @@ final class AppModel: ObservableObject {
                         ? (self.flowEpic?.user_stage ?? self.flowEpic?.headline ?? "待拆解")
                         : self.flowHeadline
                     self.flowFanoutHint =
-                        "扇出未跟上（\(stage)，works=0）。可能 product 失败或 Engine 忙碌。可开运维查看日志。"
+                        "15 秒内未见拆分（\(stage)）。Engine 可能未扇出，可开运维查看。"
                 }
             }
         }
@@ -1384,6 +1521,8 @@ final class AppModel: ObservableObject {
         let headline = snap.headline
             ?? snap.epic?.headline
             ?? (works.first(where: \.isActive).map { "正在：\($0.title)" } ?? "")
+        let prevEmpty = flowWorks.isEmpty
+        let epicChanged = (currentEpicId ?? "") != (eid ?? "")
         // 仅在变化时写入，避免 SSE 重绘冲掉中栏输入焦点
         if flowWorks != works { flowWorks = works }
         if currentEpicId != eid { currentEpicId = eid }
@@ -1394,6 +1533,11 @@ final class AppModel: ObservableObject {
             flowFanoutHint = nil
             fanoutWatchTask?.cancel()
             fanoutWatchTask = nil
+            // 当前对话 epic：works 首次出现 → 触发拆分动画
+            if (prevEmpty || epicChanged), lastAnimatedEpicId != eid {
+                lastAnimatedEpicId = eid
+                flowSplitGeneration &+= 1
+            }
         }
         // 写回当前会话编排缓存
         if let tid = selectedThreadId {

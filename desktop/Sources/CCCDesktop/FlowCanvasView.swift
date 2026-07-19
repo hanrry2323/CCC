@@ -6,11 +6,20 @@ struct FlowCanvasView: View {
     let works: [FlowWork]
     let headline: String
     let emptyMessage: String
+    /// AppModel 在 epic 首次扇出 / 切会话时递增，驱动出生动画重启
+    var splitGeneration: UInt64 = 0
     var onOpenOps: (() -> Void)?
     var onSelectNode: ((String) -> Void)?
 
     @State private var dashPhase: CGFloat = 0
     @State private var pulse = false
+    /// 已显现的 work id（按层 stagger）
+    @State private var revealedWorkIds: Set<String> = []
+    /// 边生长 0…1
+    @State private var edgeProgress: CGFloat = 0
+    /// epic「拆解中」脉冲
+    @State private var splittingPulse = false
+    @State private var animToken: UInt64 = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -21,6 +30,18 @@ struct FlowCanvasView: View {
                 graphBody
             }
         }
+        .onChange(of: splitGeneration) { _ in
+            restartSplitAnimation()
+        }
+        .onChange(of: works.map(\.id)) { _ in
+            // 同世代内 works 陆续到达：补跑显现
+            if !works.isEmpty, revealedWorkIds.count < works.count {
+                runRevealSequence(token: animToken)
+            }
+        }
+        .onAppear {
+            restartSplitAnimation()
+        }
     }
 
     private var header: some View {
@@ -30,6 +51,13 @@ struct FlowCanvasView: View {
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(CCCTheme.muted)
                     .lineLimit(2)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+            } else if (epic != nil || !(epicId ?? "").isEmpty), works.isEmpty {
+                Text(splittingPulse ? "拆解中…" : "待拆解")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent.opacity(0.85))
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
@@ -63,6 +91,11 @@ struct FlowCanvasView: View {
                         guard let a = laid.nodes.first(where: { $0.id == edge.from }),
                               let b = laid.nodes.first(where: { $0.id == edge.to })
                         else { continue }
+                        // 边：两端节点都显现后才画
+                        let fromOk = a.kind == .epic || revealedWorkIds.contains(a.id)
+                        let toOk = revealedWorkIds.contains(b.id) || b.kind == .epic
+                        guard fromOk, toOk, edgeProgress > 0.01 else { continue }
+
                         let fromH = a.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight
                         let start = CGPoint(x: a.x + FlowLayout.nodeWidth / 2, y: a.y + fromH)
                         let end = CGPoint(x: b.x + FlowLayout.nodeWidth / 2, y: b.y)
@@ -74,11 +107,12 @@ struct FlowCanvasView: View {
                             control1: CGPoint(x: start.x, y: midY),
                             control2: CGPoint(x: end.x, y: midY)
                         )
+                        let trimmed = path.trimmedPath(from: 0, to: min(1, edgeProgress))
                         let color = edge.active
                             ? Color(red: 0.86, green: 0.52, blue: 0.22).opacity(0.85)
                             : Color.black.opacity(0.12)
                         ctx.stroke(
-                            path,
+                            trimmed,
                             with: .color(color),
                             style: StrokeStyle(
                                 lineWidth: edge.active ? 2.0 : 1.2,
@@ -92,12 +126,17 @@ struct FlowCanvasView: View {
                 .frame(width: laid.size.width, height: laid.size.height)
 
                 ForEach(laid.nodes) { node in
+                    let visible: Bool = {
+                        if node.kind == .epic { return true }
+                        return revealedWorkIds.contains(node.id)
+                    }()
                     Button {
                         onSelectNode?(node.id)
                     } label: {
                         FlowNodeView(
                             node: node,
-                            pulse: pulse && FlowLayout.statusColorKey(node.statusKey) == "running"
+                            pulse: (pulse && FlowLayout.statusColorKey(node.statusKey) == "running")
+                                || (node.kind == .epic && works.isEmpty && splittingPulse)
                         )
                     }
                     .buttonStyle(.plain)
@@ -105,10 +144,13 @@ struct FlowCanvasView: View {
                         width: FlowLayout.nodeWidth,
                         height: node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight
                     )
+                    .opacity(visible ? 1 : 0)
+                    .offset(y: visible ? 0 : 12)
                     .position(
                         x: node.x + FlowLayout.nodeWidth / 2,
                         y: node.y + (node.kind == .epic ? FlowLayout.epicHeight : FlowLayout.nodeHeight) / 2
                     )
+                    .animation(.easeOut(duration: 0.35), value: revealedWorkIds)
                 }
             }
             .frame(width: laid.size.width, height: laid.size.height)
@@ -129,6 +171,43 @@ struct FlowCanvasView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(CCCTheme.accent)
                     .padding(12)
+            }
+        }
+    }
+
+    private func restartSplitAnimation() {
+        animToken &+= 1
+        let token = animToken
+        revealedWorkIds = []
+        edgeProgress = 0
+        if works.isEmpty {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                splittingPulse = true
+            }
+            return
+        }
+        splittingPulse = false
+        runRevealSequence(token: token)
+    }
+
+    private func runRevealSequence(token: UInt64) {
+        let layers = FlowLayout.layers(works: works)
+        Task { @MainActor in
+            // 短暂停：epic「拆解中」感
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard token == animToken else { return }
+            for layer in layers {
+                guard token == animToken else { return }
+                withAnimation(.easeOut(duration: 0.32)) {
+                    for w in layer {
+                        revealedWorkIds.insert(w.id)
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
+            guard token == animToken else { return }
+            withAnimation(.easeOut(duration: 0.45)) {
+                edgeProgress = 1
             }
         }
     }
@@ -157,6 +236,7 @@ struct FlowNodeView: View {
                 Circle()
                     .fill(tint)
                     .frame(width: 5, height: 5)
+                    .scaleEffect(pulse ? 1.35 : 1.0)
                     .opacity(pulse ? 0.35 : 1)
             }
             Text(node.title)

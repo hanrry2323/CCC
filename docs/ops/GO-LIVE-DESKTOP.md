@@ -35,6 +35,17 @@
 | 4 | 工作区 | 项目本机路径生效（设置 / map） |
 | 5 | 回退明示 | sidecar 起不来 →「Hub 回退」+ toast |
 
+## GO-LIVE 95+ 清单（本阶段）
+
+| # | 维度 | 期望 | 出门标准 |
+|---|------|------|----------|
+| A | 对话稳态 | sidecar 优先、SSE 自愈 1 次、flow 不因聊天停 | `smoke-desktop-stable.sh` |
+| B | 任务规划 | `ccc-transfer` → 一键确认条；样例门禁 ≥90% | `test_ccc_transfer_samples.py` 10/10 |
+| C | 拆分动画 | 转任务后 ≤15s 见 epic→works 生长；失败白话 | 人工/录屏 + fanout JSONL |
+| D | 事件推送 | fanout/work_status 写 JSONL；看板轮询 ≥8s | Hub `flow/events` + `_product_fanout` |
+
+自评目标：**≥95/100**（规划 / 对话 / 动画 各 ≥9.5）。
+
 ## 2026-07-19 验收记录（门禁重签）
 
 | # | 项 | 结果 | 证据 |
@@ -49,6 +60,17 @@
 | 8 | `.app` 安装 | **PASS** | `/Applications/CCCDesktop.app` version **0.51.0** |
 | 9 | Hub 稳定性补丁 | **PASS** | projects TTL/`to_thread`；chat `is_disconnected`+`partial` |
 
+## 2026-07-19 95+ 证据重签
+
+| # | 项 | 结果 | 证据 |
+|---|-----|------|------|
+| 10 | `test_ccc_transfer_samples.py` | **PASS** | 10/10 门禁过（本地定稿协议） |
+| 11 | hub_voice 含 `ccc-transfer` 约定 | **PASS** | `hub_voice.py` 定稿块例外 |
+| 12 | flow SSE 推送优先 | **PASS** | `desktop.py` JSONL `after_ts` + 8s 看板兜底 |
+| 13 | fanout 写 `project_id` | **PASS** | `_product_fanout.append_event` |
+| 14 | Desktop 拆分动画 + 确认条 | **PASS** | `FlowCanvasView` / `TransferDraftParser` / 确认条 |
+| 15 | `smoke-desktop-stable.sh` | **PASS** | sidecar health/route + 定稿样例 10/10；Hub 项在 Server 可达时跑（本机取证时 Hub LAN 曾 SKIP） |
+
 基线取证目录：`.ccc/dockets/ssot-mature-20260719-031420/`。
 
 ## 常用命令
@@ -61,6 +83,10 @@ CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-desktop-agent.sh
 
 # 转任务 / flow
 CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-desktop-e2e.sh
+
+# 95+ 稳态 + 定稿样例
+bash scripts/smoke-desktop-stable.sh
+python3 scripts/tests/test_ccc_transfer_samples.py
 
 # Desktop UI
 CCC_SERVER=http://192.168.3.116:7777 bash desktop/scripts/smoke-ui-chat.sh

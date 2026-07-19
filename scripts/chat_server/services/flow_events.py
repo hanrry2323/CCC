@@ -61,8 +61,13 @@ def read_events(
         if not isinstance(rec, dict):
             continue
         data = rec.get("data") or {}
-        if project_id and str(data.get("project_id") or "") != project_id:
-            continue
+        if project_id:
+            pid = str(data.get("project_id") or "").strip()
+            if pid and pid != project_id:
+                continue
+            # 旧事件无 project_id：仅在带 epic_id 过滤时放行，避免串项目
+            if not pid and not epic_id:
+                continue
         if epic_id and str(data.get("epic_id") or "") != epic_id:
             continue
         if after_ts and str(rec.get("ts") or "") <= after_ts:

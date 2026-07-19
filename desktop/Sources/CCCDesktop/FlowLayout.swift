@@ -135,4 +135,33 @@ enum FlowLayout {
         if ["abnormal", "failed"].contains(key) { return "fail" }
         return "pending"
     }
+
+    /// 按依赖分层（供拆分动画 stagger）
+    static func layers(works: [FlowWork]) -> [[FlowWork]] {
+        guard !works.isEmpty else { return [] }
+        let workIds = Set(works.map(\.id))
+        var depth: [String: Int] = [:]
+        func computeDepth(_ id: String, stack: Set<String> = []) -> Int {
+            if let d = depth[id] { return d }
+            if stack.contains(id) { return 0 }
+            guard let w = works.first(where: { $0.id == id }) else { return 0 }
+            let deps = w.dependsOn.filter { workIds.contains($0) }
+            if deps.isEmpty {
+                depth[id] = 0
+                return 0
+            }
+            var next = stack
+            next.insert(id)
+            let d = 1 + (deps.map { computeDepth($0, stack: next) }.max() ?? 0)
+            depth[id] = d
+            return d
+        }
+        for w in works { _ = computeDepth(w.id) }
+        let maxDepth = depth.values.max() ?? 0
+        var layers: [[FlowWork]] = Array(repeating: [], count: maxDepth + 1)
+        for w in works {
+            layers[depth[w.id] ?? 0].append(w)
+        }
+        return layers
+    }
 }
