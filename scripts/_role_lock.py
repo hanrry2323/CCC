@@ -20,10 +20,9 @@
 from __future__ import annotations
 
 import os
-from typing import FrozenSet
 
 # 角色 → 允许的执行器集合（单元素 = 硬锁；多元素 = 允许的备选）
-ROLE_EXECUTOR_LOCK: dict[str, FrozenSet[str]] = {
+ROLE_EXECUTOR_LOCK: dict[str, frozenset[str]] = {
     "product": frozenset({"claude-code", "claude"}),
     "dev": frozenset({"opencode"}),
     "reviewer": frozenset({"claude-code", "claude"}),
