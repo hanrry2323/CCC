@@ -116,6 +116,14 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOME}/program:${CCC_HOME}</string>
     <key>ANTHROPIC_BASE_URL</key>
     <string>${ROUTER}</string>
+    <key>ANTHROPIC_AUTH_TOKEN</key>
+    <string>${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}</string>
+    <key>ANTHROPIC_MODEL</key>
+    <string>flash</string>
+    <key>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</key>
+    <string>1</string>
+    <key>DISABLE_AUTOUPDATER</key>
+    <string>1</string>
     <key>PATH</key>
     <string>${PATH_EXTRA}</string>
   </dict>

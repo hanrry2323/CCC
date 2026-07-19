@@ -585,13 +585,15 @@ class ClaudeSessionManager:
         *,
         model: str = "flash",
         resume_session_id: str | None = None,
+        tool_mode: str = "discuss",
     ) -> dict[str, Any]:
-        """预热 live slot（connect 但不 query）— Hub 过渡加速用。"""
+        """预热 live slot（connect 但不 query）— 省掉首条对话冷启动。"""
         slot = await self._get_or_create_slot(
             project_path=project_path,
             hub_session_id=hub_session_id,
             model=model,
             resume_session_id=resume_session_id,
+            tool_mode=tool_mode,
         )
         async with slot.lock:
             await self._ensure_connected(

@@ -118,9 +118,13 @@ actor APIClient {
         }
     }
 
-    /// Sidecar keep-warm：`POST /warm`
+    /// Sidecar keep-warm：`POST /warm`（带 project_path 时真正预连 SDK slot）
     @discardableResult
-    func warmLocalAgent(base: URL? = nil) async -> Bool {
+    func warmLocalAgent(
+        base: URL? = nil,
+        projectPath: String? = nil,
+        sessionId: String? = nil
+    ) async -> Bool {
         let root = base ?? chatBaseURL
         guard let root else { return false }
         guard let url = URL(string: "warm", relativeTo: root) else { return false }
@@ -128,8 +132,18 @@ actor APIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAgentAuth(&req)
-        req.httpBody = Data("{}".utf8)
-        req.timeoutInterval = 8
+        var body: [String: Any] = [:]
+        if let projectPath, !projectPath.isEmpty {
+            body["project_path"] = projectPath
+        }
+        if let sessionId, !sessionId.isEmpty {
+            body["session_id"] = sessionId
+        }
+        body["tool_mode"] = "discuss"
+        body["model"] = "flash"
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // 真预连可能 15–40s；失败不阻塞发消息
+        req.timeoutInterval = projectPath == nil ? 8 : 45
         do {
             let (data, resp) = try await session.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
@@ -520,9 +534,13 @@ actor APIClient {
         }
     }
 
-    func fetchBoard(workspace: String) async throws -> BoardSnapshot {
+    func fetchBoard(workspace: String, includeHidden: Bool = false) async throws -> BoardSnapshot {
         let enc = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
-        return try await send(try authedRequest("api/board?workspace=\(enc)"), as: BoardSnapshot.self)
+        var path = "api/board?workspace=\(enc)"
+        if includeHidden {
+            path += "&include_hidden=1"
+        }
+        return try await send(try authedRequest(path), as: BoardSnapshot.self)
     }
 
     func fetchBoardSummaries(workspaces: [String]) async throws -> BoardSummariesResp {

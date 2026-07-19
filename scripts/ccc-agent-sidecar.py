@@ -146,7 +146,11 @@ async def health():
 
 @app.post("/warm")
 async def warm(request: Request):
-    """Keep-warm：确认 cli 可执行 + router 环境；供 Desktop 定时预热。"""
+    """Keep-warm：预连 ClaudeSDKClient live slot（真正省掉首条 15–30s 冷启动）。
+
+    body 可选：project_path / session_id / tool_mode / model
+    无 project_path 时只检查 cli（兼容旧客户端）。
+    """
     denied = _check_agent_auth(request)
     if denied is not None:
         return denied
@@ -154,13 +158,42 @@ async def warm(request: Request):
 
     t0 = time.perf_counter()
     cli = resolve_claude_cli(require=False) or ""
-    ok = bool(cli) and Path(cli).exists()
+    cli_ok = bool(cli) and Path(cli).exists()
+    body: dict = {}
+    try:
+        raw = await request.json()
+        if isinstance(raw, dict):
+            body = raw
+    except Exception:
+        body = {}
+
+    project_path = str(body.get("project_path") or "").strip()
+    session_id = str(body.get("session_id") or "conversation").strip() or "conversation"
+    tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
+    model = str(body.get("model") or "flash").strip().lower() or "flash"
+
+    slot_info: dict = {}
+    if project_path and _path_allowed(project_path) and cli_ok:
+        from chat_server.services.claude_session import session_manager
+
+        try:
+            slot_info = await session_manager.warm(
+                project_path,
+                session_id,
+                model=model,
+                tool_mode=tool_mode,
+            )
+        except Exception as exc:
+            slot_info = {"ok": False, "error": str(exc), "connected": False}
+
     ms = int((time.perf_counter() - t0) * 1000)
+    ok = cli_ok and (not project_path or bool(slot_info.get("ok")))
     return {
         "ok": ok,
         "warmed_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
         "ttfb_ms": ms,
         "agent_cli": Path(cli).name if cli else "",
+        "slot": slot_info or None,
     }
 
 

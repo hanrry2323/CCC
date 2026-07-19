@@ -63,6 +63,16 @@ struct BoardView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(CCCTheme.faint)
             Spacer()
+            Toggle(isOn: Binding(
+                get: { model.boardShowHidden },
+                set: { newValue in Task { await model.setBoardShowHidden(newValue) } }
+            )) {
+                Text("显示已隐藏")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
             Toggle(isOn: $autoRefresh) {
                 Text("自动")
                     .font(.system(size: 11))

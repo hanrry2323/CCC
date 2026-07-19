@@ -73,6 +73,9 @@ struct CodexSidebar: View {
                 .opacity(model.connected ? 1 : 0.4)
                 .padding(.bottom, 6)
 
+                SoftRow(title: "对话", icon: "bubble.left.and.bubble.right", selected: model.destination == .chat) {
+                    model.selectDestination(.chat)
+                }
                 SoftRow(title: "看板", icon: "square.grid.2x2", selected: model.destination == .board) {
                     model.selectDestination(.board)
                 }
@@ -440,36 +443,39 @@ struct CodexChatPane: View {
                 .padding(.leading, 8)
                 .padding(.vertical, 6)
 
-                if model.currentThreadStreaming && composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button {
+                // 固定同一 Button 身份，避免 if/else 换控件触发 Composer 整行重布局打断 IME
+                Button {
+                    if showStopInsteadOfSend {
                         model.cancelChat()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.white)
-                            .frame(width: 26, height: 26)
-                            .background(Circle().fill(CCCTheme.nodeFail.opacity(0.9)))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 8)
-                    .padding(.bottom, 6)
-                    .help("停止生成")
-                } else {
-                    Button {
+                    } else {
                         sendFromComposer()
-                    } label: {
-                        Image(systemName: model.currentThreadStreaming ? "arrow.up.circle.fill" : "arrow.up")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(canSend ? Color.white : CCCTheme.faint)
-                            .frame(width: 26, height: 26)
-                            .background(Circle().fill(canSend ? CCCTheme.accent : CCCTheme.hover))
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!canSend)
-                    .padding(.trailing, 8)
-                    .padding(.bottom, 6)
-                    .help(model.currentThreadStreaming ? "停止当前并发送" : "发送")
+                } label: {
+                    Image(systemName: showStopInsteadOfSend
+                          ? "stop.fill"
+                          : (model.currentThreadStreaming ? "arrow.up.circle.fill" : "arrow.up"))
+                        .font(.system(size: showStopInsteadOfSend ? 10 : 11, weight: .bold))
+                        .foregroundStyle(
+                            showStopInsteadOfSend
+                                ? Color.white
+                                : (canSend ? Color.white : CCCTheme.faint)
+                        )
+                        .frame(width: 26, height: 26)
+                        .background(
+                            Circle().fill(
+                                showStopInsteadOfSend
+                                    ? CCCTheme.nodeFail.opacity(0.9)
+                                    : (canSend ? CCCTheme.accent : CCCTheme.hover)
+                            )
+                        )
                 }
+                .buttonStyle(.plain)
+                .disabled(!showStopInsteadOfSend && !canSend)
+                .padding(.trailing, 8)
+                .padding(.bottom, 6)
+                .help(showStopInsteadOfSend
+                      ? "停止生成"
+                      : (model.currentThreadStreaming ? "停止当前并发送" : "发送"))
             }
             .frame(minHeight: 36)
             .background(
@@ -534,6 +540,11 @@ struct CodexChatPane: View {
 
     private var canSend: Bool {
         model.canChat && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var showStopInsteadOfSend: Bool {
+        model.currentThreadStreaming
+            && composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendFromComposer() {

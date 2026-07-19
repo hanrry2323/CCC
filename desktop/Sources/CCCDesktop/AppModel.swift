@@ -95,6 +95,8 @@ final class AppModel: ObservableObject {
     @Published var boardBusy = false
     @Published var boardError: String?
     @Published var boardWorkspaceLabel: String?
+    /// 与 Web Hub「显示已隐藏」对齐：true 时带 include_hidden=1
+    @Published var boardShowHidden = false
 
     // Ops
     @Published var opsOverview: OpsOverview?
@@ -285,7 +287,14 @@ final class AppModel: ObservableObject {
     }
 
     private func warmLocalAgentNow(base: URL? = nil) async {
-        let ok = await client.warmLocalAgent(base: base ?? cachedAgentBaseURL)
+        let pid = selectedProjectId
+        let path = localPath(for: pid)
+        let sid = pid.map { LocalSessionStore.conversationThreadId(for: $0) }
+        let ok = await client.warmLocalAgent(
+            base: base ?? cachedAgentBaseURL,
+            projectPath: path,
+            sessionId: sid
+        )
         if ok { lastWarmAt = Date() }
     }
 
@@ -327,10 +336,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 发送前：距上次 warm >120s 则补暖
+    /// 发送前：距上次 warm >90s 则补暖（真预连 slot）
     private func warmBeforeSendIfNeeded() async {
         guard agentMode == "local" else { return }
-        if let last = lastWarmAt, Date().timeIntervalSince(last) < 120 { return }
+        if let last = lastWarmAt, Date().timeIntervalSince(last) < 90 { return }
         await warmLocalAgentNow()
     }
 
@@ -511,7 +520,7 @@ final class AppModel: ObservableObject {
 
     func selectProject(_ id: String) async {
         let switching = id != selectedProjectId
-        if let tid = selectedThreadId {
+        if let tid = selectedThreadId, switching {
             persistCurrentThreadSnapshot(threadId: tid)
         }
         selectedProjectId = id
@@ -520,13 +529,30 @@ final class AppModel: ObservableObject {
         // 单对话模型：每项目恰好一个会话 "<projectId>::main"
         selectedThreadId = LocalSessionStore.conversationThreadId(for: id)
         if switching {
-            messages = []
-            applyFlowSnapshot(nil)
-            refreshCurrentThreadStreaming()
+            // 禁止先清空再加载（会闪空对话/右栏）；直接 hydrate
             selectedNodeDetail = nil
             ensureFlowSSE()
+            await loadConversation(projectId: id)
+            // 切项目即预连该项目的 agent slot（后台，不挡 UI）
+            Task { await self.warmLocalAgentNow() }
+        } else {
+            // 同项目再点（从看板/运维回对话）：只恢复缓存，不踢 Hub 同步，避免闪空
+            let tid = LocalSessionStore.conversationThreadId(for: id)
+            hydrateThreadFromDisk(projectId: id, threadId: tid)
+            if let cached = threadMessages[tid], !cached.isEmpty {
+                messages = cached
+            }
+            if let snap = threadFlow[tid] {
+                applyFlowSnapshot(snap)
+            }
+            refreshCurrentThreadStreaming()
         }
-        await loadConversation(projectId: id)
+    }
+
+    /// 侧栏点项目卡：切项目 + 强制回对话面（看板/运维里点项目也能回对话）
+    func openProjectConversation(_ id: String) async {
+        destination = .chat
+        await selectProject(id)
     }
 
     /// 加载项目的单一会话（磁盘优先，Hub 后台同步）
@@ -762,7 +788,16 @@ final class AppModel: ObservableObject {
     }
 
     private func persistCurrentThreadSnapshot(threadId: String) {
-        threadMessages[threadId] = messages
+        let cached = threadMessages[threadId] ?? []
+        let outgoing = messages
+        // 禁止空 messages 冲掉更丰富的缓存（切看板/运维竞态）
+        let best: [ChatMessage]
+        if LocalSessionStore.messageScore(outgoing) >= LocalSessionStore.messageScore(cached) {
+            best = outgoing
+        } else {
+            best = cached
+        }
+        threadMessages[threadId] = best
         let snap = FlowThreadSnapshot(
             epicId: currentEpicId,
             epic: flowEpic,
@@ -772,15 +807,22 @@ final class AppModel: ObservableObject {
             emptyMessage: flowEmptyMessage,
             fanoutHint: flowFanoutHint
         )
-        threadFlow[threadId] = snap
+        // 空右栏不覆盖已有 works
+        if let prev = threadFlow[threadId],
+           snap.works.isEmpty, snap.epic == nil,
+           (!prev.works.isEmpty || prev.epic != nil) {
+            // 只更新消息；保留旧 flow
+        } else {
+            threadFlow[threadId] = snap
+        }
         if let pid = selectedProjectId {
             let title = threads.first(where: { $0.thread_id == threadId })?.title
             LocalSessionStore.saveMessages(
                 projectId: pid,
                 threadId: threadId,
-                messages: messages,
+                messages: best,
                 title: title,
-                flow: snap
+                flow: threadFlow[threadId]
             )
         }
     }
@@ -847,7 +889,7 @@ final class AppModel: ObservableObject {
                 }
             }
             threadMessages[threadId] = loaded
-            if selectedThreadId == threadId {
+            if selectedThreadId == threadId, destination == .chat {
                 messages = loaded
             }
             let title = threads.first(where: { $0.thread_id == threadId })?.title
@@ -901,20 +943,33 @@ final class AppModel: ObservableObject {
     private func syncFlowFromServer(projectId: String, threadId: String, generation: UInt64) async {
         do {
             try await prepareClient()
-            let epics = try await client.fetchRecentEpics(projectId: projectId, threadId: threadId)
+            // 单对话 `::main`：按项目拉 epic（兼容旧 UUID 绑定的历史任务）；勿用新 thread_id 滤空后冲掉右栏
+            let queryThread: String? = threadId.hasSuffix("::main") ? nil : threadId
+            let epics = try await client.fetchRecentEpics(projectId: projectId, threadId: queryThread)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
-            // 右栏只投影「本 thread」：以该会话 epic 为准，禁止沿用上一会话 currentEpicId
             recentEpics = epics
-            let bound = epics.first?.epic_id
-            currentEpicId = bound
-            if bound == nil {
+            let localSnap = threadFlow[threadId]
+            let hasLocalFlow =
+                (localSnap?.epic != nil)
+                || !(localSnap?.works.isEmpty ?? true)
+                || (currentEpicId?.isEmpty == false)
+                || !flowWorks.isEmpty
+            let preferred =
+                epics.first(where: { ($0.thread_id ?? "") == threadId })?.epic_id
+                ?? epics.first?.epic_id
+            if let bound = preferred, !bound.isEmpty {
+                currentEpicId = bound
+                await refreshFlowNow()
+            } else if hasLocalFlow {
+                // Hub 空列表：保留本机右栏，禁止闪没
+                return
+            } else {
+                currentEpicId = nil
                 flowEpic = nil
                 flowWorks = []
                 flowHeadline = ""
                 flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
                 flowFanoutHint = nil
-            } else {
-                await refreshFlowNow()
             }
             persistCurrentThreadSnapshot(threadId: threadId)
             ensureFlowSSE()
@@ -1182,7 +1237,8 @@ final class AppModel: ObservableObject {
         // 同步项目对话灯：threadId = "<projectId>::main"
         let pid = Self.projectId(fromThreadId: threadId)
         if on {
-            projectConvState[pid] = projectConvState[pid] ?? "text"
+            // 必须覆盖 "idle"；不可用 ??（非 nil 的 idle 会卡住）
+            projectConvState[pid] = "text"
         } else {
             projectConvState[pid] = "idle"
         }
@@ -1250,18 +1306,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 从 board 列计数推导项目级任务态
+    /// 从 board 列计数推导项目级任务态（只关心「有活」；纯 released 视为空闲）
     static func deriveTaskState(from counts: [String: Int]) -> String {
         let failed = counts["abnormal"] ?? 0
         let inProgress = counts["in_progress"] ?? 0
         let testing = counts["testing"] ?? 0
         let planned = counts["planned"] ?? 0
-        let released = counts["released"] ?? 0
-        let verified = counts["verified"] ?? 0
+        let backlog = counts["backlog"] ?? 0
         if failed > 0 { return "failed" }
-        if inProgress > 0 || testing > 0 { return "in_progress" }
-        if planned > 0 { return "pending" }
-        if released > 0 || verified > 0 { return "done" }
+        if inProgress > 0 { return "in_progress" }
+        if testing > 0 { return "testing" }
+        if planned > 0 || backlog > 0 { return "pending" }
         return "idle"
     }
 
@@ -2023,11 +2078,26 @@ final class AppModel: ObservableObject {
         }
         do {
             try await prepareClient()
-            recentEpics = try await client.fetchRecentEpics(projectId: pid, threadId: tid)
+            let queryThread: String? = tid.hasSuffix("::main") ? nil : tid
+            let epics = try await client.fetchRecentEpics(projectId: pid, threadId: queryThread)
+            recentEpics = epics
+            let localSnap = threadFlow[tid]
+            let hasLocalFlow =
+                (localSnap?.epic != nil)
+                || !(localSnap?.works.isEmpty ?? true)
+                || (currentEpicId?.isEmpty == false)
+                || !flowWorks.isEmpty
             if let prefer = preferEpicId, !prefer.isEmpty {
                 currentEpicId = prefer
-            } else if let first = recentEpics.first?.epic_id {
+            } else if let match = epics.first(where: { ($0.thread_id ?? "") == tid })?.epic_id {
+                currentEpicId = match
+            } else if let first = epics.first?.epic_id {
                 currentEpicId = first
+            } else if hasLocalFlow {
+                // 保留本机；不冲空
+                await refreshFlow()
+                restartFlowSSE()
+                return
             } else {
                 currentEpicId = nil
                 flowEpic = nil
@@ -2242,13 +2312,33 @@ final class AppModel: ObservableObject {
     }
 
     func selectDestination(_ dest: SidebarDestination) {
+        let prev = destination
         destination = dest
         switch dest {
         case .chat:
-            break
+            // 从看板/运维回对话：用本机缓存恢复，禁止空闪、禁止 Hub 空结果冲掉
+            if prev != .chat, let pid = selectedProjectId {
+                let tid = LocalSessionStore.conversationThreadId(for: pid)
+                selectedThreadId = tid
+                hydrateThreadFromDisk(projectId: pid, threadId: tid)
+                if let cached = threadMessages[tid], !cached.isEmpty {
+                    messages = cached
+                }
+                if let snap = threadFlow[tid] {
+                    applyFlowSnapshot(snap)
+                }
+                refreshCurrentThreadStreaming()
+            }
         case .board:
+            // 离开对话前落盘，避免回来丢消息/右栏
+            if let tid = selectedThreadId {
+                persistCurrentThreadSnapshot(threadId: tid)
+            }
             Task { await refreshBoard() }
         case .ops:
+            if let tid = selectedThreadId {
+                persistCurrentThreadSnapshot(threadId: tid)
+            }
             Task { await refreshOps() }
         }
     }
@@ -2263,12 +2353,17 @@ final class AppModel: ObservableObject {
         boardWorkspaceLabel = ws
         do {
             try await prepareClient()
-            let snap = try await client.fetchBoard(workspace: ws)
+            let snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
             boardColumns = snap.columns ?? [:]
         } catch {
             boardError = error.localizedDescription
             boardColumns = [:]
         }
+    }
+
+    func setBoardShowHidden(_ show: Bool) async {
+        boardShowHidden = show
+        await refreshBoard()
     }
 
     func moveBoardTask(_ task: BoardTask, to: String) async {
@@ -2287,6 +2382,7 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             try await client.hideCompletedEpics(workspace: ws)
+            // 隐藏后若未开「显示已隐藏」，列表会变少——符合预期
             await refreshBoard()
         } catch {
             boardError = "隐藏失败: \(error.localizedDescription)"

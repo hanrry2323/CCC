@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Codex/Cursor 式输入：回车发送 · Shift+回车换行 · 可点选聚焦 · 矮条高度
+///
+/// IME 注意：中文等组字期间 `string` 含 marked 拼音，但 SwiftUI `@Binding` 往往仍是上屏前的正文。
+/// 若 `updateNSView` 用 binding 回写 `tv.string`，会直接打断输入法（表现为打到十几/二十来字「闪一下」丢拼音）。
 struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String = "问任何问题…"
@@ -48,6 +51,7 @@ struct ComposerTextView: NSViewRepresentable {
             context.coordinator.parent.onSubmit?()
         }
         context.coordinator.textView = tv
+        context.coordinator.lastEmitted = text
         scroll.documentView = tv
         scroll.composerTextView = tv
         return scroll
@@ -61,22 +65,42 @@ struct ComposerTextView: NSViewRepresentable {
         tv.onSubmit = {
             context.coordinator.parent.onSubmit?()
         }
-        if tv.string != text {
-            let selected = tv.selectedRanges
-            tv.string = text
-            tv.selectedRanges = selected
+
+        // 组字中禁止任何 string 回写（即使内容「看起来」该同步）
+        if tv.hasMarkedText() {
+            return
         }
+
+        // 仅外部改动（发送清空、失败回填）才写回；避免与 textDidChange 闭环
+        guard tv.string != text else {
+            context.coordinator.lastEmitted = text
+            return
+        }
+        let selected = tv.selectedRanges
+        tv.string = text
+        tv.selectedRanges = selected
+        context.coordinator.lastEmitted = text
+        tv.needsDisplay = true
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ComposerTextView
         weak var textView: CCCComposerNSTextView?
+        /// 最近一次推给 SwiftUI 的正文（不含正在组字的 marked）
+        var lastEmitted: String = ""
 
         init(_ parent: ComposerTextView) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
-            parent.text = tv.string
+            // 组字中不推 Binding：否则父视图刷新 → updateNSView 用旧 Binding 冲掉拼音
+            if tv.hasMarkedText() {
+                return
+            }
+            let next = tv.string
+            guard next != lastEmitted else { return }
+            lastEmitted = next
+            parent.text = next
         }
     }
 }
