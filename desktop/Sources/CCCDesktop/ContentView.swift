@@ -175,7 +175,8 @@ struct CodexSidebar: View {
                     let on = model.selectedThreadId == thread.thread_id
                     SoftRow(
                         title: thread.title ?? "新对话",
-                        selected: on
+                        selected: on,
+                        trailingBusy: model.isThreadStreaming(thread.thread_id)
                     ) {
                         Task { await model.openThread(thread.thread_id) }
                     }
@@ -256,10 +257,20 @@ struct CodexChatPane: View {
                 .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
             Text(model.connected
-                   ? (model.currentThreadStreaming ? "生成中…" : model.statusText)
+                   ? (model.currentThreadStreaming
+                      ? (model.agentMode == "local" ? "本机生成中…" : "生成中…")
+                      : model.statusText)
                    : "未连接")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
+            if model.agentMode == "local" && model.connected {
+                Text("loop-code")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent.opacity(0.85))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(CCCTheme.accent.opacity(0.12), in: Capsule())
+            }
             Spacer(minLength: 0)
             if model.busy && !model.currentThreadStreaming {
                 ProgressView().controlSize(.mini)
@@ -387,7 +398,9 @@ struct CodexChatPane: View {
             HStack(alignment: .bottom, spacing: 8) {
                 ComposerTextView(
                     text: $composerText,
-                    placeholder: "问任何问题…",
+                    placeholder: model.selectedProject?.isOrch == true
+                        ? "编排仓可聊方案；转任务请切到业务项目…"
+                        : "问任何问题…",
                     isEnabled: model.connected,
                     onSubmit: { sendFromComposer() }
                 )
@@ -763,12 +776,17 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            TextField("Server", text: $model.serverURLString)
+            TextField("Server (Hub)", text: $model.serverURLString)
+            TextField("本机 Agent", text: $model.agentURLString)
+            TextField("本机工作区", text: $model.localWorkspacePath)
+            Text("Agent 探测到则走 localhost；否则回退 Hub。转任务/右栏仍走 Hub。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             TextField("用户", text: $model.authUser)
             SecureField("密码", text: $model.authPass)
             Button("重新连接") { Task { await model.reconnect() } }
         }
         .padding(20)
-        .frame(width: 400, height: 200)
+        .frame(width: 440, height: 280)
     }
 }

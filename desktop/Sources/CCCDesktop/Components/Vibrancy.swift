@@ -25,6 +25,7 @@ struct SoftRow: View {
     var icon: String? = nil
     var selected: Bool = false
     var prominent: Bool = false
+    var trailingBusy: Bool = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -43,6 +44,10 @@ struct SoftRow: View {
                     .foregroundStyle(selected || prominent ? CCCTheme.ink : CCCTheme.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if trailingBusy {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, prominent ? 8 : 6)

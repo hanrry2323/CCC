@@ -217,6 +217,65 @@ async def delete_thread(request: Request, thread_id: str, project_id: str = ""):
     return {"ok": True}
 
 
+@router.put("/threads/{thread_id}/messages")
+async def put_thread_messages(request: Request, thread_id: str):
+    """Desktop 本地 Agent 聊完后，把消息异步落盘到 Hub（转任务/历史仍读 Hub）。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    pid = str(body.get("project_id") or body.get("project") or "").strip()
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id required")
+    raw = body.get("messages")
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="messages array required")
+    messages: list[dict] = []
+    for m in raw:
+        if not isinstance(m, dict):
+            continue
+        role = str(m.get("role") or "").strip()
+        content = str(m.get("content") or "")
+        if role not in ("user", "assistant", "system"):
+            continue
+        messages.append({"role": role, "content": content, "mode": "chat"})
+    store.save_session(
+        thread_id,
+        messages,
+        project=pid,
+        mode="chat",
+        status="idle",
+        claude_session_id=body.get("claude_session_id"),
+    )
+    return {"ok": True, "thread_id": thread_id, "count": len(messages)}
+
+
+@router.post("/agent/warm")
+async def warm_agent(request: Request):
+    """Hub 过渡：预热 loop-code 槽位（不阻塞 Desktop 本地 sidecar）。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    pid = str(body.get("project_id") or body.get("project") or "").strip()
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id required")
+    tid = str(body.get("thread_id") or body.get("session_id") or f"warm-{pid}").strip()
+    try:
+        path = get_project_path(pid)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from ..services.claude_client import resolve_model
+    from ..services.claude_session import session_manager
+
+    model = resolve_model(body.get("model"))
+    try:
+        result = await session_manager.warm(path, tid, model=model)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"warm failed: {exc}") from exc
+    return result
+
+
 # ── Transfer（硬门禁 → 仅 epic）───────────────────────────
 
 

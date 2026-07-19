@@ -1,24 +1,41 @@
 import SwiftUI
 
-/// 聊天 Markdown：强制保留换行（单换行=硬换行），并拆开被粘连的 `.md` 文件名
+/// 聊天 Markdown：按块/按行渲染，**绝不**走 AttributedString(markdown:)（会吞单换行）。
 struct MarkdownText: View {
     let source: String
     var font: Font = CCCTheme.body
     var foreground: Color = CCCTheme.ink
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
-                case .markdown(let text):
-                    Text(parseMarkdown(Self.prepareProse(text)))
-                        .font(font)
+                case .paragraph(let lines):
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            inlineLine(line)
+                        }
+                    }
+                case .heading(let level, let text):
+                    Text(text)
+                        .font(headingFont(level))
                         .foregroundStyle(foreground)
                         .textSelection(.enabled)
-                        .tint(CCCTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, level <= 2 ? 6 : 2)
+                case .bullet(let text):
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•")
+                            .foregroundStyle(CCCTheme.secondary)
+                        inlineLine(text)
+                    }
+                case .ordered(let n, let text):
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(n).")
+                            .foregroundStyle(CCCTheme.secondary)
+                            .font(font)
+                        inlineLine(text)
+                    }
                 case .code(let lang, let code):
                     VStack(alignment: .leading, spacing: 4) {
                         if !lang.isEmpty {
@@ -43,89 +60,57 @@ struct MarkdownText: View {
                     )
                 case .table(let headers, let rows):
                     MarkdownTableView(headers: headers, rows: rows)
-                case .plainLines(let lines):
-                    // 兜底：逐行渲染，绝不粘连
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                            Text(line.isEmpty ? " " : line)
-                                .font(font)
-                                .foregroundStyle(foreground)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
+                case .blank:
+                    Spacer().frame(height: 4)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
+    private func inlineLine(_ raw: String) -> some View {
+        Text(Self.attributedInline(raw, base: font))
+            .foregroundStyle(foreground)
+            .textSelection(.enabled)
+            .tint(CCCTheme.accent)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func headingFont(_ level: Int) -> Font {
+        switch level {
+        case 1: return .system(size: 20, weight: .semibold)
+        case 2: return .system(size: 17, weight: .semibold)
+        case 3: return .system(size: 15, weight: .semibold)
+        default: return .system(size: 14, weight: .semibold)
+        }
+    }
+
     private enum Block {
-        case markdown(String)
+        case paragraph([String])
+        case heading(level: Int, text: String)
+        case bullet(String)
+        case ordered(Int, String)
         case code(lang: String, code: String)
         case table(headers: [String], rows: [[String]])
-        case plainLines([String])
+        case blank
     }
 
     private var blocks: [Block] {
-        Self.splitBlocks(source)
+        Self.parse(source)
     }
 
-    private func parseMarkdown(_ text: String) -> AttributedString {
-        do {
-            var opts = AttributedString.MarkdownParsingOptions()
-            opts.interpretedSyntax = .full
-            let attr = try AttributedString(markdown: text, options: opts)
-            // 若解析后几乎变成一行，而原文多行 → 降级逐行
-            let srcLines = text.components(separatedBy: "\n").filter { !$0.isEmpty }.count
-            let flat = String(attr.characters)
-            if srcLines >= 3, !flat.contains("\n"), flat.count > 40 {
-                return AttributedString(text.replacingOccurrences(of: "  \n", with: "\n"))
-            }
-            return attr
-        } catch {
-            return AttributedString(text)
-        }
-    }
+    // MARK: - Parse
 
-    /// 1) 拆开 `foo.mdBar.md` 粘连  2) 每个单换行变成 Markdown 硬换行
-    static func prepareProse(_ raw: String) -> String {
-        var s = raw
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        // CHANGELOG.mdREADME.md → 换行（常见模型/传输粘连）
-        if let re = try? NSRegularExpression(pattern: #"(\.[A-Za-z0-9]{1,8})([A-Z])"#) {
-            let range = NSRange(s.startIndex..<s.endIndex, in: s)
-            s = re.stringByReplacingMatches(in: s, options: [], range: range, withTemplate: "$1\n$2")
-        }
-        let lines = s.components(separatedBy: "\n")
-        var out: [String] = []
-        for (i, line) in lines.enumerated() {
-            if i > 0 {
-                let prevBlank = lines[i - 1].trimmingCharacters(in: .whitespaces).isEmpty
-                let curBlank = line.trimmingCharacters(in: .whitespaces).isEmpty
-                if prevBlank || curBlank {
-                    out.append(line)
-                } else {
-                    // 硬换行：两空格 + 下一行
-                    if let last = out.indices.last {
-                        out[last] = out[last] + "  "
-                    }
-                    out.append(line)
-                }
-            } else {
-                out.append(line)
-            }
-        }
-        return out.joined(separator: "\n")
-    }
-
-    private static func splitBlocks(_ source: String) -> [Block] {
+    private static func parse(_ source: String) -> [Block] {
         var result: [Block] = []
-        var remaining = source[...]
+        var remaining = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")[...]
+
         while let open = remaining.range(of: "```") {
-            let before = String(remaining[..<open.lowerBound])
-            appendProseOrTable(&result, before)
+            appendProse(&result, String(remaining[..<open.lowerBound]))
             let afterOpen = remaining[open.upperBound...]
             let langEnd = afterOpen.firstIndex(of: "\n") ?? afterOpen.endIndex
             let lang = String(afterOpen[..<langEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,28 +127,38 @@ struct MarkdownText: View {
                 remaining = ""[...]
             }
         }
-        appendProseOrTable(&result, String(remaining))
-        if result.isEmpty { result.append(.markdown(source)) }
+        appendProse(&result, String(remaining))
+        if result.isEmpty, !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result.append(.paragraph([source]))
+        }
         return result
     }
 
-    private static func appendProseOrTable(_ result: inout [Block], _ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    private static func appendProse(_ result: inout [Block], _ text: String) {
         let lines = text.components(separatedBy: "\n")
         var i = 0
-        var buf: [String] = []
-        func flushBuf() {
-            let chunk = buf.joined(separator: "\n")
-            if !chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                result.append(.markdown(chunk))
-            }
-            buf = []
+        var para: [String] = []
+
+        func flushPara() {
+            guard !para.isEmpty else { return }
+            result.append(.paragraph(para))
+            para = []
         }
+
         while i < lines.count {
             let line = lines[i]
-            if line.contains("|"), i + 1 < lines.count, isSeparatorRow(lines[i + 1]) {
-                flushBuf()
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                flushPara()
+                result.append(.blank)
+                i += 1
+                continue
+            }
+
+            // table
+            if trimmed.contains("|"), i + 1 < lines.count, isSeparatorRow(lines[i + 1]) {
+                flushPara()
                 var tableLines = [line, lines[i + 1]]
                 i += 2
                 while i < lines.count, lines[i].contains("|") {
@@ -174,10 +169,66 @@ struct MarkdownText: View {
                 result.append(.table(headers: parsed.0, rows: parsed.1))
                 continue
             }
-            buf.append(line)
+
+            // heading
+            if let h = headingMatch(trimmed) {
+                flushPara()
+                result.append(.heading(level: h.0, text: h.1))
+                i += 1
+                continue
+            }
+
+            // bullet
+            if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+                flushPara()
+                let body = String(trimmed.dropFirst(2))
+                result.append(.bullet(body))
+                i += 1
+                continue
+            }
+
+            // ordered
+            if let ord = orderedMatch(trimmed) {
+                flushPara()
+                result.append(.ordered(ord.0, ord.1))
+                i += 1
+                continue
+            }
+
+            // unglue glued filenames: foo.mdBar → keep as one visual line but insert space
+            para.append(unglueExtensions(line))
             i += 1
         }
-        flushBuf()
+        flushPara()
+    }
+
+    private static func headingMatch(_ line: String) -> (Int, String)? {
+        var n = 0
+        for ch in line {
+            if ch == "#" { n += 1 } else { break }
+        }
+        guard n >= 1, n <= 6, line.count > n, line[line.index(line.startIndex, offsetBy: n)] == " " else {
+            return nil
+        }
+        let text = String(line.dropFirst(n + 1)).trimmingCharacters(in: .whitespaces)
+        return (n, text)
+    }
+
+    private static func orderedMatch(_ line: String) -> (Int, String)? {
+        guard let dot = line.firstIndex(of: ".") else { return nil }
+        let numPart = line[..<dot]
+        guard let n = Int(numPart), n > 0 else { return nil }
+        let after = line.index(after: dot)
+        guard after < line.endIndex, line[after] == " " else { return nil }
+        return (n, String(line[line.index(after: after)...]))
+    }
+
+    private static func unglueExtensions(_ line: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: #"(\.[A-Za-z0-9]{1,8})([A-Z])"#) else {
+            return line
+        }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        return re.stringByReplacingMatches(in: line, options: [], range: range, withTemplate: "$1 $2")
     }
 
     private static func isSeparatorRow(_ line: String) -> Bool {
@@ -200,6 +251,59 @@ struct MarkdownText: View {
         let headers = cells(lines[0])
         let rows = lines.dropFirst(2).map(cells)
         return (headers, rows)
+    }
+
+    /// 行内 **bold** / `code` / *italic* — 不触发段落级 Markdown 解析
+    private static func attributedInline(_ raw: String, base: Font) -> AttributedString {
+        var attr = AttributedString(raw)
+        attr.font = base
+
+        func apply(_ pattern: String, _ style: (inout AttributedString.CharacterView.SubSequence) -> Void) {
+            guard let re = try? NSRegularExpression(pattern: pattern) else { return }
+            let ns = raw as NSString
+            let matches = re.matches(in: raw, range: NSRange(location: 0, length: ns.length))
+            // rebuild from scratch for simplicity when markers present
+            _ = matches
+            _ = style
+        }
+        _ = apply
+
+        // Simple rebuild: **bold**, `code`, *italic*
+        var out = AttributedString()
+        var s = raw[...]
+        while !s.isEmpty {
+            if s.hasPrefix("**"), let end = s.dropFirst(2).range(of: "**") {
+                let inner = String(s[s.index(s.startIndex, offsetBy: 2)..<end.lowerBound])
+                var chunk = AttributedString(inner)
+                chunk.font = .system(size: 14, weight: .semibold)
+                out += chunk
+                s = s[end.upperBound...]
+                continue
+            }
+            if s.hasPrefix("`"), let end = s.dropFirst().range(of: "`") {
+                let inner = String(s[s.index(after: s.startIndex)..<end.lowerBound])
+                var chunk = AttributedString(inner)
+                chunk.font = .system(size: 12.5, design: .monospaced)
+                chunk.backgroundColor = Color.black.opacity(0.06)
+                out += chunk
+                s = s[end.upperBound...]
+                continue
+            }
+            if s.hasPrefix("*"), !s.hasPrefix("**"), let end = s.dropFirst().range(of: "*") {
+                let inner = String(s[s.index(after: s.startIndex)..<end.lowerBound])
+                var chunk = AttributedString(inner)
+                chunk.font = .system(size: 14).italic()
+                out += chunk
+                s = s[end.upperBound...]
+                continue
+            }
+            let ch = s.removeFirst()
+            out += AttributedString(String(ch))
+        }
+        if out.characters.isEmpty {
+            return AttributedString(raw)
+        }
+        return out
     }
 }
 

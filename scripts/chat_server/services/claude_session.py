@@ -514,6 +514,35 @@ class ClaudeSessionManager:
                     "partial": timed_out or turn_error or client_gone,
                 }
 
+    async def warm(
+        self,
+        project_path: str,
+        hub_session_id: str,
+        *,
+        model: str = "flash",
+        resume_session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """预热 live slot（connect 但不 query）— Hub 过渡加速用。"""
+        slot = await self._get_or_create_slot(
+            project_path=project_path,
+            hub_session_id=hub_session_id,
+            model=model,
+            resume_session_id=resume_session_id,
+        )
+        async with slot.lock:
+            await self._ensure_connected(
+                slot,
+                resume_session_id=resume_session_id or slot.claude_session_id,
+                model=model,
+            )
+            slot.last_used = time.monotonic()
+            return {
+                "ok": True,
+                "session_id": hub_session_id,
+                "claude_session_id": slot.claude_session_id or "",
+                "connected": bool(slot.connected),
+            }
+
     async def shutdown(self) -> None:
         if self._reaper_task is not None:
             self._reaper_task.cancel()

@@ -18,6 +18,7 @@
 ## 每天这样用
 
 ```text
+0. （推荐）本机 Agent：`bash scripts/ccc-agent-sidecar.sh` — Desktop 探测 `127.0.0.1:7788` 后聊天走本机 loop-code；Hub 仍管落盘/转任务/右栏
 1. 打开 CCC Desktop（Server = http://192.168.3.116:7777）
 2. 选业务项目（如 ccc-demo；不要选编排仓）
 3. 对话定稿 → 转任务 → 右栏看编排

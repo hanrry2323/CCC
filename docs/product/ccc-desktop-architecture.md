@@ -25,9 +25,14 @@ Desktop (SwiftUI)
   中：方案 Agent（loop-code）聊透 → 转任务
   右：编排流程可视化（扇出后实时进度）
         │
-        ▼
+        ├─ localhost → Agent Sidecar（对话热路径）
+        └─ Hub → 线程落盘 / 转任务 / flow SSE
+              │
+              ▼
 Center Server：Threads · Board · Engine · Relay · Executors
 ```
+
+角色边界不变（方案 Agent 只产 epic）；部署上对话热路径在 Desktop 本机，Server 管编排。
 
 网页 Hub：**运维/兼容过渡**，不是主产品入口。
 

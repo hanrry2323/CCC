@@ -8,6 +8,10 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.user") var authUser: String = "ccc"
     @AppStorage("ccc.pass") var authPass: String = "ccc"
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
+    /// 本机 Agent Sidecar（loop-code 热路径）；空则只用 Hub
+    @AppStorage("ccc.agent") var agentURLString: String = "http://127.0.0.1:7788"
+    /// 本机业务仓（sidecar cwd）；空则用 CCC 仓根由 sidecar 默认
+    @AppStorage("ccc.localWorkspace") var localWorkspacePath: String = ""
 
     @Published var projects: [DesktopProject] = []
     @Published var threads: [DesktopThread] = []
@@ -16,6 +20,8 @@ final class AppModel: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
     @Published var statusText: String = "未连接"
+    /// "local" = 本机 sidecar；"hub" = 经 Hub 聊
+    @Published var agentMode: String = "hub"
     @Published var busy = false
     @Published var connected = false
     @Published var destination: SidebarDestination = .chat
@@ -71,11 +77,14 @@ final class AppModel: ObservableObject {
     private var flowRefreshTask: Task<Void, Never>?
     private var flowSSEBoundProjectId: String?
     private var flowSnapshotPaused = false
-    /// 全 App 同时只允许 1 条对话流（Hub/Claude 双流会互相掐死）
+    /// Hub 回退时同时只允许 1 条对话流；本机 sidecar 可多路
     private var activeChatThreadId: String?
     /// 每会话独立对话流 task
     private var chatTasks: [String: Task<Void, Never>] = [:]
     private var streamingThreadIds: Set<String> = []
+    /// 供侧栏观察多路生成状态（与 streamingThreadIds 同步）
+    @Published private(set) var liveStreamingThreadIds: Set<String> = []
+    private static let maxParallelLocalChats = 3
     /// 会话消息本地缓存（切会话秒开，不堵 HTTP）
     private var threadMessages: [String: [ChatMessage]] = [:]
     /// 会话右栏编排缓存（与对话隔离）
@@ -99,7 +108,26 @@ final class AppModel: ObservableObject {
         guard let url = APIClient.makeBaseURL(from: serverURLString) else {
             throw APIError.badURL
         }
-        await client.update(baseURL: url, user: authUser, password: authPass)
+        var chatURL: URL?
+        let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let agentStr = (agentRaw?.isEmpty == false ? agentRaw! : agentURLString)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let candidate = APIClient.makeBaseURL(from: agentStr),
+           await client.probeLocalAgent(base: candidate) {
+            chatURL = candidate
+            agentMode = "local"
+        } else {
+            agentMode = "hub"
+        }
+        let localPath = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        await client.update(
+            baseURL: url,
+            user: authUser,
+            password: authPass,
+            chatBaseURL: chatURL,
+            localProjectPath: localPath.isEmpty ? nil : localPath
+        )
     }
 
     var selectedProject: DesktopProject? {
@@ -183,13 +211,19 @@ final class AppModel: ObservableObject {
             connected = true
             showSettingsHint = false
             let preferred = persistedProjectId.isEmpty ? nil : persistedProjectId
-            if let preferred, projects.contains(where: { $0.id == preferred }) {
-                selectedProjectId = preferred
+            let preferredProject = preferred.flatMap { id in projects.first { $0.id == id } }
+            // 有业务仓时不要粘在编排仓上（编排仓可聊，但默认进可下达项目）
+            if let preferredProject, preferredProject.isDispatchable {
+                selectedProjectId = preferredProject.id
             } else if selectedProjectId == nil
-                || !projects.contains(where: { $0.id == selectedProjectId }) {
+                || !projects.contains(where: { $0.id == selectedProjectId })
+                || (selectedProject?.isOrch == true && projects.contains(where: \.isDispatchable)) {
                 selectedProjectId = resp.default_project
                     ?? resp.projects.first(where: \.isDispatchable)?.id
+                    ?? preferred
                     ?? resp.projects.first?.id
+            } else if let preferred, projects.contains(where: { $0.id == preferred }) {
+                selectedProjectId = preferred
             }
             if let pid = selectedProjectId {
                 persistedProjectId = pid
@@ -272,7 +306,8 @@ final class AppModel: ObservableObject {
             refreshCurrentThreadStreaming()
             await refreshThreads(projectId: pid)
             destination = .chat
-            restartFlowSSE()
+            // 切/新建会话不重建 flow SSE（项目级常驻）
+            ensureFlowSSE()
         } catch {
             showToast(error.localizedDescription)
         }
@@ -294,13 +329,20 @@ final class AppModel: ObservableObject {
         messages = threadMessages[id] ?? []
         applyFlowSnapshot(threadFlow[id])  // nil → 清空右栏，防串会话
         refreshCurrentThreadStreaming()
+        updateFlowSnapshotPause()
         lastError = nil
 
         // 3) 后台同步 HTTP（不阻塞切换；generation 防回写错会话）
         let pid = selectedProjectId!
         Task { [weak self] in
-            await self?.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
-            await self?.syncFlowFromServer(projectId: pid, threadId: id, generation: gen)
+            guard let self else { return }
+            await self.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
+            await self.syncFlowFromServer(projectId: pid, threadId: id, generation: gen)
+            // Hub 过渡预热：仅非本机 sidecar 时
+            try? await self.prepareClient()
+            if !(await self.client.usesLocalAgent) {
+                await self.client.warmHubAgent(projectId: pid, threadId: id)
+            }
         }
     }
 
@@ -382,15 +424,16 @@ final class AppModel: ObservableObject {
             try await prepareClient()
             let epics = try await client.fetchRecentEpics(projectId: projectId, threadId: threadId)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
+            // 右栏只投影「本 thread」：以该会话 epic 为准，禁止沿用上一会话 currentEpicId
             recentEpics = epics
-            if currentEpicId == nil {
-                currentEpicId = epics.first?.epic_id
-            }
-            if currentEpicId == nil {
-                flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+            let bound = epics.first?.epic_id
+            currentEpicId = bound
+            if bound == nil {
                 flowEpic = nil
                 flowWorks = []
                 flowHeadline = ""
+                flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+                flowFanoutHint = nil
             } else {
                 await refreshFlowNow()
             }
@@ -454,12 +497,21 @@ final class AppModel: ObservableObject {
         if let tid = selectedThreadId {
             currentThreadStreaming = streamingThreadIds.contains(tid)
             if currentThreadStreaming, connected {
-                statusText = "生成中…"
-            } else if connected, statusText == "生成中…" || statusText.hasPrefix("本条失败") {
-                statusText = "已连接"
+                statusText = agentMode == "local" ? "本机生成中…" : "生成中…"
+            } else if connected, statusText.contains("生成中") || statusText.hasPrefix("本条失败") {
+                statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
             }
         } else {
             currentThreadStreaming = false
+        }
+    }
+
+    /// 仅当前选中会话在生成时暂停右栏 snapshot；其它路后台跑不挡
+    private func updateFlowSnapshotPause() {
+        if let tid = selectedThreadId {
+            flowSnapshotPaused = streamingThreadIds.contains(tid)
+        } else {
+            flowSnapshotPaused = !streamingThreadIds.isEmpty
         }
     }
 
@@ -476,11 +528,26 @@ final class AppModel: ObservableObject {
         persistMessages(for: threadId, msgs)
     }
 
-    /// 同会话 stop-and-send；全 App 同时仅 1 条对话流（双流会打挂 Hub）
+    /// 同会话 stop-and-send；本机 sidecar 可多路并行，Hub 回退仍限 1 路
     func sendUserMessage(_ text: String, stopAndSend: Bool = true) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         Task { await self.sendUserMessageAndWait(trimmed, stopAndSend: stopAndSend) }
+    }
+
+    func isThreadStreaming(_ threadId: String) -> Bool {
+        liveStreamingThreadIds.contains(threadId) || streamingThreadIds.contains(threadId)
+    }
+
+    private func setThreadStreaming(_ threadId: String, _ on: Bool) {
+        if on {
+            streamingThreadIds.insert(threadId)
+        } else {
+            streamingThreadIds.remove(threadId)
+        }
+        liveStreamingThreadIds = streamingThreadIds
+        refreshCurrentThreadStreaming()
+        updateFlowSnapshotPause()
     }
 
     /// 可等待版本：smoke / 自动化必须等整轮 SSE（含 done）结束
@@ -493,11 +560,7 @@ final class AppModel: ObservableObject {
             composerBounce = trimmed
             return false
         }
-        if selectedProject?.isOrch == true {
-            showToast("编排仓不可聊业务，请选 ccc-demo 等业务项目")
-            composerBounce = trimmed
-            return false
-        }
+        // 编排仓可聊方案；仅转任务/下达仍禁（isDispatchable）
         var tid = selectedThreadId
         if tid == nil {
             do {
@@ -505,7 +568,10 @@ final class AppModel: ObservableObject {
                 let t = try await client.createThread(projectId: pid, title: String(trimmed.prefix(40)))
                 tid = t.thread_id
                 selectedThreadId = tid
-                threadMessages[t.thread_id] = messages
+                // 新会话必须空消息；禁止把上一会话 messages 拷进来（粘连根因）
+                messages = []
+                threadMessages[t.thread_id] = []
+                applyFlowSnapshot(nil)
                 await refreshThreads(projectId: pid)
             } catch {
                 showToast(error.localizedDescription)
@@ -519,7 +585,6 @@ final class AppModel: ObservableObject {
             if stopAndSend {
                 let previous = chatTasks[threadId]
                 cancelChat(threadId: threadId, silent: true)
-                // 等旧 SSE 真正释放，避免 streamSession 双占槽位
                 await previous?.value
             } else {
                 showToast("正在生成，请先点停止")
@@ -528,8 +593,16 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if let other = activeChatThreadId, other != threadId, streamingThreadIds.contains(other) {
-            showToast("另一会话正在生成。请等它结束，或切过去点停止后再发。")
+        let localAgent = await client.usesLocalAgent
+        if localAgent {
+            let others = streamingThreadIds.filter { $0 != threadId }.count
+            if others >= Self.maxParallelLocalChats {
+                showToast("已有 \(Self.maxParallelLocalChats) 路在生成，请先停止一路再发")
+                composerBounce = trimmed
+                return false
+            }
+        } else if let other = activeChatThreadId, other != threadId, streamingThreadIds.contains(other) {
+            showToast("Hub 模式同时只能生成 1 路。请等结束/停止，或启动本机 Agent 后多路并行。")
             composerBounce = trimmed
             return false
         }
@@ -558,19 +631,19 @@ final class AppModel: ObservableObject {
     }
 
     private func runChatStream(projectId: String, threadId: String, text: String) async {
-        streamingThreadIds.insert(threadId)
+        setThreadStreaming(threadId, true)
         activeChatThreadId = threadId
-        flowSnapshotPaused = true
         defer {
-            streamingThreadIds.remove(threadId)
-            if activeChatThreadId == threadId { activeChatThreadId = nil }
+            setThreadStreaming(threadId, false)
+            if activeChatThreadId == threadId {
+                activeChatThreadId = streamingThreadIds.first
+            }
             chatTasks[threadId] = nil
-            flowSnapshotPaused = false
-            refreshCurrentThreadStreaming()
-            // 聊完追赶右栏 snapshot（SSE 仍在；暂停期间事件未刷）
-            Task { await self.refreshFlow() }
+            // 当前会话聊完再追赶右栏
+            if selectedThreadId == threadId {
+                Task { await self.refreshFlow() }
+            }
         }
-        refreshCurrentThreadStreaming()
 
         let userMsg = ChatMessage(role: "user", content: text)
         let assistantId = UUID()
@@ -581,6 +654,10 @@ final class AppModel: ObservableObject {
 
         do {
             try await prepareClient()
+            // Hub 热路径：预热 slot（本机 sidecar 时跳过）
+            if !(await client.usesLocalAgent) {
+                await client.warmHubAgent(projectId: projectId, threadId: threadId)
+            }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
 
             try await client.streamChat(
@@ -606,8 +683,17 @@ final class AppModel: ObservableObject {
                 throw APIError.decode("模型无有效回复")
             }
             if connected, selectedThreadId == threadId {
-                statusText = "已连接"
+                statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
             }
+            // 本地 Agent 聊完 → 异步落盘 Hub（转任务/历史）
+            let synced = (threadMessages[threadId] ?? messages).map {
+                ChatMessage(role: $0.role, content: $0.content)
+            }
+            try? await client.syncThreadMessages(
+                projectId: projectId,
+                threadId: threadId,
+                messages: synced.filter { $0.role == "user" || $0.role == "assistant" }
+            )
             try? await prepareClient()
             if let list = try? await client.fetchThreads(projectId: projectId) {
                 threads = list
@@ -694,8 +780,10 @@ final class AppModel: ObservableObject {
         guard let tid else { return }
         chatTasks[tid]?.cancel()
         chatTasks[tid] = nil
-        streamingThreadIds.remove(tid)
-        if activeChatThreadId == tid { activeChatThreadId = nil }
+        setThreadStreaming(tid, false)
+        if activeChatThreadId == tid {
+            activeChatThreadId = streamingThreadIds.first
+        }
         mutateThreadMessages(threadId: tid) { msgs in
             if let idx = msgs.lastIndex(where: { $0.isStreaming }) {
                 msgs[idx].isStreaming = false
@@ -707,7 +795,6 @@ final class AppModel: ObservableObject {
                 }
             }
         }
-        refreshCurrentThreadStreaming()
         if !silent {
             showToast("已取消生成")
         }

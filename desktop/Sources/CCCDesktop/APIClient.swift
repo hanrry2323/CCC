@@ -21,10 +21,16 @@ actor APIClient {
     private(set) var baseURL: URL
     private(set) var user: String
     private(set) var password: String
+    /// 本机 Agent Sidecar（有则 chat 热路径走 localhost，不经 Hub）
+    private(set) var chatBaseURL: URL?
+    /// 本机业务仓路径（sidecar cwd）；空则 sidecar 用默认
+    private(set) var localProjectPath: String?
     /// 短请求（列表/看板）
     private let session: URLSession
-    /// 长连接 SSE（对话 / 流程）独立，避免互相掐断
-    private let streamSession: URLSession
+    /// 对话 SSE（可多路；与 flow 分离，避免抢同一连接池）
+    private let chatSession: URLSession
+    /// 流程 SSE（全 App 1 条）
+    private let flowSession: URLSession
 
     init(baseURL: URL, user: String = "ccc", password: String = "ccc") {
         self.baseURL = baseURL
@@ -38,20 +44,58 @@ actor APIClient {
         cfg.httpMaximumConnectionsPerHost = 2
         self.session = URLSession(configuration: cfg)
 
-        let streamCfg = URLSessionConfiguration.default
-        streamCfg.timeoutIntervalForRequest = 600
-        streamCfg.timeoutIntervalForResource = 1800
-        streamCfg.waitsForConnectivity = true
-        // 长连接：最多 1 chat + 1 flow
-        streamCfg.httpMaximumConnectionsPerHost = 2
-        streamCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.streamSession = URLSession(configuration: streamCfg)
+        let chatCfg = URLSessionConfiguration.default
+        chatCfg.timeoutIntervalForRequest = 600
+        chatCfg.timeoutIntervalForResource = 1800
+        chatCfg.waitsForConnectivity = true
+        // 本机 sidecar 可多路并行；Hub 回退时 AppModel 仍限 1 路
+        chatCfg.httpMaximumConnectionsPerHost = 4
+        chatCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.chatSession = URLSession(configuration: chatCfg)
+
+        let flowCfg = URLSessionConfiguration.default
+        flowCfg.timeoutIntervalForRequest = 600
+        flowCfg.timeoutIntervalForResource = 1800
+        flowCfg.waitsForConnectivity = true
+        flowCfg.httpMaximumConnectionsPerHost = 1
+        flowCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.flowSession = URLSession(configuration: flowCfg)
     }
 
-    func update(baseURL: URL, user: String, password: String) {
+    func update(
+        baseURL: URL,
+        user: String,
+        password: String,
+        chatBaseURL: URL? = nil,
+        localProjectPath: String? = nil
+    ) {
         self.baseURL = baseURL
         self.user = user
         self.password = password
+        self.chatBaseURL = chatBaseURL
+        self.localProjectPath = localProjectPath
+    }
+
+    var usesLocalAgent: Bool { chatBaseURL != nil }
+
+    /// 探测本机 sidecar `/health`
+    func probeLocalAgent(base: URL) async -> Bool {
+        guard var health = URL(string: "health", relativeTo: base) else { return false }
+        if health.absoluteString.hasSuffix("health") == false {
+            health = base.appendingPathComponent("health")
+        }
+        var req = URLRequest(url: health)
+        req.timeoutInterval = 1.5
+        do {
+            let (data, resp) = try await session.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return (obj["ok"] as? Bool) == true
+            }
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func makeBaseURL(from raw: String) -> URL? {
@@ -177,7 +221,7 @@ actor APIClient {
         return resp.epics
     }
 
-    /// 流式聊天：delta + tool_use/tool_result；回调保证在 MainActor
+    /// 流式聊天：优先本机 Agent Sidecar，否则 Hub；回调保证在 MainActor
     func streamChat(
         projectId: String,
         sessionId: String,
@@ -189,12 +233,32 @@ actor APIClient {
             let session_id: String
             let messages: [ChatMessage]
             let mode: String
+            let project_path: String?
         }
         let data = try JSONEncoder().encode(
-            Body(project: projectId, session_id: sessionId, messages: messages, mode: "chat")
+            Body(
+                project: projectId,
+                session_id: sessionId,
+                messages: messages,
+                mode: "chat",
+                project_path: localProjectPath
+            )
         )
-        let req = try authedRequest("api/chat", method: "POST", body: data)
-        let (bytes, resp) = try await streamSession.bytes(for: req)
+        let req: URLRequest
+        if let chatBase = chatBaseURL {
+            guard let url = URL(string: "api/chat", relativeTo: chatBase) else {
+                throw APIError.badURL
+            }
+            var r = URLRequest(url: url)
+            r.httpMethod = "POST"
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
+            r.httpBody = data
+            req = r
+        } else {
+            req = try authedRequest("api/chat", method: "POST", body: data)
+        }
+        let (bytes, resp) = try await chatSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             var errBody = ""
@@ -270,6 +334,43 @@ actor APIClient {
         }
     }
 
+    /// 本地聊完后把消息落到 Hub（转任务 / 历史）
+    func syncThreadMessages(
+        projectId: String,
+        threadId: String,
+        messages: [ChatMessage]
+    ) async throws {
+        struct Body: Encodable {
+            let project_id: String
+            let messages: [ChatMessage]
+        }
+        let enc = threadId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? threadId
+        let data = try JSONEncoder().encode(Body(project_id: projectId, messages: messages))
+        let req = try authedRequest(
+            "api/desktop/threads/\(enc)/messages",
+            method: "PUT",
+            body: data
+        )
+        struct Ok: Decodable { let ok: Bool? }
+        _ = try await send(req, as: Ok.self)
+    }
+
+    /// Hub 过渡预热（本地 sidecar 可用时可不调）
+    func warmHubAgent(projectId: String, threadId: String) async {
+        struct Body: Encodable {
+            let project_id: String
+            let thread_id: String
+        }
+        do {
+            let data = try JSONEncoder().encode(Body(project_id: projectId, thread_id: threadId))
+            let req = try authedRequest("api/desktop/agent/warm", method: "POST", body: data)
+            struct Ok: Decodable { let ok: Bool? }
+            _ = try await send(req, as: Ok.self)
+        } catch {
+            // 预热失败不阻断聊天
+        }
+    }
+
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
         let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
@@ -328,7 +429,7 @@ actor APIClient {
             path += "&epic_id=\(e)"
         }
         let req = try authedRequest(path)
-        let (bytes, resp) = try await streamSession.bytes(for: req)
+        let (bytes, resp) = try await flowSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
             throw APIError.http(code, "flow events failed")
