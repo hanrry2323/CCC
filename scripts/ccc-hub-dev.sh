@@ -81,17 +81,24 @@ echo "  control    untouched (still $(python3 -c "import sys; sys.path.insert(0,
 echo "  stop       bash scripts/ccc-hub-dev.sh stop   or Ctrl-C"
 echo ""
 
-python3 scripts/ccc-board-server.py --host 127.0.0.1 --port "$BOARD_PORT" \
-  >"$BOARD_LOG" 2>&1 &
-BOARD_PID=$!
-
 cleanup() {
   echo ""
   echo "shutting down hub-dev…"
-  kill "$BOARD_PID" 2>/dev/null || true
+  # 杀 board 进程组，避免 Python HTTP 子进程成孤儿
+  if [[ -n "${BOARD_PID:-}" ]]; then
+    kill -TERM -"$BOARD_PID" 2>/dev/null || kill "$BOARD_PID" 2>/dev/null || true
+    wait "$BOARD_PID" 2>/dev/null || true
+  fi
   _stop_ports
 }
 trap cleanup EXIT INT TERM
+
+# 新建进程组，便于 cleanup 整组回收
+set -m
+python3 scripts/ccc-board-server.py --host 127.0.0.1 --port "$BOARD_PORT" \
+  >"$BOARD_LOG" 2>&1 &
+BOARD_PID=$!
+set +m
 
 # 等 board 起来
 for _ in 1 2 3 4 5 6 7 8 9 10; do

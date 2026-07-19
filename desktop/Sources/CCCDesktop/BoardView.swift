@@ -108,7 +108,9 @@ struct BoardView: View {
         let workspaces = model.projects
             .map { $0.workspace ?? $0.id }
             .filter { !$0.isEmpty }
-        let unique = Array(NSOrderedSet(array: workspaces)) as? [String] ?? workspaces
+        // 保序去重，避免 NSOrderedSet 桥接 as? [String] 失败回退含重复
+        var seen = Set<String>()
+        let unique = workspaces.filter { seen.insert($0).inserted }
         let current = model.boardWorkspaceLabel ?? "CCC"
         return Picker("", selection: Binding(
             get: { current },

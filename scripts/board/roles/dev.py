@@ -202,7 +202,7 @@ def dev_role() -> dict:
                     phase["retry_at"] = retry_at_iso
                     lines[i] = json.dumps(phase, ensure_ascii=False)
                     break
-                phases_file.write_text("\n".join(lines))
+                _store_atomic_write(phases_file, "\n".join(lines))
         except json.JSONDecodeError as exc:
             _log.debug("phases update failed for %s: %s", task_id, exc)
         _log.info("%s 第 %d/%d 次重试，退避 %s", task_id, retry, MAX_RETRY, backoff)

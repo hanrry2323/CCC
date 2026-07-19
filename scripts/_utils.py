@@ -61,3 +61,8 @@ def now_iso() -> str:
     以前版本（v0.28.0 及更早）可能输出 Z 或 +08:00，混合时区已统一。
     """
     return datetime.now(_BEIJING_TZ).strftime("%Y-%m-%dT%H:%M:%S+08:00")
+
+
+def now_iso_utc() -> str:
+    """系统级 UTC Z 时间戳（控制面 / registry / failure_ledger 等）。"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

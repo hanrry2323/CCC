@@ -27,9 +27,10 @@ def _get_project_context(project_id: str, projects: dict) -> str:
     ctx = "\n\n".join(parts)
     if len(ctx) > 4000:
         truncated_len = len(ctx) - 4000
+        head = ctx[:4000].rsplit("\n", 1)[0]
         ctx = (
-            ctx[:4000]
-            + f"\n\n> ⚠️ 项目上下文过长，已截断 {truncated_len} 字符（仅保留前 4000 字符）"
+            head
+            + f"\n\n> ⚠️ 项目上下文过长，已截断 {truncated_len} 字符（仅保留前约 4000 字符）"
         )
     return ctx
 

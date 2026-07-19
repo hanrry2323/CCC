@@ -57,7 +57,11 @@ async def board_proxy(
     try:
         if method == "GET":
             # ETag 协商：带 If-None-Match
-            cache_key = url + (f"?{params}" if params else "")
+            cache_key = url
+            if params:
+                # 稳定 key：参数排序，避免同参不同序 miss 缓存
+                q = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+                cache_key = f"{url}?{q}"
             cached = _etag_cache.get(cache_key)
             if cached and cached[0]:
                 headers = {**headers, "If-None-Match": cached[0]}

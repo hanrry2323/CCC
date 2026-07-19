@@ -6,7 +6,9 @@ actor HubRequestGate {
 
     private let maxConcurrent = 2
     private var inFlight = 0
+    /// 环形队列：head 前进代替 removeFirst，避免 O(n) 搬移
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiterHead = 0
 
     func withPermit<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
         await acquire()
@@ -27,8 +29,13 @@ actor HubRequestGate {
 
     private func release() {
         inFlight = max(0, inFlight - 1)
-        if !waiters.isEmpty {
-            let w = waiters.removeFirst()
+        if waiterHead < waiters.count {
+            let w = waiters[waiterHead]
+            waiterHead += 1
+            if waiterHead > 32, waiterHead * 2 >= waiters.count {
+                waiters.removeFirst(waiterHead)
+                waiterHead = 0
+            }
             w.resume()
         }
     }

@@ -959,8 +959,22 @@ def _get_code_context(ws_path: Path) -> str:
     parts = []
     ws = str(ws_path)
 
-    # v0.28.0 (M-002): 模块级缓存 + 300s TTL，过期重算
-    cache_key = str(ws_path)
+    # v0.28.0 (M-002): 模块级缓存 + 300s TTL；key 含 git HEAD 以便 commit 后失效
+    head_mark = ""
+    try:
+        head_file = Path(ws_path) / ".git" / "HEAD"
+        if head_file.is_file():
+            head_mark = head_file.read_text(encoding="utf-8", errors="ignore").strip()
+            if head_mark.startswith("ref:"):
+                ref = head_mark.split(" ", 1)[-1].strip()
+                ref_path = Path(ws_path) / ".git" / ref
+                if ref_path.is_file():
+                    head_mark = ref_path.read_text(
+                        encoding="utf-8", errors="ignore"
+                    ).strip()
+    except OSError:
+        head_mark = ""
+    cache_key = f"{ws_path}|{head_mark}"
     cached = _get_code_context_cache.get(cache_key)
     if cached is not None:
         result, ts = cached
@@ -1087,7 +1101,7 @@ def _get_code_context(ws_path: Path) -> str:
     # A6: 写入缓存
     result = "\n\n".join(parts)
     # v0.28.0 (M-002): 加 300s TTL，避免 product_role 多次调用时拿到陈旧快照
-    _get_code_context_cache[str(ws_path)] = (result, time.monotonic())
+    _get_code_context_cache[cache_key] = (result, time.monotonic())
     return result
 
 

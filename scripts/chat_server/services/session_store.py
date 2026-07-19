@@ -54,6 +54,28 @@ def _session_path(session_id: str, project_id: str = "ccc") -> Path:
     return path
 
 
+def _atomic_write_text(path: Path, payload: str) -> None:
+    """tempfile + fsync + replace，避免半写 JSON。"""
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=".session-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tf:
+            tf.write(payload)
+            tf.flush()
+            os.fsync(tf.fileno())
+        os.replace(tmp_name, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def _index_path(project_id: str) -> Path:
     return _project_chat_dir(project_id) / "_index.json"
 
@@ -206,7 +228,8 @@ def _save_session_sync(
     ).strip()
     if bound:
         data["claude_session_id"] = bound
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    _atomic_write_text(path, payload)
 
     # Phase 2.2: 更新轻量 index（只存元数据，不存 messages）
     _update_index_entry(project, {
@@ -244,7 +267,7 @@ def rename_session(
     data["title"] = new_title
     data["renamed"] = True
     data["updated_at"] = now_iso()
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    _atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     _update_index_entry(project, {
         "session_id": session_id,
         "title": new_title,

@@ -673,8 +673,9 @@ def auto_approve_agents() -> dict:
     for tid in approved_tasks:
         cooldown[tid] = today
     try:
-        cooldown_file.write_text(
-            _json.dumps(cooldown, indent=2, ensure_ascii=False, sort_keys=True)
+        _store_atomic_write(
+            cooldown_file,
+            _json.dumps(cooldown, indent=2, ensure_ascii=False, sort_keys=True),
         )
     except OSError as exc:
         # cooldown 写失败 → 不能继续写 AGENTS.md（下轮会重复合入）
@@ -691,7 +692,9 @@ def auto_approve_agents() -> dict:
     # Step 2: 写 AGENTS.md
     try:
         existing_text = agents_file.read_text().rstrip()
-        agents_file.write_text(existing_text + "\n" + "\n".join(new_entries) + "\n")
+        _store_atomic_write(
+            agents_file, existing_text + "\n" + "\n".join(new_entries) + "\n"
+        )
     except OSError as exc:
         _log.error("AGENTS.md 写入失败: %s — 已写 cooldown，下次重试会跳过", exc)
         return {

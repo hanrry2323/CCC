@@ -154,8 +154,9 @@ def ops_role() -> dict:
                                 # 原地重写 abnormal 列 task
                                 _tp = get_workspace() / ".ccc" / "board" / "abnormal" / f"{t['id']}.jsonl"
                                 if _tp.exists():
-                                    _tp.write_text(
-                                        json.dumps(t, ensure_ascii=False) + "\n"
+                                    _store_atomic_write(
+                                        _tp,
+                                        json.dumps(t, ensure_ascii=False) + "\n",
                                     )
                                 health["auto_healed"] = health.get("auto_healed", 0) + 1
                         except ImportError:

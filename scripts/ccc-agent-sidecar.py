@@ -91,7 +91,11 @@ def _check_agent_auth(request: Request) -> JSONResponse | None:
 
 
 def _allowed_roots() -> list[Path]:
-    """project_path 白名单根。"""
+    """project_path 白名单根。
+
+    默认 ~/program + CCC 根 + Desktop Support（非整 $HOME）。
+    收窄：export CCC_AGENT_ALLOWED_ROOTS=/path1:/path2
+    """
     roots: list[Path] = []
     raw = os.environ.get("CCC_AGENT_ALLOWED_ROOTS", "").strip()
     if raw:
@@ -282,6 +286,13 @@ async def chat(request: Request):
     prompt = (user_msgs[-1].get("content") or "").strip()
     if not prompt:
         return JSONResponse({"detail": "prompt required"}, status_code=400)
+    # 防恶意超大 prompt 撑爆内存 / 下游 OOM
+    _max_prompt = int(os.environ.get("CCC_AGENT_MAX_PROMPT_CHARS", "200000"))
+    if len(prompt) > _max_prompt:
+        return JSONResponse(
+            {"detail": f"prompt too long (max {_max_prompt} chars)"},
+            status_code=413,
+        )
 
     prompt_mode = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
     prompt = wrap_hub_prompt(prompt, mode=prompt_mode or None)
@@ -366,8 +377,17 @@ def main() -> None:
         tok = secrets.token_hex(32)
         token_path = Path.home() / ".ccc" / "agent-token"
         token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(tok + "\n", encoding="utf-8")
-        os.chmod(token_path, 0o600)
+        # 原子创建 + 0600，避免 write_text 后再 chmod 的权限窗口
+        fd = os.open(
+            str(token_path),
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        try:
+            os.write(fd, (tok + "\n").encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
         os.environ["CCC_AGENT_TOKEN"] = tok
         print(f"[ccc-agent] generated token → {token_path}", flush=True)
     print(f"[ccc-agent] cli={cli}", flush=True)

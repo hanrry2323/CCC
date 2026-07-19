@@ -27,7 +27,9 @@ _MAX_TAIL_LINES = 20
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from _utils import now_iso_utc
+
+    return now_iso_utc()
 
 
 def failures_path(workspace: Path) -> Path:

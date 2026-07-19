@@ -94,11 +94,10 @@ enum AgentSidecarLauncher {
             withIntermediateDirectories: true
         )
         let logPath = (logDir as NSString).appendingPathComponent("agent-sidecar.log")
+        // 路径经 $1/$2/$3 传入，避免字符串拼接注入；& 后台避免 Process 等长驻进程
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        let cmd = """
-        cd "$1" && nohup bash "$2" >>"$3" 2>&1 &
-        """
+        let cmd = #"cd "$1" && nohup bash "$2" >>"$3" 2>&1 &"#
         process.arguments = ["-c", cmd, "--", home, script, logPath]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice

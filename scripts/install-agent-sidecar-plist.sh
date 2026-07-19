@@ -25,7 +25,8 @@ fi
 
 PORT="${CCC_AGENT_PORT:-7788}"
 HOST="${CCC_AGENT_HOST:-127.0.0.1}"
-# 默认打 Mac2017 中转站；仅 CCC_AGENT_ROUTER 可覆盖（不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机 :4000）
+# 默认打 Mac2017 中转站（本机队约定）；其它环境 export CCC_AGENT_ROUTER=...
+# 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机 :4000
 ROUTER="${CCC_AGENT_ROUTER:-http://192.168.3.116:4000}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
@@ -43,7 +44,7 @@ elif [[ -f "$TOKEN_FILE" ]]; then
 else
   AGENT_TOKEN="$(openssl rand -hex 32)"
 fi
-printf '%s\n' "$AGENT_TOKEN" > "$TOKEN_FILE"
+(umask 077; printf '%s\n' "$AGENT_TOKEN" > "$TOKEN_FILE")
 chmod 600 "$TOKEN_FILE"
 
 cmd="${1:-}"
@@ -70,12 +71,10 @@ case "$cmd" in
     ;;
 esac
 
-# 写 plist（不写入假 AUTH_TOKEN；仅当环境变量显式设置时注入）
-AUTH_TOKEN_BLOCK=""
-if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-  AUTH_TOKEN_BLOCK="    <key>ANTHROPIC_AUTH_TOKEN</key>
-    <string>${ANTHROPIC_AUTH_TOKEN}</string>"
-fi
+# 中转站鉴权：未设置时用占位 token（ai-loop-router 约定）；可用 ANTHROPIC_AUTH_TOKEN 覆盖
+AUTH_TOKEN_VALUE="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
+AUTH_TOKEN_BLOCK="    <key>ANTHROPIC_AUTH_TOKEN</key>
+    <string>${AUTH_TOKEN_VALUE}</string>"
 
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>

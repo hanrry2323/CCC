@@ -4,7 +4,8 @@ import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
-    @AppStorage("ccc.server") var serverURLString: String = "http://127.0.0.1:7777"
+    /// 现网默认：M1 Desktop → Mac2017 Hub（可用设置 / CCC_SERVER 覆盖）
+    @AppStorage("ccc.server") var serverURLString: String = "http://192.168.3.116:7777"
     @AppStorage("ccc.user") var authUser: String = "ccc"
     @AppStorage("ccc.pass") var authPass: String = "ccc"
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
@@ -151,9 +152,11 @@ final class AppModel: ObservableObject {
     var isStreaming: Bool { currentThreadStreaming }
 
     init() {
-        // 默认本机 Hub；生产 LAN 地址由设置 / CCC_SERVER 注入，勿写死内网 IP 进二进制
-        let raw = UserDefaults.standard.string(forKey: "ccc.server") ?? "http://127.0.0.1:7777"
-        let url = APIClient.makeBaseURL(from: raw) ?? URL(string: "http://127.0.0.1:7777")!
+        // 与 @AppStorage 默认一致：现网 Hub 在 2017；本机仅作 fallback
+        let raw = UserDefaults.standard.string(forKey: "ccc.server")
+            ?? "http://192.168.3.116:7777"
+        let url = APIClient.makeBaseURL(from: raw)
+            ?? URL(string: "http://192.168.3.116:7777")!
         let user = UserDefaults.standard.string(forKey: "ccc.user") ?? "ccc"
         let pass = UserDefaults.standard.string(forKey: "ccc.pass") ?? "ccc"
         client = APIClient(baseURL: url, user: user, password: pass)
@@ -371,7 +374,7 @@ final class AppModel: ObservableObject {
            !env.isEmpty {
             serverURLString = env
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverURLString = "http://127.0.0.1:7777"
+            serverURLString = "http://192.168.3.116:7777"
         }
         // 先灌本机 projects 缓存，避免 Hub 抖时空白
         if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
@@ -541,8 +544,12 @@ final class AppModel: ObservableObject {
             selectedNodeDetail = nil
             ensureFlowSSE()
             await loadConversation(projectId: id)
-            // 切项目即预连该项目的 agent slot（后台，不挡 UI）
-            Task { await self.warmLocalAgentNow() }
+            // 切项目即预连该项目的 agent slot（后台，不挡 UI）；带 generation 防过期写回
+            let warmGen = threadSwitchGeneration
+            Task { [warmGen] in
+                guard self.threadSwitchGeneration == warmGen else { return }
+                await self.warmLocalAgentNow()
+            }
         } else {
             // 同项目再点（从看板/运维回对话）：只恢复缓存，不踢 Hub 同步，避免闪空
             let tid = LocalSessionStore.conversationThreadId(for: id)
@@ -1261,7 +1268,12 @@ final class AppModel: ObservableObject {
             chatTasks[threadId] = nil
             // 当前会话聊完再追赶右栏
             if selectedThreadId == threadId {
-                Task { await self.refreshFlow() }
+                let flowGen = threadSwitchGeneration
+                Task { [flowGen, threadId] in
+                    guard self.threadSwitchGeneration == flowGen,
+                          self.selectedThreadId == threadId else { return }
+                    await self.refreshFlow()
+                }
             }
         }
 
@@ -2206,12 +2218,20 @@ final class AppModel: ObservableObject {
             if let tid = selectedThreadId {
                 persistCurrentThreadSnapshot(threadId: tid)
             }
-            Task { await refreshBoard() }
+            let destGen = threadSwitchGeneration
+            Task { [destGen] in
+                guard self.threadSwitchGeneration == destGen else { return }
+                await self.refreshBoard()
+            }
         case .ops:
             if let tid = selectedThreadId {
                 persistCurrentThreadSnapshot(threadId: tid)
             }
-            Task { await refreshOps() }
+            let destGen = threadSwitchGeneration
+            Task { [destGen] in
+                guard self.threadSwitchGeneration == destGen else { return }
+                await self.refreshOps()
+            }
         }
     }
 

@@ -39,6 +39,8 @@ enum FlowLayout {
         func computeDepth(_ id: String, stack: Set<String> = []) -> Int {
             if let d = depth[id] { return d }
             if stack.contains(id) { return 0 }
+            // 硬上限：扇出 works 通常 <10；防异常依赖链栈溢出
+            if stack.count >= 32 { return 0 }
             guard let w = works.first(where: { $0.id == id }) else { return 0 }
             let deps = w.dependsOn.filter { workIds.contains($0) }
             if deps.isEmpty {
@@ -144,6 +146,8 @@ enum FlowLayout {
         func computeDepth(_ id: String, stack: Set<String> = []) -> Int {
             if let d = depth[id] { return d }
             if stack.contains(id) { return 0 }
+            // 硬上限：扇出 works 通常 <10；防异常依赖链栈溢出
+            if stack.count >= 32 { return 0 }
             guard let w = works.first(where: { $0.id == id }) else { return 0 }
             let deps = w.dependsOn.filter { workIds.contains($0) }
             if deps.isEmpty {

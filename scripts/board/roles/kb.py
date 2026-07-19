@@ -189,14 +189,14 @@ def kb_role() -> dict:
         new_content = "\n".join(new_blocks)
         if pending_file.exists():
             existing = pending_file.read_text().rstrip()
-            pending_file.write_text(existing + "\n" + new_content + "\n")
+            _store_atomic_write(pending_file, existing + "\n" + new_content + "\n")
         else:
             header = (
                 template_file.read_text()
                 if template_file.exists()
                 else "# Pending AGENTS.md Suggestions\n\n"
             )
-            pending_file.write_text(header + "\n" + new_content + "\n")
+            _store_atomic_write(pending_file, header + "\n" + new_content + "\n")
         _log.info("[kb] ✓ 收集 {len(unique)} 条 AGENTS.md 建议到 %s", pending_file)
 
     return {

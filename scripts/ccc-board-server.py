@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 import argparse
+import hmac
 import json
 import os
 import sys
@@ -67,12 +68,26 @@ def sanitize_id(tid: str) -> str:
 
 
 # ── Workspace ──
-def discover_workspaces() -> dict:
-    """自动发现所有已注册的 workspace
+_WS_CACHE: dict | None = None
+_WS_CACHE_TS = 0.0
+_WS_CACHE_TTL_S = float(os.environ.get("CCC_BOARD_WS_CACHE_TTL", "3"))
+
+
+def discover_workspaces(*, force: bool = False) -> dict:
+    """自动发现所有已注册的 workspace（带短 TTL 缓存，避免每请求扫盘）。
 
     1. 优先读 CCC_WORKSPACES env var（逗号分隔 name:path）
     2. 回退到默认扫描 ~/program/ 下含 .ccc/board 的项目
     """
+    global _WS_CACHE, _WS_CACHE_TS
+    now = time.monotonic()
+    if (
+        not force
+        and _WS_CACHE is not None
+        and (now - _WS_CACHE_TS) < _WS_CACHE_TTL_S
+    ):
+        return dict(_WS_CACHE)
+
     # 1. 显式注册
     ws: dict[str, str] = {"CCC": str(CCC_HOME)}
     env = os.environ.get("CCC_WORKSPACES", "").strip()
@@ -125,7 +140,10 @@ def discover_workspaces() -> dict:
                 if name == "qx" and ws.get("qxo"):
                     continue
                 ws[name] = str(sub)
-    return ws
+
+    _WS_CACHE = ws
+    _WS_CACHE_TS = now
+    return dict(ws)
 
 
 def now_iso() -> str:
@@ -344,6 +362,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         )
 
     def _allowed_origin(self) -> str:
+        # 本机任意端口可跨域（Board 仅绑 127.0.0.1；origin 含端口由浏览器区分）
         origin = self.headers.get("Origin", "")
         if not origin:
             return ""
@@ -404,7 +423,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             )
             return False
         auth = self.headers.get("Authorization", "")
-        if auth.startswith("Bearer ") and auth[7:] == token:
+        if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], token):
             return True
         # v0.28.0 (M-005): bad token 也限速 + log
         if not _rate_limiter.allow(f"auth:{client_ip}"):
@@ -860,14 +879,28 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             elif to not in COLUMNS:
                 self._json({"error": f"bad column: {to}"}, 400)
             elif fr == "backlog" and to != "backlog":
-                # epic 大卡禁止离开待办
-                self._json(
-                    {
-                        "error": "epic_immobile",
-                        "message": "待办大卡不可移入流转列；由 Claude 扇出子卡",
-                    },
-                    400,
-                )
+                # 仅 epic 大卡禁止离开待办；误入 backlog 的 work 允许救出
+                store = _store_for(ws)
+                kind = None
+                if store is not None:
+                    try:
+                        _col, task = store.find_task(tid)
+                        if task is not None:
+                            kind = task.get("card_kind")
+                    except Exception:
+                        kind = None
+                if kind == "epic":
+                    self._json(
+                        {
+                            "error": "epic_immobile",
+                            "message": "待办大卡不可移入流转列；由 Claude 扇出子卡",
+                        },
+                        400,
+                    )
+                elif move_task(tid, fr, to, ws):
+                    self._json({"ok": True, "id": tid, "from": fr, "to": to})
+                else:
+                    self._json({"error": f"{tid} not in {fr} (or epic blocked)"}, 404)
             elif move_task(tid, fr, to, ws):
                 self._json({"ok": True, "id": tid, "from": fr, "to": to})
             else:

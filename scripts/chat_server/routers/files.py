@@ -34,6 +34,7 @@ def _walk_project_files(root: str) -> dict:
         root_path = Path(root).resolve()
         if not root_path.exists():
             result["error"] = "root not found"
+            result["done"] = True
             return
         try:
             for current, dirs, files in os.walk(root_path, followlinks=False):
@@ -74,6 +75,8 @@ def _walk_project_files(root: str) -> dict:
                     })
         except Exception as e:
             result["error"] = f"walk failed: {e}"
+        finally:
+            result["done"] = True
 
     worker = threading.Thread(target=_walk, daemon=True)
     worker.start()
@@ -81,6 +84,8 @@ def _walk_project_files(root: str) -> dict:
     if worker.is_alive():
         result["timed_out"] = True
         result["truncated"] = True
+    elif not result.get("done") and not result.get("error"):
+        result["error"] = "walk aborted without result"
     return result
 
 

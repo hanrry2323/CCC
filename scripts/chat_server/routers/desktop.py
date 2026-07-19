@@ -599,16 +599,22 @@ async def flow_events_sse(
             last_offset = new_offset
             jsonl_updated = bool(recs)
             for rec in recs:
+                if await request.is_disconnected():
+                    return
                 yield flow_events.format_sse(
                     str(rec.get("event") or "message"), rec.get("data") or {}
                 )
                 ts = str(rec.get("ts") or "")
                 if ts > last_ts:
                     last_ts = ts
+            # 让出事件循环，减轻慢客户端时的缓冲堆积
+            await asyncio.sleep(0)
 
             now = time.time()
             # 2) 兜底：低频看板合成（仅当 JSONL 无更新时触发，避免双推送）
             if not jsonl_updated and now - last_board_poll >= board_interval:
+                if await request.is_disconnected():
+                    return
                 last_board_poll = now
                 eid = eid_filter or ""
                 if not eid:

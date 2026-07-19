@@ -258,16 +258,6 @@ struct MarkdownText: View {
         var attr = AttributedString(raw)
         attr.font = base
 
-        func apply(_ pattern: String, _ style: (inout AttributedString.CharacterView.SubSequence) -> Void) {
-            guard let re = try? NSRegularExpression(pattern: pattern) else { return }
-            let ns = raw as NSString
-            let matches = re.matches(in: raw, range: NSRange(location: 0, length: ns.length))
-            // rebuild from scratch for simplicity when markers present
-            _ = matches
-            _ = style
-        }
-        _ = apply
-
         // Simple rebuild: **bold**, `code`, *italic*
         var out = AttributedString()
         var s = raw[...]

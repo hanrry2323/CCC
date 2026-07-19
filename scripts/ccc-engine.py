@@ -376,14 +376,28 @@ def _loop_heartbeat_path() -> Path:
     return Path.home() / ".ccc" / "engine-loop-heartbeat.json"
 
 
+_last_loop_hb_write_mono = 0.0
+_LOOP_HB_WRITE_MIN_S = float(os.environ.get("CCC_ENGINE_LOOP_HB_WRITE_S", "30"))
+
+
 def _mark_engine_tick() -> None:
-    """记录主循环 tick 进度（H7 看门狗 + patrol 共用）。"""
-    global _last_tick_mono
+    """记录主循环 tick 进度（H7 看门狗 + patrol 共用）。
+
+    内存 mono 每 tick 更新；磁盘 heartbeat 节流写入（默认 30s），
+    并用原子写避免半截 JSON。
+    """
+    global _last_tick_mono, _last_loop_hb_write_mono
     _last_tick_mono = time.monotonic()
+    if (_last_tick_mono - _last_loop_hb_write_mono) < _LOOP_HB_WRITE_MIN_S:
+        return
+    _last_loop_hb_write_mono = _last_tick_mono
     try:
+        from _board_store import _atomic_write
+
         p = _loop_heartbeat_path()
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(
+        _atomic_write(
+            p,
             json.dumps(
                 {
                     "pid": os.getpid(),
@@ -393,7 +407,6 @@ def _mark_engine_tick() -> None:
                 ensure_ascii=False,
             )
             + "\n",
-            encoding="utf-8",
         )
     except OSError:
         pass
@@ -1939,6 +1952,10 @@ def _launch_parallel_phase(
         encoding="utf-8",
     )
     try:
+        os.chmod(prompt_file, 0o600)
+    except OSError:
+        pass
+    try:
         # 用 phase_id = subid 命名 opencode-runner.sh 的输出 marker
         # opencode-runner.sh 内部会写 ${PID_DIR}/${TASK_ID}.{done,exitcode}
         # 这里 TASK_ID 用 subid，故 marker 也隔离。
@@ -2262,10 +2279,13 @@ def _lookup_phase_timeout(tid: str, phases: list[dict]) -> int:
 
 
 def _store_atomic_write_phases(path: Path, payload: str) -> None:
-    """原子写 phases.json：写 temp + os.replace。容错 fallback 直写。"""
+    """原子写 phases.json：写 temp + fsync + os.replace。容错 fallback 直写。"""
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
-        tmp.write_text(payload, encoding="utf-8")
+        with open(tmp, "w", encoding="utf-8") as tf:
+            tf.write(payload)
+            tf.flush()
+            os.fsync(tf.fileno())
         os.replace(tmp, path)
     except OSError:
         try:
@@ -2490,8 +2510,8 @@ def _reset_parallel_disabled_after_tick() -> None:
 
 
 def engine_loop(workspaces: list[Path]) -> None:
-    global MAX_RETRY
     """引擎主循环：多 workspace 轮询，全局 MAX_CONCURRENT 共享。"""
+    global MAX_RETRY
     global _engine_shutdown
 
     # v0.39.2: 仅 control=enabled 才进业务循环；ui/disabled 均 idle
@@ -3079,8 +3099,11 @@ def _retry_abnormal_failures(ws: Path) -> None:
             _log.warning("auto-retry failed for %s: %s", tid, e)
 
     try:
-        retry_counter_file.write_text(
-            _json.dumps(retry_counts, ensure_ascii=False) + "\n"
+        from _board_store import _atomic_write
+
+        _atomic_write(
+            retry_counter_file,
+            _json.dumps(retry_counts, ensure_ascii=False) + "\n",
         )
     except OSError:
         pass
@@ -3552,7 +3575,9 @@ def _write_heartbeat(
         hb["memory_mb"] = memory_mb
     hb_file = ws / ".ccc" / "engine-heartbeat.json"
     try:
-        hb_file.write_text(json.dumps(hb, ensure_ascii=False) + "\n")
+        from _board_store import _atomic_write
+
+        _atomic_write(hb_file, json.dumps(hb, ensure_ascii=False) + "\n")
     except OSError as e:
         _log.warning("engine heartbeat write failed for %s: %s", ws, e)
 

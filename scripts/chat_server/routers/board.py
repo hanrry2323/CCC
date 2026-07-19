@@ -25,7 +25,21 @@ def _resolve_workspace(body: dict | None, request: Request) -> str:
         or request.query_params.get("workspace")
         or "CCC"
     )
-    return str(ws).strip() or "CCC"
+    return _sanitize_workspace(str(ws).strip() or "CCC")
+
+
+def _sanitize_workspace(workspace: str) -> str:
+    """Hub 侧拒路径穿越/过长 workspace，再透传 Board Server。"""
+    w = (workspace or "CCC").strip() or "CCC"
+    if (
+        ".." in w
+        or "/" in w
+        or "\\" in w
+        or len(w) > 64
+        or not all(c.isalnum() or c in "-_." for c in w)
+    ):
+        raise HTTPException(status_code=400, detail=f"invalid workspace: {workspace!r}")
+    return w
 
 
 def _workspace_root(workspace: str) -> Path | None:
@@ -192,12 +206,14 @@ def _merge_create_payload(
 @router.get("/api/board/proxy/board")
 async def board_proxy_board(request: Request, workspace: str = "CCC"):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     return await board_proxy("GET", "/api/board", params={"workspace": workspace})
 
 
 @router.get("/api/board/proxy/dashboard")
 async def board_proxy_dashboard(request: Request, workspace: str = "CCC"):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     return await board_proxy("GET", "/api/dashboard", params={"workspace": workspace})
 
 
@@ -210,12 +226,14 @@ async def board_proxy_roles(request: Request):
 @router.get("/api/board/proxy/timeline")
 async def board_proxy_timeline(request: Request, workspace: str = "CCC"):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     return await board_proxy("GET", "/api/timeline", params={"workspace": workspace})
 
 
 @router.get("/api/board/proxy/tasks/{task_id}")
 async def board_proxy_get_task(request: Request, task_id: str, workspace: str = "CCC"):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     return await board_proxy(
         "GET", f"/api/tasks/{task_id}", params={"workspace": workspace}
     )
@@ -224,6 +242,7 @@ async def board_proxy_get_task(request: Request, task_id: str, workspace: str = 
 @router.get("/api/board/proxy/tasks/{task_id}/events")
 async def board_proxy_task_events(request: Request, task_id: str, workspace: str = "CCC"):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     return await board_proxy(
         "GET", f"/api/tasks/{task_id}/events", params={"workspace": workspace}
     )
@@ -329,6 +348,7 @@ async def native_board(
     include_hidden: str | None = None,
 ):
     check_auth(request)
+    workspace = _sanitize_workspace(workspace)
     params: dict = {"workspace": workspace}
     if fields:
         params["fields"] = fields

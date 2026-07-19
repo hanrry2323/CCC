@@ -15,7 +15,9 @@ from typing import Any
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from _utils import now_iso_utc
+
+    return now_iso_utc()
 
 
 def _run_git(ws: Path, *args: str, timeout: int = 15) -> tuple[int, str]:
