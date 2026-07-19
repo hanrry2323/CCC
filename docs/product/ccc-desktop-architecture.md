@@ -24,15 +24,17 @@
 
 ```text
 Desktop (SwiftUI)  [M1]
-  左：项目 / 会话列表（本机缓存优先）
+  左：项目卡（一项目一对话）+ 看板/运维
   中：方案 Agent（本机 loop-code）→ 定稿 → 转任务
-  右：编排流程（只读投影 2017 状态）
+  右：编排流程（本机 boundEpicId 投影 2017 状态）
         │
         ├─ localhost:7788  → 对话热路径（不经 Hub）
         └─ 信息流 → Hub:7777 → Board / Engine（远端开发）
 ```
 
 网页 Hub：**运维/兼容**，不是主聊天入口。
+
+会话契约：[`project-as-conversation.md`](project-as-conversation.md)（`{projectId}::main`）。
 
 ---
 
@@ -54,9 +56,9 @@ Engine **不**承担主对话。
 
 | 区 | 作用 |
 |----|------|
-| **左** | 新对话 + 项目菜单 + **会话列表**（本机秒开） |
+| **左** | 项目卡（进入该项目唯一对话）+ 重置对话 / 看板 / 运维 |
 | **中** | 方案对话；转任务为次级 CTA |
-| **右** | 本 thread 绑定的 epic→works **状态图**（信息流回程） |
+| **右** | 本机 `boundEpicId` 绑定的 epic→works **状态图**（信息流回程） |
 
 右栏 UX：[`desktop-flow-rail-ux.md`](desktop-flow-rail-ux.md)。  
 连接：[`desktop-connection.md`](desktop-connection.md)。

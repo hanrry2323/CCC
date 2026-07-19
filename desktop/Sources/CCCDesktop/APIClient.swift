@@ -283,6 +283,13 @@ actor APIClient {
     struct EpicsResp: Decodable {
         let ok: Bool?
         let epics: [FlowEpicRef]
+        let bound_hint: String?
+        let conversation_view: String?
+    }
+
+    struct EpicsFetchResult {
+        let epics: [FlowEpicRef]
+        let boundHint: String?
     }
 
     func fetchProjects() async throws -> ProjectsResp {
@@ -330,6 +337,10 @@ actor APIClient {
     }
 
     func fetchRecentEpics(projectId: String, threadId: String? = nil) async throws -> [FlowEpicRef] {
+        try await fetchRecentEpicsDetailed(projectId: projectId, threadId: threadId).epics
+    }
+
+    func fetchRecentEpicsDetailed(projectId: String, threadId: String? = nil) async throws -> EpicsFetchResult {
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId
         var path = "api/desktop/flow/epics?project_id=\(enc)"
         if let threadId, !threadId.isEmpty {
@@ -337,7 +348,7 @@ actor APIClient {
             path += "&thread_id=\(t)"
         }
         let resp = try await send(try authedRequest(path), as: EpicsResp.self)
-        return resp.epics
+        return EpicsFetchResult(epics: resp.epics, boundHint: resp.bound_hint)
     }
 
     /// 流式聊天：仅本机 Agent Sidecar（对话面基线；禁止 Hub /api/chat 回退）

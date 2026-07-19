@@ -429,7 +429,13 @@ def list_recent_epics(
     thread_id: str | None = None,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    """转任务 epic 列表。传 thread_id 时只返回该对话绑定的任务（右栏深度绑定）。"""
+    """转任务 epic 列表。
+
+    - 无 thread_id：返回项目下全部近期 epic
+    - thread_id 以 `::main` 结尾（项目即对话）：**项目会话视图**，不过滤 thread
+      （兼容旧 UUID 绑定的历史 epic）；调用方用 bound_hint 取最近一条
+    - 其它 thread_id：精确匹配该对话绑定的 epic
+    """
     hist_path = epic_history_file(project_id)
     items: list[dict[str, Any]] = []
     if hist_path.is_file():
@@ -465,10 +471,38 @@ def list_recent_epics(
             if len(items) >= limit:
                 break
     tid = (thread_id or "").strip()
-    if tid:
+    if tid and not tid.endswith("::main"):
         items = [
             x
             for x in items
             if str(x.get("thread_id") or "") == tid
         ]
     return items[:limit]
+
+
+def bound_hint_for_epics(
+    items: list[dict[str, Any]],
+    *,
+    thread_id: str | None = None,
+) -> str | None:
+    """项目会话视图下的建议绑定 epic（最近一条；优先精确 thread 匹配）。"""
+    if not items:
+        return None
+    tid = (thread_id or "").strip()
+    if tid:
+        for x in items:
+            if str(x.get("thread_id") or "") == tid:
+                eid = str(x.get("epic_id") or "").strip()
+                if eid:
+                    return eid
+    eid = str(items[0].get("epic_id") or "").strip()
+    return eid or None
+
+
+def is_project_conversation_id(thread_id: str | None) -> bool:
+    tid = (thread_id or "").strip()
+    return bool(tid) and tid.endswith("::main")
+
+
+def canonical_conversation_id(project_id: str) -> str:
+    return f"{project_id}::main"

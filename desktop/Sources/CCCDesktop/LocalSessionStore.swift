@@ -38,6 +38,8 @@ enum LocalSessionStore {
         var messages: [ChatMessage]
         var flow: FlowThreadSnapshot?
         var needs_hub_sync: Bool?
+        /// 单调修订（项目即对话）；缺省 0 兼容旧盘
+        var revision: UInt64?
     }
 
     struct ThreadIndexEntry: Codable, Hashable {
@@ -111,7 +113,8 @@ enum LocalSessionStore {
         flow: FlowThreadSnapshot? = nil,
         needsHubSync: Bool = false,
         /// false：若本机已有更丰富内容则拒绝用更空的写入覆盖
-        allowDowngrade: Bool = false
+        allowDowngrade: Bool = false,
+        revision: UInt64? = nil
     ) {
         let existing = load(projectId: projectId, threadId: threadId)
         let persistable = messages
@@ -125,6 +128,7 @@ enum LocalSessionStore {
                     toolsFinished: $0.toolsFinished
                 )
             }
+        let nextRev = revision ?? ((existing?.revision ?? 0) &+ 1)
         if !allowDowngrade, let old = existing?.messages, !old.isEmpty {
             if messageScore(persistable) < messageScore(old) {
                 // 只更新标题/flow，保留更完整消息
@@ -132,6 +136,7 @@ enum LocalSessionStore {
                 if let title, !title.isEmpty { keep.title = title }
                 if let flow { keep.flow = flow }
                 if needsHubSync { keep.needs_hub_sync = true }
+                keep.revision = max(keep.revision ?? 0, nextRev)
                 save(keep)
                 return
             }
@@ -143,7 +148,8 @@ enum LocalSessionStore {
             updated_at: isoNow(),
             messages: persistable,
             flow: flow ?? existing?.flow,
-            needs_hub_sync: needsHubSync || (existing?.needs_hub_sync ?? false)
+            needs_hub_sync: needsHubSync || (existing?.needs_hub_sync ?? false),
+            revision: nextRev
         )
         save(rec)
     }

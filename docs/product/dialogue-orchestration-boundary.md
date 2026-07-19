@@ -41,14 +41,14 @@ M1 对话面                              信息流（仅契约）              
 | 字段 | 用途 |
 |------|------|
 | `project_id` | 业务仓（非 orch） |
-| `thread_id` | 仅关联对话，供右栏绑定 |
+| `thread_id` | 项目唯一会话键 `{project_id}::main`（见 [`project-as-conversation.md`](project-as-conversation.md)）；供 flow 记录，**右栏以本机 boundEpicId 为准** |
 | `title` / `goal` / `acceptance` / `pipeline` | 大卡正文 |
 | `feasibility` / `feasibility_reason` | 门禁 |
 | `executor_intent` / `skills_hint` / `plan_md` | 供扇出参考 |
 
 产出：仅 **backlog epic**。禁止 transfer 直接写 planned work。
 
-可选镜像：`PUT .../threads/{id}/messages` —— **备份/运维**，**不得**被 Engine 当编排输入。
+可选镜像：`PUT .../threads/{id}/messages` —— **备份/运维**，**不得**被 Engine 当编排输入；**不得**用 Hub GET 覆盖非空本机会话。
 
 ### 2017 → M1（可视）
 
@@ -58,7 +58,7 @@ M1 对话面                              信息流（仅契约）              
 | `fanout` / `work_status` / `executor` | 拆分与进度（[`flow-events.md`](flow-events.md)） |
 | snapshot | 右栏首屏/断线兜底 |
 
-Desktop 右栏只**投影**本 `thread_id` 绑定的 epic/works。
+Desktop 右栏投影 **本机 `boundEpicId`** 对应的 epic/works（项目即对话；非多 thread 列表过滤）。
 
 ### 明确禁止过桥
 
@@ -111,6 +111,7 @@ Desktop 右栏只**投影**本 `thread_id` 绑定的 epic/works。
 | 文档 | 角色 |
 |------|------|
 | **本文** | 对话/编排边界基线 |
+| [`project-as-conversation.md`](project-as-conversation.md) | 一项目一对话身份与 SSOT |
 | [`transfer-gate.md`](transfer-gate.md) | 过桥字段与错误码 |
 | [`flow-events.md`](flow-events.md) | 回程事件 |
 | [`desktop-connection.md`](desktop-connection.md) | Client 连接硬规则 |

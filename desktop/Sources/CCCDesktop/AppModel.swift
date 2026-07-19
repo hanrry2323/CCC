@@ -143,6 +143,8 @@ final class AppModel: ObservableObject {
     private var lastWarmAt: Date?
     /// 本机落盘节流
     private var diskSaveTask: Task<Void, Never>?
+    /// 落盘闭包捕获的 (projectId, conversationId)，禁止用「稍后的 selectedProjectId」
+    private var pendingDiskProjectId: String?
     private var pendingDiskThreadId: String?
 
     /// 兼容旧 UI 命名：仅反映「当前会话」是否在生成
@@ -555,16 +557,26 @@ final class AppModel: ObservableObject {
         await selectProject(id)
     }
 
-    /// 加载项目的单一会话（磁盘优先，Hub 后台同步）
+    /// 加载项目的唯一会话（磁盘 SSOT；Hub 仅在本机为空时可选补种，禁止回写覆盖）
     private func loadConversation(projectId: String) async {
-        let tid = LocalSessionStore.conversationThreadId(for: projectId)
+        let tid = ConversationStore.conversationId(for: projectId)
         threadSwitchGeneration &+= 1
         let gen = threadSwitchGeneration
-        hydrateThreadFromDisk(projectId: projectId, threadId: tid)
-        messages = threadMessages[tid] ?? []
+        selectedThreadId = tid
+        let state = ConversationStore.load(projectId: projectId)
+        threadMessages[tid] = state.messages
+        if let flow = state.flow {
+            threadFlow[tid] = flow
+        } else if let bound = state.boundEpicId {
+            let snap = FlowThreadSnapshot(
+                epicId: bound, epic: nil, works: [], headline: "",
+                recentEpics: [], emptyMessage: "本对话尚未转任务；聊透后点「转任务」", fanoutHint: nil
+            )
+            threadFlow[tid] = snap
+        }
+        messages = state.messages
         pendingTransferDraft = nil
-        if let cached = threadMessages[tid],
-           let lastAsst = cached.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+        if let lastAsst = state.messages.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
             refreshTransferDraft(from: lastAsst.content)
         }
         lastAnimatedEpicId = nil
@@ -573,7 +585,7 @@ final class AppModel: ObservableObject {
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
         lastError = nil
-        // 后台同步 Hub
+        // 后台：本机空才从 Hub 补种消息；flow 以本地 boundEpicId 为先
         Task { [weak self] in
             guard let self else { return }
             await self.syncThreadFromServer(projectId: projectId, threadId: tid, generation: gen)
@@ -657,7 +669,6 @@ final class AppModel: ObservableObject {
         let tid = LocalSessionStore.conversationThreadId(for: projectId)
         let local = LocalSessionStore.threadsAsDesktop(projectId: projectId)
         if !local.contains(where: { $0.thread_id == tid }) {
-            // 索引缺则补一条占位
             LocalSessionStore.saveMessages(
                 projectId: projectId,
                 threadId: tid,
@@ -667,108 +678,19 @@ final class AppModel: ObservableObject {
             )
         }
         threads = LocalSessionStore.threadsAsDesktop(projectId: projectId)
-        // 预热进 RAM
         hydrateThreadFromDisk(projectId: projectId, threadId: tid)
     }
 
-    private func prefetchRecentThreads(projectId: String, limit: Int) {
-        let ids = threads.prefix(limit).map(\.thread_id)
-        for tid in ids {
-            hydrateThreadFromDisk(projectId: projectId, threadId: tid)
-        }
-    }
-
-    private func mergeThreadLists(remote: [DesktopThread], local: [DesktopThread]) -> [DesktopThread] {
-        var byId: [String: DesktopThread] = [:]
-        for t in remote { byId[t.thread_id] = t }
-        for t in local {
-            if byId[t.thread_id] == nil {
-                byId[t.thread_id] = t
-            } else if let r = byId[t.thread_id],
-                      (t.updated_at ?? "") > (r.updated_at ?? "") {
-                byId[t.thread_id] = DesktopThread(
-                    thread_id: t.thread_id,
-                    title: t.title ?? r.title,
-                    updated_at: t.updated_at ?? r.updated_at,
-                    project_id: t.project_id ?? r.project_id
-                )
-            }
-        }
-        return byId.values.sorted { ($0.updated_at ?? "") > ($1.updated_at ?? "") }
-    }
-
     func newThread() async {
-        // 单对话模型：新对话 = 重置当前项目的对话
         await resetConversation()
     }
 
-    private func activateNewThread(projectId: String, threadId: String, title: String) {
-        threadSwitchGeneration &+= 1
-        selectedThreadId = threadId
-        messages = []
-        threadMessages[threadId] = []
-        pendingTransferDraft = nil
-        lastAnimatedEpicId = nil
-        flowSplitGeneration &+= 1
-        applyFlowSnapshot(nil)
-        flowEmptyMessage = "在本对话中转任务后，编排会出现在这里"
-        let snap = FlowThreadSnapshot(
-            epicId: nil, epic: nil, works: [], headline: "",
-            recentEpics: [], emptyMessage: flowEmptyMessage, fanoutHint: nil
-        )
-        threadFlow[threadId] = snap
-        LocalSessionStore.saveMessages(
-            projectId: projectId,
-            threadId: threadId,
-            messages: [],
-            title: title,
-            flow: snap,
-            needsHubSync: threadId.hasPrefix("local-")
-        )
-        if threadId.hasPrefix("local-") {
-            LocalSessionStore.enqueueSync(projectId: projectId, threadId: threadId)
-        }
-        refreshCurrentThreadStreaming()
-    }
-
+    /// 项目即对话：忽略任意 thread id，只加载当前项目唯一会话
     func openThread(_ id: String) async {
+        _ = id
         guard let pid = selectedProjectId else { return }
-
-        // 1) 落盘当前会话（消息 + 右栏）— 先刷盘再切，避免节流丢写
-        if let old = selectedThreadId, old != id {
-            pendingDiskThreadId = old
-            flushDiskSave()
-            persistCurrentThreadSnapshot(threadId: old)
-        }
-
-        // 2) 秒切：磁盘优先（含 RAM 已空被 Hub 冲掉的情况）
-        threadSwitchGeneration &+= 1
-        let gen = threadSwitchGeneration
-        selectedThreadId = id
         destination = .chat
-
-        hydrateThreadFromDisk(projectId: pid, threadId: id)
-        messages = threadMessages[id] ?? []
-        pendingTransferDraft = nil
-        if let cached = threadMessages[id],
-           let lastAsst = cached.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
-            refreshTransferDraft(from: lastAsst.content)
-        }
-        lastAnimatedEpicId = nil
-        flowSplitGeneration &+= 1
-        applyFlowSnapshot(threadFlow[id])
-        refreshCurrentThreadStreaming()
-        updateFlowSnapshotPause()
-        lastError = nil
-
-        // 3) 后台同步 Hub（不得用更空结果盖掉本机）
-        Task { [weak self] in
-            guard let self else { return }
-            await self.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
-            await self.syncFlowFromServer(projectId: pid, threadId: id, generation: gen)
-            try? await self.prepareClient()
-            // 对话预热只走本机 sidecar；编排暖槽与可聊无关
-        }
+        await loadConversation(projectId: pid)
     }
 
     /// 从本机盘灌 RAM；若盘比 RAM 更丰富则覆盖空/残缺缓存
@@ -848,46 +770,26 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 后台拉消息；Hub 更空时保留本机；生成中禁止覆盖
+    /// 本机有消息则禁止 Hub GET 回写；仅本机为空时可选补种备份
     private func syncThreadFromServer(projectId: String, threadId: String, generation: UInt64) async {
         if streamingThreadIds.contains(threadId) { return }
-        // 同步前再灌一次盘，避免 RAM 已被冲空
         hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
+        let cached = threadMessages[threadId]
+            ?? LocalSessionStore.load(projectId: projectId, threadId: threadId)?.messages
+            ?? []
+        // 契约：本机 SSOT — 有内容绝不让 Hub 覆盖 UI
+        if LocalSessionStore.messageScore(cached) > 0 {
+            if selectedThreadId == threadId, destination == .chat, messages.isEmpty {
+                messages = cached
+            }
+            return
+        }
         do {
             try await prepareClient()
             let detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
-            var loaded = detail.messages ?? []
-            let cached = threadMessages[threadId]
-                ?? LocalSessionStore.load(projectId: projectId, threadId: threadId)?.messages
-                ?? []
-
-            // Hub 空 / 明显更短：本机优先，禁止回写空盘
-            let hubScore = LocalSessionStore.messageScore(loaded)
-            let localScore = LocalSessionStore.messageScore(cached)
-            if hubScore == 0 && localScore > 0 {
-                return
-            }
-            if localScore > hubScore {
-                // 仍合并 tool_steps，但不丢本地正文
-                loaded = mergeMessagesPreservingTools(server: loaded, local: cached)
-                if LocalSessionStore.messageScore(loaded) < localScore {
-                    loaded = cached
-                }
-            } else if !cached.isEmpty {
-                loaded = mergeMessagesPreservingTools(server: loaded, local: cached)
-            }
-
-            // 流式尾巴
-            if let live = cached.last(where: \.isStreaming) {
-                if !loaded.contains(where: { $0.id == live.id }) {
-                    if let u = cached.last(where: { $0.role == "user" }),
-                       loaded.last?.role != "user" {
-                        loaded.append(u)
-                    }
-                    loaded.append(live)
-                }
-            }
+            let loaded = detail.messages ?? []
+            guard LocalSessionStore.messageScore(loaded) > 0 else { return }
             threadMessages[threadId] = loaded
             if selectedThreadId == threadId, destination == .chat {
                 messages = loaded
@@ -904,7 +806,6 @@ final class AppModel: ObservableObject {
             )
             hubReachable = true
         } catch {
-            // Hub 失败：强制本机盘回填 UI
             hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
             if selectedThreadId == threadId {
                 messages = threadMessages[threadId] ?? []
@@ -912,56 +813,40 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Hub 有 steps 用 Hub；Hub 无而本地有则保留本地 steps
-    private func mergeMessagesPreservingTools(server: [ChatMessage], local: [ChatMessage]) -> [ChatMessage] {
-        var result = server
-        for (i, sm) in result.enumerated() where sm.role == "assistant" {
-            if !sm.toolSteps.isEmpty { continue }
-            if let lm = local.last(where: {
-                $0.role == "assistant"
-                    && !$0.toolSteps.isEmpty
-                    && ($0.content == sm.content || sm.content.isEmpty || $0.content.hasPrefix(String(sm.content.prefix(40))))
-            }) {
-                result[i].toolSteps = lm.toolSteps
-                result[i].filesChanged = max(sm.filesChanged, lm.filesChanged)
-                result[i].toolsFinished = lm.toolsFinished || sm.toolsFinished
-            }
-        }
-        // 本地助手条数更多时，补上尚未落盘的尾部
-        if local.filter({ $0.role == "assistant" }).count > result.filter({ $0.role == "assistant" }).count,
-           let lastLocal = local.last(where: { $0.role == "assistant" && !$0.toolSteps.isEmpty }),
-           !(result.last?.toolSteps.isEmpty == false) {
-            if result.last?.role == "assistant" {
-                result[result.count - 1].toolSteps = lastLocal.toolSteps
-                result[result.count - 1].filesChanged = lastLocal.filesChanged
-                result[result.count - 1].toolsFinished = lastLocal.toolsFinished
-            }
-        }
-        return result
-    }
-
+    /// 右栏：本地 boundEpicId 为 SSOT；Hub 列表只作 enrichment，空列表不冲本地
     private func syncFlowFromServer(projectId: String, threadId: String, generation: UInt64) async {
         do {
             try await prepareClient()
-            // 单对话 `::main`：按项目拉 epic（兼容旧 UUID 绑定的历史任务）；勿用新 thread_id 滤空后冲掉右栏
-            let queryThread: String? = threadId.hasSuffix("::main") ? nil : threadId
-            let epics = try await client.fetchRecentEpics(projectId: projectId, threadId: queryThread)
+            // 始终传 ::main，由 Hub 做项目会话视图（刀 2）；过渡期也兼容省略 filter
+            let epicsResp = try await client.fetchRecentEpicsDetailed(
+                projectId: projectId,
+                threadId: threadId
+            )
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
+            let epics = epicsResp.epics
             recentEpics = epics
             let localSnap = threadFlow[threadId]
+            let localBound = localSnap?.epicId ?? currentEpicId
             let hasLocalFlow =
-                (localSnap?.epic != nil)
+                (localBound?.isEmpty == false)
+                || (localSnap?.epic != nil)
                 || !(localSnap?.works.isEmpty ?? true)
-                || (currentEpicId?.isEmpty == false)
                 || !flowWorks.isEmpty
-            let preferred =
-                epics.first(where: { ($0.thread_id ?? "") == threadId })?.epic_id
-                ?? epics.first?.epic_id
-            if let bound = preferred, !bound.isEmpty {
+
+            if let bound = localBound, !bound.isEmpty {
+                // 本机绑定优先：不因 Hub「第一条」抢绑
                 currentEpicId = bound
                 await refreshFlowNow()
+            } else if let hint = epicsResp.boundHint, !hint.isEmpty {
+                currentEpicId = hint
+                await refreshFlowNow()
+            } else if let match = epics.first(where: { ($0.thread_id ?? "") == threadId })?.epic_id {
+                currentEpicId = match
+                await refreshFlowNow()
+            } else if let first = epics.first?.epic_id {
+                currentEpicId = first
+                await refreshFlowNow()
             } else if hasLocalFlow {
-                // Hub 空列表：保留本机右栏，禁止闪没
                 return
             } else {
                 currentEpicId = nil
@@ -980,54 +865,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 多会话改名已退役；项目即对话无独立 thread 标题 UI
     func beginRenameThread(_ thread: DesktopThread) {
-        renameThreadId = thread.thread_id
-        renameDraft = thread.title ?? "新对话"
+        _ = thread
     }
 
     func commitRenameThread() async {
-        guard let pid = selectedProjectId, let tid = renameThreadId else { return }
-        let title = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
-            renameThreadId = nil
-            return
-        }
-        LocalSessionStore.rename(projectId: pid, threadId: tid, title: title)
         renameThreadId = nil
-        do {
-            try await prepareClient()
-            try await client.renameThread(projectId: pid, threadId: tid, title: title)
-        } catch {
-            showToast("已改本机标题；Hub 同步失败")
-        }
-        await refreshThreads(projectId: pid)
     }
 
+    /// 删除会话 = 重置当前项目唯一对话（不再支持按 UUID 删多会话）
     func deleteThread(_ threadId: String) async {
-        guard let pid = selectedProjectId else { return }
-        chatTasks[threadId]?.cancel()
-        chatTasks[threadId] = nil
-        streamingThreadIds.remove(threadId)
-        threadMessages[threadId] = nil
-        threadFlow[threadId] = nil
-        LocalSessionStore.delete(projectId: pid, threadId: threadId)
-        if selectedThreadId == threadId {
-            selectedThreadId = nil
-            messages = []
-            currentEpicId = nil
-            flowEpic = nil
-            flowWorks = []
-            recentEpics = []
-        }
-        refreshCurrentThreadStreaming()
-        do {
-            try await prepareClient()
-            try await client.deleteThread(projectId: pid, threadId: threadId)
-        } catch {
-            // 本机已删；Hub 失败可忽略
-        }
-        await refreshThreads(projectId: pid)
-        await bindFlowToCurrentThread()
+        _ = threadId
+        await resetConversation()
     }
 
     private func refreshCurrentThreadStreaming() {
@@ -1056,8 +906,10 @@ final class AppModel: ObservableObject {
         scheduleDiskSave(threadId: threadId)
     }
 
-    /// 本机落盘节流 ~300ms
+    /// 本机落盘节流 ~300ms；闭包捕获 (projectId, conversationId)
     private func scheduleDiskSave(threadId: String) {
+        let pid = Self.projectId(fromThreadId: threadId)
+        pendingDiskProjectId = pid.isEmpty ? selectedProjectId : pid
         pendingDiskThreadId = threadId
         diskSaveTask?.cancel()
         diskSaveTask = Task { [weak self] in
@@ -1070,12 +922,15 @@ final class AppModel: ObservableObject {
     }
 
     private func flushDiskSave() {
-        guard let tid = pendingDiskThreadId ?? selectedThreadId,
-              let pid = selectedProjectId
+        guard let tid = pendingDiskThreadId,
+              let pid = pendingDiskProjectId
         else { return }
-        let msgs = threadMessages[tid] ?? messages
+        let msgs = threadMessages[tid] ?? (selectedThreadId == tid ? messages : [])
         let title = threads.first(where: { $0.thread_id == tid })?.title
-        let flow = threadFlow[tid]
+        var flow = threadFlow[tid]
+        if flow?.epicId == nil, let eid = currentEpicId, selectedThreadId == tid {
+            flow?.epicId = eid
+        }
         LocalSessionStore.saveMessages(
             projectId: pid,
             threadId: tid,
@@ -1331,10 +1186,13 @@ final class AppModel: ObservableObject {
             return false
         }
         // 编排仓可聊方案；仅转任务/下达仍禁（isDispatchable）
-        let tid = selectedThreadId ?? LocalSessionStore.conversationThreadId(for: pid)
-        if selectedThreadId == nil {
+        let tid = ConversationStore.conversationId(for: pid)
+        if selectedThreadId != tid {
             selectedThreadId = tid
-            activateNewThread(projectId: pid, threadId: tid, title: String(trimmed.prefix(40)))
+            hydrateThreadFromDisk(projectId: pid, threadId: tid)
+            if messages.isEmpty, let cached = threadMessages[tid] {
+                messages = cached
+            }
         }
         let threadId = tid
         // 对话面：必须本机 Agent；禁止 Hub /api/chat
@@ -1986,7 +1844,7 @@ final class AppModel: ObservableObject {
         defer { busy = false }
         let req = TransferRequest(
             project_id: pid,
-            thread_id: selectedThreadId,
+            thread_id: ConversationStore.conversationId(for: pid),
             title: title,
             goal: goal,
             acceptance: accLines,
@@ -2001,7 +1859,17 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
+            let convId = ConversationStore.conversationId(for: pid)
+            selectedThreadId = convId
             currentEpicId = resp.epic_id
+            // 本机 boundEpicId 立即落盘（右栏 SSOT）
+            var snap = threadFlow[convId] ?? FlowThreadSnapshot(
+                epicId: resp.epic_id, epic: nil, works: [], headline: "",
+                recentEpics: recentEpics, emptyMessage: "", fanoutHint: nil
+            )
+            snap.epicId = resp.epic_id
+            threadFlow[convId] = snap
+            persistCurrentThreadSnapshot(threadId: convId)
             showTransferSheet = false
             pendingTransferDraft = nil
             resetTransferForm()
@@ -2011,7 +1879,6 @@ final class AppModel: ObservableObject {
                 toastMsg += " · Engine 已唤醒"
             }
             showToast(toastMsg)
-            // 拆解中：先脉冲空 works，等 fanout
             lastAnimatedEpicId = nil
             flowSplitGeneration &+= 1
             await bindFlowToCurrentThread(preferEpicId: resp.epic_id)
@@ -2062,39 +1929,37 @@ final class AppModel: ObservableObject {
         fanoutWatchTask = nil
     }
 
-    /// 右栏与当前对话深度绑定：只展示本 thread 转出的任务
+    /// 右栏与当前项目对话绑定：本机 boundEpicId 优先
     func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
         guard let pid = selectedProjectId else { return }
         selectedNodeDetail = nil
-        guard let tid = selectedThreadId, !tid.isEmpty else {
-            currentEpicId = nil
-            recentEpics = []
-            flowEpic = nil
-            flowWorks = []
-            flowHeadline = ""
-            flowEmptyMessage = "选择或新建对话后，转任务会出现在这里"
-            restartFlowSSE()
-            return
-        }
+        let tid = ConversationStore.conversationId(for: pid)
+        selectedThreadId = tid
         do {
             try await prepareClient()
-            let queryThread: String? = tid.hasSuffix("::main") ? nil : tid
-            let epics = try await client.fetchRecentEpics(projectId: pid, threadId: queryThread)
-            recentEpics = epics
+            let epicsResp = try await client.fetchRecentEpicsDetailed(
+                projectId: pid,
+                threadId: tid
+            )
+            recentEpics = epicsResp.epics
             let localSnap = threadFlow[tid]
+            let localBound = localSnap?.epicId ?? currentEpicId
             let hasLocalFlow =
-                (localSnap?.epic != nil)
+                (localBound?.isEmpty == false)
+                || (localSnap?.epic != nil)
                 || !(localSnap?.works.isEmpty ?? true)
-                || (currentEpicId?.isEmpty == false)
                 || !flowWorks.isEmpty
             if let prefer = preferEpicId, !prefer.isEmpty {
                 currentEpicId = prefer
-            } else if let match = epics.first(where: { ($0.thread_id ?? "") == tid })?.epic_id {
+            } else if let bound = localBound, !bound.isEmpty {
+                currentEpicId = bound
+            } else if let hint = epicsResp.boundHint, !hint.isEmpty {
+                currentEpicId = hint
+            } else if let match = epicsResp.epics.first(where: { ($0.thread_id ?? "") == tid })?.epic_id {
                 currentEpicId = match
-            } else if let first = epics.first?.epic_id {
+            } else if let first = epicsResp.epics.first?.epic_id {
                 currentEpicId = first
             } else if hasLocalFlow {
-                // 保留本机；不冲空
                 await refreshFlow()
                 restartFlowSSE()
                 return
@@ -2105,6 +1970,7 @@ final class AppModel: ObservableObject {
                 flowHeadline = ""
                 flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
             }
+            persistCurrentThreadSnapshot(threadId: tid)
             await refreshFlow()
             restartFlowSSE()
         } catch {

@@ -423,6 +423,9 @@ async def transfer_to_epic(request: Request):
         payload["seed_warning"] = str(exc)[:200]
 
     thread_id = str(body.get("thread_id") or "").strip() or None
+    # 项目即对话：钉死 conversation id = {projectId}::main
+    if not thread_id or not thread_id.endswith("::main"):
+        thread_id = flow_events.canonical_conversation_id(project_id)
     flow_events.append_event(
         "epic_created",
         {
@@ -483,7 +486,7 @@ async def flow_epics(
     thread_id: str = "",
     limit: int = 20,
 ):
-    """epic 列表。传 thread_id 时只返回该对话转出的任务（与中栏深度绑定）。"""
+    """epic 列表。`::main` = 项目会话视图（不过滤）；其它 thread_id 精确匹配。"""
     check_auth(request)
     pid = (project_id or "").strip()
     if not pid:
@@ -491,10 +494,18 @@ async def flow_epics(
     lim = max(1, min(int(limit or 20), 40))
     tid = (thread_id or "").strip() or None
     items = flow_events.list_recent_epics(pid, thread_id=tid, limit=lim)
+    conv_view = (
+        "project_single"
+        if (not tid or flow_events.is_project_conversation_id(tid))
+        else "thread_exact"
+    )
+    hint = flow_events.bound_hint_for_epics(items, thread_id=tid)
     return {
         "ok": True,
         "project_id": pid,
         "thread_id": tid,
+        "conversation_view": conv_view,
+        "bound_hint": hint,
         "epics": items,
     }
 
@@ -695,6 +706,7 @@ async def desktop_config(request: Request):
         "product": "CCC Desktop",
         "api_prefix": "/api/desktop",
         "threads": "unified",
+        "conversation_model": "project_single",
         "dual_source_history": False,
         "transfer": "epic_only",
         "flow_events": "sse",
