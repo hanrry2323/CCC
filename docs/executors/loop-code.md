@@ -1,51 +1,62 @@
-# Executor: loop-code（可选私有对话 CLI）
+# Executor: loop-code（M1 对话方案 Agent CLI）
 
-> 可选 Claude Code 兼容 CLI。仅私有自用；**不是**看板开发默认（看板仍用 OpenCode）。  
-> 二进制在 `vendor/loop-code/cli`（gitignore），不进 git。
+> Claude Code 兼容 CLI。**M1 对话面专用**：与 Desktop 深度整合为本机 sidecar 的方案 Agent。  
+> **不是**看板开发执行器（看板 dev 角色仍用 OpenCode，见 [`overview.md`](overview.md)）。  
+> **不再**部署到 Mac2017；Hub `/api/chat` 路由已删。
 
-## 布局
+## 布局（仅 M1）
 
 ```text
-CCC/vendor/loop-code/
-  cli          # 可执行文件（~160MB）
+CCC/vendor/loop-code/        # 仅 M1 本机；gitignore，不进 git
+  cli                        # 可执行文件（arm64，~160MB）
   SHA256
   VERSION
   README.md
 ```
 
-安装：`bash scripts/install-executor-loop-code.sh /path/to/cli`
+安装（M1）：`bash scripts/install-executor-loop-code.sh /path/to/cli`  
+**Mac2017 上不安装**：2017 是编排消费面，对话由 M1 sidecar 完成。
 
-## 切换（对话路径）
+## 切换（对话路径，M1 sidecar）
 
-**产品 SSOT**：Hub 方案 Agent = loop-code。  
-`scripts/install-hub-plist.sh` 默认写入 `CCC_EXECUTOR=loop-code`。
+**产品 SSOT**：M1 Desktop sidecar 方案 Agent = loop-code。  
+`scripts/ccc-agent-sidecar.sh` 默认 `CCC_EXECUTOR=loop-code`，解析为 `<CCC_HOME>/vendor/loop-code/cli`。
 
 优先级：`CCC_CLAUDE_BIN` > `CCC_EXECUTOR=loop-code` > PATH `claude`。
 
 **方式 A — 显式路径：**
 
 ```bash
-export CCC_CLAUDE_BIN=/Users/fan/program/CCC/vendor/loop-code/cli
+export CCC_CLAUDE_BIN=/Users/apple/program/CCC/vendor/loop-code/cli
 ```
 
-**方式 B — 执行器名（Hub 默认）：**
+**方式 B — 执行器名（sidecar 默认）：**
 
 ```bash
 export CCC_EXECUTOR=loop-code
 # 解析为 <CCC_HOME>/vendor/loop-code/cli
 ```
 
-### Hub launchd（Server）
+### M1 sidecar launchd
 
 ```bash
-bash scripts/install-hub-plist.sh --start
+bash scripts/install-agent-sidecar-plist.sh --start
 # 或 kickstart：
-launchctl kickstart -k "gui/$(id -u)/com.ccc.chat-server"
+launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 ```
 
-验收：`bash scripts/smoke-desktop-agent.sh`（断言 `/api/desktop/config` 的 `agent_runtime=loop-code`）。
+验收：`curl http://127.0.0.1:7788/health`（`router` 应含 `192.168.3.116:4000`）。
 
-中转仍走 `ANTHROPIC_BASE_URL`（Server 本机 `http://127.0.0.1:4000`）。
+中转走 `ANTHROPIC_BASE_URL=http://192.168.3.116:4000`（M1 sidecar → 2017 Router）。
+
+## 与 Mac2017 的关系
+
+| 项 | M1 | Mac2017 |
+|----|-----|---------|
+| loop-code 二进制 | **有**（arm64，sidecar 用） | **无**（已删，不再需要） |
+| Hub `/api/chat` | 不调用 | **已删路由**（404） |
+| Engine 扇出 | 不跑 | **Claude Code**（`scripts/board/roles/product.py`） |
+| dev 写码 | 不跑 | **OpenCode**（`scripts/board/roles/dev.py`） |
 
 ## 替换
 

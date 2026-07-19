@@ -270,7 +270,7 @@ async def put_thread_messages(request: Request, thread_id: str):
 
 @router.post("/agent/warm")
 async def warm_agent(request: Request):
-    """Hub 过渡：预热 loop-code 槽位（不阻塞 Desktop 本地 sidecar）。"""
+    """Hub 兼容：预热槽位（Desktop 对话走 M1 sidecar :7788，不依赖此端点）。"""
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):

@@ -228,81 +228,9 @@ export async function streamChat(
   attachments,
   opts = {}
 ) {
-  const abortController = opts.abortController || new AbortController();
-  if (!opts.abortController) {
-    state.set('abortController', abortController);
-  }
-
-  try {
-    const model = state.get('model') || 'flash';
-    const body = {
-      messages,
-      session_id: sessionId,
-      project,
-      model,
-      // 服务端按空闲超时解释；≤180 会被抬到 CCC_CHAT_IDLE_TIMEOUT（默认 600）
-      timeout: 600,
-    };
-    if (attachments && attachments.length) {
-      body.attachments = attachments;
-    }
-
-    const resp = await _fetchWithAuth('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      signal: abortController.signal,
-    }, true);
-
-    if (!resp.ok) {
-      const errText = resp.status === 401 ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
-        : resp.status === 400 ? '危险指令已被拦截或附件无效'
-        : resp.status === 429 ? '并发会话已满或会话忙，请稍候、取消一路或新开对话'
-        : '请求失败: HTTP ' + resp.status;
-      onError(errText);
-      return;
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const data = JSON.parse(line.slice(6));
-          if (data.type === 'delta') {
-            onEvent('delta', data.content);
-          } else if (data.type === 'tool_use') {
-            onEvent('tool_use', data);
-          } else if (data.type === 'tool_result') {
-            onEvent('tool_result', data);
-          } else if (data.type === 'cost') {
-            onEvent('cost', data);
-          } else if (data.type === 'ping') {
-            // SSE keepalive — ignore
-          } else if (data.type === 'done') {
-            onDone(data.session_id || sessionId);
-          } else if (data.type === 'error') {
-            onError(data.content);
-          }
-        } catch (e) { /* skip bad json */ }
-      }
-    }
-  } catch (e) {
-    if (e.name !== 'AbortError') {
-      onError('网络错误: ' + e.message);
-    }
-  } finally {
-    if (!opts.abortController) {
-      state.set('abortController', null);
-    }
-  }
+  // 架构对齐 2026-07-19：Hub /api/chat 已删；对话主入口 = M1 Desktop + sidecar :7788。
+  // 网页 Hub 不再提供对话；此函数保留为空 stub 供旧引用编译，实际调用应在 Desktop。
+  onError('Hub /api/chat 已退役；对话请在 CCC Desktop 中进行。');
 }
 
 export function cancelStream(tabId) {

@@ -50,7 +50,8 @@
 
 - M1 可保留自己的 `~/program` 作移动开发
 - **生产执行、中转、Hub/Engine** 以 2017 为准
-- 二进制执行器：`CCC/vendor/loop-code/`（gitignore；拷贝进仓，不软链）
+- **M1 对话**：Desktop + sidecar `:7788` + arm64 `vendor/loop-code/cli`（M1 本机；gitignore）
+- **Mac2017 不再部署 loop-code 二进制**（架构对齐 2026-07-19；Hub `/api/chat` 已删，2017 不做对话）
 
 ---
 

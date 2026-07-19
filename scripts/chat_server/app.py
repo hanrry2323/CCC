@@ -9,7 +9,7 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import chat, sessions, files, board, projects, ops, desktop
+from .routers import sessions, files, board, projects, ops, desktop
 from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
@@ -72,7 +72,6 @@ def create_app() -> FastAPI:
     app.add_middleware(NoStoreStaticMiddleware)
 
     app.include_router(projects.router)
-    app.include_router(chat.router)
     app.include_router(sessions.router)
     app.include_router(files.router)
     app.include_router(board.router)

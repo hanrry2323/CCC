@@ -28,8 +28,8 @@
 | 层 | 组件 | 用户感知 |
 |----|------|----------|
 | **对话面** | **CCC Desktop**（SwiftUI）+ 本机 Sidecar/loop-code（现网 **M1**） | 聊透、意图、定稿 → **仅产出 epic 大卡** |
-| **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → 扇出 → **远端开发/验收**；右栏只看状态 |
-| **执行面** | 可插拔 Executors（默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
+| **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → **Claude Code 扇出** → **OpenCode 写码** / 验收；右栏只看状态 |
+| **执行面** | 可插拔 Executors（dev 默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
 
 **硬边界**：对话与编排开发分开；中间只交**结构化信息流**（transfer + flow 事件）。基线契约：[`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。
 

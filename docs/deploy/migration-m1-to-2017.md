@@ -78,7 +78,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" http://192.168.3.116:4002/
 | Hub :7777 自 M1 可达 | PASS（projects 含 ccc-demo，default=ccc-demo） | 2026-07-18 |
 | M1 Engine/Hub 已停 | PASS（plist 移至 LaunchAgents/disabled-ccc-server-20260718） | 2026-07-18 |
 | demo 注册 | PASS（2017 registry：orch CCC + app ccc-demo） | 2026-07-18 |
-| vendor/loop-code | PASS（M1+2017 已拷贝 cli，gitignore） | 2026-07-18 |
+| vendor/loop-code | PASS（M1 已拷贝 cli；**2017 已删，不再需要**） | 2026-07-19 对齐 |
 | Executor 解析冒烟 | PASS（`smoke-executor-stack.sh` on 2017） | 2026-07-18 |
 | ccc-demo 闭环 | PASS：`demo-readme-line` planned→…→released；README 含 `Status: CCC server demo OK`；耗时约 3min（修 OpenCode `baseURL`→`127.0.0.1:4002` 后） | 2026-07-18 |
 

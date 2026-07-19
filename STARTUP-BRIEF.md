@@ -21,18 +21,21 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 | | |
 |--|--|
-| **Hub** | 对话 / 看板 / 控制台 · `:7777` |
+| **Desktop + sidecar `:7788`** | 对话 / 意图 / 转任务（M1 主入口） |
+| **Hub `:7777`** | API host：transfer / flow / board / ops（Mac2017） |
 | **6+1 列看板** | backlog(epic) + planned→…→released(work) + abnormal |
 | **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
-| **2+ plist** | `com.ccc.engine` + Board + Hub（按需） |
+| **2+ plist** | `com.ccc.agent-sidecar`（M1）+ `com.ccc.engine` + Board + Hub（2017） |
 
 ---
 
 ## 2. 人机路径（优先）
 
 ```text
-Hub：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达并开工
-     →（enable）Engine 自动编排开发/验收/归档
+Desktop（M1）：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达
+     → POST /api/desktop/transfer → Mac2017 backlog epic
+     →（2017 control=enabled）Engine 自动编排：product 扇出 → dev 写码 → review/test → kb → released
+     → 右栏 SSE 实时回传编排进度
 ```
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
@@ -148,7 +151,7 @@ python3 scripts/ccc-board.py index
 
 ## 10. 调用链（1 行）
 
-老板在 Hub 定稿转任务（或「按 CCC 跑 X」）→ task 落看板 →（enable）Engine 串行阶段能力包 → released。
+老板在 Desktop（M1）定稿转任务（或「按 CCC 跑 X」）→ task 落 Mac2017 看板 →（2017 control=enabled）Engine 串行阶段能力包（product=Claude Code 扇出 / dev=OpenCode 写码）→ released。
 
 ---
 

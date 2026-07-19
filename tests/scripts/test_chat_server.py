@@ -28,6 +28,10 @@ from pathlib import Path
 
 import pytest
 
+# 架构对齐 2026-07-19：Hub /api/chat /api/execute 路由已删（对话主入口 = M1 Desktop + sidecar :7788）。
+# 本文件原测 Hub 对话路由；保留作历史参考，整体跳过。对话回归见 tests/scripts/test_flow_sse_offset.py + smoke-desktop-stable.sh。
+pytestmark = pytest.mark.skip(reason="Hub /api/chat removed 2026-07-19; dialogue now via M1 sidecar :7788")
+
 CHAT_SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "ccc-chat-server.py"
 PROJECT_ROOT = CHAT_SCRIPT.parent.parent
 BASE_URL = "http://127.0.0.1:18084"

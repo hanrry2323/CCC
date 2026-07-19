@@ -2,20 +2,21 @@
 
 > 产品架构见 [`ccc-desktop-architecture.md`](ccc-desktop-architecture.md)。  
 > **对话/编排边界基线**：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
-> 本文约束 Client 连接行为：聊天走本机；Hub 只承载信息流（transfer / flow / 可选镜像）。
+> 本文约束 Client 连接行为：聊天走本机 sidecar；Hub 只承载信息流（transfer / flow / 可选镜像）。  
+> **架构对齐（2026-07-19）**：Desktop+loop-code = M1 对话意图工具；Mac2017 = 纯编排消费；Hub `/api/chat` 已删，无回退路径。
 
 ## 硬规则
 
 | # | 规则 |
 |---|------|
 | 1 | **chat SSE** 与 **flow SSE** 分属独立 `URLSession`（不得共池抢连接） |
-| 1a | 本机 Agent：最多 **3 路** chat 并行；Hub 回退：全 App **1 路** chat |
+| 1a | 本机 Agent：最多 **3 路** chat 并行；**无 Hub chat 回退**（Hub `/api/chat` 已删） |
 | 1b | flow SSE：全 App **1 条**；切会话不重建 |
 | 2 | 切会话 **不得** 拆掉 / 重建 flow SSE；仅换项目时 `ensureFlowSSE` 重建 |
 | 3 | 发送 / 取消对话 **不得** `cancel` flow 任务 |
 | 4 | `connected`（可聊）= **本机 Agent 健康**；Hub 仅影响转任务/右栏；单条 chat 失败 →「本条失败」 |
 | 4a | **本机会话 SSOT**：`~/Library/Application Support/CCCDesktop/sessions/`；Hub `PUT` 为可选镜像，非对话权威 |
-| 4b | **常态禁止** 对话打 Hub `/api/chat`（收口后默认关 Hub 聊天回退；仅本机 sidecar） |
+| 4b | **常态禁止** 对话打 Hub `/api/chat`（路由已删，404）；对话只走本机 sidecar |
 | 5 | chat SSE 必须收到 `done` 且 `partial != true` 才算成功；否则「回复中断」 |
 | 5a | 同会话 chat 失败可自动重试 **1** 次（保留本地消息；半截助手清空再流） |
 | 5b | 聊天流式**不**暂停 flow snapshot；仅 `syncThreadFromServer` 在生成中跳过覆盖 messages |
@@ -24,11 +25,12 @@
 
 ## 方案 Agent
 
-**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli` → Router。  
+**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli`（arm64）→ Router `192.168.3.116:4000`。  
 Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-sidecar-plist.sh` → `POST /warm`；每 240s keep-warm。  
 消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。转任务 / 右栏仍要求 Hub。
 
-**回退**：sidecar 失败 → **Hub 回退**；Hub 失败但 sidecar 活 → **本机 Agent · Hub 暂不可达**（可聊，不受 LAN 抖影响）。  
+**未就绪处理**：sidecar 起不来 → 状态「本机 Agent 未就绪」+ toast；**不回退 Hub**（Hub `/api/chat` 已删）。后台每 3s 重探，sidecar 恢复后自动转「本机 Agent」。  
+**Hub 抖动**：Hub 不可达但 sidecar 活 → 仍可聊，状态「Hub 暂不可达（可聊）」，仅转任务/右栏受影响。  
 **工作区**：`localWorkspaceMap[projectId]` → 全局 fallback → Hub path 若本机存在。
 
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。

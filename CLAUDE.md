@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # CCC — Connect–Claude Code · Loop Engineer
 
-> **人定意图，系统自动编排与自主执行。** 对话面（本机 Desktop）产 epic；编排面（中心机 Engine）远端开发；中间只交信息流。  
+> **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine：Claude Code 扇出 + OpenCode 写码）远端开发；中间只交信息流。  
 > 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
@@ -121,43 +121,47 @@ launchd(com.ccc.engine) → ccc-engine.sh → ccc-engine.py
   └→ ccc-board.py = CLI / 兼容再导出（勿新增长角色逻辑）
 ```
 
-### 前端 SPA 架构（v0.38+ 模块化重构）
+### 前端 SPA 架构（v0.38+ 模块化重构；架构对齐 2026-07-19）
 
 **入口** → `http://localhost:7777` → `scripts/ccc-chat-server.py` → `scripts/chat_server/`
 
 ```
 scripts/chat_server/            # FastAPI 模块化后端
-├── app.py                      # FastAPI 工厂（CORS + Static + 5 路由）
+├── app.py                      # FastAPI 工厂（CORS + Static + 路由）
 ├── config.py                   # HOST/PORT/AUTH/PROXY/BOARD_URL 配置
 ├── auth.py                     # Basic Auth
 ├── models.py                   # 数据模型
 ├── routers/                    # API 路由
-│   ├── chat.py                 #   对话 SSE + 执行
+│   ├── desktop.py              #   Desktop 专用：transfer / flow / threads（M1 主路径）
 │   ├── board.py                #   看板代理 → Board API(:7775)
+│   ├── ops.py                  #   运维聚合
 │   ├── projects.py             #   项目列表
-│   ├── sessions.py             #   历史会话
+│   ├── sessions.py             #   历史会话（兼容）
 │   └── files.py                #   文件附件
 ├── services/                   # 业务逻辑
-│   ├── claude_client.py        #   claude CLI 子进程
+│   ├── claude_client.py        #   claude CLI 子进程（M1 sidecar 用，Hub 不再用）
 │   ├── board_client.py         #   Board API HTTP 客户端
 │   └── session_store.py        #   会话持久化
-└── frontend/                   # SPA 前端（hash 路由）
+└── frontend/                   # SPA 前端（hash 路由；运维/兼容，非产品主入口）
     ├── index.html              # SPA 壳
-    ├── css/                    # 样式（5 个文件：variables/base/themes/components/shell）
+    ├── css/                    # 样式
     └── js/
-        ├── router.js           # #/chat | #/board | #/console | #/ops
-        ├── app.js              # 主应用（tab 管理 + 事件）
+        ├── router.js           # #/board | #/console | #/ops（#/chat 已删）
+        ├── app.js              # 主应用
         ├── state.js            # 全局状态
         ├── api.js              # API 客户端
         ├── components/         # UI 组件
         └── pages/              # boardPage / consolePage / opsPage
 ```
 
+**架构对齐**：对话主入口 = **M1 Desktop + sidecar `:7788` + arm64 loop-code**；Hub `/api/chat` 路由已删；网页 SPA 仅运维/兼容（看板/运维已迁入 Desktop）。
+
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 7777 | CCC Hub | SPA：对话 / 看板 / 控制台 / **运维** |
+| 7788 | CCC Agent Sidecar | **M1 对话热路径**（Desktop → sidecar → loop-code → 2017 Router） |
+| 7777 | CCC Hub | API host：transfer / flow / board / ops（Mac2017） |
 | 7775 | Board API | 看板 REST（仅 127.0.0.1，Hub 反代） |
-| 7778 | CCC Cockpit | **deprecated** → Hub `#/ops` |
+| 7778 | CCC Cockpit | **deprecated** → Hub `#/ops` → Desktop 运维 |
 
 `scripts/ccc-board-ui/` 仅含跳转页 → Hub :7777（已废弃）。
 

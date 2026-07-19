@@ -68,7 +68,7 @@ Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/
 
 ## 约束
 
-1. **arch**：本机 M 系列用 arm64 `vendor/loop-code/cli`；2017 Hub 用 x86_64。
+1. **arch**：M1 用 arm64 `vendor/loop-code/cli`；**Mac2017 不再部署 loop-code**（架构对齐 2026-07-19；Hub `/api/chat` 已删）。
 2. **工作区**：聊天 cwd 本机；Engine 在 Server — 转任务只带意图。
 3. **安全**：sidecar 只绑 `127.0.0.1`。
 4. **编排仓**可聊；仅转任务禁用。

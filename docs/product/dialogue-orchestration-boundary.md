@@ -77,7 +77,7 @@ Desktop 右栏只**投影**本 `thread_id` 绑定的 epic/works。
 | Agent Sidecar | M1 `com.ccc.agent-sidecar` → `:7788` | 对话热路径；launchd KeepAlive |
 | loop-code（方案） | M1 `vendor/loop-code/cli`（arm64） | 只服务对话面 |
 | Hub / Board | Mac2017 `:7777` / `:7775` | 信息流枢纽 + 看板 API |
-| Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环 |
+| Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环；product=Claude Code 扇出，dev=OpenCode 写码 |
 | 业务仓看板 | Mac2017 `apps/<id>/.ccc/board` | 编排权威状态 |
 | 本机会话 | M1 `~/Library/Application Support/CCCDesktop/sessions/` | 对话权威；Hub 镜像为辅 |
 | 中转站 | Mac2017 `:4000` / `:4002` | 模型出口；M1 sidecar 应指向它（或本机等价转发） |

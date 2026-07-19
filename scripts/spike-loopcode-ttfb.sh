@@ -1,43 +1,32 @@
 #!/usr/bin/env bash
-# Spike：本机 Agent Sidecar（loop-code）vs Hub /api/chat TTFB
+# Spike：M1 本机 Agent Sidecar（loop-code）TTFB
+# 架构对齐 2026-07-19：Hub /api/chat 已删；对话主入口 = M1 sidecar :7788
 # 用法：
 #   bash scripts/ccc-agent-sidecar.sh &   # 另开终端
 #   bash scripts/spike-loopcode-ttfb.sh
-#   CCC_AGENT=http://127.0.0.1:7788 CCC_SERVER=http://192.168.3.116:7777 bash scripts/spike-loopcode-ttfb.sh
+#   CCC_AGENT=http://127.0.0.1:7788 bash scripts/spike-loopcode-ttfb.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-HUB="${CCC_SERVER:-http://192.168.3.116:7777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
-USER="${CCC_CHAT_USER:-ccc}"
-PASS="${CCC_CHAT_PASS:-ccc}"
 PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
 PROMPT="${SPIKE_PROMPT:-只回四个字：测速OK}"
 
 run_one() {
-  local name="$1" url="$2" use_auth="$3"
+  local name="$1" url="$2"
   local sid out timings
   sid="spike-${name}-$(date +%s)"
   out="$(mktemp)"
   timings="$(mktemp)"
   echo "-- $name → $url"
   set +e
-  if [[ "$use_auth" == "1" ]]; then
-    curl -sS -N -m 120 -u "${USER}:${PASS}" \
-      -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
-      -o "$out" -w "ttfb=%{time_starttransfer}\ntotal=%{time_total}\n" \
-      -X POST "$url" \
-      -d "{\"project\":\"${PROJECT}\",\"session_id\":\"${sid}\",\"messages\":[{\"role\":\"user\",\"content\":\"${PROMPT}\"}],\"project_path\":\"${ROOT}\"}" \
-      >"$timings" 2>/tmp/spike-err.txt
-  else
-    curl -sS -N -m 120 \
-      -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
-      -o "$out" -w "ttfb=%{time_starttransfer}\ntotal=%{time_total}\n" \
-      -X POST "$url" \
-      -d "{\"project\":\"${PROJECT}\",\"session_id\":\"${sid}\",\"messages\":[{\"role\":\"user\",\"content\":\"${PROMPT}\"}],\"project_path\":\"${ROOT}\"}" \
-      >"$timings" 2>/tmp/spike-err.txt
-  fi
+  curl -sS -N -m 120 \
+    -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+    -o "$out" -w "ttfb=%{time_starttransfer}\ntotal=%{time_total}\n" \
+    -X POST "$url" \
+    -d "{\"project\":\"${PROJECT}\",\"session_id\":\"${sid}\",\"messages\":[{\"role\":\"user\",\"content\":\"${PROMPT}\"}],\"project_path\":\"${ROOT}\"}" \
+    >"$timings" 2>/tmp/spike-err.txt
   local ec=$?
   set -e
   cat "$timings"
@@ -74,10 +63,8 @@ echo "== spike-loopcode-ttfb =="
 echo "ROOT=$ROOT"
 echo "PROMPT=$PROMPT"
 
-run_one "hub" "${HUB%/}/api/chat" 1
-
 if curl -sf -m 2 "${AGENT%/}/health" >/dev/null 2>&1; then
-  run_one "local-agent" "${AGENT%/}/api/chat" 0
+  run_one "local-agent" "${AGENT%/}/api/chat"
 else
   echo "-- local-agent SKIP (not running at $AGENT)"
   echo "   start: bash scripts/ccc-agent-sidecar.sh"
