@@ -92,6 +92,9 @@ def _extract_agents_suggestions(
 
 def kb_role() -> dict:
     """知识管理员: 扫 verified → 归档 + git tag → 挪 released → 收集 AGENTS.md 建议"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("kb", "git")
     import subprocess as sp
 
     moved = []

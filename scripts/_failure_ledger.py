@@ -84,7 +84,15 @@ def record_failure(
 
     rel_stderr = stderr_path or resolve_stderr_path(ws, task_id)
     abs_stderr = (ws / rel_stderr) if rel_stderr else None
-    tail = _read_tail(abs_stderr) if abs_stderr else ""
+    raw_tail = _read_tail(abs_stderr) if abs_stderr else ""
+    try:
+        from _secret_redact import redact_secrets
+
+        tail = redact_secrets(raw_tail)
+        reason_safe = redact_secrets((reason or "")[:500], max_len=500)
+    except Exception:
+        tail = (raw_tail or "")[:2048]
+        reason_safe = (reason or "")[:500]
 
     row: dict[str, Any] = {
         "ts": _now_iso(),
@@ -95,7 +103,7 @@ def record_failure(
         "from_col": from_col,
         "to_col": to_col,
         "exit_code": exit_code,
-        "reason": (reason or "")[:500],
+        "reason": reason_safe,
         "stderr_path": rel_stderr,
         "stderr_tail": tail,
         "related_stats_event": related_stats_event,
@@ -115,11 +123,29 @@ def record_failure(
     return out
 
 
+def _redact_failure_row(row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from _secret_redact import redact_secrets
+    except Exception:
+        return row
+    out = dict(row)
+    if "stderr_tail" in out:
+        out["stderr_tail"] = redact_secrets(out.get("stderr_tail"))
+    if "reason" in out:
+        out["reason"] = redact_secrets(str(out.get("reason") or ""), max_len=500)
+    return out
+
+
 def read_failures(workspace: Path, *, last: int = 20) -> list[dict[str, Any]]:
-    """Phase 4.3: tail-style 读最近 last 条（默认 200），跨轮转备份文件。"""
+    """Phase 4.3: tail-style 读最近 last 条（默认 200），跨轮转备份文件。出站脱敏。"""
     path = failures_path(workspace)
     if tail_read_jsonl is not None:
-        return tail_read_jsonl(path, last=max(last, 200) if last > 0 else 0)[-last:] if last > 0 else tail_read_jsonl(path, 0)
+        rows = (
+            tail_read_jsonl(path, last=max(last, 200) if last > 0 else 0)[-last:]
+            if last > 0
+            else tail_read_jsonl(path, 0)
+        )
+        return [_redact_failure_row(r) for r in rows if isinstance(r, dict)]
     # 回退：原始整文件读
     if not path.is_file():
         return []
@@ -136,9 +162,9 @@ def read_failures(workspace: Path, *, last: int = 20) -> list[dict[str, Any]]:
     except OSError:
         _log.exception("read failures.jsonl failed: %s", path)
         return []
-    if last <= 0:
-        return rows
-    return rows[-last:]
+    if last > 0:
+        rows = rows[-last:]
+    return [_redact_failure_row(r) for r in rows]
 
 
 def infer_role_from_reason(reason: str) -> str:

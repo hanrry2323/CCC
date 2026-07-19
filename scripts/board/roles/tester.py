@@ -74,6 +74,9 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
     Returns: {"ok": True, "pid": int, "cmds": int}
              {"error": str}
     """
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("tester", "pytest")
     task_id = sanitize_id(task_id)
     pids_dir = ws / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
@@ -342,6 +345,9 @@ def _cleanup_pytest_markers(pids_dir: Path, task_id: str) -> None:
 
 def tester_role() -> dict:
     """测试工程师: 扫 testing → 按 plan 跑验证 → 通过则挪 verified"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("tester", "pytest")
     import subprocess as sp
 
     moved = []

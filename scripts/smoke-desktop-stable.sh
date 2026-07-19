@@ -64,19 +64,30 @@ PY
 # 2) Sidecar chat 路由存活（校验错误应秒回；完整 SSE 见 smoke-desktop-agent.sh）
 check "sidecar chat route" python3 - <<PY
 import json, sys, urllib.error, urllib.request
+from pathlib import Path
 url = "${AGENT}/api/chat"
 body = json.dumps({
     "project_id": "${PROJECT}",
     "session_id": "smoke-stable-validate",
     "messages": [],
 }).encode()
-req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+headers = {"Content-Type": "application/json"}
+tok = __import__("os").environ.get("CCC_AGENT_TOKEN", "").strip()
+if not tok:
+    p = Path.home() / ".ccc" / "agent-token"
+    if p.is_file():
+        tok = p.read_text(encoding="utf-8").strip()
+if tok:
+    headers["Authorization"] = f"Bearer {tok}"
+    headers["X-CCC-Agent-Token"] = tok
+req = urllib.request.Request(url, data=body, headers=headers, method="POST")
 try:
     urllib.request.urlopen(req, timeout=5)
-    print("expected 400", file=sys.stderr)
+    print("expected 400/401/422", file=sys.stderr)
     sys.exit(1)
 except urllib.error.HTTPError as e:
-    sys.exit(0 if e.code in (400, 422) else 1)
+    # 400=空 messages；401=未配 token；503=sidecar 未装 token
+    sys.exit(0 if e.code in (400, 401, 422, 503) else 1)
 except Exception as e:
     print(e, file=sys.stderr)
     sys.exit(1)

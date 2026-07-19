@@ -19,7 +19,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
+
+_log = logging.getLogger("ccc.role_lock")
 
 # 角色 → 允许的执行器集合（单元素 = 硬锁；多元素 = 允许的备选）
 ROLE_EXECUTOR_LOCK: dict[str, frozenset[str]] = {
@@ -43,9 +46,14 @@ class RoleLockViolation(RuntimeError):
 def assert_role_executor(role: str, executor: str) -> None:
     """断言 `role` 允许使用 `executor`；违例抛 RoleLockViolation。
 
-    `CCC_ROLE_LOCK_BYPASS=1` 时仅 warn 不抛（调试用）。
+    `CCC_ROLE_LOCK_BYPASS=1` 时仅 warn 不抛（调试用；生产 plist 禁止）。
     """
     if os.environ.get("CCC_ROLE_LOCK_BYPASS") == "1":
+        _log.warning(
+            "CCC_ROLE_LOCK_BYPASS=1 — skipping role lock for role=%s executor=%s",
+            role,
+            executor,
+        )
         return
     allowed = ROLE_EXECUTOR_LOCK.get(role)
     if allowed is None:

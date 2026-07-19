@@ -84,6 +84,9 @@ def _sanitized_env() -> dict:
     for key in keys_to_remove:
         env.pop(key, None)
 
+    # 安全：子进程不得继承角色锁 bypass（生产不可旁路）
+    env.pop("CCC_ROLE_LOCK_BYPASS", None)
+
     # 显式从原环境恢复 allowlist（防止模式误伤）
     for key in _LLM_ENV_ALLOWLIST:
         if key in original and original[key]:

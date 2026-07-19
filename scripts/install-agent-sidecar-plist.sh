@@ -31,8 +31,20 @@ LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"
 PATH_EXTRA="${HOME}/.local/bin:${HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+TOKEN_FILE="${HOME}/.ccc/agent-token"
 
-mkdir -p "$LOG_DIR" "${HOME}/Library/LaunchAgents"
+mkdir -p "$LOG_DIR" "${HOME}/Library/LaunchAgents" "${HOME}/.ccc"
+
+# 本机共享密钥（Desktop ↔ sidecar）；已有则复用
+if [[ -n "${CCC_AGENT_TOKEN:-}" ]]; then
+  AGENT_TOKEN="$CCC_AGENT_TOKEN"
+elif [[ -f "$TOKEN_FILE" ]]; then
+  AGENT_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+else
+  AGENT_TOKEN="$(openssl rand -hex 32)"
+fi
+printf '%s\n' "$AGENT_TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE"
 
 cmd="${1:-}"
 case "$cmd" in
@@ -98,6 +110,10 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${PORT}</string>
     <key>CCC_AGENT_CWD</key>
     <string>${CCC_HOME}</string>
+    <key>CCC_AGENT_TOKEN</key>
+    <string>${AGENT_TOKEN}</string>
+    <key>CCC_AGENT_ALLOWED_ROOTS</key>
+    <string>${HOME}/program:${CCC_HOME}</string>
     <key>ANTHROPIC_BASE_URL</key>
     <string>${ROUTER}</string>
     <key>PATH</key>
@@ -150,5 +166,6 @@ else
   echo "⚠ ${LABEL} loaded but health not ready yet — 见 ${LOG_ERR}"
 fi
 echo "  plist: ${PLIST}"
+echo "  token: ${TOKEN_FILE} (Desktop 自动读取；chmod 600)"
 echo "  logs:  ${LOG_OUT} / ${LOG_ERR}"
 echo "  stop:  bash ${CCC_HOME}/scripts/install-agent-sidecar-plist.sh --stop"

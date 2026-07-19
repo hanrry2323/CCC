@@ -68,6 +68,9 @@ from board.roles.common import (
 
 def regress_role() -> dict:
     """回测工程师: 每日扫 released → py_compile + git diff → 发现回归→建 bug"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("regress", "pytest")
     import subprocess as sp
     from datetime import date
 

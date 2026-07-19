@@ -78,6 +78,26 @@ actor APIClient {
 
     var usesLocalAgent: Bool { chatBaseURL != nil }
 
+    /// 本机 sidecar 共享密钥：`CCC_AGENT_TOKEN` 或 `~/.ccc/agent-token`
+    private var agentToken: String {
+        if let env = ProcessInfo.processInfo.environment["CCC_AGENT_TOKEN"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !env.isEmpty
+        {
+            return env
+        }
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ccc/agent-token")
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func applyAgentAuth(_ req: inout URLRequest) {
+        let tok = agentToken
+        guard !tok.isEmpty else { return }
+        req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        req.setValue(tok, forHTTPHeaderField: "X-CCC-Agent-Token")
+    }
+
     /// 探测本机 sidecar `/health`
     func probeLocalAgent(base: URL) async -> Bool {
         guard var health = URL(string: "health", relativeTo: base) else { return false }
@@ -107,6 +127,7 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAgentAuth(&req)
         req.httpBody = Data("{}".utf8)
         req.timeoutInterval = 8
         do {
@@ -310,6 +331,7 @@ actor APIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
+        applyAgentAuth(&req)
         req.httpBody = data
         let (bytes, resp) = try await chatSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0

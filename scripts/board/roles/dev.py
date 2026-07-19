@@ -619,7 +619,9 @@ def dev_role_launch(task_id: str) -> dict:
     3. 启 opencode-runner.sh（后台进程）
     4. 不等待，立即返回
     """
+    from _role_lock import assert_role_executor
 
+    assert_role_executor("dev", "opencode")
     task_id = sanitize_id(task_id)
     planned = list_tasks("planned")
     task = next((t for t in planned if t["id"] == task_id), None)

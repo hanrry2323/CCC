@@ -910,6 +910,7 @@ def adopt_suggestion(
         "title": (title or tid)[:200],
         "description": description or "",
         "status": "backlog",
+        "card_kind": "epic",
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
         "schema_version": "1.2",

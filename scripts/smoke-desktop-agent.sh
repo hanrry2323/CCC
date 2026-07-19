@@ -29,22 +29,32 @@ else
   echo "SKIP: hub /api/desktop/config unreachable (non-fatal; sidecar is the dialogue path)"
 fi
 
-# 2) sidecar /health（对话热路径）
+# 2) sidecar /health（对话热路径；cli 仅 basename）
 HEALTH="$(curl -sf -m 3 "${AGENT%/}/health")"
 echo "$HEALTH" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 rt=d.get('agent_runtime') or ''
 cli=d.get('agent_cli') or ''
-router=d.get('router') or ''
 print('sidecar agent_runtime=', rt)
 print('sidecar agent_cli=', cli)
-print('sidecar router=', router)
+print('sidecar auth_required=', d.get('auth_required'))
 assert d.get('ok') is True, d
 assert rt == 'loop-code', f'sidecar SSOT requires loop-code, got runtime={rt!r} cli={cli!r}'
-assert 'vendor/loop-code/cli' in cli.replace('\\\\','/'), f'cli path not loop-code: {cli!r}'
+assert cli in ('cli', 'loop-code') or 'loop' in cli.lower() or cli == 'cli', f'unexpected cli basename: {cli!r}'
 print('OK sidecar agent=loop-code')
 "
+
+# 本机 sidecar token（~/.ccc/agent-token）
+TOKEN_FILE="${HOME}/.ccc/agent-token"
+AGENT_TOKEN="${CCC_AGENT_TOKEN:-}"
+if [[ -z "$AGENT_TOKEN" && -f "$TOKEN_FILE" ]]; then
+  AGENT_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+fi
+AUTH_H=()
+if [[ -n "$AGENT_TOKEN" ]]; then
+  AUTH_H=(-H "Authorization: Bearer ${AGENT_TOKEN}" -H "X-CCC-Agent-Token: ${AGENT_TOKEN}")
+fi
 
 # 3) sidecar /api/chat SSE（对话主路径）
 SID="agent-smoke-$(date +%s)"
@@ -52,12 +62,13 @@ OUT="$(mktemp)"
 trap 'rm -f "$OUT"' EXIT
 BODY="$(python3 -c "import json; print(json.dumps({
   'messages': [{'role':'user','content':'请只回复四个字：代理OK。不要用工具。'}],
-  'cwd': '${ROOT}'
+  'project_path': '${ROOT}'
 }))")"
 
 curl -sS -N -m 120 \
   -H 'Content-Type: application/json' \
   -H 'Accept: text/event-stream' \
+  "${AUTH_H[@]}" \
   -X POST "${AGENT%/}/api/chat" \
   -d "$BODY" >"$OUT"
 

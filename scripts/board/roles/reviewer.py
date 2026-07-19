@@ -242,6 +242,9 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
              {"status": "skip_small", "msg": "..."} — small 类直接 py_compile 通过
              {"error": str}
     """
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("reviewer", "claude-code")
     task_id = sanitize_id(task_id)
     pids_dir = ws / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
@@ -1136,6 +1139,9 @@ def reviewer_role() -> dict:
     v0.24.5: 加 per-task advisory lock（A24-01 防并发 reviewer 实例写同 task 的 review.md）
     v0.24.5: medium/large fallback 路径强制 quarantine（A24-03/A24-04 防 v0.23 G2 bypass 复发）
     """
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("reviewer", "claude-code")
     moved = []
     lock_dir = get_workspace() / ".ccc" / "review-locks"
     lock_dir.mkdir(parents=True, exist_ok=True)

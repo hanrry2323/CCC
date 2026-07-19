@@ -68,6 +68,9 @@ from board.roles.common import (
 
 def ops_role() -> dict:
     """运维监控: 健康检查 + stale 检测 + 孤儿 PID 清理 + 告警"""
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("ops", "claude-code")
     health = {
         "opencode_pids": len(
             list((Path.home() / ".ccc" / "opencode-pids").glob("*.pid"))

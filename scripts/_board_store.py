@@ -556,6 +556,18 @@ class FileBoardStore:
         if data_with_defaults.get("card_kind") == "epic" and column != "backlog":
             _log.error("create_task: epic must be created in backlog, got %s", column)
             return False
+        # 安全（2026-07-19）：backlog 禁止直接创建 work（绕过 Desktop transfer 门禁）
+        # work 只能由 product 扇出写入 planned；调试可设 CCC_ALLOW_BACKLOG_WORK=1
+        if (
+            column == "backlog"
+            and data_with_defaults.get("card_kind") == "work"
+            and os.environ.get("CCC_ALLOW_BACKLOG_WORK") != "1"
+        ):
+            _log.error(
+                "create_task: work cannot be created in backlog "
+                "(use /api/desktop/transfer for epic; product fans out work→planned)"
+            )
+            return False
         task_id = sanitize_id(data_with_defaults["id"])
         if column not in COLUMNS:
             _log.error("create_task: invalid column '%s'", column)

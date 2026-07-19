@@ -4,16 +4,23 @@
 Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cli → Router
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
+Security (2026-07-19):
+  - /api/chat + /warm require CCC_AGENT_TOKEN (Bearer or X-CCC-Agent-Token)
+  - project_path 必须落在 allowlist 根下
+  - /health 不暴露完整 cli 路径
+
 Usage:
-  CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://192.168.3.116:4000 \\
+  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://192.168.3.116:4000 \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
 """
 
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -48,40 +55,121 @@ DEFAULT_CWD = os.environ.get("CCC_AGENT_CWD", str(ROOT))
 app = FastAPI(title="CCC Agent Sidecar", docs_url=None, redoc_url=None)
 
 
+def _load_token_file() -> str:
+    p = Path.home() / ".ccc" / "agent-token"
+    try:
+        if p.is_file():
+            return p.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    return ""
+
+
+def _effective_token() -> str:
+    return (os.environ.get("CCC_AGENT_TOKEN") or "").strip() or _load_token_file()
+
+
+def _check_agent_auth(request: Request) -> JSONResponse | None:
+    """Require shared secret for mutating/chat endpoints."""
+    expected = _effective_token()
+    if not expected:
+        return JSONResponse(
+            {
+                "detail": "CCC_AGENT_TOKEN unset — run: bash scripts/install-agent-sidecar-plist.sh --start",
+            },
+            status_code=503,
+        )
+    auth = (request.headers.get("authorization") or "").strip()
+    got = ""
+    if auth.lower().startswith("bearer "):
+        got = auth[7:].strip()
+    if not got:
+        got = (request.headers.get("x-ccc-agent-token") or "").strip()
+    if not got or not hmac.compare_digest(got, expected):
+        return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    return None
+
+
+def _allowed_roots() -> list[Path]:
+    """project_path 白名单根。"""
+    roots: list[Path] = []
+    raw = os.environ.get("CCC_AGENT_ALLOWED_ROOTS", "").strip()
+    if raw:
+        for part in raw.split(":"):
+            part = part.strip()
+            if part:
+                roots.append(Path(part).expanduser().resolve())
+    else:
+        home = Path.home()
+        roots.extend(
+            [
+                (home / "program").resolve(),
+                Path(DEFAULT_CWD).expanduser().resolve(),
+                ROOT.resolve(),
+            ]
+        )
+        # Desktop Application Support sessions cwd sometimes under Library
+        roots.append((home / "Library" / "Application Support" / "CCCDesktop").resolve())
+    return roots
+
+
+def _path_allowed(project_path: str) -> bool:
+    try:
+        cand = Path(project_path).expanduser().resolve()
+    except OSError:
+        return False
+    if not cand.is_dir():
+        return False
+    for root in _allowed_roots():
+        try:
+            cand.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 @app.get("/health")
 async def health():
     cli = resolve_claude_cli(require=False) or ""
+    # 最小化暴露：只回 basename，不回完整路径
+    cli_name = Path(cli).name if cli else ""
     return {
         "ok": True,
         "product": "CCC Agent Sidecar",
         "agent_runtime": "loop-code" if "loop-code" in cli.replace("\\", "/") else "claude",
-        "agent_cli": cli,
-        "router": os.environ.get("ANTHROPIC_BASE_URL", ""),
+        "agent_cli": cli_name,
+        "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
     }
 
 
 @app.post("/warm")
-async def warm():
+async def warm(request: Request):
     """Keep-warm：确认 cli 可执行 + router 环境；供 Desktop 定时预热。"""
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
     import time
 
     t0 = time.perf_counter()
     cli = resolve_claude_cli(require=False) or ""
     ok = bool(cli) and Path(cli).exists()
-    router = os.environ.get("ANTHROPIC_BASE_URL", "")
     ms = int((time.perf_counter() - t0) * 1000)
     return {
         "ok": ok,
         "warmed_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
         "ttfb_ms": ms,
-        "agent_cli": cli,
-        "router": router,
+        "agent_cli": Path(cli).name if cli else "",
     }
 
 
 @app.post("/api/chat")
 async def chat(request: Request):
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
+
     body = await request.json()
     messages = body.get("messages") or []
     session_id = str(body.get("session_id") or body.get("thread_id") or "local")
@@ -90,10 +178,15 @@ async def chat(request: Request):
         (body.get("project_path") or "").strip()
         or DEFAULT_CWD
     )
-    if not Path(project_path).is_dir():
+    if not _path_allowed(project_path):
         return JSONResponse(
-            {"detail": f"project_path not a directory: {project_path}"},
-            status_code=400,
+            {
+                "detail": (
+                    f"project_path not allowed: {project_path}. "
+                    "Must be under CCC_AGENT_ALLOWED_ROOTS (default ~/program)."
+                )
+            },
+            status_code=403,
         )
 
     user_msgs = [m for m in messages if m.get("role") == "user"]
@@ -173,9 +266,19 @@ async def chat(request: Request):
 
 def main() -> None:
     cli = resolve_claude_cli(require=True)
+    tok = _effective_token()
+    if not tok:
+        # 启动时自动生成，避免未装 plist 时裸奔
+        tok = secrets.token_hex(32)
+        token_path = Path.home() / ".ccc" / "agent-token"
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(tok + "\n", encoding="utf-8")
+        os.chmod(token_path, 0o600)
+        os.environ["CCC_AGENT_TOKEN"] = tok
+        print(f"[ccc-agent] generated token → {token_path}", flush=True)
     print(f"[ccc-agent] cli={cli}", flush=True)
     print(f"[ccc-agent] router={os.environ.get('ANTHROPIC_BASE_URL')}", flush=True)
-    print(f"[ccc-agent] listen=http://{HOST}:{PORT}", flush=True)
+    print(f"[ccc-agent] auth=required listen=http://{HOST}:{PORT}", flush=True)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
 

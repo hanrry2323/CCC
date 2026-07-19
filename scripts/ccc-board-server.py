@@ -808,6 +808,16 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             task_data = dict(data)
             task_data.pop("workspace", None)
             task_data["id"] = tid
+            # 安全（2026-07-19）：HTTP 创建 backlog 只能 epic（禁止直写 work）
+            kind = str(task_data.get("card_kind") or "").strip().lower()
+            if kind == "work":
+                self._json({
+                    "ok": False,
+                    "error": "role_lock_violation",
+                    "message": "API 禁止创建 card_kind=work；请走 Desktop transfer（epic）",
+                }, 400)
+                return
+            task_data["card_kind"] = "epic"
             if create_task(task_data, workspace=ws, column="backlog"):
                 # v0.41/v0.42.1: 下达 = enabled + 登记 workspace + 唤醒 Engine
                 engine_wake = None

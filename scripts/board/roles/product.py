@@ -447,6 +447,9 @@ def launch_product_async(task_id: str) -> dict:
 
     Returns: {"ok": True, "pid": int} 或 {"error": str}
     """
+    from _role_lock import assert_role_executor
+
+    assert_role_executor("product", "claude-code")
     task_id = sanitize_id(task_id)
     tasks = list_tasks("backlog")
     task = next((t for t in tasks if t["id"] == task_id), None)

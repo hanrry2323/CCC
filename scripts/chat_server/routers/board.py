@@ -229,9 +229,37 @@ async def board_proxy_task_events(request: Request, task_id: str, workspace: str
     )
 
 
+def _enforce_epic_only_create(body: dict) -> None:
+    """安全：Hub/API 创建 backlog 任务只能是 epic（禁止直写 work 绕过 transfer）。"""
+    kind = str(body.get("card_kind") or "").strip().lower()
+    if kind == "work":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": "role_lock_violation",
+                "message": "API 禁止创建 card_kind=work；请走 /api/desktop/transfer（epic）由 product 扇出",
+            },
+        )
+    body["card_kind"] = "epic"
+    # 禁止附带 phases 跳过 product（除非显式运维开关）
+    import os
+
+    if os.environ.get("CCC_ALLOW_SEED_PHASES") != "1":
+        if body.get("phases_jsonl") or body.get("phases"):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "error": "seed_phases_forbidden",
+                    "message": "禁止 API 附带 phases 跳过 product；设 CCC_ALLOW_SEED_PHASES=1 仅运维调试",
+                },
+            )
+
+
 @router.post("/api/board/proxy/tasks")
 async def board_proxy_create_task(request: Request):
-    """Create backlog task; optional plan_md + phases_jsonl skip product."""
+    """Create backlog epic；默认禁止 phases 跳过 product（安全对齐 2026-07-19）。"""
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):
@@ -242,6 +270,7 @@ async def board_proxy_create_task(request: Request):
     _assert_dispatchable_workspace(workspace)
     if not body.get("status"):
         body["status"] = "backlog"
+    _enforce_epic_only_create(body)
 
     plan_md = body.pop("plan_md", None)
     phases_jsonl = body.pop("phases_jsonl", None)
@@ -249,6 +278,12 @@ async def board_proxy_create_task(request: Request):
         raise HTTPException(status_code=400, detail="plan_md must be string")
     if phases_jsonl is not None and not isinstance(phases_jsonl, str):
         raise HTTPException(status_code=400, detail="phases_jsonl must be string")
+    # 双保险：即便开关打开，也只在 CCC_ALLOW_SEED_PHASES=1 时写 seed
+    import os
+
+    if os.environ.get("CCC_ALLOW_SEED_PHASES") != "1":
+        plan_md = None
+        phases_jsonl = None
 
     resp = await board_proxy("POST", "/api/tasks", json_body=body)
 
@@ -422,7 +457,7 @@ async def native_task_events(request: Request, task_id: str, workspace: str = "C
 
 @router.post("/api/tasks")
 async def native_create_task(request: Request):
-    """Thin proxy; Chat task dialog with seed uses /api/board/proxy/tasks."""
+    """Thin proxy；仅允许创建 epic（禁止 work 绕过 transfer）。"""
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):
@@ -431,6 +466,7 @@ async def native_create_task(request: Request):
     _assert_dispatchable_workspace(body["workspace"])
     if not body.get("status"):
         body["status"] = "backlog"
+    _enforce_epic_only_create(body)
     workspace = body["workspace"]
     resp = await board_proxy("POST", "/api/tasks", json_body=body)
     if resp.status_code in (200, 201):
