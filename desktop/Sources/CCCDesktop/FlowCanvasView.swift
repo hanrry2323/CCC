@@ -33,8 +33,8 @@ struct FlowCanvasView: View {
         .onChange(of: splitGeneration) { _ in
             restartSplitAnimation()
         }
-        .onChange(of: works.map(\.id)) { _ in
-            // 同世代内 works 陆续到达：补跑显现
+        .onChange(of: works) { _ in
+            // 同世代内 works 陆续到达：补跑显现（FlowWork: Hashable）
             if !works.isEmpty, revealedWorkIds.count < works.count {
                 runRevealSequence(token: animToken)
             }

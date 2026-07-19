@@ -34,29 +34,10 @@ enum FlowLayout {
         )
         nodes.append(epicNode)
 
-        let workIds = Set(works.map(\.id))
-        var depth: [String: Int] = [:]
-        func computeDepth(_ id: String, stack: Set<String> = []) -> Int {
-            if let d = depth[id] { return d }
-            if stack.contains(id) { return 0 }
-            // 硬上限：扇出 works 通常 <10；防异常依赖链栈溢出
-            if stack.count >= 32 { return 0 }
-            guard let w = works.first(where: { $0.id == id }) else { return 0 }
-            let deps = w.dependsOn.filter { workIds.contains($0) }
-            if deps.isEmpty {
-                depth[id] = 0
-                return 0
-            }
-            var next = stack
-            next.insert(id)
-            let d = 1 + (deps.map { computeDepth($0, stack: next) }.max() ?? 0)
-            depth[id] = d
-            return d
-        }
-        for w in works { _ = computeDepth(w.id) }
-
+        let depth = workDepths(works)
         let maxDepth = depth.values.max() ?? 0
         var layers: [[FlowWork]] = Array(repeating: [], count: max(1, maxDepth + 1))
+        let workIds = Set(works.map(\.id))
         if !works.isEmpty {
             layers = Array(repeating: [], count: maxDepth + 1)
             for w in works {
@@ -141,14 +122,25 @@ enum FlowLayout {
     /// 按依赖分层（供拆分动画 stagger）
     static func layers(works: [FlowWork]) -> [[FlowWork]] {
         guard !works.isEmpty else { return [] }
-        let workIds = Set(works.map(\.id))
+        let depth = workDepths(works)
+        let maxDepth = depth.values.max() ?? 0
+        var layers: [[FlowWork]] = Array(repeating: [], count: maxDepth + 1)
+        for w in works {
+            layers[depth[w.id] ?? 0].append(w)
+        }
+        return layers
+    }
+
+    /// 共享深度计算：环检测 + 深度硬上限 32
+    private static func workDepths(_ works: [FlowWork]) -> [String: Int] {
+        let byId = Dictionary(uniqueKeysWithValues: works.map { ($0.id, $0) })
+        let workIds = Set(byId.keys)
         var depth: [String: Int] = [:]
-        func computeDepth(_ id: String, stack: Set<String> = []) -> Int {
+        func computeDepth(_ id: String, stack: Set<String>) -> Int {
             if let d = depth[id] { return d }
             if stack.contains(id) { return 0 }
-            // 硬上限：扇出 works 通常 <10；防异常依赖链栈溢出
             if stack.count >= 32 { return 0 }
-            guard let w = works.first(where: { $0.id == id }) else { return 0 }
+            guard let w = byId[id] else { return 0 }
             let deps = w.dependsOn.filter { workIds.contains($0) }
             if deps.isEmpty {
                 depth[id] = 0
@@ -160,12 +152,7 @@ enum FlowLayout {
             depth[id] = d
             return d
         }
-        for w in works { _ = computeDepth(w.id) }
-        let maxDepth = depth.values.max() ?? 0
-        var layers: [[FlowWork]] = Array(repeating: [], count: maxDepth + 1)
-        for w in works {
-            layers[depth[w.id] ?? 0].append(w)
-        }
-        return layers
+        for w in works { _ = computeDepth(w.id, stack: []) }
+        return depth
     }
 }

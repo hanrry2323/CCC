@@ -86,11 +86,33 @@ async def board_proxy(
                 media_type="application/json",
                 headers={"ETag": etag} if etag else {},
             )
-        else:
+        elif method.upper() == "POST":
             resp = await client.post(url, json=json_body, headers=headers)
             return Response(
                 content=resp.content,
                 status_code=resp.status_code,
+                media_type="application/json",
+            )
+        elif method.upper() == "PUT":
+            resp = await client.put(url, json=json_body, headers=headers)
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+        elif method.upper() == "DELETE":
+            resp = await client.delete(url, params=params, headers=headers)
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+        else:
+            return Response(
+                content=json.dumps(
+                    {"error": f"unsupported method: {method}"}, ensure_ascii=False
+                ),
+                status_code=405,
                 media_type="application/json",
             )
     except (httpx.ConnectError, httpx.TimeoutException):

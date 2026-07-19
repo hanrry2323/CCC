@@ -78,7 +78,7 @@ enum TransferDraftParser {
     }
 
     private static func extractFence(_ text: String, language: String) -> String? {
-        let pattern = "```\\s*\(language)\\s*\\n([\\s\\S]*?)\\n```"
+        let pattern = "```\\s*\(language)\\s*\\r?\\n([\\s\\S]*?)\\r?\\n```"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return nil
         }

@@ -677,7 +677,13 @@ async def list_executors(request: Request):
     scripts = Path(__file__).resolve().parents[2]
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
-    from executors.registry import EXECUTOR_IDS
+    try:
+        from executors.registry import EXECUTOR_IDS
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"executors registry unavailable: {exc}",
+        ) from exc
 
     return {
         "ok": True,

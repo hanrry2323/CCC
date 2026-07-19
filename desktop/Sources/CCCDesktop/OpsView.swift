@@ -241,7 +241,12 @@ struct OpsView: View {
                 Text("日审")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button("跑日审") { Task { await model.runDailyReview(workspace: adoptWorkspace) } }
+                Button("跑日审") {
+                    let ws = model.boardWorkspaceLabel
+                        ?? model.selectedProject?.workspace
+                        ?? "CCC"
+                    Task { await model.runDailyReview(workspace: ws) }
+                }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
                     .disabled(model.opsAdoptBusy)

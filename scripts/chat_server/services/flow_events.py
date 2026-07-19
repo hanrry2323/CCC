@@ -9,7 +9,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .. import config
 
@@ -320,43 +320,6 @@ def format_sse(event: str, data: dict | list | str) -> str:
     payload = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"
 
-
-def iter_sse_heartbeat_and_poll(
-    *,
-    fetch_snapshot,
-    interval: float = 2.0,
-    heartbeat: float = 15.0,
-) -> Iterator[str]:
-    """简易轮询合成 SSE（MVP）。"""
-    last_sig = ""
-    last_beat = 0.0
-    while True:
-        now = time.time()
-        try:
-            snap = fetch_snapshot()
-            sig = json.dumps(snap, sort_keys=True, ensure_ascii=False)
-            if sig != last_sig:
-                last_sig = sig
-                yield format_sse("fanout", {
-                    "epic_id": snap.get("epic_id"),
-                    "works": snap.get("works") or [],
-                })
-                for w in snap.get("works") or []:
-                    yield format_sse(
-                        "work_status",
-                        {
-                            "epic_id": snap.get("epic_id"),
-                            "work_id": w.get("id"),
-                            "status": w.get("status"),
-                            "executor": w.get("executor"),
-                        },
-                    )
-        except Exception as exc:
-            yield format_sse("error", {"message": str(exc)[:200]})
-        if now - last_beat >= heartbeat:
-            last_beat = now
-            yield format_sse("ping", {"t": int(now)})
-        time.sleep(interval)
 
 
 # 供测试注入 chat dir 旁路

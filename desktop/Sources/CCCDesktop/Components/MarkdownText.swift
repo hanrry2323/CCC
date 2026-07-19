@@ -6,6 +6,10 @@ struct MarkdownText: View {
     var font: Font = CCCTheme.body
     var foreground: Color = CCCTheme.ink
 
+    /// 缓存 parse 结果，避免每个 SwiftUI body 求值全量重扫
+    @State private var blocks: [Block] = []
+    @State private var parsedSource: String = "\u{0}" // 哨兵：强制首次 parse
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -66,6 +70,14 @@ struct MarkdownText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { reparseIfNeeded() }
+        .onChange(of: source) { _ in reparseIfNeeded() }
+    }
+
+    private func reparseIfNeeded() {
+        guard source != parsedSource else { return }
+        parsedSource = source
+        blocks = Self.parse(source)
     }
 
     @ViewBuilder
@@ -97,11 +109,12 @@ struct MarkdownText: View {
         case blank
     }
 
-    private var blocks: [Block] {
-        Self.parse(source)
-    }
-
     // MARK: - Parse
+
+    private static let extensionRE: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(\.[A-Za-z0-9]{1,8})([A-Z])"#)
+    }()
 
     private static func parse(_ source: String) -> [Block] {
         var result: [Block] = []
@@ -156,7 +169,6 @@ struct MarkdownText: View {
                 continue
             }
 
-            // table
             if trimmed.contains("|"), i + 1 < lines.count, isSeparatorRow(lines[i + 1]) {
                 flushPara()
                 var tableLines = [line, lines[i + 1]]
@@ -170,7 +182,6 @@ struct MarkdownText: View {
                 continue
             }
 
-            // heading
             if let h = headingMatch(trimmed) {
                 flushPara()
                 result.append(.heading(level: h.0, text: h.1))
@@ -178,7 +189,6 @@ struct MarkdownText: View {
                 continue
             }
 
-            // bullet
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
                 flushPara()
                 let body = String(trimmed.dropFirst(2))
@@ -187,7 +197,6 @@ struct MarkdownText: View {
                 continue
             }
 
-            // ordered
             if let ord = orderedMatch(trimmed) {
                 flushPara()
                 result.append(.ordered(ord.0, ord.1))
@@ -195,7 +204,6 @@ struct MarkdownText: View {
                 continue
             }
 
-            // unglue glued filenames: foo.mdBar → keep as one visual line but insert space
             para.append(unglueExtensions(line))
             i += 1
         }
@@ -224,11 +232,10 @@ struct MarkdownText: View {
     }
 
     private static func unglueExtensions(_ line: String) -> String {
-        guard let re = try? NSRegularExpression(pattern: #"(\.[A-Za-z0-9]{1,8})([A-Z])"#) else {
-            return line
-        }
         let range = NSRange(line.startIndex..<line.endIndex, in: line)
-        return re.stringByReplacingMatches(in: line, options: [], range: range, withTemplate: "$1 $2")
+        return extensionRE.stringByReplacingMatches(
+            in: line, options: [], range: range, withTemplate: "$1 $2"
+        )
     }
 
     private static func isSeparatorRow(_ line: String) -> Bool {
@@ -253,45 +260,64 @@ struct MarkdownText: View {
         return (headers, rows)
     }
 
-    /// 行内 **bold** / `code` / *italic* — 不触发段落级 Markdown 解析
+    /// 行内 **bold** / `code` / *italic* — Index 滑窗，避免 removeFirst O(n²)
     private static func attributedInline(_ raw: String, base: Font) -> AttributedString {
-        var attr = AttributedString(raw)
-        attr.font = base
-
-        // Simple rebuild: **bold**, `code`, *italic*
+        if raw.isEmpty { return AttributedString() }
         var out = AttributedString()
-        var s = raw[...]
-        while !s.isEmpty {
-            if s.hasPrefix("**"), let end = s.dropFirst(2).range(of: "**") {
-                let inner = String(s[s.index(s.startIndex, offsetBy: 2)..<end.lowerBound])
-                var chunk = AttributedString(inner)
+        var i = raw.startIndex
+        var plainStart = i
+
+        func flushPlain(upTo end: String.Index) {
+            guard plainStart < end else { return }
+            var chunk = AttributedString(String(raw[plainStart..<end]))
+            chunk.font = base
+            out += chunk
+            plainStart = end
+        }
+
+        while i < raw.endIndex {
+            let rest = raw[i...]
+            if rest.hasPrefix("**"),
+               let end = rest.dropFirst(2).range(of: "**") {
+                flushPlain(upTo: i)
+                let innerStart = raw.index(i, offsetBy: 2)
+                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
                 chunk.font = .system(size: 14, weight: .semibold)
                 out += chunk
-                s = s[end.upperBound...]
+                i = end.upperBound
+                plainStart = i
                 continue
             }
-            if s.hasPrefix("`"), let end = s.dropFirst().range(of: "`") {
-                let inner = String(s[s.index(after: s.startIndex)..<end.lowerBound])
-                var chunk = AttributedString(inner)
+            if rest.hasPrefix("`"),
+               let end = rest.dropFirst().range(of: "`") {
+                flushPlain(upTo: i)
+                let innerStart = raw.index(after: i)
+                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
                 chunk.font = .system(size: 12.5, design: .monospaced)
                 chunk.backgroundColor = Color.black.opacity(0.06)
                 out += chunk
-                s = s[end.upperBound...]
+                i = end.upperBound
+                plainStart = i
                 continue
             }
-            if s.hasPrefix("*"), !s.hasPrefix("**"), let end = s.dropFirst().range(of: "*") {
-                let inner = String(s[s.index(after: s.startIndex)..<end.lowerBound])
-                var chunk = AttributedString(inner)
+            if rest.hasPrefix("*"), !rest.hasPrefix("**"),
+               let end = rest.dropFirst().range(of: "*") {
+                flushPlain(upTo: i)
+                let innerStart = raw.index(after: i)
+                var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
                 chunk.font = .system(size: 14).italic()
                 out += chunk
-                s = s[end.upperBound...]
+                i = end.upperBound
+                plainStart = i
                 continue
             }
-            let ch = s.removeFirst()
-            out += AttributedString(String(ch))
+            i = raw.index(after: i)
         }
+        flushPlain(upTo: raw.endIndex)
         if out.characters.isEmpty {
-            return AttributedString(raw)
+            var fallback = AttributedString(raw)
+            fallback.font = base
+            return fallback
         }
         return out
     }

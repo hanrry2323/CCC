@@ -414,9 +414,13 @@ actor APIClient {
         // Phase 1.6: 按行切片但用 cursor 一次性丢前缀，避免 removeSubrange 每行 O(n) 共 O(n²)
         let nlByte = Data([UInt8(ascii: "\n")])
         var buffer = Data()
+        let maxBuffer = 1_048_576 // 1MB：防异常超大单行撑爆内存
         for try await chunk in bytes {
             try Task.checkCancellation()
             buffer.append(chunk)
+            if buffer.count > maxBuffer {
+                throw APIError.http(413, "SSE line buffer exceeded \(maxBuffer) bytes")
+            }
             var cursor = buffer.startIndex
             while let r = buffer.range(of: nlByte, in: cursor..<buffer.endIndex) {
                 let lineData = buffer.subdata(in: cursor..<r.lowerBound)

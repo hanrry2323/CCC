@@ -329,10 +329,6 @@ struct BoardView: View {
                     .controlSize(.small)
                 }
                 Spacer()
-                Button("移动…") { /* future: submenu to move */ }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(true)
             }
         }
         .padding(20)

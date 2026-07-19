@@ -142,11 +142,8 @@ final class AppModel: ObservableObject {
     /// sidecar 未就绪时自动重探（避免启动竞态卡死「未就绪」）
     private var agentRecoverTask: Task<Void, Never>?
     private var lastWarmAt: Date?
-    /// 本机落盘节流
-    private var diskSaveTask: Task<Void, Never>?
-    /// 落盘闭包捕获的 (projectId, conversationId)，禁止用「稍后的 selectedProjectId」
-    private var pendingDiskProjectId: String?
-    private var pendingDiskThreadId: String?
+    /// 本机落盘节流：按 threadId 独立，避免多会话互相取消丢落盘
+    private var diskSaveTasks: [String: Task<Void, Never>] = [:]
 
     /// 兼容旧 UI 命名：仅反映「当前会话」是否在生成
     var isStreaming: Bool { currentThreadStreaming }
@@ -649,7 +646,7 @@ final class AppModel: ObservableObject {
         if selectedThreadId == threadId {
             messages = compacted
         }
-        flushDiskSave()
+        flushDiskSave(threadId: threadId)
         // agent session token 超阈值 → 重置注入摘要（节约 token）
         if sessionTokens >= Self.agentCompactTokenThreshold {
             await resetAgentSessionWithSummary(projectId: projectId, threadId: threadId, rounds: rounds)
@@ -750,15 +747,9 @@ final class AppModel: ObservableObject {
         } else {
             threadFlow[threadId] = snap
         }
-        if let pid = selectedProjectId {
-            let title = threads.first(where: { $0.thread_id == threadId })?.title
-            LocalSessionStore.saveMessages(
-                projectId: pid,
-                threadId: threadId,
-                messages: best,
-                title: title,
-                flow: threadFlow[threadId]
-            )
+        if selectedProjectId != nil {
+            // 统一落盘路径：取消节流后立即写，避免旧 flush 覆盖
+            flushDiskSave(threadId: threadId)
         }
     }
 
@@ -919,26 +910,43 @@ final class AppModel: ObservableObject {
         scheduleDiskSave(threadId: threadId)
     }
 
-    /// 本机落盘节流 ~300ms；闭包捕获 (projectId, conversationId)
+    /// 本机落盘节流 ~300ms；按 threadId 独立任务，禁止互相 cancel
     private func scheduleDiskSave(threadId: String) {
         let pid = Self.projectId(fromThreadId: threadId)
-        pendingDiskProjectId = pid.isEmpty ? selectedProjectId : pid
-        pendingDiskThreadId = threadId
-        diskSaveTask?.cancel()
-        diskSaveTask = Task { [weak self] in
+        let projectId = pid.isEmpty ? (selectedProjectId ?? "") : pid
+        guard !projectId.isEmpty else { return }
+        diskSaveTasks[threadId]?.cancel()
+        diskSaveTasks[threadId] = Task { [weak self, threadId, projectId] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled, let self else { return }
             await MainActor.run {
-                self.flushDiskSave()
+                self.writeDiskSave(threadId: threadId, projectId: projectId)
+                self.diskSaveTasks[threadId] = nil
             }
         }
     }
 
-    private func flushDiskSave() {
-        guard let tid = pendingDiskThreadId,
-              let pid = pendingDiskProjectId
-        else { return }
-        let msgs = threadMessages[tid] ?? (selectedThreadId == tid ? messages : [])
+    /// 立即落盘指定会话（切项目 / compact）；取消该 tid 的节流任务
+    private func flushDiskSave(threadId: String? = nil) {
+        if let tid = threadId {
+            diskSaveTasks[tid]?.cancel()
+            diskSaveTasks[tid] = nil
+            let pid = Self.projectId(fromThreadId: tid)
+            let projectId = pid.isEmpty ? (selectedProjectId ?? "") : pid
+            guard !projectId.isEmpty else { return }
+            writeDiskSave(threadId: tid, projectId: projectId)
+            return
+        }
+        // 刷全部 pending
+        let keys = Array(diskSaveTasks.keys)
+        for tid in keys {
+            flushDiskSave(threadId: tid)
+        }
+    }
+
+    private func writeDiskSave(threadId tid: String, projectId pid: String) {
+        let msgs = (threadMessages[tid] ?? (selectedThreadId == tid ? messages : []))
+            .filter { !$0.isStreaming || !$0.content.isEmpty }
         let title = threads.first(where: { $0.thread_id == tid })?.title
         var flow = threadFlow[tid]
         if flow?.epicId == nil, let eid = currentEpicId, selectedThreadId == tid {
@@ -1050,7 +1058,13 @@ final class AppModel: ObservableObject {
         guard hubReachable else { return }
         let pending = LocalSessionStore.loadPendingSync()
         for item in pending {
-            if item.attempts >= LocalSessionStore.maxSyncAttempts { continue }
+            if item.attempts >= LocalSessionStore.maxSyncAttempts {
+                // 耗尽重试：出队，避免僵尸项永久膨胀 pending-sync.json
+                LocalSessionStore.dequeueSync(
+                    projectId: item.project_id, threadId: item.thread_id
+                )
+                continue
+            }
             guard let rec = LocalSessionStore.load(projectId: item.project_id, threadId: item.thread_id)
             else {
                 LocalSessionStore.dequeueSync(projectId: item.project_id, threadId: item.thread_id)
@@ -1116,8 +1130,8 @@ final class AppModel: ObservableObject {
 
     /// 从 threadId "<projectId>::main" 反解 projectId
     static func projectId(fromThreadId threadId: String) -> String {
-        if let idx = threadId.firstIndex(of: ":") {
-            return String(threadId[..<idx])
+        if let range = threadId.range(of: "::") {
+            return String(threadId[..<range.lowerBound])
         }
         return threadId
     }
@@ -1457,7 +1471,7 @@ final class AppModel: ObservableObject {
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].transientNote = note
             }
-            objectWillChange.send()
+            // mutateThreadMessages → messages= 已触发 @Published；勿再 objectWillChange
             return
         case .toolUse, .toolResult, .cost, .done:
             break
@@ -1511,11 +1525,6 @@ final class AppModel: ObservableObject {
                     msgs[idx].toolsFinished = true
                 }
             }
-        }
-        if case .toolUse = event {
-            objectWillChange.send()
-        } else if case .toolResult = event {
-            objectWillChange.send()
         }
     }
 

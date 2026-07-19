@@ -180,6 +180,7 @@ struct CodexChatPane: View {
     @EnvironmentObject var model: AppModel
     /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
     @State private var composerText: String = ""
+    @State private var lastScrollTargetId: String = ""
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -363,9 +364,8 @@ struct CodexChatPane: View {
                         }
                         ForEach(model.messages) { msg in
                             CodexMessageRow(message: msg)
-                                // Phase 1.5: .id 不含 content.count — delta 不再重建整行；
-                                // toolSteps 计数 + running 计数仍保留以触发工具轨刷新
-                                .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)")
+                                // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
+                                .id("\(model.selectedThreadId ?? "")-\(msg.id)")
                                 .environmentObject(model)
                                 .contextMenu {
                                     Button("复制") { model.copyMessage(msg.content) }
@@ -392,15 +392,23 @@ struct CodexChatPane: View {
                 }
                 .onChange(of: model.messages.count) { _ in scroll(proxy) }
                 .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
+                .onChange(of: model.messages.last?.toolSteps.count) { _ in scroll(proxy) }
+                .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
             }
         }
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let last = model.messages.last else { return }
-        // Phase 1.5: scroll 目标与 .id 同构，避免 scrollTo 命中失败
-        let lastId = "\(model.selectedThreadId ?? "")-\(last.id)-t\(last.toolSteps.count)-r\(last.toolSteps.filter { $0.status == .running }.count)"
-        // Cursor 式：最新内容居中而非贴底
+        let lastId = "\(model.selectedThreadId ?? "")-\(last.id)"
+        // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
+        guard lastId != lastScrollTargetId || model.messages.last?.isStreaming == true else { return }
+        // streaming 时节流：仅当内容长度跨过 80 字边界或目标变化才滚
+        if last.isStreaming, lastId == lastScrollTargetId {
+            let n = last.content.count
+            if n > 0, n % 80 != 0 { return }
+        }
+        lastScrollTargetId = lastId
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(lastId, anchor: .center)
         }

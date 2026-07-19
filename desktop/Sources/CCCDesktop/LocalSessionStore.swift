@@ -77,32 +77,55 @@ enum LocalSessionStore {
         try? fm.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
+
     private static func isoNow() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        isoFormatter.string(from: Date())
     }
 
     // MARK: - Read / write session
 
     static func load(projectId: String, threadId: String) -> Record? {
         let url = sessionURL(projectId: projectId, threadId: threadId)
+        guard fm.fileExists(atPath: url.path) else { return nil }
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(Record.self, from: data)
+        do {
+            return try JSONDecoder().decode(Record.self, from: data)
+        } catch {
+            // 损坏：备份后返回 nil，避免静默丢历史且无痕迹
+            let bak = url.appendingPathExtension("corrupted")
+            try? fm.removeItem(at: bak)
+            try? fm.copyItem(at: url, to: bak)
+            #if DEBUG
+            print("[LocalSessionStore] corrupt session \(url.lastPathComponent): \(error)")
+            #endif
+            return nil
+        }
     }
 
     static func save(_ record: Record) {
         ensureDir(projectDir(record.project_id))
         var rec = record
         rec.updated_at = isoNow()
-        guard let data = try? JSONEncoder().encode(rec) else { return }
+        guard let data = try? JSONEncoder().encode(rec) else {
+            #if DEBUG
+            print("[LocalSessionStore] encode failed for \(rec.thread_id)")
+            #endif
+            return
+        }
         try? data.write(to: sessionURL(projectId: rec.project_id, threadId: rec.thread_id), options: .atomic)
         upsertIndex(projectId: rec.project_id, threadId: rec.thread_id, title: rec.title, updatedAt: rec.updated_at)
     }
 
-    /// 内容丰富度：条数 + 字数 + 工具步（用于禁止空 Hub 盖掉本机）
+    /// 内容丰富度：条数 + 字数 + assistant 加权 + 工具步（用于禁止空 Hub 盖掉本机）
     static func messageScore(_ messages: [ChatMessage]) -> Int {
         let body = messages.reduce(0) { $0 + $1.content.count }
         let tools = messages.reduce(0) { $0 + $1.toolSteps.count }
-        return messages.count * 1000 + body + tools * 50
+        let assistants = messages.filter { $0.role == "assistant" }.count
+        return messages.count * 1000 + body + tools * 50 + assistants * 200
     }
 
     static func saveMessages(
@@ -156,10 +179,11 @@ enum LocalSessionStore {
     }
 
     static func delete(projectId: String, threadId: String) {
-        try? fm.removeItem(at: sessionURL(projectId: projectId, threadId: threadId))
+        // 先改 index 再删文件，避免「文件已删但 index 仍指向」
         var idx = loadIndex(projectId: projectId)
         idx.removeAll { $0.thread_id == threadId }
         writeIndex(projectId: projectId, entries: idx)
+        try? fm.removeItem(at: sessionURL(projectId: projectId, threadId: threadId))
     }
 
     /// 重置项目的单一会话：删盘 + 清索引；调用方负责通知 sidecar drop slot
