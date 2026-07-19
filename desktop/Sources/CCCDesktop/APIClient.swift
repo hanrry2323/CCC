@@ -338,6 +338,12 @@ actor APIClient {
         if !(200..<300).contains(code) {
             var errBody = ""
             for try await line in bytes.lines { errBody += line; if errBody.count > 400 { break } }
+            if code == 401 || code == 503 {
+                throw APIError.http(
+                    code,
+                    "本机 Agent 鉴权失败（\(code)）。请确认 ~/.ccc/agent-token 存在，并重装 Desktop：bash desktop/scripts/package-baseline.sh && cp -R desktop/.build/CCCDesktop.app /Applications/"
+                )
+            }
             throw APIError.http(code, errBody)
         }
 

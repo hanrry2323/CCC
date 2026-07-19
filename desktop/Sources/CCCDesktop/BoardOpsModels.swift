@@ -198,7 +198,7 @@ struct OpsDocsDebtResp: Decodable {
     let generated_at: String?
 }
 struct OpsDocsDebtItem: Identifiable, Decodable, Hashable {
-    var id: String { "\(workspace)-\(file ?? "")" }
+    var id: String { "\(workspace ?? "")-\(file ?? "")" }
     let workspace: String?
     let file: String?
     let issue: String?
