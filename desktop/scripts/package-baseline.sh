@@ -45,6 +45,17 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>CCC Desktop 需要访问局域网中的 Hub（编排）与模型中转站，以加载项目、转任务并显示调用次数。</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_http._tcp</string>
+  </array>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
 </dict>
 </plist>
 PLIST
@@ -53,3 +64,9 @@ echo "OK release binary: $ROOT/$BIN"
 echo "OK app bundle:     $APP_DIR (version ${VER} build ${BUILD})"
 ls -lh "$BIN" "$APP_DIR/Contents/MacOS/CCCDesktop"
 /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_DIR/Contents/Info.plist"
+
+# 绑定 Info.plist（局域网权限文案等）到 adhoc 签名，否则 TCC 不认
+codesign --force --deep --sign - \
+  --identifier "com.ccc.desktop" \
+  "$APP_DIR" 2>/dev/null || codesign --force --sign - "$APP_DIR/Contents/MacOS/CCCDesktop"
+codesign -dv --verbose=2 "$APP_DIR" 2>&1 | head -20 || true

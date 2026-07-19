@@ -3,12 +3,19 @@ import Foundation
 import SwiftUI
 
 // MARK: - ChatState：隔离流式 delta 通知到消息列表区
-// 只有订阅了 chat 的视图（消息列表）在 delta 时重绘，
-// 侧栏/右栏/状态栏不受影响
+// 消息列表用 @ObservedObject 订阅本对象；侧栏/右栏只看 AppModel
 @MainActor
 final class ChatState: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
+
+    /// 就地改 struct 字段时强制触发 @Published（下标 mutate 不一定发 willSet）
+    func replaceMessage(id: UUID, _ update: (inout ChatMessage) -> Void) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        var copy = messages
+        update(&copy[idx])
+        messages = copy
+    }
 }
 
 @MainActor
@@ -997,15 +1004,18 @@ final class AppModel: ObservableObject {
             }
             threadMessages[threadId] = msgs
         }
-        if selectedThreadId == threadId,
-           let mIdx = chat.messages.firstIndex(where: { $0.id == assistantId }) {
-            chat.messages[mIdx].content += chunk
-            if chat.messages[mIdx].transientNote != nil {
-                chat.messages[mIdx].transientNote = nil
+        if selectedThreadId == threadId {
+            chat.replaceMessage(id: assistantId) { m in
+                m.content += chunk
+                if m.transientNote != nil {
+                    m.transientNote = nil
+                }
             }
-        } else if selectedThreadId == threadId, let msgs = threadMessages[threadId] {
             // 兜底：messages 与 threadMessages 不同步时整表对齐一次
-            chat.messages = msgs
+            if !chat.messages.contains(where: { $0.id == assistantId }),
+               let msgs = threadMessages[threadId] {
+                chat.messages = msgs
+            }
         }
         scheduleDiskSave(threadId: threadId)
     }

@@ -211,6 +211,17 @@ struct CodexSidebar: View {
 
 struct CodexChatPane: View {
     @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        // 必须把 ChatState 交给子视图 @ObservedObject，嵌套 OO 否则流式不刷新
+        CodexChatPaneBody(chat: model.chat)
+            .environmentObject(model)
+    }
+}
+
+struct CodexChatPaneBody: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var chat: ChatState
     /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
     @State private var composerText: String = ""
     @State private var lastScrollTargetId: String = ""
@@ -325,7 +336,7 @@ struct CodexChatPane: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-                .disabled(model.chat.messages.isEmpty)
+                .disabled(chat.messages.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
@@ -382,7 +393,7 @@ struct CodexChatPane: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        if model.chat.messages.isEmpty {
+                        if chat.messages.isEmpty {
                             VStack(spacing: 8) {
                                 Spacer().frame(height: 72)
                                 Text("有什么可以帮忙的？")
@@ -395,7 +406,7 @@ struct CodexChatPane: View {
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
                         }
-                        ForEach(model.chat.messages) { msg in
+                        ForEach(chat.messages) { msg in
                             CodexMessageRow(message: msg)
                                 // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
                                 .id("\(model.selectedThreadId ?? "")-\(msg.id)")
@@ -423,19 +434,19 @@ struct CodexChatPane: View {
                     .padding(.horizontal, 28)
                     .padding(.top, 8)
                 }
-                .onChange(of: model.chat.messages.count) { _ in scroll(proxy) }
-                .onChange(of: model.chat.messages.last?.content) { _ in scroll(proxy) }
-                .onChange(of: model.chat.messages.last?.toolSteps.count) { _ in scroll(proxy) }
+                .onChange(of: chat.messages.count) { _ in scroll(proxy) }
+                .onChange(of: chat.messages.last?.content) { _ in scroll(proxy) }
+                .onChange(of: chat.messages.last?.toolSteps.count) { _ in scroll(proxy) }
                 .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
             }
         }
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
-        guard let last = model.chat.messages.last else { return }
+        guard let last = chat.messages.last else { return }
         let lastId = "\(model.selectedThreadId ?? "")-\(last.id)"
         // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
-        guard lastId != lastScrollTargetId || model.chat.messages.last?.isStreaming == true else { return }
+        guard lastId != lastScrollTargetId || chat.messages.last?.isStreaming == true else { return }
         // streaming 时节流：仅当内容长度跨过 80 字边界或目标变化才滚
         if last.isStreaming, lastId == lastScrollTargetId {
             let n = last.content.count
