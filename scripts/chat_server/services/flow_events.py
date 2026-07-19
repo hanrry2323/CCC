@@ -30,8 +30,12 @@ def append_event(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
     }
     path = events_log_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    try:
+        from _jsonl_rotate import append_jsonl
+        append_jsonl(path, rec)
+    except ImportError:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return rec
 
 

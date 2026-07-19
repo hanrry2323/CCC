@@ -66,12 +66,62 @@ jobs:
           python-version: "3.12"
       - name: Install pre-commit
         run: pip install pre-commit
-      - name: Run pre-commit (best-effort, no fail on missing hook scripts)
+      - name: Run pre-commit
         run: |
           if [ -f .pre-commit-config.yaml ]; then
-            pre-commit run --all-files || true
+            pre-commit run --all-files
+          else
+            echo "no .pre-commit-config.yaml — skip"
           fi
-        continue-on-error: true  # don't block on missing pre-commit fixtures
+
+  e2e:
+    name: e2e (pipeline smoke + green + f1)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
+      - name: Pipeline smoke
+        run: bash tests/e2e/test_pipeline_smoke.sh
+      - name: Green pipeline e2e
+        run: bash tests/e2e/test_green_pipeline_e2e.sh
+      - name: F1 backlog failover
+        run: bash tests/e2e/test_f1_backlog_failover.sh
+
+  selfcheck:
+    name: self-check (syntax + security scan)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
+      - name: Run self-check
+        run: bash scripts/ccc-self-check.sh
+
+  scripts-tests:
+    name: scripts/tests (hub_voice + transfer_gate)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
+      - name: Run scripts/tests
+        run: pytest scripts/tests/ -v --tb=short
 
   cluster-doctor:
     name: cluster-doctor (smoke PoC)

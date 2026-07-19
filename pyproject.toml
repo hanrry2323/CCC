@@ -1,0 +1,54 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+  "desktop/",
+  "vendor/",
+  ".build/",
+  "node_modules/",
+]
+
+[tool.ruff.lint]
+# E/F/W = 基础 pycodestyle + pyflakes；I = isort；UP = pyupgrade
+select = ["E", "F", "W", "I", "UP"]
+ignore = [
+  "E501",   # line too long（已 line-length=120 兜底，不强制拆行）
+  "E701",   # multi-statement on one line（短 if ok）
+  "E722",   # bare except（部分兜底路径需要）
+  "E731",   # lambda assignment（部分排序 key 用 lambda）
+  "E402",   # module-level import not at top（延迟 import 较多）
+  "UP007",  # Optional[X] vs X | None — 保留旧风格兼容
+  "UP017",  # timezone.utc vs datetime.UTC — 保留旧风格
+  "UP035",  # typing.Iterator vs collections.abc — 保留旧风格
+  "UP045",  # Optional[X] 同上
+  "F401",   # unused import（部分模块为 side-effect 导入）
+  "F841",   # unused variable（部分测试占位）
+  "I001",   # import sorting（现有大量模块未排序，渐进式修复）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/scripts/*" = ["F401", "F841", "E402", "I001"]
+"scripts/ccc-engine.py" = ["E402"]  # 延迟 import 较多
+
+[tool.ruff.lint.isort]
+known-first-party = ["_board_store", "_config", "_executor", "_failure_ledger", "_jsonl_rotate", "_utils", "_ccc_control", "_engine_wake", "_ops_probe", "_stats_aggregator", "_claude_cli"]
+combine-as-imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/scripts", "tests/cluster", "scripts/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+  "-q",
+  "--tb=short",
+  "--strict-markers",
+]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests requiring live subprocess",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::PendingDeprecationWarning",
+]

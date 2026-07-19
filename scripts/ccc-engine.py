@@ -310,20 +310,20 @@ def _is_upstream_healthy() -> bool:
         try:
             probe_dir = Path.home() / ".ccc" / "stats"
             probe_dir.mkdir(parents=True, exist_ok=True)
-            with (probe_dir / "upstream-probe.jsonl").open("a", encoding="utf-8") as fh:
-                fh.write(
-                    json.dumps(
-                        {
-                            "ts": now_iso(),
-                            "healthy": healthy,
-                            "status": status_code,
-                            "error": err_msg or None,
-                            "relay": relay,
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
+            probe_path = probe_dir / "upstream-probe.jsonl"
+            probe_record = {
+                "ts": now_iso(),
+                "healthy": healthy,
+                "status": status_code,
+                "error": err_msg or None,
+                "relay": relay,
+            }
+            try:
+                from _jsonl_rotate import append_jsonl
+                append_jsonl(probe_path, probe_record)
+            except ImportError:
+                with probe_path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(probe_record, ensure_ascii=False) + "\n")
         except Exception:
             pass
     if not healthy:
@@ -364,9 +364,15 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
         "reason": reason,
     }
     try:
-        _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        from _jsonl_rotate import append_jsonl
+        append_jsonl(_RESTART_LOG_PATH, entry)
+    except ImportError:
+        try:
+            _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
     except OSError:
         pass
 
@@ -499,8 +505,14 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
     }
     record.update(extra)
     try:
-        with sf.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        from _jsonl_rotate import append_jsonl
+        append_jsonl(sf, record)
+    except ImportError:
+        try:
+            with sf.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
     except OSError:
         pass
 

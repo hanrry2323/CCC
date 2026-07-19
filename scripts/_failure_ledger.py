@@ -14,6 +14,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from _jsonl_rotate import append_jsonl, tail_read_jsonl
+except ImportError:
+    append_jsonl = None
+    tail_read_jsonl = None
+
 _log = logging.getLogger("ccc.failures")
 
 _MAX_TAIL_CHARS = 2048
@@ -98,13 +104,23 @@ def record_failure(
         row["extra"] = extra
 
     line = json.dumps(row, ensure_ascii=False) + "\n"
-    with out.open("a", encoding="utf-8") as f:
-        f.write(line)
+    if append_jsonl is not None:
+        append_jsonl(out, row)
+    else:
+        try:
+            with out.open("a", encoding="utf-8") as f:
+                f.write(line)
+        except OSError:
+            pass
     return out
 
 
 def read_failures(workspace: Path, *, last: int = 20) -> list[dict[str, Any]]:
+    """Phase 4.3: tail-style 读最近 last 条（默认 200），跨轮转备份文件。"""
     path = failures_path(workspace)
+    if tail_read_jsonl is not None:
+        return tail_read_jsonl(path, last=max(last, 200) if last > 0 else 0)[-last:] if last > 0 else tail_read_jsonl(path, 0)
+    # 回退：原始整文件读
     if not path.is_file():
         return []
     rows: list[dict[str, Any]] = []
