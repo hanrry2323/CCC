@@ -31,6 +31,16 @@ CHAT_SESSION_IDLE_TTL = int(os.environ.get("CCC_CHAT_SESSION_IDLE_TTL", "900"))
 CHAT_SESSION_IDLE_TTL = max(60, min(CHAT_SESSION_IDLE_TTL, 7200))
 CHAT_SESSION_MAX_LIVE = int(os.environ.get("CCC_CHAT_SESSION_MAX_LIVE", "4"))
 CHAT_SESSION_MAX_LIVE = max(1, min(CHAT_SESSION_MAX_LIVE, 16))
+# 热路径防挂死：拿 slot 锁 / connect / 超时后 drain 的硬上限（秒）
+CHAT_LOCK_WAIT = int(os.environ.get("CCC_CHAT_LOCK_WAIT", "15"))
+CHAT_LOCK_WAIT = max(3, min(CHAT_LOCK_WAIT, 120))
+CHAT_CONNECT_TIMEOUT = int(os.environ.get("CCC_CHAT_CONNECT_TIMEOUT", "30"))
+CHAT_CONNECT_TIMEOUT = max(5, min(CHAT_CONNECT_TIMEOUT, 120))
+CHAT_DRAIN_TIMEOUT = int(os.environ.get("CCC_CHAT_DRAIN_TIMEOUT", "8"))
+CHAT_DRAIN_TIMEOUT = max(2, min(CHAT_DRAIN_TIMEOUT, 60))
+# warm 抢锁失败快返回（勿阻塞后续 chat）
+CHAT_WARM_LOCK_WAIT = int(os.environ.get("CCC_CHAT_WARM_LOCK_WAIT", "3"))
+CHAT_WARM_LOCK_WAIT = max(1, min(CHAT_WARM_LOCK_WAIT, 30))
 # 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
 CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))
 CHAT_DIR.mkdir(parents=True, exist_ok=True)

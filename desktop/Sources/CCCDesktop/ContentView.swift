@@ -275,7 +275,7 @@ struct CodexChatPaneBody: View {
             Circle()
                 .fill(model.canChat ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
-            Text(model.statusText)
+            Text(model.chat.streamStatus.isEmpty ? model.statusText : model.chat.streamStatus)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
             Text(model.agentBadge)

@@ -3,6 +3,7 @@ import Foundation
 /// Desktop 拉起本机 Agent Sidecar：优先 launchd KeepAlive，失败再 nohup。
 enum AgentSidecarLauncher {
     static let launchdLabel = "com.ccc.agent-sidecar"
+    static let defaultAgentBase = "http://127.0.0.1:7788"
 
     struct Result: Sendable {
         let launched: Bool
@@ -39,10 +40,49 @@ enum AgentSidecarLauncher {
         return nil
     }
 
-    /// 确保 sidecar 在跑：launchd kickstart → install plist → nohup 兜底
+    /// 同步探测 sidecar /health（短超时）；健康则勿 kickstart -k
+    static func isHealthy(agentBase: String = defaultAgentBase) -> Bool {
+        let raw = agentBase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty,
+              let base = URL(string: raw),
+              let url = URL(string: "health", relativeTo: base)?.absoluteURL
+        else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.timeoutInterval = 2
+        let sem = DispatchSemaphore(value: 0)
+        var ok = false
+        let task = URLSession.shared.dataTask(with: req) { data, resp, _ in
+            defer { sem.signal() }
+            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            if let data,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let flag = obj["ok"] as? Bool {
+                ok = flag
+            } else {
+                ok = true
+            }
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 2.5)
+        return ok
+    }
+
+    /// 确保 sidecar 在跑：health 优先 → soft kickstart → 必要时 -k → install → nohup
     @discardableResult
-    static func ensureRunning(cccHomeHint: String?) -> Result {
-        guard let home = resolveCCCHome(configured: cccHomeHint) else {
+    static func ensureRunning(cccHomeHint: String?, agentBase: String = defaultAgentBase) -> Result {
+        let home = resolveCCCHome(configured: cccHomeHint)
+
+        // 0) 已健康：禁止 kickstart -k（避免 SIGTERM 风暴丢 live slot）
+        if isHealthy(agentBase: agentBase) {
+            return Result(
+                launched: true,
+                cccHome: home,
+                detail: "already healthy"
+            )
+        }
+
+        guard let home else {
             return Result(
                 launched: false,
                 cccHome: nil,
@@ -50,13 +90,23 @@ enum AgentSidecarLauncher {
             )
         }
 
-        // 1) 已有 launchd job：kickstart（KeepAlive 会自愈，这里催一下）
+        // 1) launchd job 已 load：先 soft kickstart，仍不健康再 -k
         if launchdJobLoaded() {
+            _ = runArgv([
+                "/bin/launchctl", "kickstart",
+                "gui/\(getuid())/\(launchdLabel)",
+            ])
+            if waitHealthy(agentBase: agentBase, seconds: 3) {
+                return Result(launched: true, cccHome: home, detail: "launchd kickstart")
+            }
             _ = runArgv([
                 "/bin/launchctl", "kickstart", "-k",
                 "gui/\(getuid())/\(launchdLabel)",
             ])
-            return Result(launched: true, cccHome: home, detail: "launchd kickstart")
+            if waitHealthy(agentBase: agentBase, seconds: 5) {
+                return Result(launched: true, cccHome: home, detail: "launchd kickstart -k")
+            }
+            return Result(launched: true, cccHome: home, detail: "launchd kickstart -k (warming)")
         }
 
         // 2) 安装并 load plist（常驻）— argv 数组，禁止 bash -c 拼接路径
@@ -65,6 +115,7 @@ enum AgentSidecarLauncher {
         if FileManager.default.fileExists(atPath: install) {
             let r = runArgv(["/bin/bash", install, "--start"])
             if r.ok {
+                _ = waitHealthy(agentBase: agentBase, seconds: 5)
                 return Result(launched: true, cccHome: home, detail: "launchd installed")
             }
             // 继续兜底
@@ -72,6 +123,16 @@ enum AgentSidecarLauncher {
 
         // 3) nohup 兜底（无 launchd / 权限失败）
         return nohupStart(home: home)
+    }
+
+    @discardableResult
+    private static func waitHealthy(agentBase: String, seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if isHealthy(agentBase: agentBase) { return true }
+            Thread.sleep(forTimeInterval: 0.35)
+        }
+        return isHealthy(agentBase: agentBase)
     }
 
     private static func launchdJobLoaded() -> Bool {

@@ -67,7 +67,6 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             let ink = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.82)
             let mute = NSColor(calibratedRed: 0.42, green: 0.38, blue: 0.34, alpha: 1)
             let green = NSColor(calibratedRed: 0.28, green: 0.58, blue: 0.38, alpha: 1)
-            let red = NSColor(calibratedRed: 0.78, green: 0.28, blue: 0.22, alpha: 1)
             let sepC = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.30)
 
             let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .medium)
@@ -87,12 +86,15 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
                 out.append(NSAttributedString(string: tier, attributes: [.font: font, .foregroundColor: mute]))
                 out.append(NSAttributedString(string: " \(total) ", attributes: [.font: fontReg, .foregroundColor: ink]))
                 out.append(NSAttributedString(
-                    string: live > 0 ? "+\(live)" : "0",
-                    attributes: [.font: fontSemi, .foregroundColor: live > 0 ? green : red]
+                    string: live > 0 ? "+\(live)" : "·",
+                    attributes: [
+                        .font: fontSemi,
+                        .foregroundColor: live > 0 ? green : mute,
+                    ]
                 ))
             }
             label.attributedText = out
-            label.toolTip = "今日总量 · +后为近 5 秒内新增调用"
+            label.toolTip = "今日总量 · +后为近 5 秒内新增（无新增显示 ·，非故障）"
             let w = ceil(out.size().width) + 20
             accessory?.view.setFrameSize(NSSize(width: max(300, w), height: 28))
         }

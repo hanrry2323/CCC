@@ -8,6 +8,8 @@ import SwiftUI
 final class ChatState: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
+    /// 流式局部状态文案（连接中/生成中）；避免每 token 刷 AppModel.statusText
+    @Published var streamStatus: String = ""
 
     /// 就地改 struct 字段时强制触发 @Published（下标 mutate 不一定发 willSet）
     func replaceMessage(id: UUID, _ update: (inout ChatMessage) -> Void) {
@@ -76,7 +78,7 @@ final class AppModel: ObservableObject {
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
 
-    @Published var flowEmptyMessage = "聊透后转任务，编排将在此展开"
+    @Published var flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
     @Published var flowWorks: [FlowWork] = []
     @Published var flowEpic: FlowEpic?
     @Published var flowHeadline: String = ""
@@ -291,8 +293,10 @@ final class AppModel: ObservableObject {
         // 尝试自启
         statusText = "连接 Agent…"
         let homeHint = cccHomePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let agentBase = agentURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         let launch = AgentSidecarLauncher.ensureRunning(
-            cccHomeHint: homeHint.isEmpty ? nil : homeHint
+            cccHomeHint: homeHint.isEmpty ? nil : homeHint,
+            agentBase: agentBase.isEmpty ? AgentSidecarLauncher.defaultAgentBase : agentBase
         )
         if launch.launched, let home = launch.cccHome, cccHomePath.isEmpty {
             cccHomePath = home
@@ -321,16 +325,22 @@ final class AppModel: ObservableObject {
         return nil
     }
 
-    private func warmLocalAgentNow(base: URL? = nil) async {
+    private func warmLocalAgentNow(base: URL? = nil, toolMode: String = "discuss") async {
+        // 已在流式时勿抢 slot 锁
+        if currentThreadStreaming || !liveStreamingThreadIds.isEmpty { return }
         let pid = selectedProjectId
         let path = localPath(for: pid)
         let sid = pid.map { LocalSessionStore.conversationThreadId(for: $0) }
-        let ok = await client.warmLocalAgent(
+        let result = await client.warmLocalAgent(
             base: base ?? cachedAgentBaseURL,
             projectPath: path,
-            sessionId: sid
+            sessionId: sid,
+            toolMode: toolMode
         )
-        if ok { lastWarmAt = Date() }
+        // 仅真暖（slot.connected）才记 lastWarmAt；cli-only 不算
+        if result.slotConnected {
+            lastWarmAt = Date()
+        }
     }
 
     private func startWarmLoopIfNeeded() {
@@ -371,13 +381,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 发送前：距上次 warm >90s 则补暖（真预连 slot）
-    // fire-and-forget：chat stream_turn 内 _ensure_connected 会自动等锁
-    // 不在发送前等 warm 完成，消除 3s SDK connect 阻塞
-    private func warmBeforeSendIfNeeded() {
+    /// 发送前：距上次真暖 >90s 则补暖；流式中跳过（避免抢锁）
+    private func warmBeforeSendIfNeeded(toolMode: String) {
         guard agentMode == "local" else { return }
+        if currentThreadStreaming || !liveStreamingThreadIds.isEmpty { return }
         if let last = lastWarmAt, Date().timeIntervalSince(last) < 90 { return }
-        Task { await warmLocalAgentNow() }
+        Task { await warmLocalAgentNow(toolMode: toolMode) }
     }
 
     private func setAgentModeNone(reason: String) {
@@ -610,8 +619,7 @@ final class AppModel: ObservableObject {
         } else if let bound = state.boundEpicId {
             let snap = FlowThreadSnapshot(
                 epicId: bound, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: "本对话尚未转任务；聊透后点「转任务」", fanoutHint: nil
-            )
+                recentEpics: [], emptyMessage: "编排空闲·等定稿下达（与对话故障无关）", fanoutHint: nil            )
             threadFlow[tid] = snap
         }
         chat.messages = state.messages
@@ -798,7 +806,7 @@ final class AppModel: ObservableObject {
             flowWorks = []
             flowHeadline = ""
             recentEpics = []
-            flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+            flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
             flowFanoutHint = nil
             selectedNodeDetail = nil
         }
@@ -887,7 +895,7 @@ final class AppModel: ObservableObject {
                 flowEpic = nil
                 flowWorks = []
                 flowHeadline = ""
-                flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+                flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
                 flowFanoutHint = nil
             }
             persistCurrentThreadSnapshot(threadId: threadId)
@@ -1178,10 +1186,22 @@ final class AppModel: ObservableObject {
     }
 
     /// delta 期间回退为 "text"（若当前是 "tool" 则保留工具态）
+    /// 节流：避免每个 token 刷侧栏 projectConvState
+    private var pendingConvTextThreadId: String?
+    private var convTextThrottleTask: Task<Void, Never>?
     private func setProjectConvTextState(threadId: String) {
-        let pid = Self.projectId(fromThreadId: threadId)
-        if streamingThreadIds.contains(threadId), projectConvState[pid] != "tool" {
-            projectConvState[pid] = "text"
+        pendingConvTextThreadId = threadId
+        if convTextThrottleTask != nil { return }
+        convTextThrottleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self else { return }
+            self.convTextThrottleTask = nil
+            guard let tid = self.pendingConvTextThreadId else { return }
+            self.pendingConvTextThreadId = nil
+            let pid = Self.projectId(fromThreadId: tid)
+            if self.streamingThreadIds.contains(tid), self.projectConvState[pid] != "tool" {
+                self.projectConvState[pid] = "text"
+            }
         }
     }
 
@@ -1333,7 +1353,8 @@ final class AppModel: ObservableObject {
 
         do {
             if selectedThreadId == threadId {
-                setStatusImmediate("连接 Agent…")
+                setStatusImmediate("连接本机 Agent…")
+                chat.streamStatus = "连接本机 Agent…"
             }
             try await prepareClient()
             // 业务仓未绑本机路径时提示一次（不阻断）
@@ -1341,13 +1362,14 @@ final class AppModel: ObservableObject {
                let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
                 showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
             }
-            warmBeforeSendIfNeeded()
-            if selectedThreadId == threadId {
-                setStatusImmediate("本机生成中…")
-            }
-            let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
             let mode = Self.promptMode(forUserText: text)
             let tools = Self.toolMode(forUserText: text)
+            warmBeforeSendIfNeeded(toolMode: tools)
+            if selectedThreadId == threadId {
+                setStatusImmediate("本机生成中…")
+                chat.streamStatus = "本机生成中…"
+            }
+            let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
 
             // 同会话自动重试 1 次（保留已生成的本地内容，清空半截助手再流）
             var streamError: Error?
@@ -1356,6 +1378,7 @@ final class AppModel: ObservableObject {
                     if attempt == 2 {
                         if selectedThreadId == threadId {
                             setStatusImmediate("重连中…")
+                            chat.streamStatus = "重连中…"
                         }
                         mutateThreadMessages(threadId: threadId) { msgs in
                             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
@@ -1395,6 +1418,8 @@ final class AppModel: ObservableObject {
                         || error.localizedDescription.contains("timed out")
                         || error.localizedDescription.contains("Timeout")
                         || error.localizedDescription.contains("连接")
+                        || error.localizedDescription.contains("无响应")
+                        || error.localizedDescription.contains("挂死")
                         || (error as? APIError).map { if case .http = $0 { return true }; return false } ?? false
                         || (error as NSError).domain == NSURLErrorDomain
                     if attempt == 1 && retryable {
@@ -1424,6 +1449,7 @@ final class AppModel: ObservableObject {
                 throw APIError.decode("模型无有效回复")
             }
             if selectedThreadId == threadId {
+                chat.streamStatus = ""
                 updateConnectionStatusText(localOK: canChat, hubOK: hubReachable)
             }
             // 解析定稿块
@@ -1448,6 +1474,9 @@ final class AppModel: ObservableObject {
             await syncMessagesToHub(projectId: projectId, threadId: threadId, messages: synced)
             await refreshThreads(projectId: projectId)
         } catch is CancellationError {
+            if selectedThreadId == threadId {
+                chat.streamStatus = ""
+            }
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].isStreaming = false
@@ -1478,6 +1507,7 @@ final class AppModel: ObservableObject {
             }
             if !cancelled {
                 if selectedThreadId == threadId {
+                    chat.streamStatus = ""
                     setStatusImmediate("本条失败")
                 }
                 showToast("对话失败：\(error.localizedDescription)")
@@ -1490,12 +1520,27 @@ final class AppModel: ObservableObject {
 
     private func applyChatEvent(threadId: String, assistantId: UUID, event: ChatStreamEvent) {
         switch event {
+        case .ping:
+            if selectedThreadId == threadId {
+                // 首包前 / idle：明确「连接中」，勿空泡假死
+                if chat.streamStatus.isEmpty
+                    || chat.streamStatus.contains("连接")
+                    || chat.streamStatus.contains("重连") {
+                    chat.streamStatus = "连接本机 Agent…"
+                    setStatusThrottled("连接本机 Agent…")
+                }
+            }
+            return
         case .delta(let chunk):
             // 末段长 result 分片喂入（去「弹出」）：> 500 字按 ~20 字/帧、50ms 间隔
             if chunk.count > 500 {
                 applyDeltaInChunks(threadId: threadId, assistantId: assistantId, chunk: chunk)
             } else {
                 applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
+            }
+            if selectedThreadId == threadId, chat.streamStatus != "本机生成中…" {
+                chat.streamStatus = "本机生成中…"
+                setStatusThrottled("本机生成中…")
             }
             setProjectConvTextState(threadId: threadId)
             return
@@ -1515,9 +1560,7 @@ final class AppModel: ObservableObject {
         mutateThreadMessages(threadId: threadId) { msgs in
             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
             switch event {
-            case .delta:
-                break
-            case .status:
+            case .ping, .delta, .status:
                 break
             case .toolUse(let name, let input):
                 let anyInput: [String: Any] = input
@@ -1533,6 +1576,7 @@ final class AppModel: ObservableObject {
                     msgs[idx].filesChanged += 1
                 }
                 if selectedThreadId == threadId {
+                    chat.streamStatus = "工具执行中…"
                     setStatusThrottled("工具执行中…")
                 }
             case .toolResult(let ok):
@@ -1557,6 +1601,9 @@ final class AppModel: ObservableObject {
                 if !msgs[idx].toolSteps.isEmpty {
                     msgs[idx].toolsFinished = true
                 }
+                if selectedThreadId == threadId {
+                    chat.streamStatus = ""
+                }
             }
         }
     }
@@ -1567,6 +1614,9 @@ final class AppModel: ObservableObject {
         chatTasks[tid]?.cancel()
         chatTasks[tid] = nil
         setThreadStreaming(tid, false)
+        if selectedThreadId == tid {
+            chat.streamStatus = ""
+        }
         if activeChatThreadId == tid {
             activeChatThreadId = streamingThreadIds.first
         }
@@ -2028,7 +2078,7 @@ final class AppModel: ObservableObject {
                 flowEpic = nil
                 flowWorks = []
                 flowHeadline = ""
-                flowEmptyMessage = "本对话尚未转任务；聊透后点「转任务」"
+                flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
             }
             persistCurrentThreadSnapshot(threadId: tid)
             await refreshFlow()
@@ -2077,7 +2127,8 @@ final class AppModel: ObservableObject {
                 if !flowWorks.isEmpty { flowWorks = [] }
                 if flowEpic != nil { flowEpic = nil }
                 if !flowHeadline.isEmpty { flowHeadline = "" }
-                let msg = snap.message ?? "聊透后转任务，编排将在此展开"
+                let msg = snap.message
+                    ?? "编排空闲·等定稿下达（与对话故障无关）"
                 if flowEmptyMessage != msg { flowEmptyMessage = msg }
             }
             return
@@ -2401,9 +2452,14 @@ final class AppModel: ObservableObject {
         routerUsageTask?.cancel()
         routerUsageTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refreshRouterUsage()
-                // 5s 窗口：+N = 本窗口内新增调用
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard let self else { break }
+                // 流式对话中降频：避免顶栏轮询加重「全家在忙」假死感
+                let streaming = !self.liveStreamingThreadIds.isEmpty || self.currentThreadStreaming
+                if !streaming {
+                    await self.refreshRouterUsage()
+                }
+                let sleepNs: UInt64 = streaming ? 15_000_000_000 : 5_000_000_000
+                try? await Task.sleep(nanoseconds: sleepNs)
             }
         }
     }

@@ -60,7 +60,7 @@ enum ConversationStore {
             works: [],
             headline: "",
             recentEpics: [],
-            emptyMessage: "本对话尚未转任务；聊透后点「转任务」",
+            emptyMessage: "编排空闲·等定稿下达（与对话故障无关）",
             fanoutHint: nil
         )
         if let bound = state.boundEpicId, !bound.isEmpty {

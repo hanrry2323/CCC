@@ -137,13 +137,44 @@ class ClaudeSessionManager:
             victim = candidates[0][1]
         await self._drop_slot(victim, reason="lru")
 
+    async def _acquire_slot_lock(
+        self, slot: _LiveSlot, *, timeout: float, reason: str
+    ) -> bool:
+        """带超时拿 slot 锁。失败返回 False（调用方应失败快返回 / force-drop）。"""
+        try:
+            await asyncio.wait_for(slot.lock.acquire(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            _log.warning(
+                "slot lock timeout key=%s wait=%.1fs reason=%s",
+                slot.key,
+                timeout,
+                reason,
+            )
+            return False
+
     async def _drop_slot(self, key: str, *, reason: str) -> bool:
         async with self._global_lock:
             slot = self._slots.pop(key, None)
         if slot is None:
             return False
-        async with slot.lock:
-            await self._disconnect_slot(slot)
+        got = await self._acquire_slot_lock(
+            slot, timeout=float(config.CHAT_LOCK_WAIT), reason=f"drop:{reason}"
+        )
+        try:
+            if got:
+                await self._disconnect_slot(slot)
+            else:
+                # 锁被占死：尽力 disconnect，避免永久假死
+                _log.warning(
+                    "force disconnect without lock key=%s reason=%s",
+                    key,
+                    reason,
+                )
+                await self._disconnect_slot(slot)
+        finally:
+            if got and slot.lock.locked():
+                slot.lock.release()
         _log.info(
             "dropped Claude session slot key=%s reason=%s claude_sid=%s",
             key,
@@ -151,6 +182,29 @@ class ClaudeSessionManager:
             slot.claude_session_id,
         )
         return True
+
+    async def _bounded_drain(self, slot: _LiveSlot) -> None:
+        """超时后有界排空 receive_response；失败则 disconnect，禁止无限占锁。"""
+        if not slot.connected or slot.client is None:
+            return
+        drain_s = float(config.CHAT_DRAIN_TIMEOUT)
+
+        async def _drain() -> None:
+            async for _ in slot.client.receive_response():
+                pass
+
+        try:
+            await asyncio.wait_for(_drain(), timeout=drain_s)
+        except asyncio.TimeoutError:
+            _log.warning(
+                "drain timeout key=%s after %.1fs → disconnect",
+                slot.key,
+                drain_s,
+            )
+            await self._disconnect_slot(slot)
+        except Exception:
+            _log.debug("drain failed key=%s", slot.key, exc_info=True)
+            await self._disconnect_slot(slot)
 
     async def compact_session(
         self,
@@ -285,7 +339,15 @@ class ClaudeSessionManager:
             tool_mode=getattr(slot, "tool_mode", "discuss"),
         )
         slot.client = ClaudeSDKClient(options=options)
-        await slot.client.connect()
+        connect_s = float(config.CHAT_CONNECT_TIMEOUT)
+        try:
+            await asyncio.wait_for(slot.client.connect(), timeout=connect_s)
+        except asyncio.TimeoutError as exc:
+            slot.connected = False
+            slot.client = None
+            raise TimeoutError(
+                f"Claude 连接超时（{int(connect_s)}s）"
+            ) from exc
         slot.connected = True
         if resume:
             slot.claude_session_id = resume
@@ -411,7 +473,30 @@ class ClaudeSessionManager:
             tool_mode=mode,
         )
 
-        async with slot.lock:
+        lock_wait = float(config.CHAT_LOCK_WAIT)
+        got_lock = await self._acquire_slot_lock(
+            slot, timeout=lock_wait, reason="stream_turn"
+        )
+        if not got_lock:
+            # 同项目被挂死 turn 占锁：force-drop 后让客户端重试
+            await self._drop_slot(slot.key, reason="lock_timeout")
+            yield {
+                "type": "error",
+                "content": (
+                    f"本机 Agent 会话忙或挂死（等锁 {int(lock_wait)}s），"
+                    "已强制释放，请重试"
+                ),
+                "code": "lock_timeout",
+            }
+            yield {
+                "type": "done",
+                "session_id": hub_session_id,
+                "claude_session_id": "",
+                "partial": True,
+            }
+            return
+
+        try:
             slot.last_used = time.monotonic()
             # 立刻心跳：connect 可能要数秒，避免前端一直空白
             yield {"type": "ping", "ts": int(time.time())}
@@ -427,6 +512,7 @@ class ClaudeSessionManager:
                 yield {
                     "type": "error",
                     "content": f"Claude 会话连接失败: {exc}",
+                    "code": "hang" if isinstance(exc, TimeoutError) else "connect_failed",
                 }
                 yield {
                     "type": "done",
@@ -563,12 +649,8 @@ class ClaudeSessionManager:
                     except asyncio.CancelledError:
                         pass
                 if timed_out and slot.connected and slot.client is not None:
-                    # interrupt 后尽量排空，保持 client 可复用
-                    try:
-                        async for _ in slot.client.receive_response():
-                            pass
-                    except Exception:
-                        await self._disconnect_slot(slot)
+                    # interrupt 后有界排空；超时则 disconnect，禁止永久占锁
+                    await self._bounded_drain(slot)
 
                 slot.last_used = time.monotonic()
                 yield {
@@ -577,6 +659,9 @@ class ClaudeSessionManager:
                     "claude_session_id": slot.claude_session_id or "",
                     "partial": timed_out or turn_error or client_gone,
                 }
+        finally:
+            if slot.lock.locked():
+                slot.lock.release()
 
     async def warm(
         self,
@@ -587,7 +672,10 @@ class ClaudeSessionManager:
         resume_session_id: str | None = None,
         tool_mode: str = "discuss",
     ) -> dict[str, Any]:
-        """预热 live slot（connect 但不 query）— 省掉首条对话冷启动。"""
+        """预热 live slot（connect 但不 query）— 省掉首条对话冷启动。
+
+        拿不到锁或 connect 超时 → 立刻失败返回，不阻塞后续 chat。
+        """
         slot = await self._get_or_create_slot(
             project_path=project_path,
             hub_session_id=hub_session_id,
@@ -595,7 +683,19 @@ class ClaudeSessionManager:
             resume_session_id=resume_session_id,
             tool_mode=tool_mode,
         )
-        async with slot.lock:
+        warm_wait = float(config.CHAT_WARM_LOCK_WAIT)
+        got = await self._acquire_slot_lock(
+            slot, timeout=warm_wait, reason="warm"
+        )
+        if not got:
+            return {
+                "ok": False,
+                "error": "lock_timeout",
+                "session_id": hub_session_id,
+                "claude_session_id": slot.claude_session_id or "",
+                "connected": False,
+            }
+        try:
             await self._ensure_connected(
                 slot,
                 resume_session_id=resume_session_id or slot.claude_session_id,
@@ -608,6 +708,18 @@ class ClaudeSessionManager:
                 "claude_session_id": slot.claude_session_id or "",
                 "connected": bool(slot.connected),
             }
+        except Exception as exc:
+            _log.warning("warm failed key=%s: %s", slot.key, exc)
+            return {
+                "ok": False,
+                "error": str(exc),
+                "session_id": hub_session_id,
+                "claude_session_id": slot.claude_session_id or "",
+                "connected": False,
+            }
+        finally:
+            if slot.lock.locked():
+                slot.lock.release()
 
     async def shutdown(self) -> None:
         if self._reaper_task is not None:

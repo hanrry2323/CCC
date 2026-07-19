@@ -115,6 +115,8 @@ extension ChatMessage: Codable {
 }
 
 enum ChatStreamEvent: Sendable {
+    /// sidecar 心跳（connect / idle）；UI 显示「连接本机 Agent…」
+    case ping
     case delta(String)
     /// 工具运行期间的阶段性短句（区别于主通道 delta）
     case status(String)

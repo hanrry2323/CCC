@@ -118,16 +118,25 @@ actor APIClient {
         }
     }
 
+    /// Sidecar keep-warm 结果：仅 `slotConnected` 才算真暖（cli-only warm 不算）
+    struct WarmResult: Sendable {
+        let httpOk: Bool
+        let slotConnected: Bool
+    }
+
     /// Sidecar keep-warm：`POST /warm`（带 project_path 时真正预连 SDK slot）
     @discardableResult
     func warmLocalAgent(
         base: URL? = nil,
         projectPath: String? = nil,
-        sessionId: String? = nil
-    ) async -> Bool {
+        sessionId: String? = nil,
+        toolMode: String = "discuss"
+    ) async -> WarmResult {
         let root = base ?? chatBaseURL
-        guard let root else { return false }
-        guard let url = URL(string: "warm", relativeTo: root) else { return false }
+        guard let root else { return WarmResult(httpOk: false, slotConnected: false) }
+        guard let url = URL(string: "warm", relativeTo: root) else {
+            return WarmResult(httpOk: false, slotConnected: false)
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -139,20 +148,33 @@ actor APIClient {
         if let sessionId, !sessionId.isEmpty {
             body["session_id"] = sessionId
         }
-        body["tool_mode"] = "discuss"
+        let mode = toolMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        body["tool_mode"] = (mode == "engineer") ? "engineer" : "discuss"
         body["model"] = "flash"
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         // 真预连可能 15–40s；失败不阻塞发消息
         req.timeoutInterval = projectPath == nil ? 8 : 45
         do {
             let (data, resp) = try await session.data(for: req)
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                return (obj["ok"] as? Bool) == true
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                return WarmResult(httpOk: false, slotConnected: false)
             }
-            return true
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return WarmResult(httpOk: true, slotConnected: false)
+            }
+            let httpOk = (obj["ok"] as? Bool) == true
+            var slotConnected = false
+            if let slot = obj["slot"] as? [String: Any] {
+                slotConnected = (slot["connected"] as? Bool) == true
+                    || ((slot["ok"] as? Bool) == true && (slot["connected"] as? Bool) != false)
+            }
+            // 无 project_path 时 sidecar 只查 CLI，slot=null → 不算真暖
+            if projectPath == nil || projectPath?.isEmpty == true {
+                slotConnected = false
+            }
+            return WarmResult(httpOk: httpOk, slotConnected: slotConnected)
         } catch {
-            return false
+            return WarmResult(httpOk: false, slotConnected: false)
         }
     }
 
@@ -374,14 +396,14 @@ actor APIClient {
             let prompt_mode: String
             let tool_mode: String
         }
-        // prompt: 只发最后一条 user message 的 content，sidecar 优先使用
-        // 避免序列化/传输/解析全量消息历史（可达数 MB）只为取最后一行
+        // prompt: 只发最后一条 user；有 prompt 时 messages 发空数组，减首包开销
         let promptHint = messages.last(where: { $0.role == "user" })?.content
+        let outboundMessages: [ChatMessage] = (promptHint?.isEmpty == false) ? [] : messages
         let data = try JSONEncoder().encode(
             Body(
                 project: projectId,
                 session_id: sessionId,
-                messages: messages,
+                messages: outboundMessages,
                 prompt: promptHint,
                 mode: "chat",
                 project_path: localProjectPath,
@@ -416,12 +438,18 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
+        // 无 ping/delta 静默看门狗（与服务端 hang 对齐）
+        let silenceLimit: TimeInterval = 60
+        var lastSignalAt = Date()
         // Phase 1.6: 按行切片但用 cursor 一次性丢前缀，避免 removeSubrange 每行 O(n) 共 O(n²)
         let nlByte = Data([UInt8(ascii: "\n")])
         var buffer = Data()
         let maxBuffer = 1_048_576 // 1MB：防异常超大单行撑爆内存
         for try await chunk in bytes {
             try Task.checkCancellation()
+            if Date().timeIntervalSince(lastSignalAt) > silenceLimit {
+                throw APIError.decode("本机 Agent 长时间无响应（\(Int(silenceLimit))s），请重试")
+            }
             buffer.append(chunk)
             if buffer.count > maxBuffer {
                 throw APIError.http(413, "SSE line buffer exceeded \(maxBuffer) bytes")
@@ -440,12 +468,17 @@ actor APIClient {
                       let obj = try? JSONSerialization.jsonObject(with: pdata) as? [String: Any]
                 else { continue }
                 let type = (obj["type"] as? String)?.lowercased()
-                if type == "ping" { continue }
+                if type == "ping" {
+                    lastSignalAt = Date()
+                    await onEvent(.ping)
+                    continue
+                }
                 if type == "error" {
                     let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
                     throw APIError.http(500, msg)
                 }
                 if type == "tool_use" || type == "tool-use" || type == "tooluse" {
+                    lastSignalAt = Date()
                     gotTool = true
                     let name = (obj["name"] as? String)
                         ?? (obj["tool"] as? String)
@@ -465,12 +498,14 @@ actor APIClient {
                     continue
                 }
                 if type == "tool_result" || type == "tool-result" {
+                    lastSignalAt = Date()
                     let isErr = (obj["is_error"] as? Bool) == true
                         || (obj["error"] as? Bool) == true
                     await onEvent(.toolResult(ok: !isErr))
                     continue
                 }
                 if type == "status" {
+                    lastSignalAt = Date()
                     let note = (obj["content"] as? String)
                         ?? (obj["text"] as? String)
                         ?? ""
@@ -480,6 +515,7 @@ actor APIClient {
                     continue
                 }
                 if type == "cost" {
+                    lastSignalAt = Date()
                     await onEvent(.cost(
                         tokens: obj["tokens"] as? Int,
                         usd: obj["usd"] as? Double
@@ -487,6 +523,7 @@ actor APIClient {
                     continue
                 }
                 if type == "done" {
+                    lastSignalAt = Date()
                     gotDone = true
                     donePartial = (obj["partial"] as? Bool) ?? false
                     await onEvent(.done(partial: donePartial))
@@ -499,6 +536,7 @@ actor APIClient {
                     return nil
                 }()
                 if let textChunk, type == "delta" || type == "text" || type == nil || type == "content" {
+                    lastSignalAt = Date()
                     gotDelta = true
                     await onEvent(.delta(textChunk))
                 }

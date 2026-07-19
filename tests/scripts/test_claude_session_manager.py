@@ -165,3 +165,129 @@ async def test_cold_resume_creates_new_client(patched_sdk, tmp_path):
     assert any(e.get("type") == "done" for e in events)
 
     await mgr.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_drain_timeout_releases_lock(patched_sdk, tmp_path, monkeypatch):
+    """超时后有界 drain：挂死后仍能再拿锁开下一轮。"""
+
+    class _HangAfterTimeoutClient(_FakeClient):
+        def __init__(self, options=None, transport=None):
+            super().__init__(options=options, transport=transport)
+            self._drain_calls = 0
+
+        async def query(self, prompt, session_id: str = "default"):
+            self.queries.append(prompt)
+            # 不产出消息 → 触发 max_timeout
+
+        async def receive_response(self):
+            self._drain_calls += 1
+            if self._drain_calls == 1:
+                # 主轮 reader：一直等（无消息）
+                await asyncio.sleep(3600)
+                return
+            # finally 里第二次 drain：故意挂死，应由 wait_for 截断
+            await asyncio.sleep(3600)
+            return
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(mod, "ClaudeSDKClient", _HangAfterTimeoutClient)
+    monkeypatch.setattr(mod.config, "CHAT_DRAIN_TIMEOUT", 1)
+    monkeypatch.setattr(mod.config, "CHAT_LOCK_WAIT", 5)
+
+    mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)
+    project = str(tmp_path)
+    hub_sid = "hub-drain"
+
+    events = []
+    async for ev in mgr.stream_turn(
+        "hang",
+        project,
+        hub_sid,
+        model="flash",
+        idle_timeout=60,
+        max_timeout=1,
+    ):
+        events.append(ev)
+    assert any(e.get("type") == "error" for e in events)
+    assert any(e.get("type") == "done" for e in events)
+
+    _HangAfterTimeoutClient.instances.clear()
+    monkeypatch.setattr(mod, "ClaudeSDKClient", _FakeClient)
+    events2 = []
+    async for ev in mgr.stream_turn(
+        "ok",
+        project,
+        hub_sid,
+        model="flash",
+        idle_timeout=60,
+        max_timeout=120,
+    ):
+        events2.append(ev)
+    assert any(e.get("type") == "delta" for e in events2)
+
+    await mgr.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_warm_lock_timeout_fails_fast(patched_sdk, tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.config, "CHAT_WARM_LOCK_WAIT", 1)
+    mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)
+    project = str(tmp_path)
+    hub_sid = "hub-warm-lock"
+
+    slot = await mgr._get_or_create_slot(
+        project_path=project,
+        hub_session_id=hub_sid,
+        model="flash",
+        resume_session_id=None,
+        tool_mode="discuss",
+    )
+    await slot.lock.acquire()
+    try:
+        result = await mgr.warm(project, hub_sid, model="flash", tool_mode="discuss")
+        assert result["ok"] is False
+        assert result.get("error") == "lock_timeout"
+        assert result.get("connected") is False
+    finally:
+        slot.lock.release()
+
+    await mgr.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_stream_turn_lock_timeout_force_drops(patched_sdk, tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.config, "CHAT_LOCK_WAIT", 1)
+    mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)
+    project = str(tmp_path)
+    hub_sid = "hub-lock-to"
+
+    slot = await mgr._get_or_create_slot(
+        project_path=project,
+        hub_session_id=hub_sid,
+        model="flash",
+        resume_session_id=None,
+        tool_mode="discuss",
+    )
+    await slot.lock.acquire()
+    try:
+        events = []
+        async for ev in mgr.stream_turn(
+            "blocked",
+            project,
+            hub_sid,
+            model="flash",
+            idle_timeout=60,
+            max_timeout=120,
+        ):
+            events.append(ev)
+        assert any(
+            e.get("type") == "error" and e.get("code") == "lock_timeout" for e in events
+        )
+        assert any(e.get("type") == "done" for e in events)
+        assert slot.key not in mgr._slots
+    finally:
+        if slot.lock.locked():
+            slot.lock.release()
+
+    await mgr.shutdown()
