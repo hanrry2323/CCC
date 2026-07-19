@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # CCC — Connect–Claude Code · Loop Engineer
 
-> **人定意图，系统自动编排与自主执行。** Hub 是入口；任务路由工具；Skill+Prompt = 无穷角色。  
-> 叙事 SSOT：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：根目录 `VERSION`
+> **人定意图，系统自动编排与自主执行。** 对话面（本机 Desktop）产 epic；编排面（中心机 Engine）远端开发；中间只交信息流。  
+> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
 

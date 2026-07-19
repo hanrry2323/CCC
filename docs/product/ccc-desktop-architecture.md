@@ -1,54 +1,52 @@
 # CCC Desktop 产品架构 SSOT
 
 > 版本：2026-07-19 · 与 Cursor/Codex/WorkBuddy 同级的完整产品形态  
-> 冲突时以本文 + [`transfer-gate.md`](transfer-gate.md) / [`executor-plugins.md`](executor-plugins.md) / [`flow-events.md`](flow-events.md) 为准。
+> **边界基线**：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)（冲突时以边界契约为准）  
+> 另见：[`transfer-gate.md`](transfer-gate.md) / [`executor-plugins.md`](executor-plugins.md) / [`flow-events.md`](flow-events.md)
 
 ---
 
 ## 一句话
 
-**CCC Desktop** 是用户唯一产品面；**中心 Server**（现 Mac2017，后云 SaaS）跑会话、看板与自由编排引擎。  
-差异化：**自由编排 + 多执行面**（扇出时生成角色/skill；执行器可插拔）。
+**CCC Desktop** 是用户唯一产品面（对话 + 编排可视化）；**中心机**跑看板与编排引擎（远端开发）。  
+差异化：**自由编排 + 多执行面**。方案 Agent **只产 epic**；中间只交信息流。
 
 ---
 
-## Client / Server / SaaS
+## 对话面 vs 编排面（部署）
 
-| 阶段 | Server | Desktop |
-|------|--------|---------|
-| 现网 | Mac2017 `192.168.3.116` | SwiftUI 客户端连 Server |
-| 未来 | 云上同一 API | 只改 `CCC_SERVER` 地址 |
+| | 对话面 | 编排面 |
+|--|--------|--------|
+| 现网 | **M1** | **Mac2017** |
+| 进程 | Desktop + Sidecar `:7788` + loop-code | Hub `:7777` + Board `:7775` + Engine |
+| 产出 | 意图、定稿、`ccc-transfer`、epic | work 扇出、写码、验收、归档 |
+| 权威数据 | 本机会话 `Application Support/CCCDesktop` | 业务仓 `.ccc/board` |
 
 ```text
-Desktop (SwiftUI)
-  左：项目文件夹 → 统一对话列表
-  中：方案 Agent（loop-code）聊透 → 转任务
-  右：编排流程可视化（扇出后实时进度）
+Desktop (SwiftUI)  [M1]
+  左：项目 / 会话列表（本机缓存优先）
+  中：方案 Agent（本机 loop-code）→ 定稿 → 转任务
+  右：编排流程（只读投影 2017 状态）
         │
-        ├─ localhost → Agent Sidecar（对话热路径）
-        └─ Hub → 线程落盘 / 转任务 / flow SSE
-              │
-              ▼
-Center Server：Threads · Board · Engine · Relay · Executors
+        ├─ localhost:7788  → 对话热路径（不经 Hub）
+        └─ 信息流 → Hub:7777 → Board / Engine（远端开发）
 ```
 
-角色边界不变（方案 Agent 只产 epic）；部署上对话热路径在 Desktop 本机，Server 管编排。
-
-网页 Hub：**运维/兼容过渡**，不是主产品入口。
+网页 Hub：**运维/兼容**，不是主聊天入口。
 
 ---
 
 ## 两 Agent 边界
 
-| | 方案 Agent（对话） | 编排 Engine |
-|--|-------------------|-------------|
+| | 方案 Agent（对话面） | 编排 Engine（编排面） |
+|--|---------------------|----------------------|
 | 界面 | Desktop 中栏 | 后台；右栏可视化 |
-| 运行时 | loop-code | 扇出后按卡选执行器 |
-| 产出 | **仅**待办大卡 (epic) | work 小卡 + 执行 + 验收 |
+| 运行时 | **本机** loop-code | 中心机扇出后按卡选执行器 |
+| 产出 | **仅**待办大卡 (epic) | work + 远端执行 + 验收 |
 | 门禁 | 聊透才能转任务 | 消费合格 epic |
 
-方案 Agent **不**扇出、**不**当执行 agent。  
-Engine 扇出时决定下一步身份 / prompt / skill / executor。
+方案 Agent **不**扇出、**不**当执行 agent、**不**以 Hub `/api/chat` 为常态。  
+Engine **不**承担主对话。
 
 ---
 
@@ -56,33 +54,28 @@ Engine 扇出时决定下一步身份 / prompt / skill / executor。
 
 | 区 | 作用 |
 |----|------|
-| **左（对齐 Codex）** | 新对话 + 项目菜单 + **会话列表**；底栏 Hub / 运维（浏览器） |
-| **中（对齐 Codex）** | 居中对话主舞台 + 底部 composer；转任务为次级 CTA |
-| **右（CCC 差异化）** | epic **活动动画流程图**（DAG + SSE） |
+| **左** | 新对话 + 项目菜单 + **会话列表**（本机秒开） |
+| **中** | 方案对话；转任务为次级 CTA |
+| **右** | 本 thread 绑定的 epic→works **状态图**（信息流回程） |
 
-**废弃**：双对话分屏、侧栏 Hub/Claude 双源、固定角色超市、项目/对话上下硬拆。
-
-右栏 UX 方案：[`desktop-flow-rail-ux.md`](desktop-flow-rail-ux.md)。  
-连接契约（1 chat + 1 flow SSE）：[`desktop-connection.md`](desktop-connection.md)。
+右栏 UX：[`desktop-flow-rail-ux.md`](desktop-flow-rail-ux.md)。  
+连接：[`desktop-connection.md`](desktop-connection.md)。
 
 ---
 
 ## 数据实体
 
-| 实体 | 说明 |
-|------|------|
-| Project | registry 中的 engine app（工作区） |
-| Thread | 统一会话，挂 `project_id` |
-| Message | Thread 内消息 |
-| Epic | 待办大卡（转任务唯一写入） |
-| Work | Engine 扇出小卡，含 `executor` |
+| 实体 | 权威落点 | 说明 |
+|------|----------|------|
+| Thread / Message | **M1 本机**（Hub 可选镜像） | 对话面 |
+| Epic / Work | **2017 业务仓看板** | 编排面 |
+| Flow 事件 | 2017 `flow-events` → Desktop SSE | 信息流回程 |
 
 ---
 
 ## 与现有代码关系
 
-- Board / epic-work：[`references/board-task-schema.md`](../../references/board-task-schema.md)
-- Server API：Hub `:7777` 已提供 `/api/desktop/*`（projects / threads / transfer / flow）
-- Desktop 源码：仓库 [`desktop/`](../../desktop/)（SwiftUI）
-- LAN 上线卡：[`../ops/GO-LIVE-DESKTOP.md`](../ops/GO-LIVE-DESKTOP.md)
-- 旧 Tauri WebView 壳：非主产品线
+- 边界契约：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)
+- Board：[`references/board-task-schema.md`](../../references/board-task-schema.md)
+- Desktop：[`desktop/`](../../desktop/)
+- GO-LIVE：[`../ops/GO-LIVE-DESKTOP.md`](../ops/GO-LIVE-DESKTOP.md)

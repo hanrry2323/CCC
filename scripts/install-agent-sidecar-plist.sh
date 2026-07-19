@@ -25,7 +25,8 @@ fi
 
 PORT="${CCC_AGENT_PORT:-7788}"
 HOST="${CCC_AGENT_HOST:-127.0.0.1}"
-ROUTER="${CCC_AGENT_ROUTER:-${ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}}"
+# 默认打 Mac2017 中转站；仅 CCC_AGENT_ROUTER 可覆盖（不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机 :4000）
+ROUTER="${CCC_AGENT_ROUTER:-http://192.168.3.116:4000}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"

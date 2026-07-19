@@ -24,12 +24,18 @@ final class AppModel: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var draft: String = ""
     @Published var statusText: String = "未连接"
-    /// "local" = 本机 sidecar；"hub" = 经 Hub 聊
-    @Published var agentMode: String = "hub"
-    /// 状态栏右侧固定：本机 Agent / Hub 回退
-    @Published var agentBadge: String = "Hub 回退"
+    /// "local" = 本机 sidecar 可聊；"none" = 本机 Agent 未就绪（禁止 Hub 聊天回退）
+    @Published var agentMode: String = "none"
+    /// 状态栏：本机 Agent / 本机 Agent 未就绪
+    @Published var agentBadge: String = "本机 Agent 未就绪"
+    /// 可聊 = sidecar 健康（与 hubReachable 独立）
+    var canChat: Bool { agentMode == "local" }
+    /// 可转任务 = Hub 可达 + 业务仓可下达
+    var canTransfer: Bool {
+        hubReachable && (selectedProject?.isDispatchable == true)
+    }
     @Published var busy = false
-    /// 可聊：本机 Agent 或 Hub 任一可用
+    /// 界面可用：本机可聊或有项目缓存（≠ 可聊；可聊看 canChat）
     @Published var connected = false
     /// Hub projects/API 是否刚探测成功（转任务/flow 需要）
     @Published var hubReachable = false
@@ -93,7 +99,7 @@ final class AppModel: ObservableObject {
     private var flowRefreshTask: Task<Void, Never>?
     private var flowSSEBoundProjectId: String?
     private var flowSnapshotPaused = false
-    /// Hub 回退时同时只允许 1 条对话流；本机 sidecar 可多路
+    /// 本机 sidecar 可多路并行（对话面；无 Hub chat）
     private var activeChatThreadId: String?
     /// 每会话独立对话流 task
     private var chatTasks: [String: Task<Void, Never>] = [:]
@@ -209,7 +215,7 @@ final class AppModel: ObservableObject {
         let agentStr = (agentRaw?.isEmpty == false ? agentRaw! : agentURLString)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let candidate = APIClient.makeBaseURL(from: agentStr) else {
-            setAgentModeHub(reason: "Agent URL 无效")
+            setAgentModeNone(reason: "Agent URL 无效")
             return nil
         }
 
@@ -259,7 +265,7 @@ final class AppModel: ObservableObject {
 
         agentProbeOKUntil = nil
         cachedAgentBaseURL = nil
-        setAgentModeHub(reason: launch.detail)
+        setAgentModeNone(reason: launch.detail)
         return nil
     }
 
@@ -288,12 +294,12 @@ final class AppModel: ObservableObject {
         await warmLocalAgentNow()
     }
 
-    private func setAgentModeHub(reason: String) {
-        agentMode = "hub"
-        agentBadge = "Hub 回退"
+    private func setAgentModeNone(reason: String) {
+        agentMode = "none"
+        agentBadge = "本机 Agent 未就绪"
         if !didToastHubFallback {
             didToastHubFallback = true
-            showToast("本机 Agent 未就绪，已回退 Hub（\(reason)）")
+            showToast("本机 Agent 未就绪：\(reason)。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
         }
     }
 
@@ -410,7 +416,8 @@ final class AppModel: ObservableObject {
                 await refreshThreads(projectId: pid)
                 await bindFlowToCurrentThread()
             }
-            connected = true
+            // 可聊只看 sidecar；connected 表示「界面可用」（本机可聊或至少有项目缓存）
+            connected = localOK || !projects.isEmpty
             lastError = nil
             updateConnectionStatusText(localOK: localOK, hubOK: true)
             startWarmLoopIfNeeded()
@@ -430,12 +437,12 @@ final class AppModel: ObservableObject {
                 await refreshThreads(projectId: pid)
             }
             connected = localOK || !projects.isEmpty
-            showSettingsHint = !connected
+            showSettingsHint = !localOK && !hubReachable
             updateConnectionStatusText(localOK: localOK, hubOK: false)
             if !localOK {
-                showToast("连不上 Hub，且本机 Agent 未就绪：\(error.localizedDescription)")
+                showToast("本机 Agent 未就绪（对话不可用）。Hub：\(error.localizedDescription)")
             } else {
-                showToast("Hub 暂不可达，本机 Agent 可继续聊")
+                showToast("Hub 暂不可达（可聊；转任务暂不可用）")
             }
             if localOK { startWarmLoopIfNeeded() }
         }
@@ -446,14 +453,14 @@ final class AppModel: ObservableObject {
             statusText = "已连接 · 本机 Agent"
             agentBadge = "本机 Agent"
         } else if localOK && !hubOK {
-            statusText = "本机 Agent · Hub 暂不可达"
+            statusText = "本机 Agent · Hub 暂不可达（可聊）"
             agentBadge = "本机 Agent"
         } else if !localOK && hubOK {
-            statusText = "已连接 · Hub 回退"
-            agentBadge = "Hub 回退"
+            statusText = "Hub 可达 · 可转任务 · 本机 Agent 未就绪"
+            agentBadge = "本机 Agent 未就绪"
         } else {
-            statusText = "未连接 · \(serverURLString)"
-            agentBadge = "未连接"
+            statusText = "本机 Agent 未就绪 · Hub 不可达"
+            agentBadge = "本机 Agent 未就绪"
         }
     }
 
@@ -624,9 +631,7 @@ final class AppModel: ObservableObject {
             await self.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
             await self.syncFlowFromServer(projectId: pid, threadId: id, generation: gen)
             try? await self.prepareClient()
-            if !(await self.client.usesLocalAgent) {
-                await self.client.warmHubAgent(projectId: pid, threadId: id)
-            }
+            // 对话预热只走本机 sidecar；编排暖槽与可聊无关
         }
     }
 
@@ -863,10 +868,10 @@ final class AppModel: ObservableObject {
     private func refreshCurrentThreadStreaming() {
         if let tid = selectedThreadId {
             currentThreadStreaming = streamingThreadIds.contains(tid)
-            if currentThreadStreaming, connected {
-                statusText = agentMode == "local" ? "本机生成中…" : "生成中…"
-            } else if connected, statusText.contains("生成中") || statusText.hasPrefix("本条失败") {
-                statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
+            if currentThreadStreaming, canChat {
+                statusText = "本机生成中…"
+            } else if canChat, statusText.contains("生成中") || statusText.hasPrefix("本条失败") {
+                updateConnectionStatusText(localOK: true, hubOK: hubReachable)
             }
         } else {
             currentThreadStreaming = false
@@ -922,7 +927,7 @@ final class AppModel: ObservableObject {
         persistMessages(for: threadId, msgs)
     }
 
-    /// Hub PUT；失败入重试队列（本机已有副本）
+    /// Hub PUT 会话备份（非权威；Engine 不读；失败入重试队列，本机磁盘为准）
     private func syncMessagesToHub(projectId: String, threadId: String, messages synced: [ChatMessage]) async {
         do {
             try await prepareClient()
@@ -968,7 +973,7 @@ final class AppModel: ObservableObject {
         return "light"
     }
 
-    /// 同会话 stop-and-send；本机 sidecar 可多路并行，Hub 回退仍限 1 路
+    /// 同会话 stop-and-send；仅本机 sidecar，可多路并行
     func sendUserMessage(_ text: String, stopAndSend: Bool = true) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1020,9 +1025,9 @@ final class AppModel: ObservableObject {
             }
         }
         guard let threadId = tid else { return false }
-        // 可聊：本机 Agent 或 Hub；两者皆无才拒
-        if !connected && agentMode != "local" {
-            showToast("未连接：请启动本机 Agent 或恢复 Hub")
+        // 对话面：必须本机 Agent；禁止 Hub /api/chat
+        if !canChat {
+            showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
             composerBounce = trimmed
             return false
         }
@@ -1039,16 +1044,9 @@ final class AppModel: ObservableObject {
             }
         }
 
-        let localAgent = await client.usesLocalAgent
-        if localAgent {
-            let others = streamingThreadIds.filter { $0 != threadId }.count
-            if others >= Self.maxParallelLocalChats {
-                showToast("已有 \(Self.maxParallelLocalChats) 路在生成，请先停止一路再发")
-                composerBounce = trimmed
-                return false
-            }
-        } else if let other = activeChatThreadId, other != threadId, streamingThreadIds.contains(other) {
-            showToast("Hub 模式同时只能生成 1 路。请等结束/停止，或启动本机 Agent 后多路并行。")
+        let others = streamingThreadIds.filter { $0 != threadId }.count
+        if others >= Self.maxParallelLocalChats {
+            showToast("已有 \(Self.maxParallelLocalChats) 路在生成，请先停止一路再发")
             composerBounce = trimmed
             return false
         }
@@ -1108,13 +1106,9 @@ final class AppModel: ObservableObject {
                let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
                 showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
             }
-            if await client.usesLocalAgent {
-                await warmBeforeSendIfNeeded()
-            } else {
-                await client.warmHubAgent(projectId: projectId, threadId: threadId)
-            }
+            await warmBeforeSendIfNeeded()
             if selectedThreadId == threadId {
-                statusText = agentMode == "local" ? "本机生成中…" : "生成中…"
+                statusText = "本机生成中…"
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
             let mode = Self.promptMode(forUserText: text)
@@ -1192,8 +1186,8 @@ final class AppModel: ObservableObject {
             if failedEmpty {
                 throw APIError.decode("模型无有效回复")
             }
-            if connected, selectedThreadId == threadId {
-                statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
+            if selectedThreadId == threadId {
+                updateConnectionStatusText(localOK: canChat, hubOK: hubReachable)
             }
             // 解析定稿块
             if let asst = (threadMessages[threadId] ?? []).last(where: { $0.id == assistantId }) {

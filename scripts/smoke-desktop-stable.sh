@@ -30,11 +30,17 @@ check() {
 
 echo "== Desktop stable suite agent=${AGENT} server=${SERVER} =="
 
-# 1) Sidecar launchd 常驻
+# 1) Sidecar launchd 常驻 + 模型出口指 2017 中转
 bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
 check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"
 check "sidecar warm" bash -c "curl -fsS --max-time 5 -X POST '${AGENT}/warm' -H 'Content-Type: application/json' -d '{}' | grep -q '\"ok\"'"
+# 默认 Router = Mac2017 :4000（CCC_AGENT_ROUTER 覆盖时跳过硬断言）
+if [[ -z "${CCC_AGENT_ROUTER:-}" ]]; then
+  check "sidecar router→2017" bash -c "curl -fsS --max-time 3 '${AGENT}/health' | grep -q '192.168.3.116:4000'"
+else
+  echo "SKIP  sidecar router→2017 (CCC_AGENT_ROUTER=${CCC_AGENT_ROUTER})"
+fi
 
 # 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）
 check "local session dir" python3 - <<'PY'
@@ -120,6 +126,35 @@ check "ccc-transfer samples" python3 scripts/tests/test_ccc_transfer_samples.py
 
 # 6) light / full prompt 模式
 check "hub_voice light/full" python3 -m pytest scripts/tests/test_hub_voice.py -q --tb=line
+
+# 7) 对话面边界：Desktop 禁止无 sidecar 时打 Hub /api/chat（源码契约）
+check "no Hub chat fallback in Desktop" bash -c "! grep -n 'setAgentModeHub\\|Hub 回退' desktop/Sources/CCCDesktop/*.swift && grep -q '本机 Agent 未就绪' desktop/Sources/CCCDesktop/APIClient.swift && grep -q '禁止 Hub' desktop/Sources/CCCDesktop/APIClient.swift"
+
+# 8) PUT messages 备份语义（Hub 可达时）
+if [[ -f /tmp/ccc-stable-hub-config.json ]] && grep -q '"ok"' /tmp/ccc-stable-hub-config.json 2>/dev/null; then
+  check "hub messages PUT is backup" python3 - <<PY
+import json, urllib.request, base64, sys
+server = "${SERVER}".rstrip("/")
+auth = base64.b64encode(b"${USER}:${PASS}").decode()
+tid = "smoke-backup-$$"
+url = f"{server}/api/desktop/threads/{tid}/messages"
+body = json.dumps({
+    "project_id": "${PROJECT}",
+    "messages": [{"role": "user", "content": "backup-probe"}],
+}).encode()
+req = urllib.request.Request(
+    url, data=body,
+    headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
+    method="PUT",
+)
+with urllib.request.urlopen(req, timeout=15) as resp:
+    d = json.loads(resp.read().decode())
+ok = d.get("ok") is True and d.get("role") == "backup"
+sys.exit(0 if ok else 1)
+PY
+else
+  echo "SKIP  hub messages PUT is backup (Server unreachable)"
+fi
 
 echo "== stable suite: ${pass} pass, ${fail} fail =="
 echo "TTFB tip: bash scripts/spike-loopcode-ttfb.sh  # 热路径目标 ≤1s"

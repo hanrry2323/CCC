@@ -149,9 +149,13 @@ struct CodexSidebar: View {
 
     private var offlineBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("未连接服务")
+            Text(model.canChat ? "Hub 暂不可达" : "本机 Agent 未就绪")
                 .font(.system(size: 13, weight: .medium))
-            Text("在设置中填写 Server 地址。")
+            Text(
+                model.canChat
+                    ? "可继续聊；转任务需恢复 Hub。"
+                    : "对话只走本机 sidecar。设置中确认 Agent 地址，或执行 install-agent-sidecar-plist.sh --start。"
+            )
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,7 +248,7 @@ struct CodexChatPane: View {
         VStack(spacing: 0) {
             statusBar
 
-            if !model.connected {
+            if !model.canChat {
                 offlineCenter
             } else {
                 messageArea
@@ -294,7 +298,7 @@ struct CodexChatPane: View {
                     .controlSize(.small)
                     .disabled(
                         model.busy
-                            || model.selectedProject?.isDispatchable != true
+                            || !model.canTransfer
                             || !(model.pendingTransferDraft?.isGateReady ?? false)
                     )
             }
@@ -314,28 +318,26 @@ struct CodexChatPane: View {
     private var statusBar: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                .fill(model.canChat ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
-            Text(model.connected ? model.statusText : "未连接")
+            Text(model.statusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-            if model.connected {
-                Text(model.agentBadge)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(
-                        model.agentMode == "local"
-                            ? CCCTheme.accent.opacity(0.9)
-                            : CCCTheme.faint
-                    )
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(
-                        (model.agentMode == "local"
-                            ? CCCTheme.accent.opacity(0.12)
-                            : CCCTheme.hover),
-                        in: Capsule()
-                    )
-            }
+            Text(model.agentBadge)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(
+                    model.canChat
+                        ? CCCTheme.accent.opacity(0.9)
+                        : CCCTheme.faint
+                )
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    (model.canChat
+                        ? CCCTheme.accent.opacity(0.12)
+                        : CCCTheme.hover),
+                    in: Capsule()
+                )
             Spacer(minLength: 0)
             if model.busy && !model.currentThreadStreaming {
                 ProgressView().controlSize(.mini)
@@ -361,12 +363,23 @@ struct CodexChatPane: View {
     private var offlineCenter: some View {
         VStack(spacing: 10) {
             Spacer()
-            Text("未连接到 Server")
+            Text("本机 Agent 未就绪")
                 .font(CCCTheme.title)
                 .foregroundStyle(CCCTheme.ink)
-            Text(model.serverURLString)
+            Text("对话只走本机 sidecar（:7788），不经 Hub。")
+                .font(.system(size: 13))
+                .foregroundStyle(CCCTheme.secondary)
+            Text(model.agentURLString)
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(CCCTheme.secondary)
+            Text("bash scripts/install-agent-sidecar-plist.sh --start")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(CCCTheme.faint)
+            if model.hubReachable {
+                Text("Hub 可达 · 可转任务（需先能聊出定稿）")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.faint)
+            }
             if let err = model.lastError, !err.isEmpty {
                 Text(err)
                     .font(.system(size: 12))
@@ -422,7 +435,7 @@ struct CodexChatPane: View {
                                 if msg.role == "assistant", !msg.isStreaming {
                                     Button("重新生成") { model.regenerateAssistant(after: msg) }
                                     Button("预览") { model.previewMessage(msg.content) }
-                                    if model.selectedProject?.isDispatchable == true {
+                                    if model.canTransfer {
                                         Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
                                     }
                                 }
@@ -460,13 +473,13 @@ struct CodexChatPane: View {
                     Text("转任务")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(
-                            model.selectedProject?.isDispatchable == true
+                            model.canTransfer
                                 ? CCCTheme.accent
                                 : CCCTheme.faint
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(model.selectedProject?.isDispatchable != true)
+                .disabled(!model.canTransfer)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -478,7 +491,7 @@ struct CodexChatPane: View {
                     placeholder: model.selectedProject?.isOrch == true
                         ? "编排仓可聊方案；转任务请切到业务项目…"
                         : "问任何问题…",
-                    isEnabled: model.connected,
+                    isEnabled: model.canChat,
                     onSubmit: { sendFromComposer() }
                 )
                 .frame(minHeight: 22, idealHeight: 22, maxHeight: 72)
@@ -574,11 +587,11 @@ struct CodexChatPane: View {
                 )
         }
         .buttonStyle(.plain)
-        .disabled(!model.connected)
+        .disabled(!model.canChat)
     }
 
     private var canSend: Bool {
-        model.connected && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        model.canChat && !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendFromComposer() {
@@ -660,7 +673,7 @@ struct MessageActionBar: View {
             } else {
                 actionBtn("重新生成") { model.regenerateAssistant(after: message) }
                 actionBtn("预览") { model.previewMessage(content) }
-                if model.selectedProject?.isDispatchable == true {
+                if model.canTransfer {
                     actionBtn("转任务") { model.openTransfer(fromAssistantContent: content) }
                 }
             }
@@ -934,7 +947,7 @@ struct SettingsView: View {
                 )
             )
             TextField("全局工作区 fallback", text: $model.localWorkspacePath)
-            Text("Desktop 会自启 sidecar；失败则状态栏显示「Hub 回退」。转任务/右栏仍走 Hub。")
+            Text("对话只走本机 Agent（:7788）；失败显示「本机 Agent 未就绪」，不回退 Hub。转任务/右栏走 Hub。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             TextField("用户", text: $model.authUser)

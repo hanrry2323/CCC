@@ -27,11 +27,13 @@
 
 | 层 | 组件 | 用户感知 |
 |----|------|----------|
-| **对话面** | **CCC Desktop**（SwiftUI 原生） | 左项目 / 中方案对话 / 右编排流程；定稿 → 转任务（仅 epic） |
-| **编排面** | Engine + Board | 自由扇出 work、赋身份与执行面；右栏实时可视化 |
+| **对话面** | **CCC Desktop**（SwiftUI）+ 本机 Sidecar/loop-code（现网 **M1**） | 聊透、意图、定稿 → **仅产出 epic 大卡** |
+| **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → 扇出 → **远端开发/验收**；右栏只看状态 |
 | **执行面** | 可插拔 Executors（默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
 
-网页 Hub：**运维与兼容入口**，不是主产品。架构 SSOT：[`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。
+**硬边界**：对话与编排开发分开；中间只交**结构化信息流**（transfer + flow 事件）。基线契约：[`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。
+
+网页 Hub：**运维与兼容入口**，不是主聊天窗口。架构 SSOT：[`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。
 
 ### 已过时的说法（勿再对外使用）
 
@@ -45,7 +47,8 @@
 - Connect Claude Code · **Loop Engineer**
 - **Desktop 是主入口**（三栏：项目 · 方案对话 · 编排流程）
 - **自由编排 + 多执行面**；Skill + Prompt = 本次角色（无穷角色）
-- 方案 Agent **只写待办大卡**；Engine 负责扇出与执行
+- **方案 Agent（本机）只写待办大卡**；Engine（中心机）负责扇出与远端执行
+- **对话面 / 编排面分离**；中间只交信息流（见边界契约）
 - **Server / Client 分离**；改 `CCC_SERVER` 即可切局域网自托管 → 云 SaaS
 
 ---
@@ -54,10 +57,11 @@
 
 | 层 | 放哪 | 说明 |
 |----|------|------|
-| 服务端 | 固定机（现网：Mac2017） | Desktop API + Engine + Board + 中转 + 工作区 |
-| 客户端 | **CCC Desktop（SwiftUI）** | 主入口；网页 Hub 仅运维 |
+| **对话面** | 用户本机（现网：M1） | Desktop + Sidecar + loop-code；会话本机落盘 |
+| **编排面** | 固定机（现网：Mac2017） | Hub `:7777` + Board + Engine + 中转 + **业务仓** |
+| 过桥 | LAN/API | 仅 transfer（epic）与 flow 状态；非闲聊全文 |
 
-拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/desktop.md`](deploy/desktop.md) · [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。  
+拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/desktop.md`](deploy/desktop.md) · [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。  
 默认注册（demo-only）：[`product/reset-demo-fleet.md`](product/reset-demo-fleet.md)。
 
 ---

@@ -1,6 +1,8 @@
 # 转任务聊透门禁（Transfer Gate）
 
-> 方案 Agent 写入 **epic（待办大卡）** 前的硬门禁。失败必须 4xx + 机器可读原因。
+> **对话面 → 编排面** 的过桥正门（信息流唯一下达通道）。  
+> 边界基线：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
+> 方案 Agent（本机）写入 **epic（待办大卡）** 前的硬门禁。失败必须 4xx + 机器可读原因。
 
 ---
 

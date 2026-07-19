@@ -19,9 +19,9 @@
 
 ```text
 1. 打开 CCC Desktop（Server = http://192.168.3.116:7777）
-   — 自动探测/拉起本机 sidecar；状态栏看「本机 Agent」或「Hub 回退」
+   — 自动探测/拉起本机 sidecar；状态栏看「本机 Agent」或「本机 Agent 未就绪」（禁止 Hub 聊天回退）
 2. 设置里为 ccc-demo 填「当前项目本机路径」（若本机有 checkout）
-3. 选业务项目 → 对话定稿 → 转任务 → 右栏看编排
+3. 选业务项目 → 本机对话定稿 → 转任务（需 Hub）→ 右栏看编排
 4. 看板/运维需要时点侧栏（浏览器）
 ```
 
@@ -33,7 +33,7 @@
 | 2 | 工具轨持久 | 有 tool 的会话重开后仍见芯片 |
 | 3 | 多路 | sidecar 下两会话可并行生成 |
 | 4 | 工作区 | 项目本机路径生效（设置 / map） |
-| 5 | 回退明示 | sidecar 起不来 →「Hub 回退」+ toast |
+| 5 | 未就绪明示 | sidecar 起不来 →「本机 Agent 未就绪」+ toast；**不**回退 Hub `/api/chat` |
 
 ## GO-LIVE 95+ 清单（本阶段）
 
@@ -57,7 +57,7 @@
 | 5 | `smoke-desktop-e2e.sh` | **PASS** | config+gate+transfer+snapshot；含 loop-code 断言 |
 | 6 | `desktop/scripts/smoke-ui-chat.sh` | **PASS** | assistant=`自检OK` |
 | 7 | pytest desktop API / transfer-gate | **PASS** | 14 passed |
-| 8 | `.app` 安装 | **PASS** | `/Applications/CCCDesktop.app` version **0.51.0** |
+| 8 | `.app` 安装 | **PASS** | `/Applications/CCCDesktop.app` version **0.51.0**（边界收口后重装同版） |
 | 9 | Hub 稳定性补丁 | **PASS** | projects TTL/`to_thread`；chat `is_disconnected`+`partial` |
 
 ## 2026-07-19 95+ 证据重签
@@ -76,11 +76,26 @@
 | # | 项 | 结果 | 证据 |
 |---|-----|------|------|
 | 16 | 本机会话 SSOT | **PASS** | `LocalSessionStore` → Application Support；Hub PUT 重试 |
-| 17 | 连接态解耦 | **PASS** | `connected` = sidecar \|\| Hub；文案「Hub 暂不可达」仍可聊 |
+| 17 | 连接态解耦 | **PASS** | `canChat`≠`hubReachable`；「Hub 暂不可达（可聊）」 |
 | 18 | sidecar `/warm` | **PASS** | `POST /warm` + Desktop 240s / 发送前 120s |
-| 19 | `prompt_mode=light` | **PASS** | `hub_voice` + sidecar/Hub；定稿强制 full |
+| 19 | `prompt_mode=light` | **PASS** | `hub_voice` + sidecar；定稿强制 full |
 | 20 | TTFB 备注 | 现场 | `bash scripts/spike-loopcode-ttfb.sh`（热路径目标 ≤1s） |
 | 21 | sidecar launchd KeepAlive | **PASS** | `com.ccc.agent-sidecar`；kill -9 后自动复活 |
+
+## 对话面 / 编排面边界（2026-07-19 全面收口）
+
+契约：[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
+
+| # | 断言 | 结果 | 证据 |
+|---|------|------|------|
+| B1 | Hub 断仍可本机聊；不能转任务有白话 | **PASS** | Desktop `canChat`/`canTransfer`；无 Hub chat fallback |
+| B2 | 转任务 → 2017 backlog epic；右栏见拆分 | **PASS** | `boundary-e2e-120005-cc76d1c5` → 3 works；flow snapshot |
+| B3 | Engine cwd = 2017 业务仓 | **PASS** | `/Users/fan/program/apps/ccc-demo`；product-session `--workspace` 同路径 |
+| B4 | 闲聊全文不进 product/dev（仅 gate/plan） | **PASS** | Engine/board roles 无 `.ccc/chat` 读取；transfer 只带 gate 字段 |
+| B5 | 常态无 Desktop→Hub `/api/chat` | **PASS** | `APIClient.streamChat` 无 sidecar 直接抛错；`smoke-desktop-stable` 源码门禁 |
+| — | PUT messages = 备份 | **PASS** | 响应 `role=backup`；Engine 不读 |
+| — | sidecar Router → 2017 `:4000` | **PASS** | `health.router` 含 `192.168.3.116:4000` |
+| — | 2017 Engine `enabled` | **PASS** | `ccc-autostart-guard.sh enable --start`；`mode=enabled` |
 
 ```bash
 bash scripts/install-agent-sidecar-plist.sh --start
@@ -114,7 +129,9 @@ cp -R desktop/.build/CCCDesktop.app /Applications/
 bash desktop/scripts/open-desktop.sh
 
 # 2017 重装 Hub plist（含 CCC_EXECUTOR=loop-code）
+# 注意：install-hub --start 可能把 control 置回 ui；装完后务必再 enable Engine
 ssh fan@192.168.3.116 'bash /Users/fan/program/CCC/scripts/install-hub-plist.sh --start'
+ssh fan@192.168.3.116 'bash /Users/fan/program/CCC/scripts/ccc-autostart-guard.sh enable --start'
 # Intel 机必须装 arch 匹配的 cli：
 # bash scripts/install-executor-loop-code.sh /path/to/x86_64-claude-compatible-cli
 ```

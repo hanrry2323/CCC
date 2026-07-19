@@ -1,12 +1,15 @@
 import asyncio
 import base64
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger("ccc.chat")
 
 from ..auth import check_auth
 from .. import config
@@ -95,6 +98,7 @@ def _materialize_attachments(
 
 @router.post("/api/chat")
 async def chat(request: Request):
+    """Hub /api/chat — legacy（网页运维可留）；Desktop 对话面禁止调用，只走本机 sidecar。"""
     check_auth(request)
     body = await request.json()
     messages = body.get("messages", [])
@@ -117,6 +121,12 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="prompt required")
     if check_dangerous(prompt):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
+
+    logger.info(
+        "hub_chat_legacy project=%s session=%s (Desktop must use sidecar :7788)",
+        project,
+        session_id[:24] if isinstance(session_id, str) else session_id,
+    )
 
     project_path = get_project_path(project)
     # F-SEC-03: cwd jail — 拒绝跳出项目根
@@ -279,6 +289,7 @@ async def chat(request: Request):
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "X-CCC-Chat-Role": "legacy",
         },
     )
 

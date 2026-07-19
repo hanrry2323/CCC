@@ -48,7 +48,7 @@ actor APIClient {
         chatCfg.timeoutIntervalForRequest = 600
         chatCfg.timeoutIntervalForResource = 1800
         chatCfg.waitsForConnectivity = true
-        // 本机 sidecar 可多路并行；Hub 回退时 AppModel 仍限 1 路
+        // 本机 sidecar 可多路并行（对话面禁止 Hub chat）
         chatCfg.httpMaximumConnectionsPerHost = 4
         chatCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.chatSession = URLSession(configuration: chatCfg)
@@ -264,7 +264,7 @@ actor APIClient {
         return resp.epics
     }
 
-    /// 流式聊天：优先本机 Agent Sidecar，否则 Hub。
+    /// 流式聊天：仅本机 Agent Sidecar（对话面基线；禁止 Hub /api/chat 回退）
     /// onEvent 由调用方切 MainActor（避免 actor↔MainActor 死锁导致 tool 事件攒到结束）
     func streamChat(
         projectId: String,
@@ -273,6 +273,9 @@ actor APIClient {
         promptMode: String = "full",
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
+        guard let chatBase = chatBaseURL else {
+            throw APIError.decode("本机 Agent 未就绪（对话只走本机 sidecar，不回退 Hub）")
+        }
         struct Body: Encodable {
             let project: String
             let session_id: String
@@ -291,20 +294,14 @@ actor APIClient {
                 prompt_mode: promptMode
             )
         )
-        let req: URLRequest
-        if let chatBase = chatBaseURL {
-            guard let url = URL(string: "api/chat", relativeTo: chatBase) else {
-                throw APIError.badURL
-            }
-            var r = URLRequest(url: url)
-            r.httpMethod = "POST"
-            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            r.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
-            r.httpBody = data
-            req = r
-        } else {
-            req = try authedRequest("api/chat", method: "POST", body: data)
+        guard let url = URL(string: "api/chat", relativeTo: chatBase) else {
+            throw APIError.badURL
         }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
+        req.httpBody = data
         let (bytes, resp) = try await chatSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
@@ -399,7 +396,7 @@ actor APIClient {
         }
     }
 
-    /// 本地聊完后把消息落到 Hub（转任务 / 历史）
+    /// 会话镜像备份到 Hub（非权威；Engine 不读；本机 Application Support 为准）
     func syncThreadMessages(
         projectId: String,
         threadId: String,
@@ -418,22 +415,6 @@ actor APIClient {
         )
         struct Ok: Decodable { let ok: Bool? }
         _ = try await send(req, as: Ok.self)
-    }
-
-    /// Hub 过渡预热（本地 sidecar 可用时可不调）
-    func warmHubAgent(projectId: String, threadId: String) async {
-        struct Body: Encodable {
-            let project_id: String
-            let thread_id: String
-        }
-        do {
-            let data = try JSONEncoder().encode(Body(project_id: projectId, thread_id: threadId))
-            let req = try authedRequest("api/desktop/agent/warm", method: "POST", body: data)
-            struct Ok: Decodable { let ok: Bool? }
-            _ = try await send(req, as: Ok.self)
-        } catch {
-            // 预热失败不阻断聊天
-        }
     }
 
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {

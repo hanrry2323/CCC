@@ -1,7 +1,8 @@
 # Desktop 本机 Agent Sidecar
 
-> 目标：方案 Agent 热路径接近本机 Claude（常驻 loop-code），Hub 只管落盘 / 转任务 / 右栏编排。  
-> **Desktop 负责拉起 sidecar**（探测失败则 `nohup` 启 `scripts/ccc-agent-sidecar.sh`）。
+> 目标：方案 Agent 热路径在本机（launchd + loop-code）；**编排面在中心机**。  
+> 边界基线：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
+> Hub 只承载 **信息流**（transfer / flow / 可选会话镜像），不是主聊天。
 
 ## 链路
 
@@ -10,8 +11,10 @@ Desktop bootstrap → ensureLocalAgent (probe / auto-start)
 Desktop UI ←localhost SSE→ ccc-agent-sidecar (:7788)
                               → ClaudeSDKClient → vendor/loop-code/cli
                               → ANTHROPIC_BASE_URL
-Desktop UI ──PUT messages(+tool_steps) / transfer / flow──→ Hub (:7777)
+Desktop UI ──PUT messages(+tool_steps)备份 / transfer / flow──→ Hub (:7777)
 ```
+
+**模型出口默认**：`install-agent-sidecar-plist.sh` 写 `ANTHROPIC_BASE_URL=http://192.168.3.116:4000`（Mac2017 中转）。覆盖：仅环境变量 `CCC_AGENT_ROUTER`（不继承 shell 的 `ANTHROPIC_BASE_URL`）。
 
 ## 启动（launchd 常驻）
 
@@ -23,10 +26,10 @@ Desktop UI ──PUT messages(+tool_steps) / transfer / flow──→ Hub (:7777
 bash scripts/ccc-agent-sidecar.sh          # 前台
 bash scripts/ccc-agent-sidecar.sh status
 bash scripts/ccc-agent-sidecar.sh stop
-# CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://127.0.0.1:4000
+# CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://192.168.3.116:4000
 ```
 
-健康检查：`curl -s http://127.0.0.1:7788/health`  
+健康检查：`curl -s http://127.0.0.1:7788/health`（`router` 应含 `192.168.3.116:4000`）  
 日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
 plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 
@@ -39,7 +42,7 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | `ccc.localWorkspaceMap` | `{}` | `projectId → 本机路径` |
 | `ccc.localWorkspace` | 空 | 全局 fallback cwd |
 
-状态栏固定徽章：**本机 Agent** / **Hub 回退**（失败 toast 明示，不静默迷路）。  
+状态栏徽章：**本机 Agent** / **本机 Agent 未就绪**（**禁止** Hub `/api/chat` 回退）。可聊 ≠ 可转任务。  
 探测成功缓存 30s。App 退出不杀 sidecar（保暖）。
 
 消息落盘含 `tool_steps` / `files_changed` / `tools_finished`。
@@ -48,10 +51,10 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| `PUT` | `/api/desktop/threads/{id}/messages` | Hub 异步镜像（含 tool_steps） |
-| `POST` | `/api/desktop/agent/warm` | Hub 槽位预热（回退路径） |
-| `POST` | `/api/desktop/transfer` | 转任务 |
-| SSE | `/api/desktop/flow/...` | 右栏 |
+| `PUT` | `/api/desktop/threads/{id}/messages` | 会话**备份**（非权威；Engine 不读） |
+| `POST` | `/api/desktop/agent/warm` | Hub 槽位预热（网页/运维；Desktop 对话不依赖） |
+| `POST` | `/api/desktop/transfer` | 转任务（过桥信息流） |
+| SSE | `/api/desktop/flow/...` | 右栏扇出状态 |
 
 ### Sidecar 本机 API
 

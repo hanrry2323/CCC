@@ -1,7 +1,8 @@
 # Desktop 连接契约（工程 SSOT）
 
 > 产品架构见 [`ccc-desktop-architecture.md`](ccc-desktop-architecture.md)。  
-> 本文只约束 Client↔Hub 连接行为，不改产品语义。
+> **对话/编排边界基线**：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
+> 本文约束 Client 连接行为：聊天走本机；Hub 只承载信息流（transfer / flow / 可选镜像）。
 
 ## 硬规则
 
@@ -12,8 +13,9 @@
 | 1b | flow SSE：全 App **1 条**；切会话不重建 |
 | 2 | 切会话 **不得** 拆掉 / 重建 flow SSE；仅换项目时 `ensureFlowSSE` 重建 |
 | 3 | 发送 / 取消对话 **不得** `cancel` flow 任务 |
-| 4 | `connected` = **本机 Agent 健康或 Hub projects OK**；Hub 抖仍可聊；单条 chat 失败 →「本条失败」 |
-| 4a | **本机会话 SSOT**：`~/Library/Application Support/CCCDesktop/sessions/`；Hub `PUT` 异步镜像 + 失败重试 |
+| 4 | `connected`（可聊）= **本机 Agent 健康**；Hub 仅影响转任务/右栏；单条 chat 失败 →「本条失败」 |
+| 4a | **本机会话 SSOT**：`~/Library/Application Support/CCCDesktop/sessions/`；Hub `PUT` 为可选镜像，非对话权威 |
+| 4b | **常态禁止** 对话打 Hub `/api/chat`（收口后默认关 Hub 聊天回退；仅本机 sidecar） |
 | 5 | chat SSE 必须收到 `done` 且 `partial != true` 才算成功；否则「回复中断」 |
 | 5a | 同会话 chat 失败可自动重试 **1** 次（保留本地消息；半截助手清空再流） |
 | 5b | 聊天流式**不**暂停 flow snapshot；仅 `syncThreadFromServer` 在生成中跳过覆盖 messages |

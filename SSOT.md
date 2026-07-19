@@ -5,6 +5,8 @@
 | 文件 | 角色 |
 |------|------|
 | `docs/VISION.md` | **对外/对内产品叙事 SSOT** |
+| `docs/product/dialogue-orchestration-boundary.md` | **对话面/编排面边界基线**（信息流契约） |
+| `docs/product/ccc-desktop-architecture.md` | Desktop 产品形态 |
 | `VERSION` | 版本号权威 |
 | `CHANGELOG.md` | 变更史权威 |
 | `STARTUP-BRIEF.md` | Agent 启动（省 token） |

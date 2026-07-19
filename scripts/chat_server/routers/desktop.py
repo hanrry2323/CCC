@@ -219,7 +219,7 @@ async def delete_thread(request: Request, thread_id: str, project_id: str = ""):
 
 @router.put("/threads/{thread_id}/messages")
 async def put_thread_messages(request: Request, thread_id: str):
-    """Desktop 本地 Agent 聊完后，把消息异步落盘到 Hub（转任务/历史仍读 Hub）。"""
+    """Desktop 会话镜像备份（非权威；Engine / product 扇出不读；本机 Application Support 为准）。"""
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):
@@ -259,7 +259,13 @@ async def put_thread_messages(request: Request, thread_id: str):
         status="idle",
         claude_session_id=body.get("claude_session_id"),
     )
-    return {"ok": True, "thread_id": thread_id, "count": len(messages)}
+    return {
+        "ok": True,
+        "thread_id": thread_id,
+        "count": len(messages),
+        "role": "backup",
+        "note": "session mirror only; Engine does not read chat",
+    }
 
 
 @router.post("/agent/warm")

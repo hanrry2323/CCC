@@ -7,6 +7,8 @@
 | 文档 | 说明 |
 |------|------|
 | [`VISION.md`](VISION.md) | **产品叙事 SSOT** |
+| [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **对话面/编排面边界基线** |
+| [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
 | [`INTRO.md`](INTRO.md) | **对外完整介绍** |
 | [`INTRO-WALKTHROUGH.md`](INTRO-WALKTHROUGH.md) | 截图分镜 |
 | [`vertical-qx.md`](vertical-qx.md) | QX 竖切商用蓝图 |
