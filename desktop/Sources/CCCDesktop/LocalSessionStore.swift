@@ -23,6 +23,11 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("pending-sync.json")
     }
 
+    /// 单对话模型：每项目恰好一个会话，thread id = "<projectId>::main"（全局唯一）
+    static func conversationThreadId(for projectId: String) -> String {
+        "\(projectId)::main"
+    }
+
     // MARK: - Session record
 
     struct Record: Codable {
@@ -150,6 +155,11 @@ enum LocalSessionStore {
         writeIndex(projectId: projectId, entries: idx)
     }
 
+    /// 重置项目的单一会话：删盘 + 清索引；调用方负责通知 sidecar drop slot
+    static func reset(projectId: String) {
+        delete(projectId: projectId, threadId: conversationThreadId(for: projectId))
+    }
+
     static func rename(projectId: String, threadId: String, title: String) {
         guard var rec = load(projectId: projectId, threadId: threadId) else {
             upsertIndex(projectId: projectId, threadId: threadId, title: title, updatedAt: isoNow())
@@ -274,4 +284,46 @@ enum LocalSessionStore {
     }
 
     static let maxSyncAttempts = 5
+
+    // MARK: - Display compaction
+
+    /// 显示压缩阈值：消息数 > 80（约 40 轮）或 token 估算 > 30k 触发
+    static let compactMessageThreshold = 80
+    static let compactTokenThreshold = 30_000
+    /// 单次压缩保留最早的轮数被替换为摘要卡；保留最近 ~30 条不动
+    static let compactKeepRecent = 30
+
+    /// 粗估 token：4 字符 ≈ 1 token
+    static func estimateTokens(_ messages: [ChatMessage]) -> Int {
+        messages.reduce(0) { $0 + $1.content.count } / 4
+    }
+
+    /// 若消息超阈值，把最早 N 轮替换为一条 kind=summary 的占位卡片。
+    /// 返回 (新消息, 是否压缩, 被压缩轮数)；不超阈值返回原消息。
+    static func compactIfNeeded(_ messages: [ChatMessage]) -> (messages: [ChatMessage], didCompact: Bool, rounds: Int) {
+        guard messages.count > compactMessageThreshold
+                || estimateTokens(messages) > compactTokenThreshold
+        else { return (messages, false, 0) }
+
+        // 跳过已有 summary 卡片，找首个非 summary 的 user/assistant
+        let firstReal = messages.firstIndex(where: { $0.kind == "chat" }) ?? 0
+        let keepStart = max(firstReal, messages.count - compactKeepRecent)
+        let toCompact = Array(messages[firstReal..<keepStart])
+        guard toCompact.count >= 4 else { return (messages, false, 0) }
+
+        // 统计被压缩轮数（user 消息数）
+        let rounds = toCompact.filter { $0.role == "user" }.count
+        let summary = ChatMessage(
+            role: "assistant",
+            content: "已压缩 \(rounds) 轮对话（保留最近 \(compactKeepRecent) 条）",
+            kind: "summary",
+            summaryRounds: rounds
+        )
+        var result: [ChatMessage] = []
+        // 保留前置 summary 卡片
+        result.append(contentsOf: messages[..<firstReal])
+        result.append(summary)
+        result.append(contentsOf: messages[keepStart...])
+        return (result, true, rounds)
+    }
 }

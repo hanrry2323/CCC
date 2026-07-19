@@ -142,6 +142,38 @@ actor APIClient {
         }
     }
 
+    /// 通知 sidecar 丢弃项目的 ClaudeSDKClient live slot（重置对话用）
+    func dropSidecarSession(projectPath: String, sessionId: String) async {
+        guard let root = chatBaseURL else { return }
+        guard let url = URL(string: "api/session/drop", relativeTo: root) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAgentAuth(&req)
+        let body: [String: Any] = ["project_path": projectPath, "session_id": sessionId]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 5
+        _ = try? await session.data(for: req)
+    }
+
+    /// 通知 sidecar 压缩 agent session：drop slot + 新 slot 注入摘要
+    func compactSidecarSession(projectPath: String, sessionId: String, summary: String) async {
+        guard let root = chatBaseURL else { return }
+        guard let url = URL(string: "api/session/compact", relativeTo: root) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAgentAuth(&req)
+        let body: [String: Any] = [
+            "project_path": projectPath,
+            "session_id": sessionId,
+            "summary": summary,
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 30
+        _ = try? await session.data(for: req)
+    }
+
     static func makeBaseURL(from raw: String) -> URL? {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
@@ -402,6 +434,15 @@ actor APIClient {
                     let isErr = (obj["is_error"] as? Bool) == true
                         || (obj["error"] as? Bool) == true
                     await onEvent(.toolResult(ok: !isErr))
+                    continue
+                }
+                if type == "status" {
+                    let note = (obj["content"] as? String)
+                        ?? (obj["text"] as? String)
+                        ?? ""
+                    if !note.isEmpty {
+                        await onEvent(.status(note))
+                    }
                     continue
                 }
                 if type == "cost" {

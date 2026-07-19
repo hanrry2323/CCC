@@ -82,6 +82,8 @@ class ClaudeSessionManager:
         self._slots: dict[str, _LiveSlot] = {}
         self._global_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task | None = None
+        # 压缩后待注入的摘要：key → summary text；下次 stream_turn 取出并 prepend
+        self._pending_summaries: dict[str, str] = {}
 
     def _ensure_sdk(self) -> None:
         if _SDK_IMPORT_ERROR is not None or ClaudeSDKClient is None:
@@ -149,6 +151,36 @@ class ClaudeSessionManager:
             slot.claude_session_id,
         )
         return True
+
+    async def compact_session(
+        self,
+        *,
+        project_path: str,
+        hub_session_id: str,
+        summary: str | None,
+        tool_mode: str = "discuss",
+        model: str = "flash",
+    ) -> str:
+        """压缩 agent session：drop slot + 存摘要待下次注入。
+
+        若 summary 为空，本可先跑一轮总结；为避免阻塞 HTTP 请求，
+        这里直接用占位摘要（调用方应自行生成摘要传入）。
+        返回最终使用的 summary 文本。
+        """
+        mode = config.resolve_tool_mode(tool_mode)
+        key = _slot_key(project_path, hub_session_id, mode)
+        final_summary = (summary or "").strip()
+        if not final_summary:
+            final_summary = "（对话已压缩；本机磁盘保留完整历史）"
+        await self._drop_slot(key, reason="compact")
+        self._pending_summaries[key] = final_summary
+        _log.info(
+            "compact session key=%s sid=%s summary_len=%d",
+            key,
+            hub_session_id,
+            len(final_summary),
+        )
+        return final_summary
 
     async def _disconnect_slot(self, slot: _LiveSlot) -> None:
         if not slot.connected or slot.client is None:
@@ -276,10 +308,21 @@ class ClaudeSessionManager:
         """Map one SDK message to zero or more Hub SSE event dicts."""
         events: list[dict[str, Any]] = []
         if AssistantMessage is not None and isinstance(message, AssistantMessage):
-            for block in message.content or []:
+            blocks = message.content or []
+            # 若本条 AssistantMessage 同时含 ToolUseBlock，则 TextBlock 视为
+            # 工具期间的阶段性短句 → 映射为 status（区别于主通道 delta）
+            has_tool_use = any(
+                ToolUseBlock is not None and isinstance(b, ToolUseBlock)
+                for b in blocks
+            )
+            for block in blocks:
                 if TextBlock is not None and isinstance(block, TextBlock):
                     text = block.text or ""
-                    if text:
+                    if not text:
+                        continue
+                    if has_tool_use:
+                        events.append({"type": "status", "content": text})
+                    else:
                         events.append({"type": "delta", "content": text})
                 elif ToolUseBlock is not None and isinstance(block, ToolUseBlock):
                     events.append({
@@ -416,7 +459,15 @@ class ClaudeSessionManager:
                     await msg_queue.put(("end", None))
 
             try:
-                await slot.client.query(prompt)
+                effective_prompt = prompt
+                # 注入压缩摘要：drop slot 后首条 query 前置摘要
+                if slot.key in self._pending_summaries:
+                    summary = self._pending_summaries.pop(slot.key)
+                    effective_prompt = (
+                        f"以下是之前对话的压缩摘要，请基于此继续：\n\n{summary}\n\n"
+                        f"---\n\n用户新消息：{prompt}"
+                    )
+                await slot.client.query(effective_prompt)
                 reader_task = asyncio.create_task(
                     _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
                 )

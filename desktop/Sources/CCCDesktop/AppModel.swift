@@ -79,6 +79,16 @@ final class AppModel: ObservableObject {
     @Published var composerBounce: String?
     /// 消息「预览」全文（对齐旧 Hub）
     @Published var previewMarkdown: String?
+    /// 当前会话累计 token（cost 事件累加；用于触发显示压缩）
+    @Published var sessionTokens: Int = 0
+    /// 显示压缩阈值（token）；超此触发 agent session 重置注入摘要
+    static let agentCompactTokenThreshold = 80_000
+    /// 项目后台任务态（卡片灯用）：projectId → 状态键（idle/pending/in_progress/testing/done/failed）
+    @Published var projectTaskState: [String: String] = [:]
+    /// 项目对话流式态：projectId → "idle"/"text"/"tool"
+    @Published var projectConvState: [String: String] = [:]
+    /// 项目卡片轮询 task
+    private var projectPollTask: Task<Void, Never>?
 
     // Board
     @Published var boardColumns: [String: [BoardTask]] = [:]
@@ -358,6 +368,7 @@ final class AppModel: ObservableObject {
             startAgentRecoverLoopIfNeeded()
         }
         await flushPendingHubSync()
+        startProjectTaskPolling()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             await runUISmoke()
         }
@@ -506,17 +517,105 @@ final class AppModel: ObservableObject {
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
+        // 单对话模型：每项目恰好一个会话 "<projectId>::main"
+        selectedThreadId = LocalSessionStore.conversationThreadId(for: id)
         if switching {
-            selectedThreadId = nil
             messages = []
             applyFlowSnapshot(nil)
             refreshCurrentThreadStreaming()
             selectedNodeDetail = nil
-            // 项目变了才重建 flow SSE；会话切换绝不重连
             ensureFlowSSE()
         }
-        await refreshThreads(projectId: id)
-        // 不自动绑旧 flow；等用户点会话
+        await loadConversation(projectId: id)
+    }
+
+    /// 加载项目的单一会话（磁盘优先，Hub 后台同步）
+    private func loadConversation(projectId: String) async {
+        let tid = LocalSessionStore.conversationThreadId(for: projectId)
+        threadSwitchGeneration &+= 1
+        let gen = threadSwitchGeneration
+        hydrateThreadFromDisk(projectId: projectId, threadId: tid)
+        messages = threadMessages[tid] ?? []
+        pendingTransferDraft = nil
+        if let cached = threadMessages[tid],
+           let lastAsst = cached.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+            refreshTransferDraft(from: lastAsst.content)
+        }
+        lastAnimatedEpicId = nil
+        flowSplitGeneration &+= 1
+        applyFlowSnapshot(threadFlow[tid])
+        refreshCurrentThreadStreaming()
+        updateFlowSnapshotPause()
+        lastError = nil
+        // 后台同步 Hub
+        Task { [weak self] in
+            guard let self else { return }
+            await self.syncThreadFromServer(projectId: projectId, threadId: tid, generation: gen)
+            await self.syncFlowFromServer(projectId: projectId, threadId: tid, generation: gen)
+        }
+    }
+
+    /// 重置当前项目的对话：清盘 + drop sidecar slot + 清 UI
+    func resetConversation() async {
+        guard let pid = selectedProjectId else {
+            showToast("请先选择项目")
+            return
+        }
+        if let tid = selectedThreadId {
+            cancelChat(threadId: tid, silent: true)
+        }
+        LocalSessionStore.reset(projectId: pid)
+        let convId = LocalSessionStore.conversationThreadId(for: pid)
+        threadMessages[convId] = nil
+        threadFlow[convId] = nil
+        // 通知 sidecar 丢弃 live slot
+        await dropSidecarSession(projectId: pid)
+        selectedThreadId = convId
+        messages = []
+        applyFlowSnapshot(nil)
+        flowSplitGeneration &+= 1
+        refreshCurrentThreadStreaming()
+        showToast("对话已重置")
+        destination = .chat
+    }
+
+    /// 通知 sidecar 丢弃项目的 ClaudeSDKClient live slot
+    private func dropSidecarSession(projectId: String) async {
+        guard canChat else { return }
+        let path = localPath(for: projectId) ?? ""
+        await client.dropSidecarSession(
+            projectPath: path,
+            sessionId: LocalSessionStore.conversationThreadId(for: projectId)
+        )
+    }
+
+    /// 显示压缩：消息超阈值时把最早 N 轮替换为摘要卡；token 超阈值时触发 agent session 重置
+    func compactConversationIfNeeded(projectId: String, threadId: String) async {
+        let current = threadMessages[threadId] ?? (selectedThreadId == threadId ? messages : [])
+        let (compacted, didCompact, rounds) = LocalSessionStore.compactIfNeeded(current)
+        guard didCompact else { return }
+        threadMessages[threadId] = compacted
+        if selectedThreadId == threadId {
+            messages = compacted
+        }
+        flushDiskSave()
+        // agent session token 超阈值 → 重置注入摘要（节约 token）
+        if sessionTokens >= Self.agentCompactTokenThreshold {
+            await resetAgentSessionWithSummary(projectId: projectId, threadId: threadId, rounds: rounds)
+            sessionTokens = 0
+        }
+    }
+
+    /// 调 sidecar /api/session/compact：drop slot + 新 slot 注入摘要
+    private func resetAgentSessionWithSummary(projectId: String, threadId: String, rounds: Int) async {
+        guard canChat else { return }
+        let path = localPath(for: projectId) ?? ""
+        let summary = "已压缩 \(rounds) 轮对话，请基于本机磁盘历史继续。"
+        await client.compactSidecarSession(
+            projectPath: path,
+            sessionId: threadId,
+            summary: summary
+        )
     }
 
     func toggleProjectExpanded(_ id: String) {
@@ -528,22 +627,22 @@ final class AppModel: ObservableObject {
     }
 
     func refreshThreads(projectId: String) async {
+        // 单对话模型：确保 "<projectId>::main" 会话在索引中
+        let tid = LocalSessionStore.conversationThreadId(for: projectId)
         let local = LocalSessionStore.threadsAsDesktop(projectId: projectId)
-        do {
-            try await prepareClient()
-            let remote = try await client.fetchThreads(projectId: projectId)
-            threads = mergeThreadLists(remote: remote, local: local)
-            hubReachable = true
-        } catch {
-            // Hub 不可达：只用本机索引
-            if !local.isEmpty {
-                threads = local
-            } else if threads.isEmpty {
-                showToast("会话列表暂不可用（Hub 不可达）")
-            }
+        if !local.contains(where: { $0.thread_id == tid }) {
+            // 索引缺则补一条占位
+            LocalSessionStore.saveMessages(
+                projectId: projectId,
+                threadId: tid,
+                messages: [],
+                title: "对话",
+                allowDowngrade: true
+            )
         }
-        // 预热最近会话进 RAM，切会话秒开
-        prefetchRecentThreads(projectId: projectId, limit: 12)
+        threads = LocalSessionStore.threadsAsDesktop(projectId: projectId)
+        // 预热进 RAM
+        hydrateThreadFromDisk(projectId: projectId, threadId: tid)
     }
 
     private func prefetchRecentThreads(projectId: String, limit: Int) {
@@ -573,31 +672,8 @@ final class AppModel: ObservableObject {
     }
 
     func newThread() async {
-        guard let pid = selectedProjectId else {
-            showToast("请先选择项目")
-            return
-        }
-        if let old = selectedThreadId {
-            persistCurrentThreadSnapshot(threadId: old)
-        }
-        busy = true
-        defer { busy = false }
-        let title = "方案讨论"
-        let tid: String
-        do {
-            try await prepareClient()
-            let resp = try await client.createThread(projectId: pid, title: title)
-            tid = resp.thread_id
-            hubReachable = true
-        } catch {
-            // 本机会话，Hub 稍后镜像
-            tid = "local-\(UUID().uuidString.prefix(8).lowercased())"
-            showToast("Hub 暂不可达，已建本机会话")
-        }
-        activateNewThread(projectId: pid, threadId: tid, title: title)
-        await refreshThreads(projectId: pid)
-        destination = .chat
-        ensureFlowSSE()
+        // 单对话模型：新对话 = 重置当前项目的对话
+        await resetConversation()
     }
 
     private func activateNewThread(projectId: String, threadId: String, title: String) {
@@ -967,16 +1043,46 @@ final class AppModel: ObservableObject {
         if var msgs = threadMessages[threadId],
            let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
             msgs[idx].content += chunk
+            // 新 delta 到达 → 清掉阶段性短句
+            if msgs[idx].transientNote != nil {
+                msgs[idx].transientNote = nil
+            }
             threadMessages[threadId] = msgs
         }
         if selectedThreadId == threadId,
            let mIdx = messages.firstIndex(where: { $0.id == assistantId }) {
             messages[mIdx].content += chunk
+            if messages[mIdx].transientNote != nil {
+                messages[mIdx].transientNote = nil
+            }
         } else if selectedThreadId == threadId, let msgs = threadMessages[threadId] {
             // 兜底：messages 与 threadMessages 不同步时整表对齐一次
             messages = msgs
         }
         scheduleDiskSave(threadId: threadId)
+    }
+
+    /// 末段长 result 分片：~20 字/帧、50ms 间隔，避免一次性弹出
+    private func applyDeltaInChunks(threadId: String, assistantId: UUID, chunk: String) {
+        let chars = Array(chunk)
+        let sliceSize = 20
+        var pos = 0
+        // 先喂第一片，立刻有内容显示
+        let first = String(chars.prefix(sliceSize))
+        applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: first)
+        pos = sliceSize
+        Task { [weak self] in
+            while pos < chars.count {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard let self, !Task.isCancelled else { return }
+                let end = min(pos + sliceSize, chars.count)
+                let piece = String(chars[pos..<end])
+                await MainActor.run {
+                    self.applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: piece)
+                }
+                pos = end
+            }
+        }
     }
 
     /// Phase 1.4: statusText 250ms 节流，避免每个 delta 都重绘状态栏
@@ -1073,8 +1179,90 @@ final class AppModel: ObservableObject {
             streamingThreadIds.remove(threadId)
         }
         liveStreamingThreadIds = streamingThreadIds
+        // 同步项目对话灯：threadId = "<projectId>::main"
+        let pid = Self.projectId(fromThreadId: threadId)
+        if on {
+            projectConvState[pid] = projectConvState[pid] ?? "text"
+        } else {
+            projectConvState[pid] = "idle"
+        }
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
+    }
+
+    /// 从 threadId "<projectId>::main" 反解 projectId
+    static func projectId(fromThreadId threadId: String) -> String {
+        if let idx = threadId.firstIndex(of: ":") {
+            return String(threadId[..<idx])
+        }
+        return threadId
+    }
+
+    /// 工具调用期间设项目对话灯为 "tool"
+    private func setProjectConvToolState(threadId: String) {
+        let pid = Self.projectId(fromThreadId: threadId)
+        if streamingThreadIds.contains(threadId) {
+            projectConvState[pid] = "tool"
+        }
+    }
+
+    /// delta 期间回退为 "text"（若当前是 "tool" 则保留工具态）
+    private func setProjectConvTextState(threadId: String) {
+        let pid = Self.projectId(fromThreadId: threadId)
+        if streamingThreadIds.contains(threadId), projectConvState[pid] != "tool" {
+            projectConvState[pid] = "text"
+        }
+    }
+
+    /// 启动项目卡片后台任务态轮询（10s）
+    func startProjectTaskPolling() {
+        guard projectPollTask == nil else { return }
+        projectPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { break }
+                await self.refreshProjectTaskState()
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+        }
+    }
+
+    func stopProjectTaskPolling() {
+        projectPollTask?.cancel()
+        projectPollTask = nil
+    }
+
+    private func refreshProjectTaskState() async {
+        guard hubReachable, !projects.isEmpty else { return }
+        let workspaces = projects.compactMap { $0.workspace ?? $0.id }
+        do {
+            try await prepareClient()
+            let resp = try await client.fetchBoardSummaries(workspaces: workspaces)
+            var newState: [String: String] = [:]
+            for proj in projects {
+                let ws = proj.workspace ?? proj.id
+                if let snap = resp.summaries[ws] {
+                    newState[proj.id] = Self.deriveTaskState(from: snap.counts ?? [:])
+                }
+            }
+            projectTaskState = newState
+        } catch {
+            // 静默失败；卡片灯不是关键路径
+        }
+    }
+
+    /// 从 board 列计数推导项目级任务态
+    static func deriveTaskState(from counts: [String: Int]) -> String {
+        let failed = counts["abnormal"] ?? 0
+        let inProgress = counts["in_progress"] ?? 0
+        let testing = counts["testing"] ?? 0
+        let planned = counts["planned"] ?? 0
+        let released = counts["released"] ?? 0
+        let verified = counts["verified"] ?? 0
+        if failed > 0 { return "failed" }
+        if inProgress > 0 || testing > 0 { return "in_progress" }
+        if planned > 0 { return "pending" }
+        if released > 0 || verified > 0 { return "done" }
+        return "idle"
     }
 
     /// 可等待版本：smoke / 自动化必须等整轮 SSE（含 done）结束
@@ -1088,25 +1276,12 @@ final class AppModel: ObservableObject {
             return false
         }
         // 编排仓可聊方案；仅转任务/下达仍禁（isDispatchable）
-        var tid = selectedThreadId
-        if tid == nil {
-            let title = String(trimmed.prefix(40))
-            do {
-                try await prepareClient()
-                let t = try await client.createThread(projectId: pid, title: title)
-                tid = t.thread_id
-                activateNewThread(projectId: pid, threadId: t.thread_id, title: title)
-                await refreshThreads(projectId: pid)
-            } catch {
-                // Hub 抖：本机会话仍可发
-                let localId = "local-\(UUID().uuidString.prefix(8).lowercased())"
-                tid = localId
-                activateNewThread(projectId: pid, threadId: localId, title: title)
-                await refreshThreads(projectId: pid)
-                showToast("Hub 暂不可达，已用本机会话继续")
-            }
+        let tid = selectedThreadId ?? LocalSessionStore.conversationThreadId(for: pid)
+        if selectedThreadId == nil {
+            selectedThreadId = tid
+            activateNewThread(projectId: pid, threadId: tid, title: String(trimmed.prefix(40)))
         }
-        guard let threadId = tid else { return false }
+        let threadId = tid
         // 对话面：必须本机 Agent；禁止 Hub /api/chat
         if !canChat {
             showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
@@ -1279,6 +1454,8 @@ final class AppModel: ObservableObject {
             }
             // 本机立即落盘 + Hub 异步镜像
             flushDiskSave()
+            // 显示压缩（异步，不打断当前流）
+            await compactConversationIfNeeded(projectId: projectId, threadId: threadId)
             let synced = (threadMessages[threadId] ?? messages)
                 .filter { $0.role == "user" || $0.role == "assistant" }
                 .map {
@@ -1336,15 +1513,33 @@ final class AppModel: ObservableObject {
     private func applyChatEvent(threadId: String, assistantId: UUID, event: ChatStreamEvent) {
         switch event {
         case .delta(let chunk):
-            applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
+            // 末段长 result 分片喂入（去「弹出」）：> 500 字按 ~20 字/帧、50ms 间隔
+            if chunk.count > 500 {
+                applyDeltaInChunks(threadId: threadId, assistantId: assistantId, chunk: chunk)
+            } else {
+                applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
+            }
+            setProjectConvTextState(threadId: threadId)
+            return
+        case .status(let note):
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].transientNote = note
+            }
+            objectWillChange.send()
             return
         case .toolUse, .toolResult, .cost, .done:
             break
+        }
+        if case .toolUse = event {
+            setProjectConvToolState(threadId: threadId)
         }
         mutateThreadMessages(threadId: threadId) { msgs in
             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
             switch event {
             case .delta:
+                break
+            case .status:
                 break
             case .toolUse(let name, let input):
                 let anyInput: [String: Any] = input
@@ -1373,8 +1568,10 @@ final class AppModel: ObservableObject {
                 if allDone {
                     msgs[idx].toolsFinished = true
                 }
-            case .cost:
-                break
+            case .cost(let tokens, _):
+                if let t = tokens, t > 0 {
+                    sessionTokens += t
+                }
             case .done:
                 for i in msgs[idx].toolSteps.indices where msgs[idx].toolSteps[i].status == .running {
                     msgs[idx].toolSteps[i].status = .done

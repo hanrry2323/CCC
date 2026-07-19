@@ -33,6 +33,12 @@ struct ChatMessage: Identifiable, Hashable {
     var toolSteps: [ToolStep]
     var filesChanged: Int
     var toolsFinished: Bool
+    /// "chat" | "summary"（已压缩 N 轮的占位卡片）
+    var kind: String
+    /// summary 卡片：被压缩的轮数
+    var summaryRounds: Int
+    /// 工具运行期间的阶段性短句（status 事件；下一条 delta 前显示）
+    var transientNote: String?
 
     init(
         id: UUID = UUID(),
@@ -41,7 +47,10 @@ struct ChatMessage: Identifiable, Hashable {
         isStreaming: Bool = false,
         toolSteps: [ToolStep] = [],
         filesChanged: Int = 0,
-        toolsFinished: Bool = false
+        toolsFinished: Bool = false,
+        kind: String = "chat",
+        summaryRounds: Int = 0,
+        transientNote: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -50,6 +59,9 @@ struct ChatMessage: Identifiable, Hashable {
         self.toolSteps = toolSteps
         self.filesChanged = filesChanged
         self.toolsFinished = toolsFinished
+        self.kind = kind
+        self.summaryRounds = summaryRounds
+        self.transientNote = transientNote
     }
 }
 
@@ -59,6 +71,9 @@ extension ChatMessage: Codable {
         case tool_steps
         case files_changed
         case tools_finished
+        case kind
+        case summary_rounds
+        case transient_note
     }
 
     init(from decoder: Decoder) throws {
@@ -71,6 +86,9 @@ extension ChatMessage: Codable {
         filesChanged = try c.decodeIfPresent(Int.self, forKey: .files_changed) ?? 0
         toolsFinished = try c.decodeIfPresent(Bool.self, forKey: .tools_finished)
             ?? !toolSteps.isEmpty
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "chat"
+        summaryRounds = try c.decodeIfPresent(Int.self, forKey: .summary_rounds) ?? 0
+        transientNote = try c.decodeIfPresent(String.self, forKey: .transient_note)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -86,11 +104,20 @@ extension ChatMessage: Codable {
         if toolsFinished || !toolSteps.isEmpty {
             try c.encode(toolsFinished, forKey: .tools_finished)
         }
+        if kind != "chat" {
+            try c.encode(kind, forKey: .kind)
+            try c.encode(summaryRounds, forKey: .summary_rounds)
+        }
+        if let note = transientNote, !note.isEmpty {
+            try c.encode(note, forKey: .transient_note)
+        }
     }
 }
 
 enum ChatStreamEvent: Sendable {
     case delta(String)
+    /// 工具运行期间的阶段性短句（区别于主通道 delta）
+    case status(String)
     case toolUse(name: String, input: [String: String])
     case toolResult(ok: Bool)
     case cost(tokens: Int?, usd: Double?)

@@ -164,6 +164,60 @@ async def warm(request: Request):
     }
 
 
+@app.post("/api/session/drop")
+async def session_drop(request: Request):
+    """丢弃 ClaudeSDKClient live slot（重置对话用）。
+
+    不删 loop-code 的 claude_session_id 历史，只让下次 query 冷启动。
+    """
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
+    body = await request.json()
+    project_path = (body.get("project_path") or "").strip()
+    session_id = str(body.get("session_id") or "local")
+    if not project_path or not _path_allowed(project_path):
+        return JSONResponse(
+            {"detail": "project_path required and must be allowed"},
+            status_code=400,
+        )
+    from chat_server.services.claude_session import session_manager, _slot_key
+
+    tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
+    key = _slot_key(project_path, session_id, tool_mode)
+    dropped = await session_manager._drop_slot(key, reason="user-reset")
+    return {"ok": True, "dropped": bool(dropped), "key": key}
+
+
+@app.post("/api/session/compact")
+async def session_compact(request: Request):
+    """压缩 agent session：drop slot + 存摘要待下次 query 注入。"""
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
+    body = await request.json()
+    project_path = (body.get("project_path") or "").strip()
+    session_id = str(body.get("session_id") or "local")
+    summary = body.get("summary")
+    tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
+    model = str(body.get("model") or "flash").strip().lower() or "flash"
+    if not project_path or not _path_allowed(project_path):
+        return JSONResponse(
+            {"detail": "project_path required and must be allowed"},
+            status_code=400,
+        )
+    from chat_server.services.claude_session import session_manager
+
+    used = await session_manager.compact_session(
+        project_path=project_path,
+        hub_session_id=session_id,
+        summary=summary,
+        tool_mode=tool_mode,
+        model=model,
+    )
+    return {"ok": True, "summary": used, "session_id": session_id}
+
+
 @app.post("/api/chat")
 async def chat(request: Request):
     denied = _check_agent_auth(request)

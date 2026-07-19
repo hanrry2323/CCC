@@ -66,17 +66,12 @@ struct CodexSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                SoftRow(title: "新对话", icon: "plus", prominent: true) {
-                    Task { await model.newThread() }
+                SoftRow(title: "重置对话", icon: "arrow.counterclockwise", prominent: true) {
+                    Task { await model.resetConversation() }
                 }
                 .disabled(!model.connected)
                 .opacity(model.connected ? 1 : 0.4)
                 .padding(.bottom, 6)
-
-                if model.connected {
-                    projectMenu
-                        .padding(.bottom, 4)
-                }
 
                 SoftRow(title: "看板", icon: "square.grid.2x2", selected: model.destination == .board) {
                     model.selectDestination(.board)
@@ -94,7 +89,7 @@ struct CodexSidebar: View {
             if !model.connected {
                 offlineBlock
             } else {
-                threadList
+                projectCardList
             }
 
             Spacer(minLength: 0)
@@ -116,34 +111,27 @@ struct CodexSidebar: View {
         .background(CCCTheme.sidebar)
     }
 
-    private var projectMenu: some View {
-        Menu {
-            ForEach(model.projects) { p in
-                Button {
-                    Task { await model.selectProject(p.id) }
-                } label: {
-                    HStack {
-                        Text(p.name)
-                        if p.id == model.selectedProjectId {
-                            Image(systemName: "checkmark")
-                        }
-                    }
+    private var projectCardList: some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 2) {
+                if model.projects.isEmpty {
+                    Text("暂无项目")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                }
+                ForEach(model.projects) { project in
+                    ProjectCard(
+                        project: project,
+                        isSelected: project.id == model.selectedProjectId
+                    )
                 }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Text(model.selectedProject?.name ?? "项目")
-                    .font(.system(size: 12.5))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(CCCTheme.faint)
-            }
-            .foregroundStyle(CCCTheme.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
         }
     }
 
@@ -169,59 +157,6 @@ struct CodexSidebar: View {
                 .buttonStyle(.plain)
         }
         .padding(14)
-    }
-
-    private var threadList: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 1) {
-                if model.threads.isEmpty {
-                    Text("暂无对话")
-                        .font(CCCTheme.caption)
-                        .foregroundStyle(CCCTheme.faint)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                }
-                ForEach(model.threads) { thread in
-                    let on = model.selectedThreadId == thread.thread_id
-                    SoftRow(
-                        title: thread.title ?? "新对话",
-                        selected: on,
-                        trailingBusy: model.isThreadStreaming(thread.thread_id)
-                    ) {
-                        Task { await model.openThread(thread.thread_id) }
-                    }
-                    .contextMenu {
-                        Button("重命名…") { model.beginRenameThread(thread) }
-                        Button("删除", role: .destructive) {
-                            Task { await model.deleteThread(thread.thread_id) }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-        }
-        .sheet(isPresented: Binding(
-            get: { model.renameThreadId != nil },
-            set: { if !$0 { model.renameThreadId = nil } }
-        )) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("重命名对话")
-                    .font(.system(size: 16, weight: .semibold))
-                TextField("标题", text: $model.renameDraft)
-                    .textFieldStyle(.roundedBorder)
-                HStack {
-                    Spacer()
-                    Button("取消") { model.renameThreadId = nil }
-                    Button("保存") { Task { await model.commitRenameThread() } }
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(20)
-            .frame(width: 360)
-        }
     }
 
     private var divider: some View {
@@ -406,52 +341,55 @@ struct CodexChatPane: View {
     }
 
     private var messageArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    if model.messages.isEmpty {
-                        VStack(spacing: 8) {
-                            Spacer().frame(height: 72)
-                            Text("有什么可以帮忙的？")
-                                .font(CCCTheme.title)
-                                .foregroundStyle(CCCTheme.ink)
-                            Text("说明目标与验收，再转任务。")
-                                .font(.system(size: 13.5))
-                                .foregroundStyle(CCCTheme.faint)
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        if model.messages.isEmpty {
+                            VStack(spacing: 8) {
+                                Spacer().frame(height: 72)
+                                Text("有什么可以帮忙的？")
+                                    .font(CCCTheme.title)
+                                    .foregroundStyle(CCCTheme.ink)
+                                Text("说明目标与验收，再转任务。")
+                                    .font(.system(size: 13.5))
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 24)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 24)
-                    }
-                    ForEach(model.messages) { msg in
-                        CodexMessageRow(message: msg)
-                            // Phase 1.5: .id 不含 content.count — delta 不再重建整行；
-                            // toolSteps 计数 + running 计数仍保留以触发工具轨刷新
-                            .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)")
-                            .environmentObject(model)
-                            .contextMenu {
-                                Button("复制") { model.copyMessage(msg.content) }
-                                if msg.role == "user" {
-                                    Button("编辑") { model.editUserMessage(msg) }
-                                }
-                                if msg.role == "assistant", !msg.isStreaming {
-                                    Button("重新生成") { model.regenerateAssistant(after: msg) }
-                                    Button("预览") { model.previewMessage(msg.content) }
-                                    if model.canTransfer {
-                                        Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
+                        ForEach(model.messages) { msg in
+                            CodexMessageRow(message: msg)
+                                // Phase 1.5: .id 不含 content.count — delta 不再重建整行；
+                                // toolSteps 计数 + running 计数仍保留以触发工具轨刷新
+                                .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)")
+                                .environmentObject(model)
+                                .contextMenu {
+                                    Button("复制") { model.copyMessage(msg.content) }
+                                    if msg.role == "user" {
+                                        Button("编辑") { model.editUserMessage(msg) }
+                                    }
+                                    if msg.role == "assistant", !msg.isStreaming {
+                                        Button("重新生成") { model.regenerateAssistant(after: msg) }
+                                        Button("预览") { model.previewMessage(msg.content) }
+                                        if model.canTransfer {
+                                            Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
+                                        }
                                     }
                                 }
-                            }
+                        }
+                        // Cursor 式底部留白：最新内容居中而非贴底
+                        Spacer().frame(height: max(geometry.size.height * 0.35, 120))
                     }
+                    .id(model.selectedThreadId ?? "none") // 切会话强制重建，防工具轨串台
+                    .frame(maxWidth: CCCTheme.chatMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 8)
                 }
-                .id(model.selectedThreadId ?? "none") // 切会话强制重建，防工具轨串台
-                .frame(maxWidth: CCCTheme.chatMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 28)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .onChange(of: model.messages.count) { _ in scroll(proxy) }
+                .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
             }
-            .onChange(of: model.messages.count) { _ in scroll(proxy) }
-            .onChange(of: model.messages.last?.content) { _ in scroll(proxy) }
         }
     }
 
@@ -459,8 +397,9 @@ struct CodexChatPane: View {
         guard let last = model.messages.last else { return }
         // Phase 1.5: scroll 目标与 .id 同构，避免 scrollTo 命中失败
         let lastId = "\(model.selectedThreadId ?? "")-\(last.id)-t\(last.toolSteps.count)-r\(last.toolSteps.filter { $0.status == .running }.count)"
-        withAnimation(.easeOut(duration: 0.12)) {
-            proxy.scrollTo(lastId, anchor: .bottom)
+        // Cursor 式：最新内容居中而非贴底
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(lastId, anchor: .center)
         }
     }
 
@@ -611,53 +550,91 @@ struct CodexMessageRow: View {
     let message: ChatMessage
 
     var body: some View {
-        let isUser = message.role == "user"
+        if message.kind == "summary" {
+            summaryCard
+        } else if message.role == "user" {
+            userBubble
+        } else {
+            assistantBlock
+        }
+    }
+
+    private var summaryCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "archivebox.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Text(message.content)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.gray.opacity(0.12))
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private var userBubble: some View {
         let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
             ? "…"
             : message.content
         let showActions = !message.isStreaming && !body.isEmpty && body != "…"
-
-        Group {
-            if isUser {
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(alignment: .top, spacing: 0) {
-                        Spacer(minLength: 80)
-                        Text(body)
-                            .font(CCCTheme.body)
-                            .foregroundStyle(CCCTheme.ink)
-                            .textSelection(.enabled)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(CCCTheme.bubbleUser)
-                            )
-                    }
-                    if showActions {
-                        MessageActionBar(role: "user", content: body, message: message)
-                            .padding(.trailing, 4)
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    if message.isStreaming || !message.toolSteps.isEmpty {
-                        ToolProgressRail(
-                            steps: message.toolSteps,
-                            filesChanged: message.filesChanged,
-                            finished: message.toolsFinished || !message.isStreaming,
-                            placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil
-                        )
-                    }
-                    if !body.isEmpty && body != "…" {
-                        MarkdownText(source: body)
-                    }
-                    if showActions {
-                        MessageActionBar(role: "assistant", content: body, message: message)
-                    }
-                }
-                .padding(.trailing, 40)
+        return VStack(alignment: .trailing, spacing: 4) {
+            HStack(alignment: .top, spacing: 0) {
+                Spacer(minLength: 80)
+                Text(body)
+                    .font(CCCTheme.body)
+                    .foregroundStyle(CCCTheme.ink)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(CCCTheme.bubbleUser)
+                    )
+            }
+            if showActions {
+                MessageActionBar(role: "user", content: body, message: message)
+                    .padding(.trailing, 4)
             }
         }
+    }
+
+    private var assistantBlock: some View {
+        let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
+            ? "…"
+            : message.content
+        let showActions = !message.isStreaming && !body.isEmpty && body != "…"
+        return VStack(alignment: .leading, spacing: 8) {
+            if message.isStreaming || !message.toolSteps.isEmpty {
+                ToolProgressRail(
+                    steps: message.toolSteps,
+                    filesChanged: message.filesChanged,
+                    finished: message.toolsFinished || !message.isStreaming,
+                    placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil
+                )
+            }
+            if let note = message.transientNote, !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 12).italic())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+            if !body.isEmpty && body != "…" {
+                MarkdownText(source: body)
+                    // 末段流式收尾：isStreaming true→false 时淡入上移，去「弹出」
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .animation(.easeOut(duration: 0.25), value: message.isStreaming)
+            }
+            if showActions {
+                MessageActionBar(role: "assistant", content: body, message: message)
+            }
+        }
+        .padding(.trailing, 40)
     }
 }
 
