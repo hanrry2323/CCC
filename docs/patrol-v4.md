@@ -75,7 +75,7 @@ Patrol v4 (`ccc-patrol-v4.py`) 是 CCC Engine 的看门狗 + 自动化异常排�
 |------|------|
 | Engine (ccc-engine.py) | Patrol 监控目标: 心跳检测 + 存活检查 + 自动重启 |
 | Loop Monitor (ccc-loop-monitor.sh) | Patrol 调用方: loop-monitor 的 step 1 执行 patrol |
-| Cockpit (ccc-cockpit.py) | 无直接集成, Cockpit 可后续显示 patrol 状态摘要 |
+| Cockpit (ccc-cockpit-desktop) | 无直接集成, Tauri 桌面壳子可后续显示 patrol 状态摘要 |
 | Notify (ccc-notify.sh) | Patrol 调用方: Engine 重启/死亡时发桌面通知 |
 
 ---
@@ -149,7 +149,7 @@ Patrol 硬编码扫描以下 5 个工作区:
 - **patrol-state.json** 格式:
   ```json
   {
-    "last_round_timestamp": "2024-01-01T12:00:00Z",
+    "ts": "2026-07-19T15:00:00+08:00",
     "stuck_tasks": {
       "<stable_id>": {"consecutive_skip": 3, "stuck_duration_seconds": 1800}
     }

@@ -1,4 +1,4 @@
-# CCC 运行控制面（v0.42）
+# CCC 运行控制面（v0.51.0）
 
 > **SSOT**：`~/.ccc/control.json`（[`scripts/_ccc_control.py`](../scripts/_ccc_control.py)）  
 > CLI：`bash scripts/ccc-autostart-guard.sh {status|disable|ui|enable|invent}`  
@@ -18,6 +18,16 @@
 - 下达时把目标项目 path **幂等写入** `~/.ccc/workspaces.json`（Engine 默认只扫 CCC；显式下达才扩权）
 - `install-hub --start` → `ui` 仍正确；**下达**才切 `enabled` 并恢复 `com.ccc.engine` plist
 
+**v0.42.3 invent 硬禁用**：
+- `_ccc_control.py` 设 `INVENT_HARD_DISABLED=True`，`may_invent()` 永远返回 False
+- 即使 `control.json` 写 `invent`，Engine 也不会自造任务（视为 disabled）
+- 保留档位仅为兼容历史 control.json；新部署应使用 `enabled`
+
+**v0.51.0 鉴权与持久化加固**：
+- `ccc-board-server.py` 移除 `CCC_BOARD_ALLOW_LOCAL_NO_TOKEN` 跳过分支（F-SEC-05）
+- `engine/active_tasks.py` 移除 finally unlink（F-CON-02），保留崩溃恢复文件
+- `chat_server/auth.py` 默认不信任 `X-Forwarded-For`（P1-1），需反向代理时显式 `CCC_TRUST_PROXY=1`
+
 ---
 
 ## 业务状态机
@@ -26,7 +36,7 @@
 disabled ──默认──► 无常驻
 ui       ──显式──► 仅 Hub+Board；无 Engine
 enabled  ──显式──► Engine 只消费已有队列（禁止 invent）
-invent   ──显式──► Engine + audit/evolve/auto_replenish/abnormal 回灌
+invent   ──显式──► [v0.42.3 起硬禁用] 仅保留档位，Engine 视为 disabled
 ```
 
 | 模式 | Hub/Board | Engine | 自造任务 |
@@ -34,7 +44,7 @@ invent   ──显式──► Engine + audit/evolve/auto_replenish/abnormal 回
 | `disabled` | 否 | 否 | 否 |
 | `ui` | 可 | 否 | 否 |
 | `enabled` | 可 | 可 | **否**（队列消费者） |
-| `invent` | 可 | 可 | **是** |
+| `invent` | 可 | **否（硬禁用）** | **否**（`may_invent()` 永远 False） |
 
 **根因纠正**：`enable ≠ 永远在线自造任务`。空队列时 Engine **深睡 60s**，不跑 audit/abnormal。
 
@@ -49,7 +59,7 @@ bash scripts/ccc-autostart-guard.sh status
 bash scripts/ccc-autostart-guard.sh disable
 bash scripts/ccc-autostart-guard.sh ui [--start]
 bash scripts/ccc-autostart-guard.sh enable [--start]   # 推荐日常自动化
-bash scripts/ccc-autostart-guard.sh invent [--start]   # 显式允许自造（危险）
+bash scripts/ccc-autostart-guard.sh invent [--start]   # v0.42.3 起硬禁用（仅兼容历史档位）
 bash scripts/ccc-hub-dev.sh                           # 前端前台
 python3 scripts/ccc-failure-report.py --last 20
 ```
@@ -73,6 +83,8 @@ python3 scripts/ccc-failure-report.py --last 20
 | `CCC_UPSTREAM_STRICT` | off | `1` 时 upstream 探针仅 HTTP 200 算健康 |
 | `CCC_REVIEWER_FALLBACK` | `static` | `static`=LLM 挂时 PASS+WARN 过门；`quarantine`=进 abnormal |
 | `CCC_DAILY_REVIEW_LLM` | off | `1` 时日审走 Claude JSON（失败回退启发式） |
+| `CCC_TRUST_PROXY` | off | `1` 时 chat_server/auth.py 信任 `X-Forwarded-For`（反向代理后开启） |
+| `CCC_EXEC_COMMIT_ALLOWED_PATHS` | 空 | 设置后 ccc-exec-commit.sh 仅允许 WORKSPACE 在指定目录树下 |
 
 ## 闭环步骤（角色名 = 给人看；自动化 = prompt+skill+harness）
 
@@ -99,3 +111,5 @@ python3 scripts/ccc-failure-report.py --last 20
 - **v0.40**：`enabled`=队列消费者；`invent` 独立；失败账本
 - **v0.40.1**：claude PATH / upstream 4xx / reviewer static fallback / hang 降噪
 - **v0.41**：下任务强制开工；基线对齐；日审骨架；Hub SSE 去重
+- **v0.42.3**：invent 硬禁用（`INVENT_HARD_DISABLED=True`，`may_invent()` 永远 False）
+- **v0.51.0**：鉴权加固（移除 allow_local 跳过、XFF 默认不信任）+ 持久化修复（finally unlink 移除）+ 版本同步 CI 强制

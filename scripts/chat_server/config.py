@@ -4,10 +4,9 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_SCRIPTS = PROJECT_ROOT / "scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
 
+# v0.51.0 P2-3: sys.path 注入由 chat_server/__init__.py 统一处理（chat_server 包被
+# import 时 __init__.py 会先执行注入，config 模块加载时 scripts/ 已在 sys.path 中）
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli  # noqa: E402
 
 HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")

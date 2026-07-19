@@ -31,9 +31,48 @@ fi
 
 WORKSPACE="$1"
 TASK="$2"
-PHASES_FILE="$WORKSPACE/.ccc/phases/$TASK.phases.json"
 PHASE_FILTER=""
 shift 2
+
+# --- v0.51.0 (P1-2): WORKSPACE 路径白名单校验 ---
+# 防目录穿越（..）与跨仓误 commit；保留测试 tmp_path 兼容性。
+if [[ -z "$WORKSPACE" ]]; then
+    echo "❌ WORKSPACE 不能为空" >&2
+    exit 2
+fi
+if [[ "$WORKSPACE" != /* ]]; then
+    echo "❌ WORKSPACE 必须是绝对路径: $WORKSPACE" >&2
+    exit 2
+fi
+if [[ "$WORKSPACE" == *".."* ]]; then
+    echo "❌ WORKSPACE 不可含 '..' (目录穿越防护): $WORKSPACE" >&2
+    exit 2
+fi
+# 解引用符号链接并规范化（cd 成功表明路径存在）
+WORKSPACE="$(cd "$WORKSPACE" 2>/dev/null && pwd -P)" || {
+    echo "❌ WORKSPACE 路径不可达: $WORKSPACE" >&2
+    exit 2
+}
+# 可选严格白名单：CCC_EXEC_COMMIT_ALLOWED_PATHS=dir1:dir2:...
+# 设置后仅允许 WORKSPACE 落在指定目录树下（生产环境推荐启用）
+ALLOWED_PATHS="${CCC_EXEC_COMMIT_ALLOWED_PATHS:-}"
+if [[ -n "$ALLOWED_PATHS" ]]; then
+    _ok=0
+    IFS=':' read -ra _DIRS <<< "$ALLOWED_PATHS"
+    for _dir in "${_DIRS[@]}"; do
+        _dir="$(cd "$_dir" 2>/dev/null && pwd -P)" || continue
+        if [[ "$WORKSPACE" == "$_dir" || "$WORKSPACE" == "$_dir"/* ]]; then
+            _ok=1
+            break
+        fi
+    done
+    if [[ $_ok -eq 0 ]]; then
+        echo "❌ WORKSPACE 不在白名单 (CCC_EXEC_COMMIT_ALLOWED_PATHS): $WORKSPACE" >&2
+        exit 2
+    fi
+fi
+
+PHASES_FILE="$WORKSPACE/.ccc/phases/$TASK.phases.json"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

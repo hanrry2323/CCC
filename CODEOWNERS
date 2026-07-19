@@ -1,0 +1,29 @@
+# CODEOWNERS — CCC 项目默认 reviewer 规则
+# v0.51.0 P2-5: GitHub PR 自动指派
+# 格式: <path>  <owner1> @owner2 ...
+# 详细规则: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 默认：所有未匹配的路径
+*  @loop-engineer
+
+# 关键控制面与安全相关
+/scripts/_ccc_control.py        @loop-engineer
+/scripts/ccc-board-server.py    @loop-engineer
+/scripts/chat_server/auth.py    @loop-engineer
+/scripts/_secret_redact.py      @loop-engineer
+/scripts/_role_lock.py          @loop-engineer
+/scripts/ccc-exec-commit.sh     @loop-engineer
+
+# CI / pre-commit / 版本同步
+/.github/workflows/ci.yml       @loop-engineer
+/.pre-commit-config.yaml        @loop-engineer
+/scripts/check-version-sync.py  @loop-engineer
+/VERSION                        @loop-engineer
+/package.json                   @loop-engineer
+/src-tauri/Cargo.toml           @loop-engineer
+
+# 文档红线
+/CLAUDE.md                      @loop-engineer
+/SKILL.md                       @loop-engineer
+/docs/CONTROL.md                @loop-engineer
+/docs/LESSONS.md                @loop-engineer

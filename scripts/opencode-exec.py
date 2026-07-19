@@ -135,7 +135,7 @@ def check_residual_watchdog(script_dir: Path) -> bool:
     """跑 watchdog 验残留"""
     wd = script_dir / "opencode-watchdog.sh"
     if not wd.exists():
-        print(f"[opencode-exec] 缺 watchdog: {wd}", file=sys.stderr)
+        _log.warning("缺 watchdog: %s", wd)
         return False
     rc = subprocess.run(["bash", str(wd)], capture_output=True, text=True).returncode
     # watchdog 退出码：0=干净 / 3=已自清 / 其它=失败

@@ -28,6 +28,7 @@ from _board_store import FileBoardStore, _atomic_write as _store_atomic_write
 import phase_lint
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
+from _utils import get_relay_url as _utils_get_relay_url
 from _utils import sanitize_prompt_input as _sanitize_prompt_input
 
 from board.context import (
@@ -369,7 +370,8 @@ def _claude_bin() -> str:
 
 
 def _get_relay_url() -> str:
-    return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
+    """v0.51.0 P2-2: 委托 _utils.get_relay_url（SSOT）。"""
+    return _utils_get_relay_url()
 
 
 # v0.28.0 (M-002): 模块级缓存 = {path: (result, ts)} — 300s TTL 过期

@@ -9,7 +9,9 @@ from .. import config
 
 
 def now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+    """v0.51.0: 委托 _utils.now_iso 统一北京 +08:00（避免非北京机器时区漂移）。"""
+    from _utils import now_iso as _utils_now_iso
+    return _utils_now_iso()
 
 
 _SAFE_PROJECT_RE = re.compile(r"^[a-zA-Z0-9_-]+$")

@@ -22,6 +22,7 @@
 | ops | `ccc-ops/` | 不动 board | 可选 | 健康检查 |
 | kb | `ccc-kb/` | verified → released | verified 非空 | tag + changelog |
 | regress | `ccc-regress/` | released → backlog | 定时/手动 | 回测 |
+| audit | `ccc-audit/` | 跨 ws（可投 backlog） | 可选 / CLI | lint/mypy 分类 + auto-fix |
 
 `complexity=small` 时可跳过 reviewer+tester（直通 kb）。
 

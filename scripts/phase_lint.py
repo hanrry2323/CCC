@@ -59,7 +59,7 @@ def load_phases(task_id: str, ws: Path = Path.cwd()) -> List[dict]:
                 phases.append(obj)
         return phases
     except json.JSONDecodeError as e:
-        print(f"[phase_lint] JSON 解析失败: {e}", file=sys.stderr)
+        _log.error("phases.jsonl JSON 解析失败: %s", e)
         return []
 
 
@@ -671,7 +671,7 @@ def run_lint(task_id: str, fix: bool = False) -> int:
             break
 
     if phases_file is None:
-        print(f"[phase_lint] phases.jsonl 不存在: {candidates[0]}", file=sys.stderr)
+        _log.error("phases.jsonl 不存在: %s", candidates[0])
         return 1
 
     actual_task_id = phases_file.stem
@@ -682,7 +682,7 @@ def run_lint(task_id: str, fix: bool = False) -> int:
     if not phases:
         # 区分：文件存在但空 → 报错；文件不存在 → 之前已返回 1
         if phases_file.stat().st_size == 0:
-            print(f"[phase_lint] phases.jsonl 为空: {phases_file}", file=sys.stderr)
+            _log.error("phases.jsonl 为空: %s", phases_file)
             return 1
         print("[phase_lint] 无 phases 数据")
         return 0

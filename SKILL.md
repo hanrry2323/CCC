@@ -7,7 +7,7 @@ description: "CCC — Connect–Claude Code. Loop Engineer: Hub 定意图 + Engi
 
 > **Loop Engineer。** 人定意图，系统自动编排与自主执行。  
 > **Hub** 是入口（已替代第三方 Agent IDE 壳）。任务路由工具；**Skill + Prompt = 本次角色**（无穷角色）。  
-> 叙事 SSOT：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`
+> 叙事 SSOT：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.51.0**）
 
 **含义**：**C**onnect–**C**laude **C**ode。
 

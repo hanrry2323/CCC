@@ -9,6 +9,7 @@ from _config import Config, get_logger
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
+from _utils import get_relay_url as _utils_get_relay_url
 from _claude_cli import resolve_claude_cli
 
 from board.context import get_workspace, ccc_home
@@ -203,7 +204,8 @@ def _claude_bin() -> str:
 
 
 def _get_relay_url() -> str:
-    return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
+    """v0.51.0 P2-2: 委托 _utils.get_relay_url（SSOT）。"""
+    return _utils_get_relay_url()
 
 
 def _write_pass_verdict(task_id: str, reason: str) -> None:

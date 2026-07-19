@@ -144,7 +144,7 @@ opencode run --model loop/flash "<msg>"
 ```bash
 cat docs/VISION.md
 cat docs/STRATEGY-MAP.md          # 全景
-grep -A 15 "## 红线 N" references/red-lines.md
+grep -A 15 "## 红线 11" references/red-lines.md
 python3 scripts/ccc-board.py index
 ```
 

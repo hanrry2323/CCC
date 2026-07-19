@@ -21,9 +21,9 @@ ignore = [
   "UP017",  # timezone.utc vs datetime.UTC — 保留旧风格
   "UP035",  # typing.Iterator vs collections.abc — 保留旧风格
   "UP045",  # Optional[X] 同上
-  "F401",   # unused import（部分模块为 side-effect 导入）
-  "F841",   # unused variable（部分测试占位）
-  "I001",   # import sorting（现有大量模块未排序，渐进式修复）
+  "F401",   # unused import（部分模块为 side-effect 导入，**渐进收紧**：新代码应显式 `# noqa: F401`）
+  "F841",   # unused variable（部分测试占位，**渐进收紧**：新代码不应新增）
+  "I001",   # import sorting（现有大量模块未排序，**渐进收紧**：新模块应排序）
 ]
 
 [tool.ruff.lint.per-file-ignores]
