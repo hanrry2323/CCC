@@ -30,24 +30,10 @@ check() {
 
 echo "== Desktop stable suite agent=${AGENT} server=${SERVER} =="
 
-# 1) Sidecar 自启（若未起）
-if ! curl -fsS --max-time 2 "${AGENT}/health" >/dev/null 2>&1; then
-  echo "-- ensure sidecar --"
-  mkdir -p "$HOME/Library/Logs/CCC"
-  nohup bash scripts/ccc-agent-sidecar.sh >>"$HOME/Library/Logs/CCC/agent-sidecar.log" 2>&1 &
-  sleep 2
-fi
+# 1) Sidecar launchd 常驻
+bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
-
-# 1b) keep-warm（旧进程无 /warm 时拉起新 sidecar）
-if ! curl -fsS --max-time 3 -X POST "${AGENT}/warm" -H 'Content-Type: application/json' -d '{}' 2>/dev/null | grep -q '"ok"'; then
-  echo "-- reload sidecar for /warm --"
-  pkill -f "ccc-agent-sidecar.py" 2>/dev/null || true
-  sleep 0.5
-  mkdir -p "$HOME/Library/Logs/CCC"
-  nohup bash scripts/ccc-agent-sidecar.sh >>"$HOME/Library/Logs/CCC/agent-sidecar.log" 2>&1 &
-  sleep 2
-fi
+check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"
 check "sidecar warm" bash -c "curl -fsS --max-time 5 -X POST '${AGENT}/warm' -H 'Content-Type: application/json' -d '{}' | grep -q '\"ok\"'"
 
 # 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）

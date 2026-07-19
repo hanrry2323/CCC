@@ -13,19 +13,22 @@ Desktop UI ←localhost SSE→ ccc-agent-sidecar (:7788)
 Desktop UI ──PUT messages(+tool_steps) / transfer / flow──→ Hub (:7777)
 ```
 
-## 启动
+## 启动（launchd 常驻）
 
-- **日常**：打开 CCC Desktop 即可；health 失败时自动拉起。
-- **手工**：
+- **日常**：`bash scripts/install-agent-sidecar-plist.sh --start`（或打开 Desktop，自动 install/kickstart）。
+- **KeepAlive**：崩溃 / 误杀后 launchd 自动拉起；**不依赖 nohup**，与 Hub 控制面无关。
+- **手工前台调试**：
 
 ```bash
-bash scripts/ccc-agent-sidecar.sh
-# CCC_AGENT_PORT=7788 CCC_AGENT_CWD=<本机业务仓>
-# ANTHROPIC_BASE_URL=http://192.168.3.116:4000
+bash scripts/ccc-agent-sidecar.sh          # 前台
+bash scripts/ccc-agent-sidecar.sh status
+bash scripts/ccc-agent-sidecar.sh stop
+# CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://127.0.0.1:4000
 ```
 
 健康检查：`curl -s http://127.0.0.1:7788/health`  
-日志：`~/Library/Logs/CCC/agent-sidecar.log`
+日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
+plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 
 ## Desktop 行为
 

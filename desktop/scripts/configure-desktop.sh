@@ -38,16 +38,13 @@ PY
 )
 defaults write "$DOMAIN" "ccc.localWorkspaceMap" -string "$MAP_JSON"
 
-# 确保 sidecar
-if ! curl -sf -m 2 "${AGENT%/}/health" >/dev/null 2>&1; then
-  echo "start sidecar…"
-  mkdir -p "$HOME/Library/Logs/CCC"
-  (cd "$ROOT" && nohup bash scripts/ccc-agent-sidecar.sh >>"$HOME/Library/Logs/CCC/agent-sidecar.log" 2>&1 &)
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    curl -sf -m 1 "${AGENT%/}/health" >/dev/null 2>&1 && break
-    sleep 0.5
-  done
-fi
+# 确保 sidecar（launchd KeepAlive；不再依赖 nohup）
+echo "ensure sidecar launchd…"
+bash "$ROOT/scripts/install-agent-sidecar-plist.sh" --start || true
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  curl -sf -m 1 "${AGENT%/}/health" >/dev/null 2>&1 && break
+  sleep 0.5
+done
 
 if curl -sf -m 2 "${AGENT%/}/health" >/dev/null 2>&1; then
   echo "sidecar: OK $AGENT"

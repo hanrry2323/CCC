@@ -22,11 +22,11 @@
 
 ## 方案 Agent
 
-**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`）→ `vendor/loop-code/cli` → Router。  
-Desktop `ensureLocalAgent`：探测 → 自启 → `POST /warm`；每 240s keep-warm；发送前若 &gt;120s 再暖。  
+**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli` → Router。  
+Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-sidecar-plist.sh` → `POST /warm`；每 240s keep-warm。  
 消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。转任务 / 右栏仍要求 Hub。
 
-**回退**：sidecar 失败 → **Hub 回退**；Hub 失败但 sidecar 活 → **本机 Agent · Hub 暂不可达**（可聊）。  
+**回退**：sidecar 失败 → **Hub 回退**；Hub 失败但 sidecar 活 → **本机 Agent · Hub 暂不可达**（可聊，不受 LAN 抖影响）。  
 **工作区**：`localWorkspaceMap[projectId]` → 全局 fallback → Hub path 若本机存在。
 
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。

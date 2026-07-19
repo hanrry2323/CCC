@@ -91,13 +91,22 @@ enum LocalSessionStore {
         upsertIndex(projectId: rec.project_id, threadId: rec.thread_id, title: rec.title, updatedAt: rec.updated_at)
     }
 
+    /// 内容丰富度：条数 + 字数 + 工具步（用于禁止空 Hub 盖掉本机）
+    static func messageScore(_ messages: [ChatMessage]) -> Int {
+        let body = messages.reduce(0) { $0 + $1.content.count }
+        let tools = messages.reduce(0) { $0 + $1.toolSteps.count }
+        return messages.count * 1000 + body + tools * 50
+    }
+
     static func saveMessages(
         projectId: String,
         threadId: String,
         messages: [ChatMessage],
         title: String? = nil,
         flow: FlowThreadSnapshot? = nil,
-        needsHubSync: Bool = false
+        needsHubSync: Bool = false,
+        /// false：若本机已有更丰富内容则拒绝用更空的写入覆盖
+        allowDowngrade: Bool = false
     ) {
         let existing = load(projectId: projectId, threadId: threadId)
         let persistable = messages
@@ -111,6 +120,17 @@ enum LocalSessionStore {
                     toolsFinished: $0.toolsFinished
                 )
             }
+        if !allowDowngrade, let old = existing?.messages, !old.isEmpty {
+            if messageScore(persistable) < messageScore(old) {
+                // 只更新标题/flow，保留更完整消息
+                var keep = existing!
+                if let title, !title.isEmpty { keep.title = title }
+                if let flow { keep.flow = flow }
+                if needsHubSync { keep.needs_hub_sync = true }
+                save(keep)
+                return
+            }
+        }
         let rec = Record(
             thread_id: threadId,
             project_id: projectId,

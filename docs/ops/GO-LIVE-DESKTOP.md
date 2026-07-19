@@ -80,6 +80,12 @@
 | 18 | sidecar `/warm` | **PASS** | `POST /warm` + Desktop 240s / 发送前 120s |
 | 19 | `prompt_mode=light` | **PASS** | `hub_voice` + sidecar/Hub；定稿强制 full |
 | 20 | TTFB 备注 | 现场 | `bash scripts/spike-loopcode-ttfb.sh`（热路径目标 ≤1s） |
+| 21 | sidecar launchd KeepAlive | **PASS** | `com.ccc.agent-sidecar`；kill -9 后自动复活 |
+
+```bash
+bash scripts/install-agent-sidecar-plist.sh --start
+bash scripts/ccc-agent-sidecar.sh status
+```
 
 基线取证目录：`.ccc/dockets/ssot-mature-20260719-031420/`。
 

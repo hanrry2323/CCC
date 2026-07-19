@@ -1,7 +1,9 @@
 import Foundation
 
-/// Desktop 负责拉起本机 Agent Sidecar（不杀进程保暖）。
+/// Desktop 拉起本机 Agent Sidecar：优先 launchd KeepAlive，失败再 nohup。
 enum AgentSidecarLauncher {
+    static let launchdLabel = "com.ccc.agent-sidecar"
+
     struct Result: Sendable {
         let launched: Bool
         let cccHome: String?
@@ -37,7 +39,7 @@ enum AgentSidecarLauncher {
         return nil
     }
 
-    /// 若未在跑则后台启动 sidecar；用 nohup 脱离，App 退出不杀。
+    /// 确保 sidecar 在跑：launchd kickstart → install plist → nohup 兜底
     @discardableResult
     static func ensureRunning(cccHomeHint: String?) -> Result {
         guard let home = resolveCCCHome(configured: cccHomeHint) else {
@@ -47,11 +49,39 @@ enum AgentSidecarLauncher {
                 detail: "找不到 CCC 仓（设 CCC_HOME 或设置里 CCC 仓根）"
             )
         }
+
+        // 1) 已有 launchd job：kickstart（KeepAlive 会自愈，这里催一下）
+        if launchdJobLoaded() {
+            _ = runShell("launchctl kickstart -k \"gui/$(id -u)/\(launchdLabel)\" 2>/dev/null || true")
+            return Result(launched: true, cccHome: home, detail: "launchd kickstart")
+        }
+
+        // 2) 安装并 load plist（常驻）
+        let install = (home as NSString)
+            .appendingPathComponent("scripts/install-agent-sidecar-plist.sh")
+        if FileManager.default.fileExists(atPath: install) {
+            let r = runShell("bash \"\(install)\" --start")
+            if r.ok {
+                return Result(launched: true, cccHome: home, detail: "launchd installed")
+            }
+            // 继续兜底
+        }
+
+        // 3) nohup 兜底（无 launchd / 权限失败）
+        return nohupStart(home: home)
+    }
+
+    private static func launchdJobLoaded() -> Bool {
+        let uid = getuid()
+        let r = runShell("launchctl print \"gui/\(uid)/\(launchdLabel)\" >/dev/null 2>&1")
+        return r.ok
+    }
+
+    private static func nohupStart(home: String) -> Result {
         let script = (home as NSString).appendingPathComponent("scripts/ccc-agent-sidecar.sh")
         guard FileManager.default.fileExists(atPath: script) else {
             return Result(launched: false, cccHome: home, detail: "缺少 ccc-agent-sidecar.sh")
         }
-
         let logDir = (NSHomeDirectory() as NSString)
             .appendingPathComponent("Library/Logs/CCC")
         try? FileManager.default.createDirectory(
@@ -59,8 +89,6 @@ enum AgentSidecarLauncher {
             withIntermediateDirectories: true
         )
         let logPath = (logDir as NSString).appendingPathComponent("agent-sidecar.log")
-
-        // nohup + background：短命 shell 退出后 sidecar 仍活着
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         let cmd = """
@@ -76,10 +104,34 @@ enum AgentSidecarLauncher {
             return Result(
                 launched: ok,
                 cccHome: home,
-                detail: ok ? "nohup started" : "launch exit=\(process.terminationStatus)"
+                detail: ok ? "nohup fallback" : "launch exit=\(process.terminationStatus)"
             )
         } catch {
             return Result(launched: false, cccHome: home, detail: error.localizedDescription)
+        }
+    }
+
+    private struct ShellResult {
+        let ok: Bool
+        let output: String
+    }
+
+    @discardableResult
+    private static func runShell(_ command: String) -> ShellResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", command]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = out
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            return ShellResult(ok: process.terminationStatus == 0, output: text)
+        } catch {
+            return ShellResult(ok: false, output: error.localizedDescription)
         }
     }
 }

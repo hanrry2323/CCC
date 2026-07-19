@@ -501,6 +501,15 @@ final class AppModel: ObservableObject {
                 showToast("会话列表暂不可用（Hub 不可达）")
             }
         }
+        // 预热最近会话进 RAM，切会话秒开
+        prefetchRecentThreads(projectId: projectId, limit: 12)
+    }
+
+    private func prefetchRecentThreads(projectId: String, limit: Int) {
+        let ids = threads.prefix(limit).map(\.thread_id)
+        for tid in ids {
+            hydrateThreadFromDisk(projectId: projectId, threadId: tid)
+        }
     }
 
     private func mergeThreadLists(remote: [DesktopThread], local: [DesktopThread]) -> [DesktopThread] {
@@ -582,23 +591,20 @@ final class AppModel: ObservableObject {
     func openThread(_ id: String) async {
         guard let pid = selectedProjectId else { return }
 
-        // 1) 落盘当前会话（消息 + 右栏）
+        // 1) 落盘当前会话（消息 + 右栏）— 先刷盘再切，避免节流丢写
         if let old = selectedThreadId, old != id {
+            pendingDiskThreadId = old
+            flushDiskSave()
             persistCurrentThreadSnapshot(threadId: old)
         }
 
-        // 2) 秒切：磁盘 → RAM → UI（≤100ms 目标）
+        // 2) 秒切：磁盘优先（含 RAM 已空被 Hub 冲掉的情况）
         threadSwitchGeneration &+= 1
         let gen = threadSwitchGeneration
         selectedThreadId = id
         destination = .chat
 
-        if threadMessages[id] == nil, let disk = LocalSessionStore.load(projectId: pid, threadId: id) {
-            threadMessages[id] = disk.messages
-            if let flow = disk.flow {
-                threadFlow[id] = flow
-            }
-        }
+        hydrateThreadFromDisk(projectId: pid, threadId: id)
         messages = threadMessages[id] ?? []
         pendingTransferDraft = nil
         if let cached = threadMessages[id],
@@ -612,7 +618,7 @@ final class AppModel: ObservableObject {
         updateFlowSnapshotPause()
         lastError = nil
 
-        // 3) 后台同步 Hub（不阻塞）
+        // 3) 后台同步 Hub（不得用更空结果盖掉本机）
         Task { [weak self] in
             guard let self else { return }
             await self.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
@@ -621,6 +627,22 @@ final class AppModel: ObservableObject {
             if !(await self.client.usesLocalAgent) {
                 await self.client.warmHubAgent(projectId: pid, threadId: id)
             }
+        }
+    }
+
+    /// 从本机盘灌 RAM；若盘比 RAM 更丰富则覆盖空/残缺缓存
+    private func hydrateThreadFromDisk(projectId: String, threadId: String) {
+        guard let disk = LocalSessionStore.load(projectId: projectId, threadId: threadId) else { return }
+        let ram = threadMessages[threadId] ?? []
+        let diskScore = LocalSessionStore.messageScore(disk.messages)
+        let ramScore = LocalSessionStore.messageScore(ram)
+        if ram.isEmpty || diskScore > ramScore {
+            threadMessages[threadId] = disk.messages
+        }
+        if let flow = disk.flow, threadFlow[threadId] == nil || (threadFlow[threadId]?.works.isEmpty == true && !flow.works.isEmpty) {
+            threadFlow[threadId] = flow
+        } else if threadFlow[threadId] == nil, disk.flow != nil {
+            threadFlow[threadId] = disk.flow
         }
     }
 
@@ -669,20 +691,36 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 后台拉消息；Hub 无 tool_steps 时保留本地；生成中禁止覆盖
+    /// 后台拉消息；Hub 更空时保留本机；生成中禁止覆盖
     private func syncThreadFromServer(projectId: String, threadId: String, generation: UInt64) async {
         if streamingThreadIds.contains(threadId) { return }
+        // 同步前再灌一次盘，避免 RAM 已被冲空
+        hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
         do {
             try await prepareClient()
             let detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
             var loaded = detail.messages ?? []
-            let cached = threadMessages[threadId] ?? []
+            let cached = threadMessages[threadId]
+                ?? LocalSessionStore.load(projectId: projectId, threadId: threadId)?.messages
+                ?? []
 
-            // 按序合并：Hub 文本 + 保留本地更完整的 toolSteps
-            if !cached.isEmpty {
+            // Hub 空 / 明显更短：本机优先，禁止回写空盘
+            let hubScore = LocalSessionStore.messageScore(loaded)
+            let localScore = LocalSessionStore.messageScore(cached)
+            if hubScore == 0 && localScore > 0 {
+                return
+            }
+            if localScore > hubScore {
+                // 仍合并 tool_steps，但不丢本地正文
+                loaded = mergeMessagesPreservingTools(server: loaded, local: cached)
+                if LocalSessionStore.messageScore(loaded) < localScore {
+                    loaded = cached
+                }
+            } else if !cached.isEmpty {
                 loaded = mergeMessagesPreservingTools(server: loaded, local: cached)
             }
+
             // 流式尾巴
             if let live = cached.last(where: \.isStreaming) {
                 if !loaded.contains(where: { $0.id == live.id }) {
@@ -698,21 +736,21 @@ final class AppModel: ObservableObject {
                 messages = loaded
             }
             let title = threads.first(where: { $0.thread_id == threadId })?.title
+                ?? detail.title
             LocalSessionStore.saveMessages(
                 projectId: projectId,
                 threadId: threadId,
                 messages: loaded,
                 title: title,
-                flow: threadFlow[threadId]
+                flow: threadFlow[threadId],
+                allowDowngrade: false
             )
             hubReachable = true
         } catch {
-            // Hub 失败时保留本机盘/缓存，不 toast 刷屏
-            if selectedThreadId == threadId, threadMessages[threadId] == nil {
-                if let disk = LocalSessionStore.load(projectId: projectId, threadId: threadId) {
-                    threadMessages[threadId] = disk.messages
-                    messages = disk.messages
-                }
+            // Hub 失败：强制本机盘回填 UI
+            hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
+            if selectedThreadId == threadId {
+                messages = threadMessages[threadId] ?? []
             }
         }
     }
