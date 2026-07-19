@@ -680,9 +680,19 @@ class FileBoardStore:
                     if not line:
                         continue
                     try:
-                        tasks.append(json.loads(line))
+                        obj = json.loads(line)
                     except json.JSONDecodeError as exc:
                         _log.debug("skip malformed line in %s: %s", f.name, exc)
+                        continue
+                    # 跳过 pretty-print 多行 JSON 的碎片行（如纯字符串）
+                    if not isinstance(obj, dict):
+                        _log.debug(
+                            "skip non-object task line in %s: %s",
+                            f.name,
+                            type(obj).__name__,
+                        )
+                        continue
+                    tasks.append(obj)
             except FileNotFoundError as exc:
                 _log.debug("task file disappeared during list: %s", exc)
             except OSError as exc:

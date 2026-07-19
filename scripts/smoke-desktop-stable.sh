@@ -30,14 +30,33 @@ check() {
 
 echo "== Desktop stable suite agent=${AGENT} server=${SERVER} =="
 
+# 本机 sidecar token（安全对齐后 /warm /api/chat 必带）
+TOKEN_FILE="${HOME}/.ccc/agent-token"
+AGENT_TOKEN="${CCC_AGENT_TOKEN:-}"
+if [[ -z "$AGENT_TOKEN" && -f "$TOKEN_FILE" ]]; then
+  AGENT_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+fi
+AGENT_AUTH_H=()
+if [[ -n "$AGENT_TOKEN" ]]; then
+  AGENT_AUTH_H=(-H "Authorization: Bearer ${AGENT_TOKEN}" -H "X-CCC-Agent-Token: ${AGENT_TOKEN}")
+fi
+
 # 1) Sidecar launchd 常驻 + 模型出口指 2017 中转
 bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
 check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"
-check "sidecar warm" bash -c "curl -fsS --max-time 5 -X POST '${AGENT}/warm' -H 'Content-Type: application/json' -d '{}' | grep -q '\"ok\"'"
-# 默认 Router = Mac2017 :4000（CCC_AGENT_ROUTER 覆盖时跳过硬断言）
+check "sidecar warm" bash -c '
+  tok=""; [[ -f "$HOME/.ccc/agent-token" ]] && tok=$(tr -d "[:space:]" < "$HOME/.ccc/agent-token")
+  [[ -n "${CCC_AGENT_TOKEN:-}" ]] && tok="$CCC_AGENT_TOKEN"
+  if [[ -n "$tok" ]]; then
+    curl -fsS --max-time 5 -X POST "'"${AGENT}"'/warm" -H "Content-Type: application/json" -H "Authorization: Bearer $tok" -d "{}" | grep -q "\"ok\""
+  else
+    curl -fsS --max-time 5 -X POST "'"${AGENT}"'/warm" -H "Content-Type: application/json" -d "{}" | grep -q "\"ok\""
+  fi
+'
+# Router 断言：health 不再暴露 router（安全最小化）；查 plist
 if [[ -z "${CCC_AGENT_ROUTER:-}" ]]; then
-  check "sidecar router→2017" bash -c "curl -fsS --max-time 3 '${AGENT}/health' | grep -q '192.168.3.116:4000'"
+  check "sidecar router→2017" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "192.168.3.116:4000"'
 else
   echo "SKIP  sidecar router→2017 (CCC_AGENT_ROUTER=${CCC_AGENT_ROUTER})"
 fi
