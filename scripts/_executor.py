@@ -229,6 +229,10 @@ class OpenCodeExecutor(Executor):
 
             tmp_path = str(pids_dir / f"prompt-{_uuid.uuid4().hex}.md")
             Path(tmp_path).write_text(prompt_text, encoding="utf-8")
+            try:
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                pass
             cmd = _build_cmd(
                 opencode_bin,
                 model,

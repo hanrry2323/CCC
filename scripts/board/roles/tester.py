@@ -66,6 +66,45 @@ from board.roles.common import (
     WORKSPACES,
 )
 
+# 验收命令白名单：仅允许这些前缀，防 plan.md prompt-injection 任意执行
+_VERIFY_CMD_ALLOW_PREFIXES = (
+    "python3 -m pytest",
+    "python -m pytest",
+    "pytest ",
+    "python3 -m py_compile",
+    "python -m py_compile",
+    "python3 -m ruff",
+    "ruff check",
+    "ruff format",
+    "bash -n ",
+    "swift build",
+    "npm test",
+    "npm run test",
+    "cargo test",
+    "go test",
+)
+
+
+def _is_allowed_verify_cmd(cmd: str) -> bool:
+    c = (cmd or "").strip()
+    if not c or "\n" in c or "\r" in c:
+        return False
+    # 拒绝明显危险的 shell 元字符串联（管道/重定向/子壳）
+    for bad in (";", "&&", "||", "`", "$(", "${", ">", "<", "|", "\n"):
+        if bad in c:
+            return False
+    low = c.lower()
+    return any(low.startswith(p.lower()) for p in _VERIFY_CMD_ALLOW_PREFIXES)
+
+
+def _filter_verify_commands(cmds: list[str]) -> list[str]:
+    out = [c.strip() for c in cmds if _is_allowed_verify_cmd(c)]
+    dropped = len(cmds) - len(out)
+    if dropped:
+        _log.warning("[tester] dropped %d non-allowlisted verify cmd(s)", dropped)
+    return out
+
+
 def launch_tester_async(task_id: str, ws: Path) -> dict:
     """异步启动 tester 验证子进程。
 
@@ -114,8 +153,9 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
             "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
         )
 
+    verify_commands = _filter_verify_commands(verify_commands)
     if not verify_commands:
-        return {"error": "no verify commands (empty plan)"}
+        return {"error": "no allowlisted verify commands (plan injection blocked)"}
 
     # 2. 写入 shell 脚本
     script_lines = ["#!/bin/bash", "set -e"]
@@ -384,6 +424,11 @@ def tester_role() -> dict:
             verify_commands.append(
                 "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
             )
+
+        verify_commands = _filter_verify_commands(verify_commands)
+        if not verify_commands:
+            _log.warning("[tester] %s: no allowlisted cmds, skip", task_id)
+            continue
 
         all_ok = True
         for cmd in verify_commands:

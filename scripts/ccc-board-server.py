@@ -388,7 +388,9 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             _own_ips.add("::1")
             if client_ip in _own_ips:
                 return True
-            _rate_limiter.allow(f"auth:{client_ip}")
+            if not _rate_limiter.allow(f"auth:{client_ip}"):
+                self._json({"error": "rate_limited"}, 429)
+                return False
             _log.warning(
                 "auth failed: QX_BOARD_TOKEN unset (client=%s not in own_ips)",
                 client_ip,
@@ -405,7 +407,9 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         if auth.startswith("Bearer ") and auth[7:] == token:
             return True
         # v0.28.0 (M-005): bad token 也限速 + log
-        _rate_limiter.allow(f"auth:{client_ip}")
+        if not _rate_limiter.allow(f"auth:{client_ip}"):
+            self._json({"error": "rate_limited"}, 429)
+            return False
         _log.warning("auth failed: bad token from %s", client_ip)
         self._json({"error": "unauthorized"}, 401)
         return False

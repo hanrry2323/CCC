@@ -10,8 +10,23 @@ from ..auth import board_headers
 
 # 模块级共享 client：复用连接池，避免每次请求重建 TCP/TLS
 _client: httpx.AsyncClient | None = None
-# ETag 缓存：url -> (etag, content, content_hash)
+# ETag 缓存：url -> (etag, content, content_hash)；上限防长期运行泄漏
 _etag_cache: dict[str, tuple[str, bytes, str]] = {}
+_ETAG_CACHE_MAX = 128
+
+
+def _etag_cache_put(key: str, value: tuple[str, bytes, str]) -> None:
+    if key in _etag_cache:
+        _etag_cache[key] = value
+        return
+    if len(_etag_cache) >= _ETAG_CACHE_MAX:
+        # 简单 FIFO：丢掉最早插入的键
+        try:
+            oldest = next(iter(_etag_cache))
+            del _etag_cache[oldest]
+        except StopIteration:
+            pass
+    _etag_cache[key] = value
 
 
 def get_client() -> httpx.AsyncClient:
@@ -58,7 +73,9 @@ async def board_proxy(
             etag = resp.headers.get("ETag") or resp.headers.get("etag")
             content = resp.content
             if etag:
-                _etag_cache[cache_key] = (etag, content, hashlib.md5(content).hexdigest())
+                _etag_cache_put(
+                    cache_key, (etag, content, hashlib.md5(content).hexdigest())
+                )
             return Response(
                 content=content,
                 status_code=resp.status_code,

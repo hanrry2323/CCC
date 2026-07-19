@@ -1158,16 +1158,12 @@ class FileBoardStore:
             "timestamp": now_iso(),
         }
         event_file = self.events_dir / f"{task_id}.events.jsonl"
+        line = json.dumps(event, ensure_ascii=False) + "\n"
         try:
-            existing = (
-                event_file.read_text(encoding="utf-8") if event_file.exists() else ""
-            )
-        except OSError as exc:
-            _log.warning("event file read failed for %s: %s", task_id, exc)
-            existing = ""
-        new_content = existing + json.dumps(event, ensure_ascii=False) + "\n"
-        try:
-            _atomic_write(event_file, new_content)
+            # append-only（调用方已持 _lock）；避免全量读回写
+            with open(event_file, "a", encoding="utf-8") as ef:
+                ef.write(line)
+                ef.flush()
         except OSError as exc:
             _log.error("event write failed for %s: %s", task_id, exc)
 
@@ -1253,19 +1249,21 @@ def _get_quarantine_dir() -> Path:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    # 扫描 tempdir 找最近的 tmp* 目录（pytest / tempfile.TemporaryDirectory 创建的）
+    # 扫描 tempdir 找最近的 *本用户* tmp* 目录（pytest / tempfile）
     tempdir = tempfile.gettempdir()
     candidates: list[tuple[float, Path]] = []
+    my_uid = os.getuid()
     try:
         for entry in os.scandir(tempdir):
             if not entry.is_dir():
                 continue
             name = entry.name
-            # 匹配 tmpXXXXX 或 tmp-XXXXX 等临时目录名
             if name.startswith("tmp") and not name.startswith("tmp."):
                 try:
-                    mtime = entry.stat().st_mtime
-                    candidates.append((mtime, Path(entry.path)))
+                    st = entry.stat()
+                    if st.st_uid != my_uid:
+                        continue
+                    candidates.append((st.st_mtime, Path(entry.path)))
                 except OSError as e:
                     _log.warning("tempdir stat failed for %s: %s", entry.path, e)
     except OSError as e:

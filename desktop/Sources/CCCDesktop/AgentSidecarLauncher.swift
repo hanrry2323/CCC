@@ -52,15 +52,18 @@ enum AgentSidecarLauncher {
 
         // 1) 已有 launchd job：kickstart（KeepAlive 会自愈，这里催一下）
         if launchdJobLoaded() {
-            _ = runShell("launchctl kickstart -k \"gui/$(id -u)/\(launchdLabel)\" 2>/dev/null || true")
+            _ = runArgv([
+                "/bin/launchctl", "kickstart", "-k",
+                "gui/\(getuid())/\(launchdLabel)",
+            ])
             return Result(launched: true, cccHome: home, detail: "launchd kickstart")
         }
 
-        // 2) 安装并 load plist（常驻）
+        // 2) 安装并 load plist（常驻）— argv 数组，禁止 bash -c 拼接路径
         let install = (home as NSString)
             .appendingPathComponent("scripts/install-agent-sidecar-plist.sh")
         if FileManager.default.fileExists(atPath: install) {
-            let r = runShell("bash \"\(install)\" --start")
+            let r = runArgv(["/bin/bash", install, "--start"])
             if r.ok {
                 return Result(launched: true, cccHome: home, detail: "launchd installed")
             }
@@ -73,7 +76,9 @@ enum AgentSidecarLauncher {
 
     private static func launchdJobLoaded() -> Bool {
         let uid = getuid()
-        let r = runShell("launchctl print \"gui/\(uid)/\(launchdLabel)\" >/dev/null 2>&1")
+        let r = runArgv([
+            "/bin/launchctl", "print", "gui/\(uid)/\(launchdLabel)",
+        ])
         return r.ok
     }
 
@@ -117,10 +122,13 @@ enum AgentSidecarLauncher {
     }
 
     @discardableResult
-    private static func runShell(_ command: String) -> ShellResult {
+    private static func runArgv(_ args: [String]) -> ShellResult {
+        guard let exe = args.first else {
+            return ShellResult(ok: false, output: "empty argv")
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", command]
+        process.executableURL = URL(fileURLWithPath: exe)
+        process.arguments = Array(args.dropFirst())
         let out = Pipe()
         process.standardOutput = out
         process.standardError = out
@@ -133,5 +141,11 @@ enum AgentSidecarLauncher {
         } catch {
             return ShellResult(ok: false, output: error.localizedDescription)
         }
+    }
+
+    /// 遗留：仅固定字面量命令；路径相关请用 runArgv
+    @discardableResult
+    private static func runShell(_ command: String) -> ShellResult {
+        runArgv(["/bin/bash", "-c", command])
     }
 }

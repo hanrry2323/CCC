@@ -129,10 +129,11 @@ enum LocalSessionStore {
                 )
             }
         let nextRev = revision ?? ((existing?.revision ?? 0) &+ 1)
-        if !allowDowngrade, let old = existing?.messages, !old.isEmpty {
+        if !allowDowngrade, let existing, !existing.messages.isEmpty {
+            let old = existing.messages
             if messageScore(persistable) < messageScore(old) {
                 // 只更新标题/flow，保留更完整消息
-                var keep = existing!
+                var keep = existing
                 if let title, !title.isEmpty { keep.title = title }
                 if let flow { keep.flow = flow }
                 if needsHubSync { keep.needs_hub_sync = true }

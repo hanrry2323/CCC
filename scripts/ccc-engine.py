@@ -261,31 +261,26 @@ def _is_upstream_healthy() -> bool:
     strict = (os.environ.get("CCC_UPSTREAM_STRICT") or "").strip() in ("1", "true", "yes")
     status_code: int | None = None
     err_msg = ""
+    # 仅做 TCP/HTTP 可达性探测，不发带假 key 的业务请求
     try:
         import urllib.error
         import urllib.request
 
-        data = json.dumps({
-            "model": "flash",
-            "messages": [{"role": "user", "content": "ok"}],
-            "max_tokens": 1,
-        }).encode()
         req = urllib.request.Request(
             messages_url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": "health-check",
-                "anthropic-version": "2023-06-01",
-            },
-            method="POST",
+            method="GET",
+            headers={"User-Agent": "ccc-engine-health"},
         )
         try:
-            resp = urllib.request.urlopen(req, timeout=8)
+            resp = urllib.request.urlopen(req, timeout=5)
             status_code = getattr(resp, "status", None) or resp.getcode()
         except urllib.error.HTTPError as http_exc:
+            # 4xx（如 401/405）仍说明中转站在线
             status_code = http_exc.code
             err_msg = str(http_exc.reason or http_exc)[:120]
+        except urllib.error.URLError as url_exc:
+            err_msg = str(url_exc.reason or url_exc)[:120]
+            status_code = None
     except Exception as exc:
         status_code = None
         err_msg = str(exc)[:120]
@@ -1150,26 +1145,62 @@ def _read_regen_count(ws: Path, tid: str) -> int:
 
 
 def _record_regen(ws: Path, tid: str) -> None:
-    """记录一次 phase_graph_regen 到 warnings.json（复用 failed+quarantined 分支）"""
+    """记录一次 phase_graph_regen 到 warnings.json（原子写 + 文件锁）。"""
     try:
-        _regen_count = _read_regen_count(ws, tid) + 1
+        import fcntl
+        import tempfile
+
         _wf = ws / ".ccc" / "warnings.json"
-        _existing = []
-        if _wf.exists():
+        _wf.parent.mkdir(parents=True, exist_ok=True)
+        # 锁文件与目标同目录，跨进程互斥
+        lock_path = _wf.with_suffix(".json.lock")
+        with open(lock_path, "a+", encoding="utf-8") as lock_f:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
             try:
-                import json as _json
-                _existing = _json.loads(_wf.read_text())
-                if not isinstance(_existing, list):
-                    _existing = []
-            except Exception:
-                _existing = []
-        _existing.append({
-            "type": "phase_graph_regen",
-            "task_id": tid,
-            "regen_count": _regen_count,
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-        })
-        _wf.write_text(json.dumps(_existing, ensure_ascii=False, indent=2))
+                _existing: list = []
+                if _wf.exists():
+                    try:
+                        raw = json.loads(_wf.read_text(encoding="utf-8"))
+                        if isinstance(raw, list):
+                            _existing = raw
+                    except Exception:
+                        _existing = []
+                _regen_count = (
+                    sum(
+                        1
+                        for w in _existing
+                        if isinstance(w, dict)
+                        and w.get("type") == "phase_graph_regen"
+                        and w.get("task_id") == tid
+                    )
+                    + 1
+                )
+                _existing.append(
+                    {
+                        "type": "phase_graph_regen",
+                        "task_id": tid,
+                        "regen_count": _regen_count,
+                        "detected_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                payload = json.dumps(_existing, ensure_ascii=False, indent=2)
+                fd, tmp_name = tempfile.mkstemp(
+                    dir=str(_wf.parent), prefix=".warnings-", suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as tf:
+                        tf.write(payload)
+                        tf.flush()
+                        os.fsync(tf.fileno())
+                    os.replace(tmp_name, str(_wf))
+                except Exception:
+                    try:
+                        os.unlink(tmp_name)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
     except Exception:
         pass
 
@@ -2851,8 +2882,15 @@ def engine_loop(workspaces: list[Path]) -> None:
             break
         except Exception as e:
             engine_log(f"异常: {e}")
-            engine_log(f"{_traceback.format_exc()[:2000]}")
-            engine_log(f"  {_tb.format_exc().splitlines()[-2]}")
+            tb_text = _traceback.format_exc()
+            engine_log(f"{tb_text[:2000]}")
+            # 末行上下文（勿用未定义的 _tb）
+            last = next(
+                (ln for ln in reversed(tb_text.splitlines()) if ln.strip()),
+                "",
+            )
+            if last:
+                engine_log(f"  {last[:300]}")
             time.sleep(cfg.engine_idle_sleep)
             continue
 
@@ -3010,22 +3048,28 @@ def _retry_abnormal_failures(ws: Path) -> None:
             continue  # 冷却中
 
         try:
-            task_json = _json.loads(
-                (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").read_text()
-            )
-            task_json["status"] = "planned"
-            task_json["updated_at"] = now_iso()
-            task_json["note"] = (
-                f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
-            )
-            planned_dir = ws / ".ccc/board/planned"
-            planned_dir.mkdir(parents=True, exist_ok=True)
-            (planned_dir / f"{tid}.jsonl").write_text(
-                _json.dumps(task_json, ensure_ascii=False) + "\n"
-            )
-            (ws / ".ccc/board/abnormal" / f"{tid}.jsonl").unlink()
+            # 经 FileBoardStore.move_task：持锁 + 原子写，避免手工 JSONL 竞态
+            note = f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
+            task["note"] = note
+            # 先更新 abnormal 文件 note，再 move（move 会带上当前文件内容）
+            abn = ws / ".ccc/board/abnormal" / f"{tid}.jsonl"
+            if abn.is_file():
+                try:
+                    task_json = _json.loads(abn.read_text(encoding="utf-8"))
+                    if isinstance(task_json, dict):
+                        task_json["note"] = note
+                        task_json["updated_at"] = now_iso()
+                        from _board_store import _atomic_write
+
+                        _atomic_write(
+                            abn,
+                            _json.dumps(task_json, ensure_ascii=False) + "\n",
+                        )
+                except Exception:
+                    pass
+            if not store.move_task(tid, "abnormal", "planned"):
+                raise RuntimeError(f"move_task failed for {tid}")
             retry_counts[tid] = auto_retried + 1
-            store.update_index()
             engine_log(
                 f"[{label}] auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {tid} "
                 f"(冷却 {minutes_since:.0f}/{needed_minutes:.0f}min, {kind}) → planned"

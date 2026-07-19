@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import re
 import time
 from pathlib import Path
 
@@ -10,14 +12,46 @@ def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
 
+_SAFE_PROJECT_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+# 允许 Desktop `{project}::main`；禁止路径分隔与 `..`
+_SAFE_SESSION_RE = re.compile(r"^[a-zA-Z0-9_.:-]+$")
+
+
+def _safe_project_id(project_id: str) -> str:
+    pid = str(project_id or "").strip() or "ccc"
+    if ".." in pid or "/" in pid or "\\" in pid or not _SAFE_PROJECT_RE.match(pid):
+        raise ValueError(f"invalid project_id: {project_id!r}")
+    return pid
+
+
+def _safe_session_id(session_id: str) -> str:
+    sid = str(session_id or "").strip()
+    if (
+        not sid
+        or ".." in sid
+        or "/" in sid
+        or "\\" in sid
+        or not _SAFE_SESSION_RE.match(sid)
+    ):
+        raise ValueError(f"invalid session_id: {session_id!r}")
+    return sid
+
+
 def _project_chat_dir(project_id: str) -> Path:
-    d = config.CHAT_DIR / project_id
+    d = config.CHAT_DIR / _safe_project_id(project_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def _session_path(session_id: str, project_id: str = "ccc") -> Path:
-    return _project_chat_dir(project_id) / f"{session_id}.json"
+    """会话文件路径；校验后 resolve，确保仍在 CHAT_DIR 下。"""
+    root = config.CHAT_DIR.resolve()
+    path = (_project_chat_dir(project_id) / f"{_safe_session_id(session_id)}.json").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"session path escapes CHAT_DIR: {session_id!r}") from exc
+    return path
 
 
 def _index_path(project_id: str) -> Path:
@@ -25,20 +59,42 @@ def _index_path(project_id: str) -> Path:
 
 
 def _write_index(project_id: str, sessions: list[dict]) -> None:
-    """Phase 2.2: 写轻量 index.json（session_id + title + updated_at），list_sessions 不再开每个 *.json"""
+    """Phase 2.2: 写轻量 index.json；文件锁 + 原子写，避免 to_thread TOCTOU。"""
+    import fcntl
+    import tempfile
+
     idx_path = _index_path(project_id)
+    lock_path = idx_path.with_suffix(".json.lock")
+    payload = json.dumps(
+        {
+            "updated_at": now_iso(),
+            "count": len(sessions),
+            "sessions": sessions,
+        },
+        ensure_ascii=False,
+    )
     try:
-        idx_path.write_text(
-            json.dumps(
-                {
-                    "updated_at": now_iso(),
-                    "count": len(sessions),
-                    "sessions": sessions,
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "a+", encoding="utf-8") as lock_f:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+            try:
+                fd, tmp_name = tempfile.mkstemp(
+                    dir=str(idx_path.parent), prefix=".index-", suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as tf:
+                        tf.write(payload)
+                        tf.flush()
+                        os.fsync(tf.fileno())
+                    os.replace(tmp_name, str(idx_path))
+                except Exception:
+                    try:
+                        os.unlink(tmp_name)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
     except OSError:
         pass
 

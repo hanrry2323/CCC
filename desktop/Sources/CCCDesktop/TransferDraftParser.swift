@@ -14,12 +14,11 @@ struct TransferDraft: Equatable {
     var source: String = "heuristic"
 
     var isGateReady: Bool {
+        // 门禁：必填齐且 feasibility 必须为 ok（blocked 不可转任务）
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !pipeline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !acceptanceLines.isEmpty
-            && (feasibility != "blocked"
-                || !feasibilityReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             && feasibility == "ok"
     }
 

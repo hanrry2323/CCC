@@ -176,15 +176,31 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
     _write_raw(data)
     if mode == "disabled":
         DISABLED_SENTINEL.parent.mkdir(parents=True, exist_ok=True)
-        DISABLED_SENTINEL.write_text(
+        import tempfile
+
+        text = (
             f"# CCC disabled {_now_iso()}\n"
             f"# SSOT: {CONTROL_FILE}\n"
             f"# frontend: bash scripts/ccc-hub-dev.sh\n"
             f"# ui only:  bash scripts/ccc-autostart-guard.sh ui [--start]\n"
             f"# queue:    bash scripts/ccc-autostart-guard.sh enable [--start]\n"
-            f"# invent:   DISABLED permanently (v0.42.4 memory red-line)\n",
-            encoding="utf-8",
+            f"# invent:   DISABLED permanently (v0.42.4 memory red-line)\n"
         )
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(DISABLED_SENTINEL.parent), prefix=".disabled-", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as tf:
+                tf.write(text)
+                tf.flush()
+                os.fsync(tf.fileno())
+            os.replace(tmp_name, str(DISABLED_SENTINEL))
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
     else:
         try:
             DISABLED_SENTINEL.unlink()

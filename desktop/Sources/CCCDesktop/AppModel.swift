@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
-    @AppStorage("ccc.server") var serverURLString: String = "http://192.168.3.116:7777"
+    @AppStorage("ccc.server") var serverURLString: String = "http://127.0.0.1:7777"
     @AppStorage("ccc.user") var authUser: String = "ccc"
     @AppStorage("ccc.pass") var authPass: String = "ccc"
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
@@ -151,8 +151,12 @@ final class AppModel: ObservableObject {
     var isStreaming: Bool { currentThreadStreaming }
 
     init() {
-        let fallback = URL(string: "http://192.168.3.116:7777/")!
-        client = APIClient(baseURL: fallback, user: "ccc", password: "ccc")
+        // 默认本机 Hub；生产 LAN 地址由设置 / CCC_SERVER 注入，勿写死内网 IP 进二进制
+        let raw = UserDefaults.standard.string(forKey: "ccc.server") ?? "http://127.0.0.1:7777"
+        let url = APIClient.makeBaseURL(from: raw) ?? URL(string: "http://127.0.0.1:7777")!
+        let user = UserDefaults.standard.string(forKey: "ccc.user") ?? "ccc"
+        let pass = UserDefaults.standard.string(forKey: "ccc.pass") ?? "ccc"
+        client = APIClient(baseURL: url, user: user, password: pass)
     }
 
     // MARK: - Workspace map
@@ -231,7 +235,9 @@ final class AppModel: ObservableObject {
     private func ensureLocalAgent() async -> URL? {
         let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let agentStr = (agentRaw?.isEmpty == false ? agentRaw! : agentURLString)
+        let agentStr = (
+            (agentRaw?.isEmpty == false) ? (agentRaw ?? agentURLString) : agentURLString
+        )
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let candidate = APIClient.makeBaseURL(from: agentStr) else {
             setAgentModeNone(reason: "Agent URL 无效")
@@ -365,7 +371,7 @@ final class AppModel: ObservableObject {
            !env.isEmpty {
             serverURLString = env
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverURLString = "http://192.168.3.116:7777"
+            serverURLString = "http://127.0.0.1:7777"
         }
         // 先灌本机 projects 缓存，避免 Hub 抖时空白
         if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {

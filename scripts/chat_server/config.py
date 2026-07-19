@@ -34,15 +34,11 @@ CHAT_SESSION_MAX_LIVE = max(1, min(CHAT_SESSION_MAX_LIVE, 16))
 # 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
 CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))
 CHAT_DIR.mkdir(parents=True, exist_ok=True)
-# LAN / localhost CORS regex（SPA 同机访问为 same-origin；跨端口/跨源时启用）
+# LAN / localhost CORS regex（SPA；原生 Desktop 不依赖 CORS）
+# 默认仅本机，避免 RFC1918 + credentials 被同网段网页滥用；扩网段请设 CCC_CHAT_CORS_ORIGIN_REGEX
 CORS_ORIGIN_REGEX = os.environ.get(
     "CCC_CHAT_CORS_ORIGIN_REGEX",
-    r"https?://("
-    r"localhost|127\.0\.0\.1|"
-    r"192\.168\.\d{1,3}\.\d{1,3}|"
-    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
-    r")(:\d+)?$",
+    r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
 )
 
 # 禁止历史泄漏 / 空口令；产品约定口令 "ccc" 明确允许
@@ -122,11 +118,20 @@ CLAUDE_ENV = {
 
 
 def validate_auth_config() -> None:
-    """Hub 账密门禁：禁止空口令与历史泄漏默认；约定 ccc/ccc 可用。"""
+    """Hub 账密门禁：禁止空口令与历史泄漏默认；约定 ccc/ccc 可用。
+
+    监听 0.0.0.0 且仍用默认口令时打印警告（产品允许 ccc:ccc，但全网暴露有风险）。
+    """
     if AUTH_PASS.lower() in _FORBIDDEN_PASSWORDS:
         raise SystemExit(
             "CCC_CHAT_PASS is empty or a forbidden default "
             "(e.g. claude2026). Use the Hub password 'ccc', or set another non-forbidden value."
+        )
+    if HOST in ("0.0.0.0", "::") and AUTH_USER == "ccc" and AUTH_PASS == "ccc":
+        print(
+            "WARNING: Hub listens on all interfaces with default auth ccc:ccc. "
+            "Prefer CCC_CHAT_HOST=127.0.0.1 or a stronger CCC_CHAT_PASS on shared LAN.",
+            file=sys.stderr,
         )
 
 

@@ -70,7 +70,13 @@ case "$cmd" in
     ;;
 esac
 
-# 写 plist
+# 写 plist（不写入假 AUTH_TOKEN；仅当环境变量显式设置时注入）
+AUTH_TOKEN_BLOCK=""
+if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
+  AUTH_TOKEN_BLOCK="    <key>ANTHROPIC_AUTH_TOKEN</key>
+    <string>${ANTHROPIC_AUTH_TOKEN}</string>"
+fi
+
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -116,8 +122,7 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOME}/program:${CCC_HOME}</string>
     <key>ANTHROPIC_BASE_URL</key>
     <string>${ROUTER}</string>
-    <key>ANTHROPIC_AUTH_TOKEN</key>
-    <string>${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}</string>
+${AUTH_TOKEN_BLOCK}
     <key>ANTHROPIC_MODEL</key>
     <string>flash</string>
     <key>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</key>

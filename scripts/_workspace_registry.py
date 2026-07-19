@@ -66,7 +66,10 @@ def _save(reg: Path, data: dict[str, Any]) -> None:
     reg.parent.mkdir(parents=True, exist_ok=True)
     data["schema_version"] = data.get("schema_version") or SCHEMA_VERSION
     tmp = reg.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with open(tmp, "w", encoding="utf-8") as tf:
+        tf.write(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        tf.flush()
+        os.fsync(tf.fileno())
     tmp.replace(reg)
 
 

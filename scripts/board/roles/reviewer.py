@@ -374,7 +374,7 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
                 [_claude_bin(), "-p"],
                 stdin=in_f,
                 stdout=out_f,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 start_new_session=True,
                 env=env,
             )
@@ -1209,7 +1209,7 @@ def _review_one_task(task_id: str) -> bool:
     report_dir.mkdir(parents=True, exist_ok=True)
     review_md = report_dir / f"{task_id}.review.md"
 
-    # small 类：跳过 LLM，走 py_compile 静态检查（保留原逻辑）
+    # small 类：仅 py_compile；涉安全路径强制走 LLM
     if size_class == "small":
         files = _parse_plan_scope(task_id)
         if not files:
@@ -1223,7 +1223,22 @@ def _review_one_task(task_id: str) -> bool:
             py_files.extend(matched)
         py_files = [f for f in py_files if f.endswith(".py") and Path(f).exists()]
 
-        if py_files and _py_compile_fallback(task_id, py_files):
+        _sensitive = (
+            "auth", "password", "secret", "credential", "token",
+            "session_store", "executor", "sidecar", "control",
+        )
+        needs_llm = any(
+            any(s in Path(f).name.lower() or s in f.lower() for s in _sensitive)
+            for f in py_files
+        )
+        if needs_llm:
+            _log.info(
+                "[reviewer] %s small but sensitive paths → LLM review",
+                task_id,
+            )
+            size_class = "medium"
+            # 落入下方 LLM 路径
+        elif py_files and _py_compile_fallback(task_id, py_files):
             review_md.write_text(
                 f"# {task_id} Review\n\n"
                 f"## Verdict: **PASS**\n\n"
@@ -1242,7 +1257,7 @@ def _review_one_task(task_id: str) -> bool:
                 "[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines
             )
             return True
-        elif not py_files:
+        elif not needs_llm and not py_files:
             if not full_diff.strip():
                 _quarantine(
                     task_id, reason="v0.24.3 small-class: 无 py 文件 + diff 为空"
