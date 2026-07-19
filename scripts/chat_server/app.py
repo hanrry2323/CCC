@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -8,6 +10,7 @@ import os
 
 from . import config
 from .routers import chat, sessions, files, board, projects, ops, desktop
+from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
 HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260718ops2")
@@ -32,8 +35,15 @@ class NoStoreStaticMiddleware(BaseHTTPMiddleware):
         return response
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Phase 2.1: 应用退出时显式关闭共享 httpx client，避免连接泄漏
+    yield
+    await close_client()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="CCC Hub", docs_url=None, redoc_url=None)
+    app = FastAPI(title="CCC Hub", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
     # F-SEC-04: 收紧 CORS；允许 localhost + 私网 LAN；禁止 "*" + credentials
     _cors_raw = os.environ.get(

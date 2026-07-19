@@ -537,11 +537,17 @@ async def flow_events_sse(
         last_beat = 0.0
         last_board_poll = 0.0
         board_interval = 8.0  # 95+：缩小看板轮询
+        # Phase 2.4: offset 增量读，避免每 0.5s 整文件 splitlines
+        last_offset = 0
+        last_inode = 0
+        jsonl_updated = False
 
-        # 先推历史事件
-        for rec in flow_events.read_events(
-            project_id=pid, epic_id=epic_id or None, limit=80
-        ):
+        # 先推历史事件（用 offset 读，初始化 last_offset/inode）
+        recs, last_offset, last_inode = flow_events.read_events_from_offset(
+            0, project_id=pid, epic_id=epic_id or None, limit=80
+        )
+        jsonl_updated = bool(recs)
+        for rec in recs:
             yield flow_events.format_sse(
                 str(rec.get("event") or "message"), rec.get("data") or {}
             )
@@ -553,13 +559,20 @@ async def flow_events_sse(
             if await request.is_disconnected():
                 break
             eid_filter = (epic_id or "").strip() or None
-            # 1) JSONL 推送优先
-            for rec in flow_events.read_events(
+            # 1) JSONL 推送优先（offset 增量读）
+            recs, new_offset, new_inode = flow_events.read_events_from_offset(
+                last_offset,
                 project_id=pid,
                 epic_id=eid_filter,
                 after_ts=last_ts or None,
                 limit=100,
-            ):
+            )
+            if new_inode != last_inode:
+                # 日志被轮转 → 重置（recs 已是新文件从头读的结果）
+                last_inode = new_inode
+            last_offset = new_offset
+            jsonl_updated = bool(recs)
+            for rec in recs:
                 yield flow_events.format_sse(
                     str(rec.get("event") or "message"), rec.get("data") or {}
                 )
@@ -568,8 +581,8 @@ async def flow_events_sse(
                     last_ts = ts
 
             now = time.time()
-            # 2) 兜底：低频看板合成（首屏 / 无 JSONL 时）
-            if now - last_board_poll >= board_interval:
+            # 2) 兜底：低频看板合成（仅当 JSONL 无更新时触发，避免双推送）
+            if not jsonl_updated and now - last_board_poll >= board_interval:
                 last_board_poll = now
                 eid = eid_filter or ""
                 if not eid:

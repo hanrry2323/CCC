@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request, HTTPException
@@ -12,6 +13,9 @@ from ..services.board_client import board_proxy
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
 
 router = APIRouter()
+
+# Phase 2.3: /runtime-status 30s 内存缓存（key=workspace）
+_runtime_status_cache: dict[str, tuple[float, dict]] = {}
 
 
 def _resolve_workspace(body: dict | None, request: Request) -> str:
@@ -465,9 +469,16 @@ async def native_reopen_task(request: Request):
 
 @router.get("/api/runtime-status")
 async def runtime_status(request: Request, workspace: str = "CCC"):
-    """v0.42: Hub 状态条 — control · wake · 队列计数。"""
+    """v0.42: Hub 状态条 — control · wake · 队列计数。
+
+    Phase 2.3: 30s 内存缓存（key=workspace）；git subprocess 走 to_thread 不阻塞事件循环。
+    """
     check_auth(request)
     import sys
+
+    cached = _runtime_status_cache.get(workspace)
+    if cached is not None and (time.time() - cached[0]) < 30.0:
+        return cached[1]
 
     scripts = Path(__file__).resolve().parents[3] / "scripts"
     if str(scripts) not in sys.path:
@@ -532,47 +543,39 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
     git_info: dict = {"dirty": 0, "ahead": 0, "behind": 0, "branch": None}
     if root is not None:
         try:
+            import asyncio
             import subprocess
 
-            br = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=str(root),
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-            if br.returncode == 0:
-                git_info["branch"] = (br.stdout or "").strip() or None
-            st = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=str(root),
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-            if st.returncode == 0:
-                git_info["dirty"] = len(
-                    [ln for ln in (st.stdout or "").splitlines() if ln.strip()]
+            async def _run_git(args: list[str]) -> str:
+                proc = await asyncio.to_thread(
+                    subprocess.run,
+                    args,
+                    cwd=str(root),
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    check=False,
                 )
-            ab = subprocess.run(
-                ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
-                cwd=str(root),
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
+                return proc.stdout if proc.returncode == 0 else ""
+
+            br_out, st_out, ab_out = await asyncio.gather(
+                _run_git(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+                _run_git(["git", "status", "--porcelain"]),
+                _run_git(["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"]),
             )
-            if ab.returncode == 0 and ab.stdout:
-                parts = ab.stdout.split()
-                if len(parts) >= 2:
+            git_info["branch"] = br_out.strip() or None
+            git_info["dirty"] = len([ln for ln in st_out.splitlines() if ln.strip()])
+            parts = ab_out.split()
+            if len(parts) >= 2:
+                try:
                     git_info["behind"] = int(parts[0])
                     git_info["ahead"] = int(parts[1])
+                except ValueError:
+                    pass
         except Exception:
             pass
 
-    return {
+    result = {
         "workspace": workspace,
         "control": control,
         "mode": control.get("mode"),
@@ -584,6 +587,8 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
         "counts": counts,
         "git": git_info,
     }
+    _runtime_status_cache[workspace] = (time.time(), result)
+    return result
 
 
 @router.post("/api/engine/start")

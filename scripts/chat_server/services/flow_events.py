@@ -78,6 +78,67 @@ def read_events(
     return out
 
 
+def read_events_from_offset(
+    offset: int,
+    *,
+    project_id: str | None = None,
+    epic_id: str | None = None,
+    after_ts: str | None = None,
+    limit: int = 200,
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Phase 2.4: offset 增量读 — 只 seek + 读新行，不整文件 splitlines。
+
+    Returns (new_events, new_offset, inode)。inode 变化表示日志被轮转，调用方应重置 offset。
+    """
+    path = events_log_path()
+    if not path.is_file():
+        return [], 0, 0
+    try:
+        st = path.stat()
+    except OSError:
+        return [], 0, 0
+    inode = st.st_ino
+    size = st.st_size
+    # 文件被截断/轮转 → 从头读
+    if offset > size:
+        offset = 0
+    out: list[dict[str, Any]] = []
+    try:
+        with path.open("rb") as f:
+            f.seek(offset)
+            for raw in f:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                data = rec.get("data") or {}
+                if project_id:
+                    pid = str(data.get("project_id") or "").strip()
+                    if pid and pid != project_id:
+                        continue
+                    if not pid and not epic_id:
+                        continue
+                if epic_id and str(data.get("epic_id") or "") != epic_id:
+                    continue
+                if after_ts and str(rec.get("ts") or "") <= after_ts:
+                    continue
+                out.append(rec)
+                if len(out) >= limit:
+                    break
+            new_offset = f.tell()
+        # 若没读到行尾，回退到上一个 offset（半行下次再读）
+        if new_offset > size:
+            new_offset = size
+        return out, new_offset, inode
+    except OSError:
+        return [], offset, inode
+
+
 def latest_transfer_epic_id(project_id: str) -> str | None:
     """从事件日志取该项目最近一次 epic_created。"""
     events = read_events(project_id=project_id, limit=500)

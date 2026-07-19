@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -19,6 +20,40 @@ def _session_path(session_id: str, project_id: str = "ccc") -> Path:
     return _project_chat_dir(project_id) / f"{session_id}.json"
 
 
+def _index_path(project_id: str) -> Path:
+    return _project_chat_dir(project_id) / "_index.json"
+
+
+def _write_index(project_id: str, sessions: list[dict]) -> None:
+    """Phase 2.2: 写轻量 index.json（session_id + title + updated_at），list_sessions 不再开每个 *.json"""
+    idx_path = _index_path(project_id)
+    try:
+        idx_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": now_iso(),
+                    "count": len(sessions),
+                    "sessions": sessions,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _read_index(project_id: str) -> list[dict] | None:
+    idx_path = _index_path(project_id)
+    if not idx_path.exists():
+        return None
+    try:
+        data = json.loads(idx_path.read_text(encoding="utf-8"))
+        return data.get("sessions") or []
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def save_session(
     session_id: str,
     messages: list,
@@ -29,6 +64,45 @@ def save_session(
     total_cost_usd: float | None = None,
     status: str | None = None,
     claude_session_id: str | None = None,
+):
+    """Phase 2.2: 同步包装保留给非 async 调用方；内部走 asyncio.to_thread 避免阻塞事件循环。"""
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # 已在事件循环中：调度到线程池，不阻塞
+            asyncio.ensure_future(
+                _save_session_async(
+                    session_id, messages, reply, project, mode,
+                    execution_results, total_cost_usd, status, claude_session_id,
+                ),
+                loop=loop,
+            )
+            return
+    except RuntimeError:
+        pass
+    # 不在事件循环：直接同步写
+    _save_session_sync(
+        session_id, messages, reply, project, mode,
+        execution_results, total_cost_usd, status, claude_session_id,
+    )
+
+
+async def _save_session_async(
+    session_id, messages, reply, project, mode,
+    execution_results, total_cost_usd, status, claude_session_id,
+):
+    await asyncio.to_thread(
+        _save_session_sync,
+        session_id, messages, reply, project, mode,
+        execution_results, total_cost_usd, status, claude_session_id,
+    )
+
+
+def _save_session_sync(
+    session_id, messages, reply, project, mode,
+    execution_results, total_cost_usd, status, claude_session_id,
 ):
     path = _session_path(session_id, project)
     title_src = ""
@@ -71,13 +145,30 @@ def save_session(
         data["execution_results"] = execution_results
     if total_cost_usd is not None:
         data["total_cost_usd"] = total_cost_usd
-    # Persist Claude Code session binding for continuous / cold resume
     bound = (claude_session_id or "").strip() or str(
         existing.get("claude_session_id") or ""
     ).strip()
     if bound:
         data["claude_session_id"] = bound
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+    # Phase 2.2: 更新轻量 index（只存元数据，不存 messages）
+    _update_index_entry(project, {
+        "session_id": session_id,
+        "title": title,
+        "updated_at": data["updated_at"],
+        "mode": mode,
+        "source": data.get("source", "hub"),
+    })
+
+
+def _update_index_entry(project: str, entry: dict) -> None:
+    """单条更新 index.json，避免重扫全目录"""
+    sessions = _read_index(project) or []
+    sessions = [s for s in sessions if s.get("session_id") != entry["session_id"]]
+    sessions.insert(0, entry)
+    sessions = sessions[:500]  # 上限 500 条
+    _write_index(project, sessions)
 
 
 def rename_session(
@@ -98,17 +189,40 @@ def rename_session(
     data["renamed"] = True
     data["updated_at"] = now_iso()
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    _update_index_entry(project, {
+        "session_id": session_id,
+        "title": new_title,
+        "updated_at": data["updated_at"],
+        "mode": data.get("mode", "chat"),
+        "source": data.get("source", "hub"),
+    })
     return data
 
 def list_sessions(project: str = "ccc", *, include_tests: bool = False) -> list[dict]:
+    """Phase 2.2: 优先读 _index.json；缺失或失效时回退全扫并重建 index。"""
+    from .claude_history import is_test_session_id
+
     chat_dir = _project_chat_dir(project)
+    # 先试 index
+    indexed = _read_index(project)
+    # 校验 index 是否与目录一致（文件数对得上）
+    if indexed is not None:
+        try:
+            file_count = len(list(chat_dir.glob("*.json")))
+        except OSError:
+            file_count = -1
+        # 数量匹配（误差 ≤1：index 可能刚更新而文件未落盘，或反之）
+        if file_count >= 0 and abs(len(indexed) - file_count) <= 1:
+            if not include_tests:
+                indexed = [s for s in indexed if not is_test_session_id(s.get("session_id", ""))]
+            return indexed
+
+    # 回退：全扫重建
     sessions = []
     for f in sorted(
         chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
     ):
         try:
-            from .claude_history import is_test_session_id
-
             if not include_tests and is_test_session_id(f.stem):
                 continue
             data = json.loads(f.read_text())
@@ -121,6 +235,7 @@ def list_sessions(project: str = "ccc", *, include_tests: bool = False) -> list[
             })
         except (json.JSONDecodeError, OSError):
             pass
+    _write_index(project, sessions)
     return sessions
 
 
