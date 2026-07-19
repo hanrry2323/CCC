@@ -8,6 +8,44 @@ struct BoardSnapshot: Decodable {
     let counts: [String: Int]?
 }
 
+struct BoardSummariesResp: Decodable {
+    let summaries: [String: BoardSnapshot]
+}
+
+struct BoardTaskDetail: Identifiable, Decodable, Hashable {
+    let id: String
+    let title: String?
+    let card_kind: String?
+    let parent_id: String?
+    let status: String?
+    let note: String?
+    let executor: String?
+    let split_status: String?
+    let acceptance: String?
+    let phases: [BoardTaskPhase]?
+    let events: [BoardTaskEvent]?
+
+    var displayTitle: String { title ?? id }
+    var isEpic: Bool {
+        if let k = card_kind { return k == "epic" }
+        return parent_id == nil || parent_id?.isEmpty == true
+    }
+}
+
+struct BoardTaskPhase: Identifiable, Decodable, Hashable {
+    var id: String { name }
+    let name: String
+    let status: String?
+    let commit: String?
+}
+
+struct BoardTaskEvent: Identifiable, Decodable, Hashable {
+    var id: String { "\(ts ?? "")-\(role ?? "")" }
+    let ts: String?
+    let role: String?
+    let message: String?
+}
+
 struct BoardTask: Identifiable, Decodable, Hashable {
     let id: String
     let title: String?

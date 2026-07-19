@@ -217,8 +217,12 @@ struct FlowNodeView: View {
     let node: FlowGraphNode
     var pulse: Bool = false
 
+    private var colorKey: String { FlowLayout.statusColorKey(node.statusKey) }
+    private var isFail: Bool { colorKey == "fail" }
+    private var isRunning: Bool { colorKey == "running" }
+
     private var tint: Color {
-        switch FlowLayout.statusColorKey(node.statusKey) {
+        switch colorKey {
         case "running": return CCCTheme.nodeRunning
         case "done": return CCCTheme.nodeDone
         case "fail": return CCCTheme.nodeFail
@@ -226,12 +230,28 @@ struct FlowNodeView: View {
         }
     }
 
+    /// 执行器图标（按 badge 文本启发式映射）
+    private var executorIcon: String {
+        let b = node.badge.lowercased()
+        if b.contains("opencode") || b.contains("dev") { return "terminal" }
+        if b.contains("claude") || b.contains("loop-code") || b.contains("product") { return "cpu" }
+        if b.contains("python") { return "curlybraces" }
+        if b.contains("review") || b.contains("tester") { return "checkmark.shield" }
+        if b.contains("kb") { return "books.vertical" }
+        if b.contains("ops") { return "stethoscope" }
+        return "cpu"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
+                Image(systemName: executorIcon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint)
                 Text(node.badge)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(tint)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
                 Circle()
                     .fill(tint)
@@ -245,13 +265,13 @@ struct FlowNodeView: View {
                 .lineLimit(2)
             Text(node.subtitle)
                 .font(.system(size: 11))
-                .foregroundStyle(CCCTheme.faint)
+                .foregroundStyle(isFail ? CCCTheme.nodeFail : CCCTheme.faint)
                 .lineLimit(1)
             if let detail = node.detail, !detail.isEmpty {
                 Text(detail)
                     .font(.system(size: 10))
-                    .foregroundStyle(CCCTheme.faint.opacity(0.9))
-                    .lineLimit(1)
+                    .foregroundStyle(isFail ? CCCTheme.nodeFail.opacity(0.9) : CCCTheme.faint.opacity(0.9))
+                    .lineLimit(isFail ? 3 : 1)
             }
         }
         .padding(11)
@@ -259,7 +279,15 @@ struct FlowNodeView: View {
         .background(CCCTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(CCCTheme.border, lineWidth: 1)
+                .stroke(
+                    isFail ? CCCTheme.nodeFail.opacity(0.85) : CCCTheme.border,
+                    lineWidth: isFail ? 1.8 : 1
+                )
+        )
+        .shadow(
+            color: isFail ? CCCTheme.nodeFail.opacity(0.35) : (isRunning ? tint.opacity(0.18) : .clear),
+            radius: isFail ? 6 : (isRunning ? 3 : 0),
+            x: 0, y: 0
         )
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .animation(.easeInOut(duration: 0.28), value: node.statusKey)

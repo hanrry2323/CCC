@@ -183,6 +183,15 @@ actor APIClient {
         }
     }
 
+    /// POST/PUT 不解 JSON body，只回状态码（用于 move/hide/reopen 等写动作）
+    private func sendVoid(_ req: URLRequest) async throws -> (Data, Int) {
+        try await HubRequestGate.shared.withPermit {
+            let (data, resp) = try await self.session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            return (data, code)
+        }
+    }
+
     struct ProjectsResp: Decodable {
         let projects: [DesktopProject]
         let default_project: String?
@@ -442,6 +451,45 @@ actor APIClient {
     func fetchBoard(workspace: String) async throws -> BoardSnapshot {
         let enc = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
         return try await send(try authedRequest("api/board?workspace=\(enc)"), as: BoardSnapshot.self)
+    }
+
+    func fetchBoardSummaries(workspaces: [String]) async throws -> BoardSummariesResp {
+        let joined = workspaces.joined(separator: ",")
+        let enc = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
+        return try await send(try authedRequest("api/board/summaries?workspaces=\(enc)"), as: BoardSummariesResp.self)
+    }
+
+    func fetchTaskDetail(taskId: String, workspace: String) async throws -> BoardTaskDetail {
+        let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+        let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+        return try await send(try authedRequest("api/tasks/\(t)?workspace=\(w)"), as: BoardTaskDetail.self)
+    }
+
+    func moveTask(taskId: String, to: String, workspace: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["id": taskId, "to": to, "workspace": workspace])
+        let req = try authedRequest("api/tasks/move", method: "POST", body: body)
+        let (_, code) = try await sendVoid(req)
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "move failed")
+        }
+    }
+
+    func hideCompletedEpics(workspace: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
+        let req = try authedRequest("api/tasks/hide-completed-epics", method: "POST", body: body)
+        let (_, code) = try await sendVoid(req)
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "hide failed")
+        }
+    }
+
+    func reopenTask(taskId: String, to: String, workspace: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["id": taskId, "to": to, "workspace": workspace])
+        let req = try authedRequest("api/tasks/reopen", method: "POST", body: body)
+        let (_, code) = try await sendVoid(req)
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "reopen failed")
+        }
     }
 
     func fetchOpsOverview() async throws -> OpsOverview {

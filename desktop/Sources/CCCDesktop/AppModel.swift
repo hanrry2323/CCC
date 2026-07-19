@@ -2062,6 +2062,45 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func moveBoardTask(_ task: BoardTask, to: String) async {
+        let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
+        do {
+            try await prepareClient()
+            try await client.moveTask(taskId: task.id, to: to, workspace: ws)
+            await refreshBoard()
+        } catch {
+            boardError = "移动失败: \(error.localizedDescription)"
+        }
+    }
+
+    func hideCompletedEpics() async {
+        let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
+        do {
+            try await prepareClient()
+            try await client.hideCompletedEpics(workspace: ws)
+            await refreshBoard()
+        } catch {
+            boardError = "隐藏失败: \(error.localizedDescription)"
+        }
+    }
+
+    func reopenBoardTask(_ task: BoardTask, to: String = "planned") async {
+        let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
+        do {
+            try await prepareClient()
+            try await client.reopenTask(taskId: task.id, to: to, workspace: ws)
+            await refreshBoard()
+        } catch {
+            boardError = "重开失败: \(error.localizedDescription)"
+        }
+    }
+
+    func fetchTaskDetail(_ task: BoardTask) async throws -> BoardTaskDetail {
+        try await prepareClient()
+        let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
+        return try await client.fetchTaskDetail(taskId: task.id, workspace: ws)
+    }
+
     func refreshOps() async {
         opsBusy = true
         opsError = nil
