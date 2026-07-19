@@ -500,6 +500,33 @@ actor APIClient {
         try await send(try authedRequest("api/ops/risks"), as: OpsRisksResp.self)
     }
 
+    func fetchOpsSummary() async throws -> OpsSummary {
+        try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
+    }
+
+    func runDailyReview(workspace: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
+        let req = try authedRequest("api/ops/daily-review/run", method: "POST", body: body)
+        let (_, code) = try await sendVoid(req)
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "daily-review run failed")
+        }
+    }
+
+    func adoptSuggestion(workspace: String, title: String, description: String, tags: [String]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "workspace": workspace,
+            "title": title,
+            "description": description,
+            "tags": tags,
+        ])
+        let req = try authedRequest("api/ops/adopt", method: "POST", body: body)
+        let (_, code) = try await sendVoid(req)
+        if !(200..<300).contains(code) {
+            throw APIError.http(code, "adopt failed")
+        }
+    }
+
     func fetchProjectBaseline(projectId: String) async throws -> ProjectBaselineResp {
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
         return try await send(try authedRequest("api/projects/\(enc)/baseline"), as: ProjectBaselineResp.self)

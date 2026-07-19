@@ -93,6 +93,9 @@ final class AppModel: ObservableObject {
     @Published var opsRisksHigh: Int?
     @Published var opsBusy = false
     @Published var opsError: String?
+    @Published var opsSummary: OpsSummary?
+    @Published var opsAdoptBusy = false
+    @Published var opsAdoptError: String?
 
     private var flowTask: Task<Void, Never>?
     private var flowBackoffNs: UInt64 = 3_000_000_000
@@ -2107,6 +2110,15 @@ final class AppModel: ObservableObject {
         defer { opsBusy = false }
         do {
             try await prepareClient()
+            // 优先用聚合端点（一次拉全）；回退到分立端点
+            if let summary = try? await client.fetchOpsSummary() {
+                opsSummary = summary
+                opsOverview = summary.overview
+                opsRisks = summary.risks?.risks ?? []
+                opsRisksCount = summary.risks?.count
+                opsRisksHigh = summary.risks?.high
+                return
+            }
             async let overview = client.fetchOpsOverview()
             async let risksResp = client.fetchOpsRisks()
             opsOverview = try await overview
@@ -2116,6 +2128,31 @@ final class AppModel: ObservableObject {
             opsRisksHigh = risks.high
         } catch {
             opsError = error.localizedDescription
+        }
+    }
+
+    func runDailyReview(workspace: String) async {
+        opsAdoptBusy = true
+        opsAdoptError = nil
+        defer { opsAdoptBusy = false }
+        do {
+            try await prepareClient()
+            try await client.runDailyReview(workspace: workspace)
+            await refreshOps()
+        } catch {
+            opsAdoptError = "日审失败: \(error.localizedDescription)"
+        }
+    }
+
+    func adoptSuggestion(workspace: String, title: String, description: String, tags: [String] = ["ops-auto"]) async {
+        opsAdoptBusy = true
+        opsAdoptError = nil
+        defer { opsAdoptBusy = false }
+        do {
+            try await prepareClient()
+            try await client.adoptSuggestion(workspace: workspace, title: title, description: description, tags: tags)
+        } catch {
+            opsAdoptError = "采纳失败: \(error.localizedDescription)"
         }
     }
 }

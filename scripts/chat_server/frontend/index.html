@@ -21,6 +21,25 @@
   document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
+<style>
+/* 架构对齐 2026-07-19：看板/运维已迁入 CCC Desktop；网页版冻结（仅运维兜底） */
+#view-board::before, #view-ops::before {
+  content: "已迁入 CCC Desktop · 本页冻结（仅运维兜底）";
+  display: block;
+  padding: 6px 16px;
+  background: linear-gradient(90deg, #fef3c7, #fde68a);
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #f59e0b;
+}
+[data-theme="dark"] #view-board::before,
+[data-theme="dark"] #view-ops::before {
+  background: linear-gradient(90deg, #78350f, #92400e);
+  color: #fef3c7;
+  border-bottom-color: #b45309;
+}
+</style>
 </head>
 <body class="hub-mode">
 <nav id="hub-nav" aria-label="CCC Hub">

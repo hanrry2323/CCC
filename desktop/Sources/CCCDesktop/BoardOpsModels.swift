@@ -130,3 +130,102 @@ extension OpsRisk: Decodable {
 struct ProjectBaselineResp: Decodable {
     let prompt: String?
 }
+
+// MARK: - Ops Summary (aggregated /api/ops/summary)
+
+struct OpsSummary: Decodable {
+    let overview: OpsOverview?
+    let risks: OpsRisksResp?
+    let workspaces: OpsWorkspacesResp?
+    let daily: OpsDailyResp?
+    let quality: OpsQualityResp?
+    let docs: OpsDocsDebtResp?
+    let kb: OpsKbHealthResp?
+    let deploy: OpsDeployResp?
+    let ports: OpsPortsResp?
+    let auto: OpsAutoResp?
+    let resources: OpsResourcesResp?
+}
+
+struct OpsWorkspacesResp: Decodable {
+    let workspaces: [OpsWorkspaceSummary]?
+}
+struct OpsWorkspaceSummary: Identifiable, Decodable, Hashable {
+    var id: String { workspace }
+    let workspace: String
+    let backlog: Int?
+    let planned: Int?
+    let in_progress: Int?
+    let testing: Int?
+    let verified: Int?
+    let released: Int?
+    let abnormal: Int?
+    let epic_count: Int?
+    let last_event: String?
+}
+
+struct OpsDailyResp: Decodable {
+    let reports: [OpsDailyReport]?
+    let latest: OpsDailyReport?
+    let latest_body: String?
+    let generated_at: String?
+}
+struct OpsDailyReport: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace)-\(name)" }
+    let workspace: String
+    let name: String
+    let path: String?
+    let mtime: String?
+    let size: Int?
+}
+
+struct OpsQualityResp: Decodable {
+    let workspaces: [OpsQualityDigest]?
+    let generated_at: String?
+}
+struct OpsQualityDigest: Identifiable, Decodable, Hashable {
+    var id: String { workspace }
+    let workspace: String
+    let commits_24h: Int?
+    let commit_sample: [String]?
+    let released_total: Int?
+    let hint: String?
+}
+
+struct OpsDocsDebtResp: Decodable {
+    let items: [OpsDocsDebtItem]?
+    let count: Int?
+    let generated_at: String?
+}
+struct OpsDocsDebtItem: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace)-\(file ?? "")" }
+    let workspace: String?
+    let file: String?
+    let issue: String?
+}
+
+struct OpsKbHealthResp: Decodable {
+    let ok: Bool?
+    let note: String?
+}
+struct OpsDeployResp: Decodable {
+    let targets: [String]?
+}
+struct OpsPortsResp: Decodable {
+    let ports: [OpsDownPort]?
+}
+struct OpsAutoResp: Decodable {
+    let tasks: [OpsAutoTask]?
+}
+struct OpsAutoTask: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace ?? "")-\(title ?? "")" }
+    let workspace: String?
+    let title: String?
+    let description: String?
+    let tags: [String]?
+}
+struct OpsResourcesResp: Decodable {
+    let cpu: Double?
+    let mem_pct: Double?
+    let disk_pct: Double?
+}
