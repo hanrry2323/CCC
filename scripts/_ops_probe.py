@@ -220,7 +220,7 @@ def fetch_router_usage(
     *,
     host: str = "127.0.0.1",
     port: int = 4000,
-    timeout: float = 1.5,
+    timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
     """Proxy ai-loop-router GET /admin/stats → flash/code/pro requests_today.

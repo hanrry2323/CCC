@@ -63,6 +63,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
-| `GET /api/ops/router-usage` | 顶栏中转站 flash/code/pro 今日调用 |
+| `GET /api/ops/router-usage` | 顶栏中转站 flash/code/pro 今日调用（Desktop 旁路 Hub 闸门、5–8s 轮询；失败顶栏显示 `!` + tooltip；Timer 1s 兜底重绘，不依赖 SwiftUI 树）。 |
+
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

@@ -135,6 +135,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var routerWindowDelta: [String: Int] = [
         "flash": 0, "code": 0, "pro": 0,
     ]
+    /// 最近一次成功拉取时间；nil=从未成功
+    @Published private(set) var routerUsageFetchedAt: Date?
+    /// 最近失败原因（成功时清空）；顶栏 tooltip / 警示点
+    @Published private(set) var routerUsageError: String?
+    /// 单调递增 tick：强制 Titlebar accessory 刷新（NSAccessory 不在 SwiftUI 树内）
+    @Published private(set) var routerUsageTick: UInt64 = 0
+    private var routerPollGeneration: UInt64 = 0
 
     private var flowTask: Task<Void, Never>?
     private var flowBackoffNs: UInt64 = 3_000_000_000
@@ -2451,31 +2458,49 @@ final class AppModel: ObservableObject {
     func startRouterUsagePolling() {
         routerUsageTask?.cancel()
         routerUsageTask = Task { [weak self] in
+            // 启动立刻拉一枪，避免顶栏长时间全 0
+            await self?.refreshRouterUsage(forceRefresh: true)
             while !Task.isCancelled {
                 guard let self else { break }
-                // 流式对话中降频：避免顶栏轮询加重「全家在忙」假死感
+                // 流式中也继续拉总量（旁路 gate）；仅略降频
                 let streaming = !self.liveStreamingThreadIds.isEmpty || self.currentThreadStreaming
-                if !streaming {
-                    await self.refreshRouterUsage()
-                }
-                let sleepNs: UInt64 = streaming ? 15_000_000_000 : 5_000_000_000
+                let sleepNs: UInt64 = streaming ? 8_000_000_000 : 5_000_000_000
                 try? await Task.sleep(nanoseconds: sleepNs)
+                guard !Task.isCancelled else { break }
+                self.routerPollGeneration &+= 1
+                // 每 ~30s 强制 bust Hub 侧 3s cache
+                let force = (self.routerPollGeneration % 6) == 0
+                await self.refreshRouterUsage(forceRefresh: force)
             }
         }
     }
 
-    func refreshRouterUsage() async {
+    /// 仅同步 Hub base/auth，不碰 sidecar（顶栏轮询专用）
+    private func syncHubClientForUsage() async {
+        guard let url = APIClient.makeBaseURL(from: serverURLString) else { return }
+        await client.updateHubEndpoint(baseURL: url, user: authUser, password: authPass)
+    }
+
+    func refreshRouterUsage(forceRefresh: Bool = false) async {
+        await syncHubClientForUsage()
         do {
-            // 轻量拉取：不走 prepareClient/ensureLocalAgent，避免每 5s 挤占 Hub/Agent
-            let resp = try await client.fetchRouterUsage()
+            let resp = try await client.fetchRouterUsage(forceRefresh: forceRefresh)
             applyRouterUsage(resp)
             if resp.ok == true || resp.tiers != nil {
+                let err = resp.error?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                routerUsageError = err.isEmpty ? nil : err
+                routerUsageFetchedAt = Date()
                 if !hubReachable {
                     hubReachable = true
                     updateConnectionStatusText(localOK: agentMode == "local", hubOK: true)
                 }
+            } else {
+                routerUsageError = resp.error ?? "router-usage ok=false"
             }
+            routerUsageTick &+= 1
         } catch {
+            routerUsageError = error.localizedDescription
+            routerUsageTick &+= 1
             // fail-soft：保留上次总量；窗口增量归零；不把整 App 打成离线
             if routerUsage == nil {
                 applyRouterUsage(
@@ -2507,9 +2532,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 近 5 秒窗口内新增（+ 号后；无调用则为 0）
+    /// 近一轮窗口内新增（+ 号后；无调用则为 0）
     func routerLiveCount(_ tier: String) -> Int {
         routerWindowDelta[tier] ?? 0
+    }
+
+    /// 顶栏是否应显示故障点（从未成功，或失败超过 25s 未再成功）
+    var routerUsageUnhealthy: Bool {
+        guard let at = routerUsageFetchedAt else { return true }
+        if routerUsageError != nil, Date().timeIntervalSince(at) > 25 {
+            return true
+        }
+        return false
     }
 
     private func applyRouterUsage(_ resp: RouterUsageResp) {

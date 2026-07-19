@@ -55,8 +55,12 @@ struct ContentView: View {
                 .environmentObject(model)
         }
         .animation(.easeOut(duration: 0.18), value: model.toast)
-        // 纯文字嵌进顶栏右侧（无 Toolbar 胶囊、不加第二排）
-        .background(TitlebarUsageAccessory(model: model).frame(width: 0, height: 0))
+        // 纯文字嵌进顶栏右侧；依赖 model.routerUsageTick 触发 updateNSView
+        .background(
+            TitlebarUsageAccessory(model: model)
+                .frame(width: 0, height: 0)
+                .id(model.routerUsageTick)
+        )
         .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .toolbarColorScheme(.light, for: .windowToolbar)

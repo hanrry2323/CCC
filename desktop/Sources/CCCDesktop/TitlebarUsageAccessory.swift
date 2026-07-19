@@ -1,7 +1,8 @@
 import AppKit
+import Combine
 import SwiftUI
 
-/// 顶栏右侧纯文字：单排、无胶囊；自绘以保证上下居中
+/// 顶栏右侧纯文字：单排、无胶囊；自绘 + Timer，保证用量刷新不依赖 SwiftUI 树
 struct TitlebarUsageAccessory: NSViewRepresentable {
     @ObservedObject var model: AppModel
 
@@ -10,7 +11,9 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let anchor = NSView(frame: .zero)
         anchor.isHidden = true
+        context.coordinator.model = model
         context.coordinator.installIfNeeded(from: anchor)
+        context.coordinator.startObserving()
         return anchor
     }
 
@@ -20,19 +23,54 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
         context.coordinator.refresh()
     }
 
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stopObserving()
+    }
+
     @MainActor
     final class Coordinator {
         var model: AppModel
         private weak var accessory: NSTitlebarAccessoryViewController?
         private weak var label: VerticallyCenteredTextView?
+        private var timer: Timer?
+        private var cancellable: AnyCancellable?
+        private var lastPaintedTick: UInt64 = 0
 
         init(model: AppModel) { self.model = model }
 
+        func startObserving() {
+            stopObserving()
+            // NSTitlebarAccessory 不在 SwiftUI 布局树：用 tick + 1s 兜底强制重绘
+            cancellable = model.objectWillChange
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    self?.refresh()
+                }
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.refresh()
+                }
+            }
+            if let timer {
+                RunLoop.main.add(timer, forMode: .common)
+            }
+        }
+
+        func stopObserving() {
+            timer?.invalidate()
+            timer = nil
+            cancellable?.cancel()
+            cancellable = nil
+        }
+
         func installIfNeeded(from anchor: NSView) {
-            guard accessory == nil else { return }
+            if accessory != nil, label != nil { return }
             DispatchQueue.main.async { [weak self, weak anchor] in
                 guard let self, let anchor, let window = anchor.window else { return }
-                guard self.accessory == nil else { return }
+                if self.accessory != nil, self.label != nil {
+                    self.refresh()
+                    return
+                }
 
                 while !window.titlebarAccessoryViewControllers.isEmpty {
                     window.removeTitlebarAccessoryViewController(at: 0)
@@ -41,8 +79,7 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
                 let field = VerticallyCenteredTextView(frame: .zero)
                 field.setContentHuggingPriority(.required, for: .horizontal)
 
-                // height 交给系统顶栏；自绘视图在 bounds 内上下居中
-                let host = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 28))
+                let host = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 28))
                 host.addSubview(field)
                 field.translatesAutoresizingMaskIntoConstraints = false
                 NSLayoutConstraint.activate([
@@ -67,12 +104,21 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             let ink = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.82)
             let mute = NSColor(calibratedRed: 0.42, green: 0.38, blue: 0.34, alpha: 1)
             let green = NSColor(calibratedRed: 0.28, green: 0.58, blue: 0.38, alpha: 1)
+            let warn = NSColor(calibratedRed: 0.78, green: 0.35, blue: 0.18, alpha: 1)
             let sepC = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.30)
 
             let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .medium)
             let fontReg = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
             let fontSemi = NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
             let out = NSMutableAttributedString()
+
+            let unhealthy = model.routerUsageUnhealthy
+            if unhealthy {
+                out.append(NSAttributedString(
+                    string: "! ",
+                    attributes: [.font: fontSemi, .foregroundColor: warn]
+                ))
+            }
 
             for (i, tier) in ["flash", "code", "pro"].enumerated() {
                 if i > 0 {
@@ -84,7 +130,10 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
                 let total = model.routerRequestCount(tier)
                 let live = model.routerLiveCount(tier)
                 out.append(NSAttributedString(string: tier, attributes: [.font: font, .foregroundColor: mute]))
-                out.append(NSAttributedString(string: " \(total) ", attributes: [.font: fontReg, .foregroundColor: ink]))
+                out.append(NSAttributedString(
+                    string: " \(total) ",
+                    attributes: [.font: fontReg, .foregroundColor: unhealthy ? warn : ink]
+                ))
                 out.append(NSAttributedString(
                     string: live > 0 ? "+\(live)" : "·",
                     attributes: [
@@ -94,9 +143,23 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
                 ))
             }
             label.attributedText = out
-            label.toolTip = "今日总量 · +后为近 5 秒内新增（无新增显示 ·，非故障）"
+
+            var tip = "今日总量 · +后为近一轮窗口新增（无新增显示 ·）"
+            if let at = model.routerUsageFetchedAt {
+                let fmt = DateFormatter()
+                fmt.dateFormat = "HH:mm:ss"
+                tip += " · 更新 \(fmt.string(from: at))"
+            } else {
+                tip += " · 尚未拉到 Hub 用量"
+            }
+            if let err = model.routerUsageError, !err.isEmpty {
+                tip += " · \(err)"
+            }
+            label.toolTip = tip
+            lastPaintedTick = model.routerUsageTick
+
             let w = ceil(out.size().width) + 20
-            accessory?.view.setFrameSize(NSSize(width: max(300, w), height: 28))
+            accessory?.view.setFrameSize(NSSize(width: max(320, w), height: 28))
         }
     }
 }
