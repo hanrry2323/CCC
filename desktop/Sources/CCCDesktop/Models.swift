@@ -54,23 +54,38 @@ struct ChatMessage: Identifiable, Hashable {
 }
 
 extension ChatMessage: Codable {
-    enum CodingKeys: String, CodingKey { case role, content }
+    enum CodingKeys: String, CodingKey {
+        case role, content
+        case tool_steps
+        case files_changed
+        case tools_finished
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = UUID()
         role = try c.decode(String.self, forKey: .role)
-        content = try c.decode(String.self, forKey: .content)
+        content = try c.decodeIfPresent(String.self, forKey: .content) ?? ""
         isStreaming = false
-        toolSteps = []
-        filesChanged = 0
-        toolsFinished = false
+        toolSteps = try c.decodeIfPresent([ToolStep].self, forKey: .tool_steps) ?? []
+        filesChanged = try c.decodeIfPresent(Int.self, forKey: .files_changed) ?? 0
+        toolsFinished = try c.decodeIfPresent(Bool.self, forKey: .tools_finished)
+            ?? !toolSteps.isEmpty
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(role, forKey: .role)
         try c.encode(content, forKey: .content)
+        if !toolSteps.isEmpty {
+            try c.encode(toolSteps, forKey: .tool_steps)
+        }
+        if filesChanged > 0 {
+            try c.encode(filesChanged, forKey: .files_changed)
+        }
+        if toolsFinished || !toolSteps.isEmpty {
+            try c.encode(toolsFinished, forKey: .tools_finished)
+        }
     }
 }
 

@@ -122,21 +122,41 @@ actor APIClient {
 
     private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
         try await HubRequestGate.shared.withPermit {
-            let (data, resp) = try await self.session.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if !(200..<300).contains(code) {
-                if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
-                   let gates = err.errors, !gates.isEmpty {
-                    throw APIError.gate(gates)
+            var lastError: Error?
+            for attempt in 1...3 {
+                do {
+                    let (data, resp) = try await self.session.data(for: req)
+                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    if !(200..<300).contains(code) {
+                        if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
+                           let gates = err.errors, !gates.isEmpty {
+                            throw APIError.gate(gates)
+                        }
+                        let text = String(data: data, encoding: .utf8) ?? ""
+                        // 5xx / 0 可重试；4xx 不重试
+                        if code >= 500 || code == 0, attempt < 3 {
+                            try await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
+                            continue
+                        }
+                        throw APIError.http(code, String(text.prefix(400)))
+                    }
+                    do {
+                        return try JSONDecoder().decode(T.self, from: data)
+                    } catch {
+                        throw APIError.decode(error.localizedDescription)
+                    }
+                } catch let e as APIError {
+                    throw e
+                } catch {
+                    lastError = error
+                    if attempt < 3 {
+                        try await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
+                        continue
+                    }
+                    throw error
                 }
-                let text = String(data: data, encoding: .utf8) ?? ""
-                throw APIError.http(code, String(text.prefix(400)))
             }
-            do {
-                return try JSONDecoder().decode(T.self, from: data)
-            } catch {
-                throw APIError.decode(error.localizedDescription)
-            }
+            throw lastError ?? APIError.decode("请求失败")
         }
     }
 
@@ -221,12 +241,13 @@ actor APIClient {
         return resp.epics
     }
 
-    /// 流式聊天：优先本机 Agent Sidecar，否则 Hub；回调保证在 MainActor
+    /// 流式聊天：优先本机 Agent Sidecar，否则 Hub。
+    /// onEvent 由调用方切 MainActor（避免 actor↔MainActor 死锁导致 tool 事件攒到结束）
     func streamChat(
         projectId: String,
         sessionId: String,
         messages: [ChatMessage],
-        onEvent: @escaping @MainActor @Sendable (ChatStreamEvent) -> Void
+        onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         struct Body: Encodable {
             let project: String
@@ -270,65 +291,83 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
-        for try await line in bytes.lines {
+        // 按字节拼行，避免 AsyncLineSequence 粘包/半包导致漏解析 tool_use
+        var buffer = Data()
+        for try await chunk in bytes {
             try Task.checkCancellation()
-            let raw = line
-            guard raw.hasPrefix("data:") else { continue }
-            var payload = String(raw.dropFirst(5))
-            if payload.hasPrefix(" ") { payload = String(payload.dropFirst()) }
-            if payload == "[DONE]" || payload.isEmpty { continue }
-            guard let pdata = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: pdata) as? [String: Any]
-            else { continue }
-            let type = obj["type"] as? String
-            if type == "ping" { continue }
-            if type == "error" {
-                let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
-                throw APIError.http(500, msg)
-            }
-            if type == "tool_use" {
-                gotTool = true
-                let name = (obj["name"] as? String) ?? "tool"
-                var inputStr: [String: String] = [:]
-                if let inp = obj["input"] as? [String: Any] {
-                    for (k, v) in inp {
-                        inputStr[k] = "\(v)"
-                    }
+            buffer.append(chunk)
+            while let nl = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                let lineData = buffer.subdata(in: buffer.startIndex..<nl)
+                let after = buffer.index(after: nl)
+                buffer.removeSubrange(buffer.startIndex..<after)
+                var line = String(data: lineData, encoding: .utf8) ?? ""
+                if line.hasSuffix("\r") { line.removeLast() }
+                guard line.hasPrefix("data:") else { continue }
+                var payload = String(line.dropFirst(5))
+                if payload.hasPrefix(" ") { payload = String(payload.dropFirst()) }
+                if payload == "[DONE]" || payload.isEmpty { continue }
+                guard let pdata = payload.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: pdata) as? [String: Any]
+                else { continue }
+                let type = (obj["type"] as? String)?.lowercased()
+                if type == "ping" { continue }
+                if type == "error" {
+                    let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
+                    throw APIError.http(500, msg)
                 }
-                await onEvent(.toolUse(name: name, input: inputStr))
-                continue
-            }
-            if type == "tool_result" {
-                await onEvent(.toolResult(ok: true))
-                continue
-            }
-            if type == "cost" {
-                let tokens = obj["tokens"] as? Int
-                let usd = obj["usd"] as? Double
-                await onEvent(.cost(tokens: tokens, usd: usd))
-                continue
-            }
-            if type == "done" {
-                gotDone = true
-                donePartial = (obj["partial"] as? Bool) ?? false
-                await onEvent(.done(partial: donePartial))
-                continue
-            }
-            let chunk: String? = {
-                if let c = obj["content"] as? String, !c.isEmpty { return c }
-                if let c = obj["delta"] as? String, !c.isEmpty { return c }
-                if let c = obj["text"] as? String, !c.isEmpty { return c }
-                return nil
-            }()
-            if let chunk, type == "delta" || type == "text" || type == nil || type == "content" {
-                gotDelta = true
-                await onEvent(.delta(chunk))
+                if type == "tool_use" || type == "tool-use" || type == "tooluse" {
+                    gotTool = true
+                    let name = (obj["name"] as? String)
+                        ?? (obj["tool"] as? String)
+                        ?? (obj["tool_name"] as? String)
+                        ?? "tool"
+                    var inputStr: [String: String] = [:]
+                    if let inp = obj["input"] as? [String: Any] {
+                        for (k, v) in inp { inputStr[k] = "\(v)" }
+                    } else if let inp = obj["input"] as? [String: String] {
+                        inputStr = inp
+                    } else if let ns = obj["input"] as? NSDictionary {
+                        for (k, v) in ns {
+                            if let ks = k as? String { inputStr[ks] = "\(v)" }
+                        }
+                    }
+                    await onEvent(.toolUse(name: name, input: inputStr))
+                    continue
+                }
+                if type == "tool_result" || type == "tool-result" {
+                    let isErr = (obj["is_error"] as? Bool) == true
+                        || (obj["error"] as? Bool) == true
+                    await onEvent(.toolResult(ok: !isErr))
+                    continue
+                }
+                if type == "cost" {
+                    await onEvent(.cost(
+                        tokens: obj["tokens"] as? Int,
+                        usd: obj["usd"] as? Double
+                    ))
+                    continue
+                }
+                if type == "done" {
+                    gotDone = true
+                    donePartial = (obj["partial"] as? Bool) ?? false
+                    await onEvent(.done(partial: donePartial))
+                    continue
+                }
+                let textChunk: String? = {
+                    if let c = obj["content"] as? String, !c.isEmpty { return c }
+                    if let c = obj["delta"] as? String, !c.isEmpty { return c }
+                    if let c = obj["text"] as? String, !c.isEmpty { return c }
+                    return nil
+                }()
+                if let textChunk, type == "delta" || type == "text" || type == nil || type == "content" {
+                    gotDelta = true
+                    await onEvent(.delta(textChunk))
+                }
             }
         }
         if !gotDelta && !gotTool {
             throw APIError.decode("空回复（SSE 未解析到内容）")
         }
-        // 流被掐断却没 done → 半截；有 done.partial → 半截
         if !gotDone || donePartial {
             throw APIError.decode("回复中断（连接或生成未完整结束）")
         }

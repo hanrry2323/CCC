@@ -47,6 +47,13 @@ struct ContentView: View {
         .sheet(isPresented: $model.showTransferSheet) {
             TransferSheet().environmentObject(model)
         }
+        .sheet(isPresented: Binding(
+            get: { model.previewMarkdown != nil },
+            set: { if !$0 { model.previewMarkdown = nil } }
+        )) {
+            MessagePreviewSheet(markdown: model.previewMarkdown ?? "")
+                .environmentObject(model)
+        }
         .animation(.easeOut(duration: 0.18), value: model.toast)
     }
 }
@@ -256,20 +263,25 @@ struct CodexChatPane: View {
             Circle()
                 .fill(model.connected ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
-            Text(model.connected
-                   ? (model.currentThreadStreaming
-                      ? (model.agentMode == "local" ? "本机生成中…" : "生成中…")
-                      : model.statusText)
-                   : "未连接")
+            Text(model.connected ? model.statusText : "未连接")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-            if model.agentMode == "local" && model.connected {
-                Text("loop-code")
+            if model.connected {
+                Text(model.agentBadge)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(CCCTheme.accent.opacity(0.85))
+                    .foregroundStyle(
+                        model.agentMode == "local"
+                            ? CCCTheme.accent.opacity(0.9)
+                            : CCCTheme.faint
+                    )
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(CCCTheme.accent.opacity(0.12), in: Capsule())
+                    .background(
+                        (model.agentMode == "local"
+                            ? CCCTheme.accent.opacity(0.12)
+                            : CCCTheme.hover),
+                        in: Capsule()
+                    )
             }
             Spacer(minLength: 0)
             if model.busy && !model.currentThreadStreaming {
@@ -346,9 +358,21 @@ struct CodexChatPane: View {
                     }
                     ForEach(model.messages) { msg in
                         CodexMessageRow(message: msg)
-                            .id("\(model.selectedThreadId ?? "")-\(msg.id)")
+                            // toolSteps 变化时强制刷新（同 UUID 时 LazyVStack 偶发不刷）
+                            .id("\(model.selectedThreadId ?? "")-\(msg.id)-t\(msg.toolSteps.count)-r\(msg.toolSteps.filter { $0.status == .running }.count)-c\(msg.content.count)")
+                            .environmentObject(model)
                             .contextMenu {
                                 Button("复制") { model.copyMessage(msg.content) }
+                                if msg.role == "user" {
+                                    Button("编辑") { model.editUserMessage(msg) }
+                                }
+                                if msg.role == "assistant", !msg.isStreaming {
+                                    Button("重新生成") { model.regenerateAssistant(after: msg) }
+                                    Button("预览") { model.previewMessage(msg.content) }
+                                    if model.selectedProject?.isDispatchable == true {
+                                        Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
+                                    }
+                                }
                             }
                     }
                 }
@@ -514,6 +538,7 @@ struct CodexChatPane: View {
 }
 
 struct CodexMessageRow: View {
+    @EnvironmentObject var model: AppModel
     let message: ChatMessage
 
     var body: some View {
@@ -521,24 +546,31 @@ struct CodexMessageRow: View {
         let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
             ? "…"
             : message.content
+        let showActions = !message.isStreaming && !body.isEmpty && body != "…"
+
         Group {
             if isUser {
-                HStack(alignment: .top, spacing: 0) {
-                    Spacer(minLength: 80)
-                    Text(body)
-                        .font(CCCTheme.body)
-                        .foregroundStyle(CCCTheme.ink)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(CCCTheme.bubbleUser)
-                        )
+                VStack(alignment: .trailing, spacing: 4) {
+                    HStack(alignment: .top, spacing: 0) {
+                        Spacer(minLength: 80)
+                        Text(body)
+                            .font(CCCTheme.body)
+                            .foregroundStyle(CCCTheme.ink)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(CCCTheme.bubbleUser)
+                            )
+                    }
+                    if showActions {
+                        MessageActionBar(role: "user", content: body, message: message)
+                            .padding(.trailing, 4)
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    // 生成一开始就显示进度轨（不必等首个 tool_use）
                     if message.isStreaming || !message.toolSteps.isEmpty {
                         ToolProgressRail(
                             steps: message.toolSteps,
@@ -550,10 +582,71 @@ struct CodexMessageRow: View {
                     if !body.isEmpty && body != "…" {
                         MarkdownText(source: body)
                     }
+                    if showActions {
+                        MessageActionBar(role: "assistant", content: body, message: message)
+                    }
                 }
                 .padding(.trailing, 40)
             }
         }
+    }
+}
+
+/// 对齐旧 Hub：复制 / 编辑 / 重新生成 / 预览 / 转任务
+struct MessageActionBar: View {
+    @EnvironmentObject var model: AppModel
+    let role: String
+    let content: String
+    let message: ChatMessage
+
+    var body: some View {
+        HStack(spacing: 10) {
+            actionBtn("复制") { model.copyMessage(content) }
+            if role == "user" {
+                actionBtn("编辑") { model.editUserMessage(message) }
+            } else {
+                actionBtn("重新生成") { model.regenerateAssistant(after: message) }
+                actionBtn("预览") { model.previewMessage(content) }
+                if model.selectedProject?.isDispatchable == true {
+                    actionBtn("转任务") { model.openTransfer(fromAssistantContent: content) }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+    }
+
+    private func actionBtn(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.faint)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct MessagePreviewSheet: View {
+    @EnvironmentObject var model: AppModel
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("预览")
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+                Button("复制") { model.copyMessage(markdown) }
+                Button("关闭") { model.previewMarkdown = nil }
+                    .keyboardShortcut(.cancelAction)
+            }
+            ScrollView {
+                MarkdownText(source: markdown)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 480, idealWidth: 560, minHeight: 360, idealHeight: 480)
     }
 }
 
@@ -778,8 +871,16 @@ struct SettingsView: View {
         Form {
             TextField("Server (Hub)", text: $model.serverURLString)
             TextField("本机 Agent", text: $model.agentURLString)
-            TextField("本机工作区", text: $model.localWorkspacePath)
-            Text("Agent 探测到则走 localhost；否则回退 Hub。转任务/右栏仍走 Hub。")
+            TextField("CCC 仓根 (拉起 sidecar)", text: $model.cccHomePath)
+            TextField(
+                "当前项目本机路径",
+                text: Binding(
+                    get: { model.selectedProjectLocalPath },
+                    set: { model.selectedProjectLocalPath = $0 }
+                )
+            )
+            TextField("全局工作区 fallback", text: $model.localWorkspacePath)
+            Text("Desktop 会自启 sidecar；失败则状态栏显示「Hub 回退」。转任务/右栏仍走 Hub。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             TextField("用户", text: $model.authUser)
@@ -787,6 +888,6 @@ struct SettingsView: View {
             Button("重新连接") { Task { await model.reconnect() } }
         }
         .padding(20)
-        .frame(width: 440, height: 280)
+        .frame(width: 460, height: 340)
     }
 }

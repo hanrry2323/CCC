@@ -238,7 +238,19 @@ async def put_thread_messages(request: Request, thread_id: str):
         content = str(m.get("content") or "")
         if role not in ("user", "assistant", "system"):
             continue
-        messages.append({"role": role, "content": content, "mode": "chat"})
+        item: dict = {"role": role, "content": content, "mode": "chat"}
+        # Desktop 工具轨透传（可选；历史消息可无）
+        steps = m.get("tool_steps")
+        if isinstance(steps, list) and steps:
+            item["tool_steps"] = steps
+        if "files_changed" in m:
+            try:
+                item["files_changed"] = int(m.get("files_changed") or 0)
+            except (TypeError, ValueError):
+                pass
+        if "tools_finished" in m:
+            item["tools_finished"] = bool(m.get("tools_finished"))
+        messages.append(item)
     store.save_session(
         thread_id,
         messages,

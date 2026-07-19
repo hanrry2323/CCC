@@ -18,19 +18,24 @@
 
 ## 方案 Agent
 
-**热路径（目标）**：本机 Agent Sidecar（`127.0.0.1:7788`）→ `vendor/loop-code/cli` → Router。  
-Desktop 探测 `GET {CCC_AGENT}/health`；可用则 `POST` 本地 `/api/chat`（无 Basic auth）。  
-聊完 `PUT Hub /api/desktop/threads/{id}/messages` 落盘；转任务 / 右栏 flow 仍走 Hub。
+**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`）→ `vendor/loop-code/cli` → Router。  
+Desktop `ensureLocalAgent`：探测（30s 缓存）→ 失败则自启 sidecar → 再探测；可用则 `POST` 本地 `/api/chat`。  
+聊完 `PUT Hub /api/desktop/threads/{id}/messages`（含 `tool_steps`）；转任务 / 右栏仍走 Hub。
 
-**回退**：sidecar 不可用 → Hub `/api/chat`；发送前可 `POST /api/desktop/agent/warm` 预热槽位。
+**回退**：自启仍失败 → 状态栏 **Hub 回退** + toast；`POST /api/desktop/agent/warm`。  
+**工作区**：`localWorkspaceMap[projectId]` → 全局 fallback → Hub path 若本机存在。
 
-Hub 侧探测：`GET /api/desktop/config` → `agent_runtime` / `agent_cli`。  
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。
 
-## 验收
+## ~80% 验收清单
+
+1. 杀 sidecar → 开 App → 自动起来且徽章「本机 Agent」
+2. 带工具一轮 → 重开 App → 同会话仍见 tool 芯片
+3. 两会话并行生成（sidecar）不互抢
+4. 业务项目绑本机路径后 `project_path` 正确
+5. sidecar 故意失败 → 明示 Hub 回退
 
 ```bash
-bash scripts/ccc-agent-sidecar.sh   # 本机常驻
-bash scripts/spike-loopcode-ttfb.sh # Hub vs 本机 TTFB
+bash scripts/spike-loopcode-ttfb.sh
 CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-desktop-agent.sh
 ```

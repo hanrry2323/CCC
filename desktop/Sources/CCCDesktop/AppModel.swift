@@ -10,8 +10,12 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
     /// 本机 Agent Sidecar（loop-code 热路径）；空则只用 Hub
     @AppStorage("ccc.agent") var agentURLString: String = "http://127.0.0.1:7788"
-    /// 本机业务仓（sidecar cwd）；空则用 CCC 仓根由 sidecar 默认
+    /// 全局本机工作区 fallback（sidecar cwd）
     @AppStorage("ccc.localWorkspace") var localWorkspacePath: String = ""
+    /// JSON: projectId → 本机绝对路径
+    @AppStorage("ccc.localWorkspaceMap") var localWorkspaceMapJSON: String = "{}"
+    /// CCC 仓根（拉起 sidecar）；空则自动探测
+    @AppStorage("ccc.home") var cccHomePath: String = ""
 
     @Published var projects: [DesktopProject] = []
     @Published var threads: [DesktopThread] = []
@@ -22,6 +26,8 @@ final class AppModel: ObservableObject {
     @Published var statusText: String = "未连接"
     /// "local" = 本机 sidecar；"hub" = 经 Hub 聊
     @Published var agentMode: String = "hub"
+    /// 状态栏右侧固定：本机 Agent / Hub 回退
+    @Published var agentBadge: String = "Hub 回退"
     @Published var busy = false
     @Published var connected = false
     @Published var destination: SidebarDestination = .chat
@@ -57,6 +63,8 @@ final class AppModel: ObservableObject {
     @Published var currentThreadStreaming = false
     /// 发送失败时回填输入框（一次性）
     @Published var composerBounce: String?
+    /// 消息「预览」全文（对齐旧 Hub）
+    @Published var previewMarkdown: String?
 
     // Board
     @Published var boardColumns: [String: [BoardTask]] = [:]
@@ -95,6 +103,10 @@ final class AppModel: ObservableObject {
     private var client: APIClient
     /// UI smoke 写入路径（仅 CCC_DESKTOP_UI_SMOKE=1）
     private(set) var uiSmokeOutPath: String?
+    /// sidecar 探测成功缓存（30s）
+    private var agentProbeOKUntil: Date?
+    private var cachedAgentBaseURL: URL?
+    private var didToastHubFallback = false
 
     /// 兼容旧 UI 命名：仅反映「当前会话」是否在生成
     var isStreaming: Bool { currentThreadStreaming }
@@ -104,30 +116,142 @@ final class AppModel: ObservableObject {
         client = APIClient(baseURL: fallback, user: "ccc", password: "ccc")
     }
 
+    // MARK: - Workspace map
+
+    private var workspaceMap: [String: String] {
+        get {
+            guard let data = localWorkspaceMapJSON.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+            else { return [:] }
+            return obj
+        }
+        set {
+            if let data = try? JSONSerialization.data(withJSONObject: newValue),
+               let s = String(data: data, encoding: .utf8) {
+                localWorkspaceMapJSON = s
+            }
+        }
+    }
+
+    /// 当前选中项目的本机路径（Settings 绑定）
+    var selectedProjectLocalPath: String {
+        get {
+            guard let pid = selectedProjectId else { return "" }
+            return workspaceMap[pid] ?? ""
+        }
+        set {
+            guard let pid = selectedProjectId else { return }
+            var m = workspaceMap
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                m.removeValue(forKey: pid)
+            } else {
+                m[pid] = trimmed
+            }
+            workspaceMap = m
+        }
+    }
+
+    /// map → 全局 fallback → Hub path 若本机存在
+    func localPath(for projectId: String?) -> String? {
+        guard let projectId, !projectId.isEmpty else {
+            let g = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            return g.isEmpty ? nil : g
+        }
+        if let mapped = workspaceMap[projectId]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mapped.isEmpty {
+            return mapped
+        }
+        let global = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !global.isEmpty { return global }
+        if let hubPath = projects.first(where: { $0.id == projectId })?.path,
+           !hubPath.isEmpty,
+           FileManager.default.fileExists(atPath: hubPath) {
+            return hubPath
+        }
+        return nil
+    }
+
     private func prepareClient() async throws {
         guard let url = APIClient.makeBaseURL(from: serverURLString) else {
             throw APIError.badURL
         }
-        var chatURL: URL?
-        let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let agentStr = (agentRaw?.isEmpty == false ? agentRaw! : agentURLString)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let candidate = APIClient.makeBaseURL(from: agentStr),
-           await client.probeLocalAgent(base: candidate) {
-            chatURL = candidate
-            agentMode = "local"
-        } else {
-            agentMode = "hub"
-        }
-        let localPath = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chatURL = await ensureLocalAgent()
+        let localPath = localPath(for: selectedProjectId)
         await client.update(
             baseURL: url,
             user: authUser,
             password: authPass,
             chatBaseURL: chatURL,
-            localProjectPath: localPath.isEmpty ? nil : localPath
+            localProjectPath: localPath
         )
+    }
+
+    /// 探测（30s 缓存）→ 失败则拉起 sidecar → 再探测；失败回退 Hub 并明示
+    @discardableResult
+    private func ensureLocalAgent() async -> URL? {
+        let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let agentStr = (agentRaw?.isEmpty == false ? agentRaw! : agentURLString)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let candidate = APIClient.makeBaseURL(from: agentStr) else {
+            setAgentModeHub(reason: "Agent URL 无效")
+            return nil
+        }
+
+        if let until = agentProbeOKUntil, until > Date(),
+           let cached = cachedAgentBaseURL, cached == candidate {
+            agentMode = "local"
+            agentBadge = "本机 Agent"
+            return candidate
+        }
+
+        if await client.probeLocalAgent(base: candidate) {
+            agentProbeOKUntil = Date().addingTimeInterval(30)
+            cachedAgentBaseURL = candidate
+            agentMode = "local"
+            agentBadge = "本机 Agent"
+            didToastHubFallback = false
+            return candidate
+        }
+
+        // 尝试自启
+        statusText = "连接 Agent…"
+        let homeHint = cccHomePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let launch = AgentSidecarLauncher.ensureRunning(
+            cccHomeHint: homeHint.isEmpty ? nil : homeHint
+        )
+        if launch.launched, let home = launch.cccHome, cccHomePath.isEmpty {
+            cccHomePath = home
+        }
+
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if await client.probeLocalAgent(base: candidate) {
+                agentProbeOKUntil = Date().addingTimeInterval(30)
+                cachedAgentBaseURL = candidate
+                agentMode = "local"
+                agentBadge = "本机 Agent"
+                didToastHubFallback = false
+                if connected { statusText = "已连接 · 本机 Agent" }
+                return candidate
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+
+        agentProbeOKUntil = nil
+        cachedAgentBaseURL = nil
+        setAgentModeHub(reason: launch.detail)
+        return nil
+    }
+
+    private func setAgentModeHub(reason: String) {
+        agentMode = "hub"
+        agentBadge = "Hub 回退"
+        if !didToastHubFallback {
+            didToastHubFallback = true
+            showToast("本机 Agent 未就绪，已回退 Hub（\(reason)）")
+        }
     }
 
     var selectedProject: DesktopProject? {
@@ -231,7 +355,7 @@ final class AppModel: ObservableObject {
                 await refreshThreads(projectId: pid)
                 await bindFlowToCurrentThread()
             }
-            statusText = "已连接"
+            statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接 · Hub 回退"
             lastError = nil
         } catch {
             connected = false
@@ -380,31 +504,28 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 后台拉消息；流式中的会话以本地为准，不覆盖 toolSteps
+    /// 后台拉消息；Hub 无 tool_steps 时保留本地；生成中禁止覆盖
     private func syncThreadFromServer(projectId: String, threadId: String, generation: UInt64) async {
-        // 正在生成：禁止服务器快照冲掉工具轨
         if streamingThreadIds.contains(threadId) { return }
         do {
             try await prepareClient()
             let detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
             var loaded = detail.messages ?? []
-            // 保留本地尚未落盘的流式尾巴
-            if let cached = threadMessages[threadId],
-               let live = cached.last(where: \.isStreaming) {
-                if !loaded.contains(where: { $0.role == "assistant" && $0.content == live.content }) {
-                    if let u = cached.last(where: { $0.role == "user" }) {
+            let cached = threadMessages[threadId] ?? []
+
+            // 按序合并：Hub 文本 + 保留本地更完整的 toolSteps
+            if !cached.isEmpty {
+                loaded = mergeMessagesPreservingTools(server: loaded, local: cached)
+            }
+            // 流式尾巴
+            if let live = cached.last(where: \.isStreaming) {
+                if !loaded.contains(where: { $0.id == live.id }) {
+                    if let u = cached.last(where: { $0.role == "user" }),
+                       loaded.last?.role != "user" {
                         loaded.append(u)
                     }
                     loaded.append(live)
-                }
-            } else if let cached = threadMessages[threadId], !cached.isEmpty {
-                // 本地有更完整的 tool 元数据时，合并最后一条助手
-                if let localLast = cached.last(where: { $0.role == "assistant" && !$0.toolSteps.isEmpty }),
-                   let idx = loaded.lastIndex(where: { $0.role == "assistant" }) {
-                    loaded[idx].toolSteps = localLast.toolSteps
-                    loaded[idx].filesChanged = localLast.filesChanged
-                    loaded[idx].toolsFinished = localLast.toolsFinished
                 }
             }
             threadMessages[threadId] = loaded
@@ -412,11 +533,38 @@ final class AppModel: ObservableObject {
                 messages = loaded
             }
         } catch {
-            // 缓存已显示；失败只 toast，不打成断线
             if selectedThreadId == threadId, threadMessages[threadId] == nil {
                 showToast(error.localizedDescription)
             }
         }
+    }
+
+    /// Hub 有 steps 用 Hub；Hub 无而本地有则保留本地 steps
+    private func mergeMessagesPreservingTools(server: [ChatMessage], local: [ChatMessage]) -> [ChatMessage] {
+        var result = server
+        for (i, sm) in result.enumerated() where sm.role == "assistant" {
+            if !sm.toolSteps.isEmpty { continue }
+            if let lm = local.last(where: {
+                $0.role == "assistant"
+                    && !$0.toolSteps.isEmpty
+                    && ($0.content == sm.content || sm.content.isEmpty || $0.content.hasPrefix(String(sm.content.prefix(40))))
+            }) {
+                result[i].toolSteps = lm.toolSteps
+                result[i].filesChanged = max(sm.filesChanged, lm.filesChanged)
+                result[i].toolsFinished = lm.toolsFinished || sm.toolsFinished
+            }
+        }
+        // 本地助手条数更多时，补上尚未落盘的尾部
+        if local.filter({ $0.role == "assistant" }).count > result.filter({ $0.role == "assistant" }).count,
+           let lastLocal = local.last(where: { $0.role == "assistant" && !$0.toolSteps.isEmpty }),
+           !(result.last?.toolSteps.isEmpty == false) {
+            if result.last?.role == "assistant" {
+                result[result.count - 1].toolSteps = lastLocal.toolSteps
+                result[result.count - 1].filesChanged = lastLocal.filesChanged
+                result[result.count - 1].toolsFinished = lastLocal.toolsFinished
+            }
+        }
+        return result
     }
 
     private func syncFlowFromServer(projectId: String, threadId: String, generation: UInt64) async {
@@ -653,10 +801,20 @@ final class AppModel: ObservableObject {
         }
 
         do {
+            if selectedThreadId == threadId {
+                statusText = "连接 Agent…"
+            }
             try await prepareClient()
-            // Hub 热路径：预热 slot（本机 sidecar 时跳过）
+            // 业务仓未绑本机路径时提示一次（不阻断）
+            if localPath(for: projectId) == nil,
+               let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
+                showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
+            }
             if !(await client.usesLocalAgent) {
                 await client.warmHubAgent(projectId: projectId, threadId: threadId)
+            }
+            if selectedThreadId == threadId {
+                statusText = agentMode == "local" ? "本机生成中…" : "生成中…"
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
 
@@ -665,15 +823,23 @@ final class AppModel: ObservableObject {
                 sessionId: threadId,
                 messages: outbound
             ) { [weak self] event in
-                guard let self else { return }
-                self.applyChatEvent(threadId: threadId, assistantId: assistantId, event: event)
+                guard let model = self else { return }
+                // 显式 MainActor：保证 tool_use 即时刷新，不攒到整轮结束
+                await MainActor.run {
+                    model.applyChatEvent(threadId: threadId, assistantId: assistantId, event: event)
+                }
             }
 
             var failedEmpty = false
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].isStreaming = false
-                msgs[idx].toolsFinished = true
+                for i in msgs[idx].toolSteps.indices where msgs[idx].toolSteps[i].status == .running {
+                    msgs[idx].toolSteps[i].status = .done
+                }
+                if !msgs[idx].toolSteps.isEmpty {
+                    msgs[idx].toolsFinished = true
+                }
                 if msgs[idx].content.isEmpty && msgs[idx].toolSteps.isEmpty {
                     msgs.remove(at: idx)
                     failedEmpty = true
@@ -685,14 +851,22 @@ final class AppModel: ObservableObject {
             if connected, selectedThreadId == threadId {
                 statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接"
             }
-            // 本地 Agent 聊完 → 异步落盘 Hub（转任务/历史）
-            let synced = (threadMessages[threadId] ?? messages).map {
-                ChatMessage(role: $0.role, content: $0.content)
-            }
+            // 落盘含 tool_steps
+            let synced = (threadMessages[threadId] ?? messages)
+                .filter { $0.role == "user" || $0.role == "assistant" }
+                .map {
+                    ChatMessage(
+                        role: $0.role,
+                        content: $0.content,
+                        toolSteps: $0.toolSteps,
+                        filesChanged: $0.filesChanged,
+                        toolsFinished: $0.toolsFinished
+                    )
+                }
             try? await client.syncThreadMessages(
                 projectId: projectId,
                 threadId: threadId,
-                messages: synced.filter { $0.role == "user" || $0.role == "assistant" }
+                messages: synced
             )
             try? await prepareClient()
             if let list = try? await client.fetchThreads(projectId: projectId) {
@@ -745,10 +919,6 @@ final class AppModel: ObservableObject {
             switch event {
             case .delta(let chunk):
                 msgs[idx].content += chunk
-                if msgs[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).count > 40,
-                   !msgs[idx].toolSteps.isEmpty {
-                    msgs[idx].toolsFinished = true
-                }
             case .toolUse(let name, let input):
                 let anyInput: [String: Any] = input
                 let step = ToolStep(
@@ -758,20 +928,41 @@ final class AppModel: ObservableObject {
                     status: .running
                 )
                 msgs[idx].toolSteps.append(step)
+                msgs[idx].toolsFinished = false
                 if ToolProgressHelper.isWrite(name) {
                     msgs[idx].filesChanged += 1
                 }
+                if selectedThreadId == threadId {
+                    statusText = "工具执行中…"
+                }
             case .toolResult(let ok):
-                if let last = msgs[idx].toolSteps.indices.last {
+                // 标记最近一个仍 running 的步骤（不是盲目 last）
+                if let ri = msgs[idx].toolSteps.lastIndex(where: { $0.status == .running }) {
+                    msgs[idx].toolSteps[ri].status = ok ? .done : .error
+                } else if let last = msgs[idx].toolSteps.indices.last {
                     msgs[idx].toolSteps[last].status = ok ? .done : .error
+                }
+                let allDone = !msgs[idx].toolSteps.isEmpty
+                    && msgs[idx].toolSteps.allSatisfy { $0.status != .running }
+                if allDone {
+                    msgs[idx].toolsFinished = true
                 }
             case .cost:
                 break
             case .done:
+                for i in msgs[idx].toolSteps.indices where msgs[idx].toolSteps[i].status == .running {
+                    msgs[idx].toolSteps[i].status = .done
+                }
                 if !msgs[idx].toolSteps.isEmpty {
                     msgs[idx].toolsFinished = true
                 }
             }
+        }
+        // 强制 SwiftUI 订阅方刷新（LazyVStack 同 id 时偶发不刷 toolSteps）
+        if case .toolUse = event {
+            objectWillChange.send()
+        } else if case .toolResult = event {
+            objectWillChange.send()
         }
     }
 
@@ -852,6 +1043,59 @@ final class AppModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(md, forType: .string)
         showToast("会话已复制为 Markdown")
+    }
+
+    /// 用户消息 → 填回输入框（对齐 Hub「编辑」）
+    func editUserMessage(_ message: ChatMessage) {
+        guard message.role == "user" else { return }
+        composerBounce = message.content
+        destination = .chat
+        showToast("已填入输入框，改完再发送")
+    }
+
+    /// 助手消息 → 重发紧邻的上一条用户消息（对齐 Hub「重新生成」）
+    func regenerateAssistant(after message: ChatMessage) {
+        guard message.role == "assistant", let tid = selectedThreadId else { return }
+        let msgs = threadMessages[tid] ?? messages
+        guard let idx = msgs.firstIndex(where: { $0.id == message.id }) else { return }
+        var userText: String?
+        var i = idx - 1
+        while i >= 0 {
+            if msgs[i].role == "user" {
+                userText = msgs[i].content
+                break
+            }
+            i -= 1
+        }
+        guard let text = userText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            showToast("没有可重新生成的用户消息")
+            return
+        }
+        sendUserMessage(text, stopAndSend: true)
+    }
+
+    /// 从某条助手消息打开预览
+    func previewMessage(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else {
+            showToast("无可预览内容")
+            return
+        }
+        previewMarkdown = t
+    }
+
+    /// 从某条助手消息打开转任务（预填）
+    func openTransfer(fromAssistantContent content: String) {
+        transferError = nil
+        let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if transferGoal.isEmpty { transferGoal = String(t.prefix(2000)) }
+        if transferTitle.isEmpty {
+            transferTitle = String(t.replacingOccurrences(of: "\n", with: " ").prefix(40))
+        }
+        if transferAcceptance.isEmpty {
+            transferAcceptance = "按对话结论验收；现象符合描述即通过"
+        }
+        showTransferSheet = true
     }
 
     func openTransferSheet() {

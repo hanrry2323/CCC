@@ -1,16 +1,20 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Tool progress (Hub agent-progress 语义)
+// MARK: - Tool progress（必须可见：步骤列表，不只 emoji）
 
-struct ToolStep: Identifiable, Hashable {
-    enum Status: Hashable { case running, done, error }
+struct ToolStep: Identifiable, Hashable, Codable {
+    enum Status: String, Hashable, Codable { case running, done, error }
 
     let id: UUID
     var name: String
     var label: String
     var icon: String
     var status: Status
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, label, icon, status
+    }
 
     init(
         id: UUID = UUID(),
@@ -24,6 +28,19 @@ struct ToolStep: Identifiable, Hashable {
         self.label = label
         self.icon = icon
         self.status = status
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let s = try? c.decode(String.self, forKey: .id), let u = UUID(uuidString: s) {
+            id = u
+        } else {
+            id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        }
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "tool"
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? name
+        icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "🔧"
+        status = try c.decodeIfPresent(Status.self, forKey: .status) ?? .done
     }
 }
 
@@ -42,6 +59,8 @@ enum ToolProgressHelper {
         "WebSearch": "检索资料",
         "NotebookEdit": "编辑笔记",
         "TodoWrite": "更新待办",
+        "MultiEdit": "批量修改",
+        "LS": "列出目录",
     ]
 
     static let icons: [String: String] = [
@@ -51,48 +70,50 @@ enum ToolProgressHelper {
         "Write": "✏️",
         "Edit": "✏️",
         "StrReplace": "✏️",
+        "MultiEdit": "✏️",
         "Bash": "⌘",
         "Shell": "⌘",
+        "LS": "📂",
         "Task": "▸",
         "WebFetch": "🌐",
         "WebSearch": "🌐",
         "TodoWrite": "☑",
     ]
 
-    static let writeTools: Set<String> = ["Write", "Edit", "StrReplace", "NotebookEdit"]
+    static let writeTools: Set<String> = ["Write", "Edit", "StrReplace", "NotebookEdit", "MultiEdit"]
 
     static func humanLabel(name: String, input: [String: Any]?) -> String {
-        let base = labels[name] ?? "处理中"
+        let base = labels[name] ?? name
         guard let inp = input else { return base }
         let file = (inp["file_path"] as? String)
             ?? (inp["path"] as? String)
             ?? (inp["target_file"] as? String)
             ?? (inp["file"] as? String)
-        if let file, !file.isEmpty, name == "Read" || writeTools.contains(name) || name == "Glob" {
+        if let file, !file.isEmpty {
             return base + " · " + leaf(file)
         }
         if name == "Bash" || name == "Shell" {
             if let d = inp["description"] as? String, !d.isEmpty {
-                return base + " · " + short(d, 40)
+                return base + " · " + short(d, 48)
             }
             if let cmd = (inp["command"] as? String) ?? (inp["cmd"] as? String), !cmd.isEmpty {
-                return base + " · " + short(cmd, 42)
+                return base + " · " + short(cmd, 48)
             }
         }
         if name == "Grep", let p = (inp["pattern"] as? String) ?? (inp["query"] as? String) {
-            return "搜索 · " + short(p, 28)
+            return "搜索 · " + short(p, 36)
         }
         if name == "Glob", let g = inp["glob_pattern"] as? String {
-            return base + " · " + short(g, 28)
+            return base + " · " + short(g, 36)
         }
         if name == "WebSearch", let q = (inp["search_term"] as? String) ?? (inp["query"] as? String) {
-            return base + " · " + short(q, 28)
+            return base + " · " + short(q, 36)
         }
         if name == "WebFetch", let url = inp["url"] as? String {
-            if let host = URL(string: url)?.host { return base + " · " + short(host, 24) }
+            if let host = URL(string: url)?.host { return base + " · " + short(host, 28) }
         }
         if name == "Task", let d = (inp["description"] as? String) ?? (inp["prompt"] as? String) {
-            return base + " · " + short(d, 32)
+            return base + " · " + short(d, 36)
         }
         return base
     }
@@ -100,14 +121,6 @@ enum ToolProgressHelper {
     static func icon(for name: String) -> String { icons[name] ?? "•" }
 
     static func isWrite(_ name: String) -> Bool { writeTools.contains(name) }
-
-    static func filePath(from input: [String: Any]?) -> String? {
-        guard let inp = input else { return nil }
-        return (inp["file_path"] as? String)
-            ?? (inp["path"] as? String)
-            ?? (inp["target_file"] as? String)
-            ?? (inp["file"] as? String)
-    }
 
     private static func leaf(_ p: String) -> String {
         (p as NSString).lastPathComponent
@@ -129,46 +142,58 @@ struct ToolProgressRail: View {
 
     private var headline: String {
         if finished {
-            return filesChanged > 0 ? "完成 · ✏️ \(filesChanged) 个文件已修改" : "完成"
+            let n = steps.count
+            if n > 0 {
+                let base = "已完成 \(n) 步工具"
+                return filesChanged > 0 ? "\(base) · 改了 \(filesChanged) 个文件" : base
+            }
+            return filesChanged > 0 ? "完成 · 改了 \(filesChanged) 个文件" : "完成"
         }
         if let last = steps.last {
-            let extra = filesChanged > 0 ? "  ·  已改 \(filesChanged) 文件" : ""
-            return last.label + extra
+            return last.label
         }
-        return placeholder ?? "准备中…"
+        return placeholder ?? "正在思考…"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if !finished {
                     ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CCCTheme.nodeDone)
                 }
                 Text(headline)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(CCCTheme.secondary)
                     .lineLimit(2)
                 Spacer(minLength: 0)
-                if filesChanged > 0 {
-                    Text("✏️ \(filesChanged)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(CCCTheme.faint)
-                }
             }
+
+            if steps.isEmpty, !finished {
+                Text(placeholder ?? "正在思考 / 准备调用工具…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+            }
+
+            // 步骤列表（必须可见文字，不只 emoji）
             if !steps.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(steps.suffix(10)) { step in
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(steps.suffix(12))) { step in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(statusGlyph(step.status))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(statusColor(step.status))
+                                .frame(width: 12)
                             Text(step.icon)
-                                .font(.system(size: 13))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(stepBackground(step.status))
-                                )
-                                .opacity(step.status == .running ? 1 : 0.75)
-                                .help(step.label)
+                                .font(.system(size: 12))
+                            Text(step.label)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CCCTheme.ink.opacity(0.85))
+                                .lineLimit(2)
+                            Spacer(minLength: 0)
                         }
                     }
                 }
@@ -179,19 +204,29 @@ struct ToolProgressRail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(CCCTheme.hover.opacity(0.85))
+                .fill(CCCTheme.hover.opacity(0.9))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(CCCTheme.border, lineWidth: 1)
         )
+        .animation(.easeOut(duration: 0.12), value: steps.count)
+        .animation(.easeOut(duration: 0.12), value: finished)
     }
 
-    private func stepBackground(_ status: ToolStep.Status) -> Color {
-        switch status {
-        case .running: return CCCTheme.accent.opacity(0.18)
-        case .done: return CCCTheme.nodeDone.opacity(0.15)
-        case .error: return CCCTheme.nodeFail.opacity(0.15)
+    private func statusGlyph(_ s: ToolStep.Status) -> String {
+        switch s {
+        case .running: return "●"
+        case .done: return "✓"
+        case .error: return "!"
+        }
+    }
+
+    private func statusColor(_ s: ToolStep.Status) -> Color {
+        switch s {
+        case .running: return CCCTheme.accent
+        case .done: return CCCTheme.nodeDone
+        case .error: return CCCTheme.nodeFail
         }
     }
 }

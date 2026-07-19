@@ -94,6 +94,8 @@ final class ComposerScrollView: NSScrollView {
 final class CCCComposerNSTextView: NSTextView {
     var onSubmit: (() -> Void)?
     var placeholderText: String = "问任何问题…"
+    /// 同一击回车：IME 上屏后还会走 insertNewline，用此挡误发
+    private var suppressSubmitFromIME = false
 
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
@@ -109,10 +111,18 @@ final class CCCComposerNSTextView: NSTextView {
         super.mouseDown(with: event)
     }
 
-    /// 回车发送；Shift+回车换行（Cmd+回车也发送）
+    /// 回车发送；Shift+回车换行。输入法组字中（中文拼音等）回车只上屏，不发送。
     override func keyDown(with event: NSEvent) {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         if isReturn {
+            if hasMarkedText() {
+                suppressSubmitFromIME = true
+                super.keyDown(with: event)
+                DispatchQueue.main.async { [weak self] in
+                    self?.suppressSubmitFromIME = false
+                }
+                return
+            }
             if event.modifierFlags.contains(.shift) {
                 insertText("\n", replacementRange: selectedRange())
                 return
@@ -124,6 +134,10 @@ final class CCCComposerNSTextView: NSTextView {
     }
 
     override func insertNewline(_ sender: Any?) {
+        if suppressSubmitFromIME || hasMarkedText() {
+            suppressSubmitFromIME = false
+            return
+        }
         if NSEvent.modifierFlags.contains(.shift) {
             insertText("\n", replacementRange: selectedRange())
         } else {
