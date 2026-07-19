@@ -1,9 +1,12 @@
 """Hub 对用户可见的对话人格（老板/产品模式）。
 
 技术探测可在工具侧静默完成；回复正文禁止工程师汇报腔。
+短问可用 light 模式压前缀，定稿/长方案仍走 full。
 """
 
 from __future__ import annotations
+
+import re
 
 # 每轮 Hub 对话强制前缀（含续聊）
 HUB_BOSS_VOICE = """【Hub 对话人格 · 老板模式 · 强制】
@@ -51,13 +54,45 @@ HUB_BOSS_VOICE = """【Hub 对话人格 · 老板模式 · 强制】
 5. （若已定稿）末尾 `ccc-transfer` 块
 """
 
+HUB_LIGHT_VOICE = """【Hub 对话人格 · 轻量】
+你是简洁的中文产品搭档。直接回答，少铺垫。
+禁止复述工具过程；不要甩大段路径/命令，除非用户明确要。
+涉及定稿或下达任务时，系统会自动切换完整人格前缀。
+"""
 
-def wrap_hub_prompt(user_or_assembled_prompt: str) -> str:
-    """Prefix every Hub turn with boss voice (idempotent)."""
+_FORCE_FULL_RE = re.compile(r"定稿|转任务|下达|可以转了")
+
+
+def resolve_prompt_mode(
+    text: str,
+    *,
+    requested: str | None = None,
+) -> str:
+    """light | full。定稿关键词或长文强制 full。"""
+    raw = (requested or "").strip().lower()
+    body = (text or "").strip()
+    if _FORCE_FULL_RE.search(body) or len(body) > 80:
+        return "full"
+    if raw in ("light", "full"):
+        return raw
+    return "full"
+
+
+def wrap_hub_prompt(
+    user_or_assembled_prompt: str,
+    mode: str | None = None,
+) -> str:
+    """Prefix Hub/sidecar turn with boss or light voice (idempotent)."""
     text = (user_or_assembled_prompt or "").strip()
-    marker = "【Hub 对话人格 · 老板模式 · 强制】"
+    resolved = resolve_prompt_mode(text, requested=mode)
+    if resolved == "light":
+        marker = "【Hub 对话人格 · 轻量】"
+        voice = HUB_LIGHT_VOICE
+    else:
+        marker = "【Hub 对话人格 · 老板模式 · 强制】"
+        voice = HUB_BOSS_VOICE
     if marker in text[:800]:
         return text
     if not text:
-        return HUB_BOSS_VOICE.strip()
-    return f"{HUB_BOSS_VOICE}\n---\n{text}"
+        return voice.strip()
+    return f"{voice}\n---\n{text}"

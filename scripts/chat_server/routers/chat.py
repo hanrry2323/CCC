@@ -151,10 +151,11 @@ async def chat(request: Request):
         if context:
             prompt = f"## 项目上下文\n{context}\n\n---\n\n## 用户问题\n{prompt}"
 
-    # 每轮强制老板对话人格（含续聊；技术功课可静默，正文白话）
+    # 每轮强制老板对话人格（含续聊；短问可 light）
     from ..hub_voice import wrap_hub_prompt
 
-    prompt = wrap_hub_prompt(prompt)
+    prompt_mode = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
+    prompt = wrap_hub_prompt(prompt, mode=prompt_mode or None)
 
     async def generate():
         full_content = ""

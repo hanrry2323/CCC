@@ -45,10 +45,20 @@ bash scripts/ccc-agent-sidecar.sh
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| `PUT` | `/api/desktop/threads/{id}/messages` | 落盘（含 tool_steps） |
+| `PUT` | `/api/desktop/threads/{id}/messages` | Hub 异步镜像（含 tool_steps） |
 | `POST` | `/api/desktop/agent/warm` | Hub 槽位预热（回退路径） |
 | `POST` | `/api/desktop/transfer` | 转任务 |
 | SSE | `/api/desktop/flow/...` | 右栏 |
+
+### Sidecar 本机 API
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| `GET` | `/health` | 存活 |
+| `POST` | `/warm` | keep-warm（cli/router 探测） |
+| `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`） |
+
+Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/`。
 
 ## 约束
 

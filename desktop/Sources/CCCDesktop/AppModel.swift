@@ -29,7 +29,10 @@ final class AppModel: ObservableObject {
     /// 状态栏右侧固定：本机 Agent / Hub 回退
     @Published var agentBadge: String = "Hub 回退"
     @Published var busy = false
+    /// 可聊：本机 Agent 或 Hub 任一可用
     @Published var connected = false
+    /// Hub projects/API 是否刚探测成功（转任务/flow 需要）
+    @Published var hubReachable = false
     @Published var destination: SidebarDestination = .chat
     @Published var toast: String?
     @Published var showSettingsHint = false
@@ -112,6 +115,12 @@ final class AppModel: ObservableObject {
     private var agentProbeOKUntil: Date?
     private var cachedAgentBaseURL: URL?
     private var didToastHubFallback = false
+    /// keep-warm
+    private var warmLoopTask: Task<Void, Never>?
+    private var lastWarmAt: Date?
+    /// 本机落盘节流
+    private var diskSaveTask: Task<Void, Never>?
+    private var pendingDiskThreadId: String?
 
     /// 兼容旧 UI 命名：仅反映「当前会话」是否在生成
     var isStreaming: Bool { currentThreadStreaming }
@@ -217,6 +226,8 @@ final class AppModel: ObservableObject {
             agentMode = "local"
             agentBadge = "本机 Agent"
             didToastHubFallback = false
+            await warmLocalAgentNow(base: candidate)
+            startWarmLoopIfNeeded()
             return candidate
         }
 
@@ -238,6 +249,8 @@ final class AppModel: ObservableObject {
                 agentMode = "local"
                 agentBadge = "本机 Agent"
                 didToastHubFallback = false
+                await warmLocalAgentNow(base: candidate)
+                startWarmLoopIfNeeded()
                 if connected { statusText = "已连接 · 本机 Agent" }
                 return candidate
             }
@@ -248,6 +261,31 @@ final class AppModel: ObservableObject {
         cachedAgentBaseURL = nil
         setAgentModeHub(reason: launch.detail)
         return nil
+    }
+
+    private func warmLocalAgentNow(base: URL? = nil) async {
+        let ok = await client.warmLocalAgent(base: base ?? cachedAgentBaseURL)
+        if ok { lastWarmAt = Date() }
+    }
+
+    private func startWarmLoopIfNeeded() {
+        guard agentMode == "local" else { return }
+        if warmLoopTask != nil { return }
+        warmLoopTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 240_000_000_000) // 240s
+                guard let self, !Task.isCancelled else { break }
+                guard self.agentMode == "local" else { continue }
+                await self.warmLocalAgentNow()
+            }
+        }
+    }
+
+    /// 发送前：距上次 warm >120s 则补暖
+    private func warmBeforeSendIfNeeded() async {
+        guard agentMode == "local" else { return }
+        if let last = lastWarmAt, Date().timeIntervalSince(last) < 120 { return }
+        await warmLocalAgentNow()
     }
 
     private func setAgentModeHub(reason: String) {
@@ -271,7 +309,15 @@ final class AppModel: ObservableObject {
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             serverURLString = "http://192.168.3.116:7777"
         }
+        // 先灌本机 projects 缓存，避免 Hub 抖时空白
+        if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
+            projects = cache.projects
+            if selectedProjectId == nil {
+                selectedProjectId = cache.default_project ?? cache.projects.first(where: \.isDispatchable)?.id
+            }
+        }
         await refreshProjects()
+        await flushPendingHubSync()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             await runUISmoke()
         }
@@ -333,15 +379,19 @@ final class AppModel: ObservableObject {
     func refreshProjects() async {
         busy = true
         defer { busy = false }
+        // 先确保本机 Agent（可聊不依赖 Hub）
+        _ = await ensureLocalAgent()
+        let localOK = agentMode == "local"
+
         do {
             try await prepareClient()
             let resp = try await client.fetchProjects()
             projects = resp.projects
-            connected = true
+            hubReachable = true
+            LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
             showSettingsHint = false
             let preferred = persistedProjectId.isEmpty ? nil : persistedProjectId
             let preferredProject = preferred.flatMap { id in projects.first { $0.id == id } }
-            // 有业务仓时不要粘在编排仓上（编排仓可聊，但默认进可下达项目）
             if let preferredProject, preferredProject.isDispatchable {
                 selectedProjectId = preferredProject.id
             } else if selectedProjectId == nil
@@ -360,14 +410,50 @@ final class AppModel: ObservableObject {
                 await refreshThreads(projectId: pid)
                 await bindFlowToCurrentThread()
             }
-            statusText = agentMode == "local" ? "已连接 · 本机 Agent" : "已连接 · Hub 回退"
+            connected = true
             lastError = nil
+            updateConnectionStatusText(localOK: localOK, hubOK: true)
+            startWarmLoopIfNeeded()
+            await flushPendingHubSync()
         } catch {
-            connected = false
-            showSettingsHint = true
+            hubReachable = false
             lastError = error.localizedDescription
+            // Hub 失败：保留缓存 projects，本机 Agent 仍可聊
+            if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
+                projects = cache.projects
+                if selectedProjectId == nil {
+                    selectedProjectId = cache.default_project
+                        ?? cache.projects.first(where: \.isDispatchable)?.id
+                }
+            }
+            if let pid = selectedProjectId {
+                await refreshThreads(projectId: pid)
+            }
+            connected = localOK || !projects.isEmpty
+            showSettingsHint = !connected
+            updateConnectionStatusText(localOK: localOK, hubOK: false)
+            if !localOK {
+                showToast("连不上 Hub，且本机 Agent 未就绪：\(error.localizedDescription)")
+            } else {
+                showToast("Hub 暂不可达，本机 Agent 可继续聊")
+            }
+            if localOK { startWarmLoopIfNeeded() }
+        }
+    }
+
+    private func updateConnectionStatusText(localOK: Bool, hubOK: Bool) {
+        if localOK && hubOK {
+            statusText = "已连接 · 本机 Agent"
+            agentBadge = "本机 Agent"
+        } else if localOK && !hubOK {
+            statusText = "本机 Agent · Hub 暂不可达"
+            agentBadge = "本机 Agent"
+        } else if !localOK && hubOK {
+            statusText = "已连接 · Hub 回退"
+            agentBadge = "Hub 回退"
+        } else {
             statusText = "未连接 · \(serverURLString)"
-            showToast("连不上 \(serverURLString)：\(error.localizedDescription)")
+            agentBadge = "未连接"
         }
     }
 
@@ -401,12 +487,39 @@ final class AppModel: ObservableObject {
     }
 
     func refreshThreads(projectId: String) async {
+        let local = LocalSessionStore.threadsAsDesktop(projectId: projectId)
         do {
             try await prepareClient()
-            threads = try await client.fetchThreads(projectId: projectId)
+            let remote = try await client.fetchThreads(projectId: projectId)
+            threads = mergeThreadLists(remote: remote, local: local)
+            hubReachable = true
         } catch {
-            showToast(error.localizedDescription)
+            // Hub 不可达：只用本机索引
+            if !local.isEmpty {
+                threads = local
+            } else if threads.isEmpty {
+                showToast("会话列表暂不可用（Hub 不可达）")
+            }
         }
+    }
+
+    private func mergeThreadLists(remote: [DesktopThread], local: [DesktopThread]) -> [DesktopThread] {
+        var byId: [String: DesktopThread] = [:]
+        for t in remote { byId[t.thread_id] = t }
+        for t in local {
+            if byId[t.thread_id] == nil {
+                byId[t.thread_id] = t
+            } else if let r = byId[t.thread_id],
+                      (t.updated_at ?? "") > (r.updated_at ?? "") {
+                byId[t.thread_id] = DesktopThread(
+                    thread_id: t.thread_id,
+                    title: t.title ?? r.title,
+                    updated_at: t.updated_at ?? r.updated_at,
+                    project_id: t.project_id ?? r.project_id
+                )
+            }
+        }
+        return byId.values.sorted { ($0.updated_at ?? "") > ($1.updated_at ?? "") }
     }
 
     func newThread() async {
@@ -419,45 +532,73 @@ final class AppModel: ObservableObject {
         }
         busy = true
         defer { busy = false }
+        let title = "方案讨论"
+        let tid: String
         do {
             try await prepareClient()
-            let resp = try await client.createThread(projectId: pid, title: "方案讨论")
-            threadSwitchGeneration &+= 1
-            selectedThreadId = resp.thread_id
-            messages = []
-            threadMessages[resp.thread_id] = []
-            pendingTransferDraft = nil
-            lastAnimatedEpicId = nil
-            flowSplitGeneration &+= 1
-            applyFlowSnapshot(nil)
-            flowEmptyMessage = "在本对话中转任务后，编排会出现在这里"
-            threadFlow[resp.thread_id] = FlowThreadSnapshot(
-                epicId: nil, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: flowEmptyMessage, fanoutHint: nil
-            )
-            refreshCurrentThreadStreaming()
-            await refreshThreads(projectId: pid)
-            destination = .chat
-            // 切/新建会话不重建 flow SSE（项目级常驻）
-            ensureFlowSSE()
+            let resp = try await client.createThread(projectId: pid, title: title)
+            tid = resp.thread_id
+            hubReachable = true
         } catch {
-            showToast(error.localizedDescription)
+            // 本机会话，Hub 稍后镜像
+            tid = "local-\(UUID().uuidString.prefix(8).lowercased())"
+            showToast("Hub 暂不可达，已建本机会话")
         }
+        activateNewThread(projectId: pid, threadId: tid, title: title)
+        await refreshThreads(projectId: pid)
+        destination = .chat
+        ensureFlowSSE()
+    }
+
+    private func activateNewThread(projectId: String, threadId: String, title: String) {
+        threadSwitchGeneration &+= 1
+        selectedThreadId = threadId
+        messages = []
+        threadMessages[threadId] = []
+        pendingTransferDraft = nil
+        lastAnimatedEpicId = nil
+        flowSplitGeneration &+= 1
+        applyFlowSnapshot(nil)
+        flowEmptyMessage = "在本对话中转任务后，编排会出现在这里"
+        let snap = FlowThreadSnapshot(
+            epicId: nil, epic: nil, works: [], headline: "",
+            recentEpics: [], emptyMessage: flowEmptyMessage, fanoutHint: nil
+        )
+        threadFlow[threadId] = snap
+        LocalSessionStore.saveMessages(
+            projectId: projectId,
+            threadId: threadId,
+            messages: [],
+            title: title,
+            flow: snap,
+            needsHubSync: threadId.hasPrefix("local-")
+        )
+        if threadId.hasPrefix("local-") {
+            LocalSessionStore.enqueueSync(projectId: projectId, threadId: threadId)
+        }
+        refreshCurrentThreadStreaming()
     }
 
     func openThread(_ id: String) async {
-        guard selectedProjectId != nil else { return }
+        guard let pid = selectedProjectId else { return }
 
         // 1) 落盘当前会话（消息 + 右栏）
         if let old = selectedThreadId, old != id {
             persistCurrentThreadSnapshot(threadId: old)
         }
 
-        // 2) 秒切：先本地缓存，绝不沿用上一会话的 messages/flow
+        // 2) 秒切：磁盘 → RAM → UI（≤100ms 目标）
         threadSwitchGeneration &+= 1
         let gen = threadSwitchGeneration
         selectedThreadId = id
         destination = .chat
+
+        if threadMessages[id] == nil, let disk = LocalSessionStore.load(projectId: pid, threadId: id) {
+            threadMessages[id] = disk.messages
+            if let flow = disk.flow {
+                threadFlow[id] = flow
+            }
+        }
         messages = threadMessages[id] ?? []
         pendingTransferDraft = nil
         if let cached = threadMessages[id],
@@ -466,18 +607,16 @@ final class AppModel: ObservableObject {
         }
         lastAnimatedEpicId = nil
         flowSplitGeneration &+= 1
-        applyFlowSnapshot(threadFlow[id])  // nil → 清空右栏，防串会话
+        applyFlowSnapshot(threadFlow[id])
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
         lastError = nil
 
-        // 3) 后台同步 HTTP（不阻塞切换；generation 防回写错会话）
-        let pid = selectedProjectId!
+        // 3) 后台同步 Hub（不阻塞）
         Task { [weak self] in
             guard let self else { return }
             await self.syncThreadFromServer(projectId: pid, threadId: id, generation: gen)
             await self.syncFlowFromServer(projectId: pid, threadId: id, generation: gen)
-            // Hub 过渡预热：仅非本机 sidecar 时
             try? await self.prepareClient()
             if !(await self.client.usesLocalAgent) {
                 await self.client.warmHubAgent(projectId: pid, threadId: id)
@@ -487,7 +626,7 @@ final class AppModel: ObservableObject {
 
     private func persistCurrentThreadSnapshot(threadId: String) {
         threadMessages[threadId] = messages
-        threadFlow[threadId] = FlowThreadSnapshot(
+        let snap = FlowThreadSnapshot(
             epicId: currentEpicId,
             epic: flowEpic,
             works: flowWorks,
@@ -496,6 +635,17 @@ final class AppModel: ObservableObject {
             emptyMessage: flowEmptyMessage,
             fanoutHint: flowFanoutHint
         )
+        threadFlow[threadId] = snap
+        if let pid = selectedProjectId {
+            let title = threads.first(where: { $0.thread_id == threadId })?.title
+            LocalSessionStore.saveMessages(
+                projectId: pid,
+                threadId: threadId,
+                messages: messages,
+                title: title,
+                flow: snap
+            )
+        }
     }
 
     private func applyFlowSnapshot(_ snap: FlowThreadSnapshot?) {
@@ -547,9 +697,22 @@ final class AppModel: ObservableObject {
             if selectedThreadId == threadId {
                 messages = loaded
             }
+            let title = threads.first(where: { $0.thread_id == threadId })?.title
+            LocalSessionStore.saveMessages(
+                projectId: projectId,
+                threadId: threadId,
+                messages: loaded,
+                title: title,
+                flow: threadFlow[threadId]
+            )
+            hubReachable = true
         } catch {
+            // Hub 失败时保留本机盘/缓存，不 toast 刷屏
             if selectedThreadId == threadId, threadMessages[threadId] == nil {
-                showToast(error.localizedDescription)
+                if let disk = LocalSessionStore.load(projectId: projectId, threadId: threadId) {
+                    threadMessages[threadId] = disk.messages
+                    messages = disk.messages
+                }
             }
         }
     }
@@ -621,14 +784,15 @@ final class AppModel: ObservableObject {
             renameThreadId = nil
             return
         }
+        LocalSessionStore.rename(projectId: pid, threadId: tid, title: title)
+        renameThreadId = nil
         do {
             try await prepareClient()
             try await client.renameThread(projectId: pid, threadId: tid, title: title)
-            renameThreadId = nil
-            await refreshThreads(projectId: pid)
         } catch {
-            showToast(error.localizedDescription)
+            showToast("已改本机标题；Hub 同步失败")
         }
+        await refreshThreads(projectId: pid)
     }
 
     func deleteThread(_ threadId: String) async {
@@ -637,23 +801,25 @@ final class AppModel: ObservableObject {
         chatTasks[threadId] = nil
         streamingThreadIds.remove(threadId)
         threadMessages[threadId] = nil
+        threadFlow[threadId] = nil
+        LocalSessionStore.delete(projectId: pid, threadId: threadId)
+        if selectedThreadId == threadId {
+            selectedThreadId = nil
+            messages = []
+            currentEpicId = nil
+            flowEpic = nil
+            flowWorks = []
+            recentEpics = []
+        }
+        refreshCurrentThreadStreaming()
         do {
             try await prepareClient()
             try await client.deleteThread(projectId: pid, threadId: threadId)
-            if selectedThreadId == threadId {
-                selectedThreadId = nil
-                messages = []
-                currentEpicId = nil
-                flowEpic = nil
-                flowWorks = []
-                recentEpics = []
-            }
-            refreshCurrentThreadStreaming()
-            await refreshThreads(projectId: pid)
-            await bindFlowToCurrentThread()
         } catch {
-            showToast(error.localizedDescription)
+            // 本机已删；Hub 失败可忽略
         }
+        await refreshThreads(projectId: pid)
+        await bindFlowToCurrentThread()
     }
 
     private func refreshCurrentThreadStreaming() {
@@ -679,12 +845,89 @@ final class AppModel: ObservableObject {
         if selectedThreadId == threadId {
             messages = msgs
         }
+        scheduleDiskSave(threadId: threadId)
+    }
+
+    /// 本机落盘节流 ~300ms
+    private func scheduleDiskSave(threadId: String) {
+        pendingDiskThreadId = threadId
+        diskSaveTask?.cancel()
+        diskSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run {
+                self.flushDiskSave()
+            }
+        }
+    }
+
+    private func flushDiskSave() {
+        guard let tid = pendingDiskThreadId ?? selectedThreadId,
+              let pid = selectedProjectId
+        else { return }
+        let msgs = threadMessages[tid] ?? messages
+        let title = threads.first(where: { $0.thread_id == tid })?.title
+        let flow = threadFlow[tid]
+        LocalSessionStore.saveMessages(
+            projectId: pid,
+            threadId: tid,
+            messages: msgs,
+            title: title,
+            flow: flow,
+            needsHubSync: false
+        )
     }
 
     private func mutateThreadMessages(threadId: String, _ body: (inout [ChatMessage]) -> Void) {
         var msgs = threadMessages[threadId] ?? (selectedThreadId == threadId ? messages : [])
         body(&msgs)
         persistMessages(for: threadId, msgs)
+    }
+
+    /// Hub PUT；失败入重试队列（本机已有副本）
+    private func syncMessagesToHub(projectId: String, threadId: String, messages synced: [ChatMessage]) async {
+        do {
+            try await prepareClient()
+            try await client.syncThreadMessages(
+                projectId: projectId,
+                threadId: threadId,
+                messages: synced
+            )
+            LocalSessionStore.dequeueSync(projectId: projectId, threadId: threadId)
+        } catch {
+            LocalSessionStore.enqueueSync(projectId: projectId, threadId: threadId)
+        }
+    }
+
+    private func flushPendingHubSync() async {
+        guard hubReachable else { return }
+        let pending = LocalSessionStore.loadPendingSync()
+        for item in pending {
+            if item.attempts >= LocalSessionStore.maxSyncAttempts { continue }
+            guard let rec = LocalSessionStore.load(projectId: item.project_id, threadId: item.thread_id)
+            else {
+                LocalSessionStore.dequeueSync(projectId: item.project_id, threadId: item.thread_id)
+                continue
+            }
+            do {
+                try await prepareClient()
+                try await client.syncThreadMessages(
+                    projectId: item.project_id,
+                    threadId: item.thread_id,
+                    messages: rec.messages
+                )
+                LocalSessionStore.dequeueSync(projectId: item.project_id, threadId: item.thread_id)
+            } catch {
+                _ = LocalSessionStore.bumpAttempt(projectId: item.project_id, threadId: item.thread_id)
+            }
+        }
+    }
+
+    static func promptMode(forUserText text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let forceFull = ["定稿", "转任务", "下达", "可以转了"].contains { t.contains($0) }
+        if forceFull || t.count > 80 { return "full" }
+        return "light"
     }
 
     /// 同会话 stop-and-send；本机 sidecar 可多路并行，Hub 回退仍限 1 路
@@ -722,23 +965,29 @@ final class AppModel: ObservableObject {
         // 编排仓可聊方案；仅转任务/下达仍禁（isDispatchable）
         var tid = selectedThreadId
         if tid == nil {
+            let title = String(trimmed.prefix(40))
             do {
                 try await prepareClient()
-                let t = try await client.createThread(projectId: pid, title: String(trimmed.prefix(40)))
+                let t = try await client.createThread(projectId: pid, title: title)
                 tid = t.thread_id
-                selectedThreadId = tid
-                // 新会话必须空消息；禁止把上一会话 messages 拷进来（粘连根因）
-                messages = []
-                threadMessages[t.thread_id] = []
-                applyFlowSnapshot(nil)
+                activateNewThread(projectId: pid, threadId: t.thread_id, title: title)
                 await refreshThreads(projectId: pid)
             } catch {
-                showToast(error.localizedDescription)
-                composerBounce = trimmed
-                return false
+                // Hub 抖：本机会话仍可发
+                let localId = "local-\(UUID().uuidString.prefix(8).lowercased())"
+                tid = localId
+                activateNewThread(projectId: pid, threadId: localId, title: title)
+                await refreshThreads(projectId: pid)
+                showToast("Hub 暂不可达，已用本机会话继续")
             }
         }
         guard let threadId = tid else { return false }
+        // 可聊：本机 Agent 或 Hub；两者皆无才拒
+        if !connected && agentMode != "local" {
+            showToast("未连接：请启动本机 Agent 或恢复 Hub")
+            composerBounce = trimmed
+            return false
+        }
 
         if streamingThreadIds.contains(threadId) {
             if stopAndSend {
@@ -821,13 +1070,16 @@ final class AppModel: ObservableObject {
                let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
                 showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
             }
-            if !(await client.usesLocalAgent) {
+            if await client.usesLocalAgent {
+                await warmBeforeSendIfNeeded()
+            } else {
                 await client.warmHubAgent(projectId: projectId, threadId: threadId)
             }
             if selectedThreadId == threadId {
                 statusText = agentMode == "local" ? "本机生成中…" : "生成中…"
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
+            let mode = Self.promptMode(forUserText: text)
 
             // 同会话自动重试 1 次（保留已生成的本地内容，清空半截助手再流）
             var streamError: Error?
@@ -851,7 +1103,8 @@ final class AppModel: ObservableObject {
                     try await client.streamChat(
                         projectId: projectId,
                         sessionId: threadId,
-                        messages: attempt == 1 ? outbound : outboundAttempt
+                        messages: attempt == 1 ? outbound : outboundAttempt,
+                        promptMode: mode
                     ) { [weak self] event in
                         guard let model = self else { return }
                         await MainActor.run {
@@ -908,7 +1161,8 @@ final class AppModel: ObservableObject {
             if let asst = (threadMessages[threadId] ?? []).last(where: { $0.id == assistantId }) {
                 refreshTransferDraft(from: asst.content)
             }
-            // 落盘含 tool_steps
+            // 本机立即落盘 + Hub 异步镜像
+            flushDiskSave()
             let synced = (threadMessages[threadId] ?? messages)
                 .filter { $0.role == "user" || $0.role == "assistant" }
                 .map {
@@ -920,15 +1174,8 @@ final class AppModel: ObservableObject {
                         toolsFinished: $0.toolsFinished
                     )
                 }
-            try? await client.syncThreadMessages(
-                projectId: projectId,
-                threadId: threadId,
-                messages: synced
-            )
-            try? await prepareClient()
-            if let list = try? await client.fetchThreads(projectId: projectId) {
-                threads = list
-            }
+            await syncMessagesToHub(projectId: projectId, threadId: threadId, messages: synced)
+            await refreshThreads(projectId: projectId)
         } catch is CancellationError {
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
@@ -1307,6 +1554,11 @@ final class AppModel: ObservableObject {
         guard let pid = selectedProjectId else {
             transferError = "缺少项目"
             showToast("转任务失败：缺少项目")
+            return
+        }
+        if !hubReachable {
+            transferError = "Hub 暂不可达"
+            showToast("转任务需要 Hub，当前暂不可达")
             return
         }
         if let p = selectedProject, !p.isDispatchable {

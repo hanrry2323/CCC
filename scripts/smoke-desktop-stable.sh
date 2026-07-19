@@ -33,10 +33,41 @@ echo "== Desktop stable suite agent=${AGENT} server=${SERVER} =="
 # 1) Sidecar 自启（若未起）
 if ! curl -fsS --max-time 2 "${AGENT}/health" >/dev/null 2>&1; then
   echo "-- ensure sidecar --"
-  bash scripts/ccc-agent-sidecar.sh start >/dev/null 2>&1 || true
+  mkdir -p "$HOME/Library/Logs/CCC"
+  nohup bash scripts/ccc-agent-sidecar.sh >>"$HOME/Library/Logs/CCC/agent-sidecar.log" 2>&1 &
   sleep 2
 fi
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
+
+# 1b) keep-warm（旧进程无 /warm 时拉起新 sidecar）
+if ! curl -fsS --max-time 3 -X POST "${AGENT}/warm" -H 'Content-Type: application/json' -d '{}' 2>/dev/null | grep -q '"ok"'; then
+  echo "-- reload sidecar for /warm --"
+  pkill -f "ccc-agent-sidecar.py" 2>/dev/null || true
+  sleep 0.5
+  mkdir -p "$HOME/Library/Logs/CCC"
+  nohup bash scripts/ccc-agent-sidecar.sh >>"$HOME/Library/Logs/CCC/agent-sidecar.log" 2>&1 &
+  sleep 2
+fi
+check "sidecar warm" bash -c "curl -fsS --max-time 5 -X POST '${AGENT}/warm' -H 'Content-Type: application/json' -d '{}' | grep -q '\"ok\"'"
+
+# 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）
+check "local session dir" python3 - <<'PY'
+import json, os, tempfile
+from pathlib import Path
+root = Path.home() / "Library/Application Support/CCCDesktop/sessions"
+root.mkdir(parents=True, exist_ok=True)
+p = root / "_smoke" / "probe.json"
+p.parent.mkdir(parents=True, exist_ok=True)
+rec = {"thread_id": "probe", "project_id": "_smoke", "messages": [{"role": "user", "content": "x"}], "updated_at": "t"}
+p.write_text(json.dumps(rec), encoding="utf-8")
+ok = p.is_file() and "probe" in p.read_text(encoding="utf-8")
+p.unlink(missing_ok=True)
+try:
+    p.parent.rmdir()
+except OSError:
+    pass
+raise SystemExit(0 if ok else 1)
+PY
 
 # 2) Sidecar chat 路由存活（校验错误应秒回；完整 SSE 见 smoke-desktop-agent.sh）
 check "sidecar chat route" python3 - <<PY
@@ -101,5 +132,9 @@ fi
 # 5) 定稿解析样例（本地，不依赖模型）
 check "ccc-transfer samples" python3 scripts/tests/test_ccc_transfer_samples.py
 
+# 6) light / full prompt 模式
+check "hub_voice light/full" python3 -m pytest scripts/tests/test_hub_voice.py -q --tb=line
+
 echo "== stable suite: ${pass} pass, ${fail} fail =="
+echo "TTFB tip: bash scripts/spike-loopcode-ttfb.sh  # 热路径目标 ≤1s"
 test "$fail" -eq 0

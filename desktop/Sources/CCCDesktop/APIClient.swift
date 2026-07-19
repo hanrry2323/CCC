@@ -98,6 +98,29 @@ actor APIClient {
         }
     }
 
+    /// Sidecar keep-warm：`POST /warm`
+    @discardableResult
+    func warmLocalAgent(base: URL? = nil) async -> Bool {
+        let root = base ?? chatBaseURL
+        guard let root else { return false }
+        guard let url = URL(string: "warm", relativeTo: root) else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        req.timeoutInterval = 8
+        do {
+            let (data, resp) = try await session.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return (obj["ok"] as? Bool) == true
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
     static func makeBaseURL(from raw: String) -> URL? {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
@@ -247,6 +270,7 @@ actor APIClient {
         projectId: String,
         sessionId: String,
         messages: [ChatMessage],
+        promptMode: String = "full",
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         struct Body: Encodable {
@@ -255,6 +279,7 @@ actor APIClient {
             let messages: [ChatMessage]
             let mode: String
             let project_path: String?
+            let prompt_mode: String
         }
         let data = try JSONEncoder().encode(
             Body(
@@ -262,7 +287,8 @@ actor APIClient {
                 session_id: sessionId,
                 messages: messages,
                 mode: "chat",
-                project_path: localProjectPath
+                project_path: localProjectPath,
+                prompt_mode: promptMode
             )
         )
         let req: URLRequest

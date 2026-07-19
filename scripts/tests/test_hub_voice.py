@@ -1,4 +1,4 @@
-"""hub_voice boss-mode prefix"""
+"""hub_voice boss-mode / light-mode prefix"""
 
 from __future__ import annotations
 
@@ -22,3 +22,17 @@ def test_wrap_hub_prompt_prefixes_and_idempotent():
     assert "禁止" in HUB_BOSS_VOICE
     assert "ccc-transfer" in HUB_BOSS_VOICE
     assert "定稿块" in HUB_BOSS_VOICE
+
+
+def test_light_mode_short_prefix():
+    from hub_voice import HUB_LIGHT_VOICE, resolve_prompt_mode, wrap_hub_prompt
+
+    assert resolve_prompt_mode("稳态OK", requested="light") == "light"
+    out = wrap_hub_prompt("稳态OK", mode="light")
+    assert "轻量" in out
+    assert "老板模式" not in out
+    assert len(out) < len(HUB_LIGHT_VOICE) + 40
+    # 定稿关键词强制 full
+    assert resolve_prompt_mode("请定稿转任务", requested="light") == "full"
+    full = wrap_hub_prompt("请定稿转任务", mode="light")
+    assert "老板模式" in full

@@ -61,6 +61,25 @@ async def health():
     }
 
 
+@app.post("/warm")
+async def warm():
+    """Keep-warm：确认 cli 可执行 + router 环境；供 Desktop 定时预热。"""
+    import time
+
+    t0 = time.perf_counter()
+    cli = resolve_claude_cli(require=False) or ""
+    ok = bool(cli) and Path(cli).exists()
+    router = os.environ.get("ANTHROPIC_BASE_URL", "")
+    ms = int((time.perf_counter() - t0) * 1000)
+    return {
+        "ok": ok,
+        "warmed_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        "ttfb_ms": ms,
+        "agent_cli": cli,
+        "router": router,
+    }
+
+
 @app.post("/api/chat")
 async def chat(request: Request):
     body = await request.json()
@@ -84,7 +103,8 @@ async def chat(request: Request):
     if not prompt:
         return JSONResponse({"detail": "prompt required"}, status_code=400)
 
-    prompt = wrap_hub_prompt(prompt)
+    prompt_mode = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
+    prompt = wrap_hub_prompt(prompt, mode=prompt_mode or None)
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}
 

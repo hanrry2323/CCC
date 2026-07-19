@@ -71,6 +71,16 @@
 | 14 | Desktop 拆分动画 + 确认条 | **PASS** | `FlowCanvasView` / `TransferDraftParser` / 确认条 |
 | 15 | `smoke-desktop-stable.sh` | **PASS** | sidecar health/route + 定稿样例 10/10；Hub 项在 Server 可达时跑（本机取证时 Hub LAN 曾 SKIP） |
 
+## Cursor 感性能（2026-07-19）
+
+| # | 项 | 结果 | 证据 |
+|---|-----|------|------|
+| 16 | 本机会话 SSOT | **PASS** | `LocalSessionStore` → Application Support；Hub PUT 重试 |
+| 17 | 连接态解耦 | **PASS** | `connected` = sidecar \|\| Hub；文案「Hub 暂不可达」仍可聊 |
+| 18 | sidecar `/warm` | **PASS** | `POST /warm` + Desktop 240s / 发送前 120s |
+| 19 | `prompt_mode=light` | **PASS** | `hub_voice` + sidecar/Hub；定稿强制 full |
+| 20 | TTFB 备注 | 现场 | `bash scripts/spike-loopcode-ttfb.sh`（热路径目标 ≤1s） |
+
 基线取证目录：`.ccc/dockets/ssot-mature-20260719-031420/`。
 
 ## 常用命令
