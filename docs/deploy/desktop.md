@@ -2,6 +2,7 @@
 
 > **主产品入口**。网页 Hub 为运维/兼容。服务端见 [`topology.md`](topology.md)。  
 > 架构 SSOT：[`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)  
+> 本机对话热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md)  
 > 降级说明：[`../product/deprecate-web-hub.md`](../product/deprecate-web-hub.md)
 
 ## 连接服务端
@@ -12,7 +13,8 @@
 http://192.168.3.116:7777
 ```
 
-应用内 Settings 可改；Basic Auth 默认 `ccc` / `ccc`。
+应用内 Settings 可改；Basic Auth 默认 `ccc` / `ccc`。  
+本机 Agent：`ccc.agent` → `http://127.0.0.1:7788`（**禁止**回退 Hub 聊天）。
 
 ## 三栏
 
@@ -20,7 +22,7 @@ http://192.168.3.116:7777
 |----|------|
 | 左 | 项目文件夹 + 统一 Thread 列表 |
 | 中 | 方案 Agent 对话；转任务（仅 epic） |
-| 右 | 编排流程（flow events / snapshot） |
+| 右 | 编排流程（flow events / snapshot）；空板文案「编排空闲·等定稿下达」≠ 对话故障 |
 
 ## 运行与打包
 
@@ -29,8 +31,22 @@ http://192.168.3.116:7777
 ```bash
 cd desktop
 swift run CCCDesktop
-swift build -c release   # 打包基线
+bash scripts/package-baseline.sh   # → .build/CCCDesktop.app
+cp -R .build/CCCDesktop.app /Applications/
 ```
+
+发版后 **重启已打开的 Desktop**（否则仍跑旧二进制）。  
+sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sidecar 文档「多端版本对齐」）。
+
+### 多端核对清单（对话热路径）
+
+| 端 | 应一致 | 命令摘要 |
+|----|--------|----------|
+| M1 仓 | `git rev-parse --short HEAD` = 目标 commit | `cd ~/program/CCC && git pull` |
+| M1 Desktop | `/Applications/CCCDesktop.app` 已重装 | `package-baseline.sh` + `cp -R` |
+| M1 sidecar | `/health` ok；进程读本机仓 | `launchctl kickstart -k gui/$(id -u)/com.ccc.agent-sidecar` |
+| Mac2017 仓 | 同 commit | `ssh mac2017 'cd ~/program/CCC && git pull --ff-only'` |
+| Mac2017 Hub | transfer / flow / router-usage | `kickstart -k …/com.ccc.chat-server` |
 
 ## 废弃
 
@@ -47,5 +63,6 @@ swift build -c release   # 打包基线
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
+| `GET /api/ops/router-usage` | 顶栏中转站 flash/code/pro 今日调用 |
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

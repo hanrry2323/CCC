@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Desktop / sidecar 热路径假死**（`13ec205`）：slot 锁 / connect / drain 硬超时；warm 抢锁失败快返回；真暖才记 `lastWarmAt`；SSE `ping`→「连接本机 Agent…」；health 正常禁止 `kickstart -k`；chat 有 `prompt` 不再发全量 `messages`；空板编排闲置文案与对话故障解耦。
+- 文档：[`docs/product/desktop-agent-sidecar.md`](docs/product/desktop-agent-sidecar.md) · [`docs/deploy/desktop.md`](docs/deploy/desktop.md)
+
+---
+
 ## [v0.51.0] — 2026-07-18
 
 ### 里程碑：编排仓与业务仓角色分离（对内 M2）

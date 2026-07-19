@@ -27,6 +27,8 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 | **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
 | **2+ plist** | `com.ccc.agent-sidecar`（M1）+ `com.ccc.engine` + Board + Hub（2017） |
 
+热路径假死 / 多端版本：[`docs/product/desktop-agent-sidecar.md`](docs/product/desktop-agent-sidecar.md) · [`docs/deploy/desktop.md`](docs/deploy/desktop.md)。
+
 ---
 
 ## 2. 人机路径（优先）

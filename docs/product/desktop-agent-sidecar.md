@@ -2,7 +2,8 @@
 
 > 目标：方案 Agent 热路径在本机（launchd + loop-code）；**编排面在中心机**。  
 > 边界基线：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
-> Hub 只承载 **信息流**（transfer / flow / 可选会话镜像），不是主聊天。
+> Hub 只承载 **信息流**（transfer / flow / 可选会话镜像），不是主聊天。  
+> 热路径防挂死（2026-07-19 / `13ec205`）：锁超时、真暖、禁乱杀、ping→连接中。
 
 ## 链路
 
@@ -18,8 +19,9 @@ Desktop UI ──PUT messages(+tool_steps)备份 / transfer / flow──→ Hub 
 
 ## 启动（launchd 常驻）
 
-- **日常**：`bash scripts/install-agent-sidecar-plist.sh --start`（或打开 Desktop，自动 install/kickstart）。
+- **日常**：`bash scripts/install-agent-sidecar-plist.sh --start`（或打开 Desktop，自动 install）。
 - **KeepAlive**：崩溃 / 误杀后 launchd 自动拉起；**不依赖 nohup**，与 Hub 控制面无关。
+- **Desktop `ensureRunning`**：先 `GET /health`；**健康则直接返回，禁止 `kickstart -k`**。仅 health 失败时 soft kickstart，仍失败才 `-k`。
 - **手工前台调试**：
 
 ```bash
@@ -29,9 +31,26 @@ bash scripts/ccc-agent-sidecar.sh stop
 # CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://192.168.3.116:4000
 ```
 
-健康检查：`curl -s http://127.0.0.1:7788/health`（`router` 应含 `192.168.3.116:4000`）  
+健康检查：`curl -s http://127.0.0.1:7788/health`  
 日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
 plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
+
+## 热路径可靠性（slot / warm / UX）
+
+| 机制 | 默认 | 说明 |
+|------|------|------|
+| `CHAT_LOCK_WAIT` | 15s | 等不到 `slot.lock` → SSE `lock_timeout` + force-drop |
+| `CHAT_CONNECT_TIMEOUT` | 30s | `_ensure_connected` 硬上限 |
+| `CHAT_DRAIN_TIMEOUT` | 8s | 超时后有界 drain；禁止无限占锁 |
+| `CHAT_WARM_LOCK_WAIT` | 3s | warm 抢锁失败快返回，不堵 chat |
+| SSE `ping` | connect 前 + idle 15s | Desktop 显示「连接本机 Agent…」，**不得静默丢弃** |
+| 真暖 | `POST /warm` + `slot.connected` | 无 `project_path` 的 cli-only warm **不算**已暖 |
+| warm `tool_mode` | 与本条 chat 一致 | 避免 discuss / engineer 双 slot 冷启 |
+| chat body | 优先 `prompt` | 有 prompt 时 Desktop 发空 `messages[]` |
+
+环境变量前缀：`CCC_CHAT_*`（见 `scripts/chat_server/config.py`）。
+
+**体感验收**：进项目有「连接中」再出字；打断后同项目下一条数秒内可发；health 正常时反复打开 App **无**新的 exit 143 风暴；右栏「编排空闲·等定稿下达」≠ 对话故障。
 
 ## Desktop 行为
 
@@ -64,14 +83,36 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | 方法 | 路径 | 用途 |
 |------|------|------|
 | `GET` | `/health` | 存活 |
-| `POST` | `/warm` | keep-warm（cli/router 探测） |
+| `POST` | `/warm` | keep-warm：**带 `project_path` 才预连 SDK slot**；响应含 `slot.connected` |
 | `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`；`tool_mode`: `discuss`\|`engineer`，默认 `discuss` 无 Write/Edit/Bash） |
+| `POST` | `/api/session/drop` | 重置对话：丢 live slot |
 
 Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/`。
+
+## 多端版本对齐
+
+对话热路径代码在 **M1**（Desktop 二进制 + sidecar 进程读本机仓）。编排 API 在 **Mac2017**（Hub）。两边 CCC 仓应同 commit。
+
+```bash
+# M1
+cd ~/program/CCC && git rev-parse --short HEAD
+curl -s http://127.0.0.1:7788/health
+# 装 Desktop：bash desktop/scripts/package-baseline.sh && cp -R desktop/.build/CCCDesktop.app /Applications/
+# 热更 sidecar：launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
+
+# Mac2017（SSH host mac2017）
+cd ~/program/CCC && git pull --ff-only origin main && git rev-parse --short HEAD
+launchctl kickstart -k "gui/$(id -u)/com.ccc.chat-server"
+curl -s -u ccc:ccc http://127.0.0.1:7777/api/ops/router-usage
+```
+
+打包/安装细节：[`../deploy/desktop.md`](../deploy/desktop.md)。
 
 ## 约束
 
 1. **arch**：M1 用 arm64 `vendor/loop-code/cli`；**Mac2017 不再部署 loop-code**（架构对齐 2026-07-19；Hub `/api/chat` 已删）。
 2. **工作区**：聊天 cwd 本机；Engine 在 Server — 转任务只带意图。
-3. **安全**：sidecar 只绑 `127.0.0.1`。
-4. **编排仓**可聊；仅转任务禁用。
+3. **热路径**：见上文「热路径可靠性」——锁超时 force-drop、真暖、禁乱杀、ping 可见。
+4. **安全**：sidecar 只绑 `127.0.0.1`。
+5. **编排仓**可聊；仅转任务禁用。
+6. **一项目一会话**：`{project_id}::main`；隔离靠 session/cwd/board，不是每项目独立进程。
