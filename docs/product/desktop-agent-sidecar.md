@@ -62,7 +62,7 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 |------|------|------|
 | `GET` | `/health` | 存活 |
 | `POST` | `/warm` | keep-warm（cli/router 探测） |
-| `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`） |
+| `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`；`tool_mode`: `discuss`\|`engineer`，默认 `discuss` 无 Write/Edit/Bash） |
 
 Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/`。
 

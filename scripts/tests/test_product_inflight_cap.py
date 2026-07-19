@@ -150,3 +150,97 @@ def test_write_heartbeat_includes_slot_fields(tmp_path, monkeypatch):
     assert hb["product_inflight"] == 1
     assert hb["testing"] == 2
     assert "pending_relaunch" in hb
+
+
+def test_gc_product_inflight_clears_orphan_when_task_missing(tmp_path, monkeypatch):
+    engine = _load_engine()
+    engine._product_inflight.clear()
+    (tmp_path / ".ccc" / "pids").mkdir(parents=True)
+    key = engine._task_key(tmp_path, "gone-task")
+    engine._product_inflight[key] = {"workspace": tmp_path, "tid": "gone-task"}
+
+    class _Store:
+        def find_task(self, tid):
+            return None, None
+
+    monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
+    monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
+    n = engine._gc_product_inflight([tmp_path])
+    assert n == 1
+    assert key not in engine._product_inflight
+    assert engine._can_launch_product(tmp_path) is True
+
+
+def test_gc_product_inflight_clears_epic_planned_without_pid(tmp_path, monkeypatch):
+    engine = _load_engine()
+    engine._product_inflight.clear()
+    (tmp_path / ".ccc" / "pids").mkdir(parents=True)
+    key = engine._task_key(tmp_path, "epic-planned")
+    engine._product_inflight[key] = {"workspace": tmp_path, "tid": "epic-planned"}
+
+    class _Store:
+        def find_task(self, tid):
+            return "backlog", {
+                "id": tid,
+                "card_kind": "epic",
+                "split_status": "planned",
+            }
+
+    monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
+    monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
+    engine._gc_product_inflight([tmp_path])
+    assert key not in engine._product_inflight
+
+
+def test_gc_product_inflight_keeps_live_pid(tmp_path, monkeypatch):
+    engine = _load_engine()
+    engine._product_inflight.clear()
+    pids = tmp_path / ".ccc" / "pids"
+    pids.mkdir(parents=True)
+    tid = "live-epic"
+    (pids / f"{tid}.product.pid").write_text(str(os.getpid()))
+    key = engine._task_key(tmp_path, tid)
+    engine._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
+
+    class _Store:
+        def find_task(self, tid_):
+            return "backlog", {
+                "id": tid_,
+                "card_kind": "epic",
+                "split_status": "pending",
+            }
+
+    monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
+    monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
+    monkeypatch.setattr(
+        engine.ccc_board,
+        "check_product_async",
+        lambda _tid: {"status": "running"},
+    )
+    engine._gc_product_inflight([tmp_path])
+    assert key in engine._product_inflight
+
+
+def test_gc_product_inflight_empty_backlog_orphans(tmp_path, monkeypatch):
+    """空板时 GC 仍清掉内存孤儿（不依赖 _process_backlog）。"""
+    engine = _load_engine()
+    engine._product_inflight.clear()
+    (tmp_path / ".ccc" / "pids").mkdir(parents=True)
+    for i in range(engine.MAX_PRODUCT_PER_WS):
+        tid = f"orphan-{i}"
+        key = engine._task_key(tmp_path, tid)
+        engine._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
+
+    class _Store:
+        def find_task(self, tid):
+            return None, None
+
+        def list_tasks(self, col):
+            return []
+
+    monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
+    monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
+    assert engine._can_launch_product(tmp_path) is False
+    engine._gc_product_inflight([tmp_path])
+    assert engine._product_inflight == {}
+    assert engine._can_launch_product(tmp_path) is True

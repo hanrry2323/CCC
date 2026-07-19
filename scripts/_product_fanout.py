@@ -695,7 +695,11 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
             new = "pending"
     else:
         for kid in kids:
-            kcol, _ = store.find_task(kid)
+            # 多副本时取权威列（最远流水线 / abnormal），避免幽灵 in_progress 卡住 epic
+            kcol = store.resolve_task_column(kid)
+            if kcol is None:
+                # 兼容旧路径
+                kcol, _ = store.find_task(kid)
             statuses.append(kcol or "missing")
         if any(s == "abnormal" for s in statuses):
             new = "failed"

@@ -212,9 +212,13 @@ def snapshot_from_board(
     project_id: str,
 ) -> dict[str, Any]:
     """从看板快照合成右栏图数据（含用户向字段）。"""
+    from _board_store import pick_canonical_column
+
     epic = None
-    works: list[dict] = []
+    # tid -> col -> task（多副本去重）
+    work_locs: dict[str, dict[str, dict]] = {}
     title_by_id: dict[str, str] = {}
+    epic_locs: dict[str, dict] = {}
     for col, tasks in (store_board or {}).items():
         for t in tasks or []:
             if not isinstance(t, dict):
@@ -223,36 +227,45 @@ def snapshot_from_board(
             if tid:
                 title_by_id[tid] = str(t.get("title") or tid)
             if tid == epic_id:
-                epic = {**t, "column": col}
+                epic_locs[col] = {**t, "column": col}
             elif str(t.get("parent_id") or "") == epic_id:
-                deps = t.get("depends_on_tasks") or []
-                if not isinstance(deps, list):
-                    deps = []
-                status = col
-                works.append(
-                    {
-                        "id": tid,
-                        "title": t.get("title") or tid,
-                        "status": status,
-                        "user_status": _STATUS_USER.get(status, status),
-                        "executor": t.get("executor") or "opencode",
-                        "executor_label": _EXECUTOR_USER.get(
-                            str(t.get("executor") or "opencode").lower(),
-                            str(t.get("executor") or "opencode"),
-                        ),
-                        "depends_on": deps,
-                        "depends_on_titles": [
-                            title_by_id.get(str(d), str(d)) for d in deps
-                        ],
-                        "split_status": t.get("split_status"),
-                        "note": (str(t.get("note") or "")[:200] or None),
-                        "failure_note": (
-                            str(t.get("note") or "")[:200]
-                            if status == "abnormal"
-                            else None
-                        ),
-                    }
-                )
+                work_locs.setdefault(tid, {})[col] = t
+
+    if epic_locs:
+        eco = pick_canonical_column(list(epic_locs.keys())) or next(iter(epic_locs))
+        epic = epic_locs[eco]
+
+    works: list[dict] = []
+    for tid, locs in work_locs.items():
+        status = pick_canonical_column(list(locs.keys())) or next(iter(locs))
+        t = locs[status]
+        deps = t.get("depends_on_tasks") or []
+        if not isinstance(deps, list):
+            deps = []
+        works.append(
+            {
+                "id": tid,
+                "title": t.get("title") or tid,
+                "status": status,
+                "user_status": _STATUS_USER.get(status, status),
+                "executor": t.get("executor") or "opencode",
+                "executor_label": _EXECUTOR_USER.get(
+                    str(t.get("executor") or "opencode").lower(),
+                    str(t.get("executor") or "opencode"),
+                ),
+                "depends_on": deps,
+                "depends_on_titles": [
+                    title_by_id.get(str(d), str(d)) for d in deps
+                ],
+                "split_status": t.get("split_status"),
+                "note": (str(t.get("note") or "")[:200] or None),
+                "failure_note": (
+                    str(t.get("note") or "")[:200]
+                    if status == "abnormal"
+                    else None
+                ),
+            }
+        )
 
     # 二次填充 depends titles（同批创建时第一轮可能缺）
     for w in works:

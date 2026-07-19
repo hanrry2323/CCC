@@ -68,10 +68,39 @@ DANGEROUS_PATTERN = re.compile(
 )
 
 # F-SEC-03: Claude CLI 允许的工具（allowlist）；未列出的工具名应被拒绝
-CLAUDE_TOOL_ALLOWLIST = frozenset({
+# discuss = 对话面默认（只读探查，禁止写业务仓）；engineer = 显式解锁本机改文件
+CLAUDE_TOOL_ALLOWLIST_DISCUSS = frozenset({
+    "Read", "Glob", "Grep", "LS", "TodoWrite", "WebFetch", "WebSearch",
+})
+CLAUDE_TOOL_ALLOWLIST_ENGINEER = frozenset({
     "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
     "LS", "Bash", "NotebookEdit", "TodoWrite", "WebFetch", "WebSearch",
 })
+# 兼容旧引用：全量 = 工程师模式
+CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
+
+_ENGINEER_PHRASES = ("工程师模式", "直接改本机")
+
+
+def resolve_tool_mode(
+    explicit: str | None = None,
+    *,
+    user_text: str = "",
+) -> str:
+    """返回 discuss | engineer。缺省 discuss；显式或口令解锁 engineer。"""
+    t = (explicit or "").strip().lower()
+    if t in ("engineer", "discuss"):
+        return t
+    text = user_text or ""
+    if any(p in text for p in _ENGINEER_PHRASES):
+        return "engineer"
+    return "discuss"
+
+
+def tools_for_mode(mode: str) -> frozenset:
+    if (mode or "").strip().lower() == "engineer":
+        return CLAUDE_TOOL_ALLOWLIST_ENGINEER
+    return CLAUDE_TOOL_ALLOWLIST_DISCUSS
 
 BOARD_COLUMNS = [
     "backlog", "planned", "in_progress",

@@ -97,6 +97,15 @@ def test_move_task_updates_status_field(tmp_board: Path, tmp_workspace: Path):
     assert obj["status"] == "in_progress"
 
 
+def test_move_task_unique_across_columns(tmp_board: Path, tmp_workspace: Path):
+    """move_task 后全列至多一份同 id。"""
+    store = FileBoardStore(tmp_workspace)
+    _write_task(tmp_board, "planned", "uniq-1", status="planned")
+    assert store.move_task("uniq-1", "planned", "in_progress") is True
+    cols = store.list_task_columns("uniq-1")
+    assert cols == ["in_progress"]
+
+
 # --- reconcile ---
 
 def test_reconcile_clean_state(tmp_board: Path):
@@ -134,6 +143,30 @@ def test_reconcile_canonical_when_no_status_match(tmp_board: Path):
     # released 优先保留
     assert (tmp_board / "released" / "t6.jsonl").exists()
     assert not (tmp_board / "backlog" / "t6.jsonl").exists()
+
+
+def test_reconcile_prefers_farthest_when_both_self_consistent(tmp_board: Path):
+    """双副本各自 status==目录时：保留流水线更远列（released），删 in_progress 幽灵。"""
+    _write_task(tmp_board, "in_progress", "ghost-prep", status="in_progress")
+    _write_task(tmp_board, "released", "ghost-prep", status="released")
+
+    reconcile(tmp_board, dry_run=False)
+
+    assert (tmp_board / "released" / "ghost-prep.jsonl").exists()
+    assert not (tmp_board / "in_progress" / "ghost-prep.jsonl").exists()
+
+
+def test_resolve_task_column_picks_farthest(tmp_workspace: Path, tmp_board: Path):
+    from _board_store import FileBoardStore, pick_canonical_column
+
+    _write_task(tmp_board, "in_progress", "r1", status="in_progress")
+    _write_task(tmp_board, "released", "r1", status="released")
+    store = FileBoardStore(tmp_workspace)
+    assert store.resolve_task_column("r1") == "released"
+    assert pick_canonical_column(["in_progress", "released"]) == "released"
+    col, task = store.resolve_task("r1")
+    assert col == "released"
+    assert task and task.get("status") == "released"
 
 
 def test_reconcile_fixes_status_mismatch(tmp_board: Path):

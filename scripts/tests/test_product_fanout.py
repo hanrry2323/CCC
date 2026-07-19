@@ -110,6 +110,37 @@ def test_refresh_epic_done(tmp_path):
     assert epic["split_status"] == "done"
 
 
+def test_refresh_epic_done_despite_in_progress_ghost(tmp_path):
+    """子卡同时有 in_progress 幽灵与 released 真身时，epic 仍应 → done。"""
+    import json
+
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "eg", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("eg-w1", "x.py")],
+    )
+    store.move_task("eg-w1", "planned", "in_progress")
+    store.move_task("eg-w1", "in_progress", "testing")
+    store.move_task("eg-w1", "testing", "verified")
+    store.move_task("eg-w1", "verified", "released")
+    # 模拟 unlink 失败留下的幽灵
+    ghost = {
+        "id": "eg-w1",
+        "title": "ghost",
+        "status": "in_progress",
+        "card_kind": "work",
+        "parent_id": "eg",
+    }
+    (tmp_path / ".ccc/board/in_progress/eg-w1.jsonl").write_text(
+        json.dumps(ghost) + "\n", encoding="utf-8"
+    )
+    assert store.find_task("eg-w1")[0] == "in_progress"  # 先命中靠前柱
+    assert store.resolve_task_column("eg-w1") == "released"
+    assert refresh_epic_completion(store, "eg") == "done"
+
+
 def test_refresh_epic_failed_on_abnormal(tmp_path):
     store = FileBoardStore(tmp_path)
     store.create_task({"id": "eb", "title": "E"}, column="backlog")

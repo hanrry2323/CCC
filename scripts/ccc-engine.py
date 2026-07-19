@@ -854,6 +854,108 @@ def _rebuild_product_inflight(workspaces: list[Path]) -> None:
         )
 
 
+def _product_async_markers(ws: Path, tid: str) -> tuple[bool, bool]:
+    """返回 (pid_alive, has_done_marker)。"""
+    pids_dir = Path(ws) / ".ccc" / "pids"
+    pid_file = pids_dir / f"{tid}.product.pid"
+    done_file = pids_dir / f"{tid}.product.done"
+    alive = False
+    if pid_file.is_file():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            alive = True
+        except (OSError, ValueError, ProcessLookupError):
+            alive = False
+    return alive, done_file.is_file()
+
+
+def _drop_product_inflight(key: str, reason: str) -> None:
+    if key not in _product_inflight:
+        return
+    info = _product_inflight.pop(key, None) or {}
+    tid = info.get("tid") or "?"
+    engine_log(f"[product] inflight GC drop {tid}: {reason}")
+
+
+def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
+    """对单个 inflight key：有 .done 则 check 收尾，否则按存活/列状态决定是否 drop。
+
+    Returns: kept | dropped | finalized
+    """
+    if key not in _product_inflight:
+        return "dropped"
+    alive, has_done = _product_async_markers(ws, tid)
+    if has_done or alive:
+        try:
+            _activate_workspace(ws)
+            result = ccc_board.check_product_async(tid)
+        except Exception as exc:
+            engine_log(f"[product] GC check {tid} 异常: {exc}")
+            result = {"status": "running"}
+        status = result.get("status")
+        if status in ("success", "failed"):
+            _drop_product_inflight(key, f"check→{status}")
+            return "finalized"
+        if alive:
+            return "kept"
+        # done 已处理完或 pid 死但 check 仍 running → 防卡死，drop
+        _drop_product_inflight(key, "stale markers without live pid")
+        return "dropped"
+
+    # 无 pid、无 done：按看板状态决定
+    try:
+        store = _get_store(ws)
+        col, task = store.find_task(tid)
+    except Exception:
+        col, task = None, None
+    if col is None:
+        _drop_product_inflight(key, "task missing from board")
+        return "dropped"
+    if col != "backlog":
+        _drop_product_inflight(key, f"not in backlog (col={col})")
+        return "dropped"
+    kind = (task or {}).get("card_kind") or "epic"
+    split = (task or {}).get("split_status") or "pending"
+    if kind == "epic" and split != "pending":
+        _drop_product_inflight(key, f"epic split_status={split}")
+        return "dropped"
+    # backlog pending 但无进程 → 孤儿占槽，释放以便 relaunch
+    _drop_product_inflight(key, "no live product pid")
+    return "dropped"
+
+
+def _gc_product_inflight(workspaces: list[Path]) -> int:
+    """每 tick 回收孤儿 product inflight，避免 cap 假占满。"""
+    if not _product_inflight:
+        return 0
+    ws_set = {str(Path(w).resolve()) for w in workspaces}
+    dropped = 0
+    for key in list(_product_inflight.keys()):
+        info = _product_inflight.get(key) or {}
+        ws = info.get("workspace")
+        tid = str(info.get("tid") or "").strip()
+        if ws is None or not tid:
+            _drop_product_inflight(key, "invalid entry")
+            dropped += 1
+            continue
+        ws_p = Path(ws)
+        try:
+            ws_s = str(ws_p.resolve())
+        except OSError:
+            _drop_product_inflight(key, "workspace unreadable")
+            dropped += 1
+            continue
+        if ws_set and ws_s not in ws_set:
+            # 仍尝试 GC（可能是临时路径）；不因不在列表而跳过
+            pass
+        before = key in _product_inflight
+        outcome = _finalize_or_gc_product_key(ws_p, tid, key)
+        if before and outcome != "kept":
+            dropped += 1
+    return dropped
+
+
 def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
     """处理 dev_role_check_complete 结果。返回 True 表示从 active_tasks 移除。"""
     _activate_workspace(ws)
@@ -1379,6 +1481,8 @@ def _process_backlog(ws: Path) -> bool:
         # Epic：仅 pending 走 product；其余五态不自动重拆
         if kind == "epic":
             if split in ("planned", "running", "done", "failed"):
+                if key in _product_inflight:
+                    _finalize_or_gc_product_key(ws, tid, key)
                 continue
             # pending（含存量 active 已被 refresh 精算）→ 下方走 product fanout
         else:
@@ -1387,6 +1491,8 @@ def _process_backlog(ws: Path) -> bool:
             plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
             parent_id = _task_data.get("parent_id")
             if phases_file.exists() and plan_file.exists():
+                if key in _product_inflight:
+                    _finalize_or_gc_product_key(ws, tid, key)
                 if store.move_task(tid, "backlog", "planned"):
                     engine_log(
                         f"[product] [{label}] work {tid} → planned（兼容单卡）"
@@ -1396,6 +1502,8 @@ def _process_backlog(ws: Path) -> bool:
                 continue
             # epic 子卡禁止走 Claude product 扇出（扇出只服务 pending epic）
             if parent_id:
+                if key in _product_inflight:
+                    _finalize_or_gc_product_key(ws, tid, key)
                 engine_log(
                     f"[product] [{label}] work {tid} parent={parent_id} "
                     f"缺 phases → abnormal（禁止 product 重拆）"
@@ -1416,6 +1524,8 @@ def _process_backlog(ws: Path) -> bool:
             except Exception:
                 _pipeline_class = "full"
             if _pipeline_class in ("auto", "quick"):
+                if key in _product_inflight:
+                    _finalize_or_gc_product_key(ws, tid, key)
                 if _pipeline_class == "auto":
                     result = ccc_board._run_auto_fix(_task_data)
                     if result.get("ok"):
@@ -2622,7 +2732,11 @@ def engine_loop(workspaces: list[Path]) -> None:
                     global_active_count=len(active_tasks),
                 )
 
-            # product 不占 dev 槽：每 tick 对各 WS 做 backlog intake（自有 cap）
+            # product 不占 dev 槽：先 GC 孤儿 inflight，再 backlog intake（自有 cap）
+            try:
+                _gc_product_inflight(workspaces)
+            except Exception as exc:
+                engine_log(f"[product] inflight GC error: {exc}")
             for ws in workspaces:
                 _activate_workspace(ws)
                 if _process_backlog(ws):

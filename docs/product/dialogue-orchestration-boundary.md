@@ -17,7 +17,7 @@ M1 Desktop = 对话、意图、大卡；Mac2017 = 编排引擎与远端开发。
 
 | 面 | 机器 | 负责 | 明确不负责 |
 |----|------|------|------------|
-| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 聊透、意图识别、门禁字段、产出 **epic 大卡**、本机会话 SSOT | 不扇出 work、不跑 Engine、不在业务仓写码 |
+| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 聊透、意图识别、门禁字段、产出 **epic 大卡**、本机会话 SSOT | 不扇出 work、不跑 Engine、默认不在业务仓写码（`tool_mode=discuss`；口令「工程师模式 / 直接改本机」才可本机改文件） |
 | **编排面** | **Mac2017**（Hub + Board + Engine + 业务仓 + 中转） | 收 epic → 扇出 → 远端开发/验收/归档；右栏状态回传 | 不当主聊天窗口；不依赖 M1 本地 cwd |
 
 ```text

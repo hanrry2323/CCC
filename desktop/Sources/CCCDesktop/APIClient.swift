@@ -301,6 +301,7 @@ actor APIClient {
         sessionId: String,
         messages: [ChatMessage],
         promptMode: String = "full",
+        toolMode: String = "discuss",
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         guard let chatBase = chatBaseURL else {
@@ -313,6 +314,7 @@ actor APIClient {
             let mode: String
             let project_path: String?
             let prompt_mode: String
+            let tool_mode: String
         }
         let data = try JSONEncoder().encode(
             Body(
@@ -321,7 +323,8 @@ actor APIClient {
                 messages: messages,
                 mode: "chat",
                 project_path: localProjectPath,
-                prompt_mode: promptMode
+                prompt_mode: promptMode,
+                tool_mode: toolMode
             )
         )
         guard let url = URL(string: "api/chat", relativeTo: chatBase) else {

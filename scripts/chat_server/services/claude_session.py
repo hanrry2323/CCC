@@ -43,8 +43,11 @@ else:
     _SDK_IMPORT_ERROR = None
 
 
-def _slot_key(project_path: str, hub_session_id: str) -> str:
-    return f"{project_path}::{hub_session_id}"
+def _slot_key(
+    project_path: str, hub_session_id: str, tool_mode: str = "discuss"
+) -> str:
+    mode = (tool_mode or "discuss").strip().lower() or "discuss"
+    return f"{project_path}::{hub_session_id}::{mode}"
 
 
 @dataclass
@@ -58,6 +61,7 @@ class _LiveSlot:
     claude_session_id: str | None = None
     last_used: float = field(default_factory=time.monotonic)
     connected: bool = False
+    tool_mode: str = "discuss"
 
 
 class ClaudeSessionManager:
@@ -166,10 +170,12 @@ class ClaudeSessionManager:
         project_path: str,
         model: str,
         resume_session_id: str | None,
+        tool_mode: str = "discuss",
     ) -> Any:
         self._ensure_sdk()
         claude_bin = config.require_claude_bin()
-        allowed = sorted(config.CLAUDE_TOOL_ALLOWLIST)
+        mode = config.resolve_tool_mode(tool_mode)
+        allowed = sorted(config.tools_for_mode(mode))
         kwargs: dict[str, Any] = {
             "cwd": project_path,
             "model": model,
@@ -193,10 +199,12 @@ class ClaudeSessionManager:
         hub_session_id: str,
         model: str,
         resume_session_id: str | None,
+        tool_mode: str = "discuss",
     ) -> _LiveSlot:
         self._ensure_sdk()
         self._ensure_reaper()
-        key = _slot_key(project_path, hub_session_id)
+        mode = config.resolve_tool_mode(tool_mode)
+        key = _slot_key(project_path, hub_session_id, mode)
 
         async with self._global_lock:
             slot = self._slots.get(key)
@@ -215,6 +223,7 @@ class ClaudeSessionManager:
             model=model,
             client=None,
             claude_session_id=resume_session_id,
+            tool_mode=mode,
         )
         async with self._global_lock:
             existing = self._slots.get(key)
@@ -241,6 +250,7 @@ class ClaudeSessionManager:
             project_path=slot.project_path,
             model=slot.model,
             resume_session_id=resume,
+            tool_mode=getattr(slot, "tool_mode", "discuss"),
         )
         slot.client = ClaudeSDKClient(options=options)
         await slot.client.connect()
@@ -338,6 +348,7 @@ class ClaudeSessionManager:
         request_disconnected=None,
         idle_timeout: int | None = None,
         max_timeout: int | None = None,
+        tool_mode: str = "discuss",
     ) -> AsyncIterator[dict[str, Any]]:
         """Run one user turn on a continuous ClaudeSDKClient session."""
         self._ensure_sdk()
@@ -347,12 +358,14 @@ class ClaudeSessionManager:
         max_s = int(max_timeout if max_timeout is not None else config.CHAT_MAX_TIMEOUT)
         idle_s = max(60, min(idle_s, 3600))
         max_s = max(idle_s, min(max_s, 7200))
+        mode = config.resolve_tool_mode(tool_mode)
 
         slot = await self._get_or_create_slot(
             project_path=project_path,
             hub_session_id=hub_session_id,
             model=cli_model,
             resume_session_id=resume_session_id,
+            tool_mode=mode,
         )
 
         async with slot.lock:

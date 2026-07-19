@@ -32,6 +32,24 @@ COLUMNS = [
     "abnormal",
 ]
 
+
+def column_pipeline_rank(col: str) -> int:
+    """流水线序（下标越大越靠后）。abnormal 单独用 pick_canonical_column 处理。"""
+    try:
+        return COLUMNS.index(col)
+    except ValueError:
+        return -1
+
+
+def pick_canonical_column(cols: list[str] | set[str]) -> str | None:
+    """多列同 id 时选权威列：优先 abnormal，否则取流水线最远列。"""
+    present = [c for c in cols if c in COLUMNS]
+    if not present:
+        return None
+    if "abnormal" in present:
+        return "abnormal"
+    return max(present, key=column_pipeline_rank)
+
 # 列迁移白名单：{目标列: [允许的源列列表]}
 # 不在白名单中的迁移会被拒绝
 COLUMN_TRANSITIONS: dict[str, list[str]] = {
@@ -775,6 +793,32 @@ class FileBoardStore:
                 continue
         return None, None
 
+    def list_task_columns(self, task_id: str) -> list[str]:
+        """返回 task_id 出现的所有列（可能多副本）。"""
+        task_id = sanitize_id(task_id)
+        found: list[str] = []
+        for col in COLUMNS:
+            if (self.board / col / f"{task_id}.jsonl").is_file():
+                found.append(col)
+        return found
+
+    def resolve_task_column(self, task_id: str) -> str | None:
+        """多副本时取权威列（abnormal 优先，否则流水线最远）。"""
+        return pick_canonical_column(self.list_task_columns(task_id))
+
+    def resolve_task(self, task_id: str) -> tuple[str | None, dict | None]:
+        """按权威列读取 task（避免 find_task 先命中靠前幽灵列）。"""
+        task_id = sanitize_id(task_id)
+        col = self.resolve_task_column(task_id)
+        if not col:
+            return None, None
+        path = self.board / col / f"{task_id}.jsonl"
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            return col, normalize_task_view(obj, column=col)
+        except (OSError, json.JSONDecodeError, IndexError):
+            return None, None
+
     def patch_task(self, task_id: str, fields: dict) -> bool:
         """原地更新 task 字段（不换列）。用于 epic split_status/child_ids/color 等。"""
         task_id = sanitize_id(task_id)
@@ -820,7 +864,7 @@ class FileBoardStore:
             self._unlock(lock)
 
     def move_task(self, task_id: str, from_col: str, to_col: str) -> bool:
-        """把 task 从 from_col 挪到 to_col（文件锁 + 原子写入 + 白名单约束）"""
+        """把 task 从 from_col 挪到 to_col（文件锁 + os.replace + 全列唯一）"""
         task_id = sanitize_id(task_id)
         allowed_from = COLUMN_TRANSITIONS.get(to_col, [])
         if from_col not in allowed_from:
@@ -872,13 +916,48 @@ class FileBoardStore:
             dst = self.board / to_col / f"{task_id}.jsonl"
             dst.parent.mkdir(parents=True, exist_ok=True)
             payload = json.dumps(task, ensure_ascii=False) + "\n"
-            _atomic_write(dst, payload)
+            # 同目录临时文件 → os.replace 到目标列（失败则整次 move 失败）
+            tmp = src.with_name(f".{task_id}.moving.{os.getpid()}.jsonl")
             try:
-                src.unlink()
+                _atomic_write(tmp, payload)
+                if dst.exists() and dst.resolve() != src.resolve():
+                    try:
+                        dst.unlink()
+                    except OSError as e:
+                        _log.error("move_task: cannot clear dst %s: %s", dst, e)
+                        try:
+                            tmp.unlink()
+                        except OSError:
+                            pass
+                        return False
+                os.replace(str(tmp), str(dst))
             except OSError as e:
-                _log.warning(
-                    "move_task src unlink failed (dst committed) %s: %s", src, e
-                )
+                _log.error("move_task replace failed %s → %s: %s", src, dst, e)
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except OSError:
+                    pass
+                return False
+
+            # 防御：清掉其它列残留（含失败 unlink 的 src）
+            for col in COLUMNS:
+                if col == to_col:
+                    continue
+                other = self.board / col / f"{task_id}.jsonl"
+                if not other.is_file():
+                    continue
+                try:
+                    other.unlink()
+                    _log.warning(
+                        "move_task removed leftover %s/%s.jsonl", col, task_id
+                    )
+                except OSError as e:
+                    _log.error(
+                        "move_task leftover unlink failed %s: %s", other, e
+                    )
+                    return False
+
             self._record_event(task_id, from_col, to_col)
             self._invalidate_cache(from_col, to_col)
             _log.info("%s: %s → %s", task_id, from_col, to_col)

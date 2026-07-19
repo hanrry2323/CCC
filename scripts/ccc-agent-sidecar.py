@@ -198,6 +198,12 @@ async def chat(request: Request):
 
     prompt_mode = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
     prompt = wrap_hub_prompt(prompt, mode=prompt_mode or None)
+    from chat_server import config as _agent_cfg
+
+    tool_mode = _agent_cfg.resolve_tool_mode(
+        body.get("tool_mode") or body.get("toolMode"),
+        user_text=prompt,
+    )
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}
 
@@ -224,6 +230,7 @@ async def chat(request: Request):
                 idle_timeout=idle_s,
                 max_timeout=max_s,
                 hub_session_id=session_id,
+                tool_mode=tool_mode,
             ):
                 evt = event.get("type")
                 if evt == "ping":

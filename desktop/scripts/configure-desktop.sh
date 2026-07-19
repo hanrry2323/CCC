@@ -52,10 +52,11 @@ else
   echo "sidecar: FAIL（Desktop 会显示「本机 Agent 未就绪」）"
 fi
 
-if curl -sf -m 4 -u "${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}" "${SERVER%/}/api/desktop/config" >/dev/null 2>&1; then
-  echo "hub: OK $SERVER"
+_HUB="${SERVER:-http://192.168.3.116:7777}"
+if curl -sf -m 4 -u "${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}" "${_HUB%/}/api/desktop/config" >/dev/null 2>&1; then
+  echo "hub: OK ${_HUB}"
 else
-  echo "hub: FAIL $SERVER（检查 Mac2017 Hub）"
+  echo "hub: FAIL (${_HUB})（检查 Mac2017 Hub）"
 fi
 
 echo "prefs:"

@@ -1048,6 +1048,13 @@ final class AppModel: ObservableObject {
         return "light"
     }
 
+    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（口令解锁）
+    static func toolMode(forUserText text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.contains("工程师模式") || t.contains("直接改本机") { return "engineer" }
+        return "discuss"
+    }
+
     /// 同会话 stop-and-send；仅本机 sidecar，可多路并行
     func sendUserMessage(_ text: String, stopAndSend: Bool = true) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1187,6 +1194,7 @@ final class AppModel: ObservableObject {
             }
             let outbound = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
             let mode = Self.promptMode(forUserText: text)
+            let tools = Self.toolMode(forUserText: text)
 
             // 同会话自动重试 1 次（保留已生成的本地内容，清空半截助手再流）
             var streamError: Error?
@@ -1211,7 +1219,8 @@ final class AppModel: ObservableObject {
                         projectId: projectId,
                         sessionId: threadId,
                         messages: attempt == 1 ? outbound : outboundAttempt,
-                        promptMode: mode
+                        promptMode: mode,
+                        toolMode: tools
                     ) { [weak self] event in
                         guard let model = self else { return }
                         await MainActor.run {

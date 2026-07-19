@@ -96,6 +96,25 @@ if $DO_START; then
     python3 "${CCC_HOME}/scripts/_ccc_control.py" ui "install-hub --start" >/dev/null
   ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --start --ui
   echo "✓ com.ccc.chat-server loaded"
+  # kickstart 后有短暂不可达窗口：轮询至 200 或超时
+  HUB_PORT="${CCC_CHAT_PORT:-7777}"
+  HUB_USER="${CCC_CHAT_USER:-ccc}"
+  HUB_PASS="${CCC_CHAT_PASS:-ccc}"
+  ready=false
+  for _i in $(seq 1 30); do
+    code=$(curl -sS -m 1 -o /dev/null -w "%{http_code}" \
+      -u "${HUB_USER}:${HUB_PASS}" \
+      "http://127.0.0.1:${HUB_PORT}/api/desktop/projects" 2>/dev/null || echo 000)
+    if [[ "$code" == "200" ]]; then
+      ready=true
+      echo "✓ Hub ready http://127.0.0.1:${HUB_PORT} (${_i}s)"
+      break
+    fi
+    sleep 1
+  done
+  if ! $ready; then
+    echo "WARN: Hub 未在 30s 内就绪（最后 http=${code:-?}），请查 ${LOG_ERR}" >&2
+  fi
 else
   ccc_launchd_finalize "com.ccc.chat-server" "$PLIST_STAGED" --ui
   echo "✓ com.ccc.chat-server staged only（未 load）"

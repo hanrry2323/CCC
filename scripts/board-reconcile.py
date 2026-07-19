@@ -19,9 +19,19 @@ from pathlib import Path
 from collections import defaultdict
 
 from _config import get_logger
-from _board_store import COLUMNS, _atomic_write
+from _board_store import COLUMNS, _atomic_write, pick_canonical_column
 
 _log = get_logger("board-reconcile")
+
+
+def _choose_canonical(tid: str, cols: list[str], status_map: dict) -> str:
+    """多副本权威列：abnormal 优先；否则在 status 自洽副本中取最远列。"""
+    if "abnormal" in cols:
+        return "abnormal"
+    matching = [c for c in cols if status_map.get(tid, {}).get(c) == c]
+    if matching:
+        return pick_canonical_column(matching) or matching[0]
+    return pick_canonical_column(cols) or cols[0]
 
 
 def _is_schema_metadata(obj: object) -> bool:
@@ -121,15 +131,8 @@ def reconcile(board: Path, dry_run: bool = True) -> int:
     if zombies:
         print(f"[reconcile] 发现 {len(zombies)} 个多副本 task：")
         for tid, cols in sorted(zombies):
-            # 决定保留哪一列：status 字段匹配的那一列优先；都不匹配时取 released > verified > ... > abnormal
-            canonical = None
-            for c in cols:
-                if status_map[tid].get(c) == c:
-                    canonical = c
-                    break
-            if canonical is None:
-                rank = {c: i for i, c in enumerate(COLUMNS)}
-                canonical = max(cols, key=lambda c: rank[c])
+            # status 自洽副本中取流水线最远；abnormal 优先（见 _choose_canonical）
+            canonical = _choose_canonical(tid, cols, status_map)
             to_delete = [c for c in cols if c != canonical]
             print(f"  {tid}: 保留={canonical}  删除={to_delete}")
 
@@ -149,14 +152,7 @@ def reconcile(board: Path, dry_run: bool = True) -> int:
 
     # 删 zombie（保留 canonical）
     for tid, cols in zombies:
-        canonical = None
-        for c in cols:
-            if status_map[tid].get(c) == c:
-                canonical = c
-                break
-        if canonical is None:
-            rank = {c: i for i, c in enumerate(COLUMNS)}
-            canonical = max(cols, key=lambda c: rank[c])
+        canonical = _choose_canonical(tid, cols, status_map)
         for c in cols:
             if c == canonical:
                 continue
