@@ -111,7 +111,12 @@ install_engine() {
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <true/>
+    <key>SuccessfulExitTimeout</key>
+    <integer>10</integer>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
@@ -121,7 +126,7 @@ install_engine() {
   <key>ProcessType</key>
   <string>Background</string>
   <key>ThrottleInterval</key>
-  <integer>10</integer>
+  <integer>30</integer>
 </dict>
 </plist>
 PLIST_EOF
@@ -172,7 +177,12 @@ install_board() {
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <true/>
+    <key>SuccessfulExitTimeout</key>
+    <integer>10</integer>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
@@ -182,7 +192,7 @@ install_board() {
   <key>ProcessType</key>
   <string>Background</string>
   <key>ThrottleInterval</key>
-  <integer>5</integer>
+  <integer>30</integer>
 </dict>
 </plist>
 PLIST_EOF

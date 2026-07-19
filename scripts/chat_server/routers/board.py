@@ -302,6 +302,38 @@ async def native_board(
     return await board_proxy("GET", "/api/board", params=params)
 
 
+@router.get("/api/board/summaries")
+async def board_summaries(request: Request, workspaces: str = ""):
+    """Phase 3.1: 聚合端点 — 一次返回多 workspace 的 summary，替代前端 N 次 GET。"""
+    check_auth(request)
+    import asyncio
+    import json as _json
+
+    names = [w.strip() for w in (workspaces or "").split(",") if w.strip()]
+    if not names:
+        return {"summaries": {}}
+
+    async def _one(name: str) -> tuple[str, dict]:
+        try:
+            resp = await board_proxy(
+                "GET",
+                "/api/board",
+                params={"workspace": name, "fields": "summary", "include_hidden": "1"},
+            )
+            if resp.status_code >= 400:
+                return name, {"error": f"board {resp.status_code}"}
+            body = resp.body
+            data = _json.loads(
+                body.decode() if isinstance(body, (bytes, bytearray)) else body
+            )
+            return name, data
+        except Exception as exc:
+            return name, {"error": str(exc)[:120]}
+
+    results = await asyncio.gather(*[_one(n) for n in names])
+    return {"summaries": dict(results)}
+
+
 @router.get("/api/config")
 async def native_config(request: Request):
     check_auth(request)

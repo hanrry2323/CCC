@@ -17,18 +17,26 @@ HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260718ops2")
 
 
 class NoStoreStaticMiddleware(BaseHTTPMiddleware):
-    """防止浏览器把旧 Chat/Board 皮缓存成「打开还是旧代码」。"""
+    """Phase 3.3: HTML 永不缓存；带 ?v=/?h= 的 JS/CSS 长缓存 immutable，否则 no-store。"""
 
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         path = request.url.path or "/"
-        if (
-            path == "/"
-            or path.endswith(".html")
-            or path.endswith(".js")
-            or path.endswith(".css")
-            or path.endswith(".map")
-        ):
+        query = request.url.query or ""
+        # 带版本/哈希查询参数 → 长缓存（内容变 → 版本变 → URL 变 → 浏览器重取）
+        has_version = ("v=" in query) or ("h=" in query)
+        if path.endswith(".js") or path.endswith(".css") or path.endswith(".map"):
+            if has_version:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                response.headers.pop("Pragma", None)
+                response.headers.pop("Expires", None)
+                return response
+            # 无版本 → 不缓存（开发期热改可见）
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        if path == "/" or path.endswith(".html"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"

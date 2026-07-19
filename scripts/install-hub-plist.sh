@@ -42,13 +42,18 @@ cat > "$PLIST_STAGED" <<PLIST_EOF
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <true/>
+    <key>SuccessfulExitTimeout</key>
+    <integer>10</integer>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>
   <string>Background</string>
   <key>ThrottleInterval</key>
-  <integer>10</integer>
+  <integer>30</integer>
   <key>EnvironmentVariables</key>
   <dict>
     <key>CCC_CHAT_HOST</key>

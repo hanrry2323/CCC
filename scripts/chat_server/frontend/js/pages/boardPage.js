@@ -194,6 +194,10 @@ function renderEpicCol() {
   const host = _root.querySelector('#board-epic');
   let tasks = _state.columns.backlog || [];
   if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
+  // Phase 3.1: diff 重绘 — id 列表未变则跳过 innerHTML 重建
+  const sig = tasks.map((t) => t.id + ':' + (t.split_status || '') + ':' + (t.updated_at || '')).join('|');
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig;
   const cards = tasks.length
     ? tasks
         .map((t) => {
@@ -218,28 +222,59 @@ function renderEpicCol() {
 
 function renderFlowCols() {
   const host = _root.querySelector('#board-flow');
-  host.innerHTML = '';
+  // Phase 3.1: diff 重绘 — 只重建变化的列
+  const newSigs = {};
   for (const col of FLOW_COLS) {
     let tasks = (_state.columns[col] || []).filter(
       (t) => (t.card_kind || 'work') !== 'epic'
     );
-    const d = document.createElement('div');
-    d.className = 'board-col';
-    const cards = tasks.length
-      ? tasks
-          .map((t) => {
-            const pv = PREV[col] || '';
-            const nx = NEXT[col] || '';
-            const rn = col === 'in_progress' ? ' running' : '';
-            const border = borderFor(t, col);
-            const hue = taskHue(t.color_group, 1);
-            const dot = hue
-              ? `<span class="work-group-dot" style="background:${hue}"></span>`
-              : '';
-            const parent = t.parent_id
-              ? `<div class="parent-tag">${dot}↩ ${esc(t.parent_id)}</div>`
-              : '';
-            return `<div class="board-card board-card-work${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
+    newSigs[col] = tasks.map((t) => t.id + ':' + (t.updated_at || '')).join('|');
+  }
+  // 首次或列数不匹配 → 全重建
+  const existingCols = host.querySelectorAll('.board-col');
+  if (existingCols.length !== FLOW_COLS.length) {
+    host.innerHTML = '';
+    for (const col of FLOW_COLS) {
+      host.appendChild(_buildFlowCol(col, newSigs[col]));
+    }
+    host.dataset.sigs = JSON.stringify(newSigs);
+    return;
+  }
+  // 逐列 diff
+  let prevSigs = {};
+  try { prevSigs = JSON.parse(host.dataset.sigs || '{}'); } catch (_) {}
+  for (let i = 0; i < FLOW_COLS.length; i++) {
+    const col = FLOW_COLS[i];
+    if (prevSigs[col] !== newSigs[col]) {
+      const oldEl = existingCols[i];
+      const newEl = _buildFlowCol(col, newSigs[col]);
+      oldEl.replaceWith(newEl);
+    }
+  }
+  host.dataset.sigs = JSON.stringify(newSigs);
+}
+
+function _buildFlowCol(col, _sig) {
+  let tasks = (_state.columns[col] || []).filter(
+    (t) => (t.card_kind || 'work') !== 'epic'
+  );
+  const d = document.createElement('div');
+  d.className = 'board-col';
+  const cards = tasks.length
+    ? tasks
+        .map((t) => {
+          const pv = PREV[col] || '';
+          const nx = NEXT[col] || '';
+          const rn = col === 'in_progress' ? ' running' : '';
+          const border = borderFor(t, col);
+          const hue = taskHue(t.color_group, 1);
+          const dot = hue
+            ? `<span class="work-group-dot" style="background:${hue}"></span>`
+            : '';
+          const parent = t.parent_id
+            ? `<div class="parent-tag">${dot}↩ ${esc(t.parent_id)}</div>`
+            : '';
+          return `<div class="board-card board-card-work${rn}" data-id="${esc(t.id)}" data-col="${col}" data-prev="${pv}" data-next="${nx}" style="border-left-color:${border}">
               <div class="id">${esc(t.id)}</div>
               <div class="ti">${esc(t.title)}</div>
               ${parent}
@@ -249,12 +284,11 @@ function renderFlowCols() {
               </div>
               ${copyBtnHtml()}
             </div>`;
-          })
-          .join('')
+        })
+        .join('')
       : '<div class="board-empty">—</div>';
-    d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
-    host.appendChild(d);
-  }
+  d.innerHTML = `<div class="board-col-h"><span><span class="board-dot" style="background:${COLORS[col]}"></span>${LABELS[col]}</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div>`;
+  return d;
 }
 
 function html() {
@@ -377,25 +411,24 @@ async function refreshAllWsIndicators() {
   if (!_root || _indicatorBusy || !_wsNames.length) return;
   _indicatorBusy = true;
   try {
-    const results = await Promise.all(
-      _wsNames.map(async (name) => {
-        try {
-          const r = await apiGet(
-            '/api/board?workspace=' +
-              encodeURIComponent(name) +
-              '&fields=summary&include_hidden=1'
-          );
-          return { name, status: classifyWsStatus(r) };
-        } catch (_) {
-          return { name, status: { mode: 'idle', title: '' } };
-        }
-      })
-    );
-    for (const { name, status } of results) {
+    // Phase 3.1: N 次 GET → 单次聚合端点
+    const agg = await apiGet(
+      '/api/board/summaries?workspaces=' +
+        encodeURIComponent(_wsNames.join(','))
+    ).catch(() => null);
+    const summaries = (agg && agg.summaries) || {};
+    for (const name of _wsNames) {
+      const r = summaries[name];
       const btn = [..._root.querySelectorAll('.board-ws-btn')].find(
         (el) => el.dataset.ws === name
       );
-      if (btn) applyWsIndicator(btn, status);
+      if (btn) {
+        if (!r || r.error) {
+          applyWsIndicator(btn, { mode: 'idle', title: r?.error || '' });
+        } else {
+          applyWsIndicator(btn, classifyWsStatus(r));
+        }
+      }
     }
   } finally {
     _indicatorBusy = false;
@@ -603,7 +636,7 @@ function bind() {
 export async function mountBoard(el) {
   if (_root) {
     await loadBoard();
-    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
     return;
   }
   _root = el;
@@ -620,7 +653,8 @@ export async function mountBoard(el) {
   } catch (_) {}
   await loadConfig();
   await loadBoard();
-  _timer = setInterval(() => loadBoard().catch(() => {}), 5000);
+  // Phase 3.1: polling 5s → 15s（diff 重绘 + 聚合端点已大幅降负载）
+  _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
 }
 
 export function unmountBoard() {

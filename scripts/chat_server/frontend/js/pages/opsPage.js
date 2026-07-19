@@ -393,34 +393,23 @@ async function _safeGet(path, fallback) {
 }
 
 async function poll() {
-  // 分接口拉取：任一失败不拖垮整页（Promise.all 会因 risks 500 整页空白）
-  const overview = await _safeGet('/api/ops/overview', { machines: [], alert_count: 0 });
-  renderMachines(overview);
+  // Phase 3.2: 11 次 GET → 单次聚合端点 /api/ops/summary
+  const agg = await _safeGet('/api/ops/summary', null);
+  if (!agg) return;
 
-  const ports = await _safeGet('/api/ops/ports', { groups: [] });
-  renderPorts(ports);
+  // overview + ports 单独渲染（含交互按钮）
+  renderMachines(agg.overview || { machines: [], alert_count: 0 });
+  renderPorts(agg.ports || { groups: [] });
 
-  const [resources, workspaces, daily, risks, kb, deploy, docs, auto, quality] =
-    await Promise.all([
-      _safeGet('/api/ops/resources', {}),
-      _safeGet('/api/ops/workspaces', { workspaces: [] }),
-      _safeGet('/api/ops/daily-review', {}),
-      _safeGet('/api/ops/risks', { count: 0, risks: [] }),
-      _safeGet('/api/ops/kb-health', { services: [] }),
-      _safeGet('/api/ops/deploy', { targets: [] }),
-      _safeGet('/api/ops/docs-debt', { findings: [] }),
-      _safeGet('/api/ops/ops-auto', { tasks: [] }),
-      _safeGet('/api/ops/quality', { workspaces: [] }),
-    ]);
-  renderResources(resources);
-  renderWorkspaces(workspaces);
-  renderDaily(daily);
-  renderRisks(risks);
-  renderKb(kb);
-  renderDeploy(deploy);
-  renderDocs(docs);
-  renderAuto(auto);
-  renderQuality(quality);
+  renderResources(agg.resources || {});
+  renderWorkspaces(agg.workspaces || { workspaces: [] });
+  renderDaily(agg.daily || {});
+  renderRisks(agg.risks || { count: 0, risks: [] });
+  renderKb(agg.kb || { services: [] });
+  renderDeploy(agg.deploy || { targets: [] });
+  renderDocs(agg.docs || { findings: [] });
+  renderAuto(agg.auto || { tasks: [] });
+  renderQuality(agg.quality || { workspaces: [] });
 }
 
 async function runReview(apply) {
@@ -464,7 +453,8 @@ export async function mountOps(el) {
     });
   }
   await poll();
-  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 20000);
+  // Phase 3.2: polling 20s → 30s（聚合端点 + DOM diff 已降负载）
+  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 30000);
 }
 
 export function unmountOps() {

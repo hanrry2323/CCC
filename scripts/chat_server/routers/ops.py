@@ -198,6 +198,70 @@ async def ops_quality(request: Request):
     return quality_summary(_workspaces())
 
 
+@router.get("/api/ops/summary")
+async def ops_summary(request: Request):
+    """Phase 3.2: 聚合端点 — 单次返回 ops 页所需全部只读探针，替代前端 11 次 GET。"""
+    check_auth(request)
+    import asyncio
+
+    from _ops_probe import (
+        overview,
+        probe_ports,
+        local_resources,
+        workspace_summaries,
+        list_daily_reviews,
+        kb_health,
+        deploy_targets,
+        docs_debt_scan,
+        list_ops_auto_tasks,
+        quality_summary,
+    )
+
+    async def _run(func, *args):
+        return await asyncio.to_thread(func, *args)
+
+    spaces = _workspaces()
+    # risks 端点有自定义聚合逻辑（board_abnormal + engine_running），直接复用其 handler
+    try:
+        risks_result = await ops_risks(request)
+    except Exception as exc:
+        risks_result = {"error": str(exc)[:120]}
+
+    try:
+        results = await asyncio.gather(
+            _run(overview),
+            _run(probe_ports, True),
+            _run(local_resources),
+            _run(workspace_summaries, spaces),
+            _run(list_daily_reviews, spaces),
+            _run(kb_health),
+            _run(deploy_targets),
+            _run(docs_debt_scan, spaces),
+            _run(list_ops_auto_tasks, spaces),
+            _run(quality_summary, spaces),
+            return_exceptions=True,
+        )
+    except Exception as exc:
+        return {"error": str(exc)[:200]}
+
+    keys = [
+        "overview",
+        "ports",
+        "resources",
+        "workspaces",
+        "daily",
+        "kb",
+        "deploy",
+        "docs",
+        "auto",
+        "quality",
+    ]
+    out: dict = {"risks": risks_result}
+    for k, r in zip(keys, results):
+        out[k] = r if not isinstance(r, Exception) else {"error": str(r)[:120]}
+    return out
+
+
 class AdoptBody(BaseModel):
     workspace: str = "CCC"
     title: str = Field(..., min_length=1, max_length=200)
