@@ -1549,29 +1549,23 @@ def _process_backlog(ws: Path) -> bool:
             )
             continue
 
-        # 3. 失败计数器（含 15min 自动衰减）
-        _COUNTER_DECAY_SEC = 900  # 15 分钟
+        # 3. 失败计数器（step decay；禁止 15min 清零 — 否则 smoke 死循环）
+        _COUNTER_DECAY_SEC = 900  # 15 分钟最多减 1，不归零
         fail_counter_dir = ws / ".ccc" / ".product-fail-counter"
         fail_counter_path = fail_counter_dir / f"{tid}.json"
-        fail_count = 0
-        if fail_counter_path.exists():
-            try:
-                fail_data = json.loads(fail_counter_path.read_text())
-                fail_count = fail_data.get("fail_count", 0)
-                last_failed = fail_data.get("last_failed_at", 0)
-                if fail_count > 0 and last_failed:
-                    elapsed = time.time() - last_failed
-                    if elapsed > _COUNTER_DECAY_SEC:
-                        engine_log(
-                            f"[product] [{label}] {tid} fail_counter {fail_count} → 0 "
-                            f"(距上次失败 {elapsed:.0f}s > {_COUNTER_DECAY_SEC}s 衰减窗口)"
-                        )
-                        fail_count = 0
-                        fail_counter_path.write_text(
-                            json.dumps({"fail_count": 0, "last_failed_at": 0}, indent=2)
-                        )
-            except (json.JSONDecodeError, OSError):
-                fail_count = 0
+        from _product_fail_counter import (
+            clear_product_fail_count,
+            load_product_fail_count,
+            write_product_fail_count,
+        )
+
+        fail_count, _decay_msg = load_product_fail_count(
+            fail_counter_path,
+            decay_sec=_COUNTER_DECAY_SEC,
+            max_retries=_MAX_PRODUCT_RETRIES,
+        )
+        if _decay_msg:
+            engine_log(f"[product] [{label}] {tid} {_decay_msg}")
 
         def _mark_product_exhausted(reason: str) -> None:
             """epic 留 backlog 标 failed；work 才可 quarantine。"""
@@ -1584,6 +1578,10 @@ def _process_backlog(ws: Path) -> bool:
                         + f"\n[product] {reason}",
                     },
                 )
+                # 冻结算失败次数，防止衰减后重新 launch
+                write_product_fail_count(
+                    fail_counter_path, max(fail_count, _MAX_PRODUCT_RETRIES)
+                )
                 engine_log(
                     f"[product] [{label}] epic {tid} → failed（{reason}），仍留待办"
                 )
@@ -1591,6 +1589,7 @@ def _process_backlog(ws: Path) -> bool:
                 _quarantine_with_notify(
                     ws, tid, reason, store, phase=0, role="product", from_col="backlog"
                 )
+                clear_product_fail_count(fail_counter_path)
             _ccc_notify("CCC", f"product 拆分 {tid}: {reason[:120]}")
 
         if fail_count >= _MAX_PRODUCT_RETRIES:
@@ -1607,11 +1606,7 @@ def _process_backlog(ws: Path) -> bool:
             result = ccc_board.check_product_async(tid)
             if result["status"] == "success":
                 _product_inflight.pop(key, None)
-                try:
-                    if fail_counter_path.exists():
-                        fail_counter_path.unlink()
-                except OSError:
-                    pass
+                clear_product_fail_count(fail_counter_path)
                 _log_stats(ws, "product_done", tid, fail_count=fail_count)
                 kids = result.get("child_ids") or []
                 if kids:
@@ -1629,13 +1624,7 @@ def _process_backlog(ws: Path) -> bool:
                     fail_count = _MAX_PRODUCT_RETRIES
                 else:
                     fail_count += 1
-                fail_counter_dir.mkdir(parents=True, exist_ok=True)
-                fail_counter_path.write_text(
-                    json.dumps(
-                        {"fail_count": fail_count, "last_failed_at": time.time()},
-                        indent=2,
-                    )
-                )
+                write_product_fail_count(fail_counter_path, fail_count)
                 _log_stats(
                     ws,
                     "product_fail",
@@ -1695,11 +1684,7 @@ def _process_backlog(ws: Path) -> bool:
                         f"[product] [{label}] epic {tid} seeded fanout → "
                         f"{seed_r.get('child_ids')}（跳过 Claude）"
                     )
-                    if fail_counter_path.exists():
-                        try:
-                            fail_counter_path.unlink()
-                        except OSError:
-                            pass
+                    clear_product_fail_count(fail_counter_path)
                     _log_stats(ws, "product_done", tid, fail_count=0, seeded=True)
                     did_something = True
                     continue
@@ -1735,10 +1720,7 @@ def _process_backlog(ws: Path) -> bool:
 
         # 6. 启动失败
         fail_count += 1
-        fail_counter_dir.mkdir(parents=True, exist_ok=True)
-        fail_counter_path.write_text(
-            json.dumps({"fail_count": fail_count, "last_failed_at": time.time()}, indent=2)
-        )
+        write_product_fail_count(fail_counter_path, fail_count)
         err = launch_r.get("error", "")[:200]
         _log_stats(
             ws,

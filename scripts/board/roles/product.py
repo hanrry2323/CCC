@@ -610,12 +610,50 @@ def check_product_async(task_id: str) -> dict:
     pids_dir = get_workspace() / ".ccc" / "pids"
     done_file = pids_dir / f"{task_id}.product.done"
     result_file = pids_dir / f"{task_id}.product.out"
+    err_file = pids_dir / f"{task_id}.product.err"
+    exit_file = pids_dir / f"{task_id}.product.exitcode"
     pid_file = pids_dir / f"{task_id}.product.pid"
     prompt_file = pids_dir / f"{task_id}.product.prompt.md"
+
+    def _merged_output() -> str:
+        output = result_file.read_text() if result_file.exists() else ""
+        if err_file.exists():
+            try:
+                err = err_file.read_text()
+                if err.strip():
+                    sep = "\n" if output else ""
+                    output = (output or "") + sep + err
+            except OSError:
+                pass
+        return output or ""
+
+    def _dead_without_output(pid: int | None = None) -> dict:
+        """进程已死且无可用输出 — 带 exitcode，避免笼统 process not running。"""
+        # 竞态：done 刚写入
+        if done_file.exists():
+            return _parse_and_finalize_product(task_id, _merged_output(), pids_dir)
+        out = _merged_output()
+        if out.strip():
+            return _parse_and_finalize_product(task_id, out, pids_dir)
+        ec = "?"
+        if exit_file.exists():
+            try:
+                ec = exit_file.read_text().strip() or "?"
+            except OSError:
+                pass
+        pid_bit = f" pid={pid}" if pid is not None else ""
+        return {
+            "status": "failed",
+            "error": (
+                f"product process exited without output{pid_bit} exit={ec} "
+                "(claude product session died; not loop-code)"
+            ),
+        }
 
     # 检查完成标记
     if not done_file.exists():
         if pid_file.exists():
+            pid: int | None = None
             try:
                 pid = int(pid_file.read_text().strip())
                 # v0.37: 墙钟超时 — 防止 claude -p 无限挂起吃内存
@@ -645,6 +683,7 @@ def check_product_async(task_id: str) -> dict:
                         ".product.done",
                         ".product.exitcode",
                         ".product.prompt.md",
+                        ".product.err",
                     ]:
                         try:
                             (pids_dir / f"{task_id}{sfx}").unlink()
@@ -654,6 +693,10 @@ def check_product_async(task_id: str) -> dict:
                         "status": "failed",
                         "error": f"product async timeout after {_timeout}s",
                     }
+
+                # 刚写入 pid 的短竞态：给 runner 写 done 的窗口
+                if _age < 2.0:
+                    return {"status": "running"}
 
                 # v0.29.35: 检测 zombie 进程（STAT=Z）→ 视为已退出
                 _zombie = False
@@ -680,28 +723,32 @@ def check_product_async(task_id: str) -> dict:
                         pass
                     raise ProcessLookupError(f"zombie pid {pid}")
             except (ValueError, ProcessLookupError):
-                # 进程已退出 — 检查输出文件是否有内容
-                if result_file.exists() and result_file.stat().st_size > 0:
-                    output = result_file.read_text()
-                    return _parse_and_finalize_product(task_id, output, pids_dir)
-                pass
+                return _dead_without_output(pid)
             except OSError:
-                pass
+                # kill(0) 权限异常：用 ps 再确认
+                try:
+                    _ps2 = subprocess.run(
+                        ["ps", "-p", str(pid), "-o", "pid="],
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                        env=_sanitized_env(),
+                    )
+                    if (_ps2.stdout or "").strip():
+                        return {"status": "running"}
+                except Exception:
+                    pass
+                return _dead_without_output(pid)
             else:
                 return {"status": "running"}
-        return {"status": "failed", "error": "process not running"}
+        # 无 pid、无 done：inflight 孤儿或 launch 未落盘
+        return {
+            "status": "failed",
+            "error": "product markers missing (no pid/done) — process not running",
+        }
 
     # 读输出（stdout + stderr；鉴权失败常在其一）
-    output = result_file.read_text() if result_file.exists() else ""
-    err_file = pids_dir / f"{task_id}.product.err"
-    if err_file.exists():
-        try:
-            err = err_file.read_text()
-            if err.strip():
-                sep = "\n" if output else ""
-                output = (output or "") + sep + err
-        except OSError:
-            pass
+    output = _merged_output()
     return _parse_and_finalize_product(task_id, output, pids_dir)
 
 
