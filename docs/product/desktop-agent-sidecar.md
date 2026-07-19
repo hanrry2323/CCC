@@ -32,8 +32,10 @@ bash scripts/ccc-agent-sidecar.sh stop
 ```
 
 健康检查：`curl -s http://127.0.0.1:7788/health`  
+若日志出现 `Too many open files`：`bash scripts/install-agent-sidecar-plist.sh --start`（plist 已抬高 FD 上限）后重开 Desktop。  
 日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
 plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
+
 
 ## 热路径可靠性（slot / warm / UX）
 

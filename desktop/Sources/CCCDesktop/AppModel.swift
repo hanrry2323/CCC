@@ -476,7 +476,9 @@ final class AppModel: ObservableObject {
         }
         chat.draft = "UI自检：请只回复四个字「自检OK」"
         await sendMessage()
-        let assistant = chat.messages.last(where: { $0.role == "assistant" && !$0.isStreaming })?.content ?? ""
+        let tid = selectedProjectId.map { LocalSessionStore.conversationThreadId(for: $0) }
+        let assistant = (tid.flatMap { threadMessages[$0] } ?? [])
+            .last(where: { $0.role == "assistant" && !$0.isStreaming })?.content ?? ""
         let ok = !assistant.isEmpty
         writeResult(ok: ok, assistant: assistant, error: ok ? nil : (lastError ?? toast ?? "无助手回复"))
         try? await Task.sleep(nanoseconds: 400_000_000)
@@ -582,14 +584,19 @@ final class AppModel: ObservableObject {
 
     func selectProject(_ id: String) async {
         let switching = id != selectedProjectId
-        if let tid = selectedThreadId, switching {
-            persistCurrentThreadSnapshot(threadId: tid)
+        // 先把「即将离开」的线程钉进 RAM+盘；SSOT 是 threadMessages，不靠 chat.messages
+        if let prev = selectedProjectId, switching {
+            let prevTid = LocalSessionStore.conversationThreadId(for: prev)
+            persistCurrentThreadSnapshot(threadId: prevTid)
         }
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
         // 单对话模型：每项目恰好一个会话 "<projectId>::main"
-        selectedThreadId = LocalSessionStore.conversationThreadId(for: id)
+        let tid = LocalSessionStore.conversationThreadId(for: id)
+        // 先 hydrate 目标线程再改 selectedThreadId，避免他窗/本窗短暂读到错会话
+        ensureThreadHydrated(projectId: id)
+        selectedThreadId = tid
         if switching {
             // 禁止先清空再加载（会闪空对话/右栏）；直接 hydrate
             selectedNodeDetail = nil
@@ -603,11 +610,7 @@ final class AppModel: ObservableObject {
             }
         } else {
             // 同项目再点（从看板/运维回对话）：只恢复缓存，不踢 Hub 同步，避免闪空
-            let tid = LocalSessionStore.conversationThreadId(for: id)
-            hydrateThreadFromDisk(projectId: id, threadId: tid)
-            if let cached = threadMessages[tid], !cached.isEmpty {
-                chat.messages = cached
-            }
+            syncLegacyChatMirror(from: tid)
             if let snap = threadFlow[tid] {
                 applyFlowSnapshot(snap)
             }
@@ -618,7 +621,21 @@ final class AppModel: ObservableObject {
     /// 侧栏点项目卡：切项目 + 强制回对话面（看板/运维里点项目也能回对话）
     func openProjectConversation(_ id: String) async {
         destination = .chat
+        // 点卡瞬间先灌 RAM，保证本窗立刻只显示目标 tid（不等 await）
+        ensureThreadHydrated(projectId: id)
         await selectProject(id)
+    }
+
+    /// 多窗：保证 `threadMessages[pid::main]` 已有盘/空数组；不碰其他窗的显示源。
+    func ensureThreadHydrated(projectId: String) {
+        let tid = LocalSessionStore.conversationThreadId(for: projectId)
+        if threadMessages[tid] == nil {
+            hydrateThreadFromDisk(projectId: projectId, threadId: tid)
+            if threadMessages[tid] == nil {
+                threadMessages[tid] = []
+            }
+            bumpThreadRevision(tid)
+        }
     }
 
     /// 加载项目的唯一会话。流式中或 RAM 更丰富时禁止磁盘盲覆盖（否则 assistantId 孤儿 → UI 掉会话）。
@@ -654,10 +671,11 @@ final class AppModel: ObservableObject {
             )
             threadFlow[tid] = snap
         }
-        chat.messages = threadMessages[tid] ?? disk
         bumpThreadRevision(tid)
+        // chat.messages 仅作「全局选中线程」镜像（smoke/旧路径）；UI 列表读 threadMessages
+        syncLegacyChatMirror(from: tid)
         pendingTransferDraft = nil
-        if let lastAsst = chat.messages.last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+        if let lastAsst = (threadMessages[tid] ?? []).last(where: { $0.role == "assistant" && !$0.isStreaming }) {
             refreshTransferDraft(from: lastAsst.content)
         }
         lastAnimatedEpicId = nil
@@ -674,28 +692,35 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 重置当前项目的对话：清盘 + drop sidecar slot + 清 UI
-    func resetConversation() async {
-        guard let pid = selectedProjectId else {
+    /// 重置指定（或全局选中）项目的对话：清盘 + drop sidecar slot + 清 UI
+    func resetConversation(projectId: String? = nil) async {
+        guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             return
         }
-        if let tid = selectedThreadId {
-            cancelChat(threadId: tid, silent: true)
-        }
-        LocalSessionStore.reset(projectId: pid)
         let convId = LocalSessionStore.conversationThreadId(for: pid)
-        threadMessages[convId] = nil
+        cancelChat(threadId: convId, silent: true)
+        LocalSessionStore.reset(projectId: pid)
+        threadMessages[convId] = []
         threadFlow[convId] = nil
+        bumpThreadRevision(convId)
         // 通知 sidecar 丢弃 live slot
         await dropSidecarSession(projectId: pid)
-        selectedThreadId = convId
-        chat.messages = []
-        applyFlowSnapshot(nil)
-        flowSplitGeneration &+= 1
-        refreshCurrentThreadStreaming()
+        if selectedProjectId == pid {
+            selectedThreadId = convId
+            syncLegacyChatMirror(from: convId)
+            applyFlowSnapshot(nil)
+            flowSplitGeneration &+= 1
+            refreshCurrentThreadStreaming()
+        }
         showToast("对话已重置")
         destination = .chat
+    }
+
+    /// 旧镜像：仅当全局选中该线程时同步 chat.messages（禁止当多窗显示源）
+    private func syncLegacyChatMirror(from threadId: String) {
+        guard selectedThreadId == threadId else { return }
+        chat.messages = threadMessages[threadId] ?? []
     }
 
     /// 通知 sidecar 丢弃项目的 ClaudeSDKClient live slot
@@ -710,13 +735,12 @@ final class AppModel: ObservableObject {
 
     /// 显示压缩：消息超阈值时把最早 N 轮替换为摘要卡；token 超阈值时触发 agent session 重置
     func compactConversationIfNeeded(projectId: String, threadId: String) async {
-        let current = threadMessages[threadId] ?? (selectedThreadId == threadId ? chat.messages : [])
+        let current = threadMessages[threadId] ?? []
         let (compacted, didCompact, rounds) = LocalSessionStore.compactIfNeeded(current)
         guard didCompact else { return }
         threadMessages[threadId] = compacted
-        if selectedThreadId == threadId {
-            chat.messages = compacted
-        }
+        bumpThreadRevision(threadId)
+        syncLegacyChatMirror(from: threadId)
         flushDiskSave(threadId: threadId)
         // agent session token 超阈值 → 重置注入摘要（节约 token）
         if sessionTokens >= Self.agentCompactTokenThreshold {
@@ -791,16 +815,12 @@ final class AppModel: ObservableObject {
     }
 
     private func persistCurrentThreadSnapshot(threadId: String) {
-        let cached = threadMessages[threadId] ?? []
-        let outgoing = chat.messages
-        // 禁止空 messages 冲掉更丰富的缓存（切看板/运维竞态）
-        let best: [ChatMessage]
-        if LocalSessionStore.messageScore(outgoing) >= LocalSessionStore.messageScore(cached) {
-            best = outgoing
-        } else {
-            best = cached
+        // SSOT = threadMessages。chat.messages 仅在该线程为全局选中且 RAM 空时补种，禁止反写串台。
+        if threadMessages[threadId] == nil,
+           selectedThreadId == threadId,
+           !chat.messages.isEmpty {
+            threadMessages[threadId] = chat.messages
         }
-        threadMessages[threadId] = best
         let snap = FlowThreadSnapshot(
             epicId: currentEpicId,
             epic: flowEpic,
@@ -815,13 +835,10 @@ final class AppModel: ObservableObject {
            snap.works.isEmpty, snap.epic == nil,
            (!prev.works.isEmpty || prev.epic != nil) {
             // 只更新消息；保留旧 flow
-        } else {
+        } else if selectedThreadId == threadId {
             threadFlow[threadId] = snap
         }
-        if selectedProjectId != nil {
-            // 统一落盘路径：取消节流后立即写，避免旧 flush 覆盖
-            flushDiskSave(threadId: threadId)
-        }
+        flushDiskSave(threadId: threadId)
     }
 
     private func applyFlowSnapshot(_ snap: FlowThreadSnapshot?) {
@@ -854,8 +871,8 @@ final class AppModel: ObservableObject {
             ?? []
         // 契约：本机 SSOT — 有内容绝不让 Hub 覆盖 UI
         if LocalSessionStore.messageScore(cached) > 0 {
-            if selectedThreadId == threadId, destination == .chat, chat.messages.isEmpty {
-                chat.messages = cached
+            if selectedThreadId == threadId, destination == .chat {
+                syncLegacyChatMirror(from: threadId)
             }
             return
         }
@@ -866,9 +883,8 @@ final class AppModel: ObservableObject {
             let loaded = detail.messages ?? []
             guard LocalSessionStore.messageScore(loaded) > 0 else { return }
             threadMessages[threadId] = loaded
-            if selectedThreadId == threadId, destination == .chat {
-                chat.messages = loaded
-            }
+            bumpThreadRevision(threadId)
+            syncLegacyChatMirror(from: threadId)
             let title = threads.first(where: { $0.thread_id == threadId })?.title
                 ?? detail.title
             LocalSessionStore.saveMessages(
@@ -882,9 +898,8 @@ final class AppModel: ObservableObject {
             hubReachable = true
         } catch {
             hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
-            if selectedThreadId == threadId {
-                chat.messages = threadMessages[threadId] ?? []
-            }
+            bumpThreadRevision(threadId)
+            syncLegacyChatMirror(from: threadId)
         }
     }
 
@@ -976,22 +991,20 @@ final class AppModel: ObservableObject {
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
         threadMessages[threadId] = msgs
         bumpThreadRevision(threadId)
-        if selectedThreadId == threadId {
-            chat.messages = msgs
-        }
+        syncLegacyChatMirror(from: threadId)
         scheduleDiskSave(threadId: threadId)
     }
 
     private func bumpThreadRevision(_ threadId: String) {
-        threadRevision[threadId, default: 0] &+= 1
+        // 必须整体赋值：字典下标 in-place 改不会触发 @Published
+        var copy = threadRevision
+        copy[threadId, default: 0] &+= 1
+        threadRevision = copy
     }
 
-    /// 供多窗：取某线程当前消息（优先选中线程的 chat.messages）
+    /// 多窗显示 SSOT：只读 threadMessages，绝不回落全局 chat.messages（否则切项目会串台）。
     func messagesForThread(_ threadId: String?) -> [ChatMessage] {
         guard let threadId, !threadId.isEmpty else { return [] }
-        if selectedThreadId == threadId {
-            return chat.messages
-        }
         return threadMessages[threadId] ?? []
     }
 
@@ -1030,7 +1043,7 @@ final class AppModel: ObservableObject {
     }
 
     private func writeDiskSave(threadId tid: String, projectId pid: String) {
-        let msgs = (threadMessages[tid] ?? (selectedThreadId == tid ? chat.messages : []))
+        let msgs = (threadMessages[tid] ?? [])
             .filter { !$0.isStreaming || !$0.content.isEmpty }
         let title = threads.first(where: { $0.thread_id == tid })?.title
         var flow = threadFlow[tid]
@@ -1048,7 +1061,7 @@ final class AppModel: ObservableObject {
     }
 
     private func mutateThreadMessages(threadId: String, _ body: (inout [ChatMessage]) -> Void) {
-        var msgs = threadMessages[threadId] ?? (selectedThreadId == threadId ? chat.messages : [])
+        var msgs = threadMessages[threadId] ?? []
         body(&msgs)
         persistMessages(for: threadId, msgs)
     }
@@ -1077,6 +1090,7 @@ final class AppModel: ObservableObject {
         }
         threadMessages[threadId] = msgs
         bumpThreadRevision(threadId)
+        // 仅镜像全局选中线程；他窗靠 threadRevision 刷新，禁止 chat.messages 当显示源
         if selectedThreadId == threadId {
             if chat.messages.contains(where: { $0.id == assistantId }) {
                 chat.replaceMessage(id: assistantId) { m in
@@ -1330,16 +1344,13 @@ final class AppModel: ObservableObject {
             return false
         }
         let tid = ConversationStore.conversationId(for: pid)
+        // 始终写 threadMessages；仅当全局选中同一项目时同步旧镜像
+        ensureThreadHydrated(projectId: pid)
         if selectedProjectId == pid {
             if selectedThreadId != tid {
                 selectedThreadId = tid
             }
-            hydrateThreadFromDisk(projectId: pid, threadId: tid)
-            if chat.messages.isEmpty, let cached = threadMessages[tid] {
-                chat.messages = cached
-            }
-        } else if threadMessages[tid] == nil {
-            hydrateThreadFromDisk(projectId: pid, threadId: tid)
+            syncLegacyChatMirror(from: tid)
         }
         let threadId = tid
         if !canChat {
@@ -1526,7 +1537,7 @@ final class AppModel: ObservableObject {
             flushDiskSave()
             // 显示压缩（异步，不打断当前流）
             await compactConversationIfNeeded(projectId: projectId, threadId: threadId)
-            let synced = (threadMessages[threadId] ?? chat.messages)
+            let synced = (threadMessages[threadId] ?? [])
                 .filter { $0.role == "user" || $0.role == "assistant" }
                 .map {
                     ChatMessage(
@@ -1702,14 +1713,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func applyQuickPrompt(_ prompt: String, uiLabel: String) {
+    func applyQuickPrompt(_ prompt: String, uiLabel: String, projectId: String? = nil) {
         destination = .chat
         showToast(uiLabel)
-        sendUserMessage(prompt, stopAndSend: true)
+        sendUserMessage(prompt, projectId: projectId, stopAndSend: true)
     }
 
-    func alignBaseline() async {
-        guard let pid = selectedProjectId else {
+    func alignBaseline(projectId: String? = nil) async {
+        guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             return
         }
@@ -1723,14 +1734,16 @@ final class AppModel: ObservableObject {
                 return
             }
             showToast("已注入对齐基线")
-            sendUserMessage(prompt, stopAndSend: true)
+            sendUserMessage(prompt, projectId: pid, stopAndSend: true)
         } catch {
             showToast(error.localizedDescription)
         }
     }
 
-    func exportThreadMarkdown() -> String {
-        chat.messages
+    func exportThreadMarkdown(threadId: String? = nil) -> String {
+        let tid = threadId ?? selectedThreadId
+        let msgs = tid.map { threadMessages[$0] ?? [] } ?? []
+        return msgs
             .filter { !$0.isStreaming || !$0.content.isEmpty }
             .map { msg in
                 let role = msg.role == "user" ? "用户" : "助手"
@@ -1745,8 +1758,8 @@ final class AppModel: ObservableObject {
         showToast("已复制")
     }
 
-    func exportThreadToPasteboard() {
-        let md = exportThreadMarkdown()
+    func exportThreadToPasteboard(threadId: String? = nil) {
+        let md = exportThreadMarkdown(threadId: threadId)
         guard !md.isEmpty else {
             showToast("无可导出内容")
             return
@@ -1765,9 +1778,12 @@ final class AppModel: ObservableObject {
     }
 
     /// 助手消息 → 重发紧邻的上一条用户消息（对齐 Hub「重新生成」）
-    func regenerateAssistant(after message: ChatMessage) {
-        guard message.role == "assistant", let tid = selectedThreadId else { return }
-        let msgs = threadMessages[tid] ?? chat.messages
+    func regenerateAssistant(after message: ChatMessage, projectId: String? = nil) {
+        guard message.role == "assistant" else { return }
+        let pid = projectId ?? selectedProjectId
+        guard let pid else { return }
+        let tid = LocalSessionStore.conversationThreadId(for: pid)
+        let msgs = threadMessages[tid] ?? []
         guard let idx = msgs.firstIndex(where: { $0.id == message.id }) else { return }
         var userText: String?
         var i = idx - 1
@@ -1778,11 +1794,11 @@ final class AppModel: ObservableObject {
             }
             i -= 1
         }
-        guard let text = userText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            showToast("没有可重新生成的用户消息")
+        guard let text = userText, !text.isEmpty else {
+            showToast("找不到上一条用户消息")
             return
         }
-        sendUserMessage(text, stopAndSend: true)
+        sendUserMessage(text, projectId: pid, stopAndSend: true)
     }
 
     /// 从某条助手消息打开预览
@@ -1864,13 +1880,15 @@ final class AppModel: ObservableObject {
 
     /// 从对话启发式预填门禁字段（无 ccc-transfer 时）
     func prefillTransferFromChat() {
-        let assistants = chat.messages.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
+        let tid = selectedThreadId
+        let msgs = tid.map { threadMessages[$0] ?? [] } ?? []
+        let assistants = msgs.filter { $0.role == "assistant" && !$0.isStreaming }.map(\.content)
         if let last = assistants.last, let d = TransferDraftParser.parse(from: last) {
             applyTransferDraft(d, fallbackContent: nil)
             pendingTransferDraft = d
             return
         }
-        let users = chat.messages.filter { $0.role == "user" }.map(\.content)
+        let users = msgs.filter { $0.role == "user" }.map(\.content)
         let lastUser = users.last ?? ""
         let blob = (users.suffix(3) + assistants.suffix(2)).joined(separator: "\n")
         let lastAssistant = assistants.last ?? ""
@@ -1996,7 +2014,7 @@ final class AppModel: ObservableObject {
             showToast("转任务失败：方案评估为不可执行")
             return
         }
-        let chatDigest = chat.messages
+        let chatDigest = (selectedThreadId.flatMap { threadMessages[$0] } ?? [])
             .suffix(8)
             .map { "\($0.role): \(String($0.content.prefix(200)))" }
             .joined(separator: "\n")
@@ -2363,10 +2381,8 @@ final class AppModel: ObservableObject {
             if prev != .chat, let pid = selectedProjectId {
                 let tid = LocalSessionStore.conversationThreadId(for: pid)
                 selectedThreadId = tid
-                hydrateThreadFromDisk(projectId: pid, threadId: tid)
-                if let cached = threadMessages[tid], !cached.isEmpty {
-                    chat.messages = cached
-                }
+                ensureThreadHydrated(projectId: pid)
+                syncLegacyChatMirror(from: tid)
                 if let snap = threadFlow[tid] {
                     applyFlowSnapshot(snap)
                 }

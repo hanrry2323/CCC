@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **对话切窗串台 / 历史乱串**：每窗只绑 `window.projectId`；消息列表只读 `threadMessages[tid]`，禁用全局 `chat.messages` 当显示源；切项目先 hydrate 目标线程。
+- **sidecar FD 耗尽导致大模型假死**：plist 提高 NumberOfFiles；重启 sidecar 清泄漏。
 - **对话切窗/切项目掉会话**：切回时禁止磁盘盲覆盖流式 RAM；持久化消息 `id`；delta 孤儿气泡可重建；多窗 `WindowChatState` 可并行看不同项目。
 - **顶栏大模型调用数加固**：旁路 Hub 闸门拉取 `/api/ops/router-usage`；流式中仍轮询；Titlebar Timer+tick 强制重绘；失败显示 `!` + tooltip；Hub 探针超时 2.5s。
 - **Desktop / sidecar 热路径假死**（`13ec205`）：slot 锁 / connect / drain 硬超时；warm 抢锁失败快返回；真暖才记 `lastWarmAt`；SSE `ping`→「连接本机 Agent…」；health 正常禁止 `kickstart -k`；chat 有 `prompt` 不再发全量 `messages`；空板编排闲置文案与对话故障解耦。

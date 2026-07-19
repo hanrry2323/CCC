@@ -21,7 +21,7 @@ struct CCCDesktopApp: App {
     }
 }
 
-/// 每窗一个 WindowChatState；共享 AppModel
+/// 每窗一个 WindowChatState；共享 AppModel。新窗不抢第一窗可见历史。
 private struct WindowRootView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var window = WindowChatState()
@@ -30,11 +30,22 @@ private struct WindowRootView: View {
         ContentView()
             .environmentObject(model)
             .environmentObject(window)
+            .onAppear {
+                bindWindowProjectIfNeeded()
+            }
             .task {
                 await model.bootstrap()
-                if window.projectId == nil {
-                    window.projectId = model.selectedProjectId
-                }
+                bindWindowProjectIfNeeded()
             }
+    }
+
+    private func bindWindowProjectIfNeeded() {
+        // 仅本窗尚未绑定时落到全局选中；已有 projectId 的窗绝不被 bootstrap/他窗切项改写
+        if window.projectId == nil, let pid = model.selectedProjectId {
+            window.projectId = pid
+        }
+        if let pid = window.projectId {
+            model.ensureThreadHydrated(projectId: pid)
+        }
     }
 }

@@ -15,7 +15,9 @@ struct ProjectCard: View {
 
     var body: some View {
         Button {
+            // 先钉本窗焦点 + 灌 RAM，再异步更新全局选中（他窗显示不受影响）
             window.projectId = project.id
+            model.ensureThreadHydrated(projectId: project.id)
             Task { await model.openProjectConversation(project.id) }
         } label: {
             HStack(alignment: .center, spacing: 10) {
@@ -56,7 +58,9 @@ struct ProjectCard: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("重置对话") { Task { await model.resetConversation() } }
+            Button("重置对话") {
+                Task { await model.resetConversation(projectId: project.id) }
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(project.name)，编排\(boardHelp)，对话\(chatHelp)")

@@ -77,7 +77,7 @@ struct CodexSidebar: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 SoftRow(title: "重置对话", icon: "arrow.counterclockwise", prominent: true) {
-                    Task { await model.resetConversation() }
+                    Task { await model.resetConversation(projectId: window.projectId) }
                 }
                 .disabled(!model.connected)
                 .opacity(model.connected ? 1 : 0.4)
@@ -138,7 +138,7 @@ struct CodexSidebar: View {
                 ForEach(model.projects) { project in
                     ProjectCard(
                         project: project,
-                        isSelected: project.id == (window.projectId ?? model.selectedProjectId)
+                        isSelected: project.id == window.projectId
                     )
                 }
             }
@@ -190,7 +190,7 @@ struct CodexChatPane: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        // 必须把 ChatState 交给子视图 @ObservedObject，嵌套 OO 否则流式不刷新
+        // 仍订阅 ChatState 以刷新 streamStatus；消息列表只用 threadMessages
         CodexChatPaneBody(chat: model.chat)
             .environmentObject(model)
     }
@@ -205,26 +205,37 @@ struct CodexChatPaneBody: View {
     @State private var lastScrollTargetId: String = ""
     @FocusState private var composerFocused: Bool
 
+    /// 本窗唯一项目焦点；禁止回落全局 selected（否则他窗切项会拖走本窗历史）
     private var paneProjectId: String? {
-        window.projectId ?? model.selectedProjectId
+        window.projectId
     }
 
     private var paneThreadId: String? {
-        paneProjectId.map { ConversationStore.conversationId(for: $0) }
+        paneProjectId.map { LocalSessionStore.conversationThreadId(for: $0) }
     }
 
-    /// 本窗消息：按窗绑定项目；观察 threadRevision 以接收后台流式
+    /// 本窗消息：只绑 window.projectId 对应线程；观察 threadRevision 接收后台流式
     private var displayMessages: [ChatMessage] {
         let tid = paneThreadId
         if let tid {
             _ = model.threadRevision[tid]
         }
+        // 强制不读 chat.messages，避免全局选中切换时串台
         return model.messagesForThread(tid)
     }
 
     private var paneStreaming: Bool {
         guard let tid = paneThreadId else { return false }
         return model.isThreadStreaming(tid)
+    }
+
+    /// 状态文案：仅本窗线程在流时用 streamStatus，避免他窗串状态
+    private var paneStatusText: String {
+        if paneStreaming, !chat.streamStatus.isEmpty,
+           model.selectedThreadId == paneThreadId {
+            return chat.streamStatus
+        }
+        return model.statusText
     }
 
     var body: some View {
@@ -235,7 +246,7 @@ struct CodexChatPaneBody: View {
                 offlineCenter
             } else {
                 messageArea
-                if model.pendingTransferDraft != nil {
+                if model.pendingTransferDraft != nil, model.selectedProjectId == paneProjectId {
                     transferConfirmBar
                 }
                 composerDock
@@ -243,8 +254,20 @@ struct CodexChatPaneBody: View {
         }
         .background(CCCTheme.chatBg)
         .onAppear {
+            if window.projectId == nil {
+                window.projectId = model.selectedProjectId
+            }
+            if let pid = window.projectId {
+                model.ensureThreadHydrated(projectId: pid)
+            }
             NSApp.activate(ignoringOtherApps: true)
             composerFocused = true
+        }
+        .onChange(of: window.projectId) { pid in
+            lastScrollTargetId = ""
+            if let pid {
+                model.ensureThreadHydrated(projectId: pid)
+            }
         }
     }
 
@@ -303,7 +326,7 @@ struct CodexChatPaneBody: View {
             Circle()
                 .fill(model.canChat ? CCCTheme.nodeDone : CCCTheme.nodeFail)
                 .frame(width: 6, height: 6)
-            Text(model.chat.streamStatus.isEmpty ? model.statusText : model.chat.streamStatus)
+            Text(paneStatusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
             Text(model.agentBadge)
@@ -332,7 +355,7 @@ struct CodexChatPaneBody: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(CCCTheme.accent)
             }
-            Button("导出") { model.exportThreadToPasteboard() }
+            Button("导出") { model.exportThreadToPasteboard(threadId: paneThreadId) }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
@@ -418,7 +441,9 @@ struct CodexChatPaneBody: View {
                                         Button("编辑") { model.editUserMessage(msg) }
                                     }
                                     if msg.role == "assistant", !msg.isStreaming {
-                                        Button("重新生成") { model.regenerateAssistant(after: msg) }
+                                        Button("重新生成") {
+                                            model.regenerateAssistant(after: msg, projectId: paneProjectId)
+                                        }
                                         Button("预览") { model.previewMessage(msg.content) }
                                         if model.canTransfer {
                                             Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
@@ -559,16 +584,16 @@ struct CodexChatPaneBody: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 quickChip("对齐基线") {
-                    Task { await model.alignBaseline() }
+                    Task { await model.alignBaseline(projectId: paneProjectId) }
                 }
                 quickChip("下一步") {
-                    model.applyQuickPrompt(QuickPrompts.nextStep, uiLabel: "下一步")
+                    model.applyQuickPrompt(QuickPrompts.nextStep, uiLabel: "下一步", projectId: paneProjectId)
                 }
                 quickChip("定稿") {
-                    model.applyQuickPrompt(QuickPrompts.finalize, uiLabel: "定稿方案")
+                    model.applyQuickPrompt(QuickPrompts.finalize, uiLabel: "定稿方案", projectId: paneProjectId)
                 }
                 quickChip("扫风险") {
-                    model.applyQuickPrompt(QuickPrompts.scanRisks, uiLabel: "扫风险")
+                    model.applyQuickPrompt(QuickPrompts.scanRisks, uiLabel: "扫风险", projectId: paneProjectId)
                 }
             }
         }
@@ -713,6 +738,7 @@ struct CodexMessageRow: View {
 /// 对齐旧 Hub：复制 / 编辑 / 重新生成 / 预览 / 转任务
 struct MessageActionBar: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     let role: String
     let content: String
     let message: ChatMessage
@@ -723,7 +749,9 @@ struct MessageActionBar: View {
             if role == "user" {
                 actionBtn("编辑") { model.editUserMessage(message) }
             } else {
-                actionBtn("重新生成") { model.regenerateAssistant(after: message) }
+                actionBtn("重新生成") {
+                    model.regenerateAssistant(after: message, projectId: window.projectId)
+                }
                 actionBtn("预览") { model.previewMessage(content) }
                 if model.canTransfer {
                     actionBtn("转任务") { model.openTransfer(fromAssistantContent: content) }

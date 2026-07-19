@@ -103,6 +103,17 @@ cat > "$PLIST" <<PLIST_EOF
   <string>Background</string>
   <key>ThrottleInterval</key>
   <integer>30</integer>
+  <!-- 防 live slot / SSE 堆积打满默认 256 FD（Too many open files → 对话假死） -->
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
   <key>EnvironmentVariables</key>
   <dict>
     <key>CCC_HOME</key>
