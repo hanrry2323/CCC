@@ -742,6 +742,22 @@ struct CodexChatPaneBody: View {
                     in: Capsule()
                 )
             Spacer(minLength: 0)
+            if let fail = model.lastTurnFailure,
+               fail.threadId == paneThreadId,
+               !paneStreaming {
+                Button("重试") { model.retryLastFailedTurn(threadId: paneThreadId) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent)
+                    .help(fail.message)
+                    .accessibilityLabel("重试本条失败对话")
+                Button("清槽") { model.healThreadSlot(threadId: paneThreadId) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(CCCTheme.secondary)
+                    .help("回收本会话 Agent live 槽后重发")
+                    .accessibilityLabel("清理本会话 Agent 槽")
+            }
             if model.busy && !paneStreaming {
                 ProgressView().controlSize(.mini)
             }

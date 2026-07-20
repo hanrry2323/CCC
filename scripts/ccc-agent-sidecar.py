@@ -205,9 +205,10 @@ async def warm(request: Request):
 
 @app.post("/api/session/drop")
 async def session_drop(request: Request):
-    """丢弃 ClaudeSDKClient live slot（重置对话用）。
+    """丢弃 ClaudeSDKClient live slot（取消生成 / 重置 / 自愈）。
 
-    不删 loop-code 的 claude_session_id 历史，只让下次 query 冷启动。
+    不删 loop-code 的 claude_session_id 历史，只回收 live 进程与锁。
+    body.reason 写入日志（cancel | user-reset | heal | …）。
     """
     denied = _check_agent_auth(request)
     if denied is not None:
@@ -215,6 +216,7 @@ async def session_drop(request: Request):
     body = await request.json()
     project_path = (body.get("project_path") or "").strip()
     session_id = str(body.get("session_id") or "local")
+    reason = str(body.get("reason") or "user-reset").strip() or "user-reset"
     if not project_path or not _path_allowed(project_path):
         return JSONResponse(
             {"detail": "project_path required and must be allowed"},
@@ -224,19 +226,20 @@ async def session_drop(request: Request):
 
     tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
     key = _slot_key(project_path, session_id, tool_mode)
-    dropped = await session_manager._drop_slot(key, reason="user-reset")
+    dropped = await session_manager._drop_slot(key, reason=reason)
     # 兼容旧 key（曾含 ::discuss / ::engineer）：一并清掉，防幽灵槽串台
     legacy_dropped = []
     for legacy_mode in ("discuss", "engineer"):
         legacy_key = f"{project_path}::{session_id}::{legacy_mode}"
         if legacy_key == key:
             continue
-        if await session_manager._drop_slot(legacy_key, reason="user-reset-legacy"):
+        if await session_manager._drop_slot(legacy_key, reason=f"{reason}-legacy"):
             legacy_dropped.append(legacy_key)
     return {
         "ok": True,
         "dropped": bool(dropped) or bool(legacy_dropped),
         "key": key,
+        "reason": reason,
         "legacy_dropped": legacy_dropped,
     }
 

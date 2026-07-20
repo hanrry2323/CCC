@@ -71,7 +71,10 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 [`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md) · Agent 交接：[`desktop-agent-handoff.md`](desktop-agent-handoff.md)。
 
 状态栏徽章：**本机 Agent** / **本机 Agent 未就绪**（**禁止** Hub `/api/chat` 回退）。可聊 ≠ 可转任务。  
-探测成功缓存 30s。App 退出不杀 sidecar（保暖）。
+探测成功缓存 **10s**；任一次 chat 失败立刻失效缓存。App 退出不杀 sidecar（保暖）。
+
+**取消生成**：Desktop 总是 `POST /api/session/drop` 回收 live slot（`reason=cancel`），**默认保留** 本地 `claude_session_id` 供 resume；仅「重置对话 / 归档」清 resume id。  
+**失败 UX**：状态栏「本条失败 · 短因」+「重试」「清槽」；账本 `~/Library/Logs/CCC/desktop-chat-turns.jsonl`。
 
 消息落盘含 `tool_steps` / `files_changed` / `tools_finished`。
 
@@ -91,7 +94,7 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | `GET` | `/health` | 存活 |
 | `POST` | `/warm` | keep-warm：**带 `project_path` 才预连 SDK slot**；响应含 `slot.connected` |
 | `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`；`tool_mode`: `discuss`\|`engineer`，默认 `discuss` 无 Write/Edit/Bash） |
-| `POST` | `/api/session/drop` | 重置对话：丢 live slot |
+| `POST` | `/api/session/drop` | 取消/重置/自愈：丢 live slot（`reason` 入日志）；默认不删 resume 历史 |
 
 Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/`。
 

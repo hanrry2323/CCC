@@ -18,7 +18,9 @@
 | 4a | **本机会话 SSOT**：`~/Library/Application Support/CCCDesktop/sessions/`；Hub `PUT` 为可选镜像，非对话权威 |
 | 4b | **常态禁止** 对话打 Hub `/api/chat`（路由已删，404）；对话只走本机 sidecar |
 | 5 | chat SSE 必须收到 `done` 且 `partial != true` 才算成功；否则「回复中断」 |
-| 5a | 同会话 chat 失败可自动重试 **1** 次（保留本地消息；半截助手清空再流） |
+| 5a | 同会话 chat 失败可自动重试 **1** 次（保留本地消息；半截助手清空再流）；**排除** 401/403/503 鉴权与路径拒绝 |
+| 5a1 | 取消生成：Desktop **总是** `session/drop` 回收 live slot，**保留** `claude_session_id`；重置/归档才清 resume |
+| 5a2 | 失败可见：状态栏「本条失败 · 短因」+ 重试/清槽；账本 `~/Library/Logs/CCC/desktop-chat-turns.jsonl` |
 | 5b | 聊天流式**不**暂停 flow snapshot；仅 `syncThreadFromServer` 在生成中跳过覆盖 messages |
 | 5c | 短问 `prompt_mode=light`；含「定稿/转任务/下达」或 &gt;80 字 → `full` |
 | 6 | 短请求经 `HubRequestGate`（含 transfer）；防止打满单进程 Hub |

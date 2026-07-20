@@ -104,6 +104,23 @@ def _kill_pids(pids: set[int], *, reason: str) -> int:
         _log.warning("killed %d loop-code pid(s) reason=%s pids=%s", killed, reason, sorted(pids))
     return killed
 
+
+def _pids_alive(pids: set[int]) -> bool:
+    """任一 PID 仍存活则 True；空集合视为未知（不判死）。"""
+    if not pids:
+        return True
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return True
+        except OSError:
+            continue
+    return False
+
 try:
     from claude_agent_sdk import (
         AssistantMessage,
@@ -357,8 +374,9 @@ class ClaudeSessionManager:
             if cur is slot:
                 self._slots.pop(slot.key, None)
         _log.info(
-            "forgot Claude session slot key=%s reason=%s",
+            "forgot Claude session slot key=%s hub_sid=%s reason=%s",
             slot.key,
+            slot.hub_session_id,
             reason,
         )
 
@@ -491,7 +509,16 @@ class ClaudeSessionManager:
             await self._disconnect_slot(slot)
 
         if slot.connected and slot.client is not None:
-            return
+            # 半残 slot：cli PID 全死但仍标 connected → 强制重连，防下一轮 first_event 假死
+            if slot.cli_pids and not _pids_alive(slot.cli_pids):
+                _log.warning(
+                    "stale slot cli dead key=%s hub_sid=%s → disconnect+reconnect",
+                    slot.key,
+                    slot.hub_session_id,
+                )
+                await self._disconnect_slot(slot)
+            else:
+                return
         # Prefer stored / requested resume id
         resume = resume_session_id or slot.claude_session_id
         if slot.model != model:
@@ -703,19 +730,37 @@ class ClaudeSessionManager:
                     allowed_tools=turn_tools,
                 )
             except Exception as exc:
-                slot.connected = False
-                yield {
-                    "type": "error",
-                    "content": f"Claude 会话连接失败: {exc}",
-                    "code": "hang" if isinstance(exc, TimeoutError) else "connect_failed",
-                }
-                yield {
-                    "type": "done",
-                    "session_id": hub_session_id,
-                    "claude_session_id": slot.claude_session_id or "",
-                    "partial": True,
-                }
-                return
+                # 一次失败：断槽再连，覆盖「假 connected」残留
+                _log.warning(
+                    "ensure_connected failed hub_sid=%s key=%s → retry once: %s",
+                    hub_session_id,
+                    slot.key,
+                    exc,
+                )
+                await self._disconnect_slot(slot)
+                try:
+                    await self._ensure_connected(
+                        slot,
+                        resume_session_id=resume_session_id,
+                        model=cli_model,
+                        user_text=tool_src,
+                        prompt_mode=prompt_mode,
+                        allowed_tools=turn_tools,
+                    )
+                except Exception as exc2:
+                    slot.connected = False
+                    yield {
+                        "type": "error",
+                        "content": f"Claude 会话连接失败: {exc2}",
+                        "code": "hang" if isinstance(exc2, TimeoutError) else "connect_failed",
+                    }
+                    yield {
+                        "type": "done",
+                        "session_id": hub_session_id,
+                        "claude_session_id": slot.claude_session_id or "",
+                        "partial": True,
+                    }
+                    return
 
             started = time.monotonic()
             # 进展时钟：仅 delta/tool/status/cost/error 推进；心跳 ping 不算进展
@@ -1039,6 +1084,12 @@ class ClaudeSessionManager:
             slot, timeout=warm_wait, reason="warm"
         )
         if not got:
+            _log.info(
+                "warm skip lock_timeout hub_sid=%s key=%s wait=%.1fs (chat holds lock)",
+                hub_session_id,
+                slot.key,
+                warm_wait,
+            )
             return {
                 "ok": False,
                 "error": "lock_timeout",

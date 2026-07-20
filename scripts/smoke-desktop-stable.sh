@@ -160,7 +160,59 @@ check "hub_voice light/full" python3 -m pytest scripts/tests/test_hub_voice.py -
 # 7) 对话面边界：Desktop 禁止无 sidecar 时打 Hub /api/chat（源码契约）
 check "no Hub chat fallback in Desktop" bash -c "! grep -n 'setAgentModeHub\\|Hub 回退' desktop/Sources/CCCDesktop/*.swift && grep -q '本机 Agent 未就绪' desktop/Sources/CCCDesktop/APIClient.swift && grep -q '禁止 Hub' desktop/Sources/CCCDesktop/APIClient.swift"
 
-# 8) PUT messages 备份语义（Hub 可达时）
+# 8) 稳定性契约：cancel 必 drop；stream 错误码化；鉴权不重试
+check "cancelChat always drops live slot" grep -q 'reason: reason' desktop/Sources/CCCDesktop/AppModel.swift \
+  && grep -q '总是回收 live slot' desktop/Sources/CCCDesktop/AppModel.swift
+check "APIError.stream + retry whitelist" grep -q 'case stream(code' desktop/Sources/CCCDesktop/APIClient.swift \
+  && grep -q 'isNonRetryableAuthOrClient' desktop/Sources/CCCDesktop/APIClient.swift \
+  && grep -q 'isRetryableStreamFailure' desktop/Sources/CCCDesktop/APIClient.swift
+check "heal drop before retry" grep -q 'heal-' desktop/Sources/CCCDesktop/AppModel.swift \
+  && grep -q 'shouldDropLiveSlotBeforeRetry' desktop/Sources/CCCDesktop/AppModel.swift
+check "turn ledger + failure UX" test -f desktop/Sources/CCCDesktop/DesktopChatTurnLedger.swift \
+  && grep -q 'lastTurnFailure' desktop/Sources/CCCDesktop/AppModel.swift \
+  && grep -q 'retryLastFailedTurn' desktop/Sources/CCCDesktop/ContentView.swift
+check "agent probe TTL 10s" grep -q 'addingTimeInterval(10)' desktop/Sources/CCCDesktop/AppModel.swift \
+  && grep -q 'invalidateAgentProbeCache' desktop/Sources/CCCDesktop/AppModel.swift
+
+# 9) sidecar：假 connected / drop reason / warm lock 日志
+check "sidecar stale cli reconnect" grep -q '_pids_alive' scripts/chat_server/services/claude_session.py \
+  && grep -q 'stale slot cli dead' scripts/chat_server/services/claude_session.py
+check "sidecar drop reason param" grep -q 'body.get("reason")' scripts/ccc-agent-sidecar.py
+check "sidecar warm lock skip log" grep -q 'warm skip lock_timeout' scripts/chat_server/services/claude_session.py
+
+# 9b) drop API 可达（带 token 时）
+check "sidecar session drop route" python3 - <<PY
+import json, sys, urllib.error, urllib.request
+from pathlib import Path
+url = "${AGENT}/api/session/drop"
+body = json.dumps({
+    "project_path": "/tmp",
+    "session_id": "smoke-drop-validate",
+    "reason": "smoke",
+}).encode()
+headers = {"Content-Type": "application/json"}
+tok = __import__("os").environ.get("CCC_AGENT_TOKEN", "").strip()
+if not tok:
+    p = Path.home() / ".ccc" / "agent-token"
+    if p.is_file():
+        tok = p.read_text(encoding="utf-8").strip()
+if tok:
+    headers["Authorization"] = f"Bearer {tok}"
+    headers["X-CCC-Agent-Token"] = tok
+req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+try:
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        # /tmp 可能不在 allowlist → 400；或 ok
+        sys.exit(0 if resp.status in (200, 400) else 1)
+except urllib.error.HTTPError as e:
+    # 400=path not allowed；401/503=auth
+    sys.exit(0 if e.code in (400, 401, 403, 503) else 1)
+except Exception as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+PY
+
+# 10) PUT messages 备份语义（Hub 可达时）
 if [[ -f /tmp/ccc-stable-hub-config.json ]] && grep -q '"ok"' /tmp/ccc-stable-hub-config.json 2>/dev/null; then
   check "hub messages PUT is backup" python3 - <<PY
 import json, urllib.request, base64, sys

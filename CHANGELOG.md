@@ -27,9 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
 - **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。
 - **testing 恢复绕过 small 跳过**：Engine recover testing 改为走 `_run_reviewer_tester_gate`（与正常门禁一致，不再硬拉 reviewer）。
-- **对话失忆 / 多会话串槽**：Desktop 持久化并回传 `claude_session_id`（冷启动 resume）；取消生成默认不 drop slot；重置/归档清该项目全部 thread 槽；sidecar slot key 去掉 tool_mode 分叉；token 压缩按 thread 计数。
+- **对话失忆 / 多会话串槽**：Desktop 持久化并回传 `claude_session_id`（冷启动 resume）；取消生成回收 live slot 但默认保留 resume id；重置/归档清该项目全部 thread 槽；sidecar slot key 去掉 tool_mode 分叉；token 压缩按 thread 计数。
 - **多会话名存实亡**：发送/暖机/转任务/快捷操作跟 `window.threadId`，不再强制打回 `{project}::main`；新建会话返回并绑定本窗；窗级线程焦点供 warm。
-- **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` 主动 `session/drop`；发送前不再与 chat 抢 warm 锁。
+- **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` **总是** `session/drop` 回收 live slot（默认仍保留 `claude_session_id` 以便 resume）；发送前不再与 chat 抢 warm 锁。
+- **对话稳定性升级**：SSE `error` 带 `code` 进 `APIError.stream`；重试白名单排除鉴权；timeout/stub 重试前 heal-drop；健康缓存 10s 且失败即失效；状态栏「重试/清槽」；turn 账本 `desktop-chat-turns.jsonl`；sidecar 检测 cli PID 已死的假 connected 槽并强制重连。
 - **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
 - **对话可靠性契约（非止血）**：`有心跳 ≠ 有进展`。sidecar：`CHAT_FIRST_EVENT_TIMEOUT` / `CHAT_TOOL_STALL_TIMEOUT` → interrupt + error code + 回收 slot/僵尸 cli；discuss **保留** Web* 全集，短问/light **按意图**零工具或推迟 Web*（SDK 空 `allowed_tools` 会被当成全开，已改用 `disallowed_tools` 强制）；工具集变更则重连。Desktop：ping 不重置进展钟；状态「等待首包 / 工具执行中：Name」。
 - **Desktop agent 输出不稳定（OpenCode 多窗后遗症）**：消息修订与编排修订拆分（`threadRevision` / `threadFlowRevision`），Flow SSE 不再拖聊天重滚；去掉长 delta 异步分片竞态；流式中不写盘、迟到 delta 拒绝回写；流式气泡用纯文本避免 Markdown 闪烁；warm 与在途 chat 互斥加强。

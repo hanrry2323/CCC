@@ -3,6 +3,8 @@ import Foundation
 enum APIError: LocalizedError {
     case badURL
     case http(Int, String)
+    /// SSE `type=error`（带 sidecar `code`）或客户端进展超时
+    case stream(code: String?, message: String)
     case decode(String)
     case gate([GateError])
 
@@ -10,10 +12,96 @@ enum APIError: LocalizedError {
         switch self {
         case .badURL: return "无效 Server 地址"
         case .http(let code, let body): return "HTTP \(code): \(body)"
+        case .stream(_, let message): return message
         case .decode(let m): return "解析失败: \(m)"
         case .gate(let errs):
             return errs.map(\.localized).joined(separator: "；")
         }
+    }
+
+    /// sidecar / 客户端稳定性错误码（无则 nil）
+    var streamCode: String? {
+        switch self {
+        case .stream(let code, _): return code
+        default: return nil
+        }
+    }
+
+    var httpStatus: Int? {
+        switch self {
+        case .http(let code, _): return code
+        default: return nil
+        }
+    }
+
+    /// 鉴权 / 路径 / 过长：禁止自动重试
+    var isNonRetryableAuthOrClient: Bool {
+        switch self {
+        case .http(let code, let body):
+            if code == 401 || code == 403 || code == 503 || code == 413 { return true }
+            let b = body.lowercased()
+            return b.contains("unauthorized")
+                || b.contains("project_path not allowed")
+                || b.contains("鉴权")
+        case .stream(let code, let message):
+            let c = (code ?? "").lowercased()
+            if c == "unauthorized" { return true }
+            let m = message.lowercased()
+            return m.contains("鉴权") || m.contains("unauthorized")
+        default:
+            return false
+        }
+    }
+
+    /// 同会话可自动重试的中断类错误
+    var isRetryableStreamFailure: Bool {
+        if isNonRetryableAuthOrClient { return false }
+        switch self {
+        case .stream(let code, let message):
+            let c = (code ?? "").lowercased()
+            if ["first_event_timeout", "tool_stall", "idle_timeout", "max_timeout",
+                "lock_timeout", "client_progress_stall", "empty_stub",
+                "hang", "connect_failed"].contains(c) {
+                return true
+            }
+            let m = message
+            return m.contains("中断") || m.contains("无进展") || m.contains("首事件")
+                || m.contains("首包") || m.contains("挂死") || m.contains("工具")
+                || m.contains("超时") || m.contains("空占位") || m.contains("连接")
+        case .decode(let m):
+            return m.contains("中断") || m.contains("空回复") || m.contains("无进展")
+        case .http(let code, let body):
+            if code == 401 || code == 403 || code == 503 || code == 413 { return false }
+            // 5xx 且非鉴权文案时允许重试一次
+            if code >= 500 {
+                return !body.contains("鉴权")
+            }
+            return false
+        default:
+            return false
+        }
+    }
+
+    /// 重试前是否 drop live slot；empty_stub 额外清 resume id
+    var shouldDropLiveSlotBeforeRetry: Bool {
+        switch self {
+        case .stream(let code, _):
+            let c = (code ?? "").lowercased()
+            return ["first_event_timeout", "tool_stall", "lock_timeout",
+                    "client_progress_stall", "empty_stub", "hang", "connect_failed",
+                    "idle_timeout", "max_timeout"].contains(c)
+        case .decode(let m):
+            return m.contains("无进展") || m.contains("中断") || m.contains("空回复")
+        default:
+            return false
+        }
+    }
+
+    var shouldClearResumeIdBeforeRetry: Bool {
+        if case .stream(let code, _) = self {
+            return (code ?? "").lowercased() == "empty_stub"
+        }
+        return false
     }
 }
 
@@ -192,15 +280,24 @@ actor APIClient {
         }
     }
 
-    /// 通知 sidecar 丢弃项目的 ClaudeSDKClient live slot（重置对话用）
-    func dropSidecarSession(projectPath: String, sessionId: String) async {
+    /// 通知 sidecar 丢弃 ClaudeSDKClient live slot。
+    /// - Parameter reason: 写入 sidecar 日志（cancel / reset / heal）
+    func dropSidecarSession(
+        projectPath: String,
+        sessionId: String,
+        reason: String = "user-reset"
+    ) async {
         guard let root = chatBaseURL else { return }
         guard let url = URL(string: "api/session/drop", relativeTo: root) else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAgentAuth(&req)
-        let body: [String: Any] = ["project_path": projectPath, "session_id": sessionId]
+        let body: [String: Any] = [
+            "project_path": projectPath,
+            "session_id": sessionId,
+            "reason": reason,
+        ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         req.timeoutInterval = 5
         _ = try? await session.data(for: req)
@@ -483,6 +580,8 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
+        var streamErrCode: String?
+        var streamErrMsg: String?
         // 可靠性：有心跳 ≠ 有进展。ping 只证明连接活着，不得重置进展时钟。
         // 与 sidecar CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 对齐并略宽。
         let progressLimit: TimeInterval = 75
@@ -494,8 +593,9 @@ actor APIClient {
         for try await chunk in bytes {
             try Task.checkCancellation()
             if Date().timeIntervalSince(lastProgressAt) > progressLimit {
-                throw APIError.decode(
-                    "本机 Agent 无进展（\(Int(progressLimit))s 仅心跳或静默）。可能工具挂死，已中止；请重试"
+                throw APIError.stream(
+                    code: "client_progress_stall",
+                    message: "本机 Agent 无进展（\(Int(progressLimit))s 仅心跳或静默）。可能工具挂死，已中止；请重试"
                 )
             }
             buffer.append(chunk)
@@ -522,8 +622,13 @@ actor APIClient {
                     continue
                 }
                 if type == "error" {
+                    // 记下 code，继续读随后的 done（契约：error 后仍有 done）
                     let msg = (obj["content"] as? String) ?? (obj["message"] as? String) ?? "chat error"
-                    throw APIError.http(500, msg)
+                    let code = (obj["code"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    streamErrMsg = msg
+                    streamErrCode = (code?.isEmpty == false) ? code : streamErrCode
+                    lastProgressAt = Date()
+                    continue
                 }
                 if type == "tool_use" || type == "tool-use" || type == "tooluse" {
                     lastProgressAt = Date()
@@ -599,11 +704,17 @@ actor APIClient {
                 buffer = buffer.subdata(in: cursor..<buffer.endIndex)
             }
         }
+        if let errMsg = streamErrMsg {
+            throw APIError.stream(code: streamErrCode, message: errMsg)
+        }
         if !gotDelta && !gotTool {
-            throw APIError.decode("空回复（SSE 未解析到内容）")
+            throw APIError.stream(code: "empty_reply", message: "空回复（SSE 未解析到内容）")
         }
         if !gotDone || donePartial {
-            throw APIError.decode("回复中断（连接或生成未完整结束）")
+            throw APIError.stream(
+                code: donePartial ? "partial_done" : "incomplete",
+                message: "回复中断（连接或生成未完整结束）"
+            )
         }
     }
 

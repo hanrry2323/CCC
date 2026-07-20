@@ -96,6 +96,8 @@ final class AppModel: ObservableObject {
     @Published var recentEpics: [FlowEpicRef] = []
     @Published var selectedNodeDetail: FlowNodeDetail?
     @Published var lastError: String?
+    /// 最近一次本条对话失败（状态栏可重试/清槽）
+    @Published var lastTurnFailure: ChatTurnFailure?
     @Published var expandedProjectIds: Set<String> = []
     @Published var renameThreadId: String?
     @Published var renameDraft: String = ""
@@ -193,7 +195,7 @@ final class AppModel: ObservableObject {
     private var client: APIClient
     /// UI smoke 写入路径（仅 CCC_DESKTOP_UI_SMOKE=1）
     private(set) var uiSmokeOutPath: String?
-    /// sidecar 探测成功缓存（30s）
+    /// sidecar 探测成功缓存（10s；失败立即失效，缩短假健康窗口）
     private var agentProbeOKUntil: Date?
     private var cachedAgentBaseURL: URL?
     private var didToastHubFallback = false
@@ -315,7 +317,7 @@ final class AppModel: ObservableObject {
         )
     }
 
-    /// 探测（30s 缓存）→ 失败则拉起 sidecar → 再探测；失败标「未就绪」并后台重探
+    /// 探测（10s 缓存）→ 失败则拉起 sidecar → 再探测；失败标「未就绪」并后台重探
     @discardableResult
     private func ensureLocalAgent() async -> URL? {
         let agentRaw = ProcessInfo.processInfo.environment["CCC_AGENT"]?
@@ -337,7 +339,7 @@ final class AppModel: ObservableObject {
         }
 
         if await client.probeLocalAgent(base: candidate) {
-            agentProbeOKUntil = Date().addingTimeInterval(30)
+            agentProbeOKUntil = Date().addingTimeInterval(10)
             cachedAgentBaseURL = candidate
             agentMode = "local"
             agentBadge = "本机 Agent"
@@ -363,7 +365,7 @@ final class AppModel: ObservableObject {
         let deadline = Date().addingTimeInterval(8)
         while Date() < deadline {
             if await client.probeLocalAgent(base: candidate) {
-                agentProbeOKUntil = Date().addingTimeInterval(30)
+                agentProbeOKUntil = Date().addingTimeInterval(10)
                 cachedAgentBaseURL = candidate
                 agentMode = "local"
                 agentBadge = "本机 Agent"
@@ -383,6 +385,11 @@ final class AppModel: ObservableObject {
         return nil
     }
 
+    /// chat 失败后立刻丢掉健康缓存，避免 10s 假「可聊」
+    private func invalidateAgentProbeCache() {
+        agentProbeOKUntil = nil
+    }
+
     private func warmLocalAgentNow(
         base: URL? = nil,
         toolMode: String = "discuss",
@@ -390,7 +397,12 @@ final class AppModel: ObservableObject {
         threadId: String? = nil
     ) async {
         // 已在流式 / 有在途 chat task 时勿抢 slot 锁
-        if shouldSkipWarmForChat() { return }
+        if shouldSkipWarmForChat() {
+            #if DEBUG
+            print("[warm] skip: chat in flight")
+            #endif
+            return
+        }
         let pid = projectId ?? selectedProjectId
         guard let pid, !pid.isEmpty else { return }
         let path = localPath(for: pid)
@@ -1824,6 +1836,7 @@ final class AppModel: ObservableObject {
 
             // 同会话自动重试 1 次（保留已生成的本地内容，清空半截助手再流）
             var streamError: Error?
+            let turnStarted = Date()
             for attempt in 1...2 {
                 do {
                     if attempt == 2 {
@@ -1857,6 +1870,16 @@ final class AppModel: ObservableObject {
                         }
                     }
                     streamError = nil
+                    DesktopChatTurnLedger.append([
+                        "event": "ok",
+                        "threadId": threadId,
+                        "projectId": projectId,
+                        "attempt": attempt,
+                        "duration_ms": Int(Date().timeIntervalSince(turnStarted) * 1000),
+                    ])
+                    if lastTurnFailure?.threadId == threadId {
+                        lastTurnFailure = nil
+                    }
                     break
                 } catch is CancellationError {
                     throw CancellationError()
@@ -1865,19 +1888,47 @@ final class AppModel: ObservableObject {
                     let cancelled = (error as NSError).code == NSURLErrorCancelled
                         || error.localizedDescription.lowercased().contains("cancel")
                     if cancelled { throw error }
-                    // 仅网络/半截可重试
-                    let retryable = error.localizedDescription.contains("中断")
-                        || error.localizedDescription.contains("partial")
-                        || error.localizedDescription.contains("timed out")
-                        || error.localizedDescription.contains("Timeout")
-                        || error.localizedDescription.contains("连接")
-                        || error.localizedDescription.contains("无响应")
-                        || error.localizedDescription.contains("无进展")
-                        || error.localizedDescription.contains("挂死")
-                        || error.localizedDescription.contains("首事件")
-                        || error.localizedDescription.contains("工具")
-                        || (error as? APIError).map { if case .http = $0 { return true }; return false } ?? false
-                        || (error as NSError).domain == NSURLErrorDomain
+
+                    let apiErr = error as? APIError
+                    let retryable: Bool = {
+                        if let apiErr {
+                            if apiErr.isNonRetryableAuthOrClient { return false }
+                            if apiErr.isRetryableStreamFailure { return true }
+                        }
+                        if (error as NSError).domain == NSURLErrorDomain { return true }
+                        let d = error.localizedDescription
+                        return d.contains("中断") || d.contains("无进展") || d.contains("timed out")
+                            || d.contains("Timeout") || d.contains("连接")
+                    }()
+
+                    var didHealDrop = false
+                    if attempt == 1, retryable, let apiErr, apiErr.shouldDropLiveSlotBeforeRetry {
+                        if let path = streamProjectPath, !path.isEmpty {
+                            if apiErr.shouldClearResumeIdBeforeRetry {
+                                threadClaudeSessionIds.removeValue(forKey: threadId)
+                            }
+                            await client.dropSidecarSession(
+                                projectPath: path,
+                                sessionId: threadId,
+                                reason: "heal-\(apiErr.streamCode ?? "retry")"
+                            )
+                            didHealDrop = true
+                        }
+                    }
+
+                    DesktopChatTurnLedger.append([
+                        "event": "fail_attempt",
+                        "threadId": threadId,
+                        "projectId": projectId,
+                        "attempt": attempt,
+                        "code": apiErr?.streamCode ?? "",
+                        "http": apiErr?.httpStatus ?? 0,
+                        "retryable": retryable,
+                        "heal_drop": didHealDrop,
+                        "message": String(error.localizedDescription.prefix(200)),
+                        "duration_ms": Int(Date().timeIntervalSince(turnStarted) * 1000),
+                    ])
+
                     if attempt == 1 && retryable {
                         continue
                     }
@@ -1902,7 +1953,7 @@ final class AppModel: ObservableObject {
                 }
             }
             if failedEmpty {
-                throw APIError.decode("模型无有效回复")
+                throw APIError.stream(code: "empty_reply", message: "模型无有效回复")
             }
             setThreadStreamStatus(threadId, "")
             if selectedThreadId == threadId {
@@ -1960,11 +2011,35 @@ final class AppModel: ObservableObject {
                 }
             }
             if !cancelled {
+                invalidateAgentProbeCache()
+                let apiErr = error as? APIError
+                let code = apiErr?.streamCode
+                let msg = error.localizedDescription
+                lastTurnFailure = ChatTurnFailure(
+                    threadId: threadId,
+                    projectId: projectId,
+                    code: code,
+                    message: msg,
+                    userText: text,
+                    at: Date()
+                )
+                DesktopChatTurnLedger.append([
+                    "event": "fail",
+                    "threadId": threadId,
+                    "projectId": projectId,
+                    "code": code ?? "",
+                    "http": apiErr?.httpStatus ?? 0,
+                    "message": String(msg.prefix(240)),
+                ])
                 setThreadStreamStatus(threadId, "")
                 if selectedThreadId == threadId {
-                    setStatusImmediate("本条失败")
+                    setStatusImmediate("本条失败 · \(lastTurnFailure?.shortLabel ?? "错误")")
                 }
-                showToast("对话失败：\(error.localizedDescription)")
+                if apiErr?.isNonRetryableAuthOrClient == true {
+                    showToast("对话失败（鉴权/路径）：\(msg)。请检查 ~/.ccc/agent-token 并执行 bash scripts/install-agent-sidecar-plist.sh --start")
+                } else {
+                    showToast("对话失败：\(lastTurnFailure?.shortLabel ?? msg)")
+                }
                 setComposerBounce(text, threadId: threadId)
             }
         }
@@ -2099,20 +2174,68 @@ final class AppModel: ObservableObject {
             }
         }
         flushDiskSave(threadId: tid)
-        // 默认不 drop：保留 claude_session_id 以便下一轮 resume（持续对话）。
-        // 仅显式重置/归档时 dropSlot=true。
+        // 总是回收 live slot（防半残 cli → 下一轮 first_event 假死）。
+        // 默认保留 claude_session_id 以便 resume；仅显式重置/归档时清 resume id。
+        let projectId = LocalSessionStore.projectId(fromThreadId: tid)
+        let path = localPath(for: projectId) ?? localPath(for: selectedProjectId)
         if dropSlot {
-            let projectId = tid.split(separator: ":").first.map(String.init)
-            let path = localPath(for: projectId) ?? localPath(for: selectedProjectId)
-            if let path, !path.isEmpty {
-                threadClaudeSessionIds.removeValue(forKey: tid)
-                Task {
-                    await client.dropSidecarSession(projectPath: path, sessionId: tid)
-                }
+            threadClaudeSessionIds.removeValue(forKey: tid)
+        }
+        if let path, !path.isEmpty {
+            let reason = dropSlot ? "user-reset" : "cancel"
+            Task {
+                await client.dropSidecarSession(
+                    projectPath: path,
+                    sessionId: tid,
+                    reason: reason
+                )
             }
         }
         if !silent {
             showToast("已取消生成")
+        }
+    }
+
+    /// 状态栏：重试最近失败的用户消息
+    func retryLastFailedTurn(threadId: String? = nil) {
+        guard let fail = lastTurnFailure else { return }
+        let tid = threadId ?? fail.threadId
+        guard tid == fail.threadId else { return }
+        let text = fail.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        lastTurnFailure = nil
+        Task {
+            await sendUserMessageAndWait(
+                text,
+                projectId: fail.projectId,
+                threadId: tid
+            )
+        }
+    }
+
+    /// 状态栏：只清本会话 live 槽（保留本地消息与 resume id）
+    func healThreadSlot(threadId: String? = nil) {
+        let tid = threadId ?? selectedThreadId ?? lastTurnFailure?.threadId
+        guard let tid, !tid.isEmpty else {
+            showToast("请先选择会话")
+            return
+        }
+        let pid = LocalSessionStore.projectId(fromThreadId: tid)
+        guard let path = localPath(for: pid), !path.isEmpty else {
+            showToast("未绑定本机工作区，无法清槽")
+            return
+        }
+        Task {
+            await client.dropSidecarSession(projectPath: path, sessionId: tid, reason: "heal-ui")
+            if lastTurnFailure?.threadId == tid {
+                lastTurnFailure = nil
+            }
+            showToast("已清理本会话 Agent 槽，可再发一条")
+            DesktopChatTurnLedger.append([
+                "event": "heal_slot",
+                "threadId": tid,
+                "projectId": pid,
+            ])
         }
     }
 
