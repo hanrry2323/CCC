@@ -33,7 +33,12 @@ print("sample ready", p)
 PY
 
 # Hub 读的是服务端仓 inbox/；远端时先同步样例并清掉 adopted 残留
-if [[ "${SERVER}" == *"192.168."* ]] || [[ "${SERVER}" == *"mac2017"* ]] || [[ -n "${CCC_SYNC_INBOX:-}" ]]; then
+_is_remote_hub=0
+case "${SERVER}" in
+  *192.168.*|*mac2017*) _is_remote_hub=1 ;;
+esac
+if [[ -n "${CCC_SYNC_INBOX:-}" ]]; then _is_remote_hub=1; fi
+if [[ "${_is_remote_hub}" == "1" ]]; then
   ssh "${REMOTE_HOST}" "mkdir -p ~/program/CCC/inbox/adopted; rm -f ~/program/CCC/inbox/adopted/${SAMPLE}.md"
   rsync -az "inbox/${SAMPLE}.md" "${REMOTE_HOST}:~/program/CCC/inbox/${SAMPLE}.md"
 fi
@@ -83,15 +88,21 @@ assert d.get("ok") and d.get("epic_id")
 print("snapshot ok", d["epic_id"])
 '
 
-# restore pending sample on remote+local for next run / repo
+# restore pending sample on Hub machine for next run / repo
+# adopt 会把样例挪到 inbox/adopted/；本机 Hub（127.0.0.1）也要迁回
+if [[ ! -f "inbox/${SAMPLE}.md" && -f "inbox/adopted/${SAMPLE}.md" ]]; then
+  mv "inbox/adopted/${SAMPLE}.md" "inbox/${SAMPLE}.md"
+fi
 python3 - <<PY
 from pathlib import Path
 p = Path("inbox/${SAMPLE}.md")
+if not p.is_file():
+    raise SystemExit(f"missing {p} after adopt")
 t = p.read_text(encoding="utf-8").replace("status: adopted", "status: pending")
 p.write_text(t, encoding="utf-8")
 print("local sample restored pending")
 PY
-if [[ "${SERVER}" == *"192.168."* ]] || [[ "${SERVER}" == *"mac2017"* ]] || [[ -n "${CCC_SYNC_INBOX:-}" ]]; then
+if [[ "${_is_remote_hub}" == "1" ]]; then
   ssh "${REMOTE_HOST}" "rm -f ~/program/CCC/inbox/adopted/${SAMPLE}.md"
   rsync -az "inbox/${SAMPLE}.md" "${REMOTE_HOST}:~/program/CCC/inbox/${SAMPLE}.md"
 fi
