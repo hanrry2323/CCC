@@ -763,21 +763,33 @@ final class AppModel: ObservableObject {
             let prevTid = resolveThreadId(projectId: prev, preferred: selectedThreadId)
             persistCurrentThreadSnapshot(threadId: prevTid)
         }
+        // 同步先定 tid + 水合，避免 await refreshThreads 间隙 UI 仍停在旧项目或闪空
+        let localRecent = LocalSessionStore.threadsAsDesktop(projectId: id).first?.thread_id
+        let eagerTid = localRecent ?? threadIdForProject(id)
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        // 多会话：最近线程优先，否则兼容 ::main（不再强制打回 main）
+        ensureThreadHydrated(threadId: eagerTid)
+        selectedThreadId = eagerTid
+        if switching {
+            selectedNodeDetail = nil
+            ensureFlowSSE()
+            // 右栏先贴本线程缓存，等 load 完成再精修（禁止先清空）
+            if let snap = threadFlow[eagerTid] {
+                applyFlowSnapshot(snap)
+            }
+        }
+        // 多会话：刷新索引后再对齐最近线程
         await refreshThreads(projectId: id)
         let recent = threads.first(where: {
             LocalSessionStore.projectId(fromThreadId: $0.thread_id) == id
         })?.thread_id
         let tid = recent ?? threadIdForProject(id)
-        ensureThreadHydrated(threadId: tid)
-        selectedThreadId = tid
+        if tid != selectedThreadId {
+            ensureThreadHydrated(threadId: tid)
+            selectedThreadId = tid
+        }
         if switching {
-            // 禁止先清空再加载（会闪空对话/右栏）；直接 hydrate
-            selectedNodeDetail = nil
-            ensureFlowSSE()
             await loadConversation(threadId: tid)
             let warmGen = threadSwitchGeneration
             Task { [warmGen] in
@@ -865,8 +877,7 @@ final class AppModel: ObservableObject {
         } else {
             setThreadTransferDraft(tid, nil)
         }
-        lastAnimatedEpicId = nil
-        flowSplitGeneration &+= 1
+        // 切项目/会话不重启右栏拆解动画（仅真扇出时 bump，见 applyFlowSnapshot）
         applyFlowSnapshot(threadFlow[tid])
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()

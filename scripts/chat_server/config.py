@@ -92,11 +92,13 @@ CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
-# discuss 保留联网工具，但约束默认行为：避免寒暄/短答一上来 WebFetch 挂死整轮
+# discuss：保留联网工具；快捷条任务强制本仓深查（对齐 Cursor）
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · discuss】除非用户明确要求查网页或搜外网资料，"
-    "否则不要调用 WebFetch/WebSearch；短确认、闲聊、本仓库问答优先直接回答，"
-    "需要读仓时用 Read/Glob/Grep/LS。"
+    "否则不要调用 WebFetch/WebSearch。"
+    "对齐基线 / 下一步 / 定稿 / 扫风险 / 涉及仓库事实时："
+    "必须先用 Read/Glob/Grep/Bash 核实，再给结论；禁止空谈。"
+    "短确认、闲聊可直接答；需要读仓时用 Read/Glob/Grep/Bash。"
 )
 
 
@@ -123,7 +125,8 @@ _WEB_INTENT_RE = re.compile(
 
 
 _REPO_PROBE_RE = re.compile(
-    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码)",
+    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码|"
+    r"对齐基线|对齐项目基线|定稿|扫风险|下一步|静默探测|静默功课)",
     re.I,
 )
 

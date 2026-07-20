@@ -44,6 +44,9 @@ struct ContentView: View {
             }
         }
         .foregroundStyle(CCCTheme.ink)
+        // 切项目/会话时禁止整窗隐式动画（侧栏展开 + 中栏消息替换会叠成「闪一下」）
+        .animation(nil, value: window.projectId)
+        .animation(nil, value: window.threadId)
         // bootstrap 在 WindowRootView，避免多窗重复打 Hub
         .sheet(isPresented: Binding(
             get: { model.isTransferSheetPresented(for: window.threadId) },
@@ -312,6 +315,8 @@ struct CodexSidebar: View {
             .padding(.top, 8)
             .padding(.bottom, 16)
         }
+        // 切项目时禁止侧栏展开/收起动画，避免整窗闪一下
+        .animation(nil, value: window.projectId)
     }
 
     @ViewBuilder
@@ -319,80 +324,15 @@ struct CodexSidebar: View {
         let threads = model.threads.filter { LocalSessionStore.projectId(fromThreadId: $0.thread_id) == projectId }
         if !threads.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Spacer(minLength: 0)
-                    Button {
-                        Task {
-                            let tid = await model.createNewThread(projectId: projectId)
-                            window.threadId = tid
-                            window.projectId = projectId
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(CCCTheme.accent)
-                    .help("新建会话")
-                    .accessibilityLabel("新建会话")
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 2)
-                .padding(.bottom, 2)
                 ForEach(threads.prefix(10)) { thread in
-                    let selected = thread.thread_id == window.threadId
-                    let streaming = model.isThreadStreaming(thread.thread_id)
-                    let unread = model.isThreadUnread(thread.thread_id)
-                    HStack(spacing: 8) {
-                        Image(systemName: "bubble.left")
-                            .font(.system(size: 11))
-                            .foregroundStyle(selected ? CCCTheme.accent : CCCTheme.faint)
-                            .frame(width: 14)
-                        Text(thread.title ?? thread.thread_id.suffix(12).description)
-                            .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
-                            .foregroundStyle(selected ? CCCTheme.ink : CCCTheme.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if streaming {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else if unread {
-                            Circle()
-                                .fill(CCCTheme.unread)
-                                .frame(width: 8, height: 8)
-                                .accessibilityLabel("未读")
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(selected ? CCCTheme.selected : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        window.projectId = projectId
-                        window.threadId = thread.thread_id
-                        model.selectedThreadId = thread.thread_id
-                        model.selectedProjectId = projectId
-                        model.clearThreadUnread(thread.thread_id)
-                        Task { await model.openThread(thread.thread_id) }
-                    }
-                    .contextMenu {
-                        Button("重命名") {
-                            model.renameThreadId = thread.thread_id
-                            model.renameDraft = thread.title ?? ""
-                        }
-                        Button("存档", role: .destructive) {
-                            Task { await model.archiveThread(threadId: thread.thread_id) }
-                        }
-                    }
-                    .accessibilityLabel(
-                        "\(thread.title ?? "会话")\(selected ? "，已选中" : "")\(streaming ? "，生成中" : "")\(unread ? "，未读" : "")"
+                    SidebarThreadRow(
+                        thread: thread,
+                        projectId: projectId,
+                        isSelected: thread.thread_id == window.threadId
                     )
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, 6)
         }
     }
 
@@ -432,6 +372,107 @@ struct CodexSidebar: View {
     }
 }
 
+/// 侧栏会话行：点选有底色 + 轻脉冲，避免「不知道点没点上」
+private struct SidebarThreadRow: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
+    let thread: DesktopThread
+    let projectId: String
+    let isSelected: Bool
+
+    @State private var hovering = false
+    @State private var pressFlash = false
+
+    private var streaming: Bool { model.isThreadStreaming(thread.thread_id) }
+    private var unread: Bool { model.isThreadUnread(thread.thread_id) }
+
+    var body: some View {
+        Button(action: select) {
+            HStack(spacing: 7) {
+                Image(systemName: isSelected ? "bubble.left.fill" : "bubble.left")
+                    .font(.system(size: 10, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? CCCTheme.accent : CCCTheme.faint.opacity(0.75))
+                    .frame(width: 12)
+                    .scaleEffect(pressFlash ? 1.15 : 1)
+                Text(thread.title ?? thread.thread_id.suffix(12).description)
+                    .font(.system(size: 12, weight: isSelected ? .regular : .light))
+                    .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary.opacity(0.9))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if streaming {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else if unread {
+                    Circle()
+                        .fill(CCCTheme.unread)
+                        .frame(width: 7, height: 7)
+                        .accessibilityLabel("未读")
+                }
+            }
+            .padding(.leading, 28)
+            .padding(.trailing, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(rowFill)
+            )
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(CCCTheme.accent)
+                    .frame(width: 2.5, height: isSelected || pressFlash ? 16 : 0)
+                    .opacity(isSelected || pressFlash ? 1 : 0)
+                    .padding(.leading, 18)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isSelected)
+                    .animation(.easeOut(duration: 0.2), value: pressFlash)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(pressFlash ? 0.985 : 1)
+        .animation(.spring(response: 0.22, dampingFraction: 0.72), value: pressFlash)
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("重命名") {
+                model.renameThreadId = thread.thread_id
+                model.renameDraft = thread.title ?? ""
+            }
+            Button("存档", role: .destructive) {
+                Task { await model.archiveThread(threadId: thread.thread_id) }
+            }
+        }
+        .accessibilityLabel(
+            "\(thread.title ?? "会话")\(isSelected ? "，已选中" : "")\(streaming ? "，生成中" : "")\(unread ? "，未读" : "")"
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var rowFill: Color {
+        if pressFlash { return CCCTheme.accent.opacity(0.18) }
+        if isSelected { return CCCTheme.selected }
+        if hovering { return CCCTheme.hover }
+        return .clear
+    }
+
+    private func select() {
+        withAnimation(.easeOut(duration: 0.12)) {
+            pressFlash = true
+        }
+        window.projectId = projectId
+        window.threadId = thread.thread_id
+        window.destination = .chat
+        model.selectedThreadId = thread.thread_id
+        model.selectedProjectId = projectId
+        model.clearThreadUnread(thread.thread_id)
+        Task {
+            await model.openThread(thread.thread_id)
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            withAnimation(.easeOut(duration: 0.25)) {
+                pressFlash = false
+            }
+        }
+    }
+}
+
 // MARK: - Chat（Cursor 节奏：消息区占满 + 输入条贴底）
 
 struct CodexChatPane: View {
@@ -456,6 +497,10 @@ struct CodexChatPaneBody: View {
     @State private var needsInstantBottomPin: Bool = true
     /// 触发 ScrollViewReader 内再钉一次底（scene 激活时 onAppear 不一定重跑）
     @State private var bottomPinTick: UInt64 = 0
+    /// 切会话过渡：先遮罩 + 圆圈，再缓慢露出内容（掩盖瞬时闪屏）
+    @State private var paneContentOpacity: Double = 1
+    @State private var showPaneSwitchSpinner = false
+    @State private var paneSwitchGeneration: UInt64 = 0
     @FocusState private var composerFocused: Bool
 
     /// 本窗唯一项目焦点；禁止回落全局 selected（否则他窗切项会拖走本窗历史）
@@ -501,9 +546,25 @@ struct CodexChatPaneBody: View {
             if !model.canChat {
                 offlineCenter
             } else {
-                messageArea
+                ZStack {
+                    messageArea
+                        .opacity(paneContentOpacity)
+                    if showPaneSwitchSpinner {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.regular)
+                                .scaleEffect(1.15)
+                            Text("加载对话…")
+                                .font(.system(size: 12, weight: .light))
+                                .foregroundStyle(CCCTheme.faint)
+                        }
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                    }
+                }
                 if model.transferDraft(for: paneThreadId) != nil {
                     transferConfirmBar
+                        .opacity(paneContentOpacity)
                 }
                 composerDock
             }
@@ -520,13 +581,13 @@ struct CodexChatPaneBody: View {
             composerFocused = true
         }
         .onChange(of: window.projectId) { pid in
-            pinBottomOnNextScroll()
             if let pid {
                 model.ensureThreadHydrated(projectId: pid)
             }
         }
         .onChange(of: window.threadId) { _ in
-            pinBottomOnNextScroll()
+            // 消息源只跟 thread；以 thread 切换驱动过渡，避免与 project 双触发叠闪
+            beginPaneSwitchTransition()
         }
         .onChange(of: scenePhase) { phase in
             // A→B→A：窗体未必销毁，onAppear 不跑；激活时仍要瞬移最新，禁止扫历史
@@ -545,7 +606,7 @@ struct CodexChatPaneBody: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text("三步走完主路径")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .medium))
                 Text("① 说明目标与验收  →  ② 点「定稿」  →  ③ 确认转任务，右侧看编排。侧栏「用法」可随时打开。")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
@@ -569,13 +630,40 @@ struct CodexChatPaneBody: View {
         needsInstantBottomPin = true
     }
 
+    /// 切项目/会话：先圆圈加载，再缓慢露出消息，避免硬切闪屏
+    private func beginPaneSwitchTransition() {
+        paneSwitchGeneration &+= 1
+        let gen = paneSwitchGeneration
+        // 立刻遮住旧内容（无动画），避免看到错位一瞬间
+        var hide = Transaction()
+        hide.disablesAnimations = true
+        withTransaction(hide) {
+            paneContentOpacity = 0
+            showPaneSwitchSpinner = true
+            pinBottomOnNextScroll()
+        }
+        Task { @MainActor in
+            // 最短展示，让过渡可感知；期间后台已水合消息
+            try? await Task.sleep(nanoseconds: 320_000_000)
+            guard gen == paneSwitchGeneration else { return }
+            // 再等一帧，确保 LazyVStack 已挂上新 tid 的行
+            await Task.yield()
+            guard gen == paneSwitchGeneration else { return }
+            withAnimation(.easeOut(duration: 0.42)) {
+                showPaneSwitchSpinner = false
+                paneContentOpacity = 1
+            }
+            bottomPinTick &+= 1
+        }
+    }
+
     /// 定稿 JSON 就绪后的一键转任务条
     private var transferConfirmBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("确认转任务")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(CCCTheme.ink)
                     Text(model.transferDraft(for: paneThreadId)?.previewLine ?? "")
                         .font(.system(size: 11.5))
@@ -733,7 +821,7 @@ struct CodexChatPaneBody: View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 18) {
+                    LazyVStack(alignment: .leading, spacing: CCCTheme.messageStackSpacing) {
                         if displayMessages.isEmpty {
                             VStack(alignment: .leading, spacing: 14) {
                                 Spacer().frame(height: 48)
@@ -817,7 +905,6 @@ struct CodexChatPaneBody: View {
                         // Cursor 式底部留白：最新内容略偏上；不影响 tip 钉底
                         Spacer().frame(height: max(geometry.size.height * 0.35, 120))
                     }
-                    .id(paneThreadId ?? "none") // 切会话强制重建，防工具轨串台
                     .frame(maxWidth: CCCTheme.chatMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 28)
@@ -858,7 +945,7 @@ struct CodexChatPaneBody: View {
                 .background(Circle().fill(CCCTheme.accent))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(CCCTheme.ink)
                 Text(detail)
                     .font(.system(size: 12))
@@ -1030,7 +1117,7 @@ struct CodexChatPaneBody: View {
             HStack(spacing: 6) {
                 quickChip(
                     "对齐基线",
-                    help: "读取项目文档，用白话说明定位、阶段与下一步"
+                    help: "像 Cursor 一样核实 git/文档后，白话说明定位、风险与最佳下一步"
                 ) {
                     Task {
                         await model.alignBaseline(
@@ -1041,7 +1128,7 @@ struct CodexChatPaneBody: View {
                 }
                 quickChip(
                     "下一步",
-                    help: "给出不超过三条的产品/架构下一步建议"
+                    help: "结合会话与仓库，给出最多三条带取舍的下一步（含最佳项）"
                 ) {
                     model.applyQuickPrompt(
                         QuickPrompts.nextStep,
@@ -1052,7 +1139,7 @@ struct CodexChatPaneBody: View {
                 }
                 quickChip(
                     "定稿",
-                    help: "把本会话方案收成可转任务的契约包（标题/目标/验收）"
+                    help: "核实可行性后生成 ccc-transfer 契约包，便于确认转任务"
                 ) {
                     model.applyQuickPrompt(
                         QuickPrompts.finalize,
@@ -1063,7 +1150,7 @@ struct CodexChatPaneBody: View {
                 }
                 quickChip(
                     "扫风险",
-                    help: "用业务语言列出发布/场景风险与处理顺序"
+                    help: "按严重度列出场景/发布/下达风险，并判断能否转任务"
                 ) {
                     model.applyQuickPrompt(
                         QuickPrompts.scanRisks,
@@ -1093,7 +1180,7 @@ struct CodexChatPaneBody: View {
     private func quickChip(_ title: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11.5))
                 .foregroundStyle(CCCTheme.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -1218,6 +1305,7 @@ struct CodexMessageRow: View {
                     Text(body)
                         .font(CCCTheme.body)
                         .foregroundStyle(CCCTheme.ink)
+                        .lineSpacing(CCCTheme.bodyLineSpacing)
                         .textSelection(.enabled)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -1265,21 +1353,15 @@ struct CodexMessageRow: View {
                         Text(body)
                             .font(CCCTheme.body)
                             .foregroundStyle(CCCTheme.ink)
+                            .lineSpacing(CCCTheme.bodyLineSpacing)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         MarkdownText(source: body)
                     }
                 }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(CCCTheme.bubbleAssistant)
-                    )
-                    // 末段流式收尾：isStreaming true→false 时淡入，去「弹出」
-                    .animation(.easeOut(duration: 0.18), value: message.isStreaming)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.easeOut(duration: 0.18), value: message.isStreaming)
             }
             if showActions {
                 MessageActionBar(role: "assistant", content: body, message: message)

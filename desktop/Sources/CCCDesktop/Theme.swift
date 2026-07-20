@@ -36,10 +36,15 @@ enum CCCTheme {
     static let usageActive = Color(red: 0.28, green: 0.58, blue: 0.38)
     static let usageIdle = Color(red: 0.78, green: 0.28, blue: 0.22)
 
-    static let title = Font.system(size: 24, weight: .medium, design: .serif)
-    static let body = Font.system(size: 16, weight: .regular, design: .default)
-    static let callout = Font.system(size: 14, weight: .regular, design: .default)
-    static let caption = Font.system(size: 12.5, weight: .medium, design: .default)
+    /// Cursor 式：偏细字重 + 略松行距
+    static let title = Font.system(size: 22, weight: .light, design: .serif)
+    static let body = Font.system(size: 14.5, weight: .light, design: .default)
+    static let callout = Font.system(size: 13, weight: .light, design: .default)
+    static let caption = Font.system(size: 12, weight: .light, design: .default)
+    /// 正文行距增量（pt）
+    static let bodyLineSpacing: CGFloat = 4
+    /// 消息列表块间距
+    static let messageStackSpacing: CGFloat = 22
 
     /// Cursor 式：输入区略扁、内容区更宽
     static let radiusComposer: CGFloat = 12

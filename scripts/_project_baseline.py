@@ -276,7 +276,7 @@ def _format_summary(
 
 
 def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
-    """发给 Claude 的对齐提示：功课做足，回复精简。"""
+    """发给方案 Agent 的对齐提示：功课深度对齐 Cursor，回复可拍板。"""
     git = baseline.get("git") or {}
     compact = {
         "branch": git.get("branch"),
@@ -298,9 +298,9 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
     profile = (baseline.get("profile_excerpt") or "")[:800]
     state = (baseline.get("state_excerpt") or "")[:800]
     return (
-        "【对用户回复】中文白话；总字数 ≤320；只谈定位/风险/下一步（业务语言）；"
-        "禁止文件路径、命令行、大段代码、复述工具过程。"
-        "用户若要看实现细节，需对方明确说「工程师模式」。\n\n"
+        "【对用户回复】中文白话；先结论后理由；功课深度对齐 Cursor Agent。"
+        "禁止复述工具过程、大段代码、裸 JSON；路径仅在拍板必需时点到。"
+        "禁止编造未核实事实。用户若要看实现细节，需明确说「工程师模式」。\n\n"
         "# 任务：对齐项目基线（先静默核实，再给人话结论）\n"
         "程序已给出快照，你必须再核实，但回复不要复述 JSON/路径清单。\n\n"
         "## 静默探测（勿写入回复）\n"
@@ -308,21 +308,22 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "2. 跑 `git log -5`，与快照交叉；state 可能滞后。\n"
         "3. 读完整 control：`invent_hard_disabled` / `queue_consumer_only` 等。\n"
         "4. 看板是否空转；空 + invent 关 → Engine 闲置正常。\n"
-        "5. dirty 可疑则自行抽样；禁止编造。\n\n"
+        "5. dirty 可疑则自行抽样；禁止编造。\n"
+        "6. 需要时 Grep/Read 关键入口，确认「定位」不是空话。\n\n"
         "## 禁止对用户说\n"
-        "- 控制面降级/关机（除非对方问闲置/省资源）\n"
+        "- 禁止建议降控制面 / 关机（除非对方问闲置/省资源）\n"
         "- invent / 自造 backlog / 无人值守全链（红线 12）\n"
         "- 文件树、角色实现路径堆砌\n\n"
-        "## 输出格式（严格 4 段 · 人话）\n"
+        "## 输出格式（4 段 · 有实质，勿灌水）\n"
         "### 现状\n"
         "- 这个项目是干什么的（含版本）\n"
-        "- 当前大概卡在哪 / 是否可开工（≤3 短句）\n\n"
+        "- 当前大概卡在哪 / 是否可开工（≤3 短句，要有依据意识）\n\n"
         "### 风险\n"
         "- 只列会挡下达或发布的事；空板可写「闲置属正常」\n\n"
         "### 建议选项\n"
-        "- 2～3 个下一步（业务动作）；最后一行：`最佳：… — <一句理由>`\n\n"
+        "- 2～3 个下一步（业务动作 + 为何优先）；最后一行：`最佳：… — <一句理由>`\n\n"
         "### 可下达任务\n"
-        "- 适合（人确认 plan）：1 个标题 ≤20 字\n"
+        "- 适合（人确认后转任务）：1 个标题 ≤20 字\n"
         "- 不适合无人值守：写「先处理：…」或「需人定稿」\n\n"
         f"程序快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
         f"摘要：{baseline.get('summary', '')}\n"

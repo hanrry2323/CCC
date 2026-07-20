@@ -2,75 +2,125 @@ import SwiftUI
 
 /// 侧栏项目卡片。
 ///
-/// 尾部只保留**一个**主状态（优先级）：
-/// 1. 对话生成中 → 动态指示
-/// 2. 未读 → 蓝点
-/// 3. 编排在跑 / 失败 → gear
-/// 4. 空闲 → 无图标
+/// 尾部：新建会话「+」在状态图标左侧。
+/// 主状态（优先级）：对话生成中 → 未读 → 编排异常/在跑 → 空闲。
 struct ProjectCard: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
     let project: DesktopProject
     let isSelected: Bool
 
-    var body: some View {
-        Button {
-            window.projectId = project.id
-            window.destination = .chat
-            let threads = ConversationStore.listThreads(projectId: project.id)
-            window.bindProject(project.id, availableThreads: threads)
-            if let tid = window.threadId {
-                model.ensureThreadHydrated(threadId: tid)
-                model.clearThreadUnread(tid)
-            } else {
-                model.ensureThreadHydrated(projectId: project.id)
-            }
-            Task {
-                await model.openProjectConversation(project.id)
-                if let tid = model.selectedThreadId,
-                   LocalSessionStore.projectId(fromThreadId: tid) == project.id {
-                    window.threadId = tid
-                    model.clearThreadUnread(tid)
-                }
-            }
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: isSelected ? "folder.fill" : "folder")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(isSelected ? CCCTheme.accent : CCCTheme.faint)
-                    .frame(width: 18)
+    @State private var hovering = false
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(project.name)
-                        .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
-                        .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary)
-                        .lineLimit(1)
-                    if !statusLine.isEmpty {
-                        Text(statusLine)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(statusLineColor)
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button(action: openProject) {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: isSelected ? "folder.fill" : "folder")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(isSelected ? CCCTheme.accent : CCCTheme.faint.opacity(0.85))
+                        .frame(width: 18)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(project.name)
+                            .font(.system(size: 13.5, weight: .regular))
+                            .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary)
                             .lineLimit(1)
+                        if !statusLine.isEmpty {
+                            Text(statusLine)
+                                .font(.system(size: 11, weight: .light))
+                                .foregroundStyle(statusLineColor)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                Task {
+                    var txn = Transaction()
+                    txn.disablesAnimations = true
+                    withTransaction(txn) {
+                        window.destination = .chat
+                        window.projectId = project.id
+                    }
+                    let tid = await model.createNewThread(projectId: project.id)
+                    withTransaction(txn) {
+                        window.projectId = project.id
+                        window.threadId = tid
                     }
                 }
-                Spacer(minLength: 0)
-                trailingStatus
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(hovering || isSelected ? CCCTheme.secondary : CCCTheme.faint)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? CCCTheme.selected : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help("新建会话")
+            .accessibilityLabel("新建会话")
+
+            trailingStatus
+                .frame(minWidth: 12, alignment: .trailing)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? CCCTheme.selected.opacity(0.55) : (hovering ? CCCTheme.hover : Color.clear))
+        )
+        .onHover { hovering = $0 }
         .contextMenu {
             Button("重置对话") {
                 Task { await model.resetConversation(projectId: project.id) }
             }
+            Button("新建会话") {
+                Task {
+                    let tid = await model.createNewThread(projectId: project.id)
+                    window.destination = .chat
+                    window.projectId = project.id
+                    window.threadId = tid
+                }
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(project.name)，\(statusLine.isEmpty ? "空闲" : statusLine)")
+    }
+
+    private func openProject() {
+        let threads = ConversationStore.listThreads(projectId: project.id)
+        var txn = Transaction()
+        txn.disablesAnimations = true
+        withTransaction(txn) {
+            window.destination = .chat
+            window.bindProject(project.id, availableThreads: threads)
+        }
+        if let tid = window.threadId {
+            model.ensureThreadHydrated(threadId: tid)
+            model.clearThreadUnread(tid)
+        } else {
+            model.ensureThreadHydrated(projectId: project.id)
+        }
+        Task {
+            await model.openProjectConversation(project.id)
+            guard let tid = model.selectedThreadId,
+                  LocalSessionStore.projectId(fromThreadId: tid) == project.id
+            else { return }
+            guard window.threadId != tid else {
+                model.clearThreadUnread(tid)
+                return
+            }
+            var txn = Transaction()
+            txn.disablesAnimations = true
+            withTransaction(txn) {
+                window.threadId = tid
+            }
+            model.clearThreadUnread(tid)
+        }
     }
 
     @ViewBuilder
@@ -102,7 +152,7 @@ struct ProjectCard: View {
             }
             .help("编排执行中")
         case .idle:
-            EmptyView()
+            Color.clear.frame(width: 9, height: 9)
         }
     }
 

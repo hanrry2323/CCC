@@ -199,7 +199,7 @@ struct ToolProgressRail: View {
                         .foregroundStyle(CCCTheme.accent)
                         .frame(width: 16)
                     Text(current.label)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 13))
                         .foregroundStyle(CCCTheme.ink)
                         .lineLimit(2)
                     Spacer(minLength: 0)
@@ -237,7 +237,7 @@ struct ToolProgressRail: View {
                     .font(.system(size: 13))
                     .foregroundStyle(CCCTheme.nodeDone)
                 Text(finishedSummary)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13))
                     .foregroundStyle(CCCTheme.secondary)
                 Spacer(minLength: 0)
             }

@@ -28,7 +28,7 @@ struct ComposerTextView: NSViewRepresentable {
         tv.allowsUndo = true
         tv.isEditable = isEnabled
         tv.isSelectable = true
-        tv.font = .systemFont(ofSize: 15.5)
+        tv.font = .systemFont(ofSize: 14, weight: .light)
         tv.textColor = .labelColor
         tv.insertionPointColor = .labelColor
         tv.backgroundColor = .clear
@@ -179,7 +179,7 @@ final class CCCComposerNSTextView: NSTextView {
         super.draw(dirtyRect)
         guard string.isEmpty else { return }
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: font ?? NSFont.systemFont(ofSize: 15.5),
+            .font: font ?? NSFont.systemFont(ofSize: 14, weight: .light),
             .foregroundColor: NSColor.tertiaryLabelColor,
         ]
         let inset = textContainerInset

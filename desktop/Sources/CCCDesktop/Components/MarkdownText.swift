@@ -11,11 +11,11 @@ struct MarkdownText: View {
     @State private var parsedSource: String = "\u{0}" // 哨兵：强制首次 parse
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let lines):
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 5) {
                         ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                             inlineLine(line)
                         }
@@ -84,6 +84,7 @@ struct MarkdownText: View {
     private func inlineLine(_ raw: String) -> some View {
         Text(Self.attributedInline(raw, base: font))
             .foregroundStyle(foreground)
+            .lineSpacing(CCCTheme.bodyLineSpacing)
             .textSelection(.enabled)
             .tint(CCCTheme.accent)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,10 +93,10 @@ struct MarkdownText: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .system(size: 22, weight: .semibold)
-        case 2: return .system(size: 19, weight: .semibold)
-        case 3: return .system(size: 17, weight: .semibold)
-        default: return .system(size: 16, weight: .semibold)
+        case 1: return .system(size: 19, weight: .regular)
+        case 2: return .system(size: 16.5, weight: .regular)
+        case 3: return .system(size: 15, weight: .regular)
+        default: return .system(size: 14.5, weight: .regular)
         }
     }
 
@@ -282,7 +283,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(i, offsetBy: 2)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 16, weight: .semibold)
+                chunk.font = .system(size: 14.5, weight: .regular)
                 out += chunk
                 i = end.upperBound
                 plainStart = i
@@ -305,7 +306,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(after: i)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 16).italic()
+                chunk.font = .system(size: 14.5).italic()
                 out += chunk
                 i = end.upperBound
                 plainStart = i
@@ -332,7 +333,7 @@ private struct MarkdownTableView: View {
             HStack(spacing: 0) {
                 ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
                     Text(h)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .medium))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
                 }
