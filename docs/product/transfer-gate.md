@@ -53,7 +53,10 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto` |
 | `skills_hint` | 可选 string[]，软偏好供 Engine 扇出参考 |
 | `plan_md` | 方案正文（Markdown） |
-| `thread_id` | **必填（Desktop）**：`{project_id}::main`；Hub 缺省也会钉死 |
+| `thread_id` | **必填（Desktop）**：真实会话 id（如 `{project}::UUID`）；Hub 未传时默认 `{project}::main` |
+| `client_request_id` | 可选；Hub API v1 幂等键，重复提交返回已有 epic |
+
+见 [`hub-api-v1.md`](hub-api-v1.md)。
 
 `feasibility != ok` → **拒绝转任务**。
 

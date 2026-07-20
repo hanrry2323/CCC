@@ -31,7 +31,8 @@
 | **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → **Claude Code 扇出** → **OpenCode 写码** / 验收；右栏只看状态 |
 | **执行面** | 可插拔 Executors（dev 默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
 
-**硬边界**：对话与编排开发分开；中间只交**结构化信息流**（transfer + flow 事件）。基线契约：[`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。
+**硬边界**：对话与编排开发分开；中间只交**结构化信息流**（transfer + flow 事件）。基线契约：[`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。  
+**下阶段北星**：[`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)（多端对话壳 + Hub API v1；意图门人审，进队后自动）。
 
 网页 Hub：**运维与兼容入口**，不是主聊天窗口。架构 SSOT：[`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md)。
 

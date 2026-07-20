@@ -23,6 +23,10 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("pending-sync.json")
     }
 
+    static var transferOutboxURL: URL {
+        rootURL.appendingPathComponent("transfer-outbox.json")
+    }
+
     /// 创建新会话：生成唯一 thread id
     static func createThreadId(projectId: String) -> String {
         "\(projectId)::\(UUID().uuidString.prefix(8))"
@@ -71,6 +75,24 @@ enum LocalSessionStore {
         var project_id: String
         var thread_id: String
         var attempts: Int
+    }
+
+    /// Hub 不可达时转任务 outbox（hub-api-v1 queued）
+    struct TransferOutboxItem: Codable, Hashable {
+        var client_request_id: String
+        var project_id: String
+        var thread_id: String
+        var title: String
+        var goal: String
+        var acceptance: [String]
+        var pipeline: String
+        var feasibility: String
+        var feasibility_reason: String?
+        var executor_intent: String
+        var plan_md: String
+        var complexity: String
+        var attempts: Int
+        var saved_at: String
     }
 
     struct ProjectsCache: Codable {
@@ -536,6 +558,50 @@ enum LocalSessionStore {
     }
 
     static let maxSyncAttempts = 5
+    static let maxTransferOutboxAttempts = 8
+
+    // MARK: - Transfer outbox (Hub offline)
+
+    static func enqueueTransfer(_ item: TransferOutboxItem) {
+        var q = loadTransferOutbox()
+        if let i = q.firstIndex(where: { $0.client_request_id == item.client_request_id }) {
+            q[i] = item
+        } else if let i = q.firstIndex(where: { $0.thread_id == item.thread_id }) {
+            q[i] = item
+        } else {
+            q.append(item)
+        }
+        writeTransferOutbox(q)
+    }
+
+    static func dequeueTransfer(clientRequestId: String) {
+        var q = loadTransferOutbox()
+        q.removeAll { $0.client_request_id == clientRequestId }
+        writeTransferOutbox(q)
+    }
+
+    static func loadTransferOutbox() -> [TransferOutboxItem] {
+        guard let data = try? Data(contentsOf: transferOutboxURL),
+              let q = try? JSONDecoder().decode([TransferOutboxItem].self, from: data)
+        else { return [] }
+        return q
+    }
+
+    static func bumpTransferAttempt(clientRequestId: String) -> Int {
+        var q = loadTransferOutbox()
+        if let i = q.firstIndex(where: { $0.client_request_id == clientRequestId }) {
+            q[i].attempts += 1
+            writeTransferOutbox(q)
+            return q[i].attempts
+        }
+        return 0
+    }
+
+    private static func writeTransferOutbox(_ q: [TransferOutboxItem]) {
+        ensureDir(rootURL)
+        guard let data = try? JSONEncoder().encode(q) else { return }
+        try? data.write(to: transferOutboxURL, options: .atomic)
+    }
 
     // MARK: - Display compaction
 

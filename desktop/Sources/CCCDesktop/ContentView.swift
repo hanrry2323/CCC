@@ -731,6 +731,17 @@ struct CodexChatPaneBody: View {
             Text(paneStatusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
+            if let phase = model.transferDelivery(for: paneThreadId),
+               phase != .draft {
+                Text(phase.label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(phase == .failed ? CCCTheme.nodeFail : CCCTheme.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(
+                        Capsule().fill(CCCTheme.secondary.opacity(0.12))
+                    )
+            }
             if model.agentWarming {
                 Text("预热中")
                     .font(.system(size: 10, weight: .medium))

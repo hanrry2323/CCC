@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **文档索引收口**：[`docs/INDEX.md`](docs/INDEX.md) 明确现行 6 份 SSOT；下阶段北星唯一指向 [`hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)；旧 roadmap / 双轨等迁入 [`docs/archive/`](docs/archive/README.md)。
+- **Hub API v1 + 投递三态**：[`docs/product/hub-api-v1.md`](docs/product/hub-api-v1.md)；Desktop outbox（Hub 断线排队）+ `client_request_id` 幂等；状态栏显示草稿/待投递/已投递/已受理。
+- **下阶段总体方案**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) — 多端对话壳 + Hub API v1；人审仅意图门/止损；进队后全自动；先 `ccc-demo`。
 - **Desktop ↔ OpenCode 98% 完善度**：计分 SSOT [`docs/product/desktop-opencode-parity.md`](docs/product/desktop-opencode-parity.md)；会话 Fork / Context 面板 / 讨论·工程师模式 / 请求级模型 / Composer 附件 / 会话 JSON 导入导出 / 轻量「查看改动」；`StreamSessionController`；sidecar `/health` capabilities；烟测 `scripts/smoke-desktop-parity.sh`。顶栏标明「中转站后台」用量。
 - **Agent 项目心智**：各业务仓 `CLAUDE.md` / `profile.md` 写入「双机路径」表；`xianyu`/`qxo` 根 CLAUDE 不再是空壳跳转；对齐基线注入 CLAUDE 摘录；`hub_voice` / QuickPrompts 强制先读仓再答。
 - **快捷条提示词强化（对标 Cursor）**：对齐基线 / 下一步 / 定稿 / 扫风险 强制静默读仓+证据结论；放宽字数阉割；`hub_voice` 改为高能力产品搭档。见 `QuickPrompts.swift` · `hub_voice.py` · `_project_baseline.py`。

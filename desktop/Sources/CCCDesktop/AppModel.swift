@@ -92,6 +92,8 @@ final class AppModel: ObservableObject {
     @Published var transferSheetThreadId: String?
     /// 解析到的定稿条（消息下「确认转任务」）——仅镜像「全局选中」线程；多窗请用 threadTransferDraft
     @Published var pendingTransferDraft: TransferDraft?
+    /// 按 thread 的投递态（草稿 / 排队 / 已投递 / 已受理）
+    @Published private(set) var transferDeliveryByThread: [String: TransferDeliveryPhase] = [:]
     /// OpenCode 式：定稿条按 session/thread 隔离，避免他窗切项目冲掉本窗条
     @Published private(set) var threadTransferDraft: [String: TransferDraft] = [:]
     /// 转任务表单字段按 thread 隔离（不仅是 draft 条）
@@ -641,6 +643,7 @@ final class AppModel: ObservableObject {
             startAgentRecoverLoopIfNeeded()
         }
         await flushPendingHubSync()
+        await flushTransferOutbox()
         startProjectTaskPolling()
         startAgentUsageTicker()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
@@ -743,6 +746,7 @@ final class AppModel: ObservableObject {
             updateConnectionStatusText(localOK: localOK, hubOK: true)
             startWarmLoopIfNeeded()
             await flushPendingHubSync()
+            await flushTransferOutbox()
         } catch {
             hubReachable = false
             lastError = error.localizedDescription
@@ -1715,6 +1719,90 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func flushTransferOutbox() async {
+        guard hubReachable else { return }
+        let pending = LocalSessionStore.loadTransferOutbox()
+        for item in pending {
+            if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
+                LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
+                setTransferDelivery(item.thread_id, .failed)
+                continue
+            }
+            setTransferDelivery(item.thread_id, .delivering)
+            let req = TransferRequest(
+                project_id: item.project_id,
+                thread_id: item.thread_id,
+                title: item.title,
+                goal: item.goal,
+                acceptance: item.acceptance,
+                pipeline: item.pipeline,
+                feasibility: item.feasibility,
+                feasibility_reason: item.feasibility_reason,
+                executor_intent: item.executor_intent,
+                skills_hint: [],
+                plan_md: item.plan_md,
+                complexity: item.complexity,
+                client_request_id: item.client_request_id
+            )
+            do {
+                try await prepareClient()
+                let resp = try await client.transfer(req)
+                LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
+                await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
+            } catch {
+                _ = LocalSessionStore.bumpTransferAttempt(clientRequestId: item.client_request_id)
+                setTransferDelivery(item.thread_id, .queued)
+            }
+        }
+    }
+
+    func transferDelivery(for threadId: String?) -> TransferDeliveryPhase? {
+        guard let threadId else { return nil }
+        return transferDeliveryByThread[threadId]
+    }
+
+    private func setTransferDelivery(_ threadId: String, _ phase: TransferDeliveryPhase) {
+        var copy = transferDeliveryByThread
+        copy[threadId] = phase
+        transferDeliveryByThread = copy
+    }
+
+    private func applyTransferSuccess(resp: TransferResponse, tid: String, pid: String) async {
+        if selectedProjectId == pid {
+            selectedThreadId = tid
+            currentEpicId = resp.epic_id
+        }
+        var snap = threadFlow[tid] ?? FlowThreadSnapshot(
+            epicId: resp.epic_id, epic: nil, works: [], headline: "",
+            recentEpics: threadFlow[tid]?.recentEpics ?? recentEpics,
+            emptyMessage: "", fanoutHint: nil
+        )
+        snap.epicId = resp.epic_id
+        threadFlow[tid] = snap
+        bumpFlowRevision(tid)
+        persistCurrentThreadSnapshot(threadId: tid)
+        dismissTransferSheet(threadId: tid)
+        resetTransferForm(threadId: tid)
+        setTransferDelivery(tid, .delivered)
+        statusText = "已转任务"
+        var toastMsg = "已创建待办 \(resp.epic_id ?? "")"
+        if resp.idempotent_replay == true {
+            toastMsg = "已受理（幂等）\(resp.epic_id ?? "")"
+        }
+        if resp.engine_wake?.ok == true {
+            toastMsg += " · Engine 已唤醒"
+            setTransferDelivery(tid, .accepted)
+        }
+        showToast(toastMsg)
+        lastAnimatedEpicId = nil
+        flowSplitGeneration &+= 1
+        await bindFlowToThread(projectId: pid, preferEpicId: resp.epic_id)
+        if transferDeliveryByThread[tid] != .accepted {
+            setTransferDelivery(tid, .accepted)
+        }
+        startFanoutWatchdog(epicId: resp.epic_id, projectId: pid)
+    }
+
     static func promptMode(forUserText text: String) -> String {
         StreamSessionController.resolvePromptMode(forUserText: text)
     }
@@ -2607,6 +2695,7 @@ final class AppModel: ObservableObject {
             if let tid {
                 setThreadTransferDraft(tid, d)
                 applyTransferDraft(d, fallbackContent: nil, threadId: tid)
+                if d.isGateReady { setTransferDelivery(tid, .draft) }
             } else {
                 pendingTransferDraft = d
             }
@@ -2790,11 +2879,6 @@ final class AppModel: ObservableObject {
             showToast("转任务失败：缺少项目")
             return
         }
-        if !hubReachable {
-            mutateTransferForm(tid) { $0.error = "Hub 暂不可达" }
-            showToast("转任务需要 Hub，当前暂不可达")
-            return
-        }
         if let p = projects.first(where: { $0.id == pid }), !p.isDispatchable {
             mutateTransferForm(tid) { $0.error = "当前项目不可下达" }
             showToast("转任务失败：当前项目不可下达（请切业务仓）")
@@ -2844,8 +2928,35 @@ final class AppModel: ObservableObject {
             \(chatDigest)
             """
         }()
+        if !hubReachable {
+            let requestId = UUID().uuidString
+            let item = LocalSessionStore.TransferOutboxItem(
+                client_request_id: requestId,
+                project_id: pid,
+                thread_id: tid,
+                title: title,
+                goal: goal,
+                acceptance: accLines,
+                pipeline: pipeline,
+                feasibility: form.feasibility,
+                feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
+                executor_intent: form.executor,
+                plan_md: planBody,
+                complexity: "medium",
+                attempts: 0,
+                saved_at: ISO8601DateFormatter().string(from: Date())
+            )
+            LocalSessionStore.enqueueTransfer(item)
+            setTransferDelivery(tid, .queued)
+            mutateTransferForm(tid) { $0.error = nil }
+            dismissTransferSheet(threadId: tid)
+            showToast("Hub 暂不可达，已排队待投递")
+            return
+        }
         busy = true
         defer { busy = false }
+        let requestId = UUID().uuidString
+        setTransferDelivery(tid, .delivering)
         let req = TransferRequest(
             project_id: pid,
             thread_id: tid,
@@ -2858,42 +2969,47 @@ final class AppModel: ObservableObject {
             executor_intent: form.executor,
             skills_hint: [],
             plan_md: planBody,
-            complexity: "medium"
+            complexity: "medium",
+            client_request_id: requestId
         )
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
-            let convId = tid
-            if selectedProjectId == pid {
-                selectedThreadId = convId
-                currentEpicId = resp.epic_id
-            }
-            // 本机 boundEpicId 立即落盘（右栏 SSOT）
-            var snap = threadFlow[convId] ?? FlowThreadSnapshot(
-                epicId: resp.epic_id, epic: nil, works: [], headline: "",
-                recentEpics: threadFlow[convId]?.recentEpics ?? recentEpics,
-                emptyMessage: "", fanoutHint: nil
-            )
-            snap.epicId = resp.epic_id
-            threadFlow[convId] = snap
-            bumpFlowRevision(convId)
-            persistCurrentThreadSnapshot(threadId: convId)
-            dismissTransferSheet(threadId: tid)
-            resetTransferForm(threadId: tid)
-            statusText = "已转任务"
-            var toastMsg = "已创建待办 \(resp.epic_id ?? "")"
-            if resp.engine_wake?.ok == true {
-                toastMsg += " · Engine 已唤醒"
-            }
-            showToast(toastMsg)
-            lastAnimatedEpicId = nil
-            flowSplitGeneration &+= 1
-            await bindFlowToThread(projectId: pid, preferEpicId: resp.epic_id)
-            startFanoutWatchdog(epicId: resp.epic_id, projectId: pid)
+            await applyTransferSuccess(resp: resp, tid: tid, pid: pid)
         } catch {
             let plain = plainTransferError(error)
-            mutateTransferForm(tid) { $0.error = plain }
-            showToast("转任务失败：\(plain)")
+            // 网络类失败：入 outbox，Hub 恢复后重试
+            let lower = plain.lowercased()
+            let transient = lower.contains("timed out") || lower.contains("offline")
+                || lower.contains("network") || lower.contains("could not connect")
+                || lower.contains("connection") || !hubReachable
+            if transient {
+                let item = LocalSessionStore.TransferOutboxItem(
+                    client_request_id: requestId,
+                    project_id: pid,
+                    thread_id: tid,
+                    title: title,
+                    goal: goal,
+                    acceptance: accLines,
+                    pipeline: pipeline,
+                    feasibility: form.feasibility,
+                    feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
+                    executor_intent: form.executor,
+                    plan_md: planBody,
+                    complexity: "medium",
+                    attempts: 0,
+                    saved_at: ISO8601DateFormatter().string(from: Date())
+                )
+                LocalSessionStore.enqueueTransfer(item)
+                setTransferDelivery(tid, .queued)
+                mutateTransferForm(tid) { $0.error = nil }
+                dismissTransferSheet(threadId: tid)
+                showToast("投递中断，已排队：\(plain)")
+            } else {
+                setTransferDelivery(tid, .failed)
+                mutateTransferForm(tid) { $0.error = plain }
+                showToast("转任务失败：\(plain)")
+            }
         }
     }
 
@@ -3686,7 +3802,8 @@ final class AppModel: ObservableObject {
             executor_intent: form.executor,
             skills_hint: [],
             plan_md: form.goal,
-            complexity: form.complexity
+            complexity: form.complexity,
+            client_request_id: UUID().uuidString
         )
         do {
             try await prepareClient()

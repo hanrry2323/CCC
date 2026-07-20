@@ -1,7 +1,8 @@
 # CCC 发展路线图
 
 > **现行叙事**：[`VISION.md`](VISION.md) · **版本**：根目录 `VERSION`  
-> **下一步产品目标**：与维护者当面同步后再写入本节「当前方向」——本文底部历史段落保留作归档。
+> **下阶段北星（唯一）**：[`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)  
+> 本文底部为 v0.19–v0.26 **历史归档**；勿用下文「Hub 为入口」等旧口径覆盖 VISION。
 
 ---
 
@@ -9,21 +10,17 @@
 
 | 已定型 | 说明 |
 |--------|------|
-| Hub 为入口 | 替代第三方 Agent IDE 编排壳 |
-| Loop Engineer | Engine 自动编排 / 验收 / 重试 / 进化 |
-| 无穷角色 | 任务路由 + Skill/Prompt；非角色超市 |
-| 控制面安全默认 | `disabled` → 显式 `enable` / `invent` |
+| Desktop 对话壳 | M1 Desktop + sidecar；定意图 → transfer |
+| Hub 编排 API | Mac2017；transfer / flow / board；非主聊天 |
+| Loop Engineer | Engine 自动编排 / 验收；意图既定后无人值守 |
+| 人审边界 | 仅意图门 + 止损；见 hub-shell-roadmap §3 |
 
 | 开源与介绍 | 说明 |
 |------------|------|
-| 文档口径统一 | VISION / INTRO / README / STARTUP / USAGE |
-| GitHub Release | `v0.42.1` 已发 |
-| 演示资产 | Walkthrough 分镜 + 视频脚本已就位；截图/成片待维护者本地补齐 |
-| 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（CCC 底座 × QX；本阶段不拆 QX 仓） |
+| 文档口径 | 先读 [`INDEX.md`](INDEX.md) §0 |
+| 竖切蓝图 | [`vertical-qx.md`](vertical-qx.md)（业务向，非 CCC 骨架） |
 
-**下一步双轨（待拍板）**：[`NEXT-DUAL-TRACK.md`](NEXT-DUAL-TRACK.md) — 用 CCC 带动 xianyu 视频质量门 + QX 全新/原地重构决策。
-
-**未在此预先锁定的里程碑**：安装体验、传播渠道、生态 Domain Skill 等。
+**业务双轨（归档，非产品北星）**：[`archive/NEXT-DUAL-TRACK.md`](archive/NEXT-DUAL-TRACK.md)。
 
 ---
 

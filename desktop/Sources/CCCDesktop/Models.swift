@@ -259,6 +259,8 @@ struct TransferRequest: Encodable {
     let skills_hint: [String]
     let plan_md: String
     let complexity: String
+    /// Hub API v1 幂等键；重复提交返回已有 epic
+    let client_request_id: String?
 }
 
 struct TransferResponse: Decodable {
@@ -270,6 +272,28 @@ struct TransferResponse: Decodable {
     let errors: [GateError]?
     let executor_intent: String?
     let engine_wake: EngineWakeInfo?
+    let idempotent_replay: Bool?
+}
+
+/// 投递三态（hub-shell-roadmap / hub-api-v1）
+enum TransferDeliveryPhase: String, Codable, Equatable {
+    case draft
+    case queued
+    case delivering
+    case delivered
+    case accepted
+    case failed
+
+    var label: String {
+        switch self {
+        case .draft: return "本机草稿"
+        case .queued: return "待投递"
+        case .delivering: return "投递中"
+        case .delivered: return "已投递"
+        case .accepted: return "编排已受理"
+        case .failed: return "投递失败"
+        }
+    }
 }
 
 struct EngineWakeInfo: Decodable, Hashable {

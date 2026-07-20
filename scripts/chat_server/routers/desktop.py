@@ -360,6 +360,22 @@ async def transfer_to_epic(request: Request):
             },
         )
 
+    client_request_id = str(body.get("client_request_id") or "").strip()
+    if client_request_id:
+        remembered = flow_events.lookup_transfer_by_client_request(
+            project_id, client_request_id
+        )
+        if remembered:
+            return {
+                "ok": True,
+                "epic_id": remembered["epic_id"],
+                "workspace": workspace,
+                "column": "backlog",
+                "project_id": project_id,
+                "idempotent_replay": True,
+                "engine_wake": {"ok": True, "mode": "idempotent", "message": "replay"},
+            }
+
     executor_intent = transfer_gate.resolve_executor_intent(body)
     description = transfer_gate.build_epic_description({**body, "executor_intent": executor_intent})
     plan_md = transfer_gate.build_plan_md(body)
@@ -430,7 +446,9 @@ async def transfer_to_epic(request: Request):
             "thread_id": thread_id,
         },
     )
-    flow_events.remember_last_epic(project_id, tid, title, thread_id=thread_id)
+    flow_events.remember_last_epic(
+        project_id, tid, title, thread_id=thread_id, client_request_id=client_request_id or None
+    )
     _hub_ensure_engine(workspace, tid)
 
     return {
@@ -442,6 +460,7 @@ async def transfer_to_epic(request: Request):
         "executor_intent": executor_intent,
         "engine_wake": payload.get("engine_wake"),
         "seeded": payload.get("seeded"),
+        "idempotent_replay": False,
     }
 
 

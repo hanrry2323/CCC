@@ -341,10 +341,12 @@ def remember_last_epic(
     title: str = "",
     *,
     thread_id: str | None = None,
+    client_request_id: str | None = None,
 ) -> None:
     """记录项目最近 epic；若带 thread_id，则与对话深度绑定。"""
     updated = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
     tid = (thread_id or "").strip() or None
+    crid = (client_request_id or "").strip() or None
     rec: dict[str, Any] = {
         "epic_id": epic_id,
         "title": title,
@@ -352,6 +354,9 @@ def remember_last_epic(
     }
     if tid:
         rec["thread_id"] = tid
+    if crid:
+        rec["client_request_id"] = crid
+        _remember_client_request(project_id, crid, epic_id, title)
     path = project_last_epic_file(project_id)
     path.write_text(
         json.dumps(rec, ensure_ascii=False, indent=2),
@@ -373,6 +378,65 @@ def remember_last_epic(
         json.dumps(items[:40], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def _client_request_index_file(project_id: str) -> Path:
+    d = config.CHAT_DIR / "_desktop" / project_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "transfer_client_requests.json"
+
+
+def _remember_client_request(
+    project_id: str, client_request_id: str, epic_id: str, title: str = ""
+) -> None:
+    path = _client_request_index_file(project_id)
+    data: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data = raw
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    data[client_request_id] = {
+        "epic_id": epic_id,
+        "title": title,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+    }
+    # 控制体量：最多保留 200 个键
+    if len(data) > 200:
+        ordered = sorted(
+            data.items(),
+            key=lambda kv: str((kv[1] or {}).get("updated_at") or ""),
+            reverse=True,
+        )
+        data = dict(ordered[:200])
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def lookup_transfer_by_client_request(
+    project_id: str, client_request_id: str
+) -> dict[str, Any] | None:
+    """Hub API v1 幂等：同一 client_request_id 返回已创建 epic。"""
+    crid = (client_request_id or "").strip()
+    if not crid:
+        return None
+    path = _client_request_index_file(project_id)
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    hit = raw.get(crid)
+    if not isinstance(hit, dict):
+        return None
+    eid = str(hit.get("epic_id") or "").strip()
+    if not eid:
+        return None
+    return {"epic_id": eid, "title": str(hit.get("title") or "")}
 
 
 def load_last_epic(project_id: str) -> dict | None:
