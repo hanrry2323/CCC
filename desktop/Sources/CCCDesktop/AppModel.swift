@@ -110,8 +110,12 @@ final class AppModel: ObservableObject {
     @Published var composerBounceThreadId: String?
     /// 消息「预览」全文（对齐旧 Hub）
     @Published var previewMarkdown: String?
-    /// 当前会话累计 token（cost 事件累加；用于触发显示压缩）
+    /// 当前选中会话累计 token（由 threadSessionTokens 镜像；UI 显示用）
     @Published var sessionTokens: Int = 0
+    /// 每 thread 独立 token，避免 A 会话触发 B 压缩
+    private var threadSessionTokens: [String: Int] = [:]
+    /// 每 thread 的 loop-code resume id（持续对话 SSOT，与盘上 Record 同步）
+    private var threadClaudeSessionIds: [String: String] = [:]
     /// 显示压缩阈值（token）；超此触发 agent session 重置注入摘要
     static let agentCompactTokenThreshold = 80_000
     /// 项目后台任务态（卡片灯用）：projectId → 状态键（idle/pending/in_progress/testing/done/failed）
@@ -396,7 +400,8 @@ final class AppModel: ObservableObject {
             base: base ?? cachedAgentBaseURL,
             projectPath: path,
             sessionId: sid,
-            toolMode: toolMode
+            toolMode: toolMode,
+            claudeSessionId: threadClaudeSessionIds[sid]
         )
         // await 回来后再确认：若期间已开聊，丢弃 warm 结果、勿记 lastWarmAt
         if shouldSkipWarmForChat() { return }
@@ -872,25 +877,59 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 重置指定（或全局选中）项目的对话：清盘 + drop sidecar slot + 清 UI
+    /// 重置指定（或全局选中）项目的全部对话：清盘 + drop 各 thread sidecar slot + 清 UI
     func resetConversation(projectId: String? = nil) async {
         guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             return
         }
-        let convId = threadIdForProject( pid)
-        cancelChat(threadId: convId, silent: true)
+        let priorThreads = LocalSessionStore.threadsAsDesktop(projectId: pid)
+        for t in priorThreads {
+            cancelChat(threadId: t.thread_id, silent: true, dropSlot: true)
+        }
+        // 也清可能未入索引的 ::main
+        let mainId = threadIdForProject(pid)
+        cancelChat(threadId: mainId, silent: true, dropSlot: true)
+
+        let path = localPath(for: pid) ?? ""
+        if !path.isEmpty {
+            var dropIds = Set(priorThreads.map(\.thread_id))
+            dropIds.insert(mainId)
+            for tid in dropIds {
+                await client.dropSidecarSession(projectPath: path, sessionId: tid)
+                threadMessages.removeValue(forKey: tid)
+                threadFlow.removeValue(forKey: tid)
+                threadClaudeSessionIds.removeValue(forKey: tid)
+                threadSessionTokens.removeValue(forKey: tid)
+                setThreadTransferDraft(tid, nil)
+                setThreadStreamStatus(tid, "")
+            }
+        } else {
+            for tid in priorThreads.map(\.thread_id) + [mainId] {
+                threadMessages.removeValue(forKey: tid)
+                threadFlow.removeValue(forKey: tid)
+                threadClaudeSessionIds.removeValue(forKey: tid)
+                threadSessionTokens.removeValue(forKey: tid)
+            }
+        }
+
         LocalSessionStore.reset(projectId: pid)
-        threadMessages[convId] = []
-        threadFlow[convId] = nil
-        setThreadTransferDraft(convId, nil)
-        setThreadStreamStatus(convId, "")
-        bumpThreadRevision(convId)
-        // 通知 sidecar 丢弃 live slot
-        await dropSidecarSession(projectId: pid)
+        // 重建干净主会话
+        LocalSessionStore.saveMessages(
+            projectId: pid,
+            threadId: mainId,
+            messages: [],
+            title: "对话",
+            allowDowngrade: true,
+            claudeSessionId: nil
+        )
+        threadMessages[mainId] = []
+        bumpThreadRevision(mainId)
+        threads = ConversationStore.listThreads(projectId: pid)
         if selectedProjectId == pid {
-            selectedThreadId = convId
-            syncLegacyChatMirror(from: convId)
+            selectedThreadId = mainId
+            sessionTokens = 0
+            syncLegacyChatMirror(from: mainId)
             applyFlowSnapshot(nil)
             flowSplitGeneration &+= 1
             refreshCurrentThreadStreaming()
@@ -903,15 +942,17 @@ final class AppModel: ObservableObject {
     private func syncLegacyChatMirror(from threadId: String) {
         guard selectedThreadId == threadId else { return }
         chat.messages = threadMessages[threadId] ?? []
+        sessionTokens = threadSessionTokens[threadId] ?? 0
     }
 
-    /// 通知 sidecar 丢弃项目的 ClaudeSDKClient live slot
+    /// 通知 sidecar 丢弃项目主会话 slot（兼容旧调用）
     private func dropSidecarSession(projectId: String) async {
         guard canChat else { return }
         let path = localPath(for: projectId) ?? ""
+        guard !path.isEmpty else { return }
         await client.dropSidecarSession(
             projectPath: path,
-            sessionId: threadIdForProject( projectId)
+            sessionId: threadIdForProject(projectId)
         )
     }
 
@@ -924,10 +965,16 @@ final class AppModel: ObservableObject {
         bumpThreadRevision(threadId)
         syncLegacyChatMirror(from: threadId)
         flushDiskSave(threadId: threadId)
-        // agent session token 超阈值 → 重置注入摘要（节约 token）
-        if sessionTokens >= Self.agentCompactTokenThreshold {
+        // agent session token 超阈值 → 重置注入摘要（节约 token）；按 thread 计数
+        let tok = threadSessionTokens[threadId] ?? 0
+        if tok >= Self.agentCompactTokenThreshold {
             await resetAgentSessionWithSummary(projectId: projectId, threadId: threadId, rounds: rounds)
-            sessionTokens = 0
+            threadSessionTokens[threadId] = 0
+            threadClaudeSessionIds.removeValue(forKey: threadId)
+            if selectedThreadId == threadId {
+                sessionTokens = 0
+            }
+            flushDiskSave(threadId: threadId)
         }
     }
 
@@ -981,6 +1028,7 @@ final class AppModel: ObservableObject {
         selectedThreadId = id
         ensureThreadHydrated(threadId: id)
         await loadConversation(threadId: id)
+        sessionTokens = threadSessionTokens[id] ?? 0
         ensureFlowSSE()
     }
 
@@ -997,11 +1045,18 @@ final class AppModel: ObservableObject {
     func archiveThread(threadId: String) async {
         let pid = LocalSessionStore.projectId(fromThreadId: threadId)
         if streamingThreadIds.contains(threadId) {
-            cancelChat(threadId: threadId, silent: true)
+            cancelChat(threadId: threadId, silent: true, dropSlot: true)
+        } else {
+            let path = localPath(for: pid) ?? ""
+            if !path.isEmpty {
+                await client.dropSidecarSession(projectPath: path, sessionId: threadId)
+            }
         }
         ConversationStore.archiveThread(threadId: threadId)
         threadMessages.removeValue(forKey: threadId)
         threadFlow.removeValue(forKey: threadId)
+        threadClaudeSessionIds.removeValue(forKey: threadId)
+        threadSessionTokens.removeValue(forKey: threadId)
         threads = ConversationStore.listThreads(projectId: pid)
         // 如果删的是当前线程，自动切到最近线程
         if selectedThreadId == threadId {
@@ -1034,6 +1089,9 @@ final class AppModel: ObservableObject {
             threadFlow[threadId] = flow
         } else if threadFlow[threadId] == nil, disk.flow != nil {
             threadFlow[threadId] = disk.flow
+        }
+        if let sid = disk.claude_session_id?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty {
+            threadClaudeSessionIds[threadId] = sid
         }
     }
 
@@ -1344,7 +1402,8 @@ final class AppModel: ObservableObject {
             messages: msgs,
             title: title,
             flow: flow,
-            needsHubSync: false
+            needsHubSync: false,
+            claudeSessionId: threadClaudeSessionIds[tid]
         )
     }
 
@@ -1751,7 +1810,8 @@ final class AppModel: ObservableObject {
                         messages: attempt == 1 ? outbound : outboundAttempt,
                         promptMode: mode,
                         toolMode: tools,
-                        projectPath: streamProjectPath
+                        projectPath: streamProjectPath,
+                        claudeSessionId: threadClaudeSessionIds[threadId]
                     ) { [weak self] event in
                         guard let model = self else { return }
                         await MainActor.run {
@@ -1948,19 +2008,26 @@ final class AppModel: ObservableObject {
                 }
             case .cost(let tokens, _):
                 if let t = tokens, t > 0 {
-                    sessionTokens += t
+                    threadSessionTokens[threadId, default: 0] += t
+                    if selectedThreadId == threadId {
+                        sessionTokens = threadSessionTokens[threadId] ?? 0
+                    }
                 }
-            case .done:
+            case .done(_, let claudeSessionId):
                 for i in msgs[idx].toolSteps.indices where msgs[idx].toolSteps[i].status == .running {
                     msgs[idx].toolSteps[i].status = .done
                 }
                 if !msgs[idx].toolSteps.isEmpty {
                     msgs[idx].toolsFinished = true
                 }
+                if let sid = claudeSessionId?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty {
+                    threadClaudeSessionIds[threadId] = sid
+                }
             }
         }
         if case .done = event {
             setThreadStreamStatus(threadId, "")
+            flushDiskSave(threadId: threadId)
         } else if case .toolResult = event {
             // 工具结束后回到生成态（下一轮 delta 会再写细状态）
             if (threadStreamStatus[threadId] ?? "").contains("工具") {
@@ -1972,7 +2039,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func cancelChat(threadId: String? = nil, silent: Bool = false) {
+    func cancelChat(threadId: String? = nil, silent: Bool = false, dropSlot: Bool = false) {
         let tid = threadId ?? selectedThreadId
         guard let tid else { return }
         chatTasks[tid]?.cancel()
@@ -1994,12 +2061,16 @@ final class AppModel: ObservableObject {
             }
         }
         flushDiskSave(threadId: tid)
-        // 主动丢 sidecar slot，避免半残连接被下一轮复用（表现为「切一下就连不上」）
-        let projectId = tid.split(separator: ":").first.map(String.init)
-        let path = localPath(for: projectId) ?? localPath(for: selectedProjectId)
-        if let path, !path.isEmpty {
-            Task {
-                await client.dropSidecarSession(projectPath: path, sessionId: tid)
+        // 默认不 drop：保留 claude_session_id 以便下一轮 resume（持续对话）。
+        // 仅显式重置/归档时 dropSlot=true。
+        if dropSlot {
+            let projectId = tid.split(separator: ":").first.map(String.init)
+            let path = localPath(for: projectId) ?? localPath(for: selectedProjectId)
+            if let path, !path.isEmpty {
+                threadClaudeSessionIds.removeValue(forKey: tid)
+                Task {
+                    await client.dropSidecarSession(projectPath: path, sessionId: tid)
+                }
             }
         }
         if !silent {
@@ -3274,7 +3345,10 @@ final class AppModel: ObservableObject {
 
     private func trackTokenUsage(threadId: String, msgId: UUID, content: String) {
         let tokens = content.count / 4
-        sessionTokens += tokens
+        threadSessionTokens[threadId, default: 0] += tokens
+        if selectedThreadId == threadId {
+            sessionTokens = threadSessionTokens[threadId] ?? 0
+        }
         totalSessionCost += Double(tokens) * 0.000003 // ~$3/M tokens est
         var copy = perMessageTokens
         copy[msgId] = tokens

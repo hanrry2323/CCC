@@ -10,6 +10,8 @@ struct ConversationState: Equatable {
     var flow: FlowThreadSnapshot?
     /// 单调修订；拒绝更旧写入（预留；落盘时递增）
     var revision: UInt64
+    /// sidecar/loop-code resume id
+    var claudeSessionId: String?
 
     static func empty(projectId: String, threadId: String) -> ConversationState {
         ConversationState(
@@ -18,7 +20,8 @@ struct ConversationState: Equatable {
             messages: [],
             boundEpicId: nil,
             flow: nil,
-            revision: 0
+            revision: 0,
+            claudeSessionId: nil
         )
     }
 }
@@ -37,7 +40,8 @@ enum ConversationStore {
             messages: rec.messages,
             boundEpicId: rec.flow?.epicId,
             flow: rec.flow,
-            revision: rec.revision ?? 0
+            revision: rec.revision ?? 0,
+            claudeSessionId: rec.claude_session_id
         )
     }
 
@@ -75,7 +79,8 @@ enum ConversationStore {
             flow: flow,
             needsHubSync: needsHubSync,
             allowDowngrade: allowDowngrade,
-            revision: nextRev
+            revision: nextRev,
+            claudeSessionId: state.claudeSessionId
         )
     }
 

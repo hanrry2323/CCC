@@ -175,6 +175,7 @@ async def warm(request: Request):
     session_id = str(body.get("session_id") or "conversation").strip() or "conversation"
     tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
     model = str(body.get("model") or "flash").strip().lower() or "flash"
+    resume_session_id = str(body.get("claude_session_id") or "").strip() or None
 
     slot_info: dict = {}
     if project_path and _path_allowed(project_path) and cli_ok:
@@ -185,6 +186,7 @@ async def warm(request: Request):
                 project_path,
                 session_id,
                 model=model,
+                resume_session_id=resume_session_id,
                 tool_mode=tool_mode,
             )
         except Exception as exc:
@@ -223,7 +225,20 @@ async def session_drop(request: Request):
     tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
     key = _slot_key(project_path, session_id, tool_mode)
     dropped = await session_manager._drop_slot(key, reason="user-reset")
-    return {"ok": True, "dropped": bool(dropped), "key": key}
+    # 兼容旧 key（曾含 ::discuss / ::engineer）：一并清掉，防幽灵槽串台
+    legacy_dropped = []
+    for legacy_mode in ("discuss", "engineer"):
+        legacy_key = f"{project_path}::{session_id}::{legacy_mode}"
+        if legacy_key == key:
+            continue
+        if await session_manager._drop_slot(legacy_key, reason="user-reset-legacy"):
+            legacy_dropped.append(legacy_key)
+    return {
+        "ok": True,
+        "dropped": bool(dropped) or bool(legacy_dropped),
+        "key": key,
+        "legacy_dropped": legacy_dropped,
+    }
 
 
 @app.post("/api/session/compact")

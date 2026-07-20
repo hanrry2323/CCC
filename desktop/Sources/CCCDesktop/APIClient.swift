@@ -137,7 +137,8 @@ actor APIClient {
         base: URL? = nil,
         projectPath: String? = nil,
         sessionId: String? = nil,
-        toolMode: String = "discuss"
+        toolMode: String = "discuss",
+        claudeSessionId: String? = nil
     ) async -> WarmResult {
         let root = base ?? chatBaseURL
         guard let root else { return WarmResult(httpOk: false, slotConnected: false) }
@@ -158,6 +159,12 @@ actor APIClient {
         let mode = toolMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         body["tool_mode"] = (mode == "engineer") ? "engineer" : "discuss"
         body["model"] = "flash"
+        if let claudeSessionId {
+            let sid = claudeSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sid.isEmpty {
+                body["claude_session_id"] = sid
+            }
+        }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         // 真预连可能 15–40s；失败不阻塞发消息
         req.timeoutInterval = projectPath == nil ? 8 : 45
@@ -413,6 +420,8 @@ actor APIClient {
         toolMode: String = "discuss",
         /// 显式路径优先于 client.localProjectPath（多窗并行时禁止抢全局 cwd）
         projectPath: String? = nil,
+        /// loop-code resume：同 thread 持续对话
+        claudeSessionId: String? = nil,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         guard let chatBase = chatBaseURL else {
@@ -427,11 +436,13 @@ actor APIClient {
             let project_path: String?
             let prompt_mode: String
             let tool_mode: String
+            let claude_session_id: String?
         }
         // prompt: 只发最后一条 user；有 prompt 时 messages 发空数组，减首包开销
         let promptHint = messages.last(where: { $0.role == "user" })?.content
         let outboundMessages: [ChatMessage] = (promptHint?.isEmpty == false) ? [] : messages
         let path = projectPath ?? localProjectPath
+        let resume = claudeSessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let data = try JSONEncoder().encode(
             Body(
                 project: projectId,
@@ -441,7 +452,8 @@ actor APIClient {
                 mode: "chat",
                 project_path: path,
                 prompt_mode: promptMode,
-                tool_mode: toolMode
+                tool_mode: toolMode,
+                claude_session_id: (resume?.isEmpty == false) ? resume : nil
             )
         )
         guard let url = URL(string: "api/chat", relativeTo: chatBase) else {
@@ -562,7 +574,12 @@ actor APIClient {
                     lastProgressAt = Date()
                     gotDone = true
                     donePartial = (obj["partial"] as? Bool) ?? false
-                    await onEvent(.done(partial: donePartial))
+                    let sid = (obj["claude_session_id"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    await onEvent(.done(
+                        partial: donePartial,
+                        claudeSessionId: (sid?.isEmpty == false) ? sid : nil
+                    ))
                     continue
                 }
                 let textChunk: String? = {

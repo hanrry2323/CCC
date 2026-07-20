@@ -105,8 +105,13 @@ else:
 def _slot_key(
     project_path: str, hub_session_id: str, tool_mode: str = "discuss"
 ) -> str:
-    mode = (tool_mode or "discuss").strip().lower() or "discuss"
-    return f"{project_path}::{hub_session_id}::{mode}"
+    """Live slot 键：同项目同 Desktop thread 共用一槽。
+
+    tool_mode 不再进 key（discuss↔engineer 改工具集时走同槽 reconnect + resume），
+    否则同会话中途切模式会开新脑、丢掉连续对话。
+    """
+    _ = tool_mode  # 保留参数兼容旧调用方
+    return f"{project_path}::{hub_session_id}"
 
 
 @dataclass

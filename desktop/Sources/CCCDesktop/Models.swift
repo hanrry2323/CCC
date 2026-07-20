@@ -149,7 +149,8 @@ enum ChatStreamEvent: Sendable {
     case toolResult(ok: Bool)
     case cost(tokens: Int?, usd: Double?)
     /// partial=true：服务端标明半截（断连/超时/异常），UI 必须标「回复中断」
-    case done(partial: Bool)
+    /// claudeSessionId：sidecar/loop-code 会话 id，下轮 resume 用（持续对话）
+    case done(partial: Bool, claudeSessionId: String?)
 }
 
 struct FlowWork: Identifiable, Codable, Hashable {

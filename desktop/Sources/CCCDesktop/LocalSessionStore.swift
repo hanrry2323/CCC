@@ -56,6 +56,8 @@ enum LocalSessionStore {
         var needs_hub_sync: Bool?
         /// 单调修订（项目即对话）；缺省 0 兼容旧盘
         var revision: UInt64?
+        /// loop-code / Claude SDK 会话 id；冷启动 resume，保证持续对话
+        var claude_session_id: String?
     }
 
     struct ThreadIndexEntry: Codable, Hashable {
@@ -153,7 +155,8 @@ enum LocalSessionStore {
         needsHubSync: Bool = false,
         /// false：若本机已有更丰富内容则拒绝用更空的写入覆盖
         allowDowngrade: Bool = false,
-        revision: UInt64? = nil
+        revision: UInt64? = nil,
+        claudeSessionId: String? = nil
     ) {
         let existing = load(projectId: projectId, threadId: threadId)
         let persistable = messages
@@ -174,15 +177,23 @@ enum LocalSessionStore {
                 )
             }
         let nextRev = revision ?? ((existing?.revision ?? 0) &+ 1)
+        let nextClaudeId: String? = {
+            if let claudeSessionId {
+                let t = claudeSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+                return t.isEmpty ? nil : t
+            }
+            return existing?.claude_session_id
+        }()
         if !allowDowngrade, let existing, !existing.messages.isEmpty {
             let old = existing.messages
             if messageScore(persistable) < messageScore(old) {
-                // 只更新标题/flow，保留更完整消息
+                // 只更新标题/flow/resume id，保留更完整消息
                 var keep = existing
                 if let title, !title.isEmpty { keep.title = title }
                 if let flow { keep.flow = flow }
                 if needsHubSync { keep.needs_hub_sync = true }
                 keep.revision = max(keep.revision ?? 0, nextRev)
+                if let nextClaudeId { keep.claude_session_id = nextClaudeId }
                 save(keep)
                 return
             }
@@ -195,7 +206,8 @@ enum LocalSessionStore {
             messages: persistable,
             flow: flow ?? existing?.flow,
             needs_hub_sync: needsHubSync || (existing?.needs_hub_sync ?? false),
-            revision: nextRev
+            revision: nextRev,
+            claude_session_id: nextClaudeId
         )
         save(rec)
     }
