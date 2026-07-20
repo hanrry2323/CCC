@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase4**：根目录 `inbox/` 提案旁路；`GET/POST /api/desktop/proposals` 采纳→transfer；Desktop 运维「待采纳提案」；`scripts/smoke-inbox-adopt.sh`。
+- **Hub-Shell Phase3**：product skill/fanout 反过拆与 complexity 注入；oversplit 单测加固。
 - **Hub-Shell Phase2**：`scripts/smoke-ccc-demo-soak.sh` N=3；orphan 不净增；hang/pids 单测。
 - **Hub-Shell Phase1**：契约测 `client_request_id` 幂等；`scripts/smoke-hub-api-v1.sh`；`ccc-demo` transfer 绿通。
 - **文档索引收口**：[`docs/INDEX.md`](docs/INDEX.md) 明确现行 6 份 SSOT；下阶段北星唯一指向 [`hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)；旧 roadmap / 双轨等迁入 [`docs/archive/`](docs/archive/README.md)。

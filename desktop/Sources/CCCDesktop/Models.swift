@@ -273,6 +273,22 @@ struct TransferResponse: Decodable {
     let executor_intent: String?
     let engine_wake: EngineWakeInfo?
     let idempotent_replay: Bool?
+    let adopted: Bool?
+    let proposal_id: String?
+}
+
+struct InboxProposalsResp: Decodable {
+    let ok: Bool?
+    let proposals: [InboxProposal]?
+}
+
+struct InboxProposal: Identifiable, Decodable, Hashable {
+    let id: String
+    let project_id: String?
+    let title: String?
+    let status: String?
+    let complexity: String?
+    let path: String?
 }
 
 /// 投递三态（hub-shell-roadmap / hub-api-v1）

@@ -170,6 +170,8 @@ final class AppModel: ObservableObject {
     @Published var opsSummary: OpsSummary?
     @Published var opsAdoptBusy = false
     @Published var opsAdoptError: String?
+    @Published var inboxProposals: [InboxProposal] = []
+    @Published var inboxAdoptBusy = false
     /// 顶栏：本机 Agent 大模型调用（日总量 + 近 5 秒）
     @Published private(set) var agentLLMDailyCount: Int = 0
     @Published private(set) var agentLLMRecent5s: Int = 0
@@ -3549,17 +3551,38 @@ final class AppModel: ObservableObject {
                 opsRisksCount = summary.risks?.count
                 opsRisksHigh = summary.risks?.high
                 // router-usage 已退役；顶栏改计本机 Agent 调用
-                return
+            } else {
+                async let overview = client.fetchOpsOverview()
+                async let risksResp = client.fetchOpsRisks()
+                opsOverview = try await overview
+                let risks = try await risksResp
+                opsRisks = risks.risks ?? []
+                opsRisksCount = risks.count
+                opsRisksHigh = risks.high
             }
-            async let overview = client.fetchOpsOverview()
-            async let risksResp = client.fetchOpsRisks()
-            opsOverview = try await overview
-            let risks = try await risksResp
-            opsRisks = risks.risks ?? []
-            opsRisksCount = risks.count
-            opsRisksHigh = risks.high
+            if let props = try? await client.fetchInboxProposals() {
+                inboxProposals = props.proposals ?? []
+            }
         } catch {
             opsError = error.localizedDescription
+        }
+    }
+
+    func adoptInboxProposal(_ id: String) async {
+        inboxAdoptBusy = true
+        opsAdoptError = nil
+        defer { inboxAdoptBusy = false }
+        do {
+            try await prepareClient()
+            let resp = try await client.adoptInboxProposal(id: id)
+            if resp.ok != true {
+                opsAdoptError = resp.error ?? "采纳失败"
+                return
+            }
+            inboxProposals.removeAll { $0.id == id }
+            await refreshOps()
+        } catch {
+            opsAdoptError = "inbox 采纳失败: \(error.localizedDescription)"
         }
     }
 

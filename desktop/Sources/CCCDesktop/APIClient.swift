@@ -846,6 +846,19 @@ actor APIClient {
         try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
     }
 
+    func fetchInboxProposals(includeAdopted: Bool = false) async throws -> InboxProposalsResp {
+        let q = includeAdopted ? "?include_adopted=1" : ""
+        return try await send(try authedRequest("api/desktop/proposals\(q)"), as: InboxProposalsResp.self)
+    }
+
+    func adoptInboxProposal(id: String) async throws -> TransferResponse {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await send(
+            try authedRequest("api/desktop/proposals/\(enc)/adopt", method: "POST"),
+            as: TransferResponse.self
+        )
+    }
+
     func runDailyReview(workspace: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
         let req = try authedRequest("api/ops/daily-review/run", method: "POST", body: body)

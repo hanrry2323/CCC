@@ -33,6 +33,7 @@ struct OpsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     overviewSection
+                    inboxProposalsSection
                     resourcesSection
                     risksSection
                     workspacesSection
@@ -87,6 +88,39 @@ struct OpsView: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    // MARK: - Inbox proposals (Hub-Shell P2)
+
+    private var inboxProposalsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("待采纳提案", systemImage: "tray.and.arrow.down")
+            if model.inboxProposals.isEmpty {
+                emptyHint("inbox/ 无 pending 提案")
+            } else {
+                ForEach(model.inboxProposals) { p in
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.title ?? p.id)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(CCCTheme.ink)
+                            Text("\(p.project_id ?? "—") · \(p.complexity ?? "small")")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
+                        Spacer()
+                        Button("采纳") {
+                            Task { await model.adoptInboxProposal(p.id) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(model.inboxAdoptBusy)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(CCCTheme.surface.opacity(0.9)))
+                }
+            }
+        }
     }
 
     // MARK: - Overview machines

@@ -311,7 +311,11 @@ async def transfer_to_epic(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
+    return await _transfer_epic_from_body(body)
 
+
+async def _transfer_epic_from_body(body: dict[str, Any]):
+    """Shared by /transfer and proposals adopt。"""
     # 角色锁（架构对齐 2026-07-19）：Desktop 只能转 epic，禁止直接转 work
     body_card_kind = str(body.get("card_kind") or "").strip().lower()
     if body_card_kind and body_card_kind != "epic":
@@ -404,7 +408,6 @@ async def transfer_to_epic(request: Request):
         "complexity": str(body.get("complexity") or "medium"),
         "note": note[:2000],
         "tags": ["desktop-transfer", f"exec:{executor_intent}"],
-        # 禁止附带 phases：转任务只写 epic，由 Engine/product 扇出
     }
 
     resp = await board_proxy("POST", "/api/tasks", json_body=task_body)
@@ -425,7 +428,6 @@ async def transfer_to_epic(request: Request):
         task_body=task_body,
     )
     tid = str(payload.get("task_id") or epic_id)
-    # 只写 plan（不写 phases）— 扇出前留给 product；plan 便于人类与 Engine 读
     try:
         written = _write_seed_artifacts(workspace, tid, plan_md, None)
         payload["seeded"] = written
@@ -462,6 +464,45 @@ async def transfer_to_epic(request: Request):
         "seeded": payload.get("seeded"),
         "idempotent_replay": False,
     }
+
+
+@router.get("/proposals")
+async def list_inbox_proposals(request: Request, include_adopted: int = 0):
+    check_auth(request)
+    from ..services import proposals as proposals_svc
+
+    items = proposals_svc.list_proposals(include_adopted=bool(include_adopted))
+    return {"ok": True, "proposals": items}
+
+
+@router.post("/proposals/{prop_id}/adopt")
+async def adopt_inbox_proposal(request: Request, prop_id: str):
+    """人审采纳：提案 → transfer；未采纳绝不进 backlog。"""
+    check_auth(request)
+    from ..services import proposals as proposals_svc
+
+    prop = proposals_svc.get_proposal(prop_id)
+    if not prop or prop.get("status") == "adopted":
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "error": "proposal_not_found"},
+        )
+    if not prop.get("project_id"):
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "missing_project"},
+        )
+    crid = f"inbox-adopt-{prop['id']}-{uuid.uuid4().hex[:8]}"
+    body = proposals_svc.proposal_to_transfer_body(prop, client_request_id=crid)
+    result = await _transfer_epic_from_body(body)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result.get("ok"):
+        return result
+    proposals_svc.mark_adopted(prop["id"])
+    result["proposal_id"] = prop["id"]
+    result["adopted"] = True
+    return result
 
 
 # ── Flow events / snapshot ────────────────────────────────
