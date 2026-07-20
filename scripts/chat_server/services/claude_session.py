@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import signal
 import subprocess
 import time
@@ -18,6 +19,34 @@ from typing import Any, AsyncIterator
 from .. import config
 
 _log = logging.getLogger("ccc-chat.session")
+
+# Claude Code / loop-code 偶发合成 stub（空内容或 meta 续跑），对用户等于死回复
+_NO_RESPONSE_STUB_RE = re.compile(
+    r"^\s*no\s+response\s+requested\.?\s*$",
+    re.I,
+)
+_STUB_RETRY_PROMPT = (
+    "上一条用户请求仍然有效，请立刻给出对用户可见的完整中文答复。"
+    "禁止回复 No response requested、空内容或只跑工具不说话。"
+)
+_STUB_CANON = "no response requested."
+
+
+def _is_no_response_stub(text: str) -> bool:
+    return bool(_NO_RESPONSE_STUB_RE.match((text or "").strip()))
+
+
+def _could_be_stub_prefix(text: str) -> bool:
+    """流式中尚未结束时：是否仍可能拼成 stub（避免把 N/o/... 提前推给 UI）。"""
+    s = (text or "").strip().lower()
+    if not s:
+        return True
+    if _is_no_response_stub(s):
+        return True
+    # 过长或明显不是 stub 前缀 → 放行
+    if len(s) > len(_STUB_CANON) + 2:
+        return False
+    return _STUB_CANON.startswith(s) or s.startswith("no response")
 
 
 def _descendant_loop_code_pids(root_pid: int | None = None) -> set[int]:
@@ -702,6 +731,9 @@ class ClaudeSessionManager:
             turn_error = False
             client_gone = False
             reader_task: asyncio.Task | None = None
+            assistant_text_buf = ""
+            stub_retry_used = False
+            held_delta = ""  # 疑似 stub 前缀时暂存，确认非 stub 再冲刷
 
             # 关键：不可对 receive_response().__anext__ 使用 wait_for——
             # 超时会 cancel 底层迭代，导致整轮无 delta、只剩空 done。
@@ -732,133 +764,197 @@ class ClaudeSessionManager:
                         f"以下是之前对话的压缩摘要，请基于此继续：\n\n{summary}\n\n"
                         f"---\n\n用户新消息：{prompt}"
                     )
-                await slot.client.query(effective_prompt)
-                last_progress = time.monotonic()
-                reader_task = asyncio.create_task(
-                    _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
-                )
 
-                while True:
-                    if request_disconnected and request_disconnected():
-                        client_gone = True
-                        try:
-                            await slot.client.interrupt()
-                        except Exception:
-                            _log.debug("interrupt on disconnect failed", exc_info=True)
-                        break
-
-                    now = time.monotonic()
-                    if now - started >= max_s:
-                        timed_out = True
-                        stall_reason = f"整轮上限 {max_s}s"
-                        try:
-                            await slot.client.interrupt()
-                        except Exception:
-                            pass
-                        yield {
-                            "type": "error",
-                            "code": "max_timeout",
-                            "content": f"响应超时（{stall_reason}），请重试或缩短任务",
-                        }
-                        break
-
-                    limit = _stall_limit()
-                    idle_left = limit - (now - last_progress)
-                    if idle_left <= 0:
-                        timed_out = True
-                        try:
-                            await slot.client.interrupt()
-                        except Exception:
-                            pass
-                        if awaiting_first_event:
-                            stall_reason = f"首事件超时 {first_event_s}s（仅心跳无输出）"
-                            code = "first_event_timeout"
-                        elif pending_tool:
-                            stall_reason = (
-                                f"工具 {pending_tool} 超过 {tool_stall_s}s 无结果"
-                            )
-                            code = "tool_stall"
-                        else:
-                            stall_reason = f"已 {idle_s}s 无新输出"
-                            code = "idle_timeout"
-                        yield {
-                            "type": "error",
-                            "code": code,
-                            "content": (
-                                f"Agent 无进展：{stall_reason}。"
-                                "已中断并回收会话，请重试。"
-                            ),
-                        }
-                        break
-
-                    try:
-                        kind, payload = await asyncio.wait_for(
-                            msg_queue.get(),
-                            timeout=min(max(idle_left, 0.1), 5.0),
+                # 最多两轮：首轮若只有 Claude Code stub「No response requested.」则静默续问一次
+                for attempt in range(2):
+                    if attempt == 1:
+                        if stub_retry_used:
+                            break
+                        if client_gone or timed_out or turn_error:
+                            break
+                        if not _is_no_response_stub(assistant_text_buf):
+                            break
+                        stub_retry_used = True
+                        _log.warning(
+                            "suppress no-response stub; retry once hub_sid=%s",
+                            hub_session_id,
                         )
-                    except asyncio.TimeoutError:
+                        assistant_text_buf = ""
+                        held_delta = ""
+                        saw_assistant_text = False
+                        awaiting_first_event = True
+                        pending_tool = None
+                        last_progress = time.monotonic()
+                        effective_prompt = _STUB_RETRY_PROMPT
+
+                    await slot.client.query(effective_prompt)
+                    last_progress = time.monotonic()
+                    reader_task = asyncio.create_task(
+                        _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
+                    )
+                    attempt_ended = False
+
+                    while True:
+                        if request_disconnected and request_disconnected():
+                            client_gone = True
+                            try:
+                                await slot.client.interrupt()
+                            except Exception:
+                                _log.debug(
+                                    "interrupt on disconnect failed", exc_info=True
+                                )
+                            break
+
                         now = time.monotonic()
-                        if now - last_ping >= 15:
-                            # 心跳告知「连接活着」；不得推进 last_progress
+                        if now - started >= max_s:
+                            timed_out = True
+                            stall_reason = f"整轮上限 {max_s}s"
+                            try:
+                                await slot.client.interrupt()
+                            except Exception:
+                                pass
                             yield {
-                                "type": "ping",
-                                "ts": int(now),
-                                "awaiting": (
-                                    "first_event"
-                                    if awaiting_first_event
-                                    else (
-                                        f"tool:{pending_tool}"
-                                        if pending_tool
-                                        else "idle"
-                                    )
-                                ),
-                                "stall_in_s": int(
-                                    max(0, _stall_limit() - (now - last_progress))
+                                "type": "error",
+                                "code": "max_timeout",
+                                "content": f"响应超时（{stall_reason}），请重试或缩短任务",
+                            }
+                            break
+
+                        limit = _stall_limit()
+                        idle_left = limit - (now - last_progress)
+                        if idle_left <= 0:
+                            timed_out = True
+                            try:
+                                await slot.client.interrupt()
+                            except Exception:
+                                pass
+                            if awaiting_first_event:
+                                stall_reason = (
+                                    f"首事件超时 {first_event_s}s（仅心跳无输出）"
+                                )
+                                code = "first_event_timeout"
+                            elif pending_tool:
+                                stall_reason = (
+                                    f"工具 {pending_tool} 超过 {tool_stall_s}s 无结果"
+                                )
+                                code = "tool_stall"
+                            else:
+                                stall_reason = f"已 {idle_s}s 无新输出"
+                                code = "idle_timeout"
+                            yield {
+                                "type": "error",
+                                "code": code,
+                                "content": (
+                                    f"Agent 无进展：{stall_reason}。"
+                                    "已中断并回收会话，请重试。"
                                 ),
                             }
-                            last_ping = now
-                        continue
+                            break
 
-                    if kind == "end":
-                        break
-                    if kind == "err":
-                        turn_error = True
-                        raise payload
-
-                    message = payload
-                    sid = self._extract_session_id(message)
-                    if sid:
-                        slot.claude_session_id = sid
-                    mapped = self._map_message(message)
-                    if not mapped:
-                        # SystemMessage 等无用户可见进展 → 不重置进展时钟
-                        continue
-                    for event in mapped:
-                        et = event.get("type")
-                        if et == "_result_text":
-                            if not saw_assistant_text and event.get("content"):
-                                saw_assistant_text = True
-                                awaiting_first_event = False
-                                pending_tool = None
-                                last_progress = time.monotonic()
+                        try:
+                            kind, payload = await asyncio.wait_for(
+                                msg_queue.get(),
+                                timeout=min(max(idle_left, 0.1), 5.0),
+                            )
+                        except asyncio.TimeoutError:
+                            now = time.monotonic()
+                            if now - last_ping >= 15:
                                 yield {
-                                    "type": "delta",
-                                    "content": event["content"],
+                                    "type": "ping",
+                                    "ts": int(now),
+                                    "awaiting": (
+                                        "first_event"
+                                        if awaiting_first_event
+                                        else (
+                                            f"tool:{pending_tool}"
+                                            if pending_tool
+                                            else "idle"
+                                        )
+                                    ),
+                                    "stall_in_s": int(
+                                        max(0, _stall_limit() - (now - last_progress))
+                                    ),
                                 }
+                                last_ping = now
                             continue
-                        if et in ("delta", "status", "cost", "tool_use", "tool_result", "error"):
-                            last_progress = time.monotonic()
-                            awaiting_first_event = False
-                        if et == "delta":
-                            saw_assistant_text = True
-                            pending_tool = None
-                        elif et == "tool_use":
-                            pending_tool = str(event.get("name") or "tool")
-                        elif et == "tool_result":
-                            pending_tool = None
-                        if et == "error":
+
+                        if kind == "end":
+                            attempt_ended = True
+                            break
+                        if kind == "err":
                             turn_error = True
-                        yield event
+                            raise payload
+
+                        message = payload
+                        sid = self._extract_session_id(message)
+                        if sid:
+                            slot.claude_session_id = sid
+                        mapped = self._map_message(message)
+                        if not mapped:
+                            continue
+                        for event in mapped:
+                            et = event.get("type")
+                            if et == "_result_text":
+                                content = str(event.get("content") or "")
+                                if not content:
+                                    continue
+                                # 走与 delta 相同的 stub 门控
+                                event = {"type": "delta", "content": content}
+                                et = "delta"
+                            if et in (
+                                "delta",
+                                "status",
+                                "cost",
+                                "tool_use",
+                                "tool_result",
+                                "error",
+                            ):
+                                last_progress = time.monotonic()
+                                awaiting_first_event = False
+                            if et == "delta":
+                                content = str(event.get("content") or "")
+                                if not content:
+                                    continue
+                                assistant_text_buf += content
+                                held_delta += content
+                                if _could_be_stub_prefix(assistant_text_buf):
+                                    # 仍可能是 stub：先不推 UI
+                                    continue
+                                # 确认非 stub：冲刷缓冲
+                                saw_assistant_text = True
+                                pending_tool = None
+                                flush = held_delta
+                                held_delta = ""
+                                yield {"type": "delta", "content": flush}
+                                continue
+                            elif et == "tool_use":
+                                pending_tool = str(event.get("name") or "tool")
+                            elif et == "tool_result":
+                                pending_tool = None
+                            if et == "error":
+                                turn_error = True
+                            yield event
+
+                    if reader_task is not None and not reader_task.done():
+                        reader_task.cancel()
+                        try:
+                            await reader_task
+                        except asyncio.CancelledError:
+                            pass
+                    reader_task = None
+                    # 清空队列残留，准备可能的续问
+                    while not msg_queue.empty():
+                        try:
+                            msg_queue.get_nowait()
+                        except Exception:
+                            break
+
+                    if not attempt_ended:
+                        break
+                    if client_gone or timed_out or turn_error:
+                        break
+                    if not _is_no_response_stub(assistant_text_buf):
+                        break
             except Exception as exc:
                 turn_error = True
                 _log.exception("stream_turn failed session=%s", hub_session_id)
@@ -892,6 +988,20 @@ class ClaudeSessionManager:
                     # 异常路径若尚未 forget，补一次
                     if self._slots.get(slot.key) is slot:
                         await self._forget_slot(slot, reason="turn_error")
+                elif (
+                    stub_retry_used
+                    and _is_no_response_stub(assistant_text_buf)
+                    and not saw_assistant_text
+                ):
+                    # 续问仍 stub：给用户可见错误，避免空白气泡
+                    yield {
+                        "type": "error",
+                        "code": "empty_stub",
+                        "content": (
+                            "本机 Agent 返回了空占位（No response requested）。"
+                            "请再点一次快捷条或重发消息。"
+                        ),
+                    }
 
                 slot.last_used = time.monotonic()
                 yield {

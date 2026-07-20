@@ -325,6 +325,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "### 可下达任务\n"
         "- 适合（人确认后转任务）：1 个标题 ≤20 字\n"
         "- 不适合无人值守：写「先处理：…」或「需人定稿」\n\n"
+        "请现在输出完整可见答复；禁止只回 No response requested 或空内容。\n\n"
         f"程序快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
         f"摘要：{baseline.get('summary', '')}\n"
         + (f"\nprofile 摘录：\n{profile}\n" if profile else "")

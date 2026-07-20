@@ -1,18 +1,20 @@
 import Foundation
 
 /// Hub / Desktop 快捷条语义（内置 + 自定义）
-/// 设计：功课深度对齐 Cursor Agent；对用户仍用中文可拍板表达。
+/// 设计：功课对齐 Cursor；结尾必须是明确的用户请求，避免 loop-code 合成 “No response requested.”
 enum QuickPrompts {
-    /// 共用：静默深查 + 可见答复纪律（不再用字数硬阉割智能）
     static let replyCompact =
-        "【对用户回复】中文白话；先结论后理由；像 Cursor Agent 一样先核实再说话。" +
-        "禁止复述工具过程、大段代码、裸 JSON（定稿块除外）。" +
-        "路径仅在拍板必需时点到关键处；可用短模块名。禁止编造未读到的事实。"
+        "用中文白话回复我；先结论后理由。" +
+        "不要复述工具过程、不要大段代码、不要裸 JSON（定稿块除外）。" +
+        "不要编造未核实的事实。工具跑完后必须写出完整可见答复，" +
+        "禁止只回 No response requested 或空内容。"
 
     static let investigatePref =
-        "【静默功课 · 必须执行】先 Read/Glob/Grep 本仓库关键文件；" +
-        "需要时 Bash：`git log -5`、`git status`；交叉验证 CLAUDE.md / .ccc/profile.md / .ccc/state.md。" +
-        "state 可能滞后，以 git 与现文件为准。不要 WebFetch，除非用户要外网。"
+        "请先在本仓库静默核实（Read/Glob/Grep；需要时 bash：git log -5、git status；" +
+        "交叉 CLAUDE.md / .ccc/profile.md / .ccc/state.md）。不要上外网，除非我要求。"
+
+    static let mustAnswer =
+        "\n\n请现在开始执行，并直接把完整答复写给我。"
 
     static let builtinPrompts: [(title: String, prompt: String)] = [
         ("下一步", nextStep),
@@ -36,58 +38,48 @@ enum QuickPrompts {
     }
 
     static let nextStep =
+        "请帮我规划「下一步」。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n\n# 任务：给出「下一步」——可拍板的产品/架构建议\n" +
-        "继承本会话已聊目标与约束；结合仓库现状，像 Cursor 一样想清楚再答。\n\n" +
-        "## 输出\n" +
-        "### 判断\n" +
-        "一句：现在最该推进什么（业务语言）。\n" +
+        "\n继承本会话已聊目标与约束，结合仓库现状给出可拍板建议。\n\n" +
+        "请按这个结构回答：\n" +
+        "### 判断\n一句：现在最该推进什么。\n" +
         "### 下一步（最多 3 条，按优先级）\n" +
         "1. … — 为什么现在做 / 不做会怎样\n" +
         "2. …\n" +
         "3. …（可省略）\n" +
-        "最佳：… — <一句场景理由>\n" +
-        "### 澄清（可选）\n" +
-        "最多 1 个关键问题；没有就写「无」。\n"
+        "最佳：… — <一句理由>\n" +
+        "### 澄清\n最多 1 个问题；没有就写「无」。" +
+        mustAnswer
 
     static let scanRisks =
+        "请帮我扫一遍风险。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n\n# 任务：扫风险（发布/场景/下达可行性，不是技术名词清单）\n" +
-        "对照本会话方案 + 仓库真实状态；无证据不夸大。\n\n" +
-        "## 输出\n" +
+        "\n对照本会话方案与仓库真实状态；无证据不夸大。\n\n" +
+        "请按这个结构回答：\n" +
         "### 风险（按严重度，最多 5 条）\n" +
-        "- 用「会怎样坏 / 谁受影响 / 是否挡转任务」描述；无则「无明显风险」\n" +
-        "### 建议处理顺序\n" +
-        "1～3 步，业务语言。\n" +
-        "### 可否定稿转任务\n" +
-        "可以 / 暂缓 — <一句理由>\n"
+        "- 会怎样坏 / 谁受影响 / 是否挡转任务；无则「无明显风险」\n" +
+        "### 建议处理顺序\n1～3 步。\n" +
+        "### 可否定稿转任务\n可以 / 暂缓 — <一句理由>" +
+        mustAnswer
 
     static let finalize =
+        "请把本会话方案定稿成可转任务的契约包。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n\n# 任务：定稿为可投递 CCC 的契约包（转任务前置）\n" +
-        "把本会话方案收成 **一条可执行 epic**。先核实仓库是否支撑目标，再写契约。\n\n" +
-        "## 步骤\n" +
-        "1. 确认 title/goal/acceptance 够具体、可验收；缺关键信息则先问 1 个问题（不要硬编）。\n" +
-        "2. 评估 feasibility：`ok` 或 `blocked`（blocked 必须写清原因，且不要怂恿转任务）。\n" +
-        "3. `plan_md` 写成 Cursor 级短计划：背景、范围（做/不做）、步骤、验收、风险。\n" +
-        "4. 白话结论后，输出**恰好一个** `ccc-transfer` fenced JSON 块（字段齐全）。\n\n" +
-        "## 块外\n" +
-        "2～4 句：做什么、验收长什么样、是否建议立刻转任务。\n" +
-        "块内允许路径与验收命令。不要前后工程师解说。\n"
+        "\n先核实仓库能否支撑目标，再写契约。\n\n" +
+        "先用 2～4 句白话说明：做什么、验收长什么样、是否建议立刻转任务。\n" +
+        "然后输出恰好一个 ```ccc-transfer``` JSON 块（title/goal/acceptance/pipeline/" +
+        "feasibility/feasibility_reason/executor_intent/plan_md 齐全）。\n" +
+        "feasibility 非 ok 时不要怂恿转任务；plan_md 含背景、范围、步骤、验收、风险。" +
+        mustAnswer
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
     static let alignBaseline =
+        "请帮我对齐当前项目基线。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n\n# 任务：对齐当前项目基线\n" +
-        "读 CLAUDE.md、README、.ccc/profile.md、.ccc/state.md，并 `git log -5` 交叉验证。\n\n" +
-        "## 输出\n" +
-        "### 现状\n" +
-        "- 项目定位（含版本若有）\n" +
-        "- 当前阶段 / 是否可开工\n" +
-        "### 风险\n" +
-        "- 挡下达或发布的事；空板+闲置可写正常\n" +
-        "### 建议选项\n" +
-        "- 2～3 个下一步；`最佳：… — <理由>`\n" +
-        "### 可下达任务\n" +
-        "- 适合人确认后转任务的 1 个标题；或不适合时写「先处理：…」\n"
+        "\n\n请按这个结构回答：\n" +
+        "### 现状\n- 定位（含版本）\n- 阶段 / 是否可开工\n" +
+        "### 风险\n挡下达或发布的事；空板闲置可写正常\n" +
+        "### 建议选项\n2～3 个下一步；最佳：… — <理由>\n" +
+        "### 可下达任务\n适合转任务的 1 个标题，或不适合时写「先处理：…」" +
+        mustAnswer
 }
