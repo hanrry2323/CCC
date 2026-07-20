@@ -16,5 +16,5 @@
 | Phase8 第二真实仓 | green | hp（xianyu 脏跳过）→ released | cb3bbf5 |
 | Phase9 abnormal 止损可见 | green | 右栏/toast + snapshot failed | d7f98a0 |
 | Phase10 xianyu 仓卫生 | green | 空板 + 陈旧 .ccc 清理（xianyu `625e317`） | b1f80d7 |
-| Phase11 第三真实仓 xianyu | green | xianyu flow-smoke → released | e7eea5d |
-| Phase12 业务向意图 | pending | — | — |
+| Phase11 第三真实仓 xianyu | green | xianyu flow-smoke → released | 11053bf |
+| Phase12 业务向意图 | green | qb README 双机路径（非 flow-smoke） | a1268e0 |
