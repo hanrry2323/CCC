@@ -1,5 +1,9 @@
 # 舰队卫生盘点 — 2026-07-18（v0.51 后）
 
+> **历史快照（superseded）** — 本表反映 **M1 时代** 登记路径；**不是** 2026-07 迁后生产舰队。  
+> **现行**：Mac2017 `~/program/apps/*` + [`../deploy/server-layout.md`](../deploy/server-layout.md) + [`../product/desktop-agent-handoff.md`](../product/desktop-agent-handoff.md)；  
+> 五仓迁移运维：[`../deploy/fleet-apps-migration-2026-07.md`](../deploy/fleet-apps-migration-2026-07.md)。
+>
 > Cursor 通道执行 · **非** Engine 自消费。对齐 `docs/hygiene/PLAN-TEMPLATE.md` / R-15。  
 > 探针原始数据：本机 `/tmp/fleet-inventory.json`（扫描时点）。  
 > 可执行清理：[fleet-cleanup-playbook-2026-07-18.md](./fleet-cleanup-playbook-2026-07-18.md)

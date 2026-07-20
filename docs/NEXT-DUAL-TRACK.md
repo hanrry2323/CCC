@@ -1,5 +1,9 @@
 # 下一步计划：用 CCC 带动 xianyu + clawmed-ccc（双轨）
 
+> **历史文档（superseded 路径口径）** — 2026-07-17 拍板记录仍可参考产品意图；  
+> **现行路径 / 舰队登记** 以 [`deploy/server-layout.md`](deploy/server-layout.md) + [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) + [`deploy/fleet-apps-migration-2026-07.md`](deploy/fleet-apps-migration-2026-07.md) 为准。  
+> 勿再把文中 M1 顶层路径（如 `~/program/xianyu`、`~/program/clawmed-ccc`）当作 Engine SSOT。
+>
 > 状态：**已拍板**（2026-07-17）  
 > 叙事：`docs/VISION.md` / `docs/INTRO.md` · 视频：`docs/releases/intro-video-script.md`
 

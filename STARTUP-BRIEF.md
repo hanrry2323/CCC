@@ -43,7 +43,8 @@ Desktop（M1）：对齐基线 → 下一步 → 定稿方案 → 转任务 → 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
 多项目绑定 / 新项目接入：[`docs/workspace-binding.md`](docs/workspace-binding.md)  
-**业务仓迁移 → 注册 → Desktop 开项目对话**：[`docs/runbooks/app-migrate-register-desktop.md`](docs/runbooks/app-migrate-register-desktop.md) · Agent 短交接：[`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)
+**业务仓迁移 → 注册 → Desktop 开项目对话**：[`docs/runbooks/app-migrate-register-desktop.md`](docs/runbooks/app-migrate-register-desktop.md) · Agent 短交接：[`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)  
+**五仓舰队迁移（运维，非日常心智）**：[`docs/deploy/fleet-apps-migration-2026-07.md`](docs/deploy/fleet-apps-migration-2026-07.md) · 2017 布局：[`docs/deploy/server-layout.md`](docs/deploy/server-layout.md)
 
 ---
 

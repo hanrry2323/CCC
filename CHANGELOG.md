@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **舰队五仓迁 Mac2017**：`xianyu` / `qb` / `qx-observer` / `hp` / `medio-0` → `apps/` + register；M1 冷冻于 `archive/2026-07-20-m1-freeze/`；运维 SSOT [`docs/deploy/fleet-apps-migration-2026-07.md`](docs/deploy/fleet-apps-migration-2026-07.md)；Agent 心智 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)。
 - **Desktop 可用性 9.5 冲刺**：搜索结果可点跳转；空态三步主路径；首启 tip + 侧栏「用法」HelpSheet；重置对话确认；会话重命名对话框；快捷芯片 hover 说明；转任务人话门禁；⌘N/⌘F/⌘1–3/⌘⇧T；热路径 VoiceOver 标签；Settings 分组；预热中状态可见。计划 SSOT：[`docs/product/desktop-usability-9.5-plan.md`](docs/product/desktop-usability-9.5-plan.md)。
 
 ### Fixed

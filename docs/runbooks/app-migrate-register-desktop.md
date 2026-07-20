@@ -1,13 +1,15 @@
 # 业务仓：迁移 → CCC 注册 → Desktop 对话
 
-> **SSOT（操作流程）**。对齐：[`../workspace-binding.md`](../workspace-binding.md)、[`../deploy/server-layout.md`](../deploy/server-layout.md)、[`../product/project-as-conversation.md`](../product/project-as-conversation.md)、[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)。  
-> **Agent 交接摘要**：[`../product/desktop-agent-handoff.md`](../product/desktop-agent-handoff.md)。
+> **SSOT（单仓操作流程）**。对齐：[`../workspace-binding.md`](../workspace-binding.md)、[`../deploy/server-layout.md`](../deploy/server-layout.md)、[`../product/project-as-conversation.md`](../product/project-as-conversation.md)、[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)。  
+> **Agent 交接摘要**：[`../product/desktop-agent-handoff.md`](../product/desktop-agent-handoff.md)。  
+> **五仓舰队迁移（运维清单，非日常心智）**：[`../deploy/fleet-apps-migration-2026-07.md`](../deploy/fleet-apps-migration-2026-07.md)。
 
 ---
 
 ## 0. 一句话
 
-代码 SSOT 与 Engine 在 **Mac2017 `~/program/apps/<name>`**；人在 **M1 Desktop** 点项目卡进入 **唯一对话** `{project_id}::main`；对话写码走 **本机 sidecar 映射路径**，转任务/看板走 **Hub → 2017 仓**。
+代码 SSOT 与 Engine 在 **Mac2017 `~/program/apps/<name>`**；人在 **M1 Desktop** 点项目卡进入 **唯一对话** `{project_id}::main`；对话写码走 **本机 sidecar 映射路径**（建议 `/Users/apple/program/apps/<name>` 瘦 clone），转任务/看板走 **Hub → 2017 仓**。  
+M1 `archive/*-m1-freeze/` 仅为冷冻备份，**禁止** register / 配进 map。
 
 ---
 
@@ -16,7 +18,8 @@
 | 面 | 机器 | 路径习惯 | 职责 |
 |----|------|----------|------|
 | 编排 | Mac2017 | `/Users/fan/program/apps/<name>` | 代码生产 SSOT、Board、Engine、Hub 项目发现 |
-| 对话 | M1 | `/Users/apple/program/...`（本机副本） | Desktop + sidecar `:7788`；`localWorkspaceMap` 映射 |
+| 对话 | M1 | `/Users/apple/program/apps/<name>`（瘦 clone） | Desktop + sidecar `:7788`；`localWorkspaceMap` 映射 |
+| 冷冻 | M1 | `archive/YYYY-MM-DD-m1-freeze/<name>/` | 只读备份；非工作区 |
 | 中转 | Mac2017 | Router `:4000/:4002` | 模型出口 |
 
 Desktop **不会**把 sidecar `cwd` 直接设成 2017 的 NFS/SSH 路径；Hub 返回 2017 `path`，对话必须用 M1 上存在的目录（设置里的项目映射）。
