@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop 可用性 9.5 冲刺**：搜索结果可点跳转；空态三步主路径；首启 tip + 侧栏「用法」HelpSheet；重置对话确认；会话重命名对话框；快捷芯片 hover 说明；转任务人话门禁；⌘N/⌘F/⌘1–3/⌘⇧T；热路径 VoiceOver 标签；Settings 分组；预热中状态可见。计划 SSOT：[`docs/product/desktop-usability-9.5-plan.md`](docs/product/desktop-usability-9.5-plan.md)。
+
 ### Fixed
 
 - **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。

@@ -74,9 +74,14 @@ struct FlowCanvasView: View {
                     .font(CCCTheme.caption)
                     .foregroundStyle(CCCTheme.faint.opacity(0.85))
             }
+            Text("时间线按依赖分层展开；点击节点可看详情。")
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint.opacity(0.75))
             Spacer()
         }
         .padding(20)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("编排空闲。转任务后流程会出现在这里。")
     }
 
     private var timelineBody: some View {
@@ -119,6 +124,7 @@ struct FlowCanvasView: View {
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, minHeight: FlowLayout.epicHeight, alignment: .topLeading)
+        .accessibilityLabel("大卡 \(node.title)，\(node.subtitle)")
     }
 
     private var workSections: some View {
@@ -158,6 +164,7 @@ struct FlowCanvasView: View {
         .opacity(visible ? 1 : 0)
         .offset(y: visible ? 0 : 8)
         .animation(.easeOut(duration: 0.32), value: revealedWorkIds)
+        .accessibilityLabel("步骤 \(work.title)，\(work.displayStatus)")
     }
 
     private func railConnector(active: Bool) -> some View {

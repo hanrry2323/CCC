@@ -148,6 +148,8 @@ struct BoardView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(CCCTheme.faint)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(columnTitles[col] ?? col)列，\(tasks.count) 项")
             .padding(.horizontal, 4)
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 6) {

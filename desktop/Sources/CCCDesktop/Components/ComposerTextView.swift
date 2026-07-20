@@ -47,6 +47,8 @@ struct ComposerTextView: NSViewRepresentable {
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         tv.string = text
         tv.placeholderText = placeholder
+        tv.setAccessibilityLabel("消息输入框")
+        tv.setAccessibilityRole(.textArea)
         tv.onSubmit = {
             context.coordinator.parent.onSubmit?()
         }

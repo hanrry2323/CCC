@@ -60,6 +60,9 @@ struct SoftRow: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(prominent ? "主要操作" : "")
     }
 
     private var fill: Color {

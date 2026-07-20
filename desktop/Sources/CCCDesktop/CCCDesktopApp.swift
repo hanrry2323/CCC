@@ -13,6 +13,28 @@ struct CCCDesktopApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 1360, height: 860)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("新会话") { appModel.requestNewThread() }
+                    .keyboardShortcut("n", modifiers: [.command])
+            }
+            CommandGroup(after: .newItem) {
+                Button("搜索消息") { appModel.requestSearchFocus() }
+                    .keyboardShortcut("f", modifiers: [.command])
+                Button("转任务…") { appModel.requestOpenTransfer() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                Divider()
+                Button("对话") { appModel.requestDestination(.chat) }
+                    .keyboardShortcut("1", modifiers: [.command])
+                Button("看板") { appModel.requestDestination(.board) }
+                    .keyboardShortcut("2", modifiers: [.command])
+                Button("运维") { appModel.requestDestination(.ops) }
+                    .keyboardShortcut("3", modifiers: [.command])
+                Divider()
+                Button("用法说明") { appModel.isHelpPresented = true }
+                    .keyboardShortcut("/", modifiers: [.command, .shift])
+            }
+        }
 
         Settings {
             SettingsView()

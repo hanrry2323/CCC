@@ -35,6 +35,8 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.localWorkspaceMap") var localWorkspaceMapJSON: String = "{}"
     /// CCC 仓根（拉起 sidecar）；空则自动探测
     @AppStorage("ccc.home") var cccHomePath: String = ""
+    /// 首启用法横幅是否已关闭
+    @AppStorage("ccc.dismissedFirstRunTip") var dismissedFirstRunTip: Bool = false
 
     @Published var projects: [DesktopProject] = []
     @Published var threads: [DesktopThread] = []
@@ -388,6 +390,8 @@ final class AppModel: ObservableObject {
         let path = localPath(for: pid)
         let sid = resolveThreadId(projectId: pid, preferred: threadId)
         if chatTasks[sid] != nil { return }
+        agentWarming = true
+        defer { agentWarming = false }
         let result = await client.warmLocalAgent(
             base: base ?? cachedAgentBaseURL,
             projectPath: path,
@@ -3167,11 +3171,22 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: - Phase 1.2: Search
+    // MARK: - Phase 1.2: Search / Help / Commands
 
     @Published var searchQuery: String = ""
     @Published var searchResults: [LocalSessionStore.SearchResult] = []
     @Published var isSearching: Bool = false
+    /// 点搜索结果后滚动到该消息（UUID string）
+    @Published var pendingScrollMessageId: String?
+    @Published var isHelpPresented: Bool = false
+    /// 菜单 ⌘F：侧栏搜索框抢焦点
+    @Published var searchFocusTick: UInt64 = 0
+    /// 菜单命令：请求新会话 / 转任务 / 切换目的地（由当前窗消费）
+    @Published var commandNewThreadTick: UInt64 = 0
+    @Published var commandTransferTick: UInt64 = 0
+    @Published var commandDestination: SidebarDestination?
+    /// sidecar 预热中（不阻塞发送，仅状态可见）
+    @Published var agentWarming: Bool = false
 
     func performSearch(query: String) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -3188,6 +3203,68 @@ final class AppModel: ObservableObject {
         }
         searchResults = results.sorted { ($0.updatedAt ?? "") > ($1.updatedAt ?? "") }
         isSearching = false
+    }
+
+    func clearSearch() {
+        searchQuery = ""
+        searchResults = []
+        isSearching = false
+    }
+
+    /// 打开搜索命中：灌全局选中 + 待滚消息；调用方还需写 WindowChatState
+    func openSearchResult(_ result: LocalSessionStore.SearchResult) async {
+        let pid = LocalSessionStore.projectId(fromThreadId: result.threadId)
+        pendingScrollMessageId = result.messageId
+        clearSearch()
+        destination = .chat
+        await openThread(result.threadId)
+        selectedProjectId = pid
+        selectedThreadId = result.threadId
+    }
+
+    func requestSearchFocus() {
+        destination = .chat
+        commandDestination = .chat
+        searchFocusTick &+= 1
+    }
+
+    func requestNewThread() {
+        commandDestination = .chat
+        commandNewThreadTick &+= 1
+    }
+
+    func requestOpenTransfer() {
+        commandDestination = .chat
+        commandTransferTick &+= 1
+    }
+
+    func requestDestination(_ dest: SidebarDestination) {
+        commandDestination = dest
+        selectDestination(dest, projectId: selectedProjectId)
+    }
+
+    /// 转任务按钮旁人话门禁（nil = 可点）
+    func transferGateHint(projectId: String?, threadId: String?) -> String? {
+        if !hubReachable {
+            return "Hub 未连接，暂不能转任务（可先继续聊方案）"
+        }
+        guard let projectId else {
+            return "先在左侧选择一个业务项目"
+        }
+        if let p = projects.first(where: { $0.id == projectId }), p.isOrch == true {
+            return "当前是编排仓：请切到业务项目再转任务"
+        }
+        if !canTransfer(projectId: projectId) {
+            return "该项目不可下达，请换业务仓或检查 Hub 项目列表"
+        }
+        if let d = transferDraft(for: threadId), !d.isGateReady {
+            return "定稿未过门禁：补全标题、目标与至少一条验收"
+        }
+        return nil
+    }
+
+    func dismissFirstRunTip() {
+        dismissedFirstRunTip = true
     }
 
     // MARK: - Phase 1.3: Token tracking

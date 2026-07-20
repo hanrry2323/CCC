@@ -68,6 +68,47 @@ struct ContentView: View {
                 .environmentObject(model)
         }
         .animation(.easeOut(duration: 0.18), value: model.toast)
+        .alert("重命名会话", isPresented: Binding(
+            get: { model.renameThreadId != nil },
+            set: { if !$0 { model.renameThreadId = nil } }
+        )) {
+            TextField("标题", text: $model.renameDraft)
+            Button("保存") {
+                if let id = model.renameThreadId {
+                    model.renameThread(threadId: id, title: model.renameDraft)
+                }
+                model.renameThreadId = nil
+            }
+            Button("取消", role: .cancel) { model.renameThreadId = nil }
+        } message: {
+            Text("为当前会话起一个好认的名字。")
+        }
+        .sheet(isPresented: $model.isHelpPresented) {
+            DesktopHelpSheet()
+                .environmentObject(model)
+        }
+        .onChange(of: model.commandNewThreadTick) { _ in
+            window.destination = .chat
+            guard let pid = window.projectId ?? model.selectedProjectId else {
+                model.showToast("请先选择项目")
+                return
+            }
+            Task {
+                let tid = await model.createNewThread(projectId: pid)
+                window.projectId = pid
+                window.threadId = tid
+            }
+        }
+        .onChange(of: model.commandTransferTick) { _ in
+            window.destination = .chat
+            model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
+        }
+        .onChange(of: model.commandDestination) { dest in
+            guard let dest else { return }
+            window.destination = dest
+            model.selectDestination(dest, projectId: window.projectId)
+            model.commandDestination = nil
+        }
         // 纯文字嵌进顶栏右侧；依赖 model.routerUsageTick 触发 updateNSView
         .background(
             TitlebarUsageAccessory(model: model)
@@ -85,12 +126,14 @@ struct ContentView: View {
 struct CodexSidebar: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
+    @State private var confirmReset = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 SoftRow(title: "重置对话", icon: "arrow.counterclockwise", prominent: true) {
-                    Task { await model.resetConversation(projectId: window.projectId) }
+                    confirmReset = true
                 }
                 .disabled(!model.connected)
                 .opacity(model.connected ? 1 : 0.4)
@@ -125,28 +168,38 @@ struct CodexSidebar: View {
 
             divider
 
-            // Phase 1.2: Search
-            VStack(spacing: 4) {
+            // 搜索：可点结果跳转
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.faint)
+                        .accessibilityHidden(true)
                     TextField("搜索消息…", text: $model.searchQuery)
                         .textFieldStyle(.plain)
                         .font(CCCTheme.caption)
+                        .focused($searchFocused)
+                        .accessibilityLabel("搜索消息")
                         .onSubmit {
                             model.performSearch(query: model.searchQuery)
                         }
+                        .onChange(of: model.searchQuery) { q in
+                            if q.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+                                model.performSearch(query: q)
+                            } else if q.isEmpty {
+                                model.clearSearch()
+                            }
+                        }
                     if !model.searchQuery.isEmpty {
                         Button {
-                            model.searchQuery = ""
-                            model.searchResults = []
+                            model.clearSearch()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 10))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(CCCTheme.faint)
+                        .accessibilityLabel("清除搜索")
                     }
                 }
                 .padding(.horizontal, 10)
@@ -157,23 +210,55 @@ struct CodexSidebar: View {
                 .padding(.top, 6)
 
                 if !model.searchResults.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            Text("找到 \(model.searchResults.count) 条")
-                                .font(CCCTheme.caption)
-                                .foregroundStyle(CCCTheme.faint)
-                                .padding(.leading, 14)
+                    Text("找到 \(model.searchResults.count) 条 · 点击打开")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.horizontal, 14)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(model.searchResults.prefix(20)) { result in
+                                Button {
+                                    Task {
+                                        let pid = LocalSessionStore.projectId(fromThreadId: result.threadId)
+                                        window.destination = .chat
+                                        window.projectId = pid
+                                        window.threadId = result.threadId
+                                        await model.openSearchResult(result)
+                                    }
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(result.title ?? String(result.threadId.suffix(12)))
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(CCCTheme.ink)
+                                            .lineLimit(1)
+                                        Text(result.content)
+                                            .font(.system(size: 10.5))
+                                            .foregroundStyle(CCCTheme.faint)
+                                            .lineLimit(2)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(CCCTheme.hover)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("搜索结果：\(result.title ?? "会话")，\(result.content)")
+                            }
                         }
+                        .padding(.horizontal, 8)
                     }
-                    .padding(.bottom, 2)
+                    .frame(maxHeight: 160)
                 }
             }
 
             divider
 
             VStack(spacing: 1) {
-                SoftRow(title: "用户", icon: "person") {
-                    model.showToast("账号功能预留，尚未接入")
+                SoftRow(title: "用法", icon: "questionmark.circle") {
+                    model.isHelpPresented = true
                 }
                 SoftRow(title: "设置", icon: "gearshape") {
                     openAppSettings()
@@ -184,6 +269,22 @@ struct CodexSidebar: View {
             .padding(.bottom, 12)
         }
         .background(CCCTheme.sidebar)
+        .confirmationDialog(
+            "重置当前项目的对话？",
+            isPresented: $confirmReset,
+            titleVisibility: .visible
+        ) {
+            Button("重置对话", role: .destructive) {
+                Task { await model.resetConversation(projectId: window.projectId) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("本机会话记录会被清空，无法撤销。编排任务不受影响。")
+        }
+        .onChange(of: model.searchFocusTick) { _ in
+            window.destination = .chat
+            searchFocused = true
+        }
     }
 
     private var projectCardList: some View {
@@ -376,6 +477,9 @@ struct CodexChatPaneBody: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !model.dismissedFirstRunTip {
+                firstRunTip
+            }
             statusBar
 
             if !model.canChat {
@@ -415,6 +519,33 @@ struct CodexChatPaneBody: View {
                 bottomPinTick &+= 1
             }
         }
+    }
+
+    private var firstRunTip: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lightbulb")
+                .font(.system(size: 12))
+                .foregroundStyle(CCCTheme.accent)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("三步走完主路径")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("① 说明目标与验收  →  ② 点「定稿」  →  ③ 确认转任务，右侧看编排。侧栏「用法」可随时打开。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("知道了") { model.dismissFirstRunTip() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(CCCTheme.accent)
+                .accessibilityLabel("关闭首启提示")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(CCCTheme.accent.opacity(0.08))
+        .accessibilityElement(children: .combine)
     }
 
     private func pinBottomOnNextScroll() {
@@ -482,6 +613,15 @@ struct CodexChatPaneBody: View {
             Text(paneStatusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
+            if model.agentWarming {
+                Text("预热中")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(CCCTheme.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(CCCTheme.hover, in: Capsule())
+                    .accessibilityLabel("本机 Agent 预热中")
+            }
             Text(model.agentBadge)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(
@@ -579,18 +719,43 @@ struct CodexChatPaneBody: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if displayMessages.isEmpty {
-                            VStack(spacing: 8) {
-                                Spacer().frame(height: 72)
+                            VStack(alignment: .leading, spacing: 14) {
+                                Spacer().frame(height: 48)
                                 Text("有什么可以帮忙的？")
                                     .font(CCCTheme.title)
                                     .foregroundStyle(CCCTheme.ink)
-                                Text("说明目标与验收，再转任务。")
-                                    .font(.system(size: 13.5))
-
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                Text("按主路径推进，不必选角色：")
+                                    .font(.system(size: 13))
                                     .foregroundStyle(CCCTheme.faint)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    emptyStep(num: "1", title: "聊透目标", detail: "说清要解决什么、怎样算验收成功")
+                                    emptyStep(num: "2", title: "点「定稿」", detail: "快捷条生成可转任务的契约包")
+                                    emptyStep(num: "3", title: "确认转任务", detail: "写入待办后，右侧展开本对话编排")
+                                }
+                                .padding(16)
+                                .frame(maxWidth: 420)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(CCCTheme.surface)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(CCCTheme.border, lineWidth: 1)
+                                )
+                                Button("打开用法说明") { model.isHelpPresented = true }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(CCCTheme.accent)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 4)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("空对话引导：聊透目标，定稿，确认转任务")
                         }
                         ForEach(displayMessages) { msg in
                             CodexMessageRow(message: msg)
@@ -653,9 +818,39 @@ struct CodexChatPaneBody: View {
                 .onChange(of: displayMessages.last?.toolSteps.count) { _ in scroll(proxy) }
                 // 仅消息修订触发滚动；勿绑 flow 修订（已从 threadRevision 拆出）
                 .onChange(of: model.threadRevision[paneThreadId ?? ""]) { _ in scroll(proxy) }
+                .onChange(of: model.pendingScrollMessageId) { mid in
+                    guard let mid,
+                          let msg = displayMessages.first(where: { $0.id.uuidString.caseInsensitiveCompare(mid) == .orderedSame })
+                    else { return }
+                    let id = "\(paneThreadId ?? "")-\(msg.id)"
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                    model.pendingScrollMessageId = nil
+                }
                 // 禁止订阅全局 selectedThreadId：他窗切项会清掉本窗滚动钉，导致切回时动画扫历史
             }
         }
+    }
+
+    private func emptyStep(num: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(num)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(CCCTheme.accent))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(CCCTheme.ink)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("第\(num)步：\(title)。\(detail)")
     }
 
     private var bottomAnchorId: String {
@@ -704,7 +899,7 @@ struct CodexChatPaneBody: View {
         VStack(spacing: 6) {
             quickActionBar
 
-            HStack {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button {
                     model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
                 } label: {
@@ -718,6 +913,21 @@ struct CodexChatPaneBody: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.canTransfer(projectId: window.projectId))
+                .help("把定稿方案写入待办大卡；右侧展开本对话编排")
+                .accessibilityLabel("转任务")
+                .accessibilityHint("确认门禁后投递 epic")
+
+                if let hint = model.transferGateHint(projectId: window.projectId, threadId: paneThreadId) {
+                    Text(hint)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(CCCTheme.faint)
+                        .lineLimit(2)
+                } else if model.transferDraft(for: paneThreadId) == nil, !displayMessages.isEmpty {
+                    Text("方案成熟后点「定稿」，再确认转任务")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(CCCTheme.faint)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -735,6 +945,7 @@ struct CodexChatPaneBody: View {
                 .frame(minHeight: 22, idealHeight: 22, maxHeight: 72)
                 .padding(.leading, 8)
                 .padding(.vertical, 6)
+                .accessibilityLabel("消息输入框")
 
                 // 固定同一 Button 身份，避免 if/else 换控件触发 Composer 整行重布局打断 IME
                 Button {
@@ -769,6 +980,7 @@ struct CodexChatPaneBody: View {
                 .help(showStopInsteadOfSend
                       ? "停止生成"
                       : (paneStreaming ? "停止当前并发送" : "发送"))
+                .accessibilityLabel(showStopInsteadOfSend ? "停止生成" : "发送消息")
             }
             .frame(minHeight: 36)
             .background(
@@ -800,7 +1012,10 @@ struct CodexChatPaneBody: View {
     private var quickActionBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                quickChip("对齐基线") {
+                quickChip(
+                    "对齐基线",
+                    help: "读取项目文档，用白话说明定位、阶段与下一步"
+                ) {
                     Task {
                         await model.alignBaseline(
                             projectId: paneProjectId,
@@ -808,7 +1023,10 @@ struct CodexChatPaneBody: View {
                         )
                     }
                 }
-                quickChip("下一步") {
+                quickChip(
+                    "下一步",
+                    help: "给出不超过三条的产品/架构下一步建议"
+                ) {
                     model.applyQuickPrompt(
                         QuickPrompts.nextStep,
                         uiLabel: "下一步",
@@ -816,7 +1034,10 @@ struct CodexChatPaneBody: View {
                         threadId: paneThreadId
                     )
                 }
-                quickChip("定稿") {
+                quickChip(
+                    "定稿",
+                    help: "把本会话方案收成可转任务的契约包（标题/目标/验收）"
+                ) {
                     model.applyQuickPrompt(
                         QuickPrompts.finalize,
                         uiLabel: "定稿方案",
@@ -824,7 +1045,10 @@ struct CodexChatPaneBody: View {
                         threadId: paneThreadId
                     )
                 }
-                quickChip("扫风险") {
+                quickChip(
+                    "扫风险",
+                    help: "用业务语言列出发布/场景风险与处理顺序"
+                ) {
                     model.applyQuickPrompt(
                         QuickPrompts.scanRisks,
                         uiLabel: "扫风险",
@@ -834,7 +1058,7 @@ struct CodexChatPaneBody: View {
                 }
                 if !model.customPrompts.isEmpty {
                     ForEach(model.customPrompts, id: \.title) { item in
-                        quickChip(item.title) {
+                        quickChip(item.title, help: "自定义快捷提示：\(item.title)") {
                             model.applyQuickPrompt(
                                 item.prompt,
                                 uiLabel: item.title,
@@ -850,7 +1074,7 @@ struct CodexChatPaneBody: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func quickChip(_ title: String, action: @escaping () -> Void) -> some View {
+    private func quickChip(_ title: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
@@ -864,6 +1088,9 @@ struct CodexChatPaneBody: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.canChat)
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityHint(help)
     }
 
     private var canSend: Bool {
@@ -1101,6 +1328,7 @@ struct MessageActionBar: View {
                 .foregroundStyle(CCCTheme.faint)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -1376,26 +1604,114 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            TextField("Server (Hub)", text: $model.serverURLString)
-            TextField("本机 Agent", text: $model.agentURLString)
-            TextField("CCC 仓根 (拉起 sidecar)", text: $model.cccHomePath)
-            TextField(
-                "当前项目本机路径",
-                text: Binding(
-                    get: { model.selectedProjectLocalPath },
-                    set: { model.selectedProjectLocalPath = $0 }
+            Section {
+                TextField("Hub 地址", text: $model.serverURLString)
+                TextField("用户", text: $model.authUser)
+                SecureField("密码", text: $model.authPass)
+            } header: {
+                Text("中心 Hub（转任务 / 看板 / 编排）")
+            } footer: {
+                Text("对话不经 Hub。Hub 只负责转任务、右栏流程与运维数据。")
+            }
+
+            Section {
+                TextField("本机 Agent", text: $model.agentURLString)
+                TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
+            } header: {
+                Text("本机对话 Agent")
+            } footer: {
+                Text("默认 http://127.0.0.1:7788。失败时界面显示「本机 Agent 未就绪」，不会回退到 Hub 聊天。")
+            }
+
+            Section {
+                TextField(
+                    "当前项目本机路径",
+                    text: Binding(
+                        get: { model.selectedProjectLocalPath },
+                        set: { model.selectedProjectLocalPath = $0 }
+                    )
                 )
-            )
-            TextField("全局工作区 fallback", text: $model.localWorkspacePath)
-            Text("对话只走本机 Agent（:7788）；失败显示「本机 Agent 未就绪」，不回退 Hub。转任务/右栏走 Hub。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField("用户", text: $model.authUser)
-            SecureField("密码", text: $model.authPass)
-            Button("重新连接") { Task { await model.reconnect() } }
+                TextField("全局工作区 fallback", text: $model.localWorkspacePath)
+            } header: {
+                Text("本机工作区")
+            }
+
+            Section {
+                Button("重新连接") { Task { await model.reconnect() } }
+                Button("打开用法说明") { model.isHelpPresented = true }
+            }
         }
-        .padding(20)
-        .frame(width: 460, height: 340)
+        .formStyle(.grouped)
+        .padding(12)
+        .frame(width: 520, height: 420)
+    }
+}
+
+// MARK: - Help
+
+struct DesktopHelpSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("CCC Desktop 用法")
+                    .font(.system(size: 18, weight: .semibold))
+                Spacer()
+                Button("关闭") {
+                    model.isHelpPresented = false
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+
+            Text("人定意图，系统自动编排。你不必选角色。")
+                .font(.system(size: 13))
+                .foregroundStyle(CCCTheme.secondary)
+
+            VStack(alignment: .leading, spacing: 12) {
+                helpRow("1", "选左侧业务项目", "进入该项目的方案对话（一项目可多会话）。")
+                helpRow("2", "聊透目标与验收", "用白话说清楚；可用「对齐基线 / 下一步 / 扫风险」。")
+                helpRow("3", "定稿", "点快捷条「定稿」，生成可投递的契约包。")
+                helpRow("4", "转任务", "确认门禁后写入待办；右侧「本对话编排」展开进度。")
+                helpRow("5", "看板 / 运维", "侧栏切换；看全局队列与集群健康，再「回对话」。")
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("快捷键")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("⌘N 新会话 · ⌘F 搜索 · ⌘1 对话 · ⌘2 看板 · ⌘3 运维 · ⌘⇧T 转任务")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(width: 480, height: 420)
+        .background(CCCTheme.chatBg)
+    }
+
+    private func helpRow(_ n: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(n)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(CCCTheme.accent))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(n). \(title)。\(detail)")
     }
 }
 
