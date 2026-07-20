@@ -370,6 +370,28 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     return False
 
 
+def _refresh_parent_epic(ws: Path, work_tid: str) -> None:
+    """子卡进入 verified/released 后立刻刷新 parent epic 五态。"""
+    try:
+        store = _get_store(ws)
+        _col, task = store.find_task(work_tid)
+        parent = (task or {}).get("parent_id")
+        if not parent:
+            from _board_store import normalize_task_view as _ntv
+
+            task = _ntv(task or {"id": work_tid}, column=_col or "testing")
+            parent = task.get("parent_id")
+        if not parent:
+            return
+        from _product_fanout import refresh_epic_lifecycle
+
+        new = refresh_epic_lifecycle(store, str(parent))
+        if new:
+            _engine_log(f"[{_ws_label(ws)}] epic {parent} refresh → {new}")
+    except Exception as exc:
+        _engine_log(f"[{_ws_label(ws)}] refresh parent epic for {work_tid}: {exc}")
+
+
 def _run_verified_kb_gate(ws: Path) -> None:
     """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。"""
     eng = _eng()
@@ -387,6 +409,7 @@ def _run_verified_kb_gate(ws: Path) -> None:
             if eng:
                 eng._log_stats(ws, "move", tid, from_col="verified", to_col="released")
             _engine_log(f"[{label}] {tid} ✓ kb → released")
+            _refresh_parent_epic(ws, tid)
         store.update_index()
     except Exception as exc:
         _engine_log(f"[{label}] kb_role 异常: {exc}")
@@ -401,6 +424,8 @@ def _run_testing_tasks_gate(ws: Path) -> None:
         tid = task["id"]
         _engine_log(f"[{label}] testing 门禁: {tid}")
         try:
-            _run_reviewer_tester_gate(ws, tid)
+            ok = _run_reviewer_tester_gate(ws, tid)
+            if ok:
+                _refresh_parent_epic(ws, tid)
         except Exception as exc:
             _engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")

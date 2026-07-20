@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **product 异步收尾丢扇出**：进程已死但有 `.product.out` 时 Engine GC 必须 `check_product_async`；`ccc-product-session` 写 `.done`/`.exitcode`。
+- **DoD auto-commit 误伤 `.ccc/` 交付物**：只排除 board/stats/pids 等噪音，允许 `.ccc/flow-smoke.md`。
+- **epic 子卡 released 后状态滞后**：kb/verified 后立刻 `refresh_epic_lifecycle`。
+- **phase graph abnormal 不可读**：quarantine note 附带 failure_summary。
 - **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。
 - **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
 - **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。

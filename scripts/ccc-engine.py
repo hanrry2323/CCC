@@ -877,11 +877,16 @@ def _rebuild_product_inflight(workspaces: list[Path]) -> None:
         )
 
 
-def _product_async_markers(ws: Path, tid: str) -> tuple[bool, bool]:
-    """返回 (pid_alive, has_done_marker)。"""
+def _product_async_markers(ws: Path, tid: str) -> tuple[bool, bool, bool]:
+    """返回 (pid_alive, has_done_marker, has_usable_out)。
+
+    has_usable_out：``.product.out`` 非空。进程已死但无 ``.done`` 时仍须走
+    ``check_product_async``，否则 GC 会把合法 CHILDREN 丢掉（epic 永久 pending）。
+    """
     pids_dir = Path(ws) / ".ccc" / "pids"
     pid_file = pids_dir / f"{tid}.product.pid"
     done_file = pids_dir / f"{tid}.product.done"
+    out_file = pids_dir / f"{tid}.product.out"
     alive = False
     if pid_file.is_file():
         try:
@@ -890,7 +895,13 @@ def _product_async_markers(ws: Path, tid: str) -> tuple[bool, bool]:
             alive = True
         except (OSError, ValueError, ProcessLookupError):
             alive = False
-    return alive, done_file.is_file()
+    has_out = False
+    if out_file.is_file():
+        try:
+            has_out = bool(out_file.read_text(encoding="utf-8", errors="replace").strip())
+        except OSError:
+            has_out = False
+    return alive, done_file.is_file(), has_out
 
 
 def _drop_product_inflight(key: str, reason: str) -> None:
@@ -902,16 +913,22 @@ def _drop_product_inflight(key: str, reason: str) -> None:
 
 
 def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
-    """对单个 inflight key：有 .done 则 check 收尾，否则按存活/列状态决定是否 drop。
+    """对单个 inflight key：有 .done / 活 pid / 非空 .out 则 check 收尾。
 
     Returns: kept | dropped | finalized
     """
     if key not in _product_inflight:
         return "dropped"
-    alive, has_done = _product_async_markers(ws, tid)
-    if has_done or alive:
+    alive, has_done, has_out = _product_async_markers(ws, tid)
+    if has_done or alive or has_out:
+        via = (
+            "done"
+            if has_done
+            else ("alive" if alive else "out")
+        )
         try:
             _activate_workspace(ws)
+            engine_log(f"[product] finalize via {via}: {tid}")
             result = ccc_board.check_product_async(tid)
         except Exception as exc:
             engine_log(f"[product] GC check {tid} 异常: {exc}")
@@ -922,11 +939,11 @@ def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
             return "finalized"
         if alive:
             return "kept"
-        # done 已处理完或 pid 死但 check 仍 running → 防卡死，drop
+        # done/out 已处理完或 pid 死但 check 仍 running → 防卡死，drop
         _drop_product_inflight(key, "stale markers without live pid")
         return "dropped"
 
-    # 无 pid、无 done：按看板状态决定
+    # 无 pid、无 done、无 out：按看板状态决定
     try:
         store = _get_store(ws)
         col, task = store.find_task(tid)
@@ -943,7 +960,7 @@ def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
     if kind == "epic" and split != "pending":
         _drop_product_inflight(key, f"epic split_status={split}")
         return "dropped"
-    # backlog pending 但无进程 → 孤儿占槽，释放以便 relaunch
+    # backlog pending 但无进程、无输出 → 孤儿占槽，释放以便 relaunch
     _drop_product_inflight(key, "no live product pid")
     return "dropped"
 
@@ -1055,9 +1072,11 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
             _task = _ntv(_task or {"id": tid}, column="in_progress")
             if _task.get("card_kind") == "work" and _task.get("parent_id"):
-                return _quarantine_keep_phases(
-                    "phase graph unresolvable（epic 子卡，禁止 product regen）"
+                detail = (
+                    f"phase graph unresolvable（epic 子卡，禁止 product regen）; "
+                    f"summary={failure_summary!r}; err={err[:300]}"
                 )
+                return _quarantine_keep_phases(detail[:500])
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:
@@ -1119,9 +1138,11 @@ def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
 
             _task = _ntv(_task or {"id": tid}, column="in_progress")
             if _task.get("card_kind") == "work" and _task.get("parent_id"):
-                return _quarantine_keep_phases(
-                    "phase graph unresolvable（epic 子卡，禁止 product regen）"
+                detail = (
+                    f"phase graph unresolvable（epic 子卡，禁止 product regen）; "
+                    f"summary={failure_summary!r}; err={err[:300]}"
                 )
+                return _quarantine_keep_phases(detail[:500])
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:

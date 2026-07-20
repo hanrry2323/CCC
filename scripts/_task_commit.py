@@ -9,12 +9,38 @@ from _config import get_logger
 
 _log = get_logger("task.commit")
 
+# 编排噪音：不得当作 DoD 产品落地。其余路径（含 .ccc/flow-smoke.md）可 stage。
+_CCC_META_EXACT = frozenset(
+    {
+        ".ccc/engine-heartbeat.json",
+        ".ccc/state.md",
+        ".ccc/warnings.json",
+        ".ccc/profile.md",
+    }
+)
+_CCC_META_PREFIXES = (
+    ".ccc/board/",
+    ".ccc/stats/",
+    ".ccc/pids/",
+    ".ccc/quarantines/",
+    ".ccc/review-locks/",
+)
+
+
+def _is_ccc_meta_path(path: str) -> bool:
+    p = (path or "").strip()
+    while p.startswith("./"):
+        p = p[2:]
+    if p in _CCC_META_EXACT or p == ".ccc":
+        return True
+    return any(p.startswith(pref) for pref in _CCC_META_PREFIXES)
+
 
 def porcelain_product_paths(porcelain: str) -> list[str]:
-    """Parse ``git status --porcelain``; drop ``.ccc/`` meta noise.
+    """Parse ``git status --porcelain``; drop known ``.ccc/`` orchestration noise.
 
-    Board/state/report churn must not satisfy DoD — only product-file
-    dirty lines count as agent landing changes.
+    Board/state/pids/stats churn must not satisfy DoD. Deliverables such as
+    ``.ccc/flow-smoke.md`` (and normal source files) still count.
     """
     out: list[str] = []
     for raw in (porcelain or "").splitlines():
@@ -28,7 +54,7 @@ def porcelain_product_paths(porcelain: str) -> list[str]:
             path = path[1:-1]
         if " -> " in path:
             path = path.split(" -> ", 1)[-1].strip().strip('"')
-        if path == ".ccc" or path.startswith(".ccc/"):
+        if _is_ccc_meta_path(path):
             continue
         out.append(path)
     return out

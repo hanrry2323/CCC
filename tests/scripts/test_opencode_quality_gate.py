@@ -44,9 +44,10 @@ def test_porcelain_ignores_ccc_meta():
         " M .ccc/state.md\n"
         " M .ccc/board/index.json\n"
         " M README.md\n"
-        "?? .ccc/reports/t1.report.md\n"
+        "?? .ccc/flow-smoke.md\n"
     )
-    assert porcelain_product_paths(porcelain) == ["README.md"]
+    got = porcelain_product_paths(porcelain)
+    assert got == ["README.md", ".ccc/flow-smoke.md"]
 
 
 def test_porcelain_only_ccc_is_empty():
