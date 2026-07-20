@@ -23,11 +23,28 @@ run() {
 
 echo "== hub-shell-gate tier=${TIER} server=${CCC_SERVER} =="
 
-# Offline Phase9 contract (always)
-python3 -m pytest "$ROOT/tests/scripts/test_flow_snapshot_dedupe.py" \
+# Prefer Hub venv when present (Mac2017); fall back to python3
+if [[ -n "${CCC_PYTHON:-}" ]]; then
+  PY="$CCC_PYTHON"
+elif [[ -x "$ROOT/.venv-hub/bin/python" ]]; then
+  PY="$ROOT/.venv-hub/bin/python"
+else
+  PY="python3"
+fi
+
+run_pytest() {
+  if ! "$PY" -c 'import pytest' 2>/dev/null; then
+    echo "WARN: pytest not installed for ${PY} — skip offline unit checks"
+    return 0
+  fi
+  "$PY" -m pytest "$@"
+}
+
+# Offline Phase9 contract (always when pytest available)
+run_pytest "$ROOT/tests/scripts/test_flow_snapshot_dedupe.py" \
   -q -k test_snapshot_failed_stage_from_abnormal_and_split --tb=short
 if [[ -f "$ROOT/tests/scripts/test_phase9_stoploss_client_contract.py" ]]; then
-  python3 -m pytest "$ROOT/tests/scripts/test_phase9_stoploss_client_contract.py" -q --tb=short
+  run_pytest "$ROOT/tests/scripts/test_phase9_stoploss_client_contract.py" -q --tb=short
 fi
 
 case "$TIER" in
