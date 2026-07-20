@@ -256,6 +256,109 @@ async def test_warm_lock_timeout_fails_fast(patched_sdk, tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_first_event_timeout_recycles_slot(patched_sdk, tmp_path, monkeypatch):
+    """query 后无任何可映射事件 → first_event_timeout，并回收 slot。"""
+
+    class _SilentClient(_FakeClient):
+        async def query(self, prompt, session_id: str = "default"):
+            self.queries.append(prompt)
+            # 不往 queue 放消息 → 只有 sidecar ping
+
+        async def receive_response(self):
+            await asyncio.sleep(3600)
+            return
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(mod, "ClaudeSDKClient", _SilentClient)
+    monkeypatch.setattr(mod.config, "CHAT_FIRST_EVENT_TIMEOUT", 1)
+    monkeypatch.setattr(mod.config, "CHAT_DRAIN_TIMEOUT", 1)
+
+    mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)
+    project = str(tmp_path)
+    hub_sid = "hub-first-event"
+
+    events = []
+    async for ev in mgr.stream_turn(
+        "silent",
+        project,
+        hub_sid,
+        model="flash",
+        idle_timeout=120,
+        max_timeout=120,
+    ):
+        events.append(ev)
+
+    assert any(
+        e.get("type") == "error" and e.get("code") == "first_event_timeout" for e in events
+    )
+    assert any(e.get("type") == "done" and e.get("partial") for e in events)
+    assert mod._slot_key(project, hub_sid) not in mgr._slots
+
+    await mgr.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_client_disconnect_recycles_slot(patched_sdk, tmp_path, monkeypatch):
+    """HTTP 客户端断开（杀 Desktop / 取消）必须丢 slot，禁止下一轮复用半残连接。"""
+
+    class _HangClient(_FakeClient):
+        async def query(self, prompt, session_id: str = "default"):
+            self.queries.append(prompt)
+
+        async def receive_response(self):
+            await asyncio.sleep(3600)
+            return
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(mod, "ClaudeSDKClient", _HangClient)
+    monkeypatch.setattr(mod.config, "CHAT_DRAIN_TIMEOUT", 1)
+
+    mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)
+    project = str(tmp_path)
+    hub_sid = "hub-disconnect"
+    gone = {"v": False}
+
+    async def _flip_gone():
+        await asyncio.sleep(0.2)
+        gone["v"] = True
+
+    flip = asyncio.create_task(_flip_gone())
+    events = []
+    async for ev in mgr.stream_turn(
+        "bye",
+        project,
+        hub_sid,
+        model="flash",
+        request_disconnected=lambda: gone["v"],
+        idle_timeout=120,
+        max_timeout=120,
+    ):
+        events.append(ev)
+    await flip
+
+    assert any(e.get("type") == "done" and e.get("partial") for e in events)
+    assert mod._slot_key(project, hub_sid) not in mgr._slots
+
+    # 下一轮应冷启新 client，而不是卡在死连接上
+    _HangClient.instances.clear()
+    monkeypatch.setattr(mod, "ClaudeSDKClient", _FakeClient)
+    events2 = []
+    async for ev in mgr.stream_turn(
+        "ok",
+        project,
+        hub_sid,
+        model="flash",
+        idle_timeout=60,
+        max_timeout=120,
+    ):
+        events2.append(ev)
+    assert any(e.get("type") == "delta" for e in events2)
+    assert len(_FakeClient.instances) == 1
+
+    await mgr.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_stream_turn_lock_timeout_force_drops(patched_sdk, tmp_path, monkeypatch):
     monkeypatch.setattr(mod.config, "CHAT_LOCK_WAIT", 1)
     mgr = ClaudeSessionManager(idle_ttl=3600, max_live=4)

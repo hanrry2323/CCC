@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
@@ -15,6 +18,62 @@ from typing import Any, AsyncIterator
 from .. import config
 
 _log = logging.getLogger("ccc-chat.session")
+
+
+def _descendant_loop_code_pids(root_pid: int | None = None) -> set[int]:
+    """sidecar 进程树内 loop-code/cli PID（用于 disconnect 后硬清理僵尸）。"""
+    root = int(root_pid or os.getpid())
+    found: set[int] = set()
+    try:
+        # macOS/Linux: 广度优先扫子进程
+        queue = [root]
+        seen = {root}
+        while queue:
+            parent = queue.pop(0)
+            try:
+                out = subprocess.check_output(
+                    ["pgrep", "-P", str(parent)],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+            except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                continue
+            for part in out.split():
+                if not part.isdigit():
+                    continue
+                child = int(part)
+                if child in seen:
+                    continue
+                seen.add(child)
+                queue.append(child)
+                try:
+                    cmd = subprocess.check_output(
+                        ["ps", "-p", str(child), "-o", "command="],
+                        text=True,
+                        stderr=subprocess.DEVNULL,
+                    ).strip()
+                except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                    continue
+                if "loop-code/cli" in cmd or cmd.endswith("/loop-code/cli"):
+                    found.add(child)
+    except Exception:
+        _log.debug("scan loop-code children failed", exc_info=True)
+    return found
+
+
+def _kill_pids(pids: set[int], *, reason: str) -> int:
+    killed = 0
+    for pid in sorted(pids):
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except ProcessLookupError:
+            continue
+        except OSError:
+            _log.debug("kill pid=%s reason=%s failed", pid, reason, exc_info=True)
+    if killed:
+        _log.warning("killed %d loop-code pid(s) reason=%s pids=%s", killed, reason, sorted(pids))
+    return killed
 
 try:
     from claude_agent_sdk import (
@@ -62,6 +121,9 @@ class _LiveSlot:
     last_used: float = field(default_factory=time.monotonic)
     connected: bool = False
     tool_mode: str = "discuss"
+    cli_pids: set[int] = field(default_factory=set)
+    allowed_tools: frozenset[str] = field(default_factory=frozenset)
+    tools_bound: bool = False
 
 
 class ClaudeSessionManager:
@@ -237,11 +299,9 @@ class ClaudeSessionManager:
         return final_summary
 
     async def _disconnect_slot(self, slot: _LiveSlot) -> None:
-        if not slot.connected or slot.client is None:
-            slot.connected = False
-            return
         try:
-            await slot.client.disconnect()
+            if slot.connected and slot.client is not None:
+                await slot.client.disconnect()
         except Exception:
             _log.warning(
                 "disconnect failed for %s", slot.hub_session_id, exc_info=True
@@ -249,6 +309,24 @@ class ClaudeSessionManager:
         finally:
             slot.connected = False
             slot.client = None
+            slot.tools_bound = False
+            # SDK disconnect 后仍可能残留 loop-code；只杀本 slot 记下的 PID
+            if slot.cli_pids:
+                _kill_pids(set(slot.cli_pids), reason=f"disconnect:{slot.key}")
+                slot.cli_pids.clear()
+
+    async def _forget_slot(self, slot: _LiveSlot, *, reason: str) -> None:
+        """调用方已持有 slot.lock：断开并移出 registry，供挂死轮次回收。"""
+        await self._disconnect_slot(slot)
+        async with self._global_lock:
+            cur = self._slots.get(slot.key)
+            if cur is slot:
+                self._slots.pop(slot.key, None)
+        _log.info(
+            "forgot Claude session slot key=%s reason=%s",
+            slot.key,
+            reason,
+        )
 
     def _build_options(
         self,
@@ -257,11 +335,21 @@ class ClaudeSessionManager:
         model: str,
         resume_session_id: str | None,
         tool_mode: str = "discuss",
+        user_text: str = "",
+        prompt_mode: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> Any:
         self._ensure_sdk()
         claude_bin = config.require_claude_bin()
         mode = config.resolve_tool_mode(tool_mode)
-        allowed = sorted(config.tools_for_mode(mode))
+        # 注意：空 frozenset() 表示「零工具」，不能用 `or`（空集合在 Python 为 falsy）
+        if allowed_tools is None:
+            allowed_set = config.tools_for_mode(
+                mode, user_text=user_text, prompt_mode=prompt_mode
+            )
+        else:
+            allowed_set = allowed_tools
+        allowed = sorted(allowed_set)
         kwargs: dict[str, Any] = {
             "cwd": project_path,
             "model": model,
@@ -274,6 +362,22 @@ class ClaudeSessionManager:
                 "CLAUDE_PROJECT_DIR": project_path,
             },
         }
+        # SDK：allowed_tools 为空时不加 --allowedTools（= 默认全开）。
+        # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
+        if not allowed:
+            deny = sorted(
+                set(config.CLAUDE_TOOL_ALLOWLIST_ENGINEER)
+                | set(config.CLAUDE_TOOL_ALLOWLIST_DISCUSS)
+                | {
+                    "Agent",
+                    "Skill",
+                    "NotebookEdit",
+                    "WebFetch",
+                    "WebSearch",
+                    "Bash",
+                }
+            )
+            kwargs["disallowed_tools"] = deny
         if resume_session_id:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)
@@ -325,7 +429,33 @@ class ClaudeSessionManager:
         *,
         resume_session_id: str | None,
         model: str,
+        user_text: str = "",
+        prompt_mode: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> None:
+        mode = getattr(slot, "tool_mode", "discuss")
+        if allowed_tools is None:
+            desired = config.tools_for_mode(
+                mode, user_text=user_text, prompt_mode=prompt_mode
+            )
+        else:
+            desired = allowed_tools
+        # 工具集变更（如短问推迟 Web*）→ 必须重建连接，SDK 无法热替换 allowlist
+        # tools_bound 区分「尚未绑定」与「已绑定为零工具」
+        if (
+            slot.connected
+            and slot.client is not None
+            and slot.tools_bound
+            and set(slot.allowed_tools) != set(desired)
+        ):
+            _log.info(
+                "tool allowlist changed key=%s old=%s new=%s → reconnect",
+                slot.key,
+                sorted(slot.allowed_tools),
+                sorted(desired),
+            )
+            await self._disconnect_slot(slot)
+
         if slot.connected and slot.client is not None:
             return
         # Prefer stored / requested resume id
@@ -336,19 +466,30 @@ class ClaudeSessionManager:
             project_path=slot.project_path,
             model=slot.model,
             resume_session_id=resume,
-            tool_mode=getattr(slot, "tool_mode", "discuss"),
+            tool_mode=mode,
+            user_text=user_text,
+            prompt_mode=prompt_mode,
+            allowed_tools=desired,
         )
         slot.client = ClaudeSDKClient(options=options)
         connect_s = float(config.CHAT_CONNECT_TIMEOUT)
+        before_pids = _descendant_loop_code_pids()
         try:
             await asyncio.wait_for(slot.client.connect(), timeout=connect_s)
         except asyncio.TimeoutError as exc:
             slot.connected = False
             slot.client = None
+            # connect 超时也可能已拉起半残 cli
+            orphan = _descendant_loop_code_pids() - before_pids
+            if orphan:
+                _kill_pids(orphan, reason=f"connect_timeout:{slot.key}")
             raise TimeoutError(
                 f"Claude 连接超时（{int(connect_s)}s）"
             ) from exc
         slot.connected = True
+        slot.allowed_tools = frozenset(desired)
+        slot.tools_bound = True
+        slot.cli_pids = _descendant_loop_code_pids() - before_pids
         if resume:
             slot.claude_session_id = resume
 
@@ -454,6 +595,8 @@ class ClaudeSessionManager:
         idle_timeout: int | None = None,
         max_timeout: int | None = None,
         tool_mode: str = "discuss",
+        prompt_mode: str | None = None,
+        user_text_for_tools: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Run one user turn on a continuous ClaudeSDKClient session."""
         self._ensure_sdk()
@@ -464,6 +607,21 @@ class ClaudeSessionManager:
         idle_s = max(60, min(idle_s, 3600))
         max_s = max(idle_s, min(max_s, 7200))
         mode = config.resolve_tool_mode(tool_mode)
+        # 必须用用户原文算工具集；wrap 后的人格前缀会很长，会误开 Web*
+        tool_src = (
+            user_text_for_tools if user_text_for_tools is not None else prompt
+        )
+        turn_tools = config.tools_for_mode(
+            mode, user_text=tool_src, prompt_mode=prompt_mode
+        )
+        _log.info(
+            "stream_turn tools hub_sid=%s mode=%s prompt_mode=%s n_tools=%d tools=%s",
+            hub_session_id,
+            mode,
+            prompt_mode,
+            len(turn_tools),
+            sorted(turn_tools),
+        )
 
         slot = await self._get_or_create_slot(
             project_path=project_path,
@@ -506,6 +664,9 @@ class ClaudeSessionManager:
                     slot,
                     resume_session_id=resume_session_id,
                     model=cli_model,
+                    user_text=tool_src,
+                    prompt_mode=prompt_mode,
+                    allowed_tools=turn_tools,
                 )
             except Exception as exc:
                 slot.connected = False
@@ -523,10 +684,16 @@ class ClaudeSessionManager:
                 return
 
             started = time.monotonic()
-            last_activity = started
+            # 进展时钟：仅 delta/tool/status/cost/error 推进；心跳 ping 不算进展
+            last_progress = started
             last_ping = started
+            awaiting_first_event = True
+            pending_tool: str | None = None
+            first_event_s = int(config.CHAT_FIRST_EVENT_TIMEOUT)
+            tool_stall_s = int(config.CHAT_TOOL_STALL_TIMEOUT)
             saw_assistant_text = False
             timed_out = False
+            stall_reason = ""
             turn_error = False
             client_gone = False
             reader_task: asyncio.Task | None = None
@@ -544,6 +711,13 @@ class ClaudeSessionManager:
                 finally:
                     await msg_queue.put(("end", None))
 
+            def _stall_limit() -> int:
+                if awaiting_first_event:
+                    return first_event_s
+                if pending_tool:
+                    return tool_stall_s
+                return idle_s
+
             try:
                 effective_prompt = prompt
                 # 注入压缩摘要：drop slot 后首条 query 前置摘要
@@ -554,6 +728,7 @@ class ClaudeSessionManager:
                         f"---\n\n用户新消息：{prompt}"
                     )
                 await slot.client.query(effective_prompt)
+                last_progress = time.monotonic()
                 reader_task = asyncio.create_task(
                     _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
                 )
@@ -570,27 +745,43 @@ class ClaudeSessionManager:
                     now = time.monotonic()
                     if now - started >= max_s:
                         timed_out = True
+                        stall_reason = f"整轮上限 {max_s}s"
                         try:
                             await slot.client.interrupt()
                         except Exception:
                             pass
                         yield {
                             "type": "error",
-                            "content": f"响应超时（整轮上限 {max_s}s），请重试或缩短任务",
+                            "code": "max_timeout",
+                            "content": f"响应超时（{stall_reason}），请重试或缩短任务",
                         }
                         break
-                    idle_left = idle_s - (now - last_activity)
+
+                    limit = _stall_limit()
+                    idle_left = limit - (now - last_progress)
                     if idle_left <= 0:
                         timed_out = True
                         try:
                             await slot.client.interrupt()
                         except Exception:
                             pass
+                        if awaiting_first_event:
+                            stall_reason = f"首事件超时 {first_event_s}s（仅心跳无输出）"
+                            code = "first_event_timeout"
+                        elif pending_tool:
+                            stall_reason = (
+                                f"工具 {pending_tool} 超过 {tool_stall_s}s 无结果"
+                            )
+                            code = "tool_stall"
+                        else:
+                            stall_reason = f"已 {idle_s}s 无新输出"
+                            code = "idle_timeout"
                         yield {
                             "type": "error",
+                            "code": code,
                             "content": (
-                                f"响应超时（已 {idle_s}s 无新输出；"
-                                f"整轮上限 {max_s}s），请重试"
+                                f"Agent 无进展：{stall_reason}。"
+                                "已中断并回收会话，请重试。"
                             ),
                         }
                         break
@@ -603,7 +794,23 @@ class ClaudeSessionManager:
                     except asyncio.TimeoutError:
                         now = time.monotonic()
                         if now - last_ping >= 15:
-                            yield {"type": "ping", "ts": int(now)}
+                            # 心跳告知「连接活着」；不得推进 last_progress
+                            yield {
+                                "type": "ping",
+                                "ts": int(now),
+                                "awaiting": (
+                                    "first_event"
+                                    if awaiting_first_event
+                                    else (
+                                        f"tool:{pending_tool}"
+                                        if pending_tool
+                                        else "idle"
+                                    )
+                                ),
+                                "stall_in_s": int(
+                                    max(0, _stall_limit() - (now - last_progress))
+                                ),
+                            }
                             last_ping = now
                         continue
 
@@ -614,29 +821,44 @@ class ClaudeSessionManager:
                         raise payload
 
                     message = payload
-                    last_activity = time.monotonic()
                     sid = self._extract_session_id(message)
                     if sid:
                         slot.claude_session_id = sid
-                    for event in self._map_message(message):
-                        if event.get("type") == "_result_text":
+                    mapped = self._map_message(message)
+                    if not mapped:
+                        # SystemMessage 等无用户可见进展 → 不重置进展时钟
+                        continue
+                    for event in mapped:
+                        et = event.get("type")
+                        if et == "_result_text":
                             if not saw_assistant_text and event.get("content"):
                                 saw_assistant_text = True
+                                awaiting_first_event = False
+                                pending_tool = None
+                                last_progress = time.monotonic()
                                 yield {
                                     "type": "delta",
                                     "content": event["content"],
                                 }
                             continue
-                        if event.get("type") == "delta":
+                        if et in ("delta", "status", "cost", "tool_use", "tool_result", "error"):
+                            last_progress = time.monotonic()
+                            awaiting_first_event = False
+                        if et == "delta":
                             saw_assistant_text = True
-                        if event.get("type") == "error":
+                            pending_tool = None
+                        elif et == "tool_use":
+                            pending_tool = str(event.get("name") or "tool")
+                        elif et == "tool_result":
+                            pending_tool = None
+                        if et == "error":
                             turn_error = True
                         yield event
             except Exception as exc:
                 turn_error = True
                 _log.exception("stream_turn failed session=%s", hub_session_id)
                 # Broken pipe / dead client → drop so next turn cold-resumes
-                await self._disconnect_slot(slot)
+                await self._forget_slot(slot, reason="stream_exception")
                 yield {
                     "type": "error",
                     "content": f"Claude 会话异常: {exc}",
@@ -648,9 +870,23 @@ class ClaudeSessionManager:
                         await reader_task
                     except asyncio.CancelledError:
                         pass
-                if timed_out and slot.connected and slot.client is not None:
-                    # interrupt 后有界排空；超时则 disconnect，禁止永久占锁
-                    await self._bounded_drain(slot)
+                if timed_out:
+                    # interrupt 后有界排空，再彻底回收 slot（含僵尸 cli）
+                    if slot.connected and slot.client is not None:
+                        await self._bounded_drain(slot)
+                    await self._forget_slot(
+                        slot, reason=stall_reason or "stall_timeout"
+                    )
+                elif client_gone:
+                    # Desktop 杀进程 / 切窗取消 / 客户端断开：必须丢 slot。
+                    # 否则半残 loop-code 仍标 connected，下一轮复用会死等 first_event。
+                    if slot.connected and slot.client is not None:
+                        await self._bounded_drain(slot)
+                    await self._forget_slot(slot, reason="client_disconnect")
+                elif turn_error and slot.key in self._slots:
+                    # 异常路径若尚未 forget，补一次
+                    if self._slots.get(slot.key) is slot:
+                        await self._forget_slot(slot, reason="turn_error")
 
                 slot.last_used = time.monotonic()
                 yield {

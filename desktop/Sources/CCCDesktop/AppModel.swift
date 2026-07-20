@@ -1645,7 +1645,8 @@ final class AppModel: ObservableObject {
             }
             let mode = Self.promptMode(forUserText: text)
             let tools = Self.toolMode(forUserText: text)
-            warmBeforeSendIfNeeded(toolMode: tools, projectId: projectId)
+            // 发送前不再 fire-and-forget warm：与 streamChat 抢同一 slot 锁，
+            // 取消/杀进程后半残连接更容易表现为「切一下就连不上」。
             setThreadStreamStatus(threadId, "本机生成中…")
             if selectedThreadId == threadId {
                 setStatusImmediate("本机生成中…")
@@ -1702,7 +1703,10 @@ final class AppModel: ObservableObject {
                         || error.localizedDescription.contains("Timeout")
                         || error.localizedDescription.contains("连接")
                         || error.localizedDescription.contains("无响应")
+                        || error.localizedDescription.contains("无进展")
                         || error.localizedDescription.contains("挂死")
+                        || error.localizedDescription.contains("首事件")
+                        || error.localizedDescription.contains("工具")
                         || (error as? APIError).map { if case .http = $0 { return true }; return false } ?? false
                         || (error as NSError).domain == NSURLErrorDomain
                     if attempt == 1 && retryable {
@@ -1800,12 +1804,15 @@ final class AppModel: ObservableObject {
     private func applyChatEvent(threadId: String, assistantId: UUID, event: ChatStreamEvent) {
         switch event {
         case .ping:
-            // 首包前 / idle：明确「连接中」，勿空泡假死（按 thread，不靠全局 selected）
+            // 心跳 ≠ 进展：勿把状态锁死在「连接中」；工具进行中保留工具态
             let cur = threadStreamStatus[threadId] ?? ""
+            if cur.contains("工具") || cur.contains("生成") {
+                return
+            }
             if cur.isEmpty || cur.contains("连接") || cur.contains("重连") {
-                setThreadStreamStatus(threadId, "连接本机 Agent…")
+                setThreadStreamStatus(threadId, "等待 Agent 首包…")
                 if selectedThreadId == threadId {
-                    setStatusThrottled("连接本机 Agent…")
+                    setStatusThrottled("等待 Agent 首包…")
                 }
             }
             return
@@ -1830,8 +1837,13 @@ final class AppModel: ObservableObject {
         case .toolUse, .toolResult, .cost, .done:
             break
         }
-        if case .toolUse = event {
+        if case .toolUse(let name, _) = event {
             setProjectConvToolState(threadId: threadId)
+            let label = "工具执行中：\(name)…"
+            setThreadStreamStatus(threadId, label)
+            if selectedThreadId == threadId {
+                setStatusThrottled(label)
+            }
         }
         mutateThreadMessages(threadId: threadId) { msgs in
             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
@@ -1876,13 +1888,16 @@ final class AppModel: ObservableObject {
                 }
             }
         }
-        if case .toolUse = event {
-            setThreadStreamStatus(threadId, "工具执行中…")
-            if selectedThreadId == threadId {
-                setStatusThrottled("工具执行中…")
-            }
-        } else if case .done = event {
+        if case .done = event {
             setThreadStreamStatus(threadId, "")
+        } else if case .toolResult = event {
+            // 工具结束后回到生成态（下一轮 delta 会再写细状态）
+            if (threadStreamStatus[threadId] ?? "").contains("工具") {
+                setThreadStreamStatus(threadId, "本机生成中…")
+                if selectedThreadId == threadId {
+                    setStatusThrottled("本机生成中…")
+                }
+            }
         }
     }
 
@@ -1908,6 +1923,14 @@ final class AppModel: ObservableObject {
             }
         }
         flushDiskSave(threadId: tid)
+        // 主动丢 sidecar slot，避免半残连接被下一轮复用（表现为「切一下就连不上」）
+        let projectId = tid.split(separator: ":").first.map(String.init)
+        let path = localPath(for: projectId) ?? localPath(for: selectedProjectId)
+        if let path, !path.isEmpty {
+            Task {
+                await client.dropSidecarSession(projectPath: path, sessionId: tid)
+            }
+        }
         if !silent {
             showToast("已取消生成")
         }

@@ -299,14 +299,24 @@ async def chat(request: Request):
             status_code=413,
         )
 
-    prompt_mode = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
-    prompt = wrap_hub_prompt(prompt, mode=prompt_mode or None)
     from chat_server import config as _agent_cfg
+    from chat_server.hub_voice import resolve_prompt_mode as _resolve_prompt_mode
+
+    prompt_mode_raw = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
+    # 用用户原文判定 light/full（wrap 后会很长，不能再按长度猜）
+    prompt_mode = _resolve_prompt_mode(prompt, requested=prompt_mode_raw or None)
+    user_text_for_tools = prompt
+    prompt = wrap_hub_prompt(prompt, mode=prompt_mode)
 
     tool_mode = _agent_cfg.resolve_tool_mode(
         body.get("tool_mode") or body.get("toolMode"),
-        user_text=prompt,
+        user_text=user_text_for_tools,
     )
+    # discuss：保留联网工具能力，但注入纪律，降低「首轮就 WebFetch 挂死」概率
+    if tool_mode == "discuss":
+        disc = (_agent_cfg.DISCUSS_TOOL_DISCIPLINE or "").strip()
+        if disc and disc not in prompt[:500]:
+            prompt = f"{disc}\n---\n{prompt}"
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}
 
@@ -334,6 +344,8 @@ async def chat(request: Request):
                 max_timeout=max_s,
                 hub_session_id=session_id,
                 tool_mode=tool_mode,
+                prompt_mode=prompt_mode,
+                user_text_for_tools=user_text_for_tools,
             ):
                 evt = event.get("type")
                 if evt == "ping":

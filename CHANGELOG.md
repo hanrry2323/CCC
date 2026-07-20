@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` 主动 `session/drop`；发送前不再与 chat 抢 warm 锁。
+- **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
+- **对话可靠性契约（非止血）**：`有心跳 ≠ 有进展`。sidecar：`CHAT_FIRST_EVENT_TIMEOUT` / `CHAT_TOOL_STALL_TIMEOUT` → interrupt + error code + 回收 slot/僵尸 cli；discuss **保留** Web* 全集，短问/light **按意图**零工具或推迟 Web*（SDK 空 `allowed_tools` 会被当成全开，已改用 `disallowed_tools` 强制）；工具集变更则重连。Desktop：ping 不重置进展钟；状态「等待首包 / 工具执行中：Name」。
 - **Desktop agent 输出不稳定（OpenCode 多窗后遗症）**：消息修订与编排修订拆分（`threadRevision` / `threadFlowRevision`），Flow SSE 不再拖聊天重滚；去掉长 delta 异步分片竞态；流式中不写盘、迟到 delta 拒绝回写；流式气泡用纯文本避免 Markdown 闪烁；warm 与在途 chat 互斥加强。
 - **顶栏 flash/code 同步虚高**：中转站 `/admin/stats` 对 `models: [flash,code]` 上游（如 zhipu）双边计数；已改为按上游主 `tier` 只计一次，并下发 `requested`（请求模型）对照。Desktop 顶栏数字=实际消耗；tooltip 显示请求模型与「flash 落到 code」提示。
 - **OpenCode 式多窗 live 隔离补齐**：各窗 `setWindowFocus` refcount；**每打开项目一条 Flow SSE**（后台窗 `threadFlow` 实时刷新）；warm 覆盖所有焦点项目；转任务表单 `threadTransferForms` + sheet 仅本窗 tid 弹出；侧栏 destination 按窗隔离。

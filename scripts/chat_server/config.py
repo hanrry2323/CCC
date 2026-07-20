@@ -40,6 +40,11 @@ CHAT_DRAIN_TIMEOUT = max(2, min(CHAT_DRAIN_TIMEOUT, 60))
 # warm 抢锁失败快返回（勿阻塞后续 chat）
 CHAT_WARM_LOCK_WAIT = int(os.environ.get("CCC_CHAT_WARM_LOCK_WAIT", "3"))
 CHAT_WARM_LOCK_WAIT = max(1, min(CHAT_WARM_LOCK_WAIT, 30))
+# 可靠性契约：有心跳 ≠ 有进展。query 后无任何可映射事件 / 工具无结果 → 中断并回收 slot。
+CHAT_FIRST_EVENT_TIMEOUT = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", "45"))
+CHAT_FIRST_EVENT_TIMEOUT = max(10, min(CHAT_FIRST_EVENT_TIMEOUT, 300))
+CHAT_TOOL_STALL_TIMEOUT = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", "60"))
+CHAT_TOOL_STALL_TIMEOUT = max(15, min(CHAT_TOOL_STALL_TIMEOUT, 600))
 # 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
 CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))
 CHAT_DIR.mkdir(parents=True, exist_ok=True)
@@ -74,6 +79,7 @@ DANGEROUS_PATTERN = re.compile(
 
 # F-SEC-03: Claude CLI 允许的工具（allowlist）；未列出的工具名应被拒绝
 # discuss = 对话面默认（只读探查，禁止写业务仓）；engineer = 显式解锁本机改文件
+# 外网工具允许；挂死由 CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 回收，禁止靠删能力「止血」。
 CLAUDE_TOOL_ALLOWLIST_DISCUSS = frozenset({
     "Read", "Glob", "Grep", "LS", "TodoWrite", "WebFetch", "WebSearch",
 })
@@ -85,6 +91,13 @@ CLAUDE_TOOL_ALLOWLIST_ENGINEER = frozenset({
 CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
+
+# discuss 保留联网工具，但约束默认行为：避免寒暄/短答一上来 WebFetch 挂死整轮
+DISCUSS_TOOL_DISCIPLINE = (
+    "【工具纪律 · discuss】除非用户明确要求查网页或搜外网资料，"
+    "否则不要调用 WebFetch/WebSearch；短确认、闲聊、本仓库问答优先直接回答，"
+    "需要读仓时用 Read/Glob/Grep/LS。"
+)
 
 
 def resolve_tool_mode(
@@ -102,10 +115,65 @@ def resolve_tool_mode(
     return "discuss"
 
 
-def tools_for_mode(mode: str) -> frozenset:
+_WEB_TOOLS = frozenset({"WebFetch", "WebSearch"})
+_WEB_INTENT_RE = re.compile(
+    r"(查网页|搜一下|搜索一下|上网查|官网|WebFetch|WebSearch|https?://)",
+    re.I,
+)
+
+
+_REPO_PROBE_RE = re.compile(
+    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码)",
+    re.I,
+)
+
+
+def defer_web_tools_for_turn(
+    *,
+    tool_mode: str,
+    user_text: str = "",
+    prompt_mode: str | None = None,
+) -> bool:
+    """短问/轻量轮次推迟外网工具；用户明确要上网时不推迟。
+
+    这是意图分流，不是永久删能力：WebFetch 仍在 discuss 全集里，
+    长文/定稿/显式搜网会重新打开。
+    """
+    if (tool_mode or "").strip().lower() != "discuss":
+        return False
+    text = user_text or ""
+    if _WEB_INTENT_RE.search(text):
+        return False
+    pm = (prompt_mode or "").strip().lower()
+    if pm == "light" or len(text.strip()) <= 80:
+        return True
+    return False
+
+
+def tools_for_mode(
+    mode: str,
+    *,
+    user_text: str = "",
+    prompt_mode: str | None = None,
+) -> frozenset:
     if (mode or "").strip().lower() == "engineer":
         return CLAUDE_TOOL_ALLOWLIST_ENGINEER
-    return CLAUDE_TOOL_ALLOWLIST_DISCUSS
+    tools = CLAUDE_TOOL_ALLOWLIST_DISCUSS
+    text = user_text or ""
+    pm = (prompt_mode or "").strip().lower()
+    # 超短确认 / light 且无读仓意图：零工具直答（仍可通过显式口令或长文拿回工具）
+    if (
+        pm == "light"
+        and len(text.strip()) <= 40
+        and not _WEB_INTENT_RE.search(text)
+        and not _REPO_PROBE_RE.search(text)
+    ):
+        return frozenset()
+    if defer_web_tools_for_turn(
+        tool_mode="discuss", user_text=text, prompt_mode=prompt_mode
+    ):
+        return frozenset(tools - _WEB_TOOLS)
+    return tools
 
 BOARD_COLUMNS = [
     "backlog", "planned", "in_progress",

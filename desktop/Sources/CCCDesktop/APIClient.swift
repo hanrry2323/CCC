@@ -471,17 +471,20 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
-        // 无 ping/delta 静默看门狗（与服务端 hang 对齐）
-        let silenceLimit: TimeInterval = 60
-        var lastSignalAt = Date()
+        // 可靠性：有心跳 ≠ 有进展。ping 只证明连接活着，不得重置进展时钟。
+        // 与 sidecar CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 对齐并略宽。
+        let progressLimit: TimeInterval = 75
+        var lastProgressAt = Date()
         // Phase 1.6: 按行切片但用 cursor 一次性丢前缀，避免 removeSubrange 每行 O(n) 共 O(n²)
         let nlByte = Data([UInt8(ascii: "\n")])
         var buffer = Data()
         let maxBuffer = 1_048_576 // 1MB：防异常超大单行撑爆内存
         for try await chunk in bytes {
             try Task.checkCancellation()
-            if Date().timeIntervalSince(lastSignalAt) > silenceLimit {
-                throw APIError.decode("本机 Agent 长时间无响应（\(Int(silenceLimit))s），请重试")
+            if Date().timeIntervalSince(lastProgressAt) > progressLimit {
+                throw APIError.decode(
+                    "本机 Agent 无进展（\(Int(progressLimit))s 仅心跳或静默）。可能工具挂死，已中止；请重试"
+                )
             }
             buffer.append(chunk)
             if buffer.count > maxBuffer {
@@ -502,7 +505,7 @@ actor APIClient {
                 else { continue }
                 let type = (obj["type"] as? String)?.lowercased()
                 if type == "ping" {
-                    lastSignalAt = Date()
+                    // 不刷新 lastProgressAt
                     await onEvent(.ping)
                     continue
                 }
@@ -511,7 +514,7 @@ actor APIClient {
                     throw APIError.http(500, msg)
                 }
                 if type == "tool_use" || type == "tool-use" || type == "tooluse" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     gotTool = true
                     let name = (obj["name"] as? String)
                         ?? (obj["tool"] as? String)
@@ -531,14 +534,14 @@ actor APIClient {
                     continue
                 }
                 if type == "tool_result" || type == "tool-result" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     let isErr = (obj["is_error"] as? Bool) == true
                         || (obj["error"] as? Bool) == true
                     await onEvent(.toolResult(ok: !isErr))
                     continue
                 }
                 if type == "status" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     let note = (obj["content"] as? String)
                         ?? (obj["text"] as? String)
                         ?? ""
@@ -548,7 +551,7 @@ actor APIClient {
                     continue
                 }
                 if type == "cost" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     await onEvent(.cost(
                         tokens: obj["tokens"] as? Int,
                         usd: obj["usd"] as? Double
@@ -556,7 +559,7 @@ actor APIClient {
                     continue
                 }
                 if type == "done" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     gotDone = true
                     donePartial = (obj["partial"] as? Bool) ?? false
                     await onEvent(.done(partial: donePartial))
@@ -569,7 +572,7 @@ actor APIClient {
                     return nil
                 }()
                 if let textChunk, type == "delta" || type == "text" || type == nil || type == "content" {
-                    lastSignalAt = Date()
+                    lastProgressAt = Date()
                     gotDelta = true
                     await onEvent(.delta(textChunk))
                 }

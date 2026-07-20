@@ -45,14 +45,18 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | `CHAT_CONNECT_TIMEOUT` | 30s | `_ensure_connected` 硬上限 |
 | `CHAT_DRAIN_TIMEOUT` | 8s | 超时后有界 drain；禁止无限占锁 |
 | `CHAT_WARM_LOCK_WAIT` | 3s | warm 抢锁失败快返回，不堵 chat |
-| SSE `ping` | connect 前 + idle 15s | Desktop 显示「连接本机 Agent…」，**不得静默丢弃** |
+| `CHAT_FIRST_EVENT_TIMEOUT` | 45s | query 后无任何可映射事件（delta/tool/…）→ `first_event_timeout` + 回收 slot |
+| `CHAT_TOOL_STALL_TIMEOUT` | 60s | 已见 `tool_use` 但无 `tool_result` → `tool_stall` + 回收 |
+| SSE `ping` | connect 前 + idle 15s | **有心跳 ≠ 有进展**；ping 可带 `awaiting` / `stall_in_s`；Desktop **不得**用 ping 重置进展时钟 |
+| slot 回收 | 超时/异常 | disconnect + 杀掉本 slot 记下的 `loop-code/cli` PID，防僵尸占坑 |
+| discuss 工具 | 含 WebFetch/WebSearch | 靠超时回收 + `DISCUSS_TOOL_DISCIPLINE`，**不靠删能力止血** |
 | 真暖 | `POST /warm` + `slot.connected` | 无 `project_path` 的 cli-only warm **不算**已暖 |
 | warm `tool_mode` | 与本条 chat 一致 | 避免 discuss / engineer 双 slot 冷启 |
 | chat body | 优先 `prompt` | 有 prompt 时 Desktop 发空 `messages[]` |
 
 环境变量前缀：`CCC_CHAT_*`（见 `scripts/chat_server/config.py`）。
 
-**体感验收**：进项目有「连接中」再出字；打断后同项目下一条数秒内可发；health 正常时反复打开 App **无**新的 exit 143 风暴；右栏「编排空闲·等定稿下达」≠ 对话故障。
+**体感验收**：进项目能出字或在 ≤45s 内看到明确错误（非无限转圈）；工具执行时状态栏显示工具名；打断/超时后同项目下一条可发；health 正常时反复打开 App **无**新的 exit 143 风暴；右栏「编排空闲·等定稿下达」≠ 对话故障。
 
 ## Desktop 行为
 

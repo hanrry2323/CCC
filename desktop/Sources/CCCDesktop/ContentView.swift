@@ -325,9 +325,14 @@ struct CodexChatPaneBody: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
     @ObservedObject var chat: ChatState
+    @Environment(\.scenePhase) private var scenePhase
     /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
     @State private var composerText: String = ""
     @State private var lastScrollTargetId: String = ""
+    /// 切窗/切会话后下一次滚动必须瞬移到底，禁止 easeOut 扫历史（长对话「刷一遍」）
+    @State private var needsInstantBottomPin: Bool = true
+    /// 触发 ScrollViewReader 内再钉一次底（scene 激活时 onAppear 不一定重跑）
+    @State private var bottomPinTick: UInt64 = 0
     @FocusState private var composerFocused: Bool
 
     /// 本窗唯一项目焦点；禁止回落全局 selected（否则他窗切项会拖走本窗历史）
@@ -389,11 +394,26 @@ struct CodexChatPaneBody: View {
             composerFocused = true
         }
         .onChange(of: window.projectId) { pid in
-            lastScrollTargetId = ""
+            pinBottomOnNextScroll()
             if let pid {
                 model.ensureThreadHydrated(projectId: pid)
             }
         }
+        .onChange(of: window.threadId) { _ in
+            pinBottomOnNextScroll()
+        }
+        .onChange(of: scenePhase) { phase in
+            // A→B→A：窗体未必销毁，onAppear 不跑；激活时仍要瞬移最新，禁止扫历史
+            if phase == .active {
+                pinBottomOnNextScroll()
+                bottomPinTick &+= 1
+            }
+        }
+    }
+
+    private func pinBottomOnNextScroll() {
+        lastScrollTargetId = ""
+        needsInstantBottomPin = true
     }
 
     /// 定稿 JSON 就绪后的一键转任务条
@@ -585,7 +605,11 @@ struct CodexChatPaneBody: View {
                                     }
                                 }
                         }
-                        // Cursor 式底部留白：最新内容居中而非贴底
+                        // 钉底锚点：切回窗口时 scrollTo 这里，避免 .center + 大 Spacer 扫 LazyVStack
+                        Color.clear
+                            .frame(height: 1)
+                            .id(bottomAnchorId)
+                        // Cursor 式底部留白：最新内容略偏上；不影响 tip 钉底
                         Spacer().frame(height: max(geometry.size.height * 0.35, 120))
                     }
                     .id(paneThreadId ?? "none") // 切会话强制重建，防工具轨串台
@@ -594,33 +618,59 @@ struct CodexChatPaneBody: View {
                     .padding(.horizontal, 28)
                     .padding(.top, 8)
                 }
+                .onAppear {
+                    // 窗体重入 / 首次进入：瞬移最新，勿从上往下刷
+                    pinBottomOnNextScroll()
+                    scroll(proxy)
+                }
+                .onChange(of: bottomPinTick) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.count) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.last?.content) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.last?.toolSteps.count) { _ in scroll(proxy) }
                 // 仅消息修订触发滚动；勿绑 flow 修订（已从 threadRevision 拆出）
                 .onChange(of: model.threadRevision[paneThreadId ?? ""]) { _ in scroll(proxy) }
-                .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
+                // 禁止订阅全局 selectedThreadId：他窗切项会清掉本窗滚动钉，导致切回时动画扫历史
             }
         }
+    }
+
+    private var bottomAnchorId: String {
+        "\(paneThreadId ?? "none")-bottom"
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let last = displayMessages.last else { return }
         let lastId = "\(paneThreadId ?? "")-\(last.id)"
-        // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
-        guard lastId != lastScrollTargetId || displayMessages.last?.isStreaming == true else { return }
+        let tipId = bottomAnchorId
+
+        // 切窗/切会话/重入：无动画钉底（解决「从历史刷到最新」）
+        if needsInstantBottomPin {
+            needsInstantBottomPin = false
+            lastScrollTargetId = lastId
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                proxy.scrollTo(tipId, anchor: .bottom)
+            }
+            return
+        }
+
+        // 同目标跳过，避免每个 delta 反复 scrollTo
+        guard lastId != lastScrollTargetId || last.isStreaming else { return }
         // streaming 时节流：仅当内容长度跨过 120 字边界或目标变化才滚
         if last.isStreaming, lastId == lastScrollTargetId {
             let n = last.content.count
             if n > 0, n % 120 != 0 { return }
         }
         lastScrollTargetId = lastId
+        // 流式与普通新消息：都钉底、不扫历史；流式禁动画
         if last.isStreaming {
-            // 流式中禁用动画，避免气泡跟着 easeOut 抖
-            proxy.scrollTo(lastId, anchor: .center)
+            proxy.scrollTo(tipId, anchor: .bottom)
         } else {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo(lastId, anchor: .center)
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                proxy.scrollTo(tipId, anchor: .bottom)
             }
         }
     }

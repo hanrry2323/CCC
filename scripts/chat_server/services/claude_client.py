@@ -82,6 +82,9 @@ async def stream_chat(
     max_timeout: int | None = None,
     hub_session_id: str | None = None,
     tool_mode: str = "discuss",
+    prompt_mode: str | None = None,
+    *,
+    user_text_for_tools: str | None = None,
 ):
     """Yield SSE event dicts from a continuous ClaudeSDKClient session."""
     from .claude_session import session_manager
@@ -93,7 +96,8 @@ async def stream_chat(
         max_default=max_timeout,
     )
     sid = (hub_session_id or "").strip() or "anonymous"
-    mode = _cfg.resolve_tool_mode(tool_mode, user_text=prompt)
+    tool_src = user_text_for_tools if user_text_for_tools is not None else prompt
+    mode = _cfg.resolve_tool_mode(tool_mode, user_text=tool_src)
     async for event in session_manager.stream_turn(
         prompt,
         project_path,
@@ -104,5 +108,7 @@ async def stream_chat(
         idle_timeout=idle_s,
         max_timeout=max_s,
         tool_mode=mode,
+        prompt_mode=prompt_mode,
+        user_text_for_tools=tool_src,
     ):
         yield event
