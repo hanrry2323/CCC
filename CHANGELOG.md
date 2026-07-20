@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase2**：`scripts/smoke-ccc-demo-soak.sh` N=3；orphan 不净增；hang/pids 单测。
 - **Hub-Shell Phase1**：契约测 `client_request_id` 幂等；`scripts/smoke-hub-api-v1.sh`；`ccc-demo` transfer 绿通。
 - **文档索引收口**：[`docs/INDEX.md`](docs/INDEX.md) 明确现行 6 份 SSOT；下阶段北星唯一指向 [`hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)；旧 roadmap / 双轨等迁入 [`docs/archive/`](docs/archive/README.md)。
 - **Hub API v1 + 投递三态**：[`docs/product/hub-api-v1.md`](docs/product/hub-api-v1.md)；Desktop outbox（Hub 断线排队）+ `client_request_id` 幂等；状态栏显示草稿/待投递/已投递/已受理。

@@ -126,7 +126,9 @@ Clients:  Desktop →（后）Web →（后）Mobile
 2. Engine 自动扇出 → work → released（**无中途人批**）  
 3. Hub 短暂不可达：对话仍可用；恢复后 snapshot 对齐；失败 transfer 可重试  
 4.（P2）写入一条 inbox 提案 → Desktop 采纳 → 再走 1–2  
-5. 稳定性：连续跑 N 轮无槽泄漏 / 无失控残留进程（N 在实现计划里定）
+5. 稳定性：连续跑 **N=3** 轮无槽泄漏 / 无失控残留进程（`scripts/smoke-ccc-demo-soak.sh`）
+
+Phase1/2 勾选：见 [`hub-shell-phase-status.md`](hub-shell-phase-status.md)。
 
 通过后再覆盖 `xianyu` / `qb` 等注册业务仓。
 
