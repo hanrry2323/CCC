@@ -886,7 +886,7 @@ def _review_with_llm(
         "即使缺少 findings 也必须有 verdict 字段。\n"
     )
 
-    relay = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000")
+    relay = os.environ.get("ANTHROPIC_BASE_URL", "https://api.minimaxi.com/anthropic")
     env = _claude_env(relay_url=relay)
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"  # 禁止任何交互询问
     try:

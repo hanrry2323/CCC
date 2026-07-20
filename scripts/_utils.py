@@ -68,12 +68,12 @@ def now_iso_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# v0.51.0 P2-2: relay URL 集中于此（原 ccc-engine.py / ccc-board.py / board/roles/common.py 各有一份重复）
-_DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4000"
+# v0.51.0 P2-2: Claude Anthropic 兼容出口集中于此（ai-loop-router :4000 已退役）
+_DEFAULT_AGENT_PLANNER_URL = "https://api.minimaxi.com/anthropic"
 
 
 def get_relay_url() -> str:
-    """取 AGENT_PLANNER_BASE_URL 环境变量，默认 http://127.0.0.1:4000。
+    """取 AGENT_PLANNER_BASE_URL，默认 MiniMax Anthropic（直连）。
 
     v0.51.0 P2-2: 集中 SSOT。原 _get_relay_url() 在 ccc-engine.py / ccc-board.py /
     board/roles/common.py 各有一份相同的 os.environ.get 重复实现。

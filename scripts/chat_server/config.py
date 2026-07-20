@@ -17,7 +17,7 @@ AUTH_USER = os.environ.get("CCC_CHAT_USER", "ccc")
 AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "ccc").strip()
 BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
-PROXY_URL = os.environ.get("CCC_PROXY_URL", "http://127.0.0.1:4002/v1/chat/completions")
+# CCC_PROXY_URL / :4002 已随 ai-loop-router 退役；Hub 对话走 Desktop sidecar，勿再默认中转。
 
 # Hub 对话超时（空闲 / 硬上限）。有工具调用时墙钟 180s 极易误杀。
 # idle：距上次收到 Claude 输出的静默秒数；max：整轮硬上限。

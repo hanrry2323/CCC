@@ -113,12 +113,13 @@ def _sanitized_env() -> dict:
 
 
 def _claude_env(*, relay_url: str | None = None) -> dict:
-    """product/reviewer 调 claude CLI 用的环境：sanitized + 中转站 URL。"""
+    """product/reviewer 调 claude CLI 用的环境：sanitized + Anthropic 兼容出口。"""
     env = _sanitized_env()
     if relay_url:
         env["ANTHROPIC_BASE_URL"] = relay_url
     elif not env.get("ANTHROPIC_BASE_URL"):
-        env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:4000"
+        # 默认 MiniMax 直连（ai-loop-router :4000 已退役）
+        env["ANTHROPIC_BASE_URL"] = "https://api.minimaxi.com/anthropic"
     return env
 
 

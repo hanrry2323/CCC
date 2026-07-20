@@ -92,7 +92,7 @@ def claude_decide(diff_stat: str, diff_text: str, mode: str) -> dict | None:
         cli = resolve_claude_cli(require=True)
         env = _sanitized_env()
         env["ANTHROPIC_BASE_URL"] = os.environ.get(
-            "AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000"
+            "AGENT_PLANNER_BASE_URL", "https://api.minimaxi.com/anthropic"
         )
         r = subprocess.run(
             [cli, "-p", "--model", "flash"],

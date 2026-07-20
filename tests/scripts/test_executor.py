@@ -54,8 +54,13 @@ class TestSanitizedEnv:
 
     def test_claude_env_sets_relay(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
-        env = ex._claude_env(relay_url="http://127.0.0.1:4000")
-        assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:4000"
+        env = ex._claude_env(relay_url="https://api.minimaxi.com/anthropic")
+        assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
+
+    def test_claude_env_default_minimax(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        env = ex._claude_env()
+        assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
 
 
 class TestOpenCodeExecutor:

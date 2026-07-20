@@ -117,7 +117,8 @@ curl -s http://127.0.0.1:7788/health
 # Mac2017（SSH host mac2017）
 cd ~/program/CCC && git pull --ff-only origin main && git rev-parse --short HEAD
 launchctl kickstart -k "gui/$(id -u)/com.ccc.chat-server"
-curl -s -u ccc:ccc http://127.0.0.1:7777/api/ops/router-usage
+# router-usage 为退役 stub；本机 Agent 用量看 Desktop 顶栏
+curl -s -u ccc:ccc http://127.0.0.1:7777/api/ops/overview | head -c 200; echo
 ```
 
 打包/安装细节：[`../deploy/desktop.md`](../deploy/desktop.md)。

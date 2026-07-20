@@ -216,21 +216,6 @@ def _empty_router_tiers() -> dict[str, dict[str, int]]:
     }
 
 
-def _parse_tier_counts(tiers_in: Any) -> dict[str, dict[str, int]]:
-    tiers = _empty_router_tiers()
-    if not isinstance(tiers_in, dict):
-        return tiers
-    for name in ("flash", "code", "pro"):
-        row = tiers_in.get(name) or {}
-        if not isinstance(row, dict):
-            row = {}
-        tiers[name] = {
-            "requests_today": int(row.get("requests_today") or 0),
-            "tokens_today": int(row.get("tokens_today") or 0),
-        }
-    return tiers
-
-
 def fetch_router_usage(
     *,
     host: str = "127.0.0.1",
@@ -238,52 +223,16 @@ def fetch_router_usage(
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
-    """Proxy ai-loop-router GET /admin/stats → flash/code/pro requests_today.
-
-    `tiers` = served primary upstream.tier (one request counted once).
-    `requested` = client model name breakdown (when router provides it).
-    Fail-soft: unreachable router returns zeros (Desktop shows red 0).
-    """
-    cache_key = f"router_usage:{host}:{port}"
-    if use_cache:
-        cached = _cache_get(cache_key, 3.0)
-        if cached is not None:
-            return cached
-
-    source = f"http://{host}:{port}/admin/stats"
-    out: dict[str, Any] = {
+    """ai-loop-router 已退役（2026-07-20）。保留端点兼容，恒返回零值。"""
+    _ = (host, port, timeout, use_cache)
+    return {
         "ok": False,
         "tiers": _empty_router_tiers(),
         "requested": _empty_router_tiers(),
         "attribution": None,
-        "source": source,
-        "error": None,
+        "source": "retired",
+        "error": "ai-loop-router retired 2026-07-20; Desktop counts local agent LLM calls",
     }
-    try:
-        req = urllib.request.Request(source, method="GET")
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-        data = json.loads(raw) if raw else {}
-        tiers_in = data.get("tiers") if isinstance(data, dict) else None
-        out["tiers"] = _parse_tier_counts(tiers_in)
-        req_in = data.get("requested") if isinstance(data, dict) else None
-        if isinstance(req_in, dict):
-            out["requested"] = _parse_tier_counts(req_in)
-        attr = data.get("attribution") if isinstance(data, dict) else None
-        if isinstance(attr, str) and attr.strip():
-            out["attribution"] = attr.strip()[:64]
-        out["ok"] = True
-        total = data.get("total") if isinstance(data, dict) else None
-        if isinstance(total, dict):
-            out["total"] = {
-                "requests_today": int(total.get("requests_today") or 0),
-                "tokens_today": int(total.get("tokens_today") or 0),
-            }
-    except Exception as exc:
-        out["error"] = str(exc)[:160]
-
-    _cache_set(cache_key, out)
-    return out
 
 
 def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
@@ -641,11 +590,10 @@ def deploy_targets() -> dict:
                 "role": "CCC Server",
                 "checks": [
                     (7777, "Hub"),
-                    (4000, "router-anthropic"),
-                    (4002, "router-openai"),
+                    (7775, "Board"),
                     (22, "ssh"),
                 ],
-                "notes": "唯一生产：Hub/Board/Engine/中转/业务仓（见 docs/deploy/topology.md）",
+                "notes": "唯一生产：Hub/Board/Engine/业务仓（中转已退役；见 docs/deploy/topology.md）",
             },
         ),
         (
@@ -847,7 +795,7 @@ def collect_risks(
 
     # down ports
     ports = probe_ports()
-    critical = {7775, 7777, 4000}
+    critical = {7775, 7777}
     for p, info in (ports.get("ports") or {}).items():
         try:
             pi = int(p)

@@ -846,39 +846,6 @@ actor APIClient {
         try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
     }
 
-    func fetchRouterUsage(forceRefresh: Bool = false) async throws -> RouterUsageResp {
-        // 旁路 HubRequestGate：顶栏用量必须独立于看板/项目短请求，避免排队假死
-        let path = forceRefresh ? "api/ops/router-usage?refresh=1" : "api/ops/router-usage"
-        var req = try authedRequest(path)
-        req.timeoutInterval = 5
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        var lastError: Error?
-        for attempt in 1...2 {
-            do {
-                let (data, resp) = try await session.data(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if !(200..<300).contains(code) {
-                    let text = String(data: data, encoding: .utf8) ?? ""
-                    if code >= 500, attempt < 2 {
-                        try await Task.sleep(nanoseconds: 300_000_000)
-                        continue
-                    }
-                    throw APIError.http(code, String(text.prefix(200)))
-                }
-                return try JSONDecoder().decode(RouterUsageResp.self, from: data)
-            } catch let e as APIError {
-                throw e
-            } catch {
-                lastError = error
-                if attempt < 2 {
-                    try await Task.sleep(nanoseconds: 300_000_000)
-                    continue
-                }
-            }
-        }
-        throw lastError ?? APIError.decode("router-usage 失败")
-    }
-
     func runDailyReview(workspace: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
         let req = try authedRequest("api/ops/daily-review/run", method: "POST", body: body)

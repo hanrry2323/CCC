@@ -3,24 +3,11 @@
 set -euo pipefail
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONPATH="${CCC_HOME}/scripts${PYTHONPATH:+:$PYTHONPATH}"
-RELAY_HOST="${CCC_RELAY_HOST:-127.0.0.1}"
 FAIL=0
 
 echo "== CCC smoke-executor-stack =="
 echo "CCC_HOME=$CCC_HOME"
-
-check_http() {
-  local url="$1" label="$2"
-  if curl -sS -m 5 "$url" >/dev/null 2>&1; then
-    echo "OK  $label  $url"
-  else
-    echo "FAIL $label  $url"
-    FAIL=1
-  fi
-}
-
-check_http "http://${RELAY_HOST}:4000/admin/health" "relay:4000"
-check_http "http://${RELAY_HOST}:4002/admin/health" "relay:4002"
+echo "note: ai-loop-router :4000/:4002 retired; Claude→MiniMax, OpenCode→local config"
 
 echo "-- resolve_claude_cli (default) --"
 DEFAULT_BIN="$(
@@ -63,11 +50,12 @@ fi
 
 if [[ "${SMOKE_CLAUDE_P:-}" == "1" && -n "$DEFAULT_BIN" ]]; then
   echo "-- claude -p smoke --"
-  if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="http://${RELAY_HOST}:4000" timeout 90 "$DEFAULT_BIN" -p --model flash 2>/dev/null | tail -5; then
+  BASE="${ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
+  if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" timeout 90 "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-MiniMax-M3}" 2>/dev/null | tail -5; then
     echo "OK  claude -p"
   else
     # macOS may lack timeout
-    if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="http://${RELAY_HOST}:4000" "$DEFAULT_BIN" -p --model flash 2>/dev/null | tail -5; then
+    if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-MiniMax-M3}" 2>/dev/null | tail -5; then
       echo "OK  claude -p"
     else
       echo "FAIL claude -p"

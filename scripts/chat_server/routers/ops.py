@@ -200,11 +200,12 @@ async def ops_quality(request: Request):
 
 @router.get("/api/ops/router-usage")
 async def ops_router_usage(request: Request, refresh: int = 0):
-    """中转站 flash/code/pro 今日调用次数（代理 :4000/admin/stats）。"""
+    """兼容残留：ai-loop-router 已退役，返回零值 stub。"""
     check_auth(request)
+    _ = refresh
     from _ops_probe import fetch_router_usage
 
-    return fetch_router_usage(use_cache=not bool(refresh))
+    return fetch_router_usage(use_cache=False)
 
 
 @router.get("/api/ops/summary")
@@ -224,7 +225,6 @@ async def ops_summary(request: Request):
         docs_debt_scan,
         list_ops_auto_tasks,
         quality_summary,
-        fetch_router_usage,
     )
 
     async def _run(func, *args):
@@ -249,7 +249,6 @@ async def ops_summary(request: Request):
             _run(docs_debt_scan, spaces),
             _run(list_ops_auto_tasks, spaces),
             _run(quality_summary, spaces),
-            _run(fetch_router_usage),
             return_exceptions=True,
         )
     except Exception as exc:
@@ -266,7 +265,6 @@ async def ops_summary(request: Request):
         "docs",
         "auto",
         "quality",
-        "router",
     ]
     out: dict = {"risks": risks_result}
     for k, r in zip(keys, results):

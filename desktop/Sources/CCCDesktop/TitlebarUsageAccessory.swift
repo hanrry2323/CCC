@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// 顶栏右侧纯文字：单排、无胶囊；自绘 + Timer，保证用量刷新不依赖 SwiftUI 树
+/// 顶栏右侧：本机 Agent 大模型调用 — 今日总量 · 近 5 秒
 struct TitlebarUsageAccessory: NSViewRepresentable {
     @ObservedObject var model: AppModel
 
@@ -40,7 +40,6 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
 
         func startObserving() {
             stopObserving()
-            // NSTitlebarAccessory 不在 SwiftUI 布局树：用 tick + 1s 兜底强制重绘
             cancellable = model.objectWillChange
                 .receive(on: RunLoop.main)
                 .sink { [weak self] _ in
@@ -79,7 +78,7 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
                 let field = VerticallyCenteredTextView(frame: .zero)
                 field.setContentHuggingPriority(.required, for: .horizontal)
 
-                let host = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 28))
+                let host = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 28))
                 host.addSubview(field)
                 field.translatesAutoresizingMaskIntoConstraints = false
                 NSLayoutConstraint.activate([
@@ -104,7 +103,6 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             let ink = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.82)
             let mute = NSColor(calibratedRed: 0.42, green: 0.38, blue: 0.34, alpha: 1)
             let green = NSColor(calibratedRed: 0.28, green: 0.58, blue: 0.38, alpha: 1)
-            let warn = NSColor(calibratedRed: 0.78, green: 0.35, blue: 0.18, alpha: 1)
             let sepC = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.30)
 
             let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .medium)
@@ -112,66 +110,35 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             let fontSemi = NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
             let out = NSMutableAttributedString()
 
-            let unhealthy = model.routerUsageUnhealthy
-            if unhealthy {
-                out.append(NSAttributedString(
-                    string: "! ",
-                    attributes: [.font: fontSemi, .foregroundColor: warn]
-                ))
-            }
+            let daily = model.agentLLMDailyCount
+            let recent = model.agentLLMRecent5s
 
-            for (i, tier) in ["flash", "code", "pro"].enumerated() {
-                if i > 0 {
-                    out.append(NSAttributedString(
-                        string: "  ·  ",
-                        attributes: [.font: fontReg, .foregroundColor: sepC]
-                    ))
-                }
-                let total = model.routerRequestCount(tier)
-                let live = model.routerLiveCount(tier)
-                out.append(NSAttributedString(string: tier, attributes: [.font: font, .foregroundColor: mute]))
-                out.append(NSAttributedString(
-                    string: " \(total) ",
-                    attributes: [.font: fontReg, .foregroundColor: unhealthy ? warn : ink]
-                ))
-                out.append(NSAttributedString(
-                    string: live > 0 ? "+\(live)" : "·",
-                    attributes: [
-                        .font: fontSemi,
-                        .foregroundColor: live > 0 ? green : mute,
-                    ]
-                ))
-            }
+            out.append(NSAttributedString(string: "今日", attributes: [.font: font, .foregroundColor: mute]))
+            out.append(NSAttributedString(
+                string: " \(daily)",
+                attributes: [.font: fontReg, .foregroundColor: ink]
+            ))
+            out.append(NSAttributedString(
+                string: "  ·  ",
+                attributes: [.font: fontReg, .foregroundColor: sepC]
+            ))
+            out.append(NSAttributedString(string: "5s", attributes: [.font: font, .foregroundColor: mute]))
+            out.append(NSAttributedString(
+                string: " \(recent)",
+                attributes: [
+                    .font: fontSemi,
+                    .foregroundColor: recent > 0 ? green : ink,
+                ]
+            ))
             label.attributedText = out
 
-            // 顶栏数字 = 中转站后台实际消耗（Hub→:4000/admin/stats）；≠ Desktop 本会话
-            var tip = "中转站后台用量（Hub→:4000/admin/stats）· 与本机 sidecar 直连对话无关 · +为近一轮新增（无则 ·）"
-            if let req = model.routerUsage?.requested {
-                let rf = req.flash?.requests ?? 0
-                let rc = req.code?.requests ?? 0
-                let rp = req.pro?.requests ?? 0
-                tip += " · 请求模型 flash \(rf) / code \(rc) / pro \(rp)"
-                let sf = model.routerRequestCount("flash")
-                let sc = model.routerRequestCount("code")
-                if rf > 0, sc > 0, sf < rf {
-                    tip += " · 有 flash 请求落到 code 上游（配额算 code）"
-                }
-            }
-            if let at = model.routerUsageFetchedAt {
-                let fmt = DateFormatter()
-                fmt.dateFormat = "HH:mm:ss"
-                tip += " · 更新 \(fmt.string(from: at))"
-            } else {
-                tip += " · 尚未拉到 Hub 用量"
-            }
-            if let err = model.routerUsageError, !err.isEmpty {
-                tip += " · \(err)"
-            }
+            var tip = "本机 Agent 大模型调用（sidecar → MiniMax）· 每发起一轮对话计 1 次（含自动重试）"
+            tip += " · 今日 \(daily) · 近 5 秒 \(recent)"
             label.toolTip = tip
-            lastPaintedTick = model.routerUsageTick
+            lastPaintedTick = model.agentUsageTick
 
             let w = ceil(out.size().width) + 20
-            accessory?.view.setFrameSize(NSSize(width: max(320, w), height: 28))
+            accessory?.view.setFrameSize(NSSize(width: max(160, w), height: 28))
         }
     }
 }
@@ -186,7 +153,6 @@ private final class VerticallyCenteredTextView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let size = attributedText.size()
-        guard size.width > 0, size.height > 0 else { return }
         let x = max(0, bounds.width - size.width)
         let y = max(0, (bounds.height - size.height) / 2)
         attributedText.draw(at: NSPoint(x: x, y: y))

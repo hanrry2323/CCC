@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CCC Desktop local Agent Sidecar — loop-code on localhost.
 
-Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cli → Router
+Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cli → MiniMax
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
 Security (2026-07-19):
@@ -10,7 +10,7 @@ Security (2026-07-19):
   - /health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://192.168.3.116:4000 \\
+  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
 """
 

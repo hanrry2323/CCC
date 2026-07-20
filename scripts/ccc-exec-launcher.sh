@@ -18,7 +18,7 @@
 #   3  = opencode-exec 调用失败
 #   4  = opencode exec 本身非零退出
 #   5  = post-exec 钩子阻断
-#   6  = router 健康检查失败（127.0.0.1:4000 无可用回退 upstream）
+#   6  = （已退役）曾为 router 健康检查失败
 #   10 = on-error 钩子失败（仅日志，不阻断）
 #
 # v0.8 配套：从 tmux + claude 改为直接 opencode CLI
@@ -61,52 +61,6 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 log "=== launcher start: phase=$PHASE_ID prompt=$PROMPT_FILE timeout=${TIMEOUT}s ==="
 
-ROUTER_HEALTH_URL="${ROUTER_HEALTH_URL:-http://127.0.0.1:4000/health}"
-UPSTREAMS_FILE="${UPSTREAMS_FILE:-${HOME}/program/ai-loop-router/upstreams.json}"
-
-# ── router 健康检查（单品）──
-# 返回 0=健康，1=不可用
-check_upstream_health() {
-  local url="${1:-$ROUTER_HEALTH_URL}"
-  local code
-  code="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$url" 2>>"$LOG_FILE" || echo "000")"
-  [[ "$code" =~ ^2[0-9][0-9]$ ]] && return 0
-  return 1
-}
-
-# ── 从 upstreams.json 选首个可用回退 upstream ──
-# 输出 JSON: {"base_url":"...","api_key":"..."} 或空字符串
-# 只选 enabled=true 且 tier_priority 最小的
-_read_upstreams_fallback() {
-  local file="$1"
-  [[ ! -f "$file" ]] && { echo ""; return 1; }
-  # 用 python3 解析 JSON（比 bash jq 更可靠，不依赖额外依赖）
-  python3 -c "
-import json, sys
-try:
-    with open('$file') as f:
-        data = json.load(f)
-    enabled = [u for u in data if u.get('enabled', False)]
-    if not enabled:
-        sys.exit(1)
-    # 按 tier_priority 升序
-    enabled.sort(key=lambda u: u.get('tier_priority', 999))
-    best = enabled[0]
-    print(json.dumps({'base_url': best.get('base_url', ''), 'api_key': best.get('api_key', '')}))
-except Exception:
-    sys.exit(1)
-" 2>>"$LOG_FILE" || echo ""
-}
-
-# ── 对 upstream base_url 做连通性检查 ──
-# 返回 0=通，1=不通
-_try_alternative_upstream() {
-  local base_url="$1"
-  # 只做 TCP 握手检查（--connect-timeout 5，不请求具体路径）
-  curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "${base_url%/}" 2>>"$LOG_FILE" | grep -qE '^[0-9]+$' && return 0
-  return 1
-}
-
 # --- Step 1: 残留扫描（红线 X3）---
 log "Step 1: opencode-watchdog"
 if ! bash "$SCRIPT_DIR/opencode-watchdog.sh" >> "$LOG_FILE" 2>&1; then
@@ -120,32 +74,9 @@ if ! bash "$SCRIPT_DIR/opencode-watchdog.sh" >> "$LOG_FILE" 2>&1; then
   fi
 fi
 
-# --- Step 1.5: router 健康检查 + upstream 回退（红线：避免在 down router 上浪费重试）---
-log "Step 1.5: router health check ($ROUTER_HEALTH_URL)"
-if check_upstream_health "$ROUTER_HEALTH_URL"; then
-  log " router 健康: $ROUTER_HEALTH_URL"
-else
-  log " router 健康检查 FAIL — 尝试从 upstreams.json 回退"
-  FALLBACK_JSON="$(_read_upstreams_fallback "$UPSTREAMS_FILE")"
-  if [[ -n "$FALLBACK_JSON" ]]; then
-    FB_BASE_URL="$(echo "$FALLBACK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('base_url',''))")"
-    FB_API_KEY="$(echo "$FALLBACK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key',''))")"
-    if [[ -n "$FB_BASE_URL" ]] && _try_alternative_upstream "$FB_BASE_URL"; then
-      log " 回退 upstream 可用: $FB_BASE_URL"
-      export UPSTREAM_BASE_URL="$FB_BASE_URL"
-      export UPSTREAM_API_KEY="$FB_API_KEY"
-    else
-      log " 回退 upstream 不可用: $FB_BASE_URL"
-      FALLBACK_JSON=""
-    fi
-  fi
-  if [[ -z "$FALLBACK_JSON" ]]; then
-    log " 无可用 upstream 回退 — 拒绝启动 executor"
-    bash "$SCRIPT_DIR/ccc-notify.sh" L2 "router DOWN: $PHASE_ID" \
-      "无可用 upstream 回退 phase=$PHASE_ID" >/dev/null 2>&1 || true
-    exit 6
-  fi
-fi
+# --- Step 1.5: 中转健康检查已退役（ai-loop-router :4000）---
+# OpenCode 走本机 opencode.json（讯飞等直连）；勿再因 :4000 down 阻断 phase。
+log "Step 1.5: skip retired ai-loop-router health (OpenCode uses local provider config)"
 
 # --- Step 2: pre-exec 钩子 ---
 log "Step 2: pre-exec hook"

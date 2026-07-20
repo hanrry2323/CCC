@@ -168,28 +168,21 @@ final class AppModel: ObservableObject {
     @Published var opsSummary: OpsSummary?
     @Published var opsAdoptBusy = false
     @Published var opsAdoptError: String?
-    /// 顶栏：中转站 flash/code/pro 今日调用
-    @Published var routerUsage: RouterUsageResp?
-    /// 上一轮拉取的今日总量，用于算「近一轮窗口」增量
-    private var routerLastTotals: [String: Int] = [:]
-    /// 近 5 秒窗口内新增（与轮询周期对齐；+ 号后展示）
-    @Published private(set) var routerWindowDelta: [String: Int] = [
-        "flash": 0, "code": 0, "pro": 0,
-    ]
-    /// 最近一次成功拉取时间；nil=从未成功
-    @Published private(set) var routerUsageFetchedAt: Date?
-    /// 最近失败原因（成功时清空）；顶栏 tooltip / 警示点
-    @Published private(set) var routerUsageError: String?
-    /// 单调递增 tick：强制 Titlebar accessory 刷新（NSAccessory 不在 SwiftUI 树内）
-    @Published private(set) var routerUsageTick: UInt64 = 0
-    private var routerPollGeneration: UInt64 = 0
+    /// 顶栏：本机 Agent 大模型调用（日总量 + 近 5 秒）
+    @Published private(set) var agentLLMDailyCount: Int = 0
+    @Published private(set) var agentLLMRecent5s: Int = 0
+    /// 单调递增 tick：强制 Titlebar accessory 刷新
+    @Published private(set) var agentUsageTick: UInt64 = 0
+    private var agentLLMCallTimestamps: [Date] = []
+    private var agentUsageTask: Task<Void, Never>?
+    private static let agentLLMDayKey = "ccc.agentLLM.day"
+    private static let agentLLMDailyKey = "ccc.agentLLM.dailyCount"
 
     /// 每项目一条 Flow SSE（多窗同时盯不同项目时并行订阅）
     private var flowSSETasks: [String: Task<Void, Never>] = [:]
     private var flowBackoffNs: [String: UInt64] = [:]
     private var flowRefreshTasks: [String: Task<Void, Never>] = [:]
     private var flowSnapshotPaused = false
-    private var routerUsageTask: Task<Void, Never>?
     /// 本机 sidecar 可多路并行（对话面；无 Hub chat）
     private var activeChatThreadId: String?
     /// 每会话独立对话流 task
@@ -649,7 +642,7 @@ final class AppModel: ObservableObject {
         }
         await flushPendingHubSync()
         startProjectTaskPolling()
-        startRouterUsagePolling()
+        startAgentUsageTicker()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             await runUISmoke()
         }
@@ -2023,6 +2016,7 @@ final class AppModel: ObservableObject {
                         try await prepareClient(projectId: projectId)
                     }
                     let outboundAttempt = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
+                    recordAgentLLMCall()
                     try await client.streamChat(
                         projectId: projectId,
                         sessionId: threadId,
@@ -3438,9 +3432,7 @@ final class AppModel: ObservableObject {
                 opsRisks = summary.risks?.risks ?? []
                 opsRisksCount = summary.risks?.count
                 opsRisksHigh = summary.risks?.high
-                if let router = summary.router {
-                    applyRouterUsage(router)
-                }
+                // router-usage 已退役；顶栏改计本机 Agent 调用
                 return
             }
             async let overview = client.fetchOpsOverview()
@@ -3480,125 +3472,76 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: - Router usage (toolbar)
+    // MARK: - Agent LLM usage (toolbar)
 
-    func startRouterUsagePolling() {
-        routerUsageTask?.cancel()
-        routerUsageTask = Task { [weak self] in
-            // 启动立刻拉一枪，避免顶栏长时间全 0
-            await self?.refreshRouterUsage(forceRefresh: true)
+    /// 每次本机 Agent 真正发起一轮上游对话（含自动重试）计 1 次
+    func recordAgentLLMCall() {
+        let now = Date()
+        rollAgentLLMDayIfNeeded(now: now)
+        agentLLMDailyCount += 1
+        UserDefaults.standard.set(agentLLMDailyCount, forKey: Self.agentLLMDailyKey)
+        agentLLMCallTimestamps.append(now)
+        refreshAgentLLMRecent5s(now: now)
+        bumpAgentUsageTick()
+    }
+
+    func startAgentUsageTicker() {
+        agentUsageTask?.cancel()
+        loadAgentLLMDailyFromDisk()
+        refreshAgentLLMRecent5s(now: Date())
+        bumpAgentUsageTick()
+        agentUsageTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self else { break }
-                // 流式中也继续拉总量（旁路 gate）；仅略降频
-                let streaming = !self.liveStreamingThreadIds.isEmpty || self.currentThreadStreaming
-                let sleepNs: UInt64 = streaming ? 8_000_000_000 : 5_000_000_000
-                try? await Task.sleep(nanoseconds: sleepNs)
-                guard !Task.isCancelled else { break }
-                self.routerPollGeneration &+= 1
-                // 每 ~30s 强制 bust Hub 侧 3s cache
-                let force = (self.routerPollGeneration % 6) == 0
-                await self.refreshRouterUsage(forceRefresh: force)
-            }
-        }
-    }
-
-    /// 仅同步 Hub base/auth，不碰 sidecar（顶栏轮询专用）
-    private func syncHubClientForUsage() async {
-        guard let url = APIClient.makeBaseURL(from: serverURLString) else { return }
-        await client.updateHubEndpoint(baseURL: url, user: authUser, password: authPass)
-    }
-
-    func refreshRouterUsage(forceRefresh: Bool = false) async {
-        await syncHubClientForUsage()
-        do {
-            let resp = try await client.fetchRouterUsage(forceRefresh: forceRefresh)
-            applyRouterUsage(resp)
-            if resp.ok == true || resp.tiers != nil {
-                let err = resp.error?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                routerUsageError = err.isEmpty ? nil : err
-                routerUsageFetchedAt = Date()
-                if !hubReachable {
-                    hubReachable = true
-                    updateConnectionStatusText(localOK: agentMode == "local", hubOK: true)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self else { break }
+                await MainActor.run {
+                    self.refreshAgentLLMRecent5s(now: Date())
+                    self.bumpAgentUsageTick()
                 }
-            } else {
-                routerUsageError = resp.error ?? "router-usage ok=false"
-            }
-            routerUsageTick &+= 1
-        } catch {
-            routerUsageError = error.localizedDescription
-            routerUsageTick &+= 1
-            // fail-soft：保留上次总量；窗口增量归零；不把整 App 打成离线
-            if routerUsage == nil {
-                applyRouterUsage(
-                    RouterUsageResp(
-                        ok: false,
-                        tiers: RouterUsageTiers(
-                            flash: RouterTierCount(requests_today: 0, tokens_today: 0),
-                            code: RouterTierCount(requests_today: 0, tokens_today: 0),
-                            pro: RouterTierCount(requests_today: 0, tokens_today: 0)
-                        ),
-                        requested: nil,
-                        attribution: nil,
-                        source: nil,
-                        error: error.localizedDescription
-                    )
-                )
-            } else {
-                routerWindowDelta = ["flash": 0, "code": 0, "pro": 0]
             }
         }
     }
 
-    /// 今日总量（中转站 requests_today）
-    func routerRequestCount(_ tier: String) -> Int {
-        guard let t = routerUsage?.tiers else { return 0 }
-        switch tier {
-        case "flash": return t.flash?.requests ?? 0
-        case "code": return t.code?.requests ?? 0
-        case "pro": return t.pro?.requests ?? 0
-        default: return 0
+    private func loadAgentLLMDailyFromDisk() {
+        let today = Self.agentLLMDayString(Date())
+        let storedDay = UserDefaults.standard.string(forKey: Self.agentLLMDayKey) ?? ""
+        if storedDay != today {
+            UserDefaults.standard.set(today, forKey: Self.agentLLMDayKey)
+            UserDefaults.standard.set(0, forKey: Self.agentLLMDailyKey)
+            agentLLMDailyCount = 0
+        } else {
+            agentLLMDailyCount = UserDefaults.standard.integer(forKey: Self.agentLLMDailyKey)
         }
     }
 
-    /// 近一轮窗口内新增（+ 号后；无调用则为 0）
-    func routerLiveCount(_ tier: String) -> Int {
-        routerWindowDelta[tier] ?? 0
+    private func rollAgentLLMDayIfNeeded(now: Date) {
+        let today = Self.agentLLMDayString(now)
+        let storedDay = UserDefaults.standard.string(forKey: Self.agentLLMDayKey) ?? ""
+        if storedDay != today {
+            UserDefaults.standard.set(today, forKey: Self.agentLLMDayKey)
+            UserDefaults.standard.set(0, forKey: Self.agentLLMDailyKey)
+            agentLLMDailyCount = 0
+            agentLLMCallTimestamps.removeAll()
+        }
     }
 
-    /// 顶栏是否应显示故障点（从未成功，或失败超过 25s 未再成功）
-    var routerUsageUnhealthy: Bool {
-        guard let at = routerUsageFetchedAt else { return true }
-        if routerUsageError != nil, Date().timeIntervalSince(at) > 25 {
-            return true
-        }
-        return false
+    private func refreshAgentLLMRecent5s(now: Date) {
+        let cutoff = now.addingTimeInterval(-5)
+        agentLLMCallTimestamps = agentLLMCallTimestamps.filter { $0 >= cutoff }
+        agentLLMRecent5s = agentLLMCallTimestamps.count
     }
 
-    private func applyRouterUsage(_ resp: RouterUsageResp) {
-        routerUsage = resp
-        var window: [String: Int] = [:]
-        for tier in ["flash", "code", "pro"] {
-            let total = routerRequestCount(from: resp, tier: tier)
-            if let prev = routerLastTotals[tier] {
-                window[tier] = max(0, total - prev)
-            } else {
-                // 首轮只定基线，不把全日累计当成「实时」
-                window[tier] = 0
-            }
-            routerLastTotals[tier] = total
-        }
-        routerWindowDelta = window
+    private func bumpAgentUsageTick() {
+        agentUsageTick &+= 1
     }
 
-    private func routerRequestCount(from resp: RouterUsageResp, tier: String) -> Int {
-        guard let t = resp.tiers else { return 0 }
-        switch tier {
-        case "flash": return t.flash?.requests ?? 0
-        case "code": return t.code?.requests ?? 0
-        case "pro": return t.pro?.requests ?? 0
-        default: return 0
-        }
+    private static func agentLLMDayString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
     }
 
     // MARK: - Phase 1.2: Search / Help / Commands

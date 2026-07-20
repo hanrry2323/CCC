@@ -33,8 +33,9 @@ def test_parse_infra_machines_and_ports():
     assert "Server" in mac["role"] or "CCC" in mac["role"]
     assert 7777 in data["ports"]
     assert 7775 in data["ports"]
-    assert 4000 in data["ports"]
-    assert 4002 in data["ports"]
+    # ai-loop-router 已退役，infrastructure 用 ~~ 划掉后不应再探针
+    assert 4000 not in data["ports"]
+    assert 4002 not in data["ports"]
     assert data["ports"][7777]["host"] == "192.168.3.116"
     assert data["ports"][7777]["machine"] == "Mac 2017"
     # deprecated strikethrough port should be skipped
@@ -49,7 +50,8 @@ def test_deploy_targets_mac2017_is_ccc_server():
     assert t["role"] == "CCC Server"
     labels = {c["label"] for c in t["checks"]}
     assert "Hub" in labels
-    assert "router-anthropic" in labels
+    assert "Board" in labels
+    assert "router-anthropic" not in labels
 
 
 def test_local_resources_shape():
@@ -92,59 +94,12 @@ def test_port_groups_cover_ccc():
     assert 7775 in ccc_ports
 
 
-def test_fetch_router_usage_fail_soft(monkeypatch):
-    """Router unreachable → zeros, not raise."""
-    import urllib.error
-
-    def boom(*_a, **_k):
-        raise urllib.error.URLError("down")
-
-    monkeypatch.setattr(op.urllib.request, "urlopen", boom)
-    # bypass cache from other tests
-    with op._CACHE_LOCK:
-        op._CACHE.clear()
+def test_fetch_router_usage_retired_stub():
+    """ai-loop-router 退役后恒返回零值 stub，不访问网络。"""
     out = op.fetch_router_usage(use_cache=False)
     assert out["ok"] is False
+    assert out["source"] == "retired"
     assert out["tiers"]["flash"]["requests_today"] == 0
     assert out["tiers"]["code"]["requests_today"] == 0
     assert out["tiers"]["pro"]["requests_today"] == 0
-    assert out.get("error")
-
-
-def test_fetch_router_usage_parses_tiers(monkeypatch):
-    class _Resp:
-        def read(self):
-            return json.dumps(
-                {
-                    "tiers": {
-                        "flash": {"requests_today": 12, "tokens_today": 100},
-                        "code": {"requests_today": 3, "tokens_today": 50},
-                        "pro": {"requests_today": 0, "tokens_today": 0},
-                    },
-                    "requested": {
-                        "flash": {"requests_today": 15, "tokens_today": 150},
-                        "code": {"requests_today": 0, "tokens_today": 0},
-                        "pro": {"requests_today": 0, "tokens_today": 0},
-                    },
-                    "attribution": "served_primary_tier",
-                    "total": {"requests_today": 15, "tokens_today": 150},
-                }
-            ).encode()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-    monkeypatch.setattr(op.urllib.request, "urlopen", lambda *_a, **_k: _Resp())
-    with op._CACHE_LOCK:
-        op._CACHE.clear()
-    out = op.fetch_router_usage(use_cache=False)
-    assert out["ok"] is True
-    assert out["tiers"]["flash"]["requests_today"] == 12
-    assert out["tiers"]["code"]["requests_today"] == 3
-    assert out["tiers"]["pro"]["requests_today"] == 0
-    assert out["requested"]["flash"]["requests_today"] == 15
-    assert out["attribution"] == "served_primary_tier"
-    assert out["total"]["requests_today"] == 15
+    assert "retired" in (out.get("error") or "").lower()

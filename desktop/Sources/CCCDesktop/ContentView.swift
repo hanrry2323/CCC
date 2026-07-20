@@ -112,11 +112,11 @@ struct ContentView: View {
             model.selectDestination(dest, projectId: window.projectId)
             model.commandDestination = nil
         }
-        // 纯文字嵌进顶栏右侧；依赖 model.routerUsageTick 触发 updateNSView
+        // 纯文字嵌进顶栏右侧；依赖 model.agentUsageTick 触发 updateNSView
         .background(
             TitlebarUsageAccessory(model: model)
                 .frame(width: 0, height: 0)
-                .id(model.routerUsageTick)
+                .id(model.agentUsageTick)
         )
         .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
@@ -792,7 +792,7 @@ struct CodexChatPaneBody: View {
                             .font(.system(size: 10))
                     }
                     .foregroundStyle(CCCTheme.faint)
-                    .help("本会话用量（sidecar cost）；与顶栏「中转站后台」无关")
+                    .help("本会话 token（sidecar cost）；顶栏「今日/5s」是 Agent 调用次数")
                 }
             }
             Button("上下文") { model.isContextPanelPresented = true }
@@ -1072,16 +1072,14 @@ struct CodexChatPaneBody: View {
                 .accessibilityHint("确认门禁后投递 epic")
 
                 Picker("", selection: $model.preferredModel) {
-                    Text("flash").tag("flash")
+                    Text("MiniMax").tag("flash")
                     Text("code").tag("code")
                     Text("sonnet").tag("sonnet")
                     Text("haiku").tag("haiku")
                 }
                 .labelsHidden()
                 .frame(width: 88)
-                .help(model.sidecarReportedModel.isEmpty
-                      ? "请求级模型"
-                      : "请求级模型 · sidecar 默认 \(model.sidecarReportedModel)")
+                .help("请求级模型标签。当前出口均为 MiniMax-M3 直连；code/sonnet/haiku 亦映射到同一上游。多 Provider（如 OpenCode）接入后可在此切换。")
 
                 Button {
                     model.requestEngineerMode()
@@ -1886,10 +1884,10 @@ struct SettingsView: View {
                 TextField("本机 Agent", text: $model.agentURLString)
                 TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
                 Picker("默认模型", selection: $model.preferredModel) {
-                    Text("flash").tag("flash")
-                    Text("code").tag("code")
-                    Text("sonnet").tag("sonnet")
-                    Text("haiku").tag("haiku")
+                    Text("MiniMax（推荐）").tag("flash")
+                    Text("code（→MiniMax）").tag("code")
+                    Text("sonnet（→MiniMax）").tag("sonnet")
+                    Text("haiku（→MiniMax）").tag("haiku")
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
                     Text("讨论（只读）").tag("discuss")
@@ -1903,7 +1901,7 @@ struct SettingsView: View {
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("默认 http://127.0.0.1:7788。模型按请求传给 sidecar。顶栏 flash/code 数字是中转站后台统计，不是本会话。")
+                Text("默认 http://127.0.0.1:7788。当前对话出口均为 MiniMax 直连；顶栏「今日 / 5s」统计本机 Agent 发起的大模型调用次数。")
             }
 
             Section {
@@ -1968,7 +1966,7 @@ struct ContextPanelSheet: View {
             }
             .font(.system(size: 12))
 
-            Text("本会话用量来自 sidecar cost 事件；顶栏数字是中转站后台 /admin/stats，两者无关。")
+            Text("本会话 token 来自 sidecar cost；顶栏「今日 / 5s」是本机 Agent 大模型调用次数（每轮对话计 1）。")
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)

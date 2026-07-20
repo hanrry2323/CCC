@@ -56,7 +56,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | M1 Desktop | `/Applications/CCCDesktop.app` 已重装 | `package-baseline.sh` + `cp -R` |
 | M1 sidecar | `/health` ok；进程读本机仓 | `launchctl kickstart -k gui/$(id -u)/com.ccc.agent-sidecar` |
 | Mac2017 仓 | 同 commit | `ssh mac2017 'cd ~/program/CCC && git pull --ff-only'` |
-| Mac2017 Hub | transfer / flow / router-usage | `kickstart -k …/com.ccc.chat-server` |
+| Mac2017 Hub | transfer / flow / ops | `kickstart -k …/com.ccc.chat-server` |
 
 ## 废弃
 
@@ -73,7 +73,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
-| `GET /api/ops/router-usage` | 历史中转站用量接口；router 退役后可能为空。本会话用量看 sidecar cost |
+| `GET /api/ops/router-usage` | **兼容 stub**（ai-loop-router 退役后恒零）；本机 Agent 用量见 Desktop 顶栏 |
 
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

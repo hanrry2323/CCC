@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **死代码清理（中转退役残留）**：Desktop 去掉 router-usage 轮询/模型；Hub `/api/ops/summary` 不再拉 router；`fetch_router_usage` 恒 stub；默认 `ANTHROPIC_BASE_URL`/`get_relay_url`→MiniMax；运维关键口不再把 :4000 当告警。
+- **顶栏用量改计本机 Agent**：不再依赖已退役中转站；显示「今日」调用总量 + 「5s」近窗次数（每轮 sidecar 对话计 1）。
 - **中转站退役**：停用 2017 `com.ai-loop-router`（:4000/:4002）；Claude/loop-code→MiniMax、OpenCode→讯飞直连；拓扑 / sidecar / boundary / GO-LIVE 文档对齐。
 - **右栏完成态 + 同对话多任务**：done 不再误显「待拆解」；完成即清空右栏时间线（保留 recentEpics）；transfer 保留真实 `thread_id`（不再强改 `::main`）。
 - **完成任务侧栏仍闪 / 右栏不退**：epic `done` 自动 `ui_hidden` 沉底；`/api/board/summaries` 不再 `include_hidden`；Desktop 收到 `user_stage=done` 清空右栏绑定。
