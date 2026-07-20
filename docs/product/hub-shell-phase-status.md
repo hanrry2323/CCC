@@ -12,6 +12,6 @@
 | Phase5a demo→released | green | smoke-ccc-demo-released → done | c307d9d |
 | Phase5b Hub 断线/outbox | green | smoke-hub-outage-outbox | 19739a1 |
 | Phase6 真实业务仓 qb | green | qb flow-smoke → released | 6f4714b |
-| Phase7 v0.52.0 发布卫生 | green | VERSION + 双机对齐 + §9 | 2eef10f |
-| Phase8 第二真实仓 | pending | — | — |
+| Phase7 v0.52.0 发布卫生 | green | VERSION + 双机对齐 + §9 | 349038e |
+| Phase8 第二真实仓 | green | hp（xianyu 脏跳过）→ released | 29b5d5d |
 | Phase9 abnormal 止损可见 | pending | — | — |
