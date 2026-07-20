@@ -35,12 +35,12 @@ struct SoftRow: View {
             HStack(spacing: 9) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 12.5, weight: .regular))
+                        .font(.system(size: 13.5, weight: .regular))
                         .foregroundStyle(selected || prominent ? CCCTheme.ink : CCCTheme.faint)
-                        .frame(width: 16, alignment: .center)
+                        .frame(width: 18, alignment: .center)
                 }
                 Text(title)
-                    .font(.system(size: 13, weight: selected || prominent ? .medium : .regular))
+                    .font(.system(size: 14, weight: selected || prominent ? .medium : .regular))
                     .foregroundStyle(selected || prominent ? CCCTheme.ink : CCCTheme.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)

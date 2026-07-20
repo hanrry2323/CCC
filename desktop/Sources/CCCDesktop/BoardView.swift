@@ -32,19 +32,27 @@ struct BoardView: View {
             header
             if let err = model.boardError {
                 Text(err)
-                    .font(.system(size: 12))
+                    .font(CCCTheme.callout)
                     .foregroundStyle(CCCTheme.nodeFail)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
             }
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(alignment: .top, spacing: 10) {
-                    ForEach(visibleColumns, id: \.self) { col in
-                        columnPane(col)
+            GeometryReader { geo in
+                let cols = visibleColumns
+                let gap: CGFloat = 12
+                let hPad: CGFloat = 16
+                let n = max(cols.count, 1)
+                let colW = max(200, (geo.size.width - hPad * 2 - gap * CGFloat(n - 1)) / CGFloat(n))
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(alignment: .top, spacing: gap) {
+                        ForEach(cols, id: \.self) { col in
+                            columnPane(col, width: colW, height: geo.size.height - 8)
+                        }
                     }
+                    .padding(.horizontal, hPad)
+                    .padding(.bottom, 12)
+                    .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
             }
         }
         .background(CCCTheme.chatBg)
@@ -137,15 +145,15 @@ struct BoardView: View {
         return ordered + extra
     }
 
-    private func columnPane(_ col: String) -> some View {
+    private func columnPane(_ col: String, width: CGFloat, height: CGFloat) -> some View {
         let tasks = model.boardColumns[col] ?? []
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(columnTitles[col] ?? col)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("\(tasks.count)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(CCCTheme.faint)
             }
             .accessibilityElement(children: .combine)
@@ -170,7 +178,7 @@ struct BoardView: View {
                     }
                 }
             }
-            .frame(width: 220, height: 520)
+            .frame(width: width, height: max(height - 36, 120))
             .padding(8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -201,12 +209,12 @@ struct BoardView: View {
                 }
             }
             Text(task.displayTitle)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(CCCTheme.ink)
                 .lineLimit(3)
             if let note = task.note, !note.isEmpty {
                 Text(note)
-                    .font(.system(size: 10))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(CCCTheme.faint)
                     .lineLimit(2)
             }

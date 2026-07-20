@@ -318,12 +318,9 @@ struct CodexSidebar: View {
     private func threadList(for projectId: String) -> some View {
         let threads = model.threads.filter { LocalSessionStore.projectId(fromThreadId: $0.thread_id) == projectId }
         if !threads.isEmpty {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text("会话")
-                        .font(CCCTheme.caption)
-                        .foregroundStyle(CCCTheme.faint)
-                    Spacer()
+                    Spacer(minLength: 0)
                     Button {
                         Task {
                             let tid = await model.createNewThread(projectId: projectId)
@@ -332,37 +329,53 @@ struct CodexSidebar: View {
                         }
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11, weight: .semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(CCCTheme.accent)
+                    .help("新建会话")
+                    .accessibilityLabel("新建会话")
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.top, 2)
+                .padding(.bottom, 2)
                 ForEach(threads.prefix(10)) { thread in
-                    HStack(spacing: 6) {
+                    let selected = thread.thread_id == window.threadId
+                    let streaming = model.isThreadStreaming(thread.thread_id)
+                    let unread = model.isThreadUnread(thread.thread_id)
+                    HStack(spacing: 8) {
                         Image(systemName: "bubble.left")
-                            .font(.system(size: 9))
-                            .foregroundStyle(CCCTheme.faint)
-                            .frame(width: 12)
+                            .font(.system(size: 11))
+                            .foregroundStyle(selected ? CCCTheme.accent : CCCTheme.faint)
+                            .frame(width: 14)
                         Text(thread.title ?? thread.thread_id.suffix(12).description)
-                            .font(CCCTheme.caption)
+                            .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? CCCTheme.ink : CCCTheme.secondary)
                             .lineLimit(1)
-                        Spacer()
-                        if thread.thread_id == window.threadId {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 8))
-                                .foregroundStyle(CCCTheme.accent)
+                        Spacer(minLength: 0)
+                        if streaming {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else if unread {
+                            Circle()
+                                .fill(CCCTheme.unread)
+                                .frame(width: 8, height: 8)
+                                .accessibilityLabel("未读")
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(selected ? CCCTheme.selected : Color.clear)
+                    )
                     .contentShape(Rectangle())
                     .onTapGesture {
                         window.projectId = projectId
                         window.threadId = thread.thread_id
                         model.selectedThreadId = thread.thread_id
                         model.selectedProjectId = projectId
+                        model.clearThreadUnread(thread.thread_id)
                         Task { await model.openThread(thread.thread_id) }
                     }
                     .contextMenu {
@@ -374,6 +387,9 @@ struct CodexSidebar: View {
                             Task { await model.archiveThread(threadId: thread.thread_id) }
                         }
                     }
+                    .accessibilityLabel(
+                        "\(thread.title ?? "会话")\(selected ? "，已选中" : "")\(streaming ? "，生成中" : "")\(unread ? "，未读" : "")"
+                    )
                 }
             }
             .padding(.bottom, 4)

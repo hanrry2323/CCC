@@ -2,11 +2,11 @@ import SwiftUI
 
 /// 侧栏项目卡片。
 ///
-/// 两路状态**语义独立**（不是装饰）：
-/// - **编排灯**（左）：Engine/看板队列 —— 这个项目后台有没有活
-/// - **对话灯**（右）：本机 agent 会话 —— 这个项目对话框是否正在生成（切走仍亮）
-///
-/// 空闲不抢视线：字幕空、灯变淡灰点。
+/// 尾部只保留**一个**主状态（优先级）：
+/// 1. 对话生成中 → 动态指示
+/// 2. 未读 → 蓝点
+/// 3. 编排在跑 / 失败 → gear
+/// 4. 空闲 → 无图标
 struct ProjectCard: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
@@ -15,55 +15,48 @@ struct ProjectCard: View {
 
     var body: some View {
         Button {
-            // 先钉本窗焦点 + 灌 RAM，再异步更新全局选中（他窗显示不受影响）
             window.projectId = project.id
             window.destination = .chat
             let threads = ConversationStore.listThreads(projectId: project.id)
             window.bindProject(project.id, availableThreads: threads)
             if let tid = window.threadId {
                 model.ensureThreadHydrated(threadId: tid)
+                model.clearThreadUnread(tid)
             } else {
                 model.ensureThreadHydrated(projectId: project.id)
             }
             Task {
                 await model.openProjectConversation(project.id)
-                // 与全局选中线程对齐，避免 bind 保留旧 tid、select 选了最近 tid 时分叉
                 if let tid = model.selectedThreadId,
                    LocalSessionStore.projectId(fromThreadId: tid) == project.id {
                     window.threadId = tid
+                    model.clearThreadUnread(tid)
                 }
             }
         } label: {
             HStack(alignment: .center, spacing: 10) {
+                Image(systemName: isSelected ? "folder.fill" : "folder")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(isSelected ? CCCTheme.accent : CCCTheme.faint)
+                    .frame(width: 18)
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(project.name)
-                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
                         .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary)
                         .lineLimit(1)
                     if !statusLine.isEmpty {
                         Text(statusLine)
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11.5))
                             .foregroundStyle(statusLineColor)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                // 左编排 · 右对话 —— 水平排列，避免上下叠两个无意义圆点
-                HStack(spacing: 6) {
-                    StatusDot(
-                        kind: .board,
-                        state: boardState,
-                        help: "编排：\(boardHelp)"
-                    )
-                    StatusDot(
-                        kind: .chat,
-                        state: chatState,
-                        help: "对话：\(chatHelp)"
-                    )
-                }
+                trailingStatus
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(isSelected ? CCCTheme.selected : Color.clear)
@@ -77,13 +70,68 @@ struct ProjectCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(project.name)，编排\(boardHelp)，对话\(chatHelp)")
+        .accessibilityLabel("\(project.name)，\(statusLine.isEmpty ? "空闲" : statusLine)")
     }
 
-    // MARK: - 状态源
+    @ViewBuilder
+    private var trailingStatus: some View {
+        switch primaryKind {
+        case .chatting:
+            ProgressView()
+                .controlSize(.mini)
+                .help("对话生成中")
+                .accessibilityLabel("对话生成中")
+        case .unread:
+            Circle()
+                .fill(CCCTheme.unread)
+                .frame(width: 9, height: 9)
+                .help("有未读回复")
+                .accessibilityLabel("有未读")
+        case .boardFail:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(CCCTheme.nodeFail)
+                .help("编排异常")
+        case .boardBusy:
+            TimelineView(.periodic(from: .now, by: 0.8)) { timeline in
+                let on = Int(timeline.date.timeIntervalSinceReferenceDate * 10) % 16 < 10
+                Image(systemName: "gearshape.2.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.nodeRunning)
+                    .opacity(on ? 1 : 0.35)
+            }
+            .help("编排执行中")
+        case .idle:
+            EmptyView()
+        }
+    }
 
-    /// 编排：board 队列（Engine）
-    private var boardState: DotState {
+    private enum PrimaryKind {
+        case chatting, unread, boardFail, boardBusy, idle
+    }
+
+    private var primaryKind: PrimaryKind {
+        if isChatting { return .chatting }
+        if model.projectHasUnread(project.id) { return .unread }
+        switch boardState {
+        case .failed: return .boardFail
+        case .running, .testing, .pending: return .boardBusy
+        default: return .idle
+        }
+    }
+
+    private var isChatting: Bool {
+        switch model.projectConvState[project.id] ?? "idle" {
+        case "tool", "text": return true
+        default: return false
+        }
+    }
+
+    private enum BoardState {
+        case idle, pending, running, testing, failed
+    }
+
+    private var boardState: BoardState {
         switch model.projectTaskState[project.id] ?? "idle" {
         case "pending": return .pending
         case "in_progress": return .running
@@ -93,119 +141,31 @@ struct ProjectCard: View {
         }
     }
 
-    /// 对话：本机 agent 流式（按项目，切走仍亮）
-    private var chatState: DotState {
-        switch model.projectConvState[project.id] ?? "idle" {
-        case "tool": return .tooling
-        case "text": return .talking
-        default: return .idle
-        }
-    }
-
-    /// 一行人话：优先对话（更即时），再拼编排
     private var statusLine: String {
         var parts: [String] = []
-        switch chatState {
-        case .talking: parts.append("对话中")
-        case .tooling: parts.append("调工具")
-        default: break
+        if isChatting {
+            if (model.projectConvState[project.id] ?? "") == "tool" {
+                parts.append("调工具")
+            } else {
+                parts.append("对话中")
+            }
+        } else if model.projectHasUnread(project.id) {
+            parts.append("未读")
         }
         switch boardState {
         case .pending: parts.append("待拆解")
         case .running: parts.append("执行中")
         case .testing: parts.append("验收中")
         case .failed: parts.append("异常")
-        default: break
+        case .idle: break
         }
         return parts.joined(separator: " · ")
     }
 
     private var statusLineColor: Color {
         if boardState == .failed { return CCCTheme.nodeFail }
-        if chatState == .talking || chatState == .tooling { return CCCTheme.secondary }
+        if isChatting { return CCCTheme.secondary }
+        if model.projectHasUnread(project.id) { return CCCTheme.unread }
         return CCCTheme.faint
-    }
-
-    private var boardHelp: String {
-        switch boardState {
-        case .pending: return "待拆解"
-        case .running: return "执行中"
-        case .testing: return "验收中"
-        case .failed: return "异常"
-        default: return "空闲"
-        }
-    }
-
-    private var chatHelp: String {
-        switch chatState {
-        case .talking: return "生成中"
-        case .tooling: return "调工具"
-        default: return "空闲"
-        }
-    }
-}
-
-// MARK: - Dot
-
-private enum DotState {
-    case idle, pending, running, testing, failed, talking, tooling
-}
-
-private enum DotKind { case board, chat }
-
-private struct StatusDot: View {
-    let kind: DotKind
-    let state: DotState
-    let help: String
-
-    var body: some View {
-        Group {
-            switch state {
-            case .idle:
-                Circle()
-                    .fill(CCCTheme.faint.opacity(0.28))
-                    .frame(width: 7, height: 7)
-            case .pending:
-                Circle()
-                    .fill(Color(red: 0.35, green: 0.55, blue: 0.85))
-                    .frame(width: 8, height: 8)
-            case .running:
-                TimelineView(.periodic(from: .now, by: 0.7)) { timeline in
-                    let on = Int(timeline.date.timeIntervalSinceReferenceDate * 10) % 14 < 9
-                    Circle()
-                        .fill(CCCTheme.nodeRunning)
-                        .frame(width: 8, height: 8)
-                        .opacity(on ? 1 : 0.25)
-                }
-            case .testing:
-                Circle()
-                    .fill(Color(red: 0.85, green: 0.65, blue: 0.15))
-                    .frame(width: 8, height: 8)
-            case .failed:
-                Circle()
-                    .fill(CCCTheme.nodeFail)
-                    .frame(width: 8, height: 8)
-            case .talking:
-                TimelineView(.periodic(from: .now, by: 1.2)) { timeline in
-                    let p = timeline.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: 1.2) / 1.2
-                    Circle()
-                        .fill(Color(red: 0.25, green: 0.55, blue: 0.95))
-                        .frame(width: 8, height: 8)
-                        .opacity(0.4 + 0.6 * (0.5 + 0.5 * sin(p * 2 * .pi)))
-                }
-            case .tooling:
-                TimelineView(.periodic(from: .now, by: 0.9)) { timeline in
-                    let p = timeline.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: 0.9) / 0.9
-                    Circle()
-                        .fill(Color(red: 0.55, green: 0.35, blue: 0.85))
-                        .frame(width: 8, height: 8)
-                        .opacity(0.4 + 0.6 * (0.5 + 0.5 * sin(p * 2 * .pi)))
-                }
-            }
-        }
-        .help(help)
-        .accessibilityLabel(help)
     }
 }

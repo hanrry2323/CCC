@@ -122,6 +122,8 @@ final class AppModel: ObservableObject {
     @Published var projectTaskState: [String: String] = [:]
     /// 项目对话流式态：projectId → "idle"/"text"/"tool"
     @Published var projectConvState: [String: String] = [:]
+    /// 会话未读（流结束后非焦点窗）
+    @Published var threadUnread: Set<String> = []
     /// 项目卡片轮询 task
     private var projectPollTask: Task<Void, Never>?
 
@@ -547,6 +549,7 @@ final class AppModel: ObservableObject {
         }
         if let n = next, !n.isEmpty {
             focusedThreadRefCounts[n, default: 0] += 1
+            clearThreadUnread(n)
             ensureThreadHydrated(threadId: n)
             if agentMode == "local" {
                 let pid = LocalSessionStore.projectId(fromThreadId: n)
@@ -1026,10 +1029,26 @@ final class AppModel: ObservableObject {
         selectedProjectId = pid
         destination = .chat
         selectedThreadId = id
+        clearThreadUnread(id)
         ensureThreadHydrated(threadId: id)
         await loadConversation(threadId: id)
         sessionTokens = threadSessionTokens[id] ?? 0
         ensureFlowSSE()
+    }
+
+    func clearThreadUnread(_ threadId: String) {
+        guard threadUnread.contains(threadId) else { return }
+        var copy = threadUnread
+        copy.remove(threadId)
+        threadUnread = copy
+    }
+
+    func projectHasUnread(_ projectId: String) -> Bool {
+        threadUnread.contains { LocalSessionStore.projectId(fromThreadId: $0) == projectId }
+    }
+
+    func isThreadUnread(_ threadId: String) -> Bool {
+        threadUnread.contains(threadId)
     }
 
     /// 创建新会话并打开；返回 threadId 供本窗 `window.threadId` 绑定
@@ -1562,10 +1581,18 @@ final class AppModel: ObservableObject {
     }
 
     private func setThreadStreaming(_ threadId: String, _ on: Bool) {
+        let wasOn = streamingThreadIds.contains(threadId)
         if on {
             streamingThreadIds.insert(threadId)
+            clearThreadUnread(threadId)
         } else {
             streamingThreadIds.remove(threadId)
+            // 流结束且当前没有窗聚焦该 thread → 未读
+            if wasOn, (focusedThreadRefCounts[threadId] ?? 0) == 0 {
+                var copy = threadUnread
+                copy.insert(threadId)
+                threadUnread = copy
+            }
         }
         liveStreamingThreadIds = streamingThreadIds
         // 同步项目对话灯：threadId = "<projectId>::main"

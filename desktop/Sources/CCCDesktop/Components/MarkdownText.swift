@@ -44,11 +44,11 @@ struct MarkdownText: View {
                     VStack(alignment: .leading, spacing: 4) {
                         if !lang.isEmpty {
                             Text(lang)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundStyle(CCCTheme.faint)
                         }
                         Text(code)
-                            .font(.system(size: 12.5, design: .monospaced))
+                            .font(.system(size: 13.5, design: .monospaced))
                             .foregroundStyle(CCCTheme.ink)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,10 +92,10 @@ struct MarkdownText: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .system(size: 20, weight: .semibold)
-        case 2: return .system(size: 17, weight: .semibold)
-        case 3: return .system(size: 15, weight: .semibold)
-        default: return .system(size: 14, weight: .semibold)
+        case 1: return .system(size: 22, weight: .semibold)
+        case 2: return .system(size: 19, weight: .semibold)
+        case 3: return .system(size: 17, weight: .semibold)
+        default: return .system(size: 16, weight: .semibold)
         }
     }
 
@@ -282,7 +282,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(i, offsetBy: 2)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 14, weight: .semibold)
+                chunk.font = .system(size: 16, weight: .semibold)
                 out += chunk
                 i = end.upperBound
                 plainStart = i
@@ -293,7 +293,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(after: i)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 12.5, design: .monospaced)
+                chunk.font = .system(size: 13.5, design: .monospaced)
                 chunk.backgroundColor = Color.black.opacity(0.06)
                 out += chunk
                 i = end.upperBound
@@ -305,7 +305,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(after: i)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 14).italic()
+                chunk.font = .system(size: 16).italic()
                 out += chunk
                 i = end.upperBound
                 plainStart = i
