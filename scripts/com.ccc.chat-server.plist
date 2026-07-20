@@ -38,7 +38,9 @@
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
     <key>ANTHROPIC_BASE_URL</key>
-    <string>http://127.0.0.1:4000</string>
+    <string>https://api.minimaxi.com/anthropic</string>
+    <key>ANTHROPIC_MODEL</key>
+    <string>MiniMax-M3</string>
   </dict>
 </dict>
 </plist>
