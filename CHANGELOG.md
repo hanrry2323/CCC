@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase1**：契约测 `client_request_id` 幂等；`scripts/smoke-hub-api-v1.sh`；`ccc-demo` transfer 绿通。
 - **文档索引收口**：[`docs/INDEX.md`](docs/INDEX.md) 明确现行 6 份 SSOT；下阶段北星唯一指向 [`hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)；旧 roadmap / 双轨等迁入 [`docs/archive/`](docs/archive/README.md)。
 - **Hub API v1 + 投递三态**：[`docs/product/hub-api-v1.md`](docs/product/hub-api-v1.md)；Desktop outbox（Hub 断线排队）+ `client_request_id` 幂等；状态栏显示草稿/待投递/已投递/已受理。
 - **下阶段总体方案**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) — 多端对话壳 + Hub API v1；人审仅意图门/止损；进队后全自动；先 `ccc-demo`。
@@ -23,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Engine upstream 健康检查误探 :4000**：`get_relay_url` 优先 `ANTHROPIC_BASE_URL`；`ccc-engine.sh` 同步导出 `AGENT_PLANNER_BASE_URL`；定期清理死掉的 `~/.ccc/opencode-pids`。
+- **Engine upstream 健康检查误探 :4000**：`get_relay_url` 优先 `ANTHROPIC_BASE_URL`；`ccc-engine.sh` 同步导出 `AGENT_PLANNER_BASE_URL`；定期清理死掉的 `~/.ccc/opencode-pids`；TLS 校验证书失败时按可达重试，避免误跳过 product。
 - **死代码清理（中转退役残留）**：Desktop 去掉 router-usage 轮询/模型；Hub `/api/ops/summary` 不再拉 router；`fetch_router_usage` 恒 stub；默认 `ANTHROPIC_BASE_URL`/`get_relay_url`→MiniMax；运维关键口不再把 :4000 当告警。
 - **顶栏用量改计本机 Agent**：不再依赖已退役中转站；显示「今日」调用总量 + 「5s」近窗次数（每轮 sidecar 对话计 1）。
 - **中转站退役**：停用 2017 `com.ai-loop-router`（:4000/:4002）；Claude/loop-code→MiniMax、OpenCode→讯飞直连；拓扑 / sidecar / boundary / GO-LIVE 文档对齐。

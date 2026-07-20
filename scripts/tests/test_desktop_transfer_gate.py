@@ -148,3 +148,25 @@ def test_flow_snapshot_from_board():
     assert snap["works"][0]["executor_label"] == "写码"
     assert "goal_summary" in snap["epic"]
     assert snap.get("headline")
+
+
+def test_client_request_id_idempotency(tmp_path, monkeypatch):
+    """Hub API v1：同一 client_request_id 二次 lookup 返回同一 epic。"""
+    monkeypatch.setattr(
+        "chat_server.config.CHAT_DIR", tmp_path / "chat"
+    )
+    (tmp_path / "chat").mkdir(parents=True)
+    pid = "ccc-demo"
+    crid = "req-phase1-idem-001"
+    assert flow_events.lookup_transfer_by_client_request(pid, crid) is None
+    flow_events.remember_last_epic(
+        pid, "epic-idem-1", "Idem", thread_id=f"{pid}::main", client_request_id=crid
+    )
+    hit = flow_events.lookup_transfer_by_client_request(pid, crid)
+    assert hit is not None
+    assert hit["epic_id"] == "epic-idem-1"
+    flow_events.remember_last_epic(
+        pid, "epic-idem-1", "Idem", thread_id=f"{pid}::main", client_request_id=crid
+    )
+    hit2 = flow_events.lookup_transfer_by_client_request(pid, crid)
+    assert hit2["epic_id"] == "epic-idem-1"
