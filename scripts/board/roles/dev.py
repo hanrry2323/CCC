@@ -529,32 +529,10 @@ def _capture_task_pre_head(task_id: str) -> str:
 
 
 def _find_task_commit_hash(task_id: str) -> str:
-    """仅认 git log --grep=task_id；禁止 HEAD 降级（H1）。"""
-    import subprocess as _sp
+    """仅认 git log --grep=task_id（work 可回落父 epic id）；禁止 HEAD 降级（H1）。"""
+    from _task_commit import find_task_commit
 
-    try:
-        r = _sp.run(
-            [
-                "git",
-                "log",
-                "--all",
-                "--grep",
-                task_id,
-                "--format=%H",
-                "--max-count=1",
-            ],
-            cwd=get_workspace(),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if r.returncode == 0:
-            h = (r.stdout or "").strip().splitlines()
-            if h and len(h[0]) == 40:
-                return h[0]
-    except Exception as exc:
-        _log.warning("[commit-gate] %s git log grep failed: %s", task_id, exc)
-    return ""
+    return find_task_commit(get_workspace(), task_id) or ""
 
 
 def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
@@ -869,6 +847,7 @@ def dev_role_check_complete(task_id: str) -> dict:
                 return {"status": "failed", "retry": 0, "task_id": task_id}
         # v0.52: 空心成功门禁 — 拒读 ~/.ccc / external_directory 仍 exit 0
         from _opencode_quality_gate import (
+            agent_declared_self_checks_passed,
             detect_hollow_opencode_run,
             report_has_self_checks_passed,
         )
@@ -890,10 +869,10 @@ def dev_role_check_complete(task_id: str) -> dict:
                 "error": f"hollow-gate: {_hollow}",
             }
 
-        # SELF-CHECKS：必须由 agent 写出；门禁禁止代写假 PASS（2026-07-19）
-        if not report_has_self_checks_passed(_existing_report):
+        # SELF-CHECKS：必须由 agent 写出（report.md 或 result stdout）；禁止代写
+        if not agent_declared_self_checks_passed(_existing_report, result_raw):
             _log.error(
-                "[gate] %s report.md 缺少 'ALL SELF-CHECKS PASSED'（不代写）",
+                "[gate] %s report/result 缺少 'ALL SELF-CHECKS PASSED'（不代写）",
                 task_id,
             )
             if not _existing_report:
@@ -908,6 +887,15 @@ def dev_role_check_complete(task_id: str) -> dict:
                 "task_id": task_id,
                 "error": "self-checks-gate: missing ALL SELF-CHECKS PASSED",
             }
+        # Agent 只在 stdout 声明时，落盘到 report 供下游可读（不发明新标记）
+        if not report_has_self_checks_passed(_existing_report):
+            body = (_existing_report or f"# {task_id} 执行报告\n").rstrip()
+            report_path.write_text(body + "\n\nALL SELF-CHECKS PASSED\n")
+            _existing_report = report_path.read_text()
+            _log.info(
+                "[gate] %s materialize SELF-CHECKS from agent result → report.md",
+                task_id,
+            )
 
         # 成功：清标记文件 + 记录 commit hash + 挪列
         for p in marker_files:

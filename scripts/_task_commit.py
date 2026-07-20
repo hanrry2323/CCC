@@ -24,6 +24,10 @@ _CCC_META_PREFIXES = (
     ".ccc/pids/",
     ".ccc/quarantines/",
     ".ccc/review-locks/",
+    ".ccc/plans/",
+    ".ccc/phases/",
+    ".ccc/reports/",
+    ".ccc/verdicts/",
 )
 
 
@@ -39,8 +43,8 @@ def _is_ccc_meta_path(path: str) -> bool:
 def porcelain_product_paths(porcelain: str) -> list[str]:
     """Parse ``git status --porcelain``; drop known ``.ccc/`` orchestration noise.
 
-    Board/state/pids/stats churn must not satisfy DoD. Deliverables such as
-    ``.ccc/flow-smoke.md`` (and normal source files) still count.
+    Board/state/pids/stats/plans/phases/reports churn must not satisfy DoD.
+    Deliverables such as ``.ccc/flow-smoke.md`` (and normal source files) still count.
     """
     out: list[str] = []
     for raw in (porcelain or "").splitlines():
@@ -60,29 +64,42 @@ def porcelain_product_paths(porcelain: str) -> list[str]:
     return out
 
 
+def _commit_grep_needles(task_id: str) -> list[str]:
+    """Work cards may commit with epic id only; accept parent id as DoD needle."""
+    tid = (task_id or "").strip()
+    needles = [tid] if tid else []
+    # flow-green-xxx-w1 → also accept flow-green-xxx
+    if tid and "-w" in tid:
+        parent = tid.rsplit("-w", 1)[0]
+        if parent and parent not in needles:
+            needles.append(parent)
+    return needles
+
+
 def find_task_commit(workspace: Path, task_id: str) -> str:
-    try:
-        r = subprocess.run(
-            [
-                "git",
-                "log",
-                "--all",
-                "--grep",
-                task_id,
-                "--format=%H",
-                "--max-count=1",
-            ],
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if r.returncode == 0:
-            lines = (r.stdout or "").strip().splitlines()
-            if lines and len(lines[0]) >= 40:
-                return lines[0][:40]
-    except Exception as exc:
-        _log.warning("find_task_commit failed: %s", exc)
+    for needle in _commit_grep_needles(task_id):
+        try:
+            r = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    "--all",
+                    "--grep",
+                    needle,
+                    "--format=%H",
+                    "--max-count=1",
+                ],
+                cwd=str(workspace),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if r.returncode == 0:
+                lines = (r.stdout or "").strip().splitlines()
+                if lines and len(lines[0]) >= 40:
+                    return lines[0][:40]
+        except Exception as exc:
+            _log.warning("find_task_commit failed needle=%s: %s", needle, exc)
     return ""
 
 

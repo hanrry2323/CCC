@@ -60,3 +60,28 @@ def detect_hollow_opencode_run(result_raw: str, report: str = "") -> str | None:
 
 def report_has_self_checks_passed(report: str) -> bool:
     return "ALL SELF-CHECKS PASSED" in (report or "")
+
+
+def agent_declared_self_checks_passed(report: str = "", result_raw: str = "") -> bool:
+    """True if agent already wrote the literal marker (report.md and/or result stdout).
+
+    Not inventing: OpenCode often puts the line in chat stdout (``.result.json``)
+    instead of writing ``.report.md``. Gate must accept either; still forbids
+    synthesizing the marker when absent from both.
+    """
+    if report_has_self_checks_passed(report):
+        return True
+    blob = result_raw or ""
+    # Prefer stdout field when result is JSON; fall back to raw blob.
+    try:
+        import json
+
+        data = json.loads(blob)
+        if isinstance(data, dict):
+            for key in ("stdout", "output", "message"):
+                val = data.get(key)
+                if isinstance(val, str) and report_has_self_checks_passed(val):
+                    return True
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return report_has_self_checks_passed(blob)

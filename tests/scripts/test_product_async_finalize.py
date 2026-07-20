@@ -34,14 +34,27 @@ def test_porcelain_allows_flow_smoke_excludes_board(tmp_path=None):
         "?? .ccc/flow-smoke.md\n"
         " M README.md\n"
         "?? .ccc/reports/t1.report.md\n"
+        "?? .ccc/plans/t1.plan.md\n"
     )
     got = porcelain_product_paths(porcelain)
     assert ".ccc/flow-smoke.md" in got
     assert "README.md" in got
-    assert ".ccc/reports/t1.report.md" in got
+    assert ".ccc/reports/t1.report.md" not in got
+    assert ".ccc/plans/t1.plan.md" not in got
     assert ".ccc/board/index.json" not in got
     assert ".ccc/state.md" not in got
     assert ".ccc/engine-heartbeat.json" not in got
+
+
+def test_find_task_commit_accepts_parent_epic_id(tmp_path: Path):
+    from _task_commit import find_task_commit, _commit_grep_needles
+
+    assert _commit_grep_needles("flow-green-abc-w1") == [
+        "flow-green-abc-w1",
+        "flow-green-abc",
+    ]
+    # no git repo → empty
+    assert find_task_commit(tmp_path, "flow-green-abc-w1") == ""
 
 
 def test_porcelain_only_meta_is_empty():

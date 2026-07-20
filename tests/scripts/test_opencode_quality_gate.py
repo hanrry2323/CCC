@@ -9,6 +9,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from _opencode_quality_gate import (  # noqa: E402
+    agent_declared_self_checks_passed,
     detect_hollow_opencode_run,
     report_has_self_checks_passed,
 )
@@ -37,6 +38,18 @@ def test_detect_clean_run_ok():
 def test_report_marker():
     assert report_has_self_checks_passed("x\nALL SELF-CHECKS PASSED\n")
     assert not report_has_self_checks_passed("almost passed")
+
+
+def test_agent_declared_from_result_stdout():
+    result = (
+        '{"phase_id":"t-p1","exit_code":0,'
+        '"stdout":"done\\nALL SELF-CHECKS PASSED\\n","stderr":""}'
+    )
+    assert agent_declared_self_checks_passed("", result)
+    assert agent_declared_self_checks_passed("stub without marker", result)
+    assert not agent_declared_self_checks_passed(
+        "stub", '{"stdout":"no marker yet","exit_code":0}'
+    )
 
 
 def test_porcelain_ignores_ccc_meta():

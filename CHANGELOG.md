@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **快捷条提示词强化（对标 Cursor）**：对齐基线 / 下一步 / 定稿 / 扫风险 强制静默读仓+证据结论；放宽字数阉割；`hub_voice` 改为高能力产品搭档。见 `QuickPrompts.swift` · `hub_voice.py` · `_project_baseline.py`。
 - **Desktop UI 8 项打磨**：字号/对比上调；看板列自适应铺满；运维 Gauge/Grid/Material；侧栏去「会话」+ 文件夹图标 + 会话选中底；单状态指示 + 流式动画 + 未读点；工具调用折叠式 SF Symbol（对齐 Cursor/OpenCode）。
 - **舰队五仓迁 Mac2017**：`xianyu` / `qb` / `qx-observer` / `hp` / `medio-0` → `apps/` + register；M1 冷冻于 `archive/2026-07-20-m1-freeze/`；运维 SSOT [`docs/deploy/fleet-apps-migration-2026-07.md`](docs/deploy/fleet-apps-migration-2026-07.md)；Agent 心智 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)。
 - **Desktop 可用性 9.5 冲刺**：搜索结果可点跳转；空态三步主路径；首启 tip + 侧栏「用法」HelpSheet；重置对话确认；会话重命名对话框；快捷芯片 hover 说明；转任务人话门禁；⌘N/⌘F/⌘1–3/⌘⇧T；热路径 VoiceOver 标签；Settings 分组；预热中状态可见。计划 SSOT：[`docs/product/desktop-usability-9.5-plan.md`](docs/product/desktop-usability-9.5-plan.md)。
@@ -18,9 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **product 异步收尾丢扇出**：进程已死但有 `.product.out` 时 Engine GC 必须 `check_product_async`；`ccc-product-session` 写 `.done`/`.exitcode`。
-- **DoD auto-commit 误伤 `.ccc/` 交付物**：只排除 board/stats/pids 等噪音，允许 `.ccc/flow-smoke.md`。
+- **DoD auto-commit 误伤 `.ccc/` 交付物**：只排除 board/stats/pids/plans/phases/reports 等噪音，允许 `.ccc/flow-smoke.md`；work 卡 commit-gate 接受父 epic id。
 - **epic 子卡 released 后状态滞后**：kb/verified 后立刻 `refresh_epic_lifecycle`。
 - **phase graph abnormal 不可读**：quarantine note 附带 failure_summary。
+- **SELF-CHECKS 只认 report.md**：OpenCode 常把 `ALL SELF-CHECKS PASSED` 写在 result stdout；门禁改为认可 report 或 agent result（仍禁止代写）。
 - **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。
 - **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
 - **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。
