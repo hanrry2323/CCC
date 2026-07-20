@@ -124,7 +124,7 @@ Clients:  Desktop →（后）Web →（后）Mobile
 
 1. Desktop 定稿 → transfer → epic 进 backlog  
 2. Engine 自动扇出 → work → released（**无中途人批**）— **Phase5a 已勾选**：`scripts/smoke-ccc-demo-released.sh`  
-3. Hub 短暂不可达：对话仍可用；恢复后 snapshot 对齐；失败 transfer 可重试  
+3. Hub 短暂不可达：对话仍可用；恢复后 snapshot 对齐；失败 transfer 可重试 — **Phase5b 已勾选**：`scripts/smoke-hub-outage-outbox.sh`  
 4.（P2）写入一条 inbox 提案 → Desktop 采纳 → 再走 1–2  
 5. 稳定性：连续跑 **N=3** 轮无槽泄漏 / 无失控残留进程（`scripts/smoke-ccc-demo-soak.sh`）
 
