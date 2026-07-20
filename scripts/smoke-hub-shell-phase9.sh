@@ -11,7 +11,9 @@ USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
 AUTH=(-u "${USER}:${PASS}")
 PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
-REMOTE="${CCC_REMOTE_HOST:-mac2017}"
+# shellcheck source=scripts/_smoke_remote.sh
+source "$(dirname "$0")/_smoke_remote.sh"
+REMOTE="${SMOKE_REMOTE_HOST}"
 WS_REMOTE="${CCC_PHASE9_WS:-/Users/fan/program/apps/ccc-demo}"
 TS=$(date +%s)
 EPIC="phase9-stoploss-${TS}-$$"

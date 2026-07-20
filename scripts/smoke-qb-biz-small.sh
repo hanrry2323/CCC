@@ -13,7 +13,9 @@ AUTH=(-u "${USER}:${PASS}")
 PROJECT="${CCC_QB_SMOKE_PROJECT:-qb}"
 WAIT_SEC="${CCC_QB_WAIT_SEC:-1200}"
 POLL="${CCC_QB_POLL_SEC:-15}"
-REMOTE="${CCC_REMOTE_HOST:-mac2017}"
+# shellcheck source=scripts/_smoke_remote.sh
+source "$(dirname "$0")/_smoke_remote.sh"
+REMOTE="${SMOKE_REMOTE_HOST}"
 QB_WS="${CCC_QB_WS:-/Users/fan/program/apps/qb}"
 TS=$(date +%s)
 SUFFIX=$(printf '%x' "$$")

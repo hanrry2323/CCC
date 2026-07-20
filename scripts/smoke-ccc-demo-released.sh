@@ -36,9 +36,11 @@ for _ in 1 2 3 4 5; do
   sleep 3
 done
 test "$hub_ok" = "1" || { echo "ERROR: Hub unreachable ${SERVER}" >&2; exit 1; }
-ssh -o ConnectTimeout=8 -o BatchMode=yes mac2017 \
+# shellcheck source=scripts/_smoke_remote.sh
+source "$(dirname "$0")/_smoke_remote.sh"
+smoke_remote \
   'pgrep -f "ccc-engine.py" >/dev/null' || {
-  echo "ERROR: Engine not running on mac2017" >&2
+  echo "ERROR: Engine not running on ${SMOKE_REMOTE_HOST}" >&2
   exit 1
 }
 
@@ -143,7 +145,7 @@ PY
       if [[ "${n_works}" -eq 0 || "${released}" -gt 0 || "${verified_or_released}" -eq "${n_works}" ]]; then
         echo "== ccc-demo released PASS epic=${EPIC} stage=done works=${n_works} =="
         # hide on board (ui_hidden) so Desktop stays clean
-        ssh -o ConnectTimeout=8 -o BatchMode=yes mac2017 \
+        smoke_remote \
           "cd ~/program/CCC && PYTHONPATH=scripts python3 - <<PY
 from pathlib import Path
 from _board_store import FileBoardStore

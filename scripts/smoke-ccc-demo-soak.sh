@@ -14,16 +14,19 @@ PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
 N="${CCC_SOAK_N:-3}"
 WAIT_SEC="${CCC_SOAK_WAIT_SEC:-90}"
 
-echo "== ccc-demo soak N=${N} against ${SERVER} =="
+# shellcheck source=scripts/_smoke_remote.sh
+source "$(dirname "$0")/_smoke_remote.sh"
+
+echo "== ccc-demo soak N=${N} against ${SERVER} remote=${SMOKE_REMOTE_HOST} =="
 
 count_orphans() {
-  ssh -o ConnectTimeout=8 -o BatchMode=yes mac2017 \
+  smoke_remote \
     'pgrep -lf "opencode exec|ccc-product-session|claude " 2>/dev/null | grep -v ccc-engine | grep -v ccc-chat || true' \
     | wc -l | tr -d ' '
 }
 
 count_dead_pid_files() {
-  ssh -o ConnectTimeout=8 -o BatchMode=yes mac2017 'python3 - <<"PY"
+  smoke_remote 'python3 - <<"PY"
 from pathlib import Path
 import os
 p = Path.home() / ".ccc" / "opencode-pids"
@@ -128,8 +131,8 @@ assert dead <= 8, f"too many dead pid files left: {dead}"
 print("soak leak checks ok")
 PY
 
-# hide soak / hub-api-v1 smoke epics on 2017 board
-ssh -o ConnectTimeout=8 -o BatchMode=yes mac2017 \
+# hide soak / hub-api-v1 smoke epics on board
+smoke_remote \
   "cd ~/program/CCC && PYTHONPATH=scripts python3 - <<'PY'
 from pathlib import Path
 from _board_store import FileBoardStore

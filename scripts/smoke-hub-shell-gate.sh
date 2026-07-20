@@ -14,6 +14,14 @@ export CCC_SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
 export CCC_CHAT_USER="${CCC_CHAT_USER:-ccc}"
 export CCC_CHAT_PASS="${CCC_CHAT_PASS:-ccc}"
 export CCC_DESKTOP_SMOKE_PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
+# loopback Hub → remote checks via ssh 127.0.0.1（可在 Mac2017 本机跑 full）
+case "${CCC_SERVER}" in
+  *127.0.0.1*|*localhost*) export CCC_REMOTE_HOST="${CCC_REMOTE_HOST:-127.0.0.1}" ;;
+esac
+# 本机无 sidecar 时默认跳过 outage（sidecar 在 M1）
+if [[ "${CCC_SERVER}" == *127.0.0.1* || "${CCC_SERVER}" == *localhost* ]]; then
+  export CCC_SKIP_OUTAGE="${CCC_SKIP_OUTAGE:-1}"
+fi
 
 run() {
   echo ""
