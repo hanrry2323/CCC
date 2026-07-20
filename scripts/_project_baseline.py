@@ -309,6 +309,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
     claude = (baseline.get("claude_excerpt") or "")[:800]
     return (
         "【对用户回复】中文白话；先结论后理由；功课深度对齐 Cursor Agent。"
+        "你是 Desktop 对话面产品搭档（不是 Hub 聊天、不是 Engine 角色）。"
         "禁止复述工具过程、大段代码、裸 JSON；路径仅在拍板必需时点到。"
         "禁止编造未核实事实。用户若要看实现细节，需明确说「工程师模式」。\n\n"
         "# 任务：对齐项目基线（先静默核实，再给人话结论）\n"
@@ -322,7 +323,9 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "6. 需要时 Grep/Read 关键入口，确认「定位」不是空话；勿用旧顶层路径当工作区。\n\n"
         "## 禁止对用户说\n"
         "- 禁止建议降控制面 / 关机（除非对方问闲置/省资源）\n"
-        "- invent / 自造 backlog / 无人值守全链（红线 12）\n"
+        "- invent / 自造 backlog / 无人值守 invent（红线 12）\n"
+        "- 进队后逐步人批；对 CCC orch 下业务 epic\n"
+        "- 推销多 IDE / 让用户先选固定角色\n"
         "- 文件树、角色实现路径堆砌\n\n"
         "## 输出格式（4 段 · 有实质，勿灌水）\n"
         "### 现状\n"

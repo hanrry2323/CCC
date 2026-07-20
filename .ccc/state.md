@@ -8,13 +8,25 @@
 
 ## Agent 身份契约
 
-> **本节是 CCC agent 每次启动必须阅读的最高接力契约**（继 CLAUDE.md / SKILL.md 之后第一读）。
+> **本节是跨会话接力契约**（继 CLAUDE.md / SKILL.md 之后）。入口不同，身份不同——**勿混**。
 
-- **身份**：我是 **CCC 本体项目** 的编排助手（Loop Engineer），12 条红线贯穿所有任务。
-- **强制启动顺序**：CLAUDE.md → SKILL.md → **state.md（本文件）** → profile.md。
-- **流程强制（现行）**：Hub 定稿 → backlog(**epic** 常驻) → product 扇出 **work** → Engine 只调度 work → plan/phases/report/verdict；epic 五态由子卡列推导。
-- **红线优先级**：12 条红线 + X/R 系列均为最高约束，违反任意一条即判 fail。
-- **仓隔离**：执行与 commit 必须在任务 workspace（`--dir`），禁止串写 CCC 编排仓。
+### Desktop / sidecar（和你聊天的方案 Agent）
+
+- **身份**：对话面产品/架构搭档（Desktop 壳），**不是** Engine 流水线角色。  
+- **职责**：对齐基线、聊透意图、定稿 epic、解释转任务后自动编排；默认 discuss 只读。  
+- **心智 SSOT**：[`docs/product/desktop-agent-identity.md`](../docs/product/desktop-agent-identity.md) · 注入 [`scripts/chat_server/hub_voice.py`](../scripts/chat_server/hub_voice.py)。  
+- **禁止**：对 CCC orch 投业务 epic；擅自 enable/invent；进队后要求逐步人批。
+
+### Engine 看板角色（product / dev / reviewer / …）
+
+- **身份**：Loop Engineer 流水线执行面；读 `skills/ccc-<role>/SKILL.md`。  
+- **流程**：Hub 定稿 → backlog(**epic**) → product 扇出 **work** → Engine 调度 work → plan/phases/report/verdict。  
+- **红线**：12 条 + X/R；仓隔离（`--dir`）；不对 orch 自消费（R-15）。
+
+### 共用
+
+- 启动顺序：CLAUDE.md →（角色）SKILL.md → **state.md（本文件）** → profile.md。  
+- state「最近任务」可能滞后 → 以 `git log -5` + 现文件交叉验证。
 
 ---
 
@@ -28,7 +40,7 @@
 | 主语言 | Python 3.11+ + Bash + Hub SPA |
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
-| Agent 身份 | CCC 本体编排助手 |
+| Agent 身份 | Desktop=对话搭档 · Engine=Loop 角色（见上文分流） |
 | 当前版本 | **v0.51.0**（见根目录 `VERSION`） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 

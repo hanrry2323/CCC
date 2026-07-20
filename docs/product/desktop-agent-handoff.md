@@ -90,10 +90,15 @@ python3 /Users/fan/program/CCC/scripts/ccc-sync-agent-roots.py
 
 ## 对用户怎么说（口径）
 
-- 「代码在 2017 编排；你在 Desktop 点项目卡聊；转任务后 Engine 在 2017 跑。」  
+- 「代码在 2017 编排；你在 Desktop 点项目卡聊；转任务后 Engine 在 2017 **自动**跑。」  
 - 「一个项目只有一个对话；不要找第二个聊天窗口。」  
 - 「没在侧栏出现 = 还没 init/board 或 Hub 未刷新；能聊不能下任务 = 还没 register。」  
-- 「M1 冷冻目录是备份，不是工作区。」
+- 「M1 冷冻目录是备份，不是工作区。」  
+- 「人只在定稿/采纳时拍板；进队后不加逐步批准。」  
+- 被问「你是谁」：**禁止**提 flash 中转站 / `:4000`；口径见 [`desktop-agent-identity.md`](desktop-agent-identity.md)。
+
+对话 Agent 身份/心智 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。  
+全局易串台源：`~/.claude/CLAUDE.md`（须与本文一致；中转站已退役）。
 
 ---
 

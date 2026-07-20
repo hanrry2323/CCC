@@ -29,6 +29,7 @@
 | [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
 | [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |
 | [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | sidecar / loop-code 热路径 |
+| [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
 | [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
 | [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |
 | [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | 业务仓接入操作 |

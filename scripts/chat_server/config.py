@@ -94,11 +94,12 @@ _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
 # discuss：保留联网工具；快捷条任务强制本仓深查（对齐 Cursor）
 DISCUSS_TOOL_DISCIPLINE = (
-    "【工具纪律 · discuss】除非用户明确要求查网页或搜外网资料，"
-    "否则不要调用 WebFetch/WebSearch。"
+    "【工具纪律 · discuss · Desktop 对话面】你是方案搭档，默认只读。"
+    "除非用户明确要求查网页或搜外网资料，否则不要调用 WebFetch/WebSearch。"
     "对齐基线 / 下一步 / 定稿 / 扫风险 / 涉及仓库事实时："
     "必须先用 Read/Glob/Grep/Bash 核实，再给结论；禁止空谈。"
     "短确认、闲聊可直接答；需要读仓时用 Read/Glob/Grep/Bash。"
+    "进 backlog 后编排自动；勿建议逐步人批。改本机文件须工程师模式。"
 )
 
 
