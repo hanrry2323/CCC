@@ -28,6 +28,7 @@ private struct WindowRootView: View {
     @StateObject private var window = WindowChatState()
     /// 已向 AppModel 登记的焦点（用于 refcount 差分）
     @State private var registeredFocus: String?
+    @State private var registeredThread: String?
 
     var body: some View {
         ContentView()
@@ -36,18 +37,25 @@ private struct WindowRootView: View {
             .onAppear {
                 bindWindowProjectIfNeeded()
                 syncWindowFocus()
+                syncWindowThreadFocus()
             }
             .onDisappear {
                 model.setWindowFocus(from: registeredFocus, to: nil)
                 registeredFocus = nil
+                model.setWindowThreadFocus(from: registeredThread, to: nil)
+                registeredThread = nil
             }
             .onChange(of: window.projectId) { _ in
                 syncWindowFocus()
+            }
+            .onChange(of: window.threadId) { _ in
+                syncWindowThreadFocus()
             }
             .task {
                 await model.bootstrap()
                 bindWindowProjectIfNeeded()
                 syncWindowFocus()
+                syncWindowThreadFocus()
             }
     }
 
@@ -67,5 +75,12 @@ private struct WindowRootView: View {
         guard registeredFocus != next else { return }
         model.setWindowFocus(from: registeredFocus, to: next)
         registeredFocus = next
+    }
+
+    private func syncWindowThreadFocus() {
+        let next = window.threadId
+        guard registeredThread != next else { return }
+        model.setWindowThreadFocus(from: registeredThread, to: next)
+        registeredThread = next
     }
 }

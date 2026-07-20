@@ -196,6 +196,22 @@ final class AppModel: ObservableObject {
         return LocalSessionStore.migrateLegacyThread(projectId: pid)
     }
 
+    /// 解析实际会话：显式 tid（须属 pid）→ 同项目 selectedThreadId → 兼容 ::main
+    private func resolveThreadId(projectId: String, preferred: String? = nil) -> String {
+        if let preferred, !preferred.isEmpty,
+           LocalSessionStore.projectId(fromThreadId: preferred) == projectId {
+            return preferred
+        }
+        if let sel = selectedThreadId, !sel.isEmpty,
+           LocalSessionStore.projectId(fromThreadId: sel) == projectId {
+            return sel
+        }
+        return threadIdForProject(projectId)
+    }
+
+    /// 多窗焦点线程（warm / slot 按真实 session，不强制 ::main）
+    private var focusedThreadRefCounts: [String: Int] = [:]
+
     /// keep-warm
     private var warmLoopTask: Task<Void, Never>?
     /// sidecar 未就绪时自动重探（避免启动竞态卡死「未就绪」）
@@ -362,14 +378,16 @@ final class AppModel: ObservableObject {
     private func warmLocalAgentNow(
         base: URL? = nil,
         toolMode: String = "discuss",
-        projectId: String? = nil
+        projectId: String? = nil,
+        threadId: String? = nil
     ) async {
         // 已在流式 / 有在途 chat task 时勿抢 slot 锁
         if shouldSkipWarmForChat() { return }
         let pid = projectId ?? selectedProjectId
+        guard let pid, !pid.isEmpty else { return }
         let path = localPath(for: pid)
-        let sid = pid.map { threadIdForProject( $0) }
-        if let sid, chatTasks[sid] != nil { return }
+        let sid = resolveThreadId(projectId: pid, preferred: threadId)
+        if chatTasks[sid] != nil { return }
         let result = await client.warmLocalAgent(
             base: base ?? cachedAgentBaseURL,
             projectPath: path,
@@ -378,9 +396,9 @@ final class AppModel: ObservableObject {
         )
         // await 回来后再确认：若期间已开聊，丢弃 warm 结果、勿记 lastWarmAt
         if shouldSkipWarmForChat() { return }
-        if let sid, chatTasks[sid] != nil { return }
+        if chatTasks[sid] != nil { return }
         // 仅真暖（slot.connected）才记；cli-only 不算
-        if result.slotConnected, let pid {
+        if result.slotConnected {
             lastWarmAtByProject[pid] = Date()
         }
     }
@@ -389,24 +407,36 @@ final class AppModel: ObservableObject {
         currentThreadStreaming || !liveStreamingThreadIds.isEmpty || !chatTasks.isEmpty
     }
 
-    /// 暖所有打开窗的项目（+ 全局选中）；OpenCode：可见 directory 都 keep-alive
+    /// 暖所有焦点线程（+ 全局选中线程）；按真实 sessionId，不强制 ::main
     private func warmFocusedProjects(toolMode: String = "discuss") async {
-        let ids = projectsNeedingWarm()
-        for pid in ids {
+        let targets = threadsNeedingWarm()
+        for (pid, tid) in targets {
             if Task.isCancelled { break }
             if shouldSkipWarmForChat() { break }
-            await warmLocalAgentNow(toolMode: toolMode, projectId: pid)
+            await warmLocalAgentNow(toolMode: toolMode, projectId: pid, threadId: tid)
         }
     }
 
-    private func projectsNeedingWarm() -> [String] {
-        var ordered: [String] = []
+    private func threadsNeedingWarm() -> [(String, String)] {
+        var ordered: [(String, String)] = []
         var seen = Set<String>()
-        for pid in focusedProjectRefCounts.keys.sorted() {
-            if seen.insert(pid).inserted { ordered.append(pid) }
+        for tid in focusedThreadRefCounts.keys.sorted() {
+            guard seen.insert(tid).inserted else { continue }
+            let pid = LocalSessionStore.projectId(fromThreadId: tid)
+            guard !pid.isEmpty else { continue }
+            ordered.append((pid, tid))
         }
-        if let sel = selectedProjectId, seen.insert(sel).inserted {
-            ordered.append(sel)
+        if let sel = selectedThreadId, seen.insert(sel).inserted {
+            let pid = LocalSessionStore.projectId(fromThreadId: sel)
+            if !pid.isEmpty { ordered.append((pid, sel)) }
+        } else if let pid = selectedProjectId {
+            let tid = threadIdForProject(pid)
+            if seen.insert(tid).inserted { ordered.append((pid, tid)) }
+        }
+        // 仅有项目焦点、尚无线程焦点时，退回项目主会话
+        for pid in focusedProjectRefCounts.keys.sorted() {
+            let tid = resolveThreadId(projectId: pid)
+            if seen.insert(tid).inserted { ordered.append((pid, tid)) }
         }
         return ordered
     }
@@ -489,9 +519,30 @@ final class AppModel: ObservableObject {
             ensureThreadHydrated(projectId: n)
         }
         reconcileFlowSSE()
-        // 新焦点立刻补暖（后台）
+        // 新焦点立刻补暖（后台）— 用该项目当前解析出的线程，勿写死 ::main
         if let n = next, !n.isEmpty, agentMode == "local" {
-            Task { await self.warmLocalAgentNow(projectId: n) }
+            let tid = resolveThreadId(projectId: n)
+            Task { await self.warmLocalAgentNow(projectId: n, threadId: tid) }
+        }
+    }
+
+    /// 窗级线程焦点：切换/关闭时维护，供 warm 对准真实 session
+    func setWindowThreadFocus(from previous: String?, to next: String?) {
+        if let prev = previous, !prev.isEmpty {
+            let c = (focusedThreadRefCounts[prev] ?? 1) - 1
+            if c <= 0 {
+                focusedThreadRefCounts.removeValue(forKey: prev)
+            } else {
+                focusedThreadRefCounts[prev] = c
+            }
+        }
+        if let n = next, !n.isEmpty {
+            focusedThreadRefCounts[n, default: 0] += 1
+            ensureThreadHydrated(threadId: n)
+            if agentMode == "local" {
+                let pid = LocalSessionStore.projectId(fromThreadId: n)
+                Task { await self.warmLocalAgentNow(projectId: pid, threadId: n) }
+            }
         }
     }
 
@@ -697,27 +748,29 @@ final class AppModel: ObservableObject {
         let switching = id != selectedProjectId
         // 先把「即将离开」的线程钉进 RAM+盘；SSOT 是 threadMessages，不靠 chat.messages
         if let prev = selectedProjectId, switching {
-            let prevTid = threadIdForProject( prev)
+            let prevTid = resolveThreadId(projectId: prev, preferred: selectedThreadId)
             persistCurrentThreadSnapshot(threadId: prevTid)
         }
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        // 单对话模型：每项目恰好一个会话 "<projectId>::main"
-        let tid = threadIdForProject( id)
-        // 先 hydrate 目标线程再改 selectedThreadId，避免他窗/本窗短暂读到错会话
-        ensureThreadHydrated(projectId: id)
+        // 多会话：最近线程优先，否则兼容 ::main（不再强制打回 main）
+        await refreshThreads(projectId: id)
+        let recent = threads.first(where: {
+            LocalSessionStore.projectId(fromThreadId: $0.thread_id) == id
+        })?.thread_id
+        let tid = recent ?? threadIdForProject(id)
+        ensureThreadHydrated(threadId: tid)
         selectedThreadId = tid
         if switching {
             // 禁止先清空再加载（会闪空对话/右栏）；直接 hydrate
             selectedNodeDetail = nil
             ensureFlowSSE()
             await loadConversation(threadId: tid)
-            // 切项目即预连该项目的 agent slot（后台，不挡 UI）；带 generation 防过期写回
             let warmGen = threadSwitchGeneration
             Task { [warmGen] in
                 guard self.threadSwitchGeneration == warmGen else { return }
-                await self.warmLocalAgentNow(projectId: id)
+                await self.warmLocalAgentNow(projectId: id, threadId: tid)
             }
         } else {
             // 同项目再点（从看板/运维回对话）：只恢复缓存，不踢 Hub 同步，避免闪空
@@ -927,11 +980,13 @@ final class AppModel: ObservableObject {
         ensureFlowSSE()
     }
 
-    /// 创建新会话
-    func createNewThread(projectId: String) async {
+    /// 创建新会话并打开；返回 threadId 供本窗 `window.threadId` 绑定
+    @discardableResult
+    func createNewThread(projectId: String) async -> String {
         let tid = ConversationStore.createThread(projectId: projectId, title: "新对话")
         threads = ConversationStore.listThreads(projectId: projectId)
         await openThread(tid)
+        return tid
     }
 
     /// 删除（归档）会话
@@ -1419,12 +1474,24 @@ final class AppModel: ObservableObject {
         return "discuss"
     }
 
-    /// 同会话 stop-and-send；仅本机 sidecar，可多路并行（可指定 projectId 供多窗）
-    func sendUserMessage(_ text: String, projectId: String? = nil, stopAndSend: Bool = true) {
+    /// 同会话 stop-and-send；仅本机 sidecar，可多路并行（可指定 projectId / threadId 供多窗多会话）
+    func sendUserMessage(
+        _ text: String,
+        projectId: String? = nil,
+        threadId: String? = nil,
+        stopAndSend: Bool = true
+    ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let pid = projectId ?? selectedProjectId
-        Task { await self.sendUserMessageAndWait(trimmed, projectId: pid, stopAndSend: stopAndSend) }
+        Task {
+            await self.sendUserMessageAndWait(
+                trimmed,
+                projectId: pid,
+                threadId: threadId,
+                stopAndSend: stopAndSend
+            )
+        }
     }
 
     func isThreadStreaming(_ threadId: String) -> Bool {
@@ -1541,6 +1608,7 @@ final class AppModel: ObservableObject {
     func sendUserMessageAndWait(
         _ text: String,
         projectId: String? = nil,
+        threadId preferredThreadId: String? = nil,
         stopAndSend: Bool = true
     ) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1550,16 +1618,15 @@ final class AppModel: ObservableObject {
             setComposerBounce(trimmed, threadId: nil)
             return false
         }
-        let tid = threadIdForProject( pid)
-        // 始终写 threadMessages；仅当全局选中同一项目时同步旧镜像
-        ensureThreadHydrated(projectId: pid)
+        // 多会话：跟本窗/显式 thread，禁止打回 ::main
+        let threadId = resolveThreadId(projectId: pid, preferred: preferredThreadId)
+        ensureThreadHydrated(threadId: threadId)
         if selectedProjectId == pid {
-            if selectedThreadId != tid {
-                selectedThreadId = tid
+            if selectedThreadId != threadId {
+                selectedThreadId = threadId
             }
-            syncLegacyChatMirror(from: tid)
+            syncLegacyChatMirror(from: threadId)
         }
-        let threadId = tid
         if !canChat {
             showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
             setComposerBounce(trimmed, threadId: threadId)
@@ -1936,13 +2003,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func applyQuickPrompt(_ prompt: String, uiLabel: String, projectId: String? = nil) {
+    func applyQuickPrompt(
+        _ prompt: String,
+        uiLabel: String,
+        projectId: String? = nil,
+        threadId: String? = nil
+    ) {
         destination = .chat
         showToast(uiLabel)
-        sendUserMessage(prompt, projectId: projectId, stopAndSend: true)
+        sendUserMessage(prompt, projectId: projectId, threadId: threadId, stopAndSend: true)
     }
 
-    func alignBaseline(projectId: String? = nil) async {
+    func alignBaseline(projectId: String? = nil, threadId: String? = nil) async {
         guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             return
@@ -1957,7 +2029,12 @@ final class AppModel: ObservableObject {
                 return
             }
             showToast("已注入对齐基线")
-            sendUserMessage(prompt, projectId: pid, stopAndSend: true)
+            sendUserMessage(
+                prompt,
+                projectId: pid,
+                threadId: threadId ?? selectedThreadId,
+                stopAndSend: true
+            )
         } catch {
             showToast(error.localizedDescription)
         }
@@ -1993,21 +2070,29 @@ final class AppModel: ObservableObject {
     }
 
     /// 用户消息 → 填回输入框（对齐 Hub「编辑」）
-    func editUserMessage(_ message: ChatMessage, projectId: String? = nil) {
+    func editUserMessage(
+        _ message: ChatMessage,
+        projectId: String? = nil,
+        threadId: String? = nil
+    ) {
         guard message.role == "user" else { return }
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
+        let tid = pid.map { resolveThreadId(projectId: $0, preferred: threadId) } ?? selectedThreadId
         setComposerBounce(message.content, threadId: tid)
         destination = .chat
         showToast("已填入输入框，改完再发送")
     }
 
     /// 助手消息 → 重发紧邻的上一条用户消息（对齐 Hub「重新生成」）
-    func regenerateAssistant(after message: ChatMessage, projectId: String? = nil) {
+    func regenerateAssistant(
+        after message: ChatMessage,
+        projectId: String? = nil,
+        threadId: String? = nil
+    ) {
         guard message.role == "assistant" else { return }
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
-        let tid = threadIdForProject( pid)
+        let tid = resolveThreadId(projectId: pid, preferred: threadId)
         let msgs = threadMessages[tid] ?? []
         guard let idx = msgs.firstIndex(where: { $0.id == message.id }) else { return }
         var userText: String?
@@ -2023,7 +2108,7 @@ final class AppModel: ObservableObject {
             showToast("找不到上一条用户消息")
             return
         }
-        sendUserMessage(text, projectId: pid, stopAndSend: true)
+        sendUserMessage(text, projectId: pid, threadId: tid, stopAndSend: true)
     }
 
     /// 从某条助手消息打开预览
@@ -2037,9 +2122,13 @@ final class AppModel: ObservableObject {
     }
 
     /// 从某条助手消息打开转任务（预填）；多窗必须带 projectId/threadId
-    func openTransfer(fromAssistantContent content: String, projectId: String? = nil) {
+    func openTransfer(
+        fromAssistantContent content: String,
+        projectId: String? = nil,
+        threadId: String? = nil
+    ) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
+        let tid = pid.map { resolveThreadId(projectId: $0, preferred: threadId) } ?? selectedThreadId
         guard let tid else {
             showToast("请先选择项目")
             return
@@ -2052,9 +2141,9 @@ final class AppModel: ObservableObject {
         presentTransferSheet(threadId: tid)
     }
 
-    func openTransferSheet(projectId: String? = nil) {
+    func openTransferSheet(projectId: String? = nil, threadId: String? = nil) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
+        let tid = pid.map { resolveThreadId(projectId: $0, preferred: threadId) } ?? selectedThreadId
         guard let tid else {
             showToast("请先选择项目")
             return
@@ -2353,7 +2442,7 @@ final class AppModel: ObservableObject {
         defer { busy = false }
         let req = TransferRequest(
             project_id: pid,
-            thread_id: threadIdForProject( pid),
+            thread_id: tid,
             title: title,
             goal: goal,
             acceptance: accLines,
@@ -2368,7 +2457,7 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
-            let convId = threadIdForProject( pid)
+            let convId = tid
             if selectedProjectId == pid {
                 selectedThreadId = convId
                 currentEpicId = resp.epic_id

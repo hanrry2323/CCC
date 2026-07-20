@@ -224,7 +224,11 @@ struct CodexSidebar: View {
                         .foregroundStyle(CCCTheme.faint)
                     Spacer()
                     Button {
-                        Task { await model.createNewThread(projectId: projectId) }
+                        Task {
+                            let tid = await model.createNewThread(projectId: projectId)
+                            window.threadId = tid
+                            window.projectId = projectId
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 10))
@@ -254,9 +258,11 @@ struct CodexSidebar: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
                     .onTapGesture {
+                        window.projectId = projectId
                         window.threadId = thread.thread_id
                         model.selectedThreadId = thread.thread_id
-                        Task { await model.loadConversation(threadId: thread.thread_id) }
+                        model.selectedProjectId = projectId
+                        Task { await model.openThread(thread.thread_id) }
                     }
                     .contextMenu {
                         Button("重命名") {
@@ -435,7 +441,9 @@ struct CodexChatPaneBody: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Button("展开编辑") { model.openTransferSheet(projectId: window.projectId) }
+                Button("展开编辑") {
+                    model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
+                }
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
@@ -592,15 +600,31 @@ struct CodexChatPaneBody: View {
                                 .contextMenu {
                                     Button("复制") { model.copyMessage(msg.content) }
                                     if msg.role == "user" {
-                                        Button("编辑") { model.editUserMessage(msg, projectId: paneProjectId) }
+                                        Button("编辑") {
+                                            model.editUserMessage(
+                                                msg,
+                                                projectId: paneProjectId,
+                                                threadId: paneThreadId
+                                            )
+                                        }
                                     }
                                     if msg.role == "assistant", !msg.isStreaming {
                                         Button("重新生成") {
-                                            model.regenerateAssistant(after: msg, projectId: paneProjectId)
+                                            model.regenerateAssistant(
+                                                after: msg,
+                                                projectId: paneProjectId,
+                                                threadId: paneThreadId
+                                            )
                                         }
                                         Button("预览") { model.previewMessage(msg.content) }
                                         if model.canTransfer {
-                                            Button("转任务") { model.openTransfer(fromAssistantContent: msg.content) }
+                                            Button("转任务") {
+                                                model.openTransfer(
+                                                    fromAssistantContent: msg.content,
+                                                    projectId: paneProjectId,
+                                                    threadId: paneThreadId
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -682,7 +706,7 @@ struct CodexChatPaneBody: View {
 
             HStack {
                 Button {
-                    model.openTransferSheet(projectId: window.projectId)
+                    model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
                 } label: {
                     Text("转任务")
                         .font(.system(size: 11.5, weight: .medium))
@@ -777,21 +801,46 @@ struct CodexChatPaneBody: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 quickChip("对齐基线") {
-                    Task { await model.alignBaseline(projectId: paneProjectId) }
+                    Task {
+                        await model.alignBaseline(
+                            projectId: paneProjectId,
+                            threadId: paneThreadId
+                        )
+                    }
                 }
                 quickChip("下一步") {
-                    model.applyQuickPrompt(QuickPrompts.nextStep, uiLabel: "下一步", projectId: paneProjectId)
+                    model.applyQuickPrompt(
+                        QuickPrompts.nextStep,
+                        uiLabel: "下一步",
+                        projectId: paneProjectId,
+                        threadId: paneThreadId
+                    )
                 }
                 quickChip("定稿") {
-                    model.applyQuickPrompt(QuickPrompts.finalize, uiLabel: "定稿方案", projectId: paneProjectId)
+                    model.applyQuickPrompt(
+                        QuickPrompts.finalize,
+                        uiLabel: "定稿方案",
+                        projectId: paneProjectId,
+                        threadId: paneThreadId
+                    )
                 }
                 quickChip("扫风险") {
-                    model.applyQuickPrompt(QuickPrompts.scanRisks, uiLabel: "扫风险", projectId: paneProjectId)
+                    model.applyQuickPrompt(
+                        QuickPrompts.scanRisks,
+                        uiLabel: "扫风险",
+                        projectId: paneProjectId,
+                        threadId: paneThreadId
+                    )
                 }
                 if !model.customPrompts.isEmpty {
                     ForEach(model.customPrompts, id: \.title) { item in
                         quickChip(item.title) {
-                            model.applyQuickPrompt(item.prompt, uiLabel: item.title, projectId: paneProjectId)
+                            model.applyQuickPrompt(
+                                item.prompt,
+                                uiLabel: item.title,
+                                projectId: paneProjectId,
+                                threadId: paneThreadId
+                            )
                         }
                     }
                 }
@@ -831,7 +880,12 @@ struct CodexChatPaneBody: View {
         guard !text.isEmpty else { return }
         // 立刻清空本地输入；不要经 model.draft，避免 onChange 回填
         composerText = ""
-        model.sendUserMessage(text, projectId: paneProjectId, stopAndSend: true)
+        model.sendUserMessage(
+            text,
+            projectId: paneProjectId,
+            threadId: paneThreadId,
+            stopAndSend: true
+        )
     }
 }
 
@@ -1009,17 +1063,29 @@ struct MessageActionBar: View {
                     if let onEdit {
                         onEdit()
                     } else {
-                        model.editUserMessage(message, projectId: window.projectId)
+                        model.editUserMessage(
+                            message,
+                            projectId: window.projectId,
+                            threadId: window.threadId
+                        )
                     }
                 }
             } else {
                 actionBtn("重新生成") {
-                    model.regenerateAssistant(after: message, projectId: window.projectId)
+                    model.regenerateAssistant(
+                        after: message,
+                        projectId: window.projectId,
+                        threadId: window.threadId
+                    )
                 }
                 actionBtn("预览") { model.previewMessage(content) }
                 if model.canTransfer(projectId: window.projectId) {
                     actionBtn("转任务") {
-                        model.openTransfer(fromAssistantContent: content, projectId: window.projectId)
+                        model.openTransfer(
+                            fromAssistantContent: content,
+                            projectId: window.projectId,
+                            threadId: window.threadId
+                        )
                     }
                 }
             }

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **多会话名存实亡**：发送/暖机/转任务/快捷操作跟 `window.threadId`，不再强制打回 `{project}::main`；新建会话返回并绑定本窗；窗级线程焦点供 warm。
 - **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` 主动 `session/drop`；发送前不再与 chat 抢 warm 锁。
 - **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
 - **对话可靠性契约（非止血）**：`有心跳 ≠ 有进展`。sidecar：`CHAT_FIRST_EVENT_TIMEOUT` / `CHAT_TOOL_STALL_TIMEOUT` → interrupt + error code + 回收 slot/僵尸 cli；discuss **保留** Web* 全集，短问/light **按意图**零工具或推迟 Web*（SDK 空 `allowed_tools` 会被当成全开，已改用 `disallowed_tools` 强制）；工具集变更则重连。Desktop：ping 不重置进展钟；状态「等待首包 / 工具执行中：Name」。

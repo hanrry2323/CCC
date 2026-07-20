@@ -18,8 +18,21 @@ struct ProjectCard: View {
             // 先钉本窗焦点 + 灌 RAM，再异步更新全局选中（他窗显示不受影响）
             window.projectId = project.id
             window.destination = .chat
-            model.ensureThreadHydrated(projectId: project.id)
-            Task { await model.openProjectConversation(project.id) }
+            let threads = ConversationStore.listThreads(projectId: project.id)
+            window.bindProject(project.id, availableThreads: threads)
+            if let tid = window.threadId {
+                model.ensureThreadHydrated(threadId: tid)
+            } else {
+                model.ensureThreadHydrated(projectId: project.id)
+            }
+            Task {
+                await model.openProjectConversation(project.id)
+                // 与全局选中线程对齐，避免 bind 保留旧 tid、select 选了最近 tid 时分叉
+                if let tid = model.selectedThreadId,
+                   LocalSessionStore.projectId(fromThreadId: tid) == project.id {
+                    window.threadId = tid
+                }
+            }
         } label: {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
