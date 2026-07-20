@@ -29,6 +29,10 @@ if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
     export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
   fi
 fi
+# 健康检查与 get_relay_url 对齐：勿残留 AGENT_PLANNER→:4000
+if [[ -z "${AGENT_PLANNER_BASE_URL:-}" && -n "${ANTHROPIC_BASE_URL:-}" ]]; then
+  export AGENT_PLANNER_BASE_URL="${ANTHROPIC_BASE_URL}"
+fi
 # v0.51.0 P2-1: CCC_AUTO_REPLENISH / CCC_EVOLVE_ON_IDLE / CCC_EVOLVE_ON_AUDIT 已在 _config.py 强制 False，
 # 这些环境变量 export 已无效（被 _config.__post_init__ 忽略）；不再 export 避免误导。
 # v0.42.4: invent/自动投入硬禁，禁止环境变量重新打开

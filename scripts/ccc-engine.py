@@ -2626,6 +2626,10 @@ def engine_loop(workspaces: list[Path]) -> None:
     _load_hang_retry_counter()
 
     # v0.36: 启动时先采样内存（在 recover 之前，避免 recover 间隔拖慢 heartbeat）
+    try:
+        _cleanup_global_opencode_pids()
+    except Exception as exc:
+        engine_log(f"[pids] global opencode-pids cleanup failed: {exc}")
     for ws in workspaces:
         try:
             _check_process_memory(ws)
@@ -2740,6 +2744,10 @@ def engine_loop(workspaces: list[Path]) -> None:
                     # v0.51.0 P2-1: 删除 _may_invent() 守护的 abnormal 自动回灌块（INVENT_HARD_DISABLED=True 后永不触发）
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
+                        try:
+                            _cleanup_global_opencode_pids()
+                        except Exception as exc:
+                            engine_log(f"[pids] global opencode-pids cleanup 异常: {exc}")
                         try:
                             _check_process_memory(ws)
                         except Exception as exc:
@@ -3450,6 +3458,37 @@ def _cleanup_zombie_pid_refs(ws: Path) -> None:
                     pass
     if cleaned:
         engine_log(f"[{_ws_label(ws)}] 清理 {cleaned} 个残影 PID 标记")
+
+
+def _cleanup_global_opencode_pids() -> int:
+    """清理 ~/.ccc/opencode-pids 中已死进程的 .pid（防残影堆积误判占槽）。"""
+    pids_dir = Path.home() / ".ccc" / "opencode-pids"
+    if not pids_dir.is_dir():
+        return 0
+    cleaned = 0
+    for f in sorted(pids_dir.glob("*.pid")):
+        try:
+            raw = f.read_text(encoding="utf-8", errors="replace").strip()
+            pid = int(raw.split()[0]) if raw else 0
+        except (ValueError, OSError):
+            pid = 0
+        alive = False
+        if pid > 0:
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except (ProcessLookupError, PermissionError, OSError):
+                alive = False
+        if alive:
+            continue
+        try:
+            f.unlink()
+            cleaned += 1
+        except OSError:
+            pass
+    if cleaned:
+        engine_log(f"[global] 清理 {cleaned} 个死掉的 opencode-pids")
+    return cleaned
 
 
 def _check_process_memory(ws: Path) -> None:

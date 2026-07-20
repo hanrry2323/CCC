@@ -73,10 +73,14 @@ _DEFAULT_AGENT_PLANNER_URL = "https://api.minimaxi.com/anthropic"
 
 
 def get_relay_url() -> str:
-    """取 AGENT_PLANNER_BASE_URL，默认 MiniMax Anthropic（直连）。
+    """取 Claude Anthropic 兼容出口 URL（健康检查 / product 共用）。
 
-    v0.51.0 P2-2: 集中 SSOT。原 _get_relay_url() 在 ccc-engine.py / ccc-board.py /
-    board/roles/common.py 各有一份相同的 os.environ.get 重复实现。
+    优先级：AGENT_PLANNER_BASE_URL → ANTHROPIC_BASE_URL → MiniMax 直连默认。
+    Engine 入口常只设 ANTHROPIC_*；勿再默认探 :4000。
     """
     import os
-    return os.environ.get("AGENT_PLANNER_BASE_URL", _DEFAULT_AGENT_PLANNER_URL)
+    for key in ("AGENT_PLANNER_BASE_URL", "ANTHROPIC_BASE_URL"):
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            return val
+    return _DEFAULT_AGENT_PLANNER_URL
