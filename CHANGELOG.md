@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase5a**：`scripts/smoke-ccc-demo-released.sh` — ccc-demo transfer→无人值守至 released/`user_stage=done`。
 - **Desktop 对话身份/心智收口**：SSOT [`docs/product/desktop-agent-identity.md`](docs/product/desktop-agent-identity.md)；`hub_voice` 改标 Desktop 对话面（非 Hub 聊天）；state.md 分流 Desktop vs Engine；快捷条/基线/discuss 纪律对齐意图门+进队自动。
 - **Hub-Shell Phase4**：根目录 `inbox/` 提案旁路；`GET/POST /api/desktop/proposals` 采纳→transfer；Desktop 运维「待采纳提案」；`scripts/smoke-inbox-adopt.sh`。
 - **Hub-Shell Phase3**：product skill/fanout 反过拆与 complexity 注入；oversplit 单测加固。
