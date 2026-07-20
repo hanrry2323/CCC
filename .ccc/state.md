@@ -41,7 +41,7 @@
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | Desktop=对话搭档 · Engine=Loop 角色（见上文分流） |
-| 当前版本 | **v0.51.0**（见根目录 `VERSION`） |
+| 当前版本 | **v0.52.0**（见根目录 `VERSION`） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 
 ---

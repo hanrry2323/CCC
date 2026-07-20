@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Fixed
+
+---
+
+## [v0.52.0] — 2026-07-20
+
+### 里程碑：Hub-Shell Wave1–2 冻结
+
+- **目标**：对话壳 + Hub API v1；`ccc-demo` §8 全绿；首笔真实仓 `qb` 无人值守至 released
+- **发布说明**：[`docs/releases/v0.52.0.md`](docs/releases/v0.52.0.md) · 状态板：[`docs/product/hub-shell-phase-status.md`](docs/product/hub-shell-phase-status.md)
+
+### Added
+
 - **Hub-Shell Phase6**：真实仓 `qb` 一笔 small（flow-smoke）无人值守至 released；记录 [`docs/product/hub-shell-phase6-qb.md`](docs/product/hub-shell-phase6-qb.md)。
 - **Hub-Shell Phase5b**：`scripts/smoke-hub-outage-outbox.sh` — Hub unload 时 sidecar 仍可探活；本机 outbox 排队；恢复后 flush transfer。
 - **Hub-Shell Phase5a**：`scripts/smoke-ccc-demo-released.sh` — ccc-demo transfer→无人值守至 released/`user_stage=done`。
@@ -22,52 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **文档索引收口**：[`docs/INDEX.md`](docs/INDEX.md) 明确现行 6 份 SSOT；下阶段北星唯一指向 [`hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)；旧 roadmap / 双轨等迁入 [`docs/archive/`](docs/archive/README.md)。
 - **Hub API v1 + 投递三态**：[`docs/product/hub-api-v1.md`](docs/product/hub-api-v1.md)；Desktop outbox（Hub 断线排队）+ `client_request_id` 幂等；状态栏显示草稿/待投递/已投递/已受理。
 - **下阶段总体方案**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) — 多端对话壳 + Hub API v1；人审仅意图门/止损；进队后全自动；先 `ccc-demo`。
-- **Desktop ↔ OpenCode 98% 完善度**：计分 SSOT [`docs/product/desktop-opencode-parity.md`](docs/product/desktop-opencode-parity.md)；会话 Fork / Context 面板 / 讨论·工程师模式 / 请求级模型 / Composer 附件 / 会话 JSON 导入导出 / 轻量「查看改动」；`StreamSessionController`；sidecar `/health` capabilities；烟测 `scripts/smoke-desktop-parity.sh`。顶栏标明「中转站后台」用量。
-- **Agent 项目心智**：各业务仓 `CLAUDE.md` / `profile.md` 写入「双机路径」表；`xianyu`/`qxo` 根 CLAUDE 不再是空壳跳转；对齐基线注入 CLAUDE 摘录；`hub_voice` / QuickPrompts 强制先读仓再答。
-- **快捷条提示词强化（对标 Cursor）**：对齐基线 / 下一步 / 定稿 / 扫风险 强制静默读仓+证据结论；放宽字数阉割；`hub_voice` 改为高能力产品搭档。见 `QuickPrompts.swift` · `hub_voice.py` · `_project_baseline.py`。
-- **Desktop UI 8 项打磨**：字号/对比上调；看板列自适应铺满；运维 Gauge/Grid/Material；侧栏去「会话」+ 文件夹图标 + 会话选中底；单状态指示 + 流式动画 + 未读点；工具调用折叠式 SF Symbol（对齐 Cursor/OpenCode）。
-- **舰队五仓迁 Mac2017**：`xianyu` / `qb` / `qx-observer` / `hp` / `medio-0` → `apps/` + register；M1 冷冻于 `archive/2026-07-20-m1-freeze/`；运维 SSOT [`docs/deploy/fleet-apps-migration-2026-07.md`](docs/deploy/fleet-apps-migration-2026-07.md)；Agent 心智 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)。
-- **Desktop 可用性 9.5 冲刺**：搜索结果可点跳转；空态三步主路径；首启 tip + 侧栏「用法」HelpSheet；重置对话确认；会话重命名对话框；快捷芯片 hover 说明；转任务人话门禁；⌘N/⌘F/⌘1–3/⌘⇧T；热路径 VoiceOver 标签；Settings 分组；预热中状态可见。计划 SSOT：[`docs/product/desktop-usability-9.5-plan.md`](docs/product/desktop-usability-9.5-plan.md)。
+- **Desktop ↔ OpenCode 98% 完善度**：计分 SSOT [`docs/product/desktop-opencode-parity.md`](docs/product/desktop-opencode-parity.md)；会话 Fork / Context 面板 / 讨论·工程师模式 / 请求级模型 / Composer 附件 / 会话 JSON 导入导出 / 轻量「查看改动」；`StreamSessionController`；sidecar `/health` capabilities；烟测 `scripts/smoke-desktop-parity.sh`。
+- **Agent 项目心智**：各业务仓 `CLAUDE.md` / `profile.md` 写入「双机路径」表；`hub_voice` / QuickPrompts 强制先读仓再答。
+- **快捷条提示词强化（对标 Cursor）**：对齐基线 / 下一步 / 定稿 / 扫风险强制静默读仓+证据结论。
+- **Desktop UI 8 项打磨** + **舰队五仓迁 Mac2017** + **Desktop 可用性 9.5 冲刺**（详见既有条目，合入本版本冻结）。
 
 ### Fixed
 
-- **Engine upstream 健康检查误探 :4000**：`get_relay_url` 优先 `ANTHROPIC_BASE_URL`；`ccc-engine.sh` 同步导出 `AGENT_PLANNER_BASE_URL`；定期清理死掉的 `~/.ccc/opencode-pids`；TLS 校验证书失败时按可达重试，避免误跳过 product。
-- **死代码清理（中转退役残留）**：Desktop 去掉 router-usage 轮询/模型；Hub `/api/ops/summary` 不再拉 router；`fetch_router_usage` 恒 stub；默认 `ANTHROPIC_BASE_URL`/`get_relay_url`→MiniMax；运维关键口不再把 :4000 当告警。
-- **顶栏用量改计本机 Agent**：不再依赖已退役中转站；显示「今日」调用总量 + 「5s」近窗次数（每轮 sidecar 对话计 1）。
-- **中转站退役**：停用 2017 `com.ai-loop-router`（:4000/:4002）；Claude/loop-code→MiniMax、OpenCode→讯飞直连；拓扑 / sidecar / boundary / GO-LIVE 文档对齐。
-- **右栏完成态 + 同对话多任务**：done 不再误显「待拆解」；完成即清空右栏时间线（保留 recentEpics）；transfer 保留真实 `thread_id`（不再强改 `::main`）。
-- **完成任务侧栏仍闪 / 右栏不退**：epic `done` 自动 `ui_hidden` 沉底；`/api/board/summaries` 不再 `include_hidden`；Desktop 收到 `user_stage=done` 清空右栏绑定。
-- **会话存档复活**：`_archive` 墓碑阻止 `refreshThreads`/`saveMessages` 重建已存档 tid。
-- **product 异步收尾丢扇出**：进程已死但有 `.product.out` 时 Engine GC 必须 `check_product_async`；`ccc-product-session` 写 `.done`/`.exitcode`。
-- **DoD auto-commit 误伤 `.ccc/` 交付物**：只排除 board/stats/pids/plans/phases/reports 等噪音，允许 `.ccc/flow-smoke.md`；work 卡 commit-gate 接受父 epic id。
-- **epic 子卡 released 后状态滞后**：kb/verified 后立刻 `refresh_epic_lifecycle`。
-- **phase graph abnormal 不可读**：quarantine note 附带 failure_summary。
-- **SELF-CHECKS 只认 report.md**：OpenCode 常把 `ALL SELF-CHECKS PASSED` 写在 result stdout；门禁改为认可 report 或 agent result（仍禁止代写）。
-- **无进展假活占槽**：`CCC_PHASE_NO_PROGRESS_SEC`（默认 600）无交付物/result 更新则标 hung；hang 恢复前若门禁已齐则 salvage→testing，禁止 relaunch。
-- **product 过拆写/提交**：small/烟测 epic 拒收 >1 张或 write+commit-only 子卡对；prompt 默认 1 work。
-- **编排 stuck 一查询**：`scripts/ccc-pipeline-status.py`；烟测失败清场 `ccc-hide-smoke-failures.py`。
-- **product 扇出墙钟**：默认 `product_async_timeout` 600→1200s，避免 flash 扇出被误杀。
-- **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。
-- **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
-- **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。
-- **testing 恢复绕过 small 跳过**：Engine recover testing 改为走 `_run_reviewer_tester_gate`（与正常门禁一致，不再硬拉 reviewer）。
-- **对话失忆 / 多会话串槽**：Desktop 持久化并回传 `claude_session_id`（冷启动 resume）；取消生成回收 live slot 但默认保留 resume id；重置/归档清该项目全部 thread 槽；sidecar slot key 去掉 tool_mode 分叉；token 压缩按 thread 计数。
-- **多会话名存实亡**：发送/暖机/转任务/快捷操作跟 `window.threadId`，不再强制打回 `{project}::main`；新建会话返回并绑定本窗；窗级线程焦点供 warm。
-- **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` **总是** `session/drop` 回收 live slot（默认仍保留 `claude_session_id` 以便 resume）；发送前不再与 chat 抢 warm 锁。
-- **对话稳定性升级**：SSE `error` 带 `code` 进 `APIError.stream`；重试白名单排除鉴权；timeout/stub 重试前 heal-drop；健康缓存 10s 且失败即失效；状态栏「重试/清槽」；turn 账本 `desktop-chat-turns.jsonl`；sidecar 检测 cli PID 已死的假 connected 槽并强制重连。
-- **模型出口直连**：Desktop/loop-code/Hub Claude → MiniMax Anthropic（`https://api.minimaxi.com/anthropic`，`MiniMax-M3`）；OpenCode → 讯飞 `xfyun/code`（智谱 `zhipu/flash` 备用）。不再默认经 ai-loop-router；可用 `CCC_AGENT_ROUTER` / `CCC_HUB_ROUTER` 回退中转。
-- **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
-- **对话可靠性契约（非止血）**：`有心跳 ≠ 有进展`。sidecar：`CHAT_FIRST_EVENT_TIMEOUT` / `CHAT_TOOL_STALL_TIMEOUT` → interrupt + error code + 回收 slot/僵尸 cli；discuss **保留** Web* 全集，短问/light **按意图**零工具或推迟 Web*（SDK 空 `allowed_tools` 会被当成全开，已改用 `disallowed_tools` 强制）；工具集变更则重连。Desktop：ping 不重置进展钟；状态「等待首包 / 工具执行中：Name」。
-- **Desktop agent 输出不稳定（OpenCode 多窗后遗症）**：消息修订与编排修订拆分（`threadRevision` / `threadFlowRevision`），Flow SSE 不再拖聊天重滚；去掉长 delta 异步分片竞态；流式中不写盘、迟到 delta 拒绝回写；流式气泡用纯文本避免 Markdown 闪烁；warm 与在途 chat 互斥加强。
-- **顶栏 flash/code 同步虚高**：中转站 `/admin/stats` 对 `models: [flash,code]` 上游（如 zhipu）双边计数；已改为按上游主 `tier` 只计一次，并下发 `requested`（请求模型）对照。Desktop 顶栏数字=实际消耗；tooltip 显示请求模型与「flash 落到 code」提示。
-- **OpenCode 式多窗 live 隔离补齐**：各窗 `setWindowFocus` refcount；**每打开项目一条 Flow SSE**（后台窗 `threadFlow` 实时刷新）；warm 覆盖所有焦点项目；转任务表单 `threadTransferForms` + sheet 仅本窗 tid 弹出；侧栏 destination 按窗隔离。
-- **OpenCode 式多窗会话隔离**：`threadStreamStatus` / `threadTransferDraft` 按 `{projectId}::main`；`streamChat` 显式 `project_path`；hydrate 禁止覆盖在途流；FlowRail 读本窗 `threadFlow`；composerBounce 按 tid。
-- **对话切窗串台 / 历史乱串**：每窗只绑 `window.projectId`；消息列表只读 `threadMessages[tid]`，禁用全局 `chat.messages` 当显示源；切项目先 hydrate 目标线程。
-- **sidecar FD 耗尽导致大模型假死**：plist 提高 NumberOfFiles；重启 sidecar 清泄漏。
-- **对话切窗/切项目掉会话**：切回时禁止磁盘盲覆盖流式 RAM；持久化消息 `id`；delta 孤儿气泡可重建；多窗 `WindowChatState` 可并行看不同项目。
-- **顶栏大模型调用数加固**：旁路 Hub 闸门拉取 `/api/ops/router-usage`；流式中仍轮询；Titlebar Timer+tick 强制重绘；失败显示 `!` + tooltip；Hub 探针超时 2.5s。
-- **Desktop / sidecar 热路径假死**（`13ec205`）：slot 锁 / connect / drain 硬超时；warm 抢锁失败快返回；真暖才记 `lastWarmAt`；SSE `ping`→「连接本机 Agent…」；health 正常禁止 `kickstart -k`；chat 有 `prompt` 不再发全量 `messages`；空板编排闲置文案与对话故障解耦。
-- 文档：[`docs/product/desktop-agent-sidecar.md`](docs/product/desktop-agent-sidecar.md) · [`docs/deploy/desktop.md`](docs/deploy/desktop.md)
+- **Hub board 代理补 PATCH**：`board_client` 支持 PATCH（任务字段如 `ui_hidden`）。
+- **chat-server plist 模板**：默认 `ANTHROPIC_*` 直连 MiniMax，不再写退役 `:4000`。
+- **Engine upstream 健康检查误探 :4000**；**中转站退役**与死代码清理；顶栏改计本机 Agent。
+- **右栏完成态 / epic ui_hidden / product 异步 / DoD / hang salvage / 过拆护栏** 等流水线与 Desktop 稳定性修复（见 Unreleased→本版迁移前完整列表）。
+- **模型出口直连**：Claude/loop-code→MiniMax；OpenCode→讯飞（智谱 `glm-4.7-flash` 备援）。
 
 ---
 

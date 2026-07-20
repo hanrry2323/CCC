@@ -100,6 +100,13 @@ async def board_proxy(
                 status_code=resp.status_code,
                 media_type="application/json",
             )
+        elif method.upper() == "PATCH":
+            resp = await client.patch(url, json=json_body, headers=headers)
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
         elif method.upper() == "DELETE":
             resp = await client.delete(url, params=params, headers=headers)
             return Response(
