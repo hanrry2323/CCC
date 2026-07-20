@@ -38,6 +38,16 @@ Hub 定稿 → backlog(epic) → Claude 扇出 → planned(work×N) → in_progr
 - ❌ 子卡空 scope / 缺 `## 验收`
 - ❌ 把 epic `move` 到 planned/in_progress
 - ❌ 跳过 `.ccc/state.md`（红线 10）
+- ❌ **过拆**：small 多卡、写文件与 commit 拆成两张、无独立验收的空卡
+
+## 低端模型心智（榨干效力）
+
+下游 dev 多为便宜模型：扇出要**少而可执行**。
+
+1. 默认 **1 张** work；验收里没有 ≥2 个独立交付物就不要多拆  
+2. `complexity=small` → **强制 1 卡**，标题含「写入并提交」语义  
+3. 每卡 plan：目标一句 + `## 验收` 可执行命令 + 窄 scope  
+4. 拒绝「为角色感」拆卡；拒绝写文件卡 + 纯 commit 卡配对  
 
 ## 代码参考
 

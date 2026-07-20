@@ -7,5 +7,5 @@
 |------|------|------|--------|
 | Phase1 P0 契约+demo 绿通 | green | 单测+smoke-hub-api-v1；epic 进 backlog，product 异步启动 | f81d451 |
 | Phase2 浸泡 N=3 | green | smoke-ccc-demo-soak N=3；orphan_delta=0；hang 测绿 | （本提交） |
-| Phase3 promote/skill | pending | — | — |
+| Phase3 promote/skill | green | product skill 反过拆；fanout prompt 含 complexity；oversplit 测绿 | （本提交） |
 | Phase4 inbox 采纳 | pending | — | — |

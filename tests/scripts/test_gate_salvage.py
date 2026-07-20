@@ -126,3 +126,32 @@ def test_detect_oversplit_small_epic():
         kids, epic={"complexity": "small", "title": "流水线烟测"}
     )
     assert err and "oversplit" in err
+
+
+def test_detect_oversplit_small_rejects_three_children():
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from _product_fanout import detect_write_commit_oversplit, build_fanout_prompt
+    from pathlib import Path as P
+
+    kids = [
+        {"title": "a 写入并提交", "description": "a", "plan_md": "## 验收\n- x"},
+        {"title": "b 写入并提交", "description": "b", "plan_md": "## 验收\n- y"},
+        {"title": "c 写入并提交", "description": "c", "plan_md": "## 验收\n- z"},
+    ]
+    err = detect_write_commit_oversplit(
+        kids, epic={"complexity": "small", "title": "small epic"}
+    )
+    assert err and "exactly 1" in err
+    prompt = build_fanout_prompt(
+        epic={"id": "e1", "title": "t", "complexity": "small", "description": "d"},
+        workspace=P("."),
+        profile="p",
+        code_ctx="",
+        template_plan="# plan",
+        ref_plans="",
+        max_phases=3,
+    )
+    assert "complexity: small" in prompt
+    assert "反过拆" in prompt

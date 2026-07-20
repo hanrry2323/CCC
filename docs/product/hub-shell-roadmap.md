@@ -92,7 +92,7 @@ Clients:  Desktop →（后）Web →（后）Mobile
 | **P0** | Hub API v1 | 冻结 transfer / flow snapshot+SSE / board 摘要；鉴权与错误码；文档 + 契约测 | 第二客户端可按文档对接 |
 | **P0** | 投递可见性 | Desktop：`本机草稿` / `已投递` / `编排已受理`；失败可重试（本机落盘） | Hub 断线仍可聊；下达状态不谎报 |
 | **P0** | 可靠性 | hang / 槽 / 泄漏 / OpenCode·Claude 进程爆炸治理 | 自动流水线可长时间无人值守 |
-| **P1** | 榨模型 | promote、skill、身份与心智；低端模型撑高级任务 | 同模型档：released↑、abnormal↓ |
+| **P1** | 榨模型 | promote、skill、身份与心智；低端模型撑高级任务 | **Phase3 已勾选**：`ccc-product` 反过拆 + fanout prompt complexity |
 | **P2** | 提案旁路 | `inbox/`（项目根一级）+ Desktop 采纳；hmap / 外部免费顾问只作输入 | `ccc-demo` 全链路烟测通过 |
 | **P3** | 多端薄客户 | 网页 / 手机只消费 Hub API v1 | 不复制 Engine |
 
