@@ -9,4 +9,6 @@ struct FlowThreadSnapshot: Codable, Equatable {
     var recentEpics: [FlowEpicRef]
     var emptyMessage: String
     var fanoutHint: String?
+    /// Phase9：abnormal / user_stage=failed 时右栏止损条（可点开运维/看板）
+    var stopLossHint: String?
 }

@@ -118,6 +118,10 @@ final class AppModel: ObservableObject {
 
     /// 转任务后扇出超时提示（右栏）
     @Published var flowFanoutHint: String?
+    /// Phase9：abnormal / failed 止损提示（右栏红条）
+    @Published var flowStopLossHint: String?
+    /// 避免同一 epic 反复 toast
+    private var lastStopLossToastKey: String?
     /// 当前选中会话是否正在生成（按会话，非全局）
     @Published var currentThreadStreaming = false
     /// 发送失败时回填输入框（一次性）
@@ -1306,7 +1310,8 @@ final class AppModel: ObservableObject {
             headline: flowHeadline,
             recentEpics: recentEpics,
             emptyMessage: flowEmptyMessage,
-            fanoutHint: flowFanoutHint
+            fanoutHint: flowFanoutHint,
+            stopLossHint: flowStopLossHint
         )
         // 空右栏不覆盖已有 works
         if let prev = threadFlow[threadId],
@@ -1328,6 +1333,7 @@ final class AppModel: ObservableObject {
             recentEpics = snap.recentEpics
             flowEmptyMessage = snap.emptyMessage
             flowFanoutHint = snap.fanoutHint
+            flowStopLossHint = snap.stopLossHint
         } else {
             currentEpicId = nil
             flowEpic = nil
@@ -1336,6 +1342,7 @@ final class AppModel: ObservableObject {
             recentEpics = []
             flowEmptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             flowFanoutHint = nil
+            flowStopLossHint = nil
             selectedNodeDetail = nil
         }
     }
@@ -3078,6 +3085,21 @@ final class AppModel: ObservableObject {
         fanoutWatchTask = nil
     }
 
+    func clearStopLossHint(projectId: String? = nil) {
+        let pid = projectId ?? selectedProjectId
+        if let pid {
+            let tid = threadIdForProject(pid)
+            if var snap = threadFlow[tid] {
+                snap.stopLossHint = nil
+                threadFlow[tid] = snap
+                bumpFlowRevision(tid)
+            }
+        }
+        if projectId == nil || projectId == selectedProjectId {
+            flowStopLossHint = nil
+        }
+    }
+
     /// 右栏与项目对话绑定：本机 boundEpicId 优先（默认全局选中）
     func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
         guard let pid = selectedProjectId else { return }
@@ -3247,6 +3269,7 @@ final class AppModel: ObservableObject {
             cached.epicId = nil
             cached.headline = ""
             cached.fanoutHint = nil
+            cached.stopLossHint = nil
             cached.recentEpics = keptRecent
             cached.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             threadFlow[tid] = cached
@@ -3270,6 +3293,29 @@ final class AppModel: ObservableObject {
         cached.epic = snap.epic
         cached.headline = headline
         cached.emptyMessage = ""
+        // Phase9：abnormal / failed 止损可见（右栏 + 一次性 toast）
+        let hasAbnormal = works.contains(where: \.isFailed)
+        let stopLoss = (stage == "failed" || hasAbnormal)
+        if stopLoss {
+            let title = works.first(where: \.isFailed)?.title
+                ?? snap.epic?.title
+                ?? eid
+                ?? "任务"
+            let hint = "编排异常：\(title) · 点开运维或看板止损"
+            cached.stopLossHint = hint
+            let toastKey = "\(projectId)|\(eid ?? "")|failed"
+            if lastStopLossToastKey != toastKey {
+                lastStopLossToastKey = toastKey
+                if isSelected {
+                    showToast(hint)
+                }
+            }
+        } else {
+            cached.stopLossHint = nil
+            if let eid, lastStopLossToastKey?.hasPrefix("\(projectId)|\(eid)|") == true {
+                lastStopLossToastKey = nil
+            }
+        }
         if !works.isEmpty {
             cached.fanoutHint = nil
             if isSelected {

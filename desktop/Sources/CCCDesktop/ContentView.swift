@@ -1737,6 +1737,45 @@ struct FlowRail: View {
                 .padding(.bottom, 8)
             }
 
+            if let stop = snap?.stopLossHint
+                ?? (model.selectedThreadId == paneThreadId ? model.flowStopLossHint : nil) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(stop)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(CCCTheme.nodeFail)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("开运维") {
+                            window.destination = .ops
+                            model.selectDestination(.ops, projectId: window.projectId)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(CCCTheme.nodeFail)
+                        .controlSize(.small)
+                        Button("看板") {
+                            window.destination = .board
+                            model.selectDestination(.board, projectId: window.projectId)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        Button("忽略") {
+                            model.clearStopLossHint(projectId: window.projectId)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(CCCTheme.nodeFail.opacity(0.12))
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
             FlowCanvasView(
                 epic: snap?.epic ?? (model.selectedThreadId == paneThreadId ? model.flowEpic : nil),
                 epicId: snap?.epicId ?? (model.selectedThreadId == paneThreadId ? model.currentEpicId : nil),

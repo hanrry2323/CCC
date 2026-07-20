@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase9**：abnormal / `user_stage=failed` 止损最小可见（Desktop 右栏红条 + toast + 运维/看板链；snapshot 含 epic `split_status=failed`）。见 [`docs/product/hub-shell-phase9-stoploss.md`](docs/product/hub-shell-phase9-stoploss.md)。
+- **Hub-Shell Phase8**：第二真实仓 `hp` flow-smoke → released（xianyu 脏跳过）。见 [`docs/product/hub-shell-phase8-hp.md`](docs/product/hub-shell-phase8-hp.md)。
+
 ### Fixed
 
 ---

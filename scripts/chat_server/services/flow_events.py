@@ -278,8 +278,13 @@ def snapshot_from_board(
         None,
     )
     failed = next((w for w in works if w.get("status") == "abnormal"), None)
+    # epic split_status failed（无子卡 abnormal 列表时也要暴露止损态）
+    split_failed = str(split).lower() in ("failed", "blocked")
     if failed:
         headline = f"卡住：{failed.get('title')}"
+        stage = "failed"
+    elif split_failed:
+        headline = "编排异常 · 需止损介入"
         stage = "failed"
     elif active:
         headline = f"正在：{active.get('title')}"

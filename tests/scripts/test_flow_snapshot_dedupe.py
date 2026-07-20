@@ -46,3 +46,46 @@ def test_snapshot_dedupes_work_by_farthest_column():
     assert works[0]["status"] == "released"
     assert snap.get("user_stage") == "done"
     assert snap.get("headline") == "已完成"
+
+
+def test_snapshot_failed_stage_from_abnormal_and_split():
+    """Phase9：abnormal work 或 epic split_status=failed → user_stage=failed。"""
+    board_abn = {
+        "backlog": [
+            {
+                "id": "epic-f",
+                "title": "Epic Fail",
+                "card_kind": "epic",
+                "split_status": "running",
+                "child_ids": ["w-bad"],
+            }
+        ],
+        "abnormal": [
+            {
+                "id": "w-bad",
+                "title": "Bad Work",
+                "parent_id": "epic-f",
+                "executor": "opencode",
+                "note": "hang",
+            }
+        ],
+    }
+    snap = snapshot_from_board(board_abn, epic_id="epic-f", project_id="hp")
+    assert snap.get("user_stage") == "failed"
+    assert "卡住" in (snap.get("headline") or "")
+    assert snap["epic"]["user_stage"] == "failed"
+
+    board_split = {
+        "backlog": [
+            {
+                "id": "epic-s",
+                "title": "Epic Split Failed",
+                "card_kind": "epic",
+                "split_status": "failed",
+                "child_ids": [],
+            }
+        ],
+    }
+    snap2 = snapshot_from_board(board_split, epic_id="epic-s", project_id="hp")
+    assert snap2.get("user_stage") == "failed"
+    assert "止损" in (snap2.get("headline") or "")
