@@ -112,8 +112,9 @@ python3 /Users/fan/program/CCC/scripts/ccc-workspace-doctor.py
 python3 /Users/fan/program/CCC/scripts/ccc-sync-agent-roots.py
 ```
 
-- `project_id` = 目录名（`qx-observer` 不用 `qxo`；`medio-0` 小写）。  
-- 昵称可写在该仓 `.ccc/profile.md`。
+- 登记名 / 目录 = `qx-observer`；**Hub / Desktop `project_id` = `qxo`**（Board 对 `qx-observer` 路径有硬编码别名，见 `ccc-board-server.py` discover）。  
+- 昵称与 id 一致用 `qxo`；勿在 map 里只写 `qx-observer` 而漏 `qxo`。  
+- `medio-0` 小写与 GitHub / 目录一致。
 
 ### ⑤ M1 对话瘦副本
 

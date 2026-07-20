@@ -25,7 +25,8 @@
     YYYY-MM-DD-*/           # 冷数据 / 半同步残骸
 ```
 
-**Hub `project_id`** = `apps/` 下目录名（`qx-observer` 不用 `qxo`；`medio-0` 小写）。
+**Hub `project_id`**：通常 = `apps/` 目录名；**例外**：路径 `apps/qx-observer` 的 Hub id = **`qxo`**（Board 发现别名，见 [`fleet-apps-migration-2026-07.md`](fleet-apps-migration-2026-07.md)）。`medio-0` 小写。  
+Desktop `localWorkspaceMap` 键必须对上 Hub id（`qxo` 必配）。
 
 ---
 

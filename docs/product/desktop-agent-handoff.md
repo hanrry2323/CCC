@@ -35,7 +35,15 @@ M1 archive 冷冻树 = 只读备份，禁止 register / 禁止当开发 cwd
 | CCC 客户端副本 | M1 | `/Users/apple/program/CCC`（改 CCC 用 Cursor，不下达） |
 
 **生产 apps（2017）**：`ccc-demo`、`clawmed-ccc`、`xianyu`、`qb`、`qx-observer`、`hp`、`medio-0`。  
-**Hub `project_id`**：通常 = 目录名；例外 **`qxo` → path `apps/qx-observer`**（map 键用 `qxo`）。`medio-0` 小写。
+**身份对照（勿混）**：
+
+| Hub `project_id` | 2017 路径 | M1 map 键 | M1 对话路径 |
+|------------------|-----------|-----------|-------------|
+| `ccc` | `…/CCC` | `ccc` | `/Users/apple/program/CCC` |
+| `ccc-demo` | `…/apps/ccc-demo` | `ccc-demo` | `/Users/apple/program/apps/ccc-demo` |
+| `clawmed-ccc` | `…/apps/clawmed-ccc` | `clawmed-ccc` | `/Users/apple/program/clawmed-ccc`（顶层瘦副本，未强制进 `apps/`） |
+| `hp` / `xianyu` / `qb` / `medio-0` | `…/apps/<同名>` | 同名 | `/Users/apple/program/apps/<同名>` |
+| **`qxo`** | `…/apps/qx-observer` | **`qxo`**（可兼 `qx-observer`） | `/Users/apple/program/apps/qx-observer` |
 
 布局 SSOT：[`../deploy/server-layout.md`](../deploy/server-layout.md)。
 
