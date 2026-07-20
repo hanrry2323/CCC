@@ -121,6 +121,12 @@ def test_fetch_router_usage_parses_tiers(monkeypatch):
                         "code": {"requests_today": 3, "tokens_today": 50},
                         "pro": {"requests_today": 0, "tokens_today": 0},
                     },
+                    "requested": {
+                        "flash": {"requests_today": 15, "tokens_today": 150},
+                        "code": {"requests_today": 0, "tokens_today": 0},
+                        "pro": {"requests_today": 0, "tokens_today": 0},
+                    },
+                    "attribution": "served_primary_tier",
                     "total": {"requests_today": 15, "tokens_today": 150},
                 }
             ).encode()
@@ -139,4 +145,6 @@ def test_fetch_router_usage_parses_tiers(monkeypatch):
     assert out["tiers"]["flash"]["requests_today"] == 12
     assert out["tiers"]["code"]["requests_today"] == 3
     assert out["tiers"]["pro"]["requests_today"] == 0
+    assert out["requested"]["flash"]["requests_today"] == 15
+    assert out["attribution"] == "served_primary_tier"
     assert out["total"]["requests_today"] == 15

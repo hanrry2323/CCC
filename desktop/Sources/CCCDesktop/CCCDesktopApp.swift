@@ -21,8 +21,8 @@ struct CCCDesktopApp: App {
     }
 }
 
-/// 每窗一个 WindowChatState；共享 AppModel（OpenCode：共享 session map，每窗选自己的 session）。
-/// 聊天列表 / 流式态 / 定稿条 / 右栏均按 window.projectId → `{id}::main` 隔离。
+/// 每窗一个 WindowChatState；共享 AppModel。
+/// 聊天列表 / 流式态 / 定稿条 / 右栏均按 window.threadId 隔离。
 private struct WindowRootView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var window = WindowChatState()
@@ -52,12 +52,13 @@ private struct WindowRootView: View {
     }
 
     private func bindWindowProjectIfNeeded() {
-        // 仅本窗尚未绑定时落到全局选中；已有 projectId 的窗绝不被 bootstrap/他窗切项改写
         if window.projectId == nil, let pid = model.selectedProjectId {
             window.projectId = pid
         }
         if let pid = window.projectId {
-            model.ensureThreadHydrated(projectId: pid)
+            let threads = ConversationStore.listThreads(projectId: pid)
+            window.bindProject(pid, availableThreads: threads)
+            model.ensureThreadHydrated(threadId: window.threadId ?? "")
         }
     }
 

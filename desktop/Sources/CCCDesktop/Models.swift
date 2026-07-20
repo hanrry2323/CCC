@@ -39,6 +39,10 @@ struct ChatMessage: Identifiable, Hashable {
     var summaryRounds: Int
     /// 工具运行期间的阶段性短句（status 事件；下一条 delta 前显示）
     var transientNote: String?
+    /// 消息是否已编辑（Phase 1.5）
+    var edited: Bool
+    /// 消息引用（Phase 1.7）
+    var replyTo: String?
 
     init(
         id: UUID = UUID(),
@@ -50,7 +54,9 @@ struct ChatMessage: Identifiable, Hashable {
         toolsFinished: Bool = false,
         kind: String = "chat",
         summaryRounds: Int = 0,
-        transientNote: String? = nil
+        transientNote: String? = nil,
+        edited: Bool = false,
+        replyTo: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -62,6 +68,8 @@ struct ChatMessage: Identifiable, Hashable {
         self.kind = kind
         self.summaryRounds = summaryRounds
         self.transientNote = transientNote
+        self.edited = edited
+        self.replyTo = replyTo
     }
 }
 
@@ -75,6 +83,8 @@ extension ChatMessage: Codable {
         case kind
         case summary_rounds
         case transient_note
+        case edited
+        case reply_to
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +105,8 @@ extension ChatMessage: Codable {
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "chat"
         summaryRounds = try c.decodeIfPresent(Int.self, forKey: .summary_rounds) ?? 0
         transientNote = try c.decodeIfPresent(String.self, forKey: .transient_note)
+        edited = try c.decodeIfPresent(Bool.self, forKey: .edited) ?? false
+        replyTo = try c.decodeIfPresent(String.self, forKey: .reply_to)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -117,6 +129,12 @@ extension ChatMessage: Codable {
         }
         if let note = transientNote, !note.isEmpty {
             try c.encode(note, forKey: .transient_note)
+        }
+        if edited {
+            try c.encode(true, forKey: .edited)
+        }
+        if let replyTo {
+            try c.encode(replyTo, forKey: .reply_to)
         }
     }
 }
@@ -329,4 +347,118 @@ struct FlowNodeDetail: Identifiable, Hashable {
     let title: String
     let status: String
     let body: String
+}
+
+// MARK: - Phase 1.3: Token usage
+
+extension ChatMessage {
+    var tokens: Int { content.count / 4 }
+}
+
+// MARK: - Phase 1.4: Custom Quick Prompt
+
+struct QuickPromptItem: Identifiable, Codable, Hashable {
+    var id: String { title }
+    var title: String
+    var prompt: String
+}
+
+// MARK: - Phase 2.1: Manual Epic Form
+
+struct ManualEpicForm: Equatable {
+    var title: String = ""
+    var goal: String = ""
+    var acceptance: String = ""
+    var pipeline: String = "dev"
+    var executor: String = "opencode"
+    var complexity: String = "medium"
+    var priority: String = "p2"
+}
+
+// MARK: - Phase 2.2: Task Template
+
+struct TaskTemplate: Identifiable, Codable, Hashable {
+    var id: String { title + pipeline }
+    var title: String
+    var goal: String
+    var acceptance: String
+    var pipeline: String
+    var executor: String
+    var complexity: String
+    var priority: String
+    var tags: [String]
+}
+
+// MARK: - Phase 2.4: Task Artifacts
+
+struct TaskArtifacts: Codable, Hashable {
+    var planMd: String = ""
+    var phasesJsonl: String = ""
+    var reportMd: String = ""
+    var reviewMd: String = ""
+    var verdictMd: String = ""
+}
+
+// MARK: - Phase 2.5: Phase model
+
+struct Phase: Identifiable, Codable, Hashable {
+    var id: String { name }
+    let name: String
+    let status: String
+    let executor: String
+    let dependsOn: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case name, status, executor
+        case dependsOn = "depends_on"
+    }
+}
+
+// MARK: - Phase 3.3: Failure Record
+
+struct FailureRecord: Identifiable, Codable, Hashable {
+    var id: String { "\(ts)-\(task_id)" }
+    let ts: String
+    let task_id: String
+    let role: String
+    let reason: String
+    let exit_code: Int?
+    let stderr_tail: String?
+    let workspace: String?
+}
+
+// MARK: - Phase 3.4: Project Stats
+
+struct ProjectStats: Equatable {
+    var totalEpics: Int = 0
+    var activeWorks: Int = 0
+    var failedWorks: Int = 0
+    var completedToday: Int = 0
+}
+
+// MARK: - Phase 4.1: Priority
+
+enum TaskPriority: String, CaseIterable, Codable {
+    case p0 = "p0"
+    case p1 = "p1"
+    case p2 = "p2"
+    case p3 = "p3"
+
+    var label: String {
+        switch self {
+        case .p0: return "P0 🔴"
+        case .p1: return "P1 🟡"
+        case .p2: return "P2 🟢"
+        case .p3: return "P3 ⚪"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .p0: return "critical"
+        case .p1: return "warning"
+        case .p2: return "ok"
+        case .p3: return "muted"
+        }
+    }
 }

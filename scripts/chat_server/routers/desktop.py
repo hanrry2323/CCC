@@ -320,10 +320,12 @@ async def transfer_to_epic(request: Request):
             content={
                 "ok": False,
                 "error": "role_lock_violation",
-                "errors": [{
-                    "code": "role_lock_violation",
-                    "message": f"Desktop transfer 只允许 epic，禁止 card_kind={body_card_kind}",
-                }],
+                "errors": [
+                    {
+                        "code": "role_lock_violation",
+                        "message": f"Desktop transfer 只允许 epic，禁止 card_kind={body_card_kind}",
+                    }
+                ],
             },
         )
 
@@ -354,16 +356,12 @@ async def transfer_to_epic(request: Request):
             content={
                 "ok": False,
                 "error": "invalid_epic_id",
-                "errors": [
-                    {"code": "invalid_epic_id", "message": "epic_id 非法"}
-                ],
+                "errors": [{"code": "invalid_epic_id", "message": "epic_id 非法"}],
             },
         )
 
     executor_intent = transfer_gate.resolve_executor_intent(body)
-    description = transfer_gate.build_epic_description(
-        {**body, "executor_intent": executor_intent}
-    )
+    description = transfer_gate.build_epic_description({**body, "executor_intent": executor_intent})
     plan_md = transfer_gate.build_plan_md(body)
 
     note = json.dumps(
@@ -396,11 +394,7 @@ async def transfer_to_epic(request: Request):
     resp = await board_proxy("POST", "/api/tasks", json_body=task_body)
     if resp.status_code not in (200, 201):
         try:
-            detail = json.loads(
-                resp.body.decode()
-                if isinstance(resp.body, (bytes, bytearray))
-                else resp.body
-            )
+            detail = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
         except Exception:
             detail = {"raw": str(resp.body)[:300]}
         return JSONResponse(
@@ -437,9 +431,7 @@ async def transfer_to_epic(request: Request):
             "thread_id": thread_id,
         },
     )
-    flow_events.remember_last_epic(
-        project_id, tid, title, thread_id=thread_id
-    )
+    flow_events.remember_last_epic(project_id, tid, title, thread_id=thread_id)
     _hub_ensure_engine(workspace, tid)
 
     return {
@@ -462,11 +454,7 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
     if resp.status_code != 200:
         return {}
     try:
-        raw = json.loads(
-            resp.body.decode()
-            if isinstance(resp.body, (bytes, bytearray))
-            else resp.body
-        )
+        raw = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
     except Exception:
         return {}
     if isinstance(raw, dict) and isinstance(raw.get("columns"), dict):
@@ -494,11 +482,7 @@ async def flow_epics(
     lim = max(1, min(int(limit or 20), 40))
     tid = (thread_id or "").strip() or None
     items = flow_events.list_recent_epics(pid, thread_id=tid, limit=lim)
-    conv_view = (
-        "project_single"
-        if (not tid or flow_events.is_project_conversation_id(tid))
-        else "thread_exact"
-    )
+    conv_view = "project_single" if (not tid or flow_events.is_project_conversation_id(tid)) else "thread_exact"
     hint = flow_events.bound_hint_for_epics(items, thread_id=tid)
     return {
         "ok": True,
@@ -523,9 +507,7 @@ async def flow_snapshot(
     eid = (epic_id or "").strip()
     if not eid:
         last = flow_events.load_last_epic(pid)
-        eid = str((last or {}).get("epic_id") or "") or (
-            flow_events.latest_transfer_epic_id(pid) or ""
-        )
+        eid = str((last or {}).get("epic_id") or "") or (flow_events.latest_transfer_epic_id(pid) or "")
     if not eid:
         return {
             "ok": True,
@@ -537,9 +519,7 @@ async def flow_snapshot(
         }
     workspace = _project_workspace(pid)
     board = await _fetch_board_dict(workspace)
-    snap = flow_events.snapshot_from_board(
-        board, epic_id=eid, project_id=pid
-    )
+    snap = flow_events.snapshot_from_board(board, epic_id=eid, project_id=pid)
     return {"ok": True, "empty": False, **snap}
 
 
@@ -574,9 +554,7 @@ async def flow_events_sse(
         )
         jsonl_updated = bool(recs)
         for rec in recs:
-            yield flow_events.format_sse(
-                str(rec.get("event") or "message"), rec.get("data") or {}
-            )
+            yield flow_events.format_sse(str(rec.get("event") or "message"), rec.get("data") or {})
             ts = str(rec.get("ts") or "")
             if ts > last_ts:
                 last_ts = ts
@@ -601,9 +579,7 @@ async def flow_events_sse(
             for rec in recs:
                 if await request.is_disconnected():
                     return
-                yield flow_events.format_sse(
-                    str(rec.get("event") or "message"), rec.get("data") or {}
-                )
+                yield flow_events.format_sse(str(rec.get("event") or "message"), rec.get("data") or {})
                 ts = str(rec.get("ts") or "")
                 if ts > last_ts:
                     last_ts = ts
@@ -624,9 +600,7 @@ async def flow_events_sse(
                     try:
                         workspace = _project_workspace(pid)
                         board = await _fetch_board_dict(workspace)
-                        snap = flow_events.snapshot_from_board(
-                            board, epic_id=eid, project_id=pid
-                        )
+                        snap = flow_events.snapshot_from_board(board, epic_id=eid, project_id=pid)
                         sig = json.dumps(snap, sort_keys=True, ensure_ascii=False)
                         if sig != last_sig:
                             last_sig = sig
@@ -650,9 +624,7 @@ async def flow_events_sse(
                                     },
                                 )
                     except Exception as exc:
-                        yield flow_events.format_sse(
-                            "error", {"message": str(exc)[:200]}
-                        )
+                        yield flow_events.format_sse("error", {"message": str(exc)[:200]})
             if now - last_beat >= 15:
                 last_beat = now
                 yield flow_events.format_sse("ping", {"t": int(now)})
@@ -690,6 +662,83 @@ async def list_executors(request: Request):
         "executors": sorted(e for e in EXECUTOR_IDS if e != "auto") + ["auto"],
         "default": "opencode",
     }
+
+
+@router.get("/tasks/{task_id}/artifacts")
+async def task_artifacts(task_id: str, request: Request, workspace: str = "CCC"):
+    """Phase 2.4: 返回 task 的 plan/report/review/verdict 产物"""
+    check_auth(request)
+    import os
+
+    w = _resolve_workspace(workspace)
+    root = _workspace_root(w)
+    artifacts = {}
+    for key, fname in [
+        ("planMd", f"plans/{task_id}.plan.md"),
+        ("phasesJsonl", f"phases/{task_id}.phases.json"),
+        ("reportMd", f"reports/{task_id}.report.md"),
+        ("reviewMd", f"reports/{task_id}.review.md"),
+        ("verdictMd", f"verdicts/{task_id}.verdict.md"),
+    ]:
+        p = root / ".ccc" / fname
+        if p.exists():
+            artifacts[key] = p.read_text(encoding="utf-8", errors="replace")
+        else:
+            artifacts[key] = ""
+    return JSONResponse(artifacts)
+
+
+@router.post("/flow/works/{work_id}/retry")
+async def retry_failed_work(work_id: str, request: Request, body: dict | None = None):
+    """Phase 3.2: 重试失败 work"""
+    check_auth(request)
+    ws = (body or {}).get("workspace", "CCC")
+    w = _resolve_workspace(ws)
+    root = _workspace_root(w)
+    # 重试 = 从异常状态重置到 in_progress
+    tasks_dir = root / ".ccc" / "board"
+    for col in ["abnormal", "testing", "in_progress", "planned"]:
+        col_dir = tasks_dir / col
+        if not col_dir.exists():
+            continue
+        for f in col_dir.iterdir():
+            if not f.name.endswith(".json"):
+                continue
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if data.get("id") == work_id or data.get("workId") == work_id:
+                    data["status"] = "in_progress"
+                    data["retry_count"] = data.get("retry_count", 0) + 1
+                    # 移回 in_progress 目录
+                    dst = tasks_dir / "in_progress" / f.name
+                    f.rename(dst)
+                    dst.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    return {"ok": True, "work_id": work_id, "new_status": "in_progress"}
+            except Exception:
+                continue
+    raise HTTPException(status_code=404, detail=f"Work {work_id} not found")
+
+
+@router.get("/flow/works/{work_id}/failures")
+async def work_failures(work_id: str, request: Request, workspace: str = "CCC"):
+    """Phase 3.3: 返回 work 的失败记录"""
+    check_auth(request)
+    w = _resolve_workspace(workspace)
+    root = _workspace_root(w)
+    failures_path = root / ".ccc" / "stats" / "failures.jsonl"
+    if not failures_path.exists():
+        return JSONResponse([])
+    records = []
+    for line in failures_path.read_text(encoding="utf-8").strip().split("\n"):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+            if rec.get("task_id") == work_id or rec.get("work_id") == work_id:
+                records.append(rec)
+        except Exception:
+            continue
+    return JSONResponse(records)
 
 
 @router.get("/config")

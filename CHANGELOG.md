@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop agent 输出不稳定（OpenCode 多窗后遗症）**：消息修订与编排修订拆分（`threadRevision` / `threadFlowRevision`），Flow SSE 不再拖聊天重滚；去掉长 delta 异步分片竞态；流式中不写盘、迟到 delta 拒绝回写；流式气泡用纯文本避免 Markdown 闪烁；warm 与在途 chat 互斥加强。
+- **顶栏 flash/code 同步虚高**：中转站 `/admin/stats` 对 `models: [flash,code]` 上游（如 zhipu）双边计数；已改为按上游主 `tier` 只计一次，并下发 `requested`（请求模型）对照。Desktop 顶栏数字=实际消耗；tooltip 显示请求模型与「flash 落到 code」提示。
 - **OpenCode 式多窗 live 隔离补齐**：各窗 `setWindowFocus` refcount；**每打开项目一条 Flow SSE**（后台窗 `threadFlow` 实时刷新）；warm 覆盖所有焦点项目；转任务表单 `threadTransferForms` + sheet 仅本窗 tid 弹出；侧栏 destination 按窗隔离。
 - **OpenCode 式多窗会话隔离**：`threadStreamStatus` / `threadTransferDraft` 按 `{projectId}::main`；`streamChat` 显式 `project_path`；hydrate 禁止覆盖在途流；FlowRail 读本窗 `threadFlow`；composerBounce 按 tid。
 - **对话切窗串台 / 历史乱串**：每窗只绑 `window.projectId`；消息列表只读 `threadMessages[tid]`，禁用全局 `chat.messages` 当显示源；切项目先 hydrate 目标线程。

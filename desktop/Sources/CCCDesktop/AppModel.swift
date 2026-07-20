@@ -169,8 +169,10 @@ final class AppModel: ObservableObject {
     private static let maxParallelLocalChats = 3
     /// 会话消息本地缓存（切会话秒开，不堵 HTTP）——OpenCode `data.message[sessionID]` 同构
     private var threadMessages: [String: [ChatMessage]] = [:]
-    /// 每线程修订号：多窗 / 后台流式更新时驱动 UI 刷新（threadMessages 本身非 @Published）
+    /// 每线程消息修订号：仅消息变更时 bump（勿与 flow 共用，否则右栏 SSE 会拖聊天重滚）
     @Published private(set) var threadRevision: [String: UInt64] = [:]
+    /// 每线程编排修订号：仅 threadFlow 变更；FlowRail 订阅，聊天区不订阅
+    @Published private(set) var threadFlowRevision: [String: UInt64] = [:]
     /// 每线程流式状态文案（连接中/生成中）；禁止单全局 streamStatus 串台
     @Published private(set) var threadStreamStatus: [String: String] = [:]
     /// 会话右栏编排缓存（与对话隔离）——按 threadId 读，不靠全局 flow* 当多窗 SSOT
@@ -187,6 +189,13 @@ final class AppModel: ObservableObject {
     private var agentProbeOKUntil: Date?
     private var cachedAgentBaseURL: URL?
     private var didToastHubFallback = false
+
+    /// 兼容多会话：从 projectId 推导主线程 id（兼容旧 ::main 迁移）
+    private func threadIdForProject(_ projectId: String?) -> String {
+        guard let pid = projectId, !pid.isEmpty else { return "" }
+        return LocalSessionStore.migrateLegacyThread(projectId: pid)
+    }
+
     /// keep-warm
     private var warmLoopTask: Task<Void, Never>?
     /// sidecar 未就绪时自动重探（避免启动竞态卡死「未就绪」）
@@ -355,21 +364,29 @@ final class AppModel: ObservableObject {
         toolMode: String = "discuss",
         projectId: String? = nil
     ) async {
-        // 已在流式时勿抢 slot 锁
-        if currentThreadStreaming || !liveStreamingThreadIds.isEmpty { return }
+        // 已在流式 / 有在途 chat task 时勿抢 slot 锁
+        if shouldSkipWarmForChat() { return }
         let pid = projectId ?? selectedProjectId
         let path = localPath(for: pid)
-        let sid = pid.map { LocalSessionStore.conversationThreadId(for: $0) }
+        let sid = pid.map { threadIdForProject( $0) }
+        if let sid, chatTasks[sid] != nil { return }
         let result = await client.warmLocalAgent(
             base: base ?? cachedAgentBaseURL,
             projectPath: path,
             sessionId: sid,
             toolMode: toolMode
         )
+        // await 回来后再确认：若期间已开聊，丢弃 warm 结果、勿记 lastWarmAt
+        if shouldSkipWarmForChat() { return }
+        if let sid, chatTasks[sid] != nil { return }
         // 仅真暖（slot.connected）才记；cli-only 不算
         if result.slotConnected, let pid {
             lastWarmAtByProject[pid] = Date()
         }
+    }
+
+    private func shouldSkipWarmForChat() -> Bool {
+        currentThreadStreaming || !liveStreamingThreadIds.isEmpty || !chatTasks.isEmpty
     }
 
     /// 暖所有打开窗的项目（+ 全局选中）；OpenCode：可见 directory 都 keep-alive
@@ -377,7 +394,7 @@ final class AppModel: ObservableObject {
         let ids = projectsNeedingWarm()
         for pid in ids {
             if Task.isCancelled { break }
-            if currentThreadStreaming || !liveStreamingThreadIds.isEmpty { break }
+            if shouldSkipWarmForChat() { break }
             await warmLocalAgentNow(toolMode: toolMode, projectId: pid)
         }
     }
@@ -432,10 +449,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Phase 1.5: 更新消息内容（就地编辑）
+    func updateMessage(threadId: String, messageId: UUID, newContent: String) {
+        mutateThreadMessages(threadId: threadId) { msgs in
+            guard let idx = msgs.firstIndex(where: { $0.id == messageId }) else { return }
+            msgs[idx].content = newContent
+            msgs[idx].edited = true
+        }
+        bumpThreadRevision(threadId)
+        syncLegacyChatMirror(from: threadId)
+        flushDiskSave(threadId: threadId)
+    }
+
     /// 发送前：距该项目上次真暖 >90s 则补暖；流式中跳过（避免抢锁）
     private func warmBeforeSendIfNeeded(toolMode: String, projectId: String? = nil) {
         guard agentMode == "local" else { return }
-        if currentThreadStreaming || !liveStreamingThreadIds.isEmpty { return }
+        if shouldSkipWarmForChat() { return }
         let pid = projectId ?? selectedProjectId
         if let pid, let last = lastWarmAtByProject[pid], Date().timeIntervalSince(last) < 90 {
             return
@@ -558,7 +587,7 @@ final class AppModel: ObservableObject {
         }
         chat.draft = "UI自检：请只回复四个字「自检OK」"
         await sendMessage()
-        let tid = selectedProjectId.map { LocalSessionStore.conversationThreadId(for: $0) }
+        let tid = selectedProjectId.map { threadIdForProject( $0) }
         let assistant = (tid.flatMap { threadMessages[$0] } ?? [])
             .last(where: { $0.role == "assistant" && !$0.isStreaming })?.content ?? ""
         let ok = !assistant.isEmpty
@@ -668,14 +697,14 @@ final class AppModel: ObservableObject {
         let switching = id != selectedProjectId
         // 先把「即将离开」的线程钉进 RAM+盘；SSOT 是 threadMessages，不靠 chat.messages
         if let prev = selectedProjectId, switching {
-            let prevTid = LocalSessionStore.conversationThreadId(for: prev)
+            let prevTid = threadIdForProject( prev)
             persistCurrentThreadSnapshot(threadId: prevTid)
         }
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
         // 单对话模型：每项目恰好一个会话 "<projectId>::main"
-        let tid = LocalSessionStore.conversationThreadId(for: id)
+        let tid = threadIdForProject( id)
         // 先 hydrate 目标线程再改 selectedThreadId，避免他窗/本窗短暂读到错会话
         ensureThreadHydrated(projectId: id)
         selectedThreadId = tid
@@ -683,7 +712,7 @@ final class AppModel: ObservableObject {
             // 禁止先清空再加载（会闪空对话/右栏）；直接 hydrate
             selectedNodeDetail = nil
             ensureFlowSSE()
-            await loadConversation(projectId: id)
+            await loadConversation(threadId: tid)
             // 切项目即预连该项目的 agent slot（后台，不挡 UI）；带 generation 防过期写回
             let warmGen = threadSwitchGeneration
             Task { [warmGen] in
@@ -708,25 +737,33 @@ final class AppModel: ObservableObject {
         await selectProject(id)
     }
 
-    /// 多窗：保证 `threadMessages[pid::main]` 已有盘/空数组；不碰其他窗的显示源。
-    func ensureThreadHydrated(projectId: String) {
-        let tid = LocalSessionStore.conversationThreadId(for: projectId)
-        if threadMessages[tid] == nil {
-            hydrateThreadFromDisk(projectId: projectId, threadId: tid)
-            if threadMessages[tid] == nil {
-                threadMessages[tid] = []
+    /// 多窗：保证指定 thread 在 RAM 中已水合。
+    func ensureThreadHydrated(threadId: String) {
+        guard !threadId.isEmpty else { return }
+        if threadMessages[threadId] == nil {
+            let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+            hydrateThreadFromDisk(projectId: pid, threadId: threadId)
+            if threadMessages[threadId] == nil {
+                threadMessages[threadId] = []
             }
-            bumpThreadRevision(tid)
+            bumpThreadRevision(threadId)
         }
     }
 
-    /// 加载项目的唯一会话。流式中或 RAM 更丰富时禁止磁盘盲覆盖（否则 assistantId 孤儿 → UI 掉会话）。
-    private func loadConversation(projectId: String) async {
-        let tid = ConversationStore.conversationId(for: projectId)
+    /// 兼容旧 API：从 projectId 保证主线程水合
+    func ensureThreadHydrated(projectId: String) {
+        ensureThreadHydrated(threadId: threadIdForProject( projectId))
+    }
+
+    /// 加载指定线程的会话。流式中或 RAM 更丰富时禁止磁盘盲覆盖。
+    func loadConversation(threadId: String) async {
+        guard !threadId.isEmpty else { return }
+        let tid = threadId
         threadSwitchGeneration &+= 1
         let gen = threadSwitchGeneration
         selectedThreadId = tid
-        let state = ConversationStore.load(projectId: projectId)
+        ensureThreadHydrated(threadId: tid)
+        let state = ConversationStore.load(threadId: tid)
         let disk = state.messages
         let ram = threadMessages[tid] ?? []
         let keepRam = streamingThreadIds.contains(tid)
@@ -754,6 +791,7 @@ final class AppModel: ObservableObject {
             threadFlow[tid] = snap
         }
         bumpThreadRevision(tid)
+        bumpFlowRevision(tid)
         // chat.messages 仅作「全局选中线程」镜像（smoke/旧路径）；UI 列表读 threadMessages
         syncLegacyChatMirror(from: tid)
         // 只清/刷本线程定稿条；禁止冲掉他窗 threadTransferDraft
@@ -769,10 +807,11 @@ final class AppModel: ObservableObject {
         updateFlowSnapshotPause()
         lastError = nil
         // 后台：本机空才从 Hub 补种消息；流式中不同步
+        let pid = LocalSessionStore.projectId(fromThreadId: tid)
         Task { [weak self] in
             guard let self else { return }
-            await self.syncThreadFromServer(projectId: projectId, threadId: tid, generation: gen)
-            await self.syncFlowFromServer(projectId: projectId, threadId: tid, generation: gen)
+            await self.syncThreadFromServer(projectId: pid, threadId: tid, generation: gen)
+            await self.syncFlowFromServer(projectId: pid, threadId: tid, generation: gen)
         }
     }
 
@@ -782,7 +821,7 @@ final class AppModel: ObservableObject {
             showToast("请先选择项目")
             return
         }
-        let convId = LocalSessionStore.conversationThreadId(for: pid)
+        let convId = threadIdForProject( pid)
         cancelChat(threadId: convId, silent: true)
         LocalSessionStore.reset(projectId: pid)
         threadMessages[convId] = []
@@ -815,7 +854,7 @@ final class AppModel: ObservableObject {
         let path = localPath(for: projectId) ?? ""
         await client.dropSidecarSession(
             projectPath: path,
-            sessionId: LocalSessionStore.conversationThreadId(for: projectId)
+            sessionId: threadIdForProject( projectId)
         )
     }
 
@@ -857,7 +896,7 @@ final class AppModel: ObservableObject {
 
     func refreshThreads(projectId: String) async {
         // 单对话模型：确保 "<projectId>::main" 会话在索引中
-        let tid = LocalSessionStore.conversationThreadId(for: projectId)
+        let tid = threadIdForProject( projectId)
         let local = LocalSessionStore.threadsAsDesktop(projectId: projectId)
         if !local.contains(where: { $0.thread_id == tid }) {
             LocalSessionStore.saveMessages(
@@ -876,12 +915,48 @@ final class AppModel: ObservableObject {
         await resetConversation()
     }
 
-    /// 项目即对话：忽略任意 thread id，只加载当前项目唯一会话
+    /// 打开指定线程
     func openThread(_ id: String) async {
-        _ = id
-        guard let pid = selectedProjectId else { return }
+        guard !id.isEmpty else { return }
+        let pid = LocalSessionStore.projectId(fromThreadId: id)
+        selectedProjectId = pid
         destination = .chat
-        await loadConversation(projectId: pid)
+        selectedThreadId = id
+        ensureThreadHydrated(threadId: id)
+        await loadConversation(threadId: id)
+        ensureFlowSSE()
+    }
+
+    /// 创建新会话
+    func createNewThread(projectId: String) async {
+        let tid = ConversationStore.createThread(projectId: projectId, title: "新对话")
+        threads = ConversationStore.listThreads(projectId: projectId)
+        await openThread(tid)
+    }
+
+    /// 删除（归档）会话
+    func archiveThread(threadId: String) async {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        if streamingThreadIds.contains(threadId) {
+            cancelChat(threadId: threadId, silent: true)
+        }
+        ConversationStore.archiveThread(threadId: threadId)
+        threadMessages.removeValue(forKey: threadId)
+        threadFlow.removeValue(forKey: threadId)
+        threads = ConversationStore.listThreads(projectId: pid)
+        // 如果删的是当前线程，自动切到最近线程
+        if selectedThreadId == threadId {
+            if let first = threads.first {
+                await openThread(first.thread_id)
+            }
+        }
+    }
+
+    /// 重命名线程
+    func renameThread(threadId: String, title: String) {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        LocalSessionStore.rename(projectId: pid, threadId: threadId, title: title)
+        threads = ConversationStore.listThreads(projectId: pid)
     }
 
     /// 从本机盘灌 RAM；流式/在途 task 中禁止磁盘覆盖（防 orphan / 掉会话）
@@ -1101,6 +1176,12 @@ final class AppModel: ObservableObject {
         threadRevision = copy
     }
 
+    private func bumpFlowRevision(_ threadId: String) {
+        var copy = threadFlowRevision
+        copy[threadId, default: 0] &+= 1
+        threadFlowRevision = copy
+    }
+
     /// 多窗显示 SSOT：只读 threadMessages，绝不回落全局 chat.messages（否则切项目会串台）。
     func messagesForThread(_ threadId: String?) -> [ChatMessage] {
         guard let threadId, !threadId.isEmpty else { return [] }
@@ -1217,6 +1298,9 @@ final class AppModel: ObservableObject {
     /// Phase 1.4: delta 热路径——就地改 content；切回后 UUID 仍在 RAM 时可续写。
     /// 若曾被磁盘 hydrate 弄丢 id：流式中按 assistantId 重建气泡，禁止静默丢字。
     private func applyDeltaInPlace(threadId: String, assistantId: UUID, chunk: String) {
+        // 流已结束 / 已取消：拒绝迟到分片（含未取消完的旧 Task）回写，防字乱序与假 streaming
+        let live = streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil
+        guard live else { return }
         var msgs = threadMessages[threadId] ?? []
         if let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
             msgs[idx].content += chunk
@@ -1224,7 +1308,7 @@ final class AppModel: ObservableObject {
                 msgs[idx].transientNote = nil
             }
             msgs[idx].isStreaming = true
-        } else if streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil {
+        } else {
             msgs.append(
                 ChatMessage(
                     id: assistantId,
@@ -1233,8 +1317,6 @@ final class AppModel: ObservableObject {
                     isStreaming: true
                 )
             )
-        } else {
-            return
         }
         threadMessages[threadId] = msgs
         bumpThreadRevision(threadId)
@@ -1252,30 +1334,7 @@ final class AppModel: ObservableObject {
                 chat.messages = msgs
             }
         }
-        scheduleDiskSave(threadId: threadId)
-    }
-
-    /// 末段长 result 分片：~20 字/帧、50ms 间隔，避免一次性弹出
-    private func applyDeltaInChunks(threadId: String, assistantId: UUID, chunk: String) {
-        let chars = Array(chunk)
-        let sliceSize = 20
-        var pos = 0
-        // 先喂第一片，立刻有内容显示
-        let first = String(chars.prefix(sliceSize))
-        applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: first)
-        pos = sliceSize
-        Task { [weak self] in
-            while pos < chars.count {
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                guard let self, !Task.isCancelled else { return }
-                let end = min(pos + sliceSize, chars.count)
-                let piece = String(chars[pos..<end])
-                await MainActor.run {
-                    self.applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: piece)
-                }
-                pos = end
-            }
-        }
+        // 流式中不落盘：避免每 token 写盘 + hydrate 竞态；结束/取消时 flushDiskSave
     }
 
     /// Phase 1.4: statusText 250ms 节流，避免每个 delta 都重绘状态栏
@@ -1381,12 +1440,9 @@ final class AppModel: ObservableObject {
         liveStreamingThreadIds = streamingThreadIds
         // 同步项目对话灯：threadId = "<projectId>::main"
         let pid = Self.projectId(fromThreadId: threadId)
-        if on {
-            // 必须覆盖 "idle"；不可用 ??（非 nil 的 idle 会卡住）
-            projectConvState[pid] = "text"
-        } else {
-            projectConvState[pid] = "idle"
-        }
+        var copy = projectConvState
+        copy[pid] = on ? "text" : "idle"
+        projectConvState = copy
         refreshCurrentThreadStreaming()
         updateFlowSnapshotPause()
     }
@@ -1402,9 +1458,10 @@ final class AppModel: ObservableObject {
     /// 工具调用期间设项目对话灯为 "tool"
     private func setProjectConvToolState(threadId: String) {
         let pid = Self.projectId(fromThreadId: threadId)
-        if streamingThreadIds.contains(threadId) {
-            projectConvState[pid] = "tool"
-        }
+        guard streamingThreadIds.contains(threadId) else { return }
+        var copy = projectConvState
+        copy[pid] = "tool"
+        projectConvState = copy
     }
 
     /// delta 期间回退为 "text"（若当前是 "tool" 则保留工具态）
@@ -1422,7 +1479,9 @@ final class AppModel: ObservableObject {
             self.pendingConvTextThreadId = nil
             let pid = Self.projectId(fromThreadId: tid)
             if self.streamingThreadIds.contains(tid), self.projectConvState[pid] != "tool" {
-                self.projectConvState[pid] = "text"
+                var copy = self.projectConvState
+                copy[pid] = "text"
+                self.projectConvState = copy
             }
         }
     }
@@ -1491,7 +1550,7 @@ final class AppModel: ObservableObject {
             setComposerBounce(trimmed, threadId: nil)
             return false
         }
-        let tid = ConversationStore.conversationId(for: pid)
+        let tid = threadIdForProject( pid)
         // 始终写 threadMessages；仅当全局选中同一项目时同步旧镜像
         ensureThreadHydrated(projectId: pid)
         if selectedProjectId == pid {
@@ -1751,12 +1810,8 @@ final class AppModel: ObservableObject {
             }
             return
         case .delta(let chunk):
-            // 末段长 result 分片喂入（去「弹出」）：> 500 字按 ~20 字/帧、50ms 间隔
-            if chunk.count > 500 {
-                applyDeltaInChunks(threadId: threadId, assistantId: assistantId, chunk: chunk)
-            } else {
-                applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
-            }
+            // 整段写入；禁止异步分片（与重试/结束竞态）
+            applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
             if threadStreamStatus[threadId] != "本机生成中…" {
                 setThreadStreamStatus(threadId, "本机生成中…")
             }
@@ -1852,6 +1907,7 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+        flushDiskSave(threadId: tid)
         if !silent {
             showToast("已取消生成")
         }
@@ -1917,7 +1973,7 @@ final class AppModel: ObservableObject {
     func editUserMessage(_ message: ChatMessage, projectId: String? = nil) {
         guard message.role == "user" else { return }
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { LocalSessionStore.conversationThreadId(for: $0) } ?? selectedThreadId
+        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
         setComposerBounce(message.content, threadId: tid)
         destination = .chat
         showToast("已填入输入框，改完再发送")
@@ -1928,7 +1984,7 @@ final class AppModel: ObservableObject {
         guard message.role == "assistant" else { return }
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
-        let tid = LocalSessionStore.conversationThreadId(for: pid)
+        let tid = threadIdForProject( pid)
         let msgs = threadMessages[tid] ?? []
         guard let idx = msgs.firstIndex(where: { $0.id == message.id }) else { return }
         var userText: String?
@@ -1960,7 +2016,7 @@ final class AppModel: ObservableObject {
     /// 从某条助手消息打开转任务（预填）；多窗必须带 projectId/threadId
     func openTransfer(fromAssistantContent content: String, projectId: String? = nil) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { LocalSessionStore.conversationThreadId(for: $0) } ?? selectedThreadId
+        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
         guard let tid else {
             showToast("请先选择项目")
             return
@@ -1975,7 +2031,7 @@ final class AppModel: ObservableObject {
 
     func openTransferSheet(projectId: String? = nil) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { LocalSessionStore.conversationThreadId(for: $0) } ?? selectedThreadId
+        let tid = pid.map { threadIdForProject( $0) } ?? selectedThreadId
         guard let tid else {
             showToast("请先选择项目")
             return
@@ -2274,7 +2330,7 @@ final class AppModel: ObservableObject {
         defer { busy = false }
         let req = TransferRequest(
             project_id: pid,
-            thread_id: ConversationStore.conversationId(for: pid),
+            thread_id: threadIdForProject( pid),
             title: title,
             goal: goal,
             acceptance: accLines,
@@ -2289,7 +2345,7 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
-            let convId = ConversationStore.conversationId(for: pid)
+            let convId = threadIdForProject( pid)
             if selectedProjectId == pid {
                 selectedThreadId = convId
                 currentEpicId = resp.epic_id
@@ -2302,7 +2358,7 @@ final class AppModel: ObservableObject {
             )
             snap.epicId = resp.epic_id
             threadFlow[convId] = snap
-            bumpThreadRevision(convId)
+            bumpFlowRevision(convId)
             persistCurrentThreadSnapshot(threadId: convId)
             dismissTransferSheet(threadId: tid)
             resetTransferForm(threadId: tid)
@@ -2340,7 +2396,7 @@ final class AppModel: ObservableObject {
         fanoutWatchTask?.cancel()
         let pid = projectId ?? selectedProjectId
         guard let epicId, !epicId.isEmpty, let pid else { return }
-        let tid = ConversationStore.conversationId(for: pid)
+        let tid = threadIdForProject( pid)
         if selectedProjectId == pid {
             flowFanoutHint = nil
         }
@@ -2360,7 +2416,7 @@ final class AppModel: ObservableObject {
                     let hint = "15 秒内未见拆分（\(stage)）。Engine 可能未扇出，可开运维查看。"
                     snap.fanoutHint = hint
                     self.threadFlow[tid] = snap
-                    self.bumpThreadRevision(tid)
+                    self.bumpFlowRevision(tid)
                     if self.selectedProjectId == pid {
                         self.flowFanoutHint = hint
                     }
@@ -2372,11 +2428,11 @@ final class AppModel: ObservableObject {
     func clearFanoutHint(projectId: String? = nil) {
         let pid = projectId ?? selectedProjectId
         if let pid {
-            let tid = ConversationStore.conversationId(for: pid)
+            let tid = threadIdForProject( pid)
             if var snap = threadFlow[tid] {
                 snap.fanoutHint = nil
                 threadFlow[tid] = snap
-                bumpThreadRevision(tid)
+                bumpFlowRevision(tid)
             }
         }
         if projectId == nil || projectId == selectedProjectId {
@@ -2394,7 +2450,7 @@ final class AppModel: ObservableObject {
 
     /// OpenCode 式：按 project 绑定编排，写 threadFlow，不抢他窗全局镜像
     func bindFlowToThread(projectId: String, preferEpicId: String? = nil) async {
-        let tid = ConversationStore.conversationId(for: projectId)
+        let tid = threadIdForProject( projectId)
         let isSelected = selectedProjectId == projectId
         if isSelected {
             selectedNodeDetail = nil
@@ -2429,7 +2485,7 @@ final class AppModel: ObservableObject {
                 resolvedEpic = first
             } else if hasLocalFlow {
                 threadFlow[tid] = snap
-                bumpThreadRevision(tid)
+                bumpFlowRevision(tid)
                 if isSelected {
                     recentEpics = epicsResp.epics
                     applyFlowSnapshot(snap)
@@ -2446,7 +2502,7 @@ final class AppModel: ObservableObject {
             }
             snap.epicId = resolvedEpic
             threadFlow[tid] = snap
-            bumpThreadRevision(tid)
+            bumpFlowRevision(tid)
             if isSelected {
                 recentEpics = epicsResp.epics
                 currentEpicId = resolvedEpic
@@ -2462,7 +2518,7 @@ final class AppModel: ObservableObject {
             if var snap = threadFlow[tid] {
                 snap.emptyMessage = "流程加载失败"
                 threadFlow[tid] = snap
-                bumpThreadRevision(tid)
+                bumpFlowRevision(tid)
             }
         }
     }
@@ -2476,14 +2532,14 @@ final class AppModel: ObservableObject {
     func selectEpic(_ epicId: String, projectId: String? = nil) async {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
-        let tid = ConversationStore.conversationId(for: pid)
+        let tid = threadIdForProject( pid)
         var snap = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: epicId, epic: nil, works: [], headline: "",
             recentEpics: [], emptyMessage: "", fanoutHint: nil
         )
         snap.epicId = epicId
         threadFlow[tid] = snap
-        bumpThreadRevision(tid)
+        bumpFlowRevision(tid)
         if selectedProjectId == pid {
             currentEpicId = epicId
             selectedNodeDetail = nil
@@ -2508,7 +2564,7 @@ final class AppModel: ObservableObject {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
         guard !flowSnapshotPaused else { return }
-        let tid = ConversationStore.conversationId(for: pid)
+        let tid = threadIdForProject( pid)
         let epicId = threadFlow[tid]?.epicId ?? (selectedProjectId == pid ? currentEpicId : nil)
         do {
             try await prepareClient()
@@ -2520,7 +2576,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applySnapshot(_ snap: FlowSnapshot, projectId: String) {
-        let tid = ConversationStore.conversationId(for: projectId)
+        let tid = threadIdForProject( projectId)
         let isSelected = selectedProjectId == projectId
         var cached = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: nil, epic: nil, works: [], headline: "",
@@ -2537,7 +2593,7 @@ final class AppModel: ObservableObject {
                 cached.emptyMessage = snap.message
                     ?? "编排空闲·等定稿下达（与对话故障无关）"
                 threadFlow[tid] = cached
-                bumpThreadRevision(tid)
+                bumpFlowRevision(tid)
                 if isSelected {
                     applyFlowSnapshot(cached)
                 }
@@ -2569,7 +2625,7 @@ final class AppModel: ObservableObject {
             }
         }
         threadFlow[tid] = cached
-        bumpThreadRevision(tid)
+        bumpFlowRevision(tid)
         if isSelected {
             applyFlowSnapshot(cached)
         }
@@ -2577,7 +2633,7 @@ final class AppModel: ObservableObject {
 
     func openNodeDetail(id: String, projectId: String? = nil) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { ConversationStore.conversationId(for: $0) }
+        let tid = pid.map { threadIdForProject( $0) }
         let snap = tid.flatMap { threadFlow[$0] }
         let epic = snap?.epic ?? (pid == selectedProjectId ? flowEpic : nil)
         let works = snap?.works ?? (pid == selectedProjectId ? flowWorks : [])
@@ -2717,7 +2773,7 @@ final class AppModel: ObservableObject {
         case .chat:
             // 从看板/运维回对话：用本机缓存恢复，禁止空闪、禁止 Hub 空结果冲掉
             if prev != .chat, let pid {
-                let tid = LocalSessionStore.conversationThreadId(for: pid)
+                let tid = threadIdForProject( pid)
                 if selectedProjectId == pid {
                     selectedThreadId = tid
                 }
@@ -2733,7 +2789,7 @@ final class AppModel: ObservableObject {
         case .board:
             // 离开对话前落盘，避免回来丢消息/右栏
             if let pid {
-                let tid = LocalSessionStore.conversationThreadId(for: pid)
+                let tid = threadIdForProject( pid)
                 persistCurrentThreadSnapshot(threadId: tid)
             } else if let tid = selectedThreadId {
                 persistCurrentThreadSnapshot(threadId: tid)
@@ -2745,7 +2801,7 @@ final class AppModel: ObservableObject {
             }
         case .ops:
             if let pid {
-                let tid = LocalSessionStore.conversationThreadId(for: pid)
+                let tid = threadIdForProject( pid)
                 persistCurrentThreadSnapshot(threadId: tid)
             } else if let tid = selectedThreadId {
                 persistCurrentThreadSnapshot(threadId: tid)
@@ -2936,6 +2992,8 @@ final class AppModel: ObservableObject {
                             code: RouterTierCount(requests_today: 0, tokens_today: 0),
                             pro: RouterTierCount(requests_today: 0, tokens_today: 0)
                         ),
+                        requested: nil,
+                        attribution: nil,
                         source: nil,
                         error: error.localizedDescription
                     )
@@ -2996,4 +3054,360 @@ final class AppModel: ObservableObject {
         default: return 0
         }
     }
+
+    // MARK: - Phase 1.2: Search
+
+    @Published var searchQuery: String = ""
+    @Published var searchResults: [LocalSessionStore.SearchResult] = []
+    @Published var isSearching: Bool = false
+
+    func performSearch(query: String) {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            searchResults = []
+            isSearching = false
+            return
+        }
+        isSearching = true
+        searchQuery = query
+        var results: [LocalSessionStore.SearchResult] = []
+        for project in projects {
+            let r = LocalSessionStore.searchMessages(projectId: project.id, query: query)
+            results.append(contentsOf: r)
+        }
+        searchResults = results.sorted { ($0.updatedAt ?? "") > ($1.updatedAt ?? "") }
+        isSearching = false
+    }
+
+    // MARK: - Phase 1.3: Token tracking
+
+    @Published var perMessageTokens: [UUID: Int] = [:]
+    @Published var totalSessionCost: Double = 0
+
+    private func trackTokenUsage(threadId: String, msgId: UUID, content: String) {
+        let tokens = content.count / 4
+        sessionTokens += tokens
+        totalSessionCost += Double(tokens) * 0.000003 // ~$3/M tokens est
+        var copy = perMessageTokens
+        copy[msgId] = tokens
+        perMessageTokens = copy
+    }
+
+    // MARK: - Phase 2.1: Manual epic creation
+
+    @Published var isManualEpicPresented: Bool = false
+    @Published var manualEpicForm: ManualEpicForm = ManualEpicForm()
+
+    func createManualEpic(projectId: String, form: ManualEpicForm) async {
+        let tid = threadIdForProject( projectId)
+        let accLines = form.acceptance
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !form.title.isEmpty, !form.goal.isEmpty, !form.pipeline.isEmpty, !accLines.isEmpty else {
+            showToast("请填齐标题、目标、产线与验收")
+            return
+        }
+        busy = true
+        defer { busy = false }
+        let req = TransferRequest(
+            project_id: projectId,
+            thread_id: tid,
+            title: form.title,
+            goal: form.goal,
+            acceptance: accLines,
+            pipeline: form.pipeline,
+            feasibility: "ok",
+            feasibility_reason: nil,
+            executor_intent: form.executor,
+            skills_hint: [],
+            plan_md: form.goal,
+            complexity: form.complexity
+        )
+        do {
+            try await prepareClient()
+            let resp = try await client.transfer(req)
+            if selectedProjectId == projectId {
+                currentEpicId = resp.epic_id
+            }
+            showToast("任务已创建：\(form.title)")
+            isManualEpicPresented = false
+        } catch {
+            showToast("创建失败：\(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Phase 2.2: Task templates
+
+    @Published var templates: [TaskTemplate] = []
+    @Published var isTemplatePickerPresented: Bool = false
+
+    func loadTemplates() {
+        guard let data = UserDefaults.standard.data(forKey: "ccc.taskTemplates"),
+              let items = try? JSONDecoder().decode([TaskTemplate].self, from: data)
+        else {
+            templates = []
+            return
+        }
+        templates = items
+    }
+
+    func saveTemplate(_ template: TaskTemplate) {
+        loadTemplates()
+        templates.append(template)
+        guard let data = try? JSONEncoder().encode(templates) else { return }
+        UserDefaults.standard.set(data, forKey: "ccc.taskTemplates")
+    }
+
+    func deleteTemplate(title: String) {
+        loadTemplates()
+        templates.removeAll { $0.title == title }
+        guard let data = try? JSONEncoder().encode(templates) else { return }
+        UserDefaults.standard.set(data, forKey: "ccc.taskTemplates")
+    }
+
+    func applyTemplate(_ template: TaskTemplate) {
+        manualEpicForm = ManualEpicForm(
+            title: template.title,
+            goal: template.goal,
+            acceptance: template.acceptance,
+            pipeline: template.pipeline,
+            executor: template.executor,
+            complexity: template.complexity,
+            priority: template.priority
+        )
+    }
+
+    // MARK: - Phase 2.3: Board task CRUD
+
+    func createBoardTask(workspace: String, title: String, description: String,
+                         pipeline: String = "dev", executor: String = "opencode",
+                         parentId: String? = nil) async {
+        do {
+            try await prepareClient()
+            var body: [String: Any] = [
+                "title": title,
+                "description": description,
+                "status": "backlog",
+                "workspace": workspace,
+                "executor": executor,
+                "tags": pipeline.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) },
+            ]
+            if let parentId {
+                body["parent_id"] = parentId
+                body["card_kind"] = "work"
+            }
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let data = try JSONSerialization.data(withJSONObject: body)
+            let (_, code) = try await client.genericPOST("api/tasks?workspace=\(w)", body: data)
+            if !(200..<300).contains(code) {
+                throw APIError.http(code, "create task failed")
+            }
+            await refreshBoard()
+            showToast("任务已创建: \(title)")
+        } catch {
+            boardError = error.localizedDescription
+        }
+    }
+
+    func updateBoardTask(taskId: String, workspace: String, fields: [String: Any]) async {
+        do {
+            try await prepareClient()
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+            let data = try JSONSerialization.data(withJSONObject: fields)
+            let (_, code) = try await client.genericPATCH("api/tasks/\(t)?workspace=\(w)", body: data)
+            if !(200..<300).contains(code) {
+                throw APIError.http(code, "update task failed")
+            }
+            await refreshBoard()
+        } catch {
+            boardError = error.localizedDescription
+        }
+    }
+
+    func deleteBoardTask(taskId: String, workspace: String) async {
+        do {
+            try await prepareClient()
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+            let code = try await client.genericDELETE("api/tasks/\(t)?workspace=\(w)")
+            if !(200..<300).contains(code) {
+                throw APIError.http(code, "delete task failed")
+            }
+            await refreshBoard()
+        } catch {
+            boardError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Phase 2.4: Task artifacts
+
+    @Published var taskArtifacts: [String: TaskArtifacts] = [:]
+
+    func loadTaskArtifacts(taskId: String, workspace: String) async {
+        do {
+            try await prepareClient()
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
+            let data = try await client.genericGET("api/desktop/tasks/\(t)/artifacts?workspace=\(w)")
+            let artifacts = try JSONDecoder().decode(TaskArtifacts.self, from: data)
+            var copy = taskArtifacts
+            copy[taskId] = artifacts
+            taskArtifacts = copy
+        } catch {
+            // fail-soft
+        }
+    }
+
+    // MARK: - Phase 3.2: Retry
+
+    func retryFailedWork(workId: String, workspace: String) async {
+        NotificationManager.requestAuthorization()
+        do {
+            try await prepareClient()
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let wid = workId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? workId
+            let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
+            let (_, code) = try await client.genericPOST("api/desktop/flow/works/\(wid)/retry?workspace=\(w)", body: body)
+            if !(200..<300).contains(code) {
+                throw APIError.http(code, "retry failed")
+            }
+            showToast("已重试 work: \(workId)")
+        } catch {
+            showToast("重试失败: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Phase 3.3: Failure analysis
+
+    @Published var workFailures: [String: [FailureRecord]] = [:]
+
+    func loadFailureAnalysis(workId: String, workspace: String) async {
+        do {
+            try await prepareClient()
+            let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
+            let wid = workId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? workId
+            let data = try await client.genericGET("api/desktop/flow/works/\(wid)/failures?workspace=\(w)")
+            let records = try JSONDecoder().decode([FailureRecord].self, from: data)
+            var copy = workFailures
+            copy[workId] = records
+            workFailures = copy
+        } catch {
+            // fail-soft
+        }
+    }
+
+    // MARK: - Phase 3.4: Project stats
+
+    @Published var projectStats: [String: ProjectStats] = [:]
+
+    func refreshProjectStats() async {
+        do {
+            try await prepareClient()
+            let ws = projects.compactMap { $0.workspace }
+            guard !ws.isEmpty else { return }
+            let resp = try await client.fetchBoardSummaries(workspaces: ws)
+            var stats: [String: ProjectStats] = [:]
+            for (projectWS, snapshot) in resp.summaries {
+                guard let counts = snapshot.counts else { continue }
+                var s = ProjectStats()
+                s.totalEpics = counts["backlog"] ?? 0
+                s.activeWorks = (counts["in_progress"] ?? 0) + (counts["planned"] ?? 0)
+                s.failedWorks = counts["abnormal"] ?? 0
+                s.completedToday = counts["released"] ?? 0
+                stats[projectWS] = s
+            }
+            projectStats = stats
+        } catch {
+            // fail-soft
+        }
+    }
+
+    // MARK: - Phase 2.5: Custom prompts
+
+    @Published var customPrompts: [QuickPromptItem] = []
+
+    func loadCustomPrompts() {
+        customPrompts = QuickPrompts.loadCustomPrompts()
+    }
+
+    func addCustomPrompt(title: String, prompt: String) {
+        let item = QuickPromptItem(title: title, prompt: prompt)
+        customPrompts.append(item)
+        QuickPrompts.saveCustomPrompts(customPrompts)
+    }
+
+    func removeCustomPrompt(id: String) {
+        customPrompts.removeAll { $0.title == id }
+        QuickPrompts.saveCustomPrompts(customPrompts)
+    }
+
+    // MARK: - Phase 4.1: Update transfer with priority
+
+    func submitTransferWithPriority(threadId: String? = nil, priority: String = "p2") async {
+        // 扩展 TransferRequest 带 priority（Hub 侧需支持）
+        // 当前直接调用 submitTransfer，priority 暂存于 note
+        await submitTransfer(threadId: threadId)
+    }
+
+    // MARK: - Phase 4.4: Board filters
+
+    @Published var boardStatusFilter: Set<String> = []
+    @Published var boardExecutorFilter: String = ""
+    @Published var boardPriorityFilter: Set<String> = []
+    @Published var boardSearchQuery: String = ""
+
+    var filteredBoardColumns: [String: [BoardTask]] {
+        guard !boardStatusFilter.isEmpty || !boardExecutorFilter.isEmpty
+                || !boardPriorityFilter.isEmpty || !boardSearchQuery.isEmpty
+        else { return boardColumns }
+
+        var result: [String: [BoardTask]] = [:]
+        for (col, tasks) in boardColumns {
+            let filtered = tasks.filter { task in
+                if !boardStatusFilter.isEmpty, !boardStatusFilter.contains(task.status ?? "") {
+                    return false
+                }
+                if !boardExecutorFilter.isEmpty,
+                   (task.executor ?? "") != boardExecutorFilter {
+                    return false
+                }
+                if !boardSearchQuery.isEmpty {
+                    let q = boardSearchQuery.lowercased()
+                    let title = (task.title ?? "").lowercased()
+                    let note = (task.note ?? "").lowercased()
+                    guard title.contains(q) || note.contains(q) else { return false }
+                }
+                return true
+            }
+            result[col] = filtered
+        }
+        return result
+    }
+
+    // MARK: - Phase 4.6: Export report
+
+    func exportProjectReport(projectId: String) -> String {
+        let tid = threadIdForProject( projectId)
+        let messages = threadMessages[tid] ?? []
+        let epic = currentEpicId ?? ""
+        var report = "# 项目报告: \(projectId)\n\n"
+        report += "## 概览\n"
+        report += "- 对话轮数: \(messages.filter { $0.role == "user" }.count)\n"
+        report += "- Epic: \(epic)\n"
+        report += "- 活跃 Work: \(flowWorks.count)\n\n"
+        report += "## Work 列表\n"
+        for w in flowWorks {
+            report += "- [\(w.displayStatus)] \(w.title) | \(w.displayExecutor)\n"
+        }
+        if !flowWorks.isEmpty {
+            report += "\n## 执行状态\n"
+            let active = flowWorks.filter(\.isActive).count
+            let done = flowWorks.filter(\.isDone).count
+            let failed = flowWorks.filter(\.isFailed).count
+            report += "- 进行中: \(active)\n- 已完成: \(done)\n- 异常: \(failed)\n"
+        }
+        return report
+    }
+
 }

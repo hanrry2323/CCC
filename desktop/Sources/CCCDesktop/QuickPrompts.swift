@@ -1,10 +1,31 @@
 import Foundation
 
-/// Hub 快捷条语义（对齐 / 下一步 / 定稿 / 扫风险）
+/// Hub 快捷条语义（内置 + 自定义）
 enum QuickPrompts {
     static let replyCompact =
         "【对用户回复】中文白话、短句；只谈问题/场景/能力模块/步骤/取舍；" +
         "禁止文件路径、英文符号名、命令行、大段代码；禁止复述工具过程。"
+
+    static let builtinPrompts: [(title: String, prompt: String)] = [
+        ("下一步", nextStep),
+        ("定稿", finalize),
+        ("扫风险", scanRisks),
+        ("对齐基线", alignBaseline),
+    ]
+
+    private static let customKey = "ccc.customPrompts"
+
+    static func loadCustomPrompts() -> [QuickPromptItem] {
+        guard let data = UserDefaults.standard.data(forKey: customKey),
+              let items = try? JSONDecoder().decode([QuickPromptItem].self, from: data)
+        else { return [] }
+        return items
+    }
+
+    static func saveCustomPrompts(_ items: [QuickPromptItem]) {
+        guard let data = try? JSONEncoder().encode(items) else { return }
+        UserDefaults.standard.set(data, forKey: customKey)
+    }
 
     static let nextStep =
         replyCompact +
@@ -31,4 +52,12 @@ enum QuickPrompts {
         "\n\n# 任务：把本会话方案定稿为可投递 CCC 的契约包\n" +
         "只输出一个契约块，含标题、目标、验收（≥1 条可执行）、产线、可行性。\n" +
         "块内允许路径与验收命令。不要前后工程师解说。\n"
+
+    static let alignBaseline =
+        replyCompact +
+        "\n\n# 任务：对齐当前项目基线\n" +
+        "读 CLAUDE.md、README、docs/product/ 了解项目当前状态，然后简短说明：\n" +
+        "1. 项目定位\n" +
+        "2. 当前阶段\n" +
+        "3. 建议下一步\n"
 }

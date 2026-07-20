@@ -1,10 +1,9 @@
 import Foundation
 
-/// 项目即对话：按 `projectId` 的会话状态（磁盘为 SSOT；此为 RAM/契约投影）。
+/// 多会话状态（磁盘为 SSOT；此为 RAM/契约投影）。
 struct ConversationState: Equatable {
     var projectId: String
-    /// 恒为 `{projectId}::main`
-    var conversationId: String
+    var threadId: String
     var messages: [ChatMessage]
     /// 右栏绑定 SSOT（随会话落盘；Hub 空列表不得冲掉）
     var boundEpicId: String?
@@ -12,11 +11,10 @@ struct ConversationState: Equatable {
     /// 单调修订；拒绝更旧写入（预留；落盘时递增）
     var revision: UInt64
 
-    static func empty(projectId: String) -> ConversationState {
-        let cid = LocalSessionStore.conversationThreadId(for: projectId)
-        return ConversationState(
+    static func empty(projectId: String, threadId: String) -> ConversationState {
+        ConversationState(
             projectId: projectId,
-            conversationId: cid,
+            threadId: threadId,
             messages: [],
             boundEpicId: nil,
             flow: nil,
@@ -25,26 +23,28 @@ struct ConversationState: Equatable {
     }
 }
 
-/// 会话读写门面：身份收敛 + 落盘闭包用的 (projectId, conversationId)。
+/// 会话读写门面：按 threadId 读写。
 enum ConversationStore {
-    static func conversationId(for projectId: String) -> String {
-        LocalSessionStore.conversationThreadId(for: projectId)
-    }
-
-    /// 从本机盘加载；无文件则空会话。
-    static func load(projectId: String) -> ConversationState {
-        let cid = conversationId(for: projectId)
-        guard let rec = LocalSessionStore.load(projectId: projectId, threadId: cid) else {
-            return .empty(projectId: projectId)
+    /// 从本机盘加载指定 thread；无文件则空会话。
+    static func load(threadId: String) -> ConversationState {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        guard let rec = LocalSessionStore.load(projectId: pid, threadId: threadId) else {
+            return .empty(projectId: pid, threadId: threadId)
         }
         return ConversationState(
-            projectId: projectId,
-            conversationId: cid,
+            projectId: pid,
+            threadId: threadId,
             messages: rec.messages,
             boundEpicId: rec.flow?.epicId,
             flow: rec.flow,
             revision: rec.revision ?? 0
         )
+    }
+
+    /// 从本机盘加载指定项目的主会话（兼容旧 ::main 迁移）。
+    static func load(projectId: String) -> ConversationState {
+        let tid = LocalSessionStore.migrateLegacyThread(projectId: projectId)
+        return load(threadId: tid)
     }
 
     /// 落盘；`revision` 自动 +1。`allowDowngrade` 透传 LocalSessionStore。
@@ -69,7 +69,7 @@ enum ConversationStore {
         let nextRev = state.revision &+ 1
         LocalSessionStore.saveMessages(
             projectId: state.projectId,
-            threadId: state.conversationId,
+            threadId: state.threadId,
             messages: state.messages,
             title: title,
             flow: flow,
@@ -83,5 +83,30 @@ enum ConversationStore {
     static func hasLocalAuthority(projectId: String) -> Bool {
         let s = load(projectId: projectId)
         return LocalSessionStore.messageScore(s.messages) > 0
+    }
+
+    /// 列出项目的所有会话
+    static func listThreads(projectId: String) -> [DesktopThread] {
+        LocalSessionStore.threadsAsDesktop(projectId: projectId)
+    }
+
+    /// 创建新会话
+    @discardableResult
+    static func createThread(projectId: String, title: String = "新对话") -> String {
+        let tid = LocalSessionStore.createThreadId(projectId: projectId)
+        LocalSessionStore.saveMessages(
+            projectId: projectId,
+            threadId: tid,
+            messages: [],
+            title: title,
+            allowDowngrade: true
+        )
+        return tid
+    }
+
+    /// 删除会话（存档到 _archive）
+    static func archiveThread(threadId: String) {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        LocalSessionStore.archiveThread(projectId: pid, threadId: threadId)
     }
 }

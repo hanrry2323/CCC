@@ -144,7 +144,19 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             }
             label.attributedText = out
 
-            var tip = "今日总量 · +后为近一轮窗口新增（无新增显示 ·）"
+            // 顶栏数字 = 实际上游主 tier（一请求只计一次）；勿把 flash/code 当成两条独立对话
+            var tip = "实际消耗（按上游主 tier，一请求只计一次）· +为近一轮新增（无则 ·）"
+            if let req = model.routerUsage?.requested {
+                let rf = req.flash?.requests ?? 0
+                let rc = req.code?.requests ?? 0
+                let rp = req.pro?.requests ?? 0
+                tip += " · 请求模型 flash \(rf) / code \(rc) / pro \(rp)"
+                let sf = model.routerRequestCount("flash")
+                let sc = model.routerRequestCount("code")
+                if rf > 0, sc > 0, sf < rf {
+                    tip += " · 有 flash 请求落到 code 上游（配额算 code）"
+                }
+            }
             if let at = model.routerUsageFetchedAt {
                 let fmt = DateFormatter()
                 fmt.dateFormat = "HH:mm:ss"

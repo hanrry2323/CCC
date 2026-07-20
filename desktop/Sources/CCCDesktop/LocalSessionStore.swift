@@ -23,9 +23,25 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("pending-sync.json")
     }
 
-    /// 单对话模型：每项目恰好一个会话，thread id = "<projectId>::main"（全局唯一）
-    static func conversationThreadId(for projectId: String) -> String {
-        "\(projectId)::main"
+    /// 创建新会话：生成唯一 thread id
+    static func createThreadId(projectId: String) -> String {
+        "\(projectId)::\(UUID().uuidString.prefix(8))"
+    }
+
+    /// 从 threadId 提取 projectId
+    static func projectId(fromThreadId threadId: String) -> String {
+        if let idx = threadId.firstIndex(of: ":") {
+            return String(threadId[..<idx])
+        }
+        return threadId
+    }
+
+    /// 兼容旧版单对话迁移：迁移旧 ::main 文件到新 id 体系
+    static func migrateLegacyThread(projectId: String) -> String {
+        let legacyId = "\(projectId)::main"
+        let url = sessionURL(projectId: projectId, threadId: legacyId)
+        guard fm.fileExists(atPath: url.path) else { return legacyId }
+        return legacyId
     }
 
     // MARK: - Session record
@@ -152,7 +168,9 @@ enum LocalSessionStore {
                     toolsFinished: $0.toolsFinished,
                     kind: $0.kind,
                     summaryRounds: $0.summaryRounds,
-                    transientNote: $0.transientNote
+                    transientNote: $0.transientNote,
+                    edited: $0.edited,
+                    replyTo: $0.replyTo
                 )
             }
         let nextRev = revision ?? ((existing?.revision ?? 0) &+ 1)
@@ -190,9 +208,65 @@ enum LocalSessionStore {
         try? fm.removeItem(at: sessionURL(projectId: projectId, threadId: threadId))
     }
 
-    /// 重置项目的单一会话：删盘 + 清索引；调用方负责通知 sidecar drop slot
+    /// 重置项目所有会话：删盘 + 清索引；调用方负责通知 sidecar drop slot
     static func reset(projectId: String) {
-        delete(projectId: projectId, threadId: conversationThreadId(for: projectId))
+        let idx = loadIndex(projectId: projectId)
+        for entry in idx {
+            delete(projectId: projectId, threadId: entry.thread_id)
+        }
+    }
+
+    static func archiveDir(projectId: String) -> URL {
+        projectDir(projectId).appendingPathComponent("_archive", isDirectory: true)
+    }
+
+    static func archiveThread(projectId: String, threadId: String) {
+        let src = sessionURL(projectId: projectId, threadId: threadId)
+        guard fm.fileExists(atPath: src.path) else { return }
+        let dst = archiveDir(projectId: projectId).appendingPathComponent("\(threadId).json")
+        ensureDir(archiveDir(projectId: projectId))
+        try? fm.moveItem(at: src, to: dst)
+        var idx = loadIndex(projectId: projectId)
+        idx.removeAll { $0.thread_id == threadId }
+        writeIndex(projectId: projectId, entries: idx)
+    }
+
+    struct SearchResult: Identifiable, Hashable {
+        var id: String { "\(threadId)-\(messageId)" }
+        let threadId: String
+        let messageId: String
+        let role: String
+        let content: String
+        let title: String?
+        let updatedAt: String?
+    }
+
+    static func searchMessages(projectId: String, query: String) -> [SearchResult] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let q = query.lowercased()
+        let idx = loadIndex(projectId: projectId)
+        var results: [SearchResult] = []
+        for entry in idx {
+            let url = sessionURL(projectId: projectId, threadId: entry.thread_id)
+            guard let data = try? Data(contentsOf: url),
+                  let record = try? JSONDecoder().decode(Record.self, from: data)
+            else { continue }
+            for msg in record.messages {
+                guard msg.content.lowercased().contains(q) else { continue }
+                let preview = msg.content.count > 120
+                    ? String(msg.content.prefix(120)) + "…"
+                    : msg.content
+                results.append(SearchResult(
+                    threadId: entry.thread_id,
+                    messageId: msg.id.uuidString,
+                    role: msg.role,
+                    content: preview,
+                    title: record.title,
+                    updatedAt: record.updated_at
+                ))
+            }
+        }
+        return results.sorted { ($0.updatedAt ?? "") > ($1.updatedAt ?? "") }
     }
 
     static func rename(projectId: String, threadId: String, title: String) {

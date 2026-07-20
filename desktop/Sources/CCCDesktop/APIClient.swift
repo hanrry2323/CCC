@@ -280,12 +280,35 @@ actor APIClient {
     }
 
     /// POST/PUT 不解 JSON body，只回状态码（用于 move/hide/reopen 等写动作）
-    private func sendVoid(_ req: URLRequest) async throws -> (Data, Int) {
+    func sendVoid(_ req: URLRequest) async throws -> (Data, Int) {
         try await HubRequestGate.shared.withPermit {
             let (data, resp) = try await self.session.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             return (data, code)
         }
+    }
+
+    /// 通用 GET（返回 Data）
+    func genericGET(_ path: String) async throws -> Data {
+        let (data, _) = try await sendVoid(authedRequest(path))
+        return data
+    }
+
+    /// 通用 POST（返回 Data + statusCode）
+    func genericPOST(_ path: String, body: Data? = nil) async throws -> (Data, Int) {
+        try await sendVoid(authedRequest(path, method: "POST", body: body))
+    }
+
+    /// 通用 DELETE（返回 statusCode）
+    @discardableResult
+    func genericDELETE(_ path: String) async throws -> Int {
+        let (_, code) = try await sendVoid(authedRequest(path, method: "DELETE"))
+        return code
+    }
+
+    /// 通用 PATCH（返回 Data + statusCode）
+    func genericPATCH(_ path: String, body: Data? = nil) async throws -> (Data, Int) {
+        try await sendVoid(authedRequest(path, method: "PATCH", body: body))
     }
 
     struct ProjectsResp: Decodable {

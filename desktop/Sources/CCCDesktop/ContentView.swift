@@ -59,6 +59,14 @@ struct ContentView: View {
             MessagePreviewSheet(markdown: model.previewMarkdown ?? "")
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.isManualEpicPresented) {
+            ManualEpicSheet()
+                .environmentObject(model)
+        }
+        .sheet(isPresented: $model.isTemplatePickerPresented) {
+            TemplatePickerSheet()
+                .environmentObject(model)
+        }
         .animation(.easeOut(duration: 0.18), value: model.toast)
         // 纯文字嵌进顶栏右侧；依赖 model.routerUsageTick 触发 updateNSView
         .background(
@@ -117,6 +125,52 @@ struct CodexSidebar: View {
 
             divider
 
+            // Phase 1.2: Search
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                    TextField("搜索消息…", text: $model.searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(CCCTheme.caption)
+                        .onSubmit {
+                            model.performSearch(query: model.searchQuery)
+                        }
+                    if !model.searchQuery.isEmpty {
+                        Button {
+                            model.searchQuery = ""
+                            model.searchResults = []
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(CCCTheme.faint)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(CCCTheme.chatBg)
+                .cornerRadius(6)
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+
+                if !model.searchResults.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            Text("找到 \(model.searchResults.count) 条")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.faint)
+                                .padding(.leading, 14)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                }
+            }
+
+            divider
+
             VStack(spacing: 1) {
                 SoftRow(title: "用户", icon: "person") {
                     model.showToast("账号功能预留，尚未接入")
@@ -148,11 +202,74 @@ struct CodexSidebar: View {
                         project: project,
                         isSelected: project.id == window.projectId
                     )
+                    if project.id == window.projectId {
+                        threadList(for: project.id)
+                    }
                 }
             }
             .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func threadList(for projectId: String) -> some View {
+        let threads = model.threads.filter { LocalSessionStore.projectId(fromThreadId: $0.thread_id) == projectId }
+        if !threads.isEmpty {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text("会话")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
+                    Spacer()
+                    Button {
+                        Task { await model.createNewThread(projectId: projectId) }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(CCCTheme.accent)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                ForEach(threads.prefix(10)) { thread in
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 9))
+                            .foregroundStyle(CCCTheme.faint)
+                            .frame(width: 12)
+                        Text(thread.title ?? thread.thread_id.suffix(12).description)
+                            .font(CCCTheme.caption)
+                            .lineLimit(1)
+                        Spacer()
+                        if thread.thread_id == window.threadId {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8))
+                                .foregroundStyle(CCCTheme.accent)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        window.threadId = thread.thread_id
+                        model.selectedThreadId = thread.thread_id
+                        Task { await model.loadConversation(threadId: thread.thread_id) }
+                    }
+                    .contextMenu {
+                        Button("重命名") {
+                            model.renameThreadId = thread.thread_id
+                            model.renameDraft = thread.title ?? ""
+                        }
+                        Button("存档", role: .destructive) {
+                            Task { await model.archiveThread(threadId: thread.thread_id) }
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 4)
         }
     }
 
@@ -219,7 +336,7 @@ struct CodexChatPaneBody: View {
     }
 
     private var paneThreadId: String? {
-        paneProjectId.map { LocalSessionStore.conversationThreadId(for: $0) }
+        window.threadId
     }
 
     /// 本窗消息：只绑 window.projectId 对应线程；观察 threadRevision 接收后台流式
@@ -363,6 +480,15 @@ struct CodexChatPaneBody: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(CCCTheme.accent)
             }
+            if !displayMessages.isEmpty, model.sessionTokens > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "bolt")
+                        .font(.system(size: 8))
+                    Text("\(model.sessionTokens) tok")
+                        .font(.system(size: 10))
+                }
+                .foregroundStyle(CCCTheme.faint)
+            }
             Button("导出") { model.exportThreadToPasteboard(threadId: paneThreadId) }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
@@ -471,6 +597,7 @@ struct CodexChatPaneBody: View {
                 .onChange(of: displayMessages.count) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.last?.content) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.last?.toolSteps.count) { _ in scroll(proxy) }
+                // 仅消息修订触发滚动；勿绑 flow 修订（已从 threadRevision 拆出）
                 .onChange(of: model.threadRevision[paneThreadId ?? ""]) { _ in scroll(proxy) }
                 .onChange(of: model.selectedThreadId) { _ in lastScrollTargetId = "" }
             }
@@ -482,14 +609,19 @@ struct CodexChatPaneBody: View {
         let lastId = "\(paneThreadId ?? "")-\(last.id)"
         // 同目标跳过，避免每个 delta 反复 withAnimation + scrollTo
         guard lastId != lastScrollTargetId || displayMessages.last?.isStreaming == true else { return }
-        // streaming 时节流：仅当内容长度跨过 80 字边界或目标变化才滚
+        // streaming 时节流：仅当内容长度跨过 120 字边界或目标变化才滚
         if last.isStreaming, lastId == lastScrollTargetId {
             let n = last.content.count
-            if n > 0, n % 80 != 0 { return }
+            if n > 0, n % 120 != 0 { return }
         }
         lastScrollTargetId = lastId
-        withAnimation(.easeOut(duration: 0.2)) {
+        if last.isStreaming {
+            // 流式中禁用动画，避免气泡跟着 easeOut 抖
             proxy.scrollTo(lastId, anchor: .center)
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(lastId, anchor: .center)
+            }
         }
     }
 
@@ -606,6 +738,13 @@ struct CodexChatPaneBody: View {
                 quickChip("扫风险") {
                     model.applyQuickPrompt(QuickPrompts.scanRisks, uiLabel: "扫风险", projectId: paneProjectId)
                 }
+                if !model.customPrompts.isEmpty {
+                    ForEach(model.customPrompts, id: \.title) { item in
+                        quickChip(item.title) {
+                            model.applyQuickPrompt(item.prompt, uiLabel: item.title, projectId: paneProjectId)
+                        }
+                    }
+                }
             }
         }
         .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -648,7 +787,10 @@ struct CodexChatPaneBody: View {
 
 struct CodexMessageRow: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
     let message: ChatMessage
+    @State private var isEditing = false
+    @State private var editText: String = ""
 
     var body: some View {
         if message.kind == "summary" {
@@ -687,19 +829,63 @@ struct CodexMessageRow: View {
         return VStack(alignment: .trailing, spacing: 4) {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 80)
-                Text(body)
-                    .font(CCCTheme.body)
-                    .foregroundStyle(CCCTheme.ink)
-                    .textSelection(.enabled)
+                if isEditing {
+                    VStack(spacing: 6) {
+                        TextEditor(text: $editText)
+                            .font(CCCTheme.body)
+                            .frame(minHeight: 60)
+                            .scrollContentBackground(.hidden)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(CCCTheme.surface)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(CCCTheme.border, lineWidth: 1)
+                            )
+                        HStack(spacing: 8) {
+                            Button("取消") {
+                                isEditing = false
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(CCCTheme.faint)
+                            Button("保存") {
+                                let tid = window.threadId ?? ""
+                                model.updateMessage(threadId: tid, messageId: message.id, newContent: editText)
+                                isEditing = false
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CCCTheme.accent)
+                            .controlSize(.small)
+                        }
+                    }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(CCCTheme.bubbleUser)
                     )
+                } else {
+                    Text(body)
+                        .font(CCCTheme.body)
+                        .foregroundStyle(CCCTheme.ink)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(CCCTheme.bubbleUser)
+                        )
+                }
             }
             if showActions {
-                MessageActionBar(role: "user", content: body, message: message)
+                MessageActionBar(role: "user", content: body, message: message,
+                                 onEdit: {
+                    editText = body
+                    isEditing = true
+                })
                     .padding(.trailing, 4)
             }
         }
@@ -726,7 +912,18 @@ struct CodexMessageRow: View {
                     .padding(.horizontal, 4)
             }
             if !body.isEmpty && body != "…" {
-                MarkdownText(source: body)
+                Group {
+                    if message.isStreaming {
+                        // 流式中用纯文本：避免 Markdown 块结构每 token 重组导致闪烁/跳动
+                        Text(body)
+                            .font(CCCTheme.body)
+                            .foregroundStyle(CCCTheme.ink)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        MarkdownText(source: body)
+                    }
+                }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -734,9 +931,8 @@ struct CodexMessageRow: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(CCCTheme.bubbleAssistant)
                     )
-                    // 末段流式收尾：isStreaming true→false 时淡入上移，去「弹出」
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .animation(.easeOut(duration: 0.25), value: message.isStreaming)
+                    // 末段流式收尾：isStreaming true→false 时淡入，去「弹出」
+                    .animation(.easeOut(duration: 0.18), value: message.isStreaming)
             }
             if showActions {
                 MessageActionBar(role: "assistant", content: body, message: message)
@@ -753,12 +949,19 @@ struct MessageActionBar: View {
     let role: String
     let content: String
     let message: ChatMessage
+    var onEdit: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
             actionBtn("复制") { model.copyMessage(content) }
             if role == "user" {
-                actionBtn("编辑") { model.editUserMessage(message, projectId: window.projectId) }
+                actionBtn("编辑") {
+                    if let onEdit {
+                        onEdit()
+                    } else {
+                        model.editUserMessage(message, projectId: window.projectId)
+                    }
+                }
             } else {
                 actionBtn("重新生成") {
                     model.regenerateAssistant(after: message, projectId: window.projectId)
@@ -819,9 +1022,9 @@ struct FlowRail: View {
     private var paneThreadId: String? { window.threadId }
 
     private var snap: FlowThreadSnapshot? {
-        // 订阅 threadRevision，后台写 threadFlow 时刷新
+        // 订阅 flow 修订号（与消息 threadRevision 分离，避免右栏 SSE 拖聊天重滚）
         if let tid = paneThreadId {
-            _ = model.threadRevision[tid]
+            _ = model.threadFlowRevision[tid]
         }
         return model.flowSnapshot(for: paneThreadId)
     }
@@ -1077,5 +1280,153 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 460, height: 340)
+    }
+}
+
+// MARK: - Manual Epic Creation Sheet (Phase 2.1)
+
+struct ManualEpicSheet: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("创建新任务")
+                .font(.headline)
+            TextField("标题", text: $model.manualEpicForm.title)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
+            TextEditor(text: $model.manualEpicForm.goal)
+                .font(.system(size: 13))
+                .frame(height: 60)
+                .scrollContentBackground(.hidden)
+                .overlay(
+                    Group {
+                        if model.manualEpicForm.goal.isEmpty {
+                            Text("目标")
+                                .foregroundStyle(CCCTheme.faint)
+                                .padding(6)
+                                .allowsHitTesting(false)
+                        }
+                    },
+                    alignment: .topLeading
+                )
+            TextEditor(text: $model.manualEpicForm.acceptance)
+                .font(.system(size: 13))
+                .frame(height: 80)
+                .scrollContentBackground(.hidden)
+                .overlay(
+                    Group {
+                        if model.manualEpicForm.acceptance.isEmpty {
+                            Text("验收条件（每行一条）")
+                                .foregroundStyle(CCCTheme.faint)
+                                .padding(6)
+                                .allowsHitTesting(false)
+                        }
+                    },
+                    alignment: .topLeading
+                )
+            HStack(spacing: 12) {
+                Picker("产线", selection: $model.manualEpicForm.pipeline) {
+                    Text("dev").tag("dev")
+                    Text("product").tag("product")
+                    Text("ops").tag("ops")
+                }
+                .labelsHidden()
+                Picker("复杂度", selection: $model.manualEpicForm.complexity) {
+                    Text("低").tag("low")
+                    Text("中").tag("medium")
+                    Text("高").tag("high")
+                }
+                .labelsHidden()
+            }
+            HStack(spacing: 12) {
+                Button("取消") {
+                    model.isManualEpicPresented = false
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(CCCTheme.faint)
+                Button("从模板…") {
+                    model.loadTemplates()
+                    model.isTemplatePickerPresented = true
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(CCCTheme.accent)
+                Button("创建") {
+                    guard let pid = window.projectId else { return }
+                    Task { await model.createManualEpic(projectId: pid, form: model.manualEpicForm) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(CCCTheme.accent)
+                .disabled(model.busy)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+}
+
+// MARK: - Template Picker Sheet (Phase 2.2)
+
+struct TemplatePickerSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("任务模板")
+                .font(.headline)
+            if model.templates.isEmpty {
+                Text("暂无模板。可在转任务表单中保存当前方案为模板。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.faint)
+                    .padding()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(model.templates) { template in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(template.title)
+                                        .font(.system(size: 12, weight: .medium))
+                                    Text(template.goal.prefix(60))
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(CCCTheme.faint)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button("应用") {
+                                    model.applyTemplate(template)
+                                    dismiss()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(CCCTheme.accent)
+                                .controlSize(.small)
+                                Button {
+                                    model.deleteTemplate(title: template.title)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(CCCTheme.nodeFail)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(CCCTheme.hover.opacity(0.5))
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding(8)
+                }
+            }
+            Button("关闭") {
+                dismiss()
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CCCTheme.faint)
+        }
+        .padding(20)
+        .frame(width: 400, height: 360)
     }
 }

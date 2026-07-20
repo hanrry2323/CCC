@@ -216,6 +216,21 @@ def _empty_router_tiers() -> dict[str, dict[str, int]]:
     }
 
 
+def _parse_tier_counts(tiers_in: Any) -> dict[str, dict[str, int]]:
+    tiers = _empty_router_tiers()
+    if not isinstance(tiers_in, dict):
+        return tiers
+    for name in ("flash", "code", "pro"):
+        row = tiers_in.get(name) or {}
+        if not isinstance(row, dict):
+            row = {}
+        tiers[name] = {
+            "requests_today": int(row.get("requests_today") or 0),
+            "tokens_today": int(row.get("tokens_today") or 0),
+        }
+    return tiers
+
+
 def fetch_router_usage(
     *,
     host: str = "127.0.0.1",
@@ -225,6 +240,8 @@ def fetch_router_usage(
 ) -> dict:
     """Proxy ai-loop-router GET /admin/stats → flash/code/pro requests_today.
 
+    `tiers` = served primary upstream.tier (one request counted once).
+    `requested` = client model name breakdown (when router provides it).
     Fail-soft: unreachable router returns zeros (Desktop shows red 0).
     """
     cache_key = f"router_usage:{host}:{port}"
@@ -237,6 +254,8 @@ def fetch_router_usage(
     out: dict[str, Any] = {
         "ok": False,
         "tiers": _empty_router_tiers(),
+        "requested": _empty_router_tiers(),
+        "attribution": None,
         "source": source,
         "error": None,
     }
@@ -246,18 +265,14 @@ def fetch_router_usage(
             raw = resp.read().decode("utf-8", errors="replace")
         data = json.loads(raw) if raw else {}
         tiers_in = data.get("tiers") if isinstance(data, dict) else None
-        tiers = _empty_router_tiers()
-        if isinstance(tiers_in, dict):
-            for name in ("flash", "code", "pro"):
-                row = tiers_in.get(name) or {}
-                if not isinstance(row, dict):
-                    row = {}
-                tiers[name] = {
-                    "requests_today": int(row.get("requests_today") or 0),
-                    "tokens_today": int(row.get("tokens_today") or 0),
-                }
+        out["tiers"] = _parse_tier_counts(tiers_in)
+        req_in = data.get("requested") if isinstance(data, dict) else None
+        if isinstance(req_in, dict):
+            out["requested"] = _parse_tier_counts(req_in)
+        attr = data.get("attribution") if isinstance(data, dict) else None
+        if isinstance(attr, str) and attr.strip():
+            out["attribution"] = attr.strip()[:64]
         out["ok"] = True
-        out["tiers"] = tiers
         total = data.get("total") if isinstance(data, dict) else None
         if isinstance(total, dict):
             out["total"] = {
