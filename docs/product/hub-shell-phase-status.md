@@ -10,5 +10,5 @@
 | Phase3 promote/skill | green | product skill 反过拆；fanout prompt 含 complexity；oversplit 测绿 | （本提交） |
 | Phase4 inbox 采纳 | green | inbox/ + proposals API + Ops 采纳入口；smoke-inbox-adopt | 5b6eba4 |
 | Phase5a demo→released | green | smoke-ccc-demo-released；无人值守至 user_stage=done | c307d9d |
-| Phase5b Hub 断线/outbox | green | smoke-hub-outage-outbox；sidecar 仍活；outbox flush | （本提交） |
-| Phase6 真实业务仓 | pending | — | — |
+| Phase5b Hub 断线/outbox | green | smoke-hub-outage-outbox；sidecar 仍活；outbox flush | 19739a1 |
+| Phase6 真实业务仓 | green | qb `phase6-qb-1784559818` → released；见 phase6-qb.md | （本提交） |

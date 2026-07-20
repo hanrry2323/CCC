@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hub-Shell Phase6**：真实仓 `qb` 一笔 small（flow-smoke）无人值守至 released；记录 [`docs/product/hub-shell-phase6-qb.md`](docs/product/hub-shell-phase6-qb.md)。
 - **Hub-Shell Phase5b**：`scripts/smoke-hub-outage-outbox.sh` — Hub unload 时 sidecar 仍可探活；本机 outbox 排队；恢复后 flush transfer。
 - **Hub-Shell Phase5a**：`scripts/smoke-ccc-demo-released.sh` — ccc-demo transfer→无人值守至 released/`user_stage=done`。
 - **Desktop 对话身份/心智收口**：SSOT [`docs/product/desktop-agent-identity.md`](docs/product/desktop-agent-identity.md)；`hub_voice` 改标 Desktop 对话面（非 Hub 聊天）；state.md 分流 Desktop vs Engine；快捷条/基线/discuss 纪律对齐意图门+进队自动。

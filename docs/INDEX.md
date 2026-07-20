@@ -28,6 +28,8 @@
 | [`product/transfer-gate.md`](product/transfer-gate.md) | 定稿 → transfer 字段 |
 | [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
 | [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |
+| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板 |
+| [`product/hub-shell-phase6-qb.md`](product/hub-shell-phase6-qb.md) | Phase6 真实仓 qb 绿通记录 |
 | [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | sidecar / loop-code 热路径 |
 | [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
 | [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
