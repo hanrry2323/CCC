@@ -79,8 +79,20 @@ GLOBAL_OPENCODE_COUNT = OpenCodeCountProxy()
 
 
 def try_acquire_opencode_slot(task_key: str) -> bool:
-    from board.slots import try_acquire
+    """占全局槽；同 workspace 最多 1 路 opencode（防同仓 database is locked）。
+
+    task_key 约定：``{workspace_resolved}|{task_id}``（见 ccc-engine._task_key）。
+    """
+    from board.slots import snapshot, try_acquire
+
     OpenCodeCountProxy.invalidate()  # 占槽后立即失效缓存
+    # 同仓互斥：key 前缀为 workspace path
+    if "|" in task_key:
+        ws_prefix = task_key.rsplit("|", 1)[0] + "|"
+        snap = snapshot(opencode_slots_path())
+        for held in (snap.get("tasks") or {}):
+            if held.startswith(ws_prefix) and held != task_key:
+                return False
     return try_acquire(
         task_key,
         max_slots=_GLOBAL_OPENCODE_MAX,

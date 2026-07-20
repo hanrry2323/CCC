@@ -163,19 +163,56 @@ def audit_isolation_after(ws: Path, task_id: str) -> tuple[bool, list[str]]:
                 f"CROSS-REPO POLLUTION: task_id={task_id} committed in "
                 f"{repo_s} ({hits[0][:12]}…) — must only commit in {target}"
             )
-        # 2) HEAD 相对基线变化（且非空基线）→ 硬失败（防无 task_id 的脏写）
+        # 2) 编排仓 HEAD 漂移：仅当 pre..now 的 commit 消息含本 task_id 才硬拒。
+        # 平台并行改 CCC（deploy/agent）很常见；一律硬拒会误杀干净业务卡
+        # （2026-07-20 clawmed docs-templates-w4）。
         pre = baseline_heads.get(repo_s, "")
         now = git_head(repo)
-        if pre and now and pre != now:
-            # 若变化的 commit 消息不含 task_id，仍可能是并发其他任务；
-            # 对编排仓 CCC 一律硬拒；对其它仓仅当 grep 命中才已在上面报错。
-            if repo.resolve() == CCC_ORCH_HOME.resolve():
+        if (
+            pre
+            and now
+            and pre != now
+            and repo.resolve() == CCC_ORCH_HOME.resolve()
+        ):
+            if _range_mentions_task(repo, pre, now, task_id):
                 errors.append(
-                    f"CROSS-REPO POLLUTION: CCC orch HEAD moved "
-                    f"{pre[:12]}→{now[:12]} during task {task_id}"
+                    f"CROSS-REPO POLLUTION: CCC orch commits mention "
+                    f"task_id={task_id} ({pre[:12]}→{now[:12]})"
+                )
+            else:
+                _log.warning(
+                    "orch HEAD moved during %s %s→%s (ignored: no task_id in range)",
+                    task_id,
+                    pre[:12],
+                    now[:12],
                 )
 
     return (len(errors) == 0), errors
+
+
+def _range_mentions_task(repo: Path, pre: str, now: str, task_id: str) -> bool:
+    """True if any commit subject/body between pre..now contains task_id."""
+    if not task_id or not pre or not now:
+        return False
+    try:
+        r = subprocess.run(
+            [
+                "git",
+                "log",
+                f"{pre}..{now}",
+                "--format=%s%n%b",
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode != 0:
+            # 范围无效时退回全仓 grep（保守）
+            return bool(git_log_grep(repo, task_id, max_count=1))
+        return task_id in (r.stdout or "")
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def cwd_hardgate_block(workspace: Path) -> str:

@@ -69,7 +69,8 @@ def build_dev_phase_prompt(
         f"6. **禁止**向其他 git 仓库（含 CCC 编排仓）写文件或 commit\n"
         f"7. 接力只读 `{ws}/.ccc/state.md` 与 `{ws}/.ccc/plans/{task_id}.plan.md`；"
         f"**禁止** `~/.ccc/`\n"
-        f"8. report 末尾写 `ALL SELF-CHECKS PASSED`（门禁不代写；缺则 FAIL）\n"
+        f"8. report 末尾必须单独一行写死字面量 `ALL SELF-CHECKS PASSED`"
+        f"（门禁不代写、不接受同义改写；缺则 FAIL 并 abnormal）\n"
     )
 
 

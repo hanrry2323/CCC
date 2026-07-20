@@ -1335,7 +1335,7 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
       - in_progress 列 task: 调 dev_role_check_complete 恢复 phase 执行状态
       - running → 登记 active_tasks（满槽则只告警 + pending，不超 MAX_CONCURRENT）
       - failed/not running → 不立即 relaunch，写入 pending_relaunch
-      - testing 列 task: 调 reviewer_role + tester_role 恢复验收流程
+      - testing 列 task: 调 `_run_reviewer_tester_gate`（small 跳过 reviewer/tester）
       - 每恢复一个 task 间隔 5s，避免并发重启风暴
       - board 为空时静默跳过，无日志噪声
     """
@@ -1422,14 +1422,12 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
         tid = task["id"]
         engine_log(f"[recover] [{label}] Recovered task {tid} at phase reviewing")
         try:
-            try:
-                reviewer_role()
-            except Exception as exc:
-                engine_log(f"[recover] [{label}] {tid} reviewer 异常: {exc}")
-            try:
-                tester_role()
-            except Exception as exc:
-                engine_log(f"[recover] [{label}] {tid} tester 异常: {exc}")
+            # 与正常 testing 门禁一致：small 跳过 reviewer/tester
+            ok = _run_reviewer_tester_gate(ws, tid)
+            engine_log(
+                f"[recover] [{label}] {tid} testing gate → "
+                f"{'verified' if ok else 'pending/fail'}"
+            )
         except Exception as exc:
             engine_log(f"[recover] [{label}] {tid} testing 恢复异常: {exc}")
 
@@ -2264,10 +2262,19 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         tkey = _task_key(ws, tid)
+        # 同仓已有在跑的 opencode → 等下一 tick（避免 database is locked）
+        if any(
+            Path(info.get("workspace") or "").resolve() == ws.resolve()
+            for info in active_tasks.values()
+        ):
+            engine_log(
+                f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
+            )
+            continue
         if not _try_acquire_opencode_slot(tkey):
             engine_log(
-                f"[engine] 全局 opencode 已达上限 "
-                f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
+                f"[engine] opencode 槽忙（全局 "
+                f"{_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX} 或同仓互斥），等待"
             )
             continue
         launch_r = dev_role_launch(tid)

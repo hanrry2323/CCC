@@ -61,30 +61,34 @@ def test_require_cwd_rejects_empty():
         require_cwd("")
 
 
+def _init_repo(d: Path) -> None:
+    d.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=d, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"],
+        cwd=d,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"],
+        cwd=d,
+        check=True,
+        capture_output=True,
+    )
+    (d / "f.txt").write_text("x")
+    subprocess.run(["git", "add", "f.txt"], cwd=d, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=d, check=True, capture_output=True
+    )
+
+
 def test_isolation_detects_foreign_task_commit(tmp_path):
     """目标仓 A；在仓 B 留下含 task_id 的 commit → audit 失败。"""
     a = tmp_path / "target"
     b = tmp_path / "foreign"
     for d in (a, b):
-        d.mkdir()
-        subprocess.run(["git", "init"], cwd=d, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "config", "user.email", "t@t.com"],
-            cwd=d,
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "t"],
-            cwd=d,
-            check=True,
-            capture_output=True,
-        )
-        (d / "f.txt").write_text("x")
-        subprocess.run(["git", "add", "f.txt"], cwd=d, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "init"], cwd=d, check=True, capture_output=True
-        )
+        _init_repo(d)
 
     import _workspace_isolation as iso
 
@@ -103,6 +107,68 @@ def test_isolation_detects_foreign_task_commit(tmp_path):
             capture_output=True,
         )
         ok, errs = audit_isolation_after(a, "task-pollute-1")
+        assert not ok
+        assert any("CROSS-REPO POLLUTION" in e for e in errs)
+    finally:
+        iso.load_registered_workspaces = orig_load
+        iso.CCC_ORCH_HOME = orig_orch
+
+
+def test_orch_head_drift_without_task_id_is_ignored(tmp_path):
+    """编排仓 HEAD 被无关提交推动 → 不误杀业务卡。"""
+    a = tmp_path / "target"
+    orch = tmp_path / "orch"
+    for d in (a, orch):
+        _init_repo(d)
+
+    import _workspace_isolation as iso
+
+    orig_load = iso.load_registered_workspaces
+    orig_orch = iso.CCC_ORCH_HOME
+    iso.load_registered_workspaces = lambda: [a.resolve(), orch.resolve()]
+    iso.CCC_ORCH_HOME = orch.resolve()
+    try:
+        capture_isolation_baseline(a, "biz-task-9")
+        (orch / "plat.txt").write_text("platform")
+        subprocess.run(["git", "add", "plat.txt"], cwd=orch, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "chore: unrelated platform bump"],
+            cwd=orch,
+            check=True,
+            capture_output=True,
+        )
+        ok, errs = audit_isolation_after(a, "biz-task-9")
+        assert ok, errs
+        assert not errs
+    finally:
+        iso.load_registered_workspaces = orig_load
+        iso.CCC_ORCH_HOME = orig_orch
+
+
+def test_orch_head_drift_with_task_id_still_fails(tmp_path):
+    """编排仓 pre..now 出现本 task_id → 仍硬拒。"""
+    a = tmp_path / "target"
+    orch = tmp_path / "orch"
+    for d in (a, orch):
+        _init_repo(d)
+
+    import _workspace_isolation as iso
+
+    orig_load = iso.load_registered_workspaces
+    orig_orch = iso.CCC_ORCH_HOME
+    iso.load_registered_workspaces = lambda: [a.resolve(), orch.resolve()]
+    iso.CCC_ORCH_HOME = orch.resolve()
+    try:
+        capture_isolation_baseline(a, "biz-task-9")
+        (orch / "leak.txt").write_text("leak")
+        subprocess.run(["git", "add", "leak.txt"], cwd=orch, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fix: biz-task-9 leaked into orch"],
+            cwd=orch,
+            check=True,
+            capture_output=True,
+        )
+        ok, errs = audit_isolation_after(a, "biz-task-9")
         assert not ok
         assert any("CROSS-REPO POLLUTION" in e for e in errs)
     finally:

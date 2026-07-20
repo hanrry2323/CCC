@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。
+- **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
+- **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。
+- **testing 恢复绕过 small 跳过**：Engine recover testing 改为走 `_run_reviewer_tester_gate`（与正常门禁一致，不再硬拉 reviewer）。
 - **多会话名存实亡**：发送/暖机/转任务/快捷操作跟 `window.threadId`，不再强制打回 `{project}::main`；新建会话返回并绑定本窗；窗级线程焦点供 warm。
 - **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` 主动 `session/drop`；发送前不再与 chat 抢 warm 锁。
 - **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
