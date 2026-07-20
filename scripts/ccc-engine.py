@@ -264,24 +264,39 @@ def _is_upstream_healthy() -> bool:
     err_msg = ""
     # 仅做 TCP/HTTP 可达性探测，不发带假 key 的业务请求
     try:
+        import ssl
         import urllib.error
         import urllib.request
 
-        req = urllib.request.Request(
-            messages_url,
-            method="GET",
-            headers={"User-Agent": "ccc-engine-health"},
-        )
-        try:
-            resp = urllib.request.urlopen(req, timeout=5)
-            status_code = getattr(resp, "status", None) or resp.getcode()
-        except urllib.error.HTTPError as http_exc:
-            # 4xx（如 401/405）仍说明中转站在线
-            status_code = http_exc.code
-            err_msg = str(http_exc.reason or http_exc)[:120]
-        except urllib.error.URLError as url_exc:
-            err_msg = str(url_exc.reason or url_exc)[:120]
-            status_code = None
+        def _probe(ctx: ssl.SSLContext | None = None) -> tuple[int | None, str]:
+            req = urllib.request.Request(
+                messages_url,
+                method="GET",
+                headers={"User-Agent": "ccc-engine-health"},
+            )
+            try:
+                # urlopen context= 仅 https 生效
+                kwargs: dict = {"timeout": 5}
+                if ctx is not None and messages_url.startswith("https://"):
+                    kwargs["context"] = ctx
+                resp = urllib.request.urlopen(req, **kwargs)
+                code = getattr(resp, "status", None) or resp.getcode()
+                return (int(code) if code is not None else None), ""
+            except urllib.error.HTTPError as http_exc:
+                # 4xx（如 401/405）仍说明上游在线
+                return http_exc.code, str(http_exc.reason or http_exc)[:120]
+            except urllib.error.URLError as url_exc:
+                return None, str(url_exc.reason or url_exc)[:160]
+
+        status_code, err_msg = _probe()
+        # 本机 CA/中间人证书链常导致 verify 失败；健康检查只关心可达性
+        if status_code is None and "CERTIFICATE" in (err_msg or "").upper():
+            try:
+                status_code, err_msg2 = _probe(ssl._create_unverified_context())
+                if status_code is not None:
+                    err_msg = f"tls_insecure_ok:{err_msg2 or err_msg}"[:160]
+            except Exception as exc:
+                err_msg = f"{err_msg}; insecure_retry={exc}"[:160]
     except Exception as exc:
         status_code = None
         err_msg = str(exc)[:120]
