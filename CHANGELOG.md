@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **epic 子卡 released 后状态滞后**：kb/verified 后立刻 `refresh_epic_lifecycle`。
 - **phase graph abnormal 不可读**：quarantine note 附带 failure_summary。
 - **SELF-CHECKS 只认 report.md**：OpenCode 常把 `ALL SELF-CHECKS PASSED` 写在 result stdout；门禁改为认可 report 或 agent result（仍禁止代写）。
+- **无进展假活占槽**：`CCC_PHASE_NO_PROGRESS_SEC`（默认 600）无交付物/result 更新则标 hung；hang 恢复前若门禁已齐则 salvage→testing，禁止 relaunch。
+- **product 过拆写/提交**：small/烟测 epic 拒收 >1 张或 write+commit-only 子卡对；prompt 默认 1 work。
+- **编排 stuck 一查询**：`scripts/ccc-pipeline-status.py`；烟测失败清场 `ccc-hide-smoke-failures.py`。
+- **product 扇出墙钟**：默认 `product_async_timeout` 600→1200s，避免 flash 扇出被误杀。
 - **Engine 漏扫新 register 的 app**：启动时只 discover 一次 workspace；wake/深睡后重扫 `workspaces.json`（此前 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）。
 - **同仓多路 opencode `database is locked`**：全局槽之外，同 workspace 互斥只跑 1 路；Engine 同仓已有 active 则延后启动。
 - **CROSS-REPO 误杀**：编排仓 HEAD 无关漂移不再硬拒；仅当 `pre..now` commit 含本 `task_id` 才判 pollution。

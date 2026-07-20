@@ -50,9 +50,7 @@ from _config import Config, get_logger
 from _executor import resolve_opencode
 
 _log = get_logger("opencode-exec")
-_log.info("opencode-exec config: exec_timeout=%ds", Config().exec_timeout)
-
-_log = get_logger("opencode-exec")
+_log.info("opencode-exec config: exec_timeout_default=%ds", Config().exec_timeout)
 
 
 def build_opencode_run_cmd(
@@ -319,6 +317,14 @@ async def main() -> int:
             return 12
 
     prompt_text = prompt_path.read_text(encoding="utf-8")
+
+    _log.info(
+        "opencode-exec run phase=%s timeout=%ds cwd=%s skip_watchdog=%s",
+        args.phase,
+        args.timeout,
+        args.cwd,
+        bool(args.skip_watchdog),
+    )
 
     result = await run_opencode(
         args.phase,

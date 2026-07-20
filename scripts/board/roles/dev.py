@@ -589,6 +589,294 @@ def _require_task_commit_for_testing(task_id: str) -> tuple[bool, str, str]:
     return True, "ok", commit
 
 
+def _smoke_deliverable_satisfied(task_id: str) -> bool:
+    """small 烟测：交付物文件存在且有含 task/epic id 的 commit（不代写 SELF-CHECKS）。"""
+    ws = get_workspace()
+    tasks = list_tasks("in_progress") + list_tasks("planned") + list_tasks("abnormal")
+    task = next((t for t in tasks if t.get("id") == task_id), None)
+    complexity = str((task or {}).get("complexity") or "medium").lower()
+    blob = f"{(task or {}).get('title', '')} {(task or {}).get('description', '')}"
+    smokeish = (
+        complexity in ("small", "sm")
+        or "flow-smoke" in blob
+        or "flow-green" in blob
+        or "flow-opt" in blob
+        or "写入并提交" in blob
+    )
+    if not smokeish:
+        return False
+
+    candidates: list[str] = [".ccc/flow-smoke.md", "docs/flow-smoke.md"]
+    for ph in _load_phases(task_id):
+        for s in ph.get("scope") or []:
+            if not isinstance(s, str) or not s.strip():
+                continue
+            s = s.strip()
+            p = ws / s
+            if p.is_file():
+                candidates.append(s)
+            elif p.is_dir():
+                for name in ("flow-smoke.md", "flow-green.md"):
+                    sub = p / name
+                    if sub.is_file():
+                        candidates.append(str(Path(s) / name))
+
+    existing = []
+    seen: set[str] = set()
+    for s in candidates:
+        if s in seen:
+            continue
+        seen.add(s)
+        if (ws / s).is_file():
+            existing.append(s)
+    if not existing:
+        return False
+
+    from _task_commit import find_task_commit
+
+    commit = find_task_commit(ws, task_id)
+    if not commit:
+        return False
+
+    # Prefer commit that touches deliverable; else any task commit + file on disk
+    try:
+        r = subprocess.run(
+            ["git", "show", "--name-only", "--format=", commit],
+            cwd=str(ws),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode == 0:
+            names = {
+                (ln or "").strip().lstrip("./")
+                for ln in (r.stdout or "").splitlines()
+                if ln.strip()
+            }
+            if any(s.lstrip("./") in names for s in existing):
+                return True
+        # Look back a few matching commits
+        from _task_commit import _commit_grep_needles
+
+        for needle in _commit_grep_needles(task_id):
+            r2 = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    "--all",
+                    "--grep",
+                    needle,
+                    "--format=%H",
+                    "--max-count",
+                    "5",
+                ],
+                cwd=str(ws),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if r2.returncode != 0:
+                continue
+            for h in (r2.stdout or "").splitlines():
+                h = h.strip()
+                if len(h) < 40:
+                    continue
+                r3 = subprocess.run(
+                    ["git", "show", "--name-only", "--format=", h],
+                    cwd=str(ws),
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if r3.returncode != 0:
+                    continue
+                names = {
+                    (ln or "").strip().lstrip("./")
+                    for ln in (r3.stdout or "").splitlines()
+                    if ln.strip()
+                }
+                if any(s.lstrip("./") in names for s in existing):
+                    return True
+    except Exception:
+        pass
+    # File present + task-id commit exists (DoD / agent) — enough for smoke salvage
+    return True
+
+def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
+    """门禁已满足时收口 → testing，禁止无意义 relaunch。
+
+    Returns:
+      success dict，或 None（未满足 / 不在 in_progress）。
+    """
+    task_id = sanitize_id(task_id)
+    in_prog = list_tasks("in_progress")
+    if not any(t["id"] == task_id for t in in_prog):
+        return None
+
+    from _opencode_quality_gate import (
+        agent_declared_self_checks_passed,
+        report_has_self_checks_passed,
+    )
+    from _task_commit import ensure_task_commit, find_task_commit
+
+    ws = get_workspace()
+    commit = find_task_commit(ws, task_id)
+    if not commit:
+        # DoD：有交付物脏树时先补 task_id commit，再谈收口
+        cur_phase = None
+        try:
+            cur_phase = _current_running_phase(task_id)
+        except Exception:
+            cur_phase = None
+        ok_auto, why_auto, commit = ensure_task_commit(
+            ws,
+            task_id,
+            phase_num=cur_phase if isinstance(cur_phase, int) else None,
+            pre_head="",
+        )
+        if ok_auto and commit:
+            _log.info(
+                "[salvage] %s DoD auto-commit before gates: %s (%s)",
+                task_id,
+                why_auto,
+                commit[:12],
+            )
+        else:
+            commit = find_task_commit(ws, task_id) or ""
+    if not commit:
+        return None
+
+    report_path = ws / ".ccc" / "reports" / f"{task_id}.report.md"
+    result_path = ws / ".ccc" / "reports" / f"{task_id}.result.json"
+    report = report_path.read_text(encoding="utf-8") if report_path.is_file() else ""
+    result_raw = result_path.read_text(encoding="utf-8") if result_path.is_file() else ""
+
+    declared = agent_declared_self_checks_passed(report, result_raw)
+    smoke_ok = False if declared else _smoke_deliverable_satisfied(task_id)
+    if not declared and not smoke_ok:
+        return None
+
+    # 禁止用 missing-SELF-CHECKS stub 盖住已有标记；有标记则 materialize
+    if declared and not report_has_self_checks_passed(report):
+        body = (report or f"# {task_id} 执行报告\n").rstrip()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(body + "\n\nALL SELF-CHECKS PASSED\n", encoding="utf-8")
+        _log.info(
+            "[salvage] %s materialize SELF-CHECKS from agent evidence → report.md",
+            task_id,
+        )
+    elif smoke_ok and not report.strip():
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            f"# {task_id} 执行报告\n\n"
+            f"## 信息\n- 状态: salvage（commit+deliverable 已齐）\n"
+            f"- commit: {commit[:12]}\n",
+            encoding="utf-8",
+        )
+
+    cur_phase = _current_running_phase(task_id) or 1
+    # 记录 commit 到 phases + mark done
+    phases_file = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if phases_file.is_file():
+        try:
+            lines = phases_file.read_text(encoding="utf-8").splitlines()
+            updated: list[str] = []
+            for line in lines:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    d = json.loads(raw)
+                    if "schema_version" in d:
+                        d["commit"] = commit
+                    elif d.get("phase") == cur_phase:
+                        d["status"] = "done"
+                        d["commit"] = commit
+                    updated.append(json.dumps(d, ensure_ascii=False))
+                except json.JSONDecodeError:
+                    updated.append(raw)
+            phases_file.write_text("\n".join(updated) + "\n", encoding="utf-8")
+        except OSError as exc:
+            _log.warning("[salvage] %s phases write failed: %s", task_id, exc)
+
+    try:
+        _mark_phase_done(task_id, cur_phase)
+    except Exception as exc:
+        _log.warning("[salvage] %s mark done failed: %s", task_id, exc)
+
+    # 清 pid 标记；尽力杀残留
+    pids_dir = ws / ".ccc" / "pids"
+    pid_path = pids_dir / f"{task_id}.pid"
+    if pid_path.is_file():
+        try:
+            pid = int(pid_path.read_text().strip())
+            if pid > 0:
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except (OSError, ProcessLookupError):
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except (OSError, ProcessLookupError):
+                        pass
+        except (ValueError, OSError):
+            pass
+
+    for suffix in (
+        ".done",
+        ".exitcode",
+        ".pid",
+        ".prompt.md",
+        ".pre_head",
+        ".isolation.json",
+    ):
+        fp = pids_dir / f"{task_id}{suffix}"
+        try:
+            if fp.exists():
+                fp.unlink()
+        except OSError:
+            pass
+
+    # 若仍有后续 phase，不硬推 testing
+    phases_now = _load_phases(task_id)
+    executable, blocked, skipped = _resolve_phase_dependencies(phases_now)
+    _apply_phase_status_updates(task_id, blocked, skipped)
+    phases_now = _load_phases(task_id)
+    executable, _blocked, _skipped = _resolve_phase_dependencies(phases_now)
+    if executable:
+        _log.info(
+            "[salvage] %s gates ok but more phases %s — leave in_progress",
+            task_id,
+            executable,
+        )
+        return {
+            "status": "phase_done",
+            "task_id": task_id,
+            "phase": cur_phase,
+            "next_phase": min(executable),
+            "salvaged": True,
+        }
+
+    ok_c, why_c, _ch = _require_task_commit_for_testing(task_id)
+    if not ok_c:
+        _log.warning("[salvage] %s commit-gate after mark: %s", task_id, why_c)
+        return None
+
+    move_task(task_id, "in_progress", "testing")
+    _log.info(
+        "[salvage] %s ✓ gates satisfied → testing (commit=%s declared=%s smoke=%s)",
+        task_id,
+        commit[:12],
+        declared,
+        smoke_ok,
+    )
+    return {
+        "status": "success",
+        "task_id": task_id,
+        "salvaged": True,
+        "commit": commit[:40],
+    }
+
+
 def dev_role_launch(task_id: str) -> dict:
     """引擎用：启 opencode 执行 task，返回启动结果
 
@@ -684,6 +972,10 @@ def dev_role_relaunch(task_id: str) -> dict:
     """
 
     task_id = sanitize_id(task_id)
+    salvaged = try_complete_if_gates_satisfied(task_id)
+    if salvaged and salvaged.get("status") == "success":
+        return {"ok": True, "task_id": task_id, "salvaged": True, **salvaged}
+
     cplan = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
     cphases = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not cplan.exists() or not cphases.exists():
@@ -783,6 +1075,10 @@ def dev_role_check_complete(task_id: str) -> dict:
 
     done_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.done"
     if not done_path.exists():
+        # A2: 进程仍在跑但门禁已齐 → 收口，不空等
+        salvaged = try_complete_if_gates_satisfied(task_id)
+        if salvaged and salvaged.get("status") in ("success", "phase_done"):
+            return salvaged
         # G4: 检查 PID 是否存活（重启后 .pid 可能指向已死进程）
         pid_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.pid"
         if pid_path.exists():
@@ -871,16 +1167,23 @@ def dev_role_check_complete(task_id: str) -> dict:
 
         # SELF-CHECKS：必须由 agent 写出（report.md 或 result stdout）；禁止代写
         if not agent_declared_self_checks_passed(_existing_report, result_raw):
+            # 再试 salvage（commit+smoke deliverable）
+            salvaged = try_complete_if_gates_satisfied(task_id)
+            if salvaged and salvaged.get("status") == "success":
+                return salvaged
             _log.error(
                 "[gate] %s report/result 缺少 'ALL SELF-CHECKS PASSED'（不代写）",
                 task_id,
             )
+            # 禁止用 missing stub 覆盖已有含标记的 report
             if not _existing_report:
                 report_path.write_text(
                     f"# {task_id} 执行报告\n\n## 信息\n- Phase: {task_id}-p1\n"
                     f"- 退出码: {exit_code}\n- 门禁: missing SELF-CHECKS\n\n"
                     f"## 输出\n```\n{result_raw[:2000]}\n```\n"
                 )
+            elif "ALL SELF-CHECKS PASSED" in _existing_report:
+                pass  # keep evidence
             return {
                 "status": "failed",
                 "retry": 0,

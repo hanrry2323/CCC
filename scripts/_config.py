@@ -105,7 +105,7 @@ class Config:
     # 被 board-server.py 依赖的 board_path 函数使用
 
     # ── 模型 ──
-    model: str = "loop/code"  # dev_role 默认模型（opencode run --model），可用 OPENCODE_MODEL 覆盖
+    model: str = "xfyun/code"  # dev_role 默认模型（opencode run --model），可用 OPENCODE_MODEL 覆盖
 
     # ── 标准默认值 ──
     DEFAULT_RETRY: int = 3  # phase 默认重试次数（无 retry 字段时用）
@@ -217,7 +217,7 @@ class Config:
     auto_replenish: bool = False  # v0.42.4: 永久关闭，忽略环境变量
     evolve_on_idle: bool = False  # v0.42.4: 永久关闭，忽略环境变量
     evolve_on_audit: bool = False  # v0.42.4: 永久关闭，忽略环境变量
-    product_async_timeout: int = 600  # 秒；claude -p product 墙钟上限
+    product_async_timeout: int = 1200  # 秒；claude -p product 墙钟上限（扇出常 >10min）
 
     def __post_init__(self):
         """环境变量覆盖（优先级：环境变量 > 默认值）

@@ -47,6 +47,61 @@ def max_children() -> int:
     return max(1, min(MAX_CHILDREN, 16))
 
 
+_COMMIT_ONLY_RE = re.compile(
+    r"(仅?\s*提交|单独\s*commit|git\s*commit|提交\s*git|commit\s*message|含任务\s*id)",
+    re.I,
+)
+_WRITE_ONLY_RE = re.compile(
+    r"(写入|覆写|创建|更新).{0,40}(flow-smoke|\.md|文件)|写\s*\.ccc/",
+    re.I,
+)
+
+
+def detect_write_commit_oversplit(children_raw: list[dict], *, epic: dict | None = None) -> str | None:
+    """Detect write-file vs commit-only split. Return error message or None."""
+    if not children_raw or len(children_raw) < 2:
+        return None
+    epic = epic or {}
+    complexity = str(epic.get("complexity") or "").lower()
+    epic_blob = f"{epic.get('title', '')} {epic.get('description', '')}"
+    force_single = complexity in ("small", "sm") or (
+        "flow-smoke" in epic_blob or "flow-green" in epic_blob or "写入并提交" in epic_blob
+    )
+    if force_single and len(children_raw) > 1:
+        return (
+            f"oversplit: complexity/smoke epic requires exactly 1 work card, "
+            f"got {len(children_raw)}"
+        )
+
+    write_ish = 0
+    commit_ish = 0
+    for ch in children_raw:
+        if not isinstance(ch, dict):
+            continue
+        blob = " ".join(
+            str(ch.get(k) or "")
+            for k in ("title", "description", "plan_md")
+        )
+        is_commit = bool(_COMMIT_ONLY_RE.search(blob)) and "写入并提交" not in blob
+        is_write = bool(_WRITE_ONLY_RE.search(blob)) and not (
+            "commit" in blob.lower() and "写入并提交" in blob
+        )
+        # title like 「提交 git commit」
+        title = str(ch.get("title") or "")
+        if re.search(r"^提交|commit", title, re.I) and "写入" not in title:
+            is_commit = True
+        if is_commit:
+            commit_ish += 1
+        elif is_write:
+            write_ish += 1
+    if write_ish >= 1 and commit_ish >= 1:
+        return (
+            "oversplit: refuse write-file + commit-only child pair; "
+            "merge into one work card that writes and commits"
+        )
+    return None
+
+
 def build_fanout_prompt(
     *,
     epic: dict,
@@ -73,7 +128,9 @@ def build_fanout_prompt(
         f"- title: {epic.get('title', '')}\n"
         f"- description: {epic.get('description', '')}\n\n"
         f"## 子卡约束\n"
-        f"- 拆出 1–{max_children()} 张子卡（宁多勿巨型）\n"
+        f"- **默认恰好 1 张**子卡；仅当验收含 ≥2 个独立可交付物时才允许多卡（最多 {max_children()}）\n"
+        f"- **禁止**把「写文件」与「单独 git commit」拆成两张卡；写入并提交必须在同一张 work 内完成\n"
+        f"- complexity=small / 单文件烟测类 epic：强制 1 张，标题须含「写入并提交」语义\n"
         f"- 每张子卡最多 {max_phases} 个 phase（优先 1 个）\n"
         f"- 子卡 id：kebab-case，建议前缀 `{eid}-`\n"
         f"- 每张子卡必须可独立被开发模型消费（目标清晰、scope 明确）\n"
@@ -350,6 +407,11 @@ def apply_fanout(
     # pending / failed（无子卡）可扇出；已有子卡则拒（含存量 active→running）
     if kids_existing and ss in ("planned", "running", "done", "failed"):
         return {"ok": False, "error": f"epic already split ({ss})"}
+
+    oversplit = detect_write_commit_oversplit(children_raw, epic=epic)
+    if oversplit:
+        _log.error("[fanout] %s %s", epic_id, oversplit)
+        return {"ok": False, "error": oversplit}
 
     try:
         from executors.registry import normalize_executor

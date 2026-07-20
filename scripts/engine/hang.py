@@ -13,7 +13,7 @@ from _config import Config, get_logger
 from _executor import _sanitized_env
 from _utils import now_iso
 from board.phase import _current_running_phase
-from board.roles.dev import dev_role_relaunch
+from board.roles.dev import dev_role_relaunch, try_complete_if_gates_satisfied
 from engine.workspace import (
     _activate_workspace,
     _find_task_column,
@@ -30,6 +30,81 @@ _HANG_COUNTER_FILE = Path.home() / ".ccc" / "engine-hang-retries.json"
 _HANG_CHECK_INTERVAL_SEC = 300
 _HANG_BUSY_MAX_SEC = 3600
 _MEM_KILL_MB = 1500
+# 无进展止损：默认 600s（活干完进程不退时不必等满 phase timeout）
+_NO_PROGRESS_SEC = int(os.environ.get("CCC_PHASE_NO_PROGRESS_SEC", "600") or "600")
+
+
+def _no_progress_sec() -> int:
+    return max(60, min(_NO_PROGRESS_SEC, 7200))
+
+
+def _resolve_alive_pid(pids_dir: Path, tid: str, subid: str) -> tuple[int | None, Path | None]:
+    """Prefer task-level ``{tid}.pid`` (opencode-runner); fall back to ``{subid}.pid``."""
+    for name in (f"{tid}.pid", f"{subid}.pid"):
+        path = pids_dir / name
+        if not path.is_file():
+            continue
+        try:
+            pid = int(path.read_text().strip())
+        except (ValueError, OSError):
+            continue
+        if pid <= 0:
+            continue
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return pid, path
+        except OSError:
+            continue
+        return pid, path
+    return None, None
+
+
+def _activity_mtime(ws: Path, tid: str) -> float:
+    """Latest mtime among result/report/pid markers and common smoke deliverables."""
+    latest = 0.0
+    candidates = [
+        ws / ".ccc" / "reports" / f"{tid}.result.json",
+        ws / ".ccc" / "reports" / f"{tid}.report.md",
+        ws / ".ccc" / "pids" / f"{tid}.pid",
+        ws / ".ccc" / "pids" / f"{tid}.done",
+        ws / ".ccc" / "flow-smoke.md",
+        ws / "docs" / "flow-smoke.md",
+    ]
+    for p in candidates:
+        try:
+            if p.is_file():
+                latest = max(latest, p.stat().st_mtime)
+        except OSError:
+            continue
+    pids_dir = ws / ".ccc" / "pids"
+    if pids_dir.is_dir():
+        try:
+            for p in pids_dir.glob(f"{tid}*"):
+                try:
+                    latest = max(latest, p.stat().st_mtime)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    return latest
+
+
+def _is_no_progress(*, ws: Path, tid: str, started_ts: float, now_ts: float) -> tuple[bool, float, str]:
+    """Return (is_stale, idle_sec, reason) when wall elapsed and activity idle exceed threshold."""
+    need = _no_progress_sec()
+    elapsed = now_ts - started_ts
+    if elapsed < need:
+        return False, 0.0, ""
+    act = _activity_mtime(ws, tid)
+    # No activity file → idle since start; else idle since last activity
+    last = act if act > 0 else started_ts
+    idle = now_ts - last
+    if idle < need:
+        return False, idle, ""
+    return True, idle, f"no-progress idle={int(idle)}s elapsed={int(elapsed)}s threshold={need}s"
 
 
 def _eng():
@@ -106,31 +181,15 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
             subid = phase_market_subid(tid, cur_phase)
         hung_path = pids_dir / f"{subid}.hung"
         done_path = pids_dir / f"{subid}.done"
-        pid_path = pids_dir / f"{subid}.pid"
+        task_done = pids_dir / f"{tid}.done"
 
         if hung_path.is_file():
             continue
-        if done_path.is_file():
+        if done_path.is_file() or task_done.is_file():
             continue
 
-        if not pid_path.is_file():
-            continue
-        try:
-            pid = int(pid_path.read_text().strip())
-        except (ValueError, OSError) as exc:
-            _engine_log(f"[{label}] hang-detect: {tid} 读 PID 失败: {exc}")
-            continue
-        if pid <= 0:
-            continue
-
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            continue
-        except PermissionError:
-            pass
-        except OSError as exc:
-            _engine_log(f"[{label}] hang-detect: {tid} PID={pid} 检查异常: {exc}")
+        pid, pid_path = _resolve_alive_pid(pids_dir, tid, subid)
+        if pid is None or pid_path is None:
             continue
 
         started_str = info.get("started_at", "")
@@ -142,6 +201,52 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
         except (ValueError, TypeError) as exc:
             _engine_log(f"[{label}] hang-detect: {tid} started_at 解析失败: {exc}")
             continue
+
+        # A1: 无进展止损（可早于 CPU/RSS 规则）
+        stale, idle_sec, np_reason = _is_no_progress(
+            ws=ws, tid=tid, started_ts=started.timestamp(), now_ts=now.timestamp()
+        )
+        if stale:
+            marker = {
+                "task_id": tid,
+                "phase": cur_phase,
+                "pid": pid,
+                "cpu": None,
+                "rss_mb": None,
+                "elapsed_sec": int(elapsed),
+                "idle_sec": int(idle_sec),
+                "detected_at": now_iso(),
+                "reason": "no_progress",
+            }
+            try:
+                hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
+            except OSError as exc:
+                _engine_log(f"[{label}] hang-detect: {tid} 写 .hung 失败: {exc}")
+                continue
+            _engine_log(
+                f"[{label}] hang no-progress tid={tid} idle={int(idle_sec)}s "
+                f"reason={np_reason}"
+            )
+            try:
+                from _failure_ledger import record_failure
+
+                record_failure(
+                    ws,
+                    task_id=tid,
+                    role="engine",
+                    reason=f"hang_no_progress {np_reason} pid={pid}",
+                    phase=cur_phase,
+                    from_col="in_progress",
+                    to_col=None,
+                    exit_code=None,
+                    related_stats_event="hang_detected",
+                )
+            except Exception:
+                _engine_log(
+                    f"[failures] hang_no_progress ledger: {_traceback.format_exc()[:300]}"
+                )
+            continue
+
         if elapsed < _HANG_CHECK_INTERVAL_SEC:
             continue
 
@@ -195,16 +300,7 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
         if cpu > 0.0 and elapsed < _HANG_BUSY_MAX_SEC:
             continue
 
-        _latest = 0.0
-        try:
-            for _pf in sorted(
-                pids_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
-            ):
-                if _pf.name.startswith(f"{subid}.") and _pf.name != hung_path.name:
-                    _latest = _pf.stat().st_mtime
-                    break
-        except OSError:
-            pass
+        _latest = _activity_mtime(ws, tid)
         if _latest and (now.timestamp() - _latest) < 120 and cpu <= 0.0:
             continue
 
@@ -216,6 +312,7 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
             "rss_mb": round(rss_mb, 1),
             "elapsed_sec": int(elapsed),
             "detected_at": now_iso(),
+            "reason": "low_cpu_stale",
         }
         try:
             hung_path.write_text(json.dumps(marker, ensure_ascii=False) + "\n")
@@ -300,14 +397,18 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
 
         pid_path = pids_dir / f"{subid}.pid"
         pid: int | None = None
-        if pid_path.is_file():
+        alive_pid, alive_path = _resolve_alive_pid(pids_dir, tid, subid)
+        if alive_pid is not None:
+            pid = alive_pid
+            pid_path = alive_path or pid_path
+        elif pid_path.is_file():
             try:
                 pid = int(pid_path.read_text().strip())
             except (ValueError, OSError):
                 pid = None
         else:
             _engine_log(
-                f"[{label}] hang-auto: {tid} 缺 {pid_path.name}（可能已退出），跳过 kill"
+                f"[{label}] hang-auto: {tid} 缺 pid（可能已退出），跳过 kill"
             )
 
         kill_process_tree = getattr(eng, "_kill_process_tree", None) if eng else None
@@ -316,6 +417,26 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
             else:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
+
+        # A2: 门禁已满足 → 收口 testing，禁止 relaunch
+        try:
+            salvaged = try_complete_if_gates_satisfied(tid)
+        except Exception as exc:
+            _engine_log(f"[{label}] hang-auto: {tid} salvage 异常: {exc}")
+            salvaged = None
+        if salvaged and salvaged.get("status") == "success":
+            _engine_log(
+                f"[{label}] hang-auto: {tid} gates satisfied → salvage testing "
+                f"(skip relaunch)"
+            )
+            try:
+                hung_path.unlink()
+            except OSError:
+                pass
+            _hang_retry_counter.pop(key, None)
+            _save_hang_retry_counter()
+            active_tasks.pop(key, None)
+            continue
 
         git_stash_ws = getattr(eng, "_git_stash_ws", None) if eng else None
         if git_stash_ws is None:
