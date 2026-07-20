@@ -776,9 +776,9 @@ actor APIClient {
         let data = try JSONEncoder().encode(req)
         let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
         let maxAttempts = 3
-        var lastError: Error?
         return try await HubRequestGate.shared.withPermit {
-            for attempt in 1...maxAttempts {
+            var attempt = 1
+            while true {
                 do {
                     let (respData, resp) = try await self.session.data(for: urlReq)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -806,7 +806,6 @@ actor APIClient {
                     }
                     return decoded
                 } catch let err as APIError {
-                    lastError = err
                     let retryable: Bool = {
                         switch err {
                         case .emptyEpicId, .decode:
@@ -819,20 +818,20 @@ actor APIClient {
                             return false
                         }
                     }()
-                    if !retryable || attempt == maxAttempts {
+                    if !retryable || attempt >= maxAttempts {
                         throw err
                     }
                     let ns = UInt64(150_000_000 * attempt) // 150ms, 300ms
                     try? await Task.sleep(nanoseconds: ns)
+                    attempt += 1
                 } catch {
-                    lastError = error
                     // URLSession / empty / transport — retry
-                    if attempt == maxAttempts { throw error }
+                    if attempt >= maxAttempts { throw error }
                     let ns = UInt64(150_000_000 * attempt)
                     try? await Task.sleep(nanoseconds: ns)
+                    attempt += 1
                 }
             }
-            throw lastError ?? APIError.decode("transfer failed after retries")
         }
     }
 

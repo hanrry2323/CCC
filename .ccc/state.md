@@ -55,6 +55,7 @@
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-21 | desktop-v0521-build | `desktop/scripts/package-baseline.sh` | `/Applications/CCCDesktop.app` v0.52.1 | transfer 空响应重试已装机 | PASS |
 | 2026-07-21 | v052-stability-gate | `docs/releases/v0.52.1.md` | smoke fast + phase9 live | gitignore 门禁 + transfer 重试 + gate | PASS |
 | 2026-07-18 | go-live-v051 | `docs/ops/GO-LIVE.md` | hygiene + orch | doctor ERROR=0；Engine 7 apps；Hub 拒投 CCC | PASS |
 | 2026-07-18 | m2-orch-separation | `docs/milestones/m2-orch-separation.md` | `docs/releases/v0.51.0.md` | CCC role=orch；Hub reject；VERSION v0.51.0 | PASS |
