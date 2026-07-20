@@ -1,6 +1,6 @@
 # Hub-Shell 分阶段状态板
 
-> 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) · Wave1–3  
+> 对齐 [`hub-shell-roadmap.md`](hub-shell-roadmap.md) · Wave1–4  
 > 更新规则：每阶段验收绿后改状态并随该阶段 commit。
 
 | 阶段 | 状态 | 说明 | Commit |
@@ -14,4 +14,7 @@
 | Phase6 真实业务仓 qb | green | qb flow-smoke → released | 6f4714b |
 | Phase7 v0.52.0 发布卫生 | green | VERSION + 双机对齐 + §9 | 349038e |
 | Phase8 第二真实仓 | green | hp（xianyu 脏跳过）→ released | cb3bbf5 |
-| Phase9 abnormal 止损可见 | green | 右栏/toast + snapshot failed | 355b780 |
+| Phase9 abnormal 止损可见 | green | 右栏/toast + snapshot failed | d7f98a0 |
+| Phase10 xianyu 仓卫生 | green | 空板 + 陈旧 .ccc 清理（xianyu `625e317`） | 109995e |
+| Phase11 第三真实仓 xianyu | pending | — | — |
+| Phase12 业务向意图 | pending | — | — |

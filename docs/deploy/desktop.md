@@ -55,8 +55,9 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | M1 仓 | `git rev-parse --short HEAD` = 目标 commit | `cd ~/program/CCC && git pull` |
 | M1 Desktop | `/Applications/CCCDesktop.app` 已重装 | `package-baseline.sh` + `cp -R` |
 | M1 sidecar | `/health` ok；进程读本机仓 | `launchctl kickstart -k gui/$(id -u)/com.ccc.agent-sidecar` |
-| Mac2017 仓 | 同 commit | `ssh mac2017 'cd ~/program/CCC && git pull --ff-only'` |
+| Mac2017 仓 | 同 commit；**rsync 须含 `scripts/` + `templates/`**（缺 templates 则 product 扇出 FileNotFoundError） | `rsync -az scripts/ templates/ …` 或 `git pull --ff-only` |
 | Mac2017 Hub | transfer / flow / ops | `kickstart -k …/com.ccc.chat-server` |
+| Mac2017 Engine | 消费业务仓队列 | `kickstart -k …/com.ccc.engine` |
 
 ## 废弃
 
