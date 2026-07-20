@@ -127,3 +127,28 @@ def resolve_claude_cli(*, require: bool = True) -> Optional[str]:
             "with vendor/loop-code/cli, or install to ~/.local/bin/claude"
         )
     return None
+
+
+def resolve_anthropic_model(requested: str | None = None) -> str:
+    """逻辑名 flash/code → 上游真实 model id。
+
+    直连 MiniMax Anthropic（ANTHROPIC_BASE_URL 含 minimaxi/minimax.chat）时，
+    Claude/loop-code 的 `flash` 映射为 `MiniMax-M3`（可用 ANTHROPIC_MODEL 覆盖）。
+    走 ai-loop-router 时保持 flash/code 逻辑名。
+    """
+    req = (requested or "").strip()
+    if not req:
+        req = (os.environ.get("ANTHROPIC_MODEL") or "flash").strip() or "flash"
+    base = (os.environ.get("ANTHROPIC_BASE_URL") or "").lower()
+    direct_minimax = "minimaxi.com" in base or "minimax.chat" in base
+    if not direct_minimax:
+        return req
+    # 已是上游 id
+    if req.lower().startswith("minimax"):
+        return req
+    if req.lower() in ("flash", "code", "haiku", "sonnet", "opus", "pro"):
+        override = (os.environ.get("ANTHROPIC_MODEL") or "").strip()
+        if override and override.lower() not in ("flash", "code", "haiku", "sonnet", "opus"):
+            return override
+        return "MiniMax-M3"
+    return req

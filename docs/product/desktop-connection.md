@@ -27,7 +27,9 @@
 
 ## 方案 Agent
 
-**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli`（arm64）→ Router `192.168.3.116:4000`。  
+**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli` → **MiniMax Anthropic 直连**（`MiniMax-M3`）。  
+OpenCode（Engine 写码）：**讯飞直连** `xfyun/code`（`~/.config/opencode/opencode.json`）；智谱 `zhipu/flash` 备用。  
+~~经 2017 `:4000/:4002` 中转已退役。~~  
 Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-sidecar-plist.sh` → `POST /warm`；每 240s keep-warm。  
 消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。转任务 / 右栏仍要求 Hub。
 

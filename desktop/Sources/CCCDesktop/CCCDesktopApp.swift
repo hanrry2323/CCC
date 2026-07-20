@@ -33,6 +33,20 @@ struct CCCDesktopApp: App {
                 Divider()
                 Button("用法说明") { appModel.isHelpPresented = true }
                     .keyboardShortcut("/", modifiers: [.command, .shift])
+                Divider()
+                Button("分叉当前会话") {
+                    Task {
+                        guard let tid = appModel.selectedThreadId else { return }
+                        _ = await appModel.forkThread(threadId: tid)
+                    }
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                Button("压缩当前上下文") {
+                    Task {
+                        guard let tid = appModel.selectedThreadId else { return }
+                        await appModel.manualCompact(threadId: tid)
+                    }
+                }
             }
         }
 

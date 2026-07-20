@@ -33,6 +33,8 @@ struct ChatMessage: Identifiable, Hashable {
     var toolSteps: [ToolStep]
     var filesChanged: Int
     var toolsFinished: Bool
+    /// 本轮写入路径（工程师模式 Review；导出可选）
+    var changedFilePaths: [String]
     /// "chat" | "summary"（已压缩 N 轮的占位卡片）
     var kind: String
     /// summary 卡片：被压缩的轮数
@@ -52,6 +54,7 @@ struct ChatMessage: Identifiable, Hashable {
         toolSteps: [ToolStep] = [],
         filesChanged: Int = 0,
         toolsFinished: Bool = false,
+        changedFilePaths: [String] = [],
         kind: String = "chat",
         summaryRounds: Int = 0,
         transientNote: String? = nil,
@@ -65,6 +68,7 @@ struct ChatMessage: Identifiable, Hashable {
         self.toolSteps = toolSteps
         self.filesChanged = filesChanged
         self.toolsFinished = toolsFinished
+        self.changedFilePaths = changedFilePaths
         self.kind = kind
         self.summaryRounds = summaryRounds
         self.transientNote = transientNote
@@ -80,6 +84,7 @@ extension ChatMessage: Codable {
         case tool_steps
         case files_changed
         case tools_finished
+        case changed_file_paths
         case kind
         case summary_rounds
         case transient_note
@@ -102,6 +107,7 @@ extension ChatMessage: Codable {
         filesChanged = try c.decodeIfPresent(Int.self, forKey: .files_changed) ?? 0
         toolsFinished = try c.decodeIfPresent(Bool.self, forKey: .tools_finished)
             ?? !toolSteps.isEmpty
+        changedFilePaths = try c.decodeIfPresent([String].self, forKey: .changed_file_paths) ?? []
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "chat"
         summaryRounds = try c.decodeIfPresent(Int.self, forKey: .summary_rounds) ?? 0
         transientNote = try c.decodeIfPresent(String.self, forKey: .transient_note)
@@ -122,6 +128,9 @@ extension ChatMessage: Codable {
         }
         if toolsFinished || !toolSteps.isEmpty {
             try c.encode(toolsFinished, forKey: .tools_finished)
+        }
+        if !changedFilePaths.isEmpty {
+            try c.encode(changedFilePaths, forKey: .changed_file_paths)
         }
         if kind != "chat" {
             try c.encode(kind, forKey: .kind)

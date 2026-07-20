@@ -37,11 +37,23 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.home") var cccHomePath: String = ""
     /// 首启用法横幅是否已关闭
     @AppStorage("ccc.dismissedFirstRunTip") var dismissedFirstRunTip: Bool = false
+    /// 对话模型偏好（请求级传 sidecar；flash/code/sonnet/haiku）
+    @AppStorage("ccc.preferredModel") var preferredModel: String = "flash"
+    /// discuss | engineer
+    @AppStorage("ccc.preferredToolMode") var preferredToolMode: String = "discuss"
 
     @Published var projects: [DesktopProject] = []
     @Published var threads: [DesktopThread] = []
     @Published var selectedProjectId: String?
     @Published var selectedThreadId: String?
+    /// Context 面板（本会话用量 / compact）
+    @Published var isContextPanelPresented = false
+    /// Composer 附件（按当前窗发送时消费）
+    @Published var composerAttachments: [ComposerAttachment] = []
+    /// 工程师模式切换确认
+    @Published var confirmEngineerMode = false
+    /// Sidecar 回显模型名（health）
+    @Published var sidecarReportedModel: String = ""
     /// 对话状态（messages + draft），独立 ObservableObject 隔离 delta 通知
     @Published var chat = ChatState()
     @Published var statusText: String = "未连接"
@@ -88,7 +100,7 @@ final class AppModel: ObservableObject {
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
 
-    @Published var flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
+    @Published var flowEmptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
     @Published var flowWorks: [FlowWork] = []
     @Published var flowEpic: FlowEpic?
     @Published var flowHeadline: String = ""
@@ -116,8 +128,17 @@ final class AppModel: ObservableObject {
     @Published var sessionTokens: Int = 0
     /// 每 thread 独立 token，避免 A 会话触发 B 压缩
     private var threadSessionTokens: [String: Int] = [:]
+
+    func sessionTokenCount(for threadId: String) -> Int {
+        threadSessionTokens[threadId] ?? (selectedThreadId == threadId ? sessionTokens : 0)
+    }
     /// 每 thread 的 loop-code resume id（持续对话 SSOT，与盘上 Record 同步）
     private var threadClaudeSessionIds: [String: String] = [:]
+
+    func hasResume(for threadId: String) -> Bool {
+        let sid = threadClaudeSessionIds[threadId]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !sid.isEmpty
+    }
     /// 显示压缩阈值（token）；超此触发 agent session 重置注入摘要
     static let agentCompactTokenThreshold = 80_000
     /// 项目后台任务态（卡片灯用）：projectId → 状态键（idle/pending/in_progress/testing/done/failed）
@@ -344,6 +365,9 @@ final class AppModel: ObservableObject {
             agentMode = "local"
             agentBadge = "本机 Agent"
             didToastHubFallback = false
+            if let info = await client.fetchAgentHealth(base: candidate) {
+                sidecarReportedModel = info.model ?? ""
+            }
             // fire-and-forget：不阻塞 ensureLocalAgent 返回
             Task { await warmLocalAgentNow(base: candidate) }
             startWarmLoopIfNeeded()
@@ -875,7 +899,7 @@ final class AppModel: ObservableObject {
         } else if threadFlow[tid] == nil, let bound = state.boundEpicId {
             let snap = FlowThreadSnapshot(
                 epicId: bound, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: "编排空闲·等定稿下达（与对话故障无关）", fanoutHint: nil
+                recentEpics: [], emptyMessage: "编排空闲 · 下一笔定稿后出现在这里", fanoutHint: nil
             )
             threadFlow[tid] = snap
         }
@@ -1025,10 +1049,12 @@ final class AppModel: ObservableObject {
     }
 
     func refreshThreads(projectId: String) async {
-        // 单对话模型：确保 "<projectId>::main" 会话在索引中
-        let tid = threadIdForProject( projectId)
+        // 多会话：若没有活动线程，才确保 "<projectId>::main"；已存档的 tid 禁止复活
+        let tid = threadIdForProject(projectId)
         let local = LocalSessionStore.threadsAsDesktop(projectId: projectId)
-        if !local.contains(where: { $0.thread_id == tid }) {
+        if local.isEmpty,
+           !LocalSessionStore.isArchived(projectId: projectId, threadId: tid)
+        {
             LocalSessionStore.saveMessages(
                 projectId: projectId,
                 threadId: tid,
@@ -1038,7 +1064,9 @@ final class AppModel: ObservableObject {
             )
         }
         threads = LocalSessionStore.threadsAsDesktop(projectId: projectId)
-        hydrateThreadFromDisk(projectId: projectId, threadId: tid)
+        if !LocalSessionStore.isArchived(projectId: projectId, threadId: tid) {
+            hydrateThreadFromDisk(projectId: projectId, threadId: tid)
+        }
     }
 
     func newThread() async {
@@ -1083,6 +1111,129 @@ final class AppModel: ObservableObject {
         return tid
     }
 
+    /// Fork：复制消息到新会话（新 resume）
+    @discardableResult
+    func forkThread(threadId: String) async -> String? {
+        flushDiskSave(threadId: threadId)
+        guard let newId = ConversationStore.forkThread(threadId: threadId) else {
+            showToast("分叉失败")
+            return nil
+        }
+        let pid = LocalSessionStore.projectId(fromThreadId: newId)
+        threads = ConversationStore.listThreads(projectId: pid)
+        threadClaudeSessionIds.removeValue(forKey: newId)
+        await openThread(newId)
+        showToast("已分叉会话")
+        return newId
+    }
+
+    /// 手动 compact（显示压缩 + sidecar 摘要重置）
+    func manualCompact(threadId: String) async {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        await compactConversationIfNeeded(projectId: pid, threadId: threadId)
+        // 强制再走一遍 sidecar compact（即使显示层未超阈值）
+        let msgs = threadMessages[threadId] ?? []
+        let summary = msgs.suffix(6).map { "\($0.role): \($0.content.prefix(200))" }.joined(separator: "\n")
+        let path = localPath(for: pid) ?? ""
+        if !path.isEmpty {
+            await client.compactSidecarSession(
+                projectPath: path,
+                sessionId: threadId,
+                summary: summary.isEmpty ? "（用户手动压缩）" : summary
+            )
+            threadClaudeSessionIds.removeValue(forKey: threadId)
+            threadSessionTokens[threadId] = 0
+            if selectedThreadId == threadId { sessionTokens = 0 }
+        }
+        showToast("已压缩上下文")
+    }
+
+    func exportThreadJSONToPasteboard(threadId: String? = nil) {
+        let tid = threadId ?? selectedThreadId
+        guard let tid else { return }
+        let pid = LocalSessionStore.projectId(fromThreadId: tid)
+        flushDiskSave(threadId: tid)
+        guard let data = LocalSessionStore.exportV1JSON(projectId: pid, threadId: tid),
+              let str = String(data: data, encoding: .utf8)
+        else {
+            showToast("导出失败")
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(str, forType: .string)
+        showToast("已复制会话 JSON")
+    }
+
+    func importThreadJSONFromPasteboard(projectId: String?) async {
+        guard let pid = projectId ?? selectedProjectId else {
+            showToast("请先选择项目")
+            return
+        }
+        guard let str = NSPasteboard.general.string(forType: .string),
+              let data = str.data(using: .utf8),
+              let newId = LocalSessionStore.importV1(data, projectId: pid)
+        else {
+            showToast("剪贴板不是有效会话 JSON")
+            return
+        }
+        threads = ConversationStore.listThreads(projectId: pid)
+        await openThread(newId)
+        showToast("已导入会话")
+    }
+
+    func addComposerAttachment(path: String) {
+        let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty else { return }
+        if composerAttachments.contains(where: { $0.path == p }) { return }
+        composerAttachments.append(ComposerAttachment(path: p))
+    }
+
+    func removeComposerAttachment(id: UUID) {
+        composerAttachments.removeAll { $0.id == id }
+    }
+
+    func requestEngineerMode() {
+        if preferredToolMode == "engineer" {
+            preferredToolMode = "discuss"
+            showToast("已切回讨论模式")
+            return
+        }
+        confirmEngineerMode = true
+    }
+
+    func confirmEnableEngineerMode() {
+        preferredToolMode = "engineer"
+        confirmEngineerMode = false
+        showToast("工程师模式：允许本机改文件")
+    }
+
+    func revealChangedFiles(message: ChatMessage, projectId: String?) {
+        var paths = message.changedFilePaths
+        if paths.isEmpty {
+            paths = StreamSessionController.writePaths(from: message.toolSteps)
+        }
+        if paths.isEmpty {
+            if let pid = projectId, let root = localPath(for: pid) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: root))
+                showToast("已打开项目目录")
+            } else {
+                showToast("无改动路径可打开")
+            }
+            return
+        }
+        for p in paths.prefix(8) {
+            let url = URL(fileURLWithPath: p)
+            if FileManager.default.fileExists(atPath: p) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else if let pid = projectId, let root = localPath(for: pid) {
+                let joined = URL(fileURLWithPath: root).appendingPathComponent(p)
+                if FileManager.default.fileExists(atPath: joined.path) {
+                    NSWorkspace.shared.activateFileViewerSelecting([joined])
+                }
+            }
+        }
+    }
+
     /// 删除（归档）会话
     func archiveThread(threadId: String) async {
         let pid = LocalSessionStore.projectId(fromThreadId: threadId)
@@ -1100,12 +1251,17 @@ final class AppModel: ObservableObject {
         threadClaudeSessionIds.removeValue(forKey: threadId)
         threadSessionTokens.removeValue(forKey: threadId)
         threads = ConversationStore.listThreads(projectId: pid)
-        // 如果删的是当前线程，自动切到最近线程
+        // 如果删的是当前线程，自动切到最近线程；没有则清本窗焦点
         if selectedThreadId == threadId {
             if let first = threads.first {
                 await openThread(first.thread_id)
+            } else {
+                selectedThreadId = nil
+                chat.messages = []
+                sessionTokens = 0
             }
         }
+        showToast("会话已存档")
     }
 
     /// 重命名线程
@@ -1179,7 +1335,7 @@ final class AppModel: ObservableObject {
             flowWorks = []
             flowHeadline = ""
             recentEpics = []
-            flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
+            flowEmptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             flowFanoutHint = nil
             selectedNodeDetail = nil
         }
@@ -1187,6 +1343,7 @@ final class AppModel: ObservableObject {
 
     /// 本机有消息则禁止 Hub GET 回写；仅本机为空时可选补种备份
     private func syncThreadFromServer(projectId: String, threadId: String, generation: UInt64) async {
+        if LocalSessionStore.isArchived(projectId: projectId, threadId: threadId) { return }
         if streamingThreadIds.contains(threadId) { return }
         hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
         let cached = threadMessages[threadId]
@@ -1275,7 +1432,7 @@ final class AppModel: ObservableObject {
                     flowEpic = nil
                     flowWorks = []
                     flowHeadline = ""
-                    flowEmptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
+                    flowEmptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
                     flowFanoutHint = nil
                 }
             }
@@ -1566,17 +1723,21 @@ final class AppModel: ObservableObject {
     }
 
     static func promptMode(forUserText text: String) -> String {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let forceFull = ["定稿", "转任务", "下达", "可以转了"].contains { t.contains($0) }
-        if forceFull || t.count > 80 { return "full" }
-        return "light"
+        StreamSessionController.resolvePromptMode(forUserText: text)
     }
 
-    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（口令解锁）
+    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（偏好或口令）
     static func toolMode(forUserText text: String) -> String {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.contains("工程师模式") || t.contains("直接改本机") { return "engineer" }
-        return "discuss"
+        // 兼容旧调用：无偏好时只看口令
+        StreamSessionController.resolveToolMode(preferred: "discuss", userText: text)
+    }
+
+    func resolvedToolMode(forUserText text: String) -> String {
+        StreamSessionController.resolveToolMode(preferred: preferredToolMode, userText: text)
+    }
+
+    func resolvedModel() -> String {
+        StreamSessionController.resolveModel(preferredModel)
     }
 
     /// 同会话 stop-and-send；仅本机 sidecar，可多路并行（可指定 projectId / threadId 供多窗多会话）
@@ -1584,14 +1745,18 @@ final class AppModel: ObservableObject {
         _ text: String,
         projectId: String? = nil,
         threadId: String? = nil,
-        stopAndSend: Bool = true
+        stopAndSend: Bool = true,
+        attachments: [ComposerAttachment]? = nil
     ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let atts = attachments ?? composerAttachments
+        let composed = StreamSessionController.composeUserText(text: trimmed, attachments: atts)
+        guard !composed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if attachments == nil { composerAttachments = [] }
         let pid = projectId ?? selectedProjectId
         Task {
             await self.sendUserMessageAndWait(
-                trimmed,
+                composed,
                 projectId: pid,
                 threadId: threadId,
                 stopAndSend: stopAndSend
@@ -1702,7 +1867,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 从 board 列计数推导项目级任务态（只关心「有活」；纯 released 视为空闲）
+    /// 从 board 列计数推导项目级任务态（只关心「有活」；纯 released / 已隐藏 done 视为空闲）
     static func deriveTaskState(from counts: [String: Int]) -> String {
         let failed = counts["abnormal"] ?? 0
         let inProgress = counts["in_progress"] ?? 0
@@ -1712,6 +1877,7 @@ final class AppModel: ObservableObject {
         if failed > 0 { return "failed" }
         if inProgress > 0 { return "in_progress" }
         if testing > 0 { return "testing" }
+        // backlog 含 pending/planned/running epic；done 沉底后 ui_hidden，不应再进 counts
         if planned > 0 || backlog > 0 { return "pending" }
         return "idle"
     }
@@ -1824,7 +1990,8 @@ final class AppModel: ObservableObject {
                 showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
             }
             let mode = Self.promptMode(forUserText: text)
-            let tools = Self.toolMode(forUserText: text)
+            let tools = resolvedToolMode(forUserText: text)
+            let modelName = resolvedModel()
             // 发送前不再 fire-and-forget warm：与 streamChat 抢同一 slot 锁，
             // 取消/杀进程后半残连接更容易表现为「切一下就连不上」。
             setThreadStreamStatus(threadId, "本机生成中…")
@@ -1849,6 +2016,7 @@ final class AppModel: ObservableObject {
                             msgs[idx].content = ""
                             msgs[idx].toolSteps = []
                             msgs[idx].filesChanged = 0
+                            msgs[idx].changedFilePaths = []
                             msgs[idx].toolsFinished = false
                             msgs[idx].isStreaming = true
                         }
@@ -1862,7 +2030,8 @@ final class AppModel: ObservableObject {
                         promptMode: mode,
                         toolMode: tools,
                         projectPath: streamProjectPath,
-                        claudeSessionId: threadClaudeSessionIds[threadId]
+                        claudeSessionId: threadClaudeSessionIds[threadId],
+                        model: modelName
                     ) { [weak self] event in
                         guard let model = self else { return }
                         await MainActor.run {
@@ -2106,6 +2275,13 @@ final class AppModel: ObservableObject {
                 msgs[idx].toolsFinished = false
                 if ToolProgressHelper.isWrite(name) {
                     msgs[idx].filesChanged += 1
+                    let path = input["file_path"]
+                        ?? input["path"]
+                        ?? input["target_file"]
+                        ?? input["file"]
+                    if let path, !path.isEmpty, !msgs[idx].changedFilePaths.contains(path) {
+                        msgs[idx].changedFilePaths.append(path)
+                    }
                 }
                 // stream status 在 mutate 外按 thread 写
             case .toolResult(let ok):
@@ -2812,7 +2988,7 @@ final class AppModel: ObservableObject {
             )
             var snap = threadFlow[tid] ?? FlowThreadSnapshot(
                 epicId: nil, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: "编排空闲·等定稿下达（与对话故障无关）", fanoutHint: nil
+                recentEpics: [], emptyMessage: "编排空闲 · 下一笔定稿后出现在这里", fanoutHint: nil
             )
             snap.recentEpics = epicsResp.epics
             let localBound = snap.epicId ?? (isSelected ? currentEpicId : nil)
@@ -2846,7 +3022,7 @@ final class AppModel: ObservableObject {
                 snap.epic = nil
                 snap.works = []
                 snap.headline = ""
-                snap.emptyMessage = "编排空闲·等定稿下达（与对话故障无关）"
+                snap.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             }
             snap.epicId = resolvedEpic
             threadFlow[tid] = snap
@@ -2929,7 +3105,7 @@ final class AppModel: ObservableObject {
         var cached = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: nil, epic: nil, works: [], headline: "",
             recentEpics: isSelected ? recentEpics : [],
-            emptyMessage: "编排空闲·等定稿下达（与对话故障无关）",
+            emptyMessage: "编排空闲 · 下一笔定稿后出现在这里",
             fanoutHint: nil
         )
 
@@ -2939,13 +3115,35 @@ final class AppModel: ObservableObject {
                 cached.epic = nil
                 cached.headline = ""
                 cached.emptyMessage = snap.message
-                    ?? "编排空闲·等定稿下达（与对话故障无关）"
+                    ?? "编排空闲 · 下一笔定稿后出现在这里"
                 threadFlow[tid] = cached
                 bumpFlowRevision(tid)
                 if isSelected {
                     applyFlowSnapshot(cached)
                 }
             }
+            return
+        }
+        let stage = (snap.user_stage ?? snap.epic?.user_stage ?? snap.epic?.split_status ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        // 编排完成：右栏时间线退场（历史在看板）；保留 recentEpics 供「切换本对话任务」
+        if stage == "done" {
+            let keptRecent = cached.recentEpics
+            cached.works = []
+            cached.epic = nil
+            cached.epicId = nil
+            cached.headline = ""
+            cached.fanoutHint = nil
+            cached.recentEpics = keptRecent
+            cached.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
+            threadFlow[tid] = cached
+            bumpFlowRevision(tid)
+            if isSelected {
+                applyFlowSnapshot(cached)
+                lastAnimatedEpicId = nil
+            }
+            flushDiskSave(threadId: tid)
             return
         }
         let works = snap.works ?? []

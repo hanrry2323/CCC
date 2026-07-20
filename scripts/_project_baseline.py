@@ -138,6 +138,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
 
     profile = ""
     state = ""
+    claude = ""
     try:
         pf = ws / ".ccc" / "profile.md"
         if pf.is_file():
@@ -148,6 +149,13 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         sf = ws / ".ccc" / "state.md"
         if sf.is_file():
             state = sf.read_text(encoding="utf-8", errors="replace")[:1500]
+    except OSError:
+        pass
+    try:
+        for cand in (ws / "CLAUDE.md", ws / "AGENTS.md", ws / ".claude" / "CLAUDE.md"):
+            if cand.is_file():
+                claude = cand.read_text(encoding="utf-8", errors="replace")[:1500]
+                break
     except OSError:
         pass
 
@@ -226,6 +234,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "layout": {"top_entries": top_dirs},
         "profile_excerpt": profile,
         "state_excerpt": state,
+        "claude_excerpt": claude,
         "control": control_compact,
         "risks": risks,
         "ready_for_task": ready,
@@ -297,6 +306,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
     }
     profile = (baseline.get("profile_excerpt") or "")[:800]
     state = (baseline.get("state_excerpt") or "")[:800]
+    claude = (baseline.get("claude_excerpt") or "")[:800]
     return (
         "【对用户回复】中文白话；先结论后理由；功课深度对齐 Cursor Agent。"
         "禁止复述工具过程、大段代码、裸 JSON；路径仅在拍板必需时点到。"
@@ -304,12 +314,12 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "# 任务：对齐项目基线（先静默核实，再给人话结论）\n"
         "程序已给出快照，你必须再核实，但回复不要复述 JSON/路径清单。\n\n"
         "## 静默探测（勿写入回复）\n"
-        "1. 读 profile/state；核对 VERSION。\n"
+        "1. 先读 `CLAUDE.md`（或 `AGENTS.md`）+ `README.md` 建立「这是什么项目」；再读 profile/state；核对 VERSION。\n"
         "2. 跑 `git log -5`，与快照交叉；state 可能滞后。\n"
         "3. 读完整 control：`invent_hard_disabled` / `queue_consumer_only` 等。\n"
         "4. 看板是否空转；空 + invent 关 → Engine 闲置正常。\n"
         "5. dirty 可疑则自行抽样；禁止编造。\n"
-        "6. 需要时 Grep/Read 关键入口，确认「定位」不是空话。\n\n"
+        "6. 需要时 Grep/Read 关键入口，确认「定位」不是空话；勿用旧顶层路径当工作区。\n\n"
         "## 禁止对用户说\n"
         "- 禁止建议降控制面 / 关机（除非对方问闲置/省资源）\n"
         "- invent / 自造 backlog / 无人值守全链（红线 12）\n"
@@ -328,6 +338,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "请现在输出完整可见答复；禁止只回 No response requested 或空内容。\n\n"
         f"程序快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
         f"摘要：{baseline.get('summary', '')}\n"
+        + (f"\nCLAUDE/AGENTS 摘录：\n{claude}\n" if claude else "")
         + (f"\nprofile 摘录：\n{profile}\n" if profile else "")
         + (f"\nstate 摘录：\n{state}\n" if state else "")
     )

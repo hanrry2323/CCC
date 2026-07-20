@@ -27,7 +27,7 @@
 ### 1. M1 对话定稿
 
 ```text
-Desktop（M1）↔ sidecar :7788 ↔ loop-code ↔ 2017 Router :4000
+Desktop（M1）↔ sidecar :7788 ↔ loop-code ↔ MiniMax
   → 对齐基线 → 下一步 → 定稿方案
   → 点「转任务」→ POST /api/desktop/transfer
 ```

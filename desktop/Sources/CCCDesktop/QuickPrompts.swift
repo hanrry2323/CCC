@@ -10,8 +10,10 @@ enum QuickPrompts {
         "禁止只回 No response requested 或空内容。"
 
     static let investigatePref =
-        "请先在本仓库静默核实（Read/Glob/Grep；需要时 bash：git log -5、git status；" +
-        "交叉 CLAUDE.md / .ccc/profile.md / .ccc/state.md）。不要上外网，除非我要求。"
+        "请先建立项目心智再答：依次 Read（按存在）CLAUDE.md、AGENTS.md、.ccc/profile.md、" +
+        ".ccc/state.md、README.md；再 bash：git log -5、git status；需要时 Grep/Glob。" +
+        "路径以本仓「双机路径」表为准（M1=apps/ 对话副本，2017=apps/ 编排 SSOT）。" +
+        "不要上外网，除非我要求。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"

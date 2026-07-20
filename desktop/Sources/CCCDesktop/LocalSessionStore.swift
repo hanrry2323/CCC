@@ -158,6 +158,10 @@ enum LocalSessionStore {
         revision: UInt64? = nil,
         claudeSessionId: String? = nil
     ) {
+        // 已存档会话禁止写回活动区（否则 refreshThreads / Hub 同步会「复活」）
+        if isArchived(projectId: projectId, threadId: threadId) {
+            return
+        }
         let existing = load(projectId: projectId, threadId: threadId)
         let persistable = messages
             .filter { $0.role == "user" || $0.role == "assistant" }
@@ -169,6 +173,7 @@ enum LocalSessionStore {
                     toolSteps: $0.toolSteps,
                     filesChanged: $0.filesChanged,
                     toolsFinished: $0.toolsFinished,
+                    changedFilePaths: $0.changedFilePaths,
                     kind: $0.kind,
                     summaryRounds: $0.summaryRounds,
                     transientNote: $0.transientNote,
@@ -232,15 +237,34 @@ enum LocalSessionStore {
         projectDir(projectId).appendingPathComponent("_archive", isDirectory: true)
     }
 
-    static func archiveThread(projectId: String, threadId: String) {
-        let src = sessionURL(projectId: projectId, threadId: threadId)
-        guard fm.fileExists(atPath: src.path) else { return }
+    /// 是否已存档（`_archive/<threadId>.json` 存在即视为墓碑，禁止再出现在侧栏）
+    static func isArchived(projectId: String, threadId: String) -> Bool {
         let dst = archiveDir(projectId: projectId).appendingPathComponent("\(threadId).json")
+        return fm.fileExists(atPath: dst.path)
+    }
+
+    static func archiveThread(projectId: String, threadId: String) {
         ensureDir(archiveDir(projectId: projectId))
-        try? fm.moveItem(at: src, to: dst)
+        let src = sessionURL(projectId: projectId, threadId: threadId)
+        let dst = archiveDir(projectId: projectId).appendingPathComponent("\(threadId).json")
+        // 先从索引摘掉，避免「文件已迁走但索引仍在」或 move 失败导致幽灵会话
         var idx = loadIndex(projectId: projectId)
         idx.removeAll { $0.thread_id == threadId }
         writeIndex(projectId: projectId, entries: idx)
+        if fm.fileExists(atPath: src.path) {
+            if fm.fileExists(atPath: dst.path) {
+                try? fm.removeItem(at: dst)
+            }
+            try? fm.moveItem(at: src, to: dst)
+        } else if !fm.fileExists(atPath: dst.path) {
+            // 无实体文件：写空墓碑，挡住 refreshThreads 再造同名 tid
+            let tomb = Data("{}".utf8)
+            try? tomb.write(to: dst, options: .atomic)
+        }
+        // 清掉误复活的活动副本
+        if fm.fileExists(atPath: src.path), fm.fileExists(atPath: dst.path) {
+            try? fm.removeItem(at: src)
+        }
     }
 
     struct SearchResult: Identifiable, Hashable {
@@ -290,6 +314,92 @@ enum LocalSessionStore {
         save(rec)
     }
 
+    // MARK: - Fork / Import / Export
+
+    /// 分叉：复制消息到新 tid；不带 claude_session_id（新 resume）
+    @discardableResult
+    static func forkThread(projectId: String, sourceThreadId: String, title: String? = nil) -> String? {
+        if isArchived(projectId: projectId, threadId: sourceThreadId) { return nil }
+        let src = load(projectId: projectId, threadId: sourceThreadId)
+        let msgs = src?.messages ?? []
+        let newId = createThreadId(projectId: projectId)
+        let baseTitle = title
+            ?? (src?.title.map { "\($0)（副本）" } ?? "对话副本")
+        saveMessages(
+            projectId: projectId,
+            threadId: newId,
+            messages: msgs,
+            title: baseTitle,
+            flow: src?.flow,
+            allowDowngrade: true,
+            claudeSessionId: nil
+        )
+        // 显式清 resume
+        if var rec = load(projectId: projectId, threadId: newId) {
+            rec.claude_session_id = nil
+            save(rec)
+        }
+        return newId
+    }
+
+    struct ExportV1: Codable {
+        var format: String = "ccc-desktop-session-v1"
+        var exported_at: String
+        var project_id: String
+        var thread_id: String
+        var title: String?
+        var messages: [ChatMessage]
+        var revision: UInt64?
+        /// 导出默认可剥离；导入时忽略 resume
+        var claude_session_id: String?
+        var include_resume: Bool?
+    }
+
+    static func exportV1(
+        projectId: String,
+        threadId: String,
+        includeResume: Bool = false
+    ) -> ExportV1? {
+        guard let rec = load(projectId: projectId, threadId: threadId) else { return nil }
+        return ExportV1(
+            exported_at: isoNow(),
+            project_id: projectId,
+            thread_id: threadId,
+            title: rec.title,
+            messages: rec.messages,
+            revision: rec.revision,
+            claude_session_id: includeResume ? rec.claude_session_id : nil,
+            include_resume: includeResume
+        )
+    }
+
+    static func exportV1JSON(projectId: String, threadId: String, includeResume: Bool = false) -> Data? {
+        guard let pack = exportV1(projectId: projectId, threadId: threadId, includeResume: includeResume)
+        else { return nil }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? enc.encode(pack)
+    }
+
+    /// 导入为新会话；返回新 thread_id
+    @discardableResult
+    static func importV1(_ data: Data, projectId: String? = nil) -> String? {
+        guard let pack = try? JSONDecoder().decode(ExportV1.self, from: data) else { return nil }
+        let pid = projectId ?? pack.project_id
+        guard !pid.isEmpty else { return nil }
+        let newId = createThreadId(projectId: pid)
+        let title = pack.title.map { "\($0)（导入）" } ?? "导入会话"
+        saveMessages(
+            projectId: pid,
+            threadId: newId,
+            messages: pack.messages,
+            title: title,
+            allowDowngrade: true,
+            claudeSessionId: nil
+        )
+        return newId
+    }
+
     // MARK: - Index
 
     static func loadIndex(projectId: String) -> [ThreadIndexEntry] {
@@ -307,6 +417,9 @@ enum LocalSessionStore {
     }
 
     private static func upsertIndex(projectId: String, threadId: String, title: String?, updatedAt: String) {
+        if isArchived(projectId: projectId, threadId: threadId) {
+            return
+        }
         var idx = loadIndex(projectId: projectId)
         if let i = idx.firstIndex(where: { $0.thread_id == threadId }) {
             idx[i].title = title ?? idx[i].title
@@ -327,14 +440,32 @@ enum LocalSessionStore {
     }
 
     static func threadsAsDesktop(projectId: String) -> [DesktopThread] {
-        loadIndex(projectId: projectId).map {
-            DesktopThread(
-                thread_id: $0.thread_id,
-                title: $0.title,
-                updated_at: $0.updated_at,
-                project_id: $0.project_id ?? projectId
-            )
+        // 扫一遍：索引里若仍挂着已存档 tid，顺手摘掉；活动区误复活的 json 也删
+        var idx = loadIndex(projectId: projectId)
+        let before = idx.count
+        idx.removeAll { isArchived(projectId: projectId, threadId: $0.thread_id) }
+        if idx.count != before {
+            writeIndex(projectId: projectId, entries: idx)
         }
+        for entry in idx {
+            let tid = entry.thread_id
+            if isArchived(projectId: projectId, threadId: tid) {
+                let live = sessionURL(projectId: projectId, threadId: tid)
+                if fm.fileExists(atPath: live.path) {
+                    try? fm.removeItem(at: live)
+                }
+            }
+        }
+        return idx
+            .filter { !isArchived(projectId: projectId, threadId: $0.thread_id) }
+            .map {
+                DesktopThread(
+                    thread_id: $0.thread_id,
+                    title: $0.title,
+                    updated_at: $0.updated_at,
+                    project_id: $0.project_id ?? projectId
+                )
+            }
     }
 
     // MARK: - Projects cache

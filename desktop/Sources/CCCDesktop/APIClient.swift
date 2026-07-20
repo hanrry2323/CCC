@@ -193,9 +193,23 @@ actor APIClient {
         req.setValue(tok, forHTTPHeaderField: "X-CCC-Agent-Token")
     }
 
-    /// 探测本机 sidecar `/health`
+    /// 探测本机 sidecar `/health`；可选回填 capabilities
     func probeLocalAgent(base: URL) async -> Bool {
-        guard var health = URL(string: "health", relativeTo: base) else { return false }
+        let info = await fetchAgentHealth(base: base)
+        return info?.ok == true
+    }
+
+    struct AgentHealthInfo: Sendable {
+        var ok: Bool
+        var model: String?
+        var models: [String]
+        var toolModes: [String]
+        var compact: Bool
+        var supportsAttachments: Bool
+    }
+
+    func fetchAgentHealth(base: URL) async -> AgentHealthInfo? {
+        guard var health = URL(string: "health", relativeTo: base) else { return nil }
         if health.absoluteString.hasSuffix("health") == false {
             health = base.appendingPathComponent("health")
         }
@@ -203,13 +217,25 @@ actor APIClient {
         req.timeoutInterval = 1.5
         do {
             let (data, resp) = try await session.data(for: req)
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                return (obj["ok"] as? Bool) == true
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return AgentHealthInfo(
+                    ok: true, model: nil, models: [], toolModes: [],
+                    compact: false, supportsAttachments: false
+                )
             }
-            return true
+            let caps = obj["capabilities"] as? [String: Any]
+            return AgentHealthInfo(
+                ok: (obj["ok"] as? Bool) == true,
+                model: obj["model"] as? String,
+                models: (obj["models"] as? [String]) ?? [],
+                toolModes: (obj["tool_modes"] as? [String]) ?? [],
+                compact: (obj["compact"] as? Bool) ?? (caps?["compact"] as? Bool) ?? false,
+                supportsAttachments: (obj["supports_attachments"] as? Bool)
+                    ?? (caps?["attachments"] as? Bool) ?? false
+            )
         } catch {
-            return false
+            return nil
         }
     }
 
@@ -519,6 +545,7 @@ actor APIClient {
         projectPath: String? = nil,
         /// loop-code resume：同 thread 持续对话
         claudeSessionId: String? = nil,
+        model: String? = nil,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
         guard let chatBase = chatBaseURL else {
@@ -534,12 +561,14 @@ actor APIClient {
             let prompt_mode: String
             let tool_mode: String
             let claude_session_id: String?
+            let model: String?
         }
         // prompt: 只发最后一条 user；有 prompt 时 messages 发空数组，减首包开销
         let promptHint = messages.last(where: { $0.role == "user" })?.content
         let outboundMessages: [ChatMessage] = (promptHint?.isEmpty == false) ? [] : messages
         let path = projectPath ?? localProjectPath
         let resume = claudeSessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelResolved = StreamSessionController.resolveModel(model ?? "flash")
         let data = try JSONEncoder().encode(
             Body(
                 project: projectId,
@@ -550,7 +579,8 @@ actor APIClient {
                 project_path: path,
                 prompt_mode: promptMode,
                 tool_mode: toolMode,
-                claude_session_id: (resume?.isEmpty == false) ? resume : nil
+                claude_session_id: (resume?.isEmpty == false) ? resume : nil,
+                model: modelResolved
             )
         )
         guard let url = URL(string: "api/chat", relativeTo: chatBase) else {

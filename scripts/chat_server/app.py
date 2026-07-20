@@ -28,8 +28,11 @@ class NoStoreStaticMiddleware(BaseHTTPMiddleware):
         if path.endswith(".js") or path.endswith(".css") or path.endswith(".map"):
             if has_version:
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-                response.headers.pop("Pragma", None)
-                response.headers.pop("Expires", None)
+                for h in ("Pragma", "Expires"):
+                    try:
+                        del response.headers[h]
+                    except KeyError:
+                        pass
                 return response
             # 无版本 → 不缓存（开发期热改可见）
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

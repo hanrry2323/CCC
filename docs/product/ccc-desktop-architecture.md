@@ -65,6 +65,24 @@ Engine **不**承担主对话。
 
 ---
 
+## 对照 OpenCode（会话完善度）
+
+对照对象是 **OpenCode Desktop 的 Agent 会话体验**，不是嵌入 OpenCode 进程。
+
+| 对齐 | CCC 落点 |
+|------|----------|
+| 按 sessionID 绑 UI | `WindowChatState.threadId` + `threadMessages[tid]` |
+| 流式 / 停 / resume | Sidecar `:7788` + `claude_session_id` |
+| Fork / Archive / Import-Export | `LocalSessionStore` + `_archive` 墓碑 |
+| Model / discuss·engineer | 请求级 `model` + `preferredToolMode` |
+| Context / compact | 本会话 token + `/api/session/compact` |
+| 本会话用量 vs 上游 | 中栏 tok = sidecar cost；顶栏历史「中转站」统计在 router 退役后可能为空 |
+
+计分 SSOT：[`desktop-opencode-parity.md`](desktop-opencode-parity.md)。  
+**明确不做**：嵌 OpenCode、MCP/Provider 大盘、内嵌终端、文件树、云 Share。
+
+---
+
 ## 数据实体
 
 | 实体 | 权威落点 | 说明 |

@@ -12,7 +12,7 @@
 | **CCC Desktop** | `/Applications/CCCDesktop.app`（v0.51.0） |
 | Server | `http://192.168.3.116:7777`（Mac2017 Hub，API host） |
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`**（M1 深度整合为对话意图工具） |
-| Mac2017 编排面 | Engine = Claude Code 扇出；dev = OpenCode 写码；Router `:4000/:4002` |
+| Mac2017 编排面 | Engine = Claude→MiniMax 扇出；dev = OpenCode→讯飞写码（中转已退役） |
 | 网页 Hub | **运维/兼容**（看板/运维已迁入 Desktop，见 [../deprecate-web-board-ops.md](../deprecate-web-board-ops.md)） |
 
 默认账号：`ccc` / `ccc`。
@@ -22,9 +22,9 @@
 ```text
 M1 对话面（意图工具）             信息流（仅契约）              Mac2017 编排面（队列消费）
 Desktop (SwiftUI)                POST /api/desktop/transfer    Hub :7777 (API host)
-Sidecar :7788         ──────────────────────────────────────► Board :7775
-loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engine (Claude Code 扇出)
-本机 sessions 落盘                                          OpenCode (dev 写码) → Router :4000/4002
+Sidecar :7788 → MiniMax ─────────────────────────────────────► Board :7775
+loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engine
+本机 sessions 落盘                                          Claude→MiniMax · OpenCode→讯飞
 ```
 
 **关键变化**：M1 = 对话脑（Desktop+loop-code 深度整合）；Mac2017 = 纯编排消费队列。  
@@ -62,7 +62,7 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 | B4 | 闲聊全文不进 product/dev（仅 gate/plan） | Engine/board roles 无 `.ccc/chat` 读取；transfer 只带 gate 字段 |
 | B5 | 常态无 Desktop→Hub `/api/chat` | Hub `/api/chat` 路由已删（404）；`APIClient.streamChat` 走 sidecar |
 | — | PUT messages = 备份 | 响应 `role=backup`；Engine 不读 |
-| — | sidecar Router → 2017 `:4000` | `health.router` 含 `192.168.3.116:4000` |
+| — | sidecar → MiniMax 直连 | plist `ANTHROPIC_BASE_URL` 含 `minimaxi.com` |
 | — | 2017 Engine `enabled` | `ccc-autostart-guard.sh enable --start`；`mode=enabled` |
 
 ## 常用命令

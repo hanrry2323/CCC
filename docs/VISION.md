@@ -58,7 +58,7 @@
 | 层 | 放哪 | 说明 |
 |----|------|------|
 | **对话面** | 用户本机（现网：M1） | Desktop + Sidecar + loop-code；会话本机落盘 |
-| **编排面** | 固定机（现网：Mac2017） | Hub `:7777` + Board + Engine + 中转 + **业务仓** |
+| **编排面** | 固定机（现网：Mac2017） | Hub `:7777` + Board + Engine + **业务仓**（模型直连 MiniMax / 讯飞） |
 | 过桥 | LAN/API | 仅 transfer（epic）与 flow 状态；非闲聊全文 |
 
 拓扑与目录：[`deploy/topology.md`](deploy/topology.md) · [`deploy/desktop.md`](deploy/desktop.md) · [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。  

@@ -416,10 +416,9 @@ async def transfer_to_epic(request: Request):
     except Exception as exc:
         payload["seed_warning"] = str(exc)[:200]
 
-    thread_id = str(body.get("thread_id") or "").strip() or None
-    # 项目即对话：钉死 conversation id = {projectId}::main
-    if not thread_id or not thread_id.endswith("::main"):
-        thread_id = flow_events.canonical_conversation_id(project_id)
+    thread_id = str(body.get("thread_id") or "").strip() or flow_events.canonical_conversation_id(
+        project_id
+    )
     flow_events.append_event(
         "epic_created",
         {

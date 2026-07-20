@@ -160,6 +160,127 @@ def test_transfer_creates_epic_only(client, monkeypatch):
     assert d["column"] == "backlog"
 
 
+def test_transfer_preserves_non_main_thread_id(client, monkeypatch):
+    """同对话多任务：真实 thread_id 必须落盘，禁止强改成 ::main。"""
+    from chat_server.routers import projects as proj
+    from chat_server.routers import desktop as desk
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setitem(
+        proj.PROJECTS,
+        "demo",
+        {
+            "name": "demo",
+            "path": str(Path.cwd()),
+            "role": "app",
+            "engine_eligible": True,
+        },
+    )
+    monkeypatch.setitem(proj.PROJECT_TO_WORKSPACE, "demo", "demo")
+    monkeypatch.setattr(desk, "_assert_dispatchable_workspace", lambda ws: Path.cwd())
+    monkeypatch.setattr(desk, "_hub_ensure_engine", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(desk, "_write_seed_artifacts", lambda *a, **k: {"plan": "x"})
+    monkeypatch.setattr(
+        desk,
+        "_merge_create_payload",
+        lambda body, **kw: {"task_id": "epic-t2", "engine_wake": {"ok": True}},
+    )
+
+    class FakeResp:
+        status_code = 200
+        body = json.dumps({"task_id": "epic-t2", "ok": True}).encode()
+
+    with patch.object(desk, "board_proxy", new=AsyncMock(return_value=FakeResp())):
+        r = client.post(
+            "/api/desktop/transfer",
+            auth=_auth(),
+            json={
+                "project_id": "demo",
+                "thread_id": "demo::494276D0",
+                "title": "第二笔",
+                "goal": "再加一行",
+                "acceptance": ["grep TWO"],
+                "pipeline": "dev",
+                "feasibility": "ok",
+                "executor_intent": "opencode",
+                "plan_md": "# P\n\n## 验收\n- x\n",
+            },
+        )
+    assert r.status_code == 200, r.text
+    last = fe.load_last_epic("demo")
+    assert last is not None
+    assert last["epic_id"] == "epic-t2"
+    assert last["thread_id"] == "demo::494276D0"
+    items = fe.list_recent_epics("demo", thread_id="demo::494276D0", limit=10)
+    assert [e["epic_id"] for e in items] == ["epic-t2"]
+
+
+def test_transfer_same_thread_queues_two_epics(client, monkeypatch):
+    """同一 thread 连续两笔 transfer：两张 epic 均绑定该 thread，最新在前。"""
+    from chat_server.routers import projects as proj
+    from chat_server.routers import desktop as desk
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setitem(
+        proj.PROJECTS,
+        "demo",
+        {
+            "name": "demo",
+            "path": str(Path.cwd()),
+            "role": "app",
+            "engine_eligible": True,
+        },
+    )
+    monkeypatch.setitem(proj.PROJECT_TO_WORKSPACE, "demo", "demo")
+    monkeypatch.setattr(desk, "_assert_dispatchable_workspace", lambda ws: Path.cwd())
+    monkeypatch.setattr(desk, "_hub_ensure_engine", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(desk, "_write_seed_artifacts", lambda *a, **k: {"plan": "x"})
+
+    seq = {"n": 0}
+
+    def _merge(body, **kw):
+        seq["n"] += 1
+        return {"task_id": f"epic-q{seq['n']}", "engine_wake": {"ok": True}}
+
+    monkeypatch.setattr(desk, "_merge_create_payload", _merge)
+
+    class FakeResp:
+        status_code = 200
+
+        @property
+        def body(self):
+            return json.dumps({"task_id": f"epic-q{seq['n']}", "ok": True}).encode()
+
+    payload_base = {
+        "project_id": "demo",
+        "thread_id": "demo::AAAA",
+        "goal": "g",
+        "acceptance": ["a"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "executor_intent": "opencode",
+        "plan_md": "# P\n\n## 验收\n- x\n",
+    }
+    with patch.object(desk, "board_proxy", new=AsyncMock(return_value=FakeResp())):
+        r1 = client.post(
+            "/api/desktop/transfer",
+            auth=_auth(),
+            json={**payload_base, "title": "第一笔"},
+        )
+        r2 = client.post(
+            "/api/desktop/transfer",
+            auth=_auth(),
+            json={**payload_base, "title": "第二笔"},
+        )
+    assert r1.status_code == 200 and r2.status_code == 200
+    items = fe.list_recent_epics("demo", thread_id="demo::AAAA", limit=10)
+    assert [e["epic_id"] for e in items] == ["epic-q2", "epic-q1"]
+    assert all(e.get("thread_id") == "demo::AAAA" for e in items)
+    last = fe.load_last_epic("demo")
+    assert last["epic_id"] == "epic-q2"
+    assert last["thread_id"] == "demo::AAAA"
+
+
 def test_flow_snapshot_empty(client, monkeypatch):
     from chat_server.routers import projects as proj
 

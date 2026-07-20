@@ -23,15 +23,7 @@ enum FlowLayout {
         let eid = epic?.id ?? epicId ?? "epic"
         let contentW = max(railContentWidth, nodeWidth + pad * 2)
 
-        let epicNode = FlowGraphNode(
-            id: eid,
-            kind: .epic,
-            title: epic?.title ?? eid,
-            subtitle: epic?.headline ?? epic?.user_stage.map { stageLabel($0) } ?? "待拆解",
-            statusKey: epic?.user_stage ?? "pending",
-            badge: "任务",
-            detail: epic?.goal_summary
-        )
+        let epicNode = epicGraphNode(epic: epic, epicId: epicId)
         nodes.append(epicNode)
 
         let depth = workDepths(works)
@@ -191,14 +183,31 @@ enum FlowLayout {
         )
     }
 
+    /// 大卡阶段：headline → user_stage → split_status → column；禁止缺字段时误显「待拆解」
+    static func epicStageKey(epic: FlowEpic?) -> String {
+        let raw = epic?.user_stage
+            ?? epic?.split_status
+            ?? epic?.column
+            ?? "pending"
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func epicSubtitle(epic: FlowEpic?) -> String {
+        if let h = epic?.headline?.trimmingCharacters(in: .whitespacesAndNewlines), !h.isEmpty {
+            return h
+        }
+        return stageLabel(epicStageKey(epic: epic))
+    }
+
     static func epicGraphNode(epic: FlowEpic?, epicId: String?) -> FlowGraphNode {
         let eid = epic?.id ?? epicId ?? "epic"
+        let key = epicStageKey(epic: epic)
         return FlowGraphNode(
             id: eid,
             kind: .epic,
             title: epic?.title ?? eid,
-            subtitle: epic?.headline ?? epic?.user_stage.map { stageLabel($0) } ?? "待拆解",
-            statusKey: epic?.user_stage ?? "pending",
+            subtitle: epicSubtitle(epic: epic),
+            statusKey: key.isEmpty ? "pending" : key,
             badge: "任务",
             detail: epic?.goal_summary
         )

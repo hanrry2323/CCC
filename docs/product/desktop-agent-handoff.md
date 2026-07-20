@@ -41,7 +41,7 @@ M1 archive 冷冻树 = 只读备份，禁止 register / 禁止当开发 cwd
 |------------------|-----------|-----------|-------------|
 | `ccc` | `…/CCC` | `ccc` | `/Users/apple/program/CCC` |
 | `ccc-demo` | `…/apps/ccc-demo` | `ccc-demo` | `/Users/apple/program/apps/ccc-demo` |
-| `clawmed-ccc` | `…/apps/clawmed-ccc` | `clawmed-ccc` | `/Users/apple/program/clawmed-ccc`（顶层瘦副本，未强制进 `apps/`） |
+| `clawmed-ccc` | `…/apps/clawmed-ccc` | `clawmed-ccc` | `/Users/apple/program/apps/clawmed-ccc` |
 | `hp` / `xianyu` / `qb` / `medio-0` | `…/apps/<同名>` | 同名 | `/Users/apple/program/apps/<同名>` |
 | **`qxo`** | `…/apps/qx-observer` | **`qxo`**（可兼 `qx-observer`） | `/Users/apple/program/apps/qx-observer` |
 

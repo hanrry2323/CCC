@@ -41,25 +41,39 @@ struct FlowCanvasView: View {
         }
     }
 
+    /// 仅 pending/planned 且无 works 才显示「待拆解」；done/failed/running 用 headline 或 stageLabel
+    private var epicStageKey: String {
+        FlowLayout.epicStageKey(epic: epic)
+    }
+
     private var header: some View {
         Group {
-            if !headline.isEmpty {
-                Text(headline)
+            if let text = headerText {
+                Text(text)
                     .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(CCCTheme.muted)
+                    .foregroundStyle(headerUsesAccent ? CCCTheme.accent.opacity(0.85) : CCCTheme.muted)
                     .lineLimit(2)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
-            } else if (epic != nil || !(epicId ?? "").isEmpty), works.isEmpty {
-                Text(splittingPulse ? "拆解中…" : "待拆解")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(CCCTheme.accent.opacity(0.85))
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
             }
         }
+    }
+
+    private var headerText: String? {
+        if !headline.isEmpty { return headline }
+        let bound = epic != nil || !(epicId ?? "").isEmpty
+        guard bound, works.isEmpty else { return nil }
+        switch epicStageKey {
+        case "pending", "planned", "":
+            return splittingPulse ? "拆解中…" : "待拆解"
+        default:
+            return FlowLayout.epicSubtitle(epic: epic)
+        }
+    }
+
+    private var headerUsesAccent: Bool {
+        headline.isEmpty && works.isEmpty && ["pending", "planned", ""].contains(epicStageKey)
     }
 
     private var emptyState: some View {
@@ -74,7 +88,7 @@ struct FlowCanvasView: View {
                     .font(CCCTheme.caption)
                     .foregroundStyle(CCCTheme.faint.opacity(0.85))
             }
-            Text("时间线按依赖分层展开；点击节点可看详情。")
+            Text("已完成任务在看板维护；右栏只跟当前未完成编排。")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint.opacity(0.75))
             Spacer()
@@ -182,13 +196,15 @@ struct FlowCanvasView: View {
         animToken &+= 1
         let token = animToken
         revealedWorkIds = []
-        if works.isEmpty {
+        // 仅待拆解阶段脉冲；done/failed 不闪「拆解中」
+        if works.isEmpty, ["pending", "planned", ""].contains(epicStageKey) {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 splittingPulse = true
             }
             return
         }
         splittingPulse = false
+        guard !works.isEmpty else { return }
         runRevealSequence(token: token)
     }
 

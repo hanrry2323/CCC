@@ -108,6 +108,8 @@ def test_refresh_epic_done(tmp_path):
     assert refresh_epic_completion(store, "e") == "done"
     _, epic = store.find_task("e")
     assert epic["split_status"] == "done"
+    assert epic.get("ui_hidden") is True
+    assert store.list_tasks("backlog") == []
 
 
 def test_refresh_epic_done_despite_in_progress_ghost(tmp_path):
@@ -139,6 +141,8 @@ def test_refresh_epic_done_despite_in_progress_ghost(tmp_path):
     assert store.find_task("eg-w1")[0] == "in_progress"  # 先命中靠前柱
     assert store.resolve_task_column("eg-w1") == "released"
     assert refresh_epic_completion(store, "eg") == "done"
+    _, eg = store.find_task("eg")
+    assert eg.get("ui_hidden") is True
 
 
 def test_refresh_epic_failed_on_abnormal(tmp_path):

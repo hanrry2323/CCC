@@ -144,8 +144,8 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             }
             label.attributedText = out
 
-            // 顶栏数字 = 实际上游主 tier（一请求只计一次）；勿把 flash/code 当成两条独立对话
-            var tip = "实际消耗（按上游主 tier，一请求只计一次）· +为近一轮新增（无则 ·）"
+            // 顶栏数字 = 中转站后台实际消耗（Hub→:4000/admin/stats）；≠ Desktop 本会话
+            var tip = "中转站后台用量（Hub→:4000/admin/stats）· 与本机 sidecar 直连对话无关 · +为近一轮新增（无则 ·）"
             if let req = model.routerUsage?.requested {
                 let rf = req.flash?.requests ?? 0
                 let rc = req.code?.requests ?? 0

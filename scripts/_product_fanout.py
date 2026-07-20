@@ -788,14 +788,21 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
         )
     except (OSError, json.JSONDecodeError, IndexError):
         raw_ss = epic.get("split_status")
+    patch: dict = {}
     if raw_ss != new:
-        store.patch_task(epic_id, {"split_status": new})
+        patch["split_status"] = new
+    # done 沉底：自动 ui_hidden，避免 Desktop 侧栏/看板灯把「已完成」当成还在跑
+    if new == "done" and not epic.get("ui_hidden"):
+        patch["ui_hidden"] = True
+    if patch:
+        store.patch_task(epic_id, patch)
         _log.info(
-            "[fanout] epic %s → %s (was %s, kids=%s)",
+            "[fanout] epic %s → %s (was %s, kids=%s)%s",
             epic_id,
             new,
             raw_ss,
             statuses,
+            " ui_hidden" if patch.get("ui_hidden") else "",
         )
     return new
 

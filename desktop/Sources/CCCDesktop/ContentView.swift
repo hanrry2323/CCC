@@ -437,7 +437,21 @@ private struct SidebarThreadRow: View {
                 model.renameDraft = thread.title ?? ""
             }
             Button("存档", role: .destructive) {
-                Task { await model.archiveThread(threadId: thread.thread_id) }
+                let tid = thread.thread_id
+                Task {
+                    await model.archiveThread(threadId: tid)
+                    if window.threadId == tid {
+                        window.threadId = model.selectedThreadId
+                            ?? model.threads.first?.thread_id
+                    }
+                }
+            }
+            Button("分叉") {
+                Task {
+                    if let nid = await model.forkThread(threadId: thread.thread_id) {
+                        window.threadId = nid
+                    }
+                }
             }
         }
         .accessibilityLabel(
@@ -768,24 +782,45 @@ struct CodexChatPaneBody: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(CCCTheme.accent)
             }
-            if !displayMessages.isEmpty, model.sessionTokens > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "bolt")
-                        .font(.system(size: 8))
-                    Text("\(model.sessionTokens) tok")
-                        .font(.system(size: 10))
+            if !displayMessages.isEmpty {
+                let tok = model.sessionTokenCount(for: paneThreadId ?? "")
+                if tok > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "bolt")
+                            .font(.system(size: 8))
+                        Text("本会话 \(tok) tok")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(CCCTheme.faint)
+                    .help("本会话用量（sidecar cost）；与顶栏「中转站后台」无关")
                 }
-                .foregroundStyle(CCCTheme.faint)
             }
-            Button("导出") { model.exportThreadToPasteboard(threadId: paneThreadId) }
+            Button("上下文") { model.isContextPanelPresented = true }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
-                .disabled(displayMessages.isEmpty)
+                .disabled((paneThreadId ?? "").isEmpty)
+            Menu("导出") {
+                Button("Markdown 到剪贴板") {
+                    model.exportThreadToPasteboard(threadId: paneThreadId)
+                }
+                Button("会话 JSON 到剪贴板") {
+                    model.exportThreadJSONToPasteboard(threadId: paneThreadId)
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundStyle(CCCTheme.faint)
+            .disabled(displayMessages.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
         .padding(.bottom, 4)
+        .sheet(isPresented: $model.isContextPanelPresented) {
+            ContextPanelSheet(threadId: paneThreadId ?? "")
+                .environmentObject(model)
+                .environmentObject(window)
+        }
     }
 
     private var offlineCenter: some View {
@@ -1036,6 +1071,42 @@ struct CodexChatPaneBody: View {
                 .accessibilityLabel("转任务")
                 .accessibilityHint("确认门禁后投递 epic")
 
+                Picker("", selection: $model.preferredModel) {
+                    Text("flash").tag("flash")
+                    Text("code").tag("code")
+                    Text("sonnet").tag("sonnet")
+                    Text("haiku").tag("haiku")
+                }
+                .labelsHidden()
+                .frame(width: 88)
+                .help(model.sidecarReportedModel.isEmpty
+                      ? "请求级模型"
+                      : "请求级模型 · sidecar 默认 \(model.sidecarReportedModel)")
+
+                Button {
+                    model.requestEngineerMode()
+                } label: {
+                    Text(model.preferredToolMode == "engineer" ? "工程师" : "讨论")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(
+                            model.preferredToolMode == "engineer"
+                                ? CCCTheme.nodeFail
+                                : CCCTheme.secondary
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("讨论=只读探查；工程师=允许本机改文件")
+
+                Button {
+                    pickComposerAttachment()
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CCCTheme.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("附加本地文件路径到本条消息")
+
                 if let hint = model.transferGateHint(projectId: window.projectId, threadId: paneThreadId) {
                     Text(hint)
                         .font(.system(size: 10.5))
@@ -1052,6 +1123,35 @@ struct CodexChatPaneBody: View {
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
 
+            if !model.composerAttachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(model.composerAttachments) { att in
+                            HStack(spacing: 4) {
+                                Image(systemName: att.isImage ? "photo" : "doc")
+                                    .font(.system(size: 9))
+                                Text((att.path as NSString).lastPathComponent)
+                                    .font(.system(size: 10))
+                                    .lineLimit(1)
+                                Button {
+                                    model.removeComposerAttachment(id: att.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 10))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(CCCTheme.hover, in: Capsule())
+                            .foregroundStyle(CCCTheme.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: CCCTheme.chatMaxWidth)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack(alignment: .bottom, spacing: 8) {
                 ComposerTextView(
                     text: $composerText,
@@ -1065,6 +1165,9 @@ struct CodexChatPaneBody: View {
                 .padding(.leading, 8)
                 .padding(.vertical, 6)
                 .accessibilityLabel("消息输入框")
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleComposerDrop(providers)
+                }
 
                 // 固定同一 Button 身份，避免 if/else 换控件触发 Composer 整行重布局打断 IME
                 Button {
@@ -1112,6 +1215,18 @@ struct CodexChatPaneBody: View {
             )
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
+            .confirmationDialog(
+                "开启工程师模式？",
+                isPresented: $model.confirmEngineerMode,
+                titleVisibility: .visible
+            ) {
+                Button("开启（可改本机文件）", role: .destructive) {
+                    model.confirmEnableEngineerMode()
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("默认讨论模式只读探查。工程师模式允许 Agent 修改本机工作区文件。")
+            }
         }
         .padding(.horizontal, 28)
         .padding(.top, 6)
@@ -1126,6 +1241,33 @@ struct CodexChatPaneBody: View {
             model.composerBounce = nil
             model.composerBounceThreadId = nil
         }
+    }
+
+    private func pickComposerAttachment() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.begin { resp in
+            guard resp == .OK else { return }
+            for url in panel.urls {
+                model.addComposerAttachment(path: url.path)
+            }
+        }
+    }
+
+    private func handleComposerDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for p in providers {
+            _ = p.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    model.addComposerAttachment(path: url.path)
+                }
+            }
+            handled = true
+        }
+        return handled
     }
 
     private var quickActionBar: some View {
@@ -1223,15 +1365,18 @@ struct CodexChatPaneBody: View {
 
     private func sendFromComposer() {
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let atts = model.composerAttachments
+        guard !text.isEmpty || !atts.isEmpty else { return }
         // 立刻清空本地输入；不要经 model.draft，避免 onChange 回填
         composerText = ""
         model.sendUserMessage(
             text,
             projectId: paneProjectId,
             threadId: paneThreadId,
-            stopAndSend: true
+            stopAndSend: true,
+            attachments: atts
         )
+        model.composerAttachments = []
     }
 }
 
@@ -1381,6 +1526,15 @@ struct CodexMessageRow: View {
             }
             if showActions {
                 MessageActionBar(role: "assistant", content: body, message: message)
+                if message.filesChanged > 0 || !message.changedFilePaths.isEmpty {
+                    Button("查看改动") {
+                        model.revealChangedFiles(message: message, projectId: window.projectId)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.accent)
+                    .accessibilityLabel("在 Finder 中查看本轮改动文件")
+                }
             }
         }
         .padding(.trailing, 40)
@@ -1731,10 +1885,25 @@ struct SettingsView: View {
             Section {
                 TextField("本机 Agent", text: $model.agentURLString)
                 TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
+                Picker("默认模型", selection: $model.preferredModel) {
+                    Text("flash").tag("flash")
+                    Text("code").tag("code")
+                    Text("sonnet").tag("sonnet")
+                    Text("haiku").tag("haiku")
+                }
+                Picker("默认工具模式", selection: $model.preferredToolMode) {
+                    Text("讨论（只读）").tag("discuss")
+                    Text("工程师（可写）").tag("engineer")
+                }
+                if !model.sidecarReportedModel.isEmpty {
+                    Text("Sidecar 报告：\(model.sidecarReportedModel)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("默认 http://127.0.0.1:7788。失败时界面显示「本机 Agent 未就绪」，不会回退到 Hub 聊天。")
+                Text("默认 http://127.0.0.1:7788。模型按请求传给 sidecar。顶栏 flash/code 数字是中转站后台统计，不是本会话。")
             }
 
             Section {
@@ -1753,11 +1922,76 @@ struct SettingsView: View {
             Section {
                 Button("重新连接") { Task { await model.reconnect() } }
                 Button("打开用法说明") { model.isHelpPresented = true }
+                Button("从剪贴板导入会话 JSON") {
+                    Task { await model.importThreadJSONFromPasteboard(projectId: model.selectedProjectId) }
+                }
             }
         }
         .formStyle(.grouped)
         .padding(12)
-        .frame(width: 520, height: 420)
+        .frame(width: 520, height: 480)
+    }
+}
+
+// MARK: - Context panel
+
+struct ContextPanelSheet: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var window: WindowChatState
+    let threadId: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("本会话上下文")
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+                Button("关闭") {
+                    model.isContextPanelPresented = false
+                    dismiss()
+                }
+            }
+            let msgs = model.messagesForThread(threadId)
+            let tok = model.sessionTokenCount(for: threadId)
+            let est = LocalSessionStore.estimateTokens(msgs)
+            Group {
+                LabeledContent("消息数", value: "\(msgs.count)")
+                LabeledContent("本会话 token", value: "\(tok)")
+                LabeledContent("估算字符 token", value: "\(est)")
+                LabeledContent("模型偏好", value: model.preferredModel)
+                LabeledContent("工具模式", value: model.preferredToolMode)
+                LabeledContent(
+                    "Resume",
+                    value: model.hasResume(for: threadId) ? "有" : "无"
+                )
+            }
+            .font(.system(size: 12))
+
+            Text("本会话用量来自 sidecar cost 事件；顶栏数字是中转站后台 /admin/stats，两者无关。")
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Button("压缩上下文") {
+                    Task {
+                        await model.manualCompact(threadId: threadId)
+                        model.isContextPanelPresented = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(CCCTheme.accent)
+                Button("导出 JSON") {
+                    model.exportThreadJSONToPasteboard(threadId: threadId)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .frame(width: 420, height: 320)
+        .background(CCCTheme.chatBg)
     }
 }
 
@@ -1797,7 +2031,7 @@ struct DesktopHelpSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("快捷键")
                     .font(.system(size: 12, weight: .semibold))
-                Text("⌘N 新会话 · ⌘F 搜索 · ⌘1 对话 · ⌘2 看板 · ⌘3 运维 · ⌘⇧T 转任务")
+                Text("⌘N 新会话 · ⌘F 搜索 · ⌘1 对话 · ⌘2 看板 · ⌘3 运维 · ⌘⇧T 转任务 · 会话可分叉/存档/导出 JSON")
                     .font(.system(size: 12))
                     .foregroundStyle(CCCTheme.secondary)
             }

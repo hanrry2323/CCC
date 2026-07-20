@@ -31,9 +31,12 @@ if str(SCRIPTS) not in sys.path:
 
 # Ensure loop-code before chat_server config resolves CLI
 os.environ.setdefault("CCC_EXECUTOR", "loop-code")
+# 默认直连 MiniMax；仅当显式设 CCC_AGENT_ROUTER 时走中转
 os.environ.setdefault(
     "ANTHROPIC_BASE_URL",
-    os.environ.get("CCC_AGENT_ROUTER", "http://192.168.3.116:4000"),
+    os.environ.get("CCC_AGENT_ROUTER")
+    or os.environ.get("CCC_ANTHROPIC_BASE_URL")
+    or "https://api.minimaxi.com/anthropic",
 )
 
 from fastapi import FastAPI, Request  # noqa: E402
@@ -145,6 +148,18 @@ async def health():
         "agent_cli": cli_name,
         "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
+        # Desktop 能力契约（不暴露密钥/完整路径）
+        "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
+        "models": ["flash", "code", "sonnet", "haiku"],
+        "tool_modes": ["discuss", "engineer"],
+        "compact": True,
+        "supports_attachments": True,
+        "capabilities": {
+            "compact": True,
+            "attachments": True,
+            "model_per_request": True,
+            "resume": True,
+        },
     }
 
 

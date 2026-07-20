@@ -228,6 +228,19 @@ M1（对话 + 冷冻）
 冷冻根：`/Users/apple/program/archive/2026-07-20-m1-freeze/{hp,xianyu,qb,qx-observer,medio-0}/`  
 2017 doctor（迁后）：`errors=0`；registered=8（orch+7 apps）。
 
+### M1 LaunchAgents（2026-07-20 根治空壳目录）
+
+旧路径被 `com.qb.*` / `com.hp*` 写回空目录的问题已处理：
+
+| Agent | 处置 |
+|-------|------|
+| `com.hp.*` / `com.hp-kb.*` | 改指向 `/Users/apple/program/apps/hp`（`local/` 从冷冻仓同步） |
+| `com.qb.*` | 改指向冷冻仓 `…/archive/2026-07-20-m1-freeze/qb`（保留 `.venv`） |
+| `com.medio.deploy` | 已移入 `~/Library/LaunchAgents/disabled-m1-migrate-20260720/` |
+
+旧顶层路径现为**文件墓碑**（非目录），防止再被 `mkdir`：`~/program/hp`、`projects/qb`、`qx-observer`、`xianyu`、`Medio-0`、`clawmed-ccc`。  
+对话瘦副本统一：`~/program/apps/<name>`（含 `clawmed-ccc`）。
+
 ---
 
 ## 6. 相关入口

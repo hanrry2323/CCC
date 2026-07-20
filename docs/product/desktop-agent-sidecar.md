@@ -15,7 +15,10 @@ Desktop UI ←localhost SSE→ ccc-agent-sidecar (:7788)
 Desktop UI ──PUT messages(+tool_steps)备份 / transfer / flow──→ Hub (:7777)
 ```
 
-**模型出口默认**：`install-agent-sidecar-plist.sh` 写 `ANTHROPIC_BASE_URL=http://192.168.3.116:4000`（Mac2017 中转）。覆盖：仅环境变量 `CCC_AGENT_ROUTER`（不继承 shell 的 `ANTHROPIC_BASE_URL`）。
+**模型出口默认（唯一）**：直连 MiniMax Anthropic  
+`https://api.minimaxi.com/anthropic` · `ANTHROPIC_MODEL=MiniMax-M3` · key：`~/.ccc/minimax-api-key`。  
+
+~~ai-loop-router / `CCC_AGENT_ROUTER=:4000` 已退役~~；勿再指 `192.168.3.116:4000`。
 
 ## 启动（launchd 常驻）
 
@@ -28,13 +31,14 @@ Desktop UI ──PUT messages(+tool_steps)备份 / transfer / flow──→ Hub 
 bash scripts/ccc-agent-sidecar.sh          # 前台
 bash scripts/ccc-agent-sidecar.sh status
 bash scripts/ccc-agent-sidecar.sh stop
-# CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=http://192.168.3.116:4000
+# 默认已直连 MiniMax；需覆盖时显式设 ANTHROPIC_BASE_URL / ANTHROPIC_MODEL=MiniMax-M3
 ```
 
-健康检查：`curl -s http://127.0.0.1:7788/health`  
+健康检查：`curl -s http://127.0.0.1:7788/health`（期望 MiniMax 出口）  
 若日志出现 `Too many open files`：`bash scripts/install-agent-sidecar-plist.sh --start`（plist 已抬高 FD 上限）后重开 Desktop。  
 日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
-plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
+plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`  
+验收：plist 中 `ANTHROPIC_BASE_URL` 含 `minimaxi.com`，且 `ANTHROPIC_AUTH_TOKEN` **不是** `sk-trae-real-token-not-needed`。
 
 
 ## 热路径可靠性（slot / warm / UX）
@@ -91,10 +95,11 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| `GET` | `/health` | 存活 |
+| `GET` | `/health` | 存活；含 `model` / `models` / `tool_modes` / `compact` / `supports_attachments` / `capabilities`（Desktop 能力探测） |
 | `POST` | `/warm` | keep-warm：**带 `project_path` 才预连 SDK slot**；响应含 `slot.connected` |
-| `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`；`tool_mode`: `discuss`\|`engineer`，默认 `discuss` 无 Write/Edit/Bash） |
+| `POST` | `/api/chat` | SSE 对话（`prompt_mode`: `light`\|`full`；`tool_mode`: `discuss`\|`engineer`；可选请求级 `model`） |
 | `POST` | `/api/session/drop` | 取消/重置/自愈：丢 live slot（`reason` 入日志）；默认不删 resume 历史 |
+| `POST` | `/api/session/compact` | 压缩：drop slot + 注入摘要 |
 
 Desktop 本机会话目录：`~/Library/Application Support/CCCDesktop/sessions/`。
 

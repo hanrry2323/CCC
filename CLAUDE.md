@@ -159,7 +159,7 @@ scripts/chat_server/            # FastAPI 模块化后端
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 7788 | CCC Agent Sidecar | **M1 对话热路径**（Desktop → sidecar → loop-code → 2017 Router） |
+| 7788 | CCC Agent Sidecar | **M1 对话热路径**（Desktop → sidecar → loop-code → MiniMax） |
 | 7777 | CCC Hub | API host：transfer / flow / board / ops（Mac2017） |
 | 7775 | Board API | 看板 REST（仅 127.0.0.1，Hub 反代） |
 | 7778 | CCC Cockpit | **deprecated** → Hub `#/ops` → Desktop 运维 |
@@ -245,12 +245,13 @@ scripts/chat_server/            # FastAPI 模块化后端
 
 ## 模型通道
 
-| 通道 | 用途 | 模型 |
-|------|------|------|
-| `flash` | 主会话交互 | MiniMax-M3 等（:4000 中转站） |
-| `code` | 后台自动任务（dev/opencode） | 讯飞 astron-code / DeepSeek（:4002） |
+| 通道 | 用途 | 上游（直连） |
+|------|------|--------------|
+| Claude / loop-code | 对话 + product/reviewer | **MiniMax** `https://api.minimaxi.com/anthropic`（`MiniMax-M3`） |
+| OpenCode | 后台写码（dev） | **讯飞** `xfyun/code`（`~/.config/opencode`）；备用智谱 `zhipu/flash` |
 
-子进程统一 `--model flash`（wrapper 入口统一），详见 `docs/model-tier-strategy.md`。
+逻辑名 `flash`/`code` 在直连 MiniMax 时由 `_claude_cli.resolve_anthropic_model` 映射为 `MiniMax-M3`。  
+~~ai-loop-router `:4000/:4002` 已退役。~~ 详见 `docs/deploy/topology.md` · `docs/executors/overview.md`。
 
 ---
 

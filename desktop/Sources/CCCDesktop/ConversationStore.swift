@@ -114,4 +114,11 @@ enum ConversationStore {
         let pid = LocalSessionStore.projectId(fromThreadId: threadId)
         LocalSessionStore.archiveThread(projectId: pid, threadId: threadId)
     }
+
+    /// 分叉会话
+    @discardableResult
+    static func forkThread(threadId: String, title: String? = nil) -> String? {
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        return LocalSessionStore.forkThread(projectId: pid, sourceThreadId: threadId, title: title)
+    }
 }

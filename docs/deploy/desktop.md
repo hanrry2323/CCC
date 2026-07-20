@@ -22,7 +22,17 @@ http://192.168.3.116:7777
 |----|------|
 | 左 | 项目文件夹 + 统一 Thread 列表（`+` 新建会话；发送跟本窗 `threadId`，不强制 `::main`） |
 | 中 | 方案 Agent 对话；转任务（仅 epic） |
-| 右 | 编排流程（flow events / snapshot）；空板文案「编排空闲·等定稿下达」≠ 对话故障 |
+| 右 | 编排流程（flow events / snapshot）；空板文案「编排空闲 · 下一笔定稿后出现在这里」≠ 对话故障 |
+
+## 模型出口
+
+| 工具 | 上游 |
+|------|------|
+| Desktop ↔ sidecar ↔ loop-code | **MiniMax** 直连 |
+| Engine Claude（product/reviewer） | **MiniMax** 直连 |
+| Engine OpenCode（dev） | **讯飞** `xfyun/code` 直连 |
+
+~~ai-loop-router `:4000/:4002` 已退役。~~ 见 [`topology.md`](topology.md)。
 
 ## 运行与打包
 
@@ -63,7 +73,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
-| `GET /api/ops/router-usage` | 顶栏用量：`tiers`=实际上游主 tier 今日次数（一请求只计一次）；`requested`=客户端请求模型；`attribution=served_primary_tier`。Desktop 5–8s 轮询，失败顶栏 `!` + tooltip。 |
+| `GET /api/ops/router-usage` | 历史中转站用量接口；router 退役后可能为空。本会话用量看 sidecar cost |
 
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

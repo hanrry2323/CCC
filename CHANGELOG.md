@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop ↔ OpenCode 98% 完善度**：计分 SSOT [`docs/product/desktop-opencode-parity.md`](docs/product/desktop-opencode-parity.md)；会话 Fork / Context 面板 / 讨论·工程师模式 / 请求级模型 / Composer 附件 / 会话 JSON 导入导出 / 轻量「查看改动」；`StreamSessionController`；sidecar `/health` capabilities；烟测 `scripts/smoke-desktop-parity.sh`。顶栏标明「中转站后台」用量。
+- **Agent 项目心智**：各业务仓 `CLAUDE.md` / `profile.md` 写入「双机路径」表；`xianyu`/`qxo` 根 CLAUDE 不再是空壳跳转；对齐基线注入 CLAUDE 摘录；`hub_voice` / QuickPrompts 强制先读仓再答。
 - **快捷条提示词强化（对标 Cursor）**：对齐基线 / 下一步 / 定稿 / 扫风险 强制静默读仓+证据结论；放宽字数阉割；`hub_voice` 改为高能力产品搭档。见 `QuickPrompts.swift` · `hub_voice.py` · `_project_baseline.py`。
 - **Desktop UI 8 项打磨**：字号/对比上调；看板列自适应铺满；运维 Gauge/Grid/Material；侧栏去「会话」+ 文件夹图标 + 会话选中底；单状态指示 + 流式动画 + 未读点；工具调用折叠式 SF Symbol（对齐 Cursor/OpenCode）。
 - **舰队五仓迁 Mac2017**：`xianyu` / `qb` / `qx-observer` / `hp` / `medio-0` → `apps/` + register；M1 冷冻于 `archive/2026-07-20-m1-freeze/`；运维 SSOT [`docs/deploy/fleet-apps-migration-2026-07.md`](docs/deploy/fleet-apps-migration-2026-07.md)；Agent 心智 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)。
@@ -18,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **中转站退役**：停用 2017 `com.ai-loop-router`（:4000/:4002）；Claude/loop-code→MiniMax、OpenCode→讯飞直连；拓扑 / sidecar / boundary / GO-LIVE 文档对齐。
+- **右栏完成态 + 同对话多任务**：done 不再误显「待拆解」；完成即清空右栏时间线（保留 recentEpics）；transfer 保留真实 `thread_id`（不再强改 `::main`）。
+- **完成任务侧栏仍闪 / 右栏不退**：epic `done` 自动 `ui_hidden` 沉底；`/api/board/summaries` 不再 `include_hidden`；Desktop 收到 `user_stage=done` 清空右栏绑定。
+- **会话存档复活**：`_archive` 墓碑阻止 `refreshThreads`/`saveMessages` 重建已存档 tid。
 - **product 异步收尾丢扇出**：进程已死但有 `.product.out` 时 Engine GC 必须 `check_product_async`；`ccc-product-session` 写 `.done`/`.exitcode`。
 - **DoD auto-commit 误伤 `.ccc/` 交付物**：只排除 board/stats/pids/plans/phases/reports 等噪音，允许 `.ccc/flow-smoke.md`；work 卡 commit-gate 接受父 epic id。
 - **epic 子卡 released 后状态滞后**：kb/verified 后立刻 `refresh_epic_lifecycle`。
@@ -35,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **多会话名存实亡**：发送/暖机/转任务/快捷操作跟 `window.threadId`，不再强制打回 `{project}::main`；新建会话返回并绑定本窗；窗级线程焦点供 warm。
 - **切窗/杀 Desktop 后对话假死**：客户端断开时 sidecar 必须 `_forget_slot`（此前半残 loop-code 仍标 connected，下一轮卡 first_event）；Desktop `cancelChat` **总是** `session/drop` 回收 live slot（默认仍保留 `claude_session_id` 以便 resume）；发送前不再与 chat 抢 warm 锁。
 - **对话稳定性升级**：SSE `error` 带 `code` 进 `APIError.stream`；重试白名单排除鉴权；timeout/stub 重试前 heal-drop；健康缓存 10s 且失败即失效；状态栏「重试/清槽」；turn 账本 `desktop-chat-turns.jsonl`；sidecar 检测 cli PID 已死的假 connected 槽并强制重连。
+- **模型出口直连**：Desktop/loop-code/Hub Claude → MiniMax Anthropic（`https://api.minimaxi.com/anthropic`，`MiniMax-M3`）；OpenCode → 讯飞 `xfyun/code`（智谱 `zhipu/flash` 备用）。不再默认经 ai-loop-router；可用 `CCC_AGENT_ROUTER` / `CCC_HUB_ROUTER` 回退中转。
 - **切窗回长对话「从历史刷到最新」**：消息区不再因他窗改 `selectedThreadId` 丢滚动钉；重入/激活时无动画钉底（`Transaction.disablesAnimations` + bottom 锚点），去掉 easeOut `scrollTo(.center)` 扫 LazyVStack。
 - **对话可靠性契约（非止血）**：`有心跳 ≠ 有进展`。sidecar：`CHAT_FIRST_EVENT_TIMEOUT` / `CHAT_TOOL_STALL_TIMEOUT` → interrupt + error code + 回收 slot/僵尸 cli；discuss **保留** Web* 全集，短问/light **按意图**零工具或推迟 Web*（SDK 空 `allowed_tools` 会被当成全开，已改用 `disallowed_tools` 强制）；工具集变更则重连。Desktop：ping 不重置进展钟；状态「等待首包 / 工具执行中：Name」。
 - **Desktop agent 输出不稳定（OpenCode 多窗后遗症）**：消息修订与编排修订拆分（`threadRevision` / `threadFlowRevision`），Flow SSE 不再拖聊天重滚；去掉长 delta 异步分片竞态；流式中不写盘、迟到 delta 拒绝回写；流式气泡用纯文本避免 Markdown 闪烁；warm 与在途 chat 互斥加强。

@@ -45,9 +45,10 @@ bash scripts/install-agent-sidecar-plist.sh --start
 launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 ```
 
-验收：`curl http://127.0.0.1:7788/health`（`router` 应含 `192.168.3.116:4000`）。
+验收：`curl http://127.0.0.1:7788/health`（出口应为 MiniMax；plist `ANTHROPIC_BASE_URL` 含 `minimaxi.com`）。
 
-中转走 `ANTHROPIC_BASE_URL=http://192.168.3.116:4000`（M1 sidecar → 2017 Router）。
+模型：`ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`ANTHROPIC_MODEL=MiniMax-M3`（key：`~/.ccc/minimax-api-key`）。  
+~~经 2017 Router `:4000` 已退役。~~
 
 ## 与 Mac2017 的关系
 

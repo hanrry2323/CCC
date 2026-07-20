@@ -662,7 +662,9 @@ class ClaudeSessionManager:
         """Run one user turn on a continuous ClaudeSDKClient session."""
         self._ensure_sdk()
         # model / timeouts already resolved by stream_chat caller
-        cli_model = (model or "flash").strip().lower() or "flash"
+        from _claude_cli import resolve_anthropic_model
+
+        cli_model = resolve_anthropic_model(model)
         idle_s = int(idle_timeout if idle_timeout is not None else config.CHAT_IDLE_TIMEOUT)
         max_s = int(max_timeout if max_timeout is not None else config.CHAT_MAX_TIMEOUT)
         idle_s = max(60, min(idle_s, 3600))
@@ -942,6 +944,9 @@ class ClaudeSessionManager:
                             if et == "_result_text":
                                 content = str(event.get("content") or "")
                                 if not content:
+                                    continue
+                                # ResultMessage.result 常是整段回放；已有助手 delta 时再推会「回复两条」
+                                if saw_assistant_text or (assistant_text_buf or "").strip():
                                     continue
                                 # 走与 delta 相同的 stub 门控
                                 event = {"type": "delta", "content": content}

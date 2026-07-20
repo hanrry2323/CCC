@@ -41,7 +41,7 @@ if [[ -n "$AGENT_TOKEN" ]]; then
   AGENT_AUTH_H=(-H "Authorization: Bearer ${AGENT_TOKEN}" -H "X-CCC-Agent-Token: ${AGENT_TOKEN}")
 fi
 
-# 1) Sidecar launchd 常驻 + 模型出口指 2017 中转
+# 1) Sidecar launchd 常驻 + 模型出口直连 MiniMax
 bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
 check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"
@@ -54,12 +54,8 @@ check "sidecar warm" bash -c '
     curl -fsS --max-time 5 -X POST "'"${AGENT}"'/warm" -H "Content-Type: application/json" -d "{}" | grep -q "\"ok\""
   fi
 '
-# Router 断言：health 不再暴露 router（安全最小化）；查 plist
-if [[ -z "${CCC_AGENT_ROUTER:-}" ]]; then
-  check "sidecar router→2017" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "192.168.3.116:4000"'
-else
-  echo "SKIP  sidecar router→2017 (CCC_AGENT_ROUTER=${CCC_AGENT_ROUTER})"
-fi
+# 模型出口断言：plist 直连 MiniMax（中转 :4000 已退役）
+check "sidecar→MiniMax" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "minimaxi.com"'
 
 # 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）
 check "local session dir" python3 - <<'PY'

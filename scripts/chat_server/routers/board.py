@@ -370,10 +370,11 @@ async def board_summaries(request: Request, workspaces: str = ""):
 
     async def _one(name: str) -> tuple[str, dict]:
         try:
+            # 不含 ui_hidden：Desktop 项目灯 / 编排态只看可见活；已完成沉底卡不计入
             resp = await board_proxy(
                 "GET",
                 "/api/board",
-                params={"workspace": name, "fields": "summary", "include_hidden": "1"},
+                params={"workspace": name, "fields": "summary"},
             )
             if resp.status_code >= 400:
                 return name, {"error": f"board {resp.status_code}"}

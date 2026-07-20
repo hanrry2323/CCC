@@ -25,14 +25,12 @@ fi
 
 PORT="${CCC_AGENT_PORT:-7788}"
 HOST="${CCC_AGENT_HOST:-127.0.0.1}"
-# 默认打 Mac2017 中转站（本机队约定）；其它环境 export CCC_AGENT_ROUTER=...
-# 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机 :4000
-ROUTER="${CCC_AGENT_ROUTER:-http://192.168.3.116:4000}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"
 PATH_EXTRA="${HOME}/.local/bin:${HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 TOKEN_FILE="${HOME}/.ccc/agent-token"
+MINIMAX_KEY_FILE="${HOME}/.ccc/minimax-api-key"
 
 mkdir -p "$LOG_DIR" "${HOME}/Library/LaunchAgents" "${HOME}/.ccc"
 
@@ -71,8 +69,36 @@ case "$cmd" in
     ;;
 esac
 
-# 中转站鉴权：未设置时用占位 token（ai-loop-router 约定）；可用 ANTHROPIC_AUTH_TOKEN 覆盖
-AUTH_TOKEN_VALUE="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
+# 默认直连 MiniMax Anthropic（对话更稳）。若要走 2017 中转：
+#   CCC_AGENT_ROUTER=http://192.168.3.116:4000 bash scripts/install-agent-sidecar-plist.sh --start
+# 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机旧 :4000
+if [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
+  ROUTER="${CCC_AGENT_ROUTER}"
+  AUTH_TOKEN_VALUE="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
+  AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
+else
+  ROUTER="${CCC_ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
+  # 忽略 shell 里残留的中转假 token，避免「BASE=minimax + AUTH=trae」401
+  _tok="${ANTHROPIC_AUTH_TOKEN:-}"
+  if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
+    if [[ -f "$MINIMAX_KEY_FILE" ]]; then
+      AUTH_TOKEN_VALUE="$(tr -d '[:space:]' < "$MINIMAX_KEY_FILE")"
+    else
+      echo "缺少 MiniMax key：请写入 ${MINIMAX_KEY_FILE}（chmod 600）或设置 ANTHROPIC_AUTH_TOKEN" >&2
+      echo "也可临时回退中转：CCC_AGENT_ROUTER=http://192.168.3.116:4000 $0 --start" >&2
+      exit 1
+    fi
+  else
+    AUTH_TOKEN_VALUE="$_tok"
+  fi
+  AGENT_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
+  # 若 ANTHROPIC_MODEL 仍是 flash/code 逻辑名，直连时改成上游 id
+  if [[ "$AGENT_MODEL" == "flash" || "$AGENT_MODEL" == "code" ]]; then
+    AGENT_MODEL="MiniMax-M3"
+  fi
+fi
+
+# MiniMax / 中转鉴权
 AUTH_TOKEN_BLOCK="    <key>ANTHROPIC_AUTH_TOKEN</key>
     <string>${AUTH_TOKEN_VALUE}</string>"
 
@@ -134,7 +160,7 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${ROUTER}</string>
 ${AUTH_TOKEN_BLOCK}
     <key>ANTHROPIC_MODEL</key>
-    <string>flash</string>
+    <string>${AGENT_MODEL}</string>
     <key>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</key>
     <string>1</string>
     <key>DISABLE_AUTOUPDATER</key>

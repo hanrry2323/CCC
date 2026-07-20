@@ -16,7 +16,7 @@
   README.md                 # 本机三句话说明 → 指向本文
   CCC/                      # 主产品 + orch（唯一编排仓）
   infra/
-    ai-loop-router/         # 唯一生产中转
+    ai-loop-router/         # 已退役（归档）；勿再 launchd 启用 :4000/:4002
   apps/
     ccc-demo/               # 默认 demo
     clawmed-ccc/            # 垂直产品（测试中）
@@ -35,7 +35,7 @@ Desktop `localWorkspaceMap` 键必须对上 Hub id（`qxo` 必配）。
 | 路径 | 用途 | 规则 |
 |------|------|------|
 | `CCC/` | 产品代码、Hub/Engine、文档、`vendor/` | 唯一主仓；不在仓外散落产品代码 |
-| `infra/ai-loop-router/` | 模型中转 | 中转只此一处；**不** register 为 Engine app |
+| `infra/ai-loop-router/` | 历史中转（已退役） | **不** register；plist 已移至 `LaunchAgents/disabled-relay-*` |
 | `apps/<name>/` | 经 doctor register 的业务仓 | **新项目必须落这里**；主力开发在此 |
 | `archive/` | 冷存 | 不参与 Engine 登记 |
 | 其他顶层目录 | — | **禁止**；先改本文再创建 |
@@ -63,9 +63,9 @@ Agent 短交接：[`../product/desktop-agent-handoff.md`](../product/desktop-age
 M1 archive/*-m1-freeze/ = 只读备份，禁止 register
 ```
 
-- **生产执行、中转、Hub/Engine** 以 2017 为准  
-- **M1 对话**：Desktop + sidecar `:7788` + arm64 `vendor/loop-code/cli`（M1 本机；gitignore）  
-- **Mac2017 不再部署 loop-code 二进制**（架构对齐 2026-07-19；Hub `/api/chat` 已删，2017 不做对话）
+- **生产执行、Hub/Engine** 以 2017 为准（模型直连 MiniMax / 讯飞；中转已退役）  
+- **M1 对话**：Desktop + sidecar `:7788` + arm64 `vendor/loop-code/cli` → MiniMax  
+- **Mac2017 不再部署 loop-code 二进制**（Hub `/api/chat` 已删，2017 不做对话）
 ---
 
 ## 清理原则
