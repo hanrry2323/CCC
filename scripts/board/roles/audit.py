@@ -626,30 +626,10 @@ def audit_role(workspace: str | None = None, since: str = "2 hours ago") -> dict
         + "\n"
     )
 
-    # v0.36/v0.37: evolve — 默认关闭（CCC_EVOLVE_ON_AUDIT=1 开启）
-    # v0.40: 另需 control=invent
+    # v0.51.0 P2-1: 删除 _may_invent() 守护的 evolve-on-audit 块（INVENT_HARD_DISABLED 后永不触发）
+    # evolve_results 保留空列表占位以维持 audit_role 返回 dict 的 schema 兼容性
+    # _evolve_run_one 函数本身保留（test_evolve.py 通过 monkeypatch may_invent=True 测其逻辑）
     evolve_results = []
-    _invent_ok = False
-    try:
-        from _ccc_control import may_invent as _may_invent_fn
-
-        _invent_ok = _may_invent_fn()
-    except ImportError:
-        _invent_ok = False
-    if _invent_ok and getattr(cfg, "evolve_on_audit", False):
-        for ws_target in targets:
-            try:
-                ev_result = _evolve_run_one(ws_target)
-                evolve_results.append({"workspace": ws_target, **ev_result})
-                if ev_result.get("posted", 0) > 0:
-                    _log.info(
-                        "[evolve] %s: posted %d findings to backlog",
-                        Path(ws_target).name,
-                        ev_result["posted"],
-                    )
-            except Exception as exc:
-                _log.warning("[evolve] %s 异常: %s", ws_target, exc)
-                evolve_results.append({"workspace": ws_target, "error": str(exc)})
 
     return {
         "role": "audit",

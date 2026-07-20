@@ -113,7 +113,11 @@ def _load_active_tasks() -> dict[str, dict]:
         raw = json.loads(ACTIVE_TASKS_FILE.read_text())
         if not isinstance(raw, dict):
             return {}
-        restored = {}
+
+        # v0.51.0 (P1-4): 先收集所有 (task_key, candidate_pids) 再单次 ps 拉全表
+        # 旧版每个 .pid 文件 fork 一次 ps，N×M 次子进程；新版只 fork 1 次。
+        candidates: dict[str, set[int]] = {}  # task_key → set of pids
+        metadata: dict[str, dict] = {}  # task_key → v (with workspace resolved)
         for k, v in raw.items():
             ws_str = v.get("workspace", "")
             ws_path = Path(ws_str).resolve() if ws_str else None
@@ -121,38 +125,45 @@ def _load_active_tasks() -> dict[str, dict]:
                 _engine_log(f"[persist] 忽略 {k}: workspace 不存在")
                 continue
             v["workspace"] = ws_path
+            metadata[k] = v
 
             tid = v.get("task_id", "")
-            alive = False
-            if tid:
-                import subprocess as _sp
+            if not tid:
+                _engine_log(f"[persist] 排除僵尸 active_task {k}: 无 task_id")
+                continue
 
-                pids_dir = ws_path / ".ccc" / "pids"
-                for pidf in sorted(pids_dir.glob(f"{tid}*.pid")):
-                    if pidf.name.endswith(".done"):
-                        continue
-                    try:
-                        pid = int(pidf.read_text().strip())
-                        r = _sp.run(
-                            ["ps", "-p", str(pid), "-o", "state="],
-                            capture_output=True,
-                            text=True,
-                            timeout=3,
-                            env=_sanitized_env(),
-                        )
-                        state = r.stdout.strip()
-                        if state and state != "Z":
-                            alive = True
-                            break
-                    except (ValueError, OSError):
-                        continue
-            if not alive:
+            pids_dir = ws_path / ".ccc" / "pids"
+            pids: set[int] = set()
+            for pidf in sorted(pids_dir.glob(f"{tid}*.pid")):
+                if pidf.name.endswith(".done"):
+                    continue
+                try:
+                    pids.add(int(pidf.read_text().strip()))
+                except (ValueError, OSError):
+                    continue
+            if not pids:
                 _engine_log(
-                    f"[persist] 排除僵尸 active_task {k}: "
-                    f"进程不存活 (tid={tid})"
+                    f"[persist] 排除僵尸 active_task {k}: 无 PID 文件 (tid={tid})"
                 )
                 continue
-            restored[k] = v
+            candidates[k] = pids
+
+        # 单次 ps 拉所有候选 PID 的状态
+        all_pids: set[int] = set()
+        for s in candidates.values():
+            all_pids |= s
+        alive_pids = _query_pids_alive(all_pids)
+
+        # 对每个 task 检查是否有任一 PID 存活
+        restored: dict[str, dict] = {}
+        for k, pids in candidates.items():
+            if pids & alive_pids:
+                restored[k] = metadata[k]
+            else:
+                _engine_log(
+                    f"[persist] 排除僵尸 active_task {k}: "
+                    f"进程不存活 (pids={sorted(pids)})"
+                )
 
         if restored:
             _engine_log(f"[persist] 恢复 {len(restored)} 个 active_tasks (存活)")
@@ -160,11 +171,45 @@ def _load_active_tasks() -> dict[str, dict]:
     except (json.JSONDecodeError, OSError, TypeError) as exc:
         _engine_log(f"[persist] load active_tasks 失败: {exc}")
         return {}
-    finally:
-        try:
-            ACTIVE_TASKS_FILE.unlink(missing_ok=True)
-        except OSError:
-            pass
+
+
+def _query_pids_alive(pids: set[int]) -> set[int]:
+    """v0.51.0 (P1-4): 单次 ps 拉所有 PID 的状态，返回存活 PID 集合。
+
+    PID 状态非 Z（zombie）且非空视为存活。ps 失败时返回空集（保守处理，
+    让上层将所有候选视为僵尸 → 不恢复，符合旧版语义）。
+    """
+    if not pids:
+        return set()
+    try:
+        import subprocess as _sp
+
+        cmd = ["ps", "-o", "pid=,state="] + [str(p) for p in sorted(pids)]
+        r = _sp.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=_sanitized_env(),
+        )
+        alive: set[int] = set()
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            state = parts[1].strip()
+            if state and state != "Z":
+                alive.add(pid)
+        return alive
+    except (OSError, ValueError):
+        return set()
 
 
 def _drop_active_task_and_slots(

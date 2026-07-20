@@ -46,21 +46,8 @@ description: CCC 运维工程师 — 健康检查、告警、进程守护
 - `scripts/ccc-board.py` `_quarantine()` — stale 检测到的异常任务移 abnormal
 - `scripts/opencode-watchdog.sh` — 墙钟断路器（按 pid 文件 mtime 杀超时进程）
 
-## 已知陷阱：
+## 已知陷阱（patrol / ops 相关）
 
-  - **ccc-board-column-auto-prune** (2026-07-16): 看板列自动裁剪异常：删除 task 时未同步更新 index.json. 修复：1) FileBoardStore.delete 后必须调 update_index 2) prune 操作加事务锁
-
-  - **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
-
-  - **patrol-git-auto-push** (2026-07-16): patrol git auto-push 因工作树脏（未提交改动）而失败. 修复：1) auto-push 前必须先 git status 检查 2) 脏工作树时落盘告警不 push 3) 改 fallback 通道
-## 已知陷阱：
-
-  - **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
-
-  - **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
-
-## 已知陷阱：
-
-  - **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
-
-  - **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+- **ccc-board-column-auto-prune** (2026-07-16): 看板列自动裁剪异常：删除 task 时未同步更新 index.json. 修复：1) FileBoardStore.delete 后必须调 update_index 2) prune 操作加事务锁
+- **patrol-alert-webhook** (2026-07-16): webhook 成功率低，切换会触发 hang auto-restart 时序冲突. 修复：1) 改用文件落盘+桌面通知双通道 2) hang auto-restart 与 alert webhook 加互斥锁
+- **patrol-git-auto-push** (2026-07-16): patrol git auto-push 因工作树脏（未提交改动）而失败. 修复：1) auto-push 前必须先 git status 检查 2) 脏工作树时落盘告警不 push 3) 改 fallback 通道

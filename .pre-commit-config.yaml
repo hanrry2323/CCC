@@ -1,8 +1,10 @@
 # CCC pre-commit hooks
-# 4 hooks enforce red lines + engineering disciplines:
+# v0.51.0 P2-5: 扩充至 5 hooks 强制红线 + 工程纪律:
 #   - ruff (Python lint, optional)
-#   - bash -n + v3 portability (red line 20) — via inline shell call
+#   - bash -n + v3 portability (red line 20)
 #   - verdict length >= 50 (red line 11)
+#   - version-sync (P0-1: VERSION 在 7 处一致)
+#   - mypy type check (optional, 仅 scripts/ + board/)
 #
 # Install: pip install pre-commit && pre-commit install
 # Run: pre-commit run --all-files
@@ -40,3 +42,21 @@ repos:
         pass_filenames: false
         files: \.verdict\.md$
         stages: [pre-commit]
+
+      # v0.51.0 P2-5: VERSION 在 7 处一致（check-version-sync.py）
+      - id: version-sync
+        name: VERSION sync across 7 files (P0-1)
+        entry: python3 scripts/check-version-sync.py
+        language: system
+        pass_filenames: false
+        files: ^(VERSION|package\.json|src-tauri/Cargo\.toml|src-tauri/tauri\.conf\.json|README\.md|SKILL\.md|CLAUDE\.md|scripts/check-version-sync\.py)$
+        types: [file]
+
+      # v0.51.0 P2-5: mypy 类型检查（若 mypy 未装则自动跳过）
+      - id: mypy
+        name: mypy type check (scripts/ + board/)
+        entry: bash -c 'command -v mypy >/dev/null 2>&1 && mypy scripts/ scripts/board/ scripts/engine/ || echo "[pre-commit] mypy not installed, skipping"'
+        language: system
+        pass_filenames: false
+        files: \.(py|pyi)$
+        types: [file]

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # CCC — Connect–Claude Code · Loop Engineer
 
 > **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine：Claude Code 扇出 + OpenCode 写码）远端开发；中间只交信息流。  
-> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`
+> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.51.0**）
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
 
@@ -211,10 +211,9 @@ scripts/chat_server/            # FastAPI 模块化后端
 | `scripts/_config.py` | 集中配置（Config dataclass） |
 | `scripts/ccc-chat-server.py` | CCC Hub 后端（Chat + Board 代理） |
 | `scripts/ccc-board-server.py` | 看板 HTTP 服务 |
-| `scripts/ccc-cockpit.py` | 旧总控（可选） |
 | `scripts/ccc-autostart-guard.sh` | 控制面 CLI |
 | `scripts/ccc-failure-report.py` | 失败报告 CLI |
-| `references/red-lines.md` | 12 红线 + X 系列 |
+| `references/red-lines.md` | 18 红线 + X 系列(8) + R 系列(7) |
 | `references/board-task-schema.md` | Board Protocol v1（跨 IDE 契约） |
 | `docs/CONTROL.md` | 控制面文档 |
 | `docs/observability.md` | 可观测性 / 埋点文档 |

@@ -390,11 +390,9 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
         # A24-11 + F-SEC-05 调和: 无 token 时仅检查本机 IP
         # 绑定 0.0.0.0 后 LAN IP 也是本机，用 socket 自动发现所有本机 IP
         if not token:
-            allow_local = os.environ.get("CCC_BOARD_ALLOW_LOCAL_NO_TOKEN", "").strip() == "1"
-            if allow_local:
-                return True
             # 本机 IP：仅 loopback + UDP 探测主网卡（不调 getaddrinfo(hostname)，
             # 避免 DNS/公网地址进入白名单）
+            # v0.51.0: 移除 CCC_BOARD_ALLOW_LOCAL_NO_TOKEN 跳过分支（安全漏洞）
             import socket as _sock
 
             _own_ips = {"127.0.0.1", "::1"}
@@ -426,7 +424,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
             self._json(
                 {
                     "error": "unauthorized: QX_BOARD_TOKEN required "
-                    "(or CCC_BOARD_ALLOW_LOCAL_NO_TOKEN=1 to allow any origin)"
+                    "(or run from a local IP)"
                 },
                 401,
             )

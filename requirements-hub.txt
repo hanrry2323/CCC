@@ -1,6 +1,9 @@
 # CCC Hub (chat-server) runtime deps — install into .venv-hub
 #   python3 -m venv .venv-hub
 #   .venv-hub/bin/pip install -r requirements-hub.txt
-fastapi>=0.115
-uvicorn>=0.30
-claude-agent-sdk==0.2.121
+#
+# v0.51.0 P2-5: 用 ~= pin 至 minor 版本（兼容 patch update，禁止跨 minor 升级）
+# 测试时升级请显式改这里 + 跑全量 pytest
+fastapi~=0.115
+uvicorn~=0.30
+claude-agent-sdk~=0.2.121

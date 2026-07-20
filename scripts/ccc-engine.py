@@ -36,6 +36,7 @@ from _executor import _sanitized_env
 from _logger import add_file_handler
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
+from _utils import get_relay_url as _utils_get_relay_url
 from _stats_aggregator import aggregate_stats, load_summary
 from _cost_telemetry import check_abnormal_traffic as _check_abnormal_traffic
 from _capability_evolver import record_failure_pattern as _record_failure_pattern
@@ -239,8 +240,8 @@ _upstream_health_cache: dict = {}  # {"healthy": bool, "checked_at": float}
 
 
 def _get_relay_url() -> str:
-    """复刻 ccc-board.py._get_relay_url：取 AGENT_PLANNER_BASE_URL 或默认 :4000"""
-    return os.environ.get("AGENT_PLANNER_BASE_URL", "http://127.0.0.1:4000")
+    """v0.51.0 P2-2: 委托 _utils.get_relay_url（SSOT）。"""
+    return _utils_get_relay_url()
 
 
 def _is_upstream_healthy() -> bool:
@@ -357,6 +358,8 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
         "uptime_sec": round(uptime, 3),
         "status": status,
         "reason": reason,
+        # v0.51.0 P3-1: 加 source 字段标识来源（与 ccc-patrol-v4._log_engine_restart 对齐）
+        "source": "engine",
     }
     try:
         from _jsonl_rotate import append_jsonl
@@ -2694,9 +2697,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _check_degraded(ws)
                     _store = _get_store(ws)
                     _check_stale(ws, active_tasks)
-                    # v0.40: abnormal 自动回灌仅 invent
-                    if _may_invent():
-                        _retry_abnormal_failures(ws)
+                    # v0.51.0 P2-1: 删除 _may_invent() 守护的 abnormal 自动回灌块（INVENT_HARD_DISABLED=True 后永不触发）
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
                         try:
@@ -2825,37 +2826,14 @@ def engine_loop(workspaces: list[Path]) -> None:
                     )
 
                     # v0.40: enabled=只消费；invent 才允许 audit/evolve/replenish/abnormal
+                    # v0.51.0 P2-1: _may_invent() 恒 False（INVENT_HARD_DISABLED），化简为仅检查 consumable
                     _has_consumable = _queue_has_consumable_work(_store2)
-                    if not _has_consumable and not _may_invent():
+                    if not _has_consumable:
                         continue
 
-                    if _may_invent() and _audit_should_run(str(ws)):
-                        label = _ws_label(ws, program_dir)
-                        engine_log(f"[{label}] 触发 audit_role（invent 模式）")
-                        try:
-                            ccc_board.audit_role(workspace=str(ws))
-                        except Exception as exc:
-                            engine_log(f"[{label}] audit_role 异常: {exc}")
-
-                    if (
-                        _may_invent()
-                        and getattr(cfg, "evolve_on_idle", False)
-                        and iteration % 36 == 0
-                    ):
-                        try:
-                            ev_res = ccc_board._evolve_run_one(str(ws))
-                            if ev_res.get("posted", 0) > 0:
-                                label = _ws_label(ws, program_dir)
-                                engine_log(
-                                    f"[evolve] [{label}] posted {ev_res['posted']} findings"
-                                )
-                        except Exception as exc:
-                            label = _ws_label(ws, program_dir)
-                            engine_log(f"[evolve] [{label}] 异常: {exc}")
-
-                    if _may_invent():
-                        _auto_replenish_backlog(ws, _store2, program_dir)
-                        _retry_abnormal_failures(ws)
+                    # v0.51.0 P2-1: 删除 _may_invent() 守护的 audit_role 自动触发（永不触发）
+                    # v0.51.0 P2-1: 删除 _may_invent() 守护的 evolve-on-idle 块（永不触发）
+                    # v0.51.0 P2-1: 删除 _may_invent() 守护的 _auto_replenish_backlog / _retry_abnormal_failures 块（永不触发）
 
                     _check_new_reviews(ws)
 

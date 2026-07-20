@@ -1,5 +1,6 @@
 import base64
 import hmac
+import os
 import time
 from collections import defaultdict
 
@@ -11,11 +12,16 @@ _auth_failures: dict[str, list[float]] = defaultdict(list)
 _AUTH_WINDOW_S = 60.0
 _AUTH_MAX_FAILS = 20
 
+# v0.51.0 (P1-1): 默认不信任 X-Forwarded-For（防伪造绕过 IP 限速）。
+# 仅当部署在反向代理后且显式配置 CCC_TRUST_PROXY=1 时启用。
+_TRUST_PROXY = os.environ.get("CCC_TRUST_PROXY", "").strip() == "1"
+
 
 def _client_ip(request: Request) -> str:
-    xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if xff:
-        return xff
+    if _TRUST_PROXY:
+        xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if xff:
+            return xff
     if request.client:
         return request.client.host or "unknown"
     return "unknown"

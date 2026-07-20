@@ -50,6 +50,8 @@ ENGINE_PLIST = HOME / "Library" / "LaunchAgents" / "com.ccc.engine.plist"
 PATROL_STATE_FILE = HOME / ".ccc" / "patrol-state.json"
 RESTART_LOG = HOME / ".ccc" / "logs" / "engine-restarts.jsonl"
 MAX_ROUNDS = 6
+_PATROL_STATE_MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+_PATROL_STATE_BACKUPS = 3
 
 def _load_patrol_workspaces() -> dict[str, Path]:
     """From ~/.ccc/workspaces.json; fallback CCC only."""
@@ -88,7 +90,9 @@ BOARD_COLS = [
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """v0.51.0: 委托 _utils.now_iso 统一北京 +08:00。"""
+    from _utils import now_iso as _utils_now_iso
+    return _utils_now_iso()
 
 
 def now_ts() -> int:
@@ -208,7 +212,6 @@ def verify_board_index(ws: Path) -> list[str]:
         repairs.append(repair)
 
     return repairs
-    return counts
 
 
 def file_age_seconds(path: Path) -> int | None:
@@ -647,7 +650,7 @@ def _save_stuck_counters(counters: dict[str, int]) -> None:
                 state = {"rounds": []}
         state["stuck_tasks"] = counters
         PATROL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PATROL_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False) + "\n")
+        _atomic_write_patrol_state(PATROL_STATE_FILE, json.dumps(state, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -784,6 +787,58 @@ def _check_done_phases_in_wrong_column(ws: Path, ops: list[str], col: str) -> No
             continue
 
 
+def _rotate_patrol_state() -> None:
+    """patrol-state.json 超 _PATROL_STATE_MAX_BYTES 时轮转：
+
+    patrol-state.json → patrol-state.json.1.gz（新建）
+    patrol-state.json.{N-1}.gz → patrol-state.json.{N}.gz（后移）
+    patrol-state.json.{N}.gz → 删除（最旧）
+
+    仿 _cost_telemetry._rotate_if_needed 模式；轮转失败静默忽略。
+    """
+    import gzip
+    import shutil
+
+    try:
+        if not PATROL_STATE_FILE.exists():
+            return
+        if PATROL_STATE_FILE.stat().st_size < _PATROL_STATE_MAX_BYTES:
+            return
+        # 删除最旧备份
+        oldest = Path(str(PATROL_STATE_FILE) + f".{_PATROL_STATE_BACKUPS}.gz")
+        if oldest.exists():
+            oldest.unlink()
+        # 逐个后移 .{N-1}.gz → .{N}.gz
+        for i in range(_PATROL_STATE_BACKUPS - 1, 0, -1):
+            src = Path(str(PATROL_STATE_FILE) + f".{i}.gz")
+            dst = Path(str(PATROL_STATE_FILE) + f".{i + 1}.gz")
+            if src.exists():
+                src.rename(dst)
+        # 压缩当前文件为 .1.gz
+        with open(PATROL_STATE_FILE, "rb") as f_in:
+            with gzip.open(str(PATROL_STATE_FILE) + ".1.gz", "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        PATROL_STATE_FILE.unlink()
+    except OSError:
+        pass
+
+
+def _atomic_write_patrol_state(path: Path, content: str) -> None:
+    """原子写入 patrol-state.json（委托 _board_store._atomic_write 防半截写入）。
+
+    ImportError 兜底：直接 write_text（与旧行为一致，不阻塞主流程）。
+    """
+    try:
+        from _board_store import _atomic_write
+
+        _atomic_write(path, content)
+    except (OSError, ImportError):
+        try:
+            path.write_text(content, encoding="utf-8")
+        except OSError:
+            pass
+
+
 def save_patrol_state(
     ws_stats: dict[str, dict],
     engine_status: str,
@@ -791,7 +846,11 @@ def save_patrol_state(
     stuck_count: int,
     warn: str,
 ) -> None:
-    """持久化一轮 patrol 状态，保留最多 MAX_ROUNDS 轮"""
+    """持久化一轮 patrol 状态，保留最多 MAX_ROUNDS 轮
+
+    v0.51.0 P3-1: 加 _rotate_patrol_state() 文件级轮转（1MB / 3 .gz 备份）+
+    改用 _board_store._atomic_write 原子写入（防半截 JSON 损坏）。
+    """
     state: dict = {"rounds": []}
     if PATROL_STATE_FILE.exists():
         try:
@@ -826,7 +885,8 @@ def save_patrol_state(
         state["rounds"] = state["rounds"][-MAX_ROUNDS:]
 
     PATROL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PATROL_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False) + "\n")
+    _rotate_patrol_state()  # v0.51.0 P3-1: 文件级轮转
+    _atomic_write_patrol_state(PATROL_STATE_FILE, json.dumps(state, ensure_ascii=False) + "\n")
 
 
 def detect_stagnation(ws_stats: dict[str, dict]) -> str:
@@ -928,18 +988,32 @@ def _log_engine_restart(status: str, reason: str) -> None:
     Args:
         status: "RESTARTED"（重启成功）或 "DEAD"（无法重启）
         reason: 描述原因，如 "patrol-v4 detected Engine dead, auto-restarted"
+
+    v0.51.0 P3-1: 统一双写方协议
+      - 改用 _jsonl_rotate.append_jsonl 走标准轮转（与 ccc-engine.py 一致）
+      - 加 source 字段标识来源（"patrol-v4" / "engine"）便于下游分流
+      - 字段对齐 ccc-engine.py 的 {ts, pid, uptime_sec, status, reason, source}
+        （patrol 不持有 engine pid / uptime → 填 None）
     """
     try:
         RESTART_LOG.parent.mkdir(parents=True, exist_ok=True)
         entry = {
             "ts": now_iso(),
+            "pid": None,         # patrol 不持有 engine pid
+            "uptime_sec": None,  # patrol 侧无法可靠计算
             "status": status,
             "reason": reason,
+            "source": "patrol-v4",
         }
-        with RESTART_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+        from _jsonl_rotate import append_jsonl
+        append_jsonl(RESTART_LOG, entry)
+    except (OSError, ImportError):
+        # ImportError 兜底：直接 append（与旧行为一致）
+        try:
+            with RESTART_LOG.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
 
 def _notify_engine_restart(status: str) -> None:

@@ -66,3 +66,17 @@ def now_iso() -> str:
 def now_iso_utc() -> str:
     """系统级 UTC Z 时间戳（控制面 / registry / failure_ledger 等）。"""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# v0.51.0 P2-2: relay URL 集中于此（原 ccc-engine.py / ccc-board.py / board/roles/common.py 各有一份重复）
+_DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4000"
+
+
+def get_relay_url() -> str:
+    """取 AGENT_PLANNER_BASE_URL 环境变量，默认 http://127.0.0.1:4000。
+
+    v0.51.0 P2-2: 集中 SSOT。原 _get_relay_url() 在 ccc-engine.py / ccc-board.py /
+    board/roles/common.py 各有一份相同的 os.environ.get 重复实现。
+    """
+    import os
+    return os.environ.get("AGENT_PLANNER_BASE_URL", _DEFAULT_AGENT_PLANNER_URL)

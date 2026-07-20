@@ -348,7 +348,7 @@ Cockpit 功能设计参考了以下开源项目：
 - Cockpit v0.1 已发布，运行在 `:7778`，接入 `.ccc/infrastructure.md`
 - 13 个端口已接入（M1 10 + feiniu 3）
 - 6 个快速跳转链接
-- 代码: `scripts/ccc-cockpit.py`
+- 代码: `src-tauri/`（Tauri 桌面壳子 ccc-cockpit-desktop）+ `scripts/ccc-chat-server.py`（sidecar）
 
 > CCC v1.0 = 完整的轻量自动化: 单节点可靠, 扩展通路清晰, 可嵌入任意项目。
 

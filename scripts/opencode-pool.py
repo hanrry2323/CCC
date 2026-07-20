@@ -84,12 +84,12 @@ async def main() -> int:
 
     tasks_path = Path(args.tasks_file)
     if not tasks_path.exists():
-        print(f"[opencode-pool] tasks 文件不存在: {tasks_path}", file=sys.stderr)
+        _log.error("tasks 文件不存在: %s", tasks_path)
         return 2
 
     tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
     if not isinstance(tasks, list) or not tasks:
-        print("[opencode-pool] tasks 必须是非空 list", file=sys.stderr)
+        _log.error("tasks 必须是非空 list")
         return 3
 
     sem = asyncio.Semaphore(args.max_parallel)
