@@ -315,8 +315,15 @@ def _allows_all_scope(phase: dict) -> bool:
     return "全仓" in blob or "allow_all_scope" in blob.lower()
 
 
-def validate_scope(phases: List[dict]) -> Tuple[bool, List[str], List[str]]:
+def validate_scope(
+    phases: List[dict],
+    *,
+    workspace: Path | None = None,
+) -> Tuple[bool, List[str], List[str]]:
     """v0.42: scope 硬门 — 非空，且禁止裸 ['all']（除非全仓标记）。
+
+    若提供 workspace，另校验 scope 路径可被 git 跟踪（已 tracked 放行；
+    被 gitignore 命中则报错，防 AGENTS.md 等假绿）。
 
     返回 (is_valid, errors, warnings)。
     """
@@ -340,6 +347,18 @@ def validate_scope(phases: List[dict]) -> Tuple[bool, List[str], List[str]]:
             errors.append(
                 f"phase {pid}: scope=['all'] 禁止（除非 allow_all_scope/全仓标记）"
             )
+        if workspace is not None and not (
+            tokens <= _ALL_SCOPE_TOKENS and _allows_all_scope(p)
+        ):
+            try:
+                from _git_trackable import untrackable_scope_paths
+
+                for bad in untrackable_scope_paths(workspace, normalized):
+                    errors.append(
+                        f"phase {pid}: scope path ignored by gitignore: {bad}"
+                    )
+            except Exception as exc:  # pragma: no cover
+                warnings.append(f"phase {pid}: git trackable check skipped: {exc}")
         notes = (p.get("notes") or "").strip()
         if notes and len(notes) < 3:
             warnings.append(f"phase {pid}: notes 过短")
@@ -440,11 +459,16 @@ def validate_v12_fields(phases: List[dict]) -> Tuple[bool, List[str]]:
     return (len(warnings) == 0), warnings
 
 
-def validate_phases_dict(phases: List[dict]) -> Tuple[bool, List[str], List[str]]:
+def validate_phases_dict(
+    phases: List[dict],
+    *,
+    workspace: Path | None = None,
+) -> Tuple[bool, List[str], List[str]]:
     """统一的 phase dict 列表校验入口。
 
     返回 (is_valid: bool, errors: list[str], warnings: list[str])。
     集成所有必要校验 + v0.28.0 新增校验。
+    workspace 非空时启用 scope gitignore 硬门。
     """
     errors: List[str] = []
     warnings: List[str] = []
@@ -518,7 +542,7 @@ def validate_phases_dict(phases: List[dict]) -> Tuple[bool, List[str], List[str]
     _, empty_errors = validate_empty_phase(phases)
     errors.extend(empty_errors)
 
-    _, scope_errors, scope_warnings = validate_scope(phases)
+    _, scope_errors, scope_warnings = validate_scope(phases, workspace=workspace)
     errors.extend(scope_errors)
     warnings.extend(scope_warnings)
 
@@ -697,7 +721,7 @@ def run_lint(task_id: str, fix: bool = False) -> int:
     results.append(("循环依赖", *validate_no_cycle_dependencies(phases)))
     results.append(("依赖引用", *suggest_fix_no_missing_dependencies(phases)))
     # v0.42: scope 硬门（与 validate_phases_dict / product 门禁对齐）
-    scope_ok, scope_errors, scope_warnings = validate_scope(phases)
+    scope_ok, scope_errors, scope_warnings = validate_scope(phases, workspace=ws)
     results.append(("scope 硬门", scope_ok, scope_errors))
     for w in scope_warnings:
         print(f"[phase_lint] warning: {w}")

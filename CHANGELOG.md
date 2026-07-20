@@ -11,13 +11,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Fixed
+
+---
+
+## [v0.52.1] — 2026-07-21
+
+### 稳定性门禁 + 复盘修洞
+
+- **发布说明**：[`docs/releases/v0.52.1.md`](docs/releases/v0.52.1.md)
+
+### Added
+
+- **`scripts/smoke-hub-shell-gate.sh`**：分层门禁 `fast`（api-v1 + inbox + empty-retry）/ `full`（+soak +released +phase9 +outage）。
+- **`scripts/smoke-hub-shell-phase9.sh`**：live 种 abnormal → snapshot `user_stage=failed`。
+- **`scripts/smoke-qb-biz-small.sh`**：qb 非 flow-smoke README 小改 → done。
+- **`scripts/smoke-hub-empty-transfer-retry.sh`**：首响空 body、同 CRID 二次成功。
+- **`scripts/_git_trackable.py`** + phase_lint scope gitignore 硬门。
+- Phase9 client 契约单测 `test_phase9_stoploss_client_contract.py`。
+
+### Fixed
+
+- salvage 不再因「文件在盘 + 任意 task commit」假绿（Phase12 AGENTS.md / gitignore）。
+- Desktop `APIClient.transfer`：空 body / 空 `epic_id` / 5xx 同 CRID 重试；`applyTransferSuccess` 拒空 id。
+
+### Added (carried from Unreleased Wave4 notes)
+
 - **Hub-Shell Phase12**：qb 业务向 small（README 双机路径）→ released；见 [`docs/product/hub-shell-phase12-business-intent.md`](docs/product/hub-shell-phase12-business-intent.md)。
 - **Hub-Shell Phase11**：第三真实仓 `xianyu` flow-smoke → released。
 - **Hub-Shell Phase10**：xianyu 空板卫生（陈旧 `.ccc` 清理）；deploy 核对强制 rsync `templates/`。
 - **Hub-Shell Phase9**：abnormal / `user_stage=failed` 止损最小可见（Desktop 右栏红条 + toast + 运维/看板链；snapshot 含 epic `split_status=failed`）。见 [`docs/product/hub-shell-phase9-stoploss.md`](docs/product/hub-shell-phase9-stoploss.md)。
 - **Hub-Shell Phase8**：第二真实仓 `hp` flow-smoke → released（xianyu 脏跳过）。见 [`docs/product/hub-shell-phase8-hp.md`](docs/product/hub-shell-phase8-hp.md)。
-
-### Fixed
 
 ---
 

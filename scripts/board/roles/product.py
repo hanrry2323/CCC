@@ -259,7 +259,9 @@ def _gate_product_artifacts(
     plan_content: str, phases: list, *, log_prefix: str = "[product]"
 ) -> tuple[str, list]:
     """v0.42 硬门禁：phase_lint + plan 验收；通过后附软 git WARN。失败 raise RuntimeError。"""
-    _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(phases)
+    _lint_valid, _lint_errors, _lint_warnings = phase_lint.validate_phases_dict(
+        phases, workspace=get_workspace()
+    )
     if not _lint_valid:
         raise RuntimeError(f"phase_lint failed: {'; '.join(_lint_errors)}")
     _dep_valid, _dep_errors = phase_lint.suggest_fix_no_missing_dependencies(phases)

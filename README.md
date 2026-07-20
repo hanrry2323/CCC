@@ -1,7 +1,7 @@
 # CCC — Connect–Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.52.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.52.1-blue.svg)](VERSION)
 [![Release](https://img.shields.io/github/v/release/hanrry2323/CCC)](https://github.com/hanrry2323/CCC/releases/latest)
 
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  

@@ -41,7 +41,7 @@
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | Desktop=对话搭档 · Engine=Loop 角色（见上文分流） |
-| 当前版本 | **v0.52.0**（见根目录 `VERSION`） |
+| 当前版本 | **v0.52.1**（见根目录 `VERSION`） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 
 ---
@@ -51,10 +51,11 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-21）**：v0.52.0 **Hub-Shell Wave1-2 freeze 已推送 origin + Mac2017 已同步** · 见 `docs/releases/v0.52.0.md` 与 `docs/product/hub-shell-phase-status.md` · 25 commits 一次性推送（`ba87984..97433a3`，含 Phase6–12 + 收口 hygiene + tag `v0.52.0` 已打）。
+> **近 HEAD（手工备忘，2026-07-21）**：v0.52.1 **稳定性门禁**（gitignore 假绿 + transfer 空响应重试 + `smoke-hub-shell-gate`）· 见 `docs/releases/v0.52.1.md`。前序 v0.52.0 Hub-Shell Wave1-2 freeze 见 `docs/releases/v0.52.0.md`。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-21 | v052-stability-gate | `docs/releases/v0.52.1.md` | smoke fast + phase9 live | gitignore 门禁 + transfer 重试 + gate | PASS |
 | 2026-07-18 | go-live-v051 | `docs/ops/GO-LIVE.md` | hygiene + orch | doctor ERROR=0；Engine 7 apps；Hub 拒投 CCC | PASS |
 | 2026-07-18 | m2-orch-separation | `docs/milestones/m2-orch-separation.md` | `docs/releases/v0.51.0.md` | CCC role=orch；Hub reject；VERSION v0.51.0 | PASS |
 | 2026-07-18 | m1-ten-workspaces | `docs/milestones/m1-ten-workspaces.md` | `docs/releases/v0.50.0.md` | doctor ERROR=0；6 仓登记；VERSION v0.50.0 | PASS |
@@ -115,21 +116,23 @@
 
 ---
 
-## 当前状态（v0.52.0 Hub-Shell Wave1-2 freeze, 2026-07-21）
+## 当前状态（v0.52.1 稳定性门禁, 2026-07-21）
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流** + **多端对话壳 + Hub API v1**。
 
-**Hub-Shell Wave1-2 收口**（v0.52.0）：Hub API v1 冻结（transfer 幂等 + 三态投递：草稿/待投递/已投递/已受理）；Desktop outbox + Hub 断线 outbox + `client_request_id` 幂等；Phase1–12 全绿（ccc-demo §8 验收 + qb/hp/xianyu 三仓覆盖）；abnormal 止损最小可见（Desktop 右栏红条 + toast + 运维链）。详见 `docs/product/hub-shell-phase-status.md` 与 `docs/releases/v0.52.0.md`。
+**Hub-Shell Wave1-2 收口**（v0.52.0）：Hub API v1 冻结；Phase1–12 全绿。详见 `docs/releases/v0.52.0.md`。
+
+**v0.52.1 稳定性门禁**：phase_lint gitignore 硬门 + salvage 收紧；Desktop transfer 空响应同 CRID 重试；`smoke-hub-shell-gate.sh`（fast/full）+ phase9 live + qb-biz-small。详见 `docs/releases/v0.52.1.md`。
 
 **复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。small 任务跳过 reviewer+tester 直通 kb；medium（默认）/ large 走完整阶段能力包。详见 `CHANGELOG.md §v0.28.1`。
 
 **每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。
 
-**已发布版本族**：v0.7.0 → ... → v0.50.0 → v0.51.0 → **v0.52.0**（Hub-Shell Wave1-2 freeze）；tag `v0.52.0` annotated 已推 origin；Mac2017 已 `reset --hard origin/main` 同步。
+**已发布版本族**：… → v0.51.0 → v0.52.0 → **v0.52.1**（稳定性门禁）。
 
 **人审边界**（v0.52 起固化）：意图门（定稿/采纳/选仓）+ abnormal 止损；进 backlog 后**默认全自动**，禁止逐步人批（roadmap §3）。
 
-**当前不启动**新业务 epic；Wave3（v0.53）候选——更深业务 epic / 止损升级通知细则 / AGENTS.md gitignore 卫生；仍不做 P3（多端薄客户 / 重写 Engine / 旁路自动进队 / 中转站回退）。
+**当前不启动**新业务大 epic；后续候选——更深业务 epic / 止损升级通知细则；仍不做 P3。
 
 ---
 
@@ -347,24 +350,19 @@
 
 ---
 
-**最后更新**：2026-07-21（v0.52.0 Hub-Shell Wave1-2 freeze 已推送 + tag 已打 + Mac2017 已同步）
-**v0.52.0 收尾**：
-- 本机 25 commits 推 origin/main（`ba87984..97433a3`），tag `v0.52.0` annotated 已 push
-- Mac2017 `reset --hard origin/main` 同步（ahead 0 / behind 0；保险 tag `backup-pre-reset-2026-07-21`）
-- profile.md 当前版本 → v0.52.0；state.md 顶部"最近任务 / 当前状态"对齐 git 事实
-- 工作树与 origin/main 同步
-- 下一版（v0.53 / Wave3）等用户拍板
+**最后更新**：2026-07-21（v0.52.1 稳定性门禁落地；前序 v0.52.0 freeze）
+**v0.52.1**：gitignore 假绿门禁 · transfer 空响应重试 · `smoke-hub-shell-gate` fast 已绿 · phase9 live 已绿
 
 **下次启动必读顺序**：
 1. 读本文件（state.md）
 2. 读 `.ccc/profile.md`
-3. 读 `CHANGELOG.md` §最近（v0.50+）
+3. 读 `CHANGELOG.md` §最近（v0.52+）
 4. 才开工
 
 **当前活跃**：
-- complexity 分流（v0.28.1）· Hub API v1（v0.52.0）· 双机部署
+- complexity 分流（v0.28.1）· Hub API v1（v0.52）· 稳定性门禁（v0.52.1）
 - 每周总结定时任务（周日 22:03）
-- v0.53 Wave3 候选：更深业务 epic / 止损通知细则 / AGENTS.md 卫生
+- 后续候选：更深业务 epic / 止损通知细则（不做 P3）
 
 <!-- board-status -->
 ## 看板状态

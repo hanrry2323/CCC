@@ -1,7 +1,7 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **权威版本**：根目录 `VERSION`（**v0.51.0**）  
+> **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **权威版本**：根目录 `VERSION`（**v0.52.1**）  
 > **边界基线**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
 > **下阶段北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)  
 > **文档怎么找**：[`docs/INDEX.md`](docs/INDEX.md)（先读 §0，勿被 100+ 旧文带偏）  

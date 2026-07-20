@@ -22,11 +22,12 @@
 
 ## 差异 / 注意
 
-- 首次 transfer 遇 Hub 空响应时需重试（与 Phase5a 相同）；不要用空 `epic_id` 前缀做 `ui_hidden`（会误匹配全板）。
+- 首次 transfer 遇 Hub 空响应：Desktop `APIClient.transfer` 已对空 body / 空 `epic_id` / 5xx **同 `client_request_id` 内联重试**；失败入 outbox。smoke 侧仍保留循环作双保险。
+- **禁止**用空 `epic_id` 前缀做 `ui_hidden`（会误匹配全板）；`applyTransferSuccess` 已拒空 id。
 - qb 上既有业务 epic（如 V5-V6）与本烟测并存；烟测卡已 `ui_hidden`。
-- 真实业务意图（非 flow-smoke）下一刀再铺；本阶段只证明 **真实仓路径 = demo 同形**。
+- 真实业务意图（非 flow-smoke）见 Phase12 / `smoke-qb-biz-small.sh`。
 
 ## 下一步（本长任务外）
 
 - 第二笔真实仓（如 `xianyu` / `hp`）用业务向 small 意图
-- 保持 soak / released / outbox 烟测在 CI 或周检
+- 周检：`bash scripts/smoke-hub-shell-gate.sh`（`CCC_HUB_SHELL_TIER=full`）

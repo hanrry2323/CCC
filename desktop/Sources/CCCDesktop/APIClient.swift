@@ -7,6 +7,8 @@ enum APIError: LocalizedError {
     case stream(code: String?, message: String)
     case decode(String)
     case gate([GateError])
+    /// Hub 返回 ok 但缺少 epic_id（空响应/半截 JSON 等）— 可重试
+    case emptyEpicId
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +18,7 @@ enum APIError: LocalizedError {
         case .decode(let m): return "解析失败: \(m)"
         case .gate(let errs):
             return errs.map(\.localized).joined(separator: "；")
+        case .emptyEpicId: return "transfer 空 epic_id（可重试）"
         }
     }
 
@@ -772,17 +775,64 @@ actor APIClient {
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
         let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
+        let maxAttempts = 3
+        var lastError: Error?
         return try await HubRequestGate.shared.withPermit {
-            let (respData, resp) = try await self.session.data(for: urlReq)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            let decoded = try JSONDecoder().decode(TransferResponse.self, from: respData)
-            if !(200..<300).contains(code) || decoded.ok == false {
-                if let errs = decoded.errors, !errs.isEmpty {
-                    throw APIError.gate(errs)
+            for attempt in 1...maxAttempts {
+                do {
+                    let (respData, resp) = try await self.session.data(for: urlReq)
+                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    if respData.isEmpty {
+                        throw APIError.decode("empty transfer body")
+                    }
+                    let decoded: TransferResponse
+                    do {
+                        decoded = try JSONDecoder().decode(TransferResponse.self, from: respData)
+                    } catch {
+                        throw APIError.decode("transfer decode: \(error.localizedDescription)")
+                    }
+                    if code >= 500 {
+                        throw APIError.http(code, decoded.error ?? "transfer server error")
+                    }
+                    if !(200..<300).contains(code) || decoded.ok == false {
+                        if let errs = decoded.errors, !errs.isEmpty {
+                            throw APIError.gate(errs)
+                        }
+                        throw APIError.http(code, decoded.error ?? "transfer failed")
+                    }
+                    let eid = (decoded.epic_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    if eid.isEmpty {
+                        throw APIError.emptyEpicId
+                    }
+                    return decoded
+                } catch let err as APIError {
+                    lastError = err
+                    let retryable: Bool = {
+                        switch err {
+                        case .emptyEpicId, .decode:
+                            return true
+                        case .http(let code, _):
+                            return code >= 500 || code == 0
+                        case .gate:
+                            return false
+                        default:
+                            return false
+                        }
+                    }()
+                    if !retryable || attempt == maxAttempts {
+                        throw err
+                    }
+                    let ns = UInt64(150_000_000 * attempt) // 150ms, 300ms
+                    try? await Task.sleep(nanoseconds: ns)
+                } catch {
+                    lastError = error
+                    // URLSession / empty / transport — retry
+                    if attempt == maxAttempts { throw error }
+                    let ns = UInt64(150_000_000 * attempt)
+                    try? await Task.sleep(nanoseconds: ns)
                 }
-                throw APIError.http(code, decoded.error ?? "transfer failed")
             }
-            return decoded
+            throw lastError ?? APIError.decode("transfer failed after retries")
         }
     }
 

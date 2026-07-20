@@ -699,8 +699,9 @@ def _smoke_deliverable_satisfied(task_id: str) -> bool:
                     return True
     except Exception:
         pass
-    # File present + task-id commit exists (DoD / agent) — enough for smoke salvage
-    return True
+    # Do NOT green on "file on disk + any task-id commit" — ignored paths
+    # (e.g. AGENTS.md under /agents.md gitignore) would false-pass Phase12-style.
+    return False
 
 def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
     """门禁已满足时收口 → testing，禁止无意义 relaunch。

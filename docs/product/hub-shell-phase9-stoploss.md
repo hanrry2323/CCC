@@ -18,6 +18,8 @@
 ## 验收清单
 
 - [x] 单测：`test_snapshot_failed_stage_from_abnormal_and_split`（API 字段非空）
+- [x] Client 契约：`tests/scripts/test_phase9_stoploss_client_contract.py`（`stopLossHint` 字符串规则）
+- [x] Live API：`scripts/smoke-hub-shell-phase9.sh`（种 abnormal → snapshot `user_stage=failed`）
 - [x] Desktop：`stopLossHint` + toast（手工：选有 abnormal 的项目应见右栏红条）
 - [x] roadmap §3.1 已勾「止损最小可见」
 

@@ -155,3 +155,89 @@ def test_detect_oversplit_small_rejects_three_children():
     )
     assert "complexity: small" in prompt
     assert "反过拆" in prompt
+
+
+def test_smoke_salvage_rejects_gitignore_only_file(tmp_path: Path, monkeypatch):
+    """Ignored deliverable on disk + unrelated task commit must NOT salvage-green."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from board.context import set_workspace
+    from board.roles import dev as dev_mod
+
+    ws = tmp_path / "app"
+    ws.mkdir()
+    subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"], cwd=ws, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"], cwd=ws, check=True, capture_output=True
+    )
+    (ws / ".gitignore").write_text("/agents.md\n", encoding="utf-8")
+    (ws / "README.md").write_text("# r\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", ".gitignore", "README.md"], cwd=ws, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=ws, check=True, capture_output=True
+    )
+    # Ignored write (cannot land in git)
+    (ws / "AGENTS.md").write_text("should not salvage\n", encoding="utf-8")
+    # Task-id commit that does NOT touch AGENTS.md
+    (ws / "note.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "note.txt"], cwd=ws, check=True, capture_output=True)
+    tid = "phase12-fake-w1"
+    subprocess.run(
+        ["git", "commit", "-m", f"chore: {tid} unrelated"],
+        cwd=ws,
+        check=True,
+        capture_output=True,
+    )
+
+    (ws / ".ccc" / "board" / "in_progress").mkdir(parents=True)
+    (ws / ".ccc" / "phases").mkdir(parents=True)
+    (ws / ".ccc" / "reports").mkdir(parents=True)
+    task = {
+        "id": tid,
+        "title": "写入并提交 AGENTS",
+        "description": "flow-smoke style",
+        "status": "in_progress",
+        "created_at": "2026-07-20T00:00:00+08:00",
+        "updated_at": "2026-07-20T00:00:00+08:00",
+        "card_kind": "work",
+        "complexity": "small",
+        "schema_version": "1.2",
+        "ui_hidden": False,
+        "child_ids": [],
+        "parent_id": "phase12-fake",
+        "split_status": None,
+        "color_group": "A",
+        "color_depth": 1,
+        "tags": [],
+        "assignee": None,
+        "note": None,
+    }
+    (ws / ".ccc" / "board" / "in_progress" / f"{tid}.jsonl").write_text(
+        json.dumps(task) + "\n"
+    )
+    (ws / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
+        '{"schema_version":"1.1"}\n'
+        + json.dumps(
+            {
+                "phase": 1,
+                "status": "pending",
+                "description": "write agents",
+                "scope": ["AGENTS.md"],
+                "subtasks": {"1.1": "pending"},
+                "timeout": 1800,
+                "commit": None,
+                "notes": "",
+            }
+        )
+        + "\n"
+    )
+    set_workspace(ws)
+    assert dev_mod._smoke_deliverable_satisfied(tid) is False
+    monkeypatch.setenv("CCC_SKIP_COMMIT_GATE", "1")
+    assert dev_mod.try_complete_if_gates_satisfied(tid) is None

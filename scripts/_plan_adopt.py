@@ -193,7 +193,7 @@ def try_adopt_referenced_plan(
         if not ok:
             return {"ok": False, "reason": "plan_lint", "errors": errs}
         phases = backfill_scopes(phases, plan_text)
-        lint_ok, lint_errs, _ = phase_lint.validate_phases_dict(phases)
+        lint_ok, lint_errs, _ = phase_lint.validate_phases_dict(phases, workspace=ws)
         if not lint_ok:
             return {"ok": False, "reason": "phase_lint", "errors": lint_errs}
     except Exception as exc:

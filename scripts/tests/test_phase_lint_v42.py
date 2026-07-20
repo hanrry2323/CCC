@@ -1,5 +1,6 @@
 """v0.42: scope 硬门 + plan 验收硬门"""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,6 +56,72 @@ class TestValidateScope:
 
     def test_valid_scope_in_phases_dict(self):
         ok, errors, _ = validate_phases_dict([_ok_phase()])
+        assert ok, errors
+
+    def test_gitignore_scope_rejected(self, tmp_path: Path):
+        ws = tmp_path / "repo"
+        ws.mkdir()
+        subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+        (ws / ".gitignore").write_text("/agents.md\n", encoding="utf-8")
+        (ws / "README.md").write_text("# ok\n", encoding="utf-8")
+        subprocess.run(["git", "add", ".gitignore", "README.md"], cwd=ws, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "t"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        ok_bad, errs_bad, _ = validate_scope(
+            [_ok_phase(scope=["AGENTS.md"])], workspace=ws
+        )
+        assert not ok_bad
+        assert any("ignored by gitignore" in e for e in errs_bad)
+        ok_good, errs_good, _ = validate_scope(
+            [_ok_phase(scope=["README.md"])], workspace=ws
+        )
+        assert ok_good, errs_good
+
+    def test_tracked_ignored_path_allowed(self, tmp_path: Path):
+        """Already-tracked files pass even if a rule would ignore new files."""
+        ws = tmp_path / "repo"
+        ws.mkdir()
+        subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+        (ws / "tracked.txt").write_text("x\n", encoding="utf-8")
+        subprocess.run(["git", "add", "tracked.txt"], cwd=ws, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "t"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=ws,
+            check=True,
+            capture_output=True,
+        )
+        (ws / ".gitignore").write_text("tracked.txt\n", encoding="utf-8")
+        ok, errors, _ = validate_scope(
+            [_ok_phase(scope=["tracked.txt"])], workspace=ws
+        )
         assert ok, errors
 
 

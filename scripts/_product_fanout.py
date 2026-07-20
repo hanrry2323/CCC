@@ -136,6 +136,8 @@ def build_fanout_prompt(
         f"- 每张子卡最多 {max_phases} 个 phase（优先 1 个）\n"
         f"- 子卡 id：kebab-case，建议前缀 `{eid}-`\n"
         f"- 每张子卡必须可独立被开发模型消费（目标清晰、scope 明确、验收可执行）\n"
+        f"- scope 路径必须可被 git 跟踪：勿选被 .gitignore 忽略的文件"
+        f"（如业务仓忽略 AGENTS.md/agents.md 时改 README.md 或已跟踪文档）\n"
         f"- plan_md 内**禁止英文双引号**（用「」或 '）；JSON 必须可被标准解析器加载\n\n"
         f"## 单卡 Plan 结构参考\n{template_plan[:2500]}\n\n"
         f"## 参考历史\n{ref_plans[:2000] if ref_plans else '（无）'}\n\n"
@@ -304,7 +306,12 @@ def parse_fanout_output(output: str) -> tuple[str, list[dict]]:
 
 
 def _normalize_child(
-    raw: dict, *, epic_id: str, idx: int, max_phases: int
+    raw: dict,
+    *,
+    epic_id: str,
+    idx: int,
+    max_phases: int,
+    workspace: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError(f"child[{idx}] not object")
@@ -329,7 +336,7 @@ def _normalize_child(
     if len(phases) > max_phases:
         raise ValueError(f"child[{idx}] phases > {max_phases}")
     plan_md = phase_lint.normalize_plan_acceptance_headers(plan_md)
-    ok, errs, _ = phase_lint.validate_phases_dict(phases)
+    ok, errs, _ = phase_lint.validate_phases_dict(phases, workspace=workspace)
     if not ok:
         raise ValueError(f"child[{idx}] phase_lint: {'; '.join(errs)}")
     dep_ok, dep_errs = phase_lint.suggest_fix_no_missing_dependencies(phases)
@@ -429,7 +436,11 @@ def apply_fanout(
     seen: set[str] = set()
     for i, raw in enumerate(children_raw):
         ch = _normalize_child(
-            raw, epic_id=epic_id, idx=i, max_phases=max_phases
+            raw,
+            epic_id=epic_id,
+            idx=i,
+            max_phases=max_phases,
+            workspace=store.workspace,
         )
         if ch["id"] == epic_id:
             raise ValueError("child id must differ from epic")

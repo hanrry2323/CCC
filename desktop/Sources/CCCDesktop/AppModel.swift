@@ -1777,16 +1777,23 @@ final class AppModel: ObservableObject {
     }
 
     private func applyTransferSuccess(resp: TransferResponse, tid: String, pid: String) async {
+        let eid = (resp.epic_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !eid.isEmpty else {
+            // 禁止空 epic_id 驱动 ui / fanout（Phase6：空前缀会误匹配全板）
+            setTransferDelivery(tid, .failed)
+            showToast("转任务失败：Hub 未返回 epic_id")
+            return
+        }
         if selectedProjectId == pid {
             selectedThreadId = tid
-            currentEpicId = resp.epic_id
+            currentEpicId = eid
         }
         var snap = threadFlow[tid] ?? FlowThreadSnapshot(
-            epicId: resp.epic_id, epic: nil, works: [], headline: "",
+            epicId: eid, epic: nil, works: [], headline: "",
             recentEpics: threadFlow[tid]?.recentEpics ?? recentEpics,
             emptyMessage: "", fanoutHint: nil
         )
-        snap.epicId = resp.epic_id
+        snap.epicId = eid
         threadFlow[tid] = snap
         bumpFlowRevision(tid)
         persistCurrentThreadSnapshot(threadId: tid)
@@ -1794,9 +1801,9 @@ final class AppModel: ObservableObject {
         resetTransferForm(threadId: tid)
         setTransferDelivery(tid, .delivered)
         statusText = "已转任务"
-        var toastMsg = "已创建待办 \(resp.epic_id ?? "")"
+        var toastMsg = "已创建待办 \(eid)"
         if resp.idempotent_replay == true {
-            toastMsg = "已受理（幂等）\(resp.epic_id ?? "")"
+            toastMsg = "已受理（幂等）\(eid)"
         }
         if resp.engine_wake?.ok == true {
             toastMsg += " · Engine 已唤醒"
@@ -1805,11 +1812,11 @@ final class AppModel: ObservableObject {
         showToast(toastMsg)
         lastAnimatedEpicId = nil
         flowSplitGeneration &+= 1
-        await bindFlowToThread(projectId: pid, preferEpicId: resp.epic_id)
+        await bindFlowToThread(projectId: pid, preferEpicId: eid)
         if transferDeliveryByThread[tid] != .accepted {
             setTransferDelivery(tid, .accepted)
         }
-        startFanoutWatchdog(epicId: resp.epic_id, projectId: pid)
+        startFanoutWatchdog(epicId: eid, projectId: pid)
     }
 
     static func promptMode(forUserText text: String) -> String {
@@ -2987,11 +2994,20 @@ final class AppModel: ObservableObject {
             await applyTransferSuccess(resp: resp, tid: tid, pid: pid)
         } catch {
             let plain = plainTransferError(error)
-            // 网络类失败：入 outbox，Hub 恢复后重试
+            // 网络类 / 空响应 / 空 epic_id：入 outbox，Hub 恢复后同 CRID 重试
             let lower = plain.lowercased()
             let transient = lower.contains("timed out") || lower.contains("offline")
                 || lower.contains("network") || lower.contains("could not connect")
                 || lower.contains("connection") || !hubReachable
+                || lower.contains("empty transfer") || lower.contains("empty epic")
+                || lower.contains("空 epic") || lower.contains("transfer decode")
+                || lower.contains("解析失败")
+                || ((error as? APIError).map { err in
+                    if case .emptyEpicId = err { return true }
+                    if case .decode = err { return true }
+                    if case .http(let code, _) = err { return code >= 500 || code == 0 }
+                    return false
+                } ?? false)
             if transient {
                 let item = LocalSessionStore.TransferOutboxItem(
                     client_request_id: requestId,
