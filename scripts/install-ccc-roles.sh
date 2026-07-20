@@ -115,7 +115,9 @@ install_engine() {
     <key>SuccessfulExit</key>
     <true/>
     <key>SuccessfulExitTimeout</key>
-    <integer>10</integer>
+    <integer>30</integer>
+    <key>Crashed</key>
+    <true/>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -124,9 +126,18 @@ install_engine() {
   <key>StandardErrorPath</key>
   <string>${log}</string>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>ThrottleInterval</key>
-  <integer>30</integer>
+  <integer>60</integer>
+  <key>WatchPaths</key>
+  <array>
+    <string>${HOME}/.ccc/control.json</string>
+  </array>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>4096</integer>
+  </dict>
 </dict>
 </plist>
 PLIST_EOF
@@ -181,7 +192,9 @@ install_board() {
     <key>SuccessfulExit</key>
     <true/>
     <key>SuccessfulExitTimeout</key>
-    <integer>10</integer>
+    <integer>30</integer>
+    <key>Crashed</key>
+    <true/>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -190,9 +203,14 @@ install_board() {
   <key>StandardErrorPath</key>
   <string>${log}</string>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>ThrottleInterval</key>
-  <integer>30</integer>
+  <integer>60</integer>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>4096</integer>
+  </dict>
 </dict>
 </plist>
 PLIST_EOF

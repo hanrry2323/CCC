@@ -22,7 +22,7 @@ import threading
 import time
 import traceback as _traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timezone
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -347,10 +347,6 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
         status: "started" | "shutdown" | "stopped"
         reason: 描述原因，如 "SIGTERM" | "KeyboardInterrupt" | None（started 时为 None）
     """
-    global _restart_log_written
-    if _restart_log_written:
-        return
-    _restart_log_written = True
     uptime = max(0.001, time.time() - _engine_start_ts)
     entry = {
         "ts": _utils_now_iso(),
@@ -358,8 +354,8 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
         "uptime_sec": round(uptime, 3),
         "status": status,
         "reason": reason,
-        # v0.51.0 P3-1: 加 source 字段标识来源（与 ccc-patrol-v4._log_engine_restart 对齐）
         "source": "engine",
+        "version": _ENGINE_VERSION,
     }
     try:
         from _jsonl_rotate import append_jsonl
@@ -371,8 +367,24 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except OSError:
             pass
-    except OSError:
-        pass
+
+
+def _check_last_exit_was_kill() -> bool:
+    """检查上次退出是否为强制杀死（无正常日志）。返回 True=上次被强杀。"""
+    try:
+        if not _RESTART_LOG_PATH.exists():
+            return False
+        with _RESTART_LOG_PATH.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if not lines:
+                return False
+            last = json.loads(lines[-1].strip())
+            last_status = last.get("status", "")
+            if last_status == "started":
+                return True
+            return False
+    except (json.JSONDecodeError, OSError):
+        return False
 
 
 def _loop_heartbeat_path() -> Path:
@@ -2878,6 +2890,12 @@ def engine_loop(workspaces: list[Path]) -> None:
                 # v0.41: 可被下任务 wake 文件打断
                 if _sleep_until_wake(60):
                     engine_log("[wake] 收到 engine.wake，立即进入下一 tick")
+                    # 唤醒后必须重扫 registry：新 register 的 app 否则永远 invisible
+                    # （曾导致 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）
+                    workspaces[:] = _rediscover_workspaces(workspaces)
+                elif iteration % 12 == 0:
+                    # 深睡满轮也轻量重扫，覆盖「只 register 未 wake」
+                    workspaces[:] = _rediscover_workspaces(workspaces)
                 continue
 
             if not any_active:
@@ -2904,6 +2922,27 @@ def engine_loop(workspaces: list[Path]) -> None:
         _wait_tick(tick_start)
 
     engine_log("收到关闭信号，停止接收新任务")
+
+
+def _rediscover_workspaces(current: list[Path]) -> list[Path]:
+    """Re-read ~/.ccc/workspaces.json；名单变化时打日志。返回最新列表（失败则保留旧）。"""
+    try:
+        discovered = _discover_workspaces()
+    except Exception as exc:
+        engine_log(f"[workspace] rediscover failed: {exc}")
+        return current
+    if not discovered:
+        return current
+    old = {str(p.resolve()) for p in current}
+    new = {str(p.resolve()) for p in discovered}
+    if old != new:
+        program_dir = Path.home() / "program"
+        labels = [_ws_label(w, program_dir) for w in discovered]
+        engine_log(
+            f"[workspace] rediscover {len(current)} → {len(discovered)}: {labels}"
+        )
+        return discovered
+    return current
 
 
 def _sleep_until_wake(seconds: float) -> bool:
@@ -3591,21 +3630,34 @@ def main(argv: list[str] | None = None) -> None:
     labels = [_ws_label(w, program_dir) for w in workspaces]
     engine_log(f"发现 {len(workspaces)} 个 workspace: {labels}")
 
-    def _handle_sigterm(signum, frame):
+    if _check_last_exit_was_kill():
+        engine_log("⚠️ 上次退出为强制杀死（无正常日志），可能是 OOM 或信号中断")
+
+    def _handle_signal(signum, frame):
         global _engine_shutdown
         if _engine_shutdown:
             return
         _engine_shutdown = True
-        engine_log("收到 SIGTERM, 优雅关闭中...")
-        _write_engine_restart("shutdown", "SIGTERM")
+        signal_names = {
+            signal.SIGTERM: "SIGTERM",
+            signal.SIGINT: "SIGINT",
+            signal.SIGHUP: "SIGHUP",
+            signal.SIGQUIT: "SIGQUIT",
+        }
+        name = signal_names.get(signum, f"SIG{signum}")
+        engine_log(f"收到 {name}, 优雅关闭中...")
+        _write_engine_restart("shutdown", name)
 
     def _final_restart_log():
-        if not _restart_log_written:
-            _write_engine_restart("stopped", "exit/by_crash")
+        _write_engine_restart("stopped", "normal_exit")
 
     atexit.register(_final_restart_log)
 
-    signal.signal(signal.SIGTERM, _handle_sigterm)
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+        try:
+            signal.signal(sig, _handle_signal)
+        except (OSError, ValueError):
+            pass
 
     _run_stats_server(args.port)
 
@@ -3614,8 +3666,16 @@ def main(argv: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         engine_log("Engine 关闭")
         _write_engine_restart("shutdown", "KeyboardInterrupt")
-    except SystemExit:
-        _log.debug("engine exiting via SystemExit")
+    except SystemExit as e:
+        code = e.code if e.code else 0
+        if code != 0:
+            _write_engine_restart("stopped", f"SystemExit({code})")
+        _log.debug(f"engine exiting via SystemExit({code})")
+    except Exception as e:
+        engine_log(f"Engine 异常退出: {e}")
+        _write_engine_restart("stopped", f"exception: {type(e).__name__}: {e}")
+        tb_text = _traceback.format_exc()
+        engine_log(f"{tb_text[:3000]}")
     _engine_shutdown = True
     engine_log("Engine 终止")
 
