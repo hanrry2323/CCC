@@ -51,7 +51,7 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-18）**：v0.51.0 **正式启用就绪** · 见 `docs/ops/GO-LIVE.md` · orch 分离 + 舰队卫生完成。
+> **近 HEAD（手工备忘，2026-07-21）**：v0.52.0 **Hub-Shell Wave1-2 freeze 已推送 origin + Mac2017 已同步** · 见 `docs/releases/v0.52.0.md` 与 `docs/product/hub-shell-phase-status.md` · 25 commits 一次性推送（`ba87984..97433a3`，含 Phase6–12 + 收口 hygiene + tag `v0.52.0` 已打）。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
@@ -115,33 +115,21 @@
 
 ---
 
-## 当前状态（v0.28.1 closure, 2026-07-12）
+## 当前状态（v0.52.0 Hub-Shell Wave1-2 freeze, 2026-07-21）
 
-**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流（small/medium/large）**。
+**架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流** + **多端对话壳 + Hub API v1**。
 
-**复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。product_role 根据 plan_weight 自动推断。small 任务在 Engine 中跳过 reviewer+tester 直通 kb。medium（默认）和 large 走**完整阶段能力包**。详见 `CHANGELOG.md §v0.28.1` 或 `references/board-task-schema.md §12`。现行叙事：`docs/VISION.md`（阶段包 ≠ 用户角色菜单）。
+**Hub-Shell Wave1-2 收口**（v0.52.0）：Hub API v1 冻结（transfer 幂等 + 三态投递：草稿/待投递/已投递/已受理）；Desktop outbox + Hub 断线 outbox + `client_request_id` 幂等；Phase1–12 全绿（ccc-demo §8 验收 + qb/hp/xianyu 三仓覆盖）；abnormal 止损最小可见（Desktop 右栏红条 + toast + 运维链）。详见 `docs/product/hub-shell-phase-status.md` 与 `docs/releases/v0.52.0.md`。
 
-**每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。持久的，重启后仍在。
+**复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。small 任务跳过 reviewer+tester 直通 kb；medium（默认）/ large 走完整阶段能力包。详见 `CHANGELOG.md §v0.28.1`。
 
-**已发布版本族**：v0.7.0 → ... → v0.28.0 → **v0.28.1**（共 34 个 release tag）
+**每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。
 
-**已完成范式转变**（roadmap 标注）：
-1. v0.11 — "opencode 写 + 人工 review" 模式
-2. v0.12 — bug 扫描 → 必修 → 复查 → 沉淀 4 步标准化
-3. v0.15 — 真自动化开发（opencode + post-exec 自动 push）
-4. v0.16 — 7 角色 + 任务看板（6 列流转 + 7 launchd 周期）
-5. v0.17 — 战略地图（启动必读第一份）
-6. v0.18 — 7 角色文档对齐 + 架构审查（regress 角色正式加入，9 个问题修复）
-7. v0.19 — 基础加固 + 扩展通路（三抽象 + E2E + 共享契约）
-8. v0.20.1 — 串行执行引擎（取消 7 角色定时，Engine 常驻进程）
-9. v0.23 — product 上游智能化（读代码结构再写 plan）
+**已发布版本族**：v0.7.0 → ... → v0.50.0 → v0.51.0 → **v0.52.0**（Hub-Shell Wave1-2 freeze）；tag `v0.52.0` annotated 已推 origin；Mac2017 已 `reset --hard origin/main` 同步。
 
-**已规划未实施**（按用户节奏）：
-- v0.24 — Engine phase 感知调度
-- v0.25 — 全链路对齐（文档/测试/角色 SKILL 同步刷新）
-- v0.26 — CCC Board Protocol / 跨 IDE 开放协议（Agent ↔ 看板列映射）
+**人审边界**（v0.52 起固化）：意图门（定稿/采纳/选仓）+ abnormal 止损；进 backlog 后**默认全自动**，禁止逐步人批（roadmap §3）。
 
-**当前不启动**任何新任务，等用户拍板。
+**当前不启动**新业务 epic；Wave3（v0.53）候选——更深业务 epic / 止损升级通知细则 / AGENTS.md gitignore 卫生；仍不做 P3（多端薄客户 / 重写 Engine / 旁路自动进队 / 中转站回退）。
 
 ---
 
@@ -359,22 +347,24 @@
 
 ---
 
-**最后更新**：2026-07-09（v0.23.3 closure — 北京时间 +08:00 已统一）
-**v0.23.3 收尾**：
-- `now_iso()` 全量改 `ZoneInfo("Asia/Shanghai")`，后缀 `+08:00`
-- commit `785ba7f` 已合入 main
+**最后更新**：2026-07-21（v0.52.0 Hub-Shell Wave1-2 freeze 已推送 + tag 已打 + Mac2017 已同步）
+**v0.52.0 收尾**：
+- 本机 25 commits 推 origin/main（`ba87984..97433a3`），tag `v0.52.0` annotated 已 push
+- Mac2017 `reset --hard origin/main` 同步（ahead 0 / behind 0；保险 tag `backup-pre-reset-2026-07-21`）
+- profile.md 当前版本 → v0.52.0；state.md 顶部"最近任务 / 当前状态"对齐 git 事实
 - 工作树与 origin/main 同步
-- 下一版节奏等用户拍板
+- 下一版（v0.53 / Wave3）等用户拍板
 
 **下次启动必读顺序**：
 1. 读本文件（state.md）
 2. 读 `.ccc/profile.md`
-3. 读 `CHANGELOG.md` §最近（v0.28+）
+3. 读 `CHANGELOG.md` §最近（v0.50+）
 4. 才开工
 
 **当前活跃**：
-- complexity 分流已生效（v0.28.1）
+- complexity 分流（v0.28.1）· Hub API v1（v0.52.0）· 双机部署
 - 每周总结定时任务（周日 22:03）
+- v0.53 Wave3 候选：更深业务 epic / 止损通知细则 / AGENTS.md 卫生
 
 <!-- board-status -->
 ## 看板状态
