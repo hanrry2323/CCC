@@ -60,10 +60,12 @@ enum FlowLayout {
                     id: w.id,
                     kind: .work,
                     title: w.title,
-                    subtitle: workSubtitle(w),
+                    subtitle: w.displayStatus,
                     statusKey: w.status,
                     badge: w.displayExecutor,
-                    detail: workDetail(w),
+                    detail: w.failureNote ?? (w.dependsOnTitles?.isEmpty == false
+                        ? "依赖 \(w.dependsOnTitles!.joined(separator: "、"))"
+                        : nil),
                     x: x,
                     y: y
                 )
@@ -167,51 +169,17 @@ enum FlowLayout {
         }
     }
 
-    /// 卡片副标题：执行面白话 / 状态人话 二选一；执行面是 UX 期望的次要信息
-    static func workSubtitle(_ work: FlowWork) -> String {
-        let exec = work.displayExecutor.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stat = work.displayStatus.trimmingCharacters(in: .whitespacesAndNewlines)
-        // 失败时优先显示状态（让用户在卡上一眼知异常）
-        if work.isFailed { return stat.isEmpty ? "异常" : stat }
-        // 依赖用标题表达（UX 表要求）
-        if let deps = work.dependsOnTitles, !deps.isEmpty {
-            let joined = deps.prefix(3).joined(separator: "、")
-            let extra = deps.count > 3 ? " 等" : ""
-            return "依赖：\(joined)\(extra) · \(exec.isEmpty ? stat : exec)"
-        }
-        if !exec.isEmpty { return exec }
-        return stat
-    }
-
-    /// 卡片末行（detail）：失败 → failure_note；testing/running → note 摘要；否则依赖标题
-    static func workDetail(_ work: FlowWork) -> String? {
-        if let fail = work.failureNote?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !fail.isEmpty {
-            return "原因：\(Self.truncate(fail, max: 72))"
-        }
-        if let note = work.note?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !note.isEmpty,
-           ["in_progress", "testing", "abnormal"].contains(work.status) {
-            return Self.truncate(note, max: 60)
-        }
-        return nil
-    }
-
-    static func truncate(_ s: String, max: Int) -> String {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= max { return trimmed }
-        return String(trimmed.prefix(max)) + "…"
-    }
-
     static func graphNode(from work: FlowWork) -> FlowGraphNode {
         FlowGraphNode(
             id: work.id,
             kind: .work,
             title: work.title,
-            subtitle: workSubtitle(work),
+            subtitle: work.displayStatus,
             statusKey: work.status,
             badge: work.displayExecutor,
-            detail: workDetail(work)
+            detail: work.failureNote ?? (work.dependsOnTitles?.isEmpty == false
+                ? "依赖 \(work.dependsOnTitles!.joined(separator: "、"))"
+                : nil)
         )
     }
 
@@ -231,39 +199,6 @@ enum FlowLayout {
         return stageLabel(epicStageKey(epic: epic))
     }
 
-    /// Epic 大卡主文案：headline 优先 → 阶段人话 → 空态
-    /// UX 表要求：pending/planned/running/testing/done/failed 各有清晰主文案
-    static func epicHeadlineText(epic: FlowEpic?, works: [FlowWork], fallbackHeadline: String) -> String {
-        if !fallbackHeadline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return fallbackHeadline.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        let key = epicStageKey(epic: epic)
-        let worksCount = works.count
-        switch key {
-        case "pending", "":
-            return worksCount == 0 ? "待拆解" : "正在拆解…"
-        case "planned":
-            if worksCount == 0 { return "已拆 0 步" }
-            return "已拆 \(worksCount) 步"
-        case "running":
-            if let active = works.first(where: \.isActive) {
-                return "正在：\(active.title)"
-            }
-            return "执行中"
-        case "testing":
-            return "验收中"
-        case "done":
-            return "已完成"
-        case "failed", "abnormal":
-            if let failed = works.first(where: \.isFailed) {
-                return "卡住：\(failed.title)"
-            }
-            return "编排异常"
-        default:
-            return stageLabel(key)
-        }
-    }
-
     static func epicGraphNode(epic: FlowEpic?, epicId: String?) -> FlowGraphNode {
         let eid = epic?.id ?? epicId ?? "epic"
         let key = epicStageKey(epic: epic)
@@ -274,7 +209,7 @@ enum FlowLayout {
             subtitle: epicSubtitle(epic: epic),
             statusKey: key.isEmpty ? "pending" : key,
             badge: "任务",
-            detail: epic?.goal_summary.flatMap { Self.truncate($0, max: 90) }
+            detail: epic?.goal_summary
         )
     }
 

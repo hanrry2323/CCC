@@ -1442,16 +1442,18 @@ final class AppModel: ObservableObject {
                 }
                 await refreshFlowNow(projectId: projectId)
             } else if let match = epics.first(where: { ($0.thread_id ?? "") == threadId })?.epic_id {
-                // 只接受「精确 thread 匹配」的 Hub 建议；不挑项目里任意最近 epic（Phase14）
                 if selectedThreadId == threadId {
                     currentEpicId = match
                 }
                 await refreshFlowNow(projectId: projectId)
+            } else if let first = epics.first?.epic_id {
+                if selectedThreadId == threadId {
+                    currentEpicId = first
+                }
+                await refreshFlowNow(projectId: projectId)
             } else if hasLocalFlow {
-                // Hub 列表为空 / 不匹配时，保留本地绑定；不要用 epics.first 抢绑
                 return
             } else {
-                // Phase14：未绑定且无合法 hint/match → 空态，禁止默默挂项目里任意一笔最近 epic
                 if selectedThreadId == threadId {
                     currentEpicId = nil
                     flowEpic = nil
@@ -3287,8 +3289,9 @@ final class AppModel: ObservableObject {
             } else if let hint = epicsResp.boundHint, !hint.isEmpty {
                 resolvedEpic = hint
             } else if let match = epicsResp.epics.first(where: { ($0.thread_id ?? "") == tid })?.epic_id {
-                // Phase14：仅精确 thread 匹配；不再回退到项目里任意最近 epic
                 resolvedEpic = match
+            } else if let first = epicsResp.epics.first?.epic_id {
+                resolvedEpic = first
             } else if hasLocalFlow {
                 threadFlow[tid] = snap
                 bumpFlowRevision(tid)
@@ -3300,7 +3303,6 @@ final class AppModel: ObservableObject {
                 reconcileFlowSSE()
                 return
             } else {
-                // Phase14：未绑定 + 无 hint/match → 空态（保持本地空，绝不挂任意最近 epic）
                 resolvedEpic = nil
                 snap.epic = nil
                 snap.works = []
@@ -3582,58 +3584,20 @@ final class AppModel: ObservableObject {
                             "reconnect_count": self?.flowReconnectCount[projectId] ?? 0,
                         ])
                     }
-                    // Phase14：把本项目当前选中的 epic 透传给 Hub，让 Hub 在 JSONL 推送时按
-                    // epic_id 过滤（避免他 epic 噪声打扰本轨）；不传则 Hub 推该项目全部事件。
-                    let subscribedEpic = await MainActor.run { () -> String? in
-                        guard let self else { return nil }
-                        let tid = self.threadIdForProject(projectId)
-                        let bound = self.threadFlow[tid]?.epicId
-                            ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
-                        return bound
-                    }
                     try await self?.client.streamFlowEvents(
                         projectId: projectId,
-                        epicId: subscribedEpic
-                    ) { event, payload in
-                        // Phase14：白名单扩到 epic_done；本 epic 命中立刻清轨（不等 8s 看板轮询）
-                        let refreshEvents: Set<String> = [
-                            "fanout", "work_status", "epic_created", "executor",
-                        ]
-                        let terminalEvents: Set<String> = ["epic_done"]
-                        if refreshEvents.contains(event) {
+                        epicId: nil
+                    ) { event, _ in
+                        if ["fanout", "work_status", "epic_created", "executor"].contains(event) {
                             Task { @MainActor in
                                 guard let self else { return }
                                 guard !self.flowSnapshotPaused else { return }
+                                // 只要该项目仍在焦点/选中集合，就刷新 threadFlow（不要求 == selectedProjectId）
                                 let stillWanted = self.focusedProjectIds.contains(projectId)
                                     || self.selectedProjectId == projectId
                                 guard stillWanted else { return }
-                                // 客户端二次校验：epic_id 缺失/不匹配 → 拒绝（防他 epic 噪声）
-                                if let eid = payload["epic_id"] as? String, !eid.isEmpty {
-                                    let tid = self.threadIdForProject(projectId)
-                                    let bound = self.threadFlow[tid]?.epicId
-                                        ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
-                                    if let bound, !bound.isEmpty, eid != bound {
-                                        return
-                                    }
-                                }
                                 await self.refreshFlow(projectId: projectId)
                             }
-                            return
-                        }
-                        if terminalEvents.contains(event) {
-                            Task { @MainActor in
-                                guard let self else { return }
-                                guard !self.flowSnapshotPaused else { return }
-                                // epic_done 本 epic 触发 → 立即清轨；非本 epic 拒绝
-                                if let eid = payload["epic_id"] as? String, !eid.isEmpty {
-                                    let tid = self.threadIdForProject(projectId)
-                                    let bound = self.threadFlow[tid]?.epicId
-                                        ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
-                                    if let bound, !bound.isEmpty, eid != bound { return }
-                                }
-                                await self.handleEpicDoneTerminal(projectId: projectId)
-                            }
-                            return
                         }
                     }
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -3659,41 +3623,6 @@ final class AppModel: ObservableObject {
                 }
             }
         }
-    }
-
-    /// Phase14：epic_done 直接清右栏（不依赖 8s 看板轮询）。failed 由 Phase9 止损接管，
-    /// 这里只处理 done 路径；异常继续保留 stopLossHint（已存在）。
-    private func handleEpicDoneTerminal(projectId: String) async {
-        let tid = threadIdForProject(projectId)
-        let isSelected = selectedProjectId == projectId
-        var snap = threadFlow[tid] ?? FlowThreadSnapshot(
-            epicId: nil, epic: nil, works: [], headline: "",
-            recentEpics: isSelected ? recentEpics : [],
-            emptyMessage: "编排空闲 · 下一笔定稿后出现在这里",
-            fanoutHint: nil
-        )
-        let keptRecent = snap.recentEpics
-        snap.works = []
-        snap.epic = nil
-        snap.epicId = nil
-        snap.headline = ""
-        snap.fanoutHint = nil
-        snap.stopLossHint = nil
-        snap.recentEpics = keptRecent
-        snap.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
-        threadFlow[tid] = snap
-        bumpFlowRevision(tid)
-        if isSelected {
-            recentEpics = keptRecent
-            applyFlowSnapshot(snap)
-            lastAnimatedEpicId = nil
-        }
-        flushDiskSave(threadId: tid)
-        DesktopChatTurnLedger.append([
-            "event": "flow_epic_done_cleared",
-            "projectId": projectId,
-            "threadId": tid,
-        ])
     }
 
 

@@ -63,4 +63,3 @@
 1. **推送优先**：`product` 扇出写 `~/.ccc/flow-events.jsonl`（含 `project_id`）；SSE 以 `after_ts` 追赶。
 2. **看板轮询兜底**：约每 8s 合成一次（首屏/断线）；不再 2s 狂刷。
 3. Desktop 右栏：`fanout` → 拆分出生动画；`work_status` → 节点态刷新；`epic_done` → 清空焦点时间线。
-4. **Phase14 追加**：Hub SSE 兜底在 `user_stage=done` 转入时主动推 `epic_done`（连同写 JSONL），客户端**必须**把 `epic_done` 加入白名单并在收到本 epic 的 `epic_done` 时立即清轨，不得只等下一次 fanout 或 8s 看板轮询。订阅 SSE 时应把当前 `boundEpicId` 作为 `epic_id` query 透传以减少他 epic 噪声；客户端仍需按 `data.epic_id` 二次校验。连续 done 不会重推（`last_terminal_stage` 去重）；failed 由 Phase9 止损路径处理，本通道不主动推。

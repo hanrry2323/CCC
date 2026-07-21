@@ -11,34 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase15 右栏卡片内容与视觉**：
-  - `desktop/Sources/CCCDesktop/FlowLayout.swift`
-    - 新增 `workSubtitle(_:)`：work 卡副标题——依赖标题 + 执行面白话混合（UX 表要求「依赖用标题」）。
-    - 新增 `workDetail(_:)`：失败 → `"原因：\(truncate(failure_note, 72))"`；in_progress/testing/abnormal → `truncate(note, 60)`；否则 `nil`。
-    - 新增 `epicHeadlineText(epic:works:fallbackHeadline:)`：UX 阶段表全档主文案（pending→「待拆解」/ planned→「已拆 N 步」/ running→「正在：{active 标题}」/ testing→「验收中」/ done→「已完成」/ failed/abnormal→「卡住：{failed 标题}」）。
-    - 新增 `truncate(_:max:)` 工具（中点省略，60/64/72 三档）。
-    - `graphNode(from:)` 与 `layout()` 内 work 节点统一走 `workSubtitle` / `workDetail`，消除两条重复路径。
-  - `desktop/Sources/CCCDesktop/FlowCanvasView.swift`
-    - 新增 `@State var seenWorkIds: Set<String>`：区分「真增长」与「同 id 状态更新」。
-    - `onChange(of: epicIdSignature)` 仅在 epic 切换时清空 `seenWorkIds` + 重启 reveal；同 epic 内 SSE 增量不动动画。
-    - `onChange(of: works)` 用 `seenWorkIds ⊇ revealedWorkIds` 差集，只对真正新出现的 work 走 `runRevealSequence(newIds:)`。
-    - `runRevealSequence(newIds:token:)` 分层 stagger，只对 newIds 内的 id 做 reveal；同 token 校验保留防竞态。
-    - header 改为 `VStack(alignment: .leading, spacing: 3)`：主文案一行（按阶段主色/淡色）+ 副行 `goal_summary`（≤64 字、单行、淡色）。
-    - `FlowNodeView` 视觉层次：左侧 3px 强调条（running 橙 / failed 红）；`overlay` stroke 按状态分级（failed 1.8pt 红 / running 0.45 橙 / 其他 1pt border）；done 节点 `opacity = 0.68`（epic 大卡不受影响）；失败 `detail` lineLimit=3、字号 10、红色。
-  - `docs/product/hub-shell-phase15-flow-rail-cards.md`：验收记录（green，未 bump VERSION）。`hub-shell-phase-status.md` +1；`hub-shell-roadmap.md` §10 一句指向本阶段。
-  - Hub 协议未扩字段，全部消费 FlowWork / FlowEpic 已有字段；向后兼容。
-
-- **Phase14 右栏绑定与实时正确性**：
-  - `desktop/Sources/CCCDesktop/AppModel.swift`
-    - `syncFlowFromServer` / `bindFlowToThread`：删 `epics.first?.epic_id` 兜底；未匹配走空态，禁止默默挂项目任意最近 epic（brief §2.1 + §3.1 A）。
-    - `startProjectFlowSSE`：透传 `boundEpicId` 给 Hub；客户端按 `data.epic_id` 二次校验；白名单加 `epic_done`；新增 `handleEpicDoneTerminal` 立即清轨（不等 8s 看板轮询，brief §3.1 B/C）。
-  - `scripts/chat_server/routers/desktop.py::flow_events_sse`：board-poll 兜底在 `user_stage=done` 转入时主动推 `epic_done`（连同写 JSONL），连续 done 去重不重弹；failed 由 Phase9 止损管。
-  - `scripts/chat_server/services/flow_events.py`：加 `is_terminal_stage(stage)` 工具（done/failed/blocked 判定）。
-  - `docs/product/flow-events.md`：实现备注加 Phase14 客户端/Hub 契约（白名单 + `epic_id` 透传 + `epic_done` 推送去重）。
-  - `tests/scripts/test_phase14_flow_rail_bind.py`（新增 7 测）：snapshot `user_stage` 分类、终态判定、bound_hint 精确 thread / `::main` 双口径、`epic_done` 去重语义。
-  - `docs/product/hub-shell-phase14-flow-rail-bind.md`：验收记录（green，未 bump VERSION）。
-  - `desktop/scripts/package-baseline.sh` + 装机：`/Applications/CCCDesktop.app` 重打 0.52.1 build 1。
-
 - **Phase13 编排可靠性门禁**：
   - `scripts/smoke-ccc-demo-reliability.sh`：reliability 探针（Hub health / 死 pid / active_tasks vs board 一致性 / hang 重试计数 / slot 计数（loopback）/ N 轮 transfer+snapshot + orphan & dead-pid drift）。
   - `scripts/smoke-hub-shell-gate.sh`：新增 `CCC_HUB_SHELL_TIER=reliability`（独立档）；`full` 自动追加 reliability smoke。

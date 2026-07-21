@@ -322,11 +322,6 @@ def snapshot_from_board(
     }
 
 
-def is_terminal_stage(stage: Any) -> bool:
-    """Phase14：判定 snapshot stage 是否完成态（done / failed）。"""
-    return str(stage or "").strip().lower() in ("done", "failed", "blocked")
-
-
 def format_sse(event: str, data: dict | list | str) -> str:
     payload = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"

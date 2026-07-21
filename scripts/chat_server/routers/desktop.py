@@ -640,8 +640,6 @@ async def flow_events_sse(
         last_offset = 0
         last_inode = 0
         jsonl_updated = False
-        # Phase14：本 epic 上次观察到的 stage；进入终态时主动推 epic_done（不等下次 fanout）
-        last_terminal_stage: dict[str, str] = {}
 
         # 先推历史事件（用 offset 读，初始化 last_offset/inode）
         recs, last_offset, last_inode = flow_events.read_events_from_offset(
@@ -718,28 +716,6 @@ async def flow_events_sse(
                                         "executor": w.get("executor"),
                                     },
                                 )
-                        # Phase14：本 epic 进入 done 时主动推 epic_done；不等下一次 fanout。
-                        # failed 留给 snapshot 的 stopLoss 路径，避免重复推送。
-                        stage = str(snap.get("user_stage") or "").strip().lower()
-                        prev = last_terminal_stage.get(eid)
-                        if stage == "done" and prev != "done":
-                            yield flow_events.format_sse(
-                                "epic_done",
-                                {
-                                    "project_id": pid,
-                                    "epic_id": eid,
-                                    "split_status": "done",
-                                },
-                            )
-                            flow_events.append_event(
-                                "epic_done",
-                                {
-                                    "project_id": pid,
-                                    "epic_id": eid,
-                                    "split_status": "done",
-                                },
-                            )
-                        last_terminal_stage[eid] = stage
                     except Exception as exc:
                         yield flow_events.format_sse("error", {"message": str(exc)[:200]})
             if now - last_beat >= 15:
