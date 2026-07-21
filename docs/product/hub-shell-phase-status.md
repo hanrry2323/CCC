@@ -21,4 +21,5 @@
 | Phase13 编排可靠性门禁 | green | reliability tier + hang/slot/orphan 探针（28 单元测）；终验修探活/board/sys；未 bump VERSION | a0c8b4c…5ce89de |
 | Phase14 右栏绑定+实时正确性 | green | cherry-pick + ContentView 去全局回退；Cursor 重做；装机 0.52.1；未 bump VERSION | （见 commit） |
 | Phase15 右栏卡片内容+视觉 | green | UX 阶段表全档主文案 + goal/executor/depends/failure 上卡 + reveal 不闪；Cursor 重做；Phase14 测仍绿 | （见 commit） |
+| Phase16 本地优先冷启动 | green | init 灌盘缓存秒开；Hub 后台 refresh(showBusy:false)；侧栏不假离线 | （见 commit） |
 | v0.52.1 稳定性门禁 | green | gitignore 假绿 + transfer 空响应重试 + smoke gate；qb-biz-small PASS；`full` 本机绿（outage 因无本机 sidecar 跳过） | fd65284 |

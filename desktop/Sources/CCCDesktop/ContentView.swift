@@ -161,7 +161,7 @@ struct CodexSidebar: View {
 
             divider
 
-            if !model.connected {
+            if !model.connected && model.projects.isEmpty {
                 offlineBlock
             } else {
                 projectCardList
@@ -731,6 +731,13 @@ struct CodexChatPaneBody: View {
             Text(paneStatusText)
                 .font(.system(size: 11))
                 .foregroundStyle(CCCTheme.faint)
+            if model.hubSyncing {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Hub 同步")
+                    .font(.system(size: 10))
+                    .foregroundStyle(CCCTheme.faint)
+            }
             if let phase = model.transferDelivery(for: paneThreadId),
                phase != .draft {
                 Text(phase.label)

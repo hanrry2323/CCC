@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase16 Desktop 本地优先冷启动**：
+  - `AppModel.hydrateFromDiskSync()`：`init` 同步灌 `projects-cache` + 选中会话消息/flow；有缓存立刻 `connected`。
+  - `bootstrap`：Hub/`ensureLocalAgent` 后台 `refreshProjects(showBusy: false)`；`hubSyncing` + 状态栏「Hub 同步」。
+  - `ContentView`：有 projects 即出侧栏（不假离线）。
+  - 验收：[`docs/product/hub-shell-phase16-cold-start.md`](docs/product/hub-shell-phase16-cold-start.md)。
+
 - **Phase15 右栏卡片内容与视觉**：
   - `desktop/Sources/CCCDesktop/FlowLayout.swift`
     - 新增 `workSubtitle(_:)`：work 卡副标题——依赖标题 + 执行面白话混合（UX 表要求「依赖用标题」）。

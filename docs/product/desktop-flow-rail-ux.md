@@ -51,4 +51,4 @@ Snapshot 增强字段：`headline`、`user_stage`、`goal_summary`、`user_statu
 
 - 真多列力导向 / 缩放画布（可选差异化）
 - 节点预览接完整 plan/report 文件
-- Phase16：Desktop 本地优先冷启动
+- Phase16：Desktop 本地优先冷启动（**已落地** · [`hub-shell-phase16-cold-start.md`](hub-shell-phase16-cold-start.md)）

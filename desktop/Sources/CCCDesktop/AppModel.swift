@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     @Published var connected = false
     /// Hub projects/API 是否刚探测成功（转任务/flow 需要）
     @Published private(set) var hubReachable = false
+    /// Phase16：Hub 后台刷新中（首屏已用本机缓存）
+    @Published private(set) var hubSyncing = false
     /// Hub flow SSE 的连接与恢复代次（稳定性诊断）
     @Published private(set) var flowConnectionGeneration: [String: UInt64] = [:]
     @Published private(set) var flowReconnectCount: [String: Int] = [:]
@@ -275,6 +277,59 @@ final class AppModel: ObservableObject {
         let user = UserDefaults.standard.string(forKey: "ccc.user") ?? "ccc"
         let pass = UserDefaults.standard.string(forKey: "ccc.pass") ?? "ccc"
         client = APIClient(baseURL: url, user: user, password: pass)
+        // Phase16：首帧前同步灌本机缓存，侧栏/对话/右栏秒开（Hub 后台同步）
+        hydrateFromDiskSync()
+    }
+
+    /// Phase16：从 `projects-cache` + session 盘灌 RAM；有缓存则立刻 `connected`
+    private func hydrateFromDiskSync() {
+        if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
+            projects = cache.projects
+            let preferred = persistedProjectId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !preferred.isEmpty, projects.contains(where: { $0.id == preferred }) {
+                selectedProjectId = preferred
+            } else if selectedProjectId == nil
+                || !projects.contains(where: { $0.id == selectedProjectId })
+            {
+                selectedProjectId = cache.default_project
+                    ?? cache.projects.first(where: \.isDispatchable)?.id
+                    ?? cache.projects.first?.id
+            }
+        }
+        guard let pid = selectedProjectId, !pid.isEmpty else {
+            if !projects.isEmpty {
+                connected = true
+                statusText = "本机缓存 · 待选项目"
+                hubSyncing = true
+            }
+            return
+        }
+        expandedProjectIds.insert(pid)
+        let recent = LocalSessionStore.threadsAsDesktop(projectId: pid).first?.thread_id
+        let tid = recent ?? threadIdForProject(pid)
+        var local = LocalSessionStore.threadsAsDesktop(projectId: pid)
+        if local.isEmpty, !LocalSessionStore.isArchived(projectId: pid, threadId: tid) {
+            LocalSessionStore.saveMessages(
+                projectId: pid,
+                threadId: tid,
+                messages: [],
+                title: "对话",
+                allowDowngrade: true
+            )
+            local = LocalSessionStore.threadsAsDesktop(projectId: pid)
+        }
+        threads = local
+        selectedThreadId = tid
+        if !LocalSessionStore.isArchived(projectId: pid, threadId: tid) {
+            hydrateThreadFromDisk(projectId: pid, threadId: tid)
+        }
+        applyFlowSnapshot(threadFlow[tid])
+        syncLegacyChatMirror(from: tid)
+        if !projects.isEmpty {
+            connected = true
+            statusText = "本机缓存 · Hub 同步中…"
+            hubSyncing = true
+        }
     }
 
     // MARK: - Workspace map
@@ -647,22 +702,27 @@ final class AppModel: ObservableObject {
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             serverURLString = "http://192.168.3.116:7777"
         }
-        // 先灌本机 projects 缓存，避免 Hub 抖时空白
-        if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
-            projects = cache.projects
-            if selectedProjectId == nil {
-                selectedProjectId = cache.default_project ?? cache.projects.first(where: \.isDispatchable)?.id
+        // Phase16：init 已 hydrate；此处再幂等一次（防 UISmoke 等路径跳过 init 副作用）
+        if projects.isEmpty {
+            hydrateFromDiskSync()
+        }
+        // Hub / sidecar 后台刷新 —— 不挡首屏
+        hubSyncing = true
+        Task { @MainActor in
+            await self.refreshProjects(showBusy: false)
+            if self.agentMode != "local" {
+                self.startAgentRecoverLoopIfNeeded()
             }
+            await self.flushPendingHubSync()
+            await self.flushTransferOutbox()
         }
-        await refreshProjects()
-        if agentMode != "local" {
-            startAgentRecoverLoopIfNeeded()
-        }
-        await flushPendingHubSync()
-        await flushTransferOutbox()
         startProjectTaskPolling()
         startAgentUsageTicker()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
+            // smoke 需等首轮 refresh 完成再发消息
+            while hubSyncing {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
             await runUISmoke()
         }
     }
@@ -723,8 +783,18 @@ final class AppModel: ObservableObject {
     }
 
     func refreshProjects() async {
-        busy = true
-        defer { busy = false }
+        await refreshProjects(showBusy: true)
+    }
+
+    /// Phase16：`showBusy=false` 用于冷启动后台同步，避免首屏全局转圈
+    func refreshProjects(showBusy: Bool) async {
+        if showBusy {
+            busy = true
+        }
+        defer {
+            if showBusy { busy = false }
+            hubSyncing = false
+        }
         // 先确保本机 Agent（可聊不依赖 Hub）
         _ = await ensureLocalAgent()
         let localOK = agentMode == "local"
