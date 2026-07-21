@@ -833,8 +833,10 @@ actor APIClient {
 
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
-        let urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
-        let maxAttempts = 3
+        var urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
+        // Hub 抖动时勿用默认 45s×3 把 UI 卡死在「投递中」
+        urlReq.timeoutInterval = 25
+        let maxAttempts = 2
         return try await HubRequestGate.shared.withPermit {
             var attempt = 1
             while true {

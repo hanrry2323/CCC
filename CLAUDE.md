@@ -1,13 +1,17 @@
 # CLAUDE.md
 
-Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** Personal Claude Code is optional and not required for CCC self-dev. See `docs/product/dev-channel.md`.
+Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** M1 personal Claude Code is retired; Desktop dialogue uses loop-code only. See `docs/product/dev-channel.md`.
 
 # CCC — Connect–Claude Code · Loop Engineer
 
-> **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine：Claude CLI 扇出 + OpenCode 写码）远端开发；中间只交信息流。  
-> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.52.2**）
+> **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine）远端开发；中间只交信息流。  
+> **事实权威 + 人机共识（最新）**：`docs/product/loop-engineer-authority.md` · 边界：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.53.0**）
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
+
+**路径一句话**：人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。
+
+**共识落盘**：你我新共识先改 `loop-engineer-authority.md`（及 `.cursor/rules/loop-engineer-consensus.mdc`），禁止只留在聊天。
 
 **勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色。
 
@@ -21,7 +25,7 @@ Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** Pe
 4. **版本 SSOT**：`VERSION` > `CHANGELOG` 最新节 > README badge；不一致只报「对齐版本」类小任务。
 5. **禁止越界建议**：非用户主动问闲置/省资源时，**禁止**建议降控制面到 `ui`/`disabled` 或关机。
 6. **调度就绪度口径（v0.51）**：空板 + invent 硬关 → Engine **闲置正常**。新工作经 Hub 选 **业务仓** 定稿→下达；**禁止**对 CCC orch 写 epic / 投 backlog（R-15）。**不可**声称可无人值守 invent（红线 12）。
-7. **业务仓迁移 / 接入 / Desktop 开项目对话**：搬完文件 ≠ 完成。强制读并执行 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)（详步骤 [`docs/runbooks/app-migrate-register-desktop.md`](docs/runbooks/app-migrate-register-desktop.md)）：2017 `apps/<name>` → `ccc-init --register` → M1 `localWorkspaceMap` → 点项目卡进 `{id}::main`。
+7. **业务仓迁移 / 接入 / Desktop 开项目对话**：搬完文件 ≠ 完成。强制读并执行 [`docs/product/desktop-agent-handoff.md`](docs/product/desktop-agent-handoff.md)（详步骤 [`docs/runbooks/app-migrate-register-desktop.md`](docs/runbooks/app-migrate-register-desktop.md)）：2017 `apps/<name>` → `ccc-init --register` → Desktop 点项目卡进 `{id}::main`（对齐基线走 Hub；**M1 不保留业务仓第二树**）。
 
 架构细节：`docs/architecture-core.md` · 运维页：Hub `#/ops`。
 

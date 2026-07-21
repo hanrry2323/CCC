@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# 一键配好 CCC Desktop：Server / 本机 Agent / 项目 / 工作区，并确保 sidecar
+# 一键配好 CCC Desktop：Server / 本机 Agent / 平台仓映射，并确保 sidecar
+# 2026-07-21：M1 不保留业务源码第二树；勿再 rsync/clone 业务仓到本机。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOMAIN="${CCC_DESKTOP_DOMAIN:-com.ccc.desktop}"
 SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
-DEMO_LOCAL="${CCC_DEMO_LOCAL:-$HOME/program/apps/ccc-demo}"
-DEMO_REMOTE="${CCC_DEMO_REMOTE:-fan@192.168.3.116:/Users/fan/program/apps/ccc-demo/}"
 
 echo "== configure Desktop ($DOMAIN) =="
 defaults write "$DOMAIN" "ccc.server" -string "$SERVER"
@@ -17,23 +16,10 @@ defaults write "$DOMAIN" "ccc.home" -string "$ROOT"
 defaults write "$DOMAIN" "ccc.selectedProject" -string "ccc-demo"
 defaults write "$DOMAIN" "ccc.localWorkspace" -string "$ROOT"
 
-# 同步业务仓（小仓）到本机
-if [[ ! -d "$DEMO_LOCAL/.git" && ! -f "$DEMO_LOCAL/README.md" ]]; then
-  echo "sync ccc-demo → $DEMO_LOCAL"
-  mkdir -p "$DEMO_LOCAL"
-  if rsync -az --delete "$DEMO_REMOTE" "$DEMO_LOCAL/" 2>/dev/null; then
-    echo "  rsync OK"
-  else
-    echo "  WARN: rsync 失败，工作区 map 仍写入路径（可稍后手动同步）"
-  fi
-fi
-
+# 仅平台仓可映射；业务仓事实走 Hub baseline（2017）
 MAP_JSON=$(python3 - <<PY
 import json
-print(json.dumps({
-  "ccc": "$ROOT",
-  "ccc-demo": "$DEMO_LOCAL",
-}, ensure_ascii=False))
+print(json.dumps({"ccc": "$ROOT"}, ensure_ascii=False))
 PY
 )
 defaults write "$DOMAIN" "ccc.localWorkspaceMap" -string "$MAP_JSON"
@@ -61,4 +47,5 @@ fi
 
 echo "prefs:"
 defaults read "$DOMAIN" | grep -E 'ccc\.(server|agent|home|selected|local)' || true
+echo "note: 业务仓无本机 map；对齐基线只信 Hub /api/projects/{id}/baseline"
 echo "done. 重开 Desktop: bash desktop/scripts/open-desktop.sh"

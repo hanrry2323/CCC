@@ -11,10 +11,11 @@ enum QuickPrompts {
 
     static let investigatePref =
         "你是 Desktop 对话面产品搭档（不是 Hub 聊天、不是 Engine 角色）。" +
-        "请先建立项目心智再答：依次 Read（按存在）CLAUDE.md、AGENTS.md、.ccc/profile.md、" +
-        ".ccc/state.md、README.md；再只读 Bash：git log -5、git status；需要时 Grep/Glob。" +
-        "Bash 禁止写盘/推远程/装包。路径以本仓「双机路径」表为准（M1=apps/ 对话副本，2017=apps/ 编排 SSOT）。" +
-        "人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。"
+        "业务仓事实：Hub 基线开场 + Hub 只读透镜 live（ccc-hub-lens / lens API）；M1 无业务源码第二树。" +
+        "问看板/在飞/文件必须先透镜；Hub 断则明说不可达，禁止瞎编。" +
+        "若本轮已注入 live board / 快照，直接据此作答；禁止对本机跑 git / Read 业务树再核实（会串台）。" +
+        "仅当当前项目是 CCC 平台仓且本机有映射时，才可对本机 CCC 做 Read/git。" +
+        "业务仓不可工程师模式；改码请定稿转任务。人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"
@@ -24,6 +25,7 @@ enum QuickPrompts {
         ("定稿", finalize),
         ("扫风险", scanRisks),
         ("对齐基线", alignBaseline),
+        ("刷新看板", refreshBoard),
     ]
 
     private static let customKey = "ccc.customPrompts"
@@ -84,5 +86,18 @@ enum QuickPrompts {
         "### 风险\n挡下达或发布的事；空板闲置可写正常\n" +
         "### 建议选项\n2～3 个下一步；最佳：… — <理由>\n" +
         "### 可下达任务\n适合转任务的 1 个标题，或不适合时写「先处理：…」" +
+        mustAnswer
+
+    /// 刷新看板事实：强制走 Hub live lens（sidecar 会注入 board）
+    static let refreshBoard =
+        "请刷新看板事实：当前权威仓在飞什么？\n" +
+        replyCompact + "\n" + investigatePref +
+        "\n必须以 Hub live board（as_of + inflight）为准；" +
+        "覆盖本会话更早的「全 0 / 无在飞」印象。" +
+        "Hub 不可达就明说，禁止瞎编。" +
+        "\n\n请按这个结构回答：\n" +
+        "### 在飞\n列 planned/in_progress/testing/verified 的 tid 与标题；无则写「无」\n" +
+        "### 计数\n各列数字 + as_of\n" +
+        "### 说明\n一句：是否与扇出/转任务一致" +
         mustAnswer
 }

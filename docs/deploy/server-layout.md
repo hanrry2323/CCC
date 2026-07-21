@@ -25,8 +25,7 @@
     YYYY-MM-DD-*/           # 冷数据 / 半同步残骸
 ```
 
-**Hub `project_id`**：通常 = `apps/` 目录名；**例外**：路径 `apps/qx-observer` 的 Hub id = **`qxo`**（Board 发现别名，见 [`fleet-apps-migration-2026-07.md`](fleet-apps-migration-2026-07.md)）。`medio-0` 小写。  
-Desktop `localWorkspaceMap` 键必须对上 Hub id（`qxo` 必配）。
+**Hub `project_id`**：通常 = `apps/` 目录名；**例外**：路径 `apps/qx-observer` 的 Hub id = **`qxo`**（Board 发现别名，见 [`fleet-apps-migration-2026-07.md`](fleet-apps-migration-2026-07.md)）。`medio-0` 小写。
 
 ---
 
@@ -36,7 +35,7 @@ Desktop `localWorkspaceMap` 键必须对上 Hub id（`qxo` 必配）。
 |------|------|------|
 | `CCC/` | 产品代码、Hub/Engine、文档、`vendor/` | 唯一主仓；不在仓外散落产品代码 |
 | `infra/ai-loop-router/` | 历史中转（已退役） | **不** register；plist 已移至 `LaunchAgents/disabled-relay-*` |
-| `apps/<name>/` | 经 doctor register 的业务仓 | **新项目必须落这里**；主力开发在此 |
+| `apps/<name>/` | 经 doctor register 的业务仓 | **新项目必须落这里**；**唯一代码权威** |
 | `archive/` | 冷存 | 不参与 Engine 登记 |
 | 其他顶层目录 | — | **禁止**；先改本文再创建 |
 
@@ -47,7 +46,7 @@ Desktop `localWorkspaceMap` 键必须对上 Hub id（`qxo` 必配）。
 1. `mkdir -p ~/program/apps/<name> && cd ... && git clone …`（或 init）  
 2. 在 Server 上：`python3 ~/program/CCC/scripts/ccc-init.py ~/program/apps/<name> --register`  
 3. `python3 ~/program/CCC/scripts/ccc-workspace-doctor.py`  
-4. M1：`git clone` 到 `~/program/apps/<name>` + Desktop `localWorkspaceMap`；点项目卡进入对话  
+4. M1 Desktop：刷新项目列表 → 点项目卡对话（对齐基线走 Hub；**不**再要求本机业务 clone）  
 
 单仓清单：[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md)  
 五仓舰队迁移（运维）：[`fleet-apps-migration-2026-07.md`](fleet-apps-migration-2026-07.md)  
@@ -58,9 +57,10 @@ Agent 短交接：[`../product/desktop-agent-handoff.md`](../product/desktop-age
 ## 与 M1 客户端
 
 ```text
-编排 SSOT = 本机 apps/<name>
-对话 cwd  = M1 ~/program/apps/<name>（瘦 clone + localWorkspaceMap）
-M1 archive/*-m1-freeze/ = 只读备份，禁止 register
+代码权威 = 本机 apps/<name>（已 register）
+远端备份 = GitHub
+M1 对话  = Desktop + sidecar；事实只信 Hub baseline；无业务源码第二树
+M1 平台  = ~/program/CCC（Cursor 改 CCC；localWorkspaceMap 仅可映 ccc）
 ```
 
 - **生产执行、Hub/Engine** 以 2017 为准（模型直连 MiniMax / 讯飞；中转已退役）  
@@ -71,4 +71,5 @@ M1 archive/*-m1-freeze/ = 只读备份，禁止 register
 ## 清理原则
 
 半同步/残缺副本 → 移入 `archive/YYYY-MM-DD-preserver/`，再按需删除。  
-不在生产路径上「接着用旧半吊子 clone」。
+不在生产路径上「接着用旧半吊子 clone」。  
+**M1 不保留业务仓副本或 m1-freeze 工作区**（干扰双权威）。

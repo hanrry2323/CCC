@@ -9,7 +9,7 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import sessions, files, board, projects, ops, desktop
+from .routers import sessions, files, board, projects, ops, desktop, lens
 from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
@@ -80,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(board.router)
     app.include_router(ops.router)
     app.include_router(desktop.router)
+    app.include_router(lens.router)
     # 遗留运维探针：默认关闭；CCC_AGENT_PROXY=1 才挂载（非产品主路径）
     if (os.environ.get("CCC_AGENT_PROXY") or "").strip() in ("1", "true", "yes"):
         from .routers import agent_proxy

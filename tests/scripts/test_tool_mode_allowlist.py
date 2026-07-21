@@ -23,6 +23,9 @@ def test_resolve_tool_mode_engineer_explicit_and_phrase():
     assert config.resolve_tool_mode(None, user_text="请开工程师模式改一下") == "engineer"
     assert config.resolve_tool_mode(None, user_text="直接改本机 README") == "engineer"
     assert config.resolve_tool_mode(None, user_text="帮我定稿转任务") == "discuss"
+    # 业务仓旁路收死
+    assert config.resolve_tool_mode("engineer", project_id="ccc-demo") == "discuss"
+    assert config.resolve_tool_mode("engineer", project_id="ccc") == "engineer"
 
 
 def test_discuss_allowlist_excludes_writes():

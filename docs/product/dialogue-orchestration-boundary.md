@@ -1,6 +1,6 @@
 # 对话面 / 编排面 边界契约（项目基线）
 
-> **架构基线 SSOT（2026-07-19 定稿）**。冲突时以本文为准，并回写 VISION / Desktop 架构。  
+> **架构基线（过桥/两面职责）**。**事实权威（代码/看板/透镜）以 [`loop-engineer-authority.md`](loop-engineer-authority.md) 为准**；冲突时改本文对齐它。  
 > 相关：[`transfer-gate.md`](transfer-gate.md) · [`flow-events.md`](flow-events.md) · [`desktop-connection.md`](desktop-connection.md) · [`ccc-desktop-architecture.md`](ccc-desktop-architecture.md)
 
 ---
@@ -17,7 +17,7 @@ M1 Desktop = 对话、意图、大卡；Mac2017 = 编排引擎与远端开发。
 
 | 面 | 机器 | 负责 | 明确不负责 |
 |----|------|------|------------|
-| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 聊透、意图识别、门禁字段、产出 **epic 大卡**、本机会话 SSOT | 不扇出 work、不跑 Engine、默认不在业务仓写码（`tool_mode=discuss`；口令「工程师模式 / 直接改本机」才可本机改文件） |
+| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 聊透、意图识别、门禁字段、产出 **epic 大卡**、本机会话 SSOT；业务事实 = Hub baseline + **只读透镜 live** | 不扇出 work、不跑 Engine、**不保留业务源码第二树**；默认 `tool_mode=discuss`；业务仓拒绝 engineer |
 | **编排面** | **Mac2017**（Hub + Board + Engine + 业务仓） | 收 epic → 扇出 → 远端开发/验收/归档；右栏状态回传 | 不当主聊天窗口；不依赖 M1 本地 cwd |
 
 ```text

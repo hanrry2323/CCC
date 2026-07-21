@@ -5,23 +5,27 @@
 
 ---
 
-## 0. 现在只认这 6 份（产品/架构）
+## 0. 现在只认这几份（产品/架构）
+
+> **事实权威（代码/看板/透镜）+ 人机共识以 [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) 为最新 SSOT。**  
+> 其余文档若与它冲突，改其余文档或标「史」，勿并行维护两套「现行真理」。  
+> **共识落盘**：你我达成共识 → 先改该文（及 Cursor rule）→ 再改代码；禁止只留在聊天。
 
 | 优先级 | 文档 | 管什么 |
 |--------|------|--------|
 | 1 | [`../VERSION`](../VERSION) + [`../CHANGELOG.md`](../CHANGELOG.md) | 版本事实 |
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
-| 3 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **对话/编排边界（架构基线）** |
-| 4 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **下阶段北星（壳 + Hub API v1；意图门人审）** |
-| 4b | [`product/dev-channel.md`](product/dev-channel.md) | **谁改 CCC / Desktop 模型默认（Cursor · MiniMax）** |
-| 4c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | **四面协作 + 流畅基线指标**（架构 / 壳 / 过桥 / 编排） |
-| 4c2 | [`product/fluency-baseline-achieved.md`](product/fluency-baseline-achieved.md) | **流畅基线达成宣告**（2026-07-21 · 7 轮闭环） |
-| 4d | [`product/cursor-model-routing.md`](product/cursor-model-routing.md) | **Cursor：Auto vs 高级模型** |
-| 4e | [`product/role-formation.md`](product/role-formation.md) | **角色生成机制**（任务→Skill+Prompt；7 为 seed，非上限） |
-| 5 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
-| 6 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
+| **3** | **[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)** | **事实权威 + Hub 只读透镜 + 旁路收死（最新）** |
+| 4 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | 对话/编排边界与过桥 |
+| 5 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | 下阶段北星（壳 + Hub API） |
+| 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC / Desktop 模型默认 |
+| 5c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | 四面协作 + 流畅基线 |
+| 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
+| 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
 
-部署拓扑另加：[`deploy/topology.md`](deploy/topology.md)。控制面：[`CONTROL.md`](CONTROL.md)。
+部署拓扑：[`deploy/topology.md`](deploy/topology.md)。控制面：[`CONTROL.md`](CONTROL.md)。
+
+**日常短读**：handoff → identity；**迁仓清扫史**：[`m1-no-second-tree-closeout.md`](product/m1-no-second-tree-closeout.md)（勿当日常真理）。
 
 ---
 
@@ -34,8 +38,9 @@
 | [`product/transfer-gate.md`](product/transfer-gate.md) | 定稿 → transfer 字段 |
 | [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
 | [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |
-| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板 |
-| [`product/hub-shell-phase6-qb.md`](product/hub-shell-phase6-qb.md) | Phase6 真实仓 qb 绿通记录 |
+| [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板（现行） |
+| [`product/hub-shell-phase6-qb.md`](product/hub-shell-phase6-qb.md) | Phase6 qb 绿通（仍放 product） |
+| [`archive/hub-shell-phases/`](archive/hub-shell-phases/) | **phase8+ / wave / fluency 等已归档**（product 仅 stub） |
 | [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | sidecar / loop-code 热路径 |
 | [`product/loop-code-ownership-cut.md`](product/loop-code-ownership-cut.md) | **M1 Desktop 独占 loop-code / 配置切割（战略 SSOT）** |
 | [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
@@ -43,6 +48,8 @@
 | [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |
 | [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | 业务仓接入操作 |
 | [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) | Agent 短交接 |
+| [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | 事实权威 + Hub 只读透镜 |
+| [`product/m1-no-second-tree-closeout.md`](product/m1-no-second-tree-closeout.md) | **M1 无业务第二树清扫收口**（2026-07-21） |
 | [`workspace-binding.md`](workspace-binding.md) | 多项目绑定 |
 | [`ccc-hub-ports.md`](ccc-hub-ports.md) | 端口账密 |
 | [`architecture-core.md`](architecture-core.md) | Engine/Board 代码分层（改脚本时） |

@@ -375,7 +375,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// map → 全局 fallback → Hub path 若本机存在
+    /// 显式 map 优先；业务仓无本机第二树时返回 nil（sidecar 回落平台 DEFAULT_CWD，事实靠 Hub 基线）。
+    /// 仅 `ccc` 可回落到 ccc.home / 全局本机路径。禁止用 Hub 的 2017 路径或「全局路径冒充业务 cwd」。
     func localPath(for projectId: String?) -> String? {
         guard let projectId, !projectId.isEmpty else {
             let g = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -383,14 +384,20 @@ final class AppModel: ObservableObject {
         }
         if let mapped = workspaceMap[projectId]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !mapped.isEmpty {
-            return mapped
+            if FileManager.default.fileExists(atPath: mapped) {
+                return mapped
+            }
+            return nil
         }
-        let global = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !global.isEmpty { return global }
-        if let hubPath = projects.first(where: { $0.id == projectId })?.path,
-           !hubPath.isEmpty,
-           FileManager.default.fileExists(atPath: hubPath) {
-            return hubPath
+        if projectId == "ccc" {
+            let home = cccHomePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !home.isEmpty, FileManager.default.fileExists(atPath: home) {
+                return home
+            }
+            let global = localWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !global.isEmpty, FileManager.default.fileExists(atPath: global) {
+                return global
+            }
         }
         return nil
     }
@@ -1355,13 +1362,26 @@ final class AppModel: ObservableObject {
             showToast("已切回讨论模式")
             return
         }
+        let pid = (selectedProjectId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !pid.isEmpty, pid != "ccc" {
+            showToast("业务仓不可工程师模式：请定稿转任务")
+            preferredToolMode = "discuss"
+            return
+        }
         confirmEngineerMode = true
     }
 
     func confirmEnableEngineerMode() {
+        let pid = (selectedProjectId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !pid.isEmpty, pid != "ccc" {
+            preferredToolMode = "discuss"
+            confirmEngineerMode = false
+            showToast("业务仓不可工程师模式：请定稿转任务")
+            return
+        }
         preferredToolMode = "engineer"
         confirmEngineerMode = false
-        showToast("工程师模式：允许本机改文件")
+        showToast("工程师模式：允许本机改文件（仅 ccc）")
     }
 
     func revealChangedFiles(message: ChatMessage, projectId: String?) {
@@ -1790,8 +1810,13 @@ final class AppModel: ObservableObject {
             pendingDeltaAssistantId = assistantId
             pendingDeltaBuffer = chunk
         }
+        // 对齐基线等「单包大 delta」：立刻落盘，避免 done 抢在 35ms 合批之前触发 empty_reply
+        if pendingDeltaBuffer.count >= 400 {
+            flushPendingDelta()
+            return
+        }
         if pendingDeltaTask == nil {
-            pendingDeltaTask = Task { [weak self] in
+            pendingDeltaTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 35_000_000)
                 self?.flushPendingDelta()
             }
@@ -2050,14 +2075,19 @@ final class AppModel: ObservableObject {
         StreamSessionController.resolvePromptMode(forUserText: text)
     }
 
-    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（偏好或口令）
+    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（偏好或口令；仅 ccc）
     static func toolMode(forUserText text: String) -> String {
         // 兼容旧调用：无偏好时只看口令
-        StreamSessionController.resolveToolMode(preferred: "discuss", userText: text)
+        StreamSessionController.resolveToolMode(preferred: "discuss", userText: text, projectId: nil)
     }
 
-    func resolvedToolMode(forUserText text: String) -> String {
-        StreamSessionController.resolveToolMode(preferred: preferredToolMode, userText: text)
+    func resolvedToolMode(forUserText text: String, projectId: String? = nil) -> String {
+        let pid = projectId ?? selectedProjectId
+        return StreamSessionController.resolveToolMode(
+            preferred: preferredToolMode,
+            userText: text,
+            projectId: pid
+        )
     }
 
     func resolvedModel() -> String {
@@ -2345,8 +2375,13 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             guard self.activeTurnIds[tid] == turnId else { return }
             if case .delta(let chunk, _) = event, !chunk.isEmpty {
-                if let cell = self.threadMessages[tid]?.first(where: { $0.id == aid }) {
+                // 合批未 flush 时 cell.content 可能仍空；用累计 chunk 保 partial
+                let prior = self.partialByTurn[turnId] ?? ""
+                if let cell = self.threadMessages[tid]?.first(where: { $0.id == aid }),
+                   !cell.content.isEmpty {
                     self.partialByTurn[turnId] = cell.content
+                } else {
+                    self.partialByTurn[turnId] = prior + chunk
                 }
             }
         }
@@ -2362,13 +2397,14 @@ final class AppModel: ObservableObject {
                 setStatusImmediate("连接本机 Agent…")
             }
             try await prepareClient(projectId: projectId)
-            // 业务仓未绑本机路径时提示一次（不阻断）
-            if localPath(for: projectId) == nil,
-               let p = projects.first(where: { $0.id == projectId }), p.isDispatchable {
-                showToast("未绑定本机工作区，sidecar 可能扫错目录 — 设置里为当前项目填写路径")
+            // 映射指向已删路径时提示一次（无映射=正常：业务仓不留本机第二树）
+            if let mapped = workspaceMap[projectId]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !mapped.isEmpty,
+               !FileManager.default.fileExists(atPath: mapped) {
+                showToast("本机映射路径已失效，已忽略；事实以 Hub/2017 基线为准")
             }
             let mode = Self.promptMode(forUserText: text)
-            let tools = resolvedToolMode(forUserText: text)
+            let tools = resolvedToolMode(forUserText: text, projectId: projectId)
             let modelName = resolvedModel()
             // 发送前不再 fire-and-forget warm：与 streamChat 抢同一 slot 锁，
             // 取消/杀进程后半残连接更容易表现为「切一下就连不上」。
@@ -2505,6 +2541,10 @@ final class AppModel: ObservableObject {
                 }
             }
             if let streamError { throw streamError }
+
+            // 必须先把合批中的 delta 写入消息，再做空回复判定。
+            // 否则：SSE 已 ok（delta_events≥1）→ 判空删气泡 → catch 再 flush → 正文+「回复中断」并存。
+            flushPendingDelta()
 
             var failedEmpty = false
             mutateThreadMessages(threadId: threadId) { msgs in
@@ -2741,6 +2781,8 @@ final class AppModel: ObservableObject {
             }
         }
         if case .done = event {
+            // 先落盘合批 delta，再清 streaming；否则末包正文会卡在 pending 里被 empty_reply 误杀。
+            flushPendingDelta()
             // BUG fix: done 事件到达即同步清 streaming + turn fence，避免「第二条发送时仍
             // 处于 streaming=true」卡住 UI（stopAndSend 误命中 cancelAndWait 路径，UI 无反应）。
             // defer 仍会跑（最终清理），但用户感知的反应不能等 await 链收尾。
@@ -3302,36 +3344,40 @@ final class AppModel: ObservableObject {
             \(chatDigest)
             """
         }()
+
+        // 先入 outbox + queued，再投递。避免 Hub 抖动时 UI 永久停在「投递中」且 outbox 为空。
+        let requestId = UUID().uuidString
+        let outboxItem = LocalSessionStore.TransferOutboxItem(
+            client_request_id: requestId,
+            project_id: pid,
+            thread_id: tid,
+            title: title,
+            goal: goal,
+            acceptance: accLines,
+            pipeline: pipeline,
+            feasibility: form.feasibility,
+            feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
+            executor_intent: form.executor,
+            plan_md: planBody,
+            complexity: "medium",
+            attempts: 0,
+            saved_at: ISO8601DateFormatter().string(from: Date())
+        )
+        LocalSessionStore.enqueueTransfer(outboxItem)
+        setTransferDelivery(tid, .queued)
+        mutateTransferForm(tid) { $0.error = nil }
+        dismissTransferSheet(threadId: tid)
+
         if !hubReachable {
-            let requestId = UUID().uuidString
-            let item = LocalSessionStore.TransferOutboxItem(
-                client_request_id: requestId,
-                project_id: pid,
-                thread_id: tid,
-                title: title,
-                goal: goal,
-                acceptance: accLines,
-                pipeline: pipeline,
-                feasibility: form.feasibility,
-                feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
-                executor_intent: form.executor,
-                plan_md: planBody,
-                complexity: "medium",
-                attempts: 0,
-                saved_at: ISO8601DateFormatter().string(from: Date())
-            )
-            LocalSessionStore.enqueueTransfer(item)
-            setTransferDelivery(tid, .queued)
-            mutateTransferForm(tid) { $0.error = nil }
-            dismissTransferSheet(threadId: tid)
             showToast("Hub 暂不可达，已排队待投递")
             startHubRecoverLoopIfNeeded()
             return
         }
+
         busy = true
         defer { busy = false }
-        let requestId = UUID().uuidString
         setTransferDelivery(tid, .delivering)
+        showToast("正在投递…")
         let req = TransferRequest(
             project_id: pid,
             thread_id: tid,
@@ -3350,10 +3396,15 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
-            await applyTransferSuccess(resp: resp, tid: tid, pid: pid)
+            let ok = await applyTransferSuccess(resp: resp, tid: tid, pid: pid)
+            if ok {
+                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
+            } else {
+                // 空 epic：出队防毒丸；态已 failed
+                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
+            }
         } catch {
             let plain = plainTransferError(error)
-            // 网络类 / 空响应 / 空 epic_id：入 outbox，Hub 恢复后同 CRID 重试
             let lower = plain.lowercased()
             let transient = lower.contains("timed out") || lower.contains("offline")
                 || lower.contains("network") || lower.contains("could not connect")
@@ -3368,28 +3419,9 @@ final class AppModel: ObservableObject {
                     return false
                 } ?? false)
             if transient {
-                let item = LocalSessionStore.TransferOutboxItem(
-                    client_request_id: requestId,
-                    project_id: pid,
-                    thread_id: tid,
-                    title: title,
-                    goal: goal,
-                    acceptance: accLines,
-                    pipeline: pipeline,
-                    feasibility: form.feasibility,
-                    feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
-                    executor_intent: form.executor,
-                    plan_md: planBody,
-                    complexity: "medium",
-                    attempts: 0,
-                    saved_at: ISO8601DateFormatter().string(from: Date())
-                )
-                LocalSessionStore.enqueueTransfer(item)
+                // outbox 已有同 CRID；保持 queued，等 Hub 恢复 flush
                 setTransferDelivery(tid, .queued)
-                mutateTransferForm(tid) { $0.error = nil }
-                dismissTransferSheet(threadId: tid)
                 showToast("投递中断，已排队：\(plain)")
-                // 连接类失败：标 Hub 不可达以启动自动探活（与手动「已排队」路径对称）
                 let connLike = lower.contains("timed out") || lower.contains("offline")
                     || lower.contains("network") || lower.contains("could not connect")
                     || lower.contains("connection")
@@ -3401,8 +3433,10 @@ final class AppModel: ObservableObject {
                     setHubReachable(false, source: "transfer_transient", error: error)
                     let localOK = agentMode == "local"
                     updateConnectionStatusText(localOK: localOK, hubOK: false)
+                    startHubRecoverLoopIfNeeded()
                 }
             } else {
+                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
                 setTransferDelivery(tid, .failed)
                 mutateTransferForm(tid) { $0.error = plain }
                 showToast("转任务失败：\(plain)")

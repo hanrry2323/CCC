@@ -94,17 +94,21 @@ CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
-# discuss：保留联网工具；快捷条任务强制本仓深查（对齐 Cursor）
+# discuss：业务事实信 Hub 基线 + live 透镜；本机工具勿冒充业务仓权威
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · discuss · Desktop 对话面】你是方案搭档，默认只读。"
     "允许工具：Read / Glob / Grep / LS / Bash / TodoWrite；"
     "需要时才 WebFetch / WebSearch（用户明确要上网再调）。"
-    "Bash 仅限只读探查：git status / git log / git diff / git show、ls、pwd、"
-    "head/cat 已有文件；禁止改文件、装包、推远程、删文件、重定向写盘。"
-    "禁止 Write / Edit / MultiEdit / NotebookEdit（须工程师模式）。"
-    "对齐基线 / 下一步 / 定稿 / 扫风险 / 转任务 / 涉及仓库事实时："
-    "必须先用 Read/Glob/Grep + 只读 Bash（git）核实，再给结论；禁止空谈。"
-    "短确认、闲聊可直接答。改本机文件须工程师模式。"
+    "Bash 仅限只读：ls、pwd、head/cat 已有文件；"
+    "业务仓事实（看板/文件/结构/grep/git）必须经 Hub 只读透镜："
+    "`python3 scripts/ccc-hub-lens.py board|tree|file|grep|git <project_id> …`；"
+    "禁止 `ssh mac2017` / rsync 探业务仓。"
+    "仅当当前对话是 CCC 平台仓（project_id=ccc）且本机映射存在时，才允许对本机 git status/log/diff/show。"
+    "禁止改文件、装包、推远程、删文件、重定向写盘。"
+    "禁止 Write / Edit / MultiEdit / NotebookEdit（须工程师模式且仅 ccc）。"
+    "问看板/在飞/某文件/目录结构：必须先透镜 live，再答；"
+    "对齐基线快照只作开场，不作终局。Hub 不可达 → 明说不可达 + 快照时刻，禁止瞎编。"
+    "短确认、闲聊可直接答。工程师模式仅用于平台仓 ccc。"
 )
 
 
@@ -112,15 +116,23 @@ def resolve_tool_mode(
     explicit: str | None = None,
     *,
     user_text: str = "",
+    project_id: str = "",
 ) -> str:
-    """返回 discuss | engineer。缺省 discuss；显式或口令解锁 engineer。"""
+    """返回 discuss | engineer。缺省 discuss；显式或口令解锁 engineer。
+
+    业务仓（project_id != ccc）一律 discuss，口令无效。
+    """
     t = (explicit or "").strip().lower()
     if t in ("engineer", "discuss"):
-        return t
-    text = user_text or ""
-    if any(p in text for p in _ENGINEER_PHRASES):
-        return "engineer"
-    return "discuss"
+        mode = t
+    elif any(p in (user_text or "") for p in _ENGINEER_PHRASES):
+        mode = "engineer"
+    else:
+        mode = "discuss"
+    pid = (project_id or "").strip().lower()
+    if mode == "engineer" and pid and pid != "ccc":
+        return "discuss"
+    return mode
 
 
 _WEB_TOOLS = frozenset({"WebFetch", "WebSearch"})

@@ -776,7 +776,7 @@ class ClaudeSessionManager:
                     allowed_tools=turn_tools,
                 )
             except Exception as exc:
-                # 一次失败：断槽再连，覆盖「假 connected」残留
+                # 一次失败：断槽再连。若带了 resume（切割后陈旧 session 常见），改冷启动
                 _log.warning(
                     "ensure_connected failed hub_sid=%s key=%s → retry once: %s",
                     hub_session_id,
@@ -784,10 +784,18 @@ class ClaudeSessionManager:
                     exc,
                 )
                 await self._disconnect_slot(slot)
+                # 有 resume 时强制冷启（切割后陈旧 session 常见）；无 resume 仍再试一次
+                if resume_session_id:
+                    slot.claude_session_id = None
+                    _log.info(
+                        "drop stale resume hub_sid=%s old=%s → cold connect",
+                        hub_session_id,
+                        resume_session_id,
+                    )
                 try:
                     await self._ensure_connected(
                         slot,
-                        resume_session_id=resume_session_id,
+                        resume_session_id=None,
                         model=cli_model,
                         user_text=tool_src,
                         prompt_mode=prompt_mode,
@@ -1147,11 +1155,30 @@ class ClaudeSessionManager:
                 "connected": False,
             }
         try:
-            await self._ensure_connected(
-                slot,
-                resume_session_id=resume_session_id or slot.claude_session_id,
-                model=model,
-            )
+            resume = resume_session_id or slot.claude_session_id
+            try:
+                await self._ensure_connected(
+                    slot,
+                    resume_session_id=resume,
+                    model=model,
+                )
+            except Exception as exc:
+                if resume:
+                    _log.warning(
+                        "warm resume failed key=%s resume=%s → cold: %s",
+                        slot.key,
+                        resume,
+                        exc,
+                    )
+                    await self._disconnect_slot(slot)
+                    slot.claude_session_id = None
+                    await self._ensure_connected(
+                        slot,
+                        resume_session_id=None,
+                        model=model,
+                    )
+                else:
+                    raise
             slot.last_used = time.monotonic()
             return {
                 "ok": True,

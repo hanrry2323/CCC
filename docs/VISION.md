@@ -8,7 +8,9 @@
 
 ## 一句话
 
-**CCC（Connect–Claude Code）是一台 Loop Engineer：人用最短路径定意图，系统自动编排、自主执行、验收纠错，并持续进化。**
+**CCC 是一台 Loop Engineer：人定意图 → 系统下达与编排 → 权威仓写码 → 验收纠错 → 回流飞轮。**
+
+（路径展开与事实权威：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)。）
 
 ---
 

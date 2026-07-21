@@ -43,6 +43,7 @@ secrets.*
 findings.md
 progress.md
 task_plan.md
+.planning/
 # board artifact dirs
 v0.18-*-p1/
 *.p1/

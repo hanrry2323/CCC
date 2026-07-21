@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -338,7 +339,13 @@ async def warm(request: Request):
 
     project_path = str(body.get("project_path") or "").strip()
     session_id = str(body.get("session_id") or "conversation").strip() or "conversation"
-    tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
+    project_id = str(body.get("project") or body.get("project_id") or "").strip()
+    from chat_server import config as _agent_cfg
+
+    tool_mode = _agent_cfg.resolve_tool_mode(
+        body.get("tool_mode") or body.get("toolMode") or "discuss",
+        project_id=project_id,
+    )
     model = str(body.get("model") or "flash").strip().lower() or "flash"
     resume_session_id = str(body.get("claude_session_id") or "").strip() or None
 
@@ -438,6 +445,76 @@ async def session_compact(request: Request):
     return {"ok": True, "summary": used, "session_id": session_id}
 
 
+_LIVE_BOARD_RE = re.compile(
+    r"看板|在飞|in[_\s-]?progress|planned|正在跑|board|扇出|有没有任务|刷新看板",
+    re.I,
+)
+_LIVE_REPO_RE = re.compile(
+    r"读一下|这个文件|目录结构|仓库里|grep|搜代码|树状|tree|git\s*(status|log)|权威仓",
+    re.I,
+)
+
+
+def _hub_base() -> str:
+    return (
+        os.environ.get("CCC_HUB_URL")
+        or os.environ.get("CCC_HUB_BASE")
+        or "http://192.168.3.116:7777"
+    ).rstrip("/")
+
+
+def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
+    """Return (ok, text). On failure text explains not to invent."""
+    import urllib.error
+    import urllib.request
+
+    url = f"{_hub_base()}/api/desktop/lens/{project_id}/board"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        from chat_server.services.hub_lens import format_board_for_prompt
+
+        return True, format_board_for_prompt(data)
+    except Exception as exc:
+        return (
+            False,
+            "【Hub live board 不可达】"
+            f"project={project_id} err={type(exc).__name__}: {exc}\n"
+            "禁止根据会话记忆编造看板/在飞；可说明不可达，并引用更早对齐基线的 as_of（若有）。",
+        )
+
+
+def _lens_context_for_turn(project_id: str, user_text: str) -> str:
+    """Inject Hub lens discipline + optional live board for discuss turns."""
+    pid = (project_id or "").strip()
+    if not pid or pid == "ccc":
+        # 平台仓以本机为准；仍可提示勿 ssh
+        if _LIVE_BOARD_RE.search(user_text or "") or _LIVE_REPO_RE.search(user_text or ""):
+            return (
+                "【平台仓 ccc】本机 CCC 可 Read/git；"
+                "业务仓事实仍须 Hub 透镜，禁止 ssh mac2017。"
+            )
+        return ""
+    lens_cli = (
+        f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
+        f"board|tree|file|grep|git {pid} …"
+    )
+    parts = [
+        f"【Hub 只读透镜 · project_id={pid}】",
+        f"业务权威在 2017；探查用：{lens_cli}",
+        "禁止 ssh / 本机业务路径 Read/git。",
+    ]
+    if _LIVE_BOARD_RE.search(user_text or ""):
+        ok, block = _fetch_hub_lens_board(pid)
+        parts.append(block if ok else block)
+    elif _LIVE_REPO_RE.search(user_text or ""):
+        parts.append(
+            "用户在问文件/结构：先 Bash 调 ccc-hub-lens，再答；勿凭记忆编路径。"
+        )
+    return "\n".join(parts)
+
+
 @app.post("/api/chat")
 async def chat(request: Request):
     denied = _check_agent_auth(request)
@@ -486,6 +563,10 @@ async def chat(request: Request):
     from chat_server import config as _agent_cfg
     from chat_server.hub_voice import resolve_prompt_mode as _resolve_prompt_mode
 
+    project_id = (
+        str(body.get("project") or body.get("project_id") or body.get("projectId") or "")
+        .strip()
+    )
     prompt_mode_raw = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
     # 用用户原文判定 light/full（wrap 后会很长，不能再按长度猜）
     prompt_mode = _resolve_prompt_mode(prompt, requested=prompt_mode_raw or None)
@@ -495,12 +576,17 @@ async def chat(request: Request):
     tool_mode = _agent_cfg.resolve_tool_mode(
         body.get("tool_mode") or body.get("toolMode"),
         user_text=user_text_for_tools,
+        project_id=project_id,
     )
     # discuss：保留联网工具能力，但注入纪律，降低「首轮就 WebFetch 挂死」概率
     if tool_mode == "discuss":
         disc = (_agent_cfg.DISCUSS_TOOL_DISCIPLINE or "").strip()
         if disc and disc not in prompt[:500]:
             prompt = f"{disc}\n---\n{prompt}"
+        # 业务仓：注入 Hub 只读透镜纪律 + 看板问句自动附带 live board
+        lens_block = _lens_context_for_turn(project_id, user_text_for_tools)
+        if lens_block:
+            prompt = f"{lens_block}\n---\n{prompt}"
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}
     turn_started = time.perf_counter()

@@ -68,8 +68,8 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 |------|------|------|
 | `ccc.agent` / `CCC_AGENT` | `http://127.0.0.1:7788` | 探测成功则聊天打本地 |
 | `ccc.home` / `CCC_HOME` | 自动探测 | 拉起 sidecar 的 CCC 仓根 |
-| `ccc.localWorkspaceMap` | `{}` | `projectId → 本机路径` |
-| `ccc.localWorkspace` | 空 | 全局 fallback cwd |
+| `ccc.localWorkspaceMap` | `{"ccc":"…/CCC"}` 可选 | **仅**平台仓 `ccc`；禁止映射业务仓 |
+| `ccc.localWorkspace` | 空 | 仅作无 projectId 时的 fallback；**勿**冒充业务 cwd |
 
 **业务仓迁到 2017 / 注册 / 在 Desktop 开项目对话**：  
 [`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md) · Agent 交接：[`desktop-agent-handoff.md`](desktop-agent-handoff.md)。

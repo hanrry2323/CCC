@@ -32,6 +32,7 @@ _LOOP_CODE_CLAUDE_MD = """# CCC Desktop · loop-code 私有配置家
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
+代码权威只在 Mac2017 已 register 的 apps/；M1 无业务第二树；业务事实信 Hub baseline。
 禁止口径：flash 中转站、`:4000`、ai-loop-router。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 """

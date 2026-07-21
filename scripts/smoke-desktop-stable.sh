@@ -12,7 +12,8 @@ USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
 AUTH=(-u "${USER}:${PASS}")
 PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
-WS="${CCC_LOCAL_WORKSPACE:-$HOME/program/apps/ccc-demo}"
+# M1 无业务第二树：sidecar cwd 用平台仓；业务事实靠 Hub baseline
+WS="${CCC_LOCAL_WORKSPACE:-$ROOT}"
 
 pass=0
 fail=0

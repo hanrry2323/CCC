@@ -12,7 +12,7 @@ def test_hub_config_dual_port(monkeypatch):
     monkeypatch.delenv("CCC_AGENT_PROXY", raising=False)
     monkeypatch.setenv(
         "CCC_DESKTOP_WORKSPACE_MAP",
-        '{"ccc-demo":"/Users/apple/program/apps/ccc-demo"}',
+        '{"ccc":"/Users/apple/program/CCC"}',
     )
     from chat_server.app import create_app
 
@@ -23,7 +23,8 @@ def test_hub_config_dual_port(monkeypatch):
     assert d.get("dual_port") is True
     assert d.get("agent_proxy") in (None, "", False)
     assert "7788" in (d.get("dialogue_url") or "")
-    assert d["workspace_map"].get("ccc-demo")
+    assert d["workspace_map"].get("ccc")
+    assert "ccc-demo" not in (d.get("workspace_map") or {})
     # 默认不挂载 /api/agent
     assert c.get("/api/agent/health", auth=("ccc", "ccc")).status_code == 404
 

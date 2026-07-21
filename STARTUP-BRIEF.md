@@ -1,26 +1,27 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **权威版本**：根目录 `VERSION`（**v0.52.2**）  
-> **边界基线**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
-> **下阶段北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md)  
-> **文档怎么找**：[`docs/INDEX.md`](docs/INDEX.md)（先读 §0，勿被 100+ 旧文带偏）  
+> **叙事**：[`docs/VISION.md`](docs/VISION.md) · **事实+共识权威**：[`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md) · **版本**：`VERSION`（**v0.53.0**）  
+> **边界**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
+> **北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) · **索引**：[`docs/INDEX.md`](docs/INDEX.md)  
 > **正式启用**：[`docs/ops/GO-LIVE.md`](docs/ops/GO-LIVE.md)
 
 ---
 
 ## 1. 一句话
 
+**人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。**
+
 CCC = **Connect–Claude Code** = **Loop Engineer**  
-**对话面（本机 Desktop + loop-code）** 定意图产 epic；**编排面（中心机 Engine + Board）** 远端开发。  
-中间只交**信息流**（transfer / flow）。契约：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)。  
-**Skill + Prompt = 本次角色**（无穷角色；用户不选角色、不背 Skill）。机制 SSOT：[`docs/product/role-formation.md`](docs/product/role-formation.md)
+**对话面（Desktop + loop-code）** 定意图产 epic；**编排面（Engine + Board）** 远端开发；中间只交 transfer / flow。  
+**Skill + Prompt = 本次角色**（用户不选角色）。机制：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
-**v0.51**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**。禁止对 CCC 看板自消费（R-15）。
+**v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
+**开发通道**：平台 = Cursor；Desktop 对话默认 MiniMax。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
 
-**开发通道（2026-07-21）**：平台改动 = **Cursor**；个人 Claude Code = **可选/暂不用（原版）**；Desktop 对话默认 **MiniMax**（后续 App 内模型快选）。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
+**共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。
 
-**勿再说**：「接很多 IDE 当卖点」「用户先选 7 个角色」「用 Claude Code 改 CCC 平台」。
+**勿再说**：「接很多 IDE」「先选 7 角色」「用个人 Claude Code 改 CCC 平台」。
 
 **4 个数字**：
 

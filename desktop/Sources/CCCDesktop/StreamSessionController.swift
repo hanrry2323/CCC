@@ -38,13 +38,31 @@ enum StreamSessionController {
             ?? (id == "minimax-m3" ? "MiniMax-M3" : id)
     }
 
-    /// discuss = 只读探查；engineer = 允许本机写文件
-    static func resolveToolMode(preferred: String, userText: String) -> String {
+    /// discuss = 只读探查；engineer = 允许本机写文件（仅平台仓 ccc）
+    static func resolveToolMode(
+        preferred: String,
+        userText: String,
+        projectId: String? = nil
+    ) -> String {
         let pref = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if pref == "engineer" { return "engineer" }
-        let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.contains("工程师模式") || t.contains("直接改本机") { return "engineer" }
-        return "discuss"
+        var mode = "discuss"
+        if pref == "engineer" {
+            mode = "engineer"
+        } else {
+            let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.contains("工程师模式") || t.contains("直接改本机") {
+                mode = "engineer"
+            }
+        }
+        // 业务仓拒绝工程师模式（旁路收死）
+        if mode == "engineer",
+           let pid = projectId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !pid.isEmpty,
+           pid != "ccc"
+        {
+            return "discuss"
+        }
+        return mode
     }
 
     static func resolvePromptMode(forUserText text: String) -> String {

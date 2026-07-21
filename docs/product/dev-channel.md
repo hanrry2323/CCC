@@ -13,13 +13,12 @@
 | **CCC 平台代码**（本仓） | **Cursor** | R-15：禁止 Engine 自消费 CCC orch；brief 执行者也是 Cursor |
 | **业务仓编排** | Mac2017 Engine | product/reviewer → Claude CLI→MiniMax；dev → OpenCode→讯飞 |
 | **Desktop 对话** | M1 sidecar → loop-code | **默认 MiniMax**；M1 上**唯一** Claude 形态产品 |
-| **个人 Claude Code** | **M1 已退役 CLI**（配置家 `~/.claude` 保留） | 不劫持为 CCC 开发通道；见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) · Phase2 |
+| **个人 Claude Code** | **M1 已退役**（CLI + `~/.claude` 配置家） | 不劫持为 CCC 开发通道；见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) |
 
-**配置家（Phase1）**：sidecar `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；与个人 `~/.claude` 切割。  
-**CLI（Phase2）**：M1 无 PATH `claude`；对话只认 `vendor/loop-code`。  
-**Engine（Phase3）**：2017 `CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`；仍用 x86 原版 Claude CLI（不换 loop-code）。  
+**配置家**：sidecar `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`（Desktop 独享）。  
+**CLI**：M1 无 PATH `claude`；对话只认 `vendor/loop-code`。  
+**Engine**：2017 `CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`；仍用 x86 原版 Claude CLI（不换 loop-code）。  
 一次收口：[`loop-code-ownership-cut-closeout-brief.md`](loop-code-ownership-cut-closeout-brief.md)。
-
 ---
 
 ## Desktop 模型

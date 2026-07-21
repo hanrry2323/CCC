@@ -1201,7 +1201,7 @@ struct CodexChatPaneBody: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("讨论=只读探查；工程师=允许本机改文件")
+                .help("讨论=只读探查；工程师=仅平台仓 ccc 可本机改文件；业务仓请定稿转任务")
 
                 Button {
                     pickComposerAttachment()
@@ -1331,7 +1331,7 @@ struct CodexChatPaneBody: View {
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("默认讨论模式只读探查。工程师模式允许 Agent 修改本机工作区文件。")
+                Text("默认讨论模式只读探查。工程师模式仅允许在平台仓 ccc 修改本机文件；业务仓请定稿转任务。")
             }
         }
         .padding(.horizontal, 28)
@@ -1390,6 +1390,17 @@ struct CodexChatPaneBody: View {
                                 threadId: paneThreadId
                             )
                         }
+                    }
+                    quickChip(
+                        "刷新看板",
+                        help: "经 Hub 只读透镜 live 读权威仓在飞任务（覆盖过期记忆）"
+                    ) {
+                        model.applyQuickPrompt(
+                            QuickPrompts.refreshBoard,
+                            uiLabel: "刷新看板",
+                            projectId: paneProjectId,
+                            threadId: paneThreadId
+                        )
                     }
                     quickChip(
                         "下一步",

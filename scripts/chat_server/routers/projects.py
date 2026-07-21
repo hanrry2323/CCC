@@ -222,12 +222,21 @@ async def project_baseline(project_id: str, request: Request):
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     from _project_baseline import baseline_prompt_for_claude, collect_baseline
+    from ..services import hub_lens
 
-    baseline = collect_baseline(Path(path), project_id=project_id)
+    root = Path(path)
+    baseline = collect_baseline(root, project_id=project_id)
+    live_board = hub_lens.collect_board(root, project_id=project_id)
+    prompt = baseline_prompt_for_claude(baseline)
+    prompt = (
+        f"{prompt}\n\n"
+        f"{hub_lens.format_board_for_prompt(live_board)}\n"
+    )
     return {
         "ok": True,
         "baseline": baseline,
-        "prompt": baseline_prompt_for_claude(baseline),
+        "live_board": live_board,
+        "prompt": prompt,
     }
 
 

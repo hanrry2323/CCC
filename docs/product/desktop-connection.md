@@ -35,8 +35,7 @@ Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-s
 
 **未就绪处理**：sidecar 起不来 → 状态「本机 Agent 未就绪」+ toast；**不回退 Hub**（Hub `/api/chat` 已删）。后台每 3s 重探，sidecar 恢复后自动转「本机 Agent」。  
 **Hub 抖动**：Hub 不可达但 sidecar 活 → 仍可聊，状态「Hub 暂不可达（可聊）」，仅转任务/右栏受影响。  
-**工作区**：`localWorkspaceMap[projectId]` → 全局 fallback → Hub path 若本机存在。
-
+**工作区**：业务仓 **无本机第二树**；对话事实以 Hub baseline（2017）为准。`localWorkspaceMap` 仅可选映射平台仓 `ccc` → 本机 CCC；禁止映射业务仓 / archive。
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。
 
 ## Hub 自动恢复 SLA（F1）

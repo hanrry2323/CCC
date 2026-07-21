@@ -19,7 +19,7 @@
 
 | 接口 | 机器 | 现网 | 职责 |
 |------|------|------|------|
-| **对话** | M1 | `http://192.168.3.140:7788` | 热路径、本机会话 SSOT、`project_path` = M1 路径；**对话 SPA 宿主** |
+| **对话** | M1 | `http://192.168.3.140:7788` | 热路径、本机会话 SSOT；业务事实信 Hub baseline（无本机业务 cwd）；**对话 SPA 宿主** |
 | **Hub** | Mac2017 | `http://192.168.3.116:7777` | transfer / flow / board / ops；threads **仅镜像**；默认落地 `#/board` |
 
 thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，是因为打 **同一 sidecar + 同一会话契约**，不是因为页面挂在 Hub。
