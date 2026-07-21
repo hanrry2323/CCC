@@ -1,7 +1,7 @@
 # CCC 部署拓扑 — Server / Client
 
-> SSOT：服务端与客户端职责。更新日期：2026-07-20（模型直连、中转退役）。  
-> 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
+> SSOT：服务端与客户端职责。更新日期：2026-07-21（开发通道 / Desktop 默认 MiniMax）。  
+> 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
 
 ---
 
@@ -30,7 +30,7 @@
 
 | 工具 | 机器 | 上游 | 配置 |
 |------|------|------|------|
-| loop-code / Claude（对话） | M1 sidecar | **MiniMax** Anthropic（默认） ｜ **118.ink / claude-opus-4-8**（备选） | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`MiniMax-M3`，key `~/.ccc/minimax-api-key` ｜ `ANTHROPIC_BASE_URL=https://118.ink/v1`，`claude-opus-4-8`，key `$CCC_AGENT_118INK_KEY`（触发 `CCC_AGENT_UPSTREAM_118INK=1`） |
+| loop-code（Desktop 对话） | M1 sidecar | **MiniMax** Anthropic（**默认 / 现网**） | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`MiniMax-M3`，key `~/.ccc/minimax-api-key`。~~118.ink~~ 成本暂停；后续 App 内模型快选（[`../product/dev-channel.md`](../product/dev-channel.md)） |
 | Claude（product / reviewer） | Mac2017 Engine / Hub | **MiniMax** | 同上（`ccc-engine.sh` / Hub plist） |
 | OpenCode（dev 写码） | Mac2017 | **讯飞** `xfyun/code` | `~/.config/opencode/opencode.json`；备用 `zhipu/flash` |
 

@@ -92,7 +92,7 @@ Hub 定稿 → backlog(epic 常驻)
 
 - Python 3.11+
 - Bash / zsh
-- Claude Code CLI（Hub 对话）+ OpenCode（Engine 执行）
+- Cursor（平台维护，R-15）· Desktop sidecar loop-code（对话，MiniMax 默认）· OpenCode（Engine dev）· Claude CLI（Engine product/reviewer）
 
 ## 工程纪律（适用本项目）
 

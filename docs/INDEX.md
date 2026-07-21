@@ -13,6 +13,7 @@
 | 2 | [`VISION.md`](VISION.md) | 对外/对内叙事 |
 | 3 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | **对话/编排边界（架构基线）** |
 | 4 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **下阶段北星（壳 + Hub API v1；意图门人审）** |
+| 4b | [`product/dev-channel.md`](product/dev-channel.md) | **谁改 CCC / Desktop 模型默认（Cursor · MiniMax）** |
 | 5 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
 | 6 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
 

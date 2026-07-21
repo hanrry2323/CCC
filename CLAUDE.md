@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** Personal Claude Code is optional and not required for CCC self-dev. See `docs/product/dev-channel.md`.
 
 # CCC — Connect–Claude Code · Loop Engineer
 
-> **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine：Claude Code 扇出 + OpenCode 写码）远端开发；中间只交信息流。  
-> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 版本：`VERSION`（**v0.52.1**）
+> **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine：Claude CLI 扇出 + OpenCode 写码）远端开发；中间只交信息流。  
+> 边界基线：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.52.1**）
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
 

@@ -16,9 +16,11 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 中间只交**信息流**（transfer / flow）。契约：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)。  
 **Skill + Prompt = 本次角色**（无穷角色；用户不选角色、不背 Skill）
 
-**v0.51**：CCC 本体 = **orch**（Cursor 改）；Engine **只跑业务 apps**。禁止对 CCC 看板自消费（R-15）。
+**v0.51**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**。禁止对 CCC 看板自消费（R-15）。
 
-**勿再说**：「接很多 IDE 当卖点」「用户先选 7 个角色」。
+**开发通道（2026-07-21）**：平台改动 = **Cursor**；个人 Claude Code = **可选/暂不用（原版）**；Desktop 对话默认 **MiniMax**（后续 App 内模型快选）。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
+
+**勿再说**：「接很多 IDE 当卖点」「用户先选 7 个角色」「用 Claude Code 改 CCC 平台」。
 
 **4 个数字**：
 

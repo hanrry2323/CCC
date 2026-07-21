@@ -18,7 +18,9 @@
 |----|------|
 | 半年主叙事 | 多端对话壳 + 标准编排 Hub |
 | 第一刀验证 | `ccc-demo`（测试仓）→ 再铺真实项目 |
-| 模型出口 | 对话 / product：MiniMax（可换 Claude 兼容）；dev：OpenCode 直连上游 |
+| 模型出口 | 对话 / product：**MiniMax 默认**；dev：OpenCode 直连上游 |
+| Desktop 模型选择 | **现网固定 MiniMax**（sidecar）；**后续** App 内快速选择渠道（见 [`dev-channel.md`](dev-channel.md)） |
+| 平台开发 | **Cursor**（R-15）；个人 Claude Code 非必需 |
 | 中转站 | 已退役；不回退为默认路径 |
 | 架构骨架 | **演进现有 Hub–Engine–board**，不开局重写 Temporal / LangGraph |
 

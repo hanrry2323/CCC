@@ -19,8 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `scripts/chat_server/services/flow_events.py`：加 `is_terminal_stage(stage)` 工具（done/failed/blocked 判定）。
   - `docs/product/flow-events.md`：实现备注加 Phase14 客户端/Hub 契约（白名单 + `epic_id` 透传 + `epic_done` 推送去重）。
   - `tests/scripts/test_phase14_flow_rail_bind.py`（新增 7 测）：snapshot `user_stage` 分类、终态判定、bound_hint 精确 thread / `::main` 双口径、`epic_done` 去重语义。
+  - `desktop/Sources/CCCDesktop/ContentView.swift`：`FlowRail` 去掉全局 `flowEpic`/`flowWorks` 回退，只读本窗 `threadFlow`（brief §3.1 D；Cursor 重做补丁）。
   - `docs/product/hub-shell-phase14-flow-rail-bind.md`：验收记录（green，未 bump VERSION）。
-  - `desktop/scripts/package-baseline.sh` + 装机：`/Applications/CCCDesktop.app` 重打 0.52.1 build 1。
+  - `desktop/scripts/package-baseline.sh` + 装机：`/Applications/CCCDesktop.app` 重打 0.52.1。
+  - 开发通道收口：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)（平台=Cursor；Desktop 默认 MiniMax）。
 
 - **Phase13 编排可靠性门禁**：
   - `scripts/smoke-ccc-demo-reliability.sh`：reliability 探针（Hub health / 死 pid / active_tasks vs board 一致性 / hang 重试计数 / slot 计数（loopback）/ N 轮 transfer+snapshot + orphan & dead-pid drift）。

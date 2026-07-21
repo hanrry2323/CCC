@@ -1676,16 +1676,16 @@ struct FlowRail: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
 
-            // 仅当本对话有多个转任务时才出现切换（不再甩全项目 smoke 列表）
-            if (snap?.recentEpics ?? model.recentEpics).count > 1 {
+            // Phase14：右栏只读本窗 threadFlow（snap），禁止回退全局 flow*（多窗串台）
+            if (snap?.recentEpics ?? []).count > 1 {
                 Menu {
-                    ForEach(snap?.recentEpics ?? model.recentEpics) { epic in
+                    ForEach(snap?.recentEpics ?? []) { epic in
                         Button {
                             Task { await model.selectEpic(epic.epic_id, projectId: window.projectId) }
                         } label: {
                             HStack {
                                 Text(epic.title ?? epic.epic_id)
-                                if epic.epic_id == (snap?.epicId ?? model.currentEpicId) {
+                                if epic.epic_id == snap?.epicId {
                                     Image(systemName: "checkmark")
                                 }
                             }
@@ -1705,7 +1705,7 @@ struct FlowRail: View {
                 }
             }
 
-            if let hint = snap?.fanoutHint ?? (model.selectedThreadId == paneThreadId ? model.flowFanoutHint : nil) {
+            if let hint = snap?.fanoutHint {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(hint)
                         .font(.system(size: 11.5))
@@ -1737,8 +1737,7 @@ struct FlowRail: View {
                 .padding(.bottom, 8)
             }
 
-            if let stop = snap?.stopLossHint
-                ?? (model.selectedThreadId == paneThreadId ? model.flowStopLossHint : nil) {
+            if let stop = snap?.stopLossHint {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(stop)
                         .font(.system(size: 11.5, weight: .semibold))
@@ -1777,15 +1776,12 @@ struct FlowRail: View {
             }
 
             FlowCanvasView(
-                epic: snap?.epic ?? (model.selectedThreadId == paneThreadId ? model.flowEpic : nil),
-                epicId: snap?.epicId ?? (model.selectedThreadId == paneThreadId ? model.currentEpicId : nil),
-                works: snap?.works ?? (model.selectedThreadId == paneThreadId ? model.flowWorks : []),
-                headline: snap?.headline
-                    ?? (model.selectedThreadId == paneThreadId ? model.flowHeadline : ""),
+                epic: snap?.epic,
+                epicId: snap?.epicId,
+                works: snap?.works ?? [],
+                headline: snap?.headline ?? "",
                 emptyMessage: snap?.emptyMessage
-                    ?? (model.selectedThreadId == paneThreadId
-                        ? model.flowEmptyMessage
-                        : "编排空闲·等定稿下达（与对话故障无关）"),
+                    ?? "编排空闲·等定稿下达（与对话故障无关）",
                 splitGeneration: model.flowSplitGeneration,
                 onOpenOps: {
                     window.destination = .ops
@@ -1821,7 +1817,7 @@ struct FlowRail: View {
                         .textSelection(.enabled)
                 }
                 if detail.kind == "work",
-                   (snap?.works ?? model.flowWorks).contains(where: { $0.workId == detail.id && $0.isFailed }) {
+                   (snap?.works ?? []).contains(where: { $0.workId == detail.id && $0.isFailed }) {
                     Button("在运维中查看") {
                         model.dismissNodeDetail()
                         window.destination = .ops
@@ -1837,8 +1833,8 @@ struct FlowRail: View {
     }
 
     private var boundEpicTitle: String? {
-        let epics = snap?.recentEpics ?? model.recentEpics
-        let eid = snap?.epicId ?? (model.selectedThreadId == paneThreadId ? model.currentEpicId : nil)
+        let epics = snap?.recentEpics ?? []
+        let eid = snap?.epicId
         if let cur = epics.first(where: { $0.epic_id == eid }) {
             return cur.title ?? cur.epic_id
         }

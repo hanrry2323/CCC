@@ -28,11 +28,12 @@ http://192.168.3.116:7777
 
 | 工具 | 上游 |
 |------|------|
-| Desktop ↔ sidecar ↔ loop-code | **MiniMax** 直连 |
+| Desktop ↔ sidecar ↔ loop-code | **MiniMax** 直连（现网默认） |
 | Engine Claude（product/reviewer） | **MiniMax** 直连 |
 | Engine OpenCode（dev） | **讯飞** `xfyun/code` 直连 |
 
-~~ai-loop-router `:4000/:4002` 已退役。~~ 见 [`topology.md`](topology.md)。
+~~ai-loop-router `:4000/:4002` 已退役。~~ 见 [`topology.md`](topology.md)。  
+**后续**：Desktop **应用内**大模型快速选择。SSOT：[`../product/dev-channel.md`](../product/dev-channel.md)。
 
 ## 运行与打包
 

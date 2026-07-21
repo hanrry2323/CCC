@@ -1,9 +1,9 @@
 # Hub-Shell Phase14 — Desktop 右栏：绑定与实时正确性（验收记录 · green）
 
-> **状态**：✅ green · `main` HEAD（commit message 含 "Phase14 右栏绑定+实时正确性"）
-> **对齐**：[`hub-shell-phase14-flow-rail-bind-brief.md`](hub-shell-phase14-flow-rail-bind-brief.md) §3.1 A–E
-> **版本**：根目录 `VERSION` **保持 v0.52.1**（本阶段未 bump）
-> **日期**：2026-07-21
+> **状态**：✅ green · Cursor 重做（`7812bf8` 干净树 cherry-pick `a1c9dbf` + ContentView 去全局回退）  
+> **对齐**：[`hub-shell-phase14-flow-rail-bind-brief.md`](hub-shell-phase14-flow-rail-bind-brief.md) §3.1 A–G  
+> **版本**：根目录 `VERSION` **保持 v0.52.1**（本阶段未 bump）  
+> **日期**：2026-07-21 · **执行者**：Cursor（见 [`dev-channel.md`](dev-channel.md)）
 
 ---
 
@@ -23,7 +23,7 @@
 | SSE `epic_done` 处理 | 客户端事件白名单 `["fanout", "work_status", "epic_created", "executor"]` **不含 `epic_done`**；done 仅靠 8s 看板轮询 + snapshot `user_stage=done` | ✅ 补：客户端加白名单 + Hub 主动推（done 转入时） |
 | 绑定权威（Hub 空不得抹本地） | `hasLocalFlow` 已有保留路径；但 **`epics.first?.epic_id` 兜底仍会把 threadFlow 切到项目任意最近 epic**（brief §2.1 明确禁止） | ✅ 删兜底：未匹配走空态 |
 | `::main` 项目会话视图 | 仍正确返最近一条（项目即对话口径），保留 | ✅ 不动 |
-| 多窗 `threadFlow` 优先 | ContentView 已 threadFlow-first，全局仅作"当前窗"镜像（不算真正双轨） | ✅ 已合规 |
+| 多窗 `threadFlow` 优先 | ContentView 曾回退全局 `flowEpic`/`flowWorks`（选中窗串台风险） | ✅ 补：`FlowRail` **只读** `snap`（`threadFlow`），去掉全局回退 |
 | Header / 空态文案 | done 路径走 `applySnapshot` 后清 works → FlowCanvasView 走 emptyState（与 brief §2.3 一致） | ✅ 已合规；本次仅补 done 转入时主动清轨链路 |
 | 装机 | `desktop/scripts/package-baseline.sh` 已存在；本阶段必跑 + 拷 `/Applications` | ✅ 本阶段 |
 
@@ -33,6 +33,8 @@
    - 删 `syncFlowFromServer` / `bindFlowToThread` 内的 `epics.first?.epic_id` 兜底（保留精确 thread 匹配）。
    - `startProjectFlowSSE` 透传 `boundEpicId` 给 Hub + 客户端按 `data.epic_id` 二次校验；他 epic 噪声不再打扰本轨。
    - SSE 白名单加 `epic_done`；新增 `handleEpicDoneTerminal` 立即清轨（不依赖 8s 看板轮询）。
+1b. `desktop/Sources/CCCDesktop/ContentView.swift`（Cursor 重做补丁）
+   - `FlowRail` 去掉对 `model.flowEpic` / `flowWorks` / `recentEpics` 等全局回退；右栏只读本窗 `threadFlow`（brief §3.1 D）。
 2. `scripts/chat_server/routers/desktop.py::flow_events_sse`
    - 跟踪 `last_terminal_stage`；本 epic `user_stage=done` 转入时主动 `epic_done` 推送 + 写 JSONL（去重，连续 done 不重弹；done→failed 由 Phase9 止损管，不在本通道推）。
 3. `scripts/chat_server/services/flow_events.py`
@@ -100,10 +102,11 @@ $ bash -n scripts/smoke-hub-shell-gate.sh
 | 3 | 等待扇出/推进 | 仅本 epic 状态变化；不跳成别的 epic | Hub SSE 透传 `boundEpicId` 过滤 + 客户端 `data.epic_id` 二次校验 | ✅ 代码合规；同上 deferred |
 | 4 | epic 至 done（或 `epic_done`） | 时间线清空；`recentEpics` 仍可切换；Header 无「待拆解」 | 客户端 `handleEpicDoneTerminal` 清轨 + Hub board-poll 主动推 `epic_done`；snapshot `done` 路径保留 | ✅ 代码合规；7 测覆盖语义 |
 | 5 | failed / abnormal | 止损可见；绑定不丢 | Phase9 红条 + stopLossHint 路径未触碰；epic_done 通道不推 failed（避免重复） | ✅ 不回归；同上 deferred |
-| 6 | 两窗同项目不同 thread（或切换 thread） | 右栏不串台 | ContentView `paneThreadId` 优先 `threadFlow`；全局镜像仅当 `selectedThreadId == paneThreadId` | ✅ 代码合规；同上 deferred |
+| 6 | 两窗同项目不同 thread（或切换 thread） | 右栏不串台 | `FlowRail` **只读** `snap`/`threadFlow`，已去掉全局 `flowEpic`/`flowWorks` 回退 | ✅ 代码合规（Cursor 重做补丁） |
 
-> **M1 idle（无 Hub live）**：手测 1/2/3/5/6 需 Mac2017 跑 `CCC_SERVER=http://192.168.3.116:7777` 实跑；当前用 §2.1 自动化 + 代码 review 等价证明契约合规。
-> **Phase13 教训**：本机只跑单测就报 DONE 不算交付。Phase14 把"未在 Mac2017 实跑"作为已知风险写明（§6），由终验人在 2017 装机后复跑 §5.2 全表。
+> **装机证伪（Cursor 重做 · 2026-07-21 13:52）**：`/Applications/CCCDesktop.app` mtime=`2026-07-21 13:52:43`，与 `.build` 一致；`CFBundleShortVersionString=0.52.1` build 1。  
+> **Hub LAN**：M1→`192.168.3.116:7777` 当前 timeout；2017 本机 `127.0.0.1:7777` 正常。部署后经 SSH 跑契约；GUI 手测需 LAN 通或本机隧道。  
+> **§5.2 #1–#5 GUI**：契约测 + 代码路径 PASS；完整开 App 点测待 LAN/用户确认。
 
 ---
 
@@ -168,22 +171,21 @@ $ bash -n scripts/smoke-hub-shell-gate.sh
 
 ## 8. 验证摘要
 
-### 自验（执行方）
+### 自验（执行方 · Cursor 重做）
 
 ```text
 py_compile: 2/2 OK
 ruff: All checks passed
-pytest -k phase14: 7 passed in 0.04s
-pytest -k flow|snapshot|epic_done|stoploss|phase14: 17 passed
-swift build -c release: Build complete! (25.14s)
-package-baseline: OK app bundle 0.52.1 build 1
-install: /Applications/CCCDesktop.app CFBundleShortVersionString=0.52.1
-bash -n: 0
+pytest -k 'flow|snapshot|epic_done|stoploss|phase14': 17 passed
+swift build -c release: Build complete! (~26s)
+package-baseline: OK app 0.52.1 build 1
+install: /Applications/CCCDesktop.app mtime 2026-07-21 13:52:43（stat 证伪与 .build 一致）
+ContentView: FlowRail 去全局回退（§3.1 D）
 ```
 
 ### 终验（规划方）
 
 ```text
 本地复跑：pytest 17 passed · py_compile/ruff/swift build/version sync OK
-Mac2017：pull → kickstart com.ccc.chat-server → 跑 §5.2 全表（按本文 §2.2 PASS 填实）
+Mac2017：pull → kickstart com.ccc.chat-server → SSH 本机契约；LAN 通后再开 App 跑 §5.2 GUI
 ```

@@ -1,7 +1,8 @@
 # CCC Vision — Connect–Claude Code · Loop Engineer
 
 > **产品叙事 SSOT（对外/对内统一）**。README、Release、SKOT、Hub 文案冲突时以本文为准。  
-> 版本对齐：`VERSION` · 更新日期：2026-07-19 · **Desktop 主产品**（见 `docs/product/ccc-desktop-architecture.md`）
+> 版本对齐：`VERSION` · 更新日期：2026-07-21 · **Desktop 主产品**（见 `docs/product/ccc-desktop-architecture.md`）  
+> 平台谁改 / 对话模型谁定：[`product/dev-channel.md`](product/dev-channel.md)
 
 ---
 
@@ -28,7 +29,7 @@
 | 层 | 组件 | 用户感知 |
 |----|------|----------|
 | **对话面** | **CCC Desktop**（SwiftUI）+ 本机 Sidecar/loop-code（现网 **M1**） | 聊透、意图、定稿 → **仅产出 epic 大卡** |
-| **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → **Claude Code 扇出** → **OpenCode 写码** / 验收；右栏只看状态 |
+| **编排面** | Hub + Board + Engine（现网 **Mac2017**） | 收大卡 → **Claude CLI 扇出** → **OpenCode 写码** / 验收；右栏只看状态 |
 | **执行面** | 可插拔 Executors（dev 默认 OpenCode；python / ollama / cli…） | 用户不选「用哪个 IDE」 |
 
 **硬边界**：对话与编排开发分开；中间只交**结构化信息流**（transfer + flow 事件）。基线契约：[`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md)。  
