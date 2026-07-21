@@ -271,12 +271,43 @@ async def list_skills(
 
 @router.get("/api/hub-config")
 async def hub_config(request: Request):
-    """Hub chat 客户端配置（并发上限等）。"""
+    """Hub 客户端配置（Remote Desktop Shell + 并发上限）。"""
     check_auth(request)
+    import json
+    import os
+    from pathlib import Path
+
     from .. import config as hub_config_mod
 
+    workspace_map: dict = {}
+    raw_map = (os.environ.get("CCC_DESKTOP_WORKSPACE_MAP") or "").strip()
+    if raw_map:
+        try:
+            parsed = json.loads(raw_map)
+            if isinstance(parsed, dict):
+                workspace_map = {str(k): str(v) for k, v in parsed.items()}
+        except json.JSONDecodeError:
+            pass
+    map_file = Path.home() / ".ccc" / "desktop-workspace-map.json"
+    if map_file.is_file():
+        try:
+            data = json.loads(map_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                workspace_map = {**workspace_map, **{str(k): str(v) for k, v in data.items()}}
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    agent_url = (
+        os.environ.get("CCC_DESKTOP_AGENT_URL")
+        or os.environ.get("CCC_AGENT_URL")
+        or "http://192.168.3.140:7788"
+    )
     return {
         "ok": True,
         "chat_session_max_live": hub_config_mod.CHAT_SESSION_MAX_LIVE,
         "chat_session_idle_ttl": hub_config_mod.CHAT_SESSION_IDLE_TTL,
+        "desktop_remote": True,
+        "agent_proxy": "/api/agent",
+        "desktop_agent_url": agent_url,
+        "workspace_map": workspace_map,
     }

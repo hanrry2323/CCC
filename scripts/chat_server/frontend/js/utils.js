@@ -18,12 +18,35 @@ export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
-/** Hub 远程会话 thread：强制 hub::{project}::… 分区前缀 */
-export function hubThreadId(projectId, suffix) {
+/** Desktop 同款 thread id：`{project}::main` 或 `{project}::{uuid}` */
+export function desktopThreadId(projectId, suffix) {
   const pid = (projectId || 'ccc').trim() || 'ccc';
-  let s = String(suffix || '').trim() || generateId();
-  if (s.startsWith('hub::')) return s;
-  return `hub::${pid}::${s}`;
+  let s = String(suffix || '').trim();
+  if (s.startsWith('hub::')) {
+    // 纠偏：剥掉错误前缀
+    s = s.slice(5);
+    if (s.startsWith(pid + '::')) s = s.slice(pid.length + 2);
+  }
+  if (s.includes('::')) return s;
+  if (!s || s === 'main') return `${pid}::main`;
+  return `${pid}::${s}`;
+}
+
+/** M1 本机 project_path（Remote Shell → sidecar） */
+export function resolveProjectPath(projectId) {
+  const pid = projectId || 'ccc';
+  const map =
+    (typeof window !== 'undefined' && window.__CCC_WORKSPACE_MAP__) ||
+    {};
+  if (map[pid]) return map[pid];
+  try {
+    const local = JSON.parse(
+      localStorage.getItem('ccc_local_workspace_map') || '{}'
+    );
+    if (local[pid]) return local[pid];
+  } catch (_) {}
+  // 默认与 topology 常见布局对齐（可被 map 覆盖）
+  return `/Users/apple/program/apps/${pid}`;
 }
 
 export function relativeTime(iso) {

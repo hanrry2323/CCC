@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub（远程管理）</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260721remote2">
-<link rel="stylesheet" href="/css/base.css?v=20260721remote2">
-<link rel="stylesheet" href="/css/themes.css?v=20260721remote2">
-<link rel="stylesheet" href="/css/components.css?v=20260721remote2">
-<link rel="stylesheet" href="/css/shell.css?v=20260721remote2">
-<link rel="stylesheet" href="/css/dual-pane.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/variables.css?v=20260721remote3">
+<link rel="stylesheet" href="/css/base.css?v=20260721remote3">
+<link rel="stylesheet" href="/css/themes.css?v=20260721remote3">
+<link rel="stylesheet" href="/css/components.css?v=20260721remote3">
+<link rel="stylesheet" href="/css/shell.css?v=20260721remote3">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260721remote3">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -57,7 +57,7 @@
 <div id="hub-views">
   <div class="hub-view" id="view-chat">
 <div id="app">
-  <div class="hub-remote-banner" role="status">本页为 Hub 远程会话，与 Desktop 本机会话相互独立；看板与下达任务共用。</div>
+  <div class="hub-remote-banner" role="status">Remote Desktop 壳：对话经 M1 sidecar（与 Desktop 同路径）；看板/下达走本 Hub。</div>
 
   <div id="titlebar">
     <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
@@ -213,6 +213,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/js/app.js?v=20260721remote2"></script>
+<script type="module" src="/js/app.js?v=20260721remote3"></script>
 </body>
 </html>

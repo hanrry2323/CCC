@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { generateId, hubThreadId } from './utils.js';
+import { generateId, desktopThreadId } from './utils.js';
 import { loadProjects, loadSession, loadHubConfig } from './api.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -137,7 +137,7 @@ function switchToProjectTab(projectId) {
     tab = {
       id,
       title: '新对话',
-      sessionId: hubThreadId(pid, id),
+      sessionId: desktopThreadId(pid, id),
       messages: [],
       projectId: pid,
     };
@@ -216,6 +216,21 @@ async function init() {
     if (cfg?.chat_session_max_live) {
       state.set('maxLiveStreams', cfg.chat_session_max_live);
     }
+    if (cfg?.workspace_map && typeof cfg.workspace_map === 'object') {
+      window.__CCC_WORKSPACE_MAP__ = {
+        ...(window.__CCC_WORKSPACE_MAP__ || {}),
+        ...cfg.workspace_map,
+      };
+      try {
+        const prev = JSON.parse(
+          localStorage.getItem('ccc_local_workspace_map') || '{}'
+        );
+        localStorage.setItem(
+          'ccc_local_workspace_map',
+          JSON.stringify({ ...prev, ...cfg.workspace_map })
+        );
+      } catch (_) {}
+    }
   } catch (_) {
     /* keep default 4 */
   }
@@ -243,7 +258,7 @@ async function init() {
     null;
   if (!state.get('currentProject') && project) state.set('currentProject', project);
   const tabId = generateId();
-  const bootSid = hubThreadId(project || 'ccc', tabId);
+  const bootSid = desktopThreadId(project || 'ccc', 'main');
   const tabs = [
     {
       id: tabId,
@@ -270,7 +285,7 @@ async function init() {
     const id = generateId();
     const pid =
       state.get('currentProject') || state.get('defaultProject') || 'ccc';
-    const sid = hubThreadId(pid, id);
+    const sid = desktopThreadId(pid, id);
     const tabsNow = state.get('tabs') || [];
     tabsNow.push({
       id,

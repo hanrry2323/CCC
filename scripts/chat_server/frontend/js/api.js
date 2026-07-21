@@ -234,44 +234,54 @@ export async function streamChat(
   }
 
   const projectId = project || state.get('currentProject') || 'ccc';
-  let threadId = String(sessionId || '').trim();
-  if (!threadId.startsWith('hub::')) {
-    threadId = `hub::${projectId}::${threadId || 'main'}`;
-  }
+  const { desktopThreadId, resolveProjectPath } = await import('./utils.js');
+  const threadId = desktopThreadId(projectId, sessionId || `${projectId}::main`);
+  const projectPath = resolveProjectPath(projectId);
 
   try {
     const model = state.get('model') || 'flash';
     const toolMode = state.get('toolMode') || 'discuss';
+    const userMsgs = (messages || []).filter((m) => m.role === 'user');
+    const prompt =
+      (userMsgs.length ? userMsgs[userMsgs.length - 1].content : '') || '';
     const body = {
-      messages,
+      prompt,
+      messages: prompt ? [] : messages,
       session_id: threadId,
-      thread_id: threadId,
-      project: projectId,
-      project_id: projectId,
+      project_path: projectPath,
       model,
       tool_mode: toolMode,
       timeout: 600,
     };
+    const resume = state.get('claudeSessionIdByThread')?.[threadId];
+    if (resume) body.claude_session_id = resume;
     if (attachments && attachments.length) {
       body.attachments = attachments;
     }
 
-    const resp = await _fetchWithAuth('/api/remote-chat/stream', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      signal: abortController.signal,
-    }, true);
+    const resp = await _fetchWithAuth(
+      '/api/agent/api/chat',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: abortController.signal,
+      },
+      true
+    );
 
     if (!resp.ok) {
       const errBody = await resp.json().catch(() => ({}));
+      const detail = errBody.detail || errBody.message || errBody.error;
       const errText =
         resp.status === 401
           ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
-          : resp.status === 400
-            ? errBody.message || errBody.detail || '危险指令已被拦截或参数无效'
-            : resp.status === 429
-              ? '并发会话已满或会话忙，请稍候、取消一路或新开对话'
-              : '请求失败: HTTP ' + resp.status;
+          : resp.status === 403
+            ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
+            : resp.status === 502 || resp.status === 503
+              ? detail || 'M1 Desktop Agent 不可达（检查反代与 sidecar）'
+              : resp.status === 429
+                ? '并发会话已满或会话忙，请稍候'
+                : detail || '请求失败: HTTP ' + resp.status;
       onError(errText);
       return;
     }
@@ -301,7 +311,14 @@ export async function streamChat(
           } else if (data.type === 'ping') {
             // keepalive
           } else if (data.type === 'done') {
-            onDone(data.thread_id || data.session_id || threadId);
+            if (data.claude_session_id) {
+              const map = {
+                ...(state.get('claudeSessionIdByThread') || {}),
+              };
+              map[threadId] = data.claude_session_id;
+              state.set('claudeSessionIdByThread', map);
+            }
+            onDone(data.session_id || threadId);
           } else if (data.type === 'error') {
             onError(data.content);
           }
@@ -321,22 +338,49 @@ export async function streamChat(
   }
 }
 
-export async function cancelRemoteChat(project, threadId) {
-  return apiPost('/api/remote-chat/stop', {
-    project,
-    thread_id: threadId,
-  });
+export async function putDesktopThreadMessages(threadId, messages, projectId) {
+  const resp = await _fetchWithAuth(
+    '/api/desktop/threads/' + encodeURIComponent(threadId) + '/messages',
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        project_id: projectId || state.get('currentProject') || 'ccc',
+        messages,
+      }),
+    },
+    true
+  );
+  if (!resp.ok) throw new Error('PUT messages ' + resp.status);
+  return resp.json();
+}
+
+export async function loadDesktopThread(threadId) {
+  return apiGet('/api/desktop/threads/' + encodeURIComponent(threadId));
 }
 
 export function cancelStream(tabId) {
   const project = state.get('currentProject') || 'ccc';
-  let tid = state.get('currentSessionId') || tabId;
-  if (tid && !String(tid).startsWith('hub::')) {
-    tid = `hub::${project}::${tid}`;
-  }
-  if (tid) {
-    cancelRemoteChat(project, tid).catch(() => {});
-  }
+  import('./utils.js').then(async ({ desktopThreadId, resolveProjectPath }) => {
+    const tid = desktopThreadId(
+      project,
+      state.get('currentSessionId') || tabId
+    );
+    try {
+      await _fetchWithAuth(
+        '/api/agent/api/session/drop',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            project_path: resolveProjectPath(project),
+            session_id: tid,
+            reason: 'cancel',
+            tool_mode: state.get('toolMode') || 'discuss',
+          }),
+        },
+        true
+      );
+    } catch (_) {}
+  });
   import('./streamRegistry.js')
     .then((m) => m.cancelStream(tabId))
     .catch(() => {

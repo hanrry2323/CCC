@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml, ts, scrollToBottom } from '../utils.js';
-import { streamChat } from '../api.js';
+import { streamChat, putDesktopThreadMessages } from '../api.js';
 import { refreshSidebar } from './sidebar.js';
 import {
   createProgressRail,
@@ -501,6 +501,7 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentMessages', finalMsgs);
       }
+      putDesktopThreadMessages(sid, finalMsgs, ownerProject).catch(() => {});
       endStream(ownerTabId);
       syncStreamingFlagForActiveTab();
       setStreamingIndicator();

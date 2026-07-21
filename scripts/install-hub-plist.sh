@@ -44,6 +44,15 @@ else
   HUB_ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
 fi
 
+DESKTOP_AGENT_URL="${CCC_DESKTOP_AGENT_URL:-http://192.168.3.140:7788}"
+AGENT_TOKEN_VALUE="${CCC_AGENT_TOKEN:-}"
+if [[ -z "$AGENT_TOKEN_VALUE" && -f "${HOME}/.ccc/agent-token" ]]; then
+  AGENT_TOKEN_VALUE="$(tr -d '[:space:]' < "${HOME}/.ccc/agent-token")"
+fi
+if [[ -z "$AGENT_TOKEN_VALUE" ]]; then
+  echo "提示: 未设 CCC_AGENT_TOKEN；Hub Remote Desktop 反代需与 M1 ~/.ccc/agent-token 相同" >&2
+fi
+
 cat > "$PLIST_STAGED" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -84,6 +93,10 @@ cat > "$PLIST_STAGED" <<PLIST_EOF
     <string>ccc</string>
     <key>CCC_BOARD_URL</key>
     <string>http://127.0.0.1:7775</string>
+    <key>CCC_DESKTOP_AGENT_URL</key>
+    <string>${DESKTOP_AGENT_URL}</string>
+    <key>CCC_AGENT_TOKEN</key>
+    <string>${AGENT_TOKEN_VALUE}</string>
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
     <key>ANTHROPIC_BASE_URL</key>

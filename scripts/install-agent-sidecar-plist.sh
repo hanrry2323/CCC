@@ -31,6 +31,8 @@ if [[ ! -x "$AGENT_PY" ]]; then
 fi
 
 PORT="${CCC_AGENT_PORT:-7788}"
+# Remote Desktop：2017 Hub 反代需打到本机；默认仍 127.0.0.1（仅本机 Desktop）
+# 对 2017 开放：CCC_AGENT_HOST=0.0.0.0 bash scripts/install-agent-sidecar-plist.sh --start
 HOST="${CCC_AGENT_HOST:-127.0.0.1}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
@@ -238,10 +240,12 @@ if [[ "$cmd" == "--start" || "$cmd" == "start" || -z "$cmd" ]]; then
   launchctl kickstart -k "${DOMAIN}/${LABEL}" 2>/dev/null || true
 fi
 
-# 等健康
+# 等健康（0.0.0.0 监听时用 127.0.0.1 探活）
+HEALTH_HOST="$HOST"
+[[ "$HEALTH_HOST" == "0.0.0.0" || "$HEALTH_HOST" == "::" ]] && HEALTH_HOST="127.0.0.1"
 ok=0
 for _ in 1 2 3 4 5 6 7 8 9 10 12 14 16; do
-  if curl -fsS --max-time 1 "http://${HOST}:${PORT}/health" >/dev/null 2>&1; then
+  if curl -fsS --max-time 1 "http://${HEALTH_HOST}:${PORT}/health" >/dev/null 2>&1; then
     ok=1
     break
   fi
@@ -249,7 +253,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10 12 14 16; do
 done
 
 if [[ "$ok" == "1" ]]; then
-  echo "✓ ${LABEL} loaded · http://${HOST}:${PORT} healthy"
+  echo "✓ ${LABEL} loaded · listen ${HOST}:${PORT} · probe http://${HEALTH_HOST}:${PORT} healthy"
+  if [[ "$HOST" != "127.0.0.1" && "$HOST" != "localhost" ]]; then
+    echo "  Remote Desktop: Hub 可用 CCC_DESKTOP_AGENT_URL=http://<本机LAN>:${PORT}"
+  fi
 else
   echo "⚠ ${LABEL} loaded but health not ready yet — 见 ${LOG_ERR}"
 fi

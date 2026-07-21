@@ -13,6 +13,7 @@ class State {
       historySource: 'all',
       model: 'flash',
       toolMode: 'discuss',
+      claudeSessionIdByThread: {},
       abortController: null,
       tabs: [],
       activeTabId: null,

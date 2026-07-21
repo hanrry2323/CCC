@@ -1,66 +1,59 @@
-# Hub 远程管理口（会话分区）
+# Hub Remote Desktop Shell
 
-> **状态**：现行 · 2026-07-21  
-> **对齐**：[`hub-api-v1.md`](hub-api-v1.md) 附录 · [`deprecate-web-hub.md`](deprecate-web-hub.md)  
-> **原则**：最安全、最少开发量——**不做跨端续聊**。
-
----
-
-## 一句话
-
-**Hub HTTP（`:7777`）是 Mac2017 上的远程管理口**：看板 / 运维 / 远程对话（讨论·工程）/ 下达任务。  
-**产品主对话仍在 Desktop（M1 sidecar）**。两端会话 **分区**，永不合并。
+> **状态**：现行 · 2026-07-21（纠偏）  
+> **一句话**：HTTP SPA ≈ **远程 Desktop（约 90% 能力）**——对话跟 M1 sidecar；编排跟 Hub。  
+> **禁止**：在 Mac2017 再维护第二套产品聊天 / `hub::` 会话分区。
 
 ---
 
-## 会话分区（冲突策略）
+## 形态
 
-| 面 | 会话权威 | thread 形态 |
-|----|----------|-------------|
-| Desktop | M1 sidecar + 本机 store | `{projectId}::…`（无 `hub::` 前缀） |
-| Hub HTTP | 2017 Hub `CHAT_DIR` + Claude 槽 | **必须** `hub::{projectId}::…` |
-| 看板 / 运维 / transfer / Flow | Hub API | 两端共用，无会话冲突 |
+```text
+浏览器 → Hub :7777 SPA
+  ├─ /api/agent/*     → 反代 M1 sidecar :7788（对话热路径，与 Desktop 相同）
+  ├─ /api/desktop/*   → threads 同步面 / transfer / flow（与 Desktop 相同）
+  └─ /api/board|ops   → 看板 / 运维（与 Desktop 相同）
+```
 
-**禁做**：跨端 live sync、lease、last-write-wins、Desktop 嵌 SPA、把主聊天迁成唯一入口。
-
-页面固定提示：「本页为 Hub 远程会话，与 Desktop 本机会话相互独立；看板与下达任务共用。」
-
----
-
-## 功能矩阵
-
-| 能力 | Desktop | Hub HTTP |
-|------|---------|----------|
-| 看板 | 有 | `#/board` |
-| 运维 / 控制台 | 有 | `#/ops` `#/console` |
-| 讨论 / 工程模式 | 有 | `#/chat` + `tool_mode` |
-| 聊任务 | 本机热路径 | Hub 远程（2017 runtime） |
-| 下达 epic | transfer | 同 `POST /api/desktop/transfer` |
-| Flow 右栏 | 有 | 不做完整右栏（看板 + transfer 结果即可） |
+| 面 | 权威 |
+|----|------|
+| 对话 runtime | M1 `com.ccc.agent-sidecar` → loop-code |
+| 本机会话文件 | M1 Desktop `LocalSessionStore`（HTTP 经 Hub threads 镜像同步） |
+| thread id | `{projectId}::…`（与 Desktop 一致） |
+| 看板 / transfer | Hub on Mac2017 |
 
 ---
 
-## 远程聊天端点（附录）
+## 环境（2017 Hub）
 
-见 [`hub-api-v1.md`](hub-api-v1.md) §附录 A。摘要：
-
-| 方法 | 路径 | 说明 |
+| 变量 | 默认 | 说明 |
 |------|------|------|
-| `POST` | `/api/remote-chat/stream` | SSE；`thread_id` 强制 `hub::` |
-| `POST` | `/api/remote-chat/stop` | 释放该 thread 的 live 槽 |
-| `GET` | `/api/remote-chat/history` | 仅 Hub 远程会话 |
+| `CCC_DESKTOP_AGENT_URL` | `http://192.168.3.140:7788` | M1 sidecar |
+| `CCC_AGENT_TOKEN` | （与 M1 `~/.ccc/agent-token` 相同） | 反代注入，浏览器不持有 |
+| `CCC_DESKTOP_WORKSPACE_MAP` | JSON 可选 | `{"ccc-demo":"/Users/apple/program/apps/ccc-demo"}` |
+
+M1 sidecar 须对 2017 可达：`CCC_AGENT_HOST=0.0.0.0`（仅内网）+ token。
+
+---
+
+## SPA
+
+- `#/chat`：经典对话壳；`streamChat` → `POST /api/agent/api/chat`
+- 历史：`GET /api/desktop/threads/{id}`；回合结束后 `PUT …/messages`
+- `project_path`：来自 workspace map（须为 **M1 本机路径**）
+- 讨论/工程：`tool_mode` 与 Desktop/sidecar 一致
 
 ---
 
 ## 烟测
 
 ```bash
-CCC_SERVER=http://127.0.0.1:7777 bash scripts/smoke-hub-remote-management.sh
-# 可选真聊一轮：CCC_REMOTE_CHAT_LIVE=1 …
+CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-hub-remote-desktop.sh
 ```
 
 ---
 
-## 成功标准
+## 废弃
 
-浏览器打开 Hub：能看板/运维、能 discuss/engineer 远程聊、能下达 epic；Desktop 同项目本机会话消息互不出现。
+- `/api/remote-chat/*` 独立 2017 会话槽（已删）
+- `hub::` thread 前缀产品叙事
