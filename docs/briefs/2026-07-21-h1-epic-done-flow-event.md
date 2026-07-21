@@ -79,6 +79,8 @@ Engine 在 epic `split_status` 转入 `done` 时，**主动**向 `flow-events.js
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `461f021` |
+| 缺口 | 无；候选 H-2（`work_status` 后续阶段流事件）留待用户新指令 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `flow-events.md` 先改（§5 H-1 + `epic_done` 行加 `project_id?`）；`_product_fanout.refresh_epic_lifecycle` 在 `new=="done" and raw_ss!="done"` 时 `append_event("epic_done", {epic_id, split_status, project_id})`；异常 warning 不阻塞；守门幂等；未改 `gates.py`（一处写入即可，合理）；SSE 不动；3 测绿；白名单内。
