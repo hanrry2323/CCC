@@ -64,19 +64,19 @@ work 卡在列间迁移时，**主动**向 `flow-events.jsonl` 追加 `work_stat
 
 ## 7. 验收清单
 
-- [ ] `docs/product/flow-events.md` 写明 `work_status` 由 `move_task` 主动追加（§5 或新 §6）
-- [ ] `_board_store.move_task` 在 work 卡迁移成功时 `append_event("work_status", …)`
-- [ ] epic 迁移不发；非 flow 列（backlog 回退等）按 §6.1 条件过滤
-- [ ] `append_event` 异常 warning 不阻塞 move
-- [ ] 新测 `tests/scripts/test_work_status_flow_event.py` 绿（模拟 work 卡 planned→in_progress→testing→verified→released → 断言每步 `flow-events.jsonl` 含对应 `work_status`；epic 迁移不发；abnormal 也发）
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `docs/product/flow-events.md` 写明 `work_status` 由 `move_task` 主动追加（§5 或新 §6）
+- [x] `_board_store.move_task` 在 work 卡迁移成功时 `append_event("work_status", …)`
+- [x] epic 迁移不发；非 flow 列（backlog 回退等）按 §6.1 条件过滤
+- [x] `append_event` 异常 warning 不阻塞 move
+- [x] 新测 `tests/scripts/test_work_status_flow_event.py` 绿（模拟 work 卡 planned→in_progress→testing→verified→released → 断言每步 `flow-events.jsonl` 含对应 `work_status`；epic 迁移不发；abnormal 也发）
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | `FileBoardStore.move_task` 成功后 hook：`work_status`（含 from）；epic/backlog 跳过；append 失败不阻塞；flow-events.md §6 | `test_work_status_flow_event` + `pytest tests/scripts/ -q` 绿 | 是 |
 
 ## 9. 架构验收
 

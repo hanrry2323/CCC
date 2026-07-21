@@ -38,7 +38,7 @@
 |-------|----------------|------|
 | `epic_created` | `{epic_id,title,project_id,thread_id?}` | 转任务成功 |
 | `fanout` | `{project_id,epic_id,works:[{id,title,executor,depends_on[],status?}]}` | 扇出完成/更新 |
-| `work_status` | `{project_id,epic_id,work_id,status,executor,note?}` | 列迁移或执行态变 |
+| `work_status` | `{project_id,epic_id,work_id,status,from?,executor?,note?}` | 列迁移或执行态变（见下：`move_task` 主动落盘） |
 | `executor` | `{epic_id,work_id,executor,phase?,detail?}` | 执行器启动/结束 |
 | `epic_done` | `{epic_id,split_status,project_id?}` | epic → `done`（见下：Engine 主动落盘） |
 | `error` | `{message}` | 订阅错误 |
@@ -65,3 +65,4 @@
 3. Desktop 右栏：`fanout` → 拆分出生动画；`work_status` → 节点态刷新；`epic_done` → 清空焦点时间线。
 4. **Phase14 追加**：Hub SSE 兜底在 `user_stage=done` 转入时主动推 `epic_done`（连同写 JSONL），客户端**必须**把 `epic_done` 加入白名单并在收到本 epic 的 `epic_done` 时立即清轨，不得只等下一次 fanout 或 8s 看板轮询。订阅 SSE 时应把当前 `boundEpicId` 作为 `epic_id` query 透传以减少他 epic 噪声；客户端仍需按 `data.epic_id` 二次校验。连续 done 不会重推（`last_terminal_stage` 去重）；failed 由 Phase9 止损路径处理，本通道不主动推。
 5. **H-1 · `epic_done` 不依赖 SSE**：Engine 在 `refresh_epic_lifecycle` 检测到 epic `split_status` **由非 `done` → `done`** 时，**主动** `append_event("epic_done", {project_id, epic_id, split_status:"done"})` 写入 JSONL。无 Desktop 订阅时证据链仍完整。写入失败只记日志，不阻塞 kb 门禁。同一转换只写一次（`raw_ss != "done"` 守门）。Hub SSE 路径既有推送 + `append_event` **保留**（客户端在线时可能双写；JSONL 顺序与 Desktop 去重可接受）。
+6. **H-2 · `work_status` 列迁移落盘**：`FileBoardStore.move_task` 在 **work** 卡成功迁入 `planned|in_progress|testing|verified|released|abnormal`（且 `from ≠ to`）时，**主动** `append_event("work_status", {project_id, epic_id, work_id, status, from})` 写入 JSONL。不依赖 Desktop SSE 在线。fanout 创建时既有 `work_status=planned` **保留**（fanout 不经 move_task，不双写）。epic 迁移不发（走 H-1 `epic_done`）。`append_event` 失败只 warning，不阻塞列迁移。Hub SSE board-poll 合成路径**保留**（客户端在线时可能双写）。

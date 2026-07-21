@@ -32,6 +32,18 @@ COLUMNS = [
     "abnormal",
 ]
 
+# H-2: work 卡迁入这些列时写 flow-events work_status（不含 backlog）
+_WORK_STATUS_FLOW_COLS = frozenset(
+    {
+        "planned",
+        "in_progress",
+        "testing",
+        "verified",
+        "released",
+        "abnormal",
+    }
+)
+
 
 def column_pipeline_rank(col: str) -> int:
     """流水线序（下标越大越靠后）。abnormal 单独用 pick_canonical_column 处理。"""
@@ -954,12 +966,48 @@ class FileBoardStore:
             self._record_event(task_id, from_col, to_col)
             self._invalidate_cache(from_col, to_col)
             _log.info("%s: %s → %s", task_id, from_col, to_col)
+            self._emit_work_status_flow_event(task, task_id, from_col, to_col)
             success = True
         finally:
             self._unlock(lock)
         if success:
             self._sync_state_md()
         return success
+
+    def _emit_work_status_flow_event(
+        self, task: dict, task_id: str, from_col: str, to_col: str
+    ) -> None:
+        """H-2: work 卡列迁移成功 → 主动 append work_status（失败不阻塞）。"""
+        if from_col == to_col:
+            return
+        if task.get("card_kind") != "work":
+            return
+        if to_col not in _WORK_STATUS_FLOW_COLS:
+            return
+        try:
+            from chat_server.services import flow_events as _fe
+            from _product_fanout import _project_id_for_workspace
+
+            payload: dict = {
+                "work_id": task_id,
+                "status": to_col,
+                "from": from_col,
+                "epic_id": task.get("parent_id") or "",
+            }
+            pid = _project_id_for_workspace(self.workspace)
+            payload["project_id"] = pid or ""
+            executor = task.get("executor")
+            if executor:
+                payload["executor"] = executor
+            _fe.append_event("work_status", payload)
+        except Exception as exc:
+            _log.warning(
+                "work_status append_event failed for %s (%s→%s): %s",
+                task_id,
+                from_col,
+                to_col,
+                exc,
+            )
 
     def update_index(self) -> dict:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）
