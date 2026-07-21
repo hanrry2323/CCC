@@ -26,7 +26,7 @@
 | 文档 | 说明 |
 |------|------|
 | [`product/hub-api-v1.md`](product/hub-api-v1.md) | **Hub API v1 契约**（transfer 幂等 / 投递三态） |
-| [`product/hub-remote-management.md`](product/hub-remote-management.md) | **Hub HTTP 远程管理口**（会话分区 / `#/chat`） |
+| [`product/hub-remote-management.md`](product/hub-remote-management.md) | **双口远程**：M1 对话 `:7788` + 2017 Hub 编排 `:7777` |
 | [`product/transfer-gate.md`](product/transfer-gate.md) | 定稿 → transfer 字段 |
 | [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
 | [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |

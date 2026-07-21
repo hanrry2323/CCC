@@ -31,9 +31,10 @@ if [[ ! -x "$AGENT_PY" ]]; then
 fi
 
 PORT="${CCC_AGENT_PORT:-7788}"
-# Remote Desktop：2017 Hub 反代需打到本机；默认仍 127.0.0.1（仅本机 Desktop）
-# 对 2017 开放：CCC_AGENT_HOST=0.0.0.0 bash scripts/install-agent-sidecar-plist.sh --start
-HOST="${CCC_AGENT_HOST:-127.0.0.1}"
+# 对话口远程壳需 LAN 可达；默认 0.0.0.0（仅内网）。本机 Desktop 仍走 127.0.0.1:7788。
+# 仅本机：CCC_AGENT_HOST=127.0.0.1 bash scripts/install-agent-sidecar-plist.sh --start
+HOST="${CCC_AGENT_HOST:-0.0.0.0}"
+HUB_URL="${CCC_HUB_URL:-http://192.168.3.116:7777}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"
@@ -191,6 +192,8 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOST}</string>
     <key>CCC_AGENT_PORT</key>
     <string>${PORT}</string>
+    <key>CCC_HUB_URL</key>
+    <string>${HUB_URL}</string>
     <key>CCC_AGENT_CWD</key>
     <string>${CCC_HOME}</string>
     <key>CCC_AGENT_TOKEN</key>
@@ -254,9 +257,8 @@ done
 
 if [[ "$ok" == "1" ]]; then
   echo "✓ ${LABEL} loaded · listen ${HOST}:${PORT} · probe http://${HEALTH_HOST}:${PORT} healthy"
-  if [[ "$HOST" != "127.0.0.1" && "$HOST" != "localhost" ]]; then
-    echo "  Remote Desktop: Hub 可用 CCC_DESKTOP_AGENT_URL=http://<本机LAN>:${PORT}"
-  fi
+  echo "  对话口: http://<本机LAN>:${PORT}/  · Hub 编排: ${HUB_URL}"
+  echo "  Agent Token: ${TOKEN_FILE}（浏览器 localStorage ccc_agent_token）"
 else
   echo "⚠ ${LABEL} loaded but health not ready yet — 见 ${LOG_ERR}"
 fi

@@ -32,7 +32,8 @@ Desktop (SwiftUI)  [M1]
         └─ 信息流 → Hub:7777 → Board / Engine（远端开发）
 ```
 
-网页 Hub：**运维/兼容**，不是主聊天入口。
+网页 Hub：**运维/兼容**（看板/ops），不是主聊天入口。  
+远程 HTTP 对话入口亦在 **M1 `:7788`**；编排 API 在 **2017 `:7777`**（[`hub-remote-management.md`](hub-remote-management.md)）。
 
 会话契约：[`project-as-conversation.md`](project-as-conversation.md)（`{projectId}::main`）。
 

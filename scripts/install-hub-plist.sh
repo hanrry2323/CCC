@@ -50,7 +50,7 @@ if [[ -z "$AGENT_TOKEN_VALUE" && -f "${HOME}/.ccc/agent-token" ]]; then
   AGENT_TOKEN_VALUE="$(tr -d '[:space:]' < "${HOME}/.ccc/agent-token")"
 fi
 if [[ -z "$AGENT_TOKEN_VALUE" ]]; then
-  echo "提示: 未设 CCC_AGENT_TOKEN；Hub Remote Desktop 反代需与 M1 ~/.ccc/agent-token 相同" >&2
+  echo "提示: 未设 CCC_AGENT_TOKEN；遗留 /api/agent 探针需与 M1 ~/.ccc/agent-token 相同（产品聊不经此反代）" >&2
 fi
 
 cat > "$PLIST_STAGED" <<PLIST_EOF

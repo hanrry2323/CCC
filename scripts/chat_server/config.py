@@ -52,7 +52,8 @@ CHAT_DIR.mkdir(parents=True, exist_ok=True)
 # 默认仅本机，避免 RFC1918 + credentials 被同网段网页滥用；扩网段请设 CCC_CHAT_CORS_ORIGIN_REGEX
 CORS_ORIGIN_REGEX = os.environ.get(
     "CCC_CHAT_CORS_ORIGIN_REGEX",
-    r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    # 本机 + 内网 LAN（M1 对话 SPA :7788 → Hub :7777）
+    r"https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
 )
 
 # 禁止历史泄漏 / 空口令；产品约定口令 "ccc" 明确允许

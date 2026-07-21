@@ -59,6 +59,8 @@ ensure_loop_code_config_dir(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser())
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 import uvicorn  # noqa: E402
 
 from chat_server.services.claude_client import (  # noqa: E402
@@ -107,6 +109,22 @@ def _append_turn_ledger(record: dict[str, Any]) -> None:
 
 
 app = FastAPI(title="CCC Agent Sidecar", docs_url=None, redoc_url=None)
+
+# 对话 SPA 在本机 :7788；若 Hub 页跨域打 sidecar，允许内网 Origin
+_cors_regex = os.environ.get(
+    "CCC_AGENT_CORS_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],
+    allow_origin_regex=_cors_regex,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-CCC-Agent-Token"],
+)
+
+FRONTEND_DIR = SCRIPTS / "chat_server" / "frontend"
 
 
 def _load_token_file() -> str:
@@ -212,6 +230,8 @@ async def health():
         "loop_code_sha256_prefix": loop_code_sha256_prefix() or None,
         "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
+        "shell": "dialogue",
+        "hub_base": (os.environ.get("CCC_HUB_URL") or "http://192.168.3.116:7777").rstrip("/"),
         # Desktop 能力契约（不暴露密钥/完整路径）
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
         # Desktop Phase17：请求级 model；plist 定上游出口。标签供 UI/运维对照。
@@ -231,6 +251,40 @@ async def health():
             "model_per_request": True,
             "resume": True,
         },
+    }
+
+
+def _workspace_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    raw = (os.environ.get("CCC_DESKTOP_WORKSPACE_MAP") or "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                out.update({str(k): str(v) for k, v in parsed.items()})
+        except json.JSONDecodeError:
+            pass
+    map_file = Path.home() / ".ccc" / "desktop-workspace-map.json"
+    if map_file.is_file():
+        try:
+            data = json.loads(map_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                out.update({str(k): str(v) for k, v in data.items()})
+        except (json.JSONDecodeError, OSError):
+            pass
+    return out
+
+
+@app.get("/api/shell-config")
+async def shell_config():
+    """对话 SPA 启动配置（无密钥）；Hub base 供 transfer/board 跨机调用。"""
+    hub = (os.environ.get("CCC_HUB_URL") or "http://192.168.3.116:7777").rstrip("/")
+    return {
+        "ok": True,
+        "shell": "dialogue",
+        "agent_base": "",
+        "hub_base": hub,
+        "workspace_map": _workspace_map(),
     }
 
 
@@ -562,10 +616,16 @@ def main() -> None:
             os.close(fd)
         os.environ["CCC_AGENT_TOKEN"] = tok
         print(f"[ccc-agent] generated token → {token_path}", flush=True)
+    # 对话 SPA 静态页（与 Hub 共用 frontend；API 路由已先注册）
+    if FRONTEND_DIR.is_dir() and not any(
+        getattr(r, "path", None) == "/" for r in app.routes
+    ):
+        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="dialogue-ui")
     print(f"[ccc-agent] cli={cli}", flush=True)
     print(f"[ccc-agent] config_dir={cfg}", flush=True)
     print(f"[ccc-agent] router={os.environ.get('ANTHROPIC_BASE_URL')}", flush=True)
     print(f"[ccc-agent] auth=required listen=http://{HOST}:{PORT}", flush=True)
+    print(f"[ccc-agent] dialogue_ui={FRONTEND_DIR if FRONTEND_DIR.is_dir() else 'missing'}", flush=True)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
 

@@ -17,9 +17,9 @@
 
 | 角色 | 机器 | IP | 职责 |
 |------|------|-----|------|
-| **Client（对话）** | M1 | `192.168.3.140` | **CCC Desktop + sidecar `:7788` + arm64 loop-code**；本机会话 SSOT |
+| **Client（对话）** | M1 | `192.168.3.140` | **CCC Desktop + sidecar `:7788` + arm64 loop-code**；本机会话 SSOT；远程浏览器聊亦打此口 |
 | **Server（编排）** | Mac2017 | `192.168.3.116` | Hub API、Board、Engine（Claude 扇出）、OpenCode（dev 写码）、业务工作区、上游 API key |
-| **Client（运维）** | 浏览器 | — | 网页 Hub（降级；看板/运维已迁入 Desktop） |
+| **Client（运维）** | 浏览器 | — | 网页 Hub `:7777`（看板/运维）；**不是**对话入口 |
 
 同一时刻：**只一台 Engine**（Server）。  
 **M1 不跑 Engine、不扇出 work、不在业务仓写码**（边界基线）。
@@ -44,21 +44,22 @@
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **7788** | CCC Agent Sidecar | Desktop 对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
+| **7788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
 
 Sidecar 出口：MiniMax 直连（见上表）。  
-热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md)。
+热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ### Mac2017（编排面）
 
 | 端口 | 服务 | 对外 |
 |------|------|------|
-| **7777** | CCC Hub | 局域网客户端入口（API host：transfer / flow / board / ops） |
+| **7777** | CCC Hub | 局域网编排入口（API host：transfer / flow / board / ops） |
 | **7775** | Board API | 优先仅本机；由 Hub 反代 |
 
 ~~`:4000` / `:4002` 中转已退役，勿再监听、勿再配置。~~
 
-Desktop / API：`http://192.168.3.116:7777`（`CCC_SERVER`）
+Desktop / 编排 API：`http://192.168.3.116:7777`（`CCC_SERVER`）  
+对话口：`http://192.168.3.140:7788`（M1；勿把对话 SPA 挂到 2017）
 
 ---
 
@@ -116,7 +117,7 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 |----|------|
 | Server + Engine | 主线（编排消费） |
 | **CCC Desktop + sidecar + loop-code** | **主产品入口** |
-| 网页 Hub | **运维/兼容** |
+| 网页 Hub | **运维/兼容**（`:7777` 看板/ops；对话远程见 M1 `:7788`） |
 | 手机 | 远期 |
 
 ---

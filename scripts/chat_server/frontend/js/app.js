@@ -212,9 +212,33 @@ async function init() {
   });
 
   try {
+    // 对话壳（M1 :7788）：先读 sidecar shell-config
+    if (String(location.port || '') === '7788' || window.__CCC_SHELL__ === 'dialogue') {
+      window.__CCC_SHELL__ = 'dialogue';
+      window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
+      const sc = await fetch('/api/shell-config').then((r) => r.json()).catch(() => null);
+      if (sc?.hub_base) {
+        window.__CCC_HUB_BASE__ = sc.hub_base;
+        try {
+          localStorage.setItem('ccc_hub_base', sc.hub_base);
+        } catch (_) {}
+      }
+      if (sc?.workspace_map && typeof sc.workspace_map === 'object') {
+        window.__CCC_WORKSPACE_MAP__ = {
+          ...(window.__CCC_WORKSPACE_MAP__ || {}),
+          ...sc.workspace_map,
+        };
+      }
+    }
     const cfg = await loadHubConfig();
     if (cfg?.chat_session_max_live) {
       state.set('maxLiveStreams', cfg.chat_session_max_live);
+    }
+    if (cfg?.desktop_agent_url) {
+      window.__CCC_DESKTOP_AGENT_URL__ = cfg.desktop_agent_url;
+    }
+    if (cfg?.dialogue_url) {
+      window.__CCC_DIALOGUE_URL__ = cfg.dialogue_url;
     }
     if (cfg?.workspace_map && typeof cfg.workspace_map === 'object') {
       window.__CCC_WORKSPACE_MAP__ = {
@@ -230,6 +254,22 @@ async function init() {
           JSON.stringify({ ...prev, ...cfg.workspace_map })
         );
       } catch (_) {}
+    }
+    const banner = document.querySelector('.hub-remote-banner');
+    if (banner) {
+      const { dialogueEntryUrl, isDialogueShell } = await import('./ports.js');
+      if (isDialogueShell()) {
+        banner.textContent =
+          '对话口（M1）：聊走本机 sidecar；看板/下达 → Hub ' +
+          (window.__CCC_HUB_BASE__ || 'http://192.168.3.116:7777');
+      } else {
+        banner.innerHTML =
+          '编排口（Hub）：看板/运维在此。远程聊天请开 <a href="' +
+          dialogueEntryUrl() +
+          '">' +
+          dialogueEntryUrl() +
+          '</a>（M1 :7788）';
+      }
     }
   } catch (_) {
     /* keep default 4 */

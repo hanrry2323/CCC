@@ -9,11 +9,11 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import sessions, files, board, projects, ops, desktop, agent_proxy
+from .routers import sessions, files, board, projects, ops, desktop
 from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
-HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260721remote3")
+HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260721dual2")
 
 
 class NoStoreStaticMiddleware(BaseHTTPMiddleware):
@@ -80,7 +80,11 @@ def create_app() -> FastAPI:
     app.include_router(board.router)
     app.include_router(ops.router)
     app.include_router(desktop.router)
-    app.include_router(agent_proxy.router)
+    # 遗留运维探针：默认关闭；CCC_AGENT_PROXY=1 才挂载（非产品主路径）
+    if (os.environ.get("CCC_AGENT_PROXY") or "").strip() in ("1", "true", "yes"):
+        from .routers import agent_proxy
+
+        app.include_router(agent_proxy.router)
 
     if FRONTEND_DIR.exists():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

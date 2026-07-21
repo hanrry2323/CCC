@@ -32,7 +32,7 @@ export function desktopThreadId(projectId, suffix) {
   return `${pid}::${s}`;
 }
 
-/** M1 本机 project_path（Remote Shell → sidecar） */
+/** M1 本机 project_path（对话口 → sidecar） */
 export function resolveProjectPath(projectId) {
   const pid = projectId || 'ccc';
   const map =

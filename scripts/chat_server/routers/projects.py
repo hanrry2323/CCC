@@ -271,7 +271,7 @@ async def list_skills(
 
 @router.get("/api/hub-config")
 async def hub_config(request: Request):
-    """Hub 客户端配置（Remote Desktop Shell + 并发上限）。"""
+    """Hub 客户端配置（编排口；对话口在 M1）。"""
     check_auth(request)
     import json
     import os
@@ -301,13 +301,18 @@ async def hub_config(request: Request):
         os.environ.get("CCC_DESKTOP_AGENT_URL")
         or os.environ.get("CCC_AGENT_URL")
         or "http://192.168.3.140:7788"
-    )
+    ).rstrip("/")
+    dialogue_url = (
+        os.environ.get("CCC_DIALOGUE_URL") or agent_url
+    ).rstrip("/")
     return {
         "ok": True,
         "chat_session_max_live": hub_config_mod.CHAT_SESSION_MAX_LIVE,
         "chat_session_idle_ttl": hub_config_mod.CHAT_SESSION_IDLE_TTL,
-        "desktop_remote": True,
-        "agent_proxy": "/api/agent",
+        "dual_port": True,
+        "dialogue_url": dialogue_url + "/",
         "desktop_agent_url": agent_url,
+        # 遗留：运维探针，非产品主路径
+        "agent_proxy": None,
         "workspace_map": workspace_map,
     }

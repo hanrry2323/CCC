@@ -7,7 +7,7 @@
 ## 背景
 
 CCC 主产品入口 = **M1 Desktop**（SwiftUI）。看板/运维已原生内嵌 Desktop（`BoardView.swift` / `OpsView.swift`），直接读 Mac2017 编排层（Hub `/api/board` `/api/ops/*`）。  
-网页 Hub 的 `#/board` `#/ops` 曾是过渡冻结面；**2026-07-21** 起网页 Hub 定位为 **Remote Desktop 壳**（对话反代 M1 sidecar），见 [`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
+网页 Hub 的 `#/board` `#/ops` 曾是过渡冻结面；**2026-07-21** 二次纠偏：网页 Hub 仍是 **编排口**（看板/运维），对话远程挂 **M1**，见 [`../product/hub-remote-management.md`](../product/hub-remote-management.md) · [`../product/deprecate-web-hub.md`](../product/deprecate-web-hub.md)。
 
 ## 现状
 

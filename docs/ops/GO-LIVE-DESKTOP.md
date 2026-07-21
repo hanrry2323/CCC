@@ -10,12 +10,30 @@
 | 面 | 怎么用 |
 |----|--------|
 | **CCC Desktop** | `/Applications/CCCDesktop.app`（v0.52.2） |
-| Server | `http://192.168.3.116:7777`（Mac2017 Hub，API host） |
+| Server（编排） | `http://192.168.3.116:7777`（Mac2017 Hub，API host） |
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`**（M1 深度整合为对话意图工具） |
+| 远程浏览器聊 | **M1 `:7788`**（与 Desktop 同口；勿开 2017 `#/chat` 当产品路径） |
 | Mac2017 编排面 | Engine = Claude→MiniMax 扇出；dev = OpenCode→讯飞写码（中转已退役） |
-| 网页 Hub | **运维/兼容**（看板/运维已迁入 Desktop，见 [../deprecate-web-board-ops.md](../deprecate-web-board-ops.md)） |
+| 网页 Hub | **编排口 / 兼容**（`#/board` `#/ops`；见 [`../product/deprecate-web-hub.md`](../product/deprecate-web-hub.md) · 双口 [`../product/hub-remote-management.md`](../product/hub-remote-management.md)） |
 
 默认账号：`ccc` / `ccc`。
+
+## 双口远程验收（浏览器）
+
+| URL | 用途 |
+|-----|------|
+| `http://192.168.3.140:7788/` | **对话口**（设置里填 M1 `~/.ccc/agent-token`） |
+| `http://192.168.3.116:7777/#/board` | **编排口**（Hub Basic `ccc`/`ccc`） |
+
+```bash
+# 双口烟测（勿以 2017 为 chat origin）
+CCC_AGENT=http://192.168.3.140:7788 \
+CCC_SERVER=http://192.168.3.116:7777 \
+  bash scripts/smoke-dual-port-remote.sh
+```
+
+断言：聊直打 M1 `/api/chat`（不经 Hub `/api/agent`）；transfer 在 2017 出 epic。  
+Hub `:7777/#/chat` 会跳转对话口。详见 [`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ## 架构（2026-07-19 对齐后）
 
@@ -82,6 +100,10 @@ python3 scripts/tests/test_ccc_transfer_samples.py
 
 # Desktop UI
 CCC_SERVER=http://192.168.3.116:7777 bash desktop/scripts/smoke-ui-chat.sh
+
+# 双口远程
+CCC_AGENT=http://192.168.3.140:7788 CCC_SERVER=http://192.168.3.116:7777 \
+  bash scripts/smoke-dual-port-remote.sh
 
 # 打包安装
 bash desktop/scripts/package-baseline.sh

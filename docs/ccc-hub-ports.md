@@ -1,35 +1,51 @@
 # CCC Hub 端口 · 账密 · 运维（权威）
 
-> 更新日期：2026-07-16  
-> 产品入口：**唯一** `http://<host>:7777`  
-> 账密：**用户名 `ccc` / 密码 `ccc`**
+> 更新日期：2026-07-21（双口纠偏）  
+> **编排口**：`http://<Mac2017>:7777`（看板 / 运维 / transfer API）  
+> **对话口**：`http://<M1>:7788`（sidecar；见 [`product/hub-remote-management.md`](product/hub-remote-management.md)）  
+> Hub 账密：**用户名 `ccc` / 密码 `ccc`**
 
 ---
 
 ## 1. 一句话
 
-浏览器只记 **`:7777`**，登录 **`ccc` / `ccc`**。看板与控制台都在同一个 Hub 里（`#/board`、`#/console`）。Board 进程只在本机 **`:7775`** 提供 API，由 Hub 反代。
+**两个口**：聊对齐/聊方案打 **M1 `:7788`**；看板与运维打 **Hub `:7777`**（`#/board`、`#/ops`、`#/console`）。  
+Board 进程只在编排机本机 **`:7775`** 提供 API，由 Hub 反代。  
+**不要**再宣传「浏览器只记 `:7777` 含聊天」。
 
 ---
 
 ## 2. 端口
 
-| 端口 | 服务 | 绑定 | 说明 |
+| 端口 | 服务 | 机器 | 说明 |
 |------|------|------|------|
-| **7777** | **CCC Hub** | `0.0.0.0` | UI + Chat SSE + Board 反代 |
-| **7775** | Board API | `127.0.0.1` | 仅本机；勿对局域网直接开 |
+| **7788** | Agent Sidecar | **M1** | 对话热路径（Desktop + 远程聊） |
+| **7777** | **CCC Hub** | **Mac2017** | 编排 UI + Board 反代 + Desktop API |
+| **7775** | Board API | Mac2017 本机 | 仅本机；勿对局域网直接开 |
 | 7776 | Engine stats（若启用） | 本机 | 与 Hub 无关 |
 | 7778 | Cockpit（可选） | 本机 | 旧总控；外链已指向 Hub |
 | ~~8084~~ | 废弃 | — | 旧 Chat；不应再监听 |
 | ~~18084~~ | 测试临时口 | — | pytest 残留应杀掉 |
 
-### Hub 路由
+### 现网 URL
 
 ```
-http://192.168.3.140:7777/#/chat
-http://192.168.3.140:7777/#/board
-http://192.168.3.140:7777/#/console
+# 对话（M1）
+http://192.168.3.140:7788/health
+
+# 编排（Mac2017 Hub）
+http://192.168.3.116:7777/#/board
+http://192.168.3.116:7777/#/ops
+http://192.168.3.116:7777/#/console
 ```
+
+（`#/chat` 挂在 Hub 上会**跳转** M1 对话口，不是产品聊入口。）
+
+### 安全备注
+
+- Sidecar `:7788` 默认可 LAN 访问（`CCC_AGENT_HOST=0.0.0.0`），**仅内网**；须持 `~/.ccc/agent-token`。
+- Hub CORS 默认允许内网 Origin（M1 SPA → 2017 API）。勿在 plist 把 `CCC_CHAT_CORS_ORIGIN_REGEX` 缩回仅 localhost，否则双口 SPA 下达失败。
+- 遗留 Agent 反代：仅 `CCC_AGENT_PROXY=1` 时挂载 `/api/agent/*`。
 
 ---
 
@@ -103,18 +119,22 @@ bash scripts/ccc-autostart-guard.sh disable
 
 ---
 
-## 6. 架构
+## 6. 架构（双口）
 
 ```mermaid
 flowchart LR
-  User[浏览器] -->|Basic ccc:ccc| Hub["Hub :7777"]
-  Hub -->|SSE| Claude[claude CLI]
-  Hub -->|proxy| API["Board :7775"]
+  BrowserChat[浏览器_对话] -->|token| Sidecar["M1_sidecar_7788"]
+  Sidecar --> Loop[loop_code]
+  BrowserOps[浏览器_运维] -->|Basic_ccc| Hub["Hub_7777"]
+  Desktop[Desktop] -->|chat| Sidecar
+  Desktop -->|transfer_board| Hub
+  Hub -->|proxy| API["Board_7775"]
   API --> Disk[".ccc/board/"]
-  Engine[CCC Engine] --> Disk
+  Engine[CCC_Engine] --> Disk
 ```
 
-旧 `ccc-board-ui/index.html`、`board.html` 仅重定向到 Hub；`dashboard.html` 已删除。
+旧 `ccc-board-ui/index.html`、`board.html` 仅重定向到 Hub；`dashboard.html` 已删除。  
+Hub **不做**产品聊天 runtime（见 [`product/hub-remote-management.md`](product/hub-remote-management.md)）。
 
 ---
 

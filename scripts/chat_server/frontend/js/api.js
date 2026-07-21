@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { hubUrl, agentUrl } from './ports.js';
 
 /** Hub Basic Auth：默认用户名/密码均为 ccc；可被 localStorage 覆盖。 */
 function _authHeader(forcePrompt = false) {
@@ -32,8 +33,27 @@ function _headers(json = true, forcePrompt = false) {
   return h;
 }
 
-/** On 401: clear stored password, re-prompt once, retry the request. */
-async function _fetchWithAuth(url, options = {}, json = true) {
+function _agentToken(forcePrompt = false) {
+  let tok = forcePrompt ? '' : localStorage.getItem('ccc_agent_token') || '';
+  if (!tok) {
+    tok =
+      window.prompt(
+        'M1 Agent Token（与 ~/.ccc/agent-token 相同；仅对话口需要）'
+      ) || '';
+    if (tok) localStorage.setItem('ccc_agent_token', tok.trim());
+  }
+  return (tok || '').trim();
+}
+
+function _agentHeaders(json = true, forcePrompt = false) {
+  const h = { Authorization: 'Bearer ' + _agentToken(forcePrompt) };
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+/** Hub 请求（Basic Auth + hubBase）。 */
+async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : hubUrl(pathOrUrl);
   let resp = await fetch(url, {
     ...options,
     headers: { ...(options.headers || {}), ..._headers(json, false) },
@@ -44,6 +64,24 @@ async function _fetchWithAuth(url, options = {}, json = true) {
     resp = await fetch(url, {
       ...options,
       headers: { ...(options.headers || {}), ..._headers(json, true) },
+    });
+  }
+  return resp;
+}
+
+/** Agent sidecar 请求（Bearer + agentBase）；禁止走 Hub /api/agent 反代。 */
+async function _fetchAgent(pathOrUrl, options = {}, json = true) {
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : agentUrl(pathOrUrl);
+  let resp = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
+  });
+  if (resp.status === 401) {
+    localStorage.removeItem('ccc_agent_token');
+    window.showToast?.('Agent Token 无效，请重新输入', 'error');
+    resp = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ..._agentHeaders(json, true) },
     });
   }
   return resp;
@@ -259,26 +297,22 @@ export async function streamChat(
       body.attachments = attachments;
     }
 
-    const resp = await _fetchWithAuth(
-      '/api/agent/api/chat',
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-        signal: abortController.signal,
-      },
-      true
-    );
+    const resp = await _fetchAgent('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal: abortController.signal,
+    }, true);
 
     if (!resp.ok) {
       const errBody = await resp.json().catch(() => ({}));
       const detail = errBody.detail || errBody.message || errBody.error;
       const errText =
         resp.status === 401
-          ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
+          ? 'Agent 鉴权失败 (401)：请填 M1 ~/.ccc/agent-token'
           : resp.status === 403
             ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
             : resp.status === 502 || resp.status === 503
-              ? detail || 'M1 Desktop Agent 不可达（检查反代与 sidecar）'
+              ? detail || 'M1 sidecar 不可达（检查 :7788）'
               : resp.status === 429
                 ? '并发会话已满或会话忙，请稍候'
                 : detail || '请求失败: HTTP ' + resp.status;
@@ -366,8 +400,8 @@ export function cancelStream(tabId) {
       state.get('currentSessionId') || tabId
     );
     try {
-      await _fetchWithAuth(
-        '/api/agent/api/session/drop',
+      await _fetchAgent(
+        '/api/session/drop',
         {
           method: 'POST',
           body: JSON.stringify({

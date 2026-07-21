@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **二次纠偏 · 双口远程**：对话口 = M1 sidecar `:7788`（静态 SPA + loop-code）；编排口 = Mac2017 Hub `:7777`（board / ops / transfer）。废除「挂 2017 SPA + `/api/agent` 反代」产品主路径（`923b9db` 叙事作废）。口径：[`docs/product/hub-remote-management.md`](docs/product/hub-remote-management.md)。烟测：`scripts/smoke-dual-port-remote.sh`。遗留 `/api/agent` 仅当 `CCC_AGENT_PROXY=1`。
+
 ## [v0.52.2] — 2026-07-21
 
 ### Added

@@ -1,7 +1,8 @@
-"""Hub → M1 Desktop Agent Sidecar reverse proxy (Remote Desktop Shell).
+"""Hub → M1 Agent Sidecar reverse proxy（遗留运维探针，非产品主路径）.
 
-Browser talks only to Hub (:7777). Hub injects CCC_AGENT_TOKEN and
-forwards to CCC_DESKTOP_AGENT_URL (default http://192.168.3.140:7788).
+产品双口：浏览器对话直打 M1 :7788；Hub 只做编排。
+本路由可保留供 curl 探活，SPA 不得依赖。
+见 docs/product/hub-remote-management.md
 """
 
 from __future__ import annotations

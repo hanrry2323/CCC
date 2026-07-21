@@ -81,7 +81,7 @@ Clients:  Desktop →（后）Web →（后）Mobile
 
 ### 5.1 刻意不做（半年内）
 
-- 在 Mac2017 再维护**第二套**产品聊天 runtime（HTTP 远程壳必须走 **M1 sidecar**，见 [`hub-remote-management.md`](hub-remote-management.md)）  
+- 在 Mac2017 再维护**第二套**产品聊天 runtime，或把对话 SPA 挂在 Hub `:7777` 再反代 sidecar（双口：对话=M1 / 编排=2017，见 [`hub-remote-management.md`](hub-remote-management.md)）  
 - Desktop 做成第二 IDE（文件树 / 内嵌终端 / MCP 大盘作主轴）  
 - 旁路自动进 Engine 队列  
 - 开局引入 Temporal / LangGraph 重写 Engine  
@@ -117,9 +117,9 @@ Clients:  Desktop →（后）Web →（后）Mobile
 | 健康 | Hub / Board 探活 | 供客户端三态 |
 | 提案（P2） | 列表 / 采纳→transfer | 采纳 = 意图门，不是流水线人批 |
 
-聊天热路径：**M1 Desktop sidecar（loop-code）**。Hub HTTP Remote Shell 经 `/api/agent/*` 反代同一 sidecar，不在 2017 另起聊天槽。
+聊天热路径：**M1 Desktop sidecar（loop-code）**，客户端直连 `:7788`。Hub 只做编排 API；不在 2017 另起聊天槽，也不以 Hub `/api/agent` 为产品主路径。
 
-完整字段表：[`transfer-gate.md`](transfer-gate.md) · API 契约：[`hub-api-v1.md`](hub-api-v1.md) · 远程壳：[`hub-remote-management.md`](hub-remote-management.md)。
+完整字段表：[`transfer-gate.md`](transfer-gate.md) · API 契约：[`hub-api-v1.md`](hub-api-v1.md) · 双口远程：[`hub-remote-management.md`](hub-remote-management.md)。
 
 ---
 
