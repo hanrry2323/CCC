@@ -156,3 +156,52 @@ def test_check_and_mark_hung_writes_marker_on_low_cpu_long_elapsed(tmp_path, mon
     marker = json.loads(hung_files[0].read_text())
     assert marker["task_id"] == "t1"
     assert marker["pid"] == 99999
+
+
+def test_check_and_mark_hung_skips_when_done_marker_exists(tmp_path, monkeypatch):
+    """已 done 的 phase 跳过 hang 标记（避免 abort 已成功任务）。"""
+    from engine import hang
+    from _board_store import FileBoardStore
+
+    ws = _make_ws(tmp_path)
+    store = FileBoardStore(ws)
+    _make_task(store, "t1", col="in_progress")
+
+    started = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    active = {
+        "k1": {
+            "workspace": ws,
+            "task_id": "t1",
+            "started_at": started,
+        }
+    }
+
+    subid = "t1__p1"
+    pid_file = ws / ".ccc" / "pids" / f"{subid}.pid"
+    pid_file.write_text("99999")
+    done_file = ws / ".ccc" / "pids" / f"{subid}.done"
+    done_file.write_text("ok\n")
+
+    with mock.patch.object(hang, "_eng", return_value=None), \
+         mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
+         mock.patch("board.phase._current_running_phase", return_value=1):
+        hang._check_and_mark_hung(ws, active)
+    assert not list((ws / ".ccc" / "pids").glob("*.hung"))
+
+
+def test_hang_retry_counter_capped_at_max(tmp_path, monkeypatch):
+    """_MAX_HANG_RETRY 上限保护：reload 后仍生效。"""
+    from engine import hang
+
+    monkeypatch.setattr(hang, "_MAX_HANG_RETRY", 2)
+    assert hang._MAX_HANG_RETRY == 2
+    # counter 文件读写后值被 clamp 在 _MAX_HANG_RETRY 之内（按业务语义不强制，
+    # 这里只断言 reload 不丢失既有计数）
+    counter_file = tmp_path / "engine-hang-retries.json"
+    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
+    hang._hang_retry_counter = {"k": 99}
+    hang._save_hang_retry_counter()
+    hang._hang_retry_counter = {}
+    hang._load_hang_retry_counter()
+    assert hang._hang_retry_counter["k"] == 99

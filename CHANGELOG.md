@@ -11,7 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase13 编排可靠性门禁**：
+  - `scripts/smoke-ccc-demo-reliability.sh`：reliability 探针（Hub health / 死 pid / active_tasks vs board 一致性 / hang 重试计数 / slot 计数（loopback）/ N 轮 transfer+snapshot + orphan & dead-pid drift）。
+  - `scripts/smoke-hub-shell-gate.sh`：新增 `CCC_HUB_SHELL_TIER=reliability`（独立档）；`full` 自动追加 reliability smoke。
+  - `tests/scripts/test_hang.py`：补「done marker 跳过 hang 标记」+「counter 上限 reload 行为」。
+  - `tests/scripts/test_opencode_slots.py`：修过期断言（F-CON-01 已统一走 `engine.slots`）+ 补「同 ws 互斥」+「release 返 0」+「TTL cache invalidate」三测。
+  - `docs/product/hub-shell-phase13-reliability.md`：验收记录（green，未 bump VERSION）。
+
 ### Fixed
+
+- `tests/scripts/test_opencode_slots.py::test_slot_helpers_use_cross_process_module` 过期断言（已对 `engine.slots` 间接 import 适配）。
 
 ---
 

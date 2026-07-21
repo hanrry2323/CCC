@@ -61,12 +61,22 @@ case "$TIER" in
     run smoke-inbox-adopt.sh
     run smoke-hub-empty-transfer-retry.sh
     ;;
+  reliability)
+    # Phase13 可靠性探针：独立于 full，不含 outage；可在本机 loopback 跑。
+    # 含：hub health / 死 pid 文件 / active_tasks 与 board 一致性 / hang 重试计数 /
+    #     slot 计数（loopback）/ N 轮 transfer+snapshot + orphan & dead-pid drift。
+    run smoke-hub-api-v1.sh
+    run smoke-inbox-adopt.sh
+    run smoke-hub-empty-transfer-retry.sh
+    run smoke-ccc-demo-reliability.sh
+    ;;
   full)
     run smoke-hub-api-v1.sh
     run smoke-inbox-adopt.sh
     run smoke-hub-empty-transfer-retry.sh
     run smoke-ccc-demo-soak.sh
     run smoke-ccc-demo-released.sh
+    run smoke-ccc-demo-reliability.sh
     run smoke-hub-shell-phase9.sh
     if [[ "${CCC_SKIP_OUTAGE:-0}" != "1" ]]; then
       run smoke-hub-outage-outbox.sh
@@ -75,7 +85,7 @@ case "$TIER" in
     fi
     ;;
   *)
-    echo "Unknown CCC_HUB_SHELL_TIER=${TIER} (use fast|full)" >&2
+    echo "Unknown CCC_HUB_SHELL_TIER=${TIER} (use fast|full|reliability)" >&2
     exit 2
     ;;
 esac

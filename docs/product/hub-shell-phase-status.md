@@ -18,4 +18,5 @@
 | Phase10 xianyu 仓卫生 | green | 空板 + 陈旧 .ccc 清理（xianyu `625e317`） | b1f80d7 |
 | Phase11 第三真实仓 xianyu | green | xianyu flow-smoke → released | 11053bf |
 | Phase12 业务向意图 | green | qb README 双机路径（非 flow-smoke） | a1268e0 |
+| Phase13 编排可靠性门禁 | green | reliability tier + hang/slot/orphan 探针（28 单元测）；未 bump VERSION | 见 Phase13 验收文档 |
 | v0.52.1 稳定性门禁 | green | gitignore 假绿 + transfer 空响应重试 + smoke gate；qb-biz-small PASS；`full` 本机绿（outage 因无本机 sidecar 跳过） | fd65284 |
