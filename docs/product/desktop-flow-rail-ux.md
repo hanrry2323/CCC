@@ -45,8 +45,10 @@ Snapshot 增强字段：`headline`、`user_stage`、`goal_summary`、`user_statu
 - 历史 epic 切换：`GET /api/desktop/flow/epics` + 右栏菜单
 - 失败态：跳转运维
 - 空态与扇出超时 hint（人话）
+- **Phase15**：UX 阶段表全档主文案；`goal_summary` 副行；work 卡 `executor_label` / `depends_on_titles` / `failure_note` / testing·running `note` 上卡；reveal 仅新 id stagger；running/failed 强调、done 弱化
 
 ## 后续（非本冲刺）
 
 - 真多列力导向 / 缩放画布（可选差异化）
 - 节点预览接完整 plan/report 文件
+- Phase16：Desktop 本地优先冷启动

@@ -206,4 +206,4 @@ Phase15 DONE
 
 ---
 
-*Brief 作者：规划方 · 实现：Claude · 终验：规划方*
+*Brief 作者：规划方 · 实现：Cursor · 终验：规划方*

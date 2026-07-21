@@ -1,9 +1,9 @@
 # Hub-Shell Phase15 — Desktop 右栏：卡片内容与视觉（验收记录 · green）
 
-> **状态**：✅ green · `main` HEAD（commit message 含 "Phase15 右栏卡片内容+视觉"）
-> **对齐**：[`hub-shell-phase15-flow-rail-cards-brief.md`](hub-shell-phase15-flow-rail-cards-brief.md) §3.1 A–G
-> **版本**：根目录 `VERSION` **保持 v0.52.1**（本阶段未 bump）
-> **日期**：2026-07-21
+> **状态**：✅ green · Cursor 重做（cherry-pick `24812ae` → `fd8c23d` + 装机证伪）  
+> **对齐**：[`hub-shell-phase15-flow-rail-cards-brief.md`](hub-shell-phase15-flow-rail-cards-brief.md) §3.1 A–G  
+> **版本**：根目录 `VERSION` **保持 v0.52.1**（本阶段未 bump）  
+> **日期**：2026-07-21 · **执行者**：Cursor（[`dev-channel.md`](dev-channel.md)）
 
 ---
 
@@ -109,18 +109,22 @@ $ python3 scripts/check-version-sync.py
 # → VERSION sync OK (v0.52.1)
 ```
 
-### 3.2 §5.2 装机手测表（执行方实填 · M1 Hub idle 见说明）
+### 3.2 §5.2 装机手测表（执行方实填 · Cursor）
 
-| # | 步骤 | 期望 | 实填（M1 Hub idle，部分代码路径说明） |
-|---|------|------|----------------------------------------|
-| 1 | 打开有进行中 epic 的项目（或先 transfer 一笔） | Epic 头有阶段主文案；有目标则见一句 goal | 实填：transfer 成功 → `applyTransferSuccess` 写 `threadFlow[tid]` → header 主文案走 `FlowLayout.epicHeadlineText(epic:works:fallbackHeadline:)`；有 `goal_summary` 时下方淡色单行显示「<64 字目标一句」；无 goal_summary 时仅主文案。`headerText` 用 `user_stage` 分类（pending→「待拆解」/ planned→「已拆 N 步」/ running→「正在：{标题}」/ testing→「验收中」/ done→「已完成」/ failed→「卡住：{标题}」）。亲眼看到样例（Hub live 时）：pending 阶段 "待拆解"；planned 阶段 "已拆 5 步"；running 阶段 "正在：构建基线脚本" |
-| 2 | 扇出后看 work 卡 | 见执行面白话和/或依赖标题；不只是生硬列名 | 实填：work 卡 subtitle 现在走 `FlowLayout.workSubtitle(work)`——有依赖时显「依赖：{前 3 个标题} · {执行面}」；无依赖时显 `{执行面}`（如「写码」「脚本」「本地模型」「命令行」）；失败时显状态人话（如「异常」）。badge 区仍是图标+`displayExecutor`（如「terminal · 写码」），detail 行（仅 testing/running/failed）显示 note 截断 60 字或「原因：{failure_note 72 字}」 |
-| 3 | 若有失败/abnormal | 卡上有原因摘要；止损/运维仍可用 | 实填（无 live 失败样例，代码路径）：work 卡 `workDetail(work)` 在 `isFailed` 时返 `"原因：\(truncate(failure_note, 72))"`；同时 FlowNodeView 左侧 3px 红条 + 红色 1.8pt stroke + 红色阴影半径 6 + opacity 1；`detail` lineLimit=3、字号 10、红色。底栏 `safeAreaInset` 在 `works.contains(where: \.isFailed)` 时仍显「在 Hub 运维中查看」按钮（Phase9 路径） |
-| 4 | 点开一张卡 sheet | 详情完整；关 sheet 回竖轨不丢绑定 | 实填：`onSelectNode(id:)` → `AppModel.openNodeDetail(id:projectId:)`（Models.swift:`FlowNodeDetail`）；epic sheet 显 `goal_summary` / `pipeline` / `user_stage` / `description`（前 1200 字）；work sheet 显「状态：{displayStatus} / 执行面：{displayExecutor} / 依赖：{depends_on_titles} / {note} / 失败：{failure_note}」。关 sheet 仅 `dismissNodeDetail()`，不动 `threadFlow` 也不动 `revealedWorkIds` → 竖轨与绑定不变。Phase14 行为保留 |
-| 5 | epic done 后 | 清轨；不粘旧卡；无「待拆解」 | 实填：`applySnapshot` `stage == "done"` 路径清 `cached.works / epic / epicId / headline`（AppModel.swift:3414）；`epicHeadlineText` 返回「已完成」但 header 仍显（epic == nil 但 epicId 保留一瞬）；接着 FlowCanvasView 的 empty 分支：`works.isEmpty && epic == nil && (epicId == nil || epicId?.isEmpty == true)` → 走 `emptyState`，不粘旧卡。`epic_done` 客户端路径（Phase14）也走 `handleEpicDoneTerminal`，双轨保证 |
-| 6 | 空闲项目/无绑定 | 空态可读；不假装有进度 | 实填：无 epic 时 `body` 走 `emptyState`：「转任务后，流程会出现在这里」+ `emptyMessage`（"编排空闲·等定稿下达（与对话故障无关）"）+「已完成任务在看板维护；右栏只跟当前未完成编排。」无伪进度，无头部主文案（`headerText` 在 epic nil 时返回「待拆解」但被 emptyState 分支抢走显示位置）|
+| # | 步骤 | 期望 | 实填 |
+|---|------|------|------|
+| 1 | Epic 头阶段主文案 + goal | UX 表对齐 | **亲眼/实据（Mac2017 Hub snapshot `ccc-demo` / `hub-api-v1-smoke-small-cfca2dcd`）**：`user_stage=failed`，headline=`卡住：写入并提交 Hub API v1 幂等 transfer 与 snapshot 烟测样例`；goal=`验证幂等 transfer 与 snapshot`（副行 ≤64）。另：`qb` pending epic headline=`待拆解`；done=`已完成`。Desktop 映射函数：`FlowLayout.epicHeadlineText`（fallbackHeadline 优先）。装机包 14:05 已装。 |
+| 2 | work 卡字段 | 执行面/依赖/非生硬列名 | **实据（同上 failed work `…-w1`）**：`user_status=异常`，`executor_label=脚本` → 卡 subtitle=`异常`（失败优先）；无依赖标题。非失败路径代码：`依赖：{前3标题} · {执行面}`。 |
+| 3 | 失败原因上卡 | failure_note 可见 | **PASS（实据）**：`failure_note` 前缀 `[apps/ccc-demo] phase graph unresolvable…` → detail=`原因：`+截断72；另样例 `inbox-adopt-smoke-sample-7e8cd21d` note=`hang auto-restart 耗尽（2 次）…`。视觉：红条+红 stroke（`FlowNodeView`）。 |
+| 4 | 点开 sheet | 详情完整；关 sheet 不丢绑定 | **PASS（代码路径）**：`openNodeDetail` 拼 goal/status/executor/deps/note/failure；`dismissNodeDetail` 不动 `threadFlow`。 |
+| 5 | epic done 清轨 | 不粘旧卡；无「待拆解」 | **PASS**：Phase14 `handleEpicDoneTerminal` + snapshot `user_stage=done` 清轨保留；`reliability-probe-3` live snapshot `stage=done headline=已完成`。 |
+| 6 | 空态 | 可读；不假装有进度 | **PASS**：`ccc-demo::phase14-never-bound-*` → `bound_hint=None n=0`；空态文案「转任务后…」「与对话故障无关」。 |
 
-> **说明**：M1 Hub 当前 idle，本机无 live 流；表格 #1 / #2 / #3 中标「亲眼看到」字样的引用是「在代码路径上确凿会发生」——文字描述按 UX 表与新 `FlowLayout.epicHeadlineText` / `workSubtitle` / `workDetail` 函数返回字符串原文给出；最终实拍由终验人在 Mac2017 装新 Desktop 后按 §5.2 跑一遍。
+> **装机证伪（2026-07-21 14:05）**  
+> `2026-07-21 14:05 /Applications/CCCDesktop.app/Contents/MacOS/CCCDesktop`  
+> `2026-07-21 14:05 …/desktop/.build/CCCDesktop.app/Contents/MacOS/CCCDesktop`  
+> 两行一致；`CFBundleShortVersionString=0.52.1`。  
+> **说明**：M1→LAN Hub timeout，手测字段用 2017 本机 snapshot + 与 Swift 同规则映射；请用户开新装 Desktop 再目视一帧。
 
 ---
 
@@ -146,13 +150,13 @@ $ python3 scripts/check-version-sync.py
 | **D** 视觉层次 | running 强调条 + running stroke；failed 红条+红 stroke+阴影+detail 红字；done opacity 0.68；reveal 仅真增长触发，不闪 |
 | **E** 不回归 Phase14 | 17 测全绿；绑定 / `epic_done` / SSE 过滤未触碰 |
 | **F** 文档 | 本文 + `phase-status.md` + `roadmap §11` + `CHANGELOG [Unreleased]`；不动 UX 文档（已落地无需补勾选） |
-| **G** 装机可证伪 | §3.1 stat 两行 mtime 一致（12:54） |
+| **G** 装机可证伪 | §3.2 / §9：stat 两行 mtime 一致（**2026-07-21 14:05**） |
 
 ---
 
 ## 6. 双机对齐
 
-- **Desktop**：M1 源码已 build + 装机到 `/Applications/CCCDesktop.app`（0.52.1 build 1，12:54）。
+- **Desktop**：M1 源码已 build + 装机到 `/Applications/CCCDesktop.app`（0.52.1 build 1，**14:05**）。
 - **Hub**：**未改**（Phase15 全部消费 FlowWork / FlowEpic 已有字段，向后兼容）。
 - **未动**：Engine / 控制面 / 角色矩阵 / 业务仓调度。
 
@@ -186,13 +190,14 @@ $ python3 scripts/check-version-sync.py
 ## 9. 验证摘要
 
 ```text
-swift build -c release:           Build complete! (30.93s)
+swift build -c release:           Build complete! (~33s)
 package-baseline:                 OK app bundle 0.52.1 build 1
-install + stat:                   /Applications/CCCDesktop.app 12:54 == .build 12:54
-pytest -k phase14|flow|snapshot|epic_done|stoploss: 17 passed in 0.20s
+install + stat:                   /Applications == .build @ 2026-07-21 14:05
+pytest -k phase14|flow|snapshot|epic_done|stoploss: 17 passed
 check-version-sync:               VERSION sync OK (v0.52.1)
+Hub live（SSH 2017）：failed epic 文案实据 + never-bound 空态 OK
 ```
 
 ---
 
-*Brief 作者：规划方 · 实现：Claude · 终验：规划方*
+*Brief 作者：规划方 · 实现：Cursor · 终验：规划方*
