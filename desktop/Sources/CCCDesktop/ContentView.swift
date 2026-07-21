@@ -338,11 +338,11 @@ struct CodexSidebar: View {
 
     private var offlineBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(model.canChat ? "Hub 暂不可达" : "本机 Agent 未就绪")
+            Text(model.canChat ? model.hubRetryStatusPhrase : "本机 Agent 未就绪")
                 .font(.system(size: 13, weight: .medium))
             Text(
                 model.canChat
-                    ? "可继续聊；转任务需恢复 Hub。"
+                    ? "可继续聊；转任务需恢复 Hub。后台每 4s 自动重试。"
                     : "对话只走本机 sidecar。设置中确认 Agent 地址，或执行 install-agent-sidecar-plist.sh --start。"
             )
                 .font(CCCTheme.caption)
@@ -759,7 +759,7 @@ struct CodexChatPaneBody: View {
                     .font(.system(size: 10))
                     .foregroundStyle(CCCTheme.faint)
             } else if !model.hubReachable {
-                Text("Hub 暂不可达（后台重试）")
+                Text(model.hubRetryStatusPhrase)
                     .font(.system(size: 10))
                     .foregroundStyle(CCCTheme.secondary)
             }
@@ -1002,6 +1002,42 @@ struct CodexChatPaneBody: View {
                                         }
                                     }
                                 }
+                        }
+                        // 失败提示：在消息流末尾显式给「重试 / 清槽」按钮，避免状态栏太隐蔽
+                        if let fail = model.lastTurnFailure,
+                           fail.threadId == paneThreadId,
+                           !paneStreaming {
+                            HStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(CCCTheme.nodeFail)
+                                Text("本条失败：\(fail.shortLabel)")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(CCCTheme.nodeFail)
+                                Spacer(minLength: 0)
+                                Button("重试") { model.retryLastFailedTurn(threadId: paneThreadId) }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(CCCTheme.accent)
+                                    .help(fail.message)
+                                Button("清槽") { model.healThreadSlot(threadId: paneThreadId) }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(CCCTheme.secondary)
+                                    .help("回收本会话 Agent live 槽后重发")
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(CCCTheme.nodeFail.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(CCCTheme.nodeFail.opacity(0.25), lineWidth: 1)
+                            )
+                            .cornerRadius(10)
+                            .padding(.top, 8)
+                            .frame(maxWidth: CCCTheme.chatMaxWidth)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("本条失败：\(fail.shortLabel)，可重试或清槽")
                         }
                         // tip：钉在视口 y=2/3；下方 Spacer(≈1/3 高) 正好留白
                         Color.clear

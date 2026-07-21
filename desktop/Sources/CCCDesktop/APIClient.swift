@@ -130,7 +130,8 @@ actor APIClient {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 45
         cfg.timeoutIntervalForResource = 120
-        cfg.waitsForConnectivity = true
+        // Hub 短请求：禁止等系统「连通」——Wi‑Fi/路由抖时会拖死远超 timeout
+        cfg.waitsForConnectivity = false
         // 短请求：列表/看板/用量；与 flow SSE 分 session，避免互相堵
         cfg.httpMaximumConnectionsPerHost = 4
         self.session = URLSession(configuration: cfg)
@@ -138,7 +139,7 @@ actor APIClient {
         let chatCfg = URLSessionConfiguration.default
         chatCfg.timeoutIntervalForRequest = 600
         chatCfg.timeoutIntervalForResource = 1800
-        chatCfg.waitsForConnectivity = true
+        chatCfg.waitsForConnectivity = false
         // 本机 sidecar 可多路并行（对话面禁止 Hub chat）
         chatCfg.httpMaximumConnectionsPerHost = 4
         chatCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -147,7 +148,8 @@ actor APIClient {
         let flowCfg = URLSessionConfiguration.default
         flowCfg.timeoutIntervalForRequest = 600
         flowCfg.timeoutIntervalForResource = 1800
-        flowCfg.waitsForConnectivity = true
+        // Flow SSE 重连勿挂系统连通等待
+        flowCfg.waitsForConnectivity = false
         flowCfg.httpMaximumConnectionsPerHost = 1
         flowCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.flowSession = URLSession(configuration: flowCfg)
@@ -494,6 +496,19 @@ actor APIClient {
         // 冷启动/再开：短超时 + 少重试，避免 Hub 抖时「同步中」挂很久
         req.timeoutInterval = 10
         return try await send(req, as: ProjectsResp.self, maxAttempts: 2)
+    }
+
+    struct HubHealthResp: Decodable {
+        let ok: Bool?
+        let ts: String?
+    }
+
+    /// 轻量探活：3s × 1 次；勿用 fetchProjects 当心跳
+    @discardableResult
+    func probeHubHealth() async throws -> HubHealthResp {
+        var req = try authedRequest("api/desktop/health")
+        req.timeoutInterval = 3
+        return try await send(req, as: HubHealthResp.self, maxAttempts: 1)
     }
 
     func fetchThreads(projectId: String) async throws -> [DesktopThread] {

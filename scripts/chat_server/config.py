@@ -41,9 +41,10 @@ CHAT_DRAIN_TIMEOUT = max(2, min(CHAT_DRAIN_TIMEOUT, 60))
 CHAT_WARM_LOCK_WAIT = int(os.environ.get("CCC_CHAT_WARM_LOCK_WAIT", "3"))
 CHAT_WARM_LOCK_WAIT = max(1, min(CHAT_WARM_LOCK_WAIT, 30))
 # 可靠性契约：有心跳 ≠ 有进展。query 后无任何可映射事件 / 工具无结果 → 中断并回收 slot。
-CHAT_FIRST_EVENT_TIMEOUT = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", "45"))
+# Plan 模式可触发 Task/Web 子代理，首包时间放宽到 60s。
+CHAT_FIRST_EVENT_TIMEOUT = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", "60"))
 CHAT_FIRST_EVENT_TIMEOUT = max(10, min(CHAT_FIRST_EVENT_TIMEOUT, 300))
-CHAT_TOOL_STALL_TIMEOUT = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", "60"))
+CHAT_TOOL_STALL_TIMEOUT = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", "90"))
 CHAT_TOOL_STALL_TIMEOUT = max(15, min(CHAT_TOOL_STALL_TIMEOUT, 600))
 # 会话存储目录（测试可设 CCC_CHAT_DIR 指到临时目录，避免污染真实列表）
 CHAT_DIR = Path(os.environ.get("CCC_CHAT_DIR", str(PROJECT_ROOT / ".ccc" / "chat")))

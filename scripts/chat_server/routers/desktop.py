@@ -46,6 +46,16 @@ _EPIC_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 _VALID_PROACTIVE_SOURCES = frozenset({"ci", "git_hook", "external"})
 
 
+@router.get("/health")
+async def desktop_health(request: Request) -> dict[str, Any]:
+    """轻量探活：鉴权后立即返回，不碰 Board / 磁盘。"""
+    check_auth(request)
+    return {
+        "ok": True,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
 def _proactive_payload_hash(payload: Any) -> str:
     raw = json.dumps(
         payload if payload is not None else {},

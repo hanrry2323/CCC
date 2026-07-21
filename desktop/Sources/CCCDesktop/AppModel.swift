@@ -86,6 +86,12 @@ final class AppModel: ObservableObject {
     @Published var connected = false
     /// Hub projects/API 是否刚探测成功（转任务/flow 需要）
     @Published private(set) var hubReachable = false
+    /// Hub 最近一次判失败时刻（可见重试文案）
+    @Published private(set) var hubLastFailureAt: Date?
+    /// 本轮不可达以来的探活失败次数
+    @Published private(set) var hubRecoverAttempts: Int = 0
+    /// 不可达时每轮探活递增，驱动「Ns 前失败」刷新
+    @Published private(set) var hubRecoverTick: UInt64 = 0
     /// Phase16：Hub 后台刷新中（首屏已用本机缓存）
     @Published private(set) var hubSyncing = false
     /// Hub flow SSE 的连接与恢复代次（稳定性诊断）
@@ -698,6 +704,8 @@ final class AppModel: ObservableObject {
                     self.hubRecoverTask = nil
                     break
                 }
+                // 驱动 UI「Ns 前失败」刷新
+                await MainActor.run { self.hubRecoverTick &+= 1 }
                 if await self.probeAndRecoverHub() {
                     self.hubRecoverTask = nil
                     break
@@ -706,15 +714,20 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 轻量探活：projects 一把；成功则 flush + bindFlow。失败静默（勿 toast 刷屏）。
+    /// 轻量探活：health 3s；成功再补 projects / flush。失败静默（勿 toast 刷屏），但刷新 attempts。
     @discardableResult
     private func probeAndRecoverHub() async -> Bool {
         do {
-            try await prepareClient()
-            let resp = try await client.fetchProjects()
-            projects = resp.projects
-            LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+            try await prepareClient(ensureAgent: false)
+            _ = try await client.probeHubHealth()
+            // 探活成功：补全项目列表（失败不挡可达态）
+            if let resp = try? await client.fetchProjects() {
+                projects = resp.projects
+                LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+            }
             setHubReachable(true, source: "hub_recover_probe")
+            hubRecoverAttempts = 0
+            hubLastFailureAt = nil
             let localOK = agentMode == "local"
             connected = localOK || !projects.isEmpty
             lastError = nil
@@ -729,6 +742,9 @@ final class AppModel: ObservableObject {
             }
             return true
         } catch {
+            hubRecoverAttempts += 1
+            hubLastFailureAt = Date()
+            setHubReachable(false, source: "hub_recover_probe", error: error)
             return false
         }
     }
@@ -1015,6 +1031,12 @@ final class AppModel: ObservableObject {
     }
 
     private func setHubReachable(_ reachable: Bool, source: String, error: Error? = nil) {
+        if reachable {
+            hubLastFailureAt = nil
+            hubRecoverAttempts = 0
+        } else {
+            hubLastFailureAt = Date()
+        }
         guard hubReachable != reachable else {
             // 已不可达但探活任务未跑时补启（幂等）
             if !reachable { startHubRecoverLoopIfNeeded() }
@@ -1038,15 +1060,26 @@ final class AppModel: ObservableObject {
             statusText = "已连接 · 本机 Agent"
             agentBadge = "本机 Agent"
         } else if localOK && !hubOK {
-            statusText = "本机 Agent · Hub 暂不可达（可聊）"
+            statusText = "本机 Agent · \(hubRetryStatusPhrase)"
             agentBadge = "本机 Agent"
         } else if !localOK && hubOK {
             statusText = "Hub 可达 · 可转任务 · 本机 Agent 未就绪"
             agentBadge = "本机 Agent 未就绪"
         } else {
-            statusText = "本机 Agent 未就绪 · Hub 不可达"
+            statusText = "本机 Agent 未就绪 · \(hubRetryStatusPhrase)"
             agentBadge = "本机 Agent 未就绪"
         }
+    }
+
+    /// 不可达时的可见重试文案（右栏 / 状态栏共用）
+    var hubRetryStatusPhrase: String {
+        _ = hubRecoverTick // 订阅 tick，保证秒数刷新
+        let attempts = max(hubRecoverAttempts, 1)
+        guard let at = hubLastFailureAt else {
+            return "Hub · 重试中"
+        }
+        let secs = max(0, Int(Date().timeIntervalSince(at)))
+        return "Hub · 重试中 · 第\(attempts)次 · \(secs)s 前失败"
     }
 
     func selectProject(_ id: String) async {
@@ -1642,7 +1675,7 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let detail = try await client.fetchThread(projectId: projectId, threadId: threadId)
             guard threadSwitchGeneration == generation, selectedThreadId == threadId else { return }
             let loaded = detail.messages ?? []
@@ -1671,7 +1704,7 @@ final class AppModel: ObservableObject {
     /// 右栏：本地 boundEpicId 为 SSOT；Hub 列表只作 enrichment，空列表不冲本地
     private func syncFlowFromServer(projectId: String, threadId: String, generation: UInt64) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             // 始终传 ::main，由 Hub 做项目会话视图（刀 2）；过渡期也兼容省略 filter
             let epicsResp = try await client.fetchRecentEpicsDetailed(
                 projectId: projectId,
@@ -2006,7 +2039,7 @@ final class AppModel: ObservableObject {
     /// Hub PUT 会话备份（非权威；Engine 不读；失败入重试队列，本机磁盘为准）
     private func syncMessagesToHub(projectId: String, threadId: String, messages synced: [ChatMessage]) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.syncThreadMessages(
                 projectId: projectId,
                 threadId: threadId,
@@ -2035,7 +2068,7 @@ final class AppModel: ObservableObject {
                 continue
             }
             do {
-                try await prepareClient()
+                try await prepareClient(ensureAgent: false)
                 try await client.syncThreadMessages(
                     projectId: item.project_id,
                     threadId: item.thread_id,
@@ -2078,7 +2111,7 @@ final class AppModel: ObservableObject {
                 client_request_id: item.client_request_id
             )
             do {
-                try await prepareClient()
+                try await prepareClient(ensureAgent: false)
                 let resp = try await client.transfer(req)
                 let ok = await applyTransferSuccess(
                     resp: resp,
@@ -2190,7 +2223,7 @@ final class AppModel: ObservableObject {
     /// 只读同步文案（流程轨/状态栏；无强迫操作按钮）
     var orchestrationSyncLabel: String {
         if hubSyncing { return "本机缓存 · 同步中" }
-        if !hubReachable { return "Hub 暂不可达（后台重试）" }
+        if !hubReachable { return hubRetryStatusPhrase }
         if let eid = currentEpicId, !eid.isEmpty { return "已接上 · 编排中" }
         return "已接上"
     }
@@ -2533,7 +2566,7 @@ final class AppModel: ObservableObject {
         guard hubReachable, !projects.isEmpty else { return }
         let workspaces = projects.compactMap { $0.workspace ?? $0.id }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchBoardSummaries(workspaces: workspaces)
             var newState: [String: String] = [:]
             for proj in projects {
@@ -2725,9 +2758,14 @@ final class AppModel: ObservableObject {
             let mode = Self.promptMode(forUserText: text)
             let tools = resolvedToolMode(forUserText: text, projectId: projectId)
             let modelName = resolvedModel()
-            // 发送前不再 fire-and-forget warm：与 streamChat 抢同一 slot 锁，
-            // 取消/杀进程后半残连接更容易表现为「切一下就连不上」。
+            // 发送前：不抢锁的轻量 health 检查，确保 sidecar 真活着
             setThreadStreamStatus(threadId, "本机生成中…")
+            if let chatBase = await ensureLocalAgent() {
+                if await !client.probeLocalAgent(base: chatBase) {
+                    invalidateAgentProbeCache()
+                    throw APIError.stream(code: "connect_failed", message: "本机 Agent 未就绪，请执行 bash scripts/install-agent-sidecar-plist.sh --start")
+                }
+            }
             if selectedThreadId == threadId {
                 setStatusImmediate("本机生成中…")
             }
@@ -3765,7 +3803,7 @@ final class AppModel: ObservableObject {
         requestId: String
     ) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let resp = try await client.transfer(req)
             let ok = await applyTransferSuccess(
                 resp: resp, tid: tid, pid: pid, requestId: requestId
@@ -4359,7 +4397,7 @@ final class AppModel: ObservableObject {
         flowSSETasks[projectId] = Task { [weak self] in
             while !Task.isCancelled {
                 do {
-                    try await self?.prepareClient()
+                    try await self?.prepareClient(ensureAgent: false)
                     await MainActor.run {
                         let next = (self?.flowConnectionGeneration[projectId] ?? 0) &+ 1
                         self?.flowConnectionGeneration[projectId] = next
@@ -4569,7 +4607,7 @@ final class AppModel: ObservableObject {
             hydrateBoardCacheIfNeeded(projectId: pid)
         }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
             let cols = snap.columns ?? [:]
             applyBoardSnapshot(columns: cols, error: nil)
@@ -4590,7 +4628,7 @@ final class AppModel: ObservableObject {
     func moveBoardTask(_ task: BoardTask, to: String) async {
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.moveTask(taskId: task.id, to: to, workspace: ws)
             await refreshBoard()
         } catch {
@@ -4601,7 +4639,7 @@ final class AppModel: ObservableObject {
     func hideCompletedEpics() async {
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.hideCompletedEpics(workspace: ws)
             // 隐藏后若未开「显示已隐藏」，列表会变少——符合预期
             await refreshBoard()
@@ -4613,7 +4651,7 @@ final class AppModel: ObservableObject {
     func reopenBoardTask(_ task: BoardTask, to: String = "planned") async {
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.reopenTask(taskId: task.id, to: to, workspace: ws)
             await refreshBoard()
         } catch {
@@ -4622,7 +4660,7 @@ final class AppModel: ObservableObject {
     }
 
     func fetchTaskDetail(_ task: BoardTask) async throws -> BoardTaskDetail {
-        try await prepareClient()
+        try await prepareClient(ensureAgent: false)
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"
         return try await client.fetchTaskDetail(taskId: task.id, workspace: ws)
     }
@@ -4632,7 +4670,7 @@ final class AppModel: ObservableObject {
         opsError = nil
         defer { opsBusy = false }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             // 优先用聚合端点（一次拉全）；回退到分立端点
             if let summary = try? await client.fetchOpsSummary() {
                 opsSummary = summary
@@ -4663,7 +4701,7 @@ final class AppModel: ObservableObject {
         opsAdoptError = nil
         defer { inboxAdoptBusy = false }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let resp = try await client.adoptInboxProposal(id: id)
             if resp.ok != true {
                 opsAdoptError = resp.error ?? "采纳失败"
@@ -4681,7 +4719,7 @@ final class AppModel: ObservableObject {
         opsAdoptError = nil
         defer { opsAdoptBusy = false }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.runDailyReview(workspace: workspace)
             await refreshOps()
         } catch {
@@ -4694,7 +4732,7 @@ final class AppModel: ObservableObject {
         opsAdoptError = nil
         defer { opsAdoptBusy = false }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             try await client.adoptSuggestion(workspace: workspace, title: title, description: description, tags: tags)
         } catch {
             opsAdoptError = "采纳失败: \(error.localizedDescription)"
@@ -4984,7 +5022,7 @@ final class AppModel: ObservableObject {
             client_request_id: UUID().uuidString
         )
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let resp = try await client.transfer(req)
             if selectedProjectId == projectId {
                 currentEpicId = resp.epic_id
@@ -5043,7 +5081,7 @@ final class AppModel: ObservableObject {
                          pipeline: String = "dev", executor: String = "opencode",
                          parentId: String? = nil) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             var body: [String: Any] = [
                 "title": title,
                 "description": description,
@@ -5071,7 +5109,7 @@ final class AppModel: ObservableObject {
 
     func updateBoardTask(taskId: String, workspace: String, fields: [String: Any]) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
             let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
             let data = try JSONSerialization.data(withJSONObject: fields)
@@ -5087,7 +5125,7 @@ final class AppModel: ObservableObject {
 
     func deleteBoardTask(taskId: String, workspace: String) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
             let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
             let code = try await client.genericDELETE("api/tasks/\(t)?workspace=\(w)")
@@ -5106,7 +5144,7 @@ final class AppModel: ObservableObject {
 
     func loadTaskArtifacts(taskId: String, workspace: String) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
             let t = taskId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? taskId
             let data = try await client.genericGET("api/desktop/tasks/\(t)/artifacts?workspace=\(w)")
@@ -5124,7 +5162,7 @@ final class AppModel: ObservableObject {
     func retryFailedWork(workId: String, workspace: String) async {
         NotificationManager.requestAuthorization()
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
             let wid = workId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? workId
             let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
@@ -5144,7 +5182,7 @@ final class AppModel: ObservableObject {
 
     func loadFailureAnalysis(workId: String, workspace: String) async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let w = workspace.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? workspace
             let wid = workId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? workId
             let data = try await client.genericGET("api/desktop/flow/works/\(wid)/failures?workspace=\(w)")
@@ -5163,7 +5201,7 @@ final class AppModel: ObservableObject {
 
     func refreshProjectStats() async {
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let ws = projects.compactMap { $0.workspace }
             guard !ws.isEmpty else { return }
             let resp = try await client.fetchBoardSummaries(workspaces: ws)
