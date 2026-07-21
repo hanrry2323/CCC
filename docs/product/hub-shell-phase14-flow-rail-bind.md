@@ -181,9 +181,24 @@ install: /Applications/CCCDesktop.app CFBundleShortVersionString=0.52.1
 bash -n: 0
 ```
 
-### 终验（规划方）
+### 终验（规划方 · 2026-07-21）
 
 ```text
-本地复跑：pytest 17 passed · py_compile/ruff/swift build/version sync OK
-Mac2017：pull → kickstart com.ccc.chat-server → 跑 §5.2 全表（按本文 §2.2 PASS 填实）
+HEAD: a1c9dbf · VERSION v0.52.1
+本地复跑：pytest -k "flow|snapshot|epic_done|stoploss|phase14" → 17 passed
+Mac2017：pull a1c9dbf + kickstart chat-server（短暂 7777 未起，恢复后 projects=200）
+Hub live：
+  - ccc-demo::phase14-never-bound → bound_hint=None, epics=0（空态契约 OK）
+  - ccc-demo::main → bound_hint=最近 epic（项目即对话；见下「残留」）
+装机：执行方声称 12:42 已 cp，但 /Applications 仍停在 11:58（仅 .build 为新）
+  → 终验人已用 .build 重装 /Applications（12:46，二进制与 .build 一致）
+UI §5.2 手测：执行方全部 deferred；终验未开 GUI 点测（待用户打开 App 确认）
 ```
+
+**终验结论：有条件通过（代码 + 契约测 + Hub 对齐 + 装机已补）。**  
+完整 green 还需打开新装 Desktop 过一眼 §5.2 #2–#4。
+
+**残留 / 口径澄清（非本阶段阻断）：**
+
+1. `::main` 仍接受 Hub `bound_hint`（最近一笔）——符合「项目即对话」，与手测表 #1「无绑定=空态」在有历史 epic 的项目上会冲突；真正空态在无历史或非 `::main` 且无 match。  
+2. 执行方报 DONE 时 §5.2 未实跑、装机未真正落到 `/Applications` —— 下阶段 brief 须写死：`stat` 装机 mtime + 至少 1 条 live UI/API 实跑。
