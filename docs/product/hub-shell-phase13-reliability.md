@@ -168,7 +168,9 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=reliability \
 
 ---
 
-## 8. 验证摘要（自验 · 已绿）
+## 8. 验证摘要
+
+### 自验（执行方 · a0c8b4c）
 
 ```text
 py_compile: 4/4 OK
@@ -178,6 +180,14 @@ bash -n: 3/3 OK
 check-version-sync: v0.52.1 OK
 ```
 
-Commit: `feat(hub-shell): Phase13 编排可靠性门禁（reliability tier + 探针 + 28 单元测）`（短 SHA 由 `git log --oneline | grep Phase13` 现场取）
+### 终验（规划方 · 2026-07-21）
 
-Hub live 验证需 Mac2017 实跑（已写明命令与阈值）。
+```text
+本地复跑：pytest 28 passed · py_compile/ruff/bash -n/version sync OK
+Mac2017：pull → HEAD=5ce89de
+CCC_SERVER=http://127.0.0.1:7777 CCC_HUB_SHELL_TIER=reliability
+  → hub-shell-gate PASS tier=reliability
+  → ccc-demo reliability PASS N=3（orphan_delta=0 dead_delta=0）
+```
+
+主交付 commit：`a0c8b4c`；终验补丁：`98fa137` / `ae21081` / `5ce89de`。
