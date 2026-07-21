@@ -70,6 +70,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `578e7fe` |
+| 缺口 | 无 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `applyTransferSuccess` 返回 Bool；空 epic → `failed` + 出队（防毒丸）；`delivered` 仅 epic_id 非空；`accepted` 仅 `engine_wake.ok` 或 `flowConfirmsOrchestrationAccepted`；`setTransferDelivery` 守空 thread；UI 颜色区分 failed/accepted；a11y label 已加。

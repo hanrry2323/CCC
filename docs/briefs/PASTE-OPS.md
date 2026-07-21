@@ -8,46 +8,38 @@
 | 序号 | brief | 状态 | 窗 |
 |------|-------|------|-----|
 | F0 | 建制 | done | — |
-| F1 | 断线恢复 | **done** `eeaf388`（架构已合入；手测可选） | — |
-| F1-2 | 投递三态零谎报 | accepted · **现在开工** | 壳 · **Auto** |
-| F1-3 | （下一批由架构写） | queued | — |
+| F1 | 断线恢复 | done `eeaf388` | — |
+| F1-2 | 投递三态零谎报 | done `578e7fe` | — |
+| F2-1 | soak N=5 + orphan=0 | accepted · **现在开工** | 编排 · **Auto** |
+| F2-2 | （待架构写） | queued | — |
 
 ---
 
-## 粘贴包 A · 壳窗 · F1 已合入（可跳过）
+## 粘贴包 A · 壳窗 / 过桥窗
 
 ```
-F1 已由架构合入：eeaf388。无需再提交断线恢复。
-（可选）按 docs/briefs/2026-07-21-f1-disconnect-recovery.md §7 手测一次；有问题只回贴现象，勿扩范围。
-下一步直接做粘贴包 B。
+本波次 F2-1 只派编排窗。壳 / 过桥待命，无 brief 勿改代码。
 ```
 
 ---
 
-## 粘贴包 B · 壳窗 · F1-2 开工（现在贴这个）
+## 粘贴包 B · 编排窗 · F2-1 开工（现在贴这个）
 
 ```
 模型：Auto
-只认 brief：docs/briefs/2026-07-21-f1-transfer-delivery-honesty.md
-白名单：AppModel.swift / Models.swift / ContentView.swift（仅投递态）
-禁止：改契约字段、改 Engine、改 sidecar、改无关文件。
-做完：填 brief §8 → commit → 回复「F1-2 done <hash>」
+只认 brief：docs/briefs/2026-07-21-f2-soak-orphan-zero.md
+白名单：scripts/engine/ · scripts/board/roles/ · scripts/ccc-engine.py（必要时）
+        scripts/smoke-ccc-demo-soak.sh · scripts/smoke-f1-backlog-failover.sh · tests/scripts/
+        docs/product/hub-shell-phase-status.md（仅新增 F2-1 行）
+禁止：改 Desktop、改 Hub API 字段、改 transfer/flow 契约、改无关文件。
+做完：填 brief §8 → commit → 回复「F2-1 done <hash>」
 提交说明建议：
-fix(desktop): keep transfer delivery phases honest (F1-2)
+test(engine): soak N=5 with orphan_delta=0 and failover regression (F2-1)
 ```
 
 ---
 
-## 粘贴包 C · 过桥窗 / 编排窗
+## 粘贴包 C · 架构窗自动节奏
 
-```
-本波次 F1 / F1-2 默认不开。无 brief 勿改代码。待命。
-```
-
----
-
-## 架构窗自动节奏（给架构自己）
-
-1. 见「F1 committed」→ 确认 git → 必要时补 §9  
-2. 用户贴 B 后壳交付 → 架构验收 F1-2 → 写 F1-3 brief + 更新本 PASTE-OPS  
-3. 重复直至 `four-role-fluency-charter` F1 退出条件满足，再进 F2
+1. 见「F2-1 done」→ 验收 → 写 F2-2 brief（双机版本对齐候选）+ 更新本板  
+2. 重复直至 `four-role-fluency-charter` F2 退出条件满足，再进 F3
