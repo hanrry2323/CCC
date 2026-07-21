@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -42,6 +43,21 @@ from .projects import (
 router = APIRouter(prefix="/api/desktop", tags=["desktop"])
 
 _EPIC_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
+_VALID_PROACTIVE_SOURCES = frozenset({"ci", "git_hook", "external"})
+
+
+def _proactive_payload_hash(payload: Any) -> str:
+    raw = json.dumps(
+        payload if payload is not None else {},
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:24]
+
+
+def _proactive_client_request_id(source: str, payload: Any) -> str:
+    return f"proactive:{source}:{_proactive_payload_hash(payload)}"
 
 
 def _project_workspace(project_id: str) -> str:
@@ -312,6 +328,231 @@ async def transfer_to_epic(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
     return await _transfer_epic_from_body(body)
+
+
+@router.post("/proactive-epic")
+async def proactive_epic(request: Request):
+    """F4-3: CI / git hook 等外部信号 → backlog bug epic（不 wake Engine）。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    return await _proactive_epic_from_body(body)
+
+
+async def _proactive_epic_from_body(body: dict[str, Any]):
+    """Proactive 投递：等价进 backlog；executor_intent=bug；不调用 engine wake。"""
+    errors: list[dict[str, str]] = []
+    project_id = str(body.get("project_id") or body.get("project") or "").strip()
+    if not project_id:
+        errors.append(
+            {"code": "project_not_dispatchable", "message": "缺少 project_id"}
+        )
+
+    source = str(body.get("source") or "").strip().lower()
+    if source not in _VALID_PROACTIVE_SOURCES:
+        errors.append(
+            {
+                "code": "invalid_source",
+                "message": "source 必须为 ci|git_hook|external",
+            }
+        )
+
+    title = str(body.get("title") or "").strip()[:80]
+    if not title:
+        errors.append(
+            {"code": "missing_title", "message": "需要 1–80 字可执行标题"}
+        )
+
+    goal = str(body.get("goal") or "").strip()
+    if not goal:
+        errors.append({"code": "missing_goal", "message": "需要明确目标（goal）"})
+
+    if errors:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": errors[0]["code"],
+                "errors": errors,
+            },
+        )
+
+    try:
+        workspace = _assert_project_dispatchable(project_id)
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict):
+            return JSONResponse(status_code=400, content=exc.detail)
+        raise
+
+    acceptance = body.get("acceptance")
+    if isinstance(acceptance, list):
+        acc_ok = any(str(x or "").strip() for x in acceptance)
+    else:
+        acc_ok = bool(str(acceptance or "").strip())
+    if not acc_ok:
+        acceptance = [f"修复并验证：{goal[:200]}"]
+
+    payload = body.get("payload")
+    if payload is None:
+        payload = {"title": title, "goal": goal}
+
+    client_request_id = str(body.get("client_request_id") or "").strip()
+    if not client_request_id:
+        client_request_id = _proactive_client_request_id(source, payload)
+
+    remembered = flow_events.lookup_transfer_by_client_request(
+        project_id, client_request_id
+    )
+    if remembered:
+        return {
+            "ok": True,
+            "epic_id": remembered["epic_id"],
+            "queued": True,
+            "idempotent_replay": True,
+            "project_id": project_id,
+            "workspace": workspace,
+            "column": "backlog",
+        }
+
+    # 合成 transfer 等价体；executor_intent=bug（扇出 normalize → opencode）
+    transfer_body: dict[str, Any] = {
+        "project_id": project_id,
+        "title": title,
+        "goal": goal,
+        "acceptance": acceptance,
+        "pipeline": str(body.get("pipeline") or "dev").strip() or "dev",
+        "feasibility": "ok",
+        "executor_intent": "bug",
+        "plan_md": str(body.get("plan_md") or "").strip(),
+        "thread_id": str(body.get("thread_id") or "").strip()
+        or flow_events.canonical_conversation_id(project_id),
+        "client_request_id": client_request_id,
+        "complexity": str(body.get("complexity") or "medium"),
+        "payload": payload,
+        "source": source,
+    }
+
+    epic_id = str(body.get("epic_id") or "").strip() or _make_epic_id(title)
+    if not _EPIC_ID_RE.match(epic_id):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "invalid_epic_id",
+                "errors": [{"code": "invalid_epic_id", "message": "epic_id 非法"}],
+            },
+        )
+
+    description = transfer_gate.build_epic_description(
+        {**transfer_body, "executor_intent": "bug"}
+    )
+    # 追加 proactive 元数据（不改 transfer 契约字段）
+    description = (
+        description.rstrip()
+        + f"\n\n## Proactive\n- source: {source}\n"
+        + f"- payload_hash: {_proactive_payload_hash(payload)}\n"
+    )[:10000]
+    plan_md = transfer_gate.build_plan_md(
+        {**transfer_body, "executor_intent": "bug"}
+    )
+
+    note = json.dumps(
+        {
+            "transfer_gate": {
+                "pipeline": transfer_body["pipeline"],
+                "executor_intent": "bug",
+                "feasibility": "ok",
+                "skills_hint": [],
+                "thread_id": transfer_body["thread_id"],
+                "proactive": True,
+                "source": source,
+            }
+        },
+        ensure_ascii=False,
+    )
+
+    task_body: dict[str, Any] = {
+        "id": epic_id,
+        "title": title,
+        "description": description,
+        "status": "backlog",
+        "workspace": workspace,
+        "card_kind": "epic",
+        "split_status": "pending",
+        "complexity": transfer_body["complexity"],
+        "note": note[:2000],
+        "tags": [
+            "proactive",
+            "bug",
+            f"source:{source}",
+            "exec:bug",
+            "desktop-transfer",
+        ],
+    }
+
+    resp = await board_proxy("POST", "/api/tasks", json_body=task_body)
+    if resp.status_code not in (200, 201):
+        try:
+            detail = json.loads(
+                resp.body.decode()
+                if isinstance(resp.body, (bytes, bytearray))
+                else resp.body
+            )
+        except Exception:
+            detail = {"raw": str(resp.body)[:300]}
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={"ok": False, "error": "board_create_failed", "detail": detail},
+        )
+
+    payload_out = _merge_create_payload(
+        resp.body,
+        workspace=workspace,
+        fallback_tid=epic_id,
+        task_body=task_body,
+    )
+    tid = str(payload_out.get("task_id") or epic_id)
+    try:
+        written = _write_seed_artifacts(workspace, tid, plan_md, None)
+        payload_out["seeded"] = written
+    except Exception as exc:
+        payload_out["seed_warning"] = str(exc)[:200]
+
+    thread_id = transfer_body["thread_id"]
+    flow_events.append_event(
+        "epic_created",
+        {
+            "epic_id": tid,
+            "title": title,
+            "project_id": project_id,
+            "workspace": workspace,
+            "executor_intent": "bug",
+            "thread_id": thread_id,
+            "source": source,
+            "proactive": True,
+        },
+    )
+    flow_events.remember_last_epic(
+        project_id,
+        tid,
+        title,
+        thread_id=thread_id,
+        client_request_id=client_request_id,
+    )
+    # F4-3: 不调 _hub_ensure_engine — Engine tick 自取
+
+    return {
+        "ok": True,
+        "epic_id": tid,
+        "queued": True,
+        "idempotent_replay": False,
+        "project_id": project_id,
+        "workspace": workspace,
+        "column": "backlog",
+        "executor_intent": "bug",
+        "seeded": payload_out.get("seeded"),
+    }
 
 
 async def _transfer_epic_from_body(body: dict[str, Any]):

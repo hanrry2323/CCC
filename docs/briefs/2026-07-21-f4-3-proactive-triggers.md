@@ -62,19 +62,19 @@
 
 ## 7. 验收清单
 
-- [ ] `hub-api-v1.md` 先改（端点 + 字段）
-- [ ] `POST /api/desktop/proactive-epic` 实现；幂等
-- [ ] `ccc-ingest-ci-failure.sh` CLI 绿
-- [ ] `proactive-triggers.md` 落地
-- [ ] `tests/scripts/test_proactive_epic.py` 绿（投递 + 幂等 + 鉴权失败 401）
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `hub-api-v1.md` 先改（端点 + 字段）
+- [x] `POST /api/desktop/proactive-epic` 实现；幂等
+- [x] `ccc-ingest-ci-failure.sh` CLI 绿
+- [x] `proactive-triggers.md` 落地
+- [x] `tests/scripts/test_proactive_epic.py` 绿（投递 + 幂等 + 鉴权失败 401）
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | `POST /api/desktop/proactive-epic`（bug epic、幂等 CRID、不 wake）；`ccc-ingest-ci-failure.sh`；hub-api-v1 §3b + proactive-triggers.md | `test_proactive_epic` 绿；`pytest tests/scripts/ -q` 绿 | 是 |
 
 ## 9. 架构验收
 
