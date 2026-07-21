@@ -78,8 +78,9 @@ try:
 except Exception:
     print(0)
 ')
+# Hub 看板入口是 /api/board（无 /api/desktop/board）
 INPROGRESS=$(curl -sf --connect-timeout 5 "${AUTH[@]}" \
-    "${SERVER}/api/desktop/board?workspace=${PROJECT}&include_hidden=1" \
+    "${SERVER}/api/board?workspace=${PROJECT}&include_hidden=1" \
     | python3 -c '
 import json, sys
 try:

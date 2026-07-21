@@ -93,7 +93,9 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=reliability \
     bash scripts/smoke-hub-shell-gate.sh
 ```
 
-> **终验补丁（2026-07-21）**：首版误用不存在的 `GET /api/health`（Hub 404）；已改为与 `smoke-hub-api-v1` 同口径的 `GET /api/desktop/projects`。
+> **终验补丁（2026-07-21）**：  
+> 1) 首版误用 `GET /api/health`（Hub 无此路由）→ 改为 `GET /api/desktop/projects`。  
+> 2) 看板误用 `GET /api/desktop/board` → 改为现网 `GET /api/board`。
 
 
 阈值（可调）：
