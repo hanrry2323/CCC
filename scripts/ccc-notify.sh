@@ -6,6 +6,11 @@
 #   - L2: 桌面通知 + 告警文件
 #   - L3: 桌面通知（sound=Basso）+ 告警文件 + 飞书置顶（v0.8 未接）
 #
+# 静默门（不调 osascript，仍可落告警文件）：
+#   - CCC_NOTIFY=0
+#   - CCC_DRY_RUN=1
+#   - PYTEST_CURRENT_TEST 已设置（pytest 自动注入）
+#
 # 用法：
 #   bash ccc-notify.sh <level> <title> <message>   # L1|L2|L3 三级告警
 #   bash ccc-notify.sh <title> <message>           # Engine 简版（桌面通知）
@@ -14,10 +19,54 @@
 
 set -uo pipefail
 
+_ccc_notify_muted() {
+  # 测试 / dry-run：禁止弹 macOS 桌面通知（避免污染本机通知中心）
+  if [[ "${CCC_NOTIFY:-1}" == "0" ]]; then
+    return 0
+  fi
+  if [[ "${CCC_DRY_RUN:-0}" == "1" ]]; then
+    return 0
+  fi
+  if [[ -n "${PYTEST_CURRENT_TEST:-}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+_ccc_display_notification() {
+  # $1=message $2=title [$3=subtitle-for-L3-only via TITLE already composed]
+  local message="$1"
+  local title="$2"
+  local sound="${3:-}"
+  if _ccc_notify_muted; then
+    echo "[ccc-notify] muted (skip osascript): $title"
+    return 0
+  fi
+  if [[ -n "$sound" ]]; then
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 1 of argv) with title (item 2 of argv) subtitle "需要老板拍板" sound name "Basso"' \
+      -e 'end run' \
+      -- "$message" "$title" \
+      >/dev/null 2>&1 || true
+  else
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 1 of argv) with title (item 2 of argv)' \
+      -e 'end run' \
+      -- "$message" "$title" \
+      >/dev/null 2>&1 || true
+  fi
+}
+
 # Engine 简版：2 参数 → 直接发桌面通知，不阻塞
 if [[ $# -eq 2 ]]; then
   TITLE="$1"
   MESSAGE="$2"
+  if _ccc_notify_muted; then
+    echo "[ccc-notify] muted (skip osascript): $TITLE"
+    exit 0
+  fi
   osascript \
     -e 'on run argv' \
     -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
@@ -42,7 +91,7 @@ mkdir -p "$ALERT_DIR"
 # 验 level
 case "$LEVEL" in
   L1|L2|L3) ;;
-  *) echo "未知 level: $LEVEL（应为 L1/L2/L3）" >&2; exit 1 ;;
+  *) echo "未知 level: $LEVEL（应为 L1|L2|L3）" >&2; exit 1 ;;
 esac
 
 TS=$(date +%Y%m%d-%H%M%S)
@@ -66,21 +115,11 @@ case "$LEVEL" in
     echo "[ccc-notify] L1 (log only) $TITLE: $MESSAGE"
     ;;
   L2)
-    osascript \
-      -e 'on run argv' \
-      -e 'display notification (item 1 of argv) with title (item 2 of argv)' \
-      -e 'end run' \
-      -- "$MESSAGE" "CCC L2: $TITLE" \
-      >/dev/null 2>&1
+    _ccc_display_notification "$MESSAGE" "CCC L2: $TITLE"
     echo "[ccc-notify] L2 sent: $TITLE"
     ;;
   L3)
-    osascript \
-      -e 'on run argv' \
-      -e 'display notification (item 1 of argv) with title (item 2 of argv) subtitle "需要老板拍板" sound name "Basso"' \
-      -e 'end run' \
-      -- "$MESSAGE" "CCC L3: $TITLE" \
-      >/dev/null 2>&1
+    _ccc_display_notification "$MESSAGE" "CCC L3: $TITLE" "Basso"
     echo "[ccc-notify] L3 sent: $TITLE"
     ;;
 esac

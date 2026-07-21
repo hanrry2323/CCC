@@ -86,19 +86,86 @@ def test_notify_l1_creates_alert_file(alert_dir):
 
 
 def test_notify_l2_creates_alert_file(alert_dir):
-    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir)}
+    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir), "CCC_NOTIFY": "0"}
     proc = _run_notify("L2", "test L2", "smoke test", env=env)
     assert proc.returncode == 0
     l2_files = sorted(alert_dir.glob("*-L2.md"), key=lambda p: p.stat().st_mtime)
     assert l2_files
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "muted" in out
 
 
 def test_notify_l3_creates_alert_file(alert_dir):
-    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir)}
+    env = {**os.environ, "CCC_ALERT_DIR": str(alert_dir), "CCC_NOTIFY": "0"}
     proc = _run_notify("L3", "test L3", "smoke test", env=env)
     assert proc.returncode == 0
     l3_files = sorted(alert_dir.glob("*-L3.md"), key=lambda p: p.stat().st_mtime)
     assert l3_files
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "muted" in out
+
+
+def test_notify_muted_by_dry_run(alert_dir):
+    """CCC_DRY_RUN=1 → 仍落文件，不调 osascript"""
+    env = {
+        **os.environ,
+        "CCC_ALERT_DIR": str(alert_dir),
+        "CCC_DRY_RUN": "1",
+        "CCC_NOTIFY": "1",  # 显式开 notify，仍被 DRY_RUN 挡住
+    }
+    env.pop("PYTEST_CURRENT_TEST", None)
+    proc = _run_notify("L2", "dry-run gate", "should not popup", env=env)
+    assert proc.returncode == 0
+    assert list(alert_dir.glob("*-L2.md"))
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "muted" in out
+
+
+def test_notify_muted_by_pytest_env(alert_dir):
+    """仅 PYTEST_CURRENT_TEST 即可静默（不依赖 CCC_NOTIFY=0）"""
+    env = {
+        **os.environ,
+        "CCC_ALERT_DIR": str(alert_dir),
+        "CCC_NOTIFY": "1",
+        "CCC_DRY_RUN": "0",
+        "PYTEST_CURRENT_TEST": "test_notify_muted_by_pytest_env (call)",
+    }
+    proc = _run_notify("L2", "pytest gate", "should not popup", env=env)
+    assert proc.returncode == 0
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "muted" in out
+
+
+def test_notify_engine_brief_muted(alert_dir):
+    """Engine 2 参数简版在 mute 时直接 exit 0、不弹窗"""
+    env = {**os.environ, "CCC_NOTIFY": "0", "CCC_ALERT_DIR": str(alert_dir)}
+    proc = _run_notify("CCC", "brief mute smoke", env=env)
+    assert proc.returncode == 0
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "muted" in out
+
+
+def test_notify_muted_does_not_invoke_osascript(alert_dir, tmp_path):
+    """CCC_NOTIFY=0 时 PATH 里的假 osascript 不得被调用"""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "osascript"
+    fake.write_text("#!/bin/bash\necho OSASCRIPT_CALLED >&2\nexit 99\n")
+    fake.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "CCC_ALERT_DIR": str(alert_dir),
+        "CCC_NOTIFY": "0",
+        "CCC_DRY_RUN": "0",
+    }
+    env.pop("PYTEST_CURRENT_TEST", None)
+    proc = _run_notify("L2", "no-osascript", "must stay silent", env=env)
+    assert proc.returncode == 0
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    assert "OSASCRIPT_CALLED" not in out
+    assert "muted" in out
+    assert list(alert_dir.glob("*-L2.md"))
 
 
 def test_notify_invalid_level():
