@@ -105,17 +105,20 @@ _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · Plan · Desktop 规划面】你是方案搭档：智力拉满、执行权为零。"
     "允许：Read / Glob / Grep / LS / Bash / TodoWrite / WebFetch / WebSearch / Task / Agent；"
-    "可用子代理做代码地图、调研、审查草案，结果汇总进方案，禁止落盘改文件。"
+    "可用子代理做代码定位、调研、审查草案，结果汇总进方案，禁止落盘改文件。"
     "Bash 仅限只读：ls、pwd、head/cat 已有文件；"
-    "业务仓事实（看板/文件/结构/grep/git）必须经 Hub 只读透镜："
-    "`python3 scripts/ccc-hub-lens.py board|tree|file|grep|git <project_id> …`；"
-    "优先透镜 / 本机只读 ccc；业务仓禁止假装有第二树；禁止 `ssh mac2017` / rsync。"
+    "业务仓事实必须经 Hub 只读透镜（禁止写死 2017 绝对路径、禁止 ssh/rsync）："
+    "`python3 scripts/ccc-hub-lens.py board|locate|grep|tree|file|git <project_id> …`；"
+    "优先透镜 / 本机只读 ccc；业务仓禁止假装有第二树。"
+    "【扫风险 / 定稿】禁止只读文档交差。必须：① board live；"
+    "② locate 或 grep 按意图符号/关键词定点收窄（禁止全仓无脑扫）；"
+    "③ 抽 1～3 个相对路径 file 核实；④ 需要时 git summary；再给风险与定稿。"
+    "续查只用透镜返回的相对路径；禁止把 2017 绝对路径抄回本机 Read。"
     "仅当当前对话是 CCC 平台仓（project_id=ccc）且本机映射存在时，才允许对本机 git status/log/diff/show。"
-    "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删文件、重定向写盘。"
+    "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删文件、重定向写盘、擅自 commit。"
     "输出方案与风险、定稿契约；交付物不是仓库 diff。"
-    "问看板/在飞/某文件/目录结构：必须先透镜 live，再答；"
     "对齐基线快照只作开场，不作终局。Hub 不可达 → 明说不可达 + 快照时刻，禁止瞎编。"
-    "短确认、闲聊可直接答。工程师模式仅用于平台仓 ccc。"
+    "短确认、闲聊可直接答（仍有工具可用，不必强开）。工程师模式仅用于平台仓 ccc。"
 )
 
 
@@ -142,39 +145,40 @@ def resolve_tool_mode(
     return mode
 
 
-_WEB_TOOLS = frozenset({"WebFetch", "WebSearch"})
-_WEB_INTENT_RE = re.compile(
-    r"(查网页|搜一下|搜索一下|上网查|官网|WebFetch|WebSearch|https?://)",
-    re.I,
-)
+def tools_for_mode(
+    mode: str,
+    *,
+    user_text: str = "",
+    prompt_mode: str | None = None,
+) -> frozenset:
+    """discuss = 恒全智力只读工具集；engineer = 含写工具。
+
+    已取消 light 零工具 / 剥 Web：短闲聊靠纪律「直接答」，不靠掏空 allowlist。
+    user_text / prompt_mode 保留参数兼容旧调用方。
+    """
+    _ = (user_text, prompt_mode)
+    if (mode or "").strip().lower() == "engineer":
+        return CLAUDE_TOOL_ALLOWLIST_ENGINEER
+    return CLAUDE_TOOL_ALLOWLIST_DISCUSS
 
 
-# Desktop 主路径关键功能：不得零工具，不得因短问砍掉本仓探查 / Web*
+# 兼容旧测试/调用：critical / plan 判定仍可用于观测，不再驱动剥工具
 _CRITICAL_FLOW_RE = re.compile(
     r"(对齐基线|对齐项目基线|下一步|定稿|扫风险|转任务|下达|可以转了|"
-    r"方案|规划|plan|静默探测|静默功课|ccc-transfer)",
-    re.I,
-)
-
-_REPO_PROBE_RE = re.compile(
-    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码|"
-    r"对齐基线|对齐项目基线|定稿|扫风险|下一步|转任务|下达|"
-    r"方案|规划|静默探测|静默功课)",
+    r"方案|规划|plan|透镜|看板|审查|核实|静默探测|静默功课|ccc-transfer)",
     re.I,
 )
 
 
 def is_critical_flow(user_text: str = "") -> bool:
-    """对齐基线 / 下一步 / 定稿 / 方案 / 转任务 等主路径。"""
+    """对齐基线 / 定稿 / 扫风险 / 透镜 等主路径（观测用）。"""
     return bool(_CRITICAL_FLOW_RE.search(user_text or ""))
 
 
 def is_plan_turn(*, user_text: str = "", prompt_mode: str | None = None) -> bool:
-    """规划向回合：定稿/方案/转任务或 prompt_mode=full → 强制全智力工具。"""
-    pm = (prompt_mode or "").strip().lower()
-    if pm == "full":
-        return True
-    return is_critical_flow(user_text)
+    """兼容旧名：discuss 已恒全工具；此函数恒 True（或仍识别关键词）。"""
+    _ = (user_text, prompt_mode)
+    return True
 
 
 def defer_web_tools_for_turn(
@@ -183,51 +187,9 @@ def defer_web_tools_for_turn(
     user_text: str = "",
     prompt_mode: str | None = None,
 ) -> bool:
-    """短问/轻量轮次推迟外网工具；用户明确要上网时不推迟。
-
-    规划向回合（定稿/方案/full）禁止剥 Web*。
-    """
-    if (tool_mode or "").strip().lower() != "discuss":
-        return False
-    text = user_text or ""
-    if _WEB_INTENT_RE.search(text):
-        return False
-    if is_plan_turn(user_text=text, prompt_mode=prompt_mode):
-        return False
-    pm = (prompt_mode or "").strip().lower()
-    if pm == "light" or len(text.strip()) <= 80:
-        return True
+    """已退役：discuss 不再剥 Web*。保留函数签名兼容旧调用。"""
+    _ = (tool_mode, user_text, prompt_mode)
     return False
-
-
-def tools_for_mode(
-    mode: str,
-    *,
-    user_text: str = "",
-    prompt_mode: str | None = None,
-) -> frozenset:
-    if (mode or "").strip().lower() == "engineer":
-        return CLAUDE_TOOL_ALLOWLIST_ENGINEER
-    tools = CLAUDE_TOOL_ALLOWLIST_DISCUSS
-    text = user_text or ""
-    pm = (prompt_mode or "").strip().lower()
-    plan = is_plan_turn(user_text=text, prompt_mode=prompt_mode)
-    # 规划向：强制全集（含 Web/Task），禁止清空 allowlist
-    if plan:
-        return tools
-    # 超短确认 / light 且无读仓意图：零工具直答（规划主路径除外）
-    if (
-        pm == "light"
-        and len(text.strip()) <= 40
-        and not _WEB_INTENT_RE.search(text)
-        and not _REPO_PROBE_RE.search(text)
-    ):
-        return frozenset()
-    if defer_web_tools_for_turn(
-        tool_mode="discuss", user_text=text, prompt_mode=prompt_mode
-    ):
-        return frozenset(tools - _WEB_TOOLS)
-    return tools
 
 BOARD_COLUMNS = [
     "backlog", "planned", "in_progress",

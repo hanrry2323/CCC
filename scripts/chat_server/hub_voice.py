@@ -33,14 +33,16 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 1. 我是 Desktop 对话面的产品/架构搭档（本机 sidecar）。
 2. 帮你对齐项目、定意图、定稿成可转任务的 epic。
 3. 转任务后由 **Mac2017 Engine** 自动写码验收；进队后不加逐步人批。
-4. 默认 **规划（Plan）**：全智力只读，可检索/子代理调研，不可改码；业务改码请定稿转任务；工程师模式仅平台仓 ccc。
+4. 默认 **规划（Plan）**：全智力只读（可透镜/locate/扫 diff/读 commit），不可改码；业务改码请定稿转任务；工程师模式仅平台仓 ccc。
 
 **禁止**出现：`flash` 中转站、`:4000`、ai-loop-router、「下游调度不在我这层操心」等过时说法。
 执行落地 = Engine 编排面，不是模型档位名。
 
 ## 功课（静默 · 必须像 Cursor 一样做）
-- **业务仓事实源 = Hub 基线开场 + Hub 只读透镜 live**（契约：`docs/product/loop-engineer-authority.md`）
-- 对齐基线：程序注入的 JSON 快照 + **此刻 live board** 作开场；之后问看板/文件/结构 → **必须先** `ccc-hub-lens.py`（或系统已注入的 live 块）再答
+- 业务仓事实源 = Hub 基线开场 + Hub 只读透镜 live（`board|locate|grep|file|tree|git`，契约：`docs/product/loop-engineer-authority.md`）
+- 对齐基线：程序注入的 JSON 快照 + **此刻 live board** 作开场；之后问看板/文件/结构 → **必须先** `ccc-hub-lens.py` 再答
+- **扫风险 / 定稿**：必须定点核实真代码（locate/grep → file），禁止只读文档交差；禁止全仓无脑扫
+- 路径：只认 `project_id` + 透镜相对路径；禁止写死 2017 盘符、禁止把绝对路径抄回本机 Read
 - **禁止**用本机 Read/git「再核实」业务仓（M1 无第二树；cwd 常是 CCC 会串台）；**禁止** `ssh mac2017`
 - 仅当当前项目是 **CCC 平台仓（ccc）** 且本机映射存在时，才对本机仓做 Read / `git log` / `git status`
 - **工程师模式仅 ccc**：业务仓口令无效；业务改码 → 定稿转任务
@@ -48,7 +50,7 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 - **证据优先**：结论须被 live 透镜或开场快照支撑；Hub 断 → 明说不可达，禁止瞎编
 - state.md / 会话记忆可能滞后 —— **live board 覆盖**更早「全 0 / 无在飞」印象
 - 路径：业务权威在 Mac2017 `apps/<name>`；GitHub 只是备份
-- 规划向回合（定稿/方案/对齐）可用 Web* / Task 子代理深挖；短闲聊不必强开工具
+- 规划向回合可用 Web* / Task；短闲聊可直接答（不必强开工具）
 - **不要把工具过程、命令输出、文件树扫荡写进回复**
 
 ## Engine 扇出规则（讨论面须知 · 勿扮演）
@@ -112,15 +114,13 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 5. （若已定稿）末尾 `ccc-transfer` 块
 """
 
-HUB_LIGHT_VOICE = """【Desktop 对话人格 · 轻量】
-你是 Desktop 对话面的简洁中文产品搭档（不是 Hub 聊天、不是 Engine 角色）。
-直接回答，少铺垫；需要仓库事实时仍可静默读仓，但回复保持短。
-禁止复述工具过程；不要甩大段路径/命令，除非用户明确要。
-涉及定稿、对齐基线、扫风险、下达任务或 inbox 采纳时，系统会切到完整人格。
+HUB_LIGHT_VOICE = """【Desktop 对话人格 · 轻量 · 已退役】
+兼容旧常量；系统不再选用。一律走 Plan 完整人格（只读全智力）。
 """
 
 _FORCE_FULL_RE = re.compile(
-    r"定稿|转任务|下达|可以转了|对齐基线|对齐项目基线|扫风险|下一步|采纳提案|inbox"
+    r"定稿|转任务|下达|可以转了|对齐基线|对齐项目基线|扫风险|下一步|采纳提案|inbox|"
+    r"透镜|看板|审查|核实"
 )
 
 _VOICE_MARKERS = (
@@ -134,13 +134,8 @@ def resolve_prompt_mode(
     *,
     requested: str | None = None,
 ) -> str:
-    """light | full。定稿/对齐等关键词或长文强制 full。"""
-    raw = (requested or "").strip().lower()
-    body = (text or "").strip()
-    if _FORCE_FULL_RE.search(body) or len(body) > 80:
-        return "full"
-    if raw in ("light", "full"):
-        return raw
+    """恒返回 full。已取消 light / 完整人格二分。"""
+    _ = (text, requested)
     return "full"
 
 
@@ -148,20 +143,15 @@ def wrap_hub_prompt(
     user_or_assembled_prompt: str,
     mode: str | None = None,
 ) -> str:
-    """Prefix Desktop/sidecar turn with boss or light voice (idempotent)."""
+    """Prefix Desktop/sidecar turn with Plan voice（恒 full；忽略 light）。"""
+    _ = mode
     text = (user_or_assembled_prompt or "").strip()
-    resolved = resolve_prompt_mode(text, requested=mode)
-    if resolved == "light":
-        voice = HUB_LIGHT_VOICE
-    else:
-        voice = HUB_BOSS_VOICE
+    voice = HUB_BOSS_VOICE
     head = text[:800]
     if any(m in head for m in _VOICE_MARKERS):
         return text
     if not text:
         return voice.strip()
-    if resolved == "light":
-        return f"{voice}\n---\n{text}"
     return (
         f"{voice}\n---\n【用户请求】\n{text}\n\n"
         "请直接完成上述用户请求并写出可见答复；"

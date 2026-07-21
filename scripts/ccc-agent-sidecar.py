@@ -546,19 +546,24 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     lens_cli = (
         f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
-        f"board|tree|file|grep|git {pid} …"
+        f"board|locate|grep|tree|file|git {pid} …"
     )
     parts = [
         f"【Hub 只读透镜 · Plan · project_id={pid}】",
         f"业务权威在 2017；探查用：{lens_cli}",
         "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
+        "扫风险/定稿：board → locate（或 grep）定点收窄 → file 核实 1～3 个相对路径；禁止只读文档交差。",
+        "续查只用相对 path；禁止写死盘符、禁止把绝对路径抄回本机 Read。",
     ]
     # 常驻：尝试注入 live board（失败也给不可达块）
     ok, block = _fetch_hub_lens_board(pid)
     parts.append(block if ok else block)
-    if _LIVE_REPO_RE.search(user_text or ""):
+    text = user_text or ""
+    if _LIVE_REPO_RE.search(text) or re.search(
+        r"(扫风险|定稿|核实|审查|locate|实现|代码)", text, re.I
+    ):
         parts.append(
-            "用户在问文件/结构：先 Bash 调 ccc-hub-lens，再答；勿凭记忆编路径。"
+            "本轮需代码核实：先 Bash `ccc-hub-lens.py locate` 再 `file`；勿凭记忆编路径。"
         )
     return "\n".join(parts)
 

@@ -1,4 +1,4 @@
-"""对话面 tool_mode：discuss 无写工具；engineer 全量。"""
+"""对话面 tool_mode：discuss 恒全智力只读；engineer 全量可写。"""
 
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ def test_resolve_tool_mode_engineer_explicit_and_phrase():
 
 
 def test_discuss_allowlist_excludes_writes():
-    # 长文 + full：外网 + Task；永不含 Write
     tools = config.tools_for_mode(
         "discuss",
         user_text="请帮我完整梳理产品方案并说明取舍与里程碑风险，不要只回一句话。" * 4,
@@ -44,39 +43,32 @@ def test_discuss_allowlist_excludes_writes():
         assert banned not in tools
 
 
-def test_discuss_critical_flow_keeps_repo_tools():
-    # 规划主路径：不得零工具；含 Bash + Web* + Task；永不含 Write
-    for label in ("对齐基线", "下一步", "定稿", "扫风险", "转任务", "方案"):
+def test_discuss_always_full_tools_including_short_chat():
+    """已取消 light 零工具：短闲聊仍有全集；永不含 Write。"""
+    for label in (
+        "对齐基线",
+        "下一步",
+        "定稿",
+        "扫风险",
+        "转任务",
+        "方案",
+        "先透镜 live",
+        "只回两个字：收到",
+    ):
         tools = config.tools_for_mode(
             "discuss", user_text=label, prompt_mode="light"
         )
-        assert "Read" in tools, label
-        assert "Bash" in tools, label
-        assert "WebFetch" in tools, label
-        assert "Task" in tools, label
+        assert tools == config.CLAUDE_TOOL_ALLOWLIST_DISCUSS, label
+        assert "Read" in tools and "Bash" in tools, label
+        assert "WebFetch" in tools and "Task" in tools, label
         assert "Write" not in tools, label
 
 
-def test_discuss_defers_web_on_light_short_turn():
-    # 超短 light：零工具直答
-    tools = config.tools_for_mode(
-        "discuss", user_text="只回两个字：收到", prompt_mode="light"
-    )
-    assert tools == frozenset()
-    # 中等 light（>40 字）：本地探查，无 Web*（故意避开定稿/下一步等规划关键词）
-    tools_mid = config.tools_for_mode(
-        "discuss",
-        user_text="用三到五句话说明这个产品现在处在什么阶段，主要用户是谁，以及你建议近期该关注哪些体验问题",
-        prompt_mode="light",
-    )
-    assert "Read" in tools_mid
-    assert "Bash" in tools_mid
-    assert "WebFetch" not in tools_mid
-    # 显式要上网 → 不推迟
-    tools_web = config.tools_for_mode(
-        "discuss", user_text="请搜一下官网文档", prompt_mode="light"
-    )
-    assert "WebFetch" in tools_web
+def test_discuss_discipline_mentions_locate_and_risk_scan():
+    d = config.DISCUSS_TOOL_DISCIPLINE
+    assert "locate" in d
+    assert "扫风险" in d
+    assert "Write" in d or "硬禁" in d
 
 
 def test_engineer_allowlist_includes_writes():
@@ -106,12 +98,12 @@ def test_build_options_uses_discuss_tools(monkeypatch):
         model="flash",
         resume_session_id=None,
         tool_mode="discuss",
-        user_text="请帮我完整梳理产品方案并说明取舍与里程碑风险，不要只回一句话。" * 4,
-        prompt_mode="full",
+        user_text="收到",
+        prompt_mode="light",
     )
     allowed = set(captured.get("allowed_tools") or [])
     assert "Write" not in allowed
-    assert "Read" in allowed
+    assert "Read" in allowed and "Bash" in allowed
     assert "Task" in allowed or "Agent" in allowed
     deny = set(captured.get("disallowed_tools") or [])
     assert "Write" in deny and "Edit" in deny
@@ -142,3 +134,15 @@ def test_build_options_preserves_empty_allowlist(monkeypatch):
     # SDK 空 allowlist = 不加 --allowedTools；必须靠 disallowed 真正禁工具
     deny = captured.get("disallowed_tools") or []
     assert "WebFetch" in deny and "Bash" in deny and "Read" in deny
+
+
+def test_resolve_prompt_mode_always_full():
+    from chat_server.hub_voice import resolve_prompt_mode, wrap_hub_prompt
+
+    assert resolve_prompt_mode("hi", requested="light") == "full"
+    assert resolve_prompt_mode("定稿", requested=None) == "full"
+    wrapped = wrap_hub_prompt("先透镜 live 看一下", mode="light")
+    assert "【Desktop 对话人格 · 老板模式" in wrapped
+    assert "【用户请求】" in wrapped
+    assert "先透镜 live 看一下" in wrapped
+    assert "完整人格" not in wrapped

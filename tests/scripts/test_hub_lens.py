@@ -78,6 +78,26 @@ def test_hub_lens_grep(tmp_path: Path):
     assert any("foo" in h["text"] for h in hits["hits"])
 
 
+def test_hub_lens_locate_aggregates_by_file(tmp_path: Path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text(
+        "def transfer():\n    pass\n# transfer helper\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "b.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "other.py").write_text("transfer_once()\n", encoding="utf-8")
+    data = hub_lens.collect_locate(tmp_path, project_id="demo", q="transfer", limit=10)
+    assert data["ok"] is True
+    assert data["file_count"] >= 1
+    paths = [f["path"] for f in data["files"]]
+    assert "src/a.py" in paths
+    top = data["files"][0]
+    assert top["hit_count"] >= 1
+    assert top["previews"]
+    assert "相对" in (data.get("hint") or "")
+
+
 def test_discuss_discipline_mentions_lens():
     assert "ccc-hub-lens" in config.DISCUSS_TOOL_DISCIPLINE
+    assert "locate" in config.DISCUSS_TOOL_DISCIPLINE
     assert "ssh" in config.DISCUSS_TOOL_DISCIPLINE.lower()

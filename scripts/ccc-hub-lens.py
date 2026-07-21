@@ -3,6 +3,7 @@
 
 用法（M1 sidecar / Desktop Agent）：
   python3 scripts/ccc-hub-lens.py board <project_id>
+  python3 scripts/ccc-hub-lens.py locate <project_id> <query> [--limit N]
   python3 scripts/ccc-hub-lens.py tree <project_id> [path] [--depth N]
   python3 scripts/ccc-hub-lens.py file <project_id> <path>
   python3 scripts/ccc-hub-lens.py grep <project_id> <query> [--glob GLOB]
@@ -13,7 +14,7 @@
   CCC_HUB_AUTH  可选 Basic（user:pass）
 
 契约：docs/product/loop-engineer-authority.md
-禁止：ssh mac2017 探业务仓。
+禁止：ssh mac2017 探业务仓。只认 project_id + 相对路径。
 """
 
 from __future__ import annotations
@@ -78,13 +79,14 @@ def main() -> int:
     p = argparse.ArgumentParser(description="CCC Hub readonly lens CLI")
     p.add_argument(
         "cmd",
-        choices=["board", "tree", "file", "grep", "git"],
+        choices=["board", "locate", "tree", "file", "grep", "git"],
         help="lens command",
     )
     p.add_argument("project_id", help="registered project id")
-    p.add_argument("arg", nargs="?", default="", help="path or grep query")
+    p.add_argument("arg", nargs="?", default="", help="path or query")
     p.add_argument("--depth", type=int, default=3)
     p.add_argument("--glob", default="")
+    p.add_argument("--limit", type=int, default=12, help="locate max files")
     p.add_argument("--pretty", action="store_true")
     p.add_argument("--hub", default=DEFAULT_HUB)
     args = p.parse_args()
@@ -92,9 +94,30 @@ def main() -> int:
     base = f"{args.hub.rstrip('/')}/api/desktop/lens/{urllib.parse.quote(args.project_id)}"
     if args.cmd == "board":
         data = _get(f"{base}/board")
-        # human-friendly one-liner first for discuss agents
         if data.get("summary"):
             print(data["summary"])
+        _print(data, pretty=args.pretty)
+        return 0
+    if args.cmd == "locate":
+        if not args.arg:
+            print("usage: ccc-hub-lens.py locate <project_id> <query>", file=sys.stderr)
+            return 1
+        q = urllib.parse.urlencode(
+            {"q": args.arg, "glob": args.glob, "limit": args.limit}
+        )
+        data = _get(f"{base}/locate?{q}")
+        if not args.pretty and data.get("ok"):
+            print(
+                f"# locate q={data.get('q')} files={data.get('file_count')} "
+                f"hits={data.get('hit_total')} as_of={data.get('as_of')}"
+            )
+            for f in data.get("files") or []:
+                print(f"{f.get('hit_count', 0):>3}  {f.get('path')}")
+                for prev in f.get("previews") or []:
+                    print(f"      L{prev.get('line')}: {prev.get('text')}")
+            if data.get("hint"):
+                print(f"# {data['hint']}")
+            return 0
         _print(data, pretty=args.pretty)
         return 0
     if args.cmd == "tree":

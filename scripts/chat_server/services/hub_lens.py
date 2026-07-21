@@ -1,4 +1,4 @@
-"""Hub 只读透镜：在 2017 权威仓上读 board / tree / file / grep / git。
+"""Hub 只读透镜：在 2017 权威仓上读 board / tree / file / grep / locate / git。
 
 契约：docs/product/loop-engineer-authority.md
 供 /api/desktop/lens/* 与 scripts/ccc-hub-lens.py 复用。
@@ -46,6 +46,9 @@ MAX_FILE_BYTES = 100 * 1024
 MAX_TREE_ENTRIES = 400
 MAX_GREP_HITS = 40
 MAX_GREP_LINE = 240
+MAX_LOCATE_FILE_HITS = 80
+MAX_LOCATE_FILES = 12
+MAX_LOCATE_PREVIEWS = 3
 BOARD_COLS = (
     "backlog",
     "planned",
@@ -347,6 +350,74 @@ def _grep_python(
         "count": len(hits),
         "truncated": len(hits) >= max_hits,
         "via": "python",
+    }
+
+
+def collect_locate(
+    root: Path,
+    *,
+    project_id: str,
+    q: str,
+    glob: str = "",
+    limit: int = MAX_LOCATE_FILES,
+) -> dict[str, Any]:
+    """按符号/关键词收窄文件：聚合 grep 命中 → 相对路径 + 预览（代码地图体感）。"""
+    q = (q or "").strip()
+    if not q:
+        raise ValueError("q required")
+    limit = max(1, min(int(limit or MAX_LOCATE_FILES), 30))
+    raw = collect_grep(
+        root,
+        project_id=project_id,
+        q=q,
+        glob=glob,
+        max_hits=MAX_LOCATE_FILE_HITS,
+    )
+    if not raw.get("ok"):
+        return {
+            "ok": False,
+            "project_id": project_id,
+            "q": q,
+            "error": raw.get("error") or "locate failed",
+            "as_of": _now_iso(),
+            "files": [],
+        }
+    by_path: dict[str, dict[str, Any]] = {}
+    for hit in raw.get("hits") or []:
+        path = (hit.get("path") or "").strip()
+        if not path:
+            continue
+        entry = by_path.get(path)
+        if entry is None:
+            entry = {
+                "path": path,
+                "hit_count": 0,
+                "previews": [],
+            }
+            by_path[path] = entry
+        entry["hit_count"] = int(entry["hit_count"]) + 1
+        if len(entry["previews"]) < MAX_LOCATE_PREVIEWS:
+            entry["previews"].append(
+                {
+                    "line": hit.get("line"),
+                    "text": hit.get("text"),
+                }
+            )
+    ranked = sorted(
+        by_path.values(),
+        key=lambda e: (-int(e["hit_count"]), str(e["path"])),
+    )
+    files = ranked[:limit]
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "q": q,
+        "as_of": _now_iso(),
+        "files": files,
+        "file_count": len(files),
+        "hit_total": int(raw.get("count") or 0),
+        "truncated": bool(raw.get("truncated")) or len(ranked) > limit,
+        "hint": "续查用相对 path 调 file；禁止把绝对路径抄回本机 Read",
     }
 
 
