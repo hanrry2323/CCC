@@ -82,6 +82,8 @@ work 卡在列间迁移时，**主动**向 `flow-events.jsonl` 追加 `work_stat
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `4d45d74` |
+| 缺口 | 无 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `flow-events.md` 先改（`work_status` 行加 `from?` + §6 H-2）；`_board_store.move_task` 成功后 hook `_emit_work_status_flow_event`；过滤 `card_kind=="work"` + `to_col` ∈ flow 列 + `from!=to`；payload `{work_id,status,from,epic_id,project_id,executor?}`；异常 warning 不阻塞；epic 跳过；fanout planned 不双写；SSE 保留；测绿；白名单内。

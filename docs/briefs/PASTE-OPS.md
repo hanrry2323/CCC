@@ -29,24 +29,14 @@
 | F4-1 | 显式 Context Engineering | 编排 | 高级 | **done `1ee2080`** |
 | F4-2 | Memory 沉淀（lessons） | 编排 | Auto | **done `4ed4774`** |
 | F4-3 | Proactive 触发（CI/hook） | 编排 | 高级 | **done `580dd92`** |
-| H-2 | `work_status` 后续阶段流事件 | 编排 | Auto | **accepted · 现在开工** |
+| H-2 | `work_status` 后续阶段流事件 | 编排 | Auto | **done `4d45d74`** |
 
 用户点哪条，架构出 brief；否则流水线休眠。
 
 ---
 
-## 粘贴包 B · 编排窗 · H-2 开工（现在贴这个）
+## 粘贴包 B · 编排窗
 
 ```
-模型：Auto
-只认 brief：docs/briefs/2026-07-21-h2-work-status-flow-event.md
-白名单：scripts/_board_store.py（move_task hook）
-        tests/scripts/test_work_status_flow_event.py（新）
-        docs/product/flow-events.md（先改）
-        docs/briefs/2026-07-21-h2-work-status-flow-event.md（填 §8）
-禁止：改 SSE 端点（desktop.py）、改 Desktop、改 fanout 既有 planned 写入、改 transfer/flow 字段、改列迁移规则、改五态机、改无关文件。
-做完：填 brief §8 → commit → 回复「H-2 done <hash>」
-提交说明建议：
-fix(store): persist work_status to flow-events.jsonl on column move (H-2)
-根因：work_status 仅由 fanout(planned)+SSE 产出；列迁移不写。move_task 单点 hook 覆盖所有 role 路径。
+H-2 已合入 4d45d74。无活跃 brief。等用户点下一项。
 ```
