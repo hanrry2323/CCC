@@ -158,6 +158,23 @@ def kb_role() -> dict:
             _extract_agents_suggestions(verdict_file, task_id, source="reviewer")
         )
 
+        # ── Step 3b: F4-2 成功经验沉淀（失败 epic 不记）──
+        ss = str(task.get("split_status") or "")
+        if ss not in ("failed", "blocked") and task.get("status") != "abnormal":
+            try:
+                from _lessons import extract_topic, record_success
+
+                title = str(task.get("title") or "")
+                tags = task.get("tags") if isinstance(task.get("tags"), list) else []
+                tag0 = tags[0] if tags else None
+                if isinstance(tag0, dict):
+                    tag0 = tag0.get("name") or tag0.get("id") or tag0.get("tag")
+                topic = extract_topic(title, tag=str(tag0) if tag0 else None)
+                summary = title.strip() or f"{task_id} released"
+                record_success(get_workspace(), task_id, topic, summary)
+            except Exception as exc:
+                _log.warning("[kb] record_success failed for %s: %s", task_id, exc)
+
         # ── Step 4: 挪 released ──
         move_task(task_id, "verified", "released")
         moved.append(task_id)

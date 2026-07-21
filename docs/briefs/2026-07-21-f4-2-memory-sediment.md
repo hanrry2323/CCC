@@ -57,19 +57,19 @@
 
 ## 7. 验收清单
 
-- [ ] `_lessons.record_success` + `get_lessons_by_topic` 实现
-- [ ] kb 归档时调 `record_success`（失败 epic 不调）
-- [ ] product 注入 `get_lessons_by_topic` 结果
-- [ ] `context-manifest.md` 加 `success_lessons` 项
-- [ ] `tests/scripts/test_lessons_success.py` 绿（record → read → topic match）
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `_lessons.record_success` + `get_lessons_by_topic` 实现
+- [x] kb 归档时调 `record_success`（失败 epic 不调）
+- [x] product 注入 `get_lessons_by_topic` 结果
+- [x] `context-manifest.md` 加 `success_lessons` 项
+- [x] `tests/scripts/test_lessons_success.py` 绿（record → read → topic match）
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | `record_success` / `get_lessons_by_topic` / `extract_topic`；kb verified→released 沉淀；product「## 同主题经验」；失败 json 路径未改 | `test_lessons_success` + `pytest tests/scripts/ -q` 绿 | 是 |
 
 ## 9. 架构验收
 

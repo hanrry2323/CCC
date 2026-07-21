@@ -124,3 +124,161 @@ def auto_append_lesson_md(
     )
     with open(lessons_md, "a", encoding="utf-8") as f:
         f.write(entry)
+
+
+# ── F4-2: success lessons by topic ───────────────────────────────────
+
+# 长词优先；title 含左侧关键词 → 右侧 topic slug（不做 NLP）
+_TOPIC_KEYWORD_MAP: tuple[tuple[str, str], ...] = (
+    ("断线恢复", "disconnect-recovery"),
+    ("投递三态", "delivery-tri-state"),
+    ("断线", "disconnect"),
+    ("投递", "delivery"),
+    ("扇出", "fanout"),
+    ("门禁", "gate"),
+    ("验收", "acceptance"),
+    ("回测", "regress"),
+    ("归档", "archive"),
+    ("上下文", "context"),
+    ("流畅", "fluency"),
+    ("disconnect", "disconnect"),
+    ("delivery", "delivery"),
+    ("fanout", "fanout"),
+)
+
+_SUCCESS_SECTION_RE = re.compile(
+    r"^## success · (?P<ts>\S+)\s*\n(?P<body>.*?)(?=^## success · |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+_FIELD_RE = re.compile(
+    r"^\s*[-*]\s*\*\*(?P<k>task_id|topic|summary)\*\*\s*:\s*(?P<v>.*?)\s*$",
+    re.MULTILINE,
+)
+
+
+def sanitize_topic(raw: str) -> str:
+    """文件名安全 topic：小写、空白→-、保留字母数字与 unicode 词字符。"""
+    s = (raw or "").strip().lower()
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"[^\w\-]+", "", s, flags=re.UNICODE)
+    s = re.sub(r"-{2,}", "-", s).strip("-_")
+    return (s[:64] or "general")
+
+
+def extract_topic(title: str, tag: str | None = None) -> str:
+    """从 title 关键词或 tag 提取 topic slug。"""
+    if tag and str(tag).strip():
+        tag_s = str(tag).strip()
+        for kw, slug in _TOPIC_KEYWORD_MAP:
+            if kw.lower() in tag_s.lower() or kw in tag_s:
+                return sanitize_topic(slug)
+        return sanitize_topic(tag_s)
+    text = title or ""
+    lower = text.lower()
+    for kw, slug in _TOPIC_KEYWORD_MAP:
+        if kw.lower() in lower or kw in text:
+            return sanitize_topic(slug)
+    return sanitize_topic(text) if text.strip() else "general"
+
+
+def record_success(
+    ws_path: Path, task_id: str, topic: str, summary: str
+) -> dict:
+    """写/追加 `.ccc/lessons/<topic>.md` 成功经验段（人可读 + 机可注入）。"""
+    topic_slug = sanitize_topic(topic)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    record = {
+        "task_id": task_id,
+        "topic": topic_slug,
+        "summary": summary or "",
+        "timestamp": ts,
+        "kind": "success",
+    }
+    out = _lessons_dir(ws_path) / f"{topic_slug}.md"
+    section = (
+        f"## success · {ts}\n\n"
+        f"- **task_id**: {task_id}\n"
+        f"- **topic**: {topic_slug}\n"
+        f"- **summary**: {summary or ''}\n\n"
+    )
+    if out.is_file():
+        existing = out.read_text(encoding="utf-8", errors="replace")
+        if not existing.endswith("\n"):
+            existing += "\n"
+        out.write_text(existing + section, encoding="utf-8")
+    else:
+        header = f"# Success lessons · {topic_slug}\n\n"
+        out.write_text(header + section, encoding="utf-8")
+    return record
+
+
+def _parse_success_md(path: Path) -> list[dict]:
+    """解析单个 topic markdown 中的 success 段。"""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    file_topic = path.stem
+    items: list[dict] = []
+    for m in _SUCCESS_SECTION_RE.finditer(text):
+        fields = {fm.group("k"): fm.group("v").strip() for fm in _FIELD_RE.finditer(m.group("body"))}
+        items.append(
+            {
+                "task_id": fields.get("task_id", ""),
+                "topic": fields.get("topic") or file_topic,
+                "summary": fields.get("summary", ""),
+                "timestamp": m.group("ts"),
+                "kind": "success",
+                "source": path.name,
+            }
+        )
+    return items
+
+
+def get_lessons_by_topic(
+    ws_path: Path, topic: str, count: int = 5
+) -> list[dict]:
+    """按文件名 / 段落关键词匹配成功 lessons，返回最近 count 条。"""
+    lessons_dir = ws_path / ".ccc" / "lessons"
+    if not lessons_dir.is_dir():
+        return []
+    topic_slug = sanitize_topic(topic)
+    if not topic_slug:
+        return []
+    items: list[dict] = []
+    seen_paths: set[Path] = set()
+
+    preferred = lessons_dir / f"{topic_slug}.md"
+    if preferred.is_file():
+        items.extend(_parse_success_md(preferred))
+        seen_paths.add(preferred.resolve())
+
+    try:
+        md_files = sorted(lessons_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        md_files = []
+
+    for fp in md_files:
+        try:
+            resolved = fp.resolve()
+        except OSError:
+            continue
+        if resolved in seen_paths:
+            continue
+        name_match = topic_slug in fp.stem.lower() or fp.stem.lower() in topic_slug
+        body_match = False
+        if not name_match:
+            try:
+                body = fp.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            lower = body.lower()
+            body_match = topic_slug in lower or any(
+                kw.lower() in lower for kw, slug in _TOPIC_KEYWORD_MAP if slug == topic_slug
+            )
+        if name_match or body_match:
+            items.extend(_parse_success_md(fp))
+            seen_paths.add(resolved)
+
+    items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return items[: max(0, int(count))]

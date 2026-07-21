@@ -77,6 +77,32 @@ from board.roles.common import (
 _GET_CODE_CONTEXT_TTL_S = 300.0
 _get_code_context_cache: dict[str, tuple[str, float]] = {}
 
+
+def _success_lessons_block(task: dict) -> str:
+    """F4-2: 按当前 task title/tag 主题匹配成功 lessons，供 prompt 注入。"""
+    try:
+        from _lessons import extract_topic, get_lessons_by_topic
+    except ImportError:
+        return ""
+    title = str(task.get("title") or "")
+    tags = task.get("tags") if isinstance(task.get("tags"), list) else []
+    tag0 = tags[0] if tags else None
+    if isinstance(tag0, dict):
+        tag0 = tag0.get("name") or tag0.get("id") or tag0.get("tag")
+    topic = extract_topic(title, tag=str(tag0) if tag0 else None)
+    try:
+        items = get_lessons_by_topic(get_workspace(), topic, count=5)
+    except Exception:
+        return ""
+    if not items:
+        return ""
+    lines = [
+        f"- [{it.get('task_id', '?')}] {str(it.get('summary') or '')[:120]}"
+        for it in items
+    ]
+    return "\n".join(lines)
+
+
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     """调 Product Sessionful Contract Loop 生成 plan.md + phases.json。"""
     task_id = task["id"]
@@ -124,6 +150,9 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
         lessons_text = (ctx.get("recent_lessons") or "").strip()
         if lessons_text:
             body += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
+        success_text = _success_lessons_block(task)
+        if success_text:
+            body += f"\n\n## 同主题经验\n{success_text}"
         return body
 
     prompt = _build_prompt(True)
@@ -466,6 +495,9 @@ def launch_product_async(task_id: str) -> dict:
     lessons_text = (ctx.get("recent_lessons") or "").strip()
     if lessons_text:
         prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
+    success_text = _success_lessons_block(task)
+    if success_text:
+        prompt += f"\n\n## 同主题经验\n{success_text}"
 
     # 3. 写 prompt 文件
     prompt_file = pids_dir / f"{task_id}.product.prompt.md"
