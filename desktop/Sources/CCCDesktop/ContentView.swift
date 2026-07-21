@@ -550,6 +550,25 @@ struct CodexChatPaneBody: View {
         return model.statusText
     }
 
+    /// 投递态前景色：failed 醒目；queued/delivering 中性；accepted 成功感；delivered 不伪装受理
+    private func deliveryPhaseForeground(_ phase: TransferDeliveryPhase) -> Color {
+        switch phase {
+        case .failed: return CCCTheme.nodeFail
+        case .accepted: return CCCTheme.nodeDone
+        case .queued, .delivering: return CCCTheme.secondary
+        case .delivered, .draft: return CCCTheme.secondary
+        }
+    }
+
+    private func deliveryPhaseBackground(_ phase: TransferDeliveryPhase) -> Color {
+        switch phase {
+        case .failed: return CCCTheme.nodeFail.opacity(0.12)
+        case .accepted: return CCCTheme.nodeDone.opacity(0.14)
+        case .queued, .delivering: return CCCTheme.secondary.opacity(0.12)
+        case .delivered, .draft: return CCCTheme.secondary.opacity(0.12)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !model.dismissedFirstRunTip {
@@ -742,12 +761,14 @@ struct CodexChatPaneBody: View {
                phase != .draft {
                 Text(phase.label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(phase == .failed ? CCCTheme.nodeFail : CCCTheme.secondary)
+                    .foregroundStyle(deliveryPhaseForeground(phase))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
                     .background(
-                        Capsule().fill(CCCTheme.secondary.opacity(0.12))
+                        Capsule().fill(deliveryPhaseBackground(phase))
                     )
+                    .accessibilityLabel("投递态 \(phase.label)")
+                    .accessibilityValue(phase.rawValue)
             }
             if model.agentWarming {
                 Text("预热中")

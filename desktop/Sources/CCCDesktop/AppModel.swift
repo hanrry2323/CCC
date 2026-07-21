@@ -1947,9 +1947,14 @@ final class AppModel: ObservableObject {
             do {
                 try await prepareClient()
                 let resp = try await client.transfer(req)
-                LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
-                await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
-                delivered += 1
+                let ok = await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
+                if ok {
+                    LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
+                    delivered += 1
+                } else {
+                    // 空 epic 等：态已 failed；出队避免毒丸死循环
+                    LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
+                }
             } catch {
                 _ = LocalSessionStore.bumpTransferAttempt(clientRequestId: item.client_request_id)
                 setTransferDelivery(item.thread_id, .queued)
@@ -1964,18 +1969,40 @@ final class AppModel: ObservableObject {
     }
 
     private func setTransferDelivery(_ threadId: String, _ phase: TransferDeliveryPhase) {
+        guard !threadId.isEmpty else { return }
         var copy = transferDeliveryByThread
         copy[threadId] = phase
         transferDeliveryByThread = copy
     }
 
-    private func applyTransferSuccess(resp: TransferResponse, tid: String, pid: String) async {
+    /// flow/snapshot 或 recentEpics 是否已确认编排看见该 epic（≠ 仅本机 prefer 绑定）
+    private func flowConfirmsOrchestrationAccepted(threadId: String, epicId: String) -> Bool {
+        guard let snap = threadFlow[threadId] else { return false }
+        if snap.recentEpics.contains(where: { $0.epic_id == epicId }) { return true }
+        if let epic = snap.epic {
+            let id = (epic.id ?? snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if id == epicId { return true }
+        }
+        if !snap.works.isEmpty, snap.epicId == epicId { return true }
+        return false
+    }
+
+    /// delivered → accepted（仅本 thread；他 thread 不覆盖）
+    private func promoteTransferAcceptedIfNeeded(threadId: String, epicId: String) {
+        guard transferDeliveryByThread[threadId] == .delivered else { return }
+        guard !epicId.isEmpty else { return }
+        setTransferDelivery(threadId, .accepted)
+    }
+
+    /// - Returns: true 仅当 epic_id 非空并已进入 delivered（或进一步 accepted）
+    @discardableResult
+    private func applyTransferSuccess(resp: TransferResponse, tid: String, pid: String) async -> Bool {
         let eid = (resp.epic_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !eid.isEmpty else {
             // 禁止空 epic_id 驱动 ui / fanout（Phase6：空前缀会误匹配全板）
             setTransferDelivery(tid, .failed)
             showToast("转任务失败：Hub 未返回 epic_id")
-            return
+            return false
         }
         if selectedProjectId == pid {
             selectedThreadId = tid
@@ -1992,12 +2019,14 @@ final class AppModel: ObservableObject {
         persistCurrentThreadSnapshot(threadId: tid)
         dismissTransferSheet(threadId: tid)
         resetTransferForm(threadId: tid)
+        // HTTP 成功 + epic_id → delivered；禁止直接跳 accepted
         setTransferDelivery(tid, .delivered)
         statusText = "已转任务"
-        var toastMsg = "已创建待办 \(eid)"
+        var toastMsg = "已投递 \(eid)"
         if resp.idempotent_replay == true {
-            toastMsg = "已受理（幂等）\(eid)"
+            toastMsg = "已投递（幂等）\(eid)"
         }
+        // 既有受理信号：engine_wake.ok
         if resp.engine_wake?.ok == true {
             toastMsg += " · Engine 已唤醒"
             setTransferDelivery(tid, .accepted)
@@ -2006,10 +2035,13 @@ final class AppModel: ObservableObject {
         lastAnimatedEpicId = nil
         flowSplitGeneration &+= 1
         await bindFlowToThread(projectId: pid, preferEpicId: eid)
-        if transferDeliveryByThread[tid] != .accepted {
+        // 仅当 flow/snapshot 真确认编排看见，才从 delivered 升 accepted
+        if transferDeliveryByThread[tid] == .delivered,
+           flowConfirmsOrchestrationAccepted(threadId: tid, epicId: eid) {
             setTransferDelivery(tid, .accepted)
         }
         startFanoutWatchdog(epicId: eid, projectId: pid)
+        return true
     }
 
     static func promptMode(forUserText text: String) -> String {
@@ -3631,6 +3663,10 @@ final class AppModel: ObservableObject {
         bumpFlowRevision(tid)
         if isSelected {
             applyFlowSnapshot(cached)
+        }
+        // Hub snapshot 非空且带 epic → 编排面已看见；delivered 升 accepted（按 thread）
+        if let eid, !eid.isEmpty {
+            promoteTransferAcceptedIfNeeded(threadId: tid, epicId: eid)
         }
     }
 

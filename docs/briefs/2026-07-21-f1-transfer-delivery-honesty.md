@@ -64,7 +64,7 @@
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 壳 | | | |
+| 壳 | 去掉 bindFlow 后无条件 `accepted`；仅 `epic_id`→`delivered`，`engine_wake`/`flowConfirms`/`applySnapshot`→`accepted`；flush 仅成功计数；态按 thread；状态栏分色 | 审阅全部 `setTransferDelivery` 符合 §6；`swift build` 绿 | ✅ |
 
 ## 9. 架构验收
 

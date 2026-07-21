@@ -298,7 +298,13 @@ struct InboxProposal: Identifiable, Decodable, Hashable {
     let path: String?
 }
 
-/// 投递三态（hub-shell-roadmap / hub-api-v1）
+/// 投递态（对齐 hub-api-v1 §1；queued/delivering/failed 为机状态）
+/// - draft：本机定稿未过桥
+/// - queued：Hub 不可达，outbox 待投
+/// - delivering：正在 POST /transfer
+/// - delivered：HTTP 成功且 epic_id 非空（≠ 编排已看见）
+/// - accepted：编排面已看见（engine_wake 或 flow/snapshot）
+/// - failed：不可重试失败（须可见短因）
 enum TransferDeliveryPhase: String, Codable, Equatable {
     case draft
     case queued
