@@ -12,7 +12,6 @@
 //   - 子进程在独立的 process group (macOS: posix_spawnattr_setpgroup) 中，
 //     退出时 kill 整个 group，避免 uvicorn worker 残留
 
-use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -84,29 +83,10 @@ impl Drop for ServerHandle {
     }
 }
 
-/// 探测 127.0.0.1:<port>/ 是否可连接（HTTP 200 视为就绪）。
-/// 不解析 HTTP body，纯 TCP connect 即可。
+/// 探测 127.0.0.1:<port> 是否可连接。
+/// 纯 TCP connect 成功即视为就绪，不发送 HTTP / Authorization（避免硬编码凭证入二进制）。
 fn probe_ready(port: u16) -> bool {
-    match TcpStream::connect(("127.0.0.1", port)) {
-        Ok(mut s) => {
-            s.set_read_timeout(Some(Duration::from_millis(500))).ok();
-            s.set_write_timeout(Some(Duration::from_millis(500))).ok();
-            // 极简 HTTP/1.0 GET
-            let req = format!(
-                "GET / HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Basic Y2NjOmNsYXVkZTIwMjY=\r\n\r\n"
-            );
-            if s.write_all(req.as_bytes()).is_err() {
-                return false;
-            }
-            let mut buf = [0u8; 64];
-            if s.read(&mut buf).is_err() {
-                return false;
-            }
-            // 任何 HTTP 响应（2xx/401/200）都认为端口在响应
-            buf.starts_with(b"HTTP/")
-        }
-        Err(_) => false,
-    }
+    TcpStream::connect(("127.0.0.1", port)).is_ok()
 }
 
 /// 检测端口是否已被占用（用 connect 一次判定）

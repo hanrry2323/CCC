@@ -25,32 +25,11 @@ mkdir -p "$CCC_PLIST_STAGED" "${HOME}/.ccc/logs"
 PATH_EXTRA="${HOME}/.local/bin:${HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 LOG_OUT="${HOME}/.ccc/logs/ccc-chat-server.log"
 LOG_ERR="${HOME}/.ccc/logs/ccc-chat-server.err"
-MINIMAX_KEY_FILE="${HOME}/.ccc/minimax-api-key"
-# Hub 扇出 Claude：默认直连 MiniMax；CCC_HUB_ROUTER=http://127.0.0.1:4000 可回退中转
-if [[ -n "${CCC_HUB_ROUTER:-}" ]]; then
-  HUB_ANTHROPIC_BASE="${CCC_HUB_ROUTER}"
-  HUB_ANTHROPIC_TOKEN="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
-  HUB_ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-flash}"
-else
-  HUB_ANTHROPIC_BASE="${ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
-  if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-    HUB_ANTHROPIC_TOKEN="$ANTHROPIC_AUTH_TOKEN"
-  elif [[ -f "$MINIMAX_KEY_FILE" ]]; then
-    HUB_ANTHROPIC_TOKEN="$(tr -d '[:space:]' < "$MINIMAX_KEY_FILE")"
-  else
-    echo "缺少 ${MINIMAX_KEY_FILE}；或设 CCC_HUB_ROUTER=http://127.0.0.1:4000 回退中转" >&2
-    exit 1
-  fi
-  HUB_ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
-fi
-
+# Hub /api/chat 已删：对话走 M1 sidecar，plist 不再嵌入 ANTHROPIC_AUTH_TOKEN / CCC_AGENT_TOKEN。
+# 遗留 /api/agent 探针由 agent_proxy 运行时读 ~/.ccc/agent-token（0600），勿写入 launchd XML。
 DESKTOP_AGENT_URL="${CCC_DESKTOP_AGENT_URL:-http://192.168.3.140:7788}"
-AGENT_TOKEN_VALUE="${CCC_AGENT_TOKEN:-}"
-if [[ -z "$AGENT_TOKEN_VALUE" && -f "${HOME}/.ccc/agent-token" ]]; then
-  AGENT_TOKEN_VALUE="$(tr -d '[:space:]' < "${HOME}/.ccc/agent-token")"
-fi
-if [[ -z "$AGENT_TOKEN_VALUE" ]]; then
-  echo "提示: 未设 CCC_AGENT_TOKEN；遗留 /api/agent 探针需与 M1 ~/.ccc/agent-token 相同（产品聊不经此反代）" >&2
+if [[ ! -f "${HOME}/.ccc/agent-token" && -z "${CCC_AGENT_TOKEN:-}" ]]; then
+  echo "提示: 无 ~/.ccc/agent-token；遗留 /api/agent 探针需与 M1 agent-token 对齐（产品聊不经此反代）" >&2
 fi
 
 cat > "$PLIST_STAGED" <<PLIST_EOF
@@ -95,16 +74,8 @@ cat > "$PLIST_STAGED" <<PLIST_EOF
     <string>http://127.0.0.1:7775</string>
     <key>CCC_DESKTOP_AGENT_URL</key>
     <string>${DESKTOP_AGENT_URL}</string>
-    <key>CCC_AGENT_TOKEN</key>
-    <string>${AGENT_TOKEN_VALUE}</string>
     <key>CCC_CHAT_NO_OPEN</key>
     <string>1</string>
-    <key>ANTHROPIC_BASE_URL</key>
-    <string>${HUB_ANTHROPIC_BASE}</string>
-    <key>ANTHROPIC_AUTH_TOKEN</key>
-    <string>${HUB_ANTHROPIC_TOKEN}</string>
-    <key>ANTHROPIC_MODEL</key>
-    <string>${HUB_ANTHROPIC_MODEL}</string>
     <key>PATH</key>
     <string>${PATH_EXTRA}</string>
   </dict>

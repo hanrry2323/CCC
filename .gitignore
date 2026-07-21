@@ -4,6 +4,18 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+
+# Secrets / credentials (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.*
+*credentials*.json
+secrets.*
 # Hub chat venv (claude-agent-sdk)
 .venv-hub/
 .claude/

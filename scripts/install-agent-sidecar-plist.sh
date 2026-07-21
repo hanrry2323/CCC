@@ -102,6 +102,8 @@ esac
 #   2) CCC_AGENT_ROUTER=http://...   → 2017 旧中转（兼容保留，默认模型 flash）
 #   3) 直连 MiniMax（默认）
 # 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机旧 :4000
+# 鉴权：密钥写入 0600 文件，plist 只放 CCC_ANTHROPIC_TOKEN_FILE 路径（不落地明文）。
+AUTH_TOKEN_FILE=""
 if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
   # 118.ink 中转：Anthropic 兼容；Base URL **勿**带 /v1（SDK 会再拼 /v1/messages）
   ROUTER="https://118.ink"
@@ -111,10 +113,14 @@ if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
     echo "回退默认：unset CCC_AGENT_UPSTREAM_118INK 后重新安装" >&2
     exit 1
   fi
+  AUTH_TOKEN_FILE="${HOME}/.ccc/118ink-api-key"
+  (umask 077; printf '%s\n' "$AUTH_TOKEN_VALUE" > "$AUTH_TOKEN_FILE")
+  chmod 600 "$AUTH_TOKEN_FILE"
   AGENT_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-8}"
 elif [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
   ROUTER="${CCC_AGENT_ROUTER}"
-  AUTH_TOKEN_VALUE="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
+  # 中转常不需要真实 key；不写文件，运行时由 sidecar 跳过加载
+  AUTH_TOKEN_FILE=""
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
 else
   ROUTER="${CCC_ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
@@ -122,14 +128,17 @@ else
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
     if [[ -f "$MINIMAX_KEY_FILE" ]]; then
-      AUTH_TOKEN_VALUE="$(tr -d '[:space:]' < "$MINIMAX_KEY_FILE")"
+      AUTH_TOKEN_FILE="$MINIMAX_KEY_FILE"
     else
       echo "缺少 MiniMax key：请写入 ${MINIMAX_KEY_FILE}（chmod 600）或设置 ANTHROPIC_AUTH_TOKEN" >&2
       echo "也可临时回退中转：CCC_AGENT_ROUTER=http://192.168.3.116:4000 $0 --start" >&2
       exit 1
     fi
   else
-    AUTH_TOKEN_VALUE="$_tok"
+    # 显式 env token → 写入专用文件，仍不进 plist
+    AUTH_TOKEN_FILE="${HOME}/.ccc/anthropic-auth-token"
+    (umask 077; printf '%s\n' "$_tok" > "$AUTH_TOKEN_FILE")
+    chmod 600 "$AUTH_TOKEN_FILE"
   fi
   AGENT_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
   # 若 ANTHROPIC_MODEL 仍是 flash/code 逻辑名，直连时改成上游 id
@@ -138,9 +147,13 @@ else
   fi
 fi
 
-# MiniMax / 中转鉴权
-AUTH_TOKEN_BLOCK="    <key>ANTHROPIC_AUTH_TOKEN</key>
-    <string>${AUTH_TOKEN_VALUE}</string>"
+# 仅写路径；无文件时省略该键（router 模式）
+if [[ -n "$AUTH_TOKEN_FILE" ]]; then
+  AUTH_TOKEN_BLOCK="    <key>CCC_ANTHROPIC_TOKEN_FILE</key>
+    <string>${AUTH_TOKEN_FILE}</string>"
+else
+  AUTH_TOKEN_BLOCK=""
+fi
 
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -196,8 +209,6 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HUB_URL}</string>
     <key>CCC_AGENT_CWD</key>
     <string>${CCC_HOME}</string>
-    <key>CCC_AGENT_TOKEN</key>
-    <string>${AGENT_TOKEN}</string>
     <key>CCC_AGENT_ALLOWED_ROOTS</key>
     <string>${HOME}/program:${CCC_HOME}</string>
     <key>ANTHROPIC_BASE_URL</key>
@@ -258,7 +269,7 @@ done
 if [[ "$ok" == "1" ]]; then
   echo "✓ ${LABEL} loaded · listen ${HOST}:${PORT} · probe http://${HEALTH_HOST}:${PORT} healthy"
   echo "  对话口: http://<本机LAN>:${PORT}/  · Hub 编排: ${HUB_URL}"
-  echo "  Agent Token: ${TOKEN_FILE}（浏览器 localStorage ccc_agent_token）"
+  echo "  Agent Token: ${TOKEN_FILE}（浏览器 sessionStorage ccc_agent_token；勿写入 plist）"
 else
   echo "⚠ ${LABEL} loaded but health not ready yet — 见 ${LOG_ERR}"
 fi

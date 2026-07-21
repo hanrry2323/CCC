@@ -47,6 +47,31 @@ os.environ.setdefault(
     or "https://api.minimaxi.com/anthropic",
 )
 
+
+def _bootstrap_anthropic_auth_from_file() -> None:
+    """从 0600 文件加载 ANTHROPIC_AUTH_TOKEN，避免 launchd plist 落地明文。
+
+    优先序：已有环境变量 > CCC_ANTHROPIC_TOKEN_FILE > ~/.ccc/minimax-api-key
+    """
+    if (os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip():
+        return
+
+    raw_path = (
+        os.environ.get("CCC_ANTHROPIC_TOKEN_FILE")
+        or str(Path.home() / ".ccc" / "minimax-api-key")
+    )
+    path = Path(raw_path).expanduser()
+    if path.is_file():
+        try:
+            tok = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            tok = ""
+        if tok and tok != "sk-trae-real-token-not-needed":
+            os.environ["ANTHROPIC_AUTH_TOKEN"] = tok
+
+
+_bootstrap_anthropic_auth_from_file()
+
 from _claude_cli import (  # noqa: E402
     ensure_loop_code_config_dir,
     loop_code_sha256_prefix,

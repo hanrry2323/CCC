@@ -13,14 +13,7 @@
 <link rel="stylesheet" href="/css/dual-pane.css?v=20260721dual2">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<script>
-(function() {
-  var saved = localStorage.getItem('ccc-theme') || localStorage.getItem('opencode-color-scheme');
-  var theme = saved === 'light' || saved === 'dark' ? saved
-    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme', theme);
-})();
-</script>
+<script src="/js/theme-init.js?v=20260721dual2"></script>
 
 <style>
 .hub-remote-banner{
@@ -66,7 +59,7 @@
       <span>生成中...</span>
     </div>
     <div class="titlebar-spacer"></div>
-    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" onclick="toggleMobileSidebar()">
+    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" type="button">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <button class="titlebar-btn" id="task-btn" title="下达任务">
@@ -172,47 +165,10 @@
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
 </div>
-<div class="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
 <select id="project-select" style="display:none;"></select>
 
-<script>
-function toggleMobileSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  if (!sidebar) return;
-  sidebar.classList.toggle('open');
-  if (overlay) overlay.classList.toggle('show');
-  /* Hub 壳始终锁死 body 滚动（iOS 勿放开，否则整页可滑） */
-  document.body.style.overflow = 'hidden';
-}
-
-function copyCode(btn) {
-  const pre = btn.closest('.code-block-wrap')?.querySelector('pre');
-  const code = pre ? (pre.textContent || pre.innerText) : '';
-  navigator.clipboard.writeText(code).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '已复制';
-    setTimeout(() => btn.textContent = orig, 1500);
-  }).catch(() => {
-    btn.textContent = '复制失败';
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const fab = document.getElementById('scroll-fab');
-  const messages = document.getElementById('messages');
-  if (fab && messages) {
-    messages.addEventListener('scroll', function() {
-      const atBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 200;
-      fab.classList.toggle('show', !atBottom);
-    });
-    fab.addEventListener('click', function() {
-      messages.scrollTop = messages.scrollHeight;
-      fab.classList.remove('show');
-    });
-  }
-});
-</script>
+<script src="/js/shell-ui.js?v=20260721dual2"></script>
 <script type="module" src="/js/app.js?v=20260721dual2"></script>
 </body>
 </html>

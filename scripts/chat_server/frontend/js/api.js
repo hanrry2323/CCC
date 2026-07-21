@@ -1,29 +1,38 @@
 import { state } from './state.js';
 import { hubUrl, agentUrl } from './ports.js';
 
-/** Hub Basic Auth：默认用户名/密码均为 ccc；可被 localStorage 覆盖。 */
+/** Hub Basic Auth：默认用户名/密码均为 ccc。
+ * 自定义口令只进 sessionStorage（会话级），不再把默认口令长期写入 localStorage。
+ */
 function _authHeader(forcePrompt = false) {
-  // 一次性清掉旧长口令缓存，避免 401 死循环
-  if (!localStorage.getItem('ccc_hub_auth_v2')) {
+  // 一次性清掉旧长口令 / 默认口令的 localStorage 残留
+  if (!localStorage.getItem('ccc_hub_auth_v3')) {
     localStorage.removeItem('ccc_chat_pass');
-    localStorage.setItem('ccc_hub_auth_v2', '1');
+    localStorage.removeItem('ccc_agent_token');
+    localStorage.setItem('ccc_hub_auth_v3', '1');
   }
-  let user = localStorage.getItem('ccc_chat_user') || 'ccc';
-  let pass = forcePrompt ? '' : (localStorage.getItem('ccc_chat_pass') || 'ccc');
+  let user = sessionStorage.getItem('ccc_chat_user')
+    || localStorage.getItem('ccc_chat_user')
+    || 'ccc';
+  let pass = forcePrompt
+    ? ''
+    : (sessionStorage.getItem('ccc_chat_pass') || 'ccc');
   if (!pass) {
     pass = window.prompt('CCC Hub 密码（用户名/密码默认均为 ccc）') || '';
-    if (pass) localStorage.setItem('ccc_chat_pass', pass);
+    if (pass && pass !== 'ccc') {
+      sessionStorage.setItem('ccc_chat_pass', pass);
+    }
+  } else if (pass !== 'ccc') {
+    sessionStorage.setItem('ccc_chat_pass', pass);
   }
-  if (!localStorage.getItem('ccc_chat_user')) {
-    localStorage.setItem('ccc_chat_user', user);
-  }
-  if (!localStorage.getItem('ccc_chat_pass') && pass === 'ccc') {
-    localStorage.setItem('ccc_chat_pass', 'ccc');
+  if (!sessionStorage.getItem('ccc_chat_user') && !localStorage.getItem('ccc_chat_user')) {
+    sessionStorage.setItem('ccc_chat_user', user);
   }
   return 'Basic ' + btoa(user + ':' + pass);
 }
 
 function _clearAuth() {
+  sessionStorage.removeItem('ccc_chat_pass');
   localStorage.removeItem('ccc_chat_pass');
 }
 
@@ -34,13 +43,13 @@ function _headers(json = true, forcePrompt = false) {
 }
 
 function _agentToken(forcePrompt = false) {
-  let tok = forcePrompt ? '' : localStorage.getItem('ccc_agent_token') || '';
+  let tok = forcePrompt ? '' : sessionStorage.getItem('ccc_agent_token') || '';
   if (!tok) {
     tok =
       window.prompt(
         'M1 Agent Token（与 ~/.ccc/agent-token 相同；仅对话口需要）'
       ) || '';
-    if (tok) localStorage.setItem('ccc_agent_token', tok.trim());
+    if (tok) sessionStorage.setItem('ccc_agent_token', tok.trim());
   }
   return (tok || '').trim();
 }
