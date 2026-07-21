@@ -6,7 +6,7 @@
 #   CCC_RELIABILITY_N=10 bash scripts/smoke-ccc-demo-reliability.sh             # N 轮 transfer
 #
 # 本脚本不发起新一轮 Engine；只探当前状态：
-#   1. Hub /api/health → reachable
+#   1. Hub 探活（现网无 /api/health；与 smoke-hub-api-v1 同用 /api/desktop/projects）
 #   2. opencode-pids 死 pid 文件数（清理 ≤ 阈）
 #   3. ~/.ccc/engine-active-tasks.json 与当前 board in_progress + testing 是否一致
 #   4. N 轮 transfer（可配置）+ snapshot，每轮后断言 slot 不漂移
@@ -33,11 +33,11 @@ source "$(dirname "$0")/_smoke_remote.sh"
 
 echo "== ccc-demo reliability N=${N} server=${SERVER} remote=${SMOKE_REMOTE_HOST} =="
 
-# 1. Hub 健康
-curl -sf --connect-timeout 5 "${AUTH[@]}" "${SERVER}/api/health" \
+# 1. Hub 探活（Hub 已删主聊天；无 /api/health — 用 projects 作可达性探针）
+curl -sf --connect-timeout 5 "${AUTH[@]}" "${SERVER}/api/desktop/projects" \
     >/tmp/ccc-reliability-health.json 2>/tmp/ccc-reliability-health.err \
-  || { echo "FAIL: hub /api/health unreachable"; cat /tmp/ccc-reliability-health.err >&2; exit 1; }
-echo "hub health ok"
+  || { echo "FAIL: hub /api/desktop/projects unreachable"; cat /tmp/ccc-reliability-health.err >&2; exit 1; }
+echo "hub health ok (desktop/projects)"
 
 # 2. 死 pid 文件（与 soak 同口径）
 DEAD_PIDS=$(smoke_remote 'python3 - <<"PY"

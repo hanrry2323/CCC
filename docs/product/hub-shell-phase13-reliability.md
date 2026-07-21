@@ -90,8 +90,11 @@ CCC_SERVER=http://127.0.0.1:7777 CCC_HUB_SHELL_TIER=reliability \
 
 # 真机（终验人）
 CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=reliability \
-    bash scripts/smoke-shell-gate.sh
+    bash scripts/smoke-hub-shell-gate.sh
 ```
+
+> **终验补丁（2026-07-21）**：首版误用不存在的 `GET /api/health`（Hub 404）；已改为与 `smoke-hub-api-v1` 同口径的 `GET /api/desktop/projects`。
+
 
 阈值（可调）：
 
@@ -108,7 +111,7 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=reliability \
 
 | 失败信号 | 含义 | 推荐动作 |
 |---|---|---|
-| `Hub /api/health unreachable` | Hub 进程未起 | `bash scripts/ccc-autostart-guard.sh status`；或 Mac2017 `ccc-autostart-guard.sh enable --start` |
+| `Hub /api/desktop/projects unreachable` | Hub 进程未起或鉴权失败 | `bash scripts/ccc-autostart-guard.sh status`；或 Mac2017 kickstart `com.ccc.chat-server` |
 | `dead opencode-pid files > 8` | 历史 pid 文件未清 | `rm ~/.ccc/opencode-pids/*.pid`（先 `pgrep -l` 确认无存活） |
 | `board(N) > active_tasks(M)`（M < N） | board 列里 in_progress/testing 比 active_tasks 还多（漂移） | 看板手动 review abnormal / 看 `~/.ccc/engine-failures.jsonl` 终态失败 |
 | `orphan_delta > 5` | 浸泡后孤儿进程净增过多 | `pgrep -lf opencode\|claude ` 定位 → 看是否 loop-code 子进程僵死 → `kill -9` + 重启 Engine |
