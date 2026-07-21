@@ -78,6 +78,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填：通过 → 宣告流畅基线 / 打回） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `1526ca1` · xianyu 样本绿 · **流畅基线达成**（qb/hp/xianyu 三仓全绿） |
+| 缺口 | 同 F3-1/F3-2：`epic_done` 流事件未补 → hotfix H-1（F3 后开） |
+| 验收日 | 2026-07-21 |
+
+**审阅：** epic_id + split_status=done + w1→released + snapshot user_stage=done + abnormal=0 + 人批 0 + 双机 aligned:yes + xianyu 3 commits + README stamp；phase-status F3-3 行已加；phase11 证据链追加（不动既有结论）；新 `smoke-xianyu-biz-small.sh`；无 Engine/契约改动。

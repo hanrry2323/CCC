@@ -15,6 +15,7 @@
 | 4 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **下阶段北星（壳 + Hub API v1；意图门人审）** |
 | 4b | [`product/dev-channel.md`](product/dev-channel.md) | **谁改 CCC / Desktop 模型默认（Cursor · MiniMax）** |
 | 4c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | **四面协作 + 流畅基线指标**（架构 / 壳 / 过桥 / 编排） |
+| 4c2 | [`product/fluency-baseline-achieved.md`](product/fluency-baseline-achieved.md) | **流畅基线达成宣告**（2026-07-21 · 7 轮闭环） |
 | 4d | [`product/cursor-model-routing.md`](product/cursor-model-routing.md) | **Cursor：Auto vs 高级模型** |
 | 4e | [`product/role-formation.md`](product/role-formation.md) | **角色生成机制**（任务→Skill+Prompt；7 为 seed，非上限） |
 | 5 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
