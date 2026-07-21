@@ -91,7 +91,8 @@
 | 命名 | `YYYY-MM-DD-<slug>.md` |
 | 禁止 | 散落到 `~/`、桌面、或项目根下临时二级目录 |
 
-F0 已闭环：[`../briefs/2026-07-21-f0-four-role-charter.md`](../briefs/2026-07-21-f0-four-role-charter.md)。
+F0 已闭环：[`../briefs/2026-07-21-f0-four-role-charter.md`](../briefs/2026-07-21-f0-four-role-charter.md)。  
+F1 进行中：[`../briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)（断线恢复）。
 
 ---
 
