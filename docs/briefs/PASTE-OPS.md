@@ -30,16 +30,35 @@
 | F4-2 | Memory 沉淀（lessons） | 编排 | Auto | **done `4ed4774`** |
 | F4-3 | Proactive 触发（CI/hook） | 编排 | 高级 | **done `580dd92`** |
 | H-2 | `work_status` 后续阶段流事件 | 编排 | Auto | **done `4d45d74`** |
-| **F5-1** | **桌面端中栏渲染 + 工具调用体验** | **壳** | **Auto** | **done `0c65257`** |
+| F5-1 | 桌面端中栏渲染 + 工具调用体验 | 壳 | Auto | **done `0c65257`** |
+| **F5-2** | **Cursor 式滚动留白（发消息上推 + 下方空槽）** | **壳** | **Auto** | **accepted · 待执行** |
 
 用户点哪条，架构出 brief；否则流水线休眠。
 
 ---
 
-## 粘贴包 A · 壳窗（F5-1 · 已完成）
+## 粘贴包 A · 壳窗（F5-2 · Cursor 式滚动留白）
 
 ```
-F5-1 已合入 0c65257。架构验收通过。无活跃 brief。等用户点下一项。
+执行 brief：docs/briefs/2026-07-21-f5-2-cursor-scroll-pad.md
+模型：Auto
+白名单（只改）：
+  desktop/Sources/CCCDesktop/ContentView.swift（仅 CodexChatPaneBody 的 messageArea / scroll / 相关 @State）
+
+根因：scroll() 一律 scrollTo(tipId, anchor: .bottom) → 把底部空 Spacer 钉进视口，用户气泡被顶出，中间只剩空白。
+F5-1 首条顶部 Spacer 是半吊子，与钉 tip 冲突，本 brief 删除该条件块。
+
+照做：
+1. 底部 Spacer → max(h*0.55, 220)；删 count==1 顶部 Spacer。
+2. 重写 scroll()：
+   - 切会话/重入：scrollTo(lastMessageId, anchor: .top)（无动画）
+   - 刚发送/等首包：scrollTo(本轮 userId, anchor: .top)
+   - 流式内容变长：跟滚 last assistant（anchor: .bottom）或 tip 用 .top —— 禁止 scrollTo(tipId, anchor: .bottom)
+3. 自检：bash scripts/ccc-self-check.sh
+   cd desktop && swift build -c release
+   杀旧进程再起 release 二进制，勿测 debug。
+
+完成后回贴：commit hash + 自检结果。架构验收。
 ```
 
 ---
