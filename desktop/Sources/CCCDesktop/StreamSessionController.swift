@@ -49,7 +49,12 @@ enum StreamSessionController {
 
     static func resolvePromptMode(forUserText text: String) -> String {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let forceFull = ["定稿", "转任务", "下达", "可以转了"].contains { t.contains($0) }
+        // Desktop 主路径：必须 full（含工具探查），勿因短标签掉进 light 零工具
+        let forceFull = [
+            "定稿", "转任务", "下达", "可以转了",
+            "对齐基线", "对齐项目基线", "下一步", "扫风险",
+            "ccc-transfer", "静默探测", "静默功课",
+        ].contains { t.contains($0) }
         if forceFull || t.count > 80 { return "full" }
         return "light"
     }

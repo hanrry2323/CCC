@@ -12,8 +12,8 @@ enum QuickPrompts {
     static let investigatePref =
         "你是 Desktop 对话面产品搭档（不是 Hub 聊天、不是 Engine 角色）。" +
         "请先建立项目心智再答：依次 Read（按存在）CLAUDE.md、AGENTS.md、.ccc/profile.md、" +
-        ".ccc/state.md、README.md；再 bash：git log -5、git status；需要时 Grep/Glob。" +
-        "路径以本仓「双机路径」表为准（M1=apps/ 对话副本，2017=apps/ 编排 SSOT）。" +
+        ".ccc/state.md、README.md；再只读 Bash：git log -5、git status；需要时 Grep/Glob。" +
+        "Bash 禁止写盘/推远程/装包。路径以本仓「双机路径」表为准（M1=apps/ 对话副本，2017=apps/ 编排 SSOT）。" +
         "人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。"
 
     static let mustAnswer =

@@ -26,7 +26,7 @@ def test_resolve_tool_mode_engineer_explicit_and_phrase():
 
 
 def test_discuss_allowlist_excludes_writes():
-    # 长文 + full：外网工具可用（全集）
+    # 长文 + full：外网工具可用（全集）；Bash 只读探查可用
     tools = config.tools_for_mode(
         "discuss",
         user_text="请帮我完整梳理产品方案并说明取舍与里程碑风险，不要只回一句话。" * 4,
@@ -34,9 +34,22 @@ def test_discuss_allowlist_excludes_writes():
     )
     assert "Read" in tools
     assert "Glob" in tools
+    assert "Bash" in tools
     assert "WebFetch" in tools and "WebSearch" in tools
-    for banned in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"):
+    for banned in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         assert banned not in tools
+
+
+def test_discuss_critical_flow_keeps_repo_tools():
+    # 短标签主路径：不得零工具，须含 Bash；推迟外网
+    for label in ("对齐基线", "下一步", "定稿", "扫风险", "转任务"):
+        tools = config.tools_for_mode(
+            "discuss", user_text=label, prompt_mode="light"
+        )
+        assert "Read" in tools, label
+        assert "Bash" in tools, label
+        assert "Write" not in tools, label
+        assert "WebFetch" not in tools, label
 
 
 def test_discuss_defers_web_on_light_short_turn():
@@ -52,6 +65,7 @@ def test_discuss_defers_web_on_light_short_turn():
         prompt_mode="light",
     )
     assert "Read" in tools_mid
+    assert "Bash" in tools_mid
     assert "WebFetch" not in tools_mid
     # 显式要上网 → 不推迟
     tools_web = config.tools_for_mode(

@@ -80,9 +80,10 @@ DANGEROUS_PATTERN = re.compile(
 
 # F-SEC-03: Claude CLI 允许的工具（allowlist）；未列出的工具名应被拒绝
 # discuss = 对话面默认（只读探查，禁止写业务仓）；engineer = 显式解锁本机改文件
+# Bash 在 discuss 中保留：对齐基线/定稿等关键路径需要 `git status` / `git log`（纪律限制为只读命令）。
 # 外网工具允许；挂死由 CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 回收，禁止靠删能力「止血」。
 CLAUDE_TOOL_ALLOWLIST_DISCUSS = frozenset({
-    "Read", "Glob", "Grep", "LS", "TodoWrite", "WebFetch", "WebSearch",
+    "Read", "Glob", "Grep", "LS", "Bash", "TodoWrite", "WebFetch", "WebSearch",
 })
 CLAUDE_TOOL_ALLOWLIST_ENGINEER = frozenset({
     "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
@@ -96,11 +97,14 @@ _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 # discuss：保留联网工具；快捷条任务强制本仓深查（对齐 Cursor）
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · discuss · Desktop 对话面】你是方案搭档，默认只读。"
-    "除非用户明确要求查网页或搜外网资料，否则不要调用 WebFetch/WebSearch。"
-    "对齐基线 / 下一步 / 定稿 / 扫风险 / 涉及仓库事实时："
-    "必须先用 Read/Glob/Grep/Bash 核实，再给结论；禁止空谈。"
-    "短确认、闲聊可直接答；需要读仓时用 Read/Glob/Grep/Bash。"
-    "进 backlog 后编排自动；勿建议逐步人批。改本机文件须工程师模式。"
+    "允许工具：Read / Glob / Grep / LS / Bash / TodoWrite；"
+    "需要时才 WebFetch / WebSearch（用户明确要上网再调）。"
+    "Bash 仅限只读探查：git status / git log / git diff / git show、ls、pwd、"
+    "head/cat 已有文件；禁止改文件、装包、推远程、删文件、重定向写盘。"
+    "禁止 Write / Edit / MultiEdit / NotebookEdit（须工程师模式）。"
+    "对齐基线 / 下一步 / 定稿 / 扫风险 / 转任务 / 涉及仓库事实时："
+    "必须先用 Read/Glob/Grep + 只读 Bash（git）核实，再给结论；禁止空谈。"
+    "短确认、闲聊可直接答。改本机文件须工程师模式。"
 )
 
 
@@ -126,11 +130,24 @@ _WEB_INTENT_RE = re.compile(
 )
 
 
-_REPO_PROBE_RE = re.compile(
-    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码|"
-    r"对齐基线|对齐项目基线|定稿|扫风险|下一步|静默探测|静默功课)",
+# Desktop 主路径关键功能：不得零工具，不得因短问砍掉本仓探查
+_CRITICAL_FLOW_RE = re.compile(
+    r"(对齐基线|对齐项目基线|下一步|定稿|扫风险|转任务|下达|可以转了|"
+    r"静默探测|静默功课|ccc-transfer)",
     re.I,
 )
+
+_REPO_PROBE_RE = re.compile(
+    r"(读一下|看看代码|这个文件|仓库里|实现|怎么写的|grep|搜索代码|"
+    r"对齐基线|对齐项目基线|定稿|扫风险|下一步|转任务|下达|"
+    r"静默探测|静默功课)",
+    re.I,
+)
+
+
+def is_critical_flow(user_text: str = "") -> bool:
+    """对齐基线 / 下一步 / 定稿 / 扫风险 / 转任务 等主路径。"""
+    return bool(_CRITICAL_FLOW_RE.search(user_text or ""))
 
 
 def defer_web_tools_for_turn(
@@ -142,13 +159,16 @@ def defer_web_tools_for_turn(
     """短问/轻量轮次推迟外网工具；用户明确要上网时不推迟。
 
     这是意图分流，不是永久删能力：WebFetch 仍在 discuss 全集里，
-    长文/定稿/显式搜网会重新打开。
+    长文/定稿/显式搜网会重新打开。关键主路径仍保留本仓工具（含 Bash）。
     """
     if (tool_mode or "").strip().lower() != "discuss":
         return False
     text = user_text or ""
     if _WEB_INTENT_RE.search(text):
         return False
+    # 关键路径也推迟外网（应先读仓），但不进入零工具
+    if is_critical_flow(text):
+        return True
     pm = (prompt_mode or "").strip().lower()
     if pm == "light" or len(text.strip()) <= 80:
         return True
@@ -166,9 +186,11 @@ def tools_for_mode(
     tools = CLAUDE_TOOL_ALLOWLIST_DISCUSS
     text = user_text or ""
     pm = (prompt_mode or "").strip().lower()
-    # 超短确认 / light 且无读仓意图：零工具直答（仍可通过显式口令或长文拿回工具）
+    critical = is_critical_flow(text)
+    # 超短确认 / light 且无读仓意图：零工具直答（关键主路径除外）
     if (
-        pm == "light"
+        not critical
+        and pm == "light"
         and len(text.strip()) <= 40
         and not _WEB_INTENT_RE.search(text)
         and not _REPO_PROBE_RE.search(text)
