@@ -536,29 +536,27 @@ def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
 
 
 def _lens_context_for_turn(project_id: str, user_text: str) -> str:
-    """Inject Hub lens discipline + optional live board for discuss turns."""
+    """Inject Hub lens discipline for discuss/Plan turns（常驻，不限 board 关键词）。"""
     pid = (project_id or "").strip()
     if not pid or pid == "ccc":
         # 平台仓以本机为准；仍可提示勿 ssh
-        if _LIVE_BOARD_RE.search(user_text or "") or _LIVE_REPO_RE.search(user_text or ""):
-            return (
-                "【平台仓 ccc】本机 CCC 可 Read/git；"
-                "业务仓事实仍须 Hub 透镜，禁止 ssh mac2017。"
-            )
-        return ""
+        return (
+            "【平台仓 ccc · Plan】本机 CCC 可 Read/git；"
+            "业务仓事实仍须 Hub 透镜，禁止 ssh mac2017。"
+        )
     lens_cli = (
         f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
         f"board|tree|file|grep|git {pid} …"
     )
     parts = [
-        f"【Hub 只读透镜 · project_id={pid}】",
+        f"【Hub 只读透镜 · Plan · project_id={pid}】",
         f"业务权威在 2017；探查用：{lens_cli}",
-        "禁止 ssh / 本机业务路径 Read/git。",
+        "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
     ]
-    if _LIVE_BOARD_RE.search(user_text or ""):
-        ok, block = _fetch_hub_lens_board(pid)
-        parts.append(block if ok else block)
-    elif _LIVE_REPO_RE.search(user_text or ""):
+    # 常驻：尝试注入 live board（失败也给不可达块）
+    ok, block = _fetch_hub_lens_board(pid)
+    parts.append(block if ok else block)
+    if _LIVE_REPO_RE.search(user_text or ""):
         parts.append(
             "用户在问文件/结构：先 Bash 调 ccc-hub-lens，再答；勿凭记忆编路径。"
         )

@@ -4,7 +4,7 @@ import Foundation
 actor HubRequestGate {
     static let shared = HubRequestGate()
 
-    private let maxConcurrent = 2
+    private let maxConcurrent = 4
     private var inFlight = 0
     /// 环形队列：head 前进代替 removeFirst，避免 O(n) 搬移
     private var waiters: [CheckedContinuation<Void, Never>] = []

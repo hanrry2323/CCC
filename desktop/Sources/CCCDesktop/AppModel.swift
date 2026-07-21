@@ -267,6 +267,9 @@ final class AppModel: ObservableObject {
     private var agentRecoverTask: Task<Void, Never>?
     /// Hub 不可达时自动探活（对称 agentRecover；≤5s 周期）
     private var hubRecoverTask: Task<Void, Never>?
+    /// 回前台 resume 防抖：避免 scenePhase 连触发叠请求
+    private var foregroundResumeTask: Task<Void, Never>?
+    private var lastForegroundResumeAt: Date?
     /// 每项目上次真暖时间（多窗分别记）
     private var lastWarmAtByProject: [String: Date] = [:]
     /// 本机落盘节流：按 threadId 独立，避免多会话互相取消丢落盘
@@ -402,7 +405,7 @@ final class AppModel: ObservableObject {
                     applyFlowSnapshot(snap)
                 }
             }
-            startFanoutWatchdog(epicId: eid, projectId: pid)
+            startFanoutWatchdog(epicId: eid, projectId: pid, threadId: tid)
         }
     }
 
@@ -469,11 +472,19 @@ final class AppModel: ObservableObject {
         return nil
     }
 
-    private func prepareClient(projectId: String? = nil) async throws {
+    private func prepareClient(projectId: String? = nil, ensureAgent: Bool = true) async throws {
         guard let url = APIClient.makeBaseURL(from: serverURLString) else {
             throw APIError.badURL
         }
-        let chatURL = await ensureLocalAgent()
+        // Hub 编排同步不必等 sidecar；对话路径才 ensureAgent
+        let chatURL: URL?
+        if ensureAgent {
+            chatURL = await ensureLocalAgent()
+        } else if let cached = cachedAgentBaseURL {
+            chatURL = cached
+        } else {
+            chatURL = APIClient.makeBaseURL(from: agentURLString)
+        }
         let pid = projectId ?? selectedProjectId
         let localPath = localPath(for: pid)
         await client.update(
@@ -506,18 +517,17 @@ final class AppModel: ObservableObject {
             return candidate
         }
 
-        if await client.probeLocalAgent(base: candidate) {
+        // 一次 /health：勿 probe 后再打一遍
+        if let info = await client.fetchAgentHealth(base: candidate), info.ok {
             agentProbeOKUntil = Date().addingTimeInterval(10)
             cachedAgentBaseURL = candidate
             agentMode = "local"
             agentBadge = "本机 Agent"
             didToastHubFallback = false
-            if let info = await client.fetchAgentHealth(base: candidate) {
-                sidecarReportedModel = info.model ?? ""
-                sidecarRuntimeLabel = info.agentRuntime ?? ""
-                sidecarConfigDir = info.configDir ?? ""
-                sidecarLoopCodeVersion = info.loopCodeVersion ?? ""
-            }
+            sidecarReportedModel = info.model ?? ""
+            sidecarRuntimeLabel = info.agentRuntime ?? ""
+            sidecarConfigDir = info.configDir ?? ""
+            sidecarLoopCodeVersion = info.loopCodeVersion ?? ""
             // fire-and-forget：不阻塞 ensureLocalAgent 返回
             Task { await warmLocalAgentNow(base: candidate) }
             startWarmLoopIfNeeded()
@@ -837,18 +847,13 @@ final class AppModel: ObservableObject {
         if projects.isEmpty {
             hydrateFromDiskSync()
         }
-        // Hub / sidecar 后台刷新 —— 不挡首屏
+        // Hub / sidecar 后台刷新 —— 不挡首屏；flush 在 refreshProjects 内异步，勿重复串行
         hubSyncing = true
         Task { @MainActor in
             await self.refreshProjects(showBusy: false)
             if self.agentMode != "local" {
                 self.startAgentRecoverLoopIfNeeded()
             }
-            await self.flushPendingHubSync()
-            await self.flushTransferOutbox()
-            self.reconcileTransferDeliveryWithOutbox()
-            // R6：不等 10s 首轮 poll
-            await self.refreshProjectTaskState()
             self.rearmFanoutWatchdogIfNeeded(projectId: self.selectedProjectId)
         }
         startProjectTaskPolling()
@@ -928,14 +933,13 @@ final class AppModel: ObservableObject {
         }
         defer {
             if showBusy { busy = false }
-            hubSyncing = false
+            if hubSyncing { hubSyncing = false }
         }
-        // 先确保本机 Agent（可聊不依赖 Hub）
-        _ = await ensureLocalAgent()
-        let localOK = agentMode == "local"
+        // Agent 与 Hub 并行：同步 Hub 不再等 sidecar 探活/自启
+        async let agentURL: URL? = ensureLocalAgent()
 
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchProjects()
             projects = resp.projects
             setHubReachable(true, source: "refresh_projects")
@@ -959,20 +963,34 @@ final class AppModel: ObservableObject {
                 persistedProjectId = pid
                 expandedProjectIds.insert(pid)
                 await refreshThreads(projectId: pid)
-                await bindFlowToCurrentThread()
             }
-            // 可聊只看 sidecar；connected 表示「界面可用」（本机可聊或至少有项目缓存）
+            let localOK = (await agentURL) != nil || agentMode == "local"
             connected = localOK || !projects.isEmpty
             lastError = nil
             updateConnectionStatusText(localOK: localOK, hubOK: true)
+            // 项目列表已上屏 → 结束「同步中」；流程轨/灯/outbox 继续后台
+            hubSyncing = false
             startWarmLoopIfNeeded()
-            await flushPendingHubSync()
-            await flushTransferOutbox()
-            reconcileTransferDeliveryWithOutbox()
+
+            if selectedProjectId != nil {
+                async let bind: Void = bindFlowToCurrentThread()
+                async let lights: Void = refreshProjectTaskState()
+                await bind
+                await lights
+            } else {
+                await refreshProjectTaskState()
+            }
+
+            Task { @MainActor in
+                await self.flushPendingHubSync()
+                await self.flushTransferOutbox()
+                self.reconcileTransferDeliveryWithOutbox()
+            }
         } catch {
+            _ = await agentURL
+            hubSyncing = false
             setHubReachable(false, source: "refresh_projects", error: error)
             lastError = error.localizedDescription
-            // Hub 失败：保留缓存 projects，本机 Agent 仍可聊
             if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
                 projects = cache.projects
                 if selectedProjectId == nil {
@@ -983,6 +1001,7 @@ final class AppModel: ObservableObject {
             if let pid = selectedProjectId {
                 await refreshThreads(projectId: pid)
             }
+            let localOK = agentMode == "local"
             connected = localOK || !projects.isEmpty
             showSettingsHint = !localOK && !hubReachable
             updateConnectionStatusText(localOK: localOK, hubOK: false)
@@ -1148,8 +1167,10 @@ final class AppModel: ObservableObject {
         bumpFlowRevision(tid)
         // chat.messages 仅作「全局选中线程」镜像（smoke/旧路径）；UI 列表读 threadMessages
         syncLegacyChatMirror(from: tid)
-        // 只清/刷本线程定稿条；禁止冲掉他窗 threadTransferDraft
-        if let lastAsst = (threadMessages[tid] ?? []).last(where: { $0.role == "assistant" && !$0.isStreaming }) {
+        // 只清/刷本线程定稿条；已交接则禁止复活确认卡
+        if shouldSuppressTransferDraft(for: tid) {
+            setThreadTransferDraft(tid, nil)
+        } else if let lastAsst = (threadMessages[tid] ?? []).last(where: { $0.role == "assistant" && !$0.isStreaming }) {
             refreshTransferDraft(from: lastAsst.content, threadId: tid)
         } else {
             setThreadTransferDraft(tid, nil)
@@ -1672,18 +1693,18 @@ final class AppModel: ObservableObject {
                 if selectedThreadId == threadId {
                     currentEpicId = bound
                 }
-                await refreshFlowNow(projectId: projectId)
+                await refreshFlowNow(projectId: projectId, threadId: threadId)
             } else if let hint = epicsResp.boundHint, !hint.isEmpty {
                 if selectedThreadId == threadId {
                     currentEpicId = hint
                 }
-                await refreshFlowNow(projectId: projectId)
+                await refreshFlowNow(projectId: projectId, threadId: threadId)
             } else if let match = epics.first(where: { ($0.thread_id ?? "") == threadId })?.epic_id {
                 // 只接受「精确 thread 匹配」的 Hub 建议；不挑项目里任意最近 epic（Phase14）
                 if selectedThreadId == threadId {
                     currentEpicId = match
                 }
-                await refreshFlowNow(projectId: projectId)
+                await refreshFlowNow(projectId: projectId, threadId: threadId)
             } else if hasLocalFlow {
                 // Hub 列表为空 / 不匹配时，保留本地绑定；不要用 epics.first 抢绑
                 return
@@ -2059,7 +2080,12 @@ final class AppModel: ObservableObject {
             do {
                 try await prepareClient()
                 let resp = try await client.transfer(req)
-                let ok = await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
+                let ok = await applyTransferSuccess(
+                    resp: resp,
+                    tid: item.thread_id,
+                    pid: item.project_id,
+                    requestId: item.client_request_id
+                )
                 if ok {
                     LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
                     LocalSessionStore.dequeueFailedTransfer(clientRequestId: item.client_request_id)
@@ -2128,21 +2154,35 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// L2：回前台 — flush + bindFlow + 灯/看板轻刷；Hub 不可达则确保 recover
+    /// L2：回前台 — 轻量接续；防抖 + 空队列跳过 flush，不与冷启动叠打
     func onForegroundResume() {
-        Task { @MainActor in
-            reconcileTransferDeliveryWithOutbox()
-            if hubReachable {
-                await flushPendingHubSync()
-                await flushTransferOutbox()
-                reconcileTransferDeliveryWithOutbox()
-                await bindFlowToCurrentThread()
-                await refreshProjectTaskState()
-                if destination == .board {
-                    await refreshBoard()
+        if hubSyncing { return }
+        if let last = lastForegroundResumeAt, Date().timeIntervalSince(last) < 2.0 {
+            return
+        }
+        foregroundResumeTask?.cancel()
+        foregroundResumeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            self.lastForegroundResumeAt = Date()
+            self.reconcileTransferDeliveryWithOutbox()
+            if self.hubReachable {
+                let hasOutbox = !LocalSessionStore.loadTransferOutbox().isEmpty
+                let hasPending = !LocalSessionStore.loadPendingSync().isEmpty
+                if hasOutbox || hasPending {
+                    await self.flushPendingHubSync()
+                    await self.flushTransferOutbox()
+                    self.reconcileTransferDeliveryWithOutbox()
+                }
+                async let bind: Void = self.bindFlowToCurrentThread()
+                async let lights: Void = self.refreshProjectTaskState()
+                await bind
+                await lights
+                if self.destination == .board {
+                    await self.refreshBoard()
                 }
             } else {
-                startHubRecoverLoopIfNeeded()
+                self.startHubRecoverLoopIfNeeded()
             }
         }
     }
@@ -2188,7 +2228,12 @@ final class AppModel: ObservableObject {
 
     /// - Returns: true 仅当 epic_id 非空并已进入 delivered（或进一步 accepted）
     @discardableResult
-    private func applyTransferSuccess(resp: TransferResponse, tid: String, pid: String) async -> Bool {
+    private func applyTransferSuccess(
+        resp: TransferResponse,
+        tid: String,
+        pid: String,
+        requestId: String? = nil
+    ) async -> Bool {
         let eid = (resp.epic_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !eid.isEmpty else {
             // 禁止空 epic_id 驱动 ui / fanout（Phase6：空前缀会误匹配全板）
@@ -2200,16 +2245,59 @@ final class AppModel: ObservableObject {
             selectedThreadId = tid
             currentEpicId = eid
         }
+        let pendingId = requestId.map { "pending:\($0)" }
         var snap = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: eid, epic: nil, works: [], headline: "",
             recentEpics: threadFlow[tid]?.recentEpics ?? recentEpics,
             emptyMessage: "", fanoutHint: nil
         )
+        var recent = snap.recentEpics
+        if let pendingId, let idx = recent.firstIndex(where: { $0.epic_id == pendingId }) {
+            let prev = recent[idx]
+            recent[idx] = FlowEpicRef(
+                epic_id: eid,
+                title: prev.title,
+                updated_at: ISO8601DateFormatter().string(from: Date()),
+                thread_id: tid,
+                user_stage: prev.user_stage ?? "pending"
+            )
+        } else if !recent.contains(where: { $0.epic_id == eid }) {
+            recent.insert(
+                FlowEpicRef(
+                    epic_id: eid,
+                    title: snap.epic?.title,
+                    updated_at: ISO8601DateFormatter().string(from: Date()),
+                    thread_id: tid,
+                    user_stage: "pending"
+                ),
+                at: 0
+            )
+        }
+        recent.removeAll {
+            $0.epic_id.hasPrefix("pending:") && $0.epic_id != pendingId
+        }
+        let keptTitle = snap.epic?.title
+            ?? recent.first(where: { $0.epic_id == eid })?.title
         snap.epicId = eid
+        snap.epic = FlowEpic(
+            id: eid,
+            title: keptTitle,
+            split_status: "pending",
+            column: "backlog",
+            goal_summary: snap.epic?.goal_summary,
+            pipeline: snap.epic?.pipeline,
+            user_stage: "pending",
+            headline: "扇出中…",
+            description: snap.epic?.description
+        )
+        snap.recentEpics = recent
+        snap.emptyMessage = "扇出中…"
+        snap.headline = "扇出中…"
         threadFlow[tid] = snap
         bumpFlowRevision(tid)
         persistCurrentThreadSnapshot(threadId: tid)
         dismissTransferSheet(threadId: tid)
+        // 确认卡已在 submit 时收掉；再清一次防表单残留
         resetTransferForm(threadId: tid)
         // HTTP 成功 + epic_id → delivered；禁止直接跳 accepted
         setTransferDelivery(tid, .delivered)
@@ -2226,14 +2314,79 @@ final class AppModel: ObservableObject {
         showToast(toastMsg)
         lastAnimatedEpicId = nil
         flowSplitGeneration &+= 1
-        await bindFlowToThread(projectId: pid, preferEpicId: eid)
+        await bindFlowToThread(projectId: pid, threadId: tid, preferEpicId: eid)
         // 仅当 flow/snapshot 真确认编排看见，才从 delivered 升 accepted
         if transferDeliveryByThread[tid] == .delivered,
            flowConfirmsOrchestrationAccepted(threadId: tid, epicId: eid) {
             setTransferDelivery(tid, .accepted)
         }
-        startFanoutWatchdog(epicId: eid, projectId: pid)
+        startFanoutWatchdog(epicId: eid, projectId: pid, threadId: tid)
         return true
+    }
+
+    /// 窗体 pane thread 优先；禁止只写 `::main` 导致「投了 A、画了 B」
+    func resolveFlowThreadId(projectId: String, preferred: String? = nil) -> String {
+        if let preferred {
+            let t = preferred.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty, Self.projectId(fromThreadId: t) == projectId {
+                return t
+            }
+        }
+        return threadIdForProject(projectId)
+    }
+
+    /// 一点击：右栏立刻出现大卡骨架（pending:client_request_id）
+    private func insertOptimisticTransferRail(
+        tid: String,
+        pid: String,
+        requestId: String,
+        title: String,
+        goal: String,
+        pipeline: String
+    ) {
+        let pendingId = "pending:\(requestId)"
+        let epic = FlowEpic(
+            id: pendingId,
+            title: title,
+            split_status: "pending",
+            column: "backlog",
+            goal_summary: String(goal.prefix(200)),
+            pipeline: pipeline,
+            user_stage: "pending",
+            headline: "已交接 · 编排同步中…",
+            description: goal
+        )
+        let ref = FlowEpicRef(
+            epic_id: pendingId,
+            title: title,
+            updated_at: ISO8601DateFormatter().string(from: Date()),
+            thread_id: tid,
+            user_stage: "pending"
+        )
+        var snap = threadFlow[tid] ?? FlowThreadSnapshot(
+            epicId: pendingId, epic: epic, works: [], headline: "已交接 · 编排同步中…",
+            recentEpics: [], emptyMessage: "已交接 · 编排同步中…", fanoutHint: nil
+        )
+        var recent = snap.recentEpics
+        recent.removeAll { $0.epic_id.hasPrefix("pending:") }
+        recent.insert(ref, at: 0)
+        snap.epicId = pendingId
+        snap.epic = epic
+        snap.works = []
+        snap.headline = "已交接 · 编排同步中…"
+        snap.emptyMessage = "已交接 · 编排同步中…"
+        snap.fanoutHint = nil
+        snap.stopLossHint = nil
+        snap.recentEpics = recent
+        threadFlow[tid] = snap
+        bumpFlowRevision(tid)
+        persistCurrentThreadSnapshot(threadId: tid)
+        if selectedThreadId == tid || selectedProjectId == pid {
+            applyFlowSnapshot(snap)
+            currentEpicId = pendingId
+        }
+        flowSplitGeneration &+= 1
+        reconcileFlowSSE()
     }
 
     static func promptMode(forUserText text: String) -> String {
@@ -3273,15 +3426,45 @@ final class AppModel: ObservableObject {
     /// 助手回复结束后刷新定稿条（按 thread 隔离）
     func refreshTransferDraft(from content: String, threadId: String? = nil) {
         let tid = threadId ?? selectedThreadId
-        if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
-            if let tid {
-                setThreadTransferDraft(tid, d)
-                applyTransferDraft(d, fallbackContent: nil, threadId: tid)
-                if d.isGateReady { setTransferDelivery(tid, .draft) }
-            } else {
+        guard let tid else {
+            if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
                 pendingTransferDraft = d
             }
+            return
         }
+        // 已交接/投递中：禁止从助手消息把确认卡复活
+        if shouldSuppressTransferDraft(for: tid) { return }
+        if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
+            setThreadTransferDraft(tid, d)
+            applyTransferDraft(d, fallbackContent: nil, threadId: tid)
+            if d.isGateReady { setTransferDelivery(tid, .draft) }
+        }
+    }
+
+    /// 该 thread 已有进行中编排或投递态时，禁止再弹出确认卡
+    private func shouldSuppressTransferDraft(for threadId: String) -> Bool {
+        if let phase = transferDeliveryByThread[threadId] {
+            switch phase {
+            case .queued, .delivering, .delivered, .accepted:
+                return true
+            case .draft, .failed:
+                break
+            }
+        }
+        guard let eid = threadFlow[threadId]?.epicId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !eid.isEmpty
+        else { return false }
+        if eid.hasPrefix("pending:") { return true }
+        let stage = (threadFlow[threadId]?.epic?.user_stage ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return stage != "done"
+    }
+
+    static func isPendingEpicId(_ epicId: String?) -> Bool {
+        let eid = (epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return eid.hasPrefix("pending:")
     }
 
     func transferForm(for threadId: String?) -> TransferFormState {
@@ -3511,8 +3694,20 @@ final class AppModel: ObservableObject {
             """
         }()
 
-        // 先入 outbox + queued，再投递。避免 Hub 抖动时 UI 永久停在「投递中」且 outbox 为空。
+        // 一点击：立刻收确认卡 + 右栏乐观大卡，再 outbox / 后台 POST
         let requestId = UUID().uuidString
+        insertOptimisticTransferRail(
+            tid: tid,
+            pid: pid,
+            requestId: requestId,
+            title: title,
+            goal: goal,
+            pipeline: pipeline
+        )
+        resetTransferForm(threadId: tid)
+        dismissTransferSheet(threadId: tid)
+        mutateTransferForm(tid) { $0.error = nil }
+
         let outboxItem = LocalSessionStore.TransferOutboxItem(
             client_request_id: requestId,
             project_id: pid,
@@ -3531,8 +3726,6 @@ final class AppModel: ObservableObject {
         )
         LocalSessionStore.enqueueTransfer(outboxItem)
         setTransferDelivery(tid, .queued)
-        mutateTransferForm(tid) { $0.error = nil }
-        dismissTransferSheet(threadId: tid)
 
         // 前台只确认「已排队」；连通 / 重试 / 卡死全在后台，勿用全局 busy 锁 UI
         if !hubReachable {
@@ -3574,7 +3767,9 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
-            let ok = await applyTransferSuccess(resp: resp, tid: tid, pid: pid)
+            let ok = await applyTransferSuccess(
+                resp: resp, tid: tid, pid: pid, requestId: requestId
+            )
             if ok {
                 LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
             } else {
@@ -3632,12 +3827,14 @@ final class AppModel: ObservableObject {
         return raw
     }
 
-    /// 转任务后若 15s 仍无 works，右栏明示原因（按项目写 threadFlow）
-    func startFanoutWatchdog(epicId: String?, projectId: String? = nil) {
+    /// 转任务后若 15s 仍无 works，右栏明示原因（按 pane thread 写 threadFlow）
+    func startFanoutWatchdog(epicId: String?, projectId: String? = nil, threadId: String? = nil) {
         fanoutWatchTask?.cancel()
         let pid = projectId ?? selectedProjectId
         guard let epicId, !epicId.isEmpty, let pid else { return }
-        let tid = threadIdForProject( pid)
+        // 乐观 pending: 未上 Hub，勿误报扇出超时
+        if Self.isPendingEpicId(epicId) { return }
+        let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
         if selectedProjectId == pid {
             flowFanoutHint = nil
         }
@@ -3666,10 +3863,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func clearFanoutHint(projectId: String? = nil) {
+    func clearFanoutHint(projectId: String? = nil, threadId: String? = nil) {
         let pid = projectId ?? selectedProjectId
         if let pid {
-            let tid = threadIdForProject( pid)
+            let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
             if var snap = threadFlow[tid] {
                 snap.fanoutHint = nil
                 threadFlow[tid] = snap
@@ -3683,10 +3880,10 @@ final class AppModel: ObservableObject {
         fanoutWatchTask = nil
     }
 
-    func clearStopLossHint(projectId: String? = nil) {
+    func clearStopLossHint(projectId: String? = nil, threadId: String? = nil) {
         let pid = projectId ?? selectedProjectId
         if let pid {
-            let tid = threadIdForProject(pid)
+            let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
             if var snap = threadFlow[tid] {
                 snap.stopLossHint = nil
                 threadFlow[tid] = snap
@@ -3701,19 +3898,57 @@ final class AppModel: ObservableObject {
     /// 右栏与项目对话绑定：本机 boundEpicId 优先（默认全局选中）
     func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
         guard let pid = selectedProjectId else { return }
-        await bindFlowToThread(projectId: pid, preferEpicId: preferEpicId)
+        await bindFlowToThread(
+            projectId: pid,
+            threadId: selectedThreadId,
+            preferEpicId: preferEpicId
+        )
     }
 
-    /// OpenCode 式：按 project 绑定编排，写 threadFlow，不抢他窗全局镜像
-    func bindFlowToThread(projectId: String, preferEpicId: String? = nil) async {
-        let tid = threadIdForProject( projectId)
+    /// OpenCode 式：按 pane thread 绑定编排，写 threadFlow，不抢他窗全局镜像
+    func bindFlowToThread(
+        projectId: String,
+        threadId: String? = nil,
+        preferEpicId: String? = nil
+    ) async {
+        let tid = resolveFlowThreadId(projectId: projectId, preferred: threadId)
         let isSelected = selectedProjectId == projectId
         if isSelected {
             selectedNodeDetail = nil
             selectedThreadId = tid
         }
+        // 再开快路径：本机已有 bound epic → 先立刻 snapshot，epics 列表后台补
+        let preexisting = threadFlow[tid]?.epicId
+            ?? (isSelected ? currentEpicId : nil)
+        let fastEpic = (preferEpicId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
+            $0.isEmpty ? nil : $0
+        } ?? preexisting?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fast = fastEpic, !fast.isEmpty {
+            if var snap = threadFlow[tid] {
+                snap.epicId = fast
+                if snap.emptyMessage.contains("编排空闲") {
+                    snap.emptyMessage = Self.isPendingEpicId(fast)
+                        ? "已交接 · 编排同步中…"
+                        : "编排同步中…"
+                }
+                threadFlow[tid] = snap
+                bumpFlowRevision(tid)
+                if isSelected { applyFlowSnapshot(snap) }
+            } else if isSelected {
+                currentEpicId = fast
+            }
+            // pending: 勿打 Hub snapshot（会空/404 冲掉乐观大卡）
+            if !Self.isPendingEpicId(fast) {
+                await refreshFlowNow(projectId: projectId, threadId: tid)
+            }
+            reconcileFlowSSE()
+            Task { @MainActor in
+                await self.refreshEpicListOnly(projectId: projectId, threadId: tid)
+            }
+            return
+        }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let epicsResp = try await client.fetchRecentEpicsDetailed(
                 projectId: projectId,
                 threadId: tid
@@ -3722,7 +3957,7 @@ final class AppModel: ObservableObject {
                 epicId: nil, epic: nil, works: [], headline: "",
                 recentEpics: [], emptyMessage: "编排空闲 · 下一笔定稿后出现在这里", fanoutHint: nil
             )
-            snap.recentEpics = epicsResp.epics
+            snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
             let localBound = snap.epicId ?? (isSelected ? currentEpicId : nil)
             let hasLocalFlow =
                 (localBound?.isEmpty == false)
@@ -3742,10 +3977,12 @@ final class AppModel: ObservableObject {
                 threadFlow[tid] = snap
                 bumpFlowRevision(tid)
                 if isSelected {
-                    recentEpics = epicsResp.epics
+                    recentEpics = snap.recentEpics
                     applyFlowSnapshot(snap)
                 }
-                await refreshFlow(projectId: projectId)
+                if !Self.isPendingEpicId(localBound) {
+                    await refreshFlowNow(projectId: projectId, threadId: tid)
+                }
                 reconcileFlowSSE()
                 return
             } else {
@@ -3760,12 +3997,15 @@ final class AppModel: ObservableObject {
             threadFlow[tid] = snap
             bumpFlowRevision(tid)
             if isSelected {
-                recentEpics = epicsResp.epics
+                recentEpics = snap.recentEpics
                 currentEpicId = resolvedEpic
                 applyFlowSnapshot(snap)
             }
             persistCurrentThreadSnapshot(threadId: tid)
-            await refreshFlow(projectId: projectId)
+            // 再开/绑定：立刻 snapshot，不走 500ms SSE 防抖
+            if !Self.isPendingEpicId(resolvedEpic) {
+                await refreshFlowNow(projectId: projectId, threadId: tid)
+            }
             reconcileFlowSSE()
         } catch {
             if isSelected {
@@ -3779,16 +4019,63 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshEpicList(projectId: String? = nil) async {
-        if let pid = projectId ?? selectedProjectId {
-            await bindFlowToThread(projectId: pid)
+    /// 合并 recentEpics：保留本地 pending:，远程真 epic 优先；去重
+    private func mergeRecentEpics(
+        local: [FlowEpicRef],
+        remote: [FlowEpicRef]
+    ) -> [FlowEpicRef] {
+        var byId: [String: FlowEpicRef] = [:]
+        for r in remote { byId[r.epic_id] = r }
+        for l in local {
+            if l.epic_id.hasPrefix("pending:") {
+                byId[l.epic_id] = l
+            } else if byId[l.epic_id] == nil {
+                byId[l.epic_id] = l
+            } else if let remote = byId[l.epic_id], remote.user_stage == nil, l.user_stage != nil {
+                var merged = remote
+                merged.user_stage = l.user_stage
+                byId[l.epic_id] = merged
+            }
+        }
+        let pending = byId.values.filter { $0.epic_id.hasPrefix("pending:") }
+        let rest = byId.values.filter { !$0.epic_id.hasPrefix("pending:") }
+            .sorted { ($0.updated_at ?? "") > ($1.updated_at ?? "") }
+        return pending + rest
+    }
+
+    /// 只刷 recentEpics 列表（快路径后补；失败静默）
+    private func refreshEpicListOnly(projectId: String, threadId: String) async {
+        do {
+            try await prepareClient(ensureAgent: false)
+            let epicsResp = try await client.fetchRecentEpicsDetailed(
+                projectId: projectId,
+                threadId: threadId
+            )
+            var snap = threadFlow[threadId] ?? FlowThreadSnapshot(
+                epicId: nil, epic: nil, works: [], headline: "",
+                recentEpics: [], emptyMessage: "", fanoutHint: nil
+            )
+            snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
+            threadFlow[threadId] = snap
+            bumpFlowRevision(threadId)
+            if selectedProjectId == projectId {
+                recentEpics = snap.recentEpics
+            }
+        } catch {
+            // 列表可缺；snapshot/SSE 已接上
         }
     }
 
-    func selectEpic(_ epicId: String, projectId: String? = nil) async {
+    func refreshEpicList(projectId: String? = nil, threadId: String? = nil) async {
+        if let pid = projectId ?? selectedProjectId {
+            await bindFlowToThread(projectId: pid, threadId: threadId)
+        }
+    }
+
+    func selectEpic(_ epicId: String, projectId: String? = nil, threadId: String? = nil) async {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
-        let tid = threadIdForProject( pid)
+        let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
         var snap = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: epicId, epic: nil, works: [], headline: "",
             recentEpics: [], emptyMessage: "", fanoutHint: nil
@@ -3800,39 +4087,45 @@ final class AppModel: ObservableObject {
             currentEpicId = epicId
             selectedNodeDetail = nil
         }
-        await refreshFlow(projectId: pid)
+        if Self.isPendingEpicId(epicId) {
+            reconcileFlowSSE()
+            return
+        }
+        await refreshFlowNow(projectId: pid, threadId: tid)
         reconcileFlowSSE()
     }
 
-    func refreshFlow(projectId: String? = nil) async {
+    func refreshFlow(projectId: String? = nil, threadId: String? = nil) async {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
+        let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
         // 合并短时间内的多次刷新，避免 snapshot 风暴打挂 Hub
-        flowRefreshTasks[pid]?.cancel()
-        flowRefreshTasks[pid] = Task { [weak self] in
+        flowRefreshTasks[tid]?.cancel()
+        flowRefreshTasks[tid] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled, let self else { return }
-            await self.refreshFlowNow(projectId: pid)
+            await self.refreshFlowNow(projectId: pid, threadId: tid)
         }
     }
 
-    private func refreshFlowNow(projectId: String? = nil) async {
+    private func refreshFlowNow(projectId: String? = nil, threadId: String? = nil) async {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
         guard !flowSnapshotPaused else { return }
-        let tid = threadIdForProject( pid)
+        let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
         let epicId = threadFlow[tid]?.epicId ?? (selectedProjectId == pid ? currentEpicId : nil)
+        if Self.isPendingEpicId(epicId) { return }
         do {
-            try await prepareClient()
+            try await prepareClient(ensureAgent: false)
             let snap = try await client.flowSnapshot(projectId: pid, epicId: epicId)
-            applySnapshot(snap, projectId: pid)
+            applySnapshot(snap, projectId: pid, threadId: tid)
         } catch {
             // SSE 为主；snapshot 失败不刷屏、不改 connected
         }
     }
 
-    private func applySnapshot(_ snap: FlowSnapshot, projectId: String) {
-        let tid = threadIdForProject( projectId)
+    private func applySnapshot(_ snap: FlowSnapshot, projectId: String, threadId: String? = nil) {
+        let tid = resolveFlowThreadId(projectId: projectId, preferred: threadId)
         let isSelected = selectedProjectId == projectId
         var cached = threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: nil, epic: nil, works: [], headline: "",
@@ -3842,6 +4135,7 @@ final class AppModel: ObservableObject {
         )
 
         if snap.empty == true {
+            // 有本地 bind（含 pending:）时勿被空 snapshot 冲掉
             if cached.epicId == nil {
                 cached.works = []
                 cached.epic = nil
@@ -3859,9 +4153,26 @@ final class AppModel: ObservableObject {
         let stage = (snap.user_stage ?? snap.epic?.user_stage ?? snap.epic?.split_status ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        // 编排完成：右栏时间线退场（历史在看板）；保留 recentEpics 供「切换本对话任务」
+        // 编排完成：右栏时间线退场；栈里保留「已完成」灰条
         if stage == "done" {
-            let keptRecent = cached.recentEpics
+            let eid = snap.epic_id ?? cached.epicId
+            var keptRecent = cached.recentEpics
+            if let eid, !eid.isEmpty {
+                if let idx = keptRecent.firstIndex(where: { $0.epic_id == eid }) {
+                    keptRecent[idx].user_stage = "done"
+                } else {
+                    keptRecent.insert(
+                        FlowEpicRef(
+                            epic_id: eid,
+                            title: snap.epic?.title ?? cached.epic?.title,
+                            updated_at: ISO8601DateFormatter().string(from: Date()),
+                            thread_id: tid,
+                            user_stage: "done"
+                        ),
+                        at: 0
+                    )
+                }
+            }
             cached.works = []
             cached.epic = nil
             cached.epicId = nil
@@ -3875,6 +4186,7 @@ final class AppModel: ObservableObject {
             if isSelected {
                 applyFlowSnapshot(cached)
                 lastAnimatedEpicId = nil
+                recentEpics = keptRecent
             }
             flushDiskSave(threadId: tid)
             return
@@ -3890,7 +4202,31 @@ final class AppModel: ObservableObject {
         cached.epicId = eid
         cached.epic = snap.epic
         cached.headline = headline
-        cached.emptyMessage = ""
+        cached.emptyMessage = works.isEmpty ? "扇出中…" : ""
+        // 同步栈内 stage
+        if let eid, let idx = cached.recentEpics.firstIndex(where: { $0.epic_id == eid }) {
+            cached.recentEpics[idx].user_stage = snap.user_stage ?? snap.epic?.user_stage
+            if cached.recentEpics[idx].title == nil {
+                cached.recentEpics[idx] = FlowEpicRef(
+                    epic_id: eid,
+                    title: snap.epic?.title ?? cached.recentEpics[idx].title,
+                    updated_at: cached.recentEpics[idx].updated_at,
+                    thread_id: tid,
+                    user_stage: cached.recentEpics[idx].user_stage
+                )
+            }
+        } else if let eid, !eid.isEmpty, !cached.recentEpics.contains(where: { $0.epic_id == eid }) {
+            cached.recentEpics.insert(
+                FlowEpicRef(
+                    epic_id: eid,
+                    title: snap.epic?.title,
+                    updated_at: ISO8601DateFormatter().string(from: Date()),
+                    thread_id: tid,
+                    user_stage: snap.user_stage ?? snap.epic?.user_stage
+                ),
+                at: 0
+            )
+        }
         // Phase9：abnormal / failed 止损可见（右栏 + 一次性 toast）
         let hasAbnormal = works.contains(where: \.isFailed)
         let stopLoss = (stage == "failed" || hasAbnormal)
@@ -3930,6 +4266,7 @@ final class AppModel: ObservableObject {
         bumpFlowRevision(tid)
         if isSelected {
             applyFlowSnapshot(cached)
+            recentEpics = cached.recentEpics
         }
         // Hub snapshot 非空且带 epic → 编排面已看见；delivered 升 accepted（按 thread）
         if let eid, !eid.isEmpty {

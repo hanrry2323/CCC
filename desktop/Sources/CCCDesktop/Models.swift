@@ -252,6 +252,8 @@ struct FlowEpicRef: Identifiable, Codable, Hashable {
     let title: String?
     let updated_at: String?
     let thread_id: String?
+    /// 可选；Hub 历史可能没有，客户端乐观写入 / snapshot 可补
+    var user_stage: String?
 }
 
 struct FlowSnapshot: Codable {

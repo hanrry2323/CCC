@@ -460,12 +460,14 @@ class ClaudeSessionManager:
         }
         # SDK：allowed_tools 为空时不加 --allowedTools（= 默认全开）。
         # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
+        # Plan/discuss 非空 allowlist：硬闸写工具（不靠自觉）。
         if not allowed:
             deny = sorted(
                 set(config.CLAUDE_TOOL_ALLOWLIST_ENGINEER)
                 | set(config.CLAUDE_TOOL_ALLOWLIST_DISCUSS)
                 | {
                     "Agent",
+                    "Task",
                     "Skill",
                     "NotebookEdit",
                     "WebFetch",
@@ -474,6 +476,8 @@ class ClaudeSessionManager:
                 }
             )
             kwargs["disallowed_tools"] = deny
+        elif mode == "discuss":
+            kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         if resume_session_id:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)

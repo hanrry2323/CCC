@@ -1206,7 +1206,7 @@ struct CodexChatPaneBody: View {
                 Button {
                     model.requestEngineerMode()
                 } label: {
-                    Text(model.preferredToolMode == "engineer" ? "工程师" : "讨论")
+                    Text(model.preferredToolMode == "engineer" ? "工程师" : "规划")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(
                             model.preferredToolMode == "engineer"
@@ -1215,7 +1215,7 @@ struct CodexChatPaneBody: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("讨论=只读探查；工程师=仅平台仓 ccc 可本机改文件；业务仓请定稿转任务")
+                .help("规划=Plan 全智力只读（不可改码）；工程师=仅平台仓 ccc 可本机改文件；业务仓请定稿转任务")
 
                 Button {
                     pickComposerAttachment()
@@ -1345,7 +1345,7 @@ struct CodexChatPaneBody: View {
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("默认讨论模式只读探查。工程师模式仅允许在平台仓 ccc 修改本机文件；业务仓请定稿转任务。")
+                Text("默认规划模式（Plan）：全智力只读，可检索/子代理调研，不可改码。工程师模式仅允许在平台仓 ccc 修改本机文件；业务仓请定稿转任务。")
             }
         }
         .padding(.horizontal, 28)
@@ -1835,33 +1835,11 @@ struct FlowRail: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
 
-            // Phase14：右栏只读本窗 threadFlow（snap），禁止回退全局 flow*（多窗串台）
-            if (snap?.recentEpics ?? []).count > 1 {
-                Menu {
-                    ForEach(snap?.recentEpics ?? []) { epic in
-                        Button {
-                            Task { await model.selectEpic(epic.epic_id, projectId: window.projectId) }
-                        } label: {
-                            HStack {
-                                Text(epic.title ?? epic.epic_id)
-                                if epic.epic_id == snap?.epicId {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("切换本对话任务")
-                            .font(.system(size: 11, weight: .medium))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(CCCTheme.accent)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 6)
-                }
+            // 任务栈：最新在上展开；旧卡折叠条点换焦（不做下拉 Menu）
+            if !(snap?.recentEpics ?? []).isEmpty {
+                taskStack
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
             }
 
             if let hint = snap?.fanoutHint {
@@ -1879,7 +1857,10 @@ struct FlowRail: View {
                         .tint(CCCTheme.accent)
                         .controlSize(.small)
                         Button("忽略") {
-                            model.clearFanoutHint(projectId: window.projectId)
+                            model.clearFanoutHint(
+                                projectId: window.projectId,
+                                threadId: paneThreadId
+                            )
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -1917,7 +1898,10 @@ struct FlowRail: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         Button("忽略") {
-                            model.clearStopLossHint(projectId: window.projectId)
+                            model.clearStopLossHint(
+                                projectId: window.projectId,
+                                threadId: paneThreadId
+                            )
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -1998,6 +1982,83 @@ struct FlowRail: View {
             return cur.title ?? cur.epic_id
         }
         return snap?.epic?.title ?? eid
+    }
+
+    /// 纵向任务栈：当前展开条 + 历史折叠条
+    private var taskStack: some View {
+        let epics = snap?.recentEpics ?? []
+        let currentId = snap?.epicId
+        let current = epics.first(where: { $0.epic_id == currentId })
+            ?? (currentId.map {
+                FlowEpicRef(
+                    epic_id: $0,
+                    title: snap?.epic?.title,
+                    updated_at: nil,
+                    thread_id: paneThreadId,
+                    user_stage: snap?.epic?.user_stage
+                )
+            })
+        let history = epics.filter { $0.epic_id != currentId }
+
+        return VStack(alignment: .leading, spacing: 6) {
+            if let cur = current {
+                taskStackRow(cur, expanded: true)
+            }
+            if !history.isEmpty {
+                Text("排队 / 历史")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(CCCTheme.faint)
+                    .padding(.top, 4)
+                ForEach(history) { epic in
+                    Button {
+                        Task {
+                            await model.selectEpic(
+                                epic.epic_id,
+                                projectId: window.projectId,
+                                threadId: paneThreadId
+                            )
+                        }
+                    } label: {
+                        taskStackRow(epic, expanded: false)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func taskStackRow(_ epic: FlowEpicRef, expanded: Bool) -> some View {
+        let stage = (epic.user_stage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stageLabel = stage.isEmpty ? (expanded ? "进行中" : "") : stage
+        let done = stage.lowercased() == "done"
+        return HStack(alignment: .center, spacing: 8) {
+            Image(systemName: expanded ? "chevron.down" : "circle")
+                .font(.system(size: expanded ? 9 : 7, weight: .semibold))
+                .foregroundStyle(done ? CCCTheme.faint : (expanded ? CCCTheme.accent : CCCTheme.secondary))
+                .frame(width: 12)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(epic.title ?? epic.epic_id)
+                    .font(.system(size: 11, weight: expanded ? .semibold : .regular))
+                    .foregroundStyle(done ? CCCTheme.faint : CCCTheme.ink)
+                    .lineLimit(expanded ? 2 : 1)
+                if !stageLabel.isEmpty {
+                    Text(stageLabel)
+                        .font(.system(size: 10))
+                        .foregroundStyle(done ? CCCTheme.faint : CCCTheme.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, expanded ? 8 : 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(expanded
+                      ? CCCTheme.accent.opacity(0.08)
+                      : CCCTheme.faint.opacity(done ? 0.06 : 0.04))
+        )
+        .opacity(done && !expanded ? 0.72 : 1)
     }
 }
 
@@ -2098,8 +2159,8 @@ struct SettingsView: View {
                     model.showToast("对话模型：\(name)")
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
-                    Text("讨论（只读）").tag("discuss")
-                    Text("工程师（可写）").tag("engineer")
+                    Text("规划（Plan · 不可改码）").tag("discuss")
+                    Text("工程师（可写 · 仅 ccc）").tag("engineer")
                 }
                 if !model.sidecarReportedModel.isEmpty {
                     Text("Sidecar 报告：\(model.sidecarReportedModel)")

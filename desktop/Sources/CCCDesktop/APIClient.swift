@@ -490,7 +490,10 @@ actor APIClient {
     }
 
     func fetchProjects() async throws -> ProjectsResp {
-        try await send(try authedRequest("api/desktop/projects"), as: ProjectsResp.self)
+        var req = try authedRequest("api/desktop/projects")
+        // 冷启动/再开：短超时 + 少重试，避免 Hub 抖时「同步中」挂很久
+        req.timeoutInterval = 10
+        return try await send(req, as: ProjectsResp.self, maxAttempts: 2)
     }
 
     func fetchThreads(projectId: String) async throws -> [DesktopThread] {
@@ -544,7 +547,9 @@ actor APIClient {
             let t = threadId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? threadId
             path += "&thread_id=\(t)"
         }
-        let resp = try await send(try authedRequest(path), as: EpicsResp.self)
+        var req = try authedRequest(path)
+        req.timeoutInterval = 10
+        let resp = try await send(req, as: EpicsResp.self, maxAttempts: 2)
         return EpicsFetchResult(epics: resp.epics, boundHint: resp.bound_hint)
     }
 
@@ -1014,7 +1019,9 @@ actor APIClient {
             let e = epicId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? epicId
             path += "&epic_id=\(e)"
         }
-        return try await send(try authedRequest(path), as: FlowSnapshot.self)
+        var req = try authedRequest(path)
+        req.timeoutInterval = 10
+        return try await send(req, as: FlowSnapshot.self, maxAttempts: 2)
     }
 
     /// 消费 flow SSE；每次 fanout/work_status 回调刷新建议

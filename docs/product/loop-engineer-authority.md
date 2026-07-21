@@ -147,6 +147,20 @@ CLI：`python3 scripts/ccc-hub-lens.py board|tree|file|grep|git <project_id> …
 
 ---
 
+## 讨论 = Plan（规划面）
+
+| 维度 | 规则 |
+|------|------|
+| 协议 | Desktop 仍传 `tool_mode=discuss`（少动协议） |
+| 智力 | 全开：Read/Glob/Grep/Bash/Web\*/Task·Agent + Hub 透镜 |
+| 执行 | **硬禁** Write/Edit/MultiEdit/NotebookEdit；子代理同样禁写 |
+| 交付 | 定稿 / `plan_md` / 转任务契约，**不是**仓库 diff |
+| 业务仓 | 事实只认 Hub 基线 + 透镜；禁止假装本机有第二树 |
+
+工程师模式 = **仅** `ccc` 可写；业务仓口令无效。
+
+---
+
 ## 扇出角色（讨论面须知 · 勿扮演）
 
 | 角色 | 可写 | 硬规则 |
@@ -154,7 +168,7 @@ CLI：`python3 scripts/ccc-hub-lens.py board|tree|file|grep|git <project_id> …
 | product | plan/phases/扇出；不写源码 | cwd=2017 apps |
 | dev | 仅 plan 白名单 | 红线 3 |
 | reviewer/tester | verdict/report | Verdict 落盘才算 |
-| 讨论 Agent | 无业务写 | 透镜只读 + `ccc-transfer` |
+| 讨论 Agent（Plan） | 无业务写 | 透镜只读 + `ccc-transfer`；可子代理调研 |
 
 ---
 

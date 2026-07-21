@@ -29,7 +29,7 @@ def test_resolve_tool_mode_engineer_explicit_and_phrase():
 
 
 def test_discuss_allowlist_excludes_writes():
-    # 长文 + full：外网工具可用（全集）；Bash 只读探查可用
+    # 长文 + full：外网 + Task；永不含 Write
     tools = config.tools_for_mode(
         "discuss",
         user_text="请帮我完整梳理产品方案并说明取舍与里程碑风险，不要只回一句话。" * 4,
@@ -39,20 +39,22 @@ def test_discuss_allowlist_excludes_writes():
     assert "Glob" in tools
     assert "Bash" in tools
     assert "WebFetch" in tools and "WebSearch" in tools
+    assert "Task" in tools or "Agent" in tools
     for banned in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         assert banned not in tools
 
 
 def test_discuss_critical_flow_keeps_repo_tools():
-    # 短标签主路径：不得零工具，须含 Bash；推迟外网
-    for label in ("对齐基线", "下一步", "定稿", "扫风险", "转任务"):
+    # 规划主路径：不得零工具；含 Bash + Web* + Task；永不含 Write
+    for label in ("对齐基线", "下一步", "定稿", "扫风险", "转任务", "方案"):
         tools = config.tools_for_mode(
             "discuss", user_text=label, prompt_mode="light"
         )
         assert "Read" in tools, label
         assert "Bash" in tools, label
+        assert "WebFetch" in tools, label
+        assert "Task" in tools, label
         assert "Write" not in tools, label
-        assert "WebFetch" not in tools, label
 
 
 def test_discuss_defers_web_on_light_short_turn():
@@ -61,10 +63,10 @@ def test_discuss_defers_web_on_light_short_turn():
         "discuss", user_text="只回两个字：收到", prompt_mode="light"
     )
     assert tools == frozenset()
-    # 中等 light（>40 字）：本地探查，无 Web*
+    # 中等 light（>40 字）：本地探查，无 Web*（故意避开定稿/下一步等规划关键词）
     tools_mid = config.tools_for_mode(
         "discuss",
-        user_text="用三到五句话说明这个产品现在处在什么阶段，主要用户是谁，以及你建议的下一步工作重点是什么",
+        user_text="用三到五句话说明这个产品现在处在什么阶段，主要用户是谁，以及你建议近期该关注哪些体验问题",
         prompt_mode="light",
     )
     assert "Read" in tools_mid
@@ -110,6 +112,9 @@ def test_build_options_uses_discuss_tools(monkeypatch):
     allowed = set(captured.get("allowed_tools") or [])
     assert "Write" not in allowed
     assert "Read" in allowed
+    assert "Task" in allowed or "Agent" in allowed
+    deny = set(captured.get("disallowed_tools") or [])
+    assert "Write" in deny and "Edit" in deny
 
 
 def test_build_options_preserves_empty_allowlist(monkeypatch):

@@ -63,6 +63,15 @@ struct FlowCanvasView: View {
         (epicId ?? epic?.id ?? "_") + "|" + (epic?.user_stage ?? epic?.split_status ?? "")
     }
 
+    private var syncingOrFanoutLabel: String {
+        if !emptyMessage.isEmpty { return emptyMessage }
+        let eid = epicId ?? epic?.id
+        if AppModel.isPendingEpicId(eid) {
+            return "已交接 · 编排同步中…"
+        }
+        return "扇出中…"
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             if let text = headerText {
@@ -135,8 +144,8 @@ struct FlowCanvasView: View {
                     railConnector(active: ordered.contains(where: \.isActive))
                     workSections
                 } else if !(epicId ?? "").isEmpty || epic != nil {
-                    // L3：再开/同步中有 bind 无 works — 动态骨架，不空等下一 SSE
-                    Text(emptyMessage.isEmpty ? "编排同步中…" : emptyMessage)
+                    // 有 bind 无 works：乐观同步 / 扇出中，勿空白
+                    Text(syncingOrFanoutLabel)
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.faint)
                         .padding(.top, 8)
