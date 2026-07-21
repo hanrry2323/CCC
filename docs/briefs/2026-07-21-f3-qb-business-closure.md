@@ -59,24 +59,25 @@
 
 ## 7. 验收清单
 
-- [ ] qb 1 笔业务向 epic 全程无中途人批 → released
-- [ ] 证据链完整（epic_id / works / flow 事件 / 双机核对输出）
-- [ ] abnormal 数 = 0（若有则回贴现象，不修 Engine）
-- [ ] `phase-status.md` 新增 F3-1 行
-- [ ] 白名单外无改动
-- [ ] 未改 Engine 主循环 / 契约
+- [x] qb 1 笔业务向 epic 全程无中途人批 → released
+- [x] 证据链完整（epic_id / works / flow 事件 / 双机核对输出）
+- [x] abnormal 数 = 0（若有则回贴现象，不修 Engine）
+- [x] `phase-status.md` 新增 F3-1 行
+- [x] 白名单外无改动
+- [x] 未改 Engine 主循环 / 契约
 
 ## 8. 执行回贴（执行面填）
 
 | 项 | 值 |
 |----|-----|
-| epic_id | |
-| split_status 终态 | |
-| works（tid → 终态） | |
-| 关键 flow 事件 | |
-| 双机核对输出 | |
+| epic_id | `qb-biz-small-1784631027-3784` |
+| split_status 终态 | `done` |
+| works（tid → 终态） | `qb-biz-small-1784631027-3784-w1` → `released` |
+| 关键 flow 事件 | `epic_created` → `fanout` → `work_status=planned`；其后 board：planned→in_progress→testing→verified→released；snapshot `user_stage=done`（flow 日志未落后续 `epic_done`，见 phase12 文注） |
+| 双机核对输出 | `M1: v0.52.2 6b62220` / `2017: v0.52.2 6b62220 v1` / `aligned: yes` |
 | 人批次数 | 0 |
-| abnormal | 无 / 现象 |
+| abnormal | 无 |
+| 补充 | smoke `scripts/smoke-qb-biz-small.sh` PASS；qb commits `a61508fd` `83a1fd9d` `3cf86058`；README 含 `stamp=qb-biz-1784631027`；全程 ~277s |
 
 ## 9. 架构验收
 
