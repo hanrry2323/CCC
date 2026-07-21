@@ -53,18 +53,20 @@
 
 ## 7. 验收清单
 
-- [ ] `SOAK_N=5 bash scripts/smoke-ccc-demo-soak.sh` 绿（或等价命令）
-- [ ] `orphan_delta == 0`（5 轮合计）
-- [ ] `bash tests/e2e/test_f1_backlog_failover.sh` 绿
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] `phase-status.md` 新增 F2-1 行
-- [ ] 白名单外无改动
+- [x] `SOAK_N=5 bash scripts/smoke-ccc-demo-soak.sh` 绿（或等价命令）
+- [x] `orphan_delta == 0`（5 轮合计）
+- [x] `bash tests/e2e/test_f1_backlog_failover.sh` 绿
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] `phase-status.md` 新增 F2-1 行
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | `SOAK_N=5` 参数化（兼容 `CCC_SOAK_N`）；每轮/合计硬门 `orphan_delta=0` + settle 等待在飞 product/claude 收尾；新增 `smoke-f1-backlog-failover.sh` + `test_f1_backlog_failover_regression.py`；e2e step4 对齐 backlog front 新→旧（非 stale FIFO） | `SOAK_N=5` soak PASS `orphan_delta=0`；failover smoke/e2e PASS；`pytest tests/scripts/` PASS；无 Engine 主循环改动 | ✅ |
+
+**现象（§6.4）**：首跑把在飞 `ccc-product-session`/`claude` 当 orphan 导致 `orphan_delta_round=1`——属采样过早，非槽泄漏。以 `wait_orphans_at_most` settle（默认 180s）后再断言，无需改 Engine。另：旧 e2e 断言 backlog FIFO 升序与现网 `list_tasks(backlog)`（pending front 新→旧）不符，已改正回归口径。
 
 ## 9. 架构验收
 

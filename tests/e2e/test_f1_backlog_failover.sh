@@ -133,7 +133,7 @@ RC=$?; if [[ $RC -ne 0 ]]; then echo "❌ Step 3 FAILED (quarantine)"; exit 1; f
 echo "✓"
 
 echo ""
-echo "4. 测试 FIFO 排序（v0.28.0 F1-C2）"
+echo "4. 测试 backlog 列序（epic front：新→旧；非 backlog 仍 FIFO）"
 python3 -c "
 import sys
 sys.path.insert(0, '$SCRIPT_DIR/scripts')
@@ -144,20 +144,34 @@ _config._resolve_workspace = lambda: Path('$WORKSPACE')
 
 store = FileBoardStore(Path('$WORKSPACE'))
 
-# 按创建顺序验证 FIFO：旧 → 新
+# backlog pending front：created_at 降序（新→旧）；与 list_tasks 契约对齐
 tasks = store.list_tasks('backlog')
-# 至少剩余 oldest
 if tasks:
     ids = [t['id'] for t in tasks]
     print(f'  backlog order: {ids}')
-    # 验证 created_at 升序
     dates = [t.get('created_at', t.get('id', '')) for t in tasks]
-    assert dates == sorted(dates), f'FIFO breach: {dates} not sorted'
-    print(f'  FIFO order verified ✓ (dates: {dates})')
+    assert dates == sorted(dates, reverse=True), (
+        f'backlog front order breach: {dates} not newest-first'
+    )
+    print(f'  backlog newest-first verified ✓ (dates: {dates})')
 else:
     print('  (backlog empty after previous steps)')
+
+# 非 backlog 列仍 FIFO（旧→新）
+store.create_task({
+    'id': 'w-old', 'title': 'w-old', 'status': 'planned',
+    'card_kind': 'work', 'created_at': '2026-07-10', 'updated_at': '2026-07-10',
+}, column='planned')
+store.create_task({
+    'id': 'w-new', 'title': 'w-new', 'status': 'planned',
+    'card_kind': 'work', 'created_at': '2026-07-12', 'updated_at': '2026-07-12',
+}, column='planned')
+planned = store.list_tasks('planned')
+p_dates = [t.get('created_at', '') for t in planned]
+assert p_dates == sorted(p_dates), f'planned FIFO breach: {p_dates}'
+print(f'  planned FIFO verified ✓ (dates: {p_dates})')
 "
-RC=$?; if [[ $RC -ne 0 ]]; then echo "❌ Step 4 FAILED (FIFO)"; exit 1; fi
+RC=$?; if [[ $RC -ne 0 ]]; then echo "❌ Step 4 FAILED (order)"; exit 1; fi
 echo "✓"
 
 echo ""
@@ -167,5 +181,5 @@ echo "  - fail_counter 文件读写"
 echo "  - fail_count < MAX → retry"
 echo "  - fail_count >= MAX → quarantine"
 echo "  - success → counter cleared"
-echo "  - FIFO 排序（F1-C2: created_at 升序）"
+echo "  - backlog front 新→旧；planned FIFO 旧→新"
 exit 0

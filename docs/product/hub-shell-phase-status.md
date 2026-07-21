@@ -25,3 +25,4 @@
 | Wave A Hub LAN | green | M1→2017 `:7777` 200；plist `CCC_CHAT_HOST=0.0.0.0` | （见 commit） |
 | Phase17 Desktop 模型快选 | green | App 内短列表；默认 MiniMax-M3/`flash`；UI≠plist；**v0.52.2** | （见 commit） |
 | v0.52.1 稳定性门禁 | green | gitignore 假绿 + transfer 空响应重试 + smoke gate；qb-biz-small PASS；`full` 本机绿（outage 因无本机 sidecar 跳过） | fd65284 |
+| F2-1 soak N=5 + orphan=0 green | green | `SOAK_N=5` soak；每轮 settle 后 `orphan_delta=0`；failover 回归 | （见 commit） |
