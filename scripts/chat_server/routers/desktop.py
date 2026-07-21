@@ -891,3 +891,49 @@ async def desktop_config(request: Request):
         "agent_runtime": agent_runtime,
         "agent_cli": agent_cli,
     }
+
+
+def _repo_root() -> Path:
+    # scripts/chat_server/routers/desktop.py → repo root
+    return Path(__file__).resolve().parents[3]
+
+
+def _read_hub_version_payload() -> dict[str, Any]:
+    """只读：VERSION + git HEAD + hub_api_version（F2-2 双机对齐）。"""
+    import subprocess
+
+    root = _repo_root()
+    version = ""
+    ver_path = root / "VERSION"
+    if ver_path.is_file():
+        try:
+            version = ver_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            version = ""
+    commit = ""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0:
+            commit = (proc.stdout or "").strip()
+    except (OSError, subprocess.TimeoutExpired):
+        commit = ""
+    return {
+        "ok": True,
+        "version": version,
+        "commit": commit,
+        "hub_api_version": "v1",
+    }
+
+
+@router.get("/version")
+async def desktop_version(request: Request):
+    """F2-2：双机版本对齐只读端点。无写副作用。"""
+    check_auth(request)
+    return _read_hub_version_payload()

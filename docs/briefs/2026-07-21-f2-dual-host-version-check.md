@@ -61,19 +61,19 @@
 
 ## 7. 验收清单
 
-- [ ] `bash scripts/ccc-dual-host-check.sh` 在双机可达时输出三行 + aligned 判定
-- [ ] Hub 不可达时非零退出 + 明确错误
-- [ ] 版本不一致时非零退出 + 列出不一致项
-- [ ] 若加端点：`hub-api-v1.md` 已先改；端点只读
-- [ ] `pytest tests/scripts/test_dual_host_check.py` 绿
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `bash scripts/ccc-dual-host-check.sh` 在双机可达时输出三行 + aligned 判定
+- [x] Hub 不可达时非零退出 + 明确错误
+- [x] 版本不一致时非零退出 + 列出不一致项
+- [x] 若加端点：`hub-api-v1.md` 已先改；端点只读
+- [x] `pytest tests/scripts/test_dual_host_check.py` 绿
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | 先改 `hub-api-v1.md` 再加只读 `GET /api/desktop/version`；新 `ccc-dual-host-check.sh`（三行输出 + mock 可测）；文档 `dual-host-version-check.md`；单测 7 项。未改 `app.py`（desktop router 已挂载）。未改 Desktop / Engine / transfer·flow。 | `test_dual_host_check.py` 7 passed；不可达/不一致非零；mock 对齐绿。2017 现网若未拉本 commit 会 404/超时属预期（只核对不部署）。 | ✅ |
 
 ## 9. 架构验收
 
