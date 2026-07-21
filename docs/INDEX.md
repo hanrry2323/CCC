@@ -114,7 +114,7 @@
 | [`STRATEGY-MAP.md`](STRATEGY-MAP.md) | 全景 + 演进史（长） |
 | [`GLOSSARY.md`](GLOSSARY.md) | 术语 |
 | [`architecture.md`](architecture.md) | 若与 VISION/边界冲突 → 以 VISION/边界为准 |
-| [`model-tier-strategy.md`](model-tier-strategy.md) | 模型分层（部分仍写中转，以 topology + 现网 plist 为准） |
+| [`model-tier-strategy.md`](model-tier-strategy.md) | **已收口 stub** → 平台只认 Cursor；旧文在 archive/retired-tooling |
 | [`../references/red-lines.md`](../references/red-lines.md) | 红线 |
 | [`../references/board-task-schema.md`](../references/board-task-schema.md) | 看板任务契约 |
 

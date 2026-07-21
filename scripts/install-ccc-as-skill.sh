@@ -73,44 +73,20 @@ check_install() {
     echo "         Run without --check to install, or link manually: ln -sfn $CCC_DIR $MAVIS_TARGET"
   fi
 
-  # 4. Claude Code symlink (optional)
-  if [ -L "$CLAUDE_TARGET" ]; then
-    local claude_real
-    claude_real="$(readlink "$CLAUDE_TARGET")"
-    if [ "$claude_real" = "$CCC_DIR" ]; then
-      echo "  [OK]   Claude Code symlink: $CLAUDE_TARGET → $CCC_DIR"
-    else
-      echo "  [WARN] Claude Code symlink target mismatch: $claude_real"
-    fi
-  else
-    echo "  [WARN] Claude Code symlink not found: $CLAUDE_TARGET (optional — skip if not using Claude Code)"
-  fi
-
-  # 5. ZCode symlink
-  if [ -L "$ZCODE_TARGET" ]; then
-    local zcode_real
-    zcode_real="$(readlink "$ZCODE_TARGET")"
-    if [ "$zcode_real" = "$CCC_DIR" ]; then
-      echo "  [OK]   ZCode symlink: $ZCODE_TARGET → $CCC_DIR"
-    else
-      echo "  [FAIL] ZCode symlink target mismatch: $zcode_real (expected $CCC_DIR)"
-      errors=$((errors + 1))
-    fi
-  else
-    echo "  [WARN] ZCode symlink not found: $ZCODE_TARGET"
-    echo "         Run without --check to install, or link manually: ln -sfn $CCC_DIR $ZCODE_TARGET"
+  # 4–5. 个人 Claude Code / ZCode symlink — 已退役（平台开发只认 Cursor）
+  echo "  [SKIP] Claude Code / ZCode skill symlink（退役；平台改动只用 Cursor，见 docs/product/dev-channel.md）"
+  if [ -L "$CLAUDE_TARGET" ] || [ -L "$ZCODE_TARGET" ]; then
+    echo "  [INFO] 若仍存在旧 symlink，可手动删除；不影响 Engine 执行器"
   fi
 
   # 6. references/ structure
   local ref_count
   ref_count="$(find "$CCC_DIR/references" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
-  if [ "$ref_count" -ge 6 ]; then
+  if [ "$ref_count" -ge 1 ]; then
     echo "  [OK]   references/ has $ref_count files"
   else
-    echo "  [FAIL] references/ has only $ref_count files (expected >=6)"
-    errors=$((errors + 1))
+    echo "  [WARN] references/ empty"
   fi
-
   # Summary
   echo ""
   if [ "$errors" -eq 0 ]; then
@@ -138,41 +114,20 @@ do_install() {
   ln -sfn "$CCC_DIR" "$MAVIS_TARGET"
   echo "  [OK] Mavis: $MAVIS_TARGET → $CCC_DIR"
 
-  # --- Claude Code symlink (optional) ---
-  if [ -d "$HOME/.claude/skills" ] || mkdir -p "$HOME/.claude/skills" 2>/dev/null; then
-    if [ -L "$CLAUDE_TARGET" ] || [ -d "$CLAUDE_TARGET" ]; then
-      rm -f "$CLAUDE_TARGET"
-    fi
-    ln -sfn "$CCC_DIR" "$CLAUDE_TARGET"
-    echo "  [OK] Claude Code: $CLAUDE_TARGET → $CCC_DIR"
-  else
-    echo "  [WARN] ~/.claude/skills/ not accessible — skipping Claude Code symlink"
-  fi
-
-  # --- ZCode symlink ---
-  mkdir -p "$(dirname "$ZCODE_TARGET")"
-  if [ -L "$ZCODE_TARGET" ] || [ -d "$ZCODE_TARGET" ]; then
-    rm -f "$ZCODE_TARGET"
-  fi
-  ln -sfn "$CCC_DIR" "$ZCODE_TARGET"
-  echo "  [OK] ZCode: $ZCODE_TARGET → $CCC_DIR"
+  # --- Claude Code / ZCode symlink — 退役（平台只认 Cursor）---
+  echo "  [SKIP] Claude Code / ZCode skill symlink（退役；见 docs/product/dev-channel.md）"
 
   echo ""
 
   # --- Output setup snippets ---
-  echo "=== Cursor .cursorrules snippet (append to project .cursorrules) ==="
+  echo "=== Cursor（唯一平台开发工具）==="
   echo ""
-  echo "ref: $CCC_DIR/SKILL.md"
-  echo ""
-
-  echo "=== AGENTS.md reference snippet (paste into project AGENTS.md) ==="
-  echo ""
-  echo "CCC protocol: read $CCC_DIR/SKILL.md for multi-phase plan-execute-verify workflow"
+  echo "权威：docs/product/loop-engineer-authority.md · docs/product/dev-channel.md"
+  echo "SKILL： $CCC_DIR/SKILL.md"
   echo ""
 
   echo "Done. Run with --check to verify."
 }
-
 # ---- Main ----
 if [ "${1:-}" = "--check" ]; then
   check_install

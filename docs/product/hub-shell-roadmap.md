@@ -20,7 +20,7 @@
 | 第一刀验证 | `ccc-demo`（测试仓）→ 再铺真实项目 |
 | 模型出口 | 对话 / product：**MiniMax 默认**；dev：OpenCode 直连上游 |
 | Desktop 模型选择 | **App 内快选**（Phase17 · 默认 MiniMax-M3/`flash`）；sidecar plist 定上游出口；见 [`dev-channel.md`](dev-channel.md) |
-| 平台开发 | **Cursor**（R-15）；个人 Claude Code 非必需 |
+| 平台开发 | **仅 Cursor**（不更换工具）；见 [`dev-channel.md`](dev-channel.md) |
 | M1 Claude 形态 | **仅 CCC Desktop + loop-code**；配置家 `~/.ccc/loop-code`；见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) |
 | 中转站 | 已退役；不回退为默认路径 |
 | 架构骨架 | **演进现有 Hub–Engine–board**，不开局重写 Temporal / LangGraph |

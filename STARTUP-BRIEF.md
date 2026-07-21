@@ -17,11 +17,11 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Skill + Prompt = 本次角色**（用户不选角色）。机制：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
 **v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
-**开发通道**：平台 = Cursor；Desktop 对话默认 MiniMax。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
+**开发通道**：平台改动 = **仅 Cursor（不更换工具）**；Desktop 对话默认 MiniMax。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。
 
-**勿再说**：「接很多 IDE」「先选 7 角色」「用个人 Claude Code 改 CCC 平台」。
+**勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」。
 
 **4 个数字**：
 

@@ -20,7 +20,8 @@
 
 ### Step 1：开 task
 
-- 来源：老板 issue / backlog / Trae 自动识别
+- 来源：老板 issue / backlog / Desktop 定稿 transfer
+- **平台改动执行者：仅 Cursor**（禁止 Trae / 个人 Claude Code 改本仓）
 - **要求**：每个 task 必须先在 `.ccc/plans/<task>.plan.md` 起，不写 plan 不开干
 - **红线 5**：plan 无论改动多少必须生成 phases.json
 
@@ -47,7 +48,7 @@
 - **红线 18**：capability match 默认开启（**不能注释掉**）
 - **红线 20**：bash 脚本必须用 v3 portability 模板（**avoid `bash -c '\$VAR'` 单引号嵌套**）
 - **Lesson 29**：所有 shell 脚本同步遵守 v3 portability
-- **Lesson 30**：每个 commit 都通过独立 verifier session 验证（如 Trae vs Mac2017）
+- **Lesson 30**：每个 commit 都通过独立 verifier / 验收落盘验证（不靠口头 PASS）
 
 ### Step 5：跑 test
 
@@ -159,14 +160,16 @@ Refs:
 | 5 | report.md 真实 stdout | `head -50 .ccc/reports/<task>.report.md`，必须含原始输出不是总结 |
 | 6 | commit message 含 verification 段 | `git log -1 --format=%B` |
 
-### 4.2 Trae 自检 4 项必跑
+### 4.2 平台改动自检（Cursor）
 
-Trae 自身在每个 commit 前必须跑：
+平台本仓改动提交前建议：
 
-1. `python3 -m pytest tests/ -v` — 全 PASS
-2. `bash -n scripts/*.sh` — 0 errors
-3. `python3 -m py_compile scripts/*.py` — 0 errors
-4. `bash tools/cluster-doctor.sh` — exit 0 (cluster up)
+```bash
+pytest tests/scripts/ -q --tb=short
+bash scripts/ccc-self-check.sh
+```
+
+（历史「Trae 自检 4 项」已退役；平台开发只认 Cursor。）
 
 ### 4.3 Escalation 规则
 
@@ -175,7 +178,7 @@ Trae 自身在每个 commit 前必须跑：
 | 1 个 red line 被违反 | STOP + 回滚 + 写异常 report |
 | 2 个 commit 内连续 fail | STOP + 老板 review |
 | 3 个 commit 内连续 fail without progress | escalate to 老板 |
-| Verifier 写假 report | critical — 立刻降级 + retraining Trae |
+| Verifier 写假 report | critical — 立刻止损 + 人审 |
 
 ---
 
@@ -216,7 +219,7 @@ Trae 自身在每个 commit 前必须跑：
 | `scripts/<name>.py` 新建 | `tests/scripts/test_<name>_smoke.py` ≥5 cases |
 | `scripts/<name>.sh` 改 | `bash -n` + 至少 1 个 smoke test |
 | `references/red-lines.md` 改 | `tests/cluster/test-capability-required.py` 还 PASS |
-| SKILL.md 改 | 跨 IDE 加载测试（Trae + Cursor 至少各 1 次） |
+| SKILL.md 改 | Cursor 本仓加载 + pytest / self-check |
 | `~/.gitignore` 改 | 验证 `git ls-files` 不误入 |
 
 ### 6.2 测试命名

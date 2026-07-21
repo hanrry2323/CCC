@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** M1 personal Claude Code is retired; Desktop dialogue uses loop-code only. See `docs/product/dev-channel.md`.
+Guidance for agents editing CCC. **Platform development: Cursor only — do not switch tools (R-15).** Desktop dialogue uses loop-code; Engine Claude CLI/OpenCode are executors, not platform IDEs. See `docs/product/dev-channel.md`.
 
 # CCC — Connect–Claude Code · Loop Engineer
 
@@ -13,7 +13,7 @@ Guidance for agents editing CCC. **Platform changes: Cursor primary (R-15).** M1
 
 **共识落盘**：你我新共识先改 `loop-engineer-authority.md`（及 `.cursor/rules/loop-engineer-consensus.mdc`），禁止只留在聊天。
 
-**勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色。
+**勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色；用 Claude Code/Trae/Zed 改 CCC 平台。
 
 ---
 

@@ -44,11 +44,13 @@
 - 「Hub 网页是主入口 / 双对话分屏 / Hub·Claude 双源历史」
 - 「7 角色超市，用户先选角色」
 - 「又一个 Claude 前端」
-- 「不绑定单一 IDE / 接入 Trae、Zed…」作为产品主叙事
+- 「不绑定单一 IDE / 接入 Trae、Zed…」作为产品主叙事  
+- 「用 Claude Code / Trae 改 CCC 平台」
 
 ### 应坚持说的
 
-- Connect Claude Code · **Loop Engineer**
+- Connect Claude Code · **Loop Engineer**  
+- **平台开发只认 Cursor**（不更换工具）  
 - **Desktop 是主入口**（三栏：项目 · 方案对话 · 编排流程）
 - **自由编排 + 多执行面**；Skill + Prompt = 本次角色（无穷角色）
 - **方案 Agent（本机）只写待办大卡**；Engine（中心机）负责扇出与远端执行

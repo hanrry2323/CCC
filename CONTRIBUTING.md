@@ -4,8 +4,8 @@
 
 ## 原则
 
-1. **Hub 是入口**；不要把「再接一个第三方 IDE 壳」当成默认方向，除非有明确执行器需求。  
-2. **不要做成角色超市**；新能力优先「任务路由 + Skill/Prompt」，而不是「再加一个用户必选角色」。  
+1. **平台开发只认 Cursor**；不要把「再接一个第三方 IDE」当成方向。见 [`docs/product/dev-channel.md`](docs/product/dev-channel.md)。  
+2. **不要做成角色超市**；新能力优先「任务路由 + Skill/Prompt」。  
 3. **红线不可破**：尤其红线 11（verdict 文件）、12（禁止擅自启用 CCC）。见 `references/red-lines.md`。  
 4. **控制面默认安全**：改安装脚本时勿默认 `invent` 或静默拉起 Engine。
 
