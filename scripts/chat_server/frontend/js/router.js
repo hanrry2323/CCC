@@ -1,10 +1,10 @@
-/** CCC Hub hash router — #/board | #/console | #/ops
+/** CCC Hub hash router — #/chat | #/board | #/console | #/ops
  *
- * 架构对齐 2026-07-19：#/chat 已删（对话主入口 = M1 Desktop + sidecar :7788）。
- * 网页 Hub 仅运维/兼容；看板/运维已迁入 Desktop（见 docs/deprecate-web-board-ops.md）。
+ * Hub = 远程管理口（会话分区）；产品主对话仍在 Desktop。
+ * 见 docs/product/hub-remote-management.md
  */
 
-const ROUTES = ['board', 'console', 'ops'];
+const ROUTES = ['chat', 'board', 'console', 'ops'];
 const DEFAULT_ROUTE = 'board';
 
 export function currentRoute() {
@@ -27,7 +27,7 @@ let _onChange = null;
 export function initRouter(onChange) {
   _onChange = onChange;
   window.addEventListener('hashchange', () => applyRoute(currentRoute()));
-  if (!location.hash || location.hash === '#' || location.hash === '#/chat') {
+  if (!location.hash || location.hash === '#' ) {
     location.hash = '#/' + DEFAULT_ROUTE;
   } else {
     applyRoute(currentRoute());

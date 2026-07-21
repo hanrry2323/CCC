@@ -228,9 +228,53 @@ export async function streamChat(
   attachments,
   opts = {}
 ) {
-  // 架构对齐 2026-07-19：Hub /api/chat 已删；对话主入口 = M1 Desktop + sidecar :7788。
-  // 网页 Hub 不再提供对话；此函数保留为空 stub 供旧引用编译，实际调用应在 Desktop。
-  onError('Hub /api/chat 已退役；对话请在 CCC Desktop 中进行。');
+  // 旧入口已退役；远程管理请用 streamRemoteChat → /api/remote-chat/stream
+  onError('请使用 Hub 远程管理对话（#/chat）或 CCC Desktop。');
+}
+
+/** Hub 远程管理 SSE（会话分区 hub::） */
+export async function streamRemoteChat(body, onEvent) {
+  const resp = await _fetchWithAuth('/api/remote-chat/stream', {
+    method: 'POST',
+    body: JSON.stringify(body || {}),
+  }, true);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(
+      data.message || data.detail || data.error || ('stream ' + resp.status)
+    );
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() || '';
+    for (const chunk of parts) {
+      const line = chunk
+        .split('\n')
+        .map((l) => l.replace(/^data:\s?/, ''))
+        .join('\n')
+        .trim();
+      if (!line || line === '[DONE]') continue;
+      try {
+        const evt = JSON.parse(line);
+        if (typeof onEvent === 'function') onEvent(evt);
+      } catch (_) {
+        /* skip */
+      }
+    }
+  }
+}
+
+export async function cancelRemoteChat(project, threadId) {
+  return apiPost('/api/remote-chat/stop', {
+    project,
+    thread_id: threadId,
+  });
 }
 
 export function cancelStream(tabId) {

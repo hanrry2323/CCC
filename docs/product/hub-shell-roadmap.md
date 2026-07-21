@@ -81,11 +81,12 @@ Clients:  Desktop →（后）Web →（后）Mobile
 
 ### 5.1 刻意不做（半年内）
 
-- 主聊天搬回 Hub  
+- **产品主对话**迁回 Hub 当唯一入口（Hub `#/chat` 仅远程管理口，与 Desktop **会话分区**；见 [`hub-remote-management.md`](hub-remote-management.md)）  
 - Desktop 做成第二 IDE（文件树 / 内嵌终端 / MCP 大盘作主轴）  
 - 旁路自动进 Engine 队列  
 - 开局引入 Temporal / LangGraph 重写 Engine  
 - 恢复 ai-loop-router 为默认出口  
+- Desktop ↔ Hub HTTP **跨端续同一条会话**（lease / 对账）
 
 ---
 
@@ -116,9 +117,9 @@ Clients:  Desktop →（后）Web →（后）Mobile
 | 健康 | Hub / Board 探活 | 供客户端三态 |
 | 提案（P2） | 列表 / 采纳→transfer | 采纳 = 意图门，不是流水线人批 |
 
-聊天热路径：**留在各端本机 Agent（sidecar）**；Hub 不做主对话。
+聊天热路径：**产品主对话留在 Desktop 本机 Agent（sidecar）**。Hub 另提供远程管理对话（`/api/remote-chat/*`，`hub::` 分区），不是主入口。
 
-完整字段表：[`transfer-gate.md`](transfer-gate.md) · API 契约：[`hub-api-v1.md`](hub-api-v1.md)。
+完整字段表：[`transfer-gate.md`](transfer-gate.md) · API 契约：[`hub-api-v1.md`](hub-api-v1.md) · 远程口：[`hub-remote-management.md`](hub-remote-management.md)。
 
 ---
 

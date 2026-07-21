@@ -16,6 +16,7 @@ import { initRouter } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
+import { mountChat, unmountChat } from './pages/chatPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
@@ -164,23 +165,33 @@ function switchToProjectTab(projectId) {
 
 async function onHubRoute(route) {
   document.title =
+    route === 'chat' ? 'CCC Hub · 远程对话' :
     route === 'board' ? 'CCC Hub · 看板' :
     route === 'console' ? 'CCC Hub · 控制台' :
     route === 'ops' ? 'CCC Hub · 运维' :
-    'CCC Hub';
-  if (route === 'board') {
+    'CCC Hub · 远程管理';
+  if (route === 'chat') {
+    unmountBoard();
+    unmountConsole();
+    unmountOps();
+    await mountChat(document.getElementById('view-chat'));
+  } else if (route === 'board') {
+    unmountChat();
     unmountConsole();
     unmountOps();
     await mountBoard(document.getElementById('view-board'));
   } else if (route === 'console') {
+    unmountChat();
     unmountBoard();
     unmountOps();
     await mountConsole(document.getElementById('view-console'));
   } else if (route === 'ops') {
+    unmountChat();
     unmountBoard();
     unmountConsole();
     await mountOps(document.getElementById('view-ops'));
   } else {
+    unmountChat();
     unmountBoard();
     unmountConsole();
     unmountOps();

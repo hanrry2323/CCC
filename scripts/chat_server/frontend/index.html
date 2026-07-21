@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>CCC Hub（运维）</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260718dual1">
-<link rel="stylesheet" href="/css/base.css?v=20260718dual1">
-<link rel="stylesheet" href="/css/themes.css?v=20260718dual1">
-<link rel="stylesheet" href="/css/components.css?v=20260718dual1">
-<link rel="stylesheet" href="/css/shell.css?v=20260718dual1">
-<link rel="stylesheet" href="/css/dual-pane.css?v=20260718dual1">
+<title>CCC Hub（远程管理）</title>
+<link rel="stylesheet" href="/css/variables.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/base.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/themes.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/components.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/shell.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260721remote1">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -22,34 +22,87 @@
 })();
 </script>
 <style>
-/* 架构对齐 2026-07-19：看板/运维已迁入 CCC Desktop；网页版冻结（仅运维兜底） */
-#view-board::before, #view-ops::before {
-  content: "已迁入 CCC Desktop · 本页冻结（仅运维兜底）";
+/* Hub 远程管理口 · 会话分区提示 */
+#view-board::before, #view-ops::before, #view-chat::before {
+  content: "远程管理口 · 与 Desktop 本机会话相互独立；看板与下达任务共用";
   display: block;
   padding: 6px 16px;
-  background: linear-gradient(90deg, #fef3c7, #fde68a);
-  color: #92400e;
+  background: linear-gradient(90deg, #e0f2fe, #bae6fd);
+  color: #0c4a6e;
   font-size: 12px;
   font-weight: 600;
-  border-bottom: 1px solid #f59e0b;
+  border-bottom: 1px solid #38bdf8;
 }
 [data-theme="dark"] #view-board::before,
-[data-theme="dark"] #view-ops::before {
-  background: linear-gradient(90deg, #78350f, #92400e);
-  color: #fef3c7;
-  border-bottom-color: #b45309;
+[data-theme="dark"] #view-ops::before,
+[data-theme="dark"] #view-chat::before {
+  background: linear-gradient(90deg, #0c4a6e, #075985);
+  color: #e0f2fe;
+  border-bottom-color: #0284c7;
 }
+
+/* 薄远程聊天 */
+.rc-shell { display:flex; flex-direction:column; height:100%; min-height:0; }
+.rc-banner {
+  padding: 8px 14px; font-size: 12px; color: #0c4a6e;
+  background: #f0f9ff; border-bottom: 1px solid #bae6fd;
+}
+[data-theme="dark"] .rc-banner { background:#082f49; color:#e0f2fe; border-color:#075985; }
+.rc-toolbar {
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+  padding:8px 12px; border-bottom:1px solid var(--ccc-border-subtle);
+  font-size:13px;
+}
+.rc-thread { font-size:11px; opacity:.7; }
+.rc-status { font-size:12px; margin-left:auto; }
+.rc-status[data-kind="err"] { color:#b91c1c; }
+.rc-status[data-kind="ok"] { color:#15803d; }
+.rc-status[data-kind="busy"] { color:#a16207; }
+.rc-messages {
+  flex:1; overflow:auto; padding:12px; min-height:120px;
+  background: var(--ccc-bg, #fafafa);
+}
+.rc-empty { opacity:.55; font-size:13px; line-height:1.5; padding:24px 8px; }
+.rc-msg { margin-bottom:12px; }
+.rc-role { font-size:11px; font-weight:600; opacity:.6; margin-bottom:2px; }
+.rc-body {
+  margin:0; white-space:pre-wrap; word-break:break-word;
+  font-family: var(--ccc-font-sans, system-ui); font-size:13px;
+  padding:8px 10px; border-radius:8px;
+  background: var(--ccc-bg-elevated, #fff);
+  border:1px solid var(--ccc-border-subtle, #e5e5e5);
+}
+.rc-user .rc-body { border-color:#bae6fd; background:#f0f9ff; }
+[data-theme="dark"] .rc-user .rc-body { background:#082f49; border-color:#075985; }
+.rc-composer {
+  display:flex; gap:8px; padding:10px 12px;
+  border-top:1px solid var(--ccc-border-subtle);
+}
+.rc-composer textarea { flex:1; resize:vertical; min-height:64px; font-size:13px; padding:8px; }
+.rc-actions { display:flex; flex-direction:column; gap:6px; }
+.rc-btn {
+  padding:6px 12px; border-radius:6px; border:1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-elevated, #fff); cursor:pointer; font-size:13px;
+}
+.rc-btn.primary { background:#0284c7; color:#fff; border-color:#0284c7; }
+.rc-btn:disabled { opacity:.45; cursor:not-allowed; }
+.rc-transfer { padding:8px 12px 16px; border-top:1px solid var(--ccc-border-subtle); font-size:13px; }
+.rc-tf-grid { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.rc-tf-grid input, .rc-tf-grid textarea { font-size:13px; padding:6px 8px; }
+.rc-tf-result { font-size:11px; max-height:120px; overflow:auto; opacity:.8; }
 </style>
 </head>
 <body class="hub-mode">
 <nav id="hub-nav" aria-label="CCC Hub">
-  <div class="hub-brand" title="网页为运维入口；主产品见 CCC Desktop">CCC<em>Hub</em> <span style="font-size:10px;opacity:.55;font-weight:500">运维</span></div>
+  <div class="hub-brand" title="远程管理口；主产品见 CCC Desktop">CCC<em>Hub</em> <span style="font-size:10px;opacity:.55;font-weight:500">远程管理</span></div>
+  <a class="hub-nav-link" data-route="chat" href="#/chat">对话</a>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
   <a class="hub-nav-link" data-route="ops" href="#/ops">运维</a>
   <div class="hub-nav-spacer"></div>
 </nav>
 <div id="hub-views">
+  <div class="hub-view" id="view-chat"></div>
   <div class="hub-view" id="view-board"></div>
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
@@ -64,7 +117,6 @@ function toggleMobileSidebar() {
   if (!sidebar) return;
   sidebar.classList.toggle('open');
   if (overlay) overlay.classList.toggle('show');
-  /* Hub 壳始终锁死 body 滚动（iOS 勿放开，否则整页可滑） */
   document.body.style.overflow = 'hidden';
 }
 
@@ -79,22 +131,7 @@ function copyCode(btn) {
     btn.textContent = '复制失败';
   });
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-  const fab = document.getElementById('scroll-fab');
-  const messages = document.getElementById('messages');
-  if (fab && messages) {
-    messages.addEventListener('scroll', function() {
-      const atBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 200;
-      fab.classList.toggle('show', !atBottom);
-    });
-    fab.addEventListener('click', function() {
-      messages.scrollTop = messages.scrollHeight;
-      fab.classList.remove('show');
-    });
-  }
-});
 </script>
-<script type="module" src="/js/app.js?v=20260718dual1"></script>
+<script type="module" src="/js/app.js?v=20260721remote1"></script>
 </body>
 </html>

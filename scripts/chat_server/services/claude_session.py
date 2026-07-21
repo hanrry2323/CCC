@@ -1172,6 +1172,13 @@ class ClaudeSessionManager:
             if slot.lock.locked():
                 slot.lock.release()
 
+    async def cancel_session(
+        self, project_path: str, hub_session_id: str
+    ) -> bool:
+        """Client stop：释放该 thread 的 live 槽（中断进行中的 turn）。"""
+        key = _slot_key(project_path, hub_session_id)
+        return await self._drop_slot(key, reason="client_cancel")
+
     async def shutdown(self) -> None:
         if self._reaper_task is not None:
             self._reaper_task.cancel()
