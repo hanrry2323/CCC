@@ -22,12 +22,32 @@
 
 ## 下一步候选（按需，无活跃 brief）
 
-| ID | 项 | 窗 | 模型 |
-|----|----|----|------|
-| H-1 | `epic_done` 流事件补齐 | 编排 | Auto |
-| 版本 bump | v0.52.2 → 流畅基线签 | 架构 | 高级 |
-| F4-1 | 显式 Context Engineering | 编排 | 高级 |
-| F4-2 | Memory 沉淀（lessons） | 编排 | Auto |
-| F4-3 | Proactive 触发（CI/hook） | 编排 | 高级 |
+| ID | 项 | 窗 | 模型 | 状态 |
+|----|----|----|------|------|
+| H-1 | `epic_done` 流事件补齐 | 编排 | Auto | **accepted · 现在开工** |
+| 版本 bump | v0.52.2 → 流畅基线签 | 架构 | 高级 | queued |
+| F4-1 | 显式 Context Engineering | 编排 | 高级 | queued |
+| F4-2 | Memory 沉淀（lessons） | 编排 | Auto | queued |
+| F4-3 | Proactive 触发（CI/hook） | 编排 | 高级 | queued |
+| H-2 | `work_status` 后续阶段流事件 | 编排 | Auto | queued |
 
 用户点哪条，架构出 brief；否则流水线休眠。
+
+---
+
+## 粘贴包 B · 编排窗 · H-1 开工（现在贴这个）
+
+```
+模型：Auto
+只认 brief：docs/briefs/2026-07-21-h1-epic-done-flow-event.md
+白名单：scripts/engine/gates.py
+        scripts/_product_fanout.py（若更合适放 refresh_epic_lifecycle）
+        tests/scripts/test_epic_done_flow_event.py（新）
+        docs/product/flow-events.md（先改）
+        docs/briefs/2026-07-21-h1-epic-done-flow-event.md（填 §8）
+禁止：改 SSE 端点（desktop.py）、改 Desktop、改 transfer/flow 字段、改 epic 五态机、改无关文件。
+做完：填 brief §8 → commit → 回复「H-1 done <hash>」
+提交说明建议：
+fix(engine): persist epic_done to flow-events.jsonl independent of SSE (H-1)
+根因：epic_done 仅由 SSE 路径产出；无客户端订阅时不落盘。Engine 在 epic→done 转换时主动 append_event。
+```
