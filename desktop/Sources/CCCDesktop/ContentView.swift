@@ -666,7 +666,7 @@ struct CodexChatPaneBody: View {
         needsInstantBottomPin = true
     }
 
-    /// 切项目/会话：遮罩期内先钉底，再无动画露出（避免顶→底漂移）
+    /// 切项目/会话：遮罩下一帧内钉到末条 .top，再无动画露出（无 320ms 转圈、无漂移）
     private func beginPaneSwitchTransition() {
         paneSwitchGeneration &+= 1
         let gen = paneSwitchGeneration
@@ -674,26 +674,21 @@ struct CodexChatPaneBody: View {
         hide.disablesAnimations = true
         withTransaction(hide) {
             paneContentOpacity = 0
-            showPaneSwitchSpinner = true
+            showPaneSwitchSpinner = false
             pinBottomOnNextScroll()
-            // 预置末条 id，避免恢复后 scroll 再判 streaming 节流
             if let last = displayMessages.last {
                 lastScrollTargetId = "\(paneThreadId ?? "")-\(last.id)"
             }
         }
         Task { @MainActor in
-            // 遮罩期内：让 LazyVStack 挂上后立刻钉底（用户看不见）
             await Task.yield()
             guard gen == paneSwitchGeneration else { return }
             bottomPinTick &+= 1
-            try? await Task.sleep(nanoseconds: 320_000_000)
-            guard gen == paneSwitchGeneration else { return }
             await Task.yield()
             guard gen == paneSwitchGeneration else { return }
             var reveal = Transaction()
             reveal.disablesAnimations = true
             withTransaction(reveal) {
-                showPaneSwitchSpinner = false
                 paneContentOpacity = 1
             }
         }
@@ -1116,15 +1111,19 @@ struct CodexChatPaneBody: View {
             return
         }
 
-        // 3) assistant 流式：短内容仍钉 user；变长后跟滚消息底（禁止 tip.bottom）
+        // 3) assistant 流式：正文仍短或主要在跑工具 → 保持 user 在上；变长后再跟滚
         if last.isStreaming, last.role == "assistant" {
-            let stillShort = last.content.count < 320 && last.toolSteps.isEmpty
-            if stillShort {
+            let keepUserTop = last.content.count < 480
+            if keepUserTop {
                 if let user = currentTurnUserMessage() {
                     let userId = messageRowId(user)
                     if userId != lastScrollTargetId {
                         lastScrollTargetId = userId
-                        proxy.scrollTo(userId, anchor: .top)
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) {
+                            proxy.scrollTo(userId, anchor: .top)
+                        }
                     }
                 }
                 return
@@ -1136,7 +1135,11 @@ struct CodexChatPaneBody: View {
             }
             lastScrollTargetId = lastId
             lastStreamScrollBucket = bucket
-            proxy.scrollTo(lastId, anchor: .bottom)
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
             return
         }
 
@@ -1600,7 +1603,8 @@ struct CodexMessageRow: View {
                 ToolProgressRail(
                     steps: message.toolSteps,
                     filesChanged: message.filesChanged,
-                    finished: message.toolsFinished || !message.isStreaming,
+                    // 仅整轮结束后才 finished（绿勾）；流式中一律过程态
+                    finished: !message.isStreaming,
                     placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil
                 )
             }

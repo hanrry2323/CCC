@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Tool progress（Cursor / OpenCode 式：折叠摘要 + SF Symbol）
+// MARK: - Tool progress（Cursor 式：默认折叠 + 一句轮播 + 分段进度轨）
 
 struct ToolStep: Identifiable, Hashable, Codable {
     enum Status: String, Hashable, Codable { case running, done, error }
@@ -78,7 +78,6 @@ enum ToolProgressHelper {
         "LS": "列出目录",
     ]
 
-    /// SF Symbol 名（不再用 emoji）
     static let symbols: [String: String] = [
         "Read": "doc.text",
         "Glob": "magnifyingglass",
@@ -97,7 +96,6 @@ enum ToolProgressHelper {
         "NotebookEdit": "book",
     ]
 
-    /// 兼容旧持久化 emoji → 仍映射到 symbol
     static let writeTools: Set<String> = ["Write", "Edit", "StrReplace", "NotebookEdit", "MultiEdit"]
 
     static func humanLabel(name: String, input: [String: Any]?) -> String {
@@ -166,6 +164,12 @@ enum ToolProgressHelper {
         }
     }
 
+    /// 轮播用一句：优先结果，否则调用简介
+    static func carouselLine(for step: ToolStep) -> String {
+        if let hint = step.resultHint, !hint.isEmpty { return hint }
+        return step.label
+    }
+
     static func icon(for name: String) -> String { symbols[name] ?? "wrench.and.screwdriver" }
 
     static func isWrite(_ name: String) -> Bool { writeTools.contains(name) }
@@ -192,10 +196,23 @@ struct ToolProgressRail: View {
     var finished: Bool = false
     var placeholder: String? = nil
 
+    /// 默认折叠；用户点开才展开（禁止 onAppear 翻开造成闪）
     @State private var expanded = false
+    @State private var carouselIndex = 0
 
     private var isThinking: Bool { !finished && steps.isEmpty }
     private var isRunningTools: Bool { !finished && !steps.isEmpty }
+
+    private var carouselLines: [String] {
+        steps.suffix(8).map { ToolProgressHelper.carouselLine(for: $0) }
+    }
+
+    private var carouselText: String {
+        let lines = carouselLines
+        guard !lines.isEmpty else { return placeholder ?? "调用工具…" }
+        let i = carouselIndex % lines.count
+        return lines[i]
+    }
 
     var body: some View {
         Group {
@@ -207,13 +224,26 @@ struct ToolProgressRail: View {
                 finishedBlock
             }
         }
-        // 仅对 finished 折叠；勿绑 steps.count（追加 step 会整块闪）
-        .animation(.easeOut(duration: 0.2), value: finished)
-        .onAppear {
-            expanded = !finished
-        }
+        // 禁止绑 steps.count 动画（追加会闪）
+        .animation(nil, value: steps.count)
+        .animation(.easeOut(duration: 0.15), value: finished)
         .onChange(of: finished) { done in
             if done { expanded = false }
+        }
+        .onChange(of: steps.count) { _ in
+            // 新 step 落到最新一句；不触发展开
+            let n = carouselLines.count
+            if n > 0 { carouselIndex = n - 1 }
+        }
+        .task(id: "\(isRunningTools)-\(steps.count)") {
+            guard isRunningTools else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                guard !Task.isCancelled, isRunningTools else { return }
+                let n = carouselLines.count
+                guard n > 1 else { continue }
+                carouselIndex = (carouselIndex + 1) % n
+            }
         }
     }
 
@@ -232,42 +262,39 @@ struct ToolProgressRail: View {
         .accessibilityLabel(placeholder ?? "正在思考")
     }
 
+    /// 进行中：无绿勾；一句轮播 + 进度轨；默认折叠步骤列表
     private var runningBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let current = steps.last {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Image(systemName: ToolProgressHelper.sfSymbol(for: current))
-                        .font(.system(size: 12))
-                        .foregroundStyle(CCCTheme.accent)
-                        .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(current.label)
-                            .font(.system(size: 13))
-                            .foregroundStyle(CCCTheme.ink)
-                            .lineLimit(2)
-                        if let hint = current.resultHint, !hint.isEmpty {
-                            Text(hint)
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(CCCTheme.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.mini)
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.accent)
+                    .frame(width: 16)
+                Text(carouselText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(CCCTheme.ink)
+                    .lineLimit(1)
+                    .id("carousel-\(carouselIndex)-\(steps.count)")
+                    .transition(.opacity)
+                Spacer(minLength: 0)
+                Text("\(steps.filter { $0.status == .done }.count)/\(steps.count)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(CCCTheme.faint)
             }
+            .animation(.easeOut(duration: 0.2), value: carouselIndex)
+
             segmentProgressTrack
-            if steps.count > 1 {
-                DisclosureGroup(isExpanded: $expanded) {
-                    stepList(Array(steps.dropLast()))
-                } label: {
-                    Text("先前 \(steps.count - 1) 步")
-                        .font(.system(size: 12))
-                        .foregroundStyle(CCCTheme.faint)
-                }
-                .id("prior-steps")
+
+            DisclosureGroup(isExpanded: $expanded) {
+                stepList(steps)
+            } label: {
+                Text(expanded ? "收起步骤" : "展开 \(steps.count) 步")
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.faint)
             }
+            .id("tool-steps-disclosure")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -282,24 +309,17 @@ struct ToolProgressRail: View {
         )
     }
 
-    /// 分段进度轨：done / running / error / 未达
+    /// 分段进度轨：done / running / error（固定高度，防闪）
     private var segmentProgressTrack: some View {
         HStack(spacing: 2) {
-            ForEach(Array(steps.enumerated()), id: \.element.id) { _, step in
+            ForEach(steps, id: \.id) { step in
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(segmentFill(step.status))
                     .frame(height: 3)
-                    .overlay {
-                        if step.status == .running {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .scaleEffect(0.45)
-                                .opacity(0.85)
-                        }
-                    }
             }
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 3)
         .accessibilityLabel("工具进度 \(steps.filter { $0.status == .done }.count)/\(steps.count)")
     }
 
@@ -311,6 +331,7 @@ struct ToolProgressRail: View {
         }
     }
 
+    /// 整轮结束后才出现绿勾
     private var finishedBlock: some View {
         DisclosureGroup(isExpanded: $expanded) {
             stepList(steps)
