@@ -667,7 +667,7 @@ struct CodexChatPaneBody: View {
         needsInstantBottomPin = true
     }
 
-    /// 切项目/会话：遮罩下一帧内钉到末条 .top，再无动画露出（无 320ms 转圈、无漂移）
+    /// 切项目/会话：遮罩下一帧内钉到跟随位，再无动画露出（无 320ms 转圈、无漂移）
     private func beginPaneSwitchTransition() {
         paneSwitchGeneration &+= 1
         let gen = paneSwitchGeneration
@@ -677,9 +677,6 @@ struct CodexChatPaneBody: View {
             paneContentOpacity = 0
             showPaneSwitchSpinner = false
             pinBottomOnNextScroll()
-            if let last = displayMessages.last {
-                lastScrollTargetId = "\(paneThreadId ?? "")-\(last.id)"
-            }
         }
         Task { @MainActor in
             await Task.yield()
@@ -1006,12 +1003,14 @@ struct CodexChatPaneBody: View {
                                     }
                                 }
                         }
-                        // tip：布局锚点；滚动禁止 scrollTo(tip, .bottom)（会把空槽钉满视口）
+                        // tip：钉在视口 y=2/3；下方 Spacer(≈1/3 高) 正好留白
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorId)
-                        // Cursor 式底部空槽：最新内容偏上，下方留给流式回复
-                        Spacer().frame(height: max(geometry.size.height * 0.55, 220))
+                        // 底部约 1/3 空槽：最新轮偏上，流式向下长时内容上推、留白保持
+                        Spacer().frame(
+                            height: max(geometry.size.height * Self.chatBottomReserveFraction, 120)
+                        )
                     }
                     .frame(maxWidth: CCCTheme.chatMaxWidth)
                     .frame(maxWidth: .infinity)
@@ -1019,7 +1018,7 @@ struct CodexChatPaneBody: View {
                     .padding(.top, 8)
                 }
                 .onAppear {
-                    // 窗体重入 / 首次进入：瞬移最新，勿从上往下刷
+                    // 窗体重入 / 首次进入：瞬移跟随位，勿从上往下刷
                     pinBottomOnNextScroll()
                     scroll(proxy)
                 }
@@ -1035,7 +1034,8 @@ struct CodexChatPaneBody: View {
                     else { return }
                     let id = "\(paneThreadId ?? "")-\(msg.id)"
                     withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(id, anchor: .center)
+                        // 定位到该条时仍靠上，下方留给上下文
+                        proxy.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.25))
                     }
                     model.pendingScrollMessageId = nil
                 }
@@ -1068,103 +1068,61 @@ struct CodexChatPaneBody: View {
         "\(paneThreadId ?? "none")-bottom"
     }
 
-    private func messageRowId(_ msg: ChatMessage) -> String {
-        "\(paneThreadId ?? "")-\(msg.id)"
+    /// 对话栏底部留白比例（视口高度）
+    private static let chatBottomReserveFraction: CGFloat = 1.0 / 3.0
+
+    /// tip 落在视口 2/3 处 → 下方正好约 1/3 空白
+    private static var chatFollowAnchor: UnitPoint {
+        UnitPoint(x: 0.5, y: 1 - chatBottomReserveFraction)
     }
 
-    /// 本轮 user：last 是 user，或 last 是 assistant 时取其前一条 user
-    private func currentTurnUserMessage() -> ChatMessage? {
-        let msgs = displayMessages
-        guard let last = msgs.last else { return nil }
-        if last.role == "user" { return last }
-        guard let idx = msgs.indices.last, idx > 0 else { return nil }
-        for i in stride(from: idx - 1, through: 0, by: -1) {
-            if msgs[i].role == "user" { return msgs[i] }
-        }
-        return nil
-    }
-
-    /// 刚发送 / 等首包：钉本轮 user 顶部，下方空槽留给回复
-    private func shouldPinCurrentUserToTop(_ last: ChatMessage) -> Bool {
-        if last.role == "user" { return true }
-        if last.role == "assistant", last.isStreaming,
-           last.content.isEmpty, last.toolSteps.isEmpty {
-            return true
-        }
-        return false
-    }
-
-    /// Cursor 式滚动：user/末条 `.top`；流式跟消息 `.bottom`；禁止 tip+`.bottom`
+    /// 底部留约 1/3：钉 tip 到 y=2/3；禁止 tip+.bottom（会吃掉留白）
     private func scroll(_ proxy: ScrollViewProxy) {
-        guard let last = displayMessages.last else { return }
-        let lastId = messageRowId(last)
+        guard !displayMessages.isEmpty else { return }
+        let tip = bottomAnchorId
+        let last = displayMessages.last
 
-        // 1) 切会话 / 重入：末条贴顶，下方空槽自然露出（无动画）
+        func pinTip(animated: Bool = false) {
+            if animated {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(tip, anchor: Self.chatFollowAnchor)
+                }
+            } else {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    proxy.scrollTo(tip, anchor: Self.chatFollowAnchor)
+                }
+            }
+        }
+
+        // 1) 切会话 / 重入：瞬移到跟随位
         if needsInstantBottomPin {
             needsInstantBottomPin = false
-            lastScrollTargetId = lastId
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) {
-                proxy.scrollTo(lastId, anchor: .top)
-            }
+            lastScrollTargetId = tip
+            lastStreamScrollBucket = -1
+            pinTip()
             return
         }
 
-        // 2) 刚发送 / 等首包：钉本轮 user 顶部
-        if shouldPinCurrentUserToTop(last) {
-            guard let user = currentTurnUserMessage() else { return }
-            let userId = messageRowId(user)
-            if userId == lastScrollTargetId { return }
-            lastScrollTargetId = userId
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) {
-                proxy.scrollTo(userId, anchor: .top)
-            }
-            return
-        }
-
-        // 3) assistant 流式：正文仍短或主要在跑工具 → 保持 user 在上；变长后再跟滚
-        if last.isStreaming, last.role == "assistant" {
-            let keepUserTop = last.content.count < 480
-            if keepUserTop {
-                if let user = currentTurnUserMessage() {
-                    let userId = messageRowId(user)
-                    if userId != lastScrollTargetId {
-                        lastScrollTargetId = userId
-                        var t = Transaction()
-                        t.disablesAnimations = true
-                        withTransaction(t) {
-                            proxy.scrollTo(userId, anchor: .top)
-                        }
-                    }
-                }
+        // 2) 流式：节流跟滚，始终保持底部约 1/3 空
+        if let last, last.isStreaming, last.role == "assistant" {
+            let bucket = last.content.count / 80 + last.toolSteps.count * 1_000
+            if lastScrollTargetId == tip, bucket == lastStreamScrollBucket {
                 return
             }
-            // 节流：同目标时约每 120 字或 toolStep 变化才滚
-            let bucket = last.content.count / 120 + last.toolSteps.count * 1_000
-            if lastId == lastScrollTargetId, bucket == lastStreamScrollBucket {
-                return
-            }
-            lastScrollTargetId = lastId
+            lastScrollTargetId = tip
             lastStreamScrollBucket = bucket
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) {
-                proxy.scrollTo(lastId, anchor: .bottom)
-            }
+            pinTip()
             return
         }
 
-        // 4) 非流式（历史加载完成等）：末条贴顶
-        if lastId == lastScrollTargetId { return }
-        lastScrollTargetId = lastId
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) {
-            proxy.scrollTo(lastId, anchor: .top)
-        }
+        // 3) 新 user / 回合结束：钉 tip（上留历史，下留 1/3）
+        let fingerprint = "\(displayMessages.count)-\(last?.id.uuidString ?? "")-settled"
+        if fingerprint == lastScrollTargetId { return }
+        lastScrollTargetId = fingerprint
+        lastStreamScrollBucket = -1
+        pinTip()
     }
 
     /// 矮输入条；草稿用本地 @State，避免 SSE 冲焦点
