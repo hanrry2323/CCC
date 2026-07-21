@@ -72,6 +72,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `9af1fb4` |
+| 缺口 | 无 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `SOAK_N` 参数化（兼容 `CCC_SOAK_N`）；硬门 `orphan_delta<=0`（每轮 + 合计）+ live cap 5 + slot 不净增；`wait_orphans_at_most` settle 避免在飞 session 误判；failover smoke + 回归测新增；e2e step4 backlog front 新→旧口径修正；`phase-status.md` F2-1 行已加；无 Engine 主循环改动。
