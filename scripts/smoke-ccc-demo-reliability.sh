@@ -162,7 +162,7 @@ PY
     if curl -sf --connect-timeout 8 --max-time 30 "${AUTH[@]}" \
         -H 'Content-Type: application/json' -d "${BODY}" \
         "${SERVER}/api/desktop/transfer" >/tmp/ccc-rel-${i}.json 2>/tmp/ccc-rel-${i}.err; then
-      EPIC=$(python3 -c 'import json; print(json.load(open(sys.argv[1])).get("epic_id") or "")' /tmp/ccc-rel-${i}.json)
+      EPIC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("epic_id") or "")' /tmp/ccc-rel-${i}.json)
       [[ -n "${EPIC}" ]] && break
     fi
     tries=$((tries + 1))

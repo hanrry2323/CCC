@@ -95,7 +95,8 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=reliability \
 
 > **终验补丁（2026-07-21）**：  
 > 1) 首版误用 `GET /api/health`（Hub 无此路由）→ 改为 `GET /api/desktop/projects`。  
-> 2) 看板误用 `GET /api/desktop/board` → 改为现网 `GET /api/board`。
+> 2) 看板误用 `GET /api/desktop/board` → 改为现网 `GET /api/board`。  
+> 3) transfer 解析缺 `import sys` → 补齐（否则 `NameError` 假失败）。
 
 
 阈值（可调）：
