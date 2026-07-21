@@ -507,9 +507,11 @@ struct CodexChatPaneBody: View {
     /// 草稿必须本地持有：右栏 SSE 刷新 AppModel 时不能重绘冲掉键盘
     @State private var composerText: String = ""
     @State private var lastScrollTargetId: String = ""
-    /// 切窗/切会话后下一次滚动必须瞬移到底，禁止 easeOut 扫历史（长对话「刷一遍」）
+    /// 切窗/切会话后下一次滚动必须瞬移到末轮，禁止 easeOut 扫历史（长对话「刷一遍」）
     @State private var needsInstantBottomPin: Bool = true
-    /// 触发 ScrollViewReader 内再钉一次底（scene 激活时 onAppear 不一定重跑）
+    /// 流式跟滚节流桶（字数/120 + toolSteps）
+    @State private var lastStreamScrollBucket: Int = -1
+    /// 触发 ScrollViewReader 内再钉一次（scene 激活时 onAppear 不一定重跑）
     @State private var bottomPinTick: UInt64 = 0
     /// 切会话过渡：先遮罩 + 圆圈，再缓慢露出内容（掩盖瞬时闪屏）
     @State private var paneContentOpacity: Double = 1
@@ -660,6 +662,7 @@ struct CodexChatPaneBody: View {
 
     private func pinBottomOnNextScroll() {
         lastScrollTargetId = ""
+        lastStreamScrollBucket = -1
         needsInstantBottomPin = true
     }
 
@@ -957,13 +960,6 @@ struct CodexChatPaneBody: View {
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel("空对话引导：聊透目标，定稿，确认转任务")
                         }
-                        // 新对话仅 1 条 user、未 streaming：顶部留白把气泡压到中上
-                        if displayMessages.count == 1,
-                           displayMessages.first?.role == "user",
-                           !paneStreaming {
-                            Spacer()
-                                .frame(height: max(geometry.size.height * 0.28, 140))
-                        }
                         ForEach(displayMessages) { msg in
                             CodexMessageRow(message: msg)
                                 // 固定 id：toolSteps 变化靠 Hashable diff 刷新轨，勿重建整行 Markdown
@@ -1001,12 +997,12 @@ struct CodexChatPaneBody: View {
                                     }
                                 }
                         }
-                        // 钉底锚点：切回窗口时 scrollTo 这里，避免 .center + 大 Spacer 扫 LazyVStack
+                        // tip：布局锚点；滚动禁止 scrollTo(tip, .bottom)（会把空槽钉满视口）
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorId)
-                        // Cursor 式底部留白：最新内容略偏上；不影响 tip 钉底
-                        Spacer().frame(height: max(geometry.size.height * 0.35, 120))
+                        // Cursor 式底部空槽：最新内容偏上，下方留给流式回复
+                        Spacer().frame(height: max(geometry.size.height * 0.55, 220))
                     }
                     .frame(maxWidth: CCCTheme.chatMaxWidth)
                     .frame(maxWidth: .infinity)
@@ -1063,40 +1059,94 @@ struct CodexChatPaneBody: View {
         "\(paneThreadId ?? "none")-bottom"
     }
 
+    private func messageRowId(_ msg: ChatMessage) -> String {
+        "\(paneThreadId ?? "")-\(msg.id)"
+    }
+
+    /// 本轮 user：last 是 user，或 last 是 assistant 时取其前一条 user
+    private func currentTurnUserMessage() -> ChatMessage? {
+        let msgs = displayMessages
+        guard let last = msgs.last else { return nil }
+        if last.role == "user" { return last }
+        guard let idx = msgs.indices.last, idx > 0 else { return nil }
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            if msgs[i].role == "user" { return msgs[i] }
+        }
+        return nil
+    }
+
+    /// 刚发送 / 等首包：钉本轮 user 顶部，下方空槽留给回复
+    private func shouldPinCurrentUserToTop(_ last: ChatMessage) -> Bool {
+        if last.role == "user" { return true }
+        if last.role == "assistant", last.isStreaming,
+           last.content.isEmpty, last.toolSteps.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    /// Cursor 式滚动：user/末条 `.top`；流式跟消息 `.bottom`；禁止 tip+`.bottom`
     private func scroll(_ proxy: ScrollViewProxy) {
         guard let last = displayMessages.last else { return }
-        let lastId = "\(paneThreadId ?? "")-\(last.id)"
-        let tipId = bottomAnchorId
+        let lastId = messageRowId(last)
 
-        // 切窗/切会话/重入：无动画钉底（解决「从历史刷到最新」）
+        // 1) 切会话 / 重入：末条贴顶，下方空槽自然露出（无动画）
         if needsInstantBottomPin {
             needsInstantBottomPin = false
             lastScrollTargetId = lastId
             var t = Transaction()
             t.disablesAnimations = true
             withTransaction(t) {
-                proxy.scrollTo(tipId, anchor: .bottom)
+                proxy.scrollTo(lastId, anchor: .top)
             }
             return
         }
 
-        // 同目标跳过，避免每个 delta 反复 scrollTo
-        guard lastId != lastScrollTargetId || last.isStreaming else { return }
-        // streaming 时节流：仅当内容长度跨过 120 字边界或目标变化才滚
-        if last.isStreaming, lastId == lastScrollTargetId {
-            let n = last.content.count
-            if n > 0, n % 120 != 0 { return }
-        }
-        lastScrollTargetId = lastId
-        // 流式与普通新消息：都钉底、不扫历史；流式禁动画
-        if last.isStreaming {
-            proxy.scrollTo(tipId, anchor: .bottom)
-        } else {
+        // 2) 刚发送 / 等首包：钉本轮 user 顶部
+        if shouldPinCurrentUserToTop(last) {
+            guard let user = currentTurnUserMessage() else { return }
+            let userId = messageRowId(user)
+            if userId == lastScrollTargetId { return }
+            lastScrollTargetId = userId
             var t = Transaction()
             t.disablesAnimations = true
             withTransaction(t) {
-                proxy.scrollTo(tipId, anchor: .bottom)
+                proxy.scrollTo(userId, anchor: .top)
             }
+            return
+        }
+
+        // 3) assistant 流式：短内容仍钉 user；变长后跟滚消息底（禁止 tip.bottom）
+        if last.isStreaming, last.role == "assistant" {
+            let stillShort = last.content.count < 320 && last.toolSteps.isEmpty
+            if stillShort {
+                if let user = currentTurnUserMessage() {
+                    let userId = messageRowId(user)
+                    if userId != lastScrollTargetId {
+                        lastScrollTargetId = userId
+                        proxy.scrollTo(userId, anchor: .top)
+                    }
+                }
+                return
+            }
+            // 节流：同目标时约每 120 字或 toolStep 变化才滚
+            let bucket = last.content.count / 120 + last.toolSteps.count * 1_000
+            if lastId == lastScrollTargetId, bucket == lastStreamScrollBucket {
+                return
+            }
+            lastScrollTargetId = lastId
+            lastStreamScrollBucket = bucket
+            proxy.scrollTo(lastId, anchor: .bottom)
+            return
+        }
+
+        // 4) 非流式（历史加载完成等）：末条贴顶
+        if lastId == lastScrollTargetId { return }
+        lastScrollTargetId = lastId
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            proxy.scrollTo(lastId, anchor: .top)
         }
     }
 

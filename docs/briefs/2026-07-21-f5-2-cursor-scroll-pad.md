@@ -114,7 +114,7 @@
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 壳 | | | |
+| 壳 | 底部空槽 `max(h*0.55,220)`；删 F5-1 首条顶部 Spacer；`scroll()` 改为切会话/末条 `.top`、等首包钉 user `.top`、流式跟 assistant `.bottom`；禁止 tip+`.bottom` | `ccc-self-check` 全通过；`swift build -c release` 绿；已 `pkill` 后起 release 二进制 | ✅ |
 | 过桥 | — | — | 不参与 |
 | 编排 | — | — | 不参与 |
 
