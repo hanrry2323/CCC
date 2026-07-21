@@ -35,7 +35,8 @@ HOST="${CCC_AGENT_HOST:-127.0.0.1}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"
-PATH_EXTRA="${HOME}/.local/bin:${HOME}/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# Phase2：sidecar PATH 不含个人 claude 目录；含 vendor/loop-code 父目录
+PATH_EXTRA="${CCC_HOME}/vendor/loop-code:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 TOKEN_FILE="${HOME}/.ccc/agent-token"
 MINIMAX_KEY_FILE="${HOME}/.ccc/minimax-api-key"
 

@@ -2,7 +2,8 @@
 
 > **状态**：已拍板（2026-07-21）  
 > **性质**：持续工程北极星；冲突时以本文 + [`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md) 为准。  
-> **Phase1 brief**：[`loop-code-ownership-cut-phase1-brief.md`](loop-code-ownership-cut-phase1-brief.md)
+> **Phase1 brief**：[`loop-code-ownership-cut-phase1-brief.md`](loop-code-ownership-cut-phase1-brief.md)  
+> **Phase2 brief**：[`loop-code-ownership-cut-phase2-brief.md`](loop-code-ownership-cut-phase2-brief.md)
 
 ---
 
@@ -38,7 +39,7 @@
 
 - 2017 与 Desktop 共用同一份 `vendor/loop-code` 包
 - 为品牌一致而维护双架构 fork（除非日后单独立项「CCC 无头 runtime」）
-- 本切割内做 MCP/plugins UI、卸载个人 Claude（见分阶段）
+- 本切割内做 MCP/plugins UI（见分阶段）；Phase2 仅退役 CLI，不删 `~/.claude`
 
 ```text
 M1 对话面                         信息流                    Mac2017 编排面
@@ -65,8 +66,8 @@ Desktop → sidecar → loop-code      transfer/flow      Engine → Claude CLI 
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| **Phase1** | 文档 + `CLAUDE_CONFIG_DIR` + 禁 PATH 回落 + env 白名单 + health/smoke | 本轮 |
-| **Phase2** | M1 卸载/停用原版 Claude Code；PATH 无 `claude` 时 Desktop 仍绿 | 待办 |
+| **Phase1** | 文档 + `CLAUDE_CONFIG_DIR` + 禁 PATH 回落 + env 白名单 + health/smoke | ✅ 完成（2026-07-21 · `2eafef2`） |
+| **Phase2** | M1 卸载/停用原版 Claude Code；PATH 无 `claude` 时 Desktop 仍绿 | ✅ 完成（2026-07-21 · phase2-brief） |
 | **Phase3** | 2017 Engine：`CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`（仍用 x86 原版 CLI） | 待办 |
 | **Phase4** | 会话 SSOT 收敛（弱化 `~/.claude/projects`）；Desktop 展示 loop-code VERSION | 待办 |
 | **Phase5+** | 在私有 runtime 上深挖 loop-code（权限 / hooks / MCP 等按产品需要） | 待办 |
@@ -77,9 +78,11 @@ Desktop → sidecar → loop-code      transfer/flow      Engine → Claude CLI 
 
 **Phase1 绿**：`/health` 报 `agent_runtime=loop-code` 且 `config_dir` 指向 `.ccc/loop-code`；缺 `vendor/loop-code/cli` 时 chat 失败且不落到个人 CLI。
 
-**回滚**：plist 去掉 `CLAUDE_CONFIG_DIR`、恢复 `resolve` 宽松回落；私有目录可保留不影响原版。
+**Phase2 绿**：`command -v claude` 为空；sidecar health 仍为 loop-code + `~/.ccc/loop-code`；`smoke-loop-code-no-personal-claude.sh` PASS。**不得**删整个 `~/.claude`。
 
-**Phase2 前**：不得删除整个 `~/.claude`（个人历史/技能可能仍被 Cursor 等引用）。
+**回滚 Phase1**：plist 去掉 `CLAUDE_CONFIG_DIR`、恢复 `resolve` 宽松回落；私有目录可保留。
+
+**回滚 Phase2**：见 phase2-brief（`~/.ccc/retired/` + npm 重装）。
 
 ---
 
