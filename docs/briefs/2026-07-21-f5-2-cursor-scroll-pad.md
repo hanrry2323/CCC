@@ -122,6 +122,17 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | 通过 / 打回 |
-| 缺口 | |
-| 验收日 | |
+| 结论 | 通过 |
+| 缺口 | 无。`bottomAnchorId` 仍保留作布局锚点，但已无 `scrollTo(tip, .bottom)`；流式跟滚用 `lastId` + `.bottom`，符合 brief |
+| 验收日 | 2026-07-21 |
+
+验收照单勾：
+- [x] 底部空槽 `max(h*0.55, 220)`
+- [x] 已删 F5-1 首条顶部 Spacer
+- [x] 切会话/重入：`scrollTo(lastId, .top)`
+- [x] 刚发送/等首包：`scrollTo(userId, .top)`（`shouldPinCurrentUserToTop`）
+- [x] 流式变长：跟 `lastId` `.bottom` + 节流桶；短内容仍钉 user
+- [x] 代码无 `scrollTo(tipId, anchor: .bottom)`
+- [x] 白名单：仅 `ContentView.swift` + brief
+- [x] `ccc-self-check` 全通过；release 产物 mtime 20:50；已重启 pid 52395
+
