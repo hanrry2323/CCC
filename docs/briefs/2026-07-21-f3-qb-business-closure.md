@@ -83,6 +83,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填：通过 → 宣告流畅基线 / 打回） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `327fd86` · qb 样本绿（流畅基线第一档） |
+| 缺口 | `epic_done` 流事件未补（flow-events 仅至 `work_status=planned`，后续以 board events + snapshot 为据）；候选 hotfix brief，不在本波次修 Engine |
+| 验收日 | 2026-07-21 |
+
+**审阅：** epic_id + split_status=done + w1→released + snapshot user_stage=done + abnormal=0 + 人批 0 + 双机 aligned:yes + qb 3 commits + README stamp；phase-status F3-1 行已加；phase12 证据链追加（不动既有结论）；无 Engine/契约改动。
