@@ -30,38 +30,16 @@
 | F4-2 | Memory 沉淀（lessons） | 编排 | Auto | **done `4ed4774`** |
 | F4-3 | Proactive 触发（CI/hook） | 编排 | 高级 | **done `580dd92`** |
 | H-2 | `work_status` 后续阶段流事件 | 编排 | Auto | **done `4d45d74`** |
-| **F5-1** | **桌面端中栏渲染 + 工具调用体验** | **壳** | **Auto** | **accepted · 待执行** |
+| **F5-1** | **桌面端中栏渲染 + 工具调用体验** | **壳** | **Auto** | **done `0c65257`** |
 
 用户点哪条，架构出 brief；否则流水线休眠。
 
 ---
 
-## 粘贴包 A · 壳窗（F5-1 · 桌面端中栏 UX 修复）
+## 粘贴包 A · 壳窗（F5-1 · 已完成）
 
 ```
-执行 brief：docs/briefs/2026-07-21-f5-1-desktop-middle-pane-ux.md
-模型：Auto
-白名单（只改这些）：
-  desktop/Sources/CCCDesktop/Components/MarkdownText.swift
-  desktop/Sources/CCCDesktop/Components/ToolProgressRail.swift
-  desktop/Sources/CCCDesktop/ContentView.swift（仅 CodexChatPaneBody / messageArea / beginPaneSwitchTransition / scroll）
-  desktop/Sources/CCCDesktop/AppModel.swift（仅 .toolResult 事件分支 + ToolStep resultHint 相关）
-  desktop/Sources/CCCDesktop/Models.swift（仅 ToolStep 加 resultHint 字段，Codable 向后兼容）
-
-七项缺陷 brief 第 4 节已逐条定位根因 + 修复方案，照做即可：
-  A. Markdown 失真：MarkdownText.swift bold 分支 weight .regular → .semibold；heading weight 分档。
-  B. 绿勾过早：AppModel.swift .toolResult 分支删掉 `if allDone { toolsFinished = true }`；只在 .done 置 true。
-  C. 工具调用闪：ToolProgressRail.swift 移除 `.animation(value: steps.count)`；只对 finished 动画；DisclosureGroup 稳定 id。
-  D. 过程摘要：ToolStep 加 resultHint；AppModel 在 toolResult 推断一句；rail 顶部显示当前 + 展开见历史。
-  E. 进度轨：runningBlock 下方加 3pt 分段进度轨（done/running/error/未达）。
-  F. 新对话首条位置：displayMessages.count==1 且 user 且未 streaming 时，LazyVStack 顶部插 Spacer 压到中上。
-  G. 切换漂移：beginPaneSwitchTransition 里先钉底（遮罩期内）再恢复 opacity；恢复用 disablesAnimations 直跳 1。
-
-自检：
-  bash scripts/ccc-self-check.sh
-  cd desktop && swift build   # 无工具链则跳过并备注
-
-完成后回贴：commit hash + 自检结果。架构验收。
+F5-1 已合入 0c65257。架构验收通过。无活跃 brief。等用户点下一项。
 ```
 
 ---
