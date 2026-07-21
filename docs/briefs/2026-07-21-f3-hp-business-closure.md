@@ -51,27 +51,28 @@
 
 ## 7. 验收清单
 
-- [ ] hp 1 笔业务向 epic 全程无中途人批 → released
-- [ ] 证据链完整（仿 F3-1 模板）
-- [ ] abnormal 数 = 0（若有则回贴现象，不修 Engine）
-- [ ] `phase-status.md` 新增 F3-2 行
-- [ ] `phase8-hp.md` 追加证据链段（不动既有结论）
-- [ ] 白名单外无改动
-- [ ] 未改 Engine 主循环 / 契约
+- [x] hp 1 笔业务向 epic 全程无中途人批 → released
+- [x] 证据链完整（仿 F3-1 模板）
+- [x] abnormal 数 = 0（若有则回贴现象，不修 Engine）
+- [x] `phase-status.md` 新增 F3-2 行
+- [x] `phase8-hp.md` 追加证据链段（不动既有结论）
+- [x] 白名单外无改动
+- [x] 未改 Engine 主循环 / 契约
 
 ## 8. 执行回贴（执行面填）
 
 | 项 | 值 |
 |----|-----|
-| epic_id | |
-| split_status 终态 | |
-| works（tid → 终态） | |
-| 关键 flow 事件 | |
-| 双机核对输出 | |
+| epic_id | `hp-biz-small-1784631864-4ce2` |
+| split_status 终态 | `done` |
+| works（tid → 终态） | `hp-biz-small-1784631864-4ce2-w1` → `released` |
+| 关键 flow 事件 | `epic_created` → `fanout` → `work_status=planned`；board：planned→in_progress→testing→verified→released；snapshot `user_stage=done` |
+| 双机核对输出 | `M1: v0.52.2 6fa64b3` / `2017: v0.52.2 6fa64b3 v1` / `aligned: yes` |
 | 人批次数 | 0 |
-| abnormal | 无 / 现象 |
-| hp commits | |
-| README stamp | |
+| abnormal | 无 |
+| hp commits | `db5b92a` · `bc6280f` · `20e3f2f` |
+| README stamp | `hp-biz-1784631864` |
+| 补充 | 新 `scripts/smoke-hp-biz-small.sh`；hp 原无根 README（真实文档债）；全程 ~352s；smoke PASS |
 
 ## 9. 架构验收
 
