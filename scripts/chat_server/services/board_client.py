@@ -122,7 +122,7 @@ async def board_proxy(
                 status_code=405,
                 media_type="application/json",
             )
-    except (httpx.ConnectError, httpx.TimeoutException):
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.PoolTimeout, httpx.ProxyError, httpx.UnsupportedProtocol):
         return Response(
             content=json.dumps({"error": "看板服务离线", "detail": "Board Server 不可用"}),
             status_code=503,

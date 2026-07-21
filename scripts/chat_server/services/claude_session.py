@@ -105,6 +105,39 @@ def _kill_pids(pids: set[int], *, reason: str) -> int:
     return killed
 
 
+def _escalate_kill_pids(pids: set[int], *, reason: str) -> int:
+    """SIGTERM 一次 + 短等待，未退则 SIGKILL。严格只针对 slot 已登记的 PID。"""
+    killed = _kill_pids(pids, reason=reason)
+    survivors: set[int] = set()
+    for pid in sorted(pids):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        survivors.add(pid)
+    if not survivors:
+        return killed
+    import time as _time
+
+    _time.sleep(min(0.3, 0.2))
+    for pid in sorted(survivors):
+        try:
+            os.kill(pid, signal.SIGKILL)
+            killed += 1
+        except ProcessLookupError:
+            continue
+        except OSError:
+            _log.debug("sigkill pid=%s reason=%s failed", pid, reason, exc_info=True)
+    if killed:
+        _log.warning(
+            "escalate killed %d loop-code pid(s) reason=%s pids=%s",
+            killed, reason, sorted(pids),
+        )
+    return killed
+
+
 def _pids_alive(pids: set[int]) -> bool:
     """任一 PID 仍存活则 True；空集合视为未知（不判死）。"""
     if not pids:
@@ -352,7 +385,22 @@ class ClaudeSessionManager:
     async def _disconnect_slot(self, slot: _LiveSlot) -> None:
         try:
             if slot.connected and slot.client is not None:
-                await slot.client.disconnect()
+                try:
+                    await asyncio.wait_for(
+                        slot.client.disconnect(),
+                        timeout=float(config.CHAT_DRAIN_TIMEOUT),
+                    )
+                except asyncio.TimeoutError:
+                    _log.warning(
+                        "disconnect timeout key=%s → escalate to SIGKILL",
+                        slot.key,
+                    )
+                if slot.cli_pids:
+                    _escalate_kill_pids(
+                        set(slot.cli_pids),
+                        reason=f"disconnect:{slot.key}",
+                    )
+                    slot.cli_pids.clear()
         except Exception:
             _log.warning(
                 "disconnect failed for %s", slot.hub_session_id, exc_info=True
@@ -361,10 +409,6 @@ class ClaudeSessionManager:
             slot.connected = False
             slot.client = None
             slot.tools_bound = False
-            # SDK disconnect 后仍可能残留 loop-code；只杀本 slot 记下的 PID
-            if slot.cli_pids:
-                _kill_pids(set(slot.cli_pids), reason=f"disconnect:{slot.key}")
-                slot.cli_pids.clear()
 
     async def _forget_slot(self, slot: _LiveSlot, *, reason: str) -> None:
         """调用方已持有 slot.lock：断开并移出 registry，供挂死轮次回收。"""

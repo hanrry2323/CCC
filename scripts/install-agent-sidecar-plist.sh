@@ -69,10 +69,23 @@ case "$cmd" in
     ;;
 esac
 
-# 默认直连 MiniMax Anthropic（对话更稳）。若要走 2017 中转：
-#   CCC_AGENT_ROUTER=http://192.168.3.116:4000 bash scripts/install-agent-sidecar-plist.sh --start
+# 默认直连 MiniMax Anthropic（对话更稳）。
+# 可选上游（按优先级，互斥）：
+#   1) CCC_AGENT_UPSTREAM_118INK=1 → Anthropic 兼容中转（默认模型 claude-opus-4-8）
+#   2) CCC_AGENT_ROUTER=http://...   → 2017 旧中转（兼容保留，默认模型 flash）
+#   3) 直连 MiniMax（默认）
 # 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机旧 :4000
-if [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
+if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
+  # 118.ink 中转：Anthropic 兼容 /v1/messages；key 默认取 CCC_AGENT_118INK_KEY（写在 secrets.env）
+  ROUTER="https://118.ink/v1"
+  AUTH_TOKEN_VALUE="${CCC_AGENT_118INK_KEY:-${ANTHROPIC_AUTH_TOKEN:-}}"
+  if [[ -z "$AUTH_TOKEN_VALUE" ]]; then
+    echo "缺少 118.ink key：请设置 CCC_AGENT_118INK_KEY（或 ANTHROPIC_AUTH_TOKEN）" >&2
+    echo "回退默认：unset CCC_AGENT_UPSTREAM_118INK 后重新安装" >&2
+    exit 1
+  fi
+  AGENT_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-8}"
+elif [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
   ROUTER="${CCC_AGENT_ROUTER}"
   AUTH_TOKEN_VALUE="${ANTHROPIC_AUTH_TOKEN:-sk-trae-real-token-not-needed}"
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"

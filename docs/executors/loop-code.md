@@ -50,6 +50,31 @@ launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 模型：`ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`ANTHROPIC_MODEL=MiniMax-M3`（key：`~/.ccc/minimax-api-key`）。  
 ~~经 2017 Router `:4000` 已退役。~~
 
+### 备选上游 118.ink（opus 4.8）
+
+需要切到外部中转跑 Claude Opus 4.8 时，触发 env 重装 sidecar：
+
+```bash
+# 把 key 放到 ~/.claude/secrets.env（不在本仓动）：
+#   CCC_AGENT_118INK_KEY=sk-…
+source ~/.claude/secrets.env
+export CCC_AGENT_UPSTREAM_118INK=1
+bash scripts/install-agent-sidecar-plist.sh --start
+```
+
+pl 注入环境：
+
+| env | 值 |
+|-----|----|
+| `CCC_AGENT_UPSTREAM_118INK` | `1`（开） |
+| `CCC_AGENT_118INK_KEY` | `sk-…`（或回退 `ANTHROPIC_AUTH_TOKEN`） |
+| `ANTHROPIC_BASE_URL` | `https://118.ink/v1` |
+| `ANTHROPIC_MODEL` | `claude-opus-4-8`（可被 `ANTHROPIC_MODEL` 覆盖） |
+
+Hub 模型白名单（`scripts/chat_server/services/claude_client.py:38`）已加 `opus4.8` /
+`claude-opus-4-8`，可直接在 chat 里选中。**回默认 MiniMax**：`unset CCC_AGENT_UPSTREAM_118INK
+CCC_AGENT_118INK_KEY` 后重装即可。
+
 ## 与 Mac2017 的关系
 
 | 项 | M1 | Mac2017 |

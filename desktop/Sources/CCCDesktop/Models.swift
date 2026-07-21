@@ -150,16 +150,21 @@ extension ChatMessage: Codable {
 
 enum ChatStreamEvent: Sendable {
     /// sidecar 心跳（connect / idle）；UI 显示「连接本机 Agent…」
-    case ping
-    case delta(String)
+    case ping(turnId: String?)
+    case delta(String, turnId: String?)
     /// 工具运行期间的阶段性短句（区别于主通道 delta）
-    case status(String)
-    case toolUse(name: String, input: [String: String])
-    case toolResult(ok: Bool)
-    case cost(tokens: Int?, usd: Double?)
+    case status(String, turnId: String?)
+    case toolUse(name: String, input: [String: String], turnId: String?)
+    case toolResult(ok: Bool, turnId: String?)
+    case cost(tokens: Int?, usd: Double?, turnId: String?)
     /// partial=true：服务端标明半截（断连/超时/异常），UI 必须标「回复中断」
     /// claudeSessionId：sidecar/loop-code 会话 id，下轮 resume 用（持续对话）
-    case done(partial: Bool, claudeSessionId: String?)
+    case done(partial: Bool, claudeSessionId: String?, turnId: String?, metrics: ChatTurnMetrics?)
+}
+
+struct ChatTurnMetrics: Sendable {
+    let durationMs: Int?
+    let eventCounts: [String: Int]
 }
 
 struct FlowWork: Identifiable, Codable, Hashable {
@@ -244,6 +249,8 @@ struct FlowSnapshot: Codable {
     let works: [FlowWork]?
     let headline: String?
     let user_stage: String?
+    let board_status: String?
+    let board_message: String?
 }
 
 struct TransferRequest: Encodable {

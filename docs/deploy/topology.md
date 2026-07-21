@@ -30,7 +30,7 @@
 
 | 工具 | 机器 | 上游 | 配置 |
 |------|------|------|------|
-| loop-code / Claude（对话） | M1 sidecar | **MiniMax** Anthropic | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`MiniMax-M3`，key `~/.ccc/minimax-api-key` |
+| loop-code / Claude（对话） | M1 sidecar | **MiniMax** Anthropic（默认） ｜ **118.ink / claude-opus-4-8**（备选） | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`MiniMax-M3`，key `~/.ccc/minimax-api-key` ｜ `ANTHROPIC_BASE_URL=https://118.ink/v1`，`claude-opus-4-8`，key `$CCC_AGENT_118INK_KEY`（触发 `CCC_AGENT_UPSTREAM_118INK=1`） |
 | Claude（product / reviewer） | Mac2017 Engine / Hub | **MiniMax** | 同上（`ccc-engine.sh` / Hub plist） |
 | OpenCode（dev 写码） | Mac2017 | **讯飞** `xfyun/code` | `~/.config/opencode/opencode.json`；备用 `zhipu/flash` |
 

@@ -380,6 +380,11 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                 "engine_wake": {"ok": True, "mode": "idempotent", "message": "replay"},
             }
 
+    # 写入磁盘并把 fingerprint 写进 body，让后续 remember_last_epic 落地时一并带上
+    payload_fingerprint = flow_events._transfer_payload_fingerprint(body)
+    if payload_fingerprint:
+        body["payload_fingerprint"] = payload_fingerprint
+
     executor_intent = transfer_gate.resolve_executor_intent(body)
     description = transfer_gate.build_epic_description({**body, "executor_intent": executor_intent})
     plan_md = transfer_gate.build_plan_md(body)
@@ -526,6 +531,29 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
     return {}
 
 
+async def _fetch_board_with_status(workspace: str) -> tuple[dict[str, list[dict]], bool]:
+    """拉取看板并返回 (columns, degraded)。degraded=True 表示看板离线/超时。"""
+    resp = await board_proxy("GET", "/api/board", params={"workspace": workspace})
+    if resp.status_code != 200:
+        return {}, True
+    try:
+        raw = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
+    except Exception:
+        return {}, True
+    cols: dict[str, list[dict]] = {}
+    if isinstance(raw, dict) and isinstance(raw.get("columns"), dict):
+        cols = raw["columns"]
+    elif isinstance(raw, dict) and isinstance(raw.get("board"), dict):
+        cols = raw["board"]
+    elif isinstance(raw, dict):
+        cols = {k: v for k, v in raw.items() if isinstance(v, list)}
+    empty = all(not lst for lst in cols.values()) if cols else True
+    if empty and resp.status_code == 200:
+        # 200 但全空：可能是板真空，也可能是 Board 损坏状态；同时返回 degraded 给 UI 兜底
+        return cols, False
+    return cols, False
+
+
 @router.get("/flow/epics")
 async def flow_epics(
     request: Request,
@@ -577,9 +605,15 @@ async def flow_snapshot(
             "works": [],
         }
     workspace = _project_workspace(pid)
-    board = await _fetch_board_dict(workspace)
+    board, board_degraded = await _fetch_board_with_status(workspace)
     snap = flow_events.snapshot_from_board(board, epic_id=eid, project_id=pid)
-    return {"ok": True, "empty": False, **snap}
+    payload = {"ok": True, "empty": False, **snap}
+    if board_degraded:
+        payload["board_status"] = "degraded"
+        payload["board_message"] = "看板暂不可达，已返回最后一次缓存"
+    else:
+        payload["board_status"] = "ok"
+    return payload
 
 
 @router.get("/flow/events")

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -361,7 +362,13 @@ def remember_last_epic(
         rec["thread_id"] = tid
     if crid:
         rec["client_request_id"] = crid
-        _remember_client_request(project_id, crid, epic_id, title)
+        _remember_client_request(
+            project_id,
+            crid,
+            epic_id,
+            title,
+            payload_fingerprint=_transfer_payload_fingerprint(globals().get("body")),
+        )
     path = project_last_epic_file(project_id)
     path.write_text(
         json.dumps(rec, ensure_ascii=False, indent=2),
@@ -391,8 +398,37 @@ def _client_request_index_file(project_id: str) -> Path:
     return d / "transfer_client_requests.json"
 
 
+def _transfer_payload_fingerprint(body: Any) -> str | None:
+    """轻量指纹：同 CRID 但 payload 不同 → 拒绝幂等命中。
+
+    只取决定「这是不是同一次提交」的关键字段，避免把 prompt 长度/时间戳混入。
+    """
+    if not isinstance(body, dict):
+        return None
+    keys = (
+        "title",
+        "goal",
+        "acceptance",
+        "pipeline",
+        "feasibility",
+        "feasibility_reason",
+        "executor_intent",
+        "complexity",
+    )
+    parts = []
+    for k in keys:
+        v = body.get(k)
+        if isinstance(v, list):
+            v = "␞".join(str(x) for x in v)
+        parts.append(f"{k}={v if v is not None else ''}")
+    raw = "␞".join(parts)
+    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:24]
+
+
 def _remember_client_request(
-    project_id: str, client_request_id: str, epic_id: str, title: str = ""
+    project_id: str, client_request_id: str, epic_id: str, title: str = "",
+    *,
+    payload_fingerprint: str | None = None,
 ) -> None:
     path = _client_request_index_file(project_id)
     data: dict[str, Any] = {}
@@ -403,11 +439,14 @@ def _remember_client_request(
                 data = raw
         except (json.JSONDecodeError, OSError):
             data = {}
-    data[client_request_id] = {
+    record = {
         "epic_id": epic_id,
         "title": title,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
     }
+    if payload_fingerprint:
+        record["payload_fingerprint"] = payload_fingerprint
+    data[client_request_id] = record
     # 控制体量：最多保留 200 个键
     if len(data) > 200:
         ordered = sorted(
@@ -420,9 +459,14 @@ def _remember_client_request(
 
 
 def lookup_transfer_by_client_request(
-    project_id: str, client_request_id: str
+    project_id: str, client_request_id: str, payload_fingerprint: str | None = None
 ) -> dict[str, Any] | None:
-    """Hub API v1 幂等：同一 client_request_id 返回已创建 epic。"""
+    """Hub API v1 幂等：同一 client_request_id 返回已创建 epic。
+
+    若传入 payload_fingerprint，则与已记录的指纹比对：
+    - 相同：返回原 epic（幂等命中）
+    - 不同：返回 None，强制让调用方发起新 transfer；新 transfer 会刷新指纹
+    """
     crid = (client_request_id or "").strip()
     if not crid:
         return None
@@ -438,6 +482,10 @@ def lookup_transfer_by_client_request(
     hit = raw.get(crid)
     if not isinstance(hit, dict):
         return None
+    if payload_fingerprint:
+        stored_fp = str(hit.get("payload_fingerprint") or "")
+        if stored_fp and stored_fp != payload_fingerprint:
+            return None
     eid = str(hit.get("epic_id") or "").strip()
     if not eid:
         return None

@@ -31,11 +31,21 @@ struct BoardView: View {
         VStack(spacing: 0) {
             header
             if let err = model.boardError {
-                Text(err)
-                    .font(CCCTheme.callout)
-                    .foregroundStyle(CCCTheme.nodeFail)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+                HStack(spacing: 6) {
+                    Image(systemName: model.boardStale ? "exclamationmark.triangle.fill" : "exclamationmark.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CCCTheme.nodeFail)
+                    Text(model.boardStale ? "看板暂不可达（保留上次快照）" : "看板错误")
+                        .font(CCCTheme.callout)
+                        .foregroundStyle(CCCTheme.nodeFail)
+                    Spacer()
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
             }
             GeometryReader { geo in
                 let cols = visibleColumns
