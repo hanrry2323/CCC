@@ -8,35 +8,23 @@
 | 序号 | brief | 状态 | 窗 |
 |------|-------|------|-----|
 | F0 | 建制 | done | — |
-| F1 | 断线恢复 | **代码验收通过 · 待合入 commit** | 壳（收尾） |
-| F1-2 | 投递三态零谎报 | accepted · 待开工 | 壳 · **Auto** |
+| F1 | 断线恢复 | **done** `eeaf388`（架构已合入；手测可选） | — |
+| F1-2 | 投递三态零谎报 | accepted · **现在开工** | 壳 · **Auto** |
 | F1-3 | （下一批由架构写） | queued | — |
 
 ---
 
-## 粘贴包 A · 壳窗 · F1 收尾合入（先贴这个）
+## 粘贴包 A · 壳窗 · F1 已合入（可跳过）
 
 ```
-模型：Auto
-只做收尾，不扩范围。
-
-1) 工作区应已有 F1 改动（AppModel hub recover + desktop-connection SLA + brief §8）。
-2) 不要改 scripts/chat_server/services/claude_session.py、不要改 Cargo.lock。
-3) 提交（若尚未提交）仅暂存：
-   - desktop/Sources/CCCDesktop/AppModel.swift
-   - docs/product/desktop-connection.md
-   - docs/briefs/2026-07-21-f1-disconnect-recovery.md
-   提交说明：
-   fix(desktop): auto-recover Hub and flush transfer outbox (F1)
-4) （可选）按 brief §7 手测断线/恢复一次；结果一行回贴本对话即可。
-5) 完成后回复：F1 committed <hash>
-
-不要开下一 brief，等架构派 F1-2。
+F1 已由架构合入：eeaf388。无需再提交断线恢复。
+（可选）按 docs/briefs/2026-07-21-f1-disconnect-recovery.md §7 手测一次；有问题只回贴现象，勿扩范围。
+下一步直接做粘贴包 B。
 ```
 
 ---
 
-## 粘贴包 B · 壳窗 · F1-2 开工（A 完成后贴）
+## 粘贴包 B · 壳窗 · F1-2 开工（现在贴这个）
 
 ```
 模型：Auto
