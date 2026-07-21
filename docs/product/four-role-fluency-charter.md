@@ -92,7 +92,9 @@
 | 禁止 | 散落到 `~/`、桌面、或项目根下临时二级目录 |
 
 F0 已闭环：[`../briefs/2026-07-21-f0-four-role-charter.md`](../briefs/2026-07-21-f0-four-role-charter.md)。  
-F1 进行中：[`../briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)（断线恢复）。
+F1 断线恢复：代码验收通过 — [`../briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)。  
+F1-2 进行中：[`../briefs/2026-07-21-f1-transfer-delivery-honesty.md`](../briefs/2026-07-21-f1-transfer-delivery-honesty.md)。  
+派单板：[`../briefs/PASTE-OPS.md`](../briefs/PASTE-OPS.md)。
 
 ---
 

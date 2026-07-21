@@ -15,6 +15,7 @@
 | 4 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | **下阶段北星（壳 + Hub API v1；意图门人审）** |
 | 4b | [`product/dev-channel.md`](product/dev-channel.md) | **谁改 CCC / Desktop 模型默认（Cursor · MiniMax）** |
 | 4c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | **四面协作 + 流畅基线指标**（架构 / 壳 / 过桥 / 编排） |
+| 4d | [`product/cursor-model-routing.md`](product/cursor-model-routing.md) | **Cursor：Auto vs 高级模型** |
 | 5 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
 | 6 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
 
@@ -44,6 +45,7 @@
 | [`ccc-hub-ports.md`](ccc-hub-ports.md) | 端口账密 |
 | [`architecture-core.md`](architecture-core.md) | Engine/Board 代码分层（改脚本时） |
 | [`briefs/_TEMPLATE.md`](briefs/_TEMPLATE.md) | **执行 brief 模板**（定稿后另三窗只认 brief） |
+| [`briefs/PASTE-OPS.md`](briefs/PASTE-OPS.md) | **工厂派单板**（用户只复制粘贴） |
 | [`briefs/`](briefs/) | 进行中 / 已验收 brief（勿散落到仓外） |
 
 ---
