@@ -9,9 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.53.0] — 2026-07-21
+
+> **流畅基线达成**。工厂模式 12 轮闭环（F0 建制 → F1 手感 → F2 稳定 → F3 业务 → H-1 hotfix → F4 进阶）。宣告：[`docs/product/fluency-baseline-achieved.md`](docs/product/fluency-baseline-achieved.md)。
+
+### Added
+
+- **四面协作 + 流畅基线建档**（F0 · `94da446`）：架构 / 壳 / 过桥 / 编排 按面切；brief 模板 + PASTE-OPS 派单板；14–21 轮预估。SSOT：[`docs/product/four-role-fluency-charter.md`](docs/product/four-role-fluency-charter.md)。
+- **Cursor 模型路由**（`66d7deb` 同批）：架构=高级；执行面=Auto（brief 定稿后）；契约/跨面/根因不清升级。[`docs/product/cursor-model-routing.md`](docs/product/cursor-model-routing.md)。
+- **角色生成机制 SSOT**（`66d7deb`）：任务 → 工具路由 → 注入 Skill+Prompt = 本次角色；7 为 seed 非上限；去「7 角色」硬约束。[`docs/product/role-formation.md`](docs/product/role-formation.md)。
+- **F1 断线恢复**（`eeaf388`）：Hub 不可达时 4s 自动探活 → flush outbox + snapshot；对称 sidecar recover loop；手动重试幂等。SLA：[`docs/product/desktop-connection.md`](docs/product/desktop-connection.md) §Hub 自动恢复。
+- **F1-2 投递三态零谎报**（`578e7fe`）：`delivered` 仅 epic_id 非空；`accepted` 须 flow/snapshot 或 engine_wake 确认；空 epic → failed + 出队防毒丸；按 thread 隔离；UI 颜色 + a11y。
+- **F2-1 soak N=5 + orphan=0**（`9af1fb4`）：`SOAK_N` 参数化；每轮/合计硬门 `orphan_delta<=0` + live cap 5 + slot 不净增；settle 等在飞 session 收尾；failover smoke + 回归测。
+- **F2-2 双机版本对齐**（`555b9bc`）：`GET /api/desktop/version` 只读端点；`scripts/ccc-dual-host-check.sh` 三行输出 + mock 可测 + 短 sha 对齐；[`docs/deploy/dual-host-version-check.md`](docs/deploy/dual-host-version-check.md)。
+- **F3-1/F3-2/F3-3 真实仓业务向闭环**（`327fd86` / `6523330` / `1526ca1`）：qb / hp / xianyu 各 1 笔 small 业务向 epic 全程**零人批** → released；证据链（epic_id + split_status + works + flow 事件 + 双机核对 + 业务仓 commits + README stamp）；`smoke-qb/hp/xianyu-biz-small.sh`。
+- **H-1 `epic_done` 流事件不依赖 SSE**（`461f021`）：Engine 在 `refresh_epic_lifecycle` 检测到 epic → done 转换时主动 `append_event`；`raw_ss != "done"` 守门幂等；异常 warning 不阻塞 kb；SSE 路径保留（双写可接受）。
+- **F4-1 显式 Context Engineering**（`1ee2080`）：`board/context.py` 加 `ROLE_CONTEXT_MANIFEST` + `build_role_context(role, task)`；product/dev/reviewer 改用 helper；tester/kb/ops/regress TODO；[`docs/product/context-manifest.md`](docs/product/context-manifest.md)。
+- **F4-2 Memory 沉淀**（`4ed4774`）：`_lessons.record_success` / `get_lessons_by_topic` / `extract_topic`；kb 归档时调；product 按主题注入「## 同主题经验」；失败 lessons 路径不动。
+- **F4-3 Proactive 触发**（`580dd92`）：`POST /api/desktop/proactive-epic`（CI/git hook → backlog bug epic）；`source+payload.hash` 幂等；`scripts/ccc-ingest-ci-failure.sh` CLI；不 wake Engine（tick 自取）；[`docs/product/proactive-triggers.md`](docs/product/proactive-triggers.md)。
+- **二次纠偏 · 双口远程**（`3f19466` / `ea3d4e0`，归入本版）：对话口 = M1 sidecar `:7788`；编排口 = Mac2017 Hub `:7777`；废除「挂 2017 SPA + `/api/agent` 反代」产品主路径。口径：[`docs/product/hub-remote-management.md`](docs/product/hub-remote-management.md)。烟测：`scripts/smoke-dual-port-remote.sh`。
+
 ### Changed
 
-- **二次纠偏 · 双口远程**：对话口 = M1 sidecar `:7788`（静态 SPA + loop-code）；编排口 = Mac2017 Hub `:7777`（board / ops / transfer）。废除「挂 2017 SPA + `/api/agent` 反代」产品主路径（`923b9db` 叙事作废）。口径：[`docs/product/hub-remote-management.md`](docs/product/hub-remote-management.md)。烟测：`scripts/smoke-dual-port-remote.sh`。遗留 `/api/agent` 仅当 `CCC_AGENT_PROXY=1`。
+- `references/red-lines.md` R-12 / 阶段能力包红线段 / `board-task-schema.md` 复杂度分流 / `STRATEGY-MAP.md` / `CLAUDE.md` / `STARTUP-BRIEF.md` / `docs/INDEX.md`：去「7 角色」硬约束，统一「阶段能力包（seed 7，可扩）」口径。
+- `docs/product/hub-api-v1.md`：加 `GET /api/desktop/version` + `POST /api/desktop/proactive-epic`；`epic_done` 行加 `project_id?`。
+- `docs/product/flow-events.md`：加 §5 H-1（Engine 主动落盘 `epic_done`）。
+- `docs/product/hub-shell-phase-status.md`：+F2-1 / F3-1 / F3-2 / F3-3 行。
+
+### Fixed
+
+- Desktop transfer 投递态谎报（空 epic 误显 accepted / HTTP 200 直跳 accepted / Hub 断线显已投递）。
+- Hub 宕后 outbox 需手动重试（无对称 auto-recover loop）。
+- `flow-events.jsonl` 缺 `epic_done`（无 SSE 订阅时不落盘）。
+- soak 脚本把在飞 product/claude 当 orphan 误判（采样过早）。
+- e2e backlog FIFO 断言与现网 `list_tasks(backlog)` 新→旧不符。
 
 ## [v0.52.2] — 2026-07-21
 
