@@ -1957,10 +1957,24 @@ struct SettingsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
+                if !model.sidecarRuntimeLabel.isEmpty || !model.sidecarLoopCodeVersion.isEmpty {
+                    Text(
+                        [
+                            model.sidecarRuntimeLabel.isEmpty ? nil : "运行时 \(model.sidecarRuntimeLabel)",
+                            model.sidecarLoopCodeVersion.isEmpty ? nil : "version \(model.sidecarLoopCodeVersion)",
+                            model.sidecarConfigDir.isEmpty ? nil : model.sidecarConfigDir,
+                        ]
+                        .compactMap { $0 }
+                        .joined(separator: " · ")
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                }
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游出口由 sidecar plist 固定 MiniMax；与个人 Claude Code / shell ANTHROPIC_* 无关。默认 MiniMax-M3（flash）。")
+                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游出口由 sidecar plist 固定 MiniMax；与个人 Claude Code / shell ANTHROPIC_* 无关。默认 MiniMax-M3（flash）。运行时 = vendor/loop-code（Phase1–5 配置切割）。")
             }
 
             Section {

@@ -3,7 +3,8 @@
 > **状态**：已拍板（2026-07-21）  
 > **性质**：持续工程北极星；冲突时以本文 + [`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md) 为准。  
 > **Phase1 brief**：[`loop-code-ownership-cut-phase1-brief.md`](loop-code-ownership-cut-phase1-brief.md)  
-> **Phase2 brief**：[`loop-code-ownership-cut-phase2-brief.md`](loop-code-ownership-cut-phase2-brief.md)
+> **Phase2 brief**：[`loop-code-ownership-cut-phase2-brief.md`](loop-code-ownership-cut-phase2-brief.md)  
+> **一次收口 brief（Phase3–5 基线）**：[`loop-code-ownership-cut-closeout-brief.md`](loop-code-ownership-cut-closeout-brief.md)
 
 ---
 
@@ -68,9 +69,10 @@ Desktop → sidecar → loop-code      transfer/flow      Engine → Claude CLI 
 |------|------|------|
 | **Phase1** | 文档 + `CLAUDE_CONFIG_DIR` + 禁 PATH 回落 + env 白名单 + health/smoke | ✅ 完成（2026-07-21 · `2eafef2`） |
 | **Phase2** | M1 卸载/停用原版 Claude Code；PATH 无 `claude` 时 Desktop 仍绿 | ✅ 完成（2026-07-21 · phase2-brief） |
-| **Phase3** | 2017 Engine：`CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`（仍用 x86 原版 CLI） | 待办 |
-| **Phase4** | 会话 SSOT 收敛（弱化 `~/.claude/projects`）；Desktop 展示 loop-code VERSION | 待办 |
-| **Phase5+** | 在私有 runtime 上深挖 loop-code（权限 / hooks / MCP 等按产品需要） | 待办 |
+| **Phase3** | 2017 Engine：`CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`（仍用 x86 原版 CLI） | ✅ 完成（closeout） |
+| **Phase4** | 会话 SSOT 收敛 + Desktop 展示 loop-code VERSION | ✅ 完成（closeout） |
+| **Phase5 基线** | 私有 `settings.json` 种子 + sync 指向（非 MCP 大盘） | ✅ 完成（closeout） |
+| **Phase5+** | MCP / hooks / skills 产品面等增强 | 后续（不阻塞收口） |
 
 ---
 

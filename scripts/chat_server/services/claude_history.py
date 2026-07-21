@@ -1,13 +1,44 @@
-"""Claude Code local history — list/load transcripts under ~/.claude/projects/."""
+"""Claude Code local history — list/load transcripts under CLAUDE_CONFIG_DIR/projects
+（优先）或 ~/.claude/projects（兼容回落）。
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-CLAUDE_HOME = Path.home() / ".claude"
+def _claude_homes() -> list[Path]:
+    """优先私有配置家，再回落个人 ~/.claude。"""
+    homes: list[Path] = []
+    cfg = (os.environ.get("CLAUDE_CONFIG_DIR") or "").strip()
+    if cfg:
+        homes.append(Path(cfg).expanduser())
+    # M1 Desktop 默认私有家（即使未 export）
+    loop_home = Path.home() / ".ccc" / "loop-code"
+    if loop_home not in homes:
+        homes.append(loop_home)
+    personal = Path.home() / ".claude"
+    if personal not in homes:
+        homes.append(personal)
+    return homes
+
+
+def _primary_claude_home() -> Path:
+    for h in _claude_homes():
+        if (h / "projects").is_dir() or h.is_dir():
+            # 优先已有 projects 的；否则第一个存在的 config 根
+            if (h / "projects").is_dir():
+                return h
+    for h in _claude_homes():
+        if h.is_dir():
+            return h
+    return Path.home() / ".claude"
+
+
+CLAUDE_HOME = _primary_claude_home()
 HISTORY_INDEX = CLAUDE_HOME / "history.jsonl"
 PROJECTS_DIR = CLAUDE_HOME / "projects"
 TZ_CN = timezone(timedelta(hours=8))
@@ -29,7 +60,21 @@ def escape_project_path(project_path: str) -> str:
 
 
 def claude_project_dir(project_path: str) -> Path:
-    return PROJECTS_DIR / escape_project_path(project_path)
+    escaped = escape_project_path(project_path)
+    for home in _claude_homes():
+        cand = home / "projects" / escaped
+        if cand.is_dir():
+            return cand
+    return _primary_claude_home() / "projects" / escaped
+
+
+def _history_indexes() -> list[Path]:
+    out: list[Path] = []
+    for home in _claude_homes():
+        p = home / "history.jsonl"
+        if p.is_file() and p not in out:
+            out.append(p)
+    return out
 
 
 def is_test_session_id(session_id: str) -> bool:
@@ -90,50 +135,52 @@ def list_claude_sessions(project_path: str, limit: int = 120) -> list[dict]:
     """Index Claude sessions for a project via history.jsonl (fast)."""
     project_path = str(Path(project_path).resolve())
     proj_dir = claude_project_dir(project_path)
-    if not HISTORY_INDEX.exists():
+    indexes = _history_indexes()
+    if not indexes:
         return []
 
     by_id: dict[str, dict] = {}
     try:
-        with HISTORY_INDEX.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if str(row.get("project") or "") != project_path:
-                    continue
-                sid = str(row.get("sessionId") or "").strip()
-                if not sid:
-                    continue
-                display = str(row.get("display") or "").strip()
-                ts = row.get("timestamp")
-                entry = by_id.get(sid)
-                if entry is None:
-                    by_id[sid] = {
-                        "session_id": f"claude:{sid}",
-                        "claude_session_id": sid,
-                        "title": (display[:60] if display else "Claude 对话"),
-                        "updated_at": _ms_to_iso(ts),
-                        "mode": "claude",
-                        "source": "claude",
-                        "_ts": float(ts or 0),
-                        "_noise": _looks_like_hub_noise(display),
-                    }
-                else:
+        for hist in indexes:
+            with hist.open("r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
                     try:
-                        tsf = float(ts or 0)
-                    except (TypeError, ValueError):
-                        tsf = 0
-                    if tsf >= entry.get("_ts", 0):
-                        entry["_ts"] = tsf
-                        entry["updated_at"] = _ms_to_iso(ts)
-                        if display and not _looks_like_hub_noise(display):
-                            entry["title"] = display[:60]
-                            entry["_noise"] = False
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if str(row.get("project") or "") != project_path:
+                        continue
+                    sid = str(row.get("sessionId") or "").strip()
+                    if not sid:
+                        continue
+                    display = str(row.get("display") or "").strip()
+                    ts = row.get("timestamp")
+                    entry = by_id.get(sid)
+                    if entry is None:
+                        by_id[sid] = {
+                            "session_id": f"claude:{sid}",
+                            "claude_session_id": sid,
+                            "title": (display[:60] if display else "Claude 对话"),
+                            "updated_at": _ms_to_iso(ts),
+                            "mode": "claude",
+                            "source": "claude",
+                            "_ts": float(ts or 0),
+                            "_noise": _looks_like_hub_noise(display),
+                        }
+                    else:
+                        try:
+                            tsf = float(ts or 0)
+                        except (TypeError, ValueError):
+                            tsf = 0
+                        if tsf >= entry.get("_ts", 0):
+                            entry["_ts"] = tsf
+                            entry["updated_at"] = _ms_to_iso(ts)
+                            if display and not _looks_like_hub_noise(display):
+                                entry["title"] = display[:60]
+                                entry["_noise"] = False
     except OSError:
         return []
 
@@ -143,7 +190,14 @@ def list_claude_sessions(project_path: str, limit: int = 120) -> list[dict]:
             continue
         jsonl = proj_dir / f"{sid}.jsonl"
         if not jsonl.exists():
-            continue
+            # 跨 config 家再找一遍 transcript
+            for home in _claude_homes():
+                alt = home / "projects" / escape_project_path(project_path) / f"{sid}.jsonl"
+                if alt.is_file():
+                    jsonl = alt
+                    break
+            else:
+                continue
         # Prefer ai-title from transcript tail if cheap
         title = _peek_ai_title(jsonl) or entry["title"]
         sessions.append({

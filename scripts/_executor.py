@@ -120,6 +120,22 @@ def _claude_env(*, relay_url: str | None = None) -> dict:
     elif not env.get("ANTHROPIC_BASE_URL"):
         # 默认 MiniMax 直连（ai-loop-router :4000 已退役）
         env["ANTHROPIC_BASE_URL"] = "https://api.minimaxi.com/anthropic"
+    # Phase3：Engine 私有配置家（禁止落到个人 ~/.claude）
+    try:
+        from _claude_cli import (
+            default_engine_claude_config_dir,
+            ensure_engine_claude_config_dir,
+        )
+
+        cfg = (env.get("CLAUDE_CONFIG_DIR") or "").strip()
+        if not cfg or cfg.rstrip("/").endswith(".claude"):
+            cfg = str(default_engine_claude_config_dir())
+        ensure_engine_claude_config_dir(Path(cfg).expanduser())
+        env["CLAUDE_CONFIG_DIR"] = str(Path(cfg).expanduser())
+    except Exception:
+        fallback = str(Path.home() / ".ccc" / "engine-claude")
+        Path(fallback).mkdir(parents=True, exist_ok=True)
+        env["CLAUDE_CONFIG_DIR"] = fallback
     return env
 
 

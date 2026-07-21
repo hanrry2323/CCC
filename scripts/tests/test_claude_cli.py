@@ -14,6 +14,7 @@ sys.path.insert(0, str(SCRIPTS))
 from _claude_cli import (  # noqa: E402
     ClaudeCliMissing,
     claude_path_prefixes,
+    ensure_engine_claude_config_dir,
     ensure_loop_code_config_dir,
     path_is_loop_code,
     resolve_claude_cli,
@@ -88,16 +89,16 @@ def test_strict_no_path_fallback_when_vendor_missing(tmp_path, monkeypatch):
     assert resolve_claude_cli(require=False) is None
 
 
-def test_ensure_loop_code_config_dir_seeds_claude_md(tmp_path):
+def test_ensure_engine_claude_config_dir(tmp_path):
+    root = ensure_engine_claude_config_dir(tmp_path / "engine-claude")
+    assert (root / "CLAUDE.md").is_file()
+    assert (root / "settings.json").is_file()
+    assert "Engine" in (root / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_ensure_loop_code_seeds_settings(tmp_path):
     root = ensure_loop_code_config_dir(tmp_path / "loop-code")
-    md = root / "CLAUDE.md"
-    assert md.is_file()
-    text = md.read_text(encoding="utf-8")
-    assert "Desktop" in text
-    # 不覆盖已有
-    md.write_text("custom\n", encoding="utf-8")
-    ensure_loop_code_config_dir(root)
-    assert md.read_text(encoding="utf-8") == "custom\n"
+    assert (root / "settings.json").is_file()
 
 
 def test_resolve_missing_raises(monkeypatch, tmp_path):

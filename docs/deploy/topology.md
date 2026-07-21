@@ -30,8 +30,8 @@
 
 | 工具 | 机器 | 上游 | 配置 |
 |------|------|------|------|
-| loop-code（Desktop 对话） | M1 sidecar | **MiniMax** Anthropic（**默认 / 现网**） | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`MiniMax-M3`，key `~/.ccc/minimax-api-key`。~~118.ink~~ 成本暂停；后续 App 内模型快选（[`../product/dev-channel.md`](../product/dev-channel.md)） |
-| Claude（product / reviewer） | Mac2017 Engine / Hub | **MiniMax** | 同上（`ccc-engine.sh` / Hub plist） |
+| loop-code（Desktop 对话） | M1 sidecar | **MiniMax** Anthropic（**默认 / 现网**） | `ANTHROPIC_BASE_URL=…`；**配置家** `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；见 [`../product/loop-code-ownership-cut.md`](../product/loop-code-ownership-cut.md) |
+| Claude（product / reviewer） | Mac2017 Engine | **MiniMax** | 同上 key；**配置家** `CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`（仍用 x86 原版 CLI，不换 loop-code） |
 | OpenCode（dev 写码） | Mac2017 | **讯飞** `xfyun/code` | `~/.config/opencode/opencode.json`；备用 `zhipu/flash` |
 
 `infra/ai-loop-router` 仅归档参考；launchd `com.ai-loop-router` **已停用**（plist 移至 `~/Library/LaunchAgents/disabled-relay-*`）。

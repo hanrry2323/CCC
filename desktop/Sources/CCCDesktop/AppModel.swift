@@ -54,6 +54,9 @@ final class AppModel: ObservableObject {
     @Published var confirmEngineerMode = false
     /// Sidecar 回显模型名（health）
     @Published var sidecarReportedModel: String = ""
+    @Published var sidecarRuntimeLabel: String = ""
+    @Published var sidecarConfigDir: String = ""
+    @Published var sidecarLoopCodeVersion: String = ""
     /// 对话状态（messages + draft），独立 ObservableObject 隔离 delta 通知
     @Published var chat = ChatState()
     @Published var statusText: String = "未连接"
@@ -433,6 +436,9 @@ final class AppModel: ObservableObject {
             didToastHubFallback = false
             if let info = await client.fetchAgentHealth(base: candidate) {
                 sidecarReportedModel = info.model ?? ""
+                sidecarRuntimeLabel = info.agentRuntime ?? ""
+                sidecarConfigDir = info.configDir ?? ""
+                sidecarLoopCodeVersion = info.loopCodeVersion ?? ""
             }
             // fire-and-forget：不阻塞 ensureLocalAgent 返回
             Task { await warmLocalAgentNow(base: candidate) }

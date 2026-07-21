@@ -209,6 +209,9 @@ actor APIClient {
         var toolModes: [String]
         var compact: Bool
         var supportsAttachments: Bool
+        var agentRuntime: String?
+        var configDir: String?
+        var loopCodeVersion: String?
     }
 
     func fetchAgentHealth(base: URL) async -> AgentHealthInfo? {
@@ -224,7 +227,8 @@ actor APIClient {
             guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return AgentHealthInfo(
                     ok: true, model: nil, models: [], toolModes: [],
-                    compact: false, supportsAttachments: false
+                    compact: false, supportsAttachments: false,
+                    agentRuntime: nil, configDir: nil, loopCodeVersion: nil
                 )
             }
             let caps = obj["capabilities"] as? [String: Any]
@@ -235,7 +239,10 @@ actor APIClient {
                 toolModes: (obj["tool_modes"] as? [String]) ?? [],
                 compact: (obj["compact"] as? Bool) ?? (caps?["compact"] as? Bool) ?? false,
                 supportsAttachments: (obj["supports_attachments"] as? Bool)
-                    ?? (caps?["attachments"] as? Bool) ?? false
+                    ?? (caps?["attachments"] as? Bool) ?? false,
+                agentRuntime: obj["agent_runtime"] as? String,
+                configDir: obj["config_dir"] as? String,
+                loopCodeVersion: obj["loop_code_version"] as? String
             )
         } catch {
             return nil

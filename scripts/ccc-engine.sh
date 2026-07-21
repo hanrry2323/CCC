@@ -18,7 +18,7 @@ if ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from 
   done
 fi
 
-export PATH="/Users/apple/.npm-global/bin:/opt/homebrew/bin:/Users/apple/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="${HOME}/.npm-global/bin:/opt/homebrew/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 # OpenCode 直连讯飞（见 ~/.opencode/opencode.json provider xfyun）
 export OPENCODE_MODEL="${OPENCODE_MODEL:-xfyun/code}"
 # product/reviewer Claude：默认直连 MiniMax（逻辑 flash → MiniMax-M3）
@@ -29,6 +29,10 @@ if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
     export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
   fi
 fi
+# Phase3：Engine 私有配置家（与个人 ~/.claude 切割；仍用 x86 原版 claude）
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.ccc/engine-claude}"
+python3 -c "import sys; sys.path.insert(0, r'''${CCC_HOME}/scripts'''); from _claude_cli import ensure_engine_claude_config_dir; ensure_engine_claude_config_dir()" \
+  || mkdir -p "${CLAUDE_CONFIG_DIR}"
 # 健康检查与 get_relay_url 对齐：勿残留 AGENT_PLANNER→:4000
 if [[ -z "${AGENT_PLANNER_BASE_URL:-}" && -n "${ANTHROPIC_BASE_URL:-}" ]]; then
   export AGENT_PLANNER_BASE_URL="${ANTHROPIC_BASE_URL}"

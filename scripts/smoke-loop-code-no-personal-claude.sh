@@ -34,7 +34,9 @@ cfg=d.get('config_dir') or ''
 assert d.get('ok') is True, d
 assert rt == 'loop-code', f'want loop-code got {rt!r}'
 assert '.ccc/loop-code' in str(cfg).replace('\\\\', '/'), f'bad config_dir {cfg!r}'
-print('OK sidecar health runtime=loop-code config_dir=', cfg)
+ver=d.get('loop_code_version') or ''
+assert ver.strip(), f'missing loop_code_version: {d!r}'
+print('OK sidecar health runtime=loop-code config_dir=', cfg, 'version=', ver)
 "
 
 # 4) 严格 resolve：即使 PATH 塞假 claude 也不该选中（本机无 vendor 时）

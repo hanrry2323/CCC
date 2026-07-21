@@ -2,10 +2,12 @@
 """ccc-sync-agent-roots — 把舰队登记同步到 Claude / OpenCode 根目录白名单。
 
 从 ~/.ccc/workspaces.json 生成：
-  - ~/.claude/settings.json → permissions.additionalDirectories
+  - 优先 ~/.ccc/loop-code/settings.json（M1 Desktop / Phase5）
+  - 兼容：若存在 ~/.claude/settings.json 也同步（2017 / 个人残留）
+  - ~/.ccc/engine-claude/settings.json（若 Engine 配置家存在）
   - ~/.config/opencode/opencode.json → mcp.filesystem 多根路径
 
-额外固定根：~/.claude、~/.ccc、/tmp（Claude）；OpenCode 仅舰队路径。
+额外固定根：配置家自身、~/.ccc、/tmp；OpenCode 仅舰队路径。
 
 Usage:
   python3 scripts/ccc-sync-agent-roots.py           # apply
@@ -17,17 +19,23 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 HOME = Path.home()
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
 REGISTRY = HOME / ".ccc" / "workspaces.json"
+LOOP_CODE_SETTINGS = HOME / ".ccc" / "loop-code" / "settings.json"
+ENGINE_SETTINGS = HOME / ".ccc" / "engine-claude" / "settings.json"
 CLAUDE_SETTINGS = HOME / ".claude" / "settings.json"
 OPENCODE_CONFIG = HOME / ".config" / "opencode" / "opencode.json"
 WORKFLOW_MD = HOME / ".config" / "opencode" / "instructions" / "workflow.md"
 
 CLAUDE_EXTRA = [
-    str(HOME / ".claude"),
     str(HOME / ".ccc"),
     "/tmp",
 ]
@@ -65,21 +73,48 @@ def backup(path: Path) -> Path | None:
     return bak
 
 
-def sync_claude(fleet: list[str], *, dry_run: bool) -> list[str]:
-    roots = list(dict.fromkeys(CLAUDE_EXTRA + fleet))
-    if not CLAUDE_SETTINGS.is_file():
-        raise SystemExit(f"missing {CLAUDE_SETTINGS}")
-    data = json.loads(CLAUDE_SETTINGS.read_text(encoding="utf-8"))
+def _sync_one_settings(path: Path, fleet: list[str], *, dry_run: bool, label: str) -> list[str]:
+    extra = list(CLAUDE_EXTRA)
+    extra.insert(0, str(path.parent))
+    roots = list(dict.fromkeys(extra + fleet))
+    if dry_run:
+        print(f"dry-run {label}: {path} → {len(roots)} roots")
+        return roots
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        backup(path)
+    else:
+        data = {"permissions": {"defaultMode": "bypassPermissions", "additionalDirectories": []}}
     perms = data.setdefault("permissions", {})
     old = list(perms.get("additionalDirectories") or [])
-    if dry_run:
-        return roots
-    backup(CLAUDE_SETTINGS)
     perms["additionalDirectories"] = roots
-    CLAUDE_SETTINGS.write_text(
+    if "defaultMode" not in perms:
+        perms["defaultMode"] = "bypassPermissions"
+    path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    print(f"claude additionalDirectories: {len(old)} → {len(roots)}")
+    print(f"{label} additionalDirectories: {len(old)} → {len(roots)} ({path})")
+    return roots
+
+
+def sync_claude(fleet: list[str], *, dry_run: bool) -> list[str]:
+    """M1 优先 loop-code；engine-claude / 个人 ~/.claude 兼容同步。"""
+    from _claude_cli import ensure_engine_claude_config_dir, ensure_loop_code_config_dir
+
+    ensure_loop_code_config_dir(LOOP_CODE_SETTINGS.parent)
+    roots = _sync_one_settings(
+        LOOP_CODE_SETTINGS, fleet, dry_run=dry_run, label="loop-code"
+    )
+    # Engine 家：本机若跑 Engine 或 2017 会有此目录
+    ensure_engine_claude_config_dir(ENGINE_SETTINGS.parent)
+    _sync_one_settings(
+        ENGINE_SETTINGS, fleet, dry_run=dry_run, label="engine-claude"
+    )
+    if CLAUDE_SETTINGS.is_file():
+        _sync_one_settings(
+            CLAUDE_SETTINGS, fleet, dry_run=dry_run, label="~/.claude"
+        )
     return roots
 
 
@@ -102,7 +137,6 @@ def sync_opencode(fleet: list[str], *, dry_run: bool) -> list[str]:
     fs["command"] = cmd
     fs["enabled"] = True
     fs["type"] = "local"
-    # 略降 compaction 保留量，减轻会话膨胀
     comp = data.setdefault("compaction", {})
     if int(comp.get("preserve_recent_tokens") or 0) > 120000:
         comp["preserve_recent_tokens"] = 120000

@@ -71,15 +71,16 @@ bash scripts/install-agent-sidecar-plist.sh --start
 
 **回默认 MiniMax**：`unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY` 后重装 sidecar。
 
-## 配置切割（Phase1+）
+## 配置切割（Phase1–5 基线）
 
-战略 SSOT：[`../product/loop-code-ownership-cut.md`](../product/loop-code-ownership-cut.md)。
+战略 SSOT：[`../product/loop-code-ownership-cut.md`](../product/loop-code-ownership-cut.md) · 收口 brief：[`../product/loop-code-ownership-cut-closeout-brief.md`](../product/loop-code-ownership-cut-closeout-brief.md)。
 
-| 项 | 值 |
-|----|-----|
-| 配置家 | `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`（plist / 前台 sidecar） |
-| 解析 | sidecar 产品路径 **禁止** PATH 回落个人 `claude` |
-| 人格 | `hub_voice` + 私有 `~/.ccc/loop-code/CLAUDE.md` |
+| 项 | M1 Desktop | Mac2017 Engine |
+|----|------------|----------------|
+| 配置家 | `CLAUDE_CONFIG_DIR=~/.ccc/loop-code` | `~/.ccc/engine-claude` |
+| 二进制 | `vendor/loop-code/cli`（禁 PATH 个人 claude） | x86 原版 `claude`（不换 loop-code） |
+| 人格 | `hub_voice` + 私有 `CLAUDE.md` | 无头扇出短 `CLAUDE.md` |
+| VERSION | `/health` → `loop_code_version` | n/a |
 
 ## 与 Mac2017 的关系
 

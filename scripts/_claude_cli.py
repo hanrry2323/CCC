@@ -36,6 +36,21 @@ _LOOP_CODE_CLAUDE_MD = """# CCC Desktop · loop-code 私有配置家
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 """
 
+_ENGINE_CLAUDE_MD = """# CCC Engine · 无头扇出配置家
+
+本目录供 Mac2017 Engine product/reviewer（Claude CLI → MiniMax）使用。
+你是编排面执行器，不是 Desktop 对话人格；只产出 plan/phases/verdict 契约。
+禁止：flash 中转站、`:4000`、ai-loop-router；禁止对 CCC orch 自消费（R-15）。
+"""
+
+_MINIMAL_SETTINGS_JSON = """{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "additionalDirectories": []
+  }
+}
+"""
+
 
 def ccc_home() -> Path:
     """CCC 仓根（本文件在 scripts/）。"""
@@ -46,18 +61,60 @@ def loop_code_cli_path() -> Path:
     return ccc_home() / "vendor" / "loop-code" / "cli"
 
 
+def loop_code_version() -> str:
+    """读 vendor/loop-code/VERSION；缺失则空串。"""
+    p = ccc_home() / "vendor" / "loop-code" / "VERSION"
+    try:
+        return p.read_text(encoding="utf-8").strip() if p.is_file() else ""
+    except OSError:
+        return ""
+
+
+def loop_code_sha256_prefix(n: int = 12) -> str:
+    p = ccc_home() / "vendor" / "loop-code" / "SHA256"
+    try:
+        raw = p.read_text(encoding="utf-8").strip().split()[0] if p.is_file() else ""
+        return raw[:n] if raw else ""
+    except OSError:
+        return ""
+
+
 def default_loop_code_config_dir() -> Path:
     """M1 sidecar 私有配置家（CLAUDE_CONFIG_DIR）。"""
     return Path.home() / ".ccc" / "loop-code"
 
 
+def default_engine_claude_config_dir() -> Path:
+    """Mac2017 Engine 私有配置家（CLAUDE_CONFIG_DIR）。"""
+    return Path.home() / ".ccc" / "engine-claude"
+
+
+def _ensure_settings_json(root: Path) -> None:
+    settings = root / "settings.json"
+    if settings.is_file():
+        return
+    settings.write_text(_MINIMAL_SETTINGS_JSON, encoding="utf-8")
+
+
 def ensure_loop_code_config_dir(path: Path | None = None) -> Path:
-    """创建私有配置家并种子短版 CLAUDE.md（已存在则不覆盖）。"""
+    """创建私有配置家并种子短版 CLAUDE.md + settings.json（已存在则不覆盖）。"""
     root = path or default_loop_code_config_dir()
     root.mkdir(parents=True, exist_ok=True)
     claude_md = root / "CLAUDE.md"
     if not claude_md.is_file():
         claude_md.write_text(_LOOP_CODE_CLAUDE_MD, encoding="utf-8")
+    _ensure_settings_json(root)
+    return root
+
+
+def ensure_engine_claude_config_dir(path: Path | None = None) -> Path:
+    """创建 Engine 配置家并种子 CLAUDE.md + settings.json。"""
+    root = path or default_engine_claude_config_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    claude_md = root / "CLAUDE.md"
+    if not claude_md.is_file():
+        claude_md.write_text(_ENGINE_CLAUDE_MD, encoding="utf-8")
+    _ensure_settings_json(root)
     return root
 
 

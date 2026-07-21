@@ -49,6 +49,8 @@ os.environ.setdefault(
 
 from _claude_cli import (  # noqa: E402
     ensure_loop_code_config_dir,
+    loop_code_sha256_prefix,
+    loop_code_version,
     resolve_claude_cli,
 )
 
@@ -206,6 +208,8 @@ async def health():
         "agent_runtime": "loop-code" if "loop-code" in cli.replace("\\", "/") else "claude",
         "agent_cli": cli_name,
         "config_dir": cfg_mark or None,
+        "loop_code_version": loop_code_version() or None,
+        "loop_code_sha256_prefix": loop_code_sha256_prefix() or None,
         "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
         # Desktop 能力契约（不暴露密钥/完整路径）

@@ -109,13 +109,21 @@ async def run_contract_loop(
 
     loops = max_loops if max_loops is not None else MAX_MICRO_LOOPS
     claude_bin = resolve_claude_cli(require=True)
+    # Phase3：与 Engine 一致，勿全量继承个人 ~/.claude
+    try:
+        from _executor import _claude_env
+
+        sdk_env = _claude_env()
+    except Exception:
+        sdk_env = {**os.environ}
+    sdk_env["CLAUDE_PROJECT_DIR"] = str(workspace)
     options = ClaudeAgentOptions(
         cwd=str(workspace),
         model=model,
         allowed_tools=["Read", "Glob", "Grep", "LS"],
         permission_mode="bypassPermissions",
         cli_path=claude_bin,
-        env={**os.environ, "CLAUDE_PROJECT_DIR": str(workspace)},
+        env=sdk_env,
     )
 
     repair_hint = (
