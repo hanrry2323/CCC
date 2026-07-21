@@ -81,9 +81,9 @@ def test_init_register(tmp_path, fake_workspace, monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
     from _workspace_registry import register_workspace
 
-    r1 = register_workspace(fake_workspace, name="abc", registry=reg)
+    r1 = register_workspace(fake_workspace, name="abc", registry=reg, allow_ephemeral=True)
     assert r1["ok"] and r1["added"]
-    r2 = register_workspace(fake_workspace, name="abc", registry=reg)
+    r2 = register_workspace(fake_workspace, name="abc", registry=reg, allow_ephemeral=True)
     assert r2["ok"] and not r2["added"]
 
 

@@ -221,7 +221,7 @@ def close_stub_in_lessons_md(
 
     while i < len(lines):
         line = lines[i]
-        if f"**Lesson " in line and "（stub）" in line and stub_title in line:
+        if "**Lesson " in line and "（stub）" in line and stub_title in line:
             # 跳过 stub 行和它后面的空行（stub 只有一行）
             # 找到 stub 所在行开头
             # 替换 stub 行

@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_phases(task_id: str, ws: Path = Path.cwd()) -> List[dict]:
+def load_phases(task_id: str, ws: Path = Path.cwd()) -> list[dict]:
     phases_file = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
     if not phases_file.exists():
         print(f"[phase_lint] phases.jsonl 不存在: {phases_file}", file=sys.stderr)
@@ -64,8 +64,8 @@ def load_phases(task_id: str, ws: Path = Path.cwd()) -> List[dict]:
 
 
 def validate_schema_version(
-    phases: List[dict], task_id: str, fix: bool = False
-) -> Tuple[bool, List[str]]:
+    phases: list[dict], task_id: str, fix: bool = False
+) -> tuple[bool, list[str]]:
     """校验 schema_version（兼容 v1.0 / v1.1）"""
     errors = []
     phases_file = Path.cwd() / ".ccc" / "phases" / f"{task_id}.phases.json"
@@ -103,7 +103,7 @@ def validate_schema_version(
     return (len(errors) == 0), errors
 
 
-def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_phase_structure(phases: list[dict]) -> tuple[bool, list[str]]:
     """校验 phase 结构字段（phase / phase_id / status / subtasks / timeout / commit_message / notes）"""
     errors = []
     allowed_fields = {
@@ -198,16 +198,16 @@ def validate_phase_structure(phases: List[dict]) -> Tuple[bool, List[str]]:
     return (len(errors) == 0), errors
 
 
-def validate_no_cycle_dependencies(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_no_cycle_dependencies(phases: list[dict]) -> tuple[bool, list[str]]:
     """循环依赖检测（v0.25.1 原型，v0.28.0 利用）"""
     errors = []
-    by_id: Dict[int, dict] = {
+    by_id: dict[int, dict] = {
         p.get("phase"): p for p in phases if p.get("phase") is not None
     }
-    visited: Set[int] = set()
-    rec_stack: Set[int] = set()
+    visited: set[int] = set()
+    rec_stack: set[int] = set()
 
-    def dfs(pid: int, path: List[int]) -> List[int]:
+    def dfs(pid: int, path: list[int]) -> list[int]:
         if pid in rec_stack:
             return path + [pid]
         if pid in visited:
@@ -247,7 +247,7 @@ VALID_SCHEMA_VERSIONS = {"1.0", "1.1", "1.2"}
 """已知 schema_version 值。"""
 
 
-def validate_executor(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_executor(phases: list[dict]) -> tuple[bool, list[str]]:
     """校验每个 phase 的 executor 字段是否在白名单内。
 
     修复建议：
@@ -273,7 +273,7 @@ def validate_executor(phases: List[dict]) -> Tuple[bool, List[str]]:
     return (len(errors) == 0), errors
 
 
-def validate_empty_phase(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_empty_phase(phases: list[dict]) -> tuple[bool, list[str]]:
     """检测空白/空 phase。
 
     空白定义：
@@ -316,10 +316,10 @@ def _allows_all_scope(phase: dict) -> bool:
 
 
 def validate_scope(
-    phases: List[dict],
+    phases: list[dict],
     *,
     workspace: Path | None = None,
-) -> Tuple[bool, List[str], List[str]]:
+) -> tuple[bool, list[str], list[str]]:
     """v0.42: scope 硬门 — 非空，且禁止裸 ['all']（除非全仓标记）。
 
     若提供 workspace，另校验 scope 路径可被 git 跟踪（已 tracked 放行；
@@ -327,8 +327,8 @@ def validate_scope(
 
     返回 (is_valid, errors, warnings)。
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
     for p in phases:
         pid = p.get("phase")
         scope = p.get("scope")
@@ -381,7 +381,7 @@ def normalize_plan_acceptance_headers(plan_text: str) -> str:
     )
     if has_h2:
         return text
-    out: List[str] = []
+    out: list[str] = []
     upgraded = False
     for ln in lines:
         s = ln.strip()
@@ -394,16 +394,16 @@ def normalize_plan_acceptance_headers(plan_text: str) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def validate_plan_acceptance(plan_text: str) -> Tuple[bool, List[str]]:
+def validate_plan_acceptance(plan_text: str) -> tuple[bool, list[str]]:
     """v0.42: plan 必须含 ## 验收/## 验证，且 ≥1 条可执行意图/命令。"""
-    errors: List[str] = []
+    errors: list[str] = []
     if not (plan_text or "").strip():
         return False, ["plan is empty"]
 
     plan_text = normalize_plan_acceptance_headers(plan_text)
 
     has_section = False
-    items: List[str] = []
+    items: list[str] = []
     in_section = False
     for line in plan_text.splitlines():
         stripped = line.strip()
@@ -424,7 +424,7 @@ def validate_plan_acceptance(plan_text: str) -> Tuple[bool, List[str]]:
     return (len(errors) == 0), errors
 
 
-def validate_v12_fields(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_v12_fields(phases: list[dict]) -> tuple[bool, list[str]]:
     """校验 schema v1.2 的新增字段（软警告）。
 
     - estimated_minutes: int, 1–30
@@ -460,18 +460,18 @@ def validate_v12_fields(phases: List[dict]) -> Tuple[bool, List[str]]:
 
 
 def validate_phases_dict(
-    phases: List[dict],
+    phases: list[dict],
     *,
     workspace: Path | None = None,
-) -> Tuple[bool, List[str], List[str]]:
+) -> tuple[bool, list[str], list[str]]:
     """统一的 phase dict 列表校验入口。
 
     返回 (is_valid: bool, errors: list[str], warnings: list[str])。
     集成所有必要校验 + v0.28.0 新增校验。
     workspace 非空时启用 scope gitignore 硬门。
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     if not phases:
         errors.append("missing phase data")
@@ -552,14 +552,14 @@ def validate_phases_dict(
     return (len(errors) == 0), errors, warnings
 
 
-def validate_phases_jsonl(path: Path, strict: bool = False) -> Tuple[bool, List[str], List[str]]:
+def validate_phases_jsonl(path: Path, strict: bool = False) -> tuple[bool, list[str], list[str]]:
     """校验 phases.jsonl 文件（含 schema_version 元数据行）。
 
     返回 (is_valid: bool, errors: list[str], warnings: list[str])。
     strict=True 时对缺失字段报 error 而非 warning。
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     if not path.exists():
         errors.append(f"file not found: {path}")
@@ -625,13 +625,13 @@ def validate_phases_jsonl(path: Path, strict: bool = False) -> Tuple[bool, List[
     return (len(errors) == 0), errors, warnings
 
 
-def suggest_fix_no_missing_dependencies(phases: List[dict]) -> Tuple[bool, List[str]]:
+def suggest_fix_no_missing_dependencies(phases: list[dict]) -> tuple[bool, list[str]]:
     """依赖引用是否指向存在的 phase"""
     errors = []
-    by_id: Dict[int, dict] = {
+    by_id: dict[int, dict] = {
         p.get("phase"): p for p in phases if p.get("phase") is not None
     }
-    orphan_refs: List[str] = []
+    orphan_refs: list[str] = []
 
     for pid, p in by_id.items():
         for dep_id in p.get("depends_on") or []:
@@ -649,7 +649,7 @@ def suggest_fix_no_missing_dependencies(phases: List[dict]) -> Tuple[bool, List[
     return (len(errors) == 0), errors
 
 
-def validate_status_transitions(phases: List[dict]) -> Tuple[bool, List[str]]:
+def validate_status_transitions(phases: list[dict]) -> tuple[bool, list[str]]:
     """校验单个 phase 的 status 是否合法。
 
     单 phase 默认 status=pending，瞬时到 done 等终态算推进过快（warning）。

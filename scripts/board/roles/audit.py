@@ -42,7 +42,6 @@ from board.phase import (
 )
 from board.roles.common import (
     cfg,
-    store,
     _log,
     CCC_HOME,
     MAX_RETRY,
@@ -73,16 +72,16 @@ def _intake_failsafe(ws: Path, category: str) -> bool:
     """
     from _board_store import FileBoardStore
 
-    store = FileBoardStore(ws)
+    ws_store = FileBoardStore(ws)
     prefix = f"audit-{category}"
-    abnormal = store.list_tasks("abnormal")
+    abnormal = ws_store.list_tasks("abnormal")
     audit_abnormal = [t for t in abnormal if t.get("id", "").startswith(prefix)]
 
     # 统计所有同类 task（含 backlog+planned+in_progress+testing+abnormal）
     all_audit = list(audit_abnormal)
     for col in ("backlog", "planned", "in_progress", "testing"):
         all_audit.extend(
-            t for t in store.list_tasks(col)
+            t for t in ws_store.list_tasks(col)
             if t.get("id", "").startswith(prefix)
         )
 
@@ -372,14 +371,14 @@ def _audit_post_backlog(workspace: str, items: list, category: str) -> int:
 
     from datetime import datetime as _dt
 
-    store = FileBoardStore(Path(workspace))
+    ws_store = FileBoardStore(Path(workspace))
     date_str = _dt.now(timezone.utc).strftime("%Y%m%d-%H%M")
     now_iso_str = now_iso()
     posted = 0
     for i, item in enumerate(items):
         tid = sanitize_id(f"audit-{category}-{date_str}-{uuid.uuid4().hex[:8]}")
         title = item[:80]
-        store.create_task(
+        ws_store.create_task(
             {
                 "id": tid,
                 "title": title,

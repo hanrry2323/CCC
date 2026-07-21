@@ -1,6 +1,6 @@
 """test_advisory_lock.py — 验红线 R-04：reviewer per-task advisory lock 互斥（v0.24.5+）
 
-事实依据：scripts/ccc-board.py:1456-1487（reviewer_role 主循环 + lock 获取）
+事实依据：scripts/board/roles/reviewer.py（reviewer_role 主循环 + lock 获取）
 
 测试：
   1. 同一 task 第二次 acquire 必须 FileExistsError（持锁中）
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPT = ROOT / "scripts" / "ccc-board.py"
+SCRIPT = ROOT / "scripts" / "board" / "roles" / "reviewer.py"
 
 
 @pytest.fixture

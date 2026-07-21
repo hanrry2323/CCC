@@ -39,7 +39,7 @@ def test_record_failure_appends(tmp_path):
         from_col="in_progress",
     )
     assert p.is_file()
-    rows = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
     assert len(rows) == 1
     assert rows[0]["task_id"] == "t1"
     assert rows[0]["role"] == "engine"

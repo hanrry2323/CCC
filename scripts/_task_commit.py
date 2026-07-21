@@ -131,7 +131,7 @@ def ensure_task_commit(
     except Exception as exc:
         return False, f"git status failed: {exc}", ""
 
-    dirty = (st.stdout or "").strip()
+    dirty = (st.stdout or "").rstrip("\n")
     product = porcelain_product_paths(dirty)
     if not product:
         if dirty:

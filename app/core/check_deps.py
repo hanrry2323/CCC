@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 
-def check_core_imports(project_root: Path = Path(".")) -> Tuple[bool, List[str]]:
+def check_core_imports(project_root: Path = Path(".")) -> tuple[bool, list[str]]:
     """
     Check that no core modules import from services layer.
 
@@ -25,7 +25,7 @@ def check_core_imports(project_root: Path = Path(".")) -> Tuple[bool, List[str]]
         Tuple of (is_valid, error_messages)
     """
     core_dir = project_root / "app" / "core"
-    errors: List[str] = []
+    errors: list[str] = []
 
     for py_file in core_dir.rglob("*.py"):
         if "__pycache__" in py_file.parts:
@@ -38,12 +38,12 @@ def check_core_imports(project_root: Path = Path(".")) -> Tuple[bool, List[str]]
 
 def _check_file_imports(
     file_path: Path, core_dir: Path, project_root: Path
-) -> List[str]:
+) -> list[str]:
     """Check a single Python file for disallowed core->services imports."""
-    errors: List[str] = []
+    errors: list[str] = []
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=str(file_path))
 
         for node in ast.walk(tree):

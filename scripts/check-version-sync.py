@@ -32,7 +32,7 @@ if pkg.get("version") != SEMVER:
 
 tauri = json.loads((ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
 if tauri.get("package", {}).get("version") != SEMVER:
-    ERRORS.append(f"tauri.conf.json package.version mismatch")
+    ERRORS.append("tauri.conf.json package.version mismatch")
 
 cargo = (ROOT / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
 if not re.search(rf'^version\s*=\s*"{re.escape(SEMVER)}"', cargo, re.M):

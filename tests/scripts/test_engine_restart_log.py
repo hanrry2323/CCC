@@ -22,7 +22,7 @@ def test_module_importability():
     """测试模块可以正确导入"""
     try:
         # This only verifies syntax and basic structure
-        with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+        with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
             code = f.read()
         # Just parse it to ensure no syntax errors
         ast.parse(code)
@@ -35,7 +35,7 @@ def test_module_importability():
 
 def test_imports():
     """测试 import 语句"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     required_imports = ['import atexit', 'import json']
@@ -50,7 +50,7 @@ def test_imports():
 
 def test_global_variables():
     """测试全局变量"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     required_globals = [
@@ -72,7 +72,7 @@ def test_global_variables():
 
 def test_write_engine_restart_function():
     """测试 _write_engine_restart 函数"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     # Function definition
@@ -100,7 +100,7 @@ def test_write_engine_restart_function():
 
 def test_event_points():
     """测试所有四个事件点"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     events = {
@@ -122,7 +122,7 @@ def test_event_points():
 
 def test_atexit_registration():
     """测试 atexit 注册"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     if 'atexit.register' in content:
@@ -146,7 +146,7 @@ def test_atexit_registration():
 
 def test_file_path_consistency():
     """测试文件路径与 plan 一致"""
-    with open('/Users/apple/program/CCC/scripts/ccc-engine.py', 'r') as f:
+    with open('/Users/apple/program/CCC/scripts/ccc-engine.py') as f:
         content = f.read()
 
     plan_path = '~/.ccc/logs/engine-restarts.jsonl'

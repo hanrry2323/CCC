@@ -47,25 +47,31 @@ def test_watchdog_output_format():
     assert "[watchdog]" in out
 
 
-def test_launcher_runs_watchdog_first():
+def test_launcher_runs_watchdog_first(tmp_path):
     """launcher 必跑 watchdog（红线 X3）—— 验 launcher 调用链
 
     这里用 echo 当 opencode binary 模拟，验 launcher 真的先跑了 watchdog
     """
     # 准备 prompt
-    prompt = Path("/tmp/_test_launcher_x3.txt")
+    prompt = tmp_path / "_test_launcher_x3.txt"
     prompt.write_text("test")
-    try:
-        # 调 launcher，timeout 短一些（5s），用 --skip-watchdog 避免残留干扰
-        proc = subprocess.run(
-            ["bash", str(LAUNCHER), "test-x3-phase", str(prompt), "--timeout", "5"],
-            capture_output=True, timeout=30,
-        )
-        out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
-        # launcher 输出应含 "Step 1: opencode-watchdog"
-        assert "Step 1" in out, f"launcher 应跑 Step 1 (watchdog)，实际：{out[:500]}"
-    finally:
-        prompt.unlink(missing_ok=True)
+    proc = subprocess.run(
+        [
+            "bash",
+            str(LAUNCHER),
+            "test-x3-phase",
+            str(prompt),
+            "--timeout",
+            "5",
+            "--cwd",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        timeout=30,
+    )
+    out = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    # launcher 输出应含 "Step 1: opencode-watchdog"
+    assert "Step 1" in out, f"launcher 应跑 Step 1 (watchdog)，实际：{out[:500]}"
 
 
 def _run_notify(*args, env=None):

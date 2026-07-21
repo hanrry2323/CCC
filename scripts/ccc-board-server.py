@@ -946,7 +946,7 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if "/api/" in str(args[0]):
             return
-        sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
+        sys.stderr.write(f"[{self.log_date_time_string()}] {fmt % args}\n")
 
 
 # ── v0.26 Protocol v1: 结构化 error helper ──

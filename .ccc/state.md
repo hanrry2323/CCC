@@ -51,10 +51,12 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-21）**：v0.52.1 **稳定性门禁**（gitignore 假绿 + transfer 空响应重试 + `smoke-hub-shell-gate`）· 见 `docs/releases/v0.52.1.md`。前序 v0.52.0 Hub-Shell Wave1-2 freeze 见 `docs/releases/v0.52.0.md`。
+> **近 HEAD（手工备忘，2026-07-21）**：v0.52.2 **Wave A LAN + Phase17 模型快选** + **loop-code 所有权切割 Phase1–5**（禁 PATH 回落、退役 M1 原版 Claude Code CLI）· 见 `docs/releases/v0.52.2.md`。前序 v0.52.1 稳定性门禁见 `docs/releases/v0.52.1.md`。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-21 | loop-code-ownership | `docs/product/dev-channel.md` | `git log 387bcbb` | Phase1–5 配置家切割 + 禁 PATH 回落 | PASS（git） |
+| 2026-07-21 | v0522-wave-a-phase17 | `docs/releases/v0.52.2.md` | Desktop 模型快选 + LAN | VERSION v0.52.2 | PASS |
 | 2026-07-21 | desktop-v0521-build | `desktop/scripts/package-baseline.sh` | `/Applications/CCCDesktop.app` v0.52.1 | transfer 空响应重试已装机 | PASS |
 | 2026-07-21 | v052-stability-gate | `docs/releases/v0.52.1.md` | smoke fast + phase9 live | gitignore 门禁 + transfer 重试 + gate | PASS |
 | 2026-07-18 | go-live-v051 | `docs/ops/GO-LIVE.md` | hygiene + orch | doctor ERROR=0；Engine 7 apps；Hub 拒投 CCC | PASS |
@@ -117,7 +119,7 @@
 
 ---
 
-## 当前状态（v0.52.1 稳定性门禁, 2026-07-21）
+## 当前状态（v0.52.2 Wave A + loop-code 切割, 2026-07-21）
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流** + **多端对话壳 + Hub API v1**。
 
@@ -125,11 +127,13 @@
 
 **v0.52.1 稳定性门禁**：phase_lint gitignore 硬门 + salvage 收紧；Desktop transfer 空响应同 CRID 重试；`smoke-hub-shell-gate.sh`（fast/full）+ phase9 live + qb-biz-small。详见 `docs/releases/v0.52.1.md`。
 
+**v0.52.2**：Wave A LAN + Phase17 Desktop 模型快选；loop-code 所有权切割 Phase1–5（禁 PATH 回落、退役 M1 原版 Claude Code CLI）。详见 `docs/releases/v0.52.2.md`。
+
 **复杂度分流**（v0.28.1）：task 有 `complexity` 字段（small/medium/large）。small 任务跳过 reviewer+tester 直通 kb；medium（默认）/ large 走完整阶段能力包。详见 `CHANGELOG.md §v0.28.1`。
 
 **每周总结定时任务**（v0.28.1）：CronCreate 每周日晚 22:03 自动生成 `.ccc/reports/weekly-YYYY-MM-DD.md`。
 
-**已发布版本族**：… → v0.51.0 → v0.52.0 → **v0.52.1**（稳定性门禁）。
+**已发布版本族**：… → v0.51.0 → v0.52.0 → v0.52.1 → **v0.52.2**（Wave A + Phase17 + loop-code 切割）。
 
 **人审边界**（v0.52 起固化）：意图门（定稿/采纳/选仓）+ abnormal 止损；进 backlog 后**默认全自动**，禁止逐步人批（roadmap §3）。
 
@@ -351,8 +355,8 @@
 
 ---
 
-**最后更新**：2026-07-21（v0.52.1 稳定性门禁落地；前序 v0.52.0 freeze）
-**v0.52.1**：gitignore 假绿门禁 · transfer 空响应重试 · `smoke-hub-shell-gate` fast 已绿 · phase9 live 已绿
+**最后更新**：2026-07-21（v0.52.2 Wave A + loop-code Phase1–5；前序 v0.52.1 稳定性门禁）
+**v0.52.2**：模型快选 · LAN Wave A · loop-code 配置家切割 · 禁 PATH 回落
 
 **下次启动必读顺序**：
 1. 读本文件（state.md）
@@ -361,7 +365,7 @@
 4. 才开工
 
 **当前活跃**：
-- complexity 分流（v0.28.1）· Hub API v1（v0.52）· 稳定性门禁（v0.52.1）
+- complexity 分流（v0.28.1）· Hub API v1（v0.52）· 稳定性门禁（v0.52.1）· Wave A/Phase17 + loop-code（v0.52.2）
 - 每周总结定时任务（周日 22:03）
 - 后续候选：更深业务 epic / 止损通知细则（不做 P3）
 

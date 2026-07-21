@@ -62,6 +62,10 @@ check_shell_syntax() {
 check_templates_exist() {
     local errors=0
     for wsdir in "$HOME/program/"*/; do
+        # 退役/非产品仓：不要求 templates/（见 docs/deploy/topology.md）
+        case "$(basename "$wsdir")" in
+            ai-loop-router) continue ;;
+        esac
         if [ -d "$wsdir/.ccc" ] && [ ! -d "$wsdir/templates" ]; then
             red "$(basename "$wsdir") 是 CCC 工作区但缺少 templates/"
             errors=1

@@ -1,6 +1,6 @@
 """test_retry_backoff.py — 验证 dev_role retry 退避语义（v0.24.7+）
 
-事实依据：scripts/ccc-board.py:62-67 (_backoff_seconds) + 853-885 (retry_at 写回)
+事实依据：scripts/board/roles/common.py (_backoff_seconds) + scripts/board/roles/dev.py (retry_at 写回)
 
 测试：
   1. _backoff_seconds(retry=0) ≥ 60（v0.24.7+ 强制 first backoff）
@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPTS = ROOT / "scripts"
+DEV_ROLE = SCRIPTS / "board" / "roles" / "dev.py"
 
 os.chdir(str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS))
@@ -62,7 +63,7 @@ def test_backoff_monotonic_increase():
 
 def test_retry_at_never_none_in_source():
     """v0.24.7+ retry_at 必填：源码检查 retry=0 时也填 retry_at"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = DEV_ROLE.read_text()
     # 修复前：retry=0 时 retry_at = None
     # 修复后：retry >= 0 时 retry_at = now + backoff
     assert "if retry >= 0" in src or "if retry >= 1" not in src or "backoff = _backoff_seconds(retry - 1) if retry else 60" in src
@@ -72,7 +73,7 @@ def test_retry_at_never_none_in_source():
 
 def test_dev_role_retry_first_backoff_in_branch():
     """dev_role 写 retry_at 段必须用 _backoff_seconds(retry-1) if retry else 60"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = DEV_ROLE.read_text()
     # v0.24.7 关键修复：retry else 60（之前是 retry else 0）
     assert "_backoff_seconds(retry - 1) if retry else 60" in src
     # 不能有旧的 "else 0" 单独出现（在 retry backoff 上下文里）

@@ -120,7 +120,7 @@ def build_epic_description(body: dict[str, Any]) -> str:
         "## Transfer Gate",
         f"- pipeline: {pipeline}",
         f"- executor_intent: {intent}",
-        f"- feasibility: ok",
+        "- feasibility: ok",
     ]
     if skills_s:
         parts.append(f"- skills_hint: {skills_s}")

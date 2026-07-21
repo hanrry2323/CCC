@@ -142,9 +142,9 @@ def test_fanout_from_seeded_epic(tmp_path):
 
     p2 = (_P(root) / ".ccc" / "phases" / "task-seed-w2.phases.json").read_text()
     phs = [
-        _json.loads(l)
-        for l in p2.splitlines()
-        if l.strip().startswith("{") and '"phase"' in l
+        _json.loads(line)
+        for line in p2.splitlines()
+        if line.strip().startswith("{") and '"phase"' in line
     ]
     assert len(phs) == 1 and phs[0]["phase"] == 1
     assert phs[0].get("depends_on") == []

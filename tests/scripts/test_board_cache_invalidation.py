@@ -24,6 +24,7 @@ def _make_store(tmp_path: Path) -> FileBoardStore:
 
 
 def _new_task(tid: str, **kw) -> dict:
+    # backlog 种子默认 epic；需 move 的测例显式传 card_kind=work + status=planned
     base = {
         "id": tid,
         "title": f"title-{tid}",
@@ -38,7 +39,7 @@ def _new_task(tid: str, **kw) -> dict:
         "color_group": None,
         "color_depth": 0,
         "complexity": "medium",
-        "card_kind": "work",
+        "card_kind": "epic",
         "parent_id": None,
         "split_status": None,
         "child_ids": [],
@@ -79,11 +80,14 @@ def test_patch_invalidates_cache(tmp_path):
 
 def test_move_invalidates_both_columns(tmp_path):
     store = _make_store(tmp_path)
-    assert store.create_task(_new_task("t1"))
-    store.list_tasks("backlog")
-    assert store.move_task("t1", "backlog", "planned")
-    assert store.list_tasks("backlog") == []
-    assert [t["id"] for t in store.list_tasks("planned")] == ["t1"]
+    assert store.create_task(
+        _new_task("t1", card_kind="work", status="planned"),
+        column="planned",
+    )
+    store.list_tasks("planned")
+    assert store.move_task("t1", "planned", "in_progress")
+    assert store.list_tasks("planned") == []
+    assert [t["id"] for t in store.list_tasks("in_progress")] == ["t1"]
 
 
 def test_external_edit_mtime_invalidation(tmp_path):
@@ -105,10 +109,13 @@ def test_external_edit_mtime_invalidation(tmp_path):
 
 def test_find_task_uses_path_probe(tmp_path):
     store = _make_store(tmp_path)
-    assert store.create_task(_new_task("t1"))
-    assert store.move_task("t1", "backlog", "planned")
+    assert store.create_task(
+        _new_task("t1", card_kind="work", status="planned"),
+        column="planned",
+    )
+    assert store.move_task("t1", "planned", "in_progress")
     col, task = store.find_task("t1")
-    assert col == "planned"
+    assert col == "in_progress"
     assert task["id"] == "t1"
     col, _ = store.find_task("nope")
     assert col is None

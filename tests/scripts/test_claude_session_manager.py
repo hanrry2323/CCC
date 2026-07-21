@@ -44,7 +44,7 @@ class _FakeResult:
 
 
 class _FakeClient:
-    instances: list["_FakeClient"] = []
+    instances: list[_FakeClient] = []
 
     def __init__(self, options=None, transport=None):
         self.options = options

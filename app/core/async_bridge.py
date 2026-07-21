@@ -14,7 +14,7 @@ def _ensure_bridge_thread_pool() -> ThreadPoolExecutor:
         return _executor
 
     _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="async_bridge")
-    
+
     try:
         loop = asyncio.get_running_loop()
         _bridge_loop = loop
@@ -51,12 +51,12 @@ def run_async(coro: Any, timeout: int = 600) -> Any:
         return coro
 
     coro = asyncio.ensure_future(coro) if callable(coro) and not asyncio.iscoroutine(coro) else coro
-    
+
     try:
         return _bridge_loop.run_until_complete(
             asyncio.wait_for(coro, timeout=timeout)
         )
-    except asyncio.TimeoutError as e:
+    except TimeoutError as e:
         raise TimeoutError(f"run_async() timeout after {timeout}s") from e
     except Exception as e:
         raise e
@@ -94,8 +94,8 @@ def run_async_with_context(coro: Any, context: dict[str, Any]) -> Any:
         return _bridge_loop.run_until_complete(
             asyncio.wait_for(coro, timeout=600)
         )
-    except asyncio.TimeoutError as e:
-        raise TimeoutError(f"run_async_with_context() timeout after 600s") from e
+    except TimeoutError as e:
+        raise TimeoutError("run_async_with_context() timeout after 600s") from e
     except Exception as e:
         raise e
 

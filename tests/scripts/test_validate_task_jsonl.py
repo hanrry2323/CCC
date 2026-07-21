@@ -250,7 +250,7 @@ class TestFillTaskDefaults:
 
     def test_fill_minimal_data(self):
         out = fill_task_defaults({"id": "x"})
-        assert out["schema_version"] == "1.0"
+        assert out["schema_version"] == "1.2"
         assert out["color_group"] is None
         assert out["color_depth"] == 0
 
@@ -294,7 +294,7 @@ class TestCreateTaskIntegration:
         loaded = json.loads(
             (tmp_path / ".ccc" / "board" / "backlog" / "minimal-task.jsonl").read_text()
         )
-        assert loaded["schema_version"] == "1.0"
+        assert loaded["schema_version"] == "1.2"
         assert loaded["color_group"] is None
         assert loaded["color_depth"] == 0
         assert loaded["description"] == ""

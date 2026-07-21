@@ -115,17 +115,17 @@ async def _terminate_zombie(proc, pgid: int, timeout: int, started: float) -> No
     try:
         await asyncio.wait_for(proc.wait(), timeout=5)
         return
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await _kill_process_group(pgid, _sig.SIGKILL)
     remaining = hard_deadline - time.time()
     if remaining > 0 and proc.returncode is None:
         try:
             await asyncio.wait_for(proc.wait(), timeout=remaining)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await _kill_process_group(pgid, _sig.SIGKILL)
             try:
                 await asyncio.wait_for(proc.wait(), timeout=10)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 _log.warning("proc.wait timeout after hard SIGKILL pgid=%s", pgid)
 
 
@@ -230,7 +230,7 @@ async def run_opencode(
             "pid": proc.pid,
             "killed": False,
         }
-    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+    except (TimeoutError, asyncio.CancelledError) as exc:
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         await _kill_process_group(proc.pid, _sig.SIGTERM)
         await _terminate_zombie(proc, proc.pid, timeout, started)

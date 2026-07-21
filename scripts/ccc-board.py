@@ -297,20 +297,8 @@ from _claude_cli import ClaudeCliMissing, resolve_claude_cli
 
 # ── Role implementations live in board.roles.* (re-export for CLI / importlib) ──
 from board.roles.common import (  # noqa: E402,F401
-    cfg,
-    store,
-    CCC_HOME,
-    MAX_RETRY,
-    MAX_STALE_HOURS,
-    WORKSPACES,
-    sanitize_id,
-    now_iso,
     _quarantine,
     _task_id_exists,
-    create_task,
-    list_tasks,
-    move_task,
-    update_index,
     _get_cfg,
     _get_store,
     _reset_lazy,
@@ -318,8 +306,6 @@ from board.roles.common import (  # noqa: E402,F401
     _load_timeout,
     _load_retry_cap,
     _load_retry_from_phases,
-    _claude_bin,
-    _get_relay_url,
 )
 from board.roles.common import _write_pass_verdict  # noqa: E402,F401
 from board.roles.product import (  # noqa: E402,F401
@@ -415,7 +401,6 @@ def get_timeline(task_id: Optional[str] = None) -> list[dict]:
 
 def approve_agents() -> dict:
     """人类审批: 读 pending-agents-suggestions.md → 追加到 .ccc/AGENTS.md"""
-    import re
 
     pending_file = get_workspace() / ".ccc" / "pending-agents-suggestions.md"
     if not pending_file.exists():
@@ -542,7 +527,6 @@ def auto_approve_agents() -> dict:
     - 单次最多 10 条（防 backlog 爆炸时一次写太多）
     - 不替代人工 approve-agents：原函数保留（红线 18 风格）
     """
-    import re
     import json as _json
 
     pending_file = get_workspace() / ".ccc" / "pending-agents-suggestions.md"

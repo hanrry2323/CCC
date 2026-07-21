@@ -9,7 +9,7 @@
 
 **完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **Desktop 架构**：[`docs/product/ccc-desktop-architecture.md`](docs/product/ccc-desktop-architecture.md)  
 **启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · 版本：`VERSION`  
-**Release**：[v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
+**Release**：[v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
 
 ---
 

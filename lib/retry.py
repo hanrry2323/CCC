@@ -28,7 +28,7 @@ def retry(
     max_attempts: int = 3,
     backoff: float = 2.0,
     jitter: float = 0.1,
-    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
     dead_letter: bool = True,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """指数退避 + jitter 重试装饰器。

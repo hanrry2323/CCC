@@ -39,11 +39,16 @@ def test_role_lock_bypass_warns_but_allows(caplog):
     from _role_lock import assert_role_executor
 
     os.environ["CCC_ROLE_LOCK_BYPASS"] = "1"
+    # _logger 配置后 ccc.propagate=False，需临时打开才能进 caplog（挂在 root）
+    ccc_log = logging.getLogger("ccc")
+    prev_propagate = ccc_log.propagate
     try:
+        ccc_log.propagate = True
         with caplog.at_level(logging.WARNING, logger="ccc.role_lock"):
             assert_role_executor("dev", "claude-code")
         assert any("CCC_ROLE_LOCK_BYPASS" in r.message for r in caplog.records)
     finally:
+        ccc_log.propagate = prev_propagate
         os.environ.pop("CCC_ROLE_LOCK_BYPASS", None)
 
 

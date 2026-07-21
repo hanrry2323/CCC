@@ -369,7 +369,7 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
     try:
-        with open(result_file, "w") as out_f, open(prompt_file, "r") as in_f:
+        with open(result_file, "w") as out_f, open(prompt_file) as in_f:
             proc = subprocess.Popen(
                 [_claude_bin(), "-p"],
                 stdin=in_f,

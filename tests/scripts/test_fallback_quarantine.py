@@ -1,6 +1,6 @@
 """test_fallback_quarantine.py — R-12 验证 medium/large fallback 强制 quarantine（v0.24.5+）
 
-事实依据：scripts/ccc-board.py:1601-1628（_review_one_task fallback quarantine 路径）
+事实依据：scripts/board/roles/reviewer.py（_apply_reviewer_llm_fallback / quarantine 路径）
 
 测试：
   1. medium 类 LLM fallback → task 留在 testing 或 abnormal，不进 verified
@@ -20,8 +20,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPTS = ROOT / "scripts"
+REVIEWER = SCRIPTS / "board" / "roles" / "reviewer.py"
 
-# ccc-board.py 含连字符，从 scripts/ 目录加载
+# ccc-board.py 含连字符，从 scripts/ 目录加载（fixture 仍用 facade re-export）
 os.chdir(str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS))
 _spec = importlib.util.spec_from_file_location("ccc_board", str(SCRIPTS / "ccc-board.py"))
@@ -95,7 +96,7 @@ def _git_init_with_diff(tmp_path: Path, lines: int = 30):
 def test_fallback_quarantine_calls_subprocess():
     """fallback 路径必须调 subprocess.run(['bash', 'ccc-notify.sh', 'L2', ...])"""
     # 静态扫描：reviewer fallback 分支调 subprocess.run with ccc-notify.sh L2
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     # fallback 段必须包含 L2 + ccc-notify.sh
     assert "ccc-notify.sh" in src
     assert '"L2"' in src or "'L2'" in src
@@ -105,7 +106,7 @@ def test_fallback_quarantine_calls_subprocess():
 
 def test_fallback_quarantine_reason_format():
     """R-12 quarantine reason 必须含 fallback quarantine（v0.40.1+）"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     assert "fallback quarantine" in src
     assert "FALLBACK" in src
     assert "medium/large" in src or "size_class" in src
@@ -113,7 +114,7 @@ def test_fallback_quarantine_reason_format():
 
 def test_small_class_keeps_py_compile_path():
     """small 类（≤10 行）LLM fallback 仍走 py_compile pass（保留 v0.24.1 行为）"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     # small class + py_files + _py_compile_fallback → move verified
     assert 'size_class == "small"' in src
     assert "_py_compile_fallback" in src
@@ -124,21 +125,21 @@ def test_small_class_keeps_py_compile_path():
 
 def test_medium_large_does_not_quarantine_small():
     """LLM fallback 走 _apply_reviewer_llm_fallback；small 仍有独立 py_compile 路径"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     assert "def _apply_reviewer_llm_fallback" in src
     assert '**Verdict:** FALLBACK' in src or "**Verdict:** FALLBACK" in src
     assert 'size_class == "small"' in src
     assert "_py_compile_fallback" in src
     # 禁止再把 FALLBACK 伪装成 PASS 过门
     apply_src = src.split("def _apply_reviewer_llm_fallback", 1)[1].split(
-        "def _infer_complexity_from_plan", 1
+        "def _get_git_diff_for_task", 1
     )[0]
     assert "**Verdict:** PASS" not in apply_src
 
 
 def test_review_md_contains_quarantine_keyword():
     """review.md 写回时含 'fallback' / 'QUARANTINED' 关键字"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     # fallback 分支写 review.md 时 verdict 应包含 fallback 信息
     # 检查有写 review.md 的逻辑
     assert ".review.md" in src
@@ -147,21 +148,21 @@ def test_review_md_contains_quarantine_keyword():
 
 def test_pyreview_classify_review_size_thresholds():
     """REVIEW_SIZE_SMALL_MAX=10 / MEDIUM_MAX=50 分级阈值不变"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     assert "REVIEW_SIZE_SMALL_MAX = 10" in src
     assert "REVIEW_SIZE_MEDIUM_MAX = 50" in src
 
 
 def test_advisory_lock_released_on_quarantine():
     """quarantine 路径也必须释放 advisory lock（_review_one_task finally）"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     # reviewer_role 主循环 finally 块 unlink lock
     assert "os.unlink(lock_path)" in src
 
 
 def test_subprocess_notify_called_with_correct_args():
     """subprocess.run 调用 ccc-notify.sh L2 必须传 reason[:200]"""
-    src = (SCRIPTS / "ccc-board.py").read_text()
+    src = REVIEWER.read_text()
     # 检查 notify 调用模式：ccc-notify.sh L2 + reason[:200]
     assert "ccc-notify.sh" in src
     # reason[:200] 截断

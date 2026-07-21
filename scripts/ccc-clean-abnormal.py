@@ -159,7 +159,7 @@ def main() -> int:
             continue
 
         if task.get("status", "").lower() != "abnormal":
-            print(f"    已不是 abnormal 状态，跳过")
+            print("    已不是 abnormal 状态，跳过")
             continue
 
         _move_task(ws, task, cls)

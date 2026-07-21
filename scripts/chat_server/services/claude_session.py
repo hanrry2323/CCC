@@ -290,7 +290,7 @@ class ClaudeSessionManager:
         try:
             await asyncio.wait_for(slot.lock.acquire(), timeout=timeout)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _log.warning(
                 "slot lock timeout key=%s wait=%.1fs reason=%s",
                 slot.key,
@@ -341,7 +341,7 @@ class ClaudeSessionManager:
 
         try:
             await asyncio.wait_for(_drain(), timeout=drain_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _log.warning(
                 "drain timeout key=%s after %.1fs → disconnect",
                 slot.key,
@@ -390,7 +390,7 @@ class ClaudeSessionManager:
                         slot.client.disconnect(),
                         timeout=float(config.CHAT_DRAIN_TIMEOUT),
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _log.warning(
                         "disconnect timeout key=%s → escalate to SIGKILL",
                         slot.key,
@@ -581,7 +581,7 @@ class ClaudeSessionManager:
         before_pids = _descendant_loop_code_pids()
         try:
             await asyncio.wait_for(slot.client.connect(), timeout=connect_s)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             slot.connected = False
             slot.client = None
             # connect 超时也可能已拉起半残 cli
@@ -947,7 +947,7 @@ class ClaudeSessionManager:
                                 msg_queue.get(),
                                 timeout=min(max(idle_left, 0.1), 5.0),
                             )
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             now = time.monotonic()
                             if now - last_ping >= 15:
                                 yield {

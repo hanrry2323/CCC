@@ -223,7 +223,7 @@ def test_cost_telemetry_exists():
 
     # Verify check_abnormal_traffic runs without error
     result = m.check_abnormal_traffic("nonexistent-task", "test")
-    assert result == False
+    assert not result
 
 
 # ============================================================

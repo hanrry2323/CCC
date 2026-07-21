@@ -26,8 +26,16 @@ from _board_store import (
 )
 
 
-def _valid_task(task_id: str = "store-t1", status: str = "backlog") -> dict:
+def _valid_task(
+    task_id: str = "store-t1",
+    status: str = "backlog",
+    *,
+    card_kind: str | None = None,
+) -> dict:
+    """backlog 默认 epic；流列（planned/…）默认 work（对齐 epic-only backlog 门禁）。"""
     ts = now_iso()
+    if card_kind is None:
+        card_kind = "epic" if status == "backlog" else "work"
     return {
         "id": task_id,
         "title": "Board store test",
@@ -37,7 +45,7 @@ def _valid_task(task_id: str = "store-t1", status: str = "backlog") -> dict:
         "updated_at": ts,
         "assignee": None,
         "tags": [],
-        "card_kind": "work",
+        "card_kind": card_kind,
     }
 
 
@@ -92,12 +100,14 @@ class TestFileBoardStoreCRUD:
     def test_create_and_list_fifo(self, store: FileBoardStore):
         # 非 backlog 列：FIFO by created_at（升序）
         ok = store.create_task(
-            _valid_task("aaa") | {"created_at": "2026-01-01T00:00:00+08:00"},
+            _valid_task("aaa", status="in_progress")
+            | {"created_at": "2026-01-01T00:00:00+08:00"},
             column="in_progress",
         )
         assert ok is True
         ok2 = store.create_task(
-            _valid_task("bbb") | {"created_at": "2026-01-01T00:00:01+08:00"},
+            _valid_task("bbb", status="in_progress")
+            | {"created_at": "2026-01-01T00:00:01+08:00"},
             column="in_progress",
         )
         assert ok2 is True
@@ -105,14 +115,17 @@ class TestFileBoardStoreCRUD:
         assert [t["id"] for t in tasks] == ["aaa", "bbb"]
 
     def test_move_atomic_dst_then_unlink_src(self, store: FileBoardStore, tmp_path):
-        assert store.create_task(_valid_task("mv1"), column="backlog")
-        src = tmp_path / ".ccc" / "board" / "backlog" / "mv1.jsonl"
-        dst = tmp_path / ".ccc" / "board" / "planned" / "mv1.jsonl"
-        assert store.move_task("mv1", "backlog", "planned")
+        # work 只能进 planned；epic 不可离开 backlog
+        assert store.create_task(
+            _valid_task("mv1", status="planned"), column="planned"
+        )
+        src = tmp_path / ".ccc" / "board" / "planned" / "mv1.jsonl"
+        dst = tmp_path / ".ccc" / "board" / "in_progress" / "mv1.jsonl"
+        assert store.move_task("mv1", "planned", "in_progress")
         assert dst.exists()
         assert not src.exists()
         task = json.loads(dst.read_text())
-        assert task["status"] == "planned"
+        assert task["status"] == "in_progress"
 
     def test_move_rejects_invalid_transition(self, store: FileBoardStore):
         store.create_task(_valid_task("bad"), column="backlog")
@@ -126,17 +139,17 @@ class TestFileBoardStoreCRUD:
         assert index["backlog"] == 1
 
     def test_quarantine_moves_to_abnormal(self, store: FileBoardStore, tmp_path):
-        store.create_task(_valid_task("q1"), column="in_progress")
+        store.create_task(_valid_task("q1", status="in_progress"), column="in_progress")
         store.quarantine("q1", "test isolation")
         assert (tmp_path / ".ccc" / "board" / "abnormal" / "q1.jsonl").exists()
         assert not (tmp_path / ".ccc" / "board" / "in_progress" / "q1.jsonl").exists()
 
     def test_get_timeline_records_move(self, store: FileBoardStore):
-        store.create_task(_valid_task("ev1"), column="backlog")
-        store.move_task("ev1", "backlog", "planned")
+        store.create_task(_valid_task("ev1", status="planned"), column="planned")
+        store.move_task("ev1", "planned", "in_progress")
         events = store.get_timeline("ev1")
         assert len(events) >= 2
-        assert events[-1]["to"] == "planned"
+        assert events[-1]["to"] == "in_progress"
 
     def test_cleanup_events_removes_old_files(self, store: FileBoardStore, tmp_path):
         ev = tmp_path / ".ccc" / "board" / "events" / "old.events.jsonl"
@@ -194,7 +207,7 @@ class TestQuarantineArchive:
         self, store: FileBoardStore, tmp_path, monkeypatch
     ):
         tid = "arch-1"
-        store.create_task(_valid_task(tid), column="in_progress")
+        store.create_task(_valid_task(tid, status="in_progress"), column="in_progress")
         plans = tmp_path / ".ccc" / "plans"
         phases = tmp_path / ".ccc" / "phases"
         plans.mkdir(parents=True)
@@ -233,8 +246,8 @@ class TestEdgeCases:
         assert store.list_tasks("unknown_col") == []
 
     def test_get_timeline_all_tasks(self, store: FileBoardStore):
-        store.create_task(_valid_task("t-all"), column="backlog")
-        store.move_task("t-all", "backlog", "planned")
+        store.create_task(_valid_task("t-all", status="planned"), column="planned")
+        store.move_task("t-all", "planned", "in_progress")
         events = store.get_timeline()
         assert len(events) >= 1
 
@@ -319,9 +332,10 @@ class TestEventFormat:
     """test-board-events-format: events.jsonl 字段格式与 board-task-schema.md §7 一致"""
 
     def test_event_format(self, store: FileBoardStore, tmp_path: Path):
-        store.create_task(_valid_task("fmt-1"), column="backlog")
-        store.move_task("fmt-1", "backlog", "planned")
+        # work 种子进 planned（epic 不可离开 backlog）
+        store.create_task(_valid_task("fmt-1", status="planned"), column="planned")
         store.move_task("fmt-1", "planned", "in_progress")
+        store.move_task("fmt-1", "in_progress", "testing")
 
         events_file = tmp_path / ".ccc" / "board" / "events" / "fmt-1.events.jsonl"
         assert events_file.exists(), "events.jsonl 未生成"
@@ -342,10 +356,10 @@ class TestEventFormat:
             )
 
         assert events[0]["from"] == "none", "创建时首条事件 from 应为 'none'"
-        assert events[0]["to"] == "backlog"
+        assert events[0]["to"] == "planned"
 
         assert events[1]["event"] == "move"
-        assert events[1]["from"] == "backlog" and events[1]["to"] == "planned"
+        assert events[1]["from"] == "planned" and events[1]["to"] == "in_progress"
 
         assert events[2]["event"] == "move"
-        assert events[2]["from"] == "planned" and events[2]["to"] == "in_progress"
+        assert events[2]["from"] == "in_progress" and events[2]["to"] == "testing"
