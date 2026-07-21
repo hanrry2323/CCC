@@ -5,7 +5,7 @@
  */
 
 const ROUTES = ['chat', 'board', 'console', 'ops'];
-const DEFAULT_ROUTE = 'board';
+const DEFAULT_ROUTE = 'chat';
 
 export function currentRoute() {
   const raw = (location.hash || '#/' + DEFAULT_ROUTE).replace(/^#\/?/, '');

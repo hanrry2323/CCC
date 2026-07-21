@@ -18,6 +18,14 @@ export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+/** Hub 远程会话 thread：强制 hub::{project}::… 分区前缀 */
+export function hubThreadId(projectId, suffix) {
+  const pid = (projectId || 'ccc').trim() || 'ccc';
+  let s = String(suffix || '').trim() || generateId();
+  if (s.startsWith('hub::')) return s;
+  return `hub::${pid}::${s}`;
+}
+
 export function relativeTime(iso) {
   if (!iso) return '';
   const raw = String(iso).trim();

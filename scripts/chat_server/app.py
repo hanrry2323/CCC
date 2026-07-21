@@ -13,7 +13,7 @@ from .routers import sessions, files, board, projects, ops, desktop, remote_chat
 from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
-HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260721remote1")
+HUB_ASSET_VERSION = os.environ.get("CCC_HUB_ASSET_VERSION", "20260721remote2")
 
 
 class NoStoreStaticMiddleware(BaseHTTPMiddleware):

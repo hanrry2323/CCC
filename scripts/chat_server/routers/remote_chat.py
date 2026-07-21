@@ -49,6 +49,12 @@ def _project_id_from_body(body: dict[str, Any]) -> str:
     return (body.get("project_id") or body.get("project") or "").strip() or "ccc"
 
 
+def _thread_from_body(body: dict[str, Any], project: str) -> str:
+    """Accept thread_id or legacy session_id; enforce hub::."""
+    raw = body.get("thread_id") or body.get("session_id")
+    return normalize_hub_thread_id(project, raw if raw else None)
+
+
 def _load_messages(thread_id: str, project: str) -> tuple[list[dict], str]:
     try:
         path = store._session_path(thread_id, project)  # noqa: SLF001
@@ -79,7 +85,7 @@ async def remote_chat_stream(request: Request):
         raise HTTPException(status_code=400, detail="危险指令已被拦截")
 
     try:
-        thread_id = normalize_hub_thread_id(project, body.get("thread_id"))
+        thread_id = _thread_from_body(body, project)
     except ValueError as exc:
         return JSONResponse(
             status_code=400,
@@ -242,7 +248,7 @@ async def remote_chat_stop(request: Request):
     body = await request.json()
     project = _project_id_from_body(body)
     try:
-        thread_id = normalize_hub_thread_id(project, body.get("thread_id"))
+        thread_id = _thread_from_body(body, project)
     except ValueError as exc:
         return JSONResponse(
             status_code=400,

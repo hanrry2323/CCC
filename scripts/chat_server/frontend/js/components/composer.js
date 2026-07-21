@@ -60,6 +60,17 @@ export function initComposer() {
     });
   }
 
+  const toolModeSelect = document.getElementById('tool-mode-select');
+  if (toolModeSelect) {
+    toolModeSelect.value = state.get('toolMode') || 'discuss';
+    toolModeSelect.addEventListener('change', () => {
+      state.set(
+        'toolMode',
+        toolModeSelect.value === 'engineer' ? 'engineer' : 'discuss'
+      );
+    });
+  }
+
   const projectSelect = document.getElementById('project-select');
   if (projectSelect) {
     projectSelect.addEventListener('change', () => {

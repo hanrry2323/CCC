@@ -12,6 +12,7 @@ class State {
       maxLiveStreams: 4,
       historySource: 'all',
       model: 'flash',
+      toolMode: 'discuss',
       abortController: null,
       tabs: [],
       activeTabId: null,

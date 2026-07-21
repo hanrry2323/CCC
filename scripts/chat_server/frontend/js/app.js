@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { generateId } from './utils.js';
+import { generateId, hubThreadId } from './utils.js';
 import { loadProjects, loadSession, loadHubConfig } from './api.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
@@ -16,7 +16,6 @@ import { initRouter } from './router.js';
 import { mountBoard, unmountBoard } from './pages/boardPage.js';
 import { mountConsole, unmountConsole } from './pages/consolePage.js';
 import { mountOps, unmountOps } from './pages/opsPage.js';
-import { mountChat, unmountChat } from './pages/chatPage.js';
 import {
   initDualPaneControls,
   isEnabled as dualPaneEnabled,
@@ -138,7 +137,7 @@ function switchToProjectTab(projectId) {
     tab = {
       id,
       title: '新对话',
-      sessionId: id,
+      sessionId: hubThreadId(pid, id),
       messages: [],
       projectId: pid,
     };
@@ -174,24 +173,20 @@ async function onHubRoute(route) {
     unmountBoard();
     unmountConsole();
     unmountOps();
-    await mountChat(document.getElementById('view-chat'));
+    // 经典对话壳已在 #view-chat DOM 内；无需薄页 mount
   } else if (route === 'board') {
-    unmountChat();
     unmountConsole();
     unmountOps();
     await mountBoard(document.getElementById('view-board'));
   } else if (route === 'console') {
-    unmountChat();
     unmountBoard();
     unmountOps();
     await mountConsole(document.getElementById('view-console'));
   } else if (route === 'ops') {
-    unmountChat();
     unmountBoard();
     unmountConsole();
     await mountOps(document.getElementById('view-ops'));
   } else {
-    unmountChat();
     unmountBoard();
     unmountConsole();
     unmountOps();
@@ -248,18 +243,19 @@ async function init() {
     null;
   if (!state.get('currentProject') && project) state.set('currentProject', project);
   const tabId = generateId();
+  const bootSid = hubThreadId(project || 'ccc', tabId);
   const tabs = [
     {
       id: tabId,
       title: '新对话',
-      sessionId: tabId,
+      sessionId: bootSid,
       messages: [],
       projectId: project,
     },
   ];
   state.set('tabs', tabs);
   state.set('activeTabId', tabId);
-  state.set('currentSessionId', tabId);
+  state.set('currentSessionId', bootSid);
   if (dualPaneEnabled()) {
     state.set('paneLeftTabId', tabId);
   }
@@ -274,17 +270,18 @@ async function init() {
     const id = generateId();
     const pid =
       state.get('currentProject') || state.get('defaultProject') || 'ccc';
+    const sid = hubThreadId(pid, id);
     const tabsNow = state.get('tabs') || [];
     tabsNow.push({
       id,
       title: '新对话',
-      sessionId: id,
+      sessionId: sid,
       messages: [],
       projectId: pid,
     });
     state.set('tabs', tabsNow);
     state.set('activeTabId', id);
-    state.set('currentSessionId', id);
+    state.set('currentSessionId', sid);
     state.set('currentMessages', []);
     if (dualPaneEnabled()) showTabInFocusedPane(id);
     const container = messagesElForTab(id) || document.getElementById('messages');

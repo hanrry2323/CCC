@@ -228,44 +228,95 @@ export async function streamChat(
   attachments,
   opts = {}
 ) {
-  // 旧入口已退役；远程管理请用 streamRemoteChat → /api/remote-chat/stream
-  onError('请使用 Hub 远程管理对话（#/chat）或 CCC Desktop。');
-}
-
-/** Hub 远程管理 SSE（会话分区 hub::） */
-export async function streamRemoteChat(body, onEvent) {
-  const resp = await _fetchWithAuth('/api/remote-chat/stream', {
-    method: 'POST',
-    body: JSON.stringify(body || {}),
-  }, true);
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    throw new Error(
-      data.message || data.detail || data.error || ('stream ' + resp.status)
-    );
+  const abortController = opts.abortController || new AbortController();
+  if (!opts.abortController) {
+    state.set('abortController', abortController);
   }
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split('\n\n');
-    buf = parts.pop() || '';
-    for (const chunk of parts) {
-      const line = chunk
-        .split('\n')
-        .map((l) => l.replace(/^data:\s?/, ''))
-        .join('\n')
-        .trim();
-      if (!line || line === '[DONE]') continue;
-      try {
-        const evt = JSON.parse(line);
-        if (typeof onEvent === 'function') onEvent(evt);
-      } catch (_) {
-        /* skip */
+
+  const projectId = project || state.get('currentProject') || 'ccc';
+  let threadId = String(sessionId || '').trim();
+  if (!threadId.startsWith('hub::')) {
+    threadId = `hub::${projectId}::${threadId || 'main'}`;
+  }
+
+  try {
+    const model = state.get('model') || 'flash';
+    const toolMode = state.get('toolMode') || 'discuss';
+    const body = {
+      messages,
+      session_id: threadId,
+      thread_id: threadId,
+      project: projectId,
+      project_id: projectId,
+      model,
+      tool_mode: toolMode,
+      timeout: 600,
+    };
+    if (attachments && attachments.length) {
+      body.attachments = attachments;
+    }
+
+    const resp = await _fetchWithAuth('/api/remote-chat/stream', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal: abortController.signal,
+    }, true);
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      const errText =
+        resp.status === 401
+          ? '认证失败 (401)：请刷新，用户名/密码均为 ccc'
+          : resp.status === 400
+            ? errBody.message || errBody.detail || '危险指令已被拦截或参数无效'
+            : resp.status === 429
+              ? '并发会话已满或会话忙，请稍候、取消一路或新开对话'
+              : '请求失败: HTTP ' + resp.status;
+      onError(errText);
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'delta') {
+            onEvent('delta', data.content);
+          } else if (data.type === 'tool_use') {
+            onEvent('tool_use', data);
+          } else if (data.type === 'tool_result') {
+            onEvent('tool_result', data);
+          } else if (data.type === 'cost') {
+            onEvent('cost', data);
+          } else if (data.type === 'ping') {
+            // keepalive
+          } else if (data.type === 'done') {
+            onDone(data.thread_id || data.session_id || threadId);
+          } else if (data.type === 'error') {
+            onError(data.content);
+          }
+        } catch (_) {
+          /* skip */
+        }
       }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      onError('网络错误: ' + e.message);
+    }
+  } finally {
+    if (!opts.abortController) {
+      state.set('abortController', null);
     }
   }
 }
@@ -278,6 +329,14 @@ export async function cancelRemoteChat(project, threadId) {
 }
 
 export function cancelStream(tabId) {
+  const project = state.get('currentProject') || 'ccc';
+  let tid = state.get('currentSessionId') || tabId;
+  if (tid && !String(tid).startsWith('hub::')) {
+    tid = `hub::${project}::${tid}`;
+  }
+  if (tid) {
+    cancelRemoteChat(project, tid).catch(() => {});
+  }
   import('./streamRegistry.js')
     .then((m) => m.cancelStream(tabId))
     .catch(() => {

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>CCC Hub（远程管理）</title>
-<link rel="stylesheet" href="/css/variables.css?v=20260721remote1">
-<link rel="stylesheet" href="/css/base.css?v=20260721remote1">
-<link rel="stylesheet" href="/css/themes.css?v=20260721remote1">
-<link rel="stylesheet" href="/css/components.css?v=20260721remote1">
-<link rel="stylesheet" href="/css/shell.css?v=20260721remote1">
-<link rel="stylesheet" href="/css/dual-pane.css?v=20260721remote1">
+<link rel="stylesheet" href="/css/variables.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/base.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/themes.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/components.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/shell.css?v=20260721remote2">
+<link rel="stylesheet" href="/css/dual-pane.css?v=20260721remote2">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <script>
@@ -21,80 +21,33 @@
   document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
+
 <style>
-/* Hub 远程管理口 · 会话分区提示 */
-#view-board::before, #view-ops::before, #view-chat::before {
+.hub-remote-banner{
+  flex-shrink:0;padding:6px 14px;font-size:12px;font-weight:600;
+  background:linear-gradient(90deg,#e0f2fe,#bae6fd);color:#0c4a6e;
+  border-bottom:1px solid #38bdf8;
+}
+[data-theme="dark"] .hub-remote-banner{
+  background:linear-gradient(90deg,#0c4a6e,#075985);color:#e0f2fe;border-bottom-color:#0284c7;
+}
+#view-board::before, #view-ops::before {
   content: "远程管理口 · 与 Desktop 本机会话相互独立；看板与下达任务共用";
-  display: block;
-  padding: 6px 16px;
+  display: block; padding: 6px 16px;
   background: linear-gradient(90deg, #e0f2fe, #bae6fd);
-  color: #0c4a6e;
-  font-size: 12px;
-  font-weight: 600;
+  color: #0c4a6e; font-size: 12px; font-weight: 600;
   border-bottom: 1px solid #38bdf8;
 }
 [data-theme="dark"] #view-board::before,
-[data-theme="dark"] #view-ops::before,
-[data-theme="dark"] #view-chat::before {
+[data-theme="dark"] #view-ops::before {
   background: linear-gradient(90deg, #0c4a6e, #075985);
-  color: #e0f2fe;
-  border-bottom-color: #0284c7;
+  color: #e0f2fe; border-bottom-color: #0284c7;
 }
-
-/* 薄远程聊天 */
-.rc-shell { display:flex; flex-direction:column; height:100%; min-height:0; }
-.rc-banner {
-  padding: 8px 14px; font-size: 12px; color: #0c4a6e;
-  background: #f0f9ff; border-bottom: 1px solid #bae6fd;
-}
-[data-theme="dark"] .rc-banner { background:#082f49; color:#e0f2fe; border-color:#075985; }
-.rc-toolbar {
-  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
-  padding:8px 12px; border-bottom:1px solid var(--ccc-border-subtle);
-  font-size:13px;
-}
-.rc-thread { font-size:11px; opacity:.7; }
-.rc-status { font-size:12px; margin-left:auto; }
-.rc-status[data-kind="err"] { color:#b91c1c; }
-.rc-status[data-kind="ok"] { color:#15803d; }
-.rc-status[data-kind="busy"] { color:#a16207; }
-.rc-messages {
-  flex:1; overflow:auto; padding:12px; min-height:120px;
-  background: var(--ccc-bg, #fafafa);
-}
-.rc-empty { opacity:.55; font-size:13px; line-height:1.5; padding:24px 8px; }
-.rc-msg { margin-bottom:12px; }
-.rc-role { font-size:11px; font-weight:600; opacity:.6; margin-bottom:2px; }
-.rc-body {
-  margin:0; white-space:pre-wrap; word-break:break-word;
-  font-family: var(--ccc-font-sans, system-ui); font-size:13px;
-  padding:8px 10px; border-radius:8px;
-  background: var(--ccc-bg-elevated, #fff);
-  border:1px solid var(--ccc-border-subtle, #e5e5e5);
-}
-.rc-user .rc-body { border-color:#bae6fd; background:#f0f9ff; }
-[data-theme="dark"] .rc-user .rc-body { background:#082f49; border-color:#075985; }
-.rc-composer {
-  display:flex; gap:8px; padding:10px 12px;
-  border-top:1px solid var(--ccc-border-subtle);
-}
-.rc-composer textarea { flex:1; resize:vertical; min-height:64px; font-size:13px; padding:8px; }
-.rc-actions { display:flex; flex-direction:column; gap:6px; }
-.rc-btn {
-  padding:6px 12px; border-radius:6px; border:1px solid var(--ccc-border-subtle);
-  background: var(--ccc-bg-elevated, #fff); cursor:pointer; font-size:13px;
-}
-.rc-btn.primary { background:#0284c7; color:#fff; border-color:#0284c7; }
-.rc-btn:disabled { opacity:.45; cursor:not-allowed; }
-.rc-transfer { padding:8px 12px 16px; border-top:1px solid var(--ccc-border-subtle); font-size:13px; }
-.rc-tf-grid { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
-.rc-tf-grid input, .rc-tf-grid textarea { font-size:13px; padding:6px 8px; }
-.rc-tf-result { font-size:11px; max-height:120px; overflow:auto; opacity:.8; }
 </style>
 </head>
 <body class="hub-mode">
 <nav id="hub-nav" aria-label="CCC Hub">
-  <div class="hub-brand" title="远程管理口；主产品见 CCC Desktop">CCC<em>Hub</em> <span style="font-size:10px;opacity:.55;font-weight:500">远程管理</span></div>
+  <div class="hub-brand" title="远程管理口；产品主对话见 CCC Desktop（会话分区）">CCC<em>Hub</em> <span style="font-size:10px;opacity:.55;font-weight:500">远程</span></div>
   <a class="hub-nav-link" data-route="chat" href="#/chat">对话</a>
   <a class="hub-nav-link" data-route="board" href="#/board">看板</a>
   <a class="hub-nav-link" data-route="console" href="#/console">控制台</a>
@@ -102,7 +55,119 @@
   <div class="hub-nav-spacer"></div>
 </nav>
 <div id="hub-views">
-  <div class="hub-view" id="view-chat"></div>
+  <div class="hub-view" id="view-chat">
+<div id="app">
+  <div class="hub-remote-banner" role="status">本页为 Hub 远程会话，与 Desktop 本机会话相互独立；看板与下达任务共用。</div>
+
+  <div id="titlebar">
+    <div id="tabs" style="display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;overflow-y:hidden;"></div>
+    <div id="streaming-indicator">
+      <span class="dot"></span>
+      <span>生成中...</span>
+    </div>
+    <div class="titlebar-spacer"></div>
+    <button class="titlebar-btn" id="sidebar-toggle" title="侧栏" onclick="toggleMobileSidebar()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <button class="titlebar-btn" id="task-btn" title="下达任务">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 11v6M9 14h6"/></svg>
+    </button>
+    <button class="titlebar-btn" id="board-btn" title="看板摘要">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/></svg>
+    </button>
+    <button class="titlebar-btn" id="dual-pane-btn" title="分屏（已废弃·仅调试）" style="opacity:.45">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg>
+    </button>
+    <button class="titlebar-btn" id="new-tab-btn" title="新对话">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="titlebar-btn" id="settings-btn" title="设置">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <button class="titlebar-btn" id="theme-btn" title="切换主题">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+  <div id="layout">
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-search-wrap">
+          <span class="sidebar-search-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <input class="sidebar-search" id="sidebar-search" type="text" placeholder="搜索对话..." autocomplete="off">
+          <button class="sidebar-search-clear" id="sidebar-search-clear">×</button>
+        </div>
+        <div class="sidebar-brand">CCC Chat</div>
+        <div class="board-ws-btns sidebar-ws-btns" id="sidebar-project-btns" role="group" aria-label="项目"></div>
+        <div class="history-source-bar" title="对话来源">
+          <button type="button" class="history-source-btn active" data-source="all">全部</button>
+          <button type="button" class="history-source-btn" data-source="hub">Hub</button>
+          <button type="button" class="history-source-btn" data-source="claude">Claude</button>
+          <button type="button" class="history-cleanup-btn" id="cleanup-tests-btn" title="清理测试对话">清理</button>
+        </div>
+      </div>
+      <div class="sidebar-list" id="session-list">
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+        <div class="skeleton" style="height:48px;margin:8px 16px;"></div>
+      </div>
+    </div>
+    <div id="chat-panel">
+      <div id="messages"></div>
+      <button class="scroll-fab" id="scroll-fab">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        底部
+      </button>
+      <div id="composer">
+        <div id="composer-inner">
+          <div id="attachment-chips" class="attachment-chips" hidden></div>
+          <div class="composer-toolbar">
+            
+            <div class="composer-model-wrap" title="讨论=只读 · 工程师=可写本机仓">
+              <span class="composer-model-label">模式</span>
+              <select class="model-select" id="tool-mode-select">
+                <option value="discuss">讨论</option>
+                <option value="engineer">工程师</option>
+              </select>
+            </div>
+
+            <div class="composer-model-wrap" title="选择模型">
+              <span class="composer-model-label">模型</span>
+              <select class="model-select" id="model-select">
+                <option value="flash">flash</option>
+                <option value="code">code</option>
+                <option value="sonnet">sonnet</option>
+                <option value="haiku">haiku</option>
+              </select>
+            </div>
+            <div class="composer-actions-center" id="qa-dock-host" aria-label="快速动作">
+              <!-- qa-dock 由 JS 注入，沿对话中线居中 -->
+            </div>
+            <div class="composer-meta">
+              <span class="context-indicator" title="当前项目">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <span id="project-display">CCC</span>
+              </span>
+            </div>
+          </div>
+          <div class="composer-input-wrap">
+            <button class="composer-btn attach-btn" id="attach-btn" title="附件" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <textarea id="composer-input" rows="1" placeholder="给 Claude 发送消息…" autofocus></textarea>
+            <button class="composer-btn" id="cancel-btn" title="取消" type="button">✕</button>
+            <button class="composer-btn send-btn" id="send-btn" title="发送" disabled type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+          <input type="file" id="file-input" multiple accept="image/*,.txt,.md,.csv,.json,.py,.js,.ts,.html,.css" hidden>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  </div>
   <div class="hub-view" id="view-board"></div>
   <div class="hub-view" id="view-console"></div>
   <div class="hub-view" id="view-ops"></div>
@@ -117,6 +182,7 @@ function toggleMobileSidebar() {
   if (!sidebar) return;
   sidebar.classList.toggle('open');
   if (overlay) overlay.classList.toggle('show');
+  /* Hub 壳始终锁死 body 滚动（iOS 勿放开，否则整页可滑） */
   document.body.style.overflow = 'hidden';
 }
 
@@ -131,7 +197,22 @@ function copyCode(btn) {
     btn.textContent = '复制失败';
   });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  const fab = document.getElementById('scroll-fab');
+  const messages = document.getElementById('messages');
+  if (fab && messages) {
+    messages.addEventListener('scroll', function() {
+      const atBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 200;
+      fab.classList.toggle('show', !atBottom);
+    });
+    fab.addEventListener('click', function() {
+      messages.scrollTop = messages.scrollHeight;
+      fab.classList.remove('show');
+    });
+  }
+});
 </script>
-<script type="module" src="/js/app.js?v=20260721remote1"></script>
+<script type="module" src="/js/app.js?v=20260721remote2"></script>
 </body>
 </html>
