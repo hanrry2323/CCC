@@ -82,7 +82,11 @@ final class AppModel: ObservableObject {
     /// 界面可用：本机可聊或有项目缓存（≠ 可聊；可聊看 canChat）
     @Published var connected = false
     /// Hub projects/API 是否刚探测成功（转任务/flow 需要）
-    @Published var hubReachable = false
+    @Published private(set) var hubReachable = false
+    /// Hub flow SSE 的连接与恢复代次（稳定性诊断）
+    @Published private(set) var flowConnectionGeneration: [String: UInt64] = [:]
+    @Published private(set) var flowReconnectCount: [String: Int] = [:]
+    @Published private(set) var flowLastError: [String: String] = [:]
     /// 兼容旧路径 / smoke；多窗 UI 用 WindowChatState.destination
     @Published var destination: SidebarDestination = .chat
     @Published var toast: String?
@@ -198,6 +202,10 @@ final class AppModel: ObservableObject {
     /// 每线程当前 turn id：用于拒绝旧 SSE / 重试串流的迟到事件
     private var activeTurnIds: [String: String] = [:]
     private var streamingThreadIds: Set<String> = []
+    /// 同 turn 已生成的最新 partial：用于在 retry 2 之前保留半截内容到 transientNote
+    private var partialByTurn: [String: String] = [:]
+    /// 侧路回调：让 `runChatStream` 在 `applyChatEvent` 之后更新 partial 镜像
+    private var onChatEventInPlace: ((String, UUID, ChatStreamEvent) -> Void)?
     /// 供侧栏观察多路生成状态（与 streamingThreadIds 同步）
     @Published private(set) var liveStreamingThreadIds: Set<String> = []
     private static let maxParallelLocalChats = 3
@@ -725,7 +733,7 @@ final class AppModel: ObservableObject {
             try await prepareClient()
             let resp = try await client.fetchProjects()
             projects = resp.projects
-            hubReachable = true
+            setHubReachable(true, source: "refresh_projects")
             LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
             showSettingsHint = false
             let preferred = persistedProjectId.isEmpty ? nil : persistedProjectId
@@ -756,7 +764,7 @@ final class AppModel: ObservableObject {
             await flushPendingHubSync()
             await flushTransferOutbox()
         } catch {
-            hubReachable = false
+            setHubReachable(false, source: "refresh_projects", error: error)
             lastError = error.localizedDescription
             // Hub 失败：保留缓存 projects，本机 Agent 仍可聊
             if let cache = LocalSessionStore.loadProjects(), !cache.projects.isEmpty {
@@ -779,6 +787,17 @@ final class AppModel: ObservableObject {
             }
             if localOK { startWarmLoopIfNeeded() }
         }
+    }
+
+    private func setHubReachable(_ reachable: Bool, source: String, error: Error? = nil) {
+        guard hubReachable != reachable else { return }
+        hubReachable = reachable
+        DesktopChatTurnLedger.append([
+            "event": "hub_reachability",
+            "reachable": reachable,
+            "source": source,
+            "error_type": error.map { String(describing: type(of: $0)) } ?? "",
+        ])
     }
 
     private func updateConnectionStatusText(localOK: Bool, hubOK: Bool) {
@@ -1383,7 +1402,7 @@ final class AppModel: ObservableObject {
                 flow: threadFlow[threadId],
                 allowDowngrade: false
             )
-            hubReachable = true
+            setHubReachable(true, source: "thread_backup_fetch")
         } catch {
             hydrateThreadFromDisk(projectId: projectId, threadId: threadId)
             bumpThreadRevision(threadId)
@@ -1620,14 +1639,49 @@ final class AppModel: ObservableObject {
         persistMessages(for: threadId, msgs)
     }
 
-    /// Phase 1.4: delta 热路径——就地改 content；切回后 UUID 仍在 RAM 时可续写。
-    /// 若曾被磁盘 hydrate 弄丢 id：流式中按 assistantId 重建气泡，禁止静默丢字。
+    /// Phase 1.4 + Stability: delta 热路径——就地改 content；切回后 UUID 仍在 RAM 时可续写。
+    /// 小 delta 合批：≥30ms 才把累积 chunk 写入 RAM；tool/status/done 立即处理；
+    /// 流末/cancel/error 强制 flush。
+    private var pendingDeltaThreadId: String?
+    private var pendingDeltaAssistantId: UUID?
+    private var pendingDeltaBuffer: String = ""
+    private var pendingDeltaTask: Task<Void, Never>?
+
     private func applyDeltaInPlace(threadId: String, assistantId: UUID, chunk: String) {
         // 流已结束 / 已取消：拒绝迟到分片（含未取消完的旧 Task）回写，防字乱序与假 streaming
         let live = streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil
         guard live else { return }
-        var msgs = threadMessages[threadId] ?? []
-        if let idx = msgs.firstIndex(where: { $0.id == assistantId }) {
+        if pendingDeltaThreadId == threadId, pendingDeltaAssistantId == assistantId {
+            pendingDeltaBuffer += chunk
+        } else {
+            flushPendingDelta()
+            pendingDeltaThreadId = threadId
+            pendingDeltaAssistantId = assistantId
+            pendingDeltaBuffer = chunk
+        }
+        if pendingDeltaTask == nil {
+            pendingDeltaTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 35_000_000)
+                self?.flushPendingDelta()
+            }
+        }
+    }
+
+    private func flushPendingDelta() {
+        pendingDeltaTask?.cancel()
+        pendingDeltaTask = nil
+        defer {
+            pendingDeltaBuffer = ""
+            pendingDeltaThreadId = nil
+            pendingDeltaAssistantId = nil
+        }
+        guard let tid = pendingDeltaThreadId,
+              let aid = pendingDeltaAssistantId,
+              !pendingDeltaBuffer.isEmpty
+        else { return }
+        let chunk = pendingDeltaBuffer
+        var msgs = threadMessages[tid] ?? []
+        if let idx = msgs.firstIndex(where: { $0.id == aid }) {
             msgs[idx].content += chunk
             if msgs[idx].transientNote != nil {
                 msgs[idx].transientNote = nil
@@ -1636,19 +1690,18 @@ final class AppModel: ObservableObject {
         } else {
             msgs.append(
                 ChatMessage(
-                    id: assistantId,
+                    id: aid,
                     role: "assistant",
                     content: chunk,
                     isStreaming: true
                 )
             )
         }
-        threadMessages[threadId] = msgs
-        bumpThreadRevision(threadId)
-        // 仅镜像全局选中线程；他窗靠 threadRevision 刷新，禁止 chat.messages 当显示源
-        if selectedThreadId == threadId {
-            if chat.messages.contains(where: { $0.id == assistantId }) {
-                chat.replaceMessage(id: assistantId) { m in
+        threadMessages[tid] = msgs
+        bumpThreadRevision(tid)
+        if selectedThreadId == tid {
+            if chat.messages.contains(where: { $0.id == aid }) {
+                chat.replaceMessage(id: aid) { m in
                     m.content += chunk
                     if m.transientNote != nil {
                         m.transientNote = nil
@@ -1659,7 +1712,11 @@ final class AppModel: ObservableObject {
                 chat.messages = msgs
             }
         }
-        // 流式中不落盘：避免每 token 写盘 + hydrate 竞态；结束/取消时 flushDiskSave
+    }
+
+    private func flushAssistantCheckpoint(threadId: String, assistantId: UUID) {
+        flushPendingDelta()
+        flushDiskSave(threadId: threadId)
     }
 
     /// Phase 1.4: statusText 250ms 节流，避免每个 delta 都重绘状态栏
@@ -2063,6 +2120,8 @@ final class AppModel: ObservableObject {
     }
 
     private func runChatStream(projectId: String, threadId: String, text: String) async {
+        let turnId = UUID().uuidString
+        activeTurnIds[threadId] = turnId
         setThreadStreaming(threadId, true)
         activeChatThreadId = threadId
         defer {
@@ -2071,6 +2130,9 @@ final class AppModel: ObservableObject {
                 activeChatThreadId = streamingThreadIds.first
             }
             chatTasks[threadId] = nil
+            if activeTurnIds[threadId] == turnId {
+                activeTurnIds.removeValue(forKey: threadId)
+            }
             // 聊完追赶该项目右栏（后台窗也要 live 刷新 threadFlow）
             let flowGen = threadSwitchGeneration
             Task { [flowGen, projectId] in
@@ -2081,6 +2143,17 @@ final class AppModel: ObservableObject {
 
         let userMsg = ChatMessage(role: "user", content: text)
         let assistantId = UUID()
+        partialByTurn[turnId] = ""
+        onChatEventInPlace = { [weak self] tid, aid, event in
+            guard let self else { return }
+            guard self.activeTurnIds[tid] == turnId else { return }
+            if case .delta(let chunk, _) = event, !chunk.isEmpty {
+                if let cell = self.threadMessages[tid]?.first(where: { $0.id == aid }) {
+                    self.partialByTurn[turnId] = cell.content
+                }
+            }
+        }
+        defer { onChatEventInPlace = nil }
         mutateThreadMessages(threadId: threadId) { msgs in
             msgs.append(userMsg)
             msgs.append(ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true))
@@ -2119,9 +2192,13 @@ final class AppModel: ObservableObject {
                         if selectedThreadId == threadId {
                             setStatusImmediate("重连中…")
                         }
+                        // 重连前保留用户原文 + 上一轮 partial，避免「闪空」丢字
+                        let partialSnapshot = partialByTurn[turnId] ?? ""
                         mutateThreadMessages(threadId: threadId) { msgs in
                             guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
-                            msgs[idx].content = ""
+                            if !partialSnapshot.isEmpty {
+                                msgs[idx].transientNote = "上次中断于此：\(partialSnapshot.suffix(120))"
+                            }
                             msgs[idx].toolSteps = []
                             msgs[idx].filesChanged = 0
                             msgs[idx].changedFilePaths = []
@@ -2132,9 +2209,10 @@ final class AppModel: ObservableObject {
                     }
                     let outboundAttempt = (threadMessages[threadId] ?? []).filter { $0.id != assistantId }
                     recordAgentLLMCall()
-                    try await client.streamChat(
+                    let streamResult = try await client.streamChat(
                         projectId: projectId,
                         sessionId: threadId,
+                        turnId: turnId,
                         messages: attempt == 1 ? outbound : outboundAttempt,
                         promptMode: mode,
                         toolMode: tools,
@@ -2144,19 +2222,34 @@ final class AppModel: ObservableObject {
                     ) { [weak self] event in
                         guard let model = self else { return }
                         await MainActor.run {
-                            model.applyChatEvent(threadId: threadId, assistantId: assistantId, event: event)
+                            model.applyChatEvent(
+                                threadId: threadId,
+                                assistantId: assistantId,
+                                expectedTurnId: turnId,
+                                event: event
+                            )
                         }
                     }
                     streamError = nil
                     DesktopChatTurnLedger.append([
                         "event": "ok",
+                        "turn_id": turnId,
                         "threadId": threadId,
                         "projectId": projectId,
                         "attempt": attempt,
+                        "sidecar_duration_ms": streamResult.durationMs ?? 0,
+                        "delta_events": streamResult.eventCounts["delta"] ?? 0,
+                        "tool_events": (streamResult.eventCounts["tool_use"] ?? 0)
+                            + (streamResult.eventCounts["tool_result"] ?? 0),
                         "duration_ms": Int(Date().timeIntervalSince(turnStarted) * 1000),
                     ])
                     if lastTurnFailure?.threadId == threadId {
                         lastTurnFailure = nil
+                    }
+                    // 重试首次成功后清掉「上次中断于此」提示，避免下一轮残留
+                    mutateThreadMessages(threadId: threadId) { msgs in
+                        guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                        msgs[idx].transientNote = nil
                     }
                     break
                 } catch is CancellationError {
@@ -2196,6 +2289,7 @@ final class AppModel: ObservableObject {
 
                     DesktopChatTurnLedger.append([
                         "event": "fail_attempt",
+                        "turn_id": turnId,
                         "threadId": threadId,
                         "projectId": projectId,
                         "attempt": attempt,
@@ -2233,6 +2327,7 @@ final class AppModel: ObservableObject {
             if failedEmpty {
                 throw APIError.stream(code: "empty_reply", message: "模型无有效回复")
             }
+            flushAssistantCheckpoint(threadId: threadId, assistantId: assistantId)
             setThreadStreamStatus(threadId, "")
             if selectedThreadId == threadId {
                 updateConnectionStatusText(localOK: canChat, hubOK: hubReachable)
@@ -2260,6 +2355,7 @@ final class AppModel: ObservableObject {
             await refreshThreads(projectId: projectId)
         } catch is CancellationError {
             setThreadStreamStatus(threadId, "")
+            flushAssistantCheckpoint(threadId: threadId, assistantId: assistantId)
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].isStreaming = false
@@ -2273,6 +2369,7 @@ final class AppModel: ObservableObject {
         } catch {
             let cancelled = (error as NSError).code == NSURLErrorCancelled
                 || error.localizedDescription.lowercased().contains("cancel")
+            flushAssistantCheckpoint(threadId: threadId, assistantId: assistantId)
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].isStreaming = false
@@ -2303,6 +2400,7 @@ final class AppModel: ObservableObject {
                 )
                 DesktopChatTurnLedger.append([
                     "event": "fail",
+                    "turn_id": turnId,
                     "threadId": threadId,
                     "projectId": projectId,
                     "code": code ?? "",
@@ -2323,7 +2421,25 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyChatEvent(threadId: String, assistantId: UUID, event: ChatStreamEvent) {
+    private func applyChatEvent(
+        threadId: String,
+        assistantId: UUID,
+        expectedTurnId: String,
+        event: ChatStreamEvent
+    ) {
+        guard activeTurnIds[threadId] == expectedTurnId else { return }
+        onChatEventInPlace?(threadId, assistantId, event)
+        let eventTurnId: String? = {
+            switch event {
+            case .ping(let id), .delta(_, let id), .status(_, let id): return id
+            case .toolUse(_, _, let id), .toolResult(_, let id): return id
+            case .cost(_, _, let id): return id
+            case .done(_, _, let id, _): return id
+            }
+        }()
+        if let eventTurnId, !eventTurnId.isEmpty, eventTurnId != expectedTurnId {
+            return
+        }
         switch event {
         case .ping:
             // 心跳 ≠ 进展：勿把状态锁死在「连接中」；工具进行中保留工具态
@@ -2338,7 +2454,7 @@ final class AppModel: ObservableObject {
                 }
             }
             return
-        case .delta(let chunk):
+        case .delta(let chunk, _):
             // 整段写入；禁止异步分片（与重试/结束竞态）
             applyDeltaInPlace(threadId: threadId, assistantId: assistantId, chunk: chunk)
             if threadStreamStatus[threadId] != "本机生成中…" {
@@ -2349,7 +2465,7 @@ final class AppModel: ObservableObject {
             }
             setProjectConvTextState(threadId: threadId)
             return
-        case .status(let note):
+        case .status(let note, _):
             mutateThreadMessages(threadId: threadId) { msgs in
                 guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
                 msgs[idx].transientNote = note
@@ -2359,7 +2475,7 @@ final class AppModel: ObservableObject {
         case .toolUse, .toolResult, .cost, .done:
             break
         }
-        if case .toolUse(let name, _) = event {
+        if case .toolUse(let name, _, _) = event {
             setProjectConvToolState(threadId: threadId)
             let label = "工具执行中：\(name)…"
             setThreadStreamStatus(threadId, label)
@@ -2372,7 +2488,7 @@ final class AppModel: ObservableObject {
             switch event {
             case .ping, .delta, .status:
                 break
-            case .toolUse(let name, let input):
+            case .toolUse(let name, let input, _):
                 let anyInput: [String: Any] = input
                 let step = ToolStep(
                     name: name,
@@ -2393,7 +2509,7 @@ final class AppModel: ObservableObject {
                     }
                 }
                 // stream status 在 mutate 外按 thread 写
-            case .toolResult(let ok):
+            case .toolResult(let ok, _):
                 if let ri = msgs[idx].toolSteps.lastIndex(where: { $0.status == .running }) {
                     msgs[idx].toolSteps[ri].status = ok ? .done : .error
                 } else if let last = msgs[idx].toolSteps.indices.last {
@@ -2404,14 +2520,14 @@ final class AppModel: ObservableObject {
                 if allDone {
                     msgs[idx].toolsFinished = true
                 }
-            case .cost(let tokens, _):
+            case .cost(let tokens, _, _):
                 if let t = tokens, t > 0 {
                     threadSessionTokens[threadId, default: 0] += t
                     if selectedThreadId == threadId {
                         sessionTokens = threadSessionTokens[threadId] ?? 0
                     }
                 }
-            case .done(_, let claudeSessionId):
+            case .done(_, let claudeSessionId, _, _):
                 for i in msgs[idx].toolSteps.indices where msgs[idx].toolSteps[i].status == .running {
                     msgs[idx].toolSteps[i].status = .done
                 }
@@ -2447,6 +2563,7 @@ final class AppModel: ObservableObject {
     func cancelChat(threadId: String? = nil, silent: Bool = false, dropSlot: Bool = false) {
         let tid = threadId ?? selectedThreadId
         guard let tid else { return }
+        activeTurnIds[tid] = nil
         chatTasks[tid]?.cancel()
         chatTasks[tid] = nil
         setThreadStreaming(tid, false)
@@ -3455,7 +3572,18 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 do {
                     try await self?.prepareClient()
-                    await MainActor.run { self?.flowBackoffNs[projectId] = 3_000_000_000 }
+                    await MainActor.run {
+                        let next = (self?.flowConnectionGeneration[projectId] ?? 0) &+ 1
+                        self?.flowConnectionGeneration[projectId] = next
+                        self?.flowBackoffNs[projectId] = 3_000_000_000
+                        self?.flowLastError.removeValue(forKey: projectId)
+                        DesktopChatTurnLedger.append([
+                            "event": "flow_connected",
+                            "projectId": projectId,
+                            "generation": next,
+                            "reconnect_count": self?.flowReconnectCount[projectId] ?? 0,
+                        ])
+                    }
                     try await self?.client.streamFlowEvents(
                         projectId: projectId,
                         epicId: nil
@@ -3478,6 +3606,17 @@ final class AppModel: ObservableObject {
                     let delay = await MainActor.run { () -> UInt64 in
                         let d = self?.flowBackoffNs[projectId] ?? 3_000_000_000
                         self?.flowBackoffNs[projectId] = min(d + 2_000_000_000, 12_000_000_000)
+                        let count = (self?.flowReconnectCount[projectId] ?? 0) + 1
+                        self?.flowReconnectCount[projectId] = count
+                        self?.flowLastError[projectId] = error.localizedDescription
+                        DesktopChatTurnLedger.append([
+                            "event": "flow_disconnected",
+                            "projectId": projectId,
+                            "generation": self?.flowConnectionGeneration[projectId] ?? 0,
+                            "reconnect_count": count,
+                            "backoff_ms": Int(d / 1_000_000),
+                            "error_type": String(describing: type(of: error)),
+                        ])
                         return d
                     }
                     try? await Task.sleep(nanoseconds: delay)
@@ -3565,10 +3704,10 @@ final class AppModel: ObservableObject {
         do {
             try await prepareClient()
             let snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
-            boardColumns = snap.columns ?? [:]
+            applyBoardSnapshot(columns: snap.columns ?? [:], error: nil)
         } catch {
             boardError = error.localizedDescription
-            boardColumns = [:]
+            applyBoardSnapshot(columns: boardColumns, error: error)
         }
     }
 
@@ -3689,6 +3828,72 @@ final class AppModel: ObservableObject {
         } catch {
             opsAdoptError = "采纳失败: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Stale snapshot scratch (P3: Board degraded UI differentiation)
+
+    @Published private(set) var boardLastSuccess: Date?
+    @Published private(set) var boardStale: Bool = false
+    @Published private(set) var boardErrorKind: String?
+    /// Hub/Board 分层状态文案：本机可聊 / Hub 编排 / Board 快照。
+    @Published private(set) var stackStatus: String = "等待探测…"
+
+    /// `applyDeltaInPlace` 合批用：与现有 flow 兼容，原文件保留。
+    enum StackStatus: String, Codable, Equatable {
+        case localOnly
+        case hubOnline
+        case boardStale
+        case boardOffline
+        case hubOffline
+        case bothDown
+    }
+
+    func updateStackStatus() {
+        let localOK = canChat
+        let boardOK = !boardStale && boardErrorKind == nil
+        let hubOK = hubReachable
+        let s: String
+        if !localOK && !hubOK {
+            s = "本机 Agent + Hub 均不可用"
+        } else if !localOK && !boardOK {
+            s = "本机 Agent 不可用 · 看板不可用"
+        } else if !localOK {
+            s = "本机 Agent 不可用 · Hub 可达"
+        } else if !hubOK {
+            s = "本机 Agent 可用 · Hub 暂不可达"
+        } else if !boardOK {
+            s = "Hub 可达 · 看板不可用（保留上次快照）"
+        } else {
+            s = "已连接 · 本机 Agent + Hub + 看板"
+        }
+        if stackStatus != s { stackStatus = s }
+    }
+
+    /// 由 refreshBoard 写入：成功 → 标记新鲜；失败 → 标记陈旧但保留旧数据。
+    private func applyBoardSnapshot(columns: [String: [BoardTask]], error: Error?) {
+        if let error {
+            boardStale = true
+            let kind: String
+            if (error as? URLError)?.code == .notConnectedToInternet
+                || (error as? URLError)?.code == .networkConnectionLost
+                || (error as? URLError)?.code == .cannotConnectToHost
+                || (error as? URLError)?.code == .timedOut {
+                kind = "offline"
+            } else {
+                kind = "server_error"
+            }
+            if boardErrorKind != kind { boardErrorKind = kind }
+            if boardColumns.isEmpty {
+                boardColumns = [:]
+            }
+        } else {
+            boardColumns = columns
+            boardError = nil
+            boardErrorKind = nil
+            boardStale = false
+            boardLastSuccess = Date()
+        }
+        updateStackStatus()
     }
 
     // MARK: - Agent LLM usage (toolbar)

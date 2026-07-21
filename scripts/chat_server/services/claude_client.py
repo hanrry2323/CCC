@@ -35,7 +35,16 @@ def _get_project_context(project_id: str, projects: dict) -> str:
     return ctx
 
 
-ALLOWED_MODELS = frozenset({"flash", "code", "sonnet", "opus", "haiku"})
+ALLOWED_MODELS = frozenset({
+    "flash",
+    "code",
+    "sonnet",
+    "opus",
+    "haiku",
+    # 118.ink 中转（备选上游）：Anthropic 兼容 Opus 4.8
+    "opus4.8",
+    "claude-opus-4-8",
+})
 
 
 def resolve_model(model: str | None) -> str:

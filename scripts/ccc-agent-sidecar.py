@@ -17,12 +17,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import os
 import secrets
 import sys
+import time
+import uuid
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -54,6 +58,41 @@ from _claude_cli import resolve_claude_cli  # noqa: E402
 HOST = os.environ.get("CCC_AGENT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CCC_AGENT_PORT", "7788"))
 DEFAULT_CWD = os.environ.get("CCC_AGENT_CWD", str(ROOT))
+_TURN_LEDGER = Path.home() / "Library" / "Logs" / "CCC" / "agent-sidecar-turns.jsonl"
+_TURN_LEDGER_MAX_BYTES = 2_000_000
+
+
+def _safe_turn_id(value: Any) -> str:
+    raw = str(value or "").strip()
+    if raw and len(raw) <= 80 and all(ch.isalnum() or ch in "-_." for ch in raw):
+        return raw
+    return uuid.uuid4().hex
+
+
+def _slot_key_hash(project_path: str, session_id: str) -> str:
+    raw = f"{Path(project_path).expanduser()}::{session_id}".encode("utf-8", errors="replace")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _append_turn_ledger(record: dict[str, Any]) -> None:
+    """Write bounded metadata-only diagnostics; never record prompts or credentials."""
+    row = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        **record,
+    }
+    try:
+        from _jsonl_rotate import append_jsonl
+
+        append_jsonl(
+            _TURN_LEDGER,
+            row,
+            max_bytes=_TURN_LEDGER_MAX_BYTES,
+            backup_count=2,
+        )
+    except Exception:
+        # Diagnostics must never break the chat hot path.
+        pass
+
 
 app = FastAPI(title="CCC Agent Sidecar", docs_url=None, redoc_url=None)
 
@@ -296,6 +335,7 @@ async def chat(request: Request):
 
     body = await request.json()
     session_id = str(body.get("session_id") or body.get("thread_id") or "local")
+    turn_id = _safe_turn_id(body.get("turn_id"))
     model = resolve_model(body.get("model"))
     project_path = (
         (body.get("project_path") or "").strip()
@@ -352,6 +392,8 @@ async def chat(request: Request):
             prompt = f"{disc}\n---\n{prompt}"
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}
+    turn_started = time.perf_counter()
+    slot_hash = _slot_key_hash(project_path, session_id)
 
     async def _watch():
         try:
@@ -365,6 +407,9 @@ async def chat(request: Request):
 
     async def generate():
         watch = asyncio.create_task(_watch(), name="ccc-agent-disconnect")
+        event_counts: dict[str, int] = {}
+        final_code = ""
+        final_partial = False
         try:
             async for event in stream_chat(
                 prompt,
@@ -380,27 +425,68 @@ async def chat(request: Request):
                 prompt_mode=prompt_mode,
                 user_text_for_tools=user_text_for_tools,
             ):
-                evt = event.get("type")
+                evt = str(event.get("type") or "message")
+                event_counts[evt] = event_counts.get(evt, 0) + 1
+                event["turn_id"] = turn_id
+                if evt == "error":
+                    final_code = str(event.get("code") or "stream_error")
                 if evt == "ping":
                     yield f": ping {event.get('ts', '')}\n\n"
                     yield f"data: {json.dumps(event)}\n\n"
                     continue
                 if evt == "done":
                     partial = bool(event.get("partial")) or client_gone["v"]
+                    final_partial = partial
                     payload = {
                         "type": "done",
                         "session_id": session_id,
                         "claude_session_id": event.get("claude_session_id") or "",
                         "partial": partial,
                         "via": "local-agent",
+                        "turn_id": turn_id,
+                        "metrics": {
+                            "duration_ms": int((time.perf_counter() - turn_started) * 1000),
+                            "events": event_counts,
+                        },
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
                     continue
                 yield f"data: {json.dumps(event)}\n\n"
         except (GeneratorExit, asyncio.CancelledError):
             client_gone["v"] = True
+            final_code = final_code or "client_disconnect"
+            final_partial = True
+            raise
+        except Exception as exc:
+            final_code = final_code or "sidecar_exception"
+            final_partial = True
+            _append_turn_ledger(
+                {
+                    "event": "turn_exception",
+                    "turn_id": turn_id,
+                    "session_id": session_id,
+                    "slot_key_hash": slot_hash,
+                    "code": final_code,
+                    "error_type": type(exc).__name__,
+                    "duration_ms": int((time.perf_counter() - turn_started) * 1000),
+                    "events": event_counts,
+                }
+            )
             raise
         finally:
+            _append_turn_ledger(
+                {
+                    "event": "turn_end",
+                    "turn_id": turn_id,
+                    "session_id": session_id,
+                    "slot_key_hash": slot_hash,
+                    "code": final_code,
+                    "partial": final_partial or client_gone["v"],
+                    "client_gone": client_gone["v"],
+                    "duration_ms": int((time.perf_counter() - turn_started) * 1000),
+                    "events": event_counts,
+                }
+            )
             watch.cancel()
             try:
                 await watch

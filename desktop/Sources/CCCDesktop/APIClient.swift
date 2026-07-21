@@ -538,9 +538,17 @@ actor APIClient {
 
     /// 流式聊天：仅本机 Agent Sidecar（对话面基线；禁止 Hub /api/chat 回退）
     /// onEvent 由调用方切 MainActor（避免 actor↔MainActor 死锁导致 tool 事件攒到结束）
+    struct ChatStreamResult: Sendable {
+        let turnId: String
+        let partial: Bool
+        let durationMs: Int?
+        let eventCounts: [String: Int]
+    }
+
     func streamChat(
         projectId: String,
         sessionId: String,
+        turnId: String,
         messages: [ChatMessage],
         promptMode: String = "full",
         toolMode: String = "discuss",
@@ -550,13 +558,14 @@ actor APIClient {
         claudeSessionId: String? = nil,
         model: String? = nil,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
-    ) async throws {
+    ) async throws -> ChatStreamResult {
         guard let chatBase = chatBaseURL else {
             throw APIError.decode("本机 Agent 未就绪（对话只走本机 sidecar，不回退 Hub）")
         }
         struct Body: Encodable {
             let project: String
             let session_id: String
+            let turn_id: String
             let messages: [ChatMessage]
             let prompt: String?
             let mode: String
@@ -576,6 +585,7 @@ actor APIClient {
             Body(
                 project: projectId,
                 session_id: sessionId,
+                turn_id: turnId,
                 messages: outboundMessages,
                 prompt: promptHint,
                 mode: "chat",
@@ -613,6 +623,8 @@ actor APIClient {
         var gotTool = false
         var gotDone = false
         var donePartial = false
+        var doneTurnId = turnId
+        var doneMetrics: ChatTurnMetrics?
         var streamErrCode: String?
         var streamErrMsg: String?
         // 可靠性：有心跳 ≠ 有进展。ping 只证明连接活着，不得重置进展时钟。
@@ -651,7 +663,7 @@ actor APIClient {
                 let type = (obj["type"] as? String)?.lowercased()
                 if type == "ping" {
                     // 不刷新 lastProgressAt
-                    await onEvent(.ping)
+                    await onEvent(.ping(turnId: obj["turn_id"] as? String))
                     continue
                 }
                 if type == "error" {
@@ -680,14 +692,21 @@ actor APIClient {
                             if let ks = k as? String { inputStr[ks] = "\(v)" }
                         }
                     }
-                    await onEvent(.toolUse(name: name, input: inputStr))
+                    await onEvent(.toolUse(
+                        name: name,
+                        input: inputStr,
+                        turnId: obj["turn_id"] as? String
+                    ))
                     continue
                 }
                 if type == "tool_result" || type == "tool-result" {
                     lastProgressAt = Date()
                     let isErr = (obj["is_error"] as? Bool) == true
                         || (obj["error"] as? Bool) == true
-                    await onEvent(.toolResult(ok: !isErr))
+                    await onEvent(.toolResult(
+                        ok: !isErr,
+                        turnId: obj["turn_id"] as? String
+                    ))
                     continue
                 }
                 if type == "status" {
@@ -696,7 +715,10 @@ actor APIClient {
                         ?? (obj["text"] as? String)
                         ?? ""
                     if !note.isEmpty {
-                        await onEvent(.status(note))
+                        await onEvent(.status(
+                            note,
+                            turnId: obj["turn_id"] as? String
+                        ))
                     }
                     continue
                 }
@@ -704,7 +726,8 @@ actor APIClient {
                     lastProgressAt = Date()
                     await onEvent(.cost(
                         tokens: obj["tokens"] as? Int,
-                        usd: obj["usd"] as? Double
+                        usd: obj["usd"] as? Double,
+                        turnId: obj["turn_id"] as? String
                     ))
                     continue
                 }
@@ -714,9 +737,29 @@ actor APIClient {
                     donePartial = (obj["partial"] as? Bool) ?? false
                     let sid = (obj["claude_session_id"] as? String)?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawMetrics = obj["metrics"] as? [String: Any]
+                    let rawEvents = rawMetrics?["events"] as? [String: Any]
+                    var eventCounts: [String: Int] = [:]
+                    for (key, value) in rawEvents ?? [:] {
+                        if let count = value as? Int {
+                            eventCounts[key] = count
+                        } else if let count = value as? NSNumber {
+                            eventCounts[key] = count.intValue
+                        }
+                    }
+                    let metrics = rawMetrics.map { raw in
+                        ChatTurnMetrics(
+                            durationMs: raw["duration_ms"] as? Int,
+                            eventCounts: eventCounts
+                        )
+                    }
+                    doneTurnId = (obj["turn_id"] as? String) ?? turnId
+                    doneMetrics = metrics
                     await onEvent(.done(
                         partial: donePartial,
-                        claudeSessionId: (sid?.isEmpty == false) ? sid : nil
+                        claudeSessionId: (sid?.isEmpty == false) ? sid : nil,
+                        turnId: obj["turn_id"] as? String,
+                        metrics: metrics
                     ))
                     continue
                 }
@@ -729,7 +772,10 @@ actor APIClient {
                 if let textChunk, type == "delta" || type == "text" || type == nil || type == "content" {
                     lastProgressAt = Date()
                     gotDelta = true
-                    await onEvent(.delta(textChunk))
+                    await onEvent(.delta(
+                        textChunk,
+                        turnId: obj["turn_id"] as? String
+                    ))
                 }
             }
             // Phase 1.6: 一次性丢掉已处理前缀，保留未结束的尾巴给下一个 chunk
@@ -749,6 +795,12 @@ actor APIClient {
                 message: "回复中断（连接或生成未完整结束）"
             )
         }
+        return ChatStreamResult(
+            turnId: doneTurnId,
+            partial: donePartial,
+            durationMs: doneMetrics?.durationMs,
+            eventCounts: doneMetrics?.eventCounts ?? [:]
+        )
     }
 
     /// 会话镜像备份到 Hub（非权威；Engine 不读；本机 Application Support 为准）
