@@ -27,7 +27,7 @@ flowchart TB
 
 1. **勿在 `ccc-board.py` 新增长角色逻辑** — 下沉到 `board/roles/<role>.py`，由 `ccc-board.py` 再导出。
 2. Engine 应 `from board.roles import …` / `from board.phase import …`；整文件 `importlib` 加载 monolith 正在退役。
-3. 角色模块只依赖 `board.context` / `store_ops` / `phase` / `roles.common` / `_executor` 等，**禁止** `import ccc_engine`。
+3. 角色模块只依赖 `board.context` / `store_ops` / `phase` / `roles.common` / `_executor` 等，**禁止** `import ccc_engine`。角色 prompt 注入经 `build_role_context`（见 [`docs/product/context-manifest.md`](product/context-manifest.md)）。
 4. Cockpit `:7778` **deprecated** → Hub `#/ops`（见 `docs/hub-ops-console.md`）。
 5. Patrol（`ccc-patrol-v4.py`）是**独立运维探针**，不是 Engine 流水线核心。
 

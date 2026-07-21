@@ -24,7 +24,13 @@ from _utils import sanitize_prompt_input as _sanitize_prompt_input
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli
 import phase_lint
 
-from board.context import get_workspace, set_workspace, board_dir, ccc_home
+from board.context import (
+    get_workspace,
+    set_workspace,
+    board_dir,
+    ccc_home,
+    build_role_context,
+)
 from board.lock import (
     acquire_named_lock as _acquire_product_lock,
     release_named_lock as _release_product_lock,
@@ -74,59 +80,27 @@ _get_code_context_cache: dict[str, tuple[str, float]] = {}
 def _call_claude_for_plan(task: dict) -> tuple[str, list]:
     """调 Product Sessionful Contract Loop 生成 plan.md + phases.json。"""
     task_id = task["id"]
-    plan_dir = get_workspace() / ".ccc" / "plans"
-    ref_plans = ""
-    if plan_dir.exists():
-        plan_files = sorted(
-            plan_dir.glob("*.plan.md"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        for pf in plan_files[:2]:
-            ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
-
-    template_plan = _load_plan_template()
-    profile_path = get_workspace() / ".ccc" / "profile.md"
-    profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
-    code_ctx = _get_code_context(get_workspace())
-
-    def _load_product_skill() -> str:
-        candidates = [
-            CCC_HOME / "skills" / "ccc-product" / "SKILL.md",
-            Path.home()
-            / ".claude"
-            / "skills"
-            / "ccc-protocol"
-            / "skills"
-            / "ccc-product"
-            / "SKILL.md",
-        ]
-        for p in candidates:
-            try:
-                if p.is_file():
-                    return p.read_text(encoding="utf-8", errors="replace")[:6000]
-            except OSError:
-                continue
-        return ""
 
     def _build_prompt(include_ref_plans: bool = True) -> str:
-        ref = ref_plans if include_ref_plans else "（无，重试模式）"
-        skill_text = _load_product_skill()
+        ctx = build_role_context(
+            "product", task, include_ref_plans=include_ref_plans
+        )
+        skill_text = ctx.get("skill") or ""
         skill_block = (
             f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
         )
-        baseline_block = ""
-        try:
-            from _project_baseline import collect_baseline
-
-            bl = collect_baseline(get_workspace())
-            baseline_block = (
-                f"## 项目基线（程序快照）\n{bl.get('summary', '')}\n"
-                f"dirty_sample: {bl.get('git', {}).get('dirty_sample', [])[:15]}\n\n"
-            )
-        except Exception:
-            pass
-        return (
+        baseline_raw = (ctx.get("baseline") or "").strip()
+        baseline_block = (
+            f"## 项目基线（程序快照）\n{baseline_raw}\n\n" if baseline_raw else ""
+        )
+        profile = ctx.get("profile") or "(no profile.md)"
+        code_ctx = ctx.get("code_ctx") or ""
+        ref = ctx.get("ref_plans") or (
+            "（无，重试模式）" if not include_ref_plans else ""
+        )
+        template_plan = ctx.get("plan_template") or _load_plan_template()
+        epic_block = (ctx.get("current_epic") or f"- id: {task_id}\n").rstrip()
+        body = (
             f"你是 CCC 产品经理（product 步骤）。根据 skill + 基线生成 SPEC-合规 plan。\n"
             f"禁止写源码；每 phase 必须非空 scope；验收须含意图+可执行命令。\n"
             f"**工作目录硬门**：workspace=`{get_workspace().resolve()}`；"
@@ -137,9 +111,7 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"## 项目概况\n{profile[:1500]}\n\n"
             f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
             f"## 任务\n"
-            f"- id: {task['id']}\n"
-            f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
-            f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
+            f"{epic_block}\n\n"
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
             f"每行一个 JSON object，必须含 description 与非空 scope。\n\n"
@@ -149,23 +121,12 @@ def _call_claude_for_plan(task: dict) -> tuple[str, list]:
             f"---PLAN---\n（plan.md 完整内容）\n---END_PLAN---\n"
             f"---PHASES---\n（phases JSONL，每行一个 phase JSON）\n---END_PHASES---\n"
         )
+        lessons_text = (ctx.get("recent_lessons") or "").strip()
+        if lessons_text:
+            body += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
+        return body
 
     prompt = _build_prompt(True)
-    try:
-        from _lessons import get_recent_lessons
-
-        recent = get_recent_lessons(get_workspace())
-        if recent:
-            lessons_text = "\n".join(
-                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: "
-                f"{lesson.get('error', '')[:100]}"
-                for lesson in recent[:20]
-                if not lesson.get("fixed")
-            )
-            if lessons_text:
-                prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
-    except ImportError:
-        pass
 
     from _product_session import (
         format_work_artifacts,
@@ -312,18 +273,14 @@ def product_role(task_id: str = "") -> dict:
             except Exception as exc:
                 return {"role": "product", "error": f"lock: {exc}"}
             try:
-                profile_path = get_workspace() / ".ccc" / "profile.md"
-                profile = (
-                    profile_path.read_text()
-                    if profile_path.is_file()
-                    else "(no profile.md)"
-                )
+                ctx = build_role_context("product", task, include_ref_plans=False)
+                profile = ctx.get("profile") or "(no profile.md)"
                 prompt = build_fanout_prompt(
                     epic=task,
                     workspace=get_workspace(),
                     profile=profile,
-                    code_ctx=_get_code_context(get_workspace()) or "",
-                    template_plan=_load_plan_template(),
+                    code_ctx=ctx.get("code_ctx") or "",
+                    template_plan=ctx.get("plan_template") or _load_plan_template(),
                     ref_plans="",
                     max_phases=_get_cfg().max_phases,
                 )
@@ -469,22 +426,12 @@ def launch_product_async(task_id: str) -> dict:
     pids_dir = get_workspace() / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Build prompt
-    ref_plans = ""
-    plan_dir_obj = get_workspace() / ".ccc" / "plans"
-    if plan_dir_obj.exists():
-        plan_files = sorted(
-            plan_dir_obj.glob("*.plan.md"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        for pf in plan_files[:2]:
-            ref_plans += f"--- {pf.name} ---\n{pf.read_text()}\n\n"
-
-    template_plan = _load_plan_template()
-    profile_path = get_workspace() / ".ccc" / "profile.md"
-    profile = profile_path.read_text() if profile_path.is_file() else "(no profile.md)"
-    code_ctx = _get_code_context(get_workspace())
+    # 1. Build prompt（F4-1: manifest 驱动）
+    ctx = build_role_context("product", task, include_ref_plans=True)
+    ref_plans = ctx.get("ref_plans") or ""
+    template_plan = ctx.get("plan_template") or _load_plan_template()
+    profile = ctx.get("profile") or "(no profile.md)"
+    code_ctx = ctx.get("code_ctx") or ""
 
     if task.get("card_kind") != "work":
         from _product_fanout import build_fanout_prompt
@@ -500,14 +447,13 @@ def launch_product_async(task_id: str) -> dict:
         )
     else:
         # 兼容：显式 work 小卡仍走单卡 PLAN/PHASES → planned
+        epic_block = (ctx.get("current_epic") or f"- id: {task['id']}\n").rstrip()
         prompt = (
             f"你是 CCC 产品经理。根据以下信息生成 SPEC-合规的执行 plan。\n\n"
             f"## 项目概况\n{profile[:1500]}\n\n"
             f"## 当前代码状态\n{code_ctx[:3000] if code_ctx else '（无代码上下文）'}\n\n"
             f"## 任务\n"
-            f"- id: {task['id']}\n"
-            f"- title: {_sanitize_prompt_input(task.get('title', ''))}\n"
-            f"- description: {_sanitize_prompt_input(task.get('description', ''))}\n\n"
+            f"{epic_block}\n\n"
             f"## Plan 格式（严格按此结构）\n{template_plan}\n\n"
             f"## Phases 格式\n"
             f"每行一个 JSON object，必须含 description 与非空 scope。\n\n"
@@ -517,20 +463,9 @@ def launch_product_async(task_id: str) -> dict:
         )
 
     # 2. 注入 lessons 上下文
-    try:
-        from _lessons import get_recent_lessons
-
-        recent = get_recent_lessons(get_workspace())
-        if recent:
-            lessons_text = "\n".join(
-                f"- [{lesson.get('task_id', '?')}] phase={lesson.get('phase')}: {lesson.get('error', '')[:100]}"
-                for lesson in recent[:20]
-                if not lesson.get("fixed")
-            )
-            if lessons_text:
-                prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
-    except ImportError:
-        pass
+    lessons_text = (ctx.get("recent_lessons") or "").strip()
+    if lessons_text:
+        prompt += f"\n\n## 近期教训（参考，避免重复）\n{lessons_text}"
 
     # 3. 写 prompt 文件
     prompt_file = pids_dir / f"{task_id}.product.prompt.md"

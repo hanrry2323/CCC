@@ -1,4 +1,5 @@
 """board.roles.tester — extracted from ccc-board.py (behavior-preserving)."""
+# TODO F4-1: migrate to build_role_context
 from __future__ import annotations
 
 import argparse

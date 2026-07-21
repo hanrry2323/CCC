@@ -24,7 +24,13 @@ from _utils import sanitize_prompt_input as _sanitize_prompt_input
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli
 import phase_lint
 
-from board.context import get_workspace, set_workspace, board_dir, ccc_home
+from board.context import (
+    get_workspace,
+    set_workspace,
+    board_dir,
+    ccc_home,
+    build_role_context,
+)
 from board.lock import (
     acquire_named_lock as _acquire_product_lock,
     release_named_lock as _release_product_lock,
@@ -484,14 +490,17 @@ def _task_skill_hints_block(task_id: str) -> str:
 
 def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     """统一 launch/relaunch 的 OpenCode prompt（cwd 硬门 + scope + pytest 回灌）。"""
+    task = {"id": task_id}
+    ctx = build_role_context("dev", task)
+    plan = plan_content or ctx.get("plan") or ""
     return build_dev_phase_prompt(
         task_id,
         phase_num,
-        plan_content,
+        plan,
         workspace=get_workspace(),
         scope=_phase_scope(task_id, phase_num),
-        pytest_failure=_read_pytest_failure_feedback(task_id),
-        skill_hints=_task_skill_hints_block(task_id),
+        pytest_failure=ctx.get("pytest_failure") or "",
+        skill_hints=ctx.get("skill_hints") or "",
     )
 
 

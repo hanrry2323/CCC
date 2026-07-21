@@ -60,19 +60,19 @@
 
 ## 7. 验收清单
 
-- [ ] `docs/product/context-manifest.md` 落地（manifest 项 + 每角色声明 + 扩展指南）
-- [ ] `board/context.py` 加 `ROLE_CONTEXT_MANIFEST` + `build_role_context`
-- [ ] product / dev / reviewer 改用 `build_role_context`；既有输出不变
-- [ ] tester / kb / ops / regress 加 TODO 注释
-- [ ] `tests/scripts/test_context_manifest.py` 绿（断言每角色 manifest 含必需项；build_role_context 返回结构正确）
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `docs/product/context-manifest.md` 落地（manifest 项 + 每角色声明 + 扩展指南）
+- [x] `board/context.py` 加 `ROLE_CONTEXT_MANIFEST` + `build_role_context`
+- [x] product / dev / reviewer 改用 `build_role_context`；既有输出不变
+- [x] tester / kb / ops / regress 加 TODO 注释
+- [x] `tests/scripts/test_context_manifest.py` 绿（断言每角色 manifest 含必需项；build_role_context 返回结构正确）
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | `ROLE_CONTEXT_MANIFEST` + `build_role_context`；product/dev/reviewer 改用；tester/kb/ops/regress TODO；`context-manifest.md` + architecture-core 链；`test_context_manifest.py` | `pytest tests/scripts/ -q` 绿；py_compile 绿 | 是 |
 
 ## 9. 架构验收
 

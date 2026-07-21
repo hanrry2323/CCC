@@ -24,7 +24,13 @@ from _utils import sanitize_prompt_input as _sanitize_prompt_input
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli
 import phase_lint
 
-from board.context import get_workspace, set_workspace, board_dir, ccc_home
+from board.context import (
+    get_workspace,
+    set_workspace,
+    board_dir,
+    ccc_home,
+    build_role_context,
+)
 from board.lock import (
     acquire_named_lock as _acquire_product_lock,
     release_named_lock as _release_product_lock,
@@ -320,15 +326,17 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
             "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
         )
 
-    skill_text = _load_reviewer_skill()
+    ctx = build_role_context("reviewer", {"id": task_id})
+    skill_text = ctx.get("skill") or ""
     skill_block = (
         f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
     )
+    plan_body = plan_text or ctx.get("plan") or ""
     prompt = (
         "你是 CCC 资深代码审查员（reviewer 步骤）。按 skill + plan 验收清单逐条核对。\n\n"
         f"{skill_block}"
         "## Plan 验收清单\n"
-        f"{plan_text[:12000]}\n\n"
+        f"{plan_body[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"
         f"```\n{diff_stat[:4000]}\n```\n\n"
         "## 改动详情 (git diff)\n"
@@ -806,24 +814,8 @@ def _get_git_diff(
 
 
 def _load_reviewer_skill() -> str:
-    """注入 ccc-reviewer skill（对称 product）。"""
-    candidates = [
-        CCC_HOME / "skills" / "ccc-reviewer" / "SKILL.md",
-        Path.home()
-        / ".claude"
-        / "skills"
-        / "ccc-protocol"
-        / "skills"
-        / "ccc-reviewer"
-        / "SKILL.md",
-    ]
-    for p in candidates:
-        try:
-            if p.is_file():
-                return p.read_text(encoding="utf-8", errors="replace")[:6000]
-        except OSError:
-            continue
-    return ""
+    """注入 ccc-reviewer skill（对称 product）。F4-1: 经 manifest。"""
+    return build_role_context("reviewer", None).get("skill") or ""
 
 
 def _review_with_llm(
@@ -855,16 +847,18 @@ def _review_with_llm(
             "8. **回归路径**：列出需要复测的关键功能点（必须包含 plan 验收清单之外的隐性影响）\n\n"
         )
 
-    skill_text = _load_reviewer_skill()
+    ctx = build_role_context("reviewer", {"id": task_id})
+    skill_text = ctx.get("skill") or ""
     skill_block = (
         f"## 角色 Skill（必须遵守）\n{skill_text}\n\n" if skill_text else ""
     )
+    plan_body = plan_text or ctx.get("plan") or ""
 
     prompt = (
         "你是 CCC 资深代码审查员（reviewer 步骤）。按 skill + plan 验收清单逐条核对。\n\n"
         f"{skill_block}"
         "## Plan 验收清单\n"
-        f"{plan_text[:12000]}\n\n"
+        f"{plan_body[:12000]}\n\n"
         "## 改动概览 (git diff --stat)\n"
         f"```\n{diff_stat[:4000]}\n```\n\n"
         "## 改动详情 (git diff)\n"
