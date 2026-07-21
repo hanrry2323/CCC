@@ -61,19 +61,19 @@ Engine 在 epic `split_status` 转入 `done` 时，**主动**向 `flow-events.js
 
 ## 7. 验收清单
 
-- [ ] `docs/product/flow-events.md` 写明 `epic_done` 由 Engine 主动追加
-- [ ] `gates.py` 或 `_product_fanout.py` 在 epic → done 转换时 `append_event("epic_done", …)`
-- [ ] 转换只写一次（`raw_ss != "done"` 守门）
-- [ ] `append_event` 异常不阻塞 kb 门禁
-- [ ] 新测 `tests/scripts/test_epic_done_flow_event.py` 绿（模拟 epic 子卡全 released → 断言 `flow-events.jsonl` 含 `epic_done`）
-- [ ] `pytest tests/scripts/ -q` 仍绿
-- [ ] 白名单外无改动
+- [x] `docs/product/flow-events.md` 写明 `epic_done` 由 Engine 主动追加
+- [x] `gates.py` 或 `_product_fanout.py` 在 epic → done 转换时 `append_event("epic_done", …)`
+- [x] 转换只写一次（`raw_ss != "done"` 守门）
+- [x] `append_event` 异常不阻塞 kb 门禁
+- [x] 新测 `tests/scripts/test_epic_done_flow_event.py` 绿（模拟 epic 子卡全 released → 断言 `flow-events.jsonl` 含 `epic_done`）
+- [x] `pytest tests/scripts/ -q` 仍绿
+- [x] 白名单外无改动
 
 ## 8. 执行回贴（执行面填）
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 编排 | | | |
+| 编排 | 先改 `flow-events.md` §实现备注 H-1；在 `_product_fanout.refresh_epic_lifecycle` 于 `raw_ss != "done"` 且 `new == "done"` 时 `append_event("epic_done", {project_id, epic_id, split_status})`；异常仅 warning。未改 `gates.py`（已调 `refresh_epic_lifecycle`，一处写入即可）。SSE 路径不动（可双写）。 | `test_epic_done_flow_event.py` 3 passed；既有 fanout/五态测绿；全量 `tests/scripts/` 绿；未改 desktop/SSE/五态机 | ✅ |
 
 ## 9. 架构验收
 

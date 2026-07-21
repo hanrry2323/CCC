@@ -817,6 +817,25 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
             statuses,
             " ui_hidden" if patch.get("ui_hidden") else "",
         )
+        # H-1: epic → done 时主动落盘 epic_done（不依赖 SSE 客户端在线）
+        if new == "done" and raw_ss != "done":
+            try:
+                from chat_server.services import flow_events as _fe
+
+                payload: dict[str, Any] = {
+                    "epic_id": epic_id,
+                    "split_status": "done",
+                }
+                project_id = _project_id_for_workspace(store.workspace)
+                if project_id:
+                    payload["project_id"] = project_id
+                _fe.append_event("epic_done", payload)
+            except Exception as exc:
+                _log.warning(
+                    "[fanout] epic_done append_event failed for %s: %s",
+                    epic_id,
+                    exc,
+                )
     return new
 
 

@@ -40,7 +40,7 @@
 | `fanout` | `{project_id,epic_id,works:[{id,title,executor,depends_on[],status?}]}` | 扇出完成/更新 |
 | `work_status` | `{project_id,epic_id,work_id,status,executor,note?}` | 列迁移或执行态变 |
 | `executor` | `{epic_id,work_id,executor,phase?,detail?}` | 执行器启动/结束 |
-| `epic_done` | `{epic_id,split_status}` | epic done/failed |
+| `epic_done` | `{epic_id,split_status,project_id?}` | epic → `done`（见下：Engine 主动落盘） |
 | `error` | `{message}` | 订阅错误 |
 
 `status` 对齐看板列：`backlog|planned|in_progress|testing|verified|released|abnormal`。
@@ -64,3 +64,4 @@
 2. **看板轮询兜底**：约每 8s 合成一次（首屏/断线）；不再 2s 狂刷。
 3. Desktop 右栏：`fanout` → 拆分出生动画；`work_status` → 节点态刷新；`epic_done` → 清空焦点时间线。
 4. **Phase14 追加**：Hub SSE 兜底在 `user_stage=done` 转入时主动推 `epic_done`（连同写 JSONL），客户端**必须**把 `epic_done` 加入白名单并在收到本 epic 的 `epic_done` 时立即清轨，不得只等下一次 fanout 或 8s 看板轮询。订阅 SSE 时应把当前 `boundEpicId` 作为 `epic_id` query 透传以减少他 epic 噪声；客户端仍需按 `data.epic_id` 二次校验。连续 done 不会重推（`last_terminal_stage` 去重）；failed 由 Phase9 止损路径处理，本通道不主动推。
+5. **H-1 · `epic_done` 不依赖 SSE**：Engine 在 `refresh_epic_lifecycle` 检测到 epic `split_status` **由非 `done` → `done`** 时，**主动** `append_event("epic_done", {project_id, epic_id, split_status:"done"})` 写入 JSONL。无 Desktop 订阅时证据链仍完整。写入失败只记日志，不阻塞 kb 门禁。同一转换只写一次（`raw_ss != "done"` 守门）。Hub SSE 路径既有推送 + `append_event` **保留**（客户端在线时可能双写；JSONL 顺序与 Desktop 去重可接受）。
