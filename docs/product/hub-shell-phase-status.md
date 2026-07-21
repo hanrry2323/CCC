@@ -28,3 +28,4 @@
 | F2-1 soak N=5 + orphan=0 green | green | `SOAK_N=5` soak；每轮 settle 后 `orphan_delta=0`；failover 回归 | （见 commit） |
 | F3-1 qb 业务向闭环 green | green | qb README stamp epic→released；无人批；证据链见 phase12 文 | （见 commit） |
 | F3-2 hp 业务向闭环 green | green | hp 新建 README stamp epic→released；无人批；证据链见 phase8 文 | （见 commit） |
+| F3-3 xianyu 业务向闭环 green | green | xianyu README stamp epic→released；无人批；证据链见 phase11 文 | （见 commit） |

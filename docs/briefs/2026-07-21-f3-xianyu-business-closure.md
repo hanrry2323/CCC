@@ -51,27 +51,28 @@
 
 ## 7. 验收清单
 
-- [ ] xianyu 1 笔业务向 epic 全程无中途人批 → released
-- [ ] 证据链完整（仿 F3-1/F3-2 模板）
-- [ ] abnormal 数 = 0（若有则回贴现象，不修 Engine）
-- [ ] `phase-status.md` 新增 F3-3 行
-- [ ] 对应 phase 文追加证据链段（不动既有结论）
-- [ ] 白名单外无改动
-- [ ] 未改 Engine 主循环 / 契约
+- [x] xianyu 1 笔业务向 epic 全程无中途人批 → released
+- [x] 证据链完整（仿 F3-1/F3-2 模板）
+- [x] abnormal 数 = 0（若有则回贴现象，不修 Engine）
+- [x] `phase-status.md` 新增 F3-3 行
+- [x] 对应 phase 文追加证据链段（不动既有结论）
+- [x] 白名单外无改动
+- [x] 未改 Engine 主循环 / 契约
 
 ## 8. 执行回贴（执行面填）
 
 | 项 | 值 |
 |----|-----|
-| epic_id | |
-| split_status 终态 | |
-| works（tid → 终态） | |
-| 关键 flow 事件 | |
-| 双机核对输出 | |
+| epic_id | `xianyu-biz-small-1784632947-6393` |
+| split_status 终态 | `done` |
+| works（tid → 终态） | `xianyu-biz-small-1784632947-6393-w1` → `released` |
+| 关键 flow 事件 | `epic_created` → `fanout` → `work_status=planned`；board：planned→in_progress→testing→verified→released；snapshot `user_stage=done` |
+| 双机核对输出 | `M1: v0.52.2 202bd31` / `2017: v0.52.2 202bd31 v1` / `aligned: yes` |
 | 人批次数 | 0 |
-| abnormal | 无 / 现象 |
-| xianyu commits | |
-| README stamp | |
+| abnormal | 无 |
+| xianyu commits | `7c36391` · `a072128` · `b5d658d` |
+| README stamp | `xianyu-biz-1784632947` |
+| 补充 | 新 `scripts/smoke-xianyu-biz-small.sh`；证据链追加于 `hub-shell-phase11-xianyu.md`；全程 ~279s；smoke PASS |
 
 ## 9. 架构验收
 
