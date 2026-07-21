@@ -75,6 +75,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `4ed4774` |
+| 缺口 | 无 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `record_success`/`get_lessons_by_topic`/`extract_topic` 落 `_lessons.py`；kb 归档时调 `record_success`（异常 warning 不阻塞）；product 注入 `_success_lessons_block`；失败 lessons 路径不动；测绿；白名单内。

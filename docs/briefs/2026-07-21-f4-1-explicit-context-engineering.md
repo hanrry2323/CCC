@@ -78,6 +78,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `1ee2080` |
+| 缺口 | 无 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `ROLE_CONTEXT_MANIFEST` + `build_role_context` 落 `board/context.py`；product/dev/reviewer 改用 helper（既有输出不变）；tester/kb/ops/regress 加 TODO；`context-manifest.md` 落地；测绿；白名单内。

@@ -80,6 +80,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `580dd92` |
+| 缺口 | 无；CI webhook 实际对接属部署，非 brief 缺口 |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `hub-api-v1.md` 先改（端点行 + §3b）；`POST /api/desktop/proactive-epic` 实现 + 幂等（`source+payload.hash` 生成 CRID）；`ccc-ingest-ci-failure.sh` CLI；`proactive-triggers.md` 落地；不 wake Engine（tick 自取）；测绿；白名单内。
