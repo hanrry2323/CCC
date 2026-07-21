@@ -195,6 +195,8 @@ final class AppModel: ObservableObject {
     private var activeChatThreadId: String?
     /// 每会话独立对话流 task
     private var chatTasks: [String: Task<Void, Never>] = [:]
+    /// 每线程当前 turn id：用于拒绝旧 SSE / 重试串流的迟到事件
+    private var activeTurnIds: [String: String] = [:]
     private var streamingThreadIds: Set<String> = []
     /// 供侧栏观察多路生成状态（与 streamingThreadIds 同步）
     @Published private(set) var liveStreamingThreadIds: Set<String> = []
@@ -2013,12 +2015,21 @@ final class AppModel: ObservableObject {
             if stopAndSend {
                 let previous = chatTasks[threadId]
                 cancelChat(threadId: threadId, silent: true)
-                await previous?.value
+                // BUG fix: 上轮 task 已 null（done 提前清）→ 不再等 previous.value。
+                // 否则「第二条发出去但 UI 无反应」会卡到 30+ s。
+                if previous != nil {
+                    await previous?.value
+                }
             } else {
                 showToast("正在生成，请先点停止")
                 setComposerBounce(trimmed, threadId: threadId)
                 return false
             }
+        } else if chatTasks[threadId] != nil {
+            // BUG fix: streaming=false 但 chatTasks[threadId] 残留（done 提前清 fence，
+            // defer 还没跑到 chatTasks[threadId]=nil）→ 直接清掉，避免下一轮 task
+            // 被旧 task 顶替后 UI 状态不一致。
+            chatTasks[threadId] = nil
         }
 
         let others = streamingThreadIds.filter { $0 != threadId }.count
@@ -2413,6 +2424,13 @@ final class AppModel: ObservableObject {
             }
         }
         if case .done = event {
+            // BUG fix: done 事件到达即同步清 streaming + turn fence，避免「第二条发送时仍
+            // 处于 streaming=true」卡住 UI（stopAndSend 误命中 cancelAndWait 路径，UI 无反应）。
+            // defer 仍会跑（最终清理），但用户感知的反应不能等 await 链收尾。
+            activeTurnIds.removeValue(forKey: threadId)
+            if streamingThreadIds.contains(threadId) {
+                setThreadStreaming(threadId, false)
+            }
             setThreadStreamStatus(threadId, "")
             flushDiskSave(threadId: threadId)
         } else if case .toolResult = event {
