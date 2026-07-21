@@ -101,17 +101,19 @@ Hub 短暂不可达时：**对话不中断、状态不谎报、转任务进 outb
 
 | 面 | 摘要 | 自检结果 | 完成 |
 |----|------|----------|------|
-| 壳 | | | |
-| 过桥 | | | |
+| 壳 | `desktop-connection.md` 写入 Hub 自动恢复 SLA；`AppModel` 增 `startHubRecoverLoopIfNeeded`（4s 探活）→ `probeAndRecoverHub`（flushPendingHubSync → flushTransferOutbox → bindFlow）；flush≥1 toast「Hub 已恢复 · 排队任务已投递」；transfer 连接失败标 hub 不可达以启探活；手动 reconnect 与自动探活幂等 | 文档+代码按白名单；编译未在本机跑 UI 手测（需 Desktop 开窗验收 §7） | ✅ |
+| 过桥 | 默认不开；壳未发现 Hub 侧 blocker | — | 不参与 |
 | 编排 | — | — | 不参与 |
 
 ## 9. 架构验收
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填：通过 / 打回） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过**（代码+契约审阅） |
+| 缺口 | Desktop 开窗手测 §7 列为**残留**：不阻塞合入；用户按 PASTE-OPS「手测一次」粘贴壳窗即可补做，失败再开 hotfix brief |
+| 验收日 | 2026-07-21 |
+
+**审阅要点（对照 §6）：** `startHubRecoverLoopIfNeeded`（4s）→ `probeAndRecoverHub`（flush sync → outbox → bindFlow）；`flushTransferOutbox` 返回笔数驱动恢复 toast；`setHubReachable(false)` 与 transfer 连接失败路径启探活；`desktop-connection.md` SLA 已写。过桥未改（符合默认）。
 
 ## 派发说明（给人看）
 

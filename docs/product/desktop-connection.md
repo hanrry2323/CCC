@@ -39,6 +39,22 @@ Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-s
 
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。
 
+## Hub 自动恢复 SLA（F1）
+
+> Brief：[`docs/briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)。  
+> 对称于 sidecar `startAgentRecoverLoop`：Hub 不可达时启动轻量探活，恢复后自动收口，用户不必只靠点「重试」。
+
+| 项 | 规格 |
+|----|------|
+| 探活间隔 | **3–5s**（实现取 4s）；成功即停；经 `HubRequestGate`，勿打爆 |
+| 探活成功后序 | `hubReachable=true` → `flushPendingHubSync` → `flushTransferOutbox` → 当前项目 `bindFlowToCurrentThread`（snapshot 兜底 + SSE 对齐） |
+| Hub 断 ≥10s + sidecar 健康 | 仍可聊；状态栏 **「本机 Agent · Hub 暂不可达（可聊）」**；禁止全局「未连接」误报 |
+| 转任务（Hub 断） | 入 `transfer-outbox.json`；投递态 `queued`（待投递）；toast「Hub 暂不可达，已排队待投递」 |
+| 恢复且 flush ≥1 笔 | toast **「Hub 已恢复 · 排队任务已投递」**；投递态 → `delivered` / `accepted`（既有 `applyTransferSuccess`） |
+| 恢复且 outbox 空 | 仅更新状态栏（避免吵）；不强制 toast |
+| 手动「重试 / 重新连接」 | 与自动探活 **幂等**（不双投；依赖 `client_request_id`） |
+| 右栏 | 恢复后 snapshot 与 `boundEpicId` 一致，不串他 epic |
+
 ## Cursor 感性能验收
 
 | 指标 | 目标 |
@@ -46,9 +62,12 @@ Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-s
 | 热进程短问首 token | ≤1s（`spike-loopcode-ttfb.sh` + `/warm`） |
 | 切会话 / 重开 App | ≤100ms 出本机缓存（含 tool_steps） |
 | Hub 断 10s | 仍可聊；状态非「未连接」 |
+| Hub 恢复后自动探活 | ≤5s 内检测到（探活周期上限） |
+| 恢复后 outbox | 无需用户再点一次即可 flush |
 
 ```bash
 bash scripts/spike-loopcode-ttfb.sh
 bash scripts/smoke-desktop-stable.sh
+bash scripts/smoke-hub-outage-outbox.sh
 python3 scripts/tests/test_hub_voice.py
 ```

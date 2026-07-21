@@ -263,6 +263,8 @@ final class AppModel: ObservableObject {
     private var warmLoopTask: Task<Void, Never>?
     /// sidecar 未就绪时自动重探（避免启动竞态卡死「未就绪」）
     private var agentRecoverTask: Task<Void, Never>?
+    /// Hub 不可达时自动探活（对称 agentRecover；≤5s 周期）
+    private var hubRecoverTask: Task<Void, Never>?
     /// 每项目上次真暖时间（多窗分别记）
     private var lastWarmAtByProject: [String: Date] = [:]
     /// 本机落盘节流：按 threadId 独立，避免多会话互相取消丢落盘
@@ -598,6 +600,51 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Hub 不可达时每 4s 轻量探活；恢复后 flush outbox + snapshot（F1；对称 sidecar recover）
+    private func startHubRecoverLoopIfNeeded() {
+        guard !hubReachable else { return }
+        if hubRecoverTask != nil { return }
+        hubRecoverTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 4_000_000_000) // ≤5s SLA
+                guard let self, !Task.isCancelled else { break }
+                if self.hubReachable {
+                    self.hubRecoverTask = nil
+                    break
+                }
+                if await self.probeAndRecoverHub() {
+                    self.hubRecoverTask = nil
+                    break
+                }
+            }
+        }
+    }
+
+    /// 轻量探活：projects 一把；成功则 flush + bindFlow。失败静默（勿 toast 刷屏）。
+    @discardableResult
+    private func probeAndRecoverHub() async -> Bool {
+        do {
+            try await prepareClient()
+            let resp = try await client.fetchProjects()
+            projects = resp.projects
+            LocalSessionStore.saveProjects(resp.projects, defaultProject: resp.default_project)
+            setHubReachable(true, source: "hub_recover_probe")
+            let localOK = agentMode == "local"
+            connected = localOK || !projects.isEmpty
+            lastError = nil
+            updateConnectionStatusText(localOK: localOK, hubOK: true)
+            await flushPendingHubSync()
+            let delivered = await flushTransferOutbox()
+            await bindFlowToCurrentThread()
+            if delivered > 0 {
+                showToast("Hub 已恢复 · 排队任务已投递")
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Phase 1.5: 更新消息内容（就地编辑）
     func updateMessage(threadId: String, messageId: UUID, newContent: String) {
         mutateThreadMessages(threadId: threadId) { msgs in
@@ -866,7 +913,11 @@ final class AppModel: ObservableObject {
     }
 
     private func setHubReachable(_ reachable: Bool, source: String, error: Error? = nil) {
-        guard hubReachable != reachable else { return }
+        guard hubReachable != reachable else {
+            // 已不可达但探活任务未跑时补启（幂等）
+            if !reachable { startHubRecoverLoopIfNeeded() }
+            return
+        }
         hubReachable = reachable
         DesktopChatTurnLedger.append([
             "event": "hub_reachability",
@@ -874,6 +925,10 @@ final class AppModel: ObservableObject {
             "source": source,
             "error_type": error.map { String(describing: type(of: $0)) } ?? "",
         ])
+        if !reachable {
+            startHubRecoverLoopIfNeeded()
+        }
+        // 可达时不 cancel hubRecoverTask：由循环自检 hubReachable 后停，避免探活任务内 set true 时把自己 cancel 掉
     }
 
     private func updateConnectionStatusText(localOK: Bool, hubOK: Bool) {
@@ -1861,9 +1916,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func flushTransferOutbox() async {
-        guard hubReachable else { return }
+    /// - Returns: 本轮成功投出的 transfer 笔数（供 Hub 恢复 toast）
+    @discardableResult
+    private func flushTransferOutbox() async -> Int {
+        guard hubReachable else { return 0 }
         let pending = LocalSessionStore.loadTransferOutbox()
+        var delivered = 0
         for item in pending {
             if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
                 LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
@@ -1891,11 +1949,13 @@ final class AppModel: ObservableObject {
                 let resp = try await client.transfer(req)
                 LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
                 await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
+                delivered += 1
             } catch {
                 _ = LocalSessionStore.bumpTransferAttempt(clientRequestId: item.client_request_id)
                 setTransferDelivery(item.thread_id, .queued)
             }
         }
+        return delivered
     }
 
     func transferDelivery(for threadId: String?) -> TransferDeliveryPhase? {
@@ -3176,6 +3236,7 @@ final class AppModel: ObservableObject {
             mutateTransferForm(tid) { $0.error = nil }
             dismissTransferSheet(threadId: tid)
             showToast("Hub 暂不可达，已排队待投递")
+            startHubRecoverLoopIfNeeded()
             return
         }
         busy = true
@@ -3239,6 +3300,19 @@ final class AppModel: ObservableObject {
                 mutateTransferForm(tid) { $0.error = nil }
                 dismissTransferSheet(threadId: tid)
                 showToast("投递中断，已排队：\(plain)")
+                // 连接类失败：标 Hub 不可达以启动自动探活（与手动「已排队」路径对称）
+                let connLike = lower.contains("timed out") || lower.contains("offline")
+                    || lower.contains("network") || lower.contains("could not connect")
+                    || lower.contains("connection")
+                    || ((error as? APIError).map { err in
+                        if case .http(let code, _) = err { return code >= 500 || code == 0 }
+                        return false
+                    } ?? false)
+                if connLike {
+                    setHubReachable(false, source: "transfer_transient", error: error)
+                    let localOK = agentMode == "local"
+                    updateConnectionStatusText(localOK: localOK, hubOK: false)
+                }
             } else {
                 setTransferDelivery(tid, .failed)
                 mutateTransferForm(tid) { $0.error = plain }
