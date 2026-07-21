@@ -185,6 +185,8 @@ $ python3 scripts/check-version-sync.py
 
 ## 9. 验证摘要
 
+### 自验（执行方）
+
 ```text
 swift build -c release:           Build complete! (30.93s)
 package-baseline:                 OK app bundle 0.52.1 build 1
@@ -192,6 +194,19 @@ install + stat:                   /Applications/CCCDesktop.app 12:54 == .build 1
 pytest -k phase14|flow|snapshot|epic_done|stoploss: 17 passed in 0.20s
 check-version-sync:               VERSION sync OK (v0.52.1)
 ```
+
+### 终验（规划方 · 2026-07-21）
+
+```text
+HEAD: 24812ae（执行方报 DONE 时未 push；终验人已 push → origin/main）
+装机证伪：Applications 与 .build 均为 12:54，size 7251232 一致 ✓
+复跑 pytest -k phase14|flow|…：17 passed ✓
+代码对照 UX：epicHeadlineText / workSubtitle / workDetail / goal 副行 / failed 红条 / reveal seenWorkIds ✓
+Hub：未改；2017 已拉到 24812ae（仅文档/仓对齐）
+手测：#1–#2/#5–#6 为代码路径实填（非 GUI 实拍）；#3 无 live 失败样例
+```
+
+**终验结论：通过（green）。** 装机证伪达标；内容/视觉改动对齐 brief。打开 Desktop 看一眼右栏即可确认观感。
 
 ---
 

@@ -20,5 +20,5 @@
 | Phase12 业务向意图 | green | qb README 双机路径（非 flow-smoke） | a1268e0 |
 | Phase13 编排可靠性门禁 | green | reliability tier + hang/slot/orphan 探针（28 单元测）；终验修探活/board/sys；未 bump VERSION | a0c8b4c…5ce89de |
 | Phase14 右栏绑定+实时正确性 | conditional-green | 删 epics.first + epic_done 推送/清轨 + SSE epic 过滤；终验补装机；§5.2 UI 待用户点确认 | a1c9dbf |
-| Phase15 右栏卡片内容+视觉 | green | UX 阶段表全档主文案 + goal 上副行 + work 卡依赖/执行面/失败原因上卡 + reveal 不闪 + done 弱化；Phase14 17 测仍绿；装机 mtime 一致 | HEAD |
+| Phase15 右栏卡片内容+视觉 | green | UX 阶段表全档主文案 + goal 上副行 + work 卡依赖/执行面/失败原因上卡 + reveal 不闪 + done 弱化；Phase14 17 测仍绿；装机 mtime 一致 | 24812ae |
 | v0.52.1 稳定性门禁 | green | gitignore 假绿 + transfer 空响应重试 + smoke gate；qb-biz-small PASS；`full` 本机绿（outage 因无本机 sidecar 跳过） | fd65284 |
