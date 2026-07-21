@@ -19,5 +19,5 @@
 | Phase11 第三真实仓 xianyu | green | xianyu flow-smoke → released | 11053bf |
 | Phase12 业务向意图 | green | qb README 双机路径（非 flow-smoke） | a1268e0 |
 | Phase13 编排可靠性门禁 | green | reliability tier + hang/slot/orphan 探针（28 单元测）；终验修探活/board/sys；未 bump VERSION | a0c8b4c…5ce89de |
-| Phase14 右栏绑定+实时正确性 | green | 删 epics.first 兜底 + epic_done 主动推/即时清轨 + SSE epic_id 透传与二次校验 + 7 契约测；装机 0.52.1；未 bump VERSION | （见 commit） |
+| Phase14 右栏绑定+实时正确性 | conditional-green | 删 epics.first + epic_done 推送/清轨 + SSE epic 过滤；终验补装机；§5.2 UI 待用户点确认 | a1c9dbf |
 | v0.52.1 稳定性门禁 | green | gitignore 假绿 + transfer 空响应重试 + smoke gate；qb-biz-small PASS；`full` 本机绿（outage 因无本机 sidecar 跳过） | fd65284 |
