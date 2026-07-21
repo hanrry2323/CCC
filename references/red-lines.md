@@ -268,7 +268,7 @@
 
 ## 红线 12：禁止 agent 自主启用 CCC（Lesson 28 配套）
 
-**规则**：Agent **禁止**自行判断"现在该走 CCC 流程"并主动启用 7 角色看板流水线。CCC 流程的启用**必须**由用户显式触发（"走 CCC"、"按 CCC 流程做"、"用看板跑"等明确指令）。
+**规则**：Agent **禁止**自行判断"现在该走 CCC 流程"并主动启用 CCC 流水线（阶段能力包；与角色数无关）。CCC 流程的启用**必须**由用户显式触发（"走 CCC"、"按 CCC 流程做"、"用看板跑"等明确指令）。角色生成机制见 [`docs/product/role-formation.md`](../docs/product/role-formation.md)。
 
 **Why**：
 - 用户上下文：CCC 流程引入额外开销（4 文件契约 + Verifier 独立 session），不是每个任务都需要
@@ -517,9 +517,9 @@ fi
 
 ---
 
-## 7 角色 + 看板系统红线（v0.16）
+## 阶段能力包 + 看板系统红线（v0.16；原「7 角色」口径已升级）
 
-> v0.16 起 CCC 改 7 角色定时开发系统（product/dev/reviewer/tester/ops/kb/regress），
+> v0.16 起 CCC 改阶段能力包定时开发系统（默认 seed 7：product/dev/reviewer/tester/ops/kb/regress；可扩，见 [`docs/product/role-formation.md`](../docs/product/role-formation.md)），
 > 任务在 6 列看板流转（backlog → planned → in_progress → testing → verified → released）。
 > regress 从 released 列取出已发布成果，每日回测，回归 bug 任务回到 backlog。
 > 三个红线配套。

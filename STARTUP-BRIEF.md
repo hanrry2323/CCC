@@ -14,7 +14,7 @@
 CCC = **Connect–Claude Code** = **Loop Engineer**  
 **对话面（本机 Desktop + loop-code）** 定意图产 epic；**编排面（中心机 Engine + Board）** 远端开发。  
 中间只交**信息流**（transfer / flow）。契约：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)。  
-**Skill + Prompt = 本次角色**（无穷角色；用户不选角色、不背 Skill）
+**Skill + Prompt = 本次角色**（无穷角色；用户不选角色、不背 Skill）。机制 SSOT：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
 **v0.51**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**。禁止对 CCC 看板自消费（R-15）。
 

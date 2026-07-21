@@ -16,6 +16,7 @@
 | 4b | [`product/dev-channel.md`](product/dev-channel.md) | **谁改 CCC / Desktop 模型默认（Cursor · MiniMax）** |
 | 4c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | **四面协作 + 流畅基线指标**（架构 / 壳 / 过桥 / 编排） |
 | 4d | [`product/cursor-model-routing.md`](product/cursor-model-routing.md) | **Cursor：Auto vs 高级模型** |
+| 4e | [`product/role-formation.md`](product/role-formation.md) | **角色生成机制**（任务→Skill+Prompt；7 为 seed，非上限） |
 | 5 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
 | 6 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |
 

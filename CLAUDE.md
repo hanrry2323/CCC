@@ -198,7 +198,7 @@ scripts/chat_server/            # FastAPI 模块化后端
 | 路径 | 角色 |
 |------|------|
 | `SKILL.md` | 注入 prompt 总纲（agent 启动时自动加载） |
-| `skills/ccc-<role>/SKILL.md` × 7 | 各角色 skill 定义 |
+| `skills/ccc-<role>/SKILL.md` × 7（默认 seed，可扩） | 各阶段 skill 定义；角色由任务即时生成，见 [`docs/product/role-formation.md`](docs/product/role-formation.md) |
 | `scripts/ccc-engine.py` | Engine 主循环（调度面） |
 | `scripts/engine/` | slot / active_tasks / hang / gates |
 | `scripts/board/roles/` | 角色实现（product/dev/…） |

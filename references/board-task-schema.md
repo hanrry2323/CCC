@@ -342,13 +342,13 @@ QXO（或其他工具）按本协议写 task 后，CCC Engine 自动拾取：
 
 ## 12. 复杂度分流协议（v0.28.1）
 
-> **目的**：按 task 规模决定走完整 7 角色 pipeline 还是简化路径，减少不必要的 reviewer/tester 轮次。
+> **目的**：按 task 规模决定走完整阶段能力包 pipeline 还是简化路径，减少不必要的 reviewer/tester 轮次。角色数不固定（见 [`docs/product/role-formation.md`](../docs/product/role-formation.md)）。
 
 | 复杂度 | 含义 | 触发条件 | 角色路径 |
 |--------|------|---------|---------|
 | `small` | 小改 | plan_weight ≤ 50 | dev → released（跳过 reviewer/tester） |
-| `medium` | 常规 | 50 < plan_weight ≤ 200 | 完整 7 角色（默认） |
-| `large` | 大改 | plan_weight > 200 | 完整 7 角色 + 强制分批 |
+| `medium` | 常规 | 50 < plan_weight ≤ 200 | 完整阶段能力包（默认 seed 7） |
+| `large` | 大改 | plan_weight > 200 | 完整阶段能力包 + 强制分批 |
 
 **plan_weight 计算公式**（product_role 自动计算）：
 ```

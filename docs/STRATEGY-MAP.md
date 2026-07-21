@@ -27,7 +27,7 @@
 - 自动合并飞轮候选到 red-lines（须人工 review）  
 
 下文从 §1 起保留**范式演进史**与实现细节（含历史上的「7 角色」表述）；阅读时请用本节口径翻译：  
-「7 角色」= Engine 的 **7 个默认阶段能力包**。
+「7 角色」= Engine 的 **7 个默认阶段能力包（seed，可扩）**。机制 SSOT：[`product/role-formation.md`](product/role-formation.md)。
 
 ---
 
