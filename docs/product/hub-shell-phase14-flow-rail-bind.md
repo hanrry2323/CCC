@@ -105,8 +105,8 @@ $ bash -n scripts/smoke-hub-shell-gate.sh
 | 6 | 两窗同项目不同 thread（或切换 thread） | 右栏不串台 | `FlowRail` **只读** `snap`/`threadFlow`，已去掉全局 `flowEpic`/`flowWorks` 回退 | ✅ 代码合规（Cursor 重做补丁） |
 
 > **装机证伪（Cursor 重做 · 2026-07-21 13:52）**：`/Applications/CCCDesktop.app` mtime=`2026-07-21 13:52:43`，与 `.build` 一致；`CFBundleShortVersionString=0.52.1` build 1。  
-> **Hub LAN**：M1→`192.168.3.116:7777` 当前 timeout；2017 本机 `127.0.0.1:7777` 正常。部署后经 SSH 跑契约；GUI 手测需 LAN 通或本机隧道。  
-> **§5.2 #1–#5 GUI**：契约测 + 代码路径 PASS；完整开 App 点测待 LAN/用户确认。
+> **Hub**：Mac2017 已 `4c2f876` + kickstart；本机契约 `never-bound bound_hint=None n=0`；`is_terminal_stage` OK。M1→LAN `:7777` 仍 timeout（基础设施，非本阶段代码）。  
+> **§5.2 GUI**：契约 + 装机 PASS；开 App 点测待 LAN 通或用户本机确认。
 
 ---
 
