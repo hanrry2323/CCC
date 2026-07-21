@@ -79,6 +79,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `555b9bc` |
+| 缺口 | 2017 现网需拉本 commit 后 `ccc-dual-host-check.sh` 才能真正对齐成功（端点新增，属部署，非 brief 缺口） |
+| 验收日 | 2026-07-21 |
+
+**审阅：** `hub-api-v1.md` 先改（§2 端点表 + §`GET /api/desktop/version` 节）；`desktop.py` 加只读端点（VERSION + git HEAD + `hub_api_version="v1"`，无写副作用）；`ccc-dual-host-check.sh` 三行输出 + mock 注入 + 短 sha 对齐 + 不可达/不一致非零；7 单测绿；未改 Desktop/Engine/transfer·flow；`app.py` 未动（router 已挂载，合理）。

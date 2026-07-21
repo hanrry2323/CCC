@@ -95,7 +95,8 @@ F0 已闭环：[`../briefs/2026-07-21-f0-four-role-charter.md`](../briefs/2026-0
 F1 断线恢复：done `eeaf388` — [`../briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)。  
 F1-2 投递三态：done `578e7fe` — [`../briefs/2026-07-21-f1-transfer-delivery-honesty.md`](../briefs/2026-07-21-f1-transfer-delivery-honesty.md)。  
 F2-1 soak N=5：done `9af1fb4` — [`../briefs/2026-07-21-f2-soak-orphan-zero.md`](../briefs/2026-07-21-f2-soak-orphan-zero.md)。  
-F2-2 进行中：[`../briefs/2026-07-21-f2-dual-host-version-check.md`](../briefs/2026-07-21-f2-dual-host-version-check.md)。  
+F2-2 双机核对：done `555b9bc` — [`../briefs/2026-07-21-f2-dual-host-version-check.md`](../briefs/2026-07-21-f2-dual-host-version-check.md)。  
+F3-1 进行中：[`../briefs/2026-07-21-f3-qb-business-closure.md`](../briefs/2026-07-21-f3-qb-business-closure.md)。  
 派单板：[`../briefs/PASTE-OPS.md`](../briefs/PASTE-OPS.md)。
 
 ---
