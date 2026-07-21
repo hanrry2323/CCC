@@ -93,9 +93,9 @@ struct MarkdownText: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .system(size: 19, weight: .regular)
-        case 2: return .system(size: 16.5, weight: .regular)
-        case 3: return .system(size: 15, weight: .regular)
+        case 1: return .system(size: 19, weight: .bold)
+        case 2: return .system(size: 16.5, weight: .semibold)
+        case 3: return .system(size: 15, weight: .medium)
         default: return .system(size: 14.5, weight: .regular)
         }
     }
@@ -283,7 +283,7 @@ struct MarkdownText: View {
                 flushPlain(upTo: i)
                 let innerStart = raw.index(i, offsetBy: 2)
                 var chunk = AttributedString(String(raw[innerStart..<end.lowerBound]))
-                chunk.font = .system(size: 14.5, weight: .regular)
+                chunk.font = .system(size: 14.5, weight: .semibold)
                 out += chunk
                 i = end.upperBound
                 plainStart = i

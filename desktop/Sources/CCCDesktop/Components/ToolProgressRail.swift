@@ -11,9 +11,11 @@ struct ToolStep: Identifiable, Hashable, Codable {
     var label: String
     var icon: String
     var status: Status
+    /// toolResult 后推断的一句摘要（成功/失败）；旧盘无此字段
+    var resultHint: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, icon, status
+        case id, name, label, icon, status, resultHint
     }
 
     init(
@@ -21,13 +23,15 @@ struct ToolStep: Identifiable, Hashable, Codable {
         name: String,
         label: String,
         icon: String,
-        status: Status = .running
+        status: Status = .running,
+        resultHint: String? = nil
     ) {
         self.id = id
         self.name = name
         self.label = label
         self.icon = icon
         self.status = status
+        self.resultHint = resultHint
     }
 
     init(from decoder: Decoder) throws {
@@ -41,6 +45,17 @@ struct ToolStep: Identifiable, Hashable, Codable {
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? name
         icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "wrench"
         status = try c.decodeIfPresent(Status.self, forKey: .status) ?? .done
+        resultHint = try c.decodeIfPresent(String.self, forKey: .resultHint)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id.uuidString, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(label, forKey: .label)
+        try c.encode(icon, forKey: .icon)
+        try c.encode(status, forKey: .status)
+        try c.encodeIfPresent(resultHint, forKey: .resultHint)
     }
 }
 
@@ -121,6 +136,36 @@ enum ToolProgressHelper {
         return base
     }
 
+    /// toolResult 后一句摘要（不依赖 sidecar payload）
+    static func resultHint(name: String, ok: Bool, label: String) -> String {
+        if !ok { return "调用失败" }
+        let detail: String? = {
+            if let r = label.range(of: " · ") {
+                let d = String(label[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                return d.isEmpty ? nil : short(d, 36)
+            }
+            return nil
+        }()
+        switch name {
+        case "Write", "Edit", "StrReplace", "MultiEdit", "NotebookEdit":
+            return detail.map { "已写入 \($0)" } ?? "已写入"
+        case "Read", "LS":
+            return detail.map { "已查阅 \($0)" } ?? "查阅完成"
+        case "Bash", "Shell":
+            return "命令完成"
+        case "Grep", "Glob":
+            return "搜索完成"
+        case "WebSearch", "WebFetch":
+            return "请求完成"
+        case "Task":
+            return "子任务完成"
+        case "TodoWrite":
+            return "待办已更新"
+        default:
+            return "调用完成"
+        }
+    }
+
     static func icon(for name: String) -> String { symbols[name] ?? "wrench.and.screwdriver" }
 
     static func isWrite(_ name: String) -> Bool { writeTools.contains(name) }
@@ -162,10 +207,9 @@ struct ToolProgressRail: View {
                 finishedBlock
             }
         }
-        .animation(.easeOut(duration: 0.15), value: steps.count)
-        .animation(.easeOut(duration: 0.15), value: finished)
+        // 仅对 finished 折叠；勿绑 steps.count（追加 step 会整块闪）
+        .animation(.easeOut(duration: 0.2), value: finished)
         .onAppear {
-            // 进行中默认展开；完成后默认折叠
             expanded = !finished
         }
         .onChange(of: finished) { done in
@@ -198,13 +242,22 @@ struct ToolProgressRail: View {
                         .font(.system(size: 12))
                         .foregroundStyle(CCCTheme.accent)
                         .frame(width: 16)
-                    Text(current.label)
-                        .font(.system(size: 13))
-                        .foregroundStyle(CCCTheme.ink)
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(current.label)
+                            .font(.system(size: 13))
+                            .foregroundStyle(CCCTheme.ink)
+                            .lineLimit(2)
+                        if let hint = current.resultHint, !hint.isEmpty {
+                            Text(hint)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CCCTheme.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                     Spacer(minLength: 0)
                 }
             }
+            segmentProgressTrack
             if steps.count > 1 {
                 DisclosureGroup(isExpanded: $expanded) {
                     stepList(Array(steps.dropLast()))
@@ -213,6 +266,7 @@ struct ToolProgressRail: View {
                         .font(.system(size: 12))
                         .foregroundStyle(CCCTheme.faint)
                 }
+                .id("prior-steps")
             }
         }
         .padding(.horizontal, 10)
@@ -226,6 +280,35 @@ struct ToolProgressRail: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(CCCTheme.border, lineWidth: 1)
         )
+    }
+
+    /// 分段进度轨：done / running / error / 未达
+    private var segmentProgressTrack: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { _, step in
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(segmentFill(step.status))
+                    .frame(height: 3)
+                    .overlay {
+                        if step.status == .running {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.45)
+                                .opacity(0.85)
+                        }
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("工具进度 \(steps.filter { $0.status == .done }.count)/\(steps.count)")
+    }
+
+    private func segmentFill(_ s: ToolStep.Status) -> Color {
+        switch s {
+        case .done: return CCCTheme.nodeDone
+        case .running: return CCCTheme.accent
+        case .error: return CCCTheme.nodeFail
+        }
     }
 
     private var finishedBlock: some View {
@@ -266,7 +349,7 @@ struct ToolProgressRail: View {
 
     private func stepList(_ list: [ToolStep]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            ForEach(list.suffix(16)) { step in
+            ForEach(list.suffix(16), id: \.id) { step in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: statusSymbol(step.status))
                         .font(.system(size: 10, weight: .semibold))
@@ -276,10 +359,18 @@ struct ToolProgressRail: View {
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.secondary)
                         .frame(width: 14)
-                    Text(step.label)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(CCCTheme.ink.opacity(0.88))
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(step.label)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(CCCTheme.ink.opacity(0.88))
+                            .lineLimit(2)
+                        if let hint = step.resultHint, !hint.isEmpty {
+                            Text(hint)
+                                .font(.system(size: 11))
+                                .foregroundStyle(CCCTheme.faint)
+                                .lineLimit(1)
+                        }
+                    }
                     Spacer(minLength: 0)
                 }
             }

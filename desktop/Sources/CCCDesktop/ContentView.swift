@@ -663,30 +663,36 @@ struct CodexChatPaneBody: View {
         needsInstantBottomPin = true
     }
 
-    /// 切项目/会话：先圆圈加载，再缓慢露出消息，避免硬切闪屏
+    /// 切项目/会话：遮罩期内先钉底，再无动画露出（避免顶→底漂移）
     private func beginPaneSwitchTransition() {
         paneSwitchGeneration &+= 1
         let gen = paneSwitchGeneration
-        // 立刻遮住旧内容（无动画），避免看到错位一瞬间
         var hide = Transaction()
         hide.disablesAnimations = true
         withTransaction(hide) {
             paneContentOpacity = 0
             showPaneSwitchSpinner = true
             pinBottomOnNextScroll()
+            // 预置末条 id，避免恢复后 scroll 再判 streaming 节流
+            if let last = displayMessages.last {
+                lastScrollTargetId = "\(paneThreadId ?? "")-\(last.id)"
+            }
         }
         Task { @MainActor in
-            // 最短展示，让过渡可感知；期间后台已水合消息
-            try? await Task.sleep(nanoseconds: 320_000_000)
-            guard gen == paneSwitchGeneration else { return }
-            // 再等一帧，确保 LazyVStack 已挂上新 tid 的行
+            // 遮罩期内：让 LazyVStack 挂上后立刻钉底（用户看不见）
             await Task.yield()
             guard gen == paneSwitchGeneration else { return }
-            withAnimation(.easeOut(duration: 0.42)) {
+            bottomPinTick &+= 1
+            try? await Task.sleep(nanoseconds: 320_000_000)
+            guard gen == paneSwitchGeneration else { return }
+            await Task.yield()
+            guard gen == paneSwitchGeneration else { return }
+            var reveal = Transaction()
+            reveal.disablesAnimations = true
+            withTransaction(reveal) {
                 showPaneSwitchSpinner = false
                 paneContentOpacity = 1
             }
-            bottomPinTick &+= 1
         }
     }
 
@@ -950,6 +956,13 @@ struct CodexChatPaneBody: View {
                             .padding(.bottom, 24)
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel("空对话引导：聊透目标，定稿，确认转任务")
+                        }
+                        // 新对话仅 1 条 user、未 streaming：顶部留白把气泡压到中上
+                        if displayMessages.count == 1,
+                           displayMessages.first?.role == "user",
+                           !paneStreaming {
+                            Spacer()
+                                .frame(height: max(geometry.size.height * 0.28, 140))
                         }
                         ForEach(displayMessages) { msg in
                             CodexMessageRow(message: msg)

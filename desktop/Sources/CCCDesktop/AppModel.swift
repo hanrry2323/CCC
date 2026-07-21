@@ -2676,15 +2676,19 @@ final class AppModel: ObservableObject {
                 }
                 // stream status 在 mutate 外按 thread 写
             case .toolResult(let ok, _):
+                // 只更新该 step 状态 + resultHint；勿在工具间空隙置 toolsFinished（否则绿勾闪）
                 if let ri = msgs[idx].toolSteps.lastIndex(where: { $0.status == .running }) {
                     msgs[idx].toolSteps[ri].status = ok ? .done : .error
+                    let step = msgs[idx].toolSteps[ri]
+                    msgs[idx].toolSteps[ri].resultHint = ToolProgressHelper.resultHint(
+                        name: step.name, ok: ok, label: step.label
+                    )
                 } else if let last = msgs[idx].toolSteps.indices.last {
                     msgs[idx].toolSteps[last].status = ok ? .done : .error
-                }
-                let allDone = !msgs[idx].toolSteps.isEmpty
-                    && msgs[idx].toolSteps.allSatisfy { $0.status != .running }
-                if allDone {
-                    msgs[idx].toolsFinished = true
+                    let step = msgs[idx].toolSteps[last]
+                    msgs[idx].toolSteps[last].resultHint = ToolProgressHelper.resultHint(
+                        name: step.name, ok: ok, label: step.label
+                    )
                 }
             case .cost(let tokens, _, _):
                 if let t = tokens, t > 0 {
