@@ -32,6 +32,7 @@
 | [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板 |
 | [`product/hub-shell-phase6-qb.md`](product/hub-shell-phase6-qb.md) | Phase6 真实仓 qb 绿通记录 |
 | [`product/desktop-agent-sidecar.md`](product/desktop-agent-sidecar.md) | sidecar / loop-code 热路径 |
+| [`product/loop-code-ownership-cut.md`](product/loop-code-ownership-cut.md) | **M1 Desktop 独占 loop-code / 配置切割（战略 SSOT）** |
 | [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
 | [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
 | [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |

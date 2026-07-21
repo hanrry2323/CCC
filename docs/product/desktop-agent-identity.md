@@ -70,7 +70,8 @@ Desktop 对话面产品搭档（本机 sidecar）
 禁止：flash 中转站、:4000、ai-loop-router
 ```
 
-全局 `~/.claude/CLAUDE.md` 也会注入 loop-code；**须与本文一致**（中转站已退役）。
+**配置家（Phase1）**：`CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；私有 `CLAUDE.md` 须与本文一致。  
+过渡期若仍读到个人 `~/.claude/CLAUDE.md`，视为泄漏，对齐 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md)。
 
 ---
 
@@ -83,6 +84,6 @@ Desktop 对话面产品搭档（本机 sidecar）
 | 快捷条 | `desktop/.../QuickPrompts.swift` |
 | 对齐基线 prompt | `scripts/_project_baseline.py` → `baseline_prompt_for_claude` |
 | 热路径 | `scripts/ccc-agent-sidecar.py`（`wrap_hub_prompt`） |
-| 全局易串台 | `~/.claude/CLAUDE.md`（须与本文一致） |
+| 私有配置家 | `~/.ccc/loop-code/CLAUDE.md`（目标）；个人 `~/.claude` 过渡期勿当 SSOT |
 
 运维说明（旧名保留）：[`../ops/hub-boss-voice.md`](../ops/hub-boss-voice.md)。

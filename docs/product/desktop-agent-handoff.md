@@ -98,7 +98,7 @@ python3 /Users/fan/program/CCC/scripts/ccc-sync-agent-roots.py
 - 被问「你是谁」：**禁止**提 flash 中转站 / `:4000`；口径见 [`desktop-agent-identity.md`](desktop-agent-identity.md)。
 
 对话 Agent 身份/心智 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。  
-全局易串台源：`~/.claude/CLAUDE.md`（须与本文一致；中转站已退役）。
+配置家目标：`~/.ccc/loop-code`（见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md)）；过渡期勿以个人 `~/.claude/CLAUDE.md` 为 SSOT。
 
 ---
 

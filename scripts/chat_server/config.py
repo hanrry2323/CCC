@@ -192,10 +192,65 @@ def _resolve_hub_claude_bin() -> str:
 
 
 CLAUDE_BIN = _resolve_hub_claude_bin()
-CLAUDE_ENV = {
-    **os.environ,
-    "PATH": f"{os.environ.get('PATH', '')}:{os.path.dirname(CLAUDE_BIN) if CLAUDE_BIN else ''}",
-}
+
+# SDK 子进程 env：白名单（禁止全量继承 shell，避免个人 Claude / 脏变量泄漏进 loop-code）
+# 见 docs/product/loop-code-ownership-cut.md Phase1
+_CLAUDE_ENV_EXACT = frozenset({
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+    "TERM",
+    "COLORTERM",
+    "CLAUDE_CONFIG_DIR",
+    "CLAUDE_PROJECT_DIR",
+    "XDG_RUNTIME_DIR",
+    "XDG_CONFIG_HOME",
+    "NO_COLOR",
+    "FORCE_COLOR",
+})
+_CLAUDE_ENV_PREFIXES = ("ANTHROPIC_", "CCC_", "CLAUDE_CODE_")
+
+
+def build_claude_env() -> dict[str, str]:
+    """构建传给 ClaudeSDKClient / loop-code 的环境变量（调用时快照）。"""
+    out: dict[str, str] = {}
+    for key, val in os.environ.items():
+        if key in _CLAUDE_ENV_EXACT or any(key.startswith(p) for p in _CLAUDE_ENV_PREFIXES):
+            out[key] = val
+    bin_dir = os.path.dirname(CLAUDE_BIN) if CLAUDE_BIN else ""
+    path = out.get("PATH") or os.environ.get("PATH") or ""
+    if bin_dir and bin_dir not in path.split(":"):
+        path = f"{bin_dir}:{path}" if path else bin_dir
+    out["PATH"] = path
+    # 确保配置家存在且写入 env（sidecar 应已 setdefault）
+    try:
+        from _claude_cli import ensure_loop_code_config_dir, default_loop_code_config_dir
+
+        cfg = (out.get("CLAUDE_CONFIG_DIR") or "").strip()
+        if not cfg and (os.environ.get("CCC_EXECUTOR") or "").strip().lower() in (
+            "loop-code",
+            "loopcode",
+            "loop_code",
+        ):
+            cfg = str(default_loop_code_config_dir())
+        if cfg:
+            ensure_loop_code_config_dir(Path(cfg).expanduser())
+            out["CLAUDE_CONFIG_DIR"] = str(Path(cfg).expanduser())
+    except Exception:
+        pass
+    return out
+
+
+# 兼容旧引用；热路径请用 build_claude_env()（会话连接时再取，含最新 CLAUDE_CONFIG_DIR）
+CLAUDE_ENV = build_claude_env()
 
 
 def validate_auth_config() -> None:

@@ -454,7 +454,7 @@ class ClaudeSessionManager:
             "permission_mode": "bypassPermissions",
             "cli_path": claude_bin,
             "env": {
-                **config.CLAUDE_ENV,
+                **config.build_claude_env(),
                 "CLAUDE_PROJECT_DIR": project_path,
             },
         }

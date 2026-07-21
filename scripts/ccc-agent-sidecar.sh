@@ -45,8 +45,20 @@ export CCC_EXECUTOR="${CCC_EXECUTOR:-loop-code}"
 export CCC_AGENT_HOST="${CCC_AGENT_HOST:-127.0.0.1}"
 export CCC_AGENT_PORT="${CCC_AGENT_PORT:-7788}"
 export CCC_AGENT_CWD="${CCC_AGENT_CWD:-$ROOT}"
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.ccc/loop-code}"
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-${CCC_AGENT_ROUTER:-https://api.minimaxi.com/anthropic}}"
 export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
+
+mkdir -p "$CLAUDE_CONFIG_DIR"
+if [[ ! -f "${CLAUDE_CONFIG_DIR}/CLAUDE.md" ]]; then
+  cat > "${CLAUDE_CONFIG_DIR}/CLAUDE.md" <<'CLAUDE_MD_EOF'
+# CCC Desktop · loop-code 私有配置家
+
+你是 **Desktop 对话面** 的产品/架构搭档（本机 sidecar → loop-code）。
+帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
+禁止口径：flash 中转站、`:4000`、ai-loop-router。
+CLAUDE_MD_EOF
+fi
 
 if [[ ! -x "${ROOT}/vendor/loop-code/cli" ]]; then
   echo "WARN: missing vendor/loop-code/cli — install via scripts/install-executor-loop-code.sh"

@@ -35,6 +35,10 @@ if str(SCRIPTS) not in sys.path:
 
 # Ensure loop-code before chat_server config resolves CLI
 os.environ.setdefault("CCC_EXECUTOR", "loop-code")
+os.environ.setdefault(
+    "CLAUDE_CONFIG_DIR",
+    str(Path.home() / ".ccc" / "loop-code"),
+)
 # 默认直连 MiniMax；仅当显式设 CCC_AGENT_ROUTER 时走中转
 os.environ.setdefault(
     "ANTHROPIC_BASE_URL",
@@ -42,6 +46,14 @@ os.environ.setdefault(
     or os.environ.get("CCC_ANTHROPIC_BASE_URL")
     or "https://api.minimaxi.com/anthropic",
 )
+
+from _claude_cli import (  # noqa: E402
+    ensure_loop_code_config_dir,
+    resolve_claude_cli,
+)
+
+# Phase1：私有配置家种子（与个人 ~/.claude 切割）；须在 chat_server import 前
+ensure_loop_code_config_dir(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser())
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
@@ -53,8 +65,6 @@ from chat_server.services.claude_client import (  # noqa: E402
     stream_chat,
 )
 from chat_server.hub_voice import wrap_hub_prompt  # noqa: E402
-from _claude_cli import resolve_claude_cli  # noqa: E402
-
 HOST = os.environ.get("CCC_AGENT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CCC_AGENT_PORT", "7788"))
 DEFAULT_CWD = os.environ.get("CCC_AGENT_CWD", str(ROOT))
@@ -180,11 +190,22 @@ async def health():
     cli = resolve_claude_cli(require=False) or ""
     # 最小化暴露：只回 basename，不回完整路径
     cli_name = Path(cli).name if cli else ""
+    cfg = (os.environ.get("CLAUDE_CONFIG_DIR") or "").strip()
+    cfg_mark = ""
+    if cfg:
+        try:
+            cfg_mark = str(Path(cfg).expanduser().resolve())
+        except OSError:
+            cfg_mark = cfg
+        # 验收用：只暴露是否落在 ~/.ccc/loop-code，完整家目录可含用户名
+        if ".ccc/loop-code" in cfg_mark.replace("\\", "/"):
+            cfg_mark = "~/.ccc/loop-code"
     return {
         "ok": True,
         "product": "CCC Agent Sidecar",
         "agent_runtime": "loop-code" if "loop-code" in cli.replace("\\", "/") else "claude",
         "agent_cli": cli_name,
+        "config_dir": cfg_mark or None,
         "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
         # Desktop 能力契约（不暴露密钥/完整路径）
@@ -513,6 +534,10 @@ async def chat(request: Request):
 
 
 def main() -> None:
+    cfg = ensure_loop_code_config_dir(
+        Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(Path.home() / ".ccc" / "loop-code")).expanduser()
+    )
+    os.environ["CLAUDE_CONFIG_DIR"] = str(cfg)
     cli = resolve_claude_cli(require=True)
     tok = _effective_token()
     if not tok:
@@ -534,6 +559,7 @@ def main() -> None:
         os.environ["CCC_AGENT_TOKEN"] = tok
         print(f"[ccc-agent] generated token → {token_path}", flush=True)
     print(f"[ccc-agent] cli={cli}", flush=True)
+    print(f"[ccc-agent] config_dir={cfg}", flush=True)
     print(f"[ccc-agent] router={os.environ.get('ANTHROPIC_BASE_URL')}", flush=True)
     print(f"[ccc-agent] auth=required listen=http://{HOST}:{PORT}", flush=True)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

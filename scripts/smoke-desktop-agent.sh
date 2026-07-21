@@ -36,15 +36,17 @@ import json,sys
 d=json.load(sys.stdin)
 rt=d.get('agent_runtime') or ''
 cli=d.get('agent_cli') or ''
+cfg=d.get('config_dir') or ''
 print('sidecar agent_runtime=', rt)
 print('sidecar agent_cli=', cli)
+print('sidecar config_dir=', cfg)
 print('sidecar auth_required=', d.get('auth_required'))
 assert d.get('ok') is True, d
 assert rt == 'loop-code', f'sidecar SSOT requires loop-code, got runtime={rt!r} cli={cli!r}'
 assert cli in ('cli', 'loop-code') or 'loop' in cli.lower() or cli == 'cli', f'unexpected cli basename: {cli!r}'
-print('OK sidecar agent=loop-code')
+assert '.ccc/loop-code' in str(cfg).replace('\\\\', '/'), f'config_dir must be ~/.ccc/loop-code, got {cfg!r}'
+print('OK sidecar agent=loop-code config_dir')
 "
-
 # 本机 sidecar token（~/.ccc/agent-token）
 TOKEN_FILE="${HOME}/.ccc/agent-token"
 AGENT_TOKEN="${CCC_AGENT_TOKEN:-}"

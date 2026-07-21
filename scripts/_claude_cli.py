@@ -3,11 +3,15 @@
 launchd / sanitized env 的 PATH 往往不含 ~/.local/bin，
 导致 Popen(['claude']) → Errno 2。必须解析为绝对路径。
 
-优先级（对话 CLI）:
+优先级（对话 CLI，宽松 / Engine）:
   1. CCC_CLAUDE_BIN（显式绝对/相对路径或 PATH 名）
   2. CCC_EXECUTOR=loop-code → <CCC_HOME>/vendor/loop-code/cli
   3. PATH which('claude')（扩 PATH）
   4. 固定候选路径
+
+严格模式（sidecar / CCC_EXECUTOR=loop-code 默认）:
+  仅 vendor/loop-code/cli，或 CCC_CLAUDE_BIN 且路径含 loop-code；禁止 PATH 个人 claude。
+  见 docs/product/loop-code-ownership-cut.md
 """
 
 from __future__ import annotations
@@ -22,6 +26,17 @@ class ClaudeCliMissing(RuntimeError):
     """claude / loop-code CLI 不可用。"""
 
 
+_LOOP_CODE_CLAUDE_MD = """# CCC Desktop · loop-code 私有配置家
+
+你是 **Desktop 对话面** 的产品/架构搭档（本机 sidecar → loop-code）。
+帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
+你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
+
+禁止口径：flash 中转站、`:4000`、ai-loop-router。
+身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
+"""
+
+
 def ccc_home() -> Path:
     """CCC 仓根（本文件在 scripts/）。"""
     return Path(__file__).resolve().parents[1]
@@ -29,6 +44,30 @@ def ccc_home() -> Path:
 
 def loop_code_cli_path() -> Path:
     return ccc_home() / "vendor" / "loop-code" / "cli"
+
+
+def default_loop_code_config_dir() -> Path:
+    """M1 sidecar 私有配置家（CLAUDE_CONFIG_DIR）。"""
+    return Path.home() / ".ccc" / "loop-code"
+
+
+def ensure_loop_code_config_dir(path: Path | None = None) -> Path:
+    """创建私有配置家并种子短版 CLAUDE.md（已存在则不覆盖）。"""
+    root = path or default_loop_code_config_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    claude_md = root / "CLAUDE.md"
+    if not claude_md.is_file():
+        claude_md.write_text(_LOOP_CODE_CLAUDE_MD, encoding="utf-8")
+    return root
+
+
+def path_is_loop_code(bin_path: str | Path) -> bool:
+    """路径是否指向 loop-code 二进制（禁止个人 claude 冒充）。"""
+    try:
+        resolved = str(Path(bin_path).expanduser().resolve()).replace("\\", "/")
+    except OSError:
+        resolved = str(bin_path).replace("\\", "/")
+    return "loop-code" in resolved.lower()
 
 
 def _extra_path_dirs() -> list[str]:
@@ -74,26 +113,46 @@ def _executor_wants_loop_code() -> bool:
     )
 
 
-def resolve_claude_cli(*, require: bool = True) -> Optional[str]:
+def resolve_claude_cli(
+    *,
+    require: bool = True,
+    executor_strict: bool | None = None,
+) -> Optional[str]:
     """返回 Claude 兼容 CLI 可执行绝对路径。
 
     require=True 且找不到时抛 ClaudeCliMissing。
+    executor_strict=True：只接受 loop-code；禁止 PATH 个人 claude。
+    executor_strict=None：当 CCC_EXECUTOR=loop-code 时自动严格（sidecar 默认）。
     """
+    if executor_strict is None:
+        executor_strict = _executor_wants_loop_code()
+
     env_bin = (os.environ.get("CCC_CLAUDE_BIN") or "").strip()
     if env_bin:
         p = Path(env_bin).expanduser()
+        resolved: Optional[str] = None
         if _is_executable(p):
-            return str(p.resolve())
-        w = which(env_bin)
-        if w:
-            return w
+            resolved = str(p.resolve())
+        else:
+            w = which(env_bin)
+            if w:
+                resolved = w
+        if resolved:
+            if executor_strict and not path_is_loop_code(resolved):
+                if require:
+                    raise ClaudeCliMissing(
+                        f"CCC_CLAUDE_BIN={env_bin!r} is not loop-code "
+                        f"(got {resolved!r}); sidecar forbids personal claude"
+                    )
+                return None
+            return resolved
         if require:
             raise ClaudeCliMissing(
                 f"CCC_CLAUDE_BIN={env_bin!r} is not an executable file"
             )
         return None
 
-    if _executor_wants_loop_code():
+    if _executor_wants_loop_code() or executor_strict:
         lc = loop_code_cli_path()
         if _is_executable(lc):
             return str(lc.resolve())
@@ -104,7 +163,7 @@ def resolve_claude_cli(*, require: bool = True) -> Optional[str]:
             )
         return None
 
-    # Expand PATH for which()
+    # 宽松路径（Engine / 无 CCC_EXECUTOR）：Expand PATH for which()
     old_path = os.environ.get("PATH", "")
     extras = [d for d in _extra_path_dirs() if d not in old_path.split(":")]
     if extras:

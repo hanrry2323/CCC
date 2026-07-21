@@ -71,16 +71,26 @@ bash scripts/install-agent-sidecar-plist.sh --start
 
 **回默认 MiniMax**：`unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY` 后重装 sidecar。
 
+## 配置切割（Phase1+）
+
+战略 SSOT：[`../product/loop-code-ownership-cut.md`](../product/loop-code-ownership-cut.md)。
+
+| 项 | 值 |
+|----|-----|
+| 配置家 | `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`（plist / 前台 sidecar） |
+| 解析 | sidecar 产品路径 **禁止** PATH 回落个人 `claude` |
+| 人格 | `hub_voice` + 私有 `~/.ccc/loop-code/CLAUDE.md` |
+
 ## 与 Mac2017 的关系
 
 | 项 | M1 | Mac2017 |
 |----|-----|---------|
-| loop-code 二进制 | **有**（arm64，sidecar 用） | **无**（已删，不再需要） |
+| loop-code 二进制 | **有**（arm64，sidecar 用） | **无**（已删，不再需要；x86 ≠ arm64） |
 | Hub `/api/chat` | 不调用 | **已删路由**（404） |
-| Engine 扇出 | 不跑 | **Claude Code**（`scripts/board/roles/product.py`） |
+| Engine 扇出 | 不跑 | **原版 Claude CLI x86**（`scripts/board/roles/product.py`）；不为一致换 loop-code |
 | dev 写码 | 不跑 | **OpenCode**（`scripts/board/roles/dev.py`） |
 
 ## 替换
 
-调试可临时去掉 `CCC_EXECUTOR` 回退 PATH `claude`；产品交付必须以 loop-code 为准。  
+产品交付必须以 loop-code 为准；sidecar **不得**回落 PATH `claude`。  
 看板开发换执行器不在本文范围（见 [`overview.md`](overview.md)）。
