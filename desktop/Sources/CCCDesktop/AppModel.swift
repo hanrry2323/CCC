@@ -332,10 +332,77 @@ final class AppModel: ObservableObject {
         }
         applyFlowSnapshot(threadFlow[tid])
         syncLegacyChatMirror(from: tid)
+        hydrateTransferDeliveryFromDisk()
+        hydrateBoardCacheIfNeeded(projectId: pid)
+        rearmFanoutWatchdogIfNeeded(projectId: pid)
         if !projects.isEmpty {
             connected = true
             statusText = "本机缓存 · Hub 同步中…"
             hubSyncing = true
+        }
+    }
+
+    /// R1：从 outbox / failed / 磁盘 flow 重建投递徽章（再开第一帧诚实）
+    private func hydrateTransferDeliveryFromDisk() {
+        var map = transferDeliveryByThread
+        for item in LocalSessionStore.loadTransferOutbox() {
+            if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
+                map[item.thread_id] = .failed
+            } else {
+                map[item.thread_id] = .queued
+            }
+        }
+        for item in LocalSessionStore.loadFailedTransfers() {
+            map[item.thread_id] = .failed
+        }
+        // 无 outbox 但有未完成 epic → 已投递/已受理（sidecar 可能已在关 App 期间投完）
+        for (tid, snap) in threadFlow {
+            if map[tid] != nil { continue }
+            let eid = (snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !eid.isEmpty else { continue }
+            let stage = (snap.epic?.user_stage ?? "").lowercased()
+            if stage == "done" { continue }
+            if snap.works.isEmpty {
+                map[tid] = .delivered
+            } else {
+                map[tid] = .accepted
+            }
+        }
+        transferDeliveryByThread = map
+    }
+
+    /// R2：看板磁盘缓存上屏
+    private func hydrateBoardCacheIfNeeded(projectId: String) {
+        guard let cache = LocalSessionStore.loadBoardCache(projectId: projectId) else { return }
+        if boardColumns.isEmpty {
+            boardColumns = cache.columns
+            boardWorkspaceLabel = cache.workspace ?? projectId
+            boardStale = true
+            boardError = nil
+            updateStackStatus()
+        }
+    }
+
+    /// R4/R5：hydrate 后若 epic 未拆分，重挂 fanout watchdog；禁闪「编排空闲」
+    private func rearmFanoutWatchdogIfNeeded(projectId: String?) {
+        let pid = projectId ?? selectedProjectId
+        guard let pid else { return }
+        let tid = threadIdForProject(pid)
+        guard var snap = threadFlow[tid] else { return }
+        let eid = (snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !eid.isEmpty else { return }
+        let stage = (snap.epic?.user_stage ?? snap.headline).lowercased()
+        if stage == "done" { return }
+        if snap.works.isEmpty {
+            if snap.emptyMessage.contains("编排空闲") || snap.emptyMessage.isEmpty {
+                snap.emptyMessage = "编排同步中…"
+                threadFlow[tid] = snap
+                bumpFlowRevision(tid)
+                if selectedProjectId == pid {
+                    applyFlowSnapshot(snap)
+                }
+            }
+            startFanoutWatchdog(epicId: eid, projectId: pid)
         }
     }
 
@@ -644,7 +711,9 @@ final class AppModel: ObservableObject {
             updateConnectionStatusText(localOK: localOK, hubOK: true)
             await flushPendingHubSync()
             let delivered = await flushTransferOutbox()
+            reconcileTransferDeliveryWithOutbox()
             await bindFlowToCurrentThread()
+            await refreshProjectTaskState()
             if delivered > 0 {
                 showToast("Hub 已恢复 · 排队任务已投递")
             }
@@ -777,6 +846,10 @@ final class AppModel: ObservableObject {
             }
             await self.flushPendingHubSync()
             await self.flushTransferOutbox()
+            self.reconcileTransferDeliveryWithOutbox()
+            // R6：不等 10s 首轮 poll
+            await self.refreshProjectTaskState()
+            self.rearmFanoutWatchdogIfNeeded(projectId: self.selectedProjectId)
         }
         startProjectTaskPolling()
         startAgentUsageTicker()
@@ -895,6 +968,7 @@ final class AppModel: ObservableObject {
             startWarmLoopIfNeeded()
             await flushPendingHubSync()
             await flushTransferOutbox()
+            reconcileTransferDeliveryWithOutbox()
         } catch {
             setHubReachable(false, source: "refresh_projects", error: error)
             lastError = error.localizedDescription
@@ -978,6 +1052,9 @@ final class AppModel: ObservableObject {
             if let snap = threadFlow[eagerTid] {
                 applyFlowSnapshot(snap)
             }
+            hydrateBoardCacheIfNeeded(projectId: id)
+            rearmFanoutWatchdogIfNeeded(projectId: id)
+            reconcileTransferDeliveryWithOutbox()
         }
         // 多会话：刷新索引后再对齐最近线程
         await refreshThreads(projectId: id)
@@ -1505,7 +1582,14 @@ final class AppModel: ObservableObject {
             flowWorks = snap.works
             flowHeadline = snap.headline
             recentEpics = snap.recentEpics
-            flowEmptyMessage = snap.emptyMessage
+            // R5：有 bind 禁止闪「编排空闲」
+            var empty = snap.emptyMessage
+            let eid = (snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !eid.isEmpty, snap.works.isEmpty,
+               empty.contains("编排空闲") || empty.isEmpty {
+                empty = "编排同步中…"
+            }
+            flowEmptyMessage = empty
             flowFanoutHint = snap.fanoutHint
             flowStopLossHint = snap.stopLossHint
         } else {
@@ -1951,6 +2035,7 @@ final class AppModel: ObservableObject {
         var delivered = 0
         for item in pending {
             if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
+                LocalSessionStore.enqueueFailedTransfer(item)
                 LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
                 setTransferDelivery(item.thread_id, .failed)
                 continue
@@ -1977,9 +2062,11 @@ final class AppModel: ObservableObject {
                 let ok = await applyTransferSuccess(resp: resp, tid: item.thread_id, pid: item.project_id)
                 if ok {
                     LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
+                    LocalSessionStore.dequeueFailedTransfer(clientRequestId: item.client_request_id)
                     delivered += 1
                 } else {
                     // 空 epic 等：态已 failed；出队避免毒丸死循环
+                    LocalSessionStore.enqueueFailedTransfer(item)
                     LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
                 }
             } catch {
@@ -1987,7 +2074,85 @@ final class AppModel: ObservableObject {
                 setTransferDelivery(item.thread_id, .queued)
             }
         }
+        reconcileTransferDeliveryWithOutbox()
         return delivered
+    }
+
+    /// R8：按 outbox/failed 剩余校正徽章（sidecar 关 App 投完后 UI 对齐）
+    func reconcileTransferDeliveryWithOutbox() {
+        let pendingTids = Set(LocalSessionStore.loadTransferOutbox().map(\.thread_id))
+        let failedTids = Set(LocalSessionStore.loadFailedTransfers().map(\.thread_id))
+        var copy = transferDeliveryByThread
+        for (tid, phase) in copy {
+            if pendingTids.contains(tid) {
+                if phase != .delivering {
+                    copy[tid] = .queued
+                }
+            } else if failedTids.contains(tid) {
+                copy[tid] = .failed
+            } else if phase == .queued || phase == .delivering {
+                if let snap = threadFlow[tid],
+                   let eid = snap.epicId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !eid.isEmpty {
+                    copy[tid] = flowConfirmsOrchestrationAccepted(threadId: tid, epicId: eid)
+                        ? .accepted : .delivered
+                } else {
+                    copy[tid] = .delivered
+                }
+            }
+        }
+        // 补上 hydrate 时未覆盖的 pending/failed
+        for item in LocalSessionStore.loadTransferOutbox() where copy[item.thread_id] == nil {
+            copy[item.thread_id] = .queued
+        }
+        for item in LocalSessionStore.loadFailedTransfers() where copy[item.thread_id] == nil {
+            copy[item.thread_id] = .failed
+        }
+        transferDeliveryByThread = copy
+    }
+
+    /// R9：投递失败条「后台再试」（用户不点 Hub，只触发本机重排队）
+    func retryFailedTransfersInBackground() {
+        let n = LocalSessionStore.requeueAllFailedTransfers()
+        guard n > 0 else {
+            showToast("没有待重试的投递")
+            return
+        }
+        for item in LocalSessionStore.loadTransferOutbox() {
+            setTransferDelivery(item.thread_id, .queued)
+        }
+        showToast("已重新排队 \(n) 笔 · 后台投递")
+        Task { @MainActor in
+            await flushTransferOutbox()
+            reconcileTransferDeliveryWithOutbox()
+        }
+    }
+
+    /// L2：回前台 — flush + bindFlow + 灯/看板轻刷；Hub 不可达则确保 recover
+    func onForegroundResume() {
+        Task { @MainActor in
+            reconcileTransferDeliveryWithOutbox()
+            if hubReachable {
+                await flushPendingHubSync()
+                await flushTransferOutbox()
+                reconcileTransferDeliveryWithOutbox()
+                await bindFlowToCurrentThread()
+                await refreshProjectTaskState()
+                if destination == .board {
+                    await refreshBoard()
+                }
+            } else {
+                startHubRecoverLoopIfNeeded()
+            }
+        }
+    }
+
+    /// 只读同步文案（流程轨/状态栏；无强迫操作按钮）
+    var orchestrationSyncLabel: String {
+        if hubSyncing { return "本机缓存 · 同步中" }
+        if !hubReachable { return "Hub 暂不可达（后台重试）" }
+        if let eid = currentEpicId, !eid.isEmpty { return "已接上 · 编排中" }
+        return "已接上"
     }
 
     func transferDelivery(for threadId: String?) -> TransferDeliveryPhase? {
@@ -2193,14 +2358,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 启动项目卡片后台任务态轮询（10s）
+    /// 启动项目卡片后台任务态轮询（Chat 页低频灯；首轮由 bootstrap 立即拉）
     func startProjectTaskPolling() {
         guard projectPollTask == nil else { return }
         projectPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { break }
                 await self.refreshProjectTaskState()
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                // R7：Chat 页只刷 summaries 灯，约 20s；Board 页另有 15s 整板轮询
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
             }
         }
     }
@@ -3368,16 +3534,15 @@ final class AppModel: ObservableObject {
         mutateTransferForm(tid) { $0.error = nil }
         dismissTransferSheet(threadId: tid)
 
+        // 前台只确认「已排队」；连通 / 重试 / 卡死全在后台，勿用全局 busy 锁 UI
         if !hubReachable {
-            showToast("Hub 暂不可达，已排队待投递")
+            showToast("已排队 · Hub 恢复后自动投递")
             startHubRecoverLoopIfNeeded()
             return
         }
 
-        busy = true
-        defer { busy = false }
         setTransferDelivery(tid, .delivering)
-        showToast("正在投递…")
+        showToast("已受理 · 后台投递中")
         let req = TransferRequest(
             project_id: pid,
             thread_id: tid,
@@ -3393,6 +3558,19 @@ final class AppModel: ObservableObject {
             complexity: "medium",
             client_request_id: requestId
         )
+        Task { [weak self] in
+            guard let self else { return }
+            await self.deliverTransferInBackground(req: req, tid: tid, pid: pid, requestId: requestId)
+        }
+    }
+
+    /// Hub POST 转任务：仅后台；失败回 outbox queued，不挡对话/看板切换
+    private func deliverTransferInBackground(
+        req: TransferRequest,
+        tid: String,
+        pid: String,
+        requestId: String
+    ) async {
         do {
             try await prepareClient()
             let resp = try await client.transfer(req)
@@ -3400,7 +3578,6 @@ final class AppModel: ObservableObject {
             if ok {
                 LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
             } else {
-                // 空 epic：出队防毒丸；态已 failed
                 LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
             }
         } catch {
@@ -3419,7 +3596,6 @@ final class AppModel: ObservableObject {
                     return false
                 } ?? false)
             if transient {
-                // outbox 已有同 CRID；保持 queued，等 Hub 恢复 flush
                 setTransferDelivery(tid, .queued)
                 showToast("投递中断，已排队：\(plain)")
                 let connLike = lower.contains("timed out") || lower.contains("offline")
@@ -4016,6 +4192,8 @@ final class AppModel: ObservableObject {
             if let pid {
                 let tid = threadIdForProject( pid)
                 persistCurrentThreadSnapshot(threadId: tid)
+                // R2：先进磁盘缓存，再静默拉 live
+                hydrateBoardCacheIfNeeded(projectId: pid)
             } else if let tid = selectedThreadId {
                 persistCurrentThreadSnapshot(threadId: tid)
             }
@@ -4049,10 +4227,18 @@ final class AppModel: ObservableObject {
             ?? pid
             ?? "CCC"
         boardWorkspaceLabel = ws
+        // 无列时先上缓存，避免白闪
+        if let pid, boardColumns.isEmpty {
+            hydrateBoardCacheIfNeeded(projectId: pid)
+        }
         do {
             try await prepareClient()
             let snap = try await client.fetchBoard(workspace: ws, includeHidden: boardShowHidden)
-            applyBoardSnapshot(columns: snap.columns ?? [:], error: nil)
+            let cols = snap.columns ?? [:]
+            applyBoardSnapshot(columns: cols, error: nil)
+            if let pid {
+                LocalSessionStore.saveBoardCache(projectId: pid, workspace: ws, columns: cols)
+            }
         } catch {
             boardError = error.localizedDescription
             applyBoardSnapshot(columns: boardColumns, error: error)
@@ -4444,8 +4630,7 @@ final class AppModel: ObservableObject {
             showToast("请填齐标题、目标、产线与验收")
             return
         }
-        busy = true
-        defer { busy = false }
+        // R12：Hub 往返不锁全局 busy
         let req = TransferRequest(
             project_id: projectId,
             thread_id: tid,

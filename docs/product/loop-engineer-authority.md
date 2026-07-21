@@ -27,6 +27,10 @@
 | **飞轮** | 归档 / 回测 / 再定意图 |
 | **权威** | 代码与看板只在 register 仓；透镜 live |
 
+**已注册 ≠ 可正式开发。** 正式交给 CCC 前须**全面对齐**（baseline + live 透镜 + risks + 可下达边界）。
+
+**平台开发工具：只认 Cursor，不更换**（[`dev-channel.md`](dev-channel.md)）。仓内若残留 Trae/Zed/「用 Claude Code 改平台」等现行指引 → 删除或标史。
+
 ---
 
 ## 行业共识（我们认可）
@@ -48,7 +52,8 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 |----|------|
 | 加权约 **7.2/10** | **值得继续做**，只压「闭环工程」 |
 | 值钱 | 意图门 · 对话/编排分离 · 权威仓+透镜 · verdict/旁路收死 |
-| 不值钱 | 复刻 IDE · 堆角色 · 堆文档 · 「接很多模型」当卖点 |
+| 不值钱 | 复刻 IDE · 堆角色 · 堆文档 · 「接很多模型/多 IDE」当卖点 |
+| 平台开发 | **只认 Cursor**；不换工具 |
 | 下一程证明 | 已对齐业务仓连续 **3 次**「定稿→在飞→verdict」可复述可纠；达不到就收范围 |
 
 评分画布（讨论产物）：Cursor canvases `ccc-value-scorecard` / `ccc-pain-loop-stages`。
@@ -64,6 +69,43 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 | 日常维护 | 强 | 小目标 + 白名单 + verdict |
 
 **已注册 ≠ 可正式开发。** 正式交给 CCC 前须**全面对齐**：baseline + live 透镜 + risks + 可下达边界。
+
+**平台开发工具：只认 Cursor，不更换**（[`dev-channel.md`](dev-channel.md)）。仓内若残留 Trae/Zed/「用 Claude Code 改平台」等现行指引 → 删除或标史。
+
+### Desktop 流畅原则（人机共识）
+
+**人只定意图；投递/连通/重试/进 Hub/进队列 = 系统后台，用户不碰。**
+
+| 前台（人确认） | 后台（系统扛） |
+|----------------|----------------|
+| 定稿 / 点转任务 / 切看板 | Hub 连通、投递、重试、卡死恢复 |
+| 立刻关 sheet、可继续聊 | 入本机 outbox；**sidecar 常驻 flush**（关 App 不停） |
+| 看板始终画列（可空） | 拉板失败保留快照 + 短超时，不整页死白 |
+
+禁止：
+- 让用户管「是否进 Hub / 是否还在队列 / 要不要重开 App 冲刷」
+- 用全局 `busy` 把对话/切页锁死在一次 Hub 往返上
+
+关 Desktop ≠ 停编排：Hub/Engine 在 2017 继续；本机 outbox 由 `com.ccc.agent-sidecar` 冲刷到 Hub。
+
+### 关再开接续（R1–R12）
+
+| # | 行为 | 结论 |
+|---|------|------|
+| R1 | 投递徽章 | hydrate 从 `transfer-outbox.json` / `transfer-failed.json` / 磁盘 flow 重建 |
+| R2 | 看板首屏 | `board-cache-<project>.json` 冷启动；失败保留 + stale |
+| R3 | 回前台 | `scenePhase.active` → flush + bindFlow + summaries（用户无动作） |
+| R4 | fanout 提示 | 未拆分 epic 再开后重挂 15s watchdog |
+| R5 | 空态 | 有 `boundEpicId` 显示「编排同步中…」，禁闪「编排空闲」 |
+| R6 | 侧栏灯 | bootstrap 立即 `fetchBoardSummaries`，不等首轮 poll |
+| R7 | Chat 页 | 仅 summaries ~20s 刷灯；整板只在 Board 页轮询 |
+| R8 | 双 flush | flush 后按 outbox 剩余校正徽章（sidecar 关 App 投完也对齐） |
+| R9 | 投递耗尽 | 持久 failed 条 +「后台再试」重排队（非让用户管 Hub） |
+| R10 | SSE cursor | 不改协议；靠 snapshot 接续；中间动画可缺 |
+| R11 | 聊天半句 | **不做**中途 SSE 重挂；再发可 resume |
+| R12 | 全局 busy | Hub 往返（含手动建 epic）不锁 `busy` |
+
+再开 = 磁盘 hydrate + 后台 catch-up；**用户无需点同步**。
 
 ---
 

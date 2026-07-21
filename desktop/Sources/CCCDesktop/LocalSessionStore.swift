@@ -27,6 +27,16 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("transfer-outbox.json")
     }
 
+    /// 投递耗尽（attempts≥max）持久失败条；再开仍可见，可「后台再试」
+    static var transferFailedURL: URL {
+        rootURL.appendingPathComponent("transfer-failed.json")
+    }
+
+    static func boardCacheURL(projectId: String) -> URL {
+        let safe = projectId.replacingOccurrences(of: "/", with: "_")
+        return rootURL.appendingPathComponent("board-cache-\(safe).json")
+    }
+
     /// 创建新会话：生成唯一 thread id
     static func createThreadId(projectId: String) -> String {
         "\(projectId)::\(UUID().uuidString.prefix(8))"
@@ -98,6 +108,14 @@ enum LocalSessionStore {
     struct ProjectsCache: Codable {
         var projects: [DesktopProject]
         var default_project: String?
+        var saved_at: String
+    }
+
+    /// 看板冷启动磁盘快照（再开先进缓存，再静默拉 live）
+    struct BoardCacheFile: Codable {
+        var project_id: String
+        var workspace: String?
+        var columns: [String: [BoardTask]]
         var saved_at: String
     }
 
@@ -601,6 +619,91 @@ enum LocalSessionStore {
         ensureDir(rootURL)
         guard let data = try? JSONEncoder().encode(q) else { return }
         try? data.write(to: transferOutboxURL, options: .atomic)
+    }
+
+    // MARK: - Transfer failed (exhausted)
+
+    static func loadFailedTransfers() -> [TransferOutboxItem] {
+        guard let data = try? Data(contentsOf: transferFailedURL),
+              let q = try? JSONDecoder().decode([TransferOutboxItem].self, from: data)
+        else { return [] }
+        return q
+    }
+
+    static func enqueueFailedTransfer(_ item: TransferOutboxItem) {
+        var q = loadFailedTransfers()
+        if let i = q.firstIndex(where: { $0.client_request_id == item.client_request_id }) {
+            q[i] = item
+        } else if let i = q.firstIndex(where: { $0.thread_id == item.thread_id }) {
+            q[i] = item
+        } else {
+            q.append(item)
+        }
+        writeFailedTransfers(q)
+    }
+
+    static func dequeueFailedTransfer(clientRequestId: String) {
+        var q = loadFailedTransfers()
+        q.removeAll { $0.client_request_id == clientRequestId }
+        writeFailedTransfers(q)
+    }
+
+    /// 失败条重回 outbox（attempts 归零），供「后台再试」
+    @discardableResult
+    static func requeueFailedTransfer(clientRequestId: String) -> TransferOutboxItem? {
+        var failed = loadFailedTransfers()
+        guard let i = failed.firstIndex(where: { $0.client_request_id == clientRequestId }) else {
+            return nil
+        }
+        var item = failed.remove(at: i)
+        writeFailedTransfers(failed)
+        item.attempts = 0
+        enqueueTransfer(item)
+        return item
+    }
+
+    static func requeueAllFailedTransfers() -> Int {
+        let failed = loadFailedTransfers()
+        guard !failed.isEmpty else { return 0 }
+        writeFailedTransfers([])
+        for var item in failed {
+            item.attempts = 0
+            enqueueTransfer(item)
+        }
+        return failed.count
+    }
+
+    private static func writeFailedTransfers(_ q: [TransferOutboxItem]) {
+        ensureDir(rootURL)
+        guard let data = try? JSONEncoder().encode(q) else { return }
+        try? data.write(to: transferFailedURL, options: .atomic)
+    }
+
+    // MARK: - Board disk cache
+
+    static func saveBoardCache(
+        projectId: String,
+        workspace: String?,
+        columns: [String: [BoardTask]]
+    ) {
+        guard !projectId.isEmpty else { return }
+        ensureDir(rootURL)
+        let file = BoardCacheFile(
+            project_id: projectId,
+            workspace: workspace,
+            columns: columns,
+            saved_at: isoFormatter.string(from: Date())
+        )
+        guard let data = try? JSONEncoder().encode(file) else { return }
+        try? data.write(to: boardCacheURL(projectId: projectId), options: .atomic)
+    }
+
+    static func loadBoardCache(projectId: String) -> BoardCacheFile? {
+        guard !projectId.isEmpty else { return nil }
+        guard let data = try? Data(contentsOf: boardCacheURL(projectId: projectId)),
+              let file = try? JSONDecoder().decode(BoardCacheFile.self, from: data)
+        else { return nil }
+        return file
     }
 
     // MARK: - Display compaction

@@ -43,6 +43,20 @@ struct BoardView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.faint)
                         .lineLimit(1)
+                    Button("重试") { Task { await model.refreshBoard() } }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(CCCTheme.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            } else if model.boardBusy && model.boardColumns.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text("正在拉取看板（后台；可回对话继续操作）")
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                    Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
@@ -149,8 +163,12 @@ struct BoardView: View {
     }
 
     private var visibleColumns: [String] {
+        // 始终画出标准列：Hub 未返回 / 空字典时也不能整页空白（死页）
         let keys = Set(model.boardColumns.keys)
-        let ordered = columnOrder.filter { keys.contains($0) }
+        let ordered = columnOrder.filter { keys.contains($0) || keys.isEmpty }
+        if keys.isEmpty {
+            return columnOrder
+        }
         let extra = keys.subtracting(columnOrder).sorted()
         return ordered + extra
     }

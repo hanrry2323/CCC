@@ -26,6 +26,7 @@ import secrets
 import sys
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -134,7 +135,42 @@ def _append_turn_ledger(record: dict[str, Any]) -> None:
         pass
 
 
-app = FastAPI(title="CCC Agent Sidecar", docs_url=None, redoc_url=None)
+_OUTBOX_STOP: asyncio.Event | None = None
+_OUTBOX_TASK: asyncio.Task | None = None
+
+
+@asynccontextmanager
+async def _sidecar_lifespan(_app: FastAPI):
+    """常驻冲刷 Desktop transfer-outbox（关 App 也投 Hub）。"""
+    global _OUTBOX_STOP, _OUTBOX_TASK
+    from chat_server.services.transfer_outbox_flush import flush_loop
+
+    _OUTBOX_STOP = asyncio.Event()
+    _OUTBOX_TASK = asyncio.create_task(
+        flush_loop(_OUTBOX_STOP), name="ccc-transfer-outbox-flush"
+    )
+    try:
+        yield
+    finally:
+        if _OUTBOX_STOP is not None:
+            _OUTBOX_STOP.set()
+        if _OUTBOX_TASK is not None:
+            _OUTBOX_TASK.cancel()
+            try:
+                await _OUTBOX_TASK
+            except (asyncio.CancelledError, Exception):
+                pass
+        _OUTBOX_TASK = None
+        _OUTBOX_STOP = None
+
+
+app = FastAPI(
+    title="CCC Agent Sidecar",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=_sidecar_lifespan,
+)
+
 
 # 对话 SPA 在本机 :7788；若 Hub 页跨域打 sidecar，允许内网 Origin
 _cors_regex = os.environ.get(
@@ -258,6 +294,7 @@ async def health():
         "default_cwd": DEFAULT_CWD,
         "shell": "dialogue",
         "hub_base": (os.environ.get("CCC_HUB_URL") or "http://192.168.3.116:7777").rstrip("/"),
+        "outbox_flush": True,
         # Desktop 能力契约（不暴露密钥/完整路径）
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
         # Desktop Phase17：请求级 model；plist 定上游出口。标签供 UI/运维对照。
@@ -276,8 +313,21 @@ async def health():
             "attachments": True,
             "model_per_request": True,
             "resume": True,
+            "outbox_flush": True,
         },
     }
+
+
+@app.post("/api/outbox/flush")
+async def outbox_flush(request: Request):
+    """手动冲刷一次 transfer-outbox（运维/烟测；常驻 loop 已在 lifespan 跑）。"""
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
+    from chat_server.services.transfer_outbox_flush import flush_once
+
+    summary = await asyncio.to_thread(flush_once)
+    return summary
 
 
 def _workspace_map() -> dict[str, str]:

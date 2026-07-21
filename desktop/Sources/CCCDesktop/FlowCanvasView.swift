@@ -134,6 +134,18 @@ struct FlowCanvasView: View {
                 if !ordered.isEmpty {
                     railConnector(active: ordered.contains(where: \.isActive))
                     workSections
+                } else if !(epicId ?? "").isEmpty || epic != nil {
+                    // L3：再开/同步中有 bind 无 works — 动态骨架，不空等下一 SSE
+                    Text(emptyMessage.isEmpty ? "编排同步中…" : emptyMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.top, 8)
+                        .padding(.leading, 4)
+                    ProgressView()
+                        .controlSize(.mini)
+                        .padding(.top, 6)
+                        .padding(.leading, 4)
+                        .opacity(pulse ? 1 : 0.45)
                 }
             }
             .padding(.horizontal, 12)

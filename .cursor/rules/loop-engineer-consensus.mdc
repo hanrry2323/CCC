@@ -5,18 +5,26 @@ alwaysApply: true
 
 # Loop Engineer 共识
 
-权威 SSOT：`docs/product/loop-engineer-authority.md`（冲突以它为准）。
+权威 SSOT：`docs/product/loop-engineer-authority.md`（冲突以它为准）。  
+开发通道：`docs/product/dev-channel.md`。
 
 ## 路径一句话
 
 人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。
 
+## 平台开发工具（硬）
+
+- **只认 Cursor**，不更换为 Claude Code / Trae / Zed / 其它 IDE 改本仓。
+- Engine 的 Claude CLI / OpenCode 是**编排执行器**，不是平台开发工具。
+- 发现仓内「用其它工具改 CCC」的现行指引 → 删除或标史，并指回 `dev-channel.md`。
+
 ## 必须遵守
 
+- 前台只确认意图（定稿/转任务/切页）；Hub 连通·重试·卡死·投递一律后台。**关 App 不停**：sidecar 冲刷 outbox → Hub。**再开 = hydrate + 后台 catch-up**，用户无动作。勿让用户管队列/连通；勿用 busy 锁死 UI。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。
 - 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。
-- **已注册 ≠ 可开工**：正式开发前全面对齐（baseline + 透镜 + risks + 可下达边界）。
-- Demo ≠ 上线 ≠ 稳定符合意图（行业共性）；CCC 做闭环后半段，不比拼「第一周 vibe 速度」。
+- **已注册 ≠ 可开工**：正式开发前全面对齐。
+- Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。
 - 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档。
 
 ## 共识落盘

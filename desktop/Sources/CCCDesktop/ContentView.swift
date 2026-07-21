@@ -629,6 +629,7 @@ struct CodexChatPaneBody: View {
             if phase == .active {
                 pinBottomOnNextScroll()
                 bottomPinTick &+= 1
+                model.onForegroundResume()
             }
         }
     }
@@ -760,6 +761,10 @@ struct CodexChatPaneBody: View {
                 Text("Hub 同步")
                     .font(.system(size: 10))
                     .foregroundStyle(CCCTheme.faint)
+            } else if !model.hubReachable {
+                Text("Hub 暂不可达（后台重试）")
+                    .font(.system(size: 10))
+                    .foregroundStyle(CCCTheme.secondary)
             }
             if let phase = model.transferDelivery(for: paneThreadId),
                phase != .draft {
@@ -773,6 +778,15 @@ struct CodexChatPaneBody: View {
                     )
                     .accessibilityLabel("投递态 \(phase.label)")
                     .accessibilityValue(phase.rawValue)
+                if phase == .failed {
+                    Button("后台再试") {
+                        model.retryFailedTransfersInBackground()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent)
+                    .accessibilityLabel("投递失败后台再试")
+                }
             }
             if model.agentWarming {
                 Text("预热中")
@@ -1800,6 +1814,10 @@ struct FlowRail: View {
                 Text("本对话编排")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(CCCTheme.ink)
+                Text(model.orchestrationSyncLabel)
+                    .font(.system(size: 10))
+                    .foregroundStyle(CCCTheme.faint)
+                    .accessibilityLabel("编排同步态")
                 if let title = boundEpicTitle {
                     Text(title)
                         .font(.system(size: 11))

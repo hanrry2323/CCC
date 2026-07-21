@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Board
 
-struct BoardSnapshot: Decodable {
+struct BoardSnapshot: Codable {
     let columns: [String: [BoardTask]]?
     let workspace: String?
     let counts: [String: Int]?
@@ -46,7 +46,7 @@ struct BoardTaskEvent: Identifiable, Decodable, Hashable {
     let message: String?
 }
 
-struct BoardTask: Identifiable, Decodable, Hashable {
+struct BoardTask: Identifiable, Codable, Hashable {
     let id: String
     let title: String?
     let card_kind: String?

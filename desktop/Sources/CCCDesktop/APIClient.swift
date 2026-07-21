@@ -379,10 +379,15 @@ actor APIClient {
         return req
     }
 
-    private func send<T: Decodable>(_ req: URLRequest, as type: T.Type) async throws -> T {
-        try await HubRequestGate.shared.withPermit {
+    private func send<T: Decodable>(
+        _ req: URLRequest,
+        as type: T.Type,
+        maxAttempts: Int = 3
+    ) async throws -> T {
+        let attempts = max(1, min(maxAttempts, 3))
+        return try await HubRequestGate.shared.withPermit {
             var lastError: Error?
-            for attempt in 1...3 {
+            for attempt in 1...attempts {
                 do {
                     let (data, resp) = try await self.session.data(for: req)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -393,7 +398,7 @@ actor APIClient {
                         }
                         let text = String(data: data, encoding: .utf8) ?? ""
                         // 5xx / 0 可重试；4xx 不重试
-                        if code >= 500 || code == 0, attempt < 3 {
+                        if code >= 500 || code == 0, attempt < attempts {
                             try await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
                             continue
                         }
@@ -408,7 +413,7 @@ actor APIClient {
                     throw e
                 } catch {
                     lastError = error
-                    if attempt < 3 {
+                    if attempt < attempts {
                         try await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
                         continue
                     }
@@ -902,13 +907,18 @@ actor APIClient {
         if includeHidden {
             path += "&include_hidden=1"
         }
-        return try await send(try authedRequest(path), as: BoardSnapshot.self)
+        var req = try authedRequest(path)
+        // 看板读：短超时 + 少重试，避免 Hub 抖动时整页卡死数分钟
+        req.timeoutInterval = 12
+        return try await send(req, as: BoardSnapshot.self, maxAttempts: 2)
     }
 
     func fetchBoardSummaries(workspaces: [String]) async throws -> BoardSummariesResp {
         let joined = workspaces.joined(separator: ",")
         let enc = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
-        return try await send(try authedRequest("api/board/summaries?workspaces=\(enc)"), as: BoardSummariesResp.self)
+        var req = try authedRequest("api/board/summaries?workspaces=\(enc)")
+        req.timeoutInterval = 12
+        return try await send(req, as: BoardSummariesResp.self, maxAttempts: 2)
     }
 
     func fetchTaskDetail(taskId: String, workspace: String) async throws -> BoardTaskDetail {
