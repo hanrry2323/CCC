@@ -139,7 +139,8 @@ Phase 状态板：见 [`hub-shell-phase-status.md`](hub-shell-phase-status.md)�
 **Phase10–11 已勾选**：[`hub-shell-phase10-xianyu-hygiene.md`](hub-shell-phase10-xianyu-hygiene.md) · [`hub-shell-phase11-xianyu.md`](hub-shell-phase11-xianyu.md)。  
 **Phase12 已勾选**：[`hub-shell-phase12-business-intent.md`](hub-shell-phase12-business-intent.md) — qb README 双机路径（非 flow-smoke）。  
 **Phase13 已勾选**：[`hub-shell-phase13-reliability.md`](hub-shell-phase13-reliability.md) — 编排可靠性门禁（hang / 槽 / 死 pid / orphan drift 探针 + reliability tier）。
-**Phase14 已勾选**：[`hub-shell-phase14-flow-rail-bind.md`](hub-shell-phase14-flow-rail-bind.md) — Desktop 右栏绑定权威 + epic_done 主动推送/即时清轨 + SSE epic_id 透传。
+**Phase14 已勾选**：[`hub-shell-phase14-flow-rail-bind.md`](hub-shell-phase14-flow-rail-bind.md) — Desktop 右栏绑定权威 + epic_done 主动推送/即时清轨 + SSE epic_id 透传。  
+**Phase15 已勾选**：[`hub-shell-phase15-flow-rail-cards.md`](hub-shell-phase15-flow-rail-cards.md) — Desktop 右栏卡片内容（UX 阶段表全档主文案 + goal/executor/depends_on_titles/failure_note/note 上卡）+ 视觉层次（running/failed/done 区分 + reveal 闪烁收敛）。
 
 ---
 

@@ -14,6 +14,8 @@ struct FlowCanvasView: View {
 
     @State private var pulse = false
     @State private var revealedWorkIds: Set<String> = []
+    /// 已知 work id 集合（用于判断「真正增长」 vs 同 id 状态更新）
+    @State private var seenWorkIds: Set<String> = []
     @State private var splittingPulse = false
     @State private var animToken: UInt64 = 0
 
@@ -31,12 +33,22 @@ struct FlowCanvasView: View {
         .onChange(of: splitGeneration) { _ in
             restartSplitAnimation()
         }
+        .onChange(of: epicIdSignature) { _ in
+            // 真正的「换 epic」才触发 reveal；同 epic 内 SSE 增量不重启动画
+            seenWorkIds.removeAll()
+            restartSplitAnimation()
+        }
         .onChange(of: works) { _ in
-            if !works.isEmpty, revealedWorkIds.count < works.count {
-                runRevealSequence(token: animToken)
+            // 实际增长（出现新 work id）才 stagger；纯状态更新不重放
+            let incoming = Set(works.map(\.id))
+            let fresh = incoming.subtracting(seenWorkIds).subtracting(revealedWorkIds)
+            if !fresh.isEmpty {
+                runRevealSequence(newIds: Array(fresh), token: animToken)
             }
+            seenWorkIds.formUnion(incoming)
         }
         .onAppear {
+            seenWorkIds = Set(works.map(\.id))
             restartSplitAnimation()
         }
     }
@@ -46,34 +58,51 @@ struct FlowCanvasView: View {
         FlowLayout.epicStageKey(epic: epic)
     }
 
+    /// 整轨唯一标识：epic 切换 → 重新 stagger；同 epic 内 SSE 增量 → 不重启动画
+    private var epicIdSignature: String {
+        (epicId ?? epic?.id ?? "_") + "|" + (epic?.user_stage ?? epic?.split_status ?? "")
+    }
+
     private var header: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 3) {
             if let text = headerText {
                 Text(text)
                     .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(headerUsesAccent ? CCCTheme.accent.opacity(0.85) : CCCTheme.muted)
+                    .foregroundStyle(headerUsesAccent ? CCCTheme.accent.opacity(0.9) : CCCTheme.muted)
                     .lineLimit(2)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
+            }
+            if let goal = headerGoal, !goal.isEmpty {
+                Text(goal)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+                    .lineLimit(1)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var headerText: String? {
-        if !headline.isEmpty { return headline }
-        let bound = epic != nil || !(epicId ?? "").isEmpty
-        guard bound, works.isEmpty else { return nil }
-        switch epicStageKey {
-        case "pending", "planned", "":
-            return splittingPulse ? "拆解中…" : "待拆解"
-        default:
-            return FlowLayout.epicSubtitle(epic: epic)
-        }
+        // 阶段主文案（UX 表对齐）
+        let stage = FlowLayout.epicHeadlineText(epic: epic, works: works, fallbackHeadline: headline)
+        if stage.isEmpty { return nil }
+        // 已 done 时强制空轨（除非外层条件）；空轨时主文案保持
+        return stage
+    }
+
+    private var headerGoal: String? {
+        guard let g = epic?.goal_summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !g.isEmpty else { return nil }
+        return FlowLayout.truncate(g, max: 64)
     }
 
     private var headerUsesAccent: Bool {
-        headline.isEmpty && works.isEmpty && ["pending", "planned", ""].contains(epicStageKey)
+        // pending/planned 且未到 works → 强调色（拆解中）
+        if !works.isEmpty { return false }
+        let k = epicStageKey
+        return ["pending", "planned", ""].contains(k)
     }
 
     private var emptyState: some View {
@@ -195,7 +224,8 @@ struct FlowCanvasView: View {
     private func restartSplitAnimation() {
         animToken &+= 1
         let token = animToken
-        revealedWorkIds = []
+        // 仅在「真切换 epic」时清空 revealed（onChange of epicIdSignature 已做）
+        // 同 epic 内的 reveal 由 runRevealSequence 增量追加
         // 仅待拆解阶段脉冲；done/failed 不闪「拆解中」
         if works.isEmpty, ["pending", "planned", ""].contains(epicStageKey) {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
@@ -205,22 +235,27 @@ struct FlowCanvasView: View {
         }
         splittingPulse = false
         guard !works.isEmpty else { return }
-        runRevealSequence(token: token)
+        // 首次 stagger：把所有当前 works 加入动画
+        let all = works.map(\.id)
+        runRevealSequence(newIds: all, token: token)
     }
 
-    private func runRevealSequence(token: UInt64) {
-        let layers = FlowLayout.layers(works: works)
+    /// 增量 stagger：仅对新出现的 work id 做层序 reveal；同 epic 内纯状态更新不再触发
+    private func runRevealSequence(newIds: [String], token: UInt64) {
+        guard !newIds.isEmpty else { return }
+        let byId = Dictionary(uniqueKeysWithValues: works.map { ($0.id, $0) })
+        let deps = FlowLayout.layers(works: works)
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 180_000_000)
+            try? await Task.sleep(nanoseconds: 160_000_000)
             guard token == animToken else { return }
-            for layer in layers {
+            for layer in deps {
+                let freshInLayer = layer.map(\.id).filter { newIds.contains($0) && byId[$0] != nil }
+                guard !freshInLayer.isEmpty else { continue }
                 guard token == animToken else { return }
                 withAnimation(.easeOut(duration: 0.32)) {
-                    for w in layer {
-                        revealedWorkIds.insert(w.id)
-                    }
+                    for id in freshInLayer { revealedWorkIds.insert(id) }
                 }
-                try? await Task.sleep(nanoseconds: 220_000_000)
+                try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }
     }
@@ -273,7 +308,7 @@ struct FlowNodeView: View {
                     .opacity(pulse ? 0.35 : 1)
             }
             Text(node.title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: node.kind == .epic ? .semibold : .medium))
                 .foregroundStyle(CCCTheme.ink)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
@@ -284,25 +319,54 @@ struct FlowNodeView: View {
             if let detail = node.detail, !detail.isEmpty {
                 Text(detail)
                     .font(.system(size: 10))
-                    .foregroundStyle(isFail ? CCCTheme.nodeFail.opacity(0.9) : CCCTheme.faint.opacity(0.9))
+                    .foregroundStyle(isFail ? CCCTheme.nodeFail.opacity(0.95) : CCCTheme.faint.opacity(0.9))
                     .lineLimit(isFail ? 3 : 1)
             }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(CCCTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(CCCTheme.surface)
+                // 左侧强调条（running/failed）；done 不画；pending 仅淡边
+                if isFail {
+                    HStack {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(CCCTheme.nodeFail.opacity(0.85))
+                            .frame(width: 3)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.leading, 5)
+                } else if isRunning {
+                    HStack {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(CCCTheme.nodeRunning.opacity(0.75))
+                            .frame(width: 3)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.leading, 5)
+                }
+            }
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(
-                    isFail ? CCCTheme.nodeFail.opacity(0.85) : CCCTheme.border,
+                    isFail ? CCCTheme.nodeFail.opacity(0.85)
+                        : (isRunning ? CCCTheme.nodeRunning.opacity(0.45) : CCCTheme.border),
                     lineWidth: isFail ? 1.8 : 1
                 )
         )
         .shadow(
-            color: isFail ? CCCTheme.nodeFail.opacity(0.35) : (isRunning ? tint.opacity(0.18) : .clear),
+            color: isFail ? CCCTheme.nodeFail.opacity(0.35)
+                : (isRunning ? tint.opacity(0.18) : .clear),
             radius: isFail ? 6 : (isRunning ? 3 : 0),
             x: 0, y: 0
         )
+        // done 节点弱化（不抢 running/failed 视线）
+        .opacity(colorKey == "done" && node.kind != .epic ? 0.68 : 1)
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .animation(.easeInOut(duration: 0.28), value: node.statusKey)
     }
