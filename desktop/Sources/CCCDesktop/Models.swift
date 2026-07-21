@@ -45,6 +45,8 @@ struct ChatMessage: Identifiable, Hashable {
     var edited: Bool
     /// 消息引用（Phase 1.7）
     var replyTo: String?
+    /// UI 展示文案（快捷条短标签）；nil 则显示 content。发给 Agent 仍用 content。
+    var displayContent: String?
 
     init(
         id: UUID = UUID(),
@@ -59,7 +61,8 @@ struct ChatMessage: Identifiable, Hashable {
         summaryRounds: Int = 0,
         transientNote: String? = nil,
         edited: Bool = false,
-        replyTo: String? = nil
+        replyTo: String? = nil,
+        displayContent: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -74,6 +77,13 @@ struct ChatMessage: Identifiable, Hashable {
         self.transientNote = transientNote
         self.edited = edited
         self.replyTo = replyTo
+        self.displayContent = displayContent
+    }
+
+    /// 气泡/列表展示用
+    var visibleContent: String {
+        let d = displayContent?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return d.isEmpty ? content : d
     }
 }
 
@@ -90,6 +100,7 @@ extension ChatMessage: Codable {
         case transient_note
         case edited
         case reply_to
+        case display_content
     }
 
     init(from decoder: Decoder) throws {
@@ -113,6 +124,7 @@ extension ChatMessage: Codable {
         transientNote = try c.decodeIfPresent(String.self, forKey: .transient_note)
         edited = try c.decodeIfPresent(Bool.self, forKey: .edited) ?? false
         replyTo = try c.decodeIfPresent(String.self, forKey: .reply_to)
+        displayContent = try c.decodeIfPresent(String.self, forKey: .display_content)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -144,6 +156,9 @@ extension ChatMessage: Codable {
         }
         if let replyTo {
             try c.encode(replyTo, forKey: .reply_to)
+        }
+        if let displayContent, !displayContent.isEmpty {
+            try c.encode(displayContent, forKey: .display_content)
         }
     }
 }

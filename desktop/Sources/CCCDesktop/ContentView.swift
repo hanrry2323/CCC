@@ -1377,64 +1377,77 @@ struct CodexChatPaneBody: View {
     }
 
     private var quickActionBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                quickChip(
-                    "对齐基线",
-                    help: "像 Cursor 一样核实 git/文档后，白话说明定位、风险与最佳下一步"
-                ) {
-                    Task {
-                        await model.alignBaseline(
-                            projectId: paneProjectId,
-                            threadId: paneThreadId
-                        )
-                    }
-                }
-                quickChip(
-                    "下一步",
-                    help: "结合会话与仓库，给出最多三条带取舍的下一步（含最佳项）"
-                ) {
-                    model.applyQuickPrompt(
-                        QuickPrompts.nextStep,
-                        uiLabel: "下一步",
-                        projectId: paneProjectId,
-                        threadId: paneThreadId
-                    )
-                }
-                quickChip(
-                    "定稿",
-                    help: "核实可行性后生成 ccc-transfer 契约包，便于确认转任务"
-                ) {
-                    model.applyQuickPrompt(
-                        QuickPrompts.finalize,
-                        uiLabel: "定稿方案",
-                        projectId: paneProjectId,
-                        threadId: paneThreadId
-                    )
-                }
-                quickChip(
-                    "扫风险",
-                    help: "按严重度列出场景/发布/下达风险，并判断能否转任务"
-                ) {
-                    model.applyQuickPrompt(
-                        QuickPrompts.scanRisks,
-                        uiLabel: "扫风险",
-                        projectId: paneProjectId,
-                        threadId: paneThreadId
-                    )
-                }
-                if !model.customPrompts.isEmpty {
-                    ForEach(model.customPrompts, id: \.title) { item in
-                        quickChip(item.title, help: "自定义快捷提示：\(item.title)") {
-                            model.applyQuickPrompt(
-                                item.prompt,
-                                uiLabel: item.title,
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    quickChip(
+                        "对齐基线",
+                        help: "像 Cursor 一样核实 git/文档后，白话说明定位、风险与最佳下一步"
+                    ) {
+                        Task {
+                            await model.alignBaseline(
                                 projectId: paneProjectId,
                                 threadId: paneThreadId
                             )
                         }
                     }
+                    quickChip(
+                        "下一步",
+                        help: "结合会话与仓库，给出最多三条带取舍的下一步（含最佳项）"
+                    ) {
+                        model.applyQuickPrompt(
+                            QuickPrompts.nextStep,
+                            uiLabel: "下一步",
+                            projectId: paneProjectId,
+                            threadId: paneThreadId
+                        )
+                    }
+                    quickChip(
+                        "定稿",
+                        help: "核实可行性后生成 ccc-transfer 契约包，便于确认转任务"
+                    ) {
+                        model.applyQuickPrompt(
+                            QuickPrompts.finalize,
+                            uiLabel: "定稿",
+                            projectId: paneProjectId,
+                            threadId: paneThreadId
+                        )
+                    }
+                    quickChip(
+                        "扫风险",
+                        help: "按严重度列出场景/发布/下达风险，并判断能否转任务"
+                    ) {
+                        model.applyQuickPrompt(
+                            QuickPrompts.scanRisks,
+                            uiLabel: "扫风险",
+                            projectId: paneProjectId,
+                            threadId: paneThreadId
+                        )
+                    }
+                    if !model.customPrompts.isEmpty {
+                        ForEach(model.customPrompts, id: \.title) { item in
+                            quickChip(item.title, help: "自定义快捷提示：\(item.title)") {
+                                model.applyQuickPrompt(
+                                    item.prompt,
+                                    uiLabel: item.title,
+                                    projectId: paneProjectId,
+                                    threadId: paneThreadId
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+            if let action = model.activeQuickAction, !action.isEmpty {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("正在执行：\(action)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.accent)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityLabel("正在执行 \(action)")
             }
         }
         .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -1442,22 +1455,41 @@ struct CodexChatPaneBody: View {
     }
 
     private func quickChip(_ title: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11.5))
-                .foregroundStyle(CCCTheme.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(CCCTheme.hover)
-                )
+        let busy = model.activeQuickAction == title
+        let blocked = !model.canChat || (model.activeQuickAction != nil && !busy) || paneStreaming
+        return Button {
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                if busy {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+                Text(title)
+                    .font(.system(size: 11.5, weight: busy ? .medium : .regular))
+                    .foregroundStyle(busy ? CCCTheme.accent : CCCTheme.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(busy ? CCCTheme.accent.opacity(0.16) : CCCTheme.hover)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(busy ? CCCTheme.accent.opacity(0.45) : Color.clear, lineWidth: 1)
+            )
+            .scaleEffect(busy ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: busy)
         }
         .buttonStyle(.plain)
-        .disabled(!model.canChat)
+        .disabled(blocked)
+        .opacity(blocked && !busy ? 0.45 : 1)
         .help(help)
         .accessibilityLabel(title)
         .accessibilityHint(help)
+        .accessibilityAddTraits(busy ? .updatesFrequently : [])
     }
 
     private var canSend: Bool {
@@ -1523,9 +1555,9 @@ struct CodexMessageRow: View {
     }
 
     private var userBubble: some View {
-        let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
+        let body = message.visibleContent.isEmpty && message.isStreaming && message.toolSteps.isEmpty
             ? "…"
-            : message.content
+            : message.visibleContent
         let showActions = !message.isStreaming && !body.isEmpty && body != "…"
         return VStack(alignment: .trailing, spacing: 4) {
             HStack(alignment: .top, spacing: 0) {
@@ -1585,7 +1617,7 @@ struct CodexMessageRow: View {
             if showActions {
                 MessageActionBar(role: "user", content: body, message: message,
                                  onEdit: {
-                    editText = body
+                    editText = message.content
                     isEditing = true
                 })
                     .padding(.trailing, 4)

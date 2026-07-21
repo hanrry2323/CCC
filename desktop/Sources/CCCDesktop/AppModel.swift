@@ -95,6 +95,8 @@ final class AppModel: ObservableObject {
     /// 兼容旧路径 / smoke；多窗 UI 用 WindowChatState.destination
     @Published var destination: SidebarDestination = .chat
     @Published var toast: String?
+    /// 快捷条进行中标签（对齐基线/下一步/…）；点按时立即置位，流结束清空
+    @Published var activeQuickAction: String? = nil
     @Published var showSettingsHint = false
 
     /// 当前打开的转任务 sheet 所属 thread；nil=未打开（多窗只有匹配 tid 的窗弹 sheet）
@@ -2063,12 +2065,14 @@ final class AppModel: ObservableObject {
     }
 
     /// 同会话 stop-and-send；仅本机 sidecar，可多路并行（可指定 projectId / threadId 供多窗多会话）
+    /// - Parameter displayText: 气泡展示短文案（快捷条）；Agent 仍收 `text` 全文
     func sendUserMessage(
         _ text: String,
         projectId: String? = nil,
         threadId: String? = nil,
         stopAndSend: Bool = true,
-        attachments: [ComposerAttachment]? = nil
+        attachments: [ComposerAttachment]? = nil,
+        displayText: String? = nil
     ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let atts = attachments ?? composerAttachments
@@ -2076,12 +2080,14 @@ final class AppModel: ObservableObject {
         guard !composed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if attachments == nil { composerAttachments = [] }
         let pid = projectId ?? selectedProjectId
+        let shown = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             await self.sendUserMessageAndWait(
                 composed,
                 projectId: pid,
                 threadId: threadId,
-                stopAndSend: stopAndSend
+                stopAndSend: stopAndSend,
+                displayText: (shown?.isEmpty == false) ? shown : nil
             )
         }
     }
@@ -2102,6 +2108,10 @@ final class AppModel: ObservableObject {
                 var copy = threadUnread
                 copy.insert(threadId)
                 threadUnread = copy
+            }
+            // 快捷条忙碌态随本线程流结束清除
+            if activeQuickAction != nil {
+                activeQuickAction = nil
             }
         }
         liveStreamingThreadIds = streamingThreadIds
@@ -2210,13 +2220,15 @@ final class AppModel: ObservableObject {
         _ text: String,
         projectId: String? = nil,
         threadId preferredThreadId: String? = nil,
-        stopAndSend: Bool = true
+        stopAndSend: Bool = true,
+        displayText: String? = nil
     ) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         guard let pid = projectId ?? selectedProjectId else {
             showToast("请先选择项目")
             setComposerBounce(trimmed, threadId: nil)
+            activeQuickAction = nil
             return false
         }
         // 多会话：跟本窗/显式 thread，禁止打回 ::main
@@ -2231,6 +2243,7 @@ final class AppModel: ObservableObject {
         if !canChat {
             showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
             setComposerBounce(trimmed, threadId: threadId)
+            activeQuickAction = nil
             return false
         }
 
@@ -2246,6 +2259,7 @@ final class AppModel: ObservableObject {
             } else {
                 showToast("正在生成，请先点停止")
                 setComposerBounce(trimmed, threadId: threadId)
+                activeQuickAction = nil
                 return false
             }
         } else if chatTasks[threadId] != nil {
@@ -2259,12 +2273,19 @@ final class AppModel: ObservableObject {
         if others >= Self.maxParallelLocalChats {
             showToast("已有 \(Self.maxParallelLocalChats) 路在生成，请先停止一路再发")
             setComposerBounce(trimmed, threadId: threadId)
+            activeQuickAction = nil
             return false
         }
 
+        let shown = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runChatStream(projectId: pid, threadId: threadId, text: trimmed)
+            await self.runChatStream(
+                projectId: pid,
+                threadId: threadId,
+                text: trimmed,
+                displayText: (shown?.isEmpty == false) ? shown : nil
+            )
         }
         chatTasks[threadId] = task
         await task.value
@@ -2285,7 +2306,12 @@ final class AppModel: ObservableObject {
         _ = await sendUserMessageAndWait(text, stopAndSend: true)
     }
 
-    private func runChatStream(projectId: String, threadId: String, text: String) async {
+    private func runChatStream(
+        projectId: String,
+        threadId: String,
+        text: String,
+        displayText: String? = nil
+    ) async {
         let turnId = UUID().uuidString
         activeTurnIds[threadId] = turnId
         setThreadStreaming(threadId, true)
@@ -2307,7 +2333,12 @@ final class AppModel: ObservableObject {
             }
         }
 
-        let userMsg = ChatMessage(role: "user", content: text)
+        // content=发给 Agent 的全文；displayContent=气泡短标签（快捷条）
+        let userMsg = ChatMessage(
+            role: "user",
+            content: text,
+            displayContent: displayText
+        )
         let assistantId = UUID()
         partialByTurn[turnId] = ""
         onChatEventInPlace = { [weak self] tid, aid, event in
@@ -2825,8 +2856,17 @@ final class AppModel: ObservableObject {
         threadId: String? = nil
     ) {
         destination = .chat
-        showToast(uiLabel)
-        sendUserMessage(prompt, projectId: projectId, threadId: threadId, stopAndSend: true)
+        // 点按瞬间：芯片高亮 + toast，勿等网络
+        activeQuickAction = uiLabel
+        showToast("已开始：\(uiLabel)")
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        sendUserMessage(
+            prompt,
+            projectId: projectId,
+            threadId: threadId,
+            stopAndSend: true,
+            displayText: "【快捷】\(uiLabel)"
+        )
     }
 
     func alignBaseline(projectId: String? = nil, threadId: String? = nil) async {
@@ -2835,23 +2875,36 @@ final class AppModel: ObservableObject {
             return
         }
         destination = .chat
+        // 点按瞬间反馈（Hub 拉取前）
+        activeQuickAction = "对齐基线"
+        showToast("对齐基线：拉取快照…")
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        let tid = threadId ?? selectedThreadId
+        if let tid {
+            setThreadStreamStatus(tid, "对齐基线：拉取快照…")
+        }
         do {
             try await prepareClient(projectId: pid)
             let resp = try await client.fetchProjectBaseline(projectId: pid)
             let prompt = (resp.prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !prompt.isEmpty else {
                 showToast("基线为空")
+                activeQuickAction = nil
+                if let tid { setThreadStreamStatus(tid, "") }
                 return
             }
-            showToast("已注入对齐基线")
+            showToast("对齐基线：已注入，生成中…")
             sendUserMessage(
                 prompt,
                 projectId: pid,
-                threadId: threadId ?? selectedThreadId,
-                stopAndSend: true
+                threadId: tid,
+                stopAndSend: true,
+                displayText: "【快捷】对齐基线"
             )
         } catch {
             showToast(error.localizedDescription)
+            activeQuickAction = nil
+            if let tid { setThreadStreamStatus(tid, "") }
         }
     }
 
