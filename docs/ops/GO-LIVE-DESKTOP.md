@@ -9,7 +9,7 @@
 
 | 面 | 怎么用 |
 |----|--------|
-| **CCC Desktop** | `/Applications/CCCDesktop.app`（v0.52.1） |
+| **CCC Desktop** | `/Applications/CCCDesktop.app`（v0.52.2） |
 | Server | `http://192.168.3.116:7777`（Mac2017 Hub，API host） |
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`**（M1 深度整合为对话意图工具） |
 | Mac2017 编排面 | Engine = Claude→MiniMax 扇出；dev = OpenCode→讯飞写码（中转已退役） |

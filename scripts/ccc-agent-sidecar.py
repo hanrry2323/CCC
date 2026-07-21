@@ -189,7 +189,14 @@ async def health():
         "default_cwd": DEFAULT_CWD,
         # Desktop 能力契约（不暴露密钥/完整路径）
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
+        # Desktop Phase17：请求级 model；plist 定上游出口。标签供 UI/运维对照。
         "models": ["flash", "code", "sonnet", "haiku"],
+        "model_labels": {
+            "flash": "MiniMax-M3",
+            "code": "MiniMax · code",
+            "sonnet": "MiniMax · sonnet",
+            "haiku": "MiniMax · haiku",
+        },
         "tool_modes": ["discuss", "engineer"],
         "compact": True,
         "supports_attachments": True,

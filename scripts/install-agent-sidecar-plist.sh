@@ -2,6 +2,13 @@
 # install-agent-sidecar-plist.sh — Desktop 本机 Agent Sidecar launchd 常驻
 # 与 Engine 控制面无关：Hub 抖不影响聊天；KeepAlive 崩溃自拉。
 #
+# 模型分层（Phase17）：
+#   - plist / ANTHROPIC_*：定上游出口（默认 MiniMax；可选 118 须显式 CCC_AGENT_UPSTREAM_118INK）
+#   - Desktop UI（ccc.preferredModel）：按请求覆盖逻辑名 flash|code|sonnet|haiku → 请求体 model
+#   - 二者独立：改 UI 不必重装 plist；改上游须重跑本脚本 --start
+#   - 注意：若 shell 残留 CCC_AGENT_UPSTREAM_118INK=1，本脚本会写成 118 出口；
+#     回 MiniMax 请：unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY 后再 --start
+#
 # 用法：
 #   bash scripts/install-agent-sidecar-plist.sh           # 只写 plist + load
 #   bash scripts/install-agent-sidecar-plist.sh --start   # 同上并 kickstart
@@ -76,8 +83,8 @@ esac
 #   3) 直连 MiniMax（默认）
 # 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机旧 :4000
 if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
-  # 118.ink 中转：Anthropic 兼容 /v1/messages；key 默认取 CCC_AGENT_118INK_KEY（写在 secrets.env）
-  ROUTER="https://118.ink/v1"
+  # 118.ink 中转：Anthropic 兼容；Base URL **勿**带 /v1（SDK 会再拼 /v1/messages）
+  ROUTER="https://118.ink"
   AUTH_TOKEN_VALUE="${CCC_AGENT_118INK_KEY:-${ANTHROPIC_AUTH_TOKEN:-}}"
   if [[ -z "$AUTH_TOKEN_VALUE" ]]; then
     echo "缺少 118.ink key：请设置 CCC_AGENT_118INK_KEY（或 ANTHROPIC_AUTH_TOKEN）" >&2

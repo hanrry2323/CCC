@@ -20,7 +20,7 @@
 ## Desktop 模型
 
 - **现在**：sidecar plist 固定 MiniMax（`~/.ccc/minimax-api-key`）。  
-- **后续**：在 Desktop **应用内**做大模型快速选择（切换上游/模型）；不靠改 `~/.zshenv` / 个人 Claude settings。  
+- **Desktop 快选（Phase17）**：App 内 Composer/Settings 选逻辑名（默认 **MiniMax-M3** / `flash`），按请求传 sidecar；与个人 Claude Code / `~/.zshenv` 无关。  
 - ~~118.ink / ops4.8~~：成本暂停，不作默认；恢复须显式 env + 重装 sidecar（见 [`../executors/loop-code.md`](../executors/loop-code.md)）。
 
 ---

@@ -1,6 +1,6 @@
 {
   "name": "ccc-cockpit-desktop",
-  "version": "0.52.1",
+  "version": "0.52.2",
   "private": true,
   "description": "CCC Cockpit — Tauri 桌面端根包",
   "scripts": {

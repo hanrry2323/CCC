@@ -101,9 +101,12 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 
 ### 打不开 :7777 时（Server 本机正常、客户端超时）
 
-1. 在 Server 上确认：`curl -u ccc:ccc http://127.0.0.1:7777/api/projects`
-2. 客户端 `ping 192.168.3.116` 通但超时 → 多为 macOS 应用防火墙拦了 Python 入站
-3. Hub 账号默认：`ccc` / `ccc`
+1. 在 Server 上确认：`curl -u ccc:ccc http://127.0.0.1:7777/api/desktop/projects`（或 `/api/projects`）
+2. 客户端：`ping 192.168.3.116` + `nc -z 192.168.3.116 7777` + 同上 `curl` 打局域网 IP
+3. Server：`lsof -nP -iTCP:7777 -sTCP:LISTEN` 应为 `*:7777`（`CCC_CHAT_HOST=0.0.0.0`）；若只绑 `127.0.0.1` 则局域网不可达
+4. 仍超时 → 多为 macOS 应用防火墙拦了 Python 入站；或 Hub 刚 kickstart 尚未就绪（等数秒重试）
+5. Hub 账号默认：`ccc` / `ccc`  
+验收记录：[`../product/hub-shell-wave-a-lan.md`](../product/hub-shell-wave-a-lan.md)（2026-07-21 现网已通）
 
 ---
 

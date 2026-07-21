@@ -1090,14 +1090,17 @@ struct CodexChatPaneBody: View {
                 .accessibilityHint("确认门禁后投递 epic")
 
                 Picker("", selection: $model.preferredModel) {
-                    Text("MiniMax").tag("flash")
-                    Text("code").tag("code")
-                    Text("sonnet").tag("sonnet")
-                    Text("haiku").tag("haiku")
+                    ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
+                        Text(opt.label).tag(opt.id)
+                    }
                 }
                 .labelsHidden()
-                .frame(width: 88)
-                .help("请求级模型标签。当前出口均为 MiniMax-M3 直连；code/sonnet/haiku 亦映射到同一上游。多 Provider（如 OpenCode）接入后可在此切换。")
+                .frame(width: 118)
+                .help("对话模型（请求级）。现网出口均为 MiniMax 直连；逻辑名 flash/code/sonnet/haiku 映射同一上游。不改 shell / 个人 Claude。")
+                .onChange(of: model.preferredModel) { newValue in
+                    let name = StreamSessionController.modelDisplayName(newValue)
+                    model.showToast("对话模型：\(name)")
+                }
 
                 Button {
                     model.requestEngineerMode()
@@ -1936,11 +1939,14 @@ struct SettingsView: View {
             Section {
                 TextField("本机 Agent", text: $model.agentURLString)
                 TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
-                Picker("默认模型", selection: $model.preferredModel) {
-                    Text("MiniMax（推荐）").tag("flash")
-                    Text("code（→MiniMax）").tag("code")
-                    Text("sonnet（→MiniMax）").tag("sonnet")
-                    Text("haiku（→MiniMax）").tag("haiku")
+                Picker("对话模型", selection: $model.preferredModel) {
+                    ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
+                        Text(opt.label).tag(opt.id)
+                    }
+                }
+                .onChange(of: model.preferredModel) { newValue in
+                    let name = StreamSessionController.modelDisplayName(newValue)
+                    model.showToast("对话模型：\(name)")
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
                     Text("讨论（只读）").tag("discuss")
@@ -1954,7 +1960,7 @@ struct SettingsView: View {
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("默认 http://127.0.0.1:7788。当前对话出口均为 MiniMax 直连；顶栏「今日 / 5s」统计本机 Agent 发起的大模型调用次数。")
+                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游出口由 sidecar plist 固定 MiniMax；与个人 Claude Code / shell ANTHROPIC_* 无关。默认 MiniMax-M3（flash）。")
             }
 
             Section {
@@ -2010,7 +2016,7 @@ struct ContextPanelSheet: View {
                 LabeledContent("消息数", value: "\(msgs.count)")
                 LabeledContent("本会话 token", value: "\(tok)")
                 LabeledContent("估算字符 token", value: "\(est)")
-                LabeledContent("模型偏好", value: model.preferredModel)
+                LabeledContent("模型偏好", value: StreamSessionController.modelDisplayName(model.preferredModel))
                 LabeledContent("工具模式", value: model.preferredToolMode)
                 LabeledContent(
                     "Resume",

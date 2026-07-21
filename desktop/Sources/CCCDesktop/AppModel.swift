@@ -37,7 +37,7 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.home") var cccHomePath: String = ""
     /// 首启用法横幅是否已关闭
     @AppStorage("ccc.dismissedFirstRunTip") var dismissedFirstRunTip: Bool = false
-    /// 对话模型偏好（请求级传 sidecar；flash/code/sonnet/haiku）
+    /// 对话模型偏好（请求级传 sidecar；默认 flash = MiniMax-M3）
     @AppStorage("ccc.preferredModel") var preferredModel: String = "flash"
     /// discuss | engineer
     @AppStorage("ccc.preferredToolMode") var preferredToolMode: String = "discuss"

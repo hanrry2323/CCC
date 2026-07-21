@@ -21,7 +21,22 @@ struct ComposerAttachment: Identifiable, Hashable, Equatable {
 
 /// 流式策略与 prompt 拼装（从 AppModel 热路径拆出，对齐 OpenCode session 心智）
 enum StreamSessionController {
-    static let allowedModels = ["flash", "code", "sonnet", "haiku"]
+    /// 请求级逻辑名（sidecar / loop-code 认这些；现网均映射 MiniMax-M3）
+    static let allowedModels = ["flash", "code", "sonnet", "haiku", "minimax-m3"]
+
+    /// UI 快选：id → 显示名（Phase17）
+    static let modelPickerOptions: [(id: String, label: String)] = [
+        ("flash", "MiniMax-M3"),
+        ("code", "MiniMax · code"),
+        ("sonnet", "MiniMax · sonnet"),
+        ("haiku", "MiniMax · haiku"),
+    ]
+
+    static func modelDisplayName(_ preferred: String) -> String {
+        let id = resolveModel(preferred)
+        return modelPickerOptions.first(where: { $0.id == id })?.label
+            ?? (id == "minimax-m3" ? "MiniMax-M3" : id)
+    }
 
     /// discuss = 只读探查；engineer = 允许本机写文件
     static func resolveToolMode(preferred: String, userText: String) -> String {
@@ -41,6 +56,8 @@ enum StreamSessionController {
 
     static func resolveModel(_ preferred: String) -> String {
         let m = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // minimax-m3 与 flash 同出口；对外 API 仍发 flash（sidecar 白名单）
+        if m == "minimax-m3" || m == "minimax" { return "flash" }
         return allowedModels.contains(m) ? m : "flash"
     }
 

@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.52.2] — 2026-07-21
+
 ### Added
+
+- **Phase17 Desktop 对话模型快选**：
+  - Composer + Settings 短列表（MiniMax-M3 / code / sonnet / haiku）；`@AppStorage("ccc.preferredModel")` 默认 `flash`。
+  - 请求级传 sidecar；plist 定上游出口；切换 toast。
+  - 验收：[`docs/product/hub-shell-phase17-model-picker.md`](docs/product/hub-shell-phase17-model-picker.md)；Wave A LAN：[`docs/product/hub-shell-wave-a-lan.md`](docs/product/hub-shell-wave-a-lan.md)。
 
 - **Phase16 Desktop 本地优先冷启动**：
   - `AppModel.hydrateFromDiskSync()`：`init` 同步灌 `projects-cache` + 选中会话消息/flow；有缓存立刻 `connected`。

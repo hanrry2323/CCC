@@ -52,7 +52,7 @@ launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 
 ### 暂停：118.ink（opus 4.8）
 
-**成本暂停，不作现网默认。** Desktop 对话固定 MiniMax；后续改走 **App 内模型快选**（[`../product/dev-channel.md`](../product/dev-channel.md)）。
+**成本暂停，不作现网默认。** Desktop 上游默认 MiniMax；**App 内模型快选**（Phase17）只换请求级逻辑名，不改本 plist 出口（[`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/hub-shell-phase17-model-picker.md`](../product/hub-shell-phase17-model-picker.md)）。
 
 若仍须临时切 sidecar 上游：
 
