@@ -97,7 +97,8 @@ F1-2 投递三态：done `578e7fe` — [`../briefs/2026-07-21-f1-transfer-delive
 F2-1 soak N=5：done `9af1fb4` — [`../briefs/2026-07-21-f2-soak-orphan-zero.md`](../briefs/2026-07-21-f2-soak-orphan-zero.md)。  
 F2-2 双机核对：done `555b9bc` — [`../briefs/2026-07-21-f2-dual-host-version-check.md`](../briefs/2026-07-21-f2-dual-host-version-check.md)。  
 F3-1 qb 业务向：done `327fd86`（流畅基线第一档）— [`../briefs/2026-07-21-f3-qb-business-closure.md`](../briefs/2026-07-21-f3-qb-business-closure.md)。  
-F3-2 进行中：[`../briefs/2026-07-21-f3-hp-business-closure.md`](../briefs/2026-07-21-f3-hp-business-closure.md)。  
+F3-2 hp 业务向：done `6523330`（流畅基线第二档）— [`../briefs/2026-07-21-f3-hp-business-closure.md`](../briefs/2026-07-21-f3-hp-business-closure.md)。  
+F3-3 进行中：[`../briefs/2026-07-21-f3-xianyu-business-closure.md`](../briefs/2026-07-21-f3-xianyu-business-closure.md)（流畅基线最后一笔）。  
 派单板：[`../briefs/PASTE-OPS.md`](../briefs/PASTE-OPS.md)。
 
 ---

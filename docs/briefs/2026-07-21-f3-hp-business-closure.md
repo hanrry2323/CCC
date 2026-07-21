@@ -78,6 +78,8 @@
 
 | 项 | 结果 |
 |----|------|
-| 结论 | （待填） |
-| 缺口 | |
-| 验收日 | |
+| 结论 | **通过** `6523330` · hp 样本绿（流畅基线第二档） |
+| 缺口 | 同 F3-1：`epic_done` 流事件未补（候选 hotfix H-1）；hp 原无根 README 已新建（真实文档债，非 brief 缺口） |
+| 验收日 | 2026-07-21 |
+
+**审阅：** epic_id + split_status=done + w1→released + snapshot user_stage=done + abnormal=0 + 人批 0 + 双机 aligned:yes + hp 3 commits + README stamp；phase-status F3-2 行已加；phase8 证据链追加（不动既有结论）；新 `smoke-hp-biz-small.sh`；无 Engine/契约改动。
