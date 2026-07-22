@@ -93,11 +93,22 @@ struct ProjectCard: View {
 
     private func openProject() {
         let threads = ConversationStore.listThreads(projectId: project.id)
+        let keepTid: String? = {
+            guard let cur = window.threadId,
+                  LocalSessionStore.projectId(fromThreadId: cur) == project.id,
+                  threads.contains(where: { $0.thread_id == cur })
+            else { return nil }
+            return cur
+        }()
         var txn = Transaction()
         txn.disablesAnimations = true
         withTransaction(txn) {
             window.destination = .chat
             window.bindProject(project.id, availableThreads: threads)
+            // 已在看本项目某会话时禁止被「最近线程」抢走（否则中栏会跳到空/别的 tid）
+            if let keepTid {
+                window.threadId = keepTid
+            }
         }
         if let tid = window.threadId {
             model.ensureThreadHydrated(threadId: tid)
@@ -107,19 +118,40 @@ struct ProjectCard: View {
         }
         Task {
             await model.openProjectConversation(project.id)
-            guard let tid = model.selectedThreadId,
-                  LocalSessionStore.projectId(fromThreadId: tid) == project.id
-            else { return }
-            guard window.threadId != tid else {
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H2",
+                location: "ProjectCard.openProject",
+                message: "after openProjectConversation",
+                data: [
+                    "projectId": project.id,
+                    "keepTid": keepTid ?? "",
+                    "windowThreadId": window.threadId ?? "",
+                    "modelSelected": model.selectedThreadId ?? "",
+                    "windowMsgCount": model.messagesForThread(window.threadId).count,
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
+            guard let keepTid else {
+                // 本窗尚无会话：跟模型选中的最近线程
+                guard let tid = model.selectedThreadId,
+                      LocalSessionStore.projectId(fromThreadId: tid) == project.id
+                else { return }
+                var txn = Transaction()
+                txn.disablesAnimations = true
+                withTransaction(txn) {
+                    window.threadId = tid
+                }
                 model.clearThreadUnread(tid)
                 return
             }
-            var txn = Transaction()
-            txn.disablesAnimations = true
-            withTransaction(txn) {
-                window.threadId = tid
+            // 有 keep：模型若漂到别的 tid，拉回本窗会话，禁止空闪
+            if model.selectedThreadId != keepTid {
+                model.selectedThreadId = keepTid
+                await model.openThread(keepTid)
             }
-            model.clearThreadUnread(tid)
+            model.clearThreadUnread(keepTid)
         }
     }
 

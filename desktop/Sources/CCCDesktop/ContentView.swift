@@ -519,13 +519,33 @@ struct CodexChatPaneBody: View {
     @State private var paneSwitchGeneration: UInt64 = 0
     @FocusState private var composerFocused: Bool
 
-    /// 本窗唯一项目焦点；禁止回落全局 selected（否则他窗切项会拖走本窗历史）
+    /// 本窗唯一项目焦点；首帧未绑定时短暂回落全局，避免闪空（H5）
     private var paneProjectId: String? {
-        window.projectId
+        if let pid = window.projectId, !pid.isEmpty { return pid }
+        return model.selectedProjectId
     }
 
+    /// 本窗线程；首帧 window.threadId 未写入前用 model.selectedThreadId（H5）
     private var paneThreadId: String? {
-        window.threadId
+        if let tid = window.threadId, !tid.isEmpty { return tid }
+        if window.projectId == nil || window.projectId == model.selectedProjectId,
+           let tid = model.selectedThreadId, !tid.isEmpty {
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H5",
+                location: "CodexChatPaneBody.paneThreadId",
+                message: "fallback to model.selectedThreadId (window unbound)",
+                data: [
+                    "fallbackTid": tid,
+                    "msgCount": model.messagesForThread(tid).count,
+                    "agentMode": model.agentMode,
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
+            return tid
+        }
+        return nil
     }
 
     /// 本窗消息：只绑 window.projectId 对应线程；观察 threadRevision 接收后台流式
@@ -578,30 +598,78 @@ struct CodexChatPaneBody: View {
             }
             statusBar
 
-            if !model.canChat {
-                offlineCenter
-            } else {
-                ZStack {
-                    messageArea
-                        .opacity(paneContentOpacity)
-                    if showPaneSwitchSpinner {
-                        VStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.regular)
-                                .scaleEffect(1.15)
-                            Text("加载对话…")
-                                .font(.system(size: 12, weight: .light))
-                                .foregroundStyle(CCCTheme.faint)
-                        }
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
+            if !model.canChat && displayMessages.isEmpty {
+                // #region agent log
+                let _ = DebugAgentLog.log(
+                    hypothesisId: "H5",
+                    location: "CodexChatPane.body",
+                    message: paneThreadId == nil
+                        ? "startup bind: show loading (not offlineCenter)"
+                        : "rendering offlineCenter (no messages to keep)",
+                    data: [
+                        "agentMode": model.agentMode,
+                        "threadId": paneThreadId ?? "",
+                        "windowThreadId": window.threadId ?? "",
+                        "modelSelected": model.selectedThreadId ?? "",
+                        "msgCount": 0,
+                    ],
+                    runId: "post-fix"
+                )
+                // #endregion
+                if paneThreadId == nil {
+                    // 首帧 window 未绑定时禁止整页 offline（H5）
+                    VStack(spacing: 10) {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.regular)
+                        Text("加载对话…")
+                            .font(.system(size: 12, weight: .light))
+                            .foregroundStyle(CCCTheme.faint)
+                        Spacer()
                     }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    offlineCenter
                 }
-                if model.transferDraft(for: paneThreadId) != nil {
-                    transferConfirmBar
-                        .opacity(paneContentOpacity)
+            } else {
+                VStack(spacing: 0) {
+                    if !model.canChat {
+                        // #region agent log
+                        let _ = DebugAgentLog.log(
+                            hypothesisId: "H1",
+                            location: "CodexChatPane.body",
+                            message: "agent offline banner; keep messageArea",
+                            data: [
+                                "agentMode": model.agentMode,
+                                "threadId": paneThreadId ?? "",
+                                "msgCount": displayMessages.count,
+                            ]
+                        )
+                        // #endregion
+                        offlineBanner
+                    }
+                    ZStack {
+                        messageArea
+                            .opacity(paneContentOpacity)
+                        if showPaneSwitchSpinner {
+                            VStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.regular)
+                                    .scaleEffect(1.15)
+                                Text("加载对话…")
+                                    .font(.system(size: 12, weight: .light))
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                        }
+                    }
+                    if model.transferDraft(for: paneThreadId) != nil {
+                        transferConfirmBar
+                            .opacity(paneContentOpacity)
+                    }
+                    composerDock
                 }
-                composerDock
             }
         }
         .background(CCCTheme.chatBg)
@@ -620,9 +688,36 @@ struct CodexChatPaneBody: View {
                 model.ensureThreadHydrated(projectId: pid)
             }
         }
-        .onChange(of: window.threadId) { _ in
+        .onChange(of: window.threadId) { newTid in
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H2",
+                location: "CodexChatPane.onChange.threadId",
+                message: "window.threadId changed",
+                data: [
+                    "threadId": newTid ?? "",
+                    "msgCount": model.messagesForThread(newTid).count,
+                    "projectId": window.projectId ?? "",
+                ]
+            )
+            // #endregion
             // 消息源只跟 thread；以 thread 切换驱动过渡，避免与 project 双触发叠闪
             beginPaneSwitchTransition()
+        }
+        .onChange(of: model.agentMode) { mode in
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H1",
+                location: "CodexChatPane.onChange.agentMode",
+                message: "agentMode changed",
+                data: [
+                    "agentMode": mode,
+                    "canChat": model.canChat,
+                    "threadId": paneThreadId ?? "",
+                    "msgCount": model.messagesForThread(paneThreadId).count,
+                ]
+            )
+            // #endregion
         }
         .onChange(of: scenePhase) { phase in
             // A→B→A：窗体未必销毁，onAppear 不跑；激活时仍要瞬移最新，禁止扫历史
@@ -667,10 +762,41 @@ struct CodexChatPaneBody: View {
         needsInstantBottomPin = true
     }
 
-    /// 切项目/会话：遮罩下一帧内钉到跟随位，再无动画露出（无 320ms 转圈、无漂移）
+    /// 切项目/会话：有内容时禁止 opacity 清零（启动/探活卡顿会空白数秒，H4）
     private func beginPaneSwitchTransition() {
         paneSwitchGeneration &+= 1
         let gen = paneSwitchGeneration
+        let msgCount = displayMessages.count
+        let hasContent = msgCount > 0
+        // #region agent log
+        DebugAgentLog.log(
+            hypothesisId: "H4",
+            location: "CodexChatPane.beginPaneSwitchTransition",
+            message: hasContent ? "skip opacity hide (has content)" : "opacity→0",
+            data: [
+                "gen": gen,
+                "threadId": paneThreadId ?? "",
+                "msgCount": msgCount,
+                "hasContent": hasContent,
+            ],
+            runId: "post-fix"
+        )
+        // #endregion
+        if hasContent {
+            var pin = Transaction()
+            pin.disablesAnimations = true
+            withTransaction(pin) {
+                paneContentOpacity = 1
+                showPaneSwitchSpinner = false
+                pinBottomOnNextScroll()
+            }
+            Task { @MainActor in
+                await Task.yield()
+                guard gen == paneSwitchGeneration else { return }
+                bottomPinTick &+= 1
+            }
+            return
+        }
         var hide = Transaction()
         hide.disablesAnimations = true
         withTransaction(hide) {
@@ -680,15 +806,50 @@ struct CodexChatPaneBody: View {
         }
         Task { @MainActor in
             await Task.yield()
-            guard gen == paneSwitchGeneration else { return }
+            guard gen == paneSwitchGeneration else {
+                // #region agent log
+                DebugAgentLog.log(
+                    hypothesisId: "H4",
+                    location: "CodexChatPane.beginPaneSwitchTransition",
+                    message: "reveal aborted after yield1",
+                    data: ["gen": gen, "current": paneSwitchGeneration],
+                    runId: "post-fix"
+                )
+                // #endregion
+                return
+            }
             bottomPinTick &+= 1
             await Task.yield()
-            guard gen == paneSwitchGeneration else { return }
+            guard gen == paneSwitchGeneration else {
+                // #region agent log
+                DebugAgentLog.log(
+                    hypothesisId: "H4",
+                    location: "CodexChatPane.beginPaneSwitchTransition",
+                    message: "reveal aborted after yield2",
+                    data: ["gen": gen, "current": paneSwitchGeneration],
+                    runId: "post-fix"
+                )
+                // #endregion
+                return
+            }
             var reveal = Transaction()
             reveal.disablesAnimations = true
             withTransaction(reveal) {
                 paneContentOpacity = 1
             }
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H4",
+                location: "CodexChatPane.beginPaneSwitchTransition",
+                message: "opacity→1",
+                data: [
+                    "gen": gen,
+                    "threadId": paneThreadId ?? "",
+                    "msgCount": displayMessages.count,
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
         }
     }
 
@@ -875,6 +1036,27 @@ struct CodexChatPaneBody: View {
                 .environmentObject(model)
                 .environmentObject(window)
         }
+    }
+
+    /// Agent 短暂未就绪：顶条提示，禁止卸掉已有消息（H1）
+    private var offlineBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(CCCTheme.nodeFail)
+            Text("本机 Agent 暂未就绪 · 历史仍在，恢复后可继续发")
+                .font(.system(size: 11.5))
+                .foregroundStyle(CCCTheme.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("重试") { Task { await model.reconnect() } }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(CCCTheme.nodeFail.opacity(0.08))
+        .accessibilityLabel("本机 Agent 未就绪")
     }
 
     private var offlineCenter: some View {
@@ -1480,6 +1662,19 @@ struct CodexChatPaneBody: View {
         let blocked = !model.canChat || (model.activeQuickAction != nil && !busy) || paneStreaming
         return Button {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            // 禁用态仍要反馈：SwiftUI .disabled 会吞掉点击，用户以为「没反应」
+            if blocked {
+                if !model.canChat {
+                    model.showToast("本机 Agent 未就绪，无法执行「\(title)」")
+                } else if paneStreaming {
+                    model.showToast("请先停止当前生成，再点「\(title)」")
+                } else if let running = model.activeQuickAction, !running.isEmpty {
+                    model.showToast("请等待「\(running)」完成")
+                } else {
+                    model.showToast("暂时无法执行「\(title)」")
+                }
+                return
+            }
             action()
         } label: {
             HStack(spacing: 5) {
@@ -1505,7 +1700,6 @@ struct CodexChatPaneBody: View {
             .animation(.easeOut(duration: 0.12), value: busy)
         }
         .buttonStyle(.plain)
-        .disabled(blocked)
         .opacity(blocked && !busy ? 0.45 : 1)
         .help(help)
         .accessibilityLabel(title)

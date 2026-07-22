@@ -102,7 +102,31 @@ private struct WindowRootView: View {
         if let pid = window.projectId {
             let threads = ConversationStore.listThreads(projectId: pid)
             window.bindProject(pid, availableThreads: threads)
-            model.ensureThreadHydrated(threadId: window.threadId ?? "")
+            // 优先跟 model 已水合的选中线程，避免首帧绑错/绑空（H5）
+            if let sel = model.selectedThreadId,
+               LocalSessionStore.projectId(fromThreadId: sel) == pid,
+               threads.contains(where: { $0.thread_id == sel }) {
+                window.threadId = sel
+            }
+            if let tid = window.threadId, !tid.isEmpty {
+                model.ensureThreadHydrated(threadId: tid)
+            } else {
+                model.ensureThreadHydrated(projectId: pid)
+            }
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H5",
+                location: "WindowRootView.bindWindowProjectIfNeeded",
+                message: "window bound",
+                data: [
+                    "projectId": pid,
+                    "threadId": window.threadId ?? "",
+                    "modelSelected": model.selectedThreadId ?? "",
+                    "msgCount": model.messagesForThread(window.threadId).count,
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
         }
     }
 

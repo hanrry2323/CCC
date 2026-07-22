@@ -12,9 +12,14 @@ final class WindowChatState: ObservableObject {
     /// 每窗独立导航（对话 / 看板 / 运维），禁止全局 destination 串窗
     @Published var destination: SidebarDestination = .chat
 
-    /// 设置项目时自动选中最近线程；无活动线程则 threadId=nil（禁止绑已存档的 ::main）
+    /// 设置项目时：若本窗已有属于该项目的会话且仍在列表中，禁止被 first 抢走
     func bindProject(_ pid: String, availableThreads: [DesktopThread]) {
         projectId = pid
+        if let cur = threadId,
+           LocalSessionStore.projectId(fromThreadId: cur) == pid,
+           availableThreads.contains(where: { $0.thread_id == cur }) {
+            return
+        }
         if threadId == nil || !availableThreads.contains(where: { $0.thread_id == threadId }) {
             threadId = availableThreads.first?.thread_id
         }

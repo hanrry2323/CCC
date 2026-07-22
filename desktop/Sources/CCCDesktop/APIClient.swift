@@ -1058,7 +1058,10 @@ actor APIClient {
 
     func fetchProjectBaseline(projectId: String) async throws -> ProjectBaselineResp {
         let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
-        return try await send(try authedRequest("api/projects/\(enc)/baseline"), as: ProjectBaselineResp.self)
+        var req = try authedRequest("api/projects/\(enc)/baseline")
+        // Hub LAN 偶发抖动：短超时 + 少重试，避免 45s×3 静默挂死
+        req.timeoutInterval = 12
+        return try await send(req, as: ProjectBaselineResp.self, maxAttempts: 2)
     }
 
     func flowSnapshot(projectId: String, epicId: String? = nil) async throws -> FlowSnapshot {

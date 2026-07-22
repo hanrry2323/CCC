@@ -843,6 +843,14 @@ final class AppModel: ObservableObject {
     }
 
     private func setAgentModeNone(reason: String) {
+        // #region agent log
+        DebugAgentLog.log(
+            hypothesisId: "H1",
+            location: "AppModel.setAgentModeNone",
+            message: "agentMode→none (canChat false hides messageArea)",
+            data: ["reason": reason, "prevMode": agentMode, "selectedThreadId": selectedThreadId ?? ""]
+        )
+        // #endregion
         agentMode = "none"
         agentBadge = "本机 Agent 未就绪"
         startAgentRecoverLoopIfNeeded()
@@ -941,12 +949,44 @@ final class AppModel: ObservableObject {
 
     func dismissToast() { toast = nil }
 
-    func showToast(_ msg: String) {
+    /// - Parameter holdSeconds: 展示时长；长耗时操作用更长 hold，避免「点了没反馈」
+    func showToast(_ msg: String, holdSeconds: Double = 5) {
         toast = msg
+        let hold = max(1.5, holdSeconds)
         Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
             if toast == msg { toast = nil }
         }
+    }
+
+    /// Hub / 网络错误 → 白话（对齐基线等快捷条用）
+    private func friendlyHubError(_ error: Error, action: String) -> String {
+        if let api = error as? APIError {
+            switch api {
+            case .badURL:
+                return "\(action)失败：Hub 地址无效（设置里检查 Server）"
+            case .http(let code, let body):
+                if code == 0 || code == 502 || code == 503 || code == 504 {
+                    return "\(action)失败：Hub 暂不可达（HTTP \(code)）。可聊；恢复后重试"
+                }
+                let brief = body.trimmingCharacters(in: .whitespacesAndNewlines)
+                if brief.isEmpty { return "\(action)失败：HTTP \(code)" }
+                return "\(action)失败：HTTP \(code) \(brief.prefix(120))"
+            default:
+                return "\(action)失败：\(api.localizedDescription)"
+            }
+        }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            switch ns.code {
+            case NSURLErrorTimedOut, NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost,
+                 NSURLErrorNotConnectedToInternet, NSURLErrorDNSLookupFailed:
+                return "\(action)失败：连不上 Hub（\(serverURLString)）。可聊；恢复后重试「\(action)」"
+            default:
+                break
+            }
+        }
+        return "\(action)失败：\(error.localizedDescription)"
     }
 
     func refreshProjects() async {
@@ -1168,15 +1208,36 @@ final class AppModel: ObservableObject {
             let pid = LocalSessionStore.projectId(fromThreadId: threadId)
             hydrateThreadFromDisk(projectId: pid, threadId: threadId)
             if threadMessages[threadId] == nil {
+                // #region agent log
+                DebugAgentLog.log(
+                    hypothesisId: "H3",
+                    location: "AppModel.ensureThreadHydrated",
+                    message: "seed empty RAM (disk miss)",
+                    data: ["threadId": threadId, "projectId": pid]
+                )
+                // #endregion
                 threadMessages[threadId] = []
             }
             bumpThreadRevision(threadId)
         }
     }
 
-    /// 兼容旧 API：从 projectId 保证主线程水合
+    /// 兼容旧 API：水合该项目「最近活动线程」，禁止盲种已归档的 ::main（H3）
     func ensureThreadHydrated(projectId: String) {
-        ensureThreadHydrated(threadId: threadIdForProject( projectId))
+        let recent = LocalSessionStore.threadsAsDesktop(projectId: projectId).first?.thread_id
+        let tid = (recent?.isEmpty == false) ? recent! : threadIdForProject(projectId)
+        // #region agent log
+        if tid.hasSuffix("::main") {
+            DebugAgentLog.log(
+                hypothesisId: "H3",
+                location: "AppModel.ensureThreadHydrated(projectId:)",
+                message: "hydrating legacy ::main (no recent thread)",
+                data: ["projectId": projectId, "threadId": tid],
+                runId: "post-fix"
+            )
+        }
+        // #endregion
+        ensureThreadHydrated(threadId: tid)
     }
 
     /// 加载指定线程的会话。流式中或 RAM 更丰富时禁止磁盘盲覆盖。
@@ -1207,6 +1268,24 @@ final class AppModel: ObservableObject {
         } else {
             threadMessages[tid] = disk
         }
+        // #region agent log
+        let after = threadMessages[tid]?.count ?? -1
+        if after == 0 || (ram.count > 0 && after < ram.count) {
+            DebugAgentLog.log(
+                hypothesisId: "H3",
+                location: "AppModel.loadConversation",
+                message: "thread message count drop/empty after load",
+                data: [
+                    "threadId": tid,
+                    "ram": ram.count,
+                    "disk": disk.count,
+                    "after": after,
+                    "keepRam": keepRam,
+                    "streaming": streamingThreadIds.contains(tid),
+                ]
+            )
+        }
+        // #endregion
         if let flow = state.flow {
             if threadFlow[tid] == nil
                 || (threadFlow[tid]?.works.isEmpty == true && !flow.works.isEmpty) {
@@ -1612,6 +1691,29 @@ final class AppModel: ObservableObject {
         let diskScore = LocalSessionStore.messageScore(disk.messages)
         let ramScore = LocalSessionStore.messageScore(ram)
         if ram.isEmpty || diskScore > ramScore {
+            // #region agent log
+            if ram.count > 0, disk.messages.count < ram.count {
+                DebugAgentLog.log(
+                    hypothesisId: "H3",
+                    location: "AppModel.hydrateThreadFromDisk",
+                    message: "disk overwrite shrinks RAM",
+                    data: [
+                        "threadId": threadId,
+                        "ram": ram.count,
+                        "disk": disk.messages.count,
+                        "ramScore": ramScore,
+                        "diskScore": diskScore,
+                    ]
+                )
+            } else if ram.isEmpty, disk.messages.isEmpty {
+                DebugAgentLog.log(
+                    hypothesisId: "H3",
+                    location: "AppModel.hydrateThreadFromDisk",
+                    message: "hydrate keeps empty (ram+disk empty)",
+                    data: ["threadId": threadId]
+                )
+            }
+            // #endregion
             threadMessages[threadId] = disk.messages
         }
         if let flow = disk.flow, threadFlow[threadId] == nil || (threadFlow[threadId]?.works.isEmpty == true && !flow.works.isEmpty) {
@@ -1818,6 +1920,17 @@ final class AppModel: ObservableObject {
     }
 
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
+        // #region agent log
+        let prev = threadMessages[threadId]?.count ?? 0
+        if prev > 0, msgs.isEmpty {
+            DebugAgentLog.log(
+                hypothesisId: "H3",
+                location: "AppModel.persistMessages",
+                message: "persist empty over non-empty RAM",
+                data: ["threadId": threadId, "prev": prev]
+            )
+        }
+        // #endregion
         threadMessages[threadId] = msgs
         bumpThreadRevision(threadId)
         syncLegacyChatMirror(from: threadId)
@@ -3295,10 +3408,14 @@ final class AppModel: ObservableObject {
             showToast("请先选择项目")
             return
         }
+        guard canChat else {
+            showToast("本机 Agent 未就绪，无法对齐基线")
+            return
+        }
         destination = .chat
-        // 点按瞬间反馈（Hub 拉取前）
+        // 点按瞬间反馈（Hub 拉取前）；hold 加长，避免默认 5s 消失后像「没反应」
         activeQuickAction = "对齐基线"
-        showToast("对齐基线：拉取快照…")
+        showToast("对齐基线：正在从 Hub 拉取快照…", holdSeconds: 20)
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         let tid = threadId ?? selectedThreadId
         if let tid {
@@ -3306,15 +3423,20 @@ final class AppModel: ObservableObject {
         }
         do {
             try await prepareClient(projectId: pid)
+            if !hubReachable {
+                // 仍尝试一次拉取；先给可见提示，避免静默长等
+                showToast("Hub 标记不可达，仍尝试拉取…", holdSeconds: 15)
+            }
             let resp = try await client.fetchProjectBaseline(projectId: pid)
+            setHubReachable(true, source: "align_baseline")
             let prompt = (resp.prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !prompt.isEmpty else {
-                showToast("基线为空")
+                showToast("基线为空（Hub 返回无 prompt）")
                 activeQuickAction = nil
                 if let tid { setThreadStreamStatus(tid, "") }
                 return
             }
-            showToast("对齐基线：已注入，生成中…")
+            showToast("对齐基线：已注入，生成中…", holdSeconds: 8)
             sendUserMessage(
                 prompt,
                 projectId: pid,
@@ -3323,7 +3445,8 @@ final class AppModel: ObservableObject {
                 displayText: "【快捷】对齐基线"
             )
         } catch {
-            showToast(error.localizedDescription)
+            setHubReachable(false, source: "align_baseline_fail")
+            showToast(friendlyHubError(error, action: "对齐基线"), holdSeconds: 10)
             activeQuickAction = nil
             if let tid { setThreadStreamStatus(tid, "") }
         }
