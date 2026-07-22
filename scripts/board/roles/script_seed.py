@@ -25,19 +25,11 @@ from typing import Any
 _log = logging.getLogger("ccc.script_seed")
 
 _PROBE_NAME = "paper_intent_probe.py"
-_PROBE_MARKERS = (
+_PROBE_MARKERS_STRONG = (
     "paper_intent_probe",
-    "意图探针",
     "script-seed",
-    "intent-probe",
-    "paper probe",
-    "纸面",
+    "intent-probe-seed",
 )
-
-
-def _ccc_repo_root() -> Path:
-    # scripts/board/roles/script_seed.py → CCC root
-    return Path(__file__).resolve().parents[3]
 
 
 def _load_phases(ws: Path, tid: str) -> list[dict[str, Any]]:
@@ -58,6 +50,15 @@ def _load_phases(ws: Path, tid: str) -> list[dict[str, Any]]:
     return out
 
 
+def _scopes(ws: Path, tid: str) -> list[str]:
+    scopes: list[str] = []
+    for p in _load_phases(ws, tid):
+        sc = p.get("scope") or []
+        if isinstance(sc, list):
+            scopes.extend(str(x).strip() for x in sc if str(x).strip())
+    return scopes
+
+
 def _blob_for_task(ws: Path, task: dict[str, Any]) -> str:
     tid = str(task.get("id") or "")
     parts = [
@@ -69,14 +70,32 @@ def _blob_for_task(ws: Path, task: dict[str, Any]) -> str:
     plan = ws / ".ccc" / "plans" / f"{tid}.plan.md"
     if plan.is_file():
         parts.append(plan.read_text(encoding="utf-8", errors="replace")[:8000])
-    for p in _load_phases(ws, tid):
-        parts.append(json.dumps(p.get("scope") or [], ensure_ascii=False))
+    parts.append(" ".join(_scopes(ws, tid)))
     return "\n".join(parts).lower()
 
 
 def looks_like_intent_probe_seed(ws: Path, task: dict[str, Any]) -> bool:
+    """True only for mechanical probe-seed cards — not medium epics that merely mention 探针."""
+    title = str(task.get("title") or "")
+    title_l = title.lower()
     blob = _blob_for_task(ws, task)
-    return any(m.lower() in blob for m in _PROBE_MARKERS)
+    if any(m in blob for m in _PROBE_MARKERS_STRONG):
+        return True
+    scopes = _scopes(ws, str(task.get("id") or ""))
+    if scopes and all(
+        s.replace("\\", "/").endswith(_PROBE_NAME) or s.endswith("paper_intent_probe.py")
+        for s in scopes
+    ):
+        return True
+    # Title is primarily a probe card
+    if ("意图探针" in title or "纸面探针" in title or "paper probe" in title_l) and not any(
+        k in title for k in ("模块", "功能", "实现", "文档", "计数", "＋", "+")
+    ):
+        return True
+    tags = {str(t).lower() for t in (task.get("tags") or [])}
+    if tags & {"script-seed", "intent-probe-seed"}:
+        return True
+    return False
 
 
 def should_use_script_seed(ws: Path, task: dict[str, Any]) -> bool:
@@ -88,6 +107,11 @@ def should_use_script_seed(ws: Path, task: dict[str, Any]) -> bool:
     if exec_id in ("python", "auto", "cli", "opencode", ""):
         return True
     return False
+
+
+def _ccc_repo_root() -> Path:
+    # scripts/board/roles/script_seed.py → CCC root
+    return Path(__file__).resolve().parents[3]
 
 
 def _probe_body_for_app() -> str:

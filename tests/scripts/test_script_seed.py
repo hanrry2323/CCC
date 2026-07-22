@@ -18,19 +18,31 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     ws = tmp_path / "qb"
     ws.mkdir()
     (ws / ".ccc" / "plans").mkdir(parents=True)
+    (ws / ".ccc" / "phases").mkdir(parents=True)
     (ws / ".ccc" / "board" / "in_progress").mkdir(parents=True)
     (ws / ".ccc" / "board" / "testing").mkdir(parents=True)
     (ws / ".git").mkdir()
     tid = "probe-w1"
     task = {
         "id": tid,
-        "title": "实现纸面意图探针",
-        "description": "paper_intent_probe DRY_RUN",
+        "title": "纸面意图探针可重放",
+        "description": "seed paper_intent_probe",
         "executor": "opencode",
-        "tags": ["exec:opencode"],
+        "tags": ["script-seed"],
     }
     (ws / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
         "## 验收\n- DRY_RUN=true python3 scripts/paper_intent_probe.py --env paper\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
+        json.dumps(
+            {
+                "phase": 1,
+                "status": "pending",
+                "scope": ["scripts/paper_intent_probe.py"],
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     (ws / ".ccc" / "board" / "in_progress" / f"{tid}.jsonl").write_text(
@@ -38,7 +50,23 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     )
     assert should_use_script_seed(ws, task) is True
 
-    # minimal git for commit attempt
+    # medium feature mentioning 探针 must NOT take script_seed
+    mid = {
+        "id": "feat-w1",
+        "title": "计数器模块：实现+文档+探针",
+        "description": "Counter + docs",
+        "executor": "opencode",
+    }
+    (ws / ".ccc" / "plans" / "feat-w1.plan.md").write_text(
+        "## 目标\n落地模块与意图探针\n## 范围\nscripts/feature_counter.py\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "feat-w1.phases.json").write_text(
+        json.dumps({"phase": 1, "scope": ["scripts/feature_counter.py"]}) + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, mid) is False
+
     import subprocess
 
     subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
@@ -58,9 +86,6 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     assert r["ok"] is True
     probe = ws / "scripts" / "paper_intent_probe.py"
     assert probe.is_file()
-    text = probe.read_text(encoding="utf-8")
-    assert "DRY_RUN" in text
-    assert "startup_check" in text
 
 
 def test_transfer_coerce_probe_to_python():

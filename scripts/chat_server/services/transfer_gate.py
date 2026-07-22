@@ -308,18 +308,22 @@ def resolve_executor_intent(body: dict[str, Any]) -> str:
             "committer",
         )
     )
-    # LPSN 机械探针：paper_intent_probe / 纸面意图探针 → python（script_seed）
-    probeish = any(
-        k in blob_full
+    # LPSN 机械探针：整卡都是探针种子时才强制 python（勿因验收里顺带一条探针就锁死整 epic）
+    title_l = title.lower()
+    probe_epic = any(
+        k in title_l
         for k in (
             "paper_intent_probe",
             "意图探针",
-            "纸面",
+            "纸面探针",
             "script-seed",
             "intent-probe",
         )
+    ) or (
+        "探针" in title
+        and not any(k in title for k in ("模块", "功能", "实现", "文档", "计数"))
     )
-    if (hygiene or probeish) and intent in ("opencode", "auto", ""):
+    if (hygiene or probe_epic) and intent in ("opencode", "auto", ""):
         return "python"
 
     if intent == "auto":
