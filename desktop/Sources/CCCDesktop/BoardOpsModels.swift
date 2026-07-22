@@ -155,6 +155,8 @@ struct OpsLogisticsResp: Decodable {
     let spawn_hint_today: Int?
     let ops_auto_backlog: Int?
     let plist: OpsLogisticsPlist?
+    let headline: String?
+    let needs_attention: Bool?
     let note: String?
     let generated_at: String?
 }

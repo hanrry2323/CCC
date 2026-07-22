@@ -265,4 +265,7 @@ def test_logistics_heartbeat_shape(tmp_path, monkeypatch):
     hb = op.logistics_heartbeat({"hb-app": str(app)})
     assert "plist" in hb
     assert "ammo_workspaces" in hb
+    assert "headline" in hb
+    assert "needs_attention" in hb
     assert any(x.get("workspace") == "hb-app" for x in hb.get("daily_today") or [])
+    assert "日审" in (hb.get("headline") or "") or "B" in (hb.get("headline") or "")

@@ -7,7 +7,25 @@ struct OpsView: View {
     @State private var showAdoptSheet = false
     @State private var adoptTitle = ""
     @State private var adoptDesc = ""
-    @State private var adoptWorkspace = "CCC"
+    @State private var adoptWorkspace = ""
+    @State private var showFleet = false
+    @State private var showReports = false
+    @State private var showActions = false
+
+    private var preferredAmmoWorkspace: String {
+        if let p = model.selectedProject, p.isDispatchable {
+            return p.workspace ?? p.id
+        }
+        if let p = model.projects.first(where: \.isDispatchable) {
+            return p.workspace ?? p.id
+        }
+        return ""
+    }
+
+    private var canAdoptAmmo: Bool {
+        let ws = adoptWorkspace.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !ws.isEmpty && ws.uppercased() != "CCC"
+    }
 
     private let machineColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 12),
@@ -32,24 +50,67 @@ struct OpsView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
-                    overviewSection
+                    statusBarSection
                     logisticsSection
+                    highAlertsSection
+                    DisclosureGroup("舰队详情", isExpanded: $showFleet) {
+                        VStack(alignment: .leading, spacing: 22) {
+                            overviewSection
+                            resourcesSection
+                            workspacesSection
+                            downPortsSection
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    DisclosureGroup("报告与债", isExpanded: $showReports) {
+                        VStack(alignment: .leading, spacing: 22) {
+                            dailyReviewSection
+                            qualitySection
+                            docsDebtSection
+                            risksSection
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
                     inboxProposalsSection
-                    resourcesSection
-                    risksSection
-                    workspacesSection
-                    dailyReviewSection
-                    qualitySection
-                    docsDebtSection
-                    downPortsSection
+                    DisclosureGroup("例外动作", isExpanded: $showActions) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("日审默认 dry-run all-apps；采纳须业务仓（禁 CCC）。")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.faint)
+                            Button {
+                                Task { await model.runDailyReview(workspace: "") }
+                            } label: {
+                                Label("跑日审（dry-run）", systemImage: "play.fill")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(model.opsAdoptBusy)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
             }
         }
         .background(CCCTheme.chatBg)
-        .task { await model.refreshOps() }
-        .sheet(isPresented: $showAdoptSheet) { adoptSheet }
+        .task {
+            if adoptWorkspace.isEmpty {
+                adoptWorkspace = preferredAmmoWorkspace
+            }
+            await model.refreshOps()
+        }
+        .sheet(isPresented: $showAdoptSheet) {
+            adoptSheet
+                .onAppear {
+                    if adoptWorkspace.isEmpty || adoptWorkspace.uppercased() == "CCC" {
+                        adoptWorkspace = preferredAmmoWorkspace
+                    }
+                }
+        }
     }
 
     private var header: some View {
@@ -69,7 +130,11 @@ struct OpsView: View {
                 ProgressView().controlSize(.small)
             }
             Menu {
-                Button("采纳建议…", systemImage: "plus.circle") { showAdoptSheet = true }
+                Button("采纳建议…", systemImage: "plus.circle") {
+                    adoptWorkspace = preferredAmmoWorkspace
+                    showAdoptSheet = true
+                }
+                .disabled(preferredAmmoWorkspace.isEmpty)
                 Button("刷新", systemImage: "arrow.clockwise") {
                     Task { await model.refreshOps() }
                 }
@@ -91,13 +156,98 @@ struct OpsView: View {
         .padding(.bottom, 10)
     }
 
+    // MARK: - Status bar
+
+    private var statusBarSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("状态", systemImage: "heart.text.square")
+            let risks = model.opsRisks
+            let engineDown = risks.contains { $0.id == "engine-down" }
+            let high = risks.filter { $0.severity.lowercased() == "high" }.count
+            let plist = model.opsSummary?.logistics?.plist
+            let loaded = plist?.any_loaded == true
+            let applyAmmo = plist?.any_apply_ammo == true
+            HStack(spacing: 8) {
+                statusPill(ok: !engineDown, text: engineDown ? "Engine 停" : "Engine 在跑")
+                statusPill(ok: loaded, text: loaded ? (applyAmmo ? "plist apply" : "plist dry") : "plist 未启用")
+                statusPill(ok: high == 0, text: high > 0 ? "红灯 \(high)" : "无红灯")
+            }
+            if let headline = model.opsSummary?.logistics?.headline {
+                Text(headline)
+                    .font(.system(size: 13, weight: (model.opsSummary?.logistics?.needs_attention == true) ? .semibold : .regular))
+                    .foregroundStyle(
+                        (model.opsSummary?.logistics?.needs_attention == true)
+                            ? Color.orange : CCCTheme.secondary
+                    )
+            }
+            Text("定时：install-ops-plist.sh --enable --apply-ammo（界面不代启）")
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+        }
+    }
+
+    private func statusPill(ok: Bool, text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(ok ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.12))
+            )
+    }
+
+    // MARK: - High alerts only
+
+    private var highAlertsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("需关注", systemImage: "exclamationmark.octagon.fill")
+            let high = model.opsRisks.filter { $0.severity.lowercased() == "high" }
+            let downs = model.opsOverview?.down_ports ?? []
+            if high.isEmpty && downs.isEmpty {
+                emptyHint("当前无红灯")
+            } else {
+                ForEach(high) { risk in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.octagon.fill")
+                            .foregroundStyle(CCCTheme.nodeFail)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(risk.title)
+                                .font(.system(size: 14, weight: .semibold))
+                            Text(risk.detail)
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.secondary)
+                                .lineLimit(3)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(CCCTheme.nodeFail.opacity(0.08))
+                    )
+                }
+                ForEach(downs.prefix(6)) { p in
+                    Label("\(p.host):\(p.port) · \(p.name)", systemImage: "network.slash")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(CCCTheme.nodeFail)
+                }
+            }
+        }
+    }
+
     // MARK: - Logistics heartbeat (read-only)
 
     private var logisticsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("后勤心跳", systemImage: "shippingbox.fill")
+            sectionTitle("后勤供弹", systemImage: "shippingbox.fill")
             if let log = model.opsSummary?.logistics {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let headline = log.headline {
+                        Text(headline)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(log.needs_attention == true ? Color.orange : CCCTheme.ink)
+                    }
                     HStack {
                         Label("\(log.ammo_workspaces?.count ?? 0) 弹药仓", systemImage: "tray.full")
                         Spacer()
@@ -107,6 +257,15 @@ struct OpsView: View {
                                 .foregroundStyle(CCCTheme.secondary)
                         }
                     }
+                    if let ammo = log.ammo_workspaces, !ammo.isEmpty {
+                        Text(ammo.compactMap(\.workspace).joined(separator: " · "))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(CCCTheme.faint)
+                            .lineLimit(2)
+                    }
+                    Text("CCC orch 不在供弹名单")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
                     if let agents = log.plist?.agents, !agents.isEmpty {
                         ForEach(agents) { a in
                             HStack {
@@ -129,11 +288,6 @@ struct OpsView: View {
                         }
                     } else {
                         emptyHint("今日尚无日审报告")
-                    }
-                    if let note = log.note {
-                        Text(note)
-                            .font(CCCTheme.caption)
-                            .foregroundStyle(CCCTheme.faint)
                     }
                 }
                 .padding(14)
@@ -442,19 +596,7 @@ struct OpsView: View {
 
     private var dailyReviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                sectionTitle("日审", systemImage: "calendar")
-                Spacer()
-                Button {
-                    Task { await model.runDailyReview(workspace: "") }
-                } label: {
-                    Label("跑日审", systemImage: "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CCCTheme.accent)
-                .controlSize(.small)
-                .disabled(model.opsAdoptBusy)
-            }
+            sectionTitle("日审", systemImage: "calendar")
             if let daily = model.opsSummary?.daily {
                 if let latest = daily.latest {
                     VStack(alignment: .leading, spacing: 6) {
@@ -589,11 +731,20 @@ struct OpsView: View {
 
     private var adoptSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("采纳建议 → backlog")
+            Text("采纳建议 → 业务仓 backlog")
                 .font(.system(size: 16, weight: .semibold))
             LabeledContent("工作区") {
-                TextField("CCC", text: $adoptWorkspace)
+                TextField("ccc-demo（禁 CCC）", text: $adoptWorkspace)
                     .textFieldStyle(.roundedBorder)
+            }
+            if preferredAmmoWorkspace.isEmpty {
+                Text("无 engine-eligible 业务仓，无法采纳")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.nodeFail)
+            } else if adoptWorkspace.uppercased() == "CCC" {
+                Text("禁止对 CCC orch 供弹")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.nodeFail)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("标题").font(CCCTheme.callout).foregroundStyle(CCCTheme.faint)
@@ -613,8 +764,12 @@ struct OpsView: View {
                     .buttonStyle(.bordered)
                 Button("采纳") {
                     Task {
+                        guard canAdoptAmmo else {
+                            model.opsAdoptError = "须指定业务仓（禁 CCC orch）"
+                            return
+                        }
                         await model.adoptSuggestion(
-                            workspace: adoptWorkspace.isEmpty ? "CCC" : adoptWorkspace,
+                            workspace: adoptWorkspace.trimmingCharacters(in: .whitespacesAndNewlines),
                             title: adoptTitle,
                             description: adoptDesc
                         )
@@ -627,11 +782,11 @@ struct OpsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(CCCTheme.accent)
-                .disabled(adoptTitle.isEmpty || model.opsAdoptBusy)
+                .disabled(adoptTitle.isEmpty || model.opsAdoptBusy || !canAdoptAmmo)
             }
         }
         .padding(20)
-        .frame(width: 440, height: 320, alignment: .topLeading)
+        .frame(width: 440, height: 340, alignment: .topLeading)
         .background(CCCTheme.chatBg)
     }
 

@@ -1106,13 +1106,43 @@ def logistics_heartbeat(workspaces: dict[str, str] | None = None) -> dict:
     except Exception:
         auto_n = 0
 
+    plist = _plist_ops_status()
+    headline_parts: list[str] = []
+    needs_attention = False
+    if not ammo:
+        headline_parts.append("无弹药仓")
+        needs_attention = True
+    else:
+        headline_parts.append(f"{len(ammo)}仓可供弹")
+    if not plist.get("any_loaded"):
+        headline_parts.append("plist未启用")
+        needs_attention = True
+    elif not plist.get("any_apply_ammo"):
+        headline_parts.append("plist dry-run")
+    else:
+        headline_parts.append("plist apply-ammo")
+    if latest_daily:
+        from collections import Counter
+
+        counts = Counter((x.get("decision") or "?") for x in latest_daily)
+        dec_s = " ".join(f"{k}×{v}" for k, v in sorted(counts.items()))
+        headline_parts.append(f"今日日审 {dec_s}")
+    else:
+        headline_parts.append("今日无日审")
+    if auto_n:
+        headline_parts.append(f"ops-auto {auto_n}")
+    if spawn_hint:
+        headline_parts.append(f"spawn提示 {spawn_hint}")
+
     return {
         "ammo_workspaces": ammo,
         "daily_today": latest_daily,
         "docs_today": latest_docs,
         "spawn_hint_today": spawn_hint,
         "ops_auto_backlog": auto_n,
-        "plist": _plist_ops_status(),
+        "plist": plist,
+        "headline": " · ".join(headline_parts),
+        "needs_attention": needs_attention,
         "note": "后勤心跳只读；供弹仅 engine-eligible；定时见 install-ops-plist.sh",
         "generated_at": _now_iso(),
     }
