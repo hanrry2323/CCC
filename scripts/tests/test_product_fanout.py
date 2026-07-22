@@ -200,7 +200,7 @@ def test_seeded_phase_plan_preserves_epic_acceptance():
 
 
 def test_seeded_phase_slice_inherits_epic_probes():
-    """## Phase N 切片无探针时，须回灌 epic ## 验收，否则 plan_lint 拒扇出。"""
+    """## Phase N 切片须带本 scope 可验探针，且不串未来交付探针。"""
     from _product_fanout import _plan_md_for_seeded_phase
     from _intent_probe import extract_probe_commands
 
@@ -208,11 +208,15 @@ def test_seeded_phase_slice_inherits_epic_probes():
         "# Plan\n\n## Phase 1 — code\n- `scripts/feature_counter.py`\n"
         "- 实现 Counter\n\n"
         "## Phase 2 — docs\n- `docs/FEATURE_COUNTER.md`\n\n"
+        "## Phase 3 — probe\n- `scripts/feature_counter_probe.py`\n\n"
         "## 验收\n"
         "- DRY_RUN=true python3 scripts/feature_counter_probe.py\n"
         "- test -f docs/FEATURE_COUNTER.md\n"
+        "- test -f scripts/feature_counter.py\n"
     )
     ph = {"phase": 1, "description": "code", "scope": ["scripts/feature_counter.py"]}
     out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
     probes = extract_probe_commands(out)
-    assert any("feature_counter_probe" in c for c in probes), probes
+    assert any("feature_counter.py" in c for c in probes), probes
+    assert not any("feature_counter_probe" in c for c in probes), probes
+    assert not any("FEATURE_COUNTER.md" in c for c in probes), probes

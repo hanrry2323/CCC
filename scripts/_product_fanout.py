@@ -637,22 +637,72 @@ def _title_for_seeded_phase(epic: dict, phase: dict, idx: int) -> str:
     return f"{base} · P{idx + 1}"[:80]
 
 
-def _append_epic_intent_probes(work_plan: str, epic_plan: str) -> str:
-    """Phase 切片常丢掉 epic 级 ## 验收探针；补回以免 plan_lint 拒扇出。"""
+def _scope_paths(phase: dict) -> list[str]:
+    scope = phase.get("scope") or []
+    return [str(s).strip() for s in scope if str(s).strip()]
+
+
+def _probe_touches_scope(cmd: str, scope: list[str]) -> bool:
+    if not scope:
+        return True
+    c = cmd or ""
+    return any(p in c for p in scope)
+
+
+def _acceptance_bullets_for_phase(
+    *, body: str, epic_plan: str, phase: dict, desc: str
+) -> list[str]:
+    """Phase work 的 ## 验收：本相路径可验 + 触及本 scope 的 epic 探针。
+
+    禁止把整 epic 的未来交付探针全塞进每张小卡（salvage 会提前跑挂）。
+    """
     try:
-        from _intent_probe import extract_probe_commands
+        from _intent_probe import extract_probe_commands, is_allowed_verify_cmd
     except ImportError:
-        return work_plan
-    if extract_probe_commands(work_plan or ""):
-        return work_plan
-    probes = extract_probe_commands(epic_plan or "")
-    if not probes:
-        return work_plan
-    block = "\n".join(f"- {c}" for c in probes)
-    text = (work_plan or "").rstrip()
-    if re.search(r"^##\s*(验收|验证)\s*$", text, re.M):
-        return text + "\n" + block + "\n"
-    return text + "\n\n## 验收\n" + block + "\n"
+        extract_probe_commands = None  # type: ignore
+        is_allowed_verify_cmd = None  # type: ignore
+
+    scope = _scope_paths(phase)
+    bullets: list[str] = []
+    seen: set[str] = set()
+
+    def _add(cmd: str) -> None:
+        c = (cmd or "").strip()
+        if not c or c in seen:
+            return
+        if is_allowed_verify_cmd and not is_allowed_verify_cmd(c):
+            return
+        seen.add(c)
+        bullets.append(c)
+
+    # 1) phase 正文里已有的可执行命令（整段扫描，不依赖 ## 验收）
+    if extract_probe_commands:
+        for c in extract_probe_commands(body or ""):
+            if _probe_touches_scope(c, scope):
+                _add(c)
+
+    # 2) scope 文件存在性（最小可验）
+    for p in scope:
+        if "/" in p or p.endswith((".py", ".md", ".sh", ".json", ".ts", ".js")):
+            _add(f"test -f {p}")
+
+    # 3) epic ## 验收里触及本 scope 的探针（含 DRY_RUN 探针脚本本身）
+    if extract_probe_commands:
+        for c in extract_probe_commands(epic_plan or ""):
+            if _probe_touches_scope(c, scope):
+                _add(c)
+
+    # 4) 仍无白名单探针时：用 py_compile / 合成说明兜底（plan_lint）
+    if extract_probe_commands and not extract_probe_commands(
+        "## 验收\n" + "\n".join(f"- {b}" for b in bullets)
+    ):
+        for p in scope:
+            if p.endswith(".py"):
+                _add(f"python3 -m py_compile {p}")
+                break
+    if not bullets:
+        bullets.append(f"完成「{desc}」且 scope 内变更可验证")
+    return bullets
 
 
 def _plan_md_for_seeded_phase(
@@ -678,15 +728,22 @@ def _plan_md_for_seeded_phase(
     scope_s = ", ".join(str(s) for s in scope if s) or "(见 phase.scope)"
     desc = str(phase.get("description") or title).strip()
     if body:
-        # Ensure acceptance section exists
-        if not re.search(r"^##\s*(验收|验证)\s*$", body, re.M):
-            body = (
-                body.rstrip()
-                + "\n\n## 验收\n"
-                + f"- 完成「{desc}」且 scope 内变更可验证\n"
-            )
-        return _append_epic_intent_probes(
-            f"# Plan: {title}\n\n## 目标\n- {desc}\n\n{body}\n", src
+        # 去掉正文里可能残留的 ## 验收，统一用 scope 感知验收重写
+        body_wo_acc = re.sub(
+            r"\n##\s*(?:验收|验证)\s*\n.*?(?=\n##\s|\Z)",
+            "\n",
+            body,
+            flags=re.DOTALL | re.IGNORECASE,
+        ).rstrip()
+        bullets = _acceptance_bullets_for_phase(
+            body=body_wo_acc, epic_plan=src, phase=phase, desc=desc
+        )
+        acc = "\n".join(f"- {b}" for b in bullets)
+        return (
+            f"# Plan: {title}\n\n"
+            f"## 目标\n- {desc}\n\n"
+            f"{body_wo_acc}\n\n"
+            f"## 验收\n{acc}\n"
         )
 
     # 无 ## Phase N：下发完整 epic plan（去掉仅顶层重复标题）
