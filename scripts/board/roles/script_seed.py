@@ -75,20 +75,38 @@ def _blob_for_task(ws: Path, task: dict[str, Any]) -> str:
 
 
 def looks_like_intent_probe_seed(ws: Path, task: dict[str, Any]) -> bool:
-    """True only for mechanical probe-seed cards — not medium epics that merely mention 探针."""
+    """True only for mechanical *paper_intent_probe* seed — not feature probes."""
     title = str(task.get("title") or "")
     title_l = title.lower()
     blob = _blob_for_task(ws, task)
+    scopes = _scopes(ws, str(task.get("id") or ""))
+    scope_l = " ".join(s.replace("\\", "/").lower() for s in scopes)
+
+    # Explicit non-paper probe deliverable → OpenCode / normal path
+    if any(
+        "feature_counter_probe" in s
+        or (s.endswith("_probe.py") and "paper_intent_probe" not in s)
+        for s in (x.replace("\\", "/").lower() for x in scopes)
+    ):
+        return False
+    if "feature_counter_probe" in blob and "paper_intent_probe" not in blob:
+        return False
+
     if any(m in blob for m in _PROBE_MARKERS_STRONG):
         return True
-    scopes = _scopes(ws, str(task.get("id") or ""))
     if scopes and all(
         s.replace("\\", "/").endswith(_PROBE_NAME) or s.endswith("paper_intent_probe.py")
         for s in scopes
     ):
         return True
-    # Title is primarily a probe card
-    if ("意图探针" in title or "纸面探针" in title or "paper probe" in title_l) and not any(
+    # Title is primarily a *paper* probe card (not arbitrary 「意图探针」feature work)
+    paperish = (
+        "paper_intent_probe" in title_l
+        or "纸面探针" in title
+        or "纸面意图探针" in title
+        or ("paper" in title_l and "probe" in title_l)
+    )
+    if paperish and not any(
         k in title for k in ("模块", "功能", "实现", "文档", "计数", "＋", "+")
     ):
         return True

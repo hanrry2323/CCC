@@ -67,6 +67,23 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     )
     assert should_use_script_seed(ws, mid) is False
 
+    probe_feat = {
+        "id": "probe-feat-w3",
+        "title": "Phase 3 — DRY_RUN 意图探针",
+        "description": "feature_counter_probe",
+        "executor": "opencode",
+    }
+    (ws / ".ccc" / "plans" / "probe-feat-w3.plan.md").write_text(
+        "## 目标\n写 feature_counter_probe\n## 验收\n- DRY_RUN=true python3 scripts/feature_counter_probe.py\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "probe-feat-w3.phases.json").write_text(
+        __import__("json").dumps({"phase": 1, "scope": ["scripts/feature_counter_probe.py"]}) + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, probe_feat) is False
+
+
     import subprocess
 
     subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
