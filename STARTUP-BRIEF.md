@@ -21,11 +21,12 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。  
+**Vibe 真优势三句**：少而硬的意图 · 唯一权威路径 · 偏差默认用飞轮收——**不是**画布更细。  
 **LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。  
 **Ops 后勤**：Engine 前锋打仗；日审/文档/regress/patrol 旁路供弹与护航（弹药只进业务仓，禁 orch）。见 authority「Ops 后勤」。
 
-**勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」。
+**勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」「Agent 画布当写码主控」。
 
 **4 个数字**：
 

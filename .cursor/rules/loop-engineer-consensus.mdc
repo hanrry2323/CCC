@@ -38,8 +38,9 @@ alwaysApply: true
 - 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。  
 - **已注册 ≠ 可开工**：正式开发前全面对齐。  
 - Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。  
+- **Vibe 真优势三句（硬）**：① 人定少而硬的意图；② 系统强制同一权威路径（下达→写码仓→门禁）；③ 偏差当默认，用 verdict/回滚/重试/飞轮收——**不是**图更细、也不是节点里叠对话/指令。禁止把 Agent 工作流画布当写码主控卖点。  
 - **上线 ≠ 完成**：`released`/VERSION 只到 `code_landed`；须意图探针可重放 + regress 飞轮 + L1 退出条件/`intent_stable`，才算意图稳定。空闲优先产品 epic（`next_product_goal`），禁止卫生/烟测当主业。见 `docs/product/lpsn-ship-gate.md`。
-- 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档。
+- 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档、**写码主控画布**。
 - **活跃板计数**（lens/mind/baseline）过滤 `ui_hidden` 与 epic `split_status=done`；禁止把僵尸 backlog 文件数当待办。
 - **ready_for_task** = git 净 **且** 无活跃 inflight；拆开看 `git_clean` / `pipeline_idle`。
 - **验收关门**：salvage/进 testing 须 hollow + acceptance；禁止 SELF-CHECKS 字符串假绿；`small` 不跳过审测。多步回归禁止标 small（Hub 会抬 medium）。
@@ -48,6 +49,7 @@ alwaysApply: true
 - **清失败卡**：板上归档不够——同步剪 `flow-events.jsonl` + Hub `_desktop/<id>/last_epic|epic_history`，否则幽灵轨。
 - 同仓 OpenCode **1 路**（防 db lock）；跨仓 `MAX_CONCURRENT` 正交。倒很多卡 ≠ 堵槽；真问题是任务后进程不退出。收尸见 `_opencode_reap`；耗时见 `opencode_done` / `~/.ccc/stats/opencode-timings.jsonl`。
 - **并行容量**：看 Mac2017 `~/.ccc/stats/host-resources.jsonl`（`ccc-host-resources.py summary`）；`headroom` 才加 `MAX_CONCURRENT`，`saturated` 先治挂死。
+- **待综合方案**：OpenCode 槽幽灵占位 / 脏 result.json / testing 堵 tick / 卫生卡误进 opencode — 已记 authority「待综合方案」+ `docs/briefs/2026-07-22-opencode-lifecycle-stall.md`；老板要方案时按该 brief 一次给齐落地，禁止再误诊成倒卡。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
 - **Ops 后勤**：Engine=前锋（只消费队列）；Ops=供弹/清战场/护装备/回传（launchd 旁路，不进 Engine tick）。弹药只进 `engine=true` 业务仓；**禁止** CCC orch 建 `ops-auto`/日审卡。日审 apply：C/E/F 可；D/G/H 报警；I 永不。运维 UI 只读态势为主；采纳是例外。详见 authority「Ops 后勤」。
