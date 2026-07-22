@@ -5,6 +5,9 @@ __pycache__/
 *.swp
 *~
 
+# Cursor agent debug NDJSON (transient probes; never commit)
+.cursor/debug*.log
+
 # Secrets / credentials (never commit)
 .env
 .env.*
