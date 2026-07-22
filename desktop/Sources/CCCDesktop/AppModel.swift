@@ -734,12 +734,22 @@ final class AppModel: ObservableObject {
             lastError = nil
             updateConnectionStatusText(localOK: localOK, hubOK: true)
             await flushPendingHubSync()
+            // 耗尽 failed 在 Hub 恢复时自动救回 outbox（不必只靠「后台再试」）
+            let requeued = LocalSessionStore.requeueAllFailedTransfers()
+            if requeued > 0 {
+                for item in LocalSessionStore.loadTransferOutbox() {
+                    setTransferDelivery(item.thread_id, .queued)
+                }
+            }
             let delivered = await flushTransferOutbox()
+            applyReceiptsFromDisk()
             reconcileTransferDeliveryWithOutbox()
             await bindFlowToCurrentThread()
             await refreshProjectTaskState()
             if delivered > 0 {
                 showToast("Hub 已恢复 · 排队任务已投递")
+            } else if requeued > 0 {
+                showToast("Hub 已恢复 · 失败投递已重新排队")
             }
             return true
         } catch {
@@ -1000,7 +1010,14 @@ final class AppModel: ObservableObject {
 
             Task { @MainActor in
                 await self.flushPendingHubSync()
+                let requeued = LocalSessionStore.requeueAllFailedTransfers()
+                if requeued > 0 {
+                    for item in LocalSessionStore.loadTransferOutbox() {
+                        self.setTransferDelivery(item.thread_id, .queued)
+                    }
+                }
                 await self.flushTransferOutbox()
+                self.applyReceiptsFromDisk()
                 self.reconcileTransferDeliveryWithOutbox()
             }
         } catch {

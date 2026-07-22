@@ -269,6 +269,41 @@ async def ops_summary(request: Request):
     out: dict = {"risks": risks_result}
     for k, r in zip(keys, results):
         out[k] = r if not isinstance(r, Exception) else {"error": str(r)[:120]}
+
+    # P3：项目心智 L1 只读一览（不阻塞主路径）
+    try:
+        from chat_server.services import agent_mind
+        from .projects import PROJECTS, get_project_path
+
+        minds: list[dict] = []
+        for pid, info in list((PROJECTS or {}).items())[:12]:
+            pid = str(pid or "").strip()
+            if not pid or pid == "ccc":
+                continue
+            if (info or {}).get("role") == "orch" or (info or {}).get("is_orch"):
+                continue
+            path = get_project_path(pid)
+            if not path:
+                continue
+            try:
+                dig = agent_mind.build_digest(
+                    Path(path), project_id=pid, use_cache=True, persist=False
+                )
+                minds.append(
+                    {
+                        "project_id": pid,
+                        "as_of": dig.get("as_of"),
+                        "board_summary": (dig.get("observed") or {}).get("board_summary"),
+                        "daily": (dig.get("observed") or {}).get("daily_review_headline"),
+                        "weekly": (dig.get("observed") or {}).get("weekly_review_headline"),
+                        "constraints_n": len((dig.get("decided") or {}).get("constraints") or []),
+                    }
+                )
+            except Exception as exc:
+                minds.append({"project_id": pid, "error": str(exc)[:80]})
+        out["agent_minds"] = {"ok": True, "items": minds}
+    except Exception as exc:
+        out["agent_minds"] = {"ok": False, "error": str(exc)[:120]}
     return out
 
 

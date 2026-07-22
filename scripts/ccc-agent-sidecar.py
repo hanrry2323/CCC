@@ -550,6 +550,32 @@ def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
         )
 
 
+def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
+    """Return (ok, digest_or_error_block)."""
+    import urllib.error
+    import urllib.request
+
+    pid = (project_id or "").strip()
+    if not pid:
+        return False, ""
+    url = f"{_hub_base()}/api/desktop/mind/{pid}/digest"
+    try:
+        req = urllib.request.Request(url, method="GET", headers=_hub_auth_headers())
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        digest = str((data or {}).get("digest") or "").strip()
+        if digest:
+            return True, digest
+        return False, "【项目心智 L1】digest 为空；进度以 live board / 透镜为准，禁止瞎编。"
+    except Exception as exc:
+        return (
+            False,
+            "【项目心智 L1 不可达】"
+            f"project={pid} err={type(exc).__name__}: {exc}\n"
+            "禁止根据会话记忆编造在飞/进度；可说明不可达，并引用对齐基线 as_of（若有）。",
+        )
+
+
 def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     """Inject Hub lens discipline for discuss/Plan turns（常驻，不限 board 关键词）。"""
     pid = (project_id or "").strip()
@@ -563,9 +589,11 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
         f"board|locate|grep|tree|file|git {pid} …"
     )
+    mind_cli = f"python3 {SCRIPTS / 'ccc-mind-update.py'} {pid} --constraint '…'"
     parts = [
         f"【Hub 只读透镜 · Plan · project_id={pid}】",
         f"业务权威在 2017；探查用：{lens_cli}",
+        f"决策脑写入（可选）：{mind_cli}",
         "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
         "扫风险/定稿：board → locate（或 grep）定点收窄 → file 核实 1～3 个相对路径；禁止只读文档交差。",
         "续查只用相对 path；禁止写死盘符、禁止把绝对路径抄回本机 Read。",
@@ -573,12 +601,19 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     # 常驻：尝试注入 live board（失败也给不可达块）
     ok, block = _fetch_hub_lens_board(pid)
     parts.append(block if ok else block)
+    # L1 项目心智 digest
+    mok, mblock = _fetch_hub_mind_digest(pid)
+    parts.append(mblock)
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
         r"(扫风险|定稿|核实|审查|locate|实现|代码)", text, re.I
     ):
         parts.append(
             "本轮需代码核实：先 Bash `ccc-hub-lens.py locate` 再 `file`；勿凭记忆编路径。"
+        )
+    if re.search(r"(记住|记下来|写入心智|约束是|我们约定)", text):
+        parts.append(
+            f"若用户要求沉淀决策：Bash `{mind_cli}` 写 L1b；禁止 invent 投 backlog。"
         )
     return "\n".join(parts)
 

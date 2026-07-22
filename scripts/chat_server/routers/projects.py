@@ -222,7 +222,7 @@ async def project_baseline(project_id: str, request: Request):
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     from _project_baseline import baseline_prompt_for_claude, collect_baseline
-    from ..services import hub_lens
+    from ..services import agent_mind, hub_lens
 
     root = Path(path)
     baseline = collect_baseline(root, project_id=project_id)
@@ -232,6 +232,16 @@ async def project_baseline(project_id: str, request: Request):
         f"{prompt}\n\n"
         f"{hub_lens.format_board_for_prompt(live_board)}\n"
     )
+    try:
+        mind = agent_mind.build_digest(root, project_id=project_id)
+        digest = str(mind.get("digest") or "").strip()
+        if digest:
+            prompt = f"{prompt}\n{digest}\n"
+    except Exception as exc:
+        prompt = (
+            f"{prompt}\n【项目心智 L1 不可达】{type(exc).__name__}: {exc}\n"
+            "进度以 live board 为准，禁止瞎编。\n"
+        )
     return {
         "ok": True,
         "baseline": baseline,

@@ -9,7 +9,7 @@ from pathlib import Path
 import os
 
 from . import config
-from .routers import sessions, files, board, projects, ops, desktop, lens
+from .routers import sessions, files, board, projects, ops, desktop, lens, mind
 from .services.board_client import close_client
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
         allow_origins=_cors_origins,
         allow_origin_regex=config.CORS_ORIGIN_REGEX,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     app.add_middleware(NoStoreStaticMiddleware)
@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(ops.router)
     app.include_router(desktop.router)
     app.include_router(lens.router)
+    app.include_router(mind.router)
     # 遗留运维探针：默认关闭；CCC_AGENT_PROXY=1 才挂载（非产品主路径）
     if (os.environ.get("CCC_AGENT_PROXY") or "").strip() in ("1", "true", "yes"):
         from .routers import agent_proxy

@@ -77,6 +77,12 @@ function html() {
     <div id="ops-daily" class="ops-card"></div>
   </div>
 
+  <div class="ops-section">
+    <h3>E2. 项目心智 L1（只读）</h3>
+    <p class="ops-hint">观察脑系统编译 · 决策脑 Agent 提案 · 权威在 2017 <code>.ccc/agent-mind/</code></p>
+    <div id="ops-minds" class="ops-card"></div>
+  </div>
+
   <div class="ops-grid-2">
     <div class="ops-section">
       <h3>F. 风险与建议 <span class="badge" id="ops-risk-n">0</span></h3>
@@ -220,17 +226,48 @@ function renderWorkspaces(d) {
 }
 
 function renderDaily(d) {
-  const el = _root.querySelector('#ops-daily');
-  const latest = d.latest;
-  if (!latest) {
-    el.innerHTML = '<div class="ops-empty">尚无 daily-review 报告</div>';
+  const el = document.getElementById('ops-daily');
+  if (!el) return;
+  if (!d || d.error) {
+    el.innerHTML = `<p class="ops-hint">${esc(d?.error || '无数据')}</p>`;
     return;
   }
-  const body = (d.latest_body || '').slice(0, 6000);
-  el.innerHTML = `
-    <div class="ops-kv"><b>${esc(latest.name)}</b> · ${esc(latest.workspace)} · ${esc(latest.mtime)}</div>
-    <div class="muted mono small">${esc(latest.path)}</div>
-    <pre class="ops-pre">${esc(body)}</pre>`;
+  const items = d.items || d.reviews || [];
+  if (!items.length) {
+    el.innerHTML = '<p class="ops-hint">暂无日审报告</p>';
+    return;
+  }
+  el.innerHTML = `<ul>${items.slice(0, 8).map((x) =>
+    `<li><code>${esc(x.workspace || x.path || '')}</code> ${esc(x.title || x.name || x.as_of || '')}</li>`
+  ).join('')}</ul>`;
+}
+
+function renderMinds(d) {
+  const el = document.getElementById('ops-minds');
+  if (!el) return;
+  if (!d || d.ok === false) {
+    el.innerHTML = `<p class="ops-hint">${esc(d?.error || '心智摘要不可用')}</p>`;
+    return;
+  }
+  const items = d.items || [];
+  if (!items.length) {
+    el.innerHTML = '<p class="ops-hint">无业务仓心智摘要</p>';
+    return;
+  }
+  el.innerHTML = `<table class="ops-table"><thead><tr>
+    <th>项目</th><th>as_of</th><th>看板</th><th>日报</th><th>约束数</th>
+  </tr></thead><tbody>${items.map((x) => {
+    if (x.error) {
+      return `<tr><td>${esc(x.project_id)}</td><td colspan="4">${esc(x.error)}</td></tr>`;
+    }
+    return `<tr>
+      <td><code>${esc(x.project_id)}</code></td>
+      <td>${esc(x.as_of || '')}</td>
+      <td>${esc((x.board_summary || '').slice(0, 80))}</td>
+      <td>${esc((x.daily || x.weekly || '—').toString().slice(0, 60))}</td>
+      <td>${esc(String(x.constraints_n ?? 0))}</td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
 }
 
 function renderRisks(d) {
@@ -404,6 +441,7 @@ async function poll() {
   renderResources(agg.resources || {});
   renderWorkspaces(agg.workspaces || { workspaces: [] });
   renderDaily(agg.daily || {});
+  renderMinds(agg.agent_minds || {});
   renderRisks(agg.risks || { count: 0, risks: [] });
   renderKb(agg.kb || { services: [] });
   renderDeploy(agg.deploy || { targets: [] });

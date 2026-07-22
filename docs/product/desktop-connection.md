@@ -14,7 +14,7 @@
 | 1b | flow SSE：全 App **1 条**；切会话不重建 |
 | 2 | 切会话 **不得** 拆掉 / 重建 flow SSE；仅换项目时 `ensureFlowSSE` 重建 |
 | 3 | 发送 / 取消对话 **不得** `cancel` flow 任务 |
-| 4 | `connected`（可聊）= **本机 Agent 健康**；Hub 仅影响转任务/右栏；单条 chat 失败 →「本条失败」 |
+| 4 | `connected`（可聊）= **本机 Agent 健康**；Hub 影响投递速度与右栏，**不挡确认转任务**；单条 chat 失败 →「本条失败」 |
 | 4a | **本机会话 SSOT**：`~/Library/Application Support/CCCDesktop/sessions/`；Hub `PUT` 为可选镜像，非对话权威 |
 | 4b | **常态禁止** 对话打 Hub `/api/chat`（路由已删，404）；对话只走本机 sidecar |
 | 5 | chat SSE 必须收到 `done` 且 `partial != true` 才算成功；否则「回复中断」 |
@@ -31,10 +31,11 @@
 OpenCode（Engine 写码）：**讯飞直连** `xfyun/code`（`~/.config/opencode/opencode.json`）；智谱 `zhipu/flash` 备用。  
 ~~经 2017 `:4000/:4002` 中转已退役。~~  
 Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-sidecar-plist.sh` → `POST /warm`；每 240s keep-warm。  
-消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。转任务 / 右栏仍要求 Hub。
+消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。  
+**转任务**：确认 → Desktop 只写 `transfer-outbox.json` + nudge；**唯一 Hub POST = sidecar flush**；右栏/flow 仍依赖 Hub。
 
 **未就绪处理**：sidecar 起不来 → 状态「本机 Agent 未就绪」+ toast；**不回退 Hub**（Hub `/api/chat` 已删）。后台每 3s 重探，sidecar 恢复后自动转「本机 Agent」。  
-**Hub 抖动**：Hub 不可达但 sidecar 活 → 仍可聊，状态「Hub 暂不可达（可聊）」，仅转任务/右栏受影响。  
+**Hub 抖动**：Hub 不可达但 sidecar 活 → 仍可聊、**仍可确认转任务排队**；状态「Hub 暂不可达（可聊）」；右栏编排同步受影响。  
 **工作区**：业务仓 **无本机第二树**；对话事实以 Hub baseline（2017）为准。`localWorkspaceMap` 仅可选映射平台仓 `ccc` → 本机 CCC；禁止映射业务仓 / archive。
 详见 [`desktop-agent-sidecar.md`](desktop-agent-sidecar.md)。
 
@@ -46,12 +47,13 @@ Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-s
 | 项 | 规格 |
 |----|------|
 | 探活间隔 | **3–5s**（实现取 4s）；成功即停；经 `HubRequestGate`，勿打爆 |
-| 探活成功后序 | `hubReachable=true` → `flushPendingHubSync` → `flushTransferOutbox` → 当前项目 `bindFlowToCurrentThread`（snapshot 兜底 + SSE 对齐） |
+| 探活成功后序 | `hubReachable=true` → `flushPendingHubSync` → **requeue failed** → nudge sidecar flush / receipts hydrate → `bindFlowToCurrentThread` |
 | Hub 断 ≥10s + sidecar 健康 | 仍可聊；状态栏 **「本机 Agent · Hub 暂不可达（可聊）」**；禁止全局「未连接」误报 |
-| 转任务（Hub 断） | 入 `transfer-outbox.json`；投递态 `queued`（待投递）；toast「Hub 暂不可达，已排队待投递」 |
-| 恢复且 flush ≥1 笔 | toast **「Hub 已恢复 · 排队任务已投递」**；投递态 → `delivered` / `accepted`（既有 `applyTransferSuccess`） |
+| 转任务（Hub 断） | Desktop 入 `transfer-outbox.json`；投递态 `queued`；toast「已排队 · Hub 恢复后自动投递」 |
+| 恢复且 flush ≥1 笔 | toast **「Hub 已恢复 · 排队任务已投递」**；徽章 → `delivered` / `accepted`（receipts + reconcile） |
 | 恢复且 outbox 空 | 仅更新状态栏（避免吵）；不强制 toast |
-| 手动「重试 / 重新连接」 | 与自动探活 **幂等**（不双投；依赖 `client_request_id`） |
+| 投递耗尽 | `transfer-failed.json`；UI「后台再试」；**Hub 恢复时自动 requeue**（attempts 归零） |
+| 手动「重试 / 重新连接」 | 与自动探活 **幂等**（不双投；依赖 `client_request_id` + Hub 幂等） |
 | 右栏 | 恢复后 snapshot 与 `boundEpicId` 一致，不串他 epic |
 
 ## Cursor 感性能验收
