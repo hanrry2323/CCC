@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -549,6 +550,7 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
         title,
         thread_id=thread_id,
         client_request_id=client_request_id,
+        payload_fingerprint=flow_events._transfer_payload_fingerprint(transfer_body),
     )
     # F4-3: 不调 _hub_ensure_engine — Engine tick 自取
 
@@ -616,10 +618,18 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
         )
 
     client_request_id = str(body.get("client_request_id") or "").strip()
-    if client_request_id:
-        remembered = flow_events.lookup_transfer_by_client_request(
-            project_id, client_request_id
-        )
+    payload_fingerprint = flow_events._transfer_payload_fingerprint(body)
+    if payload_fingerprint:
+        body["payload_fingerprint"] = payload_fingerprint
+
+    async def _create() -> Any:
+        remembered = None
+        if client_request_id:
+            remembered = flow_events.lookup_transfer_by_client_request(
+                project_id,
+                client_request_id,
+                payload_fingerprint=payload_fingerprint,
+            )
         if remembered:
             return {
                 "ok": True,
@@ -631,95 +641,130 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                 "engine_wake": {"ok": True, "mode": "idempotent", "message": "replay"},
             }
 
-    # 写入磁盘并把 fingerprint 写进 body，让后续 remember_last_epic 落地时一并带上
-    payload_fingerprint = flow_events._transfer_payload_fingerprint(body)
-    if payload_fingerprint:
-        body["payload_fingerprint"] = payload_fingerprint
+        executor_intent = transfer_gate.resolve_executor_intent(body)
+        description = transfer_gate.build_epic_description(
+            {**body, "executor_intent": executor_intent}
+        )
+        plan_md = transfer_gate.build_plan_md(body)
 
-    executor_intent = transfer_gate.resolve_executor_intent(body)
-    description = transfer_gate.build_epic_description({**body, "executor_intent": executor_intent})
-    plan_md = transfer_gate.build_plan_md(body)
-
-    note = json.dumps(
-        {
-            "transfer_gate": {
-                "pipeline": body.get("pipeline"),
-                "executor_intent": executor_intent,
-                "feasibility": "ok",
-                "skills_hint": body.get("skills_hint") or [],
-                "thread_id": body.get("thread_id"),
-            }
-        },
-        ensure_ascii=False,
-    )
-
-    task_body: dict[str, Any] = {
-        "id": epic_id,
-        "title": title,
-        "description": description,
-        "status": "backlog",
-        "workspace": workspace,
-        "card_kind": "epic",
-        "split_status": "pending",
-        "complexity": str(body.get("complexity") or "medium"),
-        "note": note[:2000],
-        "tags": ["desktop-transfer", f"exec:{executor_intent}"],
-    }
-
-    resp = await board_proxy("POST", "/api/tasks", json_body=task_body)
-    if resp.status_code not in (200, 201):
-        try:
-            detail = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
-        except Exception:
-            detail = {"raw": str(resp.body)[:300]}
-        return JSONResponse(
-            status_code=resp.status_code,
-            content={"ok": False, "error": "board_create_failed", "detail": detail},
+        note = json.dumps(
+            {
+                "transfer_gate": {
+                    "pipeline": body.get("pipeline"),
+                    "executor_intent": executor_intent,
+                    "feasibility": "ok",
+                    "skills_hint": body.get("skills_hint") or [],
+                    "thread_id": body.get("thread_id"),
+                }
+            },
+            ensure_ascii=False,
         )
 
-    payload = _merge_create_payload(
-        resp.body,
-        workspace=workspace,
-        fallback_tid=epic_id,
-        task_body=task_body,
-    )
-    tid = str(payload.get("task_id") or epic_id)
-    try:
-        written = _write_seed_artifacts(workspace, tid, plan_md, None)
-        payload["seeded"] = written
-    except Exception as exc:
-        payload["seed_warning"] = str(exc)[:200]
-
-    thread_id = str(body.get("thread_id") or "").strip() or flow_events.canonical_conversation_id(
-        project_id
-    )
-    flow_events.append_event(
-        "epic_created",
-        {
-            "epic_id": tid,
+        task_body: dict[str, Any] = {
+            "id": epic_id,
             "title": title,
-            "project_id": project_id,
+            "description": description,
+            "status": "backlog",
             "workspace": workspace,
-            "executor_intent": executor_intent,
-            "thread_id": thread_id,
-        },
-    )
-    flow_events.remember_last_epic(
-        project_id, tid, title, thread_id=thread_id, client_request_id=client_request_id or None
-    )
-    _hub_ensure_engine(workspace, tid)
+            "card_kind": "epic",
+            "split_status": "pending",
+            "complexity": str(body.get("complexity") or "medium"),
+            "note": note[:2000],
+            "tags": ["desktop-transfer", f"exec:{executor_intent}"],
+        }
 
-    return {
-        "ok": True,
-        "epic_id": tid,
-        "workspace": workspace,
-        "column": "backlog",
-        "project_id": project_id,
-        "executor_intent": executor_intent,
-        "engine_wake": payload.get("engine_wake"),
-        "seeded": payload.get("seeded"),
-        "idempotent_replay": False,
-    }
+        resp = await board_proxy("POST", "/api/tasks", json_body=task_body)
+        if resp.status_code not in (200, 201):
+            try:
+                detail = json.loads(
+                    resp.body.decode()
+                    if isinstance(resp.body, (bytes, bytearray))
+                    else resp.body
+                )
+            except Exception:
+                detail = {"raw": str(resp.body)[:300]}
+            return JSONResponse(
+                status_code=resp.status_code,
+                content={"ok": False, "error": "board_create_failed", "detail": detail},
+            )
+
+        # 创建后再次 lookup：并发下另一请求可能已先落盘
+        if client_request_id:
+            raced = flow_events.lookup_transfer_by_client_request(
+                project_id,
+                client_request_id,
+                payload_fingerprint=payload_fingerprint,
+            )
+            if raced:
+                return {
+                    "ok": True,
+                    "epic_id": raced["epic_id"],
+                    "workspace": workspace,
+                    "column": "backlog",
+                    "project_id": project_id,
+                    "idempotent_replay": True,
+                    "engine_wake": {"ok": True, "mode": "idempotent", "message": "replay"},
+                }
+
+        payload = _merge_create_payload(
+            resp.body,
+            workspace=workspace,
+            fallback_tid=epic_id,
+            task_body=task_body,
+        )
+        tid = str(payload.get("task_id") or epic_id)
+        try:
+            written = _write_seed_artifacts(workspace, tid, plan_md, None)
+            payload["seeded"] = written
+        except Exception as exc:
+            payload["seed_warning"] = str(exc)[:200]
+
+        thread_id = str(body.get("thread_id") or "").strip() or flow_events.canonical_conversation_id(
+            project_id
+        )
+        flow_events.append_event(
+            "epic_created",
+            {
+                "epic_id": tid,
+                "title": title,
+                "project_id": project_id,
+                "workspace": workspace,
+                "executor_intent": executor_intent,
+                "thread_id": thread_id,
+            },
+        )
+        flow_events.remember_last_epic(
+            project_id,
+            tid,
+            title,
+            thread_id=thread_id,
+            client_request_id=client_request_id or None,
+            payload_fingerprint=payload_fingerprint,
+        )
+        _hub_ensure_engine(workspace, tid)
+
+        return {
+            "ok": True,
+            "epic_id": tid,
+            "workspace": workspace,
+            "column": "backlog",
+            "project_id": project_id,
+            "executor_intent": executor_intent,
+            "engine_wake": payload.get("engine_wake"),
+            "seeded": payload.get("seeded"),
+            "idempotent_replay": False,
+        }
+
+    if client_request_id:
+        mutex = flow_events.client_request_mutex(project_id, client_request_id)
+        # 持锁贯穿 lookup→create→remember（同进程双 POST 串行）
+        while not mutex.acquire(blocking=False):
+            await asyncio.sleep(0.02)
+        try:
+            return await _create()
+        finally:
+            mutex.release()
+    return await _create()
 
 
 @router.get("/proposals")

@@ -94,17 +94,20 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 
 ### Desktop 流畅原则（人机共识）
 
-**人只定意图；投递/连通/重试/进 Hub/进队列 = 系统后台，用户不碰。**
+**人只定意图；投递/连通/重试/进 Hub/进队列 = 系统后台，用户不碰。**  
+**确认不依赖 Hub 可达**；Hub 灯只表示投递/编排同步健康，不挡确认。  
+**唯一冲刷器 = sidecar**（Desktop 只 `enqueue` + 可选 nudge；关 App 不停）。
 
 | 前台（人确认） | 后台（系统扛） |
 |----------------|----------------|
 | 定稿 / 点转任务 / 切看板 | Hub 连通、投递、重试、卡死恢复 |
-| 立刻关 sheet、可继续聊 | 入本机 outbox；**sidecar 常驻 flush**（关 App 不停） |
+| 立刻关 sheet、徽章 `queued`、可继续聊 | 入本机 outbox；**sidecar 常驻 flush** → Hub；成功写 `transfer-receipts.json` |
 | 看板始终画列（可空） | 拉板失败保留快照 + 短超时，不整页死白 |
 
 禁止：
 - 让用户管「是否进 Hub / 是否还在队列 / 要不要重开 App 冲刷」
 - 用全局 `busy` 把对话/切页锁死在一次 Hub 往返上
+- Desktop 与 sidecar **双 POST** Hub transfer（只认 sidecar 单写）
 
 关 Desktop ≠ 停编排：Hub/Engine 在 2017 继续；本机 outbox 由 `com.ccc.agent-sidecar` 冲刷到 Hub。
 
@@ -112,15 +115,15 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 
 | # | 行为 | 结论 |
 |---|------|------|
-| R1 | 投递徽章 | hydrate 从 `transfer-outbox.json` / `transfer-failed.json` / 磁盘 flow 重建 |
+| R1 | 投递徽章 | hydrate 优先 `transfer-receipts.json`，再 outbox / failed / 磁盘 flow |
 | R2 | 看板首屏 | `board-cache-<project>.json` 冷启动；失败保留 + stale |
 | R3 | 回前台 | `scenePhase.active` → flush + bindFlow + summaries（用户无动作） |
 | R4 | fanout 提示 | 未拆分 epic 再开后重挂 15s watchdog |
 | R5 | 空态 | 有 `boundEpicId` 显示「编排同步中…」，禁闪「编排空闲」 |
 | R6 | 侧栏灯 | bootstrap 立即 `fetchBoardSummaries`，不等首轮 poll |
 | R7 | Chat 页 | 仅 summaries ~20s 刷灯；整板只在 Board 页轮询 |
-| R8 | 双 flush | flush 后按 outbox 剩余校正徽章（sidecar 关 App 投完也对齐） |
-| R9 | 投递耗尽 | 持久 failed 条 +「后台再试」重排队（非让用户管 Hub） |
+| R8 | 单 flush | Desktop 只 nudge sidecar；按 receipts/outbox 校正徽章 |
+| R9 | 投递耗尽 | 持久 failed 条 + 「后台再试」重排队（非让用户管 Hub） |
 | R10 | SSE cursor | 不改协议；靠 snapshot 接续；中间动画可缺 |
 | R11 | 聊天半句 | **不做**中途 SSE 重挂；再发可 resume |
 | R12 | 全局 busy | Hub 往返（含手动建 epic）不锁 `busy` |

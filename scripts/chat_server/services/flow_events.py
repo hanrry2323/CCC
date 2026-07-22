@@ -5,16 +5,22 @@
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
+import threading
 import time
-import hashlib
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .. import config
 
 _DEFAULT_LOG = Path.home() / ".ccc" / "flow-events.jsonl"
+
+_crid_thread_locks: dict[str, threading.Lock] = {}
+_crid_locks_guard = threading.Lock()
 
 
 def events_log_path() -> Path:
@@ -353,6 +359,7 @@ def remember_last_epic(
     *,
     thread_id: str | None = None,
     client_request_id: str | None = None,
+    payload_fingerprint: str | None = None,
 ) -> None:
     """记录项目最近 epic；若带 thread_id，则与对话深度绑定。"""
     updated = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
@@ -372,7 +379,7 @@ def remember_last_epic(
             crid,
             epic_id,
             title,
-            payload_fingerprint=_transfer_payload_fingerprint(globals().get("body")),
+            payload_fingerprint=payload_fingerprint,
         )
     path = project_last_epic_file(project_id)
     path.write_text(
@@ -401,6 +408,32 @@ def _client_request_index_file(project_id: str) -> Path:
     d = config.CHAT_DIR / "_desktop" / project_id
     d.mkdir(parents=True, exist_ok=True)
     return d / "transfer_client_requests.json"
+
+
+def client_request_mutex(project_id: str, client_request_id: str) -> threading.Lock:
+    """同进程内 (project_id, client_request_id) 互斥，关闭双建 epic 窗口。"""
+    key = f"{project_id}\0{(client_request_id or '').strip()}"
+    with _crid_locks_guard:
+        lock = _crid_thread_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _crid_thread_locks[key] = lock
+        return lock
+
+
+@contextmanager
+def client_request_index_lock(project_id: str) -> Iterator[None]:
+    """transfer_client_requests.json 文件锁（跨进程 RMW）。"""
+    path = _client_request_index_file(project_id)
+    lock_p = path.with_name("transfer_client_requests.lock")
+    lock_p.parent.mkdir(parents=True, exist_ok=True)
+    lock_p.touch(exist_ok=True)
+    with open(lock_p, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def _transfer_payload_fingerprint(body: Any) -> str | None:
@@ -435,32 +468,33 @@ def _remember_client_request(
     *,
     payload_fingerprint: str | None = None,
 ) -> None:
-    path = _client_request_index_file(project_id)
-    data: dict[str, Any] = {}
-    if path.is_file():
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                data = raw
-        except (json.JSONDecodeError, OSError):
-            data = {}
-    record = {
-        "epic_id": epic_id,
-        "title": title,
-        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
-    }
-    if payload_fingerprint:
-        record["payload_fingerprint"] = payload_fingerprint
-    data[client_request_id] = record
-    # 控制体量：最多保留 200 个键
-    if len(data) > 200:
-        ordered = sorted(
-            data.items(),
-            key=lambda kv: str((kv[1] or {}).get("updated_at") or ""),
-            reverse=True,
-        )
-        data = dict(ordered[:200])
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    with client_request_index_lock(project_id):
+        path = _client_request_index_file(project_id)
+        data: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    data = raw
+            except (json.JSONDecodeError, OSError):
+                data = {}
+        record = {
+            "epic_id": epic_id,
+            "title": title,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        }
+        if payload_fingerprint:
+            record["payload_fingerprint"] = payload_fingerprint
+        data[client_request_id] = record
+        # 控制体量：最多保留 200 个键
+        if len(data) > 200:
+            ordered = sorted(
+                data.items(),
+                key=lambda kv: str((kv[1] or {}).get("updated_at") or ""),
+                reverse=True,
+            )
+            data = dict(ordered[:200])
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def lookup_transfer_by_client_request(
@@ -475,26 +509,27 @@ def lookup_transfer_by_client_request(
     crid = (client_request_id or "").strip()
     if not crid:
         return None
-    path = _client_request_index_file(project_id)
-    if not path.is_file():
-        return None
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(raw, dict):
-        return None
-    hit = raw.get(crid)
-    if not isinstance(hit, dict):
-        return None
-    if payload_fingerprint:
-        stored_fp = str(hit.get("payload_fingerprint") or "")
-        if stored_fp and stored_fp != payload_fingerprint:
+    with client_request_index_lock(project_id):
+        path = _client_request_index_file(project_id)
+        if not path.is_file():
             return None
-    eid = str(hit.get("epic_id") or "").strip()
-    if not eid:
-        return None
-    return {"epic_id": eid, "title": str(hit.get("title") or "")}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        if not isinstance(raw, dict):
+            return None
+        hit = raw.get(crid)
+        if not isinstance(hit, dict):
+            return None
+        if payload_fingerprint:
+            stored_fp = str(hit.get("payload_fingerprint") or "")
+            if stored_fp and stored_fp != payload_fingerprint:
+                return None
+        eid = str(hit.get("epic_id") or "").strip()
+        if not eid:
+            return None
+        return {"epic_id": eid, "title": str(hit.get("title") or "")}
 
 
 def load_last_epic(project_id: str) -> dict | None:

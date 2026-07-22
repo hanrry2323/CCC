@@ -342,7 +342,7 @@ struct CodexSidebar: View {
                 .font(.system(size: 13, weight: .medium))
             Text(
                 model.canChat
-                    ? "可继续聊；转任务需恢复 Hub。后台每 4s 自动重试。"
+                    ? "可继续聊；转任务可确认排队。Hub 恢复后后台自动投递（每 4s 探活）。"
                     : "对话只走本机 sidecar。设置中确认 Agent 地址，或执行 install-agent-sidecar-plist.sh --start。"
             )
                 .font(CCCTheme.caption)
@@ -892,11 +892,13 @@ struct CodexChatPaneBody: View {
             Text("bash scripts/install-agent-sidecar-plist.sh --start")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(CCCTheme.faint)
-            if model.hubReachable {
-                Text("Hub 可达 · 可转任务（需先能聊出定稿）")
-                    .font(.system(size: 12))
-                    .foregroundStyle(CCCTheme.faint)
-            }
+            Text(
+                model.hubReachable
+                    ? "Hub 可达 · 定稿后可确认转任务"
+                    : "Hub 离线 · 仍可定稿确认（排队，恢复后自动投递）"
+            )
+                .font(.system(size: 12))
+                .foregroundStyle(CCCTheme.faint)
             if let err = model.lastError, !err.isEmpty {
                 Text(err)
                     .font(.system(size: 12))

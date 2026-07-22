@@ -871,6 +871,25 @@ actor APIClient {
         _ = try await send(req, as: Ok.self)
     }
 
+    /// 轻推本机 sidecar 冲刷 transfer-outbox（唯一 Hub POST 方）
+    @discardableResult
+    func nudgeOutboxFlush() async throws -> [String: Any] {
+        guard let base = chatBaseURL else { throw APIError.badURL }
+        let url = base.appendingPathComponent("api/outbox/flush")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 30
+        applyAgentAuth(&req)
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.http(code, body)
+        }
+        if data.isEmpty { return [:] }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
     func transfer(_ req: TransferRequest) async throws -> TransferResponse {
         let data = try JSONEncoder().encode(req)
         var urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)

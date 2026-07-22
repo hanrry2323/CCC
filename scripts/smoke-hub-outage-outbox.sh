@@ -145,7 +145,7 @@ sys.exit(0 if d.get("delivered",0)>=1 or d.get("pending",1)==0 else 1)
   sleep 1
 done
 
-# outbox 应已 dequeue 本条
+# outbox 应已 dequeue 本条；receipts 应有 epic
 python3 - <<'PY'
 import json, os, sys
 from pathlib import Path
@@ -157,14 +157,19 @@ if left:
     print("ERROR: outbox still has", crid, file=sys.stderr)
     sys.exit(1)
 print("outbox dequeued; remaining", len(q))
+rp = p.with_name("transfer-receipts.json")
+receipts = json.loads(rp.read_text(encoding="utf-8")) if rp.is_file() else []
+hit = [x for x in receipts if isinstance(x, dict) and x.get("client_request_id")==crid]
+if not hit or not str(hit[0].get("epic_id") or "").strip():
+    print("ERROR: missing transfer-receipts for", crid, file=sys.stderr)
+    sys.exit(1)
+print("receipt ok", hit[0]["epic_id"])
+open("/tmp/ccc-phase5b-epic.txt","w").write(hit[0]["epic_id"])
 PY
 
-# 用 Hub 侧 idempotent 再 POST 一次拿 epic_id（或从 flush details；此处查 flow）
-# 通过 projects/board 不够稳；用带同一 client_request_id 的 transfer 拿 idempotent replay
+# 用 Hub 侧 idempotent 再 POST 一次确认同 crid 不双建
 BODY=$(python3 - <<'PY'
 import json, os
-from pathlib import Path
-# item 已从 outbox 删；重建最小 body 用同一 crid
 print(json.dumps({
   "project_id": os.environ["PROJECT"],
   "thread_id": os.environ["TID"],
@@ -188,8 +193,9 @@ curl -sf --connect-timeout 10 --max-time 45 "${AUTH[@]}" \
 import json,sys
 d=json.load(sys.stdin)
 assert d.get("ok") and d.get("epic_id"), d
+want=open("/tmp/ccc-phase5b-epic.txt").read().strip()
+assert d["epic_id"]==want, (d["epic_id"], want)
 print("idempotent lookup ok", d["epic_id"], "replay", d.get("idempotent_replay"))
-open("/tmp/ccc-phase5b-epic.txt","w").write(d["epic_id"])
 '
 
 EPIC=$(cat /tmp/ccc-phase5b-epic.txt)

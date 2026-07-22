@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -49,6 +52,10 @@ def test_flush_once_delivers_and_removes(tmp_path: Path):
     assert summary["delivered"] == 1
     assert summary["pending"] == 0
     assert flush.load_outbox(p) == []
+    receipts = flush.load_receipts(flush.receipts_path(p))
+    assert len(receipts) == 1
+    assert receipts[0]["epic_id"] == "epic-1"
+    assert receipts[0]["client_request_id"] == "crid-1"
 
 
 def test_flush_once_retries_on_transient(tmp_path: Path):
@@ -102,3 +109,76 @@ def test_flush_once_exhaust_on_retry_writes_failed(tmp_path: Path):
     assert summary["pending"] == 0
     assert flush.load_outbox(p) == []
     assert len(flush.load_failed(flush.failed_path(p))) == 1
+
+
+def test_hub_auth_prefers_ccc_hub_auth(monkeypatch):
+    monkeypatch.setenv("CCC_HUB_AUTH", "hubuser:hubpass")
+    monkeypatch.delenv("CCC_CHAT_USER", raising=False)
+    monkeypatch.delenv("CCC_CHAT_PASS", raising=False)
+    h = flush.hub_auth_header()
+    import base64
+
+    raw = base64.b64decode(h["Authorization"].split(" ", 1)[1]).decode()
+    assert raw == "hubuser:hubpass"
+
+
+def test_hub_auth_falls_back_chat_user(monkeypatch):
+    monkeypatch.delenv("CCC_HUB_AUTH", raising=False)
+    monkeypatch.setenv("CCC_CHAT_USER", "u")
+    monkeypatch.setenv("CCC_CHAT_PASS", "p")
+    h = flush.hub_auth_header()
+    import base64
+
+    raw = base64.b64decode(h["Authorization"].split(" ", 1)[1]).decode()
+    assert raw == "u:p"
+
+
+def test_outbox_lock_serializes_concurrent_writers(tmp_path: Path):
+    p = tmp_path / "transfer-outbox.json"
+    p.write_text("[]\n", encoding="utf-8")
+    order: list[str] = []
+
+    def writer(tag: str, hold: float) -> None:
+        with flush.outbox_file_lock(p):
+            order.append(f"{tag}-enter")
+            time.sleep(hold)
+            cur = flush.load_outbox(p)
+            cur.append({"client_request_id": tag})
+            flush.save_outbox(cur, p)
+            order.append(f"{tag}-exit")
+
+    t1 = threading.Thread(target=writer, args=("a", 0.08))
+    t2 = threading.Thread(target=writer, args=("b", 0.01))
+    t1.start()
+    time.sleep(0.01)
+    t2.start()
+    t1.join()
+    t2.join()
+    assert order.index("a-exit") < order.index("b-enter") or order.index(
+        "b-exit"
+    ) < order.index("a-enter")
+    q = flush.load_outbox(p)
+    ids = {x.get("client_request_id") for x in q}
+    assert ids == {"a", "b"}
+
+
+def test_flush_preserves_enqueue_during_post(tmp_path: Path):
+    """冲刷窗口内 Desktop 新入队不得被 wipe。"""
+    p = tmp_path / "transfer-outbox.json"
+    p.write_text(json.dumps([_item()]), encoding="utf-8")
+
+    def slow_post(item):
+        # 模拟 POST 期间另一进程/线程 enqueue
+        with flush.outbox_file_lock(p):
+            cur = flush.load_outbox(p)
+            cur.append(_item(client_request_id="crid-new", title="new"))
+            flush.save_outbox(cur, p)
+        return True, "epic-1", {"ok": True, "epic_id": "epic-1"}
+
+    with patch.object(flush, "_post_transfer", side_effect=slow_post):
+        summary = flush.flush_once(path=p)
+
+    assert summary["delivered"] == 1
+    left = flush.load_outbox(p)
+    assert len(left) == 1
+    assert left[0]["client_request_id"] == "crid-new"

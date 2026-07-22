@@ -66,13 +66,13 @@ final class AppModel: ObservableObject {
     @Published var agentBadge: String = "本机 Agent 未就绪"
     /// 可聊 = sidecar 健康（与 hubReachable 独立）
     var canChat: Bool { agentMode == "local" }
-    /// 可转任务 = Hub 可达 + 业务仓可下达（默认看全局选中；多窗请用 canTransfer(projectId:)）
+    /// 可确认转任务 = 业务仓可下达（不依赖 Hub；确认后进本机 outbox，sidecar 后台投递）
     var canTransfer: Bool {
         canTransfer(projectId: selectedProjectId)
     }
 
     func canTransfer(projectId: String?) -> Bool {
-        guard hubReachable, let projectId else { return false }
+        guard let projectId else { return false }
         return projects.first(where: { $0.id == projectId })?.isDispatchable == true
     }
 
@@ -351,8 +351,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// R1：从 outbox / failed / 磁盘 flow 重建投递徽章（再开第一帧诚实）
+    /// R1：从 receipts / outbox / failed / 磁盘 flow 重建投递徽章（再开第一帧诚实）
     private func hydrateTransferDeliveryFromDisk() {
+        applyReceiptsFromDisk()
         var map = transferDeliveryByThread
         for item in LocalSessionStore.loadTransferOutbox() {
             if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
@@ -368,7 +369,7 @@ final class AppModel: ObservableObject {
         for (tid, snap) in threadFlow {
             if map[tid] != nil { continue }
             let eid = (snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !eid.isEmpty else { continue }
+            guard !eid.isEmpty, !eid.hasPrefix("pending:") else { continue }
             let stage = (snap.epic?.user_stage ?? "").lowercased()
             if stage == "done" { continue }
             if snap.works.isEmpty {
@@ -1024,7 +1025,7 @@ final class AppModel: ObservableObject {
             if !localOK {
                 showToast("本机 Agent 未就绪（对话不可用）。Hub：\(error.localizedDescription)")
             } else {
-                showToast("Hub 暂不可达（可聊；转任务暂不可用）")
+                showToast("Hub 暂不可达（可聊；转任务确认后排队，恢复后自动投递）")
             }
             if localOK { startWarmLoopIfNeeded() }
         }
@@ -2081,60 +2082,57 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// - Returns: 本轮成功投出的 transfer 笔数（供 Hub 恢复 toast）
+    /// 不再由 Desktop POST Hub；只 nudge sidecar + 用收据/磁盘校正徽章。
+    /// - Returns: 本轮从收据新对齐的 delivered 笔数（供 toast）
     @discardableResult
     private func flushTransferOutbox() async -> Int {
-        guard hubReachable else { return 0 }
-        let pending = LocalSessionStore.loadTransferOutbox()
-        var delivered = 0
-        for item in pending {
-            if item.attempts >= LocalSessionStore.maxTransferOutboxAttempts {
-                LocalSessionStore.enqueueFailedTransfer(item)
-                LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
-                setTransferDelivery(item.thread_id, .failed)
-                continue
-            }
-            setTransferDelivery(item.thread_id, .delivering)
-            let req = TransferRequest(
-                project_id: item.project_id,
-                thread_id: item.thread_id,
-                title: item.title,
-                goal: item.goal,
-                acceptance: item.acceptance,
-                pipeline: item.pipeline,
-                feasibility: item.feasibility,
-                feasibility_reason: item.feasibility_reason,
-                executor_intent: item.executor_intent,
-                skills_hint: [],
-                plan_md: item.plan_md,
-                complexity: item.complexity,
-                client_request_id: item.client_request_id
-            )
-            do {
-                try await prepareClient(ensureAgent: false)
-                let resp = try await client.transfer(req)
-                let ok = await applyTransferSuccess(
-                    resp: resp,
-                    tid: item.thread_id,
-                    pid: item.project_id,
-                    requestId: item.client_request_id
-                )
-                if ok {
-                    LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
-                    LocalSessionStore.dequeueFailedTransfer(clientRequestId: item.client_request_id)
-                    delivered += 1
-                } else {
-                    // 空 epic 等：态已 failed；出队避免毒丸死循环
-                    LocalSessionStore.enqueueFailedTransfer(item)
-                    LocalSessionStore.dequeueTransfer(clientRequestId: item.client_request_id)
-                }
-            } catch {
-                _ = LocalSessionStore.bumpTransferAttempt(clientRequestId: item.client_request_id)
-                setTransferDelivery(item.thread_id, .queued)
-            }
-        }
+        let before = Set(LocalSessionStore.loadTransferReceipts().map(\.client_request_id))
+        _ = await nudgeSidecarOutboxFlush()
+        applyReceiptsFromDisk()
         reconcileTransferDeliveryWithOutbox()
-        return delivered
+        let after = LocalSessionStore.loadTransferReceipts()
+        return after.filter { !before.contains($0.client_request_id) }.count
+    }
+
+    /// 把 sidecar 写下的 receipts 合入右栏 / 徽章（App 再开也诚实）
+    func applyReceiptsFromDisk() {
+        let receipts = LocalSessionStore.loadTransferReceipts()
+        guard !receipts.isEmpty else { return }
+        for r in receipts {
+            let crid = r.client_request_id.trimmingCharacters(in: .whitespacesAndNewlines)
+            let eid = r.epic_id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !crid.isEmpty, !eid.isEmpty else { continue }
+            let tid = r.thread_id.trimmingCharacters(in: .whitespacesAndNewlines)
+            let threadId: String = {
+                if !tid.isEmpty { return tid }
+                if let fromOutbox = LocalSessionStore.loadTransferOutbox()
+                    .first(where: { $0.client_request_id == crid })?.thread_id,
+                   !fromOutbox.isEmpty {
+                    return fromOutbox
+                }
+                if let fromFailed = LocalSessionStore.loadFailedTransfers()
+                    .first(where: { $0.client_request_id == crid })?.thread_id,
+                   !fromFailed.isEmpty {
+                    return fromFailed
+                }
+                return selectedThreadId ?? ""
+            }()
+            LocalSessionStore.dequeueTransfer(clientRequestId: crid)
+            LocalSessionStore.dequeueFailedTransfer(clientRequestId: crid)
+            guard !threadId.isEmpty else { continue }
+            if var snap = threadFlow[threadId] {
+                let cur = snap.epicId ?? ""
+                if cur.isEmpty || cur.hasPrefix("pending:") {
+                    snap.epicId = eid
+                    snap.headline = "已投递 · \(eid)"
+                    threadFlow[threadId] = snap
+                    bumpFlowRevision(threadId)
+                    persistCurrentThreadSnapshot(threadId: threadId)
+                }
+            }
+            let accepted = flowConfirmsOrchestrationAccepted(threadId: threadId, epicId: eid)
+            setTransferDelivery(threadId, accepted ? .accepted : .delivered)
+        }
     }
 
     /// R8：按 outbox/failed 剩余校正徽章（sidecar 关 App 投完后 UI 对齐）
@@ -2198,14 +2196,16 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             self.lastForegroundResumeAt = Date()
+            self.applyReceiptsFromDisk()
             self.reconcileTransferDeliveryWithOutbox()
+            let hasOutbox = !LocalSessionStore.loadTransferOutbox().isEmpty
+            if hasOutbox {
+                await self.flushTransferOutbox()
+            }
             if self.hubReachable {
-                let hasOutbox = !LocalSessionStore.loadTransferOutbox().isEmpty
                 let hasPending = !LocalSessionStore.loadPendingSync().isEmpty
-                if hasOutbox || hasPending {
+                if hasPending {
                     await self.flushPendingHubSync()
-                    await self.flushTransferOutbox()
-                    self.reconcileTransferDeliveryWithOutbox()
                 }
                 async let bind: Void = self.bindFlowToCurrentThread()
                 async let lights: Void = self.refreshProjectTaskState()
@@ -3765,91 +3765,36 @@ final class AppModel: ObservableObject {
         LocalSessionStore.enqueueTransfer(outboxItem)
         setTransferDelivery(tid, .queued)
 
-        // 前台只确认「已排队」；连通 / 重试 / 卡死全在后台，勿用全局 busy 锁 UI
-        if !hubReachable {
+        // 前台只确认「已排队」；唯一冲刷器 = sidecar（关 App 也投）
+        if hubReachable {
+            showToast("已排队 · 后台投递中")
+        } else {
             showToast("已排队 · Hub 恢复后自动投递")
             startHubRecoverLoopIfNeeded()
-            return
         }
-
-        setTransferDelivery(tid, .delivering)
-        showToast("已受理 · 后台投递中")
-        let req = TransferRequest(
-            project_id: pid,
-            thread_id: tid,
-            title: title,
-            goal: goal,
-            acceptance: accLines,
-            pipeline: pipeline,
-            feasibility: form.feasibility,
-            feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
-            executor_intent: form.executor,
-            skills_hint: [],
-            plan_md: planBody,
-            complexity: "medium",
-            client_request_id: requestId
-        )
         Task { [weak self] in
-            guard let self else { return }
-            await self.deliverTransferInBackground(req: req, tid: tid, pid: pid, requestId: requestId)
+            await self?.nudgeSidecarOutboxFlush()
         }
     }
 
-    /// Hub POST 转任务：仅后台；失败回 outbox queued，不挡对话/看板切换
-    private func deliverTransferInBackground(
-        req: TransferRequest,
-        tid: String,
-        pid: String,
-        requestId: String
-    ) async {
+    /// 轻推本机 sidecar 立刻冲刷 outbox（失败忽略；周期 loop 仍会投）
+    @discardableResult
+    func nudgeSidecarOutboxFlush() async -> Bool {
         do {
             try await prepareClient(ensureAgent: false)
-            let resp = try await client.transfer(req)
-            let ok = await applyTransferSuccess(
-                resp: resp, tid: tid, pid: pid, requestId: requestId
-            )
-            if ok {
-                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
-            } else {
-                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
-            }
-        } catch {
-            let plain = plainTransferError(error)
-            let lower = plain.lowercased()
-            let transient = lower.contains("timed out") || lower.contains("offline")
-                || lower.contains("network") || lower.contains("could not connect")
-                || lower.contains("connection") || !hubReachable
-                || lower.contains("empty transfer") || lower.contains("empty epic")
-                || lower.contains("空 epic") || lower.contains("transfer decode")
-                || lower.contains("解析失败")
-                || ((error as? APIError).map { err in
-                    if case .emptyEpicId = err { return true }
-                    if case .decode = err { return true }
-                    if case .http(let code, _) = err { return code >= 500 || code == 0 }
-                    return false
-                } ?? false)
-            if transient {
-                setTransferDelivery(tid, .queued)
-                showToast("投递中断，已排队：\(plain)")
-                let connLike = lower.contains("timed out") || lower.contains("offline")
-                    || lower.contains("network") || lower.contains("could not connect")
-                    || lower.contains("connection")
-                    || ((error as? APIError).map { err in
-                        if case .http(let code, _) = err { return code >= 500 || code == 0 }
-                        return false
-                    } ?? false)
-                if connLike {
-                    setHubReachable(false, source: "transfer_transient", error: error)
-                    let localOK = agentMode == "local"
-                    updateConnectionStatusText(localOK: localOK, hubOK: false)
-                    startHubRecoverLoopIfNeeded()
+            let summary = try await client.nudgeOutboxFlush()
+            let delivered = (summary["delivered"] as? Int)
+                ?? (summary["delivered"] as? NSNumber)?.intValue
+                ?? 0
+            if delivered > 0 {
+                await MainActor.run {
+                    self.applyReceiptsFromDisk()
+                    self.reconcileTransferDeliveryWithOutbox()
                 }
-            } else {
-                LocalSessionStore.dequeueTransfer(clientRequestId: requestId)
-                setTransferDelivery(tid, .failed)
-                mutateTransferForm(tid) { $0.error = plain }
-                showToast("转任务失败：\(plain)")
             }
+            return delivered > 0
+        } catch {
+            return false
         }
     }
 
@@ -4949,11 +4894,8 @@ final class AppModel: ObservableObject {
         selectDestination(dest, projectId: selectedProjectId)
     }
 
-    /// 转任务按钮旁人话门禁（nil = 可点）
+    /// 转任务按钮旁人话门禁（nil = 可点）。Hub 离线不挡确认。
     func transferGateHint(projectId: String?, threadId: String?) -> String? {
-        if !hubReachable {
-            return "Hub 未连接，暂不能转任务（可先继续聊方案）"
-        }
         guard let projectId else {
             return "先在左侧选择一个业务项目"
         }
@@ -4961,10 +4903,13 @@ final class AppModel: ObservableObject {
             return "当前是编排仓：请切到业务项目再转任务"
         }
         if !canTransfer(projectId: projectId) {
-            return "该项目不可下达，请换业务仓或检查 Hub 项目列表"
+            return "该项目不可下达，请换业务仓（可先聊；确认后排队）"
         }
         if let d = transferDraft(for: threadId), !d.isGateReady {
             return "定稿未过门禁：补全标题、目标与至少一条验收"
+        }
+        if !hubReachable {
+            return "Hub 离线：确认后排队，恢复后自动投递"
         }
         return nil
     }

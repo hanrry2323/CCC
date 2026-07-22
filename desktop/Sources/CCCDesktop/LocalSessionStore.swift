@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// 本机会话 SSOT：`~/Library/Application Support/CCCDesktop/`
 /// Hub 仅异步镜像；杀 App / Hub 抖不丢消息与 tool_steps。
@@ -27,9 +28,19 @@ enum LocalSessionStore {
         rootURL.appendingPathComponent("transfer-outbox.json")
     }
 
+    /// 与 Python sidecar 共用的 outbox 文件锁
+    static var transferOutboxLockURL: URL {
+        rootURL.appendingPathComponent("transfer-outbox.lock")
+    }
+
     /// 投递耗尽（attempts≥max）持久失败条；再开仍可见，可「后台再试」
     static var transferFailedURL: URL {
         rootURL.appendingPathComponent("transfer-failed.json")
+    }
+
+    /// sidecar 投递成功收据：`client_request_id` → epic
+    static var transferReceiptsURL: URL {
+        rootURL.appendingPathComponent("transfer-receipts.json")
     }
 
     static func boardCacheURL(projectId: String) -> URL {
@@ -578,47 +589,102 @@ enum LocalSessionStore {
     static let maxSyncAttempts = 5
     static let maxTransferOutboxAttempts = 8
 
-    // MARK: - Transfer outbox (Hub offline)
+    // MARK: - Transfer outbox (Hub offline; sidecar 唯一冲刷)
+
+    struct TransferReceipt: Codable, Hashable {
+        var client_request_id: String
+        var epic_id: String
+        var project_id: String
+        var thread_id: String
+        var delivered_at: String
+    }
+
+    /// advisory flock；与 Python `transfer-outbox.lock` 互通
+    private static func withTransferOutboxLock<T>(_ body: () throws -> T) rethrows -> T {
+        ensureDir(rootURL)
+        let lockPath = transferOutboxLockURL.path
+        if !fm.fileExists(atPath: lockPath) {
+            fm.createFile(atPath: lockPath, contents: Data(), attributes: nil)
+        }
+        let fd = open(lockPath, O_RDWR)
+        guard fd >= 0 else { return try body() }
+        defer { close(fd) }
+        _ = flock(fd, LOCK_EX)
+        defer { _ = flock(fd, LOCK_UN) }
+        return try body()
+    }
 
     static func enqueueTransfer(_ item: TransferOutboxItem) {
-        var q = loadTransferOutbox()
-        if let i = q.firstIndex(where: { $0.client_request_id == item.client_request_id }) {
-            q[i] = item
-        } else if let i = q.firstIndex(where: { $0.thread_id == item.thread_id }) {
-            q[i] = item
-        } else {
-            q.append(item)
+        withTransferOutboxLock {
+            var q = loadTransferOutboxUnlocked()
+            if let i = q.firstIndex(where: { $0.client_request_id == item.client_request_id }) {
+                q[i] = item
+            } else if let i = q.firstIndex(where: { $0.thread_id == item.thread_id }) {
+                q[i] = item
+            } else {
+                q.append(item)
+            }
+            writeTransferOutboxUnlocked(q)
         }
-        writeTransferOutbox(q)
     }
 
     static func dequeueTransfer(clientRequestId: String) {
-        var q = loadTransferOutbox()
-        q.removeAll { $0.client_request_id == clientRequestId }
-        writeTransferOutbox(q)
+        withTransferOutboxLock {
+            var q = loadTransferOutboxUnlocked()
+            q.removeAll { $0.client_request_id == clientRequestId }
+            writeTransferOutboxUnlocked(q)
+        }
     }
 
     static func loadTransferOutbox() -> [TransferOutboxItem] {
+        withTransferOutboxLock { loadTransferOutboxUnlocked() }
+    }
+
+    static func bumpTransferAttempt(clientRequestId: String) -> Int {
+        withTransferOutboxLock {
+            var q = loadTransferOutboxUnlocked()
+            if let i = q.firstIndex(where: { $0.client_request_id == clientRequestId }) {
+                q[i].attempts += 1
+                writeTransferOutboxUnlocked(q)
+                return q[i].attempts
+            }
+            return 0
+        }
+    }
+
+    private static func loadTransferOutboxUnlocked() -> [TransferOutboxItem] {
         guard let data = try? Data(contentsOf: transferOutboxURL),
               let q = try? JSONDecoder().decode([TransferOutboxItem].self, from: data)
         else { return [] }
         return q
     }
 
-    static func bumpTransferAttempt(clientRequestId: String) -> Int {
-        var q = loadTransferOutbox()
-        if let i = q.firstIndex(where: { $0.client_request_id == clientRequestId }) {
-            q[i].attempts += 1
-            writeTransferOutbox(q)
-            return q[i].attempts
-        }
-        return 0
-    }
-
-    private static func writeTransferOutbox(_ q: [TransferOutboxItem]) {
+    private static func writeTransferOutboxUnlocked(_ q: [TransferOutboxItem]) {
         ensureDir(rootURL)
         guard let data = try? JSONEncoder().encode(q) else { return }
         try? data.write(to: transferOutboxURL, options: .atomic)
+    }
+
+    // MARK: - Transfer receipts (sidecar → Desktop)
+
+    static func loadTransferReceipts() -> [TransferReceipt] {
+        guard let data = try? Data(contentsOf: transferReceiptsURL),
+              let q = try? JSONDecoder().decode([TransferReceipt].self, from: data)
+        else { return [] }
+        return q
+    }
+
+    static func upsertTransferReceipt(_ item: TransferReceipt) {
+        var q = loadTransferReceipts()
+        if let i = q.firstIndex(where: { $0.client_request_id == item.client_request_id }) {
+            q[i] = item
+        } else {
+            q.insert(item, at: 0)
+        }
+        if q.count > 200 { q = Array(q.prefix(200)) }
+        ensureDir(rootURL)
+        guard let data = try? JSONEncoder().encode(q) else { return }
+        try? data.write(to: transferReceiptsURL, options: .atomic)
     }
 
     // MARK: - Transfer failed (exhausted)

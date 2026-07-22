@@ -30,7 +30,7 @@ alwaysApply: true
 
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
-- 前台只确认意图（定稿/转任务/切页）；Hub 连通·重试·卡死·投递一律后台。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate + 后台 catch-up。  
+- 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。  
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。  
 - **已注册 ≠ 可开工**：正式开发前全面对齐。  
