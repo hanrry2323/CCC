@@ -517,6 +517,8 @@ struct CodexChatPaneBody: View {
     @State private var paneContentOpacity: Double = 1
     @State private var showPaneSwitchSpinner = false
     @State private var paneSwitchGeneration: UInt64 = 0
+    /// 用于抓「有内容→变空」瞬间（H6）
+    @State private var lastDisplayMsgCount: Int = -1
     @FocusState private var composerFocused: Bool
 
     /// 本窗唯一项目焦点；首帧未绑定时短暂回落全局，避免闪空（H5）
@@ -530,19 +532,6 @@ struct CodexChatPaneBody: View {
         if let tid = window.threadId, !tid.isEmpty { return tid }
         if window.projectId == nil || window.projectId == model.selectedProjectId,
            let tid = model.selectedThreadId, !tid.isEmpty {
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H5",
-                location: "CodexChatPaneBody.paneThreadId",
-                message: "fallback to model.selectedThreadId (window unbound)",
-                data: [
-                    "fallbackTid": tid,
-                    "msgCount": model.messagesForThread(tid).count,
-                    "agentMode": model.agentMode,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
             return tid
         }
         return nil
@@ -674,14 +663,36 @@ struct CodexChatPaneBody: View {
         }
         .background(CCCTheme.chatBg)
         .onAppear {
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H5",
+                location: "CodexChatPane.onAppear",
+                message: "chat pane appear",
+                data: [
+                    "windowThreadId": window.threadId ?? "",
+                    "paneThreadId": paneThreadId ?? "",
+                    "msgCount": displayMessages.count,
+                    "agentMode": model.agentMode,
+                    "destination": String(describing: window.destination),
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
             if window.projectId == nil {
                 window.projectId = model.selectedProjectId
             }
-            if let pid = window.projectId {
+            if window.threadId == nil, let tid = model.selectedThreadId,
+               window.projectId == nil || LocalSessionStore.projectId(fromThreadId: tid) == window.projectId {
+                window.threadId = tid
+            }
+            if let tid = window.threadId ?? paneThreadId {
+                model.ensureThreadHydrated(threadId: tid)
+            } else if let pid = window.projectId {
                 model.ensureThreadHydrated(projectId: pid)
             }
             NSApp.activate(ignoringOtherApps: true)
             composerFocused = true
+            lastDisplayMsgCount = displayMessages.count
         }
         .onChange(of: window.projectId) { pid in
             if let pid {
@@ -698,7 +709,8 @@ struct CodexChatPaneBody: View {
                     "threadId": newTid ?? "",
                     "msgCount": model.messagesForThread(newTid).count,
                     "projectId": window.projectId ?? "",
-                ]
+                ],
+                runId: "post-fix"
             )
             // #endregion
             // 消息源只跟 thread；以 thread 切换驱动过渡，避免与 project 双触发叠闪
@@ -715,13 +727,64 @@ struct CodexChatPaneBody: View {
                     "canChat": model.canChat,
                     "threadId": paneThreadId ?? "",
                     "msgCount": model.messagesForThread(paneThreadId).count,
-                ]
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
+        }
+        .onChange(of: displayMessages.count) { newCount in
+            // #region agent log
+            if lastDisplayMsgCount > 0, newCount == 0 {
+                DebugAgentLog.log(
+                    hypothesisId: "H6",
+                    location: "CodexChatPane.onChange.displayMessages",
+                    message: "displayMessages dropped to empty",
+                    data: [
+                        "prev": lastDisplayMsgCount,
+                        "threadId": paneThreadId ?? "",
+                        "windowThreadId": window.threadId ?? "",
+                        "agentMode": model.agentMode,
+                        "canChat": model.canChat,
+                        "destination": String(describing: window.destination),
+                        "opacity": paneContentOpacity,
+                    ],
+                    runId: "post-fix"
+                )
+            }
+            // #endregion
+            lastDisplayMsgCount = newCount
+        }
+        .onChange(of: window.destination) { dest in
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H7",
+                location: "CodexChatPane.onChange.destination",
+                message: "destination changed",
+                data: [
+                    "destination": String(describing: dest),
+                    "threadId": paneThreadId ?? "",
+                    "msgCount": displayMessages.count,
+                ],
+                runId: "post-fix"
             )
             // #endregion
         }
         .onChange(of: scenePhase) { phase in
             // A→B→A：窗体未必销毁，onAppear 不跑；激活时仍要瞬移最新，禁止扫历史
             if phase == .active {
+                // #region agent log
+                DebugAgentLog.log(
+                    hypothesisId: "H8",
+                    location: "CodexChatPane.onChange.scenePhase",
+                    message: "scene became active",
+                    data: [
+                        "threadId": paneThreadId ?? "",
+                        "msgCount": displayMessages.count,
+                        "agentMode": model.agentMode,
+                    ],
+                    runId: "post-fix"
+                )
+                // #endregion
                 pinBottomOnNextScroll()
                 bottomPinTick &+= 1
                 model.onForegroundResume()
