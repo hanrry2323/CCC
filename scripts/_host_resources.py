@@ -261,15 +261,22 @@ def summarize(
             break
 
     # Heuristic (documented): raise only when both CPU & mem have headroom
+    # P5: 忙时样本不足 30 点不建议加并行（idle 曲线不够）
     verdict = "insufficient_data"
-    reason = "need ≥12 samples (~12min at 60s)"
+    reason = "need ≥30 busy-hour samples before raising MAX_CONCURRENT"
     if len(load_ratios) >= 12 and len(mem_pcts) >= 12:
         assert load_p95 is not None and mem_p95 is not None
-        if load_p95 < 0.55 and mem_p95 < 70:
+        if len(load_ratios) < 30:
+            verdict = "collecting"
+            reason = (
+                f"samples={len(load_ratios)}<30 — hold MAX_CONCURRENT; "
+                f"load_p95={load_p95:.2f} mem_p95={mem_p95:.0f}% (preliminary)"
+            )
+        elif load_p95 < 0.55 and mem_p95 < 70:
             verdict = "headroom"
             reason = (
                 f"load_ratio_p95={load_p95:.2f}<0.55 and mem_p95={mem_p95:.0f}%<70% "
-                f"— try MAX_CONCURRENT+1 (watch same-ws mutex)"
+                f"— try MAX_CONCURRENT+1 (watch same-ws mutex; default stay 4)"
             )
         elif load_p95 > 0.85 or mem_p95 > 85:
             verdict = "saturated"

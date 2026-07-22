@@ -1161,6 +1161,39 @@ def dev_role_check_complete(task_id: str) -> dict:
     result_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
     exit_code = exitcode_path.read_text().strip() if exitcode_path.exists() else "?"
     result_raw = result_path.read_text() if result_path.exists() else "{}"
+    # P2: 防御解析污染 result.json；失败记 dirty_result
+    try:
+        from _result_json import parse_result_file
+
+        _parsed, _dirty = parse_result_file(result_path, raw=result_raw)
+        if _dirty and result_path.exists():
+            _log.warning(
+                "[gate] %s dirty_result.json — recovered keys=%s",
+                task_id,
+                list(_parsed)[:8],
+            )
+            try:
+                from _jsonl_rotate import append_jsonl
+
+                append_jsonl(
+                    get_workspace() / ".ccc" / "stats" / "events.jsonl",
+                    {
+                        "t": now_iso(),
+                        "event": "dirty_result",
+                        "task": task_id,
+                        "keys": list(_parsed)[:20],
+                    },
+                )
+            except Exception:
+                pass
+            if _parsed:
+                result_path.write_text(
+                    json.dumps(_parsed, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                result_raw = result_path.read_text()
+    except Exception as e:
+        _log.warning("%s result parse helper: %s", task_id, e)
 
     phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
     cur_phase = _current_running_phase(task_id)

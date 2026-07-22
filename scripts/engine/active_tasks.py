@@ -222,3 +222,88 @@ def _drop_active_task_and_slots(
         _save_active_tasks(active_tasks)
     if released:
         _engine_log(f"[slot] released {released} opencode slot(s) for {task_key}")
+
+
+def _dev_runner_done(ws: Path, tid: str) -> bool:
+    return (Path(ws) / ".ccc" / "pids" / f"{tid}.done").is_file()
+
+
+def _dev_runner_pid_alive(ws: Path, tid: str) -> bool:
+    pid_path = Path(ws) / ".ccc" / "pids" / f"{tid}.pid"
+    if not pid_path.is_file():
+        return False
+    try:
+        import os
+
+        pid = int(pid_path.read_text().strip())
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, ProcessLookupError):
+        return False
+
+
+def workspace_blocks_new_opencode(
+    ws: Path, active_tasks: dict[str, dict], *, lease_sec: float = 90.0
+) -> bool:
+    """同仓互斥：仅当存在活 runner 或未过期 lease（无 .done）时挡新卡。
+
+    产线提效 P1：死 pid + 已有 ``.done`` 不得挡同仓下一卡（幽灵槽）。
+    """
+    import time
+    from datetime import datetime
+
+    ws_r = Path(ws).resolve()
+    now = time.time()
+    for info in active_tasks.values():
+        other = info.get("workspace")
+        try:
+            other_r = Path(other).resolve() if other else None
+        except OSError:
+            other_r = None
+        if other_r != ws_r:
+            continue
+        tid = str(info.get("task_id") or "")
+        if not tid:
+            return True
+        if _dev_runner_done(ws_r, tid):
+            # 终态应收口释槽；本 tick 不挡新 launch
+            continue
+        if _dev_runner_pid_alive(ws_r, tid):
+            return True
+        # 无 .done：刚 register / 尚无 pid → lease 内仍挡
+        started = info.get("started_at")
+        age = lease_sec + 1.0
+        if isinstance(started, str) and started:
+            try:
+                ts = started.replace("Z", "+00:00")
+                age = now - datetime.fromisoformat(ts).timestamp()
+            except ValueError:
+                age = 0.0
+        if age <= lease_sec:
+            return True
+        # lease 过期 + 死 pid + 无 done → 不挡（交给 check_complete 收口）
+        _engine_log(
+            f"[slot] [{ws_r.name}] ghost active {tid} "
+            f"(dead/no-done, age={age:.0f}s) — 不挡同仓 launch"
+        )
+    return False
+
+
+def release_dev_slot(
+    active_tasks: dict[str, dict] | None,
+    ws: Path,
+    tid: str,
+    *,
+    reap: bool = True,
+) -> None:
+    """终态必释槽：pop active_tasks + release_opencode_slot + 可选 reap。"""
+    key = _task_key(ws, tid)
+    _drop_active_task_and_slots(active_tasks, key)
+    if reap:
+        try:
+            from _opencode_reap import reap_opencode_workspace
+
+            reap_opencode_workspace(Path(ws), max_age_sec=0, grace_sec=0.2)
+        except Exception as exc:
+            _engine_log(f"[slot] reap after release {tid}: {exc}")
+

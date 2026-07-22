@@ -165,11 +165,80 @@ def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> N
         _engine_log(f"写入 pytest_fail.md 失败: {exc}")
 
 
+def _git_sequencer_active(ws: Path) -> bool:
+    """True if mid revert / merge / cherry-pick / rebase."""
+    git = Path(ws) / ".git"
+    markers = (
+        git / "REVERT_HEAD",
+        git / "MERGE_HEAD",
+        git / "CHERRY_PICK_HEAD",
+        git / "rebase-merge",
+        git / "rebase-apply",
+        git / "sequencer",
+    )
+    return any(m.exists() for m in markers)
+
+
+def _abort_in_progress_git(ws: Path) -> None:
+    """Best-effort abort any in-progress git sequencer. Never leave REVERT_HEAD."""
+    env = _sanitized_env()
+    for args in (
+        ["git", "revert", "--abort"],
+        ["git", "merge", "--abort"],
+        ["git", "cherry-pick", "--abort"],
+        ["git", "rebase", "--abort"],
+    ):
+        try:
+            subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                cwd=str(ws),
+                env=env,
+            )
+        except Exception:
+            continue
+
+
+def _record_revert_skip(ws: Path, tid: str, why: str) -> None:
+    try:
+        from _failure_ledger import record_failure
+
+        record_failure(
+            ws,
+            task_id=tid,
+            role="verdict-gate",
+            reason=f"revert_skipped: {why}",
+            related_stats_event="revert_skip",
+            to_col="planned",
+            extra={"why": why},
+        )
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] {tid} record revert_skip failed: {exc}")
+
+
 def _revert_task_commit(ws: Path, tid: str) -> bool:
-    """Verdict FAIL 时回滚 task 的最后一个 commit（须属于本 task 且仍在 HEAD 祖先）。"""
+    """Verdict FAIL 时回滚 task 的最后一个 commit（须属于本 task 且仍在 HEAD 祖先）。
+
+    产线提效 P3：冲突/失败必须 ``git revert --abort``，禁止留下半截 revert 停仓。
+    冲突策略：skip revert + failures 账本，卡回 planned（由调用方移动）。
+    """
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
     if not phases_file.exists():
         return False
+
+    # 已有半截 sequencer → 先 abort 再决定
+    if _git_sequencer_active(ws):
+        _engine_log(
+            f"[verdict-gate] {tid} 检测到进行中的 git 操作，先 abort 再评估 revert"
+        )
+        _abort_in_progress_git(ws)
+        if _git_sequencer_active(ws):
+            _engine_log(f"[verdict-gate] {tid} abort 后仍有 sequencer → skip revert")
+            _record_revert_skip(ws, tid, "sequencer_stuck_after_abort")
+            return False
+
     try:
         phases_data = _load_phases(tid, ws)
         commits = [
@@ -198,6 +267,7 @@ def _revert_task_commit(ws: Path, tid: str) -> bool:
             _engine_log(
                 f"[verdict-gate] {tid} skip revert {last_commit[:12]}: not ancestor of HEAD"
             )
+            _record_revert_skip(ws, tid, "not_ancestor")
             return False
         msg = subprocess.run(
             ["git", "log", "-1", "--format=%s%n%b", last_commit],
@@ -213,9 +283,11 @@ def _revert_task_commit(ws: Path, tid: str) -> bool:
                 f"[verdict-gate] {tid} skip revert {last_commit[:12]}: "
                 f"commit message does not mention task id"
             )
+            _record_revert_skip(ws, tid, "commit_msg_mismatch")
             return False
     except Exception as exc:
         _engine_log(f"[verdict-gate] {tid} revert precheck 异常: {exc}")
+        _abort_in_progress_git(ws)
         return False
 
     try:
@@ -228,15 +300,23 @@ def _revert_task_commit(ws: Path, tid: str) -> bool:
             env=_sanitized_env(),
         )
         if result.returncode != 0:
+            err = (result.stderr or result.stdout or "")[:300]
             _engine_log(
-                f"[verdict-gate] {tid} revert {last_commit[:12]} 失败: "
-                f"{result.stderr[:200]}"
+                f"[verdict-gate] {tid} revert {last_commit[:12]} 失败 → abort: {err}"
             )
+            _abort_in_progress_git(ws)
+            if _git_sequencer_active(ws):
+                _engine_log(
+                    f"[verdict-gate] {tid} CRITICAL: abort 后仍有 REVERT_HEAD/sequencer"
+                )
+            _record_revert_skip(ws, tid, f"conflict_or_fail: {err[:120]}")
             return False
         _engine_log(f"[verdict-gate] {tid} 已 revert commit {last_commit[:12]}")
         return True
     except Exception as exc:
-        _engine_log(f"[verdict-gate] {tid} revert 异常: {exc}")
+        _engine_log(f"[verdict-gate] {tid} revert 异常 → abort: {exc}")
+        _abort_in_progress_git(ws)
+        _record_revert_skip(ws, tid, f"exception: {exc}")
         return False
 
 
@@ -483,17 +563,51 @@ def _run_verified_kb_gate(ws: Path) -> None:
         _engine_log(f"[{label}] kb_role 异常: {exc}")
 
 
+def _testing_gate_budget() -> tuple[int, float]:
+    """Return (max_tasks_per_tick, wall_budget_sec). Env overrides Config."""
+    import os
+
+    max_n = getattr(cfg, "testing_gate_max_per_tick", 1)
+    budget = getattr(cfg, "testing_gate_budget_sec", 180)
+    try:
+        max_n = int(os.environ.get("CCC_TESTING_GATE_MAX", max_n) or max_n)
+    except (TypeError, ValueError):
+        pass
+    try:
+        budget = float(os.environ.get("CCC_TESTING_GATE_BUDGET", budget) or budget)
+    except (TypeError, ValueError):
+        pass
+    return max(1, max_n), max(30.0, float(budget))
+
+
 def _run_testing_tasks_gate(ws: Path) -> None:
-    """对 testing 列每个 task 跑 reviewer/tester 门禁。"""
+    """对 testing 列跑 reviewer/tester 门禁（限张 + 限时，产线提效 P4）。
+
+    超时后留下 testing，下一 tick 续；禁止一仓慢测堵死整 Engine tick。
+    """
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
+    max_n, budget_s = _testing_gate_budget()
+    deadline = time.monotonic() + budget_s
+    done_n = 0
     for task in store.list_tasks("testing"):
+        if done_n >= max_n:
+            _engine_log(
+                f"[{label}] testing 门禁达每 tick 上限 {max_n}，余卡下 tick"
+            )
+            break
+        if time.monotonic() >= deadline:
+            _engine_log(
+                f"[{label}] testing 门禁墙钟预算 {budget_s:.0f}s 耗尽，余卡下 tick"
+            )
+            break
         tid = task["id"]
-        _engine_log(f"[{label}] testing 门禁: {tid}")
+        _engine_log(f"[{label}] testing 门禁: {tid} ({done_n + 1}/{max_n})")
         try:
             ok = _run_reviewer_tester_gate(ws, tid)
             if ok:
                 _refresh_parent_epic(ws, tid)
         except Exception as exc:
             _engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")
+        done_n += 1

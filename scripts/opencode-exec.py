@@ -311,6 +311,11 @@ async def main() -> int:
     ap.add_argument(
         "--skip-watchdog", action="store_true", help="跳过残留扫描（仅调试）"
     )
+    ap.add_argument(
+        "--result-file",
+        default="",
+        help="写纯 JSON 结果到此路径（日志仍走 stderr；避免污染 result.json）",
+    )
     args = ap.parse_args()
 
     # 二进制检查
@@ -357,7 +362,22 @@ async def main() -> int:
         opencode_bin=opencode_bin,
         cfg=Config(),
     )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    payload = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.result_file:
+        try:
+            rf = Path(args.result_file)
+            rf.parent.mkdir(parents=True, exist_ok=True)
+            rf.write_text(payload + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(
+                json.dumps({"error": f"result-file write failed: {exc}"}),
+                file=sys.stderr,
+            )
+            return 13
+        # 不把 JSON 打到 stdout（runner 会把 stdout 接到 exec.log）
+        print(f"[opencode-exec] wrote result → {args.result_file}", file=sys.stderr)
+    else:
+        print(payload)
     return result["exit_code"]
 
 

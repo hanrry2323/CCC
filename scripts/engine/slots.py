@@ -85,17 +85,37 @@ def try_acquire_opencode_slot(task_key: str) -> bool:
     或同仓排队。卡死根因是同仓这一路不退出/残留，不是「倒 20 张堵全局槽」。
 
     task_key 约定：``{workspace_resolved}|{task_id}``（见 ccc-engine._task_key）。
+
+    P1：同仓 holder 若已有 ``.done`` 或 pid 已死 → 先释幽灵槽，不挡新卡。
     """
     from board.slots import snapshot, try_acquire
 
     OpenCodeCountProxy.invalidate()  # 占槽后立即失效缓存
     # 同仓互斥：key 前缀为 workspace path
     if "|" in task_key:
-        ws_prefix = task_key.rsplit("|", 1)[0] + "|"
+        ws_s, _tid = task_key.rsplit("|", 1)
+        ws_prefix = ws_s + "|"
+        ws_path = Path(ws_s)
         snap = snapshot(opencode_slots_path())
-        for held in (snap.get("tasks") or {}):
-            if held.startswith(ws_prefix) and held != task_key:
-                return False
+        for held in list(snap.get("tasks") or {}):
+            if not held.startswith(ws_prefix) or held == task_key:
+                continue
+            other_tid = held.rsplit("|", 1)[-1]
+            done = ws_path / ".ccc" / "pids" / f"{other_tid}.done"
+            pid_alive = False
+            pid_path = ws_path / ".ccc" / "pids" / f"{other_tid}.pid"
+            if pid_path.is_file() and not done.is_file():
+                try:
+                    pid = int(pid_path.read_text().strip())
+                    os.kill(pid, 0)
+                    pid_alive = True
+                except (OSError, ValueError, ProcessLookupError):
+                    pid_alive = False
+            if done.is_file() or not pid_alive:
+                # 幽灵槽：释后再判
+                release_opencode_slot(held, None)
+                continue
+            return False
     return try_acquire(
         task_key,
         max_slots=_GLOBAL_OPENCODE_MAX,

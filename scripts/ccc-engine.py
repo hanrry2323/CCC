@@ -136,6 +136,8 @@ from engine.active_tasks import (  # noqa: E402
     _load_active_tasks,
     _register_active,
     _save_active_tasks,
+    release_dev_slot as _release_dev_slot,
+    workspace_blocks_new_opencode as _workspace_blocks_new_opencode,
 )
 from engine.hang import (  # noqa: E402
     _HANG_BUSY_MAX_SEC,
@@ -624,19 +626,24 @@ def _log_opencode_done(
     duration_s = None
     exit_code = None
     killed = None
-    # result.json 优先（opencode-exec 写出）
+    # result.json 优先（opencode-exec 写出）；容忍污染
     result_path = Path(ws) / ".ccc" / "reports" / f"{tid}.result.json"
     if result_path.is_file():
         try:
-            raw = json.loads(result_path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                if "duration_s" in raw:
-                    duration_s = float(raw["duration_s"])
-                if "exit_code" in raw:
-                    exit_code = raw["exit_code"]
-                if "killed" in raw:
-                    killed = bool(raw["killed"])
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            from _result_json import parse_result_file
+
+            raw_txt = result_path.read_text(encoding="utf-8", errors="replace")
+            parsed, dirty = parse_result_file(result_path, raw=raw_txt)
+            if dirty:
+                _log_stats(ws, "dirty_result", tid, keys=list(parsed)[:20])
+            if isinstance(parsed, dict) and parsed:
+                if "duration_s" in parsed:
+                    duration_s = float(parsed["duration_s"])
+                if "exit_code" in parsed:
+                    exit_code = parsed["exit_code"]
+                if "killed" in parsed:
+                    killed = bool(parsed["killed"])
+        except (OSError, ValueError, TypeError):
             pass
     wall_s = _wall_seconds_from_started(started_at)
     _log_stats(
@@ -1548,27 +1555,38 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
                 _handle_task_result(
                     ws, tid, result, complexity=complexity
                 )
-            elif status == "failed":
-                failure_summary = _check_phase_failures(tid)
-                if failure_summary.get("unresolvable") or failure_summary.get(
-                    "all_failed_or_skipped"
-                ):
+                _release_dev_slot(None, ws, tid)
+            elif status in ("failed", "quarantined", "not_found"):
+                # P1: 有 .done 优先收口，禁止无脑 pending_relaunch 占槽
+                done_marker = ws / ".ccc" / "pids" / f"{tid}.done"
+                if done_marker.is_file() or status in ("quarantined", "not_found"):
                     _handle_task_result(
                         ws, tid, result, complexity=complexity
                     )
-                else:
-                    _enqueue_pending_relaunch(
-                        ws, tid, complexity=complexity, reason="recover"
-                    )
+                    _release_dev_slot(None, ws, tid)
+                elif status == "failed":
+                    failure_summary = _check_phase_failures(tid)
+                    if failure_summary.get("unresolvable") or failure_summary.get(
+                        "all_failed_or_skipped"
+                    ):
+                        _handle_task_result(
+                            ws, tid, result, complexity=complexity
+                        )
+                        _release_dev_slot(None, ws, tid)
+                    else:
+                        _enqueue_pending_relaunch(
+                            ws, tid, complexity=complexity, reason="recover"
+                        )
             elif status == "phase_done":
                 _enqueue_pending_relaunch(
                     ws, tid, complexity=complexity, reason="phase_done"
                 )
             else:
-                # quarantined / not_found / unknown — 走原结果处理（无强制 relaunch）
+                # unknown — 走原结果处理（无强制 relaunch）
                 _handle_task_result(
                     ws, tid, result, complexity=complexity
                 )
+                _release_dev_slot(None, ws, tid)
         except Exception as exc:
             engine_log(f"[recover] [{label}] {tid} in_progress 恢复异常: {exc}")
 
@@ -1578,24 +1596,12 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
     if testing:
         engine_log(
             f"[recover] [{label}] 恢复 {len(testing)} 个 testing task "
-            f"（间隔 5s 避免并发）"
+            f"（限预算门禁，不堵后续 launch）"
         )
-
-    for idx, task in enumerate(testing):
-        tid = task["id"]
-        engine_log(f"[recover] [{label}] Recovered task {tid} at phase reviewing")
         try:
-            # 与正常 testing 门禁一致（small 不 stub 跳过）
-            ok = _run_reviewer_tester_gate(ws, tid)
-            engine_log(
-                f"[recover] [{label}] {tid} testing gate → "
-                f"{'verified' if ok else 'pending/fail'}"
-            )
+            _run_testing_tasks_gate(ws)
         except Exception as exc:
-            engine_log(f"[recover] [{label}] {tid} testing 恢复异常: {exc}")
-
-        if idx < len(testing) - 1:
-            time.sleep(5)
+            engine_log(f"[recover] [{label}] testing 恢复异常: {exc}")
 
 
 def _try_fill_pending_relaunch(active_tasks: dict[str, dict]) -> bool:
@@ -2427,16 +2433,14 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         tkey = _task_key(ws, tid)
-        # 同仓已有在跑的 opencode → 等下一 tick（避免 database is locked）
-        if any(
-            Path(info.get("workspace") or "").resolve() == ws.resolve()
-            for info in active_tasks.values()
-        ):
+        # 同仓互斥：仅活 runner / 未过期 lease（P1：死 pid+.done 不挡）
+        if _workspace_blocks_new_opencode(ws, active_tasks):
             engine_log(
                 f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
             )
             continue
-        # board_ops 短路径：board-only + python/auto → 不进 opencode
+        # 短路径硬门（P5）：board_ops / script_seed 失败不得静默 fallback opencode
+        short_path: str | None = None
         try:
             from board.roles.board_ops import run_board_ops, should_use_board_ops
             from board.roles.script_seed import (
@@ -2449,6 +2453,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 None,
             )
             if task_meta and should_use_script_seed(ws, task_meta):
+                short_path = "script_seed"
                 engine_log(
                     f"[{label}] {tid} script_seed short path "
                     f"(intent probe, no opencode)"
@@ -2456,27 +2461,74 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 seed_r = run_script_seed(ws, tid)
+                _log_stats(
+                    ws,
+                    "dev_path",
+                    tid,
+                    path="script_seed",
+                    ok=bool(seed_r.get("ok")),
+                )
                 if not seed_r.get("ok"):
                     engine_log(
-                        f"[{label}] {tid} script_seed failed: {seed_r}"
+                        f"[{label}] {tid} script_seed FAILED (hard, no opencode): "
+                        f"{seed_r}"
                     )
+                    col_now = store.find_task(tid)[0]
+                    if col_now == "in_progress":
+                        store.move_task(tid, "in_progress", "planned")
+                    store.update_index()
+                    return True
                 store.update_index()
                 return True
             if task_meta and should_use_board_ops(ws, task_meta):
+                short_path = "board_ops"
                 engine_log(f"[{label}] {tid} board_ops short path (no opencode)")
-                col = "planned"
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 ops_r = run_board_ops(ws, tid)
+                _log_stats(
+                    ws,
+                    "dev_path",
+                    tid,
+                    path="board_ops",
+                    ok=bool(ops_r.get("ok")),
+                )
                 if not ops_r.get("ok"):
                     engine_log(
-                        f"[{label}] {tid} board_ops failed: {ops_r.get('why')}"
+                        f"[{label}] {tid} board_ops FAILED (hard, no opencode): "
+                        f"{ops_r.get('why')}"
                     )
-                    # leave in_progress for salvage/acceptance or hang path
+                    col_now = store.find_task(tid)[0]
+                    if col_now == "in_progress":
+                        store.move_task(tid, "in_progress", "planned")
+                    store.update_index()
+                    return True
                 store.update_index()
                 return True
         except Exception as _bo_exc:
-            engine_log(f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}")
+            if short_path:
+                engine_log(
+                    f"[{label}] {tid} {short_path} hard-fail (no opencode): {_bo_exc}"
+                )
+                _log_stats(
+                    ws,
+                    "dev_path",
+                    tid,
+                    path=short_path,
+                    ok=False,
+                    error=str(_bo_exc)[:200],
+                )
+                try:
+                    col_now = store.find_task(tid)[0]
+                    if col_now == "in_progress":
+                        store.move_task(tid, "in_progress", "planned")
+                    store.update_index()
+                except Exception:
+                    pass
+                return True
+            engine_log(
+                f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}"
+            )
 
         if not _try_acquire_opencode_slot(tkey):
             engine_log(
@@ -2502,7 +2554,9 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             complexity=complexity,
             pid=launch_r.get("pid"),
             mode="serial",
+            path="opencode",
         )
+        _log_stats(ws, "dev_path", tid, path="opencode", ok=True)
         store.update_index()
         return True
     return False
@@ -2942,9 +2996,11 @@ def engine_loop(workspaces: list[Path]) -> None:
                         complexity=complexity,
                         started_at=info.get("started_at"),
                     ):
-                        # v0.30.0: 串行 task 结束时释放槽位（并行 path 已在 group 完成时递减）
+                        # P1: 任意终态统一释槽（serial；parallel 在 group 完成时已递减）
                         if mode != "parallel":
-                            _release_opencode_slot(key, 1)
+                            _release_dev_slot(None, ws, tid, reap=True)
+                            # active_tasks pop 仍由下方 completed_tasks 负责，避免双重 save 竞态
+                            # 槽位已在 release_dev_slot(None) 释放；此处只 pop dict
                         completed_tasks.append(key)
 
                 for key in completed_tasks:
@@ -2953,6 +3009,31 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _save_active_tasks(active_tasks)
                 # tick 边界重置 fallback 标志
                 _reset_parallel_disabled_after_tick()
+
+            # product 不占 dev 槽：先 GC 孤儿 inflight，再 backlog intake（自有 cap）
+            try:
+                _gc_product_inflight(workspaces)
+            except Exception as exc:
+                engine_log(f"[product] inflight GC error: {exc}")
+            for ws in workspaces:
+                _activate_workspace(ws)
+                if _process_backlog(ws):
+                    any_active = True
+
+            # P4: 先 launch planned，再跑 testing 门禁（禁止「先测完全列才 launch」）
+            while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
+                did_something = False
+                if _try_fill_pending_relaunch(active_tasks):
+                    did_something = True
+                    any_active = True
+                for ws in workspaces:
+                    if len(active_tasks) >= MAX_CONCURRENT:
+                        break
+                    if _try_launch_planned(ws, active_tasks):
+                        did_something = True
+                        any_active = True
+                if not did_something:
+                    break
 
             # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + testing 流转 + 统计聚合
             if iteration % 6 == 0:
@@ -2980,7 +3061,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if test_tasks:
                         label = _ws_label(ws)
                         engine_log(
-                            f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
+                            f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁（限预算）"
                         )
                         _run_testing_tasks_gate(ws)
                     # v0.38: verified → kb → released
@@ -3043,43 +3124,17 @@ def engine_loop(workspaces: list[Path]) -> None:
                     global_active_count=len(active_tasks),
                 )
 
-            # product 不占 dev 槽：先 GC 孤儿 inflight，再 backlog intake（自有 cap）
-            try:
-                _gc_product_inflight(workspaces)
-            except Exception as exc:
-                engine_log(f"[product] inflight GC error: {exc}")
-            for ws in workspaces:
-                _activate_workspace(ws)
-                if _process_backlog(ws):
-                    any_active = True
-
-            while len(active_tasks) < MAX_CONCURRENT and not _engine_shutdown:
-                # planned / pending_relaunch 填 dev 槽；product 已在上方独立处理
-                did_something = False
-                if _try_fill_pending_relaunch(active_tasks):
-                    did_something = True
-                    any_active = True
-                for ws in workspaces:
-                    if len(active_tasks) >= MAX_CONCURRENT:
-                        break
-                    if _try_launch_planned(ws, active_tasks):
-                        did_something = True
-                        any_active = True
-
-                if not did_something:
-                    break
-
             if not active_tasks:
                 for ws in workspaces:
                     _activate_workspace(ws)
                     _check_stale(ws, active_tasks)
-                    # 空闲时立即处理 testing 任务
+                    # 空闲时立即处理 testing 任务（仍限预算）
                     _store2 = _get_store(ws)
                     test_tasks = _store2.list_tasks("testing")
                     if test_tasks:
                         label = _ws_label(ws)
                         engine_log(
-                            f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁"
+                            f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁（限预算）"
                         )
                         _run_testing_tasks_gate(ws)
                     if _store2.list_tasks("verified"):

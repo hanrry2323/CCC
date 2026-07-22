@@ -151,6 +151,10 @@ class Config:
         3  # reviewer LLM 超时最大重试次数（含首次），超过则 quarantine
     )
 
+    # ── testing 门禁预算（产线提效 P4）──
+    testing_gate_max_per_tick: int = 1  # 每 tick 每仓最多审测张数
+    testing_gate_budget_sec: int = 180  # 每 tick 每仓审测墙钟上限（秒）
+
     # ── product_role ──
     max_phases: int = 2  # product_role 拆解 task 的最大 phase 数，超出抛异常
 
