@@ -37,8 +37,12 @@ def _run_git(ws: Path, *args: str, timeout: int | None = None) -> tuple[int, str
             text=True,
             timeout=timeout,
         )
-        out = (r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")
-        return r.returncode, out.strip()
+        out = r.stdout or ""
+        if r.stderr:
+            out = f"{out}\n{r.stderr}" if out else r.stderr
+        # 勿用 str.strip()：会吃掉 `git status --porcelain` 行首空格（XY 第一列），
+        # 导致 ` M .ccc/x` 变成 `M .ccc/x`，dirty 分类把编排产物误判成业务脏。
+        return r.returncode, out.rstrip("\n")
     except Exception as exc:
         return 1, str(exc)
 
@@ -117,11 +121,16 @@ def _porcelain_paths(dirty_lines: list[str]) -> list[str]:
     """从 `git status --porcelain` 行提取路径（支持 rename `->`）。"""
     out: list[str] = []
     for ln in dirty_lines:
-        s = (ln or "").rstrip()
+        s = (ln or "").rstrip("\n")
         if not s.strip():
             continue
-        # 格式：XY PATH 或 XY ORIG -> NEW；前两列为 status
-        body = s[3:] if len(s) >= 3 and s[2] == " " else s.strip()
+        # porcelain v1：恰好两列 status（可含空格）+ 空格 + path
+        if len(s) >= 4 and s[2] == " ":
+            body = s[3:]
+        else:
+            # 兜底：按空白切开，丢掉 status token
+            parts = s.split(None, 1)
+            body = parts[1] if len(parts) > 1 else ""
         if " -> " in body:
             body = body.split(" -> ", 1)[-1]
         body = body.strip().strip('"')

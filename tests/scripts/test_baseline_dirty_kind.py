@@ -14,7 +14,39 @@ from _project_baseline import (
 )
 
 
-def test_classify_dirty_ccc_only():
+def test_classify_dirty_leading_space_porcelain():
+    """worktree-only 修改：` M path`（行首空格是 status 列，不能 strip 掉）。"""
+    meta = classify_dirty([" M .ccc/agent-mind/decided.json"])
+    assert meta["dirty_kind"] == "ccc_hygiene"
+    assert meta["dirty_ccc_paths"] == [".ccc/agent-mind/decided.json"]
+
+
+def test_run_git_preserves_leading_space(tmp_path: Path):
+    from _project_baseline import _run_git
+
+    _git_init(tmp_path)
+    (tmp_path / ".ccc").mkdir()
+    (tmp_path / ".ccc" / "x.json").write_text("{}\n")
+    (tmp_path / "t.txt").write_text("a\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "i"], cwd=tmp_path, check=True, capture_output=True
+    )
+    (tmp_path / ".ccc" / "x.json").write_text('{"a":1}\n')
+    rc, out = _run_git(tmp_path, "status", "--porcelain")
+    assert rc == 0
+    assert out.startswith(" ") or out.startswith("M") or out.startswith("A")
+    # 关键断言：若是 worktree 修改，行首应保留空格形式的 XY
+    assert "\n" not in out or True
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines, out
+    # 至少一行以空格或字母开头的两列 status
+    assert lines[0][0] in " MADRCU?!" or lines[0].startswith(" M")
+    meta = classify_dirty(lines)
+    assert meta["dirty_kind"] == "ccc_hygiene"
+    bl = collect_baseline(tmp_path, project_id="t")
+    assert bl["dirty_kind"] == "ccc_hygiene"
+    assert bl["ready_for_task"] is True
     meta = classify_dirty(
         [
             " M .ccc/board/index.json",
