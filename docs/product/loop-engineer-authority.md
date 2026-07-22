@@ -171,9 +171,11 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 ### 验收关门与 VERSION（硬 · 2026-07-22）
 
 - **跑完 ≠ 做对**：salvage / 进 testing 前必须过 hollow + acceptance（计划 `## 验收` 可重放命令或交付路径落在 task commit）；`ALL SELF-CHECKS PASSED` 字符串**不足以**单独放行。
-- **complexity=small** 仅表规模提示，**不** stub 跳过 reviewer/tester。
+- **complexity=small** 仅表规模提示，**不** stub 跳过 reviewer/tester。默认 **medium**。多步回归/三件套（acceptance 可执行条 ≥3 或模块标记 ≥3）禁止 small——Hub `resolve_complexity` 会抬升；扇出对真回归不因 small 强制单卡。
+- **运行时冒烟验收**：`.venv/bin/python` / `python3` + 显式 `DRY_RUN=true`；禁止裸 `python`。
 - **VERSION**：kb 默认 **不** bump；仅 transfer/epic 显式 `bump_version=true`（或 tag `bump-version`）才升版+changelog+tag。
 - **看板卫生**：scope 在 `.ccc/board/**`（及 plans/phases/reports/verdicts/lessons/stats）且 executor∈{python,auto,cli} → 确定性 board_ops 短路径，不进 opencode 长跑。Hub 对 ops/卫生意图强制 `python`。
+- **止损清场**（Agent/平台排障）：failed epic + abnormal work 归档出板后，还必须清 `last_epic` / `epic_history` 与 `~/.ccc/flow-events.jsonl` 中该 epic，否则右栏 `bound_hint` 幽灵复活。
 
 ---
 
