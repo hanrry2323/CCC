@@ -21,6 +21,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。  
+**LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。
 
 **勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」。
@@ -69,7 +70,7 @@ Desktop（M1）：对齐基线 → 下一步 → 定稿方案 → 转任务 → 
 | tester | testing 门禁 | pytest + 验收清单 |
 | ops | 调试 / 可选 | 健康检查（不动 board） |
 | kb | verified 非空 | tag + CHANGELOG → released |
-| regress | 23:30 / 手动 | 回测 → backlog(回归 epic) |
+| regress | 23:30 / 手动 | 重放意图探针 → backlog(回归 epic) |
 
 **复杂度**：`small` 仅表规模提示，**不**跳过 reviewer+tester（v0.53+ 假绿修复）。
 

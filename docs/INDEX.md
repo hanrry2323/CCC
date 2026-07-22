@@ -34,6 +34,8 @@
 
 | 文档 | 说明 |
 |------|------|
+| [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门** |
+| [`releases/v0.60.0.md`](releases/v0.60.0.md) | LPSN 发布说明 |
 | [`product/hub-api-v1.md`](product/hub-api-v1.md) | **Hub API v1 契约**（transfer 幂等 / 投递三态） |
 | [`product/hub-remote-management.md`](product/hub-remote-management.md) | **双口远程**：M1 对话 `:7788` + Hub 经隧道 `:17777` |
 | [`product/hub-ssh-tunnel.md`](product/hub-ssh-tunnel.md) | **Hub SSH 隧道**：M1 稳定性主路径 |

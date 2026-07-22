@@ -1,7 +1,9 @@
 # CCC 战略地图
 
-> **按需阅读**：先读 [`VISION.md`](VISION.md)（叙事）+ 根目录 `STARTUP-BRIEF.md`；需要全景再读本文。  
-> **当前版本**：以根目录 `VERSION` 为准（本文历史段落可能落后，冲突时以 VERSION / VISION / CHANGELOG 为准）。
+> **按需阅读**：先读 [`VISION.md`](VISION.md) + 根目录 `STARTUP-BRIEF.md`；需要全景再读本文。  
+> **当前版本**：以根目录 `VERSION` 为准（**v0.60.0**）。  
+> **现行产品真理**：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) · LPSN 出门 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) · 北星 [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)。  
+> 下文含范式演进史；与权威冲突时以 VERSION / authority / CHANGELOG 为准（**本文非日常 SSOT**）。
 
 ---
 
@@ -71,18 +73,18 @@
 
 ### 2.1 阶段矩阵
 
-> **v0.28.1 复杂度分流**：task `complexity` 字段（small/medium/large）影响 reviewer/tester 是否跳过。
-> small → 跳过 reviewer+tester 直通 kb；medium/large → 走完整阶段包。详见 `references/board-task-schema.md` §12。
+> **复杂度（现行 · v0.53+）**：`small`/`medium`/`large` 只表规模提示；**禁止** small 跳过 reviewer+tester（假绿已修）。下表「small=跳过」列为 **v0.28.1 史实**，勿当现行。  
+> **regress（现行 · v0.60）**：重放 `## 验收` 意图探针（`_intent_probe`），失败建回归 epic；见 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md)。
 
-| 阶段 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响 |
+| 阶段 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响（现行） |
 |------|-------------------|-------------|--------|------------|------|-----------|
 | **product** | 4h | pending epic → Claude 扇出 work×N（v0.42.2） | backlog(epic) | **创建** planned(work)；patch epic | `ccc-board.py product` / Engine | 赋 color_group |
-| **dev** | 10min | Engine 自动（仅 work） | planned + in_progress | in_progress → testing | `ccc-engine.py dev_role_*()` | 不变 |
-| **reviewer** | 2h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → reviewer_role()` | small=跳过 |
-| **tester** | 4h | dev 完成后立即 | testing | testing → verified | `ccc-engine.py → tester_role()` | small=跳过 |
-| **ops** | 30min | 手动/可选（空闲不默认重扫） | 所有列 | — | `ccc-board.py ops` | 不变 |
-| **kb** | 每天 23:00 | **verified 列非空即跑**（v0.38 `_run_verified_kb_gate`） | verified | verified → released | `ccc-engine.py → kb_role()` | small 也调 |
-| **regress** | 每天 23:30 | 独立定时或 Engine 空闲 | released | released → backlog | `ccc-board.py regress` | 不变 |
+| **dev** | 10min | Engine 自动（仅 work） | planned + in_progress | in_progress → testing | `ccc-engine.py` | 不变 |
+| **reviewer** | 2h | testing 门禁 | testing | testing → verified | `ccc-engine.py` | **不跳过** |
+| **tester** | 4h | testing 门禁 | testing | testing → verified | `ccc-engine.py` | **不跳过**；跑白名单探针 |
+| **ops** | 30min | 手动/可选 | 所有列 | — | `ccc-board.py ops` | 不变 |
+| **kb** | 每天 23:00 | verified 非空 | verified | verified → released | `ccc-engine.py` | 默认不 bump VERSION |
+| **regress** | 每天 23:30 | 定时/手动 | released | 失败→backlog(回归 epic) | `ccc-board.py regress` | 重放意图探针 |
 
 **引擎约束**：有 task 即串行执行全链路；真·空闲（无列任务）只写 heartbeat，默认不 auto-replenish/evolve（v0.37+）。
 
@@ -169,15 +171,14 @@ bash ~/program/CCC/scripts/install-ccc-roles.sh [--upgrade]
   读 phases.json → phase 边界调度 → opencode run --model loop/flash
   opencode 写代码 + 写 report
   挪 task → in_progress/ → testing/
-  ↓ Engine: dev 完成 → reviewer_role + tester_role（small 跳过）
-  LLM 审查 + pytest + plan 验收清单
+  ↓ Engine: testing → reviewer_role + tester_role（**small 不跳过** · v0.53+）
+  LLM 审查 + 白名单验收/意图探针
   通过则挪 task → verified/
   ↓ Engine: verified → kb_role
-  git tag board-<task> + git push
-  挪 task → released/
-  ↓ regress (23:30 或 Engine 空闲)
-  从 released 取任务，每日回测
-  发现回归 bug → 建 bug task → 挪到 backlog/
+  （默认不 bump VERSION）→ released（= code_landed · LPSN · L）
+  ↓ regress（23:30 / 手动 · LPSN · P）
+  重放 ## 验收探针；失败 → 回归 epic → backlog
+  ↓ 人/心智 intent_stable（LPSN · S）后再开下一产品意图（N）
 ```
 
 ---

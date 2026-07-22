@@ -1,20 +1,22 @@
-# CCC Desktop LAN 上线卡
+# CCC Desktop 上线卡
 
-> **日期**：2026-07-19（架构对齐版） · **范围**：LAN 内测（未公证）  
+> **日期**：2026-07-22（对齐 v0.60 / 隧道默认） · **范围**：内测（未公证）  
 > 架构 SSOT：[`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)  
-> 连接契约：[`../product/desktop-connection.md`](../product/desktop-connection.md)  
+> 连接契约：[`../product/desktop-connection.md`](../product/desktop-connection.md) · 隧道：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md)  
 > 边界基线：[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
 
 ## 主入口
 
 | 面 | 怎么用 |
 |----|--------|
-| **CCC Desktop** | `/Applications/CCCDesktop.app`（v0.52.2） |
-| Server（编排） | `http://192.168.3.116:7777`（Mac2017 Hub，API host） |
-| 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`**（M1 深度整合为对话意图工具） |
+| **CCC Desktop** | `/Applications/CCCDesktop.app` |
+| Hub（M1 **默认**） | `http://127.0.0.1:17777`（`com.ccc.hub-tunnel`） |
+| Hub（2017 / 排障 LAN） | `http://192.168.3.116:7777`（**非** Desktop/sidecar 默认） |
+| 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`** |
 | 远程浏览器聊 | **M1 `:7788`**（与 Desktop 同口；勿开 2017 `#/chat` 当产品路径） |
 | Mac2017 编排面 | Engine = Claude→MiniMax 扇出；dev = OpenCode→讯飞写码（中转已退役） |
-| 网页 Hub | **编排口 / 兼容**（`#/board` `#/ops`；见 [`../product/deprecate-web-hub.md`](../product/deprecate-web-hub.md) · 双口 [`../product/hub-remote-management.md`](../product/hub-remote-management.md)） |
+| 网页 Hub | **编排口 / 兼容**（`#/board` `#/ops`） |
+| 意图完成口径 | `released` ≠ 完成；见 [`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md) |
 
 默认账号：`ccc` / `ccc`。
 

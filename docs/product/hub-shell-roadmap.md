@@ -1,6 +1,6 @@
 # CCC 下阶段总体方案 — 多端对话壳 + 标准编排 Hub
 
-> **状态**：已拍板（2026-07-20）· 对齐版本 `VERSION`（v0.52.2）  
+> **状态**：已拍板（2026-07-20）· 对齐版本 `VERSION`（**v0.60.0**；壳线收口于 v0.52.2，意图飞轮见 [`lpsn-ship-gate.md`](lpsn-ship-gate.md)）
 > **性质**：总体方案 / 北星文档；**先文档后代码**。冲突时：边界基线仍以 [`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md) 为准，本文管「下一步建什么」。  
 > **验证仓**：先 `ccc-demo`，流程稳定后再覆盖真实业务仓。
 

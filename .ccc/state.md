@@ -41,7 +41,7 @@
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | Desktop=对话搭档 · Engine=Loop 角色（见上文分流） |
-| 当前版本 | **v0.52.2**（见根目录 `VERSION`） |
+| 当前版本 | **v0.60.0**（见根目录 `VERSION` · LPSN） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 
 ---
@@ -51,10 +51,11 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-21）**：v0.52.2 **Wave A LAN + Phase17 模型快选** + **loop-code 所有权切割 Phase1–5**（禁 PATH 回落、退役 M1 原版 Claude Code CLI）· 见 `docs/releases/v0.52.2.md`。前序 v0.52.1 稳定性门禁见 `docs/releases/v0.52.1.md`。
+> **近 HEAD（手工备忘，2026-07-22）**：v0.60.0 **LPSN 意图飞轮**（探针/regress/L1 stable/N 门）· 见 `docs/releases/v0.60.0.md` · `docs/product/lpsn-ship-gate.md`。前序 v0.52.2 Wave A + Phase17 见 `docs/releases/v0.52.2.md`。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
+| 2026-07-22 | lpsn-v060 | `docs/product/lpsn-ship-gate.md` | `git log a888bd1` | LPSN P/S/N 门禁 + e2e | PASS |
 | 2026-07-21 | loop-code-ownership | `docs/product/dev-channel.md` | `git log 387bcbb` | Phase1–5 配置家切割 + 禁 PATH 回落 | PASS（git） |
 | 2026-07-21 | v0522-wave-a-phase17 | `docs/releases/v0.52.2.md` | Desktop 模型快选 + LAN | VERSION v0.52.2 | PASS |
 | 2026-07-21 | desktop-v0521-build | `desktop/scripts/package-baseline.sh` | `/Applications/CCCDesktop.app` v0.52.1 | transfer 空响应重试已装机 | PASS |
@@ -119,7 +120,7 @@
 
 ---
 
-## 当前状态（v0.52.2 Wave A + loop-code 切割, 2026-07-21）
+## 当前状态（v0.60.0 LPSN, 2026-07-22）
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流** + **多端对话壳 + Hub API v1**。
 
