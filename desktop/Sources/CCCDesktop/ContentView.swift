@@ -2247,6 +2247,8 @@ struct FlowRail: View {
                 emptyMessage: snap?.emptyMessage
                     ?? "编排空闲·等定稿下达（与对话故障无关）",
                 splitGeneration: model.flowSplitGeneration,
+                projectId: window.projectId,
+                threadId: paneThreadId,
                 onOpenOps: {
                     window.destination = .ops
                     model.selectDestination(.ops, projectId: window.projectId)
@@ -2352,6 +2354,14 @@ struct FlowRail: View {
         let stage = (epic.user_stage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let stageLabel = stage.isEmpty ? (expanded ? "进行中" : "") : stage
         let done = stage.lowercased() == "done"
+        let locator = CardLocator.line(
+            project: window.projectId,
+            thread: paneThreadId,
+            kind: "epic",
+            id: epic.epic_id,
+            title: epic.title,
+            stage: stage.isEmpty ? nil : stage
+        )
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: expanded ? "chevron.down" : "circle")
                 .font(.system(size: expanded ? 9 : 7, weight: .semibold))
@@ -2369,6 +2379,7 @@ struct FlowRail: View {
                 }
             }
             Spacer(minLength: 0)
+            LocatorCopyButton(text: locator)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, expanded ? 8 : 6)

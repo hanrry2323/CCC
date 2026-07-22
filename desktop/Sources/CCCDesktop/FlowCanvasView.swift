@@ -9,6 +9,8 @@ struct FlowCanvasView: View {
     let emptyMessage: String
     /// AppModel 在 epic 首次扇出 / 切会话时递增，驱动出生动画重启
     var splitGeneration: UInt64 = 0
+    var projectId: String? = nil
+    var threadId: String? = nil
     var onOpenOps: (() -> Void)?
     var onSelectNode: ((String) -> Void)?
 
@@ -178,15 +180,27 @@ struct FlowCanvasView: View {
 
     private var epicCard: some View {
         let node = FlowLayout.epicGraphNode(epic: epic, epicId: epicId)
-        return Button {
-            onSelectNode?(node.id)
-        } label: {
-            FlowNodeView(
-                node: node,
-                pulse: works.isEmpty && splittingPulse
-            )
+        let locator = CardLocator.line(
+            project: projectId,
+            thread: threadId,
+            kind: "epic",
+            id: epicId ?? epic?.id,
+            title: epic?.title ?? node.title,
+            stage: epic?.user_stage ?? epic?.split_status
+        )
+        return ZStack(alignment: .bottomTrailing) {
+            Button {
+                onSelectNode?(node.id)
+            } label: {
+                FlowNodeView(
+                    node: node,
+                    pulse: works.isEmpty && splittingPulse
+                )
+            }
+            .buttonStyle(.plain)
+            LocatorCopyButton(text: locator)
+                .padding(6)
         }
-        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, minHeight: FlowLayout.epicHeight, alignment: .topLeading)
         .accessibilityLabel("大卡 \(node.title)，\(node.subtitle)")
     }
@@ -215,15 +229,28 @@ struct FlowCanvasView: View {
 
     private func workCard(_ work: FlowWork) -> some View {
         let visible = revealedWorkIds.contains(work.id)
-        return Button {
-            onSelectNode?(work.id)
-        } label: {
-            FlowNodeView(
-                node: FlowLayout.graphNode(from: work),
-                pulse: pulse && FlowLayout.statusColorKey(work.status) == "running"
-            )
+        let locator = CardLocator.line(
+            project: projectId,
+            thread: threadId,
+            kind: "work",
+            id: work.id,
+            title: work.title,
+            stage: work.status,
+            parent: epicId ?? epic?.id
+        )
+        return ZStack(alignment: .bottomTrailing) {
+            Button {
+                onSelectNode?(work.id)
+            } label: {
+                FlowNodeView(
+                    node: FlowLayout.graphNode(from: work),
+                    pulse: pulse && FlowLayout.statusColorKey(work.status) == "running"
+                )
+            }
+            .buttonStyle(.plain)
+            LocatorCopyButton(text: locator)
+                .padding(6)
         }
-        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, minHeight: FlowLayout.nodeHeight, alignment: .topLeading)
         .opacity(visible ? 1 : 0)
         .offset(y: visible ? 0 : 8)

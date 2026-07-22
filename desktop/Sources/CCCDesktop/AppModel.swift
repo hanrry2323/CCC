@@ -1357,6 +1357,10 @@ final class AppModel: ObservableObject {
             )
             threadFlow[tid] = snap
         }
+        // 磁盘里的 pending: 若投递已结束 → 立刻清幽灵，勿等下一次空 snapshot
+        if Self.isPendingEpicId(threadFlow[tid]?.epicId) {
+            clearStalePendingIfNeeded(threadId: tid, remoteEpicsEmpty: true)
+        }
         bumpThreadRevision(tid)
         bumpFlowRevision(tid)
         // chat.messages 仅作「全局选中线程」镜像（smoke/旧路径）；UI 列表读 threadMessages
@@ -1779,6 +1783,9 @@ final class AppModel: ObservableObject {
             threadFlow[threadId] = flow
         } else if threadFlow[threadId] == nil, disk.flow != nil {
             threadFlow[threadId] = disk.flow
+        }
+        if Self.isPendingEpicId(threadFlow[threadId]?.epicId) {
+            clearStalePendingIfNeeded(threadId: threadId, remoteEpicsEmpty: true)
         }
         if let sid = disk.claude_session_id?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty {
             threadClaudeSessionIds[threadId] = sid
@@ -3717,6 +3724,44 @@ final class AppModel: ObservableObject {
         return eid.hasPrefix("pending:")
     }
 
+    /// 乐观 pending 大卡是否仍应保留：仅投递未完成时。
+    private func shouldKeepPendingOptimistic(threadId: String) -> Bool {
+        if LocalSessionStore.loadTransferOutbox().contains(where: { $0.thread_id == threadId }) {
+            return true
+        }
+        guard let phase = transferDeliveryByThread[threadId] else { return false }
+        switch phase {
+        case .queued, .delivering:
+            return true
+        case .delivered, .accepted, .failed, .draft:
+            return false
+        }
+    }
+
+    /// Hub 列表空且无在途投递时，清掉 pending 幽灵卡。
+    private func clearStalePendingIfNeeded(threadId: String, remoteEpicsEmpty: Bool) {
+        guard remoteEpicsEmpty else { return }
+        guard var snap = threadFlow[threadId], Self.isPendingEpicId(snap.epicId) else { return }
+        guard !shouldKeepPendingOptimistic(threadId: threadId) else { return }
+        snap.works = []
+        snap.epic = nil
+        snap.epicId = nil
+        snap.headline = ""
+        snap.fanoutHint = nil
+        snap.stopLossHint = nil
+        snap.recentEpics = []
+        snap.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
+        threadFlow[threadId] = snap
+        bumpFlowRevision(threadId)
+        if selectedThreadId == threadId {
+            applyFlowSnapshot(snap)
+            currentEpicId = nil
+            recentEpics = []
+            lastAnimatedEpicId = nil
+        }
+        flushDiskSave(threadId: threadId)
+    }
+
     func transferForm(for threadId: String?) -> TransferFormState {
         guard let threadId else { return TransferFormState() }
         return threadTransferForms[threadId] ?? TransferFormState()
@@ -4202,6 +4247,9 @@ final class AppModel: ObservableObject {
                 recentEpics: [], emptyMessage: "编排空闲 · 下一笔定稿后出现在这里", fanoutHint: nil
             )
             snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
+            clearStalePendingIfNeeded(threadId: tid, remoteEpicsEmpty: epicsResp.epics.isEmpty)
+            // 若刚清掉 pending，重新取 snap
+            snap = threadFlow[tid] ?? snap
             let localBound = snap.epicId ?? (isSelected ? currentEpicId : nil)
             let hasLocalFlow =
                 (localBound?.isEmpty == false)
@@ -4301,9 +4349,14 @@ final class AppModel: ObservableObject {
             )
             snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
             threadFlow[threadId] = snap
+            clearStalePendingIfNeeded(threadId: threadId, remoteEpicsEmpty: epicsResp.epics.isEmpty)
+            snap = threadFlow[threadId] ?? snap
             bumpFlowRevision(threadId)
             if selectedProjectId == projectId {
                 recentEpics = snap.recentEpics
+                if selectedThreadId == threadId {
+                    applyFlowSnapshot(snap)
+                }
             }
         } catch {
             // 列表可缺；snapshot/SSE 已接上
@@ -4379,11 +4432,13 @@ final class AppModel: ObservableObject {
         )
 
         if snap.empty == true {
-            // pending: 乐观绑定勿被空 snapshot 冲掉；其余（含沉底 ui_hidden）一律清轨
-            if Self.isPendingEpicId(cached.epicId) {
+            // pending: 仅投递仍在途时保留乐观大卡；已送达/失败/队列空且 Hub 空 → 清幽灵
+            if Self.isPendingEpicId(cached.epicId),
+               shouldKeepPendingOptimistic(threadId: tid) {
                 return
             }
             let sunk = (snap.sunk == true) || (snap.missing_on_board == true)
+                || Self.isPendingEpicId(cached.epicId)
             cached.works = []
             cached.epic = nil
             cached.epicId = nil
@@ -4393,7 +4448,7 @@ final class AppModel: ObservableObject {
             cached.emptyMessage = snap.message
                 ?? "编排空闲 · 下一笔定稿后出现在这里"
             if sunk {
-                // 沉底/板上已无 → 历史栈一并清空，避免右栏残留任务条
+                // 沉底/板上已无/过期 pending → 历史栈一并清空，避免右栏残留任务条
                 cached.recentEpics = []
             }
             threadFlow[tid] = cached

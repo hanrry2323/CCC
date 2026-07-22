@@ -224,46 +224,60 @@ struct BoardView: View {
         let highlight = model.currentEpicId == task.id
             || (model.flowEpic?.id == task.id)
         let isAbnormal = (task.status == "abnormal") || (task.split_status == "failed")
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                if task.isEpic {
-                    Text("EPIC")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(CCCTheme.accent)
+        let locator = CardLocator.line(
+            project: model.selectedProjectId,
+            thread: model.selectedThreadId,
+            kind: task.isEpic ? "epic" : "work",
+            id: task.id,
+            title: task.displayTitle,
+            stage: task.split_status ?? task.status,
+            column: col
+        )
+        return ZStack(alignment: .bottomTrailing) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    if task.isEpic {
+                        Text("EPIC")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(CCCTheme.accent)
+                    }
+                    Spacer(minLength: 0)
+                    if isAbnormal {
+                        Circle().fill(CCCTheme.nodeFail).frame(width: 6, height: 6)
+                    }
                 }
-                Spacer(minLength: 0)
-                if isAbnormal {
-                    Circle().fill(CCCTheme.nodeFail).frame(width: 6, height: 6)
-                }
-            }
-            Text(task.displayTitle)
-                .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(CCCTheme.ink)
-                .lineLimit(3)
-            if let note = task.note, !note.isEmpty {
-                Text(note)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(CCCTheme.faint)
-                    .lineLimit(2)
-            }
-            HStack(spacing: 6) {
-                if let split = task.split_status, !split.isEmpty {
-                    Text(split)
-                        .font(.system(size: 10))
-                        .foregroundStyle(CCCTheme.secondary)
-                }
-                if let ex = task.executor, !ex.isEmpty {
-                    Text(ex)
-                        .font(.system(size: 9, design: .monospaced))
+                Text(task.displayTitle)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundStyle(CCCTheme.ink)
+                    .lineLimit(3)
+                if let note = task.note, !note.isEmpty {
+                    Text(note)
+                        .font(.system(size: 11.5))
                         .foregroundStyle(CCCTheme.faint)
-                        .padding(.horizontal, 4)
-                        .background(CCCTheme.chatBg)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .lineLimit(2)
+                }
+                HStack(spacing: 6) {
+                    if let split = task.split_status, !split.isEmpty {
+                        Text(split)
+                            .font(.system(size: 10))
+                            .foregroundStyle(CCCTheme.secondary)
+                    }
+                    if let ex = task.executor, !ex.isEmpty {
+                        Text(ex)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(CCCTheme.faint)
+                            .padding(.horizontal, 4)
+                            .background(CCCTheme.chatBg)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
                 }
             }
+            .padding(8)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            LocatorCopyButton(text: locator)
+                .padding(6)
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(highlight ? CCCTheme.accent.opacity(0.12) : CCCTheme.chatBg)

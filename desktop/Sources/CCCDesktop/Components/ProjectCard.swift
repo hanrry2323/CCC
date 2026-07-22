@@ -64,6 +64,9 @@ struct ProjectCard: View {
             .help("新建会话")
             .accessibilityLabel("新建会话")
 
+            LocatorCopyButton(
+                text: CardLocator.line(project: project.id, kind: "project", id: project.id, title: project.name)
+            )
             trailingStatus
                 .frame(minWidth: 12, alignment: .trailing)
         }
