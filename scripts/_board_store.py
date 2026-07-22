@@ -65,7 +65,8 @@ def pick_canonical_column(cols: list[str] | set[str]) -> str | None:
 # 列迁移白名单：{目标列: [允许的源列列表]}
 # 不在白名单中的迁移会被拒绝
 COLUMN_TRANSITIONS: dict[str, list[str]] = {
-    "planned": ["backlog", "in_progress", "abnormal"],  # v0.31: patrol 退回
+    # testing→planned: verdict FAIL / gates 回滚后重跑（engine/gates.py）
+    "planned": ["backlog", "in_progress", "abnormal", "testing"],
     "in_progress": ["planned"],
     "testing": ["in_progress", "abnormal", "planned"],  # v0.31: patrol 推进
     "verified": ["testing"],

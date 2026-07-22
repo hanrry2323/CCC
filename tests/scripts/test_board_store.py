@@ -131,6 +131,16 @@ class TestFileBoardStoreCRUD:
         store.create_task(_valid_task("bad"), column="backlog")
         assert store.move_task("bad", "backlog", "verified") is False
 
+    def test_move_testing_to_planned_for_verdict_rollback(self, store: FileBoardStore):
+        """verdict FAIL 回滚：testing → planned 必须放行（gates.py）。"""
+        assert store.create_task(
+            _valid_task("rb1", status="testing", card_kind="work"), column="testing"
+        )
+        assert store.move_task("rb1", "testing", "planned") is True
+        col, task = store.find_task("rb1")
+        assert col == "planned"
+        assert task["status"] == "planned"
+
     def test_update_index_counts(self, store: FileBoardStore, tmp_path):
         store.create_task(_valid_task("i1"), column="backlog")
         counts = store.update_index()
