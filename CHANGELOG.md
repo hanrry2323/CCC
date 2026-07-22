@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.60.1] — 2026-07-23
+
+### Added
+
+- **产线提效闸门（P0–P5）**：终态释槽 / 纯 `result.json`+`exec.log` / FAIL revert 必 abort / testing 限预算且超时杀进程 / 短路径硬门 + `dev_path` 埋点。见 [`docs/briefs/2026-07-22-opencode-lifecycle-stall.md`](docs/briefs/2026-07-22-opencode-lifecycle-stall.md)。
+
+### Changed
+
+- **运维后勤 UI 对齐发版**：Hub Ops + Desktop OpsView 后勤供弹（`64ec51f`）与本版一并装机；`HUB_ASSET_VERSION=20260723eff1` 破 SPA 缓存。
+- **CCC Desktop 重打包**：`/Applications/CCCDesktop.app` 戳 `VERSION`（0.60.1），含 OpsView 后勤面。
+
 ### Fixed
 
 - **机械意图探针误走 OpenCode hang**：Engine 增加 `script_seed` 短路径；transfer 对纸面/`paper_intent_probe` 强制 `executor_intent=python`；hang 耗尽卡应清 abnormal 并用确定性种子，勿原样重下 opencode。
