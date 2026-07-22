@@ -104,7 +104,7 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 | 立刻关 sheet、徽章 `queued`、可继续聊 | 入本机 outbox；**sidecar 常驻 flush** → Hub；成功写 `transfer-receipts.json` |
 | 看板始终画列（可空） | 拉板失败保留快照 + 短超时，不整页死白 |
 
-**Agent 定方案（硬）**：讨论 / 下一步 / 定稿时，按用户意图制定**最佳方案**并默认推进；**禁止**每轮甩拍板选择题。仅当真缺不可逆信息才最多 1 问。定稿白话给用户可读结论；`ccc-transfer` 契约折叠给 Engine，不把任务 id/路径清单当结论。
+**Agent 定方案（硬）**：讨论 / 下一步 / 定稿时，按用户意图制定**最佳方案**并默认推进；**禁止**每轮甩拍板选择题、**禁止定稿后再问要不要入队**。仅当真缺不可逆信息才最多 1 问。定稿白话给用户可读结论；`ccc-transfer` 契约折叠给 Engine，不把任务 id/路径清单当结论。看板/产物卫生：`executor_intent=python`（Hub 对 ops/卫生意图会把 opencode 强制归一为 python）；**不存在 committer 绕过 Engine**；`pipeline=ops` 仍扇出。abnormal 未核账禁止重复下达同目标卡。
 
 禁止：
 - 让用户管「是否进 Hub / 是否还在队列 / 要不要重开 App 冲刷」
@@ -173,7 +173,7 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 - **跑完 ≠ 做对**：salvage / 进 testing 前必须过 hollow + acceptance（计划 `## 验收` 可重放命令或交付路径落在 task commit）；`ALL SELF-CHECKS PASSED` 字符串**不足以**单独放行。
 - **complexity=small** 仅表规模提示，**不** stub 跳过 reviewer/tester。
 - **VERSION**：kb 默认 **不** bump；仅 transfer/epic 显式 `bump_version=true`（或 tag `bump-version`）才升版+changelog+tag。
-- **看板卫生**：scope 仅 `.ccc/board/**` 且 executor∈{python,auto} → 确定性 board_ops 短路径，不进 opencode 长跑。
+- **看板卫生**：scope 在 `.ccc/board/**`（及 plans/phases/reports/verdicts/lessons/stats）且 executor∈{python,auto,cli} → 确定性 board_ops 短路径，不进 opencode 长跑。Hub 对 ops/卫生意图强制 `python`。
 
 ---
 

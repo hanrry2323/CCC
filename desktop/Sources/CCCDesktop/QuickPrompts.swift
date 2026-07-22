@@ -68,7 +68,10 @@ enum QuickPrompts {
         "请把本会话方案定稿成可转任务的契约包。\n" +
         replyCompact + "\n" + investigatePref +
         "\n先核实仓库能否支撑目标，再写契约。\n" +
-        "意图已够则**立即定稿**：禁止再列方案选项或问我选哪条。\n\n" +
+        "意图已够则**立即定稿**：禁止再列方案选项、禁止问「要不要入队/确认转任务」。\n" +
+        "看板/产物卫生卡：executor_intent 必须 python（禁止 opencode、禁止编造 committer）；" +
+        "pipeline=ops 仍走 Engine 扇出，不是人工绕过。\n" +
+        "验收条只写可执行命令或须入 commit 的交付路径；排除列表放 plan「禁止」节，勿写进 acceptance。\n\n" +
         "先用 2～4 句白话说明：做什么、验收长什么样、是否建议立刻转任务" +
         "（用户可读结论；不要堆任务 id / 绝对路径）。\n" +
         "然后输出恰好一个 ```ccc-transfer``` JSON 块（title/goal/acceptance/pipeline/" +

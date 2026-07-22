@@ -48,9 +48,9 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `title` | 可执行中文标题，1–80 字 |
 | `goal` | 目标：做什么、完成长什么样 |
 | `acceptance` | 验收意图（至少一条，可含命令） |
-| `pipeline` | 产线/执行意图：如 `dev` / `video` / `ops` 或自由文本 |
+| `pipeline` | 产线/执行意图：如 `dev` / `video` / `ops` 或自由文本。**`ops` 不跳过 Engine 扇出**（仍 epic→product→work） |
 | `feasibility` | `ok` \| `blocked`；`blocked` 时必须有 `feasibility_reason` |
-| `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto` |
+| `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto`。**看板/产物卫生**（pipeline=`ops`/`hygiene`/`board*` 或标题含归档/回收 abnormal 等）若填 `opencode`/`auto`，Hub **强制归一为 `python`**，避免假 committer + OpenCode 半提交 |
 | `skills_hint` | 可选 string[]，软偏好供 Engine 扇出参考 |
 | `plan_md` | 方案正文（Markdown） |
 | `complexity` | 可选；`small`/`medium`/`large`（仅规模提示，**不**跳过审测） |
@@ -62,6 +62,12 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 见 [`hub-api-v1.md`](hub-api-v1.md)。
 
 `feasibility != ok` → **拒绝转任务**。
+
+### 验收写作（防门禁误杀）
+
+- 验收 bullets：**可执行命令**，或「须入本次 commit 的交付路径」。
+- **排除/勿入**路径写在 `plan_md` 的「禁止」节，**不要**写进 `acceptance`（否则会被抽成必碰 path → `acceptance_paths_not_in_commit`）。
+- 不存在 committer 角色；卫生卡用 `executor_intent: python`（可走 board_ops 短路径，scope 限 `.ccc/**` 产物树）。
 
 ---
 

@@ -41,6 +41,13 @@ _PATH_IN_TEXT = re.compile(
     r"(?:`([^`]+)`|(?:^|\s)(\.ccc/[^\s,;]+|[A-Za-z0-9_.\-]+/[^\s,;]+\.(?:jsonl|md|json|py|swift|ts|tsx|js)))"
 )
 
+# 排除/禁止语境：整条验收 bullet 不抽 path（否则「勿入 warnings.json」会变成必碰 commit 路径）
+_EXCLUDE_PATH_BULLET = re.compile(
+    r"(显式排除|排除|勿入|不入|禁止入|禁止\s*add|不得入|不要入|勿\s*add|"
+    r"exclude|do\s*not\s+add|never\s+add|must\s+not\s+(?:add|commit))",
+    re.IGNORECASE,
+)
+
 
 def _is_allowed_verify_cmd(cmd: str) -> bool:
     c = (cmd or "").strip()
@@ -112,6 +119,8 @@ def _bullets_and_cmds(section: str) -> tuple[list[str], list[str]]:
 def _paths_from_bullets(bullets: list[str]) -> list[str]:
     paths: list[str] = []
     for b in bullets:
+        if _EXCLUDE_PATH_BULLET.search(b):
+            continue
         for m in _PATH_IN_TEXT.finditer(b):
             p = (m.group(1) or m.group(2) or "").strip().strip("'\"")
             if p and not p.startswith("http"):

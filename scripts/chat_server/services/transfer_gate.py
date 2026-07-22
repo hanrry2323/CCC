@@ -160,9 +160,34 @@ def build_plan_md(body: dict[str, Any]) -> str:
 
 
 def resolve_executor_intent(body: dict[str, Any]) -> str:
+    """归一执行面。
+
+    硬规则：pipeline=ops/hygiene/board* 时禁止保留 opencode——卫生卡走 python
+    （board_ops / 脚本），避免「假 committer + OpenCode」半提交撞门禁。
+    """
     intent = str(body.get("executor_intent") or "opencode").strip().lower()
+    pipeline = str(body.get("pipeline") or "").strip().lower()
+    title = str(body.get("title") or "").strip().lower()
+    goal = str(body.get("goal") or "").strip().lower()
+    blob = f"{pipeline} {title} {goal}"
+
+    hygiene = pipeline in ("ops", "hygiene", "board", "board_ops") or any(
+        k in blob
+        for k in (
+            "看板卫生",
+            "board hygiene",
+            "归档产物",
+            "回收 abnormal",
+            "清空 abnormal",
+            "git add",
+            "单 commit",
+            "committer",
+        )
+    )
+    if hygiene and intent in ("opencode", "auto", ""):
+        return "python"
+
     if intent == "auto":
-        pipeline = str(body.get("pipeline") or "").strip().lower()
         if "python" in pipeline or pipeline in ("py", "script"):
             return "python"
         if "ollama" in pipeline:

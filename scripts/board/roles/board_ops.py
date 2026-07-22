@@ -19,6 +19,13 @@ _BOARD_SCOPE_PREFIXES = (
     ".ccc/board/",
     ".ccc/state.md",
     ".ccc/board/index.json",
+    # 产物卫生常见范围（仍禁止 src/tests 等业务树）
+    ".ccc/plans/",
+    ".ccc/phases/",
+    ".ccc/reports/",
+    ".ccc/verdicts/",
+    ".ccc/lessons/",
+    ".ccc/stats/",
 )
 
 
