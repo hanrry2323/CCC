@@ -175,6 +175,7 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 - **运行时冒烟验收**：`.venv/bin/python` / `python3` + 显式 `DRY_RUN=true`；禁止裸 `python`。
 - **VERSION**：kb 默认 **不** bump；仅 transfer/epic 显式 `bump_version=true`（或 tag `bump-version`）才升版+changelog+tag。
 - **看板卫生**：scope 在 `.ccc/board/**`（及 plans/phases/reports/verdicts/lessons/stats）且 executor∈{python,auto,cli} → 确定性 board_ops 短路径，不进 opencode 长跑。Hub 对 ops/卫生意图强制 `python`。
+- **卫生卡 seed（硬）**：验收白名单里出现的历史 `.ccc/plans/*.plan.md` **不是** adopt 引用；仅「见/参照/已写入 …plan.md」才收养。Transfer 写 `plan_md` 时须同步合成 phases（保留 `.ccc/` scope）。ops / `.ccc`-only **禁止**强制全仓 pytest（否则卫生卡必挂）。
 - **止损清场**（Agent/平台排障）：failed epic + abnormal work 归档出板后，还必须清 `last_epic` / `epic_history` 与 `~/.ccc/flow-events.jsonl` 中该 epic，否则右栏 `bound_hint` 幽灵复活。
 
 ---

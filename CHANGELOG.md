@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.53.3] — 2026-07-22
+
+### Fixed
+
+- **product/seed 扇出漂移（ops 卫生）**：白名单里的历史 `.ccc/plans/*.plan.md` 不再触发 plan adopt；Desktop seed 在只写 `plan_md` 时从 plan 合成 phases（保留 `.ccc/` scope）；ops / `.ccc`-only 卡跳过 engine/tester 强制全仓 pytest；DoD 对卫生卡允许提交 `.ccc` meta。根因卡：`ccc-c0399a8f`。board_ops 触发收窄为仅 `.ccc/board/**`（产物清场走 python，不误进 board 归档短路径）。
+
 ## [v0.53.2] — 2026-07-22
 
 ### Fixed

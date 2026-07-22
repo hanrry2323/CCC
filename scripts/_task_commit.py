@@ -103,6 +103,34 @@ def find_task_commit(workspace: Path, task_id: str) -> str:
     return ""
 
 
+def _porcelain_paths(porcelain: str) -> list[str]:
+    """Parse all paths from ``git status --porcelain`` (no meta filter)."""
+    out: list[str] = []
+    for raw in (porcelain or "").splitlines():
+        line = raw.rstrip("\n")
+        if not line.strip():
+            continue
+        path = line[3:] if len(line) >= 4 else line
+        path = path.strip()
+        if path.startswith('"') and path.endswith('"'):
+            path = path[1:-1]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[-1].strip().strip('"')
+        if path:
+            out.append(path)
+    return out
+
+
+def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
+    """ops / .ccc-only 卫生卡允许 DoD 提交编排产物。"""
+    try:
+        from _ccc_hygiene import task_skips_forced_pytest
+
+        return task_skips_forced_pytest(workspace, task_id, None)
+    except Exception:
+        return False
+
+
 def ensure_task_commit(
     workspace: Path,
     task_id: str,
@@ -133,6 +161,20 @@ def ensure_task_commit(
 
     dirty = (st.stdout or "").rstrip("\n")
     product = porcelain_product_paths(dirty)
+    hygiene = False
+    if not product and dirty:
+        hygiene = _hygiene_allow_ccc_meta(workspace, task_id)
+        if hygiene:
+            # 卫生卡：允许 stage 全部 .ccc/ 脏路径（仍拒绝业务树）
+            product = [
+                p
+                for p in _porcelain_paths(dirty)
+                if _is_ccc_meta_path(p)
+                or p.startswith(".ccc/")
+                or p in (".ccc/state.md", ".ccc/agent-mind/decided.json")
+                or p.startswith(".ccc/agent-mind/")
+                or p.startswith(".ccc/lessons/")
+            ]
     if not product:
         if dirty:
             return (
@@ -148,7 +190,8 @@ def ensure_task_commit(
         )
 
     try:
-        # Stage product paths only — never auto-commit board/state noise as DoD.
+        # Stage product paths only — never auto-commit board/state noise as DoD
+        #（卫生卡例外：上面已把 .ccc meta 纳入 product）。
         add_cmd = ["git", "add", "--", *product]
         subprocess.run(
             add_cmd,
@@ -159,7 +202,8 @@ def ensure_task_commit(
             check=False,
         )
         phase_bit = f" phase={phase_num}" if phase_num is not None else ""
-        msg = f"{task_id}{phase_bit}: auto-commit by CCC DoD gate"
+        kind = " hygiene" if hygiene else ""
+        msg = f"{task_id}{phase_bit}: auto-commit by CCC DoD gate{kind}"
         r = subprocess.run(
             ["git", "commit", "-m", msg],
             cwd=str(workspace),

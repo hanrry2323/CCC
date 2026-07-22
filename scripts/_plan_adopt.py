@@ -4,6 +4,9 @@
 但 task id 是 ccc-xxxxx，Engine 只认 `{tid}.plan.md` → 误入 product → 解析失败 → abnormal。
 
 本模块：识别引用 → 复制为 `{tid}.plan.md` → 从 plan 合成 phases（含 scope）→ 过硬门。
+
+v0.53.3：白名单 / git add 里的历史 `.ccc/plans/*.plan.md` 路径不得触发收养
+（ops 卫生卡曾因此漂到旧业务 plan 的 scope → pytest 挂）。
 """
 
 from __future__ import annotations
@@ -16,29 +19,92 @@ from typing import Any
 
 _log = logging.getLogger("ccc.plan_adopt")
 
-# `.ccc/plans/foo.plan.md` or `plans/foo.plan.md`
-_PLAN_REF_RE = re.compile(
-    r"(?:\.?/?\.ccc/)?plans/([A-Za-z0-9._\-]+)\.plan\.md"
+# 仅「意图性收养」：见/参照/写入… + plans/foo.plan.md
+# 禁止匹配验收白名单、`git add .ccc/plans/….plan.md` 等纯路径罗列
+_PLAN_REF_INTENT_RE = re.compile(
+    r"(?:见|参照|采用|收养|按此|按该|规划文件(?:已)?写入|已写入|"
+    r"see\s+(?:the\s+)?plan|adopt(?:ed)?)\s*"
+    r"[`\"'（(\[]*"
+    r"(?:\.?/?\.ccc/)?plans/([A-Za-z0-9._\-]+)\.plan\.md",
+    re.IGNORECASE,
 )
 _PHASE_HEAD_RE = re.compile(r"^##\s+Phase\s+(\d+)\b", re.MULTILINE | re.IGNORECASE)
 _PATH_TICK_RE = re.compile(
-    r"`((?:src|scripts|tests|docs|templates|config|frontend|backend|"
-    r"STATUS\.md|ENV_CHECKLIST\.md|ACCEPTANCE[^`]*)[^`]*)`"
+    r"`((?:\.ccc/|src/|scripts/|tests/|docs/|templates/|config/|frontend/|backend/|"
+    r"STATUS\.md|ENV_CHECKLIST\.md|ACCEPTANCE)[^`]*)`"
 )
 _PATH_LOOSE_RE = re.compile(
-    r"(?<![`\w])((?:src|scripts|tests|docs|config)/[\w./\-]+\.[\w]+|STATUS\.md|"
-    r"docs/checklists/[\w./\-]+\.md|tests/[\w./\-]+\.py)(?![`\w])"
+    r"(?<![`\w])("
+    r"\.ccc/[\w./\-]+|"
+    r"(?:src|scripts|tests|docs|config)/[\w./\-]+\.[\w]+|"
+    r"STATUS\.md|"
+    r"docs/checklists/[\w./\-]+\.md|"
+    r"tests/[\w./\-]+\.py"
+    r")(?![`\w])"
+)
+_SECTION_HEAD_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+_FORBIDDEN_SECTION_NAMES = (
+    "禁止",
+    "forbidden",
+    "out of scope",
+    "不在范围",
+    "勿改",
+)
+_SCOPE_SECTION_NAMES = (
+    "范围",
+    "白名单",
+    "scope",
+    "只改文件",
+    "涉及文件",
 )
 
 
 def find_plan_refs(text: str) -> list[str]:
-    """返回 plan stem 列表（不含 .plan.md）。"""
+    """返回意图性收养的 plan stem 列表（不含 .plan.md）。"""
     if not text:
         return []
-    return list(dict.fromkeys(_PLAN_REF_RE.findall(text)))
+    return list(dict.fromkeys(_PLAN_REF_INTENT_RE.findall(text)))
 
 
-def extract_paths(text: str) -> list[str]:
+def _strip_forbidden_sections(text: str) -> str:
+    """去掉 ## 禁止 / Forbidden 段，避免把禁改路径抽进 scope。"""
+    if not text:
+        return ""
+    matches = list(_SECTION_HEAD_RE.finditer(text))
+    if not matches:
+        return text
+    keep: list[str] = []
+    for i, m in enumerate(matches):
+        title = (m.group(1) or "").strip().lower()
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        if any(name in title for name in _FORBIDDEN_SECTION_NAMES):
+            # 保留标题前的内容间隔：跳过本段
+            if i == 0 and start > 0:
+                keep.append(text[:start])
+            continue
+        if i == 0 and start > 0:
+            keep.append(text[:start])
+        keep.append(text[start:end])
+    return "".join(keep) if keep else text
+
+
+def _section_bodies(text: str, names: tuple[str, ...]) -> str:
+    if not text:
+        return ""
+    matches = list(_SECTION_HEAD_RE.finditer(text))
+    bodies: list[str] = []
+    for i, m in enumerate(matches):
+        title = (m.group(1) or "").strip().lower()
+        if not any(name in title for name in names):
+            continue
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        bodies.append(text[start:end])
+    return "\n".join(bodies)
+
+
+def _raw_extract_paths(text: str) -> list[str]:
     found: list[str] = []
     for m in _PATH_TICK_RE.findall(text or ""):
         p = m.strip().strip("`")
@@ -49,6 +115,30 @@ def extract_paths(text: str) -> list[str]:
         if p and p not in found:
             found.append(p)
     return found
+
+
+def extract_paths(text: str) -> list[str]:
+    """从 plan 抽路径：优先 ## 范围/白名单；全文时剥离 ## 禁止。"""
+    if not text:
+        return []
+    scoped = _section_bodies(text, _SCOPE_SECTION_NAMES)
+    if scoped:
+        paths = _raw_extract_paths(scoped)
+        if paths:
+            return paths
+    return _raw_extract_paths(_strip_forbidden_sections(text))
+
+
+def _plan_goal_description(plan_text: str) -> str:
+    m = re.search(r"^#\s+Plan\s*[—\-–:]?\s*(.+)$", plan_text or "", re.MULTILINE)
+    if m:
+        return m.group(1).strip()[:300]
+    goals = _section_bodies(plan_text or "", ("目标", "goal", "目的"))
+    for line in goals.splitlines():
+        s = line.strip().lstrip("-* ").strip()
+        if s and not s.startswith("#"):
+            return s[:300]
+    return "执行 plan 验收清单"
 
 
 def split_plan_phases(plan_text: str) -> list[tuple[int, str, str]]:
@@ -72,14 +162,14 @@ def synthesize_phases_from_plan(plan_text: str) -> list[dict[str, Any]]:
     sections = split_plan_phases(plan_text)
     phases: list[dict[str, Any]] = []
     if not sections:
-        # 单 phase fallback：用全文路径
-        paths = extract_paths(plan_text)[:8] or ["STATUS.md"]
+        # 单 phase fallback：用范围路径 + plan 标题/目标作 description
+        paths = extract_paths(plan_text)[:24] or ["STATUS.md"]
         phases.append(
             {
                 "phase": 1,
                 "phase_id": "1",
                 "status": "pending",
-                "description": "执行 plan 验收清单",
+                "description": _plan_goal_description(plan_text),
                 "scope": paths,
                 "subtasks": {"1.1": "pending"},
                 "timeout": 600,
@@ -104,7 +194,7 @@ def synthesize_phases_from_plan(plan_text: str) -> list[dict[str, Any]]:
                 "phase_id": str(num),
                 "status": "pending",
                 "description": desc[:300],
-                "scope": paths[:12],
+                "scope": paths[:24],
                 "subtasks": {f"{num}.1": "pending"},
                 "timeout": 900,
                 "depends_on": [num - 1] if num > 1 else [],
@@ -112,6 +202,15 @@ def synthesize_phases_from_plan(plan_text: str) -> list[dict[str, Any]]:
             }
         )
     return phases
+
+
+def phases_jsonl_from_plan(plan_text: str) -> str:
+    """合成可落盘的 phases.jsonl（含 schema 行）。"""
+    phases = synthesize_phases_from_plan(plan_text)
+    phases = backfill_scopes(phases, plan_text)
+    schema = json.dumps({"schema_version": "1.1"}, ensure_ascii=False)
+    body = "\n".join(json.dumps(p, ensure_ascii=False) for p in phases)
+    return schema + "\n" + body + "\n"
 
 
 def backfill_scopes(phases: list[dict], plan_text: str) -> list[dict]:

@@ -62,7 +62,11 @@ def _write_seed_artifacts(
     plan_md: str | None,
     phases_jsonl: str | None,
 ) -> dict:
-    """Write optional plan/phases so Engine can skip product and go planned→dev."""
+    """Write optional plan/phases so Engine can skip product and go planned→dev.
+
+    Desktop transfer 常只带 plan_md。若缺 phases，从 plan 合成（保留 .ccc 白名单
+    scope），避免误领养历史 plan 或 Claude 扇出漂移后才有 phases。
+    """
     written = {}
     if not plan_md and not phases_jsonl:
         return written
@@ -78,6 +82,20 @@ def _write_seed_artifacts(
         path = plans / f"{task_id}.plan.md"
         path.write_text(plan_md, encoding="utf-8")
         written["plan"] = str(path)
+    if not phases_jsonl and plan_md:
+        try:
+            import sys
+
+            scripts = Path(__file__).resolve().parents[3] / "scripts"
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            from _plan_adopt import phases_jsonl_from_plan
+
+            phases_jsonl = phases_jsonl_from_plan(plan_md)
+            written["phases_synthesized"] = True
+        except Exception as exc:
+            written["phases_synthesize_error"] = str(exc)[:200]
+            phases_jsonl = None
     if phases_jsonl:
         phases = root / ".ccc" / "phases"
         phases.mkdir(parents=True, exist_ok=True)

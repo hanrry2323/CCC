@@ -271,7 +271,18 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     _ensure_task_in_testing(store, tid)
 
     tests_dir = ws / "tests"
-    if tests_dir.is_dir():
+    skip_pytest = False
+    try:
+        from _ccc_hygiene import task_skips_forced_pytest
+
+        skip_pytest = task_skips_forced_pytest(ws, tid, task_meta)
+    except Exception as exc:
+        _engine_log(f"[{label}] {tid} hygiene pytest probe: {exc}")
+    if skip_pytest:
+        _engine_log(
+            f"[{label}] {tid} ops/ccc-hygiene — 跳过 engine 强制 pytest"
+        )
+    elif tests_dir.is_dir():
         exit_code, output = _run_pytest(ws)
         if eng:
             eng._log_stats(ws, "pytest", tid, exit_code=exit_code, output_len=len(output))
