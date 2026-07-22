@@ -634,7 +634,11 @@ def _title_for_seeded_phase(epic: dict, phase: dict, idx: int) -> str:
 def _plan_md_for_seeded_phase(
     plan_md: str, phase: dict, *, phase_num: int, title: str
 ) -> str:
-    """从 epic plan 切出对应 Phase 段；切不到则按 phase 字段合成可 lint 的 plan。"""
+    """从 epic plan 切出对应 Phase 段。
+
+    切不到时：**整份 epic plan 下发给 work**（保留原验收/步骤），禁止合成
+    「完成本 phase / scope 符合目标」空话——否则 OpenCode 拒写 → SELF-CHECKS 门挂。
+    """
     src = plan_md or ""
     # Match ## Phase N / ## Phase N: / ## 阶段 N
     pat = re.compile(
@@ -658,7 +662,22 @@ def _plan_md_for_seeded_phase(
                 + f"- 完成「{desc}」且 scope 内变更可验证\n"
             )
         return f"# Plan: {title}\n\n## 目标\n- {desc}\n\n{body}\n"
-    # Synthesize
+
+    # 无 ## Phase N：下发完整 epic plan（去掉仅顶层重复标题）
+    epic_body = src.strip()
+    if epic_body:
+        if not re.search(r"^##\s*(验收|验证)\s*$", epic_body, re.M):
+            epic_body = (
+                epic_body.rstrip()
+                + "\n\n## 验收\n"
+                + f"- 完成「{desc}」且 scope 内变更可验证\n"
+            )
+        # 保留 epic 全文；加 work 标题方便定位
+        if epic_body.lstrip().startswith("#"):
+            return epic_body + "\n"
+        return f"# Plan: {title}\n\n{epic_body}\n"
+
+    # 最后兜底（无 epic plan 文本时才合成）
     return (
         f"# Plan: {title}\n\n"
         f"## 目标\n- {desc}\n\n"

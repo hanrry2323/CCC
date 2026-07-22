@@ -179,3 +179,21 @@ def test_lint_fail_leaves_no_half_children(tmp_path):
     _, epic = store.find_task("el")
     assert epic["split_status"] == "pending"
     assert not epic.get("child_ids")
+
+
+def test_seeded_phase_plan_preserves_epic_acceptance():
+    from _product_fanout import _plan_md_for_seeded_phase
+
+    epic = (
+        "# Plan — probe\n\n## 范围\n- `scripts/a.py`\n\n"
+        "## 验收\n- DRY_RUN=true .venv/bin/python scripts/a.py\n"
+        "- test -f docs/reports/x.md\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "probe",
+        "scope": ["scripts/a.py"],
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
+    assert "DRY_RUN=true" in out
+    assert "完成本 phase：probe" not in out

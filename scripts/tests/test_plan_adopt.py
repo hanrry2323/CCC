@@ -160,5 +160,23 @@ def test_try_adopt_skips_whitelist_only_refs(tmp_path):
     assert not (ws / ".ccc" / "phases" / "ccc-hygiene.phases.json").exists()
 
 
+def test_extract_strips_cli_args():
+    from _plan_adopt import _normalize_extracted_path
+
+    assert (
+        _normalize_extracted_path("scripts/startup_check.py --strict --env paper")
+        == "scripts/startup_check.py"
+    )
+    text = (
+        "## 范围\n"
+        "- `scripts/paper_intent_probe.py`（新建）：封装 "
+        "`scripts/startup_check.py --strict --env paper`\n"
+    )
+    paths = extract_paths(text)
+    assert "scripts/paper_intent_probe.py" in paths
+    assert "scripts/startup_check.py" in paths
+    assert not any("--" in p for p in paths)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

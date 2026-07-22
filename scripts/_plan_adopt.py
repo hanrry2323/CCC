@@ -104,14 +104,30 @@ def _section_bodies(text: str, names: tuple[str, ...]) -> str:
     return "\n".join(bodies)
 
 
+def _normalize_extracted_path(raw: str) -> str | None:
+    """去掉命令行参数，拒绝非法 scope 噪声。"""
+    p = (raw or "").strip().strip("`").strip()
+    if not p:
+        return None
+    # `scripts/foo.py --strict` → scripts/foo.py
+    if " " in p or "\t" in p:
+        p = re.split(r"\s+", p, maxsplit=1)[0]
+    if not p or p.startswith("-"):
+        return None
+    # 拒绝明显非路径
+    if any(x in p for x in ("&&", "|", ";", "$(", "`")):
+        return None
+    return p
+
+
 def _raw_extract_paths(text: str) -> list[str]:
     found: list[str] = []
     for m in _PATH_TICK_RE.findall(text or ""):
-        p = m.strip().strip("`")
+        p = _normalize_extracted_path(m)
         if p and p not in found:
             found.append(p)
     for m in _PATH_LOOSE_RE.findall(text or ""):
-        p = m.strip()
+        p = _normalize_extracted_path(m)
         if p and p not in found:
             found.append(p)
     return found
