@@ -1132,11 +1132,30 @@ def dev_role_check_complete(task_id: str) -> dict:
                         f.unlink()
                     except OSError as e:
                         _log.warning("G4 marker unlink failed %s: %s", f, e)
+                # runner 已死但仍可能有 opencode --dir 叶子
+                try:
+                    from _opencode_reap import reap_opencode_workspace
+
+                    reap_opencode_workspace(
+                        get_workspace(), max_age_sec=0, grace_sec=0.2
+                    )
+                except Exception as e:
+                    _log.warning("G4 reap after dead pid: %s", e)
                 return {"status": "failed", "retry": 0, "task_id": task_id}
         # 没有 .done 也没有 .pid → 进程已死且标记丢失，返回 failed 让 engine 重启
         # Lesson 44: 此前返回 "running" 导致任务永久卡在 in_progress
         _log.warning("%s 没有 .done 也没有 .pid 标记，视同失败让 engine 重启", task_id)
         return {"status": "failed", "retry": 0, "task_id": task_id}
+
+    # .done 已落盘：先收尸同仓 opencode，再读结果（防占槽）
+    try:
+        from _opencode_reap import reap_opencode_workspace
+
+        left = reap_opencode_workspace(get_workspace(), max_age_sec=0, grace_sec=0.2)
+        if left:
+            _log.warning("%s post-done reap leftover opencode=%s", task_id, left)
+    except Exception as e:
+        _log.warning("%s post-done reap: %s", task_id, e)
 
     exitcode_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.exitcode"
     result_path = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"

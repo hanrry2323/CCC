@@ -81,6 +81,9 @@ GLOBAL_OPENCODE_COUNT = OpenCodeCountProxy()
 def try_acquire_opencode_slot(task_key: str) -> bool:
     """占全局槽；同 workspace 最多 1 路 opencode（防同仓 database is locked）。
 
+    这与 MAX_CONCURRENT（跨仓总并发）正交：三任务并发可以是三仓各一路，
+    或同仓排队。卡死根因是同仓这一路不退出/残留，不是「倒 20 张堵全局槽」。
+
     task_key 约定：``{workspace_resolved}|{task_id}``（见 ccc-engine._task_key）。
     """
     from board.slots import snapshot, try_acquire

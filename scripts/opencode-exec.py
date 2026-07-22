@@ -215,13 +215,14 @@ async def run_opencode(
     # 进程）则需预知 pid，不可行。
 
     started = time.time()
+    result: dict | None = None
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
             timeout=timeout,
         )
         duration = time.time() - started
-        return {
+        result = {
             "phase_id": phase_id,
             "exit_code": proc.returncode,
             "stdout": stdout.decode("utf-8", errors="replace"),
@@ -230,6 +231,7 @@ async def run_opencode(
             "pid": proc.pid,
             "killed": False,
         }
+        return result
     except (TimeoutError, asyncio.CancelledError) as exc:
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）
         await _kill_process_group(proc.pid, _sig.SIGTERM)
@@ -242,7 +244,7 @@ async def run_opencode(
             if isinstance(exc, asyncio.CancelledError)
             else f"timeout after {cfg.exec_timeout}s"
         )
-        return {
+        result = {
             "phase_id": phase_id,
             "exit_code": -1,
             "stdout": "",
@@ -251,7 +253,33 @@ async def run_opencode(
             "pid": proc.pid,
             "killed": True,
         }
+        return result
     finally:
+        # 成功路径也收尸：opencode CLI 退出后 node 孙子常残留，占同仓槽
+        try:
+            await _kill_process_group(proc.pid, _sig.SIGTERM)
+            await asyncio.sleep(0.4)
+            await _kill_process_group(proc.pid, _sig.SIGKILL)
+        except Exception as e:
+            _log.warning("post-run killpg failed pid=%s: %s", proc.pid, e)
+        if cwd is not None:
+            try:
+                from _opencode_reap import reap_opencode_workspace
+
+                left = reap_opencode_workspace(
+                    Path(cwd),
+                    max_age_sec=0,
+                    exclude_pids=set(),
+                    grace_sec=0.3,
+                )
+                if left:
+                    _log.warning(
+                        "post-run reap leftover opencode pids=%s cwd=%s",
+                        left,
+                        cwd,
+                    )
+            except Exception as e:
+                _log.warning("post-run workspace reap failed: %s", e)
         # 红线 X2: 不管成功失败都清 pid
         if pid_file.exists():
             pid_file.unlink()

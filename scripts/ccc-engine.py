@@ -561,6 +561,98 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
             pass
     except OSError:
         pass
+    # 跨仓耗时 SSOT（小卡分钟数统计用）
+    if event in ("opencode_start", "opencode_done"):
+        try:
+            gdir = Path.home() / ".ccc" / "stats"
+            gdir.mkdir(parents=True, exist_ok=True)
+            from _jsonl_rotate import append_jsonl as _aj
+
+            _aj(gdir / "opencode-timings.jsonl", record)
+        except Exception:
+            try:
+                with (Path.home() / ".ccc" / "stats" / "opencode-timings.jsonl").open(
+                    "a", encoding="utf-8"
+                ) as f:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+
+
+def _maybe_sample_host_resources(active_tasks: dict[str, dict]) -> None:
+    """~60s Mac2017 CPU/内存曲线 → ~/.ccc/stats/host-resources.jsonl。"""
+    try:
+        from _host_resources import sample_and_append
+        from engine.slots import global_opencode_count
+
+        sample_and_append(
+            active_dev=len(active_tasks),
+            max_concurrent=MAX_CONCURRENT,
+            opencode_slots=int(global_opencode_count()),
+            interval_sec=60.0,
+        )
+    except Exception:
+        pass
+
+
+def _wall_seconds_from_started(started_at: str | None) -> float | None:
+    """Parse active_tasks started_at → wall seconds; None if unparseable."""
+    if not started_at:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        s = str(started_at).strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return round(max(0.0, (datetime.now(timezone.utc) - dt).total_seconds()), 2)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _log_opencode_done(
+    ws: Path,
+    tid: str,
+    *,
+    status: str,
+    complexity: str = "medium",
+    started_at: str | None = None,
+    result: dict | None = None,
+) -> None:
+    """埋点：小卡/阶段 OpenCode 墙钟 + result.duration_s。"""
+    duration_s = None
+    exit_code = None
+    killed = None
+    # result.json 优先（opencode-exec 写出）
+    result_path = Path(ws) / ".ccc" / "reports" / f"{tid}.result.json"
+    if result_path.is_file():
+        try:
+            raw = json.loads(result_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                if "duration_s" in raw:
+                    duration_s = float(raw["duration_s"])
+                if "exit_code" in raw:
+                    exit_code = raw["exit_code"]
+                if "killed" in raw:
+                    killed = bool(raw["killed"])
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            pass
+    wall_s = _wall_seconds_from_started(started_at)
+    _log_stats(
+        ws,
+        "opencode_done",
+        tid,
+        status=status,
+        complexity=complexity,
+        duration_s=duration_s,
+        wall_s=wall_s,
+        duration_min=round(duration_s / 60.0, 3) if duration_s is not None else None,
+        wall_min=round(wall_s / 60.0, 3) if wall_s is not None else None,
+        exit_code=exit_code,
+        killed=killed,
+        result_status=(result or {}).get("status"),
+    )
 
 
 _NOTIFY_SCRIPT = _script_dir / "ccc-notify.sh"
@@ -1019,13 +1111,34 @@ def _gc_product_inflight(workspaces: list[Path]) -> int:
     return dropped
 
 
-def _handle_task_result(ws: Path, tid: str, result: dict) -> bool:
+def _handle_task_result(
+    ws: Path,
+    tid: str,
+    result: dict,
+    *,
+    complexity: str = "medium",
+    started_at: str | None = None,
+) -> bool:
     """处理 dev_role_check_complete 结果。返回 True 表示从 active_tasks 移除。"""
     _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
     status = result.get("status", "unknown")
     err = str(result.get("error") or "")
+
+    # 终态埋点（running / phase_done 再启另计 start）
+    if status in ("success", "failed", "quarantined", "not_found"):
+        try:
+            _log_opencode_done(
+                ws,
+                tid,
+                status=status,
+                complexity=complexity,
+                started_at=started_at,
+                result=result,
+            )
+        except Exception as exc:
+            engine_log(f"[{label}] opencode_done stats: {exc}")
 
     def _quarantine_keep_phases(reason: str) -> bool:
         """失败隔离：保留 phases/plan，禁止删图回 backlog 触发 product。"""
@@ -1432,13 +1545,17 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
                         reason="recover_running_wait_slot",
                     )
             elif status == "success":
-                _handle_task_result(ws, tid, result)
+                _handle_task_result(
+                    ws, tid, result, complexity=complexity
+                )
             elif status == "failed":
                 failure_summary = _check_phase_failures(tid)
                 if failure_summary.get("unresolvable") or failure_summary.get(
                     "all_failed_or_skipped"
                 ):
-                    _handle_task_result(ws, tid, result)
+                    _handle_task_result(
+                        ws, tid, result, complexity=complexity
+                    )
                 else:
                     _enqueue_pending_relaunch(
                         ws, tid, complexity=complexity, reason="recover"
@@ -1449,7 +1566,9 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
                 )
             else:
                 # quarantined / not_found / unknown — 走原结果处理（无强制 relaunch）
-                _handle_task_result(ws, tid, result)
+                _handle_task_result(
+                    ws, tid, result, complexity=complexity
+                )
         except Exception as exc:
             engine_log(f"[recover] [{label}] {tid} in_progress 恢复异常: {exc}")
 
@@ -2376,6 +2495,14 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             _release_opencode_slot(tkey, 1)
             engine_log(f"[{label}] {tid} launch 成功但槽满，拒绝登记")
             continue
+        _log_stats(
+            ws,
+            "opencode_start",
+            tid,
+            complexity=complexity,
+            pid=launch_r.get("pid"),
+            mode="serial",
+        )
         store.update_index()
         return True
     return False
@@ -2736,6 +2863,7 @@ def engine_loop(workspaces: list[Path]) -> None:
 
         iteration += 1
         _mark_engine_tick()
+        _maybe_sample_host_resources(active_tasks)
         tick_start = time.time()
         # 非深睡时也消费 wake：人下达立刻优先 intake，不等人空闲
         try:
@@ -2807,7 +2935,13 @@ def engine_loop(workspaces: list[Path]) -> None:
                         any_active = True
                         continue
 
-                    if _handle_task_result(ws, tid, result):
+                    if _handle_task_result(
+                        ws,
+                        tid,
+                        result,
+                        complexity=complexity,
+                        started_at=info.get("started_at"),
+                    ):
                         # v0.30.0: 串行 task 结束时释放槽位（并行 path 已在 group 完成时递减）
                         if mode != "parallel":
                             _release_opencode_slot(key, 1)

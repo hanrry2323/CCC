@@ -354,79 +354,33 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
         )
 
 
-def kill_orphan_opencode(ws: Path, *, max_age_sec: int = 1800) -> list[int]:
-    """Kill opencode processes on ``ws`` with no matching ``.ccc/pids/*.pid``.
+def kill_orphan_opencode(ws: Path, *, max_age_sec: int = 600) -> list[int]:
+    """Kill leftover ``opencode run --dir <ws>`` that block same-ws serialization.
 
-    Stress/matrix runs showed multi-hour zombie ``opencode run --dir <ws>``
-    blocking ``同仓已有 active opencode`` forever. Safe reap: only when no
-    board pid file claims the PID and etime >= max_age_sec.
+    Design: 1 OpenCode / workspace (opencode.db lock). A hung/orphan leaf holds
+    the mutex even when MAX_CONCURRENT>1 across apps. Dead ``.ccc/pids/*.pid``
+    must NOT protect orphans (runner died; node grandchildren stayed).
+
+    Default age 600s for hang sweep; after ``.done`` callers use max_age_sec=0.
     """
-    ws = Path(ws).resolve()
-    claimed: set[int] = set()
-    pids_dir = ws / ".ccc" / "pids"
-    if pids_dir.is_dir():
-        for pf in pids_dir.glob("*.pid"):
-            try:
-                claimed.add(int(pf.read_text().strip()))
-            except (ValueError, OSError):
-                continue
-    killed: list[int] = []
     try:
-        out = subprocess.check_output(
-            ["ps", "-axo", "pid=,etime=,command="],
-            text=True,
-            timeout=15,
-            env=_sanitized_env(),
-        )
-    except (subprocess.SubprocessError, OSError) as exc:
-        _engine_log(f"orphan-opencode ps failed: {exc}")
-        return killed
+        from _opencode_reap import reap_opencode_workspace
+    except ImportError:
+        _scripts = Path(__file__).resolve().parents[1]
+        import sys
 
-    def _etime_sec(etime: str) -> int:
-        # [[dd-]hh:]mm:ss
-        etime = etime.strip()
-        days = 0
-        if "-" in etime:
-            d, etime = etime.split("-", 1)
-            days = int(d or 0)
-        parts = [int(x) for x in etime.split(":")]
-        if len(parts) == 3:
-            h, m, s = parts
-        elif len(parts) == 2:
-            h, m, s = 0, parts[0], parts[1]
-        else:
-            return days * 86400
-        return days * 86400 + h * 3600 + m * 60 + s
+        if str(_scripts) not in sys.path:
+            sys.path.insert(0, str(_scripts))
+        from _opencode_reap import reap_opencode_workspace
 
-    needle = f"--dir {ws}"
-    needle2 = f"--dir {ws}/"
-    for line in out.splitlines():
-        line = line.strip()
-        if "opencode run" not in line or "--dir" not in line:
-            continue
-        if needle not in line and needle2 not in line and str(ws) not in line:
-            continue
-        try:
-            pid_s, etime, *_rest = line.split(None, 2)
-            pid = int(pid_s)
-        except (ValueError, IndexError):
-            continue
-        if pid in claimed:
-            continue
-        try:
-            age = _etime_sec(etime)
-        except ValueError:
-            continue
-        if age < max_age_sec:
-            continue
-        try:
-            os.kill(pid, 15)
-            killed.append(pid)
-            _engine_log(
-                f"orphan-opencode TERM pid={pid} age={age}s ws={ws.name}"
-            )
-        except OSError:
-            continue
+    killed = reap_opencode_workspace(
+        Path(ws).resolve(),
+        max_age_sec=max_age_sec,
+        also_kill_claimed_dead=True,
+        grace_sec=1.0,
+    )
+    for pid in killed:
+        _engine_log(f"orphan-opencode reap pid={pid} ws={Path(ws).name}")
     return killed
 
 
@@ -499,6 +453,15 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
             else:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
+        # 进程树杀完仍可能有 --dir 叶子：立即同仓收尸
+        try:
+            extra = kill_orphan_opencode(ws, max_age_sec=0)
+            if extra:
+                _engine_log(
+                    f"[{label}] hang-auto: {tid} post-kill reap opencode={extra}"
+                )
+        except Exception as exc:
+            _engine_log(f"[{label}] hang-auto: post-kill reap: {exc}")
 
         # A2: 门禁已满足 → 收口 testing，禁止 relaunch
         try:
