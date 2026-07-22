@@ -178,6 +178,35 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 - **卫生卡 seed（硬）**：验收白名单里出现的历史 `.ccc/plans/*.plan.md` **不是** adopt 引用；仅「见/参照/已写入 …plan.md」才收养。Transfer 写 `plan_md` 时须同步合成 phases（保留 `.ccc/` scope）。ops / `.ccc`-only **禁止**强制全仓 pytest（否则卫生卡必挂）。
 - **止损清场**（Agent/平台排障）：failed epic + abnormal work 归档出板后，还必须清 `last_epic` / `epic_history` 与 `~/.ccc/flow-events.jsonl` 中该 epic，否则右栏 `bound_hint` 幽灵复活。
 
+### 上线 ≠ 开发完成 — 后半段自动化补洞（硬 · 2026-07-22）
+
+> **行业坑**：版本号升了 / 卡进了 `released` / Dashboard 能点，**不等于**意图已稳定满足。  
+> CCC 不靠人肉盯日志填坑，而把「后半段」拆进编排，可重复跑。
+
+| 阶段 | 名称 | 什么时候算过 | 谁跑 |
+|------|------|--------------|------|
+| **L** | `code_landed` | epic 子卡 → `released` + verdict 落盘 | Engine 主链 |
+| **P** | `intent_probed` | 验收里的**意图探针**可重放绿（paper / DRY_RUN / 契约命令） | 同卡验收 + **regress** 回放 |
+| **S** | `intent_stable` | 探针窗口或人确认「稳定符合意图」写入 L1 `decided` | Desktop 定意图 / 心智 PUT |
+| **N** | 下一意图 | 仅当本意图达 S（或人显式放弃）才开下一条产品 epic | Desktop 定稿 → transfer |
+
+**硬规则**：
+
+1. **`released` / VERSION bump / smoke README stamp ≠ 产品完成。** Agent 禁止用「已 released N 张」代替「意图已满足」。
+2. **产品目标写在 L1 `decided.goals`**，须带可执行退出条件（命令或探针路径）；禁止只写「管道可空转 / 对齐基线」当唯一目标。
+3. **空闲优先产品 epic**：`pipeline_idle` 且 `git_clean` 时，下一步默认取 `decided.goals` 未完成项；**禁止**在无卫生风险时优先下卫生/烟测/README stamp 卡。
+4. **意图探针进验收**：业务 epic 的 `## 验收` 至少一条可重放探针（`.venv`/`python3` + 显式 `DRY_RUN=…`）；regress 扫 `released` 时重跑这些探针，挂了 → 回 backlog 建回归 epic（飞轮），不假装完成。
+5. **VIP→P1 排序跟业务仓 DEV_PLAN**：钱能不能保住（paper/testnet）→ alpha → 单机运维 → 集群（门槛未齐冻结）。
+
+**自动化落点（现行）**：
+
+```text
+人定意图(含退出条件) → transfer → Engine(L) → verdict
+ → regress 重放意图探针(P) → 人/心智确认稳定(S) → 再定下一意图(N)
+```
+
+平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。
+
 ---
 
 ## 四权威（只认这张表）
