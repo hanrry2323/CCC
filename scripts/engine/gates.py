@@ -166,7 +166,7 @@ def _record_pytest_failure(ws: Path, tid: str, exit_code: int, output: str) -> N
 
 
 def _revert_task_commit(ws: Path, tid: str) -> bool:
-    """Verdict FAIL 时回滚 task 的最后一个 commit。"""
+    """Verdict FAIL 时回滚 task 的最后一个 commit（须属于本 task 且仍在 HEAD 祖先）。"""
     phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
     if not phases_file.exists():
         return False
@@ -179,9 +179,43 @@ def _revert_task_commit(ws: Path, tid: str) -> bool:
         ]
         if not commits:
             return False
-        last_commit = commits[-1]
+        last_commit = str(commits[-1]).strip()
     except (OSError, json.JSONDecodeError) as exc:
         _engine_log(f"[verdict-gate] {tid} 读 commit hash 失败: {exc}")
+        return False
+
+    # 安全：commit 必须是当前 HEAD 的祖先，且 log 提到本 task id（避免 revert 错卡/错仓）
+    try:
+        anc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", last_commit, "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=str(ws),
+            env=_sanitized_env(),
+        )
+        if anc.returncode != 0:
+            _engine_log(
+                f"[verdict-gate] {tid} skip revert {last_commit[:12]}: not ancestor of HEAD"
+            )
+            return False
+        msg = subprocess.run(
+            ["git", "log", "-1", "--format=%s%n%b", last_commit],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=str(ws),
+            env=_sanitized_env(),
+        )
+        body = (msg.stdout or "") + (msg.stderr or "")
+        if tid not in body and tid.split("-w")[0] not in body:
+            _engine_log(
+                f"[verdict-gate] {tid} skip revert {last_commit[:12]}: "
+                f"commit message does not mention task id"
+            )
+            return False
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] {tid} revert precheck 异常: {exc}")
         return False
 
     try:
@@ -244,8 +278,45 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                 )
                 time.sleep(30)
                 continue
-            verdict_ok = True
-            break
+            # 有效 verdict 必须是 PASS 才继续 tester；FAIL 立即回滚，禁止 tester 抢先 verified
+            try:
+                _early = _parse_verdict_status(_verdict_file(ws, tid).read_text())
+            except OSError:
+                _early = None
+            if _early in ("FAIL", "FALLBACK", "QUARANTINED"):
+                _engine_log(
+                    f"[verdict-gate] [{label}] {tid} "
+                    f"verdict={_early} — 触发回滚（先于 tester）"
+                )
+                _revert_task_commit(ws, tid)
+                col_now = _find_task_column(store, tid)
+                if col_now == "testing":
+                    store.move_task(tid, "testing", "planned")
+                elif col_now and col_now != "planned":
+                    # 竞态：已离开 testing 时尽量收回 planned
+                    try:
+                        if col_now == "abnormal":
+                            store.move_task(tid, "abnormal", "planned")
+                        elif col_now == "in_progress":
+                            store.move_task(tid, "in_progress", "planned")
+                    except Exception as exc:
+                        _engine_log(
+                            f"[verdict-gate] [{label}] {tid} "
+                            f"rollback move from {col_now} failed: {exc}"
+                        )
+                _clear_verdict(ws, tid)
+                store.update_index()
+                return False
+            if _early == "PASS" or _early is None:
+                # None: 旧格式无 Verdict 行但文件非空 — 保守视为可继续（兼容）
+                verdict_ok = True
+                break
+            _engine_log(
+                f"[{label}] {tid} verdict status={_early!r} 非 PASS，重试"
+            )
+            _clear_verdict(ws, tid)
+            _ensure_task_in_testing(store, tid)
+            continue
 
         _engine_log(
             f"[{label}] {tid} reviewer 未产出有效 verdict (attempt {attempt + 1}/{max_attempts})"

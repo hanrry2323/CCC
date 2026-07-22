@@ -459,9 +459,10 @@ def tester_role() -> dict:
         for cmd in verify_commands:
             if not all_ok:
                 break
+            # DRY_RUN=true python3 … 不能 shlex.split 当 argv[0]；走 shell 与 intent_probe 一致
             r = sp.run(
-                shlex.split(cmd),
-                shell=False,
+                cmd,
+                shell=True,
                 capture_output=True,
                 text=True,
                 timeout=cfg.exec_timeout,
@@ -478,6 +479,26 @@ def tester_role() -> dict:
                 )
 
         if all_ok:
+            # 若 reviewer 已写 FAIL，禁止 tester 抢先 verified（与 gates 对齐）
+            try:
+                vf = get_workspace() / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
+                if vf.is_file():
+                    st = None
+                    for line in vf.read_text(encoding="utf-8", errors="replace").splitlines():
+                        low = line.strip().lower()
+                        if low.startswith("**verdict:**") or low.startswith("verdict:"):
+                            raw = line.split(":", 1)[1].strip().strip("*").strip()
+                            st = raw.split()[0].upper() if raw else None
+                            break
+                    if st in ("FAIL", "FALLBACK", "QUARANTINED"):
+                        _log.warning(
+                            "[tester] %s skip verified — verdict=%s",
+                            task_id,
+                            st,
+                        )
+                        continue
+            except Exception as exc:
+                _log.debug("[tester] verdict guard: %s", exc)
             move_task(task_id, "testing", "verified")
             moved.append(task_id)
             _log.info("[tester] %s ✓（验证 {len(verify_commands)} 项）", task_id)
