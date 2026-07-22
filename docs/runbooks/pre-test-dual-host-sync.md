@@ -138,6 +138,31 @@ stat -f '%Sm %N' -t '%Y-%m-%d %H:%M' \
   /Applications/CCCDesktop.app/Contents/MacOS/CCCDesktop
 ```
 
+## 6. 测前「全量干扰清扫」（可选重手）
+
+> 用于正式验收前：历史对话、右栏绑定、烟测脏卡、本机 outbox/缓存一并归档。  
+> **不改**控制面；**不删**业务仓正式 `released`（非 smoke 名）历史。可恢复：看归档目录名。
+
+```bash
+# —— M1：停 Desktop → 归档会话 → 清空 outbox/缓存 ——
+pkill -x CCCDesktop || true
+AS="$HOME/Library/Application Support/CCCDesktop"
+TS=$(date +%Y%m%d-%H%M%S)
+mkdir -p "$AS/sessions/_archive-pretest-$TS"
+# 将 sessions/<project> 移入归档后重建空 sessions/
+# 重置 transfer-outbox/failed/receipts/pending-sync 为 []；删 board-cache / debug-*.log
+bash scripts/cleanup-ccc-hub-orphans.sh   # 清 :8084/:18084 测试残留端口
+
+# —— Mac2017：归档 Hub 会话 + 重置 _desktop 绑定 + 隔离 ccc-demo 烟测卡 ——
+# Hub chat → .ccc/chat/_archive-pretest-$TS/
+# _desktop/*/last_epic.json={}  epic_history.json=[]
+# flow-events.jsonl 归档后置空；engine-active-tasks.json={}
+# ccc-demo：quarantine *smoke* / dual-port / ready-* / reopen-sync 等 → update_index
+# 然后 kickstart chat-server + board + engine
+```
+
+清完验收：各项目 `threads=[]`、`flow/epics` 空、`lens` inflight=0、`ccc-demo` live=0；再 `open -n -a /Applications/CCCDesktop.app`。
+
 ## 相关
 
 - Desktop 部署清单：[`../deploy/desktop.md`](../deploy/desktop.md)
