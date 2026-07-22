@@ -31,6 +31,7 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
+- **Desktop Agent 定方案**：讨论/下一步/定稿按意图直接给最佳方案；禁止每轮甩拍板题；定稿白话给人看，`ccc-transfer` 折叠给 Engine。  
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - **M1→Hub 主路径** = 本机 SSH 隧道 `127.0.0.1:17777`（`com.ccc.hub-tunnel`）；**禁止**把 LAN `192.168.3.116:7777` 当 Desktop/sidecar 默认。详见 `docs/product/hub-ssh-tunnel.md`。  

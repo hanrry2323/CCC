@@ -2506,10 +2506,15 @@ final class AppModel: ObservableObject {
         if resp.idempotent_replay == true {
             toastMsg = "已投递（幂等）\(eid)"
         }
-        // 既有受理信号：engine_wake.ok
+        // 既有受理信号：engine_wake.ok；区分 Engine 真在跑 vs 仅写了队列
         if resp.engine_wake?.ok == true {
-            toastMsg += " · Engine 已唤醒"
-            setTransferDelivery(tid, .accepted)
+            if resp.engine_wake?.engine_running == false {
+                let note = resp.engine_wake?.launch_note ?? resp.engine_wake?.message ?? "kickstart"
+                toastMsg += " · 已写队列，Engine 未起（\(note)）"
+            } else {
+                toastMsg += " · Engine 已唤醒"
+                setTransferDelivery(tid, .accepted)
+            }
         }
         showToast(toastMsg)
         lastAnimatedEpicId = nil

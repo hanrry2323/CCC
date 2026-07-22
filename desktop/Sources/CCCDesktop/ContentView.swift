@@ -1904,10 +1904,22 @@ struct CodexMessageRow: View {
     }
 
     private var assistantBlock: some View {
-        let body = message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty
-            ? "…"
-            : message.content
-        let showActions = !message.isStreaming && !body.isEmpty && body != "…"
+        let raw = message.content
+        let transferJSON = message.isStreaming ? nil : TransferDraftParser.transferFenceJSON(from: raw)
+        let body: String = {
+            if message.content.isEmpty && message.isStreaming && message.toolSteps.isEmpty {
+                return "…"
+            }
+            if message.isStreaming {
+                // 流式中仍可能半截 fence；尽量不把半截 JSON 当结论
+                return TransferDraftParser.humanVisibleMarkdown(from: raw).isEmpty
+                    ? (raw.contains("```ccc-transfer") ? "正在生成定稿结论…" : raw)
+                    : TransferDraftParser.humanVisibleMarkdown(from: raw)
+            }
+            let human = TransferDraftParser.humanVisibleMarkdown(from: raw)
+            return human.isEmpty && transferJSON != nil ? "已定稿（见下方确认转任务）" : human
+        }()
+        let showActions = !message.isStreaming && !raw.isEmpty && body != "…"
         return VStack(alignment: .leading, spacing: 8) {
             if message.isStreaming || !message.toolSteps.isEmpty {
                 ToolProgressRail(
@@ -1941,8 +1953,21 @@ struct CodexMessageRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.18), value: message.isStreaming)
             }
+            if let json = transferJSON, !message.isStreaming {
+                DisclosureGroup("转任务契约（给 Engine）") {
+                    Text(json)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(CCCTheme.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(CCCTheme.faint)
+                .padding(.horizontal, 2)
+            }
             if showActions {
-                MessageActionBar(role: "assistant", content: body, message: message)
+                MessageActionBar(role: "assistant", content: raw, message: message)
                 if message.filesChanged > 0 || !message.changedFilePaths.isEmpty {
                     Button("查看改动") {
                         model.revealChangedFiles(message: message, projectId: window.projectId)

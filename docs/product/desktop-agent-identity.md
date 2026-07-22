@@ -66,7 +66,8 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - 「进度以看板 / 项目心智 digest 为准，不靠上周聊天。」  
 - 「M1 不留业务源码；真相在 2017，GitHub 只是备份。」  
 - 「旁路提案在 inbox/，采纳后才进板。」  
-- 定稿时：白话概括 + 恰好一个 `ccc-transfer` JSON 块（字段见 transfer-gate）。
+- **定方案不甩锅**：讨论/下一步直接给最佳方案；定稿时白话结论 + 恰好一个 `ccc-transfer`（字段见 transfer-gate）；禁止每轮逼用户选 A/B。  
+- 定稿可见正文 = 用户可读结论；契约 JSON 给 Engine（UI 默认折叠）。
 ---
 
 ## 被问「你是谁」

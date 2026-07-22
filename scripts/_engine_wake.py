@@ -24,13 +24,23 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def write_wake(*, reason: str, task_id: str | None = None) -> Path:
+def write_wake(
+    *,
+    reason: str,
+    task_id: str | None = None,
+    workspace: Path | str | None = None,
+) -> Path:
     WAKE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, Any] = {
         "ts": _now_iso(),
         "reason": reason,
         "task_id": task_id,
     }
+    if workspace:
+        try:
+            payload["workspace"] = str(Path(workspace).resolve())
+        except OSError:
+            payload["workspace"] = str(workspace)
     WAKE_FILE.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
     return WAKE_FILE
 
@@ -50,8 +60,32 @@ def consume_wake() -> Optional[dict[str, Any]]:
     return data if isinstance(data, dict) else {"reason": "wake"}
 
 
+def _kickstart_engine_launchd() -> tuple[bool, str]:
+    """对已 load 的 com.ccc.engine 做 kickstart -k（bootstrap 不够时必用）。"""
+    uid = os.getuid()
+    label = f"gui/{uid}/com.ccc.engine"
+    try:
+        r = subprocess.run(
+            ["launchctl", "kickstart", "-k", label],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if r.returncode == 0:
+            return True, "kickstart_ok"
+        err = (r.stderr or r.stdout or "").strip()[:120]
+        return False, f"kickstart_fail:{err or r.returncode}"
+    except Exception as exc:
+        _log.warning("kickstart engine failed: %s", exc)
+        return False, str(exc)[:200]
+
+
 def _bootstrap_engine_launchd() -> tuple[bool, str]:
-    """尝试 launchctl 拉起 com.ccc.engine。失败不抛（前台/无 plist 环境）。"""
+    """尝试 launchctl 拉起 com.ccc.engine。失败不抛（前台/无 plist 环境）。
+
+    bootstrap/load 只保证 job 在 launchd 里；若已 load 但 stopped，必须再 kickstart。
+    """
     uid = os.getuid()
     label = f"gui/{uid}/com.ccc.engine"
     dst = Path.home() / "Library" / "LaunchAgents" / "com.ccc.engine.plist"
@@ -68,27 +102,35 @@ def _bootstrap_engine_launchd() -> tuple[bool, str]:
             timeout=10,
             check=False,
         )
-        if dst.is_file():
-            r = subprocess.run(
-                ["launchctl", "bootstrap", f"gui/{uid}", str(dst)],
+        if not dst.is_file():
+            notes.append("no_plist")
+            return False, "no_engine_plist"
+        r = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{uid}", str(dst)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        if r.returncode != 0:
+            subprocess.run(
+                ["launchctl", "load", "-w", str(dst)],
                 capture_output=True,
-                text=True,
                 timeout=15,
                 check=False,
             )
-            if r.returncode != 0:
-                subprocess.run(
-                    ["launchctl", "load", "-w", str(dst)],
-                    capture_output=True,
-                    timeout=15,
-                    check=False,
-                )
-                notes.append("load_fallback")
-            else:
-                notes.append("bootstrap_ok")
-            return True, ",".join(notes) or "started"
-        notes.append("no_plist")
-        return False, "no_engine_plist"
+            notes.append("load_fallback")
+        else:
+            notes.append("bootstrap_ok")
+        # Already-loaded + stopped (e.g. watchdog exit 78) needs kickstart
+        if not is_engine_running():
+            kicked, kick_note = _kickstart_engine_launchd()
+            notes.append(kick_note)
+            if not kicked and is_engine_running():
+                pass  # race: process came up
+            return kicked or is_engine_running(), ",".join(notes)
+        notes.append("already_running")
+        return True, ",".join(notes) or "started"
     except Exception as exc:
         _log.warning("bootstrap engine failed: %s", exc)
         return False, str(exc)[:200]
@@ -249,12 +291,18 @@ def ensure_engine_for_task(
         except Exception as exc:
             workspace_reg = {"ok": False, "error": str(exc)[:200]}
 
-    wake_path = write_wake(reason=reason, task_id=task_id)
+    wake_path = write_wake(reason=reason, task_id=task_id, workspace=workspace)
     launched = False
     launch_note = "skipped"
     if start_launchd:
         launched, launch_note = _bootstrap_engine_launchd()
+        # Double-check: bootstrap may report ok while process still dead
+        if not is_engine_running():
+            kicked, kick_note = _kickstart_engine_launchd()
+            launch_note = f"{launch_note},{kick_note}"
+            launched = kicked or launched
 
+    running = is_engine_running()
     result = {
         "ok": True,
         "mode_before": mode_before,
@@ -266,7 +314,13 @@ def ensure_engine_for_task(
         "task_id": task_id,
         "reason": reason,
         "workspace_reg": workspace_reg,
-        "engine_running": is_engine_running(),
+        "engine_running": running,
+        # Desktop toast: distinguish "queued but Engine dead" vs truly awake
+        "message": (
+            None
+            if running
+            else f"queued; Engine not running ({launch_note})"
+        ),
     }
     _log.info("ensure_engine_for_task %s", result)
     return result

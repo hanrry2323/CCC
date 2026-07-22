@@ -93,6 +93,28 @@ enum TransferDraftParser {
         return draft
     }
 
+    /// 用户可见正文：去掉 `ccc-transfer` fence（契约折叠另显）
+    static func humanVisibleMarkdown(from content: String) -> String {
+        stripTransferFence(content).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 原始 fence 内 JSON 文本（展开契约区用）；无则 nil
+    static func transferFenceJSON(from content: String) -> String? {
+        extractFence(content, language: "ccc-transfer")
+    }
+
+    /// 去掉所有 ```ccc-transfer ... ``` 块
+    static func stripTransferFence(_ text: String) -> String {
+        let pattern = "```\\s*ccc-transfer\\s*\\r?\\n[\\s\\S]*?\\r?\\n```"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return text
+        }
+        let ns = text as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private static func stringField(_ obj: [String: Any], _ key: String, default def: String = "") -> String {
         if let s = obj[key] as? String {
             return s.trimmingCharacters(in: .whitespacesAndNewlines)

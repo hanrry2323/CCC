@@ -191,6 +191,11 @@ _degraded_mode = False
 _degraded_since: float | None = None
 _DEGRADED_QUARANTINE_THRESHOLD = 10   # 30min 内 quarantine > 此值 → degraded
 _DEGRADED_FAIL_THRESHOLD = 10         # 30min 内 product_fail > 此值 → degraded
+# v0.53+: 人下达 task_dispatch 可绕过 degraded intake（防 pending epic 饿死）
+_intake_bypass_degraded = False
+_intake_bypass_ticks_left = 0
+_wake_priority_workspace: Path | None = None
+_INTAKE_BYPASS_TICKS = 12  # ~2min @10s tick — enough for product launch
 _DEGRADED_RECOVERY_SECONDS = 600      # 10min 无异常 → 自动恢复
 
 # v0.36: 熔断 — upstream 不可用时暂停 abnormal 自动重试
@@ -456,7 +461,7 @@ def _start_tick_watchdog() -> None:
             if age > _TICK_WATCHDOG_STALE_S:
                 engine_log(
                     f"[watchdog] no tick for {age:.0f}s "
-                    f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — exit for launchd restart"
+                    f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — exit 0 for launchd SuccessfulExit restart"
                 )
                 try:
                     _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -469,6 +474,7 @@ def _start_tick_watchdog() -> None:
                                     "status": "stopped",
                                     "reason": "tick_watchdog_stale",
                                     "stale_sec": round(age, 1),
+                                    "exit_code": 0,
                                 },
                                 ensure_ascii=False,
                             )
@@ -476,7 +482,9 @@ def _start_tick_watchdog() -> None:
                         )
                 except OSError:
                     pass
-                os._exit(78)
+                # Must be 0: plist KeepAlive SuccessfulExit only restarts on success.
+                # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
+                os._exit(0)
 
     t = threading.Thread(target=_watch, name="ccc-tick-watchdog", daemon=True)
     t.start()
@@ -1557,8 +1565,10 @@ def _process_backlog(ws: Path) -> bool:
     - 有 parent_id（epic 子卡）且缺 phases → abnormal（禁止 product 重拆）
     - 无 parent 的遗留单卡 → 可走 product 补 phases（兼容）
     """
-    global _degraded_mode
-    if _degraded_mode:
+    global _degraded_mode, _intake_bypass_degraded, _intake_bypass_ticks_left
+    if _degraded_mode and not (
+        _intake_bypass_degraded or _intake_bypass_ticks_left > 0
+    ):
         return False
 
     _activate_workspace(ws)
@@ -2604,6 +2614,7 @@ def engine_loop(workspaces: list[Path]) -> None:
     """引擎主循环：多 workspace 轮询，全局 MAX_CONCURRENT 共享。"""
     global MAX_RETRY
     global _engine_shutdown
+    global _intake_bypass_ticks_left, _intake_bypass_degraded
 
     # v0.39.2: 仅 control=enabled 才进业务循环；ui/disabled 均 idle
     try:
@@ -2625,6 +2636,14 @@ def engine_loop(workspaces: list[Path]) -> None:
         if _engine_shutdown:
             return
         engine_log("CCC control=enabled — entering normal loop")
+
+    # 启动即消费 wake（须在 recover 之前：ccc-demo testing recover 可堵数分钟，否则人下达饿死）
+    try:
+        if _apply_dispatch_wake(workspaces):
+            workspaces[:] = _prioritize_wake_workspace(workspaces)
+            engine_log("[wake] applied before recover — priority intake armed")
+    except Exception as exc:
+        engine_log(f"[wake] pre-recover apply failed: {exc}")
 
     program_dir = Path.home() / "program"
     labels = [_ws_label(w, program_dir) for w in workspaces]
@@ -2700,6 +2719,16 @@ def engine_loop(workspaces: list[Path]) -> None:
         iteration += 1
         _mark_engine_tick()
         tick_start = time.time()
+        # 非深睡时也消费 wake：人下达立刻优先 intake，不等人空闲
+        try:
+            if _apply_dispatch_wake(workspaces):
+                workspaces[:] = _prioritize_wake_workspace(workspaces)
+        except Exception as exc:
+            engine_log(f"[wake] apply dispatch wake failed: {exc}")
+        if _intake_bypass_ticks_left > 0:
+            _intake_bypass_ticks_left -= 1
+            if _intake_bypass_ticks_left <= 0:
+                _intake_bypass_degraded = False
         any_active = bool(active_tasks)
 
         first_task = next(iter(active_tasks.values()), {})
@@ -2963,11 +2992,19 @@ def engine_loop(workspaces: list[Path]) -> None:
                         f"(wake: ~/.ccc/engine.wake)"
                     )
                 # v0.41: 可被下任务 wake 文件打断
-                if _sleep_until_wake(60):
+                wake_payload = _sleep_until_wake(60)
+                if wake_payload is not None:
                     engine_log("[wake] 收到 engine.wake，立即进入下一 tick")
                     # 唤醒后必须重扫 registry：新 register 的 app 否则永远 invisible
                     # （曾导致 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）
                     workspaces[:] = _rediscover_workspaces(workspaces)
+                    try:
+                        _apply_dispatch_wake(
+                            workspaces, already_consumed=wake_payload
+                        )
+                        workspaces[:] = _prioritize_wake_workspace(workspaces)
+                    except Exception as exc:
+                        engine_log(f"[wake] post-deep-sleep apply failed: {exc}")
                 elif iteration % 12 == 0:
                     # 深睡满轮也轻量重扫，覆盖「只 register 未 wake」
                     workspaces[:] = _rediscover_workspaces(workspaces)
@@ -3020,8 +3057,91 @@ def _rediscover_workspaces(current: list[Path]) -> list[Path]:
     return current
 
 
-def _sleep_until_wake(seconds: float) -> bool:
-    """深睡可被 ~/.ccc/engine.wake 打断。返回 True=被唤醒。"""
+def _apply_wake_payload(payload: dict | None, workspaces: list[Path]) -> bool:
+    """Apply task_dispatch wake: bypass degraded intake + remember priority workspace.
+
+    Returns True if a dispatch-style wake was applied.
+    """
+    global _degraded_mode, _degraded_since, _intake_bypass_degraded
+    global _intake_bypass_ticks_left, _wake_priority_workspace
+    if not payload or not isinstance(payload, dict):
+        return False
+    reason = str(payload.get("reason") or "")
+    # Human transfer / Hub ensure uses task_dispatch; also accept bare wake
+    is_dispatch = (
+        reason.startswith("task_dispatch")
+        or reason in ("wake", "task_dispatch", "hub_manual_start")
+        or "task_dispatch" in reason
+        or bool(payload.get("workspace") or payload.get("task_id"))
+    )
+    if not is_dispatch:
+        return False
+    engine_log(
+        f"[wake] apply reason={reason!r} task={payload.get('task_id')} "
+        f"ws={payload.get('workspace')}"
+    )
+    _intake_bypass_degraded = True
+    _intake_bypass_ticks_left = _INTAKE_BYPASS_TICKS
+    if _degraded_mode:
+        _degraded_mode = False
+        _degraded_since = None
+        engine_log("[wake] cleared degraded — human dispatch must intake pending epic")
+    ws_raw = payload.get("workspace")
+    if ws_raw:
+        try:
+            wp = Path(str(ws_raw)).resolve()
+            if wp.is_dir():
+                _wake_priority_workspace = wp
+        except OSError:
+            pass
+    return True
+
+
+def _apply_dispatch_wake(
+    workspaces: list[Path], *, already_consumed: dict | None = None
+) -> bool:
+    """Consume ~/.ccc/engine.wake (unless already_consumed) and apply dispatch priority."""
+    if already_consumed is not None:
+        return _apply_wake_payload(already_consumed, workspaces)
+    try:
+        from _engine_wake import consume_wake
+
+        payload = consume_wake()
+    except Exception:
+        return False
+    return _apply_wake_payload(payload, workspaces)
+
+
+def _prioritize_wake_workspace(workspaces: list[Path]) -> list[Path]:
+    """Move wake target workspace to front so product intake isn't starved by other apps."""
+    global _wake_priority_workspace
+    pri = _wake_priority_workspace
+    if pri is None or not workspaces:
+        return workspaces
+    try:
+        pri_res = pri.resolve()
+    except OSError:
+        return workspaces
+    head: list[Path] = []
+    rest: list[Path] = []
+    for ws in workspaces:
+        try:
+            if ws.resolve() == pri_res:
+                head.append(ws)
+            else:
+                rest.append(ws)
+        except OSError:
+            rest.append(ws)
+    if not head:
+        # Wake workspace not yet in list — prepend if registered path exists
+        if pri_res.is_dir():
+            return [pri_res] + list(workspaces)
+        return workspaces
+    return head + rest
+
+
+def _sleep_until_wake(seconds: float) -> dict | None:
+    """深睡可被 ~/.ccc/engine.wake 打断。返回 wake payload 或 None。"""
     try:
         from _engine_wake import consume_wake
 
@@ -3033,13 +3153,16 @@ def _sleep_until_wake(seconds: float) -> bool:
                     f"[wake] reason={payload.get('reason')} "
                     f"task={payload.get('task_id')}"
                 )
-                return True
+                return payload if isinstance(payload, dict) else {"reason": "wake"}
             time.sleep(min(2.0, max(0.1, end - time.time())))
         # 超时前再看一眼
-        return consume_wake() is not None
+        payload = consume_wake()
+        if payload is not None:
+            return payload if isinstance(payload, dict) else {"reason": "wake"}
+        return None
     except Exception:
         time.sleep(seconds)
-        return False
+        return None
 
 
 def _wait_tick(tick_start: float) -> None:
