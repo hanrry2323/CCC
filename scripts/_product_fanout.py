@@ -681,9 +681,11 @@ def _acceptance_bullets_for_phase(
             if _probe_touches_scope(c, scope):
                 _add(c)
 
-    # 2) scope 文件存在性（最小可验）
+    # 2) scope 文件/目录存在性（最小可验）
     for p in scope:
-        if "/" in p or p.endswith((".py", ".md", ".sh", ".json", ".ts", ".js")):
+        if p.endswith("/") or p in (".ccc/board", ".ccc") or p.rstrip("/").endswith("board"):
+            _add(f"test -d {p.rstrip('/')}")
+        elif "/" in p or p.endswith((".py", ".md", ".sh", ".json", ".ts", ".js")):
             _add(f"test -f {p}")
 
     # 3) epic ## 验收里触及本 scope 的探针（含 DRY_RUN 探针脚本本身）
