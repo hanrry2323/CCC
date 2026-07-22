@@ -1172,16 +1172,17 @@ final class AppModel: ObservableObject {
         return "Hub · 重试中 · 第\(attempts)次 · \(secs)s 前失败"
     }
 
-    func selectProject(_ id: String) async {
+    func selectProject(_ id: String, preferredThreadId: String? = nil) async {
         let switching = id != selectedProjectId
         // 先把「即将离开」的线程钉进 RAM+盘；SSOT 是 threadMessages，不靠 chat.messages
         if let prev = selectedProjectId, switching {
             let prevTid = resolveThreadId(projectId: prev, preferred: selectedThreadId)
             persistCurrentThreadSnapshot(threadId: prevTid)
         }
-        // 同步先定 tid + 水合，避免 await refreshThreads 间隙 UI 仍停在旧项目或闪空
+        // 显式 preferred（同项目且索引/磁盘存在）优先，禁止被「最近线程」冲掉中栏
+        let preferred = Self.resolvedPreferredThreadId(projectId: id, preferred: preferredThreadId)
         let localRecent = LocalSessionStore.threadsAsDesktop(projectId: id).first?.thread_id
-        let eagerTid = localRecent ?? threadIdForProject(id)
+        let eagerTid = preferred ?? localRecent ?? threadIdForProject(id)
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
@@ -1198,12 +1199,12 @@ final class AppModel: ObservableObject {
             rearmFanoutWatchdogIfNeeded(projectId: id)
             reconcileTransferDeliveryWithOutbox()
         }
-        // 多会话：刷新索引后再对齐最近线程
+        // 多会话：刷新索引后再对齐；有 preferred 则钉死，不被 recent 覆盖
         await refreshThreads(projectId: id)
         let recent = threads.first(where: {
             LocalSessionStore.projectId(fromThreadId: $0.thread_id) == id
         })?.thread_id
-        let tid = recent ?? threadIdForProject(id)
+        let tid = preferred ?? recent ?? threadIdForProject(id)
         if tid != selectedThreadId {
             ensureThreadHydrated(threadId: tid)
             selectedThreadId = tid
@@ -1226,11 +1227,27 @@ final class AppModel: ObservableObject {
     }
 
     /// 侧栏点项目卡：切项目 + 强制回对话面（看板/运维里点项目也能回对话）
-    func openProjectConversation(_ id: String) async {
+    func openProjectConversation(_ id: String, preferredThreadId: String? = nil) async {
         destination = .chat
         // 点卡瞬间先灌 RAM，保证本窗立刻只显示目标 tid（不等 await）
-        ensureThreadHydrated(projectId: id)
-        await selectProject(id)
+        if let pref = Self.resolvedPreferredThreadId(projectId: id, preferred: preferredThreadId) {
+            ensureThreadHydrated(threadId: pref)
+        } else {
+            ensureThreadHydrated(projectId: id)
+        }
+        await selectProject(id, preferredThreadId: preferredThreadId)
+    }
+
+    /// preferred 须属 pid，且在索引或磁盘会话中存在
+    private static func resolvedPreferredThreadId(projectId: String, preferred: String?) -> String? {
+        guard let raw = preferred?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              Self.projectId(fromThreadId: raw) == projectId
+        else { return nil }
+        let listed = LocalSessionStore.threadsAsDesktop(projectId: projectId)
+            .contains(where: { $0.thread_id == raw })
+        if listed { return raw }
+        if LocalSessionStore.load(projectId: projectId, threadId: raw) != nil { return raw }
+        return nil
     }
 
     /// 多窗：保证指定 thread 在 RAM 中已水合。
@@ -1240,11 +1257,15 @@ final class AppModel: ObservableObject {
             let pid = LocalSessionStore.projectId(fromThreadId: threadId)
             hydrateThreadFromDisk(projectId: pid, threadId: threadId)
             if threadMessages[threadId] == nil {
+                // 流式中 hydrate 可能跳过：勿种空覆盖；其余视为磁盘 miss / 新会话
+                if streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil {
+                    return
+                }
                 // #region agent log
                 DebugAgentLog.log(
                     hypothesisId: "H3",
                     location: "AppModel.ensureThreadHydrated",
-                    message: "seed empty RAM (disk miss)",
+                    message: "seed empty RAM (disk miss or new thread)",
                     data: ["threadId": threadId, "projectId": pid]
                 )
                 // #endregion
@@ -1252,6 +1273,12 @@ final class AppModel: ObservableObject {
             }
             bumpThreadRevision(threadId)
         }
+    }
+
+    /// 中栏：RAM 尚未登记该 tid（水合前）→ 转圈，勿 offlineCenter
+    func hasHydratedThread(_ threadId: String?) -> Bool {
+        guard let threadId, !threadId.isEmpty else { return false }
+        return threadMessages[threadId] != nil
     }
 
     /// 兼容旧 API：水合该项目「最近活动线程」，禁止盲种已归档的 ::main（H3）
@@ -2547,7 +2574,8 @@ final class AppModel: ObservableObject {
         requestId: String,
         title: String,
         goal: String,
-        pipeline: String
+        pipeline: String,
+        persistDisk: Bool = true
     ) {
         let pendingId = "pending:\(requestId)"
         let epic = FlowEpic(
@@ -2585,7 +2613,9 @@ final class AppModel: ObservableObject {
         snap.recentEpics = recent
         threadFlow[tid] = snap
         bumpFlowRevision(tid)
-        persistCurrentThreadSnapshot(threadId: tid)
+        if persistDisk {
+            persistCurrentThreadSnapshot(threadId: tid)
+        }
         if selectedThreadId == tid || selectedProjectId == pid {
             applyFlowSnapshot(snap)
             currentEpicId = pendingId
@@ -3721,6 +3751,11 @@ final class AppModel: ObservableObject {
         mutateTransferForm(threadId, update)
     }
 
+    /// TransferSheet 本地草稿写回（确认/退回/预填后）
+    func commitTransferForm(_ threadId: String, _ form: TransferFormState) {
+        setTransferForm(threadId, form)
+    }
+
     private func mutateTransferForm(_ threadId: String, _ update: (inout TransferFormState) -> Void) {
         var form = threadTransferForms[threadId] ?? TransferFormState()
         update(&form)
@@ -3810,7 +3845,8 @@ final class AppModel: ObservableObject {
             }
             if form.planMd.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if lastAssistant.count > 80 {
-                    form.planMd = lastAssistant
+                    // 启发式预填截断，避免 TransferSheet 挂巨文卡顿
+                    form.planMd = String(lastAssistant.prefix(8_000))
                 }
             }
             if form.feasibility.isEmpty {
@@ -3921,7 +3957,7 @@ final class AppModel: ObservableObject {
             """
         }()
 
-        // 一点击：立刻收确认卡 + 右栏乐观大卡，再 outbox / 后台 POST
+        // 一点击：立刻收确认卡 + 右栏乐观大卡，再后台 outbox
         let requestId = UUID().uuidString
         insertOptimisticTransferRail(
             tid: tid,
@@ -3929,7 +3965,8 @@ final class AppModel: ObservableObject {
             requestId: requestId,
             title: title,
             goal: goal,
-            pipeline: pipeline
+            pipeline: pipeline,
+            persistDisk: false
         )
         resetTransferForm(threadId: tid)
         dismissTransferSheet(threadId: tid)
@@ -3956,18 +3993,20 @@ final class AppModel: ObservableObject {
             attempts: 0,
             saved_at: ISO8601DateFormatter().string(from: Date())
         )
-        LocalSessionStore.enqueueTransfer(outboxItem)
         setTransferDelivery(tid, .queued)
 
-        // 前台只确认「已排队」；唯一冲刷器 = sidecar（关 App 也投）
+        // 前台只确认「已排队」；磁盘 + enqueue 放到下一拍，减确认 hitch
         if hubReachable {
             showToast("已排队 · 后台投递中")
         } else {
             showToast("已排队 · Hub 恢复后自动投递")
             startHubRecoverLoopIfNeeded()
         }
-        Task { [weak self] in
-            await self?.nudgeSidecarOutboxFlush()
+        Task { @MainActor in
+            await Task.yield()
+            LocalSessionStore.enqueueTransfer(outboxItem)
+            self.persistCurrentThreadSnapshot(threadId: tid)
+            await self.nudgeSidecarOutboxFlush()
         }
     }
 
@@ -4118,9 +4157,9 @@ final class AppModel: ObservableObject {
     ) async {
         let tid = resolveFlowThreadId(projectId: projectId, preferred: threadId)
         let isSelected = selectedProjectId == projectId
+        // 禁止改 selectedThreadId：flow/recover/转任务不得冲刷中栏会话焦点
         if isSelected {
             selectedNodeDetail = nil
-            selectedThreadId = tid
         }
         // 再开快路径：本机已有 bound epic → 先立刻 snapshot，epics 列表后台补
         let preexisting = threadFlow[tid]?.epicId

@@ -471,14 +471,17 @@ private struct SidebarThreadRow: View {
         withAnimation(.easeOut(duration: 0.12)) {
             pressFlash = true
         }
+        let tid = thread.thread_id
+        // 先水合再绑 window.threadId，避免一帧 displayMessages=[]（冲刷感）
+        model.ensureThreadHydrated(threadId: tid)
         window.projectId = projectId
-        window.threadId = thread.thread_id
+        window.threadId = tid
         window.destination = .chat
-        model.selectedThreadId = thread.thread_id
+        model.selectedThreadId = tid
         model.selectedProjectId = projectId
-        model.clearThreadUnread(thread.thread_id)
+        model.clearThreadUnread(tid)
         Task {
-            await model.openThread(thread.thread_id)
+            await model.openThread(tid)
             try? await Task.sleep(nanoseconds: 220_000_000)
             withAnimation(.easeOut(duration: 0.25)) {
                 pressFlash = false
@@ -486,7 +489,6 @@ private struct SidebarThreadRow: View {
         }
     }
 }
-
 // MARK: - Chat（Cursor 节奏：消息区占满 + 输入条贴底）
 
 struct CodexChatPane: View {
@@ -519,6 +521,10 @@ struct CodexChatPaneBody: View {
     @State private var paneSwitchGeneration: UInt64 = 0
     /// 用于抓「有内容→变空」瞬间（H6）
     @State private var lastDisplayMsgCount: Int = -1
+    /// 同 tid 下 count→0 才报 H6；跨线程切换不算冲刷
+    @State private var lastH6ThreadId: String = ""
+    /// 上一帧有内容时切 tid 禁止 opacity→0
+    @State private var lastNonEmptyMsgCount: Int = 0
     @FocusState private var composerFocused: Bool
 
     /// 本窗唯一项目焦点；首帧未绑定时短暂回落全局，避免闪空（H5）
@@ -587,7 +593,22 @@ struct CodexChatPaneBody: View {
             }
             statusBar
 
-            if !model.canChat && displayMessages.isEmpty {
+            // hydrating：tid 已定但 RAM 尚未登记 → 转圈，禁止 offlineCenter / 空欢迎冲刷
+            let paneHydrating =
+                paneThreadId.map { !model.hasHydratedThread($0) } ?? false
+
+            if paneHydrating {
+                VStack(spacing: 10) {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text("加载对话…")
+                        .font(.system(size: 12, weight: .light))
+                        .foregroundStyle(CCCTheme.faint)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else if !model.canChat && displayMessages.isEmpty {
                 // #region agent log
                 let _ = DebugAgentLog.log(
                     hypothesisId: "H5",
@@ -713,6 +734,9 @@ struct CodexChatPaneBody: View {
                 runId: "post-fix"
             )
             // #endregion
+            if let newTid, !newTid.isEmpty {
+                model.ensureThreadHydrated(threadId: newTid)
+            }
             // 消息源只跟 thread；以 thread 切换驱动过渡，避免与 project 双触发叠闪
             beginPaneSwitchTransition()
         }
@@ -733,15 +757,17 @@ struct CodexChatPaneBody: View {
             // #endregion
         }
         .onChange(of: displayMessages.count) { newCount in
+            let tid = paneThreadId ?? ""
             // #region agent log
-            if lastDisplayMsgCount > 0, newCount == 0 {
+            // 仅同一 threadId 下 count→0 才算冲刷；跨线程切换会误报
+            if lastDisplayMsgCount > 0, newCount == 0, !tid.isEmpty, tid == lastH6ThreadId {
                 DebugAgentLog.log(
                     hypothesisId: "H6",
                     location: "CodexChatPane.onChange.displayMessages",
                     message: "displayMessages dropped to empty",
                     data: [
                         "prev": lastDisplayMsgCount,
-                        "threadId": paneThreadId ?? "",
+                        "threadId": tid,
                         "windowThreadId": window.threadId ?? "",
                         "agentMode": model.agentMode,
                         "canChat": model.canChat,
@@ -753,6 +779,8 @@ struct CodexChatPaneBody: View {
             }
             // #endregion
             lastDisplayMsgCount = newCount
+            if !tid.isEmpty { lastH6ThreadId = tid }
+            if newCount > 0 { lastNonEmptyMsgCount = newCount }
         }
         .onChange(of: window.destination) { dest in
             // #region agent log
@@ -830,7 +858,7 @@ struct CodexChatPaneBody: View {
         paneSwitchGeneration &+= 1
         let gen = paneSwitchGeneration
         let msgCount = displayMessages.count
-        let hasContent = msgCount > 0
+        let hasContent = msgCount > 0 || lastNonEmptyMsgCount > 0
         // #region agent log
         DebugAgentLog.log(
             hypothesisId: "H4",
@@ -840,6 +868,7 @@ struct CodexChatPaneBody: View {
                 "gen": gen,
                 "threadId": paneThreadId ?? "",
                 "msgCount": msgCount,
+                "lastNonEmpty": lastNonEmptyMsgCount,
                 "hasContent": hasContent,
             ],
             runId: "post-fix"
@@ -1175,6 +1204,19 @@ struct CodexChatPaneBody: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: CCCTheme.messageStackSpacing) {
                         if displayMessages.isEmpty {
+                            if lastNonEmptyMsgCount > 0 {
+                                // 切 tid 瞬间仍空：转圈，勿把「冲刷」画成空欢迎
+                                VStack(spacing: 10) {
+                                    Spacer().frame(height: 80)
+                                    ProgressView()
+                                        .controlSize(.regular)
+                                    Text("加载对话…")
+                                        .font(.system(size: 12, weight: .light))
+                                        .foregroundStyle(CCCTheme.faint)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.bottom, 24)
+                            } else {
                             VStack(alignment: .leading, spacing: 14) {
                                 Spacer().frame(height: 48)
                                 Text("有什么可以帮忙的？")
@@ -1212,6 +1254,7 @@ struct CodexChatPaneBody: View {
                             .padding(.bottom, 24)
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel("空对话引导：聊透目标，定稿，确认转任务")
+                            }
                         }
                         ForEach(displayMessages) { msg in
                             CodexMessageRow(message: msg)
@@ -2346,10 +2389,12 @@ struct TransferSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let threadId: String
+    /// 本地草稿：打字不碰 AppModel @Published，避免背后聊天全树重绘卡顿
+    @State private var draft = TransferFormState()
+    @State private var planExpanded = false
     @State private var rejectNote: String = ""
     @State private var showRejectNote: Bool = false
-
-    private var form: TransferFormState { model.transferForm(for: threadId) }
+    @State private var didLoad = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2358,8 +2403,8 @@ struct TransferSheet: View {
                     .font(.system(size: 20, weight: .semibold))
                     .tracking(-0.4)
                 Spacer()
-                if !form.source.isEmpty {
-                    Text(form.source == "ccc-transfer" ? "来源定稿" : "启发式预填")
+                if !draft.source.isEmpty {
+                    Text(draft.source == "ccc-transfer" ? "来源定稿" : "启发式预填")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(CCCTheme.faint)
                         .padding(.horizontal, 8)
@@ -2371,57 +2416,59 @@ struct TransferSheet: View {
                 .font(CCCTheme.callout)
                 .foregroundStyle(CCCTheme.faint)
 
-            ScrollView {
-                Form {
-                    Section("意图（可改）") {
-                        TextField("标题", text: model.bindingTransferField(threadId, \.title))
-                        TextField("目标", text: model.bindingTransferField(threadId, \.goal), axis: .vertical)
-                            .lineLimit(3...6)
-                        TextField("验收（每行一条）", text: model.bindingTransferField(threadId, \.acceptance), axis: .vertical)
-                            .lineLimit(3...8)
-                        TextField("方案正文", text: model.bindingTransferField(threadId, \.planMd), axis: .vertical)
-                            .lineLimit(4...12)
-                    }
-                    Section("执行偏好（可改）") {
-                        TextField("产线", text: model.bindingTransferField(threadId, \.pipeline))
-                        Picker("执行面", selection: model.bindingTransferField(threadId, \.executor)) {
-                            Text("写码").tag("opencode")
-                            Text("脚本/board").tag("python")
-                            Text("ollama").tag("ollama")
-                            Text("cli").tag("cli")
-                            Text("auto").tag("auto")
+            Form {
+                Section("意图（可改）") {
+                    TextField("标题", text: $draft.title)
+                    TextField("目标", text: $draft.goal, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("验收（每行一条）", text: $draft.acceptance, axis: .vertical)
+                        .lineLimit(3...8)
+                    DisclosureGroup(isExpanded: $planExpanded) {
+                        if planExpanded {
+                            TextField("方案正文", text: $draft.planMd, axis: .vertical)
+                                .lineLimit(4...12)
                         }
-                        Picker("复杂度", selection: model.bindingTransferField(threadId, \.complexity)) {
-                            Text("small").tag("small")
-                            Text("medium").tag("medium")
-                            Text("large").tag("large")
-                        }
-                        Toggle("发布时升 VERSION", isOn: Binding(
-                            get: { model.transferForm(for: threadId).bumpVersion },
-                            set: { v in model.mutateTransferFormPublic(threadId) { $0.bumpVersion = v } }
-                        ))
-                        TextField("备注（可选，随卡投递）", text: model.bindingTransferField(threadId, \.humanNote), axis: .vertical)
-                            .lineLimit(2...4)
-                    }
-                    Section("门禁（只读）") {
-                        if form.feasibility == "ok" {
-                            LabeledContent("可行性", value: "可执行（锁死）")
-                        } else {
-                            Picker("可行性", selection: model.bindingTransferField(threadId, \.feasibility)) {
-                                Text("可执行").tag("ok")
-                                Text("阻塞").tag("blocked")
-                            }
-                            TextField("阻塞原因", text: model.bindingTransferField(threadId, \.feasibilityReason), axis: .vertical)
-                                .lineLimit(2...4)
-                        }
-                        LabeledContent("会话", value: threadId)
+                    } label: {
+                        Text(planExpanded ? "方案正文" : planMdSummary)
+                            .font(.system(size: 13))
+                            .foregroundStyle(CCCTheme.secondary)
                     }
                 }
-                .formStyle(.grouped)
-                .frame(maxWidth: .infinity, minHeight: 420)
+                Section("执行偏好（可改）") {
+                    TextField("产线", text: $draft.pipeline)
+                    Picker("执行面", selection: $draft.executor) {
+                        Text("写码").tag("opencode")
+                        Text("脚本/board").tag("python")
+                        Text("ollama").tag("ollama")
+                        Text("cli").tag("cli")
+                        Text("auto").tag("auto")
+                    }
+                    Picker("复杂度", selection: $draft.complexity) {
+                        Text("small").tag("small")
+                        Text("medium").tag("medium")
+                        Text("large").tag("large")
+                    }
+                    Toggle("发布时升 VERSION", isOn: $draft.bumpVersion)
+                    TextField("备注（可选，随卡投递）", text: $draft.humanNote, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+                Section("门禁（只读）") {
+                    if draft.feasibility == "ok" {
+                        LabeledContent("可行性", value: "可执行（锁死）")
+                    } else {
+                        Picker("可行性", selection: $draft.feasibility) {
+                            Text("可执行").tag("ok")
+                            Text("阻塞").tag("blocked")
+                        }
+                        TextField("阻塞原因", text: $draft.feasibilityReason, axis: .vertical)
+                            .lineLimit(2...4)
+                    }
+                    LabeledContent("会话", value: threadId)
+                }
             }
+            .formStyle(.grouped)
 
-            if let err = form.error {
+            if let err = draft.error {
                 Text(err)
                     .font(CCCTheme.callout)
                     .foregroundStyle(CCCTheme.nodeFail)
@@ -2435,6 +2482,7 @@ struct TransferSheet: View {
             HStack(spacing: 10) {
                 Button("退回对话") {
                     if showRejectNote {
+                        model.commitTransferForm(threadId, draft)
                         model.rejectTransferBackToChat(threadId: threadId, note: rejectNote)
                         dismiss()
                     } else {
@@ -2443,16 +2491,39 @@ struct TransferSheet: View {
                 }
                 .foregroundStyle(CCCTheme.secondary)
                 Spacer()
-                Button("重新预填") { model.prefillTransferFromChat(threadId: threadId) }
-                    .foregroundStyle(CCCTheme.secondary)
-                Button("确认转任务") { Task { await model.submitTransfer(threadId: threadId) } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CCCTheme.accent)
-                    .disabled(model.busy)
+                Button("重新预填") {
+                    model.prefillTransferFromChat(threadId: threadId)
+                    loadDraftFromModel()
+                }
+                .foregroundStyle(CCCTheme.secondary)
+                Button("确认转任务") {
+                    model.commitTransferForm(threadId, draft)
+                    Task { await model.submitTransfer(threadId: threadId) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(CCCTheme.accent)
+                .disabled(model.busy)
             }
         }
         .padding(24)
         .frame(width: 560, height: 720)
+        .onAppear {
+            guard !didLoad else { return }
+            didLoad = true
+            loadDraftFromModel()
+        }
+    }
+
+    private var planMdSummary: String {
+        let t = draft.planMd.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "方案正文（可展开编辑）" }
+        let preview = String(t.prefix(48)).replacingOccurrences(of: "\n", with: " ")
+        return "方案正文 · \(preview)…"
+    }
+
+    private func loadDraftFromModel() {
+        draft = model.transferForm(for: threadId)
+        planExpanded = false
     }
 }
 

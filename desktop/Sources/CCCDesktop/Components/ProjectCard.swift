@@ -117,7 +117,7 @@ struct ProjectCard: View {
             model.ensureThreadHydrated(projectId: project.id)
         }
         Task {
-            await model.openProjectConversation(project.id)
+            await model.openProjectConversation(project.id, preferredThreadId: keepTid)
             // #region agent log
             DebugAgentLog.log(
                 hypothesisId: "H2",
@@ -133,25 +133,25 @@ struct ProjectCard: View {
                 runId: "post-fix"
             )
             // #endregion
-            guard let keepTid else {
-                // 本窗尚无会话：跟模型选中的最近线程
-                guard let tid = model.selectedThreadId,
-                      LocalSessionStore.projectId(fromThreadId: tid) == project.id
-                else { return }
-                var txn = Transaction()
-                txn.disablesAnimations = true
-                withTransaction(txn) {
-                    window.threadId = tid
+            // preferred 已由 selectProject 钉死；仅当本窗尚无会话时跟模型
+            guard keepTid == nil else {
+                if window.threadId != keepTid {
+                    var txn = Transaction()
+                    txn.disablesAnimations = true
+                    withTransaction(txn) { window.threadId = keepTid }
                 }
-                model.clearThreadUnread(tid)
+                model.clearThreadUnread(keepTid!)
                 return
             }
-            // 有 keep：模型若漂到别的 tid，拉回本窗会话，禁止空闪
-            if model.selectedThreadId != keepTid {
-                model.selectedThreadId = keepTid
-                await model.openThread(keepTid)
+            guard let tid = model.selectedThreadId,
+                  LocalSessionStore.projectId(fromThreadId: tid) == project.id
+            else { return }
+            var txn = Transaction()
+            txn.disablesAnimations = true
+            withTransaction(txn) {
+                window.threadId = tid
             }
-            model.clearThreadUnread(keepTid)
+            model.clearThreadUnread(tid)
         }
     }
 
