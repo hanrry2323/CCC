@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "CCC Desktop",
-    "version": "0.53.1"
+    "version": "0.53.2"
   },
   "tauri": {
     "allowlist": {

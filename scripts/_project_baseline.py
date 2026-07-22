@@ -113,6 +113,56 @@ def _board_summary(ws: Path) -> dict[str, Any]:
     }
 
 
+def _porcelain_paths(dirty_lines: list[str]) -> list[str]:
+    """从 `git status --porcelain` 行提取路径（支持 rename `->`）。"""
+    out: list[str] = []
+    for ln in dirty_lines:
+        s = (ln or "").rstrip()
+        if not s.strip():
+            continue
+        # 格式：XY PATH 或 XY ORIG -> NEW；前两列为 status
+        body = s[3:] if len(s) >= 3 and s[2] == " " else s.strip()
+        if " -> " in body:
+            body = body.split(" -> ", 1)[-1]
+        body = body.strip().strip('"')
+        if body:
+            out.append(body)
+    return out
+
+
+def classify_dirty(dirty_lines: list[str]) -> dict[str, Any]:
+    """区分编排产物脏 vs 业务脏，供 Agent 勿把 .ccc 卫生当成业务风险。
+
+    Returns:
+      dirty_kind: clean | ccc_hygiene | business | mixed
+      dirty_ccc_only: bool
+      dirty_ccc_paths / dirty_business_paths: 样本路径
+    """
+    paths = _porcelain_paths(dirty_lines)
+    ccc: list[str] = []
+    biz: list[str] = []
+    for p in paths:
+        norm = p.replace("\\", "/")
+        if norm == ".ccc" or norm.startswith(".ccc/"):
+            ccc.append(p)
+        else:
+            biz.append(p)
+    if not paths:
+        kind = "clean"
+    elif not biz:
+        kind = "ccc_hygiene"
+    elif not ccc:
+        kind = "business"
+    else:
+        kind = "mixed"
+    return {
+        "dirty_kind": kind,
+        "dirty_ccc_only": kind == "ccc_hygiene",
+        "dirty_ccc_paths": ccc[:20],
+        "dirty_business_paths": biz[:20],
+    }
+
+
 def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]:
     ws = Path(workspace).resolve()
     branch_rc, branch = _run_git(ws, "rev-parse", "--abbrev-ref", "HEAD")
@@ -193,11 +243,28 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
     board = _board_summary(ws)
 
     dirty = len(dirty_lines) > 0
+    dirty_meta = classify_dirty(dirty_lines)
+    dirty_kind = str(dirty_meta.get("dirty_kind") or "clean")
+    dirty_ccc_only = bool(dirty_meta.get("dirty_ccc_only"))
     risks: list[str] = []
-    if dirty:
-        risks.append(f"工作区有 {len(dirty_lines)} 处未提交变更")
+    if dirty_kind == "ccc_hygiene":
+        risks.append(
+            f"编排产物未提交（仅 .ccc/，{len(dirty_lines)} 处）："
+            "定稿卫生卡落盘即可；非业务改码，不挡讨论与强制下达"
+        )
+    elif dirty_kind == "business":
+        risks.append(
+            f"业务工作区有 {len(dirty_lines)} 处未提交变更（含非 .ccc 路径）"
+        )
+    elif dirty_kind == "mixed":
+        risks.append(
+            f"工作区混合脏：.ccc {len(dirty_meta.get('dirty_ccc_paths') or [])} + "
+            f"业务 {len(dirty_meta.get('dirty_business_paths') or [])}；先分清再下达"
+        )
     if ahead_behind and ahead_behind.get("ahead", 0) > 0:
-        risks.append(f"本地领先远端 {ahead_behind['ahead']} commit（未推送）")
+        risks.append(
+            f"本地领先远端 {ahead_behind['ahead']} commit（未推送；备份风险，不挡 Engine 消费）"
+        )
     if ahead_behind and ahead_behind.get("behind", 0) > 0:
         risks.append(f"本地落后远端 {ahead_behind['behind']} commit")
     if version and readme_ver and version.lstrip("v") not in readme_ver and readme_ver.lstrip("v") not in version:
@@ -215,8 +282,8 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
     inflight_active = int(board.get("inflight_active") or 0)
     git_clean = not dirty
     pipeline_idle = bool(board.get("pipeline_idle"))
-    # ready_for_task = git 净 且 无活跃 inflight（不含 done+hidden 僵尸）
-    ready = git_clean and inflight_active == 0
+    # ready：无在飞，且干净或仅 .ccc 卫生脏（卫生脏不挡业务开工）
+    ready = inflight_active == 0 and (git_clean or dirty_ccc_only)
 
     control_compact = {
         "mode": mode,
@@ -237,6 +304,10 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
             "dirty": dirty,
             "dirty_count": len(dirty_lines),
             "dirty_sample": dirty_lines[:30],
+            "dirty_kind": dirty_kind,
+            "dirty_ccc_only": dirty_ccc_only,
+            "dirty_ccc_paths": dirty_meta.get("dirty_ccc_paths") or [],
+            "dirty_business_paths": dirty_meta.get("dirty_business_paths") or [],
             "ahead_behind": ahead_behind,
             "recent_commits": recent_commits[:5],
         },
@@ -254,10 +325,13 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "inflight_active": inflight_active,
         "ready_for_task": ready,
         "can_dispatch": can_dispatch,
+        "dirty_kind": dirty_kind,
+        "dirty_ccc_only": dirty_ccc_only,
         "summary": _format_summary(
             branch if branch_rc == 0 else "?",
             dirty,
             len(dirty_lines),
+            dirty_kind,
             mode,
             invent_hard,
             queue_only,
@@ -272,6 +346,7 @@ def _format_summary(
     branch: str,
     dirty: bool,
     dirty_n: int,
+    dirty_kind: str,
     mode: str,
     invent_hard: bool,
     queue_only: bool,
@@ -279,17 +354,33 @@ def _format_summary(
     ready: bool,
     recent: list[str],
 ) -> str:
+    dirty_label = "工作区干净"
+    if dirty:
+        if dirty_kind == "ccc_hygiene":
+            dirty_label = f"仅 .ccc 卫生脏 {dirty_n} 项"
+        elif dirty_kind == "business":
+            dirty_label = f"业务未提交 {dirty_n} 项"
+        elif dirty_kind == "mixed":
+            dirty_label = f"混合脏 {dirty_n} 项"
+        else:
+            dirty_label = f"未提交 {dirty_n} 项"
+    if ready and dirty_kind == "ccc_hygiene":
+        gate = (
+            "✅ 可开工（仅编排产物未提交）：优先定稿卫生卡；业务 epic 也可强制下达"
+        )
+    elif ready:
+        gate = "✅ 基线较干净，可定方案；下达需人确认 plan（空板时勿期望 Engine 自跑）"
+    elif dirty_kind in ("business", "mixed"):
+        gate = "⚠️ 有业务未提交变更，建议先核账再下达（仍可强制下达）"
+    else:
+        gate = "⚠️ 建议先处理未提交变更，再下达任务（仍可强制下达）"
     lines = [
         f"分支 `{branch}` · 控制面 `{mode}`"
         + (" · invent硬关" if invent_hard else "")
         + (" · 仅队列消费" if queue_only else "")
         + " · "
-        + ("工作区干净" if not dirty else f"未提交 {dirty_n} 项"),
-        (
-            "✅ 基线较干净，可定方案；下达需人确认 plan（空板时勿期望 Engine 自跑）"
-            if ready
-            else "⚠️ 建议先处理未提交变更，再下达任务（仍可强制下达）"
-        ),
+        + dirty_label,
+        gate,
     ]
     if recent:
         lines.append("近提交：" + " · ".join(recent[:3]))
@@ -306,7 +397,13 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "branch": git.get("branch"),
         "dirty": git.get("dirty"),
         "dirty_count": git.get("dirty_count"),
+        "dirty_kind": git.get("dirty_kind") or baseline.get("dirty_kind"),
+        "dirty_ccc_only": git.get("dirty_ccc_only")
+        if git.get("dirty_ccc_only") is not None
+        else baseline.get("dirty_ccc_only"),
         "dirty_sample": (git.get("dirty_sample") or [])[:12],
+        "dirty_ccc_paths": (git.get("dirty_ccc_paths") or [])[:12],
+        "dirty_business_paths": (git.get("dirty_business_paths") or [])[:12],
         "ahead_behind": git.get("ahead_behind"),
         "recent_commits": git.get("recent_commits") or [],
         "version": baseline.get("version"),
@@ -316,6 +413,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "control": baseline.get("control"),
         "risks": baseline.get("risks") or [],
         "ready_for_task": baseline.get("ready_for_task"),
+        "can_dispatch": baseline.get("can_dispatch"),
         "git_clean": baseline.get("git_clean"),
         "pipeline_idle": baseline.get("pipeline_idle"),
         "inflight_active": baseline.get("inflight_active"),
@@ -337,34 +435,47 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "禁止对本机跑 git / Read 业务树再核实（会串到 CCC 平台仓）。\n"
         "快照不足就直说缺什么；Hub 断则明说不可达，勿瞎编。\n\n"
         "## 静默（勿写入回复）\n"
-        "1. 读快照：version / board / control / risks / recent_commits；"
-        "同时报 git_clean、pipeline_idle、inflight_active、ready_for_task"
+        "1. 读快照：version / board / control / risks / recent_commits / dirty_kind；"
+        "同时报 git_clean、pipeline_idle、inflight_active、ready_for_task、can_dispatch"
         "（ready≠仅 git 净；活跃计数已过滤 ui_hidden 与 done epic）。\n"
         "2. 优先读注入的 live board（as_of + inflight）；禁止把 raw backlog 文件数当待办挑卡；"
-        "僵尸 done+hidden → 引导清账而非「挑一张转」。\n"
-        "3. 验收命令是 Engine 关门条件，不是散文。看板卫生类建议 executor=python + scope 仅 .ccc/board。\n"
-        "4. 结合 CLAUDE/profile/state 摘录建立「这是什么项目」。\n"
-        "4. 完整理解 control：`invent_hard_disabled` / `queue_consumer_only` 等。\n"
-        "5. 看板是否空转；空 + invent 关 → Engine 闲置正常。\n"
-        "6. dirty 以快照为准；业务 dirty → 提醒「业务改码请定稿转任务」。\n\n"
+        "僵尸 done+hidden → 引导清账而非「挑一张转」；**state.md 看板表可能滞后，以 live board 为准**。\n"
+        "3. 验收命令是 Engine 关门条件，不是散文。看板卫生类建议 executor=python + scope 仅 .ccc/。\n"
+        "4. 结合 CLAUDE/profile/state 摘录建立「这是什么项目」；VERSION 以快照 `version.VERSION` 为准"
+        "（摘录里旧版本号勿覆盖）。\n"
+        "5. 完整理解 control：`invent_hard_disabled` / `queue_consumer_only` 等。\n"
+        "6. 看板是否空转；空 + invent 关 → Engine 闲置正常。\n"
+        "7. **dirty 分类（强制）**：看 `dirty_kind` / `dirty_sample` 路径前缀——\n"
+        "   - `ccc_hygiene`（路径全是 `.ccc/`）：必须下结论「仅编排产物未提交」，"
+        "**禁止**说「可能是业务改动」；`ready_for_task` 可为 true；"
+        "「可下达任务」给卫生标题（≤20字），并说明业务 epic 也可强制下达。\n"
+        "   - `business` / `mixed`：才强调业务核账；提醒「业务改码请定稿转任务」。\n"
+        "   - `ahead` 未推送 = 备份风险，**不**等于不能开工。\n"
+        "8. profile/state 与 live 冲突时，点明「摘录滞后」，以 live + VERSION 快照为准。\n\n"
         "## 禁止对用户说\n"
         "- 禁止建议降控制面 / 关机（除非对方问闲置/省资源）\n"
         "- invent / 自造 backlog / 无人值守 invent（红线 12）\n"
         "- 进队后逐步人批；对 CCC orch 下业务 epic\n"
         "- 推销多 IDE / 让用户先选固定角色\n"
         "- 文件树、角色实现路径堆砌\n"
-        "- 「请先在本机 clone / 绑定工作区才能对齐」\n\n"
+        "- 「请先在本机 clone / 绑定工作区才能对齐」\n"
+        "- 在 dirty_sample 已全是 `.ccc/` 时仍说「说不清是不是业务改动」\n"
+        "- 用「暂不建议下达」搪塞「可下达任务」段（必须给 1 个 ≤20 字标题）\n\n"
         "## 输出格式（4 段 · 有实质，勿灌水）\n"
         "### 现状\n"
         "- 这个项目是干什么的（含版本）\n"
-        "- 当前大概卡在哪 / 是否可开工（≤3 短句，要有依据意识）\n\n"
+        "- 当前大概卡在哪 / 是否可开工（≤3 短句；写明 dirty_kind 与 ready/can_dispatch）\n\n"
         "### 风险\n"
-        "- 只列会挡下达或发布的事；空板可写「闲置属正常」\n\n"
+        "- 只列会挡下达或发布的事；空板可写「闲置属正常」；"
+        "仅 .ccc 脏写成卫生项，勿升格成业务风险\n\n"
         "### 建议选项\n"
-        "- 2～3 个下一步（业务动作 + 为何优先）；最后一行：`最佳：… — <一句理由>`\n\n"
+        "- 2～3 个下一步（业务动作 + 为何优先）；最后一行：`最佳：… — <一句理由>`\n"
+        "- 直接推荐最佳项，勿把核账当成无尽选择题\n\n"
         "### 可下达任务\n"
-        "- 适合（人确认后转任务）：1 个标题 ≤20 字\n"
-        "- 不适合无人值守：写「先处理：…」或「需人定稿」\n\n"
+        "- 适合（人确认后转任务）：**必须** 1 个标题 ≤20 字"
+        "（`ccc_hygiene` 例：提交清场残留编排产物）\n"
+        "- 不适合无人值守：写「先处理：…」或「需人定稿」"
+        "（不得以此段代替上一行必给标题）\n\n"
         "请现在输出完整可见答复；禁止只回 No response requested 或空内容。\n\n"
         f"程序快照：\n```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
         f"摘要：{baseline.get('summary', '')}\n"

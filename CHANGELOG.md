@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.53.2] — 2026-07-22
+
+### Fixed
+
+- **Agent 基线 dirty 分类**：`dirty_kind`/`ccc_hygiene` — 仅 `.ccc/` 脏不挡 `ready_for_task`；开场 prompt / hub_voice 禁止把卫生脏糊弄成业务风险，且「可下达任务」必须给 ≤20 字标题。
+
 ## [v0.53.1] — 2026-07-22
 
 ### Fixed

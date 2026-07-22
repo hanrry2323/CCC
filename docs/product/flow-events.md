@@ -14,6 +14,7 @@
 | 右栏焦点 | 本机 `boundEpicId` = **最新一笔未完成** epic；每次 transfer 替换焦点 |
 | 完成即退场 | `user_stage=done` → 右栏清空时间线（保留 `recentEpics` 列表）；历史只在**看板** |
 | 沉底不占活位 | 板上 `ui_hidden` + `split_status∈{done,failed,blocked}` → snapshot `empty`+`sunk`；`/flow/epics` 不进列表、`bound_hint` 不挂；禁止幽灵「待拆解」 |
+| dirty 分类 | baseline `dirty_kind`：`ccc_hygiene`（仅 `.ccc/`）不挡 `ready_for_task`；Agent 禁止糊弄成业务风险 |
 | 切换 | `recentEpics` Menu「切换本对话任务」可回看未完成编排；已 done 不展开时间线 |
 | Engine | 同仓多 epic 进 backlog **排队**；同仓 opencode **单写码槽**（非并行多路） |
 
