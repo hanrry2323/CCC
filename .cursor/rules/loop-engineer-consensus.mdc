@@ -38,7 +38,7 @@ alwaysApply: true
 - 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。  
 - **已注册 ≠ 可开工**：正式开发前全面对齐。  
 - Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。  
-- **上线 ≠ 完成**：`released`/VERSION 只到 `code_landed`；须意图探针可重放 + regress 飞轮 + L1 退出条件，才算意图稳定。空闲优先产品 epic，禁止卫生/烟测当主业。
+- **上线 ≠ 完成**：`released`/VERSION 只到 `code_landed`；须意图探针可重放 + regress 飞轮 + L1 退出条件/`intent_stable`，才算意图稳定。空闲优先产品 epic（`next_product_goal`），禁止卫生/烟测当主业。见 `docs/product/lpsn-ship-gate.md`。
 - 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档。
 - **活跃板计数**（lens/mind/baseline）过滤 `ui_hidden` 与 epic `split_status=done`；禁止把僵尸 backlog 文件数当待办。
 - **ready_for_task** = git 净 **且** 无活跃 inflight；拆开看 `git_clean` / `pipeline_idle`。

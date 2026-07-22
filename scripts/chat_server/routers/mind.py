@@ -92,3 +92,38 @@ async def put_mind_decided(request: Request, project_id: str) -> Any:
         "as_of": digest.get("as_of"),
         "digest_preview": str(digest.get("digest") or "")[:400],
     }
+
+
+@router.post("/{project_id}/goals/{goal_id}/status")
+async def post_goal_status(
+    request: Request, project_id: str, goal_id: str
+) -> Any:
+    """Mark goal intent_stable / abandoned / probed (LPSN · S)."""
+    check_auth(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    status = str(body.get("status") or "").strip().lower()
+    try:
+        decided = agent_mind.mark_goal_status(
+            _root(project_id),
+            goal_id,
+            status,
+            updated_by=str(body.get("updated_by") or "human"),
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=400, content={"ok": False, "error": str(exc)[:200]}
+        )
+    digest = agent_mind.build_digest(
+        _root(project_id), project_id=project_id, use_cache=False, persist=True
+    )
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "decided": decided,
+        "next_product_goal": digest.get("next_product_goal"),
+    }

@@ -605,6 +605,18 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             return JSONResponse(status_code=400, content=exc.detail)
         raise
 
+    # LPSN · N: after workspace known — block next product intent until S/abandon
+    n_err = transfer_gate.check_next_intent_gate(body, Path(workspace))
+    if n_err:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": n_err["code"],
+                "errors": [n_err],
+            },
+        )
+
     title = str(body.get("title") or "").strip()[:80]
     epic_id = str(body.get("epic_id") or "").strip() or _make_epic_id(title)
     if not _EPIC_ID_RE.match(epic_id):

@@ -114,13 +114,17 @@ def test_fanout_still_blocks_oversplit_for_write_commit_small():
 def test_board_ops_scope_allows_ccc_artifacts_not_src():
     from board.roles.board_ops import scope_is_board_only
 
+    # v0.53.3+: board_ops 仅认 .ccc/board/**
     assert scope_is_board_only(
         [
             {
                 "phase": 1,
-                "scope": [".ccc/board/abnormal/", ".ccc/plans/", ".ccc/reports/"],
+                "scope": [".ccc/board/abnormal/", ".ccc/board/"],
             }
         ]
+    )
+    assert not scope_is_board_only(
+        [{"phase": 1, "scope": [".ccc/board/", ".ccc/plans/", ".ccc/reports/"]}]
     )
     assert not scope_is_board_only(
         [{"phase": 1, "scope": [".ccc/board/", "src/app.py"]}]

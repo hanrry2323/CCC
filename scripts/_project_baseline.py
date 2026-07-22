@@ -303,7 +303,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "auto_inject_tasks": control_full.get("auto_inject_tasks"),
     }
 
-    return {
+    result: dict[str, Any] = {
         "ts": _now_iso(),
         "project_id": project_id,
         "workspace": str(ws),
@@ -328,7 +328,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "state_excerpt": state,
         "claude_excerpt": claude,
         "control": control_compact,
-        "risks": risks,
+        "risks": list(risks),
         "git_clean": git_clean,
         "pipeline_idle": pipeline_idle,
         "inflight_active": inflight_active,
@@ -336,6 +336,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "can_dispatch": can_dispatch,
         "dirty_kind": dirty_kind,
         "dirty_ccc_only": dirty_ccc_only,
+        "next_product_goal": None,
         "summary": _format_summary(
             branch if branch_rc == 0 else "?",
             dirty,
@@ -349,6 +350,34 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
             recent_commits[:3],
         ),
     }
+
+    # LPSN · N: idle → suggest unfinished L1 product goal
+    try:
+        import sys as _sys
+
+        _scripts = Path(__file__).resolve().parent
+        if str(_scripts) not in _sys.path:
+            _sys.path.insert(0, str(_scripts))
+        from chat_server.services import agent_mind as _am
+
+        decided = _am.load_decided(ws)
+        nxt = _am.next_product_goal(decided)
+        result["next_product_goal"] = nxt
+        if pipeline_idle and (git_clean or dirty_ccc_only) and nxt:
+            tip = (
+                f"空闲优先产品目标：{nxt.get('text', '')[:80]}"
+                + (
+                    f"（exit: {str(nxt.get('exit_condition') or '')[:60]}）"
+                    if nxt.get("exit_condition")
+                    else ""
+                )
+            )
+            result["risks"] = list(result.get("risks") or []) + [tip]
+            result["summary"] = (result.get("summary") or "") + "\n" + tip
+    except Exception:
+        pass
+
+    return result
 
 
 def _format_summary(

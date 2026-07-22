@@ -262,7 +262,17 @@ def _gate_product_artifacts(
         raise RuntimeError(f"phase_lint cycle: {'; '.join(_cycle_errors)}")
     # 先规范化 ### 验收 → ## 验收，再 lint；写入磁盘用规范化后正文
     plan_content = phase_lint.normalize_plan_acceptance_headers(plan_content)
-    _plan_ok, _plan_errs = phase_lint.validate_plan_acceptance(plan_content)
+    # LPSN · P: 业务 plan 须含可重放探针（卫生/board_ops 例外）
+    _require_probe = True
+    _low = plan_content.lower()
+    if any(
+        k in _low
+        for k in ("board_ops", "看板卫生", "pipeline: ops", "pipeline: hygiene")
+    ):
+        _require_probe = False
+    _plan_ok, _plan_errs = phase_lint.validate_plan_acceptance(
+        plan_content, require_probe=_require_probe
+    )
     if not _plan_ok:
         raise RuntimeError(f"plan_lint failed: {'; '.join(_plan_errs)}")
     if _lint_warnings:

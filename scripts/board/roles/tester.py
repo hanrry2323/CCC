@@ -67,39 +67,17 @@ from board.roles.common import (
     WORKSPACES,
 )
 
-# 验收命令白名单：仅允许这些前缀，防 plan.md prompt-injection 任意执行
-_VERIFY_CMD_ALLOW_PREFIXES = (
-    "python3 -m pytest",
-    "python -m pytest",
-    "pytest ",
-    "python3 -m py_compile",
-    "python -m py_compile",
-    "python3 -m ruff",
-    "ruff check",
-    "ruff format",
-    "bash -n ",
-    "swift build",
-    "npm test",
-    "npm run test",
-    "cargo test",
-    "go test",
+# 验收命令白名单：共享 _intent_probe（LPSN · P，含 DRY_RUN / .venv）
+from _intent_probe import (  # noqa: E402
+    VERIFY_CMD_ALLOW_PREFIXES as _VERIFY_CMD_ALLOW_PREFIXES,
+    extract_probe_commands,
+    filter_verify_commands as _intent_filter,
+    is_allowed_verify_cmd as _is_allowed_verify_cmd,
 )
 
 
-def _is_allowed_verify_cmd(cmd: str) -> bool:
-    c = (cmd or "").strip()
-    if not c or "\n" in c or "\r" in c:
-        return False
-    # 拒绝明显危险的 shell 元字符串联（管道/重定向/子壳）
-    for bad in (";", "&&", "||", "`", "$(", "${", ">", "<", "|", "\n"):
-        if bad in c:
-            return False
-    low = c.lower()
-    return any(low.startswith(p.lower()) for p in _VERIFY_CMD_ALLOW_PREFIXES)
-
-
 def _filter_verify_commands(cmds: list[str]) -> list[str]:
-    out = [c.strip() for c in cmds if _is_allowed_verify_cmd(c)]
+    out = _intent_filter(cmds)
     dropped = len(cmds) - len(out)
     if dropped:
         _log.warning("[tester] dropped %d non-allowlisted verify cmd(s)", dropped)
@@ -121,26 +99,13 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
     pids_dir = ws / ".ccc" / "pids"
     pids_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. 从 plan 提取验证命令
+    # 1. 从 plan 提取验证命令（共享 intent probe 解析）
     plan_file = ws / ".ccc" / "plans" / f"{task_id}.plan.md"
-    verify_commands = []
+    verify_commands: list[str] = []
     if plan_file.exists():
-        content = plan_file.read_text()
-        in_verify = False
-        for line in content.split("\n"):
-            if line.startswith("## 验收") or line.startswith("## 验证"):
-                in_verify = True
-                continue
-            if in_verify and line.startswith("## "):
-                break
-            if (
-                in_verify
-                and line.strip().startswith("- ")
-                and not line.strip().startswith("- 不")
-            ):
-                cmd = line.strip()[2:].strip()
-                verify_commands.append(cmd)
-
+        verify_commands = extract_probe_commands(
+            plan_file.read_text(encoding="utf-8", errors="replace")
+        )
     # fallback: 没有验收项，跑 pytest（卫生卡除外）
     skip_forced = False
     try:

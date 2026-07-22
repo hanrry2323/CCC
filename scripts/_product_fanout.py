@@ -365,7 +365,13 @@ def _normalize_child(
     dep_ok, dep_errs = phase_lint.suggest_fix_no_missing_dependencies(phases)
     if not dep_ok:
         raise ValueError(f"child[{idx}] orphan-dep: {'; '.join(dep_errs)}")
-    pok, perrs = phase_lint.validate_plan_acceptance(plan_md)
+    pok, perrs = phase_lint.validate_plan_acceptance(
+        plan_md,
+        require_probe=not any(
+            k in plan_md.lower()
+            for k in ("board_ops", "看板卫生", "pipeline: ops", "pipeline: hygiene")
+        ),
+    )
     if not pok:
         raise ValueError(f"child[{idx}] plan_lint: {'; '.join(perrs)}")
     deps_tasks: list[str] = []

@@ -1,14 +1,15 @@
 """Desktop Agent 项目心智 L1 — 观察脑编译 + 决策脑落盘。
 
 权威：2017 `<ws>/.ccc/agent-mind/`（与 board 同权威）。
-契约：docs/product/loop-engineer-authority.md · 双层心智
+契约：docs/product/loop-engineer-authority.md · 双层心智 · LPSN · S
 - L1a observed：系统编译（board / git / daily / weekly）
-- L1b decided：Agent/人经 Hub PUT（schema 校验）
+- L1b decided：Agent/人经 Hub PUT（schema 校验）；goals 可含 exit_condition / status
 - digest：≤2KB 注入稿；live board 仍优先于本 digest
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -18,7 +19,7 @@ from typing import Any
 
 from . import hub_lens
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "1.1"
 DIGEST_MAX_CHARS = 2000
 DECIDED_LIST_MAX = 40
 DECIDED_ITEM_MAX_CHARS = 400
@@ -31,12 +32,17 @@ ALLOWED_DECIDED_KEYS = (
     "open_questions",
     "architecture_choices",
 )
+GOAL_STATUSES = frozenset({"planned", "probed", "stable", "abandoned"})
 FORBIDDEN_DECIDED_SUBSTRINGS = (
     "enable engine",
     "invent",
     "set_mode",
     "control.json",
     "擅自 enable",
+)
+_PIPELINE_ONLY_GOAL_RE = re.compile(
+    r"^(管道可空转|对齐基线|pipeline.?idle|空板可转|仅对齐)$",
+    re.IGNORECASE,
 )
 
 
@@ -93,7 +99,6 @@ def _latest_report_headline(reports_dir: Path, prefixes: tuple[str, ...]) -> str
         text = latest.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    # 取首个非空、非标题装饰行
     for line in text.splitlines():
         s = line.strip()
         if not s or s.startswith("```"):
@@ -102,6 +107,107 @@ def _latest_report_headline(reports_dir: Path, prefixes: tuple[str, ...]) -> str
         if s:
             return f"{latest.name}: {s[:180]}"
     return latest.name
+
+
+def _goal_id_from_text(text: str) -> str:
+    return "g-" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:10]
+
+
+def normalize_goal(item: Any) -> dict[str, Any] | None:
+    """Upgrade string goals to {id,text,exit_condition,status}; accept dicts."""
+    if isinstance(item, str):
+        text = item.strip()
+        if not text:
+            return None
+        return {
+            "id": _goal_id_from_text(text),
+            "text": text[:DECIDED_ITEM_MAX_CHARS],
+            "exit_condition": "",
+            "status": "planned",
+        }
+    if not isinstance(item, dict):
+        return None
+    text = str(item.get("text") or item.get("goal") or "").strip()
+    if not text:
+        return None
+    status = str(item.get("status") or "planned").strip().lower()
+    if status not in GOAL_STATUSES:
+        status = "planned"
+    gid = str(item.get("id") or "").strip() or _goal_id_from_text(text)
+    exit_c = str(item.get("exit_condition") or item.get("probe") or "").strip()
+    return {
+        "id": gid[:64],
+        "text": text[:DECIDED_ITEM_MAX_CHARS],
+        "exit_condition": exit_c[:DECIDED_ITEM_MAX_CHARS],
+        "status": status,
+    }
+
+
+def goal_display(g: dict[str, Any] | str) -> str:
+    if isinstance(g, str):
+        return g
+    text = str(g.get("text") or "")
+    st = str(g.get("status") or "planned")
+    exit_c = str(g.get("exit_condition") or "").strip()
+    bit = f"[{st}] {text}"
+    if exit_c:
+        bit += f" · exit=`{exit_c[:80]}`"
+    return bit
+
+
+def unfinished_product_goals(decided: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for g in decided.get("goals") or []:
+        if isinstance(g, str):
+            ng = normalize_goal(g)
+            if ng:
+                out.append(ng)
+            continue
+        if not isinstance(g, dict):
+            continue
+        st = str(g.get("status") or "planned").lower()
+        if st in ("stable", "abandoned"):
+            continue
+        ng = normalize_goal(g)
+        if ng:
+            out.append(ng)
+    return out
+
+
+def next_product_goal(decided: dict[str, Any]) -> dict[str, Any] | None:
+    unfinished = unfinished_product_goals(decided)
+    return unfinished[0] if unfinished else None
+
+
+def _validate_decided_item(text: str) -> None:
+    low = text.lower()
+    for bad in FORBIDDEN_DECIDED_SUBSTRINGS:
+        if bad.lower() in low:
+            raise ValueError(f"decided item forbidden content: {bad}")
+
+
+def _validate_goals_list(goals: list[Any]) -> list[dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    for item in goals:
+        ng = normalize_goal(item)
+        if not ng:
+            continue
+        _validate_decided_item(ng["text"])
+        if ng.get("exit_condition"):
+            _validate_decided_item(ng["exit_condition"])
+        cleaned.append(ng)
+        if len(cleaned) >= DECIDED_LIST_MAX:
+            break
+    # Soft: sole goal must not be pipeline-only with no exit
+    if len(cleaned) == 1:
+        only = cleaned[0]
+        if _PIPELINE_ONLY_GOAL_RE.match(only["text"].strip()) and not only.get(
+            "exit_condition"
+        ):
+            raise ValueError(
+                "sole goal cannot be pipeline-idle / 对齐基线 without exit_condition"
+            )
+    return cleaned
 
 
 def compile_observed(root: Path, *, project_id: str) -> dict[str, Any]:
@@ -187,7 +293,18 @@ def load_decided(root: Path) -> dict[str, Any]:
         "updated_at": data.get("updated_at"),
         "updated_by": data.get("updated_by"),
     }
-    for k in ALLOWED_DECIDED_KEYS:
+    raw_goals = data.get("goals") or []
+    if isinstance(raw_goals, list):
+        for item in raw_goals:
+            ng = normalize_goal(item)
+            if ng:
+                # preserve existing id when loading strings would re-id — prefer stable
+                if isinstance(item, dict) and item.get("id"):
+                    ng["id"] = str(item["id"])[:64]
+                out["goals"].append(ng)
+            if len(out["goals"]) >= DECIDED_LIST_MAX:
+                break
+    for k in ("constraints", "open_questions", "architecture_choices"):
         raw = data.get(k) or []
         if not isinstance(raw, list):
             continue
@@ -202,13 +319,6 @@ def load_decided(root: Path) -> dict[str, Any]:
     return out
 
 
-def _validate_decided_item(text: str) -> None:
-    low = text.lower()
-    for bad in FORBIDDEN_DECIDED_SUBSTRINGS:
-        if bad.lower() in low:
-            raise ValueError(f"decided item forbidden content: {bad}")
-
-
 def merge_decided(
     root: Path,
     patch: dict[str, Any],
@@ -218,10 +328,16 @@ def merge_decided(
     """字段级 upsert：同名字段整表替换（经清洗）；禁止投 backlog / 改 L0。"""
     cur = load_decided(root)
     by = (updated_by or "desktop-agent").strip() or "desktop-agent"
-    if by not in ("desktop-agent", "human", "hub"):
+    if by not in ("desktop-agent", "human", "hub", "regress"):
         by = "desktop-agent"
 
-    for k in ALLOWED_DECIDED_KEYS:
+    if "goals" in patch:
+        raw = patch.get("goals")
+        if not isinstance(raw, list):
+            raise ValueError("goals must be a list of strings or goal objects")
+        cur["goals"] = _validate_goals_list(raw)
+
+    for k in ("constraints", "open_questions", "architecture_choices"):
         if k not in patch:
             continue
         raw = patch.get(k)
@@ -242,12 +358,38 @@ def merge_decided(
     cur["updated_at"] = _now_iso()
     cur["updated_by"] = by
     _atomic_write_json(decided_path(root), cur)
-    # 使 digest 缓存失效
     pid = str(patch.get("project_id") or "")
     for key in list(_digest_cache.keys()):
         if key.startswith(f"{root}:") or (pid and key.endswith(f":{pid}")):
             _digest_cache.pop(key, None)
     return cur
+
+
+def mark_goal_status(
+    root: Path,
+    goal_id: str,
+    status: str,
+    *,
+    updated_by: str = "human",
+) -> dict[str, Any]:
+    """Set one goal's status (intent_stable / abandoned / probed)."""
+    status = (status or "").strip().lower()
+    if status not in GOAL_STATUSES:
+        raise ValueError(f"invalid goal status: {status}")
+    cur = load_decided(root)
+    found = False
+    for g in cur.get("goals") or []:
+        if isinstance(g, dict) and str(g.get("id")) == goal_id:
+            g["status"] = status
+            found = True
+            break
+    if not found:
+        raise ValueError(f"goal not found: {goal_id}")
+    return merge_decided(
+        root,
+        {"goals": cur["goals"]},
+        updated_by=updated_by,
+    )
 
 
 def format_digest(
@@ -260,6 +402,7 @@ def format_digest(
         f"【项目心智 L1 · digest · project={project_id} · as_of={observed.get('as_of') or ''}】",
         "新鲜度：live board / lens git > 本 digest 观察脑 > 决策脑 > 聊天 resume。冲突以 board 为准。",
         "L0 不变核不可改；本块只含 L1。禁止 invent / 擅自 enable Engine。",
+        "released/VERSION 只到 code_landed；意图完成须探针+regress+intent_stable。",
     ]
     counts = observed.get("board_counts") or {}
     if counts:
@@ -292,8 +435,23 @@ def format_digest(
     if risks:
         lines.append("风险：" + "；".join(str(r)[:80] for r in risks[:4]))
 
+    goals = decided.get("goals") or []
+    unfinished = unfinished_product_goals(decided)
+    if unfinished:
+        lines.append("未完成产品目标（优先推进，勿抢卫生/烟测）：")
+        for g in unfinished[:6]:
+            lines.append(f"- {goal_display(g)}")
+    stable = [
+        g
+        for g in goals
+        if isinstance(g, dict) and str(g.get("status")) == "stable"
+    ]
+    if stable:
+        lines.append("已稳定意图：")
+        for g in stable[:4]:
+            lines.append(f"- {goal_display(g)}")
+
     for label, key in (
-        ("目标", "goals"),
         ("约束", "constraints"),
         ("开放问题", "open_questions"),
         ("架构取舍", "architecture_choices"),
@@ -342,6 +500,8 @@ def build_digest(
         "digest": digest_text,
         "observed": observed,
         "decided": decided,
+        "next_product_goal": next_product_goal(decided),
+        "unfinished_goals": unfinished_product_goals(decided),
     }
     _digest_cache[cache_key] = (now, payload)
     return payload

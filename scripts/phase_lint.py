@@ -394,8 +394,13 @@ def normalize_plan_acceptance_headers(plan_text: str) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def validate_plan_acceptance(plan_text: str) -> tuple[bool, list[str]]:
-    """v0.42: plan 必须含 ## 验收/## 验证，且 ≥1 条可执行意图/命令。"""
+def validate_plan_acceptance(
+    plan_text: str, *, require_probe: bool = False
+) -> tuple[bool, list[str]]:
+    """v0.42: plan 必须含 ## 验收/## 验证，且 ≥1 条可执行意图/命令。
+
+    v0.54+: require_probe=True 时业务 plan 须含 ≥1 条白名单可重放探针命令。
+    """
     errors: list[str] = []
     if not (plan_text or "").strip():
         return False, ["plan is empty"]
@@ -421,6 +426,17 @@ def validate_plan_acceptance(plan_text: str) -> tuple[bool, list[str]]:
         errors.append("plan missing ## 验收 or ## 验证 section")
     elif not items:
         errors.append("plan acceptance section has no executable items")
+
+    if require_probe and has_section:
+        try:
+            from _intent_probe import extract_probe_commands
+
+            if not extract_probe_commands(plan_text):
+                errors.append(
+                    "plan acceptance missing replayable intent probe command"
+                )
+        except ImportError:
+            pass
     return (len(errors) == 0), errors
 
 

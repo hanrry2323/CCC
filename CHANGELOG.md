@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.60.0] — 2026-07-22
+
+### Added
+
+- **LPSN 意图飞轮（L→P→S→N）出门**：共享 [`scripts/_intent_probe.py`](scripts/_intent_probe.py)；transfer 业务须可重放探针；regress 重放 `## 验收`；L1 goals 结构化 `exit_condition`/`status` + `intent_stable` API；空闲 `next_product_goal`；N 门 `supersede_goals`；巡查卡 `lpsn-*`；[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)；e2e `tests/e2e/test_lpsn_flywheel.sh`；regress launchd 模板。
+
+### Changed
+
+- acceptance / tester 白名单对齐意图探针形（`DRY_RUN=` / `.venv/bin/python` / `python3`）。
+- `ccc-mind-update` 支持 `--exit` / `--stable` / `--abandon`。
+
 ## [v0.53.3] — 2026-07-22
 
 ### Fixed

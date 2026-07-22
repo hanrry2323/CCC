@@ -184,7 +184,7 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=full bash scripts/smoke-
 # 可选：bash scripts/smoke-qb-biz-small.sh
 ```
 
-后续候选：更深业务 epic、止损升级通知细则；仍不做 P3。
+后续候选：~~更深业务 epic 占位~~ → **LPSN 飞轮（v0.60）** 见 [`lpsn-ship-gate.md`](lpsn-ship-gate.md) / [`loop-engineer-authority.md`](loop-engineer-authority.md) §上线≠开发完成；止损升级通知细则；仍不做 P3。
 
 1. 代码变更引用本文章节号（如 `hub-shell-roadmap §8`）  
 2. **不做**：P3 薄客户、Temporal 重写、主聊天回 Hub、旁路自动进队、恢复中转站  

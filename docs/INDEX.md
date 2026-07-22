@@ -18,6 +18,7 @@
 | **3** | **[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)** | **事实权威 + Hub 只读透镜 + 旁路收死（最新）** |
 | 4 | [`product/dialogue-orchestration-boundary.md`](product/dialogue-orchestration-boundary.md) | 对话/编排边界与过桥 |
 | 5 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | 下阶段北星（壳 + Hub API） |
+| 5a | [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门门禁**（L→P→S→N） |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC / Desktop 模型默认 |
 | 5c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | 四面协作 + 流畅基线 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |

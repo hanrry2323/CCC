@@ -2,7 +2,7 @@
 
 读取 work plan → parent epic plan → epic description 的 ## 验收。
 有可执行命令则跑白名单命令；否则核对交付路径是否落在 task commit。
-契约：docs/product/loop-engineer-authority.md · 验收关门
+契约：docs/product/loop-engineer-authority.md · 验收关门 · LPSN · P
 """
 
 from __future__ import annotations
@@ -14,28 +14,22 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from _intent_probe import (
+    extract_acceptance_section,
+    extract_probe_commands,
+    filter_verify_commands,
+    is_allowed_verify_cmd,
+    run_probes,
+)
+
 _log = logging.getLogger("ccc.acceptance_gate")
 
-# Align with tester allowlist (subset safe for gate subprocess)
-_VERIFY_CMD_ALLOW_PREFIXES = (
-    "python3 -m pytest",
-    "python -m pytest",
-    "pytest ",
-    "python3 -m py_compile",
-    "python -m py_compile",
-    "python3 -m ruff",
-    "ruff check",
-    "ruff format",
-    "bash -n ",
-    "swift build",
-    "npm test",
-    "npm run test",
-    "cargo test",
-    "go test",
-    "test -",
-    "ls ",
-    "test !",
-)
+# Re-export for tests / callers that imported private helpers
+_VERIFY_CMD_ALLOW_PREFIXES = None  # legacy; use _intent_probe.VERIFY_CMD_ALLOW_PREFIXES
+_is_allowed_verify_cmd = is_allowed_verify_cmd
+_filter_verify_commands = filter_verify_commands
+_extract_acceptance_section = extract_acceptance_section
+
 
 _PATH_IN_TEXT = re.compile(
     r"(?:`([^`]+)`|(?:^|\s)(\.ccc/[^\s,;]+|[A-Za-z0-9_.\-]+/[^\s,;]+\.(?:jsonl|md|json|py|swift|ts|tsx|js)))"
@@ -49,71 +43,16 @@ _EXCLUDE_PATH_BULLET = re.compile(
 )
 
 
-def _is_allowed_verify_cmd(cmd: str) -> bool:
-    c = (cmd or "").strip()
-    if not c or "\n" in c or "\r" in c:
-        return False
-    for bad in (";", "&&", "||", "`", "$(", "${", ">", "<", "|"):
-        if bad in c:
-            return False
-    low = c.lower()
-    return any(low.startswith(p.lower()) for p in _VERIFY_CMD_ALLOW_PREFIXES)
-
-
-def _filter_verify_commands(cmds: list[str]) -> list[str]:
-    return [c.strip() for c in cmds if _is_allowed_verify_cmd(c)]
-
-
-def _extract_acceptance_section(text: str) -> str:
-    if not text:
-        return ""
-    lines = text.splitlines()
-    out: list[str] = []
-    in_sec = False
-    for line in lines:
-        if line.startswith("## 验收") or line.startswith("## 验证"):
-            in_sec = True
-            continue
-        if in_sec and line.startswith("## "):
-            break
-        if in_sec:
-            out.append(line)
-    return "\n".join(out).strip()
-
-
 def _bullets_and_cmds(section: str) -> tuple[list[str], list[str]]:
     bullets: list[str] = []
-    cmds: list[str] = []
     for line in section.splitlines():
         s = line.strip()
         if s.startswith("```"):
             continue
         if s.startswith("- ") and not s.startswith("- 不"):
-            item = s[2:].strip()
-            bullets.append(item)
-            # fenced-less command-looking lines
-            if _is_allowed_verify_cmd(item):
-                cmds.append(item)
-        # bare command in section
-        elif _is_allowed_verify_cmd(s):
-            cmds.append(s)
-    # also extract from ```bash blocks in original section
-    in_code = False
-    code_lang = ""
-    for line in section.splitlines():
-        if line.strip().startswith("```"):
-            fence = line.strip()
-            if not in_code:
-                in_code = True
-                code_lang = fence[3:].strip().lower()
-            else:
-                in_code = False
-                code_lang = ""
-            continue
-        if in_code and (not code_lang or code_lang in ("bash", "sh", "shell", "")):
-            if _is_allowed_verify_cmd(line.strip()):
-                cmds.append(line.strip())
-    return bullets, _filter_verify_commands(cmds)
+            bullets.append(s[2:].strip())
+    cmds = extract_probe_commands(section)
+    return bullets, cmds
 
 
 def _paths_from_bullets(bullets: list[str]) -> list[str]:
@@ -157,7 +96,9 @@ def load_acceptance_text(ws: Path, tid: str) -> str:
     plans = ws / ".ccc" / "plans"
     work_plan = plans / f"{tid}.plan.md"
     if work_plan.is_file():
-        sec = _extract_acceptance_section(work_plan.read_text(encoding="utf-8", errors="replace"))
+        sec = extract_acceptance_section(
+            work_plan.read_text(encoding="utf-8", errors="replace")
+        )
         if sec:
             return sec
     task = _load_task(ws, tid) or {}
@@ -165,7 +106,7 @@ def load_acceptance_text(ws: Path, tid: str) -> str:
     if parent:
         parent_plan = plans / f"{parent}.plan.md"
         if parent_plan.is_file():
-            sec = _extract_acceptance_section(
+            sec = extract_acceptance_section(
                 parent_plan.read_text(encoding="utf-8", errors="replace")
             )
             if sec:
@@ -178,7 +119,7 @@ def load_acceptance_text(ws: Path, tid: str) -> str:
             try:
                 data = json.loads(ep.read_text(encoding="utf-8").splitlines()[0])
                 desc = str(data.get("description") or data.get("note") or "")
-                sec = _extract_acceptance_section(desc)
+                sec = extract_acceptance_section(desc)
                 if sec:
                     return sec
                 if "## 验收" in desc or "验收" in desc[:400]:
@@ -219,30 +160,7 @@ def _commit_touches_paths(ws: Path, commit: str, paths: list[str]) -> bool:
 
 
 def _run_cmds(ws: Path, cmds: list[str]) -> tuple[bool, list[dict[str, Any]]]:
-    ran: list[dict[str, Any]] = []
-    for cmd in cmds[:12]:
-        try:
-            r = subprocess.run(
-                cmd,
-                cwd=ws,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            ran.append(
-                {
-                    "cmd": cmd,
-                    "rc": r.returncode,
-                    "ok": r.returncode == 0,
-                }
-            )
-            if r.returncode != 0:
-                return False, ran
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            ran.append({"cmd": cmd, "rc": -1, "ok": False, "error": str(exc)[:120]})
-            return False, ran
-    return True, ran
+    return run_probes(ws, cmds)
 
 
 def check_acceptance(

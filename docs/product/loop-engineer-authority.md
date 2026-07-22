@@ -198,12 +198,23 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 4. **意图探针进验收**：业务 epic 的 `## 验收` 至少一条可重放探针（`.venv`/`python3` + 显式 `DRY_RUN=…`）；regress 扫 `released` 时重跑这些探针，挂了 → 回 backlog 建回归 epic（飞轮），不假装完成。
 5. **VIP→P1 排序跟业务仓 DEV_PLAN**：钱能不能保住（paper/testnet）→ alpha → 单机运维 → 集群（门槛未齐冻结）。
 
-**自动化落点（现行）**：
+**自动化落点（现行 · v0.60 已落地）**：
 
 ```text
-人定意图(含退出条件) → transfer → Engine(L) → verdict
- → regress 重放意图探针(P) → 人/心智确认稳定(S) → 再定下一意图(N)
+人定意图(含退出条件) → transfer(探针门+N门) → Engine(L) → verdict
+ → regress 重放意图探针(P) → 人/心智 mark stable(S) → 再定下一意图(N)
 ```
+
+| 能力 | 落点 |
+|------|------|
+| 探针解析/白名单/执行 | `scripts/_intent_probe.py` |
+| transfer 业务须探针；卫生豁免 | `transfer_gate.validate_transfer_payload` |
+| 下一意图门（未 S 须 supersede/abandon） | `transfer_gate.check_next_intent_gate` |
+| acceptance / tester 共用白名单 | `_acceptance_gate` / `tester` |
+| regress 重放探针 | `board/roles/regress.py` |
+| L1 goals 结构 + `intent_stable` | `agent_mind` + `POST …/goals/{id}/status` |
+| 空闲优先产品目标 | `_project_baseline.next_product_goal` |
+| 出门清单 | [`lpsn-ship-gate.md`](lpsn-ship-gate.md) |
 
 平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。
 

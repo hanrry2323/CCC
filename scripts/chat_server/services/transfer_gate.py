@@ -1,10 +1,12 @@
 """转任务聊透门禁 — Desktop Transfer Gate（仅允许写 epic）。
 
-契约：docs/product/transfer-gate.md
+契约：docs/product/transfer-gate.md · LPSN P/N
 """
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
 VALID_EXECUTOR_INTENTS = frozenset(
@@ -13,7 +15,20 @@ VALID_EXECUTOR_INTENTS = frozenset(
 VALID_FEASIBILITY = frozenset({"ok", "blocked"})
 
 
-def validate_transfer_payload(body: dict[str, Any]) -> tuple[bool, list[dict]]:
+def _intent_probe():
+    scripts = Path(__file__).resolve().parents[2]
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import _intent_probe as mod
+
+    return mod
+
+
+def validate_transfer_payload(
+    body: dict[str, Any],
+    *,
+    workspace: Path | str | None = None,
+) -> tuple[bool, list[dict]]:
     """返回 (ok, errors)。errors 项为 {code, message}。"""
     errors: list[dict] = []
     if not isinstance(body, dict):
@@ -90,11 +105,72 @@ def validate_transfer_payload(body: dict[str, Any]) -> tuple[bool, list[dict]]:
         )
 
     plan_md = str(body.get("plan_md") or "").strip()
-    if not plan_md:
-        # soft: synthesize from goal/acceptance if missing
-        pass
+
+    ip = _intent_probe()
+    hygiene = ip.is_hygiene_transfer(body)
+    if not hygiene and acc_ok:
+        probe_blob = "\n".join(
+            [
+                normalize_acceptance(acceptance),
+                plan_md,
+            ]
+        )
+        if not ip.extract_probe_commands(probe_blob):
+            errors.append(
+                {
+                    "code": "missing_intent_probe",
+                    "message": (
+                        "业务 epic 的验收须含 ≥1 条可重放意图探针"
+                        "（如 DRY_RUN=true .venv/bin/python … / python3 … / pytest）"
+                    ),
+                }
+            )
+
+    if workspace and not hygiene:
+        n_err = check_next_intent_gate(body, Path(workspace))
+        if n_err:
+            errors.append(n_err)
 
     return (len(errors) == 0), errors
+
+
+def check_next_intent_gate(body: dict[str, Any], workspace: Path) -> dict | None:
+    """If L1 has unfinished product goals, require supersede/abandon for new product epic."""
+    if body.get("supersede_goals") is True or body.get("intent_supersede") is True:
+        return None
+    if str(body.get("abandon_prior") or "").strip().lower() in ("1", "true", "yes"):
+        return None
+    try:
+        from chat_server.services import agent_mind
+    except ImportError:
+        try:
+            from . import agent_mind
+        except ImportError:
+            return None
+
+    decided = agent_mind.load_decided(Path(workspace))
+    unfinished = agent_mind.unfinished_product_goals(decided)
+    if not unfinished:
+        return None
+    blob = (
+        str(body.get("title") or "")
+        + " "
+        + str(body.get("goal") or "")
+    ).lower()
+    for g in unfinished:
+        text = str(g.get("text") or "").lower()
+        if text and text[:24] in blob:
+            return None
+    titles = ", ".join(
+        str(g.get("text") or g.get("id") or "")[:40] for g in unfinished[:3]
+    )
+    return {
+        "code": "intent_not_stable",
+        "message": (
+            f"同仓仍有未达 intent_stable 的产品目标（{titles}）。"
+            "先确认稳定/放弃，或传 supersede_goals=true / abandon_prior=true 后再开下一意图。"
+        ),
+    }
 
 
 def normalize_acceptance(acceptance: Any) -> str:
@@ -160,12 +236,7 @@ def build_plan_md(body: dict[str, Any]) -> str:
 
 
 def resolve_complexity(body: dict[str, Any]) -> str:
-    """归一 complexity；多步回归/冒烟禁止落 small（否则扇出强制单卡易 hang）。
-
-    触发抬升 small→medium：
-    - acceptance 中可执行命令感 bullets ≥ 3
-    - 或标题/目标/plan 命中「三件套 / 回归冒烟」等且多模块标记 ≥ 3
-    """
+    """归一 complexity；多步回归/冒烟禁止落 small（否则扇出强制单卡易 hang）。"""
     raw = str(body.get("complexity") or "medium").strip().lower()
     if raw in ("sm",):
         raw = "small"
@@ -218,25 +289,17 @@ def resolve_complexity(body: dict[str, Any]) -> str:
 
 
 def resolve_executor_intent(body: dict[str, Any]) -> str:
-    """归一执行面。
-
-    硬规则：pipeline=ops/hygiene/board* 时禁止保留 opencode——卫生卡走 python
-    （board_ops / 脚本），避免「假 committer + OpenCode」半提交撞门禁。
-    """
+    """归一执行面。卫生卡强制 python。"""
     intent = str(body.get("executor_intent") or "opencode").strip().lower()
     pipeline = str(body.get("pipeline") or "").strip().lower()
     title = str(body.get("title") or "").strip().lower()
     goal = str(body.get("goal") or "").strip().lower()
     blob = f"{pipeline} {title} {goal}"
 
-    hygiene = pipeline in ("ops", "hygiene", "board", "board_ops") or any(
+    ip = _intent_probe()
+    hygiene = ip.is_hygiene_transfer(body) or any(
         k in blob
         for k in (
-            "看板卫生",
-            "board hygiene",
-            "归档产物",
-            "回收 abnormal",
-            "清空 abnormal",
             "git add",
             "单 commit",
             "committer",
