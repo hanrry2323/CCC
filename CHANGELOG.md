@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.53.1] — 2026-07-22
+
+### Fixed
+
+- **右栏幽灵轨**：`ui_hidden` 终态 epic 不再伪造「待拆解」；`/flow/snapshot` 返回 `empty` + `sunk`/`missing_on_board`；`/flow/epics` 过滤沉底卡且 `bound_hint` 不挂它们；Desktop 收到 sunk/empty 清绑定与历史栈。
+
+### Docs
+
+- 测前双机对齐与清扰：[`docs/runbooks/pre-test-dual-host-sync.md`](docs/runbooks/pre-test-dual-host-sync.md)。
+
 ## [v0.53.0] — 2026-07-21
 
 > **流畅基线达成**。工厂模式 12 轮闭环（F0 建制 → F1 手感 → F2 稳定 → F3 业务 → H-1 hotfix → F4 进阶）。宣告：[`docs/product/fluency-baseline-achieved.md`](docs/product/fluency-baseline-achieved.md)。

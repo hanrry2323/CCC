@@ -279,7 +279,33 @@ def snapshot_from_board(
         deps = w.get("depends_on") or []
         w["depends_on_titles"] = [title_by_id.get(str(d), str(d)) for d in deps]
 
-    split = (epic or {}).get("split_status") or "pending"
+    # 板上找不到 epic（常见：ui_hidden 沉底后默认 list 不含）→ 空轨，禁止伪造「待拆解」
+    if epic is None:
+        return {
+            "project_id": project_id,
+            "epic_id": epic_id,
+            "epic": None,
+            "works": [],
+            "headline": "",
+            "user_stage": "",
+            "empty": True,
+            "missing_on_board": True,
+        }
+
+    # ui_hidden 终态沉底：右栏不占活位（与 lens / 活跃计数同口径）
+    split = str(epic.get("split_status") or "pending")
+    if bool(epic.get("ui_hidden")) and is_terminal_stage(split):
+        return {
+            "project_id": project_id,
+            "epic_id": epic_id,
+            "epic": None,
+            "works": [],
+            "headline": "",
+            "user_stage": "",
+            "empty": True,
+            "sunk": True,
+        }
+
     active = next(
         (w for w in works if w.get("status") in ("in_progress", "testing")),
         None,
@@ -308,15 +334,13 @@ def snapshot_from_board(
         headline = "待拆解"
         stage = "pending"
 
-    epic_view = None
-    if epic:
-        epic_view = {
-            **epic,
-            "goal_summary": _goal_summary_from_epic(epic),
-            "pipeline": _pipeline_from_epic(epic),
-            "user_stage": stage,
-            "headline": headline,
-        }
+    epic_view = {
+        **epic,
+        "goal_summary": _goal_summary_from_epic(epic),
+        "pipeline": _pipeline_from_epic(epic),
+        "user_stage": stage,
+        "headline": headline,
+    }
 
     return {
         "project_id": project_id,
@@ -325,6 +349,7 @@ def snapshot_from_board(
         "works": works,
         "headline": headline,
         "user_stage": stage,
+        "empty": False,
     }
 
 

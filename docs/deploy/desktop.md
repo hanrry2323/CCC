@@ -49,6 +49,8 @@ cp -R .build/CCCDesktop.app /Applications/
 发版后 **重启已打开的 Desktop**（否则仍跑旧二进制）。  
 sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sidecar 文档「多端版本对齐」）。
 
+**测前全量对齐 + 清干扰**（推荐）：[`../runbooks/pre-test-dual-host-sync.md`](../runbooks/pre-test-dual-host-sync.md) — `git pull` 双机同 commit、重装 Desktop、清右栏绑定 / Engine 孤儿 active_tasks。
+
 ### 多端核对清单（对话热路径）
 
 | 端 | 应一致 | 命令摘要 |

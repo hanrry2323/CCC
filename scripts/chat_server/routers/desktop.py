@@ -816,14 +816,7 @@ async def adopt_inbox_proposal(request: Request, prop_id: str):
 # ── Flow events / snapshot ────────────────────────────────
 
 
-async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
-    resp = await board_proxy("GET", "/api/board", params={"workspace": workspace})
-    if resp.status_code != 200:
-        return {}
-    try:
-        raw = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
-    except Exception:
-        return {}
+def _columns_from_board_payload(raw: object) -> dict[str, list[dict]]:
     if isinstance(raw, dict) and isinstance(raw.get("columns"), dict):
         return raw["columns"]
     if isinstance(raw, dict) and isinstance(raw.get("board"), dict):
@@ -834,26 +827,37 @@ async def _fetch_board_dict(workspace: str) -> dict[str, list[dict]]:
     return {}
 
 
-async def _fetch_board_with_status(workspace: str) -> tuple[dict[str, list[dict]], bool]:
+async def _fetch_board_dict(
+    workspace: str, *, include_hidden: bool = False
+) -> dict[str, list[dict]]:
+    params: dict[str, str] = {"workspace": workspace}
+    if include_hidden:
+        params["include_hidden"] = "1"
+    resp = await board_proxy("GET", "/api/board", params=params)
+    if resp.status_code != 200:
+        return {}
+    try:
+        raw = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
+    except Exception:
+        return {}
+    return _columns_from_board_payload(raw)
+
+
+async def _fetch_board_with_status(
+    workspace: str, *, include_hidden: bool = False
+) -> tuple[dict[str, list[dict]], bool]:
     """拉取看板并返回 (columns, degraded)。degraded=True 表示看板离线/超时。"""
-    resp = await board_proxy("GET", "/api/board", params={"workspace": workspace})
+    params: dict[str, str] = {"workspace": workspace}
+    if include_hidden:
+        params["include_hidden"] = "1"
+    resp = await board_proxy("GET", "/api/board", params=params)
     if resp.status_code != 200:
         return {}, True
     try:
         raw = json.loads(resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else resp.body)
     except Exception:
         return {}, True
-    cols: dict[str, list[dict]] = {}
-    if isinstance(raw, dict) and isinstance(raw.get("columns"), dict):
-        cols = raw["columns"]
-    elif isinstance(raw, dict) and isinstance(raw.get("board"), dict):
-        cols = raw["board"]
-    elif isinstance(raw, dict):
-        cols = {k: v for k, v in raw.items() if isinstance(v, list)}
-    empty = all(not lst for lst in cols.values()) if cols else True
-    if empty and resp.status_code == 200:
-        # 200 但全空：可能是板真空，也可能是 Board 损坏状态；同时返回 degraded 给 UI 兜底
-        return cols, False
+    cols = _columns_from_board_payload(raw)
     return cols, False
 
 
@@ -872,15 +876,34 @@ async def flow_epics(
     lim = max(1, min(int(limit or 20), 40))
     tid = (thread_id or "").strip() or None
     items = flow_events.list_recent_epics(pid, thread_id=tid, limit=lim)
+    # 沉底（ui_hidden 终态）不进右栏栈 / bound_hint，避免幽灵任务条
+    workspace = _project_workspace(pid)
+    board_all = await _fetch_board_dict(workspace, include_hidden=True)
+    sunk_ids: set[str] = set()
+    for tasks in board_all.values():
+        for t in tasks or []:
+            if not isinstance(t, dict):
+                continue
+            eid = str(t.get("id") or "").strip()
+            if not eid:
+                continue
+            split = str(t.get("split_status") or "")
+            if bool(t.get("ui_hidden")) and flow_events.is_terminal_stage(split):
+                sunk_ids.add(eid)
+    live_items = [
+        x
+        for x in items
+        if (eid := str(x.get("epic_id") or "").strip()) and eid not in sunk_ids
+    ]
     conv_view = "project_single" if (not tid or flow_events.is_project_conversation_id(tid)) else "thread_exact"
-    hint = flow_events.bound_hint_for_epics(items, thread_id=tid)
+    hint = flow_events.bound_hint_for_epics(live_items, thread_id=tid)
     return {
         "ok": True,
         "project_id": pid,
         "thread_id": tid,
         "conversation_view": conv_view,
         "bound_hint": hint,
-        "epics": items,
+        "epics": live_items,
     }
 
 
@@ -897,7 +920,9 @@ async def flow_snapshot(
     eid = (epic_id or "").strip()
     if not eid:
         last = flow_events.load_last_epic(pid)
-        eid = str((last or {}).get("epic_id") or "") or (flow_events.latest_transfer_epic_id(pid) or "")
+        eid = str((last or {}).get("epic_id") or "") or (
+            flow_events.latest_transfer_epic_id(pid) or ""
+        )
     if not eid:
         return {
             "ok": True,
@@ -910,6 +935,37 @@ async def flow_snapshot(
     workspace = _project_workspace(pid)
     board, board_degraded = await _fetch_board_with_status(workspace)
     snap = flow_events.snapshot_from_board(board, epic_id=eid, project_id=pid)
+    # 默认板不含 ui_hidden：再查一次含隐藏，识别沉底终态，避免幽灵「待拆解」
+    if snap.get("missing_on_board"):
+        board_all, deg2 = await _fetch_board_with_status(
+            workspace, include_hidden=True
+        )
+        board_degraded = board_degraded or deg2
+        snap_all = flow_events.snapshot_from_board(
+            board_all, epic_id=eid, project_id=pid
+        )
+        if snap_all.get("sunk") or snap_all.get("empty"):
+            snap = snap_all
+        elif snap_all.get("epic") is not None:
+            snap = snap_all
+    if snap.get("empty"):
+        # 默认解析到的沉底 epic 不当作「当前绑定」回传
+        return {
+            "ok": True,
+            "empty": True,
+            "message": "编排空闲 · 下一笔定稿后出现在这里",
+            "project_id": pid,
+            "epic_id": None if not (epic_id or "").strip() else eid,
+            "works": [],
+            "sunk": bool(snap.get("sunk")),
+            "missing_on_board": bool(snap.get("missing_on_board")),
+            "board_status": "degraded" if board_degraded else "ok",
+            **(
+                {"board_message": "看板暂不可达，已返回最后一次缓存"}
+                if board_degraded
+                else {}
+            ),
+        }
     payload = {"ok": True, "empty": False, **snap}
     if board_degraded:
         payload["board_status"] = "degraded"

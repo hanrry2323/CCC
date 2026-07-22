@@ -4379,20 +4379,62 @@ final class AppModel: ObservableObject {
         )
 
         if snap.empty == true {
-            // 有本地 bind（含 pending:）时勿被空 snapshot 冲掉
-            if cached.epicId == nil {
+            // pending: 乐观绑定勿被空 snapshot 冲掉；其余（含沉底 ui_hidden）一律清轨
+            if Self.isPendingEpicId(cached.epicId) {
+                return
+            }
+            let sunk = (snap.sunk == true) || (snap.missing_on_board == true)
+            cached.works = []
+            cached.epic = nil
+            cached.epicId = nil
+            cached.headline = ""
+            cached.fanoutHint = nil
+            cached.stopLossHint = nil
+            cached.emptyMessage = snap.message
+                ?? "编排空闲 · 下一笔定稿后出现在这里"
+            if sunk {
+                // 沉底/板上已无 → 历史栈一并清空，避免右栏残留任务条
+                cached.recentEpics = []
+            }
+            threadFlow[tid] = cached
+            bumpFlowRevision(tid)
+            if isSelected {
+                applyFlowSnapshot(cached)
+                currentEpicId = nil
+                if sunk {
+                    recentEpics = []
+                }
+                lastAnimatedEpicId = nil
+            }
+            flushDiskSave(threadId: tid)
+            return
+        }
+        // 兼容旧 Hub：empty=false 但 epic 卡缺失 + 无 works → 视作幽灵绑定，清轨
+        if snap.epic == nil && (snap.works ?? []).isEmpty {
+            let ghostStage = (snap.user_stage ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if !Self.isPendingEpicId(cached.epicId),
+               ghostStage.isEmpty || ghostStage == "pending" || ghostStage == "idle" {
                 cached.works = []
                 cached.epic = nil
+                cached.epicId = nil
                 cached.headline = ""
-                cached.emptyMessage = snap.message
-                    ?? "编排空闲 · 下一笔定稿后出现在这里"
+                cached.fanoutHint = nil
+                cached.stopLossHint = nil
+                cached.recentEpics = []
+                cached.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
                 threadFlow[tid] = cached
                 bumpFlowRevision(tid)
                 if isSelected {
                     applyFlowSnapshot(cached)
+                    currentEpicId = nil
+                    recentEpics = []
+                    lastAnimatedEpicId = nil
                 }
+                flushDiskSave(threadId: tid)
+                return
             }
-            return
         }
         let stage = (snap.user_stage ?? snap.epic?.user_stage ?? snap.epic?.split_status ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

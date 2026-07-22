@@ -13,6 +13,7 @@
 | `thread_id` 原样落盘 | 未传时才默认 `{project}::main`；**禁止**把 `project::UUID` 强改成 `::main` |
 | 右栏焦点 | 本机 `boundEpicId` = **最新一笔未完成** epic；每次 transfer 替换焦点 |
 | 完成即退场 | `user_stage=done` → 右栏清空时间线（保留 `recentEpics` 列表）；历史只在**看板** |
+| 沉底不占活位 | 板上 `ui_hidden` + `split_status∈{done,failed,blocked}` → snapshot `empty`+`sunk`；`/flow/epics` 不进列表、`bound_hint` 不挂；禁止幽灵「待拆解」 |
 | 切换 | `recentEpics` Menu「切换本对话任务」可回看未完成编排；已 done 不展开时间线 |
 | Engine | 同仓多 epic 进 backlog **排队**；同仓 opencode **单写码槽**（非并行多路） |
 
@@ -22,11 +23,13 @@
 
 - **SSE**：`GET /api/desktop/flow/events?project_id=…&epic_id=…`  
 - **快照**：`GET /api/desktop/flow/snapshot?project_id=…&epic_id=…`  
+  - 板上找不到 epic → `empty=true` + `missing_on_board`（不再默认 `user_stage=pending`）  
+  - 含隐藏板查到 `ui_hidden` 终态 → `empty=true` + `sunk`  
 - **历史 epic**：`GET /api/desktop/flow/epics?project_id=…&thread_id=…`  
   - `thread_id` 以 `::main` 结尾 → **项目会话视图**（返回该项目全部近期 epic）  
   - 其它 `thread_id` → **精确匹配**该对话下达过的 epic  
-  - 响应含 `bound_hint`、`conversation_view`  
-- `epic_id` 省略时：Server 解析该项目最近转任务 epic  
+  - 响应含 `bound_hint`、`conversation_view`；**沉底终态不进 `epics` / `bound_hint`**  
+- `epic_id` 省略时：Server 解析该项目最近转任务 epic；若已沉底则按空轨返回  
 - 认证：与 Hub 相同 Basic Auth  
 - 心跳：每 15s `event: ping`
 

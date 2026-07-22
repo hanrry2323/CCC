@@ -47,6 +47,7 @@
 | [`product/desktop-agent-identity.md`](product/desktop-agent-identity.md) | **Desktop 对话 Agent 身份与心智** |
 | [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
 | [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |
+| [`runbooks/pre-test-dual-host-sync.md`](runbooks/pre-test-dual-host-sync.md) | **测前**双机对齐 + 清右栏/Engine 干扰 |
 | [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | 业务仓接入操作 |
 | [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) | Agent 短交接 |
 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | 事实权威 + Hub 只读透镜 |

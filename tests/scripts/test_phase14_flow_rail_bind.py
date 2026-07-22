@@ -72,6 +72,47 @@ def test_snapshot_user_stage_failed_when_split_failed():
     assert snap["headline"].startswith("编排异常") or snap["headline"].startswith("卡住")
 
 
+def test_snapshot_empty_when_epic_missing_on_board():
+    board = {"backlog": [], "planned": [], "released": []}
+    snap = flow_events.snapshot_from_board(
+        board, epic_id="ghost-epic", project_id="p1"
+    )
+    assert snap.get("empty") is True
+    assert snap.get("missing_on_board") is True
+    assert snap.get("epic") is None
+    assert snap.get("headline") == ""
+    assert snap.get("user_stage") == ""
+
+
+def test_snapshot_sunk_when_ui_hidden_terminal():
+    board = {
+        "backlog": [
+            {
+                "id": "epic-sunk",
+                "title": "sunk",
+                "split_status": "failed",
+                "ui_hidden": True,
+                "card_kind": "epic",
+            }
+        ]
+    }
+    snap = flow_events.snapshot_from_board(
+        board, epic_id="epic-sunk", project_id="p1"
+    )
+    assert snap.get("empty") is True
+    assert snap.get("sunk") is True
+    assert snap.get("epic") is None
+
+
+def test_snapshot_failed_still_visible_when_not_hidden():
+    board = _board(epic_col="backlog", epic_split="failed", works=[])
+    # _board helper may not set ui_hidden; ensure visible failed stays
+    board["backlog"][0]["ui_hidden"] = False
+    snap = flow_events.snapshot_from_board(board, epic_id="epic1", project_id="p1")
+    assert snap.get("empty") is not True
+    assert snap["user_stage"] == "failed"
+
+
 def test_is_terminal_stage_classification():
     assert flow_events.is_terminal_stage("done") is True
     assert flow_events.is_terminal_stage("failed") is True

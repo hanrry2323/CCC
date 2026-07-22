@@ -268,6 +268,10 @@ struct FlowSnapshot: Codable {
     let user_stage: String?
     let board_status: String?
     let board_message: String?
+    /// Hub：ui_hidden 终态沉底，右栏应清轨
+    let sunk: Bool?
+    /// Hub：默认板上找不到该 epic（常与 sunk 同现）
+    let missing_on_board: Bool?
 }
 
 struct TransferRequest: Encodable {
