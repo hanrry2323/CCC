@@ -46,8 +46,11 @@ alwaysApply: true
 - **VERSION**：kb 默认不 bump；仅 `bump_version=true` 才升版。看板卫生走 board_ops 短路径。
 - **dirty**：仅 `.ccc/` = `ccc_hygiene`，不挡 ready；git porcelain **勿** `str.strip()` 吃掉行首空格（会把卫生脏误判成业务）。
 - **清失败卡**：板上归档不够——同步剪 `flow-events.jsonl` + Hub `_desktop/<id>/last_epic|epic_history`，否则幽灵轨。
+- 同仓 OpenCode **1 路**（防 db lock）；跨仓 `MAX_CONCURRENT` 正交。倒很多卡 ≠ 堵槽；真问题是任务后进程不退出。收尸见 `_opencode_reap`；耗时见 `opencode_done` / `~/.ccc/stats/opencode-timings.jsonl`。
+- **并行容量**：看 Mac2017 `~/.ccc/stats/host-resources.jsonl`（`ccc-host-resources.py summary`）；`headroom` 才加 `MAX_CONCURRENT`，`saturated` 先治挂死。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
+- **Ops 后勤**：Engine=前锋（只消费队列）；Ops=供弹/清战场/护装备/回传（launchd 旁路，不进 Engine tick）。弹药只进 `engine=true` 业务仓；**禁止** CCC orch 建 `ops-auto`/日审卡。日审 apply：C/E/F 可；D/G/H 报警；I 永不。运维 UI 只读态势为主；采纳是例外。详见 authority「Ops 后勤」。
 
 ## 共识落盘
 

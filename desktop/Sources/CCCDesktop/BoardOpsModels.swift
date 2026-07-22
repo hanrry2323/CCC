@@ -145,6 +145,42 @@ struct OpsSummary: Decodable {
     let ports: OpsPortsResp?
     let auto: OpsAutoResp?
     let resources: OpsResourcesResp?
+    let logistics: OpsLogisticsResp?
+}
+
+struct OpsLogisticsResp: Decodable {
+    let ammo_workspaces: [OpsAmmoWorkspace]?
+    let daily_today: [OpsLogisticsDaily]?
+    let docs_today: [OpsLogisticsDaily]?
+    let spawn_hint_today: Int?
+    let ops_auto_backlog: Int?
+    let plist: OpsLogisticsPlist?
+    let note: String?
+    let generated_at: String?
+}
+struct OpsAmmoWorkspace: Decodable, Hashable {
+    let workspace: String?
+    let path: String?
+}
+struct OpsLogisticsDaily: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace)-\(path ?? mtime ?? "")" }
+    let workspace: String
+    let path: String?
+    let decision: String?
+    let mtime: String?
+    let watermark: String?
+}
+struct OpsLogisticsPlist: Decodable {
+    let agents: [OpsLogisticsAgent]?
+    let any_loaded: Bool?
+    let any_apply_ammo: Bool?
+}
+struct OpsLogisticsAgent: Identifiable, Decodable, Hashable {
+    var id: String { label }
+    let label: String
+    let loaded: Bool?
+    let plist: String?
+    let apply_ammo: Bool?
 }
 
 struct OpsWorkspacesResp: Decodable {

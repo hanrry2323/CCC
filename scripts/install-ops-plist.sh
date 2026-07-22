@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
 # install-ops-plist.sh — 安装 Ops Scheduler（日 diff / 文档审）launchd 模板
 # 用户显式启用；不是 invent。默认 --no-enable 写入 disabled-ccc，避免偷偷跑。
+# --apply-ammo: ProgramArguments 加 --all-apps --apply（仅 C/E/F + medium docs；禁 orch）
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCC_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 ACTION="${1:-install}"
 ENABLE_NOW=false
+APPLY_AMMO=false
 HOUR=7
 MINUTE=30
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [install|uninstall|status] [--enable] [--hour H] [--minute M]
+Usage: $(basename "$0") [install|uninstall|status] [--enable] [--apply-ammo] [--hour H] [--minute M]
 
 安装两个 LaunchAgent（默认写到 ~/Library/LaunchAgents/disabled-ccc/）:
-  com.ccc.ops-daily-diff   → ccc-daily-diff-review.py --workspace CCC_HOME
-  com.ccc.ops-docs-review  → ccc-daily-docs-review.py --workspace CCC_HOME
+  com.ccc.ops-daily-diff   → ccc-daily-diff-review.py --all-apps
+  com.ccc.ops-docs-review  → ccc-daily-docs-review.py --all-apps
 
 加 --enable 才会 launchctl load（且要求控制面非 disabled 时更安全）。
-日审默认 dry-run；若要定时 apply，请自行改 plist ProgramArguments 加 --apply。
+加 --apply-ammo 才会在 plist 写入 --apply（C/E/F 与 docs medium+ 可建卡；D/G/H/I 不建开发卡）。
+默认 dry-run（只写报告）。
 
 Examples:
   $(basename "$0") install
-  $(basename "$0") install --enable --hour 8 --minute 0
+  $(basename "$0") install --enable --apply-ammo --hour 8 --minute 0
   $(basename "$0") uninstall
   $(basename "$0") status
 EOF
@@ -33,6 +36,7 @@ shift_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --enable) ENABLE_NOW=true; shift ;;
+      --apply-ammo) APPLY_AMMO=true; shift ;;
       --hour) HOUR="$2"; shift 2 ;;
       --minute) MINUTE="$2"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
@@ -55,6 +59,10 @@ write_plist() {
   local label="$1"
   local script="$2"
   local plist="${PLIST_DIR}/${label}.plist"
+  local apply_xml=""
+  if ${APPLY_AMMO}; then
+    apply_xml="    <string>--apply</string>"
+  fi
   cat > "${plist}" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -65,8 +73,8 @@ write_plist() {
   <array>
     <string>/usr/bin/python3</string>
     <string>${CCC_HOME}/scripts/${script}</string>
-    <string>--workspace</string>
-    <string>${CCC_HOME}</string>
+    <string>--all-apps</string>
+${apply_xml}
   </array>
   <key>WorkingDirectory</key><string>${CCC_HOME}/scripts</string>
   <key>EnvironmentVariables</key>
@@ -84,7 +92,7 @@ write_plist() {
 </dict>
 </plist>
 PLIST
-  echo "wrote ${plist}"
+  echo "wrote ${plist} (apply_ammo=${APPLY_AMMO})"
   if ${ENABLE_NOW}; then
     launchctl unload "${plist}" 2>/dev/null || true
     launchctl load "${plist}"
@@ -119,9 +127,19 @@ case "${ACTION}" in
     uninstall_one "com.ccc.ops-docs-review"
     ;;
   status)
+    echo "=== launchctl ==="
     launchctl list 2>/dev/null | grep -E 'com\.ccc\.ops-' || echo "(no loaded ops agents)"
-    ls -la "${HOME}/Library/LaunchAgents"/com.ccc.ops-*.plist 2>/dev/null || true
-    ls -la "${HOME}/Library/LaunchAgents/disabled-ccc"/com.ccc.ops-*.plist 2>/dev/null || true
+    echo "=== plists ==="
+    for label in com.ccc.ops-daily-diff com.ccc.ops-docs-review; do
+      for dir in "${HOME}/Library/LaunchAgents" "${HOME}/Library/LaunchAgents/disabled-ccc"; do
+        plist="${dir}/${label}.plist"
+        if [[ -f "${plist}" ]]; then
+          apply="no"
+          if grep -q -- '--apply' "${plist}" 2>/dev/null; then apply="yes"; fi
+          echo "${plist} apply_ammo=${apply}"
+        fi
+      done
+    done
     ;;
   -h|--help) usage ;;
   *) usage; exit 2 ;;

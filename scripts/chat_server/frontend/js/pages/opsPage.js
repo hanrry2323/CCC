@@ -70,6 +70,12 @@ function html() {
   </div>
 
   <div class="ops-section">
+    <h3>E0. 后勤心跳</h3>
+    <p class="ops-hint">只读态势 · 供弹仅业务仓 · 定时见 install-ops-plist.sh</p>
+    <div id="ops-logistics" class="ops-card"></div>
+  </div>
+
+  <div class="ops-section">
     <h3>E. 日审报告
       <button type="button" class="hub-btn" id="ops-run-dry">再跑一次</button>
       <button type="button" class="hub-btn primary" id="ops-run-apply">应用建卡</button>
@@ -169,16 +175,25 @@ function renderPorts(d) {
     .join('\n');
 }
 
-function renderResources(d) {
+function renderResources(d, history) {
   const el = _root.querySelector('#ops-resources');
   const load = d.load || {};
   const mem = d.memory || {};
   const disk = d.disk || {};
+  const sum = (history && history.summary) || {};
+  const sparks = (history && history.sparklines) || {};
+  const verdict = sum.verdict ? `<div class="ops-kv">并行容量 <b>${esc(sum.verdict)}</b> · ${esc(sum.reason || '')}</div>` : '';
+  const curve =
+    sparks.load_ratio || sparks.mem_pct
+      ? `<div class="ops-kv mono small">load ${esc(sparks.load_ratio || '—')}<br>mem&nbsp; ${esc(sparks.mem_pct || '—')}</div>`
+      : '<div class="ops-kv muted small">曲线：Engine 采样中（~60s）→ ~/.ccc/stats/host-resources.jsonl</div>';
   el.innerHTML = `
-    <div><b>${esc(d.host || '本机')}</b></div>
-    <div class="ops-kv">Load ${esc(load['1']?.toFixed?.(2) ?? load['1'] ?? '—')} / ${esc(load['5']?.toFixed?.(2) ?? '—')} / ${esc(load['15']?.toFixed?.(2) ?? '—')}</div>
+    <div><b>${esc(d.host || '本机')}</b> · ncpu ${esc(d.ncpu ?? '—')}</div>
+    <div class="ops-kv">Load ${esc(load['1']?.toFixed?.(2) ?? load['1'] ?? '—')} / ${esc(load['5']?.toFixed?.(2) ?? '—')} / ${esc(load['15']?.toFixed?.(2) ?? '—')} · ratio ${esc(d.load_ratio ?? '—')}</div>
     <div class="ops-kv">内存 ${esc(mem.used_pct != null ? mem.used_pct + '%' : '—')} · ${esc(fmtBytes(mem.used_bytes))} / ${esc(fmtBytes(mem.total_bytes))}</div>
-    <div class="ops-kv">磁盘 ${esc(disk.used_pct != null ? disk.used_pct + '%' : '—')} · 可用 ${esc(fmtBytes(disk.free_bytes))}</div>`;
+    <div class="ops-kv">磁盘 ${esc(disk.used_pct != null ? disk.used_pct + '%' : '—')} · 可用 ${esc(fmtBytes(disk.free_bytes))}</div>
+    ${curve}
+    ${verdict}`;
 }
 
 function renderDeploy(d) {
@@ -223,6 +238,41 @@ function renderWorkspaces(d) {
       </tr>`;
     })
     .join('')}</tbody></table>`;
+}
+
+function renderLogistics(d) {
+  const el = _root.querySelector('#ops-logistics');
+  if (!el) return;
+  if (!d || d.error) {
+    el.innerHTML = `<p class="ops-hint">${esc(d?.error || '无后勤心跳')}</p>`;
+    return;
+  }
+  const plist = d.plist || {};
+  const agents = plist.agents || [];
+  const ammo = d.ammo_workspaces || [];
+  const daily = d.daily_today || [];
+  const agentRows = agents
+    .map(
+      (a) =>
+        `<div class="ops-kv">${pill(!!a.loaded, a.loaded ? 'loaded' : 'off')}
+        <code>${esc(a.label)}</code>
+        apply_ammo=${a.apply_ammo ? 'yes' : 'no'}</div>`
+    )
+    .join('');
+  const dailyRows = daily.length
+    ? daily
+        .map(
+          (x) =>
+            `<div class="ops-kv"><b>${esc(x.workspace)}</b> decision ${esc(x.decision || '—')}
+            <span class="muted mono small">${esc(x.mtime || '')}</span></div>`
+        )
+        .join('')
+    : '<div class="ops-kv muted">今日尚无日审报告</div>';
+  el.innerHTML = `
+    <div class="ops-kv">弹药仓 ${esc(String(ammo.length))} · ops-auto backlog ${esc(String(d.ops_auto_backlog ?? 0))} · spawn提示 ${esc(String(d.spawn_hint_today ?? 0))}</div>
+    ${agentRows || '<div class="ops-kv muted">无 ops plist</div>'}
+    ${dailyRows}
+    <p class="ops-hint">${esc(d.note || '')}</p>`;
 }
 
 function renderDaily(d) {
@@ -282,14 +332,22 @@ function renderRisks(d) {
   el.innerHTML = risks
     .map((r) => {
       const sev = esc(r.severity || 'info');
+      const ws = (r.workspace || '').trim();
+      const canAdopt =
+        ws &&
+        ws.toUpperCase() !== 'CCC' &&
+        r.title &&
+        !String(r.id || '').startsWith('engine');
       return `<div class="ops-risk sev-${sev}">
         <div class="title">${esc(r.title)}</div>
-        <div class="meta">${esc(r.source)} · ${sev}${r.workspace ? ' · ' + esc(r.workspace) : ''}</div>
+        <div class="meta">${esc(r.source)} · ${sev}${ws ? ' · ' + esc(ws) : ''}</div>
         <div class="detail">${esc(r.detail || '')}</div>
         ${
-          r.title && !String(r.id || '').startsWith('engine')
-            ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc(r.title)}" data-detail="${esc(r.detail || '')}" data-ws="${esc(r.workspace || 'CCC')}">采纳为任务</button>`
-            : ''
+          canAdopt
+            ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc(r.title)}" data-detail="${esc(r.detail || '')}" data-ws="${esc(ws)}">采纳为任务</button>`
+            : ws
+              ? ''
+              : '<div class="muted small">无业务仓 workspace，不可采纳（禁 orch）</div>'
         }
       </div>`;
     })
@@ -299,7 +357,7 @@ function renderRisks(d) {
       btn.disabled = true;
       try {
         await apiPost('/api/ops/adopt', {
-          workspace: btn.dataset.ws || 'CCC',
+          workspace: btn.dataset.ws,
           title: btn.dataset.title || 'ops suggestion',
           description: btn.dataset.detail || '',
           tags: ['ops-auto', 'from-risk'],
@@ -337,20 +395,26 @@ function renderDocs(d) {
     return;
   }
   el.innerHTML = findings
-    .map(
-      (f) => `<div class="ops-risk sev-${esc(f.severity || 'low')}">
+    .map((f) => {
+      const ws = (f.workspace || '').trim();
+      const canAdopt = ws && ws.toUpperCase() !== 'CCC';
+      return `<div class="ops-risk sev-${esc(f.severity || 'low')}">
       <div class="title">${esc(f.title)}</div>
       <div class="detail">${esc(f.suggestion || '')}</div>
-      <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('文档: ' + (f.title || ''))}" data-detail="${esc(f.suggestion || '')}" data-ws="${esc(f.workspace || 'CCC')}">采纳为任务</button>
-    </div>`
-    )
+      ${
+        canAdopt
+          ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('文档: ' + (f.title || ''))}" data-detail="${esc(f.suggestion || '')}" data-ws="${esc(ws)}">采纳为任务</button>`
+          : '<div class="muted small">无业务仓，跳过采纳</div>'
+      }
+    </div>`;
+    })
     .join('');
   el.querySelectorAll('.ops-adopt-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
         await apiPost('/api/ops/adopt', {
-          workspace: btn.dataset.ws || 'CCC',
+          workspace: btn.dataset.ws,
           title: btn.dataset.title,
           description: btn.dataset.detail || '',
           tags: ['ops-auto', 'docs'],
@@ -392,11 +456,17 @@ function renderQuality(d) {
     `<p class="ops-hint">${esc(d.note || '')}</p>` +
     (rows
       .map((w) => {
+        const ws = (w.workspace || '').trim();
+        const canAdopt = ws && ws.toUpperCase() !== 'CCC';
         const commits = (w.commit_sample || []).map(esc).join('<br>') || '—';
         return `<div class="ops-card" style="margin-bottom:8px">
-        <b>${esc(w.workspace)}</b> · 24h commits ${esc(w.commits_24h)} · released ${esc(w.released_total)}
+        <b>${esc(ws)}</b> · 24h commits ${esc(w.commits_24h)} · released ${esc(w.released_total)}
         <div class="mono small">${commits}</div>
-        <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('质量跟进: ' + w.workspace)}" data-detail="${esc((w.commit_sample || []).join('\\n'))}" data-ws="${esc(w.workspace)}">建议入队打磨</button>
+        ${
+          canAdopt
+            ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('质量跟进: ' + ws)}" data-detail="${esc((w.commit_sample || []).join('\\n'))}" data-ws="${esc(ws)}">建议入队打磨</button>`
+            : ''
+        }
       </div>`;
       })
       .join('') || '<div class="ops-empty">无摘要</div>');
@@ -405,7 +475,7 @@ function renderQuality(d) {
       btn.disabled = true;
       try {
         await apiPost('/api/ops/adopt', {
-          workspace: btn.dataset.ws || 'CCC',
+          workspace: btn.dataset.ws,
           title: btn.dataset.title,
           description: btn.dataset.detail || '',
           tags: ['ops-auto', 'quality'],
@@ -438,8 +508,9 @@ async function poll() {
   renderMachines(agg.overview || { machines: [], alert_count: 0 });
   renderPorts(agg.ports || { groups: [] });
 
-  renderResources(agg.resources || {});
+  renderResources(agg.resources || {}, agg.resources_history || null);
   renderWorkspaces(agg.workspaces || { workspaces: [] });
+  renderLogistics(agg.logistics || {});
   renderDaily(agg.daily || {});
   renderMinds(agg.agent_minds || {});
   renderRisks(agg.risks || { count: 0, risks: [] });
@@ -452,9 +523,9 @@ async function poll() {
 
 async function runReview(apply) {
   try {
-    const r = await apiPost('/api/ops/daily-review/run', { workspace: 'CCC', apply });
+    const r = await apiPost('/api/ops/daily-review/run', { all_apps: true, apply });
     if (r.ok) {
-      window.showToast?.(apply ? '已 apply（见 spawn）' : 'dry-run 完成', 'success');
+      window.showToast?.(apply ? '已 apply（业务仓 C/E/F）' : 'dry-run 完成（all apps）', 'success');
     } else {
       window.showToast?.(r.error || '日审失败', 'error');
     }
@@ -478,7 +549,7 @@ export async function mountOps(el) {
     });
     _root.querySelector('#ops-run-dry').addEventListener('click', () => runReview(false));
     _root.querySelector('#ops-run-apply').addEventListener('click', () => {
-      if (confirm('确认对 CCC workspace 执行日审 --apply（可建 ops-auto 卡）？')) {
+      if (confirm('确认对已登记业务仓执行日审 --apply（仅 C/E/F 可建 ops-auto；禁 orch）？')) {
         runReview(true);
       }
     });

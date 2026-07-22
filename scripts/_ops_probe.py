@@ -413,9 +413,51 @@ def local_resources() -> dict:
 
     return {
         "host": socket.gethostname(),
+        "ncpu": _ncpu_safe(),
         "load": {"1": load1, "5": load5, "15": load15},
+        "load_ratio": (
+            round(float(load1) / _ncpu_safe(), 3)
+            if load1 is not None
+            else None
+        ),
         "memory": mem,
         "disk": disk,
+        "generated_at": _now_iso(),
+    }
+
+
+def _ncpu_safe() -> int:
+    try:
+        return int(os.cpu_count() or 1)
+    except Exception:
+        return 1
+
+
+def host_resources_history(n: int = 120) -> dict:
+    """Time series + headroom for Ops / parallelism decisions."""
+    try:
+        from _host_resources import read_recent, summarize, sparkline, HOST_RESOURCES_PATH
+    except ImportError:
+        return {"error": "host_resources module missing", "samples": []}
+    rows = read_recent(n)
+    loads = []
+    mems = []
+    for r in rows:
+        lr = r.get("load_ratio")
+        if lr is None:
+            load1 = (r.get("load") or {}).get("1")
+            cpus = r.get("ncpu") or 1
+            lr = (float(load1) / float(cpus)) if load1 is not None else None
+        loads.append(lr)
+        mems.append((r.get("memory") or {}).get("used_pct"))
+    return {
+        "path": str(HOST_RESOURCES_PATH),
+        "samples": rows,
+        "sparklines": {
+            "load_ratio": sparkline(loads),
+            "mem_pct": sparkline(mems),
+        },
+        "summary": summarize(rows),
         "generated_at": _now_iso(),
     }
 
@@ -505,8 +547,9 @@ def run_daily_review(
     *,
     apply: bool = False,
     debounce_s: float = 15.0,
+    all_apps: bool = False,
 ) -> dict:
-    key = str(workspace_path.resolve())
+    key = "all-apps" if all_apps else str(workspace_path.resolve())
     with _RUN_LOCK:
         last = _RUN_DEBOUNCE.get(key, 0)
         now = time.time()
@@ -519,7 +562,11 @@ def run_daily_review(
         _RUN_DEBOUNCE[key] = now
 
     script = SCRIPTS / "ccc-daily-diff-review.py"
-    cmd = ["python3", str(script), "--workspace", str(workspace_path)]
+    cmd = ["python3", str(script)]
+    if all_apps:
+        cmd.append("--all-apps")
+    else:
+        cmd.extend(["--workspace", str(workspace_path)])
     if apply:
         cmd.append("--apply")
     else:
@@ -544,9 +591,10 @@ def run_daily_review(
             "result": payload,
             "stderr": (r.stderr or "")[-2000:],
             "apply": apply,
+            "all_apps": all_apps,
         }
     except Exception as e:
-        return {"ok": False, "error": str(e), "apply": apply}
+        return {"ok": False, "error": str(e), "apply": apply, "all_apps": all_apps}
 
 
 def kb_health() -> dict:
@@ -949,19 +997,256 @@ def quality_summary(workspaces: dict[str, str]) -> dict:
     }
 
 
+def _plist_ops_status() -> dict[str, Any]:
+    """Whether com.ccc.ops-* agents are loaded and whether apply-ammo is configured."""
+    home = Path.home()
+    labels = ("com.ccc.ops-daily-diff", "com.ccc.ops-docs-review")
+    agents: list[dict[str, Any]] = []
+    for label in labels:
+        loaded = False
+        try:
+            r = subprocess.run(
+                ["launchctl", "list", label],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            loaded = r.returncode == 0
+        except Exception:
+            loaded = False
+        plist_paths = [
+            home / "Library" / "LaunchAgents" / f"{label}.plist",
+            home / "Library" / "LaunchAgents" / "disabled-ccc" / f"{label}.plist",
+        ]
+        plist_path = next((p for p in plist_paths if p.is_file()), None)
+        apply_ammo = False
+        if plist_path and plist_path.is_file():
+            try:
+                text = plist_path.read_text(encoding="utf-8")
+                apply_ammo = ">--apply<" in text or ">--apply</string>" in text
+            except OSError:
+                pass
+        agents.append(
+            {
+                "label": label,
+                "loaded": loaded,
+                "plist": str(plist_path) if plist_path else None,
+                "apply_ammo": apply_ammo,
+            }
+        )
+    return {
+        "agents": agents,
+        "any_loaded": any(a["loaded"] for a in agents),
+        "any_apply_ammo": any(a["apply_ammo"] for a in agents),
+    }
+
+
+def logistics_heartbeat(workspaces: dict[str, str] | None = None) -> dict:
+    """Read-only Ops logistics pulse for Hub/Desktop (no new action buttons)."""
+    spaces = workspaces or {}
+    ammo = list_ammo_workspaces()
+    day = datetime.now().strftime("%Y-%m-%d")
+    latest_daily: list[dict] = []
+    latest_docs: list[dict] = []
+    spawn_hint = 0
+
+    roots: list[tuple[str, Path]] = [(a["workspace"], Path(a["path"])) for a in ammo]
+    for ws_id, path in spaces.items():
+        p = Path(path).expanduser()
+        if p.is_dir() and not any(p.resolve() == r.resolve() for _, r in roots):
+            roots.append((ws_id, p))
+
+    for ws_id, root in roots[:16]:
+        reports = root / ".ccc" / "reports"
+        daily = reports / f"daily-review-{day}.md"
+        docs = reports / f"docs-review-{day}.md"
+        wm = root / ".ccc" / "stats" / "daily-review-watermark.json"
+        if daily.is_file():
+            body = daily.read_text(encoding="utf-8", errors="replace")[:2000]
+            dec = ""
+            m = re.search(r"decision:\s*\*\*([A-J])\*\*", body)
+            if m:
+                dec = m.group(1)
+            if "spawn" in body and '"created": true' in body.lower().replace(" ", ""):
+                spawn_hint += 1
+            elif re.search(r'"created":\s*true', body):
+                spawn_hint += 1
+            latest_daily.append(
+                {
+                    "workspace": ws_id,
+                    "path": str(daily),
+                    "decision": dec or None,
+                    "mtime": datetime.fromtimestamp(
+                        daily.stat().st_mtime
+                    ).isoformat(timespec="seconds"),
+                }
+            )
+        if docs.is_file():
+            latest_docs.append(
+                {
+                    "workspace": ws_id,
+                    "path": str(docs),
+                    "mtime": datetime.fromtimestamp(
+                        docs.stat().st_mtime
+                    ).isoformat(timespec="seconds"),
+                }
+            )
+        wm_sha = None
+        if wm.is_file():
+            try:
+                wm_sha = json.loads(wm.read_text(encoding="utf-8")).get("sha")
+            except (OSError, json.JSONDecodeError):
+                pass
+            if latest_daily and latest_daily[-1].get("workspace") == ws_id:
+                latest_daily[-1]["watermark"] = wm_sha
+
+    auto_n = 0
+    try:
+        auto_n = len(list_ops_auto_tasks(spaces or {a["workspace"]: a["path"] for a in ammo}))
+    except Exception:
+        auto_n = 0
+
+    return {
+        "ammo_workspaces": ammo,
+        "daily_today": latest_daily,
+        "docs_today": latest_docs,
+        "spawn_hint_today": spawn_hint,
+        "ops_auto_backlog": auto_n,
+        "plist": _plist_ops_status(),
+        "note": "后勤心跳只读；供弹仅 engine-eligible；定时见 install-ops-plist.sh",
+        "generated_at": _now_iso(),
+    }
+
+
+def resolve_ammo_workspace(
+    workspace: str | Path | None,
+    *,
+    registry: Path | None = None,
+) -> dict[str, Any]:
+    """Resolve ops-auto / daily-review ammo target.
+
+    Must be registry engine-eligible (app). CCC orch is forbidden — Engine
+    never consumes orch boards (ops-ammo-orch-forbidden).
+    """
+    from _workspace_registry import (
+        entry_engine_eligible,
+        is_orch_path,
+        list_engine_paths,
+        lookup_entry,
+        orch_home,
+    )
+
+    raw = (str(workspace).strip() if workspace is not None else "") or ""
+    if not raw:
+        return {
+            "ok": False,
+            "error": "workspace required (engine-eligible app; not CCC orch)",
+            "code": "ops-ammo-workspace-required",
+        }
+
+    entry = lookup_entry(raw, registry=registry)
+    path: Path | None = None
+    name: str | None = None
+    if entry:
+        path = Path(entry["path"])
+        name = str(entry.get("name") or path.name)
+        if not entry_engine_eligible(entry):
+            return {
+                "ok": False,
+                "error": (
+                    f"ops ammo forbidden for non-engine workspace "
+                    f"{name!r} (role={entry.get('role')}, engine={entry.get('engine')}); "
+                    "engine-eligible apps only"
+                ),
+                "code": "ops-ammo-orch-forbidden",
+                "workspace": name,
+                "path": str(path),
+            }
+    else:
+        try:
+            path = Path(raw).expanduser().resolve()
+        except OSError as e:
+            return {
+                "ok": False,
+                "error": f"invalid workspace path: {e}",
+                "code": "ops-ammo-workspace-invalid",
+            }
+        name = path.name
+        if is_orch_path(path) or path == orch_home().resolve():
+            return {
+                "ok": False,
+                "error": "ops ammo forbidden on CCC orch (engine-eligible apps only)",
+                "code": "ops-ammo-orch-forbidden",
+                "workspace": name,
+                "path": str(path),
+            }
+        # Unregistered path: allow only if it is already an engine-eligible path
+        eligible = {str(p.resolve()) for p in list_engine_paths(registry)}
+        if str(path) not in eligible:
+            return {
+                "ok": False,
+                "error": (
+                    f"workspace {name!r} not engine-eligible in registry; "
+                    "register an app with engine=true"
+                ),
+                "code": "ops-ammo-not-eligible",
+                "workspace": name,
+                "path": str(path),
+            }
+
+    if not path or not path.is_dir():
+        return {
+            "ok": False,
+            "error": f"workspace path missing: {path}",
+            "code": "ops-ammo-path-missing",
+            "workspace": name,
+        }
+    return {
+        "ok": True,
+        "path": path,
+        "workspace": name or path.name,
+        "code": "ok",
+    }
+
+
+def list_ammo_workspaces(registry: Path | None = None) -> list[dict[str, str]]:
+    """Engine-eligible apps suitable for ops ammo / daily review."""
+    from _workspace_registry import entry_engine_eligible, list_registered_entries
+
+    out: list[dict[str, str]] = []
+    for e in list_registered_entries(registry):
+        if not entry_engine_eligible(e):
+            continue
+        out.append({"workspace": str(e["name"]), "path": str(e["path"])})
+    return out
+
+
 def adopt_suggestion(
-    workspace_path: Path,
+    workspace_path: Path | str,
     *,
     title: str,
     description: str = "",
     tags: list[str] | None = None,
 ) -> dict:
-    """Create backlog card from ops suggestion (ops-auto). Not invent."""
+    """Create backlog card from ops suggestion (ops-auto). Not invent.
+
+    Target must be engine-eligible; CCC orch rejected (ops-ammo-orch-forbidden).
+    """
+    resolved = resolve_ammo_workspace(workspace_path)
+    if not resolved.get("ok"):
+        return {
+            "ok": False,
+            "error": resolved.get("error"),
+            "code": resolved.get("code") or "ops-ammo-orch-forbidden",
+            "workspace": resolved.get("workspace"),
+        }
+
+    path = Path(resolved["path"])
     from board.context import set_workspace
     from _board_store import FileBoardStore
 
-    set_workspace(workspace_path)
-    store = FileBoardStore(workspace_path)
+    set_workspace(path)
+    store = FileBoardStore(path)
     tid = f"ops-adopt-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     tag_list = list(tags or [])
     if "ops-auto" not in tag_list:
@@ -989,4 +1274,11 @@ def adopt_suggestion(
             wake = ensure_engine_for_task(reason="ops_adopt", task_id=tid)
         except Exception as e:
             wake = {"error": str(e)}
-    return {"ok": ok, "task_id": tid, "engine_wake": wake, "tags": tag_list}
+    return {
+        "ok": ok,
+        "task_id": tid,
+        "engine_wake": wake,
+        "tags": tag_list,
+        "workspace": resolved.get("workspace"),
+        "path": str(path),
+    }

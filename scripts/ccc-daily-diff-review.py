@@ -167,16 +167,31 @@ def heuristic_decide(diff_stat: str, diff_text: str, mode: str) -> dict:
     return {"decision": "B", "rationale": "heuristic ack", "spawn": None}
 
 
+# Decisions that may auto-create backlog under --apply (authority Ops 后勤).
+APPLY_SPAWN_DECISIONS = frozenset({"C", "E", "F"})
+
+
 def maybe_spawn(ws: Path, spawn: dict | None, decision: str, *, apply: bool) -> dict | None:
     if not spawn or not apply:
         return None
-    if decision not in ("C", "E", "F", "I"):
-        return None
     if decision == "I":
-        from _ccc_control import may_invent
+        return {"skipped": True, "reason": "invent hard-disabled (decision I never auto)"}
+    if decision not in APPLY_SPAWN_DECISIONS:
+        return {
+            "skipped": True,
+            "reason": f"decision {decision} not in apply whitelist C/E/F",
+        }
 
-        if not may_invent():
-            return {"skipped": True, "reason": "invent not allowed"}
+    from _ops_probe import resolve_ammo_workspace
+
+    resolved = resolve_ammo_workspace(ws)
+    if not resolved.get("ok"):
+        return {
+            "skipped": True,
+            "reason": resolved.get("error"),
+            "code": resolved.get("code"),
+        }
+    target = Path(resolved["path"])
 
     tid = f"daily-{decision.lower()}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     task = {
@@ -184,6 +199,7 @@ def maybe_spawn(ws: Path, spawn: dict | None, decision: str, *, apply: bool) -> 
         "title": spawn.get("title") or tid,
         "description": spawn.get("description") or "",
         "status": "backlog",
+        "card_kind": "epic",
         "created_at": _now(),
         "updated_at": _now(),
         "schema_version": "1.2",
@@ -193,36 +209,31 @@ def maybe_spawn(ws: Path, spawn: dict | None, decision: str, *, apply: bool) -> 
     from board.context import set_workspace
     from _board_store import FileBoardStore
 
-    set_workspace(ws)
-    store = FileBoardStore(ws)
+    set_workspace(target)
+    store = FileBoardStore(target)
     ok = store.create_task(task, column="backlog")
     wake = None
     if ok:
         from _engine_wake import ensure_engine_for_task
 
         wake = ensure_engine_for_task(reason="daily_review", task_id=tid)
-    return {"created": ok, "task_id": tid, "engine_wake": wake}
+    return {
+        "created": ok,
+        "task_id": tid,
+        "engine_wake": wake,
+        "workspace": resolved.get("workspace"),
+        "path": str(target),
+    }
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="CCC daily diff review")
-    ap.add_argument("--workspace", default=str(SCRIPTS.parent))
-    ap.add_argument("--since", default="", help="git rev (default: watermark or HEAD~1)")
-    ap.add_argument("--apply", action="store_true", help="建卡+wake（默认只报告）")
-    ap.add_argument("--dry-run", action="store_true", help="强制只报告")
-    args = ap.parse_args(argv)
-
-    ws = Path(args.workspace).resolve()
-    apply = bool(args.apply) and not args.dry_run
-
+def review_one(ws: Path, *, apply: bool, since: str = "") -> dict:
     rc, head = _git(ws, "rev-parse", "HEAD")
     if rc != 0:
-        print(json.dumps({"ok": False, "error": "not a git repo", "decision": "H"}))
-        return 1
+        return {"ok": False, "error": "not a git repo", "decision": "H", "workspace": ws.name}
 
-    since = args.since or load_watermark(ws) or "HEAD~1"
-    _, diff_stat = _git(ws, "diff", "--stat", f"{since}..HEAD")
-    _, diff_text = _git(ws, "diff", f"{since}..HEAD")
+    since_rev = since or load_watermark(ws) or "HEAD~1"
+    _, diff_stat = _git(ws, "diff", "--stat", f"{since_rev}..HEAD")
+    _, diff_text = _git(ws, "diff", f"{since_rev}..HEAD")
 
     from _ccc_control import get_mode
 
@@ -245,7 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(
         f"# Daily Diff Review {day}\n\n"
         f"- ts: {_now()}\n"
-        f"- since: `{since}`\n"
+        f"- workspace: `{ws}`\n"
+        f"- since: `{since_rev}`\n"
         f"- head: `{head}`\n"
         f"- decision: **{result['decision']}** — {DECISIONS.get(result['decision'], '')}\n"
         f"- rationale: {result.get('rationale')}\n"
@@ -258,20 +270,64 @@ def main(argv: list[str] | None = None) -> int:
     if apply and result["decision"] in ("A", "B"):
         save_watermark(ws, head)
 
-    out = {
+    return {
         "ok": True,
         "decision": result["decision"],
         "label": DECISIONS.get(result["decision"]),
         "rationale": result.get("rationale"),
-        "since": since,
+        "since": since_rev,
         "head": head,
         "apply": apply,
         "spawn": spawn_out,
         "report": str(report_path),
+        "workspace": ws.name,
+        "path": str(ws),
         "decisions_catalog": DECISIONS,
     }
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="CCC daily diff review")
+    ap.add_argument("--workspace", default="", help="single workspace path (default: CCC home if not --all-apps)")
+    ap.add_argument(
+        "--all-apps",
+        action="store_true",
+        help="scan all engine-eligible registered apps",
+    )
+    ap.add_argument("--since", default="", help="git rev (default: watermark or HEAD~1)")
+    ap.add_argument("--apply", action="store_true", help="建卡+wake（仅 C/E/F；默认只报告）")
+    ap.add_argument("--dry-run", action="store_true", help="强制只报告")
+    args = ap.parse_args(argv)
+
+    apply = bool(args.apply) and not args.dry_run
+
+    targets: list[Path] = []
+    if args.all_apps:
+        from _ops_probe import list_ammo_workspaces
+
+        targets = [Path(x["path"]) for x in list_ammo_workspaces()]
+        if not targets:
+            print(json.dumps({"ok": False, "error": "no engine-eligible apps", "results": []}))
+            return 1
+    else:
+        ws_raw = args.workspace or str(SCRIPTS.parent)
+        targets = [Path(ws_raw).expanduser().resolve()]
+
+    if len(targets) == 1 and not args.all_apps:
+        out = review_one(targets[0], apply=apply, since=args.since)
+        # Soft-warn if reviewing orch without apply (report ok); block apply via maybe_spawn
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0 if out.get("ok") else 1
+
+    results = [review_one(t, apply=apply, since=args.since) for t in targets]
+    out = {
+        "ok": all(r.get("ok") for r in results),
+        "all_apps": True,
+        "apply": apply,
+        "results": results,
+    }
     print(json.dumps(out, ensure_ascii=False, indent=2))
-    return 0
+    return 0 if out["ok"] else 1
 
 
 if __name__ == "__main__":

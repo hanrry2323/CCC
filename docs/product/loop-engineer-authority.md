@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-22（Hub M1 主路径 = SSH 隧道 `:17777`；全流程完整性：假绿关门 / 活跃板计数 / VERSION opt-in） 
+> **状态**：现行 · 2026-07-22（Ops 后勤：Engine 前锋 / 旁路供弹；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in） 
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -322,6 +322,52 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 
 ---
 
+## Ops 后勤（硬 · 2026-07-22）
+
+**比喻**：Engine = 前锋（打仗）；Ops = 后勤（供弹 + 清战场 + 护装备 + 回传）。主路径仍是意图→Hub→Engine；后勤是闭环后半段与旁路保障，**不是**第四条产品入口，**不是** invent。
+
+| | **Engine（前锋）** | **Ops（后勤）** |
+|--|-------------------|-----------------|
+| 吃什么 | 板上已有可消费任务 | 产弹药、清战场、护装备；红灯才喊人 |
+| 不做 | invent / 空闲造卡 / 扫 diff 定策 | 不抢写码主路径；不替代 product 扇出 |
+| 成功 | backlog→released | 人前几乎无感；队列不断粮；挂了自愈或人话报警 |
+
+**减负验收**：人不定时点「再跑日审」；日常不问；仅安全/权威红灯打断；打开运维页 = 看后勤态势，不是第二块派工看板。
+
+### 四类活（用现成脚本，不新建中台）
+
+| 类 | 做什么 | 实现 |
+|----|--------|------|
+| **供弹** | 合法 epic 进业务仓 backlog | 日 diff / 文档债 / regress；Hub adopt 仅例外 |
+| **清战场** | hang 后脏、OpenCode 残留、abnormal 清场 | Engine hang/reap + board_ops；幽灵轨清 flow/last_epic |
+| **护装备** | 探活、资源曲线、权威巡查 | `_ops_probe` / host-resources / `ccc-authority-patrol` |
+| **回传** | 报告 + 运维只读心跳 | `.ccc/reports/` + `GET /api/ops/summary` |
+
+定时用 launchd 旁路（`install-ops-plist.sh` / regress plist）；**禁止**把日审/文档/patrol 塞进 Engine tick。
+
+### 供弹铁律
+
+1. **仅** `~/.ccc/workspaces.json` 中 `engine=true` 且非 orch 的业务仓可收 `ops-auto` / 日审卡。  
+2. **禁止**往 CCC orch 建弹药卡（Engine 不消费 orch；平台修仓只认 Cursor）。  
+3. 空闲优先产品 epic（`next_product_goal`）；禁止无风险时用卫生/烟测刷板。
+
+### 日审 apply 白名单（A–J）
+
+| 决策 | 自动 `--apply` 建卡？ |
+|------|----------------------|
+| A / B | 否（可推水位） |
+| **C / E / F** | **可**（业务仓；去重） |
+| D / G / H | **否**（报警 / 人闸） |
+| **I** | **永不**（invent 硬关） |
+
+脚本：`ccc-daily-diff-review.py`、`ccc-daily-docs-review.py`（docs 仅 medium+）。默认 dry-run；生产机 `install-ops-plist.sh install --enable --apply-ammo`。
+
+### 运维 UI
+
+Hub `#/ops` / Desktop OpsView = **后勤可见面**（`/api/ops/summary`）；采纳按钮是例外通道，默认 workspace **不得**是 CCC。`board/roles/ops.py` 不升格为总调度。
+
+---
+
 ## 从零测 ccc-demo
 
 1. 对齐基线 → 空板 + live `as_of`。  
@@ -330,6 +376,22 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 4. 业务仓工程师模式 → 拒。
 
 板面重置归档：`apps/ccc-demo/.ccc/archive/reset-2026-07-21/`。
+
+---
+
+## OpenCode 生命周期与「倒卡堵槽」（硬 · 2026-07-22）
+
+| 事实 | 口径 |
+|------|------|
+| **同仓 1 路 OpenCode** | `try_acquire_opencode_slot`：同 workspace 互斥（防 `opencode.db` locked）。与跨仓 `MAX_CONCURRENT≈3` **正交**。 |
+| **三任务并发 ≠ 堵死** | 三仓各一路可并行；同仓排队是设计。倒 20 张进 planned **不会**本身堵死槽——槽被占是因为**这一路不退出**。 |
+| **真问题** | OpenCode CLI/node 孙子在任务结束后残留；`.ccc/pids/*.pid` 只认 runner，死 runner + 活 opencode → 同仓永久「忙」。 |
+| **收尸** | `scripts/_opencode_reap.py`：runner EXIT / `.done` / hang-auto / 周期 sweep 必 reap `--dir <ws>`；死 pid 文件**不**保护孤儿。 |
+| **效率埋点** | `opencode_start` / `opencode_done` → `<ws>/.ccc/stats/events.jsonl` + `~/.ccc/stats/opencode-timings.jsonl`（`duration_s`/`wall_s`/`complexity`/`duration_min`）。 |
+
+禁止把「一次倒很多卡」当成 OpenCode 卡死的主因；排障先看残留进程与 `opencode_done.wall_min`。
+
+**主机资源曲线（并行容量）**：Engine 每 ~60s 写 `~/.ccc/stats/host-resources.jsonl`（load_ratio=load1/ncpu、mem%、`active_dev`/`opencode_n`）。看 `python3 scripts/ccc-host-resources.py summary` 或 Hub `GET /api/ops/resources/history`：`headroom` 才考虑 `MAX_CONCURRENT+1`；`saturated` 先治挂死/残留，勿盲目加并行。同仓仍 1 路。
 
 ---
 

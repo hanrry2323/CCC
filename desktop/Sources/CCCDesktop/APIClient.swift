@@ -1034,7 +1034,12 @@ actor APIClient {
     }
 
     func runDailyReview(workspace: String) async throws {
-        let body = try JSONSerialization.data(withJSONObject: ["workspace": workspace])
+        // Dry-run all engine-eligible apps (report-only; apply via schedule / Hub)
+        let body = try JSONSerialization.data(withJSONObject: [
+            "all_apps": true,
+            "apply": false,
+            "workspace": workspace,
+        ])
         let req = try authedRequest("api/ops/daily-review/run", method: "POST", body: body)
         let (_, code) = try await sendVoid(req)
         if !(200..<300).contains(code) {

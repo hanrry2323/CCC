@@ -67,6 +67,16 @@ async def ops_resources(request: Request):
     return local_resources()
 
 
+@router.get("/api/ops/resources/history")
+async def ops_resources_history(request: Request, n: int = 120):
+    """Mac2017 CPU/内存曲线 + 并行容量建议（Engine 每 ~60s 埋点）。"""
+    check_auth(request)
+    from _ops_probe import host_resources_history
+
+    n = max(12, min(int(n or 120), 720))
+    return host_resources_history(n)
+
+
 @router.get("/api/ops/workspaces")
 async def ops_workspaces(request: Request):
     check_auth(request)
@@ -86,19 +96,39 @@ async def ops_daily_review(request: Request):
 
 
 class DailyReviewRunBody(BaseModel):
-    workspace: str = "CCC"
+    workspace: str = Field(default="", description="engine-eligible app id or path")
     apply: bool = False
+    all_apps: bool = False
 
 
 @router.post("/api/ops/daily-review/run")
 async def ops_daily_review_run(request: Request, body: DailyReviewRunBody):
     check_auth(request)
-    from _ops_probe import run_daily_review
+    from _ops_probe import resolve_ammo_workspace, run_daily_review
 
-    path = _ws_path(body.workspace)
-    result = run_daily_review(path, apply=bool(body.apply))
+    if body.all_apps:
+        result = run_daily_review(Path("."), apply=bool(body.apply), all_apps=True)
+        if result.get("error") == "debounced":
+            raise HTTPException(status_code=429, detail=result)
+        return result
+
+    if not (body.workspace or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": "workspace required unless all_apps=true",
+                "code": "ops-ammo-workspace-required",
+            },
+        )
+
+    resolved = resolve_ammo_workspace(body.workspace)
+    if not resolved.get("ok"):
+        raise HTTPException(status_code=400, detail=resolved)
+    result = run_daily_review(Path(resolved["path"]), apply=bool(body.apply))
     if result.get("error") == "debounced":
         raise HTTPException(status_code=429, detail=result)
+    result["workspace"] = resolved.get("workspace")
     return result
 
 
@@ -218,6 +248,7 @@ async def ops_summary(request: Request):
         overview,
         probe_ports,
         local_resources,
+        host_resources_history,
         workspace_summaries,
         list_daily_reviews,
         kb_health,
@@ -225,6 +256,7 @@ async def ops_summary(request: Request):
         docs_debt_scan,
         list_ops_auto_tasks,
         quality_summary,
+        logistics_heartbeat,
     )
 
     async def _run(func, *args):
@@ -242,6 +274,7 @@ async def ops_summary(request: Request):
             _run(overview),
             _run(probe_ports, True),
             _run(local_resources),
+            _run(host_resources_history, 90),
             _run(workspace_summaries, spaces),
             _run(list_daily_reviews, spaces),
             _run(kb_health),
@@ -249,6 +282,7 @@ async def ops_summary(request: Request):
             _run(docs_debt_scan, spaces),
             _run(list_ops_auto_tasks, spaces),
             _run(quality_summary, spaces),
+            _run(logistics_heartbeat, spaces),
             return_exceptions=True,
         )
     except Exception as exc:
@@ -258,6 +292,7 @@ async def ops_summary(request: Request):
         "overview",
         "ports",
         "resources",
+        "resources_history",
         "workspaces",
         "daily",
         "kb",
@@ -265,6 +300,7 @@ async def ops_summary(request: Request):
         "docs",
         "auto",
         "quality",
+        "logistics",
     ]
     out: dict = {"risks": risks_result}
     for k, r in zip(keys, results):
@@ -308,7 +344,7 @@ async def ops_summary(request: Request):
 
 
 class AdoptBody(BaseModel):
-    workspace: str = "CCC"
+    workspace: str = Field(..., min_length=1, max_length=200)
     title: str = Field(..., min_length=1, max_length=200)
     description: str = ""
     tags: list[str] = Field(default_factory=list)
@@ -316,13 +352,15 @@ class AdoptBody(BaseModel):
 
 @router.post("/api/ops/adopt")
 async def ops_adopt(request: Request, body: AdoptBody):
-    """一键采纳建议 → backlog（tags 含 ops-auto）。不是 invent。"""
+    """一键采纳建议 → backlog（tags 含 ops-auto）。不是 invent。仅 engine-eligible 业务仓。"""
     check_auth(request)
-    from _ops_probe import adopt_suggestion
+    from _ops_probe import adopt_suggestion, resolve_ammo_workspace
 
-    path = _ws_path(body.workspace)
+    resolved = resolve_ammo_workspace(body.workspace)
+    if not resolved.get("ok"):
+        raise HTTPException(status_code=400, detail=resolved)
     result = adopt_suggestion(
-        path,
+        Path(resolved["path"]),
         title=body.title.strip(),
         description=body.description or "",
         tags=list(body.tags or []),

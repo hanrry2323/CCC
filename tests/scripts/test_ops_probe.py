@@ -59,6 +59,17 @@ def test_local_resources_shape():
     assert "host" in r
     assert "load" in r
     assert "disk" in r
+    assert "ncpu" in r
+    assert "load_ratio" in r
+
+
+def test_host_resources_history_shape():
+    from _ops_probe import host_resources_history
+
+    h = host_resources_history(12)
+    assert "samples" in h
+    assert "summary" in h
+    assert "sparklines" in h
 
 
 def test_docs_debt_scan_ccc():
@@ -103,3 +114,155 @@ def test_fetch_router_usage_retired_stub():
     assert out["tiers"]["code"]["requests_today"] == 0
     assert out["tiers"]["pro"]["requests_today"] == 0
     assert "retired" in (out.get("error") or "").lower()
+
+
+def test_resolve_ammo_rejects_empty():
+    r = op.resolve_ammo_workspace("")
+    assert r["ok"] is False
+    assert r["code"] == "ops-ammo-workspace-required"
+
+
+def test_resolve_ammo_rejects_orch(tmp_path, monkeypatch):
+    import _workspace_registry as wr
+
+    reg = tmp_path / "workspaces.json"
+    orch = wr.orch_home()
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "workspaces": [
+                    {
+                        "name": "CCC",
+                        "path": str(orch),
+                        "role": "orch",
+                        "engine": False,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wr, "REGISTRY_FILE", reg)
+    r = op.resolve_ammo_workspace("CCC", registry=reg)
+    assert r["ok"] is False
+    assert r["code"] == "ops-ammo-orch-forbidden"
+
+
+def test_resolve_ammo_accepts_app(tmp_path, monkeypatch):
+    import _workspace_registry as wr
+
+    app = tmp_path / "demo-app"
+    app.mkdir()
+    (app / ".ccc").mkdir()
+    reg = tmp_path / "workspaces.json"
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "workspaces": [
+                    {
+                        "name": "demo-app",
+                        "path": str(app),
+                        "role": "app",
+                        "engine": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wr, "REGISTRY_FILE", reg)
+    r = op.resolve_ammo_workspace("demo-app", registry=reg)
+    assert r["ok"] is True
+    assert Path(r["path"]) == app.resolve()
+
+
+def test_adopt_suggestion_rejects_orch(tmp_path, monkeypatch):
+    import _workspace_registry as wr
+
+    reg = tmp_path / "workspaces.json"
+    orch = wr.orch_home()
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "workspaces": [
+                    {"name": "CCC", "path": str(orch), "role": "orch", "engine": False}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wr, "REGISTRY_FILE", reg)
+    out = op.adopt_suggestion(orch, title="should fail")
+    assert out["ok"] is False
+    assert out["code"] == "ops-ammo-orch-forbidden"
+
+
+def test_adopt_suggestion_creates_on_app(tmp_path, monkeypatch):
+    import _workspace_registry as wr
+
+    app = tmp_path / "ammo-app"
+    app.mkdir()
+    (app / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    reg = tmp_path / "workspaces.json"
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "workspaces": [
+                    {
+                        "name": "ammo-app",
+                        "path": str(app),
+                        "role": "app",
+                        "engine": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wr, "REGISTRY_FILE", reg)
+
+    import _engine_wake as ew
+
+    monkeypatch.setattr(ew, "ensure_engine_for_task", lambda **k: {"ok": True})
+
+    out = op.adopt_suggestion(app, title="ammo test", description="d")
+    assert out["ok"] is True
+    assert "ops-auto" in out["tags"]
+    assert out["workspace"] == "ammo-app"
+
+
+def test_logistics_heartbeat_shape(tmp_path, monkeypatch):
+    import _workspace_registry as wr
+
+    app = tmp_path / "hb-app"
+    (app / ".ccc" / "reports").mkdir(parents=True)
+    day = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+    (app / ".ccc" / "reports" / f"daily-review-{day}.md").write_text(
+        "# Daily\n\n- decision: **B** — ack\n", encoding="utf-8"
+    )
+    reg = tmp_path / "workspaces.json"
+    reg.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "workspaces": [
+                    {
+                        "name": "hb-app",
+                        "path": str(app),
+                        "role": "app",
+                        "engine": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(wr, "REGISTRY_FILE", reg)
+    hb = op.logistics_heartbeat({"hb-app": str(app)})
+    assert "plist" in hb
+    assert "ammo_workspaces" in hb
+    assert any(x.get("workspace") == "hb-app" for x in hb.get("daily_today") or [])

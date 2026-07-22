@@ -12,6 +12,9 @@
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/SHARED/path/to/business-app</string>
+  <!-- MUST be an engine-eligible app path (not CCC orch). -->
+  <!-- Install: copy to ~/Library/LaunchAgents/com.ccc.regress.plist and load. -->
+  <!-- One plist per business app, or wrap a small shell that loops apps. -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>

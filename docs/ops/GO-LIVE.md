@@ -14,8 +14,10 @@
 3. 对话定稿 → 转任务（验收含可重放意图探针）→ 右栏看编排进度
 4. Engine 自动：product → dev → review/test → kb → released（= code_landed）
 5. 意图稳定：regress 回放探针 → L1 mark intent_stable（见 LPSN）
-6. 需要看板/运维时用侧栏或网页 Hub
+6. 需要看板/运维时用侧栏或网页 Hub（运维页看后勤心跳；不定时点日审）
 ```
+
+Mac2017 后勤定时（可选，减负）：`bash scripts/install-ops-plist.sh install --enable --apply-ammo`；regress 用 [`../deploy/launchd/com.ccc.regress.plist.example`](../deploy/launchd/com.ccc.regress.plist.example)（WorkingDirectory=业务仓）。弹药禁打 CCC orch。
 
 | 入口 | 地址 |
 |------|------|

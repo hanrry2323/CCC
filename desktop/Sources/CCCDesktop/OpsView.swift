@@ -33,6 +33,7 @@ struct OpsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     overviewSection
+                    logisticsSection
                     inboxProposalsSection
                     resourcesSection
                     risksSection
@@ -88,6 +89,63 @@ struct OpsView: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    // MARK: - Logistics heartbeat (read-only)
+
+    private var logisticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("后勤心跳", systemImage: "shippingbox.fill")
+            if let log = model.opsSummary?.logistics {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("\(log.ammo_workspaces?.count ?? 0) 弹药仓", systemImage: "tray.full")
+                        Spacer()
+                        if let n = log.ops_auto_backlog {
+                            Text("ops-auto \(n)")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
+                    }
+                    if let agents = log.plist?.agents, !agents.isEmpty {
+                        ForEach(agents) { a in
+                            HStack {
+                                Image(systemName: (a.loaded == true) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle((a.loaded == true) ? CCCTheme.nodeDone : CCCTheme.faint)
+                                Text(a.label)
+                                    .font(.system(size: 12, design: .monospaced))
+                                Spacer()
+                                Text(a.apply_ammo == true ? "apply" : "dry")
+                                    .font(CCCTheme.caption)
+                                    .foregroundStyle(CCCTheme.secondary)
+                            }
+                        }
+                    }
+                    if let daily = log.daily_today, !daily.isEmpty {
+                        ForEach(daily) { d in
+                            Text("\(d.workspace) · \(d.decision ?? "—")")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
+                    } else {
+                        emptyHint("今日尚无日审报告")
+                    }
+                    if let note = log.note {
+                        Text(note)
+                            .font(CCCTheme.caption)
+                            .foregroundStyle(CCCTheme.faint)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(CCCTheme.surface)
+                )
+            } else {
+                emptyHint("后勤心跳未返回（刷新或升级 Hub）")
+            }
+        }
     }
 
     // MARK: - Inbox proposals (Hub-Shell P2)
@@ -388,10 +446,7 @@ struct OpsView: View {
                 sectionTitle("日审", systemImage: "calendar")
                 Spacer()
                 Button {
-                    let ws = model.boardWorkspaceLabel
-                        ?? model.selectedProject?.workspace
-                        ?? "CCC"
-                    Task { await model.runDailyReview(workspace: ws) }
+                    Task { await model.runDailyReview(workspace: "") }
                 } label: {
                     Label("跑日审", systemImage: "play.fill")
                 }
