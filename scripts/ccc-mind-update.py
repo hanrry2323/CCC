@@ -27,7 +27,7 @@ def _hub() -> str:
     return (
         os.environ.get("CCC_HUB_URL")
         or os.environ.get("CCC_HUB_BASE")
-        or "http://192.168.3.116:7777"
+        or "http://127.0.0.1:17777"
     ).rstrip("/")
 
 

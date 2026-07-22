@@ -45,20 +45,22 @@
 | 端口 | 服务 | 说明 |
 |------|------|------|
 | **7788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
+| **17777** | Hub SSH 隧道（本机） | `com.ccc.hub-tunnel`：`ssh -L` → 2017 `:7777`；**Desktop/sidecar 默认 Hub URL** |
 
 Sidecar 出口：MiniMax 直连（见上表）。  
-热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
+Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · 热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ### Mac2017（编排面）
 
 | 端口 | 服务 | 对外 |
 |------|------|------|
-| **7777** | CCC Hub | 局域网编排入口（API host：transfer / flow / board / ops） |
+| **7777** | CCC Hub | 本机 +（历史）局域网；**M1 客户端勿再默认直连** |
 | **7775** | Board API | 优先仅本机；由 Hub 反代 |
 
 ~~`:4000` / `:4002` 中转已退役，勿再监听、勿再配置。~~
 
-Desktop / 编排 API：`http://192.168.3.116:7777`（`CCC_SERVER`）  
+M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）  
+2017 本机 Hub：`http://127.0.0.1:7777`  
 对话口：`http://192.168.3.140:7788`（M1；勿把对话 SPA 挂到 2017）
 
 ---

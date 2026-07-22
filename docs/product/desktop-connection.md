@@ -44,6 +44,16 @@ Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-s
 > Brief：[`docs/briefs/2026-07-21-f1-disconnect-recovery.md`](../briefs/2026-07-21-f1-disconnect-recovery.md)。  
 > 对称于 sidecar `startAgentRecoverLoop`：Hub 不可达时启动轻量探活，恢复后自动收口，用户不必只靠点「重试」。
 
+### Hub 传输主路径（稳定性，2026-07-22）
+
+| 项 | 规格 |
+|----|------|
+| **主路径** | M1 `ssh -L 127.0.0.1:17777:127.0.0.1:7777 mac2017`（launchd `com.ccc.hub-tunnel` KeepAlive） |
+| Desktop `ccc.server` | 默认 `http://127.0.0.1:17777`；若仍写 LAN 且隧道通 → 启动时自动迁移 |
+| sidecar `CCC_HUB_URL` | 默认同上；`install-agent-sidecar-plist.sh --start` 会顺带确保隧道 |
+| **勿作主路径** | 直连 `http://192.168.3.116:7777`：TCP 可通但 HTTP 偶发/整段超时（远端 Send-Q 积压） |
+| 安装 | `bash scripts/install-hub-tunnel-plist.sh --start` · 探活 `… --smoke` · 状态 `… --status` |
+
 | 项 | 规格 |
 |----|------|
 | 探活间隔 | **3–5s**（实现取 4s）；成功即停；经 `HubRequestGate`，勿打爆 |

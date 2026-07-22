@@ -10,7 +10,7 @@
   python3 scripts/ccc-hub-lens.py git <project_id>
 
 环境：
-  CCC_HUB_URL   默认 http://192.168.3.116:7777
+  CCC_HUB_URL   默认 http://127.0.0.1:17777
   CCC_HUB_AUTH  Basic user:pass；默认 ccc:ccc（与 Hub 约定一致）
 
 契约：docs/product/loop-engineer-authority.md
@@ -29,7 +29,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-DEFAULT_HUB = os.environ.get("CCC_HUB_URL", "http://192.168.3.116:7777").rstrip("/")
+DEFAULT_HUB = os.environ.get("CCC_HUB_URL", "http://127.0.0.1:17777").rstrip("/")
 
 
 def resolve_hub_basic_auth() -> str:

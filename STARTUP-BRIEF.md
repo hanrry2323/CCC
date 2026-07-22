@@ -32,9 +32,10 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 | **Hub `:7777`** | API host：transfer / flow / board / ops（Mac2017） |
 | **6+1 列看板** | backlog(epic) + planned→…→released(work) + abnormal |
 | **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
-| **2+ plist** | `com.ccc.agent-sidecar`（M1）+ `com.ccc.engine` + Board + Hub（2017） |
+| **2+ plist** | `com.ccc.agent-sidecar` + **`com.ccc.hub-tunnel`**（M1）+ `com.ccc.engine` + Board + Hub（2017） |
 
-热路径假死 / 多端版本：[`docs/product/desktop-agent-sidecar.md`](docs/product/desktop-agent-sidecar.md) · [`docs/deploy/desktop.md`](docs/deploy/desktop.md)。
+热路径假死 / 多端版本：[`docs/product/desktop-agent-sidecar.md`](docs/product/desktop-agent-sidecar.md) · [`docs/deploy/desktop.md`](docs/deploy/desktop.md)。  
+**Hub 稳定性（M1）**：默认 SSH 隧道 `:17777`，勿直连 LAN `:7777` → [`docs/product/hub-ssh-tunnel.md`](docs/product/hub-ssh-tunnel.md)。
 
 ---
 

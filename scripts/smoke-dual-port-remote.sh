@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 AGENT="${CCC_AGENT:-http://192.168.3.140:7788}"
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
 AUTH=(-u "${USER}:${PASS}")

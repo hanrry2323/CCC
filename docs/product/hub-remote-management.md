@@ -13,14 +13,15 @@
   ├─ 对话（聊对齐 / 聊方案 / discuss·engineer）
   │     → M1 sidecar :7788 → loop-code
   │     （会话权威：M1 本机 LocalSessionStore）
-  └─ 编排（transfer / flow / 看板 / 运维）
-        → Mac2017 Hub :7777 → Board :7775 / Engine
+  └─ 编排（transfer / flow / 看板 / 运维 / 心智）
+        → M1 本机 :17777（SSH 隧道）→ Mac2017 Hub :7777 → Board / Engine
 ```
 
 | 接口 | 机器 | 现网 | 职责 |
 |------|------|------|------|
 | **对话** | M1 | `http://192.168.3.140:7788` | 热路径、本机会话 SSOT；业务事实信 Hub baseline（无本机业务 cwd）；**对话 SPA 宿主** |
-| **Hub** | Mac2017 | `http://192.168.3.116:7777` | transfer / flow / board / ops；threads **仅镜像**；默认落地 `#/board` |
+| **Hub（M1 客户端）** | M1 本机转发 | `http://127.0.0.1:17777` | Desktop/sidecar/透镜/心智默认；见 [`hub-ssh-tunnel.md`](hub-ssh-tunnel.md) |
+| **Hub（权威进程）** | Mac2017 | `*:7777` | transfer / flow / board / ops；threads **仅镜像** |
 
 thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，是因为打 **同一 sidecar + 同一会话契约**，不是因为页面挂在 Hub。
 

@@ -4,10 +4,14 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOMAIN="${CCC_DESKTOP_DOMAIN:-com.ccc.desktop}"
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 
 echo "== configure Desktop ($DOMAIN) =="
+# Hub 稳定性：先确保 SSH 隧道（LAN :7777 偶发卡死；隧道探活满绿）
+if [[ "${CCC_SKIP_HUB_TUNNEL:-0}" != "1" ]]; then
+  bash "$ROOT/scripts/install-hub-tunnel-plist.sh" --start || true
+fi
 defaults write "$DOMAIN" "ccc.server" -string "$SERVER"
 defaults write "$DOMAIN" "ccc.user" -string "${CCC_CHAT_USER:-ccc}"
 defaults write "$DOMAIN" "ccc.pass" -string "${CCC_CHAT_PASS:-ccc}"
@@ -38,14 +42,15 @@ else
   echo "sidecar: FAIL（Desktop 会显示「本机 Agent 未就绪」）"
 fi
 
-_HUB="${SERVER:-http://192.168.3.116:7777}"
+_HUB="${SERVER:-http://127.0.0.1:17777}"
 if curl -sf -m 4 -u "${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}" "${_HUB%/}/api/desktop/config" >/dev/null 2>&1; then
   echo "hub: OK ${_HUB}"
 else
-  echo "hub: FAIL (${_HUB})（检查 Mac2017 Hub）"
+  echo "hub: FAIL (${_HUB})（先查 bash scripts/install-hub-tunnel-plist.sh --status）"
 fi
 
 echo "prefs:"
 defaults read "$DOMAIN" | grep -E 'ccc\.(server|agent|home|selected|local)' || true
 echo "note: 业务仓无本机 map；对齐基线只信 Hub /api/projects/{id}/baseline"
+echo "note: Hub 默认走本机 SSH 隧道 :17777（勿再依赖 LAN :7777 直连）"
 echo "done. 重开 Desktop: bash desktop/scripts/open-desktop.sh"

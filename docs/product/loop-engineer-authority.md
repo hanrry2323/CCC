@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-22（全流程完整性：假绿关门 / 活跃板计数 / VERSION opt-in） 
+> **状态**：现行 · 2026-07-22（Hub M1 主路径 = SSH 隧道 `:17777`；全流程完整性：假绿关门 / 活跃板计数 / VERSION opt-in） 
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -130,6 +130,18 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 
 再开 = 磁盘 hydrate + 后台 catch-up；**用户无需点同步**。
 
+### Hub 传输（M1 · 硬 · 2026-07-22）
+
+| 项 | 口径 |
+|----|------|
+| **权威 Hub 仍在 2017** | 进程听 `*:7777`；契约 / transfer / mind / lens **不变** |
+| **M1 主路径** | SSH 本地转发 `127.0.0.1:17777` → 2017 `127.0.0.1:7777`（launchd `com.ccc.hub-tunnel`） |
+| **Desktop / sidecar 默认** | `http://127.0.0.1:17777`；**禁止**把 LAN `192.168.3.116:7777` 写成 M1 默认 |
+| **为何** | LAN 直连 `:7777` 曾 TCP 通但 HTTP 整段超时（Send-Q 积压）；隧道探活满绿 |
+| **文档** | [`hub-ssh-tunnel.md`](hub-ssh-tunnel.md) · [`desktop-connection.md`](desktop-connection.md) |
+
+安装：`bash scripts/install-hub-tunnel-plist.sh --start`。心智 / 透镜 / outbox 一律走同一 `CCC_HUB_URL`。
+
 ### Desktop Agent 双层心智（人机共识）
 
 | 层 | 内容 | 谁维护 | 落点 |
@@ -138,9 +150,10 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 | **L1a 观察脑** | 看板计数、在飞、日报/周报要点、git 脏仓 | **系统编译** | 2017 `apps/<id>/.ccc/agent-mind/observed.json` |
 | **L1b 决策脑** | 目标/约束/开放问题/架构取舍 | **Agent 提案 + Hub 校验** | 同目录 `decided.json` |
 
-- API：`GET/PUT /api/desktop/mind/{project_id}/…`；sidecar 每轮注入 digest（≤2KB）。
+- API：`GET/PUT /api/desktop/mind/{project_id}/…`；sidecar **每轮**注入 digest（≤2KB），与 live board **并行拉取**，本机短缓存（约 20s）降隧道往返。
 - 新鲜度：`live board / lens git` > L1 digest > 聊天 resume。
 - 不复活 invent；心智沉淀 ≠ 自动投 backlog。
+- Hub 断 / 隧道断：明说 L1 不可达，**禁止**用聊天 resume 编造在飞；转任务仍可 outbox。
 
 ### 活跃板计数与 ready（硬 · 2026-07-22）
 

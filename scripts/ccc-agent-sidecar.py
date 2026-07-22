@@ -293,7 +293,7 @@ async def health():
         "auth_required": bool(_effective_token()),
         "default_cwd": DEFAULT_CWD,
         "shell": "dialogue",
-        "hub_base": (os.environ.get("CCC_HUB_URL") or "http://192.168.3.116:7777").rstrip("/"),
+        "hub_base": (os.environ.get("CCC_HUB_URL") or "http://127.0.0.1:17777").rstrip("/"),
         "outbox_flush": True,
         # Desktop 能力契约（不暴露密钥/完整路径）
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
@@ -354,7 +354,7 @@ def _workspace_map() -> dict[str, str]:
 @app.get("/api/shell-config")
 async def shell_config():
     """对话 SPA 启动配置（无密钥）；Hub base 供 transfer/board 跨机调用。"""
-    hub = (os.environ.get("CCC_HUB_URL") or "http://192.168.3.116:7777").rstrip("/")
+    hub = (os.environ.get("CCC_HUB_URL") or "http://127.0.0.1:17777").rstrip("/")
     return {
         "ok": True,
         "shell": "dialogue",
@@ -509,8 +509,14 @@ def _hub_base() -> str:
     return (
         os.environ.get("CCC_HUB_URL")
         or os.environ.get("CCC_HUB_BASE")
-        or "http://192.168.3.116:7777"
+        or "http://127.0.0.1:17777"
     ).rstrip("/")
+
+
+# 透镜 board + L1 digest：短缓存，避免每轮双 HTTP 串行打满隧道
+_HUB_CTX_TTL_S = 20.0
+_hub_board_cache: dict[str, tuple[float, tuple[bool, str]]] = {}
+_hub_mind_cache: dict[str, tuple[float, tuple[bool, str]]] = {}
 
 
 def _hub_auth_headers() -> dict[str, str]:
@@ -530,50 +536,68 @@ def _hub_auth_headers() -> dict[str, str]:
 
 def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
     """Return (ok, text). On failure text explains not to invent."""
-    import urllib.error
+    import time
     import urllib.request
+
+    now = time.monotonic()
+    hit = _hub_board_cache.get(project_id)
+    if hit and now - hit[0] < _HUB_CTX_TTL_S:
+        return hit[1]
 
     url = f"{_hub_base()}/api/desktop/lens/{project_id}/board"
     try:
         req = urllib.request.Request(url, method="GET", headers=_hub_auth_headers())
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         from chat_server.services.hub_lens import format_board_for_prompt
 
-        return True, format_board_for_prompt(data)
+        out = (True, format_board_for_prompt(data))
     except Exception as exc:
-        return (
+        out = (
             False,
             "【Hub live board 不可达】"
             f"project={project_id} err={type(exc).__name__}: {exc}\n"
             "禁止根据会话记忆编造看板/在飞；可说明不可达，并引用更早对齐基线的 as_of（若有）。",
         )
+    _hub_board_cache[project_id] = (now, out)
+    return out
 
 
 def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
     """Return (ok, digest_or_error_block)."""
-    import urllib.error
+    import time
     import urllib.request
 
     pid = (project_id or "").strip()
     if not pid:
         return False, ""
+    now = time.monotonic()
+    hit = _hub_mind_cache.get(pid)
+    if hit and now - hit[0] < _HUB_CTX_TTL_S:
+        return hit[1]
+
     url = f"{_hub_base()}/api/desktop/mind/{pid}/digest"
     try:
         req = urllib.request.Request(url, method="GET", headers=_hub_auth_headers())
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         digest = str((data or {}).get("digest") or "").strip()
         if digest:
-            return True, digest
-        return False, "【项目心智 L1】digest 为空；进度以 live board / 透镜为准，禁止瞎编。"
+            out = (True, digest)
+        else:
+            out = (
+                False,
+                "【项目心智 L1】digest 为空；进度以 live board / 透镜为准，禁止瞎编。",
+            )
     except Exception as exc:
-        return (
+        out = (
             False,
             "【项目心智 L1 不可达】"
             f"project={pid} err={type(exc).__name__}: {exc}\n"
             "禁止根据会话记忆编造在飞/进度；可说明不可达，并引用对齐基线 as_of（若有）。",
         )
+    _hub_mind_cache[pid] = (now, out)
+    return out
 
 
 def _lens_context_for_turn(project_id: str, user_text: str) -> str:
@@ -597,13 +621,19 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
         "扫风险/定稿：board → locate（或 grep）定点收窄 → file 核实 1～3 个相对路径；禁止只读文档交差。",
         "续查只用相对 path；禁止写死盘符、禁止把绝对路径抄回本机 Read。",
+        "Hub 经本机隧道 :17777；勿改指 LAN :7777。",
     ]
-    # 常驻：尝试注入 live board（失败也给不可达块）
-    ok, block = _fetch_hub_lens_board(pid)
-    parts.append(block if ok else block)
-    # L1 项目心智 digest
-    mok, mblock = _fetch_hub_mind_digest(pid)
-    parts.append(mblock)
+    # board + mind 并行，缩短每轮首包前等待
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_board = pool.submit(_fetch_hub_lens_board, pid)
+        fut_mind = pool.submit(_fetch_hub_mind_digest, pid)
+        _ok, block = fut_board.result()
+        _mok, mblock = fut_mind.result()
+    parts.append(block)
+    if mblock:
+        parts.append(mblock)
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
         r"(扫风险|定稿|核实|审查|locate|实现|代码)", text, re.I

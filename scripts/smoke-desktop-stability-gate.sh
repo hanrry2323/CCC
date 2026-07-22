@@ -95,7 +95,7 @@ fi
 
 # 6. dual：双机故障注入（要求 M1 与 Mac2017 网络可达）
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 
 check "hub reachable (dual)" \
     bash -c "curl -fsS --max-time 5 -u ccc:ccc \"$SERVER/api/desktop/config\" >/dev/null"

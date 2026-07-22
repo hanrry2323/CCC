@@ -3,13 +3,13 @@
 # Hub 不可达时仍验收本地契约与 sidecar outbox_flush 能力；可达则完整投递。
 # 用法：
 #   bash scripts/smoke-desktop-reopen-sync.sh
-#   CCC_SERVER=http://192.168.3.116:7777 bash scripts/smoke-desktop-reopen-sync.sh
+#   CCC_SERVER=http://127.0.0.1:17777 bash scripts/smoke-desktop-reopen-sync.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Hub 断线韧性：sidecar 仍可探活；transfer 失败可排队；恢复后投递成功
 # 用法：
-#   CCC_SERVER=http://192.168.3.116:7777 CCC_AGENT=http://127.0.0.1:7788 \
+#   CCC_SERVER=http://127.0.0.1:17777 CCC_AGENT=http://127.0.0.1:7788 \
 #     bash scripts/smoke-hub-outage-outbox.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"

@@ -23,7 +23,7 @@ final class ChatState: ObservableObject {
 @MainActor
 final class AppModel: ObservableObject {
     /// 现网默认：M1 Desktop → Mac2017 Hub（可用设置 / CCC_SERVER 覆盖）
-    @AppStorage("ccc.server") var serverURLString: String = "http://192.168.3.116:7777"
+    @AppStorage("ccc.server") var serverURLString: String = "http://127.0.0.1:17777"
     @AppStorage("ccc.user") var authUser: String = "ccc"
     @AppStorage("ccc.pass") var authPass: String = "ccc"
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
@@ -285,16 +285,47 @@ final class AppModel: ObservableObject {
     var isStreaming: Bool { currentThreadStreaming }
 
     init() {
-        // 与 @AppStorage 默认一致：现网 Hub 在 2017；本机仅作 fallback
+        // 与 @AppStorage 默认一致：Hub 走本机 SSH 隧道（LAN :7777 偶发 TCP 卡死）
         let raw = UserDefaults.standard.string(forKey: "ccc.server")
-            ?? "http://192.168.3.116:7777"
+            ?? "http://127.0.0.1:17777"
         let url = APIClient.makeBaseURL(from: raw)
-            ?? URL(string: "http://192.168.3.116:7777")!
+            ?? URL(string: "http://127.0.0.1:17777")!
         let user = UserDefaults.standard.string(forKey: "ccc.user") ?? "ccc"
         let pass = UserDefaults.standard.string(forKey: "ccc.pass") ?? "ccc"
         client = APIClient(baseURL: url, user: user, password: pass)
         // Phase16：首帧前同步灌本机缓存，侧栏/对话/右栏秒开（Hub 后台同步）
         hydrateFromDiskSync()
+    }
+
+    /// Hub 稳定性：LAN :7777 偶发 TCP 卡死；本机 SSH 隧道 :17777 为默认主路径
+    private static let hubTunnelURL = "http://127.0.0.1:17777"
+
+    /// 若仍指向 LAN，且隧道已通 → 自动切到隧道（一次迁移，写回 AppStorage）
+    private func preferHubTunnelIfReady() async {
+        let cur = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLan = cur.contains("192.168.3.116")
+        guard looksLan || cur.isEmpty else { return }
+        guard let url = URL(string: "\(Self.hubTunnelURL)/api/desktop/config") else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 2
+        let token = Data("\(authUser):\(authPass)".utf8).base64EncodedString()
+        req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }
+            serverURLString = Self.hubTunnelURL
+            // #region agent log
+            DebugAgentLog.log(
+                hypothesisId: "H-HUB",
+                location: "AppModel.preferHubTunnelIfReady",
+                message: "migrated ccc.server LAN→tunnel",
+                data: ["from": cur, "to": Self.hubTunnelURL],
+                runId: "post-fix"
+            )
+            // #endregion
+        } catch {
+            // 隧道未起：保持 LAN，recover loop 继续探
+        }
     }
 
     /// Phase16：从 `projects-cache` + session 盘灌 RAM；有缓存则立刻 `connected`
@@ -876,8 +907,9 @@ final class AppModel: ObservableObject {
            !env.isEmpty {
             serverURLString = env
         } else if serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverURLString = "http://192.168.3.116:7777"
+            serverURLString = Self.hubTunnelURL
         }
+        await preferHubTunnelIfReady()
         // Phase16：init 已 hydrate；此处再幂等一次（防 UISmoke 等路径跳过 init 副作用）
         if projects.isEmpty {
             hydrateFromDiskSync()

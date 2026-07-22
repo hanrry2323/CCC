@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # 断言 M1 本机 sidecar :7788 = loop-code（对话 SSOT），并跑一轮完整 chat SSE
 # 架构对齐 2026-07-19：Hub /api/chat 已删；对话主入口 = M1 Desktop + sidecar :7788
-# 用法：CCC_SERVER=http://192.168.3.116:7777 CCC_AGENT=http://127.0.0.1:7788 bash scripts/smoke-desktop-agent.sh
+# 用法：CCC_SERVER=http://127.0.0.1:17777 CCC_AGENT=http://127.0.0.1:7788 bash scripts/smoke-desktop-agent.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
