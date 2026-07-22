@@ -637,6 +637,24 @@ def _title_for_seeded_phase(epic: dict, phase: dict, idx: int) -> str:
     return f"{base} · P{idx + 1}"[:80]
 
 
+def _append_epic_intent_probes(work_plan: str, epic_plan: str) -> str:
+    """Phase 切片常丢掉 epic 级 ## 验收探针；补回以免 plan_lint 拒扇出。"""
+    try:
+        from _intent_probe import extract_probe_commands
+    except ImportError:
+        return work_plan
+    if extract_probe_commands(work_plan or ""):
+        return work_plan
+    probes = extract_probe_commands(epic_plan or "")
+    if not probes:
+        return work_plan
+    block = "\n".join(f"- {c}" for c in probes)
+    text = (work_plan or "").rstrip()
+    if re.search(r"^##\s*(验收|验证)\s*$", text, re.M):
+        return text + "\n" + block + "\n"
+    return text + "\n\n## 验收\n" + block + "\n"
+
+
 def _plan_md_for_seeded_phase(
     plan_md: str, phase: dict, *, phase_num: int, title: str
 ) -> str:
@@ -667,7 +685,9 @@ def _plan_md_for_seeded_phase(
                 + "\n\n## 验收\n"
                 + f"- 完成「{desc}」且 scope 内变更可验证\n"
             )
-        return f"# Plan: {title}\n\n## 目标\n- {desc}\n\n{body}\n"
+        return _append_epic_intent_probes(
+            f"# Plan: {title}\n\n## 目标\n- {desc}\n\n{body}\n", src
+        )
 
     # 无 ## Phase N：下发完整 epic plan（去掉仅顶层重复标题）
     epic_body = src.strip()
