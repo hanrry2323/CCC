@@ -169,13 +169,43 @@ def test_testing_gate_respects_max_per_tick(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(gates, "_testing_gate_budget", lambda: (1, 180.0))
     monkeypatch.setattr(
         gates,
-        "_run_reviewer_tester_gate",
-        lambda w, tid: calls.append(tid) or True,
+        "_run_reviewer_tester_gate_budgeted",
+        lambda w, tid, *, timeout_s: calls.append(tid) or "ok",
     )
     monkeypatch.setattr(gates, "_refresh_parent_epic", lambda w, tid: None)
 
     gates._run_testing_tasks_gate(ws)
     assert calls == ["a"]
+
+
+def test_testing_gate_budgeted_timeout_kills(tmp_path: Path, monkeypatch):
+    ws = tmp_path / "ws"
+    locks = ws / ".ccc" / "review-locks"
+    locks.mkdir(parents=True)
+    lock = locks / "slow.lock"
+    lock.write_text("x")
+    kills: list[str] = []
+
+    def _slow_gate(w, tid):
+        time.sleep(2.0)
+        return True
+
+    monkeypatch.setattr(gates, "_run_reviewer_tester_gate", _slow_gate)
+    monkeypatch.setattr(gates, "_ws_label", lambda w: "ws")
+
+    def _kill(w, tid):
+        kills.append(tid)
+        # 真实清锁逻辑的一部分
+        p = Path(w) / ".ccc" / "review-locks" / f"{tid}.lock"
+        p.unlink(missing_ok=True)
+        return [4242]
+
+    monkeypatch.setattr(gates, "_kill_ws_gate_procs", _kill)
+
+    outcome = gates._run_reviewer_tester_gate_budgeted(ws, "slow", timeout_s=0.25)
+    assert outcome == "timeout"
+    assert kills == ["slow"]
+    assert not lock.exists()
 
 
 def test_try_acquire_releases_done_ghost(tmp_path: Path, monkeypatch):
@@ -196,3 +226,28 @@ def test_try_acquire_releases_done_ghost(tmp_path: Path, monkeypatch):
     # After releasing ghost, acquire should succeed
     ok = slots.try_acquire_opencode_slot(new_key)
     assert ok is True
+
+
+def test_try_acquire_blocks_mid_launch_no_pid(tmp_path: Path, monkeypatch):
+    """无 .done 且尚无 .pid = 启动中，不得当幽灵释放。"""
+    ws = tmp_path / "ws"
+    (ws / ".ccc" / "pids").mkdir(parents=True)
+    held_tid = "launching"
+    state_path = tmp_path / "slots.json"
+    held = f"{ws.resolve()}|{held_tid}"
+    # board.slots 用 holder 进程 pid；须存活否则 snapshot 会先 reap
+    state_path.write_text(
+        json.dumps(
+            {
+                "max": 6,
+                "count": 1,
+                "tasks": {held: {"n": 1, "pid": os.getpid()}},
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(slots, "opencode_slots_path", lambda: state_path)
+    new_key = f"{ws.resolve()}|other"
+    assert slots.try_acquire_opencode_slot(new_key) is False
+    snap = json.loads(state_path.read_text())
+    assert held in snap["tasks"]

@@ -580,10 +580,141 @@ def _testing_gate_budget() -> tuple[int, float]:
     return max(1, max_n), max(30.0, float(budget))
 
 
+def _kill_ws_gate_procs(ws: Path, tid: str) -> list[int]:
+    """止损：杀掉本仓门禁相关的 pytest / claude 子进程树，清 review-lock。
+
+    返回被发信号的 pid 列表（best-effort）。
+    """
+    import os
+    import signal
+
+    killed: list[int] = []
+    ws_s = str(Path(ws).resolve())
+    patterns = (
+        f"{ws_s}/.venv/bin/pytest",
+        f"{ws_s}/.venv/bin/python",  # pytest often shows as python + argv
+        "claude -p",
+        "claude -p --model",
+    )
+    try:
+        r = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env=_sanitized_env(),
+        )
+        lines = (r.stdout or "").splitlines()
+    except Exception as exc:
+        _engine_log(f"[testing-gate] ps for kill failed: {exc}")
+        lines = []
+
+    candidates: list[int] = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        cmd = parts[1]
+        # pytest：命令行含本仓路径
+        if "pytest" in cmd and ws_s in cmd:
+            candidates.append(pid)
+            continue
+        # claude：与评审相关；偏保守只杀含 -p 的
+        if "claude" in cmd and " -p" in cmd:
+            candidates.append(pid)
+            continue
+        for pat in patterns:
+            if pat in cmd and (ws_s in cmd or "claude" in cmd):
+                candidates.append(pid)
+                break
+
+    # 去重并排除自己
+    self_pid = os.getpid()
+    for pid in sorted(set(candidates)):
+        if pid == self_pid:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed.append(pid)
+        except (ProcessLookupError, PermissionError, OSError):
+            continue
+    if killed:
+        time.sleep(1.0)
+        for pid in killed:
+            try:
+                os.kill(pid, 0)
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+
+    # 清本卡 review-lock，避免下一 tick 永久「持锁跳过」
+    lock = Path(ws) / ".ccc" / "review-locks" / f"{tid}.lock"
+    try:
+        lock.unlink(missing_ok=True)
+    except OSError:
+        pass
+    if killed:
+        _engine_log(
+            f"[testing-gate] {tid} budget timeout → killed pids={killed}"
+        )
+    return killed
+
+
+def _run_reviewer_tester_gate_budgeted(
+    ws: Path, tid: str, *, timeout_s: float
+) -> str:
+    """在墙钟内跑门禁。返回 ok|fail|timeout。
+
+    timeout：杀门禁子进程，卡留 testing，供下一 tick 续。
+    """
+    import threading
+
+    box: dict = {"done": False, "ok": False, "err": None}
+
+    def _worker() -> None:
+        try:
+            box["ok"] = bool(_run_reviewer_tester_gate(ws, tid))
+        except Exception as exc:  # noqa: BLE001 — 门禁异常不得拖死 tick
+            box["err"] = exc
+        finally:
+            box["done"] = True
+
+    t = threading.Thread(
+        target=_worker,
+        name=f"testing-gate-{tid[:24]}",
+        daemon=True,
+    )
+    t.start()
+    # 使用调用方传入的剩余预算；勿抬到固定 5s（单测与紧预算会失真）
+    t.join(timeout=max(0.05, float(timeout_s)))
+    if t.is_alive() or not box["done"]:
+        _kill_ws_gate_procs(ws, tid)
+        # 再给线程一点时间从 TimeoutExpired/BrokenPipe 退出
+        t.join(timeout=5.0)
+        _engine_log(
+            f"[{_ws_label(ws)}] {tid} testing 门禁墙钟超时 "
+            f"({timeout_s:.0f}s) → 留 testing，下 tick 续"
+        )
+        return "timeout"
+    if box["err"] is not None:
+        _engine_log(
+            f"[{_ws_label(ws)}] {tid} reviewer/tester 门禁异常: {box['err']}"
+        )
+        return "fail"
+    return "ok" if box["ok"] else "fail"
+
+
 def _run_testing_tasks_gate(ws: Path) -> None:
     """对 testing 列跑 reviewer/tester 门禁（限张 + 限时，产线提效 P4）。
 
-    超时后留下 testing，下一 tick 续；禁止一仓慢测堵死整 Engine tick。
+    单次门禁也受墙钟约束：超时杀 pytest/claude 进程树，留 testing，下一 tick 续。
     """
     _activate_workspace(ws)
     store = _get_store(ws)
@@ -597,17 +728,26 @@ def _run_testing_tasks_gate(ws: Path) -> None:
                 f"[{label}] testing 门禁达每 tick 上限 {max_n}，余卡下 tick"
             )
             break
-        if time.monotonic() >= deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 5.0:
             _engine_log(
                 f"[{label}] testing 门禁墙钟预算 {budget_s:.0f}s 耗尽，余卡下 tick"
             )
             break
         tid = task["id"]
-        _engine_log(f"[{label}] testing 门禁: {tid} ({done_n + 1}/{max_n})")
-        try:
-            ok = _run_reviewer_tester_gate(ws, tid)
-            if ok:
+        _engine_log(
+            f"[{label}] testing 门禁: {tid} "
+            f"({done_n + 1}/{max_n}, budget={remaining:.0f}s)"
+        )
+        outcome = _run_reviewer_tester_gate_budgeted(
+            ws, tid, timeout_s=remaining
+        )
+        if outcome == "ok":
+            try:
                 _refresh_parent_epic(ws, tid)
-        except Exception as exc:
-            _engine_log(f"[{label}] {tid} reviewer/tester 门禁异常: {exc}")
+            except Exception as exc:
+                _engine_log(f"[{label}] {tid} refresh epic: {exc}")
+        if outcome == "timeout":
+            # 本 tick 不再开下一张，避免连环超时
+            break
         done_n += 1

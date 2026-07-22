@@ -86,7 +86,8 @@ def try_acquire_opencode_slot(task_key: str) -> bool:
 
     task_key 约定：``{workspace_resolved}|{task_id}``（见 ccc-engine._task_key）。
 
-    P1：同仓 holder 若已有 ``.done`` 或 pid 已死 → 先释幽灵槽，不挡新卡。
+    P1：同仓 holder 若已有 ``.done`` 或「有 pid 且已死」→ 先释幽灵槽。
+    无 pid 文件 = 刚 acquire / 启动中 → **仍挡**（禁止误当幽灵释放）。
     """
     from board.slots import snapshot, try_acquire
 
@@ -102,20 +103,21 @@ def try_acquire_opencode_slot(task_key: str) -> bool:
                 continue
             other_tid = held.rsplit("|", 1)[-1]
             done = ws_path / ".ccc" / "pids" / f"{other_tid}.done"
-            pid_alive = False
-            pid_path = ws_path / ".ccc" / "pids" / f"{other_tid}.pid"
-            if pid_path.is_file() and not done.is_file():
-                try:
-                    pid = int(pid_path.read_text().strip())
-                    os.kill(pid, 0)
-                    pid_alive = True
-                except (OSError, ValueError, ProcessLookupError):
-                    pid_alive = False
-            if done.is_file() or not pid_alive:
-                # 幽灵槽：释后再判
+            if done.is_file():
                 release_opencode_slot(held, None)
                 continue
-            return False
+            pid_path = ws_path / ".ccc" / "pids" / f"{other_tid}.pid"
+            if not pid_path.is_file():
+                # 启动中（尚无 pid）— 合法占用，不可当幽灵清掉
+                return False
+            try:
+                pid = int(pid_path.read_text().strip())
+                os.kill(pid, 0)
+                return False  # 活 runner
+            except (OSError, ValueError, ProcessLookupError):
+                # 死 pid + 无 .done → 幽灵，释后再判下一 holder
+                release_opencode_slot(held, None)
+                continue
     return try_acquire(
         task_key,
         max_slots=_GLOBAL_OPENCODE_MAX,

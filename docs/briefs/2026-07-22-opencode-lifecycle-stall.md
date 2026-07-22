@@ -20,7 +20,7 @@
 | A | 幽灵同仓互斥 | P1：`workspace_blocks_new_opencode` + slot 释幽灵；终态 `_release_dev_slot` |
 | B | 脏 result.json | P2：`result.json` 纯 JSON + `*.exec.log`；`_result_json` 防御解析 |
 | C | 卫生卡进 opencode | P5：短路径硬失败，禁止 silent fallback；`dev_path` 埋点 |
-| D | testing 堵 tick | P4：每 tick 限张/限时；**先 launch 再门禁** |
+| D | testing 堵 tick | P4：每 tick 限张/限时；**先 launch 再门禁**；单次门禁超时杀 pytest/claude |
 | E | FAIL revert 脏仓 | P3：冲突必 `revert --abort`；skip + failures |
 | F | 加并行无据 | P5：host 忙时 ≥30 点后再谈 `MAX_CONCURRENT`；默认 4 |
 
