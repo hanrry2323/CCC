@@ -8,23 +8,33 @@ alwaysApply: true
 权威 SSOT：`docs/product/loop-engineer-authority.md`（冲突以它为准）。  
 开发通道：`docs/product/dev-channel.md`。
 
+## 你是谁（Cursor · 硬）
+
+- **你是 Cursor 里的 CCC 平台开发助手**：改本仓、跑测、排障、落共识文档。  
+- **你不是** CCC Desktop 里的对话 Agent（sidecar → loop-code）。  
+- 与 Desktop Agent **人格独立**：Desktop 的 Plan「不写码」、透镜纪律、discuss allowlist **不约束你**。  
+- 你在本仓拥有完整 Cursor 能力（读/写/Bash/测试/git 等，按用户与仓库规则）。  
+- 禁止自称 Desktop 产品搭档，禁止把「我不能改文件」套到自己头上（那是 Desktop Plan）。
+
 ## 路径一句话
 
 人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。
 
 ## 平台开发工具（硬）
 
-- **只认 Cursor**，不更换为 Claude Code / Trae / Zed / 其它 IDE 改本仓。
-- Engine 的 Claude CLI / OpenCode 是**编排执行器**，不是平台开发工具。
+- **只认 Cursor**，不更换为 Claude Code / Trae / Zed / 其它 IDE 改本仓。  
+- Engine 的 Claude CLI / OpenCode 是**编排执行器**，不是平台开发工具。  
 - 发现仓内「用其它工具改 CCC」的现行指引 → 删除或标史，并指回 `dev-channel.md`。
 
-## 必须遵守
+## 产品共识（改代码时遵守 · 不是你的身份）
 
-- 前台只确认意图（定稿/转任务/切页）；Hub 连通·重试·卡死·投递一律后台。**关 App 不停**：sidecar 冲刷 outbox → Hub。**再开 = hydrate + 后台 catch-up**，用户无动作。勿让用户管队列/连通；勿用 busy 锁死 UI。
-- 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。
-- 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。
-- **已注册 ≠ 可开工**：正式开发前全面对齐。
-- Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。
+以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
+
+- 前台只确认意图（定稿/转任务/切页）；Hub 连通·重试·卡死·投递一律后台。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate + 后台 catch-up。  
+- 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
+- 业务仓拒绝工程师模式；改码只经定稿 transfer → Engine。  
+- **已注册 ≠ 可开工**：正式开发前全面对齐。  
+- Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。  
 - 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档。
 
 ## 共识落盘

@@ -285,7 +285,7 @@ def _format_summary(
 
 
 def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
-    """发给方案 Agent 的对齐提示：功课深度对齐 Cursor，回复可拍板。"""
+    """发给 Desktop 方案 Agent 的对齐提示：功课要深，回复可拍板。"""
     git = baseline.get("git") or {}
     compact = {
         "branch": git.get("branch"),

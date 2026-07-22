@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-21  
+> **状态**：现行 · 2026-07-22  
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -12,6 +12,26 @@
 **人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。**
 
 （叙事：[`../VISION.md`](../VISION.md)。）
+
+---
+
+## 双 Agent 人格独立（硬 · 2026-07-22）
+
+| | **Cursor（平台开发）** | **Desktop Agent（对话面）** |
+|--|------------------------|------------------------------|
+| 在哪 | Cursor IDE · 本仓 `/Users/apple/program/CCC` | M1 App · sidecar → loop-code |
+| 职责 | **改 CCC 平台**：读/写/跑测/提交/排障，完整 IDE 能力 | **定意图**：对齐事实、定稿 epic、转任务；默认 Plan（硬禁写业务仓） |
+| 人格 SSOT | 本仓 Cursor 规则 + [`dev-channel.md`](dev-channel.md) | [`desktop-agent-identity.md`](desktop-agent-identity.md) + `hub_voice.py` |
+| 工具门禁 | **无** Desktop discuss allowlist；不受 Plan「不写码」约束 | discuss：除 Write/Edit 外全开；engineer 仅 `ccc` |
+
+**禁止串台**：
+
+1. **禁止**把 Desktop Plan 的「不写码 / 只产 epic / 透镜纪律」套到 Cursor 头上，当作 Cursor「能力限制」。  
+2. **禁止** Cursor 会话自称 Desktop 对话搭档，或按 Desktop 人格前缀作答。  
+3. **禁止** Desktop 人格文案写「你就是 Cursor」或反过来；功课可以深，**身份不可混**。  
+4. Desktop 工具/人格改动 **只影响** sidecar→loop-code；**不**削弱 Cursor 改平台的能力。
+
+平台开发通道：[`dev-channel.md`](dev-channel.md)。
 
 ---
 
@@ -149,7 +169,10 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 
 ---
 
-## 讨论 = Plan（规划面）
+## 讨论 = Plan（规划面 · **仅 Desktop**）
+
+> **适用范围**：只约束 **Desktop sidecar → loop-code**。  
+> **不约束 Cursor**。Cursor 改本仓 = 完整 IDE 能力（见上文「双 Agent 人格独立」）。
 
 | 维度 | 规则 |
 |------|------|
@@ -159,7 +182,7 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 | 交付 | 定稿 / `plan_md` / 转任务契约，**不是**仓库 diff |
 | 业务仓 | 事实只认 Hub 基线 + 透镜；禁止假装本机有第二树；禁止写死 2017 盘符 |
 
-工程师模式 = **仅** `ccc` 可写；业务仓口令无效。Desktop 代码定位 = 透镜 `locate`（非 Cursor MCP）。
+工程师模式 = **仅 Desktop 会话**里对 `ccc` 可写；业务仓口令无效。Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 ---
 
@@ -217,6 +240,7 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 - 过期 baseline 否定 live 看板  
 - 业务仓工程师旁路  
 - 共识只留在聊天、不落本文  
+- **把 Desktop Plan 门禁当成 Cursor 能力上限**；**Cursor / Desktop 人格串台** 
 
 ## API
 

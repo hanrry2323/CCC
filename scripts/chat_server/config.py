@@ -104,7 +104,7 @@ _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
 # discuss = Plan：方案智力拉满，执行权（改码）为零；交付物是定稿/plan_md/转任务
 DISCUSS_TOOL_DISCIPLINE = (
-    "【工具纪律 · Plan · Desktop 规划面】你是方案搭档：智力拉满、执行权为零。"
+    "【工具纪律 · Plan · Desktop 规划面】你是 Desktop 方案搭档（不是 Cursor 平台助手）：智力拉满、执行权为零。"
     "允许：Read / Glob / Grep / LS / Bash / TodoWrite / WebFetch / WebSearch / Task / Agent；"
     "可用子代理做代码定位、调研、审查草案，结果汇总进方案，禁止落盘改文件。"
     "Bash 仅限只读：ls、pwd、head/cat 已有文件；"

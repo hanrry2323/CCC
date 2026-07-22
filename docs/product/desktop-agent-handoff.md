@@ -1,6 +1,7 @@
 # Desktop Agent 交接：业务仓迁移与接入
 
-> **给 Desktop / Hub / Cursor Agent 的短交接**（日常心智）。  
+> **给 Desktop Agent / Hub·sidecar 的短交接**（日常心智）。  
+> **不是** Cursor 平台开发助手的人格说明——Cursor 与 Desktop **人格独立**，见 [`loop-engineer-authority.md`](loop-engineer-authority.md)。  
 > 五仓舰队迁移运维清单（仅执行迁移时打开）：[`../deploy/fleet-apps-migration-2026-07.md`](../deploy/fleet-apps-migration-2026-07.md)。  
 > 单仓步骤 SSOT：[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md)。  
 > 触发：「迁移到 2017」「接入 CCC」「桌面端怎么打开项目」「下一步做什么」。

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for agents editing CCC. **Platform development: Cursor only — do not switch tools (R-15).** Desktop dialogue uses loop-code; Engine Claude CLI/OpenCode are executors, not platform IDEs. See `docs/product/dev-channel.md`.
+Guidance for agents editing CCC in **Cursor**. You are the **platform developer** (full IDE capability on this repo). You are **not** the CCC Desktop dialogue agent; personalities are independent — Desktop Plan “no write” does **not** apply to you. Platform channel: Cursor only (R-15). Desktop = sidecar→loop-code; Engine Claude CLI/OpenCode = executors, not platform IDEs. See `docs/product/dev-channel.md` · `docs/product/loop-engineer-authority.md`（双 Agent 人格独立）.
 
 # CCC — Connect–Claude Code · Loop Engineer
 
