@@ -8,7 +8,7 @@
 | **中（Codex）** | 居中对话主舞台 + 底部 composer |
 | **右** | 活动动画流程图（差异化） |
 
-连中心 Server（`CCC_SERVER`，默认 `http://192.168.3.116:7777`）。
+连中心 Hub（`CCC_SERVER`，**默认** `http://127.0.0.1:17777` 本机 SSH 隧道；LAN `:7777` 仅排障，不作 Desktop/sidecar 默认）。
 
 架构：[`../docs/product/ccc-desktop-architecture.md`](../docs/product/ccc-desktop-architecture.md)  
 右栏 UX：[`../docs/product/desktop-flow-rail-ux.md`](../docs/product/desktop-flow-rail-ux.md)

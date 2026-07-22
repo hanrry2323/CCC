@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": ".cursor/hooks/authority-patrol.sh",
+        "timeout": 90
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/authority-patrol-lite.sh",
+        "matcher": "Write|TabWrite",
+        "timeout": 45
+      }
+    ]
+  }
+}

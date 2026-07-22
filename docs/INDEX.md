@@ -48,6 +48,7 @@
 | [`product/project-as-conversation.md`](product/project-as-conversation.md) | 一项目一对话 |
 | [`deploy/desktop.md`](deploy/desktop.md) | 打包与多端版本核对 |
 | [`runbooks/pre-test-dual-host-sync.md`](runbooks/pre-test-dual-host-sync.md) | **测前**双机对齐 + 清右栏/Engine 干扰 |
+| [`../references/authority-patrol.jsonl`](../references/authority-patrol.jsonl) | **权威巡查硬卡**（机读；人话报警由 `scripts/ccc-authority-patrol.py`） |
 | [`runbooks/app-migrate-register-desktop.md`](runbooks/app-migrate-register-desktop.md) | 业务仓接入操作 |
 | [`product/desktop-agent-handoff.md`](product/desktop-agent-handoff.md) | Agent 短交接 |
 | [`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) | 事实权威 + Hub 只读透镜 |

@@ -256,7 +256,27 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 1. **改本文**（或在本文增加一节并改「状态」日期）——权威。  
 2. **改入口**：`STARTUP-BRIEF.md` / `CLAUDE.md` / `.cursor/rules/loop-engineer-consensus.mdc` / 必要时 `hub_voice.py`——应用。  
 3. **不要**另起平行「现行真理」长文；史实类标「史」并指回本文。  
-4. 讨论画布可留作评分/梳理附件，**不**替代本文。
+4. 讨论画布可留作评分/梳理附件，**不**替代本文。  
+5. **可巡查硬卡**同步：`references/authority-patrol.jsonl`（给机器探针用，不是给人读的说明书）。
+
+---
+
+## 平台自动维护 + 违背才找老板（硬 · 2026-07-22）
+
+目标是 vibe 自动化：日常维护 **不问你**；只有 **违背本文硬共识** 才用人话喊你拍板。
+
+| 区 | 谁做 | 要不要你点头 |
+|----|------|--------------|
+| **绿灯（自动）** | Cursor 平台维护：对齐版本、清过时改法指引、修测试红、双机同步热更、止损清场、回填 hub_voice/L1 | **不要** |
+| **红灯（决策）** | 权威巡查发现违背本文（或明确指向本文的硬卡） | **要**——桌面通知 + `~/.ccc/alerts/` 人话文件 |
+
+硬口径：
+
+1. **平台养仓只认 Cursor**（定时 Automation / 会话 / hook）；**禁止** Engine invent 养 CCC orch。  
+2. **默认可自动**：未踩红线就直接干，禁止反复「这样行吗」。  
+3. **唯一打断你**：巡查脚本 `scripts/ccc-authority-patrol.py` 发现违规 → `ccc-notify` L3（人话：发现了什么 / 为何算违背 / 建议怎么选）。  
+4. **你不读长文档**：报警正文即决策界面；拍板后改本文或改实现，下次巡查变绿。  
+5. **经验进配置**：authority + Cursor rule + hub_voice + 巡查卡；**禁止**另堆给你看的平行 brief。
 
 ---
 
