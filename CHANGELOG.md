@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **机械意图探针误走 OpenCode hang**：Engine 增加 `script_seed` 短路径；transfer 对纸面/`paper_intent_probe` 强制 `executor_intent=python`；hang 耗尽卡应清 abnormal 并用确定性种子，勿原样重下 opencode。
+
 ## [v0.60.0] — 2026-07-22
 
 ### Added

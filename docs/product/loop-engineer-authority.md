@@ -208,6 +208,7 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 | 能力 | 落点 |
 |------|------|
 | 探针解析/白名单/执行 | `scripts/_intent_probe.py` |
+| 机械探针短路径（禁 opencode hang） | `board/roles/script_seed.py` · Engine 优先于 opencode · transfer 强制 `python` |
 | transfer 业务须探针；卫生豁免 | `transfer_gate.validate_transfer_payload` |
 | 下一意图门（未 S 须 supersede/abandon） | `transfer_gate.check_next_intent_gate` |
 | acceptance / tester 共用白名单 | `_acceptance_gate` / `tester` |

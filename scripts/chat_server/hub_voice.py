@@ -65,6 +65,7 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 - 验收命令是 Engine 关门条件；看板卫生类建议 `executor_intent: python` + scope 仅 `.ccc/board`；默认不升 VERSION（需显式 `bump_version: true`）
 - **规模提示**：默认 `complexity: medium`。≥3 条可执行验收、或「三件套/回归冒烟/startup_check+pytest+多模块」→ **禁止 small**（Hub 也会抬升）；small 只给真·单文件单动作卡
 - **运行时冒烟验收**：命令写 `.venv/bin/python` 或 `python3`，显式 `DRY_RUN=true`；禁止裸 `python`（PATH 无则 hang）
+- **机械意图探针（硬）**：纸面/`paper_intent_probe`/「意图探针」类卡必须 `executor_intent: python`（Engine `script_seed` 短路径落盘模板）；**禁止**对此类卡用 `opencode`（易 hang 耗尽进 abnormal，与 plan 对错无关）
 - **扫风险 / 定稿**：必须定点核实真代码（locate/grep → file），禁止只读文档交差；禁止全仓无脑扫
 - 路径：只认 `project_id` + 透镜相对路径；禁止写死 2017 盘符、禁止把绝对路径抄回本机 Read
 - **禁止**用本机 Read/git「再核实」业务仓（M1 无第二树；cwd 常是 CCC 会串台）；**禁止** `ssh mac2017`

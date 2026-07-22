@@ -27,7 +27,7 @@
 4. `ccc-mind-update <id> --stable <goal_id>`（S）
 5. 再开无关产品 epic 应被 N 门拦，除非 `supersede_goals=true`
 
-模板探针脚本名可参考：`scripts/paper_intent_probe.py`（业务仓自建；平台测夹具同名）。
+模板探针脚本名可参考：`scripts/paper_intent_probe.py`（业务仓自建或经 Engine **`script_seed`** 短路径落盘；**禁止**对此类机械卡用 `opencode`）。
 
 ## 调度 regress
 

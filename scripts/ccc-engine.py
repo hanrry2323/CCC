@@ -2320,11 +2320,29 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         # board_ops 短路径：board-only + python/auto → 不进 opencode
         try:
             from board.roles.board_ops import run_board_ops, should_use_board_ops
+            from board.roles.script_seed import (
+                run_script_seed,
+                should_use_script_seed,
+            )
 
             task_meta = next(
                 (t for t in store.list_tasks("planned") if t.get("id") == tid),
                 None,
             )
+            if task_meta and should_use_script_seed(ws, task_meta):
+                engine_log(
+                    f"[{label}] {tid} script_seed short path "
+                    f"(intent probe, no opencode)"
+                )
+                if store.find_task(tid)[0] == "planned":
+                    store.move_task(tid, "planned", "in_progress")
+                seed_r = run_script_seed(ws, tid)
+                if not seed_r.get("ok"):
+                    engine_log(
+                        f"[{label}] {tid} script_seed failed: {seed_r}"
+                    )
+                store.update_index()
+                return True
             if task_meta and should_use_board_ops(ws, task_meta):
                 engine_log(f"[{label}] {tid} board_ops short path (no opencode)")
                 col = "planned"
@@ -2339,7 +2357,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 store.update_index()
                 return True
         except Exception as _bo_exc:
-            engine_log(f"[{label}] {tid} board_ops probe error: {_bo_exc}")
+            engine_log(f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}")
 
         if not _try_acquire_opencode_slot(tkey):
             engine_log(

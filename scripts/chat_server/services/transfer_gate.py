@@ -289,12 +289,15 @@ def resolve_complexity(body: dict[str, Any]) -> str:
 
 
 def resolve_executor_intent(body: dict[str, Any]) -> str:
-    """归一执行面。卫生卡强制 python。"""
+    """归一执行面。卫生卡 / 机械意图探针强制 python。"""
     intent = str(body.get("executor_intent") or "opencode").strip().lower()
     pipeline = str(body.get("pipeline") or "").strip().lower()
     title = str(body.get("title") or "").strip().lower()
     goal = str(body.get("goal") or "").strip().lower()
     blob = f"{pipeline} {title} {goal}"
+    acc = normalize_acceptance(body.get("acceptance")).lower()
+    plan = str(body.get("plan_md") or "").lower()
+    blob_full = f"{blob} {acc} {plan}"
 
     ip = _intent_probe()
     hygiene = ip.is_hygiene_transfer(body) or any(
@@ -305,7 +308,18 @@ def resolve_executor_intent(body: dict[str, Any]) -> str:
             "committer",
         )
     )
-    if hygiene and intent in ("opencode", "auto", ""):
+    # LPSN 机械探针：paper_intent_probe / 纸面意图探针 → python（script_seed）
+    probeish = any(
+        k in blob_full
+        for k in (
+            "paper_intent_probe",
+            "意图探针",
+            "纸面",
+            "script-seed",
+            "intent-probe",
+        )
+    )
+    if (hygiene or probeish) and intent in ("opencode", "auto", ""):
         return "python"
 
     if intent == "auto":
