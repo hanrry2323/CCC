@@ -354,6 +354,82 @@ def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
         )
 
 
+def kill_orphan_opencode(ws: Path, *, max_age_sec: int = 1800) -> list[int]:
+    """Kill opencode processes on ``ws`` with no matching ``.ccc/pids/*.pid``.
+
+    Stress/matrix runs showed multi-hour zombie ``opencode run --dir <ws>``
+    blocking ``同仓已有 active opencode`` forever. Safe reap: only when no
+    board pid file claims the PID and etime >= max_age_sec.
+    """
+    ws = Path(ws).resolve()
+    claimed: set[int] = set()
+    pids_dir = ws / ".ccc" / "pids"
+    if pids_dir.is_dir():
+        for pf in pids_dir.glob("*.pid"):
+            try:
+                claimed.add(int(pf.read_text().strip()))
+            except (ValueError, OSError):
+                continue
+    killed: list[int] = []
+    try:
+        out = subprocess.check_output(
+            ["ps", "-axo", "pid=,etime=,command="],
+            text=True,
+            timeout=15,
+            env=_sanitized_env(),
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        _engine_log(f"orphan-opencode ps failed: {exc}")
+        return killed
+
+    def _etime_sec(etime: str) -> int:
+        # [[dd-]hh:]mm:ss
+        etime = etime.strip()
+        days = 0
+        if "-" in etime:
+            d, etime = etime.split("-", 1)
+            days = int(d or 0)
+        parts = [int(x) for x in etime.split(":")]
+        if len(parts) == 3:
+            h, m, s = parts
+        elif len(parts) == 2:
+            h, m, s = 0, parts[0], parts[1]
+        else:
+            return days * 86400
+        return days * 86400 + h * 3600 + m * 60 + s
+
+    needle = f"--dir {ws}"
+    needle2 = f"--dir {ws}/"
+    for line in out.splitlines():
+        line = line.strip()
+        if "opencode run" not in line or "--dir" not in line:
+            continue
+        if needle not in line and needle2 not in line and str(ws) not in line:
+            continue
+        try:
+            pid_s, etime, *_rest = line.split(None, 2)
+            pid = int(pid_s)
+        except (ValueError, IndexError):
+            continue
+        if pid in claimed:
+            continue
+        try:
+            age = _etime_sec(etime)
+        except ValueError:
+            continue
+        if age < max_age_sec:
+            continue
+        try:
+            os.kill(pid, 15)
+            killed.append(pid)
+            _engine_log(
+                f"orphan-opencode TERM pid={pid} age={age}s ws={ws.name}"
+            )
+        except OSError:
+            continue
+    return killed
+
+
 def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
     """扫描 active_tasks 中的 hung phase 并自动重启（v0.31+）。"""
     global _hang_retry_counter
@@ -362,6 +438,12 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
     _activate_workspace(ws)
     label = _ws_label(ws)
     pids_dir = ws / ".ccc" / "pids"
+
+    # Reap zombie opencode that blocks same-workspace serialization
+    try:
+        kill_orphan_opencode(ws)
+    except Exception as exc:
+        _engine_log(f"[{label}] orphan-opencode sweep: {exc}")
 
     store = _get_store(ws)
     for key, info in list(active_tasks.items()):
