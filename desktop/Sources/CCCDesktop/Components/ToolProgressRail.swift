@@ -198,6 +198,8 @@ struct ToolProgressRail: View {
     let filesChanged: Int
     var finished: Bool = false
     var placeholder: String? = nil
+    /// 流式状态栏文案（如「对齐基线：生成中…」）；优先于默认思考占位
+    var statusHint: String? = nil
 
     /// 默认折叠；用户点开才展开（禁止 onAppear 翻开造成闪）
     @State private var expanded = false
@@ -205,6 +207,12 @@ struct ToolProgressRail: View {
 
     private var isThinking: Bool { !finished && steps.isEmpty }
     private var isRunningTools: Bool { !finished && !steps.isEmpty }
+
+    private var thinkingLabel: String {
+        let hint = (statusHint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !hint.isEmpty { return hint }
+        return placeholder ?? "正在思考…"
+    }
 
     private var carouselLines: [String] {
         steps.suffix(8).map { ToolProgressHelper.carouselLine(for: $0) }
@@ -258,15 +266,23 @@ struct ToolProgressRail: View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.mini)
-            Text(placeholder ?? "正在思考…")
-                .font(.system(size: 13))
-                .foregroundStyle(CCCTheme.faint)
-                .italic()
+            Text(thinkingLabel)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(CCCTheme.secondary)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
-        .accessibilityLabel(placeholder ?? "正在思考")
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(CCCTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(CCCTheme.border, lineWidth: 1)
+        )
+        .accessibilityLabel(thinkingLabel)
     }
 
     /// 进行中：无绿勾；一句轮播 + 进度轨；默认折叠步骤列表

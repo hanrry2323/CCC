@@ -645,6 +645,12 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         parts.append(
             f"若用户要求沉淀决策：Bash `{mind_cli}` 写 L1b；禁止 invent 投 backlog。"
         )
+    if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
+        parts.append(
+            "【对齐基线 · 强制】作答前必须 Bash 跑 "
+            f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
+            "禁止零工具只复述注入快照（用户要看见思考/工具过程轨）。"
+        )
     return "\n".join(parts)
 
 

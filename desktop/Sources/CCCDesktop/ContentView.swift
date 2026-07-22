@@ -1970,7 +1970,8 @@ struct CodexMessageRow: View {
                     filesChanged: message.filesChanged,
                     // 仅整轮结束后才 finished（绿勾）；流式中一律过程态
                     finished: !message.isStreaming,
-                    placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil
+                    placeholder: message.toolSteps.isEmpty ? "正在思考 / 调用工具…" : nil,
+                    statusHint: message.isStreaming ? model.streamStatus(for: window.threadId) : nil
                 )
             }
             if let note = message.transientNote, !note.isEmpty {
