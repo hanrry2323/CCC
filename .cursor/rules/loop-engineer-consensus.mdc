@@ -37,6 +37,10 @@ alwaysApply: true
 - **已注册 ≠ 可开工**：正式开发前全面对齐。  
 - Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。  
 - 值钱：意图门 / 编排分离 / 权威 / verdict。不值钱：扩 IDE、堆角色、堆平行真理文档。
+- **活跃板计数**（lens/mind/baseline）过滤 `ui_hidden` 与 epic `split_status=done`；禁止把僵尸 backlog 文件数当待办。
+- **ready_for_task** = git 净 **且** 无活跃 inflight；拆开看 `git_clean` / `pipeline_idle`。
+- **验收关门**：salvage/进 testing 须 hollow + acceptance；禁止 SELF-CHECKS 字符串假绿；`small` 不跳过审测。
+- **VERSION**：kb 默认不 bump；仅 `bump_version=true` 才升版。看板卫生走 board_ops 短路径。
 
 ## 共识落盘
 

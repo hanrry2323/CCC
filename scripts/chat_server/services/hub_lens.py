@@ -84,26 +84,38 @@ def _task_title(path: Path) -> str:
 
 
 def collect_board(root: Path, *, project_id: str) -> dict[str, Any]:
+    """Active board counts — filters ui_hidden + epic split_status=done."""
+    from _board_visibility import iter_active_jsonl, load_task_head
+
     board = root / ".ccc" / "board"
     counts: dict[str, int] = {}
+    counts_raw: dict[str, int] = {}
     inflight: list[dict[str, str]] = []
     present = board.is_dir()
     if present:
         for col in BOARD_COLS:
             col_dir = board / col
-            files = sorted(col_dir.glob("*.jsonl")) if col_dir.is_dir() else []
-            counts[col] = len(files)
+            raw_files = (
+                sorted(p for p in col_dir.glob("*.jsonl") if p.is_file())
+                if col_dir.is_dir()
+                else []
+            )
+            active_files = iter_active_jsonl(col_dir) if col_dir.is_dir() else []
+            counts_raw[col] = len(raw_files)
+            counts[col] = len(active_files)
             if col in INFLIGHT_COLS:
-                for f in files[:20]:
+                for f in active_files[:20]:
+                    head = load_task_head(f) or {}
                     inflight.append(
                         {
                             "column": col,
                             "id": f.stem,
-                            "title": _task_title(f),
+                            "title": str(head.get("title") or _task_title(f))[:80],
                         }
                     )
     else:
         counts = {c: 0 for c in BOARD_COLS}
+        counts_raw = {c: 0 for c in BOARD_COLS}
     return {
         "ok": True,
         "project_id": project_id,
@@ -111,6 +123,7 @@ def collect_board(root: Path, *, project_id: str) -> dict[str, Any]:
         "as_of": _now_iso(),
         "board_present": present,
         "counts": counts,
+        "counts_raw": counts_raw,
         "inflight": inflight,
         "inflight_total": len(inflight),
         "summary": (

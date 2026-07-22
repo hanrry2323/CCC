@@ -2064,66 +2064,113 @@ struct TransferSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let threadId: String
+    @State private var rejectNote: String = ""
+    @State private var showRejectNote: Bool = false
+
+    private var form: TransferFormState { model.transferForm(for: threadId) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("转任务")
-                .font(.system(size: 20, weight: .semibold))
-                .tracking(-0.4)
-            Text("确认门禁字段后写入待办；右侧展开编排。")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("转任务")
+                    .font(.system(size: 20, weight: .semibold))
+                    .tracking(-0.4)
+                Spacer()
+                if !form.source.isEmpty {
+                    Text(form.source == "ccc-transfer" ? "来源定稿" : "启发式预填")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(CCCTheme.faint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(CCCTheme.faint.opacity(0.12), in: Capsule())
+                }
+            }
+            Text("意图可改；可行性=可执行时锁死。纠错：备注续投或退回对话重定稿。")
                 .font(CCCTheme.callout)
                 .foregroundStyle(CCCTheme.faint)
 
-            Form {
-                TextField("标题", text: model.bindingTransferField(threadId, \.title))
-                TextField("目标", text: model.bindingTransferField(threadId, \.goal), axis: .vertical)
-                    .lineLimit(3...6)
-                TextField("验收（每行一条）", text: model.bindingTransferField(threadId, \.acceptance), axis: .vertical)
-                    .lineLimit(3...8)
-                TextField("产线", text: model.bindingTransferField(threadId, \.pipeline))
-                Picker("可行性", selection: model.bindingTransferField(threadId, \.feasibility)) {
-                    Text("可执行").tag("ok")
-                    Text("阻塞").tag("blocked")
+            ScrollView {
+                Form {
+                    Section("意图（可改）") {
+                        TextField("标题", text: model.bindingTransferField(threadId, \.title))
+                        TextField("目标", text: model.bindingTransferField(threadId, \.goal), axis: .vertical)
+                            .lineLimit(3...6)
+                        TextField("验收（每行一条）", text: model.bindingTransferField(threadId, \.acceptance), axis: .vertical)
+                            .lineLimit(3...8)
+                        TextField("方案正文", text: model.bindingTransferField(threadId, \.planMd), axis: .vertical)
+                            .lineLimit(4...12)
+                    }
+                    Section("执行偏好（可改）") {
+                        TextField("产线", text: model.bindingTransferField(threadId, \.pipeline))
+                        Picker("执行面", selection: model.bindingTransferField(threadId, \.executor)) {
+                            Text("写码").tag("opencode")
+                            Text("脚本/board").tag("python")
+                            Text("ollama").tag("ollama")
+                            Text("cli").tag("cli")
+                            Text("auto").tag("auto")
+                        }
+                        Picker("复杂度", selection: model.bindingTransferField(threadId, \.complexity)) {
+                            Text("small").tag("small")
+                            Text("medium").tag("medium")
+                            Text("large").tag("large")
+                        }
+                        Toggle("发布时升 VERSION", isOn: Binding(
+                            get: { model.transferForm(for: threadId).bumpVersion },
+                            set: { v in model.mutateTransferFormPublic(threadId) { $0.bumpVersion = v } }
+                        ))
+                        TextField("备注（可选，随卡投递）", text: model.bindingTransferField(threadId, \.humanNote), axis: .vertical)
+                            .lineLimit(2...4)
+                    }
+                    Section("门禁（只读）") {
+                        if form.feasibility == "ok" {
+                            LabeledContent("可行性", value: "可执行（锁死）")
+                        } else {
+                            Picker("可行性", selection: model.bindingTransferField(threadId, \.feasibility)) {
+                                Text("可执行").tag("ok")
+                                Text("阻塞").tag("blocked")
+                            }
+                            TextField("阻塞原因", text: model.bindingTransferField(threadId, \.feasibilityReason), axis: .vertical)
+                                .lineLimit(2...4)
+                        }
+                        LabeledContent("会话", value: threadId)
+                    }
                 }
-                if model.transferForm(for: threadId).feasibility == "blocked" {
-                    TextField("阻塞原因", text: model.bindingTransferField(threadId, \.feasibilityReason), axis: .vertical)
-                        .lineLimit(2...4)
-                }
-                Picker("执行面", selection: model.bindingTransferField(threadId, \.executor)) {
-                    Text("写码").tag("opencode")
-                    Text("脚本").tag("python")
-                    Text("ollama").tag("ollama")
-                    Text("cli").tag("cli")
-                    Text("auto").tag("auto")
-                }
-                TextField("方案正文（可选）", text: model.bindingTransferField(threadId, \.planMd), axis: .vertical)
-                    .lineLimit(4...10)
+                .formStyle(.grouped)
+                .frame(maxWidth: .infinity, minHeight: 420)
             }
-            .formStyle(.grouped)
 
-            if let err = model.transferForm(for: threadId).error {
+            if let err = form.error {
                 Text(err)
                     .font(CCCTheme.callout)
                     .foregroundStyle(CCCTheme.nodeFail)
             }
 
-            HStack {
-                Button("取消") {
-                    model.dismissTransferSheet(threadId: threadId)
-                    dismiss()
+            if showRejectNote {
+                TextField("退回备注", text: $rejectNote, axis: .vertical)
+                    .lineLimit(2...4)
+            }
+
+            HStack(spacing: 10) {
+                Button("退回对话") {
+                    if showRejectNote {
+                        model.rejectTransferBackToChat(threadId: threadId, note: rejectNote)
+                        dismiss()
+                    } else {
+                        showRejectNote = true
+                    }
                 }
-                    .foregroundStyle(CCCTheme.secondary)
+                .foregroundStyle(CCCTheme.secondary)
                 Spacer()
                 Button("重新预填") { model.prefillTransferFromChat(threadId: threadId) }
                     .foregroundStyle(CCCTheme.secondary)
-                Button("确认") { Task { await model.submitTransfer(threadId: threadId) } }
+                Button("确认转任务") { Task { await model.submitTransfer(threadId: threadId) } }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
                     .disabled(model.busy)
             }
         }
-        .padding(28)
-        .frame(width: 520, height: 640)
+        .padding(24)
+        .frame(width: 560, height: 720)
     }
 }
 

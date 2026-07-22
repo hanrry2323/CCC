@@ -69,7 +69,7 @@ Desktop（M1）：对齐基线 → 下一步 → 定稿方案 → 转任务 → 
 | kb | verified 非空 | tag + CHANGELOG → released |
 | regress | 23:30 / 手动 | 回测 → backlog(回归 epic) |
 
-**复杂度**：`small` 可跳过 reviewer+tester（v0.28.1）。
+**复杂度**：`small` 仅表规模提示，**不**跳过 reviewer+tester（v0.53+ 假绿修复）。
 
 **大卡五态**（`split_status`，epic 永不离 backlog）：
 

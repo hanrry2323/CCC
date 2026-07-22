@@ -101,6 +101,12 @@ def test_salvage_with_self_checks_in_result(ws_git: Path, monkeypatch):
     (ws_git / ".ccc" / "reports" / f"{tid}.report.md").write_text(
         f"# {tid}\n\n门禁: missing SELF-CHECKS\n"
     )
+    # acceptance required (SELF-CHECKS alone no longer enough)
+    (ws_git / ".ccc" / "plans").mkdir(parents=True, exist_ok=True)
+    (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        f"# Plan\n\n## 验收\n- `.ccc/flow-smoke.md` 已写入并提交\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setenv("CCC_SKIP_COMMIT_GATE", "1")
     out = dev_mod.try_complete_if_gates_satisfied(tid)

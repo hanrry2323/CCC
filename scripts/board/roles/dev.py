@@ -725,6 +725,7 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
 
     from _opencode_quality_gate import (
         agent_declared_self_checks_passed,
+        detect_hollow_opencode_run,
         report_has_self_checks_passed,
     )
     from _task_commit import ensure_task_commit, find_task_commit
@@ -761,10 +762,34 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
     report = report_path.read_text(encoding="utf-8") if report_path.is_file() else ""
     result_raw = result_path.read_text(encoding="utf-8") if result_path.is_file() else ""
 
-    declared = agent_declared_self_checks_passed(report, result_raw)
-    smoke_ok = False if declared else _smoke_deliverable_satisfied(task_id)
-    if not declared and not smoke_ok:
+    # hollow 与正常完成路径对齐（salvage 不得绕过）
+    try:
+        hollow_reason = detect_hollow_opencode_run(result_raw, report)
+    except Exception as exc:
+        _log.warning("[salvage] %s hollow detect failed: %s", task_id, exc)
+        hollow_reason = None
+    if hollow_reason:
+        _log.warning("[salvage] %s refused: hollow (%s)", task_id, hollow_reason[:160])
         return None
+
+    # acceptance 关门：SELF-CHECKS 字符串不足以单独放行
+    try:
+        from _acceptance_gate import check_acceptance
+
+        acc = check_acceptance(ws, task_id, commit=commit)
+    except Exception as exc:
+        _log.warning("[salvage] %s acceptance gate error: %s", task_id, exc)
+        return None
+    if not acc.get("ok"):
+        _log.warning(
+            "[salvage] %s refused: acceptance %s",
+            task_id,
+            acc.get("reason"),
+        )
+        return None
+
+    declared = agent_declared_self_checks_passed(report, result_raw)
+    smoke_ok = _smoke_deliverable_satisfied(task_id)
 
     # 禁止用 missing-SELF-CHECKS stub 盖住已有标记；有标记则 materialize
     if declared and not report_has_self_checks_passed(report):
@@ -1262,6 +1287,32 @@ def dev_role_check_complete(task_id: str) -> dict:
                     "retry": 0,
                     "task_id": task_id,
                     "error": f"commit-gate: {_why}",
+                }
+            try:
+                from _acceptance_gate import check_acceptance
+
+                _acc = check_acceptance(
+                    get_workspace(), task_id, commit=_ch or _hash or ""
+                )
+            except Exception as _acc_exc:
+                _log.error("[acceptance-gate] %s error: %s", task_id, _acc_exc)
+                return {
+                    "status": "failed",
+                    "retry": 0,
+                    "task_id": task_id,
+                    "error": f"acceptance-gate: {_acc_exc}",
+                }
+            if not _acc.get("ok"):
+                _log.error(
+                    "[acceptance-gate] %s 拒绝进 testing: %s",
+                    task_id,
+                    _acc.get("reason"),
+                )
+                return {
+                    "status": "failed",
+                    "retry": 0,
+                    "task_id": task_id,
+                    "error": f"acceptance-gate: {_acc.get('reason')}",
                 }
         _mark_phase_done(task_id, cur_phase)
         _phases_now = _load_phases(task_id)

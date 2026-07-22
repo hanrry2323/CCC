@@ -60,7 +60,7 @@
 | **v0.24+** | **Phase 感知调度** | depends_on、失败传染、R- 红线 |
 | v0.25–0.26 | 全链路对齐 + Board Protocol | 跨 IDE 看板契约 |
 | **v0.28.0** | **流层加固 + backlog 自动消费** | F-1 product 自动拆分 |
-| **v0.28.1** | **复杂度分流** | small 跳过 reviewer+tester |
+| **v0.28.1** | **复杂度分流** | small 曾跳过审测 → **v0.53+ 取消 stub 跳过** |
 
 ---
 

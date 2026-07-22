@@ -77,6 +77,9 @@ def _hot_paths(ws: Path) -> dict[str, bool]:
 
 
 def _board_summary(ws: Path) -> dict[str, Any]:
+    """Active board summary — filters ui_hidden + epic split_status=done."""
+    from _board_visibility import iter_active_jsonl
+
     board = ws / ".ccc" / "board"
     if not board.is_dir():
         return {"present": False}
@@ -91,17 +94,22 @@ def _board_summary(ws: Path) -> dict[str, Any]:
         "abnormal",
     ):
         d = board / col
-        n = 0
-        if d.is_dir():
-            n = sum(1 for p in d.glob("*.jsonl") if p.is_file())
-        counts[col] = n
+        counts[col] = len(iter_active_jsonl(d)) if d.is_dir() else 0
+    inflight_active = sum(
+        counts.get(c, 0)
+        for c in ("planned", "in_progress", "testing", "verified", "abnormal")
+    )
+    # backlog active (pending/running epics) also blocks "empty" sense for invent tip
+    empty_pipeline = all(
+        counts.get(c, 0) == 0
+        for c in ("planned", "in_progress", "testing", "abnormal")
+    ) and inflight_active == 0
     return {
         "present": True,
         "counts": counts,
-        "empty_pipeline": all(
-            counts.get(c, 0) == 0
-            for c in ("backlog", "planned", "in_progress", "testing", "abnormal")
-        ),
+        "inflight_active": inflight_active,
+        "empty_pipeline": empty_pipeline,
+        "pipeline_idle": empty_pipeline and counts.get("backlog", 0) == 0,
     }
 
 
@@ -204,7 +212,11 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         )
 
     can_dispatch = True
-    ready = not dirty
+    inflight_active = int(board.get("inflight_active") or 0)
+    git_clean = not dirty
+    pipeline_idle = bool(board.get("pipeline_idle"))
+    # ready_for_task = git 净 且 无活跃 inflight（不含 done+hidden 僵尸）
+    ready = git_clean and inflight_active == 0
 
     control_compact = {
         "mode": mode,
@@ -237,6 +249,9 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         "claude_excerpt": claude,
         "control": control_compact,
         "risks": risks,
+        "git_clean": git_clean,
+        "pipeline_idle": pipeline_idle,
+        "inflight_active": inflight_active,
         "ready_for_task": ready,
         "can_dispatch": can_dispatch,
         "summary": _format_summary(
@@ -301,6 +316,9 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "control": baseline.get("control"),
         "risks": baseline.get("risks") or [],
         "ready_for_task": baseline.get("ready_for_task"),
+        "git_clean": baseline.get("git_clean"),
+        "pipeline_idle": baseline.get("pipeline_idle"),
+        "inflight_active": baseline.get("inflight_active"),
         "workspace": baseline.get("workspace"),
         "project_id": baseline.get("project_id"),
     }
@@ -319,9 +337,13 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "禁止对本机跑 git / Read 业务树再核实（会串到 CCC 平台仓）。\n"
         "快照不足就直说缺什么；Hub 断则明说不可达，勿瞎编。\n\n"
         "## 静默（勿写入回复）\n"
-        "1. 读快照：version / board / control / risks / recent_commits / ready_for_task。\n"
-        "2. 优先读注入的 live board（as_of + inflight）；覆盖会话里更早的「全 0」。\n"
-        "3. 结合 CLAUDE/profile/state 摘录建立「这是什么项目」。\n"
+        "1. 读快照：version / board / control / risks / recent_commits；"
+        "同时报 git_clean、pipeline_idle、inflight_active、ready_for_task"
+        "（ready≠仅 git 净；活跃计数已过滤 ui_hidden 与 done epic）。\n"
+        "2. 优先读注入的 live board（as_of + inflight）；禁止把 raw backlog 文件数当待办挑卡；"
+        "僵尸 done+hidden → 引导清账而非「挑一张转」。\n"
+        "3. 验收命令是 Engine 关门条件，不是散文。看板卫生类建议 executor=python + scope 仅 .ccc/board。\n"
+        "4. 结合 CLAUDE/profile/state 摘录建立「这是什么项目」。\n"
         "4. 完整理解 control：`invent_hard_disabled` / `queue_consumer_only` 等。\n"
         "5. 看板是否空转；空 + invent 关 → Engine 闲置正常。\n"
         "6. dirty 以快照为准；业务 dirty → 提醒「业务改码请定稿转任务」。\n\n"

@@ -116,14 +116,19 @@ def build_epic_description(body: dict[str, Any]) -> str:
         skills = []
     skills_s = ", ".join(str(s) for s in skills if str(s).strip())
 
+    bump = body.get("bump_version") is True
+    human_note = str(body.get("human_note") or "").strip()
     parts = [
         "## Transfer Gate",
         f"- pipeline: {pipeline}",
         f"- executor_intent: {intent}",
         "- feasibility: ok",
+        f"- bump_version: {'true' if bump else 'false'}",
     ]
     if skills_s:
         parts.append(f"- skills_hint: {skills_s}")
+    if human_note:
+        parts.extend(["", "## 人工备注", human_note])
     parts.extend(["", "## 目标", goal, "", "## 验收", acc])
     if plan_md:
         parts.extend(["", "## Plan", plan_md])

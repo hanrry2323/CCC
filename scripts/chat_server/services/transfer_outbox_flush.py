@@ -283,6 +283,8 @@ def _post_transfer(item: dict[str, Any], timeout: float = 25.0) -> tuple[bool, s
         "skills_hint": [],
         "plan_md": item.get("plan_md") or "",
         "complexity": item.get("complexity") or "medium",
+        "bump_version": bool(item.get("bump_version")),
+        "human_note": item.get("human_note") or "",
         "client_request_id": item.get("client_request_id") or "",
     }
     url = f"{hub_base()}/api/desktop/transfer"

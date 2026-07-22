@@ -1371,7 +1371,7 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
       - in_progress 列 task: 调 dev_role_check_complete 恢复 phase 执行状态
       - running → 登记 active_tasks（满槽则只告警 + pending，不超 MAX_CONCURRENT）
       - failed/not running → 不立即 relaunch，写入 pending_relaunch
-      - testing 列 task: 调 `_run_reviewer_tester_gate`（small 跳过 reviewer/tester）
+      - testing 列 task: 调 `_run_reviewer_tester_gate`（small 不跳过审测）
       - 每恢复一个 task 间隔 5s，避免并发重启风暴
       - board 为空时静默跳过，无日志噪声
     """
@@ -1458,7 +1458,7 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
         tid = task["id"]
         engine_log(f"[recover] [{label}] Recovered task {tid} at phase reviewing")
         try:
-            # 与正常 testing 门禁一致：small 跳过 reviewer/tester
+            # 与正常 testing 门禁一致（small 不 stub 跳过）
             ok = _run_reviewer_tester_gate(ws, tid)
             engine_log(
                 f"[recover] [{label}] {tid} testing gate → "
@@ -2307,6 +2307,30 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
             )
             continue
+        # board_ops 短路径：board-only + python/auto → 不进 opencode
+        try:
+            from board.roles.board_ops import run_board_ops, should_use_board_ops
+
+            task_meta = next(
+                (t for t in store.list_tasks("planned") if t.get("id") == tid),
+                None,
+            )
+            if task_meta and should_use_board_ops(ws, task_meta):
+                engine_log(f"[{label}] {tid} board_ops short path (no opencode)")
+                col = "planned"
+                if store.find_task(tid)[0] == "planned":
+                    store.move_task(tid, "planned", "in_progress")
+                ops_r = run_board_ops(ws, tid)
+                if not ops_r.get("ok"):
+                    engine_log(
+                        f"[{label}] {tid} board_ops failed: {ops_r.get('why')}"
+                    )
+                    # leave in_progress for salvage/acceptance or hang path
+                store.update_index()
+                return True
+        except Exception as _bo_exc:
+            engine_log(f"[{label}] {tid} board_ops probe error: {_bo_exc}")
+
         if not _try_acquire_opencode_slot(tkey):
             engine_log(
                 f"[engine] opencode 槽忙（全局 "

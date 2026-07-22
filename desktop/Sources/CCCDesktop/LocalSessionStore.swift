@@ -112,8 +112,72 @@ enum LocalSessionStore {
         var executor_intent: String
         var plan_md: String
         var complexity: String
+        var bump_version: Bool
+        var human_note: String
         var attempts: Int
         var saved_at: String
+
+        enum CodingKeys: String, CodingKey {
+            case client_request_id, project_id, thread_id, title, goal, acceptance
+            case pipeline, feasibility, feasibility_reason, executor_intent, plan_md
+            case complexity, bump_version, human_note, attempts, saved_at
+        }
+
+        init(
+            client_request_id: String,
+            project_id: String,
+            thread_id: String,
+            title: String,
+            goal: String,
+            acceptance: [String],
+            pipeline: String,
+            feasibility: String,
+            feasibility_reason: String?,
+            executor_intent: String,
+            plan_md: String,
+            complexity: String,
+            bump_version: Bool = false,
+            human_note: String = "",
+            attempts: Int,
+            saved_at: String
+        ) {
+            self.client_request_id = client_request_id
+            self.project_id = project_id
+            self.thread_id = thread_id
+            self.title = title
+            self.goal = goal
+            self.acceptance = acceptance
+            self.pipeline = pipeline
+            self.feasibility = feasibility
+            self.feasibility_reason = feasibility_reason
+            self.executor_intent = executor_intent
+            self.plan_md = plan_md
+            self.complexity = complexity
+            self.bump_version = bump_version
+            self.human_note = human_note
+            self.attempts = attempts
+            self.saved_at = saved_at
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            client_request_id = try c.decode(String.self, forKey: .client_request_id)
+            project_id = try c.decode(String.self, forKey: .project_id)
+            thread_id = try c.decode(String.self, forKey: .thread_id)
+            title = try c.decode(String.self, forKey: .title)
+            goal = try c.decode(String.self, forKey: .goal)
+            acceptance = try c.decode([String].self, forKey: .acceptance)
+            pipeline = try c.decode(String.self, forKey: .pipeline)
+            feasibility = try c.decode(String.self, forKey: .feasibility)
+            feasibility_reason = try c.decodeIfPresent(String.self, forKey: .feasibility_reason)
+            executor_intent = try c.decode(String.self, forKey: .executor_intent)
+            plan_md = try c.decode(String.self, forKey: .plan_md)
+            complexity = try c.decodeIfPresent(String.self, forKey: .complexity) ?? "medium"
+            bump_version = try c.decodeIfPresent(Bool.self, forKey: .bump_version) ?? false
+            human_note = try c.decodeIfPresent(String.self, forKey: .human_note) ?? ""
+            attempts = try c.decode(Int.self, forKey: .attempts)
+            saved_at = try c.decode(String.self, forKey: .saved_at)
+        }
     }
 
     struct ProjectsCache: Codable {

@@ -91,6 +91,42 @@ def _extract_agents_suggestions(
     return suggestions
 
 
+def _task_wants_version_bump(task: dict, ws: Path) -> bool:
+    """Opt-in only: bump_version=true on work/epic, or tag bump-version."""
+    if task.get("bump_version") is True:
+        return True
+    tags = task.get("tags") if isinstance(task.get("tags"), list) else []
+    for t in tags:
+        name = t
+        if isinstance(t, dict):
+            name = t.get("name") or t.get("id") or t.get("tag")
+        if str(name or "").strip().lower() in ("bump-version", "bump_version"):
+            return True
+    # parent epic
+    parent = str(task.get("parent_id") or "").strip()
+    if not parent:
+        return False
+    for col in ("backlog", "released", "planned"):
+        p = ws / ".ccc" / "board" / col / f"{parent}.jsonl"
+        if not p.is_file():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8").splitlines()[0])
+        except (OSError, json.JSONDecodeError, IndexError):
+            continue
+        if data.get("bump_version") is True:
+            return True
+        note = str(data.get("note") or data.get("description") or "")
+        if "bump_version: true" in note.lower() or '"bump_version": true' in note.lower():
+            return True
+        ptags = data.get("tags") if isinstance(data.get("tags"), list) else []
+        for t in ptags:
+            name = t.get("name") if isinstance(t, dict) else t
+            if str(name or "").strip().lower() in ("bump-version", "bump_version"):
+                return True
+    return False
+
+
 def kb_role() -> dict:
     """知识管理员: 扫 verified → 归档 + git tag → 挪 released → 收集 AGENTS.md 建议"""
     from _role_lock import assert_role_executor
@@ -103,50 +139,54 @@ def kb_role() -> dict:
     for task in list_tasks("verified"):
         task_id = task["id"]
 
-        # ── Step 1: 版本 bump + CHANGELOG ──
-        try:
-            new_ver = _bump_version(get_workspace())
-            _append_changelog(get_workspace(), task_id, new_ver)
-        except Exception as exc:
-            _log.warning("version bump failed, skipping tag: %s", exc)
-            new_ver = "unknown"
+        # ── Step 1: VERSION 仅 opt-in（默认不 bump，防卫生卡误升版）──
+        want_bump = _task_wants_version_bump(task, get_workspace())
+        new_ver = "skipped"
+        if want_bump:
+            try:
+                new_ver = _bump_version(get_workspace())
+                _append_changelog(get_workspace(), task_id, new_ver)
+            except Exception as exc:
+                _log.warning("version bump failed, skipping tag: %s", exc)
+                new_ver = "unknown"
 
-        # ── Step 2: git tag v{version} ──
-        if new_ver != "unknown":
-            sp.run(
-                [
-                    "git",
-                    "tag",
-                    "-a",
-                    new_ver,
-                    "-m",
-                    f"{new_ver}: {task_id} 发布",
-                ],
-                cwd=get_workspace(),
-                capture_output=True,
-                timeout=10,
-            )
-            push_r = sp.run(
-                ["git", "push", "origin", new_ver],
-                cwd=get_workspace(),
-                capture_output=True,
-                timeout=30,
-            )
-            if push_r.returncode != 0:
-                # v0.38: push 失败不阻断本地 released（避免永久卡 verified）
-                _log.error(
-                    "[kb] %s push tag 失败 rc=%s（仍挪 released，本地 tag 已建）",
-                    task_id,
-                    push_r.returncode,
+            # ── Step 2: git tag v{version} ──
+            if new_ver not in ("unknown", "skipped"):
+                sp.run(
+                    [
+                        "git",
+                        "tag",
+                        "-a",
+                        new_ver,
+                        "-m",
+                        f"{new_ver}: {task_id} 发布",
+                    ],
+                    cwd=get_workspace(),
+                    capture_output=True,
+                    timeout=10,
                 )
-                fail_log = (
-                    get_workspace() / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                push_r = sp.run(
+                    ["git", "push", "origin", new_ver],
+                    cwd=get_workspace(),
+                    capture_output=True,
+                    timeout=30,
                 )
-                fail_log.write_text(
-                    f"# {task_id} push tag 失败\n\n"
-                    f"rc={push_r.returncode}\n"
-                    f"{(push_r.stderr or b'').decode('utf-8', errors='replace')[:500]}\n"
-                )
+                if push_r.returncode != 0:
+                    _log.error(
+                        "[kb] %s push tag 失败 rc=%s（仍挪 released，本地 tag 已建）",
+                        task_id,
+                        push_r.returncode,
+                    )
+                    fail_log = (
+                        get_workspace() / ".ccc" / "reports" / f"{task_id}.push-fail.md"
+                    )
+                    fail_log.write_text(
+                        f"# {task_id} push tag 失败\n\n"
+                        f"rc={push_r.returncode}\n"
+                        f"{(push_r.stderr or b'').decode('utf-8', errors='replace')[:500]}\n"
+                    )
+        else:
+            _log.info("[kb] %s skip VERSION bump (bump_version not set)", task_id)
 
         # ── Step 3: 收集 AGENTS.md 建议 ──
         report_file = get_workspace() / ".ccc" / "reports" / f"{task_id}.report.md"

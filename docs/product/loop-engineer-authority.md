@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-22  
+> **状态**：现行 · 2026-07-22（全流程完整性：假绿关门 / 活跃板计数 / VERSION opt-in） 
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -141,6 +141,24 @@ CCC 卖的不是「更快写出第一版」，而是把后半段**工程化**。
 - API：`GET/PUT /api/desktop/mind/{project_id}/…`；sidecar 每轮注入 digest（≤2KB）。
 - 新鲜度：`live board / lens git` > L1 digest > 聊天 resume。
 - 不复活 invent；心智沉淀 ≠ 自动投 backlog。
+
+### 活跃板计数与 ready（硬 · 2026-07-22）
+
+| 信号 | 含义 |
+|------|------|
+| **活跃板计数** | lens / mind / baseline 与 Board API **同口径**：跳过 `ui_hidden=true` 与 epic `split_status=done`；`failed` 仍算活跃风险 |
+| **pipeline_idle** | 过滤后 planned/in_progress/testing/abnormal=0，且无在飞 inflight |
+| **git_clean** | 工作区 porcelain 空 |
+| **ready_for_task** | `git_clean` **且** 无活跃 inflight（≠「仅 git 净」；≠「磁盘 backlog 文件数为 0」） |
+
+禁止把 raw `backlog/*.jsonl` 文件数（含已 done+hidden 僵尸）当成「待办队列」推荐挑卡。
+
+### 验收关门与 VERSION（硬 · 2026-07-22）
+
+- **跑完 ≠ 做对**：salvage / 进 testing 前必须过 hollow + acceptance（计划 `## 验收` 可重放命令或交付路径落在 task commit）；`ALL SELF-CHECKS PASSED` 字符串**不足以**单独放行。
+- **complexity=small** 仅表规模提示，**不** stub 跳过 reviewer/tester。
+- **VERSION**：kb 默认 **不** bump；仅 transfer/epic 显式 `bump_version=true`（或 tag `bump-version`）才升版+changelog+tag。
+- **看板卫生**：scope 仅 `.ccc/board/**` 且 executor∈{python,auto} → 确定性 board_ops 短路径，不进 opencode 长跑。
 
 ---
 

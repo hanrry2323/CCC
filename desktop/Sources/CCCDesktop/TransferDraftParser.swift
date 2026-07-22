@@ -10,6 +10,11 @@ struct TransferFormState: Equatable {
     var feasibility: String = "ok"
     var feasibilityReason: String = ""
     var planMd: String = ""
+    var complexity: String = "medium"
+    var bumpVersion: Bool = false
+    var humanNote: String = ""
+    /// "ccc-transfer" | "heuristic" | ""
+    var source: String = ""
     var error: String?
 }
 
@@ -23,6 +28,8 @@ struct TransferDraft: Equatable {
     var feasibilityReason: String = ""
     var executorIntent: String = "opencode"
     var planMd: String = ""
+    var complexity: String = "medium"
+    var bumpVersion: Bool = false
     /// "ccc-transfer" | "heuristic"
     var source: String = "heuristic"
 
@@ -66,6 +73,12 @@ enum TransferDraftParser {
         draft.feasibilityReason = stringField(obj, "feasibility_reason")
         draft.executorIntent = stringField(obj, "executor_intent", default: "opencode").lowercased()
         draft.planMd = stringField(obj, "plan_md")
+        draft.complexity = stringField(obj, "complexity", default: "medium").lowercased()
+        if let b = obj["bump_version"] as? Bool {
+            draft.bumpVersion = b
+        } else if let s = obj["bump_version"] as? String {
+            draft.bumpVersion = ["true", "1", "yes"].contains(s.lowercased())
+        }
 
         if let arr = obj["acceptance"] as? [Any] {
             draft.acceptance = arr.compactMap { $0 as? String }

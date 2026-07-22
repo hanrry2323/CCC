@@ -213,23 +213,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     store = _get_store(ws)
     label = _ws_label(ws)
 
+    # complexity=small 仅表规模提示，禁止 stub 跳过 reviewer+tester（假绿）
     task_meta = next((t for t in store.list_tasks("testing") if t["id"] == tid), None)
-    if task_meta and task_meta.get("complexity") == "small":
-        verdict_dir = ws / ".ccc" / "verdicts"
-        verdict_dir.mkdir(parents=True, exist_ok=True)
-        (verdict_dir / f"{tid}.verdict.md").write_text(
-            f"# {tid} Verdict\n\n**Verdict:** PASS\n\n"
-            f"complexity=small: skipped reviewer+tester per STARTUP-BRIEF\n",
-            encoding="utf-8",
-        )
-        col = _find_task_column(store, tid)
-        if col == "testing":
-            store.move_task(tid, "testing", "verified")
-            if eng:
-                eng._log_stats(ws, "move", tid, from_col="testing", to_col="verified")
-        store.update_index()
-        _engine_log(f"[{label}] {tid} complexity=small → verified (skip gate)")
-        return _find_task_column(store, tid) == "verified"
+    _ = task_meta  # retained for future size-based timeouts
 
     timeout_retries = cfg.reviewer_retry_on_timeout
     timeout_count = 0

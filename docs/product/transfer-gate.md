@@ -53,6 +53,9 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto` |
 | `skills_hint` | 可选 string[]，软偏好供 Engine 扇出参考 |
 | `plan_md` | 方案正文（Markdown） |
+| `complexity` | 可选；`small`/`medium`/`large`（仅规模提示，**不**跳过审测） |
+| `bump_version` | 可选 bool；默认 false。true 时 kb 才升 VERSION |
+| `human_note` | 可选；人工备注写入 epic note |
 | `thread_id` | **必填（Desktop）**：真实会话 id（如 `{project}::UUID`）；Hub 未传时默认 `{project}::main` |
 | `client_request_id` | 可选；Hub API v1 幂等键，重复提交返回已有 epic |
 

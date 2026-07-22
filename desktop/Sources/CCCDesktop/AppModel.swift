@@ -1199,6 +1199,11 @@ final class AppModel: ObservableObject {
             if threadMessages[tid] == nil {
                 threadMessages[tid] = ram
             }
+        } else if !disk.isEmpty {
+            threadMessages[tid] = disk
+        } else if !ram.isEmpty {
+            // 定稿/开 TransferSheet 时偶发空盘快照 — 禁止用空数组抹掉中栏
+            threadMessages[tid] = ram
         } else {
             threadMessages[tid] = disk
         }
@@ -3552,6 +3557,10 @@ final class AppModel: ObservableObject {
         threadTransferForms = copy
     }
 
+    func mutateTransferFormPublic(_ threadId: String, _ update: (inout TransferFormState) -> Void) {
+        mutateTransferForm(threadId, update)
+    }
+
     private func mutateTransferForm(_ threadId: String, _ update: (inout TransferFormState) -> Void) {
         var form = threadTransferForms[threadId] ?? TransferFormState()
         update(&form)
@@ -3574,6 +3583,9 @@ final class AppModel: ObservableObject {
             form.feasibilityReason = d.feasibilityReason
             if !d.executorIntent.isEmpty { form.executor = d.executorIntent }
             if !d.planMd.isEmpty { form.planMd = d.planMd }
+            if !d.complexity.isEmpty { form.complexity = d.complexity }
+            form.bumpVersion = d.bumpVersion
+            form.source = d.source
             setTransferForm(threadId, form)
             return
         }
@@ -3763,6 +3775,9 @@ final class AppModel: ObservableObject {
         dismissTransferSheet(threadId: tid)
         mutateTransferForm(tid) { $0.error = nil }
 
+        let cx = form.complexity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let complexity = ["small", "medium", "large"].contains(cx) ? cx : "medium"
+        let note = form.humanNote.trimmingCharacters(in: .whitespacesAndNewlines)
         let outboxItem = LocalSessionStore.TransferOutboxItem(
             client_request_id: requestId,
             project_id: pid,
@@ -3775,7 +3790,9 @@ final class AppModel: ObservableObject {
             feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
             executor_intent: form.executor,
             plan_md: planBody,
-            complexity: "medium",
+            complexity: complexity,
+            bump_version: form.bumpVersion,
+            human_note: note,
             attempts: 0,
             saved_at: ISO8601DateFormatter().string(from: Date())
         )
@@ -3792,6 +3809,34 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             await self?.nudgeSidecarOutboxFlush()
         }
+    }
+
+    /// 带人工备注继续投递（不改 acceptance 正文）
+    func submitTransferWithNote(threadId: String? = nil, note: String) async {
+        let tid = threadId ?? transferSheetThreadId ?? selectedThreadId
+        guard let tid else { return }
+        mutateTransferForm(tid) { $0.humanNote = note }
+        await submitTransfer(threadId: tid)
+    }
+
+    /// 退回对话：不写 backlog，注入提示后关卡
+    func rejectTransferBackToChat(threadId: String? = nil, note: String = "") {
+        let tid = threadId ?? transferSheetThreadId ?? selectedThreadId
+        guard let tid else { return }
+        let remark = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body: String
+        if remark.isEmpty {
+            body = "【任务卡已退回】未投递。请改方案后重新定稿，再点转任务。"
+        } else {
+            body = "【任务卡已退回】未投递。备注：\(remark)\n请按备注改方案后重新定稿，再点转任务。"
+        }
+        var msgs = threadMessages[tid] ?? []
+        msgs.append(ChatMessage(role: "system", content: body))
+        threadMessages[tid] = msgs
+        bumpThreadRevision(tid)
+        persistCurrentThreadSnapshot(threadId: tid)
+        dismissTransferSheet(threadId: tid)
+        showToast("已退回对话 · 未投递")
     }
 
     /// 轻推本机 sidecar 立刻冲刷 outbox（失败忽略；周期 loop 仍会投）

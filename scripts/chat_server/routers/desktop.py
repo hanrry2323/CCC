@@ -647,6 +647,8 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
         )
         plan_md = transfer_gate.build_plan_md(body)
 
+        bump_version = body.get("bump_version") is True
+        human_note = str(body.get("human_note") or "").strip()
         note = json.dumps(
             {
                 "transfer_gate": {
@@ -655,11 +657,16 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                     "feasibility": "ok",
                     "skills_hint": body.get("skills_hint") or [],
                     "thread_id": body.get("thread_id"),
+                    "bump_version": bump_version,
+                    "human_note": human_note[:500] if human_note else "",
                 }
             },
             ensure_ascii=False,
         )
 
+        tags = ["desktop-transfer", f"exec:{executor_intent}"]
+        if bump_version:
+            tags.append("bump-version")
         task_body: dict[str, Any] = {
             "id": epic_id,
             "title": title,
@@ -670,7 +677,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             "split_status": "pending",
             "complexity": str(body.get("complexity") or "medium"),
             "note": note[:2000],
-            "tags": ["desktop-transfer", f"exec:{executor_intent}"],
+            "tags": tags,
         }
 
         resp = await board_proxy("POST", "/api/tasks", json_body=task_body)

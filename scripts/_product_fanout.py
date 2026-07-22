@@ -468,6 +468,11 @@ def apply_fanout(
                 cid = sanitize_id(f"{cid}-{len(created)+1}")
                 ch["id"] = cid
             exec_id = normalize_executor(ch.get("executor") or fallback_exec)
+            # complexity 继承 epic（缺省 medium）；禁止因 1 phase 自动标 small（会假绿跳过审测）
+            epic_cx = str(epic.get("complexity") or "").strip().lower()
+            child_cx = epic_cx if epic_cx in ("small", "sm", "medium", "large") else "medium"
+            if child_cx == "sm":
+                child_cx = "small"
             task_body: dict[str, Any] = {
                 "id": ch["id"],
                 "title": ch["title"],
@@ -476,9 +481,13 @@ def apply_fanout(
                 "parent_id": epic_id,
                 "color_group": color_group,
                 "color_depth": 1,
-                "complexity": "small" if len(ch["phases"]) <= 1 else "medium",
+                "complexity": child_cx,
                 "executor": exec_id,
             }
+            # propagate tags (incl. bump-version) from epic for kb opt-in
+            tags = epic.get("tags")
+            if isinstance(tags, list) and tags:
+                task_body["tags"] = list(tags)
             if ch.get("executor_spec"):
                 task_body["executor_spec"] = ch["executor_spec"]
             deps = ch.get("depends_on_tasks") or []

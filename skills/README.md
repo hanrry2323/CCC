@@ -24,7 +24,7 @@
 | regress | `ccc-regress/` | released → backlog | 定时/手动 | 回测 |
 | audit | `ccc-audit/` | 跨 ws（可投 backlog） | 可选 / CLI | lint/mypy 分类 + auto-fix |
 
-`complexity=small` 时可跳过 reviewer+tester（直通 kb）。
+`complexity=small` 仅表规模；**不**跳过 reviewer+tester（v0.53+）。
 
 ## 生产 vs 调试
 
