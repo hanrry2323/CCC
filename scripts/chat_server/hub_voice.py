@@ -136,6 +136,7 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 字段必须齐全（对齐 transfer-gate）。`feasibility` 非 `ok` 时不要怂恿转任务。
 `bump_version` 默认 false（卫生/非发版勿升 VERSION）。
 **看板/产物卫生**（只动 `.ccc/board` 等编排产物、不写业务码）：`pipeline: ops`（或 `dev`）+ **`executor_intent: python`**（禁止对此类卡用 `opencode` / 假 committer）。
+**多步回归/三件套冒烟**（startup_check + pytest + data_engine + order_gateway 等）：`complexity: medium`（禁止 small）；acceptance 命令写 `.venv/bin/python` 或 `python3`，并显式 `DRY_RUN=true`；扇出应拆多张 work，勿塞进单 phase。
 `plan_md` 要完整可执行：背景、范围、步骤、验收、风险；块内可用相对路径与验收命令。
 块外仍用白话。提醒：转出后 Engine 自动跑，无需逐步人批。字段已齐则**禁止**再问「选哪条方案」或「要不要入队」。
 

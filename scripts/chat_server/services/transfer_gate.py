@@ -159,6 +159,64 @@ def build_plan_md(body: dict[str, Any]) -> str:
     )
 
 
+def resolve_complexity(body: dict[str, Any]) -> str:
+    """归一 complexity；多步回归/冒烟禁止落 small（否则扇出强制单卡易 hang）。
+
+    触发抬升 small→medium：
+    - acceptance 中可执行命令感 bullets ≥ 3
+    - 或标题/目标/plan 命中「三件套 / 回归冒烟」等且多模块标记 ≥ 3
+    """
+    raw = str(body.get("complexity") or "medium").strip().lower()
+    if raw in ("sm",):
+        raw = "small"
+    if raw not in ("small", "medium", "large"):
+        raw = "medium"
+    if raw != "small":
+        return raw
+
+    title = str(body.get("title") or "")
+    goal = str(body.get("goal") or "")
+    plan = str(body.get("plan_md") or "")
+    acceptance = body.get("acceptance") or []
+    if not isinstance(acceptance, list):
+        acceptance = [acceptance]
+    acc_lines = [str(a) for a in acceptance if str(a).strip()]
+    blob = f"{title}\n{goal}\n{plan}\n" + "\n".join(acc_lines)
+
+    cmdish = 0
+    for s in acc_lines:
+        if any(
+            tok in s
+            for tok in (
+                "python ",
+                "python3 ",
+                "pytest",
+                "bash ",
+                "DRY_RUN",
+                "startup_check",
+                "&&",
+                "exit",
+                ".venv/",
+            )
+        ):
+            cmdish += 1
+
+    multi_markers = (
+        "startup_check",
+        "pytest",
+        "data_engine",
+        "order_gateway",
+        "三件套",
+        "回归冒烟",
+        "回归烟测",
+        "回归测试",
+    )
+    hits = sum(1 for m in multi_markers if m in blob)
+    if cmdish >= 3 or hits >= 3:
+        return "medium"
+    return raw
+
+
 def resolve_executor_intent(body: dict[str, Any]) -> str:
     """归一执行面。
 

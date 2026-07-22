@@ -53,7 +53,7 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto`。**看板/产物卫生**（pipeline=`ops`/`hygiene`/`board*` 或标题含归档/回收 abnormal 等）若填 `opencode`/`auto`，Hub **强制归一为 `python`**，避免假 committer + OpenCode 半提交 |
 | `skills_hint` | 可选 string[]，软偏好供 Engine 扇出参考 |
 | `plan_md` | 方案正文（Markdown） |
-| `complexity` | 可选；`small`/`medium`/`large`（仅规模提示，**不**跳过审测） |
+| `complexity` | 可选；`small`/`medium`/`large`（仅规模提示，**不**跳过审测）。**Hub 会抬升**：多步回归/三件套冒烟（acceptance 可执行条 ≥3，或命中 startup_check+pytest+三件套等）若填 `small` → **强制 `medium`**，避免扇出锁死单卡 |
 | `bump_version` | 可选 bool；默认 false。true 时 kb 才升 VERSION |
 | `human_note` | 可选；人工备注写入 epic note |
 | `thread_id` | **必填（Desktop）**：真实会话 id（如 `{project}::UUID`）；Hub 未传时默认 `{project}::main` |
@@ -68,6 +68,7 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 - 验收 bullets：**可执行命令**，或「须入本次 commit 的交付路径」。
 - **排除/勿入**路径写在 `plan_md` 的「禁止」节，**不要**写进 `acceptance`（否则会被抽成必碰 path → `acceptance_paths_not_in_commit`）。
 - 不存在 committer 角色；卫生卡用 `executor_intent: python`（可走 board_ops 短路径，scope 限 `.ccc/**` 产物树）。
+- 运行时冒烟命令优先写 `.venv/bin/python` / `python3`，并显式带 `DRY_RUN=true`（勿裸 `python`）。
 
 ---
 

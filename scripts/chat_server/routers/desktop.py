@@ -642,8 +642,9 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             }
 
         executor_intent = transfer_gate.resolve_executor_intent(body)
+        complexity = transfer_gate.resolve_complexity(body)
         description = transfer_gate.build_epic_description(
-            {**body, "executor_intent": executor_intent}
+            {**body, "executor_intent": executor_intent, "complexity": complexity}
         )
         plan_md = transfer_gate.build_plan_md(body)
 
@@ -654,6 +655,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                 "transfer_gate": {
                     "pipeline": body.get("pipeline"),
                     "executor_intent": executor_intent,
+                    "complexity": complexity,
                     "feasibility": "ok",
                     "skills_hint": body.get("skills_hint") or [],
                     "thread_id": body.get("thread_id"),
@@ -675,7 +677,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             "workspace": workspace,
             "card_kind": "epic",
             "split_status": "pending",
-            "complexity": str(body.get("complexity") or "medium"),
+            "complexity": complexity,
             "note": note[:2000],
             "tags": tags,
         }

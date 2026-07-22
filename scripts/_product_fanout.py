@@ -57,6 +57,21 @@ _WRITE_ONLY_RE = re.compile(
 )
 
 
+def _is_multi_step_regression(epic: dict) -> bool:
+    """多步回归/三件套冒烟：即使标了 small 也不强制单卡。"""
+    blob = f"{epic.get('title', '')} {epic.get('description', '')}"
+    markers = (
+        "startup_check",
+        "pytest",
+        "data_engine",
+        "order_gateway",
+        "三件套",
+        "回归冒烟",
+        "回归烟测",
+    )
+    return sum(1 for m in markers if m in blob) >= 3
+
+
 def detect_write_commit_oversplit(children_raw: list[dict], *, epic: dict | None = None) -> str | None:
     """Detect write-file vs commit-only split. Return error message or None."""
     if not children_raw or len(children_raw) < 2:
@@ -64,8 +79,15 @@ def detect_write_commit_oversplit(children_raw: list[dict], *, epic: dict | None
     epic = epic or {}
     complexity = str(epic.get("complexity") or "").lower()
     epic_blob = f"{epic.get('title', '')} {epic.get('description', '')}"
-    force_single = complexity in ("small", "sm") or (
-        "flow-smoke" in epic_blob or "flow-green" in epic_blob or "写入并提交" in epic_blob
+    # small / 单文件「写入并提交」烟测强制 1 卡；多步回归除外
+    force_single = (
+        not _is_multi_step_regression(epic)
+        and (
+            complexity in ("small", "sm")
+            or "flow-smoke" in epic_blob
+            or "flow-green" in epic_blob
+            or "写入并提交" in epic_blob
+        )
     )
     if force_single and len(children_raw) > 1:
         return (
@@ -131,7 +153,8 @@ def build_fanout_prompt(
         f"## 子卡约束（低端模型可执行 · 反过拆）\n"
         f"- **默认恰好 1 张**子卡；仅当验收含 ≥2 个独立可交付物时才允许多卡（最多 {max_children()}）\n"
         f"- **禁止**把「写文件」与「单独 git commit」拆成两张卡；写入并提交必须在同一张 work 内完成\n"
-        f"- complexity=small / 单文件烟测类 epic：强制 1 张，标题须含「写入并提交」语义\n"
+        f"- complexity=small / 单文件「写入并提交」烟测：强制 1 张；"
+        f"**多步回归（startup_check+pytest+三件套等）除外，应拆 2～N 张**\n"
         f"- medium：优先 1–2 张；禁止为「好看」拆出无独立验收的空卡\n"
         f"- 每张子卡最多 {max_phases} 个 phase（优先 1 个）\n"
         f"- 子卡 id：kebab-case，建议前缀 `{eid}-`\n"
