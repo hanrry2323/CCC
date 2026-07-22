@@ -35,6 +35,8 @@ PORT="${CCC_AGENT_PORT:-7788}"
 # 仅本机：CCC_AGENT_HOST=127.0.0.1 bash scripts/install-agent-sidecar-plist.sh --start
 HOST="${CCC_AGENT_HOST:-0.0.0.0}"
 HUB_URL="${CCC_HUB_URL:-http://192.168.3.116:7777}"
+# 与 Hub 约定默认账密一致；可用 CCC_HUB_AUTH=user:pass 覆盖
+HUB_AUTH="${CCC_HUB_AUTH:-${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}}"
 LOG_DIR="${HOME}/Library/Logs/CCC"
 LOG_OUT="${LOG_DIR}/agent-sidecar.log"
 LOG_ERR="${LOG_DIR}/agent-sidecar.err"
@@ -207,6 +209,8 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${PORT}</string>
     <key>CCC_HUB_URL</key>
     <string>${HUB_URL}</string>
+    <key>CCC_HUB_AUTH</key>
+    <string>${HUB_AUTH}</string>
     <key>CCC_AGENT_CWD</key>
     <string>${CCC_HOME}</string>
     <key>CCC_AGENT_ALLOWED_ROOTS</key>

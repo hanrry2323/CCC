@@ -101,12 +101,11 @@ def test_build_options_uses_discuss_tools(monkeypatch):
         user_text="收到",
         prompt_mode="light",
     )
-    allowed = set(captured.get("allowed_tools") or [])
-    assert "Write" not in allowed
-    assert "Read" in allowed and "Bash" in allowed
-    assert "Task" in allowed or "Agent" in allowed
+    # discuss 默认：空 allowlist = SDK 全开；只硬禁写
+    assert captured.get("allowed_tools") == []
     deny = set(captured.get("disallowed_tools") or [])
     assert "Write" in deny and "Edit" in deny
+    assert "Bash" not in deny and "Read" not in deny and "WebFetch" not in deny
 
 
 def test_build_options_preserves_empty_allowlist(monkeypatch):
@@ -134,6 +133,31 @@ def test_build_options_preserves_empty_allowlist(monkeypatch):
     # SDK 空 allowlist = 不加 --allowedTools；必须靠 disallowed 真正禁工具
     deny = captured.get("disallowed_tools") or []
     assert "WebFetch" in deny and "Bash" in deny and "Read" in deny
+
+
+def test_discuss_discipline_full_tools_except_write():
+    d = config.DISCUSS_TOOL_DISCIPLINE
+    assert "全开" in d or "MCP" in d
+    assert "locate" in d
+    assert "Write" in d or "硬禁" in d
+    assert "ccc-hub-lens" in d
+
+
+def test_hub_lens_auth_defaults_without_env(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "ccc-hub-lens.py"
+    spec = importlib.util.spec_from_file_location("ccc_hub_lens", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.delenv("CCC_HUB_AUTH", raising=False)
+    monkeypatch.delenv("CCC_CHAT_USER", raising=False)
+    monkeypatch.delenv("CCC_CHAT_PASS", raising=False)
+    assert mod.resolve_hub_basic_auth() == "ccc:ccc"
+    headers = mod._auth_header()
+    assert headers.get("Authorization", "").startswith("Basic ")
 
 
 def test_resolve_prompt_mode_always_full():

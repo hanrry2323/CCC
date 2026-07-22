@@ -11,7 +11,7 @@
 
 环境：
   CCC_HUB_URL   默认 http://192.168.3.116:7777
-  CCC_HUB_AUTH  可选 Basic（user:pass）
+  CCC_HUB_AUTH  Basic user:pass；默认 ccc:ccc（与 Hub 约定一致）
 
 契约：docs/product/loop-engineer-authority.md
 禁止：ssh mac2017 探业务仓。只认 project_id + 相对路径。
@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
@@ -31,12 +32,18 @@ from typing import Any
 DEFAULT_HUB = os.environ.get("CCC_HUB_URL", "http://192.168.3.116:7777").rstrip("/")
 
 
-def _auth_header() -> dict[str, str]:
-    auth = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if not auth:
-        return {}
-    import base64
+def resolve_hub_basic_auth() -> str:
+    """Hub Basic Auth user:pass。优先 CCC_HUB_AUTH，否则 CCC_CHAT_USER/PASS，默认 ccc:ccc。"""
+    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
+    if explicit:
+        return explicit
+    user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
+    passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
+    return f"{user}:{passwd}"
 
+
+def _auth_header() -> dict[str, str]:
+    auth = resolve_hub_basic_auth()
     token = base64.b64encode(auth.encode()).decode()
     return {"Authorization": f"Basic {token}"}
 

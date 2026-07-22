@@ -134,13 +134,13 @@ enum ToolProgressHelper {
         return base
     }
 
-    /// toolResult 后一句摘要（不依赖 sidecar payload）
+    /// toolResult 后一句摘要（展开列表副行；轮播主文用 label）
     static func resultHint(name: String, ok: Bool, label: String) -> String {
         if !ok { return "调用失败" }
         let detail: String? = {
             if let r = label.range(of: " · ") {
                 let d = String(label[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                return d.isEmpty ? nil : short(d, 36)
+                return d.isEmpty ? nil : short(d, 40)
             }
             return nil
         }()
@@ -150,24 +150,27 @@ enum ToolProgressHelper {
         case "Read", "LS":
             return detail.map { "已查阅 \($0)" } ?? "查阅完成"
         case "Bash", "Shell":
-            return "命令完成"
+            return detail.map { "已执行 \($0)" } ?? "命令已执行"
         case "Grep", "Glob":
-            return "搜索完成"
+            return detail.map { "已搜索 \($0)" } ?? "搜索完成"
         case "WebSearch", "WebFetch":
-            return "请求完成"
+            return detail.map { "已请求 \($0)" } ?? "请求完成"
         case "Task":
-            return "子任务完成"
+            return detail.map { "子任务 · \($0)" } ?? "子任务完成"
         case "TodoWrite":
             return "待办已更新"
         default:
-            return "调用完成"
+            return detail.map { "完成 · \($0)" } ?? "调用完成"
         }
     }
 
-    /// 轮播用一句：优先结果，否则调用简介
+    /// 轮播主文：每步执行简介（label）一句话；失败才用 resultHint
     static func carouselLine(for step: ToolStep) -> String {
-        if let hint = step.resultHint, !hint.isEmpty { return hint }
-        return step.label
+        if step.status == .error {
+            if let hint = step.resultHint, !hint.isEmpty { return hint }
+        }
+        let line = step.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return line.isEmpty ? (step.resultHint ?? step.name) : line
     }
 
     static func icon(for name: String) -> String { symbols[name] ?? "wrench.and.screwdriver" }
@@ -208,6 +211,10 @@ struct ToolProgressRail: View {
     }
 
     private var carouselText: String {
+        // 有进行中的一步：钉住该步简介（转圈旁一句话）
+        if let running = steps.last(where: { $0.status == .running }) {
+            return ToolProgressHelper.carouselLine(for: running)
+        }
         let lines = carouselLines
         guard !lines.isEmpty else { return placeholder ?? "调用工具…" }
         let i = carouselIndex % lines.count

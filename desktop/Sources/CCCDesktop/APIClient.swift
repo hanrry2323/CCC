@@ -503,12 +503,27 @@ actor APIClient {
         let ts: String?
     }
 
-    /// 轻量探活：3s × 1 次；勿用 fetchProjects 当心跳
+    /// 轻量探活：优先 `/api/desktop/health`；若 Hub 旧版 404，回退 `/api/desktop/version`（防部署偏斜误判离线）
     @discardableResult
     func probeHubHealth() async throws -> HubHealthResp {
         var req = try authedRequest("api/desktop/health")
         req.timeoutInterval = 3
-        return try await send(req, as: HubHealthResp.self, maxAttempts: 1)
+        do {
+            return try await send(req, as: HubHealthResp.self, maxAttempts: 1)
+        } catch {
+            let code = (error as? APIError)?.httpStatus ?? -1
+            // 部署偏斜：新 Desktop + 旧 Hub 无 health → 404；version 仍可达则视为在线
+            if code == 404 {
+                struct VersionResp: Decodable { let ok: Bool?; let version: String?; let commit: String? }
+                var vreq = try authedRequest("api/desktop/version")
+                vreq.timeoutInterval = 3
+                let v = try await send(vreq, as: VersionResp.self, maxAttempts: 1)
+                if v.ok ?? true {
+                    return HubHealthResp(ok: true, ts: v.version ?? v.commit)
+                }
+            }
+            throw error
+        }
     }
 
     func fetchThreads(projectId: String) async throws -> [DesktopThread] {

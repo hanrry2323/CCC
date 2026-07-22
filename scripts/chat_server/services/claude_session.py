@@ -439,17 +439,16 @@ class ClaudeSessionManager:
         claude_bin = config.require_claude_bin()
         mode = config.resolve_tool_mode(tool_mode)
         # 注意：空 frozenset() 表示「零工具」，不能用 `or`（空集合在 Python 为 falsy）
-        if allowed_tools is None:
+        explicit_allowed = allowed_tools is not None
+        if explicit_allowed:
+            allowed_set = allowed_tools
+        else:
             allowed_set = config.tools_for_mode(
                 mode, user_text=user_text, prompt_mode=prompt_mode
             )
-        else:
-            allowed_set = allowed_tools
-        allowed = sorted(allowed_set)
         kwargs: dict[str, Any] = {
             "cwd": project_path,
             "model": model,
-            "allowed_tools": allowed,
             # Hub 无 TTY：勿用 acceptEdits（Bash 等仍可能卡住等人点许可）
             "permission_mode": "bypassPermissions",
             "cli_path": claude_bin,
@@ -460,8 +459,9 @@ class ClaudeSessionManager:
         }
         # SDK：allowed_tools 为空时不加 --allowedTools（= 默认全开）。
         # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
-        # Plan/discuss 非空 allowlist：硬闸写工具（不靠自觉）。
-        if not allowed:
+        # discuss 默认：全开 + 硬禁写（勿正向 allowlist，否则 MCP/Skill 动态名被卡死）。
+        if explicit_allowed and not allowed_set:
+            kwargs["allowed_tools"] = []
             deny = sorted(
                 set(config.CLAUDE_TOOL_ALLOWLIST_ENGINEER)
                 | set(config.CLAUDE_TOOL_ALLOWLIST_DISCUSS)
@@ -476,8 +476,13 @@ class ClaudeSessionManager:
                 }
             )
             kwargs["disallowed_tools"] = deny
-        elif mode == "discuss":
+        elif mode == "discuss" and not explicit_allowed:
+            kwargs["allowed_tools"] = []
             kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
+        else:
+            kwargs["allowed_tools"] = sorted(allowed_set)
+            if mode == "discuss":
+                kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         if resume_session_id:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)

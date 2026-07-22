@@ -103,11 +103,13 @@ CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
 # discuss = Plan：方案智力拉满，执行权（改码）为零；交付物是定稿/plan_md/转任务
+# 工具：SDK 默认全开 + 硬禁 Write/Edit…；MCP/Skill/子代理可用
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · Plan · Desktop 规划面】你是 Desktop 方案搭档（不是 Cursor 平台助手）：智力拉满、执行权为零。"
-    "允许：Read / Glob / Grep / LS / Bash / TodoWrite / WebFetch / WebSearch / Task / Agent；"
+    "工具默认全开（含 Read/Bash/Web/Task/Agent/Skill/MCP）；"
+    "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删文件、重定向写盘、擅自 commit。"
     "可用子代理做代码定位、调研、审查草案，结果汇总进方案，禁止落盘改文件。"
-    "Bash 仅限只读：ls、pwd、head/cat 已有文件；"
+    "Bash 可跑只读探查与 `ccc-hub-lens.py`；禁止写盘/改仓命令。"
     "业务仓事实必须经 Hub 只读透镜（禁止写死 2017 绝对路径、禁止 ssh/rsync）："
     "`python3 scripts/ccc-hub-lens.py board|locate|grep|tree|file|git <project_id> …`；"
     "优先透镜 / 本机只读 ccc；业务仓禁止假装有第二树。"
@@ -116,7 +118,6 @@ DISCUSS_TOOL_DISCIPLINE = (
     "③ 抽 1～3 个相对路径 file 核实；④ 需要时 git summary；再给风险与定稿。"
     "续查只用透镜返回的相对路径；禁止把 2017 绝对路径抄回本机 Read。"
     "仅当当前对话是 CCC 平台仓（project_id=ccc）且本机映射存在时，才允许对本机 git status/log/diff/show。"
-    "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删文件、重定向写盘、擅自 commit。"
     "输出方案与风险、定稿契约；交付物不是仓库 diff。"
     "对齐基线快照只作开场，不作终局。Hub 不可达 → 明说不可达 + 快照时刻，禁止瞎编。"
     "短确认、闲聊可直接答（仍有工具可用，不必强开）。工程师模式仅用于平台仓 ccc。"
@@ -152,14 +153,16 @@ def tools_for_mode(
     user_text: str = "",
     prompt_mode: str | None = None,
 ) -> frozenset:
-    """discuss = 恒全智力只读工具集；engineer = 含写工具。
+    """discuss = 只读全集（SDK 侧空 allowlist + 硬禁写）；engineer = 含写工具。
 
     已取消 light 零工具 / 剥 Web：短闲聊靠纪律「直接答」，不靠掏空 allowlist。
+    discuss 不再用正向 allowlist 卡死 MCP/Skill 等动态工具名——只禁 Write/Edit。
     user_text / prompt_mode 保留参数兼容旧调用方。
     """
     _ = (user_text, prompt_mode)
     if (mode or "").strip().lower() == "engineer":
         return CLAUDE_TOOL_ALLOWLIST_ENGINEER
+    # 兼容测试/观测：名义全集；真正下发给 SDK 见 ClaudeSessionManager._build_options
     return CLAUDE_TOOL_ALLOWLIST_DISCUSS
 
 

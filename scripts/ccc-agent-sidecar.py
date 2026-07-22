@@ -513,6 +513,21 @@ def _hub_base() -> str:
     ).rstrip("/")
 
 
+def _hub_auth_headers() -> dict[str, str]:
+    """与 ccc-hub-lens 同一套 Hub Basic 默认（ccc:ccc）。"""
+    import base64
+
+    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
+    if explicit:
+        auth = explicit
+    else:
+        user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
+        passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
+        auth = f"{user}:{passwd}"
+    token = base64.b64encode(auth.encode()).decode()
+    return {"Authorization": f"Basic {token}"}
+
+
 def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
     """Return (ok, text). On failure text explains not to invent."""
     import urllib.error
@@ -520,7 +535,7 @@ def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
 
     url = f"{_hub_base()}/api/desktop/lens/{project_id}/board"
     try:
-        req = urllib.request.Request(url, method="GET")
+        req = urllib.request.Request(url, method="GET", headers=_hub_auth_headers())
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         from chat_server.services.hub_lens import format_board_for_prompt
