@@ -53,6 +53,7 @@ struct OpsView: View {
                     statusBarSection
                     logisticsSection
                     highAlertsSection
+                    failuresSection
                     DisclosureGroup("舰队详情", isExpanded: $showFleet) {
                         VStack(alignment: .leading, spacing: 22) {
                             overviewSection
@@ -161,16 +162,36 @@ struct OpsView: View {
     private var statusBarSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("状态", systemImage: "heart.text.square")
+            if let ready = model.opsSummary?.ready_to_dispatch {
+                readyBanner(ready)
+            }
             let risks = model.opsRisks
             let engineDown = risks.contains { $0.id == "engine-down" }
+            let ctrl = model.opsSummary?.control
+            let engineOk = (ctrl?.engine_running == true) || (!engineDown && ctrl?.engine_running != false)
+            let mode = ctrl?.mode ?? "—"
+            let modeOk = mode == "enabled"
+            let inventOff = ctrl?.invent_hard_disabled != false
+            let hubOk = ctrl?.hub_port_7777 != false
             let high = risks.filter { $0.severity.lowercased() == "high" }.count
             let plist = model.opsSummary?.logistics?.plist
             let loaded = plist?.any_loaded == true
             let applyAmmo = plist?.any_apply_ammo == true
+            let verdict = model.opsSummary?.resources_history?.summary?.verdict
             HStack(spacing: 8) {
-                statusPill(ok: !engineDown, text: engineDown ? "Engine 停" : "Engine 在跑")
-                statusPill(ok: loaded, text: loaded ? (applyAmmo ? "plist apply" : "plist dry") : "plist 未启用")
+                statusPill(ok: engineOk, text: engineOk ? "Engine 在跑" : "Engine 停")
+                statusPill(ok: modeOk, text: "mode \(mode)")
+                statusPill(ok: inventOff, text: inventOff ? "invent 关" : "invent 开?")
+                statusPill(ok: hubOk, text: hubOk ? "Hub :7777" : "Hub 未听")
                 statusPill(ok: high == 0, text: high > 0 ? "红灯 \(high)" : "无红灯")
+            }
+            HStack(spacing: 8) {
+                statusPill(ok: loaded, text: loaded ? (applyAmmo ? "plist apply" : "plist dry") : "plist 未启用")
+                if let verdict, !verdict.isEmpty {
+                    statusPill(ok: verdict != "saturated", text: "资源 \(verdict)")
+                }
+                // Desktop 拉到 summary = 隧道可达（M1→17777）
+                statusPill(ok: model.opsSummary != nil && model.opsError == nil, text: "隧道通")
             }
             if let headline = model.opsSummary?.logistics?.headline {
                 Text(headline)
@@ -180,10 +201,36 @@ struct OpsView: View {
                             ? Color.orange : CCCTheme.secondary
                     )
             }
-            Text("定时：install-ops-plist.sh --enable --apply-ammo（界面不代启）")
+            Text("定时：install-ops-plist.sh --enable --apply-ammo（界面不代启）· 无自造任务入口")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
         }
+    }
+
+    private func readyBanner(_ ready: OpsReadyToDispatch) -> some View {
+        let ok = ready.ok == true
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: ok ? "checkmark.seal.fill" : "exclamationmark.octagon.fill")
+                Text(ok ? "可下达" : "暂缓下达")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            Text(ready.reason ?? (ok ? "就绪" : "有阻塞"))
+                .font(CCCTheme.callout)
+                .foregroundStyle(ok ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+            if let blockers = ready.blockers, !blockers.isEmpty, !ok {
+                Text(blockers.joined(separator: " · "))
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.12))
+        )
     }
 
     private func statusPill(ok: Bool, text: String) -> some View {
@@ -231,6 +278,75 @@ struct OpsView: View {
                     Label("\(p.host):\(p.port) · \(p.name)", systemImage: "network.slash")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(CCCTheme.nodeFail)
+                }
+            }
+        }
+    }
+
+    // MARK: - Failures / abnormal (reopen)
+
+    private var failuresSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("失败与异常", systemImage: "arrow.uturn.backward.circle")
+            Text("归档仍须人确认；此处仅 reopen → planned。")
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+            let cards = model.opsSummary?.abnormal_cards ?? []
+            if cards.isEmpty {
+                emptyHint("无 abnormal 卡")
+            } else {
+                ForEach(cards.prefix(12)) { card in
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(card.title ?? card.task_id ?? "—")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("\(card.workspace) · \((card.note?.isEmpty == false) ? (card.note ?? "") : "abnormal")")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 8)
+                        Button("重开") {
+                            Task {
+                                await model.reopenOpsTask(
+                                    taskId: card.task_id ?? card.id,
+                                    workspace: card.workspace
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .disabled(model.opsBusy || model.opsAdoptBusy)
+                        Button("看板") {
+                            model.openBoardFromOps(workspace: card.workspace)
+                            window.destination = .board
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.mini)
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(CCCTheme.nodeFail.opacity(0.06))
+                    )
+                }
+            }
+            let fails = model.opsSummary?.recent_failures ?? []
+            if !fails.isEmpty {
+                Text("最近失败账本")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(CCCTheme.secondary)
+                    .padding(.top, 4)
+                ForEach(fails.prefix(8)) { fr in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(fr.workspace ?? "?") · \(fr.task_id ?? "?") · \(fr.role ?? "")")
+                            .font(.system(size: 11, design: .monospaced))
+                        Text(fr.reason ?? "—")
+                            .font(CCCTheme.caption)
+                            .foregroundStyle(CCCTheme.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.vertical, 2)
                 }
             }
         }
@@ -405,6 +521,24 @@ struct OpsView: View {
             if let res = model.opsSummary?.resources {
                 VStack(alignment: .leading, spacing: 12) {
                     sectionTitle("资源", systemImage: "chart.bar.fill")
+                    if let hist = model.opsSummary?.resources_history?.summary {
+                        let verdict = hist.verdict ?? "—"
+                        HStack {
+                            Text("并行容量：\(verdict)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(verdict == "saturated" ? CCCTheme.nodeFail : CCCTheme.nodeDone)
+                            if let spark = model.opsSummary?.resources_history?.sparklines?.load_ratio {
+                                Text(spark)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                        }
+                        if let note = hist.note ?? hist.reason, !note.isEmpty {
+                            Text(note)
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
+                    }
                     HStack(spacing: 16) {
                         if let cpu = res.cpu {
                             resourceGauge(
@@ -548,6 +682,7 @@ struct OpsView: View {
                             boardChip("规划", ws.planned)
                             boardChip("进行", ws.in_progress)
                             boardChip("验收", ws.testing)
+                            boardChip("异常", ws.abnormal)
                             boardChip("已验", ws.verified)
                             boardChip("发布", ws.released)
                         }

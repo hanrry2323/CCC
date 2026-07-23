@@ -363,6 +363,8 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 
 **比喻**：Engine = 前锋（打仗）；Ops = 后勤（供弹 + 清战场 + 护装备 + 回传）。主路径仍是意图→Hub→Engine；后勤是闭环后半段与旁路保障，**不是**第四条产品入口，**不是** invent。
 
+**invent 硬关（2026-07-24）**：`invent_hard_disabled` **保持**；无人自造任务**本阶段不开发**。等主链（定稿→下达→闭环）+ Desktop 运维信心包达标后，再评估是否逐步开放。日审 decision **I = 永不**。
+
 | | **Engine（前锋）** | **Ops（后勤）** |
 |--|-------------------|-----------------|
 | 吃什么 | 板上已有可消费任务 | 产弹药、清战场、护装备；红灯才喊人 |
@@ -370,6 +372,10 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 | 成功 | backlog→released | 人前几乎无感；队列不断粮；挂了自愈或人话报警 |
 
 **减负验收**：人不定时点「再跑日审」；日常不问；仅安全/权威红灯打断；打开运维页 = 看后勤态势，不是第二块派工看板。
+
+### 运维信心（Desktop · 2026-07-24）
+
+Desktop「运维」须能独立回答：Engine/控制面/隧道是否可用、舰队列计数（含 abnormal）、资源 headroom、最近失败、`ready_to_dispatch` 一句话；abnormal 可 reopen（经 Hub）。**不问 Cursor** 也能判断敢不敢下达。
 
 ### 四类活（用现成脚本，不新建中台）
 

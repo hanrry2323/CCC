@@ -257,6 +257,10 @@ async def ops_summary(request: Request):
         list_ops_auto_tasks,
         quality_summary,
         logistics_heartbeat,
+        control_runtime_snapshot,
+        recent_failures_fleet,
+        abnormal_cards_fleet,
+        ready_to_dispatch,
     )
 
     async def _run(func, *args):
@@ -283,6 +287,9 @@ async def ops_summary(request: Request):
             _run(list_ops_auto_tasks, spaces),
             _run(quality_summary, spaces),
             _run(logistics_heartbeat, spaces),
+            _run(control_runtime_snapshot),
+            _run(recent_failures_fleet, spaces),
+            _run(abnormal_cards_fleet, spaces),
             return_exceptions=True,
         )
     except Exception as exc:
@@ -301,10 +308,51 @@ async def ops_summary(request: Request):
         "auto",
         "quality",
         "logistics",
+        "control",
+        "recent_failures",
+        "abnormal_cards",
     ]
     out: dict = {"risks": risks_result}
     for k, r in zip(keys, results):
         out[k] = r if not isinstance(r, Exception) else {"error": str(r)[:120]}
+
+    # Desktop expects {workspaces: [...]}; SPA table uses .workspaces too
+    ws_raw = out.get("workspaces")
+    if isinstance(ws_raw, list):
+        out["workspaces"] = {"workspaces": ws_raw}
+    elif isinstance(ws_raw, dict) and "error" in ws_raw:
+        out["workspaces"] = {"workspaces": [], "error": ws_raw.get("error")}
+
+    # failures / abnormal always list for Desktop decode
+    for list_key in ("recent_failures", "abnormal_cards"):
+        raw = out.get(list_key)
+        if isinstance(raw, Exception) or (isinstance(raw, dict) and "error" in raw):
+            out[list_key] = []
+        elif not isinstance(raw, list):
+            out[list_key] = []
+
+    ctrl = out.get("control") if isinstance(out.get("control"), dict) else {}
+    ws_list = (out.get("workspaces") or {}).get("workspaces") or []
+    hist = out.get("resources_history") if isinstance(out.get("resources_history"), dict) else {}
+    try:
+        out["ready_to_dispatch"] = ready_to_dispatch(
+            control=ctrl,
+            risks=risks_result if isinstance(risks_result, dict) else {},
+            workspaces=ws_list if isinstance(ws_list, list) else [],
+            resources_history=hist,
+        )
+    except Exception as exc:
+        out["ready_to_dispatch"] = {
+            "ok": False,
+            "reason": f"ready 合成失败: {exc}"[:160],
+            "blockers": ["ready_compose_error"],
+        }
+
+    # fold control into logistics for older Desktop clients
+    if isinstance(out.get("logistics"), dict) and isinstance(ctrl, dict):
+        out["logistics"]["control"] = ctrl
+        out["logistics"]["engine_running"] = ctrl.get("engine_running")
+        out["logistics"]["mode"] = ctrl.get("mode")
 
     # P3：项目心智 L1 只读一览（不阻塞主路径）
     try:

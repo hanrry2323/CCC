@@ -152,3 +152,32 @@ def test_clear_review_fail_state(ws: Path):
     assert r["ok"] is True
     assert not review_fail_path(ws, tid).is_file()
     assert not (ws / ".ccc" / "pids" / f"{tid}.pytest_fails").is_file()
+
+
+def test_reopen_transient_abnormal_to_planned(ws: Path):
+    """Enabled-path refeed: abnormal work → planned via _task_reopen."""
+    from _failure_learning import write_review_fail_pack
+    from _task_reopen import reopen_task
+
+    tid = "w-refeed-1"
+    for col in ("abnormal", "planned", "backlog"):
+        (ws / ".ccc" / "board" / col).mkdir(parents=True, exist_ok=True)
+    # seed via raw file (avoid full create_task ceremony)
+    task = {
+        "id": tid,
+        "title": "refeed smoke",
+        "card_kind": "work",
+        "status": "abnormal",
+        "parent_id": "epic-x",
+        "note": "timeout upstream hang transient",
+    }
+    (ws / ".ccc" / "board" / "abnormal" / f"{tid}.jsonl").write_text(
+        json.dumps(task, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    write_review_fail_pack(ws, tid, status="abnormal", extra="timeout")
+    rr = reopen_task(ws, tid, to_col="planned", wake=False)
+    assert rr.get("ok") is True
+    assert rr.get("from") == "abnormal"
+    assert rr.get("to") == "planned"
+    assert (ws / ".ccc" / "board" / "planned" / f"{tid}.jsonl").is_file()
+    assert not (ws / ".ccc" / "board" / "abnormal" / f"{tid}.jsonl").is_file()

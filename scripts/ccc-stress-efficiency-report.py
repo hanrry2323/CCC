@@ -246,6 +246,16 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
                 for _ts, fr, to in moves
                 if fr == "testing" and to in ("planned", "abnormal")
             )
+            # Observability: path from result.json (script_seed/feature_seed/opencode/…)
+            dev_path = ""
+            rp = ws / ".ccc" / "reports" / f"{tid}.result.json"
+            if rp.is_file():
+                try:
+                    rj = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
+                    if isinstance(rj, dict):
+                        dev_path = str(rj.get("path") or "").strip().lower()
+                except (OSError, json.JSONDecodeError):
+                    pass
             w.update(
                 {
                     "t_planned": t_planned.isoformat() if t_planned else None,
@@ -261,6 +271,7 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
                     "fail_loops": fail_loops,
                     "move_n": len(moves),
                     "git_commits": len(_git_commits(ws, tid)),
+                    "dev_path": dev_path or None,
                 }
             )
 

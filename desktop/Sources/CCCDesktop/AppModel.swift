@@ -4962,6 +4962,30 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func reopenOpsTask(taskId: String, workspace: String, to: String = "planned") async {
+        opsBusy = true
+        opsAdoptError = nil
+        defer { opsBusy = false }
+        do {
+            try await prepareClient(ensureAgent: false)
+            try await client.reopenTask(taskId: taskId, to: to, workspace: workspace)
+            await refreshOps()
+        } catch {
+            opsAdoptError = "运维重开失败: \(error.localizedDescription)"
+        }
+    }
+
+    func openBoardFromOps(workspace: String) {
+        let ws = workspace.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ws.isEmpty else { return }
+        boardWorkspaceLabel = ws
+        if let p = projects.first(where: { ($0.workspace ?? $0.id) == ws || $0.id == ws }) {
+            selectDestination(.board, projectId: p.id)
+        } else {
+            selectDestination(.board, projectId: selectedProjectId)
+        }
+    }
+
     func fetchTaskDetail(_ task: BoardTask) async throws -> BoardTaskDetail {
         try await prepareClient(ensureAgent: false)
         let ws = boardWorkspaceLabel ?? selectedProject?.workspace ?? "CCC"

@@ -476,6 +476,9 @@ def _git(ws: Path, *args: str) -> tuple[int, str]:
 
 
 def workspace_summaries(workspaces: dict[str, str]) -> list[dict]:
+    """Per-ws git + active board column counts (Desktop Ops chips)."""
+    from _board_visibility import is_active_board_task, load_task_head
+
     rows = []
     for ws_id, path in workspaces.items():
         if str(ws_id).startswith("."):
@@ -483,6 +486,7 @@ def workspace_summaries(workspaces: dict[str, str]) -> list[dict]:
         root = Path(path).expanduser()
         row: dict[str, Any] = {
             "id": ws_id,
+            "workspace": ws_id,  # Desktop OpsWorkspaceSummary.workspace
             "path": str(root),
             "exists": root.is_dir(),
         }
@@ -503,8 +507,221 @@ def workspace_summaries(workspaces: dict[str, str]) -> list[dict]:
                 behind, ahead = int(parts[0] or 0), int(parts[1] or 0)
         row["ahead"] = ahead
         row["behind"] = behind
+
+        board = root / ".ccc" / "board"
+        counts = {
+            "backlog": 0,
+            "planned": 0,
+            "in_progress": 0,
+            "testing": 0,
+            "verified": 0,
+            "released": 0,
+            "abnormal": 0,
+        }
+        epic_count = 0
+        last_event = None
+        if board.is_dir():
+            for col in counts:
+                d = board / col
+                if not d.is_dir():
+                    continue
+                for p in d.glob("*.jsonl"):
+                    data = load_task_head(p)
+                    if not is_active_board_task(data):
+                        # still count released/verified for fleet chips
+                        if col not in ("released", "verified"):
+                            continue
+                    counts[col] = counts.get(col, 0) + 1
+                    if data and str(data.get("card_kind") or "") == "epic":
+                        epic_count += 1
+            ev_dir = board / "events"
+            if ev_dir.is_dir():
+                newest = None
+                newest_mtime = 0.0
+                for p in ev_dir.glob("*.jsonl"):
+                    try:
+                        mt = p.stat().st_mtime
+                    except OSError:
+                        continue
+                    if mt > newest_mtime:
+                        newest_mtime = mt
+                        newest = p
+                if newest is not None:
+                    try:
+                        lines = newest.read_text(
+                            encoding="utf-8", errors="replace"
+                        ).splitlines()
+                        if lines:
+                            last_event = lines[-1][:160]
+                    except OSError:
+                        pass
+        row.update(counts)
+        row["epic_count"] = epic_count
+        row["last_event"] = last_event
         rows.append(row)
     return rows
+
+
+def control_runtime_snapshot() -> dict[str, Any]:
+    """Control plane + Engine for Ops status strip / ready_to_dispatch."""
+    out: dict[str, Any] = {
+        "mode": None,
+        "invent_hard_disabled": True,
+        "engine_running": None,
+        "hub_port_7777": None,
+        "generated_at": _now_iso(),
+    }
+    try:
+        from _ccc_control import INVENT_HARD_DISABLED, get_mode, status_dict
+
+        out["mode"] = get_mode()
+        out["invent_hard_disabled"] = bool(INVENT_HARD_DISABLED)
+        try:
+            st = status_dict()
+            if isinstance(st, dict):
+                out["control"] = {
+                    k: st.get(k)
+                    for k in (
+                        "mode",
+                        "invent_hard_disabled",
+                        "queue_consumer_only",
+                        "engine_allowed",
+                        "updated_at",
+                    )
+                }
+        except Exception:
+            pass
+    except Exception as exc:
+        out["control_error"] = str(exc)[:120]
+    try:
+        from _engine_wake import is_engine_running
+
+        out["engine_running"] = bool(is_engine_running())
+    except Exception as exc:
+        out["engine_error"] = str(exc)[:120]
+    # Hub listens on 7777 on this host (tunnel is M1-side; Desktop infers via fetch OK)
+    try:
+        import socket
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.4)
+        try:
+            out["hub_port_7777"] = s.connect_ex(("127.0.0.1", 7777)) == 0
+        finally:
+            s.close()
+    except OSError:
+        out["hub_port_7777"] = None
+    return out
+
+
+def recent_failures_fleet(
+    workspaces: dict[str, str], *, per_ws: int = 5, limit: int = 30
+) -> list[dict[str, Any]]:
+    """Tail failures.jsonl across apps for Ops (no Console hop)."""
+    from _failure_ledger import read_failures
+
+    rows: list[dict[str, Any]] = []
+    for ws_id, path in workspaces.items():
+        if str(ws_id).startswith("."):
+            continue
+        root = Path(path).expanduser()
+        if not root.is_dir():
+            continue
+        try:
+            for fr in read_failures(root, last=per_ws):
+                item = dict(fr) if isinstance(fr, dict) else {}
+                item["workspace"] = ws_id
+                rows.append(item)
+        except Exception:
+            continue
+    rows.sort(key=lambda r: str(r.get("ts") or r.get("at") or ""), reverse=True)
+    return rows[:limit]
+
+
+def abnormal_cards_fleet(
+    workspaces: dict[str, str], *, limit: int = 40
+) -> list[dict[str, Any]]:
+    """Active abnormal cards for Ops reopen list."""
+    from _board_visibility import is_active_board_task, load_task_head
+
+    rows: list[dict[str, Any]] = []
+    for ws_id, path in workspaces.items():
+        if str(ws_id).startswith("."):
+            continue
+        root = Path(path).expanduser()
+        abn = root / ".ccc" / "board" / "abnormal"
+        if not abn.is_dir():
+            continue
+        for p in sorted(abn.glob("*.jsonl"), key=lambda x: x.stat().st_mtime, reverse=True):
+            data = load_task_head(p)
+            if not is_active_board_task(data):
+                continue
+            tid = str((data or {}).get("id") or p.stem)
+            rows.append(
+                {
+                    "workspace": ws_id,
+                    "id": tid,
+                    "task_id": tid,
+                    "title": (data or {}).get("title") or tid,
+                    "note": str((data or {}).get("note") or "")[:200],
+                    "card_kind": (data or {}).get("card_kind"),
+                    "parent_id": (data or {}).get("parent_id"),
+                    "status": "abnormal",
+                }
+            )
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
+def ready_to_dispatch(
+    *,
+    control: dict[str, Any] | None = None,
+    risks: dict[str, Any] | None = None,
+    workspaces: list[dict] | None = None,
+    resources_history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compose go/no-go for Desktop Ops (read-only)."""
+    ctrl = control or control_runtime_snapshot()
+    blockers: list[str] = []
+    mode = ctrl.get("mode")
+    if ctrl.get("engine_running") is False:
+        blockers.append("Engine 未运行")
+    if mode and mode != "enabled":
+        blockers.append(f"控制面 mode={mode}（须 enabled）")
+    if ctrl.get("hub_port_7777") is False:
+        blockers.append("本机 Hub :7777 未监听")
+    high = int((risks or {}).get("high") or 0)
+    if high > 0:
+        blockers.append(f"运维红灯 {high}")
+    abn = 0
+    for w in workspaces or []:
+        try:
+            abn += int(w.get("abnormal") or 0)
+        except (TypeError, ValueError):
+            pass
+    if abn > 0:
+        blockers.append(f"舰队 abnormal={abn}")
+    summary = (resources_history or {}).get("summary") or {}
+    verdict = summary.get("verdict")
+    if verdict == "saturated":
+        blockers.append("主机 saturated（先治挂死再加任务）")
+    ok = len(blockers) == 0
+    if ok:
+        reason = "可下达：Engine 活、enabled、无红灯、无 abnormal"
+    else:
+        reason = "暂缓下达：" + "；".join(blockers)
+    return {
+        "ok": ok,
+        "reason": reason,
+        "blockers": blockers,
+        "invent_hard_disabled": bool(ctrl.get("invent_hard_disabled", True)),
+        "mode": mode,
+        "engine_running": ctrl.get("engine_running"),
+        "resource_verdict": verdict,
+        "fleet_abnormal": abn,
+        "generated_at": _now_iso(),
+    }
 
 
 def list_daily_reviews(workspaces: dict[str, str], limit: int = 20) -> dict:

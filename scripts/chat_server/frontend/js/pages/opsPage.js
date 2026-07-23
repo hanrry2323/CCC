@@ -177,7 +177,13 @@ function renderStatus(agg) {
   if (!el) return;
   const risks = (agg.risks && agg.risks.risks) || [];
   const engineDown = risks.some((r) => r.id === 'engine-down');
-  const control = risks.find((r) => r.id === 'control-mode');
+  const control = agg.control || {};
+  const mode = control.mode || '—';
+  const modeOk = mode === 'enabled';
+  const inventOff = control.invent_hard_disabled !== false;
+  const hubOk = control.hub_port_7777 !== false;
+  const engineOk =
+    control.engine_running === true || (!engineDown && control.engine_running !== false);
   const sum = (agg.resources_history && agg.resources_history.summary) || {};
   const verdict = sum.verdict || '—';
   const plist = (agg.logistics && agg.logistics.plist) || {};
@@ -186,17 +192,23 @@ function renderStatus(agg) {
   const high = Number(agg.risks?.high ?? risks.filter((r) => r.severity === 'high').length);
   const headline = (agg.logistics && agg.logistics.headline) || '';
   const needs = !!(agg.logistics && agg.logistics.needs_attention);
+  const ready = agg.ready_to_dispatch || {};
+  const readyOk = !!ready.ok;
+  const readyLine = ready.reason || (readyOk ? '可下达' : '暂缓下达');
 
   el.innerHTML = `
+    <div class="ops-kv ${readyOk ? 'ops-ok' : 'ops-attn'}" style="margin-bottom:8px;font-weight:600">${esc(readyLine)}</div>
     <div class="ops-status-row">
-      ${pill(!engineDown, engineDown ? 'Engine 停' : 'Engine 在跑')}
-      ${control ? pill(false, esc(control.title || '控制面异常')) : pill(true, '控制面 ok')}
+      ${pill(engineOk, engineOk ? 'Engine 在跑' : 'Engine 停')}
+      ${pill(modeOk, `mode ${esc(mode)}`)}
+      ${pill(inventOff, inventOff ? 'invent 关' : 'invent 开?')}
+      ${pill(hubOk, hubOk ? 'Hub :7777' : 'Hub 未听')}
       ${pill(verdict !== 'saturated', `并行 ${esc(verdict)}`)}
       ${pill(loaded, loaded ? (applyAmmo ? 'plist apply' : 'plist dry') : 'plist 未启用')}
       ${pill(high === 0, high ? `红灯 ${high}` : '无红灯')}
     </div>
     <div class="ops-kv ${needs ? 'ops-attn' : ''}">${esc(headline || '—')}</div>
-    <p class="ops-hint">定时供弹：<code>bash scripts/install-ops-plist.sh install --enable --apply-ammo</code>（界面不代启）</p>`;
+    <p class="ops-hint">定时供弹：<code>bash scripts/install-ops-plist.sh install --enable --apply-ammo</code>（界面不代启；无自造任务入口）</p>`;
 }
 
 function renderMachines(d) {
@@ -303,16 +315,18 @@ function renderWorkspaces(d) {
     return;
   }
   el.innerHTML = `<table class="ops-table"><thead><tr>
-    <th>仓</th><th>分支</th><th>dirty</th><th>ahead</th><th>behind</th><th>摘要</th>
+    <th>仓</th><th>分支</th><th>dirty</th><th>planned</th><th>doing</th><th>test</th><th>abn</th><th>摘要</th>
   </tr></thead><tbody>${rows
     .map((w) => {
       const sample = (w.dirty_sample || []).slice(0, 3).map(esc).join('<br>') || '—';
       return `<tr>
-        <td><b>${esc(w.id)}</b><div class="muted mono small">${esc(w.path)}</div></td>
+        <td><b>${esc(w.id || w.workspace)}</b><div class="muted mono small">${esc(w.path)}</div></td>
         <td class="mono">${esc(w.branch || '—')}</td>
         <td>${esc(w.dirty ?? '—')}</td>
-        <td>${esc(w.ahead ?? 0)}</td>
-        <td>${esc(w.behind ?? 0)}</td>
+        <td>${esc(w.planned ?? 0)}</td>
+        <td>${esc(w.in_progress ?? 0)}</td>
+        <td>${esc(w.testing ?? 0)}</td>
+        <td>${esc(w.abnormal ?? 0)}</td>
         <td class="mono small">${sample}</td>
       </tr>`;
     })

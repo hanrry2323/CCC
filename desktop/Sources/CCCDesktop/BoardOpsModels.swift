@@ -145,7 +145,69 @@ struct OpsSummary: Decodable {
     let ports: OpsPortsResp?
     let auto: OpsAutoResp?
     let resources: OpsResourcesResp?
+    let resources_history: OpsResourcesHistoryResp?
     let logistics: OpsLogisticsResp?
+    let control: OpsControlResp?
+    let ready_to_dispatch: OpsReadyToDispatch?
+    let recent_failures: [OpsFailureRow]?
+    let abnormal_cards: [OpsAbnormalCard]?
+}
+
+struct OpsControlResp: Decodable {
+    let mode: String?
+    let invent_hard_disabled: Bool?
+    let engine_running: Bool?
+    let hub_port_7777: Bool?
+    let generated_at: String?
+}
+
+struct OpsReadyToDispatch: Decodable {
+    let ok: Bool?
+    let reason: String?
+    let blockers: [String]?
+    let invent_hard_disabled: Bool?
+    let mode: String?
+    let engine_running: Bool?
+    let resource_verdict: String?
+    let fleet_abnormal: Int?
+}
+
+struct OpsResourcesHistoryResp: Decodable {
+    let summary: OpsResourcesHistorySummary?
+    let sparklines: OpsResourcesSparklines?
+}
+struct OpsResourcesHistorySummary: Decodable {
+    let verdict: String?
+    let note: String?
+    let reason: String?
+    let load_p95: Double?
+    let mem_p95: Double?
+}
+struct OpsResourcesSparklines: Decodable {
+    let load_ratio: String?
+    let mem_pct: String?
+}
+
+struct OpsFailureRow: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace ?? "")-\(task_id ?? "")-\(ts ?? "")" }
+    let workspace: String?
+    let task_id: String?
+    let reason: String?
+    let role: String?
+    let ts: String?
+    let from_col: String?
+    let to_col: String?
+}
+
+struct OpsAbnormalCard: Identifiable, Decodable, Hashable {
+    var id: String { "\(workspace)-\(task_id ?? title ?? "")" }
+    let workspace: String
+    let task_id: String?
+    let title: String?
+    let note: String?
+    let card_kind: String?
+    let parent_id: String?
+    let status: String?
 }
 
 struct OpsLogisticsResp: Decodable {
