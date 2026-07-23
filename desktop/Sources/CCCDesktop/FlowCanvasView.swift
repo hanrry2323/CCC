@@ -11,7 +11,8 @@ struct FlowCanvasView: View {
     var splitGeneration: UInt64 = 0
     var projectId: String? = nil
     var threadId: String? = nil
-    var onOpenOps: (() -> Void)?
+    /// 失败步骤：复制给对话（不再跳运维）
+    var onAskAgent: (() -> Void)?
     var onSelectNode: ((String) -> Void)?
 
     @State private var pulse = false
@@ -118,7 +119,6 @@ struct FlowCanvasView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Spacer(minLength: 36)
             Text("转任务后，流程会出现在这里")
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(CCCTheme.faint)
@@ -131,49 +131,45 @@ struct FlowCanvasView: View {
             Text("已完成任务在看板维护；右栏只跟当前未完成编排。")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint.opacity(0.75))
-            Spacer()
         }
         .padding(20)
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("编排空闲。转任务后流程会出现在这里。")
     }
 
     private var timelineBody: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                epicCard
-                if !ordered.isEmpty {
-                    railConnector(active: ordered.contains(where: \.isActive))
-                    workSections
-                } else if !(epicId ?? "").isEmpty || epic != nil {
-                    // 有 bind 无 works：乐观同步 / 扇出中，勿空白
-                    Text(syncingOrFanoutLabel)
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
-                        .padding(.top, 8)
-                        .padding(.leading, 4)
-                    ProgressView()
-                        .controlSize(.mini)
-                        .padding(.top, 6)
-                        .padding(.leading, 4)
-                        .opacity(pulse ? 1 : 0.45)
-                }
+        // 滚动由外层 FlowRail ScrollView 统一处理
+        VStack(alignment: .leading, spacing: 0) {
+            epicCard
+            if !ordered.isEmpty {
+                railConnector(active: ordered.contains(where: \.isActive))
+                workSections
+            } else if !(epicId ?? "").isEmpty || epic != nil {
+                Text(syncingOrFanoutLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+                    .padding(.top, 8)
+                    .padding(.leading, 4)
+                ProgressView()
+                    .controlSize(.mini)
+                    .padding(.top, 6)
+                    .padding(.leading, 4)
+                    .opacity(pulse ? 1 : 0.45)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 16)
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
             if works.contains(where: \.isFailed) {
-                Button("在 Hub 运维中查看") { onOpenOps?() }
+                Button("复制给对话") { onAskAgent?() }
                     .font(CCCTheme.caption)
                     .buttonStyle(.plain)
                     .foregroundStyle(CCCTheme.accent)
-                    .padding(12)
+                    .padding(.top, 12)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 16)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                pulse = true
             }
         }
     }

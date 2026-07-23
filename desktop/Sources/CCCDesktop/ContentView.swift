@@ -2035,6 +2035,8 @@ struct MessagePreviewSheet: View {
 struct FlowRail: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
+    /// 排队/历史默认折叠
+    @State private var historyExpanded = false
 
     /// 右栏跟本窗项目，不跟单个会话
     private var paneProjectId: String? {
@@ -2061,139 +2063,67 @@ struct FlowRail: View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: 8)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("本项目态势")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(CCCTheme.ink)
-                    Spacer(minLength: 0)
-                    Button("看板") {
-                        window.destination = .board
-                        model.selectDestination(.board, projectId: paneProjectId)
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(CCCTheme.accent)
-                }
-                Text(model.orchestrationSyncLabel(forProject: paneProjectId))
-                    .font(.system(size: 10))
-                    .foregroundStyle(CCCTheme.faint)
-                    .accessibilityLabel("编排同步态")
-                if let title = boundEpicTitle {
-                    Text(title)
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.secondary)
-                        .lineLimit(2)
-                } else if paneProjectId == nil {
-                    Text("先选左侧项目")
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
-                } else {
-                    Text("定稿下达后显示编排")
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 4)
-            .padding(.bottom, 8)
-
-            boardStrip
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
-
-            if !(snap?.recentEpics ?? []).isEmpty {
-                taskStack
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-            }
-
-            if let hint = snap?.fanoutHint {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(hint)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(CCCTheme.nodeFail)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button("开运维") {
-                            window.destination = .ops
-                            model.selectDestination(.ops, projectId: paneProjectId)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(CCCTheme.accent)
-                        .controlSize(.small)
-                        Button("忽略") {
-                            model.clearFanoutHint(projectId: paneProjectId, threadId: nil)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(CCCTheme.nodeFail.opacity(0.08))
-                )
-                .padding(.horizontal, 12)
+            // 顶栏固定；下方统一滚动（避免 Canvas 内嵌 ScrollView 高度无限 → 滑不动）
+            railHeader
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
                 .padding(.bottom, 8)
-            }
 
-            if let stop = snap?.stopLossHint {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(stop)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(CCCTheme.nodeFail)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button("开运维") {
-                            window.destination = .ops
-                            model.selectDestination(.ops, projectId: paneProjectId)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(CCCTheme.nodeFail)
-                        .controlSize(.small)
-                        Button("看板") {
-                            window.destination = .board
-                            model.selectDestination(.board, projectId: paneProjectId)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        Button("忽略") {
-                            model.clearStopLossHint(projectId: paneProjectId, threadId: nil)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(CCCTheme.faint)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    boardStrip
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+
+                    if !(snap?.recentEpics ?? []).isEmpty {
+                        taskStack
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
                     }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(CCCTheme.nodeFail.opacity(0.12))
-                )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
 
-            FlowCanvasView(
-                epic: snap?.epic,
-                epicId: snap?.epicId,
-                works: snap?.works ?? [],
-                headline: snap?.headline ?? "",
-                emptyMessage: snap?.emptyMessage
-                    ?? "编排空闲·等定稿下达（与对话故障无关）",
-                splitGeneration: model.flowSplitGeneration,
-                projectId: paneProjectId,
-                threadId: nil,
-                onOpenOps: {
-                    window.destination = .ops
-                    model.selectDestination(.ops, projectId: paneProjectId)
-                },
-                onSelectNode: { model.openNodeDetail(id: $0, projectId: paneProjectId) }
-            )
+                    if let hint = snap?.fanoutHint {
+                        agentHintCard(
+                            text: hint,
+                            prompt: agentPromptFanout(hint: hint),
+                            onDismiss: {
+                                model.clearFanoutHint(projectId: paneProjectId, threadId: nil)
+                            }
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    }
+
+                    if let stop = snap?.stopLossHint {
+                        agentHintCard(
+                            text: stop,
+                            prompt: agentPromptStopLoss(hint: stop),
+                            prominentFail: true,
+                            onDismiss: {
+                                model.clearStopLossHint(projectId: paneProjectId, threadId: nil)
+                            }
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    }
+
+                    FlowCanvasView(
+                        epic: snap?.epic,
+                        epicId: snap?.epicId,
+                        works: snap?.works ?? [],
+                        headline: snap?.headline ?? "",
+                        emptyMessage: snap?.emptyMessage
+                            ?? "编排空闲·等定稿下达（与对话故障无关）",
+                        splitGeneration: model.flowSplitGeneration,
+                        projectId: paneProjectId,
+                        threadId: nil,
+                        onAskAgent: {
+                            copyToComposer(agentPromptFailedWorks())
+                        },
+                        onSelectNode: { model.openNodeDetail(id: $0, projectId: paneProjectId) }
+                    )
+                    .padding(.bottom, 20)
+                }
+            }
         }
         .background(CCCTheme.sidebar)
         .task(id: paneProjectId) {
@@ -2201,44 +2131,161 @@ struct FlowRail: View {
             await model.bindFlowToProject(projectId: pid)
         }
         .sheet(item: $model.selectedNodeDetail) { detail in
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(detail.kind == "epic" ? "任务" : "步骤")
-                        .font(CCCTheme.caption)
-                        .foregroundStyle(CCCTheme.faint)
-                    Spacer()
-                    Button("关闭") { model.dismissNodeDetail() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(CCCTheme.secondary)
-                }
-                Text(detail.title)
-                    .font(.system(size: 16, weight: .semibold))
-                if !detail.status.isEmpty {
-                    Text(detail.status)
-                        .font(.system(size: 12))
-                        .foregroundStyle(CCCTheme.secondary)
-                }
-                ScrollView {
-                    Text(detail.body)
-                        .font(.system(size: 13))
-                        .foregroundStyle(CCCTheme.ink)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                if detail.kind == "work",
-                   (snap?.works ?? []).contains(where: { $0.workId == detail.id && $0.isFailed }) {
-                    Button("在运维中查看") {
-                        model.dismissNodeDetail()
-                        window.destination = .ops
-                        model.selectDestination(.ops, projectId: paneProjectId)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CCCTheme.accent)
-                }
-            }
-            .padding(22)
-            .frame(width: 420, height: 360)
+            nodeDetailSheet(detail)
         }
+    }
+
+    private var railHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("本项目态势")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(CCCTheme.ink)
+                Spacer(minLength: 0)
+                Button("看板") {
+                    window.destination = .board
+                    model.selectDestination(.board, projectId: paneProjectId)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(CCCTheme.accent)
+            }
+            Text(model.orchestrationSyncLabel(forProject: paneProjectId))
+                .font(.system(size: 10))
+                .foregroundStyle(CCCTheme.faint)
+                .accessibilityLabel("编排同步态")
+            if let title = boundEpicTitle {
+                Text(title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.secondary)
+                    .lineLimit(2)
+            } else if paneProjectId == nil {
+                Text("先选左侧项目")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+            } else {
+                Text("定稿下达后显示编排")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+            }
+        }
+    }
+
+    private func nodeDetailSheet(_ detail: FlowNodeDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(detail.kind == "epic" ? "任务" : "步骤")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.faint)
+                Spacer()
+                Button("关闭") { model.dismissNodeDetail() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+            Text(detail.title)
+                .font(.system(size: 16, weight: .semibold))
+            if !detail.status.isEmpty {
+                Text(detail.status)
+                    .font(.system(size: 12))
+                    .foregroundStyle(CCCTheme.secondary)
+            }
+            ScrollView {
+                Text(detail.body)
+                    .font(.system(size: 13))
+                    .foregroundStyle(CCCTheme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            if detail.kind == "work",
+               (snap?.works ?? []).contains(where: { $0.workId == detail.id && $0.isFailed }) {
+                Button("复制给对话") {
+                    copyToComposer(
+                        """
+                        项目 \(paneProjectId ?? "") 的步骤「\(detail.title)」异常（\(detail.status)）。
+                        请根据看板/失败原因排查并给出可执行的修复或 reopen 建议。
+                        \(detail.body.prefix(800))
+                        """
+                    )
+                    model.dismissNodeDetail()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(CCCTheme.accent)
+            }
+        }
+        .padding(22)
+        .frame(width: 420, height: 360)
+    }
+
+    @ViewBuilder
+    private func agentHintCard(
+        text: String,
+        prompt: String,
+        prominentFail: Bool = false,
+        onDismiss: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(text)
+                .font(.system(size: 11.5, weight: prominentFail ? .semibold : .regular))
+                .foregroundStyle(CCCTheme.nodeFail)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("复制给对话") {
+                    copyToComposer(prompt)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(prominentFail ? CCCTheme.nodeFail : CCCTheme.accent)
+                .controlSize(.small)
+                Button("忽略") { onDismiss() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CCCTheme.faint)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(CCCTheme.nodeFail.opacity(prominentFail ? 0.12 : 0.08))
+        )
+    }
+
+    private func copyToComposer(_ prompt: String) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        model.fillComposer(text: text, threadId: window.threadId)
+        model.showToast("已复制并填入输入框")
+    }
+
+    private func agentPromptStopLoss(hint: String) -> String {
+        let pid = paneProjectId ?? "?"
+        let eid = snap?.epicId ?? ""
+        let failed = (snap?.works ?? []).filter(\.isFailed)
+        let names = failed.map { "· \($0.title)（\($0.displayStatus)）" }.joined(separator: "\n")
+        return """
+        【编排异常 · 请帮我处理】
+        项目：\(pid)
+        大卡：\(snap?.epic?.title ?? eid)
+        提示：\(hint)
+        \(names.isEmpty ? "" : "失败步骤：\n\(names)\n")
+        请查看板 abnormal/失败原因，给出可执行的修复、reopen 或归档建议；不要让我去运维页翻日志。
+        """
+    }
+
+    private func agentPromptFanout(hint: String) -> String {
+        let pid = paneProjectId ?? "?"
+        return """
+        【扇出超时 · 请帮我查】
+        项目：\(pid)
+        大卡：\(snap?.epic?.title ?? snap?.epicId ?? "")
+        提示：\(hint)
+        请检查 Engine 是否在跑、product 扇出是否卡住，并告诉我下一步怎么做。
+        """
+    }
+
+    private func agentPromptFailedWorks() -> String {
+        agentPromptStopLoss(hint: snap?.stopLossHint ?? "有步骤失败")
     }
 
     private var boardStrip: some View {
@@ -2287,7 +2334,7 @@ struct FlowRail: View {
         return snap?.epic?.title ?? eid
     }
 
-    /// 纵向任务栈：当前展开条 + 历史折叠条（项目级大卡）
+    /// 纵向任务栈：当前展开 + 排队/历史默认折叠
     private var taskStack: some View {
         let epics = snap?.recentEpics ?? []
         let currentId = snap?.epicId
@@ -2311,23 +2358,39 @@ struct FlowRail: View {
                 taskStackRow(cur, expanded: true)
             }
             if !history.isEmpty {
-                Text("排队 / 历史")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(CCCTheme.faint)
-                    .padding(.top, 4)
-                ForEach(history) { epic in
-                    Button {
-                        Task {
-                            await model.selectEpic(
-                                epic.epic_id,
-                                projectId: paneProjectId,
-                                threadId: nil
-                            )
-                        }
-                    } label: {
-                        taskStackRow(epic, expanded: false)
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        historyExpanded.toggle()
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: historyExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(CCCTheme.faint)
+                        Text("排队 / 历史（\(history.count)）")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(CCCTheme.faint)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if historyExpanded {
+                    ForEach(history) { epic in
+                        Button {
+                            Task {
+                                await model.selectEpic(
+                                    epic.epic_id,
+                                    projectId: paneProjectId,
+                                    threadId: nil
+                                )
+                            }
+                        } label: {
+                            taskStackRow(epic, expanded: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

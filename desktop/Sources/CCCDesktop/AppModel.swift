@@ -2103,6 +2103,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 失败回填 / 右栏「复制给对话」：写入本窗输入框
+    func fillComposer(text: String, threadId: String?) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        setComposerBounce(t, threadId: threadId)
+    }
+
     private func setComposerBounce(_ text: String?, threadId: String?) {
         composerBounce = text
         composerBounceThreadId = text == nil ? nil : threadId
@@ -4214,7 +4221,7 @@ final class AppModel: ObservableObject {
                     let stage = snap.headline.isEmpty
                         ? (snap.epic?.user_stage ?? snap.epic?.headline ?? "待拆解")
                         : snap.headline
-                    let hint = "15 秒内未见拆分（\(stage)）。Engine 可能未扇出，可开运维查看。"
+                    let hint = "15 秒内未见拆分（\(stage)）。可复制给对话，让 Agent 查 Engine/扇出。"
                     snap.fanoutHint = hint
                     self.threadFlow[tid] = snap
                     self.bumpFlowRevision(tid)
@@ -4653,7 +4660,7 @@ final class AppModel: ObservableObject {
                 ?? snap.epic?.title
                 ?? eid
                 ?? "任务"
-            let hint = "编排异常：\(title) · 点开运维或看板止损"
+            let hint = "编排异常：\(title) · 复制给对话，让 Agent 处理"
             cached.stopLossHint = hint
             let toastKey = "\(projectId)|\(eid ?? "")|failed"
             if lastStopLossToastKey != toastKey {
