@@ -151,9 +151,10 @@ class Config:
         3  # reviewer LLM 超时最大重试次数（含首次），超过则 quarantine
     )
 
-    # ── testing 门禁预算（产线提效 P4）──
-    testing_gate_max_per_tick: int = 1  # 每 tick 每仓最多审测张数
+    # ── testing 门禁预算（产线提效 P4；gate-clean 2026-07-23：max=1 导致同仓排队～200s）──
+    testing_gate_max_per_tick: int = 4  # 每 tick 每仓最多审测张数（短路径优先）
     testing_gate_budget_sec: int = 180  # 每 tick 每仓审测墙钟上限（秒）
+    testing_gate_short_timeout_sec: int = 45  # script_seed/feature_seed/board_ops 单卡上限
 
     # ── product_role ──
     max_phases: int = 2  # product_role 拆解 task 的最大 phase 数，超出抛异常
@@ -291,6 +292,27 @@ class Config:
         self.evolve_on_audit = False
         _env_override_int(
             self, "product_async_timeout", "CCC_PRODUCT_ASYNC_TIMEOUT", lo=60, hi=86400
+        )
+        _env_override_int(
+            self,
+            "testing_gate_max_per_tick",
+            "CCC_TESTING_GATE_MAX",
+            lo=1,
+            hi=20,
+        )
+        _env_override_int(
+            self,
+            "testing_gate_budget_sec",
+            "CCC_TESTING_GATE_BUDGET",
+            lo=30,
+            hi=3600,
+        )
+        _env_override_int(
+            self,
+            "testing_gate_short_timeout_sec",
+            "CCC_TESTING_GATE_SHORT_TIMEOUT",
+            lo=10,
+            hi=600,
         )
 
 

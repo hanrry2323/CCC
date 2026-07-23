@@ -622,7 +622,7 @@ def _testing_gate_budget() -> tuple[int, float]:
     """Return (max_tasks_per_tick, wall_budget_sec). Env overrides Config."""
     import os
 
-    max_n = getattr(cfg, "testing_gate_max_per_tick", 1)
+    max_n = getattr(cfg, "testing_gate_max_per_tick", 4)
     budget = getattr(cfg, "testing_gate_budget_sec", 180)
     try:
         max_n = int(os.environ.get("CCC_TESTING_GATE_MAX", max_n) or max_n)
@@ -633,6 +633,51 @@ def _testing_gate_budget() -> tuple[int, float]:
     except (TypeError, ValueError):
         pass
     return max(1, max_n), max(30.0, float(budget))
+
+
+_SHORT_GATE_PATHS = frozenset(
+    {"script_seed", "feature_seed", "board_ops", "doc_only"}
+)
+
+
+def _result_dev_path(ws: Path, tid: str) -> str:
+    rp = Path(ws) / ".ccc" / "reports" / f"{tid}.result.json"
+    if not rp.is_file():
+        return ""
+    try:
+        data = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if isinstance(data, dict):
+        return str(data.get("path") or "").strip().lower()
+    return ""
+
+
+def _is_short_gate_task(ws: Path, task: dict) -> bool:
+    tid = str(task.get("id") or "")
+    if not tid:
+        return False
+    return _result_dev_path(ws, tid) in _SHORT_GATE_PATHS
+
+
+def _ordered_testing_tasks(ws: Path, store) -> list[dict]:
+    """短路径（确定性审测）优先，减少同仓 testing 空等被算进 gate_wall。"""
+    tasks = list(store.list_tasks("testing") or [])
+
+    def _key(t: dict) -> tuple:
+        short = 0 if _is_short_gate_task(ws, t) else 1
+        updated = str(t.get("updated_at") or t.get("created_at") or "")
+        return (short, updated, str(t.get("id") or ""))
+
+    return sorted(tasks, key=_key)
+
+
+def _per_card_gate_timeout(ws: Path, task: dict, remaining: float) -> float:
+    """短路径卡收紧单卡墙钟，避免拖死本 tick 预算。"""
+    if _is_short_gate_task(ws, task):
+        short_cap = float(getattr(cfg, "testing_gate_short_timeout_sec", 45) or 45)
+        return max(5.0, min(remaining, short_cap))
+    return max(5.0, remaining)
 
 
 def _kill_ws_gate_procs(ws: Path, tid: str) -> list[int]:
@@ -770,6 +815,7 @@ def _run_testing_tasks_gate(ws: Path) -> None:
     """对 testing 列跑 reviewer/tester 门禁（限张 + 限时，产线提效 P4）。
 
     单次门禁也受墙钟约束：超时杀 pytest/claude 进程树，留 testing，下一 tick 续。
+    短路径优先 + 每 tick 多张，避免干净板上 gate_wall≈200s 的空等（gate-clean 基线）。
     """
     _activate_workspace(ws)
     store = _get_store(ws)
@@ -777,7 +823,7 @@ def _run_testing_tasks_gate(ws: Path) -> None:
     max_n, budget_s = _testing_gate_budget()
     deadline = time.monotonic() + budget_s
     done_n = 0
-    for task in store.list_tasks("testing"):
+    for task in _ordered_testing_tasks(ws, store):
         if done_n >= max_n:
             _engine_log(
                 f"[{label}] testing 门禁达每 tick 上限 {max_n}，余卡下 tick"
@@ -790,12 +836,14 @@ def _run_testing_tasks_gate(ws: Path) -> None:
             )
             break
         tid = task["id"]
+        card_timeout = _per_card_gate_timeout(ws, task, remaining)
         _engine_log(
             f"[{label}] testing 门禁: {tid} "
-            f"({done_n + 1}/{max_n}, budget={remaining:.0f}s)"
+            f"({done_n + 1}/{max_n}, budget={remaining:.0f}s, "
+            f"card={card_timeout:.0f}s, short={_is_short_gate_task(ws, task)})"
         )
         outcome = _run_reviewer_tester_gate_budgeted(
-            ws, tid, timeout_s=remaining
+            ws, tid, timeout_s=card_timeout
         )
         if outcome == "ok":
             try:

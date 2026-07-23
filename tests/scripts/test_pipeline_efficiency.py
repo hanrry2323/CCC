@@ -178,6 +178,38 @@ def test_testing_gate_respects_max_per_tick(tmp_path: Path, monkeypatch):
     assert calls == ["a"]
 
 
+def test_testing_gate_short_path_first(tmp_path: Path, monkeypatch):
+    ws = tmp_path / "ws"
+    reports = ws / ".ccc" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "short.result.json").write_text(
+        json.dumps({"path": "script_seed", "ok": True}) + "\n", encoding="utf-8"
+    )
+    (reports / "long.result.json").write_text(
+        json.dumps({"path": "opencode", "ok": True}) + "\n", encoding="utf-8"
+    )
+    store = MagicMock()
+    store.list_tasks.return_value = [
+        {"id": "long", "updated_at": "2026-07-23T00:00:01+08:00"},
+        {"id": "short", "updated_at": "2026-07-23T00:00:02+08:00"},
+    ]
+    calls: list[str] = []
+
+    monkeypatch.setattr(gates, "_activate_workspace", lambda w: None)
+    monkeypatch.setattr(gates, "_get_store", lambda w: store)
+    monkeypatch.setattr(gates, "_ws_label", lambda w: "ws")
+    monkeypatch.setattr(gates, "_testing_gate_budget", lambda: (2, 180.0))
+    monkeypatch.setattr(
+        gates,
+        "_run_reviewer_tester_gate_budgeted",
+        lambda w, tid, *, timeout_s: calls.append(tid) or "ok",
+    )
+    monkeypatch.setattr(gates, "_refresh_parent_epic", lambda w, tid: None)
+
+    gates._run_testing_tasks_gate(ws)
+    assert calls == ["short", "long"]
+
+
 def test_testing_gate_budgeted_timeout_kills(tmp_path: Path, monkeypatch):
     ws = tmp_path / "ws"
     locks = ws / ".ccc" / "review-locks"

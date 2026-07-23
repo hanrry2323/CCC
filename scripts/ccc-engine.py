@@ -3200,7 +3200,17 @@ def engine_loop(workspaces: list[Path]) -> None:
                 if not did_something:
                     break
 
-            # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + testing 流转 + 统计聚合
+            # 每 tick 抽干 testing（短路径优先、限张）；避免每 60s 才审 → gate_wall 空等
+            for ws in workspaces:
+                try:
+                    _activate_workspace(ws)
+                    _store = _get_store(ws)
+                    if _store.list_tasks("testing"):
+                        _run_testing_tasks_gate(ws)
+                except Exception as exc:
+                    engine_log(f"[testing-gate] {_ws_label(ws)}: {exc}")
+
+            # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + 统计聚合
             if iteration % 6 == 0:
                 for ws in workspaces:
                     _activate_workspace(ws)
@@ -3228,13 +3238,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                             _cleanup_zombie_pid_refs(ws)
                         except Exception as exc:
                             engine_log(f"[pids] {_ws_label(ws)} cleanup 异常: {exc}")
-                    test_tasks = _store.list_tasks("testing")
-                    if test_tasks:
-                        label = _ws_label(ws)
-                        engine_log(
-                            f"[{label}] testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁（限预算）"
-                        )
-                        _run_testing_tasks_gate(ws)
+                    # testing 已在每 tick 处理；此处不再重复
                     # v0.38: verified → kb → released
                     if _store.list_tasks("verified"):
                         _run_verified_kb_gate(ws)
