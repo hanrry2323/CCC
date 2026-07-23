@@ -30,7 +30,23 @@ def _now() -> str:
 
 
 def current_max_concurrent() -> int:
-    return max(1, int(os.environ.get("CCC_MAX_CONCURRENT", "4") or "4"))
+    env = os.environ.get("CCC_MAX_CONCURRENT")
+    if env:
+        return max(1, int(env or "4"))
+    eng_env = Path.home() / ".ccc" / "engine.env"
+    if eng_env.is_file():
+        try:
+            for ln in eng_env.read_text(encoding="utf-8").splitlines():
+                ln = ln.strip()
+                if ln.startswith("export CCC_MAX_CONCURRENT="):
+                    v = ln.split("=", 1)[1].strip().strip("'\"")
+                    return max(1, int(v or "4"))
+                if ln.startswith("CCC_MAX_CONCURRENT="):
+                    v = ln.split("=", 1)[1].strip().strip("'\"")
+                    return max(1, int(v or "4"))
+        except (OSError, ValueError):
+            pass
+    return 4
 
 
 def host_summary(n: int = 200) -> dict:
