@@ -702,8 +702,9 @@ def _acceptance_bullets_for_phase(
             if p.endswith(".py"):
                 _add(f"python3 -m py_compile {p}")
                 break
+    # 禁止散文种子；scope 已在上方抽 path/cmd；仍空则给仓内必存在目录
     if not bullets:
-        bullets.append(f"完成「{desc}」且 scope 内变更可验证")
+        bullets.append("test -d .ccc/board")
     return bullets
 
 

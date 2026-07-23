@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Dual-app 10-scenario Engine stress matrix (ccc-demo + qb).
+"""Dual-app Engine stress matrix (ccc-demo + qb).
 
-Usage (on Mac2017 Hub host):
-  python3 scripts/ccc-stress-matrix.py dispatch --batch 1
-  python3 scripts/ccc-stress-matrix.py watch --timeout 1800
-  python3 scripts/ccc-stress-matrix.py report
+Profiles:
+  efficiency_v2 — 每仓 8 张有价值场景（默认；明日效率回顾）
+  legacy10      — 历史 10 场景（含故意 FAIL / reopen）
 
-Idempotent via client_request_id. Authority: stress matrix plan 2026-07-22.
+Usage (Mac2017):
+  python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 baseline
+  python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 dispatch --batch 0
+  python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 watch --timeout 7200
+  python3 scripts/ccc-stress-efficiency-report.py --run stress-mx-20260723
 """
 
 from __future__ import annotations
@@ -25,8 +28,18 @@ from typing import Any
 HUB = "http://127.0.0.1:7777"
 AUTH = base64.b64encode(b"ccc:ccc").decode()
 APPS = ("ccc-demo", "qb")
+# Defaults overridden by --run / --profile in main()
 RUN_TAG = "stress-mx-20260722"
+PROFILE = "legacy10"
 RESULTS = Path.home() / ".ccc" / "stress-matrix" / f"{RUN_TAG}.json"
+
+
+def _set_run(run: str, profile: str) -> None:
+    global RUN_TAG, PROFILE, RESULTS
+    RUN_TAG = run
+    PROFILE = profile
+    RESULTS = Path.home() / ".ccc" / "stress-matrix" / f"{RUN_TAG}.json"
+    RESULTS.parent.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -51,6 +64,183 @@ def _slug(app: str, sid: str) -> str:
 
 
 def scenarios_for(app: str) -> list[Scenario]:
+    """Dispatch scenarios for current PROFILE."""
+    if PROFILE == "efficiency_v2":
+        return scenarios_efficiency_v2(app)
+    return scenarios_legacy10(app)
+
+
+def scenarios_efficiency_v2(app: str) -> list[Scenario]:
+    """每仓 8 张有价值场景（双仓 16 transfer）——不做每仓 20。
+
+    覆盖：短路径 / 拒单 / 同仓排队 / 双 phase；去掉故意 FAIL 与 abnormal 重开噪音。
+    """
+    stem = f"eff23_{app.replace('-', '_')}"
+    probe = f"scripts/{stem}_feature_probe.py"
+    paper = f"scripts/{stem}_paper_intent_probe.py"
+    mod = f"scripts/{stem}_mod.py"
+    suite_mod = f"scripts/{stem}_suite_mod.py"
+    doc = f"docs/{stem.upper()}_NOTE.md"
+    util_a = f"scripts/{stem}_util_a.py"
+    util_b = f"scripts/{stem}_util_b.py"
+
+    value_note = (
+        "ccc-demo 验证产线路径；qb 留下可复用探针/小模块（非一次性垃圾名）。"
+        if app == "qb"
+        else "平台路径验收：短路径硬门 + 扇出 + 同仓串行。"
+    )
+
+    return [
+        Scenario(
+            sid="e01",
+            name="小模块成功闭环",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} 小模块 hello",
+            goal=f"落地 {mod}：hello()→'ok'；{value_note}",
+            acceptance=[
+                f"test -f {mod}",
+                f'DRY_RUN=true python3 -c "from pathlib import Path; assert Path(\'{mod}\').is_file()"',
+            ],
+            plan_md=(
+                f"# Plan\n\n## 目标\n写 `{mod}`：`def hello(): return 'ok'`\n\n"
+                f"## Phase 1 — module\n- `{mod}`\n\n"
+                f"## 验收\n- test -f {mod}\n"
+                f"- DRY_RUN=true python3 -c \"print(0)\"\n"
+            ),
+            complexity="small",
+            notes="P1 queue+release; path=opencode",
+        ),
+        Scenario(
+            sid="e02",
+            name="依赖链 A→B",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} util A后B",
+            goal=f"两 phase：先 {util_a} 再 {util_b}",
+            acceptance=[
+                f"test -f {util_a}",
+                f"test -f {util_b}",
+                'DRY_RUN=true python3 -c "print(0)"',
+            ],
+            plan_md=(
+                f"# Plan\n\n## Phase 1 — A\n- `{util_a}` 含 `def a(): return 1`\n\n"
+                f"## Phase 2 — B\n- `{util_b}` 含 `def b(): return 2`（依赖 A 已存在）\n\n"
+                f"## 验收\n- test -f {util_a}\n- test -f {util_b}\n"
+                f"- DRY_RUN=true python3 -c \"print(0)\"\n"
+            ),
+            complexity="medium",
+            notes="P1 same-ws serial; no ghost slot",
+        ),
+        Scenario(
+            sid="e03",
+            name="纸面探针 script_seed",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} paper_intent_probe",
+            goal=f"机械落地 {paper}，必须 script_seed 不进 OpenCode",
+            acceptance=[
+                f"test -f {paper}",
+                f"DRY_RUN=true python3 {paper}",
+            ],
+            plan_md=(
+                f"# Plan\n\n## 目标\nseed `{paper}`（paper_intent_probe）\n\n"
+                f"## Phase 1\n- `{paper}`\n\n"
+                f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
+            ),
+            executor_intent="python",
+            complexity="small",
+            notes="P5 path=script_seed",
+        ),
+        Scenario(
+            sid="e04",
+            name="功能探针禁劫持",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} feature DRY_RUN 探针",
+            goal=f"写 {probe}，禁止写成 paper_intent_probe",
+            acceptance=[
+                f"test -f {probe}",
+                f"DRY_RUN=true python3 {probe}",
+            ],
+            plan_md=(
+                f"# Plan\n\n## Phase 1 — feature probe\n- `{probe}`\n"
+                f"禁止写 paper_intent_probe.py；须 DRY_RUN 可跑\n\n"
+                f"## 验收\n- test -f {probe}\n- DRY_RUN=true python3 {probe}\n"
+            ),
+            complexity="small",
+            notes="P5 must stay opencode",
+        ),
+        Scenario(
+            sid="e05",
+            name="看板卫生短路径",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} 看板卫生",
+            goal="仅确认 .ccc/board 卫生可达，不改业务码",
+            acceptance=["test -d .ccc/board"],
+            plan_md=(
+                "# Plan\n\n## 目标\n看板卫生\n\n"
+                "## Phase 1\n- `.ccc/board`\n\n"
+                "## 验收\n- test -d .ccc/board\n"
+            ),
+            pipeline="ops",
+            executor_intent="python",
+            complexity="small",
+            notes="P5 path=board_ops|python",
+        ),
+        Scenario(
+            sid="e06",
+            name="缺探针拒单",
+            kind="gate_reject",
+            title=f"[{RUN_TAG}] {app} 无探针应拒",
+            goal="故意不写可重放探针，验证 Hub Gate",
+            acceptance=["写一个说明文档即可"],
+            plan_md="# Plan\n\n## 目标\n无命令验收\n\n## 验收\n- 文档写好即可\n",
+            expect_http=400,
+            expect_error="missing_intent_probe",
+            complexity="small",
+            notes="gate only; no board card",
+        ),
+        Scenario(
+            sid="e07",
+            name="模块+文档双 phase",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} 模块与说明",
+            goal=f"扇出两张 work：{suite_mod} + {doc}",
+            acceptance=[
+                f"test -f {suite_mod}",
+                f"test -f {doc}",
+                'DRY_RUN=true python3 -c "print(0)"',
+            ],
+            plan_md=(
+                f"# Plan\n\n## 目标\n模块+文档（与 e01 产物隔离）\n\n"
+                f"## Phase 1 — 模块\n- `{suite_mod}`\n\n"
+                f"## Phase 2 — 文档\n- `{doc}` 说明 hello API\n\n"
+                f"## 验收\n- test -f {suite_mod}\n- test -f {doc}\n"
+                f"- DRY_RUN=true python3 -c \"print(0)\"\n"
+            ),
+            complexity="medium",
+            notes="medium fanout without 3-phase overload",
+        ),
+        Scenario(
+            sid="e08",
+            name="纸面路径复验",
+            kind="transfer",
+            title=f"[{RUN_TAG}] {app} 纸面探针复验",
+            goal=f"再次确认 {paper} 短路径可重放",
+            acceptance=[
+                f"test -f {paper}",
+                f"DRY_RUN=true python3 {paper}",
+            ],
+            plan_md=(
+                f"# Plan\n\n## 目标\n`{paper}` 可重放\n\n"
+                f"## Phase 1\n- `{paper}`\n\n"
+                f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
+            ),
+            executor_intent="python",
+            complexity="small",
+            notes="P5 script_seed stability + duration_s fill",
+        ),
+    ]
+
+
+def scenarios_legacy10(app: str) -> list[Scenario]:
     """10 scenarios; keep deliverables tiny to bound OpenCode cost."""
     stem = f"stress_{app.replace('-', '_')}"
     probe = f"scripts/{stem}_feature_probe.py"
@@ -323,12 +513,26 @@ def save_results(data: dict[str, Any]) -> None:
 
 
 def cmd_dispatch(batch: int) -> None:
-    """batch 1: s01-s04; 2: s05-s07; 3: s08-s10"""
-    ranges = {1: ("s01", "s02", "s03", "s04"), 2: ("s05", "s06", "s07"), 3: ("s08", "s09", "s10")}
+    """Dispatch by batch. efficiency_v2: batch1=e01-e04, batch2=e05-e08, batch0=all."""
+    if PROFILE == "efficiency_v2":
+        ranges = {
+            0: ("e01", "e02", "e03", "e04", "e05", "e06", "e07", "e08"),
+            1: ("e01", "e02", "e03", "e04"),
+            2: ("e05", "e06", "e07", "e08"),
+        }
+    else:
+        ranges = {
+            1: ("s01", "s02", "s03", "s04"),
+            2: ("s05", "s06", "s07"),
+            3: ("s08", "s09", "s10"),
+        }
     want = set(ranges.get(batch) or ())
     if not want:
-        raise SystemExit(f"unknown batch {batch}")
+        raise SystemExit(f"unknown batch {batch} for profile={PROFILE}")
     data = load_results()
+    data["run"] = RUN_TAG
+    data["profile"] = PROFILE
+    data.setdefault("dispatches", [])
     done = {
         (d.get("app"), d.get("sid"))
         for d in data.get("dispatches") or []
@@ -343,6 +547,8 @@ def cmd_dispatch(batch: int) -> None:
                 continue
             print(f"dispatch {app} {sc.sid} {sc.name} ...")
             row = transfer(app, sc)
+            row["dispatched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            row["profile"] = PROFILE
             data.setdefault("dispatches", []).append(row)
             save_results(data)
             status = "OK" if row["ok"] else "FAIL"
@@ -351,7 +557,64 @@ def cmd_dispatch(batch: int) -> None:
                 f"err={row.get('response', {}).get('error')}"
             )
             time.sleep(1)
+    print(f"dispatch done → {RESULTS} (profile={PROFILE})")
 
+
+def cmd_baseline() -> None:
+    """Write pre-run host/board baseline for tomorrow's efficiency retrospective."""
+    import subprocess
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _board_store import FileBoardStore
+
+    host = {}
+    try:
+        from _host_resources import summarize
+
+        host = summarize(n=200)
+    except Exception as exc:
+        host = {"error": str(exc)}
+    boards = {}
+    for app in APPS:
+        store = FileBoardStore(Path(f"/Users/fan/program/apps/{app}"))
+        boards[app] = {
+            c: len(store.list_tasks(c))
+            for c in (
+                "backlog",
+                "planned",
+                "in_progress",
+                "testing",
+                "abnormal",
+                "verified",
+                "released",
+            )
+        }
+    payload = {
+        "run": RUN_TAG,
+        "profile": PROFILE,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "host": host,
+        "boards": boards,
+        "git_head": subprocess.check_output(
+            ["git", "-C", "/Users/fan/program/CCC", "rev-parse", "--short", "HEAD"],
+            text=True,
+        ).strip(),
+        "metrics_plan": [
+            "queue_wait_s p50/p95",
+            "dev_wall_s / gate_wall_s",
+            "dev_path share",
+            "duration_s fill_rate",
+            "dirty_result_n",
+            "ghost same-ws delay",
+            "testing budget timeout kills",
+            "revert abort clean",
+        ],
+    }
+    out = Path.home() / ".ccc" / "stress-matrix" / f"{RUN_TAG}-baseline.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print("wrote", out)
 
 def _board_snapshot(app: str) -> dict[str, Any]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -499,15 +762,42 @@ def cmd_report() -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="CCC stress matrix (legacy10 or efficiency_v2)"
+    )
+    ap.add_argument(
+        "--run",
+        default="",
+        help="run tag (default: stress-mx-YYYYMMDD for efficiency_v2)",
+    )
+    ap.add_argument(
+        "--profile",
+        choices=("legacy10", "efficiency_v2"),
+        default="efficiency_v2",
+        help="scenario set (default efficiency_v2 = 8/app valuable)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dispatch")
-    d.add_argument("--batch", type=int, required=True)
+    d.add_argument(
+        "--batch",
+        type=int,
+        required=True,
+        help="efficiency_v2: 0=all, 1=e01-e04, 2=e05-e08; legacy: 1/2/3",
+    )
     w = sub.add_parser("watch")
     w.add_argument("--timeout", type=int, default=1800)
     sub.add_parser("report")
     sub.add_parser("reopen-s09")
+    sub.add_parser("baseline")
     args = ap.parse_args()
+    run = args.run.strip()
+    if not run:
+        run = (
+            "stress-mx-20260723"
+            if args.profile == "efficiency_v2"
+            else "stress-mx-20260722"
+        )
+    _set_run(run, args.profile)
     if args.cmd == "dispatch":
         cmd_dispatch(args.batch)
     elif args.cmd == "watch":
@@ -516,6 +806,8 @@ def main() -> None:
         cmd_report()
     elif args.cmd == "reopen-s09":
         cmd_reopen_s09()
+    elif args.cmd == "baseline":
+        cmd_baseline()
 
 
 if __name__ == "__main__":

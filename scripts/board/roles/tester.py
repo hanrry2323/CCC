@@ -386,6 +386,33 @@ def _cleanup_pytest_markers(pids_dir: Path, task_id: str) -> None:
             pass
 
 
+def _tester_verdict_allows_verified(task_id: str) -> bool:
+    """缺 verdict 或非 PASS → 不得 verified（对齐红线 11 / engine gate）。"""
+    try:
+        vf = get_workspace() / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
+        if not vf.is_file():
+            _log.warning("[tester] %s skip verified — missing verdict", task_id)
+            return False
+        st = None
+        for line in vf.read_text(encoding="utf-8", errors="replace").splitlines():
+            low = line.strip().lower()
+            if low.startswith("**verdict:**") or low.startswith("verdict:"):
+                raw = line.split(":", 1)[1].strip().strip("*").strip()
+                st = raw.split()[0].upper() if raw else None
+                break
+        if st == "PASS":
+            return True
+        _log.warning(
+            "[tester] %s skip verified — verdict=%s",
+            task_id,
+            st or "unparsed",
+        )
+        return False
+    except Exception as exc:
+        _log.debug("[tester] verdict guard: %s", exc)
+        return False
+
+
 def tester_role() -> dict:
     """测试工程师: 扫 testing → 按 plan 跑验证 → 通过则挪 verified"""
     from _role_lock import assert_role_executor
@@ -426,12 +453,25 @@ def tester_role() -> dict:
         except Exception as exc:
             _log.warning("[tester] hygiene probe: %s", exc)
 
+        # 短路径 / 文档卡：不强制全仓 cov pytest
+        try:
+            rp = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
+            if rp.is_file():
+                data = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
+                if isinstance(data, dict) and str(data.get("path") or "").lower() in (
+                    "script_seed",
+                    "board_ops",
+                ):
+                    skip_forced = True
+        except Exception as exc:
+            _log.debug("[tester] path tag: %s", exc)
+
         if not verify_commands and not skip_forced:
             verify_commands = [
                 f"python3 -m pytest {get_workspace() / 'tests' / 'scripts'} -q --tb=line --timeout=60"
             ]
 
-        # 强制 baseline（v0.21.3）：业务卡；ops/卫生不追加
+        # 强制 baseline（v0.21.3）：业务卡；ops/卫生/短路径不追加
         has_pyproject = (get_workspace() / "pyproject.toml").exists()
         if (
             has_pyproject
@@ -449,6 +489,9 @@ def tester_role() -> dict:
                     "[tester] %s ops/ccc-hygiene — 无白名单 cmd，视为通过",
                     task_id,
                 )
+                # 仍要求 PASS verdict（缺 verdict 不得 verified）
+                if not _tester_verdict_allows_verified(task_id):
+                    continue
                 if move_task(task_id, "testing", "verified"):
                     moved.append(task_id)
                 continue
@@ -479,26 +522,8 @@ def tester_role() -> dict:
                 )
 
         if all_ok:
-            # 若 reviewer 已写 FAIL，禁止 tester 抢先 verified（与 gates 对齐）
-            try:
-                vf = get_workspace() / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
-                if vf.is_file():
-                    st = None
-                    for line in vf.read_text(encoding="utf-8", errors="replace").splitlines():
-                        low = line.strip().lower()
-                        if low.startswith("**verdict:**") or low.startswith("verdict:"):
-                            raw = line.split(":", 1)[1].strip().strip("*").strip()
-                            st = raw.split()[0].upper() if raw else None
-                            break
-                    if st in ("FAIL", "FALLBACK", "QUARANTINED"):
-                        _log.warning(
-                            "[tester] %s skip verified — verdict=%s",
-                            task_id,
-                            st,
-                        )
-                        continue
-            except Exception as exc:
-                _log.debug("[tester] verdict guard: %s", exc)
+            if not _tester_verdict_allows_verified(task_id):
+                continue
             move_task(task_id, "testing", "verified")
             moved.append(task_id)
             _log.info("[tester] %s ✓（验证 {len(verify_commands)} 项）", task_id)

@@ -368,6 +368,34 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                     f"[verdict-gate] [{label}] {tid} "
                     f"verdict={_early} — 触发回滚（先于 tester）"
                 )
+                # FAIL→planned 上限：≥3 次则 quarantine（防无限回弹）
+                fail_n = 0
+                try:
+                    meta = next(
+                        (t for t in store.list_tasks("testing") if t["id"] == tid),
+                        None,
+                    )
+                    if meta is None:
+                        # may already be mid-move; try find
+                        _col, meta = store.find_task(tid)
+                    fail_n = int((meta or {}).get("review_fail_loops") or 0) + 1
+                    store.patch_task(tid, {"review_fail_loops": fail_n})
+                except Exception as exc:
+                    _engine_log(
+                        f"[verdict-gate] [{label}] {tid} fail_loop patch: {exc}"
+                    )
+                    fail_n = 1
+                if fail_n >= 3:
+                    cur_phase = _current_running_phase(tid)
+                    if eng:
+                        eng._quarantine_with_notify(
+                            ws,
+                            tid,
+                            f"reviewer_fail_loop_exhausted ({fail_n})",
+                            store,
+                            phase=cur_phase,
+                        )
+                    return False
                 _revert_task_commit(ws, tid)
                 col_now = _find_task_column(store, tid)
                 if col_now == "testing":

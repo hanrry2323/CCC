@@ -764,7 +764,18 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
 
     # hollow 与正常完成路径对齐（salvage 不得绕过）
     try:
-        hollow_reason = detect_hollow_opencode_run(result_raw, report)
+        _spath = None
+        try:
+            import json as _json
+
+            _rd = _json.loads(result_raw) if (result_raw or "").strip().startswith("{") else {}
+            if isinstance(_rd, dict):
+                _spath = str(_rd.get("path") or "") or None
+        except Exception:
+            _spath = None
+        hollow_reason = detect_hollow_opencode_run(
+            result_raw, report, path=_spath
+        )
     except Exception as exc:
         _log.warning("[salvage] %s hollow detect failed: %s", task_id, exc)
         hollow_reason = None
@@ -1235,7 +1246,18 @@ def dev_role_check_complete(task_id: str) -> dict:
             report_has_self_checks_passed,
         )
 
-        _hollow = detect_hollow_opencode_run(result_raw, _existing_report)
+        _dev_path = None
+        try:
+            import json as _json
+
+            _rd = _json.loads(result_raw) if result_raw.strip().startswith("{") else {}
+            if isinstance(_rd, dict):
+                _dev_path = str(_rd.get("path") or "") or None
+        except Exception:
+            _dev_path = None
+        _hollow = detect_hollow_opencode_run(
+            result_raw, _existing_report, path=_dev_path
+        )
         if _hollow:
             _log.error("[gate] %s hollow success: %s", task_id, _hollow)
             if not _existing_report:

@@ -29,13 +29,64 @@ _HOME_CCC_READ = re.compile(
 )
 
 
-def detect_hollow_opencode_run(result_raw: str, report: str = "") -> str | None:
+def _stdout_blob_from_result(result_raw: str) -> str:
+    """Prefer current-run stdout from result.json; fall back to raw string."""
+    blob = result_raw or ""
+    if not blob.strip():
+        return ""
+    try:
+        import json
+
+        data = json.loads(blob)
+        if isinstance(data, dict):
+            path = str(data.get("path") or "").strip().lower()
+            if path in ("script_seed", "board_ops", "python"):
+                return ""  # short paths: hollow N/A (caller should skip)
+            parts: list[str] = []
+            for key in ("stdout", "stderr", "output", "message"):
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(val)
+            if parts:
+                return "\n".join(parts)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return blob
+
+
+def detect_hollow_opencode_run(
+    result_raw: str,
+    report: str = "",
+    *,
+    path: str | None = None,
+) -> str | None:
     """若运行日志显示空心成功，返回失败原因；否则 None。
 
     即使 report 已含 ``ALL SELF-CHECKS PASSED``，有拒读证据仍判空心
     （禁止用假 PASS 盖过工具失败）。
+
+    适型（v0.60.2+）：
+    - ``path`` 为 script_seed/board_ops/python → 不跑 hollow（确定性短路径）
+    - 优先只扫 result 的 stdout（本 phase），避免历史 report 误伤文档 phase
+    - result 无 stdout 时才回退拼接 report
     """
-    blob = f"{result_raw or ''}\n{report or ''}"
+    p = (path or "").strip().lower()
+    if not p:
+        try:
+            import json
+
+            data = json.loads(result_raw or "")
+            if isinstance(data, dict):
+                p = str(data.get("path") or "").strip().lower()
+        except (json.JSONDecodeError, TypeError, ValueError):
+            p = ""
+    if p in ("script_seed", "board_ops", "python"):
+        return None
+
+    blob = _stdout_blob_from_result(result_raw)
+    if not blob.strip():
+        # 无本 phase stdout 时才看 report（兼容旧 result）
+        blob = f"{result_raw or ''}\n{report or ''}"
     if not blob.strip():
         return None
 

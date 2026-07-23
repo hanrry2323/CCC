@@ -343,7 +343,28 @@ def run_script_seed(ws: Path, tid: str) -> dict[str, Any]:
     except OSError as exc:
         _log.warning("script_seed git commit: %s", exc)
 
-    # Move planned/in_progress → testing for acceptance
+    # 进 testing 前跑 acceptance（与 OpenCode 路径对齐；失败则不进 testing）
+    try:
+        from _acceptance_gate import check_acceptance
+
+        acc = check_acceptance(ws, tid, commit=commit)
+        if not acc.get("ok"):
+            _log.error(
+                "[script_seed] %s acceptance blocked → stay (%s)",
+                tid,
+                acc.get("reason"),
+            )
+            return {
+                "ok": False,
+                "path": "script_seed",
+                "wrote": str(dest),
+                "commit": commit,
+                "error": f"acceptance:{acc.get('reason')}",
+            }
+    except Exception as exc:
+        _log.warning("script_seed acceptance: %s", exc)
+
+    # Move planned/in_progress → testing for gate
     try:
         from _board_store import FileBoardStore
 

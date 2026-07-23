@@ -77,6 +77,198 @@ from board.roles.common import (
 
 REVIEW_SIZE_SMALL_MAX = 10
 REVIEW_SIZE_MEDIUM_MAX = 50
+_REVIEW_FAIL_LOOP_MAX = 3
+
+
+def _read_artifact_dev_path(ws: Path, task_id: str) -> str:
+    """Read path=script_seed|board_ops|opencode from result.json if present."""
+    rp = ws / ".ccc" / "reports" / f"{task_id}.result.json"
+    if not rp.is_file():
+        return ""
+    try:
+        data = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if isinstance(data, dict):
+        return str(data.get("path") or "").strip().lower()
+    return ""
+
+
+def _diff_name_only(full_diff: str) -> list[str]:
+    """Parse paths from unified diff headers."""
+    names: list[str] = []
+    for line in (full_diff or "").splitlines():
+        if line.startswith("+++ b/"):
+            p = line[6:].strip()
+            if p and p != "/dev/null":
+                names.append(p)
+        elif line.startswith("diff --git "):
+            # diff --git a/foo b/foo
+            parts = line.split(" b/", 1)
+            if len(parts) == 2:
+                p = parts[1].strip()
+                if p and p not in names:
+                    names.append(p)
+    return names
+
+
+def _is_doc_only_paths(paths: list[str]) -> bool:
+    if not paths:
+        return False
+    doc_ext = (".md", ".jsonl", ".json", ".txt", ".rst")
+    return all(
+        p.startswith(".ccc/")
+        or p.endswith(doc_ext)
+        or "/docs/" in f"/{p}"
+        or p.startswith("docs/")
+        for p in paths
+    )
+
+
+def _detect_review_kind(
+    ws: Path, task: dict, plan_text: str, full_diff: str
+) -> str:
+    """Return script_seed | board_ops | doc_only | opencode."""
+    art = _read_artifact_dev_path(ws, str(task.get("id") or ""))
+    if art in ("script_seed", "board_ops"):
+        return art
+    try:
+        from board.roles.script_seed import should_use_script_seed
+
+        if should_use_script_seed(ws, task):
+            return "script_seed"
+    except Exception:
+        pass
+    try:
+        from board.roles.board_ops import should_use_board_ops
+
+        if should_use_board_ops(ws, task):
+            return "board_ops"
+    except Exception:
+        pass
+    names = _diff_name_only(full_diff)
+    if names and _is_doc_only_paths(names):
+        return "doc_only"
+    # plan mentions paper_intent without result yet
+    if "paper_intent_probe" in (plan_text or "") and "script_seed" in (
+        (ws / ".ccc" / "reports" / f"{task.get('id')}.report.md").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        if (ws / ".ccc" / "reports" / f"{task.get('id')}.report.md").is_file()
+        else ""
+    ):
+        return "script_seed"
+    return "opencode"
+
+
+def _write_timeout_verdict(task_id: str, reason: str) -> None:
+    verdict_dir = get_workspace() / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    (verdict_dir / f"{task_id}.verdict.md").write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** TIMEOUT\n\n"
+        f"**Reason:** {reason}\n",
+        encoding="utf-8",
+    )
+
+
+def _review_deterministic_path(
+    task_id: str,
+    *,
+    kind: str,
+    plan_text: str,
+    full_diff: str,
+) -> bool:
+    """script_seed / board_ops / doc_only：确定性关门，不进 LLM。
+
+    必须执行验收（命令或 path 核对），禁止 plan-only PASS。
+    """
+    ws = get_workspace()
+    report_dir = ws / ".ccc" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    review_md = report_dir / f"{task_id}.review.md"
+
+    # py_compile touched .py (diff names only — never scripts/**)
+    names = _diff_name_only(full_diff)
+    if not names:
+        # fall back to plan scope files
+        names = _parse_plan_scope(task_id) or []
+    py_files = []
+    for f in names:
+        p = ws / f
+        if p.suffix == ".py" and p.is_file() and _is_path_in_root(p):
+            py_files.append(str(p))
+    if py_files and not _py_compile_fallback(task_id, py_files):
+        _log.error(
+            "[reviewer] %s ✗ %s py_compile fail，留 testing", task_id, kind
+        )
+        return False
+
+    from _acceptance_gate import check_acceptance
+    from _task_commit import find_task_commit
+
+    commit = find_task_commit(ws, task_id) or ""
+    acc = check_acceptance(ws, task_id, commit=commit)
+    if not acc.get("ok"):
+        # board_ops / hygiene may allow prose; retry with allow_prose for board_ops
+        if kind == "board_ops":
+            acc = check_acceptance(
+                ws, task_id, commit=commit, allow_prose=True
+            )
+        if not acc.get("ok"):
+            _log.error(
+                "[reviewer] %s ✗ %s acceptance %s",
+                task_id,
+                kind,
+                acc.get("reason"),
+            )
+            # stay testing — engine may retry; do not silent PASS
+            return False
+
+    review_md.write_text(
+        f"# {task_id} Review\n\n"
+        f"## Verdict: **PASS**\n\n"
+        f"## Dev path: **{kind}**\n\n"
+        f"Deterministic review (no LLM). acceptance={acc.get('reason')}\n"
+        f"probes_ran={len(acc.get('ran') or [])} py_files={len(py_files)}\n",
+        encoding="utf-8",
+    )
+    _write_pass_verdict(
+        task_id,
+        f"{kind} deterministic pass; acceptance={acc.get('reason')}",
+    )
+    # Annotate verdict with Dev path for audit
+    vp = ws / ".ccc" / "verdicts" / f"{task_id}.verdict.md"
+    if vp.is_file():
+        vp.write_text(
+            vp.read_text(encoding="utf-8", errors="replace")
+            + f"\n**Dev path:** {kind}\n"
+            f"**Probes:** {acc.get('reason')}\n",
+            encoding="utf-8",
+        )
+    move_task(task_id, "testing", "verified")
+    _log.info("[reviewer] %s ✓ %s deterministic pass", task_id, kind)
+    return True
+
+
+def _phase_commits(ws: Path, task_id: str) -> list[str]:
+    """All commits recorded in phases.json (order preserved)."""
+    phases_file = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
+    if not phases_file.is_file():
+        return []
+    out: list[str] = []
+    for line in phases_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            phase = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        c = str(phase.get("commit") or "").strip()
+        if c and c not in out:
+            out.append(c)
+    return out
 
 def _reviewer_fallback_mode() -> str:
     """CCC_REVIEWER_FALLBACK=quarantine|stay|static（默认 quarantine）。
@@ -711,20 +903,11 @@ def _get_git_diff(
         # v0.24.6 (A24-08): 优先 phases.json 里记录的 commit（防 task_id grep 复用导致
         # 拿到历史 commit 的 diff，而非当前本次的 diff）；phases.json 缺失再 fallback 到 grep
         commit = ""
+        commits: list[str] = []
         if task_id:
-            phases_file = workspace / ".ccc" / "phases" / f"{task_id}.phases.json"
-            if phases_file.exists():
-                for line in phases_file.read_text().splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        phase = json.loads(line)
-                        if phase.get("commit"):
-                            commit = phase["commit"]
-                            break
-                    except json.JSONDecodeError:
-                        continue
+            commits = _phase_commits(workspace, task_id)
+            if commits:
+                commit = commits[0]
             # fallback: git log --grep task_id（仅在 phases.json 无记录时用）
             if not commit:
                 log_r = sp.run(
@@ -744,34 +927,42 @@ def _get_git_diff(
                     timeout=10,
                 )
                 commit = log_r.stdout.strip() if log_r.returncode == 0 else ""
+                if commit:
+                    commits = [commit]
 
-        if commit:
-            # task 级别的 diff
+        if commits:
+            # 多 phase：累计 first^..last（适型）；单 commit 保持 commit^..commit
+            if len(commits) >= 2:
+                first, last = commits[0], commits[-1]
+                range_spec = f"{first}^..{last}"
+            else:
+                range_spec = f"{commits[0]}^..{commits[0]}"
             stat_r = sp.run(
-                ["git", "diff", f"{commit}^..{commit}", "--stat"],
+                ["git", "diff", range_spec, "--stat"],
                 cwd=workspace,
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
             diff_r = sp.run(
-                ["git", "diff", f"{commit}^..{commit}"],
+                ["git", "diff", range_spec],
                 cwd=workspace,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
-            # 若父 commit 不存在（首次 commit），用 --root
+            # 若父 commit 不存在（首次 commit），用 --root..last
             if stat_r.returncode != 0:
+                last = commits[-1]
                 stat_r = sp.run(
-                    ["git", "diff", "--root", commit, "--stat"],
+                    ["git", "diff", "--root", last, "--stat"],
                     cwd=workspace,
                     capture_output=True,
                     text=True,
                     timeout=10,
                 )
                 diff_r = sp.run(
-                    ["git", "diff", "--root", commit],
+                    ["git", "diff", "--root", last],
                     cwd=workspace,
                     capture_output=True,
                     text=True,
@@ -1152,8 +1343,12 @@ def reviewer_role() -> dict:
                 0o600,
             )
         except FileExistsError:
-            # 另一个 reviewer 实例正在审本 task → 跳过本轮，避免文件竞态覆盖
-            _log.error("[reviewer] %s ⏸ 持锁中，跳过本轮", task_id)
+            # 另一个 reviewer 实例正在审本 task → 写 TIMEOUT 供 engine 重试（红线 11）
+            _log.error("[reviewer] %s ⏸ 持锁中，写 TIMEOUT 并跳过本轮", task_id)
+            try:
+                _write_timeout_verdict(task_id, "review lock held by another instance")
+            except OSError as exc:
+                _log.warning("[reviewer] %s TIMEOUT verdict write failed: %s", task_id, exc)
             continue
         try:
             result = _review_one_task(task_id)
@@ -1173,7 +1368,7 @@ def _review_one_task(task_id: str) -> bool:
 
     v0.24.5 (A24-03/A24-04): medium/large 类 LLM fallback 一律 quarantine + L2 告警，
     禁止仅凭 py_compile 或 plan 验收清单静默 verified（v0.23 G2 bypass 复发红线）。
-    small 类仍走原 py_compile / plan-only 路径。
+    v0.60.2+: 先认卡型（script_seed/board_ops/doc_only）再认行数；短路径确定性关门。
     """
     task = next((t for t in list_tasks("testing") if t["id"] == task_id), None)
     if task is None:
@@ -1181,11 +1376,24 @@ def _review_one_task(task_id: str) -> bool:
     plan_file = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
     plan_text = plan_file.read_text() if plan_file.exists() else ""
 
-    # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动）
+    # 1. 取 git diff（G1: 按 task_id 过滤，只审本 task 的改动；多 phase 累计）
     diff_stat, full_diff = _get_git_diff(get_workspace(), task_id=task_id)
+
+    kind = _detect_review_kind(get_workspace(), task, plan_text, full_diff)
+    if kind in ("script_seed", "board_ops", "doc_only"):
+        _log.info("[reviewer] %s kind=%s → deterministic path", task_id, kind)
+        return _review_deterministic_path(
+            task_id, kind=kind, plan_text=plan_text, full_diff=full_diff
+        )
 
     # v0.24.1: 按变更量分级，决定是否需要 LLM
     size_class, total_lines = _classify_review_size(diff_stat)
+    # complexity floor：task.complexity=medium 不得因末相小 diff 降成 small
+    cx = str(task.get("complexity") or "").strip().lower()
+    if cx == "medium" and size_class == "small":
+        size_class = "medium"
+    elif cx == "large" and size_class in ("small", "medium"):
+        size_class = "large"
     # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
     if size_class == "unknown":
         _quarantine(
@@ -1203,11 +1411,11 @@ def _review_one_task(task_id: str) -> bool:
     report_dir.mkdir(parents=True, exist_ok=True)
     review_md = report_dir / f"{task_id}.review.md"
 
-    # small 类：仅 py_compile；涉安全路径强制走 LLM
+    # small 类：仅 py_compile + 验收命令；涉安全路径强制走 LLM
     if size_class == "small":
         files = _parse_plan_scope(task_id)
         if not files:
-            files = [str(p) for p in (get_workspace() / "scripts").rglob("*.py")]
+            files = _diff_name_only(full_diff)
         import glob as _glob
 
         py_files = []
@@ -1233,18 +1441,29 @@ def _review_one_task(task_id: str) -> bool:
             size_class = "medium"
             # 落入下方 LLM 路径
         elif py_files and _py_compile_fallback(task_id, py_files):
+            from _acceptance_gate import check_acceptance
+            from _task_commit import find_task_commit
+
+            commit = find_task_commit(get_workspace(), task_id) or ""
+            acc = check_acceptance(get_workspace(), task_id, commit=commit)
+            if not acc.get("ok"):
+                _log.error(
+                    "[reviewer] %s ✗ small py_compile ok but acceptance %s",
+                    task_id,
+                    acc.get("reason"),
+                )
+                return False
             review_md.write_text(
                 f"# {task_id} Review\n\n"
                 f"## Verdict: **PASS**\n\n"
                 f"## Size Class: **small** ({total_lines} 行)\n\n"
-                f"v0.24.1: small 类变更跳过 LLM，仅 py_compile 静态检查通过。\n\n"
+                f"v0.60.2: small 类 py_compile + acceptance（禁止 plan-only）。\n\n"
                 f"## Files Checked ({len(py_files)} 条)\n\n"
                 + "\n".join(f"- {Path(f).name}" for f in py_files)
             )
-            # v0.38: Engine 门禁读 .ccc/verdicts/{id}.verdict.md（红线 11）
             _write_pass_verdict(
                 task_id,
-                f"small-class py_compile pass ({total_lines} lines)",
+                f"small-class py_compile+acceptance pass ({total_lines} lines)",
             )
             move_task(task_id, "testing", "verified")
             _log.info(
@@ -1261,23 +1480,32 @@ def _review_one_task(task_id: str) -> bool:
                     task_id,
                 )
                 return False
-            if "## 验收" in plan_text or "## 验证" in plan_text:
+            # 禁止 plan-only：必须跑验收
+            from _acceptance_gate import check_acceptance
+            from _task_commit import find_task_commit
+
+            commit = find_task_commit(get_workspace(), task_id) or ""
+            acc = check_acceptance(get_workspace(), task_id, commit=commit)
+            if acc.get("ok"):
                 review_md.write_text(
                     f"# {task_id} Review\n\n"
                     f"## Verdict: **PASS**\n\n"
                     f"## Size Class: **small** ({total_lines} 行)\n\n"
-                    f"v0.24.1: small 类变更无 py 文件，信任 plan 验收清单（diff 非空已校验）。\n"
+                    f"v0.60.2: small 无 py，acceptance={acc.get('reason')}。\n"
                 )
                 _write_pass_verdict(
                     task_id,
-                    f"small-class plan-only pass ({total_lines} lines)",
+                    f"small-class acceptance pass ({acc.get('reason')})",
                 )
                 move_task(task_id, "testing", "verified")
-                _log.info("[reviewer] %s ✓ small-class plan-only pass", task_id)
+                _log.info("[reviewer] %s ✓ small-class acceptance pass", task_id)
                 return True
-            _quarantine(task_id, reason="v0.24.1 small-class: 无 py 文件 + 无验收清单")
+            _quarantine(
+                task_id,
+                reason=f"v0.60.2 small-class: 无 py + acceptance {acc.get('reason')}",
+            )
             _log.error(
-                "[reviewer] %s ✗ small-class quarantine: 无静态可检查项", task_id
+                "[reviewer] %s ✗ small-class quarantine: acceptance fail", task_id
             )
             return False
         else:
@@ -1352,6 +1580,26 @@ def _review_one_task(task_id: str) -> bool:
     )
 
     if verdict == "pass":
+        # 适型：LLM 报 pass 但含 high/critical findings → 降为 fail（对齐 skill）
+        bad = [
+            f
+            for f in findings
+            if str(f.get("severity") or "").lower() in ("high", "critical")
+        ]
+        if bad:
+            _log.error(
+                "[reviewer] %s ✗ LLM pass 但有 %d high/critical → FAIL",
+                task_id,
+                len(bad),
+            )
+            verdict_path.write_text(
+                f"# {task_id} Verdict\n\n"
+                f"**Verdict:** FAIL\n\n"
+                f"**Reason:** high/critical findings with pass JSON\n\n"
+                f"{summary}\n",
+                encoding="utf-8",
+            )
+            return False
         move_task(task_id, "testing", "verified")
         _log.info("[reviewer] %s ✓ LLM pass", task_id)
         return True

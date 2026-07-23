@@ -163,16 +163,39 @@ def _run_cmds(ws: Path, cmds: list[str]) -> tuple[bool, list[dict[str, Any]]]:
     return run_probes(ws, cmds)
 
 
+def _allow_prose_acceptance(ws: Path, tid: str) -> bool:
+    """业务卡禁止散文验收；仅 ops/卫生可 prose+commit。"""
+    task = _load_task(ws, tid) or {}
+    pipe = str(task.get("pipeline") or "").strip().lower()
+    if pipe in ("ops", "hygiene", "board", "board_ops"):
+        return True
+    try:
+        from _ccc_hygiene import task_skips_forced_pytest
+
+        if task_skips_forced_pytest(ws, tid, task):
+            return True
+    except Exception:
+        pass
+    title = str(task.get("title") or "")
+    if any(k in title for k in ("卫生", "清场", "看板卫生", "hygiene")):
+        return True
+    return False
+
+
 def check_acceptance(
     ws: Path,
     tid: str,
     *,
     commit: str = "",
+    allow_prose: bool | None = None,
 ) -> dict[str, Any]:
     """Return {ok, reason, ran, bullets, cmds}.
 
     ok=False when: no acceptance text; commands fail; or file-only acceptance
     with no matching paths in commit.
+
+    业务卡（默认）：禁止 ``acceptance_prose_with_commit`` —— 必须有可执行命令
+    或可核对路径。ops/卫生可通过 ``allow_prose=True`` 或自动判定保留散文门。
     """
     ws = Path(ws)
     section = load_acceptance_text(ws, tid)
@@ -222,11 +245,23 @@ def check_acceptance(
             "paths": paths,
         }
     if bullets:
-        # prose-only acceptance: require a task commit exists (caller ensures)
-        if commit:
+        prose_ok = (
+            allow_prose
+            if allow_prose is not None
+            else _allow_prose_acceptance(ws, tid)
+        )
+        if prose_ok and commit:
             return {
                 "ok": True,
                 "reason": "acceptance_prose_with_commit",
+                "ran": [],
+                "bullets": bullets,
+                "cmds": [],
+            }
+        if not prose_ok:
+            return {
+                "ok": False,
+                "reason": "acceptance_prose_forbidden_for_business",
                 "ran": [],
                 "bullets": bullets,
                 "cmds": [],
