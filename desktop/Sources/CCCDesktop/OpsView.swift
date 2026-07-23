@@ -285,8 +285,8 @@ struct OpsView: View {
         return Group {
             if !alerts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    sectionTitle("红灯 · 一键交给 Agent", systemImage: "doc.on.clipboard")
-                    Text("红灯是系统问题。复制后回对话粘贴，让 Agent 处理。你不用当维修工。")
+                    sectionTitle("红灯 · 交给编排运维", systemImage: "doc.on.clipboard")
+                    Text("红灯是系统问题。点按钮打开「编排运维」对话处理。你不用当维修工。")
                         .font(CCCTheme.caption)
                         .foregroundStyle(CCCTheme.faint)
                     ForEach(alerts) { alert in
@@ -305,8 +305,8 @@ struct OpsView: View {
                                 }
                             }
                             Spacer(minLength: 8)
-                            Button("复制给 Agent") {
-                                copyOpsAlert(alert)
+                            Button("交给编排运维") {
+                                Task { await handoffOpsAlert(alert) }
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(CCCTheme.nodeFail)
@@ -323,7 +323,7 @@ struct OpsView: View {
         }
     }
 
-    private func copyOpsAlert(_ alert: OpsHealthAlert) {
+    private func handoffOpsAlert(_ alert: OpsHealthAlert) async {
         let text = (alert.copy_payload?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
             ?? """
             【CCC 运维红灯】\(alert.title)
@@ -332,12 +332,14 @@ struct OpsView: View {
             """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        model.opsCopiedHint = "已复制"
-        model.fillComposer(text: text, threadId: model.selectedThreadId)
+        await model.handoffToOpsAgent(
+            payload: text,
+            sourceProjectId: window.projectId ?? model.selectedProjectId
+        )
         window.destination = .chat
-        model.selectDestination(.chat, projectId: window.projectId)
+        model.selectDestination(.chat, projectId: "ccc")
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            if model.opsCopiedHint == "已复制" {
+            if model.opsCopiedHint == "已交编排运维" {
                 model.opsCopiedHint = nil
             }
         }

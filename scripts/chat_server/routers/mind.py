@@ -29,8 +29,25 @@ def _root(project_id: str) -> Path:
 
 @router.get("/{project_id}/digest")
 async def get_mind_digest(request: Request, project_id: str) -> dict[str, Any]:
+    """L1 digest + 项目脑包字段 brain / inject（sidecar 优先 inject）。"""
     check_auth(request)
     return agent_mind.build_digest(_root(project_id), project_id=project_id)
+
+
+@router.get("/{project_id}/brain")
+async def get_mind_brain(request: Request, project_id: str) -> dict[str, Any]:
+    """项目脑包（CLAUDE+规划文+profile+decided 摘要）。ccc 返回空脑包。"""
+    check_auth(request)
+    from ..services import project_brain
+
+    if project_id.strip().lower() == "ccc":
+        return {
+            "ok": True,
+            "project_id": project_id,
+            "brain": "",
+            "brain_meta": {"skipped": "ops_agent"},
+        }
+    return project_brain.compile_brain(_root(project_id), project_id=project_id)
 
 
 @router.get("/{project_id}/observed")

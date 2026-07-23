@@ -581,9 +581,12 @@ def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
         req = urllib.request.Request(url, method="GET", headers=_hub_auth_headers())
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        digest = str((data or {}).get("digest") or "").strip()
+        digest = str((data or {}).get("inject") or (data or {}).get("digest") or "").strip()
+        brain = str((data or {}).get("brain") or "").strip()
         if digest:
             out = (True, digest)
+        elif brain:
+            out = (True, brain)
         else:
             out = (
                 False,
@@ -603,17 +606,21 @@ def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
 def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     """Inject Hub lens discipline for discuss/Plan turns（常驻，不限 board 关键词）。"""
     pid = (project_id or "").strip()
-    if not pid or pid == "ccc":
-        # 平台仓以本机为准；仍可提示勿 ssh
+    if not pid:
+        return ""
+    if pid == "ccc":
         return (
-            "【平台仓 ccc · Plan】本机 CCC 可 Read/git；"
-            "业务仓事实仍须 Hub 透镜/一等 hub_* 工具，禁止 ssh mac2017。"
+            "【编排运维 Agent · ccc】本机 CCC 可 Read/Write/Edit；"
+            "全舰队板务用 hub_repair(project_id=目标仓)；"
+            "禁止对 orch 投业务 epic；禁止教用户 outbox/Terminal；"
+            "业务产品意图请用户回业务项目卡。"
         )
     parts = [
-        f"【Hub 透镜+板务 · Plan · project_id={pid}】",
+        f"【Hub 透镜 · 项目 Agent · project_id={pid}】",
         "优先一等工具：hub_board / hub_git / hub_locate / hub_file / hub_grep / "
-        "hub_repair / hub_mind_get / hub_mind_put（MCP ccc-hub）。",
-        "板堵/残卡：先 hub_repair(action=clear_blockers)；禁止教用户 Terminal/outbox；禁止卫生 epic。",
+        "hub_mind_get / hub_mind_put。",
+        "板堵/残卡：**交接编排运维（ccc）**；禁止本会话 hub_repair 清全球板；"
+        "禁止教用户 Terminal/outbox；禁止卫生 epic。",
         "禁止 ssh / 本机业务路径 Read/git。结果内化，勿把 CLI 贴进用户正文。",
         "扫风险/定稿：board → locate → file 定点 1～3 相对路径；禁止只读文档交差。",
         "Hub 经本机隧道 :17777；勿改指 LAN :7777。",
@@ -629,11 +636,10 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     parts.append(block)
     if mblock:
         parts.append(mblock)
-    # 板堵硬闸：注入里已含 abnormal/failed 计数时强制先 repair
     if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
         parts.append(
-            "【板务强制】本轮必须先 hub_repair(clear_blockers)（或 status→archive）；"
-            "清完再用短人话说「异常已清」；禁止甩 outbox/Terminal 给老板。"
+            "【板务交接强制】本轮用人话请用户打开编排运维（ccc）清板；"
+            "禁止本会话清板、禁止甩 outbox/Terminal。"
         )
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
@@ -649,10 +655,9 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
             "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 hub_board + hub_git；"
-            "若 ready=false / abnormal / failed：先 hub_repair(clear_blockers)；"
+            "若 ready=false / abnormal / failed：交接编排运维清板；"
             "禁止默认逼用户投卫生 epic；禁止零工具只复述注入快照。"
         )
-    # 定稿 / 转任务 / 看仓况：不依赖用户点「对齐基线」，强制 live 核实；板堵优先 repair
     if re.search(
         r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|ccc-transfer|转任务契约|转任务)",
         text,
@@ -661,10 +666,7 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         parts.append(
             "【定稿/转任务 · 强制核实】作答前必须 hub_board + hub_git；"
             "再按目标 hub_locate/hub_file 定点 1～3 路径。"
-            "内化 ready_for_task / inflight / dirty_kind；"
-            "ready=false 或 inflight>0 → 先 hub_repair(clear_blockers)；"
-            "禁止默认投卫生 epic；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
-            "digest/STATUS 勾选不作终局；定稿后二级卡仅 title/human_note 可改。"
+            "板堵 → 交接编排运维；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
             "对用户：≤3 句人话 + 可选一个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
         )
     return "\n".join(parts)
@@ -726,21 +728,24 @@ async def chat(request: Request):
     # 用用户原文判定 light/full（wrap 后会很长，不能再按长度猜）
     prompt_mode = _resolve_prompt_mode(prompt, requested=prompt_mode_raw or None)
     user_text_for_tools = prompt
-    prompt = wrap_hub_prompt(prompt, mode=prompt_mode)
+    prompt = wrap_hub_prompt(prompt, mode=prompt_mode, project_id=project_id)
 
     tool_mode = _agent_cfg.resolve_tool_mode(
         body.get("tool_mode") or body.get("toolMode"),
         user_text=user_text_for_tools,
         project_id=project_id,
     )
-    # discuss：保留联网工具能力，但注入纪律，降低「首轮就 WebFetch 挂死」概率
+    # discuss：工具纪律 + 业务透镜；ccc engineer：运维上下文（可写本机）
     if tool_mode == "discuss":
         disc = (_agent_cfg.DISCUSS_TOOL_DISCIPLINE or "").strip()
         if disc and disc not in prompt[:500]:
             prompt = f"{disc}\n---\n{prompt}"
-        # 业务仓：注入 Hub 只读透镜纪律 + 看板问句自动附带 live board
         lens_block = _lens_context_for_turn(project_id, user_text_for_tools)
         if lens_block:
+            prompt = f"{lens_block}\n---\n{prompt}"
+    elif (project_id or "").strip().lower() == "ccc":
+        lens_block = _lens_context_for_turn(project_id, user_text_for_tools)
+        if lens_block and lens_block not in prompt[:400]:
             prompt = f"{lens_block}\n---\n{prompt}"
     idle_s, max_s = resolve_chat_timeouts(body.get("timeout"))
     client_gone = {"v": False}

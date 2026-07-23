@@ -38,13 +38,23 @@ enum StreamSessionController {
             ?? (id == "minimax-m3" ? "MiniMax-M3" : id)
     }
 
-    /// discuss = 只读探查；engineer = 允许本机写文件（仅平台仓 ccc）
+    /// discuss = 只读探查；engineer = 允许本机写文件（仅平台仓 ccc；ccc 默认 engineer）
     static func resolveToolMode(
         preferred: String,
         userText: String,
         projectId: String? = nil
     ) -> String {
         let pref = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let pid = projectId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        // 编排运维 Agent（ccc）：默认 engineer；仅显式 discuss 保持只读
+        if pid == "ccc" {
+            if pref == "discuss" { return "discuss" }
+            let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.contains("规划模式") || t.contains("只读讨论") {
+                return "discuss"
+            }
+            return "engineer"
+        }
         var mode = "discuss"
         if pref == "engineer" {
             mode = "engineer"
@@ -54,14 +64,8 @@ enum StreamSessionController {
                 mode = "engineer"
             }
         }
-        // 业务仓拒绝工程师模式（旁路收死）
-        if mode == "engineer",
-           let pid = projectId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-           !pid.isEmpty,
-           pid != "ccc"
-        {
-            return "discuss"
-        }
+        // 业务仓拒绝工程师模式
+        if mode == "engineer" { return "discuss" }
         return mode
     }
 

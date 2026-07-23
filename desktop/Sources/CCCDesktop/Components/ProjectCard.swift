@@ -12,6 +12,12 @@ struct ProjectCard: View {
 
     @State private var hovering = false
 
+    private var projectDisplayName: String {
+        if project.id == "ccc" { return "编排运维" }
+        let n = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? project.id : n
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             Button(action: openProject) {
@@ -22,7 +28,7 @@ struct ProjectCard: View {
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(project.name)
+                        Text(projectDisplayName)
                             .font(.system(size: 13.5, weight: .regular))
                             .foregroundStyle(isSelected ? CCCTheme.ink : CCCTheme.secondary)
                             .lineLimit(1)

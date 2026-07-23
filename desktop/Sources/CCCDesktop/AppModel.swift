@@ -1199,6 +1199,10 @@ final class AppModel: ObservableObject {
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
+        // 编排运维 Agent：进入 ccc 时默认工程师模式（可写本机 CCC）
+        if id == "ccc", preferredToolMode != "discuss" {
+            preferredToolMode = "engineer"
+        }
         ensureThreadHydrated(threadId: eagerTid)
         selectedThreadId = eagerTid
         if switching {
@@ -2108,11 +2112,22 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 失败回填 / 右栏「复制给对话」：写入本窗输入框
-    func fillComposer(text: String, threadId: String?) {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        setComposerBounce(t, threadId: threadId)
+    /// 运维红灯 / 板务交接：打开编排运维（ccc）会话并填入摘要
+    func handoffToOpsAgent(payload: String, sourceProjectId: String? = nil) async {
+        var text = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if let src = sourceProjectId?.trimmingCharacters(in: .whitespacesAndNewlines), !src.isEmpty,
+           !text.contains("project_id=")
+        {
+            text = "【交编排运维】来源项目=\(src)\n\(text)"
+        }
+        if !text.contains("编排运维") && !text.contains("hub_repair") {
+            text = "【CCC 编排运维】请清板或处理下列运维问题（可用 hub_repair 跨项目）：\n\(text)"
+        }
+        destination = .chat
+        await openProjectConversation("ccc")
+        fillComposer(text: text, threadId: selectedThreadId)
+        opsCopiedHint = "已交编排运维"
     }
 
     private func setComposerBounce(_ text: String?, threadId: String?) {

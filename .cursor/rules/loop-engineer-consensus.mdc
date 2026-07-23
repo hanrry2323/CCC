@@ -32,11 +32,13 @@ alwaysApply: true
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
 - **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。偶发卫生卡仍强制 `python`（禁假 committer）。
-- **看板管家（硬）**：板面残卡/abnormal/幽灵轨清场 = **App Agent 本职**（Hub `board-repair` / `hub_repair`），**清 abnormal 不等人审**；禁止 Engine 卫生 epic、禁止教用户手写 `transfer-outbox`/Terminal 清板。板堵必须先自跑 repair，再谈新产品——否则 ready 死循环。
-- **对用户语感（硬）**：Cursor 级搭档——短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块。
+- **双 Desktop Agent（硬）**：**项目 Agent**（业务卡）只做意图/定稿；**CCC 编排运维 Agent**（Desktop·`ccc`）管全舰队看板卡死/幽灵轨/Hub·Engine·sidecar 运维，默认 engineer 可写本机 CCC，`hub_repair` 跨 project_id。平台深改仍认 Cursor。
+- **看板管家（硬）**：板务本职 = **编排运维 Agent**（非业务会话）。业务 Agent 板堵只**短交接**「请打开编排运维清板」；禁止 Engine 卫生 epic、禁止教用户手写 `transfer-outbox`/Terminal。运维红灯复制 → 打开 `ccc` 会话。
+- **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块。
 - **飞轮自动化（规划）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-24-lpsn-flywheel-auto.md`（未实现代码）。
 - **Desktop 主路径（取代四段硬流程）**：聊意图（对齐基线=可选深扫，非硬门槛）→ 人确认下达（定稿/转任务）；「下一步」已降级为可选看仓况；核实并入定稿前静默 lens。凡进 backlog epic 必 wake Engine；未扇出须人话阻塞因。
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
+- **项目脑包（硬 · qb 样板）**：按 project_id 注入权威仓 `CLAUDE.md` + 规划文（qb=`docs/DEV_PLAN_v1.1.md`，禁止平行 TODO.md）+ profile + decided；board=过程。SSOT：`docs/product/project-agent-brain.md`。舰队改造抄该文 Rollout 表。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - **M1→Hub 主路径** = 本机 SSH 隧道 `127.0.0.1:17777`（`com.ccc.hub-tunnel`）；**禁止**把 LAN `192.168.3.116:7777` 当 Desktop/sidecar 默认。详见 `docs/product/hub-ssh-tunnel.md`。  
 - **Desktop 右栏** = 项目态势（看板摘要 + 大卡/扇出），跟左侧项目绑定、不跟单会话；见 `docs/product/desktop-flow-rail-ux.md`。  

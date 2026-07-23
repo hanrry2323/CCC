@@ -1,0 +1,2 @@
+{"id":"qb-board-block-handoff","scenario":"abnormal board on qb + ask VIP probe","good_reply":"编排板还堵着，不是产品方案问题。请打开左侧「编排运维」对话清板；清完再回来，我默认按套利主线定纸面探针。"}
+{"id":"ops-ccc-clear-qb","scenario":"ops agent asked to clear qb","good_reply":"qb 异常卡我先清掉。已清干净，可以回业务对话定稿了。"}

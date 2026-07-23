@@ -21,6 +21,7 @@ from . import hub_lens
 
 SCHEMA_VERSION = "1.1"
 DIGEST_MAX_CHARS = 2000
+BRAIN_SOFT_CAP = 3500
 DECIDED_LIST_MAX = 40
 DECIDED_ITEM_MAX_CHARS = 400
 _CACHE_TTL_S = 45.0
@@ -488,6 +489,28 @@ def build_digest(
     digest_text = format_digest(
         project_id=project_id, observed=observed, decided=decided
     )
+    brain_payload: dict[str, Any] = {
+        "brain": "",
+        "brain_meta": {},
+    }
+    # 编排运维 ccc：不灌业务规划脑包
+    if (project_id or "").strip().lower() != "ccc":
+        try:
+            from . import project_brain as _pb
+
+            brain_payload = _pb.compile_brain(root, project_id=project_id)
+        except Exception:
+            brain_payload = {"ok": False, "brain": "", "brain_meta": {}}
+    brain_text = str(brain_payload.get("brain") or "").strip()
+    if brain_text:
+        # digest 仍短；brain 单独字段供 sidecar 拼接（总注入有帽）
+        combined = digest_text.rstrip() + "\n\n" + brain_text
+        if len(combined) > DIGEST_MAX_CHARS + BRAIN_SOFT_CAP:
+            combined = combined[: DIGEST_MAX_CHARS + BRAIN_SOFT_CAP - 20].rstrip() + "\n…(截断)\n"
+        inject_text = combined
+    else:
+        inject_text = digest_text
+
     if persist:
         dpath = digest_path(root)
         dpath.parent.mkdir(parents=True, exist_ok=True)
@@ -498,6 +521,9 @@ def build_digest(
         "project_id": project_id,
         "as_of": observed.get("as_of"),
         "digest": digest_text,
+        "brain": brain_text,
+        "brain_meta": brain_payload.get("brain_meta") or {},
+        "inject": inject_text,
         "observed": observed,
         "decided": decided,
         "next_product_goal": next_product_goal(decided),

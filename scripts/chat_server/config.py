@@ -102,21 +102,19 @@ CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 
-# discuss = Plan：方案智力拉满，执行权（改业务码）为零；板务/心智允许
+# discuss = Plan：业务项目方案智力拉满，执行权（改业务码）为零；板务交接编排运维
 # 工具：SDK 默认全开 + 硬禁 Write/Edit…；优先一等 MCP hub_* ；Bash CLI 仅逃生口
 DISCUSS_TOOL_DISCIPLINE = (
-    "【工具纪律 · Plan · Desktop】智力拉满；业务仓零改码；**看板管家本职**。"
+    "【工具纪律 · Plan · 项目 Agent】智力拉满；业务仓零改码；**板务交接编排运维**。"
     "优先一等 MCP 工具（ccc-hub）：hub_board / hub_git / hub_locate / hub_file / hub_grep / "
-    "hub_repair / hub_mind_get / hub_mind_put。"
-    "板堵（abnormal/failed/幽灵轨/ready=false 非纯业务脏）→ **先 hub_repair(clear_blockers)**，再说话。"
-    "清 abnormal 不等人审；禁止投卫生 epic；禁止教用户 Terminal / transfer-outbox / Hub CLI。"
+    "hub_mind_get / hub_mind_put（只读事实与心智）。"
+    "板堵（abnormal/failed/幽灵轨/ready=false 非纯业务脏）→ **短人话请用户打开编排运维（ccc）清板**；"
+    "**禁止**你在本会话 hub_repair 清全球板；禁止投卫生 epic；禁止教用户 Terminal / transfer-outbox。"
     "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删业务文件、擅自 commit。"
     "Bash 仅逃生口可跑只读探查与 `ccc-hub-lens.py`；结果内化，**禁止把命令贴进用户正文**。"
     "业务仓事实必须经 Hub（禁止 ssh / 写死 2017 绝对路径 / 本机第二树）。"
     "【扫风险 / 定稿】① hub_board；② hub_locate/hub_grep 定点；③ hub_file 1～3 路径；④ hub_git；再结论。"
-    "仅 project_id=ccc 且本机映射存在时才对本机 git/Read。"
     "对用户：短中文白话；平台词只进 ccc-transfer 块。Hub 不可达 → 明说，禁止瞎编。"
-    "工程师模式仅平台仓 ccc。"
 )
 
 
@@ -126,18 +124,21 @@ def resolve_tool_mode(
     user_text: str = "",
     project_id: str = "",
 ) -> str:
-    """返回 discuss | engineer。缺省 discuss；显式或口令解锁 engineer。
+    """返回 discuss | engineer。
 
-    业务仓（project_id != ccc）一律 discuss，口令无效。
+    - 业务仓：一律 discuss（口令无效）
+    - 平台仓 ccc（编排运维）：默认 engineer；显式 discuss 仍可只读
     """
     t = (explicit or "").strip().lower()
+    pid = (project_id or "").strip().lower()
     if t in ("engineer", "discuss"):
         mode = t
     elif any(p in (user_text or "") for p in _ENGINEER_PHRASES):
         mode = "engineer"
+    elif pid == "ccc":
+        mode = "engineer"
     else:
         mode = "discuss"
-    pid = (project_id or "").strip().lower()
     if mode == "engineer" and pid and pid != "ccc":
         return "discuss"
     return mode

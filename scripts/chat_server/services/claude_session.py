@@ -485,8 +485,8 @@ class ClaudeSessionManager:
                 kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         if resume_session_id:
             kwargs["resume"] = resume_session_id
-        # Desktop discuss：注入 ccc-hub MCP（lens / board-repair / mind）
-        if mode == "discuss" and os.environ.get("CCC_HUB_MCP", "1").strip() != "0":
+        # Desktop：注入 ccc-hub MCP（透镜 / board-repair / mind）；discuss+engineer 均需要
+        if os.environ.get("CCC_HUB_MCP", "1").strip() != "0":
             try:
                 from .hub_agent_tools import mcp_server_config
 
