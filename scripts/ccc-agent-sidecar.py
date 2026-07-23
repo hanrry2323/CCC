@@ -647,9 +647,24 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
-            "【对齐基线 · 强制】作答前必须 Bash 跑 "
+            "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 Bash 跑 "
             f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
             "禁止零工具只复述注入快照（用户要看见思考/工具过程轨）。"
+        )
+    # 下一步 / 定稿：不依赖用户点「对齐基线」，同样强制 live 核实
+    if re.search(
+        r"(下一步|规划下一步|最佳下一步|帮我规划|定稿|ccc-transfer|转任务契约)",
+        text,
+        re.I,
+    ):
+        parts.append(
+            "【下一步/定稿 · 强制核实】作答前必须 Bash 跑 "
+            f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
+            "再按目标 locate/file 定点 1～3 路径。"
+            "内化 ready_for_task / inflight / dirty_kind；"
+            "ready=false 或 inflight>0 → 只谈板务/止损，禁止推荐或定稿新产品 epic。"
+            "digest/STATUS 勾选不作终局；脚本+报告已在仅文档未勾 → S/同步，勿 stamp 重开。"
+            "定稿后二级卡仅 title/human_note 可改，方案字段已锁。"
         )
     return "\n".join(parts)
 

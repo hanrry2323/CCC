@@ -675,8 +675,8 @@ actor APIClient {
         var streamErrCode: String?
         var streamErrMsg: String?
         // 可靠性：有心跳 ≠ 有进展。ping 只证明连接活着，不得重置进展时钟。
-        // 与 sidecar CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 对齐并略宽。
-        let progressLimit: TimeInterval = 75
+        // 与 sidecar CHAT_FIRST_EVENT_TIMEOUT（默认 120s）对齐并略宽，避免客户端先误杀。
+        let progressLimit: TimeInterval = 150
         var lastProgressAt = Date()
         // Phase 1.6: 按行切片但用 cursor 一次性丢前缀，避免 removeSubrange 每行 O(n) 共 O(n²)
         let nlByte = Data([UInt8(ascii: "\n")])

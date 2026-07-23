@@ -897,6 +897,13 @@ class ClaudeSessionManager:
 
                     await slot.client.query(effective_prompt)
                     last_progress = time.monotonic()
+                    # 立即给 UI「已受理」：刷新进展时钟，但不解除首包门禁
+                    # （仍要在 first_event_s 内见到 delta/tool；避免长提示被 60s 误杀）
+                    yield {
+                        "type": "status",
+                        "content": "已受理，等待模型首包…",
+                        "phase": "accepted",
+                    }
                     reader_task = asyncio.create_task(
                         _reader(), name=f"ccc-chat-reader-{hub_session_id[:12]}"
                     )
@@ -1020,8 +1027,15 @@ class ClaudeSessionManager:
                                 "tool_result",
                                 "error",
                             ):
-                                last_progress = time.monotonic()
-                                awaiting_first_event = False
+                                # accepted 仅 UI，不解除首包门禁（真进展仍须 delta/tool）
+                                if not (
+                                    et == "status"
+                                    and str(event.get("phase") or "") == "accepted"
+                                ):
+                                    last_progress = time.monotonic()
+                                    awaiting_first_event = False
+                                else:
+                                    last_progress = time.monotonic()
                             if et == "delta":
                                 content = str(event.get("content") or "")
                                 if not content:

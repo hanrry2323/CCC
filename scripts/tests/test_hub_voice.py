@@ -98,3 +98,28 @@ def test_legacy_hub_marker_idempotent():
 
     legacy = "【Hub 对话人格 · 老板模式 · 强制】\nold\n---\n你好"
     assert wrap_hub_prompt(legacy) == legacy
+
+
+def test_four_stage_flow_locked_in_voice():
+    """对齐基线非硬门槛；下一步核实；定稿后二级卡仅 title/备注。"""
+    from hub_voice import HUB_BOSS_VOICE
+
+    assert "四段流程" in HUB_BOSS_VOICE
+    assert "硬门槛" in HUB_BOSS_VOICE
+    assert "ready_for_task=false" in HUB_BOSS_VOICE
+    assert "新产品" in HUB_BOSS_VOICE
+    assert "human_note" in HUB_BOSS_VOICE
+    assert "退回对话重定稿" in HUB_BOSS_VOICE
+
+
+def test_sidecar_next_step_forces_lens_verify():
+    """下一步/定稿不依赖点对齐基线，sidecar 仍注入强制 board+git。"""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "ccc-agent-sidecar.py").read_text(
+        encoding="utf-8"
+    )
+    assert "下一步/定稿 · 强制核实" in src
+    assert "ready=false 或 inflight>0" in src
+    assert re.search(r"下一步\|规划下一步\|最佳下一步", src)

@@ -41,8 +41,8 @@ CHAT_DRAIN_TIMEOUT = max(2, min(CHAT_DRAIN_TIMEOUT, 60))
 CHAT_WARM_LOCK_WAIT = int(os.environ.get("CCC_CHAT_WARM_LOCK_WAIT", "3"))
 CHAT_WARM_LOCK_WAIT = max(1, min(CHAT_WARM_LOCK_WAIT, 30))
 # 可靠性契约：有心跳 ≠ 有进展。query 后无任何可映射事件 / 工具无结果 → 中断并回收 slot。
-# Plan 模式可触发 Task/Web 子代理，首包时间放宽到 60s。
-CHAT_FIRST_EVENT_TIMEOUT = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", "60"))
+# Plan/长提示 + MiniMax 首包常 >60s；默认 120s（可用 CCC_CHAT_FIRST_EVENT_TIMEOUT 覆盖，上限 300）。
+CHAT_FIRST_EVENT_TIMEOUT = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", "120"))
 CHAT_FIRST_EVENT_TIMEOUT = max(10, min(CHAT_FIRST_EVENT_TIMEOUT, 300))
 CHAT_TOOL_STALL_TIMEOUT = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", "90"))
 CHAT_TOOL_STALL_TIMEOUT = max(15, min(CHAT_TOOL_STALL_TIMEOUT, 600))

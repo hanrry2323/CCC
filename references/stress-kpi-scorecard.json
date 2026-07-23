@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "id": "efficiency_six_core",
+  "title": "CCC stress KPI scorecard (efficiency_six)",
+  "profile": "efficiency_six",
+  "apps_default": ["ccc-demo", "qb"],
+  "purpose": "固定 profile 压测 → 对照核心指标 → 只改有 Δ 归因的项 → 再压；打通后再套到已注册旧仓/新仓。",
+  "snapshot": {
+    "wait_s": 3600,
+    "prefer_board_idle": true,
+    "note": "优先板空（本批 stress work 无 planned/in_progress/testing）；否则 wall-clock≥wait_s 仍强制 evaluate（中期也可出报告，但 ghost/in_progress 门更严）。"
+  },
+  "rounds": {
+    "recommended": 4,
+    "max": 5,
+    "rationale": "R1 短路径幽灵槽；R2 L0 分级死门；R3 commit-gate/脏树；R4 审测税+duration 观测；R5 储备。每轮主攻≤2 KPI。"
+  },
+  "baselines": {
+    "stress-mx-20260723": {
+      "label": "v1 overnight",
+      "epic_done_rate": 0.5,
+      "work_abnormal_n": 7,
+      "queue_wait_p95_s": 2367,
+      "gate_wall_p95_s": 3566,
+      "e2e_work_p95_s": 3715,
+      "duration_s_fill_rate": 0.51,
+      "dirty_result_n": 0
+    },
+    "stress-mx-20260723r2": {
+      "label": "r2 mid ~1h (incomplete)",
+      "epic_done_rate": 0.667,
+      "work_abnormal_n": 2,
+      "queue_wait_p95_s": 554,
+      "gate_wall_p95_s": 1067,
+      "e2e_work_p95_s": 1516,
+      "duration_s_fill_rate": 0.0,
+      "dirty_result_n": 0,
+      "ghost_in_progress_n": 2
+    }
+  },
+  "gates": [
+    {
+      "id": "epic_done_rate",
+      "path": "computed.epic_done_rate",
+      "op": ">=",
+      "value": 0.833,
+      "unit": "ratio",
+      "primary": true,
+      "note": "≥10/12 done（入板 epic）"
+    },
+    {
+      "id": "work_abnormal_n",
+      "path": "work_columns.abnormal",
+      "op": "<=",
+      "value": 1,
+      "unit": "count",
+      "primary": true
+    },
+    {
+      "id": "ghost_in_progress_n",
+      "path": "computed.ghost_in_progress_n",
+      "op": "<=",
+      "value": 0,
+      "unit": "count",
+      "primary": true,
+      "note": "短路径已 done 仍 in_progress；终评必须 0"
+    },
+    {
+      "id": "queue_wait_p95_s",
+      "path": "time_agg.queue_wait_s.p95",
+      "op": "<=",
+      "value": 300,
+      "unit": "seconds",
+      "primary": true
+    },
+    {
+      "id": "gate_wall_p95_s",
+      "path": "time_agg.gate_wall_s.p95",
+      "op": "<=",
+      "value": 600,
+      "unit": "seconds",
+      "primary": false
+    },
+    {
+      "id": "e2e_work_p95_s",
+      "path": "time_agg.e2e_work_s.p95",
+      "op": "<=",
+      "value": 1200,
+      "unit": "seconds",
+      "primary": false
+    },
+    {
+      "id": "duration_s_fill_rate",
+      "path": "opencode_timings.duration_s_fill_rate",
+      "op": ">=",
+      "value": 0.9,
+      "unit": "ratio",
+      "primary": false,
+      "invalidates_run_if_fail": true,
+      "note": "观测门：不达标则本轮压测标记 INVALID（仍记 Δ，但不算 KPI 通关）"
+    },
+    {
+      "id": "dirty_result_n",
+      "path": "dev_path.dirty_result_n",
+      "op": "<=",
+      "value": 0,
+      "unit": "count",
+      "primary": true,
+      "hard_red": true
+    }
+  ],
+  "autopilot": {
+    "measure_report_gate": "full_auto",
+    "redispatch": "auto_if_gate_fail_and_rounds_left",
+    "code_change": "cursor_agent_only",
+    "code_change_allowlist": [
+      "short_path_advance_after_done",
+      "l0_diff_stat_gradable_or_fixable",
+      "duration_s_fill",
+      "commit_gate_hygiene_vs_business_dirty"
+    ],
+    "forbid": [
+      "raise_MAX_CONCURRENT_as_primary_fix",
+      "ollama_or_second_coding_cli",
+      "board_card_manual_reopen_without_ledger",
+      "invent_on_ccc_orch"
+    ]
+  },
+  "onboard_other_apps": {
+    "prereq": [
+      "ccc-init --register",
+      "Hub baseline 对齐",
+      "板无活跃 inflight（或仅允许 ccc_hygiene）",
+      "控制面 enabled + invent_hard_disabled"
+    ],
+    "command": "python3 scripts/ccc-stress-kpi-loop.py init --apps <id> --max-rounds 5 && …",
+    "same_gates": true
+  }
+}

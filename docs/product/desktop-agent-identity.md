@@ -46,9 +46,11 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 
 业务仓事实 = **Hub 基线开场 + Hub 只读透镜 live + L1 mind digest**（2017 权威）；M1 **无**业务源码第二树。
 
-- 对齐基线：JSON 快照 + **此刻 live board** + profile/state/CLAUDE 摘录 + mind digest  
-- 每轮 discuss：sidecar 注入 L1 digest（`GET /api/desktop/mind/{id}/digest`）；失败则明说不可达  
+- **四段流程**：对齐基线（可选）→ 下一步（强制核实）→ 定稿（锁方案）→ 转任务（二级卡仅 title/备注）  
+- **对齐基线非硬门槛**：深对齐用 Hub baseline 快照；未点芯片时，下一步/定稿仍须 lens `board`+`git`  
+- 每轮 discuss：sidecar 注入 live board + L1 digest；失败则明说不可达  
 - 问看板/在飞/文件/结构 → **必须先**透镜；baseline / digest 不作终局于代码细节  
+- `ready_for_task=false` / `inflight>0` → 只谈板务，禁止新产品 epic  
 - Hub 不可达 → 明说 + 快照时刻；**禁止瞎编**  
 - **禁止**对本机跑 `git status` / Read 业务树去「再核实」；**禁止** `ssh mac2017`  
 - 仅聊 **CCC 平台仓**（`ccc`）时，才可对本机 `/Users/apple/program/CCC` 做 Read/git；工程师模式仅 ccc  
@@ -67,7 +69,8 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - 「M1 不留业务源码；真相在 2017，GitHub 只是备份。」  
 - 「旁路提案在 inbox/，采纳后才进板。」  
 - **定方案不甩锅**：讨论/下一步直接给最佳方案；定稿时白话结论 + 恰好一个 `ccc-transfer`（字段见 transfer-gate）；禁止每轮逼用户选 A/B。  
-- 定稿可见正文 = 用户可读结论；契约 JSON 给 Engine（UI 默认折叠）。
+- 定稿可见正文 = 用户可读结论；契约 JSON 给 Engine（UI 默认折叠）。  
+- **转任务二级卡**：定稿后来源为 `ccc-transfer` 时，人只改标题与备注；改方案退回对话重定稿。
 ---
 
 ## 被问「你是谁」

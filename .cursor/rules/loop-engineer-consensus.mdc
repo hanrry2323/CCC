@@ -31,7 +31,8 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
-- **Desktop Agent 定方案**：讨论/下一步/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。看板卫生强制 `python`（禁假 committer / 勿称 ops 绕过扇出）；abnormal 未核账禁止重复下达。  
+- **Desktop Agent 定方案**：讨论/下一步/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。看板卫生强制 `python`（禁假 committer / 勿称 ops 绕过扇出）；abnormal/残卡未核账禁止重复下达。  
+- **Desktop 四段流程**：对齐基线（可选深对齐，非硬门槛）→ 下一步（强制 lens 核实；未 ready 禁新产品 epic）→ 定稿锁方案 → 转任务二级卡仅 title/human_note 可改。  
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - **M1→Hub 主路径** = 本机 SSH 隧道 `127.0.0.1:17777`（`com.ccc.hub-tunnel`）；**禁止**把 LAN `192.168.3.116:7777` 当 Desktop/sidecar 默认。详见 `docs/product/hub-ssh-tunnel.md`。  
@@ -46,6 +47,7 @@ alwaysApply: true
 - **验收关门**：salvage/进 testing 须 hollow + acceptance；禁止 SELF-CHECKS 字符串假绿；`small` 不跳过审测。多步回归禁止标 small（Hub 会抬 medium）。
 - **门禁适型（2026-07-23）**：审测先认 `dev_path`（script_seed/board_ops/doc_only）再认行数；业务禁散文验收；hollow 仅 OpenCode 且优先本 phase stdout。详见 `docs/briefs/2026-07-23-gate-rule-fitness.md`。
 - **失败学习（2026-07-23）**：L0 总闸 / L1 语义副闸；FAIL→`review_fail.md` 回灌；≥2 或 plan_gap → R2 改 work plan；≥3 quarantine。不做 Ollama/新 coding CLI。见 `docs/briefs/2026-07-23-failure-learning.md`。
+- **压测 KPI 闭环（2026-07-23）**：固定 `efficiency_six` + `references/stress-kpi-scorecard.json` 门禁；`ccc-stress-kpi-loop.py` 投递/evaluate/continue；Cursor `arm-wake` 1h 审查；改码仅 allowlist、每轮≤2 primary；推荐 4 轮上限 5。旧仓/新仓同门禁准入。见 `docs/product/stress-kpi-loop.md`。
 - **VERSION**：kb 默认不 bump；仅 `bump_version=true` 才升版。看板卫生走 board_ops 短路径。
 - **dirty**：仅 `.ccc/` = `ccc_hygiene`，不挡 ready；git porcelain **勿** `str.strip()` 吃掉行首空格（会把卫生脏误判成业务）。
 - **清失败卡**：板上归档不够——同步剪 `flow-events.jsonl` + Hub `_desktop/<id>/last_epic|epic_history`，否则幽灵轨。

@@ -13,12 +13,23 @@ enum QuickPrompts {
         "你是 Desktop 对话面产品搭档（不是 Hub 聊天、不是 Engine 角色）。" +
         "业务仓事实：Hub 基线开场 + Hub 只读透镜 live（ccc-hub-lens / lens API）；M1 无业务源码第二树。" +
         "问看板/在飞/文件必须先透镜；Hub 断则明说不可达，禁止瞎编。" +
-        "若本轮已注入 live board / 快照，直接据此作答；禁止对本机跑 git / Read 业务树再核实（会串台）。" +
+        "若本轮已注入 live board / 快照，仍须 Bash 跑 live 核实后再下结论；禁止对本机跑 git / Read 业务树（会串台）。" +
+        "digest/观察脑不作终局于代码细节；脚本已落地且报告在、仅 STATUS 未勾 → 判为 S/文档同步，禁止重开落地/stamp epic。" +
         "仅当当前项目是 CCC 平台仓且本机有映射时，才可对本机 CCC 做 Read/git。" +
-        "业务仓不可工程师模式；改码请定稿转任务。人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。"
+        "业务仓不可工程师模式；改码请定稿转任务。人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。" +
+        "「对齐基线」是深对齐可选路径，不是下一步/定稿的硬门槛。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"
+
+    static let verifyRitual =
+        "\n## 现况核实（静默必修 · 勿写入回复正文当过程复述）\n" +
+        "作答前必须 Bash：`python3 scripts/ccc-hub-lens.py board <project_id>` 与 " +
+        "`python3 scripts/ccc-hub-lens.py git <project_id>`；" +
+        "再按目标 `locate`/`file` 定点读 1～3 个关键相对路径（如探针脚本、最新报告、STATUS 对应项）。\n" +
+        "先内化：ready_for_task / inflight / dirty_kind / pipeline_idle。" +
+        "ready_for_task=false 或 inflight>0：只谈板务/止损/核账，**禁止**推荐或定稿新产品 epic。\n" +
+        "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n"
 
     static let builtinPrompts: [(title: String, prompt: String)] = [
         ("下一步", nextStep),
@@ -45,10 +56,11 @@ enum QuickPrompts {
     static let nextStep =
         "请帮我规划「下一步」。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n继承本会话已聊目标与约束，结合仓库现状给出**最佳方案**并默认按它推进。\n" +
-        "禁止甩 A/B 菜单让我选；仅当真缺不可逆信息时最多 1 问。\n\n" +
+        verifyRitual +
+        "\n继承本会话已聊目标与约束，结合**核实后的**仓库现状给出**最佳方案**并默认按它推进。\n" +
+        "不必先点「对齐基线」。禁止甩 A/B 菜单让我选；仅当真缺不可逆信息时最多 1 问。\n\n" +
         "请按这个结构回答：\n" +
-        "### 判断\n一句：现在最该推进什么。\n" +
+        "### 判断\n一句：现在最该推进什么（含是否可开工 / 板是否堵）。\n" +
         "### 最佳方案\n要做什么、为什么现在做、不做会怎样；默认按此执行。\n" +
         "### 备选（可选，一句）\n若有明显次优，一句带过；不要逼我拍板。" +
         mustAnswer
@@ -56,6 +68,7 @@ enum QuickPrompts {
     static let scanRisks =
         "请帮我扫一遍风险。\n" +
         replyCompact + "\n" + investigatePref +
+        verifyRitual +
         "\n对照本会话方案与仓库真实状态；无证据不夸大。\n\n" +
         "请按这个结构回答：\n" +
         "### 风险（按严重度，最多 5 条）\n" +
@@ -67,11 +80,13 @@ enum QuickPrompts {
     static let finalize =
         "请把本会话方案定稿成可转任务的契约包。\n" +
         replyCompact + "\n" + investigatePref +
-        "\n先核实仓库能否支撑目标，再写契约。\n" +
+        verifyRitual +
+        "\n先核实仓库能否支撑目标，再写契约。未 ready / 板堵时 feasibility=blocked，勿怂恿转任务。\n" +
         "意图已够则**立即定稿**：禁止再列方案选项、禁止问「要不要入队/确认转任务」。\n" +
         "看板/产物卫生卡：executor_intent 必须 python（禁止 opencode、禁止编造 committer）；" +
         "pipeline=ops 仍走 Engine 扇出，不是人工绕过。\n" +
-        "验收条只写可执行命令或须入 commit 的交付路径；排除列表放 plan「禁止」节，勿写进 acceptance。\n\n" +
+        "验收条只写可执行命令或须入 commit 的交付路径；排除列表放 plan「禁止」节，勿写进 acceptance。\n" +
+        "提醒：转任务二级卡仅可改标题与备注；goal/acceptance/plan_md/执行面已锁，改方案须退回重定稿。\n\n" +
         "先用 2～4 句白话说明：做什么、验收长什么样、是否建议立刻转任务" +
         "（用户可读结论；不要堆任务 id / 绝对路径）。\n" +
         "然后输出恰好一个 ```ccc-transfer``` JSON 块（title/goal/acceptance/pipeline/" +
@@ -81,10 +96,11 @@ enum QuickPrompts {
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
     static let alignBaseline =
-        "请帮我对齐当前项目基线。\n" +
+        "请帮我对齐当前项目基线（深对齐 · 可选，非硬门槛）。\n" +
         replyCompact + "\n" + investigatePref +
+        verifyRitual +
         "\n\n请按这个结构回答：\n" +
-        "### 现状\n- 定位（含版本）\n- 阶段 / 是否可开工\n" +
+        "### 现状\n- 定位（含版本）\n- 阶段 / 是否可开工（ready / inflight / dirty_kind）\n" +
         "### 风险\n挡下达或发布的事；空板闲置可写正常\n" +
         "### 建议下一步\n直接给最佳 1 条（含理由）；勿列菜单逼选\n" +
         "### 可下达任务\n适合转任务的 1 个标题，或不适合时写「先处理：…」" +

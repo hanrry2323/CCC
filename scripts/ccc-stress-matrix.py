@@ -65,19 +65,20 @@ def _slug(app: str, sid: str) -> str:
 
 def scenarios_for(app: str) -> list[Scenario]:
     """Dispatch scenarios for current PROFILE."""
+    if PROFILE == "efficiency_six":
+        want = {"e01", "e02", "e03", "e04", "e05", "e08"}
+        return [s for s in scenarios_efficiency_v2(app, stem_prefix="eff23r2") if s.sid in want]
     if PROFILE == "efficiency_v2":
         return scenarios_efficiency_v2(app)
     return scenarios_legacy10(app)
 
 
-def scenarios_efficiency_v2(app: str) -> list[Scenario]:
-    """每仓 8 张有价值场景（双仓 16 transfer）——不做每仓 20。
-
-    覆盖：短路径 / 拒单 / 同仓排队 / 双 phase；去掉故意 FAIL 与 abnormal 重开噪音。
-    """
-    stem = f"eff23_{app.replace('-', '_')}"
+def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Scenario]:
+    """有价值场景集。stem_prefix 区分压测批次产物路径。"""
+    stem = f"{stem_prefix}_{app.replace('-', '_')}"
     probe = f"scripts/{stem}_feature_probe.py"
-    paper = f"scripts/{stem}_paper_intent_probe.py"
+    # script_seed 固定写入 scripts/paper_intent_probe.py（勿用 stem 变体路径）
+    paper = "scripts/paper_intent_probe.py"
     mod = f"scripts/{stem}_mod.py"
     suite_mod = f"scripts/{stem}_suite_mod.py"
     doc = f"docs/{stem.upper()}_NOTE.md"
@@ -513,8 +514,14 @@ def save_results(data: dict[str, Any]) -> None:
 
 
 def cmd_dispatch(batch: int) -> None:
-    """Dispatch by batch. efficiency_v2: batch1=e01-e04, batch2=e05-e08, batch0=all."""
-    if PROFILE == "efficiency_v2":
+    """Dispatch by batch."""
+    if PROFILE == "efficiency_six":
+        ranges = {
+            0: ("e01", "e02", "e03", "e04", "e05", "e08"),
+            1: ("e01", "e02", "e03"),
+            2: ("e04", "e05", "e08"),
+        }
+    elif PROFILE == "efficiency_v2":
         ranges = {
             0: ("e01", "e02", "e03", "e04", "e05", "e06", "e07", "e08"),
             1: ("e01", "e02", "e03", "e04"),
@@ -772,9 +779,9 @@ def main() -> None:
     )
     ap.add_argument(
         "--profile",
-        choices=("legacy10", "efficiency_v2"),
+        choices=("legacy10", "efficiency_v2", "efficiency_six"),
         default="efficiency_v2",
-        help="scenario set (default efficiency_v2 = 8/app valuable)",
+        help="scenario set (efficiency_six = 6/app valuable)",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dispatch")
@@ -782,7 +789,7 @@ def main() -> None:
         "--batch",
         type=int,
         required=True,
-        help="efficiency_v2: 0=all, 1=e01-e04, 2=e05-e08; legacy: 1/2/3",
+        help="efficiency_six/v2: 0=all; legacy: 1/2/3",
     )
     w = sub.add_parser("watch")
     w.add_argument("--timeout", type=int, default=1800)
@@ -792,11 +799,12 @@ def main() -> None:
     args = ap.parse_args()
     run = args.run.strip()
     if not run:
-        run = (
-            "stress-mx-20260723"
-            if args.profile == "efficiency_v2"
-            else "stress-mx-20260722"
-        )
+        if args.profile == "efficiency_six":
+            run = "stress-mx-20260723r2"
+        elif args.profile == "efficiency_v2":
+            run = "stress-mx-20260723"
+        else:
+            run = "stress-mx-20260722"
     _set_run(run, args.profile)
     if args.cmd == "dispatch":
         cmd_dispatch(args.batch)

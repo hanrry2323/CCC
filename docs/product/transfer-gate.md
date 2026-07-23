@@ -38,6 +38,15 @@ Engine **之后**才扇出 work；转任务接口禁止直接写 planned work。
 
 Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单编辑。
 
+### 定稿后二级卡可改边界（硬 · 2026-07-23）
+
+| 来源 `source` | 人可改 | 只读（须退回对话重定稿才能改） |
+|---------------|--------|--------------------------------|
+| `ccc-transfer`（正式定稿） | **title**、**human_note**（备注/定时说明） | goal、acceptance、plan_md、pipeline、executor_intent、complexity、feasibility、bump_version |
+| `heuristic`（无正式定稿） | 意图与执行偏好可改（建议先点「定稿」锁方案） | — |
+
+改方案 = 退回对话 → 再点「定稿」出新契约；禁止在二级卡改已锁 `plan_md`/验收后假装「只改了标题」。
+
 ---
 
 ## 必填字段（Gate）

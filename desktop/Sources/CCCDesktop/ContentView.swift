@@ -827,9 +827,9 @@ struct CodexChatPaneBody: View {
                 .foregroundStyle(CCCTheme.accent)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                Text("三步走完主路径")
+                Text("四段主路径")
                     .font(.system(size: 12, weight: .medium))
-                Text("① 说明目标与验收  →  ② 点「定稿」  →  ③ 确认转任务，右侧看编排。侧栏「用法」可随时打开。")
+                Text("① 聊透/对齐基线（可选）→ ②「下一步」会核实仓况 → ③「定稿」锁方案 → ④ 转任务仅改标题备注。侧栏「用法」可开。")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1228,9 +1228,9 @@ struct CodexChatPaneBody: View {
                                     .foregroundStyle(CCCTheme.faint)
                                     .frame(maxWidth: .infinity, alignment: .center)
                                 VStack(alignment: .leading, spacing: 10) {
-                                    emptyStep(num: "1", title: "聊透目标", detail: "说清要解决什么、怎样算验收成功")
-                                    emptyStep(num: "2", title: "点「定稿」", detail: "快捷条生成可转任务的契约包")
-                                    emptyStep(num: "3", title: "确认转任务", detail: "写入待办后，右侧展开本对话编排")
+                                    emptyStep(num: "1", title: "聊透 / 下一步", detail: "对齐基线可选；下一步会核实仓况再定方案")
+                                    emptyStep(num: "2", title: "点「定稿」", detail: "生成契约并锁方案（二级卡不可改正文）")
+                                    emptyStep(num: "3", title: "确认转任务", detail: "仅可改标题与备注；右侧展开编排")
                                 }
                                 .padding(16)
                                 .frame(maxWidth: 420)
@@ -1680,7 +1680,7 @@ struct CodexChatPaneBody: View {
                 HStack(spacing: 6) {
                     quickChip(
                         "对齐基线",
-                        help: "像 Cursor 一样核实 git/文档后，白话说明定位、风险与最佳下一步"
+                        help: "深对齐：Hub 快照+透镜；可选，不是「下一步/定稿」的硬门槛"
                     ) {
                         Task {
                             await model.alignBaseline(
@@ -1702,7 +1702,7 @@ struct CodexChatPaneBody: View {
                     }
                     quickChip(
                         "下一步",
-                        help: "结合会话与仓库，给出最多三条带取舍的下一步（含最佳项）"
+                        help: "先 lens 核实 board/git 再给最佳方案；未 ready 只谈板务，不必先点对齐基线"
                     ) {
                         model.applyQuickPrompt(
                             QuickPrompts.nextStep,
@@ -1713,7 +1713,7 @@ struct CodexChatPaneBody: View {
                     }
                     quickChip(
                         "定稿",
-                        help: "核实可行性后生成 ccc-transfer 契约包，便于确认转任务"
+                        help: "核实后生成契约并锁方案；转任务二级卡仅可改标题与备注"
                     ) {
                         model.applyQuickPrompt(
                             QuickPrompts.finalize,
@@ -2408,6 +2408,9 @@ struct TransferSheet: View {
     @State private var showRejectNote: Bool = false
     @State private var didLoad = false
 
+    /// 正式定稿契约：方案锁死，仅标题/备注可改
+    private var planLocked: Bool { draft.source == "ccc-transfer" }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -2424,49 +2427,99 @@ struct TransferSheet: View {
                         .background(CCCTheme.faint.opacity(0.12), in: Capsule())
                 }
             }
-            Text("意图可改；可行性=可执行时锁死。纠错：备注续投或退回对话重定稿。")
+            Text(
+                planLocked
+                    ? "定稿方案已锁；仅可改标题与备注（含定时说明）。改方案请退回对话重定稿。"
+                    : "启发式预填可改意图；建议先点「定稿」锁方案。纠错：退回对话重定稿。"
+            )
                 .font(CCCTheme.callout)
                 .foregroundStyle(CCCTheme.faint)
 
             Form {
-                Section("意图（可改）") {
+                Section(planLocked ? "意图（标题可改 · 方案已锁）" : "意图（可改）") {
                     TextField("标题", text: $draft.title)
-                    TextField("目标", text: $draft.goal, axis: .vertical)
-                        .lineLimit(3...6)
-                    TextField("验收（每行一条）", text: $draft.acceptance, axis: .vertical)
-                        .lineLimit(3...8)
-                    DisclosureGroup(isExpanded: $planExpanded) {
-                        if planExpanded {
-                            TextField("方案正文", text: $draft.planMd, axis: .vertical)
-                                .lineLimit(4...12)
+                    if planLocked {
+                        LabeledContent("目标") {
+                            Text(draft.goal.isEmpty ? "—" : draft.goal)
+                                .font(.system(size: 13))
+                                .foregroundStyle(CCCTheme.secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .textSelection(.enabled)
                         }
-                    } label: {
-                        Text(planExpanded ? "方案正文" : planMdSummary)
-                            .font(.system(size: 13))
-                            .foregroundStyle(CCCTheme.secondary)
+                        LabeledContent("验收") {
+                            Text(draft.acceptance.isEmpty ? "—" : draft.acceptance)
+                                .font(.system(size: 12))
+                                .foregroundStyle(CCCTheme.secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .textSelection(.enabled)
+                        }
+                        DisclosureGroup(isExpanded: $planExpanded) {
+                            if planExpanded {
+                                Text(draft.planMd.isEmpty ? "（无方案正文）" : draft.planMd)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(CCCTheme.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } label: {
+                            Text(planExpanded ? "方案正文（只读）" : planMdSummaryLocked)
+                                .font(.system(size: 13))
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
+                    } else {
+                        TextField("目标", text: $draft.goal, axis: .vertical)
+                            .lineLimit(3...6)
+                        TextField("验收（每行一条）", text: $draft.acceptance, axis: .vertical)
+                            .lineLimit(3...8)
+                        DisclosureGroup(isExpanded: $planExpanded) {
+                            if planExpanded {
+                                TextField("方案正文", text: $draft.planMd, axis: .vertical)
+                                    .lineLimit(4...12)
+                            }
+                        } label: {
+                            Text(planExpanded ? "方案正文" : planMdSummary)
+                                .font(.system(size: 13))
+                                .foregroundStyle(CCCTheme.secondary)
+                        }
                     }
                 }
-                Section("执行偏好（可改）") {
-                    TextField("产线", text: $draft.pipeline)
-                    Picker("执行面", selection: $draft.executor) {
-                        Text("写码").tag("opencode")
-                        Text("脚本/board").tag("python")
-                        Text("ollama").tag("ollama")
-                        Text("cli").tag("cli")
-                        Text("auto").tag("auto")
+                Section(planLocked ? "执行偏好（已锁）" : "执行偏好（可改）") {
+                    if planLocked {
+                        LabeledContent("产线", value: draft.pipeline.isEmpty ? "—" : draft.pipeline)
+                        LabeledContent("执行面", value: executorLabel(draft.executor))
+                        LabeledContent("复杂度", value: draft.complexity)
+                        LabeledContent("升 VERSION", value: draft.bumpVersion ? "是" : "否")
+                    } else {
+                        TextField("产线", text: $draft.pipeline)
+                        Picker("执行面", selection: $draft.executor) {
+                            Text("写码").tag("opencode")
+                            Text("脚本/board").tag("python")
+                            Text("ollama").tag("ollama")
+                            Text("cli").tag("cli")
+                            Text("auto").tag("auto")
+                        }
+                        Picker("复杂度", selection: $draft.complexity) {
+                            Text("small").tag("small")
+                            Text("medium").tag("medium")
+                            Text("large").tag("large")
+                        }
+                        Toggle("发布时升 VERSION", isOn: $draft.bumpVersion)
                     }
-                    Picker("复杂度", selection: $draft.complexity) {
-                        Text("small").tag("small")
-                        Text("medium").tag("medium")
-                        Text("large").tag("large")
-                    }
-                    Toggle("发布时升 VERSION", isOn: $draft.bumpVersion)
-                    TextField("备注（可选，随卡投递）", text: $draft.humanNote, axis: .vertical)
-                        .lineLimit(2...4)
+                    TextField(
+                        planLocked ? "备注（可选：定时说明等，随卡投递）" : "备注（可选，随卡投递）",
+                        text: $draft.humanNote,
+                        axis: .vertical
+                    )
+                    .lineLimit(2...4)
                 }
                 Section("门禁（只读）") {
-                    if draft.feasibility == "ok" {
-                        LabeledContent("可行性", value: "可执行（锁死）")
+                    if draft.feasibility == "ok" || planLocked {
+                        LabeledContent(
+                            "可行性",
+                            value: draft.feasibility == "ok"
+                                ? "可执行（锁死）"
+                                : "阻塞：\(draft.feasibilityReason.isEmpty ? "—" : draft.feasibilityReason)"
+                        )
                     } else {
                         Picker("可行性", selection: $draft.feasibility) {
                             Text("可执行").tag("ok")
@@ -2531,6 +2584,24 @@ struct TransferSheet: View {
         if t.isEmpty { return "方案正文（可展开编辑）" }
         let preview = String(t.prefix(48)).replacingOccurrences(of: "\n", with: " ")
         return "方案正文 · \(preview)…"
+    }
+
+    private var planMdSummaryLocked: String {
+        let t = draft.planMd.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "方案正文（只读）" }
+        let preview = String(t.prefix(48)).replacingOccurrences(of: "\n", with: " ")
+        return "方案正文（只读）· \(preview)…"
+    }
+
+    private func executorLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "python": return "脚本/board"
+        case "opencode": return "写码"
+        case "ollama": return "ollama"
+        case "cli": return "cli"
+        case "auto": return "auto"
+        default: return raw.isEmpty ? "—" : raw
+        }
     }
 
     private func loadDraftFromModel() {
@@ -2709,9 +2780,9 @@ struct DesktopHelpSheet: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 helpRow("1", "选左侧业务项目", "进入该项目的方案对话（一项目可多会话）。")
-                helpRow("2", "聊透目标与验收", "用白话说清楚；可用「对齐基线 / 下一步 / 扫风险」。")
-                helpRow("3", "定稿", "点快捷条「定稿」，生成可投递的契约包。")
-                helpRow("4", "转任务", "确认门禁后写入待办；右侧「本对话编排」展开进度。")
+                helpRow("2", "对齐基线（可选）/ 下一步", "对齐基线=深对齐，非硬门槛；「下一步」会 live 核实后再定方案。自由聊这两段都可。")
+                helpRow("3", "定稿", "点「定稿」生成契约并锁方案（目标/验收/正文不可在二级卡改）。")
+                helpRow("4", "转任务", "二级卡仅可改标题与备注；确认后写入待办，右侧看编排。")
                 helpRow("5", "看板 / 运维", "侧栏切换；看全局队列与集群健康，再「回对话」。")
             }
 

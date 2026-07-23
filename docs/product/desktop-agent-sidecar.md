@@ -49,8 +49,8 @@ plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`
 | `CHAT_CONNECT_TIMEOUT` | 30s | `_ensure_connected` 硬上限 |
 | `CHAT_DRAIN_TIMEOUT` | 8s | 超时后有界 drain；禁止无限占锁 |
 | `CHAT_WARM_LOCK_WAIT` | 3s | warm 抢锁失败快返回，不堵 chat |
-| `CHAT_FIRST_EVENT_TIMEOUT` | 45s | query 后无任何可映射事件（delta/tool/…）→ `first_event_timeout` + 回收 slot |
-| `CHAT_TOOL_STALL_TIMEOUT` | 60s | 已见 `tool_use` 但无 `tool_result` → `tool_stall` + 回收 |
+| `CHAT_FIRST_EVENT_TIMEOUT` | 120s | query 后无任何可映射事件（delta/tool/…）→ `first_event_timeout` + 回收 slot；`status phase=accepted` 只刷 UI/时钟、不解除首包门禁 |
+| `CHAT_TOOL_STALL_TIMEOUT` | 90s | 已见 `tool_use` 但无 `tool_result` → `tool_stall` + 回收 |
 | SSE `ping` | connect 前 + idle 15s | **有心跳 ≠ 有进展**；ping 可带 `awaiting` / `stall_in_s`；Desktop **不得**用 ping 重置进展时钟 |
 | slot 回收 | 超时/异常 | disconnect + 杀掉本 slot 记下的 `loop-code/cli` PID，防僵尸占坑 |
 | discuss 工具 | 含 WebFetch/WebSearch | 靠超时回收 + `DISCUSS_TOOL_DISCIPLINE`，**不靠删能力止血** |

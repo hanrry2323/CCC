@@ -2478,6 +2478,11 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         store.move_task(tid, "in_progress", "planned")
                     store.update_index()
                     return True
+                # P0 KPI: short-path OK must advance — never leave done+in_progress ghost
+                col_now = store.find_task(tid)[0]
+                if col_now == "in_progress":
+                    store.move_task(tid, "in_progress", "testing")
+                    engine_log(f"[{label}] {tid} script_seed OK → testing")
                 store.update_index()
                 return True
             if task_meta and should_use_board_ops(ws, task_meta):
@@ -2503,6 +2508,10 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         store.move_task(tid, "in_progress", "planned")
                     store.update_index()
                     return True
+                col_now = store.find_task(tid)[0]
+                if col_now == "in_progress":
+                    store.move_task(tid, "in_progress", "testing")
+                    engine_log(f"[{label}] {tid} board_ops OK → testing")
                 store.update_index()
                 return True
         except Exception as _bo_exc:

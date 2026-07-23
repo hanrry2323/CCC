@@ -1394,16 +1394,45 @@ def _review_one_task(task_id: str) -> bool:
         size_class = "medium"
     elif cx == "large" and size_class in ("small", "medium"):
         size_class = "large"
-    # v0.24.3: diff 无法解析（缺 summary 行）→ quarantine，不能静默放行
+    # v0.60.3+ / KPI P0: 缺 summary 不得黑盒 quarantine — 写 FAIL 进学习环
     if size_class == "unknown":
-        _quarantine(
-            task_id, reason="v0.24.3 reviewer: diff stat 缺 summary 行，无法分级"
-        )
-        _log.error(
-            "[reviewer] %s ✗ diff stat 解析失败（缺 summary），quarantine",
-            task_id,
-        )
-        return False
+        # 再取一次无 task 过滤的 --stat（有时 task commit 范围无 summary）
+        retry_stat, retry_diff = _get_git_diff(get_workspace(), task_id="")
+        size_class, total_lines = _classify_review_size(retry_stat)
+        if size_class != "unknown":
+            diff_stat, full_diff = retry_stat, retry_diff or full_diff
+            _log.info(
+                "[reviewer] %s size retry ok=%s lines=%s",
+                task_id,
+                size_class,
+                total_lines,
+            )
+        else:
+            verdict_dir = get_workspace() / ".ccc" / "verdicts"
+            verdict_dir.mkdir(parents=True, exist_ok=True)
+            reason = (
+                "diff_stat_ungradable: git diff --stat 缺 summary 行，"
+                "无法分级 — FAIL fixable（禁止 quarantine；交 R1/R2）"
+            )
+            (verdict_dir / f"{task_id}.verdict.md").write_text(
+                f"# {task_id} Verdict\n\n"
+                f"**Verdict:** FAIL\n\n"
+                f"**Category:** fixable\n\n"
+                f"**Reason:** {reason}\n\n"
+                f"```\n{(diff_stat or '')[:2000]}\n```\n",
+                encoding="utf-8",
+            )
+            report_dir = get_workspace() / ".ccc" / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            (report_dir / f"{task_id}.review.md").write_text(
+                f"# {task_id} Review\n\n## Verdict: **FAIL**\n\n{reason}\n",
+                encoding="utf-8",
+            )
+            _log.error(
+                "[reviewer] %s ✗ diff stat 无法分级 → FAIL verdict（非 quarantine）",
+                task_id,
+            )
+            return False
     _log.info("[reviewer] %s size=%s lines=%s", task_id, size_class, total_lines)
 
     # 写审查报告（共用目录）
