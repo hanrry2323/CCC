@@ -94,6 +94,66 @@ def _seed_abnormal(ws: Path, tid: str = "work-abn-1") -> None:
     )
 
 
+def test_board_repair_settles_stuck_running_orphan(ws, tmp_path, monkeypatch):
+    """running epic + 子卡缺失/无在途 → clear_blockers 沉底。"""
+    monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))
+    monkeypatch.setenv("CCC_FLOW_EVENTS_LOG", str(tmp_path / "f.jsonl"))
+    from chat_server import config as hub_cfg
+    from chat_server.services import board_repair as br
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setattr(hub_cfg, "CHAT_DIR", tmp_path / "chat")
+    (tmp_path / "chat").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(fe, "events_log_path", lambda: tmp_path / "f.jsonl")
+
+    store = FileBoardStore(ws)
+    assert store.create_task(
+        {
+            "id": "epic-orphan-1",
+            "title": "Orphan running",
+            "card_kind": "epic",
+            "split_status": "running",
+            "status": "backlog",
+            "child_ids": ["epic-orphan-1-w1", "epic-orphan-1-w2"],
+            "goal": "g",
+            "acceptance": ["a"],
+            "pipeline": "dev",
+        },
+        column="backlog",
+    )
+    # w1 released, w2 missing → stuck
+    assert store.create_task(
+        {
+            "id": "epic-orphan-1-w1",
+            "title": "child1",
+            "card_kind": "work",
+            "status": "released",
+            "parent_id": "epic-orphan-1",
+            "goal": "g",
+            "acceptance": ["a"],
+            "pipeline": "dev",
+        },
+        column="released",
+    )
+
+    st = br.list_blockers(ws)
+    assert any(x["id"] == "epic-orphan-1" for x in st["stuck_running_epics"])
+    assert st["blocker_count"] >= 1
+
+    out = br.run_repair(
+        action="clear_blockers",
+        workspace=ws,
+        project_id="demo",
+        reason="test_stuck",
+    )
+    assert out["ok"] is True
+    assert "epic-orphan-1" in (out.get("settled_stuck") or {}).get("settled", [])
+    _, epic = store.find_task("epic-orphan-1")
+    assert epic.get("split_status") == "done"
+    assert epic.get("ui_hidden") is True
+    assert br.list_blockers(ws)["blocker_count"] == 0
+
+
 def test_board_repair_status_and_clear(client, ws, tmp_path):
     _seed_failed_epic(ws)
     _seed_abnormal(ws)

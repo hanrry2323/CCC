@@ -32,6 +32,8 @@ ALLOWED_ACTIONS = frozenset(
 )
 
 _ARCHIVE_COLS = ("abnormal", "backlog", "planned", "in_progress", "testing", "verified")
+_INFLIGHT_COLS = frozenset({"planned", "in_progress", "testing", "verified"})
+_STUCK_SPLIT = frozenset({"running", "planned", "active"})
 
 
 def _audit_path() -> Path:
@@ -55,8 +57,94 @@ def _audit(rec: dict[str, Any]) -> None:
         _log.warning("board-repair audit write failed: %s", exc)
 
 
+def list_stuck_running_epics(workspace: Path) -> list[dict[str, Any]]:
+    """epic 已标 running/planned，但无在途子卡（子卡缺失/已 released/已归档）。
+
+    Engine 只扇出 pending；这类卡会占活跃 backlog 却永不推进——运维必须沉底，
+    禁止只会说「回业务对话重下」。
+    """
+    store = FileBoardStore(workspace)
+    stuck: list[dict[str, Any]] = []
+    for t in store.list_tasks("backlog", include_hidden=False):
+        if (t.get("card_kind") or "") != "epic":
+            continue
+        ss = str(t.get("split_status") or "").strip().lower()
+        if ss not in _STUCK_SPLIT:
+            continue
+        tid = str(t.get("id") or "")
+        if not tid:
+            continue
+        kids = [str(k) for k in (t.get("child_ids") or []) if str(k).strip()]
+        kid_cols: list[str] = []
+        inflight = False
+        for kid in kids:
+            kcol = store.resolve_task_column(kid)
+            if kcol is None:
+                col2, _ = store.find_task(kid)
+                kcol = col2
+            label = kcol or "missing"
+            kid_cols.append(label)
+            if label in _INFLIGHT_COLS:
+                inflight = True
+                break
+        if inflight:
+            continue
+        # pending 无子卡 = 等扇出，不是 stuck；running/planned 无在途 = 孤儿
+        reason = "orphan_no_inflight"
+        if not kids:
+            reason = "running_without_children"
+        elif all(c == "missing" for c in kid_cols):
+            reason = "children_missing"
+        elif any(c == "missing" for c in kid_cols) and all(
+            c in ("missing", "released", "abnormal") for c in kid_cols
+        ):
+            reason = "children_partial_missing"
+        stuck.append(
+            {
+                "id": tid,
+                "column": "backlog",
+                "title": str(t.get("title") or tid)[:80],
+                "card_kind": "epic",
+                "split_status": ss,
+                "reason": reason,
+                "child_cols": kid_cols[:12],
+            }
+        )
+    return stuck
+
+
+def settle_stuck_epics(
+    workspace: Path,
+    project_id: str,
+    *,
+    reason: str = "desktop_settle_stuck_running",
+) -> dict[str, Any]:
+    """把孤儿 running epic 标 done + ui_hidden，并剪幽灵轨。"""
+    store = FileBoardStore(workspace)
+    stuck = list_stuck_running_epics(workspace)
+    settled: list[str] = []
+    purged: list[dict[str, Any]] = []
+    for item in stuck:
+        tid = item["id"]
+        note = ((store.find_task(tid)[1] or {}).get("note") or "").strip()
+        fields = {
+            "split_status": "done",
+            "ui_hidden": True,
+            "note": (note + f"\n[board-repair] settle_stuck: {reason}").strip(),
+        }
+        if store.patch_task(tid, fields):
+            settled.append(tid)
+            purged.append(purge_flow_for_epic(project_id, tid))
+    return {
+        "stuck_before": stuck,
+        "settled": settled,
+        "purged": purged,
+        "count": len(settled),
+    }
+
+
 def list_blockers(workspace: Path) -> dict[str, Any]:
-    """只读：列出挡 ready 的残卡。"""
+    """只读：列出挡 ready 的残卡（含孤儿 running epic）。"""
     store = FileBoardStore(workspace)
     abnormal: list[dict[str, Any]] = []
     failed_epics: list[dict[str, Any]] = []
@@ -81,11 +169,13 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
                 failed_epics.append(item)
             elif kind == "epic" and ss == "done" and col == "backlog":
                 done_visible.append(item)
+    stuck_running = list_stuck_running_epics(workspace)
     return {
         "abnormal": abnormal,
         "failed_epics": failed_epics,
         "done_visible_epics": done_visible,
-        "blocker_count": len(abnormal) + len(failed_epics),
+        "stuck_running_epics": stuck_running,
+        "blocker_count": len(abnormal) + len(failed_epics) + len(stuck_running),
     }
 
 
@@ -180,7 +270,7 @@ def clear_blockers(
     *,
     reason: str = "desktop_clear_blockers",
 ) -> dict[str, Any]:
-    """一体：归档 abnormal+failed → hide done → 剪幽灵轨。"""
+    """一体：归档 abnormal+failed → 沉底孤儿 running → hide done → 剪幽灵轨。"""
     blockers = list_blockers(workspace)
     epic_ids = [
         x["id"] for x in blockers["failed_epics"]
@@ -188,20 +278,29 @@ def clear_blockers(
         x["id"]
         for x in blockers["abnormal"]
         if x.get("card_kind") == "epic"
+    ] + [
+        x["id"] for x in blockers.get("stuck_running_epics") or []
     ]
 
     archived = archive_tasks(workspace, reason=reason)
+    settled = settle_stuck_epics(workspace, project_id, reason=reason)
     # 显式再藏 abnormal 列（archive 无 id 时已覆盖）
     done_hide = hide_done_epics(workspace)
 
-    purged: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    purged: list[dict[str, Any]] = list(settled.get("purged") or [])
+    seen: set[str] = {x["id"] for x in (settled.get("stuck_before") or []) if x.get("id")}
+    for row in purged:
+        eid = str((row or {}).get("epic_id") or "")
+        if eid:
+            seen.add(eid)
     for eid in epic_ids + archived.get("hidden", []):
         if eid in seen:
             continue
-        # 只 purge 看起来像 epic 的 id，或曾在 failed/abnormal epic 列表
+        # 只 purge 看起来像 epic 的 id，或曾在 failed/abnormal/stuck 列表
         if eid in {x["id"] for x in blockers["failed_epics"]} or eid in {
             x["id"] for x in blockers["abnormal"] if x.get("card_kind") == "epic"
+        } or eid in {
+            x["id"] for x in blockers.get("stuck_running_epics") or []
         }:
             seen.add(eid)
             purged.append(purge_flow_for_epic(project_id, eid))
@@ -219,12 +318,27 @@ def clear_blockers(
                 purged.append(purge_flow_for_epic(project_id, eid))
 
     after = list_blockers(workspace)
+    wake: dict[str, Any] | None = None
+    try:
+        from _engine_wake import ensure_engine_for_task
+
+        wake = ensure_engine_for_task(
+            task_id=f"board-repair-{project_id}",
+            reason="board_repair_clear_blockers",
+            workspace=workspace,
+            workspace_name=project_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — 运维路径：唤醒失败不挡清板
+        wake = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]}
+
     return {
         "before": blockers,
         "archived": archived,
+        "settled_stuck": settled,
         "hide_done": done_hide,
         "purged": purged,
         "after": after,
+        "engine_wake": wake,
         "ready_hint": after["blocker_count"] == 0,
     }
 

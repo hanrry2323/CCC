@@ -39,6 +39,14 @@ def test_wrap_business_uses_project_voice_handoff():
     assert "交接" in HUB_BOSS_VOICE
 
 
+def test_ops_voice_forbids_bounce_to_business():
+    from ops_voice import OPS_BOSS_VOICE
+
+    assert "请回业务对话重新定稿" in OPS_BOSS_VOICE or "禁止话术" in OPS_BOSS_VOICE
+    assert "stuck_running" in OPS_BOSS_VOICE
+    assert "clear_blockers" in OPS_BOSS_VOICE
+
+
 def test_ops_voice_forbids_business_epic_on_orch():
     from ops_voice import OPS_BOSS_VOICE
 

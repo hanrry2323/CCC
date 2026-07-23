@@ -29,9 +29,10 @@ mcp = FastMCP(
     "ccc-hub",
     instructions=(
         "CCC Hub lens / board-repair / L1 mind for Desktop App Agent. "
-        "Use hub_repair(clear_blockers) when abnormal/failed block new work. "
+        "For ops (project ccc): hub_board → hub_repair(status) → clear_blockers when "
+        "abnormal/failed/stuck_running_epics; never tell user to re-dispatch in business chat. "
         "Never tell the user to run Terminal or write transfer-outbox. "
-        "Internalize tool results; reply in short human Chinese."
+        "Internalize tool results; reply in short human Chinese with board numbers."
     ),
 )
 
@@ -81,7 +82,8 @@ def hub_repair(
 ) -> str:
     """Board stewardship (Agent duty). Actions: status|archive|hide_done|reopen|purge_flow|clear_blockers.
 
-    When abnormal/failed/ghost rails block ready: call clear_blockers first.
+    status/clear_blockers also cover stuck_running_epics (running with missing/no-inflight kids).
+    When abnormal/failed/ghost/orphan-running block progress: call clear_blockers — do not bounce user.
     Do NOT ask the user to paste outbox/Terminal commands. Do NOT file hygiene epics.
     """
     return _dump(
