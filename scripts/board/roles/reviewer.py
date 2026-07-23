@@ -182,11 +182,32 @@ def _review_deterministic_path(
     """script_seed / board_ops / doc_only：确定性关门，不进 LLM。
 
     必须执行验收（命令或 path 核对），禁止 plan-only PASS。
+    失败必须写 FAIL verdict（fixable）——禁止静默 return False 导致
+    「reviewer 未产出 verdict」假 quarantine。
     """
     ws = get_workspace()
     report_dir = ws / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     review_md = report_dir / f"{task_id}.review.md"
+    verdict_dir = ws / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+
+    def _fail_deterministic(reason: str) -> bool:
+        body = (
+            f"# {task_id} Verdict\n\n"
+            f"**Verdict:** FAIL\n\n"
+            f"**Category:** fixable\n\n"
+            f"**Dev path:** {kind}\n\n"
+            f"**Reason:** {reason}\n"
+        )
+        (verdict_dir / f"{task_id}.verdict.md").write_text(body, encoding="utf-8")
+        review_md.write_text(
+            f"# {task_id} Review\n\n## Verdict: **FAIL**\n\n"
+            f"## Dev path: **{kind}**\n\n{reason}\n",
+            encoding="utf-8",
+        )
+        _log.error("[reviewer] %s ✗ %s → FAIL verdict: %s", task_id, kind, reason)
+        return False
 
     # py_compile touched .py (diff names only — never scripts/**)
     names = _diff_name_only(full_diff)
@@ -199,10 +220,7 @@ def _review_deterministic_path(
         if p.suffix == ".py" and p.is_file() and _is_path_in_root(p):
             py_files.append(str(p))
     if py_files and not _py_compile_fallback(task_id, py_files):
-        _log.error(
-            "[reviewer] %s ✗ %s py_compile fail，留 testing", task_id, kind
-        )
-        return False
+        return _fail_deterministic(f"{kind} py_compile fail")
 
     from _acceptance_gate import check_acceptance
     from _task_commit import find_task_commit
@@ -216,14 +234,9 @@ def _review_deterministic_path(
                 ws, task_id, commit=commit, allow_prose=True
             )
         if not acc.get("ok"):
-            _log.error(
-                "[reviewer] %s ✗ %s acceptance %s",
-                task_id,
-                kind,
-                acc.get("reason"),
+            return _fail_deterministic(
+                f"{kind} acceptance: {acc.get('reason') or 'failed'}"
             )
-            # stay testing — engine may retry; do not silent PASS
-            return False
 
     review_md.write_text(
         f"# {task_id} Review\n\n"

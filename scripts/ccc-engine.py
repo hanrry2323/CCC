@@ -646,10 +646,20 @@ def _log_opencode_done(
         except (OSError, ValueError, TypeError):
             pass
     wall_s = _wall_seconds_from_started(started_at)
-    # P2/KPI: result.json 缺 duration_s 时用墙钟回填，避免 fill_rate 假零
+    # result dict 兜底（salvage / check_complete 可能未落盘 result.json）
+    if duration_s is None and isinstance(result, dict):
+        try:
+            if result.get("duration_s") is not None:
+                duration_s = float(result["duration_s"])
+        except (TypeError, ValueError):
+            pass
+    # P2/KPI: 缺 duration_s 时用墙钟回填；双空则 0.0（保 fill_rate 可统计）
     duration_from_wall = False
     if duration_s is None and wall_s is not None:
         duration_s = wall_s
+        duration_from_wall = True
+    if duration_s is None:
+        duration_s = 0.0
         duration_from_wall = True
     _log_stats(
         ws,
@@ -2439,13 +2449,8 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         tkey = _task_key(ws, tid)
-        # 同仓互斥：仅活 runner / 未过期 lease（P1：死 pid+.done 不挡）
-        if _workspace_blocks_new_opencode(ws, active_tasks):
-            engine_log(
-                f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
-            )
-            continue
-        # 短路径硬门（P5）：board_ops / script_seed 失败不得静默 fallback opencode
+        # 短路径硬门（P5）：board_ops / script_seed 不占 OpenCode 槽，
+        # 必须在同仓互斥检查之前 —— 否则纸面/卫生卡被活 opencode 拖成 queue_wait 地板。
         short_path: str | None = None
         try:
             from board.roles.board_ops import run_board_ops, should_use_board_ops
@@ -2462,7 +2467,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 short_path = "script_seed"
                 engine_log(
                     f"[{label}] {tid} script_seed short path "
-                    f"(intent probe, no opencode)"
+                    f"(intent probe, no opencode; bypass same-ws mutex)"
                 )
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
@@ -2493,7 +2498,10 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 return True
             if task_meta and should_use_board_ops(ws, task_meta):
                 short_path = "board_ops"
-                engine_log(f"[{label}] {tid} board_ops short path (no opencode)")
+                engine_log(
+                    f"[{label}] {tid} board_ops short path "
+                    f"(no opencode; bypass same-ws mutex)"
+                )
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 ops_r = run_board_ops(ws, tid)
@@ -2544,6 +2552,13 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             engine_log(
                 f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}"
             )
+
+        # 同仓互斥：仅挡 OpenCode 路径（P1：死 pid+.done 不挡）
+        if _workspace_blocks_new_opencode(ws, active_tasks):
+            engine_log(
+                f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
+            )
+            continue
 
         if not _try_acquire_opencode_slot(tkey):
             engine_log(

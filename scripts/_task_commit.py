@@ -121,6 +121,74 @@ def _porcelain_paths(porcelain: str) -> list[str]:
     return out
 
 
+def _plan_scope_paths(workspace: Path, task_id: str) -> list[str]:
+    """Best-effort plan scope file list (no board.context dependency)."""
+    plan = Path(workspace) / ".ccc" / "plans" / f"{task_id}.plan.md"
+    if not plan.is_file():
+        return []
+    try:
+        content = plan.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    files: list[str] = []
+    in_scope = False
+    for line in content.splitlines():
+        if line.startswith("## 范围") or line.startswith("## 文件白名单") or line.startswith(
+            "## 文件"
+        ):
+            in_scope = True
+            continue
+        if in_scope and line.startswith("## "):
+            break
+        if not in_scope:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        item = stripped[2:].strip().strip("`\"'*")
+        if "只改" in item or item.startswith("**"):
+            continue
+        # drop trailing commentary
+        for sep in ("（", "(", " —", " - "):
+            idx = item.find(sep)
+            if idx > 0:
+                item = item[:idx]
+        item = item.strip().rstrip(".").strip("`\"'")
+        if item and not item.startswith("#") and (
+            "/" in item
+            or item.endswith(
+                (".py", ".md", ".json", ".ts", ".js", ".sh", ".toml", ".yml", ".yaml")
+            )
+        ):
+            files.append(item)
+        elif item and " " not in item and not item.startswith("http"):
+            files.append(item)
+    return files
+
+
+def _result_wrote_paths(workspace: Path, task_id: str) -> list[str]:
+    """Paths claimed in ``.ccc/reports/<tid>.result.json`` wrote[] / files[]."""
+    p = Path(workspace) / ".ccc" / "reports" / f"{task_id}.result.json"
+    if not p.is_file():
+        return []
+    try:
+        from _result_json import parse_result_file
+
+        parsed, _ = parse_result_file(p)
+    except Exception:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    out: list[str] = []
+    for key in ("wrote", "files", "paths"):
+        val = parsed.get(key)
+        if isinstance(val, list):
+            out.extend(str(x).strip() for x in val if str(x).strip())
+        elif isinstance(val, str) and val.strip():
+            out.append(val.strip())
+    return out
+
+
 def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
     """ops / .ccc-only 卫生卡允许 DoD 提交编排产物。"""
     try:
@@ -143,6 +211,11 @@ def ensure_task_commit(
     Returns (ok, reason, commit_hash).
     Does NOT invent empty commits when the tree is clean — that means the
     agent produced no diffs and must fail the gate.
+
+    KPI commit_gate_hygiene_vs_business_dirty:
+    - Prefer plan-scope / result.wrote paths over unrelated dirty business files.
+    - Unrelated business dirty is left unstaged（不挡白名单任务提交）.
+    - Hygiene cards may stage .ccc meta only.
     """
     existing = find_task_commit(workspace, task_id)
     if existing and (not pre_head or existing != pre_head):
@@ -160,6 +233,7 @@ def ensure_task_commit(
         return False, f"git status failed: {exc}", ""
 
     dirty = (st.stdout or "").rstrip("\n")
+    all_paths = _porcelain_paths(dirty)
     product = porcelain_product_paths(dirty)
     hygiene = False
     if not product and dirty:
@@ -168,13 +242,61 @@ def ensure_task_commit(
             # 卫生卡：允许 stage 全部 .ccc/ 脏路径（仍拒绝业务树）
             product = [
                 p
-                for p in _porcelain_paths(dirty)
+                for p in all_paths
                 if _is_ccc_meta_path(p)
                 or p.startswith(".ccc/")
                 or p in (".ccc/state.md", ".ccc/agent-mind/decided.json")
                 or p.startswith(".ccc/agent-mind/")
                 or p.startswith(".ccc/lessons/")
             ]
+
+    if product and not hygiene:
+        # Scope-aware: only stage plan / result paths when known
+        scope = set(_plan_scope_paths(workspace, task_id))
+        scope |= set(_result_wrote_paths(workspace, task_id))
+        if scope:
+            scoped: list[str] = []
+            for s in sorted(scope):
+                sp = Path(workspace) / s
+                if not sp.exists():
+                    continue
+                # Match exact porcelain path, or untracked parent dir (?? scripts/)
+                for p in all_paths:
+                    pn = p.rstrip("/")
+                    if s == p or s == pn or s.startswith(pn + "/") or p.startswith(
+                        s.rstrip("/") + "/"
+                    ):
+                        if s not in scoped:
+                            scoped.append(s)
+                        break
+            outside = [
+                p
+                for p in product
+                if p not in scoped
+                and not any(
+                    s == p
+                    or s.startswith(p.rstrip("/") + "/")
+                    or p.startswith(s.rstrip("/") + "/")
+                    for s in scope
+                )
+            ]
+            if scoped:
+                if outside:
+                    _log.info(
+                        "[DoD] %s leave unstaged outside-scope dirty: %s",
+                        task_id,
+                        outside[:8],
+                    )
+                product = scoped
+            elif outside or product:
+                sample = ", ".join((outside or product)[:6])
+                return (
+                    False,
+                    f"dirty_block: business dirty outside plan scope "
+                    f"(no in-scope changes): {sample}",
+                    existing,
+                )
+
     if not product:
         if dirty:
             return (
