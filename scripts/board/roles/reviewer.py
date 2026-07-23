@@ -128,15 +128,22 @@ def _is_doc_only_paths(paths: list[str]) -> bool:
 def _detect_review_kind(
     ws: Path, task: dict, plan_text: str, full_diff: str
 ) -> str:
-    """Return script_seed | board_ops | doc_only | opencode."""
+    """Return script_seed | feature_seed | board_ops | doc_only | opencode."""
     art = _read_artifact_dev_path(ws, str(task.get("id") or ""))
-    if art in ("script_seed", "board_ops"):
+    if art in ("script_seed", "board_ops", "feature_seed"):
         return art
     try:
         from board.roles.script_seed import should_use_script_seed
 
         if should_use_script_seed(ws, task):
             return "script_seed"
+    except Exception:
+        pass
+    try:
+        from board.roles.script_seed import should_use_feature_seed
+
+        if should_use_feature_seed(ws, task):
+            return "feature_seed"
     except Exception:
         pass
     try:
@@ -1393,7 +1400,7 @@ def _review_one_task(task_id: str) -> bool:
     diff_stat, full_diff = _get_git_diff(get_workspace(), task_id=task_id)
 
     kind = _detect_review_kind(get_workspace(), task, plan_text, full_diff)
-    if kind in ("script_seed", "board_ops", "doc_only"):
+    if kind in ("script_seed", "board_ops", "doc_only", "feature_seed"):
         _log.info("[reviewer] %s kind=%s → deterministic path", task_id, kind)
         return _review_deterministic_path(
             task_id, kind=kind, plan_text=plan_text, full_diff=full_diff

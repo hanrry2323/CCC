@@ -680,6 +680,105 @@ def _log_opencode_done(
 
 _NOTIFY_SCRIPT = _script_dir / "ccc-notify.sh"
 
+# KPI R4: short-path fail budget — ban 1Hz planned↔in_progress storm
+_SHORT_PATH_FAIL_MAX = 3
+
+
+def _short_path_fail_file(ws: Path, tid: str) -> Path:
+    return Path(ws) / ".ccc" / "pids" / f"{tid}.short_path_fails"
+
+
+def _bump_short_path_fail(ws: Path, tid: str, path: str, why: str) -> int:
+    """Increment fail counter; return new count."""
+    p = _short_path_fail_file(ws, tid)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    try:
+        if p.is_file():
+            n = int((p.read_text(encoding="utf-8").strip().splitlines() or ["0"])[0])
+    except (OSError, ValueError):
+        n = 0
+    n += 1
+    try:
+        p.write_text(
+            f"{n}\npath={path}\nwhy={str(why)[:300]}\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return n
+
+
+def _clear_short_path_fail(ws: Path, tid: str) -> None:
+    p = _short_path_fail_file(ws, tid)
+    try:
+        if p.is_file():
+            p.unlink()
+    except OSError:
+        pass
+
+
+def _handle_short_path_failure(
+    ws: Path,
+    tid: str,
+    store,
+    *,
+    label: str,
+    path: str,
+    why: str,
+) -> bool:
+    """On short-path fail: budgeted retry → abnormal. Returns True (tick consumed)."""
+    n = _bump_short_path_fail(ws, tid, path, why)
+    _log_stats(
+        ws,
+        "dev_path",
+        tid,
+        path=path,
+        ok=False,
+        why=str(why)[:200],
+        short_path_fail_n=n,
+    )
+    _log_stats(
+        ws,
+        "short_path_retry",
+        tid,
+        path=path,
+        n=n,
+        max=_SHORT_PATH_FAIL_MAX,
+        why=str(why)[:200],
+    )
+    col_now = store.find_task(tid)[0]
+    if n >= _SHORT_PATH_FAIL_MAX:
+        engine_log(
+            f"[{label}] {tid} {path} fail budget {n}/{_SHORT_PATH_FAIL_MAX} "
+            f"→ abnormal ({why})"
+        )
+        if col_now == "in_progress":
+            store.move_task(tid, "in_progress", "abnormal")
+        elif col_now == "planned":
+            store.move_task(tid, "planned", "abnormal")
+        try:
+            store.patch_task(
+                tid,
+                {
+                    "note": (
+                        ((store.find_task(tid)[1] or {}).get("note") or "")
+                        + f"\n[{label}] short_path_fail_budget path={path} n={n}: {why}"
+                    )[-2000:]
+                },
+            )
+        except Exception:
+            pass
+        store.update_index()
+        return True
+    engine_log(
+        f"[{label}] {tid} {path} FAILED ({n}/{_SHORT_PATH_FAIL_MAX}): {why}"
+    )
+    if col_now == "in_progress":
+        store.move_task(tid, "in_progress", "planned")
+    store.update_index()
+    return True
+
 
 def _ccc_notify(title: str, message: str) -> None:
     """非阻塞 macOS 桌面通知（Engine 主循环不等待）。"""
@@ -2449,13 +2548,15 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         tkey = _task_key(ws, tid)
-        # 短路径硬门（P5）：board_ops / script_seed 不占 OpenCode 槽，
+        # 短路径硬门（P5）：board_ops / script_seed / feature_seed 不占 OpenCode 槽，
         # 必须在同仓互斥检查之前 —— 否则纸面/卫生卡被活 opencode 拖成 queue_wait 地板。
         short_path: str | None = None
         try:
             from board.roles.board_ops import run_board_ops, should_use_board_ops
             from board.roles.script_seed import (
+                run_feature_seed,
                 run_script_seed,
+                should_use_feature_seed,
                 should_use_script_seed,
             )
 
@@ -2472,28 +2573,68 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 seed_r = run_script_seed(ws, tid)
+                if not seed_r.get("ok"):
+                    return _handle_short_path_failure(
+                        ws,
+                        tid,
+                        store,
+                        label=label,
+                        path="script_seed",
+                        why=str(
+                            seed_r.get("error")
+                            or seed_r.get("why")
+                            or seed_r
+                        )[:300],
+                    )
+                _clear_short_path_fail(ws, tid)
                 _log_stats(
                     ws,
                     "dev_path",
                     tid,
                     path="script_seed",
-                    ok=bool(seed_r.get("ok")),
+                    ok=True,
                 )
-                if not seed_r.get("ok"):
-                    engine_log(
-                        f"[{label}] {tid} script_seed FAILED (hard, no opencode): "
-                        f"{seed_r}"
-                    )
-                    col_now = store.find_task(tid)[0]
-                    if col_now == "in_progress":
-                        store.move_task(tid, "in_progress", "planned")
-                    store.update_index()
-                    return True
                 # P0 KPI: short-path OK must advance — never leave done+in_progress ghost
                 col_now = store.find_task(tid)[0]
                 if col_now == "in_progress":
                     store.move_task(tid, "in_progress", "testing")
                     engine_log(f"[{label}] {tid} script_seed OK → testing")
+                store.update_index()
+                return True
+            if task_meta and should_use_feature_seed(ws, task_meta):
+                short_path = "feature_seed"
+                engine_log(
+                    f"[{label}] {tid} feature_seed short path "
+                    f"(feature probe, no opencode; bypass same-ws mutex)"
+                )
+                if store.find_task(tid)[0] == "planned":
+                    store.move_task(tid, "planned", "in_progress")
+                feat_r = run_feature_seed(ws, tid)
+                if not feat_r.get("ok"):
+                    return _handle_short_path_failure(
+                        ws,
+                        tid,
+                        store,
+                        label=label,
+                        path="feature_seed",
+                        why=str(
+                            feat_r.get("error")
+                            or feat_r.get("why")
+                            or feat_r
+                        )[:300],
+                    )
+                _clear_short_path_fail(ws, tid)
+                _log_stats(
+                    ws,
+                    "dev_path",
+                    tid,
+                    path="feature_seed",
+                    ok=True,
+                )
+                col_now = store.find_task(tid)[0]
+                if col_now == "in_progress":
+                    store.move_task(tid, "in_progress", "testing")
+                    engine_log(f"[{label}] {tid} feature_seed OK → testing")
                 store.update_index()
                 return True
             if task_meta and should_use_board_ops(ws, task_meta):
@@ -2505,23 +2646,23 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 ops_r = run_board_ops(ws, tid)
+                if not ops_r.get("ok"):
+                    return _handle_short_path_failure(
+                        ws,
+                        tid,
+                        store,
+                        label=label,
+                        path="board_ops",
+                        why=str(ops_r.get("why") or ops_r)[:300],
+                    )
+                _clear_short_path_fail(ws, tid)
                 _log_stats(
                     ws,
                     "dev_path",
                     tid,
                     path="board_ops",
-                    ok=bool(ops_r.get("ok")),
+                    ok=True,
                 )
-                if not ops_r.get("ok"):
-                    engine_log(
-                        f"[{label}] {tid} board_ops FAILED (hard, no opencode): "
-                        f"{ops_r.get('why')}"
-                    )
-                    col_now = store.find_task(tid)[0]
-                    if col_now == "in_progress":
-                        store.move_task(tid, "in_progress", "planned")
-                    store.update_index()
-                    return True
                 col_now = store.find_task(tid)[0]
                 if col_now == "in_progress":
                     store.move_task(tid, "in_progress", "testing")
@@ -2530,25 +2671,14 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 return True
         except Exception as _bo_exc:
             if short_path:
-                engine_log(
-                    f"[{label}] {tid} {short_path} hard-fail (no opencode): {_bo_exc}"
-                )
-                _log_stats(
+                return _handle_short_path_failure(
                     ws,
-                    "dev_path",
                     tid,
+                    store,
+                    label=label,
                     path=short_path,
-                    ok=False,
-                    error=str(_bo_exc)[:200],
+                    why=str(_bo_exc)[:300],
                 )
-                try:
-                    col_now = store.find_task(tid)[0]
-                    if col_now == "in_progress":
-                        store.move_task(tid, "in_progress", "planned")
-                    store.update_index()
-                except Exception:
-                    pass
-                return True
             engine_log(
                 f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}"
             )

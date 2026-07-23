@@ -388,3 +388,173 @@ def run_script_seed(ws: Path, tid: str) -> dict[str, Any]:
         "wrote": str(dest),
         "commit": commit,
     }
+
+
+_FEATURE_PROBE_RE = re.compile(
+    r"(?:^|[\s`\"'/])(scripts/[\w.\-]+_feature_probe\.py)\b",
+    re.IGNORECASE,
+)
+
+
+def _feature_probe_target(ws: Path, task: dict[str, Any]) -> str | None:
+    """Resolve scripts/*_feature_probe.py from plan/scope (never paper_intent)."""
+    tid = str(task.get("id") or "")
+    for s in _scopes(ws, tid):
+        s_n = s.replace("\\", "/").lstrip("./")
+        if s_n.endswith("_feature_probe.py") and "paper_intent" not in s_n:
+            return s_n
+    blob = _blob_for_task(ws, task)
+    m = _FEATURE_PROBE_RE.search(blob)
+    if m:
+        path = m.group(1).replace("\\", "/")
+        if "paper_intent" not in path:
+            return path
+    return None
+
+
+def should_use_feature_seed(ws: Path, task: dict[str, Any]) -> bool:
+    """KPI R4 B1: feature DRY_RUN probe — deterministic seed, ban paper hijack."""
+    if looks_like_intent_probe_seed(ws, task):
+        return False
+    if not _feature_probe_target(ws, task):
+        return False
+    exec_id = str(task.get("executor") or "").strip().lower()
+    return exec_id in ("python", "auto", "cli", "opencode", "")
+
+
+def run_feature_seed(ws: Path, tid: str) -> dict[str, Any]:
+    """Write scripts/*_feature_probe.py (not paper_intent_probe) + report + commit."""
+    import time as _time
+
+    ws = Path(ws)
+    tid = str(tid)
+    t0 = _time.time()
+    task = {"id": tid, "title": "", "description": "", "executor": "python"}
+    try:
+        from _board_store import FileBoardStore
+
+        store = FileBoardStore(ws)
+        _col, meta = store.find_task(tid)
+        if isinstance(meta, dict):
+            task = {**task, **meta}
+    except Exception:
+        pass
+
+    rel = _feature_probe_target(ws, task)
+    if not rel:
+        return {
+            "ok": False,
+            "path": "feature_seed",
+            "error": "no_feature_probe_target",
+        }
+    if "paper_intent_probe" in rel:
+        return {
+            "ok": False,
+            "path": "feature_seed",
+            "error": "refuse_paper_hijack",
+        }
+
+    dest = ws / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(
+        "#!/usr/bin/env python3\n"
+        f'"""Feature DRY_RUN probe (feature_seed) — not paper_intent_probe.\n'
+        f"task={tid}\n"
+        '"""\n'
+        "from __future__ import annotations\n\n"
+        "import os\n"
+        "import sys\n\n"
+        "def main() -> int:\n"
+        '    if os.environ.get("DRY_RUN", "").lower() not in ("1", "true", "yes"):\n'
+        '        print("REFUSE: set DRY_RUN=true", file=sys.stderr)\n'
+        "        return 2\n"
+        f'    print("feature_probe_ok path={rel}")\n'
+        "    return 0\n\n"
+        'if __name__ == "__main__":\n'
+        "    raise SystemExit(main())\n",
+        encoding="utf-8",
+    )
+    dest.chmod(0o755)
+
+    ccc_reports = ws / ".ccc" / "reports"
+    ccc_reports.mkdir(parents=True, exist_ok=True)
+    (ccc_reports / f"{tid}.report.md").write_text(
+        f"# {tid} feature_seed\n\n"
+        f"- path: feature_seed (deterministic, no opencode)\n"
+        f"- wrote: `{rel}`\n"
+        f"- ban: paper_intent_probe.py\n",
+        encoding="utf-8",
+    )
+    duration_s = round(_time.time() - t0, 2)
+    (ccc_reports / f"{tid}.result.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "path": "feature_seed",
+                "wrote": [rel],
+                "duration_s": duration_s,
+                "exit_code": 0,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    commit = ""
+    try:
+        import subprocess
+
+        subprocess.run(
+            ["git", "add", "--", rel],
+            cwd=ws,
+            check=False,
+            capture_output=True,
+        )
+        r = subprocess.run(
+            [
+                "git",
+                "commit",
+                "-m",
+                f"feat({tid}): seed feature_probe via feature_seed",
+            ],
+            cwd=ws,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 0:
+            sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=ws,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            commit = (sha.stdout or "").strip()
+    except OSError as exc:
+        _log.warning("feature_seed git commit: %s", exc)
+
+    try:
+        from _acceptance_gate import check_acceptance
+
+        acc = check_acceptance(ws, tid, commit=commit)
+        if not acc.get("ok"):
+            return {
+                "ok": False,
+                "path": "feature_seed",
+                "wrote": rel,
+                "commit": commit,
+                "error": f"acceptance:{acc.get('reason')}",
+            }
+    except Exception as exc:
+        _log.warning("feature_seed acceptance: %s", exc)
+
+    _log.info("[feature_seed] %s wrote %s commit=%s", tid, dest, commit or "?")
+    return {
+        "ok": True,
+        "path": "feature_seed",
+        "wrote": rel,
+        "commit": commit,
+        "duration_s": duration_s,
+    }

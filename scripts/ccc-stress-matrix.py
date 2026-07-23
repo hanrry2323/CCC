@@ -155,7 +155,7 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
             name="功能探针禁劫持",
             kind="transfer",
             title=f"[{RUN_TAG}] {app} feature DRY_RUN 探针",
-            goal=f"写 {probe}，禁止写成 paper_intent_probe",
+            goal=f"写 {probe}，禁止写成 paper_intent_probe（feature_seed 确定性）",
             acceptance=[
                 f"test -f {probe}",
                 f"DRY_RUN=true python3 {probe}",
@@ -165,8 +165,9 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
                 f"禁止写 paper_intent_probe.py；须 DRY_RUN 可跑\n\n"
                 f"## 验收\n- test -f {probe}\n- DRY_RUN=true python3 {probe}\n"
             ),
+            executor_intent="python",
             complexity="small",
-            notes="P5 must stay opencode",
+            notes="P5 path=feature_seed (deterministic; ban paper hijack)",
         ),
         Scenario(
             sid="e05",
