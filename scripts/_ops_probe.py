@@ -724,6 +724,246 @@ def ready_to_dispatch(
     }
 
 
+_SEVERITY_RANK = {"green": 0, "amber": 1, "red": 2}
+
+
+def _copy_payload(
+    *,
+    alert_id: str,
+    title: str,
+    detail: str,
+    source: str,
+    impact: str = "暂缓项目开发与下达",
+    suggest: str = "",
+    extra: dict[str, Any] | None = None,
+) -> str:
+    """Agent-facing paste blob for Desktop「复制给 Agent」."""
+    lines = [
+        "【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）",
+        f"标题：{title}",
+        f"影响：{impact}",
+        f"来源：{source}",
+        f"详情：{(detail or '').strip() or '（无）'}",
+    ]
+    if suggest:
+        lines.append(f"建议：{suggest}")
+    meta = {"id": alert_id, "source": source}
+    if extra:
+        meta.update(extra)
+    lines.append(f"机器字段：{meta}")
+    return "\n".join(lines)
+
+
+def _alert_suggest(alert_id: str, source: str) -> str:
+    sid = (alert_id or "").lower()
+    src = (source or "").lower()
+    if "engine" in sid or src == "engine":
+        return "在 Mac2017 查 com.ccc.engine / `bash scripts/ccc-autostart-guard.sh status`"
+    if "7777" in sid or "hub" in sid or src == "hub":
+        return "确认 Hub :7777 监听；M1 查 com.ccc.hub-tunnel → 127.0.0.1:17777"
+    if "port" in sid or src == "ports":
+        return "对照 `.ccc/infrastructure.md` 与 `GET /api/ops/ports`，重启对应 launchd"
+    if "patrol" in src or "authority" in sid:
+        return "读 `~/.ccc/alerts/` 与 `python3 scripts/ccc-authority-patrol.py`"
+    if "saturated" in sid or src == "capacity":
+        return "查 OpenCode 残留 / `python3 scripts/ccc-host-resources.py summary`；先 reap 再加并发"
+    if "abn-" in sid or src == "board":
+        return "经 Hub reopen 或复制本条让 Agent 核账 abnormal；禁重复盲目下达"
+    if "daily" in src or sid.startswith("daily"):
+        return "读最新 daily-review；安全类 D 只告警不建卡"
+    if "control" in sid or src == "control":
+        return "控制面须 `enabled`（`bash scripts/ccc-autostart-guard.sh enable --start`）"
+    return "按标题与机器字段在 Cursor/对话 Agent 侧排查平台组件"
+
+
+def ops_health_envelope(
+    *,
+    control: dict[str, Any] | None = None,
+    risks: dict[str, Any] | None = None,
+    ready: dict[str, Any] | None = None,
+    logistics: dict[str, Any] | None = None,
+    resources_history: dict[str, Any] | None = None,
+    ports: dict[str, Any] | None = None,
+    overview: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Desktop 运维总灯：severity green|amber|red + 仅红 alerts[].copy_payload。
+
+    Hub 侧合成；M1 sidecar/MCP 由 Desktop 本机合并进展示灯（见 domains.agent_mcp）。
+    """
+    ctrl = control if isinstance(control, dict) else {}
+    risk_blob = risks if isinstance(risks, dict) else {}
+    ready_blob = ready if isinstance(ready, dict) else {}
+    logi = logistics if isinstance(logistics, dict) else {}
+    hist = resources_history if isinstance(resources_history, dict) else {}
+    ports_blob = ports if isinstance(ports, dict) else {}
+    ov = overview if isinstance(overview, dict) else {}
+
+    alerts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    amber_notes: list[str] = []
+
+    def push_red(
+        alert_id: str,
+        title: str,
+        detail: str,
+        source: str,
+        *,
+        impact: str = "暂缓项目开发与下达",
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        aid = (alert_id or title)[:80]
+        if aid in seen:
+            return
+        seen.add(aid)
+        suggest = _alert_suggest(aid, source)
+        alerts.append(
+            {
+                "id": aid,
+                "title": title,
+                "detail": (detail or "")[:400],
+                "source": source,
+                "severity": "red",
+                "copy_payload": _copy_payload(
+                    alert_id=aid,
+                    title=title,
+                    detail=detail or "",
+                    source=source,
+                    impact=impact,
+                    suggest=suggest,
+                    extra=extra,
+                ),
+            }
+        )
+
+    # --- red from high risks ---
+    for r in risk_blob.get("risks") or []:
+        if not isinstance(r, dict):
+            continue
+        sev = str(r.get("severity") or "").lower()
+        if sev == "high":
+            push_red(
+                str(r.get("id") or r.get("title") or "risk"),
+                str(r.get("title") or "运维红灯"),
+                str(r.get("detail") or ""),
+                str(r.get("source") or "risk"),
+                extra={"workspace": r.get("workspace")} if r.get("workspace") else None,
+            )
+        elif sev in ("medium", "warn", "low"):
+            amber_notes.append(str(r.get("title") or "中度风险")[:80])
+
+    # --- red from ready blockers not already covered ---
+    if ready_blob.get("ok") is False:
+        for b in ready_blob.get("blockers") or []:
+            bs = str(b)
+            if "红灯" in bs:
+                continue  # already from risks.high
+            bid = f"ready-{hash(bs) & 0xFFFF:x}"
+            push_red(bid, bs, ready_blob.get("reason") or bs, "ready")
+
+    # --- red from critical CCC ports down ---
+    port_map = ports_blob.get("ports") if isinstance(ports_blob.get("ports"), dict) else {}
+    for pnum in (7775, 7777):
+        info = port_map.get(str(pnum)) or port_map.get(pnum)
+        if isinstance(info, dict) and info.get("ok") is False:
+            push_red(
+                f"port-{pnum}",
+                f"端口 :{pnum} 不通",
+                str(info.get("detail") or info.get("error") or "probe failed"),
+                "ports",
+                extra={"port": pnum, "host": info.get("host")},
+            )
+    down = ov.get("down_ports") or []
+    if isinstance(down, list):
+        for dp in down[:8]:
+            if isinstance(dp, dict):
+                pn = dp.get("port") or dp.get("name")
+                push_red(
+                    f"down-{pn}",
+                    f"端口异常: {pn}",
+                    str(dp.get("detail") or dp.get("host") or ""),
+                    "ports",
+                    extra={"port": pn},
+                )
+            elif dp:
+                push_red(f"down-{dp}", f"端口异常: {dp}", "", "ports")
+
+    # --- capacity ---
+    summary = hist.get("summary") if isinstance(hist.get("summary"), dict) else {}
+    verdict = summary.get("verdict")
+    if verdict == "saturated":
+        push_red(
+            "capacity-saturated",
+            "主机资源 saturated",
+            str(summary.get("note") or summary.get("reason") or "先治挂死"),
+            "capacity",
+        )
+    elif verdict and verdict not in ("headroom", "ok", "unknown", None):
+        amber_notes.append(f"资源 {verdict}")
+
+    if logi.get("needs_attention") is True and not alerts:
+        amber_notes.append(str(logi.get("headline") or "后勤需关注")[:80])
+    elif logi.get("needs_attention") is True:
+        # already red from something else — keep amber note only if no red
+        pass
+
+    # control soft: invent open is amber (should stay hard-off)
+    if ctrl.get("invent_hard_disabled") is False:
+        amber_notes.append("invent 硬关被打开")
+
+    severity = "green"
+    if alerts:
+        severity = "red"
+    elif amber_notes:
+        severity = "amber"
+
+    if severity == "green":
+        human_line = "系统健康 · 可以放心开发和下任务"
+    elif severity == "amber":
+        human_line = "有轻度提示，不挡开发 · " + "；".join(amber_notes[:2])
+    else:
+        human_line = f"请交给 Agent · {len(alerts)} 项红灯"
+
+    # domain digests for Desktop expand (not homepage noise)
+    ccc_ports = []
+    for pnum in (7775, 7777, 7778):
+        info = port_map.get(str(pnum)) or port_map.get(pnum) or {}
+        ccc_ports.append(
+            {
+                "port": pnum,
+                "ok": info.get("ok") if isinstance(info, dict) else None,
+            }
+        )
+    domains = {
+        "cluster": {
+            "engine_running": ctrl.get("engine_running"),
+            "mode": ctrl.get("mode"),
+            "hub_port_7777": ctrl.get("hub_port_7777"),
+            "ports": ccc_ports,
+            "down_ports_n": len(down) if isinstance(down, list) else 0,
+            "alert_count": ov.get("alert_count"),
+        },
+        "agent_mcp": {
+            "ok": None,
+            "mcp_probed": False,
+            "note": "M1 sidecar / MCP 由 Desktop 本机合并进总灯",
+        },
+        "capacity": {
+            "verdict": verdict,
+            "note": summary.get("note") or summary.get("reason"),
+        },
+    }
+
+    return {
+        "severity": severity,
+        "human_line": human_line,
+        "alerts": alerts,
+        "amber_notes": amber_notes[:8],
+        "domains": domains,
+        "ready_ok": ready_blob.get("ok"),
+        "generated_at": _now_iso(),
+    }
+
+
 def list_daily_reviews(workspaces: dict[str, str], limit: int = 20) -> dict:
     reports: list[dict] = []
     for ws_id, path in workspaces.items():

@@ -57,7 +57,7 @@ alwaysApply: true
 - **产线提效（已落地）**：槽终态必释 / 脏 result 防御 / FAIL revert 必 abort / testing 限预算且先 launch / 短路径硬门 + `dev_path` 埋点 — 见 authority「产线提效综合方案」+ `docs/briefs/2026-07-22-opencode-lifecycle-stall.md`；**禁止**用只加 `MAX_CONCURRENT` 代替修闸门。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
-- **Ops 后勤**：Engine=前锋（只消费队列）；Ops=供弹/清战场/护装备/回传（launchd 旁路，不进 Engine tick）。弹药只进 `engine=true` 业务仓；**禁止** CCC orch 建 `ops-auto`/日审卡。日审 apply：C/E/F 可；D/G/H 报警；I 永不。运维 UI 只读态势为主；采纳是例外。**invent 硬关保留**，主链+运维信心达标后再评估。Desktop 运维须给出 `ready_to_dispatch`。详见 authority「Ops 后勤」。
+- **Ops 运维面（三面之一）**：对话定意图 / 编排跑卡 / **运维 = 给人看的健康灯 + 后台养系统**。Desktop 运维硬规则：**绿**=放心开发下任务；**橙**=可忽略不拦事；**红**=后台优先自愈，人只**一键复制交 Agent**（红=系统/配置问题，不把老板当维修工）。人看四域：总健康｜集群与服务（含端口）｜Agent 与 MCP｜仅红告警条。后台喂灯：日审/飞轮/容量/reap·patrol。Engine=前锋只消费队列；弹药旁路只进 `engine=true` 业务仓；禁 orch；日审 C/E/F 可 apply，D/G/H 升红，I 永不。**invent 硬关保留**。详见 authority「Ops 运维面」。
 
 ## 共识落盘
 

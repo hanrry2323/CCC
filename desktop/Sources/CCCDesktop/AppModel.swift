@@ -191,6 +191,11 @@ final class AppModel: ObservableObject {
     @Published var opsSummary: OpsSummary?
     @Published var opsAdoptBusy = false
     @Published var opsAdoptError: String?
+    /// 运维页合并：本机 sidecar 是否 ok（Hub 无法探 M1）
+    @Published var opsAgentOk: Bool?
+    @Published var opsAgentRuntime: String?
+    @Published var opsAgentModel: String?
+    @Published var opsCopiedHint: String?
     @Published var inboxProposals: [InboxProposal] = []
     @Published var inboxAdoptBusy = false
     /// 顶栏：本机 Agent 大模型调用（日总量 + 近 5 秒）
@@ -5126,6 +5131,18 @@ final class AppModel: ObservableObject {
                 opsRisks = risks.risks ?? []
                 opsRisksCount = risks.count
                 opsRisksHigh = risks.high
+            }
+            // M1 sidecar → 运维总灯合并（Hub domains.agent_mcp 占位）
+            let agentStr = agentURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let agentBase = APIClient.makeBaseURL(from: agentStr),
+               let info = await client.fetchAgentHealth(base: agentBase) {
+                opsAgentOk = info.ok
+                opsAgentRuntime = info.agentRuntime
+                opsAgentModel = info.model
+            } else {
+                opsAgentOk = false
+                opsAgentRuntime = nil
+                opsAgentModel = nil
             }
             if let props = try? await client.fetchInboxProposals() {
                 inboxProposals = props.proposals ?? []

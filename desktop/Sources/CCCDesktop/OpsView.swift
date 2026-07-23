@@ -1,6 +1,7 @@
 import SwiftUI
+import AppKit
 
-/// 原生运维：Apple 组件呈现（Gauge / Grid / Material / Section）
+/// 原生运维：一眼红绿灯（绿敢开发 / 橙可忽略 / 红复制交 Agent）
 struct OpsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
@@ -50,12 +51,13 @@ struct OpsView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
-                    statusBarSection
-                    logisticsSection
-                    highAlertsSection
+                    healthLampSection
+                    redAlertsSection
+                    domainsSection
                     failuresSection
-                    DisclosureGroup("舰队详情", isExpanded: $showFleet) {
+                    DisclosureGroup("后勤与舰队", isExpanded: $showFleet) {
                         VStack(alignment: .leading, spacing: 22) {
+                            logisticsSection
                             overviewSection
                             resourcesSection
                             workspacesSection
@@ -77,7 +79,7 @@ struct OpsView: View {
                     inboxProposalsSection
                     DisclosureGroup("例外动作", isExpanded: $showActions) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("日审默认 dry-run all-apps；采纳须业务仓（禁 CCC）。")
+                            Text("日审默认 dry-run；采纳须业务仓（禁 CCC）。日常不必点。")
                                 .font(CCCTheme.caption)
                                 .foregroundStyle(CCCTheme.faint)
                             Button {
@@ -116,10 +118,11 @@ struct OpsView: View {
 
     private var header: some View {
         HStack {
-            Label("运维", systemImage: "wrench.and.screwdriver.fill")
+            Label("运维", systemImage: "heart.text.square.fill")
                 .font(.system(size: 18, weight: .semibold))
-            if let n = model.opsOverview?.alert_count, n > 0 {
-                Text("\(n)")
+            let redN = displayAlerts.count
+            if redN > 0 {
+                Text("\(redN)")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 7)
@@ -127,6 +130,11 @@ struct OpsView: View {
                     .background(Capsule().fill(CCCTheme.nodeFail))
             }
             Spacer()
+            if let hint = model.opsCopiedHint {
+                Text(hint)
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.secondary)
+            }
             if model.opsAdoptBusy || model.opsBusy {
                 ProgressView().controlSize(.small)
             }
@@ -157,130 +165,256 @@ struct OpsView: View {
         .padding(.bottom, 10)
     }
 
-    // MARK: - Status bar
+    // MARK: - Health lamp (homepage)
 
-    private var statusBarSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("状态", systemImage: "heart.text.square")
-            if let ready = model.opsSummary?.ready_to_dispatch {
-                readyBanner(ready)
+    /// Hub severity + 本机 Agent 合并后的总灯
+    private var displaySeverity: String {
+        let hub = (model.opsSummary?.severity ?? "").lowercased()
+        let agentDown = model.opsAgentOk == false
+        if agentDown { return "red" }
+        if hub == "red" { return "red" }
+        if hub == "amber" || hub == "orange" { return "amber" }
+        if hub == "green" { return "green" }
+        // 无 summary 时用 ready 兜底
+        if model.opsSummary?.ready_to_dispatch?.ok == false { return "red" }
+        if model.opsSummary != nil { return "green" }
+        return "amber"
+    }
+
+    private var displayHumanLine: String {
+        if model.opsAgentOk == false {
+            return "本机对话 Agent 未就绪 · 请交给 Agent（或先启动 sidecar）"
+        }
+        if let line = model.opsSummary?.human_line, !line.isEmpty {
+            return line
+        }
+        switch displaySeverity {
+        case "green": return "系统健康 · 可以放心开发和下任务"
+        case "red": return "请交给 Agent 处理红灯"
+        default: return "有轻度提示，不挡开发"
+        }
+    }
+
+    private var displayAlerts: [OpsHealthAlert] {
+        var list = model.opsSummary?.alerts ?? []
+        if model.opsAgentOk == false {
+            let payload = """
+            【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）
+            标题：本机 Agent Sidecar 未就绪
+            影响：无法对话 / 无法承接红灯修复
+            来源：sidecar
+            详情：GET http://127.0.0.1:7788/health 失败或 ok≠true
+            建议：查 com.ccc.agent-sidecar / 本机 :7788
+            机器字段：{"id":"sidecar-down","source":"sidecar","port":7788}
+            """
+            let local = OpsHealthAlert(
+                id: "sidecar-down",
+                title: "本机 Agent Sidecar 未就绪",
+                detail: "对话面 :7788 不可用",
+                source: "sidecar",
+                severity: "red",
+                copy_payload: payload
+            )
+            if !list.contains(where: { $0.id == "sidecar-down" }) {
+                list.insert(local, at: 0)
             }
-            let risks = model.opsRisks
-            let engineDown = risks.contains { $0.id == "engine-down" }
-            let ctrl = model.opsSummary?.control
-            let engineOk = (ctrl?.engine_running == true) || (!engineDown && ctrl?.engine_running != false)
-            let mode = ctrl?.mode ?? "—"
-            let modeOk = mode == "enabled"
-            let inventOff = ctrl?.invent_hard_disabled != false
-            let hubOk = ctrl?.hub_port_7777 != false
-            let high = risks.filter { $0.severity.lowercased() == "high" }.count
-            let plist = model.opsSummary?.logistics?.plist
-            let loaded = plist?.any_loaded == true
-            let applyAmmo = plist?.any_apply_ammo == true
-            let verdict = model.opsSummary?.resources_history?.summary?.verdict
-            HStack(spacing: 8) {
-                statusPill(ok: engineOk, text: engineOk ? "Engine 在跑" : "Engine 停")
-                statusPill(ok: modeOk, text: "mode \(mode)")
-                statusPill(ok: inventOff, text: inventOff ? "invent 关" : "invent 开?")
-                statusPill(ok: hubOk, text: hubOk ? "Hub :7777" : "Hub 未听")
-                statusPill(ok: high == 0, text: high > 0 ? "红灯 \(high)" : "无红灯")
+        }
+        return list
+    }
+
+    private var healthLampSection: some View {
+        let sev = displaySeverity
+        let color: Color = {
+            switch sev {
+            case "green": return CCCTheme.nodeDone
+            case "red": return CCCTheme.nodeFail
+            default: return Color.orange
             }
-            HStack(spacing: 8) {
-                statusPill(ok: loaded, text: loaded ? (applyAmmo ? "plist apply" : "plist dry") : "plist 未启用")
-                if let verdict, !verdict.isEmpty {
-                    statusPill(ok: verdict != "saturated", text: "资源 \(verdict)")
+        }()
+        let title: String = {
+            switch sev {
+            case "green": return "可以开发"
+            case "red": return "请交给 Agent"
+            default: return "可忽略"
+            }
+        }()
+        let icon: String = {
+            switch sev {
+            case "green": return "checkmark.circle.fill"
+            case "red": return "exclamationmark.octagon.fill"
+            default: return "exclamationmark.circle.fill"
+            }
+        }()
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                Image(systemName: icon)
+                    .font(.system(size: 44))
+                    .foregroundStyle(color)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(color)
+                    Text(displayHumanLine)
+                        .font(.system(size: 15))
+                        .foregroundStyle(CCCTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                // Desktop 拉到 summary = 隧道可达（M1→17777）
-                statusPill(ok: model.opsSummary != nil && model.opsError == nil, text: "隧道通")
+                Spacer(minLength: 0)
             }
-            if let headline = model.opsSummary?.logistics?.headline {
-                Text(headline)
-                    .font(.system(size: 13, weight: (model.opsSummary?.logistics?.needs_attention == true) ? .semibold : .regular))
-                    .foregroundStyle(
-                        (model.opsSummary?.logistics?.needs_attention == true)
-                            ? Color.orange : CCCTheme.secondary
-                    )
+            if sev == "amber", let notes = model.opsSummary?.amber_notes, !notes.isEmpty {
+                Text(notes.prefix(3).joined(separator: " · "))
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(Color.orange.opacity(0.9))
             }
-            Text("定时：install-ops-plist.sh --enable --apply-ammo（界面不代启）· 无自造任务入口")
+            if sev == "green" {
+                Text("看一眼绿灯就可以去定稿下任务。不必在这里修东西。")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.faint)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(color.opacity(0.12))
+        )
+    }
+
+    private var redAlertsSection: some View {
+        let alerts = displayAlerts
+        return Group {
+            if !alerts.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    sectionTitle("红灯 · 一键交给 Agent", systemImage: "doc.on.clipboard")
+                    Text("红灯是系统问题。复制后回对话粘贴，让 Agent 处理。你不用当维修工。")
+                        .font(CCCTheme.caption)
+                        .foregroundStyle(CCCTheme.faint)
+                    ForEach(alerts) { alert in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "light.beacon.max.fill")
+                                .foregroundStyle(CCCTheme.nodeFail)
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(alert.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                if let d = alert.detail, !d.isEmpty {
+                                    Text(d)
+                                        .font(CCCTheme.caption)
+                                        .foregroundStyle(CCCTheme.secondary)
+                                        .lineLimit(3)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Button("复制给 Agent") {
+                                copyOpsAlert(alert)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CCCTheme.nodeFail)
+                            .controlSize(.small)
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(CCCTheme.nodeFail.opacity(0.08))
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func copyOpsAlert(_ alert: OpsHealthAlert) {
+        let text = (alert.copy_payload?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? """
+            【CCC 运维红灯】\(alert.title)
+            \(alert.detail ?? "")
+            来源：\(alert.source ?? "ops")
+            """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        model.opsCopiedHint = "已复制"
+        model.fillComposer(text: text, threadId: model.selectedThreadId)
+        window.destination = .chat
+        model.selectDestination(.chat, projectId: window.projectId)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if model.opsCopiedHint == "已复制" {
+                model.opsCopiedHint = nil
+            }
+        }
+    }
+
+    private var domainsSection: some View {
+        let cluster = model.opsSummary?.domains?.cluster
+        let cap = model.opsSummary?.domains?.capacity
+        let agentOk = model.opsAgentOk
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("一览", systemImage: "square.grid.2x2")
+            HStack(spacing: 10) {
+                domainChip(
+                    title: "集群",
+                    ok: cluster?.engine_running == true
+                        && (cluster?.mode == "enabled")
+                        && (cluster?.hub_port_7777 != false)
+                        && (cluster?.down_ports_n ?? 0) == 0,
+                    subtitle: {
+                        let eng = cluster?.engine_running == true ? "Engine" : "Engine停"
+                        let mode = cluster?.mode ?? "—"
+                        return "\(eng) · \(mode)"
+                    }()
+                )
+                domainChip(
+                    title: "Agent",
+                    ok: agentOk == true,
+                    subtitle: {
+                        if agentOk == true {
+                            let rt = model.opsAgentRuntime ?? "sidecar"
+                            let m = model.opsAgentModel ?? ""
+                            return m.isEmpty ? rt : "\(rt) · \(m)"
+                        }
+                        if agentOk == false { return "本机未就绪" }
+                        return "探测中"
+                    }()
+                )
+                domainChip(
+                    title: "容量",
+                    ok: (cap?.verdict ?? "headroom") != "saturated",
+                    subtitle: cap?.verdict ?? "—"
+                )
+            }
+            if let ports = cluster?.ports, !ports.isEmpty {
+                Text(
+                    "端口 "
+                        + ports.map { p in
+                            let n = p.port.map(String.init) ?? "?"
+                            let mark = p.ok == true ? "✓" : (p.ok == false ? "✗" : "?")
+                            return ":\(n)\(mark)"
+                        }.joined(separator: "  ")
+                )
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+            }
+            Text("MCP 清单探针后续接入；当前以 Agent 在线代表对话能力。")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
         }
     }
 
-    private func readyBanner(_ ready: OpsReadyToDispatch) -> some View {
-        let ok = ready.ok == true
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: ok ? "checkmark.seal.fill" : "exclamationmark.octagon.fill")
-                Text(ok ? "可下达" : "暂缓下达")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer(minLength: 0)
-            }
-            Text(ready.reason ?? (ok ? "就绪" : "有阻塞"))
-                .font(CCCTheme.callout)
+    private func domainChip(title: String, ok: Bool, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(CCCTheme.faint)
+            Text(subtitle)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(ok ? CCCTheme.nodeDone : CCCTheme.nodeFail)
-            if let blockers = ready.blockers, !blockers.isEmpty, !ok {
-                Text(blockers.joined(separator: " · "))
-                    .font(CCCTheme.caption)
-                    .foregroundStyle(CCCTheme.secondary)
-            }
+                .lineLimit(2)
         }
-        .padding(12)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.12))
+                .fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.1))
         )
-    }
-
-    private func statusPill(ok: Bool, text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(ok ? CCCTheme.nodeDone : CCCTheme.nodeFail)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule().fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.12))
-            )
-    }
-
-    // MARK: - High alerts only
-
-    private var highAlertsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("需关注", systemImage: "exclamationmark.octagon.fill")
-            let high = model.opsRisks.filter { $0.severity.lowercased() == "high" }
-            let downs = model.opsOverview?.down_ports ?? []
-            if high.isEmpty && downs.isEmpty {
-                emptyHint("当前无红灯")
-            } else {
-                ForEach(high) { risk in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.octagon.fill")
-                            .foregroundStyle(CCCTheme.nodeFail)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(risk.title)
-                                .font(.system(size: 14, weight: .semibold))
-                            Text(risk.detail)
-                                .font(CCCTheme.caption)
-                                .foregroundStyle(CCCTheme.secondary)
-                                .lineLimit(3)
-                        }
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(CCCTheme.nodeFail.opacity(0.08))
-                    )
-                }
-                ForEach(downs.prefix(6)) { p in
-                    Label("\(p.host):\(p.port) · \(p.name)", systemImage: "network.slash")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(CCCTheme.nodeFail)
-                }
-            }
-        }
     }
 
     // MARK: - Failures / abnormal (reopen)

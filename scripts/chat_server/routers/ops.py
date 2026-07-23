@@ -261,6 +261,7 @@ async def ops_summary(request: Request):
         recent_failures_fleet,
         abnormal_cards_fleet,
         ready_to_dispatch,
+        ops_health_envelope,
     )
 
     async def _run(func, *args):
@@ -347,6 +348,44 @@ async def ops_summary(request: Request):
             "reason": f"ready 合成失败: {exc}"[:160],
             "blockers": ["ready_compose_error"],
         }
+
+    try:
+        env = ops_health_envelope(
+            control=ctrl,
+            risks=risks_result if isinstance(risks_result, dict) else {},
+            ready=out.get("ready_to_dispatch")
+            if isinstance(out.get("ready_to_dispatch"), dict)
+            else {},
+            logistics=out.get("logistics") if isinstance(out.get("logistics"), dict) else {},
+            resources_history=hist,
+            ports=out.get("ports") if isinstance(out.get("ports"), dict) else {},
+            overview=out.get("overview") if isinstance(out.get("overview"), dict) else {},
+        )
+        out["severity"] = env.get("severity") or "amber"
+        out["human_line"] = env.get("human_line") or ""
+        out["alerts"] = env.get("alerts") or []
+        out["amber_notes"] = env.get("amber_notes") or []
+        out["domains"] = env.get("domains") or {}
+        out["health"] = env  # full envelope for SPA / debug
+    except Exception as exc:
+        out["severity"] = "red"
+        out["human_line"] = f"健康合成失败：{exc}"[:120]
+        out["alerts"] = [
+            {
+                "id": "health-compose-error",
+                "title": "运维健康合成失败",
+                "detail": str(exc)[:200],
+                "source": "ops",
+                "severity": "red",
+                "copy_payload": (
+                    "【CCC 运维红灯】健康合成失败\n"
+                    f"详情：{exc}\n"
+                    "建议：查 Hub 日志与 scripts/_ops_probe.ops_health_envelope"
+                ),
+            }
+        ]
+        out["amber_notes"] = []
+        out["domains"] = {}
 
     # fold control into logistics for older Desktop clients
     if isinstance(out.get("logistics"), dict) and isinstance(ctrl, dict):

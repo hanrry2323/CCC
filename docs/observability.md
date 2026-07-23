@@ -91,9 +91,9 @@ curl -u ccc:ccc 'http://127.0.0.1:7777/api/ops/resources/history?n=120'
 
 ---
 
-## 7. Ops 后勤旁路（供弹 / 心跳）
+## 7. Ops 运维面旁路（供弹 / 心跳 / 喂灯）
 
-> 权威：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)「Ops 后勤」。Engine 不跑日审 tick。
+> 权威：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md)「Ops 运维面」。Engine 不跑日审 tick。Desktop 总灯由旁路探针喂绿/橙/红。
 
 | 项 | 路径 / 命令 |
 |----|-------------|

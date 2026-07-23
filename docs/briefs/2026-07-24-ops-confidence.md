@@ -1,11 +1,13 @@
-# 运维信心包（2026-07-24）
+# 运维信心包（2026-07-24）· 史
+
+> **已被** [`loop-engineer-authority.md`](../product/loop-engineer-authority.md)「Ops 运维面」（红绿灯 + 人看四域）**取代为产品口径**。本文仅保留实现痕迹，勿当现行 UX 规范。
 
 ## 目标
 
 老板在 **Desktop → 运维** 不问 Cursor，也能判断敢不敢对业务仓定稿 transfer。  
 `invent` **继续硬关**；本阶段不开发无人自造。
 
-权威：`docs/product/loop-engineer-authority.md`「invent 硬关」「运维信心」。
+权威（现行）：`docs/product/loop-engineer-authority.md`「Ops 运维面」。本 brief 为过渡实现史。
 
 ---
 

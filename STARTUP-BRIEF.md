@@ -24,7 +24,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Vibe 真优势三句**：少而硬的意图 · 唯一权威路径 · 偏差默认用飞轮收——**不是**画布更细。  
 **LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。  
-**Ops 后勤**：Engine 前锋打仗；日审/文档/regress/patrol 旁路供弹与护航（弹药只进业务仓，禁 orch）。见 authority「Ops 后勤」。
+**Ops 运维面**（对话/编排/运维三面之一）：给人看健康灯——**绿**敢开发、**橙**可忽略、**红**一键复制交 Agent；旁路自愈/供弹/巡查（弹药只进业务仓，禁 orch）。见 authority「Ops 运维面」。
 
 **勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」「Agent 画布当写码主控」。
 

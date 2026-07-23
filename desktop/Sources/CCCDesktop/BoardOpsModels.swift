@@ -151,6 +151,52 @@ struct OpsSummary: Decodable {
     let ready_to_dispatch: OpsReadyToDispatch?
     let recent_failures: [OpsFailureRow]?
     let abnormal_cards: [OpsAbnormalCard]?
+    /// 总灯 green|amber|red（运维面 2026-07-24）
+    let severity: String?
+    let human_line: String?
+    let alerts: [OpsHealthAlert]?
+    let amber_notes: [String]?
+    let domains: OpsHealthDomains?
+}
+
+struct OpsHealthAlert: Identifiable, Hashable, Decodable {
+    let id: String
+    let title: String
+    let detail: String?
+    let source: String?
+    let severity: String?
+    let copy_payload: String?
+}
+
+struct OpsHealthDomains: Decodable {
+    let cluster: OpsDomainCluster?
+    let agent_mcp: OpsDomainAgentMcp?
+    let capacity: OpsDomainCapacity?
+}
+
+struct OpsDomainCluster: Decodable {
+    let engine_running: Bool?
+    let mode: String?
+    let hub_port_7777: Bool?
+    let ports: [OpsDomainPort]?
+    let down_ports_n: Int?
+    let alert_count: Int?
+}
+
+struct OpsDomainPort: Decodable {
+    let port: Int?
+    let ok: Bool?
+}
+
+struct OpsDomainAgentMcp: Decodable {
+    let ok: Bool?
+    let mcp_probed: Bool?
+    let note: String?
+}
+
+struct OpsDomainCapacity: Decodable {
+    let verdict: String?
+    let note: String?
 }
 
 struct OpsControlResp: Decodable {
