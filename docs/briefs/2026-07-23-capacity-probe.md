@@ -12,5 +12,7 @@
 
 ## 本轮落地
 
-见 2017 `~/.ccc/stats/capacity-probe.json`（部署后 `write-brief`）。  
-目标「10 项目同时开发」的有效天花板 ≈ `min(有卡 app 数, MAX_CONCURRENT, 全局 OpenCode 槽)`，不是同仓 10 路写码。
+- 2017 `~/.ccc/engine.env`：`CCC_MAX_CONCURRENT=6`（`ccc-engine.sh` source）
+- gate-clean baseline 主机摘要已见 `max_concurrent: 6`，仍 `headroom`
+- `~/.ccc/stats/capacity-probe.json`：`write-brief` 会读 engine.env
+- 下一档可试 **7–8**（仅当忙时 ≥30 点仍 headroom 且挂死不升）
