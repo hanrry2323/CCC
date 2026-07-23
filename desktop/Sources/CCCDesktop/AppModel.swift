@@ -2130,6 +2130,11 @@ final class AppModel: ObservableObject {
         opsCopiedHint = "已交编排运维"
     }
 
+    /// 把文本填入输入框（经 composerBounce → ContentView）
+    func fillComposer(text: String, threadId: String?) {
+        setComposerBounce(text, threadId: threadId)
+    }
+
     private func setComposerBounce(_ text: String?, threadId: String?) {
         composerBounce = text
         composerBounceThreadId = text == nil ? nil : threadId
