@@ -604,27 +604,25 @@ def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
 
 
 def _lens_context_for_turn(project_id: str, user_text: str) -> str:
-    """Inject Hub lens discipline for discuss/Plan turns（常驻，不限 board 关键词）。"""
+    """Inject Hub lens discipline（全功能 App Agent · 常驻）。"""
     pid = (project_id or "").strip()
     if not pid:
         return ""
-    if pid == "ccc":
-        return (
-            "【编排运维 Agent · ccc】本机 CCC 可 Read/Write/Edit；"
-            "全舰队板务用 hub_repair(project_id=目标仓)；"
-            "禁止对 orch 投业务 epic；禁止教用户 outbox/Terminal；"
-            "业务产品意图请用户回业务项目卡。"
-        )
     parts = [
-        f"【Hub 透镜 · 项目 Agent · project_id={pid}】",
+        f"【Hub 透镜 · App Agent 全功能 · project_id={pid}】",
         "优先一等工具：hub_board / hub_git / hub_locate / hub_file / hub_grep / "
-        "hub_mind_get / hub_mind_put。",
-        "板堵/残卡：**交接编排运维（ccc）**；禁止本会话 hub_repair 清全球板；"
-        "禁止教用户 Terminal/outbox；禁止卫生 epic。",
-        "禁止 ssh / 本机业务路径 Read/git。结果内化，勿把 CLI 贴进用户正文。",
+        "hub_repair / hub_mind_get / hub_mind_put。",
+        "板堵/残卡/孤儿 running：**本会话 hub_repair(clear_blockers)**；"
+        "禁止甩锅「打开编排运维」；禁止教用户 Terminal/outbox；禁止卫生 epic。",
+        "禁止 ssh / 本机业务路径 Read/git；本机写仅限 CCC 平台仓。",
         "扫风险/定稿：board → locate → file 定点 1～3 相对路径；禁止只读文档交差。",
         "Hub 经本机隧道 :17777；勿改指 LAN :7777。",
     ]
+    if pid == "ccc":
+        parts.append(
+            "【CCC 平台入口】本机 CCC 可 Read/Write/Edit；不灌业务规划当产品搭档；"
+            "禁止对 orch 投业务 epic。"
+        )
     # board + mind 并行，缩短每轮首包前等待
     from concurrent.futures import ThreadPoolExecutor
 
@@ -638,8 +636,8 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         parts.append(mblock)
     if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
         parts.append(
-            "【板务交接强制】本轮用人话请用户打开编排运维（ccc）清板；"
-            "禁止本会话清板、禁止甩 outbox/Terminal。"
+            "【板务强制】本轮必须 hub_repair(clear_blockers) 并报告板面数字；"
+            "禁止甩锅、禁止 outbox/Terminal。"
         )
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
@@ -655,7 +653,7 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
             "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 hub_board + hub_git；"
-            "若 ready=false / abnormal / failed：交接编排运维清板；"
+            "若 ready=false / abnormal / failed / stuck_running：clear_blockers；"
             "禁止默认逼用户投卫生 epic；禁止零工具只复述注入快照。"
         )
     if re.search(
@@ -666,7 +664,7 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         parts.append(
             "【定稿/转任务 · 强制核实】作答前必须 hub_board + hub_git；"
             "再按目标 hub_locate/hub_file 定点 1～3 路径。"
-            "板堵 → 交接编排运维；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
+            "板堵 → clear_blockers；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
             "对用户：≤3 句人话 + 可选一个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
         )
     return "\n".join(parts)

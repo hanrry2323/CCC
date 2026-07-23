@@ -41,14 +41,12 @@ def test_user_visible_bans_allow_inside_ccc_transfer():
 
 def test_board_steward_locked_in_voice():
     from hub_voice import HUB_BOSS_VOICE
-    from ops_voice import OPS_BOSS_VOICE
 
-    # 项目 Agent：交接，不是自跑清板本职
-    assert "板务交接" in HUB_BOSS_VOICE or "编排运维" in HUB_BOSS_VOICE
-    assert "看板管家 · 本职 · 卡点必兜底" not in HUB_BOSS_VOICE
-    # 编排运维 Agent：跨仓 repair 本职
-    assert "看板管家" in OPS_BOSS_VOICE
-    assert "hub_repair" in OPS_BOSS_VOICE
+    assert "看板管家" in HUB_BOSS_VOICE
+    assert "hub_repair" in HUB_BOSS_VOICE
+    assert "clear_blockers" in HUB_BOSS_VOICE
+    assert "请打开左侧编排运维" not in HUB_BOSS_VOICE
+    assert "短人话请用户打开" not in HUB_BOSS_VOICE
     assert "transfer-outbox" in HUB_BOSS_VOICE  # as ban wording
 
 
@@ -122,8 +120,8 @@ def test_discuss_discipline_prefers_hub_tools():
 
     d = config.DISCUSS_TOOL_DISCIPLINE
     assert "hub_board" in d
-    assert "编排运维" in d or "交接" in d
-    assert "transfer-outbox" in d
+    assert "打开编排运维" not in d
+    assert "transfer-outbox" in d or "Terminal" in d
     assert "一等" in d or "MCP" in d
 
 

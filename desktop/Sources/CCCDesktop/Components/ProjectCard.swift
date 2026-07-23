@@ -13,7 +13,7 @@ struct ProjectCard: View {
     @State private var hovering = false
 
     private var projectDisplayName: String {
-        if project.id == "ccc" { return "编排运维" }
+        if project.id == "ccc" { return "CCC 平台" }
         let n = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return n.isEmpty ? project.id : n
     }

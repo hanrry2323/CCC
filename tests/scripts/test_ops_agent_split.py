@@ -1,4 +1,4 @@
-"""项目 Agent vs CCC 编排运维 Agent 隔离。"""
+"""App Agent 全功能（1A/2A）：默认 engineer + 板务本职。"""
 
 from __future__ import annotations
 
@@ -10,85 +10,49 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS / "chat_server"))
 
 
-def test_wrap_routes_ccc_to_ops_voice_package_import():
-    """与 sidecar 同路径：chat_server.hub_voice（曾因绝对 import ops_voice 炸 500）。"""
+def test_wrap_unified_voice_has_board_steward():
     from chat_server.hub_voice import wrap_hub_prompt
 
-    out = wrap_hub_prompt("清一下 qb 的 abnormal", project_id="ccc")
-    assert "编排运维人格" in out
+    out = wrap_hub_prompt("清一下 qb 的 abnormal", project_id="qb")
+    assert "看板管家" in out
     assert "hub_repair" in out
-    assert "业务项目卡" in out or "业务项目" in out
+    assert "clear_blockers" in out
+    assert "请打开左侧编排运维" not in out
+    assert "短人话请用户打开" not in out
 
 
-def test_wrap_routes_ccc_to_ops_voice():
-    from hub_voice import wrap_hub_prompt
+def test_wrap_ccc_uses_same_hub_voice_not_ops_split():
+    from chat_server.hub_voice import HUB_BOSS_VOICE, wrap_hub_prompt
 
-    out = wrap_hub_prompt("清一下 qb 的 abnormal", project_id="ccc")
-    assert "编排运维人格" in out
-    assert "hub_repair" in out
-    assert "业务项目卡" in out or "业务项目" in out
-
-
-def test_wrap_business_uses_project_voice_handoff():
-    from hub_voice import HUB_BOSS_VOICE, wrap_hub_prompt
-
-    out = wrap_hub_prompt("板堵了怎么定稿", project_id="qb")
-    assert "Desktop 对话人格" in out
-    assert "板务交接" in out or "编排运维" in HUB_BOSS_VOICE
-    assert "看板管家 · 本职 · 卡点必兜底" not in HUB_BOSS_VOICE
-    assert "交接" in HUB_BOSS_VOICE
+    out = wrap_hub_prompt("清板", project_id="ccc")
+    assert "Desktop 对话人格" in out or "看板管家" in out
+    assert "编排运维人格" not in out
+    assert "看板管家" in HUB_BOSS_VOICE
+    assert "clear_blockers" in HUB_BOSS_VOICE
 
 
-def test_ops_voice_forbids_bounce_to_business():
-    from ops_voice import OPS_BOSS_VOICE
-
-    assert "请回业务对话重新定稿" in OPS_BOSS_VOICE or "禁止话术" in OPS_BOSS_VOICE
-    assert "stuck_running" in OPS_BOSS_VOICE
-    assert "clear_blockers" in OPS_BOSS_VOICE
-
-
-def test_ops_voice_forbids_business_epic_on_orch():
-    from ops_voice import OPS_BOSS_VOICE
-
-    assert "R-15" in OPS_BOSS_VOICE or "业务" in OPS_BOSS_VOICE
-    assert "禁止" in OPS_BOSS_VOICE and "orch" in OPS_BOSS_VOICE.lower()
-    assert "hub_repair" in OPS_BOSS_VOICE
-
-
-def test_ccc_defaults_to_engineer():
+def test_default_engineer_all_projects():
     from chat_server import config
 
     assert config.resolve_tool_mode(None, project_id="ccc") == "engineer"
-    assert config.resolve_tool_mode("", project_id="ccc") == "engineer"
-    assert config.resolve_tool_mode("discuss", project_id="ccc") == "discuss"
-    assert config.resolve_tool_mode("engineer", project_id="qb") == "discuss"
-    assert config.resolve_tool_mode(None, project_id="qb") == "discuss"
+    assert config.resolve_tool_mode(None, project_id="qb") == "engineer"
+    assert config.resolve_tool_mode("", project_id="qb") == "engineer"
+    assert config.resolve_tool_mode("discuss", project_id="qb") == "discuss"
+    assert config.resolve_tool_mode("engineer", project_id="qb") == "engineer"
+    assert config.resolve_tool_mode(None, user_text="帮我定稿转任务") == "engineer"
 
 
-def test_discuss_discipline_is_handoff_not_self_repair():
-    from chat_server import config
+def test_discuss_discipline_allows_status_not_handoff():
+    from chat_server.config import DISCUSS_TOOL_DISCIPLINE as d
 
-    d = config.DISCUSS_TOOL_DISCIPLINE
-    assert "交接" in d or "编排运维" in d
-    assert "禁止" in d and "hub_repair" in d
+    assert "打开编排运维" not in d
+    assert "hub_repair" in d or "工程师模式" in d
 
 
-def test_qb_golden_handoff_not_outbox():
-    import json
+def test_golden_handoff_ban_not_in_voice():
+    from hub_voice import HUB_BOSS_VOICE, reply_has_user_visible_bans
 
-    from hub_voice import reply_has_user_visible_bans
-
-    good = (
-        "编排板还堵着，不是产品方案问题。"
-        "请打开左侧「编排运维」对话清板；清完再回来定稿。"
-    )
-    assert reply_has_user_visible_bans(good) == []
-    assert "transfer-outbox" not in good
-
-    fixture = Path(__file__).resolve().parent / "fixtures" / "qb_ops_handoff_goldens.jsonl"
-    if fixture.is_file():
-        for line in fixture.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            assert reply_has_user_visible_bans(row["good_reply"]) == []
+    assert "请打开左侧编排运维" not in HUB_BOSS_VOICE
+    assert "板务交接" not in HUB_BOSS_VOICE or "看板管家" in HUB_BOSS_VOICE
+    bad = "请把这段贴到 Terminal.app：\ncat > transfer-outbox.json"
+    assert reply_has_user_visible_bans(bad)

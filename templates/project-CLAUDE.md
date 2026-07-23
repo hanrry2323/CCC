@@ -24,7 +24,7 @@
 
 ```text
 Desktop 点本项目卡 → 定稿 → 转任务 → Engine 扇出 work
-板堵 → 交接编排运维（ccc），业务 Agent 不自清全球板
+板堵 → 本会话 hub_repair(clear_blockers)；禁止甩锅、禁止卫生 epic
 ```
 
 - 启动必读：本文件索引 → `.ccc/profile.md` → **`.ccc/state.md`**（可能滞后，交叉 live board）

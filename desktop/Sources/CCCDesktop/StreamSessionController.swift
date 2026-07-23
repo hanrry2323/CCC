@@ -38,35 +38,25 @@ enum StreamSessionController {
             ?? (id == "minimax-m3" ? "MiniMax-M3" : id)
     }
 
-    /// discuss = 只读探查；engineer = 允许本机写文件（仅平台仓 ccc；ccc 默认 engineer）
+    /// discuss = 可选只读；engineer = 默认全功能（本机 CCC 可写 + Hub 板务）
     static func resolveToolMode(
         preferred: String,
         userText: String,
         projectId: String? = nil
     ) -> String {
+        _ = projectId
         let pref = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let pid = projectId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        // 编排运维 Agent（ccc）：默认 engineer；仅显式 discuss 保持只读
-        if pid == "ccc" {
-            if pref == "discuss" { return "discuss" }
-            let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if t.contains("规划模式") || t.contains("只读讨论") {
-                return "discuss"
-            }
+        if pref == "discuss" { return "discuss" }
+        if pref == "engineer" { return "engineer" }
+        let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.contains("规划模式") || t.contains("只读讨论") {
+            return "discuss"
+        }
+        if t.contains("工程师模式") || t.contains("直接改本机") {
             return "engineer"
         }
-        var mode = "discuss"
-        if pref == "engineer" {
-            mode = "engineer"
-        } else {
-            let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if t.contains("工程师模式") || t.contains("直接改本机") {
-                mode = "engineer"
-            }
-        }
-        // 业务仓拒绝工程师模式
-        if mode == "engineer" { return "discuss" }
-        return mode
+        // App Agent 全功能：默认 engineer
+        return "engineer"
     }
 
     static func resolvePromptMode(forUserText text: String) -> String {

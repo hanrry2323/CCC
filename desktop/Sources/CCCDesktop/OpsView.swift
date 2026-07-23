@@ -285,8 +285,8 @@ struct OpsView: View {
         return Group {
             if !alerts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    sectionTitle("红灯 · 交给编排运维", systemImage: "doc.on.clipboard")
-                    Text("红灯是系统问题。点按钮打开「编排运维」对话处理。你不用当维修工。")
+                    sectionTitle("红灯 · 交给对话 Agent", systemImage: "doc.on.clipboard")
+                    Text("红灯是系统问题。点按钮打开当前项目对话处理。你不用当维修工。")
                         .font(CCCTheme.caption)
                         .foregroundStyle(CCCTheme.faint)
                     ForEach(alerts) { alert in
@@ -305,7 +305,7 @@ struct OpsView: View {
                                 }
                             }
                             Spacer(minLength: 8)
-                            Button("交给编排运维") {
+                            Button("交给 Agent") {
                                 Task { await handoffOpsAlert(alert) }
                             }
                             .buttonStyle(.borderedProminent)
@@ -337,9 +337,9 @@ struct OpsView: View {
             sourceProjectId: window.projectId ?? model.selectedProjectId
         )
         window.destination = .chat
-        model.selectDestination(.chat, projectId: "ccc")
+        model.selectDestination(.chat, projectId: window.projectId ?? model.selectedProjectId ?? "ccc")
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            if model.opsCopiedHint == "已交编排运维" {
+            if model.opsCopiedHint == "已交对话 Agent" {
                 model.opsCopiedHint = nil
             }
         }

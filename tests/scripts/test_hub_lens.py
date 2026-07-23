@@ -15,18 +15,17 @@ from chat_server import config  # noqa: E402
 from chat_server.services import hub_lens  # noqa: E402
 
 
-def test_resolve_tool_mode_blocks_engineer_on_business_project():
-    assert (
-        config.resolve_tool_mode("engineer", project_id="ccc-demo") == "discuss"
-    )
+def test_resolve_tool_mode_default_engineer_on_business_project():
+    assert config.resolve_tool_mode("engineer", project_id="ccc-demo") == "engineer"
     assert (
         config.resolve_tool_mode(
             None, user_text="请开工程师模式", project_id="ccc-demo"
         )
-        == "discuss"
+        == "engineer"
     )
+    assert config.resolve_tool_mode("discuss", project_id="ccc-demo") == "discuss"
     assert config.resolve_tool_mode("engineer", project_id="ccc") == "engineer"
-    assert config.resolve_tool_mode("engineer", project_id="") == "engineer"
+    assert config.resolve_tool_mode(None, project_id="") == "engineer"
 
 
 def test_hub_lens_board_counts(tmp_path: Path):

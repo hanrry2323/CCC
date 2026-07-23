@@ -40,7 +40,7 @@ final class AppModel: ObservableObject {
     /// 对话模型偏好（请求级传 sidecar；默认 flash = MiniMax-M3）
     @AppStorage("ccc.preferredModel") var preferredModel: String = "flash"
     /// discuss | engineer
-    @AppStorage("ccc.preferredToolMode") var preferredToolMode: String = "discuss"
+    @AppStorage("ccc.preferredToolMode") var preferredToolMode: String = "engineer"
 
     @Published var projects: [DesktopProject] = []
     @Published var threads: [DesktopThread] = []
@@ -1199,8 +1199,8 @@ final class AppModel: ObservableObject {
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        // 编排运维 Agent：进入 ccc 时默认工程师模式（可写本机 CCC）
-        if id == "ccc", preferredToolMode != "discuss" {
+        // App Agent 全功能：任意项目默认工程师模式（可写本机 CCC + 板务）
+        if preferredToolMode != "discuss" {
             preferredToolMode = "engineer"
         }
         ensureThreadHydrated(threadId: eagerTid)
@@ -1671,29 +1671,16 @@ final class AppModel: ObservableObject {
     func requestEngineerMode() {
         if preferredToolMode == "engineer" {
             preferredToolMode = "discuss"
-            showToast("已切回讨论模式")
-            return
-        }
-        let pid = (selectedProjectId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !pid.isEmpty, pid != "ccc" {
-            showToast("业务仓不可工程师模式：请定稿转任务")
-            preferredToolMode = "discuss"
+            showToast("已切回规划模式（只读）")
             return
         }
         confirmEngineerMode = true
     }
 
     func confirmEnableEngineerMode() {
-        let pid = (selectedProjectId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !pid.isEmpty, pid != "ccc" {
-            preferredToolMode = "discuss"
-            confirmEngineerMode = false
-            showToast("业务仓不可工程师模式：请定稿转任务")
-            return
-        }
         preferredToolMode = "engineer"
         confirmEngineerMode = false
-        showToast("工程师模式：允许本机改文件（仅 ccc）")
+        showToast("工程师模式：可写本机 CCC + Hub 板务；业务改码仍定稿转任务")
     }
 
     func revealChangedFiles(message: ChatMessage, projectId: String?) {
@@ -2112,22 +2099,25 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 运维红灯 / 板务交接：打开编排运维（ccc）会话并填入摘要
+    /// 运维红灯 / 板务：打开当前项目（或 ccc 平台入口）会话并填入摘要
     func handoffToOpsAgent(payload: String, sourceProjectId: String? = nil) async {
         var text = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         if let src = sourceProjectId?.trimmingCharacters(in: .whitespacesAndNewlines), !src.isEmpty,
            !text.contains("project_id=")
         {
-            text = "【交编排运维】来源项目=\(src)\n\(text)"
+            text = "【交 Agent】来源项目=\(src)\n\(text)"
         }
-        if !text.contains("编排运维") && !text.contains("hub_repair") {
-            text = "【CCC 编排运维】请清板或处理下列运维问题（可用 hub_repair 跨项目）：\n\(text)"
+        if !text.contains("hub_repair") && !text.contains("清板") {
+            text = "【运维/板务】请用 hub_repair 处理下列问题并报告板面数字：\n\(text)"
         }
         destination = .chat
-        await openProjectConversation("ccc")
+        let target = (sourceProjectId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? selectedProjectId
+            ?? "ccc"
+        await openProjectConversation(target)
         fillComposer(text: text, threadId: selectedThreadId)
-        opsCopiedHint = "已交编排运维"
+        opsCopiedHint = "已交对话 Agent"
     }
 
     /// 把文本填入输入框（经 composerBounce → ContentView）
@@ -2743,7 +2733,7 @@ final class AppModel: ObservableObject {
         StreamSessionController.resolvePromptMode(forUserText: text)
     }
 
-    /// discuss = 只读探查（默认）；engineer = 允许本机写文件（偏好或口令；仅 ccc）
+    /// discuss = 可选只读；engineer = 默认全功能（本机 CCC + Hub 板务；业务改码仍 transfer）
     static func toolMode(forUserText text: String) -> String {
         // 兼容旧调用：无偏好时只看口令
         StreamSessionController.resolveToolMode(preferred: "discuss", userText: text, projectId: nil)

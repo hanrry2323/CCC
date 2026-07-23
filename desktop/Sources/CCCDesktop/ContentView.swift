@@ -1446,7 +1446,7 @@ struct CodexChatPaneBody: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("规划=Plan 全智力只读（不可改码）；工程师=仅平台仓 ccc 可本机改文件；业务仓请定稿转任务")
+                .help("规划=可选只读；工程师=默认全功能（可写本机 CCC + Hub 板务）；业务仓改码请定稿转任务")
 
                 Button {
                     pickComposerAttachment()
@@ -1576,7 +1576,7 @@ struct CodexChatPaneBody: View {
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("默认规划模式（Plan）：全智力只读，可检索/子代理调研，不可改码。工程师模式仅允许在平台仓 ccc 修改本机文件；业务仓请定稿转任务。")
+                Text("默认工程师模式（全功能）：可写本机 CCC、Hub 板务。规划模式为可选只读。业务仓改码请定稿转任务。")
             }
         }
         .padding(.horizontal, 28)
@@ -2702,7 +2702,7 @@ struct SettingsView: View {
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
                     Text("规划（Plan · 不可改码）").tag("discuss")
-                    Text("工程师（可写 · 仅 ccc）").tag("engineer")
+                    Text("工程师（可写本机 CCC）").tag("engineer")
                 }
                 if !model.sidecarReportedModel.isEmpty {
                     Text("Sidecar 报告：\(model.sidecarReportedModel)")

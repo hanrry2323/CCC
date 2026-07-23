@@ -58,7 +58,7 @@
 - [x] `.ccc/profile.md` 有权威路径 + 规划/意图指针
 - [x] `decided.goals` 至少 1 条未完成产品目标且含 `exit_condition`（4/4）
 - [x] Desktop/Hub：digest/`brain`/`inject` 可见定位或规划要点
-- [x] 板堵仍交接编排运维（ccc），业务 Agent 不自清全球板
+- [x] 板堵本会话 `hub_repair` 自清；禁止甩锅「打开编排运维」
 - [x] **未**新建根 `TODO.md` 主路径
 
 其它仓改造时复制上表为未勾选再逐项绿。
