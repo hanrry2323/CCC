@@ -5,9 +5,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[1]
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS / "chat_server"))
+
+
+def test_wrap_routes_ccc_to_ops_voice_package_import():
+    """与 sidecar 同路径：chat_server.hub_voice（曾因绝对 import ops_voice 炸 500）。"""
+    from chat_server.hub_voice import wrap_hub_prompt
+
+    out = wrap_hub_prompt("清一下 qb 的 abnormal", project_id="ccc")
+    assert "编排运维人格" in out
+    assert "hub_repair" in out
+    assert "业务项目卡" in out or "业务项目" in out
 
 
 def test_wrap_routes_ccc_to_ops_voice():

@@ -151,7 +151,12 @@ def wrap_hub_prompt(
     _ = mode
     pid = (project_id or "").strip().lower()
     if pid == "ccc":
-        from ops_voice import wrap_ops_prompt
+        # sidecar: `from chat_server.hub_voice` → 包内相对导入；
+        # 单测把 chat_server 挂到 sys.path 时走兄弟模块。
+        try:
+            from .ops_voice import wrap_ops_prompt
+        except ImportError:  # pragma: no cover
+            from ops_voice import wrap_ops_prompt
 
         return wrap_ops_prompt(user_or_assembled_prompt)
 
