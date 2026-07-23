@@ -66,7 +66,8 @@ def _slug(app: str, sid: str) -> str:
 def scenarios_for(app: str) -> list[Scenario]:
     """Dispatch scenarios for current PROFILE."""
     if PROFILE == "efficiency_six":
-        want = {"e01", "e02", "e03", "e04", "e05", "e08"}
+        # e05 看板卫生已剔除：板面卫生归 Cursor/Desktop，不靠 Engine 卫生 epic
+        want = {"e01", "e02", "e03", "e04", "e08"}
         return [s for s in scenarios_efficiency_v2(app, stem_prefix="eff23r2") if s.sid in want]
     if PROFILE == "efficiency_v2":
         return scenarios_efficiency_v2(app)
@@ -518,9 +519,9 @@ def cmd_dispatch(batch: int) -> None:
     """Dispatch by batch."""
     if PROFILE == "efficiency_six":
         ranges = {
-            0: ("e01", "e02", "e03", "e04", "e05", "e08"),
+            0: ("e01", "e02", "e03", "e04", "e08"),
             1: ("e01", "e02", "e03"),
-            2: ("e04", "e05", "e08"),
+            2: ("e04", "e08"),
         }
     elif PROFILE == "efficiency_v2":
         ranges = {

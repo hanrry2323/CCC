@@ -522,45 +522,12 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             eng._log_stats(ws, "pytest", tid, exit_code=exit_code, output_len=len(output))
         if exit_code != 0:
             _record_pytest_failure(ws, tid, exit_code, output)
-            pids_dir = ws / ".ccc" / "pids"
-            pids_dir.mkdir(parents=True, exist_ok=True)
-            fail_marker = pids_dir / f"{tid}.pytest_fails"
-            try:
-                fails = int(fail_marker.read_text().strip() or "0")
-            except (OSError, ValueError):
-                fails = 0
-            fails += 1
-            fail_marker.write_text(str(fails))
-            if fails >= _PYTEST_FAIL_MAX:
-                _engine_log(
-                    f"[{label}] {tid} pytest 连续失败 {fails}/{_PYTEST_FAIL_MAX} → abnormal"
-                )
-                cur_phase = _current_running_phase(tid)
-                if eng:
-                    eng._quarantine_with_notify(
-                        ws,
-                        tid,
-                        f"pytest 连续失败 {fails} 次 (exit={exit_code})",
-                        store,
-                        phase=cur_phase,
-                    )
-                try:
-                    fail_marker.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return False
             _engine_log(
-                f"[{label}] {tid} pytest 失败 (exit={exit_code}) "
-                f"count={fails}/{_PYTEST_FAIL_MAX}，留在 testing"
+                f"[{label}] {tid} pytest 失败 (exit={exit_code}) → fail→planned (R1/R2)"
             )
-            if eng:
-                eng._ccc_notify(
-                    "CCC",
-                    f"任务 {tid} pytest 未通过 (exit={exit_code}) "
-                    f"{fails}/{_PYTEST_FAIL_MAX}",
-                )
-            store.update_index()
-            return False
+            return _handle_fail_to_planned(
+                ws, tid, store, status="FAIL", eng=eng
+            )
         fail_marker = ws / ".ccc" / "pids" / f"{tid}.pytest_fails"
         fail_summary = ws / ".ccc" / "pids" / f"{tid}.pytest_fail.md"
         try:
@@ -593,6 +560,12 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             store.move_task(tid, "testing", "verified")
             if eng:
                 eng._log_stats(ws, "move", tid, from_col="testing", to_col="verified")
+            try:
+                from _failure_learning import clear_review_fail_state
+
+                clear_review_fail_state(ws, tid)
+            except Exception as exc:
+                _engine_log(f"[{label}] {tid} clear review_fail: {exc}")
         store.update_index()
         return _find_task_column(store, tid) == "verified"
 

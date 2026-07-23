@@ -343,3 +343,31 @@ def _llm_repair_plan(
             f"<!-- repair_reason: {reason[:200]} -->\n\n" + out
         )
     return out
+
+
+def clear_review_fail_state(ws: Path, tid: str) -> dict[str, Any]:
+    """PASS/verified 后清 failure-learning 残留，避免下轮误注入。"""
+    ws = Path(ws)
+    cleared: list[str] = []
+    p = review_fail_path(ws, tid)
+    try:
+        if p.is_file():
+            p.unlink()
+            cleared.append(p.name)
+    except OSError:
+        pass
+    for name in (f"{tid}.pytest_fails", f"{tid}.pytest_fail.md"):
+        fp = ws / ".ccc" / "pids" / name
+        try:
+            if fp.is_file():
+                fp.unlink()
+                cleared.append(fp.name)
+        except OSError:
+            pass
+    try:
+        from _board_store import FileBoardStore
+
+        FileBoardStore(ws).patch_task(tid, {"review_fail_loops": 0})
+    except Exception:
+        pass
+    return {"ok": True, "cleared": cleared}

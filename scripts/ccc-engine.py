@@ -2,10 +2,12 @@
 """ccc-engine.py — CCC 多 workspace 并行执行引擎 (v0.28.1+)
 
 替代「每 workspace 一个 engine 进程」模式。
-单进程扫描 ~/program/* 下所有含 .ccc/board/ 的项目，全局 MAX_CONCURRENT=3 共享并发池。
+单进程扫描含 .ccc/board/ 的业务仓，全局 MAX_CONCURRENT 共享并发池
+（默认 4；env ``CCC_MAX_CONCURRENT`` 可覆盖）。
 
 使用方式:
   python3 ccc-engine.py
+  CCC_MAX_CONCURRENT=6 python3 ccc-engine.py
 
 退出:
   Ctrl+C 或 SIGTERM → 优雅关闭
@@ -183,7 +185,10 @@ _log.info(
 
 _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
-MAX_CONCURRENT = 4  # Server 16G baseline (docs/deploy/topology.md)
+MAX_CONCURRENT = max(
+    1,
+    int(os.environ.get("CCC_MAX_CONCURRENT", "4") or "4"),
+)  # cross-ws pool; same-ws OpenCode still 1
 # product 异步并行：全局上限 / 每 workspace 上限（env 可降回串行）
 MAX_PRODUCT_INFLIGHT = int(os.environ.get("CCC_MAX_PRODUCT_INFLIGHT", "3") or "3")
 MAX_PRODUCT_PER_WS = int(os.environ.get("CCC_MAX_PRODUCT_PER_WS", "2") or "2")
@@ -962,7 +967,7 @@ def _discover_workspaces() -> list[Path]:
 
 
 def _queue_has_consumable_work(store: FileBoardStore) -> bool:
-    """enabled 模式可消费列（不含 abnormal — 回灌需 invent）。"""
+    """enabled 模式可消费列；abnormal 由窄版 auto-refeed 回灌，不在此列直接调度。"""
     for col in ("backlog", "planned", "in_progress", "testing", "verified"):
         if store.list_tasks(col):
             return True
@@ -3202,7 +3207,13 @@ def engine_loop(workspaces: list[Path]) -> None:
                     _check_degraded(ws)
                     _store = _get_store(ws)
                     _check_stale(ws, active_tasks)
-                    # v0.51.0 P2-1: 删除 _may_invent() 守护的 abnormal 自动回灌块（INVENT_HARD_DISABLED=True 后永不触发）
+                    # enabled 下：瞬态 abnormal work 有限自动 reopen（非 invent）
+                    try:
+                        _retry_abnormal_failures(ws)
+                    except Exception as exc:
+                        engine_log(
+                            f"[abnormal-refeed] {_ws_label(ws)}: {exc}"
+                        )
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
                         try:
@@ -3597,13 +3608,9 @@ def _retry_cooldown_seconds(retry_count: int) -> int:
 
 
 def _retry_abnormal_failures(ws: Path) -> None:
-    """扫描 abnormal 任务，冷却后自动移回 planned 重试（全阶段）。
+    """enabled 下有限回灌：仅业务仓 work 卡、瞬态、每卡 ≤2，走 reopen_task。
 
-    v0.36:
-      - 关键字放宽（不再仅限 "重试"）
-      - transient/permanent 分类；permanent 不重试
-      - 指数退避冷却
-      - upstream 熔断期间跳过
+    禁止 orch/invent；permanent / fail_loop_exhausted 不重开。
     """
     from datetime import datetime as _dt
     import json as _json
@@ -3614,6 +3621,16 @@ def _retry_abnormal_failures(ws: Path) -> None:
     if _breaker_open and time.time() - _breaker_since < recovery:
         engine_log(f"[{_ws_label(ws)}] 熔断中，跳过 abnormal 重试")
         return
+
+    try:
+        from _workspace_registry import is_orch_path
+
+        if is_orch_path(ws):
+            return
+    except Exception:
+        # registry 不可用时仍允许业务路径启发式
+        if "CCC" in str(ws) and (ws / "scripts" / "ccc-engine.py").is_file():
+            return
 
     _activate_workspace(ws)
     store = _get_store(ws)
@@ -3626,13 +3643,34 @@ def _retry_abnormal_failures(ws: Path) -> None:
             retry_counts = _json.loads(retry_counter_file.read_text())
         except (_json.JSONDecodeError, OSError):
             retry_counts = {}
-    MAX_AUTO_RETRY = 3
+    MAX_AUTO_RETRY = 2
+    _EXHAUSTED = (
+        "reviewer_fail_loop_exhausted",
+        "tester_fail_loop_exhausted",
+        "fail_loop_exhausted",
+        "重试耗尽",
+        "次全部失败",
+        "missing plan",
+        "缺 plan",
+        "缺 phases",
+    )
+
     moved_tasks: list[str] = []
 
     for task in store.list_tasks("abnormal"):
         tid = task["id"]
-        reason = task.get("note") or ""
-        if not any(kw in reason for kw in _ABNORMAL_RETRY_KEYWORDS):
+        kind_card = str(task.get("card_kind") or "")
+        if kind_card == "epic":
+            continue
+        # work 或有 parent 的子卡；裸 backlog 杂卡跳过
+        if kind_card and kind_card not in ("work", "task"):
+            if not task.get("parent_id"):
+                continue
+
+        reason = str(task.get("note") or task.get("abnormal_reason") or "")
+        low = reason.lower()
+        if any(m.lower() in low for m in _EXHAUSTED):
+            engine_log(f"[{label}] skip auto-retry {tid}: exhausted/permanent marker")
             continue
 
         kind = _classify_failure(reason, tid, task.get("note") or "")
@@ -3641,6 +3679,30 @@ def _retry_abnormal_failures(ws: Path) -> None:
                 f"[{label}] skip auto-retry {tid}: 不可恢复错误（permanent）"
             )
             continue
+
+        # 须有 review_fail 包，或 reason 命中瞬态关键字（兼容旧 quarantine）
+        try:
+            from _failure_learning import (
+                review_fail_path,
+                write_review_fail_pack,
+            )
+
+            pack_p = review_fail_path(ws, tid)
+            has_pack = pack_p.is_file()
+        except Exception:
+            has_pack = False
+            write_review_fail_pack = None  # type: ignore
+        transient_hit = any(kw.lower() in low for kw in _TRANSIENT_KEYWORDS)
+        keyword_hit = any(kw in reason for kw in _ABNORMAL_RETRY_KEYWORDS)
+        if not has_pack and not (transient_hit or keyword_hit):
+            continue
+        if not has_pack and write_review_fail_pack is not None:
+            try:
+                write_review_fail_pack(
+                    ws, tid, status="abnormal", extra=reason[:1500]
+                )
+            except Exception as exc:
+                engine_log(f"[{label}] {tid} seed review_fail: {exc}")
 
         updated_str = task.get("updated_at", task.get("created_at", ""))
         if not updated_str:
@@ -3651,18 +3713,20 @@ def _retry_abnormal_failures(ws: Path) -> None:
         except (ValueError, TypeError):
             continue
 
-        auto_retried = retry_counts.get(tid, 0)
+        auto_retried = int(retry_counts.get(tid, 0) or 0)
         if auto_retried >= MAX_AUTO_RETRY:
             continue
         needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
         if minutes_since < needed_minutes:
-            continue  # 冷却中
+            continue
 
         try:
-            # 经 FileBoardStore.move_task：持锁 + 原子写，避免手工 JSONL 竞态
-            note = f"auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
-            task["note"] = note
-            # 先更新 abnormal 文件 note，再 move（move 会带上当前文件内容）
+            from _task_reopen import reopen_task
+
+            note = (
+                f"auto-refeed #{auto_retried + 1}/{MAX_AUTO_RETRY}: "
+                f"{reason[:80]}"
+            )
             abn = ws / ".ccc/board/abnormal" / f"{tid}.jsonl"
             if abn.is_file():
                 try:
@@ -3678,16 +3742,18 @@ def _retry_abnormal_failures(ws: Path) -> None:
                         )
                 except Exception:
                     pass
-            if not store.move_task(tid, "abnormal", "planned"):
-                raise RuntimeError(f"move_task failed for {tid}")
+            rr = reopen_task(ws, tid, to_col="planned", wake=True)
+            if not rr.get("ok"):
+                raise RuntimeError(rr.get("error") or "reopen failed")
             retry_counts[tid] = auto_retried + 1
             engine_log(
-                f"[{label}] auto-retry #{auto_retried + 1}/{MAX_AUTO_RETRY}: {tid} "
-                f"(冷却 {minutes_since:.0f}/{needed_minutes:.0f}min, {kind}) → planned"
+                f"[{label}] auto-refeed #{auto_retried + 1}/{MAX_AUTO_RETRY}: "
+                f"{tid} (冷却 {minutes_since:.0f}/{needed_minutes:.0f}min, "
+                f"{kind}) → planned"
             )
             moved_tasks.append(tid)
         except Exception as e:
-            _log.warning("auto-retry failed for %s: %s", tid, e)
+            _log.warning("auto-refeed failed for %s: %s", tid, e)
 
     try:
         from _board_store import _atomic_write
@@ -3699,20 +3765,8 @@ def _retry_abnormal_failures(ws: Path) -> None:
     except OSError:
         pass
 
-    try:
-        from _lessons import get_recent_lessons
-
-        recent = get_recent_lessons(ws)
-        for task_id in moved_tasks:
-            for lesson in recent:
-                if lesson.get("task_id") == task_id and not lesson.get("fixed"):
-                    _log.info(
-                        "[lessons-reapply] %s: %s",
-                        task_id,
-                        lesson.get("error", "")[:80],
-                    )
-    except Exception:
-        pass
+    if moved_tasks:
+        engine_log(f"[{label}] abnormal refeed moved={moved_tasks}")
 
 
 # 兼容旧名（测试 / 外部引用）

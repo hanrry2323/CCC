@@ -551,11 +551,39 @@ def tester_role() -> dict:
                         )
                     except Exception:
                         pass
+                    if fail_n >= 3:
+                        try:
+                            from engine.gates import _revert_task_commit
+                        except Exception:
+                            _revert_task_commit = None  # type: ignore
+                        if _revert_task_commit:
+                            try:
+                                _revert_task_commit(ws, task_id)
+                            except Exception as exc:
+                                _log.warning(
+                                    "[tester] %s revert on R3: %s", task_id, exc
+                                )
+                        _quarantine(
+                            task_id,
+                            f"tester_fail_loop_exhausted ({fail_n})",
+                        )
+                        _log.info(
+                            "[tester] %s acceptance fail loops=%s → abnormal",
+                            task_id,
+                            fail_n,
+                        )
+                        break
                     pack = read_review_fail_pack(ws, task_id)
                     if needs_plan_repair(fail_loops=fail_n, fail_pack_text=pack):
                         repair_work_plan(
                             ws, task_id, fail_loops=fail_n, use_llm=False
                         )
+                    try:
+                        from engine.gates import _revert_task_commit
+
+                        _revert_task_commit(ws, task_id)
+                    except Exception as exc:
+                        _log.warning("[tester] %s revert: %s", task_id, exc)
                     align_phases_after_revert(ws, task_id)
                     move_task(task_id, "testing", "planned")
                     _log.info(

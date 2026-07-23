@@ -75,6 +75,7 @@ def reopen_task(
     *,
     to_col: str = "planned",
     wake: bool = True,
+    reset_fail_loops: bool = False,
 ) -> dict[str, Any]:
     """重开任务并可选唤醒 Engine。"""
     task_id = (task_id or "").strip()
@@ -109,6 +110,23 @@ def reopen_task(
     else:
         moved = True
 
+    if reset_fail_loops:
+        try:
+            store.patch_task(task_id, {"review_fail_loops": 0})
+        except Exception as exc:
+            _log.warning("reset review_fail_loops %s: %s", task_id, exc)
+
+    epic_refresh = None
+    try:
+        _col, task = store.find_task(task_id)
+        parent = (task or {}).get("parent_id")
+        if parent:
+            from _product_fanout import refresh_epic_lifecycle
+
+            epic_refresh = refresh_epic_lifecycle(store, parent)
+    except Exception as exc:
+        epic_refresh = {"error": str(exc)[:160]}
+
     engine_wake = None
     if wake:
         try:
@@ -126,6 +144,7 @@ def reopen_task(
         "from": from_col,
         "to": to_col,
         "cleared_pids": cleared,
+        "epic_refresh": epic_refresh,
         "engine_wake": engine_wake,
     }
     _log.info("reopen_task %s", result)

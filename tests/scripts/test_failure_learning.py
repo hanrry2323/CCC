@@ -130,3 +130,25 @@ def test_prompt_injects_review_failure(tmp_path: Path):
     assert "上次审查/验收失败" in text
     assert "wrong_scope" in text
     assert "R2" in text or "repair" in text.lower() or "修订" in text
+
+
+def test_clear_review_fail_state(ws: Path):
+    from _failure_learning import (
+        clear_review_fail_state,
+        review_fail_path,
+        write_review_fail_pack,
+    )
+
+    tid = "t-clear"
+    write_review_fail_pack(ws, tid, status="FAIL", extra="x")
+    assert review_fail_path(ws, tid).is_file()
+    (ws / ".ccc" / "pids" / f"{tid}.pytest_fails").write_text("2", encoding="utf-8")
+    (ws / ".ccc" / "board" / "verified").mkdir(parents=True)
+    (ws / ".ccc" / "board" / "verified" / f"{tid}.jsonl").write_text(
+        json.dumps({"id": tid, "title": "t", "review_fail_loops": 2}) + "\n",
+        encoding="utf-8",
+    )
+    r = clear_review_fail_state(ws, tid)
+    assert r["ok"] is True
+    assert not review_fail_path(ws, tid).is_file()
+    assert not (ws / ".ccc" / "pids" / f"{tid}.pytest_fails").is_file()

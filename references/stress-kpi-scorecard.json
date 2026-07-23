@@ -56,10 +56,10 @@
       "id": "epic_done_rate",
       "path": "computed.epic_done_rate",
       "op": ">=",
-      "value": 0.833,
+      "value": 0.8,
       "unit": "ratio",
       "primary": true,
-      "note": "≥10/12 done（入板 epic）"
+      "note": "≥8/10 done（efficiency_six 已去 e05；每仓 5 epic）"
     },
     {
       "id": "work_abnormal_n",

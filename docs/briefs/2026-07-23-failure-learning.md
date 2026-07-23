@@ -15,11 +15,14 @@
 | R1 | FAIL 写 `review_fail.md`；revert 后 phases 对齐；dev prompt 注入 |
 | R2 | loops≥2 或 plan_gap → 修订 **该 work** plan（heuristic；可选 LLM） |
 | R3 | loops≥3 → quarantine |
+| **Refeed** | enabled 下瞬态 abnormal **work** 有限 reopen（≤2/卡；经 `_task_reopen`；禁 orch/invent） |
 
 ## 代码
 
-- [`scripts/_failure_learning.py`](../../scripts/_failure_learning.py)
-- [`scripts/engine/gates.py`](../../scripts/engine/gates.py) `_handle_fail_to_planned`
+- [`scripts/_failure_learning.py`](../../scripts/_failure_learning.py)（含 `clear_review_fail_state`）
+- [`scripts/engine/gates.py`](../../scripts/engine/gates.py) `_handle_fail_to_planned`；pytest FAIL 同路径；PASS 清 pack
+- [`scripts/board/roles/tester.py`](../../scripts/board/roles/tester.py) 验收失败→planned；≥3 → R3 + revert
+- [`scripts/ccc-engine.py`](../../scripts/ccc-engine.py) `_retry_abnormal_failures`（enabled 窄版回灌）
+- [`scripts/_task_reopen.py`](../../scripts/_task_reopen.py) + Hub `/api/tasks/reopen`
 - [`scripts/board/prompt.py`](../../scripts/board/prompt.py) / [`context.py`](../../scripts/board/context.py)
-- [`scripts/board/roles/tester.py`](../../scripts/board/roles/tester.py) 验收失败→planned
 - [`scripts/board/roles/repair.py`](../../scripts/board/roles/repair.py)

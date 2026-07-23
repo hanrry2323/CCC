@@ -83,7 +83,8 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 
 | 项 | 值 |
 |----|-----|
-| live agent 上限 | **4**（2017 / 16G） |
+| live agent 上限 | 默认 **4**；`CCC_MAX_CONCURRENT` 可覆盖（2017 headroom 试 **6**；同仓 OpenCode 仍 **1**） |
+| 容量探针 | `python3 scripts/ccc-capacity-probe.py recommend --target-apps 10` |
 | 注册默认态 | orch=`CCC` + 业务 apps |
 
 ---
