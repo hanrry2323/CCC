@@ -45,7 +45,12 @@ export CCC_MEM_DEGRADED_MB="${CCC_MEM_DEGRADED_MB:-800}"
 export CCC_MEM_KILL_MB="${CCC_MEM_KILL_MB:-1500}"
 # 与 _config.product_async_timeout 默认对齐；600 会在扇出未完成时误杀 claude product
 export CCC_PRODUCT_ASYNC_TIMEOUT="${CCC_PRODUCT_ASYNC_TIMEOUT:-1200}"
-# 跨仓并发（同仓 OpenCode 仍 1）；Mac2017 有余量时可抬到 5–8
+# 跨仓并发（同仓 OpenCode 仍 1）；可被 ~/.ccc/engine.env 覆盖
+# shellcheck disable=SC1090
+if [[ -f "${HOME}/.ccc/engine.env" ]]; then
+  # shellcheck source=/dev/null
+  source "${HOME}/.ccc/engine.env"
+fi
 export CCC_MAX_CONCURRENT="${CCC_MAX_CONCURRENT:-6}"
 
 exec python3 "$CCC_HOME/scripts/ccc-engine.py"
