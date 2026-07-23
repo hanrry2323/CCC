@@ -196,12 +196,20 @@ final class AppModel: ObservableObject {
     /// 顶栏：本机 Agent 大模型调用（日总量 + 近 5 秒）
     @Published private(set) var agentLLMDailyCount: Int = 0
     @Published private(set) var agentLLMRecent5s: Int = 0
-    /// 单调递增 tick：强制 Titlebar accessory 刷新
-    @Published private(set) var agentUsageTick: UInt64 = 0
+    /// 非 Published：TitlebarUsageAccessory 自读；禁止 1Hz 拖 SwiftUI 树
+    private(set) var agentUsageTick: UInt64 = 0
     private var agentLLMCallTimestamps: [Date] = []
     private var agentUsageTask: Task<Void, Never>?
     private static let agentLLMDayKey = "ccc.agentLLM.day"
     private static let agentLLMDailyKey = "ccc.agentLLM.dailyCount"
+
+    /// 项目级看板列计数（右栏顶条）；key=projectId
+    @Published private(set) var projectBoardCounts: [String: [String: Int]] = [:]
+    /// 上一拍 counts，用于 Δ
+    private var projectBoardCountsPrev: [String: [String: Int]] = [:]
+    /// 项目级编排快照（右栏 SSOT；同项目任意会话共享）
+    @Published private(set) var projectFlow: [String: FlowThreadSnapshot] = [:]
+    @Published private(set) var projectFlowRevision: [String: UInt64] = [:]
 
     /// 每项目一条 Flow SSE（多窗同时盯不同项目时并行订阅）
     private var flowSSETasks: [String: Task<Void, Never>] = [:]
@@ -1257,18 +1265,17 @@ final class AppModel: ObservableObject {
             let pid = LocalSessionStore.projectId(fromThreadId: threadId)
             hydrateThreadFromDisk(projectId: pid, threadId: threadId)
             if threadMessages[threadId] == nil {
-                // 流式中 hydrate 可能跳过：勿种空覆盖；其余视为磁盘 miss / 新会话
+                // 流式中 hydrate 可能跳过：勿种空覆盖
                 if streamingThreadIds.contains(threadId) || chatTasks[threadId] != nil {
                     return
                 }
-                // #region agent log
+                // 新会话 / 磁盘 miss：种空数组以结束「加载中」。空列表不再卸 messageArea（见 CodexChatPane）。
                 DebugAgentLog.log(
                     hypothesisId: "H3",
                     location: "AppModel.ensureThreadHydrated",
                     message: "seed empty RAM (disk miss or new thread)",
                     data: ["threadId": threadId, "projectId": pid]
                 )
-                // #endregion
                 threadMessages[threadId] = []
             }
             bumpThreadRevision(threadId)
@@ -2016,16 +2023,59 @@ final class AppModel: ObservableObject {
         threadFlowRevision = copy
     }
 
+    private func bumpProjectFlowRevision(_ projectId: String) {
+        guard !projectId.isEmpty else { return }
+        var copy = projectFlowRevision
+        copy[projectId, default: 0] &+= 1
+        projectFlowRevision = copy
+    }
+
+    /// 写项目级右栏快照（与 threadFlow 镜像；UI 只读这个）
+    private func setProjectFlow(_ projectId: String, _ snap: FlowThreadSnapshot) {
+        guard !projectId.isEmpty else { return }
+        var copy = projectFlow
+        copy[projectId] = snap
+        projectFlow = copy
+        bumpProjectFlowRevision(projectId)
+    }
+
     /// 多窗显示 SSOT：只读 threadMessages，绝不回落全局 chat.messages（否则切项目会串台）。
     func messagesForThread(_ threadId: String?) -> [ChatMessage] {
         guard let threadId, !threadId.isEmpty else { return [] }
         return threadMessages[threadId] ?? []
     }
 
-    /// OpenCode 式：右栏按 session/thread 取编排快照（多窗不读全局 flow*）
+    /// 右栏按项目取编排（同项目任意会话同一份）
+    func flowSnapshot(forProject projectId: String?) -> FlowThreadSnapshot? {
+        guard let projectId, !projectId.isEmpty else { return nil }
+        return projectFlow[projectId]
+    }
+
+    /// 兼容旧调用：thread → 映射到所属项目的 projectFlow
     func flowSnapshot(for threadId: String?) -> FlowThreadSnapshot? {
         guard let threadId, !threadId.isEmpty else { return nil }
+        let pid = LocalSessionStore.projectId(fromThreadId: threadId)
+        if let pf = projectFlow[pid] { return pf }
         return threadFlow[threadId]
+    }
+
+    /// 看板列计数（右栏顶条）
+    func boardCounts(forProject projectId: String?) -> [String: Int] {
+        guard let projectId, !projectId.isEmpty else { return [:] }
+        return projectBoardCounts[projectId] ?? [:]
+    }
+
+    func boardCountsDelta(forProject projectId: String?) -> [String: Int] {
+        guard let projectId, !projectId.isEmpty else { return [:] }
+        let cur = projectBoardCounts[projectId] ?? [:]
+        let prev = projectBoardCountsPrev[projectId] ?? [:]
+        var delta: [String: Int] = [:]
+        let keys = Set(cur.keys).union(prev.keys)
+        for k in keys {
+            let d = (cur[k] ?? 0) - (prev[k] ?? 0)
+            if d != 0 { delta[k] = d }
+        }
+        return delta
     }
 
     /// 本窗流式状态文案
@@ -2421,11 +2471,21 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 只读同步文案（流程轨/状态栏；无强迫操作按钮）
+    /// 只读同步文案（流程轨/状态栏；跟当前项目 snap）
     var orchestrationSyncLabel: String {
         if hubSyncing { return "本机缓存 · 同步中" }
         if !hubReachable { return hubRetryStatusPhrase }
-        if let eid = currentEpicId, !eid.isEmpty { return "已接上 · 编排中" }
+        let eid = (selectedProjectId.flatMap { projectFlow[$0]?.epicId }) ?? currentEpicId
+        if let eid, !eid.isEmpty { return "已接上 · 编排中" }
+        return "已接上"
+    }
+
+    func orchestrationSyncLabel(forProject projectId: String?) -> String {
+        if hubSyncing { return "本机缓存 · 同步中" }
+        if !hubReachable { return hubRetryStatusPhrase }
+        if let pid = projectId, let eid = projectFlow[pid]?.epicId, !eid.isEmpty {
+            return "已接上 · 编排中"
+        }
         return "已接上"
     }
 
@@ -2778,13 +2838,27 @@ final class AppModel: ObservableObject {
             try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchBoardSummaries(workspaces: workspaces)
             var newState: [String: String] = [:]
+            var newCounts: [String: [String: Int]] = [:]
+            var newStats: [String: ProjectStats] = [:]
             for proj in projects {
                 let ws = proj.workspace ?? proj.id
                 if let snap = resp.summaries[ws] {
-                    newState[proj.id] = Self.deriveTaskState(from: snap.counts ?? [:])
+                    let counts = snap.counts ?? [:]
+                    newState[proj.id] = Self.deriveTaskState(from: counts)
+                    newCounts[proj.id] = counts
+                    var s = ProjectStats()
+                    s.totalEpics = counts["backlog"] ?? 0
+                    s.activeWorks = (counts["in_progress"] ?? 0) + (counts["planned"] ?? 0) + (counts["testing"] ?? 0)
+                    s.failedWorks = counts["abnormal"] ?? 0
+                    s.completedToday = counts["released"] ?? 0
+                    newStats[proj.id] = s
                 }
             }
+            // Δ：上一拍 → 当前
+            projectBoardCountsPrev = projectBoardCounts
+            projectBoardCounts = newCounts
             projectTaskState = newState
+            projectStats = newStats
         } catch {
             // 静默失败；卡片灯不是关键路径
         }
@@ -4144,6 +4218,7 @@ final class AppModel: ObservableObject {
                     snap.fanoutHint = hint
                     self.threadFlow[tid] = snap
                     self.bumpFlowRevision(tid)
+                    self.setProjectFlow(pid, snap)
                     if self.selectedProjectId == pid {
                         self.flowFanoutHint = hint
                     }
@@ -4156,10 +4231,9 @@ final class AppModel: ObservableObject {
         let pid = projectId ?? selectedProjectId
         if let pid {
             let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
-            if var snap = threadFlow[tid] {
+            if var snap = projectFlow[pid] ?? threadFlow[tid] {
                 snap.fanoutHint = nil
-                threadFlow[tid] = snap
-                bumpFlowRevision(tid)
+                writeFlowSnap(projectId: pid, threadId: tid, snap)
             }
         }
         if projectId == nil || projectId == selectedProjectId {
@@ -4173,10 +4247,9 @@ final class AppModel: ObservableObject {
         let pid = projectId ?? selectedProjectId
         if let pid {
             let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
-            if var snap = threadFlow[tid] {
+            if var snap = projectFlow[pid] ?? threadFlow[tid] {
                 snap.stopLossHint = nil
-                threadFlow[tid] = snap
-                bumpFlowRevision(tid)
+                writeFlowSnap(projectId: pid, threadId: tid, snap)
             }
         }
         if projectId == nil || projectId == selectedProjectId {
@@ -4184,77 +4257,74 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 右栏与项目对话绑定：本机 boundEpicId 优先（默认全局选中）
-    func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
-        guard let pid = selectedProjectId else { return }
-        await bindFlowToThread(
-            projectId: pid,
-            threadId: selectedThreadId,
-            preferEpicId: preferEpicId
-        )
+    /// 写 thread + project 双份；右栏 UI 只读 projectFlow
+    private func writeFlowSnap(projectId: String, threadId: String, _ snap: FlowThreadSnapshot) {
+        threadFlow[threadId] = snap
+        bumpFlowRevision(threadId)
+        setProjectFlow(projectId, snap)
     }
 
-    /// OpenCode 式：按 pane thread 绑定编排，写 threadFlow，不抢他窗全局镜像
-    func bindFlowToThread(
-        projectId: String,
-        threadId: String? = nil,
-        preferEpicId: String? = nil
-    ) async {
-        let tid = resolveFlowThreadId(projectId: projectId, preferred: threadId)
-        let isSelected = selectedProjectId == projectId
-        // 禁止改 selectedThreadId：flow/recover/转任务不得冲刷中栏会话焦点
-        if isSelected {
-            selectedNodeDetail = nil
-        }
-        // 再开快路径：本机已有 bound epic → 先立刻 snapshot，epics 列表后台补
-        let preexisting = threadFlow[tid]?.epicId
-            ?? (isSelected ? currentEpicId : nil)
+    /// 右栏与项目绑定：同项目任意会话共享编排
+    func bindFlowToCurrentThread(preferEpicId: String? = nil) async {
+        guard let pid = selectedProjectId else { return }
+        await bindFlowToProject(projectId: pid, preferEpicId: preferEpicId)
+    }
+
+    /// 项目级编排绑定（右栏 SSOT）
+    func bindFlowToProject(projectId: String, preferEpicId: String? = nil) async {
+        let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else { return }
+        let isSelected = selectedProjectId == pid
+        if isSelected { selectedNodeDetail = nil }
+
+        let preexisting = projectFlow[pid]?.epicId ?? (isSelected ? currentEpicId : nil)
         let fastEpic = (preferEpicId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
             $0.isEmpty ? nil : $0
         } ?? preexisting?.trimmingCharacters(in: .whitespacesAndNewlines)
+
         if let fast = fastEpic, !fast.isEmpty {
-            if var snap = threadFlow[tid] {
-                snap.epicId = fast
-                if snap.emptyMessage.contains("编排空闲") {
-                    snap.emptyMessage = Self.isPendingEpicId(fast)
-                        ? "已交接 · 编排同步中…"
-                        : "编排同步中…"
-                }
-                threadFlow[tid] = snap
-                bumpFlowRevision(tid)
-                if isSelected { applyFlowSnapshot(snap) }
-            } else if isSelected {
-                currentEpicId = fast
+            var snap = projectFlow[pid] ?? FlowThreadSnapshot(
+                epicId: fast, epic: nil, works: [], headline: "",
+                recentEpics: projectFlow[pid]?.recentEpics ?? [],
+                emptyMessage: "编排同步中…", fanoutHint: nil
+            )
+            snap.epicId = fast
+            if snap.emptyMessage.contains("编排空闲") {
+                snap.emptyMessage = Self.isPendingEpicId(fast)
+                    ? "已交接 · 编排同步中…"
+                    : "编排同步中…"
             }
-            // pending: 勿打 Hub snapshot（会空/404 冲掉乐观大卡）
+            let tid = resolveFlowThreadId(projectId: pid, preferred: nil)
+            writeFlowSnap(projectId: pid, threadId: tid, snap)
+            if isSelected { applyFlowSnapshot(snap) }
             if !Self.isPendingEpicId(fast) {
-                await refreshFlowNow(projectId: projectId, threadId: tid)
+                await refreshFlowNow(projectId: pid, threadId: tid)
             }
             reconcileFlowSSE()
             Task { @MainActor in
-                await self.refreshEpicListOnly(projectId: projectId, threadId: tid)
+                await self.refreshEpicListOnly(projectId: pid, threadId: nil)
             }
             return
         }
+
         do {
             try await prepareClient(ensureAgent: false)
+            // threadId=nil → Hub project_single：项目全部活跃大卡
             let epicsResp = try await client.fetchRecentEpicsDetailed(
-                projectId: projectId,
-                threadId: tid
+                projectId: pid,
+                threadId: nil
             )
-            var snap = threadFlow[tid] ?? FlowThreadSnapshot(
+            var snap = projectFlow[pid] ?? FlowThreadSnapshot(
                 epicId: nil, epic: nil, works: [], headline: "",
                 recentEpics: [], emptyMessage: "编排空闲 · 下一笔定稿后出现在这里", fanoutHint: nil
             )
             snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
-            clearStalePendingIfNeeded(threadId: tid, remoteEpicsEmpty: epicsResp.epics.isEmpty)
-            // 若刚清掉 pending，重新取 snap
-            snap = threadFlow[tid] ?? snap
             let localBound = snap.epicId ?? (isSelected ? currentEpicId : nil)
             let hasLocalFlow =
                 (localBound?.isEmpty == false)
                 || (snap.epic != nil)
                 || !snap.works.isEmpty
+
             let resolvedEpic: String?
             if let prefer = preferEpicId, !prefer.isEmpty {
                 resolvedEpic = prefer
@@ -4262,52 +4332,55 @@ final class AppModel: ObservableObject {
                 resolvedEpic = bound
             } else if let hint = epicsResp.boundHint, !hint.isEmpty {
                 resolvedEpic = hint
-            } else if let match = epicsResp.epics.first(where: { ($0.thread_id ?? "") == tid })?.epic_id {
-                // Phase14：仅精确 thread 匹配；不再回退到项目里任意最近 epic
-                resolvedEpic = match
+            } else if let first = epicsResp.epics.first?.epic_id, !first.isEmpty {
+                resolvedEpic = first
             } else if hasLocalFlow {
-                threadFlow[tid] = snap
-                bumpFlowRevision(tid)
-                if isSelected {
-                    recentEpics = snap.recentEpics
-                    applyFlowSnapshot(snap)
-                }
-                if !Self.isPendingEpicId(localBound) {
-                    await refreshFlowNow(projectId: projectId, threadId: tid)
-                }
-                reconcileFlowSSE()
-                return
+                resolvedEpic = localBound
             } else {
-                // Phase14：未绑定 + 无 hint/match → 空态（保持本地空，绝不挂任意最近 epic）
                 resolvedEpic = nil
                 snap.epic = nil
                 snap.works = []
+                snap.epicId = nil
                 snap.headline = ""
                 snap.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             }
-            snap.epicId = resolvedEpic
-            threadFlow[tid] = snap
-            bumpFlowRevision(tid)
+
+            if let eid = resolvedEpic, !eid.isEmpty {
+                snap.epicId = eid
+            }
+            let tid = resolveFlowThreadId(projectId: pid, preferred: nil)
+            writeFlowSnap(projectId: pid, threadId: tid, snap)
             if isSelected {
                 recentEpics = snap.recentEpics
                 currentEpicId = resolvedEpic
                 applyFlowSnapshot(snap)
             }
-            persistCurrentThreadSnapshot(threadId: tid)
-            // 再开/绑定：立刻 snapshot，不走 500ms SSE 防抖
-            if !Self.isPendingEpicId(resolvedEpic) {
-                await refreshFlowNow(projectId: projectId, threadId: tid)
+            if let eid = resolvedEpic, !eid.isEmpty, !Self.isPendingEpicId(eid) {
+                await refreshFlowNow(projectId: pid, threadId: tid)
             }
             reconcileFlowSSE()
         } catch {
             if isSelected {
                 flowEmptyMessage = "流程加载失败"
             }
-            if var snap = threadFlow[tid] {
+            if var snap = projectFlow[pid] {
                 snap.emptyMessage = "流程加载失败"
-                threadFlow[tid] = snap
-                bumpFlowRevision(tid)
+                setProjectFlow(pid, snap)
             }
+        }
+    }
+
+    /// 兼容旧调用：右栏以 project 为准
+    func bindFlowToThread(
+        projectId: String,
+        threadId: String? = nil,
+        preferEpicId: String? = nil
+    ) async {
+        await bindFlowToProject(projectId: projectId, preferEpicId: preferEpicId)
+        if let raw = threadId?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+           let snap = projectFlow[projectId] {
+            threadFlow[raw] = snap
+            bumpFlowRevision(raw)
         }
     }
 
@@ -4335,28 +4408,28 @@ final class AppModel: ObservableObject {
         return pending + rest
     }
 
-    /// 只刷 recentEpics 列表（快路径后补；失败静默）
-    private func refreshEpicListOnly(projectId: String, threadId: String) async {
+    /// 只刷 recentEpics 列表（快路径后补；失败静默）；threadId=nil → 项目级
+    private func refreshEpicListOnly(projectId: String, threadId: String?) async {
         do {
             try await prepareClient(ensureAgent: false)
             let epicsResp = try await client.fetchRecentEpicsDetailed(
                 projectId: projectId,
                 threadId: threadId
             )
-            var snap = threadFlow[threadId] ?? FlowThreadSnapshot(
-                epicId: nil, epic: nil, works: [], headline: "",
-                recentEpics: [], emptyMessage: "", fanoutHint: nil
-            )
+            var snap = projectFlow[projectId]
+                ?? threadFlow[threadId ?? ""]
+                ?? FlowThreadSnapshot(
+                    epicId: nil, epic: nil, works: [], headline: "",
+                    recentEpics: [], emptyMessage: "", fanoutHint: nil
+                )
             snap.recentEpics = mergeRecentEpics(local: snap.recentEpics, remote: epicsResp.epics)
-            threadFlow[threadId] = snap
-            clearStalePendingIfNeeded(threadId: threadId, remoteEpicsEmpty: epicsResp.epics.isEmpty)
-            snap = threadFlow[threadId] ?? snap
-            bumpFlowRevision(threadId)
+            setProjectFlow(projectId, snap)
+            let tid = threadId ?? resolveFlowThreadId(projectId: projectId, preferred: nil)
+            threadFlow[tid] = snap
+            bumpFlowRevision(tid)
             if selectedProjectId == projectId {
                 recentEpics = snap.recentEpics
-                if selectedThreadId == threadId {
-                    applyFlowSnapshot(snap)
-                }
+                applyFlowSnapshot(snap)
             }
         } catch {
             // 列表可缺；snapshot/SSE 已接上
@@ -4365,7 +4438,7 @@ final class AppModel: ObservableObject {
 
     func refreshEpicList(projectId: String? = nil, threadId: String? = nil) async {
         if let pid = projectId ?? selectedProjectId {
-            await bindFlowToThread(projectId: pid, threadId: threadId)
+            await bindFlowToProject(projectId: pid)
         }
     }
 
@@ -4373,13 +4446,12 @@ final class AppModel: ObservableObject {
         let pid = projectId ?? selectedProjectId
         guard let pid else { return }
         let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
-        var snap = threadFlow[tid] ?? FlowThreadSnapshot(
+        var snap = projectFlow[pid] ?? threadFlow[tid] ?? FlowThreadSnapshot(
             epicId: epicId, epic: nil, works: [], headline: "",
             recentEpics: [], emptyMessage: "", fanoutHint: nil
         )
         snap.epicId = epicId
-        threadFlow[tid] = snap
-        bumpFlowRevision(tid)
+        writeFlowSnap(projectId: pid, threadId: tid, snap)
         if selectedProjectId == pid {
             currentEpicId = epicId
             selectedNodeDetail = nil
@@ -4410,7 +4482,9 @@ final class AppModel: ObservableObject {
         guard let pid else { return }
         guard !flowSnapshotPaused else { return }
         let tid = resolveFlowThreadId(projectId: pid, preferred: threadId)
-        let epicId = threadFlow[tid]?.epicId ?? (selectedProjectId == pid ? currentEpicId : nil)
+        let epicId = projectFlow[pid]?.epicId
+            ?? threadFlow[tid]?.epicId
+            ?? (selectedProjectId == pid ? currentEpicId : nil)
         if Self.isPendingEpicId(epicId) { return }
         do {
             try await prepareClient(ensureAgent: false)
@@ -4453,6 +4527,7 @@ final class AppModel: ObservableObject {
             }
             threadFlow[tid] = cached
             bumpFlowRevision(tid)
+            setProjectFlow(projectId, cached)
             if isSelected {
                 applyFlowSnapshot(cached)
                 currentEpicId = nil
@@ -4481,6 +4556,7 @@ final class AppModel: ObservableObject {
                 cached.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
                 threadFlow[tid] = cached
                 bumpFlowRevision(tid)
+                setProjectFlow(projectId, cached)
                 if isSelected {
                     applyFlowSnapshot(cached)
                     currentEpicId = nil
@@ -4524,6 +4600,7 @@ final class AppModel: ObservableObject {
             cached.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
             threadFlow[tid] = cached
             bumpFlowRevision(tid)
+            setProjectFlow(projectId, cached)
             if isSelected {
                 applyFlowSnapshot(cached)
                 lastAnimatedEpicId = nil
@@ -4605,6 +4682,7 @@ final class AppModel: ObservableObject {
         }
         threadFlow[tid] = cached
         bumpFlowRevision(tid)
+        setProjectFlow(projectId, cached)
         if isSelected {
             applyFlowSnapshot(cached)
             recentEpics = cached.recentEpics
@@ -4617,8 +4695,8 @@ final class AppModel: ObservableObject {
 
     func openNodeDetail(id: String, projectId: String? = nil) {
         let pid = projectId ?? selectedProjectId
-        let tid = pid.map { threadIdForProject( $0) }
-        let snap = tid.flatMap { threadFlow[$0] }
+        let snap = pid.flatMap { projectFlow[$0] }
+            ?? pid.flatMap { threadFlow[threadIdForProject($0)] }
         let epic = snap?.epic ?? (pid == selectedProjectId ? flowEpic : nil)
         let works = snap?.works ?? (pid == selectedProjectId ? flowWorks : [])
         let curEpicId = snap?.epicId ?? (pid == selectedProjectId ? currentEpicId : nil)
@@ -4717,10 +4795,9 @@ final class AppModel: ObservableObject {
                     // epic_id 过滤（避免他 epic 噪声打扰本轨）；不传则 Hub 推该项目全部事件。
                     let subscribedEpic = await MainActor.run { () -> String? in
                         guard let self else { return nil }
-                        let tid = self.threadIdForProject(projectId)
-                        let bound = self.threadFlow[tid]?.epicId
+                        return self.projectFlow[projectId]?.epicId
+                            ?? self.threadFlow[self.threadIdForProject(projectId)]?.epicId
                             ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
-                        return bound
                     }
                     try await self?.client.streamFlowEvents(
                         projectId: projectId,
@@ -4740,8 +4817,8 @@ final class AppModel: ObservableObject {
                                 guard stillWanted else { return }
                                 // 客户端二次校验：epic_id 缺失/不匹配 → 拒绝（防他 epic 噪声）
                                 if let eid = payload["epic_id"] as? String, !eid.isEmpty {
-                                    let tid = self.threadIdForProject(projectId)
-                                    let bound = self.threadFlow[tid]?.epicId
+                                    let bound = self.projectFlow[projectId]?.epicId
+                                        ?? self.threadFlow[self.threadIdForProject(projectId)]?.epicId
                                         ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
                                     if let bound, !bound.isEmpty, eid != bound {
                                         return
@@ -4757,8 +4834,8 @@ final class AppModel: ObservableObject {
                                 guard !self.flowSnapshotPaused else { return }
                                 // epic_done 本 epic 触发 → 立即清轨；非本 epic 拒绝
                                 if let eid = payload["epic_id"] as? String, !eid.isEmpty {
-                                    let tid = self.threadIdForProject(projectId)
-                                    let bound = self.threadFlow[tid]?.epicId
+                                    let bound = self.projectFlow[projectId]?.epicId
+                                        ?? self.threadFlow[self.threadIdForProject(projectId)]?.epicId
                                         ?? (self.selectedProjectId == projectId ? self.currentEpicId : nil)
                                     if let bound, !bound.isEmpty, eid != bound { return }
                                 }
@@ -5149,14 +5226,13 @@ final class AppModel: ObservableObject {
         agentUsageTask?.cancel()
         loadAgentLLMDailyFromDisk()
         refreshAgentLLMRecent5s(now: Date())
-        bumpAgentUsageTick()
+        // 不 bump tick：TitlebarUsageAccessory 自带 timer；避免 1Hz objectWillChange 拖聊天重绘
         agentUsageTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled, let self else { break }
                 await MainActor.run {
                     self.refreshAgentLLMRecent5s(now: Date())
-                    self.bumpAgentUsageTick()
                 }
             }
         }
@@ -5188,7 +5264,11 @@ final class AppModel: ObservableObject {
     private func refreshAgentLLMRecent5s(now: Date) {
         let cutoff = now.addingTimeInterval(-5)
         agentLLMCallTimestamps = agentLLMCallTimestamps.filter { $0 >= cutoff }
-        agentLLMRecent5s = agentLLMCallTimestamps.count
+        let n = agentLLMCallTimestamps.count
+        // 仅数值变化才 @Published，避免 1Hz 拖整树
+        if agentLLMRecent5s != n {
+            agentLLMRecent5s = n
+        }
     }
 
     private func bumpAgentUsageTick() {

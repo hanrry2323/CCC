@@ -112,11 +112,10 @@ struct ContentView: View {
             model.selectDestination(dest, projectId: window.projectId)
             model.commandDestination = nil
         }
-        // 纯文字嵌进顶栏右侧；依赖 model.agentUsageTick 触发 updateNSView
+        // 顶栏用量：accessory 自带 1s timer，勿用 .id(tick) 拖整窗重挂
         .background(
             TitlebarUsageAccessory(model: model)
                 .frame(width: 0, height: 0)
-                .id(model.agentUsageTick)
         )
         .toolbarBackground(CCCTheme.sidebar, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
@@ -608,54 +607,22 @@ struct CodexChatPaneBody: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
-            } else if !model.canChat && displayMessages.isEmpty {
-                // #region agent log
-                let _ = DebugAgentLog.log(
-                    hypothesisId: "H5",
-                    location: "CodexChatPane.body",
-                    message: paneThreadId == nil
-                        ? "startup bind: show loading (not offlineCenter)"
-                        : "rendering offlineCenter (no messages to keep)",
-                    data: [
-                        "agentMode": model.agentMode,
-                        "threadId": paneThreadId ?? "",
-                        "windowThreadId": window.threadId ?? "",
-                        "modelSelected": model.selectedThreadId ?? "",
-                        "msgCount": 0,
-                    ],
-                    runId: "post-fix"
-                )
-                // #endregion
-                if paneThreadId == nil {
-                    // 首帧 window 未绑定时禁止整页 offline（H5）
-                    VStack(spacing: 10) {
-                        Spacer()
-                        ProgressView()
-                            .controlSize(.regular)
-                        Text("加载对话…")
-                            .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(CCCTheme.faint)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                } else {
-                    offlineCenter
+            } else if paneThreadId == nil {
+                // 首帧 window 未绑定时禁止整页 offline（H5）
+                VStack(spacing: 10) {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text("加载对话…")
+                        .font(.system(size: 12, weight: .light))
+                        .foregroundStyle(CCCTheme.faint)
+                    Spacer()
                 }
+                .frame(maxWidth: .infinity)
             } else {
+                // 已绑 thread：始终挂 messageArea（含空会话欢迎）；离线只顶 banner，禁止整页卸列表（H1）
                 VStack(spacing: 0) {
                     if !model.canChat {
-                        // #region agent log
-                        let _ = DebugAgentLog.log(
-                            hypothesisId: "H1",
-                            location: "CodexChatPane.body",
-                            message: "agent offline banner; keep messageArea",
-                            data: [
-                                "agentMode": model.agentMode,
-                                "threadId": paneThreadId ?? "",
-                                "msgCount": displayMessages.count,
-                            ]
-                        )
-                        // #endregion
                         offlineBanner
                     }
                     ZStack {
@@ -1149,53 +1116,6 @@ struct CodexChatPaneBody: View {
         .padding(.vertical, 8)
         .background(CCCTheme.nodeFail.opacity(0.08))
         .accessibilityLabel("本机 Agent 未就绪")
-    }
-
-    private var offlineCenter: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Text("本机 Agent 未就绪")
-                .font(CCCTheme.title)
-                .foregroundStyle(CCCTheme.ink)
-            Text("对话只走本机 sidecar（:7788），不经 Hub。")
-                .font(.system(size: 13))
-                .foregroundStyle(CCCTheme.secondary)
-            Text(model.agentURLString)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(CCCTheme.secondary)
-            Text("bash scripts/install-agent-sidecar-plist.sh --start")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(CCCTheme.faint)
-            Text(
-                model.hubReachable
-                    ? "Hub 可达 · 定稿后可确认转任务"
-                    : "Hub 离线 · 仍可定稿确认（排队，恢复后自动投递）"
-            )
-                .font(.system(size: 12))
-                .foregroundStyle(CCCTheme.faint)
-            if let err = model.lastError, !err.isEmpty {
-                Text(err)
-                    .font(.system(size: 12))
-                    .foregroundStyle(CCCTheme.faint)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-            }
-            HStack(spacing: 12) {
-                Button("重试") { Task { await model.reconnect() } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CCCTheme.accent)
-                    .controlSize(.small)
-                Button("打开设置") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(CCCTheme.accent)
-                .controlSize(.small)
-            }
-            .padding(.top, 4)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var messageArea: some View {
@@ -2110,33 +2030,52 @@ struct MessagePreviewSheet: View {
     }
 }
 
-// MARK: - Flow rail（跟当前对话绑定）
+// MARK: - Flow rail（跟左侧项目绑定）
 
 struct FlowRail: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
 
-    /// OpenCode 式：右栏跟本窗 session/thread，不跟全局 selectedThreadId
-    private var paneThreadId: String? { window.threadId }
+    /// 右栏跟本窗项目，不跟单个会话
+    private var paneProjectId: String? {
+        if let pid = window.projectId, !pid.isEmpty { return pid }
+        return model.selectedProjectId
+    }
 
     private var snap: FlowThreadSnapshot? {
-        // 订阅 flow 修订号（与消息 threadRevision 分离，避免右栏 SSE 拖聊天重滚）
-        if let tid = paneThreadId {
-            _ = model.threadFlowRevision[tid]
+        if let pid = paneProjectId {
+            _ = model.projectFlowRevision[pid]
         }
-        return model.flowSnapshot(for: paneThreadId)
+        return model.flowSnapshot(forProject: paneProjectId)
     }
+
+    private static let boardChipCols: [(key: String, label: String)] = [
+        ("backlog", "待办"),
+        ("planned", "规划"),
+        ("in_progress", "进行"),
+        ("testing", "验收"),
+        ("abnormal", "异常"),
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: 8)
 
-            // 标题：说明这是「本对话的编排」，不是全局测试列表
             VStack(alignment: .leading, spacing: 4) {
-                Text("本对话编排")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(CCCTheme.ink)
-                Text(model.orchestrationSyncLabel)
+                HStack {
+                    Text("本项目态势")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(CCCTheme.ink)
+                    Spacer(minLength: 0)
+                    Button("看板") {
+                        window.destination = .board
+                        model.selectDestination(.board, projectId: paneProjectId)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(CCCTheme.accent)
+                }
+                Text(model.orchestrationSyncLabel(forProject: paneProjectId))
                     .font(.system(size: 10))
                     .foregroundStyle(CCCTheme.faint)
                     .accessibilityLabel("编排同步态")
@@ -2145,10 +2084,12 @@ struct FlowRail: View {
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.secondary)
                         .lineLimit(2)
+                } else if paneProjectId == nil {
+                    Text("先选左侧项目")
+                        .font(.system(size: 11))
+                        .foregroundStyle(CCCTheme.faint)
                 } else {
-                    Text(paneThreadId == nil
-                         ? "先选左侧对话"
-                         : "转任务后显示流程")
+                    Text("定稿下达后显示编排")
                         .font(.system(size: 11))
                         .foregroundStyle(CCCTheme.faint)
                 }
@@ -2157,7 +2098,10 @@ struct FlowRail: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
 
-            // 任务栈：最新在上展开；旧卡折叠条点换焦（不做下拉 Menu）
+            boardStrip
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+
             if !(snap?.recentEpics ?? []).isEmpty {
                 taskStack
                     .padding(.horizontal, 12)
@@ -2173,16 +2117,13 @@ struct FlowRail: View {
                     HStack(spacing: 10) {
                         Button("开运维") {
                             window.destination = .ops
-                            model.selectDestination(.ops, projectId: window.projectId)
+                            model.selectDestination(.ops, projectId: paneProjectId)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(CCCTheme.accent)
                         .controlSize(.small)
                         Button("忽略") {
-                            model.clearFanoutHint(
-                                projectId: window.projectId,
-                                threadId: paneThreadId
-                            )
+                            model.clearFanoutHint(projectId: paneProjectId, threadId: nil)
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -2208,22 +2149,19 @@ struct FlowRail: View {
                     HStack(spacing: 10) {
                         Button("开运维") {
                             window.destination = .ops
-                            model.selectDestination(.ops, projectId: window.projectId)
+                            model.selectDestination(.ops, projectId: paneProjectId)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(CCCTheme.nodeFail)
                         .controlSize(.small)
                         Button("看板") {
                             window.destination = .board
-                            model.selectDestination(.board, projectId: window.projectId)
+                            model.selectDestination(.board, projectId: paneProjectId)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         Button("忽略") {
-                            model.clearStopLossHint(
-                                projectId: window.projectId,
-                                threadId: paneThreadId
-                            )
+                            model.clearStopLossHint(projectId: paneProjectId, threadId: nil)
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -2248,16 +2186,20 @@ struct FlowRail: View {
                 emptyMessage: snap?.emptyMessage
                     ?? "编排空闲·等定稿下达（与对话故障无关）",
                 splitGeneration: model.flowSplitGeneration,
-                projectId: window.projectId,
-                threadId: paneThreadId,
+                projectId: paneProjectId,
+                threadId: nil,
                 onOpenOps: {
                     window.destination = .ops
-                    model.selectDestination(.ops, projectId: window.projectId)
+                    model.selectDestination(.ops, projectId: paneProjectId)
                 },
-                onSelectNode: { model.openNodeDetail(id: $0, projectId: window.projectId) }
+                onSelectNode: { model.openNodeDetail(id: $0, projectId: paneProjectId) }
             )
         }
         .background(CCCTheme.sidebar)
+        .task(id: paneProjectId) {
+            guard let pid = paneProjectId else { return }
+            await model.bindFlowToProject(projectId: pid)
+        }
         .sheet(item: $model.selectedNodeDetail) { detail in
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -2288,7 +2230,7 @@ struct FlowRail: View {
                     Button("在运维中查看") {
                         model.dismissNodeDetail()
                         window.destination = .ops
-                        model.selectDestination(.ops, projectId: window.projectId)
+                        model.selectDestination(.ops, projectId: paneProjectId)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
@@ -2296,6 +2238,43 @@ struct FlowRail: View {
             }
             .padding(22)
             .frame(width: 420, height: 360)
+        }
+    }
+
+    private var boardStrip: some View {
+        let counts = model.boardCounts(forProject: paneProjectId)
+        let deltas = model.boardCountsDelta(forProject: paneProjectId)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("看板")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(CCCTheme.faint)
+            HStack(spacing: 6) {
+                ForEach(Self.boardChipCols, id: \.key) { col in
+                    let n = counts[col.key] ?? 0
+                    let d = deltas[col.key] ?? 0
+                    VStack(spacing: 2) {
+                        HStack(spacing: 2) {
+                            Text("\(n)")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(col.key == "abnormal" && n > 0 ? CCCTheme.nodeFail : CCCTheme.ink)
+                            if d != 0 {
+                                Text(d > 0 ? "↑\(d)" : "↓\(-d)")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(d > 0 ? CCCTheme.accent : CCCTheme.faint)
+                            }
+                        }
+                        Text(col.label)
+                            .font(.system(size: 9))
+                            .foregroundStyle(CCCTheme.faint)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(CCCTheme.chatBg)
+                    )
+                }
+            }
         }
     }
 
@@ -2308,7 +2287,7 @@ struct FlowRail: View {
         return snap?.epic?.title ?? eid
     }
 
-    /// 纵向任务栈：当前展开条 + 历史折叠条
+    /// 纵向任务栈：当前展开条 + 历史折叠条（项目级大卡）
     private var taskStack: some View {
         let epics = snap?.recentEpics ?? []
         let currentId = snap?.epicId
@@ -2318,13 +2297,16 @@ struct FlowRail: View {
                     epic_id: $0,
                     title: snap?.epic?.title,
                     updated_at: nil,
-                    thread_id: paneThreadId,
+                    thread_id: nil,
                     user_stage: snap?.epic?.user_stage
                 )
             })
         let history = epics.filter { $0.epic_id != currentId }
 
         return VStack(alignment: .leading, spacing: 6) {
+            Text("大卡")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(CCCTheme.faint)
             if let cur = current {
                 taskStackRow(cur, expanded: true)
             }
@@ -2338,8 +2320,8 @@ struct FlowRail: View {
                         Task {
                             await model.selectEpic(
                                 epic.epic_id,
-                                projectId: window.projectId,
-                                threadId: paneThreadId
+                                projectId: paneProjectId,
+                                threadId: nil
                             )
                         }
                     } label: {
@@ -2355,14 +2337,6 @@ struct FlowRail: View {
         let stage = (epic.user_stage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let stageLabel = stage.isEmpty ? (expanded ? "进行中" : "") : stage
         let done = stage.lowercased() == "done"
-        let locator = CardLocator.line(
-            project: window.projectId,
-            thread: paneThreadId,
-            kind: "epic",
-            id: epic.epic_id,
-            title: epic.title,
-            stage: stage.isEmpty ? nil : stage
-        )
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: expanded ? "chevron.down" : "circle")
                 .font(.system(size: expanded ? 9 : 7, weight: .semibold))
@@ -2380,7 +2354,6 @@ struct FlowRail: View {
                 }
             }
             Spacer(minLength: 0)
-            LocatorCopyButton(text: locator)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, expanded ? 8 : 6)
