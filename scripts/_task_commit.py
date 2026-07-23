@@ -189,12 +189,30 @@ def _result_wrote_paths(workspace: Path, task_id: str) -> list[str]:
     return out
 
 
+def _is_harness_noise_path(path: str) -> bool:
+    """Probe/report leftovers that must not dirty_block hygiene / scoped DoD."""
+    p = (path or "").strip().replace("\\", "/")
+    while p.startswith("./"):
+        p = p[2:]
+    if p.startswith("docs/reports/") or p == "docs/reports":
+        return True
+    if p.startswith("docs/") and p.endswith("_NOTE.md"):
+        return True
+    return False
+
+
 def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
     """ops / .ccc-only 卫生卡允许 DoD 提交编排产物。"""
     try:
-        from _ccc_hygiene import task_skips_forced_pytest
+        from _ccc_hygiene import (
+            _load_phase_scopes,
+            scopes_are_ccc_only,
+            task_skips_forced_pytest,
+        )
 
-        return task_skips_forced_pytest(workspace, task_id, None)
+        if task_skips_forced_pytest(workspace, task_id, None):
+            return True
+        return scopes_are_ccc_only(_load_phase_scopes(workspace, task_id))
     except Exception:
         return False
 
@@ -215,7 +233,7 @@ def ensure_task_commit(
     KPI commit_gate_hygiene_vs_business_dirty:
     - Prefer plan-scope / result.wrote paths over unrelated dirty business files.
     - Unrelated business dirty is left unstaged（不挡白名单任务提交）.
-    - Hygiene cards may stage .ccc meta only.
+    - Hygiene cards may stage .ccc meta only；docs/reports 等探针噪声不 dirty_block。
     """
     existing = find_task_commit(workspace, task_id)
     if existing and (not pre_head or existing != pre_head):
@@ -235,22 +253,20 @@ def ensure_task_commit(
     dirty = (st.stdout or "").rstrip("\n")
     all_paths = _porcelain_paths(dirty)
     product = porcelain_product_paths(dirty)
-    hygiene = False
-    if not product and dirty:
-        hygiene = _hygiene_allow_ccc_meta(workspace, task_id)
-        if hygiene:
-            # 卫生卡：允许 stage 全部 .ccc/ 脏路径（仍拒绝业务树）
-            product = [
-                p
-                for p in all_paths
-                if _is_ccc_meta_path(p)
-                or p.startswith(".ccc/")
-                or p in (".ccc/state.md", ".ccc/agent-mind/decided.json")
-                or p.startswith(".ccc/agent-mind/")
-                or p.startswith(".ccc/lessons/")
-            ]
-
-    if product and not hygiene:
+    # Detect hygiene BEFORE trusting empty-product — paper report dirty would
+    # otherwise keep product non-empty and skip hygiene branch (R4 qb e05).
+    hygiene = _hygiene_allow_ccc_meta(workspace, task_id)
+    if hygiene:
+        product = [
+            p
+            for p in all_paths
+            if _is_ccc_meta_path(p)
+            or p.startswith(".ccc/")
+            or p in (".ccc/state.md", ".ccc/agent-mind/decided.json")
+            or p.startswith(".ccc/agent-mind/")
+            or p.startswith(".ccc/lessons/")
+        ]
+    elif product:
         # Scope-aware: only stage plan / result paths when known
         scope = set(_plan_scope_paths(workspace, task_id))
         scope |= set(_result_wrote_paths(workspace, task_id))
@@ -279,6 +295,7 @@ def ensure_task_commit(
                     or p.startswith(s.rstrip("/") + "/")
                     for s in scope
                 )
+                and not _is_harness_noise_path(p)
             ]
             if scoped:
                 if outside:
@@ -288,21 +305,37 @@ def ensure_task_commit(
                         outside[:8],
                     )
                 product = scoped
-            elif outside or product:
-                sample = ", ".join((outside or product)[:6])
+            elif outside:
+                sample = ", ".join(outside[:6])
                 return (
                     False,
                     f"dirty_block: business dirty outside plan scope "
                     f"(no in-scope changes): {sample}",
                     existing,
                 )
+            else:
+                # only harness noise outside scope — treat as no product to stage
+                product = []
 
     if not product:
         if dirty:
+            # Hygiene with only harness noise left: no commit needed if already have one
+            if hygiene and all(
+                _is_ccc_meta_path(p)
+                or p.startswith(".ccc/")
+                or _is_harness_noise_path(p)
+                for p in all_paths
+            ):
+                if existing:
+                    return True, "already_hygiene_noise_only", existing
+                # board_ops wrote .ccc/reports — should have been in product; if
+                # nothing staged, still fail clearly
             return (
                 False,
                 "no task_id commit and only .ccc/ meta dirty — "
-                "agent did not land product changes",
+                "agent did not land product changes"
+                if not hygiene
+                else "no task_id commit and hygiene tree has no .ccc changes to stage",
                 existing,
             )
         return (

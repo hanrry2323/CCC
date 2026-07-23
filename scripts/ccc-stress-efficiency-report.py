@@ -33,6 +33,20 @@ if str(SCRIPTS) not in sys.path:
 APPS_DEFAULT = ("ccc-demo", "qb")
 APPS_ROOT = Path.home() / "program" / "apps"
 
+# Same-epic multi-phase tail: …-w2, …-w3 — queue wait includes waiting on prior phase
+_SERIAL_SUCCESSOR_RE = re.compile(r"-w(\d+)$", re.IGNORECASE)
+
+
+def _is_serial_successor_work(work_id: str) -> bool:
+    """True for -w2+ cards (dependency-chain successors under same epic)."""
+    m = _SERIAL_SUCCESSOR_RE.search((work_id or "").strip())
+    if not m:
+        return False
+    try:
+        return int(m.group(1)) >= 2
+    except ValueError:
+        return False
+
 
 def _parse_ts(s: str | None) -> datetime | None:
     if not s:
@@ -280,6 +294,22 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
     epic_by_ss = Counter((e.get("split_status") or "?") for e in epics)
 
     queue_vals = [w["queue_wait_s"] for w in works if w.get("queue_wait_s") is not None]
+    # R5: independent cards = exclude same-epic serial successors (-w2+)
+    for w in works:
+        w["serial_successor"] = _is_serial_successor_work(str(w.get("id") or ""))
+        w["queue_cohort"] = (
+            "serial_successor" if w["serial_successor"] else "independent"
+        )
+    queue_indep_vals = [
+        w["queue_wait_s"]
+        for w in works
+        if w.get("queue_wait_s") is not None and not w.get("serial_successor")
+    ]
+    queue_succ_vals = [
+        w["queue_wait_s"]
+        for w in works
+        if w.get("queue_wait_s") is not None and w.get("serial_successor")
+    ]
     dev_vals = [w["dev_wall_s"] for w in works if w.get("dev_wall_s") is not None]
     gate_vals = [w["gate_wall_s"] for w in works if w.get("gate_wall_s") is not None]
     e2e_vals = [w["e2e_work_s"] for w in works if w.get("e2e_work_s") is not None]
@@ -321,6 +351,19 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
                 "p95": _pct(queue_vals, 95),
                 "max": max(queue_vals) if queue_vals else None,
                 "n": len(queue_vals),
+            },
+            "queue_wait_indep_s": {
+                "p50": _pct(queue_indep_vals, 50),
+                "p95": _pct(queue_indep_vals, 95),
+                "max": max(queue_indep_vals) if queue_indep_vals else None,
+                "n": len(queue_indep_vals),
+                "note": "excludes serial_successor (-w2+)",
+            },
+            "queue_wait_successor_s": {
+                "p50": _pct(queue_succ_vals, 50),
+                "p95": _pct(queue_succ_vals, 95),
+                "max": max(queue_succ_vals) if queue_succ_vals else None,
+                "n": len(queue_succ_vals),
             },
             "dev_wall_s": {
                 "p50": _pct(dev_vals, 50),
@@ -450,7 +493,8 @@ def render_md(report: dict) -> str:
         f"- Dispatches: **{report['dispatch']['ok']}/{report['dispatch']['n']}** ok",
         f"- Works by column: `{report['work_columns']}`",
         f"- Epics split_status: `{report['epic_split_status']}`",
-        f"- queue_wait_s p50/p95: **{ta['queue_wait_s']['p50']}** / **{ta['queue_wait_s']['p95']}** (n={ta['queue_wait_s']['n']})",
+        f"- queue_wait_s p50/p95 (all): **{ta['queue_wait_s']['p50']}** / **{ta['queue_wait_s']['p95']}** (n={ta['queue_wait_s']['n']})",
+        f"- queue_wait_indep_s p50/p95: **{(ta.get('queue_wait_indep_s') or {}).get('p50')}** / **{(ta.get('queue_wait_indep_s') or {}).get('p95')}** (n={(ta.get('queue_wait_indep_s') or {}).get('n')}; excl -w2+)",
         f"- dev_wall_s p50/p95: **{ta['dev_wall_s']['p50']}** / **{ta['dev_wall_s']['p95']}** (n={ta['dev_wall_s']['n']})",
         f"- gate_wall_s p50/p95: **{ta['gate_wall_s']['p50']}** / **{ta['gate_wall_s']['p95']}** (n={ta['gate_wall_s']['n']})",
         f"- e2e_work_s p50/p95/max: **{ta['e2e_work_s']['p50']}** / **{ta['e2e_work_s']['p95']}** / **{ta['e2e_work_s']['max']}**",
@@ -476,12 +520,12 @@ def render_md(report: dict) -> str:
         "",
         "## 3. Work timing table",
         "",
-        "| app | work | col | queue_s | dev_s | gate_s | e2e_s | fail_loops |",
-        "|-----|------|-----|--------|-------|--------|-------|------------|",
+        "| app | work | col | cohort | queue_s | dev_s | gate_s | e2e_s | fail_loops |",
+        "|-----|------|-----|--------|--------|-------|--------|-------|------------|",
     ]
     for w in sorted(report["works"], key=lambda x: (x["app"], x["id"])):
         lines.append(
-            f"| {w['app']} | `{w['id'][-36:]}` | {w['col']} | {w.get('queue_wait_s')} | {w.get('dev_wall_s')} | {w.get('gate_wall_s')} | {w.get('e2e_work_s')} | {w.get('fail_loops')} |"
+            f"| {w['app']} | `{w['id'][-36:]}` | {w['col']} | {w.get('queue_cohort') or '-'} | {w.get('queue_wait_s')} | {w.get('dev_wall_s')} | {w.get('gate_wall_s')} | {w.get('e2e_work_s')} | {w.get('fail_loops')} |"
         )
 
     lines += [

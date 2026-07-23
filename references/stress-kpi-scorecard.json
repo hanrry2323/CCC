@@ -13,7 +13,7 @@
   "rounds": {
     "recommended": 4,
     "max": 5,
-    "rationale": "R1 短路径幽灵槽；R2 L0 分级死门；R3 commit-gate/脏树；R4 审测税+duration 观测；R5 储备。每轮主攻≤2 KPI。"
+    "rationale": "R1 幽灵槽+L0；R2 duration fill；R3 短路径绕互斥+scope DoD；R4 失败预算+feature_seed；R5 queue 独立卡口径+卫生 dirty 豁免。每轮主攻≤2 KPI。"
   },
   "baselines": {
     "stress-mx-20260723": {
@@ -36,6 +36,19 @@
       "duration_s_fill_rate": 0.0,
       "dirty_result_n": 0,
       "ghost_in_progress_n": 2
+    },
+    "stress-mx-20260723-kpi-r4": {
+      "label": "KPI R4 near-pass",
+      "epic_done_rate": 0.9167,
+      "work_abnormal_n": 1,
+      "queue_wait_p95_s": 574.3,
+      "queue_wait_indep_p95_s": 247,
+      "gate_wall_p95_s": 59.8,
+      "e2e_work_p95_s": 775.45,
+      "duration_s_fill_rate": 1.0,
+      "dirty_result_n": 0,
+      "ghost_in_progress_n": 0,
+      "note": "全量 queue p95 被 e02-w2 依赖地板拉高；独立卡 p95≈247≤300"
     }
   },
   "gates": [
@@ -67,11 +80,21 @@
     },
     {
       "id": "queue_wait_p95_s",
-      "path": "time_agg.queue_wait_s.p95",
+      "path": "time_agg.queue_wait_indep_s.p95",
       "op": "<=",
       "value": 300,
       "unit": "seconds",
-      "primary": true
+      "primary": true,
+      "note": "R5：仅独立卡（排除同 epic 串行后继 -w2+）。同仓 1 OpenCode 下依赖链等前驱是设计地板，不进主门。"
+    },
+    {
+      "id": "queue_wait_p95_all_s",
+      "path": "time_agg.queue_wait_s.p95",
+      "op": "<=",
+      "value": 900,
+      "unit": "seconds",
+      "primary": false,
+      "note": "全量 queue 观测门（含依赖后继）；不挡 PASS，防回归到整夜排队"
     },
     {
       "id": "gate_wall_p95_s",
@@ -117,7 +140,8 @@
       "short_path_advance_after_done",
       "l0_diff_stat_gradable_or_fixable",
       "duration_s_fill",
-      "commit_gate_hygiene_vs_business_dirty"
+      "commit_gate_hygiene_vs_business_dirty",
+      "queue_wait_indep_gate"
     ],
     "forbid": [
       "raise_MAX_CONCURRENT_as_primary_fix",

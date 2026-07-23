@@ -41,6 +41,7 @@ def _minimal_report(**over):
         "works": [],
         "time_agg": {
             "queue_wait_s": {"p50": 50, "p95": 200, "n": 10},
+            "queue_wait_indep_s": {"p50": 40, "p95": 180, "n": 8},
             "gate_wall_s": {"p50": 100, "p95": 400, "n": 10},
             "e2e_work_s": {"p50": 300, "p95": 900, "n": 10},
             "dev_wall_s": {"p50": 20, "p95": 100, "n": 10},

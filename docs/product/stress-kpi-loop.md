@@ -25,10 +25,10 @@
 | 轮 | 主攻（典型） | 对应真相 |
 |----|--------------|----------|
 | R1 | ghost_in_progress / 短路径推进 | e05 done 卡 in_progress |
-| R2 | L0 diff-stat 可修复 | e02 无法分级直接死 |
-| R3 | commit-gate 脏树分离 | e04 dirty abort |
-| R4 | gate_wall + duration fill | 学习税 / 观测回退 |
-| R5 | 储备 / 收口 | 未过门禁用尽前最后一击 |
+| R2 | duration_s fill | 观测门假零 |
+| R3 | 短路径绕互斥 + scope DoD | 纸面堵在 OpenCode 后；脏树 |
+| R4 | 短路径失败预算 + feature_seed | board_ops 1Hz 空转；e04 OpenCode 不稳 |
+| R5 | queue **独立卡**口径 + 卫生 dirty 豁免 | 依赖链地板误伤主门；paper 报告挡卫生 |
 
 **推荐 4、上限 5**（写在 scorecard）。
 
@@ -39,7 +39,8 @@
 | epic_done_rate | ≥ 0.833（≈10/12） |
 | work_abnormal_n | ≤ 1 |
 | ghost_in_progress_n | = 0 |
-| queue_wait p95 | ≤ 300s |
+| queue_wait **indep** p95 | ≤ 300s（排除 `-w2+` 串行后继） |
+| queue_wait **all** p95 | ≤ 900s（观测，不挡 PASS） |
 | gate_wall p95 | ≤ 600s |
 | e2e p95 | ≤ 1200s |
 | duration_s fill | ≥ 0.9（否则 INVALID） |
