@@ -290,7 +290,18 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
     for r in dones:
         by_cx[str(r.get("complexity") or "?")].append(r)
 
-    work_by_col = Counter(w["col"] for w in works)
+    # Always emit full column set (missing key ≠ 0 breaks count gates).
+    _WORK_COLS = (
+        "backlog",
+        "planned",
+        "in_progress",
+        "testing",
+        "verified",
+        "released",
+        "abnormal",
+    )
+    work_by_col = {c: 0 for c in _WORK_COLS}
+    work_by_col.update(Counter(w["col"] for w in works))
     epic_by_ss = Counter((e.get("split_status") or "?") for e in epics)
 
     queue_vals = [w["queue_wait_s"] for w in works if w.get("queue_wait_s") is not None]

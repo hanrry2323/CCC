@@ -63,11 +63,12 @@
     },
     {
       "id": "work_abnormal_n",
-      "path": "work_columns.abnormal",
+      "path": "computed.work_abnormal_n",
       "op": "<=",
       "value": 1,
       "unit": "count",
-      "primary": true
+      "primary": true,
+      "note": "用 computed（缺 work_columns.abnormal 键时按 0，避免全绿误 FAIL）"
     },
     {
       "id": "ghost_in_progress_n",

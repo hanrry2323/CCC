@@ -78,6 +78,18 @@ def test_gate_fail_abnormal():
     assert "work_abnormal_n" in result["primary_fail"]
 
 
+def test_gate_pass_when_abnormal_key_absent():
+    """Sparse work_columns (zero abnormal omitted) must not false-FAIL."""
+    sc = GATE.load_scorecard()
+    result = GATE.evaluate(
+        _minimal_report(work_columns={"released": 14}),
+        sc,
+    )
+    assert result["computed"]["work_abnormal_n"] == 0
+    assert result["verdict"] == "PASS"
+    assert "work_abnormal_n" not in (result.get("primary_fail") or [])
+
+
 def test_gate_invalid_duration():
     sc = GATE.load_scorecard()
     # only duration fails → INVALID
