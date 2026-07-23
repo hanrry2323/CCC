@@ -6,19 +6,21 @@
  */
 
 export const REPLY_COMPACT =
-  '【对用户回复】中文白话、短句；只谈问题/场景/能力模块/步骤/取舍；' +
-  '禁止文件路径、英文符号名、命令行、大段代码；禁止复述工具过程。字数上限见各任务。';
+  '【对用户回复】中文白话、短句（≤3 句先结论）；只谈问题/场景/能力模块/步骤/取舍；' +
+  '禁止文件路径、英文符号名、命令行、大段代码；禁止复述工具过程；' +
+  '禁止 transfer-outbox / Terminal / cat > / script_seed / A/B 菜单。字数上限见各任务。';
 
 const INVESTIGATE =
-  '业务仓事实：Hub 透镜 live（ccc-hub-lens board|git|file|locate|repair）；' +
+  '业务仓事实：一等 hub_* 工具（MCP ccc-hub）或透镜；' +
   '禁止 ssh、禁止本机业务树 Read/git。对齐基线是深对齐可选，非硬门槛。' +
-  '板堵优先 repair clear_blockers，禁止默认投卫生 epic。' +
-  'digest 不作终局；脚本+报告已在仅 STATUS 未勾 → S/同步，勿 stamp 重开。';
+  '板堵：你自己 hub_repair(clear_blockers)，禁止教用户贴命令，禁止默认投卫生 epic。' +
+  '清 abnormal 不等人审。digest 不作终局。';
 
 const VERIFY =
   '## 现况核实（静默）\n' +
-  '作答前 Bash：ccc-hub-lens.py board + git；再 locate/file 定点 1～3 路径。\n' +
-  'ready_for_task=false 或 inflight>0 → 先 repair clear_blockers；仅业务脏/真在飞时禁新产品 epic。\n';
+  '作答前 hub_board + hub_git；再 hub_locate/hub_file 定点 1～3 路径。\n' +
+  'ready_for_task=false 或 inflight>0 → 先 hub_repair(clear_blockers)；仅业务脏/真在飞时禁新产品 epic。\n' +
+  '禁止向用户输出 Hub CLI / outbox / Terminal。\n';
 
 /** 看仓况（旧名「下一步」· 非必经） */
 export const NEXT_STEP_PROMPT =

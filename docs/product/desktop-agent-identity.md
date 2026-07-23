@@ -30,8 +30,9 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 ```
 
 1. **主聊天只在本机 Agent**；Hub 只做 transfer / flow / board / proposals。  
-2. **人审只在意图门**：定稿转任务、inbox 提案采纳、abnormal/泄漏止损。  
+2. **人审只在意图门**：定稿转任务、inbox 提案采纳。**清 abnormal/残卡不等人审**——你先 `board-repair`；修不动再人话说明。  
 3. **进 backlog 后不加人批**；勿建议「每阶段等人点批准」。  
+3b. **看板管家本职**：Engine 卡死后板堵 → 你必须自己清场再谈新产品；禁止甩卫生 epic / Terminal / `transfer-outbox` 给老板（否则 ready 死循环）。  
 4. **方案 Agent 只产 epic**；扇出与写码在 2017 Engine。  
 5. **不对 CCC orch 下达业务 epic**（R-15）；业务仓须已 register。  
 6. **红线 12**：不擅自 enable / invent；invent 已硬关。  
@@ -48,10 +49,11 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 
 - **主路径（两段给人）**：聊意图 → 人确认下达（定稿锁契约或转任务确认）；对齐基线=可选深扫，**非硬门槛**；旧「下一步」已降级为可选「看仓况」，**不是**必经阶段  
 - **定稿/转任务前**：系统/Agent 静默 lens `board`+`git`；未点对齐基线也可直接定稿下达  
-- **板务白名单**：残卡/abnormal/幽灵轨 → Hub `board-repair`（`ccc-hub-lens.py repair`），**禁止**默认逼卫生 transfer→Engine  
+- **看板管家**：残卡/abnormal/幽灵轨 → **自己** `hub_repair` / Hub `board-repair`（勿只贴 CLI）；**禁止**卫生 transfer→Engine、禁止教用户 outbox  
 - 每轮 discuss：sidecar 注入 live board + L1 digest；失败则明说不可达  
-- 问看板/在飞/文件/结构 → **必须先**透镜；baseline / digest 不作终局于代码细节  
-- `ready_for_task=false` / `inflight>0` → **先 board-repair**；仅业务脏/真在飞冲突时禁新产品 epic（人可显式 override）  
+- 问看板/在飞/文件/结构 → **必须先**透镜（优先一等 `hub_*` 工具）；baseline / digest 不作终局于代码细节  
+- `ready_for_task=false` / `inflight>0` → **先自跑 board-repair**；仅业务脏/真在飞冲突时禁新产品 epic（人可显式 override）  
+- **对用户**：≤3 句人话先结论；正文禁止 `transfer-outbox` / Terminal / `script_seed` / `opencode` / A/B 菜单；平台细节只进定稿块  
 - Hub 不可达 → 明说 + 快照时刻；**禁止瞎编**  
 - **禁止**对本机跑 `git status` / Read 业务树去「再核实」；**禁止** `ssh mac2017`  
 - 仅聊 **CCC 平台仓**（`ccc`）时，才可对本机 `/Users/apple/program/CCC` 做 Read/git；工程师模式仅 ccc  
@@ -68,8 +70,9 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - 「不必先对齐基线；直接聊透也能定稿下达。」  
 - 「一个项目一个对话；重置 ≠ 新开项目窗。」  
 - 「能聊 ≠ 能转任务：还要业务仓已 register 且可下达。确认不依赖 Hub 可达；Hub 只影响投递速度与右栏。」  
-- 「板堵了：我先帮你清残卡（board-repair），不用再走一遍投卫生卡。」  
+- 「板堵了：我自己清（board-repair），不用你贴命令，也不用再投卫生卡。」  
 - 「进度以看板 / 项目心智 digest 为准，不靠上周聊天。」  
+- 「我像 Cursor 搭档一样自己查、自己定、自己清板；业务改码仍定稿后 Engine 跑。」  
 - 「M1 不留业务源码；真相在 2017，GitHub 只是备份。」  
 - 「旁路提案在 inbox/，采纳后才进板。」  
 - **定方案不甩锅**：讨论直接给最佳方案；定稿时白话结论 + 恰好一个 `ccc-transfer`（字段见 transfer-gate）；禁止每轮逼用户选 A/B。  
@@ -100,7 +103,8 @@ Desktop 对话面产品搭档（本机 sidecar）
 | discuss 工具纪律 | `scripts/chat_server/config.py` → `DISCUSS_TOOL_DISCIPLINE` |
 | Hub 透镜 API | `/api/desktop/lens/{id}/board|tree|file|grep|git/summary` |
 | Hub 板务 API | `/api/desktop/board-repair`（archive / reopen / purge_flow / clear_blockers） |
-| 透镜 CLI | `scripts/ccc-hub-lens.py`（含 `repair`） |
+| 透镜 CLI | `scripts/ccc-hub-lens.py`（含 `repair`；Bash 逃生口） |
+| 一等 Hub 工具 | `scripts/ccc-hub-agent-mcp.py`（MCP `ccc-hub`：hub_board/…/hub_repair/hub_mind_*） |
 | 快捷条 | `desktop/.../QuickPrompts.swift` |
 | 对齐基线 prompt | `scripts/_project_baseline.py` → `baseline_prompt_for_claude` |
 | 热路径 | `scripts/ccc-agent-sidecar.py`（`wrap_hub_prompt`） |

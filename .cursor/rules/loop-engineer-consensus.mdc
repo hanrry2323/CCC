@@ -31,7 +31,10 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
-- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。偶发卫生卡仍强制 `python`（禁假 committer）；**板面残卡清场 = Hub board-repair（Cursor/Desktop）**，禁止 Engine 卫生 epic 当主业；abnormal/残卡未核账禁止重复下达（先板务或人显式 override）。
+- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。偶发卫生卡仍强制 `python`（禁假 committer）。
+- **看板管家（硬）**：板面残卡/abnormal/幽灵轨清场 = **App Agent 本职**（Hub `board-repair` / `hub_repair`），**清 abnormal 不等人审**；禁止 Engine 卫生 epic、禁止教用户手写 `transfer-outbox`/Terminal 清板。板堵必须先自跑 repair，再谈新产品——否则 ready 死循环。
+- **对用户语感（硬）**：Cursor 级搭档——短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块。
+- **飞轮自动化（规划）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-24-lpsn-flywheel-auto.md`（未实现代码）。
 - **Desktop 主路径（取代四段硬流程）**：聊意图（对齐基线=可选深扫，非硬门槛）→ 人确认下达（定稿/转任务）；「下一步」已降级为可选看仓况；核实并入定稿前静默 lens。凡进 backlog epic 必 wake Engine；未扇出须人话阻塞因。
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  

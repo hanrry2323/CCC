@@ -4,20 +4,20 @@ import Foundation
 /// 设计：功课对齐 Cursor；结尾必须是明确的用户请求，避免 loop-code 合成 “No response requested.”
 enum QuickPrompts {
     static let replyCompact =
-        "用中文白话回复我；先结论后理由。" +
+        "用中文白话回复我；先结论（≤3 句）后理由。" +
         "不要复述工具过程、不要大段代码、不要裸 JSON（定稿块除外）。" +
         "不要编造未核实的事实。工具跑完后必须写出完整可见答复，" +
-        "禁止只回 No response requested 或空内容。"
+        "禁止只回 No response requested 或空内容。" +
+        "禁止出现 transfer-outbox、Terminal、cat >、script_seed、opencode、A/B 菜单。"
 
     static let investigatePref =
         "你是 Desktop 对话面产品搭档（不是 Hub 聊天、不是 Engine 角色）。" +
-        "业务仓事实：Hub 基线开场 + Hub 透镜 live（ccc-hub-lens / lens API）；M1 无业务源码第二树。" +
-        "问看板/在飞/文件必须先透镜；Hub 断则明说不可达，禁止瞎编。" +
-        "若本轮已注入 live board / 快照，仍须 Bash 跑 live 核实后再下结论；禁止对本机跑 git / Read 业务树（会串台）。" +
-        "板堵/残卡：优先 `ccc-hub-lens.py repair <project_id> clear_blockers`，禁止默认投卫生 epic。" +
-        "digest/观察脑不作终局于代码细节；脚本已落地且报告在、仅 STATUS 未勾 → 判为 S/文档同步，禁止重开落地/stamp epic。" +
+        "业务仓事实：Hub 基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
+        "问看板/在飞/文件必须先 hub_board 等工具；Hub 断则明说不可达，禁止瞎编。" +
+        "板堵/残卡：你自己 hub_repair(clear_blockers)，禁止教我贴命令，禁止默认投卫生 epic。" +
+        "清 abnormal 不等人审。digest 不作终局于代码细节。" +
         "仅当当前项目是 CCC 平台仓且本机有映射时，才可对本机 CCC 做 Read/git。" +
-        "业务仓不可工程师模式；改码请定稿转任务。人审只在定稿/采纳；进队后全自动。不要上外网，除非我要求。" +
+        "业务仓不可工程师模式；改码请定稿转任务。人审只在定稿/采纳；进队后全自动。" +
         "「对齐基线」是深对齐可选路径，不是定稿/转任务的硬门槛。"
 
     static let mustAnswer =
@@ -25,14 +25,13 @@ enum QuickPrompts {
 
     static let verifyRitual =
         "\n## 现况核实（静默必修 · 勿写入回复正文当过程复述）\n" +
-        "作答前必须 Bash：`python3 scripts/ccc-hub-lens.py board <project_id>` 与 " +
-        "`python3 scripts/ccc-hub-lens.py git <project_id>`；" +
-        "再按目标 `locate`/`file` 定点读 1～3 个关键相对路径（如探针脚本、最新报告、STATUS 对应项）。\n" +
+        "作答前必须 hub_board + hub_git（MCP ccc-hub）；" +
+        "再按目标 hub_locate/hub_file 定点读 1～3 个关键相对路径。\n" +
         "先内化：ready_for_task / inflight / dirty_kind / pipeline_idle。" +
-        "ready_for_task=false 或 inflight>0：先 " +
-        "`python3 scripts/ccc-hub-lens.py repair <project_id> clear_blockers`（或 status→archive），" +
+        "ready_for_task=false 或 inflight>0：先 hub_repair(clear_blockers)，" +
         "再谈产品 epic；仅业务脏/真在飞冲突时禁新产品 epic（人可显式 override）。\n" +
-        "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n"
+        "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
+        "禁止向用户输出 Hub CLI / transfer-outbox / Terminal 教程。\n"
 
     static let builtinPrompts: [(title: String, prompt: String)] = [
         ("看仓况", nextStep),

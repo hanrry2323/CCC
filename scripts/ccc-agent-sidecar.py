@@ -607,25 +607,15 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         # 平台仓以本机为准；仍可提示勿 ssh
         return (
             "【平台仓 ccc · Plan】本机 CCC 可 Read/git；"
-            "业务仓事实仍须 Hub 透镜，禁止 ssh mac2017。"
+            "业务仓事实仍须 Hub 透镜/一等 hub_* 工具，禁止 ssh mac2017。"
         )
-    lens_cli = (
-        f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
-        f"board|locate|grep|tree|file|git|repair {pid} …"
-    )
-    mind_cli = f"python3 {SCRIPTS / 'ccc-mind-update.py'} {pid} --constraint '…'"
-    repair_cli = (
-        f"python3 {SCRIPTS / 'ccc-hub-lens.py'} repair {pid} "
-        "clear_blockers|status|archive|purge_flow|reopen"
-    )
     parts = [
         f"【Hub 透镜+板务 · Plan · project_id={pid}】",
-        f"业务权威在 2017；探查用：{lens_cli}",
-        f"板堵/残卡：{repair_cli}（禁止默认投卫生 epic）",
-        f"决策脑写入（可选）：{mind_cli}",
-        "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
-        "扫风险/定稿：board → locate（或 grep）定点收窄 → file 核实 1～3 个相对路径；禁止只读文档交差。",
-        "续查只用相对 path；禁止写死盘符、禁止把绝对路径抄回本机 Read。",
+        "优先一等工具：hub_board / hub_git / hub_locate / hub_file / hub_grep / "
+        "hub_repair / hub_mind_get / hub_mind_put（MCP ccc-hub）。",
+        "板堵/残卡：先 hub_repair(action=clear_blockers)；禁止教用户 Terminal/outbox；禁止卫生 epic。",
+        "禁止 ssh / 本机业务路径 Read/git。结果内化，勿把 CLI 贴进用户正文。",
+        "扫风险/定稿：board → locate → file 定点 1～3 相对路径；禁止只读文档交差。",
         "Hub 经本机隧道 :17777；勿改指 LAN :7777。",
     ]
     # board + mind 并行，缩短每轮首包前等待
@@ -639,23 +629,27 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     parts.append(block)
     if mblock:
         parts.append(mblock)
+    # 板堵硬闸：注入里已含 abnormal/failed 计数时强制先 repair
+    if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
+        parts.append(
+            "【板务强制】本轮必须先 hub_repair(clear_blockers)（或 status→archive）；"
+            "清完再用短人话说「异常已清」；禁止甩 outbox/Terminal 给老板。"
+        )
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
         r"(扫风险|定稿|核实|审查|locate|实现|代码)", text, re.I
     ):
         parts.append(
-            "本轮需代码核实：先 Bash `ccc-hub-lens.py locate` 再 `file`；勿凭记忆编路径。"
+            "本轮需代码核实：先 hub_locate 再 hub_file；勿凭记忆编路径。"
         )
     if re.search(r"(记住|记下来|写入心智|约束是|我们约定)", text):
         parts.append(
-            f"若用户要求沉淀决策：Bash `{mind_cli}` 写 L1b；禁止 invent 投 backlog。"
+            "若用户要求沉淀决策：hub_mind_put 写 L1b；禁止 invent 投 backlog。"
         )
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
-            "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 Bash 跑 "
-            f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
-            "若 ready=false / abnormal / failed 残卡：先 "
-            f"`ccc-hub-lens.py repair {pid} clear_blockers`（或 status→archive），"
+            "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 hub_board + hub_git；"
+            "若 ready=false / abnormal / failed：先 hub_repair(clear_blockers)；"
             "禁止默认逼用户投卫生 epic；禁止零工具只复述注入快照。"
         )
     # 定稿 / 转任务 / 看仓况：不依赖用户点「对齐基线」，强制 live 核实；板堵优先 repair
@@ -665,15 +659,13 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         re.I,
     ):
         parts.append(
-            "【定稿/转任务 · 强制核实】作答前必须 Bash 跑 "
-            f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
-            "再按目标 locate/file 定点 1～3 路径。"
+            "【定稿/转任务 · 强制核实】作答前必须 hub_board + hub_git；"
+            "再按目标 hub_locate/hub_file 定点 1～3 路径。"
             "内化 ready_for_task / inflight / dirty_kind；"
-            "ready=false 或 inflight>0 → 先 "
-            f"`ccc-hub-lens.py repair {pid} clear_blockers` 板务，"
+            "ready=false 或 inflight>0 → 先 hub_repair(clear_blockers)；"
             "禁止默认投卫生 epic；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
-            "digest/STATUS 勾选不作终局；脚本+报告已在仅文档未勾 → S/同步，勿 stamp 重开。"
-            "定稿后二级卡仅 title/human_note 可改，方案字段已锁。"
+            "digest/STATUS 勾选不作终局；定稿后二级卡仅 title/human_note 可改。"
+            "对用户：≤3 句人话 + 可选一个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
         )
     return "\n".join(parts)
 

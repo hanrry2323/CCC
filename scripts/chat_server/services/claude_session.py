@@ -485,6 +485,14 @@ class ClaudeSessionManager:
                 kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         if resume_session_id:
             kwargs["resume"] = resume_session_id
+        # Desktop discuss：注入 ccc-hub MCP（lens / board-repair / mind）
+        if mode == "discuss" and os.environ.get("CCC_HUB_MCP", "1").strip() != "0":
+            try:
+                from .hub_agent_tools import mcp_server_config
+
+                kwargs["mcp_servers"] = {"ccc-hub": mcp_server_config()}
+            except Exception as exc:
+                _log.warning("ccc-hub mcp_servers skip: %s", exc)
         return ClaudeAgentOptions(**kwargs)
 
     async def _get_or_create_slot(
