@@ -1322,11 +1322,12 @@ struct CodexChatPaneBody: View {
         UnitPoint(x: 0.5, y: 1 - chatBottomReserveFraction)
     }
 
-    /// 底部留约 1/3：钉 tip 到 y=2/3；禁止 tip+.bottom（会吃掉留白）
+    /// 底部留约 1/3：流式跟 tip；结算后钉**最后一条消息**（避免 LazyVStack+大 spacer 假空白）
     private func scroll(_ proxy: ScrollViewProxy) {
         guard !displayMessages.isEmpty else { return }
         let tip = bottomAnchorId
         let last = displayMessages.last
+        let lastRowId = last.map { "\(paneThreadId ?? "")-\($0.id)" }
 
         func pinTip(animated: Bool = false) {
             if animated {
@@ -1342,12 +1343,35 @@ struct CodexChatPaneBody: View {
             }
         }
 
+        /// 结算/非流式：钉消息本体，勿钉 tip（tip 下方是 1/3 空白，LazyVStack 回收后像「整页没了」）
+        func pinLastMessage(animated: Bool = false) {
+            guard let lastRowId else {
+                pinTip(animated: animated)
+                return
+            }
+            if animated {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(lastRowId, anchor: UnitPoint(x: 0.5, y: 0.92))
+                }
+            } else {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    proxy.scrollTo(lastRowId, anchor: UnitPoint(x: 0.5, y: 0.92))
+                }
+            }
+        }
+
         // 1) 切会话 / 重入：瞬移到跟随位
         if needsInstantBottomPin {
             needsInstantBottomPin = false
             lastScrollTargetId = tip
             lastStreamScrollBucket = -1
             pinTip()
+            // 下一帧再钉消息，等 LazyVStack 量完高度
+            DispatchQueue.main.async {
+                pinLastMessage()
+            }
             return
         }
 
@@ -1363,12 +1387,15 @@ struct CodexChatPaneBody: View {
             return
         }
 
-        // 3) 新 user / 回合结束：钉 tip（上留历史，下留 1/3）
+        // 3) 新 user / 回合结束：钉最后一条（长工具回合结束最易踩假空白）
         let fingerprint = "\(displayMessages.count)-\(last?.id.uuidString ?? "")-settled"
         if fingerprint == lastScrollTargetId { return }
         lastScrollTargetId = fingerprint
         lastStreamScrollBucket = -1
-        pinTip()
+        pinLastMessage()
+        DispatchQueue.main.async {
+            pinLastMessage()
+        }
     }
 
     /// 矮输入条；草稿用本地 @State，避免 SSE 冲焦点

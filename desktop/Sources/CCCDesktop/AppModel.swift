@@ -2163,8 +2163,15 @@ final class AppModel: ObservableObject {
     }
 
     private func writeDiskSave(threadId tid: String, projectId pid: String) {
-        let msgs = (threadMessages[tid] ?? [])
-            .filter { !$0.isStreaming || !$0.content.isEmpty }
+        // 长工具回合：assistant 常 isStreaming=true 且 content 空，但 toolSteps 已堆满。
+        // 旧过滤 `!$0.isStreaming || !$0.content.isEmpty` 会把整条助手（含工具轨）丢掉，
+        // done 瞬间若尚未清 isStreaming，落盘变瘦 → 随后 hydrate 像「对话消失」。
+        let msgs = (threadMessages[tid] ?? []).filter { msg in
+            if !msg.isStreaming { return true }
+            if !msg.content.isEmpty { return true }
+            if !msg.toolSteps.isEmpty { return true }
+            return false
+        }
         let title = threads.first(where: { $0.thread_id == tid })?.title
         var flow = threadFlow[tid]
         if flow?.epicId == nil, let eid = currentEpicId, selectedThreadId == tid {
@@ -3324,6 +3331,10 @@ final class AppModel: ObservableObject {
         if let eventTurnId, !eventTurnId.isEmpty, eventTurnId != expectedTurnId {
             return
         }
+        // done：先冲 pending delta，再 mutate 里关 isStreaming；顺序反了会丢末包或落盘滤掉工具轨
+        if case .done = event {
+            flushPendingDelta()
+        }
         switch event {
         case .ping:
             // 心跳 ≠ 进展：勿把状态锁死在「连接中」；工具进行中保留工具态
@@ -3422,17 +3433,16 @@ final class AppModel: ObservableObject {
                 if !msgs[idx].toolSteps.isEmpty {
                     msgs[idx].toolsFinished = true
                 }
+                // 必须在 flushDiskSave 前关掉 isStreaming，否则 writeDiskSave 会把「空正文+工具轨」整条滤掉
+                msgs[idx].isStreaming = false
+                msgs[idx].transientNote = nil
                 if let sid = claudeSessionId?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty {
                     threadClaudeSessionIds[threadId] = sid
                 }
             }
         }
         if case .done = event {
-            // 先落盘合批 delta，再清 streaming；否则末包正文会卡在 pending 里被 empty_reply 误杀。
-            flushPendingDelta()
-            // BUG fix: done 事件到达即同步清 streaming + turn fence，避免「第二条发送时仍
-            // 处于 streaming=true」卡住 UI（stopAndSend 误命中 cancelAndWait 路径，UI 无反应）。
-            // defer 仍会跑（最终清理），但用户感知的反应不能等 await 链收尾。
+            // delta 已在 mutate 前 flush；此处只清 fence + 落盘（消息已 isStreaming=false）
             activeTurnIds.removeValue(forKey: threadId)
             if streamingThreadIds.contains(threadId) {
                 setThreadStreaming(threadId, false)
