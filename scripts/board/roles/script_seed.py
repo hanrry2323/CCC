@@ -246,8 +246,11 @@ if __name__ == "__main__":
 
 def run_script_seed(ws: Path, tid: str) -> dict[str, Any]:
     """Write probe script + report stub; commit; leave for testing gate."""
+    import time as _time
+
     ws = Path(ws)
     tid = str(tid)
+    t0 = _time.time()
     scripts_dir = ws / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     dest = scripts_dir / _PROBE_NAME
@@ -301,6 +304,8 @@ def run_script_seed(ws: Path, tid: str) -> dict[str, Any]:
                 "ok": True,
                 "path": "script_seed",
                 "wrote": [f"scripts/{_PROBE_NAME}"],
+                "duration_s": round(_time.time() - t0, 2),
+                "exit_code": 0,
             },
             ensure_ascii=False,
         )

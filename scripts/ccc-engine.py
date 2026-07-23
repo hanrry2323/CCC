@@ -646,6 +646,11 @@ def _log_opencode_done(
         except (OSError, ValueError, TypeError):
             pass
     wall_s = _wall_seconds_from_started(started_at)
+    # P2/KPI: result.json 缺 duration_s 时用墙钟回填，避免 fill_rate 假零
+    duration_from_wall = False
+    if duration_s is None and wall_s is not None:
+        duration_s = wall_s
+        duration_from_wall = True
     _log_stats(
         ws,
         "opencode_done",
@@ -659,6 +664,7 @@ def _log_opencode_done(
         exit_code=exit_code,
         killed=killed,
         result_status=(result or {}).get("status"),
+        duration_from_wall=duration_from_wall,
     )
 
 

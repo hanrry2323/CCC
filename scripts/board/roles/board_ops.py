@@ -154,6 +154,9 @@ def run_board_ops(ws: Path, tid: str) -> dict[str, Any]:
             lines.append(json.dumps(p, ensure_ascii=False))
         pf.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    import time as _time
+
+    t0 = _time.time()
     report = ws / ".ccc" / "reports" / f"{tid}.report.md"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(
@@ -164,23 +167,31 @@ def run_board_ops(ws: Path, tid: str) -> dict[str, Any]:
         f"ALL SELF-CHECKS PASSED\n",
         encoding="utf-8",
     )
-    result = ws / ".ccc" / "reports" / f"{tid}.result.json"
-    result.write_text(
-        json.dumps(
-            {"ok": True, "moved": moved, "skipped": skipped, "path": "board_ops"},
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
     ok_c, why, commit = ensure_task_commit(ws, tid, phase_num=1, pre_head="")
     # done marker so check_complete can finish
     pids = ws / ".ccc" / "pids"
     pids.mkdir(parents=True, exist_ok=True)
     (pids / f"{tid}.done").write_text("1\n", encoding="utf-8")
     (pids / f"{tid}.exitcode").write_text("0\n", encoding="utf-8")
+
+    duration_s = round(_time.time() - t0, 2)
+    result = ws / ".ccc" / "reports" / f"{tid}.result.json"
+    result.write_text(
+        json.dumps(
+            {
+                "ok": bool(ok_c and commit),
+                "moved": moved,
+                "skipped": skipped,
+                "path": "board_ops",
+                "duration_s": duration_s,
+                "exit_code": 0 if (ok_c and commit) else 1,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     _log.info(
         "[board_ops] %s moved=%s commit=%s (%s)",
@@ -196,4 +207,5 @@ def run_board_ops(ws: Path, tid: str) -> dict[str, Any]:
         "commit": commit or "",
         "why": why,
         "path": "board_ops",
+        "duration_s": duration_s,
     }
