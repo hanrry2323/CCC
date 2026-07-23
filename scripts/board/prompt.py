@@ -15,9 +15,14 @@ def build_dev_phase_prompt(
     workspace: Union[str, Path],
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
+    review_failure: str = "",
     skill_hints: str = "",
 ) -> str:
-    """F-PROMPT-01 + v0.41.1 + isolation：强制 cwd 硬门 + scope 白名单。"""
+    """F-PROMPT-01 + v0.41.1 + isolation：强制 cwd 硬门 + scope 白名单。
+
+    失败学习 R1：注入 review_failure / pytest_failure；R1 修代码对齐现 plan，
+    若失败包标明需改 plan 则由平台 R2 已修订 plan，执行器按新 plan 做。
+    """
     ws = require_cwd(workspace)
     scope_list = [str(s).strip() for s in (scope or []) if str(s).strip()]
     if scope_list:
@@ -35,8 +40,16 @@ def build_dev_phase_prompt(
         )
 
     fail_block = ""
+    if review_failure and review_failure.strip():
+        fail_block += (
+            "## 上次审查/验收失败（必须先处理 · R1）\n"
+            "以下是审测或验收失败摘要。本轮优先按失败原因修复；"
+            "若 plan 头已有 `repair_of` / Repair notes，说明平台 R2 已改指令，"
+            "**按修订后的 plan 执行**，不要重复旧错误路径。\n\n"
+            f"```\n{review_failure.strip()[-3000:]}\n```\n\n"
+        )
     if pytest_failure and pytest_failure.strip():
-        fail_block = (
+        fail_block += (
             "## 上次 pytest 失败（必须先修）\n"
             "以下是测试门失败摘要。本轮优先修复这些错误，再做其它改动。\n\n"
             f"```\n{pytest_failure.strip()[-3000:]}\n```\n\n"
@@ -53,7 +66,8 @@ def build_dev_phase_prompt(
         f"- **只做 Phase {phase_num}**，不得实现其他 phase 的需求\n"
         f"- 不得修改不属于本 phase 白名单的文件\n"
         f"- 完成定义仅对本 phase 生效；其他 phase 留给后续调度\n"
-        f"- 你是执行器（弱模型友好）：按清单改文件，不要重写 plan，不要发明新需求\n\n"
+        f"- 你是执行器：按 **当前 plan** 改文件；不要发明新需求；"
+        f"R1 对齐现 plan 修代码；若 plan 已被 R2 修订则服从新指令\n\n"
         f"{scope_block}"
         f"{fail_block}"
         f"{skill_block}"
@@ -83,6 +97,7 @@ def build_dev_phase_prompt_with_hint(
     workspace: Union[str, Path],
     scope: Optional[Sequence[str]] = None,
     pytest_failure: str = "",
+    review_failure: str = "",
     skill_hints: str = "",
 ) -> str:
     base = build_dev_phase_prompt(
@@ -92,6 +107,7 @@ def build_dev_phase_prompt_with_hint(
         workspace=workspace,
         scope=scope,
         pytest_failure=pytest_failure,
+        review_failure=review_failure,
         skill_hints=skill_hints,
     )
     if not size_hint:

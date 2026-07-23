@@ -320,6 +320,105 @@ def _revert_task_commit(ws: Path, tid: str) -> bool:
         return False
 
 
+def _handle_fail_to_planned(
+    ws: Path,
+    tid: str,
+    store,
+    *,
+    status: str,
+    eng=None,
+) -> bool:
+    """R1/R2/R3: fail pack → maybe repair → revert+align phases → planned.
+
+    Returns False (gate not passed). Quarantines when fail_loops≥3.
+    """
+    label = _ws_label(ws)
+    vtxt = ""
+    try:
+        vf = _verdict_file(ws, tid)
+        if vf.is_file():
+            vtxt = vf.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        vtxt = ""
+
+    try:
+        from _failure_learning import write_review_fail_pack
+
+        write_review_fail_pack(ws, tid, status=status, verdict_text=vtxt)
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] [{label}] {tid} write review_fail: {exc}")
+
+    fail_n = 0
+    try:
+        meta = next(
+            (t for t in store.list_tasks("testing") if t["id"] == tid),
+            None,
+        )
+        if meta is None:
+            _col, meta = store.find_task(tid)
+        fail_n = int((meta or {}).get("review_fail_loops") or 0) + 1
+        store.patch_task(tid, {"review_fail_loops": fail_n})
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] [{label}] {tid} fail_loop patch: {exc}")
+        fail_n = 1
+
+    if fail_n >= 3:
+        cur_phase = _current_running_phase(tid)
+        if eng:
+            eng._quarantine_with_notify(
+                ws,
+                tid,
+                f"reviewer_fail_loop_exhausted ({fail_n})",
+                store,
+                phase=cur_phase,
+            )
+        return False
+
+    try:
+        from _failure_learning import (
+            needs_plan_repair,
+            read_review_fail_pack,
+            repair_work_plan,
+        )
+
+        pack = read_review_fail_pack(ws, tid)
+        if needs_plan_repair(fail_loops=fail_n, fail_pack_text=pack):
+            rr = repair_work_plan(ws, tid, fail_loops=fail_n, use_llm=False)
+            _engine_log(f"[verdict-gate] [{label}] {tid} R2 repair → {rr}")
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] [{label}] {tid} R2 repair err: {exc}")
+
+    reverted = _revert_task_commit(ws, tid)
+    try:
+        from _failure_learning import align_phases_after_revert
+
+        al = align_phases_after_revert(ws, tid)
+        _engine_log(
+            f"[verdict-gate] [{label}] {tid} phases align "
+            f"reverted={reverted} {al}"
+        )
+    except Exception as exc:
+        _engine_log(f"[verdict-gate] [{label}] {tid} phases align: {exc}")
+
+    col_now = _find_task_column(store, tid)
+    if col_now == "testing":
+        store.move_task(tid, "testing", "planned")
+    elif col_now and col_now != "planned":
+        try:
+            if col_now == "abnormal":
+                store.move_task(tid, "abnormal", "planned")
+            elif col_now == "in_progress":
+                store.move_task(tid, "in_progress", "planned")
+        except Exception as exc:
+            _engine_log(
+                f"[verdict-gate] [{label}] {tid} "
+                f"rollback move from {col_now} failed: {exc}"
+            )
+    _clear_verdict(ws, tid)
+    store.update_index()
+    return False
+
+
 def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。"""
     eng = _eng()
@@ -368,53 +467,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                     f"[verdict-gate] [{label}] {tid} "
                     f"verdict={_early} — 触发回滚（先于 tester）"
                 )
-                # FAIL→planned 上限：≥3 次则 quarantine（防无限回弹）
-                fail_n = 0
-                try:
-                    meta = next(
-                        (t for t in store.list_tasks("testing") if t["id"] == tid),
-                        None,
-                    )
-                    if meta is None:
-                        # may already be mid-move; try find
-                        _col, meta = store.find_task(tid)
-                    fail_n = int((meta or {}).get("review_fail_loops") or 0) + 1
-                    store.patch_task(tid, {"review_fail_loops": fail_n})
-                except Exception as exc:
-                    _engine_log(
-                        f"[verdict-gate] [{label}] {tid} fail_loop patch: {exc}"
-                    )
-                    fail_n = 1
-                if fail_n >= 3:
-                    cur_phase = _current_running_phase(tid)
-                    if eng:
-                        eng._quarantine_with_notify(
-                            ws,
-                            tid,
-                            f"reviewer_fail_loop_exhausted ({fail_n})",
-                            store,
-                            phase=cur_phase,
-                        )
-                    return False
-                _revert_task_commit(ws, tid)
-                col_now = _find_task_column(store, tid)
-                if col_now == "testing":
-                    store.move_task(tid, "testing", "planned")
-                elif col_now and col_now != "planned":
-                    # 竞态：已离开 testing 时尽量收回 planned
-                    try:
-                        if col_now == "abnormal":
-                            store.move_task(tid, "abnormal", "planned")
-                        elif col_now == "in_progress":
-                            store.move_task(tid, "in_progress", "planned")
-                    except Exception as exc:
-                        _engine_log(
-                            f"[verdict-gate] [{label}] {tid} "
-                            f"rollback move from {col_now} failed: {exc}"
-                        )
-                _clear_verdict(ws, tid)
-                store.update_index()
-                return False
+                return _handle_fail_to_planned(
+                    ws, tid, store, status=str(_early), eng=eng
+                )
             if _early == "PASS" or _early is None:
                 # None: 旧格式无 Verdict 行但文件非空 — 保守视为可继续（兼容）
                 verdict_ok = True
@@ -526,10 +581,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                     f"[verdict-gate] [{_ws_label(ws)}] {tid} "
                     f"verdict={status} — 触发回滚"
                 )
-                _revert_task_commit(ws, tid)
-                store.move_task(tid, "testing", "planned")
-                _clear_verdict(ws, tid)
-                return False
+                return _handle_fail_to_planned(
+                    ws, tid, store, status=str(status), eng=eng
+                )
         except OSError:
             pass
 

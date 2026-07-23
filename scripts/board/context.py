@@ -76,6 +76,7 @@ ROLE_CONTEXT_MANIFEST: dict[str, list[str]] = {
         "phases",
         "skill_hints",
         "pytest_failure",
+        "review_failure",
         "current_epic",
     ],
     "reviewer": [
@@ -104,6 +105,7 @@ OPTIONAL_CONTEXT_KEYS: frozenset[str] = frozenset(
         "phases",
         "skill_hints",
         "pytest_failure",
+        "review_failure",
         "verdict",
     }
 )
@@ -300,6 +302,24 @@ def _collect_pytest_failure(task: dict | None) -> str:
     return ""
 
 
+def _collect_review_failure(task: dict | None) -> str:
+    tid = _task_id(task)
+    if not tid:
+        return ""
+    try:
+        from _failure_learning import read_review_fail_pack
+
+        return read_review_fail_pack(get_workspace(), tid, limit=4000)
+    except Exception:
+        path = get_workspace() / ".ccc" / "pids" / f"{tid}.review_fail.md"
+        try:
+            if path.is_file():
+                return path.read_text(encoding="utf-8", errors="replace")[:4000]
+        except OSError:
+            pass
+    return ""
+
+
 def _collect_skill_hints(task: dict | None) -> str:
     tid = _task_id(task)
     if not tid:
@@ -340,6 +360,7 @@ _COLLECTORS: dict[str, Any] = {
     "phases": lambda **kw: _collect_phases(kw.get("task")),
     "verdict": lambda **kw: _collect_verdict(kw.get("task")),
     "pytest_failure": lambda **kw: _collect_pytest_failure(kw.get("task")),
+    "review_failure": lambda **kw: _collect_review_failure(kw.get("task")),
     "skill_hints": lambda **kw: _collect_skill_hints(kw.get("task")),
 }
 

@@ -513,13 +513,59 @@ def tester_role() -> dict:
             )
             if r.returncode != 0:
                 all_ok = False
-                _out = r.stdout[-300:] if isinstance(r.stdout, str) else r.stdout.decode("utf-8", errors="replace")[-300:] if r.stdout else ""
+                _out = (
+                    r.stdout[-300:]
+                    if isinstance(r.stdout, str)
+                    else (
+                        r.stdout.decode("utf-8", errors="replace")[-300:]
+                        if r.stdout
+                        else ""
+                    )
+                )
                 _log.error(
                     "[tester] %s FAIL: %s... → %s",
                     task_id,
                     cmd[:80],
                     _out,
                 )
+                # R1: 验收失败 → fail pack + planned（勿晾在 testing）
+                try:
+                    from _failure_learning import (
+                        align_phases_after_revert,
+                        needs_plan_repair,
+                        read_review_fail_pack,
+                        repair_work_plan,
+                        write_acceptance_fail_pack,
+                    )
+
+                    ws = get_workspace()
+                    write_acceptance_fail_pack(
+                        ws, task_id, cmd=cmd, output=_out or ""
+                    )
+                    fail_n = int(task.get("review_fail_loops") or 0) + 1
+                    try:
+                        from _board_store import FileBoardStore
+
+                        FileBoardStore(ws).patch_task(
+                            task_id, {"review_fail_loops": fail_n}
+                        )
+                    except Exception:
+                        pass
+                    pack = read_review_fail_pack(ws, task_id)
+                    if needs_plan_repair(fail_loops=fail_n, fail_pack_text=pack):
+                        repair_work_plan(
+                            ws, task_id, fail_loops=fail_n, use_llm=False
+                        )
+                    align_phases_after_revert(ws, task_id)
+                    move_task(task_id, "testing", "planned")
+                    _log.info(
+                        "[tester] %s acceptance fail → planned (loops=%s)",
+                        task_id,
+                        fail_n,
+                    )
+                except Exception as exc:
+                    _log.warning("[tester] %s fail→planned err: %s", task_id, exc)
+                break
 
         if all_ok:
             if not _tester_verdict_allows_verified(task_id):

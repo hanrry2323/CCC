@@ -500,6 +500,7 @@ def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
         workspace=get_workspace(),
         scope=_phase_scope(task_id, phase_num),
         pytest_failure=ctx.get("pytest_failure") or "",
+        review_failure=ctx.get("review_failure") or "",
         skill_hints=ctx.get("skill_hints") or "",
     )
 
