@@ -152,6 +152,7 @@ def _hub_ensure_engine(workspace: str, task_id: str | None) -> dict:
 
     幂等；与 Board 侧 ensure 重复调用安全。
     v0.51: orch 仍可 wake/控制面，但登记为 role=orch engine=false。
+    返回附带 workspace_eligible / human message，供 Desktop 未扇出可解释。
     """
     import sys
 
@@ -159,17 +160,65 @@ def _hub_ensure_engine(workspace: str, task_id: str | None) -> dict:
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     try:
-        from _engine_wake import ensure_engine_for_task
+        from _engine_wake import ensure_engine_for_task, is_engine_running
+        from _workspace_registry import (
+            entry_engine_eligible,
+            is_orch_path,
+            lookup_entry,
+        )
 
         root = _workspace_root(workspace)
-        return ensure_engine_for_task(
+        result = ensure_engine_for_task(
             reason="task_dispatch",
             task_id=task_id,
             workspace=root,
             workspace_name=workspace,
         )
+        eligible = True
+        if root is not None and is_orch_path(root):
+            eligible = False
+        else:
+            try:
+                ent = lookup_entry(workspace) if workspace else None
+                if ent is None and root is not None:
+                    ent = lookup_entry(root)
+                if ent is not None:
+                    eligible = entry_engine_eligible(ent)
+            except Exception:
+                pass
+        result["workspace_eligible"] = bool(eligible)
+        result["workspace"] = workspace
+        running = bool(result.get("engine_running"))
+        if not result.get("ok"):
+            result["block_reason"] = str(result.get("error") or "wake_failed")[:200]
+        elif not eligible:
+            result["block_reason"] = "workspace_not_engine_eligible"
+            result["message"] = (
+                result.get("message")
+                or "epic queued but workspace is not Engine-consumable (orch/engine=false)"
+            )
+        elif not running:
+            result["block_reason"] = "engine_not_running"
+            result["message"] = result.get("message") or (
+                f"queued; Engine not running ({result.get('launch_note')})"
+            )
+            # refresh once
+            result["engine_running"] = is_engine_running()
+            if result["engine_running"]:
+                result.pop("block_reason", None)
+                result["message"] = None
+        else:
+            result.setdefault("block_reason", None)
+        return result
     except Exception as exc:
-        return {"ok": False, "error": str(exc)[:200]}
+        return {
+            "ok": False,
+            "error": str(exc)[:200],
+            "engine_running": False,
+            "workspace_eligible": None,
+            "block_reason": "wake_exception",
+            "message": str(exc)[:200],
+        }
 
 
 def _hub_try_adopt_plan(workspace: str, task_id: str, task_body: dict) -> dict | None:

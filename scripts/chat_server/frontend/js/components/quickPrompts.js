@@ -10,23 +10,24 @@ export const REPLY_COMPACT =
   '禁止文件路径、英文符号名、命令行、大段代码；禁止复述工具过程。字数上限见各任务。';
 
 const INVESTIGATE =
-  '业务仓事实：Hub 只读透镜 live（ccc-hub-lens board|git|file|locate）；' +
+  '业务仓事实：Hub 透镜 live（ccc-hub-lens board|git|file|locate|repair）；' +
   '禁止 ssh、禁止本机业务树 Read/git。对齐基线是深对齐可选，非硬门槛。' +
+  '板堵优先 repair clear_blockers，禁止默认投卫生 epic。' +
   'digest 不作终局；脚本+报告已在仅 STATUS 未勾 → S/同步，勿 stamp 重开。';
 
 const VERIFY =
   '## 现况核实（静默）\n' +
   '作答前 Bash：ccc-hub-lens.py board + git；再 locate/file 定点 1～3 路径。\n' +
-  'ready_for_task=false 或 inflight>0 → 只谈板务，禁止新产品 epic。\n';
+  'ready_for_task=false 或 inflight>0 → 先 repair clear_blockers；仅业务脏/真在飞时禁新产品 epic。\n';
 
-/** 下一步 */
+/** 看仓况（旧名「下一步」· 非必经） */
 export const NEXT_STEP_PROMPT =
   REPLY_COMPACT +
-  '\n\n# 任务：给出「下一步」产品/架构建议\n' +
+  '\n\n# 任务：看仓况并给最佳方案（可选步骤，非定稿必经）\n' +
   INVESTIGATE + '\n' + VERIFY +
   '继承会话目标；不必先点对齐基线。直接给最佳方案，勿甩 A/B。\n\n' +
   '## 输出（总字数 ≤220）\n' +
-  '### 判断\n一句：最该推进什么（含是否可开工）。\n' +
+  '### 判断\n一句：最该推进什么（含是否可开工 / 是否已板务）。\n' +
   '### 最佳方案\n做什么 / 为何现在 / 不做会怎样。\n' +
   '### 备选（可选，一句）\n';
 
@@ -64,7 +65,7 @@ export const FINALIZE_WORK_PREFIX =
   INVESTIGATE + '\n' + VERIFY +
   '## 定稿前必修（静默）\n' +
   '1. 归纳共识；透镜核实 scope 路径真实存在。\n' +
-  '2. 验收可执行；未 ready → feasibility=blocked。\n' +
+  '2. 验收可执行；板堵先 repair；仅业务脏/真在飞 → feasibility=blocked。\n' +
   '3. 二级卡仅 title/human_note 可改；方案字段锁死。\n' +
   '4. 机械探针 executor_intent=python。\n\n' +
   '## 输出\n' +

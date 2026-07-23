@@ -2614,14 +2614,23 @@ final class AppModel: ObservableObject {
         if resp.idempotent_replay == true {
             toastMsg = "已投递（幂等）\(eid)"
         }
-        // 既有受理信号：engine_wake.ok；区分 Engine 真在跑 vs 仅写了队列
-        if resp.engine_wake?.ok == true {
-            if resp.engine_wake?.engine_running == false {
-                let note = resp.engine_wake?.launch_note ?? resp.engine_wake?.message ?? "kickstart"
-                toastMsg += " · 已写队列，Engine 未起（\(note)）"
+        // 既有受理信号：engine_wake.ok；区分 Engine 真在跑 vs 仅写了队列 / 仓不可消费
+        if let wake = resp.engine_wake {
+            if wake.ok == true {
+                if wake.workspace_eligible == false {
+                    toastMsg += " · 仓不可被 Engine 消费（orch/engine=false）"
+                } else if wake.engine_running == false {
+                    let note = wake.launch_note ?? wake.message ?? wake.block_reason ?? "kickstart"
+                    toastMsg += " · 已写队列，Engine 未起（\(note)）"
+                } else if let br = wake.block_reason, !br.isEmpty {
+                    toastMsg += " · 阻塞：\(br)"
+                } else {
+                    toastMsg += " · Engine 已唤醒"
+                    setTransferDelivery(tid, .accepted)
+                }
             } else {
-                toastMsg += " · Engine 已唤醒"
-                setTransferDelivery(tid, .accepted)
+                let why = wake.message ?? wake.block_reason ?? "wake 失败"
+                toastMsg += " · Engine 未唤醒：\(why)"
             }
         }
         showToast(toastMsg)
@@ -4207,7 +4216,7 @@ final class AppModel: ObservableObject {
         return raw
     }
 
-    /// 转任务后若 15s 仍无 works，右栏明示原因（按 pane thread 写 threadFlow）
+    /// 转任务后若 45s 仍无 works，右栏明示阻塞因（按 pane thread 写 threadFlow）
     func startFanoutWatchdog(epicId: String?, projectId: String? = nil, threadId: String? = nil) {
         fanoutWatchTask?.cancel()
         let pid = projectId ?? selectedProjectId
@@ -4219,7 +4228,7 @@ final class AppModel: ObservableObject {
             flowFanoutHint = nil
         }
         fanoutWatchTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            try? await Task.sleep(nanoseconds: 45_000_000_000)
             guard !Task.isCancelled, let self else { return }
             await MainActor.run {
                 var snap = self.threadFlow[tid] ?? FlowThreadSnapshot(
@@ -4231,7 +4240,15 @@ final class AppModel: ObservableObject {
                     let stage = snap.headline.isEmpty
                         ? (snap.epic?.user_stage ?? snap.epic?.headline ?? "待拆解")
                         : snap.headline
-                    let hint = "15 秒内未见拆分（\(stage)）。可复制给对话，让 Agent 查 Engine/扇出。"
+                    let ss = snap.epic?.split_status ?? ""
+                    var hint = "45 秒内未见扇出（\(stage)）。"
+                    if ss == "failed" {
+                        hint += "大卡已 failed——先板务清残卡或查 product 失败原因，勿静默重投。"
+                    } else if ss == "pending" || ss.isEmpty {
+                        hint += "仍 pending：查 Engine 是否在跑、仓是否 engine-eligible、上游是否健康。"
+                    } else {
+                        hint += "可复制给对话，让 Agent 查 Engine/扇出阻塞因。"
+                    }
                     snap.fanoutHint = hint
                     self.threadFlow[tid] = snap
                     self.bumpFlowRevision(tid)
@@ -4239,6 +4256,7 @@ final class AppModel: ObservableObject {
                     if self.selectedProjectId == pid {
                         self.flowFanoutHint = hint
                     }
+                    self.showToast(hint, holdSeconds: 12)
                 }
             }
         }

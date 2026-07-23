@@ -76,7 +76,7 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 - 验收 bullets：**可执行命令**，或「须入本次 commit 的交付路径」。
 - **排除/勿入**路径写在 `plan_md` 的「禁止」节，**不要**写进 `acceptance`（否则会被抽成必碰 path → `acceptance_paths_not_in_commit`）。
-- 不存在 committer 角色；卫生卡用 `executor_intent: python`（可走 board_ops 短路径，scope 限 `.ccc/**` 产物树）。
+- 不存在 committer 角色；**板面残卡优先 Hub `board-repair`**（`ccc-hub-lens.py repair`），禁止默认卫生 transfer。偶发卫生卡用 `executor_intent: python`（可走 board_ops 短路径，scope 限 `.ccc/**` 产物树）。
 - 运行时冒烟命令优先写 `.venv/bin/python` / `python3`，并显式带 `DRY_RUN=true`（勿裸 `python`）。
 
 ---

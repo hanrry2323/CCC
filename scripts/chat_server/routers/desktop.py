@@ -341,6 +341,66 @@ async def transfer_to_epic(request: Request):
     return await _transfer_epic_from_body(body)
 
 
+@router.post("/board-repair")
+async def board_repair(request: Request):
+    """Desktop Agent 板务白名单：清残卡 / 剪幽灵轨 / 有限 reopen。不写业务源码。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+
+    project_id = str(body.get("project_id") or body.get("project") or "").strip()
+    action = str(body.get("action") or "status").strip().lower()
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id required")
+
+    # 允许已登记项目（含非 engine_eligible 只读仓的 status）；orch 禁止写动作
+    if not PROJECTS:
+        reload_projects()
+    info = PROJECTS.get(project_id)
+    if not info:
+        raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+    if info.get("role") == "orch" and action not in ("status",):
+        raise HTTPException(
+            status_code=400,
+            detail="orch project cannot board-repair write actions (R-15)",
+        )
+
+    path_str = get_project_path(project_id)
+    if not path_str:
+        raise HTTPException(status_code=404, detail=f"no path for project: {project_id}")
+    workspace = Path(path_str)
+
+    raw_ids = body.get("task_ids") or body.get("ids") or []
+    if isinstance(raw_ids, str):
+        task_ids = [raw_ids.strip()] if raw_ids.strip() else []
+    elif isinstance(raw_ids, list):
+        task_ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+    else:
+        task_ids = []
+    single = str(body.get("task_id") or "").strip()
+    if single and single not in task_ids:
+        task_ids.append(single)
+
+    from ..services import board_repair as repair_svc
+
+    result = repair_svc.run_repair(
+        action=action,
+        workspace=workspace,
+        project_id=project_id,
+        task_ids=task_ids or None,
+        epic_id=str(body.get("epic_id") or "").strip() or None,
+        to_col=str(body.get("to_col") or body.get("to") or "planned").strip()
+        or "planned",
+        reason=str(body.get("reason") or "desktop_agent").strip()[:200]
+        or "desktop_agent",
+        source=str(body.get("source") or "desktop").strip()[:40] or "desktop",
+    )
+    if not result.get("ok"):
+        return JSONResponse(status_code=400, content=result)
+    return result
+
+
 @router.post("/proactive-epic")
 async def proactive_epic(request: Request):
     """F4-3: CI / git hook 等外部信号 → backlog bug epic（不 wake Engine）。"""
@@ -762,7 +822,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             client_request_id=client_request_id or None,
             payload_fingerprint=payload_fingerprint,
         )
-        _hub_ensure_engine(workspace, tid)
+        wake = _hub_ensure_engine(workspace, tid)
 
         return {
             "ok": True,
@@ -771,7 +831,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             "column": "backlog",
             "project_id": project_id,
             "executor_intent": executor_intent,
-            "engine_wake": payload.get("engine_wake"),
+            "engine_wake": wake,
             "seeded": payload.get("seeded"),
             "idempotent_replay": False,
         }

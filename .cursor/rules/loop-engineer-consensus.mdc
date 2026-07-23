@@ -31,8 +31,8 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
-- **Desktop Agent 定方案**：讨论/下一步/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。偶发卫生卡仍强制 `python`（禁假 committer）；**板面残卡清场归 Cursor/Desktop，禁止 Engine 卫生 epic 当主业**；abnormal/残卡未核账禁止重复下达。  
-- **Desktop 四段流程**：对齐基线（可选深对齐，非硬门槛）→ 下一步（强制 lens 核实；未 ready 禁新产品 epic）→ 定稿锁方案 → 转任务二级卡仅 title/human_note 可改。  
+- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看，`ccc-transfer` 折叠给 Engine。偶发卫生卡仍强制 `python`（禁假 committer）；**板面残卡清场 = Hub board-repair（Cursor/Desktop）**，禁止 Engine 卫生 epic 当主业；abnormal/残卡未核账禁止重复下达（先板务或人显式 override）。
+- **Desktop 主路径（取代四段硬流程）**：聊意图（对齐基线=可选深扫，非硬门槛）→ 人确认下达（定稿/转任务）；「下一步」已降级为可选看仓况；核实并入定稿前静默 lens。凡进 backlog epic 必 wake Engine；未扇出须人话阻塞因。
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - **M1→Hub 主路径** = 本机 SSH 隧道 `127.0.0.1:17777`（`com.ccc.hub-tunnel`）；**禁止**把 LAN `192.168.3.116:7777` 当 Desktop/sidecar 默认。详见 `docs/product/hub-ssh-tunnel.md`。  

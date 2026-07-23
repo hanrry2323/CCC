@@ -611,12 +611,17 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     lens_cli = (
         f"python3 {SCRIPTS / 'ccc-hub-lens.py'} "
-        f"board|locate|grep|tree|file|git {pid} …"
+        f"board|locate|grep|tree|file|git|repair {pid} …"
     )
     mind_cli = f"python3 {SCRIPTS / 'ccc-mind-update.py'} {pid} --constraint '…'"
+    repair_cli = (
+        f"python3 {SCRIPTS / 'ccc-hub-lens.py'} repair {pid} "
+        "clear_blockers|status|archive|purge_flow|reopen"
+    )
     parts = [
-        f"【Hub 只读透镜 · Plan · project_id={pid}】",
+        f"【Hub 透镜+板务 · Plan · project_id={pid}】",
         f"业务权威在 2017；探查用：{lens_cli}",
+        f"板堵/残卡：{repair_cli}（禁止默认投卫生 epic）",
         f"决策脑写入（可选）：{mind_cli}",
         "禁止 ssh / 本机业务路径 Read/git。优先透镜，勿假装有第二树。",
         "扫风险/定稿：board → locate（或 grep）定点收窄 → file 核实 1～3 个相对路径；禁止只读文档交差。",
@@ -649,20 +654,24 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         parts.append(
             "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 Bash 跑 "
             f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
-            "禁止零工具只复述注入快照（用户要看见思考/工具过程轨）。"
+            "若 ready=false / abnormal / failed 残卡：先 "
+            f"`ccc-hub-lens.py repair {pid} clear_blockers`（或 status→archive），"
+            "禁止默认逼用户投卫生 epic；禁止零工具只复述注入快照。"
         )
-    # 下一步 / 定稿：不依赖用户点「对齐基线」，同样强制 live 核实
+    # 定稿 / 转任务 / 看仓况：不依赖用户点「对齐基线」，强制 live 核实；板堵优先 repair
     if re.search(
-        r"(下一步|规划下一步|最佳下一步|帮我规划|定稿|ccc-transfer|转任务契约)",
+        r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|ccc-transfer|转任务契约|转任务)",
         text,
         re.I,
     ):
         parts.append(
-            "【下一步/定稿 · 强制核实】作答前必须 Bash 跑 "
+            "【定稿/转任务 · 强制核实】作答前必须 Bash 跑 "
             f"`ccc-hub-lens.py board {pid}` 与 `ccc-hub-lens.py git {pid}`；"
             "再按目标 locate/file 定点 1～3 路径。"
             "内化 ready_for_task / inflight / dirty_kind；"
-            "ready=false 或 inflight>0 → 只谈板务/止损，禁止推荐或定稿新产品 epic。"
+            "ready=false 或 inflight>0 → 先 "
+            f"`ccc-hub-lens.py repair {pid} clear_blockers` 板务，"
+            "禁止默认投卫生 epic；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
             "digest/STATUS 勾选不作终局；脚本+报告已在仅文档未勾 → S/同步，勿 stamp 重开。"
             "定稿后二级卡仅 title/human_note 可改，方案字段已锁。"
         )

@@ -46,11 +46,12 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 
 业务仓事实 = **Hub 基线开场 + Hub 只读透镜 live + L1 mind digest**（2017 权威）；M1 **无**业务源码第二树。
 
-- **四段流程**：对齐基线（可选）→ 下一步（强制核实）→ 定稿（锁方案）→ 转任务（二级卡仅 title/备注）  
-- **对齐基线非硬门槛**：深对齐用 Hub baseline 快照；未点芯片时，下一步/定稿仍须 lens `board`+`git`  
+- **主路径（两段给人）**：聊意图 → 人确认下达（定稿锁契约或转任务确认）；对齐基线=可选深扫，**非硬门槛**；旧「下一步」已降级为可选「看仓况」，**不是**必经阶段  
+- **定稿/转任务前**：系统/Agent 静默 lens `board`+`git`；未点对齐基线也可直接定稿下达  
+- **板务白名单**：残卡/abnormal/幽灵轨 → Hub `board-repair`（`ccc-hub-lens.py repair`），**禁止**默认逼卫生 transfer→Engine  
 - 每轮 discuss：sidecar 注入 live board + L1 digest；失败则明说不可达  
 - 问看板/在飞/文件/结构 → **必须先**透镜；baseline / digest 不作终局于代码细节  
-- `ready_for_task=false` / `inflight>0` → 只谈板务，禁止新产品 epic  
+- `ready_for_task=false` / `inflight>0` → **先 board-repair**；仅业务脏/真在飞冲突时禁新产品 epic（人可显式 override）  
 - Hub 不可达 → 明说 + 快照时刻；**禁止瞎编**  
 - **禁止**对本机跑 `git status` / Read 业务树去「再核实」；**禁止** `ssh mac2017`  
 - 仅聊 **CCC 平台仓**（`ccc`）时，才可对本机 `/Users/apple/program/CCC` 做 Read/git；工程师模式仅 ccc  
@@ -58,17 +59,20 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - **不要把工具过程写进回复**；每一轮必须有对用户可见的中文正文
 - 扇出规则表见 [`loop-engineer-authority.md`](loop-engineer-authority.md)（你不扮演 product/dev）
 - 用户拍板「记住这条」→ L1b decided（`scripts/ccc-mind-update.py` 或 Hub PUT）；**禁止 invent 投卡**
+- **入队后**：transfer 必 wake Engine；未扇出须用人话解释阻塞因（Engine 未跑/上游/cap），勿说「已投就完事」
 ---
 
 ## 4. 对用户口径
 
 - 「你在 Desktop 点项目卡聊；定稿后转任务；Engine 在 2017 自动跑。」  
+- 「不必先对齐基线；直接聊透也能定稿下达。」  
 - 「一个项目一个对话；重置 ≠ 新开项目窗。」  
 - 「能聊 ≠ 能转任务：还要业务仓已 register 且可下达。确认不依赖 Hub 可达；Hub 只影响投递速度与右栏。」  
+- 「板堵了：我先帮你清残卡（board-repair），不用再走一遍投卫生卡。」  
 - 「进度以看板 / 项目心智 digest 为准，不靠上周聊天。」  
 - 「M1 不留业务源码；真相在 2017，GitHub 只是备份。」  
 - 「旁路提案在 inbox/，采纳后才进板。」  
-- **定方案不甩锅**：讨论/下一步直接给最佳方案；定稿时白话结论 + 恰好一个 `ccc-transfer`（字段见 transfer-gate）；禁止每轮逼用户选 A/B。  
+- **定方案不甩锅**：讨论直接给最佳方案；定稿时白话结论 + 恰好一个 `ccc-transfer`（字段见 transfer-gate）；禁止每轮逼用户选 A/B。  
 - 定稿可见正文 = 用户可读结论；契约 JSON 给 Engine（UI 默认折叠）。  
 - **转任务二级卡**：定稿后来源为 `ccc-transfer` 时，人只改标题与备注；改方案退回对话重定稿。
 ---
@@ -95,7 +99,8 @@ Desktop 对话面产品搭档（本机 sidecar）
 | 透镜 / 权威 | [`loop-engineer-authority.md`](loop-engineer-authority.md) |
 | discuss 工具纪律 | `scripts/chat_server/config.py` → `DISCUSS_TOOL_DISCIPLINE` |
 | Hub 透镜 API | `/api/desktop/lens/{id}/board|tree|file|grep|git/summary` |
-| 透镜 CLI | `scripts/ccc-hub-lens.py` |
+| Hub 板务 API | `/api/desktop/board-repair`（archive / reopen / purge_flow / clear_blockers） |
+| 透镜 CLI | `scripts/ccc-hub-lens.py`（含 `repair`） |
 | 快捷条 | `desktop/.../QuickPrompts.swift` |
 | 对齐基线 prompt | `scripts/_project_baseline.py` → `baseline_prompt_for_claude` |
 | 热路径 | `scripts/ccc-agent-sidecar.py`（`wrap_hub_prompt`） |

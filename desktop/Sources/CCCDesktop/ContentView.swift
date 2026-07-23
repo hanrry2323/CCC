@@ -794,9 +794,9 @@ struct CodexChatPaneBody: View {
                 .foregroundStyle(CCCTheme.accent)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                Text("四段主路径")
+                Text("主路径")
                     .font(.system(size: 12, weight: .medium))
-                Text("① 聊透/对齐基线（可选）→ ②「下一步」会核实仓况 → ③「定稿」锁方案 → ④ 转任务仅改标题备注。侧栏「用法」可开。")
+                Text("① 聊透意图（对齐基线可选）→ ②「定稿」锁方案 → ③ 转任务确认。板堵时 Agent 可直接修残卡，不必再投卫生卡。")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1148,9 +1148,9 @@ struct CodexChatPaneBody: View {
                                     .foregroundStyle(CCCTheme.faint)
                                     .frame(maxWidth: .infinity, alignment: .center)
                                 VStack(alignment: .leading, spacing: 10) {
-                                    emptyStep(num: "1", title: "聊透 / 下一步", detail: "对齐基线可选；下一步会核实仓况再定方案")
+                                    emptyStep(num: "1", title: "聊透意图", detail: "对齐基线可选深扫；直接聊也能定稿下达")
                                     emptyStep(num: "2", title: "点「定稿」", detail: "生成契约并锁方案（二级卡不可改正文）")
-                                    emptyStep(num: "3", title: "确认转任务", detail: "仅可改标题与备注；右侧展开编排")
+                                    emptyStep(num: "3", title: "确认转任务", detail: "仅可改标题与备注；Engine 自动消费")
                                 }
                                 .padding(16)
                                 .frame(maxWidth: 420)
@@ -1627,7 +1627,7 @@ struct CodexChatPaneBody: View {
                 HStack(spacing: 6) {
                     quickChip(
                         "对齐基线",
-                        help: "深对齐：Hub 快照+透镜；可选，不是「下一步/定稿」的硬门槛"
+                        help: "深对齐：Hub 快照+透镜；可选，不是定稿/转任务硬门槛；残卡优先板务修复"
                     ) {
                         Task {
                             await model.alignBaseline(
@@ -1648,12 +1648,12 @@ struct CodexChatPaneBody: View {
                         )
                     }
                     quickChip(
-                        "下一步",
-                        help: "先 lens 核实 board/git 再给最佳方案；未 ready 只谈板务，不必先点对齐基线"
+                        "看仓况",
+                        help: "可选：lens 核实 board/git；板堵则先 board-repair，非下达必经步骤"
                     ) {
                         model.applyQuickPrompt(
                             QuickPrompts.nextStep,
-                            uiLabel: "下一步",
+                            uiLabel: "看仓况",
                             projectId: paneProjectId,
                             threadId: paneThreadId
                         )
@@ -2843,9 +2843,9 @@ struct DesktopHelpSheet: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 helpRow("1", "选左侧业务项目", "进入该项目的方案对话（一项目可多会话）。")
-                helpRow("2", "对齐基线（可选）/ 下一步", "对齐基线=深对齐，非硬门槛；「下一步」会 live 核实后再定方案。自由聊这两段都可。")
+                helpRow("2", "聊透意图", "对齐基线=可选深扫，非硬门槛；也可直接聊定稿。板堵时 Agent 用 board-repair 清残卡。")
                 helpRow("3", "定稿", "点「定稿」生成契约并锁方案（目标/验收/正文不可在二级卡改）。")
-                helpRow("4", "转任务", "二级卡仅可改标题与备注；确认后写入待办，右侧看编排。")
+                helpRow("4", "转任务", "二级卡仅可改标题与备注；确认后进待办，Engine 自动消费；未扇出会明示阻塞因。")
                 helpRow("5", "看板 / 运维", "侧栏切换；看全局队列与集群健康，再「回对话」。")
             }
 

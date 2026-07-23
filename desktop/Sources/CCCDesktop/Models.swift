@@ -353,6 +353,8 @@ struct EngineWakeInfo: Decodable, Hashable {
     let engine_running: Bool?
     let launch_note: String?
     let mode_after: String?
+    let workspace_eligible: Bool?
+    let block_reason: String?
 }
 
 struct GateError: Decodable, Hashable {

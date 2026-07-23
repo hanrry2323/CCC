@@ -651,3 +651,86 @@ def is_project_conversation_id(thread_id: str | None) -> bool:
 
 def canonical_conversation_id(project_id: str) -> str:
     return f"{project_id}::main"
+
+
+def purge_epic_traces(project_id: str, epic_id: str) -> dict[str, Any]:
+    """止损清场：剪 last_epic / epic_history / flow-events 中该 epic（防幽灵 bound_hint）。"""
+    eid = (epic_id or "").strip()
+    pid = (project_id or "").strip()
+    if not eid or not pid:
+        return {"ok": False, "error": "missing_ids"}
+
+    cleared_last = False
+    last_path = project_last_epic_file(pid)
+    if last_path.is_file():
+        try:
+            data = json.loads(last_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and str(data.get("epic_id") or "") == eid:
+                last_path.unlink(missing_ok=True)
+                cleared_last = True
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    removed_hist = 0
+    hist_path = epic_history_file(pid)
+    if hist_path.is_file():
+        try:
+            raw = json.loads(hist_path.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                kept = [
+                    x
+                    for x in raw
+                    if not (
+                        isinstance(x, dict) and str(x.get("epic_id") or "") == eid
+                    )
+                ]
+                removed_hist = len(raw) - len(kept)
+                hist_path.write_text(
+                    json.dumps(kept, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    removed_events = 0
+    path = events_log_path()
+    if path.is_file():
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            kept_lines: list[str] = []
+            for line in lines:
+                s = line.strip()
+                if not s:
+                    continue
+                try:
+                    rec = json.loads(s)
+                except json.JSONDecodeError:
+                    kept_lines.append(line)
+                    continue
+                data = rec.get("data") if isinstance(rec, dict) else None
+                if not isinstance(data, dict):
+                    kept_lines.append(line)
+                    continue
+                rec_eid = str(
+                    data.get("epic_id") or data.get("epicId") or ""
+                ).strip()
+                # work_status 可能带 epic_id；一并剪
+                if rec_eid == eid:
+                    removed_events += 1
+                    continue
+                kept_lines.append(line)
+            path.write_text(
+                "\n".join(kept_lines) + ("\n" if kept_lines else ""),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    return {
+        "ok": True,
+        "epic_id": eid,
+        "project_id": pid,
+        "cleared_last_epic": cleared_last,
+        "removed_history": removed_hist,
+        "removed_flow_events": removed_events,
+    }
