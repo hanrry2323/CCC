@@ -85,6 +85,79 @@ def test_transfer_requires_probe_for_business():
     assert ok, errs
 
 
+def test_transfer_soft_trims_title_over_80():
+    from chat_server.services import transfer_gate as tg
+
+    long_title = "VIP-V5 纸面 DRY_RUN=true 可重放验收探针绿（STATUS「上线前」第 1 项 · 脚本+STATUS+regress+history 四件套）"
+    assert len(long_title) > 80
+    body = {
+        "title": long_title,
+        "goal": "探针绿",
+        "acceptance": [
+            "DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper",
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+    }
+    ok, errs = tg.validate_transfer_payload(body)
+    assert ok, errs
+    assert len(body["title"]) == 80
+
+
+def test_transfer_probe_survives_plan_numbered_acceptance():
+    """acceptance 子弹 + plan「## 验收」编号列表：不得因拼 blob 丢探针。"""
+    from chat_server.services import transfer_gate as tg
+
+    body = {
+        "title": "跨阶段依赖扇出压测",
+        "goal": "1→4 扇出 + depends_on",
+        "acceptance": [
+            "DRY_RUN=true python3 scripts/mid_fanout_w4_probe.py 退出码 0 且 stdout 含 INTEGRATION_OK",
+            "DRY_RUN=true python3 scripts/mid_fanout_w3_combine.py 退出码 0",
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "ccc-demo",
+        "executor_intent": "opencode",
+        "plan_md": (
+            "# Plan\n\n## 步骤\nw1/w2/w3/w4\n\n## 验收\n"
+            "1. DRY_RUN=true python3 scripts/mid_fanout_w4_probe.py 退出码 0\n"
+            "2. git log --oneline -1 含 feat\n"
+        ),
+    }
+    ok, errs = tg.validate_transfer_payload(body)
+    assert ok, errs
+
+
+def test_extract_numbered_acceptance_probes():
+    from _intent_probe import extract_probe_commands
+
+    section = (
+        "## 验收\n"
+        "1. DRY_RUN=true python3 scripts/mid_fanout_w4_probe.py 退出码 0 且 stdout 含 OK\n"
+        "2. pytest tests/ -q\n"
+    )
+    probes = extract_probe_commands(section)
+    assert any(p == "DRY_RUN=true python3 scripts/mid_fanout_w4_probe.py" for p in probes)
+    assert any("pytest" in p for p in probes)
+
+
+def test_strip_cjk_trailing_prose_from_probe():
+    from _intent_probe import extract_probe_commands
+
+    section = (
+        "## 验收\n"
+        "- DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper "
+        "退出码 = 0；docs/reports/x.md 含六块\n"
+    )
+    probes = extract_probe_commands(section)
+    assert probes == [
+        "DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper"
+    ]
+
+
 def test_transfer_hygiene_skips_probe():
     from chat_server.services import transfer_gate as tg
 

@@ -146,14 +146,25 @@ def extract_paths(text: str) -> list[str]:
 
 
 def _plan_goal_description(plan_text: str) -> str:
-    m = re.search(r"^#\s+Plan\s*[—\-–:]?\s*(.+)$", plan_text or "", re.MULTILINE)
+    """单 phase 描述：同标题 / 目标·意图正文；禁止吞下一行 ``## 标题``。"""
+    text = plan_text or ""
+    # 仅同行：``# Plan — 标题`` / ``# Plan: 标题`` / ``# Plan 标题``
+    # 禁止 ``# Plan\\n\\n## 意图``：\\s 会跨行把二级标题吃进 group(1)
+    m = re.search(
+        r"^#\s+Plan(?:[ \t]*[—\-–:][ \t]*|[ \t]+)(.+)$",
+        text,
+        re.MULTILINE,
+    )
     if m:
-        return m.group(1).strip()[:300]
-    goals = _section_bodies(plan_text or "", ("目标", "goal", "目的"))
-    for line in goals.splitlines():
-        s = line.strip().lstrip("-* ").strip()
-        if s and not s.startswith("#"):
-            return s[:300]
+        title = m.group(1).strip()
+        if title and not title.startswith("#"):
+            return title[:300]
+    for names in (("意图", "目标", "goal", "目的"),):
+        goals = _section_bodies(text, names)
+        for line in goals.splitlines():
+            s = line.strip().lstrip("-* ").strip()
+            if s and not s.startswith("#"):
+                return s[:300]
     return "执行 plan 验收清单"
 
 

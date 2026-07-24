@@ -4073,7 +4073,9 @@ final class AppModel: ObservableObject {
             return
         }
         let form = transferForm(for: tid)
-        let title = form.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Hub gate 标题 ≤80；超长软裁，避免 outbox 8 次耗尽仍无人感知
+        let titleRaw = form.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = String(titleRaw.prefix(80))
         let goal = form.goal.trimmingCharacters(in: .whitespacesAndNewlines)
         let pipeline = form.pipeline.trimmingCharacters(in: .whitespacesAndNewlines)
         let accLines = form.acceptance

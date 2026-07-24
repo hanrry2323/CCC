@@ -58,6 +58,38 @@ def test_flush_once_delivers_and_removes(tmp_path: Path):
     assert receipts[0]["client_request_id"] == "crid-1"
 
 
+def test_flush_receipt_oserror_still_removes_delivered(tmp_path: Path):
+    p = tmp_path / "transfer-outbox.json"
+    p.write_text(json.dumps([_item()]), encoding="utf-8")
+
+    with patch.object(
+        flush,
+        "_post_transfer",
+        return_value=(True, "epic-1", {"ok": True, "epic_id": "epic-1"}),
+    ), patch.object(flush, "write_receipt", side_effect=OSError("race")):
+        summary = flush.flush_once(path=p)
+
+    assert summary["delivered"] == 1
+    assert flush.load_outbox(p) == []
+
+
+def test_flush_persists_last_error_on_retry(tmp_path: Path):
+    p = tmp_path / "transfer-outbox.json"
+    p.write_text(json.dumps([_item(attempts=0)]), encoding="utf-8")
+
+    with patch.object(
+        flush,
+        "_post_transfer",
+        return_value=(False, "http_400:missing_intent_probe", {}),
+    ):
+        flush.flush_once(path=p)
+
+    left = flush.load_outbox(p)
+    assert len(left) == 1
+    assert left[0]["attempts"] == 1
+    assert "missing_intent_probe" in left[0].get("last_error", "")
+
+
 def test_flush_once_retries_on_transient(tmp_path: Path):
     p = tmp_path / "transfer-outbox.json"
     p.write_text(json.dumps([_item(attempts=0)]), encoding="utf-8")

@@ -630,10 +630,15 @@ _FLOW_PAST_PLANNED = frozenset(
 
 
 def _title_for_seeded_phase(epic: dict, phase: dict, idx: int) -> str:
+    """work 标题：优先 phase 描述正文；拒绝把 ``## 意图`` 这类标题行当卡名。"""
     desc = str(phase.get("description") or "").strip()
+    if desc.startswith("#") or desc in {"意图", "目标", "范围", "验收", "退出"}:
+        desc = ""
     if desc:
         return desc[:80]
     base = str(epic.get("title") or epic.get("id") or "work").strip()
+    if not base or base.startswith("#"):
+        base = str(epic.get("id") or "work").strip()
     return f"{base} · P{idx + 1}"[:80]
 
 

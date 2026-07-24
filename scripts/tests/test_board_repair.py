@@ -94,6 +94,32 @@ def _seed_abnormal(ws: Path, tid: str = "work-abn-1") -> None:
     )
 
 
+def test_archive_preserves_evidence_and_failures_jsonl(ws, tmp_path, monkeypatch):
+    """clear_blockers/archive 隐藏前快照证据；failures.jsonl 全量保留。"""
+    monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))
+    from chat_server.services import board_repair as br
+
+    tid = "work-abn-ev"
+    _seed_abnormal(ws, tid)
+    pids = ws / ".ccc" / "pids"
+    pids.mkdir(parents=True, exist_ok=True)
+    (pids / f"{tid}.review_fail.md").write_text("# fail\nreason=x\n", encoding="utf-8")
+    stats = ws / ".ccc" / "stats"
+    stats.mkdir(parents=True, exist_ok=True)
+    fail_line = (
+        '{"ts":"2026-07-24T00:00:00Z","task_id":"%s","reason":"short_path"}\n' % tid
+    )
+    (stats / "failures.jsonl").write_text(fail_line, encoding="utf-8")
+
+    out = br.archive_tasks(ws, reason="test_preserve")
+    assert tid in out["hidden"]
+    ev_dir = ws / ".ccc" / "quarantines" / tid / "board-repair"
+    assert (ev_dir / f"{tid}.review_fail.md").is_file()
+    assert (ev_dir / "failures-slice.jsonl").is_file()
+    # SSOT untouched
+    assert (stats / "failures.jsonl").read_text(encoding="utf-8") == fail_line
+
+
 def test_board_repair_settles_stuck_running_orphan(ws, tmp_path, monkeypatch):
     """running epic + 子卡缺失/无在途 → clear_blockers 沉底。"""
     monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))

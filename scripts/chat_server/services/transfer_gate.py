@@ -34,8 +34,12 @@ def validate_transfer_payload(
     if not isinstance(body, dict):
         return False, [{"code": "invalid_body", "message": "JSON object required"}]
 
+    # Agent 常写长标题；软裁到 80，空才拒（避免 outbox 耗尽仍无人感知）
     title = str(body.get("title") or "").strip()
-    if not title or len(title) > 80:
+    if len(title) > 80:
+        title = title[:80].rstrip()
+        body["title"] = title
+    if not title:
         errors.append(
             {
                 "code": "missing_title",
@@ -109,13 +113,13 @@ def validate_transfer_payload(
     ip = _intent_probe()
     hygiene = ip.is_hygiene_transfer(body)
     if not hygiene and acc_ok:
-        probe_blob = "\n".join(
-            [
-                normalize_acceptance(acceptance),
-                plan_md,
-            ]
+        # 分查 acceptance / plan：plan 内「## 验收」编号列表不得盖掉顶部 acceptance 子弹
+        acc_norm = normalize_acceptance(acceptance)
+        has_probe = bool(
+            ip.extract_probe_commands(acc_norm)
+            or ip.extract_probe_commands(plan_md)
         )
-        if not ip.extract_probe_commands(probe_blob):
+        if not has_probe:
             errors.append(
                 {
                     "code": "missing_intent_probe",

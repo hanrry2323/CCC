@@ -91,6 +91,39 @@ def test_synthesize_hygiene_keeps_ccc_scope():
     assert "提交清场残留" in phases[0]["description"]
 
 
+def test_plan_goal_description_does_not_swallow_next_heading():
+    """``# Plan\\n\\n## 意图`` 不得把二级标题当 description（dry-run-556a3c2b）。"""
+    from _plan_adopt import _plan_goal_description, synthesize_phases_from_plan
+
+    plan = (
+        "# Plan\n\n"
+        "## 意图\n"
+        "VIP-V5 纸面 DRY_RUN 探针可重放验收。\n\n"
+        "## 范围\n"
+        "- `scripts/paper_intent_probe.py`\n"
+        "- `docs/reports/paper-intent-probe-latest.md`\n"
+    )
+    desc = _plan_goal_description(plan)
+    assert desc.startswith("VIP-V5")
+    assert not desc.startswith("#")
+    phases = synthesize_phases_from_plan(plan)
+    assert len(phases) == 1
+    assert phases[0]["description"].startswith("VIP-V5")
+    assert "## 意图" not in phases[0]["description"]
+
+
+def test_title_for_seeded_phase_rejects_heading_desc():
+    from _product_fanout import _title_for_seeded_phase
+
+    epic = {"id": "dry-run-1", "title": "纸面 DRY_RUN 探针可重放验收"}
+    assert _title_for_seeded_phase(epic, {"description": "## 意图"}, 0).startswith(
+        "纸面 DRY_RUN"
+    )
+    assert _title_for_seeded_phase(
+        epic, {"description": "落地探针脚本与报告"}, 0
+    ) == "落地探针脚本与报告"
+
+
 def test_extract_paths_strips_forbidden():
     paths = extract_paths(HYGIENE)
     assert all(

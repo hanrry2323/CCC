@@ -99,6 +99,51 @@ def extract_acceptance_section(text: str) -> str:
     return "\n".join(out).strip()
 
 
+# bullet / numbered acceptance lines: "- cmd" · "1. cmd" · "1) cmd"
+_LIST_ITEM_RE = re.compile(r"^(?:[-*]|\d+[.)])\s+")
+# CJK + fullwidth punct — marks acceptance prose after a real command
+_TRAILING_PROSE_RE = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
+
+
+def _candidates_from_list_item(item: str) -> list[str]:
+    """Allowlisted cmd from a list item; strip trailing Chinese / fullwidth prose."""
+    item = (item or "").strip()
+    if not item or item.startswith("不"):
+        return []
+    out: list[str] = []
+
+    def _clean(cmd: str) -> str | None:
+        cmd = (cmd or "").strip()
+        if not cmd or not is_allowed_verify_cmd(cmd):
+            return None
+        # 验收常写「cmd 退出码 0…」；整行仍可能通过 allowlist，执行时必炸
+        if _TRAILING_PROSE_RE.search(cmd):
+            tokens = cmd.split()
+            for i in range(len(tokens), 0, -1):
+                cand = " ".join(tokens[:i])
+                if is_allowed_verify_cmd(cand) and not _TRAILING_PROSE_RE.search(cand):
+                    return cand
+            return None
+        return cmd
+
+    if "`" in item:
+        for m in re.finditer(r"`([^`]+)`", item):
+            cleaned = _clean(m.group(1).strip())
+            if cleaned:
+                out.append(cleaned)
+    cleaned = _clean(item)
+    if cleaned:
+        out.append(cleaned)
+    elif not out:
+        tokens = item.split()
+        for i in range(len(tokens), 0, -1):
+            cleaned = _clean(" ".join(tokens[:i]))
+            if cleaned:
+                out.append(cleaned)
+                break
+    return out
+
+
 def extract_probe_commands(section_or_plan: str) -> list[str]:
     """Pull allowlisted commands from an acceptance section or full plan."""
     section = section_or_plan or ""
@@ -121,21 +166,13 @@ def extract_probe_commands(section_or_plan: str) -> list[str]:
                 code_lang = ""
             continue
         if in_code and (not code_lang or code_lang in ("bash", "sh", "shell", "")):
-            if is_allowed_verify_cmd(s):
-                cmds.append(s)
+            cmds.extend(_candidates_from_list_item(s))
             continue
-        if s.startswith("- ") and not s.startswith("- 不"):
-            item = s[2:].strip()
-            # strip trailing prose after command (optional)
-            if is_allowed_verify_cmd(item):
-                cmds.append(item)
-            elif "`" in item:
-                for m in re.finditer(r"`([^`]+)`", item):
-                    inner = m.group(1).strip()
-                    if is_allowed_verify_cmd(inner):
-                        cmds.append(inner)
-        elif is_allowed_verify_cmd(s):
-            cmds.append(s)
+        m = _LIST_ITEM_RE.match(s)
+        if m:
+            cmds.extend(_candidates_from_list_item(s[m.end() :].strip()))
+        else:
+            cmds.extend(_candidates_from_list_item(s))
     # dedupe preserve order
     seen: set[str] = set()
     out: list[str] = []

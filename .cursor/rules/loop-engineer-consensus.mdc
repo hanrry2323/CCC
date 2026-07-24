@@ -56,7 +56,7 @@ alwaysApply: true
 - **压测 KPI 闭环（2026-07-23）**：固定 `efficiency_six`（**无 e05 卫生卡**）+ `references/stress-kpi-scorecard.json` 门禁；`ccc-stress-kpi-loop.py` 投递/evaluate/continue；Cursor `arm-wake` 1h 审查；改码仅 allowlist、每轮≤2 primary；推荐 4 轮上限 5。**queue 主门 = 独立卡 p95**（排除 `-w2+` 依赖后继）；全量 p95 仅观测。旧仓/新仓同门禁准入。见 `docs/product/stress-kpi-loop.md`。
 - **VERSION**：kb 默认不 bump；仅 `bump_version=true` 才升版。偶发卫生卡仍可 board_ops；**板面清场不靠自动化卫生 epic**。
 - **dirty**：仅 `.ccc/` = `ccc_hygiene`，不挡 ready；git porcelain **勿** `str.strip()` 吃掉行首空格（会把卫生脏误判成业务）。
-- **清失败卡**：板上归档不够——同步剪 `flow-events.jsonl` + Hub `_desktop/<id>/last_epic|epic_history`，否则幽灵轨。
+- **清失败卡**：板上归档不够——同步剪 `flow-events.jsonl` + Hub `_desktop/<id>/last_epic|epic_history`，否则幽灵轨。**不删**业务仓 `failures.jsonl`；`clear_blockers` 隐藏前快照到 `quarantines/<tid>/board-repair/`。
 - 同仓 OpenCode **1 路**（防 db lock）；跨仓 `MAX_CONCURRENT` 正交（`CCC_MAX_CONCURRENT` env）。倒很多卡 ≠ 堵槽；真问题是任务后进程不退出。收尸见 `_opencode_reap`；耗时见 `opencode_done` / `~/.ccc/stats/opencode-timings.jsonl`。
 - **并行容量**：看 Mac2017 `~/.ccc/stats/host-resources.jsonl`（`ccc-host-resources.py summary`）；`headroom` 才加 `MAX_CONCURRENT`，`saturated` 先治挂死。
 - **产线提效（已落地）**：槽终态必释 / 脏 result 防御 / FAIL revert 必 abort / testing 限预算且先 launch / 短路径硬门 + `dev_path` 埋点 — 见 authority「产线提效综合方案」+ `docs/briefs/2026-07-22-opencode-lifecycle-stall.md`；**禁止**用只加 `MAX_CONCURRENT` 代替修闸门。

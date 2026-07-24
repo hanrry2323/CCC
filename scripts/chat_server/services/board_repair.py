@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -179,6 +180,83 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
     }
 
 
+def _preserve_failure_evidence(workspace: Path, task_id: str) -> dict[str, Any]:
+    """归档现场证据到 quarantines/<tid>/board-repair/；永不截断 failures.jsonl。"""
+    tid = (task_id or "").strip()
+    if not tid:
+        return {"ok": False, "copied": []}
+    root = Path(workspace) / ".ccc"
+    dst = root / "quarantines" / tid / "board-repair"
+    copied: list[str] = []
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)[:200], "copied": []}
+
+    candidates: list[Path] = []
+    for sub, name in (
+        ("pids", f"{tid}.review_fail.md"),
+        ("pids", f"{tid}.short_path_fails"),
+        ("reports", f"{tid}.report.md"),
+        ("reports", f"{tid}.result.json"),
+        ("reports", f"{tid}.review.md"),
+        ("verdicts", f"{tid}.verdict.md"),
+        ("plans", f"{tid}.plan.md"),
+        ("phases", f"{tid}.phases.json"),
+    ):
+        candidates.append(root / sub / name)
+    # board jsonl snapshot（列无关：find）
+    board = root / "board"
+    if board.is_dir():
+        for col_dir in board.iterdir():
+            if not col_dir.is_dir():
+                continue
+            p = col_dir / f"{tid}.jsonl"
+            if p.is_file():
+                candidates.append(p)
+
+    for src in candidates:
+        if not src.is_file():
+            continue
+        try:
+            target = dst / src.name
+            shutil.copy2(src, target)
+            copied.append(str(target.relative_to(root)))
+        except OSError as exc:
+            _log.warning("preserve evidence %s: %s", src, exc)
+
+    # 摘本卡 failures.jsonl 行（保留全量账本；另存切片方便工单）
+    failures = root / "stats" / "failures.jsonl"
+    if failures.is_file():
+        try:
+            lines = [
+                ln
+                for ln in failures.read_text(encoding="utf-8", errors="replace").splitlines()
+                if tid in ln
+            ]
+            if lines:
+                slice_p = dst / "failures-slice.jsonl"
+                slice_p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                copied.append(str(slice_p.relative_to(root)))
+        except OSError as exc:
+            _log.warning("preserve failures slice %s: %s", tid, exc)
+
+    meta = {
+        "task_id": tid,
+        "preserved_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        "copied": copied,
+        "note": "board-repair archive; failures.jsonl SSOT untouched",
+    }
+    try:
+        (dst / "manifest.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return {"ok": True, "copied": copied, "dir": str(dst)}
+
+
 def archive_tasks(
     workspace: Path,
     task_ids: list[str] | None = None,
@@ -188,6 +266,8 @@ def archive_tasks(
     """隐藏残卡：abnormal / failed epic（及显式 task_ids）。数据保留，ui_hidden=true。
 
     failed epic 同时标 split_status=done（放弃），避免再计入活跃风险。
+    隐藏前把 report/verdict/review_fail 等拷入 quarantines/<tid>/board-repair/；
+    **不删** `.ccc/stats/failures.jsonl`。
     """
     store = FileBoardStore(workspace)
     targets: list[tuple[str, dict]] = []
@@ -206,6 +286,7 @@ def archive_tasks(
 
     hidden: list[str] = []
     skipped: list[dict[str, str]] = []
+    evidence: list[dict[str, Any]] = []
     for col, task in targets:
         tid = str(task.get("id") or "")
         if not tid:
@@ -221,6 +302,7 @@ def archive_tasks(
         ):
             skipped.append({"id": tid, "reason": "active_inflight_needs_explicit_id"})
             continue
+        evidence.append(_preserve_failure_evidence(workspace, tid))
         fields: dict[str, Any] = {
             "ui_hidden": True,
             "note": ((task.get("note") or "") + f"\n[board-repair] {reason}").strip(),
@@ -234,7 +316,12 @@ def archive_tasks(
             # abnormal 仍在 abnormal 列但 hidden → 活跃计数会跳过
         else:
             skipped.append({"id": tid, "reason": "patch_failed"})
-    return {"hidden": hidden, "skipped": skipped, "count": len(hidden)}
+    return {
+        "hidden": hidden,
+        "skipped": skipped,
+        "count": len(hidden),
+        "evidence": evidence,
+    }
 
 
 def hide_done_epics(workspace: Path) -> dict[str, Any]:

@@ -17,6 +17,7 @@ import fcntl
 import json
 import logging
 import os
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -88,6 +89,30 @@ def outbox_file_lock(path: Path | None = None) -> Iterator[None]:
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    """唯一临时文件名，避免 flush 循环与 nudge 并发共用 *.json.tmp 撞车。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.stem}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
 def load_outbox(path: Path | None = None) -> list[dict[str, Any]]:
     p = path or outbox_path()
     if not p.is_file():
@@ -101,10 +126,7 @@ def load_outbox(path: Path | None = None) -> list[dict[str, Any]]:
 
 def save_outbox(items: list[dict[str, Any]], path: Path | None = None) -> None:
     p = path or outbox_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(p)
+    _atomic_write_json(p, items)
 
 
 def failed_path(outbox: Path | None = None) -> Path:
@@ -125,10 +147,7 @@ def load_failed(path: Path | None = None) -> list[dict[str, Any]]:
 
 def save_failed(items: list[dict[str, Any]], path: Path | None = None) -> None:
     p = path or failed_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(p)
+    _atomic_write_json(p, items)
 
 
 def enqueue_failed(item: dict[str, Any], *, outbox: Path | None = None) -> None:
@@ -166,10 +185,7 @@ def load_receipts(path: Path | None = None) -> list[dict[str, Any]]:
 
 def save_receipts(items: list[dict[str, Any]], path: Path | None = None) -> None:
     p = path or receipts_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(items[:200], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(p)
+    _atomic_write_json(p, items[:200])
 
 
 def write_receipt(
@@ -337,13 +353,22 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
             delivered += 1
             if crid:
                 delivered_crids.add(crid)
-            write_receipt(
-                client_request_id=crid,
-                epic_id=detail,
-                project_id=str(item.get("project_id") or ""),
-                thread_id=str(item.get("thread_id") or ""),
-                outbox=p,
-            )
+            try:
+                write_receipt(
+                    client_request_id=crid,
+                    epic_id=detail,
+                    project_id=str(item.get("project_id") or ""),
+                    thread_id=str(item.get("thread_id") or ""),
+                    outbox=p,
+                )
+            except OSError as exc:
+                # Hub 已收下；收据失败不得回滚投递，否则会卡死重试
+                _log.warning(
+                    "receipt write failed after deliver crid=%s epic=%s: %s",
+                    crid,
+                    detail,
+                    exc,
+                )
             details.append(
                 {
                     "client_request_id": crid,
@@ -355,6 +380,8 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
             continue
         item = dict(item)
         item["attempts"] = attempts + 1
+        item["last_error"] = str(detail)[:500]
+        item["last_error_at"] = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
         if item["attempts"] >= MAX_ATTEMPTS:
             failed += 1
             exhausted.append(item)

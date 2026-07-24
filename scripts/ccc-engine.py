@@ -758,6 +758,7 @@ def _handle_short_path_failure(
             f"[{label}] {tid} {path} fail budget {n}/{_SHORT_PATH_FAIL_MAX} "
             f"→ abnormal ({why})"
         )
+        from_col = col_now
         if col_now == "in_progress":
             store.move_task(tid, "in_progress", "abnormal")
         elif col_now == "planned":
@@ -774,6 +775,26 @@ def _handle_short_path_failure(
             )
         except Exception:
             pass
+        # 与 quarantine 对齐：必入 failures.jsonl，清板后仍可复盘
+        try:
+            from _failure_ledger import record_failure
+
+            record_failure(
+                ws,
+                task_id=tid,
+                role="dev",
+                reason=f"short_path_fail_budget path={path} n={n}: {why}",
+                phase=1,
+                from_col=from_col,
+                to_col="abnormal",
+                related_stats_event="short_path_fail",
+                extra={"path": path, "n": n},
+            )
+        except Exception:
+            engine_log(
+                f"[failures] short_path record_failure failed for {tid}: "
+                f"{_traceback.format_exc()[:300]}"
+            )
         store.update_index()
         return True
     engine_log(
