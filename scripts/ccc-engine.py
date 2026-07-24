@@ -47,9 +47,7 @@ from _capability_evolver import record_failure_pattern as _record_failure_patter
 _log = get_logger("engine")
 
 _engine_shutdown = False
-_engine_start_ts: float = time.time()
-_restart_log_written: bool = False
-_RESTART_LOG_PATH: Path = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
+
 
 # board.roles / board.phase 在 import 时可能读 workspace；默认供首次加载
 os.environ.setdefault("CCC_WORKSPACE", str(_script_dir.parent))
@@ -167,6 +165,17 @@ from engine.gates import (  # noqa: E402
     _verdict_is_timeout,
     _verdict_is_valid,
 )
+from engine.restart_log import (  # noqa: E402
+    ENGINE_VERSION as _ENGINE_VERSION,
+    ENGINE_START_TS as _engine_start_ts,
+    RESTART_LOG_PATH as _RESTART_LOG_PATH,
+    write_restart as _write_engine_restart,
+    check_last_exit_was_kill as _check_last_exit_was_kill,
+)
+from engine.tick import (  # noqa: E402
+    mark_tick as _mark_engine_tick,
+    start_watchdog as _start_tick_watchdog,
+)
 
 _stores = _engine_workspace._stores
 
@@ -197,14 +206,14 @@ MAX_PRODUCT_PER_WS = int(os.environ.get("CCC_MAX_PRODUCT_PER_WS", "2") or "2")
 # v0.35: degraded mode — 引擎自我保护
 _degraded_mode = False
 _degraded_since: float | None = None
-_DEGRADED_QUARANTINE_THRESHOLD = 10   # 30min 内 quarantine > 此值 → degraded
-_DEGRADED_FAIL_THRESHOLD = 10         # 30min 内 product_fail > 此值 → degraded
+_DEGRADED_QUARANTINE_THRESHOLD = 10  # 30min 内 quarantine > 此值 → degraded
+_DEGRADED_FAIL_THRESHOLD = 10  # 30min 内 product_fail > 此值 → degraded
 # v0.53+: 人下达 task_dispatch 可绕过 degraded intake（防 pending epic 饿死）
 _intake_bypass_degraded = False
 _intake_bypass_ticks_left = 0
 _wake_priority_workspace: Path | None = None
 _INTAKE_BYPASS_TICKS = 12  # ~2min @10s tick — enough for product launch
-_DEGRADED_RECOVERY_SECONDS = 600      # 10min 无异常 → 自动恢复
+_DEGRADED_RECOVERY_SECONDS = 600  # 10min 无异常 → 自动恢复
 
 # v0.36: 熔断 — upstream 不可用时暂停 abnormal 自动重试
 _breaker_open: bool = False
@@ -212,26 +221,68 @@ _breaker_since: float = 0.0
 _BREAKER_RECOVERY_SECONDS = 120
 
 # v0.36: abnormal 重试（指数退避）
-_RETRY_BASE_INTERVAL = 120    # 2min
-_RETRY_MAX_INTERVAL = 3600    # 1h
+_RETRY_BASE_INTERVAL = 120  # 2min
+_RETRY_MAX_INTERVAL = 3600  # 1h
 _RETRY_BACKOFF_FACTOR = 2.0
 _ABNORMAL_RETRY_KEYWORDS = [
-    "重试", "all_failed", "失败", "failed", "超时", "timeout",
-    "unhealthy", "不可用", "quarantine", "异常", "exception",
-    "stale", "stalled", "exit code", "opencode",
-    "product_role", "dev_role", "reviewer", "tester",
+    "重试",
+    "all_failed",
+    "失败",
+    "failed",
+    "超时",
+    "timeout",
+    "unhealthy",
+    "不可用",
+    "quarantine",
+    "异常",
+    "exception",
+    "stale",
+    "stalled",
+    "exit code",
+    "opencode",
+    "product_role",
+    "dev_role",
+    "reviewer",
+    "tester",
 ]
 _TRANSIENT_KEYWORDS = [
-    "timeout", "超时", "network", "网络", "upstream", "hang", "hung",
-    "连接", "unavailable", "不可用", "econnreset", "temporary",
-    "transient", "unhealthy", "opencode", "rate limit", "429",
-    "502", "503", "504", "connection", "reset by peer",
+    "timeout",
+    "超时",
+    "network",
+    "网络",
+    "upstream",
+    "hang",
+    "hung",
+    "连接",
+    "unavailable",
+    "不可用",
+    "econnreset",
+    "temporary",
+    "transient",
+    "unhealthy",
+    "opencode",
+    "rate limit",
+    "429",
+    "502",
+    "503",
+    "504",
+    "connection",
+    "reset by peer",
 ]
 _PERMANENT_KEYWORDS = [
-    "syntaxerror", "importerror", "typeerror", "nameerror",
-    "indentationerror", "modulenotfounderror", "attributeerror",
-    "语法错误", "编码错误", "invalid syntax", "cannot import",
-    "compile failed", "assertionerror",
+    "syntaxerror",
+    "importerror",
+    "typeerror",
+    "nameerror",
+    "indentationerror",
+    "modulenotfounderror",
+    "attributeerror",
+    "语法错误",
+    "编码错误",
+    "invalid syntax",
+    "cannot import",
+    "compile failed",
+    "assertionerror",
 ]
 
 # v0.36: 内存阈值（MB）— 与 Config 默认对齐；cfg 覆盖优先
@@ -239,14 +290,6 @@ _MEM_WARN_MB = 400
 _MEM_DEGRADED_MB = 800
 _MEM_KILL_MB = 1500
 
-# H7: 主循环 tick 看门狗（卡死自愈 → exit → launchd KeepAlive）
-_last_tick_mono: float = 0.0
-_TICK_WATCHDOG_STALE_S = float(os.environ.get("CCC_ENGINE_TICK_STALE_S", "180") or "180")
-_TICK_WATCHDOG_POLL_S = 30.0
-# v0.60.1: 触发硬退前 grace 期，给主循环机会恢复 / 自然退出
-_WATCHDOG_GRACE_S = float(
-    os.environ.get("CCC_ENGINE_TICK_HARD_EXIT_GRACE_S", "30") or "30"
-)
 
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
@@ -355,6 +398,7 @@ def _is_upstream_healthy() -> bool:
             }
             try:
                 from _jsonl_rotate import append_jsonl
+
                 append_jsonl(probe_path, probe_record)
             except ImportError:
                 with probe_path.open("a", encoding="utf-8") as fh:
@@ -363,13 +407,10 @@ def _is_upstream_healthy() -> bool:
             pass
     if not healthy:
         engine_log(
-            f"[health] upstream 不可用 status={status_code} err={err_msg or '-'} "
-            f"— 跳过 product_role（缓存 30s）"
+            f"[health] upstream 不可用 status={status_code} err={err_msg or '-'} — 跳过 product_role（缓存 30s）"
         )
     elif status_code and status_code != 200:
-        engine_log(
-            f"[health] upstream proxy 可达 status={status_code}（视为 healthy）"
-        )
+        engine_log(f"[health] upstream proxy 可达 status={status_code}（视为 healthy）")
     return healthy
 
 
@@ -377,188 +418,6 @@ def _set_parallel_disabled(val: bool) -> None:
     """Set the global PHASE_PARALLEL_DISABLED toggle (module-level)."""
     global PHASE_PARALLEL_DISABLED
     PHASE_PARALLEL_DISABLED = val
-
-
-def _write_engine_restart(
-    status: str,
-    reason: str | None = None,
-    extra: dict[str, Any] | None = None,
-) -> None:
-    """写入结构化重启日志到 ~/.ccc/logs/engine-restarts.jsonl。
-
-    Args:
-        status: "started" | "shutdown" | "stopped"
-        reason: 描述原因，如 "SIGTERM" | "KeyboardInterrupt" | None（started 时为 None）
-        extra: 额外字段（如 watchdog 触发时附 stale_sec / grace_s）
-    """
-    uptime = max(0.001, time.time() - _engine_start_ts)
-    entry: dict[str, Any] = {
-        "ts": _utils_now_iso(),
-        "pid": os.getpid(),
-        "uptime_sec": round(uptime, 3),
-        "status": status,
-        "reason": reason,
-        "source": "engine",
-        "version": _ENGINE_VERSION,
-    }
-    if extra:
-        entry.update(extra)
-    try:
-        from _jsonl_rotate import append_jsonl
-        append_jsonl(_RESTART_LOG_PATH, entry)
-    except ImportError:
-        try:
-            _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
-
-
-def _check_last_exit_was_kill() -> bool:
-    """检查上次退出是否为强制杀死（无正常日志）。返回 True=上次被强杀。"""
-    try:
-        if not _RESTART_LOG_PATH.exists():
-            return False
-        with _RESTART_LOG_PATH.open("r", encoding="utf-8") as f:
-            lines = f.readlines()
-            if not lines:
-                return False
-            last = json.loads(lines[-1].strip())
-            last_status = last.get("status", "")
-            if last_status == "started":
-                return True
-            return False
-    except (json.JSONDecodeError, OSError):
-        return False
-
-
-def _loop_heartbeat_path() -> Path:
-    return Path.home() / ".ccc" / "engine-loop-heartbeat.json"
-
-
-_last_loop_hb_write_mono = 0.0
-_LOOP_HB_WRITE_MIN_S = float(os.environ.get("CCC_ENGINE_LOOP_HB_WRITE_S", "30"))
-
-
-def _mark_engine_tick() -> None:
-    """记录主循环 tick 进度（H7 看门狗 + patrol 共用）。
-
-    内存 mono 每 tick 更新；磁盘 heartbeat 节流写入（默认 30s），
-    并用原子写避免半截 JSON。
-    """
-    global _last_tick_mono, _last_loop_hb_write_mono
-    _last_tick_mono = time.monotonic()
-    if (_last_tick_mono - _last_loop_hb_write_mono) < _LOOP_HB_WRITE_MIN_S:
-        return
-    _last_loop_hb_write_mono = _last_tick_mono
-    try:
-        from _board_store import _atomic_write
-
-        p = _loop_heartbeat_path()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(
-            p,
-            json.dumps(
-                {
-                    "pid": os.getpid(),
-                    "timestamp": _utils_now_iso(),
-                    "mono": _last_tick_mono,
-                },
-                ensure_ascii=False,
-            )
-            + "\n",
-        )
-    except OSError:
-        pass
-
-
-def _start_tick_watchdog() -> None:
-    """若主循环超过 CCC_ENGINE_TICK_STALE_S 无 tick，先 grace 期观察；
-    grace 过期仍无 tick 则 flush diagnostic + 标记 hard exit 事件 + os._exit(0)。
-
-    Must be exit 0: plist KeepAlive SuccessfulExit only restarts on success.
-    Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
-
-    修复 stability-audit-2026-07-24 类别③：watchdog 直接 os._exit 跳过
-    finally/atexit/持久化。Grace 期让主循环有机会自然退出（_engine_shutdown
-    置位时 watchdog 直接 return）。
-    """
-    global _last_tick_mono
-    _last_tick_mono = time.monotonic()
-
-    def _watch() -> None:
-        while not _engine_shutdown:
-            time.sleep(_TICK_WATCHDOG_POLL_S)
-            if _engine_shutdown:
-                return
-            age = time.monotonic() - _last_tick_mono
-            if age <= _TICK_WATCHDOG_STALE_S:
-                continue
-            # Grace period: 给主循环一个机会自己退出 / 恢复 tick
-            grace_deadline = time.monotonic() + _WATCHDOG_GRACE_S
-            engine_log(
-                f"[watchdog] no tick for {age:.0f}s "
-                f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — grace "
-                f"{_WATCHDOG_GRACE_S:.0f}s before hard exit"
-            )
-            while time.monotonic() < grace_deadline:
-                if _engine_shutdown:
-                    engine_log(
-                        "[watchdog] main loop signaled exit during grace — cancel hard exit"
-                    )
-                    return
-                # 修复 diff-review-2026-07-24 阻塞级 #1：grace 期间检测主循环
-                # tick 恢复（GC 暂停 / IO 阻塞解除），恢复则取消硬退
-                tick_age = time.monotonic() - _last_tick_mono
-                if tick_age <= _TICK_WATCHDOG_STALE_S:
-                    engine_log(
-                        "[watchdog] tick recovered during grace "
-                        f"(age {tick_age:.1f}s) — cancel hard exit"
-                    )
-                    return
-                time.sleep(0.5)
-            # Grace expired — flush diagnostic, mark event, then hard exit
-            try:
-                _write_engine_restart(
-                    "stopped",
-                    reason="tick_watchdog_hard_exit",
-                    extra={
-                        "stale_sec": round(age, 1),
-                        "grace_s": _WATCHDOG_GRACE_S,
-                    },
-                )
-            except Exception:
-                pass
-            try:
-                from _jsonl_rotate import append_jsonl
-
-                append_jsonl(
-                    Path.home() / ".ccc" / "stats" / "engine-events.jsonl",
-                    {
-                        "ts": _utils_now_iso(),
-                        "kind": "engine_hard_exit_watchdog",
-                        "stale_sec": round(age, 1),
-                        "grace_s": _WATCHDOG_GRACE_S,
-                        "stale_threshold_s": _TICK_WATCHDOG_STALE_S,
-                        "pid": os.getpid(),
-                    },
-                )
-            except Exception:
-                # 修复 diff-review-2026-07-24 #3：hard exit 事件写入是
-                # best-effort。若磁盘满 / I/O 挂则写不进去，不应阻止硬退
-                # （否则 Engine 永远不重启）。engine_log 已先行记录根因。
-                pass
-            # Must be exit 0 for launchd KeepAlive SuccessfulExit restart.
-            # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
-            os._exit(0)
-
-    t = threading.Thread(target=_watch, name="ccc-tick-watchdog", daemon=True)
-    t.start()
-    engine_log(
-        f"[watchdog] tick watchdog on (stale={_TICK_WATCHDOG_STALE_S:.0f}s, "
-        f"poll={_TICK_WATCHDOG_POLL_S:.0f}s, grace={_WATCHDOG_GRACE_S:.0f}s)"
-    )
 
 
 PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 Engine tick）
@@ -623,6 +482,7 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
     record.update(extra)
     try:
         from _jsonl_rotate import append_jsonl
+
         append_jsonl(sf, record)
     except ImportError:
         try:
@@ -647,9 +507,7 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
             _aj(gdir / "opencode-timings.jsonl", record)
         except Exception:
             try:
-                with (Path.home() / ".ccc" / "stats" / "opencode-timings.jsonl").open(
-                    "a", encoding="utf-8"
-                ) as f:
+                with (Path.home() / ".ccc" / "stats" / "opencode-timings.jsonl").open("a", encoding="utf-8") as f:
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
             except OSError:
                 pass
@@ -823,10 +681,7 @@ def _handle_short_path_failure(
     )
     col_now = store.find_task(tid)[0]
     if n >= _SHORT_PATH_FAIL_MAX:
-        engine_log(
-            f"[{label}] {tid} {path} fail budget {n}/{_SHORT_PATH_FAIL_MAX} "
-            f"→ abnormal ({why})"
-        )
+        engine_log(f"[{label}] {tid} {path} fail budget {n}/{_SHORT_PATH_FAIL_MAX} → abnormal ({why})")
         from_col = col_now
         if col_now == "in_progress":
             store.move_task(tid, "in_progress", "abnormal")
@@ -857,21 +712,14 @@ def _handle_short_path_failure(
                 phase=1,
                 from_col=from_col,
                 to_col="abnormal",
-                related_stats_event=related_event_for_reason(
-                    fail_reason, default="short_path_fail"
-                ),
+                related_stats_event=related_event_for_reason(fail_reason, default="short_path_fail"),
                 extra={"path": path, "n": n},
             )
         except Exception:
-            engine_log(
-                f"[failures] short_path record_failure failed for {tid}: "
-                f"{_traceback.format_exc()[:300]}"
-            )
+            engine_log(f"[failures] short_path record_failure failed for {tid}: {_traceback.format_exc()[:300]}")
         store.update_index()
         return True
-    engine_log(
-        f"[{label}] {tid} {path} FAILED ({n}/{_SHORT_PATH_FAIL_MAX}): {why}"
-    )
+    engine_log(f"[{label}] {tid} {path} FAILED ({n}/{_SHORT_PATH_FAIL_MAX}): {why}")
     if col_now == "in_progress":
         store.move_task(tid, "in_progress", "planned")
     store.update_index()
@@ -1022,10 +870,7 @@ def _discover_workspaces() -> list[Path]:
         # Registry exists but only orch / empty eligible → idle
         registry = Path.home() / ".ccc" / "workspaces.json"
         if registry.is_file():
-            engine_log(
-                "[workspace] registry has no engine-eligible apps "
-                "(orch-only or empty) → idle"
-            )
+            engine_log("[workspace] registry has no engine-eligible apps (orch-only or empty) → idle")
             return []
     except ImportError:
         registry = Path.home() / ".ccc" / "workspaces.json"
@@ -1145,8 +990,7 @@ def _relaunch_allowed(ws: Path, tid: str, phase: int | None = None) -> bool:
     wait = min(60 * (2 ** max(count - 1, 0)), 600)
     if now - last_ts < wait:
         engine_log(
-            f"[slot] relaunch backoff {tid} p={phase}: "
-            f"wait {wait:.0f}s (elapsed {now - last_ts:.0f}s, n={count})"
+            f"[slot] relaunch backoff {tid} p={phase}: wait {wait:.0f}s (elapsed {now - last_ts:.0f}s, n={count})"
         )
         return False
     return True
@@ -1263,11 +1107,7 @@ def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
         return "dropped"
     alive, has_done, has_out = _product_async_markers(ws, tid)
     if has_done or alive or has_out:
-        via = (
-            "done"
-            if has_done
-            else ("alive" if alive else "out")
-        )
+        via = "done" if has_done else ("alive" if alive else "out")
         try:
             _activate_workspace(ws)
             engine_log(f"[product] finalize via {via}: {tid}")
@@ -1392,9 +1232,7 @@ def _handle_task_result(
     if status == "phase_done":
         # v0.38: 当前 phase 完成，仍有后续 phase → relaunch，留在 active_tasks
         next_phase = result.get("next_phase")
-        engine_log(
-            f"[{label}] {tid} phase {result.get('phase')} done → relaunch phase {next_phase}"
-        )
+        engine_log(f"[{label}] {tid} phase {result.get('phase')} done → relaunch phase {next_phase}")
         try:
             relaunch = dev_role_relaunch(tid)
         except Exception as exc:
@@ -1404,9 +1242,7 @@ def _handle_task_result(
             _note_relaunch(ws, tid, next_phase)
             return False
         # relaunch 失败：留给下一 tick / hang 恢复
-        engine_log(
-            f"[{label}] {tid} phase relaunch 未成功: {relaunch}，保留 active_tasks"
-        )
+        engine_log(f"[{label}] {tid} phase relaunch 未成功: {relaunch}，保留 active_tasks")
         return False
 
     if status == "success":
@@ -1418,9 +1254,7 @@ def _handle_task_result(
         elif col == "testing":
             _log_stats(ws, "move", tid, from_col="in_progress", to_col="testing")
         else:
-            engine_log(
-                f"[{label}] {tid} success 但列={col}，跳过 in_progress→testing"
-            )
+            engine_log(f"[{label}] {tid} success 但列={col}，跳过 in_progress→testing")
         store.update_index()
         return True
 
@@ -1443,9 +1277,7 @@ def _handle_task_result(
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:
-                engine_log(
-                    f"[{label}] {tid} phase 图无法解析，regen {_regen_count} 次 ≥ 2 → abnormal"
-                )
+                engine_log(f"[{label}] {tid} phase 图无法解析，regen {_regen_count} 次 ≥ 2 → abnormal")
                 _record_failure_pattern("phase-graph-regen")
                 store.move_task(tid, "in_progress", "abnormal")
                 store.update_index()
@@ -1469,10 +1301,7 @@ def _handle_task_result(
             store.update_index()
             return True
         if failure_summary.get("all_failed_or_skipped"):
-            engine_log(
-                f"[{label}] {tid} 所有 phase failed/skipped "
-                f"(skipped={failure_summary.get('skipped')})"
-            )
+            engine_log(f"[{label}] {tid} 所有 phase failed/skipped (skipped={failure_summary.get('skipped')})")
             store.update_index()
             return True
         cur = _current_running_phase(tid)
@@ -1485,10 +1314,7 @@ def _handle_task_result(
         except Exception as exc:
             engine_log(f"[{label}] {tid} relaunch 异常: {exc}")
             return False
-        if not (
-            relaunch.get("ok")
-            or relaunch.get("status") in ("launched", "ok", "running")
-        ):
+        if not (relaunch.get("ok") or relaunch.get("status") in ("launched", "ok", "running")):
             engine_log(f"[{label}] {tid} relaunch 未成功: {relaunch}")
         return False
 
@@ -1509,9 +1335,7 @@ def _handle_task_result(
             # 读 regen 计数器，cap 2 次
             _regen_count = _read_regen_count(ws, tid)
             if _regen_count >= 2:
-                engine_log(
-                    f"[{label}] {tid} phase 图无法解析（隔离中），regen {_regen_count} 次 ≥ 2 → abnormal"
-                )
+                engine_log(f"[{label}] {tid} phase 图无法解析（隔离中），regen {_regen_count} 次 ≥ 2 → abnormal")
                 store.move_task(tid, "in_progress", "abnormal")
                 store.update_index()
                 return True
@@ -1547,6 +1371,7 @@ def _read_regen_count(ws: Path, tid: str) -> int:
         if not _wf.exists():
             return 0
         import json as _json
+
         _data = _json.loads(_wf.read_text())
         if not isinstance(_data, list):
             return 0
@@ -1581,9 +1406,7 @@ def _record_regen(ws: Path, tid: str) -> None:
                     sum(
                         1
                         for w in _existing
-                        if isinstance(w, dict)
-                        and w.get("type") == "phase_graph_regen"
-                        and w.get("task_id") == tid
+                        if isinstance(w, dict) and w.get("type") == "phase_graph_regen" and w.get("task_id") == tid
                     )
                     + 1
                 )
@@ -1596,9 +1419,7 @@ def _record_regen(ws: Path, tid: str) -> None:
                     }
                 )
                 payload = json.dumps(_existing, ensure_ascii=False, indent=2)
-                fd, tmp_name = tempfile.mkstemp(
-                    dir=str(_wf.parent), prefix=".warnings-", suffix=".tmp"
-                )
+                fd, tmp_name = tempfile.mkstemp(dir=str(_wf.parent), prefix=".warnings-", suffix=".tmp")
                 try:
                     with os.fdopen(fd, "w", encoding="utf-8") as tf:
                         tf.write(payload)
@@ -1620,6 +1441,7 @@ def _record_regen(ws: Path, tid: str) -> None:
 # ═══════════════════════════════════════════════════════════════
 # v0.35: degraded mode — 引擎自我保护
 # ═══════════════════════════════════════════════════════════════
+
 
 def _recent_events(ws: Path, event_type: str, window_sec: int) -> list[dict]:
     """从 events.jsonl 读最近指定类型事件（滑动窗口）。
@@ -1696,8 +1518,7 @@ def _check_degraded(ws: Path) -> None:
         _degraded_mode = True
         _degraded_since = time.time()
         engine_log(
-            f"[degraded] 30min 异常过高 (q={q_count}, f={f_count}, ok={_any_success}), "
-            f"进入 degraded 模式 — 暂停 intake"
+            f"[degraded] 30min 异常过高 (q={q_count}, f={f_count}, ok={_any_success}), 进入 degraded 模式 — 暂停 intake"
         )
         _ccc_notify("CCC", "engine 进入 degraded 模式（异常率过高，暂停 intake）")
 
@@ -1706,9 +1527,7 @@ def _check_degraded(ws: Path) -> None:
         if elapsed > _DEGRADED_RECOVERY_SECONDS:
             _degraded_mode = False
             _degraded_since = None
-            engine_log(
-                f"[degraded] 异常率已恢复 (q={q_count}, f={f_count}), 退出 degraded 模式"
-            )
+            engine_log(f"[degraded] 异常率已恢复 (q={q_count}, f={f_count}), 退出 degraded 模式")
             _ccc_notify("CCC", "engine 退出 degraded 模式（指标恢复正常）")
 
 
@@ -1748,23 +1567,15 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
         tid = task["id"]
         complexity = task.get("complexity", "medium")
         cur_phase = _current_running_phase(tid)
-        engine_log(
-            f"[recover] [{label}] Recovered task {tid} at phase {cur_phase} "
-            f"（in_progress → dev 检查）"
-        )
+        engine_log(f"[recover] [{label}] Recovered task {tid} at phase {cur_phase} （in_progress → dev 检查）")
         try:
             result = dev_role_check_complete(tid)
             status = result.get("status", "unknown")
             if status == "running":
-                if _register_active(
-                    active_tasks, ws, tid, complexity=complexity
-                ):
+                if _register_active(active_tasks, ws, tid, complexity=complexity):
                     engine_log(f"[recover] [{label}] {tid} PID 仍存活，继续监控")
                 else:
-                    engine_log(
-                        f"[recover] [{label}] {tid} PID 存活但槽已满，"
-                        f"排入 pending_relaunch"
-                    )
+                    engine_log(f"[recover] [{label}] {tid} PID 存活但槽已满，排入 pending_relaunch")
                     _enqueue_pending_relaunch(
                         ws,
                         tid,
@@ -1772,40 +1583,26 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
                         reason="recover_running_wait_slot",
                     )
             elif status == "success":
-                _handle_task_result(
-                    ws, tid, result, complexity=complexity
-                )
+                _handle_task_result(ws, tid, result, complexity=complexity)
                 _release_dev_slot(None, ws, tid)
             elif status in ("failed", "quarantined", "not_found"):
                 # P1: 有 .done 优先收口，禁止无脑 pending_relaunch 占槽
                 done_marker = ws / ".ccc" / "pids" / f"{tid}.done"
                 if done_marker.is_file() or status in ("quarantined", "not_found"):
-                    _handle_task_result(
-                        ws, tid, result, complexity=complexity
-                    )
+                    _handle_task_result(ws, tid, result, complexity=complexity)
                     _release_dev_slot(None, ws, tid)
                 elif status == "failed":
                     failure_summary = _check_phase_failures(tid)
-                    if failure_summary.get("unresolvable") or failure_summary.get(
-                        "all_failed_or_skipped"
-                    ):
-                        _handle_task_result(
-                            ws, tid, result, complexity=complexity
-                        )
+                    if failure_summary.get("unresolvable") or failure_summary.get("all_failed_or_skipped"):
+                        _handle_task_result(ws, tid, result, complexity=complexity)
                         _release_dev_slot(None, ws, tid)
                     else:
-                        _enqueue_pending_relaunch(
-                            ws, tid, complexity=complexity, reason="recover"
-                        )
+                        _enqueue_pending_relaunch(ws, tid, complexity=complexity, reason="recover")
             elif status == "phase_done":
-                _enqueue_pending_relaunch(
-                    ws, tid, complexity=complexity, reason="phase_done"
-                )
+                _enqueue_pending_relaunch(ws, tid, complexity=complexity, reason="phase_done")
             else:
                 # unknown — 走原结果处理（无强制 relaunch）
-                _handle_task_result(
-                    ws, tid, result, complexity=complexity
-                )
+                _handle_task_result(ws, tid, result, complexity=complexity)
                 _release_dev_slot(None, ws, tid)
         except Exception as exc:
             engine_log(f"[recover] [{label}] {tid} in_progress 恢复异常: {exc}")
@@ -1814,10 +1611,7 @@ def _recover_tasks(ws: Path, active_tasks: dict[str, dict]) -> None:
             time.sleep(5)
 
     if testing:
-        engine_log(
-            f"[recover] [{label}] 恢复 {len(testing)} 个 testing task "
-            f"（限预算门禁，不堵后续 launch）"
-        )
+        engine_log(f"[recover] [{label}] 恢复 {len(testing)} 个 testing task （限预算门禁，不堵后续 launch）")
         try:
             _run_testing_tasks_gate(ws)
         except Exception as exc:
@@ -1846,14 +1640,10 @@ def _try_fill_pending_relaunch(active_tasks: dict[str, dict]) -> bool:
             if reason == "recover_running_wait_slot":
                 result = dev_role_check_complete(tid)
                 if result.get("status") == "running":
-                    if _register_active(
-                        active_tasks, ws, tid, complexity=complexity
-                    ):
+                    if _register_active(active_tasks, ws, tid, complexity=complexity):
                         _pending_relaunch.pop(key, None)
                         did = True
-                        engine_log(
-                            f"[slot] [{label}] {tid} 补槽登记（仍在跑）"
-                        )
+                        engine_log(f"[slot] [{label}] {tid} 补槽登记（仍在跑）")
                     continue
                 # 已不在跑 → 走 relaunch
             if not _relaunch_allowed(ws, tid, phase):
@@ -1866,16 +1656,12 @@ def _try_fill_pending_relaunch(active_tasks: dict[str, dict]) -> bool:
                 "running",
             )
             if not ok:
-                engine_log(
-                    f"[slot] [{label}] pending_relaunch {tid} 失败: {relaunch}"
-                )
+                engine_log(f"[slot] [{label}] pending_relaunch {tid} 失败: {relaunch}")
                 continue
             if _register_active(active_tasks, ws, tid, complexity=complexity):
                 _pending_relaunch.pop(key, None)
                 did = True
-                engine_log(
-                    f"[slot] [{label}] pending_relaunch {tid} 已启动 ({reason})"
-                )
+                engine_log(f"[slot] [{label}] pending_relaunch {tid} 已启动 ({reason})")
         except Exception as exc:
             engine_log(f"[slot] [{label}] pending_relaunch {tid} 异常: {exc}")
     return did
@@ -1911,9 +1697,7 @@ def _process_backlog(ws: Path) -> bool:
     - 无 parent 的遗留单卡 → 可走 product 补 phases（兼容）
     """
     global _degraded_mode, _intake_bypass_degraded, _intake_bypass_ticks_left
-    if _degraded_mode and not (
-        _intake_bypass_degraded or _intake_bypass_ticks_left > 0
-    ):
+    if _degraded_mode and not (_intake_bypass_degraded or _intake_bypass_ticks_left > 0):
         return False
 
     _activate_workspace(ws)
@@ -1951,9 +1735,7 @@ def _process_backlog(ws: Path) -> bool:
                 if key in _product_inflight:
                     _finalize_or_gc_product_key(ws, tid, key)
                 if store.move_task(tid, "backlog", "planned"):
-                    engine_log(
-                        f"[product] [{label}] work {tid} → planned（兼容单卡）"
-                    )
+                    engine_log(f"[product] [{label}] work {tid} → planned（兼容单卡）")
                     _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
                     did_something = True
                 continue
@@ -1962,8 +1744,7 @@ def _process_backlog(ws: Path) -> bool:
                 if key in _product_inflight:
                     _finalize_or_gc_product_key(ws, tid, key)
                 engine_log(
-                    f"[product] [{label}] work {tid} parent={parent_id} "
-                    f"缺 phases → abnormal（禁止 product 重拆）"
+                    f"[product] [{label}] work {tid} parent={parent_id} 缺 phases → abnormal（禁止 product 重拆）"
                 )
                 store.quarantine(
                     tid,
@@ -2001,9 +1782,7 @@ def _process_backlog(ws: Path) -> bool:
 
         # 2. 上游健康检测（避免 upstream 宕机 + fail_counter 永久锁死）
         if not _is_upstream_healthy():
-            engine_log(
-                f"[product] [{label}] {tid} 跳过 — upstream 不可用，下次 tick 重试（不计数）"
-            )
+            engine_log(f"[product] [{label}] {tid} 跳过 — upstream 不可用，下次 tick 重试（不计数）")
             continue
 
         # 3. 失败计数器（step decay；禁止 15min 清零 — 否则 smoke 死循环）
@@ -2031,28 +1810,19 @@ def _process_backlog(ws: Path) -> bool:
                     tid,
                     {
                         "split_status": "failed",
-                        "note": (_task_data.get("note") or "")
-                        + f"\n[product] {reason}",
+                        "note": (_task_data.get("note") or "") + f"\n[product] {reason}",
                     },
                 )
                 # 冻结算失败次数，防止衰减后重新 launch
-                write_product_fail_count(
-                    fail_counter_path, max(fail_count, _MAX_PRODUCT_RETRIES)
-                )
-                engine_log(
-                    f"[product] [{label}] epic {tid} → failed（{reason}），仍留待办"
-                )
+                write_product_fail_count(fail_counter_path, max(fail_count, _MAX_PRODUCT_RETRIES))
+                engine_log(f"[product] [{label}] epic {tid} → failed（{reason}），仍留待办")
             else:
-                _quarantine_with_notify(
-                    ws, tid, reason, store, phase=0, role="product", from_col="backlog"
-                )
+                _quarantine_with_notify(ws, tid, reason, store, phase=0, role="product", from_col="backlog")
                 clear_product_fail_count(fail_counter_path)
             _ccc_notify("CCC", f"product 拆分 {tid}: {reason[:120]}")
 
         if fail_count >= _MAX_PRODUCT_RETRIES:
-            engine_log(
-                f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}"
-            )
+            engine_log(f"[product] [{label}] {tid} 已失败 {fail_count} 次 >= {_MAX_PRODUCT_RETRIES}")
             _mark_product_exhausted(f"product_role 连续失败 {fail_count} 次")
             did_something = True
             continue
@@ -2067,9 +1837,7 @@ def _process_backlog(ws: Path) -> bool:
                 _log_stats(ws, "product_done", tid, fail_count=fail_count)
                 kids = result.get("child_ids") or []
                 if kids:
-                    engine_log(
-                        f"[product] [{label}] {tid} ✓ fanout {len(kids)} work → planned"
-                    )
+                    engine_log(f"[product] [{label}] {tid} ✓ fanout {len(kids)} work → planned")
                 else:
                     engine_log(f"[product] [{label}] {tid} ✓ 异步 product 完成")
                 did_something = True
@@ -2103,9 +1871,7 @@ def _process_backlog(ws: Path) -> bool:
                         related_stats_event="product_fail",
                     )
                 except Exception:
-                    engine_log(
-                        f"[failures] product_fail ledger: {_traceback.format_exc()[:300]}"
-                    )
+                    engine_log(f"[failures] product_fail ledger: {_traceback.format_exc()[:300]}")
                 engine_log(
                     f"[product] [{label}] product_role({tid}) 异步失败 #{fail_count}: {result.get('error', '?')}"
                 )
@@ -2125,21 +1891,16 @@ def _process_backlog(ws: Path) -> bool:
         if kind == "epic":
             plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
             phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
-            if plan_file.is_file() and phases_file.is_file() and not (
-                _task_data.get("child_ids") or []
-            ):
+            if plan_file.is_file() and phases_file.is_file() and not (_task_data.get("child_ids") or []):
                 try:
                     from _product_fanout import fanout_from_seeded_epic
 
-                    seed_r = fanout_from_seeded_epic(
-                        store, _task_data, max_phases=cfg.max_phases
-                    )
+                    seed_r = fanout_from_seeded_epic(store, _task_data, max_phases=cfg.max_phases)
                 except Exception as exc:
                     seed_r = {"ok": False, "error": str(exc)}
                 if seed_r.get("ok"):
                     engine_log(
-                        f"[product] [{label}] epic {tid} seeded fanout → "
-                        f"{seed_r.get('child_ids')}（跳过 Claude）"
+                        f"[product] [{label}] epic {tid} seeded fanout → {seed_r.get('child_ids')}（跳过 Claude）"
                     )
                     clear_product_fail_count(fail_counter_path)
                     _log_stats(ws, "product_done", tid, fail_count=0, seeded=True)
@@ -2160,10 +1921,7 @@ def _process_backlog(ws: Path) -> bool:
             )
             continue
 
-        engine_log(
-            f"[product] [{label}] backlog 异步拆分: {tid} "
-            f"kind={kind} (此前失败 {fail_count} 次)"
-        )
+        engine_log(f"[product] [{label}] backlog 异步拆分: {tid} kind={kind} (此前失败 {fail_count} 次)")
         _log_stats(ws, "product_start", tid, fail_count=fail_count)
         launch_r = ccc_board.launch_product_async(tid)
         if launch_r.get("ok"):
@@ -2201,9 +1959,7 @@ def _process_backlog(ws: Path) -> bool:
             )
         except Exception:
             engine_log(f"[failures] product_fail ledger: {_traceback.format_exc()[:300]}")
-        engine_log(
-            f"[product] [{label}] product_role({tid}) 启动失败 #{fail_count}: {launch_r.get('error', '')}"
-        )
+        engine_log(f"[product] [{label}] product_role({tid}) 启动失败 #{fail_count}: {launch_r.get('error', '')}")
         if fail_count >= _MAX_PRODUCT_RETRIES:
             _mark_product_exhausted(f"product_role 连续失败 {fail_count} 次")
         did_something = True
@@ -2261,9 +2017,7 @@ def _group_parallel_phases(phases: list[dict], executable: set[int]) -> list[lis
             # 若本 phase 与组内所有 phase 不互依赖（last_group_ids ∩ phase_deps == ∅）
             # 且组内其他 phase 也不依赖本 phase（避免环）
             conflicts = last_group_ids & phase_deps
-            reverse_deps_conflict = any(
-                pid in set(by_id.get(g, {}).get("depends_on") or []) for g in last_group
-            )
+            reverse_deps_conflict = any(pid in set(by_id.get(g, {}).get("depends_on") or []) for g in last_group)
             if not conflicts and not reverse_deps_conflict:
                 last_group.append(pid)
                 placed = True
@@ -2334,9 +2088,7 @@ def _phase_to_pgroup(p: int) -> str:
     return f"p{p}"
 
 
-def _build_phase_prompt(
-    task_id: str, phase_num: int, plan_content: str, *, workspace: Path
-) -> str:
+def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str, *, workspace: Path) -> str:
     """构造单 phase 的 prompt（委托 board.prompt，显式传 workspace）。"""
     from board.prompt import build_dev_phase_prompt
 
@@ -2429,10 +2181,7 @@ def _launch_parallel_phase(
         # 这里 TASK_ID 用 subid，故 marker 也隔离。
         tkey = _task_key(ws, task_id)
         if not _try_acquire_opencode_slot(tkey):
-            engine_log(
-                f"[engine] 全局 opencode 已达上限 "
-                f"({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待"
-            )
+            engine_log(f"[engine] 全局 opencode 已达上限 ({_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX})，等待")
             return None
         try:
             try:
@@ -2554,15 +2303,10 @@ def _launch_parallel_group(
                 try:
                     res = fut.result(timeout=15)
                 except Exception as exc:
-                    engine_log(
-                        f"[{label}] {task_id}-p{pn} parallel submit exception: {exc}"
-                    )
+                    engine_log(f"[{label}] {task_id}-p{pn} parallel submit exception: {exc}")
                     res = None
                 if res is None:
-                    engine_log(
-                        f"[parallel][warn] {task_id}-p{pn} 启动失败，"
-                        f"此 phase 将被跳过（其他 phase 继续）"
-                    )
+                    engine_log(f"[parallel][warn] {task_id}-p{pn} 启动失败，此 phase 将被跳过（其他 phase 继续）")
                     continue
                 phase_meta[pn] = res
         success = len(phase_meta) > 0
@@ -2573,10 +2317,7 @@ def _launch_parallel_group(
             )
         return success, phase_meta
     except Exception as exc:
-        engine_log(
-            f"[parallel][warn] {task_id} ThreadPoolExecutor 异常: {exc}，"
-            f"fallback 串行模式"
-        )
+        engine_log(f"[parallel][warn] {task_id} ThreadPoolExecutor 异常: {exc}，fallback 串行模式")
         _set_parallel_disabled(True)
         return False, {}
 
@@ -2618,13 +2359,8 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     f"[{label}] {tid} phase 依赖解析: executable={sorted(executable)} "
                     f"blocked={sorted(blocked)} skipped={sorted(skipped)}"
                 )
-            if phases and all(
-                p.get("status") in ("skipped", "failed") or (p.get("phase") in skipped)
-                for p in phases
-            ):
-                engine_log(
-                    f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动"
-                )
+            if phases and all(p.get("status") in ("skipped", "failed") or (p.get("phase") in skipped) for p in phases):
+                engine_log(f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动")
                 continue
 
         complexity = task.get("complexity", "medium")
@@ -2636,9 +2372,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             released_ids = {t["id"] for t in store.list_tasks("released")}
             blocked = [d for d in deps if d not in released_ids]
             if blocked:
-                engine_log(
-                    f"[{label}] {tid} 等待 task 依赖: {blocked}（未 released）"
-                )
+                engine_log(f"[{label}] {tid} 等待 task 依赖: {blocked}（未 released）")
                 continue
         if not _can_accept_dev(active_tasks):
             return False
@@ -2650,33 +2384,19 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         # 不满足则直接走单 phase dev_role_launch（原有路径）
         force_serial = False
         if phases and executable and len(executable) >= 2:
-            force_serial = _force_serial_multi_root(
-                phases, executable, ws=ws, tid=tid
-            )
+            force_serial = _force_serial_multi_root(phases, executable, ws=ws, tid=tid)
             if force_serial:
-                engine_log(
-                    f"[{label}] {tid} multi-root scope/acceptance → 强制串行 "
-                    f"(skip phase parallel)"
-                )
-        if (
-            phases
-            and executable
-            and len(executable) >= 2
-            and not PHASE_PARALLEL_DISABLED
-            and not force_serial
-        ):
+                engine_log(f"[{label}] {tid} multi-root scope/acceptance → 强制串行 (skip phase parallel)")
+        if phases and executable and len(executable) >= 2 and not PHASE_PARALLEL_DISABLED and not force_serial:
             groups = _group_parallel_phases(phases, executable)
             if groups and len(groups[0]) >= 2:
                 plan_content = plan_file.read_text(encoding="utf-8")
                 timeout_s = _lookup_phase_timeout(tid, phases)
-                ok = _try_launch_planned_parallel(
-                    ws, tid, groups, plan_content, timeout_s
-                )
+                ok = _try_launch_planned_parallel(ws, tid, groups, plan_content, timeout_s)
                 if ok:
                     if not store.move_task(tid, "planned", "in_progress"):
                         engine_log(
-                            f"[engine] [{_ws_label(ws)}] move {tid} planned→in_progress 失败，"
-                            "不注册 active_task"
+                            f"[engine] [{_ws_label(ws)}] move {tid} planned→in_progress 失败，不注册 active_task"
                         )
                         continue  # 作用于外层 for task in planned
                     if not _register_active(
@@ -2686,9 +2406,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         complexity=complexity,
                         mode="parallel",
                     ):
-                        engine_log(
-                            f"[{label}] {tid} 并行已启动但槽满，无法登记（异常）"
-                        )
+                        engine_log(f"[{label}] {tid} 并行已启动但槽满，无法登记（异常）")
                         continue
                     store.update_index()
                     return True
@@ -2699,21 +2417,18 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         _abnormal_tasks = store.list_tasks("abnormal")
         # 取 task id 前缀（前 3 段）做同类匹配：audit-review-20260716 → 匹配 audit-review-*
         _prefix = "-".join(tid.split("-")[:3])
-        _similar_failures = sum(1 for t in _abnormal_tasks if isinstance(t.get("id"), str) and t["id"].startswith(_prefix))
+        _similar_failures = sum(
+            1 for t in _abnormal_tasks if isinstance(t.get("id"), str) and t["id"].startswith(_prefix)
+        )
         if _similar_failures >= 5:
-            engine_log(
-                f"[{label}] {tid} 同类任务已有 {_similar_failures} 个在 abnormal，"
-                f"系统性失败 → 直接熔断，不重试"
-            )
+            engine_log(f"[{label}] {tid} 同类任务已有 {_similar_failures} 个在 abnormal，系统性失败 → 直接熔断，不重试")
             store.move_task(tid, "planned", "abnormal")
             store.update_index()
             continue
 
         # v0.34 (Phase2): 异常流量检测 — 单 task 单角色 1h 内 > 20 次 → 跳闸隔离
         if _check_abnormal_traffic(tid, "executor"):
-            engine_log(
-                f"[{label}] {tid} executor 调用过于频繁（1h>20），疑似死循环 → abnormal"
-            )
+            engine_log(f"[{label}] {tid} executor 调用过于频繁（1h>20），疑似死循环 → abnormal")
             _record_failure_pattern("abnormal-traffic-executor")
             store.move_task(tid, "planned", "abnormal")
             store.update_index()
@@ -2738,10 +2453,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             )
             if task_meta and should_use_script_seed(ws, task_meta):
                 short_path = "script_seed"
-                engine_log(
-                    f"[{label}] {tid} script_seed short path "
-                    f"(intent probe, no opencode; bypass same-ws mutex)"
-                )
+                engine_log(f"[{label}] {tid} script_seed short path (intent probe, no opencode; bypass same-ws mutex)")
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 seed_r = run_script_seed(ws, tid)
@@ -2752,11 +2464,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         store,
                         label=label,
                         path="script_seed",
-                        why=str(
-                            seed_r.get("error")
-                            or seed_r.get("why")
-                            or seed_r
-                        )[:300],
+                        why=str(seed_r.get("error") or seed_r.get("why") or seed_r)[:300],
                     )
                 _clear_short_path_fail(ws, tid)
                 _log_stats(
@@ -2776,8 +2484,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             if task_meta and should_use_feature_seed(ws, task_meta):
                 short_path = "feature_seed"
                 engine_log(
-                    f"[{label}] {tid} feature_seed short path "
-                    f"(feature probe, no opencode; bypass same-ws mutex)"
+                    f"[{label}] {tid} feature_seed short path (feature probe, no opencode; bypass same-ws mutex)"
                 )
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
@@ -2789,11 +2496,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                         store,
                         label=label,
                         path="feature_seed",
-                        why=str(
-                            feat_r.get("error")
-                            or feat_r.get("why")
-                            or feat_r
-                        )[:300],
+                        why=str(feat_r.get("error") or feat_r.get("why") or feat_r)[:300],
                     )
                 _clear_short_path_fail(ws, tid)
                 _log_stats(
@@ -2811,10 +2514,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 return True
             if task_meta and should_use_board_ops(ws, task_meta):
                 short_path = "board_ops"
-                engine_log(
-                    f"[{label}] {tid} board_ops short path "
-                    f"(no opencode; bypass same-ws mutex)"
-                )
+                engine_log(f"[{label}] {tid} board_ops short path (no opencode; bypass same-ws mutex)")
                 if store.find_task(tid)[0] == "planned":
                     store.move_task(tid, "planned", "in_progress")
                 ops_r = run_board_ops(ws, tid)
@@ -2851,21 +2551,16 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     path=short_path,
                     why=str(_bo_exc)[:300],
                 )
-            engine_log(
-                f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}"
-            )
+            engine_log(f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}")
 
         # 同仓互斥：仅挡 OpenCode 路径（P1：死 pid+.done 不挡）
         if _workspace_blocks_new_opencode(ws, active_tasks):
-            engine_log(
-                f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}"
-            )
+            engine_log(f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}")
             continue
 
         if not _try_acquire_opencode_slot(tkey):
             engine_log(
-                f"[engine] opencode 槽忙（全局 "
-                f"{_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX} 或同仓互斥），等待"
+                f"[engine] opencode 槽忙（全局 {_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX} 或同仓互斥），等待"
             )
             continue
         launch_r = dev_role_launch(tid)
@@ -2873,9 +2568,7 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             _release_opencode_slot(tkey, 1)
             engine_log(f"[{label}] 启动 {tid} 失败: {launch_r['error']}")
             continue
-        if not _register_active(
-            active_tasks, ws, tid, complexity=complexity
-        ):
+        if not _register_active(active_tasks, ws, tid, complexity=complexity):
             _release_opencode_slot(tkey, 1)
             engine_log(f"[{label}] {tid} launch 成功但槽满，拒绝登记")
             continue
@@ -2954,9 +2647,7 @@ def _try_launch_planned_parallel(
         f"[parallel] [{label}] {task_id} 并行调度: {len(groups)} 个 group "
         f"(size={[len(g) for g in groups]}, max_workers={min(PHASE_PARALLEL_MAX_WORKERS, len(first_group))})"
     )
-    success, phase_meta = _launch_parallel_group(
-        ws, task_id, first_group, plan_content, timeout_s, label
-    )
+    success, phase_meta = _launch_parallel_group(ws, task_id, first_group, plan_content, timeout_s, label)
     if not success:
         engine_log(f"[parallel][error] [{label}] {task_id} 全部 phase 启动失败")
         return False
@@ -2967,9 +2658,7 @@ def _try_launch_planned_parallel(
         "any_group_fail": False,
         "ws_path": str(ws),
     }
-    engine_log(
-        f"[parallel] [{label}] {task_id} 当前 group={first_group} 启动 {len(phase_meta)} phase OK"
-    )
+    engine_log(f"[parallel] [{label}] {task_id} 当前 group={first_group} 启动 {len(phase_meta)} phase OK")
     return True
 
 
@@ -3095,9 +2784,7 @@ def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
             if ok:
                 state["current_group"] = next_group
                 state["phase_meta"] = meta
-                engine_log(
-                    f"[parallel][next-group] {task_id} 下一 group {next_group} 启动"
-                )
+                engine_log(f"[parallel][next-group] {task_id} 下一 group {next_group} 启动")
                 return "still_running"
             engine_log(f"[parallel][warn] {task_id} 下一 group 启动失败，标 group fail")
             state["any_group_fail"] = True
@@ -3112,9 +2799,7 @@ def _check_parallel_task_complete(ws: Path, task_id: str) -> str:
     except OSError as exc:
         engine_log(f"[parallel][marker-write] {task_id} 写完成 marker 失败: {exc}")
     label = _ws_label(ws)
-    engine_log(
-        f"[parallel][task-done] [{label}] {task_id} 全部 group 完成 (any_fail={any_fail})"
-    )
+    engine_log(f"[parallel][task-done] [{label}] {task_id} 全部 group 完成 (any_fail={any_fail})")
     return "task_complete_fail" if any_fail else "task_complete_ok"
 
 
@@ -3151,6 +2836,7 @@ def engine_loop(workspaces: list[Path]) -> None:
     try:
         from _ccc_control import get_mode, may_start_engine
     except ImportError:
+
         def may_start_engine() -> bool:
             return not (Path.home() / ".ccc" / "DISABLED").is_file()
 
@@ -3158,10 +2844,7 @@ def engine_loop(workspaces: list[Path]) -> None:
             return "enabled" if may_start_engine() else "disabled"
 
     if not may_start_engine():
-        engine_log(
-            f"CCC control={get_mode()} — idle hold "
-            f"(full: python3 scripts/_ccc_control.py enable)"
-        )
+        engine_log(f"CCC control={get_mode()} — idle hold (full: python3 scripts/_ccc_control.py enable)")
         while not _engine_shutdown and not may_start_engine():
             time.sleep(60)
         if _engine_shutdown:
@@ -3180,14 +2863,9 @@ def engine_loop(workspaces: list[Path]) -> None:
     labels = [_ws_label(w, program_dir) for w in workspaces]
     engine_log(f"CCC Engine 启动 ({len(workspaces)} workspace)")
     engine_log(f"  workspaces={labels}")
-    engine_log(
-        f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s"
-    )
+    engine_log(f"  poll_interval={cfg.engine_poll_interval}s, idle_sleep={cfg.engine_idle_sleep}s")
     engine_log(f"  max_retry={MAX_RETRY}, max_concurrent={MAX_CONCURRENT}")
-    engine_log(
-        f"  max_product_inflight={MAX_PRODUCT_INFLIGHT}, "
-        f"max_product_per_ws={MAX_PRODUCT_PER_WS}"
-    )
+    engine_log(f"  max_product_inflight={MAX_PRODUCT_INFLIGHT}, max_product_per_ws={MAX_PRODUCT_PER_WS}")
 
     _write_engine_restart("started")
 
@@ -3208,10 +2886,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                 reason="trim_overflow",
             )
         _save_active_tasks(active_tasks)
-        engine_log(
-            f"[slot] 启动裁剪 active_tasks → {MAX_CONCURRENT}，"
-            f"溢出 {len(overflow)} 入 pending_relaunch"
-        )
+        engine_log(f"[slot] 启动裁剪 active_tasks → {MAX_CONCURRENT}，溢出 {len(overflow)} 入 pending_relaunch")
     _load_hang_retry_counter()
 
     # v0.36: 启动时先采样内存（在 recover 之前，避免 recover 间隔拖慢 heartbeat）
@@ -3237,8 +2912,7 @@ def engine_loop(workspaces: list[Path]) -> None:
         # 运行中也能响应 disable/ui：否则 control 切换后仍继续拉任务吃内存
         if not may_start_engine():
             engine_log(
-                f"CCC control={get_mode()} — mid-loop idle hold "
-                f"(resume: python3 scripts/_ccc_control.py enable)"
+                f"CCC control={get_mode()} — mid-loop idle hold (resume: python3 scripts/_ccc_control.py enable)"
             )
             while not _engine_shutdown and not may_start_engine():
                 time.sleep(15)
@@ -3400,9 +3074,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     try:
                         _retry_abnormal_failures(ws)
                     except Exception as exc:
-                        engine_log(
-                            f"[abnormal-refeed] {_ws_label(ws)}: {exc}"
-                        )
+                        engine_log(f"[abnormal-refeed] {_ws_label(ws)}: {exc}")
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
                         try:
@@ -3435,24 +3107,20 @@ def engine_loop(workspaces: list[Path]) -> None:
                                     fail_rate = failed / total
                                     if fail_rate > 0.4 and MAX_RETRY < 5:
                                         engine_log(
-                                            f"[auto-tune] fail_rate={fail_rate:.0%}, "
-                                            f"MAX_RETRY={MAX_RETRY} (adjusting)"
+                                            f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (adjusting)"
                                         )
                                         MAX_RETRY = min(MAX_RETRY + 1, 5)
                                         ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
                                     elif fail_rate < 0.1 and MAX_RETRY > 2:
                                         engine_log(
-                                            f"[auto-tune] fail_rate={fail_rate:.0%}, "
-                                            f"MAX_RETRY={MAX_RETRY} (reducing)"
+                                            f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (reducing)"
                                         )
                                         MAX_RETRY = max(MAX_RETRY - 1, 2)
                                         ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
                         except Exception as exc:
                             engine_log(f"[auto-tune] error: {exc}")
                     except Exception as exc:
-                        engine_log(
-                            f"[stats] periodic aggregate error for {ws.name}: {exc}"
-                        )
+                        engine_log(f"[stats] periodic aggregate error for {ws.name}: {exc}")
             ws_first_running: dict[str, str | None] = {}
             ws_active_counts: dict[str, int] = {}
             for info in active_tasks.values():
@@ -3548,10 +3216,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     pass
             if not any_active and not any_consumable and not _may_invent():
                 if iteration % 12 == 1:
-                    engine_log(
-                        f"CCC control={get_mode()} — queue empty, deep sleep 60s "
-                        f"(wake: ~/.ccc/engine.wake)"
-                    )
+                    engine_log(f"CCC control={get_mode()} — queue empty, deep sleep 60s (wake: ~/.ccc/engine.wake)")
                 # v0.41: 可被下任务 wake 文件打断
                 wake_payload = _sleep_until_wake(60)
                 if wake_payload is not None:
@@ -3560,9 +3225,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     # （曾导致 clawmed-ccc epic 在 backlog，Engine 只盯 ccc-demo 报 queue empty）
                     workspaces[:] = _rediscover_workspaces(workspaces)
                     try:
-                        _apply_dispatch_wake(
-                            workspaces, already_consumed=wake_payload
-                        )
+                        _apply_dispatch_wake(workspaces, already_consumed=wake_payload)
                         workspaces[:] = _prioritize_wake_workspace(workspaces)
                     except Exception as exc:
                         engine_log(f"[wake] post-deep-sleep apply failed: {exc}")
@@ -3611,9 +3274,7 @@ def _rediscover_workspaces(current: list[Path]) -> list[Path]:
     if old != new:
         program_dir = Path.home() / "program"
         labels = [_ws_label(w, program_dir) for w in discovered]
-        engine_log(
-            f"[workspace] rediscover {len(current)} → {len(discovered)}: {labels}"
-        )
+        engine_log(f"[workspace] rediscover {len(current)} → {len(discovered)}: {labels}")
         return discovered
     return current
 
@@ -3637,10 +3298,7 @@ def _apply_wake_payload(payload: dict | None, workspaces: list[Path]) -> bool:
     )
     if not is_dispatch:
         return False
-    engine_log(
-        f"[wake] apply reason={reason!r} task={payload.get('task_id')} "
-        f"ws={payload.get('workspace')}"
-    )
+    engine_log(f"[wake] apply reason={reason!r} task={payload.get('task_id')} ws={payload.get('workspace')}")
     _intake_bypass_degraded = True
     _intake_bypass_ticks_left = _INTAKE_BYPASS_TICKS
     if _degraded_mode:
@@ -3658,9 +3316,7 @@ def _apply_wake_payload(payload: dict | None, workspaces: list[Path]) -> bool:
     return True
 
 
-def _apply_dispatch_wake(
-    workspaces: list[Path], *, already_consumed: dict | None = None
-) -> bool:
+def _apply_dispatch_wake(workspaces: list[Path], *, already_consumed: dict | None = None) -> bool:
     """Consume ~/.ccc/engine.wake (unless already_consumed) and apply dispatch priority."""
     if already_consumed is not None:
         return _apply_wake_payload(already_consumed, workspaces)
@@ -3710,10 +3366,7 @@ def _sleep_until_wake(seconds: float) -> dict | None:
         while time.time() < end:
             payload = consume_wake()
             if payload is not None:
-                engine_log(
-                    f"[wake] reason={payload.get('reason')} "
-                    f"task={payload.get('task_id')}"
-                )
+                engine_log(f"[wake] reason={payload.get('reason')} task={payload.get('task_id')}")
                 return payload if isinstance(payload, dict) else {"reason": "wake"}
             time.sleep(min(2.0, max(0.1, end - time.time())))
         # 超时前再看一眼
@@ -3858,9 +3511,7 @@ def _retry_abnormal_failures(ws: Path) -> None:
 
         kind = _classify_failure(reason, tid, task.get("note") or "")
         if kind == "permanent":
-            engine_log(
-                f"[{label}] skip auto-retry {tid}: 不可恢复错误（permanent）"
-            )
+            engine_log(f"[{label}] skip auto-retry {tid}: 不可恢复错误（permanent）")
             continue
 
         # 须有 review_fail 包，或 reason 命中瞬态关键字（兼容旧 quarantine）
@@ -3881,9 +3532,7 @@ def _retry_abnormal_failures(ws: Path) -> None:
             continue
         if not has_pack and write_review_fail_pack is not None:
             try:
-                write_review_fail_pack(
-                    ws, tid, status="abnormal", extra=reason[:1500]
-                )
+                write_review_fail_pack(ws, tid, status="abnormal", extra=reason[:1500])
             except Exception as exc:
                 engine_log(f"[{label}] {tid} seed review_fail: {exc}")
 
@@ -3906,10 +3555,7 @@ def _retry_abnormal_failures(ws: Path) -> None:
         try:
             from _task_reopen import reopen_task
 
-            note = (
-                f"auto-refeed #{auto_retried + 1}/{MAX_AUTO_RETRY}: "
-                f"{reason[:80]}"
-            )
+            note = f"auto-refeed #{auto_retried + 1}/{MAX_AUTO_RETRY}: {reason[:80]}"
             abn = ws / ".ccc/board/abnormal" / f"{tid}.jsonl"
             if abn.is_file():
                 try:
@@ -3990,22 +3636,12 @@ def _check_stale(ws: Path, active_tasks: dict[str, dict] | None = None) -> None:
             hours_stale = (now - updated).total_seconds() / 3600
             if hours_stale > cfg.max_stale_hours:
                 tid = task["id"]
-                reason = (
-                    f"engine: in_progress 滞留 {hours_stale:.1f}h "
-                    f"(阈值 {cfg.max_stale_hours}h)"
-                )
+                reason = f"engine: in_progress 滞留 {hours_stale:.1f}h (阈值 {cfg.max_stale_hours}h)"
                 cur_phase = _current_running_phase(tid)
-                _quarantine_with_notify(
-                    ws, tid, reason, store, phase=cur_phase, active_tasks=active_tasks
-                )
-                engine_log(
-                    f"[{label}] stale: {tid} in_progress 滞留 "
-                    f"{hours_stale:.1f}h → abnormal"
-                )
+                _quarantine_with_notify(ws, tid, reason, store, phase=cur_phase, active_tasks=active_tasks)
+                engine_log(f"[{label}] stale: {tid} in_progress 滞留 {hours_stale:.1f}h → abnormal")
         except (ValueError, TypeError) as e:
-            _log.warning(
-                "stale task timestamp parse failed for %s: %s", task.get("id"), e
-            )
+            _log.warning("stale task timestamp parse failed for %s: %s", task.get("id"), e)
     try:
         store.cleanup_events(max_days=30)
     except Exception as e:
@@ -4131,9 +3767,7 @@ def _graceful_kill_active_tasks() -> int:
 
         paths = list_engine_paths()
     except Exception as exc:  # noqa: BLE001
-        engine_log(
-            f"[shutdown] list_engine_paths 失败，fallback 到 CCC_WORKSPACE_ROOTS: {exc}"
-        )
+        engine_log(f"[shutdown] list_engine_paths 失败，fallback 到 CCC_WORKSPACE_ROOTS: {exc}")
     if not paths:
         # fallback：env var override 或默认 ~/program
         roots_raw = (os.environ.get("CCC_WORKSPACE_ROOTS") or "").strip()
@@ -4399,16 +4033,20 @@ def _check_process_memory(ws: Path) -> None:
 
         our_pids = set(_get_running_pids(ws))
         for pid, rss_mb, label in offenders:
-            if rss_mb > kill_mb and (pid in our_pids or pid == os.getpid() or "claude" in label or "radon" in label or "bandit" in label or "vulture" in label or "opencode" in label):
+            if rss_mb > kill_mb and (
+                pid in our_pids
+                or pid == os.getpid()
+                or "claude" in label
+                or "radon" in label
+                or "bandit" in label
+                or "vulture" in label
+                or "opencode" in label
+            ):
                 # 不杀 engine 自身
                 if pid == os.getpid():
-                    engine_log(
-                        f"[mem] engine PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB（仅告警，不自杀）"
-                    )
+                    engine_log(f"[mem] engine PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB（仅告警，不自杀）")
                     continue
-                engine_log(
-                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB，强杀进程树 ({label[:60]})"
-                )
+                engine_log(f"[mem] PID={pid} RSS={rss_mb:.0f}MB > {kill_mb}MB，强杀进程树 ({label[:60]})")
                 _kill_process_tree(pid)
                 _ccc_notify("CCC", f"[mem] 强杀 PID={pid}（RSS {rss_mb:.0f}MB）")
 
@@ -4417,9 +4055,7 @@ def _check_process_memory(ws: Path) -> None:
             for pid, rss_mb, label in offenders:
                 if pid == os.getpid():
                     continue
-                engine_log(
-                    f"[mem] 聚合 RSS={total:.0f}MB > {kill_mb}MB，强杀最大进程 PID={pid} ({rss_mb:.0f}MB)"
-                )
+                engine_log(f"[mem] 聚合 RSS={total:.0f}MB > {kill_mb}MB，强杀最大进程 PID={pid} ({rss_mb:.0f}MB)")
                 _kill_process_tree(pid)
                 _ccc_notify(
                     "CCC",
@@ -4431,16 +4067,12 @@ def _check_process_memory(ws: Path) -> None:
             if not _degraded_mode:
                 _degraded_mode = True
                 _degraded_since = time.time()
-                engine_log(
-                    f"[mem] 总RSS={total:.0f}MB > {degraded_mb}MB → degraded mode"
-                )
+                engine_log(f"[mem] 总RSS={total:.0f}MB > {degraded_mb}MB → degraded mode")
                 _ccc_notify("CCC", f"engine degraded：总 RSS {total:.0f}MB")
 
         for pid, rss_mb, label in offenders[:3]:
             if rss_mb > warn_mb:
-                engine_log(
-                    f"[mem] PID={pid} RSS={rss_mb:.0f}MB（warning阈值={warn_mb}MB） label={label[:40]}"
-                )
+                engine_log(f"[mem] PID={pid} RSS={rss_mb:.0f}MB（warning阈值={warn_mb}MB） label={label[:40]}")
 
     except (_sp.TimeoutExpired, FileNotFoundError, OSError) as e:
         _log.warning("[mem] 检查失败: %s", e)
@@ -4462,11 +4094,7 @@ def _write_heartbeat(
         prev = _read_heartbeat(ws)
         if prev and isinstance(prev.get("memory_mb"), dict):
             memory_mb = prev["memory_mb"]
-    used = (
-        global_active_count
-        if global_active_count is not None
-        else active_task_count
-    )
+    used = global_active_count if global_active_count is not None else active_task_count
     if testing_count is None:
         try:
             testing_count = len(_get_store(ws).list_tasks("testing"))
@@ -4494,11 +4122,8 @@ def _write_heartbeat(
         _log.warning("engine heartbeat write failed for %s: %s", ws, e)
 
 
-
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        description="CCC Engine — multi-workspace scheduler"
-    )
+    parser = argparse.ArgumentParser(description="CCC Engine — multi-workspace scheduler")
     parser.add_argument(
         "--port",
         type=int,
@@ -4573,14 +4198,7 @@ def main(argv: list[str] | None = None) -> None:
 
 
 # ── Stats HTTP Endpoint（plan: engine-stats-endpoint） ──
-def _read_engine_version() -> str:
-    try:
-        return (_script_dir.parent / "VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return "unknown"
 
-
-_ENGINE_VERSION = _read_engine_version()
 _stats_started_at: float | None = time.time()
 _stats_lock = threading.Lock()
 _stats_data: dict = {
@@ -4613,9 +4231,7 @@ def _update_stats(
             _stats_data["uptime_sec"] = max(0.001, now_ts - _stats_started_at)
         _stats_data["current_task"] = current_task
         _stats_data["current_phase"] = current_phase
-        _stats_data["phase_status"] = phase_status or (
-            "running" if active_count else "done"
-        )
+        _stats_data["phase_status"] = phase_status or ("running" if active_count else "done")
         _stats_data["in_progress_count"] = active_count
         _stats_data["last_tick_at"] = now
         if workspace_name:
@@ -4635,9 +4251,7 @@ class _StatsHandler(BaseHTTPRequestHandler):
         if self.path == "/api/stats":
             try:
                 with _stats_lock:
-                    payload = json.dumps(_stats_data, ensure_ascii=False).encode(
-                        "utf-8"
-                    )
+                    payload = json.dumps(_stats_data, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))

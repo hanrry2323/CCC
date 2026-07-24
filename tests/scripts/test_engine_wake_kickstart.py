@@ -86,18 +86,13 @@ def test_ensure_engine_kickstarts_when_dead(wake_mod, monkeypatch, tmp_path):
 
 def test_watchdog_exits_zero_not_78():
     """Contract: tick watchdog must os._exit(0) for launchd SuccessfulExit."""
-    src = (Path(__file__).resolve().parents[2] / "scripts" / "ccc-engine.py").read_text(
-        encoding="utf-8"
-    )
+    src = (Path(__file__).resolve().parents[2] / "scripts" / "engine" / "tick.py").read_text(encoding="utf-8")
     assert "os._exit(0)" in src
     assert "os._exit(78)" not in src
-    assert "exit 0 for launchd" in src
 
 
 def test_apply_wake_clears_degraded_and_prioritizes():
-    src = (Path(__file__).resolve().parents[2] / "scripts" / "ccc-engine.py").read_text(
-        encoding="utf-8"
-    )
+    src = (Path(__file__).resolve().parents[2] / "scripts" / "ccc-engine.py").read_text(encoding="utf-8")
     assert "_intake_bypass_degraded" in src
     assert "_prioritize_wake_workspace" in src
     assert "_apply_wake_payload" in src
