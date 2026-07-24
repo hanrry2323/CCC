@@ -30,9 +30,13 @@ def _load_config_module(monkeypatch, **env):
 
 
 def test_default_host_is_lan_bind(monkeypatch):
-    """Hub 默认可局域网访问（0.0.0.0）；Board API 仍本机。"""
+    """Hub 默认仅本机（127.0.0.1）；LAN 暴露需显式 export CCC_CHAT_HOST=0.0.0.0
+    且满足 validate_auth_config（强口令）。
+
+    修复 stability-audit-2026-07-24 类别⑤：默认 LAN 暴露收紧为 opt-in。
+    """
     cfg = _load_config_module(monkeypatch)
-    assert cfg.HOST == "0.0.0.0"
+    assert cfg.HOST == "127.0.0.1"
 
 
 def test_forbidden_password_rejected(monkeypatch):
