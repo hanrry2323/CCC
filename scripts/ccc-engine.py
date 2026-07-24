@@ -194,6 +194,28 @@ from engine.notify import (  # noqa: E402
     ccc_notify as _ccc_notify,
     NOTIFY_SCRIPT as _NOTIFY_SCRIPT,
 )
+from engine.task_registry import (  # noqa: E402
+    task_key as _task_key,
+    can_accept_dev as _can_accept_dev,
+    enqueue_pending_relaunch as _enqueue_pending_relaunch,
+    git_head_for_task as _git_head_for_task,
+    relaunch_backoff_key as _relaunch_backoff_key,
+    relaunch_allowed as _relaunch_allowed,
+    note_relaunch as _note_relaunch,
+    product_inflight_for_ws as _product_inflight_for_ws,
+    can_launch_product as _can_launch_product,
+    rebuild_product_inflight as _rebuild_product_inflight,
+    product_async_markers as _product_async_markers,
+    drop_product_inflight as _drop_product_inflight,
+    finalize_or_gc_product_key as _finalize_or_gc_product_key,
+    gc_product_inflight as _gc_product_inflight,
+    _pending_relaunch as _pending_relaunch,
+    _relaunch_meta as _relaunch_meta,
+    _product_inflight as _product_inflight,
+    MAX_CONCURRENT as MAX_CONCURRENT,
+    MAX_PRODUCT_INFLIGHT as MAX_PRODUCT_INFLIGHT,
+    MAX_PRODUCT_PER_WS as MAX_PRODUCT_PER_WS,
+)
 
 _stores = _engine_workspace._stores
 
@@ -213,13 +235,7 @@ _log.info(
 
 _engine_shutdown = False
 _MAX_PRODUCT_RETRIES = 3
-MAX_CONCURRENT = max(
-    1,
-    int(os.environ.get("CCC_MAX_CONCURRENT", "4") or "4"),
-)  # cross-ws pool; same-ws OpenCode still 1
-# product 异步并行：全局上限 / 每 workspace 上限（env 可降回串行）
-MAX_PRODUCT_INFLIGHT = int(os.environ.get("CCC_MAX_PRODUCT_INFLIGHT", "3") or "3")
-MAX_PRODUCT_PER_WS = int(os.environ.get("CCC_MAX_PRODUCT_PER_WS", "2") or "2")
+
 
 # v0.35: degraded mode — 引擎自我保护
 _degraded_mode = False
@@ -329,15 +345,6 @@ PHASE_PARALLEL_DISABLED = False  # 故障 fallback 时设为 True（仅当次 En
 #   }
 _parallel_phases: dict[str, dict] = {}
 
-# v0.33: product_role 异步 inflight 表（task_key -> {tid, started_at, workspace}）
-_product_inflight: dict[str, dict] = {}
-
-# recover/失败后待补槽 relaunch（不立即超并发 launch）
-# key = task_key -> {workspace, task_id, complexity, reason, enqueued_at}
-_pending_relaunch: dict[str, dict] = {}
-
-# relaunch 退避：key = f"{task_key}:p{phase}" -> {last_ts, count, last_head}
-_relaunch_meta: dict[str, dict] = {}
 
 # backlog+planned 为空时的补充冷却（per-workspace，单位秒）
 _last_empty_replenish: dict[str, float] = {}
@@ -806,256 +813,6 @@ def _may_invent() -> bool:
         return may_invent()
     except ImportError:
         return False
-
-
-def _task_key(ws: Path, tid: str) -> str:
-    return f"{ws.resolve()}|{tid}"
-
-
-def _can_accept_dev(active_tasks: dict[str, dict]) -> bool:
-    """dev 槽未满时可接受新 active_task。"""
-    return len(active_tasks) < MAX_CONCURRENT
-
-
-def _enqueue_pending_relaunch(
-    ws: Path,
-    tid: str,
-    *,
-    complexity: str = "medium",
-    reason: str = "recover",
-) -> None:
-    key = _task_key(ws, tid)
-    _pending_relaunch[key] = {
-        "workspace": ws,
-        "task_id": tid,
-        "complexity": complexity,
-        "reason": reason,
-        "enqueued_at": time.time(),
-    }
-    engine_log(f"[slot] pending_relaunch +{tid} ({reason})")
-
-
-def _git_head_for_task(ws: Path, tid: str) -> str:
-    """最近一条含 task_id 的 commit hash；无则空串。"""
-    try:
-        r = subprocess.run(
-            ["git", "log", "-1", "--format=%H", f"--grep={tid}", "-E"],
-            cwd=str(ws),
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return (r.stdout or "").strip()
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
-
-def _relaunch_backoff_key(ws: Path, tid: str, phase: int | None) -> str:
-    return f"{_task_key(ws, tid)}:p{phase if phase is not None else 0}"
-
-
-def _relaunch_allowed(ws: Path, tid: str, phase: int | None = None) -> bool:
-    """同 phase 无新 task_id commit 时指数退避（60*2^n，封顶 600s）。"""
-    key = _relaunch_backoff_key(ws, tid, phase)
-    meta = _relaunch_meta.get(key) or {}
-    now = time.time()
-    last_ts = float(meta.get("last_ts") or 0)
-    count = int(meta.get("count") or 0)
-    last_head = str(meta.get("last_head") or "")
-    cur_head = _git_head_for_task(ws, tid)
-    if cur_head and cur_head != last_head:
-        return True
-    if last_ts <= 0:
-        return True
-    wait = min(60 * (2 ** max(count - 1, 0)), 600)
-    if now - last_ts < wait:
-        engine_log(
-            f"[slot] relaunch backoff {tid} p={phase}: wait {wait:.0f}s (elapsed {now - last_ts:.0f}s, n={count})"
-        )
-        return False
-    return True
-
-
-def _note_relaunch(ws: Path, tid: str, phase: int | None = None) -> None:
-    key = _relaunch_backoff_key(ws, tid, phase)
-    prev = _relaunch_meta.get(key) or {}
-    _relaunch_meta[key] = {
-        "last_ts": time.time(),
-        "count": int(prev.get("count") or 0) + 1,
-        "last_head": _git_head_for_task(ws, tid),
-    }
-
-
-def _product_inflight_for_ws(ws: Path) -> int:
-    ws_s = str(ws.resolve())
-    n = 0
-    for info in _product_inflight.values():
-        w = info.get("workspace")
-        if w is None:
-            continue
-        if str(Path(w).resolve()) == ws_s:
-            n += 1
-    return n
-
-
-def _can_launch_product(ws: Path) -> bool:
-    if len(_product_inflight) >= MAX_PRODUCT_INFLIGHT:
-        return False
-    if _product_inflight_for_ws(ws) >= MAX_PRODUCT_PER_WS:
-        return False
-    return True
-
-
-def _rebuild_product_inflight(workspaces: list[Path]) -> None:
-    """从各 WS *.product.pid 重建 inflight，避免重启后重复 launch。"""
-    global _product_inflight
-    rebuilt: dict[str, dict] = {}
-    for ws in workspaces:
-        pids_dir = ws / ".ccc" / "pids"
-        if not pids_dir.is_dir():
-            continue
-        for pid_file in pids_dir.glob("*.product.pid"):
-            tid = pid_file.name[: -len(".product.pid")]
-            try:
-                pid = int(pid_file.read_text().strip())
-            except (OSError, ValueError):
-                continue
-            alive = False
-            try:
-                os.kill(pid, 0)
-                alive = True
-            except (OSError, ProcessLookupError):
-                alive = False
-            if not alive:
-                continue
-            key = _task_key(ws, tid)
-            rebuilt[key] = {
-                "tid": tid,
-                "started_at": now_iso(),
-                "workspace": ws,
-                "pid": pid,
-            }
-    _product_inflight = rebuilt
-    if rebuilt:
-        engine_log(
-            f"[product] 重建 inflight={len(rebuilt)} "
-            f"(max_global={MAX_PRODUCT_INFLIGHT}, max_per_ws={MAX_PRODUCT_PER_WS})"
-        )
-
-
-def _product_async_markers(ws: Path, tid: str) -> tuple[bool, bool, bool]:
-    """返回 (pid_alive, has_done_marker, has_usable_out)。
-
-    has_usable_out：``.product.out`` 非空。进程已死但无 ``.done`` 时仍须走
-    ``check_product_async``，否则 GC 会把合法 CHILDREN 丢掉（epic 永久 pending）。
-    """
-    pids_dir = Path(ws) / ".ccc" / "pids"
-    pid_file = pids_dir / f"{tid}.product.pid"
-    done_file = pids_dir / f"{tid}.product.done"
-    out_file = pids_dir / f"{tid}.product.out"
-    alive = False
-    if pid_file.is_file():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)
-            alive = True
-        except (OSError, ValueError, ProcessLookupError):
-            alive = False
-    has_out = False
-    if out_file.is_file():
-        try:
-            has_out = bool(out_file.read_text(encoding="utf-8", errors="replace").strip())
-        except OSError:
-            has_out = False
-    return alive, done_file.is_file(), has_out
-
-
-def _drop_product_inflight(key: str, reason: str) -> None:
-    if key not in _product_inflight:
-        return
-    info = _product_inflight.pop(key, None) or {}
-    tid = info.get("tid") or "?"
-    engine_log(f"[product] inflight GC drop {tid}: {reason}")
-
-
-def _finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
-    """对单个 inflight key：有 .done / 活 pid / 非空 .out 则 check 收尾。
-
-    Returns: kept | dropped | finalized
-    """
-    if key not in _product_inflight:
-        return "dropped"
-    alive, has_done, has_out = _product_async_markers(ws, tid)
-    if has_done or alive or has_out:
-        via = "done" if has_done else ("alive" if alive else "out")
-        try:
-            _activate_workspace(ws)
-            engine_log(f"[product] finalize via {via}: {tid}")
-            result = ccc_board.check_product_async(tid)
-        except Exception as exc:
-            engine_log(f"[product] GC check {tid} 异常: {exc}")
-            result = {"status": "running"}
-        status = result.get("status")
-        if status in ("success", "failed"):
-            _drop_product_inflight(key, f"check→{status}")
-            return "finalized"
-        if alive:
-            return "kept"
-        # done/out 已处理完或 pid 死但 check 仍 running → 防卡死，drop
-        _drop_product_inflight(key, "stale markers without live pid")
-        return "dropped"
-
-    # 无 pid、无 done、无 out：按看板状态决定
-    try:
-        store = _get_store(ws)
-        col, task = store.find_task(tid)
-    except Exception:
-        col, task = None, None
-    if col is None:
-        _drop_product_inflight(key, "task missing from board")
-        return "dropped"
-    if col != "backlog":
-        _drop_product_inflight(key, f"not in backlog (col={col})")
-        return "dropped"
-    kind = (task or {}).get("card_kind") or "epic"
-    split = (task or {}).get("split_status") or "pending"
-    if kind == "epic" and split != "pending":
-        _drop_product_inflight(key, f"epic split_status={split}")
-        return "dropped"
-    # backlog pending 但无进程、无输出 → 孤儿占槽，释放以便 relaunch
-    _drop_product_inflight(key, "no live product pid")
-    return "dropped"
-
-
-def _gc_product_inflight(workspaces: list[Path]) -> int:
-    """每 tick 回收孤儿 product inflight，避免 cap 假占满。"""
-    if not _product_inflight:
-        return 0
-    ws_set = {str(Path(w).resolve()) for w in workspaces}
-    dropped = 0
-    for key in list(_product_inflight.keys()):
-        info = _product_inflight.get(key) or {}
-        ws = info.get("workspace")
-        tid = str(info.get("tid") or "").strip()
-        if ws is None or not tid:
-            _drop_product_inflight(key, "invalid entry")
-            dropped += 1
-            continue
-        ws_p = Path(ws)
-        try:
-            ws_s = str(ws_p.resolve())
-        except OSError:
-            _drop_product_inflight(key, "workspace unreadable")
-            dropped += 1
-            continue
-        if ws_set and ws_s not in ws_set:
-            # 仍尝试 GC（可能是临时路径）；不因不在列表而跳过
-            pass
-        before = key in _product_inflight
-        outcome = _finalize_or_gc_product_key(ws_p, tid, key)
-        if before and outcome != "kept":
-            dropped += 1
-    return dropped
 
 
 def _handle_task_result(

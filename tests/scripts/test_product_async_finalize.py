@@ -67,9 +67,7 @@ def test_product_async_markers_has_out(tmp_path: Path):
     pids = ws / ".ccc" / "pids"
     pids.mkdir(parents=True)
     tid = "flow-smoke-dead"
-    (pids / f"{tid}.product.out").write_text(
-        "---CHILDREN---\n[]\n---END_CHILDREN---\n", encoding="utf-8"
-    )
+    (pids / f"{tid}.product.out").write_text("---CHILDREN---\n[]\n---END_CHILDREN---\n", encoding="utf-8")
     alive, has_done, has_out = eng._product_async_markers(ws, tid)
     assert alive is False
     assert has_done is False
@@ -82,9 +80,7 @@ def test_finalize_via_out_calls_check(tmp_path: Path, monkeypatch: pytest.Monkey
     pids = ws / ".ccc" / "pids"
     pids.mkdir(parents=True)
     tid = "epic-out-only"
-    (pids / f"{tid}.product.out").write_text(
-        "---CHILDREN---\n[]\n---END_CHILDREN---\n", encoding="utf-8"
-    )
+    (pids / f"{tid}.product.out").write_text("---CHILDREN---\n[]\n---END_CHILDREN---\n", encoding="utf-8")
     key = f"{ws}::{tid}"
     eng._product_inflight[key] = {"tid": tid, "workspace": ws}
 
@@ -96,8 +92,10 @@ def test_finalize_via_out_calls_check(tmp_path: Path, monkeypatch: pytest.Monkey
             calls.append(task_id)
             return {"status": "success"}
 
-    monkeypatch.setattr(eng, "ccc_board", _Board)
-    monkeypatch.setattr(eng, "_activate_workspace", lambda _ws: None)
+    from engine import task_registry as _task_registry
+
+    monkeypatch.setitem(sys.modules, "ccc_board", _Board)
+    monkeypatch.setattr(_task_registry, "_activate_workspace", lambda _ws: None)
     monkeypatch.setattr(eng, "engine_log", lambda *_a, **_k: None)
 
     outcome = eng._finalize_or_gc_product_key(ws, tid, key)
