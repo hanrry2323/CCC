@@ -964,15 +964,35 @@ class FileBoardStore:
                     )
                     return False
 
+            # 修复 stability-audit-2026-07-24 类别①：os.replace 后 fsync 目标目录
+            # （POSIX 持久性前提 — 断电后目录项仍可见）+ fsync 源目录（清残留后）
+            try:
+                dst_dir_fd = os.open(str(dst.parent), os.O_DIRECTORY)
+                try:
+                    os.fsync(dst_dir_fd)
+                finally:
+                    os.close(dst_dir_fd)
+            except (OSError, AttributeError):
+                pass
+            try:
+                src_dir_fd = os.open(str(src.parent), os.O_DIRECTORY)
+                try:
+                    os.fsync(src_dir_fd)
+                finally:
+                    os.close(src_dir_fd)
+            except (OSError, AttributeError):
+                pass
+
             self._record_event(task_id, from_col, to_col)
             self._invalidate_cache(from_col, to_col)
             _log.info("%s: %s → %s", task_id, from_col, to_col)
             self._emit_work_status_flow_event(task, task_id, from_col, to_col)
+            # 修复 stability-audit-2026-07-24 类别①：state.md 同步从锁外移到锁内
+            # 避免多 slot move 后并发覆盖 state.md（旧实现锁外写是 race window）
+            self._sync_state_md()
             success = True
         finally:
             self._unlock(lock)
-        if success:
-            self._sync_state_md()
         return success
 
     def _emit_work_status_flow_event(
