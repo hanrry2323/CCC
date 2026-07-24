@@ -505,7 +505,10 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
             _engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
 
         if retries >= _MAX_HANG_RETRY:
-            reason = f"hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）— {tid} phase {cur_phase}"
+            reason = (
+                f"hang_detected: hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）"
+                f"— {tid} phase {cur_phase}"
+            )
             _engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
             if eng:
                 eng._quarantine_with_notify(

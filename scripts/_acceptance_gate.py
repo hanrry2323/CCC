@@ -211,9 +211,14 @@ def check_acceptance(
     if cmds:
         ok, ran = _run_cmds(ws, cmds)
         if not ok:
+            # KPI / reopen 口径：timeout·exit 124·HANG_DETECTED → hang_detected
+            # （禁止只写 acceptance_cmd_failed 污染 abnormal 统计）
+            from _intent_probe import ran_has_hang
+
+            hang = ran_has_hang(ran)
             return {
                 "ok": False,
-                "reason": "acceptance_cmd_failed",
+                "reason": "hang_detected" if hang else "acceptance_cmd_failed",
                 "ran": ran,
                 "bullets": bullets,
                 "cmds": cmds,

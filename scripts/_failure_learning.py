@@ -99,6 +99,8 @@ def read_review_fail_pack(ws: Path, tid: str, *, limit: int = 4000) -> str:
 
 def classify_failure_category(blob: str) -> str:
     low = (blob or "").lower()
+    if "hang_detected" in low or "hang auto-restart" in low:
+        return "hang"
     for m in _PLAN_GAP_MARKERS:
         if m.lower() in low:
             if "scope" in m.lower() or "范围" in m:

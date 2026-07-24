@@ -241,9 +241,8 @@ def _review_deterministic_path(
                 ws, task_id, commit=commit, allow_prose=True
             )
         if not acc.get("ok"):
-            return _fail_deterministic(
-                f"{kind} acceptance: {acc.get('reason') or 'failed'}"
-            )
+            why = acc.get("reason") or "failed"
+            return _fail_deterministic(f"{kind} acceptance: {why}")
 
     review_md.write_text(
         f"# {task_id} Review\n\n"
@@ -1496,10 +1495,27 @@ def _review_one_task(task_id: str) -> bool:
             commit = find_task_commit(get_workspace(), task_id) or ""
             acc = check_acceptance(get_workspace(), task_id, commit=commit)
             if not acc.get("ok"):
+                why = acc.get("reason") or "failed"
                 _log.error(
                     "[reviewer] %s ✗ small py_compile ok but acceptance %s",
                     task_id,
-                    acc.get("reason"),
+                    why,
+                )
+                # 必须写 FAIL（含 hang_detected）——禁止静默 return False
+                review_md = get_workspace() / ".ccc" / "reports" / f"{task_id}.review.md"
+                review_md.parent.mkdir(parents=True, exist_ok=True)
+                review_md.write_text(
+                    f"# {task_id} Review\n\n## Verdict: **FAIL**\n\n"
+                    f"small py_compile ok but acceptance {why}\n",
+                    encoding="utf-8",
+                )
+                verdict_dir = get_workspace() / ".ccc" / "verdicts"
+                verdict_dir.mkdir(parents=True, exist_ok=True)
+                (verdict_dir / f"{task_id}.verdict.md").write_text(
+                    f"# {task_id} Verdict\n\n**Verdict:** FAIL\n\n"
+                    f"**Category:** {'hang' if 'hang_detected' in why else 'fixable'}\n\n"
+                    f"**Reason:** acceptance {why}\n",
+                    encoding="utf-8",
                 )
                 return False
             review_md.write_text(

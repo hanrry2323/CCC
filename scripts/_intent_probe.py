@@ -227,6 +227,39 @@ def is_hygiene_transfer(body: dict[str, Any] | None = None, *, blob: str = "") -
     return any(k in combined for k in HYGIENE_TITLE_MARKERS)
 
 
+# Hang / timeout signals from acceptance probes (stress hang cards, SIGALRM, wall timeout).
+_HANG_TEXT_MARKERS = (
+    "hang_detected",
+    "hang detected",
+    "timed out",
+    "timeoutexpired",
+)
+
+
+def is_hang_probe_failure(entry: dict[str, Any] | None) -> bool:
+    """True when a probe run looks like hang/timeout (not ordinary assert fail).
+
+    Signals: exit 124 (convention), wall TimeoutExpired, or HANG_DETECTED in output.
+    """
+    if not entry or entry.get("ok"):
+        return False
+    rc = entry.get("rc")
+    try:
+        if int(rc) == 124:
+            return True
+    except (TypeError, ValueError):
+        pass
+    blob = " ".join(
+        str(entry.get(k) or "")
+        for k in ("error", "stdout", "stderr", "detail")
+    ).lower()
+    return any(m in blob for m in _HANG_TEXT_MARKERS)
+
+
+def ran_has_hang(ran: list[dict[str, Any]] | None) -> bool:
+    return any(is_hang_probe_failure(e) for e in (ran or []))
+
+
 def run_probes(
     ws: Path,
     cmds: list[str],
@@ -255,14 +288,53 @@ def run_probes(
                 "rc": r.returncode,
                 "ok": r.returncode == 0,
             }
+            # Keep tails for hang classification even on success (cheap).
+            out_tail = (r.stdout or "")[-400:]
+            err_tail = (r.stderr or "")[-400:]
+            if out_tail:
+                entry["stdout"] = out_tail
+            if err_tail:
+                entry["stderr"] = err_tail
             if r.returncode != 0:
-                err = ((r.stderr or "") + (r.stdout or ""))[-400:]
+                err = (err_tail + out_tail)[-400:]
                 if err:
                     entry["error"] = err
             ran.append(entry)
             if r.returncode != 0:
                 return False, ran
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except subprocess.TimeoutExpired as exc:
+            # Align with GNU timeout / stress SIGALRM convention: 124
+            out_tail = ""
+            err_tail = ""
+            try:
+                if getattr(exc, "stdout", None):
+                    out_tail = (
+                        exc.stdout.decode("utf-8", errors="replace")
+                        if isinstance(exc.stdout, (bytes, bytearray))
+                        else str(exc.stdout)
+                    )[-400:]
+                if getattr(exc, "stderr", None):
+                    err_tail = (
+                        exc.stderr.decode("utf-8", errors="replace")
+                        if isinstance(exc.stderr, (bytes, bytearray))
+                        else str(exc.stderr)
+                    )[-400:]
+            except Exception:
+                pass
+            entry: dict[str, Any] = {
+                "cmd": cmd,
+                "rc": 124,
+                "ok": False,
+                "error": f"TimeoutExpired:{timeout}s {str(exc)[:120]}",
+                "detail": "hang_detected wall_timeout",
+            }
+            if out_tail:
+                entry["stdout"] = out_tail
+            if err_tail:
+                entry["stderr"] = err_tail
+            ran.append(entry)
+            return False, ran
+        except OSError as exc:
             ran.append({"cmd": cmd, "rc": -1, "ok": False, "error": str(exc)[:200]})
             return False, ran
     return True, ran

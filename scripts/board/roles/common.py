@@ -81,7 +81,11 @@ def _quarantine(task_id: str, reason: str) -> None:
     """移入异常列 + failure ledger + lessons（角色共用）。"""
     store.quarantine(task_id, reason)
     try:
-        from _failure_ledger import infer_role_from_reason, record_failure
+        from _failure_ledger import (
+            infer_role_from_reason,
+            record_failure,
+            related_event_for_reason,
+        )
 
         record_failure(
             get_workspace(),
@@ -90,7 +94,7 @@ def _quarantine(task_id: str, reason: str) -> None:
             reason=reason or "unknown",
             from_col=None,
             to_col="abnormal",
-            related_stats_event="quarantine",
+            related_stats_event=related_event_for_reason(reason or ""),
         )
     except Exception as exc:
         _log.error("[failures] quarantine ledger failed for %s: %s", task_id, exc)

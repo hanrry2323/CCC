@@ -361,6 +361,33 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                     thread_id=str(item.get("thread_id") or ""),
                     outbox=p,
                 )
+                # 强校验：投递成功后 receipts 必须能读回同 crid（防 hydrate 丢单）
+                if crid:
+                    recs = load_receipts(receipts_path(p))
+                    if not any(
+                        str(r.get("client_request_id") or "") == crid for r in recs
+                    ):
+                        _log.error(
+                            "receipt missing after write crid=%s — retry once",
+                            crid,
+                        )
+                        write_receipt(
+                            client_request_id=crid,
+                            epic_id=detail,
+                            project_id=str(item.get("project_id") or ""),
+                            thread_id=str(item.get("thread_id") or ""),
+                            outbox=p,
+                        )
+                        recs2 = load_receipts(receipts_path(p))
+                        if not any(
+                            str(r.get("client_request_id") or "") == crid
+                            for r in recs2
+                        ):
+                            _log.error(
+                                "receipt still missing after retry crid=%s epic=%s",
+                                crid,
+                                detail,
+                            )
             except OSError as exc:
                 # Hub 已收下；收据失败不得回滚投递，否则会卡死重试
                 _log.warning(

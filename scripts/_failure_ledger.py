@@ -186,3 +186,13 @@ def infer_role_from_reason(reason: str) -> str:
     if "kb" in r:
         return "kb"
     return "engine"
+
+
+def related_event_for_reason(
+    reason: str, *, default: str = "quarantine"
+) -> str:
+    """Map failure reason → stats event name (hang must not look like generic quarantine)."""
+    r = (reason or "").lower()
+    if "hang_detected" in r or "hang auto-restart" in r or "hang_no_progress" in r:
+        return "hang_detected"
+    return default

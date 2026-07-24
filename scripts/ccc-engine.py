@@ -777,17 +777,20 @@ def _handle_short_path_failure(
             pass
         # 与 quarantine 对齐：必入 failures.jsonl，清板后仍可复盘
         try:
-            from _failure_ledger import record_failure
+            from _failure_ledger import record_failure, related_event_for_reason
 
+            fail_reason = f"short_path_fail_budget path={path} n={n}: {why}"
             record_failure(
                 ws,
                 task_id=tid,
                 role="dev",
-                reason=f"short_path_fail_budget path={path} n={n}: {why}",
+                reason=fail_reason,
                 phase=1,
                 from_col=from_col,
                 to_col="abnormal",
-                related_stats_event="short_path_fail",
+                related_stats_event=related_event_for_reason(
+                    fail_reason, default="short_path_fail"
+                ),
                 extra={"path": path, "n": n},
             )
         except Exception:
@@ -843,8 +846,15 @@ def _quarantine_with_notify(
     _log_stats(ws, "quarantine", tid, reason=reason)
     # v0.40: 统一失败账本（写失败必须可见，禁止静默）
     try:
-        from _failure_ledger import infer_role_from_reason, record_failure
+        from _failure_ledger import (
+            infer_role_from_reason,
+            record_failure,
+            related_event_for_reason,
+        )
 
+        stats_ev = related_event_for_reason(reason or "")
+        if stats_ev != "quarantine":
+            _log_stats(ws, stats_ev, tid, reason=reason)
         record_failure(
             ws,
             task_id=tid,
@@ -854,7 +864,7 @@ def _quarantine_with_notify(
             from_col=from_col,
             to_col="abnormal",
             exit_code=exit_code,
-            related_stats_event="quarantine",
+            related_stats_event=stats_ev,
         )
     except Exception:
         engine_log(f"[failures] record_failure failed for {tid}: {_traceback.format_exc()[:500]}")
@@ -2193,6 +2203,61 @@ def _group_parallel_phases(phases: list[dict], executable: set[int]) -> list[lis
     return groups
 
 
+def _top_level_roots(paths: list[str]) -> set[str]:
+    """Distinct top-level path prefixes (skip .ccc hygiene)."""
+    roots: set[str] = set()
+    for raw in paths:
+        s = str(raw or "").strip().lstrip("./")
+        if not s or s.startswith(".ccc"):
+            continue
+        part = Path(s).parts[0] if Path(s).parts else ""
+        if part:
+            roots.add(part)
+    return roots
+
+
+def _force_serial_multi_root(
+    phases: list[dict],
+    executable: set[int],
+    *,
+    ws: Path | None = None,
+    tid: str = "",
+) -> bool:
+    """Cross-directory fan-out is unstable under parallel OpenCode writes.
+
+    Force serial when executable scopes (or acceptance paths) span ≥2 top-level
+    roots — e.g. src/ + dashboard/ + tests/ (stress-2 class).
+    """
+    by_id = {p.get("phase"): p for p in phases if p.get("phase") is not None}
+    scopes: list[str] = []
+    for pid in executable:
+        sc = by_id.get(pid, {}).get("scope") or []
+        if isinstance(sc, list):
+            scopes.extend(str(x) for x in sc if x)
+        elif sc:
+            scopes.append(str(sc))
+    roots = _top_level_roots(scopes)
+    if len(roots) >= 2:
+        return True
+    if ws is not None and tid:
+        try:
+            from _acceptance_gate import (
+                _bullets_and_cmds,
+                _paths_from_bullets,
+                load_acceptance_text,
+            )
+
+            sec = load_acceptance_text(Path(ws), tid)
+            if sec.strip():
+                bullets, _cmds = _bullets_and_cmds(sec)
+                acc_roots = _top_level_roots(_paths_from_bullets(bullets))
+                if len(acc_roots) >= 2:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
 def _phase_to_pgroup(p: int) -> str:
     """OpenCode pool / marker 用的 phase id（与 ccc-board 一致：task_id-pN）。"""
     # 注：当前 _try_launch_planned 调 dev_role_launch，里头 phase_id=task_id-pN。
@@ -2512,12 +2577,24 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
 
         # ── v0.28.2: 并行分支 ──
         # 条件：executable phase >= 2 + 未被全局禁用
+        # 跨顶层目录 fan-out（src+dashboard+tests）→ 强制串行（stress-2）
         # 不满足则直接走单 phase dev_role_launch（原有路径）
+        force_serial = False
+        if phases and executable and len(executable) >= 2:
+            force_serial = _force_serial_multi_root(
+                phases, executable, ws=ws, tid=tid
+            )
+            if force_serial:
+                engine_log(
+                    f"[{label}] {tid} multi-root scope/acceptance → 强制串行 "
+                    f"(skip phase parallel)"
+                )
         if (
             phases
             and executable
             and len(executable) >= 2
             and not PHASE_PARALLEL_DISABLED
+            and not force_serial
         ):
             groups = _group_parallel_phases(phases, executable)
             if groups and len(groups[0]) >= 2:
