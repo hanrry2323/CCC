@@ -20,9 +20,10 @@ v0.42.4 内存红线：永久禁止「自动识别任务投入」——
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
-from datetime import datetime, timezone
+import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
@@ -47,23 +48,77 @@ def _now_iso() -> str:
 
 
 def _read_raw() -> dict[str, Any]:
-    if CONTROL_FILE.is_file():
+    """共享锁读取 control.json。损坏 JSON 静默回退 {}（与历史一致）。
+
+    注意：flock 是 advisory lock；外部绕过者（Patrol / Ops / 协议允许的直写）
+    不会阻塞。CCC 协议已要求外部走 CLI / API（详见 references/board-task-schema.md）。
+    """
+    if not CONTROL_FILE.is_file():
+        return {}
+    try:
+        fd = os.open(str(CONTROL_FILE), os.O_RDONLY)
+    except OSError:
+        return {}
+    try:
         try:
-            data = json.loads(CONTROL_FILE.read_text(encoding="utf-8"))
+            fcntl.flock(fd, fcntl.LOCK_SH)
+        except OSError:
+            # flock 不支持时降级（仍允许读，不阻塞）
+            pass
+        try:
+            # control.json < 1MB；read 1MB 足够
+            data = json.loads(os.read(fd, 1 << 20).decode("utf-8"))
             if isinstance(data, dict):
                 return data
         except (OSError, json.JSONDecodeError):
+            pass
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
             pass
     return {}
 
 
 def _write_raw(data: dict[str, Any]) -> None:
+    """原子写 control.json：mkstemp + fsync + dir fsync + flock(LOCK_EX)。
+
+    修复 stability-audit-2026-07-24 类别①：固定 .tmp 名的并发覆盖 + 缺 fsync。
+    """
     CONTROL_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CONTROL_FILE.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(CONTROL_DIR), prefix=".control-", suffix=".tmp"
     )
-    tmp.replace(CONTROL_FILE)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        content = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        os.write(fd, content)
+        os.fsync(fd)
+        # 目录 fsync：POSIX 持久性前提（断电后目录项仍可见）
+        try:
+            dir_fd = os.open(str(CONTROL_DIR), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            # macOS / Linux 通常 OK；其它平台 fsync 失败不阻塞主流程
+            pass
+        os.replace(tmp_name, str(CONTROL_FILE))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 def get_mode() -> Mode:
