@@ -40,6 +40,10 @@ ignore = [
 "scripts/ccc-engine.py" = ["F401", "E402"]  # 角色文件未到 hot-path 前不动
 "scripts/ccc-board.py" = ["F401"]
 "scripts/board/roles/*.py" = ["F401"]
+# 2026-07-24 方案 1.1：dispatch.py / failure_router.py 是新建骨架，
+# 函数尚未从 ccc-engine.py 搬入；F401/F841 是预期的临时状态
+"scripts/engine/dispatch.py" = ["F401", "F841"]
+"scripts/engine/failure_router.py" = ["F401", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["_board_store", "_config", "_executor", "_failure_ledger", "_jsonl_rotate", "_utils", "_ccc_control", "_engine_wake", "_ops_probe", "_stats_aggregator", "_claude_cli"]
