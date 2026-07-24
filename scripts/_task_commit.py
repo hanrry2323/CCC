@@ -175,7 +175,9 @@ def _result_wrote_paths(workspace: Path, task_id: str) -> list[str]:
         from _result_json import parse_result_file
 
         parsed, _ = parse_result_file(p)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 2026-07-24 方案 0.1.3：清理 except:pass 裸吞，统一加 log
+        _log.warning("task_commit parse_result silent_ignored: %s", str(exc))
         return []
     if not isinstance(parsed, dict):
         return []
@@ -213,7 +215,9 @@ def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
         if task_skips_forced_pytest(workspace, task_id, None):
             return True
         return scopes_are_ccc_only(_load_phase_scopes(workspace, task_id))
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 2026-07-24 方案 0.1.3：清理 except:pass 裸吞，统一加 log
+        _log.warning("task_commit pytest_required silent_ignored: %s", str(exc))
         return False
 
 
@@ -384,7 +388,9 @@ def ensure_task_commit(
                 timeout=10,
             )
             h = (r.stdout or "").strip()[:40]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # 2026-07-24 方案 0.1.3：清理 except:pass 裸吞，统一加 log
+            _log.warning("task_commit git head silent_ignored: %s", str(exc))
             h = ""
     if not h:
         return False, "auto-commit produced no hash", ""

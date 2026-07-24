@@ -544,8 +544,11 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         try:
             fail_marker.unlink(missing_ok=True)
             fail_summary.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            # 2026-07-24 方案 0.1.1：清理 except:pass 裸吞，加 log
+            _engine_log(
+                "[verdict-gate] %s pytest fail marker unlink failed: %s", tid, str(exc)
+            )
     else:
         _engine_log(f"[{label}] {tid} 无 tests/ 目录，跳过 engine pytest")
 
@@ -562,8 +565,11 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                 return _handle_fail_to_planned(
                     ws, tid, store, status=str(status), eng=eng
                 )
-        except OSError:
-            pass
+        except OSError as exc:
+            # 2026-07-24 方案 0.1.2：清理 except:pass 裸吞，加 log
+            _engine_log(
+                "[verdict-gate] %s verdict file read failed: %s", tid, str(exc)
+            )
 
     if verdict_ok:
         col = _find_task_column(store, tid)
