@@ -52,6 +52,9 @@ bash scripts/install-hub-tunnel-plist.sh --stop
 bash scripts/install-hub-tunnel-plist.sh --start
 ```
 
+典型故障（2026-07-24）：`hub-tunnel.err` 刷 `Address already in use` / `mux_client_forward`，同时 `curl 127.0.0.1:17777` **超时**，但 LAN `192.168.3.116:7777` 仍 200。  
+根因：全局 `ControlMaster auto` 把隧道 ssh 收进 mux，旧 forward 僵死。安装脚本已强制 `ControlMaster=no`；重建前可 `rm -f ~/.ssh/cm/192.168.3.116-22-*`。
+
 SSH Host 默认 `mac2017`（`~/.ssh/config`）。换线：`CCC_HUB_SSH_HOST=tb-mac2017 bash scripts/install-hub-tunnel-plist.sh --start`。
 
 隧道挂了时：对话仍可走 sidecar；转任务进 outbox；恢复后自动 flush（既有 F1 SLA）。先修隧道，勿先改业务仓。

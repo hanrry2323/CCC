@@ -220,3 +220,80 @@ def test_seeded_phase_slice_inherits_epic_probes():
     assert any("feature_counter.py" in c for c in probes), probes
     assert not any("feature_counter_probe" in c for c in probes), probes
     assert not any("FEATURE_COUNTER.md" in c for c in probes), probes
+
+
+def test_seeded_phase_no_headers_rewrites_prose_acceptance():
+    """无 ## Phase N + 散文验收 → 必须写出白名单探针（禁散文种子）。"""
+    from _intent_probe import extract_probe_commands
+    from _product_fanout import _plan_md_for_seeded_phase
+    import phase_lint
+
+    epic = (
+        "# Plan — stress\n\n## 目标\n三层 fan-out\n\n"
+        "## 验收\n- 完成功能且 scope 内变更可验证\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "impl manager",
+        "scope": ["src/worker/manager.py"],
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
+    assert "完成功能且 scope 内变更可验证" not in out
+    assert "完成「impl manager」" not in out
+    probes = extract_probe_commands(out)
+    assert probes, out
+    ok, errs = phase_lint.validate_plan_acceptance(out, require_probe=True)
+    assert ok, errs
+
+
+def test_fanout_from_seeded_epic_prose_only_acceptance(tmp_path):
+    """散文-only epic 验收仍能 seed 扇出（不回退 Claude）。"""
+    import json
+
+    from _intent_probe import extract_probe_commands
+    from _product_fanout import fanout_from_seeded_epic
+
+    root = tmp_path / "ws"
+    for col in ("backlog", "planned"):
+        (root / ".ccc" / "board" / col).mkdir(parents=True)
+    (root / ".ccc" / "plans").mkdir(parents=True)
+    (root / ".ccc" / "phases").mkdir(parents=True)
+    store = FileBoardStore(root)
+    epic_id = "stress-prose"
+    store.create_task(
+        {
+            "id": epic_id,
+            "title": "prose seed",
+            "description": "d",
+            "card_kind": "epic",
+            "split_status": "pending",
+            "child_ids": [],
+        },
+        column="backlog",
+    )
+    (root / ".ccc" / "plans" / f"{epic_id}.plan.md").write_text(
+        "# Plan\n\n## 目标\ndo x\n\n## 验收\n- 完成「do x」且可验证\n",
+        encoding="utf-8",
+    )
+    (root / ".ccc" / "phases" / f"{epic_id}.phases.json").write_text(
+        json.dumps(
+            {
+                "phase": 1,
+                "status": "pending",
+                "description": "touch src",
+                "scope": ["src/a.py"],
+                "subtasks": {"1.1": "impl"},
+                "timeout": 60,
+                "depends_on": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    r = fanout_from_seeded_epic(store, store.list_tasks("backlog")[0])
+    assert r.get("ok"), r
+    plan_w1 = (root / ".ccc" / "plans" / f"{epic_id}-w1.plan.md").read_text(
+        encoding="utf-8"
+    )
+    assert extract_probe_commands(plan_w1), plan_w1
+    assert "完成「do x」" not in plan_w1

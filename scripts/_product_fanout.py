@@ -713,13 +713,56 @@ def _acceptance_bullets_for_phase(
     return bullets
 
 
+def _strip_acceptance_sections(text: str) -> str:
+    """Remove ## 验收/验证 blocks so we can rewrite with allowlisted probes."""
+    return re.sub(
+        r"(^|\n)##\s*(?:验收|验证)\s*\n.*?(?=\n##\s|\Z)",
+        r"\1",
+        text or "",
+        flags=re.DOTALL | re.IGNORECASE,
+    ).rstrip()
+
+
+def _plan_with_probe_acceptance(
+    *,
+    title: str,
+    desc: str,
+    body: str,
+    epic_plan: str,
+    phase: dict,
+    scope_s: str = "",
+) -> str:
+    """Assemble plan_md whose ## 验收 always has ≥1 allowlisted probe (no prose)."""
+    body_wo = _strip_acceptance_sections("\n" + (body or "")).lstrip("\n").rstrip()
+    bullets = _acceptance_bullets_for_phase(
+        body=body_wo, epic_plan=epic_plan or "", phase=phase, desc=desc
+    )
+    acc = "\n".join(f"- {b}" for b in bullets)
+    scope_block = f"## 范围\n- **只改文件**: {scope_s}\n\n" if scope_s else ""
+    if body_wo:
+        if body_wo.lstrip().startswith("#"):
+            return f"{body_wo}\n\n## 验收\n{acc}\n"
+        return (
+            f"# Plan: {title}\n\n"
+            f"## 目标\n- {desc}\n\n"
+            f"{body_wo}\n\n"
+            f"## 验收\n{acc}\n"
+        )
+    return (
+        f"# Plan: {title}\n\n"
+        f"## 目标\n- {desc}\n\n"
+        f"{scope_block}"
+        f"## 验收\n{acc}\n"
+    )
+
+
 def _plan_md_for_seeded_phase(
     plan_md: str, phase: dict, *, phase_num: int, title: str
 ) -> str:
     """从 epic plan 切出对应 Phase 段。
 
-    切不到时：**整份 epic plan 下发给 work**（保留原验收/步骤），禁止合成
-    「完成本 phase / scope 符合目标」空话——否则 OpenCode 拒写 → SELF-CHECKS 门挂。
+    切不到时下发 epic 正文，但 **一律** 用 `_acceptance_bullets_for_phase`
+    重写 ## 验收（禁止散文种子 → plan_lint → Claude 慢扇出）。
     """
     src = plan_md or ""
     # Match ## Phase N / ## Phase N: / ## 阶段 N
@@ -729,54 +772,62 @@ def _plan_md_for_seeded_phase(
         re.DOTALL | re.IGNORECASE,
     )
     m = pat.search(src)
-    body = ""
-    if m:
-        body = m.group(2).strip()
+    body = m.group(2).strip() if m else ""
     scope = phase.get("scope") or []
     scope_s = ", ".join(str(s) for s in scope if s) or "(见 phase.scope)"
     desc = str(phase.get("description") or title).strip()
     if body:
-        # 去掉正文里可能残留的 ## 验收，统一用 scope 感知验收重写
-        body_wo_acc = re.sub(
-            r"\n##\s*(?:验收|验证)\s*\n.*?(?=\n##\s|\Z)",
-            "\n",
-            body,
-            flags=re.DOTALL | re.IGNORECASE,
-        ).rstrip()
-        bullets = _acceptance_bullets_for_phase(
-            body=body_wo_acc, epic_plan=src, phase=phase, desc=desc
+        return _plan_with_probe_acceptance(
+            title=title,
+            desc=desc,
+            body=body,
+            epic_plan=src,
+            phase=phase,
         )
-        acc = "\n".join(f"- {b}" for b in bullets)
-        return (
-            f"# Plan: {title}\n\n"
-            f"## 目标\n- {desc}\n\n"
-            f"{body_wo_acc}\n\n"
-            f"## 验收\n{acc}\n"
-        )
-
-    # 无 ## Phase N：下发完整 epic plan（去掉仅顶层重复标题）
+    # 无 ## Phase N：保留 epic 正文，强制白名单验收
     epic_body = src.strip()
     if epic_body:
-        if not re.search(r"^##\s*(验收|验证)\s*$", epic_body, re.M):
-            epic_body = (
-                epic_body.rstrip()
-                + "\n\n## 验收\n"
-                + f"- 完成「{desc}」且 scope 内变更可验证\n"
-            )
-        # 保留 epic 全文；加 work 标题方便定位
-        if epic_body.lstrip().startswith("#"):
-            return epic_body + "\n"
-        return f"# Plan: {title}\n\n{epic_body}\n"
-
-    # 最后兜底（无 epic plan 文本时才合成）
-    return (
-        f"# Plan: {title}\n\n"
-        f"## 目标\n- {desc}\n\n"
-        f"## 范围\n- **只改文件**: {scope_s}\n\n"
-        f"## 验收\n"
-        f"- 完成本 phase：{desc}\n"
-        f"- scope 内文件变更符合目标\n"
+        return _plan_with_probe_acceptance(
+            title=title,
+            desc=desc,
+            body=epic_body,
+            epic_plan=src,
+            phase=phase,
+        )
+    return _plan_with_probe_acceptance(
+        title=title,
+        desc=desc,
+        body="",
+        epic_plan="",
+        phase=phase,
+        scope_s=scope_s,
     )
+
+
+def _repair_seeded_child_plans(
+    children: list[dict], *, epic_plan: str
+) -> list[dict]:
+    """plan_lint 后就地重写 child ## 验收（白名单探针），供再试 apply_fanout。"""
+    out: list[dict] = []
+    for ch in children:
+        phases = ch.get("phases") or []
+        ph = phases[0] if phases and isinstance(phases[0], dict) else {
+            "scope": ["."],
+            "description": ch.get("title") or "work",
+        }
+        title = str(ch.get("title") or "work")
+        desc = str(ph.get("description") or title)
+        new_plan = _plan_with_probe_acceptance(
+            title=title,
+            desc=desc,
+            body=str(ch.get("plan_md") or ""),
+            epic_plan=epic_plan,
+            phase=ph,
+        )
+        fixed = dict(ch)
+        fixed["plan_md"] = new_plan
+        out.append(fixed)
+    return out
 
 
 def _children_from_seeded_phases(
@@ -874,19 +925,39 @@ def fanout_from_seeded_epic(
     )
     if not children_raw:
         return {"ok": False, "error": "no children from seed phases"}
+    max_ph = max(1, int(max_phases or 1))
     result = apply_fanout(
         store,
         epic,
         children_raw=children_raw,
         epic_brief="",
-        max_phases=max(1, int(max_phases or 1)),
+        max_phases=max_ph,
     )
+    err = str(result.get("error") or "")
+    if not result.get("ok") and "plan_lint" in err.lower():
+        # 本地修探针再试一次，避免立刻掉进 Claude 慢路径
+        repaired = _repair_seeded_child_plans(children_raw, epic_plan=plan_md)
+        _log.warning(
+            "[fanout] seeded %s plan_lint → repair acceptance + retry once: %s",
+            epic_id,
+            err[:200],
+        )
+        result = apply_fanout(
+            store,
+            epic,
+            children_raw=repaired,
+            epic_brief="",
+            max_phases=max_ph,
+        )
+        if result.get("ok"):
+            result = {**result, "repaired_acceptance": True}
     if result.get("ok"):
         _log.info(
-            "[fanout] seeded epic %s → %d work(s) %s (skip Claude, by-phase)",
+            "[fanout] seeded epic %s → %d work(s) %s (skip Claude, by-phase%s)",
             epic_id,
             len(result.get("child_ids") or []),
             result.get("child_ids"),
+            ", repaired" if result.get("repaired_acceptance") else "",
         )
     return result
 

@@ -313,6 +313,7 @@ def snapshot_from_board(
     failed = next((w for w in works if w.get("status") == "abnormal"), None)
     # epic split_status failed（无子卡 abnormal 列表时也要暴露止损态）
     split_failed = str(split).lower() in ("failed", "blocked")
+    queue_hint: str | None = None
     if failed:
         headline = f"卡住：{failed.get('title')}"
         stage = "failed"
@@ -330,6 +331,19 @@ def snapshot_from_board(
     elif works:
         headline = f"已拆 {len(works)} 步"
         stage = "planned"
+        # 本 epic 子卡全 planned，同仓另有 in_progress/testing → 同仓 OpenCode 排队
+        if all(w.get("status") == "planned" for w in works):
+            ws_busy = False
+            for col in ("in_progress", "testing"):
+                for t in (store_board or {}).get(col) or []:
+                    if isinstance(t, dict) and str(t.get("id") or "").strip():
+                        ws_busy = True
+                        break
+                if ws_busy:
+                    break
+            if ws_busy:
+                headline = f"已拆 {len(works)} 步 · 同仓写码中排队"
+                queue_hint = "same_ws_opencode"
     else:
         headline = "待拆解"
         stage = "pending"
@@ -341,8 +355,10 @@ def snapshot_from_board(
         "user_stage": stage,
         "headline": headline,
     }
+    if queue_hint:
+        epic_view["queue_hint"] = queue_hint
 
-    return {
+    out: dict[str, Any] = {
         "project_id": project_id,
         "epic_id": epic_id,
         "epic": epic_view,
@@ -351,6 +367,9 @@ def snapshot_from_board(
         "user_stage": stage,
         "empty": False,
     }
+    if queue_hint:
+        out["queue_hint"] = queue_hint
+    return out
 
 
 def is_terminal_stage(stage: Any) -> bool:

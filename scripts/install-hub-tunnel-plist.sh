@@ -69,7 +69,9 @@ case "$ACTION" in
     ;;
 esac
 
-# 包装脚本：ExitOnForwardFailure + KeepAlive；前台跑，交给 launchd 守护
+# 包装脚本：ExitOnForwardFailure + KeepAlive；前台跑，交给 launchd 守护。
+# 必须 ControlMaster=no：全局 ~/.ssh/config 的 ControlMaster auto 会把 -L
+# 收进 mux；旧 forward 僵死后假监听/超时，KeepAlive 再撞 Address already in use。
 cat > "$WRAP" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -80,19 +82,26 @@ exec /usr/bin/ssh -N \\
   -o ServerAliveCountMax=4 \\
   -o TCPKeepAlive=yes \\
   -o StrictHostKeyChecking=accept-new \\
+  -o ControlMaster=no \\
+  -o ControlPath=none \\
   -L 127.0.0.1:${LOCAL_PORT}:${REMOTE} \\
   ${SSH_HOST}
 EOF
 chmod +x "$WRAP"
 
-# 先清手启/旧进程，避免端口占用导致 launchd 起不来
+# 先清手启/旧进程 + 可能占着转发的 ControlMaster mux，避免端口占用
+launchctl bootout "${DOMAIN}/${LABEL}" 2>/dev/null || true
 pkill -f "ssh .*${LOCAL_PORT}:${REMOTE}" 2>/dev/null || true
+pkill -f "ssh -N .*${SSH_HOST}" 2>/dev/null || true
 if command -v lsof >/dev/null 2>&1; then
   for p in $(lsof -nP -iTCP:"${LOCAL_PORT}" -sTCP:LISTEN -t 2>/dev/null || true); do
     kill "$p" 2>/dev/null || true
   done
 fi
-sleep 0.4
+# 清 mac2017 mux socket（路径来自全局 ControlPath ~/.ssh/cm/%h-%p-%r）
+rm -f "${HOME}/.ssh/cm/"*"-${SSH_HOST}" 2>/dev/null || true
+rm -f "${HOME}/.ssh/cm/192.168.3.116-22-"* 2>/dev/null || true
+sleep 0.6
 
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
