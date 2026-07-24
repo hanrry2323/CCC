@@ -1,8 +1,11 @@
 """engine.active_tasks — active task 持久化与槽位释放。"""
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 from _config import get_logger
@@ -13,6 +16,7 @@ from engine.slots import release_opencode_slot
 _log = get_logger("engine")
 
 ACTIVE_TASKS_FILE = Path.home() / ".ccc" / "engine-active-tasks.json"
+ACTIVE_TASKS_BAK_FILE = Path.home() / ".ccc" / "engine-active-tasks.json.bak"
 
 
 def _eng():
@@ -76,10 +80,52 @@ def _register_active(
     return True
 
 
-def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
-    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json，Engine 重启后恢复。"""
+def _atomic_write_json(path: Path, content: str) -> None:
+    """atomic write：mkstemp + fsync + dir fsync + flock(LOCK_EX)。
+
+    修复 stability-audit-2026-07-24 类别①：直接 write_text 崩溃可截断。
+    本地实现避免 engine 模块依赖 _board_store（边界独立）。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent),
+        prefix=".active-",
+        suffix=".tmp",
+    )
     try:
-        ACTIVE_TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            # flock 不支持时降级
+            pass
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+        os.replace(tmp_name, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
+    """持久化 active_tasks 到 ~/.ccc/engine-active-tasks.json。
+
+    修复 stability-audit-2026-07-24 类别①：用 _atomic_write_json 替代
+    直接 write_text（崩溃可截断）+ flock 跨进程串行化。
+    """
+    try:
         serializable = {}
         for k, v in active_tasks.items():
             item = dict(v)
@@ -98,8 +144,9 @@ def _save_active_tasks(active_tasks: dict[str, dict]) -> None:
             if isinstance(ws, Path):
                 item["workspace"] = str(ws)
             serializable[k] = item
-        ACTIVE_TASKS_FILE.write_text(
-            json.dumps(serializable, ensure_ascii=False, indent=2, default=str)
+        _atomic_write_json(
+            ACTIVE_TASKS_FILE,
+            json.dumps(serializable, ensure_ascii=False, indent=2, default=str),
         )
     except (OSError, TypeError) as exc:
         _engine_log(f"[persist] save active_tasks 失败: {exc}")
@@ -170,6 +217,19 @@ def _load_active_tasks() -> dict[str, dict]:
         return restored
     except (json.JSONDecodeError, OSError, TypeError) as exc:
         _engine_log(f"[persist] load active_tasks 失败: {exc}")
+        # 修复 stability-audit-2026-07-24 类别①：损坏 JSON 时备份原文件再返回 {}
+        # 避免下一轮 save 覆盖证据（之前会直接丢失）
+        if isinstance(exc, json.JSONDecodeError):
+            try:
+                ACTIVE_TASKS_BAK_FILE.write_text(
+                    ACTIVE_TASKS_FILE.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                _engine_log(
+                    f"[persist] 损坏 JSON 已备份到 {ACTIVE_TASKS_BAK_FILE}"
+                )
+            except OSError as backup_exc:
+                _engine_log(f"[persist] 备份失败: {backup_exc}")
         return {}
 
 
