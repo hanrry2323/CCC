@@ -60,3 +60,13 @@ repos:
         pass_filenames: false
         files: \.(py|pyi)$
         types: [file]
+
+      # 2026-07-24 方案 3.2：R-16 新代码三件套（type hints + smoke test + docstring）
+      # 仅检查 git diff --cached --diff-filter=A 新增 .py 文件
+      - id: new-code-quality
+        name: R-16 new code quality (type hints + docstring)
+        entry: bash scripts/precommit-new-code-quality.sh
+        language: system
+        pass_filenames: false
+        files: \.py$
+        types: [file]

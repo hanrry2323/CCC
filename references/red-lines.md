@@ -656,3 +656,19 @@ fi
   3. engine 主循环只在 idle 分支检查（避免阻塞 task 串行）
 - **配置项**：`_audit_should_run(interval_hours=2)` — 改频率需改代码 + 老板同意
 - **触犯后果**：Medium — 双跑会浪费算力，报表被覆盖；engine 不会因 audit 错误而退出
+
+#### 红线 R-16：新代码三件套（type hints + smoke test + docstring）（v0.60+）
+
+- **规则**：新增模块或新公开函数（非 `_` 前缀）必须同时存在：
+  1. **Type hints**：`def` 行有完整的参数类型 + 返回值类型注解
+  2. **Smoke test**：`tests/scripts/` 或 `scripts/tests/` 下有对应的 test 文件（至少 1 个 test case）
+  3. **Docstring**：说明入参、出参、异常、副作用
+- **Why**：无类型 = mypy 永远翻绿不了；无测试 = 回归挡不住；无 docstring = Agent 不知道怎么用。
+- **机制**：
+  1. `scripts/precommit-new-code-quality.sh` 在 pre-commit hook 中跑，扫描 `git diff --cached --diff-filter=A` 中的新增 `.py` 文件
+  2. 每个公开函数（`def name(...)` 非 `_` 前缀）必须有 `-> ` 返回值注解，否则 R-16 VIOLATION
+  3. 缺三件套任意一项 → commit 被 pre-commit 拦截（exit 1）
+- **例外**：
+  - `__init__.py` 的 re-export 不需要 docstring
+  - 测试辅助函数不需要 type hints（但要有 docstring 说明用途）
+- **触犯后果**：Critical — 直接 revert，不计入进度。
