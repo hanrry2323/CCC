@@ -26,7 +26,7 @@ def test_sparkline_nonempty():
 
 def test_summarize_headroom(tmp_path: Path):
     path = tmp_path / "host-resources.jsonl"
-    for i in range(15):
+    for i in range(30):
         append_sample(
             {
                 "t": f"2026-07-22T10:{i:02d}:00+08:00",
@@ -40,15 +40,15 @@ def test_summarize_headroom(tmp_path: Path):
             },
             path=path,
         )
-    s = summarize(n=20, path=path)
-    assert s["samples"] == 15
+    s = summarize(n=30, path=path)
+    assert s["samples"] == 30
     assert s["verdict"] == "headroom"
     assert s["load_ratio"]["p95"] is not None
 
 
 def test_summarize_saturated(tmp_path: Path):
     path = tmp_path / "host-resources.jsonl"
-    for i in range(15):
+    for i in range(30):
         append_sample(
             {
                 "t": f"t{i}",
@@ -61,8 +61,33 @@ def test_summarize_saturated(tmp_path: Path):
             },
             path=path,
         )
-    s = summarize(read_recent(20, path=path))
+    s = summarize(read_recent(30, path=path))
     assert s["verdict"] == "saturated"
+
+
+def test_summarize_collecting(tmp_path: Path):
+    """12 ≤ samples < 30 → 'collecting' (preliminary, hold MAX_CONCURRENT).
+
+    P5: 忙时样本不足 30 点不建议加并行（idle 曲线不够）。
+    见 scripts/_host_resources.py:265-274。
+    """
+    path = tmp_path / "host-resources.jsonl"
+    for i in range(15):
+        append_sample(
+            {
+                "t": f"2026-07-22T10:{i:02d}:00+08:00",
+                "ncpu": 8,
+                "load_ratio": 0.2,
+                "memory": {"used_pct": 40.0},
+                "opencode_n": 1,
+                "active_dev": 2,
+                "max_concurrent": 4,
+            },
+            path=path,
+        )
+    s = summarize(n=20, path=path)
+    assert s["samples"] == 15
+    assert s["verdict"] == "collecting"
 
 
 def test_insufficient_data(tmp_path: Path):
