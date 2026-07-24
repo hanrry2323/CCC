@@ -87,3 +87,26 @@ def test_sanitized_env_strips_role_lock_bypass(monkeypatch):
 
     env = _sanitized_env()
     assert "CCC_ROLE_LOCK_BYPASS" not in env
+
+
+def test_client_ip_ignores_x_forwarded_for_unless_explicit(monkeypatch):
+    from starlette.requests import Request
+
+    from chat_server.auth import _client_ip
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-forwarded-for", b"198.51.100.9"), (b"host", b"test")],
+        "client": ("127.0.0.1", 12345),
+        "scheme": "http",
+        "server": ("test", 80),
+    }
+    monkeypatch.delenv("CCC_TRUST_PROXY", raising=False)
+    req = Request(scope)
+    assert _client_ip(req) == "127.0.0.1"
+
+    monkeypatch.setenv("CCC_TRUST_PROXY", "1")
+    req2 = Request(scope)
+    assert _client_ip(req2) == "198.51.100.9"
