@@ -4111,40 +4111,55 @@ _kill_pid = _kill_process_tree
 
 
 def _graceful_kill_active_tasks() -> int:
-    """遍历 workspace 根下的 .ccc/pids/*.pid，对每个 runner PID 调 _kill_process_tree。
+    """遍历 Engine 注册 workspace 的 .ccc/pids/*.pid，对每个 runner PID
+    调 _kill_process_tree。
 
     修复 stability-audit-2026-07-24 类别③：graceful shutdown 不杀子进程。
     signal handler 内不可做复杂 IO；这里在 main 退出 finally 兜底执行。
-    修复 diff-review-2026-07-24 中风险 #3：workspace 根目录支持 env var override
-    （CCC_WORKSPACE_ROOTS，逗号分隔），默认仍为 ~/program。
+    修复 diff-review-2026-07-24 中风险 #4：扫描范围限制到 Engine 注册 workspace
+    （_workspace_registry.list_engine_paths），不再扫全盘 ~/program/*，避免
+    误杀非注册目录里的同名 PID。
 
     Returns: 被尝试 kill 的 PID 数。
     """
-    roots_raw = (os.environ.get("CCC_WORKSPACE_ROOTS") or "").strip()
-    if roots_raw:
-        roots = [Path(p).expanduser() for p in roots_raw.split(",") if p.strip()]
-    else:
-        roots = [Path.home() / "program"]
-    killed = 0
-    for program_dir in roots:
-        if not program_dir.is_dir():
-            continue
-        for ws in sorted(program_dir.iterdir()):
-            pids_dir = ws / ".ccc" / "pids"
-            if not pids_dir.is_dir():
+    paths: list[Path] = []
+    try:
+        from _workspace_registry import list_engine_paths
+
+        paths = list_engine_paths()
+    except Exception as exc:  # noqa: BLE001
+        engine_log(
+            f"[shutdown] list_engine_paths 失败，fallback 到 CCC_WORKSPACE_ROOTS: {exc}"
+        )
+    if not paths:
+        # fallback：env var override 或默认 ~/program
+        roots_raw = (os.environ.get("CCC_WORKSPACE_ROOTS") or "").strip()
+        if roots_raw:
+            roots = [Path(p).expanduser() for p in roots_raw.split(",") if p.strip()]
+        else:
+            roots = [Path.home() / "program"]
+        for program_dir in roots:
+            if not program_dir.is_dir():
                 continue
-            for pidf in sorted(pids_dir.glob("*.pid")):
-                if pidf.name.endswith(".done"):
-                    continue
-                try:
-                    pid = int(pidf.read_text().strip())
-                except (ValueError, OSError):
-                    continue
-                try:
-                    _kill_process_tree(pid)
-                    killed += 1
-                except Exception as exc:  # noqa: BLE001
-                    engine_log(f"[shutdown] kill {pid} ({pidf.name}) failed: {exc}")
+            for ws in sorted(program_dir.iterdir()):
+                paths.append(ws)
+    killed = 0
+    for ws in sorted(paths):
+        pids_dir = ws / ".ccc" / "pids"
+        if not pids_dir.is_dir():
+            continue
+        for pidf in sorted(pids_dir.glob("*.pid")):
+            if pidf.name.endswith(".done"):
+                continue
+            try:
+                pid = int(pidf.read_text().strip())
+            except (ValueError, OSError):
+                continue
+            try:
+                _kill_process_tree(pid)
+                killed += 1
+            except Exception as exc:  # noqa: BLE001
+                engine_log(f"[shutdown] kill {pid} ({pidf.name}) failed: {exc}")
     return killed
 
 
