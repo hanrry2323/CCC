@@ -488,9 +488,6 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             _engine_log(
                 f"[{label}] {tid} verdict status={_early!r} 非 PASS，重试"
             )
-            _engine_log(
-                f"[{label}] {tid} verdict status={_early!r} 非 PASS，重试"
-            )
             _clear_verdict(ws, tid)
             _ensure_task_in_testing(store, tid)
             continue
