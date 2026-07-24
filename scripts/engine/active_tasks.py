@@ -81,42 +81,53 @@ def _register_active(
 
 
 def _atomic_write_json(path: Path, content: str) -> None:
-    """atomic write：mkstemp + fsync + dir fsync + flock(LOCK_EX)。
+    """atomic write：独立 lock fd + mkstemp + fsync + dir fsync。
 
     修复 stability-audit-2026-07-24 类别①：直接 write_text 崩溃可截断。
     本地实现避免 engine 模块依赖 _board_store（边界独立）。
+    修复 diff-review-2026-07-24 中风险 #2：用独立 lock_fd 持锁到 os.replace
+    完成（原实现 fdopen close 时释放 lock，replace 阶段无锁保护）。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent),
-        prefix=".active-",
-        suffix=".tmp",
-    )
+    # 独立 lock fd（O_CREAT 创建空 lock 文件，不影响 path 内容）
+    lock_path = path.with_name(path.name + ".lock")
+    lock_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
         except OSError:
             # flock 不支持时降级
             pass
-        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent),
+            prefix=".active-",
+            suffix=".tmp",
+        )
         try:
-            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
             try:
-                os.fsync(dir_fd)
-            finally:
-                os.close(dir_fd)
-        except OSError:
-            pass
-        os.replace(tmp_name, str(path))
-    except Exception:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+            os.replace(tmp_name, str(path))
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+    finally:
         try:
-            os.unlink(tmp_name)
+            os.close(lock_fd)
         except OSError:
             pass
-        raise
 
 
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:

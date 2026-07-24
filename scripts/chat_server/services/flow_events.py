@@ -24,39 +24,54 @@ _crid_locks_guard = threading.Lock()
 
 
 def _atomic_write_json(path: Path, content: str) -> None:
-    """mkstemp + fsync + dir fsync；崩溃可截断 → 修复 audit 类别①。
+    """独立 lock fd + mkstemp + fsync + dir fsync。
 
-    与 engine.active_tasks._atomic_write_json 模式一致，跨进程 advisory lock
-    由上层 client_request_index_lock 提供（已有），此处不加。
+    修复 stability-audit-2026-07-24 类别① + diff-review-2026-07-24 #2：
+    独立 lock_fd 持锁到 os.replace 完成（原 fdopen close 时释放 lock）。
+    与 engine.active_tasks._atomic_write_json 模式一致；上层
+    client_request_index_lock 提供跨进程 advisory lock（已有），此处不冲突。
     """
     import tempfile
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent),
-        prefix=".flow-",
-        suffix=".tmp",
-    )
+    # 独立 lock fd（不用于写，仅持锁）
+    lock_path = path.with_name(path.name + ".lock")
+    lock_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
         try:
-            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent),
+            prefix=".flow-",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
             try:
-                os.fsync(dir_fd)
-            finally:
-                os.close(dir_fd)
-        except OSError:
-            pass
-        os.replace(tmp_name, str(path))
-    except Exception:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+            os.replace(tmp_name, str(path))
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+    finally:
         try:
-            os.unlink(tmp_name)
+            os.close(lock_fd)
         except OSError:
             pass
-        raise
 
 
 def events_log_path() -> Path:
