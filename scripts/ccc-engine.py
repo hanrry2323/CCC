@@ -190,6 +190,10 @@ from engine.upstream import (  # noqa: E402
     get_relay_url as _get_relay_url,
     is_upstream_healthy as _is_upstream_healthy,
 )
+from engine.notify import (  # noqa: E402
+    ccc_notify as _ccc_notify,
+    NOTIFY_SCRIPT as _NOTIFY_SCRIPT,
+)
 
 _stores = _engine_workspace._stores
 
@@ -505,8 +509,6 @@ def _log_opencode_done(
     )
 
 
-_NOTIFY_SCRIPT = _script_dir / "ccc-notify.sh"
-
 # KPI R4: short-path fail budget — ban 1Hz planned↔in_progress storm
 _SHORT_PATH_FAIL_MAX = 3
 
@@ -619,23 +621,6 @@ def _handle_short_path_failure(
         store.move_task(tid, "in_progress", "planned")
     store.update_index()
     return True
-
-
-def _ccc_notify(title: str, message: str) -> None:
-    """非阻塞 macOS 桌面通知（Engine 主循环不等待）。"""
-    if not _NOTIFY_SCRIPT.is_file():
-        engine_log(f"notify 跳过: {_NOTIFY_SCRIPT} 不存在")
-        return
-    try:
-        subprocess.Popen(
-            ["bash", str(_NOTIFY_SCRIPT), title, message],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            env=_sanitized_env(),
-        )
-    except OSError as exc:
-        engine_log(f"notify 失败: {exc}")
 
 
 def _quarantine_with_notify(
