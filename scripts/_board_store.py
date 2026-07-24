@@ -1250,8 +1250,14 @@ class FileBoardStore:
         """更新 .ccc/state.md 看板状态节（move_task/quarantine 成功后自动触发）
 
         使用 <!-- board-status --> / <!-- /board-status --> 配对标记
-        做确定性替换；无标记时追加末尾。调用方必须在锁释放后再调，
-        以避免延长看板写锁持有时间。
+        做确定性替换；无标记时追加末尾。
+
+        持久性保证（diff-review-2026-07-24 #5 已确认）：
+        - 写入走 _atomic_write（含 mkstemp + fsync + dir fsync + os.replace）
+          断电不会截断
+        - 锁范围由调用方保证：必须在 self._lock() 持有期间调用
+          （move_task / quarantine / update_index 都已包锁）
+        - 调用方不要在锁释放后再调，以避免延长看板写锁持有时间
 
         Phase 1.3: 优先复用 update_index() 刚算好的 counts；缺失时再扫一次。
         """
