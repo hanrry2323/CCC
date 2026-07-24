@@ -212,21 +212,46 @@ async def run_opencode(
     # 修复 stability-audit-2026-07-24 类别①（H3）：先 O_CREAT|O_EXCL 占位
     # 让 watchdog 在 Popen→write_text 间隙也能识别 "有进程在启动中"
     # 避免误判为无人认领的残留而 SIGTERM 新进程（Lesson 44 实锤）
-    try:
-        placeholder_fd = os.open(
-            str(pid_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644
-        )
-        os.close(placeholder_fd)
-    except FileExistsError:
-        # 已有占位/PID 文件 — 同 phase_id 已在跑，不并发启动
+    # 修复 diff-review-2026-07-24 中风险 #4：FileExistsError 占位残留 retry-once
+    # （之前残留的占位文件会让后续同 phase_id 启动永久 FileExistsError）
+    _placeholder_ok = False
+    for _attempt in (1, 2):
+        try:
+            placeholder_fd = os.open(
+                str(pid_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644
+            )
+            os.close(placeholder_fd)
+            _placeholder_ok = True
+            break
+        except FileExistsError:
+            if _attempt == 1:
+                # 第一次失败：可能是上次残留（finally 未跑的崩溃），
+                # 清理一次后再试
+                try:
+                    pid_file.unlink()
+                    continue
+                except OSError:
+                    pass
+            # 第二次仍失败：真有并发跑，abort
+            proc.kill()
+            await proc.wait()
+            return {
+                "phase_id": phase_id,
+                "error": f"pid_file exists: {pid_file.name}",
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": "concurrent launch aborted",
+                "duration_sec": 0.0,
+            }
+    if not _placeholder_ok:  # 防御性 — 实际 unreachable
         proc.kill()
         await proc.wait()
         return {
             "phase_id": phase_id,
-            "error": f"pid_file exists: {pid_file.name}",
+            "error": "pid_file placeholder failed",
             "exit_code": -1,
             "stdout": "",
-            "stderr": "concurrent launch aborted",
+            "stderr": "placeholder retry exhausted",
             "duration_sec": 0.0,
         }
     pid_file.write_text(str(proc.pid))
