@@ -264,9 +264,13 @@ def _get_relay_url() -> str:
 def _is_upstream_healthy() -> bool:
     """检查 relay/proxy 是否可达，30s 缓存。
 
-    v0.40.1: 4xx 视为 proxy 在线（鉴权失败 ≠ 进程宕机）。
-    仅连接失败 / 5xx / 超时才判 unhealthy。
-    CCC_UPSTREAM_STRICT=1 时恢复旧行为（仅 HTTP 200 = healthy）。
+    v0.40.1: 默认 4xx 视为 proxy 在线（鉴权失败 ≠ 进程宕机）— 这是
+    audit-2026-07-24 类别②假阳性来源。strict mode 仅 2xx 才算 healthy。
+    CCC_UPSTREAM_STRICT=1 时 strict；CCC_UPSTREAM_STRICT=0 关闭 strict
+    （保留旧行为兼容）。
+
+    修复 stability-audit-2026-07-24 类别②：默认 strict=True，
+    不再把任意 4xx 当 healthy，避免鉴权失败 / 路径错误被误判为"在线"。
     """
     now = time.time()
     cached = _upstream_health_cache.get("healthy")
@@ -276,7 +280,10 @@ def _is_upstream_healthy() -> bool:
 
     relay = _get_relay_url()
     messages_url = relay.rstrip("/") + "/v1/messages"
-    strict = (os.environ.get("CCC_UPSTREAM_STRICT") or "").strip() in ("1", "true", "yes")
+    # audit-2026-07-24 类别②：默认 strict=True（仅 2xx 算 healthy）
+    # 旧行为（任意 2xx/4xx 算 healthy）通过 CCC_UPSTREAM_STRICT=0 显式 opt-in
+    _strict_raw = (os.environ.get("CCC_UPSTREAM_STRICT") or "").strip().lower()
+    strict = _strict_raw not in ("0", "false", "no", "")
     status_code: int | None = None
     err_msg = ""
     # 仅做 TCP/HTTP 可达性探测，不发带假 key 的业务请求
