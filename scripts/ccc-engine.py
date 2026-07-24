@@ -545,6 +545,9 @@ def _start_tick_watchdog() -> None:
                     },
                 )
             except Exception:
+                # 修复 diff-review-2026-07-24 #3：hard exit 事件写入是
+                # best-effort。若磁盘满 / I/O 挂则写不进去，不应阻止硬退
+                # （否则 Engine 永远不重启）。engine_log 已先行记录根因。
                 pass
             # Must be exit 0 for launchd KeepAlive SuccessfulExit restart.
             # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
