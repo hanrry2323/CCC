@@ -23,6 +23,42 @@ _crid_thread_locks: dict[str, threading.Lock] = {}
 _crid_locks_guard = threading.Lock()
 
 
+def _atomic_write_json(path: Path, content: str) -> None:
+    """mkstemp + fsync + dir fsync；崩溃可截断 → 修复 audit 类别①。
+
+    与 engine.active_tasks._atomic_write_json 模式一致，跨进程 advisory lock
+    由上层 client_request_index_lock 提供（已有），此处不加。
+    """
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent),
+        prefix=".flow-",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+        os.replace(tmp_name, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def events_log_path() -> Path:
     raw = os.environ.get("CCC_FLOW_EVENTS_LOG", "").strip()
     return Path(raw) if raw else _DEFAULT_LOG
@@ -426,9 +462,9 @@ def remember_last_epic(
             payload_fingerprint=payload_fingerprint,
         )
     path = project_last_epic_file(project_id)
-    path.write_text(
+    _atomic_write_json(
+        path,
         json.dumps(rec, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
     # 追加历史（去重、新在前，最多 40）
     hist_path = epic_history_file(project_id)
@@ -442,9 +478,9 @@ def remember_last_epic(
             items = []
     items = [x for x in items if str(x.get("epic_id") or "") != epic_id]
     items.insert(0, rec)
-    hist_path.write_text(
+    _atomic_write_json(
+        hist_path,
         json.dumps(items[:40], ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
 
 
@@ -538,7 +574,10 @@ def _remember_client_request(
                 reverse=True,
             )
             data = dict(ordered[:200])
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        _atomic_write_json(
+            path,
+            json.dumps(data, ensure_ascii=False, indent=2),
+        )
 
 
 def lookup_transfer_by_client_request(
