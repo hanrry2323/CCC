@@ -2,7 +2,6 @@ import asyncio
 import time
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
 
 from ..auth import check_auth
 from .. import config

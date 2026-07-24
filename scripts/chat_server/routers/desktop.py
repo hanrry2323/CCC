@@ -1218,7 +1218,6 @@ async def list_executors(request: Request):
 async def task_artifacts(task_id: str, request: Request, workspace: str = "CCC"):
     """Phase 2.4: 返回 task 的 plan/report/review/verdict 产物"""
     check_auth(request)
-    import os
 
     w = _resolve_workspace(workspace)
     root = _workspace_root(w)

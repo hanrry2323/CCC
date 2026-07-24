@@ -19,7 +19,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 from _config import get_logger
 

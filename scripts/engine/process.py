@@ -7,7 +7,6 @@ fix-planning-2026-07-24 ccc-engine.py 拆分布局：自包含模块，
 
 from __future__ import annotations
 
-import logging
 import os
 import signal
 import subprocess

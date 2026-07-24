@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import json
 import re
-import time
-from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 # ============================================================
 # 1. 根因分析引擎 — 把失败模式聚类到已知根因

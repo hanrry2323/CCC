@@ -11,7 +11,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 
 EXECUTOR_IDS = frozenset({"opencode", "python", "ollama", "cli", "auto"})

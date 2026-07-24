@@ -1,4 +1,3 @@
-import uuid
 from fastapi import APIRouter, Request, HTTPException
 
 from ..auth import check_auth

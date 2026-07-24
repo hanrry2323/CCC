@@ -22,7 +22,6 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
 
 from _config import Config
 from _utils import now_iso_utc

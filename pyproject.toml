@@ -27,8 +27,19 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# 2026-07-24 方案 0.3：F401 渐进收紧
+# - tests/scripts/* + tests/integration/* + scripts/tests/* ：测试文件历史包袱大，
+#   继续 ignore F401/F841，新写测试不加 noqa
+# - scripts/ccc-engine.py + ccc-board.py + board/roles/*.py：角色文件大量
+#   `from X import a, b, c` 多导入但只用了 1-2 个，是历史风格累积，
+#   不在本批范围；后续按文件单独清理
+# - 其它 scripts/ 生产代码：从 ignore 移除 F401，开始清理
 "tests/scripts/*" = ["F401", "F841", "E402", "I001"]
-"scripts/ccc-engine.py" = ["E402"]  # 延迟 import 较多
+"tests/integration/*" = ["F401", "F841", "E402", "I001"]
+"scripts/tests/*" = ["F401", "F841", "E402", "I001"]
+"scripts/ccc-engine.py" = ["F401", "E402"]  # 角色文件未到 hot-path 前不动
+"scripts/ccc-board.py" = ["F401"]
+"scripts/board/roles/*.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["_board_store", "_config", "_executor", "_failure_ledger", "_jsonl_rotate", "_utils", "_ccc_control", "_engine_wake", "_ops_probe", "_stats_aggregator", "_claude_cli"]
