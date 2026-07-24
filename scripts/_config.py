@@ -122,6 +122,10 @@ class Config:
     # ── 容错 ──
     max_retry: int = 5  # 最大重试次数 → 异常隔离
     max_stale_hours: int = 2  # F-FLOW-04: 原 6h 过长；busy/idle 由 hang 检测互补
+    # v0.60.1: 单 task 全局 retry budget（修复 audit 类别④ #17：各层叠加
+    # 重试爆炸）。phase / hang / product / auto-refeed 各层 retry 之和
+    # 超过此值 → quarantine + events.append("retry_budget_exceeded")
+    task_retry_budget: int = 8
 
     # ── 墙钟断路器（v0.31 C1）──
     max_wallclock: int = 7200  # 秒，opencode 子进程最大墙钟运行时间（2h）
@@ -237,6 +241,7 @@ class Config:
         )
         _env_override_int(self, "max_retry", "CCC_MAX_RETRY", lo=0, hi=100)
         _env_override_int(self, "max_stale_hours", "CCC_STALE_HOURS", lo=1, hi=168)
+        _env_override_int(self, "task_retry_budget", "CCC_TASK_RETRY_BUDGET", lo=1, hi=64)
         _env_override_str(self, "model", "OPENCODE_MODEL")
         _env_override_str(self, "board_host", "BOARD_HOST")
         _env_override_int(self, "board_port", "BOARD_PORT", lo=1, hi=65535)
