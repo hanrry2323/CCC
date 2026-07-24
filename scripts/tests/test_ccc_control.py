@@ -93,3 +93,28 @@ def test_status_dict(control_home):
     assert s["enabled"] is False
     assert s["ui_allowed"] is True
     assert s["engine_allowed"] is False
+
+
+def test_set_mode_source_whitelist_allows_known(control_home):
+    """红线 12 实质化：白名单内的 source 必须接受。"""
+    for src in ("cli", "hub", "task_dispatch", "daily_review", "ops_manual"):
+        out = ctrl.set_mode("ui", reason=f"src={src}", source=src)
+        assert out["source"] == src
+
+
+def test_set_mode_source_whitelist_rejects_unknown(control_home):
+    """红线 12 实质化：白名单外的 source 必须 raise ValueError。"""
+    import pytest
+
+    for src in ("agent", "auto", "test", "t", "any_random_string", ""):
+        with pytest.raises(ValueError, match="invalid source"):
+            ctrl.set_mode("enabled", reason="x", source=src)
+
+
+def test_set_mode_source_whitelist_blocks_arbitrary_enable(control_home):
+    """模拟历史漏洞：agent 直接 Python 调用 set_mode('enabled') 现在被拒。"""
+    import pytest
+
+    with pytest.raises(ValueError):
+        ctrl.set_mode("enabled", reason="agent bootstrap", source="agent")
+    assert ctrl.get_mode() == "disabled"  # 没改成

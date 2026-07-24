@@ -116,7 +116,7 @@ def test_ensure_engine_registers_workspace(tmp_path, monkeypatch):
     wr.REGISTRY_FILE = tmp_path / ".ccc" / "workspaces.json"
 
     root = _mk_board_ws(tmp_path, "xianyu")
-    ctrl.set_mode("ui", reason="t", source="t")
+    ctrl.set_mode("ui", reason="t", source="cli")
     with patch.object(wake, "_bootstrap_engine_launchd", return_value=(False, "no_plist")):
         out = wake.ensure_engine_for_task(
             reason="task_dispatch",
@@ -189,7 +189,7 @@ def test_ensure_engine_forces_orch_false(tmp_path, monkeypatch):
 
     orch = _mk_board_ws(tmp_path, "CCC")
     monkeypatch.setattr(wr, "orch_home", lambda: orch.resolve())
-    ctrl.set_mode("enabled", reason="t", source="t")
+    ctrl.set_mode("enabled", reason="t", source="cli")
     with patch.object(wake, "_bootstrap_engine_launchd", return_value=(False, "no_plist")):
         out = wake.ensure_engine_for_task(
             reason="task_dispatch",

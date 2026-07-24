@@ -37,6 +37,17 @@ VALID_MODES = frozenset({"disabled", "ui", "enabled", "invent"})
 ENGINE_MODES = frozenset({"enabled", "invent"})  # invent 仅兼容旧 control.json 读路径
 UI_MODES = frozenset({"ui", "enabled", "invent"})
 
+# set_mode source 白名单（红线 12 实质化）
+# - cli:         命令行 / 主入口（默认）
+# - hub:         Hub 后端（Basic Auth 已认证的用户操作）
+# - task_dispatch: 用户显式下达任务（CCC 协议允许）
+# - daily_review: 日审建卡
+# - ops_manual:  运维手动
+# 其它 source 一律 ValueError（修复 audit-2026-07-24 类别⑤）
+ALLOWED_SET_MODE_SOURCES = frozenset(
+    {"cli", "hub", "task_dispatch", "daily_review", "ops_manual"}
+)
+
 # 永久关闭：自动识别 / 自造任务投入（audit/evolve/replenish/abnormal 回灌）
 INVENT_HARD_DISABLED = True
 
@@ -190,9 +201,14 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
     """写入控制面。返回新状态 dict。
 
     invent 在硬禁下强制降级为 enabled（禁止自造，仍可消费用户任务）。
+    source 必须在 ALLOWED_SET_MODE_SOURCES 白名单内（红线 12 实质化）。
     """
     if mode not in VALID_MODES:
         raise ValueError(f"invalid mode: {mode}")
+    if source not in ALLOWED_SET_MODE_SOURCES:
+        raise ValueError(
+            f"invalid source: {source!r} (allowed: {sorted(ALLOWED_SET_MODE_SOURCES)})"
+        )
 
     coerced = False
     if INVENT_HARD_DISABLED and mode == "invent":

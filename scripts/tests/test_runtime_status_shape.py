@@ -15,7 +15,7 @@ def test_status_dict_has_mode(tmp_path, monkeypatch):
     ctrl.CONTROL_DIR = tmp_path / ".ccc"
     ctrl.CONTROL_FILE = ctrl.CONTROL_DIR / "control.json"
     ctrl.DISABLED_SENTINEL = ctrl.CONTROL_DIR / "DISABLED"
-    ctrl.set_mode("ui", reason="t", source="t")
+    ctrl.set_mode("ui", reason="t", source="cli")
     s = ctrl.status_dict()
     assert s["mode"] == "ui"
     assert "engine_allowed" in s

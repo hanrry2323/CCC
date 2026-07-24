@@ -53,7 +53,7 @@ def test_reopen_from_abnormal(tmp_path, monkeypatch):
     ctrl.CONTROL_FILE = ctrl.CONTROL_DIR / "control.json"
     ctrl.DISABLED_SENTINEL = ctrl.CONTROL_DIR / "DISABLED"
     wake.WAKE_FILE = tmp_path / ".ccc" / "engine.wake"
-    ctrl.set_mode("ui", reason="test", source="test")
+    ctrl.set_mode("ui", reason="test", source="cli")
 
     with patch.object(wake, "_bootstrap_engine_launchd", return_value=(False, "skip")):
         out = reopen_task(ws, tid, to_col="planned", wake=True)

@@ -23,7 +23,7 @@ def test_ensure_engine_sets_enabled(tmp_path, monkeypatch):
     ctrl.DISABLED_SENTINEL = ctrl.CONTROL_DIR / "DISABLED"
     wake.WAKE_FILE = tmp_path / ".ccc" / "engine.wake"
 
-    ctrl.set_mode("disabled", reason="test", source="test")
+    ctrl.set_mode("disabled", reason="test", source="cli")
     with patch.object(wake, "_bootstrap_engine_launchd", return_value=(False, "skip")):
         out = wake.ensure_engine_for_task(
             reason="task_dispatch", task_id="t1", start_launchd=True
