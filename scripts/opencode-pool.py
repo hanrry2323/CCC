@@ -24,11 +24,12 @@ import json
 import signal
 import sys
 from pathlib import Path
+from typing import Any, Coroutine
 
 MAX_PARALLEL = 3  # 红线 X1
 
 from _config import get_logger
-from _executor import OpenCodeExecutor
+from _executor import ExecResult, OpenCodeExecutor
 
 _log = get_logger("opencode-pool")
 
@@ -44,7 +45,7 @@ def _sigterm_handler(signum, frame):
         t.cancel()
 
 
-def run_task(task: dict, sem: asyncio.Semaphore) -> asyncio.coroutine:
+def run_task(task: dict, sem: asyncio.Semaphore) -> Coroutine[Any, Any, ExecResult]:
     """单 task：拿信号量 → 跑 opencode → 释放"""
 
     async def _run():
