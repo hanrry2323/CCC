@@ -1035,6 +1035,9 @@ class FileBoardStore:
 
         顺带把 7 列计数回填到 _sync_state_md 可复用的内存缓存，避免紧随其后的
         _sync_state_md 再次扫全列（Phase 1.3）。
+
+        修复 stability-audit-2026-07-24 类别②：index 加 generation + updated_at，
+        保持 counts 平铺在顶层（兼容 Patrol 读法）。
         """
         lock = self._lock()
         if lock is None:
@@ -1043,8 +1046,22 @@ class FileBoardStore:
         try:
             counts = {col: len(self.list_tasks(col)) for col in COLUMNS}
             index_file = self.board / "index.json"
+            # generation 字段：每次 update +1，供上层校验陈旧
+            old_gen = 0
+            if index_file.is_file():
+                try:
+                    old = json.loads(index_file.read_text(encoding="utf-8"))
+                    if isinstance(old, dict):
+                        old_gen = int(old.get("generation", 0))
+                except (OSError, json.JSONDecodeError, ValueError, TypeError):
+                    pass
+            payload = {
+                "generation": old_gen + 1,
+                "updated_at": now_iso(),
+                **counts,  # 保持 counts 平铺在顶层，Patrol 仍能 idx_data.get(c, 0)
+            }
             _atomic_write(
-                index_file, json.dumps(counts, indent=2, ensure_ascii=False) + "\n"
+                index_file, json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
             )
             self._index_counts_cache = counts
             return counts
