@@ -4082,6 +4082,37 @@ def _kill_process_tree(pid: int) -> bool:
 _kill_pid = _kill_process_tree
 
 
+def _graceful_kill_active_tasks() -> int:
+    """遍历 ~/program/*/.ccc/pids/*.pid，对每个 runner PID 调 _kill_process_tree。
+
+    修复 stability-audit-2026-07-24 类别③：graceful shutdown 不杀子进程。
+    signal handler 内不可做复杂 IO；这里在 main 退出 finally 兜底执行。
+
+    Returns: 被尝试 kill 的 PID 数。
+    """
+    program_dir = Path.home() / "program"
+    if not program_dir.is_dir():
+        return 0
+    killed = 0
+    for ws in sorted(program_dir.iterdir()):
+        pids_dir = ws / ".ccc" / "pids"
+        if not pids_dir.is_dir():
+            continue
+        for pidf in sorted(pids_dir.glob("*.pid")):
+            if pidf.name.endswith(".done"):
+                continue
+            try:
+                pid = int(pidf.read_text().strip())
+            except (ValueError, OSError):
+                continue
+            try:
+                _kill_process_tree(pid)
+                killed += 1
+            except Exception as exc:  # noqa: BLE001
+                engine_log(f"[shutdown] kill {pid} ({pidf.name}) failed: {exc}")
+    return killed
+
+
 def _git_stash_ws(ws: Path, tid: str, phase_num: int) -> bool:
     """cd ws && git stash push -m 'ccc-auto-stash: ...'。返回是否成功。"""
     try:
@@ -4464,21 +4495,27 @@ def main(argv: list[str] | None = None) -> None:
     _run_stats_server(args.port)
 
     try:
-        engine_loop(workspaces)
-    except KeyboardInterrupt:
-        engine_log("Engine 关闭")
-        _write_engine_restart("shutdown", "KeyboardInterrupt")
-    except SystemExit as e:
-        code = e.code if e.code else 0
-        if code != 0:
-            _write_engine_restart("stopped", f"SystemExit({code})")
-        _log.debug(f"engine exiting via SystemExit({code})")
-    except Exception as e:
-        engine_log(f"Engine 异常退出: {e}")
-        _write_engine_restart("stopped", f"exception: {type(e).__name__}: {e}")
-        tb_text = _traceback.format_exc()
-        engine_log(f"{tb_text[:3000]}")
-    _engine_shutdown = True
+        try:
+            engine_loop(workspaces)
+        except KeyboardInterrupt:
+            engine_log("Engine 关闭")
+            _write_engine_restart("shutdown", "KeyboardInterrupt")
+        except SystemExit as e:
+            code = e.code if e.code else 0
+            if code != 0:
+                _write_engine_restart("stopped", f"SystemExit({code})")
+            _log.debug(f"engine exiting via SystemExit({code})")
+        except Exception as e:
+            engine_log(f"Engine 异常退出: {e}")
+            _write_engine_restart("stopped", f"exception: {type(e).__name__}: {e}")
+            tb_text = _traceback.format_exc()
+            engine_log(f"{tb_text[:3000]}")
+    finally:
+        # 修复 stability-audit-2026-07-24 类别③：graceful shutdown 杀子进程组
+        _engine_shutdown = True
+        n = _graceful_kill_active_tasks()
+        if n:
+            engine_log(f"[shutdown] killed {n} active task subprocess(es)")
     engine_log("Engine 终止")
 
 
