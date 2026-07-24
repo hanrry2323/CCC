@@ -4111,33 +4111,40 @@ _kill_pid = _kill_process_tree
 
 
 def _graceful_kill_active_tasks() -> int:
-    """遍历 ~/program/*/.ccc/pids/*.pid，对每个 runner PID 调 _kill_process_tree。
+    """遍历 workspace 根下的 .ccc/pids/*.pid，对每个 runner PID 调 _kill_process_tree。
 
     修复 stability-audit-2026-07-24 类别③：graceful shutdown 不杀子进程。
     signal handler 内不可做复杂 IO；这里在 main 退出 finally 兜底执行。
+    修复 diff-review-2026-07-24 中风险 #3：workspace 根目录支持 env var override
+    （CCC_WORKSPACE_ROOTS，逗号分隔），默认仍为 ~/program。
 
     Returns: 被尝试 kill 的 PID 数。
     """
-    program_dir = Path.home() / "program"
-    if not program_dir.is_dir():
-        return 0
+    roots_raw = (os.environ.get("CCC_WORKSPACE_ROOTS") or "").strip()
+    if roots_raw:
+        roots = [Path(p).expanduser() for p in roots_raw.split(",") if p.strip()]
+    else:
+        roots = [Path.home() / "program"]
     killed = 0
-    for ws in sorted(program_dir.iterdir()):
-        pids_dir = ws / ".ccc" / "pids"
-        if not pids_dir.is_dir():
+    for program_dir in roots:
+        if not program_dir.is_dir():
             continue
-        for pidf in sorted(pids_dir.glob("*.pid")):
-            if pidf.name.endswith(".done"):
+        for ws in sorted(program_dir.iterdir()):
+            pids_dir = ws / ".ccc" / "pids"
+            if not pids_dir.is_dir():
                 continue
-            try:
-                pid = int(pidf.read_text().strip())
-            except (ValueError, OSError):
-                continue
-            try:
-                _kill_process_tree(pid)
-                killed += 1
-            except Exception as exc:  # noqa: BLE001
-                engine_log(f"[shutdown] kill {pid} ({pidf.name}) failed: {exc}")
+            for pidf in sorted(pids_dir.glob("*.pid")):
+                if pidf.name.endswith(".done"):
+                    continue
+                try:
+                    pid = int(pidf.read_text().strip())
+                except (ValueError, OSError):
+                    continue
+                try:
+                    _kill_process_tree(pid)
+                    killed += 1
+                except Exception as exc:  # noqa: BLE001
+                    engine_log(f"[shutdown] kill {pid} ({pidf.name}) failed: {exc}")
     return killed
 
 
