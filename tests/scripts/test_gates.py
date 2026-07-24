@@ -56,7 +56,10 @@ def test_verdict_is_timeout_detection(tmp_path):
     ws = tmp_path / "ws"
     _write_verdict(ws, "t1", "**Verdict:** TIMEOUT\nreviewer LLM 超时")
     assert gates._verdict_is_timeout(ws, "t1")
-    assert gates._verdict_is_valid(ws, "t1")
+    # 修复 stability-audit-2026-07-24 类别④：TIMEOUT 不再算 valid，
+    # 旧行为（非空即 valid）允许 reviewer LLM 超时也通过门禁，新行为
+    # 强制 stay testing 或 quarantine
+    assert not gates._verdict_is_valid(ws, "t1")
 
 
 def test_clear_verdict(tmp_path):

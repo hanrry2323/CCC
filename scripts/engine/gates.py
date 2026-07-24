@@ -48,14 +48,23 @@ def _verdict_file(ws: Path, tid: str) -> Path:
 
 
 def _verdict_is_valid(ws: Path, tid: str) -> bool:
-    """verdict 文件必须存在且非空（空文件视为未产出）。"""
+    """verdict 文件必须存在且 schema 严格：唯一 **Verdict:** 行且 PASS。
+
+    修复 stability-audit-2026-07-24 类别④：旧实现只判非空（"非空但无 Verdict
+    行"的旧文件仍继续，导致门禁被绕过）。现在要求 _parse_verdict_status
+    返回 'PASS' 才算 valid；其它状态（FAIL / TIMEOUT / None）均 invalid，
+    触发 stay testing 或 quarantine。
+    """
     vf = _verdict_file(ws, tid)
     if not vf.is_file():
         return False
     try:
-        return bool(vf.read_text(encoding="utf-8").strip())
+        content = vf.read_text(encoding="utf-8")
     except OSError:
         return False
+    if not content.strip():
+        return False
+    return _parse_verdict_status(content) == "PASS"
 
 
 def _verdict_is_timeout(ws: Path, tid: str) -> bool:
