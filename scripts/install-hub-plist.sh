@@ -63,7 +63,7 @@ cat > "$PLIST_STAGED" <<PLIST_EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>CCC_CHAT_HOST</key>
-    <string>0.0.0.0</string>
+    <string>127.0.0.1</string>
     <key>CCC_CHAT_PORT</key>
     <string>7777</string>
     <key>CCC_CHAT_USER</key>

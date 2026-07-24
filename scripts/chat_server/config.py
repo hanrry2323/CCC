@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # import 时 __init__.py 会先执行注入，config 模块加载时 scripts/ 已在 sys.path 中）
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli  # noqa: E402
 
-HOST = os.environ.get("CCC_CHAT_HOST", "0.0.0.0")
+HOST = os.environ.get("CCC_CHAT_HOST", "127.0.0.1")
 # Hub 对外端口：7777（用户习惯口）；Board API 内网默认 7775
 PORT = int(os.environ.get("CCC_CHAT_PORT", "7777"))
 # Hub 约定账密：用户名与密码均为 ccc（可用环境变量覆盖）
@@ -262,7 +262,8 @@ CLAUDE_ENV = build_claude_env()
 def validate_auth_config() -> None:
     """Hub 账密门禁：禁止空口令与历史泄漏默认；约定 ccc/ccc 可用。
 
-    监听 0.0.0.0 且仍用默认口令时打印警告（产品允许 ccc:ccc，但全网暴露有风险）。
+    修复 stability-audit-2026-07-24 类别⑤：监听 0.0.0.0 + ccc:ccc 组合直接
+    SystemExit，不再只 warn（LAN 默认暴露同网段脚本能 Basic Auth 进 Hub）。
     """
     if AUTH_PASS.lower() in _FORBIDDEN_PASSWORDS:
         raise SystemExit(
@@ -270,10 +271,10 @@ def validate_auth_config() -> None:
             "(e.g. claude2026). Use the Hub password 'ccc', or set another non-forbidden value."
         )
     if HOST in ("0.0.0.0", "::") and AUTH_USER == "ccc" and AUTH_PASS == "ccc":
-        print(
-            "WARNING: Hub listens on all interfaces with default auth ccc:ccc. "
-            "Prefer CCC_CHAT_HOST=127.0.0.1 or a stronger CCC_CHAT_PASS on shared LAN.",
-            file=sys.stderr,
+        raise SystemExit(
+            "Refusing to start: Hub listens on all interfaces with default auth ccc:ccc. "
+            "Set CCC_CHAT_HOST=127.0.0.1 (recommended), or both "
+            "CCC_CHAT_HOST=0.0.0.0 and a stronger CCC_CHAT_PASS."
         )
 
 
