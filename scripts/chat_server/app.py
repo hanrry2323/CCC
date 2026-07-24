@@ -48,8 +48,17 @@ class NoStoreStaticMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Phase 2.1: 应用退出时显式关闭共享 httpx client，避免连接泄漏
     yield
+    # 修复 stability-audit-2026-07-24 类别③：Hub exit 时不漏 ClaudeSDKClient
+    # / loop-code 子进程（graceful shutdown 杀子进程组）
+    try:
+        from .services.claude_session import session_manager
+
+        await session_manager.shutdown()
+    except Exception:
+        # shutdown 失败不影响 close_client 兜底
+        pass
+    # Phase 2.1: 应用退出时显式关闭共享 httpx client，避免连接泄漏
     await close_client()
 
 
