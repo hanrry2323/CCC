@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import traceback as _traceback
+from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -242,6 +243,10 @@ _MEM_KILL_MB = 1500
 _last_tick_mono: float = 0.0
 _TICK_WATCHDOG_STALE_S = float(os.environ.get("CCC_ENGINE_TICK_STALE_S", "180") or "180")
 _TICK_WATCHDOG_POLL_S = 30.0
+# v0.60.1: 触发硬退前 grace 期，给主循环机会恢复 / 自然退出
+_WATCHDOG_GRACE_S = float(
+    os.environ.get("CCC_ENGINE_TICK_HARD_EXIT_GRACE_S", "30") or "30"
+)
 
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
@@ -367,15 +372,20 @@ def _set_parallel_disabled(val: bool) -> None:
     PHASE_PARALLEL_DISABLED = val
 
 
-def _write_engine_restart(status: str, reason: str | None = None) -> None:
+def _write_engine_restart(
+    status: str,
+    reason: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
     """写入结构化重启日志到 ~/.ccc/logs/engine-restarts.jsonl。
 
     Args:
         status: "started" | "shutdown" | "stopped"
         reason: 描述原因，如 "SIGTERM" | "KeyboardInterrupt" | None（started 时为 None）
+        extra: 额外字段（如 watchdog 触发时附 stale_sec / grace_s）
     """
     uptime = max(0.001, time.time() - _engine_start_ts)
-    entry = {
+    entry: dict[str, Any] = {
         "ts": _utils_now_iso(),
         "pid": os.getpid(),
         "uptime_sec": round(uptime, 3),
@@ -384,6 +394,8 @@ def _write_engine_restart(status: str, reason: str | None = None) -> None:
         "source": "engine",
         "version": _ENGINE_VERSION,
     }
+    if extra:
+        entry.update(extra)
     try:
         from _jsonl_rotate import append_jsonl
         append_jsonl(_RESTART_LOG_PATH, entry)
@@ -455,7 +467,13 @@ def _mark_engine_tick() -> None:
 
 
 def _start_tick_watchdog() -> None:
-    """若主循环超过 CCC_ENGINE_TICK_STALE_S 无 tick，exit 让 launchd 拉起。"""
+    """若主循环超过 CCC_ENGINE_TICK_STALE_S 无 tick，先 grace 期观察；
+    grace 过期仍无 tick 则 flush diagnostic + 标记 hard exit 事件 + os._exit(0)。
+
+    修复 stability-audit-2026-07-24 类别③：watchdog 直接 os._exit 跳过
+    finally/atexit/持久化。Grace 期让主循环有机会自然退出（_engine_shutdown
+    置位时 watchdog 直接 return）。
+    """
     global _last_tick_mono
     _last_tick_mono = time.monotonic()
 
@@ -465,39 +483,59 @@ def _start_tick_watchdog() -> None:
             if _engine_shutdown:
                 return
             age = time.monotonic() - _last_tick_mono
-            if age > _TICK_WATCHDOG_STALE_S:
-                engine_log(
-                    f"[watchdog] no tick for {age:.0f}s "
-                    f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — exit 0 for launchd SuccessfulExit restart"
+            if age <= _TICK_WATCHDOG_STALE_S:
+                continue
+            # Grace period: 给主循环一个机会自己退出 / 恢复 tick
+            grace_deadline = time.monotonic() + _WATCHDOG_GRACE_S
+            engine_log(
+                f"[watchdog] no tick for {age:.0f}s "
+                f"(>{_TICK_WATCHDOG_STALE_S:.0f}s) — grace "
+                f"{_WATCHDOG_GRACE_S:.0f}s before hard exit"
+            )
+            while time.monotonic() < grace_deadline:
+                if _engine_shutdown:
+                    engine_log(
+                        "[watchdog] main loop signaled exit during grace — cancel hard exit"
+                    )
+                    return
+                time.sleep(0.5)
+            # Grace expired — flush diagnostic, mark event, then hard exit
+            try:
+                _write_engine_restart(
+                    "stopped",
+                    reason="tick_watchdog_hard_exit",
+                    extra={
+                        "stale_sec": round(age, 1),
+                        "grace_s": _WATCHDOG_GRACE_S,
+                    },
                 )
-                try:
-                    _RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-                    with _RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
-                        f.write(
-                            json.dumps(
-                                {
-                                    "ts": _utils_now_iso(),
-                                    "pid": os.getpid(),
-                                    "status": "stopped",
-                                    "reason": "tick_watchdog_stale",
-                                    "stale_sec": round(age, 1),
-                                    "exit_code": 0,
-                                },
-                                ensure_ascii=False,
-                            )
-                            + "\n"
-                        )
-                except OSError:
-                    pass
-                # Must be 0: plist KeepAlive SuccessfulExit only restarts on success.
-                # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
-                os._exit(0)
+            except Exception:
+                pass
+            try:
+                from _jsonl_rotate import append_jsonl
+
+                append_jsonl(
+                    Path.home() / ".ccc" / "stats" / "engine-events.jsonl",
+                    {
+                        "ts": _utils_now_iso(),
+                        "kind": "engine_hard_exit_watchdog",
+                        "stale_sec": round(age, 1),
+                        "grace_s": _WATCHDOG_GRACE_S,
+                        "stale_threshold_s": _TICK_WATCHDOG_STALE_S,
+                        "pid": os.getpid(),
+                    },
+                )
+            except Exception:
+                pass
+            # Must be 0: plist KeepAlive SuccessfulExit only restarts on success.
+            # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
+            os._exit(0)
 
     t = threading.Thread(target=_watch, name="ccc-tick-watchdog", daemon=True)
     t.start()
     engine_log(
         f"[watchdog] tick watchdog on (stale={_TICK_WATCHDOG_STALE_S:.0f}s, "
-        f"poll={_TICK_WATCHDOG_POLL_S:.0f}s)"
+        f"poll={_TICK_WATCHDOG_POLL_S:.0f}s, grace={_WATCHDOG_GRACE_S:.0f}s)"
     )
 
 
