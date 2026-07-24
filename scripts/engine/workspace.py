@@ -1,15 +1,31 @@
-"""engine.workspace — workspace 切换与 per-workspace FileBoardStore 缓存。"""
+"""engine.workspace — workspace 切换与 per-workspace FileBoardStore 缓存。
+
+2026-07-24 方案 2.2：废除 ccc_board.ROOT 猴子补丁全局，改用线程安全
+WorkspaceContext + workspace_scope 上下文管理器。
+
+设计：
+- _activate_workspace(ws) 保留作为兼容入口（调用 _workspace_scope_legacy）
+- 新代码优先用 workspace_scope(ws) 上下文管理器
+- WorkspaceContext 持有 ws + store，线程本地存储（threading.local）
+- get_current_workspace() 返回当前线程 ctx 或 None
+"""
 from __future__ import annotations
 
 import sys
 import threading
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator, Generator
 
 from _board_store import FileBoardStore
 from board.context import set_workspace
 
 _workspace_switch_lock = threading.RLock()
 _stores: dict[str, FileBoardStore] = {}
+
+# 2026-07-24 方案 2.2 步骤 1：WorkspaceContext + 线程本地存储
+_thread_local = threading.local()
 
 _BOARD_COLUMNS = (
     "backlog",
@@ -22,6 +38,48 @@ _BOARD_COLUMNS = (
 )
 
 
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """线程安全 workspace 上下文（替代 ccc_board.ROOT 全局）。
+
+    字段：
+        ws: 当前 workspace 绝对路径
+        store: 该 ws 对应的 FileBoardStore 实例（共享 _stores 缓存）
+    """
+
+    ws: Path
+    store: FileBoardStore
+
+
+def get_current_workspace() -> WorkspaceContext | None:
+    """获取当前线程的 workspace 上下文（替代 ccc_board.ROOT）。
+
+    Returns: WorkspaceContext 或 None（未进入 workspace_scope）
+    """
+    return getattr(_thread_local, "ctx", None)
+
+
+@contextmanager
+def workspace_scope(ws: Path) -> Generator[WorkspaceContext, None, None]:
+    """线程级 workspace 上下文管理器。
+
+    用法：
+        with workspace_scope(ws):
+            # 此 block 内 get_current_workspace() 返回 ctx
+            dev_role_launch(tid)  # 内部可用 get_current_workspace() 取 ws/store
+
+    退出 block 时自动清理 _thread_local.ctx，避免泄漏到下一个 block。
+    """
+    resolved = ws.resolve()
+    store = _get_store(resolved)
+    ctx = WorkspaceContext(ws=resolved, store=store)
+    _thread_local.ctx = ctx
+    try:
+        yield ctx
+    finally:
+        _thread_local.ctx = None
+
+
 def _reset_board_lazy() -> None:
     cb = sys.modules.get("ccc_board")
     if cb is not None:
@@ -29,7 +87,11 @@ def _reset_board_lazy() -> None:
 
 
 def _activate_workspace(ws: Path) -> Path:
-    """切换当前 workspace：env + ContextVar + lazy 缓存重置。"""
+    """切换当前 workspace：env + ContextVar + lazy 缓存重置。
+
+    2026-07-24 方案 2.2：兼容入口仍保留，调用 set_workspace（board.context 内已
+    用 ContextVar 隔离）。新代码优先用 workspace_scope(ws) 上下文管理器。
+    """
     ws = ws.resolve()
     with _workspace_switch_lock:
         set_workspace(ws)
