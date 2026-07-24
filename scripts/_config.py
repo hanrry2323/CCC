@@ -38,7 +38,7 @@ TIMEOUT_MIN = 60
 TIMEOUT_MAX = 86400
 
 
-def parse_duration(value, default: int) -> int:
+def parse_duration(value: int | str | None, default: int) -> int:
     """解析 duration 类表达式为秒数。
 
     支持：
@@ -228,7 +228,7 @@ class Config:
     evolve_on_audit: bool = False  # v0.42.4: 永久关闭，忽略环境变量
     product_async_timeout: int = 1200  # 秒；claude -p product 墙钟上限（扇出常 >10min）
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """环境变量覆盖（优先级：环境变量 > 默认值）
 
         v0.28.0: timeout 支持 duration 类 expr（5m / 1h / 1d）和 clamp [60, 86400]

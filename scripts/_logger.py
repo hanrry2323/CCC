@@ -28,6 +28,7 @@ import logging
 import logging.handlers
 import os
 import sys
+from typing import Any
 
 
 _LEVELS = {
@@ -89,19 +90,19 @@ class _CCCLogger:
     # 注：handler 的 Formatter 已是 "[%(name)s] %(message)s"，name 包含 ccc. 前缀
     # 这里改走传 args 路径，避免双重格式化。重新设计：直接用 logging 的 extra
     # 但为兼容既有调用 log.info("task %s", t)，保持*args。
-    def debug(self, msg: str, *args, **kwargs) -> None:
+    def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self._log.debug(msg, *args, **kwargs)
 
-    def info(self, msg: str, *args, **kwargs) -> None:
+    def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self._log.info(msg, *args, **kwargs)
 
-    def warning(self, msg: str, *args, **kwargs) -> None:
+    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self._log.warning(msg, *args, **kwargs)
 
-    def error(self, msg: str, *args, **kwargs) -> None:
+    def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self._log.error(msg, *args, **kwargs)
 
-    def exception(self, msg: str, *args, exc_info: bool = True, **kwargs) -> None:
+    def exception(self, msg: str, *args: Any, exc_info: bool = True, **kwargs: Any) -> None:
         """记录异常堆栈。exc_info 默认 True（与标准库不同：CCC 默认打印堆栈）"""
         self._log.exception(msg, *args, **kwargs) if exc_info else self._log.error(
             msg, *args, **kwargs

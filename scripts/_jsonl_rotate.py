@@ -45,7 +45,7 @@ def rotate_if_needed(path: Path, max_bytes: int = DEFAULT_MAX_BYTES, backup_coun
     return True
 
 
-def append_jsonl(path: Path, record: dict, *, max_bytes: int = DEFAULT_MAX_BYTES, backup_count: int = DEFAULT_BACKUP_COUNT) -> None:
+def append_jsonl(path: Path, record: dict[str, Any], *, max_bytes: int = DEFAULT_MAX_BYTES, backup_count: int = DEFAULT_BACKUP_COUNT) -> None:
     """append 一条 jsonl；先检查轮转。
 
     修复 stability-audit-2026-07-24 类别②：失败账本写失败不再完全静默，

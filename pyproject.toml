@@ -70,3 +70,16 @@ filterwarnings = [
 
 [tool.mypy]
 explicit_package_bases = true
+# 2026-07-24 方案 2.1：mypy strict 渐进启用
+# 第 1-3 轮翻绿模块（2026-07-24）：_config.py / _utils.py / _jsonl_rotate.py
+# 这些是基础设施层，纯函数 / dataclass，类型注解已就位
+files = [
+    "scripts/_config.py",
+    "scripts/_utils.py",
+    "scripts/_jsonl_rotate.py",
+]
+# 翻绿模块与已翻绿模块间有依赖，逐文件 strict 检查
+strict = true
+# 后续轮次按方案 2.1 表逆序推进：
+# 第 4 轮 _board_store.py / 第 5 轮 engine/gates.py / 第 6 轮 engine/slots.py
+# 第 7+ 轮 board/roles/*.py / 最后 ccc-engine.py
