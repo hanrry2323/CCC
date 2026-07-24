@@ -205,3 +205,110 @@ def test_hang_retry_counter_capped_at_max(tmp_path, monkeypatch):
     hang._hang_retry_counter = {}
     hang._load_hang_retry_counter()
     assert hang._hang_retry_counter["k"] == 99
+
+
+def test_hang_scheme_a_defaults():
+    """方案 A：更快检出 + 少重试（env 未覆盖时）。"""
+    from engine import hang
+
+    assert hang._MAX_HANG_RETRY == 1
+    assert hang._HANG_CHECK_INTERVAL_SEC == 120
+    # 未设 env 时模块加载默认 300；测试进程若已设 CCC_PHASE_NO_PROGRESS_SEC 则跳过绝对值
+    if not os.environ.get("CCC_PHASE_NO_PROGRESS_SEC"):
+        assert hang._NO_PROGRESS_SEC == 300
+    assert hang._no_progress_sec() >= 60
+
+
+def test_hang_stash_fail_frees_active_slot(tmp_path, monkeypatch):
+    """stash 失败不得裸 continue：须 pop active 并释槽。"""
+    from engine import hang
+    from _board_store import FileBoardStore
+
+    ws = _make_ws(tmp_path)
+    store = FileBoardStore(ws)
+    _make_task(store, "t1", col="in_progress")
+    key = f"{ws.resolve()}|t1"
+    active = {
+        key: {
+            "workspace": ws,
+            "task_id": "t1",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+    hung = ws / ".ccc" / "pids" / "t1__p1.hung"
+    hung.write_text(json.dumps({"task_id": "t1"}), encoding="utf-8")
+    (ws / ".ccc" / "pids" / "t1__p1.pid").write_text("99999")
+
+    counter_file = tmp_path / "engine-hang-retries.json"
+    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
+    hang._hang_retry_counter = {}
+
+    fake_eng = mock.Mock()
+    fake_eng._kill_process_tree = mock.Mock(return_value=True)
+    fake_eng._git_stash_ws = mock.Mock(return_value=False)
+    fake_eng._quarantine_with_notify = mock.Mock()
+    fake_eng._phase_market_subid = None
+
+    with mock.patch.object(hang, "_eng", return_value=fake_eng), \
+         mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch.object(hang, "_get_store", return_value=store), \
+         mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
+         mock.patch.object(hang, "kill_orphan_opencode", return_value=0), \
+         mock.patch.object(hang, "_current_running_phase", return_value=1), \
+         mock.patch.object(hang, "try_complete_if_gates_satisfied", return_value=None), \
+         mock.patch("engine.active_tasks.release_dev_slot") as release_mock:
+        freed = hang._run_hang_auto_restart(ws, active)
+
+    assert freed is True
+    assert key not in active
+    assert not hung.is_file()
+    release_mock.assert_called()
+    fake_eng._quarantine_with_notify.assert_not_called()
+    assert hang._hang_retry_counter.get(key) == 1
+
+
+def test_hang_exhausted_returns_freed_and_quarantines(tmp_path, monkeypatch):
+    """重试耗尽 → quarantine + freed=True（双保险 reap）。"""
+    from engine import hang
+    from _board_store import FileBoardStore
+
+    ws = _make_ws(tmp_path)
+    store = FileBoardStore(ws)
+    _make_task(store, "t1", col="in_progress")
+    key = f"{ws.resolve()}|t1"
+    active = {
+        key: {
+            "workspace": ws,
+            "task_id": "t1",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+    hung = ws / ".ccc" / "pids" / "t1__p1.hung"
+    hung.write_text(json.dumps({"task_id": "t1"}), encoding="utf-8")
+
+    counter_file = tmp_path / "engine-hang-retries.json"
+    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
+    hang._hang_retry_counter = {key: hang._MAX_HANG_RETRY}
+
+    fake_eng = mock.Mock()
+    fake_eng._kill_process_tree = mock.Mock(return_value=True)
+    fake_eng._git_stash_ws = mock.Mock(return_value=True)
+    fake_eng._quarantine_with_notify = mock.Mock()
+    fake_eng._phase_market_subid = None
+
+    with mock.patch.object(hang, "_eng", return_value=fake_eng), \
+         mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch.object(hang, "_get_store", return_value=store), \
+         mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
+         mock.patch.object(hang, "kill_orphan_opencode", return_value=0) as reap, \
+         mock.patch.object(hang, "_current_running_phase", return_value=1), \
+         mock.patch.object(hang, "try_complete_if_gates_satisfied", return_value=None):
+        freed = hang._run_hang_auto_restart(ws, active)
+
+    assert freed is True
+    assert key not in active
+    fake_eng._quarantine_with_notify.assert_called_once()
+    reason = fake_eng._quarantine_with_notify.call_args.args[2]
+    assert "hang_detected" in reason
+    # post-kill + post-quarantine 至少两次 orphan reap
+    assert reap.call_count >= 2

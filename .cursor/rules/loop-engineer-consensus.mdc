@@ -54,6 +54,7 @@ alwaysApply: true
 - **门禁适型（2026-07-23）**：审测先认 `dev_path`（script_seed/board_ops/doc_only）再认行数；业务禁散文验收；hollow 仅 OpenCode 且优先本 phase stdout。详见 `docs/briefs/2026-07-23-gate-rule-fitness.md`。
 - **失败学习（2026-07-23）**：L0 总闸 / L1 语义副闸；FAIL→`review_fail.md` 回灌；≥2 或 plan_gap → R2 改 work plan；≥3 quarantine；**瞬态 abnormal 有限 reopen（enabled）**。不做 Ollama/新 coding CLI。见 `docs/briefs/2026-07-23-failure-learning.md`。
 - **hang 归类（2026-07-24）**：验收 exit 124 / TimeoutExpired / `HANG_DETECTED` → reason 必含 `hang_detected`；跨顶层目录 fan-out 强制串行。
+- **hang 收尸让下一卡（2026-07-24）**：无进展默认 300s；hang 检查 120s；同卡重试 ≤1；stash/kill 失败必释槽；同 tick 优先 launch 同仓下一 planned（仍同仓 1 OpenCode）。
 - **seed 扇出（2026-07-24）**：child 验收禁止散文；plan_lint 先本地修探针再 Claude；flow `queue_hint=same_ws_opencode` ≠ 扇出卡住。
 - **压测 KPI 闭环（2026-07-23）**：固定 `efficiency_six`（**无 e05 卫生卡**）+ `references/stress-kpi-scorecard.json` 门禁；`ccc-stress-kpi-loop.py` 投递/evaluate/continue；Cursor `arm-wake` 1h 审查；改码仅 allowlist、每轮≤2 primary；推荐 4 轮上限 5。**queue 主门 = 独立卡 p95**（排除 `-w2+` 依赖后继）；全量 p95 仅观测。旧仓/新仓同门禁准入。见 `docs/product/stress-kpi-loop.md`。
 - **VERSION**：kb 默认不 bump；仅 `bump_version=true` 才升版。偶发卫生卡仍可 board_ops；**板面清场不靠自动化卫生 epic**。

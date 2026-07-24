@@ -24,14 +24,14 @@ from engine.workspace import (
 _log = get_logger("engine")
 cfg = Config()
 
-_MAX_HANG_RETRY = 2
+_MAX_HANG_RETRY = 1
 _hang_retry_counter: dict[str, int] = {}
 _HANG_COUNTER_FILE = Path.home() / ".ccc" / "engine-hang-retries.json"
-_HANG_CHECK_INTERVAL_SEC = 300
+_HANG_CHECK_INTERVAL_SEC = 120
 _HANG_BUSY_MAX_SEC = 3600
 _MEM_KILL_MB = 1500
-# 无进展止损：默认 600s（活干完进程不退时不必等满 phase timeout）
-_NO_PROGRESS_SEC = int(os.environ.get("CCC_PHASE_NO_PROGRESS_SEC", "600") or "600")
+# 无进展止损：默认 300s（方案 A：更快让出同仓槽；env 可覆盖）
+_NO_PROGRESS_SEC = int(os.environ.get("CCC_PHASE_NO_PROGRESS_SEC", "300") or "300")
 
 
 def _no_progress_sec() -> int:
@@ -384,14 +384,89 @@ def kill_orphan_opencode(ws: Path, *, max_age_sec: int = 600) -> list[int]:
     return killed
 
 
-def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
-    """扫描 active_tasks 中的 hung phase 并自动重启（v0.31+）。"""
+def _clear_hung_marker(hung_path: Path, label: str) -> None:
+    try:
+        hung_path.unlink()
+    except OSError as exc:
+        _engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
+
+
+def _reap_orphans(ws: Path, label: str, tid: str, *, tag: str) -> None:
+    try:
+        extra = kill_orphan_opencode(ws, max_age_sec=0)
+        if extra:
+            _engine_log(f"[{label}] hang-auto: {tid} {tag} reap opencode={extra}")
+    except Exception as exc:
+        _engine_log(f"[{label}] hang-auto: {tag} reap: {exc}")
+
+
+def _quarantine_hang_exhausted(
+    *,
+    eng,
+    ws: Path,
+    tid: str,
+    cur_phase: int,
+    key: str,
+    active_tasks: dict[str, dict],
+    label: str,
+) -> None:
+    reason = (
+        f"hang_detected: hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）"
+        f"— {tid} phase {cur_phase}"
+    )
+    _engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
+    if eng and hasattr(eng, "_quarantine_with_notify"):
+        eng._quarantine_with_notify(
+            ws,
+            tid,
+            reason,
+            phase=cur_phase,
+            active_tasks=active_tasks,
+            role="engine",
+            from_col="in_progress",
+        )
+    _hang_retry_counter.pop(key, None)
+    _save_hang_retry_counter()
+    active_tasks.pop(key, None)
+    # 双保险：quarantine 后再收尸一次，避免同仓互斥仍挡下一卡
+    _reap_orphans(ws, label, tid, tag="post-quarantine")
+
+
+def _force_release_hang_slot(
+    *,
+    ws: Path,
+    tid: str,
+    key: str,
+    active_tasks: dict[str, dict],
+    label: str,
+    reason: str,
+    bump_retry: bool = True,
+) -> None:
+    """stash/kill/relaunch 失败时禁止占槽空转：pop active + 释槽 + reap。"""
+    from engine.active_tasks import release_dev_slot
+
+    _engine_log(f"[{label}] hang-auto: {tid} {reason} → 释槽让出同仓")
+    if bump_retry:
+        _hang_retry_counter[key] = _hang_retry_counter.get(key, 0) + 1
+        _save_hang_retry_counter()
+    release_dev_slot(active_tasks, ws, tid, reap=True)
+    active_tasks.pop(key, None)
+
+
+def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
+    """扫描 hung phase：kill→收尸→salvage/relaunch 或释槽。
+
+    Returns:
+        True 若本仓因 hang 路径释放了槽（salvage / quarantine / stash 失败强制释槽），
+        供主循环同 tick 优先 ``_try_launch_planned``。
+    """
     global _hang_retry_counter
 
     eng = _eng()
     _activate_workspace(ws)
     label = _ws_label(ws)
     pids_dir = ws / ".ccc" / "pids"
+    freed = False
 
     # Reap zombie opencode that blocks same-workspace serialization
     try:
@@ -407,6 +482,7 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
         if _find_task_column(store, tid) == "abnormal":
             active_tasks.pop(key, None)
             _hang_retry_counter.pop(key, None)
+            freed = True
             continue
         try:
             cur_phase = _current_running_phase(tid)
@@ -453,15 +529,8 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
             else:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
-        # 进程树杀完仍可能有 --dir 叶子：立即同仓收尸
-        try:
-            extra = kill_orphan_opencode(ws, max_age_sec=0)
-            if extra:
-                _engine_log(
-                    f"[{label}] hang-auto: {tid} post-kill reap opencode={extra}"
-                )
-        except Exception as exc:
-            _engine_log(f"[{label}] hang-auto: post-kill reap: {exc}")
+        # kill 失败 / 缺 pid 也必收尸：同仓互斥靠 --dir 叶子
+        _reap_orphans(ws, label, tid, tag="post-kill")
 
         # A2: 门禁已满足 → 收口 testing，禁止 relaunch
         try:
@@ -474,55 +543,62 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
                 f"[{label}] hang-auto: {tid} gates satisfied → salvage testing "
                 f"(skip relaunch)"
             )
-            try:
-                hung_path.unlink()
-            except OSError:
-                pass
+            _clear_hung_marker(hung_path, label)
             _hang_retry_counter.pop(key, None)
             _save_hang_retry_counter()
+            from engine.active_tasks import release_dev_slot
+
+            release_dev_slot(active_tasks, ws, tid, reap=True)
             active_tasks.pop(key, None)
+            freed = True
             continue
 
         git_stash_ws = getattr(eng, "_git_stash_ws", None) if eng else None
+        stash_ok = False
         if git_stash_ws is None:
-            _engine_log(f"[{label}] hang-auto: {tid} git stash helper 不可用，跳过 restart")
-            try:
-                hung_path.unlink()
-            except OSError:
-                pass
-            continue
-        if not git_stash_ws(ws, tid, cur_phase):
-            _engine_log(f"[{label}] hang-auto: {tid} git stash 失败，跳过 restart")
-            try:
-                hung_path.unlink()
-            except OSError:
-                pass
+            _engine_log(f"[{label}] hang-auto: {tid} git stash helper 不可用")
+        elif not git_stash_ws(ws, tid, cur_phase):
+            _engine_log(f"[{label}] hang-auto: {tid} git stash 失败")
+        else:
+            stash_ok = True
+
+        if not stash_ok:
+            _clear_hung_marker(hung_path, label)
+            if retries >= _MAX_HANG_RETRY:
+                _quarantine_hang_exhausted(
+                    eng=eng,
+                    ws=ws,
+                    tid=tid,
+                    cur_phase=cur_phase,
+                    key=key,
+                    active_tasks=active_tasks,
+                    label=label,
+                )
+            else:
+                _force_release_hang_slot(
+                    ws=ws,
+                    tid=tid,
+                    key=key,
+                    active_tasks=active_tasks,
+                    label=label,
+                    reason="stash 失败",
+                )
+            freed = True
             continue
 
-        try:
-            hung_path.unlink()
-        except OSError as exc:
-            _engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
+        _clear_hung_marker(hung_path, label)
 
         if retries >= _MAX_HANG_RETRY:
-            reason = (
-                f"hang_detected: hang auto-restart 耗尽（{_MAX_HANG_RETRY} 次）"
-                f"— {tid} phase {cur_phase}"
+            _quarantine_hang_exhausted(
+                eng=eng,
+                ws=ws,
+                tid=tid,
+                cur_phase=cur_phase,
+                key=key,
+                active_tasks=active_tasks,
+                label=label,
             )
-            _engine_log(f"[{label}] hang-auto: {tid} 超限 → abnormal")
-            if eng:
-                eng._quarantine_with_notify(
-                    ws,
-                    tid,
-                    reason,
-                    phase=cur_phase,
-                    active_tasks=active_tasks,
-                    role="engine",
-                    from_col="in_progress",
-                )
-            _hang_retry_counter.pop(key, None)
-            _save_hang_retry_counter()
-            active_tasks.pop(key, None)
+            freed = True
             continue
 
         try:
@@ -541,3 +617,16 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> None:
             )
         else:
             _engine_log(f"[{label}] hang-auto: {tid} relaunch 返回非 ok: {result}")
+            # relaunch 失败也不得占槽空转（计数已在上方 +1）
+            _force_release_hang_slot(
+                ws=ws,
+                tid=tid,
+                key=key,
+                active_tasks=active_tasks,
+                label=label,
+                reason="relaunch 失败",
+                bump_retry=False,
+            )
+            freed = True
+
+    return freed

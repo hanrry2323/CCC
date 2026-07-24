@@ -3218,10 +3218,22 @@ def engine_loop(workspaces: list[Path]) -> None:
                 # v0.31+: hang 自动重启（Phase 4 + Phase 5 联合投递）
                 # Phase 4 先检测并写 .hung marker，Phase 5 再消费 marker 触发
                 # kill+stash+relaunch，最后再做完成判定。
+                hang_freed_ws: list[Path] = []
                 for ws in workspaces:
                     _activate_workspace(ws)
                     _check_and_mark_hung(ws, active_tasks)
-                    _run_hang_auto_restart(ws, active_tasks)
+                    if _run_hang_auto_restart(ws, active_tasks):
+                        hang_freed_ws.append(ws)
+                # 方案 A：hang 释槽后同 tick 优先 launch 该仓 planned（不放开同仓双 OpenCode）
+                if hang_freed_ws:
+                    seen: set[Path] = set()
+                    prioritized: list[Path] = []
+                    for ws in hang_freed_ws + list(workspaces):
+                        if ws in seen:
+                            continue
+                        seen.add(ws)
+                        prioritized.append(ws)
+                    workspaces[:] = prioritized
                 for key, info in list(active_tasks.items()):
                     ws = info["workspace"]
                     tid = info["task_id"]
