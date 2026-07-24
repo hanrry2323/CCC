@@ -132,6 +132,37 @@ def _write_raw(data: dict[str, Any]) -> None:
             pass
 
 
+def _emit_control_event(data: dict[str, Any]) -> None:
+    """emit control_mode_change 事件到 ~/.ccc/stats/control-events.jsonl。
+
+    修复 stability-audit-2026-07-24 类别②：事件流补全 control mode change
+    （之前缺，统一事件不可见，红线 12 实质化后无审计轨迹）。
+    失败不阻塞 — control.json 已写盘即可，事件流至多丢一条。
+    """
+    import logging
+
+    event = {
+        "ts": _now_iso(),
+        "kind": "control_mode_change",
+        "mode": data.get("mode"),
+        "source": data.get("source"),
+        "reason": data.get("reason"),
+        "coerced_from": data.get("coerced_from"),
+        "pid": os.getpid(),
+    }
+    path = Path.home() / ".ccc" / "stats" / "control-events.jsonl"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+    except OSError as exc:
+        logging.getLogger("ccc").warning(
+            "[control] event emit failed for %s: %s", path, exc
+        )
+
+
 def get_mode() -> Mode:
     """返回当前模式。安全默认：disabled。
 
@@ -247,6 +278,7 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
     if coerced:
         data["coerced_from"] = "invent"
     _write_raw(data)
+    _emit_control_event(data)
     if mode == "disabled":
         DISABLED_SENTINEL.parent.mkdir(parents=True, exist_ok=True)
         import tempfile
