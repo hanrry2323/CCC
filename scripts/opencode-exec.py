@@ -209,10 +209,27 @@ async def run_opencode(
     )
 
     pid_file = PID_DIR / f"{phase_id}.pid"
+    # 修复 stability-audit-2026-07-24 类别①（H3）：先 O_CREAT|O_EXCL 占位
+    # 让 watchdog 在 Popen→write_text 间隙也能识别 "有进程在启动中"
+    # 避免误判为无人认领的残留而 SIGTERM 新进程（Lesson 44 实锤）
+    try:
+        placeholder_fd = os.open(
+            str(pid_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644
+        )
+        os.close(placeholder_fd)
+    except FileExistsError:
+        # 已有占位/PID 文件 — 同 phase_id 已在跑，不并发启动
+        proc.kill()
+        await proc.wait()
+        return {
+            "phase_id": phase_id,
+            "error": f"pid_file exists: {pid_file.name}",
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": "concurrent launch aborted",
+            "duration_sec": 0.0,
+        }
     pid_file.write_text(str(proc.pid))
-    # 注：先启动进程再写 pid，窗口极小。若在此间隙 pool 或 watchdog 扫描，
-    # 可能误判为无人认领的残留。接受此竞态，换一种顺序（先写 pid 再创建
-    # 进程）则需预知 pid，不可行。
 
     started = time.time()
     result: dict | None = None
