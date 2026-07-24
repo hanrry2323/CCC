@@ -42,19 +42,30 @@ function _headers(json = true, forcePrompt = false) {
   return h;
 }
 
-function _agentToken() {
-  return (
-    sessionStorage.getItem('ccc_agent_token') ||
-    localStorage.getItem('ccc_agent_token') ||
-    ''
-  ).trim();
+function _agentToken(forcePrompt = false) {
+  let tok = forcePrompt
+    ? ''
+    : (
+        sessionStorage.getItem('ccc_agent_token') ||
+        localStorage.getItem('ccc_agent_token') ||
+        ''
+      ).trim();
+  if (!tok) {
+    tok =
+      window.prompt(
+        'M1 Agent Token（与 ~/.ccc/agent-token 相同；对话口需要）'
+      ) || '';
+    if (tok) {
+      tok = tok.trim();
+      sessionStorage.setItem('ccc_agent_token', tok);
+      localStorage.setItem('ccc_agent_token', tok);
+    }
+  }
+  return (tok || '').trim();
 }
 
-function _agentHeaders(json = true) {
-  const h = {};
-  const tok = _agentToken();
-  // 对话口默认开放；有本地 token 才附带（兼容 CCC_AGENT_AUTH=1）
-  if (tok) h.Authorization = 'Bearer ' + tok;
+function _agentHeaders(json = true, forcePrompt = false) {
+  const h = { Authorization: 'Bearer ' + _agentToken(forcePrompt) };
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }
@@ -77,13 +88,23 @@ async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
   return resp;
 }
 
-/** Agent sidecar 请求；默认无 Token。禁止走 Hub /api/agent 反代。 */
+/** Agent sidecar 请求（Bearer）；禁止走 Hub /api/agent 反代。 */
 async function _fetchAgent(pathOrUrl, options = {}, json = true) {
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : agentUrl(pathOrUrl);
-  return fetch(url, {
+  let resp = await fetch(url, {
     ...options,
-    headers: { ...(options.headers || {}), ..._agentHeaders(json) },
+    headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
   });
+  if (resp.status === 401) {
+    sessionStorage.removeItem('ccc_agent_token');
+    localStorage.removeItem('ccc_agent_token');
+    window.showToast?.('Agent Token 无效，请重新输入', 'error');
+    resp = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ..._agentHeaders(json, true) },
+    });
+  }
+  return resp;
 }
 
 export async function apiGet(path) {
@@ -335,7 +356,7 @@ export async function streamChat(
       const detail = errBody.detail || errBody.message || errBody.error;
       const errText =
         resp.status === 401
-          ? 'Agent 鉴权失败 (401)：本机若开了 CCC_AGENT_AUTH=1，请关掉或设 Token'
+          ? 'Agent 鉴权失败 (401)：请填 M1 ~/.ccc/agent-token'
           : resp.status === 403
             ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
             : resp.status === 502 || resp.status === 503

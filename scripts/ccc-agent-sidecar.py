@@ -5,14 +5,14 @@ Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cl
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
 Security (2026-07-24):
-  - /api/chat + /warm 默认开放（无 Token 门槛）；CCC_AGENT_AUTH=1 才强制 Bearer
+  - /api/chat + /warm **默认强制** Bearer / X-CCC-Agent-Token（~/.ccc/agent-token）
+  - 仅显式 CCC_AGENT_AUTH=0/off/open 才关闭鉴权（本机排障；勿对 LAN 长期开）
   - project_path 必须落在 allowlist 根下
   - /health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
+  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
-  # 可选强制鉴权：CCC_AGENT_AUTH=1 CCC_AGENT_TOKEN=...
 """
 
 from __future__ import annotations
@@ -216,24 +216,22 @@ def _effective_token() -> str:
 
 
 def _auth_enforced() -> bool:
-    """默认关闭对话口 Token；仅 CCC_AGENT_AUTH=1/true/yes 时强制鉴权。"""
-    return os.environ.get("CCC_AGENT_AUTH", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    """默认强制对话口 Token；仅 CCC_AGENT_AUTH=0/off/false/open 显式关闭。"""
+    raw = os.environ.get("CCC_AGENT_AUTH", "").strip().lower()
+    if raw in ("0", "off", "false", "no", "open", "disabled"):
+        return False
+    return True
 
 
 def _check_agent_auth(request: Request) -> JSONResponse | None:
-    """可选共享密钥。默认不拦；CCC_AGENT_AUTH=1 时校验 Bearer / X-CCC-Agent-Token。"""
+    """共享密钥。默认强制 Bearer / X-CCC-Agent-Token。"""
     if not _auth_enforced():
         return None
     expected = _effective_token()
     if not expected:
         return JSONResponse(
             {
-                "detail": "CCC_AGENT_AUTH=1 but token unset — set CCC_AGENT_TOKEN or ~/.ccc/agent-token",
+                "detail": "CCC_AGENT_TOKEN unset — run: bash scripts/install-agent-sidecar-plist.sh --start",
             },
             status_code=503,
         )

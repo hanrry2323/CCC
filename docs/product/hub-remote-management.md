@@ -66,7 +66,7 @@ SPA **设置**可持久化：`ccc_agent_token`、`ccc_hub_base`、`ccc_agent_bas
 ## CORS / 安全（内网）
 
 - Hub 默认 `CORS_ORIGIN_REGEX` 含 `192.168.*` / `10.*`，以便 M1 SPA Origin 调编排 API。plist **勿**用仅 localhost 的旧 regex 盖掉。
-- Sidecar 听 `0.0.0.0` 仅假设 **内网**；鉴权靠 `CCC_AGENT_TOKEN`。
+- Sidecar 听 `0.0.0.0` 仅假设 **内网**；**默认强制** `CCC_AGENT_TOKEN`（`CCC_AGENT_AUTH=0` 才关鉴权，勿对 LAN 长期开）。
 - 浏览器持有 agent token（localStorage）；不经 2017 注入。
 
 ---
