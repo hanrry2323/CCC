@@ -589,7 +589,11 @@ def _stats_dir(ws: Path) -> Path:
 
 
 def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
-    """写一条结构化事件到 .ccc/stats/events.jsonl。"""
+    """写一条结构化事件到 .ccc/stats/events.jsonl。
+
+    修复 stability-audit-2026-07-24 类别②：事件写失败不再完全静默，
+    至少 log.warning 让 ops 看到（仍不阻塞业务）。
+    """
     sf = _stats_dir(ws) / "events.jsonl"
     record = {
         "t": now_iso(),
@@ -605,8 +609,13 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
         try:
             with sf.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.warning(
+                "[stats] events.jsonl plain-append failed for %s event=%s: %s",
+                sf,
+                event,
+                exc,
+            )
     except OSError:
         pass
     # 跨仓耗时 SSOT（小卡分钟数统计用）

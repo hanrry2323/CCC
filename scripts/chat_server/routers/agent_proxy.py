@@ -125,10 +125,13 @@ async def proxy_agent(path: str, request: Request):
                             break
                         yield chunk
             except httpx.RequestError as exc:
+                # 修复 stability-audit-2026-07-24 类别② + 控制面 H3：
+                # 异常详情只进日志，不泄漏 IP / errno / socket 路径到前端
                 _log.warning("agent proxy stream error %s: %s", target, exc)
                 msg = (
-                    f'data: {{"type":"error","content":"agent unreachable: {exc}"}}\n\n'
-                ).encode()
+                    b'data: {"type":"error","code":"agent_unreachable",'
+                    b'"message":"sidecar \xe6\x9a\x82\xe4\xb8\x8d\xe5\x8f\xaf\xe8\xbe\xbe"}\n\n'
+                )
                 yield msg
             finally:
                 await client.aclose()

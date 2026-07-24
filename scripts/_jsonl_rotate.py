@@ -46,15 +46,23 @@ def rotate_if_needed(path: Path, max_bytes: int = DEFAULT_MAX_BYTES, backup_coun
 
 
 def append_jsonl(path: Path, record: dict, *, max_bytes: int = DEFAULT_MAX_BYTES, backup_count: int = DEFAULT_BACKUP_COUNT) -> None:
-    """append 一条 jsonl；先检查轮转。"""
+    """append 一条 jsonl；先检查轮转。
+
+    修复 stability-audit-2026-07-24 类别②：失败账本写失败不再完全静默，
+    至少 log.warning 让 ops 看到（仍不抛 — 不阻塞业务）。
+    """
+    import logging
+
     path.parent.mkdir(parents=True, exist_ok=True)
     rotate_if_needed(path, max_bytes=max_bytes, backup_count=backup_count)
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         with path.open("a", encoding="utf-8") as f:
             f.write(line)
-    except OSError:
-        pass
+    except OSError as exc:
+        logging.getLogger("ccc").warning(
+            "[jsonl] append failed for %s: %s", path, exc
+        )
 
 
 def tail_read_jsonl(path: Path, last: int = 200) -> list[dict[str, Any]]:

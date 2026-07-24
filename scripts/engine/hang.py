@@ -145,8 +145,13 @@ def _save_hang_retry_counter() -> None:
             json.dumps(_hang_retry_counter, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        # 修复 stability-audit-2026-07-24 类别②：hang 重试计数写失败不再静默
+        import logging
+
+        logging.getLogger("ccc").warning(
+            "[hang] counter write failed for %s: %s", _HANG_COUNTER_FILE, exc
+        )
 
 
 def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
