@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { loadProjects } from '../api.js';
 import { getThemeScheme, setThemeScheme } from '../theme.js';
-import { hubBase, agentBase, isDialogueShell } from '../ports.js';
+import { hubBase, agentBase, isDialogueShell, DEFAULT_HUB_LOCAL, DEFAULT_AGENT } from '../ports.js';
 
 function _esc(s) {
   return String(s || '')
@@ -32,9 +32,8 @@ export async function openSettings() {
     projects = [];
   }
 
-  const tok = localStorage.getItem('ccc_agent_token') || '';
-  const hub = localStorage.getItem('ccc_hub_base') || hubBase() || 'http://192.168.3.116:7777';
-  const agent = localStorage.getItem('ccc_agent_base') || agentBase() || 'http://192.168.3.140:7788';
+  const hub = localStorage.getItem('ccc_hub_base') || hubBase() || DEFAULT_HUB_LOCAL;
+  const agent = localStorage.getItem('ccc_agent_base') || agentBase() || DEFAULT_AGENT;
   let mapText = '';
   try {
     mapText = localStorage.getItem('ccc_local_workspace_map') || '{}';
@@ -77,21 +76,15 @@ export async function openSettings() {
     '<div class="settings-group">' +
     '<div class="settings-group-title">双口连接</div>' +
     '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">Hub 编排口（Basic Auth）</span>' +
-    '<input class="settings-input" id="settings-hub-base" placeholder="http://192.168.3.116:7777" value="' +
+    '<span class="settings-label">Hub 编排口（本机默认隧道；手机可填 LAN 排障）</span>' +
+    '<input class="settings-input" id="settings-hub-base" placeholder="http://127.0.0.1:17777" value="' +
     _esc(hub) +
     '"/>' +
     '</div>' +
     '<div class="settings-row settings-row-col">' +
     '<span class="settings-label">Agent 对话口</span>' +
-    '<input class="settings-input" id="settings-agent-base" placeholder="http://192.168.3.140:7788" value="' +
+    '<input class="settings-input" id="settings-agent-base" placeholder="http://127.0.0.1:7788" value="' +
     _esc(agent) +
-    '"/>' +
-    '</div>' +
-    '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">Agent Token（~/.ccc/agent-token，勿写进 URL）</span>' +
-    '<input class="settings-input" id="settings-agent-token" type="password" autocomplete="off" placeholder="Bearer 密钥" value="' +
-    _esc(tok) +
     '"/>' +
     '</div>' +
     '<div class="settings-row settings-row-col">' +
@@ -101,11 +94,11 @@ export async function openSettings() {
     '</textarea>' +
     '</div>' +
     '<div class="settings-row">' +
-    '<button type="button" class="settings-select" id="settings-ports-save" style="cursor:pointer">保存双口设置</button>' +
+    '<button type="button" class="btn-primary" id="settings-ports-save">保存双口设置</button>' +
     '<span class="settings-row-value" id="settings-ports-hint" style="margin-left:8px"></span>' +
     '</div>' +
     (isDialogueShell()
-      ? '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为 M1 对话壳；聊走本机 sidecar，下达走 Hub。</p>'
+      ? '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为 M1 对话壳；聊走本机 sidecar，下达走 Hub（本机默认隧道；手机自动用 LAN 排障口）。</p>'
       : '<p style="font-size:12px;opacity:.7;margin:8px 0 0">当前为 Hub 编排壳；聊天请开 M1 :7788。</p>') +
     '</div>' +
     '<div class="settings-group">' +
@@ -162,9 +155,6 @@ export async function openSettings() {
     const agentVal = (
       document.getElementById('settings-agent-base')?.value || ''
     ).trim();
-    const tokVal = (
-      document.getElementById('settings-agent-token')?.value || ''
-    ).trim();
     const mapRaw =
       document.getElementById('settings-workspace-map')?.value || '{}';
     try {
@@ -189,8 +179,6 @@ export async function openSettings() {
       localStorage.setItem('ccc_agent_base', agentVal.replace(/\/$/, ''));
       window.__CCC_AGENT_BASE__ = agentVal.replace(/\/$/, '');
     }
-    if (tokVal) localStorage.setItem('ccc_agent_token', tokVal);
-    else localStorage.removeItem('ccc_agent_token');
     if (hint) hint.textContent = '已保存';
     window.showToast?.('双口设置已保存', 'ok');
   });

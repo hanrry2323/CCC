@@ -1139,3 +1139,170 @@ body.hub-mode #app {
 .mono { font-family: var(--ccc-font-mono); }
 .small { font-size: 11px; }
 .muted { color: var(--ccc-text-muted); }
+
+/* ── Dialogue shell（:7788）：纯净 Claude Chat，隐藏编排壳 ── */
+html[data-shell="dialogue"] #hub-nav,
+html[data-shell="dialogue"] .hub-shell-only,
+html[data-shell="dialogue"] #chat-engine-control,
+html[data-shell="dialogue"] #runtime-status-bar,
+html[data-shell="dialogue"] #tabs,
+html[data-shell="dialogue"] #new-tab-btn,
+body.dialogue-mode #hub-nav,
+body.dialogue-mode .hub-shell-only,
+body.dialogue-mode #chat-engine-control,
+body.dialogue-mode #runtime-status-bar,
+body.dialogue-mode #tabs,
+body.dialogue-mode #new-tab-btn {
+  display: none !important;
+}
+
+/* 对话壳：脏工作区改为脚注，不抢输入框视觉 */
+html[data-shell="dialogue"] .git-dirty-strip,
+body.dialogue-mode .git-dirty-strip {
+  max-width: var(--ccc-max-w);
+  margin: 0 auto;
+  padding: 0 4px 2px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  opacity: 0.72;
+  width: calc(100% - 32px);
+}
+html[data-shell="dialogue"] .git-dirty-hint,
+body.dialogue-mode .git-dirty-hint {
+  font-weight: 500;
+}
+
+html[data-shell="dialogue"] #titlebar {
+  justify-content: flex-end;
+}
+html[data-shell="dialogue"] #titlebar .titlebar-spacer {
+  flex: 1;
+}
+
+html[data-shell="dialogue"] #view-chat,
+body.dialogue-mode #view-chat {
+  display: flex !important;
+}
+
+html[data-shell="dialogue"] .sidebar-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ccc-text-accent);
+  margin: 0 0 4px;
+}
+html[data-shell="dialogue"] .history-source-bar {
+  display: none !important;
+}
+
+#composer-inner:focus-within {
+  border-color: color-mix(in srgb, var(--ccc-border-accent) 55%, var(--ccc-border-base));
+  box-shadow: var(--ccc-shadow-md), 0 0 0 3px color-mix(in srgb, var(--ccc-bg-accent) 14%, transparent);
+}
+
+html[data-shell="dialogue"] body,
+body.dialogue-mode {
+  /* keep hub-mode layout lock */
+}
+
+html[data-shell="dialogue"] #view-chat.active,
+body.dialogue-mode #view-chat.active {
+  display: flex !important;
+}
+
+html[data-shell="dialogue"] #view-chat:not(.active),
+body.dialogue-mode #view-chat:not(.active) {
+  display: none !important;
+}
+
+html[data-shell="dialogue"] #hub-views,
+body.dialogue-mode #hub-views {
+  /* single view fills viewport */
+}
+
+.hub-remote-banner {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-muted);
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+/* 看板/运维：轻提示条（非刺眼蓝横幅） */
+.orch-hint {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-surface);
+  border-bottom: 1px solid var(--ccc-border-subtle);
+}
+
+.orch-hint a {
+  color: var(--ccc-text-accent);
+  text-decoration: none;
+  font-weight: 560;
+}
+
+/* 定稿契约折叠 */
+.transfer-fold {
+  margin: 10px 0 0;
+  border: 1px solid var(--ccc-border-subtle);
+  border-radius: var(--ccc-radius-sm);
+  background: var(--ccc-bg-layer);
+  overflow: hidden;
+}
+.transfer-fold > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--ccc-text-muted);
+  list-style: none;
+}
+.transfer-fold > summary::-webkit-details-marker { display: none; }
+.transfer-fold pre {
+  margin: 0;
+  padding: 10px 12px 12px;
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px solid var(--ccc-border-subtle);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .board-page .board-columns,
+  .board-kanban,
+  .board-flow,
+  .board-flow-cols,
+  .board-layout {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .board-flow-cols > .board-col {
+    scroll-snap-align: start;
+    flex: 0 0 min(78vw, 260px);
+  }
+  .board-toolbar {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .board-toolbar h2 {
+    font-size: 13px;
+  }
+  .ops-page .ops-actions,
+  .ops-toolbar,
+  .ops-bar {
+    flex-wrap: wrap;
+  }
+  .ops-page {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

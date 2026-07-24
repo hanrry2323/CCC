@@ -4,14 +4,15 @@
 Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cli → MiniMax
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
-Security (2026-07-19):
-  - /api/chat + /warm require CCC_AGENT_TOKEN (Bearer or X-CCC-Agent-Token)
+Security (2026-07-24):
+  - /api/chat + /warm 默认开放（无 Token 门槛）；CCC_AGENT_AUTH=1 才强制 Bearer
   - project_path 必须落在 allowlist 根下
   - /health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
+  CCC_AGENT_PORT=7788 ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
+  # 可选强制鉴权：CCC_AGENT_AUTH=1 CCC_AGENT_TOKEN=...
 """
 
 from __future__ import annotations
@@ -85,7 +86,7 @@ from _claude_cli import (  # noqa: E402
 ensure_loop_code_config_dir(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser())
 
 from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 import uvicorn  # noqa: E402
@@ -186,6 +187,17 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-CCC-Agent-Token"],
 )
 
+
+@app.middleware("http")
+async def _no_cache_spa_assets(request, call_next):
+    """ES modules 相对 import 不带 ?v=；禁缓存避免对话框改版后仍吃旧 JS/CSS。"""
+    response = await call_next(request)
+    path = request.url.path or ""
+    if path.startswith(("/js/", "/css/")) or path.endswith((".js", ".css", ".html")):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
 FRONTEND_DIR = SCRIPTS / "chat_server" / "frontend"
 
 
@@ -203,13 +215,25 @@ def _effective_token() -> str:
     return (os.environ.get("CCC_AGENT_TOKEN") or "").strip() or _load_token_file()
 
 
+def _auth_enforced() -> bool:
+    """默认关闭对话口 Token；仅 CCC_AGENT_AUTH=1/true/yes 时强制鉴权。"""
+    return os.environ.get("CCC_AGENT_AUTH", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _check_agent_auth(request: Request) -> JSONResponse | None:
-    """Require shared secret for mutating/chat endpoints."""
+    """可选共享密钥。默认不拦；CCC_AGENT_AUTH=1 时校验 Bearer / X-CCC-Agent-Token。"""
+    if not _auth_enforced():
+        return None
     expected = _effective_token()
     if not expected:
         return JSONResponse(
             {
-                "detail": "CCC_AGENT_TOKEN unset — run: bash scripts/install-agent-sidecar-plist.sh --start",
+                "detail": "CCC_AGENT_AUTH=1 but token unset — set CCC_AGENT_TOKEN or ~/.ccc/agent-token",
             },
             status_code=503,
         )
@@ -251,20 +275,49 @@ def _allowed_roots() -> list[Path]:
     return roots
 
 
+def _is_under(cand: Path, root: Path) -> bool:
+    try:
+        cand.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 def _path_allowed(project_path: str) -> bool:
+    """已存在目录且落在 allowlist 根下。"""
     try:
         cand = Path(project_path).expanduser().resolve()
     except OSError:
         return False
     if not cand.is_dir():
         return False
-    for root in _allowed_roots():
-        try:
-            cand.relative_to(root)
-            return True
-        except ValueError:
-            continue
-    return False
+    return any(_is_under(cand, root) for root in _allowed_roots())
+
+
+def _normalize_project_path(project_path: str) -> str | None:
+    """对齐 Desktop：显式 map/已有目录优先；业务仓无本机树时回落 DEFAULT_CWD。
+
+    禁止把 Hub 2017 路径或虚构 apps/<id> 当成 cwd（缺目录 ≠ 越权，只回落）。
+    """
+    raw = (project_path or "").strip() or DEFAULT_CWD
+    try:
+        cand = Path(raw).expanduser().resolve()
+    except OSError:
+        return None
+    roots = _allowed_roots()
+    under = any(_is_under(cand, root) for root in roots)
+    if not under:
+        return None
+    if cand.is_dir():
+        return str(cand)
+    # 路径在白名单前缀下但不存在（无本机第二树）→ 平台 cwd
+    try:
+        fallback = Path(DEFAULT_CWD).expanduser().resolve()
+    except OSError:
+        return None
+    if fallback.is_dir() and any(_is_under(fallback, root) for root in roots):
+        return str(fallback)
+    return None
 
 
 @app.get("/health")
@@ -290,10 +343,15 @@ async def health():
         "config_dir": cfg_mark or None,
         "loop_code_version": loop_code_version() or None,
         "loop_code_sha256_prefix": loop_code_sha256_prefix() or None,
-        "auth_required": bool(_effective_token()),
+        "auth_required": _auth_enforced(),
         "default_cwd": DEFAULT_CWD,
         "shell": "dialogue",
+        # Desktop / sidecar 默认 = 本机隧道（硬共识）
         "hub_base": (os.environ.get("CCC_HUB_URL") or "http://127.0.0.1:17777").rstrip("/"),
+        # 手机/内网 SPA 旁路（非 Desktop 默认；排障用）
+        "hub_base_lan": (
+            os.environ.get("CCC_HUB_URL_LAN") or "http://192.168.3.116:7777"  # 排障·手机
+        ).rstrip("/"),
         "outbox_flush": True,
         # Desktop 能力契约（不暴露密钥/完整路径）
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
@@ -353,15 +411,56 @@ def _workspace_map() -> dict[str, str]:
 
 @app.get("/api/shell-config")
 async def shell_config():
-    """对话 SPA 启动配置（无密钥）；Hub base 供 transfer/board 跨机调用。"""
+    """对话 SPA 启动配置（无密钥）；Hub base 供 transfer/board 跨机调用。
+
+    hub_base      — Desktop / 本机默认（SSH 隧道 127.0.0.1:17777；硬共识）
+    hub_base_lan  — 手机 / 内网浏览器旁路（排障；非 Desktop 默认）
+    """
     hub = (os.environ.get("CCC_HUB_URL") or "http://127.0.0.1:17777").rstrip("/")
+    hub_lan = (
+        os.environ.get("CCC_HUB_URL_LAN") or "http://192.168.3.116:7777"  # 排障·手机
+    ).rstrip("/")
     return {
         "ok": True,
         "shell": "dialogue",
         "agent_base": "",
         "hub_base": hub,
+        "hub_base_lan": hub_lan,
         "workspace_map": _workspace_map(),
     }
+
+
+def _dialogue_index_html() -> str:
+    """Sidecar 强制 dialogue 壳标记（不依赖 location.port，防代理丢端口）。"""
+    path = FRONTEND_DIR / "index.html"
+    raw = path.read_text(encoding="utf-8")
+    boot = (
+        '<script>window.__CCC_SHELL__="dialogue";'
+        'document.documentElement.setAttribute("data-shell","dialogue");</script>\n'
+    )
+    if 'window.__CCC_SHELL__="dialogue"' in raw:
+        return raw
+    return raw.replace("<head>", "<head>\n" + boot, 1)
+
+
+@app.get("/")
+async def dialogue_root_index():
+    if not (FRONTEND_DIR / "index.html").is_file():
+        return JSONResponse({"detail": "dialogue ui missing"}, status_code=404)
+    return HTMLResponse(
+        _dialogue_index_html(),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
+@app.get("/index.html")
+async def dialogue_index_html():
+    if not (FRONTEND_DIR / "index.html").is_file():
+        return JSONResponse({"detail": "dialogue ui missing"}, status_code=404)
+    return HTMLResponse(
+        _dialogue_index_html(),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 @app.post("/warm")
@@ -388,6 +487,8 @@ async def warm(request: Request):
         body = {}
 
     project_path = str(body.get("project_path") or "").strip()
+    if project_path:
+        project_path = _normalize_project_path(project_path) or ""
     session_id = str(body.get("session_id") or "conversation").strip() or "conversation"
     project_id = str(body.get("project") or body.get("project_id") or "").strip()
     from chat_server import config as _agent_cfg
@@ -400,7 +501,7 @@ async def warm(request: Request):
     resume_session_id = str(body.get("claude_session_id") or "").strip() or None
 
     slot_info: dict = {}
-    if project_path and _path_allowed(project_path) and cli_ok:
+    if project_path and cli_ok:
         from chat_server.services.claude_session import session_manager
 
         try:
@@ -436,10 +537,12 @@ async def session_drop(request: Request):
     if denied is not None:
         return denied
     body = await request.json()
-    project_path = (body.get("project_path") or "").strip()
+    project_path = _normalize_project_path(
+        (body.get("project_path") or "").strip() or DEFAULT_CWD
+    )
     session_id = str(body.get("session_id") or "local")
     reason = str(body.get("reason") or "user-reset").strip() or "user-reset"
-    if not project_path or not _path_allowed(project_path):
+    if not project_path:
         return JSONResponse(
             {"detail": "project_path required and must be allowed"},
             status_code=400,
@@ -473,12 +576,14 @@ async def session_compact(request: Request):
     if denied is not None:
         return denied
     body = await request.json()
-    project_path = (body.get("project_path") or "").strip()
+    project_path = _normalize_project_path(
+        (body.get("project_path") or "").strip() or DEFAULT_CWD
+    )
     session_id = str(body.get("session_id") or "local")
     summary = body.get("summary")
     tool_mode = str(body.get("tool_mode") or "discuss").strip().lower() or "discuss"
     model = str(body.get("model") or "flash").strip().lower() or "flash"
-    if not project_path or not _path_allowed(project_path):
+    if not project_path:
         return JSONResponse(
             {"detail": "project_path required and must be allowed"},
             status_code=400,
@@ -680,15 +785,13 @@ async def chat(request: Request):
     session_id = str(body.get("session_id") or body.get("thread_id") or "local")
     turn_id = _safe_turn_id(body.get("turn_id"))
     model = resolve_model(body.get("model"))
-    project_path = (
-        (body.get("project_path") or "").strip()
-        or DEFAULT_CWD
-    )
-    if not _path_allowed(project_path):
+    requested = (body.get("project_path") or "").strip() or DEFAULT_CWD
+    project_path = _normalize_project_path(requested)
+    if not project_path:
         return JSONResponse(
             {
                 "detail": (
-                    f"project_path not allowed: {project_path}. "
+                    f"project_path not allowed: {requested}. "
                     "Must be under CCC_AGENT_ALLOWED_ROOTS (default ~/program)."
                 )
             },
@@ -722,6 +825,11 @@ async def chat(request: Request):
         str(body.get("project") or body.get("project_id") or body.get("projectId") or "")
         .strip()
     )
+    if not project_id:
+        # 兼容旧客户端：从 `{project}::main` / `{project}::{uuid}` 推断
+        sid = str(body.get("session_id") or body.get("thread_id") or "").strip()
+        if "::" in sid:
+            project_id = sid.split("::", 1)[0].strip()
     prompt_mode_raw = str(body.get("prompt_mode") or body.get("promptMode") or "").strip()
     # 用用户原文判定 light/full（wrap 后会很长，不能再按长度猜）
     prompt_mode = _resolve_prompt_mode(prompt, requested=prompt_mode_raw or None)
@@ -733,15 +841,12 @@ async def chat(request: Request):
         user_text=user_text_for_tools,
         project_id=project_id,
     )
-    # discuss：工具纪律 + 业务透镜；ccc engineer：运维上下文（可写本机）
-    if tool_mode == "discuss":
-        disc = (_agent_cfg.DISCUSS_TOOL_DISCIPLINE or "").strip()
-        if disc and disc not in prompt[:500]:
-            prompt = f"{disc}\n---\n{prompt}"
-        lens_block = _lens_context_for_turn(project_id, user_text_for_tools)
-        if lens_block:
-            prompt = f"{lens_block}\n---\n{prompt}"
-    elif (project_id or "").strip().lower() == "ccc":
+    # App Agent 全功能：discuss / engineer 均注入当前项目透镜（含 live board）
+    if tool_mode in ("discuss", "engineer") and (project_id or "").strip():
+        if tool_mode == "discuss":
+            disc = (_agent_cfg.DISCUSS_TOOL_DISCIPLINE or "").strip()
+            if disc and disc not in prompt[:500]:
+                prompt = f"{disc}\n---\n{prompt}"
         lens_block = _lens_context_for_turn(project_id, user_text_for_tools)
         if lens_block and lens_block not in prompt[:400]:
             prompt = f"{lens_block}\n---\n{prompt}"
@@ -885,15 +990,21 @@ def main() -> None:
             os.close(fd)
         os.environ["CCC_AGENT_TOKEN"] = tok
         print(f"[ccc-agent] generated token → {token_path}", flush=True)
-    # 对话 SPA 静态页（与 Hub 共用 frontend；API 路由已先注册）
+    # 对话 SPA 静态页（与 Hub 共用 frontend；API 与 / index 路由已先注册）
+    # 注意：有 @app.get("/") 时仍须 mount 静态资源，否则 /css /js 404
     if FRONTEND_DIR.is_dir() and not any(
-        getattr(r, "path", None) == "/" for r in app.routes
+        getattr(r, "name", None) == "dialogue-ui" for r in app.routes
     ):
-        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="dialogue-ui")
+        app.mount(
+            "/",
+            StaticFiles(directory=str(FRONTEND_DIR), html=False),
+            name="dialogue-ui",
+        )
     print(f"[ccc-agent] cli={cli}", flush=True)
     print(f"[ccc-agent] config_dir={cfg}", flush=True)
     print(f"[ccc-agent] router={os.environ.get('ANTHROPIC_BASE_URL')}", flush=True)
-    print(f"[ccc-agent] auth=required listen=http://{HOST}:{PORT}", flush=True)
+    auth_mode = "enforced" if _auth_enforced() else "open"
+    print(f"[ccc-agent] auth={auth_mode} listen=http://{HOST}:{PORT}", flush=True)
     print(f"[ccc-agent] dialogue_ui={FRONTEND_DIR if FRONTEND_DIR.is_dir() else 'missing'}", flush=True)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 

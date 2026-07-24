@@ -32,9 +32,12 @@ export function desktopThreadId(projectId, suffix) {
   return `${pid}::${s}`;
 }
 
-/** M1 本机 project_path（对话口 → sidecar） */
+/** M1 本机 project_path（对话口 → sidecar）
+ * 对齐 Desktop：业务仓无本机第二树时回落平台仓；勿臆造 apps/<id>。
+ */
 export function resolveProjectPath(projectId) {
   const pid = projectId || 'ccc';
+  const cccHome = '/Users/apple/program/CCC';
   const map =
     (typeof window !== 'undefined' && window.__CCC_WORKSPACE_MAP__) ||
     {};
@@ -45,8 +48,7 @@ export function resolveProjectPath(projectId) {
     );
     if (local[pid]) return local[pid];
   } catch (_) {}
-  // 默认与 topology 常见布局对齐（可被 map 覆盖）
-  return `/Users/apple/program/apps/${pid}`;
+  return cccHome;
 }
 
 export function relativeTime(iso) {

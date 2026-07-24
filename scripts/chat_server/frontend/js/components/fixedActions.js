@@ -40,7 +40,7 @@ export const FIXED_ACTIONS = [
     label: '定稿方案',
     kind: 'prompt',
     uiLabel: '定稿方案',
-    title: '产出 CCC_DISPATCH（plan+phases）；定稿前可自由讨论',
+    title: '产出 ccc-transfer 契约；定稿前可自由讨论',
     prompt: '', // set from FINALIZE_PLAN_PROMPT below
   },
   {

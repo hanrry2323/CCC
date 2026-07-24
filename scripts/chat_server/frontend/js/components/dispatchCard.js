@@ -1,59 +1,19 @@
 /**
- * 对话下方「转任务」卡片：核实标题 → Skill 软偏好 → 下达并开工
+ * 对话下方「转任务」卡片：核实标题 → Skill 软偏好 → POST /api/desktop/transfer
+ * 对齐 Desktop App / transfer-gate（ccc-transfer）。
  */
 
 import { state } from '../state.js';
-import { createBoardTask, loadProjects, loadSkills } from '../api.js';
-import { escapeHtml } from '../utils.js';
+import {
+  desktopTransfer,
+  nudgeOutboxFlush,
+  loadProjects,
+  loadSkills,
+} from '../api.js';
+import { escapeHtml, desktopThreadId, generateId } from '../utils.js';
 import { parseDispatchBlock, findLatestDispatch } from './dispatchFormat.js';
 
 const MAX_SKILLS = 3;
-
-function nowIso() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const offset = -d.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const oh = pad(Math.floor(Math.abs(offset) / 60));
-  const om = pad(Math.abs(offset) % 60);
-  return (
-    d.getFullYear() +
-    '-' +
-    pad(d.getMonth() + 1) +
-    '-' +
-    pad(d.getDate()) +
-    'T' +
-    pad(d.getHours()) +
-    ':' +
-    pad(d.getMinutes()) +
-    ':' +
-    pad(d.getSeconds()) +
-    sign +
-    oh +
-    ':' +
-    om
-  );
-}
-
-function slugify(title) {
-  const base =
-    String(title || 'task')
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 40) || 'task';
-  const ascii =
-    base.replace(/[^a-z0-9_-]+/g, '').replace(/^-+|-+$/g, '') || 'task';
-  return ascii + '-' + Date.now().toString(36).slice(-4);
-}
-
-function projectToWorkspace(projectId) {
-  const map = state.get('projectWorkspaceMap') || {};
-  if (projectId && map[projectId]) return map[projectId];
-  if (!projectId) return 'CCC';
-  if (projectId === 'ccc') return 'CCC';
-  return projectId;
-}
 
 function ensureHost() {
   let host = document.getElementById('dispatch-card-host');
@@ -153,7 +113,7 @@ export async function showDispatchCard(opts = {}) {
       '<div class="dispatch-card dispatch-card--warn">' +
       '<div class="dispatch-card-title">还不能转任务</div>' +
       '<p class="dispatch-card-help">' +
-      '<b>流程</b>：自由讨论 → <b>定稿方案</b>（产出 CCC_DISPATCH）→ <b>转任务</b>（核标题下达）。' +
+      '<b>流程</b>：自由讨论 → <b>定稿方案</b>（产出 <code>ccc-transfer</code>）→ <b>转任务</b>（核标题下达）。' +
       '<br>请先点工具条 <b>定稿方案</b>；核对无误后再点 <b>转任务</b>。</p>' +
       '<div class="dispatch-card-actions">' +
       '<button type="button" class="btn-secondary" id="dispatch-dismiss">关闭</button>' +
@@ -205,10 +165,7 @@ export async function showDispatchCard(opts = {}) {
     )
     .join('');
 
-  const phaseCount = (parsed.phases_jsonl || '')
-    .split('\n')
-    .filter((l) => l.trim().startsWith('{') && l.includes('"phase"')).length;
-
+  const locked = parsed.source === 'ccc-transfer';
   const projectId0 = prefer.id;
   let showEngine = false;
   let skillsPayload = { skills: [] };
@@ -218,53 +175,44 @@ export async function showDispatchCard(opts = {}) {
     skillsPayload = { skills: [] };
   }
 
-  const selected = new Set();
+  const selected = new Set(parsed.skills_hint || []);
 
   host.hidden = false;
   host.innerHTML =
     '<div class="dispatch-card">' +
     '<div class="dispatch-card-head">' +
     '<span class="dispatch-card-badge">转任务</span>' +
-    '<span class="dispatch-card-meta">定稿已就绪 · plan + ' +
-    phaseCount +
-    ' phase · 下达跳过 product</span>' +
+    '<span class="dispatch-card-meta">' +
+    (locked ? '定稿已就绪 · ccc-transfer' : '兼容旧定稿块') +
+    ' · 过桥 Hub transfer</span>' +
     '<button type="button" class="dispatch-card-x" id="dispatch-dismiss" title="关闭">×</button>' +
     '</div>' +
     '<div class="dispatch-card-body">' +
-    '<p class="dispatch-flow-hint">定稿方案 = 产出方案块；本卡 = 核实标题并下达开工。Skill 为可选软偏好，最多 ' +
+    '<p class="dispatch-flow-hint">标题可改；方案字段只读。Skill 为可选软偏好，最多 ' +
     MAX_SKILLS +
     ' 个。</p>' +
     '<label class="dispatch-field"><span>标题</span>' +
-    '<input type="text" id="dispatch-title" maxlength="500" value="' +
+    '<input type="text" id="dispatch-title" maxlength="80" value="' +
     escapeHtml(parsed.title) +
     '"></label>' +
     '<label class="dispatch-field"><span>项目</span>' +
     '<select id="dispatch-project">' +
     projectOpts +
     '</select></label>' +
-    '<label class="dispatch-field"><span>复杂度</span>' +
-    '<select id="dispatch-complexity">' +
-    ['small', 'medium', 'large']
-      .map(
-        (c) =>
-          '<option value="' +
-          c +
-          '"' +
-          (c === parsed.complexity ? ' selected' : '') +
-          '>' +
-          c +
-          '</option>'
-      )
-      .join('') +
-    '</select></label>' +
+    '<label class="dispatch-field"><span>备注（可选）</span>' +
+    '<input type="text" id="dispatch-human-note" maxlength="200" value="' +
+    escapeHtml(parsed.human_note || '') +
+    '" placeholder="人工备注"></label>' +
     '<div class="dispatch-preview"><span class="dispatch-preview-label">方案摘要（只读）</span>' +
     '<pre>' +
-    escapeHtml(parsed.summary || parsed.plan_md.slice(0, 400)) +
+    escapeHtml(parsed.summary || parsed.goal || '') +
     '</pre></div>' +
     '<div class="dispatch-skills">' +
     '<div class="dispatch-skills-head">' +
     '<span class="dispatch-preview-label">Skill 偏好（可选）</span>' +
-    '<span class="dispatch-skills-count" id="dispatch-skills-count">0/' +
+    '<span class="dispatch-skills-count" id="dispatch-skills-count">' +
+    selected.size +
+    '/' +
     MAX_SKILLS +
     '</span>' +
     '</div>' +
@@ -274,14 +222,18 @@ export async function showDispatchCard(opts = {}) {
     '<label class="dispatch-engine-toggle"><input type="checkbox" id="dispatch-show-engine"> 显示 Engine 角色（ccc-*）</label>' +
     '<input type="text" id="dispatch-skill-extra" class="dispatch-skill-extra" ' +
     'placeholder="或手写 skill id，逗号分隔" maxlength="200" autocomplete="off">' +
-    '<input type="text" id="dispatch-skill-note" class="dispatch-skill-extra" ' +
-    'placeholder="补充说明（可选）" maxlength="200" autocomplete="off">' +
     '</div>' +
     '</div>' +
     '<div class="dispatch-card-actions">' +
     '<button type="button" class="btn-secondary" id="dispatch-dismiss2">取消</button>' +
-    '<button type="button" class="btn-primary" id="dispatch-submit">下达并开工</button>' +
+    '<button type="button" class="btn-primary" id="dispatch-submit">确认转任务</button>' +
     '</div></div>';
+
+  // 预亮已选 skill
+  host.querySelectorAll('.dispatch-skill-chip').forEach((btn) => {
+    const id = btn.getAttribute('data-skill');
+    if (id && selected.has(id)) btn.classList.add('is-on');
+  });
 
   const close = () => hideCard();
   host.querySelector('#dispatch-dismiss')?.addEventListener('click', close);
@@ -335,12 +287,20 @@ export async function showDispatchCard(opts = {}) {
 
   host.querySelector('#dispatch-submit')?.addEventListener('click', async () => {
     const title = host.querySelector('#dispatch-title')?.value.trim();
-    const complexity =
-      host.querySelector('#dispatch-complexity')?.value || parsed.complexity;
     const projectId =
       host.querySelector('#dispatch-project')?.value || state.get('currentProject');
+    const humanNote = (
+      host.querySelector('#dispatch-human-note')?.value || ''
+    ).trim();
     if (!title) {
       window.showToast?.('请填写标题', 'error');
+      return;
+    }
+    if (parsed.feasibility && parsed.feasibility !== 'ok') {
+      window.showToast?.(
+        '可行性非 ok：' + (parsed.feasibility_reason || parsed.feasibility),
+        'error'
+      );
       return;
     }
     const meta = projects.find((p) => p.id === projectId);
@@ -353,59 +313,59 @@ export async function showDispatchCard(opts = {}) {
     }
     const btn = host.querySelector('#dispatch-submit');
     if (btn) btn.disabled = true;
-    const ts = nowIso();
-    const id = slugify(title);
-    const workspace = projectToWorkspace(projectId);
-    const description =
-      '（定稿投递）详见已挂载 plan/phases。\n\n' + (parsed.summary || title);
 
     const extraRaw = host.querySelector('#dispatch-skill-extra')?.value || '';
-    const note = (host.querySelector('#dispatch-skill-note')?.value || '').trim();
     const skills = [...selected];
     for (const part of extraRaw.split(/[,，\s]+/)) {
       const s = part.trim();
       if (s && !skills.includes(s) && skills.length < MAX_SKILLS) skills.push(s);
     }
-    const hints =
-      skills.length || note
-        ? { ...(skills.length ? { skills } : {}), ...(note ? { note } : {}) }
-        : undefined;
+
+    const threadId =
+      state.get('currentSessionId') ||
+      desktopThreadId(projectId || 'ccc', 'main');
+    const clientRequestId =
+      'http-' + Date.now().toString(36) + '-' + (generateId?.() || Math.random().toString(36).slice(2, 8));
 
     try {
       const payload = {
-        id,
+        project_id: projectId,
+        thread_id: threadId,
+        client_request_id: clientRequestId,
         title,
-        description,
-        status: 'backlog',
-        created_at: ts,
-        updated_at: ts,
-        schema_version: '1.2',
-        complexity,
-        tags: ['from-chat', 'dispatch-card'],
-        workspace,
-        plan_md: parsed.plan_md,
-        phases_jsonl: parsed.phases_jsonl,
+        goal: parsed.goal || title,
+        acceptance: parsed.acceptance || ['见 plan_md'],
+        pipeline: parsed.pipeline || 'dev',
+        feasibility: parsed.feasibility || 'ok',
+        feasibility_reason: parsed.feasibility_reason || '',
+        executor_intent: parsed.executor_intent || 'opencode',
+        skills_hint: skills,
+        plan_md: parsed.plan_md || '',
+        complexity: parsed.complexity || 'medium',
       };
-      if (hints) payload.hints = hints;
+      if (humanNote) payload.human_note = humanNote;
+      if (parsed.bump_version) payload.bump_version = true;
 
-      const res = await createBoardTask(payload);
-      const tid = res.task_id || id;
-      const skip =
-        res.skip_product || (res.seeded?.plan && res.seeded?.phases)
-          ? '（已挂 plan，跳过 product）'
-          : '';
-      const wake = res.engine_wake || res.plan_adopt;
+      const res = await desktopTransfer(payload);
+      nudgeOutboxFlush().catch(() => {});
+      const tid = res.epic_id;
+      const wake = res.engine_wake;
       const wakeHint =
-        wake && wake.ok !== false ? ' · Engine 已唤醒' : ' · 请确认 Engine';
+        wake && wake.ok !== false ? ' · Engine 已唤醒' : '';
       const skillHint = skills.length ? ' · Skill×' + skills.length : '';
-      window.showToast?.('已下达 ' + tid + skip + wakeHint + skillHint, 'success');
+      window.showToast?.(
+        '已下达 ' + tid + wakeHint + skillHint,
+        'success'
+      );
       document.dispatchEvent(
-        new CustomEvent('ccc-task-dispatched', { detail: { id: tid, workspace } })
+        new CustomEvent('ccc-task-dispatched', {
+          detail: { id: tid, workspace: res.workspace || projectId },
+        })
       );
       hideCard();
       import('./boardPanel.js').then((m) => {
         m.openBoardPanel?.();
-        m.trackDispatchedTask?.(tid, workspace);
+        m.trackDispatchedTask?.(tid, res.workspace || projectId);
         m.refreshBoardPanel?.();
       });
     } catch (err) {

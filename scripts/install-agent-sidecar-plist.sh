@@ -176,18 +176,13 @@ cat > "$PLIST" <<PLIST_EOF
   <key>WorkingDirectory</key>
   <string>${CCC_HOME}</string>
   <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <true/>
-    <key>SuccessfulExitTimeout</key>
-    <integer>10</integer>
-  </dict>
+  <true/>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>
   <string>Background</string>
   <key>ThrottleInterval</key>
-  <integer>30</integer>
+  <integer>5</integer>
   <!-- 防 live slot / SSE 堆积打满默认 256 FD（Too many open files → 对话假死） -->
   <key>SoftResourceLimits</key>
   <dict>

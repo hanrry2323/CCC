@@ -205,6 +205,13 @@ def probe_no_lan_as_desktop_default(card: dict[str, Any]) -> list[str]:
                 continue
             if _line_is_forbid(line) or "勿" in line or "勿作" in line or "排障" in line:
                 continue
+            # 明确旁路命名：手机/内网 SPA，不是 Desktop·sidecar 默认
+            if re.search(
+                r"hub_base_lan|HUB_URL_LAN|DEFAULT_HUB_LAN|_LAN\b|手机|内网浏览器",
+                line,
+                re.I,
+            ):
+                continue
             if "17777" in line and ("优先" in line or "默认" in line or "主路径" in line):
                 continue
             # only flag if line looks like a default assignment

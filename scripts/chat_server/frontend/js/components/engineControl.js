@@ -113,6 +113,14 @@ async function toggleFrom(prefix) {
 }
 
 export function mountEngineControlInTitlebar() {
+  // 对话壳不塞 Engine 启停（运维噪音）；编排口看板自有入口
+  if (
+    typeof location !== 'undefined' &&
+    (String(location.port || '') === '7788' ||
+      window.__CCC_SHELL__ === 'dialogue')
+  ) {
+    return;
+  }
   const titlebar = document.getElementById('titlebar');
   if (!titlebar || document.getElementById('chat-engine-control')) return;
   const settings = document.getElementById('settings-btn');

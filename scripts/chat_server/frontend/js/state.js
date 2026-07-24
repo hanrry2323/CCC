@@ -12,7 +12,7 @@ class State {
       maxLiveStreams: 4,
       historySource: 'all',
       model: 'flash',
-      toolMode: 'discuss',
+      toolMode: 'engineer',
       claudeSessionIdByThread: {},
       abortController: null,
       tabs: [],

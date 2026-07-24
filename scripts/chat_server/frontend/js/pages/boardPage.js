@@ -2,8 +2,31 @@
 
 import { apiGet, apiPost } from '../api.js';
 import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.js';
+import { workspaceOf } from '../components/boardPanel.js';
 
 export { epicLifecycleLabel, normalizeEpicSplitStatus };
+
+/** #/board?ws=qb → 与侧栏当前项目对齐，避免默认 CCC 空板 */
+function wsFromHash() {
+  const raw = (location.hash || '').replace(/^#\/?/, '');
+  const qi = raw.indexOf('?');
+  if (qi < 0) return '';
+  try {
+    return (new URLSearchParams(raw.slice(qi + 1)).get('ws') || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function preferredWorkspace() {
+  const fromHash = wsFromHash();
+  if (fromHash) return fromHash;
+  try {
+    return workspaceOf();
+  } catch (_) {
+    return _ws || 'CCC';
+  }
+}
 
 const LABELS = {
   backlog: '待办',
@@ -294,6 +317,7 @@ function _buildFlowCol(col, _sig) {
 function html() {
   return `
 <div class="board-page">
+  <div class="orch-hint">编排口 · 看板。对话请开 <a href="http://192.168.3.140:7788/">M1 :7788</a></div>
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
@@ -348,7 +372,9 @@ async function loadConfig() {
   fs.innerHTML = '';
   const spaces = c.workspaces || { CCC: '.' };
   _wsNames = Object.keys(spaces);
-  if (!spaces[_ws] && _wsNames.length) _ws = _wsNames[0];
+  const want = preferredWorkspace();
+  if (want && spaces[want]) _ws = want;
+  else if (!spaces[_ws] && _wsNames.length) _ws = _wsNames[0];
   for (const n of _wsNames) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -364,14 +390,24 @@ async function loadConfig() {
   }
 }
 
-function setActiveWorkspace(name) {
-  if (!name || name === _ws) return;
-  _ws = name;
+function syncWsButtons() {
+  if (!_root) return;
   _root.querySelectorAll('.board-ws-btn').forEach((b) => {
     const on = b.dataset.ws === _ws;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
+}
+
+function setActiveWorkspace(name) {
+  if (!name || name === _ws) return;
+  _ws = name;
+  syncWsButtons();
+  // 保持 hash 与所选工作区一致，便于从摘要链回同一板
+  try {
+    const next = '#/board?ws=' + encodeURIComponent(_ws);
+    if (location.hash !== next) location.hash = next;
+  } catch (_) {}
   loadBoard();
 }
 
@@ -634,12 +670,19 @@ function bind() {
 }
 
 export async function mountBoard(el) {
+  // 每次进入看板：跟当前项目 / hash ?ws=，勿死钉 CCC
+  const want = preferredWorkspace();
   if (_root) {
+    if (want && want !== _ws) {
+      _ws = want;
+      syncWsButtons();
+    }
     await loadBoard();
     if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
     return;
   }
   _root = el;
+  if (want) _ws = want;
   el.innerHTML = html();
   bind();
   initEpicCollapsedDefault();

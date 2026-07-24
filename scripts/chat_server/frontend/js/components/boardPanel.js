@@ -46,7 +46,10 @@ export async function openBoardPanel() {
     document.getElementById('layout')?.appendChild(panel);
     const boardLink = document.getElementById('board-full-link');
     if (boardLink) {
-      boardLink.addEventListener('click', () => closeBoardPanel());
+      boardLink.addEventListener('click', () => {
+        boardLink.href = '#/board?ws=' + encodeURIComponent(workspaceOf());
+        closeBoardPanel();
+      });
     }
     document.getElementById('board-close')?.addEventListener('click', closeBoardPanel);
     document.getElementById('board-refresh')?.addEventListener('click', () => refreshBoardPanel());
@@ -155,6 +158,9 @@ export async function refreshBoardPanel(opts = {}) {
           : '<div class="board-empty">暂无任务</div>') +
       '</div>' +
       '<button type="button" class="btn-primary board-dispatch-btn" id="board-dispatch">下达任务</button>';
+
+    const full = document.getElementById('board-full-link');
+    if (full) full.href = '#/board?ws=' + encodeURIComponent(ws);
 
     document.getElementById('board-dispatch')?.addEventListener('click', () => {
       import('./taskDialog.js').then(m => m.openTaskDialog());

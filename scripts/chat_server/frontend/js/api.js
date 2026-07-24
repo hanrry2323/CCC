@@ -8,7 +8,7 @@ function _authHeader(forcePrompt = false) {
   // 一次性清掉旧长口令 / 默认口令的 localStorage 残留
   if (!localStorage.getItem('ccc_hub_auth_v3')) {
     localStorage.removeItem('ccc_chat_pass');
-    localStorage.removeItem('ccc_agent_token');
+    // 勿清 ccc_agent_token：设置页持久化在 localStorage
     localStorage.setItem('ccc_hub_auth_v3', '1');
   }
   let user = sessionStorage.getItem('ccc_chat_user')
@@ -42,20 +42,19 @@ function _headers(json = true, forcePrompt = false) {
   return h;
 }
 
-function _agentToken(forcePrompt = false) {
-  let tok = forcePrompt ? '' : sessionStorage.getItem('ccc_agent_token') || '';
-  if (!tok) {
-    tok =
-      window.prompt(
-        'M1 Agent Token（与 ~/.ccc/agent-token 相同；仅对话口需要）'
-      ) || '';
-    if (tok) sessionStorage.setItem('ccc_agent_token', tok.trim());
-  }
-  return (tok || '').trim();
+function _agentToken() {
+  return (
+    sessionStorage.getItem('ccc_agent_token') ||
+    localStorage.getItem('ccc_agent_token') ||
+    ''
+  ).trim();
 }
 
-function _agentHeaders(json = true, forcePrompt = false) {
-  const h = { Authorization: 'Bearer ' + _agentToken(forcePrompt) };
+function _agentHeaders(json = true) {
+  const h = {};
+  const tok = _agentToken();
+  // 对话口默认开放；有本地 token 才附带（兼容 CCC_AGENT_AUTH=1）
+  if (tok) h.Authorization = 'Bearer ' + tok;
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }
@@ -78,22 +77,13 @@ async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
   return resp;
 }
 
-/** Agent sidecar 请求（Bearer + agentBase）；禁止走 Hub /api/agent 反代。 */
+/** Agent sidecar 请求；默认无 Token。禁止走 Hub /api/agent 反代。 */
 async function _fetchAgent(pathOrUrl, options = {}, json = true) {
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : agentUrl(pathOrUrl);
-  let resp = await fetch(url, {
+  return fetch(url, {
     ...options,
-    headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
+    headers: { ...(options.headers || {}), ..._agentHeaders(json) },
   });
-  if (resp.status === 401) {
-    localStorage.removeItem('ccc_agent_token');
-    window.showToast?.('Agent Token 无效，请重新输入', 'error');
-    resp = await fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), ..._agentHeaders(json, true) },
-    });
-  }
-  return resp;
 }
 
 export async function apiGet(path) {
@@ -188,6 +178,32 @@ export async function getBoardTaskEvents(taskId, workspace) {
 
 export async function createBoardTask(task) {
   return apiPost('/api/board/proxy/tasks', task);
+}
+
+/** Desktop 同构：POST /api/desktop/transfer（transfer-gate）。 */
+export async function desktopTransfer(payload) {
+  const data = await apiPost('/api/desktop/transfer', payload || {});
+  if (data && data.ok === false) {
+    const errs = Array.isArray(data.errors)
+      ? data.errors.map((e) => e.message || e.code || JSON.stringify(e)).join('; ')
+      : data.error || 'transfer failed';
+    throw new Error(errs);
+  }
+  if (!data?.epic_id) {
+    throw new Error(data?.error || 'transfer 未返回 epic_id');
+  }
+  return data;
+}
+
+/** 轻推 sidecar 冲刷 transfer-outbox（与 App nudge 同构；失败可忽略）。 */
+export async function nudgeOutboxFlush() {
+  try {
+    const resp = await _fetchAgent('/api/outbox/flush', { method: 'POST' }, true);
+    if (!resp.ok) return null;
+    return await resp.json().catch(() => ({}));
+  } catch (_) {
+    return null;
+  }
 }
 
 export async function loadSkills(projectId, opts = {}) {
@@ -295,6 +311,8 @@ export async function streamChat(
       prompt,
       messages: prompt ? [] : messages,
       session_id: threadId,
+      project: projectId,
+      project_id: projectId,
       project_path: projectPath,
       model,
       tool_mode: toolMode,
@@ -317,7 +335,7 @@ export async function streamChat(
       const detail = errBody.detail || errBody.message || errBody.error;
       const errText =
         resp.status === 401
-          ? 'Agent 鉴权失败 (401)：请填 M1 ~/.ccc/agent-token'
+          ? 'Agent 鉴权失败 (401)：本机若开了 CCC_AGENT_AUTH=1，请关掉或设 Token'
           : resp.status === 403
             ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
             : resp.status === 502 || resp.status === 503

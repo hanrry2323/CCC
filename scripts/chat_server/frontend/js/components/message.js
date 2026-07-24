@@ -618,7 +618,7 @@ export function createEmptyState() {
   el.innerHTML =
     '<div class="empty-brand">CCC</div>' +
     '<div class="empty-state-title">今天想做什么？</div>' +
-    '<div class="empty-state-hint">标准投递：聊方案 → <b>定稿方案</b> → 消息上 <b>转任务</b> → 改标题 → <b>下达并开工</b></div>';
+    '<div class="empty-state-hint">聊方案 → 定稿 → 转任务。点下方快捷动作开始。</div>';
   return el;
 }
 

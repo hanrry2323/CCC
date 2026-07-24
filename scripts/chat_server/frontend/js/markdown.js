@@ -90,6 +90,19 @@ function highlightC(code) {
 export function renderMarkdown(text) {
   if (!text) return '';
 
+  // 折叠 ccc-transfer 契约（白话给人看，JSON 折叠）
+  let transferFold = '';
+  text = String(text).replace(
+    /```\s*ccc-transfer\s*\r?\n([\s\S]*?)\r?\n```/gi,
+    (_, json) => {
+      transferFold +=
+        '<details class="transfer-fold"><summary>转任务契约（ccc-transfer）</summary><pre>' +
+        escapeHtml(String(json || '').trim()) +
+        '</pre></details>';
+      return '';
+    }
+  );
+
   // Guard tool_call XML
   const toolCalls = [];
   text = text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, (m) => {
@@ -262,5 +275,5 @@ export function renderMarkdown(text) {
   h = h.replace(/<p><\/p>/g, '');
   h = h.replace(/<p>\s*<\/p>/g, '');
 
-  return h;
+  return h + transferFold;
 }

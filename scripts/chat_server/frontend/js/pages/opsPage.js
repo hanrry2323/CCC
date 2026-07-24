@@ -61,6 +61,7 @@ function html() {
   const f = (id, def = false) => (foldOpen(id, def) ? ' open' : '');
   return `
 <div class="ops-page">
+  <div class="orch-hint">编排口 · 运维。对话请开 <a href="http://192.168.3.140:7788/">M1 :7788</a></div>
   <div class="ops-bar">
     <h2>运维</h2>
     <span class="ops-sub">后勤态势 · 供弹 · 红灯</span>

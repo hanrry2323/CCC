@@ -62,7 +62,7 @@ export function initComposer() {
 
   const toolModeSelect = document.getElementById('tool-mode-select');
   if (toolModeSelect) {
-    toolModeSelect.value = state.get('toolMode') || 'discuss';
+    toolModeSelect.value = state.get('toolMode') || 'engineer';
     toolModeSelect.addEventListener('change', () => {
       state.set(
         'toolMode',
@@ -152,17 +152,17 @@ export function setProjectActive(projectId, displayName) {
   if (sel) sel.value = projectId;
   const display = document.getElementById('project-display');
   if (display) display.textContent = displayName || projectId;
-  document.querySelectorAll('#sidebar-project-btns .board-ws-btn').forEach((b) => {
-    const on = b.dataset.projectId === projectId;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  });
+  document
+    .querySelectorAll('#sidebar-projects .project-card-wrap')
+    .forEach((wrap) => {
+      const on = wrap.dataset.projectId === projectId;
+      wrap.querySelector('.project-card')?.classList.toggle('selected', on);
+    });
   document.dispatchEvent(new CustomEvent('project-change'));
 }
 
 export function setupProjectSelect(projects) {
   const sel = document.getElementById('project-select');
-  const btnsHost = document.getElementById('sidebar-project-btns');
   let last = null;
   try {
     last = localStorage.getItem('ccc_hub_last_project');
@@ -207,35 +207,8 @@ export function setupProjectSelect(projects) {
     if (activeId) sel.value = activeId;
     const cur = projects.find((p) => p.id === sel.value);
     activeId = sel.value;
-    activeName = cur?.name || sel.value;
-  }
-
-  if (btnsHost) {
-    btnsHost.innerHTML = '';
-    for (const p of projects) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'board-ws-btn' + (p.id === activeId ? ' active' : '');
-      b.dataset.projectId = p.id;
-      b.dataset.workspace = p.workspace || p.id;
-      b.dataset.role = p.role || 'app';
-      b.innerHTML =
-        '<span class="board-ws-label"></span><span class="board-ws-live" hidden aria-hidden="true"></span>';
-      b.querySelector('.board-ws-label').textContent =
-        (p.workspace || p.name || p.id) +
-        (p.role === 'orch' ? ' ◆' : '');
-      b.title =
-        (p.name || p.id) +
-        (p.role === 'orch' ? '（编排仓·不可下达）' : '') +
-        (p.path ? ' · ' + p.path : '');
-      b.setAttribute('aria-pressed', p.id === activeId ? 'true' : 'false');
-      b.addEventListener('click', () => {
-        if (state.get('currentProject') === p.id) return;
-        setProjectActive(p.id, p.name || p.workspace || p.id);
-      });
-      btnsHost.appendChild(b);
-    }
-    syncProjectLiveDots();
+    activeName =
+      cur?.id === 'ccc' ? 'CCC 平台' : cur?.name || sel.value;
   }
 
   const display = document.getElementById('project-display');
@@ -243,23 +216,7 @@ export function setupProjectSelect(projects) {
   if (activeId && activeId !== state.get('currentProject')) {
     state.set('currentProject', activeId);
   }
-}
-
-function syncProjectLiveDots() {
-  import('../streamRegistry.js').then((m) => {
-    const live = new Set(m.streamingProjectIds());
-    document.querySelectorAll('#sidebar-project-btns .board-ws-btn').forEach((b) => {
-      const on = live.has(b.dataset.projectId);
-      const dot = b.querySelector('.board-ws-live');
-      if (dot) dot.hidden = !on;
-      b.classList.toggle('has-live', on);
-    });
-  });
-}
-
-// Keep live dots in sync
-if (typeof document !== 'undefined') {
-  document.addEventListener('ccc-streams-changed', () => syncProjectLiveDots());
+  state.set('projects', projects || []);
 }
 
 function doSend() {

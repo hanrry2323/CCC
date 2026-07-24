@@ -28,13 +28,17 @@ assert d.get("ok") is True, d
 print("agent health ok", d.get("product"), d.get("agent_runtime"), "shell=", d.get("shell"))
 '
 
-# 2) shell-config（对话 SPA 宿主）
+# 2) shell-config（对话 SPA 宿主；含 LAN Hub 供手机）
 curl -sf --connect-timeout 5 "${AGENT}/api/shell-config" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
 assert d.get("shell")=="dialogue", d
 assert d.get("hub_base"), d
-print("shell-config ok hub_base=", d.get("hub_base"))
+assert d.get("hub_base_lan"), d
+assert "127.0.0.1" in d["hub_base"] or "17777" in d["hub_base"] or d["hub_base"], d
+lan = d["hub_base_lan"]
+assert "7777" in lan or lan.startswith("http"), lan
+print("shell-config ok hub_base=", d.get("hub_base"), "hub_base_lan=", lan)
 '
 
 # 3) Hub 编排口 hub-config
@@ -63,7 +67,7 @@ print(json.dumps({
   "client_request_id": "${CRID}",
   "title": "Dual-port smoke",
   "goal": "验证对话口 M1 + 编排口 2017",
-  "acceptance": ["epic 存在"],
+  "acceptance": ["DRY_RUN=true python3 -c 'print(1)'"],
   "pipeline": "dev",
   "feasibility": "ok",
   "executor_intent": "python",

@@ -9,7 +9,7 @@ import {
   setupCancel,
   createEmptyState,
 } from './components/message.js';
-import { refreshSidebar, setupSidebarSearch } from './components/sidebar.js';
+import { refreshSidebar, initAppSidebar } from './components/sidebar.js';
 import { initRuntimeStatus } from './components/runtimeStatus.js';
 import { initEngineControl } from './components/engineControl.js';
 import { initRouter } from './router.js';
@@ -118,26 +118,33 @@ function renderPaneByTabId(tabId) {
 
 /**
  * Switch visible chat to a tab for `projectId` without cancelling other projects' streams.
- * Creates a fresh tab if none exists for that project.
+ * Prefers `{pid}::main`, then most recent tab; creates ::main if none.
  */
 function switchToProjectTab(projectId) {
   snapshotActiveTab();
   const pid = projectId || state.get('currentProject') || 'ccc';
   let tabs = state.get('tabs') || [];
-  // Prefer most recently touched tab for this project (last in list with that projectId)
-  let tab = null;
-  for (let i = tabs.length - 1; i >= 0; i--) {
-    if ((tabs[i].projectId || 'ccc') === pid) {
-      tab = tabs[i];
-      break;
+  const mainSid = desktopThreadId(pid, 'main');
+  let tab =
+    tabs.find(
+      (t) =>
+        (t.projectId || 'ccc') === pid &&
+        String(t.sessionId || '') === mainSid
+    ) || null;
+  if (!tab) {
+    for (let i = tabs.length - 1; i >= 0; i--) {
+      if ((tabs[i].projectId || 'ccc') === pid) {
+        tab = tabs[i];
+        break;
+      }
     }
   }
   if (!tab) {
     const id = generateId();
     tab = {
       id,
-      title: '新对话',
-      sessionId: desktopThreadId(pid, id),
+      title: '对话',
+      sessionId: mainSid,
       messages: [],
       projectId: pid,
     };
@@ -145,6 +152,7 @@ function switchToProjectTab(projectId) {
     state.set('tabs', tabs);
   }
   state.set('activeTabId', tab.id);
+  state.set('currentSessionId', tab.sessionId || mainSid);
   renderProjectTabs(tab.id);
   showTabContent(tab);
   refreshSidebar();
@@ -157,23 +165,25 @@ function switchToProjectTab(projectId) {
         'info'
       );
     }
-    // Update project chip live dots
     document.dispatchEvent(new CustomEvent('ccc-streams-changed'));
   });
 }
 
 async function onHubRoute(route) {
+  const { isDialogueShell } = await import('./ports.js');
+  const dialogue = isDialogueShell();
   document.title =
-    route === 'chat' ? 'CCC Hub · 远程对话' :
-    route === 'board' ? 'CCC Hub · 看板' :
-    route === 'console' ? 'CCC Hub · 控制台' :
-    route === 'ops' ? 'CCC Hub · 运维' :
-    'CCC Hub · 远程管理';
+    dialogue
+      ? 'CCC'
+      : route === 'chat' ? 'CCC Hub · 远程对话' :
+        route === 'board' ? 'CCC Hub · 看板' :
+        route === 'console' ? 'CCC Hub · 控制台' :
+        route === 'ops' ? 'CCC Hub · 运维' :
+        'CCC Hub';
   if (route === 'chat') {
     unmountBoard();
     unmountConsole();
     unmountOps();
-    // 经典对话壳已在 #view-chat DOM 内；无需薄页 mount
   } else if (route === 'board') {
     unmountConsole();
     unmountOps();
@@ -193,7 +203,25 @@ async function onHubRoute(route) {
   }
 }
 
+function applyShellMode() {
+  const dialogue =
+    String(location.port || '') === '7788' ||
+    window.__CCC_SHELL__ === 'dialogue';
+  if (dialogue) {
+    window.__CCC_SHELL__ = 'dialogue';
+    document.documentElement.setAttribute('data-shell', 'dialogue');
+    document.body.classList.add('dialogue-mode');
+    document.body.classList.add('hub-mode');
+    document.title = 'CCC';
+  } else {
+    document.documentElement.setAttribute('data-shell', 'hub');
+    document.body.classList.remove('dialogue-mode');
+    document.body.classList.add('hub-mode');
+  }
+}
+
 async function init() {
+  applyShellMode();
   applyTheme(getThemeScheme());
   initRouter(onHubRoute);
   initTitlebar();
@@ -202,7 +230,6 @@ async function init() {
   initRuntimeStatus();
   initEngineControl();
   setupCancel();
-  setupSidebarSearch();
   await import('./components/toast.js');
   import('./components/keyboard.js').then((m) => m.initKeyboard());
 
@@ -212,15 +239,30 @@ async function init() {
   });
 
   try {
+    const { isDialogueShell, isRemoteBrowser, isLoopbackUrl, DEFAULT_HUB_LAN } =
+      await import('./ports.js');
     // 对话壳（M1 :7788）：先读 sidecar shell-config
-    if (String(location.port || '') === '7788' || window.__CCC_SHELL__ === 'dialogue') {
+    if (isDialogueShell()) {
       window.__CCC_SHELL__ = 'dialogue';
       window.__CCC_AGENT_BASE__ = window.__CCC_AGENT_BASE__ ?? '';
       const sc = await fetch('/api/shell-config').then((r) => r.json()).catch(() => null);
+      if (sc?.hub_base_lan) {
+        window.__CCC_HUB_BASE_LAN__ = sc.hub_base_lan;
+      }
       if (sc?.hub_base) {
-        window.__CCC_HUB_BASE__ = sc.hub_base;
+        const remote = isRemoteBrowser();
+        const pick =
+          remote && isLoopbackUrl(sc.hub_base)
+            ? sc.hub_base_lan || DEFAULT_HUB_LAN
+            : remote
+              ? sc.hub_base_lan || sc.hub_base
+              : sc.hub_base;
+        window.__CCC_HUB_BASE__ = pick;
         try {
-          localStorage.setItem('ccc_hub_base', sc.hub_base);
+          const prev = localStorage.getItem('ccc_hub_base');
+          if (!prev || (remote && isLoopbackUrl(prev))) {
+            localStorage.setItem('ccc_hub_base', pick);
+          }
         } catch (_) {}
       }
       if (sc?.workspace_map && typeof sc.workspace_map === 'object') {
@@ -256,33 +298,29 @@ async function init() {
       } catch (_) {}
     }
     const banner = document.querySelector('.hub-remote-banner');
-    if (banner) {
-      const { dialogueEntryUrl, isDialogueShell } = await import('./ports.js');
-      if (isDialogueShell()) {
-        banner.textContent =
-          '对话口（M1）：聊走本机 sidecar；看板/下达 → Hub ' +
-          (window.__CCC_HUB_BASE__ || 'http://192.168.3.116:7777');
-      } else {
-        banner.innerHTML =
-          '编排口（Hub）：看板/运维在此。远程聊天请开 <a href="' +
-          dialogueEntryUrl() +
-          '">' +
-          dialogueEntryUrl() +
-          '</a>（M1 :7788）';
-      }
+    if (banner && !isDialogueShell()) {
+      const { dialogueEntryUrl } = await import('./ports.js');
+      banner.innerHTML =
+        '编排口：看板 / 运维。聊天请开 <a href="' +
+        dialogueEntryUrl() +
+        '">' +
+        dialogueEntryUrl() +
+        '</a>';
     }
   } catch (_) {
-    /* keep default 4 */
+    /* keep default */
   }
 
   try {
     const projects = await loadProjects();
     setupProjectSelect(projects);
+    initAppSidebar(projects);
     const map = {};
     for (const p of projects) map[p.id] = p.workspace || p.id;
     state.set('projectWorkspaceMap', map);
   } catch (e) {
     window.showToast('项目加载失败: ' + e.message, 'error');
+    initAppSidebar([]);
   }
 
   const project =
@@ -302,7 +340,7 @@ async function init() {
   const tabs = [
     {
       id: tabId,
-      title: '新对话',
+      title: '对话',
       sessionId: bootSid,
       messages: [],
       projectId: project,
@@ -320,11 +358,14 @@ async function init() {
 
   refreshSidebar();
 
-  document.addEventListener('new-tab', () => {
+  document.addEventListener('new-tab', (e) => {
     snapshotActiveTab();
     const id = generateId();
     const pid =
-      state.get('currentProject') || state.get('defaultProject') || 'ccc';
+      e.detail?.projectId ||
+      state.get('currentProject') ||
+      state.get('defaultProject') ||
+      'ccc';
     const sid = desktopThreadId(pid, id);
     const tabsNow = state.get('tabs') || [];
     tabsNow.push({
@@ -335,6 +376,7 @@ async function init() {
       projectId: pid,
     });
     state.set('tabs', tabsNow);
+    state.set('currentProject', pid);
     state.set('activeTabId', id);
     state.set('currentSessionId', sid);
     state.set('currentMessages', []);
@@ -347,18 +389,24 @@ async function init() {
     document.getElementById('composer-input').value = '';
     document.getElementById('send-btn').disabled = true;
     renderProjectTabs(id);
+    refreshSidebar();
   });
 
   document.addEventListener('switch-tab', (e) => {
     const { id } = e.detail;
-    if (id === state.get('activeTabId') && !dualPaneEnabled()) return;
+    if (id === state.get('activeTabId') && !dualPaneEnabled()) {
+      refreshSidebar();
+      return;
+    }
     snapshotActiveTab();
     const tabsNow = state.get('tabs') || [];
     const tab = tabsNow.find((t) => t.id === id);
     if (!tab) return;
     state.set('activeTabId', id);
+    if (tab.projectId) state.set('currentProject', tab.projectId);
     renderProjectTabs(id);
     showTabContent(tab);
+    refreshSidebar();
   });
 
   document.addEventListener('close-tab', (e) => {
@@ -381,6 +429,7 @@ async function init() {
       }
     }
     renderProjectTabs(state.get('activeTabId'));
+    refreshSidebar();
   });
 
   document.addEventListener('load-session', async (e) => {
@@ -401,12 +450,13 @@ async function init() {
         renderProjectTabs(state.get('activeTabId'));
       }
 
-      document.querySelectorAll('.session-item').forEach((el) => {
-        el.classList.toggle('active', el.dataset.sid === id);
+      document.querySelectorAll('.sidebar-thread-row').forEach((el) => {
+        el.classList.toggle('selected', el.dataset.sid === id);
       });
 
       document.getElementById('sidebar')?.classList.remove('open');
       document.querySelector('.sidebar-overlay')?.classList.remove('show');
+      refreshSidebar();
     } catch (err) {
       window.showToast('加载对话失败', 'error');
     }
@@ -418,6 +468,7 @@ async function init() {
 
   document.addEventListener('ccc-streams-changed', () => {
     renderProjectTabs(state.get('activeTabId'));
+    refreshSidebar();
   });
 }
 
