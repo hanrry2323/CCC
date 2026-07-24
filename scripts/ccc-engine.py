@@ -194,6 +194,17 @@ from engine.notify import (  # noqa: E402
     ccc_notify as _ccc_notify,
     NOTIFY_SCRIPT as _NOTIFY_SCRIPT,
 )
+from engine.discover import (  # noqa: E402
+    discover_workspaces as _discover_workspaces,
+    queue_has_consumable_work as _queue_has_consumable_work,
+    may_invent as _may_invent,
+    rediscover_workspaces as _rediscover_workspaces,
+    apply_wake_payload as _apply_wake_payload,
+    apply_dispatch_wake as _apply_dispatch_wake,
+    prioritize_wake_workspace as _prioritize_wake_workspace,
+    sleep_until_wake as _sleep_until_wake,
+    wait_tick as _wait_tick,
+)
 from engine.task_registry import (  # noqa: E402
     task_key as _task_key,
     can_accept_dev as _can_accept_dev,
@@ -690,129 +701,6 @@ def _quarantine_with_notify(
         auto_append_lesson_md(ws, tid, phase, reason or "unknown")
     except Exception as exc:
         engine_log(f"[lessons] auto_append failed for {tid}: {exc}")
-
-
-def _discover_workspaces() -> list[Path]:
-    """发现 Engine 管辖的 workspace（v0.51：跳过 orch / engine:false）。
-
-    优先级：
-      1. CCC_WORKSPACES=name:path,name:path 或 path,path（仍尊重 orch 过滤）
-      2. ~/.ccc/workspaces.json → 仅 engine-eligible 条目
-      3. CCC_DISCOVER_ALL=1 全扫（过滤 orch 路径）
-      4. 空 → idle（不再 fallback 只跑 CCC）
-    """
-    import os as _os
-
-    seen: set[str] = set()
-    workspaces: list[Path] = []
-
-    def _is_orch(p: Path) -> bool:
-        try:
-            from _workspace_registry import is_orch_path
-
-            return is_orch_path(p)
-        except ImportError:
-            home = getattr(cfg, "ccc_home", None)
-            if home and Path(home).resolve() == p.resolve():
-                return True
-            return Path(__file__).resolve().parent.parent.resolve() == p.resolve()
-
-    def _add(p: Path, *, allow_orch: bool = False) -> None:
-        if not p.is_dir():
-            return
-        if not (p / ".ccc" / "board").is_dir():
-            return
-        try:
-            resolved = p.resolve()
-        except OSError:
-            return
-        if not allow_orch and _is_orch(resolved):
-            return
-        key = str(resolved)
-        if key in seen:
-            return
-        workspaces.append(resolved)
-        seen.add(key)
-
-    env = _os.environ.get("CCC_WORKSPACES", "").strip()
-    if env:
-        for part in env.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            path_s = part.split(":", 1)[-1] if ":" in part else part
-            _add(Path(path_s).expanduser())
-        if workspaces:
-            return workspaces
-
-    try:
-        from _workspace_registry import list_engine_paths, migrate_registry_roles
-
-        # Best-effort migrate roles once per process start path
-        migrate_registry_roles(dry_run=False)
-        for p in list_engine_paths():
-            _add(p)
-        if workspaces:
-            return workspaces
-        # Registry exists but only orch / empty eligible → idle
-        registry = Path.home() / ".ccc" / "workspaces.json"
-        if registry.is_file():
-            engine_log("[workspace] registry has no engine-eligible apps (orch-only or empty) → idle")
-            return []
-    except ImportError:
-        registry = Path.home() / ".ccc" / "workspaces.json"
-        if registry.is_file():
-            try:
-                data = json.loads(registry.read_text(encoding="utf-8"))
-                for item in data.get("workspaces") or []:
-                    if isinstance(item, str):
-                        _add(Path(item).expanduser())
-                    elif isinstance(item, dict) and item.get("path"):
-                        role = str(item.get("role") or "").lower()
-                        eng = item.get("engine")
-                        if role == "orch" or eng is False:
-                            continue
-                        _add(Path(item["path"]).expanduser())
-            except (OSError, json.JSONDecodeError) as exc:
-                engine_log(f"[workspace] registry parse failed: {exc}")
-            if workspaces:
-                return workspaces
-            engine_log("[workspace] registry parse/empty eligible → idle")
-            return []
-
-    if _os.environ.get("CCC_DISCOVER_ALL", "").strip() in ("1", "true", "yes"):
-        program_dir = Path.home() / "program"
-        if program_dir.is_dir():
-            for p in sorted(program_dir.iterdir()):
-                if p.is_dir():
-                    _add(p)
-            projects_dir = program_dir / "projects"
-            if projects_dir.is_dir():
-                for p in sorted(projects_dir.iterdir()):
-                    if p.is_dir():
-                        _add(p)
-        return workspaces
-
-    # v0.51: no CCC-only fallback — idle until apps are registered
-    engine_log("[workspace] no registry / no eligible apps → idle")
-    return []
-
-
-def _queue_has_consumable_work(store: FileBoardStore) -> bool:
-    """enabled 模式可消费列；abnormal 由窄版 auto-refeed 回灌，不在此列直接调度。"""
-    for col in ("backlog", "planned", "in_progress", "testing", "verified"):
-        if store.list_tasks(col):
-            return True
-    return False
-
-
-def _may_invent() -> bool:
-    try:
-        from _ccc_control import may_invent
-
-        return may_invent()
-    except ImportError:
-        return False
 
 
 def _handle_task_result(
@@ -2491,7 +2379,7 @@ def engine_loop(workspaces: list[Path]) -> None:
     # 启动即消费 wake（须在 recover 之前：ccc-demo testing recover 可堵数分钟，否则人下达饿死）
     try:
         if _apply_dispatch_wake(workspaces):
-            workspaces[:] = _prioritize_wake_workspace(workspaces)
+            workspaces[:] = _prioritize_wake_workspace(workspaces, _wake_priority_workspace)
             engine_log("[wake] applied before recover — priority intake armed")
     except Exception as exc:
         engine_log(f"[wake] pre-recover apply failed: {exc}")
@@ -2565,7 +2453,7 @@ def engine_loop(workspaces: list[Path]) -> None:
         # 非深睡时也消费 wake：人下达立刻优先 intake，不等人空闲
         try:
             if _apply_dispatch_wake(workspaces):
-                workspaces[:] = _prioritize_wake_workspace(workspaces)
+                workspaces[:] = _prioritize_wake_workspace(workspaces, _wake_priority_workspace)
         except Exception as exc:
             engine_log(f"[wake] apply dispatch wake failed: {exc}")
         if _intake_bypass_ticks_left > 0:
@@ -2863,7 +2751,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     workspaces[:] = _rediscover_workspaces(workspaces)
                     try:
                         _apply_dispatch_wake(workspaces, already_consumed=wake_payload)
-                        workspaces[:] = _prioritize_wake_workspace(workspaces)
+                        workspaces[:] = _prioritize_wake_workspace(workspaces, _wake_priority_workspace)
                     except Exception as exc:
                         engine_log(f"[wake] post-deep-sleep apply failed: {exc}")
                 elif iteration % 12 == 0:
@@ -2895,132 +2783,6 @@ def engine_loop(workspaces: list[Path]) -> None:
         _wait_tick(tick_start)
 
     engine_log("收到关闭信号，停止接收新任务")
-
-
-def _rediscover_workspaces(current: list[Path]) -> list[Path]:
-    """Re-read ~/.ccc/workspaces.json；名单变化时打日志。返回最新列表（失败则保留旧）。"""
-    try:
-        discovered = _discover_workspaces()
-    except Exception as exc:
-        engine_log(f"[workspace] rediscover failed: {exc}")
-        return current
-    if not discovered:
-        return current
-    old = {str(p.resolve()) for p in current}
-    new = {str(p.resolve()) for p in discovered}
-    if old != new:
-        program_dir = Path.home() / "program"
-        labels = [_ws_label(w, program_dir) for w in discovered]
-        engine_log(f"[workspace] rediscover {len(current)} → {len(discovered)}: {labels}")
-        return discovered
-    return current
-
-
-def _apply_wake_payload(payload: dict | None, workspaces: list[Path]) -> bool:
-    """Apply task_dispatch wake: bypass degraded intake + remember priority workspace.
-
-    Returns True if a dispatch-style wake was applied.
-    """
-    global _degraded_mode, _degraded_since, _intake_bypass_degraded
-    global _intake_bypass_ticks_left, _wake_priority_workspace
-    if not payload or not isinstance(payload, dict):
-        return False
-    reason = str(payload.get("reason") or "")
-    # Human transfer / Hub ensure uses task_dispatch; also accept bare wake
-    is_dispatch = (
-        reason.startswith("task_dispatch")
-        or reason in ("wake", "task_dispatch", "hub_manual_start")
-        or "task_dispatch" in reason
-        or bool(payload.get("workspace") or payload.get("task_id"))
-    )
-    if not is_dispatch:
-        return False
-    engine_log(f"[wake] apply reason={reason!r} task={payload.get('task_id')} ws={payload.get('workspace')}")
-    _intake_bypass_degraded = True
-    _intake_bypass_ticks_left = _INTAKE_BYPASS_TICKS
-    if _degraded_mode:
-        _degraded_mode = False
-        _degraded_since = None
-        engine_log("[wake] cleared degraded — human dispatch must intake pending epic")
-    ws_raw = payload.get("workspace")
-    if ws_raw:
-        try:
-            wp = Path(str(ws_raw)).resolve()
-            if wp.is_dir():
-                _wake_priority_workspace = wp
-        except OSError:
-            pass
-    return True
-
-
-def _apply_dispatch_wake(workspaces: list[Path], *, already_consumed: dict | None = None) -> bool:
-    """Consume ~/.ccc/engine.wake (unless already_consumed) and apply dispatch priority."""
-    if already_consumed is not None:
-        return _apply_wake_payload(already_consumed, workspaces)
-    try:
-        from _engine_wake import consume_wake
-
-        payload = consume_wake()
-    except Exception:
-        return False
-    return _apply_wake_payload(payload, workspaces)
-
-
-def _prioritize_wake_workspace(workspaces: list[Path]) -> list[Path]:
-    """Move wake target workspace to front so product intake isn't starved by other apps."""
-    global _wake_priority_workspace
-    pri = _wake_priority_workspace
-    if pri is None or not workspaces:
-        return workspaces
-    try:
-        pri_res = pri.resolve()
-    except OSError:
-        return workspaces
-    head: list[Path] = []
-    rest: list[Path] = []
-    for ws in workspaces:
-        try:
-            if ws.resolve() == pri_res:
-                head.append(ws)
-            else:
-                rest.append(ws)
-        except OSError:
-            rest.append(ws)
-    if not head:
-        # Wake workspace not yet in list — prepend if registered path exists
-        if pri_res.is_dir():
-            return [pri_res] + list(workspaces)
-        return workspaces
-    return head + rest
-
-
-def _sleep_until_wake(seconds: float) -> dict | None:
-    """深睡可被 ~/.ccc/engine.wake 打断。返回 wake payload 或 None。"""
-    try:
-        from _engine_wake import consume_wake
-
-        end = time.time() + max(0.0, seconds)
-        while time.time() < end:
-            payload = consume_wake()
-            if payload is not None:
-                engine_log(f"[wake] reason={payload.get('reason')} task={payload.get('task_id')}")
-                return payload if isinstance(payload, dict) else {"reason": "wake"}
-            time.sleep(min(2.0, max(0.1, end - time.time())))
-        # 超时前再看一眼
-        payload = consume_wake()
-        if payload is not None:
-            return payload if isinstance(payload, dict) else {"reason": "wake"}
-        return None
-    except Exception:
-        time.sleep(seconds)
-        return None
-
-
-def _wait_tick(tick_start: float) -> None:
-    elapsed = time.time() - tick_start
-    remaining = cfg.engine_poll_interval - elapsed
-    if remaining > 0:
-        time.sleep(min(remaining, cfg.engine_poll_interval))
 
 
 def _audit_should_run(workspace: str, interval_hours: int = 2) -> bool:

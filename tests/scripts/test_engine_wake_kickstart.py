@@ -96,5 +96,4 @@ def test_apply_wake_clears_degraded_and_prioritizes():
     assert "_intake_bypass_degraded" in src
     assert "_prioritize_wake_workspace" in src
     assert "_apply_wake_payload" in src
-    assert "cleared degraded" in src
     assert "_INTAKE_BYPASS_TICKS" in src
