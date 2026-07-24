@@ -479,10 +479,15 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                 return _handle_fail_to_planned(
                     ws, tid, store, status=str(_early), eng=eng
                 )
-            if _early == "PASS" or _early is None:
-                # None: 旧格式无 Verdict 行但文件非空 — 保守视为可继续（兼容）
+            if _early == "PASS":
                 verdict_ok = True
                 break
+            # 修复 stability-audit-2026-07-24 类别④ #7：None（无 Verdict 行）
+            # 与 FAIL / TIMEOUT 同视为非 PASS，要求重试 — 旧"None 视为可继续"
+            # 兼容逻辑让门禁可绕过
+            _engine_log(
+                f"[{label}] {tid} verdict status={_early!r} 非 PASS，重试"
+            )
             _engine_log(
                 f"[{label}] {tid} verdict status={_early!r} 非 PASS，重试"
             )
