@@ -16,6 +16,9 @@ def _load_engine():
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    # 2026-07-24 重构：engine.active_tasks._eng() 通过 sys.modules 找 engine 模块；
+    # importlib util 不自动注册，需 setdefault 到标准名才能让 _eng() 找到。
+    sys.modules.setdefault("ccc_engine", mod)
     return mod
 
 
@@ -63,12 +66,19 @@ def test_recover_running_caps_active_and_enqueues_pending(tmp_path, monkeypatch)
 
 def test_relaunch_backoff_blocks_without_new_commit(tmp_path, monkeypatch):
     engine = _load_engine()
-    monkeypatch.setattr(engine, "_git_head_for_task", lambda ws, tid: "abc")
-    engine._relaunch_meta.clear()
+    # 2026-07-24：relaunch_allowed 在 engine.task_registry 里本地调用
+    # git_head_for_task（line 98），monkeypatch engine._git_head_for_task 改不到它。
+    # 必须 patch 真实源模块：engine.task_registry.git_head_for_task。
+    # engine.task_registry._relaunch_meta 与 engine._relaunch_meta 是同对象（已验证），
+    # 用任一引用清空即可。
+    from engine import task_registry as _tr
+
+    monkeypatch.setattr(_tr, "git_head_for_task", lambda ws, tid: "abc")
+    _tr._relaunch_meta.clear()
     assert engine._relaunch_allowed(tmp_path, "t1", 1) is True
     engine._note_relaunch(tmp_path, "t1", 1)
     # 立即再试：应退避
     assert engine._relaunch_allowed(tmp_path, "t1", 1) is False
     # 新 commit → 立即允许
-    monkeypatch.setattr(engine, "_git_head_for_task", lambda ws, tid: "def")
+    monkeypatch.setattr(_tr, "git_head_for_task", lambda ws, tid: "def")
     assert engine._relaunch_allowed(tmp_path, "t1", 1) is True

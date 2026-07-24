@@ -146,7 +146,7 @@ def test_transfer_creates_epic_only(client, monkeypatch):
                 "project_id": "demo",
                 "title": "加标记",
                 "goal": "README 加一行",
-                "acceptance": ["grep MARK"],
+                "acceptance": ["pytest tests/ -q"],
                 "pipeline": "dev",
                 "feasibility": "ok",
                 "executor_intent": "opencode",
@@ -199,7 +199,7 @@ def test_transfer_preserves_non_main_thread_id(client, monkeypatch):
                 "thread_id": "demo::494276D0",
                 "title": "第二笔",
                 "goal": "再加一行",
-                "acceptance": ["grep TWO"],
+                "acceptance": ["test -f README.md"],
                 "pipeline": "dev",
                 "feasibility": "ok",
                 "executor_intent": "opencode",
@@ -255,11 +255,11 @@ def test_transfer_same_thread_queues_two_epics(client, monkeypatch):
         "project_id": "demo",
         "thread_id": "demo::AAAA",
         "goal": "g",
-        "acceptance": ["a"],
+        "acceptance": ["python3 -m pytest"],
         "pipeline": "dev",
         "feasibility": "ok",
         "executor_intent": "opencode",
-        "plan_md": "# P\n\n## 验收\n- x\n",
+        "plan_md": "# P\n\n## 验收\n- pytest tests/ -q\n",
     }
     with patch.object(desk, "board_proxy", new=AsyncMock(return_value=FakeResp())):
         r1 = client.post(

@@ -18,8 +18,12 @@ try:
     _spec = importlib.util.spec_from_file_location("ccc_board", str(ROOT / "scripts" / "ccc-board.py"))
     _mod = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_mod)
-    _classify_task_intake = _mod._classify_task_intake
-    _intake_failsafe = _mod._intake_failsafe
+    # 2026-07-24：ccc-board.py 不再 re-export _classify_task_intake / _intake_failsafe
+    # （二者已迁到 board.roles.audit）。测试仅 shim 到 audit 模块，避免碰生产代码。
+    from board.roles import audit as _audit
+
+    _classify_task_intake = _audit._classify_task_intake
+    _intake_failsafe = _audit._intake_failsafe
 finally:
     sys.path.pop(0)
 

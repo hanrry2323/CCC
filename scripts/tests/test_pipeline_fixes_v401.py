@@ -23,7 +23,10 @@ def _load_engine():
 
 def test_upstream_4xx_is_healthy(monkeypatch):
     engine = _load_engine()
-    engine._upstream_health_cache.clear()
+    from engine import upstream as _upstream
+
+    # 2026-07-24 重构：_health_cache 迁到 engine.upstream 子模块
+    _upstream._health_cache.clear()
     monkeypatch.delenv("CCC_UPSTREAM_STRICT", raising=False)
 
     class FakeHTTPError(Exception):
@@ -48,7 +51,10 @@ def test_upstream_4xx_is_healthy(monkeypatch):
 
 def test_upstream_strict_requires_200(monkeypatch):
     engine = _load_engine()
-    engine._upstream_health_cache.clear()
+    from engine import upstream as _upstream
+
+    # 2026-07-24 重构：_health_cache 迁到 engine.upstream 子模块
+    _upstream._health_cache.clear()
     monkeypatch.setenv("CCC_UPSTREAM_STRICT", "1")
 
     import urllib.error
@@ -71,8 +77,11 @@ def test_reviewer_fallback_default_quarantine(monkeypatch):
     board = importlib.util.module_from_spec(spec)
     monkeypatch.delenv("CCC_REVIEWER_FALLBACK", raising=False)
     spec.loader.exec_module(board)
-    assert board._reviewer_fallback_mode() == "quarantine"
+    # 2026-07-24 重构：reviewer helpers 迁到 board.roles.reviewer 子模块
+    from board.roles import reviewer as _reviewer
+
+    assert _reviewer._reviewer_fallback_mode() == "quarantine"
     monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "stay")
-    assert board._reviewer_fallback_mode() == "stay"
+    assert _reviewer._reviewer_fallback_mode() == "stay"
     monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "static")
-    assert board._reviewer_fallback_mode() == "stay"
+    assert _reviewer._reviewer_fallback_mode() == "stay"

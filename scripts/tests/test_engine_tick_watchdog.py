@@ -23,12 +23,15 @@ def _load_engine():
 
 def test_mark_engine_tick_writes_loop_heartbeat(tmp_path, monkeypatch):
     engine = _load_engine()
+    from engine import tick as _tick
+
     hb = tmp_path / "engine-loop-heartbeat.json"
-    monkeypatch.setattr(engine, "_loop_heartbeat_path", lambda: hb)
+    # 2026-07-24 重构：_loop_heartbeat_path / _last_tick_mono 都迁到 engine.tick 子模块
+    monkeypatch.setattr(_tick, "_loop_heartbeat_path", lambda: hb)
     before = time.monotonic()
     engine._mark_engine_tick()
     assert hb.is_file()
     data = json.loads(hb.read_text(encoding="utf-8"))
     assert "timestamp" in data
     assert data["pid"] > 0
-    assert engine._last_tick_mono >= before
+    assert _tick._last_tick_mono >= before

@@ -47,7 +47,7 @@ def test_gate_accepts_complete():
     body = {
         "title": "加一行 README",
         "goal": "在 README 加 DEMO 标记",
-        "acceptance": ["grep DEMO README.md"],
+        "acceptance": ["python3 -m pytest"],
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "ccc-demo",
@@ -99,7 +99,7 @@ def test_fanout_writes_executor(tmp_path):
         "id": "epic-x-w1",
         "title": "W1",
         "description": "d",
-        "plan_md": "# t\n\n## 验收\n- x\n",
+        "plan_md": "# t\n\n## 验收\n- pytest tests/ -q\n",
         "phases": [
             {
                 "phase": 1,

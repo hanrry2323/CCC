@@ -18,12 +18,23 @@ def _load_engine():
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    # 2026-07-24：同 test_engine_concurrency_caps，让 _eng() 找到模块
+    sys.modules.setdefault("ccc_engine", mod)
     return mod
+
+
+def _tr():
+    """2026-07-24：rebuild_product_inflight 用 `global` 重绑 task_registry 模块变量，
+    _tr()._product_inflight 是 re-export 引用快照，仍指向旧 dict。
+    所有 _product_inflight 读写必须直访 engine.task_registry。"""
+    from engine import task_registry as _task_registry
+
+    return _task_registry
 
 
 def test_can_launch_product_global_and_per_ws_caps(tmp_path, monkeypatch):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     ws_a = tmp_path / "a"
     ws_b = tmp_path / "b"
     ws_a.mkdir()
@@ -32,17 +43,17 @@ def test_can_launch_product_global_and_per_ws_caps(tmp_path, monkeypatch):
     # 全局满
     for i in range(engine.MAX_PRODUCT_INFLIGHT):
         other = Path(f"/tmp/other-ws-{i}")
-        engine._product_inflight[f"{other}|t{i}"] = {
+        _tr()._product_inflight[f"{other}|t{i}"] = {
             "workspace": other,
             "tid": f"t{i}",
         }
     assert engine._can_launch_product(ws_a) is False
 
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     # 同 WS 满（默认 2）
     for i in range(engine.MAX_PRODUCT_PER_WS):
         key = engine._task_key(ws_a, f"local-{i}")
-        engine._product_inflight[key] = {
+        _tr()._product_inflight[key] = {
             "workspace": ws_a,
             "tid": f"local-{i}",
         }
@@ -52,20 +63,20 @@ def test_can_launch_product_global_and_per_ws_caps(tmp_path, monkeypatch):
 
 def test_rebuild_product_inflight_from_live_pids(tmp_path):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     pids = tmp_path / ".ccc" / "pids"
     pids.mkdir(parents=True)
     (pids / "alive-task.product.pid").write_text(str(os.getpid()))
     (pids / "dead-task.product.pid").write_text("999999999")
     engine._rebuild_product_inflight([tmp_path])
-    keys = list(engine._product_inflight.keys())
+    keys = list(_tr()._product_inflight.keys())
     assert any("alive-task" in k for k in keys)
     assert not any("dead-task" in k for k in keys)
 
 
 def test_process_backlog_respects_per_ws_cap(tmp_path, monkeypatch):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     monkeypatch.setattr(engine, "_degraded_mode", False)
     monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
     monkeypatch.setattr(engine, "_is_upstream_healthy", lambda: True)
@@ -120,14 +131,14 @@ def test_process_backlog_respects_per_ws_cap(tmp_path, monkeypatch):
     monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
     engine._process_backlog(tmp_path)
     assert len(launched) == engine.MAX_PRODUCT_PER_WS
-    assert len(engine._product_inflight) == engine.MAX_PRODUCT_PER_WS
+    assert len(_tr()._product_inflight) == engine.MAX_PRODUCT_PER_WS
 
 
 def test_write_heartbeat_includes_slot_fields(tmp_path, monkeypatch):
     engine = _load_engine()
     (tmp_path / ".ccc").mkdir(parents=True)
-    engine._product_inflight.clear()
-    engine._product_inflight["x|y"] = {"tid": "y"}
+    _tr()._product_inflight.clear()
+    _tr()._product_inflight["x|y"] = {"tid": "y"}
     engine._pending_relaunch.clear()
 
     class _Store:
@@ -154,10 +165,10 @@ def test_write_heartbeat_includes_slot_fields(tmp_path, monkeypatch):
 
 def test_gc_product_inflight_clears_orphan_when_task_missing(tmp_path, monkeypatch):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     (tmp_path / ".ccc" / "pids").mkdir(parents=True)
     key = engine._task_key(tmp_path, "gone-task")
-    engine._product_inflight[key] = {"workspace": tmp_path, "tid": "gone-task"}
+    _tr()._product_inflight[key] = {"workspace": tmp_path, "tid": "gone-task"}
 
     class _Store:
         def find_task(self, tid):
@@ -167,16 +178,16 @@ def test_gc_product_inflight_clears_orphan_when_task_missing(tmp_path, monkeypat
     monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
     n = engine._gc_product_inflight([tmp_path])
     assert n == 1
-    assert key not in engine._product_inflight
+    assert key not in _tr()._product_inflight
     assert engine._can_launch_product(tmp_path) is True
 
 
 def test_gc_product_inflight_clears_epic_planned_without_pid(tmp_path, monkeypatch):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     (tmp_path / ".ccc" / "pids").mkdir(parents=True)
     key = engine._task_key(tmp_path, "epic-planned")
-    engine._product_inflight[key] = {"workspace": tmp_path, "tid": "epic-planned"}
+    _tr()._product_inflight[key] = {"workspace": tmp_path, "tid": "epic-planned"}
 
     class _Store:
         def find_task(self, tid):
@@ -189,18 +200,18 @@ def test_gc_product_inflight_clears_epic_planned_without_pid(tmp_path, monkeypat
     monkeypatch.setattr(engine, "_get_store", lambda ws: _Store())
     monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
     engine._gc_product_inflight([tmp_path])
-    assert key not in engine._product_inflight
+    assert key not in _tr()._product_inflight
 
 
 def test_gc_product_inflight_keeps_live_pid(tmp_path, monkeypatch):
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     pids = tmp_path / ".ccc" / "pids"
     pids.mkdir(parents=True)
     tid = "live-epic"
     (pids / f"{tid}.product.pid").write_text(str(os.getpid()))
     key = engine._task_key(tmp_path, tid)
-    engine._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
+    _tr()._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
 
     class _Store:
         def find_task(self, tid_):
@@ -218,18 +229,18 @@ def test_gc_product_inflight_keeps_live_pid(tmp_path, monkeypatch):
         lambda _tid: {"status": "running"},
     )
     engine._gc_product_inflight([tmp_path])
-    assert key in engine._product_inflight
+    assert key in _tr()._product_inflight
 
 
 def test_gc_product_inflight_empty_backlog_orphans(tmp_path, monkeypatch):
     """空板时 GC 仍清掉内存孤儿（不依赖 _process_backlog）。"""
     engine = _load_engine()
-    engine._product_inflight.clear()
+    _tr()._product_inflight.clear()
     (tmp_path / ".ccc" / "pids").mkdir(parents=True)
     for i in range(engine.MAX_PRODUCT_PER_WS):
         tid = f"orphan-{i}"
         key = engine._task_key(tmp_path, tid)
-        engine._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
+        _tr()._product_inflight[key] = {"workspace": tmp_path, "tid": tid}
 
     class _Store:
         def find_task(self, tid):
@@ -242,5 +253,5 @@ def test_gc_product_inflight_empty_backlog_orphans(tmp_path, monkeypatch):
     monkeypatch.setattr(engine, "_activate_workspace", lambda ws: ws)
     assert engine._can_launch_product(tmp_path) is False
     engine._gc_product_inflight([tmp_path])
-    assert engine._product_inflight == {}
+    assert _tr()._product_inflight == {}
     assert engine._can_launch_product(tmp_path) is True

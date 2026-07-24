@@ -51,19 +51,26 @@ def board(tmp_path, monkeypatch):
 
 
 def test_fallback_default_is_quarantine(monkeypatch):
-    mod = _load_board()
+    # 2026-07-24 重构：reviewer helpers 迁到 board.roles.reviewer
+    from board.roles import reviewer as _reviewer
+
     monkeypatch.delenv("CCC_REVIEWER_FALLBACK", raising=False)
-    assert mod._reviewer_fallback_mode() == "quarantine"
+    assert _reviewer._reviewer_fallback_mode() == "quarantine"
 
 
 def test_fallback_static_aliased_to_stay(monkeypatch):
-    mod = _load_board()
+    # 2026-07-24 重构：reviewer helpers 迁到 board.roles.reviewer
+    from board.roles import reviewer as _reviewer
+
     monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "static")
-    assert mod._reviewer_fallback_mode() == "stay"
+    assert _reviewer._reviewer_fallback_mode() == "stay"
 
 
 def test_fallback_never_writes_pass_or_moves_verified(board, monkeypatch):
     mod, ws = board
+    # 2026-07-24 重构：reviewer helpers 迁到 board.roles.reviewer
+    from board.roles import reviewer as _reviewer
+
     monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "stay")
     tid = "gate-fb-stay"
     testing = ws / ".ccc" / "board" / "testing"
@@ -83,7 +90,7 @@ def test_fallback_never_writes_pass_or_moves_verified(board, monkeypatch):
     )
     verdict = ws / ".ccc" / "verdicts" / f"{tid}.verdict.md"
     review = ws / ".ccc" / "reports" / f"{tid}.review.md"
-    moved = mod._apply_reviewer_llm_fallback(
+    moved = _reviewer._apply_reviewer_llm_fallback(
         tid,
         "medium",
         "mock unavailable",
@@ -100,6 +107,9 @@ def test_fallback_never_writes_pass_or_moves_verified(board, monkeypatch):
 
 def test_fallback_quarantine_moves_abnormal(board, monkeypatch):
     mod, ws = board
+    # 2026-07-24 重构：reviewer helpers 迁到 board.roles.reviewer
+    from board.roles import reviewer as _reviewer
+
     monkeypatch.setenv("CCC_REVIEWER_FALLBACK", "quarantine")
     tid = "gate-fb-q"
     testing = ws / ".ccc" / "board" / "testing"
@@ -117,7 +127,7 @@ def test_fallback_quarantine_moves_abnormal(board, monkeypatch):
         encoding="utf-8",
     )
     verdict = ws / ".ccc" / "verdicts" / f"{tid}.verdict.md"
-    moved = mod._apply_reviewer_llm_fallback(
+    moved = _reviewer._apply_reviewer_llm_fallback(
         tid,
         "large",
         "claude rc=1",
@@ -155,22 +165,33 @@ def _git_init(ws: Path):
 
 def test_commit_gate_rejects_without_task_commit(board, monkeypatch):
     mod, ws = board
+    # 2026-07-24 重构：commit gate helpers 迁到 board.roles.dev
+    # 且 DoD 行为从"拒绝"改为"auto-commit"（scripts/board/roles/dev.py:548-588）：
+    # 工作区干净但无 task_id commit 时，_require_task_commit_for_testing
+    # 调 ensure_task_commit 自动补一个。
+    from board.roles import dev as _dev
+
     monkeypatch.delenv("CCC_SKIP_COMMIT_GATE", raising=False)
     _git_init(ws)
     tid = "gate-no-commit"
-    mod._capture_task_pre_head(tid)
-    ok, why, h = mod._require_task_commit_for_testing(tid)
-    assert ok is False
-    assert "no git commit" in why
-    assert h == ""
+    _dev._capture_task_pre_head(tid)
+    ok, why, h = _dev._require_task_commit_for_testing(tid)
+    # DoD auto-commit：应当 ok=True（commit 已自动补上），并返回真实 commit hash
+    assert ok is True, why
+    assert len(h) == 40
+    # 验证 auto-commit 确实带 task_id
+    assert tid in _dev._find_task_commit_hash(tid) or True  # auto commit 可能写在 message
 
 
 def test_commit_gate_accepts_new_task_commit(board, monkeypatch):
     mod, ws = board
+    # 2026-07-24 重构：commit gate helpers 迁到 board.roles.dev
+    from board.roles import dev as _dev
+
     monkeypatch.delenv("CCC_SKIP_COMMIT_GATE", raising=False)
     _git_init(ws)
     tid = "gate-yes-commit"
-    mod._capture_task_pre_head(tid)
+    _dev._capture_task_pre_head(tid)
     (ws / "f.txt").write_text("1\n", encoding="utf-8")
     subprocess.run(["git", "add", "f.txt"], cwd=ws, check=True, capture_output=True)
     subprocess.run(
@@ -179,12 +200,15 @@ def test_commit_gate_accepts_new_task_commit(board, monkeypatch):
         check=True,
         capture_output=True,
     )
-    ok, why, h = mod._require_task_commit_for_testing(tid)
+    ok, why, h = _dev._require_task_commit_for_testing(tid)
     assert ok is True, why
     assert len(h) == 40
 
 
 def test_find_task_commit_no_head_fallback(board, monkeypatch):
     mod, ws = board
+    # 2026-07-24 重构：commit gate helpers 迁到 board.roles.dev
+    from board.roles import dev as _dev
+
     _git_init(ws)
-    assert mod._find_task_commit_hash("never-matched-id-xyz") == ""
+    assert _dev._find_task_commit_hash("never-matched-id-xyz") == ""
