@@ -470,6 +470,9 @@ def _start_tick_watchdog() -> None:
     """若主循环超过 CCC_ENGINE_TICK_STALE_S 无 tick，先 grace 期观察；
     grace 过期仍无 tick 则 flush diagnostic + 标记 hard exit 事件 + os._exit(0)。
 
+    Must be exit 0: plist KeepAlive SuccessfulExit only restarts on success.
+    Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
+
     修复 stability-audit-2026-07-24 类别③：watchdog 直接 os._exit 跳过
     finally/atexit/持久化。Grace 期让主循环有机会自然退出（_engine_shutdown
     置位时 watchdog 直接 return）。
@@ -527,7 +530,7 @@ def _start_tick_watchdog() -> None:
                 )
             except Exception:
                 pass
-            # Must be 0: plist KeepAlive SuccessfulExit only restarts on success.
+            # Must be exit 0 for launchd KeepAlive SuccessfulExit restart.
             # Exit 78 (EX_CONFIG) left Engine dead after watchdog (pending epics starved).
             os._exit(0)
 
