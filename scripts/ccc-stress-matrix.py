@@ -260,7 +260,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
             goal=f"落地 {mod} 含 hello() 返回 ok",
             acceptance=[
                 f'test -f {mod}',
-                f'DRY_RUN=true python3 -c "print(0)"',
+                'DRY_RUN=true python3 -c "print(0)"',
             ],
             plan_md=(
                 f"# Plan\n\n## 目标\n写 `{mod}`：`hello()` → `'ok'`\n\n"
@@ -299,7 +299,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
             goal="写占位脚本供观察 FAIL→planned 重试（Engine 自愈）",
             acceptance=[
                 f"test -f scripts/{stem}_s03_placeholder.py",
-                f'DRY_RUN=true python3 -c "print(0)"',
+                'DRY_RUN=true python3 -c "print(0)"',
             ],
             plan_md=(
                 f"# Plan\n\n## Phase 1\n- `scripts/{stem}_s03_placeholder.py`\n"
@@ -384,7 +384,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
             acceptance=[
                 f"test -f scripts/{stem}_dep_a.py",
                 f"test -f scripts/{stem}_dep_b.py",
-                f'DRY_RUN=true python3 -c "print(0)"',
+                'DRY_RUN=true python3 -c "print(0)"',
             ],
             plan_md=(
                 f"# Plan\n\n## Phase 1 — A\n- `scripts/{stem}_dep_a.py`\n\n"
@@ -403,7 +403,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
             goal=f"落地 scripts/{stem}_reopen.py 后可被 reopen 流程消费",
             acceptance=[
                 f"test -f scripts/{stem}_reopen.py",
-                f'DRY_RUN=true python3 -c "print(0)"',
+                'DRY_RUN=true python3 -c "print(0)"',
             ],
             plan_md=(
                 f"# Plan\n\n## Phase 1\n- `scripts/{stem}_reopen.py`\n\n"

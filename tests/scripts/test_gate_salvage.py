@@ -104,7 +104,7 @@ def test_salvage_with_self_checks_in_result(ws_git: Path, monkeypatch):
     # acceptance required (SELF-CHECKS alone no longer enough)
     (ws_git / ".ccc" / "plans").mkdir(parents=True, exist_ok=True)
     (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
-        f"# Plan\n\n## 验收\n- `.ccc/flow-smoke.md` 已写入并提交\n",
+        "# Plan\n\n## 验收\n- `.ccc/flow-smoke.md` 已写入并提交\n",
         encoding="utf-8",
     )
 

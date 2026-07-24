@@ -469,6 +469,6 @@ async def flush_loop(
             _log.exception("outbox flush error")
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
     _log.info("transfer outbox flusher stopped")

@@ -107,7 +107,7 @@ def test_archive_preserves_evidence_and_failures_jsonl(ws, tmp_path, monkeypatch
     stats = ws / ".ccc" / "stats"
     stats.mkdir(parents=True, exist_ok=True)
     fail_line = (
-        '{"ts":"2026-07-24T00:00:00Z","task_id":"%s","reason":"short_path"}\n' % tid
+        f'{{"ts":"2026-07-24T00:00:00Z","task_id":"{tid}","reason":"short_path"}}\n'
     )
     (stats / "failures.jsonl").write_text(fail_line, encoding="utf-8")
 
