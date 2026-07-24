@@ -39,7 +39,7 @@ from _executor import _sanitized_env
 from _logger import add_file_handler
 from _board_store import FileBoardStore
 from _utils import now_iso as _utils_now_iso
-from _utils import get_relay_url as _utils_get_relay_url
+
 from _stats_aggregator import aggregate_stats, load_summary
 from _cost_telemetry import check_abnormal_traffic as _check_abnormal_traffic
 from _capability_evolver import record_failure_pattern as _record_failure_pattern
@@ -186,6 +186,10 @@ from engine.process import (  # noqa: E402
     cleanup_global_opencode_pids as _cleanup_global_opencode_pids,
     check_process_memory as _check_process_memory,
 )
+from engine.upstream import (  # noqa: E402
+    get_relay_url as _get_relay_url,
+    is_upstream_healthy as _is_upstream_healthy,
+)
 
 _stores = _engine_workspace._stores
 
@@ -303,125 +307,6 @@ _MEM_KILL_MB = 1500
 
 # v0.28.2: Phase 并行调度（plan: engine-phase-parallel-dispatch）
 PHASE_PARALLEL_MAX_WORKERS = 2
-
-
-# ---------- 上游健康检测 ----------
-_upstream_health_cache: dict = {}  # {"healthy": bool, "checked_at": float}
-
-
-def _get_relay_url() -> str:
-    """v0.51.0 P2-2: 委托 _utils.get_relay_url（SSOT）。"""
-    return _utils_get_relay_url()
-
-
-def _is_upstream_healthy() -> bool:
-    """检查 relay/proxy 是否可达，30s 缓存。
-
-    v0.40.1: 默认 4xx 视为 proxy 在线（鉴权失败 ≠ 进程宕机）— 这是
-    audit-2026-07-24 类别②假阳性来源。strict mode 仅 2xx 才算 healthy。
-    CCC_UPSTREAM_STRICT=1 时 strict；CCC_UPSTREAM_STRICT=0 关闭 strict
-    （保留旧行为兼容）。
-
-    修复 stability-audit-2026-07-24 类别②：默认 strict=True，
-    不再把任意 4xx 当 healthy，避免鉴权失败 / 路径错误被误判为"在线"。
-    """
-    now = time.time()
-    cached = _upstream_health_cache.get("healthy")
-    cached_at = _upstream_health_cache.get("checked_at", 0)
-    if cached is not None and now - cached_at < 30:
-        return cached
-
-    relay = _get_relay_url()
-    messages_url = relay.rstrip("/") + "/v1/messages"
-    # audit-2026-07-24 类别②：默认 strict=True（仅 2xx 算 healthy）
-    # 旧行为（任意 2xx/4xx 算 healthy）通过 CCC_UPSTREAM_STRICT=0 显式 opt-in
-    _strict_raw = (os.environ.get("CCC_UPSTREAM_STRICT") or "").strip().lower()
-    strict = _strict_raw not in ("0", "false", "no", "")
-    status_code: int | None = None
-    err_msg = ""
-    # 仅做 TCP/HTTP 可达性探测，不发带假 key 的业务请求
-    try:
-        import ssl
-        import urllib.error
-        import urllib.request
-
-        def _probe(ctx: ssl.SSLContext | None = None) -> tuple[int | None, str]:
-            req = urllib.request.Request(
-                messages_url,
-                method="GET",
-                headers={"User-Agent": "ccc-engine-health"},
-            )
-            try:
-                # urlopen context= 仅 https 生效
-                kwargs: dict = {"timeout": 5}
-                if ctx is not None and messages_url.startswith("https://"):
-                    kwargs["context"] = ctx
-                resp = urllib.request.urlopen(req, **kwargs)
-                code = getattr(resp, "status", None) or resp.getcode()
-                return (int(code) if code is not None else None), ""
-            except urllib.error.HTTPError as http_exc:
-                # 4xx（如 401/405）仍说明上游在线
-                return http_exc.code, str(http_exc.reason or http_exc)[:120]
-            except urllib.error.URLError as url_exc:
-                return None, str(url_exc.reason or url_exc)[:160]
-
-        status_code, err_msg = _probe()
-        # 本机 CA/中间人证书链常导致 verify 失败；健康检查只关心可达性
-        if status_code is None and "CERTIFICATE" in (err_msg or "").upper():
-            try:
-                status_code, err_msg2 = _probe(ssl._create_unverified_context())
-                if status_code is not None:
-                    err_msg = f"tls_insecure_ok:{err_msg2 or err_msg}"[:160]
-            except Exception as exc:
-                err_msg = f"{err_msg}; insecure_retry={exc}"[:160]
-    except Exception as exc:
-        status_code = None
-        err_msg = str(exc)[:120]
-
-    if status_code is None:
-        healthy = False
-    elif strict:
-        healthy = status_code == 200
-    else:
-        # proxy 可达：2xx/4xx；5xx 或无响应 → 不健康
-        healthy = 200 <= status_code < 500
-
-    _upstream_health_cache["healthy"] = healthy
-    _upstream_health_cache["checked_at"] = now
-    _upstream_health_cache["status_code"] = status_code
-    _upstream_health_cache["error"] = err_msg
-    # 状态变化写全局 probe 事件（~/.ccc/stats/upstream-probe.jsonl）
-    prev = _upstream_health_cache.get("_last_logged")
-    sig = (healthy, status_code)
-    if prev != sig:
-        _upstream_health_cache["_last_logged"] = sig
-        try:
-            probe_dir = Path.home() / ".ccc" / "stats"
-            probe_dir.mkdir(parents=True, exist_ok=True)
-            probe_path = probe_dir / "upstream-probe.jsonl"
-            probe_record = {
-                "ts": now_iso(),
-                "healthy": healthy,
-                "status": status_code,
-                "error": err_msg or None,
-                "relay": relay,
-            }
-            try:
-                from _jsonl_rotate import append_jsonl
-
-                append_jsonl(probe_path, probe_record)
-            except ImportError:
-                with probe_path.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(probe_record, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-    if not healthy:
-        engine_log(
-            f"[health] upstream 不可用 status={status_code} err={err_msg or '-'} — 跳过 product_role（缓存 30s）"
-        )
-    elif status_code and status_code != 200:
-        engine_log(f"[health] upstream proxy 可达 status={status_code}（视为 healthy）")
-    return healthy
 
 
 def _set_parallel_disabled(val: bool) -> None:
