@@ -508,6 +508,15 @@ def _start_tick_watchdog() -> None:
                         "[watchdog] main loop signaled exit during grace — cancel hard exit"
                     )
                     return
+                # 修复 diff-review-2026-07-24 阻塞级 #1：grace 期间检测主循环
+                # tick 恢复（GC 暂停 / IO 阻塞解除），恢复则取消硬退
+                tick_age = time.monotonic() - _last_tick_mono
+                if tick_age <= _TICK_WATCHDOG_STALE_S:
+                    engine_log(
+                        "[watchdog] tick recovered during grace "
+                        f"(age {tick_age:.1f}s) — cancel hard exit"
+                    )
+                    return
                 time.sleep(0.5)
             # Grace expired — flush diagnostic, mark event, then hard exit
             try:
