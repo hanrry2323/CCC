@@ -64,6 +64,7 @@ alwaysApply: true
 - **并行容量**：看 Mac2017 `~/.ccc/stats/host-resources.jsonl`（`ccc-host-resources.py summary`）；`headroom` 才加 `MAX_CONCURRENT`，`saturated` 先治挂死。
 - **产线提效（已落地）**：槽终态必释 / 脏 result 防御 / FAIL revert 必 abort / testing 限预算且先 launch / 短路径硬门 + `dev_path` 埋点 — 见 authority「产线提效综合方案」+ `docs/briefs/2026-07-22-opencode-lifecycle-stall.md`；**禁止**用只加 `MAX_CONCURRENT` 代替修闸门。
 - **三层架构 + loop-code 槽位化（硬 · 2026-07-25）**：① 前端（Desktop/:7788/手机）② 编排（CCC 自研 sidecar/Hub/Engine）③ 运行时**双槽**（对话槽契约=claude-agent-sdk 兼容；写码槽契约=executor-plugins，OpenCode 默认；两槽契约独立勿混）。**`loop-code` 是对话槽的槽位名不是具体工具**；候选=钉版 vendor 构建（现默认）/原版 claude/其他兼容 CLI（须先过 SDK 兼容验证）/SDK 自建。能力增强（supervisor/工人可视化/多 agent）**只做在②**，③保持哑运行时（零实现独有依赖）。**勿再**说 loop-code=「打通原版封闭功能的增强 fork」；vendor 构建价值=供应链稳定件（钉版+SHA256+配置/凭证隔离）。见 authority「三层架构与 loop-code 槽位化」。
+- **同仓多 agent 纪律（硬 · 2026-07-25）**：同一工作树多 agent 并行改码必须 worktree 隔离，否则串行提交；**禁止 `git add -A`/`git add .` 全量提交**，只 add 本任务改动文件；提交前 `git status` 核对无他人改动混入。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
 - **Ops 运维面（三面之一）**：对话定意图 / 编排跑卡 / **运维 = 给人看的健康灯 + 后台养系统**。Desktop 运维硬规则：**绿**=放心开发下任务；**橙**=可忽略不拦事；**红**=后台优先自愈，人只**一键复制交 Agent**（红=系统/配置问题，不把老板当维修工）。人看四域：总健康｜集群与服务（含端口）｜Agent 与 MCP｜仅红告警条。后台喂灯：日审/飞轮/容量/reap·patrol。Engine=前锋只消费队列；弹药旁路只进 `engine=true` 业务仓；禁 orch；日审 C/E/F 可 apply，D/G/H 升红，I 永不。**invent 硬关保留**。详见 authority「Ops 运维面」。
