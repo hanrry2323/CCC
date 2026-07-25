@@ -1,0 +1,16 @@
+# CCC Relay — 不入仓的产物/状态/密钥
+dist/
+node_modules/
+logs/
+*.log
+upstreams.json
+upstreams.local.json
+clients.json
+.cache/
+coverage/
+.vitest-cache/
+
+# data/ 目录:code-pool.curated.json 与 free-models.json 入仓(测试套件依赖);
+# 运行时下载/重生成的产物仍走 ~/.ccc/relay/data 隔离
+data/code-pool.local.json
+data/*.runtime.json
