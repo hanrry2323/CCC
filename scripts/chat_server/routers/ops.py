@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import check_auth
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
+from _ops_probe import fetch_router_usage  # CCC Relay 2026-07-25(模块顶层,避免 ops_summary lazy NameError)
 
 _log = logging.getLogger("ccc.chat_server.ops")
 
@@ -267,8 +268,8 @@ async def ops_summary(request: Request):
         ops_health_envelope,
     )
 
-    async def _run(func, *args):
-        return await asyncio.to_thread(func, *args)
+    async def _run(func, *args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
 
     spaces = _workspaces()
     # risks 端点有自定义聚合逻辑（board_abnormal + engine_running），直接复用其 handler
