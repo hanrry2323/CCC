@@ -34,9 +34,15 @@ _status() {
 _bootout_all() {
   local uid
   uid=$(id -u)
+  # CCC Relay 2026-07-25:本机 relay 纳入 guard 管理(按 hostname 选 m1/2017,避免跨机 bootout)
+  local host_tag="m1"
+  if [[ "$(hostname)" == "Mac2017"* || "$(hostname)" == "fan"* ]]; then
+    host_tag="2017"
+  fi
   for label in com.ccc.engine com.ccc.board com.ccc.chat-server \
                com.ccc.flywheel-scan com.ccc.loop-monitor com.opencode.serve \
-               com.ccc.ccc-exec-launcher; do
+               com.ccc.ccc-exec-launcher \
+               "com.ccc.relay.${host_tag}"; do
     launchctl bootout "gui/${uid}/${label}" 2>/dev/null || true
     launchctl disable "gui/${uid}/${label}" 2>/dev/null || true
   done

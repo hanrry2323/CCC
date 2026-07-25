@@ -1018,19 +1018,23 @@ def _check_degraded(ws: Path) -> None:
     global _degraded_mode, _degraded_since, _breaker_open, _breaker_since
 
     # v0.36: upstream 熔断
+    # CCC Relay 2026-07-25:fail-open — relay 不可达不 block,只警告;任务走直连
     recovery = getattr(cfg, "breaker_recovery_seconds", _BREAKER_RECOVERY_SECONDS)
     if not _is_upstream_healthy():
         if not _breaker_open:
             _breaker_open = True
             _breaker_since = time.time()
-            engine_log("[breaker] upstream 不可用 → 开熔断，暂停 abnormal 重试")
-            _ccc_notify("CCC", "engine 熔断：upstream 不可用")
+            engine_log(
+                "[breaker] upstream(relay) 不可用 → 开熔断并切 fail-open 直连,"
+                " 任务继续跑不 block(2026-07-25 fail-open 共识)"
+            )
+            _ccc_notify("CCC", "engine upstream 不可用,已切 fail-open 直连")
     elif _breaker_open:
         elapsed = time.time() - _breaker_since
         if elapsed >= recovery:
             _breaker_open = False
             _breaker_since = 0.0
-            engine_log(f"[breaker] upstream 已恢复（熔断 {elapsed:.0f}s）→ 关熔断")
+            engine_log(f"[breaker] relay 已恢复（熔断 {elapsed:.0f}s）→ 关熔断,回切")
 
     q_count = len(_recent_events(ws, "quarantine", 1800))
     f_count = len(_recent_events(ws, "product_fail", 1800))
@@ -1308,10 +1312,12 @@ def _process_backlog(ws: Path) -> bool:
                 did_something = True
                 continue
 
-        # 2. 上游健康检测（避免 upstream 宕机 + fail_counter 永久锁死）
+        # 2. 上游健康检测(2026-07-25 fail-open 共识:relay 不可达不 skip,任务走直连继续)
         if not _is_upstream_healthy():
-            engine_log(f"[product] [{label}] {tid} 跳过 — upstream 不可用，下次 tick 重试（不计数）")
-            continue
+            engine_log(
+                f"[product] [{label}] {tid} relay 不可达 → 切 fail-open 直连继续(不 skip,不计数)"
+            )
+            # 不 continue,让 _claude_env 拿不到 relay_url 时自动回退 MiniMax 直连
 
         # 3. 失败计数器（step decay；禁止 15min 清零 — 否则 smoke 死循环）
         _COUNTER_DECAY_SEC = 900  # 15 分钟最多减 1，不归零

@@ -1,0 +1,16 @@
+[
+  { "provider": "bazaarlink", "model_id": "claude-opus-4.5-thinking", "display_name": "Claude 4.5 Opus Thinking", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "bazaarlink", "model_id": "claude-sonnet-4.6", "display_name": "Claude Sonnet 4.6", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "bazaarlink", "model_id": "gpt-5.5", "display_name": "GPT-5.5", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "bazaarlink", "model_id": "gemini-3-flash-preview", "display_name": "Gemini 3 Flash", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "bazaarlink", "model_id": "kimi-k2.6", "display_name": "Kimi K2.6", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "bazaarlink", "model_id": "deepseek-v3.2", "display_name": "DeepSeek V3.2", "monthly_tokens": 3600000, "free_type": "recurring-daily", "pool_key": "bazaarlink", "tos": "caution" },
+  { "provider": "api-airforce", "model_id": "x-ai/grok-3", "display_name": "Grok-3 (Free)", "monthly_tokens": 24000000, "free_type": "recurring-daily", "pool_key": "api-airforce", "tos": "caution" },
+  { "provider": "api-airforce", "model_id": "anthropic/claude-3.7-sonnet", "display_name": "Claude 3.7 Sonnet (Free)", "monthly_tokens": 24000000, "free_type": "recurring-daily", "pool_key": "api-airforce", "tos": "caution" },
+  { "provider": "api-airforce", "model_id": "qwen/qwen3-32b", "display_name": "Qwen3 32B (Free)", "monthly_tokens": 24000000, "free_type": "recurring-daily", "pool_key": "api-airforce", "tos": "caution" },
+  { "provider": "zhipu", "model_id": "glm-4-flash", "display_name": "GLM-4-Flash", "monthly_tokens": 10000000, "free_type": "recurring-daily", "pool_key": "zhipu-free", "tos": "caution" },
+  { "provider": "zhipu", "model_id": "glm-4v-flash", "display_name": "GLM-4V-Flash", "monthly_tokens": 10000000, "free_type": "recurring-daily", "pool_key": "zhipu-free", "tos": "caution" },
+  { "provider": "qwen", "model_id": "qwen-turbo", "display_name": "Qwen Turbo", "monthly_tokens": 20000000, "free_type": "recurring-daily", "pool_key": "qwen-free", "tos": "caution" },
+  { "provider": "openrouter", "model_id": "meta-llama/llama-4-scout:free", "display_name": "Llama 4 Scout (Free)", "monthly_tokens": 1500000, "free_type": "recurring-daily", "pool_key": "openrouter-free", "tos": "caution" },
+  { "provider": "openrouter", "model_id": "mistralai/mistral-large:free", "display_name": "Mistral Large (Free)", "monthly_tokens": 1500000, "free_type": "recurring-daily", "pool_key": "openrouter-free", "tos": "caution" }
+]

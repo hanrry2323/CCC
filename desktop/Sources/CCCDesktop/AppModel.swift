@@ -5134,7 +5134,9 @@ final class AppModel: ObservableObject {
                 opsRisks = summary.risks?.risks ?? []
                 opsRisksCount = summary.risks?.count
                 opsRisksHigh = summary.risks?.high
-                // router-usage 已退役；顶栏改计本机 Agent 调用
+                // CCC Relay 2026-07-25:中转站回归(取代 2026-07-20 退役口径);三档契约
+                // flash/Pro/code,Hub /api/ops/summary 走 opsSummary.domains.relay
+                // 顶栏仍计本机 Agent 调用;relay 面板见 OpsView domainsSection
             } else {
                 async let overview = client.fetchOpsOverview()
                 async let risksResp = client.fetchOpsRisks()

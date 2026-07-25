@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 from ..auth import check_auth
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
+from _ops_probe import fetch_router_usage  # CCC Relay 2026-07-25(模块顶层,避免 ops_summary lazy NameError)
+
+_log = logging.getLogger("ccc.chat_server.ops")
 
 _log = logging.getLogger("ccc.chat_server.ops")
 
@@ -267,8 +270,8 @@ async def ops_summary(request: Request):
         ops_health_envelope,
     )
 
-    async def _run(func, *args):
-        return await asyncio.to_thread(func, *args)
+    async def _run(func, *args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
 
     spaces = _workspaces()
     # risks 端点有自定义聚合逻辑（board_abnormal + engine_running），直接复用其 handler
@@ -292,6 +295,7 @@ async def ops_summary(request: Request):
             _run(quality_summary, spaces),
             _run(logistics_heartbeat, spaces),
             _run(control_runtime_snapshot),
+            _run(fetch_router_usage, use_cache=False),
             _run(recent_failures_fleet, spaces),
             _run(abnormal_cards_fleet, spaces),
             return_exceptions=True,
@@ -313,6 +317,7 @@ async def ops_summary(request: Request):
         "quality",
         "logistics",
         "control",
+        "relay_usage",
         "recent_failures",
         "abnormal_cards",
     ]
@@ -363,6 +368,7 @@ async def ops_summary(request: Request):
             resources_history=hist,
             ports=out.get("ports") if isinstance(out.get("ports"), dict) else {},
             overview=out.get("overview") if isinstance(out.get("overview"), dict) else {},
+            relay_usage=out.get("relay_usage") if isinstance(out.get("relay_usage"), dict) else None,
         )
         out["severity"] = env.get("severity") or "amber"
         out["human_line"] = env.get("human_line") or ""

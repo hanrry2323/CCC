@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# ai-loop-router · pre-commit 钩子
+# 主动拦截 API Key / 秘钥误提交
+# 安装: ln -s ../../scripts/pre-commit .git/hooks/pre-commit && chmod +x scripts/pre-commit
+
+set -e
+
+# 1. 拦截 upstreams.json / clients.json 进 git index
+blocked_files=(
+  "upstreams.json"
+  "upstreams.openai.json"
+  "upstreams.local.json"
+  "clients.json"
+)
+for f in "${blocked_files[@]}"; do
+  if git diff --cached --name-only | grep -qx "$f"; then
+    echo "❌ BLOCK: $f 含 API Key,已加入 .gitignore,不可提交"
+    echo "   如需提交模板,请用 ${f}.example"
+    exit 1
+  fi
+done
+
+# 2. 扫描已 staged 文件中的疑似 API Key (sk- 开头 32+ 字符)
+if git diff --cached -U0 | grep -E '^\+.*"api_key":\s*"sk-[A-Za-z0-9]{32,}' \
+  | grep -v 'sk-your-key-here\|sk-.*-placeholder\|sk-ROTATED-UNSET\|sk-test'; then
+  echo "❌ BLOCK: 检测到真实 API Key (sk- 开头 32+ 字符) 被 staged"
+  echo "   请检查以下文件,确认是否误提交:"
+  git diff --cached --name-only
+  exit 1
+fi
+
+# 3. 扫描其他疑似秘钥模式 (Bearer token / Authorization)
+if git diff --cached -U0 | grep -E '^\+.*(Bearer\s+[A-Za-z0-9]{40,}|Authorization:\s*Bearer\s+sk-)'; then
+  echo "❌ BLOCK: 检测到 Bearer token 被 staged"
+  exit 1
+fi
+
+echo "✓ pre-commit: 无秘钥泄露"
+exit 0

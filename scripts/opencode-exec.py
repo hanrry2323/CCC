@@ -28,6 +28,7 @@ import argparse
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -129,6 +130,18 @@ async def _terminate_zombie(proc, pgid: int, timeout: int, started: float) -> No
                 _log.warning("proc.wait timeout after hard SIGKILL pgid=%s", pgid)
 
 
+def _relay_4002_up(host: str = "127.0.0.1", port: int = 4002, timeout: float = 1.0) -> bool:
+    """CCC Relay 2026-07-25:opencode-exec 探活 :4002,失败时切直连。
+
+    短超时(1s)+ 静默失败;只在 spawn 前调一次,绝不阻塞任务。
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def check_residual_watchdog(script_dir: Path) -> bool:
     """跑 watchdog 验残留"""
     wd = script_dir / "opencode-watchdog.sh"
@@ -157,9 +170,25 @@ async def run_opencode(
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
-        # v0.51+: 默认 xfyun/code（讯飞直连，见 ~/.config/opencode/opencode.json）。
-        # ~~经 :4002 中转已退役。~~ OPENCODE_MODEL env 可覆盖。
+        # CCC Relay 2026-07-25:默认 loop/code(经本机 relay :4002,协议转换到讯飞/智谱)
+        # fail-open 时(OPENCODE_FAIL_OPEN=1 或 relay down)切 xfyun/code 直连
+        # 直连降级用 OPENCODE_CONFIG 指 ~/.config/opencode/opencode.direct.json
         model = os.environ.get("OPENCODE_MODEL", Config().model)
+        if model == "loop/code" and os.environ.get("OPENCODE_FAIL_OPEN") != "1":
+            # 探活 relay :4002 失败 → 切 xfyun/code 直连(opencode.direct.json)
+            direct_cfg = Path.home() / ".config" / "opencode" / "opencode.direct.json"
+            if not _relay_4002_up():
+                if direct_cfg.exists():
+                    model = "xfyun/code"
+                    os.environ["OPENCODE_CONFIG"] = str(direct_cfg)
+                    _log.warning(
+                        "[fail-open] relay :4002 不可达, 切直连 model=%s config=%s",
+                        model, direct_cfg,
+                    )
+                else:
+                    _log.warning(
+                        "[fail-open] relay :4002 不可达且 %s 不存在, 仍尝试 loop/code", direct_cfg
+                    )
         prompt_text = prompt_text.strip()
         if cfg is None:
             cfg = Config()

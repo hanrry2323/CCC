@@ -172,6 +172,7 @@ struct OpsHealthDomains: Decodable {
     let cluster: OpsDomainCluster?
     let agent_mcp: OpsDomainAgentMcp?
     let capacity: OpsDomainCapacity?
+    let relay: OpsDomainRelay?
 }
 
 struct OpsDomainCluster: Decodable {
@@ -192,6 +193,31 @@ struct OpsDomainAgentMcp: Decodable {
     let ok: Bool?
     let mcp_probed: Bool?
     let note: String?
+}
+
+// CCC Relay 2026-07-25:三档 tier 用量 + 健康(后端 _ops_probe._build_relay_domain)
+struct OpsDomainRelay: Decodable, Hashable {
+    let ok: Bool?
+    let source: String?
+    let host: String?
+    let port: Int?
+    let note: String?
+    let tiers: [String: OpsDomainRelayTier]?
+    let total: OpsDomainRelayTotal?
+}
+
+struct OpsDomainRelayTier: Decodable, Hashable {
+    let requests_today: Int?
+    let tokens_today: Int?
+    let upstreams: Int?
+    let healthy: Int?
+}
+
+struct OpsDomainRelayTotal: Decodable, Hashable {
+    let upstreams: Int?
+    let healthy: Int?
+    let requests_today: Int?
+    let tokens_today: Int?
 }
 
 struct OpsDomainCapacity: Decodable {

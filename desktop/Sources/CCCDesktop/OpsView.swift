@@ -348,6 +348,7 @@ struct OpsView: View {
     private var domainsSection: some View {
         let cluster = model.opsSummary?.domains?.cluster
         let cap = model.opsSummary?.domains?.capacity
+        let relay = model.opsSummary?.domains?.relay
         let agentOk = model.opsAgentOk
         return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("一览", systemImage: "square.grid.2x2")
@@ -382,6 +383,12 @@ struct OpsView: View {
                     ok: (cap?.verdict ?? "headroom") != "saturated",
                     subtitle: cap?.verdict ?? "—"
                 )
+                // CCC Relay 2026-07-25:三档契约 chip(ok=true 绿 / false 橙 / nil 灰)
+                domainChip(
+                    title: "Relay",
+                    ok: relay?.ok == true,
+                    subtitle: relaySubtitle(relay)
+                )
             }
             if let ports = cluster?.ports, !ports.isEmpty {
                 Text(
@@ -395,10 +402,51 @@ struct OpsView: View {
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
             }
+            if let relay = relay, relay.ok == true, let tiers = relay.tiers, !tiers.isEmpty {
+                // 三档用量 mini 表
+                VStack(alignment: .leading, spacing: 3) {
+                    let order = ["flash", "Pro", "code"]
+                    ForEach(order, id: \.self) { k in
+                        if let d = tiers[k] {
+                            HStack(spacing: 6) {
+                                Text(k).font(CCCTheme.caption.monospaced())
+                                Spacer()
+                                let up = d.upstreams ?? 0
+                                let h = d.healthy ?? 0
+                                let ok = up > 0 ? "\(h)/\(up)" : "—"
+                                Text("上游 \(ok)")
+                                    .font(CCCTheme.caption.monospaced())
+                                    .foregroundStyle(h < up ? CCCTheme.nodeFail : CCCTheme.faint)
+                                let reqs = d.requests_today ?? 0
+                                Text("今日 \(reqs)")
+                                    .font(CCCTheme.caption.monospaced())
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            } else if let relay = relay, relay.ok == false {
+                Text("⚠️ relay 不可达 — 客户端已切 fail-open 直连(\(relay.source ?? "relay_down"))")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(.orange)
+            }
             Text("MCP 清单探针后续接入；当前以 Agent 在线代表对话能力。")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
         }
+    }
+
+    // CCC Relay 2026-07-25:relay chip 副标题
+    private func relaySubtitle(_ relay: OpsDomainRelay?) -> String {
+        guard let relay = relay else { return "未拉取" }
+        if relay.ok == true {
+            let host = relay.host ?? "127.0.0.1"
+            let port = relay.port ?? 4000
+            return "\(host):\(port) · 三档"
+        }
+        if relay.ok == false { return "fail-open 直连" }
+        return "探测中"
     }
 
     private func domainChip(title: String, ok: Bool, subtitle: String) -> some View {

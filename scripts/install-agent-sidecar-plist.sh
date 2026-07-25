@@ -110,7 +110,8 @@ esac
 #   1) CCC_AGENT_UPSTREAM_118INK=1 → Anthropic 兼容中转（默认模型 claude-opus-4-8）
 #   2) CCC_AGENT_ROUTER=http://...   → 2017 旧中转（兼容保留，默认模型 flash）
 #   3) 直连 MiniMax（默认）
-# 不继承 shell 里的 ANTHROPIC_BASE_URL，避免误指本机旧 :4000
+# 不继承 shell 里的 ANTHROPIC_BASE_URL；CCC Relay 2026-07-25 默认指本机 :4000
+# 直连兜底走 ~/.ccc/minimax-api-key,fail-open 逻辑在 sidecar 内部触发
 # 鉴权：密钥写入 0600 文件，plist 只放 CCC_ANTHROPIC_TOKEN_FILE 路径（不落地明文）。
 AUTH_TOKEN_FILE=""
 if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
@@ -132,7 +133,11 @@ elif [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
   AUTH_TOKEN_FILE=""
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
 else
-  ROUTER="${CCC_ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
+  # CCC Relay 2026-07-25:默认 ANTHROPIC_BASE_URL 走本机 relay(:4000),fail-open 时 sidecar 自动切直连
+  # 直连可被显式 CCC_ANTHROPIC_BASE_URL 覆盖(排障用)
+  ROUTER="${CCC_ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
+  # 直连兜底 URL(sidecar 探活失败时切换,不写 plist 透传给 sidecar,仅 init 期间留 env)
+  CCC_RELAY_DIRECT_URL_DEFAULT="https://api.minimaxi.com/anthropic"
   # 忽略 shell 里残留的中转假 token，避免「BASE=minimax + AUTH=trae」401
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
@@ -221,6 +226,10 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOME}/program:${CCC_HOME}</string>
     <key>ANTHROPIC_BASE_URL</key>
     <string>${ROUTER}</string>
+    <key>CCC_RELAY_BASE_URL</key>
+    <string>${ROUTER}</string>
+    <key>CCC_RELAY_DIRECT_URL</key>
+    <string>${CCC_RELAY_DIRECT_URL:-https://api.minimaxi.com/anthropic}</string>
 ${AUTH_TOKEN_BLOCK}
     <key>ANTHROPIC_MODEL</key>
     <string>${AGENT_MODEL}</string>

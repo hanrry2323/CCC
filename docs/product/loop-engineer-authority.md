@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-25（**三层架构 + loop-code 槽位化**；Ops 运维面：三面 + 红绿灯；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in） 
+> **状态**：现行 · 2026-07-25（**三层架构 + loop-code 槽位化** + **CCC Relay 中转站回归**；Ops 运维面：三面 + 红绿灯；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -360,6 +360,25 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | 定位修正 | **勿再**把 loop-code 说成「能力增强 fork / 打通原版封闭功能」；vendor 构建价值 = 供应链稳定件。源码级定制须先过「可复现构建」门禁，且仅当②做不到时才考虑（取代 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) 的「深度开发 loop-code」提法） |
 
 **同仓多 agent 纪律（硬 · 2026-07-25 · 实战教训）**：同一工作树跑多个 agent 会话（Cursor / claude / loop-code / 工人）时——① 并行改码必须 **worktree 隔离**，否则只允许串行提交；② **禁止 `git add -A` / `git add .` 全量提交**，只 add 本任务明确改动的文件（2026-07-25 实例：except 清理会话全量 add 把并行会话的 7 个共识文档卷进 `356318e` observability 提交）；③ 提交前 `git status` 核对无他人改动混入。
+
+## CCC Relay（硬 · 2026-07-25 · 中转站回归 + 深度整合）
+
+推翻 v0.52「不恢复 ai-loop-router」口径。恢复中转站并入 CCC 仓为 **CCC Relay** 子系统。
+
+| 项 | 口径 |
+|----|------|
+| **三档 tier = 全局契约** | `flash`(默认,轻量) / `Pro`(高级,直连绕开协议转换) / `code`(写码);任何客户端(Desktop / Engine / OpenCode / 工人)只用这三档 |
+| **协议转换范围** | flash/code 走 `:4000/v1/messages` 协议转换出口(Anthropic 协议,吸纳 OpenAI Chat/讯飞/智谱等异构上游);**Pro 走直连**,绕开协议转换,拿原生 Anthropic/OpenAI 体验 |
+| **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
+| **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
+| **M1 对话路径** | sidecar → **本机 relay**(`http://127.0.0.1:4000`,主路径);relay 探活失败时 `CCC_RELAY_FAIL_OPEN=1` 切直连(`https://api.minimaxi.com/anthropic`),不挡对话 |
+| **2017 编排路径** | Engine claude → relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`) |
+| **fail-open 红线(不可协商)** | relay 探活失败一律客户端降级直连,**绝不** block/skip 任务;`ccc-engine.py:1022/1312` 从 block 改 route-switch;OpenCode runner 探 :4002 失败回 `--model xfyun/code` |
+| **门禁②(已补)** | `relay/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |
+| **观测回流** | `_ops_probe.fetch_router_usage` 真实现(GET `:4000/admin/usage`);`PORT_GROUPS` 加 4000/4002;ops summary `domains.relay`;Desktop 卡片 + Titlebar 复显 |
+| **Desktop 模型快选** | sidecar `/health` 动态拉 relay 真实三档,不再硬编码 4 个假选项;**真三档**取代「伪四档」 |
+| **密钥收拢** | 编排面上游 key 收至 `~/.ccc/relay/upstreams.json` 单点(0600);`opencode.json` 明文由 relay 兜底,Phase 5 收敛 |
+| **旧文件废弃** | `templates/ccc-config.sh` `AGENT_PLANNER_BASE_URL=:4000` 由「退役残留」复活为「现行」;`docs/executors/overview.md` 等口径同步翻转 |
 
 ---
 

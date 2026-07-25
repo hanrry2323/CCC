@@ -1,0 +1,54 @@
+[
+  {
+    "name": "minimax-flash",
+    "tier": "flash",
+    "tier_priority": 1,
+    "base_url": "https://api.minimaxi.com/anthropic/v1",
+    "upstream_model": "MiniMax-M3",
+    "models": [
+      "flash"
+    ],
+    "api_key": "sk-xxx-REPLACE-ME",
+    "transcode": true,
+    "description": "轻量默认档;日常对话/多数 agent 任务;走协议转换"
+  },
+  {
+    "name": "minimax-pro",
+    "tier": "Pro",
+    "tier_priority": 1,
+    "base_url": "https://api.minimaxi.com/anthropic",
+    "upstream_model": "claude-opus-4-8",
+    "models": [
+      "Pro"
+    ],
+    "api_key": "sk-xxx-REPLACE-ME",
+    "transcode": false,
+    "description": "高级模型档;直连绕开协议转换(拿原生 Anthropic/OpenAI 体验);不写明文 key 时降级到 flash"
+  },
+  {
+    "name": "xfyun-code",
+    "tier": "code",
+    "tier_priority": 1,
+    "base_url": "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2",
+    "upstream_model": "astron-code-latest",
+    "models": [
+      "code"
+    ],
+    "api_key": "REPLACE-ME",
+    "transcode": true,
+    "description": "写码档;OpenCode dev / 产品实现;走协议转换"
+  },
+  {
+    "name": "zhipu-code",
+    "tier": "code",
+    "tier_priority": 2,
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "upstream_model": "glm-4-flash",
+    "models": [
+      "code"
+    ],
+    "api_key": "REPLACE-ME",
+    "transcode": true,
+    "description": "写码档;OpenCode dev / 产品实现;走协议转换 备援"
+  }
+]

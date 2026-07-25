@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd 配置示例 — AI Loop Router v4（单进程双端口）
+  ─────────────────────────────────────────────────────────────
+  一个进程同时监听：
+    :4000  Anthropic  /v1/messages
+    :4002  OpenAI Chat /v1/chat/completions
+
+  使用前请替换占位符：
+    1. /path/to/node           → `which node`
+    2. /path/to/ai-loop-router → 本仓库绝对路径
+
+  安装:
+    cp scripts/com.ai-loop-router.plist.example ~/Library/LaunchAgents/com.ai-loop-router.plist
+    # 编辑替换占位符后：
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ai-loop-router.plist
+
+  卸载:
+    launchctl bootout gui/$(id -u)/com.ai-loop-router
+    rm ~/Library/LaunchAgents/com.ai-loop-router.plist
+
+  注意: 当前 CCC 默认直连上游；本服务为可选中转，确认需要时再 bootstrap。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ai-loop-router</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/node</string>
+        <string>/path/to/ai-loop-router/dist/proxy.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/ai-loop-router</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/path/to/ai-loop-router/logs/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/path/to/ai-loop-router/logs/stderr.log</string>
+</dict>
+</plist>

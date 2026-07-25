@@ -321,6 +321,86 @@ def _normalize_project_path(project_path: str) -> str | None:
     return None
 
 
+# ── CCC Relay 2026-07-25 ───────────────────────────────────────────
+# sidecar /health 拉 relay :4000/admin/upstreams 真实三档目录,替代硬编码 4 个假选项
+# Desktop 模型快选 = relay 三档契约(flash/Pro/code);真三档取代伪四档
+_RELAY_BASE = (os.environ.get("CCC_RELAY_BASE_URL") or "http://127.0.0.1:4000").rstrip("/")
+_RELAY_CATALOG_TTL = 30.0
+_RELAY_CATALOG: dict = {"ts": 0.0, "models": None, "labels": None}
+_RELAY_UP_CACHE: dict = {"ts": 0.0, "up": None}
+_RELAY_DIRECT_FALLBACK = (os.environ.get("CCC_RELAY_DIRECT_URL") or "https://api.minimaxi.com/anthropic").rstrip("/")
+
+
+def _fetch_relay_catalog() -> tuple[list[str], dict[str, str]] | None:
+    """从 relay /admin/upstreams 提三档目录。
+
+    返回 (models, labels) 喂给 sidecar /health;失败 None(由 health 走硬编码兜底)。
+    30s 缓存;2s 超时;静默失败(不 raise)。
+    """
+    now = time.monotonic()
+    if _RELAY_CATALOG["models"] is not None and (now - _RELAY_CATALOG["ts"]) < _RELAY_CATALOG_TTL:
+        return _RELAY_CATALOG["models"], _RELAY_CATALOG["labels"]
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"{_RELAY_BASE}/admin/upstreams", timeout=2) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        # 聚每 tier 的最高优先级 upstream.upstream_model → 标签
+        tiers: dict[str, list[dict]] = {}
+        for u in data or []:
+            tier = (u.get("tier") or "").strip()
+            if not tier:
+                continue
+            tiers.setdefault(tier, []).append(u)
+        models: list[str] = []
+        labels: dict[str, str] = {}
+        # CCC Relay 三档契约顺序固定:flash / Pro / code
+        for tier in ("flash", "Pro", "code"):
+            ups = sorted(tiers.get(tier, []), key=lambda x: x.get("tier_priority") or 999)
+            if not ups:
+                continue
+            models.append(tier)
+            top = ups[0]
+            um = (top.get("upstream_model") or top.get("name") or tier).strip()
+            # tier 描述追加,UI 提示
+            desc = tier_descriptions.get(tier, "")
+            labels[tier] = f"{um}  ·  {desc}" if desc else um
+        if not models:
+            return None
+        _RELAY_CATALOG.update({"ts": now, "models": models, "labels": labels})
+        return models, labels
+    except Exception as e:  # noqa: BLE001 - 静默兜底
+        _log.debug("relay catalog fetch failed: %s", e)
+        return None
+
+
+tier_descriptions: dict[str, str] = {
+    "flash": "轻量默认 · 日常对话 / 多数 agent 工作",
+    "Pro": "高级模型 · 直连绕开协议转换",
+    "code": "写码档 · OpenCode dev / 产品实现",
+}
+
+
+def is_relay_up() -> bool:
+    """探活 relay(10s 缓存,1.5s 超时);Desktop session 启动用。"""
+    now = time.monotonic()
+    if _RELAY_UP_CACHE["up"] is not None and (now - _RELAY_UP_CACHE["ts"]) < 10.0:
+        return _RELAY_UP_CACHE["up"]
+    up = False
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"{_RELAY_BASE}/admin/status", timeout=1.5) as resp:
+            up = (resp.status or 0) == 200
+    except Exception:
+        up = False
+    _RELAY_UP_CACHE.update({"ts": now, "up": up})
+    return up
+
+
+def relay_direct_fallback() -> str:
+    """relay 不可达时 session 切直连的 URL(fail-open 兜底)。"""
+    return _RELAY_DIRECT_FALLBACK
+
+
 @app.get("/health")
 async def health():
     cli = resolve_claude_cli(require=False) or ""
@@ -354,16 +434,17 @@ async def health():
             os.environ.get("CCC_HUB_URL_LAN") or "http://192.168.3.116:7777"  # 排障·手机
         ).rstrip("/"),
         "outbox_flush": True,
-        # Desktop 能力契约（不暴露密钥/完整路径）
+        # Desktop 能力契约(不暴露密钥/完整路径)
         "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
-        # Desktop Phase17：请求级 model；plist 定上游出口。标签供 UI/运维对照。
-        "models": ["flash", "code", "sonnet", "haiku"],
+        # CCC Relay 2026-07-25:动态拉 relay :4000/admin/upstreams 真实三档目录
+        # relay 不可达时降级硬编码三档(满足 Desktop 契约,不至于列表为空)
+        "models": ["flash", "Pro", "code"],
         "model_labels": {
-            "flash": "MiniMax-M3",
-            "code": "MiniMax · code",
-            "sonnet": "MiniMax · sonnet",
-            "haiku": "MiniMax · haiku",
+            "flash": "MiniMax-M3  ·  轻量默认 · 日常对话",
+            "Pro": "MiniMax · Pro  ·  高级模型 · 直连绕开协议转换",
+            "code": "xfyun/code  ·  写码档 · OpenCode dev",
         },
+        "model_source": "relay" if _fetch_relay_catalog() is not None else "fallback",
         "tool_modes": ["discuss", "engineer"],
         "compact": True,
         "supports_attachments": True,
@@ -372,6 +453,7 @@ async def health():
             "attachments": True,
             "model_per_request": True,
             "resume": True,
+            "relay_dynamic_catalog": True,
             "outbox_flush": True,
         },
     }

@@ -33,9 +33,15 @@ fi
 export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.ccc/engine-claude}"
 python3 -c "import sys; sys.path.insert(0, r'''${CCC_HOME}/scripts'''); from _claude_cli import ensure_engine_claude_config_dir; ensure_engine_claude_config_dir()" \
   || mkdir -p "${CLAUDE_CONFIG_DIR}"
-# 健康检查与 get_relay_url 对齐：勿残留 AGENT_PLANNER→:4000
-if [[ -z "${AGENT_PLANNER_BASE_URL:-}" && -n "${ANTHROPIC_BASE_URL:-}" ]]; then
-  export AGENT_PLANNER_BASE_URL="${ANTHROPIC_BASE_URL}"
+# CCC Relay 2026-07-25:编排面 model 出口唯一=relay(本机 :4000);relay 探活失败时
+# _executor._claude_env 会自动回退 ANTHROPIC_BASE_URL 直连,fail-open 不 block 任务
+if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
+  export ANTHROPIC_BASE_URL="http://127.0.0.1:4000"
+fi
+export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
+# 直连兜底 key 仍需就绪(不写 relay upstreams.json 的硬直连场景)
+if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/minimax-api-key" ]]; then
+  export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/minimax-api-key")"
 fi
 # v0.51.0 P2-1: CCC_AUTO_REPLENISH / CCC_EVOLVE_ON_IDLE / CCC_EVOLVE_ON_AUDIT 已在 _config.py 强制 False，
 # 这些环境变量 export 已无效（被 _config.__post_init__ 忽略）；不再 export 避免误导。

@@ -36,8 +36,8 @@ _RUN_DEBOUNCE: dict[str, float] = {}
 _RUN_LOCK = Lock()
 
 PORT_GROUPS = (
-    ("CCC", (7775, 7777, 7778)),
-    # ai-loop-router :4000/:4002 已退役（2026-07-20）；勿再作健康探针
+    # CCC Relay 2026-07-25:中转站回归(:4000 anthropic/:4002 openai-chat),纳入 CCC 端口组健康探针
+    ("CCC", (4000, 4002, 7775, 7777, 7778)),
     ("HP", (8080, 8082, 8083)),
     ("qb", (8095, 8096)),
 )
@@ -213,10 +213,11 @@ def probe_http(host: str, port: int, timeout: float = 1.2) -> tuple[bool, int, s
 
 
 def _empty_router_tiers() -> dict[str, dict[str, int]]:
+    # CCC Relay 2026-07-25:三档契约 flash/Pro/code(大写 P)
     return {
         "flash": {"requests_today": 0, "tokens_today": 0},
+        "Pro": {"requests_today": 0, "tokens_today": 0},
         "code": {"requests_today": 0, "tokens_today": 0},
-        "pro": {"requests_today": 0, "tokens_today": 0},
     }
 
 
@@ -227,16 +228,51 @@ def fetch_router_usage(
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
-    """ai-loop-router 已退役（2026-07-20）。保留端点兼容，恒返回零值。"""
-    _ = (host, port, timeout, use_cache)
-    return {
-        "ok": False,
-        "tiers": _empty_router_tiers(),
-        "requested": _empty_router_tiers(),
-        "attribution": None,
-        "source": "retired",
-        "error": "ai-loop-router retired 2026-07-20; Desktop counts local agent LLM calls",
-    }
+    """CCC Relay 2026-07-25:真拉 relay :4000/admin/usage,30s 缓存,2.5s 超时,down→{ok:false} 软失败。
+
+    返回结构兼容旧接口(零值 stub),tiers 用量按 flash/Pro/code 三档聚合。
+    """
+    cache_key = ("router_usage", host, port)
+    now = time.monotonic()
+    if use_cache and cache_key in _CACHE:
+        ts, val = _CACHE[cache_key]
+        if (now - ts) < 30.0:
+            return val
+    url = f"http://{host}:{port}/admin/usage?period=1d"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+        tiers_in = (payload or {}).get("tiers") or {}
+        tiers_out: dict[str, dict[str, int]] = {}
+        for tier in ("flash", "Pro", "code"):
+            td = tiers_in.get(tier) or {}
+            tiers_out[tier] = {
+                "requests_today": int(td.get("requests_today") or 0),
+                "tokens_today": int(td.get("tokens_today") or 0),
+                "upstreams": int(td.get("upstreams") or 0),
+                "healthy": int(td.get("healthy") or 0),
+            }
+        result = {
+            "ok": True,
+            "tiers": tiers_out,
+            "total": (payload or {}).get("total") or {},
+            "source": "relay",
+            "host": host,
+            "port": port,
+        }
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "tiers": _empty_router_tiers(),
+            "requested": _empty_router_tiers(),
+            "attribution": None,
+            "source": "relay_down",
+            "error": f"relay {host}:{port} unreachable: {exc!r}"[:200],
+            "host": host,
+            "port": port,
+        }
+    _CACHE[cache_key] = (now, result)
+    return result
 
 
 def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
@@ -789,6 +825,7 @@ def ops_health_envelope(
     resources_history: dict[str, Any] | None = None,
     ports: dict[str, Any] | None = None,
     overview: dict[str, Any] | None = None,
+    relay_usage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Desktop 运维总灯：severity green|amber|red + 仅红 alerts[].copy_payload。
 
@@ -951,6 +988,9 @@ def ops_health_envelope(
             "mcp_probed": False,
             "note": "M1 sidecar / MCP 由 Desktop 本机合并进总灯",
         },
+        # CCC Relay 2026-07-25:三档 tier 用量 + 健康 + cache 命中率
+        # 灯:ok=true green;ok=false amber(降级直连但仍可用)
+        "relay": _build_relay_domain(relay_usage),
         "capacity": {
             "verdict": verdict,
             "note": summary.get("note") or summary.get("reason"),
@@ -965,6 +1005,38 @@ def ops_health_envelope(
         "domains": domains,
         "ready_ok": ready_blob.get("ok"),
         "generated_at": _now_iso(),
+    }
+
+
+def _build_relay_domain(relay_usage: dict[str, Any] | None) -> dict[str, Any]:
+    """CCC Relay 2026-07-25:envelope.domains.relay 子域;展示三档 + 健康。
+
+    relay_usage: fetch_router_usage() 的输出;None 表示未拉取,返回 ok=null 兜底。
+    """
+    if not relay_usage:
+        return {
+            "ok": None,
+            "source": "unknown",
+            "tiers": {},
+            "note": "relay_usage 未拉取",
+        }
+    if not relay_usage.get("ok"):
+        return {
+            "ok": False,
+            "source": relay_usage.get("source", "relay_down"),
+            "tiers": {},
+            "error": relay_usage.get("error"),
+            "note": "relay 不可达 — 客户端 fail-open 直连",
+        }
+    tiers_in = relay_usage.get("tiers") or {}
+    return {
+        "ok": True,
+        "source": "relay",
+        "host": relay_usage.get("host"),
+        "port": relay_usage.get("port"),
+        "tiers": tiers_in,
+        "total": relay_usage.get("total") or {},
+        "note": "三档 flash/Pro/code",
     }
 
 
