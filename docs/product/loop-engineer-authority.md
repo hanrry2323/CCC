@@ -359,6 +359,8 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | 填槽门禁 | 契约兼容验证 + 钉版 + SHA256 + 配置家隔离（`~/.ccc/loop-code`）+ 凭证隔离（不碰个人 keychain） |
 | 定位修正 | **勿再**把 loop-code 说成「能力增强 fork / 打通原版封闭功能」；vendor 构建价值 = 供应链稳定件。源码级定制须先过「可复现构建」门禁，且仅当②做不到时才考虑（取代 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) 的「深度开发 loop-code」提法） |
 
+**同仓多 agent 纪律（硬 · 2026-07-25 · 实战教训）**：同一工作树跑多个 agent 会话（Cursor / claude / loop-code / 工人）时——① 并行改码必须 **worktree 隔离**，否则只允许串行提交；② **禁止 `git add -A` / `git add .` 全量提交**，只 add 本任务明确改动的文件（2026-07-25 实例：except 清理会话全量 add 把并行会话的 7 个共识文档卷进 `356318e` observability 提交）；③ 提交前 `git status` 核对无他人改动混入。
+
 ---
 
 ## 讨论 Agent 事实源
