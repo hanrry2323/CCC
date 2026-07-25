@@ -41,7 +41,7 @@ export REGRESS_LABEL="回测"
 # === 后端 agent ===
 # opencode 是 dev 角色用的，config 可改
 export OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
-export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/flash}"
+export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/code}"
 
 # === 重试与容错 ===
 export DEV_MAX_RETRY="${DEV_MAX_RETRY:-5}"        # 最大重试次数 → 异常列
