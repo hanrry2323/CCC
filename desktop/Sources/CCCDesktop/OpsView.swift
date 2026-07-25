@@ -431,6 +431,46 @@ struct OpsView: View {
                     .font(CCCTheme.caption)
                     .foregroundStyle(.orange)
             }
+            // v0.62.0 阶段 4:claude --bg 长 session 卡片(Engine active_tasks.list_long_lived_sessions)
+            if let bg = model.opsSummary?.domains?.bg_sessions,
+               let sList = bg.sessions, !sList.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("长 session (claude --bg)").font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        let c = bg.count ?? 0
+                        let a = bg.alive_count ?? 0
+                        Text("\(a)/\(c) alive")
+                            .font(CCCTheme.caption.monospaced())
+                            .foregroundStyle(a == c ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                    }
+                    ForEach(sList, id: \.session_id) { s in
+                        let sid = (s.session_id ?? "?").prefix(8)
+                        let role = s.role ?? "?"
+                        let task = s.task_id ?? "?"
+                        let aliveMark = s.alive == true ? "●" : "○"
+                        let idle = s.idle_timeout == true ? "(idle)" : ""
+                        HStack(spacing: 6) {
+                            Text(aliveMark)
+                                .foregroundStyle(s.alive == true ? CCCTheme.nodeDone : CCCTheme.faint)
+                            Text(role).font(CCCTheme.caption.monospaced())
+                            Text("\(task) · \(sid) \(idle)")
+                                .font(CCCTheme.caption.monospaced())
+                                .foregroundStyle(CCCTheme.faint)
+                            Spacer()
+                            let age = s.age_min ?? 0
+                            Text("\(age)m")
+                                .font(CCCTheme.caption.monospaced())
+                                .foregroundStyle(CCCTheme.faint)
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            } else if let bg = model.opsSummary?.domains?.bg_sessions, bg.count == 0 {
+                Text("长 session 0 个 — Engine 无 background 任务")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.faint)
+            }
             Text("MCP 清单探针后续接入；当前以 Agent 在线代表对话能力。")
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)

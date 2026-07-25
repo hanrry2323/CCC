@@ -173,6 +173,30 @@ struct OpsHealthDomains: Decodable {
     let agent_mcp: OpsDomainAgentMcp?
     let capacity: OpsDomainCapacity?
     let relay: OpsDomainRelay?
+    // v0.62.0 阶段 4:claude --bg 长 session 跟踪(Engine tick 30s 更新)
+    let bg_sessions: OpsDomainBGSessions?
+}
+
+// v0.62.0 阶段 4:claude --bg 长 session 子域(后端 _ops_probe._build_bg_sessions_domain)
+struct OpsDomainBGSessions: Decodable, Hashable {
+    let ok: Bool?           // true=全活 / false=全死 / nil=未拉取或部分活
+    let count: Int?
+    let alive_count: Int?
+    let sessions: [OpsDomainBGSession]?
+    let note: String?
+}
+
+struct OpsDomainBGSession: Decodable, Hashable {
+    let task_id: String?
+    let role: String?
+    let session_id: String?
+    let pid: Int?
+    let model: String?
+    let started_at: Double?
+    let last_heartbeat: Double?
+    let age_min: Int?
+    let alive: Bool?
+    let idle_timeout: Bool?
 }
 
 struct OpsDomainCluster: Decodable {
