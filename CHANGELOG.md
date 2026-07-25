@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.61.0] — 2026-07-25
+
+### Added
+
+- **共识基建：三档契约 + 双身份隔离 + claude --bg 占位**（`e63ea7a`）：下游(Desktop/Engine/OpenCode)只对接 `flash`/`Pro`/`code` 三档逻辑名，上游解耦；M1 Desktop Claude Code 仅做产品大脑(不再改 CCC 仓)；`claude --bg` 整合预留 v0.62.0。
+- **fleet 统一状态机**（v0.61.0 阶段 B）：`scripts/ccc-fleet.sh` 整合 start/stop/status/health/diagnose；三色 green/yellow/red；拓扑序 bootstrap。
+- **11 项 self-check + fleet 启动强门禁**（v0.61.0 阶段 C）：`scripts/ccc-self-check.sh` 完善语法/端口/安全/双机对齐等预检；`fleet.sh start` 内嵌 `--preflight` 短路径。
+- **配置 SSOT 分层 dataclass**（v0.61.0 阶段 D）：`scripts/_config.py` 新增 `RelayConfig`/`EngineConfig`/`BoardConfig` dataclass；`from_env()` 一次填 sub-dataclass + 旧字段双写，平滑迁移。
+- **双机自动同步 + Engine 启动对齐门禁**（v0.61.0 阶段 E）：rsync 自动同步脚本；Engine 启动时校验版本/控制面对齐。
+
+### Changed
+
+- **三档契约代码清理**：`_claude_cli.py` 移除 `MiniMax-M3` 硬编码映射；`_config.py` 移除 MiniMax 默认提供者；`StreamSessionController.swift` 更新模型选择器标签；测试用例清理硬编码 `api.minimaxi.com` URL；`CLAUDE.md` 架构表格移除以 MiniMax 为默认上游的表述。
+
 ## [v0.60.1] — 2026-07-23
 
 ### Added

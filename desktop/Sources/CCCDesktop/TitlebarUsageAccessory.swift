@@ -132,7 +132,7 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             ))
             label.attributedText = out
 
-            var tip = "本机 Agent 大模型调用（sidecar → MiniMax）· 每发起一轮对话计 1 次（含自动重试）"
+            var tip = "本机 Agent 大模型调用（sidecar → loop-code）· 每发起一轮对话计 1 次（含自动重试）"
             tip += " · 今日 \(daily) · 近 5 秒 \(recent)"
             label.toolTip = tip
             lastPaintedTick = model.agentUsageTick

@@ -69,15 +69,15 @@ def now_iso_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# v0.51.0 P2-2: Claude Anthropic 兼容出口集中于此（ai-loop-router :4000 已退役）
-_DEFAULT_AGENT_PLANNER_URL = "https://api.minimaxi.com/anthropic"
+# v0.61.0 三档契约:默认走 relay(:4000),上游由 upstreams.json 路由
+# （旧 MiniMax 直连已不再是默认出口）
+_DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4000"
 
 
 def get_relay_url() -> str:
     """取 Claude Anthropic 兼容出口 URL（健康检查 / product 共用）。
 
-    优先级：AGENT_PLANNER_BASE_URL → ANTHROPIC_BASE_URL → MiniMax 直连默认。
-    Engine 入口常只设 ANTHROPIC_*；勿再默认探 :4000。
+    优先级：AGENT_PLANNER_BASE_URL → ANTHROPIC_BASE_URL → relay :4000 默认。
     """
     import os
     for key in ("AGENT_PLANNER_BASE_URL", "ANTHROPIC_BASE_URL"):
@@ -149,12 +149,13 @@ def relay_is_up(
 
 
 def relay_direct_fallback() -> str:
-    """CCC Relay 2026-07-25:relay 不可达时切直连的 URL(默认 MiniMax)。
+    """CCC Relay fail-open:relay 不可达时切直连的 URL。
 
-    优先 env `CCC_RELAY_DIRECT_URL`;无则 MiniMax 默认。
+    三档契约(2026-07-25):直连 URL 须由 env `CCC_RELAY_DIRECT_URL` 配置;
+    无则返回 relay 默认(标准 fail-open 仍走 relay,不硬编码上游)。
     """
     import os as _os
     return (
         _os.environ.get("CCC_RELAY_DIRECT_URL")
-        or "https://api.minimaxi.com/anthropic"
+        or "http://127.0.0.1:4000"
     )

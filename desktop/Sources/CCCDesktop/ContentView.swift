@@ -1428,7 +1428,7 @@ struct CodexChatPaneBody: View {
                 }
                 .labelsHidden()
                 .frame(width: 118)
-                .help("对话模型（请求级）。现网出口均为 MiniMax 直连；逻辑名 flash/code/sonnet/haiku 映射同一上游。不改 shell / 个人 Claude。")
+                .help("对话模型（请求级）。三档契约 flash/Pro/code 逻辑名；上游由 relay upstreams.json 路由。不改 shell / 个人 Claude。")
                 .onChange(of: model.preferredModel) { newValue in
                     let name = StreamSessionController.modelDisplayName(newValue)
                     model.showToast("对话模型：\(name)")
@@ -2726,7 +2726,7 @@ struct SettingsView: View {
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游出口由 sidecar plist 固定 MiniMax；与个人 Claude Code / shell ANTHROPIC_* 无关。默认 MiniMax-M3（flash）。运行时 = vendor/loop-code（Phase1–5 配置切割）。")
+                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游由 relay upstreams.json 路由（三档契约：flash/Pro/code）。不改 shell / 个人 Claude。")
             }
 
             Section {

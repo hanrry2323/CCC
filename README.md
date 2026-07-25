@@ -1,7 +1,7 @@
 # CCC — Connect–Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.60.1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.61.0-blue.svg)](VERSION)
 [![Release](https://img.shields.io/github/v/release/hanrry2323/CCC)](https://github.com/hanrry2323/CCC/releases/latest)
 
 > **Loop Engineer：人定意图，系统自动编排与自主执行。**  
@@ -9,7 +9,7 @@
 
 **完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **Desktop 架构**：[`docs/product/ccc-desktop-architecture.md`](docs/product/ccc-desktop-architecture.md)  
 **启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · 版本：`VERSION`  
-**Release**：[v0.60.1](docs/releases/v0.60.1.md)（LPSN 意图飞轮 L→P→S→N）· [v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
+**Release**：[v0.61.0](docs/releases/v0.61.0.md)（LPSN 意图飞轮 L→P→S→N）· [v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
 
 ---
 

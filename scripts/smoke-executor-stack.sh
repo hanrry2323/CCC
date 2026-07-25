@@ -50,12 +50,12 @@ fi
 
 if [[ "${SMOKE_CLAUDE_P:-}" == "1" && -n "$DEFAULT_BIN" ]]; then
   echo "-- claude -p smoke --"
-  BASE="${ANTHROPIC_BASE_URL:-https://api.minimaxi.com/anthropic}"
-  if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" timeout 90 "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-MiniMax-M3}" 2>/dev/null | tail -5; then
+  BASE="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
+  if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" timeout 90 "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-flash}" 2>/dev/null | tail -5; then
     echo "OK  claude -p"
   else
     # macOS may lack timeout
-    if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-MiniMax-M3}" 2>/dev/null | tail -5; then
+    if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-flash}" 2>/dev/null | tail -5; then
       echo "OK  claude -p"
     else
       echo "FAIL claude -p"

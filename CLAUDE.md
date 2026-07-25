@@ -5,7 +5,7 @@ Guidance for agents editing CCC in **Cursor**. You are the **platform developer*
 # CCC — Connect–Claude Code · Loop Engineer
 
 > **人定意图，系统自动编排与自主执行。** 对话面（M1 Desktop + sidecar + loop-code）产 epic；编排面（Mac2017 Engine）远端开发；中间只交信息流。  
-> **事实权威 + 人机共识（最新）**：`docs/product/loop-engineer-authority.md` · 边界：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.60.1**）
+> **事实权威 + 人机共识（最新）**：`docs/product/loop-engineer-authority.md` · 边界：`docs/product/dialogue-orchestration-boundary.md` · 叙事：`docs/VISION.md` · 启动：`STARTUP-BRIEF.md` · 开发通道：`docs/product/dev-channel.md` · 版本：`VERSION`（**v0.61.0**）
 
 **控制面**: `~/.ccc/control.json`（`disabled` | `ui` | `enabled` | `invent`）
 
@@ -163,7 +163,7 @@ scripts/chat_server/            # FastAPI 模块化后端
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 7788 | CCC Agent Sidecar | **M1 对话热路径**（Desktop → sidecar → loop-code → MiniMax） |
+| 7788 | CCC Agent Sidecar | **M1 对话热路径**（Desktop → sidecar → loop-code → relay 路由） |
 | 7777 | CCC Hub | API host：transfer / flow / board / ops（Mac2017） |
 | 7775 | Board API | 看板 REST（仅 127.0.0.1，Hub 反代） |
 | 7778 | CCC Cockpit | **deprecated** → Hub `#/ops` → Desktop 运维 |
@@ -251,12 +251,12 @@ scripts/chat_server/            # FastAPI 模块化后端
 
 > **三层/槽位口径（2026-07-25 硬共识）**：`loop-code` 是**对话槽的槽位名**（可插拔运行时），不是具体工具；候选与契约见 `docs/product/loop-engineer-authority.md`「三层架构与 loop-code 槽位化」。能力增强只做在编排层（sidecar/Hub/Engine），第三层保持哑运行时。
 
-| 通道 | 用途 | 上游（直连） |
-|------|------|--------------|
-| 对话槽（loop-code，现填钉版 vendor 构建）/ Engine Claude | 对话 + product/reviewer | **MiniMax** `https://api.minimaxi.com/anthropic`（`MiniMax-M3`） |
-| 写码槽（OpenCode，Engine dev） | 后台写码（dev） | **讯飞** `xfyun/code`（`~/.config/opencode`）；备用智谱 `zhipu/flash` |
+| 通道 | 用途 | 上游（三档契约） |
+|------|------|-------------------|
+| 对话槽（loop-code，现填钉版 vendor 构建）/ Engine Claude | 对话 + product/reviewer | **Relay 路由** `relay/upstreams.json`（flash/Pro/code 逻辑名） |
+| 写码槽（OpenCode，Engine dev） | 后台写码（dev） | **Relay 路由** `code` 档（讯飞/智谱）；备用 `~/.config/opencode` |
 
-逻辑名 `flash`/`code` 在直连 MiniMax 时由 `_claude_cli.resolve_anthropic_model` 映射为 `MiniMax-M3`。  
+三档契约(2026-07-25):下游只对接 `flash`/`Pro`/`code` 逻辑名,上游由 `relay/upstreams.json` 统一路由。  
 ~~ai-loop-router `:4000/:4002` 已退役。~~ 详见 `docs/deploy/topology.md` · `docs/executors/overview.md`。
 
 ---

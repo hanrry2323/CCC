@@ -118,8 +118,8 @@ def _claude_env(*, relay_url: str | None = None) -> dict:
     if relay_url:
         env["ANTHROPIC_BASE_URL"] = relay_url
     elif not env.get("ANTHROPIC_BASE_URL"):
-        # 默认 MiniMax 直连（ai-loop-router :4000 已退役）
-        env["ANTHROPIC_BASE_URL"] = "https://api.minimaxi.com/anthropic"
+        # 三档契约:默认走 relay(:4000),上游由 upstreams.json 路由
+        env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:4000"
     # Phase3：Engine 私有配置家（禁止落到个人 ~/.claude）
     try:
         from _claude_cli import (

@@ -247,25 +247,19 @@ def resolve_claude_cli(
 
 
 def resolve_anthropic_model(requested: str | None = None) -> str:
-    """逻辑名 flash/code → 上游真实 model id。
+    """逻辑名 flash/Pro/code → 传给 relay 的路由版本。
 
-    直连 MiniMax Anthropic（ANTHROPIC_BASE_URL 含 minimaxi/minimax.chat）时，
-    Claude/loop-code 的 `flash` 映射为 `MiniMax-M3`（可用 ANTHROPIC_MODEL 覆盖）。
-    走 ai-loop-router 时保持 flash/code 逻辑名。
+    三档契约(2026-07-25):下游只对接逻辑名,上游由 relay upstreams.json 统一路由。
+    不再映射到特定上游模型名(MiniMax-M3 等),转发给 relay 处理。
+    保留 ANTHROPIC_MODEL env 覆盖(relay 调试 / 直连逃生用)。
     """
     req = (requested or "").strip()
     if not req:
         req = (os.environ.get("ANTHROPIC_MODEL") or "flash").strip() or "flash"
-    base = (os.environ.get("ANTHROPIC_BASE_URL") or "").lower()
-    direct_minimax = "minimaxi.com" in base or "minimax.chat" in base
-    if not direct_minimax:
-        return req
-    # 已是上游 id
-    if req.lower().startswith("minimax"):
-        return req
+    # 三档契约:逻辑名直接传递,relay 层负责路由
     if req.lower() in ("flash", "code", "haiku", "sonnet", "opus", "pro"):
         override = (os.environ.get("ANTHROPIC_MODEL") or "").strip()
         if override and override.lower() not in ("flash", "code", "haiku", "sonnet", "opus"):
             return override
-        return "MiniMax-M3"
+        return req
     return req

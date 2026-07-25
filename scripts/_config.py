@@ -292,8 +292,8 @@ class Config:
             "code": ModelTier(
                 name="code",
                 description="免费模型 - 自动化开发 bulk 工作",
-                default_provider="MiniMax-M3",
-                fallback_providers=["xfyun-code", "zhipu-glm47-flash"],
+                default_provider="xfyun-code",
+                fallback_providers=["zhipu-glm47-flash"],
                 timeout_scale=1.5,
                 max_retries=3,
             ),

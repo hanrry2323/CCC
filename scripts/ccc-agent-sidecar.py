@@ -11,7 +11,7 @@ Security (2026-07-24):
   - /health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic \\
+  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
 """
 
@@ -45,12 +45,12 @@ os.environ.setdefault(
     "CLAUDE_CONFIG_DIR",
     str(Path.home() / ".ccc" / "loop-code"),
 )
-# 默认直连 MiniMax；仅当显式设 CCC_AGENT_ROUTER 时走中转
+# 默认走 relay(:4000)；CCC_AGENT_ROUTER / CCC_ANTHROPIC_BASE_URL 可覆盖（三档契约）
 os.environ.setdefault(
     "ANTHROPIC_BASE_URL",
     os.environ.get("CCC_AGENT_ROUTER")
     or os.environ.get("CCC_ANTHROPIC_BASE_URL")
-    or "https://api.minimaxi.com/anthropic",
+    or "http://127.0.0.1:4000",
 )
 
 

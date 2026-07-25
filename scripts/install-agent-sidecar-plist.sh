@@ -137,7 +137,7 @@ else
   # 直连可被显式 CCC_ANTHROPIC_BASE_URL 覆盖(排障用)
   ROUTER="${CCC_ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
   # 直连兜底 URL(sidecar 探活失败时切换,不写 plist 透传给 sidecar,仅 init 期间留 env)
-  CCC_RELAY_DIRECT_URL_DEFAULT="https://api.minimaxi.com/anthropic"
+  CCC_RELAY_DIRECT_URL_DEFAULT="http://127.0.0.1:4000"
   # 忽略 shell 里残留的中转假 token，避免「BASE=minimax + AUTH=trae」401
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
@@ -154,10 +154,10 @@ else
     (umask 077; printf '%s\n' "$_tok" > "$AUTH_TOKEN_FILE")
     chmod 600 "$AUTH_TOKEN_FILE"
   fi
-  AGENT_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
+  AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
   # 若 ANTHROPIC_MODEL 仍是 flash/code 逻辑名，直连时改成上游 id
   if [[ "$AGENT_MODEL" == "flash" || "$AGENT_MODEL" == "code" ]]; then
-    AGENT_MODEL="MiniMax-M3"
+    AGENT_MODEL="flash"
   fi
 fi
 
@@ -229,7 +229,7 @@ cat > "$PLIST" <<PLIST_EOF
     <key>CCC_RELAY_BASE_URL</key>
     <string>${ROUTER}</string>
     <key>CCC_RELAY_DIRECT_URL</key>
-    <string>${CCC_RELAY_DIRECT_URL:-https://api.minimaxi.com/anthropic}</string>
+    <string>${CCC_RELAY_DIRECT_URL:-http://127.0.0.1:4000}</string>
 ${AUTH_TOKEN_BLOCK}
     <key>ANTHROPIC_MODEL</key>
     <string>${AGENT_MODEL}</string>
