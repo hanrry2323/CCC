@@ -72,7 +72,7 @@
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `AGENT_PLANNER` | `claude` | planner 使用的 CLI |
-| `AGENT_PLANNER_BASE_URL` | `http://127.0.0.1:4000` | 中转站地址 |
+| `AGENT_PLANNER_BASE_URL` | `http://127.0.0.1:4000` | **CCC Relay 地址**(2026-07-25 恢复) — 编排面模型出口唯一;`com.ccc.relay.2017` 监听本机;fail-open 时客户端直连兜底 |
 
 ## 自定义示例
 

@@ -1,25 +1,29 @@
 # 执行器总览 — 对话 vs 看板
 
-> 架构对齐 2026-07-20：模型**直连上游**；ai-loop-router 已退役。  
-> **槽位口径 2026-07-25**：`loop-code` = 对话槽**槽位名**（可插拔，现填钉版 vendor 构建）；OpenCode = 写码槽默认件。定位 SSOT：[`loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三层架构与 loop-code 槽位化」。
+> 架构对齐 2026-07-20 → 2026-07-25 翻转：**CCC Relay 中转站回归**(推翻 v0.52 退役口径);**三层 + 双槽 + Relay 协议转换**。  
+> **槽位口径**：`loop-code` = 对话槽**槽位名**;OpenCode = 写码槽默认件;**CCC Relay = 编排面唯一模型调度网关**(三档 tier: flash/Pro/code)。定位 SSOT：[`loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」+「三层架构与 loop-code 槽位化」。
 
 ## 两路互不混淆
 
 ```text
-M1 对话 / 对齐（Desktop + sidecar）
+M1 对话 / 对齐（Desktop + sidecar → 本机 relay :4000/:4002）
   → 对话槽 loop-code（现填 vendor cli · arm64）
-  → MiniMax Anthropic（https://api.minimaxi.com/anthropic）
+  → CCC Relay M1 (com.ccc.relay.m1)  →  MiniMax Anthropic / OpenAI 异构上游
+  → fail-open: relay down 时 sidecar 直连 MiniMax
 
-Engine 看板开发（Mac2017）
-  → product 扇出 = Claude → MiniMax
-  → dev 写码 = OpenCode → 讯飞 xfyun/code
+Engine 看板开发（Mac2017 → 本机 relay :4000/:4002）
+  → product 扇出 = Claude → CCC Relay 2017 (com.ccc.relay.2017) → MiniMax
+  → dev 写码 = OpenCode → CCC Relay 2017 :4002 → 讯飞/智谱
+  → fail-open: relay down 时各客户端直连兜底(绝不 block)
 ```
 
-| 路径 | 默认执行器 | 如何切换 |
-|------|------------|----------|
-| M1 对话（sidecar `:7788`） | **loop-code**（arm64） | `CCC_CLAUDE_BIN` 或 `CCC_EXECUTOR=loop-code` → [`loop-code.md`](loop-code.md) |
-| Engine product 扇出（2017） | **Claude** → MiniMax | `scripts/board/roles/product.py`；不可换 OpenCode |
-| Engine dev 写码（2017） | **OpenCode** → 讯飞 | [`OpenCodeExecutor`](../../scripts/_executor.py) |
+| 路径 | 默认执行器 | 模型调度 | 如何切换 |
+|------|------------|----------|----------|
+| M1 对话（sidecar `:7788`） | **loop-code**（arm64） | **本机 relay** `:4000` | `CCC_RELAY_FAIL_OPEN=1` 切直连 |
+| M1 relay（`:4000`/`:4002`） | **CCC Relay M1**（v4.3.0） | — | `com.ccc.relay.m1` plist;三档 flash/Pro/code |
+| Engine product 扇出（2017） | **Claude** → relay → MiniMax | **本机 relay** `:4000` | `AGENT_PLANNER_BASE_URL` env |
+| Engine dev 写码（2017） | **OpenCode** → relay `:4002` | **本机 relay** | `OPENCODE_MODEL=loop/code` |
+| 2017 relay（`:4000`/`:4002`） | **CCC Relay 2017** | — | `com.ccc.relay.2017` plist |
 
 ## 解析入口
 
