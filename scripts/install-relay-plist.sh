@@ -68,15 +68,21 @@ if [[ ! -f "${RELAY_HOME}/upstreams.json" ]]; then
 fi
 
 # 三档契约检查(只校验结构,不读 key 明文)
+# 兼容两种格式:① 顶层 JSON 数组(实际 relay 期望,config.ts:133)② 嵌套 tiers{} 字典
 if command -v python3 >/dev/null 2>&1; then
   python3 -c "
 import json, sys
 try:
     with open('${RELAY_HOME}/upstreams.json') as f:
         cfg = json.load(f)
-    if not isinstance(cfg, dict):
-        print('❌ upstreams.json 必须是 dict'); sys.exit(2)
-    tiers = cfg.get('tiers') if 'tiers' in cfg else cfg
+    # 格式 ①:顶层 JSON 数组
+    if isinstance(cfg, list):
+        tiers = {u.get('tier'): u for u in cfg if isinstance(u, dict) and u.get('tier')}
+    # 格式 ②:嵌套 tiers{} 字典
+    elif isinstance(cfg, dict):
+        tiers = cfg.get('tiers') or cfg
+    else:
+        print('❌ upstreams.json 必须是 dict 或 list'); sys.exit(2)
     if not isinstance(tiers, dict):
         print('❌ tiers 必须是 dict'); sys.exit(2)
     missing = [t for t in ('flash','Pro','code') if t not in tiers]
@@ -85,12 +91,16 @@ try:
     for t, v in tiers.items():
         if not isinstance(v, dict):
             print(f'❌ tier {t} 必须是 dict'); sys.exit(2)
-        ups = v.get('upstreams') or v.get('providers') or []
+        if isinstance(cfg, list):
+            # 数组格式每项本身就是 upstream
+            ups = [v]
+        else:
+            ups = v.get('upstreams') or v.get('providers') or []
         if not isinstance(ups, list) or not ups:
             print(f'❌ tier {t} 缺 upstreams[]'); sys.exit(2)
 except FileNotFoundError:
     print('❌ upstreams.json 不存在'); sys.exit(2)
-" || { echo "❌ upstreams.json 校验失败,见上"; exit 1; }
+" || { echo '❌ upstreams.json 校验失败,见上'; exit 1; }
 fi
 
 cat > "$PLIST" <<PLIST_EOF
