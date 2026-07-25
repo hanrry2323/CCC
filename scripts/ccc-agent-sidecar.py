@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""CCC Desktop local Agent Sidecar — loop-code on localhost.
+"""CCC Desktop local Agent Sidecar.
 
-Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → vendor/loop-code/cli → MiniMax
+Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → 本机 relay :4000 → 上游 LLM
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
 Security (2026-07-24):
@@ -422,9 +422,12 @@ async def health():
         # relay 不可达时降级硬编码三档(满足 Desktop 契约,不至于列表为空)
         "models": ["flash", "Pro", "code"],
         "model_labels": {
-            "flash": "MiniMax-M3  ·  轻量默认 · 日常对话",
-            "Pro": "MiniMax · Pro  ·  高级模型 · 直连绕开协议转换",
-            "code": "xfyun/code  ·  写码档 · OpenCode dev",
+            # v0.61.0 2026-07-25:对应当前 2017 relay upstreams 实际配置;
+            # flash=opencode-go(免费档,有 stability 风险)/Pro 临时空(降 flash)/
+            # code=xfyun-code。Pro 档后续补真上游时再改。
+            "flash": "opencode-go · deepseek-v4-flash-free",
+            "Pro": "(临时空,fallback flash;待补上游)",
+            "code": "xfyun-code · 写码档 · OpenCode dev",
         },
         "model_source": "relay" if _fetch_relay_catalog() is not None else "fallback",
         "tool_modes": ["discuss", "engineer"],

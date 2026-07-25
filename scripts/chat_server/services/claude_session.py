@@ -21,7 +21,8 @@ from _utils import relay_is_up, relay_direct_fallback
 
 _log = logging.getLogger("ccc-chat.session")
 
-# Claude Code / loop-code 偶发合成 stub（空内容或 meta 续跑），对用户等于死回复
+# Claude Code CLI 偶发合成 stub(空内容或 meta 续跑),对用户等于死回复
+# v0.61.0 待 v0.62.0 切 claude --bg 后观察(占位见 authority「Claude --bg 整合一程」)
 _NO_RESPONSE_STUB_RE = re.compile(
     r"^\s*no\s+response\s+requested\.?\s*$",
     re.I,
