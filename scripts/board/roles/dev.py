@@ -439,8 +439,8 @@ def _phase_scope(task_id: str, phase_num: int) -> list[str]:
             pf = get_workspace() / ".ccc" / "plans" / f"{task_id}.plan.md"
             if pf.is_file():
                 plan_text = pf.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[dev] plan read %s: %s", pf, exc)
         for p in _load_phases(task_id):
             if int(p.get("phase", -1)) == int(phase_num):
                 scope = p.get("scope") or []
@@ -454,8 +454,8 @@ def _phase_scope(task_id: str, phase_num: int) -> list[str]:
                     filled = backfill_scopes([dict(p)], plan_text)
                     scope = [str(x) for x in (filled[0].get("scope") or []) if x]
                 return scope
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[dev] scope resolve %s p%s: %s", task_id, phase_num, exc)
     return []
 
 
@@ -465,8 +465,8 @@ def _read_pytest_failure_feedback(task_id: str) -> str:
     try:
         if path.is_file():
             return path.read_text(encoding="utf-8", errors="replace")[:4000]
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[dev] pytest_fail read %s: %s", path, exc)
     return ""
 
 
@@ -707,8 +707,8 @@ def _smoke_deliverable_satisfied(task_id: str) -> bool:
                 }
                 if any(s.lstrip("./") in names for s in existing):
                     return True
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[dev] file-on-disk green-light check: %s", exc)
     # Do NOT green on "file on disk + any task-id commit" — ignored paths
     # (e.g. AGENTS.md under /agents.md gitignore) would false-pass Phase12-style.
     return False
@@ -863,10 +863,10 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
                 except (OSError, ProcessLookupError):
                     try:
                         os.kill(pid, signal.SIGTERM)
-                    except (OSError, ProcessLookupError):
-                        pass
-        except (ValueError, OSError):
-            pass
+                    except (OSError, ProcessLookupError) as exc:
+                        _log.debug("[dev] kill %s: %s", pid, exc)
+        except (ValueError, OSError) as exc:
+            _log.debug("[dev] pid parse/kill %s: %s", pid, exc)
 
     for suffix in (
         ".done",
@@ -880,8 +880,8 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
         try:
             if fp.exists():
                 fp.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[dev] marker unlink %s/%s: %s", task_id, suffix, exc)
 
     # 若仍有后续 phase，不硬推 testing
     phases_now = _load_phases(task_id)
@@ -1196,8 +1196,8 @@ def dev_role_check_complete(task_id: str) -> dict:
                         "keys": list(_parsed)[:20],
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("[dev] result.json record_event %s: %s", task_id, exc)
             if _parsed:
                 result_path.write_text(
                     json.dumps(_parsed, ensure_ascii=False, indent=2) + "\n",

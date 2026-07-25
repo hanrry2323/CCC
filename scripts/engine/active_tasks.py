@@ -114,20 +114,20 @@ def _atomic_write_json(path: Path, content: str) -> None:
                     os.fsync(dir_fd)
                 finally:
                     os.close(dir_fd)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("active_tasks dir fsync: %s", exc)
             os.replace(tmp_name, str(path))
         except Exception:
             try:
                 os.unlink(tmp_name)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("active_tasks tmp unlink: %s", exc)
             raise
     finally:
         try:
             os.close(lock_fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("active_tasks lock_fd close: %s", exc)
 
 
 def _save_active_tasks(active_tasks: dict[str, dict]) -> None:

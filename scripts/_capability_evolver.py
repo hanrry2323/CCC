@@ -10,9 +10,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
+_log = logging.getLogger("ccc.capability_evolver")
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -287,8 +290,8 @@ def _load_failure_counts() -> dict[str, int]:
     try:
         if _FAILURE_COUNTS_FILE.exists():
             return json.loads(_FAILURE_COUNTS_FILE.read_text())
-    except (json.JSONDecodeError, OSError):
-        pass
+    except (json.JSONDecodeError, OSError) as e:
+        _log.debug("read_failure_counts %s: %s", _FAILURE_COUNTS_FILE, e)
     return {}
 
 
@@ -297,8 +300,8 @@ def _save_failure_counts(counts: dict[str, int]) -> None:
     try:
         _FAILURE_COUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
         _FAILURE_COUNTS_FILE.write_text(json.dumps(counts, ensure_ascii=False, indent=2))
-    except OSError:
-        pass
+    except OSError as e:
+        _log.warning("write_failure_counts %s: %s", _FAILURE_COUNTS_FILE, e)
 
 
 def record_failure_pattern(pattern: str) -> int:

@@ -1,6 +1,9 @@
+import logging
 import os
 import re
 from pathlib import Path
+
+_log = logging.getLogger("ccc.chat_server.config")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -249,8 +252,8 @@ def build_claude_env() -> dict[str, str]:
         if cfg:
             ensure_loop_code_config_dir(Path(cfg).expanduser())
             out["CLAUDE_CONFIG_DIR"] = str(Path(cfg).expanduser())
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("chat_server config ensure_loop_code_config_dir: %s", exc)
     return out
 
 

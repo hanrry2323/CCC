@@ -18,8 +18,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
+
+_log = logging.getLogger("ccc.clean_abnormal")
 
 
 def _resolve_workspace() -> Path:
@@ -53,8 +56,8 @@ def _list_abnormal_tasks(ws: Path) -> list[dict]:
             try:
                 data = json.loads(fp.read_text())
                 tasks.append(data)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                _log.debug("load_abnormal %s: %s", fp, e)
     return tasks
 
 

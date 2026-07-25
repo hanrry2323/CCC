@@ -38,8 +38,8 @@ def _project_id_for_workspace(workspace: Path | str | None) -> str | None:
         for pid, ws in (PROJECT_TO_WORKSPACE or {}).items():
             if str(ws) == name or Path(str(ws)).name == name:
                 return str(pid)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("_product_fanout resolve_ws lookup %s: %s", name, e)
     return name
 
 
@@ -417,8 +417,8 @@ def _epic_default_executor(epic: dict) -> str:
             )
             if intent:
                 return str(intent).strip().lower()
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            _log.debug("product_fanout read executor_intent note: %s", e)
     desc = str(epic.get("description") or "")
     m = re.search(r"executor_intent:\s*(\w+)", desc)
     if m:
@@ -571,16 +571,16 @@ def apply_fanout(
                 if p.is_file():
                     try:
                         p.unlink()
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        _log.debug("product_fanout cleanup %s: %s", p, e)
             for p in (
                 plan_dir / f"{cid}.plan.md",
                 phases_dir / f"{cid}.phases.json",
             ):
                 try:
                     p.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as e:
+                    _log.debug("product_fanout cleanup %s: %s", p, e)
         raise
 
     # Desktop 右栏：尽力写 fanout 事件（Hub 未启动时静默）
@@ -618,8 +618,8 @@ def apply_fanout(
             if project_id:
                 ws_payload["project_id"] = project_id
             _fe.append_event("work_status", ws_payload)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("product_fanout flow_event append: %s", e)
 
     return {"ok": True, "child_ids": created, "color_group": color_group}
 

@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import time
 from pathlib import Path
 
 from .. import config
+
+_log = logging.getLogger("ccc.session_store")
 
 
 def now_iso() -> str:
@@ -73,8 +76,8 @@ def _atomic_write_text(path: Path, payload: str) -> None:
     except Exception:
         try:
             os.unlink(tmp_name)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("session_store tmp unlink: %s", exc)
         raise
 
 
@@ -114,13 +117,13 @@ def _write_index(project_id: str, sessions: list[dict]) -> None:
                 except Exception:
                     try:
                         os.unlink(tmp_name)
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        _log.debug("session_store index tmp unlink: %s", exc)
                     raise
             finally:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("session_store flock: %s", exc)
 
 
 def _read_index(project_id: str) -> list[dict] | None:
@@ -160,8 +163,10 @@ def save_session(
                 loop=loop,
             )
             return
-    except RuntimeError:
-        pass
+    except RuntimeError as exc:
+        # 不在事件循环时 run_coroutine_threadsafe 会抛 RuntimeError，
+        # 是预期的 fall-back 路径（同步写）
+        _log.debug("session_store run_coroutine_threadsafe fallback: %s", exc)
     # 不在事件循环：直接同步写
     _save_session_sync(
         session_id, messages, reply, project, mode,
@@ -314,8 +319,8 @@ def list_sessions(project: str = "ccc", *, include_tests: bool = False) -> list[
                 "mode": data.get("mode", "chat"),
                 "source": data.get("source", "hub"),
             })
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.debug("session_store load session %s: %s", f, exc)
     _write_index(project, sessions)
     return sessions
 
@@ -348,8 +353,8 @@ def purge_test_sessions(project: str = "ccc") -> dict:
                     title.startswith("say hi") or title.startswith("say hello")
                 ):
                     move = True
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                _log.debug("session_store auto-move probe %s: %s", f, exc)
         if not move:
             continue
         dest = trash / f.name
@@ -358,8 +363,8 @@ def purge_test_sessions(project: str = "ccc") -> dict:
         try:
             f.rename(dest)
             moved += 1
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("session_store trash move %s: %s", f, exc)
     return {"moved": moved, "trash": str(trash)}
 
 

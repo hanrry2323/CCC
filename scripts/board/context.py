@@ -7,10 +7,13 @@ F4-1: 显式 per-role context manifest + build_role_context()。
 """
 from __future__ import annotations
 
+import logging
 import os
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("ccc.board.context")
 
 _ws_var: ContextVar[Path | None] = ContextVar("ccc_board_workspace", default=None)
 
@@ -142,8 +145,8 @@ def _collect_profile() -> str:
     try:
         if profile_path.is_file():
             return profile_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.context] profile read: %s", exc)
     return "(no profile.md)"
 
 
@@ -258,8 +261,8 @@ def _collect_plan(task: dict | None) -> str:
     try:
         if path.is_file():
             return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.context] plan read %s: %s", path, exc)
     return ""
 
 
@@ -271,8 +274,8 @@ def _collect_phases(task: dict | None) -> str:
     try:
         if path.is_file():
             return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.context] phases read %s: %s", path, exc)
     return ""
 
 
@@ -284,8 +287,8 @@ def _collect_verdict(task: dict | None) -> str:
     try:
         if path.is_file():
             return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.context] verdict read %s: %s", path, exc)
     return ""
 
 
@@ -297,8 +300,8 @@ def _collect_pytest_failure(task: dict | None) -> str:
     try:
         if path.is_file():
             return path.read_text(encoding="utf-8", errors="replace")[:4000]
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.context] pytest_fail read %s: %s", path, exc)
     return ""
 
 
@@ -315,8 +318,8 @@ def _collect_review_failure(task: dict | None) -> str:
         try:
             if path.is_file():
                 return path.read_text(encoding="utf-8", errors="replace")[:4000]
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[board.context] review_fail read %s: %s", path, exc)
     return ""
 
 

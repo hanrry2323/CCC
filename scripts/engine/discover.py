@@ -107,8 +107,9 @@ def apply_dispatch_wake(workspaces: list[Path], already_consumed: dict | None = 
     if apply_wake_payload(payload, workspaces):
         try:
             wake_path.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            # wake payload 已应用，mark 文件清理失败不阻塞
+            _log.debug("discover wake_path unlink: %s", exc)
         return True
     return False
 

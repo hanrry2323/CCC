@@ -11,11 +11,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("ccc.chat_server.desktop")
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -273,8 +276,8 @@ async def put_thread_messages(request: Request, thread_id: str):
         if "files_changed" in m:
             try:
                 item["files_changed"] = int(m.get("files_changed") or 0)
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as exc:
+                _log.debug("desktop files_changed parse: %s", exc)
         if "tools_finished" in m:
             item["tools_finished"] = bool(m.get("tools_finished"))
         messages.append(item)
@@ -1309,8 +1312,8 @@ async def desktop_config(request: Request):
             agent_runtime = "loop-code"
         elif agent_cli:
             agent_runtime = "claude"
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("desktop detect agent_runtime: %s", exc)
     return {
         "ok": True,
         "product": "CCC Desktop",

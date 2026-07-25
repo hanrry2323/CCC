@@ -934,8 +934,8 @@ class ClaudeSessionManager:
                             stall_reason = f"整轮上限 {max_s}s"
                             try:
                                 await slot.client.interrupt()
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                _log.debug("claude_session interrupt: %s", exc)
                             yield {
                                 "type": "error",
                                 "code": "max_timeout",
@@ -949,8 +949,8 @@ class ClaudeSessionManager:
                             timed_out = True
                             try:
                                 await slot.client.interrupt()
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                _log.debug("claude_session idle timeout interrupt: %s", exc)
                             if awaiting_first_event:
                                 stall_reason = (
                                     f"首事件超时 {first_event_s}s（仅心跳无输出）"
@@ -1073,7 +1073,7 @@ class ClaudeSessionManager:
                         try:
                             await reader_task
                         except asyncio.CancelledError:
-                            pass
+                            _log.debug("claude_session reader_task cancel normal")
                     reader_task = None
                     # 清空队列残留，准备可能的续问
                     while not msg_queue.empty():
@@ -1103,7 +1103,7 @@ class ClaudeSessionManager:
                     try:
                         await reader_task
                     except asyncio.CancelledError:
-                        pass
+                        _log.debug("claude_session reader_task drain cancel normal")
                 if timed_out:
                     # interrupt 后有界排空，再彻底回收 slot（含僵尸 cli）
                     if slot.connected and slot.client is not None:
@@ -1243,7 +1243,7 @@ class ClaudeSessionManager:
             try:
                 await self._reaper_task
             except asyncio.CancelledError:
-                pass
+                _log.debug("claude_session reaper_task cancel normal")
             self._reaper_task = None
         keys = list(self._slots.keys())
         for key in keys:

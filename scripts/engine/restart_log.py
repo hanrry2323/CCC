@@ -20,8 +20,9 @@ RESTART_LOG_PATH = Path.home() / ".ccc" / "logs" / "engine-restarts.jsonl"
 ENGINE_VERSION = "unknown"
 try:
     ENGINE_VERSION = (Path(__file__).resolve().parent.parent.parent / "VERSION").read_text(encoding="utf-8").strip()
-except OSError:
-    pass
+except OSError as exc:
+    # VERSION 文件缺失（开发环境 / pip 安装）：保留 "unknown"，不影响启动
+    _log.debug("restart_log ENGINE_VERSION read: %s", exc)
 
 
 def _now_iso() -> str:
@@ -57,8 +58,9 @@ def write_restart(
             RESTART_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with RESTART_LOG_PATH.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            # 重启日志写失败不应阻塞 Engine 启动
+            _log.debug("restart_log write %s: %s", RESTART_LOG_PATH, exc)
 
 
 def check_last_exit_was_kill() -> bool:

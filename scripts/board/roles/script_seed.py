@@ -437,8 +437,8 @@ def run_feature_seed(ws: Path, tid: str) -> dict[str, Any]:
         _col, meta = store.find_task(tid)
         if isinstance(meta, dict):
             task = {**task, **meta}
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[script_seed] store.find_task %s: %s", tid, exc)
 
     rel = _feature_probe_target(ws, task)
     if not rel:

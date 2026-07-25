@@ -247,8 +247,8 @@ def is_hang_probe_failure(entry: dict[str, Any] | None) -> bool:
     try:
         if int(rc) == 124:
             return True
-    except (TypeError, ValueError):
-        pass
+    except (TypeError, ValueError) as exc:
+        _log.debug("intent_probe rc check: %s", exc)
     blob = " ".join(
         str(entry.get(k) or "")
         for k in ("error", "stdout", "stderr", "detail")
@@ -319,8 +319,8 @@ def run_probes(
                         if isinstance(exc.stderr, (bytes, bytearray))
                         else str(exc.stderr)
                     )[-400:]
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("intent_probe stderr decode: %s", exc)
             entry: dict[str, Any] = {
                 "cmd": cmd,
                 "rc": 124,

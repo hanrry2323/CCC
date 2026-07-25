@@ -10,6 +10,10 @@ import json
 import re
 from typing import Any
 
+from _logger import get_logger
+
+_log = get_logger("result_json")
+
 _OBJ_RE = re.compile(r"\{[\s\S]*\}")
 
 
@@ -28,8 +32,8 @@ def extract_json_object(raw: str) -> dict[str, Any] | None:
         obj = json.loads(text)
         if isinstance(obj, dict):
             return obj
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        _log.debug("result_json parse direct: %s", e)
 
     for candidate in (_last_balanced_object(text), _first_balanced_object(text)):
         if candidate is None:
@@ -102,8 +106,8 @@ def parse_result_file(path_or_text: str | Any, *, raw: str | None = None) -> tup
         obj = json.loads(text.strip())
         if isinstance(obj, dict):
             return obj, False
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        _log.debug("result_json parse direct (raw): %s", e)
     recovered = extract_json_object(text)
     if recovered is not None:
         return recovered, True

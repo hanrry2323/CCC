@@ -22,6 +22,7 @@ v4 新增：
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -31,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _executor import _sanitized_env
+
+_log = logging.getLogger("ccc.patrol")
 
 try:
     from _ccc_control import is_disabled as _ctrl_disabled
@@ -65,8 +68,8 @@ def _load_patrol_workspaces() -> dict[str, Path]:
             out[name] = Path(e["path"])
         if out:
             return out
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("patrol-v4 workspaces discovery: %s", e)
     return {"CCC": HOME / "program" / "CCC"}
 
 
@@ -144,8 +147,8 @@ def _sync_board_index(ws: Path) -> None:
         from _board_store import FileBoardStore
 
         FileBoardStore(ws).update_index()
-    except (OSError, RuntimeError, ValueError, ImportError):
-        pass
+    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+        _log.debug("patrol-v4 update_index %s: %s", ws, exc)
 
 
 def read_board_index(ws: Path) -> dict[str, int]:
@@ -238,8 +241,8 @@ def engine_is_running() -> bool:
         for line in r.stdout.splitlines():
             if "ccc-engine.py" in line and "grep" not in line:
                 return True
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _log.debug("patrol-v4 engine_alive probe: %s", exc)
     return False
 
 
@@ -349,8 +352,8 @@ def _try_kill_engine() -> None:
             timeout=10,
             env=_sanitized_env(),
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 git subprocess: %s", exc)
     time.sleep(1)
     try:
         r = subprocess.run(
@@ -367,10 +370,10 @@ def _try_kill_engine() -> None:
                     pid = parts[1]
                     try:
                         subprocess.run(["kill", "-9", pid], timeout=5, env=_sanitized_env())
-                    except OSError:
-                        pass
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+                    except OSError as exc:
+                        _log.debug("patrol-v4 kill -9 %s: %s", pid, exc)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _log.debug("patrol-v4 process reap: %s", exc)
     try:
         subprocess.run(
             ["launchctl", "kickstart", "-k", f"{gui}/com.ccc.engine"],
@@ -378,8 +381,8 @@ def _try_kill_engine() -> None:
             timeout=15,
             env=_sanitized_env(),
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 process scan: %s", exc)
 
 
 def _try_start_engine() -> bool:
@@ -412,8 +415,8 @@ def _try_start_engine() -> bool:
             time.sleep(3)
             if engine_is_running():
                 return True
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 launchctl bootstrap: %s", exc)
 
     # 方式 2: launchctl load（旧接口兜底）
     try:
@@ -426,8 +429,8 @@ def _try_start_engine() -> bool:
         time.sleep(3)
         if engine_is_running():
             return True
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 launchctl load: %s", exc)
 
     # 禁止方式 3: Popen(python ccc-engine.py) — 与 KeepAlive 形成双进程
     print(
@@ -553,16 +556,16 @@ def cleanup_zombie_opencode_pids() -> list[str]:
             try:
                 os.kill(pid, 0)
                 os.kill(pid, signal.SIGKILL)
-            except (OSError, ProcessLookupError):
-                pass
-        except (OSError, ProcessLookupError):
-            pass
-        except ValueError:
-            pass
+            except (OSError, ProcessLookupError) as exc:
+                _log.debug("patrol-v4 SIGKILL %s: %s", pid, exc)
+        except (OSError, ProcessLookupError) as exc:
+            _log.debug("patrol-v4 process reap: %s", exc)
+        except ValueError as exc:
+            _log.debug("patrol-v4 pid parse: %s", exc)
         try:
             pid_file.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("patrol-v4 pid_file unlink %s: %s", pid_file, exc)
         ops.append(f"zombie:{phase_id}(pid={pid}) → killed+cleaned")
     return ops
 
@@ -651,8 +654,8 @@ def _save_stuck_counters(counters: dict[str, int]) -> None:
         state["stuck_tasks"] = counters
         PATROL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_patrol_state(PATROL_STATE_FILE, json.dumps(state, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 state write: %s", exc)
 
 
 # ── Step 3: 活跃任务卡死检测 ──
@@ -699,8 +702,8 @@ def check_stuck_tasks(
                         if _is_zombie_pid(pid):
                             is_zombie = True
                         break
-                    except (ValueError, OSError, ProcessLookupError):
-                        pass
+                    except (ValueError, OSError, ProcessLookupError) as exc:
+                        _log.debug("patrol-v4 process_alive %s: %s", pid, exc)
 
         if not process_alive:
             try:
@@ -715,8 +718,8 @@ def check_stuck_tasks(
                     if tid in line and "grep" not in line:
                         process_alive = True
                         break
-            except (subprocess.TimeoutExpired, OSError):
-                pass
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                _log.debug("patrol-v4 ps grep %s: %s", tid, exc)
 
         stuck_count = stuck_counters.get(tid, 0)
         target: str | None = None
@@ -819,8 +822,8 @@ def _rotate_patrol_state() -> None:
             with gzip.open(str(PATROL_STATE_FILE) + ".1.gz", "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
         PATROL_STATE_FILE.unlink()
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 state gzip rotate: %s", exc)
 
 
 def _atomic_write_patrol_state(path: Path, content: str) -> None:
@@ -835,8 +838,8 @@ def _atomic_write_patrol_state(path: Path, content: str) -> None:
     except (OSError, ImportError):
         try:
             path.write_text(content, encoding="utf-8")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("patrol-v4 fallback write %s: %s", path, exc)
 
 
 def save_patrol_state(
@@ -915,8 +918,8 @@ def detect_stagnation(ws_stats: dict[str, dict]) -> str:
 
         if stagnant:
             return "连续6轮无变化"
-    except (json.JSONDecodeError, OSError, KeyError):
-        pass
+    except (json.JSONDecodeError, OSError, KeyError) as exc:
+        _log.debug("patrol-v4 state stagnation check: %s", exc)
     return ""
 
 
@@ -1012,8 +1015,8 @@ def _log_engine_restart(status: str, reason: str) -> None:
         try:
             with RESTART_LOG.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("patrol-v4 restart_log append: %s", exc)
 
 
 def _notify_engine_restart(status: str) -> None:
@@ -1050,8 +1053,8 @@ def _notify_engine_restart(status: str) -> None:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("patrol-v4 subprocess spawn: %s", exc)
 
     # v0.32: webhook 通知（无论 RESTARTED 还是 DEAD）
     try:
@@ -1068,8 +1071,8 @@ def _notify_engine_restart(status: str) -> None:
                 else "Patrol-v4 尝试自动重启 Engine 失败，需人工介入"
             )
             send_webhook(cfg.webhook_url, level, title, msg)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("patrol-v4 webhook send: %s", exc)
 
 
 def _get_engine_pid() -> int | None:
@@ -1088,10 +1091,10 @@ def _get_engine_pid() -> int | None:
                 if len(parts) >= 2:
                     try:
                         return int(parts[1])
-                    except ValueError:
-                        pass
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+                    except ValueError as exc:
+                        _log.debug("patrol-v4 pid parse %s: %s", line, exc)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _log.debug("patrol-v4 pid scan: %s", exc)
     return None
 
 
@@ -1316,8 +1319,8 @@ def main() -> int:
                     "Patrol 持续停滞",
                     f"连续 6 轮状态无变化: {warn}",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("patrol-v4 webhook send stagnation: %s", exc)
     save_patrol_state(ws_stats, engine_status, all_fix_ops, len(all_stuck_ops), warn)
 
     # ── Step 4.5: index.json 一致性校验 ──

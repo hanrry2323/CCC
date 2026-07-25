@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("ccc.board.lock")
 
 # product_role 命名锁 fd 表（与历史 _product_lock_fds 行为一致）
 _named_lock_fds: dict[str, int] = {}
@@ -33,8 +36,8 @@ def acquire_flock(lockfile: Path, timeout_s: float = 30.0) -> int | None:
                 os.ftruncate(fd, 0)
                 os.lseek(fd, 0, os.SEEK_SET)
                 os.write(fd, f"{os.getpid()}|{time.time():.3f}".encode())
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("[board.lock] lock file write: %s", exc)
             return fd
         except OSError as e:
             if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES):
@@ -51,12 +54,12 @@ def release_flock(fd: int | None) -> None:
         return
     try:
         fcntl.flock(fd, fcntl.LOCK_UN)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.lock] flock unlock: %s", exc)
     try:
         os.close(fd)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[board.lock] fd close: %s", exc)
 
 
 def acquire_named_lock(lockfile: Path, timeout_s: float = 30.0) -> None:
@@ -132,5 +135,5 @@ def release_board_lock(lock_obj: Any) -> None:
     if isinstance(lock_obj, (str, Path)):
         try:
             Path(lock_obj).unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[board.lock] legacy unlink %s: %s", lock_obj, exc)

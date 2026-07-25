@@ -518,8 +518,8 @@ def launch_product_async(task_id: str) -> dict:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[product] marker unlink %s: %s", f, exc)
 
     # 5. Popen product session runner（Sessionful Contract Loop，非 claude -p）
     result_file = pids_dir / f"{task_id}.product.out"
@@ -602,8 +602,8 @@ def check_product_async(task_id: str) -> dict:
                 if err.strip():
                     sep = "\n" if output else ""
                     output = (output or "") + sep + err
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("[product] err_file read %s: %s", err_file, exc)
         return output or ""
 
     def _dead_without_output(pid: int | None = None) -> dict:
@@ -618,8 +618,8 @@ def check_product_async(task_id: str) -> dict:
         if exit_file.exists():
             try:
                 ec = exit_file.read_text().strip() or "?"
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("[product] exit_file read %s: %s", exit_file, exc)
         pid_bit = f" pid={pid}" if pid is not None else ""
         return {
             "status": "failed",
@@ -654,8 +654,8 @@ def check_product_async(task_id: str) -> dict:
                     except (ProcessLookupError, PermissionError, OSError):
                         try:
                             os.kill(pid, signal.SIGTERM)
-                        except (ProcessLookupError, PermissionError, OSError):
-                            pass
+                        except (ProcessLookupError, PermissionError, OSError) as exc:
+                            _log.debug("[product] kill %s: %s", pid, exc)
                     for sfx in [
                         ".product.pid",
                         ".product.out",
@@ -666,8 +666,8 @@ def check_product_async(task_id: str) -> dict:
                     ]:
                         try:
                             (pids_dir / f"{task_id}{sfx}").unlink()
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            _log.debug("[product] marker unlink %s/%s: %s", task_id, sfx, exc)
                     return {
                         "status": "failed",
                         "error": f"product async timeout after {_timeout}s",
@@ -689,8 +689,8 @@ def check_product_async(task_id: str) -> dict:
                     )
                     if _ps.stdout.strip() == "Z":
                         _zombie = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("[product] ps -o stat %s: %s", pid, exc)
 
                 if not _zombie:
                     os.kill(pid, 0)
@@ -698,8 +698,8 @@ def check_product_async(task_id: str) -> dict:
                     # 回收 zombie 进程表条目，然后视为已退出
                     try:
                         os.waitpid(pid, os.WNOHANG)
-                    except (ChildProcessError, OSError):
-                        pass
+                    except (ChildProcessError, OSError) as exc:
+                        _log.debug("[product] waitpid %s: %s", pid, exc)
                     raise ProcessLookupError(f"zombie pid {pid}")
             except (ValueError, ProcessLookupError):
                 return _dead_without_output(pid)
@@ -715,8 +715,8 @@ def check_product_async(task_id: str) -> dict:
                     )
                     if (_ps2.stdout or "").strip():
                         return {"status": "running"}
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("[product] ps -o pid %s: %s", pid, exc)
                 return _dead_without_output(pid)
             else:
                 return {"status": "running"}
@@ -751,8 +751,8 @@ def _parse_and_finalize_product(task_id: str, output: str, pids_dir: Path) -> di
             fb.mkdir(parents=True, exist_ok=True)
             (fb / f"{task_id}.last.out").write_text(_out, encoding="utf-8")
             (fb / f"{task_id}.failed").write_text(err + "\n", encoding="utf-8")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[product] fallback write %s: %s", fb, exc)
         _log.error("[product-async] %s %s", task_id, err)
         _cleanup_async_product_markers(pids_dir, task_id)
         return {"status": "failed", "error": err, "fatal": fatal or _auth}
@@ -849,8 +849,8 @@ def _cleanup_async_product_markers(pids_dir: Path, task_id: str) -> None:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[product] async cleanup unlink %s/%s: %s", task_id, sfx, exc)
 
 
 

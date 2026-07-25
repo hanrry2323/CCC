@@ -192,8 +192,8 @@ def regress_role() -> dict:
                 timeout=10,
                 env=_sanitized_env(),
             )
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            _log.debug("[regress] subprocess: %s", exc)
 
     report_dir = ws / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)

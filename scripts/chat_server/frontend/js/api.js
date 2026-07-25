@@ -50,7 +50,9 @@ function _agentToken(forcePrompt = false) {
         localStorage.getItem('ccc_agent_token') ||
         ''
       ).trim();
-  if (!tok) {
+  // 平时不弹窗：sidecar 可能已关闭鉴权（auth_required=false）。
+  // 仅在后端真的返回 401（forcePrompt 重试路径）才提示输入。
+  if (!tok && forcePrompt) {
     tok =
       window.prompt(
         'M1 Agent Token（与 ~/.ccc/agent-token 相同；对话口需要）'
@@ -65,7 +67,9 @@ function _agentToken(forcePrompt = false) {
 }
 
 function _agentHeaders(json = true, forcePrompt = false) {
-  const h = { Authorization: 'Bearer ' + _agentToken(forcePrompt) };
+  const h = {};
+  const tok = _agentToken(forcePrompt);
+  if (tok) h.Authorization = 'Bearer ' + tok;
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }

@@ -12,6 +12,10 @@ import json
 import sys
 from pathlib import Path
 
+from _logger import get_logger
+
+_log = get_logger("product-session")
+
 _SCRIPTS = Path(__file__).resolve().parent
 _ROOT = _SCRIPTS.parent
 if str(_SCRIPTS) not in sys.path:
@@ -39,13 +43,13 @@ def _write_completion_markers(stem: Path, exit_code: int, *, ok: bool) -> None:
             Path(str(stem) + ".exitcode").write_text(
                 str(int(exit_code)), encoding="utf-8"
             )
-        except OSError:
-            pass
+        except OSError as e:
+            _log.debug("product_session write exitcode %s: %s", stem, e)
     done_path = Path(str(stem) + ".done")
     try:
         done_path.write_text("ok\n" if ok else "fail\n", encoding="utf-8")
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("product_session write done %s: %s", done_path, e)
 
 
 def main() -> int:
@@ -160,8 +164,8 @@ def main() -> int:
                 + "\n",
                 encoding="utf-8",
             )
-        except OSError:
-            pass
+        except OSError as e:
+            _log.debug("product_session write err %s: %s", err_path, e)
         exit_code = 2
         ok = False
     finally:

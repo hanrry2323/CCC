@@ -108,8 +108,8 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
     except Exception:
         try:
             tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("transfer_outbox_flush tmp unlink: %s", exc)
         raise
 
 

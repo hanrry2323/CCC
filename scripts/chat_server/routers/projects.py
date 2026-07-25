@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import time
 
 from fastapi import APIRouter, Request
 
 from ..auth import check_auth
 from .. import config
+
+_log = logging.getLogger("ccc.chat_server.projects")
 
 router = APIRouter()
 
@@ -179,8 +182,8 @@ def default_project_id() -> str | None:
             last = str(data.get("last_project") or "").strip().lower()
             if last:
                 candidates.append(last)
-        except (OSError, json.JSONDecodeError, TypeError):
-            pass
+        except (OSError, json.JSONDecodeError, TypeError) as exc:
+            _log.debug("projects prefs read: %s", exc)
     for cand in candidates:
         if cand in apps:
             return cand
@@ -304,16 +307,16 @@ async def hub_config(request: Request):
             parsed = json.loads(raw_map)
             if isinstance(parsed, dict):
                 workspace_map = {str(k): str(v) for k, v in parsed.items()}
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            _log.debug("projects workspace_map parse: %s", exc)
     map_file = Path.home() / ".ccc" / "desktop-workspace-map.json"
     if map_file.is_file():
         try:
             data = json.loads(map_file.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 workspace_map = {**workspace_map, **{str(k): str(v) for k, v in data.items()}}
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.debug("projects desktop-workspace-map read: %s", exc)
 
     agent_url = (
         os.environ.get("CCC_DESKTOP_AGENT_URL")

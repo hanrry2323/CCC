@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from fastapi.responses import JSONResponse
 from ..auth import check_auth
 from ..services.board_client import board_proxy
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
+
+_log = logging.getLogger("ccc.chat_server.board")
 
 router = APIRouter()
 
@@ -184,8 +187,8 @@ def _hub_ensure_engine(workspace: str, task_id: str | None) -> dict:
                     ent = lookup_entry(root)
                 if ent is not None:
                     eligible = entry_engine_eligible(ent)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("board workspace eligibility %s: %s", workspace, exc)
         result["workspace_eligible"] = bool(eligible)
         result["workspace"] = workspace
         running = bool(result.get("engine_running"))
@@ -668,8 +671,8 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
             store = FileBoardStore(root)
             for k in counts:
                 counts[k] = len(store.list_tasks(k))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("board counts via FileBoardStore %s: %s", root, exc)
     else:
         try:
             board = await board_proxy(
@@ -687,8 +690,8 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
                 for k in counts:
                     if k in raw_counts:
                         counts[k] = int(raw_counts[k])
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("board raw_counts parse: %s", exc)
 
     engine_running = False
     try:
@@ -726,10 +729,10 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
                 try:
                     git_info["behind"] = int(parts[0])
                     git_info["ahead"] = int(parts[1])
-                except ValueError:
-                    pass
-        except Exception:
-            pass
+                except ValueError as exc:
+                    _log.debug("board git_info parts parse: %s", exc)
+        except Exception as exc:
+            _log.debug("board git_info: %s", exc)
 
     result = {
         "workspace": workspace,

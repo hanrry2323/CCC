@@ -1,12 +1,13 @@
 # 执行器总览 — 对话 vs 看板
 
-> 架构对齐 2026-07-20：模型**直连上游**；ai-loop-router 已退役。
+> 架构对齐 2026-07-20：模型**直连上游**；ai-loop-router 已退役。  
+> **槽位口径 2026-07-25**：`loop-code` = 对话槽**槽位名**（可插拔，现填钉版 vendor 构建）；OpenCode = 写码槽默认件。定位 SSOT：[`loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三层架构与 loop-code 槽位化」。
 
 ## 两路互不混淆
 
 ```text
 M1 对话 / 对齐（Desktop + sidecar）
-  → loop-code cli (arm64)
+  → 对话槽 loop-code（现填 vendor cli · arm64）
   → MiniMax Anthropic（https://api.minimaxi.com/anthropic）
 
 Engine 看板开发（Mac2017）

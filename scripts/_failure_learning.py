@@ -92,8 +92,8 @@ def read_review_fail_pack(ws: Path, tid: str, *, limit: int = 4000) -> str:
     try:
         if p.is_file():
             return p.read_text(encoding="utf-8", errors="replace")[:limit]
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("failure_learning read text %s: %s", p, e)
     return ""
 
 
@@ -356,20 +356,20 @@ def clear_review_fail_state(ws: Path, tid: str) -> dict[str, Any]:
         if p.is_file():
             p.unlink()
             cleared.append(p.name)
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("failure_learning unlink %s: %s", p, e)
     for name in (f"{tid}.pytest_fails", f"{tid}.pytest_fail.md"):
         fp = ws / ".ccc" / "pids" / name
         try:
             if fp.is_file():
                 fp.unlink()
                 cleared.append(fp.name)
-        except OSError:
-            pass
+        except OSError as e:
+            _log.debug("failure_learning unlink %s: %s", fp, e)
     try:
         from _board_store import FileBoardStore
 
         FileBoardStore(ws).patch_task(tid, {"review_fail_loops": 0})
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("failure_learning patch %s: %s", tid, e)
     return {"ok": True, "cleared": cleared}

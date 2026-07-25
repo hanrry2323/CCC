@@ -8,12 +8,15 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
+
+_log = logging.getLogger("ccc.flow_events")
 
 from .. import config
 
@@ -40,8 +43,8 @@ def _atomic_write_json(path: Path, content: str) -> None:
     try:
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("flow_events flock LOCK_EX: %s", exc)
         fd, tmp_name = tempfile.mkstemp(
             dir=str(path.parent),
             prefix=".flow-",
@@ -58,20 +61,20 @@ def _atomic_write_json(path: Path, content: str) -> None:
                     os.fsync(dir_fd)
                 finally:
                     os.close(dir_fd)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("flow_events dir fsync: %s", exc)
             os.replace(tmp_name, str(path))
         except Exception:
             try:
                 os.unlink(tmp_name)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("flow_events tmp unlink: %s", exc)
             raise
     finally:
         try:
             os.close(lock_fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("flow_events lock_fd close: %s", exc)
 
 
 def events_log_path() -> Path:
@@ -254,8 +257,8 @@ def _pipeline_from_epic(epic: dict) -> str:
             tg = (data or {}).get("transfer_gate") or {}
             if tg.get("pipeline"):
                 return str(tg["pipeline"])
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            _log.debug("flow_events transfer_gate JSON parse: %s", exc)
     desc = str(epic.get("description") or "")
     for line in desc.splitlines():
         if "pipeline:" in line.lower():
@@ -741,8 +744,8 @@ def purge_epic_traces(project_id: str, epic_id: str) -> dict[str, Any]:
             if isinstance(data, dict) and str(data.get("epic_id") or "") == eid:
                 last_path.unlink(missing_ok=True)
                 cleared_last = True
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            _log.debug("flow_events forget last_epic %s: %s", eid, exc)
 
     removed_hist = 0
     hist_path = epic_history_file(pid)
@@ -762,8 +765,8 @@ def purge_epic_traces(project_id: str, epic_id: str) -> dict[str, Any]:
                     json.dumps(kept, ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8",
                 )
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            _log.debug("flow_events hist_path write: %s", exc)
 
     removed_events = 0
     path = events_log_path()
@@ -796,8 +799,8 @@ def purge_epic_traces(project_id: str, epic_id: str) -> dict[str, Any]:
                 "\n".join(kept_lines) + ("\n" if kept_lines else ""),
                 encoding="utf-8",
             )
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("flow_events trim write %s: %s", path, exc)
 
     return {
         "ok": True,

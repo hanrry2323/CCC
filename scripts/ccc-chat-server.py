@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """ccc-chat-server.py — CCC Chat Server v2 (模块化架构)"""
+import logging
 import os
 import sys
 import threading
 import webbrowser
 from pathlib import Path
+
+_log = logging.getLogger("ccc.chat_server")
 
 # Ensure project root is on sys.path when launched as `python3 scripts/ccc-chat-server.py`
 _ROOT = Path(__file__).resolve().parent.parent
@@ -100,8 +103,8 @@ def _guess_lan_ip() -> str:
         s.close()
         if ip and not ip.startswith("127."):
             return ip
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("chat_server LAN IP detect: %s", e)
     return ""
 
 

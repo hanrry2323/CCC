@@ -252,8 +252,8 @@ def _preserve_failure_evidence(workspace: Path, task_id: str) -> dict[str, Any]:
             json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("board-repair manifest write %s: %s", dst, exc)
     return {"ok": True, "copied": copied, "dir": str(dst)}
 
 

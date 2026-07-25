@@ -9,10 +9,13 @@ from __future__ import annotations
 import errno
 import fcntl
 import json
+import logging
 import os
 import threading
 import time
 from pathlib import Path
+
+_log = logging.getLogger("ccc.board.slots")
 from typing import Any
 
 _DEFAULT_MAX = 6
@@ -113,12 +116,12 @@ def _locked_update(
     finally:
         try:
             fcntl.flock(fd, fcntl.LOCK_UN)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[board.slots] flock unlock: %s", exc)
         try:
             os.close(fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[board.slots] fd close: %s", exc)
 
 
 def try_acquire(

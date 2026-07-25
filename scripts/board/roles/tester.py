@@ -175,8 +175,8 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[tester] marker unlink %s: %s", f, exc)
 
     # 4. Popen bash script
     result_file = pids_dir / f"{task_id}.tester.out"
@@ -229,10 +229,10 @@ def check_tester_async(task_id: str, ws: Path) -> dict:
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)
                 return {"status": "running"}
-            except (ValueError, ProcessLookupError):
-                pass
-            except OSError:
-                pass
+            except (ValueError, ProcessLookupError) as exc:
+                _log.debug("[tester] pid probe parse/lost %s: %s", pid_file, exc)
+            except OSError as exc:
+                _log.debug("[tester] pid probe OSError %s: %s", pid_file, exc)
         return {"status": "failed", "exit_code": -1, "output": "process exited"}
 
     if exitcode_file.exists():
@@ -265,8 +265,8 @@ def _cleanup_tester_markers(pids_dir: Path, task_id: str) -> None:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[tester] cleanup unlink %s: %s", f, exc)
 
 
 def launch_pytest_async(task_id: str, ws: Path) -> dict:
@@ -298,8 +298,8 @@ def launch_pytest_async(task_id: str, ws: Path) -> dict:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[tester] pytest marker unlink %s: %s", f, exc)
 
     # Popen pytest
     result_file = pids_dir / f"{task_id}.pytest.out"
@@ -352,10 +352,10 @@ def check_pytest_async(task_id: str, ws: Path) -> dict:
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)
                 return {"status": "running"}
-            except (ValueError, ProcessLookupError):
-                pass
-            except OSError:
-                pass
+            except (ValueError, ProcessLookupError) as exc:
+                _log.debug("[tester] pid probe parse/lost %s: %s", pid_file, exc)
+            except OSError as exc:
+                _log.debug("[tester] pid probe OSError %s: %s", pid_file, exc)
         return {"status": "failed", "exit_code": -1, "output": "process exited"}
 
     if exitcode_file.exists():
@@ -382,8 +382,8 @@ def _cleanup_pytest_markers(pids_dir: Path, task_id: str) -> None:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[tester] pytest marker unlink %s: %s", f, exc)
 
 
 def _tester_verdict_allows_verified(task_id: str) -> bool:
@@ -549,8 +549,8 @@ def tester_role() -> dict:
                         FileBoardStore(ws).patch_task(
                             task_id, {"review_fail_loops": fail_n}
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log.debug("[tester] patch_task fail_loops %s: %s", task_id, exc)
                     if fail_n >= 3:
                         try:
                             from engine.gates import _revert_task_commit

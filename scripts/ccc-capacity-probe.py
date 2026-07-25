@@ -13,10 +13,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
+_log = logging.getLogger("ccc.capacity_probe")
 
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
@@ -44,8 +47,8 @@ def current_max_concurrent() -> int:
                 if ln.startswith("CCC_MAX_CONCURRENT="):
                     v = ln.split("=", 1)[1].strip().strip("'\"")
                     return max(1, int(v or "4"))
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as e:
+            _log.debug("capacity_probe env read: %s", e)
     return 4
 
 
