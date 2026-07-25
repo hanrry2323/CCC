@@ -74,6 +74,113 @@ def parse_duration(value: int | str | None, default: int) -> int:
     return max(TIMEOUT_MIN, min(TIMEOUT_MAX, n * _DURATION_UNITS[unit]))
 
 
+# ── v0.61.0 阶段 D:配置 SSOT 分层 dataclass(新读 SSOT)──────────
+# 设计:保留原 Config 全字段(向后兼容,旧代码 cfg.max_retry 等不动),
+# 同时提供 4 个新 dataclass 作为权威读源(新代码用 cfg.relay.base_url 等)。
+# Config 内部 from_env() 一次填 sub-dataclass + 旧字段(双写),
+# 未来新模块只读 sub-dataclass,旧模块继续走 Config 字段,平滑迁移。
+
+
+@dataclass
+class RelayEnv:
+    """CCC Relay 通信配置(v0.61.0 新 SSOT)
+
+    下游(Desktop/Engine/OpenCode)只暴露 flash/Pro/code 三档;
+    上游实现细节(MiniMax/Anthropic/OpenCode Zen/讯飞/智谱)在本类被换,
+    与下游解耦。
+    """
+    base_url: str = "http://127.0.0.1:4000"      # CCC_RELAY_BASE_URL
+    direct_url: str = ""                           # CCC_RELAY_DIRECT_URL
+    upstream_config: str = ""                       # LOOP_UPSTREAMS_FILE(留空走 ~/.ccc/relay/upstreams.json)
+    admin_status_path: str = "/admin/status"
+    probe_timeout: float = 1.5
+    cache_ttl: float = 10.0
+
+    @classmethod
+    def from_env(cls) -> "RelayEnv":
+        env = cls()
+        # 复用 P0-3 修过的 _utils.relay_is_up 行为:无 env 时走默认
+        # 这里直接读 env,缺则保留 dataclass 默认
+        env.base_url = os.environ.get("CCC_RELAY_BASE_URL", env.base_url).rstrip("/")
+        env.direct_url = os.environ.get("CCC_RELAY_DIRECT_URL", env.direct_url)
+        env.upstream_config = os.environ.get("LOOP_UPSTREAMS_FILE", env.upstream_config)
+        try:
+            env.probe_timeout = float(os.environ.get("CCC_RELAY_PROBE_TIMEOUT", env.probe_timeout))
+        except ValueError:
+            pass
+        return env
+
+
+@dataclass
+class HubEnv:
+    """Hub 鉴权 + 网络配置(v0.61.0 新 SSOT)"""
+    url: str = "http://127.0.0.1:17777"           # CCC_HUB_URL(127.0.0.1 = M1 本机 SSH 隧道)
+    user: str = "ccc"                              # CCC_HUB_USER
+    password: str = ""                              # CCC_HUB_PASSWORD(不写默认,只从 env 读)
+    board_url: str = "http://127.0.0.1:7775"       # CCC_BOARD_URL
+    cors_origin_regex: str = ""                     # CCC_CHAT_CORS_ORIGIN_REGEX
+
+    @classmethod
+    def from_env(cls) -> "HubEnv":
+        env = cls()
+        env.url = os.environ.get("CCC_HUB_URL", env.url)
+        env.user = os.environ.get("CCC_HUB_USER", env.user)
+        env.password = os.environ.get("CCC_HUB_PASSWORD", env.password)
+        env.board_url = os.environ.get("CCC_BOARD_URL", env.board_url)
+        env.cors_origin_regex = os.environ.get("CCC_CHAT_CORS_ORIGIN_REGEX", env.cors_origin_regex)
+        return env
+
+
+@dataclass
+class AgentEnv:
+    """Sidecar 本地 agent 配置(v0.61.0 新 SSOT)"""
+    port: int = 7788                               # CCC_AGENT_PORT
+    host: str = "0.0.0.0"                          # CCC_AGENT_HOST
+    hub_url: str = "http://127.0.0.1:17777"         # CCC_HUB_URL(同上)
+    auth_required: bool = True                      # CCC_AGENT_AUTH(默认强制鉴权)
+    upstream_model: str = "flash"                  # ANTHROPIC_MODEL
+    relay_base_url: str = "http://127.0.0.1:4000"  # CCC_RELAY_BASE_URL(侧文件用,同 RelayEnv.base_url)
+    relay_direct_url: str = ""                      # CCC_RELAY_DIRECT_URL
+
+    @classmethod
+    def from_env(cls) -> "AgentEnv":
+        env = cls()
+        env.port = int(os.environ.get("CCC_AGENT_PORT", env.port))
+        env.host = os.environ.get("CCC_AGENT_HOST", env.host)
+        env.hub_url = os.environ.get("CCC_HUB_URL", env.hub_url)
+        env.auth_required = os.environ.get("CCC_AGENT_AUTH", "1") not in ("0", "false", "no", "off")
+        env.upstream_model = os.environ.get("ANTHROPIC_MODEL", env.upstream_model)
+        env.relay_base_url = os.environ.get("CCC_RELAY_BASE_URL", env.relay_base_url).rstrip("/")
+        env.relay_direct_url = os.environ.get("CCC_RELAY_DIRECT_URL", env.relay_direct_url)
+        return env
+
+
+@dataclass
+class EngineEnv:
+    """Engine 调度参数(v0.61.0 新 SSOT)"""
+    max_concurrent: int = 6                         # CCC_MAX_CONCURRENT
+    poll_interval: int = 10                         # CCC_ENGINE_POLL_INTERVAL
+    idle_sleep: int = 5                            # CCC_ENGINE_IDLE_SLEEP
+    tick_interval: int = 5                          # CCC_ENGINE_TICK_INTERVAL
+    retry_budget: int = 8                           # CCC_TASK_RETRY_BUDGET
+    max_wallclock: int = 7200                       # CCC_MAX_WALLCLOCK
+    product_async_timeout: int = 1200               # CCC_PRODUCT_ASYNC_TIMEOUT
+    max_phases: int = 2                             # CCC_MAX_PHASES
+
+    @classmethod
+    def from_env(cls) -> "EngineEnv":
+        env = cls()
+        env.max_concurrent = int(os.environ.get("CCC_MAX_CONCURRENT", env.max_concurrent))
+        env.poll_interval = int(os.environ.get("CCC_ENGINE_POLL_INTERVAL", env.poll_interval))
+        env.idle_sleep = int(os.environ.get("CCC_ENGINE_IDLE_SLEEP", env.idle_sleep))
+        env.tick_interval = int(os.environ.get("CCC_ENGINE_TICK_INTERVAL", env.tick_interval))
+        env.retry_budget = int(os.environ.get("CCC_TASK_RETRY_BUDGET", env.retry_budget))
+        env.max_wallclock = int(os.environ.get("CCC_MAX_WALLCLOCK", env.max_wallclock))
+        env.product_async_timeout = int(os.environ.get("CCC_PRODUCT_ASYNC_TIMEOUT", env.product_async_timeout))
+        env.max_phases = int(os.environ.get("CCC_MAX_PHASES", env.max_phases))
+        return env
+
+
 @dataclass
 class ModelTier:
     """模型梯队配置"""
@@ -232,7 +339,16 @@ class Config:
         """环境变量覆盖（优先级：环境变量 > 默认值）
 
         v0.28.0: timeout 支持 duration 类 expr（5m / 1h / 1d）和 clamp [60, 86400]
+        v0.61.0 阶段 D:同时填 4 个 sub-dataclass(RelayEnv/HubEnv/AgentEnv/EngineEnv)
+        作为新读 SSOT;旧字段保留(向后兼容)
         """
+        # v0.61.0: 新 SSOT 4 个 dataclass(权威读源,新代码用 cfg.relay.base_url 等)
+        self.relay = RelayEnv.from_env()
+        self.hub = HubEnv.from_env()
+        self.agent = AgentEnv.from_env()
+        self.engine = EngineEnv.from_env()
+
+        # 旧字段继续保留(env override 走原路径,旧代码 cfg.max_retry 等仍工作)
         _env_override_duration(
             self, "default_timeout", "CCC_TIMEOUT", self.default_timeout
         )

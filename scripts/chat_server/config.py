@@ -19,6 +19,58 @@ AUTH_USER = os.environ.get("CCC_CHAT_USER", "ccc")
 AUTH_PASS = os.environ.get("CCC_CHAT_PASS", "ccc").strip()
 BOARD_URL = os.environ.get("CCC_BOARD_URL", "http://127.0.0.1:7775")
 BOARD_TOKEN = os.environ.get("QX_BOARD_TOKEN", "").strip()
+
+# v0.61.0 阶段 D:ChatServerConfig dataclass(新读 SSOT)
+# 旧模块级全局保留(向后兼容),新代码用 ChatServerConfig.from_env() 读权威
+from dataclasses import dataclass as _dataclass  # noqa: E402
+
+
+@_dataclass
+class ChatServerConfig:
+    """Chat server 配置 SSOT(v0.61.0)"""
+    host: str = "127.0.0.1"
+    port: int = 7777
+    user: str = "ccc"
+    password: str = "ccc"
+    board_url: str = "http://127.0.0.1:7775"
+    board_token: str = ""
+    chat_dir: str = ""
+    cors_origin_regex: str = (
+        r"https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$"
+    )
+    idle_timeout: int = 600
+    max_timeout: int = 1800
+    session_idle_ttl: int = 900
+    session_max_live: int = 4
+    lock_wait: int = 15
+    connect_timeout: int = 30
+    drain_timeout: int = 8
+    warm_lock_wait: int = 3
+    first_event_timeout: int = 120
+    tool_stall_timeout: int = 90
+
+    @classmethod
+    def from_env(cls) -> "ChatServerConfig":
+        env = cls()
+        env.host = os.environ.get("CCC_CHAT_HOST", env.host)
+        env.port = int(os.environ.get("CCC_CHAT_PORT", str(env.port)))
+        env.user = os.environ.get("CCC_CHAT_USER", env.user)
+        env.password = os.environ.get("CCC_CHAT_PASS", env.password).strip()
+        env.board_url = os.environ.get("CCC_BOARD_URL", env.board_url)
+        env.board_token = os.environ.get("QX_BOARD_TOKEN", env.board_token)
+        env.chat_dir = os.environ.get("CCC_CHAT_DIR", env.chat_dir)
+        env.cors_origin_regex = os.environ.get("CCC_CHAT_CORS_ORIGIN_REGEX", env.cors_origin_regex)
+        env.idle_timeout = int(os.environ.get("CCC_CHAT_IDLE_TIMEOUT", str(env.idle_timeout)))
+        env.max_timeout = int(os.environ.get("CCC_CHAT_MAX_TIMEOUT", str(env.max_timeout)))
+        env.session_idle_ttl = int(os.environ.get("CCC_CHAT_SESSION_IDLE_TTL", str(env.session_idle_ttl)))
+        env.session_max_live = int(os.environ.get("CCC_CHAT_SESSION_MAX_LIVE", str(env.session_max_live)))
+        env.lock_wait = int(os.environ.get("CCC_CHAT_LOCK_WAIT", str(env.lock_wait)))
+        env.connect_timeout = int(os.environ.get("CCC_CHAT_CONNECT_TIMEOUT", str(env.connect_timeout)))
+        env.drain_timeout = int(os.environ.get("CCC_CHAT_DRAIN_TIMEOUT", str(env.drain_timeout)))
+        env.warm_lock_wait = int(os.environ.get("CCC_CHAT_WARM_LOCK_WAIT", str(env.warm_lock_wait)))
+        env.first_event_timeout = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", str(env.first_event_timeout)))
+        env.tool_stall_timeout = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", str(env.tool_stall_timeout)))
+        return env
 # CCC_PROXY_URL / :4002 已随 ai-loop-router 退役；Hub 对话走 Desktop sidecar，勿再默认中转。
 
 # Hub 对话超时（空闲 / 硬上限）。有工具调用时墙钟 180s 极易误杀。
