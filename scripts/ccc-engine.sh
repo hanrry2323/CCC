@@ -21,28 +21,27 @@ fi
 export PATH="${HOME}/.npm-global/bin:/opt/homebrew/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 # OpenCode 直连讯飞（见 ~/.opencode/opencode.json provider xfyun）
 export OPENCODE_MODEL="${OPENCODE_MODEL:-xfyun/code}"
-# product/reviewer Claude：默认直连 MiniMax（逻辑 flash → MiniMax-M3）
+# CCC Relay 2026-07-25:product/reviewer Claude 默认走本机 relay :4000,模型 flash
+# (1) relay 已加载 MiniMax 作为 fail-over(在 upstreams.json flash tier)
+# (2) relay 探活失败时 _executor._claude_env 自动回退直连
+# (3) 直连 MiniMax 仅作 fail-open 兜底,不进主路径
+# 因此这里 **不要**默认 export ANTHROPIC_BASE_URL=https://api.minimaxi.com,
+# 否则后续 relay 兜底 if 被跳过。
 if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
-  if [[ -f "${HOME}/.ccc/minimax-api-key" ]]; then
-    export ANTHROPIC_BASE_URL="https://api.minimaxi.com/anthropic"
-    export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/minimax-api-key")"
-    export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-MiniMax-M3}"
-  fi
+  export ANTHROPIC_BASE_URL="http://127.0.0.1:4000"
+fi
+if [[ -z "${ANTHROPIC_MODEL:-}" ]]; then
+  export ANTHROPIC_MODEL="flash"  # 走 relay flash tier(opencode-go / deepseek-v4-flash-free)
+fi
+export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
+# 直连兜底 key 仍需就绪(relay fail-open 切直连时用)
+if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/minimax-api-key" ]]; then
+  export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/minimax-api-key")"
 fi
 # Phase3：Engine 私有配置家（与个人 ~/.claude 切割；仍用 x86 原版 claude）
 export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.ccc/engine-claude}"
 python3 -c "import sys; sys.path.insert(0, r'''${CCC_HOME}/scripts'''); from _claude_cli import ensure_engine_claude_config_dir; ensure_engine_claude_config_dir()" \
   || mkdir -p "${CLAUDE_CONFIG_DIR}"
-# CCC Relay 2026-07-25:编排面 model 出口唯一=relay(本机 :4000);relay 探活失败时
-# _executor._claude_env 会自动回退 ANTHROPIC_BASE_URL 直连,fail-open 不 block 任务
-if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
-  export ANTHROPIC_BASE_URL="http://127.0.0.1:4000"
-fi
-export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
-# 直连兜底 key 仍需就绪(不写 relay upstreams.json 的硬直连场景)
-if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/minimax-api-key" ]]; then
-  export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/minimax-api-key")"
-fi
 # v0.51.0 P2-1: CCC_AUTO_REPLENISH / CCC_EVOLVE_ON_IDLE / CCC_EVOLVE_ON_AUDIT 已在 _config.py 强制 False，
 # 这些环境变量 export 已无效（被 _config.__post_init__ 忽略）；不再 export 避免误导。
 # v0.42.4: invent/自动投入硬禁，禁止环境变量重新打开
