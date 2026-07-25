@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ..auth import check_auth
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
 from _ops_probe import fetch_router_usage  # CCC Relay 2026-07-25(模块顶层,避免 ops_summary lazy NameError)
+from _utils import now_iso as _now_iso  # v0.62.0 阶段 3:bg-sessions 端点返 ts
 
 _log = logging.getLogger("ccc.chat_server.ops")
 
@@ -244,6 +245,26 @@ async def ops_router_usage(request: Request, refresh: int = 0):
     return fetch_router_usage(use_cache=False)
 
 
+@router.get("/api/ops/bg-sessions")
+async def ops_bg_sessions(request: Request):
+    """v0.62.0 阶段 3:列出当前所有 claude --bg 长 session。
+
+    Engine active_tasks.list_long_lived_sessions() 返 [{task_id, role, session_id,
+    pid, model, started_at, last_heartbeat, age_min, alive, idle_timeout}]。
+    Desktop UI OpsView bg-sessions 卡片调此端点。
+    """
+    check_auth(request)
+    from engine.active_tasks import list_long_lived_sessions
+
+    sessions = list_long_lived_sessions()
+    return {
+        "ok": True,
+        "count": len(sessions),
+        "sessions": sessions,
+        "ts": _now_iso(),
+    }
+
+
 @router.get("/api/ops/summary")
 async def ops_summary(request: Request):
     """Phase 3.2: 聚合端点 — 单次返回 ops 页所需全部只读探针，替代前端 11 次 GET。"""
@@ -358,6 +379,14 @@ async def ops_summary(request: Request):
         }
 
     try:
+        # v0.62.0 阶段 3:从 Engine 拉 bg_sessions(走 SYS 路径,避免在 chat_server 里直接 import engine)
+        from engine.active_tasks import list_long_lived_sessions
+        try:
+            bg_sessions = list_long_lived_sessions()
+        except Exception as exc:
+            _log.debug("bg_sessions fetch: %s", exc)
+            bg_sessions = None
+
         env = ops_health_envelope(
             control=ctrl,
             risks=risks_result if isinstance(risks_result, dict) else {},
@@ -369,6 +398,7 @@ async def ops_summary(request: Request):
             ports=out.get("ports") if isinstance(out.get("ports"), dict) else {},
             overview=out.get("overview") if isinstance(out.get("overview"), dict) else {},
             relay_usage=out.get("relay_usage") if isinstance(out.get("relay_usage"), dict) else None,
+            bg_sessions=bg_sessions,
         )
         out["severity"] = env.get("severity") or "amber"
         out["human_line"] = env.get("human_line") or ""

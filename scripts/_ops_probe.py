@@ -826,6 +826,7 @@ def ops_health_envelope(
     ports: dict[str, Any] | None = None,
     overview: dict[str, Any] | None = None,
     relay_usage: dict[str, Any] | None = None,
+    bg_sessions: list[dict] | None = None,  # v0.62.0 阶段 3
 ) -> dict[str, Any]:
     """Desktop 运维总灯：severity green|amber|red + 仅红 alerts[].copy_payload。
 
@@ -991,6 +992,8 @@ def ops_health_envelope(
         # CCC Relay 2026-07-25:三档 tier 用量 + 健康 + cache 命中率
         # 灯:ok=true green;ok=false amber(降级直连但仍可用)
         "relay": _build_relay_domain(relay_usage),
+        # v0.62.0 阶段 3:claude --bg 长 session 跟踪(Engine tick 30s 更新)
+        "bg_sessions": _build_bg_sessions_domain(bg_sessions),
         "capacity": {
             "verdict": verdict,
             "note": summary.get("note") or summary.get("reason"),
@@ -1037,6 +1040,35 @@ def _build_relay_domain(relay_usage: dict[str, Any] | None) -> dict[str, Any]:
         "tiers": tiers_in,
         "total": relay_usage.get("total") or {},
         "note": "三档 flash/Pro/code",
+    }
+
+
+def _build_bg_sessions_domain(sessions: list[dict] | None) -> dict[str, Any]:
+    """v0.62.0 阶段 3:envelope.domains.bg_sessions 子域。
+
+    sessions: list_long_lived_sessions() 的输出;None 表示未拉取,返 ok=null 兜底。
+    """
+    if not sessions:
+        return {
+            "ok": None,
+            "count": 0,
+            "sessions": [],
+            "note": "bg_sessions 未拉取",
+        }
+    # ok=true 全活;ok=false 全死;ok=None 部分活(混合)
+    alive_count = sum(1 for s in sessions if s.get("alive"))
+    if alive_count == len(sessions):
+        ok = True
+    elif alive_count == 0:
+        ok = False
+    else:
+        ok = None
+    return {
+        "ok": ok,
+        "count": len(sessions),
+        "alive_count": alive_count,
+        "sessions": sessions,
+        "note": "claude --bg 长 session(Engine 跟踪)/Desktop UI 可看",
     }
 
 
