@@ -170,6 +170,16 @@ function html() {
       </div>
     </div>
   </details>
+
+  <details class="ops-fold" data-fold="relay"${f('relay')}>
+    <summary>CCC Relay（编排面模型调度网关）</summary>
+    <div class="ops-fold-body">
+      <div class="ops-section">
+        <h3>中转站状态</h3>
+        <div id="ops-relay" class="ops-card"></div>
+      </div>
+    </div>
+  </details>
 </div>`;
 }
 
@@ -263,6 +273,78 @@ function renderPorts(d) {
       (g.ports || []).map((p) => `${p.port}\t${p.name}\t${p.machine || ''}\t${p.alive ? 'up' : 'down'}`)
     )
     .join('\n');
+}
+
+// CCC Relay 2026-07-25:运维面板加 Relay 域(三档 tier 用量 + 健康 + 降级提示)
+// 数据源:agg.domains.relay(后端 _ops_probe._build_relay_domain 返回)
+function renderRelay(relay) {
+  const el = _root.querySelector('#ops-relay');
+  if (!el) return;
+  if (relay === null || relay === undefined) {
+    el.innerHTML = '<div class="ops-hint">relay_usage 未拉取(后端未配置 domains.relay)</div>';
+    return;
+  }
+  if (relay.ok === false) {
+    el.innerHTML = `
+      <div class="ops-row" style="background:var(--ops-amber, #f5a62322);padding:8px;border-radius:4px">
+        <strong style="color:var(--ops-amber)">⚠️ relay 不可达</strong>
+        <div class="ops-hint">客户端已切 fail-open 直连(${relay.source || 'relay_down'});任务不 block。</div>
+        ${relay.error ? `<div class="ops-hint" style="font-family:monospace;font-size:11px">${escapeHtml(relay.error)}</div>` : ''}
+      </div>`;
+    return;
+  }
+  if (relay.ok !== true) {
+    el.innerHTML = '<div class="ops-hint">relay 状态未知</div>';
+    return;
+  }
+  // ok=true:渲染三档契约表
+  const tiers = relay.tiers || {};
+  const tierOrder = ['flash', 'Pro', 'code'];
+  const tierLabels = { flash: 'flash · 轻量默认', Pro: 'Pro · 高级直连', code: 'code · 写码' };
+  const rows = tierOrder
+    .filter((t) => tiers[t])
+    .map((t) => {
+      const d = tiers[t];
+      const upstreams = d.upstreams ?? 0;
+      const healthy = d.healthy ?? 0;
+      const okRatio = upstreams > 0 ? `${healthy}/${upstreams}` : '—';
+      const reqs = d.requests_today ?? 0;
+      const toks = d.tokens_today ?? 0;
+      return `<tr>
+        <td>${escapeHtml(tierLabels[t] || t)}</td>
+        <td style="text-align:right;font-family:monospace">${okRatio}</td>
+        <td style="text-align:right;font-family:monospace">${reqs.toLocaleString()}</td>
+        <td style="text-align:right;font-family:monospace">${toks.toLocaleString()}</td>
+      </tr>`;
+    })
+    .join('') || '<tr><td colspan="4">—</td></tr>';
+  const total = relay.total || {};
+  const totalReq = total.requests_today ?? 0;
+  const totalHealthy = (total.healthy != null && total.upstreams != null)
+    ? `${total.healthy}/${total.upstreams}` : '—';
+  el.innerHTML = `
+    <div class="ops-row" style="margin-bottom:8px">
+      <span class="ops-pill ops-pill-green">● relay 在线</span>
+      <span class="ops-hint">${escapeHtml(relay.host || '127.0.0.1')}:${relay.port || 4000} · 三档契约 flash/Pro/code</span>
+    </div>
+    <table class="ops-table">
+      <thead><tr>
+        <th>tier</th><th style="text-align:right">上游健康</th>
+        <th style="text-align:right">今日请求</th><th style="text-align:right">今日 token</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr>
+        <td><strong>合计</strong></td>
+        <td style="text-align:right;font-family:monospace">${totalHealthy}</td>
+        <td style="text-align:right;font-family:monospace">${totalReq.toLocaleString()}</td>
+        <td style="text-align:right">—</td>
+      </tr></tfoot>
+    </table>
+    ${relay.note ? `<div class="ops-hint" style="margin-top:6px">${escapeHtml(relay.note)}</div>` : ''}`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function renderResources(d, history) {
@@ -686,6 +768,9 @@ async function poll() {
   renderDeploy(agg.deploy || { targets: [] });
   renderWorkspaces(agg.workspaces || { workspaces: [] });
   renderKb(agg.kb || { services: [] });
+  // CCC Relay 2026-07-25:三档契约面板(后端 domains.relay)
+  const relayDomain = (agg.domains && agg.domains.relay) || null;
+  renderRelay(relayDomain);
 
   renderDaily(agg.daily || {});
   renderMinds(agg.agent_minds || {});
