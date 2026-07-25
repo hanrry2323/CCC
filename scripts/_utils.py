@@ -84,3 +84,48 @@ def get_relay_url() -> str:
         if val:
             return val
     return _DEFAULT_AGENT_PLANNER_URL
+
+
+# ── CCC Relay 2026-07-25 fail-open 共享 helpers ─────────────────
+# sidecar (ccc-agent-sidecar.py) 与 chat_server 服务共享,纯函数无副作用。
+# 10s 缓存避免每次 LLM 调用都探活;多线程调用安全(读 dict)。
+import time as _time
+import urllib.request as _urllib_request
+import urllib.error as _urllib_error
+
+_RELAY_UP_CACHE: dict = {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000}
+
+
+def relay_is_up(host: str = "127.0.0.1", port: int = 4000, timeout: float = 1.5) -> bool:
+    """CCC Relay 2026-07-25:sidecar/Engine 共享探活(10s 缓存)。"""
+    now = _time.monotonic()
+    cache_key = (host, port)
+    if (
+        _RELAY_UP_CACHE["up"] is not None
+        and _RELAY_UP_CACHE.get("host") == host
+        and _RELAY_UP_CACHE.get("port") == port
+        and (now - _RELAY_UP_CACHE["ts"]) < 10.0
+    ):
+        return _RELAY_UP_CACHE["up"]
+    up = False
+    try:
+        with _urllib_request.urlopen(
+            f"http://{host}:{port}/admin/status", timeout=timeout
+        ) as resp:
+            up = (resp.status or 0) == 200
+    except (OSError, _urllib_error.URLError, Exception):
+        up = False
+    _RELAY_UP_CACHE.update({"ts": now, "up": up, "host": host, "port": port})
+    return up
+
+
+def relay_direct_fallback() -> str:
+    """CCC Relay 2026-07-25:relay 不可达时切直连的 URL(默认 MiniMax)。
+
+    优先 env `CCC_RELAY_DIRECT_URL`;无则 MiniMax 默认。
+    """
+    import os as _os
+    return (
+        _os.environ.get("CCC_RELAY_DIRECT_URL")
+        or "https://api.minimaxi.com/anthropic"
+    )

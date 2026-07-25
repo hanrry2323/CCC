@@ -327,8 +327,6 @@ def _normalize_project_path(project_path: str) -> str | None:
 _RELAY_BASE = (os.environ.get("CCC_RELAY_BASE_URL") or "http://127.0.0.1:4000").rstrip("/")
 _RELAY_CATALOG_TTL = 30.0
 _RELAY_CATALOG: dict = {"ts": 0.0, "models": None, "labels": None}
-_RELAY_UP_CACHE: dict = {"ts": 0.0, "up": None}
-_RELAY_DIRECT_FALLBACK = (os.environ.get("CCC_RELAY_DIRECT_URL") or "https://api.minimaxi.com/anthropic").rstrip("/")
 
 
 def _fetch_relay_catalog() -> tuple[list[str], dict[str, str]] | None:
@@ -380,25 +378,9 @@ tier_descriptions: dict[str, str] = {
 }
 
 
-def is_relay_up() -> bool:
-    """探活 relay(10s 缓存,1.5s 超时);Desktop session 启动用。"""
-    now = time.monotonic()
-    if _RELAY_UP_CACHE["up"] is not None and (now - _RELAY_UP_CACHE["ts"]) < 10.0:
-        return _RELAY_UP_CACHE["up"]
-    up = False
-    try:
-        import urllib.request
-        with urllib.request.urlopen(f"{_RELAY_BASE}/admin/status", timeout=1.5) as resp:
-            up = (resp.status or 0) == 200
-    except Exception:
-        up = False
-    _RELAY_UP_CACHE.update({"ts": now, "up": up})
-    return up
-
-
-def relay_direct_fallback() -> str:
-    """relay 不可达时 session 切直连的 URL(fail-open 兜底)。"""
-    return _RELAY_DIRECT_FALLBACK
+# CCC Relay 2026-07-25:fail-open 共享 helpers 已在 scripts/_utils.py
+# (sidecar / chat_server 服务都需要,模块纯函数 + 10s 缓存,无 race)
+from _utils import relay_is_up as is_relay_up, relay_direct_fallback  # noqa: E402,F401
 
 
 @app.get("/health")
