@@ -58,9 +58,12 @@ class TestSanitizedEnv:
         assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
 
     def test_claude_env_default_minimax(self, monkeypatch):
+        # v0.61.0 阶段 A 改造:默认 ANTHROPIC_BASE_URL 走本机 relay :4000
+        # (旧测试期望 MiniMax 直连已过期 — 共识 ① 三档契约 + 上游解耦)
         monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.delenv("AGENT_PLANNER_BASE_URL", raising=False)
         env = ex._claude_env()
-        assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
+        assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:4000"
 
 
 class TestOpenCodeExecutor:
@@ -186,10 +189,15 @@ class TestRelayFailOpen:
         assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
 
     def test_relay_url_none_no_env_falls_back_to_minimax(self, monkeypatch):
-        """relay_url=None 且 env 也无 ANTHROPIC_BASE_URL → 默认 MiniMax 直连"""
+        """relay_url=None 且 env 也无 ANTHROPIC_BASE_URL → 默认 MiniMax 直连
+
+        v0.61.0 阶段 A 改造后:默认走 relay :4000,而非 MiniMax 直连。
+        三档契约 + 上游解耦共识(authority)已废 MiniMax 作为默认。
+        """
         monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.delenv("AGENT_PLANNER_BASE_URL", raising=False)
         env = ex._claude_env(relay_url=None)
-        assert env["ANTHROPIC_BASE_URL"] == "https://api.minimaxi.com/anthropic"
+        assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:4000"
 
     def test_fail_open_path_emits_under_relay_down(self, monkeypatch):
         """模拟 _is_upstream_healthy 返回 False 时,relay_url 应传 None(让 _claude_env 兜底)

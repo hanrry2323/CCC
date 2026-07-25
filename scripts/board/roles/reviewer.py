@@ -581,17 +581,44 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
         except OSError as exc:
             _log.debug("[reviewer] marker unlink %s/%s: %s", task_id, sfx, exc)
 
-    # 7. Popen claude -p
+    # 7. v0.62.0:Popen ccc-reviewer-bg.sh(包装 claude --bg 长 session)
+    #   与 -p 不同:--bg 启动 background session 立刻返回,由 ccc-reviewer-bg.sh
+    #   写 <task>.reviewer.session_id(给 Engine resume 用)并轮询 verdict 标记。
+    #   失败回环时(--resume 路径)从 <task>.reviewer.session_id 读上次 session。
     result_file = pids_dir / f"{task_id}.reviewer.out"
+    session_id_file = pids_dir / f"{task_id}.reviewer.session_id"
     relay_url = _get_relay_url()
     env = _claude_env(relay_url=relay_url)
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
+    bg_args = [
+        "bash",
+        f"{CCC_HOME}/scripts/ccc-reviewer-bg.sh",
+        task_id,
+        "reviewer",  # v0.62.0:phase_id 硬编码(reviewer role 唯一)
+        str(ws),
+        # v0.62.0:model 从 CCC_AGENT_MODEL env 读(无则 flash 兜底)
+        os.environ.get("CCC_AGENT_MODEL", "flash"),
+        str(prompt_file),
+        str(pids_dir),
+        "--hard-kill-after",
+        "1800",
+    ]
+    # 失败回环:从 session_id 文件续(若有)
+    if session_id_file.is_file() and session_id_file.read_text().strip():
+        prev_short = session_id_file.read_text().strip()
+        bg_args += ["--resume", prev_short]
+        _log.info(
+            "[reviewer-async] %s will resume previous session %s",
+            task_id, prev_short,
+        )
+
     try:
-        with open(result_file, "w") as out_f, open(prompt_file) as in_f:
+        # 开新进程组的 nohup,让 ccc-reviewer-bg.sh 自己跑后台轮询
+        with open(result_file, "w") as out_f:
             proc = subprocess.Popen(
-                [_claude_bin(), "-p"],
-                stdin=in_f,
+                bg_args,
+                stdin=subprocess.DEVNULL,
                 stdout=out_f,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
