@@ -2950,6 +2950,14 @@ def _retry_abnormal_failures(ws: Path) -> None:
         auto_retried = int(retry_counts.get(tid, 0) or 0)
         if auto_retried >= MAX_AUTO_RETRY:
             continue
+        # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（auto + review + hang）
+        from engine.failure_router import can_retry as _can_retry_budget
+
+        if not _can_retry_budget(ws, tid, store):
+            engine_log(
+                f"[{label}] {tid} retry budget 耗尽，跳过 auto-refeed"
+            )
+            continue
         needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
         if minutes_since < needed_minutes:
             continue

@@ -445,6 +445,30 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     max_attempts = max(2, timeout_retries)
 
     for attempt in range(max_attempts):
+        # 2026-07-24 方案 P1-1：retry budget 跨层统一闸
+        try:
+            from engine.failure_router import (
+                MAX_TASK_RETRY_BUDGET,
+                increment_retry_count,
+                RetryBudgetExceeded,
+            )
+
+            _used = increment_retry_count(ws, tid, store)
+            _engine_log(
+                "[verdict-gate] %s reviewer retry %d/%d", tid, _used, MAX_TASK_RETRY_BUDGET
+            )
+        except RetryBudgetExceeded:
+            _engine_log(
+                "[verdict-gate] %s retry budget 耗尽 → abnormal", tid
+            )
+            if eng:
+                eng._quarantine_with_notify(
+                    ws, tid, "retry budget exceeded (reviewer)", store
+                )
+            return False
+        except Exception:
+            # budget 记录失败不阻塞门禁
+            pass
         reviewer_role()
         if _verdict_is_valid(ws, tid):
             if _verdict_is_timeout(ws, tid):
