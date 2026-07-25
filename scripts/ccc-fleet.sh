@@ -320,6 +320,20 @@ stop() {
     _stop_one "$label" 10
   done
   _log "✓ tier stop 完成"
+
+  # v0.62.0 阶段 2:stop 时一并清 claude --bg 长 session(ccc-reviewer-bg.sh
+  # 进程 + 残留 nohup wrapper);Engine 下一启动会用 register_bg_session 重注
+  if [[ "$target" == "all" || "$target" == "engine" ]]; then
+    local bg_pids
+    bg_pids=$(pgrep -f 'ccc-reviewer-bg\.sh' 2>/dev/null || true)
+    if [[ -n "$bg_pids" ]]; then
+      _log "  [stop] 清 claude --bg wrappers: $bg_pids"
+      # shellcheck disable=SC2086  # word-split 故意
+      kill -TERM $bg_pids 2>/dev/null || true
+      sleep 1
+      kill -KILL $bg_pids 2>/dev/null || true
+    fi
+  fi
 }
 
 # ── 4. 子命令:status ───────────────────────────────────

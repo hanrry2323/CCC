@@ -378,3 +378,141 @@ def release_dev_slot(
         except Exception as exc:
             _engine_log(f"[slot] reap after release {tid}: {exc}")
 
+
+
+# ── v0.62.0:Claude --bg 长 session 跟踪 ──────────────────────
+# 记录所有 claude --bg / --resume 启动的 background session,提供:
+# - register_bg_session:ccc-reviewer-bg.sh(阶段 1)启动时调
+# - verify_bg_session:Engine tick 每 30s 调,kill -0 探活
+# - list_long_lived_sessions:HUB /api/ops/bg-sessions 调(阶段 3)
+# - heartbeat 超时(>1h 无活动)→ 标记 dead 但不杀进程(留给 nudge 路径)
+
+from dataclasses import dataclass, field, asdict as _asdict  # noqa: E402
+import time as _time  # noqa: E402
+
+
+@dataclass
+class LongLivedSession:
+    """v0.62.0 阶段 2:长 session 跟踪。
+
+    key 形式: "{role}:{task_id}"(role = product / reviewer / etc.)
+    """
+    task_id: str
+    role: str
+    session_id: str  # 短 sha(ccc-reviewer-bg.sh 写文件时存)
+    pid: int  # wrapper 进程 PID(不是真 claude 进程)
+    model: str
+    started_at: float = field(default_factory=_time.time)
+    last_heartbeat: float = field(default_factory=_time.time)
+    # 心跳超时阈值(秒);Engine tick 探活后更新
+    # timeout 后标记 dead,Hub 端不再显示(但不杀进程——留给 nudge 续)
+    heartbeat_timeout_sec: int = 3600  # 1h
+
+    def is_alive(self) -> bool:
+        """Engine tick 调,kill -0 探活 wrapper 进程。"""
+        try:
+            import os as _os
+            _os.kill(self.pid, 0)
+            return True
+        except (OSError, ProcessLookupError):
+            return False
+
+    def heartbeat(self) -> None:
+        self.last_heartbeat = _time.time()
+
+    def is_idle_timeout(self) -> bool:
+        """心跳超 1h 视为 idle 状态,触发 nudge 提示。"""
+        return (_time.time() - self.last_heartbeat) > self.heartbeat_timeout_sec
+
+    def to_dict(self) -> dict:
+        return {
+            "task_id": self.task_id,
+            "role": self.role,
+            "session_id": self.session_id,
+            "pid": self.pid,
+            "model": self.model,
+            "started_at": self.started_at,
+            "last_heartbeat": self.last_heartbeat,
+            "age_sec": int(_time.time() - self.started_at),
+            "alive": self.is_alive(),
+            "idle_timeout": self.is_idle_timeout(),
+        }
+
+
+_LONG_LIVED_SESSIONS: dict[str, LongLivedSession] = {}
+
+
+def _bg_session_key(role: str, task_id: str) -> str:
+    return f"{role}:{task_id}"
+
+
+def register_bg_session(
+    task_id: str,
+    role: str,
+    session_id: str,
+    pid: int,
+    model: str,
+) -> LongLivedSession:
+    """v0.62.0 阶段 2:注册 claude --bg 长 session。
+
+    ccc-reviewer-bg.sh(阶段 1)启动时调,记入 _LONG_LIVED_SESSIONS。
+    同 task_id+role 重复注册会覆盖(session_id 续到 resume 走新 ID)。
+    """
+    sess = LongLivedSession(
+        task_id=task_id, role=role, session_id=session_id,
+        pid=pid, model=model,
+    )
+    _LONG_LIVED_SESSIONS[_bg_session_key(role, task_id)] = sess
+    return sess
+
+
+def unregister_bg_session(role: str, task_id: str) -> None:
+    _LONG_LIVED_SESSIONS.pop(_bg_session_key(role, task_id), None)
+
+
+def verify_bg_session(role: str, task_id: str) -> bool:
+    """Engine tick 30s 调一次:kill -0 探活,失败标 dead 但不杀。"""
+    sess = _LONG_LIVED_SESSIONS.get(_bg_session_key(role, task_id))
+    if sess is None:
+        return False
+    alive = sess.is_alive()
+    if alive:
+        sess.heartbeat()
+    return alive
+
+
+def list_long_lived_sessions() -> list[dict]:
+    """Hub /api/ops/bg-sessions 调:返所有活着 + idle 状态。"""
+    out = []
+    now = _time.time()
+    for sess in list(_LONG_LIVED_SESSIONS.values()):
+        alive = sess.is_alive()
+        if alive:
+            sess.heartbeat()
+        d = sess.to_dict()
+        d["age_min"] = int(d.pop("age_sec") / 60)
+        out.append(d)
+    return out
+
+
+def nudge_bg_session(role: str, task_id: str, message: str) -> bool:
+    """v0.63.0 占位:nudge 通道。当前 v0.62.0 不实现(写文件占位,nudge 不触发)。
+
+    返回 True 表示 nudge 已"调度"(目前只写文件 + 标记);实际注入到
+    claude session 由 v0.63.0 通过文件 watch + cat | claude --resume 实现。
+
+    路径:env `CCC_BG_NUDGE_DIR` 可覆盖(测试用),默认 /Users/fan/.ccc/bg-sessions/。
+    """
+    import os as _os
+    sess = _LONG_LIVED_SESSIONS.get(_bg_session_key(role, task_id))
+    if sess is None or not sess.is_alive():
+        return False
+    # v0.62.0:仅写文件标记,nudge 不真触发(等 v0.63.0 注入)
+    nudge_dir = Path(_os.environ.get("CCC_BG_NUDGE_DIR", "/Users/fan/.ccc/bg-sessions"))
+    nudge_dir.mkdir(parents=True, exist_ok=True)
+    nudge_file = nudge_dir / f"{sess.session_id}.nudge"
+    nudge_file.write_text(message)
+    _engine_log(
+        f"[bg-nudge] role={role} task={task_id} session={sess.session_id[:8]} 写入 nudge 占位文件"
+    )
+    return True
