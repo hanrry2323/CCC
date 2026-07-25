@@ -644,3 +644,42 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 ## API
 
 `GET /api/desktop/lens/{id}/board|tree|file|grep|git/summary`
+
+
+## 三档契约 + 上游解耦（硬 · 2026-07-25）
+
+| 项 | 口径 |
+|----|------|
+| **下游只对接三档** | `flash` / `Pro` / `code` 三个逻辑名(由 relay 路由表定义);桌面端、Engine、OpenCode 等下游**绝不直接 import 上游服务商 URL 或 API key** |
+| **上游可换** | 上游实现细节(MiniMax / Anthropic 官方 / OpenCode Zen / 讯飞 / 智谱 / 任何未来服务商)由 `relay/upstreams.json` 统一管理,可热替换(`watchFile` + `reloadConfig`) |
+| **变更边界** | 换上游 = 改 upstreams.json + 重启 relay,无需改下游任何代码。下游契约(`flash`/`Pro`/`code`)**稳定,基本不变** |
+| **禁止反模式** | 客户端代码出现 `api.minimaxi.com` / `api.anthropic.com` / `opencode.ai/zen/v1` 等具体 URL 或 `sk-...` 硬编码 key(仅 `upstreams.json` / `~/.ccc/relay/*` / `~/.ccc/*.key` 持有) |
+| **运行时降级** | 上游挂 / 限流 / 跑路:relay `EWMA 评分 + 配额账本` 触发自动切换同 tier 下游;客户端通过 `relay_is_up()` 探活 + `relay_direct_fallback()` 切直连(双层 fail-open) |
+| **可观测** | 三档实时用量 + 健康 + 命中率进 `_ops_probe.domains.relay` 子域;Hub `/api/ops/summary` 透传;Desktop 卡片显示 |
+
+> 设计意图:**下游稳、上游活**。客户端代码稳定保护开发效率;上游灵活保护供应链与抗封禁。
+
+## M1 Desktop Claude Code 双身份隔离（硬 · 2026-07-25）
+
+| 项 | 口径 |
+|----|------|
+| **产品大脑** | M1 Desktop Claude Code **仅做产品大脑**:接用户意图、拆大卡、接 Hub transfer、回答板面问题、定稿/采纳 inbox |
+| **平台开发禁** | M1 Desktop Claude Code **不再修改 CCC 仓**;不论用户如何措辞请求,只要目标是改 `~/program/CCC` 下的文件,必须**明确转交 Cursor**,不直接改 |
+| **Cursor 独立** | CCC 平台开发 / 仓内改动 100% 走 Cursor(平台开发工具只认 Cursor 已是 v0.39 共识,本条仅**强制执行**);Cursor 走完整 IDE 能力(读/写/Bash/测/git),与 Desktop Agent **人格完全独立** |
+| **识别边界** | 看对话 cwd + 文件路径:任何 `~/program/CCC` 路径下的写操作请求 → 转 Cursor;其他(用户日常对话 / 业务仓 / docs) → 照常 |
+| **失败回环不属本条** | 产品大脑拆的大卡经 Hub transfer → 2017 Engine → product 角色(2017 Claude Code)扇出小任务 → dev 角色(OpenCode)写代码 → reviewer/tester 验收。失败由 2017 Engine 调度层(纯 Python,无 LLM)决定重试/重派,不属于双身份隔离范围 |
+
+> 边界来源:CLAUDE.md 头部「人格独立」节 v0.39 已写"平台开发只认 Cursor";但未强制 M1 Desktop Claude Code 行为边界。本条把**共识变成执行规则**,由 sidecar / Cursor 规则双端 enforce(sidecar 检测 CCC 仓 cwd 写操作时拒 + Cursor 仍保留全 IDE 能力)。
+
+## Claude --bg 整合一程（预留 · 2026-07-25 之后单独开 v0.62.0）
+
+| 项 | 口径 |
+|----|------|
+| **范围** | `claude --bg`(Claude Code CLI v2.1.220+ 新命令,session 后台长存 + nudge + resume)与 CCC Engine 整合 |
+| **当前状态** | v0.60.x Engine 是「spawn-and-kill」模型:每个 phase 启 `claude -p` 一次,任务完就 kill;上下文全丢;启动开销 5-15s |
+| **价值** | claude --bg 让 LLM session 持续活着;失败回环从「重 spawn」变「resume」;中途 nudge;减少启动开销;保留上下文 |
+| **风险** | 后台进程管理(kill 谁/何时/leak 怎么办)、资源占用、未成熟 API |
+| **计划** | **单开一程 v0.62.0**,不在 v0.60.x 混入;先做现状 review(Engine `_call_claude_for_plan` / `_call_claude_for_phase` / `_quarantine_with_notify` 的 spawn 时序)+ 再 design --bg 编排 |
+| **禁止** | 现状下任何「claude --bg 提前试水」/「Engine 加 --bg 调用」/「sidecar 改 spawn 模式」——全部等单开一程 |
+
+> 本节是**占位**,不交付 plan / 不交付代码。下一程启动时从这里接续。
