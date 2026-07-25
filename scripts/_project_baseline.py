@@ -13,6 +13,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from _logger import get_logger
+
+_log = get_logger("project_baseline")
+
 
 def _now_iso() -> str:
     from _utils import now_iso_utc
@@ -199,8 +203,8 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
                 top_dirs.append(p.name)
             if len(top_dirs) >= 40:
                 break
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("project_baseline top_dirs %s: %s", ws, e)
 
     profile = ""
     state = ""
@@ -209,21 +213,21 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         pf = ws / ".ccc" / "profile.md"
         if pf.is_file():
             profile = pf.read_text(encoding="utf-8", errors="replace")[:1500]
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("project_baseline profile read %s: %s", pf, e)
     try:
         sf = ws / ".ccc" / "state.md"
         if sf.is_file():
             state = sf.read_text(encoding="utf-8", errors="replace")[:1500]
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("project_baseline state read %s: %s", sf, e)
     try:
         for cand in (ws / "CLAUDE.md", ws / "AGENTS.md", ws / ".claude" / "CLAUDE.md"):
             if cand.is_file():
                 claude = cand.read_text(encoding="utf-8", errors="replace")[:1500]
                 break
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("project_baseline claude read %s: %s", ws, e)
 
     control_full: dict[str, Any] = {}
     try:
@@ -373,8 +377,8 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
             )
             result["risks"] = list(result.get("risks") or []) + [tip]
             result["summary"] = (result.get("summary") or "") + "\n" + tip
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("project_baseline tips append: %s", e)
 
     return result
 

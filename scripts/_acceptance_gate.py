@@ -124,8 +124,8 @@ def load_acceptance_text(ws: Path, tid: str) -> str:
                     return sec
                 if "## 验收" in desc or "验收" in desc[:400]:
                     return desc
-            except (OSError, json.JSONDecodeError, IndexError):
-                pass
+            except (OSError, json.JSONDecodeError, IndexError) as e:
+                _log.debug("acceptance_gate read epic %s: %s", parent, e)
     return ""
 
 
@@ -174,8 +174,8 @@ def _allow_prose_acceptance(ws: Path, tid: str) -> bool:
 
         if task_skips_forced_pytest(ws, tid, task):
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("acceptance_gate plan_required %s: %s", tid, e)
     title = str(task.get("title") or "")
     if any(k in title for k in ("卫生", "清场", "看板卫生", "hygiene")):
         return True

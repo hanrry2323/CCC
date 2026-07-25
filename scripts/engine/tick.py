@@ -60,8 +60,9 @@ def mark_tick() -> None:
             )
             + "\n",
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        # loop heartbeat 写失败不应阻塞 Engine 主循环
+        _log.debug("tick loop heartbeat write: %s", exc)
 
 
 def start_watchdog(shutdown_event: threading.Event | None = None) -> None:
@@ -107,8 +108,8 @@ def start_watchdog(shutdown_event: threading.Event | None = None) -> None:
                     reason="tick_watchdog_hard_exit",
                     extra={"stale_sec": round(age, 1), "grace_s": _WATCHDOG_GRACE_S},
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("tick watchdog restart_log write: %s", exc)
             try:
                 from _jsonl_rotate import append_jsonl
 
@@ -123,8 +124,9 @@ def start_watchdog(shutdown_event: threading.Event | None = None) -> None:
                         "pid": os.getpid(),
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                # watchdog 写日志失败不应阻止 hard exit
+                _log.debug("tick watchdog hard_exit log write: %s", exc)
             os._exit(0)
 
     t = threading.Thread(target=_watch, daemon=True)

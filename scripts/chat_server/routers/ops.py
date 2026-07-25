@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from pydantic import BaseModel, Field
 
 from ..auth import check_auth
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
+
+_log = logging.getLogger("ccc.chat_server.ops")
 
 router = APIRouter()
 
@@ -155,8 +158,8 @@ async def ops_risks(request: Request):
 
             control_mode = get_mode()
             engine_running = is_engine_running()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("ops status engine probe: %s", exc)
 
         try:
             from _board_store import FileBoardStore
@@ -170,8 +173,8 @@ async def ops_risks(request: Request):
                     t = dict(t)
                     t["workspace"] = ws_id
                     board_abnormal.append(t)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("ops board abnormal collect %s: %s", ws_id, exc)
 
         return collect_risks(
             _workspaces(),

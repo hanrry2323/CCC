@@ -10,8 +10,11 @@ Upstream downtime already skips without incrementing; full reset is wrong.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
+
+_log = logging.getLogger("ccc.product_fail_counter")
 
 def load_product_fail_count(
     path: Path,
@@ -84,5 +87,5 @@ def clear_product_fail_count(path: Path) -> None:
     try:
         if path.is_file():
             path.unlink()
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("clear_product_fail_count %s: %s", path, e)

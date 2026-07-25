@@ -412,8 +412,11 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
                 event,
                 exc,
             )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.warning(
+            "[stats] events.jsonl append_jsonl failed for %s event=%s: %s",
+            sf, event, exc,
+        )
     # 跨仓耗时 SSOT（小卡分钟数统计用）
     if event in ("opencode_start", "opencode_done"):
         try:
@@ -426,8 +429,8 @@ def _log_stats(ws: Path, event: str, tid: str, **extra) -> None:
             try:
                 with (Path.home() / ".ccc" / "stats" / "opencode-timings.jsonl").open("a", encoding="utf-8") as f:
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.warning("[stats] opencode-timings.jsonl write failed: %s", exc)
 
 
 def _maybe_sample_host_resources(active_tasks: dict[str, dict]) -> None:
@@ -442,8 +445,8 @@ def _maybe_sample_host_resources(active_tasks: dict[str, dict]) -> None:
             opencode_slots=int(global_opencode_count()),
             interval_sec=60.0,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[heartbeat] write failed: %s", exc)
 
 
 def _wall_seconds_from_started(started_at: str | None) -> float | None:
@@ -492,16 +495,16 @@ def _log_opencode_done(
                     exit_code = parsed["exit_code"]
                 if "killed" in parsed:
                     killed = bool(parsed["killed"])
-        except (OSError, ValueError, TypeError):
-            pass
+        except (OSError, ValueError, TypeError) as exc:
+            engine_log("[task_result] result.json parse failed for %s: %s", tid, str(exc))
     wall_s = _wall_seconds_from_started(started_at)
     # result dict 兜底（salvage / check_complete 可能未落盘 result.json）
     if duration_s is None and isinstance(result, dict):
         try:
             if result.get("duration_s") is not None:
                 duration_s = float(result["duration_s"])
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as exc:
+            engine_log("[task_result] duration_s fallback parse failed for %s: %s", tid, str(exc))
     # P2/KPI: 缺 duration_s 时用墙钟回填；双空则 0.0（保 fill_rate 可统计）
     duration_from_wall = False
     if duration_s is None and wall_s is not None:
@@ -551,8 +554,8 @@ def _bump_short_path_fail(ws: Path, tid: str, path: str, why: str) -> int:
             f"{n}\npath={path}\nwhy={str(why)[:300]}\n",
             encoding="utf-8",
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.warning("[short_path_fail] marker write failed for %s: %s", path, exc)
     return n
 
 
@@ -561,8 +564,8 @@ def _clear_short_path_fail(ws: Path, tid: str) -> None:
     try:
         if p.is_file():
             p.unlink()
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[short_path_fail] clear unlink %s: %s", p, exc)
 
 
 def _handle_short_path_failure(
@@ -612,8 +615,8 @@ def _handle_short_path_failure(
                     )[-2000:]
                 },
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("[short_path_fail] ledger write failed: %s", exc)
         # 与 quarantine 对齐：必入 failures.jsonl，清板后仍可复盘
         try:
             from _failure_ledger import record_failure, related_event_for_reason
@@ -744,8 +747,8 @@ def _handle_task_result(
             _, task = store.find_task(tid)
             note = ((task or {}).get("note") or "") + f"\n[{label}] {reason}"
             store.patch_task(tid, {"note": note[-2000:]})
-        except Exception:
-            pass
+        except Exception as exc:
+            engine_log("[%s] %s abnormal patch_task failed: %s", label, tid, str(exc))
         store.update_index()
         engine_log(f"[{label}] {tid} → abnormal（{reason}）")
         return True
@@ -817,8 +820,8 @@ def _handle_task_result(
                 _regen_mark = ws / ".ccc" / "pids" / f"{tid}.regen"
                 _regen_mark.parent.mkdir(parents=True, exist_ok=True)
                 _regen_mark.write_text(str(_regen_count + 1))
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.warning("[regen] marker write failed %s: %s", _regen_mark, exc)
             # reset 靠删除新 plan 自然归零，不调 _write_engine_iter_meta（文件已删=no-op）
             _record_regen(ws, tid)
             # 回 backlog（删 phases.json 后 product_role 会看到无 phases.json → 重生成）
@@ -954,13 +957,13 @@ def _record_regen(ws: Path, tid: str) -> None:
                 except Exception:
                     try:
                         os.unlink(tmp_name)
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        _log.debug("[plan_write] tmp unlink %s: %s", tmp_name, exc)
                     raise
             finally:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[regen] _record_regen %s failed: %s", tid, str(exc))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -997,8 +1000,8 @@ def _recent_events(ws: Path, event_type: str, window_sec: int) -> list[dict]:
                     ts = ev.get("t", 0)
                     if isinstance(ts, (int, float)) and ts > now - window_sec:
                         events.append(ev)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[recent_events] read %s: %s", ev_file, exc)
     return events
 
 
@@ -1601,8 +1604,8 @@ def _force_serial_multi_root(
                 acc_roots = _top_level_roots(_paths_from_bullets(bullets))
                 if len(acc_roots) >= 2:
                     return True
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("[scope_check] accept probe %s: %s", tid, str(exc))
     return False
 
 
@@ -1633,17 +1636,17 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str, *, work
 
                         filled = backfill_scopes([dict(p)], plan_content)
                         scope = list(filled[0].get("scope") or [])
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log.debug("[plan_adopt] backfill_scopes %s: %s", task_id, str(exc))
                 break
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[plan_adopt] scope resolve: %s", str(exc))
     try:
         pf = workspace / ".ccc" / "pids" / f"{task_id}.pytest_fail.md"
         if pf.is_file():
             pytest_fail = pf.read_text(encoding="utf-8", errors="replace")[:4000]
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[build_dev_prompt] pytest_fail read %s: %s", task_id, str(exc))
     try:
         from board.store_ops import list_tasks as _lt
         from _skills_catalog import format_skill_hints_block
@@ -1658,8 +1661,8 @@ def _build_phase_prompt(task_id: str, phase_num: int, plan_content: str, *, work
             note = hints.get("note") if isinstance(hints.get("note"), str) else ""
             skill_hints = format_skill_hints_block(skills, note)
             break
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[build_dev_prompt] skill hints: %s", str(exc))
     return build_dev_phase_prompt(
         task_id,
         phase_num,
@@ -1698,8 +1701,8 @@ def _launch_parallel_phase(
     )
     try:
         os.chmod(prompt_file, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[dev_launch] chmod %s: %s", prompt_file, exc)
     try:
         # 用 phase_id = subid 命名 opencode-runner.sh 的输出 marker
         # opencode-runner.sh 内部会写 ${PID_DIR}/${TASK_ID}.{done,exitcode}
@@ -1767,8 +1770,8 @@ def _check_parallel_phase_done(ws: Path, subid: str) -> dict:
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)
                 return {"status": "running", "exit_code": -1}
-            except (ValueError, OSError, ProcessLookupError):
-                pass
+            except (ValueError, OSError, ProcessLookupError) as exc:
+                _log.debug("[check_phase_done] pid probe %s: %s", subid, exc)
         return {"status": "running", "exit_code": -1}
     exit_file = pids_dir / f"{subid}.exitcode"
     try:
@@ -2140,8 +2143,8 @@ def _store_atomic_write_phases(path: Path, payload: str) -> None:
     except OSError:
         try:
             path.write_text(payload, encoding="utf-8")
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.error("[phases_write] fallback write %s: %s", path, exc)
 
 
 def _try_launch_planned_parallel(
@@ -2737,8 +2740,8 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if _queue_has_consumable_work(_get_store(ws)):
                         any_consumable = True
                         break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("[idle_check] consumable probe %s: %s", ws, str(exc))
             if not any_active and not any_consumable and not _may_invent():
                 if iteration % 12 == 1:
                     engine_log(f"CCC control={get_mode()} — queue empty, deep sleep 60s (wake: ~/.ccc/engine.wake)")
@@ -2968,8 +2971,11 @@ def _retry_abnormal_failures(ws: Path) -> None:
                             abn,
                             _json.dumps(task_json, ensure_ascii=False) + "\n",
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    engine_log(
+                        "[%s] %s auto-refeed task json update failed: %s",
+                        label, tid, str(exc),
+                    )
             rr = reopen_task(ws, tid, to_col="planned", wake=True)
             if not rr.get("ok"):
                 raise RuntimeError(rr.get("error") or "reopen failed")
@@ -2990,8 +2996,11 @@ def _retry_abnormal_failures(ws: Path) -> None:
             retry_counter_file,
             _json.dumps(retry_counts, ensure_ascii=False) + "\n",
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.warning(
+            "[%s] retry counter file write failed for %s: %s",
+            label, retry_counter_file, exc,
+        )
 
     if moved_tasks:
         engine_log(f"[{label}] abnormal refeed moved={moved_tasks}")
@@ -3091,8 +3100,8 @@ def _get_running_pids(ws: Path) -> list[int]:
             pid = int(f.read_text().strip())
             if pid > 0:
                 result.append(pid)
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as exc:
+            _log.debug("[collect_pids] read %s: %s", f, exc)
     return result
 
 
@@ -3101,8 +3110,8 @@ def _read_heartbeat(ws: Path) -> dict | None:
     if hb_file.exists():
         try:
             return json.loads(hb_file.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            _log.debug("[read_engine_heartbeat] %s: %s", hb_file, exc)
     return None
 
 
@@ -3195,8 +3204,8 @@ def main(argv: list[str] | None = None) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
         try:
             signal.signal(sig, _handle_signal)
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            _log.warning("[signal_register] %s: %s", sig, exc)
 
     _run_stats_server(args.port)
 
@@ -3290,8 +3299,8 @@ class _StatsHandler(BaseHTTPRequestHandler):
                 try:
                     self.send_response(500)
                     self.end_headers()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("[stats-api] error response failed: %s", exc)
         else:
             self.send_response(404)
             self.end_headers()
@@ -3321,8 +3330,8 @@ def _run_stats_server(port: int) -> None:
         finally:
             try:
                 server.server_close()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("[stats-api] server_close failed: %s", exc)
             engine_log("Stats HTTP 服务关闭")
 
     t = threading.Thread(target=_serve, name="ccc-stats-http", daemon=True)

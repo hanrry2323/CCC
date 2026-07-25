@@ -6,6 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from _logger import get_logger
+
+_log = get_logger("ccc_hygiene")
+
 
 def _load_phase_scopes(ws: Path, tid: str) -> list[str]:
     pf = ws / ".ccc" / "phases" / f"{tid}.phases.json"
@@ -53,8 +57,8 @@ def _pipeline_from_task(task: dict[str, Any] | None) -> str:
             gate = meta.get("transfer_gate") or {}
             if isinstance(gate, dict):
                 return str(gate.get("pipeline") or "").strip().lower()
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            _log.debug("hygiene phases parse: %s", e)
     desc = str(task.get("description") or "")
     for line in desc.splitlines():
         low = line.strip().lower()

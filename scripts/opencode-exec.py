@@ -230,8 +230,8 @@ async def run_opencode(
                 try:
                     pid_file.unlink()
                     continue
-                except OSError:
-                    pass
+                except OSError as e:
+                    _log.debug("opencode-exec pid_file unlink retry %s: %s", pid_file, e)
             # 第二次仍失败：真有并发跑，abort
             # 修复 diff-review-2026-07-24 #2：先 SIGTERM 等 3s 让 proc
             # 做 cleanup，再 SIGKILL 兜底（旧版直接 SIGKILL 不给机会）
@@ -242,8 +242,8 @@ async def run_opencode(
                 except TimeoutError:
                     proc.kill()
                     await proc.wait()
-            except (ProcessLookupError, OSError):
-                pass
+            except (ProcessLookupError, OSError) as e:
+                _log.debug("opencode-exec kill on pid_file race %s: %s", pid_file, e)
             return {
                 "phase_id": phase_id,
                 "error": f"pid_file exists: {pid_file.name}",

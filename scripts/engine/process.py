@@ -36,8 +36,8 @@ def collect_grandchildren(pid: int, acc: list[int]) -> None:
                 if child not in acc:
                     acc.append(child)
                     collect_grandchildren(child, acc)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError):
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError) as exc:
+        _log.debug("process collect_grandchildren %s: %s", pid, exc)
 
 
 def kill_process_tree(pid: int) -> bool:
@@ -57,21 +57,21 @@ def kill_process_tree(pid: int) -> bool:
                     child = int(line)
                     children.append(child)
                     collect_grandchildren(child, children)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError):
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError) as exc:
+        _log.debug("process grandchildren %s: %s", pid, exc)
 
     for child_pid in reversed(children):
         try:
             os.kill(child_pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
+        except (ProcessLookupError, PermissionError, OSError) as exc:
+            _log.debug("process kill grandchild %s: %s", child_pid, exc)
     if children:
         time.sleep(3)
     for child_pid in reversed(children):
         try:
             os.kill(child_pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
+        except (ProcessLookupError, PermissionError, OSError) as exc:
+            _log.debug("process SIGKILL grandchild %s: %s", child_pid, exc)
 
     try:
         os.kill(pid, signal.SIGTERM)
@@ -171,8 +171,8 @@ def get_proc_rss_mb(pid: int) -> float:
         )
         if r.returncode == 0 and r.stdout.strip().isdigit():
             return int(r.stdout.strip()) / 1024.0
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError):
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError) as exc:
+        _log.debug("process rss_kb %s: %s", pid, exc)
     return 0.0
 
 
@@ -194,8 +194,8 @@ def cleanup_zombie_pid_refs(ws: Path) -> None:
             try:
                 pidf.unlink()
                 _log.info("[pids] cleanup zombie ref: %s", pidf.name)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("process zombie pidf unlink %s: %s", pidf, exc)
 
 
 def cleanup_global_opencode_pids() -> int:
@@ -220,8 +220,8 @@ def cleanup_global_opencode_pids() -> int:
                 try:
                     pidf.unlink()
                     cleaned += 1
-                except OSError:
-                    pass
+                except OSError as exc:
+                    _log.debug("process sweep pidf unlink %s: %s", pidf, exc)
     return cleaned
 
 

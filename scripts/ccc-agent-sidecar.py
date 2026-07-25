@@ -21,6 +21,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -30,6 +31,8 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("ccc.agent_sidecar")
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -159,8 +162,8 @@ async def _sidecar_lifespan(_app: FastAPI):
             _OUTBOX_TASK.cancel()
             try:
                 await _OUTBOX_TASK
-            except (asyncio.CancelledError, Exception):
-                pass
+            except (asyncio.CancelledError, Exception) as exc:
+                _log.debug("agent-sidecar outbox cancel: %s", exc)
         _OUTBOX_TASK = None
         _OUTBOX_STOP = None
 
@@ -206,8 +209,8 @@ def _load_token_file() -> str:
     try:
         if p.is_file():
             return p.read_text(encoding="utf-8").strip()
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("agent-sidecar agent-token read: %s", exc)
     return ""
 
 
@@ -394,16 +397,16 @@ def _workspace_map() -> dict[str, str]:
             parsed = json.loads(raw)
             if isinstance(parsed, dict):
                 out.update({str(k): str(v) for k, v in parsed.items()})
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            _log.debug("agent-sidecar workspace map parse: %s", exc)
     map_file = Path.home() / ".ccc" / "desktop-workspace-map.json"
     if map_file.is_file():
         try:
             data = json.loads(map_file.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 out.update({str(k): str(v) for k, v in data.items()})
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.debug("agent-sidecar desktop-workspace-map read: %s", exc)
     return out
 
 
@@ -948,8 +951,8 @@ async def chat(request: Request):
             watch.cancel()
             try:
                 await watch
-            except (asyncio.CancelledError, Exception):
-                pass
+            except (asyncio.CancelledError, Exception) as exc:
+                _log.debug("agent-sidecar watch cancel: %s", exc)
 
     return StreamingResponse(
         generate(),

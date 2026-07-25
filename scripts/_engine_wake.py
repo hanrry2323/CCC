@@ -55,8 +55,8 @@ def consume_wake() -> Optional[dict[str, Any]]:
         data = {"reason": "wake"}
     try:
         WAKE_FILE.unlink()
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("engine_wake WAKE_FILE unlink: %s", exc)
     return data if isinstance(data, dict) else {"reason": "wake"}
 
 
@@ -147,8 +147,8 @@ def is_engine_running() -> bool:
         )
         if r.returncode == 0:
             return True
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("engine_wake subprocess probe: %s", exc)
     try:
         r = subprocess.run(
             ["launchctl", "list", "com.ccc.engine"],

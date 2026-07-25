@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import statistics
 import subprocess
@@ -25,6 +26,8 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("ccc.stress_efficiency")
 
 SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
@@ -254,8 +257,8 @@ def collect(run: str, apps: tuple[str, ...]) -> dict[str, Any]:
                     rj = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
                     if isinstance(rj, dict):
                         dev_path = str(rj.get("path") or "").strip().lower()
-                except (OSError, json.JSONDecodeError):
-                    pass
+                except (OSError, json.JSONDecodeError) as e:
+                    _log.debug("stress_efficiency result.json parse %s: %s", rp, e)
             w.update(
                 {
                     "t_planned": t_planned.isoformat() if t_planned else None,

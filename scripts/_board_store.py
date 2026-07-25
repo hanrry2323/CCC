@@ -556,8 +556,8 @@ class FileBoardStore:
                     sig = max(sig, f.stat().st_mtime)
                 except OSError:
                     continue
-        except OSError:
-            pass
+        except OSError as e:  # noqa: PERF203
+            _log.debug("_column_signature stat %s: %s", self.board / column, e)
         return sig
 
     def _invalidate_cache(self, *columns: str) -> None:
@@ -933,8 +933,8 @@ class FileBoardStore:
                         _log.error("move_task: cannot clear dst %s: %s", dst, e)
                         try:
                             tmp.unlink()
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            _log.warning("move_task: cleanup tmp %s: %s", tmp, e)
                         return False
                 os.replace(str(tmp), str(dst))
             except OSError as e:
@@ -942,8 +942,8 @@ class FileBoardStore:
                 try:
                     if tmp.exists():
                         tmp.unlink()
-                except OSError:
-                    pass
+                except OSError as e:
+                    _log.warning("move_task: cleanup backup %s: %s", tmp, e)
                 return False
 
             # 防御：清掉其它列残留（含失败 unlink 的 src）
@@ -972,16 +972,16 @@ class FileBoardStore:
                     os.fsync(dst_dir_fd)
                 finally:
                     os.close(dst_dir_fd)
-            except (OSError, AttributeError):
-                pass
+            except (OSError, AttributeError) as e:
+                _log.debug("move_task: dst_dir_fd cleanup: %s", e)
             try:
                 src_dir_fd = os.open(str(src.parent), os.O_DIRECTORY)
                 try:
                     os.fsync(src_dir_fd)
                 finally:
                     os.close(src_dir_fd)
-            except (OSError, AttributeError):
-                pass
+            except (OSError, AttributeError) as e:
+                _log.debug("move_task: src_dir_fd cleanup: %s", e)
 
             self._record_event(task_id, from_col, to_col)
             self._invalidate_cache(from_col, to_col)
@@ -1053,8 +1053,8 @@ class FileBoardStore:
                     old = json.loads(index_file.read_text(encoding="utf-8"))
                     if isinstance(old, dict):
                         old_gen = int(old.get("generation", 0))
-                except (OSError, json.JSONDecodeError, ValueError, TypeError):
-                    pass
+                except (OSError, json.JSONDecodeError, ValueError, TypeError) as e:
+                    _log.debug("index update read old %s: %s", index_file, e)
             payload = {
                 "generation": old_gen + 1,
                 "updated_at": now_iso(),

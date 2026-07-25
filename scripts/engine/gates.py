@@ -84,8 +84,8 @@ def _clear_verdict(ws: Path, tid: str) -> None:
     vf = _verdict_file(ws, tid)
     try:
         vf.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[verdict-gate] %s verdict clear unlink: %s", tid, exc)
 
 
 def _parse_verdict_status(content: str) -> str | None:
@@ -643,12 +643,12 @@ def _testing_gate_budget() -> tuple[int, float]:
     budget = getattr(cfg, "testing_gate_budget_sec", 180)
     try:
         max_n = int(os.environ.get("CCC_TESTING_GATE_MAX", max_n) or max_n)
-    except (TypeError, ValueError):
-        pass
+    except (TypeError, ValueError) as exc:
+        _log.debug("gates CCC_TESTING_GATE_MAX parse: %s", exc)
     try:
         budget = float(os.environ.get("CCC_TESTING_GATE_BUDGET", budget) or budget)
-    except (TypeError, ValueError):
-        pass
+    except (TypeError, ValueError) as exc:
+        _log.debug("gates CCC_TESTING_GATE_BUDGET parse: %s", exc)
     return max(1, max_n), max(30.0, float(budget))
 
 
@@ -768,15 +768,15 @@ def _kill_ws_gate_procs(ws: Path, tid: str) -> list[int]:
             try:
                 os.kill(pid, 0)
                 os.kill(pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError, OSError):
-                pass
+            except (ProcessLookupError, PermissionError, OSError) as exc:
+                _log.debug("[gates] kill %s: %s", pid, exc)
 
     # 清本卡 review-lock，避免下一 tick 永久「持锁跳过」
     lock = Path(ws) / ".ccc" / "review-locks" / f"{tid}.lock"
     try:
         lock.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("[gates] review lock unlink %s: %s", lock, exc)
     if killed:
         _engine_log(
             f"[testing-gate] {tid} budget timeout → killed pids={killed}"

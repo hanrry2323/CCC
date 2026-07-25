@@ -1,12 +1,15 @@
 """board_client — Hub → Board API 代理客户端（Phase 2.1：复用 httpx 连接 + ETag/304）"""
 import json
 import hashlib
+import logging
 
 import httpx
 from fastapi.responses import Response
 
 from .. import config
 from ..auth import board_headers
+
+_log = logging.getLogger("ccc.board_client")
 
 # 模块级共享 client：复用连接池，避免每次请求重建 TCP/TLS
 _client: httpx.AsyncClient | None = None
@@ -25,7 +28,9 @@ def _etag_cache_put(key: str, value: tuple[str, bytes, str]) -> None:
             oldest = next(iter(_etag_cache))
             del _etag_cache[oldest]
         except StopIteration:
-            pass
+            # _etag_cache 为空时 StopIteration 是 FIFO 淘汰的预期路径
+            # （cache size 始终小于 _ETAG_CACHE_MAX），无需重试
+            _log.debug("board_client etag_cache FIFO skip (empty)")
     _etag_cache[key] = value
 
 

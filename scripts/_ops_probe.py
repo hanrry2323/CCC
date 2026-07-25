@@ -20,6 +20,10 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from _logger import get_logger
+
+_log = get_logger("ops_probe")
+
 SCRIPTS = Path(__file__).resolve().parent
 CCC_HOME = SCRIPTS.parent
 INFRA_FILE = CCC_HOME / ".ccc" / "infrastructure.md"
@@ -367,8 +371,8 @@ def local_resources() -> dict:
     load1 = load5 = load15 = None
     try:
         load1, load5, load15 = os.getloadavg()
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("ops_probe getloadavg: %s", e)
 
     mem = {}
     try:
@@ -553,8 +557,8 @@ def workspace_summaries(workspaces: dict[str, str]) -> list[dict]:
                         ).splitlines()
                         if lines:
                             last_event = lines[-1][:160]
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        _log.debug("ops_probe events tail read: %s", e)
         row.update(counts)
         row["epic_count"] = epic_count
         row["last_event"] = last_event
@@ -589,8 +593,8 @@ def control_runtime_snapshot() -> dict[str, Any]:
                         "updated_at",
                     )
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("ops_probe control_policy inner: %s", e)
     except Exception as exc:
         out["control_error"] = str(exc)[:120]
     try:
@@ -698,8 +702,8 @@ def ready_to_dispatch(
     for w in workspaces or []:
         try:
             abn += int(w.get("abnormal") or 0)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            _log.debug("ops_probe abn count parse: %s", e)
     if abn > 0:
         blockers.append(f"舰队 abnormal={abn}")
     summary = (resources_history or {}).get("summary") or {}
@@ -1436,8 +1440,8 @@ def quality_summary(workspaces: dict[str, str]) -> dict:
 
             store = FileBoardStore(root)
             released_n = len(store.list_tasks("released"))
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("ops_probe workspace digest %s: %s", ws_id, e)
         digests.append(
             {
                 "workspace": ws_id,
@@ -1481,8 +1485,8 @@ def _plist_ops_status() -> dict[str, Any]:
             try:
                 text = plist_path.read_text(encoding="utf-8")
                 apply_ammo = ">--apply<" in text or ">--apply</string>" in text
-            except OSError:
-                pass
+            except OSError as e:
+                _log.debug("ops_probe plist read %s: %s", plist_path, e)
         agents.append(
             {
                 "label": label,
@@ -1552,8 +1556,8 @@ def logistics_heartbeat(workspaces: dict[str, str] | None = None) -> dict:
         if wm.is_file():
             try:
                 wm_sha = json.loads(wm.read_text(encoding="utf-8")).get("sha")
-            except (OSError, json.JSONDecodeError):
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                _log.debug("ops_probe watermark read %s: %s", wm, e)
             if latest_daily and latest_daily[-1].get("workspace") == ws_id:
                 latest_daily[-1]["watermark"] = wm_sha
 

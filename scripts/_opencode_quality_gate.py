@@ -7,7 +7,10 @@ dev 门禁又给 report 补写 ``ALL SELF-CHECKS PASSED`` → 假 PASS 进 testi
 
 from __future__ import annotations
 
+import logging
 import re
+
+_log = logging.getLogger("ccc.opencode_quality_gate")
 
 # 权限拒读 / 越界目录（home 控制面、编排仓外）
 _HOLLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -49,8 +52,8 @@ def _stdout_blob_from_result(result_raw: str) -> str:
                     parts.append(val)
             if parts:
                 return "\n".join(parts)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        _log.debug("opencode_quality_gate extract_notes: %s", e)
     return blob
 
 
@@ -133,6 +136,6 @@ def agent_declared_self_checks_passed(report: str = "", result_raw: str = "") ->
                 val = data.get(key)
                 if isinstance(val, str) and report_has_self_checks_passed(val):
                     return True
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        _log.debug("opencode_quality_gate result parse: %s", e)
     return report_has_self_checks_passed(blob)

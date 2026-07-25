@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
 from pathlib import Path
+
+_log = logging.getLogger("ccc.pipeline_status")
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
@@ -63,8 +66,8 @@ def _last_gate_hint(ws: Path, tid: str) -> str:
             ):
                 if key in text:
                     return key
-        except OSError:
-            pass
+        except OSError as e:
+            _log.debug("pipeline_status probe read: %s", e)
     note_cols = ("abnormal", "in_progress", "testing")
     store = FileBoardStore(ws)
     for col in note_cols:

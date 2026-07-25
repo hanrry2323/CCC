@@ -137,22 +137,22 @@ def _detect_review_kind(
 
         if should_use_script_seed(ws, task):
             return "script_seed"
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] script_seed check: %s", exc)
     try:
         from board.roles.script_seed import should_use_feature_seed
 
         if should_use_feature_seed(ws, task):
             return "feature_seed"
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] feature_seed check: %s", exc)
     try:
         from board.roles.board_ops import should_use_board_ops
 
         if should_use_board_ops(ws, task):
             return "board_ops"
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] board_ops check: %s", exc)
     names = _diff_name_only(full_diff)
     if names and _is_doc_only_paths(names):
         return "doc_only"
@@ -350,8 +350,8 @@ def _apply_reviewer_llm_fallback(
                 to_col="testing",
                 related_stats_event="reviewer_fallback_stay",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("[reviewer] fallback stay record_failure: %s", exc)
         _log.warning(
             "[reviewer] %s ⚠ %s-class fallback → stay testing: %s",
             task_id,
@@ -383,8 +383,8 @@ def _apply_reviewer_llm_fallback(
             to_col="abnormal",
             related_stats_event="reviewer_fallback_quarantine",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] fallback quarantine record_failure: %s", exc)
     try:
         subprocess.run(
             [
@@ -397,8 +397,8 @@ def _apply_reviewer_llm_fallback(
             capture_output=True,
             timeout=10,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] notify shell: %s", exc)
     return False
 
 
@@ -578,8 +578,8 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[reviewer] marker unlink %s/%s: %s", task_id, sfx, exc)
 
     # 7. Popen claude -p
     result_file = pids_dir / f"{task_id}.reviewer.out"
@@ -621,8 +621,8 @@ def _parse_reviewer_output(task_id: str, output: str) -> dict:
             data = json.loads(trimmed)
             if data.get("verdict") in ("pass", "fail"):
                 return data
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            _log.debug("[reviewer] JSON parse verdict: %s", exc)
 
     # 次优：markdown 代码块
     m = _re.search(r"```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```", output, _re.IGNORECASE)
@@ -691,10 +691,10 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)  # 0 = 只检查存活
                 return {"status": "running"}
-            except (ValueError, ProcessLookupError):
-                pass
-            except OSError:
-                pass
+            except (ValueError, ProcessLookupError) as exc:
+                _log.debug("[reviewer] pid probe parse/lost %s: %s", pid_file, exc)
+            except OSError as exc:
+                _log.debug("[reviewer] pid probe OSError %s: %s", pid_file, exc)
         # 进程不在，判断为进程提前退出
         return {"status": "failed", "reason": "process exited before writing verdict"}
 
@@ -716,8 +716,8 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
             task_id=task_id,
             phase_id="reviewer",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("[reviewer] _send_run_result ok %s: %s", task_id, exc)
 
     # 解析 verdict
     verdict_data = _parse_reviewer_output(task_id, output)
@@ -796,8 +796,8 @@ def _cleanup_reviewer_markers(pids_dir: Path, task_id: str) -> None:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("[reviewer] async marker unlink %s/%s: %s", task_id, sfx, exc)
 
 
 def _is_path_in_root(p: Path) -> bool:

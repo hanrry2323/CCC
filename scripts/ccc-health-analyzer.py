@@ -313,8 +313,8 @@ def _analyze_circular_deps(ws: str) -> list[dict]:
         try:
             tree = ast.parse(fpath.read_text(encoding="utf-8", errors="ignore"))
             import_graph[mod].extend(_extract_imports(tree))
-        except (SyntaxError, OSError):
-            pass
+        except (SyntaxError, OSError) as e:
+            _log.debug("ast parse %s: %s", fpath, e)
 
     all_modules = set(import_graph.keys())
 
@@ -361,8 +361,8 @@ def _analyze_circular_deps(ws: str) -> list[dict]:
                 try:
                     idx = path.index(neighbor)
                     cycles.append(path[idx:] + [neighbor])
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    _log.debug("cycle detect index %s: %s", path, e)
         rec_stack.discard(node)
 
     for mod in sorted(all_modules):

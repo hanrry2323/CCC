@@ -85,10 +85,10 @@ def _activity_mtime(ws: Path, tid: str) -> float:
             for p in pids_dir.glob(f"{tid}*"):
                 try:
                     latest = max(latest, p.stat().st_mtime)
-                except OSError:
-                    pass
-        except OSError:
-            pass
+                except OSError as exc:
+                    _log.debug("hang pids glob %s: %s", p, exc)
+        except OSError as exc:
+            _log.debug("hang pids_dir glob %s: %s", pids_dir, exc)
     return latest
 
 

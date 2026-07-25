@@ -56,8 +56,8 @@ def clear_task_pid_markers(workspace: Path, task_id: str) -> list[str]:
             fp.unlink()
             if fp.name not in cleared:
                 cleared.append(fp.name)
-        except OSError:
-            pass
+        except OSError as e:
+            _log.warning("clear_stale_markers unlink %s: %s", fp, e)
     return cleared
 
 

@@ -129,8 +129,8 @@ def is_upstream_healthy() -> bool:
             except ImportError:
                 with probe_path.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(probe_record, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("upstream probe record write: %s", exc)
     if not healthy:
         _log.info(
             "[health] upstream 不可用 status=%s err=%s — 跳过 product_role（缓存 30s）",

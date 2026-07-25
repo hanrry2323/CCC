@@ -34,6 +34,9 @@ PORT="${CCC_AGENT_PORT:-7788}"
 # 对话口远程壳需 LAN 可达；默认 0.0.0.0（仅内网）。本机 Desktop 仍走 127.0.0.1:7788。
 # 仅本机：CCC_AGENT_HOST=127.0.0.1 bash scripts/install-agent-sidecar-plist.sh --start
 HOST="${CCC_AGENT_HOST:-0.0.0.0}"
+# 对话口鉴权：1=强制 Token（默认）；0=关闭（内网自用，风险自担）
+# 关闭：CCC_AGENT_AUTH=0 bash scripts/install-agent-sidecar-plist.sh --start
+AGENT_AUTH="${CCC_AGENT_AUTH:-1}"
 HUB_URL="${CCC_HUB_URL:-http://127.0.0.1:17777}"
 # 与 Hub 约定默认账密一致；可用 CCC_HUB_AUTH=user:pass 覆盖
 HUB_AUTH="${CCC_HUB_AUTH:-${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}}"
@@ -206,6 +209,8 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOST}</string>
     <key>CCC_AGENT_PORT</key>
     <string>${PORT}</string>
+    <key>CCC_AGENT_AUTH</key>
+    <string>${AGENT_AUTH}</string>
     <key>CCC_HUB_URL</key>
     <string>${HUB_URL}</string>
     <key>CCC_HUB_AUTH</key>

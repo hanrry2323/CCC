@@ -98,8 +98,8 @@ def _normalize_role(raw: Any, *, path: Path, name: str) -> str:
     try:
         if path.resolve() == orch_home().resolve():
             return ROLE_ORCH
-    except OSError:
-        pass
+    except OSError as e:
+        _log.debug("workspace_registry orch resolve %s: %s", path, e)
     if name.strip().upper() == "CCC":
         return ROLE_ORCH
     return ROLE_APP

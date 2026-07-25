@@ -249,8 +249,8 @@ class OpenCodeExecutor(Executor):
             Path(tmp_path).write_text(prompt_text, encoding="utf-8")
             try:
                 _os.chmod(tmp_path, 0o600)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("executor chmod tmp %s: %s", tmp_path, exc)
             cmd = _build_cmd(
                 opencode_bin,
                 model,
@@ -303,8 +303,8 @@ class OpenCodeExecutor(Executor):
                         task_id=_tid,
                         phase_id=phase_id,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("executor send result %s: %s", phase_id, exc)
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=proc.returncode,
@@ -357,8 +357,8 @@ class OpenCodeExecutor(Executor):
                         task_id=_tid,
                         phase_id=phase_id,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.debug("executor send result fail %s: %s", phase_id, exc)
                 return ExecResult(
                     phase_id=phase_id,
                     exit_code=-1,

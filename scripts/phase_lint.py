@@ -434,8 +434,8 @@ def validate_plan_acceptance(
                 errors.append(
                     "plan acceptance missing replayable intent probe command"
                 )
-        except ImportError:
-            pass
+        except ImportError as e:
+            _log.debug("phase_lint intent_probe import: %s", e)
     return (len(errors) == 0), errors
 
 

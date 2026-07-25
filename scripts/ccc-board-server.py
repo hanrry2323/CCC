@@ -402,16 +402,16 @@ class BoardHTTPHandler(SimpleHTTPRequestHandler):
                     _lip = _s.getsockname()[0]
                     if _lip:
                         _own_ips.add(_lip)
-            except OSError:
-                pass
+            except OSError as e:
+                _log.debug("board-server LAN IP detect: %s", e)
             try:
                 with _sock.socket(_sock.AF_INET6, _sock.SOCK_DGRAM) as _s6:
                     _s6.connect(("2001:db8::1", 1))
                     _lip6 = _s6.getsockname()[0]
                     if _lip6:
                         _own_ips.add(_lip6)
-            except OSError:
-                pass
+            except OSError as e:
+                _log.debug("board-server IPv6 LAN IP detect: %s", e)
             if client_ip in _own_ips:
                 return True
             if not _rate_limiter.allow(f"auth:{client_ip}"):

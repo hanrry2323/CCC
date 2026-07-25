@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import fcntl
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
+_log = logging.getLogger("ccc.control")
 Mode = Literal["disabled", "ui", "enabled", "invent"]
 
 CONTROL_DIR = Path.home() / ".ccc"
@@ -81,13 +83,13 @@ def _read_raw() -> dict[str, Any]:
             data = json.loads(os.read(fd, 1 << 20).decode("utf-8"))
             if isinstance(data, dict):
                 return data
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            _log.debug("ccc_control read control.json: %s", exc)
     finally:
         try:
             os.close(fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("ccc_control fd close: %s", exc)
     return {}
 
 
@@ -103,8 +105,8 @@ def _write_raw(data: dict[str, Any]) -> None:
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("ccc_control flock: %s", exc)
         content = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         os.write(fd, content)
         os.fsync(fd)
@@ -115,21 +117,21 @@ def _write_raw(data: dict[str, Any]) -> None:
                 os.fsync(dir_fd)
             finally:
                 os.close(dir_fd)
-        except OSError:
+        except OSError as exc:
             # macOS / Linux 通常 OK；其它平台 fsync 失败不阻塞主流程
-            pass
+            _log.debug("ccc_control dir fsync: %s", exc)
         os.replace(tmp_name, str(CONTROL_FILE))
     except Exception:
         try:
             os.unlink(tmp_name)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("ccc_control tmp unlink: %s", exc)
         raise
     finally:
         try:
             os.close(fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("ccc_control fd close: %s", exc)
 
 
 def _emit_control_event(data: dict[str, Any]) -> None:
@@ -303,14 +305,14 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
         except Exception:
             try:
                 os.unlink(tmp_name)
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("ccc_control tmp unlink: %s", exc)
             raise
     else:
         try:
             DISABLED_SENTINEL.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("ccc_control sentinel unlink: %s", exc)
     return data
 
 

@@ -14,6 +14,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from _logger import get_logger
+
+_log = get_logger("jsonl_rotate")
+
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024  # 5MB
 DEFAULT_BACKUP_COUNT = 3
 
@@ -35,8 +39,8 @@ def rotate_if_needed(path: Path, max_bytes: int = DEFAULT_MAX_BYTES, backup_coun
         if src.is_file():
             try:
                 src.replace(dst)
-            except OSError:
-                pass
+            except OSError as e:
+                _log.debug("jsonl_rotate replace %s → %s: %s", src, dst, e)
     # path → path.1
     try:
         path.replace(path.with_suffix(path.suffix + ".1"))

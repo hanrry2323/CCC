@@ -160,10 +160,10 @@ def ops_role() -> dict:
                                         json.dumps(t, ensure_ascii=False) + "\n",
                                     )
                                 health["auto_healed"] = health.get("auto_healed", 0) + 1
-                        except ImportError:
-                            pass
-                except (ValueError, TypeError):
-                    pass
+                        except ImportError as exc:
+                            _log.debug("[ops] heal import missing: %s", exc)
+                except (ValueError, TypeError) as exc:
+                    _log.debug("[ops] heal apply %s: %s", t, exc)
         health["abnormal_count"] = len(abnormal_tasks)
 
     # 4. git ahead check
@@ -197,8 +197,8 @@ def ops_role() -> dict:
             from _audit import run_audit
             run_audit(get_workspace())
             health["audit_refill"] = 1
-        except ImportError:
-            pass
+        except ImportError as exc:
+            _log.debug("[ops] audit_refill import missing: %s", exc)
     if _planned_count > 5:
         _log.info(f"[ops] planned 堆积（{_planned_count}），报告不阻塞")
         health["planned_pileup"] = _planned_count
