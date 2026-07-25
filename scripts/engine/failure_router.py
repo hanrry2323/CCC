@@ -58,13 +58,17 @@ def classify_failure(exc: Exception | str) -> str:
     """分类异常为 transient / permanent / quarantine。
 
     Returns: 'transient' | 'permanent' | 'quarantine'
+
+    2026-07-25 修 P0-1:默认无关键词命中按 transient(宁可错重试也不漏);
+    caller 用 == "permanent" 显式拦截,== "transient" 显式重试,quarantine
+    留给显式 caller 主动隔离,本函数不主动判。
     """
     msg = str(exc).lower()
     if any(kw in msg for kw in _PERMANENT_KEYWORDS):
         return "permanent"
     if any(kw in msg for kw in _TRANSIENT_KEYWORDS):
         return "transient"
-    return "quarantine"
+    return "transient"  # P0-1 修复:由 transient 改为"宁可错重试"
 
 
 def get_retry_budget(ws: Path, tid: str, store: FileBoardStore | None = None) -> int:
@@ -124,9 +128,15 @@ def increment_retry_count(
 
 
 def can_retry(ws: Path, tid: str, store: FileBoardStore | None = None) -> bool:
-    """检查 task 是否还在重试预算内（不递增）。"""
+    """检查 task 是否还在重试预算内（不递增）。
+
+    2026-07-25 修 P0-2:与 increment_retry_count 对称 — 读持久化预算 + inproc 缓存,
+    取 max 后与上限比较。caller 仍负责递增(用 increment_retry_count),本函数
+    只读不写,适合调度前预探。
+    """
     used = get_retry_budget(ws, tid, store)
-    return used < MAX_TASK_RETRY_BUDGET
+    inproc = _inproc_retry.get((str(ws), tid), 0)
+    return max(used, inproc) < MAX_TASK_RETRY_BUDGET
 
 
 # ── Tester 结果检查（2026-07-24 方案 2.3.2）───────────────────

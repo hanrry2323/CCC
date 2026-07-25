@@ -14,6 +14,7 @@ v0.28.1 行为变更：
 
 from __future__ import annotations
 
+import os as _os
 import re
 from datetime import datetime, timezone, timedelta
 
@@ -96,10 +97,38 @@ import urllib.error as _urllib_error
 _RELAY_UP_CACHE: dict = {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000}
 
 
-def relay_is_up(host: str = "127.0.0.1", port: int = 4000, timeout: float = 1.5) -> bool:
-    """CCC Relay 2026-07-25:sidecar/Engine 共享探活(10s 缓存)。"""
+def relay_is_up(
+    host: str | None = None, port: int | None = None, timeout: float = 1.5
+) -> bool:
+    """CCC Relay 2026-07-25:sidecar/Engine 共享探活(10s 缓存)。
+
+    2026-07-25 修 P0-3:无参时从 `CCC_RELAY_BASE_URL` env 解析(向后兼容
+    旧 sidecar 行为 — 旧实现读 `os.environ.get("CCC_RELAY_BASE_URL")`
+    拼探活 URL);env 也无则 127.0.0.1:4000 默认。
+
+    10s 缓存:同 host/port 重复调用不发请求(全局单槽缓存,多 host 并发
+    会互相覆盖,见 P2-1 backlog)。
+    """
+    # P0-3:env 解析 host/port
+    if host is None or port is None:
+        _env_url = _os.environ.get("CCC_RELAY_BASE_URL")
+        if _env_url:
+            try:
+                from urllib.parse import urlparse as _urlparse
+                _raw = _env_url if "://" in _env_url else f"http://{_env_url}"
+                _p = _urlparse(_raw)
+                if host is None:
+                    host = _p.hostname or "127.0.0.1"
+                if port is None:
+                    port = _p.port or 4000
+            except Exception:
+                pass
+        if host is None:
+            host = "127.0.0.1"
+        if port is None:
+            port = 4000
+
     now = _time.monotonic()
-    cache_key = (host, port)
     if (
         _RELAY_UP_CACHE["up"] is not None
         and _RELAY_UP_CACHE.get("host") == host

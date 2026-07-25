@@ -39,8 +39,8 @@ from engine.failure_router import (  # noqa: E402
         ("syntax error in x.py", "permanent"),
         ("import error: No module", "permanent"),
         ("permission denied", "permanent"),
-        ("random unknown failure", "quarantine"),
-        ("", "quarantine"),
+        ("random unknown failure", "transient"),  # 2026-07-25 P0-1:默认 transient
+        ("", "transient"),  # 2026-07-25 P0-1:默认 transient
     ],
 )
 def test_classify_failure(msg, expected):

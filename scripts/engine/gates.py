@@ -446,29 +446,33 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
 
     for attempt in range(max_attempts):
         # 2026-07-24 方案 P1-1：retry budget 跨层统一闸
-        try:
-            from engine.failure_router import (
-                MAX_TASK_RETRY_BUDGET,
-                increment_retry_count,
-                RetryBudgetExceeded,
-            )
-
-            _used = increment_retry_count(ws, tid, store)
-            _engine_log(
-                "[verdict-gate] %s reviewer retry %d/%d", tid, _used, MAX_TASK_RETRY_BUDGET
-            )
-        except RetryBudgetExceeded:
-            _engine_log(
-                "[verdict-gate] %s retry budget 耗尽 → abnormal", tid
-            )
-            if eng:
-                eng._quarantine_with_notify(
-                    ws, tid, "retry budget exceeded (reviewer)", store
+        # 2026-07-25 修 P1-1:attempt=0 是首次正常执行,不算"重试";从 attempt>0 才递增。
+        # 之前默认每次循环都 +1,把首次 attempt 也算成重试,会提前把 budget 耗光。
+        if attempt > 0:
+            try:
+                from engine.failure_router import (
+                    MAX_TASK_RETRY_BUDGET,
+                    increment_retry_count,
+                    RetryBudgetExceeded,
                 )
-            return False
-        except Exception:
-            # budget 记录失败不阻塞门禁
-            pass
+
+                _used = increment_retry_count(ws, tid, store)
+                _engine_log(
+                    "[verdict-gate] %s reviewer retry %d/%d",
+                    tid, _used, MAX_TASK_RETRY_BUDGET,
+                )
+            except RetryBudgetExceeded:
+                _engine_log(
+                    "[verdict-gate] %s retry budget 耗尽 → abnormal", tid
+                )
+                if eng:
+                    eng._quarantine_with_notify(
+                        ws, tid, "retry budget exceeded (reviewer)", store
+                    )
+                return False
+            except Exception as exc:
+                # budget 记录失败不阻塞门禁(2026-07-25 加 debug log 防静默坏掉)
+                _log.debug("reviewer budget increment failed %s: %s", tid, exc)
         reviewer_role()
         if _verdict_is_valid(ws, tid):
             if _verdict_is_timeout(ws, tid):

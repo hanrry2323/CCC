@@ -2957,9 +2957,20 @@ def _retry_abnormal_failures(ws: Path) -> None:
         if auto_retried >= MAX_AUTO_RETRY:
             continue
         # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（auto + review + hang）
-        from engine.failure_router import can_retry as _can_retry_budget
+        # 2026-07-25 修 P0-2:auto-refeed 改用 increment_retry_count(主动递增+抛异常),
+        # 与 reviewer/hang 三路径一致;不依赖 caller 后续再 increment。
+        from engine.failure_router import (
+            MAX_TASK_RETRY_BUDGET,
+            RetryBudgetExceeded,
+            increment_retry_count,
+        )
 
-        if not _can_retry_budget(ws, tid, store):
+        try:
+            _used = increment_retry_count(ws, tid, store)
+            engine_log(
+                f"[{label}] {tid} auto-refeed retry {_used}/{MAX_TASK_RETRY_BUDGET}"
+            )
+        except RetryBudgetExceeded:
             engine_log(
                 f"[{label}] {tid} retry budget 耗尽，跳过 auto-refeed"
             )

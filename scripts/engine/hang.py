@@ -606,24 +606,34 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
             freed = True
             continue
         # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（hang 失败重试也走 budget）
+        # 2026-07-25 修 P0-2:hang 改用 increment_retry_count(主动递增+抛异常),
+        # 与 reviewer/auto-refeed 三路径一致;不再仅 can_retry 读不递增。
         try:
-            from engine.failure_router import can_retry as _can_retry_budget
+            from engine.failure_router import (
+                MAX_TASK_RETRY_BUDGET,
+                RetryBudgetExceeded,
+                increment_retry_count,
+            )
 
-            if not _can_retry_budget(ws, tid, store):
-                _engine_log(
-                    f"[{label}] hang-auto: {tid} retry budget 耗尽（hang 层）"
-                )
-                _quarantine_hang_exhausted(
-                    eng=eng,
-                    ws=ws,
-                    tid=tid,
-                    cur_phase=cur_phase,
-                    key=key,
-                    active_tasks=active_tasks,
-                    label=label,
-                )
-                freed = True
-                continue
+            _used = increment_retry_count(ws, tid, store)
+            _engine_log(
+                f"[{label}] hang-auto: {tid} retry {_used}/{MAX_TASK_RETRY_BUDGET}"
+            )
+        except RetryBudgetExceeded:
+            _engine_log(
+                f"[{label}] hang-auto: {tid} retry budget 耗尽（hang 层）"
+            )
+            _quarantine_hang_exhausted(
+                eng=eng,
+                ws=ws,
+                tid=tid,
+                cur_phase=cur_phase,
+                key=key,
+                active_tasks=active_tasks,
+                label=label,
+            )
+            freed = True
+            continue
         except Exception as exc:
             _log.debug("hang-auto budget check %s: %s", tid, exc)
 

@@ -97,3 +97,78 @@ def test_relay_is_up_caches(monkeypatch):
     assert r1 is True
     assert r2 is True
     assert calls["n"] == 1, f"应只调一次 urlopen,实际 {calls['n']} 次"
+
+
+# ── P0-3 回归:relay_is_up 必须读 CCC_RELAY_BASE_URL env ──
+
+def test_relay_is_up_reads_env_default(monkeypatch):
+    """无显式参数时,relay_is_up 必须从 CCC_RELAY_BASE_URL env 解析 host/port(向后兼容旧 sidecar)。"""
+    import _utils
+    # 清缓存,让 env 解析路径触发
+    monkeypatch.setattr(_utils, "_RELAY_UP_CACHE", {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000})
+    monkeypatch.setenv("CCC_RELAY_BASE_URL", "http://192.168.1.50:5000")
+
+    captured = {"url": None}
+
+    def fake_urlopen(url, *a, **kw):
+        captured["url"] = url
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.__enter__ = lambda self: m
+        m.__exit__ = lambda self, *args: None
+        m.status = 200
+        return m
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        result = _utils.relay_is_up()
+    assert result is True
+    assert captured["url"] == "http://192.168.1.50:5000/admin/status", (
+        f"应探 192.168.1.50:5000,实际 {captured['url']}"
+    )
+
+
+def test_relay_is_up_env_with_path(monkeypatch):
+    """CCC_RELAY_BASE_URL 带 /path 也要正确解析(P0-3 边界)。"""
+    import _utils
+    monkeypatch.setattr(_utils, "_RELAY_UP_CACHE", {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000})
+    monkeypatch.setenv("CCC_RELAY_BASE_URL", "http://10.0.0.5:7777/v1")
+
+    captured = {"url": None}
+
+    def fake_urlopen(url, *a, **kw):
+        captured["url"] = url
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.__enter__ = lambda self: m
+        m.__exit__ = lambda self, *args: None
+        m.status = 200
+        return m
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        result = _utils.relay_is_up()
+    assert result is True
+    # path 部分应被忽略,只取 host:port
+    assert captured["url"] == "http://10.0.0.5:7777/admin/status"
+
+
+def test_relay_is_up_no_env_uses_127(monkeypatch):
+    """无 env 时回到 127.0.0.1:4000 默认(向后兼容未配 env 的场景)。"""
+    import _utils
+    monkeypatch.setattr(_utils, "_RELAY_UP_CACHE", {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000})
+    monkeypatch.delenv("CCC_RELAY_BASE_URL", raising=False)
+
+    captured = {"url": None}
+
+    def fake_urlopen(url, *a, **kw):
+        captured["url"] = url
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.__enter__ = lambda self: m
+        m.__exit__ = lambda self, *args: None
+        m.status = 200
+        return m
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        result = _utils.relay_is_up()
+    assert result is True
+    assert captured["url"] == "http://127.0.0.1:4000/admin/status"
