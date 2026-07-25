@@ -2825,15 +2825,15 @@ def _classify_failure(reason: str, tid: str, phase_note: str = "") -> str:
     """将失败原因分为 transient / permanent。
 
     不匹配任何关键词时按 transient（宁可错重试也不漏）。
+
+    2026-07-24 方案 P1-3：委托给 failure_router.classify_failure（统一入口），
+    ccc-engine.py 仍保留 _PERMANENT_KEYWORDS / _TRANSIENT_KEYWORDS 常量给
+    line 2931 关键词扫描复用。
     """
-    blob = f"{reason} {phase_note} {tid}".lower()
-    for kw in _PERMANENT_KEYWORDS:
-        if kw.lower() in blob:
-            return "permanent"
-    for kw in _TRANSIENT_KEYWORDS:
-        if kw.lower() in blob:
-            return "transient"
-    return "transient"
+    from engine.failure_router import classify_failure as _impl
+
+    blob = f"{reason} {phase_note} {tid}"
+    return _impl(blob)
 
 
 def _retry_cooldown_seconds(retry_count: int) -> int:
