@@ -110,6 +110,87 @@ check_prompt_injection_guards() {
     return 0
 }
 
+# ── 8. 端口预检(lsof) — 报告各端口 LISTEN 数(WARN,不当 HARD 拦)──
+check_ports_listening() {
+    local ports="4000 4002 7775 7777 7788"
+    local any_listening=0
+    local report=""
+    for p in $ports; do
+        local n=0
+        if command -v lsof >/dev/null 2>&1; then
+            n=$(lsof -nP -iTCP:"$p" -sTCP:LISTEN 2>/dev/null | grep -c LISTEN || true)
+        fi
+        if [ "$n" -gt 0 ]; then
+            report+="  :$p LISTEN=$n\n"
+            any_listening=$((any_listening + n))
+        else
+            report+="  :$p LISTEN=0\n"
+        fi
+    done
+    printf "%b" "$report"
+    # 仅报告,不当 HARD 拦(dev 期 fleet stop all 时 0 是预期)
+    return 0
+}
+
+# ── 9. VERSION 一致(用 check-version-sync.py)────────────────
+check_version_sync() {
+    if ! python3 "${ROOT}/scripts/check-version-sync.py" >/dev/null 2>&1; then
+        red "VERSION 不一致(看 scripts/check-version-sync.py 输出)"
+        python3 "${ROOT}/scripts/check-version-sync.py" 2>&1 | head -5
+        return 1
+    fi
+    return 0
+}
+
+# ── 10. plist label 拼写 + 命名规范(只扫 CCC 相关目录)──────
+check_plist_labels() {
+    local LA="${HOME}/Library/LaunchAgents"
+    local DS="${LA}/disabled-ccc"
+    local errors=0
+    # 只扫 com.ccc.* 和 com.opencode.serve(已知例外,opencode 旧 plist)
+    # 不扫第三方软件 plist(redis/EdgeUpdater/输入法 等)
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local base
+        base=$(basename "$f" .plist)
+        # 已知例外
+        if [[ "$base" == "com.opencode.serve" ]]; then continue; fi
+        if [[ "$base" != com.ccc.* ]]; then continue; fi
+        # 拼写:不该有 com.ccc.ccc- 重复
+        if [[ "$base" == com.ccc.ccc-* ]]; then
+            red "plist 拼写异常(ccc.ccc- 重复): $f"
+            errors=1
+        fi
+    done < <(ls -1 "$LA"/com.ccc.*.plist "$DS"/com.ccc.*.plist 2>/dev/null)
+    return $errors
+}
+
+# ── 11. dual-host 对齐(仅 M1)────────────────────────────
+# 区分:data error(2017 落后 → HARD)/ network fail(Hub 不可达 → WARN)
+check_dual_host() {
+    local host_tag
+    if [[ "$(hostname)" == "Mac2017"* || "$(hostname)" == "fan"* ]]; then
+        # 2017 自身不查(无意义)
+        return 0
+    fi
+    if [[ ! -f "${ROOT}/scripts/ccc-dual-host-check.sh" ]]; then
+        return 0  # 工具不在,skip
+    fi
+    local out
+    if ! out=$(bash "${ROOT}/scripts/ccc-dual-host-check.sh" 2>&1); then
+        # 脚本自身 fail(网络/工具错)— WARN,不拦
+        echo "  WARN: dual-host 脚本未运行(可能 2017 不可达): $out" | head -3
+        return 0
+    fi
+    if ! echo "$out" | grep -q "aligned: yes"; then
+        # 脚本跑了但数据不一致(2017 落后)— HARD
+        red "dual-host 未对齐(2017 落后于 M1):"
+        echo "$out" | head -5 | sed 's/^/    /'
+        return 1
+    fi
+    return 0
+}
+
 # ── 执行 ──────────────────────────────────────────────────────────
 echo "=== CCC 自检 ==="
 echo ""
@@ -134,6 +215,28 @@ if check_python_compile; then green "Python 编译通过"; else FAILED=1; fi
 
 echo "── 7. Prompt injection 防护 ──"
 if check_prompt_injection_guards; then green "所有注入点已防护"; else FAILED=1; fi
+
+echo "── 8. 端口预检(lsof) ──"
+if check_ports_listening; then green "端口预检完成(仅报告)"; else FAILED=1; fi
+
+echo "── 9. VERSION 一致 ──"
+if check_version_sync; then green "VERSION 一致"; else FAILED=1; fi
+
+echo "── 10. plist label 命名 ──"
+if check_plist_labels; then green "plist 命名规范"; else FAILED=1; fi
+
+# step 11 仅 M1(2017 自身无意义);仅 preflight 模式或默认跑
+# --preflight 模式只跑 step 1-7 + 9-10(HARD 项),跳过 8(端口)和 11(dual-host)只 dev
+# preflight 用法:bash scripts/ccc-self-check.sh --preflight  # 嵌入 fleet.sh 启
+RUN_DUAL_HOST=1
+if [[ "${1:-}" == "--preflight" ]]; then
+    RUN_DUAL_HOST=0
+    echo "(preflight 模式: 跳过 step 8 端口预检 + step 11 dual-host)"
+fi
+if [[ "$RUN_DUAL_HOST" == "1" ]]; then
+    echo "── 11. dual-host 对齐 ──"
+    if check_dual_host; then green "dual-host 对齐"; else FAILED=1; fi
+fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

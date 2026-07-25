@@ -250,6 +250,15 @@ start() {
   done
 
   _log "→ start tier (${#tier[@]} 组件),拓扑序: ${tier[*]}"
+
+  # v0.61.0 阶段 C:启动前 self-check 强门禁(仅 HARD 项:1-7 + 9-10)
+  # 端口(8)+ dual-host(11)是运行时检查,不在 fleet 启动门禁里
+  if ! bash "${CCC_HOME}/scripts/ccc-self-check.sh" --preflight; then
+    _log "❌ preflight 未通过 → 拒绝启动"
+    _log "  跑 bash scripts/ccc-self-check.sh 单独看哪项 FAIL"
+    return 2
+  fi
+
   local started=()
   for label in "${tier[@]}"; do
     _log "  [start] $label"
