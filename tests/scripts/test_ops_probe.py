@@ -105,15 +105,22 @@ def test_port_groups_cover_ccc():
     assert 7775 in ccc_ports
 
 
-def test_fetch_router_usage_retired_stub():
-    """ai-loop-router 退役后恒返回零值 stub，不访问网络。"""
+def test_fetch_router_usage_relay_down():
+    """CCC Relay 2026-07-25:fetch 实际拉 relay,无可达 relay → ok=False, source=relay_down, 软失败。"""
     out = op.fetch_router_usage(use_cache=False)
-    assert out["ok"] is False
-    assert out["source"] == "retired"
-    assert out["tiers"]["flash"]["requests_today"] == 0
-    assert out["tiers"]["code"]["requests_today"] == 0
-    assert out["tiers"]["pro"]["requests_today"] == 0
-    assert "retired" in (out.get("error") or "").lower()
+    # 跑测试时本地 :4000 不一定有 relay;接受 ok=False+source=relay_down 与 ok=True 两种
+    if not out["ok"]:
+        assert out["source"] in ("relay_down", "retired")
+        # down 兜底:三档零值,不抛
+        assert out["tiers"]["flash"]["requests_today"] == 0
+        assert out["tiers"]["code"]["requests_today"] == 0
+        assert out["tiers"]["Pro"]["requests_today"] == 0
+    else:
+        # 罕见:本地恰好有 relay 跑着 — 校验三档 + 真源
+        assert out["source"] == "relay"
+        assert "flash" in out["tiers"]
+        assert "Pro" in out["tiers"]
+        assert "code" in out["tiers"]
 
 
 def test_resolve_ammo_rejects_empty():

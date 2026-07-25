@@ -292,6 +292,7 @@ async def ops_summary(request: Request):
             _run(quality_summary, spaces),
             _run(logistics_heartbeat, spaces),
             _run(control_runtime_snapshot),
+            _run(fetch_router_usage, use_cache=False),
             _run(recent_failures_fleet, spaces),
             _run(abnormal_cards_fleet, spaces),
             return_exceptions=True,
@@ -313,6 +314,7 @@ async def ops_summary(request: Request):
         "quality",
         "logistics",
         "control",
+        "relay_usage",
         "recent_failures",
         "abnormal_cards",
     ]
@@ -363,6 +365,7 @@ async def ops_summary(request: Request):
             resources_history=hist,
             ports=out.get("ports") if isinstance(out.get("ports"), dict) else {},
             overview=out.get("overview") if isinstance(out.get("overview"), dict) else {},
+            relay_usage=out.get("relay_usage") if isinstance(out.get("relay_usage"), dict) else None,
         )
         out["severity"] = env.get("severity") or "amber"
         out["human_line"] = env.get("human_line") or ""
