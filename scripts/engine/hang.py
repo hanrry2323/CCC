@@ -605,6 +605,27 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
             )
             freed = True
             continue
+        # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（hang 失败重试也走 budget）
+        try:
+            from engine.failure_router import can_retry as _can_retry_budget
+
+            if not _can_retry_budget(ws, tid, store):
+                _engine_log(
+                    f"[{label}] hang-auto: {tid} retry budget 耗尽（hang 层）"
+                )
+                _quarantine_hang_exhausted(
+                    eng=eng,
+                    ws=ws,
+                    tid=tid,
+                    cur_phase=cur_phase,
+                    key=key,
+                    active_tasks=active_tasks,
+                    label=label,
+                )
+                freed = True
+                continue
+        except Exception as exc:
+            _log.debug("hang-auto budget check %s: %s", tid, exc)
 
         try:
             _activate_workspace(ws)
