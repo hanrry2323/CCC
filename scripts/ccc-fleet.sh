@@ -259,6 +259,15 @@ start() {
     return 2
   fi
 
+  # v0.61.0 阶段 E:2017 端 engine 启动前强制双机对齐(防 commit 漂移)
+  if [[ "$target" == "all" && "$HOST_TAG" == "2017" ]]; then
+    if ! bash "${CCC_HOME}/scripts/ccc-dual-host-check.sh" --sync-only --2017 >/dev/null 2>&1; then
+      _log "❌ dual-host 未对齐(2017 落后于 M1)→ 拒绝启 engine"
+      _log "  跑: ccc-sync-after-push  # 或手动拉 M1 HEAD"
+      return 1
+    fi
+  fi
+
   local started=()
   for label in "${tier[@]}"; do
     _log "  [start] $label"

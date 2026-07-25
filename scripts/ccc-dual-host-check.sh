@@ -19,11 +19,64 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# v0.61.0 阶段 E:--sync-only / --m1 / --2017 模式
+SYNC_ONLY=0
+ENDPOINT_HOST=""
+for arg in "$@"; do
+  case "$arg" in
+    --sync-only) SYNC_ONLY=1 ;;
+    --m1)        ENDPOINT_HOST="m1" ;;
+    --2017)      ENDPOINT_HOST="2017" ;;
+  esac
+done
+if [[ -z "$ENDPOINT_HOST" ]]; then
+  if [[ "$(hostname)" == "Mac2017"* || "$(hostname)" == "fan"* ]]; then
+    ENDPOINT_HOST="2017"
+  else
+    ENDPOINT_HOST="m1"
+  fi
+fi
+
 SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
 # 客户端支持的 hub_api_version 集（硬编码；未来 v2 再扩）
 SUPPORTED_HUB_API='["v1"]'
+
+# v0.61.0 阶段 E:多端点探活(host-sensitive:从 hostname 判定,本地端点跳过自己)
+_endpoints() {
+  local host_tag="$1"  # m1 | 2017
+  if [[ "$host_tag" == "m1" ]]; then
+    # M1 视角:本机 sidecar/relay + 远端 Hub/Board
+    cat <<EOF
+hub|http://192.168.3.116:7777/api/desktop/version
+sidecar|http://127.0.0.1:7788/health
+relay|http://127.0.0.1:4000/admin/status
+board|http://192.168.3.116:7775/health
+EOF
+  else
+    # 2017 视角:本机 Hub/Board/Relay(没起 sidecar)
+    cat <<EOF
+hub|http://127.0.0.1:7777/api/desktop/version
+relay|http://127.0.0.1:4000/admin/status
+board|http://127.0.0.1:7775/health
+EOF
+  fi
+}
+_check_endpoint() {
+  local label=$1 url=$2
+  local code
+  if [[ -n "${CCC_DUAL_HOST_MOCK_JSON:-}" ]]; then
+    code=200
+  else
+    code=$(curl -sS -m 3 -o /dev/null -w '%{http_code}' -u "${USER}:${PASS}" "$url" 2>/dev/null || echo 000)
+  fi
+  if [[ "$code" =~ ^2 ]]; then
+    printf "  endpoint: %-10s up   %s\n" "$label" "$url"
+  else
+    printf "  endpoint: %-10s down %s (http=%s)\n" "$label" "$url" "$code"
+  fi
+}
 
 M1_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
 M1_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -69,6 +122,14 @@ fetch_2017() {
 }
 
 HUB_JSON="$(fetch_2017)" || exit 2
+
+# v0.61.0 阶段 E:多端点 alive 探活(host 视角)
+if [[ "$SYNC_ONLY" -eq 0 ]]; then
+  while IFS='|' read -r label url; do
+    [[ -z "$label" ]] && continue
+    _check_endpoint "$label" "$url"
+  done < <(_endpoints "$ENDPOINT_HOST")
+fi
 
 set +e
 EVAL="$(

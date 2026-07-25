@@ -1,0 +1,15 @@
+#!/bin/bash
+# ccc-post-push — git push 后的钩子(占位,v0.61.0 阶段 E)
+#
+# 设计:不直接挂 .git/hooks(避免污染 .git 目录),
+# 改用 git alias 显式 opt-in:
+#   git config --global alias.gp '!git push && ccc-post-push'
+#
+# 行为:仅 delegate 给 ccc-sync-after-push.sh。
+# 退出 0 / 1 都 **不阻塞**本地 push 成功状态(避免 sync 失败导致 push 撤销)。
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 仓内 git-hooks/ 调 ccc-sync-after-push.sh(同仓 scripts/)
+exec "${SCRIPT_DIR}/../ccc-sync-after-push.sh" "$@"
