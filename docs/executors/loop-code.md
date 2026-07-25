@@ -1,6 +1,8 @@
-# Executor: loop-code（M1 对话方案 Agent CLI）
+# Executor: loop-code（M1 对话运行时**槽位**）
 
-> Claude Code 兼容 CLI。**M1 对话面专用**：与 Desktop 深度整合为本机 sidecar 的方案 Agent。  
+> **槽位名，不是具体工具**（SSOT：[`loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三层架构与 loop-code 槽位化」）。  
+> 对话槽契约 = claude-agent-sdk 兼容；候选：钉版 vendor 构建（现默认）· 原版 claude · 其他兼容 CLI（须先过 SDK 兼容验证）· SDK 自建。  
+> 能力增强只做在编排层（sidecar），本槽位保持哑运行时。  
 > **不是**看板开发执行器（看板 dev 角色仍用 OpenCode，见 [`overview.md`](overview.md)）。  
 > **不再**部署到 Mac2017；Hub `/api/chat` 路由已删。
 

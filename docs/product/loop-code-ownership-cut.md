@@ -1,6 +1,6 @@
 # loop-code 所有权切割（战略 SSOT）
 
-> **状态**：已拍板（2026-07-21）  
+> **状态**：已拍板（2026-07-21）· **2026-07-25 更新**：loop-code 已升维为**槽位名**（对话运行时槽，可插拔）；「深度开发 loop-code」提法作废，能力增强只做在编排层。定位 SSOT 移至 [`loop-engineer-authority.md`](loop-engineer-authority.md)「三层架构与 loop-code 槽位化」；本文的**切割/隔离决策仍现行**（配置家、凭证、双机分工）。  
 > **性质**：持续工程北极星；冲突时以本文 + [`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md) 为准。  
 > **Phase1 brief**：[`loop-code-ownership-cut-phase1-brief.md`](loop-code-ownership-cut-phase1-brief.md)  
 > **Phase2 brief**：[`loop-code-ownership-cut-phase2-brief.md`](loop-code-ownership-cut-phase2-brief.md)  

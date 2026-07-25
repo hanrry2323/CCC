@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-24（**Ops 运维面**：三面 + 红绿灯；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in） 
+> **状态**：现行 · 2026-07-25（**三层架构 + loop-code 槽位化**；Ops 运维面：三面 + 红绿灯；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in） 
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -335,6 +335,29 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | 远端备份 | GitHub | 人 / Cursor 同步；**不是**对话或 Engine cwd |
 
 M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本机 CCC。
+
+---
+
+## 三层架构与 loop-code 槽位化（硬 · 2026-07-25）
+
+**分层（产品级定义）**：
+
+```
+① 前端层     Desktop App · :7788 页面 · （未来手机 App）
+② 编排层     CCC 自研：sidecar(session_manager) · Hub · Engine · board.roles
+③ 运行时层   可插拔 CLI 槽位（对话槽 / 写码槽）
+```
+
+**核心共识：`loop-code` 是槽位名（逻辑名），不是具体工具。**
+
+| 项 | 口径 |
+|----|------|
+| 双槽定义 | **对话槽**（M1 sidecar 驱动）契约 = **claude-agent-sdk 兼容**（SDK `cli_path`；`-p`/`stream-json`/`--resume`/env）。**写码槽**（Engine 扇出）契约 = [`executor-plugins.md`](executor-plugins.md)（OpenCode 为默认件）。两槽契约独立，勿混用 |
+| 对话槽候选 | 钉版 vendor 构建（现默认 · 已验证）· 原版 claude（同源 · 已验证）· 其他 Claude Code 兼容 CLI（如 Qoder CLI，**须先过 SDK 兼容验证**）· 未来 SDK 自建 runtime |
+| CCC 专注 | **编排层 + 前端层**。能力增强（supervisor / 工人可视化 / 多 agent）一律做在②，**不下沉**到③ |
+| ③ 保持哑运行时 | 只经文档化接口驱动；零槽位实现独有依赖（2026-07-25 已核实：sidecar 无任何 loop-code 独有调用，换 `cli_path` 即换实现） |
+| 填槽门禁 | 契约兼容验证 + 钉版 + SHA256 + 配置家隔离（`~/.ccc/loop-code`）+ 凭证隔离（不碰个人 keychain） |
+| 定位修正 | **勿再**把 loop-code 说成「能力增强 fork / 打通原版封闭功能」；vendor 构建价值 = 供应链稳定件。源码级定制须先过「可复现构建」门禁，且仅当②做不到时才考虑（取代 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) 的「深度开发 loop-code」提法） |
 
 ---
 

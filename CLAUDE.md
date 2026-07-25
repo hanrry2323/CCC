@@ -249,10 +249,12 @@ scripts/chat_server/            # FastAPI 模块化后端
 
 ## 模型通道
 
+> **三层/槽位口径（2026-07-25 硬共识）**：`loop-code` 是**对话槽的槽位名**（可插拔运行时），不是具体工具；候选与契约见 `docs/product/loop-engineer-authority.md`「三层架构与 loop-code 槽位化」。能力增强只做在编排层（sidecar/Hub/Engine），第三层保持哑运行时。
+
 | 通道 | 用途 | 上游（直连） |
 |------|------|--------------|
-| Claude / loop-code | 对话 + product/reviewer | **MiniMax** `https://api.minimaxi.com/anthropic`（`MiniMax-M3`） |
-| OpenCode | 后台写码（dev） | **讯飞** `xfyun/code`（`~/.config/opencode`）；备用智谱 `zhipu/flash` |
+| 对话槽（loop-code，现填钉版 vendor 构建）/ Engine Claude | 对话 + product/reviewer | **MiniMax** `https://api.minimaxi.com/anthropic`（`MiniMax-M3`） |
+| 写码槽（OpenCode，Engine dev） | 后台写码（dev） | **讯飞** `xfyun/code`（`~/.config/opencode`）；备用智谱 `zhipu/flash` |
 
 逻辑名 `flash`/`code` 在直连 MiniMax 时由 `_claude_cli.resolve_anthropic_model` 映射为 `MiniMax-M3`。  
 ~~ai-loop-router `:4000/:4002` 已退役。~~ 详见 `docs/deploy/topology.md` · `docs/executors/overview.md`。
