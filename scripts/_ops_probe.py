@@ -229,9 +229,10 @@ def fetch_router_usage(
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
-    """CCC Relay 2026-07-25:真拉 relay :4000/admin/usage,30s 缓存,2.5s 超时,down→{ok:false} 软失败。
+    """CCC Relay:真拉 relay :4000/admin/stats（含 healthy/upstreams）,30s 缓存。
 
-    返回结构兼容旧接口(零值 stub),tiers 用量按 flash/Pro/code 三档聚合。
+    旧 /admin/usage 只有 by_tier.n/tk，Desktop 运维会显示全 0；改读 /admin/stats。
+    返回三档键统一为 flash / Pro / code（relay 内部 pro 小写映射到 Pro）。
     """
     cache_key = ("router_usage", host, port)
     now = time.monotonic()
@@ -239,24 +240,38 @@ def fetch_router_usage(
         ts, val = _CACHE[cache_key]
         if (now - ts) < 30.0:
             return val
-    url = f"http://{host}:{port}/admin/usage?period=1d"
+    url = f"http://{host}:{port}/admin/stats"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8", errors="replace"))
         tiers_in = (payload or {}).get("tiers") or {}
         tiers_out: dict[str, dict[str, int]] = {}
-        for tier in ("flash", "Pro", "code"):
-            td = tiers_in.get(tier) or {}
-            tiers_out[tier] = {
+        for display, aliases in (
+            ("flash", ("flash",)),
+            ("Pro", ("Pro", "pro")),
+            ("code", ("code",)),
+        ):
+            td: dict = {}
+            for a in aliases:
+                if a in tiers_in:
+                    td = tiers_in.get(a) or {}
+                    break
+            tiers_out[display] = {
                 "requests_today": int(td.get("requests_today") or 0),
                 "tokens_today": int(td.get("tokens_today") or 0),
                 "upstreams": int(td.get("upstreams") or 0),
                 "healthy": int(td.get("healthy") or 0),
             }
+        total_in = (payload or {}).get("total") or {}
         result = {
             "ok": True,
             "tiers": tiers_out,
-            "total": (payload or {}).get("total") or {},
+            "total": {
+                "upstreams": int(total_in.get("upstreams") or 0),
+                "healthy": int(total_in.get("healthy") or 0),
+                "requests_today": int(total_in.get("requests_today") or 0),
+                "tokens_today": int(total_in.get("tokens_today") or 0),
+            },
             "source": "relay",
             "host": host,
             "port": port,

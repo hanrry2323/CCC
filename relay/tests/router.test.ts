@@ -120,11 +120,11 @@ describe("router", () => {
       getAppContext().cooldowns.set("minimax-m3", { until: Date.now() + 60000, reason: "rate-limit" });
       getAppContext().cooldowns.set("opencode-go-new", { until: Date.now() + 60000, reason: "rate-limit" });
 
-      // flash → code fallback
       const r = route("flash");
+      // 默认拒绝 flash→Pro/code 静默掉档
+      expect(r.upstream).toBeNull();
+      expect(r.candidates.length).toBe(0);
       expect(r.is_fallback).toBe(true);
-      // Falls back to code tier
-      expect(["glm-free", "zhipu-glm-flash"]).toContain(r.upstream!.name);
     });
   });
 

@@ -272,12 +272,15 @@ function tryTier(
     }
   }
 
-  // 优先级优先，同优先级内按评分；分数接近时 fair RR（v4.3）
+  // 优先级优先；同档优先带 proxy 的出口（拆 IP）；再按评分；分数接近时 fair RR
   const okList = tierUp.filter(isUpstreamOk);
   if (okList.length > 0) {
     const sorted = okList.slice().sort((a, b) => {
       const pd = (a.tier_priority ?? 99) - (b.tier_priority ?? 99);
       if (pd !== 0) return pd;
+      const ap = (a.proxy || "").trim() ? 0 : 1;
+      const bp = (b.proxy || "").trim() ? 0 : 1;
+      if (ap !== bp) return ap - bp;
       return getScore(b.name) - getScore(a.name);
     });
     const ordered = fairPick(tier, sorted);
@@ -304,6 +307,21 @@ function tryTier(
   if (tier !== "flash" && reg.tiers.has("flash") && !visited.has("flash")) {
     console.warn(`[route] tier '${tier}' all unavailable → fallback to 'flash' (main tier)`);
     return tryTier("flash", true, affKey, reg, visited);
+  }
+
+  // 显式 flash 且未开 LOOP_FLASH_FALLBACK_CODE：勿全局掉到 Pro/code（对话体感抽风）
+  if (tier === "flash") {
+    const minCd = getMinCooldownSec(tierUp);
+    console.warn(
+      `[route] flash all unavailable; refuse Pro/code silent fallback (earliest recovery ~${minCd}s; LOOP_FLASH_FALLBACK_CODE=1 to enable)`,
+    );
+    return {
+      upstream: null,
+      candidates: [],
+      tier,
+      is_fallback: true,
+      fallback_model: null,
+    };
   }
 
   // 全局兜底: 所有可用 upstream (按 tier_priority)

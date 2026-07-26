@@ -18,7 +18,9 @@ export const TIER_PRIORITY: Record<TierId, number> = {
 
 export const TIER_FALLBACK: Partial<Record<TierId, TierId>> = {
   pro: "flash",
-  flash: "code",
+  // flash→code 默认关闭：对话突然变成写码档体感像「不稳定」。
+  // 需要旧行为时设 LOOP_FLASH_FALLBACK_CODE=1
+  ...(process.env.LOOP_FLASH_FALLBACK_CODE === "1" ? { flash: "code" as TierId } : {}),
 };
 
 // ── Public API ──
