@@ -375,26 +375,25 @@ status() {
     _log "❌ 未知 status target: $target"; return 1
   fi
   local overall="green"
+  # 核心编排组件（缺失/挂 → red）；其余 optional（flywheel 等）缺失不拉红
+  local -a core_labels=(
+    "com.ccc.relay.2017" "com.ccc.board" "com.ccc.chat-server" "com.ccc.engine"
+    "com.ccc.relay.m1" "com.ccc.hub-tunnel" "com.ccc.agent-sidecar"
+  )
   printf "%-32s %-12s %-12s %s\n" "LABEL" "LOAD" "PROBE" "DETAIL"
   for label in "${labels[@]}"; do
-    local st probe
+    local st probe_status
     st=$(_status_of "$label")
-    probe=$(_probe_component "$label" 2>/dev/null || echo down)
-    # 实际调 probe(避免上面 _probe_component subshell 问题)
-    local url=$(_probe_url "$label")
-    local probe_status="n/a"
-    if [[ -n "$url" ]]; then
-      local auth=$(_probe_auth "$label")
-      local code
-      code=$(eval curl -fsS -m 3 $auth -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo 000)
-      if [[ "$code" =~ ^2 ]]; then
-        probe_status="up"
-      else
-        probe_status="down:$code"
-        [[ "$st" == "loaded" ]] && overall="yellow"
-      fi
+    probe_status=$(_probe_component "$label" 2>/dev/null || echo down)
+    local is_core=0
+    for c in "${core_labels[@]}"; do
+      [[ "$c" == "$label" ]] && is_core=1 && break
+    done
+    if [[ "$probe_status" == down* ]]; then
+      [[ "$st" == "loaded" && "$is_core" -eq 1 ]] && overall="yellow"
     fi
-    if [[ "$st" != "loaded" && "$st" != "exited" ]]; then
+    if [[ "$is_core" -eq 1 && "$st" != "loaded" && "$st" != "exited" ]]; then
+      # engine/hub 等核心未 load → red；optional not-found 忽略
       overall="red"
     fi
     printf "%-32s %-12s %-12s %s\n" "$label" "$st" "$probe_status" ""
