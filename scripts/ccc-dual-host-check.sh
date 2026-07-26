@@ -64,7 +64,7 @@ EOF
     cat <<EOF
 hub|http://127.0.0.1:7777/api/desktop/version
 relay|http://127.0.0.1:4000/admin/status
-board|http://127.0.0.1:7775/health
+board|http://127.0.0.1:7775/
 EOF
   fi
 }
@@ -77,7 +77,7 @@ _check_endpoint() {
   else
     code=$(curl -sS -m 3 -o /dev/null -w '%{http_code}' -u "${USER}:${PASS}" "$url" 2>/dev/null || echo 000)
   fi
-  if [[ "$code" =~ ^2 ]]; then
+  if [[ "$code" =~ ^[23] ]]; then
     printf "  endpoint: %-10s up   %s\n" "$label" "$url"
   else
     printf "  endpoint: %-10s down %s (http=%s)\n" "$label" "$url" "$code"

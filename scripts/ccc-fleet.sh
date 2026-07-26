@@ -103,7 +103,7 @@ _probe_url() {
   local label=$1
   case "$label" in
     com.ccc.relay.*)    echo "http://127.0.0.1:4000/admin/status" ;;
-    com.ccc.board)      echo "http://127.0.0.1:7775/health" ;;
+    com.ccc.board)      echo "http://127.0.0.1:7775/" ;;  # /health 会 302；根路径 200
     com.ccc.chat-server) echo "http://127.0.0.1:7777/api/desktop/projects" ;;
     com.ccc.engine)     echo "" ;;  # engine 无独立 health 端点,看 launchd 状态
     com.ccc.hub-tunnel) echo "" ;;  # 隧道无 HTTP,通过 launchd 看
@@ -146,8 +146,9 @@ _probe_component() {
   if [[ -z "$url" ]]; then echo "n/a"; return; fi
   local auth=$(_probe_auth "$label")
   local code
-  code=$(eval curl -fsS -m 3 $auth -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo 000)
-  if [[ "$code" =~ ^2 ]]; then echo "up"; else echo "down:$code"; fi
+  # 不用 -f：Board 等可能 302；2xx/3xx 均算 up
+  code=$(eval curl -sS -m 3 $auth -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo 000)
+  if [[ "$code" =~ ^[23] ]]; then echo "up"; else echo "down:$code"; fi
 }
 
 # 等就绪:最多 max_s 秒,每 1s 探一次
@@ -157,8 +158,8 @@ _wait_probe() {
   if [[ -z "$url" ]]; then return 0; fi  # 无 URL,跳过
   for _ in $(seq 1 "$max_s"); do
     local code
-    code=$(eval curl -fsS -m 1 $auth -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo 000)
-    [[ "$code" =~ ^2 ]] && return 0
+    code=$(eval curl -sS -m 1 $auth -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo 000)
+    [[ "$code" =~ ^[23] ]] && return 0
     sleep 1
   done
   return 1
