@@ -94,7 +94,9 @@ import time as _time
 import urllib.request as _urllib_request
 import urllib.error as _urllib_error
 
-_RELAY_UP_CACHE: dict = {"ts": 0.0, "up": None, "host": "127.0.0.1", "port": 4000}
+# v0.62.0 阶段 5 P2-1 补漏:多 host/port 缓存(原全局单槽会互相覆盖)
+# key: (host, port) tuple;每 host/port 独立 10s 缓存
+_RELAY_UP_CACHE: dict[tuple[str, int], dict] = {}
 
 
 def relay_is_up(
@@ -129,13 +131,10 @@ def relay_is_up(
             port = 4000
 
     now = _time.monotonic()
-    if (
-        _RELAY_UP_CACHE["up"] is not None
-        and _RELAY_UP_CACHE.get("host") == host
-        and _RELAY_UP_CACHE.get("port") == port
-        and (now - _RELAY_UP_CACHE["ts"]) < 10.0
-    ):
-        return _RELAY_UP_CACHE["up"]
+    cache_key = (host, port)
+    cached = _RELAY_UP_CACHE.get(cache_key)
+    if cached is not None and (now - cached["ts"]) < 10.0:
+        return cached["up"]
     up = False
     try:
         with _urllib_request.urlopen(
@@ -144,7 +143,7 @@ def relay_is_up(
             up = (resp.status or 0) == 200
     except (OSError, _urllib_error.URLError, Exception):
         up = False
-    _RELAY_UP_CACHE.update({"ts": now, "up": up, "host": host, "port": port})
+    _RELAY_UP_CACHE[cache_key] = {"ts": now, "up": up}
     return up
 
 

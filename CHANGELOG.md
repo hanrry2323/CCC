@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [v0.62.0] — 2026-07-26
+
+### Added
+- **reviewer claude --bg 长 session 整合**(阶段 1):`scripts/ccc-reviewer-bg.sh` 包装 `claude --bg` 启 background session,写 `<task>.reviewer.session_id` 标记;失败回环用 `--resume <prev>` 续同一 session;reviewer.py 改 Popen 调 ccc-reviewer-bg.sh。
+- **Engine 长任务进程管理**(阶段 2):`engine/active_tasks.py` 加 `LongLivedSession` 跟踪 + `register_bg_session/verify_bg_session/list_long_lived_sessions/nudge_bg_session` 4 helper;kill -0 探活 + heartbeat 1h 超时;nudge v0.62.0 写文件占位(v0.63.0 真注入);fleet stop 时一并清 ccc-reviewer-bg.sh 残留 wrapper。
+- **Hub 透出长任务状态**(阶段 3):`/api/ops/bg-sessions` 端点返 list_long_lived_sessions;envelope `domains.bg_sessions` 子域(`ok/count/alive_count/sessions/note`)4 个分支(全活/全死/部分活/未拉取)。
+- **Desktop 长任务卡片**(阶段 4):`BoardOpsModels` 加 `OpsDomainBGSessions` + `OpsDomainBGSession` struct;`OpsView.domainsSection` 加 `bgSessionCard` 显示 alive ●/○、role、task_id、session_id 短 sha、age_min;swift build 0 错 0 警告。
+
+### Changed
+- **`_utils.relay_is_up` 多 host/port 缓存**(P2-1 补漏):从全局单槽 dict 改为 `(host, port)` 键多槽 dict,避免多上游并发探活互相覆盖。
+- **测试期望更新**:`test_claude_env_default_minimax` + `test_relay_url_none_no_env_falls_back_to_minimax` 改期望为 relay :4000(v0.61.0 阶段 A 改造后默认非 MiniMax)。
+
+### Tests
+- `test_reviewer_bg.sh`(3 case):syntax + 缺参拒绝 + out 文件创建
+- `test_long_lived_session.py`(6 case):register/list/overwrite/verify-kill-0/unregister-幂等/nudge-写文件
+- `test_ops_bg_sessions.py`(5 case):helper 4 分支(None/全活/全死/部分活/empty)
+- 832 + 2 skipped 全过(从 v0.61.0 的 812 → +20 新测试,827 → 832 包含阶段 4 调整)
 
 ## [v0.61.0] — 2026-07-25
 
