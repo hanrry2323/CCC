@@ -58,14 +58,10 @@ def test_max_retry_budget_is_8():
 # ── increment_retry_count + can_retry（无 task store 场景）──
 
 
-def test_increment_retry_count_no_task_raises_after_budget(tmp_path):
-    """无 task JSONL 时 retry_count 视为 0，第 9 次（>8）抛 RetryBudgetExceeded。"""
+def test_increment_retry_count_no_task_raises_runtime_error(tmp_path):
+    """无 task JSONL 时 patch_task 返回 False，第 1 次就抛 RuntimeError。"""
     ws = tmp_path
-    # 第 1-8 次不应抛
-    for i in range(1, MAX_TASK_RETRY_BUDGET + 1):
-        assert increment_retry_count(ws, "ghost-tid") == i
-    # 第 9 次抛
-    with pytest.raises(RetryBudgetExceeded, match="retry budget exceeded"):
+    with pytest.raises(RuntimeError, match="not found in store"):
         increment_retry_count(ws, "ghost-tid")
 
 

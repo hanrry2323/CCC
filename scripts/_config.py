@@ -97,7 +97,7 @@ class RelayEnv:
     cache_ttl: float = 10.0
 
     @classmethod
-    def from_env(cls) -> "RelayEnv":
+    def from_env(cls) -> RelayEnv:
         env = cls()
         # 复用 P0-3 修过的 _utils.relay_is_up 行为:无 env 时走默认
         # 这里直接读 env,缺则保留 dataclass 默认
@@ -121,7 +121,7 @@ class HubEnv:
     cors_origin_regex: str = ""                     # CCC_CHAT_CORS_ORIGIN_REGEX
 
     @classmethod
-    def from_env(cls) -> "HubEnv":
+    def from_env(cls) -> HubEnv:
         env = cls()
         env.url = os.environ.get("CCC_HUB_URL", env.url)
         env.user = os.environ.get("CCC_HUB_USER", env.user)
@@ -143,7 +143,7 @@ class AgentEnv:
     relay_direct_url: str = ""                      # CCC_RELAY_DIRECT_URL
 
     @classmethod
-    def from_env(cls) -> "AgentEnv":
+    def from_env(cls) -> AgentEnv:
         env = cls()
         env.port = int(os.environ.get("CCC_AGENT_PORT", env.port))
         env.host = os.environ.get("CCC_AGENT_HOST", env.host)
@@ -158,7 +158,7 @@ class AgentEnv:
 @dataclass
 class EngineEnv:
     """Engine 调度参数(v0.61.0 新 SSOT)"""
-    max_concurrent: int = 6                         # CCC_MAX_CONCURRENT
+    max_concurrent: int = 4                         # CCC_MAX_CONCURRENT
     poll_interval: int = 10                         # CCC_ENGINE_POLL_INTERVAL
     idle_sleep: int = 5                            # CCC_ENGINE_IDLE_SLEEP
     tick_interval: int = 5                          # CCC_ENGINE_TICK_INTERVAL
@@ -168,7 +168,7 @@ class EngineEnv:
     max_phases: int = 2                             # CCC_MAX_PHASES
 
     @classmethod
-    def from_env(cls) -> "EngineEnv":
+    def from_env(cls) -> EngineEnv:
         env = cls()
         env.max_concurrent = int(os.environ.get("CCC_MAX_CONCURRENT", env.max_concurrent))
         env.poll_interval = int(os.environ.get("CCC_ENGINE_POLL_INTERVAL", env.poll_interval))

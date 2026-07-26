@@ -119,7 +119,11 @@ def increment_retry_count(
             f"task {tid} retry budget exceeded: "
             f"{new_count}/{MAX_TASK_RETRY_BUDGET}"
         )
-    store.patch_task(tid, {"retry_count": new_count})
+    if not store.patch_task(tid, {"retry_count": new_count}):
+        raise RuntimeError(
+            f"task {tid} not found in store — "
+            f"cannot persist retry_count={new_count}"
+        )
     return new_count
 
 
