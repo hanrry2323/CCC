@@ -17,7 +17,8 @@ use menu::{build_app_menu, build_tray, handle_menu_event, handle_tray_event, reg
 use server::{spawn_chat_server, ServerHandle, DEFAULT_PORT};
 
 fn default_server_url() -> String {
-    std::env::var("CCC_SERVER").unwrap_or_else(|_| "http://192.168.3.116:7777".to_string())
+    // SSOT: M1 → Hub via local SSH tunnel (com.ccc.hub-tunnel), not LAN :7777
+    std::env::var("CCC_SERVER").unwrap_or_else(|_| "http://127.0.0.1:17777".to_string())
 }
 
 fn use_local_sidecar() -> bool {

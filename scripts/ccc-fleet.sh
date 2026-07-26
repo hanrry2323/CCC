@@ -127,25 +127,52 @@ _probe_auth() {
 # ── 1. 通用工具函数 ───────────────────────────────────
 _log() { echo "[$(date +%H:%M:%S)] [fleet] $*" >&2; }
 
-# launchd 状态检查:输出 "loaded" / "not-loaded" / "not-found"
+# SSH 隧道：launchctl 有时 PID 显示为 "-" 但本地转发仍在听（KeepAlive 竞态）
+_tunnel_port() {
+  case "$1" in
+    com.ccc.hk-egress-tunnel) echo 18080 ;;
+    com.ccc.hub-tunnel) echo 17777 ;;
+    *) echo "" ;;
+  esac
+}
+
+_port_listening() {
+  local port=$1
+  [[ -n "$port" ]] || return 1
+  nc -z 127.0.0.1 "$port" 2>/dev/null
+}
+
+# launchd 状态检查:输出 "loaded" / "exited" / "not-found"
 _status_of() {
   local label=$1
   local line
   line=$(launchctl list 2>/dev/null | awk -v lbl="$label" '$3==lbl {print $1; exit}')
   if [[ -z "$line" ]]; then echo "not-found"; return; fi
-  local pid exit_code
+  local pid
   pid="${line%%	*}"
-  exit_code="${line##*	}"
   if [[ "$pid" != "-" && "$pid" -gt 0 ]] 2>/dev/null; then
     echo "loaded"
-  else
-    echo "exited"
+    return
   fi
+  # 隧道：端口在听则视为 loaded（避免误报 exited）
+  local tport
+  tport=$(_tunnel_port "$label")
+  if [[ -n "$tport" ]] && _port_listening "$tport"; then
+    echo "loaded"
+    return
+  fi
+  echo "exited"
 }
 
-# 探活 URL(GET + auth),返回 "up" / "down"
+# 探活 URL(GET + auth),返回 "up" / "down" / "n/a"
 _probe_component() {
   local label=$1
+  local tport
+  tport=$(_tunnel_port "$label")
+  if [[ -n "$tport" ]]; then
+    if _port_listening "$tport"; then echo "up"; else echo "down"; fi
+    return
+  fi
   local url=$(_probe_url "$label")
   if [[ -z "$url" ]]; then echo "n/a"; return; fi
   local auth=$(_probe_auth "$label")
@@ -158,6 +185,15 @@ _probe_component() {
 # 等就绪:最多 max_s 秒,每 1s 探一次
 _wait_probe() {
   local label=$1 max_s=${2:-30}
+  local tport
+  tport=$(_tunnel_port "$label")
+  if [[ -n "$tport" ]]; then
+    for _ in $(seq 1 "$max_s"); do
+      _port_listening "$tport" && return 0
+      sleep 1
+    done
+    return 1
+  fi
   local url=$(_probe_url "$label") auth=$(_probe_auth "$label")
   if [[ -z "$url" ]]; then return 0; fi  # 无 URL,跳过
   for _ in $(seq 1 "$max_s"); do

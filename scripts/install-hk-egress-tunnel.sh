@@ -108,14 +108,17 @@ REMOTE
 }
 
 _write_wrapper() {
+  # 直接 exec ssh：避免 bash 中间层导致 launchd 丢 PID
   cat > "$WRAPPER" <<EOF
-#!/usr/bin/env bash
+#!/bin/bash
 # Auto-generated: SSH local forward → HK CONNECT proxy
 exec /usr/bin/ssh -N \\
+  -o BatchMode=yes \\
   -o ExitOnForwardFailure=yes \\
   -o ServerAliveInterval=30 \\
   -o ServerAliveCountMax=3 \\
   -o IdentitiesOnly=yes \\
+  -o StrictHostKeyChecking=accept-new \\
   -i "${HK_IDENTITY}" \\
   -L 127.0.0.1:${LOCAL_PORT}:127.0.0.1:18080 \\
   ${HK_USER}@${HK_HOST}
@@ -133,6 +136,7 @@ _write_plist() {
   <string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
+    <string>/bin/bash</string>
     <string>${WRAPPER}</string>
   </array>
   <key>RunAtLoad</key>
@@ -140,7 +144,7 @@ _write_plist() {
   <key>KeepAlive</key>
   <true/>
   <key>ThrottleInterval</key>
-  <integer>10</integer>
+  <integer>5</integer>
   <key>StandardOutPath</key>
   <string>${LOG_DIR}/hk-egress-tunnel.out.log</string>
   <key>StandardErrorPath</key>
