@@ -72,6 +72,7 @@ TIER_UI_M1=(
   "com.ccc.agent-sidecar"
 )
 TIER_ALL_2017=(
+  "com.ccc.hk-egress-tunnel"
   "com.ccc.relay.2017"
   "com.ccc.board"
   "com.ccc.chat-server"
@@ -96,6 +97,7 @@ TIER_ALL_2017_REV=(
   "com.ccc.chat-server"
   "com.ccc.board"
   "com.ccc.relay.2017"
+  "com.ccc.hk-egress-tunnel"
 )
 
 # 组件健康探活 URL(按 host 决定)
@@ -107,6 +109,7 @@ _probe_url() {
     com.ccc.chat-server) echo "http://127.0.0.1:7777/api/desktop/projects" ;;
     com.ccc.engine)     echo "" ;;  # engine 无独立 health 端点,看 launchd 状态
     com.ccc.hub-tunnel) echo "" ;;  # 隧道无 HTTP,通过 launchd 看
+    com.ccc.hk-egress-tunnel) echo "" ;;  # SSH 本地转发，status 看 launchd + :18080
     com.ccc.agent-sidecar) echo "http://127.0.0.1:7788/health" ;;
     *)                  echo "" ;;
   esac
