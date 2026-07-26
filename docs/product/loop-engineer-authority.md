@@ -559,7 +559,7 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 ### 运维 UI / API（产品契约）
 
 - Desktop OpsView / Hub `#/ops` = **人看四域**；总灯优先，不以舰队数卡为主叙事。  
-- API：`GET /api/ops/summary` 顶层含 `severity`（green|amber|red）、`human_line`、`alerts[]`（仅 red + `copy_payload`）、`domains`（cluster / agent_mcp 占位 / capacity）。合成：`_ops_probe.ops_health_envelope`。M1 sidecar/MCP 由 Desktop 本机合并进总灯。  
+- API：`GET /api/ops/summary` 顶层含 `severity`（green|amber|red）、`human_line`、`alerts[]`（仅 red + `copy_payload`）、`domains`（cluster / agent_mcp / capacity）。合成：`_ops_probe.ops_health_envelope`。`agent_mcp`：Hub 探本机 OpenCode/Cursor MCP 清单（`mcp_probed`+list/ok；未配置非红；断连/失败红+`copy_payload`）。M1 sidecar 仍由 Desktop 本机合并进总灯。  
 - 采纳/apply 是例外通道，默认 workspace **不得**是 CCC。`board/roles/ops.py` 不升格为总调度。
 
 ### Desktop Ops 重构拆卡（硬 · 2026-07-27 · 下程实现）

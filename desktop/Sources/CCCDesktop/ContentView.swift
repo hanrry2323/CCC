@@ -149,7 +149,12 @@ struct CodexSidebar: View {
                     window.destination = .board
                     model.selectDestination(.board, projectId: window.projectId)
                 }
-                SoftRow(title: "运维", icon: "wrench.and.screwdriver", selected: window.destination == .ops) {
+                SoftRow(
+                    title: "运维",
+                    icon: "wrench.and.screwdriver",
+                    selected: window.destination == .ops,
+                    badgeCount: model.opsDisplayAlertCount
+                ) {
                     window.destination = .ops
                     model.selectDestination(.ops, projectId: window.projectId)
                 }

@@ -26,6 +26,8 @@ struct SoftRow: View {
     var selected: Bool = false
     var prominent: Bool = false
     var trailingBusy: Bool = false
+    /// 运维红点数等角标；0 不显示
+    var badgeCount: Int = 0
     let action: () -> Void
 
     @State private var hovering = false
@@ -44,6 +46,15 @@ struct SoftRow: View {
                     .foregroundStyle(selected || prominent ? CCCTheme.ink : CCCTheme.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if badgeCount > 0 {
+                    Text(badgeCount > 99 ? "99+" : "\(badgeCount)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(CCCTheme.nodeFail))
+                        .accessibilityLabel("\(badgeCount) 项红灯")
+                }
                 if trailingBusy {
                     ProgressView()
                         .controlSize(.mini)

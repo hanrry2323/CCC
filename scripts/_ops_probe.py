@@ -623,6 +623,7 @@ def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
                 return port, {
                     **info,
                     "alive": True,
+                    "ok": True,  # Desktop / envelope contract (alive alias)
                     "http_status": status if http_ok else 0,
                     "label": label if http_ok else "TCP open",
                     "probed_host": "127.0.0.1",
@@ -639,6 +640,7 @@ def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
             return port, {
                 **info,
                 "alive": True,
+                "ok": True,
                 "http_status": status if http_ok else 0,
                 "label": label if http_ok else "TCP open",
                 "probed_host": probed,
@@ -646,6 +648,7 @@ def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
         return port, {
             **info,
             "alive": False,
+            "ok": False,
             "http_status": 0,
             "label": "未响应",
             "probed_host": host,
@@ -779,15 +782,20 @@ def local_resources() -> dict:
     except Exception as e:
         disk = {"error": str(e)}
 
+    load_ratio = (
+        round(float(load1) / _ncpu_safe(), 3) if load1 is not None else None
+    )
+    mem_pct = mem.get("used_pct") if isinstance(mem, dict) else None
+    disk_pct = disk.get("used_pct") if isinstance(disk, dict) else None
     return {
         "host": socket.gethostname(),
         "ncpu": _ncpu_safe(),
         "load": {"1": load1, "5": load5, "15": load15},
-        "load_ratio": (
-            round(float(load1) / _ncpu_safe(), 3)
-            if load1 is not None
-            else None
-        ),
+        "load_ratio": load_ratio,
+        # Desktop OpsResourcesResp: cpu=0..1 ratio; mem/disk as percent 0..100
+        "cpu": load_ratio,
+        "mem_pct": mem_pct,
+        "disk_pct": disk_pct,
         "memory": mem,
         "disk": disk,
         "generated_at": _now_iso(),
@@ -1141,7 +1149,195 @@ def _alert_suggest(alert_id: str, source: str) -> str:
         return "读最新 daily-review；安全类 D 只告警不建卡"
     if "control" in sid or src == "control":
         return "控制面须 `enabled`（`bash scripts/ccc-autostart-guard.sh enable --start`）"
+    if "mcp" in sid or src == "mcp":
+        return "核对 ~/.config/opencode/opencode.json mcp 段与远端 URL；本机 MCP 查 command 是否在 PATH"
     return "按标题与机器字段在 Cursor/对话 Agent 侧排查平台组件"
+
+
+def _port_ok(info: Any) -> bool | None:
+    """Map probe_ports alive→ok for Desktop / envelope (ok preferred)."""
+    if not isinstance(info, dict):
+        return None
+    if "ok" in info and info.get("ok") is not None:
+        return bool(info.get("ok"))
+    if "alive" in info and info.get("alive") is not None:
+        return bool(info.get("alive"))
+    return None
+
+
+def _load_mcp_entries() -> list[dict[str, Any]]:
+    """Collect MCP server entries from local OpenCode / Cursor configs."""
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(name: str, raw: dict[str, Any], *, source: str) -> None:
+        key = f"{source}:{name}"
+        if key in seen:
+            return
+        seen.add(key)
+        if not isinstance(raw, dict):
+            return
+        enabled = raw.get("enabled")
+        if enabled is False:
+            return
+        entries.append(
+            {
+                "name": name,
+                "source": source,
+                "type": str(raw.get("type") or ("remote" if raw.get("url") else "local")),
+                "url": raw.get("url") or raw.get("serverUrl"),
+                "command": raw.get("command"),
+                "enabled": True if enabled is None else bool(enabled),
+            }
+        )
+
+    oc = Path.home() / ".config" / "opencode" / "opencode.json"
+    if oc.is_file():
+        try:
+            data = json.loads(oc.read_text(encoding="utf-8"))
+            mcp = data.get("mcp") if isinstance(data, dict) else None
+            if isinstance(mcp, dict):
+                for name, raw in mcp.items():
+                    if isinstance(raw, dict):
+                        _add(str(name), raw, source="opencode")
+        except Exception as e:
+            _log.debug("ops_probe load opencode mcp: %s", e)
+
+    cursor_mcp = Path.home() / ".cursor" / "mcp.json"
+    if cursor_mcp.is_file():
+        try:
+            data = json.loads(cursor_mcp.read_text(encoding="utf-8"))
+            servers = None
+            if isinstance(data, dict):
+                servers = data.get("mcpServers") or data.get("mcp")
+            if isinstance(servers, dict):
+                for name, raw in servers.items():
+                    if isinstance(raw, dict):
+                        _add(str(name), raw, source="cursor")
+        except Exception as e:
+            _log.debug("ops_probe load cursor mcp: %s", e)
+
+    return entries
+
+
+def _probe_mcp_url(url: str, *, timeout: float = 1.5) -> tuple[bool, str]:
+    """TCP/HTTP probe for remote MCP URL. 401/404 still count as reachable."""
+    u = (url or "").strip()
+    if not u:
+        return False, "empty url"
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(u if "://" in u else f"http://{u}")
+        host = parsed.hostname or ""
+        port = parsed.port
+        if port is None:
+            port = 443 if (parsed.scheme or "").lower() == "https" else 80
+        if not host:
+            return False, "bad host"
+        if not probe_port(host, int(port), timeout=min(timeout, 0.8)):
+            return False, f"TCP {host}:{port} refused"
+        # Prefer HTTP HEAD on http(s); ignore TLS detail failures if TCP open
+        if (parsed.scheme or "http").lower() in ("http", "https"):
+            try:
+                req = urllib.request.Request(u, method="HEAD")
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return True, f"HTTP {int(getattr(resp, 'status', 200) or 200)}"
+            except urllib.error.HTTPError as e:
+                return True, f"HTTP {int(e.code)}"
+            except Exception as e:
+                # TCP already open — treat as reachable (TLS/path quirks)
+                return True, f"TCP open ({type(e).__name__})"
+        return True, "TCP open"
+    except Exception as e:
+        return False, str(e)[:120]
+
+
+def _probe_mcp_local_command(command: Any) -> tuple[bool, str]:
+    """Local MCP: verify argv[0] exists (do not spawn the server)."""
+    if isinstance(command, str):
+        argv0 = command.strip()
+    elif isinstance(command, list) and command:
+        argv0 = str(command[0] or "").strip()
+    else:
+        return False, "missing command"
+    if not argv0:
+        return False, "empty command"
+    if "/" in argv0 or argv0.startswith("~"):
+        p = Path(argv0).expanduser()
+        if p.is_file() and os.access(p, os.X_OK):
+            return True, "binary ok"
+        if p.is_file():
+            return True, "file exists"
+        return False, f"missing binary: {argv0}"
+    found = shutil.which(argv0)
+    if found:
+        return True, f"PATH {found}"
+    return False, f"not on PATH: {argv0}"
+
+
+def probe_agent_mcp(*, entries: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Probe local MCP inventory for domains.agent_mcp.
+
+    Rules (Desktop Ops P0):
+    - mcp_probed always True after this runs
+    - no configured servers → ok=None (灰/未配置，非红)
+    - configured + all reachable → ok=True
+    - configured + any disconnect/probe failure → ok=False (caller push_red)
+    """
+    items = entries if entries is not None else _load_mcp_entries()
+    servers: list[dict[str, Any]] = []
+    failed: list[str] = []
+
+    for ent in items:
+        name = str(ent.get("name") or "mcp")
+        typ = str(ent.get("type") or "local").lower()
+        url = ent.get("url")
+        row: dict[str, Any] = {
+            "name": name,
+            "source": ent.get("source"),
+            "type": typ,
+            "ok": None,
+            "detail": "",
+        }
+        if typ == "remote" or url:
+            ok, detail = _probe_mcp_url(str(url or ""))
+            row["url"] = url
+            row["ok"] = ok
+            row["detail"] = detail
+            if not ok:
+                failed.append(name)
+        else:
+            ok, detail = _probe_mcp_local_command(ent.get("command"))
+            row["ok"] = ok
+            row["detail"] = detail
+            if not ok:
+                failed.append(name)
+        servers.append(row)
+
+    if not servers:
+        return {
+            "ok": None,
+            "mcp_probed": True,
+            "servers": [],
+            "list": [],
+            "failed": [],
+            "note": "未配置 MCP（非红）",
+        }
+
+    all_ok = len(failed) == 0
+    return {
+        "ok": all_ok,
+        "mcp_probed": True,
+        "servers": servers,
+        "list": [s.get("name") for s in servers],
+        "failed": failed,
+        "note": (
+            f"{len(servers)} 个 MCP 正常"
+            if all_ok
+            else f"{len(failed)}/{len(servers)} 个 MCP 探测失败"
+        ),
+    }
 
 
 def ops_health_envelope(
@@ -1155,10 +1351,11 @@ def ops_health_envelope(
     overview: dict[str, Any] | None = None,
     relay_usage: dict[str, Any] | None = None,
     bg_sessions: list[dict] | None = None,  # v0.62.0 阶段 3
+    agent_mcp: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Desktop 运维总灯：severity green|amber|red + 仅红 alerts[].copy_payload。
 
-    Hub 侧合成；M1 sidecar/MCP 由 Desktop 本机合并进展示灯（见 domains.agent_mcp）。
+    Hub 侧合成；M1 sidecar 仍可由 Desktop 本机合并。MCP 清单由 Hub 探本机配置。
     """
     ctrl = control if isinstance(control, dict) else {}
     risk_blob = risks if isinstance(risks, dict) else {}
@@ -1230,17 +1427,22 @@ def ops_health_envelope(
             bid = f"ready-{hash(bs) & 0xFFFF:x}"
             push_red(bid, bs, ready_blob.get("reason") or bs, "ready")
 
-    # --- red from critical CCC ports down ---
+    # --- red from critical CCC ports down (ok preferred; alive→ok) ---
     port_map = ports_blob.get("ports") if isinstance(ports_blob.get("ports"), dict) else {}
     for pnum in (7775, 7777):
         info = port_map.get(str(pnum)) or port_map.get(pnum)
-        if isinstance(info, dict) and info.get("ok") is False:
+        if _port_ok(info) is False:
             push_red(
                 f"port-{pnum}",
                 f"端口 :{pnum} 不通",
-                str(info.get("detail") or info.get("error") or "probe failed"),
+                str(
+                    (info or {}).get("detail")
+                    or (info or {}).get("error")
+                    or (info or {}).get("label")
+                    or "probe failed"
+                ),
                 "ports",
-                extra={"port": pnum, "host": info.get("host")},
+                extra={"port": pnum, "host": (info or {}).get("host")},
             )
     down = ov.get("down_ports") or []
     if isinstance(down, list):
@@ -1269,6 +1471,26 @@ def ops_health_envelope(
         )
     elif verdict and verdict not in ("headroom", "ok", "unknown", None):
         amber_notes.append(f"资源 {verdict}")
+
+    # --- MCP probe (Hub-local config); unconfigured = not red ---
+    mcp_domain = (
+        agent_mcp if isinstance(agent_mcp, dict) else probe_agent_mcp()
+    )
+    if mcp_domain.get("mcp_probed") and mcp_domain.get("ok") is False:
+        failed = mcp_domain.get("failed") or []
+        detail = mcp_domain.get("note") or ""
+        if failed:
+            detail = f"失败: {', '.join(str(x) for x in failed[:8])}. {detail}"
+        push_red(
+            "mcp-probe-failed",
+            "MCP 探针失败",
+            detail[:400],
+            "mcp",
+            extra={
+                "failed": failed[:12],
+                "list": (mcp_domain.get("list") or [])[:20],
+            },
+        )
 
     if logi.get("needs_attention") is True and not alerts:
         amber_notes.append(str(logi.get("headline") or "后勤需关注")[:80])
@@ -1300,7 +1522,7 @@ def ops_health_envelope(
         ccc_ports.append(
             {
                 "port": pnum,
-                "ok": info.get("ok") if isinstance(info, dict) else None,
+                "ok": _port_ok(info),
             }
         )
     domains = {
@@ -1312,11 +1534,7 @@ def ops_health_envelope(
             "down_ports_n": len(down) if isinstance(down, list) else 0,
             "alert_count": ov.get("alert_count"),
         },
-        "agent_mcp": {
-            "ok": None,
-            "mcp_probed": False,
-            "note": "M1 sidecar / MCP 由 Desktop 本机合并进总灯",
-        },
+        "agent_mcp": mcp_domain,
         # CCC Relay 2026-07-25:三档 tier 用量 + 健康 + cache 命中率
         # 灯:ok=true green;ok=false amber(降级直连但仍可用)
         "relay": _build_relay_domain(relay_usage),
@@ -1798,7 +2016,11 @@ def list_ops_auto_tasks(workspaces: dict[str, str]) -> list[dict]:
 
 
 def docs_debt_scan(workspaces: dict[str, str]) -> dict:
-    """Lightweight docs debt hints (Phase 3/5)."""
+    """Lightweight docs debt hints (Phase 3/5).
+
+    Desktop contract: ``items`` with workspace/file/issue.
+    SPA compat: ``findings`` alias (same list, richer fields kept).
+    """
     findings: list[dict] = []
     infra = parse_infra()
     ports_live = probe_ports(infra)
@@ -1811,6 +2033,8 @@ def docs_debt_scan(workspaces: dict[str, str]) -> dict:
                     "kind": "infra-drift",
                     "title": f"infrastructure 登记端口 {p} 当前未响应",
                     "path": infra.get("infra_path"),
+                    "file": infra.get("infra_path") or f"port:{p}",
+                    "issue": f"infrastructure 登记端口 {p} 当前未响应",
                     "suggestion": "核对服务是否应启动，或更新 .ccc/infrastructure.md",
                 }
             )
@@ -1829,6 +2053,8 @@ def docs_debt_scan(workspaces: dict[str, str]) -> dict:
                     "kind": "missing-readme",
                     "workspace": ws_id,
                     "title": f"{ws_id} 缺少 README.md",
+                    "file": "README.md",
+                    "issue": f"{ws_id} 缺少 README.md",
                     "suggestion": "补充项目说明",
                 }
             )
@@ -1846,12 +2072,16 @@ def docs_debt_scan(workspaces: dict[str, str]) -> dict:
                         "kind": "changelog-stale",
                         "workspace": ws_id,
                         "title": f"{ws_id} CHANGELOG 超过 30 天未更新",
+                        "file": "CHANGELOG.md",
+                        "issue": f"{ws_id} CHANGELOG 超过 30 天未更新",
                         "suggestion": f"最近 tag: {tags.splitlines()[0] if tags else '?'}",
                     }
                 )
 
+    items = findings[:40]
     return {
-        "findings": findings[:40],
+        "items": items,
+        "findings": items,  # SPA alias
         "count": len(findings),
         "generated_at": _now_iso(),
     }

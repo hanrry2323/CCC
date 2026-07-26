@@ -246,10 +246,198 @@ struct OpsDomainPort: Decodable {
     let ok: Bool?
 }
 
+/// Hub `domains.agent_mcp`：MCP 探针清单；未配置≠红，断连/探测失败才红。
 struct OpsDomainAgentMcp: Decodable {
     let ok: Bool?
     let mcp_probed: Bool?
     let note: String?
+    let servers: [OpsDomainMcpServer]?
+    let list: [String]?
+    let failed: [String]?
+    let configured_n: Int?
+    let failed_n: Int?
+    let copy_payload: String?
+    let status: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case ok, mcp_probed, note, servers, list, failed
+        case configured_n, failed_n, copy_payload, status
+        case items
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try? c.decode(Bool.self, forKey: .ok)
+        mcp_probed = try? c.decode(Bool.self, forKey: .mcp_probed)
+        note = try? c.decode(String.self, forKey: .note)
+        servers = (try? c.decode([OpsDomainMcpServer].self, forKey: .servers))
+            ?? (try? c.decode([OpsDomainMcpServer].self, forKey: .items))
+        list = try? c.decode([String].self, forKey: .list)
+        failed = try? c.decode([String].self, forKey: .failed)
+        configured_n = try? c.decode(Int.self, forKey: .configured_n)
+        failed_n = try? c.decode(Int.self, forKey: .failed_n)
+        copy_payload = try? c.decode(String.self, forKey: .copy_payload)
+        status = try? c.decode(String.self, forKey: .status)
+    }
+
+    /// 断连/探测失败 → 红；未探/未配置 → 不红
+    var isRedFailure: Bool {
+        if mcp_probed != true { return false }
+        if ok == false { return true }
+        if let failed, !failed.isEmpty { return true }
+        if let n = failed_n, n > 0 { return true }
+        if let servers, servers.contains(where: { $0.ok == false }) { return true }
+        let st = (status ?? "").lowercased()
+        return st == "failed" || st == "error" || st == "down"
+    }
+
+    var isUnconfigured: Bool {
+        if mcp_probed != true { return true }
+        if ok == nil {
+            let n = configured_n ?? servers?.count ?? list?.count ?? 0
+            return n == 0
+        }
+        let st = (status ?? "").lowercased()
+        return st == "unconfigured" || st == "none" || st == "empty"
+    }
+
+    var failedCount: Int {
+        if let failed, !failed.isEmpty { return failed.count }
+        if let n = failed_n { return n }
+        return servers?.filter { $0.ok == false }.count ?? 0
+    }
+
+    var configuredCount: Int {
+        configured_n ?? servers?.count ?? list?.count ?? 0
+    }
+}
+
+struct OpsDomainMcpServer: Identifiable, Decodable, Hashable {
+    var id: String { name ?? detail ?? "mcp" }
+    let name: String?
+    let ok: Bool?
+    let detail: String?
+    let source: String?
+    let type: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case name, ok, detail, id, server, error, source, type
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name))
+            ?? (try? c.decode(String.self, forKey: .server))
+            ?? (try? c.decode(String.self, forKey: .id))
+        ok = try? c.decode(Bool.self, forKey: .ok)
+        detail = (try? c.decode(String.self, forKey: .detail))
+            ?? (try? c.decode(String.self, forKey: .error))
+        source = try? c.decode(String.self, forKey: .source)
+        type = try? c.decode(String.self, forKey: .type)
+    }
+}
+
+// MARK: - Ops display merge (Hub severity + sidecar + MCP)
+
+enum OpsHealthDisplay {
+    /// Hub alerts + 本机 sidecar-down + domains.agent_mcp 红灯（去重）
+    static func alerts(summary: OpsSummary?, agentOk: Bool?) -> [OpsHealthAlert] {
+        var list = summary?.alerts ?? []
+        if agentOk == false {
+            let payload = """
+            【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）
+            标题：本机 Agent Sidecar 未就绪
+            影响：无法对话 / 无法承接红灯修复
+            来源：sidecar
+            详情：GET http://127.0.0.1:7788/health 失败或 ok≠true
+            建议：查 com.ccc.agent-sidecar / 本机 :7788
+            机器字段：{"id":"sidecar-down","source":"sidecar","port":7788}
+            """
+            let local = OpsHealthAlert(
+                id: "sidecar-down",
+                title: "本机 Agent Sidecar 未就绪",
+                detail: "对话面 :7788 不可用",
+                source: "sidecar",
+                severity: "red",
+                copy_payload: payload
+            )
+            if !list.contains(where: { $0.id == "sidecar-down" }) {
+                list.insert(local, at: 0)
+            }
+        }
+        if let mcp = summary?.domains?.agent_mcp, mcp.isRedFailure {
+            let already = list.contains {
+                let id = $0.id.lowercased()
+                let src = ($0.source ?? "").lowercased()
+                return id.contains("mcp")
+                    || src.contains("mcp")
+                    || id == "agent-mcp-down"
+                    || id == "mcp-probe-failed"
+            }
+            if !already {
+                let failedNames = mcp.failed
+                    ?? (mcp.servers ?? []).filter { $0.ok == false }.compactMap(\.name)
+                let detail: String = {
+                    if let n = mcp.note, !n.isEmpty { return n }
+                    if !failedNames.isEmpty {
+                        return "失败：\(failedNames.joined(separator: ", "))"
+                    }
+                    if mcp.failedCount > 0 { return "\(mcp.failedCount) 个 MCP 探测失败" }
+                    return "MCP 探针失败"
+                }()
+                let trimmed = mcp.copy_payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let payload = trimmed.isEmpty ? """
+                【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）
+                标题：MCP 探针失败
+                影响：对话 Agent 工具链可能不可用
+                来源：agent_mcp
+                详情：\(detail)
+                建议：查 sidecar MCP 配置 / Hub domains.agent_mcp
+                机器字段：{"id":"mcp-probe-failed","source":"mcp","mcp_probed":true}
+                """ : trimmed
+                list.append(
+                    OpsHealthAlert(
+                        id: "mcp-probe-failed",
+                        title: "MCP 探针失败",
+                        detail: detail,
+                        source: "mcp",
+                        severity: "red",
+                        copy_payload: payload
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    static func severity(summary: OpsSummary?, agentOk: Bool?) -> String {
+        if agentOk == false { return "red" }
+        if summary?.domains?.agent_mcp?.isRedFailure == true { return "red" }
+        let hub = (summary?.severity ?? "").lowercased()
+        if hub == "red" { return "red" }
+        if hub == "amber" || hub == "orange" { return "amber" }
+        if hub == "green" { return "green" }
+        if summary?.ready_to_dispatch?.ok == false { return "red" }
+        if summary != nil { return "green" }
+        return "amber"
+    }
+
+    static func humanLine(summary: OpsSummary?, agentOk: Bool?, severity: String) -> String {
+        if agentOk == false {
+            return "本机对话 Agent 未就绪 · 请交给 Agent（或先启动 sidecar）"
+        }
+        if let mcp = summary?.domains?.agent_mcp, mcp.isRedFailure {
+            return "MCP 异常 · 请交给 Agent"
+        }
+        if let line = summary?.human_line, !line.isEmpty {
+            return line
+        }
+        switch severity {
+        case "green": return "系统健康 · 可以放心开发和下任务"
+        case "red": return "请交给 Agent 处理红灯"
+        default: return "有轻度提示，不挡开发"
+        }
+    }
 }
 
 // CCC Relay 2026-07-25:三档 tier 用量 + 健康(后端 _ops_probe._build_relay_domain)

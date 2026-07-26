@@ -196,6 +196,9 @@ final class AppModel: ObservableObject {
     @Published var opsAgentRuntime: String?
     @Published var opsAgentModel: String?
     @Published var opsCopiedHint: String?
+    /// 全局运维灯（Hub severity + sidecar + MCP）；侧栏红点不依赖进运维页
+    @Published private(set) var opsDisplaySeverity: String = "amber"
+    @Published private(set) var opsDisplayAlertCount: Int = 0
     @Published var inboxProposals: [InboxProposal] = []
     @Published var inboxAdoptBusy = false
     /// 顶栏：本机 Agent 大模型调用（日总量 + 近 5 秒）
@@ -205,6 +208,7 @@ final class AppModel: ObservableObject {
     private(set) var agentUsageTick: UInt64 = 0
     private var agentLLMCallTimestamps: [Date] = []
     private var agentUsageTask: Task<Void, Never>?
+    private var opsSeverityPollTask: Task<Void, Never>?
     private static let agentLLMDayKey = "ccc.agentLLM.day"
     private static let agentLLMDailyKey = "ccc.agentLLM.dailyCount"
 
@@ -938,6 +942,7 @@ final class AppModel: ObservableObject {
         }
         startProjectTaskPolling()
         startAgentUsageTicker()
+        startOpsSeverityPoll()
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             // smoke 需等首轮 refresh 完成再发消息
             while hubSyncing {
@@ -5146,23 +5151,71 @@ final class AppModel: ObservableObject {
                 opsRisksCount = risks.count
                 opsRisksHigh = risks.high
             }
-            // M1 sidecar → 运维总灯合并（Hub domains.agent_mcp 占位）
-            let agentStr = agentURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let agentBase = APIClient.makeBaseURL(from: agentStr),
-               let info = await client.fetchAgentHealth(base: agentBase) {
-                opsAgentOk = info.ok
-                opsAgentRuntime = info.agentRuntime
-                opsAgentModel = info.model
-            } else {
-                opsAgentOk = false
-                opsAgentRuntime = nil
-                opsAgentModel = nil
-            }
+            await probeLocalAgentForOps()
             if let props = try? await client.fetchInboxProposals() {
                 inboxProposals = props.proposals ?? []
             }
+            recomputeOpsDisplay()
         } catch {
             opsError = error.localizedDescription
+            recomputeOpsDisplay()
+        }
+    }
+
+    /// 合并 Hub severity + sidecar + domains.agent_mcp → 侧栏角标 / OpsView 总灯
+    func recomputeOpsDisplay() {
+        let sev = OpsHealthDisplay.severity(summary: opsSummary, agentOk: opsAgentOk)
+        let n = OpsHealthDisplay.alerts(summary: opsSummary, agentOk: opsAgentOk).count
+        if opsDisplaySeverity != sev { opsDisplaySeverity = sev }
+        if opsDisplayAlertCount != n { opsDisplayAlertCount = n }
+    }
+
+    private func probeLocalAgentForOps() async {
+        let agentStr = agentURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let agentBase = APIClient.makeBaseURL(from: agentStr),
+           let info = await client.fetchAgentHealth(base: agentBase) {
+            opsAgentOk = info.ok
+            opsAgentRuntime = info.agentRuntime
+            opsAgentModel = info.model
+        } else {
+            opsAgentOk = false
+            opsAgentRuntime = nil
+            opsAgentModel = nil
+        }
+    }
+
+    /// 后台 ~60s 轻量拉 summary（不置 opsBusy）；侧栏红点不依赖进运维页
+    func startOpsSeverityPoll() {
+        opsSeverityPollTask?.cancel()
+        opsSeverityPollTask = Task { [weak self] in
+            // 首轮稍延迟，避免与 bootstrap refreshProjects 抢
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            while !Task.isCancelled {
+                guard let self else { break }
+                await self.pollOpsSeverityLight()
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+    }
+
+    private func pollOpsSeverityLight() async {
+        do {
+            try await prepareClient(ensureAgent: false)
+            if let summary = try? await client.fetchOpsSummary() {
+                opsSummary = summary
+                if let ov = summary.overview { opsOverview = ov }
+                if let risks = summary.risks {
+                    opsRisks = risks.risks ?? []
+                    opsRisksCount = risks.count
+                    opsRisksHigh = risks.high
+                }
+            }
+            await probeLocalAgentForOps()
+            recomputeOpsDisplay()
+        } catch {
+            // Hub 不可达：仍探本机 sidecar，角标可反映 sidecar-down
+            await probeLocalAgentForOps()
+            recomputeOpsDisplay()
         }
     }
 

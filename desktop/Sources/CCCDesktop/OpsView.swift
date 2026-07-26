@@ -12,6 +12,8 @@ struct OpsView: View {
     @State private var showFleet = false
     @State private var showReports = false
     @State private var showActions = false
+    @State private var showFailures = false
+    @State private var showChannelDetail = false
 
     private var preferredAmmoWorkspace: String {
         if let p = model.selectedProject, p.isDispatchable {
@@ -51,10 +53,30 @@ struct OpsView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
+                    // P0 四域 above-the-fold：①总灯 ②集群 ③Agent/MCP/Relay ④仅红
                     healthLampSection
+                    clusterSummarySection
+                    agentMcpRelaySection
                     redAlertsSection
-                    domainsSection
-                    failuresSection
+
+                    DisclosureGroup("失败与提案", isExpanded: $showFailures) {
+                        VStack(alignment: .leading, spacing: 22) {
+                            failuresSection
+                            inboxProposalsSection
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+
+                    DisclosureGroup("通道与长任务", isExpanded: $showChannelDetail) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            relayDetailSection
+                            bgSessionsDetailSection
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+
                     DisclosureGroup("后勤与舰队", isExpanded: $showFleet) {
                         VStack(alignment: .leading, spacing: 22) {
                             logisticsSection
@@ -76,7 +98,6 @@ struct OpsView: View {
                         .padding(.top, 8)
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    inboxProposalsSection
                     DisclosureGroup("例外动作", isExpanded: $showActions) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("日审默认 dry-run；采纳须业务仓（禁 CCC）。日常不必点。")
@@ -167,59 +188,21 @@ struct OpsView: View {
 
     // MARK: - Health lamp (homepage)
 
-    /// Hub severity + 本机 Agent 合并后的总灯
+    /// Hub severity + 本机 Agent + MCP 合并后的总灯（与侧栏角标共用 OpsHealthDisplay）
     private var displaySeverity: String {
-        let hub = (model.opsSummary?.severity ?? "").lowercased()
-        let agentDown = model.opsAgentOk == false
-        if agentDown { return "red" }
-        if hub == "red" { return "red" }
-        if hub == "amber" || hub == "orange" { return "amber" }
-        if hub == "green" { return "green" }
-        // 无 summary 时用 ready 兜底
-        if model.opsSummary?.ready_to_dispatch?.ok == false { return "red" }
-        if model.opsSummary != nil { return "green" }
-        return "amber"
+        OpsHealthDisplay.severity(summary: model.opsSummary, agentOk: model.opsAgentOk)
     }
 
     private var displayHumanLine: String {
-        if model.opsAgentOk == false {
-            return "本机对话 Agent 未就绪 · 请交给 Agent（或先启动 sidecar）"
-        }
-        if let line = model.opsSummary?.human_line, !line.isEmpty {
-            return line
-        }
-        switch displaySeverity {
-        case "green": return "系统健康 · 可以放心开发和下任务"
-        case "red": return "请交给 Agent 处理红灯"
-        default: return "有轻度提示，不挡开发"
-        }
+        OpsHealthDisplay.humanLine(
+            summary: model.opsSummary,
+            agentOk: model.opsAgentOk,
+            severity: displaySeverity
+        )
     }
 
     private var displayAlerts: [OpsHealthAlert] {
-        var list = model.opsSummary?.alerts ?? []
-        if model.opsAgentOk == false {
-            let payload = """
-            【CCC 运维红灯】请排查并修复（系统/配置问题，不是业务意图）
-            标题：本机 Agent Sidecar 未就绪
-            影响：无法对话 / 无法承接红灯修复
-            来源：sidecar
-            详情：GET http://127.0.0.1:7788/health 失败或 ok≠true
-            建议：查 com.ccc.agent-sidecar / 本机 :7788
-            机器字段：{"id":"sidecar-down","source":"sidecar","port":7788}
-            """
-            let local = OpsHealthAlert(
-                id: "sidecar-down",
-                title: "本机 Agent Sidecar 未就绪",
-                detail: "对话面 :7788 不可用",
-                source: "sidecar",
-                severity: "red",
-                copy_payload: payload
-            )
-            if !list.contains(where: { $0.id == "sidecar-down" }) {
-                list.insert(local, at: 0)
-            }
-        }
-        return list
+        OpsHealthDisplay.alerts(summary: model.opsSummary, agentOk: model.opsAgentOk)
     }
 
     private var healthLampSection: some View {
@@ -345,49 +328,29 @@ struct OpsView: View {
         }
     }
 
-    private var domainsSection: some View {
+    private var clusterSummarySection: some View {
         let cluster = model.opsSummary?.domains?.cluster
-        let cap = model.opsSummary?.domains?.capacity
-        let relay = model.opsSummary?.domains?.relay
-        let agentOk = model.opsAgentOk
+        let downN = cluster?.down_ports_n ?? model.opsOverview?.down_ports?.count ?? 0
+        let engOk = cluster?.engine_running == true
+        let mode = cluster?.mode ?? "—"
+        let hubOk = cluster?.hub_port_7777 != false
         return VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("一览", systemImage: "square.grid.2x2")
+            sectionTitle("集群与服务", systemImage: "server.rack")
             HStack(spacing: 10) {
                 domainChip(
-                    title: "集群",
-                    ok: cluster?.engine_running == true
-                        && (cluster?.mode == "enabled")
-                        && (cluster?.hub_port_7777 != false)
-                        && (cluster?.down_ports_n ?? 0) == 0,
-                    subtitle: {
-                        let eng = cluster?.engine_running == true ? "Engine" : "Engine停"
-                        let mode = cluster?.mode ?? "—"
-                        return "\(eng) · \(mode)"
-                    }()
+                    title: "Engine",
+                    ok: engOk && (mode == "enabled"),
+                    subtitle: engOk ? "运行 · \(mode)" : "停 · \(mode)"
                 )
                 domainChip(
-                    title: "Agent",
-                    ok: agentOk == true,
-                    subtitle: {
-                        if agentOk == true {
-                            let rt = model.opsAgentRuntime ?? "sidecar"
-                            let m = model.opsAgentModel ?? ""
-                            return m.isEmpty ? rt : "\(rt) · \(m)"
-                        }
-                        if agentOk == false { return "本机未就绪" }
-                        return "探测中"
-                    }()
+                    title: "Hub",
+                    ok: hubOk,
+                    subtitle: hubOk ? "7777 通" : "7777 异常"
                 )
                 domainChip(
-                    title: "容量",
-                    ok: (cap?.verdict ?? "headroom") != "saturated",
-                    subtitle: cap?.verdict ?? "—"
-                )
-                // CCC Relay 2026-07-25:三档契约 chip(ok=true 绿 / false 橙 / nil 灰)
-                domainChip(
-                    title: "Relay",
-                    ok: relay?.ok == true,
-                    subtitle: relaySubtitle(relay)
+                    title: "宕口",
+                    ok: downN == 0,
+                    subtitle: downN == 0 ? "全部正常" : "\(downN) 个异常"
                 )
             }
             if let ports = cluster?.ports, !ports.isEmpty {
@@ -402,9 +365,106 @@ struct OpsView: View {
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
             }
+            Text("本机 Hub 隧道默认 127.0.0.1:17777（launchd com.ccc.hub-tunnel）")
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+        }
+    }
+
+    private var agentMcpRelaySection: some View {
+        let mcp = model.opsSummary?.domains?.agent_mcp
+        let relay = model.opsSummary?.domains?.relay
+        let agentOk = model.opsAgentOk
+        let cap = model.opsSummary?.domains?.capacity
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Agent · MCP · Relay", systemImage: "cpu")
+            HStack(spacing: 10) {
+                domainChip(
+                    title: "Agent",
+                    ok: agentOk == true,
+                    subtitle: {
+                        if agentOk == true {
+                            let rt = model.opsAgentRuntime ?? "sidecar"
+                            let m = model.opsAgentModel ?? ""
+                            return m.isEmpty ? rt : "\(rt) · \(m)"
+                        }
+                        if agentOk == false { return "本机未就绪" }
+                        return "探测中"
+                    }()
+                )
+                domainChip(
+                    title: "MCP",
+                    ok: mcpChipOk(mcp),
+                    subtitle: mcpSubtitle(mcp)
+                )
+                domainChip(
+                    title: "Relay",
+                    ok: relay?.ok == true,
+                    subtitle: relaySubtitle(relay)
+                )
+                domainChip(
+                    title: "容量",
+                    ok: (cap?.verdict ?? "headroom") != "saturated",
+                    subtitle: cap?.verdict ?? "—"
+                )
+            }
+            if let mcp, mcp.isRedFailure, let note = mcp.note, !note.isEmpty {
+                Text(note)
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.nodeFail)
+            } else if let mcp, mcp.isUnconfigured {
+                Text(mcp.note ?? "MCP 未配置（灰/橙，不挡开发）")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.faint)
+            } else if let servers = mcp?.servers, !servers.isEmpty {
+                Text(
+                    "MCP "
+                        + servers.prefix(6).map { s in
+                            let n = s.name ?? "?"
+                            let mark = s.ok == true ? "✓" : (s.ok == false ? "✗" : "?")
+                            return "\(n)\(mark)"
+                        }.joined(separator: "  ")
+                )
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+            }
+            if let relay = relay, relay.ok == false {
+                Text("Relay fail-open 直连（\(relay.source ?? "relay_down")）· 不挡开发")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private func mcpChipOk(_ mcp: OpsDomainAgentMcp?) -> Bool {
+        guard let mcp else { return true } // 未返回时不当红
+        if mcp.isRedFailure { return false }
+        if mcp.isUnconfigured { return true } // 未配置用绿/灰文案，chip 不标红
+        return mcp.ok != false
+    }
+
+    private func mcpSubtitle(_ mcp: OpsDomainAgentMcp?) -> String {
+        guard let mcp else { return "待 Hub 探针" }
+        if mcp.isRedFailure {
+            let n = mcp.failedCount
+            return n > 0 ? "失败 \(n)" : "探测失败"
+        }
+        if mcp.isUnconfigured {
+            return mcp.mcp_probed == true ? "未配置" : "未探针"
+        }
+        if mcp.ok == true {
+            let n = mcp.configuredCount
+            return n > 0 ? "正常 · \(n)" : "正常"
+        }
+        return mcp.note ?? "—"
+    }
+
+    private var relayDetailSection: some View {
+        let relay = model.opsSummary?.domains?.relay
+        return Group {
             if let relay = relay, relay.ok == true, let tiers = relay.tiers, !tiers.isEmpty {
-                // 三档用量 mini 表
                 VStack(alignment: .leading, spacing: 3) {
+                    Text("Relay 三档").font(.system(size: 12, weight: .semibold))
                     let order = ["flash", "Pro", "code"]
                     ForEach(order, id: \.self) { k in
                         if let d = tiers[k] {
@@ -425,13 +485,18 @@ struct OpsView: View {
                         }
                     }
                 }
-                .padding(.top, 2)
             } else if let relay = relay, relay.ok == false {
                 Text("⚠️ relay 不可达 — 客户端已切 fail-open 直连(\(relay.source ?? "relay_down"))")
                     .font(CCCTheme.caption)
                     .foregroundStyle(.orange)
+            } else {
+                emptyHint("暂无 Relay 分档明细")
             }
-            // v0.62.0 阶段 4:claude --bg 长 session 卡片(Engine active_tasks.list_long_lived_sessions)
+        }
+    }
+
+    private var bgSessionsDetailSection: some View {
+        Group {
             if let bg = model.opsSummary?.domains?.bg_sessions,
                let sList = bg.sessions, !sList.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -465,15 +530,13 @@ struct OpsView: View {
                         }
                     }
                 }
-                .padding(.top, 2)
             } else if let bg = model.opsSummary?.domains?.bg_sessions, bg.count == 0 {
                 Text("长 session 0 个 — Engine 无 background 任务")
                     .font(CCCTheme.caption)
                     .foregroundStyle(CCCTheme.faint)
+            } else {
+                emptyHint("暂无长 session 数据")
             }
-            Text("MCP 清单探针后续接入；当前以 Agent 在线代表对话能力。")
-                .font(CCCTheme.caption)
-                .foregroundStyle(CCCTheme.faint)
         }
     }
 

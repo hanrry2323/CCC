@@ -61,6 +61,15 @@ def test_local_resources_shape():
     assert "disk" in r
     assert "ncpu" in r
     assert "load_ratio" in r
+    # Desktop OpsResourcesResp contract
+    assert "cpu" in r
+    assert "mem_pct" in r
+    assert "disk_pct" in r
+    assert r["cpu"] == r["load_ratio"]
+    if isinstance(r.get("memory"), dict) and r["memory"].get("used_pct") is not None:
+        assert r["mem_pct"] == r["memory"]["used_pct"]
+    if isinstance(r.get("disk"), dict) and r["disk"].get("used_pct") is not None:
+        assert r["disk_pct"] == r["disk"]["used_pct"]
 
 
 def test_host_resources_history_shape():
@@ -75,8 +84,12 @@ def test_host_resources_history_shape():
 def test_docs_debt_scan_ccc():
     root = str(SCRIPTS.parent)
     out = docs_debt_scan({"CCC": root})
-    assert "findings" in out
-    assert isinstance(out["findings"], list)
+    assert "items" in out
+    assert "findings" in out  # SPA alias
+    assert isinstance(out["items"], list)
+    assert out["findings"] is out["items"] or out["findings"] == out["items"]
+    for item in out["items"]:
+        assert "issue" in item or "title" in item
 
 
 def test_patrol_alerts_list_shape(tmp_path, monkeypatch):
