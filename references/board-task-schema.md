@@ -3,7 +3,7 @@
 > **协议版本**: v1.2（epic/work 扇出）
 > **状态**: stable
 > **最后更新**: 2026-07-17
-> **作用域**: CCC 0.42.2+
+> **作用域**: CCC v0.53+（当前 v0.62.0）
 
 > **一句话定义**: Hub/IDE 写入**待办大卡（epic）** → Claude product **扇出 work 小卡**进流转列 → 低模开发消费小卡。
 >
@@ -346,7 +346,7 @@ QXO（或其他工具）按本协议写 task 后，CCC Engine 自动拾取：
 
 | 复杂度 | 含义 | 触发条件 | 角色路径 |
 |--------|------|---------|---------|
-| `small` | 小改 | plan_weight ≤ 50 | dev → released（跳过 reviewer/tester） |
+| `small` | 小改 | plan_weight ≤ 50 | dev → reviewer → tester → released（完整流水线，v0.53+） |
 | `medium` | 常规 | 50 < plan_weight ≤ 200 | 完整阶段能力包（默认 seed 7） |
 | `large` | 大改 | plan_weight > 200 | 完整阶段能力包 + 强制分批 |
 

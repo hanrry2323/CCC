@@ -35,16 +35,15 @@ Hub（2017）：不再需要对话 CLI（`/api/chat` 已删）。
 
 | 工具 | Server（2017）应指向 |
 |------|----------------------|
-| OpenCode（dev 写码） | `~/.config/opencode/opencode.json` → `xfyun/code`（讯飞直连） |
-| Claude（product / reviewer） | `ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic` |
-
-~~勿再配置 `:4000` / `:4002`。~~
+| OpenCode（dev 写码） | **relay `:4002`**（`OPENCODE_MODEL=loop/code`）；探活失败自动切 `~/.config/opencode/opencode.direct.json` 直连（讯飞/智谱） |
+| Claude（product / reviewer） | **relay `:4000`**（`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`）；fail-open 时降级 `https://api.minimaxi.com/anthropic` |
+| Engine 环境 | Engine 启动时自动设 `AGENT_PLANNER_BASE_URL`，无需手动配置 |
 
 ## M1 上客户端指向
 
 | 工具 | M1 应指向 |
 |------|----------|
-| sidecar loop-code | MiniMax 直连（`install-agent-sidecar-plist.sh` 默认） |
+| sidecar loop-code | **本机 relay** `http://127.0.0.1:4000`（主路径）；`CCC_RELAY_FAIL_OPEN=1` 切 MiniMax 直连 |
 
 ## 冒烟
 

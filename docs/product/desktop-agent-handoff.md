@@ -98,7 +98,7 @@ python3 /Users/fan/program/CCC/scripts/ccc-sync-agent-roots.py
 - 「没在侧栏出现 = 还没 init/board 或 Hub 未刷新；能聊不能下任务 = 还没 register。」  
 - 「M1 不留业务源码副本；GitHub 是备份，不是第二权威。」  
 - 「人只在定稿/采纳时拍板；进队后不加逐步批准。」  
-- 被问「你是谁」：**禁止**提 flash 中转站 / `:4000`；口径见 [`desktop-agent-identity.md`](desktop-agent-identity.md)。
+- 被问「你是谁」：**不主动提** relay 中转 / `:4000` 等技术细节；口径见 [`desktop-agent-identity.md`](desktop-agent-identity.md)。涉及 relay 故障排查时可提「本机中转站短时不可达」，勿深究端口号。
 
 对话 Agent 身份/心智 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。  
 配置家：`~/.ccc/loop-code`（见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md)）；**不要**读个人 `~/.claude`。

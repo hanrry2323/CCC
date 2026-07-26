@@ -32,7 +32,7 @@ http://192.168.3.116:7777
 | Engine Claude（product/reviewer） | **MiniMax** 直连 |
 | Engine OpenCode（dev） | **讯飞** `xfyun/code` 直连 |
 
-~~ai-loop-router `:4000/:4002` 已退役。~~ 见 [`topology.md`](topology.md)。  
+CCC Relay（`:4000` Anthropic 协议 / `:4002` openai-chat）**已恢复**。见 [`topology.md`](topology.md)。  
 **后续**：Desktop **应用内**大模型快速选择。SSOT：[`../product/dev-channel.md`](../product/dev-channel.md)。
 
 ## 运行与打包
@@ -77,7 +77,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
-| `GET /api/ops/router-usage` | **兼容 stub**（ai-loop-router 退役后恒零）；本机 Agent 用量见 Desktop 顶栏 |
+| `GET /api/ops/router-usage` | **真实**（relay `GET :4000/admin/usage`）；Desktop 顶栏也显示实时用量 |
 
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

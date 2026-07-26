@@ -81,7 +81,7 @@ Desktop 右栏投影 **本机 `boundEpicId`** 对应的 epic/works。同一对�
 | Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环；product=Claude→MiniMax，dev=OpenCode→讯飞 |
 | 业务仓看板 | Mac2017 `apps/<id>/.ccc/board` | 编排权威状态 |
 | 本机会话 | M1 `~/Library/Application Support/CCCDesktop/sessions/` | 对话权威；Hub 镜像为辅 |
-| 模型出口 | MiniMax / 讯飞直连 | ~~ai-loop-router `:4000/:4002` 已退役~~ |
+| 模型出口 | CCC Relay `:4000`（主要）/ MiniMax / 讯飞直连（fail-open） | CCC Relay `:4000` Anthropic 协议 + `:4002` openai-chat；详见 authority 文档 |
 
 ---
 

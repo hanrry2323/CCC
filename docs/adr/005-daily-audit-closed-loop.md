@@ -72,7 +72,7 @@ Proposed (2026-07-02, 来自 V9.S0 daily-snapshot 资源洪水事件)
 | # | 约束 | 原因 |
 |---|------|------|
 | 1 | **audit agent ≠ dispatch agent** | 防"自己审自己"失败偏见（必须独立 session + 独立 prompt） |
-| 2 | **必须 ai-loop-router 通路** | 不能 fallback minimax（失去三角色分离 = 同模型偏见）|
+| 2 | **必须 CCC Relay 通路（原 ai-loop-router）** | 不能 fallback minimax（失去三角色分离 = 同模型偏见）|
 | 3 | **必须 `--max-budget-usd 5`** | audit 每日跑，预算失控风险（相对 Executor 200 USD）|
 | 4 | **必须对抗性审计** | "audit 说没 bug" ≠ "真没 bug" — 留 5 min 给人类 review 红线条目 |
 
@@ -122,7 +122,7 @@ new (v0.5.0):
 
 | 风险 | 缓解 |
 |------|------|
-| 自指回路（dispatch 写日报，agent 读日报）| audit agent 独立 session + 独立 prompt + ai-loop-router |
+| 自指回路（dispatch 写日报，agent 读日报）| audit agent 独立 session + 独立 prompt + CCC Relay（原 ai-loop-router） |
 | 资源失控（每日 audit 又调 AI）| `--max-budget-usd 5` + audit 只读不写（只写 audit.md 1 个文件）|
 | 漏 bug（agent 没看到）| 红线条目强制人类 review |
 | dispatch 链死了 audit 也死 | audit cron 独立于 dispatch（直接读 journal 文件）|

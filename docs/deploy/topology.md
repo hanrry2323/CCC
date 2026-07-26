@@ -1,7 +1,7 @@
 # CCC 部署拓扑 — Server / Client
 
-> SSOT：服务端与客户端职责。更新日期：2026-07-21（开发通道 / Desktop 默认 MiniMax）。  
-> 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
+> SSOT：服务端与客户端职责。更新日期：2026-07-26（三档契约 + CCC Relay）。  
+> 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md) · [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)
 
 ---
 
@@ -9,7 +9,7 @@
 
 **M1 = 对话脑（Desktop + loop-code）；Mac2017 = 编排手（Hub + Board + Engine + 业务仓）。**  
 中间只交结构化信息流（transfer / flow）。  
-**模型出口直连上游**：Claude / loop-code → MiniMax；OpenCode → 讯飞。~~ai-loop-router `:4000/:4002` 已退役~~。
+**模型出口：CCC Relay 路由**（三档 `flash`/`Pro`/`code`，上游由 `relay/upstreams.json` 统一管理）。
 
 ---
 
@@ -26,15 +26,19 @@
 
 ---
 
-## 模型出口（直连）
+## 模型出口（三档契约）
 
-| 工具 | 机器 | 上游 | 配置 |
-|------|------|------|------|
-| loop-code（Desktop 对话） | M1 sidecar | **MiniMax** Anthropic（**默认 / 现网**） | `ANTHROPIC_BASE_URL=…`；**配置家** `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；见 [`../product/loop-code-ownership-cut.md`](../product/loop-code-ownership-cut.md) |
-| Claude（product / reviewer） | Mac2017 Engine | **MiniMax** | 同上 key；**配置家** `CLAUDE_CONFIG_DIR=~/.ccc/engine-claude`（仍用 x86 原版 CLI，不换 loop-code） |
-| OpenCode（dev 写码） | Mac2017 | **讯飞** `xfyun/code` | `~/.config/opencode/opencode.json`；备用 `zhipu/flash` |
+| 路径 | 执行器 | 模型路由 | 故障降级 |
+|------|--------|----------|----------|
+| M1 对话（Desktop → sidecar `:7788`） | loop-code（arm64） | **本机 CCC Relay** `http://127.0.0.1:4000`（`flash` 档） | `CCC_RELAY_FAIL_OPEN=1` 切直连 MiniMax |
+| Engine product 扇出 | Claude | **本机 CCC Relay 2017** `AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000` | fail-open 时降级直连 |
+| Engine dev 写码 | OpenCode | **本机 CCC Relay 2017** `:4002`（`code` 档） | 探活失败切 `xfyun/code` 直连 |
 
-`infra/ai-loop-router` 仅归档参考；launchd `com.ai-loop-router` **已停用**（plist 移至 `~/Library/LaunchAgents/disabled-relay-*`）。
+> 三档契约（2026-07-25 硬共识）：下游只对接 `flash`/`Pro`/`code` 逻辑名，上游由 `relay/upstreams.json` 统一路由。  
+> 详见 [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三档契约 + 上游解耦」。
+
+`ai-loop-router` 已退役（2026-07-25），功能并入 CCC 仓 `relay/` 作为 **CCC Relay** 子系统。  
+旧 `com.ai-loop-router` plist 已移至 `~/Library/LaunchAgents/disabled-ccc/`。
 
 ---
 
@@ -44,10 +48,11 @@
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **7788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
+| **788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
+| **4000** | CCC Relay M1 | `com.ccc.relay.m1`（同 sidecar 生命周期）；三档路由 / Anthropic 协议转换 |
 | **17777** | Hub SSH 隧道（本机） | `com.ccc.hub-tunnel`：`ssh -L` → 2017 `:7777`；**Desktop/sidecar 默认 Hub URL** |
 
-Sidecar 出口：MiniMax 直连（见上表）。  
+Sidecar → 本机 relay `:4000`（主路径）；relay 不可达时 `CCC_RELAY_FAIL_OPEN=1` 切直连 MiniMax。  
 Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · 热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ### Mac2017（编排面）
@@ -56,12 +61,12 @@ Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · �
 |------|------|------|
 | **7777** | CCC Hub | 本机 +（历史）局域网；**M1 客户端勿再默认直连** |
 | **7775** | Board API | 优先仅本机；由 Hub 反代 |
-
-~~`:4000` / `:4002` 中转已退役，勿再监听、勿再配置。~~
+| **4000** | CCC Relay 2017 | `com.ccc.relay.2017`（同 Engine 生命周期）；Claude product/reviewer 出口，Anthropic 协议 |
+| **4002** | CCC Relay 2017 | OpenCode dev 写码出口，openai-chat 协议 |
 
 M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）  
 2017 本机 Hub：`http://127.0.0.1:7777`  
-对话口：`http://192.168.3.140:7788`（M1；勿把对话 SPA 挂到 2017）
+对话口：`http://192.168.3.140:788`（M1；勿把对话 SPA 挂到 2017）
 
 ---
 
@@ -69,13 +74,14 @@ M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）
 
 ```text
 M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
-  → Engine product（Claude → MiniMax）→ planned work×N
-  → Engine dev（OpenCode → 讯飞）→ in_progress → testing
-  → reviewer（Claude → MiniMax）+ tester → verified
+  → Engine product（Claude → relay :4000 → flash 档）→ planned work×N
+  → Engine dev（OpenCode → relay :4002 → code 档）→ in_progress → testing
+  → reviewer（Claude → relay :4000 → flash 档）+ tester → verified
   → kb → released → epic split_status=done
 ```
 
-**角色锁**：product = Claude；dev = OpenCode；不可互换（见 [`../runbooks/orchestration-flow.md`](../runbooks/orchestration-flow.md)）。
+**角色锁**：product = Claude；dev = OpenCode；不可互换（见 [`../runbooks/orchestration-flow.md`](../runbooks/orchestration-flow.md)）。  
+**fail-open 红线**：relay 探活失败一律客户端降级直连，**绝不** block/skip 任务。
 
 ---
 
@@ -100,7 +106,7 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 ## 鉴权与网络安全
 
 - Hub：Basic Auth（见 `docs/ccc-hub-ports.md`）；局域网也不得裸奔
-- 上游 key：MiniMax / 讯飞只存本机 `~/.ccc/` 与 `~/.config/opencode/`；不对公网暴露
+- 上游 key 收至 `~/.ccc/relay/upstreams.json`（0600）；`~/.config/opencode/` 为直连兜底
 - 第一版非目标：公网入口、多 Server 集群、手机商店分发
 
 ### 打不开 :7777 时（Server 本机正常、客户端超时）
@@ -120,12 +126,12 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 |----|------|
 | Server + Engine | 主线（编排消费） |
 | **CCC Desktop + sidecar + loop-code** | **主产品入口** |
-| 网页 Hub | **运维/兼容**（`:7777` 看板/ops；对话远程见 M1 `:7788`） |
+| 网页 Hub | **运维/兼容**（`:7777` 看板/ops；对话远程见 M1 `:788`） |
 | 手机 | 远期 |
 
 ---
 
 ## 执行器
 
-- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ MiniMax  
-- **看板开发（Mac2017）**：OpenCode → 讯飞。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)
+- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ 本机 relay `:4000`（`flash` 档）  
+- **看板开发（Mac2017）**：OpenCode → relay `:4002`（`code` 档）。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)

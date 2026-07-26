@@ -1,7 +1,7 @@
 # CCC 战略地图
 
 > **按需阅读**：先读 [`VISION.md`](VISION.md) + 根目录 `STARTUP-BRIEF.md`；需要全景再读本文。  
-> **当前版本**：以根目录 `VERSION` 为准（**v0.60.0**）。  
+> **当前版本**：以根目录 `VERSION` 为准（**v0.62.0**）。  
 > **现行产品真理**：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) · LPSN 出门 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) · 北星 [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)。  
 > 下文含范式演进史；与权威冲突时以 VERSION / authority / CHANGELOG 为准（**本文非日常 SSOT**）。
 
@@ -74,7 +74,7 @@
 ### 2.1 阶段矩阵
 
 > **复杂度（现行 · v0.53+）**：`small`/`medium`/`large` 只表规模提示；**禁止** small 跳过 reviewer+tester（假绿已修）。下表「small=跳过」列为 **v0.28.1 史实**，勿当现行。  
-> **regress（现行 · v0.60）**：重放 `## 验收` 意图探针（`_intent_probe`），失败建回归 epic；见 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md)。
+> **regress（现行 · v0.62.0）**：重放 `## 验收` 意图探针（`_intent_probe`），失败建回归 epic；见 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md)。
 
 | 阶段 | 历史频率 (v0.20.0) | Engine 调度 | 扫哪列 | 处理后挪到 | 入口 | 复杂度影响（现行） |
 |------|-------------------|-------------|--------|------------|------|-----------|

@@ -7,7 +7,7 @@ FAIL=0
 
 echo "== CCC smoke-executor-stack =="
 echo "CCC_HOME=$CCC_HOME"
-echo "note: ai-loop-router :4000/:4002 retired; Claude→MiniMax, OpenCode→local config"
+echo "note: CCC Relay 恢复 :4000（Claude）/ :4002（OpenCode）；fail-open 切直连"
 
 echo "-- resolve_claude_cli (default) --"
 DEFAULT_BIN="$(

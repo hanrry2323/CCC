@@ -200,8 +200,9 @@ Motwani et al, "Communications-Effective Multi-Agent Coordination for Multi-Phas
 ### agentmesh-labs / mesha-framework / rusty-robot / Abinesh / FMs-sys
 agentmesh 命名 GitHub 项目群。
 
-### ai-loop-router
-`~/program/ai-loop-router/`，`:4000` 中转站，按 model tier 选上游。
+### CCC Relay（原 ai-loop-router）
+`relay/`，CCC 仓内子系统。`:4000`（Anthropic 协议转换）/ `:4002`（openai-chat）双端口，
+三档 `flash/Pro/code` 路由。旧 `ai-loop-router` 已退役（功能并入 CCC 仓）。
 
 ---
 

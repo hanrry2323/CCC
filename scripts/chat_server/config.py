@@ -71,7 +71,7 @@ class ChatServerConfig:
         env.first_event_timeout = int(os.environ.get("CCC_CHAT_FIRST_EVENT_TIMEOUT", str(env.first_event_timeout)))
         env.tool_stall_timeout = int(os.environ.get("CCC_CHAT_TOOL_STALL_TIMEOUT", str(env.tool_stall_timeout)))
         return env
-# CCC_PROXY_URL / :4002 已随 ai-loop-router 退役；Hub 对话走 Desktop sidecar，勿再默认中转。
+# CCC_PROXY_URL / :4002 已回归为 CCC Relay openai-chat 出口。
 
 # Hub 对话超时（空闲 / 硬上限）。有工具调用时墙钟 180s 极易误杀。
 # idle：距上次收到 Claude 输出的静默秒数；max：整轮硬上限。

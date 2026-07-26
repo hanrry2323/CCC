@@ -1,7 +1,7 @@
 # CCC 正式启用卡 — Go Live
 
 > **日期**：2026-07-22 · **状态**：可正式使用（**主入口 = CCC Desktop**）  
-> **版本**：以根目录 `VERSION` 为准（当前 **v0.60.0** · LPSN 意图飞轮）  
+> **版本**：以根目录 `VERSION` 为准（当前 **v0.62.0** · CCC Relay + 三档契约）  
 > Desktop 上线卡：[`GO-LIVE-DESKTOP.md`](./GO-LIVE-DESKTOP.md)  
 > LPSN 出门：[`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md)  
 > 详细盘点：[`fleet-hygiene-2026-07-18.md`](./fleet-hygiene-2026-07-18.md)（史）
@@ -40,7 +40,7 @@ Mac2017 后勤定时（可选，减负）：`bash scripts/install-ops-plist.sh i
 
 | # | 项 | 口径 |
 |---|-----|------|
-| 1 | `VERSION` | 读根目录 `VERSION`（现 v0.60.0） |
+| 1 | `VERSION` | 读根目录 `VERSION`（现 v0.62.0） |
 | 2 | 控制面 `enabled` + invent 硬关 | 日常生产 |
 | 3 | Engine 只消费业务 apps，跳过 CCC orch | R-15 |
 | 4 | Hub 拒投 CCC（400） | OK |

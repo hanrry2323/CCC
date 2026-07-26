@@ -41,7 +41,7 @@
 | Profile 路径 | `.ccc/profile.md` |
 | 本文件路径 | `.ccc/state.md` |
 | Agent 身份 | Desktop=对话搭档 · Engine=Loop 角色（见上文分流） |
-| 当前版本 | **v0.60.0**（见根目录 `VERSION` · LPSN） |
+| 当前版本 | **v0.62.0**（见根目录 `VERSION` · LPSN） |
 | 舰队 | 8/10：CCC · xianyu · qb · clawmed-ccc · qxo · ai-loop-router · hp · Medio-0（已卸 qx；预留 2） |
 
 ---
@@ -51,7 +51,7 @@
 > **滞后警告（Hub Agent 必读）**：下表可能落后于 `git log`。对齐基线时以 `git log -5` + `VERSION` 为准；
 > 若 HEAD 已出现 `scripts/board/roles/`、`scripts/engine/`、Hub `#/ops`，勿仍按「旧单体 board」叙事。
 >
-> **近 HEAD（手工备忘，2026-07-22）**：v0.60.0 **LPSN 意图飞轮**（探针/regress/L1 stable/N 门）· 见 `docs/releases/v0.60.0.md` · `docs/product/lpsn-ship-gate.md`。前序 v0.52.2 Wave A + Phase17 见 `docs/releases/v0.52.2.md`。
+> **近 HEAD（手工备忘，2026-07-26）**：v0.62.0 **retry budget 持久化 + CCC Relay + claude --bg 长 session** · 见 `CHANGELOG.md` [v0.62.0]。
 
 | 时间 | 任务 ID | 计划 | 报告 | 验收 | 状态 |
 |------|---------|------|------|------|------|
@@ -120,7 +120,7 @@
 
 ---
 
-## 当前状态（v0.60.0 LPSN, 2026-07-22）
+## 当前状态（v0.62.0, 2026-07-26）
 
 **架构**：CCC Engine 串行驱动 + BoardStore / Executor / Config 三层抽象 + phase 感知调度 + **复杂度分流** + **多端对话壳 + Hub API v1**。
 

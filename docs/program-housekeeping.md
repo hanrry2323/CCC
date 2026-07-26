@@ -8,9 +8,9 @@
 ## 服务端（Mac2017）强制结构
 
 ```text
-/Users/fan/program/
+/Users/apple/program/
   CCC/
-  infra/ai-loop-router/
+  relay/（已合入本仓）  # 原 infra/ai-loop-router，现为 CCC 仓内 relay/ 子系统
   apps/<name>/          # 新业务只许落这里
   archive/
   README.md
