@@ -797,6 +797,18 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
     summary = verdict_data.get("summary", "")
     size_class = "unknown"
 
+    # v0.62.0(P0-C 修):写 done 标记,让 check_reviewer_async 下个 tick 返 PASS
+    # verdict_data 是 fallback 时也写(fallback 本身是"verdict 提取函数已跑过"的信号),
+    # 避免 verify 永远返回 running 直到 timeout
+    if not done_file.exists():
+        try:
+            _store_atomic_write(
+                done_file,
+                json.dumps(verdict_data, ensure_ascii=False) + "\n",
+            )
+        except OSError as exc:
+            _log.debug("[reviewer] done file write: %s", exc)
+
     # 写 review 报告
     report_dir = ws / ".ccc" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
