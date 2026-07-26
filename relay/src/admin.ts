@@ -290,6 +290,25 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     return json(res, 200, { period: p, total, tokens, by_upstream: byU, by_client: byC, by_tier: byTier, trend: tr, hourly });
   }
 
+  // ── /admin/cooldowns/clear ── 运维：清冷却 + 软重置低分（多钥限流假死急救）
+  if (method === "POST" && pathname === "/admin/cooldowns/clear") {
+    const ctx = getAppContext();
+    const before = cool.size;
+    cool.clear();
+    ctx.providerCooldowns.clear();
+    ctx.providerFailCounts.clear();
+    let resetScores = 0;
+    for (const [, rec] of ctx.scores) {
+      if (rec.failStreak > 0 || rec.ewma < 0.5) {
+        rec.failStreak = 0;
+        rec.ewma = Math.max(rec.ewma, 0.7);
+        resetScores += 1;
+      }
+    }
+    console.warn(`[admin] cooldowns cleared (${before} entries), soft-reset scores=${resetScores}`);
+    return json(res, 200, { ok: true, cleared: before, scores_soft_reset: resetScores });
+  }
+
   // ── /admin/scores ── score 排行 + cooldown/ledger 原因
   if (method === "GET" && pathname === "/admin/scores") {
     const ranked = cfg.all.map(u => {
@@ -382,7 +401,8 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     return json(res, 200, {
       endpoints: [
         "status", "upstreams", "clients", "usage", "stats",
-        "health", "logs", "guide", "cache",
+        "health", "logs", "guide", "cache", "scores", "trail",
+        "POST cooldowns/clear",
       ],
     });
   }

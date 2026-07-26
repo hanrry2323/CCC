@@ -106,29 +106,39 @@ function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkB
   let sec = 20;
   const cls = classifyErr(errMsg);
   const dailyQuota = isDailyQuotaError(opts.errType ?? undefined, errMsg);
+  // 限流（非日配额）：多钥同 IP 级联时若再乘 EWMA，会把整池锁 10 分钟→假死
+  const isRateLimit =
+    !dailyQuota &&
+    (status === 429 || (cls != null && !cls.quota && /rate|限流|超限|too many/i.test(errMsg)));
 
   if (dailyQuota && opts.retryAfterSec && opts.retryAfterSec > 60) {
     // 免费通道日配额耗尽：上游给了 retry-after（通常到 UTC 午夜），直接采用
     sec = opts.retryAfterSec;
     ledgerMarkQuotaExhausted(up);
-  } else if (cls) {
-    sec = computeBackoffCooldown(up.name, cls.sec, cls.quota ? MAX_QUOTA_COOLDOWN : MAX_PROVIDER_COOLDOWN);
-    if (cls.quota) ledgerMarkQuotaExhausted(up);
-  } else if (status === 429) {
-    sec = opts.retryAfterSec && opts.retryAfterSec > 0 ? opts.retryAfterSec : 60;
+  } else if (dailyQuota || cls?.quota) {
+    sec = computeBackoffCooldown(up.name, cls?.sec ?? 300, MAX_QUOTA_COOLDOWN);
     ledgerMarkQuotaExhausted(up);
+  } else if (isRateLimit) {
+    // 固定短冷却，禁止 EWMA 放大；有 Retry-After 则采纳但封顶 120s
+    const ra = opts.retryAfterSec && opts.retryAfterSec > 0 ? opts.retryAfterSec : (cls?.sec ?? 60);
+    sec = Math.min(Math.max(ra, 15), 120);
+  } else if (cls) {
+    sec = computeBackoffCooldown(up.name, cls.sec, MAX_PROVIDER_COOLDOWN);
   } else if (/empty/i.test(errMsg)) sec = 20;
   else if (status >= 500 || status === 529) sec = 30;
   else if (status === 400) sec = 15;
   else sec = 30;
 
   bad(up, sec, `h${status}:${errMsg.slice(0, 36)}`);
-  // 日常配额耗尽是预期行为，不记为失败，避免 EWMA 低分永久拉黑
-  if (!dailyQuota) {
+  // 日配额 / 限流：不记 EWMA 失败（预期行为；否则低分×限流→多钥池假死）
+  if (!dailyQuota && !isRateLimit && !cls?.quota) {
     recordOutcome(up.name, false);
   }
-  if (cls?.quota || status === 429 || dailyQuota) affinityDeleteByUpstream(up.name);
-  if (up.provider_group) triggerProviderBreaker(up.provider_group, errMsg);
+  if (cls?.quota || dailyQuota || isRateLimit) affinityDeleteByUpstream(up.name);
+  // 限流不打 provider breaker（同厂多钥各自独立；breaker 会误伤整组）
+  if (up.provider_group && !isRateLimit && !dailyQuota) {
+    triggerProviderBreaker(up.provider_group, errMsg);
+  }
 }
 
 export { markBad };
@@ -477,6 +487,10 @@ export async function streamWithFallback(
     if (!result.ok) {
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
+      // 同 host 多钥：错峰 400ms，避免级联撞同一 RPM 窗口
+      if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+        await sleep(400);
+      }
       continue;
     }
 
@@ -680,6 +694,9 @@ export async function nonStreamWithFallback(
     }
     failureReasons.set(up.name, result.lastErr);
     pushTrail(trail, up.name, result.lastErr, t0);
+    if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+      await sleep(400);
+    }
   }
 
   recordTrailRing(routing.tier, false, undefined, trail);

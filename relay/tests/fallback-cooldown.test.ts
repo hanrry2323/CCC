@@ -325,6 +325,27 @@ describe("markBad cooldown backoff", () => {
     expect(dur).toBeGreaterThanOrEqual(595);
     expect(dur).toBeLessThanOrEqual(605);
   });
+
+  it("rate-limit cooldown stays short even when EWMA is tanked", () => {
+    const up = makeUp("rate-up");
+    // 模拟多钥假死后的低分（旧逻辑会 60×10=600s）
+    sc.set("rate-up", {
+      ewma: 0.2,
+      recentTs: Date.now(),
+      failStreak: 12,
+      lastSuccessTs: 0,
+      totalSuccess: 0,
+      totalFail: 12,
+    });
+    markBad(up, 0, "Rate limit exceeded. Please try again later");
+    const c = cool.get("rate-up");
+    expect(c).toBeTruthy();
+    const dur = Math.round((c!.until - Date.now()) / 1000);
+    expect(dur).toBeGreaterThanOrEqual(15);
+    expect(dur).toBeLessThanOrEqual(120);
+    // 限流不记 EWMA 失败
+    expect(sc.get("rate-up")!.ewma).toBeCloseTo(0.2, 5);
+  });
 });
 
 describe("v4.3 empty stream markBad", () => {
