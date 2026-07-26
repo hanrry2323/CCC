@@ -9,7 +9,9 @@
 
 **完整介绍**：[`docs/INTRO.md`](docs/INTRO.md) · **叙事 SSOT**：[`docs/VISION.md`](docs/VISION.md) · **Desktop 架构**：[`docs/product/ccc-desktop-architecture.md`](docs/product/ccc-desktop-architecture.md)  
 **启动（Agent）**：[`STARTUP-BRIEF.md`](STARTUP-BRIEF.md) · 版本：`VERSION`  
-**Release**：[v0.62.0](docs/releases/v0.62.0.md)（LPSN 意图飞轮 L→P→S→N）· [v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
+**Release**：[CHANGELOG#v0620---2026-07-26](CHANGELOG.md)（LPSN 意图飞轮 L→P→S→N + claude --bg 长 session 跃迁）· [v0.52.2](docs/releases/v0.52.2.md)（Hub-Shell Wave A + Phase17）· [v0.51.0](docs/releases/v0.51.0.md)（对内多仓里程碑）
+
+> v0.62.0 修复 5 个 P0(register_bg_session 接入 / Hub 跨进程读 state.json / done 文件移交 reviewer.py / claude --bg 输出解析 / 不硬编码 claude 路径),9 个 P1(fleet stop 杀真进程 / 僵尸过滤 / dead GC / 重复注册杀旧 / shell 注入 / 短 sha / 端点 try-except / Swift Codable 防御 / README 链),20 个 P2。详见 [CHANGELOG#v0620](CHANGELOG.md)。
 
 ---
 

@@ -184,6 +184,20 @@ struct OpsDomainBGSessions: Decodable, Hashable {
     let alive_count: Int?
     let sessions: [OpsDomainBGSession]?
     let note: String?
+
+    // v0.62.0(P1-8):自定义 init(from:),类型错返 nil 而非 throw,
+    // 避免整个 OpsHealthDomains 解码失败导致 OpsView 全部卡片消失。
+    private enum CodingKeys: String, CodingKey {
+        case ok, count, alive_count, sessions, note
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try? c.decode(Bool.self, forKey: .ok)
+        count = try? c.decode(Int.self, forKey: .count)
+        alive_count = try? c.decode(Int.self, forKey: .alive_count)
+        sessions = try? c.decode([OpsDomainBGSession].self, forKey: .sessions)
+        note = try? c.decode(String.self, forKey: .note)
+    }
 }
 
 struct OpsDomainBGSession: Decodable, Hashable {
@@ -197,6 +211,25 @@ struct OpsDomainBGSession: Decodable, Hashable {
     let age_min: Int?
     let alive: Bool?
     let idle_timeout: Bool?
+
+    // v0.62.0(P1-8):与 OpsDomainBGSessions 同防御,类型错返 nil
+    private enum CodingKeys: String, CodingKey {
+        case task_id, role, session_id, pid, model,
+             started_at, last_heartbeat, age_min, alive, idle_timeout
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        task_id = try? c.decode(String.self, forKey: .task_id)
+        role = try? c.decode(String.self, forKey: .role)
+        session_id = try? c.decode(String.self, forKey: .session_id)
+        pid = try? c.decode(Int.self, forKey: .pid)
+        model = try? c.decode(String.self, forKey: .model)
+        started_at = try? c.decode(Double.self, forKey: .started_at)
+        last_heartbeat = try? c.decode(Double.self, forKey: .last_heartbeat)
+        age_min = try? c.decode(Int.self, forKey: .age_min)
+        alive = try? c.decode(Bool.self, forKey: .alive)
+        idle_timeout = try? c.decode(Bool.self, forKey: .idle_timeout)
+    }
 }
 
 struct OpsDomainCluster: Decodable {
