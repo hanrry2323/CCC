@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -249,20 +250,43 @@ async def ops_router_usage(request: Request, refresh: int = 0):
 async def ops_bg_sessions(request: Request):
     """v0.62.0 阶段 3:列出当前所有 claude --bg 长 session。
 
-    Engine active_tasks.list_long_lived_sessions() 返 [{task_id, role, session_id,
-    pid, model, started_at, last_heartbeat, age_min, alive, idle_timeout}]。
-    Desktop UI OpsView bg-sessions 卡片调此端点。
+    v0.62.0(P0-A.2):改读持久化文件 ~/.ccc/bg-sessions/state.json,
+    跨 Hub/Engine 进程共享;不再直接 import engine(避免 in-process dict 不共享)。
+
+    失败:try/except 降级返 {"ok": False, ...} (P1-7),不直接 500。
     """
     check_auth(request)
-    from engine.active_tasks import list_long_lived_sessions
+    import json
+    from pathlib import Path
+    from engine.active_tasks import _BG_SESSIONS_FILE
 
-    sessions = list_long_lived_sessions()
-    return {
-        "ok": True,
-        "count": len(sessions),
-        "sessions": sessions,
-        "ts": _now_iso(),
-    }
+    state_file = Path(os.environ.get(
+        "CCC_BG_SESSIONS_FILE",
+        str(Path.home() / ".ccc" / "bg-sessions" / "state.json"),
+    ))
+    try:
+        if not state_file.is_file():
+            return {"ok": True, "count": 0, "sessions": [], "ts": _now_iso()}
+        with state_file.open(encoding="utf-8") as f:
+            state = json.load(f)
+        if not isinstance(state, dict):
+            return {"ok": True, "count": 0, "sessions": [], "ts": _now_iso()}
+        sessions = list(state.values())
+        return {
+            "ok": True,
+            "count": len(sessions),
+            "sessions": sessions,
+            "ts": _now_iso(),
+        }
+    except (OSError, json.JSONDecodeError) as exc:
+        # v0.62.0(P1-7):失败降级,不再 500
+        return {
+            "ok": False,
+            "count": 0,
+            "sessions": [],
+            "error": str(exc)[:200],
+            "ts": _now_iso(),
+        }
 
 
 @router.get("/api/ops/summary")
