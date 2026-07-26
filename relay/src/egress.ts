@@ -3,7 +3,7 @@
 //  用途：免费多钥拆到不同出口 IP，避免 OpenCode 同 IP RPM 整池假死
 // ═══════════════════════════════════════════════════════════════
 
-import { ProxyAgent, Agent, type Dispatcher } from "undici";
+import { ProxyAgent, Agent, fetch as undiciFetch, type Dispatcher, type RequestInit as UndiciRequestInit } from "undici";
 import type { UpstreamConfig } from "./types.js";
 
 const _agents = new Map<string, Dispatcher>();
@@ -40,14 +40,19 @@ export function getDispatcherForUpstream(up: UpstreamConfig): Dispatcher {
   return agent;
 }
 
-/** 带上游出口的 fetch（代理失败时抛错，由 fallback 换钥） */
+/** 带上游出口的 fetch（代理失败时抛错，由 fallback 换钥）
+ *
+ * 必须用 undici 自带的 fetch：Node 全局 fetch 与 npm undici.ProxyAgent
+ * 混用会报 InvalidArgumentError: invalid onRequestStart method。
+ */
 export async function upstreamFetch(
   up: UpstreamConfig,
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   const dispatcher = getDispatcherForUpstream(up);
-  return fetch(url, { ...init, dispatcher } as RequestInit);
+  // undici fetch 返回值与 Web Response 兼容；cast 给协议层用
+  return undiciFetch(url, { ...(init as UndiciRequestInit), dispatcher }) as unknown as Promise<Response>;
 }
 
 /** 测试用：清空 agent 缓存 */
