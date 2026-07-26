@@ -4,9 +4,9 @@
 Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → 本机 relay :4000 → 上游 LLM
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
-Security (2026-07-24):
-  - /api/chat + /warm **默认强制** Bearer / X-CCC-Agent-Token（~/.ccc/agent-token）
-  - 仅显式 CCC_AGENT_AUTH=0/off/open 才关闭鉴权（本机排障；勿对 LAN 长期开）
+Security (2026-07-27):
+  - 对话口默认 CCC_AGENT_AUTH=0（内网）；CCC_AGENT_AUTH=1 才强制 Token
+  - Hub API 经 sidecar 同机反代打隧道（浏览器不直连 2017 LAN :7777）
   - project_path 必须落在 allowlist 根下
   - /health 不暴露完整 cli 路径
 
@@ -94,7 +94,7 @@ from _claude_cli import (  # noqa: E402
 ensure_loop_code_config_dir(Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser())
 
 from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 import uvicorn  # noqa: E402
@@ -488,14 +488,14 @@ def _workspace_map() -> dict[str, str]:
 
 @app.get("/api/shell-config")
 async def shell_config():
-    """对话 SPA 启动配置（无密钥）；Hub base 供 transfer/board 跨机调用。
+    """对话 SPA 启动配置（无密钥）。
 
-    hub_base      — Desktop / 本机默认（SSH 隧道 127.0.0.1:17777；硬共识）
-    hub_base_lan  — 手机 / 内网浏览器旁路（排障；非 Desktop 默认）
+    hub_base / hub_base_lan 仅供展示与排障；对话壳前端 Hub API **同机反代**
+    （见 hub_api_proxy），不依赖浏览器直连 2017 LAN :7777。
     """
     hub = (os.environ.get("CCC_HUB_URL") or "http://127.0.0.1:17777").rstrip("/")
     hub_lan = (
-        os.environ.get("CCC_HUB_URL_LAN") or "http://192.168.3.116:7777"  # 排障·手机
+        os.environ.get("CCC_HUB_URL_LAN") or "http://192.168.3.116:7777"  # 排障·手机直连
     ).rstrip("/")
     return {
         "ok": True,
@@ -503,6 +503,7 @@ async def shell_config():
         "agent_base": "",
         "hub_base": hub,
         "hub_base_lan": hub_lan,
+        "hub_via_proxy": True,
         "workspace_map": _workspace_map(),
     }
 
@@ -1040,6 +1041,77 @@ async def chat(request: Request):
             "X-CCC-Agent": "local-sidecar",
         },
     )
+
+
+def _hub_proxy_skip(path: str) -> bool:
+    """Sidecar 自有 /api/*，勿转发到 Hub。"""
+    p = (path or "").lstrip("/")
+    if p in {"chat", "shell-config"}:
+        return True
+    if p.startswith("session/") or p.startswith("outbox/"):
+        return True
+    return False
+
+
+def _hub_proxy_sync(
+    method: str,
+    url: str,
+    body: bytes,
+    content_type: str | None,
+) -> tuple[int, dict[str, str], bytes]:
+    import urllib.error
+    import urllib.request
+
+    headers = dict(_hub_auth_headers())
+    if content_type:
+        headers["Content-Type"] = content_type
+    req = urllib.request.Request(url, data=body or None, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+            out_headers = {
+                k: v
+                for k, v in resp.headers.items()
+                if k.lower()
+                in {"content-type", "cache-control", "x-request-id"}
+            }
+            return int(resp.status), out_headers, raw
+    except urllib.error.HTTPError as exc:
+        raw = exc.read() if exc.fp else b""
+        out_headers = {
+            k: v
+            for k, v in (exc.headers.items() if exc.headers else [])
+            if k.lower() in {"content-type"}
+        }
+        return int(exc.code), out_headers, raw
+    except Exception as exc:
+        payload = json.dumps({"detail": f"hub proxy error: {exc}"}).encode()
+        return 502, {"content-type": "application/json"}, payload
+
+
+@app.api_route(
+    "/api/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def hub_api_proxy(path: str, request: Request):
+    """对话 SPA → sidecar → Hub 隧道（127.0.0.1:17777）。
+
+    Hub 仅绑环回时，LAN 打开 :7788/#/chat 无法直连 :7777；项目列表等走此反代。
+    须注册在具体 /api/* 路由之后，避免抢占 /api/chat。
+    """
+    if _hub_proxy_skip(path):
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    q = request.url.query
+    url = f"{_hub_base()}/api/{path}" + (f"?{q}" if q else "")
+    body = await request.body()
+    status, headers, raw = await asyncio.to_thread(
+        _hub_proxy_sync,
+        request.method,
+        url,
+        body,
+        request.headers.get("content-type"),
+    )
+    return Response(content=raw, status_code=status, headers=headers)
 
 
 def main() -> None:

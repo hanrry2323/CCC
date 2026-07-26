@@ -47,6 +47,11 @@ function _lanHubCandidate() {
 
 /** Hub API origin；同机 Hub SPA 时返回空串（相对路径）。 */
 export function hubBase() {
+  // 对话壳（:7788）：Hub API 一律同机反代 → sidecar 隧道打 2017。
+  // Hub 仅绑 127.0.0.1:7777，浏览器直连 LAN :7777 会空项目列表。
+  if (isDialogueShell()) {
+    return '';
+  }
   if (typeof window !== 'undefined' && window.__CCC_HUB_BASE__ != null) {
     const forced = _strip(window.__CCC_HUB_BASE__);
     if (forced && isRemoteBrowser() && isLoopbackUrl(forced)) {

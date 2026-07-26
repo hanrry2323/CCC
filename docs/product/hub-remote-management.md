@@ -31,7 +31,7 @@ thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，�
 
 | 用途 | URL |
 |------|-----|
-| 聊 | `http://192.168.3.140:7788/`（sidecar 静态壳；**默认无 Token**，`CCC_AGENT_AUTH=0`） |
+| 聊 | `http://192.168.3.140:7788/`（sidecar 静态壳；**默认无 Token**；Hub API **同机反代→隧道**，不直连 2017 `:7777`） |
 | 看板 / 运维 / 下达 | `http://192.168.3.116:7777/#/board`（Hub Basic Auth `ccc`/`ccc`） |
 
 对话 SPA 配置（与 Desktop 同构）：
