@@ -355,6 +355,32 @@ describe("markBad cooldown backoff", () => {
     expect(res.trail.some(t => t.name === "go-b" && t.reason.includes("same-host"))).toBe(true);
   });
 
+  it("same-host rate-limit does not skip siblings on a different proxy egress", async () => {
+    const shared = "https://opencode.ai/zen/v1";
+    const direct: UpstreamConfig = { ...makeUp("go-direct"), base_url: shared };
+    const viaHk: UpstreamConfig = {
+      ...makeUp("go-hk"),
+      base_url: shared,
+      proxy: "http://127.0.0.1:18080",
+    };
+    const routing: RoutingResult = {
+      upstream: direct,
+      candidates: [direct, viaHk],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+    const res = await streamWithFallback(routing, async (up) => {
+      if (!up.proxy) {
+        return new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429 });
+      }
+      return new Response(okBody, { status: 200 });
+    });
+    expect(res.upstream!.name).toBe("go-hk");
+    expect(res.trail.some(t => t.name === "go-hk" && t.reason === "ok")).toBe(true);
+    expect(res.trail.some(t => t.name === "go-hk" && t.reason.includes("same-host"))).toBe(false);
+  });
+
   it("rate-limit cooldown stays short even when EWMA is tanked", () => {
     const up = makeUp("rate-up");
     // 模拟多钥假死后的低分（旧逻辑会 60×10=600s）

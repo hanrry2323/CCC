@@ -27,6 +27,12 @@ function failoverMaxMs(): number {
   return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
 }
 
+/** 同出口限流桶：base_url + proxy。不同 proxy（如 HK）视为不同 IP，不互跳。 */
+export function egressRateLimitKey(up: UpstreamConfig): string {
+  const proxy = (up.proxy || "").trim() || "direct";
+  return `${up.base_url}||${proxy}`;
+}
+
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
 
 function isPlatformError(errMsg: string): boolean {
@@ -453,7 +459,7 @@ export async function streamWithFallback(
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
-  /** 同 base_url 刚撞 RPM：本轮不再连打其它钥（防整池被一起 markBad） */
+  /** 同出口刚撞 RPM：本轮不再连打同 proxy 的其它钥（不同 egress 可继续试） */
   const rateLimitedHosts = new Set<string>();
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
@@ -475,7 +481,7 @@ export async function streamWithFallback(
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
-    if (rateLimitedHosts.has(up.base_url)) {
+    if (rateLimitedHosts.has(egressRateLimitKey(up))) {
       failureReasons.set(up.name, "skipped (same-host rate-limit)");
       pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
       continue;
@@ -495,9 +501,9 @@ export async function streamWithFallback(
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
-        rateLimitedHosts.add(up.base_url);
-      } else if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
-        // 非限流失败：错峰后再试同 host 下一钥
+        rateLimitedHosts.add(egressRateLimitKey(up));
+      } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
+        // 非限流失败：错峰后再试同出口下一钥
         await sleep(400);
       }
       continue;
@@ -687,7 +693,7 @@ export async function nonStreamWithFallback(
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
-    if (rateLimitedHosts.has(up.base_url)) {
+    if (rateLimitedHosts.has(egressRateLimitKey(up))) {
       failureReasons.set(up.name, "skipped (same-host rate-limit)");
       pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
       continue;
@@ -710,8 +716,8 @@ export async function nonStreamWithFallback(
     failureReasons.set(up.name, result.lastErr);
     pushTrail(trail, up.name, result.lastErr, t0);
     if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
-      rateLimitedHosts.add(up.base_url);
-    } else if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+      rateLimitedHosts.add(egressRateLimitKey(up));
+    } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
       await sleep(400);
     }
   }
