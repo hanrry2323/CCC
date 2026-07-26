@@ -52,8 +52,14 @@ export interface UpstreamConfig {
   wire_protocol?: "openai-chat" | "anthropic";
   // v4.1: 所属 provider 分组（用于断路器，同组上游共享 break threshold）
   provider_group?: string;
+  /**
+   * 出站代理（v0.62+）：http(s):// 或 socks5://host:port
+   * 用于免费多钥拆出口 IP（如 2017 本机直连 + 香港机 HTTP CONNECT）
+   */
+  proxy?: string;
   // 透传字段, 不参与路由, 仅审计 / dashboard
   _note?: string;
+  description?: string;
 }
 
 // ── Routing ──

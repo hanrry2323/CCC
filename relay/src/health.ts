@@ -6,6 +6,7 @@
 import type { UpstreamConfig } from "./types.js";
 import { getConfig } from "./config.js";
 import { getAppContext } from "./context.js";
+import { upstreamFetch } from "./egress.js";
 
 const PROBE_TIMEOUT_MS = 10_000;
 const PROBE_INTERVAL_MS = 120_000; // 2min 全量探针间隔
@@ -29,7 +30,7 @@ export async function probeOne(u: UpstreamConfig): Promise<void> {
 
   let t0 = Date.now();
   try {
-    const resp = await fetch(`${u.base_url}/models`, {
+    const resp = await upstreamFetch(u, `${u.base_url}/models`, {
       method: "GET",
       headers: { Authorization: `Bearer ${u.api_key}` },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
@@ -48,7 +49,7 @@ export async function probeOne(u: UpstreamConfig): Promise<void> {
     const m = u.upstream_model || u.models?.[0] || "gpt-4o-mini";
     t0 = Date.now();
     try {
-      const resp = await fetch(`${u.base_url}/chat/completions`, {
+      const resp = await upstreamFetch(u, `${u.base_url}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${u.api_key}` },
         body: JSON.stringify({ model: m, messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),

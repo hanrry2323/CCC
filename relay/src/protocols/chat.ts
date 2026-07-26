@@ -17,6 +17,7 @@ import { json, readBody } from "../http.js";
 import { cacheKey, cacheGet, cacheSet, prefixCacheKey, trackPrefix, isCacheableRequest, shouldCacheWrite } from "../cache.js";
 // CCC Relay 2026-07-25 门禁②补丁:流式/非流式超时走可配
 import { TIMEOUTS } from "../config.js";
+import { upstreamFetch } from "../egress.js";
 
 export async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const t0 = Date.now();
@@ -103,7 +104,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
           const controller = new AbortController();
           const connectTimer = setTimeout(() => controller.abort(), TIMEOUTS.CONNECT_MS);
           try {
-            return await fetch(candidate.base_url + "/chat/completions", {
+            return await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
               method: "POST",
               headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
               body: JSON.stringify(body),
@@ -269,7 +270,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
     const cFbm = ru.fallback_model || candidate.fallback_model || null;
     const cUpm = cFbm || candidate.upstream_model || b.model.replace(/^opencode-go\//, "");
     try {
-      const resp = await fetch(candidate.base_url + "/chat/completions", {
+      const resp = await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ ...b, model: cUpm, ...(candidate.request_overrides || {}) }),

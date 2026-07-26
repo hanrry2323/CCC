@@ -12,6 +12,7 @@ import { json, readBody, urlParams } from "./http.js";
 import { cacheStats, cacheClear, cacheDelete } from "./cache.js";
 import { getScore, getAllScores } from "./scoring.js";
 import { ledgerSnapshot, ledgerAll } from "./ledger.js";
+import { upstreamFetch } from "./egress.js";
 import type { UpstreamConfig } from "./types.js";
 import { readFileSync, existsSync, writeFileSync } from "fs";
 import type { IncomingMessage, ServerResponse } from "http";
@@ -75,6 +76,7 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
         fallback_model: u.fallback_model, quota: u.quota || null,
         free: u.free || false, free_type: u.free_type || null,
         provider_group: u.provider_group || null,
+        proxy: u.proxy || null,
         health: hlt.get(u.name) || null, cooldown: cool.get(u.name)?.until || null,
         used_today: used("upstream", u.name),
         req_today: usg.value.filter(x => x.timestamp >= ts && x.upstream === u.name).length,
@@ -172,7 +174,7 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     if (!u) return json(res, 404, { error: "Not found" });
     const t0 = Date.now();
     try {
-      const resp = await fetch(`${u.base_url}/chat/completions`, {
+      const resp = await upstreamFetch(u, `${u.base_url}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${u.api_key}` },
         body: JSON.stringify({ model: u.upstream_model || u.models?.[0] || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),

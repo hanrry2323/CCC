@@ -19,6 +19,7 @@
 |------|------|-----|------|
 | **Client（对话）** | M1 | `192.168.3.140` | **CCC Desktop + sidecar `:7788` + arm64 loop-code**；本机会话 SSOT；远程浏览器聊亦打此口 |
 | **Server（编排）** | Mac2017 | `192.168.3.116` | Hub API、Board、Engine（Claude 扇出）、OpenCode（dev 写码）、业务工作区、上游 API key |
+| **Egress（可选）** | 香港 VPS | `124.156.166.72` | HTTP CONNECT 出口；免费多钥拆 IP（`com.ccc.hk-egress-tunnel`） |
 | **Client（运维）** | 浏览器 | — | 网页 Hub `:7777`（看板/运维）；**不是**对话入口 |
 
 同一时刻：**只一台 Engine**（Server）。  
