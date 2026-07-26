@@ -246,6 +246,86 @@ async def ops_router_usage(request: Request, refresh: int = 0):
     return fetch_router_usage(use_cache=False)
 
 
+@router.get("/api/ops/upstream-daily")
+async def ops_upstream_daily(request: Request, upstream: str = "", host: str = "127.0.0.1", port: int = 4000):
+    """每上游今日调用量+Token+成功率+延迟+成本估算。
+
+    v0.61.0 Phase 1+3:从 relay /admin/usage + 本地 usage.json 聚合。
+    """
+    check_auth(request)
+    from _ops_probe import fetch_router_upstream_daily, _load_usage_file, _today_records, enrich_upstream_cost
+
+    result = fetch_router_upstream_daily(host=host, port=port, use_cache=False)
+    if not result.get("ok"):
+        return result
+    records = _today_records(_load_usage_file())
+    ups = enrich_upstream_cost(result.get("upstreams", []), usage_records=records)
+    if upstream:
+        ups = [u for u in ups if upstream in u["name"]]
+    result["upstreams"] = ups
+    result["total_cost"] = round(sum(u.get("cost_usd", 0) for u in ups), 6)
+    return result
+
+
+@router.get("/api/ops/upstream-trend")
+async def ops_upstream_trend(request: Request, days: int = 7, host: str = "127.0.0.1", port: int = 4000):
+    """近 N 天每日趋势(总量+by_upstream)。
+
+    v0.61.0 Phase 1:从 relay /admin/usage?period={days}d 聚合。
+    """
+    check_auth(request)
+    from _ops_probe import fetch_router_upstream_trend
+
+    return fetch_router_upstream_trend(days=days, host=host, port=port, use_cache=False)
+
+
+@router.get("/api/ops/upstream-efficiency")
+async def ops_upstream_efficiency(request: Request, host: str = "127.0.0.1", port: int = 4000):
+    """每上游健康评分+冷却状态+成功率(来自 relay scores + admin upstreams)。
+
+    v0.61.0 Phase 2:从 relay /admin/scores + /admin/upstreams 聚合。
+    """
+    check_auth(request)
+    import urllib.request, json
+
+    result: dict = {"ok": True, "upstreams": []}
+    try:
+        for endpoint, key in [("/admin/scores", "scores"), ("/admin/upstreams", "upstreams")]:
+            url = f"http://{host}:{port}{endpoint}"
+            with urllib.request.urlopen(url, timeout=2.5) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if endpoint == "/admin/scores":
+                scores = data.get(key, []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                score_map = {s.get("name"): s for s in scores if isinstance(s, dict) and s.get("name")}
+                result["scores"] = scores
+            else:
+                ups = data if isinstance(data, list) else []
+                upstreams_out = []
+                for u in ups:
+                    name = u.get("name")
+                    sc = score_map.get(name, {})
+                    upstreams_out.append({
+                        "name": name,
+                        "tier": u.get("tier", "unknown"),
+                        "upstream_model": u.get("upstream_model", ""),
+                        "score": sc.get("score"),
+                        "fail_streak": sc.get("fail_streak", 0),
+                        "total_success": sc.get("total_success", 0),
+                        "total_fail": sc.get("total_fail", 0),
+                        "health": u.get("health"),
+                        "cooldown": u.get("cooldown"),
+                        "block_reason": u.get("block_reason"),
+                        "ledger": u.get("ledger"),
+                    })
+                result["upstreams"] = upstreams_out
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"relay {host}:{port} unreachable: {exc!r}"[:200],
+        }
+    return result
+
+
 @router.get("/api/ops/bg-sessions")
 async def ops_bg_sessions(request: Request):
     """v0.62.0 阶段 3:列出当前所有 claude --bg 长 session。

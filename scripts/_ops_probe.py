@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import re
@@ -273,6 +274,318 @@ def fetch_router_usage(
         }
     _CACHE[cache_key] = (now, result)
     return result
+
+
+# ── Phase 1: per-upstream 日统计 ────────────────────────────────
+# 2026-07-26 从 relay persistent usage.json 计算每上游今日统计。
+# 数据源: ~/.ccc/relay/usage.json(relay 每 60s 落盘;保留最近 100k 条)。
+# 不通过 relay admin API(admin 不暴露 per-upstream latency/success)。
+
+_RELAY_USAGE_DIR = str(Path.home() / ".ccc" / "relay")
+
+
+def _today_start_ts() -> int:
+    """今天 00:00 UTC 的时间戳(毫秒)。"""
+    from datetime import datetime, timezone
+    return int(datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+
+
+def _load_usage_file(path: str | None = None) -> list[dict]:
+    """从 usage.json 加载原始请求记录。"""
+    fp = path or os.path.join(_RELAY_USAGE_DIR, "usage.json")
+    if not os.path.isfile(fp):
+        return []
+    try:
+        with open(fp, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _today_records(records: list[dict]) -> list[dict]:
+    """筛选今日记录。"""
+    ts = _today_start_ts()
+    return [r for r in records if r.get("timestamp", 0) >= ts]
+
+
+def fetch_router_upstream_daily(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 4000,
+    timeout: float = 2.5,
+    use_cache: bool = True,
+    usage_path: str | None = None,
+) -> dict:
+    """CCC Relay 2026-07-26:每上游今日调用量+token。
+
+    从 relay /admin/usage?period=1d 取 by_upstream(调用数+token)，
+    再读本地 usage.json 补充每上游成功率+平均延迟+今日成本。
+
+    返回结构:
+    {
+        "ok": true,
+        "upstreams": [
+            {
+                "name": "opencode-go",
+                "tier": "flash",
+                "requests_today": 12,
+                "tokens_today": 15600,
+                "success_rate": 1.0,
+                "avg_latency_ms": 2850,
+                "cost_usd": 0.007,
+            },
+            ...
+        ],
+        "tier_totals": {"flash": {"requests": 12, "tokens": 15600}},
+        "total_requests": 12,
+        "total_tokens": 15600,
+        "total_cost": 0.007,
+    }
+    """
+    cache_key = ("upstream_daily", host, port)
+    now = time.monotonic()
+    if use_cache and cache_key in _CACHE:
+        ts, val = _CACHE.get(cache_key, (0, None))
+        if val is not None and (now - ts) < 30.0:
+            return val
+
+    # 1) 从 relay admin API 拿 by_upstream + tiers
+    url = f"http://{host}:{port}/admin/usage?period=1d"
+    usage_relay = None
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            usage_relay = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception:
+        pass
+
+    by_upstream_api: dict[str, dict] = {}
+    tier_map: dict[str, str] = {}
+    if usage_relay and usage_relay.get("by_upstream"):
+        by_upstream_api = usage_relay["by_upstream"]
+        # Build tier_map 从 relay upstreams
+        try:
+            up_url = f"http://{host}:{port}/admin/upstreams"
+            with urllib.request.urlopen(up_url, timeout=timeout) as resp:
+                upstreams = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if isinstance(upstreams, list):
+                for u in upstreams:
+                    if isinstance(u, dict) and u.get("name"):
+                        tier_map[u["name"]] = u.get("tier", "unknown")
+        except Exception:
+            pass
+
+    # 2) 从本地 usage.json 补成功率+延迟
+    records = _load_usage_file(usage_path)
+    today = _today_records(records)
+
+    # 聚合 per-upstream 今日统计
+    today_by_up: dict[str, dict] = {}
+    for r in today:
+        name = r.get("upstream", "unknown")
+        if name not in today_by_up:
+            today_by_up[name] = {
+                "n": 0, "tokens": 0, "fail": 0, "latency_sum": 0, "latency_count": 0,
+            }
+        d = today_by_up[name]
+        d["n"] += 1
+        d["tokens"] += r.get("total_tokens", 0) or 0
+        if not r.get("success"):
+            d["fail"] += 1
+        lat = r.get("latency_ms")
+        if isinstance(lat, (int, float)) and lat > 0:
+            d["latency_sum"] += lat
+            d["latency_count"] += 1
+
+    # 3) 合并两个来源
+    all_names = set(by_upstream_api.keys()) | set(today_by_up.keys())
+    upstreams_out = []
+    for name in sorted(all_names):
+        raw = by_upstream_api.get(name, {})
+        hist = today_by_up.get(name, {})
+        n = raw.get("n", 0) or hist.get("n", 0)
+        tokens = raw.get("tk", 0) or hist.get("tokens", 0)
+        fail = hist.get("fail", 0)
+        success_rate = 1.0 - (fail / max(n, 1))
+        avg_lat = round(hist["latency_sum"] / max(hist["latency_count"], 1), 1) if hist.get("latency_count") else None
+        upstreams_out.append({
+            "name": name,
+            "tier": tier_map.get(name, "unknown"),
+            "requests_today": n,
+            "tokens_today": tokens,
+            "success_rate": round(success_rate, 4),
+            "avg_latency_ms": avg_lat,
+        })
+
+    # tier 聚合
+    tier_totals: dict[str, dict] = {}
+    for u in upstreams_out:
+        t = u["tier"]
+        if t not in tier_totals:
+            tier_totals[t] = {"requests": 0, "tokens": 0}
+        tier_totals[t]["requests"] += u["requests_today"]
+        tier_totals[t]["tokens"] += u["tokens_today"]
+
+    result = {
+        "ok": True,
+        "upstreams": upstreams_out,
+        "tier_totals": tier_totals,
+        "total_requests": sum(u["requests_today"] for u in upstreams_out),
+        "total_tokens": sum(u["tokens_today"] for u in upstreams_out),
+    }
+    _CACHE[cache_key] = (now, result)
+    return result
+
+
+def fetch_router_upstream_trend(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 4000,
+    days: int = 7,
+    timeout: float = 2.5,
+    use_cache: bool = True,
+) -> dict:
+    """CCC Relay 2026-07-26:近 N 天每上游每日趋势。
+
+    从 relay /admin/usage?period={days}d 拿 trend(日 token 总量)
+    和 by_upstream 的每日调用明细。
+    """
+    cache_key = ("upstream_trend", host, port, days)
+    now = time.monotonic()
+    if use_cache and cache_key in _CACHE:
+        ts, val = _CACHE.get(cache_key, (0, None))
+        if val is not None and (now - ts) < 60.0:
+            return val
+
+    url = f"http://{host}:{port}/admin/usage?period={days}d"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+        trend = (payload or {}).get("trend", [])
+        # trend 结构: [{date: "2026-07-25", tokens: N}, ...]
+        by_upstream = (payload or {}).get("by_upstream", {})
+        total = (payload or {}).get("total", 0)
+        result = {
+            "ok": True,
+            "period_days": days,
+            "trend": trend,
+            "total_requests": total,
+            "by_upstream": by_upstream,
+        }
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "error": f"relay trend fetch failed: {exc!r}"[:200],
+        }
+    _CACHE[cache_key] = (now, result)
+    return result
+
+
+# ── Phase 3: 成本估算 ─────────────────────────────────────────
+# 2026-07-26 根据 token 量和模型单价估算每日消耗。
+# 成本目录 ~/.ccc/cost-catalog.json（可覆盖），默认价参考 _cost_telemetry._COST_MAP。
+# 由于 usage.json 只有 total_tokens（无 prompt/completion 拆分），使用 blended $/M tokens。
+
+
+@dataclasses.dataclass
+class CostCatalog:
+    """每上游 $/M tokens（blended rate，假设 prompt:completion ≈ 3:1）。"""
+
+    # upstream 名称前缀 → blended $/M tokens
+    rates: dict[str, float] = dataclasses.field(default_factory=lambda: {
+        "opencode-go-paid": 6.0,     # claude-sonnet
+        "opencode-go": 0.26,         # deepseek-v4（含 -b ~ -g 副本）
+        "xfyun-code": 0.42,          # xfyun-code
+        "zhipu-glm4": 0.0,           # 免费
+        "minimax-m3": 0.88,          # minimax-m3
+        "gemini-flash": 0.18,        # gemini-flash
+        "claude-haiku": 0.50,        # haiku
+        "claude-sonnet": 6.0,        # sonnet
+        "default": 0.30,             # fallback
+    })
+
+    @classmethod
+    def load(cls, path: str | None = None) -> "CostCatalog":
+        """从 ~/.ccc/cost-catalog.json 加载，不存在则用默认值。"""
+        fp = path or os.path.join(str(Path.home()), ".ccc", "cost-catalog.json")
+        if not os.path.isfile(fp):
+            return cls()
+        try:
+            with open(fp, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and "rates" in data:
+                return cls(rates={**cls().rates, **data["rates"]})
+            return cls()
+        except (OSError, json.JSONDecodeError):
+            return cls()
+
+    def rate_for(self, upstream_name: str) -> float:
+        """根据 upstream 名称前缀查找 blended $/M tokens。"""
+        name = upstream_name.lower()
+        # 精确匹配优先
+        for prefix, rate in sorted(self.rates.items(), key=lambda x: -len(x[0])):
+            if prefix == "default":
+                continue
+            if name.startswith(prefix) or name == prefix:
+                return rate
+        return self.rates.get("default", 0.30)
+
+
+_COST_CATALOG_CACHE: CostCatalog | None = None
+_COST_CATALOG_MTIME: float = 0
+
+
+def _get_cost_catalog() -> CostCatalog:
+    """带 mtime 缓存的 CostCatalog 加载。"""
+    global _COST_CATALOG_CACHE, _COST_CATALOG_MTIME
+    fp = os.path.join(str(Path.home()), ".ccc", "cost-catalog.json")
+    try:
+        mtime = os.path.getmtime(fp) if os.path.isfile(fp) else 0
+    except OSError:
+        mtime = 0
+    if _COST_CATALOG_CACHE is None or mtime != _COST_CATALOG_MTIME:
+        _COST_CATALOG_CACHE = CostCatalog.load()
+        _COST_CATALOG_MTIME = mtime
+    return _COST_CATALOG_CACHE
+
+
+def enrich_upstream_cost(
+    upstreams: list[dict],
+    usage_records: list[dict] | None = None,
+) -> list[dict]:
+    """给每上游添加 cost_usd 字段。
+
+    Args:
+        upstreams: fetch_router_upstream_daily() 返回的 upstreams 列表。
+        usage_records: _today_records(_load_usage_file()) 的原始记录（可选，精确计算用）。
+
+    返回:
+        增加了 cost_usd 字段的 upstreams 列表（就地修改并返回）。
+    """
+    catalog = _get_cost_catalog()
+
+    # 如果有原始记录，从记录逐条求和（更精确）
+    if usage_records:
+        cost_by_upstream: dict[str, float] = {}
+        for r in usage_records:
+            name = r.get("upstream", "unknown")
+            rate = catalog.rate_for(name)
+            tokens = r.get("total_tokens", 0) or 0
+            cost_by_upstream[name] = cost_by_upstream.get(name, 0.0) + tokens * rate / 1_000_000
+
+    for u in upstreams:
+        name = u.get("name", "unknown")
+        tokens = u.get("tokens_today", 0) or 0
+
+        if usage_records:
+            cost = round(cost_by_upstream.get(name, 0.0), 6)
+        else:
+            rate = catalog.rate_for(name)
+            cost = round(tokens * rate / 1_000_000, 6)
+
+        u["cost_usd"] = cost
+
+    return upstreams
 
 
 def probe_ports(infra: dict | None = None, *, use_cache: bool = True) -> dict:
