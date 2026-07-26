@@ -47,8 +47,6 @@ ALL_LABELS_M1=(
   "com.ccc.relay.m1"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
-  "com.ccc.board"
-  "com.ccc.chat-server"
   "com.ccc.flywheel-scan"
   "com.ccc.loop-monitor"
   "com.opencode.serve"
@@ -72,8 +70,6 @@ TIER_UI_M1=(
   "com.ccc.relay.m1"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
-  "com.ccc.board"
-  "com.ccc.chat-server"
 )
 TIER_ALL_2017=(
   "com.ccc.relay.2017"
@@ -89,8 +85,6 @@ TIER_ALL_M1=(
   "com.ccc.relay.m1"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
-  "com.ccc.board"
-  "com.ccc.chat-server"
 )
 # 反向序:用于 stop
 TIER_ALL_2017_REV=(
@@ -226,7 +220,7 @@ _port_in_use() {
 start() {
   local target="${1:-all}"
   if [[ "$target" == "ui-tier" ]]; then
-    # M1 专属:relay + hub-tunnel + agent-sidecar + board + chat-server
+    # M1 专属:relay.m1 + hub-tunnel + agent-sidecar（永不含 Hub/Board/Engine）
     local tier=("${TIER_UI_M1[@]}")
     if [[ "$HOST_TAG" != "m1" ]]; then
       _log "❌ ui-tier 仅 M1 模式,当前 $HOST_TAG"; return 1
@@ -243,11 +237,25 @@ start() {
   fi
 
   # 端口预检(避免双实例抢端口)
-  for port in 4000 4002 7775 7777 7788; do
-    if _port_in_use "$port"; then
-      _log "WARN: 端口 $port 已被占,可能存在旧实例"
-    fi
-  done
+  if [[ "$HOST_TAG" == "2017" ]]; then
+    for port in 4000 4002 7775 7777; do
+      if _port_in_use "$port"; then
+        _log "WARN: 端口 $port 已被占,可能存在旧实例"
+      fi
+    done
+  else
+    for port in 4000 7788 17777; do
+      if _port_in_use "$port"; then
+        _log "WARN: 端口 $port 已被占,可能存在旧实例"
+      fi
+    done
+    for port in 7775 7777; do
+      if _port_in_use "$port"; then
+        _log "❌ M1 不应监听 Hub/Board 端口 $port — 先停本机 Hub 再 start"
+        return 1
+      fi
+    done
+  fi
 
   _log "→ start tier (${#tier[@]} 组件),拓扑序: ${tier[*]}"
 
@@ -259,11 +267,11 @@ start() {
     return 2
   fi
 
-  # v0.61.0 阶段 E:2017 端 engine 启动前强制双机对齐(防 commit 漂移)
+  # v0.61.0 阶段 E:2017 start 前核对仓内 VERSION 与 origin/main（Hub 可能未起，不用 HTTP）
   if [[ "$target" == "all" && "$HOST_TAG" == "2017" ]]; then
-    if ! bash "${CCC_HOME}/scripts/ccc-dual-host-check.sh" --sync-only --2017 >/dev/null 2>&1; then
-      _log "❌ dual-host 未对齐(2017 落后于 M1)→ 拒绝启 engine"
-      _log "  跑: ccc-sync-after-push  # 或手动拉 M1 HEAD"
+    if ! bash "${CCC_HOME}/scripts/ccc-dual-host-check.sh" --sync-only --2017; then
+      _log "❌ 2017 仓未与 origin/main 对齐 → 拒绝启 fleet"
+      _log "  跑: git fetch && git merge --ff-only origin/main"
       return 1
     fi
   fi

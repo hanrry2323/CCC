@@ -24,8 +24,8 @@ def test_wrap_hub_prompt_prefixes_and_idempotent():
     assert "ccc-transfer" in HUB_BOSS_VOICE
     assert "定稿块" in HUB_BOSS_VOICE
     assert "Mac2017 Engine" in HUB_BOSS_VOICE
-    assert "中转站" in HUB_BOSS_VOICE  # 禁止口径里会提到，用于禁令
-    assert "禁止**出现" in HUB_BOSS_VOICE or "禁止出现" in HUB_BOSS_VOICE or "`flash` 中转站" in HUB_BOSS_VOICE
+    assert "ai-loop-router" in HUB_BOSS_VOICE  # 禁止已退役口径
+    assert "M1 本地 Hub" in HUB_BOSS_VOICE or "业务第二树" in HUB_BOSS_VOICE
 
 
 def test_transfer_outbox_mental_model_locked():

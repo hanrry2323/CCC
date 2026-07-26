@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-25（**三层架构 + loop-code 槽位化** + **CCC Relay 中转站回归**；Ops 运维面：三面 + 红绿灯；Hub M1 隧道 `:17777`；假绿关门 / 活跃板计数 / VERSION opt-in）
+> **状态**：现行 · 2026-07-26（**三层架构 + loop-code 槽位化** + **CCC Relay** + **claude --bg（2017）**；Ops 运维面；Hub M1 隧道 `:17777`；双机拓扑：M1=对话 / 2017=编排）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -371,9 +371,11 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **协议转换范围** | flash/code 走 `:4000/v1/messages` 协议转换出口(Anthropic 协议,吸纳 OpenAI Chat/讯飞/智谱等异构上游);**Pro 走直连**,绕开协议转换,拿原生 Anthropic/OpenAI 体验 |
 | **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
 | **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
-| **M1 对话路径** | sidecar → **本机 relay**(`http://127.0.0.1:4000`,主路径);relay 探活失败时 `CCC_RELAY_FAIL_OPEN=1` 切直连(`https://api.minimaxi.com/anthropic`),不挡对话 |
+| **M1 对话路径** | sidecar → **本机 relay**(`http://127.0.0.1:4000`,主路径);relay 探活失败时 `relay_direct_fallback()` → `CCC_RELAY_DIRECT_URL`(默认 `https://api.minimaxi.com/anthropic`),**禁止**默认指回 `:4000` |
 | **2017 编排路径** | Engine claude → relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`) |
-| **fail-open 红线(不可协商)** | relay 探活失败一律客户端降级直连,**绝不** block/skip 任务;`ccc-engine.py:1022/1312` 从 block 改 route-switch;OpenCode runner 探 :4002 失败回 `--model xfyun/code` |
+| **fail-open 红线(不可协商)** | relay 探活失败一律客户端降级**真直连**,**绝不** block/skip 任务;OpenCode runner 探 :4002 失败回直连 model |
+| **双机拓扑(硬)** | M1 **不**跑 Hub/Board/Engine；Hub 仅 Mac2017；M1 Desktop/sidecar 默认 `http://127.0.0.1:17777` 隧道；**禁止** M1 业务第二树 / 伪 `engine=true` 登记 |
+| **Ops Relay 用量** | Hub envelope `domains.relay` = **2017 编排面**用量；M1 对话面用量不在本表合并 |
 | **门禁②(已补)** | `relay/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |
 | **观测回流** | `_ops_probe.fetch_router_usage` 真实现(GET `:4000/admin/usage`);`PORT_GROUPS` 加 4000/4002;ops summary `domains.relay`;Desktop 卡片 + Titlebar 复显 |
 | **Desktop 模型快选** | sidecar `/health` 动态拉 relay 真实三档,不再硬编码 4 个假选项;**真三档**取代「伪四档」 |
@@ -671,15 +673,14 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 > 边界来源:CLAUDE.md 头部「人格独立」节 v0.39 已写"平台开发只认 Cursor";但未强制 M1 Desktop Claude Code 行为边界。本条把**共识变成执行规则**,由 sidecar / Cursor 规则双端 enforce(sidecar 检测 CCC 仓 cwd 写操作时拒 + Cursor 仍保留全 IDE 能力)。
 
-## Claude --bg 整合一程（预留 · 2026-07-25 之后单独开 v0.62.0）
+## Claude --bg 长任务（已交付 · v0.62.0 · 仅 Mac2017）
 
 | 项 | 口径 |
 |----|------|
-| **范围** | `claude --bg`(Claude Code CLI v2.1.220+ 新命令,session 后台长存 + nudge + resume)与 CCC Engine 整合 |
-| **当前状态** | v0.60.x Engine 是「spawn-and-kill」模型:每个 phase 启 `claude -p` 一次,任务完就 kill;上下文全丢;启动开销 5-15s |
-| **价值** | claude --bg 让 LLM session 持续活着;失败回环从「重 spawn」变「resume」;中途 nudge;减少启动开销;保留上下文 |
-| **风险** | 后台进程管理(kill 谁/何时/leak 怎么办)、资源占用、未成熟 API |
-| **计划** | **单开一程 v0.62.0**,不在 v0.60.x 混入;先做现状 review(Engine `_call_claude_for_plan` / `_call_claude_for_phase` / `_quarantine_with_notify` 的 spawn 时序)+ 再 design --bg 编排 |
-| **禁止** | 现状下任何「claude --bg 提前试水」/「Engine 加 --bg 调用」/「sidecar 改 spawn 模式」——全部等单开一程 |
+| **范围** | `claude --bg` 与 Engine reviewer 长 session；Hub `/api/ops/bg-sessions`；Desktop 运维卡只读展示 |
+| **运行时主机** | **仅 Mac2017**（`ccc-reviewer-bg.sh` + `LongLivedSession` + `~/.ccc/bg-sessions/`）；M1 Desktop 只消费 Hub 透出，不在本机起 --bg |
+| **已交付(v0.62.0)** | reviewer 包装启 bg session；register/verify/list；fleet stop 清真进程；Hub envelope `domains.bg_sessions`；Desktop `bgSessionCard` |
+| **未交付(v0.63.0)** | `nudge_bg_session` 真注入（当前只写占位文件）；全链路 E2E smoke |
+| **禁止** | M1 上跑 Engine/--bg；把 nudge 占位当成已 nudge；sidecar 改 spawn 模式冒充长任务 |
 
-> 本节是**占位**,不交付 plan / 不交付代码。下一程启动时从这里接续。
+> 旧「预留 / 禁止提前试水」口径已废止（代码已随 v0.62.0 上线）。剩余缺口只在 nudge 真通道。

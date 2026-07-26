@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# ccc-dual-host-check.sh — F2-2 一键核对 M1 与 Mac2017 Hub 版本对齐
+# ccc-dual-host-check.sh — 核对 M1 与 Mac2017 版本对齐 + 端点探活
 #
 # 用法：
 #   bash scripts/ccc-dual-host-check.sh
-#   CCC_SERVER=http://192.168.3.116:7777 bash scripts/ccc-dual-host-check.sh
+#   CCC_SERVER=http://127.0.0.1:17777 bash scripts/ccc-dual-host-check.sh   # M1 隧道（默认）
+#   CCC_SERVER=http://192.168.3.116:7777 …                                 # LAN 排障
+#
+#   --sync-only   只做版本/git 对齐（2017 start 门禁用；不依赖 Hub HTTP）
+#   --m1 / --2017 强制主机视角
 #
 # 测试注入（跳过 HTTP）：
-#   CCC_DUAL_HOST_MOCK_JSON='{"version":"v0.52.2","commit":"abc","hub_api_version":"v1"}' \
+#   CCC_DUAL_HOST_MOCK_JSON='{"version":"v0.62.0","commit":"abc","hub_api_version":"v1"}' \
 #     bash scripts/ccc-dual-host-check.sh
 #
-# 输出三行：
-#   M1: <ver> <commit>
-#   2017: <ver> <commit> <hub_api>
+# 输出：
+#   local: <ver> <commit>
+#   hub|origin: …
 #   aligned: yes|no
-# 不一致时追加 mismatch: … 行；非零退出。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# v0.61.0 阶段 E:--sync-only / --m1 / --2017 模式
 SYNC_ONLY=0
 ENDPOINT_HOST=""
 for arg in "$@"; do
@@ -37,25 +39,28 @@ if [[ -z "$ENDPOINT_HOST" ]]; then
   fi
 fi
 
-SERVER="${CCC_SERVER:-http://192.168.3.116:7777}"
+# M1 默认走 SSH 隧道；2017 本机 Hub；LAN 仅排障覆盖
+if [[ -n "${CCC_SERVER:-}" ]]; then
+  SERVER="$CCC_SERVER"
+elif [[ "$ENDPOINT_HOST" == "2017" ]]; then
+  SERVER="http://127.0.0.1:7777"
+else
+  SERVER="http://127.0.0.1:17777"
+fi
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
-# 客户端支持的 hub_api_version 集（硬编码；未来 v2 再扩）
 SUPPORTED_HUB_API='["v1"]'
 
-# v0.61.0 阶段 E:多端点探活(host-sensitive:从 hostname 判定,本地端点跳过自己)
 _endpoints() {
-  local host_tag="$1"  # m1 | 2017
+  local host_tag="$1"
   if [[ "$host_tag" == "m1" ]]; then
-    # M1 视角:本机 sidecar/relay + 远端 Hub/Board
+    # M1：本机对话栈 + 隧道 Hub（Board 不直暴露，经 Hub 反代）
     cat <<EOF
-hub|http://192.168.3.116:7777/api/desktop/version
+hub|${SERVER}/api/desktop/version
 sidecar|http://127.0.0.1:7788/health
 relay|http://127.0.0.1:4000/admin/status
-board|http://192.168.3.116:7775/health
 EOF
   else
-    # 2017 视角:本机 Hub/Board/Relay(没起 sidecar)
     cat <<EOF
 hub|http://127.0.0.1:7777/api/desktop/version
 relay|http://127.0.0.1:4000/admin/status
@@ -63,6 +68,7 @@ board|http://127.0.0.1:7775/health
 EOF
   fi
 }
+
 _check_endpoint() {
   local label=$1 url=$2
   local code
@@ -78,13 +84,39 @@ _check_endpoint() {
   fi
 }
 
-M1_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
-M1_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
-M1_SHORT="${M1_COMMIT:0:7}"
+LOCAL_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+LOCAL_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+LOCAL_SHORT="${LOCAL_COMMIT:0:7}"
 
-echo "M1: ${M1_VERSION:-?} ${M1_SHORT:-?}"
+echo "local: ${LOCAL_VERSION:-?} ${LOCAL_SHORT:-?} (host=${ENDPOINT_HOST})"
 
-fetch_2017() {
+# ── --sync-only：2017 start 门禁 — 对齐 origin/main，不依赖 Hub HTTP ──
+if [[ "$SYNC_ONLY" -eq 1 ]]; then
+  if [[ -n "${CCC_DUAL_HOST_MOCK_JSON:-}" ]]; then
+    echo "origin: mock"
+    echo "aligned: yes"
+    exit 0
+  fi
+  git fetch -q origin 2>/dev/null || true
+  ORIGIN_COMMIT="$(git rev-parse origin/main 2>/dev/null || true)"
+  ORIGIN_SHORT="${ORIGIN_COMMIT:0:7}"
+  echo "origin/main: ${ORIGIN_SHORT:-?}"
+  if [[ -z "$LOCAL_COMMIT" || -z "$ORIGIN_COMMIT" ]]; then
+    echo "aligned: no"
+    echo "mismatch: missing local or origin/main commit"
+    exit 1
+  fi
+  if [[ "${LOCAL_COMMIT:0:7}" != "${ORIGIN_COMMIT:0:7}" ]]; then
+    echo "aligned: no"
+    echo "mismatch: commit local=${LOCAL_SHORT} origin/main=${ORIGIN_SHORT}"
+    echo "hint: git merge --ff-only origin/main"
+    exit 1
+  fi
+  echo "aligned: yes"
+  exit 0
+fi
+
+fetch_hub() {
   if [[ -n "${CCC_DUAL_HOST_MOCK_JSON:-}" ]]; then
     printf '%s\n' "${CCC_DUAL_HOST_MOCK_JSON}"
     return 0
@@ -121,26 +153,23 @@ fetch_2017() {
   return 0
 }
 
-HUB_JSON="$(fetch_2017)" || exit 2
+HUB_JSON="$(fetch_hub)" || exit 2
 
-# v0.61.0 阶段 E:多端点 alive 探活(host 视角)
-if [[ "$SYNC_ONLY" -eq 0 ]]; then
-  while IFS='|' read -r label url; do
-    [[ -z "$label" ]] && continue
-    _check_endpoint "$label" "$url"
-  done < <(_endpoints "$ENDPOINT_HOST")
-fi
+while IFS='|' read -r label url; do
+  [[ -z "$label" ]] && continue
+  _check_endpoint "$label" "$url"
+done < <(_endpoints "$ENDPOINT_HOST")
 
 set +e
 EVAL="$(
-  M1_VERSION="${M1_VERSION}" M1_COMMIT="${M1_COMMIT}" \
+  LOCAL_VERSION="${LOCAL_VERSION}" LOCAL_COMMIT="${LOCAL_COMMIT}" \
   SUPPORTED_HUB_API="${SUPPORTED_HUB_API}" \
   HUB_JSON="${HUB_JSON}" \
   python3 - <<'PY'
 import json, os, sys
 
-m1_ver = (os.environ.get("M1_VERSION") or "").strip()
-m1_commit = (os.environ.get("M1_COMMIT") or "").strip()
+local_ver = (os.environ.get("LOCAL_VERSION") or "").strip()
+local_commit = (os.environ.get("LOCAL_COMMIT") or "").strip()
 supported = json.loads(os.environ.get("SUPPORTED_HUB_API") or '["v1"]')
 raw = os.environ.get("HUB_JSON") or ""
 try:
@@ -153,16 +182,15 @@ h_ver = str(d.get("version") or "").strip()
 h_commit = str(d.get("commit") or "").strip()
 h_api = str(d.get("hub_api_version") or "").strip()
 h_short = h_commit[:7] if h_commit else "?"
-m1_short = m1_commit[:7] if m1_commit else "?"
+local_short = local_commit[:7] if local_commit else "?"
 
-print(f"2017: {h_ver or '?'} {h_short} {h_api or '?'}")
+print(f"hub: {h_ver or '?'} {h_short} {h_api or '?'}")
 
 mismatches = []
-if not h_ver or not m1_ver or h_ver != m1_ver:
-    mismatches.append(f"version M1={m1_ver or '?'} 2017={h_ver or '?'}")
-# commit：短 sha 对齐（允许一侧给 full）
-if not h_commit or not m1_commit or h_commit[:7] != m1_commit[:7]:
-    mismatches.append(f"commit M1={m1_short} 2017={h_short}")
+if not h_ver or not local_ver or h_ver != local_ver:
+    mismatches.append(f"version local={local_ver or '?'} hub={h_ver or '?'}")
+if not h_commit or not local_commit or h_commit[:7] != local_commit[:7]:
+    mismatches.append(f"commit local={local_short} hub={h_short}")
 if h_api not in supported:
     mismatches.append(
         f"hub_api_version={h_api or '?'} not in supported={supported}"

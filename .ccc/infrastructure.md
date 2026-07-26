@@ -4,7 +4,7 @@
 > 部署拓扑 SSOT：[`docs/deploy/topology.md`](../docs/deploy/topology.md)  
 > 服务端目录：[`docs/deploy/server-layout.md`](../docs/deploy/server-layout.md)  
 > 变更端口或拓扑后同步更新本文件。  
-> 更新日期：2026-07-20（模型直连；ai-loop-router 退役）
+> 更新日期：2026-07-26（CCC Relay 回归 + 三档契约；双实例 M1/2017）
 
 ---
 
@@ -12,55 +12,61 @@
 
 | 主机 | IP | 角色 | OS | 说明 |
 |------|-----|------|-----|------|
-| **Mac 2017** | 192.168.3.116 | **CCC Server** | macOS | Hub / Engine / Board / 业务仓（唯一生产） |
-| M1 | 192.168.3.140 | Client / 移动开发 | macOS | Desktop + sidecar + loop-code；编排连 2017 |
+| **Mac 2017** | 192.168.3.116 | **CCC Server** | macOS | Hub / Board / Engine / CCC Relay 2017 / 业务仓（唯一编排生产） |
+| **M1** | 192.168.3.140 | **Client** | macOS | Desktop + sidecar + relay.m1 + hub-tunnel；编排连 2017 |
 | feiniu | 192.168.3.131 | 生产机 | Ubuntu | HP、medio-0 等（非 CCC 控制面） |
 
 ---
 
-## Mac 2017 (192.168.3.116) — CCC Server
+## Mac 2017 (192.168.3.116) — CCC Server（编排面）
 
 根目录：`/Users/fan/program`（规范见 server-layout）
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **7777** | CCC Hub | 局域网客户端入口 |
-| **7775** | CCC Board API | 优先本机；Hub 反代 |
-| ~~**4000**~~ | ~~ai-loop-router Anthropic~~ | **已退役**；Claude → MiniMax 直连 |
-| ~~**4002**~~ | ~~ai-loop-router OpenAI~~ | **已退役**；OpenCode → 讯飞直连 |
+| **7777** | CCC Hub | 编排 API + 看板 UI |
+| **7775** | CCC Board API | 任务看板；优先本机；Hub 反代 |
+| **4000** | CCC Relay 2017 | `com.ccc.relay.2017`；Anthropic 协议，flash/pro 档；Engine product/reviewer 出口 |
+| **4002** | CCC Relay 2017 | openai-chat 协议，code 档；OpenCode dev 写码出口 |
 
 | 路径 | 用途 |
 |------|------|
-| `/Users/fan/program/CCC` | 主产品 + orch |
-| `/Users/fan/program/infra/ai-loop-router` | 中转站归档（RETIRED） |
+| `/Users/fan/program/CCC` | 主产品 + orch + `relay/` CCC Relay 子系统（现行） |
 | `/Users/fan/program/apps/ccc-demo` | 默认 demo app |
-| `/Users/fan/program/archive/` | 冷归档 |
+| `/Users/fan/program/apps/<name>` | register 的业务仓 |
+| `/Users/fan/program/infra/ai-loop-router` | 旧中转站归档（RETIRED；功能已并入 CCC/relay/） |
 
 **live agent 上限：4**
 
 SSH（从 M1）：`ssh mac2017`（user `fan`）
 
-模型出口：Claude / product → `https://api.minimaxi.com/anthropic`；OpenCode → `xfyun/code`。
+**模型出口（三档契约）**：
+- Claude product/reviewer → 本机 CCC Relay `:4000` `flash` 档（主路径）→ OpenCode / MiniMax（fail-open）
+- OpenCode dev → 本机 CCC Relay `:4002` `code` 档（主路径）→ 讯飞/智谱（fail-open）
 
 ---
 
-## M1 (192.168.3.140) — Client
+## M1 (192.168.3.140) — Client（对话面）
 
-迁切完成后：
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| **7788** | CCC Agent Sidecar | Desktop 对话热路径；`com.ccc.agent-sidecar` |
+| **4000** | CCC Relay M1 | `com.ccc.relay.m1`；对话面模型路由 flash 档 |
+| **17777** | Hub SSH 隧道 | `com.ccc.hub-tunnel`；转发到 Mac2017 Hub :7777 |
+| 788 | (未使用) | 历史端口，当前不在用 |
 
-| 项 | 状态 |
-|----|------|
-| 生产中转 :4000/:4002 | **停用**（已退役） |
-| 生产 Hub / Engine | **停用**；Desktop 连 `http://192.168.3.116:7777` |
-| 本机对话 | sidecar `:7788` + loop-code → MiniMax |
-| 本机开发 | 可保留代码仓；不跑生产双脑 |
+**默认路径**：Desktop → sidecar `:7788` → loop-code → **本机 relay `:4000`**（主路径）→ MiniMax（fail-open 兜底）  
+**Hub 访问**：`http://127.0.0.1:17777`（SSH 隧道 → Mac2017 Hub :7777）  
 
-客户端环境变量示例：
+客户端环境变量示例（排障用）：
 
 ```bash
+# 对话面模型出口（默认已走 relay :4000；设此值强制直连）
 export ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic
 export ANTHROPIC_MODEL=MiniMax-M3
 ```
+
+M1 不跑 Engine、Board、Hub — 这些是 Mac2017 专属（编排面）。
 
 其他本机服务（HP / qb 等）与 CCC Server 无关，各自配置。
 
@@ -80,8 +86,10 @@ export ANTHROPIC_MODEL=MiniMax-M3
 
 | 项目 | 生产入口 | 说明 |
 |------|----------|------|
-| CCC Hub | http://192.168.3.116:7777 | Server |
-| Desktop sidecar | http://127.0.0.1:7788 | M1 本机对话 |
+| CCC Hub | `http://192.168.3.116:7777`（或 M1 tunnel `:17777`） | Server |
+| CCC Relay 2017 | `http://127.0.0.1:4000`（Anthropic）/ `:4002`（openai-chat） | Server 编排出口 |
+| CCC Relay M1 | `http://127.0.0.1:4000`（Anthropic） | M1 对话出口 |
+| Desktop sidecar | `http://127.0.0.1:7788` | M1 本机对话 |
 | ccc-demo | Server `apps/ccc-demo` | 默认唯一 engine app |
 
 ---

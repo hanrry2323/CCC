@@ -22,7 +22,7 @@
 | Desktop 模型选择 | **App 内快选**（Phase17 · 默认 MiniMax-M3/`flash`）；sidecar plist 定上游出口；见 [`dev-channel.md`](dev-channel.md) |
 | 平台开发 | **仅 Cursor**（不更换工具）；见 [`dev-channel.md`](dev-channel.md) |
 | M1 Claude 形态 | **仅 CCC Desktop + loop-code**；配置家 `~/.ccc/loop-code`；见 [`loop-code-ownership-cut.md`](loop-code-ownership-cut.md) |
-| 中转站 | 已退役；不回退为默认路径 |
+| 中转站 | **CCC Relay 回归**（M1 `relay.m1` + 2017 `relay.2017`）；下游只认 flash/Pro/code |
 | 架构骨架 | **演进现有 Hub–Engine–board**，不开局重写 Temporal / LangGraph |
 
 ---
@@ -187,7 +187,7 @@ CCC_SERVER=http://192.168.3.116:7777 CCC_HUB_SHELL_TIER=full bash scripts/smoke-
 后续候选：~~更深业务 epic 占位~~ → **LPSN 飞轮（v0.60）** 见 [`lpsn-ship-gate.md`](lpsn-ship-gate.md) / [`loop-engineer-authority.md`](loop-engineer-authority.md) §上线≠开发完成；止损升级通知细则；仍不做 P3。
 
 1. 代码变更引用本文章节号（如 `hub-shell-roadmap §8`）  
-2. **不做**：P3 薄客户、Temporal 重写、主聊天回 Hub、旁路自动进队、恢复中转站  
+2. **不做**：P3 薄客户、Temporal 重写、主聊天回 Hub、旁路自动进队、M1 本地 Hub/Board/Engine  
 
 ---
 

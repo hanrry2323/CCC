@@ -255,17 +255,38 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
         "enabled": "user enable (queue consumer)",
         "invent": "user invent (may create work)",
     }
+    # 主机分流：M1=对话面（无 Engine/Hub/Board）；2017=编排面
+    import socket as _socket
+
+    _hn = (_socket.gethostname() or "").lower()
+    _is_orch_host = _hn.startswith("mac2017") or _hn.startswith("fan")
+    if _is_orch_host:
+        _start_paths = (
+            ["launchd:com.ccc.engine"] if mode in ("enabled", "invent") else []
+        )
+        _ui_paths = ["launchd:com.ccc.chat-server", "launchd:com.ccc.board"]
+        _host_role = "mac2017_orchestration"
+    else:
+        # M1：enabled 也不写 engine；ui_paths = 对话栈
+        _start_paths = []
+        _ui_paths = [
+            "launchd:com.ccc.relay.m1",
+            "launchd:com.ccc.hub-tunnel",
+            "launchd:com.ccc.agent-sidecar",
+        ]
+        _host_role = "m1_dialogue"
+        if mode in ("enabled", "invent"):
+            reason = (reason or reasons[mode]) + " (M1 client: no local Engine)"
     data = {
         "schema_version": "1.2",
         "mode": mode,
         "updated_at": _now_iso(),
         "reason": reason or reasons[mode],
         "source": source,
+        "host_role": _host_role,
         "policy": {
-            "start_paths": (
-                ["launchd:com.ccc.engine"] if mode in ("enabled", "invent") else []
-            ),
-            "ui_paths": ["launchd:com.ccc.chat-server", "launchd:com.ccc.board"],
+            "start_paths": _start_paths,
+            "ui_paths": _ui_paths,
             "forbid_popen_engine": True,
             "forbid_crontab_autostart": True,
             "empty_board_idle": True,

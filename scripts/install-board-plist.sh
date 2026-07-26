@@ -10,6 +10,13 @@ source "${CCC_HOME}/scripts/_ccc_launchd.sh"
 DO_START=false
 [[ "${1:-}" == "--start" ]] && DO_START=true
 
+# 主机判别：Board 只允许在 Mac2017 上装（编排服务端）
+if [[ "$(hostname)" != "Mac2017"* && "$(hostname)" != "fan"* ]]; then
+  echo "❌ CCC Board 只允许部署在 Mac2017（编排服务端）。" >&2
+  echo "   M1 客户端仅需 relay + sidecar + hub-tunnel。" >&2
+  exit 1
+fi
+
 # ── 加载配置（BOARD_PORT / BOARD_HOST）──
 DEFAULT_CONFIG="${CCC_HOME}/templates/ccc-config.sh"
 if [ -f "$DEFAULT_CONFIG" ]; then
@@ -71,7 +78,7 @@ else
   ccc_launchd_finalize "com.ccc.board" "$PLIST" --ui
   echo "✓ com.ccc.board staged only（未 load）"
   echo "  前台开发: bash ${CCC_HOME}/scripts/ccc-hub-dev.sh"
-  echo "  常驻 UI:  bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh ui --start"
+  echo "  常驻:     bash ${CCC_HOME}/scripts/ccc-autostart-guard.sh enable --start"
 fi
 echo "  Hub UI → http://localhost:7777"
 echo "  日志: ${LOG_DIR}/ccc-board.{out,err}.log"

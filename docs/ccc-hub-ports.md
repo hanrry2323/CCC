@@ -20,8 +20,12 @@ Board 进程只在编排机本机 **`:7775`** 提供 API，由 Hub 反代。
 | 端口 | 服务 | 机器 | 说明 |
 |------|------|------|------|
 | **7788** | Agent Sidecar | **M1** | 对话热路径（Desktop + 远程聊） |
+| **4000** | CCC Relay M1 | **M1** | 对话面模型路由（flash 档；`com.ccc.relay.m1`） |
+| **17777** | Hub SSH 隧道 | **M1** | `hub-tunnel` 隧道 → Mac2017 Hub :7777 |
 | **7777** | **CCC Hub** | **Mac2017** | 编排 UI + Board 反代 + Desktop API |
 | **7775** | Board API | Mac2017 本机 | 仅本机；勿对局域网直接开 |
+| **4000** | CCC Relay 2017 | Mac2017 | Anthropic 协议，flash/pro 档；Engine 出口 |
+| **4002** | CCC Relay 2017 | Mac2017 | openai-chat 协议，code 档；OpenCode 出口 |
 | 7776 | Engine stats（若启用） | 本机 | 与 Hub 无关 |
 | 7778 | Cockpit（可选） | 本机 | 旧总控；外链已指向 Hub |
 | ~~8084~~ | 废弃 | — | 旧 Chat；不应再监听 |

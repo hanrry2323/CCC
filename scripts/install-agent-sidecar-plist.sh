@@ -65,7 +65,8 @@ if [[ ! -f "${LOOP_CODE_CONFIG_DIR}/CLAUDE.md" ]]; then
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
-禁止口径：flash 中转站、`:4000`、ai-loop-router。
+模型出口：本机 CCC Relay `:4000`（flash 档）；relay 不可达时 fail-open 直连上游。
+禁止：已退役的 ai-loop-router 口径、M1 本地 Hub/Board/Engine、业务第二树。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 CLAUDE_MD_EOF
 fi
@@ -133,11 +134,12 @@ elif [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
   AUTH_TOKEN_FILE=""
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
 else
-  # CCC Relay 2026-07-25:默认 ANTHROPIC_BASE_URL 走本机 relay(:4000),fail-open 时 sidecar 自动切直连
-  # 直连可被显式 CCC_ANTHROPIC_BASE_URL 覆盖(排障用)
+  # CCC Relay:默认 ANTHROPIC_BASE_URL 走本机 relay(:4000);fail-open 切真直连（禁止同址 :4000）
   ROUTER="${CCC_ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
-  # 直连兜底 URL(sidecar 探活失败时切换,不写 plist 透传给 sidecar,仅 init 期间留 env)
-  CCC_RELAY_DIRECT_URL_DEFAULT="http://127.0.0.1:4000"
+  CCC_RELAY_DIRECT_URL_DEFAULT="${CCC_RELAY_DIRECT_URL:-https://api.minimaxi.com/anthropic}"
+  if [[ "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"127.0.0.1:4000"* || "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"localhost:4000"* ]]; then
+    CCC_RELAY_DIRECT_URL_DEFAULT="https://api.minimaxi.com/anthropic"
+  fi
   # 忽略 shell 里残留的中转假 token，避免「BASE=minimax + AUTH=trae」401
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
@@ -229,7 +231,7 @@ cat > "$PLIST" <<PLIST_EOF
     <key>CCC_RELAY_BASE_URL</key>
     <string>${ROUTER}</string>
     <key>CCC_RELAY_DIRECT_URL</key>
-    <string>${CCC_RELAY_DIRECT_URL:-http://127.0.0.1:4000}</string>
+    <string>${CCC_RELAY_DIRECT_URL_DEFAULT}</string>
 ${AUTH_TOKEN_BLOCK}
     <key>ANTHROPIC_MODEL</key>
     <string>${AGENT_MODEL}</string>

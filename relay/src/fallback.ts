@@ -21,7 +21,7 @@ const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
 
 function failoverMaxAttempts(): number {
-  return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
+  return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "10", 10) || 10);
 }
 function failoverMaxMs(): number {
   return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
@@ -31,6 +31,21 @@ function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r
 
 function isPlatformError(errMsg: string): boolean {
   return /error from provider|upstream request failed|upstream error|internal server error/i.test(errMsg);
+}
+
+function parseRetryAfter(resp: Response): number | null {
+  const raw = resp.headers.get("retry-after") || resp.headers.get("Retry-After");
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  if (!Number.isNaN(n) && n > 0) return n;
+  const date = Date.parse(raw);
+  if (!Number.isNaN(date)) return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+  return null;
+}
+
+function isDailyQuotaError(errType: string | undefined, errMsg: string): boolean {
+  if (errType === "FreeUsageLimitError") return true;
+  return /usage limit reached|usage quota|额度用完|流量用完|配额|FreeUsage/i.test(errMsg);
 }
 
 const DEFAULT_PEEK_LINES = 5;
@@ -82,14 +97,25 @@ export function formatExhaustedMessage(
   return lines.join("\n");
 }
 
-function markBad(up: UpstreamConfig, status: number, errMsg: string): void {
+interface MarkBadOpts {
+  retryAfterSec?: number | null;
+  errType?: string | null;
+}
+
+function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkBadOpts = {}): void {
   let sec = 20;
   const cls = classifyErr(errMsg);
-  if (cls) {
+  const dailyQuota = isDailyQuotaError(opts.errType ?? undefined, errMsg);
+
+  if (dailyQuota && opts.retryAfterSec && opts.retryAfterSec > 60) {
+    // 免费通道日配额耗尽：上游给了 retry-after（通常到 UTC 午夜），直接采用
+    sec = opts.retryAfterSec;
+    ledgerMarkQuotaExhausted(up);
+  } else if (cls) {
     sec = computeBackoffCooldown(up.name, cls.sec, cls.quota ? MAX_QUOTA_COOLDOWN : MAX_PROVIDER_COOLDOWN);
     if (cls.quota) ledgerMarkQuotaExhausted(up);
   } else if (status === 429) {
-    sec = 60;
+    sec = opts.retryAfterSec && opts.retryAfterSec > 0 ? opts.retryAfterSec : 60;
     ledgerMarkQuotaExhausted(up);
   } else if (/empty/i.test(errMsg)) sec = 20;
   else if (status >= 500 || status === 529) sec = 30;
@@ -97,8 +123,11 @@ function markBad(up: UpstreamConfig, status: number, errMsg: string): void {
   else sec = 30;
 
   bad(up, sec, `h${status}:${errMsg.slice(0, 36)}`);
-  recordOutcome(up.name, false);
-  if (cls?.quota || status === 429) affinityDeleteByUpstream(up.name);
+  // 日常配额耗尽是预期行为，不记为失败，避免 EWMA 低分永久拉黑
+  if (!dailyQuota) {
+    recordOutcome(up.name, false);
+  }
+  if (cls?.quota || status === 429 || dailyQuota) affinityDeleteByUpstream(up.name);
   if (up.provider_group) triggerProviderBreaker(up.provider_group, errMsg);
 }
 
@@ -274,15 +303,18 @@ async function tryUpstreamStream(
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
         let errMsg = `HTTP ${resp.status}`;
+        let errType: string | undefined;
         try {
           const e = JSON.parse(text);
           if (e?.error?.message) errMsg = e.error.message;
+          if (e?.error?.type) errType = e.error.type;
         } catch { /* ignore */ }
         lastErr = errMsg.slice(0, 60);
         lastStatus = resp.status;
         if (resp.status !== 429 && resp.status < 500 && retry < MAX_SAME_UPSTREAM_RETRIES) continue;
-        console.warn(`[fallback] stream ${up.name}: HTTP ${resp.status} ${lastErr}${retry ? " (retry exhausted)" : ""}`);
-        markBad(up, resp.status, errMsg);
+        const retryAfter = parseRetryAfter(resp);
+        console.warn(`[fallback] stream ${up.name}: HTTP ${resp.status} ${lastErr}${retry ? " (retry exhausted)" : ""}${retryAfter ? ` retry-after=${retryAfter}s` : ""}`);
+        markBad(up, resp.status, errMsg, { retryAfterSec: retryAfter, errType });
         const platErr = isPlatformError(errMsg);
         if (platErr) failedPlatforms.add(up.base_url);
         ledgerSettle(up, { success: false, rollbackRequest: resp.status !== 429 && resp.status < 500 });
@@ -567,7 +599,7 @@ async function tryUpstreamNonStream(
       if (d?.error) {
         lastErr = (d.error.message || "body-error").slice(0, 40);
         if (retry < MAX_SAME_UPSTREAM_RETRIES) continue;
-        markBad(up, 0, d.error.message || "body-error");
+        markBad(up, 0, d.error.message || "body-error", { errType: d.error.type });
         const platErr = isPlatformError(d.error.message || "");
         if (platErr) failedPlatforms.add(up.base_url);
         ledgerSettle(up, { success: false, rollbackRequest: false });
@@ -576,13 +608,16 @@ async function tryUpstreamNonStream(
 
       if (!resp.ok) {
         let errMsg = `HTTP ${resp.status}`;
+        let errType: string | undefined;
         try {
           const e = JSON.parse(typeof d === "string" ? d : JSON.stringify(d));
           if (e?.error?.message) errMsg = e.error.message;
+          if (e?.error?.type) errType = e.error.type;
         } catch { /* ignore */ }
         lastErr = errMsg.slice(0, 60);
         if (resp.status !== 429 && resp.status < 500 && retry < MAX_SAME_UPSTREAM_RETRIES) continue;
-        markBad(up, resp.status, errMsg);
+        const retryAfter = parseRetryAfter(resp);
+        markBad(up, resp.status, errMsg, { retryAfterSec: retryAfter, errType });
         const platErr = isPlatformError(errMsg);
         if (platErr) failedPlatforms.add(up.base_url);
         ledgerSettle(up, { success: false, rollbackRequest: resp.status !== 429 && resp.status < 500 });
@@ -591,8 +626,6 @@ async function tryUpstreamNonStream(
 
       // Success — settle request now; tokens via logUsage
       ledgerSettle(up, { success: true, tokens: 0 });
-      // Re-reserve token settle path: logUsage will add tokens only.
-      // Actually we already settled request. logUsage should only add tokens without another request.
       return { ok: true, body: d, upstream: up };
     } catch (e) {
       console.warn(`[fallback] fetch err ${up.name}: ${(e as Error).message.slice(0, 50)}`);

@@ -48,7 +48,7 @@
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
+| **7788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
 | **4000** | CCC Relay M1 | `com.ccc.relay.m1`（同 sidecar 生命周期）；三档路由 / Anthropic 协议转换 |
 | **17777** | Hub SSH 隧道（本机） | `com.ccc.hub-tunnel`：`ssh -L` → 2017 `:7777`；**Desktop/sidecar 默认 Hub URL** |
 
@@ -66,7 +66,7 @@ Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · �
 
 M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）  
 2017 本机 Hub：`http://127.0.0.1:7777`  
-对话口：`http://192.168.3.140:788`（M1；勿把对话 SPA 挂到 2017）
+对话口：`http://192.168.3.140:7788`（M1；勿把对话 SPA 挂到 2017）
 
 ---
 
@@ -126,7 +126,7 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 |----|------|
 | Server + Engine | 主线（编排消费） |
 | **CCC Desktop + sidecar + loop-code** | **主产品入口** |
-| 网页 Hub | **运维/兼容**（`:7777` 看板/ops；对话远程见 M1 `:788`） |
+| 网页 Hub | **运维/兼容**（`:7777` 看板/ops；对话远程见 M1 `:7788`） |
 | 手机 | 远期 |
 
 ---

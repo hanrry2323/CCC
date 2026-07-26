@@ -92,11 +92,11 @@ def test_script_aligned_yes_with_mock():
     proc = _run_check({"CCC_DUAL_HOST_MOCK_JSON": mock})
     assert proc.returncode == 0, proc.stderr + proc.stdout
     lines = [ln for ln in proc.stdout.strip().splitlines() if ln.strip()]
-    # v0.61.0 阶段 E:多端点探活插在 M1/2017/aligned 之间,按行首定位
-    m1_line = next((ln for ln in lines if ln.startswith("M1: ")), None)
-    hub_line = next((ln for ln in lines if ln.startswith("2017: ")), None)
+    # 行首：local / hub / aligned（端点探活插中间）
+    local_line = next((ln for ln in lines if ln.startswith("local: ")), None)
+    hub_line = next((ln for ln in lines if ln.startswith("hub: ")), None)
     aligned_line = next((ln for ln in lines if ln.startswith("aligned:")), None)
-    assert m1_line is not None
+    assert local_line is not None
     assert hub_line is not None and " v1" in hub_line
     assert aligned_line == "aligned: yes"
 

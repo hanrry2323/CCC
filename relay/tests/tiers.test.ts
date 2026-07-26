@@ -62,13 +62,9 @@ describe("tiers", () => {
       expect(getTierBlockReason(makeUpstream({ api_key: "" }))).toBe("no_api_key");
       getAppContext().cooldowns.set("test-up", { until: Date.now() + 60000, reason: "rl" });
       expect(getTierBlockReason(makeUpstream())).toMatch(/^cooldown:/);
-      getAppContext().cooldowns.clear();
-      sc.set("test-up", {
-        ewma: 0.1, recentTs: Date.now(), failStreak: 5,
-        lastSuccessTs: 0, totalSuccess: 0, totalFail: 5,
-      });
-      expect(getTierBlockReason(makeUpstream())).toMatch(/^low_score:/);
       expect(isUpstreamOk(makeUpstream())).toBe(false);
+      getAppContext().cooldowns.clear();
+      expect(isUpstreamOk(makeUpstream())).toBe(true);
     });
   });
 

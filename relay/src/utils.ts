@@ -44,10 +44,13 @@ export function classifyErr(msg: unknown): ClassifiedError | null {
   if (/(Error from provider|upstream request failed|upstream error|internal server error|service error)/i.test(s)) {
     return { sec: 120, quota: false };
   }
-  // 4. 配额/余额类错误 → 长冷却 300s，清 affinity
-  //    收窄关键词：移除"额度/余额/balance/配额/insufficient"等宽泛词，
-  //    仅匹配明确的耗尽信号（用完/耗尽/不足 等）
-  if (/(usage limit reached|usage quota (exceeded|exhausted)|用量上限|额度用完|流量用完|配额已用完|配额耗尽|insufficient quota|insufficient balance|billing|payment required|balance is zero|余额不足|已用完)/i.test(s)) {
+  // 4. 配额/余额类错误
+  //    4a) 付费渠道余额不足/billing → 短冷却 60s（用户一充值就好，不能走 4h 反而是灾难）
+  if (/(insufficient balance|manage your billing|billing here|payment required|balance is zero|credits? error|余额不足)/i.test(s)) {
+    return { sec: 60, quota: false };
+  }
+  //    4b) 真正的周期配额（免费档耗尽）→ 长冷却 300s，清 affinity
+  if (/(usage limit reached|usage quota (exceeded|exhausted)|用量上限|额度用完|流量用完|配额已用完|配额耗尽|insufficient quota|已用完|FreeUsage)/i.test(s)) {
     return { sec: 300, quota: true };
   }
   // 5. exceeded 通用匹配 → 排除 rate/timeout/token/context/length/size

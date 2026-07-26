@@ -1519,7 +1519,7 @@ def deploy_targets() -> dict:
                     (7775, "Board"),
                     (22, "ssh"),
                 ],
-                "notes": "唯一生产：Hub/Board/Engine/业务仓（中转已退役；见 docs/deploy/topology.md）",
+                "notes": "唯一生产：Hub/Board/Engine/业务仓在 Mac2017；模型出口=CCC Relay（见 docs/deploy/topology.md）",
             },
         ),
         (

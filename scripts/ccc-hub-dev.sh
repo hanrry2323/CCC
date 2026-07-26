@@ -18,6 +18,17 @@ set -euo pipefail
 CCC_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$CCC_HOME"
 
+# Hub/Board 前台开发默认只在 Mac2017；M1 须显式逃生（避免对话机再起本地 Hub）
+if [[ "$(hostname)" != "Mac2017"* && "$(hostname)" != "fan"* ]]; then
+  if [[ "${CCC_ALLOW_M1_HUB_DEV:-0}" != "1" ]]; then
+    echo "❌ ccc-hub-dev.sh 默认只在 Mac2017 跑（编排面 Hub/Board）。" >&2
+    echo "   M1 请用隧道访问 2017 Hub: http://127.0.0.1:17777" >&2
+    echo "   若确需本机前台联调: CCC_ALLOW_M1_HUB_DEV=1 bash scripts/ccc-hub-dev.sh" >&2
+    exit 1
+  fi
+  echo "WARN: CCC_ALLOW_M1_HUB_DEV=1 — 在 M1 前台起 Hub/Board（非生产路径）"
+fi
+
 # Hub 需 claude-agent-sdk（持续会话）；优先 .venv-hub
 HUB_PYTHON="${CCC_HUB_PYTHON:-}"
 if [[ -z "$HUB_PYTHON" ]]; then

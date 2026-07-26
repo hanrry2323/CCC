@@ -76,6 +76,40 @@ describe("fallback cooldown on upstream errors", () => {
     expect(isUpstreamOk(u2)).toBe(true);
   });
 
+  it("respects Retry-After for FreeUsageLimitError and does not tank score", async () => {
+    const u1 = makeUp("u1");
+    const u2 = makeUp("u2");
+    const routing: RoutingResult = {
+      upstream: u1,
+      candidates: [u1, u2],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (url.includes("u1")) {
+        return new Response(
+          JSON.stringify({ error: { type: "FreeUsageLimitError", message: "Rate limit exceeded. Please try again later." } }),
+          { status: 429, headers: { "retry-after": "3600" } },
+        );
+      }
+      return new Response(okBody, { status: 200 });
+    }) as any;
+
+    const res = await streamWithFallback(routing, async (up) =>
+      fetch(up.base_url + "/chat/completions"),
+    );
+
+    expect(res.upstream!.name).toBe("u2");
+    const c = cool.get("u1")!;
+    const leftSec = Math.round((c.until - Date.now()) / 1000);
+    // 使用 Retry-After 而不是默认 60s
+    expect(leftSec).toBeGreaterThanOrEqual(3590);
+    // 配额失败不记为低分
+    expect(sc.get("u1")?.ewma ?? 0.8).toBe(0.8);
+  });
+
   it("cools a 400 upstream error (transient gateway failure)", async () => {
     const u1 = makeUp("u1");
     const u2 = makeUp("u2");

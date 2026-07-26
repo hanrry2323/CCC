@@ -6,7 +6,7 @@
 #   2. 参数解析(不传参报错;少参报错;6 参 + 选参正确)
 #   3. 函数入口验证(nohup ... & 启动模式;session_id 文件预期路径)
 #
-# 不真调 claude — 真 E2E 由 smoke_v0.62.0.sh(阶段 5)覆盖。
+# 不真调 claude — 真 E2E / nudge 注入留 v0.63（本脚本只验包装语法与文件契约）。
 
 set -uo pipefail
 

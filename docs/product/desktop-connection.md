@@ -27,9 +27,8 @@
 
 ## 方案 Agent
 
-**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli` → **MiniMax Anthropic 直连**（`MiniMax-M3`）。  
-OpenCode（Engine 写码）：**讯飞直连** `xfyun/code`（`~/.config/opencode/opencode.json`）；智谱 `zhipu/flash` 备用。  
-~~经 2017 `:4000/:4002` 中转已退役。~~  
+**热路径**：本机 Agent Sidecar（`127.0.0.1:7788`，**launchd `com.ccc.agent-sidecar` KeepAlive**）→ `vendor/loop-code/cli` → **本机 CCC Relay** `:4000`（flash 档）；fail-open 直连 MiniMax。  
+OpenCode（Engine 写码，Mac2017）：**Relay** `:4002`（code 档）；探活失败切讯飞/智谱直连。  
 Desktop `ensureLocalAgent`：探测 → `launchctl kickstart` / `install-agent-sidecar-plist.sh` → `POST /warm`；每 240s keep-warm。  
 消息先写本机盘，再 `PUT Hub`（失败入 `pending-sync.json`）。  
 **转任务**：确认 → Desktop 只写 `transfer-outbox.json` + nudge；**唯一 Hub POST = sidecar flush**；右栏/flow 仍依赖 Hub。

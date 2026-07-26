@@ -33,22 +33,25 @@ describe("classifyErr", () => {
     expect(r!.quota).toBe(true);
   });
 
-  it("detects insufficient balance", () => {
+  it("detects insufficient balance as billing (short cooldown)", () => {
     const r = classifyErr("insufficient balance");
     expect(r).not.toBeNull();
-    expect(r!.quota).toBe(true);
+    expect(r!.quota).toBe(false);
+    expect(r!.sec).toBe(60);
   });
 
-  it("detects balance is zero", () => {
+  it("detects balance is zero as billing (short cooldown)", () => {
     const r = classifyErr("balance is zero");
     expect(r).not.toBeNull();
-    expect(r!.quota).toBe(true);
+    expect(r!.quota).toBe(false);
+    expect(r!.sec).toBe(60);
   });
 
-  it("detects 余额不足", () => {
+  it("detects 余额不足 as billing (short cooldown)", () => {
     const r = classifyErr("余额不足，请充值");
     expect(r).not.toBeNull();
-    expect(r!.quota).toBe(true);
+    expect(r!.quota).toBe(false);
+    expect(r!.sec).toBe(60);
   });
 
   // ── 限流类（预期 quota: false）──

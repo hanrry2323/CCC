@@ -37,6 +37,21 @@ PLIST_DIR="${CCC_PLIST_STAGED}"
 LOG_DIR="${HOME}/.ccc/logs"
 mkdir -p "$LOG_DIR" "$CCC_PLIST_STAGED"
 
+# Engine/Board 只允许在 Mac2017 编排机安装（M1 = 对话面）
+if [[ "$(hostname)" != "Mac2017"* && "$(hostname)" != "fan"* ]]; then
+  echo "❌ install-ccc-roles.sh（Engine/Board）只允许在 Mac2017 上运行。" >&2
+  echo "   M1 对话面请用: bash scripts/ccc-fleet.sh start ui-tier" >&2
+  echo "   （relay.m1 + hub-tunnel + agent-sidecar）" >&2
+  # 仍允许仅初始化业务看板目录（--workspace），但不装 Engine/Board
+  if [[ -z "${WORKSPACE:-}" ]]; then
+    exit 1
+  fi
+  echo "→ 本机非 2017：仅初始化 workspace 看板目录，跳过 Engine/Board 安装"
+  SKIP_ORCH_INSTALL=1
+else
+  SKIP_ORCH_INSTALL=0
+fi
+
 # ── 项目识别 ──
 if [[ -n "$WORKSPACE" ]]; then
   WORKSPACE="$(cd "$WORKSPACE" 2>/dev/null && pwd)"  # 解析绝对路径
@@ -222,8 +237,12 @@ PLIST_EOF
 
 echo ""
 echo "=== 安装服务 ==="
-install_engine
-install_board
+if [[ "${SKIP_ORCH_INSTALL:-0}" == "1" ]]; then
+  echo "  跳过 Engine/Board（非 Mac2017 主机）"
+else
+  install_engine
+  install_board
+fi
 
 echo ""
 echo "=== 状态 ==="

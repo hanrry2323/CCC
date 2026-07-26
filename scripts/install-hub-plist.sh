@@ -11,6 +11,14 @@ source "${CCC_HOME}/scripts/_ccc_launchd.sh"
 DO_START=false
 [[ "${1:-}" == "--start" ]] && DO_START=true
 
+# 主机判别：Hub 只允许在 Mac2017 上装（编排服务端）
+if [[ "$(hostname)" != "Mac2017"* && "$(hostname)" != "fan"* ]]; then
+  echo "❌ CCC Hub 只允许部署在 Mac2017（编排服务端）。" >&2
+  echo "   M1 客户端应装 SSH 隧道：bash scripts/install-hub-tunnel-plist.sh --start" >&2
+  echo "   该隧道将 127.0.0.1:17777 转发到 Mac2017:7777" >&2
+  exit 1
+fi
+
 HUB_PY="${CCC_HOME}/.venv-hub/bin/python"
 if [[ ! -x "$HUB_PY" ]]; then
   echo "Hub 需要 .venv-hub（claude-agent-sdk 持续会话）:"
@@ -27,6 +35,8 @@ LOG_OUT="${HOME}/.ccc/logs/ccc-chat-server.log"
 LOG_ERR="${HOME}/.ccc/logs/ccc-chat-server.err"
 # Hub /api/chat 已删：对话走 M1 sidecar，plist 不再嵌入 ANTHROPIC_AUTH_TOKEN / CCC_AGENT_TOKEN。
 # 遗留 /api/agent 探针由 agent_proxy 运行时读 ~/.ccc/agent-token（0600），勿写入 launchd XML。
+# DESKTOP_AGENT_URL: Hub 在 2017 上需知 M1 sidecar LAN 地址。
+# 若 M1 IP 变更，设置 CCC_DESKTOP_AGENT_URL 覆盖此默认值。
 DESKTOP_AGENT_URL="${CCC_DESKTOP_AGENT_URL:-http://192.168.3.140:7788}"
 if [[ ! -f "${HOME}/.ccc/agent-token" && -z "${CCC_AGENT_TOKEN:-}" ]]; then
   echo "提示: 无 ~/.ccc/agent-token；遗留 /api/agent 探针需与 M1 agent-token 对齐（产品聊不经此反代）" >&2

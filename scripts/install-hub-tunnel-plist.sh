@@ -100,7 +100,6 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 # 清 mac2017 mux socket（路径来自全局 ControlPath ~/.ssh/cm/%h-%p-%r）
 rm -f "${HOME}/.ssh/cm/"*"-${SSH_HOST}" 2>/dev/null || true
-rm -f "${HOME}/.ssh/cm/192.168.3.116-22-"* 2>/dev/null || true
 sleep 0.6
 
 cat > "$PLIST" <<PLIST

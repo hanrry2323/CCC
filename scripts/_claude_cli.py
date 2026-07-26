@@ -33,15 +33,16 @@ _LOOP_CODE_CLAUDE_MD = """# CCC Desktop · loop-code 私有配置家
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
 代码权威只在 Mac2017 已 register 的 apps/；M1 无业务第二树；业务事实信 Hub baseline。
-禁止口径：flash 中转站、`:4000`、ai-loop-router。
+模型出口：本机 CCC Relay `:4000`（三档 flash/Pro/code）；relay 不可达时 fail-open 直连。
+禁止：已退役 ai-loop-router 口径、M1 本地 Hub/Board/Engine。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 """
 
 _ENGINE_CLAUDE_MD = """# CCC Engine · 无头扇出配置家
 
-本目录供 Mac2017 Engine product/reviewer（Claude CLI → MiniMax）使用。
+本目录供 Mac2017 Engine product/reviewer（Claude CLI → CCC Relay flash 档）使用。
 你是编排面执行器，不是 Desktop 对话人格；只产出 plan/phases/verdict 契约。
-禁止：flash 中转站、`:4000`、ai-loop-router；禁止对 CCC orch 自消费（R-15）。
+模型出口：本机 CCC Relay `:4000`；禁止对 CCC orch 自消费（R-15）。
 """
 
 _MINIMAL_SETTINGS_JSON = """{

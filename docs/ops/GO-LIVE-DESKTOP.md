@@ -14,7 +14,7 @@
 | Hub（2017 / 排障 LAN） | `http://192.168.3.116:7777`（**非** Desktop/sidecar 默认） |
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`** |
 | 远程浏览器聊 | **M1 `:7788`**（与 Desktop 同口；勿开 2017 `#/chat` 当产品路径） |
-| Mac2017 编排面 | Engine = Claude→MiniMax 扇出；dev = OpenCode→讯飞写码（中转已退役） |
+| Mac2017 编排面 | Engine = Claude→CCC Relay flash；dev = OpenCode→Relay `:4002` code 档（fail-open 直连） |
 | 网页 Hub | **编排口 / 兼容**（`#/board` `#/ops`） |
 | 意图完成口径 | `released` ≠ 完成；见 [`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md) |
 

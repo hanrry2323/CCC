@@ -55,8 +55,14 @@ check "sidecar warm" bash -c '
     curl -fsS --max-time 5 -X POST "'"${AGENT}"'/warm" -H "Content-Type: application/json" -d "{}" | grep -q "\"ok\""
   fi
 '
-# 模型出口断言：plist 直连 MiniMax（中转 :4000 已退役）
-check "sidecar→MiniMax" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "minimaxi.com"'
+# 模型出口：主路径本机 Relay :4000；fail-open 直连不得与 relay 同址
+check "sidecar→relay:4000" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "127.0.0.1:4000"'
+check "sidecar fail-open≠relay" bash -c '
+  plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "CCC_RELAY_DIRECT_URL" || exit 0
+  direct=$(plutil -extract EnvironmentVariables.CCC_RELAY_DIRECT_URL raw "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null || true)
+  [[ -z "$direct" ]] && exit 0
+  [[ "$direct" != *":4000"* ]]
+'
 
 # 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）
 check "local session dir" python3 - <<'PY'

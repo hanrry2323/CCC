@@ -69,7 +69,16 @@ def test_local_env_not_polluted(monkeypatch):
 
 
 def test_relay_direct_fallback_default(monkeypatch):
-    """缺 CCC_RELAY_DIRECT_URL 时回退直连默认。"""
+    """缺 CCC_RELAY_DIRECT_URL 时回退真直连（非本机 relay）。"""
     monkeypatch.delenv("CCC_RELAY_DIRECT_URL", raising=False)
     url = relay_direct_fallback()
     assert url, "should return a non-empty fallback URL"
+    assert ":4000" not in url
+    assert "minimaxi.com" in url or url.startswith("https://")
+
+
+def test_relay_direct_fallback_rejects_relay_loop(monkeypatch):
+    """误配 DIRECT_URL=:4000 时不得空转，回退真直连。"""
+    monkeypatch.setenv("CCC_RELAY_DIRECT_URL", "http://127.0.0.1:4000")
+    url = relay_direct_fallback()
+    assert ":4000" not in url

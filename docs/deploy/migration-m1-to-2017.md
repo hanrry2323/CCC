@@ -10,7 +10,7 @@
 
 | 组件 | 迁前（M1） | 迁后（2017） |
 |------|------------|--------------|
-| CCC Relay（`:4000`/`:4002`） | M1 本机 | **2017 生产实例** `com.ccc.relay.2017` |
+| CCC Relay（`:4000`/`:4002`） | M1 本机（旧 ai-loop-router） | **2017 生产实例** `com.ccc.relay.2017`（注意：M1 保留本地 `com.ccc.relay.m1` 供对话热路径使用） |
 | CCC Hub / Board / Engine | 常驻 M1 | **唯一生产服务** |
 | 业务工作区（Engine） | 多仓舰队 | `apps/ccc-demo`（重置后） |
 

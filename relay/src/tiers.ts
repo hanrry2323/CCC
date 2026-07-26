@@ -5,11 +5,8 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { TierId, UpstreamConfig } from "./types.js";
-import { getScore } from "./scoring.js";
 import { getAppContext } from "./context.js";
 import { ledgerWouldExceed } from "./ledger.js";
-
-const SCORE_SKIP_THRESHOLD = 0.3;
 
 // ── Constants ──
 
@@ -39,8 +36,6 @@ export function isUpstreamOk(u: UpstreamConfig): boolean {
     const pc = ctx.providerCooldowns.get(u.provider_group);
     if (pc && pc.until > Date.now()) return false;
   }
-
-  if (getScore(u.name) < SCORE_SKIP_THRESHOLD) return false;
 
   if (ledgerWouldExceed(u)) return false;
 
@@ -78,11 +73,6 @@ export function getTierBlockReason(u: UpstreamConfig): string | null {
     if (pc && pc.until > Date.now()) {
       return `provider_cool:${u.provider_group}:${Math.ceil((pc.until - Date.now()) / 1000)}s`;
     }
-  }
-
-  const score = getScore(u.name);
-  if (score < SCORE_SKIP_THRESHOLD) {
-    return `low_score:${score.toFixed(2)}`;
   }
 
   if (ledgerWouldExceed(u)) return "ledger_quota";
