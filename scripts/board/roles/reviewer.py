@@ -22,6 +22,8 @@ from _utils import now_iso as _utils_now_iso
 from _utils import sanitize_id as _utils_sanitize_id
 from _utils import sanitize_prompt_input as _sanitize_prompt_input
 from _claude_cli import ClaudeCliMissing, resolve_claude_cli
+# v0.62.0(P0-A.1):bg session 注册与已注册的 _claude_bin 同模块,直接 import
+from engine.active_tasks import register_bg_session
 import phase_lint
 
 from board.context import (
@@ -574,7 +576,7 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
     prompt_file.write_text(prompt)
 
     # 6. 清理残留标记
-    for sfx in [".reviewer.out", ".reviewer.done", ".reviewer.pid"]:
+    for sfx in [".reviewer.out", ".reviewer.done", ".reviewer.pid", ".reviewer.session_id"]:
         f = pids_dir / f"{task_id}{sfx}"
         try:
             f.unlink()
@@ -582,35 +584,44 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
             _log.debug("[reviewer] marker unlink %s/%s: %s", task_id, sfx, exc)
 
     # 7. v0.62.0:Popen ccc-reviewer-bg.sh(包装 claude --bg 长 session)
-    #   与 -p 不同:--bg 启动 background session 立刻返回,由 ccc-reviewer-bg.sh
-    #   写 <task>.reviewer.session_id(给 Engine resume 用)并轮询 verdict 标记。
-    #   失败回环时(--resume 路径)从 <task>.reviewer.session_id 读上次 session。
+    # - 与 -p 不同:--bg 启动 background session 立刻返回;ccc-reviewer-bg.sh
+    #   解析 stdout 写 <task>.reviewer.session_id(给 Engine resume 用),不反查
+    #   agents --json 避免多 task 串 session(P0-D/P0-E 修复)
+    # - verdict 提取(写 done 标记)在本函数内异步做,不等 shell 脚本
     result_file = pids_dir / f"{task_id}.reviewer.out"
     session_id_file = pids_dir / f"{task_id}.reviewer.session_id"
     relay_url = _get_relay_url()
     env = _claude_env(relay_url=relay_url)
     env["CLAUDE_CODE_NONINTERACTIVE"] = "1"
 
+    # v0.62.0(P0-B):不硬编码 claude 路径,用 _claude_bin() 动态解析
+    try:
+        claude_bin = _claude_bin()
+    except ClaudeCliMissing as exc:
+        _log.error("[reviewer-async] %s claude missing: %s", task_id, exc)
+        return {"error": str(exc)}
+
     bg_args = [
         "bash",
         f"{CCC_HOME}/scripts/ccc-reviewer-bg.sh",
-        task_id,
-        "reviewer",  # v0.62.0:phase_id 硬编码(reviewer role 唯一)
-        str(ws),
+        "--task-id", task_id,
+        "--workspace", str(ws),
         # v0.62.0:model 从 CCC_AGENT_MODEL env 读(无则 flash 兜底)
-        os.environ.get("CCC_AGENT_MODEL", "flash"),
-        str(prompt_file),
-        str(pids_dir),
-        "--hard-kill-after",
-        "1800",
+        "--model", os.environ.get("CCC_AGENT_MODEL", "flash"),
+        "--prompt-file", str(prompt_file),
+        "--out-dir", str(pids_dir),
+        "--claude-bin", str(claude_bin),
+        "--marker-dir", str(pids_dir),
+        "--hard-kill-after", "1800",
+        "--max-wait", str(_get_reviewer_timeout()),
     ]
     # 失败回环:从 session_id 文件续(若有)
     if session_id_file.is_file() and session_id_file.read_text().strip():
-        prev_short = session_id_file.read_text().strip()
-        bg_args += ["--resume", prev_short]
+        prev_session = session_id_file.read_text().strip()
+        bg_args += ["--resume", prev_session]
         _log.info(
             "[reviewer-async] %s will resume previous session %s",
-            task_id, prev_short,
+            task_id, prev_session,
         )
 
     try:
@@ -628,13 +639,47 @@ def launch_reviewer_async(task_id: str, ws: Path) -> dict:
         _log.info(
             "[reviewer-async] %s launched PID=%d size=%s", task_id, proc.pid, size_class
         )
-        return {"ok": True, "pid": proc.pid, "size_class": size_class}
     except ClaudeCliMissing as exc:
         _log.error("[reviewer-async] %s claude missing: %s", task_id, exc)
         return {"error": str(exc)}
     except Exception as exc:
         _log.error("[reviewer-async] %s launch failed: %s", task_id, exc)
         return {"error": str(exc)}
+
+    # v0.62.0(P0-D):等 ccc-reviewer-bg.sh 解析 stdout 写 session_id_file(约 5-10s)
+    # 超时 15s 兜底,避免 Engine tick 卡住
+    for _ in range(15):
+        if session_id_file.is_file() and session_id_file.read_text().strip():
+            new_session = session_id_file.read_text().strip()
+            try:
+                register_bg_session(
+                    task_id=task_id, role="reviewer",
+                    session_id=new_session, pid=proc.pid, model=os.environ.get("CCC_AGENT_MODEL", "flash"),
+                )
+                _log.info(
+                    "[reviewer-async] %s registered bg session=%s (P0-A.1)",
+                    task_id, new_session[:8],
+                )
+            except Exception as exc:
+                _log.warning("[reviewer-async] %s register_bg_session: %s", task_id, exc)
+            break
+        time.sleep(1)
+    else:
+        _log.warning(
+            "[reviewer-async] %s session_id_file 未生成,继续等 verdict",
+            task_id,
+        )
+
+    return {"ok": True, "pid": proc.pid, "size_class": size_class}
+
+
+def _get_reviewer_timeout() -> int:
+    """v0.62.0:reviewer timeout 从 cfg 取(默认 600s)。"""
+    try:
+        from _config import Config
+        return int(getattr(Config(), "reviewer_timeout", 600))
+    except Exception:
+        return 600
 
 
 def _parse_reviewer_output(task_id: str, output: str) -> dict:
