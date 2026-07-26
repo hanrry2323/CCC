@@ -35,6 +35,8 @@
 | 文档 | 说明 |
 |------|------|
 | [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门** |
+| [`releases/v0.62.0.md`](releases/v0.62.0.md) | **现行** reviewer `--bg` + bg_sessions + Hub/Desktop |
+| [`releases/v0.61.0.md`](releases/v0.61.0.md) | 三档契约 + fleet + 双机门禁 |
 | [`releases/v0.60.1.md`](releases/v0.60.1.md) | Desktop 发版 + 运维后勤对齐 + 产线闸门 |
 | [`releases/v0.60.0.md`](releases/v0.60.0.md) | LPSN 发布说明 |
 | [`product/hub-api-v1.md`](product/hub-api-v1.md) | **Hub API v1 契约**（transfer 幂等 / 投递三态） |

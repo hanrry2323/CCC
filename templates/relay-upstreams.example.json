@@ -41,15 +41,15 @@
   },
   {
     "name": "opencode-go-pro",
-    "tier": "Pro",
+    "tier": "pro",
     "tier_priority": 1,
     "base_url": "https://opencode.ai/zen/v1",
     "upstream_model": "deepseek-v4-pro",
-    "models": ["Pro"],
+    "models": ["pro"],
     "api_key": "sk-xxx-REPLACE-ME",
     "transcode": true,
     "provider_group": "opencode-pro",
-    "description": "Pro 档付费通道"
+    "description": "Pro 档付费通道（逻辑名 pro）"
   },
   {
     "name": "xfyun-code",

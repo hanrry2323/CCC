@@ -238,7 +238,10 @@ async def ops_quality(request: Request):
 
 @router.get("/api/ops/router-usage")
 async def ops_router_usage(request: Request, refresh: int = 0):
-    """兼容残留：ai-loop-router 已退役，返回零值 stub。"""
+    """兼容端点：实拉本机 CCC Relay `GET :4000/admin/stats`（三档用量+healthy）。
+
+    旧名 router-usage 保留；ai-loop-router 独立仓已退役，功能=仓内 `relay/`。
+    """
     check_auth(request)
     _ = refresh
     from _ops_probe import fetch_router_usage

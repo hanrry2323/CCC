@@ -12,8 +12,8 @@
 | 面 | 谁干 | 说明 |
 |----|------|------|
 | **CCC 平台代码**（本仓） | **仅 Cursor** | 唯一开发工具；**完整 IDE 能力**；不换 Claude Code / Trae / Zed / 其它 IDE 改平台 |
-| **业务仓编排** | Mac2017 Engine | product/reviewer → Claude CLI→MiniMax；dev → OpenCode→讯飞（**执行器**，不是平台开发工具） |
-| **Desktop 对话** | M1 sidecar → loop-code | 默认 MiniMax；对话面 Plan（硬禁写业务仓）；**不是**改 CCC 的入口，**不是** Cursor |
+| **业务仓编排** | Mac2017 Engine | product/reviewer → Claude→Relay `flash`；dev → OpenCode→Relay `code`（**执行器**，不是平台开发工具） |
+| **Desktop 对话** | M1 sidecar → loop-code | 默认 Relay **`flash`**（→2017 `:4000` OK）；对话面 Plan（硬禁写业务仓）；**不是**改 CCC 的入口，**不是** Cursor |
 
 **禁止**：用个人 Claude Code、Trae、Zed、VS Code 插件会话、网页 Hub 聊天改本仓。  
 **配置家**：sidecar `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`。Engine：`~/.ccc/engine-claude`（扇出用，非平台开发）。
@@ -22,7 +22,8 @@
 
 ## Desktop 模型
 
-- sidecar 固定 MiniMax；App 内快选逻辑名（默认 `flash` / MiniMax-M3）。  
+- sidecar 默认走 CCC Relay **`flash`**（M1→2017 `:4000` 共享免费档 OK）；App 内快选三档 `flash`/`Pro`/`code`。  
+- fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（MiniMax-M3 已退役，禁硬编码厂商 URL）。  
 - 与个人 Claude / shell `ANTHROPIC_*` 无关。
 
 ---

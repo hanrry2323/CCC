@@ -1,45 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  macOS launchd 配置示例 — AI Loop Router v4（单进程双端口）
-  ─────────────────────────────────────────────────────────────
-  一个进程同时监听：
-    :4000  Anthropic  /v1/messages
-    :4002  OpenAI Chat /v1/chat/completions
+  DEPRECATED — 旧名 com.ai-loop-router（独立仓）已并入 CCC Relay。
 
-  使用前请替换占位符：
-    1. /path/to/node           → `which node`
-    2. /path/to/ai-loop-router → 本仓库绝对路径
+  现行安装（勿再 bootstrap 本文件）:
+    bash scripts/install-relay-plist.sh --start --host m1    # M1
+    bash scripts/install-relay-plist.sh --start --host 2017  # Mac2017
 
-  安装:
-    cp scripts/com.ai-loop-router.plist.example ~/Library/LaunchAgents/com.ai-loop-router.plist
-    # 编辑替换占位符后：
-    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ai-loop-router.plist
+  标签: com.ccc.relay.m1 / com.ccc.relay.2017
+  端口: :4000 Anthropic / :4002 OpenAI Chat（仓内 relay/）
 
-  卸载:
-    launchctl bootout gui/$(id -u)/com.ai-loop-router
-    rm ~/Library/LaunchAgents/com.ai-loop-router.plist
-
-  注意: 当前 CCC 默认直连上游；本服务为可选中转，确认需要时再 bootstrap。
+  本文件仅作考古；保留文件名以免外链 404。
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ai-loop-router</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/node</string>
-        <string>/path/to/ai-loop-router/dist/proxy.js</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>/path/to/ai-loop-router</string>
-    <key>RunAtLoad</key>
+    <string>com.ai-loop-router.DEPRECATED</string>
+    <key>Disabled</key>
     <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/path/to/ai-loop-router/logs/stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/path/to/ai-loop-router/logs/stderr.log</string>
 </dict>
 </plist>

@@ -28,12 +28,12 @@ http://192.168.3.116:7777
 
 | 工具 | 上游 |
 |------|------|
-| Desktop ↔ sidecar ↔ loop-code | **MiniMax** 直连（现网默认） |
-| Engine Claude（product/reviewer） | **MiniMax** 直连 |
-| Engine OpenCode（dev） | **讯飞** `xfyun/code` 直连 |
+| Desktop ↔ sidecar ↔ loop-code | Relay **`flash`**（M1→2017 `:4000` OK；可改本机 `relay.m1`） |
+| Engine Claude（product/reviewer） | Relay **`flash`** / **`Pro`**（`:4000`） |
+| Engine OpenCode（dev） | Relay **`code`**（`:4002`） |
 
-CCC Relay（`:4000` Anthropic 协议 / `:4002` openai-chat）**已恢复**。见 [`topology.md`](topology.md)。  
-**后续**：Desktop **应用内**大模型快速选择。SSOT：[`../product/dev-channel.md`](../product/dev-channel.md)。
+CCC Relay（`:4000` Anthropic 协议 / `:4002` openai-chat）**现行**。fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。见 [`topology.md`](topology.md)。  
+Desktop **应用内**快选三档 `flash`/`Pro`/`code`。SSOT：[`../product/dev-channel.md`](../product/dev-channel.md)。
 
 ## 运行与打包
 

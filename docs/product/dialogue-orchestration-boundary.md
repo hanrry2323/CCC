@@ -26,7 +26,7 @@ M1 对话面 + 运维灯                         信息流（仅契约）       
 ┌──────────────────────┐                                              ┌─────────────────────────┐
 │ Desktop UI / OpsView │── POST /api/desktop/transfer（门禁 JSON）───►│ Hub :7777 + Ops API     │
 │ Sidecar :7788        │──（可选）thread 绑定 / 消息镜像备份 ─────────►│ Board :7775             │
-│ loop-code → MiniMax  │◄─ SSE flow: epic_created / fanout / … ────│ Engine + 业务仓写码      │
+│ loop-code → relay flash │◄─ SSE flow: epic_created / fanout / … ────│ Engine + 业务仓写码      │
 │ 本机 sessions 落盘    │◄─ 运维总灯 / 红灯 copy_payload ────────────│ 旁路：日审·patrol·reap  │
 └──────────────────────┘                                              └─────────────────────────┘
 ```
@@ -78,10 +78,10 @@ Desktop 右栏投影 **本机 `boundEpicId`** 对应的 epic/works。同一对�
 | Agent Sidecar | M1 `com.ccc.agent-sidecar` → `:7788` | 对话热路径；launchd KeepAlive |
 | loop-code（方案） | M1 `vendor/loop-code/cli`（arm64） | 只服务对话面 |
 | Hub / Board | Mac2017 `:7777` / `:7775` | 信息流枢纽 + 看板 API |
-| Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环；product=Claude→MiniMax，dev=OpenCode→讯飞 |
+| Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环；product=Claude→Relay `flash`，dev=OpenCode→Relay `code` |
 | 业务仓看板 | Mac2017 `apps/<id>/.ccc/board` | 编排权威状态 |
 | 本机会话 | M1 `~/Library/Application Support/CCCDesktop/sessions/` | 对话权威；Hub 镜像为辅 |
-| 模型出口 | CCC Relay `:4000`（主要）/ MiniMax / 讯飞直连（fail-open） | CCC Relay `:4000` Anthropic 协议 + `:4002` openai-chat；详见 authority 文档 |
+| 模型出口 | CCC Relay 三档 `flash`/`Pro`/`code`（`:4000`/`:4002`） | fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`；详见 authority |
 
 ---
 

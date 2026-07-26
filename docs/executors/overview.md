@@ -6,22 +6,22 @@
 ## 两路互不混淆
 
 ```text
-M1 对话 / 对齐（Desktop + sidecar → 本机 relay :4000/:4002）
+M1 对话 / 对齐（Desktop + sidecar → 2017 relay :4000，可改本机 relay.m1）
   → 对话槽 loop-code（现填 vendor cli · arm64）
-  → CCC Relay M1 (com.ccc.relay.m1)  →  MiniMax Anthropic / OpenAI 异构上游
-  → fail-open: relay down 时 sidecar 直连 MiniMax
+  → CCC Relay（三档 flash/Pro/code）→ upstreams.json 异构上游
+  → fail-open: `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`
 
 Engine 看板开发（Mac2017 → 本机 relay :4000/:4002）
-  → product 扇出 = Claude → CCC Relay 2017 (com.ccc.relay.2017) → MiniMax
-  → dev 写码 = OpenCode → CCC Relay 2017 :4002 → 讯飞/智谱
-  → fail-open: relay down 时各客户端直连兜底(绝不 block)
+  → product 扇出 = Claude → CCC Relay 2017 (com.ccc.relay.2017) → flash/Pro
+  → dev 写码 = OpenCode → CCC Relay 2017 :4002 → code
+  → fail-open: 同上直连文件（绝不 block；MiniMax-M3 已退役）
 ```
 
 | 路径 | 默认执行器 | 模型调度 | 如何切换 |
 |------|------------|----------|----------|
-| M1 对话（sidecar `:7788`） | **loop-code**（arm64） | **本机 relay** `:4000` | `CCC_RELAY_FAIL_OPEN=1` 切直连 |
-| M1 relay（`:4000`/`:4002`） | **CCC Relay M1**（v4.3.0） | — | `com.ccc.relay.m1` plist;三档 flash/Pro/code |
-| Engine product 扇出（2017） | **Claude** → relay → MiniMax | **本机 relay** `:4000` | `AGENT_PLANNER_BASE_URL` env |
+| M1 对话（sidecar `:7788`） | **loop-code**（arm64） | **2017 relay** `:4000`（`flash`） | `CCC_ANTHROPIC_BASE_URL` 改本机；fail-open → relay-direct.url |
+| M1 relay（`:4000`/`:4002`） | **CCC Relay M1**（可选） | — | `com.ccc.relay.m1` plist;三档 flash/Pro/code |
+| Engine product 扇出（2017） | **Claude** → relay → flash/Pro | **本机 relay** `:4000` | `AGENT_PLANNER_BASE_URL` env |
 | Engine dev 写码（2017） | **OpenCode** → relay `:4002` | **本机 relay** | `OPENCODE_MODEL=loop/code` |
 | 2017 relay（`:4000`/`:4002`） | **CCC Relay 2017** | — | `com.ccc.relay.2017` plist |
 
@@ -36,14 +36,14 @@ Hub（2017）：不再需要对话 CLI（`/api/chat` 已删）。
 | 工具 | Server（2017）应指向 |
 |------|----------------------|
 | OpenCode（dev 写码） | **relay `:4002`**（`OPENCODE_MODEL=loop/code`）；探活失败自动切 `~/.config/opencode/opencode.direct.json` 直连（讯飞/智谱） |
-| Claude（product / reviewer） | **relay `:4000`**（`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`）；fail-open 时降级 `https://api.minimaxi.com/anthropic` |
+| Claude（product / reviewer） | **relay `:4000`**（`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`）；fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
 | Engine 环境 | Engine 启动时自动设 `AGENT_PLANNER_BASE_URL`，无需手动配置 |
 
 ## M1 上客户端指向
 
 | 工具 | M1 应指向 |
 |------|----------|
-| sidecar loop-code | **本机 relay** `http://127.0.0.1:4000`（主路径）；`CCC_RELAY_FAIL_OPEN=1` 切 MiniMax 直连 |
+| sidecar loop-code | **2017 relay** `http://192.168.3.116:4000`（主路径，免费 flash）；可改本机 `relay.m1`；fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
 
 ## 冒烟
 

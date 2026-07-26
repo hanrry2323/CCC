@@ -17,7 +17,7 @@
   CCC/                      # 主产品 + orch（唯一编排仓）
   relay/                    # CCC Relay 子系统（现行）；三档 flash/Pro/code 路由
   infra/
-    ai-loop-router/         # 已退役（归档）；勿再 launchd 启用 :4000/:4002
+    ai-loop-router/         # 旧独立仓归档；勿再启用其 plist。现行路由 = 仓内 relay/（仍占 :4000/:4002）
   apps/
     ccc-demo/               # 默认 demo
     clawmed-ccc/            # 垂直产品（测试中）
@@ -35,7 +35,7 @@
 | 路径 | 用途 | 规则 |
 |------|------|------|
 | `CCC/` | 主产品、Hub/Engine、`relay/` CCC Relay 源码 | 唯一编排仓；不在仓外散落产品代码 |
-| `infra/ai-loop-router/` | 历史中转（已退役） | **不** register；plist 已移至 `LaunchAgents/disabled-relay-*` |
+| `infra/ai-loop-router/` | 历史中转（旧独立仓名已退役） | **不** register；勿启旧 plist。现行 **CCC Relay** = `relay/`（仍用 `:4000`/`:4002`） |
 | `apps/<name>/` | 经 doctor register 的业务仓 | **新项目必须落这里**；**唯一代码权威** |
 | `archive/` | 冷存 | 不参与 Engine 登记 |
 | 其他顶层目录 | — | **禁止**；先改本文再创建 |
@@ -64,8 +64,8 @@ M1 对话  = Desktop + sidecar；事实只信 Hub baseline；无业务源码第�
 M1 平台  = ~/program/CCC（Cursor 改 CCC；localWorkspaceMap 仅可映 ccc）
 ```
 
-- **生产执行、Hub/Engine** 以 2017 为准（模型经 CCC Relay 路由，三档 flash/Pro/code；fail-open 时直连兜底）  
-- **M1 对话**：Desktop + sidecar `:7788` + arm64 `vendor/loop-code/cli` → 本机 relay `:4000`（主）→ MiniMax（fail-open 兜底）  
+- **生产执行、Hub/Engine** 以 2017 为准（模型经 CCC Relay 路由，三档 flash/Pro/code；fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`）  
+- **M1 对话**：Desktop + sidecar `:7788` + arm64 `vendor/loop-code/cli` → **2017 relay** `:4000`（主，免费 flash；可改本机 `relay.m1`）→ fail-open 直连文件  
 - **Mac2017 不再部署 loop-code 二进制**（Hub `/api/chat` 已删，2017 不做对话）
 ---
 

@@ -21,15 +21,14 @@ struct ComposerAttachment: Identifiable, Hashable, Equatable {
 
 /// 流式策略与 prompt 拼装（从 AppModel 热路径拆出，对齐 OpenCode session 心智）
 enum StreamSessionController {
-    /// 请求级逻辑名（sidecar / loop-code 认这些；三档契约：relay 路由）
-    static let allowedModels = ["flash", "code", "sonnet", "haiku"]
+    /// 请求级逻辑名（sidecar / loop-code / relay 三档契约，一律小写）
+    static let allowedModels = ["flash", "pro", "code"]
 
-    /// UI 快选：id → 显示名（三档契约；标签由 relay upstreams.json 定义，此处为默认 fallback）
+    /// UI 快选：id → 显示名（标签由 relay upstreams 定义，此处为默认 fallback）
     static let modelPickerOptions: [(id: String, label: String)] = [
-        ("flash", "flash · opencode-go"),
-        ("code", "code · xfyun"),
-        ("sonnet", "sonnet"),
-        ("haiku", "haiku"),
+        ("flash", "flash · 免费日常"),
+        ("pro", "Pro · 高级"),
+        ("code", "code · 写码"),
     ]
 
     static func modelDisplayName(_ preferred: String) -> String {
@@ -65,7 +64,9 @@ enum StreamSessionController {
     }
 
     static func resolveModel(_ preferred: String) -> String {
-        let m = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var m = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // 历史伪档 / 大小写别名 → 三档
+        if m == "sonnet" || m == "haiku" || m == "opus" { m = "flash" }
         return allowedModels.contains(m) ? m : "flash"
     }
 

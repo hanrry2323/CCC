@@ -6,7 +6,9 @@
 
 ## 一句话
 
-**Mac2017 上 Hub 仍听 `0.0.0.0:7777`；M1 客户端默认不直连 LAN，而走本机 SSH 本地转发 `127.0.0.1:17777` → 2017 `127.0.0.1:7777`。**
+**Mac2017 上 Hub 默认听 `127.0.0.1:7777`（隧道主路径；`install-hub-plist.sh` SSOT）。**  
+M1 客户端默认不直连 LAN，而走本机 SSH 本地转发 `127.0.0.1:17777` → 2017 `127.0.0.1:7777`。  
+若需手机/LAN 直连，在 2017 用 `CCC_CHAT_HOST=0.0.0.0 bash scripts/install-hub-plist.sh --start` 显式放开（非 Desktop 默认）。
 
 这不是「Hub 搬到 M1」，也不是改 transfer/flow 契约；只换 **M1→Hub 的传输层**，解决 LAN 对 `:7777` 偶发/整段 HTTP 卡死。
 

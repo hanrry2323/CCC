@@ -36,12 +36,14 @@ def _get_project_context(project_id: str, projects: dict) -> str:
 
 
 ALLOWED_MODELS = frozenset({
+    # 三档契约（relay 路由；一律小写）
     "flash",
+    "pro",
     "code",
+    # 兼容旧/旁路上游名（仍可能出现在历史会话）
     "sonnet",
     "opus",
     "haiku",
-    # 118.ink 中转（备选上游）：Anthropic 兼容 Opus 4.8
     "opus4.8",
     "claude-opus-4-8",
 })
@@ -49,7 +51,14 @@ ALLOWED_MODELS = frozenset({
 
 def resolve_model(model: str | None) -> str:
     m = (model or "flash").strip().lower()
-    return m if m in ALLOWED_MODELS else "flash"
+    if m in ("sonnet", "haiku", "opus"):
+        return "flash"
+    if m in ALLOWED_MODELS and m in ("flash", "pro", "code"):
+        return m
+    if m in ALLOWED_MODELS:
+        # 旁路上游显式名：原样放行（118.ink 等）
+        return m
+    return "flash"
 
 
 def resolve_chat_timeouts(

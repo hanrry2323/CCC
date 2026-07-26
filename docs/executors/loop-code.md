@@ -47,14 +47,15 @@ bash scripts/install-agent-sidecar-plist.sh --start
 launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 ```
 
-验收：`curl http://127.0.0.1:7788/health`（出口应为 MiniMax；plist `ANTHROPIC_BASE_URL` 含 `minimaxi.com`）。
+验收：`curl http://127.0.0.1:7788/health`（出口应为 relay `:4000`；plist `ANTHROPIC_BASE_URL` 含 `:4000`）。
 
-模型：`ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`，`ANTHROPIC_MODEL=MiniMax-M3`（key：`~/.ccc/minimax-api-key`）。  
-~~经 2017 Router `:4000` 已退役。~~
+模型默认：**Relay `flash`**。M1 → 2017 Relay `http://192.168.3.116:4000`（可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`）；`ANTHROPIC_MODEL=flash`。  
+fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（禁硬编码厂商 URL；MiniMax-M3 已退役）。  
+旧独立仓名 `ai-loop-router` 退役；功能 = 仓内 `relay/`，端口仍 `:4000`/`:4002`。
 
 ### 暂停：118.ink（opus 4.8）
 
-**成本暂停，不作现网默认。** Desktop 上游默认 MiniMax；**App 内模型快选**（Phase17）只换请求级逻辑名，不改本 plist 出口（[`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/hub-shell-phase17-model-picker.md`](../product/hub-shell-phase17-model-picker.md)）。
+**成本暂停，不作现网默认。** Desktop 上游默认 Relay **`flash`**；**App 内模型快选**（Phase17）只换请求级逻辑名 `flash`/`Pro`/`code`，不改本 plist 出口（[`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/hub-shell-phase17-model-picker.md`](../product/hub-shell-phase17-model-picker.md)）。
 
 若仍须临时切 sidecar 上游：
 
@@ -71,7 +72,7 @@ bash scripts/install-agent-sidecar-plist.sh --start
 | `ANTHROPIC_BASE_URL` | `https://118.ink`（**勿**加 `/v1`） |
 | `ANTHROPIC_MODEL` | `claude-opus-4-8` |
 
-**回默认 MiniMax**：`unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY` 后重装 sidecar。
+**回默认 Relay flash**：`unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY` 后重装 sidecar。
 
 ## 配置切割（Phase1–5 基线）
 

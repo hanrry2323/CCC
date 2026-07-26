@@ -327,8 +327,8 @@ def _normalize_project_path(project_path: str) -> str | None:
 
 
 # ── CCC Relay 2026-07-25 ───────────────────────────────────────────
-# sidecar /health 拉 relay :4000/admin/upstreams 真实三档目录,替代硬编码 4 个假选项
-# Desktop 模型快选 = relay 三档契约(flash/Pro/code);真三档取代伪四档
+# sidecar /health 拉 relay :4000/admin/upstreams 真实三档目录,替代硬编码伪档
+# Desktop 模型快选 = relay 三档契约(flash/pro/code)
 _RELAY_BASE = (os.environ.get("CCC_RELAY_BASE_URL") or "http://127.0.0.1:4000").rstrip("/")
 _RELAY_CATALOG_TTL = 30.0
 _RELAY_CATALOG: dict = {"ts": 0.0, "models": None, "labels": None}
@@ -338,7 +338,7 @@ def _fetch_relay_catalog() -> tuple[list[str], dict[str, str]] | None:
     """从 relay /admin/upstreams 提三档目录。
 
     返回 (models, labels) 喂给 sidecar /health;失败 None(由 health 走硬编码兜底)。
-    30s 缓存;2s 超时;静默失败(不 raise)。
+    30s 缓存;2s 超时;静默失败(不 raise)。tier 一律小写 flash/pro/code。
     """
     now = time.monotonic()
     if _RELAY_CATALOG["models"] is not None and (now - _RELAY_CATALOG["ts"]) < _RELAY_CATALOG_TTL:
@@ -347,24 +347,21 @@ def _fetch_relay_catalog() -> tuple[list[str], dict[str, str]] | None:
         import urllib.request
         with urllib.request.urlopen(f"{_RELAY_BASE}/admin/upstreams", timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        # 聚每 tier 的最高优先级 upstream.upstream_model → 标签
         tiers: dict[str, list[dict]] = {}
         for u in data or []:
-            tier = (u.get("tier") or "").strip()
-            if not tier:
+            tier = (u.get("tier") or "").strip().lower()
+            if tier not in ("flash", "pro", "code"):
                 continue
             tiers.setdefault(tier, []).append(u)
         models: list[str] = []
         labels: dict[str, str] = {}
-        # CCC Relay 三档契约顺序固定:flash / Pro / code
-        for tier in ("flash", "Pro", "code"):
+        for tier in ("flash", "pro", "code"):
             ups = sorted(tiers.get(tier, []), key=lambda x: x.get("tier_priority") or 999)
             if not ups:
                 continue
             models.append(tier)
             top = ups[0]
             um = (top.get("upstream_model") or top.get("name") or tier).strip()
-            # tier 描述追加,UI 提示
             desc = tier_descriptions.get(tier, "")
             labels[tier] = f"{um}  ·  {desc}" if desc else um
         if not models:
@@ -378,7 +375,7 @@ def _fetch_relay_catalog() -> tuple[list[str], dict[str, str]] | None:
 
 tier_descriptions: dict[str, str] = {
     "flash": "轻量默认 · 日常对话 / 多数 agent 工作",
-    "Pro": "高级模型 · 直连绕开协议转换",
+    "pro": "高级模型 · 直连绕开协议转换",
     "code": "写码档 · OpenCode dev / 产品实现",
 }
 
@@ -403,7 +400,7 @@ async def health():
         # 验收用：只暴露是否落在 ~/.ccc/loop-code，完整家目录可含用户名
         if ".ccc/loop-code" in cfg_mark.replace("\\", "/"):
             cfg_mark = "~/.ccc/loop-code"
-    return {
+    payload = {
         "ok": True,
         "product": "CCC Agent Sidecar",
         "agent_runtime": "loop-code" if "loop-code" in cli.replace("\\", "/") else "claude",
@@ -422,19 +419,12 @@ async def health():
         ).rstrip("/"),
         "outbox_flush": True,
         # Desktop 能力契约(不暴露密钥/完整路径)
-        "model": (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash").strip(),
-        # CCC Relay 2026-07-25:动态拉 relay :4000/admin/upstreams 真实三档目录
-        # relay 不可达时降级硬编码三档(满足 Desktop 契约,不至于列表为空)
-        "models": ["flash", "Pro", "code"],
-        "model_labels": {
-            # v0.61.0 2026-07-25:对应当前 2017 relay upstreams 实际配置;
-            # flash=opencode-go(免费档,有 stability 风险)/Pro 临时空(降 flash)/
-            # code=xfyun-code。Pro 档后续补真上游时再改。
-            "flash": "opencode-go · deepseek-v4-flash-free",
-            "Pro": "(临时空,fallback flash;待补上游)",
-            "code": "xfyun-code · 写码档 · OpenCode dev",
-        },
-        "model_source": "relay" if _fetch_relay_catalog() is not None else "fallback",
+        "model": (
+            (os.environ.get("ANTHROPIC_MODEL") or os.environ.get("CCC_AGENT_MODEL") or "flash")
+            .strip()
+            .lower()
+            or "flash"
+        ),
         "tool_modes": ["discuss", "engineer"],
         "compact": True,
         "supports_attachments": True,
@@ -447,6 +437,20 @@ async def health():
             "outbox_flush": True,
         },
     }
+    cat = _fetch_relay_catalog()
+    if cat:
+        payload["models"] = cat[0]
+        payload["model_labels"] = cat[1]
+        payload["model_source"] = "relay"
+    else:
+        payload["models"] = ["flash", "pro", "code"]
+        payload["model_labels"] = {
+            "flash": "opencode-go · deepseek-v4-flash-free",
+            "pro": "opencode-go-pro · deepseek-v4-pro",
+            "code": "xfyun-code · 写码档",
+        }
+        payload["model_source"] = "fallback"
+    return payload
 
 
 @app.post("/api/outbox/flush")

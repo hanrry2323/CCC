@@ -42,7 +42,7 @@ if [[ -n "$AGENT_TOKEN" ]]; then
   AGENT_AUTH_H=(-H "Authorization: Bearer ${AGENT_TOKEN}" -H "X-CCC-Agent-Token: ${AGENT_TOKEN}")
 fi
 
-# 1) Sidecar launchd 常驻 + 模型出口直连 MiniMax
+# 1) Sidecar launchd 常驻 + 模型出口走 Relay flash（:4000）
 bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
 check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"

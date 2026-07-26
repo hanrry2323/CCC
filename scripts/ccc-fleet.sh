@@ -34,6 +34,7 @@ HOST_TAG="$(_host_tag)"
 # 完整 label 表(2017 + M1 共 12 个;含老 batch2 / flywheel / loop-monitor / opencode-serve
 # 保留作 backward-compat:disabled-ccc/ 里有这些 plist,bootout 时全收)
 ALL_LABELS_2017=(
+  "com.ccc.hk-egress-tunnel"
   "com.ccc.relay.2017"
   "com.ccc.board"
   "com.ccc.chat-server"

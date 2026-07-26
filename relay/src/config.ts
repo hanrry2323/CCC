@@ -46,18 +46,25 @@ function isValidUpstream(u: unknown): boolean {
     && (o.upstream_model === undefined || typeof o.upstream_model === "string");
 }
 
-/** 归一：models 权威；缺 models 用 tier；缺 tier 用 models[0] */
+/** 归一：models 权威；缺 models 用 tier；缺 tier 用 models[0]；Pro→pro */
 export function normalizeUpstream(raw: Record<string, unknown>): UpstreamConfig | null {
   if (!isValidUpstream(raw)) return null;
   const name = String(raw.name);
   const hasModels = Array.isArray(raw.models) && (raw.models as unknown[]).length > 0;
-  const tier = raw.tier as TierId | undefined;
-  if (!hasModels && !tier) return null;
+  const rawTier = raw.tier as string | undefined;
+  if (!hasModels && !rawTier) return null;
 
-  const models = hasModels
-    ? (raw.models as TierId[])
-    : [tier as TierId];
-  const resolvedTier = (tier || models[0]) as TierId;
+  const canon = (t: string): TierId | null => {
+    const s = t.trim().toLowerCase();
+    if (s === "pro" || s === "flash" || s === "code") return s;
+    return null;
+  };
+
+  const models = (hasModels
+    ? (raw.models as unknown[]).map(x => canon(String(x))).filter((x): x is TierId => !!x)
+    : [canon(String(rawTier))].filter((x): x is TierId => !!x));
+  if (models.length === 0) return null;
+  const resolvedTier = (canon(String(rawTier || models[0])) || models[0]) as TierId;
 
   return {
     ...(raw as unknown as UpstreamConfig),

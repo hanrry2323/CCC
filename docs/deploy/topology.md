@@ -31,14 +31,14 @@
 
 | 路径 | 执行器 | 模型路由 | 故障降级 |
 |------|--------|----------|----------|
-| M1 对话（Desktop → sidecar `:7788`） | loop-code（arm64） | **本机 CCC Relay** `http://127.0.0.1:4000`（`flash` 档） | `CCC_RELAY_FAIL_OPEN=1` 切直连 MiniMax |
-| Engine product 扇出 | Claude | **本机 CCC Relay 2017** `AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000` | fail-open 时降级直连 |
-| Engine dev 写码 | OpenCode | **本机 CCC Relay 2017** `:4002`（`code` 档） | 探活失败切 `xfyun/code` 直连 |
+| M1 对话（Desktop → sidecar `:7788`） | loop-code（arm64） | **2017 Relay** `http://192.168.3.116:4000`（`flash`；可改本机 `relay.m1`） | `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
+| Engine product 扇出 | Claude | **本机 CCC Relay 2017** `AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000` | 同上 fail-open 直连文件 |
+| Engine dev 写码 | OpenCode | **本机 CCC Relay 2017** `:4002`（`code` 档） | 探活失败切直连兜底（见 `opencode.direct.json`） |
 
 > 三档契约（2026-07-25 硬共识）：下游只对接 `flash`/`Pro`/`code` 逻辑名，上游由 `relay/upstreams.json` 统一路由。  
 > 详见 [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三档契约 + 上游解耦」。
 
-`ai-loop-router` 已退役（2026-07-25），功能并入 CCC 仓 `relay/` 作为 **CCC Relay** 子系统。  
+旧独立仓名 `ai-loop-router` 已退役；功能并入 CCC 仓 `relay/` 作为 **CCC Relay**，端口仍 `:4000`/`:4002`。  
 旧 `com.ai-loop-router` plist 已移至 `~/Library/LaunchAgents/disabled-ccc/`。
 
 ---
@@ -53,7 +53,7 @@
 | **4000** | CCC Relay M1 | `com.ccc.relay.m1`（同 sidecar 生命周期）；三档路由 / Anthropic 协议转换 |
 | **17777** | Hub SSH 隧道（本机） | `com.ccc.hub-tunnel`：`ssh -L` → 2017 `:7777`；**Desktop/sidecar 默认 Hub URL** |
 
-Sidecar → 本机 relay `:4000`（主路径）；relay 不可达时 `CCC_RELAY_FAIL_OPEN=1` 切直连 MiniMax。  
+Sidecar → **2017 relay** `:4000`（主路径，免费 flash）；可改本机 `relay.m1`。relay 不可达时 fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（禁硬编码厂商 URL；MiniMax-M3 已退役）。  
 Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · 热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ### Mac2017（编排面）
@@ -82,7 +82,7 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 ```
 
 **角色锁**：product = Claude；dev = OpenCode；不可互换（见 [`../runbooks/orchestration-flow.md`](../runbooks/orchestration-flow.md)）。  
-**fail-open 红线**：relay 探活失败一律客户端降级直连，**绝不** block/skip 任务。
+**fail-open 红线**：relay 探活失败一律客户端降级到 `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`，**绝不** block/skip 任务；未配置则只打日志。
 
 ---
 
@@ -134,5 +134,5 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 
 ## 执行器
 
-- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ 本机 relay `:4000`（`flash` 档）  
+- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ **2017 relay** `:4000`（`flash`；可改本机 `relay.m1`）  
 - **看板开发（Mac2017）**：OpenCode → relay `:4002`（`code` 档）。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)

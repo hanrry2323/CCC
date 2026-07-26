@@ -41,10 +41,10 @@ Hub `:7777/#/chat` 会跳转对话口。详见 [`../product/hub-remote-managemen
 
 ```text
 M1 对话面（意图工具）             信息流（仅契约）              Mac2017 编排面（队列消费）
-Desktop (SwiftUI)                POST /api/desktop/transfer    Hub :7777 (API host)
-Sidecar :7788 → MiniMax ─────────────────────────────────────► Board :7775
+Desktop (SwiftUI)                POST /api/desktop/transfer    Hub :7777 (API host · 默认 127.0.0.1)
+Sidecar :7788 → Relay :4000 ─────────────────────────────────► Board :7775
 loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engine
-本机 sessions 落盘                                          Claude→MiniMax · OpenCode→讯飞
+本机 sessions 落盘                                          Claude→relay flash · OpenCode→code
 ```
 
 **关键变化**：M1 = 对话脑（Desktop+loop-code 深度整合）；Mac2017 = 纯编排消费队列。  
@@ -53,7 +53,7 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 ## 每天这样用
 
 ```text
-1. 打开 CCC Desktop（Server = http://192.168.3.116:7777）
+1. 打开 CCC Desktop（Hub = http://127.0.0.1:17777 隧道；勿默认 LAN :7777）
    — 自动探测/拉起本机 sidecar；状态栏看「本机 Agent」或「本机 Agent 未就绪」（禁止 Hub 聊天回退）
 2. 设置里为业务项目填「当前项目本机路径」（若本机有 checkout）
 3. 选业务项目 → 本机对话定稿 → 转任务（需 Hub）→ 右栏看编排实时回传
@@ -82,7 +82,7 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 | B4 | 闲聊全文不进 product/dev（仅 gate/plan） | Engine/board roles 无 `.ccc/chat` 读取；transfer 只带 gate 字段 |
 | B5 | 常态无 Desktop→Hub `/api/chat` | Hub `/api/chat` 路由已删（404）；`APIClient.streamChat` 走 sidecar |
 | — | PUT messages = 备份 | 响应 `role=backup`；Engine 不读 |
-| — | sidecar → MiniMax 直连 | plist `ANTHROPIC_BASE_URL` 含 `minimaxi.com` |
+| — | sidecar → Relay flash（:4000） | plist `ANTHROPIC_BASE_URL` 含 `:4000`（M1 可指 2017 LAN） |
 | — | 2017 Engine `enabled` | `ccc-autostart-guard.sh enable --start`；`mode=enabled` |
 
 ## 常用命令

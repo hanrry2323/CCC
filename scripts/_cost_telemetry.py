@@ -6,6 +6,7 @@
 写入 ~/.ccc/cost-telemetry.jsonl（append-only，10 MB 自动轮转，保留 3 个 .gz 备份）。
 
 Cost 基准价来自 _COST_MAP（$/1M tokens），按 role→provider 查找。
+`minimax-m3` 价表保留仅用于历史 JSONL 回放（MiniMax-M3 已退役，默认模型=relay flash）。
 
 v0.51.0 P3-1: 字段命名统一
   - 单条记录用 `model_raw` / `cost` / `latency_ms`（与 JSONL 落盘一致）
