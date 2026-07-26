@@ -2100,7 +2100,10 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
         launch_r = dev_role_launch(tid)
         if "error" in launch_r:
             _release_opencode_slot(tkey, 1)
-            engine_log(f"[{label}] 启动 {tid} 失败: {launch_r['error']}")
+            skip_tag = "（非重试性）" if launch_r.get("skip_retry") else ""
+            engine_log(
+                f"[{label}] 启动 {tid} 失败: {launch_r['error']}{skip_tag}"
+            )
             continue
         if not _register_active(active_tasks, ws, tid, complexity=complexity):
             _release_opencode_slot(tkey, 1)
@@ -2956,6 +2959,21 @@ def _retry_abnormal_failures(ws: Path) -> None:
         auto_retried = int(retry_counts.get(tid, 0) or 0)
         if auto_retried >= MAX_AUTO_RETRY:
             continue
+
+        # v0.62.1: 前置校验 — 不通过不扣 retry budget
+        try:
+            from _role_tool import prepare_role_call
+
+            ok, reason = prepare_role_call(tid, ws)
+            if not ok:
+                engine_log(
+                    f"[{label}] {tid} prepare 校验失败 ({reason})，跳过，不扣 retry budget"
+                )
+                continue
+        except Exception as exc:
+            engine_log(f"[{label}] {tid} prepare_role_call error: {exc}")
+            continue
+
         # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（auto + review + hang）
         # 2026-07-25 修 P0-2:auto-refeed 改用 increment_retry_count(主动递增+抛异常),
         # 与 reviewer/hang 三路径一致;不依赖 caller 后续再 increment。

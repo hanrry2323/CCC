@@ -950,6 +950,19 @@ def dev_role_launch(task_id: str) -> dict:
             "task_id": task_id,
         }
 
+    # v0.62.1: 前置校验 — scope 文件存在 / pids_dir 可写 / phases 状态
+    # 失败时不扣 retry budget，skip_retry = True
+    from _role_tool import prepare_role_call
+
+    ok, reason = prepare_role_call(task_id, get_workspace())
+    if not ok:
+        _log.warning("[engine] %s prepare_role_call fail: %s", task_id, reason)
+        return {
+            "error": f"prepare failed: {reason}",
+            "task_id": task_id,
+            "skip_retry": True,
+        }
+
     move_task(task_id, "planned", "in_progress")
 
     # v0.24.3: 用 _current_running_phase() 决定当前应跑哪个 phase，而不是硬编码 -p1。

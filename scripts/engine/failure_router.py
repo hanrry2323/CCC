@@ -85,7 +85,7 @@ def get_retry_budget(ws: Path, tid: str, store: FileBoardStore | None = None) ->
         from _board_store import FileBoardStore
 
         store = FileBoardStore(ws)
-    col, task = store.find_task(tid)
+    _, task = store.find_task(tid)
     if not task:
         return 0
     raw = task.get("retry_count", 0)
@@ -95,48 +95,42 @@ def get_retry_budget(ws: Path, tid: str, store: FileBoardStore | None = None) ->
         return 0
 
 
-# 2026-07-24：in-process 计数缓存（store 无 update_task 时用）
-# 键：(ws, tid)，值：已递增次数
-_inproc_retry: dict[tuple[str, str], int] = {}
-
-
 def increment_retry_count(
     ws: Path,
     tid: str,
     store: FileBoardStore | None = None,
 ) -> int:
-    """递增 task 的重试计数器，返回新值。
+    """递增 task 的重试计数器并持久化到 task JSONL，返回新值。
 
+    读完当前 retry_count → +1 → 调 store.patch_task 写回 task JSONL。
     超过 MAX_TASK_RETRY_BUDGET 时抛 RetryBudgetExceeded。
 
-    注：本批实现优先用 in-process 计数缓存（_inproc_retry），fallback 到
-    store.find_task 的 retry_count 字段。store 无 update_task 方法，
-    后续 commit 加 store.update_task 后才会真持久化到 task JSONL。
+    2026-07-28 重构：删 _inproc_retry 缓存，直接持久化到 store。
+    利用现有 patch_task 做原子读-改-写（锁 + tempfile + rename）。
     """
-    key = (str(ws.resolve()), tid)
-    persisted = get_retry_budget(ws, tid, store)
-    inproc = _inproc_retry.get(key, 0)
-    current = max(persisted, inproc)
+    if store is None:
+        from _board_store import FileBoardStore
+
+        store = FileBoardStore(ws)
+    current = get_retry_budget(ws, tid, store)
     new_count = current + 1
     if new_count > MAX_TASK_RETRY_BUDGET:
         raise RetryBudgetExceeded(
             f"task {tid} retry budget exceeded: "
             f"{new_count}/{MAX_TASK_RETRY_BUDGET}"
         )
-    _inproc_retry[key] = new_count
+    store.patch_task(tid, {"retry_count": new_count})
     return new_count
 
 
 def can_retry(ws: Path, tid: str, store: FileBoardStore | None = None) -> bool:
-    """检查 task 是否还在重试预算内（不递增）。
+    """检查 task 是否还在重试预算内（只读不写）。
 
-    2026-07-25 修 P0-2:与 increment_retry_count 对称 — 读持久化预算 + inproc 缓存,
-    取 max 后与上限比较。caller 仍负责递增(用 increment_retry_count),本函数
-    只读不写,适合调度前预探。
+    读 task JSONL 的 retry_count 字段。caller 仍负责递增
+    (用 increment_retry_count)，本函数只读，适合调度前预探。
     """
     used = get_retry_budget(ws, tid, store)
-    inproc = _inproc_retry.get((str(ws), tid), 0)
-    return max(used, inproc) < MAX_TASK_RETRY_BUDGET
+    return used < MAX_TASK_RETRY_BUDGET
 
 
 # ── Tester 结果检查（2026-07-24 方案 2.3.2）───────────────────

@@ -170,6 +170,47 @@ class TestFileBoardStoreCRUD:
         assert removed == 1
         assert not ev.exists()
 
+    def test_patch_task_updates_field(self, store: FileBoardStore):
+        """patch_task 持久化字段到 disk，重启后可读。"""
+        store.create_task(_valid_task("patch-t1", status="planned"), column="planned")
+        # 补完字段后验证
+        assert store.patch_task("patch-t1", {"note": "patched-note"})
+        _, task = store.find_task("patch-t1")
+        assert task is not None
+        assert task.get("note") == "patched-note"
+        # 新 store 实例从头读（模拟重启）
+        store2 = FileBoardStore(store.workspace)
+        _, task2 = store2.find_task("patch-t1")
+        assert task2 is not None
+        assert task2.get("note") == "patched-note"
+
+    def test_patch_task_preserves_existing_fields(self, store: FileBoardStore):
+        """patch 不删已有字段。"""
+        t = _valid_task("patch-t2", status="planned")
+        t["description"] = "original desc"
+        t["note"] = "original note"
+        store.create_task(t, column="planned")
+        assert store.patch_task("patch-t2", {"note": "new-note"})
+        _, task = store.find_task("patch-t2")
+        assert task is not None
+        assert task.get("description") == "original desc"  # 不丢失
+        assert task.get("note") == "new-note"
+
+    def test_patch_task_not_found(self, store: FileBoardStore):
+        """不存在的 task 返回 False。"""
+        assert store.patch_task("nonexistent", {"note": "x"}) is False
+
+    def test_patch_task_ignores_id_and_status(self, store: FileBoardStore):
+        """patch 忽略 id/status（不换列不变 ID）。"""
+        store.create_task(_valid_task("patch-t3", status="planned"), column="planned")
+        assert store.patch_task("patch-t3", {"id": "new-id", "status": "released"})
+        _, t = store.find_task("patch-t3")
+        assert t is not None
+        assert t["id"] == "patch-t3"  # id 不变
+        assert t["status"] == "planned"  # status 不变
+        # 没有创建新 task
+        assert store.find_task("new-id") == (None, None)
+
 
 class TestHelpers:
     def test_sanitize_id_rejects_traversal(self):
@@ -373,3 +414,68 @@ class TestEventFormat:
 
         assert events[2]["event"] == "move"
         assert events[2]["from"] == "in_progress" and events[2]["to"] == "testing"
+
+
+class TestRetryBudget:
+    """failure_router 重试预算持久化测试。"""
+
+    def test_increment_persists_retry_count(self, store: FileBoardStore):
+        """increment_retry_count 持久化 retry_count 到 task JSONL。"""
+        from engine.failure_router import (
+            can_retry,
+            get_retry_budget,
+            increment_retry_count,
+        )
+
+        tid = "retry-t1"
+        store.create_task(_valid_task(tid, status="planned"), column="planned")
+        ws = store.workspace
+
+        # 初始 count = 0
+        assert get_retry_budget(ws, tid, store) == 0
+        assert can_retry(ws, tid, store) is True
+
+        # increment → 1
+        assert increment_retry_count(ws, tid, store) == 1
+        assert get_retry_budget(ws, tid, store) == 1
+        assert can_retry(ws, tid, store) is True
+
+        # increment → 2
+        assert increment_retry_count(ws, tid, store) == 2
+
+        # 模拟重启：新 store 实例读
+        store2 = FileBoardStore(ws)
+        assert get_retry_budget(ws, tid, store2) == 2
+
+    def test_retry_budget_exceeded_raises(self, store: FileBoardStore):
+        """超预算抛 RetryBudgetExceeded。"""
+        from engine.failure_router import (
+            MAX_TASK_RETRY_BUDGET,
+            RetryBudgetExceeded,
+            increment_retry_count,
+        )
+
+        tid = "retry-t2"
+        store.create_task(_valid_task(tid, status="planned"), column="planned")
+        ws = store.workspace
+
+        # 递增到 max+1
+        for _ in range(MAX_TASK_RETRY_BUDGET):
+            increment_retry_count(ws, tid, store)
+        with pytest.raises(RetryBudgetExceeded):
+            increment_retry_count(ws, tid, store)
+
+    def test_can_retry_uses_persisted(self, store: FileBoardStore):
+        """can_retry 读持久化值，而非进程内缓存。"""
+        from engine.failure_router import can_retry, increment_retry_count
+
+        tid = "retry-t3"
+        store.create_task(_valid_task(tid, status="planned"), column="planned")
+        ws = store.workspace
+
+        assert can_retry(ws, tid, store) is True
+        increment_retry_count(ws, tid, store)
+
+        # 新 store 实例读
+        store2 = FileBoardStore(ws)
+        assert can_retry(ws, tid, store2) is True
