@@ -321,8 +321,11 @@ stop() {
   done
   _log "✓ tier stop 完成"
 
-  # v0.62.0 阶段 2:stop 时一并清 claude --bg 长 session(ccc-reviewer-bg.sh
-  # 进程 + 残留 nohup wrapper);Engine 下一启动会用 register_bg_session 重注
+  # v0.62.0(P1-1):stop 时一并清 claude --bg 真进程(不只是 wrapper)
+  # - wrapper 进程(cc-reviewer-bg.sh):pgrep -f ccc-reviewer-bg.sh
+  # - 实际在跑的 claude --bg 子进程:pgrep -f "claude.*--bg"
+  # - bg session 状态文件 ~/.ccc/bg-sessions/state.json 删(下次启动 rebuild)
+  # 否则 Engine 下一启动 register_bg_session 重注,会泄漏旧 session
   if [[ "$target" == "all" || "$target" == "engine" ]]; then
     local bg_pids
     bg_pids=$(pgrep -f 'ccc-reviewer-bg\.sh' 2>/dev/null || true)
@@ -332,6 +335,22 @@ stop() {
       kill -TERM $bg_pids 2>/dev/null || true
       sleep 1
       kill -KILL $bg_pids 2>/dev/null || true
+    fi
+    # v0.62.0(P1-1):同时杀真正在跑的 claude --bg 子进程(orphan 泄漏)
+    local bg_claude_pids
+    bg_claude_pids=$(pgrep -f 'claude.*--bg' 2>/dev/null || true)
+    if [[ -n "$bg_claude_pids" ]]; then
+      _log "  [stop] 清 claude --bg 子进程: $bg_claude_pids"
+      # shellcheck disable=SC2086  # word-split 故意
+      kill -TERM $bg_claude_pids 2>/dev/null || true
+      sleep 1
+      kill -KILL $bg_claude_pids 2>/dev/null || true
+    fi
+    # v0.62.0(P0-A.2):清持久化文件,下次 Engine tick 重建
+    local bg_state="${HOME}/.ccc/bg-sessions/state.json"
+    if [[ -f "$bg_state" ]]; then
+      rm -f "$bg_state"
+      _log "  [stop] 清 bg session state.json"
     fi
   fi
 }
