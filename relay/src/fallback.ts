@@ -453,6 +453,8 @@ export async function streamWithFallback(
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
+  /** 同 base_url 刚撞 RPM：本轮不再连打其它钥（防整池被一起 markBad） */
+  const rateLimitedHosts = new Set<string>();
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
@@ -473,6 +475,11 @@ export async function streamWithFallback(
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
+    if (rateLimitedHosts.has(up.base_url)) {
+      failureReasons.set(up.name, "skipped (same-host rate-limit)");
+      pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
+      continue;
+    }
 
     const exceed = ledgerWouldExceed(up);
     if (exceed) {
@@ -487,8 +494,10 @@ export async function streamWithFallback(
     if (!result.ok) {
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
-      // 同 host 多钥：错峰 400ms，避免级联撞同一 RPM 窗口
-      if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+      if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
+        rateLimitedHosts.add(up.base_url);
+      } else if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+        // 非限流失败：错峰后再试同 host 下一钥
         await sleep(400);
       }
       continue;
@@ -659,6 +668,7 @@ export async function nonStreamWithFallback(
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
+  const rateLimitedHosts = new Set<string>();
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
@@ -675,6 +685,11 @@ export async function nonStreamWithFallback(
     if (failedPlatforms.has(up.base_url)) {
       failureReasons.set(up.name, "skipped (same platform fault)");
       pushTrail(trail, up.name, "skip:platform", budgetStart);
+      continue;
+    }
+    if (rateLimitedHosts.has(up.base_url)) {
+      failureReasons.set(up.name, "skipped (same-host rate-limit)");
+      pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
       continue;
     }
     const exceed = ledgerWouldExceed(up);
@@ -694,7 +709,9 @@ export async function nonStreamWithFallback(
     }
     failureReasons.set(up.name, result.lastErr);
     pushTrail(trail, up.name, result.lastErr, t0);
-    if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
+    if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
+      rateLimitedHosts.add(up.base_url);
+    } else if (candidates.some(c => c.name !== up.name && c.base_url === up.base_url)) {
       await sleep(400);
     }
   }

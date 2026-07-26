@@ -326,6 +326,35 @@ describe("markBad cooldown backoff", () => {
     expect(dur).toBeLessThanOrEqual(605);
   });
 
+  it("same-host rate-limit skips sibling keys without cooling them", async () => {
+    const shared = "https://opencode.ai/zen/v1";
+    const u1: UpstreamConfig = { ...makeUp("go-a"), base_url: shared };
+    const u2: UpstreamConfig = { ...makeUp("go-b"), base_url: shared };
+    const u3: UpstreamConfig = { ...makeUp("other"), base_url: "https://other.example/v1" };
+    const routing: RoutingResult = {
+      upstream: u1,
+      candidates: [u1, u2, u3],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("opencode.ai")) {
+        return new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429 });
+      }
+      return new Response(okBody, { status: 200 });
+    }) as any;
+
+    const res = await streamWithFallback(routing, async (up) =>
+      fetch(up.base_url + "/chat/completions"),
+    );
+    expect(res.upstream!.name).toBe("other");
+    expect(cool.get("go-a")).toBeTruthy();
+    // 同 host 第二钥被 skip，不应进冷却
+    expect(cool.get("go-b")).toBeFalsy();
+    expect(res.trail.some(t => t.name === "go-b" && t.reason.includes("same-host"))).toBe(true);
+  });
+
   it("rate-limit cooldown stays short even when EWMA is tanked", () => {
     const up = makeUp("rate-up");
     // 模拟多钥假死后的低分（旧逻辑会 60×10=600s）
