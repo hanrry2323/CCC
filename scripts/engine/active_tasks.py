@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from _config import get_logger
@@ -387,8 +388,44 @@ def release_dev_slot(
 # - list_long_lived_sessions:HUB /api/ops/bg-sessions 调(阶段 3)
 # - heartbeat 超时(>1h 无活动)→ 标记 dead 但不杀进程(留给 nudge 路径)
 
-from dataclasses import dataclass, field, asdict as _asdict  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
 import time as _time  # noqa: E402
+
+# v0.62.0 阶段 5(P0-A.2):长 session 状态持久化文件,跨 Hub/Engine 进程共享
+# 路径:env CCC_BG_SESSIONS_FILE 可覆盖,默认 ~/.ccc/bg-sessions/state.json
+_BG_SESSIONS_FILE = Path(
+    os.environ.get("CCC_BG_SESSIONS_FILE", str(Path.home() / ".ccc" / "bg-sessions" / "state.json"))
+)
+
+
+def _load_bg_state() -> dict[str, dict]:
+    """v0.62.0 阶段 5(P0-A.2):从文件加载 long-lived session 状态。
+
+    Hub 与 Engine 是不同进程,模块级 dict 不共享 → 改文件持久化。
+    返回 {bg_session_key: LongLivedSession.to_dict()}。
+    """
+    try:
+        if not _BG_SESSIONS_FILE.is_file():
+            return {}
+        with _BG_SESSIONS_FILE.open(encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {}
+        return data
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_bg_state(state: dict[str, dict]) -> None:
+    """v0.62.0 阶段 5(P0-A.2):原子写 long-lived session 状态到文件。"""
+    try:
+        _BG_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _BG_SESSIONS_FILE.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        tmp.replace(_BG_SESSIONS_FILE)
+    except OSError as exc:
+        _engine_log(f"[bg-session] persist failed: {exc}")
 
 
 @dataclass
@@ -399,23 +436,40 @@ class LongLivedSession:
     """
     task_id: str
     role: str
-    session_id: str  # 短 sha(ccc-reviewer-bg.sh 写文件时存)
+    session_id: str  # 完整 session_id(不再 truncate 8 字符,P1-6)
     pid: int  # wrapper 进程 PID(不是真 claude 进程)
     model: str
     started_at: float = field(default_factory=_time.time)
     last_heartbeat: float = field(default_factory=_time.time)
-    # 心跳超时阈值(秒);Engine tick 探活后更新
+    # v0.62.0(P0-A.2):持久化到文件的状态字段(由 _load_bg_state 加载,不再用 _LONG_LIVED_SESSIONS 内存 dict)
+    alive: bool = True
+    # heartbeat 超时阈值(秒);Engine tick 探活后更新
     # timeout 后标记 dead,Hub 端不再显示(但不杀进程——留给 nudge 续)
     heartbeat_timeout_sec: int = 3600  # 1h
 
     def is_alive(self) -> bool:
-        """Engine tick 调,kill -0 探活 wrapper 进程。"""
+        """v0.62.0(P1-2):kill -0 探活,过滤僵尸进程(Z 状态)。
+
+        原实现只用 kill -0,僵尸也返 True;现加 ps state 检测,真死时返 False。
+        """
         try:
             import os as _os
-            _os.kill(self.pid, 0)
-            return True
+            os.kill(self.pid, 0)
         except (OSError, ProcessLookupError):
             return False
+        # 滤僵尸:kill -0 对 Z 状态返 0;ps -o state= 显式排除
+        try:
+            import subprocess as _sp
+            out = _sp.run(
+                ["ps", "-o", "state=", "-p", str(self.pid)],
+                capture_output=True, text=True, timeout=1,
+            )
+            state = out.stdout.strip()
+            if state.startswith("Z"):
+                return False
+        except Exception:
+            pass  # ps 失败时保守按 alive 处理(原行为)
+        return True
 
     def heartbeat(self) -> None:
         self.last_heartbeat = _time.time()
@@ -440,10 +494,36 @@ class LongLivedSession:
 
 
 _LONG_LIVED_SESSIONS: dict[str, LongLivedSession] = {}
+# v0.62.0 阶段 5(P0-A.2):内存 dict 改为文件持久化(见 _load_bg_state/_save_bg_state)
+# 保留 _LONG_LIVED_SESSIONS 仅为向后兼容(老调用方可能直接 dict access),
+# 新增/读/删路径一律走文件。tick 期间会在 register/unregister 写,verify 写
+# heartbeat 文件锁(不锁 _LONG_LIVED_SESSIONS 避免影响 Engine tick 主循环)。
+_BG_STATE_LOCK = threading.Lock()
 
 
 def _bg_session_key(role: str, task_id: str) -> str:
     return f"{role}:{task_id}"
+
+
+def _serialize_session(sess: LongLivedSession) -> dict:
+    d = sess.to_dict()
+    d.pop("age_sec", None)
+    return d
+
+
+def _deserialize_session(d: dict) -> LongLivedSession:
+    """v0.62.0:从文件 JSON 重建 LongLivedSession。"""
+    return LongLivedSession(
+        task_id=d.get("task_id", ""),
+        role=d.get("role", ""),
+        session_id=d.get("session_id", ""),
+        pid=int(d.get("pid", 0)),
+        model=d.get("model", ""),
+        started_at=float(d.get("started_at", _time.time())),
+        last_heartbeat=float(d.get("last_heartbeat", _time.time())),
+        alive=bool(d.get("alive", True)),
+        heartbeat_timeout_sec=int(d.get("heartbeat_timeout_sec", 3600)),
+    )
 
 
 def register_bg_session(
@@ -453,46 +533,105 @@ def register_bg_session(
     pid: int,
     model: str,
 ) -> LongLivedSession:
-    """v0.62.0 阶段 2:注册 claude --bg 长 session。
+    """v0.62.0 阶段 2:注册 claude --bg 长 session,持久化到文件(P0-A.2)。
 
-    ccc-reviewer-bg.sh(阶段 1)启动时调,记入 _LONG_LIVED_SESSIONS。
-    同 task_id+role 重复注册会覆盖(session_id 续到 resume 走新 ID)。
+    ccc-reviewer-bg.sh(阶段 1)启动时调。
+    同 task_id+role 重复注册:
+      - 旧 entry 若 is_alive,先 kill 旧 wrapper 防泄漏(P1-4)
+      - 覆盖 session_id/pid
     """
-    sess = LongLivedSession(
-        task_id=task_id, role=role, session_id=session_id,
-        pid=pid, model=model,
-    )
-    _LONG_LIVED_SESSIONS[_bg_session_key(role, task_id)] = sess
+    with _BG_STATE_LOCK:
+        state = _load_bg_state()
+        key = _bg_session_key(role, task_id)
+        old = state.get(key)
+        if old:
+            try:
+                old_pid = int(old.get("pid", 0))
+                # 防御:跳过对自身 pid 发 SIGTERM(可能 kill 整个测试/主进程)
+                if old_pid > 0 and old_pid != os.getpid():
+                    os.kill(old_pid, 15)  # SIGTERM
+                    _engine_log(
+                        f"[bg-session] register {key} 杀旧 wrapper pid={old_pid} (SIGTERM)"
+                    )
+            except (OSError, ProcessLookupError):
+                pass
+        sess = LongLivedSession(
+            task_id=task_id, role=role, session_id=session_id,
+            pid=pid, model=model,
+        )
+        state[key] = _serialize_session(sess)
+        _save_bg_state(state)
+        # 内存 mirror 也更新(向后兼容老调用方)
+        _LONG_LIVED_SESSIONS[key] = sess
     return sess
 
 
 def unregister_bg_session(role: str, task_id: str) -> None:
-    _LONG_LIVED_SESSIONS.pop(_bg_session_key(role, task_id), None)
+    """v0.62.0(P1-3):从文件 + 内存 mirror 删 entry,包括 dead 清理。"""
+    with _BG_STATE_LOCK:
+        state = _load_bg_state()
+        key = _bg_session_key(role, task_id)
+        state.pop(key, None)
+        _save_bg_state(state)
+        _LONG_LIVED_SESSIONS.pop(key, None)
 
 
 def verify_bg_session(role: str, task_id: str) -> bool:
-    """Engine tick 30s 调一次:kill -0 探活,失败标 dead 但不杀。"""
-    sess = _LONG_LIVED_SESSIONS.get(_bg_session_key(role, task_id))
-    if sess is None:
-        return False
-    alive = sess.is_alive()
-    if alive:
-        sess.heartbeat()
-    return alive
+    """Engine tick 30s 调一次:kill -0 探活(P1-2 含僵尸过滤)。
 
-
-def list_long_lived_sessions() -> list[dict]:
-    """Hub /api/ops/bg-sessions 调:返所有活着 + idle 状态。"""
-    out = []
-    now = _time.time()
-    for sess in list(_LONG_LIVED_SESSIONS.values()):
+    v0.62.0(P1-3):死时调 unregister_bg_session 主动 GC(docstring 改口),
+    避免 dict 累积。
+    """
+    with _BG_STATE_LOCK:
+        sess = _LONG_LIVED_SESSIONS.get(_bg_session_key(role, task_id))
+        if sess is None:
+            # 内存不在 → 查文件
+            state = _load_bg_state()
+            d = state.get(_bg_session_key(role, task_id))
+            if d is None:
+                return False
+            sess = _deserialize_session(d)
         alive = sess.is_alive()
         if alive:
             sess.heartbeat()
-        d = sess.to_dict()
-        d["age_min"] = int(d.pop("age_sec") / 60)
-        out.append(d)
-    return out
+            # 写回文件(heartbeat 更新)
+            state = _load_bg_state()
+            state[_bg_session_key(role, task_id)] = _serialize_session(sess)
+            _save_bg_state(state)
+        else:
+            # v0.62.0(P1-3):死时主动 unregister,docstring 与实际行为对齐
+            _engine_log(
+                f"[bg-session] verify {role}:{task_id} dead,主动 unregister"
+            )
+            unregister_bg_session(role, task_id)
+        return alive
+
+
+def list_long_lived_sessions() -> list[dict]:
+    """Hub /api/ops/bg-sessions 调:返所有活着 + idle 状态。
+
+    v0.62.0(P0-A.2):从文件读,跨进程共享;每个 session 双调
+    is_alive 一次(P2-2 未完全修,但本函数 OK 因文件锁保证一致性)。
+    v0.62.0(P1-3):list 时主动过滤死 session(verify 已 GC,但 list
+    直接读文件可能含残留 dead,需要再过滤一次)。
+    """
+    with _BG_STATE_LOCK:
+        state = _load_bg_state()
+        out = []
+        for key, d in list(state.items()):
+            sess = _deserialize_session(d)
+            if not sess.is_alive():
+                # v0.62.0(P1-3):list 时也 GC dead,防止 verify 漏过的残留
+                state.pop(key, None)
+                continue
+            sess.heartbeat()
+            # 写回(heartbeat 更新)
+            state[key] = _serialize_session(sess)
+            dd = sess.to_dict()
+            dd["age_min"] = int(dd.pop("age_sec", 0) / 60)
+            out.append(dd)
+        _save_bg_state(state)  # 持久化 GC 后的状态
+        return out
 
 
 def nudge_bg_session(role: str, task_id: str, message: str) -> bool:
@@ -501,18 +640,24 @@ def nudge_bg_session(role: str, task_id: str, message: str) -> bool:
     返回 True 表示 nudge 已"调度"(目前只写文件 + 标记);实际注入到
     claude session 由 v0.63.0 通过文件 watch + cat | claude --resume 实现。
 
-    路径:env `CCC_BG_NUDGE_DIR` 可覆盖(测试用),默认 /Users/fan/.ccc/bg-sessions/。
+    路径:env `CCC_BG_NUDGE_DIR` 可覆盖(测试用),默认 ~/.ccc/bg-sessions/。
+    v0.62.0 改:用 Path.home() 而非 /Users/fan/... 硬编码(P2-7)。
     """
-    import os as _os
-    sess = _LONG_LIVED_SESSIONS.get(_bg_session_key(role, task_id))
-    if sess is None or not sess.is_alive():
-        return False
-    # v0.62.0:仅写文件标记,nudge 不真触发(等 v0.63.0 注入)
-    nudge_dir = Path(_os.environ.get("CCC_BG_NUDGE_DIR", "/Users/fan/.ccc/bg-sessions"))
-    nudge_dir.mkdir(parents=True, exist_ok=True)
-    nudge_file = nudge_dir / f"{sess.session_id}.nudge"
-    nudge_file.write_text(message)
-    _engine_log(
-        f"[bg-nudge] role={role} task={task_id} session={sess.session_id[:8]} 写入 nudge 占位文件"
-    )
-    return True
+    with _BG_STATE_LOCK:
+        state = _load_bg_state()
+        key = _bg_session_key(role, task_id)
+        d = state.get(key)
+        if d is None:
+            return False
+        sess = _deserialize_session(d)
+        if not sess.is_alive():
+            return False
+        # v0.62.0:仅写文件标记,nudge 不真触发(等 v0.63.0 注入)
+        nudge_dir = Path(os.environ.get("CCC_BG_NUDGE_DIR", str(Path.home() / ".ccc" / "bg-sessions")))
+        nudge_dir.mkdir(parents=True, exist_ok=True)
+        nudge_file = nudge_dir / f"{sess.session_id}.nudge"
+        nudge_file.write_text(message)
+        _engine_log(
+            f"[bg-nudge] role={role} task={task_id} session={sess.session_id[:8]} 写入 nudge 占位文件"
+        )
+        return True

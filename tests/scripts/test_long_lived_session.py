@@ -14,16 +14,28 @@ from __future__ import annotations
 import os
 import subprocess
 
+import os
 import pytest
 
 from engine.active_tasks import (
     LongLivedSession,
+    _BG_SESSIONS_FILE,
     list_long_lived_sessions,
     nudge_bg_session,
     register_bg_session,
     unregister_bg_session,
     verify_bg_session,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clean_bg_state():
+    """v0.62.0:每次测试前清持久化文件,防前一个测试残留干扰。"""
+    if _BG_SESSIONS_FILE.exists():
+        _BG_SESSIONS_FILE.unlink()
+    yield
+    if _BG_SESSIONS_FILE.exists():
+        _BG_SESSIONS_FILE.unlink()
 
 
 @pytest.fixture
