@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * 探测 upstreams.json 里所有 opencode-go*：是否可用 + 429 里的重置时间。
+ * 探测 upstreams.json 里 opencode-go* / opencode-code*：是否可用 + 429 重置时间。
  * 用法: node scripts/probe-opencode-go.mjs
+ *       LOOP_PROBE_FILTER=code node scripts/probe-opencode-go.mjs   # 仅 code 档
  * 不登录控制台，用 API 错误信息推断额度状态（官方暂无 balance API）。
  */
 import { readFileSync, existsSync } from "fs";
@@ -10,18 +11,26 @@ import { fileURLToPath } from "url";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const UPSTREAMS = process.env.LOOP_UPSTREAMS_FILE || join(DIR, "..", "upstreams.json");
+const FILTER = (process.env.LOOP_PROBE_FILTER || "all").toLowerCase();
 
 if (!existsSync(UPSTREAMS)) {
   console.error("upstreams.json not found:", UPSTREAMS);
   process.exit(2);
 }
 
+function nameMatch(name) {
+  const n = String(name || "");
+  if (FILTER === "code") return /opencode-code/i.test(n);
+  if (FILTER === "flash" || FILTER === "go") return /opencode-go/i.test(n);
+  return /opencode-(go|code)/i.test(n);
+}
+
 const list = JSON.parse(readFileSync(UPSTREAMS, "utf-8")).filter(
-  (u) => u?.name && /opencode-go/i.test(u.name),
+  (u) => u?.name && nameMatch(u.name),
 );
 
 if (!list.length) {
-  console.error("no opencode-go* upstreams found");
+  console.error(`no matching opencode-* upstreams (filter=${FILTER})`);
   process.exit(2);
 }
 
@@ -95,13 +104,13 @@ for (const u of list.sort((a, b) => (a.tier_priority ?? 99) - (b.tier_priority ?
   rows.push(await probe(u));
 }
 
-console.log("OpenCode Go probe (no console login needed)\n");
+console.log(`OpenCode Zen probe (filter=${FILTER})\n`);
 for (const r of rows) {
   const en = r.enabled ? "on " : "off";
   const reset = r.reset ? `  reset≈${r.reset}` : "";
   console.log(
-    `${r.name.padEnd(16)} P${String(r.priority).padEnd(2)} [${en}]  ${r.verdict.padEnd(12)}${reset}` +
-      (r.err && r.verdict !== "OK" ? `\n${"".padEnd(28)}${r.err}` : ""),
+    `${r.name.padEnd(18)} P${String(r.priority).padEnd(2)} [${en}]  ${r.verdict.padEnd(12)}${reset}` +
+      (r.err && r.verdict !== "OK" ? `\n${"".padEnd(30)}${r.err}` : ""),
   );
 }
 console.log("\n提示: 官方暂无 balance API；重置时间来自 429 错误文案。月限按订阅周期重置，非自然月。");

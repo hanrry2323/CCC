@@ -367,14 +367,16 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 
 | 项 | 口径 |
 |----|------|
-| **三档 tier = 全局契约** | `flash`(默认,轻量) / `Pro`(高级,直连绕开协议转换) / `code`(写码);任何客户端(Desktop / Engine / OpenCode / 工人)只用这三档 |
-| **协议转换范围** | flash/code 走 `:4000/v1/messages` 协议转换出口(Anthropic 协议,吸纳 OpenAI Chat/讯飞/智谱等异构上游);**Pro 走直连**,绕开协议转换,拿原生 Anthropic/OpenAI 体验 |
+| **三档 tier = 全局契约** | `flash`(默认,轻量) / `Pro`(高级,预留空档→回落 flash) / `code`(写码);任何客户端(Desktop / Engine / OpenCode / 工人)只用这三档 |
+| **协议转换范围** | flash/code 走 `:4000`/`:4002` 协议转换(吸纳 OpenAI Chat / Zen 等异构上游);**Pro 若启用可走直连**;空 Pro 时客户端选 `pro` → relay 回落 `flash` |
 | **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
 | **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
 | **M1 对话路径** | sidecar / 个人 Claude Code → **2017 编排面 relay**(`http://192.168.3.116:4000`,共享免费 flash 钥池 + HK 出口);可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`;默认模型 **`flash`**（OpenCode Zen `deepseek-v4-flash-free`） |
-| **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`);可选 `com.ccc.hk-egress-tunnel` 拆免费钥 IP |
+| **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`) |
+| **code 默认上游（硬 · 2026-07-27）** | OpenCode Zen **免费池**：`big-pickle` 主力 + `deepseek-v4-flash-free` 同档备份；多 key；**双出口**（直连 + `com.ccc.hk-egress-tunnel` `:18080`）。讯飞 xfyun **退役**；智谱仅 fail-open 末位（默认关）。扩 IP = 加 proxy URL 行，不做独立 IP 池守护进程 |
 | **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
 | **日常简单活** | Desktop / Claude Code 默认 `flash` 吃免费流量;重活再选 `Pro`/`code`;勿再把 MiniMax 当对话默认 |
+| **对话口鉴权（硬 · 2026-07-27）** | M1 sidecar `:7788` **默认 `CCC_AGENT_AUTH=0`**（内网网页 `#/chat` 不弹 Token）；需要时再 `CCC_AGENT_AUTH=1`。Hub Basic Auth 不动 |
 | **双机拓扑(硬)** | M1 **不**跑 Hub/Board/Engine；Hub 仅 Mac2017；M1 Desktop/sidecar 默认 `http://127.0.0.1:17777` 隧道；**禁止** M1 业务第二树 / 伪 `engine=true` 登记 |
 | **Ops Relay 用量** | Hub envelope `domains.relay` = **2017 编排面**用量；M1 对话面用量不在本表合并 |
 | **门禁②(已补)** | `relay/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |
@@ -560,6 +562,16 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 - API：`GET /api/ops/summary` 顶层含 `severity`（green|amber|red）、`human_line`、`alerts[]`（仅 red + `copy_payload`）、`domains`（cluster / agent_mcp 占位 / capacity）。合成：`_ops_probe.ops_health_envelope`。M1 sidecar/MCP 由 Desktop 本机合并进总灯。  
 - 采纳/apply 是例外通道，默认 workspace **不得**是 CCC。`board/roles/ops.py` 不升格为总调度。
 
+### Desktop Ops 重构拆卡（硬 · 2026-07-27 · 下程实现）
+
+详卡：[`docs/briefs/2026-07-27-desktop-ops-refactor.md`](../briefs/2026-07-27-desktop-ops-refactor.md)。**本条只定优先级，不在本轮改 Swift。**
+
+| 程 | 做什么 |
+|----|--------|
+| **P0** | Ops 首页真四域壳（折叠看板计数/失败账）；修 `_ops_probe`↔Swift schema（ports `ok`、docs items、资源字段）；MCP 探针进③域与红告警；侧栏/标题栏全局红点轮询 |
+| **P1** | 域 chip 绿/橙/红（relay fail-open=橙）；折叠模型通道接 upstream-daily；显式 `:17777` 隧道行；告警「仅复制」vs「交给 Agent」 |
+| **P2** | 权威巡查 alerts 进红条；agent_minds 折叠；网页 `#/ops` 降级；重建 App 二进制发布三档 picker+运维 UI |
+
 ---
 
 ## 从零测 ccc-demo
@@ -654,7 +666,7 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 | 项 | 口径 |
 |----|------|
 | **下游只对接三档** | `flash` / `Pro` / `code` 三个逻辑名(由 relay 路由表定义);桌面端、Engine、OpenCode 等下游**绝不直接 import 上游服务商 URL 或 API key** |
-| **上游可换** | 上游实现细节(MiniMax / Anthropic 官方 / OpenCode Zen / 讯飞 / 智谱 / 任何未来服务商)由 `relay/upstreams.json` 统一管理,可热替换(`watchFile` + `reloadConfig`) |
+| **上游可换** | 上游实现细节(OpenCode Zen / 智谱 / 任何未来服务商)由 `relay/upstreams.json` 统一管理,可热替换(`watchFile` + `reloadConfig`)。**现行**：flash=`deepseek-v4-flash-free`；code=`big-pickle`(+flash-free 备份)；Pro=空档 |
 | **变更边界** | 换上游 = 改 upstreams.json + 重启 relay,无需改下游任何代码。下游契约(`flash`/`Pro`/`code`)**稳定,基本不变** |
 | **禁止反模式** | 客户端代码出现 `api.minimaxi.com` / `api.anthropic.com` / `opencode.ai/zen/v1` 等具体 URL 或 `sk-...` 硬编码 key(仅 `upstreams.json` / `~/.ccc/relay/*` / `~/.ccc/*.key` 持有) |
 | **运行时降级** | 上游挂 / 限流 / 跑路:relay `EWMA 评分 + 配额账本` 触发自动切换同 tier 下游;客户端通过 `relay_is_up()` 探活 + `relay_direct_fallback()` 切直连(双层 fail-open) |

@@ -42,28 +42,13 @@ function _headers(json = true, forcePrompt = false) {
   return h;
 }
 
-function _agentToken(forcePrompt = false) {
-  let tok = forcePrompt
-    ? ''
-    : (
-        sessionStorage.getItem('ccc_agent_token') ||
-        localStorage.getItem('ccc_agent_token') ||
-        ''
-      ).trim();
-  // 平时不弹窗：sidecar 可能已关闭鉴权（auth_required=false）。
-  // 仅在后端真的返回 401（forcePrompt 重试路径）才提示输入。
-  if (!tok && forcePrompt) {
-    tok =
-      window.prompt(
-        'M1 Agent Token（与 ~/.ccc/agent-token 相同；对话口需要）'
-      ) || '';
-    if (tok) {
-      tok = tok.trim();
-      sessionStorage.setItem('ccc_agent_token', tok);
-      localStorage.setItem('ccc_agent_token', tok);
-    }
-  }
-  return (tok || '').trim();
+function _agentToken(_forcePrompt = false) {
+  // 内网默认无鉴权；若曾手动存过 token 仍可带上。不再弹窗索要 Token。
+  return (
+    sessionStorage.getItem('ccc_agent_token') ||
+    localStorage.getItem('ccc_agent_token') ||
+    ''
+  ).trim();
 }
 
 function _agentHeaders(json = true, forcePrompt = false) {
@@ -102,11 +87,10 @@ async function _fetchAgent(pathOrUrl, options = {}, json = true) {
   if (resp.status === 401) {
     sessionStorage.removeItem('ccc_agent_token');
     localStorage.removeItem('ccc_agent_token');
-    window.showToast?.('Agent Token 无效，请重新输入', 'error');
-    resp = await fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), ..._agentHeaders(json, true) },
-    });
+    window.showToast?.(
+      '对话口鉴权已开启但未通过：请关鉴权（默认）或配置服务端 Token',
+      'error'
+    );
   }
   return resp;
 }
@@ -360,7 +344,7 @@ export async function streamChat(
       const detail = errBody.detail || errBody.message || errBody.error;
       const errText =
         resp.status === 401
-          ? 'Agent 鉴权失败 (401)：请填 M1 ~/.ccc/agent-token'
+          ? '对话口鉴权已开启但未通过（默认已关；勿弹 Token）'
           : resp.status === 403
             ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
             : resp.status === 502 || resp.status === 503

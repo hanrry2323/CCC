@@ -33,9 +33,9 @@ PORT="${CCC_AGENT_PORT:-7788}"
 # 对话口远程壳需 LAN 可达；默认 0.0.0.0（仅内网）。本机 Desktop 仍走 127.0.0.1:7788。
 # 仅本机：CCC_AGENT_HOST=127.0.0.1 bash scripts/install-agent-sidecar-plist.sh --start
 HOST="${CCC_AGENT_HOST:-0.0.0.0}"
-# 对话口鉴权：1=强制 Token（默认）；0=关闭（内网自用，风险自担）
-# 关闭：CCC_AGENT_AUTH=0 bash scripts/install-agent-sidecar-plist.sh --start
-AGENT_AUTH="${CCC_AGENT_AUTH:-1}"
+# 对话口鉴权：默认关闭（内网自用）。需要时 CCC_AGENT_AUTH=1 再开 Token。
+# 开启：CCC_AGENT_AUTH=1 bash scripts/install-agent-sidecar-plist.sh --start
+AGENT_AUTH="${CCC_AGENT_AUTH:-0}"
 HUB_URL="${CCC_HUB_URL:-http://127.0.0.1:17777}"
 # 与 Hub 约定默认账密一致；可用 CCC_HUB_AUTH=user:pass 覆盖
 HUB_AUTH="${CCC_HUB_AUTH:-${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}}"
@@ -285,11 +285,13 @@ done
 if [[ "$ok" == "1" ]]; then
   echo "✓ ${LABEL} loaded · listen ${HOST}:${PORT} · probe http://${HEALTH_HOST}:${PORT} healthy"
   echo "  对话口: http://<本机LAN>:${PORT}/  · Hub 编排: ${HUB_URL}"
-  echo "  Agent Token: ${TOKEN_FILE}（浏览器 sessionStorage ccc_agent_token；勿写入 plist）"
+  echo "  鉴权: CCC_AGENT_AUTH=${AGENT_AUTH}（默认 0=关 Token）"
 else
   echo "⚠ ${LABEL} loaded but health not ready yet — 见 ${LOG_ERR}"
 fi
 echo "  plist: ${PLIST}"
-echo "  token: ${TOKEN_FILE} (Desktop 自动读取；chmod 600)"
+if [[ "${AGENT_AUTH}" == "1" ]]; then
+  echo "  token: ${TOKEN_FILE}（鉴权开启时需要；勿写入 plist）"
+fi
 echo "  logs:  ${LOG_OUT} / ${LOG_ERR}"
 echo "  stop:  bash ${CCC_HOME}/scripts/install-agent-sidecar-plist.sh --stop"

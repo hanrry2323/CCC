@@ -31,7 +31,7 @@ thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，�
 
 | 用途 | URL |
 |------|-----|
-| 聊 | `http://192.168.3.140:7788/`（sidecar 静态壳；鉴权 `~/.ccc/agent-token` → 浏览器 localStorage） |
+| 聊 | `http://192.168.3.140:7788/`（sidecar 静态壳；**默认无 Token**，`CCC_AGENT_AUTH=0`） |
 | 看板 / 运维 / 下达 | `http://192.168.3.116:7777/#/board`（Hub Basic Auth `ccc`/`ccc`） |
 
 对话 SPA 配置（与 Desktop 同构）：
@@ -41,13 +41,13 @@ thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，�
 | Agent base | sidecar | 同机空串 / `http://192.168.3.140:7788` |
 | Hub base（本机/Desktop） | 编排 API | `http://127.0.0.1:17777`（隧道；`CCC_HUB_URL`） |
 | Hub base（手机/LAN） | 编排 API | `http://192.168.3.116:7777`（`CCC_HUB_URL_LAN` / shell-config `hub_base_lan`） |
-| `ccc_agent_token` | Bearer | 与 M1 `~/.ccc/agent-token` 相同 |
+| `ccc_agent_token` | 可选 Bearer | 仅当手动 `CCC_AGENT_AUTH=1` 时需要；默认可留空 |
 
 手机打开 `:7788` 时 SPA **禁止**使用 `127.0.0.1:17777`，自动改用 `hub_base_lan`。
 
 Hub `:7777/#/chat` **自动跳转** M1 对话口。Hub `/api/agent/*` 默认**不挂载**；仅 `CCC_AGENT_PROXY=1` 启用作运维探针。
 
-SPA **设置**可持久化：`ccc_agent_token`、`ccc_hub_base`、`ccc_agent_base`、`ccc_local_workspace_map`（勿把 token 写进 URL）。
+SPA **设置**可持久化：`ccc_hub_base`、`ccc_agent_base`、`ccc_local_workspace_map`（鉴权默认关；勿依赖 token URL）。
 
 ---
 
@@ -66,8 +66,8 @@ SPA **设置**可持久化：`ccc_agent_token`、`ccc_hub_base`、`ccc_agent_bas
 ## CORS / 安全（内网）
 
 - Hub 默认 `CORS_ORIGIN_REGEX` 含 `192.168.*` / `10.*`，以便 M1 SPA Origin 调编排 API。plist **勿**用仅 localhost 的旧 regex 盖掉。
-- Sidecar 听 `0.0.0.0` 仅假设 **内网**；**默认强制** `CCC_AGENT_TOKEN`（`CCC_AGENT_AUTH=0` 才关鉴权，勿对 LAN 长期开）。
-- 浏览器持有 agent token（localStorage）；不经 2017 注入。
+- Sidecar 听 `0.0.0.0` 仅假设 **内网**；**默认关闭**对话 Token（`CCC_AGENT_AUTH=0`）。需要时再 `CCC_AGENT_AUTH=1`。
+- 浏览器不再强制索要 agent token。
 
 ---
 

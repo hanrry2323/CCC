@@ -47,7 +47,7 @@ http://192.168.3.116:7777/#/console
 
 ### 安全备注
 
-- Sidecar `:7788` 默认可 LAN 访问（`CCC_AGENT_HOST=0.0.0.0`），**仅内网**；须持 `~/.ccc/agent-token`。
+- Sidecar `:7788` 默认可 LAN 访问（`CCC_AGENT_HOST=0.0.0.0`），**仅内网**；默认 **不**强制 Token（`CCC_AGENT_AUTH=0`）。
 - Hub CORS 默认允许内网 Origin（M1 SPA → 2017 API）。勿在 plist 把 `CCC_CHAT_CORS_ORIGIN_REGEX` 缩回仅 localhost，否则双口 SPA 下达失败。
 - 遗留 Agent 反代：仅 `CCC_AGENT_PROXY=1` 时挂载 `/api/agent/*`。
 

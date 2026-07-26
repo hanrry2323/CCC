@@ -43,34 +43,79 @@
     "name": "opencode-go-pro",
     "tier": "pro",
     "tier_priority": 1,
+    "enabled": false,
     "base_url": "https://opencode.ai/zen/v1",
     "upstream_model": "deepseek-v4-pro",
     "models": ["pro"],
     "api_key": "sk-xxx-REPLACE-ME",
     "transcode": true,
     "provider_group": "opencode-pro",
-    "description": "Pro 档付费通道（逻辑名 pro）"
+    "description": "Pro 档预留（默认空档；客户端 pro→flash 回落）"
   },
   {
-    "name": "xfyun-code",
+    "name": "opencode-code-a",
     "tier": "code",
     "tier_priority": 1,
-    "base_url": "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2",
-    "upstream_model": "astron-code-latest",
+    "base_url": "https://opencode.ai/zen/v1",
+    "upstream_model": "big-pickle",
     "models": ["code"],
-    "api_key": "REPLACE-ME",
+    "api_key": "sk-xxx-REPLACE-ME",
     "transcode": true,
-    "description": "写码档;OpenCode dev / 产品实现;走协议转换"
+    "free": true,
+    "provider_group": "opencode",
+    "description": "code 免费档 · big-pickle（直连）"
+  },
+  {
+    "name": "opencode-code-b",
+    "tier": "code",
+    "tier_priority": 1,
+    "base_url": "https://opencode.ai/zen/v1",
+    "upstream_model": "deepseek-v4-flash-free",
+    "models": ["code"],
+    "api_key": "sk-xxx-REPLACE-ME",
+    "transcode": true,
+    "free": true,
+    "provider_group": "opencode",
+    "description": "code 免费档备份 · deepseek-v4-flash-free（直连）"
+  },
+  {
+    "name": "opencode-code-d",
+    "tier": "code",
+    "tier_priority": 1,
+    "base_url": "https://opencode.ai/zen/v1",
+    "upstream_model": "big-pickle",
+    "models": ["code"],
+    "api_key": "sk-xxx-REPLACE-ME",
+    "transcode": true,
+    "free": true,
+    "provider_group": "opencode",
+    "proxy": "http://127.0.0.1:18080",
+    "description": "code 免费档 · big-pickle · HK 出口"
+  },
+  {
+    "name": "opencode-code-e",
+    "tier": "code",
+    "tier_priority": 1,
+    "base_url": "https://opencode.ai/zen/v1",
+    "upstream_model": "deepseek-v4-flash-free",
+    "models": ["code"],
+    "api_key": "sk-xxx-REPLACE-ME",
+    "transcode": true,
+    "free": true,
+    "provider_group": "opencode",
+    "proxy": "http://127.0.0.1:18080",
+    "description": "code 免费档备份 · flash-free · HK 出口"
   },
   {
     "name": "zhipu-code",
     "tier": "code",
-    "tier_priority": 2,
+    "tier_priority": 99,
+    "enabled": false,
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
     "upstream_model": "glm-4-flash",
     "models": ["code"],
     "api_key": "REPLACE-ME",
     "transcode": true,
-    "description": "写码档;OpenCode dev / 产品实现;走协议转换 备援"
+    "description": "code fail-open 末位兜底（默认关；relay 探活失败客户端再直连）"
   }
 ]
