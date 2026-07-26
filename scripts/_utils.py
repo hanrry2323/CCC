@@ -147,22 +147,31 @@ def relay_is_up(
     return up
 
 
-# fail-open 真直连默认（禁止与 relay :4000 同址空转）
-_DEFAULT_RELAY_DIRECT_URL = "https://api.minimaxi.com/anthropic"
+# MiniMax-M3 已退役。fail-open 真直连只认显式配置，禁止硬编码厂商 URL。
+_RELAY_DIRECT_URL_FILE = "~/.ccc/relay-direct.url"
 
 
 def relay_direct_fallback() -> str:
     """CCC Relay fail-open:relay 不可达时切真直连上游 URL。
 
-    优先 `CCC_RELAY_DIRECT_URL`；缺省 MiniMax Anthropic 兼容口。
-    若误配成本机 relay(:4000) 则回退默认直连，避免 fail-open 空转。
+    优先序：`CCC_RELAY_DIRECT_URL` → `~/.ccc/relay-direct.url`。
+    未配置则返回空串（调用方不得伪造成功；主路径应保 relay 常驻）。
+    若误配成本机 relay(:4000) 则视为无效，避免 fail-open 空转。
     """
     import os as _os
+    from pathlib import Path as _Path
 
     raw = (_os.environ.get("CCC_RELAY_DIRECT_URL") or "").strip()
     if not raw:
-        return _DEFAULT_RELAY_DIRECT_URL
+        p = _Path(_RELAY_DIRECT_URL_FILE).expanduser()
+        if p.is_file():
+            try:
+                raw = p.read_text(encoding="utf-8").strip()
+            except OSError:
+                raw = ""
+    if not raw:
+        return ""
     low = raw.rstrip("/").lower()
     if "127.0.0.1:4000" in low or "localhost:4000" in low:
-        return _DEFAULT_RELAY_DIRECT_URL
+        return ""
     return raw

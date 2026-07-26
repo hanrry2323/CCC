@@ -21,22 +21,20 @@ fi
 export PATH="${HOME}/.npm-global/bin:/opt/homebrew/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 # OpenCode 直连讯飞（见 ~/.opencode/opencode.json provider xfyun）
 export OPENCODE_MODEL="${OPENCODE_MODEL:-xfyun/code}"
-# CCC Relay 2026-07-25:product/reviewer Claude 默认走本机 relay :4000,模型 flash
-# (1) relay 已加载 MiniMax 作为 fail-over(在 upstreams.json flash tier)
-# (2) relay 探活失败时 _executor._claude_env 自动回退直连
-# (3) 直连 MiniMax 仅作 fail-open 兜底,不进主路径
-# 因此这里 **不要**默认 export ANTHROPIC_BASE_URL=https://api.minimaxi.com,
-# 否则后续 relay 兜底 if 被跳过。
+# CCC Relay: product/reviewer Claude 默认走本机 relay :4000,模型 flash（免费 OpenCode Zen）
+# MiniMax-M3 已退役。fail-open 仅认 CCC_RELAY_DIRECT_URL / ~/.ccc/relay-direct.url
+# **不要**默认 export 厂商直连 URL，否则会跳过 relay 主路径。
 if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
   export ANTHROPIC_BASE_URL="http://127.0.0.1:4000"
 fi
 if [[ -z "${ANTHROPIC_MODEL:-}" ]]; then
-  export ANTHROPIC_MODEL="flash"  # 走 relay flash tier(opencode-go / deepseek-v4-flash-free)
+  export ANTHROPIC_MODEL="flash"  # relay flash tier · deepseek-v4-flash-free
 fi
 export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
-# 直连兜底 key 仍需就绪(relay fail-open 切直连时用)
-if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/minimax-api-key" ]]; then
-  export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/minimax-api-key")"
+if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/anthropic-auth-token" ]]; then
+  export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/anthropic-auth-token")"
+elif [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
+  export ANTHROPIC_AUTH_TOKEN="ccc-relay-flash"
 fi
 # Phase3：Engine 私有配置家（与个人 ~/.claude 切割；仍用 x86 原版 claude）
 export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.ccc/engine-claude}"

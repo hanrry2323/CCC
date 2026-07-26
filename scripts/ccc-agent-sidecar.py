@@ -57,23 +57,28 @@ os.environ.setdefault(
 def _bootstrap_anthropic_auth_from_file() -> None:
     """从 0600 文件加载 ANTHROPIC_AUTH_TOKEN，避免 launchd plist 落地明文。
 
-    优先序：已有环境变量 > CCC_ANTHROPIC_TOKEN_FILE > ~/.ccc/minimax-api-key
+    优先序：已有环境变量 > CCC_ANTHROPIC_TOKEN_FILE >
+    ~/.ccc/anthropic-auth-token > legacy ~/.ccc/minimax-api-key（已退役）
     """
     if (os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip():
         return
 
-    raw_path = (
-        os.environ.get("CCC_ANTHROPIC_TOKEN_FILE")
-        or str(Path.home() / ".ccc" / "minimax-api-key")
-    )
-    path = Path(raw_path).expanduser()
-    if path.is_file():
+    candidates: list[Path] = []
+    env_path = (os.environ.get("CCC_ANTHROPIC_TOKEN_FILE") or "").strip()
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    candidates.append(Path.home() / ".ccc" / "anthropic-auth-token")
+    candidates.append(Path.home() / ".ccc" / "minimax-api-key")
+    for path in candidates:
+        if not path.is_file():
+            continue
         try:
             tok = path.read_text(encoding="utf-8").strip()
         except OSError:
-            tok = ""
+            continue
         if tok and tok != "sk-trae-real-token-not-needed":
             os.environ["ANTHROPIC_AUTH_TOKEN"] = tok
+            return
 
 
 _bootstrap_anthropic_auth_from_file()

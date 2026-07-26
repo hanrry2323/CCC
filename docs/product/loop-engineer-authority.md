@@ -371,9 +371,10 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **协议转换范围** | flash/code 走 `:4000/v1/messages` 协议转换出口(Anthropic 协议,吸纳 OpenAI Chat/讯飞/智谱等异构上游);**Pro 走直连**,绕开协议转换,拿原生 Anthropic/OpenAI 体验 |
 | **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
 | **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
-| **M1 对话路径** | sidecar → **本机 relay**(`http://127.0.0.1:4000`,主路径);relay 探活失败时 `relay_direct_fallback()` → `CCC_RELAY_DIRECT_URL`(默认 `https://api.minimaxi.com/anthropic`),**禁止**默认指回 `:4000` |
-| **2017 编排路径** | Engine claude → relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`) |
-| **fail-open 红线(不可协商)** | relay 探活失败一律客户端降级**真直连**,**绝不** block/skip 任务;OpenCode runner 探 :4002 失败回直连 model |
+| **M1 对话路径** | sidecar / 个人 Claude Code → **2017 编排面 relay**(`http://192.168.3.116:4000`,共享免费 flash 钥池 + HK 出口);可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`;默认模型 **`flash`**（OpenCode Zen `deepseek-v4-flash-free`） |
+| **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`);可选 `com.ccc.hk-egress-tunnel` 拆免费钥 IP |
+| **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
+| **日常简单活** | Desktop / Claude Code 默认 `flash` 吃免费流量;重活再选 `Pro`/`code`;勿再把 MiniMax 当对话默认 |
 | **双机拓扑(硬)** | M1 **不**跑 Hub/Board/Engine；Hub 仅 Mac2017；M1 Desktop/sidecar 默认 `http://127.0.0.1:17777` 隧道；**禁止** M1 业务第二树 / 伪 `engine=true` 登记 |
 | **Ops Relay 用量** | Hub envelope `domains.relay` = **2017 编排面**用量；M1 对话面用量不在本表合并 |
 | **门禁②(已补)** | `relay/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |

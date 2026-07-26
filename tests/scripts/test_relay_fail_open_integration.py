@@ -68,17 +68,27 @@ def test_local_env_not_polluted(monkeypatch):
     assert os.environ.get("ANTHROPIC_BASE_URL") == "http://127.0.0.1:4000"
 
 
-def test_relay_direct_fallback_default(monkeypatch):
-    """缺 CCC_RELAY_DIRECT_URL 时回退真直连（非本机 relay）。"""
+def test_relay_direct_fallback_default(monkeypatch, tmp_path):
+    """缺 CCC_RELAY_DIRECT_URL / 直连文件时返回空（MiniMax 已退役，无硬编码）。"""
     monkeypatch.delenv("CCC_RELAY_DIRECT_URL", raising=False)
+    monkeypatch.setattr(_utils, "_RELAY_DIRECT_URL_FILE", str(tmp_path / "missing.url"))
     url = relay_direct_fallback()
-    assert url, "should return a non-empty fallback URL"
-    assert ":4000" not in url
-    assert "minimaxi.com" in url or url.startswith("https://")
+    assert url == ""
 
 
-def test_relay_direct_fallback_rejects_relay_loop(monkeypatch):
-    """误配 DIRECT_URL=:4000 时不得空转，回退真直连。"""
+def test_relay_direct_fallback_reads_file(monkeypatch, tmp_path):
+    """未设 env 时可读 ~/.ccc/relay-direct.url。"""
+    monkeypatch.delenv("CCC_RELAY_DIRECT_URL", raising=False)
+    p = tmp_path / "relay-direct.url"
+    p.write_text("https://fallback.example.test/anthropic\n", encoding="utf-8")
+    monkeypatch.setattr(_utils, "_RELAY_DIRECT_URL_FILE", str(p))
+    assert relay_direct_fallback() == "https://fallback.example.test/anthropic"
+
+
+def test_relay_direct_fallback_rejects_relay_loop(monkeypatch, tmp_path):
+    """误配 DIRECT_URL=:4000 时不得空转，视为未配置。"""
     monkeypatch.setenv("CCC_RELAY_DIRECT_URL", "http://127.0.0.1:4000")
+    monkeypatch.setattr(_utils, "_RELAY_DIRECT_URL_FILE", str(tmp_path / "missing.url"))
     url = relay_direct_fallback()
+    assert url == ""
     assert ":4000" not in url

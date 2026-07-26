@@ -2,12 +2,11 @@
 # install-agent-sidecar-plist.sh — Desktop 本机 Agent Sidecar launchd 常驻
 # 与 Engine 控制面无关：Hub 抖不影响聊天；KeepAlive 崩溃自拉。
 #
-# 模型分层（Phase17）：
-#   - plist / ANTHROPIC_*：定上游出口（默认 MiniMax；可选 118 须显式 CCC_AGENT_UPSTREAM_118INK）
-#   - Desktop UI（ccc.preferredModel）：按请求覆盖逻辑名 flash|code|sonnet|haiku → 请求体 model
+# 模型分层：
+#   - plist / ANTHROPIC_*：定上游出口（默认 CCC Relay flash；可选 118 须显式 CCC_AGENT_UPSTREAM_118INK）
+#   - Desktop UI（ccc.preferredModel）：按请求覆盖逻辑名 flash|Pro|code → 请求体 model
 #   - 二者独立：改 UI 不必重装 plist；改上游须重跑本脚本 --start
-#   - 注意：若 shell 残留 CCC_AGENT_UPSTREAM_118INK=1，本脚本会写成 118 出口；
-#     回 MiniMax 请：unset CCC_AGENT_UPSTREAM_118INK CCC_AGENT_118INK_KEY 后再 --start
+#   - MiniMax-M3 已退役；fail-open 仅认 CCC_RELAY_DIRECT_URL / ~/.ccc/relay-direct.url
 #
 # 用法：
 #   bash scripts/install-agent-sidecar-plist.sh           # 只写 plist + load
@@ -50,7 +49,7 @@ LOG_ERR="${LOG_DIR}/agent-sidecar.err"
 # Phase2：sidecar PATH 不含个人 claude 目录；含 vendor/loop-code 父目录
 PATH_EXTRA="${CCC_HOME}/vendor/loop-code:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 TOKEN_FILE="${HOME}/.ccc/agent-token"
-MINIMAX_KEY_FILE="${HOME}/.ccc/minimax-api-key"
+AUTH_TOKEN_STORE="${HOME}/.ccc/anthropic-auth-token"
 
 mkdir -p "$LOG_DIR" "${HOME}/Library/LaunchAgents" "${HOME}/.ccc"
 
@@ -65,8 +64,8 @@ if [[ ! -f "${LOOP_CODE_CONFIG_DIR}/CLAUDE.md" ]]; then
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
-模型出口：本机 CCC Relay `:4000`（flash 档）；relay 不可达时 fail-open 直连上游。
-禁止：已退役的 ai-loop-router 口径、M1 本地 Hub/Board/Engine、业务第二树。
+模型出口：CCC Relay flash（免费 OpenCode Zen）；M1 默认同编排面 2017:4000 共享钥池+HK 出口。
+禁止：已退役的 MiniMax-M3 / ai-loop-router、M1 本地 Hub/Board/Engine、业务第二树。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 CLAUDE_MD_EOF
 fi
@@ -106,15 +105,28 @@ case "$cmd" in
     ;;
 esac
 
-# 默认直连 MiniMax Anthropic（对话更稳）。
 # 可选上游（按优先级，互斥）：
 #   1) CCC_AGENT_UPSTREAM_118INK=1 → Anthropic 兼容中转（默认模型 claude-opus-4-8）
-#   2) CCC_AGENT_ROUTER=http://...   → 2017 旧中转（兼容保留，默认模型 flash）
-#   3) 直连 MiniMax（默认）
-# 不继承 shell 里的 ANTHROPIC_BASE_URL；CCC Relay 2026-07-25 默认指本机 :4000
-# 直连兜底走 ~/.ccc/minimax-api-key,fail-open 逻辑在 sidecar 内部触发
+#   2) CCC_AGENT_ROUTER / CCC_ANTHROPIC_BASE_URL → 显式 relay
+#   3) 默认：M1 对话机 → 2017 编排面 relay:4000（共享免费 flash + HK）；其它 → 本机 :4000
+# fail-open：CCC_RELAY_DIRECT_URL 或 ~/.ccc/relay-direct.url（MiniMax 已退役，无硬编码默认）
 # 鉴权：密钥写入 0600 文件，plist 只放 CCC_ANTHROPIC_TOKEN_FILE 路径（不落地明文）。
 AUTH_TOKEN_FILE=""
+CCC_RELAY_DIRECT_URL_DEFAULT="${CCC_RELAY_DIRECT_URL:-}"
+if [[ -z "$CCC_RELAY_DIRECT_URL_DEFAULT" && -f "${HOME}/.ccc/relay-direct.url" ]]; then
+  CCC_RELAY_DIRECT_URL_DEFAULT="$(tr -d '[:space:]' < "${HOME}/.ccc/relay-direct.url")"
+fi
+if [[ "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"127.0.0.1:4000"* || "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"localhost:4000"* ]]; then
+  CCC_RELAY_DIRECT_URL_DEFAULT=""
+fi
+
+_hn="$(hostname | tr '[:upper:]' '[:lower:]')"
+_default_relay="http://127.0.0.1:4000"
+# M1 对话面：共享 2017 免费 flash 池（含香港出口拆钥）；可用 CCC_ANTHROPIC_BASE_URL 改回本机
+if [[ "$_hn" == m1* || "$_hn" == *m1.local* ]]; then
+  _default_relay="http://192.168.3.116:4000"
+fi
+
 if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
   # 118.ink 中转：Anthropic 兼容；Base URL **勿**带 /v1（SDK 会再拼 /v1/messages）
   ROUTER="https://118.ink"
@@ -130,35 +142,20 @@ if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
   AGENT_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-8}"
 elif [[ -n "${CCC_AGENT_ROUTER:-}" ]]; then
   ROUTER="${CCC_AGENT_ROUTER}"
-  # 中转常不需要真实 key；不写文件，运行时由 sidecar 跳过加载
   AUTH_TOKEN_FILE=""
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
 else
-  # CCC Relay:默认 ANTHROPIC_BASE_URL 走本机 relay(:4000);fail-open 切真直连（禁止同址 :4000）
-  ROUTER="${CCC_ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
-  CCC_RELAY_DIRECT_URL_DEFAULT="${CCC_RELAY_DIRECT_URL:-https://api.minimaxi.com/anthropic}"
-  if [[ "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"127.0.0.1:4000"* || "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"localhost:4000"* ]]; then
-    CCC_RELAY_DIRECT_URL_DEFAULT="https://api.minimaxi.com/anthropic"
-  fi
-  # 忽略 shell 里残留的中转假 token，避免「BASE=minimax + AUTH=trae」401
+  ROUTER="${CCC_ANTHROPIC_BASE_URL:-${_default_relay}}"
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
-    if [[ -f "$MINIMAX_KEY_FILE" ]]; then
-      AUTH_TOKEN_FILE="$MINIMAX_KEY_FILE"
-    else
-      echo "缺少 MiniMax key：请写入 ${MINIMAX_KEY_FILE}（chmod 600）或设置 ANTHROPIC_AUTH_TOKEN" >&2
-      echo "也可临时回退中转：CCC_AGENT_ROUTER=http://192.168.3.116:4000 $0 --start" >&2
-      exit 1
-    fi
-  else
-    # 显式 env token → 写入专用文件，仍不进 plist
-    AUTH_TOKEN_FILE="${HOME}/.ccc/anthropic-auth-token"
-    (umask 077; printf '%s\n' "$_tok" > "$AUTH_TOKEN_FILE")
-    chmod 600 "$AUTH_TOKEN_FILE"
+    # relay 主路径不需要厂商真 key；写占位 token 供 SDK 填头
+    _tok="ccc-relay-flash"
   fi
+  AUTH_TOKEN_FILE="$AUTH_TOKEN_STORE"
+  (umask 077; printf '%s\n' "$_tok" > "$AUTH_TOKEN_FILE")
+  chmod 600 "$AUTH_TOKEN_FILE"
   AGENT_MODEL="${ANTHROPIC_MODEL:-flash}"
-  # 若 ANTHROPIC_MODEL 仍是 flash/code 逻辑名，直连时改成上游 id
-  if [[ "$AGENT_MODEL" == "flash" || "$AGENT_MODEL" == "code" ]]; then
+  if [[ "$AGENT_MODEL" == "flash" || "$AGENT_MODEL" == "code" || "$AGENT_MODEL" == "Pro" || "$AGENT_MODEL" == "pro" ]]; then
     AGENT_MODEL="flash"
   fi
 fi

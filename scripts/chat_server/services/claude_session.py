@@ -463,11 +463,18 @@ class ClaudeSessionManager:
         # 关键:只覆盖本次 SDK options 的 env 局部 dict,不改 os.environ,
         # 避免多请求并发 race;后续请求 plist env 仍指 :4000。
         if not relay_is_up():
-            kwargs["env"]["ANTHROPIC_BASE_URL"] = relay_direct_fallback()
-            _log.info(
-                "[fail-open] relay :4000 不可达, 切直连 base_url=%s",
-                kwargs["env"]["ANTHROPIC_BASE_URL"],
-            )
+            fb = relay_direct_fallback()
+            if fb:
+                kwargs["env"]["ANTHROPIC_BASE_URL"] = fb
+                _log.info(
+                    "[fail-open] relay :4000 不可达, 切直连 base_url=%s",
+                    fb,
+                )
+            else:
+                _log.warning(
+                    "[fail-open] relay :4000 不可达且未配置 CCC_RELAY_DIRECT_URL"
+                    " / ~/.ccc/relay-direct.url（MiniMax 已退役）"
+                )
         # SDK：allowed_tools 为空时不加 --allowedTools（= 默认全开）。
         # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
         # discuss 默认：全开 + 硬禁写（勿正向 allowlist，否则 MCP/Skill 动态名被卡死）。
