@@ -128,6 +128,162 @@ def test_lifecycle_planned_running_failed(tmp_path):
     assert store.find_task("e")[0] == "backlog"
 
 
+def test_lifecycle_pending_to_pending(tmp_path):
+    """无子卡的 epic 保持 pending。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    assert refresh_epic_lifecycle(store, "e") == "pending"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "pending"
+
+
+def test_lifecycle_planned_to_planned_idempotent(tmp_path):
+    """全部子卡在 planned 时 epic 保持 planned（幂等）。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py"), _child("e-w2", "b.py")],
+    )
+    assert refresh_epic_lifecycle(store, "e") == "planned"
+    # 再 refresh 一次，仍是 planned
+    assert refresh_epic_lifecycle(store, "e") == "planned"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "planned"
+
+
+def test_lifecycle_planned_to_done(tmp_path):
+    """全部子卡 released → epic done。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py"), _child("e-w2", "b.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    store.move_task("e-w1", "in_progress", "testing")
+    store.move_task("e-w1", "testing", "verified")
+    store.move_task("e-w1", "verified", "released")
+    store.move_task("e-w2", "planned", "in_progress")
+    store.move_task("e-w2", "in_progress", "testing")
+    store.move_task("e-w2", "testing", "verified")
+    store.move_task("e-w2", "verified", "released")
+    assert refresh_epic_lifecycle(store, "e") == "done"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "done"
+    assert epic.get("ui_hidden") is True
+
+
+def test_lifecycle_running_to_running_idempotent(tmp_path):
+    """至少一个子卡流转中时 epic 保持 running（幂等）。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py"), _child("e-w2", "b.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    assert refresh_epic_lifecycle(store, "e") == "running"
+    # 再 refresh 一次，仍是 running
+    assert refresh_epic_lifecycle(store, "e") == "running"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "running"
+
+
+def test_lifecycle_running_to_done(tmp_path):
+    """one running + one planned → 全部 released → done。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py"), _child("e-w2", "b.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    assert refresh_epic_lifecycle(store, "e") == "running"
+    # 把两个子卡都推到 released
+    store.move_task("e-w1", "in_progress", "testing")
+    store.move_task("e-w1", "testing", "verified")
+    store.move_task("e-w1", "verified", "released")
+    store.move_task("e-w2", "planned", "in_progress")
+    store.move_task("e-w2", "in_progress", "testing")
+    store.move_task("e-w2", "testing", "verified")
+    store.move_task("e-w2", "verified", "released")
+    assert refresh_epic_lifecycle(store, "e") == "done"
+
+
+def test_lifecycle_failed_to_failed_no_children(tmp_path):
+    """无子卡时保留 failed（不刷回 pending）。
+
+    注意：仅 child_ids 清空时才触发「无子卡保留 failed」逻辑；
+    若 child_ids 仍有 id 但文件已被删除，子卡解析为 missing，
+    根据 fallback 规则会回到 running。因此测试直接构造 child_ids=[]
+    的 failed epic。
+    """
+    import json
+
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    store.move_task("e-w1", "in_progress", "abnormal")
+    assert refresh_epic_lifecycle(store, "e") == "failed"
+    # 清空 child_ids 模拟无子卡
+    store.patch_task("e", {"child_ids": []})
+    assert refresh_epic_lifecycle(store, "e") == "failed"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "failed"
+
+
+def test_lifecycle_done_persists(tmp_path):
+    """done 后再次 refresh 保持 done。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    store.move_task("e-w1", "in_progress", "testing")
+    store.move_task("e-w1", "testing", "verified")
+    store.move_task("e-w1", "verified", "released")
+    assert refresh_epic_lifecycle(store, "e") == "done"
+    # 再 refresh 一次保持 done
+    assert refresh_epic_lifecycle(store, "e") == "done"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "done"
+    assert epic.get("ui_hidden") is True
+
+
+def test_lifecycle_multi_child_mixed(tmp_path):
+    """多子卡混合状态：一个 abnormal → failed，另一个 released 不影响。"""
+    store = FileBoardStore(tmp_path)
+    store.create_task({"id": "e", "title": "E"}, column="backlog")
+    apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[_child("e-w1", "a.py"), _child("e-w2", "b.py")],
+    )
+    store.move_task("e-w1", "planned", "in_progress")
+    store.move_task("e-w1", "in_progress", "testing")
+    store.move_task("e-w1", "testing", "verified")
+    store.move_task("e-w1", "verified", "released")
+    store.move_task("e-w2", "planned", "in_progress")
+    store.move_task("e-w2", "in_progress", "abnormal")
+    # abnormal 优先 → failed
+    assert refresh_epic_lifecycle(store, "e") == "failed"
+    _, epic = store.find_task("e")
+    assert epic["split_status"] == "failed"
+
+
 def test_lifecycle_rewrites_blocked_alias_on_disk(tmp_path):
     """存量 blocked 盘面应被 refresh 改写为 failed（不只读路径归一）。"""
     import json

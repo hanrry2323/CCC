@@ -118,3 +118,153 @@ def test_set_mode_source_whitelist_blocks_arbitrary_enable(control_home):
     with pytest.raises(ValueError):
         ctrl.set_mode("enabled", reason="agent bootstrap", source="agent")
     assert ctrl.get_mode() == "disabled"  # 没改成
+
+
+# ── 控制面 4 态迁移路径全覆盖（v0.62.0 形式化验证）──
+
+
+def test_ui_to_disabled(control_home):
+    """ui → disabled：sentinel 创建，engine 停止"""
+    ctrl.set_mode("ui", reason="frontend")
+    ctrl.set_mode("disabled", reason="stop")
+    assert ctrl.get_mode() == "disabled"
+    assert ctrl.may_start_engine() is False
+    assert ctrl.may_start_ui() is False
+    assert ctrl.DISABLED_SENTINEL.exists()
+
+
+def test_ui_to_ui_idempotent(control_home):
+    """ui → ui 幂等"""
+    ctrl.set_mode("ui", reason="first")
+    ctrl.set_mode("ui", reason="again")
+    assert ctrl.get_mode() == "ui"
+    assert ctrl.may_start_engine() is False
+    assert ctrl.may_start_ui() is True
+
+
+def test_ui_to_enabled(control_home):
+    """ui → enabled"""
+    ctrl.set_mode("ui", reason="frontend")
+    ctrl.set_mode("enabled", reason="production")
+    assert ctrl.get_mode() == "enabled"
+    assert ctrl.may_start_engine() is True
+    assert ctrl.may_start_ui() is True
+
+
+def test_ui_to_invent_coerced(control_home):
+    """ui → invent 被降级为 enabled（INVENT_HARD_DISABLED）"""
+    ctrl.set_mode("ui", reason="frontend")
+    out = ctrl.set_mode("invent", reason="try")
+    assert out["mode"] == "enabled"
+    assert ctrl.get_mode() == "enabled"
+    assert ctrl.may_invent() is False
+    assert ctrl.may_start_engine() is True
+
+
+def test_enabled_to_ui(control_home):
+    """enabled → ui"""
+    ctrl.set_mode("enabled", reason="production")
+    ctrl.set_mode("ui", reason="frontend")
+    assert ctrl.get_mode() == "ui"
+    assert ctrl.may_start_engine() is False
+    assert ctrl.may_start_ui() is True
+    assert not ctrl.DISABLED_SENTINEL.exists()
+
+
+def test_enabled_to_enabled_idempotent(control_home):
+    """enabled → enabled 幂等"""
+    ctrl.set_mode("enabled", reason="first")
+    ctrl.set_mode("enabled", reason="again")
+    assert ctrl.get_mode() == "enabled"
+    assert ctrl.may_start_engine() is True
+    assert not ctrl.DISABLED_SENTINEL.exists()
+
+
+def test_enabled_disabled_full_cycle(control_home):
+    """enabled → disabled → enabled → disabled 完整流转"""
+    ctrl.set_mode("enabled", reason="start")
+    assert ctrl.get_mode() == "enabled"
+    assert not ctrl.DISABLED_SENTINEL.exists()
+
+    ctrl.set_mode("disabled", reason="stop")
+    assert ctrl.get_mode() == "disabled"
+    assert ctrl.DISABLED_SENTINEL.exists()
+
+    ctrl.set_mode("enabled", reason="restart")
+    assert ctrl.get_mode() == "enabled"
+    assert not ctrl.DISABLED_SENTINEL.exists()
+
+    ctrl.set_mode("disabled", reason="final stop")
+    assert ctrl.get_mode() == "disabled"
+    assert ctrl.DISABLED_SENTINEL.exists()
+
+
+def test_get_mode_corrupted_json_fallback(control_home):
+    """损坏 control.json 时降级 disabled"""
+    ctrl.set_mode("enabled", reason="production")
+    ctrl.CONTROL_FILE.write_text("这不是合法 json\n")
+    assert ctrl.get_mode() == "disabled"
+
+
+def test_get_mode_empty_json_fallback(control_home):
+    """空文件降级 disabled"""
+    ctrl.set_mode("enabled", reason="production")
+    ctrl.CONTROL_FILE.write_text("")
+    assert ctrl.get_mode() == "disabled"
+
+
+def test_get_mode_dangling_mode_fallback(control_home):
+    """mode 字段非法值降级 disabled"""
+    import json
+
+    ctrl.set_mode("enabled", reason="production")
+    data = json.loads(ctrl.CONTROL_FILE.read_text())
+    data["mode"] = "bogus"
+    ctrl.CONTROL_FILE.write_text(json.dumps(data, ensure_ascii=False) + "\n")
+    assert ctrl.get_mode() == "disabled"
+
+
+def test_set_mode_invalid_value_raises(control_home):
+    """非法 mode 字符串抛 ValueError"""
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid mode"):
+        ctrl.set_mode("invalid_mode")
+
+
+def test_control_event_written_on_set_mode(control_home, monkeypatch):
+    """set_mode 写入 control-events.jsonl"""
+    import json
+
+    # _emit_control_event 用 Path.home()/.ccc/stats/；
+    # _ccc_control 内 Path 已 import 为模块级，需直接设 home
+    fake_home = Path(str(control_home))
+    monkeypatch.setattr(ctrl.Path, "home", lambda: fake_home)
+
+    ctrl.set_mode("enabled", reason="production", source="cli")
+    event_file = control_home / ".ccc" / "stats" / "control-events.jsonl"
+    assert event_file.exists(), f"expected {event_file} to exist"
+    lines = event_file.read_text().strip().split("\n")
+    assert len(lines) >= 1
+    event = json.loads(lines[-1])
+    assert event["kind"] == "control_mode_change"
+    assert event["mode"] == "enabled"
+    assert event["source"] == "cli"
+    assert event["pid"] > 0
+
+
+def test_policy_field_schema(control_home):
+    """policy 结构完整性"""
+    import json
+
+    ctrl.set_mode("enabled", reason="production")
+    data = json.loads(ctrl.CONTROL_FILE.read_text())
+    assert data["schema_version"] == "1.2"
+    assert data["source"] == "cli"
+    policy = data["policy"]
+    assert policy["forbid_popen_engine"] is True
+    assert policy["forbid_crontab_autostart"] is True
+    assert policy["invent_allowed"] is False
+    assert policy["invent_hard_disabled"] is True
+    assert policy["queue_consumer_only"] is True
+    assert policy["auto_inject_tasks"] is False
