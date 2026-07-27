@@ -1,7 +1,10 @@
 import SwiftUI
 import AppKit
 
-/// 原生运维：一眼红绿灯（绿敢开发 / 橙可忽略 / 红复制交 Agent）
+/// 域 chip 四态：绿 / 橙(降级) / 红 / 灰(未知/未拉取)
+enum DomainChipTone { case green, amber, red, gray }
+
+/// 原生运维：一眼红绿灯
 struct OpsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
@@ -359,7 +362,7 @@ struct OpsView: View {
             HStack(spacing: 10) {
                 domainChip(
                     title: "Engine",
-                    ok: engOk && (mode == "enabled"),
+                    tone: engOk ? (mode == "enabled" ? .green : .amber) : .red,
                     subtitle: engOk ? "运行 · \(mode)" : "停 · \(mode)"
                 )
                 domainChip(
@@ -416,7 +419,7 @@ struct OpsView: View {
             HStack(spacing: 10) {
                 domainChip(
                     title: "Agent",
-                    ok: agentOk == true,
+                    tone: agentOk == true ? .green : (agentOk == false ? .red : .gray),
                     subtitle: {
                         if agentOk == true {
                             let rt = model.opsAgentRuntime ?? "sidecar"
@@ -429,17 +432,22 @@ struct OpsView: View {
                 )
                 domainChip(
                     title: "MCP",
-                    ok: mcpChipOk(mcp),
+                    tone: mcpChipTone(mcp),
                     subtitle: mcpSubtitle(mcp)
                 )
                 domainChip(
                     title: "Relay",
-                    ok: relay?.ok == true,
+                    tone: relay?.ok == true ? .green : (relay?.ok == false ? .amber : .gray),
                     subtitle: relaySubtitle(relay)
                 )
                 domainChip(
                     title: "容量",
-                    ok: (cap?.verdict ?? "headroom") != "saturated",
+                    tone: {
+                        let v = cap?.verdict ?? ""
+                        if v == "saturated" { return .red }
+                        if v.isEmpty || v == "headroom" { return .green }
+                        return .gray
+                    }(),
                     subtitle: cap?.verdict ?? "—"
                 )
             }
@@ -471,11 +479,12 @@ struct OpsView: View {
         }
     }
 
-    private func mcpChipOk(_ mcp: OpsDomainAgentMcp?) -> Bool {
-        guard let mcp else { return true } // 未返回时不当红
-        if mcp.isRedFailure { return false }
-        if mcp.isUnconfigured { return true } // 未配置用绿/灰文案，chip 不标红
-        return mcp.ok != false
+    private func mcpChipTone(_ mcp: OpsDomainAgentMcp?) -> DomainChipTone {
+        guard let mcp else { return .gray }  // 未返回 → 灰
+        if mcp.isRedFailure { return .red }
+        if mcp.isUnconfigured { return .gray } // 未配置 → 灰（非红）
+        if mcp.ok != false { return .green }
+        return .gray
     }
 
     private func mcpSubtitle(_ mcp: OpsDomainAgentMcp?) -> String {
@@ -587,22 +596,35 @@ struct OpsView: View {
         return "探测中"
     }
 
-    private func domainChip(title: String, ok: Bool, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func domainChip(title: String, tone: DomainChipTone, subtitle: String) -> some View {
+        let color: Color = {
+            switch tone {
+            case .green: return CCCTheme.nodeDone
+            case .amber: return CCCTheme.nodeWarn
+            case .red:   return CCCTheme.nodeFail
+            case .gray:  return CCCTheme.faint
+            }
+        }()
+        return VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(CCCTheme.faint)
             Text(subtitle)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(ok ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                .foregroundStyle(color)
                 .lineLimit(2)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill((ok ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.1))
+                .fill(color.opacity(0.1))
         )
+    }
+
+    /// 保留二进制 ok 包装（green / red），方便不用 amber/gray 的调用处
+    private func domainChip(title: String, ok: Bool, subtitle: String) -> some View {
+        domainChip(title: title, tone: ok ? .green : .red, subtitle: subtitle)
     }
 
     // MARK: - Failures / abnormal (reopen)

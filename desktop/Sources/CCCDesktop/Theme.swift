@@ -28,6 +28,7 @@ enum CCCTheme {
     static let nodePending = Color(red: 0.72, green: 0.66, blue: 0.60)
     static let nodeRunning = Color(red: 0.851, green: 0.455, blue: 0.333)
     static let nodeDone = Color(red: 0.35, green: 0.55, blue: 0.40)
+    static let nodeWarn = Color(red: 0.82, green: 0.54, blue: 0.18)
     static let nodeFail = Color(red: 0.78, green: 0.28, blue: 0.22)
 
     static let unread = Color(red: 0.20, green: 0.48, blue: 0.95)
