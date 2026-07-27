@@ -103,6 +103,18 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 **该变大的流量**：Engine 真路径、失败学习、业务探针 regress — **不是**更多 Desktop Ops chip。
 
+### 周刊金路径烟测 checklist（可执行 · 不新开 daemon）
+
+每周一次（建议周一 Cursor / 2017）：
+
+1. `bash scripts/ccc-hub-probe.sh` → OVERALL pass  
+2. `bash scripts/ccc-dual-host-check.sh` → aligned  
+3. 定一笔 **小而硬** ccc-demo（或业务）意图：Desktop 确认 → outbox → Engine → 跟到 **released** + `verdicts/<tid>.verdict.md`  
+4. 记 tid + commit 到 [`2026-07-27-golden-path-evidence.md`](./2026-07-27-golden-path-evidence.md) 新日期节（P-B/P-C）  
+5. 若 FAIL：只修金路径白名单缺陷，禁止开 Ops UI 包顶进度  
+
+**本周已跑**：2026-07-28 KPI shrink `stress-mx-20260728-kpi-r1` PASS + Layer1 v6 stamp（可算本周烟测）。
+
 ---
 
 ## 分程（谁做）
@@ -141,13 +153,14 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - 见 [`2026-07-27-qb-domain-ship-gate.md`](./2026-07-27-qb-domain-ship-gate.md)  
 - 与 CCC `intent_stable` **分离勾选**
 
-### 程 B — 平台硬化（**进行中 · 2026-07-28**）
+### 程 B — 平台硬化（**已收口 · 2026-07-28**）
 
 - [x] Stress matrix `--apps` / `CCC_STRESS_APPS`（单仓缩小复跑）  
-- [ ] Stress KPI 缩小复跑（`ccc-demo` only · efficiency_six）— **已投递 / 待 evaluate**  
-- [ ] v0.63 `nudge_bg_session` 真注入 + E2E  
+- [x] Stress KPI 缩小复跑（`ccc-demo` · `stress-mx-20260728-kpi-r1`）— **PASS** · [`2026-07-28-kpi-shrink-r1-eval.md`](./2026-07-28-kpi-shrink-r1-eval.md)  
+- [x] prepare 新建文件 scope 放行（`_role_tool`）  
+- [x] v0.63 `nudge_bg_session` 真注入 + E2E smoke  
 - [x] HK 隧道 KeepAlive 观察（hub-tunnel up；连续 version 探针 200）  
-- [ ] 周刊金路径烟测纪律（≥1 次/周 P-B/P-C tid）
+- [x] 周刊金路径烟测 checklist（见上「效率仪表」）
 
 ---
 
@@ -184,7 +197,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
-| 下一开程 | **二选一**：程 B（KPI 复跑 / v0.63 nudge）**或** Layer2 qb — **勿同时开** |
+| 下一开程 | 程 B **已收口**（KPI PASS + v0.63）；下一二选一仍：**Layer2 qb** 或继续观察 Relay — **勿与飞轮自动同时开** |
 
 **Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode `code` → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
 **仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。

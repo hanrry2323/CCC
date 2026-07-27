@@ -635,14 +635,21 @@ def list_long_lived_sessions() -> list[dict]:
 
 
 def nudge_bg_session(role: str, task_id: str, message: str) -> bool:
-    """v0.63.0 占位:nudge 通道。当前 v0.62.0 不实现(写文件占位,nudge 不触发)。
+    """v0.63.0:写 nudge 文件并为活着的 bg session 真注入（claude --resume）。
 
-    返回 True 表示 nudge 已"调度"(目前只写文件 + 标记);实际注入到
-    claude session 由 v0.63.0 通过文件 watch + cat | claude --resume 实现。
+    注入策略（仅 Mac2017 Engine 路径调用）：
+    1. 写 `~/.ccc/bg-sessions/<session_id>.nudge`（载荷原文）
+    2. 若 `CCC_BG_NUDGE_DRY_RUN=1`：只写 `.nudge.injected` 标记（单测）
+    3. 否则 Popen：`claude --resume <session_id> -p <message> [--model …]`
+       stdout/stderr → `<session_id>.nudge.out`；pid → `.nudge.inject.pid`
 
-    路径:env `CCC_BG_NUDGE_DIR` 可覆盖(测试用),默认 ~/.ccc/bg-sessions/。
-    v0.62.0 改:用 Path.home() 而非 /Users/fan/... 硬编码(P2-7)。
+    返回 True 表示已调度（文件已写且 inject spawn/dry_run 成功）。
+    路径:env `CCC_BG_NUDGE_DIR` 可覆盖；`CCC_CLAUDE_BIN` 可指定 claude 可执行文件。
     """
+    import shutil
+    import subprocess
+    import time as _time_mod
+
     with _BG_STATE_LOCK:
         state = _load_bg_state()
         key = _bg_session_key(role, task_id)
@@ -652,12 +659,89 @@ def nudge_bg_session(role: str, task_id: str, message: str) -> bool:
         sess = _deserialize_session(d)
         if not sess.is_alive():
             return False
-        # v0.62.0:仅写文件标记,nudge 不真触发(等 v0.63.0 注入)
-        nudge_dir = Path(os.environ.get("CCC_BG_NUDGE_DIR", str(Path.home() / ".ccc" / "bg-sessions")))
-        nudge_dir.mkdir(parents=True, exist_ok=True)
-        nudge_file = nudge_dir / f"{sess.session_id}.nudge"
-        nudge_file.write_text(message)
-        _engine_log(
-            f"[bg-nudge] role={role} task={task_id} session={sess.session_id[:8]} 写入 nudge 占位文件"
+        nudge_dir = Path(
+            os.environ.get(
+                "CCC_BG_NUDGE_DIR", str(Path.home() / ".ccc" / "bg-sessions")
+            )
         )
+        nudge_dir.mkdir(parents=True, exist_ok=True)
+        sid = sess.session_id
+        nudge_file = nudge_dir / f"{sid}.nudge"
+        nudge_file.write_text(message, encoding="utf-8")
+
+        dry = (os.environ.get("CCC_BG_NUDGE_DRY_RUN") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        injected_marker = nudge_dir / f"{sid}.nudge.injected"
+        out_file = nudge_dir / f"{sid}.nudge.out"
+        pid_file = nudge_dir / f"{sid}.nudge.inject.pid"
+
+        if dry:
+            injected_marker.write_text(
+                f"dry_run\nts={_time_mod.time()}\nmsg_len={len(message)}\n",
+                encoding="utf-8",
+            )
+            _engine_log(
+                f"[bg-nudge] role={role} task={task_id} session={sid[:8]} dry_run inject"
+            )
+            sess.heartbeat()
+            state[key] = _serialize_session(sess)
+            _save_bg_state(state)
+            return True
+
+        claude_bin = (
+            (os.environ.get("CCC_CLAUDE_BIN") or "").strip()
+            or shutil.which("claude")
+            or ""
+        )
+        if not claude_bin or not Path(claude_bin).is_file():
+            _engine_log(
+                f"[bg-nudge] role={role} task={task_id} 无 claude 可执行文件，仅写占位"
+            )
+            injected_marker.write_text(
+                "file_only\nreason=no_claude_bin\n", encoding="utf-8"
+            )
+            return True
+
+        cmd = [
+            claude_bin,
+            "--resume",
+            sid,
+            "-p",
+            message,
+        ]
+        if sess.model:
+            cmd.extend(["--model", sess.model])
+        try:
+            with out_file.open("a", encoding="utf-8") as out_fh:
+                out_fh.write(
+                    f"\n----- nudge inject at {_time_mod.strftime('%Y-%m-%dT%H:%M:%SZ', _time_mod.gmtime())} -----\n"
+                )
+                out_fh.flush()
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=out_fh,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    env=_sanitized_env(),
+                )
+            pid_file.write_text(str(proc.pid), encoding="utf-8")
+            injected_marker.write_text(
+                f"spawned\npid={proc.pid}\nclaude={claude_bin}\n",
+                encoding="utf-8",
+            )
+            _engine_log(
+                f"[bg-nudge] role={role} task={task_id} session={sid[:8]} "
+                f"inject pid={proc.pid}"
+            )
+        except OSError as exc:
+            _engine_log(f"[bg-nudge] inject spawn failed: {exc}")
+            injected_marker.write_text(f"spawn_failed\n{exc}\n", encoding="utf-8")
+            return False
+
+        sess.heartbeat()
+        state[key] = _serialize_session(sess)
+        _save_bg_state(state)
         return True

@@ -64,4 +64,4 @@ python3 scripts/ccc-stress-kpi-loop.py arm-wake --seconds 3600
 前置：`ccc-init --register`、Hub baseline、无活跃 inflight、控制面 `enabled`。  
 然后 `init --apps <project_id>`，**同一 gates** —— 这就是标准准入压测。
 
-> **现状**：`ccc-stress-matrix.py` 支持 `--apps` / `CCC_STRESS_APPS`（默认仍 `ccc-demo,qb`）。缩小复跑例：`init --apps ccc-demo` 后 `dispatch`。
+> **现状**：`ccc-stress-matrix.py` 支持 `--apps` / `CCC_STRESS_APPS`（默认仍 `ccc-demo,qb`）。缩小复跑例：`init --apps ccc-demo` 后 `dispatch`。新建文件卡不再需手工 seed（`_role_tool` in-tree 缺失叶放行 · v0.63）。

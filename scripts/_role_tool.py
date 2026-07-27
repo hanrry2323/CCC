@@ -99,7 +99,11 @@ def prepare_role_call(
         statuses = {p.get("status", "?") for p in phases}
         return False, f"当前无待执行 phase（statuses: {', '.join(sorted(statuses))}）"
 
-    # 3. scope 路径存在性（当前 phase）
+    # 3. scope 路径校验（当前 phase）
+    # 目录级 scope（如 "scripts/"）跳过。
+    # 缺失的 in-tree 叶文件 = 待创建（OpenCode/dev 会写）→ 放行；
+    # 禁止越出 workspace 的绝对/.. 路径。
+    ws_res = ws.resolve()
     for p in phases:
         if int(p.get("phase", 0)) != cur:
             continue
@@ -108,11 +112,14 @@ def prepare_role_call(
             path_str = str(path_entry).strip()
             if not path_str:
                 continue
-            # 跳过目录级 scope（如 "scripts/"）—— 通常允许
-            if not path_str.endswith("/"):
-                target = ws / path_str
-                if not target.exists():
-                    return False, f"scope 文件缺失: {path_str}"
+            if path_str.endswith("/"):
+                continue
+            target = (ws / path_str).resolve()
+            try:
+                target.relative_to(ws_res)
+            except ValueError:
+                return False, f"scope 路径越界: {path_str}"
+            # exists or create-new-file — both OK
         break
 
     # 4. pids_dir 可写

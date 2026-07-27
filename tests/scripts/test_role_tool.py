@@ -105,15 +105,25 @@ class TestPrepareRoleCall:
         assert not ok
         assert "phases.json" in reason
 
-    def test_missing_scope_file_returns_false(self, ws: Path, store: FileBoardStore):
+    def test_missing_scope_file_allows_create(self, ws: Path, store: FileBoardStore):
+        """新建文件场景：scope 叶文件可不存在（OpenCode 会创建）。"""
         store.create_task(_make_valid_task("t2"), column="planned")
         _write_phases(
             ws, "t2",
-            [{"phase": 1, "status": "pending", "scope": ["missing_file.py"]}],
+            [{"phase": 1, "status": "pending", "scope": ["scripts/missing_file.py"]}],
         )
         ok, reason = prepare_role_call("t2", ws, store=store)
+        assert ok, f"expected create-new-file pass, got: {reason}"
+
+    def test_scope_path_escape_rejected(self, ws: Path, store: FileBoardStore):
+        store.create_task(_make_valid_task("t2b"), column="planned")
+        _write_phases(
+            ws, "t2b",
+            [{"phase": 1, "status": "pending", "scope": ["../../etc/passwd"]}],
+        )
+        ok, reason = prepare_role_call("t2b", ws, store=store)
         assert not ok
-        assert "scope" in reason.lower()
+        assert "越界" in reason or "scope" in reason.lower()
 
     def test_all_checks_pass(self, ws: Path, store: FileBoardStore):
         store.create_task(_make_valid_task("t3"), column="planned")

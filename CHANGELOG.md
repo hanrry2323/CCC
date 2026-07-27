@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.63.0] — 2026-07-28
+
+### Added
+- **`nudge_bg_session` 真注入**：写 `.nudge` 后 `claude --resume <session_id> -p <msg>` 异步 Popen（`CCC_BG_NUDGE_DRY_RUN` 单测；`CCC_CLAUDE_BIN` 可指路径）；产物 `.nudge.injected` / `.nudge.out` / `.nudge.inject.pid`。
+- **E2E smoke**：`tests/scripts/test_nudge_bg_session.sh`（dry_run + fake-claude spawn）。
+- **Stress matrix `--apps` / `CCC_STRESS_APPS`**：单仓缩小 KPI（程 B）；`ccc-demo` r1 gate **PASS**（见 `docs/briefs/2026-07-28-kpi-shrink-r1-eval.md`）。
+
+### Changed
+- **`prepare_role_call` scope**：in-tree 缺失叶文件视为待创建放行（不再卡死 OpenCode 新建文件卡）；越界路径仍拒。
+- Layer1 正式出门文档收口；程 B KPI 勾完成；周刊金路径烟测 checklist 写入 production-readiness。
+
+### Tests
+- `test_role_tool`：create-new-file 放行 + 越界拒绝
+- `test_long_lived_session`：nudge dry_run / spawn
+- `test_nudge_bg_session.sh`
+
 ## [v0.62.0] — 2026-07-26
 
 ### Added

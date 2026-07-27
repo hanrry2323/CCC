@@ -715,14 +715,14 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 > 巡查口径：仓内**禁止**出现「用 Claude Code 当平台 IDE / 直接合入」的现行教法；允许出现「草稿工 + Cursor 合入」例外说明。
 
-## Claude --bg 长任务（已交付 · v0.62.0 · 仅 Mac2017）
+## Claude --bg 长任务（已交付 · v0.63.0 · 仅 Mac2017）
 
 | 项 | 口径 |
 |----|------|
-| **范围** | `claude --bg` 与 Engine reviewer 长 session；Hub `/api/ops/bg-sessions`；Desktop 运维卡只读展示 |
+| **范围** | `claude --bg` 与 Engine reviewer 长 session；Hub `/api/ops/bg-sessions`；Desktop 运维卡只读展示；**nudge 真注入** |
 | **运行时主机** | **仅 Mac2017**（`ccc-reviewer-bg.sh` + `LongLivedSession` + `~/.ccc/bg-sessions/`）；M1 Desktop 只消费 Hub 透出，不在本机起 --bg |
 | **已交付(v0.62.0)** | reviewer 包装启 bg session；register/verify/list；fleet stop 清真进程；Hub envelope `domains.bg_sessions`；Desktop `bgSessionCard` |
-| **未交付(v0.63.0)** | `nudge_bg_session` 真注入（当前只写占位文件）；全链路 E2E smoke |
-| **禁止** | M1 上跑 Engine/--bg；把 nudge 占位当成已 nudge；sidecar 改 spawn 模式冒充长任务 |
+| **已交付(v0.63.0)** | `nudge_bg_session`：写 `.nudge` + `claude --resume` 异步注入（`CCC_BG_NUDGE_DRY_RUN` / `CCC_CLAUDE_BIN`）；E2E `tests/scripts/test_nudge_bg_session.sh` |
+| **禁止** | M1 上跑 Engine/--bg；把 dry_run 当生产注入；sidecar 改 spawn 模式冒充长任务 |
 
-> 旧「预留 / 禁止提前试水」口径已废止（代码已随 v0.62.0 上线）。剩余缺口只在 nudge 真通道。
+> 旧「预留 / 禁止提前试水」与「v0.63 占位」口径已废止（nudge 真通道随 v0.63.0 上线）。
