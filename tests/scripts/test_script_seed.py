@@ -102,6 +102,29 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     )
     assert should_use_script_seed(ws, doc) is False
 
+    # Docs-only scope must not script_seed even if acceptance mentions paper_intent_probe
+    doc2 = {
+        "id": "doc-stamp-w2",
+        "title": "Layer1 金路径文档戳记 v2",
+        "description": "仅更新报告",
+        "executor": "opencode",
+        "tags": ["exec:opencode"],
+    }
+    (ws / ".ccc" / "plans" / "doc-stamp-w2.plan.md").write_text(
+        "## 范围\ndocs/reports/ccc-layer1-golden-path-v2.md\n"
+        "## 验收\n- DRY_RUN=true python3 scripts/paper_intent_probe.py --env paper\n"
+        "- grep -q GOLDEN_PATH_OK_V2 docs/reports/ccc-layer1-golden-path-v2.md\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "doc-stamp-w2.phases.json").write_text(
+        json.dumps(
+            {"phase": 1, "scope": ["docs/reports/ccc-layer1-golden-path-v2.md"]}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, doc2) is False
+
 
     import subprocess
 

@@ -82,6 +82,15 @@ def looks_like_intent_probe_seed(ws: Path, task: dict[str, Any]) -> bool:
     scopes = _scopes(ws, str(task.get("id") or ""))
     scope_l = " ".join(s.replace("\\", "/").lower() for s in scopes)
 
+    # Docs-only / report stamp cards must use OpenCode (or normal path), never script_seed
+    if scopes and all(
+        s.replace("\\", "/").lower().startswith("docs/")
+        or s.replace("\\", "/").lower().endswith(".md")
+        for s in scopes
+    ):
+        if not any("paper_intent_probe" in s.replace("\\", "/").lower() for s in scopes):
+            return False
+
     # Explicit non-paper probe deliverable → OpenCode / normal path
     if any(
         "feature_counter_probe" in s
