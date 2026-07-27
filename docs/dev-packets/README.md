@@ -31,7 +31,7 @@
 | ops-p2-local-patrol-alerts | [`006-ops-p2-local-patrol-alerts.md`](./006-ops-p2-local-patrol-alerts.md) | **已合入** `ec73900` |
 | ops-p2-web-ops-redirect | [`007-ops-p2-web-ops-redirect.md`](./007-ops-p2-web-ops-redirect.md) | **已合入** `c67e079` |
 | prod-batch-hub-desktop-polish | [`008-prod-batch-hub-desktop-polish.md`](./008-prod-batch-hub-desktop-polish.md) | **已合入** `d0c601c`（大包三 Phase） |
-| prod-batch-docs-spa-cleanup | [`009-prod-batch-docs-spa-cleanup.md`](./009-prod-batch-docs-spa-cleanup.md) | **壳收尾 · 待跑/待合**（完成后停 Ops 抛光主路径） |
+| prod-batch-docs-spa-cleanup | [`009-prod-batch-docs-spa-cleanup.md`](./009-prod-batch-docs-spa-cleanup.md) | **已合入**（壳收尾完成；Ops 抛光主路径结束） |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。  
 三层出门 / 金路径：[`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md)。
