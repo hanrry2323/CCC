@@ -48,9 +48,9 @@
 | ID | 状态 | 证据 / 断点 |
 |----|------|-------------|
 | G1 / P-A | **部分** | sidecar health 绿；≥30min 无假死 **未跑** |
-| G2 / P-B | **未证** | 本轮未触发 OpenCode `code` 真 commit |
+| G2 / P-B | **部分** | v2：OpenCode 写戳记 + DoD recommit `48027564`（非 OC 自 commit） |
 | G3 / P-F | **接近** | Ops P0–P2 已合入；本轮未点灯验收 |
-| G4 / P-C | **未证** | 缺 Desktop 定稿小 epic → 全程 verdict→released |
+| G4 / P-C | **接近** | v2：verdict PASS + released + epic done（Hub transfer，非 Desktop 点选） |
 | P-D | **未证** | 未造 FAIL 收尸演练 |
 | G5 / P-E | **部分** | 隧道+fleet 绿；健康 path/401 口径需修文档或探针 |
 | G6 | **部分** | 本提交落三层出门；patrol 全日跑另记 |
@@ -107,5 +107,43 @@
 - 标题**禁止**单独「探针」字样（用「文档戳记 / 报告」）；`executor_intent=opencode` 且验收探针不要触发整卡 python 强制。  
 - 跟到 **verdict 文件落盘** 才勾 P-C。  
 - regress **只对目标 tid**，禁止无过滤全表 released。
+
+---
+
+## 2026-07-27 · qb 金路径 v2（OpenCode + 真戳记）
+
+| 项 | 值 |
+|----|-----|
+| 仓 | `qb` `/Users/fan/program/apps/qb` |
+| epic | `layer1-v2-966d70fa` → `split_status=done` |
+| work | `layer1-v2-966d70fa-w1` → **released** |
+| 意图 | 写入 `docs/reports/ccc-layer1-golden-path-v2.md`（含 `GOLDEN_PATH_OK_V2`） |
+| transfer | Hub `executor_intent=opencode`（标题「文档戳记」） |
+| 戳记 commit | `48027564` — `layer1-v2-966d70fa-w1 phase=1: auto-commit by CCC DoD gate` |
+| 先前假绿 | `4814756a` script_seed 仅写 `PENDING`；WT 已有 `GOLDEN_PATH_OK_V2` 时 salvage 曾归因旧 hash |
+
+### 过程断点（真问题 → 已修/残留）
+
+1. **salvage WT 假绿（已修 `84f5e16`）**：acceptance 在脏工作树绿、task commit 仍 `PENDING` → 现拒绝 `acceptance_uncommitted_vs_commit`，并对仍脏的 plan scope **DoD recommit**。  
+2. **script_seed 仍先落 PENDING**：`4814756a` 消息含 `paper_intent_probe via script_seed`（与 docs 戳记意图不符）——下一程收紧 script_seed 触发。  
+3. **OpenCode 模型仍 `xfyun/code`**：进程被 salvage 收口时 SIGTERM；交付内容由 OpenCode 写 WT，**git 落盘靠 DoD**，非 OpenCode 自带 commit。  
+4. **verified→kb 滞后**：审测后卡 verified；`verified → testing` pullback 被板拒绝；kb 未在同 tick 自动跟上，本轮 **手动 `kb_role()`** 后才 `released` + epic `done`。  
+5. **Engine 热更**：平台 Python 修复须 `launchctl kickstart -k …/com.ccc.engine`，否则仍跑旧 salvage。
+
+### 勾选（诚实）
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| P-B | **部分** | OpenCode 写出戳记；commit=`48027564` 为 DoD auto-commit（含 `GOLDEN_PATH_OK_V2`）。非「OpenCode CLI 自己 commit」满分。 |
+| P-C | **部分→接近** | `verdicts/…w1.verdict.md` PASS + `released` + epic `done` + acceptance 对 **HEAD 戳记** 绿。非 Desktop UI 点选，属 Hub transfer 实跑。 |
+| 戳记 | **有** | HEAD 含独立行 `GOLDEN_PATH_OK_V2` |
+| 平台修 | **已合入** | `84f5e16` salvage dirty-vs-commit |
+
+### 下一程
+
+- 修 `verified→testing` allow / 审测后同 tick 必跑 kb（避免人工 `kb_role`）。  
+- OpenCode 默认模型对齐 relay `code`（停 `xfyun/code`）。  
+- script_seed 勿抢 docs-only 戳记卡。  
+- 再证 P-B：OpenCode 自 commit（或明确把 DoD recommit 记为合法落地口径）。
 
 ---
