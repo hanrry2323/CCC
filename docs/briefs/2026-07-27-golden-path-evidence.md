@@ -181,3 +181,46 @@
 - `prepare_role_call` 要求 scope 文件已存在 → 戳记卡须先 seed PENDING。
 
 ---
+
+## 2026-07-27 · ccc-demo 金路径 v4（Go code + thinking 关 + P-D）
+
+| 项 | 值 |
+|----|-----|
+| 仓 | `ccc-demo` `/Users/fan/program/apps/ccc-demo` |
+| epic | `layer1-v4-8155d39f` → `split_status=done`（仍在 backlog 文件） |
+| work | `layer1-v4-8155d39f-w1` → **released** |
+| 戳记 | `docs/reports/ccc-layer1-golden-path-v4.md` 含 `GOLDEN_PATH_OK_V4` |
+| OpenCode 自 commit | `c250b6f` — `phase1: update golden path v4 with UTC + GOLDEN_PATH_OK_V4`（仅该报告文件） |
+| transfer | Hub `executor_intent=opencode`（非 Desktop UI 点选；`feasibility=ok`） |
+| Engine 模型 | `OPENCODE_MODEL=loop/code` → relay `:4002` → `opencode-go-paid-code` |
+
+### 过程（真问题 → 处置）
+
+1. **首跑 hang → abnormal（P-D 实锤）**：OpenCode 空转；`failures.jsonl` 记 `hang_detected`；quarantine + `lessons/`；**槽释放**；`reopen_task` abnormal→planned 成功后再跑通。  
+2. **根因（中转站 · 已修主机配置）**：Go `deepseek-v4-flash` 默认 thinking → `content=""` 仅 `reasoning_content`，OpenCode 挂死。2017 `~/.ccc/relay/upstreams.json` 全 Go 上游加 `request_overrides.thinking.type=disabled`；curl `model=code` → `content='OK'`。  
+3. **DoD hygiene 脏提交（平台残账 → 011）**：`7cab29f` / 首跑 `15a09bf` 把 `.ccc/board|quarantines|stats…` 打进业务仓 commit（scope 本应只有报告文件）。OpenCode 自己的 `c250b6f` 干净。  
+4. **salvage / kb / docs-only**：拒 PENDING；DoD recommit 后 gates 绿；`doc_only` 跳过强制 pytest；**同 tick kb → released**（无需人工 `kb_role`）。
+
+### 勾选（诚实）
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| G2 / P-B | **接近→绿（本笔）** | Engine 启 OpenCode `loop/code`；自 commit `c250b6f` 含戳记。非 Desktop 定稿。 |
+| G4 / P-C | **接近→绿（本笔）** | `verdicts/…w1.verdict.md` PASS + released + epic `done` + acceptance 对 HEAD 绿。 |
+| P-D | **绿（本笔）** | 人造/实锤 hang→failures→quarantine→slot 释→reopen→再通。 |
+| G1 / P-A | **部分** | 未跑 Desktop ≥30min。 |
+| G5 / P-E | **部分** | 隧道+fleet 仍绿；health/401 口径未本笔修。 |
+| G3 / P-F | **接近** | 未点灯验收。 |
+
+### 主机配置（不进 git）
+
+- `~/.ccc/relay/upstreams.json`：`opencode-go-*` / `opencode-code-*` → `request_overrides.thinking.type=disabled`  
+- 备份：`upstreams.json.bak-thinking-20260727T131504Z`
+
+### 下一程
+
+- **011**：DoD hygiene 禁止把非 plan scope（尤其 `.ccc/**`）扫进 auto-commit。  
+- P-A Desktop 30min；探活 path/401 口径。  
+- qb 业务探针金路径仍等 Layer1 余项收口后再开。
+
+---

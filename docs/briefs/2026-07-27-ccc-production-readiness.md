@@ -6,7 +6,7 @@
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
 > **更新（2026-07-27）**：三层出门 + 协作评估 + 效率仪表；主路径从 Ops 抛光切到金路径证据。  
-**下一草稿包**：[`docs/dev-packets/010-golden-path-kb-script-seed.md`](../dev-packets/010-golden-path-kb-script-seed.md)（kb / 列迁移 / script_seed；Claude 写码 → Cursor 合入）。
+**下一草稿包**：[`docs/dev-packets/011-dod-hygiene-scope-guard.md`](../dev-packets/011-dod-hygiene-scope-guard.md)（DoD hygiene 禁扫 `.ccc/**`；Claude 写码 → Cursor 合入）。010 已合入。
 
 ---
 
@@ -42,10 +42,10 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 | ID | 指标 | 证据形态 | 状态 |
 |----|------|----------|------|
 | P-A | 对话不断 | M1 Desktop 连续对话 ≥30min 无假死；鉴权默认不挡 | 待证 |
-| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | 待证 |
-| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | 待证 |
-| P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | 待证 |
-| P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | 待证 |
+| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | **本笔绿**（ccc-demo v4 · `c250b6f` · Go paid-code） |
+| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **本笔绿**（`layer1-v4-8155d39f-w1` verdict+released；Hub transfer 非 Desktop 点选） |
+| P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | **本笔绿**（hang→failures→quarantine→slot 释→reopen） |
+| P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | 部分（隧道绿；health/401 口径仍杂） |
 | P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | 接近（P0–P2 已合入） |
 
 **Layer 1 出门句**：用户定一个**小而硬**的意图 → 后台自动开发/验收/修一轮 → 人只确认，不手工 SSH 救火。  
@@ -121,10 +121,11 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 ### 程 3 — 金路径证据（Cursor / 2017 · **现行主路径**）
 
-- [ ] G1–G6 逐项留日志 / 板面 tid  
-- [ ] P-A…P-F 证据（优先一笔已 register 业务仓小 epic → released + verdict → regress）  
-- [ ] code 池限流观察与钥扩容（配置，不进 git）  
-- [ ] HK 隧道 KeepAlive / fleet 探活  
+- [x] P-B / P-C / P-D 本笔（ccc-demo `layer1-v4-8155d39f` · 见 golden-path-evidence v4）  
+- [ ] P-A Desktop ≥30min；P-E health/401 口径；P-F 点灯  
+- [x] Go `code`：`thinking.type=disabled`（主机 `upstreams.json`，不进 git）  
+- [ ] **011** DoD hygiene 勿扫 `.ccc/**` 进业务 commit  
+- [ ] HK 隧道 KeepAlive / fleet 探活（观察）  
 - 断点记录：[`2026-07-27-golden-path-evidence.md`](./2026-07-27-golden-path-evidence.md)
 
 ### 程 4 — 产品飞轮（单开 · 勿与 Ops 混）
@@ -169,7 +170,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
 | Desktop Ops P0–P2 + 008 polish | 已合入；App 已重打包 |
 | Layer 0 表面完备 | **大体已到** |
-| Layer 1 金路径 P-A…P-F | **未出门**（证据见 golden-path brief） |
+| Layer 1 金路径 P-A…P-F | **未全出门**（P-B/C/D 本笔绿；缺 P-A/E 收口；见 golden-path v4） |
 | Layer 2 / qb 域 KPI | 清单已立；**未勾** |
 | 业务生产主路径 | **未开门** |
 | 草稿工主路径 | Ops 抛光 **收束** → 仅金路径白名单缺陷 |

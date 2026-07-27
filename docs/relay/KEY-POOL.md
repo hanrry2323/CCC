@@ -85,6 +85,8 @@ Desktop / Claude  ──►  2017 relay :4000
 
 - **HK**：`com.ccc.hk-egress-tunnel` → `proxy: http://127.0.0.1:18080`（仅免费钥轮换出口）  
 - **Engine OpenCode**：本机 `:4002` · `OPENCODE_MODEL=loop/code`  
+- **DeepSeek V4 thinking（硬 · 2026-07-27）**：Go `deepseek-v4-*` 默认 thinking 会令 `content=""`、只填 `reasoning_content` → OpenCode 空转 hang。所有 Go 上游须带  
+  `request_overrides: { "thinking": { "type": "disabled" } }`（主机 `~/.ccc/relay/upstreams.json`，**不进 git**）。改后 curl `model=code` 应见非空 `content`。  
 - **fail-open**：客户端另认 `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（与钥池正交）
 
 ---
