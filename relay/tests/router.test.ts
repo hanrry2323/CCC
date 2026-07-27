@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, unlinkSync, existsSync } from "fs";
 import { loadConfig, getConfig, resetConfig } from "../src/config.js";
-import { route, affinitySet, affinityDelete, affinityKey, affinityGet, affinityDeleteByUpstream, resolveRequestTier, _resetFairCursorForTest } from "../src/router.js";
+import { route, affinitySet, affinityDelete, affinityKey, affinityGet, affinityDeleteByUpstream, affinityLookup, resolveRequestTier, _resetFairCursorForTest, _clearAffinityForTest } from "../src/router.js";
 import { setAppContext, getAppContext, createAppContext } from "../src/context.js";
 import { cool, hlt, sc, usgIdx$, cls } from "../src/state.js";
 import type { UpstreamConfig, TierId } from "../src/types.js";
@@ -206,6 +206,7 @@ describe("router", () => {
     });
 
     it("pinPaid keeps paid first when free recovers", () => {
+      _clearAffinityForTest();
       const paid = {
         name: "opencode-go-paid-flash",
         base_url: "https://opencode.ai/zen/go/v1",

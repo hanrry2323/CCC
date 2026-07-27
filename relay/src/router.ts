@@ -16,12 +16,12 @@ import { getScore } from "./scoring.js";
 interface AffinityEntry {
   upstream: string;
   at: number;
-  /** paid 会话钉死后禁止中途跳回 free（保 Go prompt cache） */
+  /** Go paid 成功后钉住：free 恢复也不 unpin（保 prompt cache） */
   pinPaid?: boolean;
 }
 
 const _affinity = new Map<string, AffinityEntry>();
-/** 默认 24h，对齐 Go prompt_cache_retention */
+/** 对齐 Go prompt_cache_retention=24h */
 const AFFINITY_TTL = 24 * 60 * 60 * 1000;
 const AFFINITY_MAX = 500;
 
@@ -41,7 +41,7 @@ function msgText(m: { role?: string; content?: unknown }): string {
 
 /**
  * Session affinity key：优先 x-session-id / x-request-id；
- * 否则 hash(system + first user) — 禁止 last-2-user（每轮换键会打爆 Go cache）
+ * 否则 hash(system 摘要 + **首条** user)——禁止 last-2-user（每轮换键 → 冷缓存）。
  */
 export function affinityKey(
   messages: { role: string; content?: unknown }[] | null | undefined,
@@ -66,10 +66,9 @@ export function affinityKey(
     if (sid) return "hdr:" + hashStr(sid);
   }
 
-  const users = (messages || []).filter(m => m.role === "user");
-  const firstUser = users[0];
+  const firstUser = (messages || []).find(m => m.role === "user");
   const sys = opts?.system != null
-    ? (typeof opts.system === "string" ? opts.system.slice(0, 400) : JSON.stringify(opts.system).slice(0, 400))
+    ? (typeof opts.system === "string" ? opts.system.slice(0, 200) : JSON.stringify(opts.system).slice(0, 200))
     : "";
   if (!firstUser && !sys) return null;
   const blob = sys + "||" + (firstUser ? msgText(firstUser) : "");
@@ -81,8 +80,8 @@ function affinityK(key: string, upstreamName: string): string {
   return key + "::" + upstreamName;
 }
 
-/** 取会话当前绑定的上游名（任意 :: 后缀） */
-export function affinityBoundName(key: string): string | null {
+/** 查找会话上唯一绑定（含 pinPaid） */
+export function affinityLookup(key: string): AffinityEntry | null {
   const prefix = key + "::";
   const now = Date.now();
   for (const [k, e] of _affinity) {
@@ -91,7 +90,7 @@ export function affinityBoundName(key: string): string | null {
       _affinity.delete(k);
       continue;
     }
-    return e.upstream;
+    return e;
   }
   return null;
 }
@@ -107,18 +106,23 @@ export function affinityGet(key: string, upstreamName: string): UpstreamConfig |
   const reg = getConfig();
   for (const up of reg.all) {
     if (up.name === e.upstream) {
-      if (!isUpstreamOk(up)) return null;
+      if (!isUpstreamOk(up)) return null; // 已冷却 → 不续绑坏上游
       return up;
     }
   }
   return null;
 }
 
+export type AffinitySetOpts = { pinPaid?: boolean };
+
 export function affinitySet(
   key: string,
   upstreamName: string,
-  opts?: { pinPaid?: boolean },
+  optsOrTier?: AffinitySetOpts | string,
 ): void {
+  const opts: AffinitySetOpts =
+    typeof optsOrTier === "object" && optsOrTier ? optsOrTier : {};
+  // 同一会话只保留一个上游绑定：否则 free/paid 多条并存时 route 仍先命中 prio=1 免费钥
   const prefix = key + "::";
   for (const k of [..._affinity.keys()]) {
     if (k.startsWith(prefix)) _affinity.delete(k);
@@ -127,20 +131,12 @@ export function affinitySet(
   _affinity.set(k, {
     upstream: upstreamName,
     at: Date.now(),
-    pinPaid: !!opts?.pinPaid,
+    pinPaid: !!opts.pinPaid,
   });
   if (_affinity.size > AFFINITY_MAX) {
     const first = _affinity.keys().next().value;
     if (first) _affinity.delete(first);
   }
-}
-
-export function affinityIsPinPaid(key: string): boolean {
-  const prefix = key + "::";
-  for (const [k, e] of _affinity) {
-    if (k.startsWith(prefix) && e.pinPaid) return true;
-  }
-  return false;
 }
 
 export function affinityDelete(key: string, upstreamName: string): void {
@@ -169,6 +165,11 @@ export function affinityCleanup(): void {
   for (const [k, v] of _affinity) {
     if (now - v.at > AFFINITY_TTL) _affinity.delete(k);
   }
+}
+
+/** 测试用：清空全部 affinity */
+export function _clearAffinityForTest(): void {
+  _affinity.clear();
 }
 
 // ── Main Route ──
@@ -221,20 +222,28 @@ export function resolveRequestTier(model: string | undefined, portDefault: TierI
 const SCORE_EPS = 0.05;
 const _rrCursor = new Map<string, number>();
 
-/** 同 priority + 接近分数时 round-robin，避免赢家通吃 */
+/** 同 priority + 接近分数时 round-robin，避免赢家通吃。
+ *  付费钥同 priority 忽略分数差：否则成功多的 A 永远压死 B（flash-b total_success=0）。
+ */
 function fairPick(tier: TierId, sorted: UpstreamConfig[]): UpstreamConfig[] {
   if (sorted.length <= 1) return sorted;
   const bestP = sorted[0].tier_priority ?? 99;
   const bestS = getScore(sorted[0].name);
+  const paidHead = isPaidUpstream(sorted[0]);
   const peers: UpstreamConfig[] = [];
   for (const u of sorted) {
     if ((u.tier_priority ?? 99) !== bestP) break;
+    if (paidHead && isPaidUpstream(u)) {
+      peers.push(u);
+      continue;
+    }
     if (Math.abs(getScore(u.name) - bestS) > SCORE_EPS) break;
     peers.push(u);
   }
   if (peers.length <= 1) return sorted;
-  const idx = (_rrCursor.get(tier) ?? 0) % peers.length;
-  _rrCursor.set(tier, idx + 1);
+  const rrKey = paidHead ? `${tier}:paid` : tier;
+  const idx = (_rrCursor.get(rrKey) ?? 0) % peers.length;
+  _rrCursor.set(rrKey, idx + 1);
   const pick = peers[idx];
   return [pick, ...sorted.filter(u => u.name !== pick.name)];
 }
@@ -288,16 +297,19 @@ function tryTier(
     };
   }
 
-  // Session Affinity：已钉 paid 的会话保持 paid（保 Go prompt cache）；新会话仍 free-first
+  // Session Affinity: 优先用绑定的上游 (R5: 跨 tier 复用)
+  // pinPaid：Go 成功后即使 free 恢复也钉 paid（保 prompt cache）；无 pin 的新会话仍 free-first
   if (affKey && !isFb) {
-    for (const up of tierUp) {
-      if (!isUpstreamOk(up)) continue;
-      const afUp = affinityGet(affKey, up.name);
-      if (afUp) {
+    const pinned = affinityLookup(affKey);
+    if (pinned) {
+      const afUp = getConfig().all.find(u => u.name === pinned.upstream) || null;
+      if (afUp && isUpstreamOk(afUp)) {
         const others = tierUp.filter(x => isUpstreamOk(x) && x.name !== afUp.name);
-        const pinPaid = affinityIsPinPaid(affKey) && isPaidUpstream(afUp);
-        if (pinPaid) {
-          const candidates = [afUp, ...others.filter(isPaidUpstream), ...others.filter(u => !isPaidUpstream(u))];
+        if (pinned.pinPaid && isPaidUpstream(afUp)) {
+          // 钉住 paid：首位固定钉钥；其它 paid 仅 failover；不做 paid RR，也不因 free 恢复 unpin
+          const paidOthers = others.filter(isPaidUpstream);
+          const freeOk = others.filter(x => !isPaidUpstream(x));
+          const candidates = [afUp, ...paidOthers, ...freeOk];
           return {
             upstream: afUp,
             candidates,
@@ -306,7 +318,31 @@ function tryTier(
             fallback_model: null,
           };
         }
-        // 有会话绑定：关闭 fairPick RR，固定该钥直到冷却
+        if (isPaidUpstream(afUp) && !pinned.pinPaid) {
+          const freeOk = others.filter(x => !isPaidUpstream(x));
+          if (freeOk.length >= 1) {
+            const preferProxy = process.env.LOOP_PREFER_PROXY === "1";
+            const freeSorted = freeOk.slice().sort((a, b) => {
+              const pd = (a.tier_priority ?? 99) - (b.tier_priority ?? 99);
+              if (pd !== 0) return pd;
+              const ap = (a.proxy || "").trim() ? 1 : 0;
+              const bp = (b.proxy || "").trim() ? 1 : 0;
+              if (ap !== bp) return preferProxy ? ap - bp : bp - ap;
+              return getScore(b.name) - getScore(a.name);
+            });
+            const candidates = boostPaidCandidates(
+              fairPick(tier, [...freeSorted, afUp, ...others.filter(isPaidUpstream)]),
+              tier,
+            );
+            return {
+              upstream: candidates[0] || freeSorted[0]!,
+              candidates,
+              tier,
+              is_fallback: false,
+              fallback_model: null,
+            };
+          }
+        }
         const candidates = boostPaidCandidates([afUp, ...others], tier);
         return {
           upstream: candidates[0] || afUp,
@@ -331,9 +367,7 @@ function tryTier(
       if (ap !== bp) return preferProxy ? ap - bp : bp - ap; // default: direct(0) first
       return getScore(b.name) - getScore(a.name);
     });
-    // 无 affinity 时才 fairPick；有会话键时不应每轮换钥
-    const base = affKey ? sorted : fairPick(tier, sorted);
-    const ordered = boostPaidCandidates(base, tier);
+    const ordered = boostPaidCandidates(fairPick(tier, sorted), tier);
     return {
       upstream: ordered[0],
       candidates: ordered,
@@ -366,7 +400,24 @@ function tryTier(
       .sort((a, b) => (a.tier_priority ?? 99) - (b.tier_priority ?? 99));
     if (paidAll.length) {
       const paidOk = paidAll.filter(isUpstreamOk);
-      const candidates = paidOk.length ? paidOk : paidAll;
+      const base = paidOk.length ? paidOk : paidAll;
+      // 有 pinPaid 时钉钥优先，禁止 last-resort 再 RR 换钥
+      let candidates = base;
+      if (affKey) {
+        const pinned = affinityLookup(affKey);
+        if (pinned?.pinPaid) {
+          const pinnedUp = base.find(u => u.name === pinned.upstream);
+          if (pinnedUp) {
+            candidates = [pinnedUp, ...base.filter(u => u.name !== pinnedUp.name)];
+          } else {
+            candidates = fairPick(tier, base);
+          }
+        } else {
+          candidates = fairPick(tier, base);
+        }
+      } else {
+        candidates = fairPick(tier, base);
+      }
       console.warn(
         `[route] flash free unavailable → last-resort paid ${candidates[0]!.name}` +
           (paidOk.length ? "" : " (short-cool bypass)"),

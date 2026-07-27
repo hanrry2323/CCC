@@ -119,6 +119,26 @@ describe("anthropicToOpenAI", () => {
     expect(result.prompt_cache_key).toBe("sess-abc");
     expect(result.messages[0].role).toBe("system");
     expect((result.messages[0] as any).cache_control?.type).toBe("ephemeral");
+    expect((result.messages[0] as any).cache_control?.ttl).toBe("24h");
+  });
+});
+
+describe("applyOpenAIPromptCache", () => {
+  it("stamps enable_prompt_cache + key + 24h ttl", async () => {
+    const { applyOpenAIPromptCache } = await import("../src/translator/anthropic.js");
+    const body: Record<string, unknown> = {
+      model: "deepseek-v4-flash",
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "hi" },
+      ],
+      tools: [{ type: "function", function: { name: "t", parameters: {} } }],
+    };
+    applyOpenAIPromptCache(body, { promptCacheKey: "aff-1" });
+    expect(body.enable_prompt_cache).toBe(true);
+    expect(body.prompt_cache_retention).toBe("24h");
+    expect(body.prompt_cache_key).toBe("aff-1");
+    expect((body.messages as any[])[0].cache_control?.ttl).toBe("24h");
   });
 });
 

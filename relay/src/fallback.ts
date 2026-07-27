@@ -29,13 +29,20 @@ const MAX_FREE_ATTEMPTS_PER_REQ = 4;
 const EGRESS_STAGGER_MS = 100;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
-/** paidOnly / forcePaid 多钥轮转（跨请求） */
-let _paidOnlyRr = 0;
-
-function pickPaidRotated(paidUsable: UpstreamConfig[]): UpstreamConfig {
+/**
+ * 按 route() 候选序取付费钥（钉钥在首位时禁止再 RR）。
+ * 跨请求双付费轮转只在 router.fairPick；此处换钥仅作失败 failover。
+ */
+function pickPaidInCandidateOrder(
+  candidates: UpstreamConfig[],
+  paidUsable: UpstreamConfig[],
+): UpstreamConfig {
   if (paidUsable.length === 1) return paidUsable[0]!;
-  const idx = _paidOnlyRr++ % paidUsable.length;
-  return paidUsable[idx]!;
+  const usable = new Set(paidUsable.map(u => u.name));
+  for (const u of candidates) {
+    if (usable.has(u.name)) return u;
+  }
+  return paidUsable[0]!;
 }
 
 /** free 钥连续 fetch 失败灰名单（不进账号 breaker） */
@@ -624,6 +631,7 @@ export function selectNextCandidate(
     isFetchGray(u.name);
 
   const paidUsable = untried.filter(u => isPaidUpstream(u) && !isBlocked(u));
+  const pickPaid = () => pickPaidInCandidateOrder(candidates, paidUsable);
   const wall = failoverMaxMs();
   const maxAtt = failoverMaxAttempts();
   const elapsed = Date.now() - opts.budgetStart;
@@ -633,8 +641,17 @@ export function selectNextCandidate(
   const reserve = paidWallReserveMs();
   const otherEgressFree = hasUntriedFreeOtherEgress(candidates, tried, isBlocked);
 
+  // route() 已把 paid 放首位（pinPaid / boost / last-resort）：禁止再插队 free，禁止双付费 RR 换钉钥
+  if (
+    paidUsable.length &&
+    candidates[0] &&
+    isPaidUpstream(candidates[0])
+  ) {
+    return pickPaid();
+  }
+
   if (opts.paidOnly && paidUsable.length) {
-    return pickPaidRotated(paidUsable);
+    return pickPaid();
   }
 
   // 先吐出顺序上的 skip（同 host RL / platform），保留 trail 可观测性
@@ -643,16 +660,16 @@ export function selectNextCandidate(
 
   // 墙钟余量不够付费首包 → 立刻 paid（禁止再烧 free）
   if (paidUsable.length && wallLeft <= reserve) {
-    return pickPaidRotated(paidUsable);
+    return pickPaid();
   }
 
   // 同请求 free 次数上限
   if (paidUsable.length && freeTried >= MAX_FREE_ATTEMPTS_PER_REQ) {
-    return pickPaidRotated(paidUsable);
+    return pickPaid();
   }
 
   if (paidUsable.length && attemptsLeft <= 1) {
-    if (!isPaidUpstream(head) || isBlocked(head)) return pickPaidRotated(paidUsable);
+    if (!isPaidUpstream(head) || isBlocked(head)) return pickPaid();
   }
 
   // 已有 free 失败：若还有「不同出口」的 free，继续轮转；否则强制 paid
@@ -662,12 +679,12 @@ export function selectNextCandidate(
       elapsed >= wall * 0.55 ||
       wallLeft <= reserve);
 
-  if (forcePaid) return pickPaidRotated(paidUsable);
+  if (forcePaid) return pickPaid();
 
   // 优先未阻塞 free；同出口已 RL 的会被 isBlocked 跳过
   const nextFree = untried.find(u => !isPaidUpstream(u) && !isBlocked(u));
   if (nextFree) return nextFree;
-  if (paidUsable.length) return pickPaidRotated(paidUsable);
+  if (paidUsable.length) return pickPaid();
   return untried.find(u => !isBlocked(u)) || head;
 }
 

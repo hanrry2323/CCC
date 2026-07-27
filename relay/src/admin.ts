@@ -249,13 +249,18 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     const total = f.length;
     const tokens = f.reduce((s, r) => s + (r.total_tokens || 0), 0);
     const cachedTokens = f.reduce((s, r) => s + (r.cached_tokens || 0), 0);
-    const byU: Record<string, { n: number; tk: number; cached: number }> = {};
+    const withPrompt = f.filter(r => (r.prompt_tokens || 0) > 0 && r.upstream !== "cache");
+    const promptForRatio = withPrompt.reduce((s, r) => s + (r.prompt_tokens || 0), 0);
+    const cachedForRatio = withPrompt.reduce((s, r) => s + (r.cached_tokens || 0), 0);
+    const promptTokens = f.reduce((s, r) => s + (r.prompt_tokens || 0), 0);
+    const byU: Record<string, { n: number; tk: number; cached: number; prompt: number }> = {};
     const byC: Record<string, { n: number; tk: number }> = {};
     for (const r of f) {
-      if (!byU[r.upstream]) byU[r.upstream] = { n: 0, tk: 0, cached: 0 };
+      if (!byU[r.upstream]) byU[r.upstream] = { n: 0, tk: 0, cached: 0, prompt: 0 };
       byU[r.upstream].n++;
       byU[r.upstream].tk += r.total_tokens || 0;
       byU[r.upstream].cached += r.cached_tokens || 0;
+      byU[r.upstream].prompt += r.prompt_tokens || 0;
     }
     for (const r of f) {
       const c = r.client || "anonymous";
@@ -308,10 +313,12 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
       period: p,
       total,
       tokens,
+      prompt_tokens: promptTokens,
       cached_tokens: cachedTokens,
-      /** @deprecated 用 upstream_cache_token_ratio；保留兼容 */
+      /** 主 KPI：上游 Go prompt cache（仅 rows with prompt_tokens>0，排除 L1 cache） */
+      upstream_cache_token_ratio: promptForRatio > 0 ? cachedForRatio / promptForRatio : 0,
+      /** 观测：cached / total（含 output，易偏低） */
       cache_hit_ratio: tokens > 0 ? cachedTokens / tokens : 0,
-      upstream_cache_token_ratio: tokens > 0 ? cachedTokens / tokens : 0,
       l1_hit_rate: l1Total > 0 ? l1Hits / l1Total : 0,
       l1: { hits: l1Hits, misses: l1Misses },
       by_upstream: byU,

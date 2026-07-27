@@ -166,6 +166,35 @@ describe("selectNextCandidate PaidGuarantee", () => {
       else process.env.FAILOVER_MAX_ATTEMPTS = prev;
     }
   });
+
+  it("honors paid-first candidates (pinPaid): skips free and keeps pinned key", () => {
+    const free1 = makeFree("free1");
+    const paidA = makePaid("paid-a");
+    const paidB = makePaid("paid-b");
+    const next = selectNextCandidate([paidA, paidB, free1], new Set(), {
+      budgetStart: Date.now(),
+      attempts: 0,
+      freeFailCount: 0,
+      failedPlatforms: new Set(),
+      rateLimitedHosts: new Set(),
+    });
+    expect(next?.name).toBe("paid-a");
+  });
+
+  it("paid-first failover uses second paid, not RR past pin", () => {
+    const free1 = makeFree("free1");
+    const paidA = makePaid("paid-a");
+    const paidB = makePaid("paid-b");
+    const next = selectNextCandidate([paidA, paidB, free1], new Set(["paid-a"]), {
+      budgetStart: Date.now(),
+      attempts: 1,
+      freeFailCount: 0,
+      failedPlatforms: new Set(),
+      rateLimitedHosts: new Set(),
+      paidOnly: true,
+    });
+    expect(next?.name).toBe("paid-b");
+  });
 });
 
 describe("streamWithFallback must reach paid", () => {

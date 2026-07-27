@@ -312,6 +312,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
         client: client?.id || "anonymous",
         model: b.model,
         total_tokens: tt,
+        prompt_tokens: pT,
         cached_tokens: ctk,
         success: streamOk,
         latency_ms: Date.now() - t0,
@@ -380,6 +381,9 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
   const rc = msg.reasoning_content || "";
   const tcs = msg.tool_calls;
 
+  const nsCached = d.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const nsPrompt = d.usage?.prompt_tokens || 0;
+
   const ar: Record<string, unknown> = {
     id: "msg_" + Date.now(),
     type: "message",
@@ -391,8 +395,8 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       : "end_turn",
     stop_sequence: null,
     usage: {
-      input_tokens: Math.max(0, (d.usage?.prompt_tokens || 0) - (d.usage?.prompt_tokens_details?.cached_tokens || 0)),
-      cache_read_input_tokens: d.usage?.prompt_tokens_details?.cached_tokens || 0,
+      input_tokens: Math.max(0, nsPrompt - (nsCached || 0)),
+      cache_read_input_tokens: nsCached || 0,
       output_tokens: d.usage?.completion_tokens || 0,
     },
   };
@@ -423,7 +427,8 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     client: client?.id || "anonymous",
     model: b.model,
     total_tokens: d.usage?.total_tokens || 0,
-    cached_tokens: d.usage?.prompt_tokens_details?.cached_tokens || 0,
+    prompt_tokens: nsPrompt,
+    cached_tokens: nsCached,
     success: true,
     latency_ms: Date.now() - t0,
   });
@@ -433,8 +438,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       pinPaid: isPaidUpstream(nonStreamResult.upstream),
     });
   }
-  const ctkNs = d.usage?.prompt_tokens_details?.cached_tokens || 0;
-  if (ctkNs > 0) res.setHeader("X-Upstream-Cached-Tokens", String(ctkNs));
+  if (nsCached > 0) res.setHeader("X-Upstream-Cached-Tokens", String(nsCached));
   res.setHeader("X-Cache-Prefix", prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS");
   return json(res, 200, ar);
 }

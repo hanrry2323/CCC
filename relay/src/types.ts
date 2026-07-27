@@ -295,6 +295,8 @@ export interface UsageRecord {
   client: string;
   model: string;
   total_tokens: number;
+  /** prompt/input tokens（上游 cache KPI 分母） */
+  prompt_tokens?: number;
   cached_tokens?: number;
   success: boolean;
   latency_ms: number;
