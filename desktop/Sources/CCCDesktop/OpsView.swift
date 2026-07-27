@@ -203,7 +203,11 @@ struct OpsView: View {
 
     /// Hub severity + 本机 Agent + MCP 合并后的总灯（与侧栏角标共用 OpsHealthDisplay）
     private var displaySeverity: String {
-        OpsHealthDisplay.severity(summary: model.opsSummary, agentOk: model.opsAgentOk)
+        OpsHealthDisplay.severity(
+            summary: model.opsSummary,
+            agentOk: model.opsAgentOk,
+            localPatrol: model.localPatrolAlerts
+        )
     }
 
     private var displayHumanLine: String {

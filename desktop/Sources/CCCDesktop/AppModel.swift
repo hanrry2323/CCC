@@ -5173,7 +5173,11 @@ final class AppModel: ObservableObject {
 
     /// 合并 Hub severity + sidecar + domains.agent_mcp + 本地巡查 → 侧栏角标 / OpsView 总灯
     func recomputeOpsDisplay() {
-        let sev = OpsHealthDisplay.severity(summary: opsSummary, agentOk: opsAgentOk)
+        let sev = OpsHealthDisplay.severity(
+            summary: opsSummary,
+            agentOk: opsAgentOk,
+            localPatrol: localPatrolAlerts
+        )
         let n = OpsHealthDisplay.alerts(summary: opsSummary, agentOk: opsAgentOk, localPatrol: localPatrolAlerts).count
         if opsDisplaySeverity != sev { opsDisplaySeverity = sev }
         if opsDisplayAlertCount != n { opsDisplayAlertCount = n }
@@ -5210,8 +5214,14 @@ final class AppModel: ObservableObject {
                 }
                 return url.deletingPathExtension().lastPathComponent
             }()
-            let body = trimmed.dropFirst(title.count).trimmingCharacters(in: .whitespacesAndNewlines)
-            let detail = String(body.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let detailSource: String = {
+                var lines = trimmed.components(separatedBy: "\n")
+                if let idx = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("# ") }) {
+                    lines.remove(at: idx)
+                }
+                return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            }()
+            let detail = String(detailSource.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
             let payload = String(trimmed.prefix(4000))
             items.append(OpsHealthAlert(
                 id: "patrol-\(url.lastPathComponent)",

@@ -434,9 +434,10 @@ enum OpsHealthDisplay {
         return list
     }
 
-    static func severity(summary: OpsSummary?, agentOk: Bool?) -> String {
+    static func severity(summary: OpsSummary?, agentOk: Bool?, localPatrol: [OpsHealthAlert] = []) -> String {
         if agentOk == false { return "red" }
         if summary?.domains?.agent_mcp?.isRedFailure == true { return "red" }
+        if !localPatrol.isEmpty { return "red" }
         let hub = (summary?.severity ?? "").lowercased()
         if hub == "red" { return "red" }
         if hub == "amber" || hub == "orange" { return "amber" }
