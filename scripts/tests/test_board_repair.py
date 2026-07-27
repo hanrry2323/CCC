@@ -94,6 +94,53 @@ def _seed_abnormal(ws: Path, tid: str = "work-abn-1") -> None:
     )
 
 
+def test_archive_hides_all_column_copies(ws, tmp_path, monkeypatch):
+    """released+abnormal 同 id 时，archive 须两边都 ui_hidden，不能只改靠前列。"""
+    monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))
+    from chat_server.services import board_repair as br
+    import json
+
+    tid = "dup-abn-rel"
+    store = FileBoardStore(ws)
+    assert store.create_task(
+        {
+            "id": tid,
+            "title": "Released copy",
+            "card_kind": "work",
+            "status": "released",
+            "goal": "g",
+            "acceptance": ["a"],
+            "pipeline": "dev",
+        },
+        column="released",
+    )
+    # 手工再写一份 abnormal 幽灵（模拟历史双副本）
+    abn = {
+        "id": tid,
+        "title": "[ABNORMAL] Released copy",
+        "card_kind": "work",
+        "status": "abnormal",
+        "goal": "g",
+        "acceptance": ["a"],
+        "pipeline": "dev",
+        "ui_hidden": False,
+        "created_at": "2026-07-01T00:00:00+08:00",
+        "updated_at": "2026-07-01T00:00:00+08:00",
+    }
+    (ws / ".ccc" / "board" / "abnormal" / f"{tid}.jsonl").write_text(
+        json.dumps(abn, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    assert set(store.list_task_columns(tid)) == {"released", "abnormal"}
+    out = br.archive_tasks(ws, reason="test_dup")
+    assert tid in out["hidden"]
+    for col in ("abnormal", "released"):
+        obj = json.loads(
+            (ws / ".ccc" / "board" / col / f"{tid}.jsonl").read_text().splitlines()[0]
+        )
+        assert obj.get("ui_hidden") is True
+    assert br.list_blockers(ws)["blocker_count"] == 0
+
+
 def test_archive_preserves_evidence_and_failures_jsonl(ws, tmp_path, monkeypatch):
     """clear_blockers/archive 隐藏前快照证据；failures.jsonl 全量保留。"""
     monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))

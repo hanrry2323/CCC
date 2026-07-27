@@ -269,12 +269,12 @@
 | 检查 | 结果 |
 |------|------|
 | M1 fleet OVERALL | **green**（relay / hub-tunnel / sidecar） |
-| Hub `GET /api/ops/summary` | `health.severity=red`（qb 僵尸 abnormal×10 拉红） |
+| Hub `GET /api/ops/summary` | 清场后：`ready_to_dispatch.ok=true` / `fleet_abnormal=0`；`severity=amber`（qb 脏树过大，不挡下达） |
 | 红告警 `copy_payload` | **有** — 「一键复制交 Agent」载荷完整（样例 `abn-qb-env-checklist-e2e-w1-docs`） |
 | `ready_to_dispatch` | `ok=false`（舰队 abnormal=10）；**不挡** ccc-demo 本笔已下达成功 |
 | `human_line` | `请交给 Agent · 11 项红灯` |
 
-**G3 / P-F → 绿（机制）**：红灯可复制交 Agent 已证；M1 对话栈绿灯。残留：qb 板面僵尸 abnormal 拉红 Hub 总灯——清场走当前会话 board_ops，**不**开卫生 epic 主业。
+**G3 / P-F → 绿**：红灯可复制交 Agent 已证；M1 对话栈绿灯。2026-07-28 续：qb 10 张 smoke 僵尸为 `released`+`abnormal` 双副本；`clear_blockers` 误改靠前 `released` 副本。已删 abnormal orphan（证据在 `quarantines/*/board-repair/orphan-abnormal-*`）；修 `patch_task` 权威列 + `archive_tasks` 多副本全藏。`gate-retest-w2-ccc-3d8e4c95-w1` 仍 `ui_hidden`。**不**开卫生 epic 主业。
 
 ---
 

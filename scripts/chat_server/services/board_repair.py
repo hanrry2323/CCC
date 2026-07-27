@@ -311,7 +311,13 @@ def archive_tasks(
             task.get("split_status") or ""
         ) == "failed":
             fields["split_status"] = "done"
-        if store.patch_task(tid, fields):
+        # 写当前列；多副本时再补写其余列，避免只改 released 幽灵、abnormal 仍亮红
+        ok = store.patch_task(tid, fields, column=col)
+        if ok:
+            for other in store.list_task_columns(tid):
+                if other == col:
+                    continue
+                store.patch_task(tid, {"ui_hidden": True}, column=other)
             hidden.append(tid)
             # abnormal 仍在 abnormal 列但 hidden → 活跃计数会跳过
         else:

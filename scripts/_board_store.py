@@ -825,26 +825,44 @@ class FileBoardStore:
         except (OSError, json.JSONDecodeError, IndexError):
             return None, None
 
-    def patch_task(self, task_id: str, fields: dict) -> bool:
-        """原地更新 task 字段（不换列）。用于 epic split_status/child_ids/color 等。"""
+    def patch_task(
+        self, task_id: str, fields: dict, *, column: str | None = None
+    ) -> bool:
+        """原地更新 task 字段（不换列）。用于 epic split_status/child_ids/color 等。
+
+        多副本时默认写权威列（abnormal 优先，否则流水线最远）；可用 column=
+        指定列，避免误改靠前幽灵副本（如 released+abnormal 同 id）。
+        """
         task_id = sanitize_id(task_id)
         lock = self._lock()
         if lock is None:
             _log.error("patch_task: lock unavailable")
             return False
         try:
-            col, task = None, None
-            for c in COLUMNS:
-                src = self.board / c / f"{task_id}.jsonl"
-                if src.is_file():
-                    try:
-                        task = json.loads(
-                            src.read_text(encoding="utf-8").splitlines()[0]
-                        )
-                        col = c
-                        break
-                    except (OSError, json.JSONDecodeError, IndexError):
-                        return False
+            col = column
+            task = None
+            if col:
+                if col not in COLUMNS:
+                    _log.error("patch_task: unknown column '%s'", col)
+                    return False
+                src = self.board / col / f"{task_id}.jsonl"
+                if not src.is_file():
+                    _log.error("patch_task: %s not in column %s", task_id, col)
+                    return False
+                try:
+                    task = json.loads(src.read_text(encoding="utf-8").splitlines()[0])
+                except (OSError, json.JSONDecodeError, IndexError):
+                    return False
+            else:
+                col = self.resolve_task_column(task_id)
+                if not col:
+                    _log.error("patch_task: %s not found", task_id)
+                    return False
+                src = self.board / col / f"{task_id}.jsonl"
+                try:
+                    task = json.loads(src.read_text(encoding="utf-8").splitlines()[0])
+                except (OSError, json.JSONDecodeError, IndexError):
+                    return False
             if not task or not col:
                 _log.error("patch_task: %s not found", task_id)
                 return False

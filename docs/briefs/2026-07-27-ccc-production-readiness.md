@@ -46,7 +46,7 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 | P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **绿**（v5 verdict+released；Desktop transfer API） |
 | P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | **绿**（v4 hang 收尸） |
 | P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | **绿**（`ccc-hub-probe` 契约；012） |
-| P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | **绿（机制）**（`copy_payload` 已证；M1 fleet 绿；Hub 仍被 qb 僵尸 abnormal 拉红） |
+| P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | **绿**（`copy_payload` 已证；M1 fleet 绿；qb 僵尸 abnormal 已清，`ready_to_dispatch.ok` / `fleet_abnormal=0`；总灯 amber 仅 qb 脏树提示不挡下达） |
 
 **Layer 1 出门句**：用户定一个**小而硬**的意图 → 后台自动开发/验收/修一轮 → 人只确认，不手工 SSH 救火。  
 **未出门前**：业务仓可烟测 / demo，**不以** CCC 闭环当产能承诺。
@@ -171,7 +171,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
 | Desktop Ops P0–P2 + 008 polish | 已合入；App 已重打包 |
 | Layer 0 表面完备 | **大体已到** |
-| Layer 1 金路径 P-A…P-F | **可出门（小业务）** — 见下句；诚实残留：Desktop App 人手点定稿未单跑、Hub 总灯仍被 qb 僵尸 abnormal 拉红 |
+| Layer 1 金路径 P-A…P-F | **可出门（小业务）** — 见下句；诚实残留：Desktop App 人手点定稿未单跑；Hub 可下达已绿（qb 僵尸已清，amber=脏树提示） |
 | Layer 2 / qb 域 KPI | 清单已立；**冻结至本出门句之后另开** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | Ops 抛光 **收束** → 仅金路径白名单缺陷 |

@@ -211,6 +211,29 @@ class TestFileBoardStoreCRUD:
         # 没有创建新 task
         assert store.find_task("new-id") == (None, None)
 
+    def test_patch_task_prefers_abnormal_canonical(self, store: FileBoardStore, tmp_path):
+        """多副本时 patch 默认写权威列 abnormal，不误改靠前 released 幽灵。"""
+        board = store.workspace / ".ccc" / "board"
+        for col in ("released", "abnormal"):
+            (board / col).mkdir(parents=True, exist_ok=True)
+        import json
+        tid = "dup-patch-1"
+        for col in ("released", "abnormal"):
+            obj = _valid_task(tid, status=col)
+            obj["ui_hidden"] = False
+            (board / col / f"{tid}.jsonl").write_text(
+                json.dumps(obj, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+        assert store.resolve_task_column(tid) == "abnormal"
+        assert store.patch_task(tid, {"ui_hidden": True})
+        abn = json.loads((board / "abnormal" / f"{tid}.jsonl").read_text().splitlines()[0])
+        rel = json.loads((board / "released" / f"{tid}.jsonl").read_text().splitlines()[0])
+        assert abn.get("ui_hidden") is True
+        assert rel.get("ui_hidden") is False  # 未指定 column= 时只改权威列
+        assert store.patch_task(tid, {"ui_hidden": True}, column="released")
+        rel2 = json.loads((board / "released" / f"{tid}.jsonl").read_text().splitlines()[0])
+        assert rel2.get("ui_hidden") is True
+
 
 class TestHelpers:
     def test_sanitize_id_rejects_traversal(self):
