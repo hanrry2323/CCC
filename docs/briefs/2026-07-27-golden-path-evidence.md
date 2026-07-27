@@ -146,3 +146,38 @@
 - 热更后用一小笔 docs 戳记 epic 再证 P-B/P-C（OpenCode 路径，勿 script_seed）。
 
 ---
+
+## 2026-07-27 · qb 金路径 v3（010 热更后）
+
+| 项 | 值 |
+|----|-----|
+| epic | `layer1-v3-64f9edc8` → `done` |
+| work | `layer1-v3-64f9edc8-w1` → **released** |
+| 戳记 | `docs/reports/ccc-layer1-golden-path-v3.md` 含 `GOLDEN_PATH_OK_V3`（commit `d5f2432e`） |
+| transfer | `executor_intent=opencode`（v3b；首笔因 goal 含「git add」被 hygiene 强制 python，已弃） |
+
+### 010 验证（诚实）
+
+| 点 | 结果 |
+|----|------|
+| 未走 script_seed | **过** — Engine 日志启动 `opencode run --model loop/flash`（code 池 429，临时 flash） |
+| salvage 拒 PENDING | **过** — 多次 `acceptance_cmd_failed` |
+| 每 tick kb | **过** — 日志出现 `✓ kb → released`（无需人工 `kb_role`） |
+| OpenCode 自己写戳记 | **未过** — flash/paid 路由下 hang → abnormal；戳记为恢复提交 |
+| docs-only 免全仓 pytest | **过（补修）** — 曾被 pytest+cov **revert** 戳记；已合入 `b2f0eb4`（`scopes_are_docs_only` / doc_only tag） |
+
+### 勾选
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| P-B | **部分** | OpenCode 进程启动正确；交付靠恢复 commit；code 档仍 429 |
+| P-C | **接近** | verdict PASS + released + epic done；kb 同 tick 已证 |
+| 010 | **主路径绿** | script_seed 未抢；kb 自动；pytest 假 revert 已修 |
+
+### 残留
+
+- Zen **code** 免费池全 429 → 写码仍易 hang/降级；交中转站会话养钥。  
+- transfer goal 勿写「git add」（会强制 python）。  
+- `prepare_role_call` 要求 scope 文件已存在 → 戳记卡须先 seed PENDING。
+
+---
