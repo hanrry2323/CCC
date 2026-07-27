@@ -64,4 +64,4 @@ python3 scripts/ccc-stress-kpi-loop.py arm-wake --seconds 3600
 前置：`ccc-init --register`、Hub baseline、无活跃 inflight、控制面 `enabled`。  
 然后 `init --apps <project_id>`，**同一 gates** —— 这就是标准准入压测。
 
-> **现状**：`ccc-stress-matrix.py` 场景仍硬编码 `ccc-demo`+`qb` 双仓矩阵。单仓/多仓泛化是下一刀（KPI loop 的 `--apps` 已预留）；在此之前旧仓准入可先「注册后挂到 dual 矩阵旁路脚本」或扩 matrix `APPS`。
+> **现状**：`ccc-stress-matrix.py` 支持 `--apps` / `CCC_STRESS_APPS`（默认仍 `ccc-demo,qb`）。缩小复跑例：`init --apps ccc-demo` 后 `dispatch`。

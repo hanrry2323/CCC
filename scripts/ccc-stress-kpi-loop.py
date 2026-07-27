@@ -122,6 +122,7 @@ def cmd_dispatch(state: dict[str, Any]) -> int:
         return 1
     run = _run_tag(nxt)
     profile = state["profile"]
+    apps = ",".join(state.get("apps") or ["ccc-demo", "qb"])
     # baseline + dispatch via matrix
     _py(
         [
@@ -131,6 +132,8 @@ def cmd_dispatch(state: dict[str, Any]) -> int:
             run,
             "--profile",
             profile,
+            "--apps",
+            apps,
             "baseline",
         ]
     )
@@ -142,6 +145,8 @@ def cmd_dispatch(state: dict[str, Any]) -> int:
             run,
             "--profile",
             profile,
+            "--apps",
+            apps,
             "dispatch",
             "--batch",
             "0",

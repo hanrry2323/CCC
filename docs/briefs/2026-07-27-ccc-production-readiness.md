@@ -141,10 +141,12 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - 见 [`2026-07-27-qb-domain-ship-gate.md`](./2026-07-27-qb-domain-ship-gate.md)  
 - 与 CCC `intent_stable` **分离勾选**
 
-### 程 B — 平台硬化（**下一开程候选 · 不挡已出门**）
+### 程 B — 平台硬化（**进行中 · 2026-07-28**）
 
-- [ ] Stress KPI 缩小复跑（Relay/DoD/board 改动后）  
+- [x] Stress matrix `--apps` / `CCC_STRESS_APPS`（单仓缩小复跑）  
+- [ ] Stress KPI 缩小复跑（`ccc-demo` only · efficiency_six）— **已投递 / 待 evaluate**  
 - [ ] v0.63 `nudge_bg_session` 真注入 + E2E  
+- [x] HK 隧道 KeepAlive 观察（hub-tunnel up；连续 version 探针 200）  
 - [ ] 周刊金路径烟测纪律（≥1 次/周 P-B/P-C tid）
 
 ---

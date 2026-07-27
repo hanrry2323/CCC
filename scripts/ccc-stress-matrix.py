@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dual-app Engine stress matrix (ccc-demo + qb).
+"""Engine stress matrix (default ccc-demo + qb; overridable via --apps).
 
 Profiles:
   efficiency_v2 — 每仓 8 张有价值场景（默认；明日效率回顾）
@@ -8,6 +8,7 @@ Profiles:
 Usage (Mac2017):
   python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 baseline
   python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 dispatch --batch 0
+  python3 scripts/ccc-stress-matrix.py --apps ccc-demo --profile efficiency_six dispatch --batch 0
   python3 scripts/ccc-stress-matrix.py --profile efficiency_v2 watch --timeout 7200
   python3 scripts/ccc-stress-efficiency-report.py --run stress-mx-20260723
 """
@@ -17,6 +18,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -27,17 +29,31 @@ from typing import Any
 
 HUB = "http://127.0.0.1:7777"
 AUTH = base64.b64encode(b"ccc:ccc").decode()
-APPS = ("ccc-demo", "qb")
-# Defaults overridden by --run / --profile in main()
+_DEFAULT_APPS = ("ccc-demo", "qb")
+APPS: tuple[str, ...] = _DEFAULT_APPS
+# Defaults overridden by --run / --profile / --apps in main()
 RUN_TAG = "stress-mx-20260722"
 PROFILE = "legacy10"
 RESULTS = Path.home() / ".ccc" / "stress-matrix" / f"{RUN_TAG}.json"
 
 
-def _set_run(run: str, profile: str) -> None:
-    global RUN_TAG, PROFILE, RESULTS
+def _parse_apps(raw: str | None) -> tuple[str, ...]:
+    """Comma-separated app ids; empty → default dual matrix."""
+    if raw is None:
+        env = (os.environ.get("CCC_STRESS_APPS") or "").strip()
+        raw = env or None
+    if not raw or not str(raw).strip():
+        return _DEFAULT_APPS
+    apps = tuple(a.strip() for a in str(raw).split(",") if a.strip())
+    return apps or _DEFAULT_APPS
+
+
+def _set_run(run: str, profile: str, apps: tuple[str, ...] | None = None) -> None:
+    global RUN_TAG, PROFILE, RESULTS, APPS
     RUN_TAG = run
     PROFILE = profile
+    if apps is not None:
+        APPS = apps
     RESULTS = Path.home() / ".ccc" / "stress-matrix" / f"{RUN_TAG}.json"
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
 
@@ -785,6 +801,11 @@ def main() -> None:
         default="efficiency_v2",
         help="scenario set (efficiency_six = 6/app valuable)",
     )
+    ap.add_argument(
+        "--apps",
+        default="",
+        help="comma-separated project ids (default: ccc-demo,qb; or CCC_STRESS_APPS)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dispatch")
     d.add_argument(
@@ -807,7 +828,9 @@ def main() -> None:
             run = "stress-mx-20260723"
         else:
             run = "stress-mx-20260722"
-    _set_run(run, args.profile)
+    apps = _parse_apps(args.apps.strip() or None)
+    _set_run(run, args.profile, apps)
+    print(f"[matrix] run={RUN_TAG} profile={PROFILE} apps={','.join(APPS)}")
     if args.cmd == "dispatch":
         cmd_dispatch(args.batch)
     elif args.cmd == "watch":
