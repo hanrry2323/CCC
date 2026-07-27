@@ -47,6 +47,31 @@ def _verdict_file(ws: Path, tid: str) -> Path:
     return ws / ".ccc" / "verdicts" / f"{tid}.verdict.md"
 
 
+def _write_fail_verdict_before_quarantine(
+    ws: Path, tid: str, reason: str
+) -> None:
+    """Write a FAIL verdict before quarantine so the board always has a paper trail.
+
+    Phase C honesty: every 'reviewer produced no verdict' quarantine must
+    be preceded by a FAIL verdict file so the gate can account for it.
+    """
+    vf = _verdict_file(ws, tid)
+    if vf.is_file():
+        return  # already has a verdict
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        f"# {tid} Verdict\n\n"
+        f"**Verdict:** FAIL\n\n"
+        f"**Category:** fixable\n\n"
+        f"**Reason:** {reason}\n"
+    )
+    try:
+        vf.write_text(body, encoding="utf-8")
+        _engine_log("[verdict-gate] wrote FAIL verdict for %s: %s", tid, reason)
+    except OSError as exc:
+        _engine_log("[verdict-gate] failed to write FAIL verdict for %s: %s", tid, exc)
+
+
 def _verdict_is_valid(ws: Path, tid: str) -> bool:
     """verdict 文件必须存在且 schema 严格：唯一 **Verdict:** 行且 PASS。
 
@@ -466,6 +491,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                     "[verdict-gate] %s retry budget 耗尽 → abnormal", tid
                 )
                 if eng:
+                    _write_fail_verdict_before_quarantine(
+                        ws, tid, "retry budget exceeded (reviewer)"
+                    )
                     eng._quarantine_with_notify(
                         ws, tid, "retry budget exceeded (reviewer)", store
                     )
@@ -483,6 +511,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                     )
                     cur_phase = _current_running_phase(tid)
                     if eng:
+                        _write_fail_verdict_before_quarantine(
+                            ws, tid, "reviewer timeout retries exhausted"
+                        )
                         eng._quarantine_with_notify(
                             ws, tid, "reviewer 超时重试耗尽", store, phase=cur_phase
                         )
@@ -528,6 +559,9 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
             _engine_log(f"[{label}] {tid} reviewer verdict 重试耗尽 → abnormal")
             cur_phase = _current_running_phase(tid)
             if eng:
+                _write_fail_verdict_before_quarantine(
+                    ws, tid, "reviewer produced no verdict"
+                )
                 eng._quarantine_with_notify(
                     ws, tid, "reviewer 未产出 verdict", store, phase=cur_phase
                 )
