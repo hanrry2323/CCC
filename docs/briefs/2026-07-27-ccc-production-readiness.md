@@ -168,8 +168,9 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 ## 还要多少步（依赖序 · 不虚报日历）
 
 1. ~~收束壳 / Layer1 证据~~ → **已完成（2026-07-28）**  
-2. **二选一**写进开程：程 B 硬化 **或** Layer2 qb 样板（**勿同时开**）  
-3. 才放大「用 CCC 做业务生产」产能叙事；qb 再挂域 KPI
+2. ~~程 B 硬化~~ → **已完成**  
+3. **固定长任务 R1–R4**（Claude `/loop` + Cursor 审）→ [`../dev-packets/PRODUCTION-DELIVERY-ROUNDS.md`](../dev-packets/PRODUCTION-DELIVERY-ROUNDS.md) → **平台生产交付封印**  
+4. 封印后才开 Layer2 qb / 飞轮自动（另清单，勿插进 R1–R4）
 
 ---
 
