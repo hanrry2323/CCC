@@ -7,6 +7,7 @@ import { ProxyAgent, Agent, fetch as undiciFetch, type Dispatcher, type RequestI
 import type { UpstreamConfig } from "./types.js";
 import { TIMEOUTS } from "./config.js";
 import { isPaidUpstream } from "./tiers.js";
+import { agentDebugLog } from "./utils.js";
 
 const _agents = new Map<string, Dispatcher>();
 
@@ -80,7 +81,26 @@ export async function upstreamFetch(
     (isPaidUpstream(up) ? TIMEOUTS.ATTEMPT_PAID_MS : TIMEOUTS.ATTEMPT_MS);
 
   const ac = new AbortController();
+  const t0 = Date.now();
+  const bodyLen = typeof init.body === "string" ? init.body.length : 0;
+  // #region agent log
+  agentDebugLog("B", "egress.ts:upstreamFetch:start", "upstream fetch start", {
+    up: up.name,
+    paid: isPaidUpstream(up),
+    attemptMs,
+    bodyLen,
+    connectMs: TIMEOUTS.CONNECT_MS,
+    headersMs: TIMEOUTS.HEADERS_MS,
+  });
+  // #endregion
   const timer = setTimeout(() => {
+    // #region agent log
+    agentDebugLog("B", "egress.ts:upstreamFetch:attemptAbort", "attempt timer fired", {
+      up: up.name,
+      elapsedMs: Date.now() - t0,
+      attemptMs,
+    });
+    // #endregion
     ac.abort(Object.assign(new Error("attempt timeout"), { name: "TimeoutError" }));
   }, attemptMs);
 
@@ -93,9 +113,28 @@ export async function upstreamFetch(
     });
     // 首包已到：解除 attempt abort，让 SSE/body 长流不受 15–55s 墙限制
     clearTimeout(timer);
+    // #region agent log
+    agentDebugLog("B", "egress.ts:upstreamFetch:headers", "headers received", {
+      up: up.name,
+      status: resp.status,
+      ttfbMs: Date.now() - t0,
+      attemptMs,
+    });
+    // #endregion
     return resp as unknown as Response;
   } catch (e) {
     clearTimeout(timer);
+    // #region agent log
+    agentDebugLog("B", "egress.ts:upstreamFetch:err", "upstream fetch error", {
+      up: up.name,
+      elapsedMs: Date.now() - t0,
+      attemptMs,
+      name: (e as Error)?.name,
+      message: String((e as Error)?.message || e).slice(0, 120),
+      initAborted: !!(init.signal as AbortSignal | undefined)?.aborted,
+      attemptAborted: ac.signal.aborted,
+    });
+    // #endregion
     throw e;
   }
 }

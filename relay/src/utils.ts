@@ -3,6 +3,8 @@
 //  classifyErr, normTools, cleanThink
 // ═══════════════════════════════════════════════════════════════
 
+import { appendFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import type { ClassifiedError, OpenAIFunctionTool, AnthropicTool } from "./types.js";
 
 // ── Stall (v4.2) ──
@@ -13,6 +15,36 @@ export class StallError extends Error {
     this.name = "StallError";
   }
 }
+
+// #region agent log
+/** Debug-mode NDJSON sink (session b671cf). Env: LOOP_DEBUG_LOG */
+export function agentDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown> = {},
+): void {
+  try {
+    const logPath =
+      process.env.LOOP_DEBUG_LOG ||
+      "/Users/fan/.ccc/logs/debug-b671cf.ndjson";
+    mkdirSync(dirname(logPath), { recursive: true });
+    appendFileSync(
+      logPath,
+      JSON.stringify({
+        sessionId: "b671cf",
+        hypothesisId,
+        location,
+        message,
+        data,
+        timestamp: Date.now(),
+      }) + "\n",
+    );
+  } catch {
+    /* never break relay on debug I/O */
+  }
+}
+// #endregion
 
 export function getStallIdleMs(): number {
   const n = parseInt(process.env.STALL_IDLE_MS || "30000", 10);

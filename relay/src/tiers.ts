@@ -55,7 +55,21 @@ export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): Up
   console.warn(
     `[route] flash free long-cooldown ${longN}/${regFree.length} → paid-first (cache sticky)`,
   );
-  return [...paid, ...free];
+  // 多把同档付费：RR，禁止永远钉第一把
+  const paidRotated =
+    paid.length > 1
+      ? (() => {
+          const idx = (_boostPaidRr++ % paid.length);
+          return [paid[idx]!, ...paid.filter((_, i) => i !== idx)];
+        })()
+      : paid;
+  return [...paidRotated, ...free];
+}
+
+let _boostPaidRr = 0;
+/** 测试用 */
+export function _resetBoostPaidRrForTest(): void {
+  _boostPaidRr = 0;
 }
 
 /** 判断 upstream 是否可用 */

@@ -3,14 +3,14 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { UpstreamConfig, RoutingResult, FallbackAttempt, TrailRecord } from "./types.js";
-import { classifyErr, StallError, getStallIdleMs, streamReadWithTimeout } from "./utils.js";
+import { classifyErr, StallError, getStallIdleMs, streamReadWithTimeout, agentDebugLog } from "./utils.js";
 import { getAppContext } from "./context.js";
 import { bad } from "./health.js";
 import { recordOutcome, computeBackoffCooldown } from "./scoring.js";
 import { getConfig, TIMEOUTS } from "./config.js";
 import { ledgerReserve, ledgerSettle, ledgerMarkQuotaExhausted, ledgerWouldExceed } from "./ledger.js";
 import { affinityDeleteByUpstream } from "./router.js";
-import { isPaidUpstream } from "./tiers.js";
+import { isPaidUpstream, isUpstreamOk } from "./tiers.js";
 
 const MAX_QUOTA_COOLDOWN = 4 * 3600;
 const MAX_PROVIDER_COOLDOWN = 30 * 60;
@@ -27,10 +27,16 @@ const FETCH_GRAY_SEC = 90;
 /** 同请求最多试几个 free；按「不同出口」优先轮转，勿一失败就钉死 paid */
 const MAX_FREE_ATTEMPTS_PER_REQ = 4;
 const EGRESS_STAGGER_MS = 100;
-/** 给付费保底预留的墙钟余量（含 peek 余量） */
-const PAID_WALL_RESERVE_MS = 5_000;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
+/** paidOnly / forcePaid 多钥轮转（跨请求） */
+let _paidOnlyRr = 0;
+
+function pickPaidRotated(paidUsable: UpstreamConfig[]): UpstreamConfig {
+  if (paidUsable.length === 1) return paidUsable[0]!;
+  const idx = _paidOnlyRr++ % paidUsable.length;
+  return paidUsable[idx]!;
+}
 
 /** free 钥连续 fetch 失败灰名单（不进账号 breaker） */
 const _fetchGrayUntil = new Map<string, number>();
@@ -56,7 +62,12 @@ function failoverMaxAttempts(): number {
 }
 function failoverMaxMs(): number {
   // 付费 TTFB 常 20–55s；60s 墙钟几乎无余量 → 一碰 free 就 budget:wall 断任务
-  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "90000", 10) || 90_000);
+  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
+}
+
+/** 墙钟余量低于此值则不再试 free（对齐 2017 热更 dist） */
+function paidWallReserveMs(): number {
+  return TIMEOUTS.ATTEMPT_MS + TIMEOUTS.PEEK_PAID_MS + 5_000;
 }
 
 export { isPaidUpstream };
@@ -485,8 +496,19 @@ async function tryUpstreamStream(
       return { ok: true, reader, upstream: up, firstLines, buffered };
     } catch (e) {
       const msg = (e as Error).message || "";
+      const name = (e as Error).name || "";
       console.warn(`[fallback] stream fetch err ${up.name}: ${msg.slice(0, 50)}`);
-      lastErr = /timeout|aborted|TimeoutError/i.test(msg) ? "timeout" : "fetch";
+      lastErr = /timeout|aborted|TimeoutError|budget:wall/i.test(name + msg) ? "timeout" : "fetch";
+      // #region agent log
+      agentDebugLog("B", "fallback.ts:tryUpstreamStream:catch", "streamFn threw", {
+        up: up.name,
+        lastErr,
+        name,
+        message: msg.slice(0, 120),
+        signalAborted: !!signal?.aborted,
+        retry,
+      });
+      // #endregion
       // 超时不重试同钥，立刻换下一家
       if (lastErr === "timeout") break;
     }
@@ -588,6 +610,8 @@ export function selectNextCandidate(
     freeFailCount: number;
     failedPlatforms: Set<string>;
     rateLimitedHosts: Set<string>;
+    /** 候选里无可用 free → 直接 paid */
+    paidOnly?: boolean;
   },
 ): UpstreamConfig | null {
   const untried = candidates.filter(u => !tried.has(u.name));
@@ -606,43 +630,44 @@ export function selectNextCandidate(
   const attemptsLeft = maxAtt - opts.attempts;
   const freeTried = candidates.filter(u => tried.has(u.name) && !isPaidUpstream(u)).length;
   const wallLeft = wall - elapsed;
+  const reserve = paidWallReserveMs();
   const otherEgressFree = hasUntriedFreeOtherEgress(candidates, tried, isBlocked);
+
+  if (opts.paidOnly && paidUsable.length) {
+    return pickPaidRotated(paidUsable);
+  }
 
   // 先吐出顺序上的 skip（同 host RL / platform），保留 trail 可观测性
   const head = untried[0]!;
   if (isBlocked(head) && !isPaidUpstream(head)) return head;
 
   // 墙钟余量不够付费首包 → 立刻 paid（禁止再烧 free）
-  if (
-    paidUsable.length &&
-    wallLeft <= TIMEOUTS.ATTEMPT_PAID_MS + PAID_WALL_RESERVE_MS
-  ) {
-    return paidUsable[0]!;
+  if (paidUsable.length && wallLeft <= reserve) {
+    return pickPaidRotated(paidUsable);
   }
 
   // 同请求 free 次数上限
   if (paidUsable.length && freeTried >= MAX_FREE_ATTEMPTS_PER_REQ) {
-    return paidUsable[0]!;
+    return pickPaidRotated(paidUsable);
   }
 
   if (paidUsable.length && attemptsLeft <= 1) {
-    if (!isPaidUpstream(head) || isBlocked(head)) return paidUsable[0]!;
+    if (!isPaidUpstream(head) || isBlocked(head)) return pickPaidRotated(paidUsable);
   }
 
   // 已有 free 失败：若还有「不同出口」的 free，继续轮转；否则强制 paid
-  // （旧逻辑 freeTried>=1 立刻 paid → HK/其它账号永远轮不到）
   const forcePaid =
     paidUsable.length > 0 &&
     ((opts.freeFailCount >= 1 && !otherEgressFree) ||
       elapsed >= wall * 0.55 ||
-      wallLeft <= TIMEOUTS.ATTEMPT_PAID_MS + PAID_WALL_RESERVE_MS);
+      wallLeft <= reserve);
 
-  if (forcePaid) return paidUsable[0]!;
+  if (forcePaid) return pickPaidRotated(paidUsable);
 
   // 优先未阻塞 free；同出口已 RL 的会被 isBlocked 跳过
   const nextFree = untried.find(u => !isPaidUpstream(u) && !isBlocked(u));
   if (nextFree) return nextFree;
-  if (paidUsable.length) return paidUsable[0]!;
+  if (paidUsable.length) return pickPaidRotated(paidUsable);
   return untried.find(u => !isBlocked(u)) || head;
 }
 
@@ -683,6 +708,24 @@ export async function streamWithFallback(
   let freeFailCount = 0;
   const tried = new Set<string>();
   const stallMs = getStallIdleMs();
+  const paidOnlyReq = !candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
+  const pinPaidReq =
+    !!candidates[0] &&
+    isPaidUpstream(candidates[0]) &&
+    candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
+  let annotatedPaidReason = false;
+  // #region agent log
+  agentDebugLog("A", "fallback.ts:streamWithFallback:start", "stream fallback start", {
+    tier: routing.tier,
+    candidateN: candidates.length,
+    paidOnlyReq,
+    pinPaidReq,
+    wallMs: failoverMaxMs(),
+    attemptPaidMs: TIMEOUTS.ATTEMPT_PAID_MS,
+    peekPaidMs: TIMEOUTS.PEEK_PAID_MS,
+    names: candidates.map(c => c.name).slice(0, 12),
+  });
+  // #endregion
 
   while (true) {
     options.onAttemptWait?.();
@@ -710,8 +753,15 @@ export async function streamWithFallback(
       freeFailCount,
       failedPlatforms,
       rateLimitedHosts,
+      paidOnly: paidOnlyReq,
     });
     if (!up) break;
+
+    if (!annotatedPaidReason && isPaidUpstream(up)) {
+      annotatedPaidReason = true;
+      if (paidOnlyReq) pushTrail(trail, up.name, "paid_forced", budgetStart);
+      else if (pinPaidReq) pushTrail(trail, up.name, "paid_pinned", budgetStart);
+    }
 
     if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
       markPaidSkippedBudget(candidates, tried, failureReasons);
@@ -729,6 +779,12 @@ export async function streamWithFallback(
       tried.add(up.name);
       failureReasons.set(up.name, "skipped (same-host rate-limit)");
       pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
+      continue;
+    }
+    if (isFetchGray(up.name)) {
+      tried.add(up.name);
+      failureReasons.set(up.name, "skipped (fetch-gray)");
+      pushTrail(trail, up.name, "skip:fetch-gray", budgetStart);
       continue;
     }
 
@@ -750,11 +806,45 @@ export async function streamWithFallback(
       pushTrail(trail, "*", "budget:wall", budgetStart);
       break;
     }
+    // #region agent log
+    agentDebugLog("A", "fallback.ts:streamWithFallback:attempt", "trying upstream", {
+      up: up.name,
+      paid: isPaidUpstream(up),
+      attempts,
+      wallLeft,
+      freeFailCount,
+      paidOnlyReq,
+    });
+    // #endregion
     // 墙钟可打断进行中的 fetch/peek（禁止单次拖死到 ATTEMPT 以外）
+    const peerPaidLeft =
+      isPaidUpstream(up) &&
+      candidates.some(
+        u =>
+          u.name !== up.name &&
+          isPaidUpstream(u) &&
+          !tried.has(u.name) &&
+          !failedPlatforms.has(u.base_url) &&
+          !rateLimitedHosts.has(egressRateLimitKey(u)) &&
+          !ledgerWouldExceed(u),
+      );
+    // 还有下一把付费时：单次最多 ATTEMPT_PAID，禁止一把拖满整墙钟导致第二把永远 0 成功
+    const armMs = peerPaidLeft
+      ? Math.min(Math.max(1, wallLeft), TIMEOUTS.ATTEMPT_PAID_MS)
+      : Math.max(1, wallLeft > 0 ? wallLeft : (isPaidUpstream(up) ? TIMEOUTS.ATTEMPT_PAID_MS : 1));
     const attemptAc = new AbortController();
     const wallTimer = setTimeout(() => {
+      // #region agent log
+      agentDebugLog("B", "fallback.ts:streamWithFallback:wallAbort", "wall timer fired", {
+        up: up.name,
+        elapsedMs: Date.now() - t0,
+        wallLeftAtArm: wallLeft,
+        armMs,
+        peerPaidLeft,
+      });
+      // #endregion
       attemptAc.abort(Object.assign(new Error("budget:wall"), { name: "TimeoutError" }));
-    }, Math.max(1, wallLeft > 0 ? wallLeft : (isPaidUpstream(up) ? TIMEOUTS.ATTEMPT_PAID_MS : 1)));
+    }, armMs);
     let result: StreamTryResult;
     try {
       result = await tryUpstreamStream(up, streamFn, failedPlatforms, attemptAc.signal, wallDeadline);
@@ -764,6 +854,14 @@ export async function streamWithFallback(
     if (!result.ok) {
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
+      // #region agent log
+      agentDebugLog("A", "fallback.ts:streamWithFallback:fail", "upstream attempt failed", {
+        up: up.name,
+        lastErr: result.lastErr,
+        elapsedMs: Date.now() - t0,
+        paid: isPaidUpstream(up),
+      });
+      // #endregion
       if (!isPaidUpstream(up)) freeFailCount += 1;
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
         rateLimitedHosts.add(egressRateLimitKey(up));
@@ -954,6 +1052,12 @@ export async function nonStreamWithFallback(
   let attempts = 0;
   let freeFailCount = 0;
   const tried = new Set<string>();
+  const paidOnlyReq = !candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
+  const pinPaidReq =
+    !!candidates[0] &&
+    isPaidUpstream(candidates[0]) &&
+    candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
+  let annotatedPaidReason = false;
 
   while (true) {
     if (attempts >= failoverMaxAttempts()) {
@@ -978,8 +1082,14 @@ export async function nonStreamWithFallback(
       freeFailCount,
       failedPlatforms,
       rateLimitedHosts,
+      paidOnly: paidOnlyReq,
     });
     if (!up) break;
+    if (!annotatedPaidReason && isPaidUpstream(up)) {
+      annotatedPaidReason = true;
+      if (paidOnlyReq) pushTrail(trail, up.name, "paid_forced", budgetStart);
+      else if (pinPaidReq) pushTrail(trail, up.name, "paid_pinned", budgetStart);
+    }
     if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
       markPaidSkippedBudget(candidates, tried, failureReasons);
       pushTrail(trail, "*", "budget:wall", budgetStart);

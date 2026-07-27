@@ -26,18 +26,19 @@ export const TIMEOUTS = {
   // TCP connect only (undici Agent.connect.timeout)
   CONNECT_MS: Number(process.env.LOOP_CONNECT_TIMEOUT_MS) || 8_000,
   // 单次上游「等到响应头」上限（首包后必须解除，否则会杀长流）
-  ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 15_000,
-  // 付费保底：大 prompt TTFB 常 >15s，给更长首包预算
-  ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 70_000,
+  // free：快失败以便换钥/paid（2017 plist / authority：8s）
+  ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 8_000,
+  // 付费保底：大 prompt TTFB 常 >15s，给更长首包预算（authority：25s）
+  ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 25_000,
   // peek（响应头之后读满首批 SSE）硬超时 — 专治 100s+ 卡死
-  PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 10_000,
-  PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 25_000,
+  PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 6_000,
+  PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 12_000,
   // total timeout for non-streaming LLM calls (ms);非流式必须放宽,默认 10 分钟
   NONSTREAM_MS: Number(process.env.LOOP_NONSTREAM_TIMEOUT_MS) || 600_000,
   // undici Agent: streaming body timeout (ms);无读活动超过此时长则断开
   BODY_MS: Number(process.env.LOOP_BODY_TIMEOUT_MS) || 600_000,
   // undici Agent: headers 等待超时 (ms) — 须 ≥ ATTEMPT_PAID
-  HEADERS_MS: Number(process.env.LOOP_HEADERS_TIMEOUT_MS) || 75_000,
+  HEADERS_MS: Number(process.env.LOOP_HEADERS_TIMEOUT_MS) || 30_000,
   // keep-alive socket idle timeout (ms);Lesson 24 教训:默认 4s 太短导致池化连接被服务端回收
   KEEPALIVE_MS: Number(process.env.LOOP_KEEPALIVE_TIMEOUT_MS) || 60_000,
 } as const;

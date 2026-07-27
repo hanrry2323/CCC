@@ -11,7 +11,7 @@ import {
   applyTrailHeaders,
   recordProviderSuccess,
 } from "../fallback.js";
-import { cleanThink, streamReadWithTimeout } from "../utils.js";
+import { cleanThink, streamReadWithTimeout, agentDebugLog } from "../utils.js";
 import {
   anthropicToOpenAI,
   openAIChunkToAnthropicSSE,
@@ -274,6 +274,17 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     applyTrailHeaders(res, result.upstream?.name, result.trail);
 
     if (!result.consumedOk && !result.stalledAfterWrite) {
+      // #region agent log
+      agentDebugLog("D", "messages.ts:exhausted", "stream exhausted", {
+        headersSent,
+        contentBytesWritten,
+        errorCode: result.errorCode,
+        trail: (result.trail || []).map(t => `${t.name}:${t.reason}:${t.ms}`),
+        latencyMs: Date.now() - t0,
+        model: b.model,
+        stream: !!b.stream,
+      });
+      // #endregion
       // 勿清 affinity：保住 Go prompt_cache 会话粘性
       if (!headersSent) {
         const retry = result.retryAfterSec || 60;

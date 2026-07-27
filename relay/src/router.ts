@@ -188,20 +188,28 @@ export function resolveRequestTier(model: string | undefined, portDefault: TierI
 const SCORE_EPS = 0.05;
 const _rrCursor = new Map<string, number>();
 
-/** 同 priority + 接近分数时 round-robin，避免赢家通吃 */
+/** 同 priority + 接近分数时 round-robin，避免赢家通吃。
+ *  付费钥同 priority 忽略分数差：否则成功多的 A 永远压死 B（flash-b total_success=0）。
+ */
 function fairPick(tier: TierId, sorted: UpstreamConfig[]): UpstreamConfig[] {
   if (sorted.length <= 1) return sorted;
   const bestP = sorted[0].tier_priority ?? 99;
   const bestS = getScore(sorted[0].name);
+  const paidHead = isPaidUpstream(sorted[0]);
   const peers: UpstreamConfig[] = [];
   for (const u of sorted) {
     if ((u.tier_priority ?? 99) !== bestP) break;
+    if (paidHead && isPaidUpstream(u)) {
+      peers.push(u);
+      continue;
+    }
     if (Math.abs(getScore(u.name) - bestS) > SCORE_EPS) break;
     peers.push(u);
   }
   if (peers.length <= 1) return sorted;
-  const idx = (_rrCursor.get(tier) ?? 0) % peers.length;
-  _rrCursor.set(tier, idx + 1);
+  const rrKey = paidHead ? `${tier}:paid` : tier;
+  const idx = (_rrCursor.get(rrKey) ?? 0) % peers.length;
+  _rrCursor.set(rrKey, idx + 1);
   const pick = peers[idx];
   return [pick, ...sorted.filter(u => u.name !== pick.name)];
 }
@@ -345,7 +353,8 @@ function tryTier(
       .sort((a, b) => (a.tier_priority ?? 99) - (b.tier_priority ?? 99));
     if (paidAll.length) {
       const paidOk = paidAll.filter(isUpstreamOk);
-      const candidates = paidOk.length ? paidOk : paidAll;
+      const base = paidOk.length ? paidOk : paidAll;
+      const candidates = fairPick(tier, base);
       console.warn(
         `[route] flash free unavailable → last-resort paid ${candidates[0]!.name}` +
           (paidOk.length ? "" : " (short-cool bypass)"),
