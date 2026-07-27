@@ -51,6 +51,27 @@ http://192.168.3.116:7777/#/console
 - Hub CORS 默认允许内网 Origin（M1 SPA → 2017 API）。勿在 plist 把 `CCC_CHAT_CORS_ORIGIN_REGEX` 缩回仅 localhost，否则双口 SPA 下达失败。
 - 遗留 Agent 反代：仅 `CCC_AGENT_PROXY=1` 时挂载 `/api/agent/*`。
 
+### 探活契约（P-E · 硬 · 2026-07-28）
+
+**禁止**用 `GET /api/health` 判断 Hub 是否存活——Hub **无此路由**，返回 **404 是预期**。
+
+| 探针 | 期望 | 用途 |
+|------|------|------|
+| `GET http://127.0.0.1:17777/api/health`（隧道） | **404** | 契约自检；勿当 liveness |
+| `GET …/api/desktop/projects` **无** Basic Auth | **401** | 预期（Hub 默认开账密） |
+| `GET …/api/desktop/projects` `-u ccc:ccc` | **200** | **推荐** Hub 可达性 |
+| `GET …/api/desktop/version` `-u ccc:ccc` | **200** | 双机版本核对 |
+| `GET http://127.0.0.1:7788/health` | **200** | 对话口；默认无 Token |
+
+sidecar 无 auth、Hub API 有 auth = **设计差异**，不是「隧道坏了」。一键验收：
+
+```bash
+bash scripts/ccc-hub-probe.sh
+# M1 默认 CCC_SERVER=http://127.0.0.1:17777
+```
+
+详见 [`docs/dev-packets/012-hub-probe-health-contract.md`](dev-packets/012-hub-probe-health-contract.md)。
+
 ---
 
 ## 3. 账密

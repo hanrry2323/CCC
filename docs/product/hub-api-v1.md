@@ -136,10 +136,12 @@ inbox 契约：项目根 [`inbox/`](../../inbox/README.md)。
 ## 5. 兼容与探测
 
 - 客户端应容忍响应多字段。  
-- 可用 `GET /api/desktop/projects` 或 ops overview 探测 Hub 可达。  
-- 对话口探测：`GET http://<M1>:7788/health`（与 Hub 分离；见 [`hub-remote-management.md`](hub-remote-management.md)）。  
+- **Hub 可达性（硬）**：`GET /api/desktop/projects` 或 `GET /api/desktop/version`，须 Basic Auth（默认 `ccc:ccc`）。无 auth → **401 预期**。  
+- **禁止**用 `GET /api/health` 探 Hub——**无此路由**，**404 预期**（不是宕机）。一键契约：`bash scripts/ccc-hub-probe.sh`。  
+- 对话口探测：`GET http://<M1>:7788/health`（与 Hub 分离；默认无 Agent Token；见 [`hub-remote-management.md`](hub-remote-management.md)）。  
 - `GET /api/ops/router-usage`：退役 stub，勿作用量权威。  
-- **双机版本对齐**：`GET /api/desktop/version`（只读）→ `{ok, version, commit, hub_api_version}`；一键核对见 [`../deploy/dual-host-version-check.md`](../deploy/dual-host-version-check.md)。客户端支持集当前硬编码 `["v1"]`。
+- **双机版本对齐**：`GET /api/desktop/version`（只读）→ `{ok, version, commit, hub_api_version}`；一键核对见 [`../deploy/dual-host-version-check.md`](../deploy/dual-host-version-check.md)。客户端支持集当前硬编码 `["v1"]`。  
+- 口径包：[`../dev-packets/012-hub-probe-health-contract.md`](../dev-packets/012-hub-probe-health-contract.md)。
 
 ### `GET /api/desktop/version`（只读）
 

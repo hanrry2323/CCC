@@ -224,3 +224,76 @@
 - qb 业务探针金路径仍等 Layer1 余项收口后再开。
 
 ---
+
+## 2026-07-28 · P-E 探活契约（012）
+
+| 探针 | 结果 |
+|------|------|
+| Hub `/api/health` | **404 预期**（无此路由） |
+| `/api/desktop/projects` 无 auth | **401 预期** |
+| `/api/desktop/projects` + Basic Auth | **200** |
+| `/api/desktop/version` + auth | **200** |
+| sidecar `:7788/health` | **200**（默认无 Token） |
+| `bash scripts/ccc-hub-probe.sh` | **OVERALL pass** |
+| M1 fleet | **OVERALL green** |
+
+落地：[`scripts/ccc-hub-probe.sh`](../../scripts/ccc-hub-probe.sh) · [`docs/dev-packets/012-hub-probe-health-contract.md`](../../docs/dev-packets/012-hub-probe-health-contract.md) · ports / hub-api-v1 / topology 口径。
+
+**G5 / P-E → 绿**（隧道+契约探针+鉴权差异已文档化；不造假 `/api/health`）。
+
+---
+
+## 2026-07-28 · ccc-demo 金路径 v5（011 回归 + Desktop API）
+
+| 项 | 值 |
+|----|-----|
+| epic | `layer1-v5-be97b57f` → `done` |
+| work | `layer1-v5-be97b57f-w1` → **released** |
+| 戳记 | `docs/reports/ccc-layer1-golden-path-v5.md` 含 `GOLDEN_PATH_OK_V5` |
+| commit | `f1a9b16` — **仅**报告文件（无 `.ccc/`；011 回归过） |
+| transfer | `POST /api/desktop/transfer`（与 Desktop 同 API；本笔 Cursor 代发，`source=desktop`） |
+| verdict | PASS · `doc_only` · kb 同 tick released |
+
+### 勾选
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| P-B / P-C | **绿（巩固）** | v5 released+verdict；011 无 hygiene 脏扫 |
+| P-C Desktop UI 点选 | **部分** | 走 Desktop transfer API，非 App 内人手点定稿 |
+| 011 | **绿** | `git show f1a9b16` 无 `.ccc/` |
+
+---
+
+## 2026-07-28 · P-F 点灯验收
+
+| 检查 | 结果 |
+|------|------|
+| M1 fleet OVERALL | **green**（relay / hub-tunnel / sidecar） |
+| Hub `GET /api/ops/summary` | `health.severity=red`（qb 僵尸 abnormal×10 拉红） |
+| 红告警 `copy_payload` | **有** — 「一键复制交 Agent」载荷完整（样例 `abn-qb-env-checklist-e2e-w1-docs`） |
+| `ready_to_dispatch` | `ok=false`（舰队 abnormal=10）；**不挡** ccc-demo 本笔已下达成功 |
+| `human_line` | `请交给 Agent · 11 项红灯` |
+
+**G3 / P-F → 绿（机制）**：红灯可复制交 Agent 已证；M1 对话栈绿灯。残留：qb 板面僵尸 abnormal 拉红 Hub 总灯——清场走当前会话 board_ops，**不**开卫生 epic 主业。
+
+---
+
+## 2026-07-28 · P-A 浸泡（进行中 / 见下节完成后勾）
+
+（soak 日志：`/tmp/ccc-pa-soak-v5.log` · sidecar `/api/chat` 每 ~3min ×11 轮 ≥30min）
+
+---
+
+## 2026-07-28 · P-A 浸泡完成
+
+| 项 | 值 |
+|----|-----|
+| 通道 | M1 sidecar `POST /api/chat`（Desktop 对话传输层；`auth_required=false`） |
+| 窗口 | `2026-07-27T16:55:19Z` → `17:30:27Z`（**35.1 min**） |
+| 轮次 | 11 / 11 HTTP **200**（SSE：accepted → delta） |
+| 鉴权弹窗 | 无（`CCC_AGENT_AUTH=0`） |
+| 旁证 | fleet sidecar/tunnel/relay.m1 **green**；`ccc-hub-probe` pass |
+
+**G1 / P-A → 绿**（对话传输层 ≥30min 无假死）。诚实注：本笔为 Cursor 驱动 sidecar 浸泡，非人手在 Desktop App 点聊；与 Desktop 共用 `:7788`。
+
+---

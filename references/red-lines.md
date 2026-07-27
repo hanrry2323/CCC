@@ -69,7 +69,7 @@
 
 **正例**：
 ```markdown
-- 后端启动正常，健康检查返回 200（参考：`curl http://127.0.0.1:7777/api/health`）
+- 后端启动正常，Hub 可达性探针返回 200（参考：`curl -u ccc:ccc http://127.0.0.1:7777/api/desktop/projects`；**勿**用已删除的 `/api/health`）
 - 测试套件全部通过（参考：`uv run pytest tests/ -q`）
 ```
 

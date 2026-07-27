@@ -34,6 +34,7 @@
 | prod-batch-docs-spa-cleanup | [`009-prod-batch-docs-spa-cleanup.md`](./009-prod-batch-docs-spa-cleanup.md) | **已合入**（壳收尾完成；Ops 抛光主路径结束） |
 | golden-path-kb-script-seed | [`010-golden-path-kb-script-seed.md`](./010-golden-path-kb-script-seed.md) | **已合入** `f707782`（cherry-pick 自 draft；未带入同分支 relay 提交） |
 | dod-hygiene-scope-guard | [`011-dod-hygiene-scope-guard.md`](./011-dod-hygiene-scope-guard.md) | **已合入** `0505ae9`（merge `d7b0c12`） |
+| hub-probe-health-contract | [`012-hub-probe-health-contract.md`](./012-hub-probe-health-contract.md) | **已落地**（Cursor 直改；`scripts/ccc-hub-probe.sh`） |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。  
 三层出门 / 金路径：[`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md)。

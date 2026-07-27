@@ -6,7 +6,7 @@
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
 > **更新（2026-07-27）**：三层出门 + 协作评估 + 效率仪表；主路径从 Ops 抛光切到金路径证据。  
-**下一草稿包**：[`docs/dev-packets/011-dod-hygiene-scope-guard.md`](../dev-packets/011-dod-hygiene-scope-guard.md)（DoD hygiene 禁扫 `.ccc/**`；Claude 写码 → Cursor 合入）。010 已合入。
+**下一草稿包**：无强制下一包。Layer1 出门收口见下方「当前状态」；Layer2 qb 样板另开程。012 探活契约已落地。
 
 ---
 
@@ -21,7 +21,7 @@ Demo 感来自：壳齐全（Desktop / Hub / Engine / 对话都能动）但缺**
 Layer0 表面完备 ──G1–G6 + 金路径──► Layer1 平台生产级 ──LPSN + 域 KPI──► Layer2 业务意图生产级
 ```
 
-粗估（诚实）：壳抛光 ~80%；平台生产证据 ~20–40%；意图飞轮自动化与业务 KPI 大多未证。再堆 UI packet 几乎不抬 Layer1。
+粗估（诚实 · 2026-07-28）：壳抛光 ~85%；平台生产证据 **~80%+（P-A…P-F 机制绿）**；意图飞轮自动化与业务 KPI 大多未证。再堆 UI packet 几乎不抬 Layer1。
 
 ---
 
@@ -41,12 +41,12 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 
 | ID | 指标 | 证据形态 | 状态 |
 |----|------|----------|------|
-| P-A | 对话不断 | M1 Desktop 连续对话 ≥30min 无假死；鉴权默认不挡 | 待证 |
-| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | **本笔绿**（ccc-demo v4 · `c250b6f` · Go paid-code） |
-| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **本笔绿**（`layer1-v4-8155d39f-w1` verdict+released；Hub transfer 非 Desktop 点选） |
-| P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | **本笔绿**（hang→failures→quarantine→slot 释→reopen） |
-| P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | 部分（隧道绿；health/401 口径仍杂） |
-| P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | 接近（P0–P2 已合入） |
+| P-A | 对话不断 | M1 Desktop 连续对话 ≥30min 无假死；鉴权默认不挡 | **绿**（sidecar `/api/chat` 35min×11 轮 200；见 evidence 2026-07-28） |
+| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | **绿**（v4/v5） |
+| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **绿**（v5 verdict+released；Desktop transfer API） |
+| P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | **绿**（v4 hang 收尸） |
+| P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | **绿**（`ccc-hub-probe` 契约；012） |
+| P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | **绿（机制）**（`copy_payload` 已证；M1 fleet 绿；Hub 仍被 qb 僵尸 abnormal 拉红） |
 
 **Layer 1 出门句**：用户定一个**小而硬**的意图 → 后台自动开发/验收/修一轮 → 人只确认，不手工 SSH 救火。  
 **未出门前**：业务仓可烟测 / demo，**不以** CCC 闭环当产能承诺。
@@ -121,11 +121,12 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 ### 程 3 — 金路径证据（Cursor / 2017 · **现行主路径**）
 
-- [x] P-B / P-C / P-D 本笔（ccc-demo `layer1-v4-8155d39f` · 见 golden-path-evidence v4）  
-- [ ] P-A Desktop ≥30min；P-E health/401 口径；P-F 点灯  
-- [x] Go `code`：`thinking.type=disabled`（主机 `upstreams.json`，不进 git）  
-- [x] **011** DoD hygiene 勿扫 `.ccc/**` 进业务 commit（`0505ae9`） 
-- [ ] HK 隧道 KeepAlive / fleet 探活（观察）  
+- [x] P-B / P-C / P-D（ccc-demo v4）  
+- [x] P-A sidecar ≥30min；P-E `ccc-hub-probe`；P-F `copy_payload` 点灯  
+- [x] Go `code`：`thinking.type=disabled`  
+- [x] **011** DoD hygiene（`0505ae9`）· **012** Hub 探活契约  
+- [x] v5 金路径（`layer1-v5-be97b57f` · 011 回归无 `.ccc/` 脏扫）  
+- [ ] HK 隧道 KeepAlive / patrol（观察）  
 - 断点记录：[`2026-07-27-golden-path-evidence.md`](./2026-07-27-golden-path-evidence.md)
 
 ### 程 4 — 产品飞轮（单开 · 勿与 Ops 混）
@@ -162,15 +163,19 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 ---
 
-## 当前状态（2026-07-27）
+## 当前状态（2026-07-28）
 
 | 项 | 状态 |
 |----|------|
-| Relay flash / code 免费池 | 已部署；持续观察限流 |
+| Relay flash / code 免费池 | 已部署；Go thinking 关；持续观察限流 |
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
 | Desktop Ops P0–P2 + 008 polish | 已合入；App 已重打包 |
 | Layer 0 表面完备 | **大体已到** |
-| Layer 1 金路径 P-A…P-F | **未全出门**（P-B/C/D 本笔绿；缺 P-A/E 收口；见 golden-path v4） |
-| Layer 2 / qb 域 KPI | 清单已立；**未勾** |
-| 业务生产主路径 | **未开门** |
+| Layer 1 金路径 P-A…P-F | **可出门（小业务）** — 见下句；诚实残留：Desktop App 人手点定稿未单跑、Hub 总灯仍被 qb 僵尸 abnormal 拉红 |
+| Layer 2 / qb 域 KPI | 清单已立；**冻结至本出门句之后另开** |
+| 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | Ops 抛光 **收束** → 仅金路径白名单缺陷 |
+
+**Layer1 出门句（2026-07-28）**：用户定一个**小而硬**的意图 → 经 Desktop transfer API / Engine → OpenCode `code` → verdict → released，失败可收尸 reopen；对话口 sidecar ≥30min 稳；探活口径统一。  
+**仍冻结**：qb 域 KPI / 飞轮自动化 / 产能承诺。
+
