@@ -144,13 +144,15 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${RELAY_HOME}/clients.json</string>
     <key>LOOP_HOST_TAG</key>
     <string>${HOST_TAG}</string>
-    <!-- 墙钟/次数：禁止 120s×12 空转；付费保底需在预算内被点到 -->
+    <!-- 墙钟/次数：免费快失败 + 付费大 prompt 首包；禁止 120s×12 空转 -->
     <key>FAILOVER_MAX_MS</key>
-    <string>35000</string>
+    <string>60000</string>
     <key>FAILOVER_MAX_ATTEMPTS</key>
     <string>6</string>
     <key>LOOP_UPSTREAM_ATTEMPT_MS</key>
-    <string>15000</string>
+    <string>20000</string>
+    <key>LOOP_UPSTREAM_ATTEMPT_PAID_MS</key>
+    <string>55000</string>
     <key>LOOP_CONNECT_TIMEOUT_MS</key>
     <string>8000</string>
   </dict>

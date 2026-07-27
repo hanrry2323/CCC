@@ -50,6 +50,7 @@
 | paid `tier_priority=80` 永远垫底 | free 失败或墙钟过半 → **PaidGuarantee 插队**；多数 free 长冷却时 router **boost** paid 到第二位 |
 | `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤10s**，永不账号 breaker |
 | 503 文案把未试 paid 写成「不可用」 | trail 可标 `paid_skipped_budget`；成功时 `X-Routed-Upstream: opencode-go-paid-flash` |
+| 大上下文仍 503：trail 已点到 paid 也是 `fetch` | **勿**用 `CONNECT_MS` Abort 包整段 upstream fetch；首包超时拿到 Response 头后必须 **clearTimeout**，否则会杀长流 / 误杀付费 TTFB |
 
 **验收口径**：人为关掉全部 free flash 后，`POST /v1/messages` flash 应 **200** 且 `X-Routed-Upstream` = paid。  
 **看门狗（可选）**：`bash scripts/install-relay-flash-watchdog-plist.sh`（60s 探针，连续 3 次失败 kickstart）。

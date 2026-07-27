@@ -30,7 +30,7 @@ function failoverMaxAttempts(): number {
   return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
 }
 function failoverMaxMs(): number {
-  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "35000", 10) || 35_000);
+  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "60000", 10) || 60_000);
 }
 
 export { isPaidUpstream };
@@ -520,7 +520,7 @@ export function selectNextCandidate(
     paidUsable.length > 0 &&
     (opts.freeFailCount >= 1 ||
       elapsed >= wall * 0.5 ||
-      elapsed + TIMEOUTS.ATTEMPT_MS >= wall);
+      elapsed + TIMEOUTS.ATTEMPT_PAID_MS >= wall);
 
   if (forcePaid) {
     // 先吐出同 host skip，保留 trail 可观测性

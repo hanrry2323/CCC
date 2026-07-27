@@ -101,18 +101,12 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
           ...(candidate.request_overrides || {}),
         };
         try {
-          const controller = new AbortController();
-          const connectTimer = setTimeout(() => controller.abort(), TIMEOUTS.CONNECT_MS);
-          try {
-            return await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-              signal: controller.signal,
-            });
-          } finally {
-            clearTimeout(connectTimer);
-          }
+          // 勿用 CONNECT_MS 包整段 fetch：大 prompt TTFB 常 >8s，会把付费保底一起误杀
+          return await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
         } catch {
           return null;
         }
