@@ -17,6 +17,8 @@ const MAX_SAME_UPSTREAM_RETRIES = 2;
 const RETRY_DELAY_MS = 300;
 const PROVIDER_BREAKER_THRESHOLD = 3;
 const PROVIDER_BREAKER_SEC = 120;
+/** 突发限流 Retry-After 封顶；超过此值视为日配额耗尽（Zen 免费池常给到 UTC 重置） */
+const RATE_LIMIT_RETRY_AFTER_CAP = 120;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
 
@@ -111,7 +113,13 @@ interface MarkBadOpts {
 function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkBadOpts = {}): void {
   let sec = 20;
   const cls = classifyErr(errMsg);
-  const dailyQuota = isDailyQuotaError(opts.errType ?? undefined, errMsg);
+  // Zen 免费池常回 429 "Rate limit exceeded" + 数小时 Retry-After（到日切），无 FreeUsage 类型也按日配额
+  const longRetryAsQuota =
+    status === 429 &&
+    !!opts.retryAfterSec &&
+    opts.retryAfterSec > RATE_LIMIT_RETRY_AFTER_CAP;
+  const dailyQuota =
+    isDailyQuotaError(opts.errType ?? undefined, errMsg) || longRetryAsQuota;
   // 限流（非日配额）：多钥同 IP 级联时若再乘 EWMA，会把整池锁 10 分钟→假死
   const isRateLimit =
     !dailyQuota &&
@@ -125,9 +133,9 @@ function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkB
     sec = computeBackoffCooldown(up.name, cls?.sec ?? 300, MAX_QUOTA_COOLDOWN);
     ledgerMarkQuotaExhausted(up);
   } else if (isRateLimit) {
-    // 固定短冷却，禁止 EWMA 放大；有 Retry-After 则采纳但封顶 120s
+    // 固定短冷却，禁止 EWMA 放大；有 Retry-After 则采纳但封顶 RATE_LIMIT_RETRY_AFTER_CAP
     const ra = opts.retryAfterSec && opts.retryAfterSec > 0 ? opts.retryAfterSec : (cls?.sec ?? 60);
-    sec = Math.min(Math.max(ra, 15), 120);
+    sec = Math.min(Math.max(ra, 15), RATE_LIMIT_RETRY_AFTER_CAP);
   } else if (cls) {
     sec = computeBackoffCooldown(up.name, cls.sec, MAX_PROVIDER_COOLDOWN);
   } else if (/empty/i.test(errMsg)) sec = 20;

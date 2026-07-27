@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "loop/code",
+  "small_model": "loop/flash",
+  "provider": {
+    "loop": {
+      "name": "CCC Relay (flash / Pro / code)",
+      "kind": "openai",
+      "options": {
+        "baseURL": "http://127.0.0.1:4002/v1",
+        "apiKey": "sk-relay"
+      },
+      "models": {
+        "flash": {
+          "id": "flash",
+          "limit": { "context": 200000, "output": 32000 },
+          "modalities": { "input": ["text"], "output": ["text"] }
+        },
+        "pro": {
+          "id": "pro",
+          "limit": { "context": 200000, "output": 32000 },
+          "modalities": { "input": ["text"], "output": ["text"] }
+        },
+        "code": {
+          "id": "code",
+          "limit": { "context": 200000, "output": 32000 },
+          "modalities": { "input": ["text"], "output": ["text"] }
+        }
+      }
+    }
+  }
+}

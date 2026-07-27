@@ -170,7 +170,7 @@ async def run_opencode(
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
-        # CCC Relay 2026-07-25:默认 loop/code(经本机 relay :4002,协议转换到讯飞/智谱)
+        # CCC Relay 2026-07-25:默认 loop/code(经本机 relay :4002 → Zen code 档)
         # fail-open 时(OPENCODE_FAIL_OPEN=1 或 relay down)切 xfyun/code 直连
         # 直连降级用 OPENCODE_CONFIG 指 ~/.config/opencode/opencode.direct.json
         model = os.environ.get("OPENCODE_MODEL", Config().model)

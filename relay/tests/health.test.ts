@@ -1,8 +1,18 @@
 // ═══════════════════════════════════════════════════════════════
 //  tests/health.test.ts — 健康探针 + cooldown 管理（v3.6 新增覆盖）
+//  probeOne 走 upstreamFetch（undici），须 mock egress 而非全局 fetch
 // ═══════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+const upstreamFetch = vi.fn();
+vi.mock("../src/egress.js", () => ({
+  upstreamFetch: (...args: unknown[]) => upstreamFetch(...args),
+  resolveUpstreamProxy: () => null,
+  getDispatcherForUpstream: () => ({}),
+  _resetEgressAgentsForTest: () => {},
+}));
+
 import { bad, probeOne } from "../src/health.js";
 import { isUpstreamOk } from "../src/tiers.js";
 import { setAppContext, createAppContext } from "../src/context.js";
@@ -23,6 +33,7 @@ beforeEach(() => {
   cool.clear();
   hlt.clear();
   sc.clear();
+  upstreamFetch.mockReset();
   setAppContext(createAppContext({
     clients: cls,
     usage: { value: [] },
@@ -37,7 +48,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   cool.clear();
   hlt.clear();
 });
@@ -70,9 +80,9 @@ describe("probeOne", () => {
   it("200 OK → healthy（不再清除 cooldown：探针与冷却解耦）", async () => {
     const u = makeUp("up-healthy");
     bad(u, 600, "stale");
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
-    ) as unknown as typeof fetch;
+    upstreamFetch.mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 }),
+    );
     await probeOne(u);
     const h = hlt.get("up-healthy");
     expect(h?.status).toBe("healthy");
@@ -83,18 +93,14 @@ describe("probeOne", () => {
 
   it("429 → ratelimit", async () => {
     const u = makeUp("up-rl");
-    globalThis.fetch = vi.fn(async () =>
-      new Response("rate limited", { status: 429 })
-    ) as unknown as typeof fetch;
+    upstreamFetch.mockResolvedValue(new Response("rate limited", { status: 429 }));
     await probeOne(u);
     expect(hlt.get("up-rl")?.status).toBe("ratelimit");
   });
 
   it("5xx → POST fallback 建立初始 unhealthy（无已知状态时兜底）", async () => {
     const u = makeUp("up-5xx");
-    globalThis.fetch = vi.fn(async () =>
-      new Response("internal", { status: 503 })
-    ) as unknown as typeof fetch;
+    upstreamFetch.mockResolvedValue(new Response("internal", { status: 503 }));
     await probeOne(u);
     // GET /models 失败 + POST fallback → unhealthy（需要建立初始状态）
     expect(hlt.get("up-5xx")?.status).toBe("unhealthy");
@@ -102,9 +108,7 @@ describe("probeOne", () => {
 
   it("网络异常 → 不更新状态，保留上次已知", async () => {
     const u = makeUp("up-neterr");
-    globalThis.fetch = vi.fn(async () => {
-      throw new Error("ECONNREFUSED");
-    }) as unknown as typeof fetch;
+    upstreamFetch.mockRejectedValue(new Error("ECONNREFUSED"));
     await probeOne(u);
     // 探针网络错误时不更新，防 transient 误报
     expect(hlt.get("up-neterr")).toBeUndefined();
@@ -113,9 +117,7 @@ describe("probeOne", () => {
   it("200 保留短 cooldown (≤ 2min)", async () => {
     const u = makeUp("up-short-cd");
     bad(u, 30, "transient"); // 短冷却
-    globalThis.fetch = vi.fn(async () =>
-      new Response("{}", { status: 200 })
-    ) as unknown as typeof fetch;
+    upstreamFetch.mockResolvedValue(new Response("{}", { status: 200 }));
     await probeOne(u);
     expect(cool.has("up-short-cd")).toBe(true); // 短冷却保留
   });

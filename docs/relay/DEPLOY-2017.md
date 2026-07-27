@@ -52,9 +52,10 @@ cp ~/program/CCC/templates/relay-upstreams.example.json ~/.ccc/relay/upstreams.j
 chmod 600 ~/.ccc/relay/upstreams.json
 
 # 编辑填真 key(三档必填)
-# flash → MiniMax(api.minimaxi.com)
-# Pro   → MiniMax 直连(无协议转换)
-# code  → 讯飞 xfyun/code(astron-code-latest)
+# flash → OpenCode Zen deepseek-v4-flash-free（多 key + 可选 HK :18080）
+# Pro   → 空档时回落 flash（可后续填付费档）
+# code  → Zen 免费池 big-pickle 主力 + flash-free 备份（讯飞 xfyun 退役）
+# 模板注释勿写进 JSON 的 $comment（OpenCode 拒收 unrecognized key）
 $EDITOR ~/.ccc/relay/upstreams.json
 ```
 
@@ -63,9 +64,14 @@ $EDITOR ~/.ccc/relay/upstreams.json
 python3 -c "
 import json
 cfg = json.load(open('$HOME/.ccc/relay/upstreams.json'))
-tiers = cfg.get('tiers') or cfg
-missing = [t for t in ('flash','Pro','code') if t not in tiers]
-print('OK' if not missing else f'缺三档: {missing}')
+ups = cfg if isinstance(cfg, list) else cfg.get('upstreams') or []
+have = set()
+for u in ups:
+  if u.get('enabled', True) is False: continue
+  t = (u.get('tier') or '').lower()
+  if t: have.add(t)
+missing = [t for t in ('flash','code') if t not in have]
+print('OK' if not missing else f'缺启用档: {missing}; have={sorted(have)}')
 "
 ```
 
@@ -113,9 +119,14 @@ cp ~/program/CCC/templates/opencode.direct.example.json \
 chmod 600 ~/.config/opencode/opencode.direct.json
 # 编辑填 xfyun/zhipu 真实 key
 
-# 6.3 从 opencode.json 删 xfyun/zhipu provider(留 loop → :4002)
+# 6.3 主配置改 loop → :4002（模板）
+cp ~/program/CCC/templates/opencode.relay.example.json \
+   ~/.config/opencode/opencode.json
+chmod 600 ~/.config/opencode/opencode.json
+# 可选同步 ~/.opencode/opencode.json
 # opencode-exec 探 :4002 失败时自动切 xfyun/code + OPENCODE_CONFIG 指向 opencode.direct.json
-# 验收:opencode-exec 跑一次 phase 任务,日志 [fail-open] 不出现即正常
+# Engine 默认 OPENCODE_MODEL=loop/code（scripts/ccc-engine.sh）
+# 验收:opencode run --model loop/code "ping" 走 relay；日志 [fail-open] 不出现即正常
 ```
 
 ---

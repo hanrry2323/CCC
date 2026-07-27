@@ -292,11 +292,48 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     return json(res, 200, { period: p, total, tokens, by_upstream: byU, by_client: byC, by_tier: byTier, trend: tr, hourly });
   }
 
+  // ── /admin/cooldowns ── 运维：冷却列表（剩余秒 + 原因）
+  if (method === "GET" && pathname === "/admin/cooldowns") {
+    const now = Date.now();
+    const items = [...cool.entries()]
+      .map(([name, rec]) => ({
+        name,
+        until: rec.until,
+        reason: rec.reason,
+        left_sec: Math.max(0, Math.ceil((rec.until - now) / 1000)),
+      }))
+      .sort((a, b) => b.left_sec - a.left_sec);
+    return json(res, 200, { cooldowns: items, count: items.length });
+  }
+
   // ── /admin/cooldowns/clear ── 运维：清冷却 + 软重置低分（多钥限流假死急救）
+  // 默认保留长冷却（日配额 / 长 Retry-After），避免清完又撞同一耗尽钥；?force=1 全清
   if (method === "POST" && pathname === "/admin/cooldowns/clear") {
     const ctx = getAppContext();
+    const q = urlParams(req);
+    const force =
+      q.get("force") === "1" ||
+      q.get("force") === "true";
+    /** 剩余超过此秒数视为日配额类，默认不清 */
+    const PRESERVE_LEFT_SEC = 300;
     const before = cool.size;
-    cool.clear();
+    let cleared = 0;
+    let preserved = 0;
+    const now = Date.now();
+    if (force) {
+      cool.clear();
+      cleared = before;
+    } else {
+      for (const [name, rec] of [...cool.entries()]) {
+        const left = Math.ceil((rec.until - now) / 1000);
+        if (left > PRESERVE_LEFT_SEC) {
+          preserved += 1;
+          continue;
+        }
+        cool.delete(name);
+        cleared += 1;
+      }
+    }
     ctx.providerCooldowns.clear();
     ctx.providerFailCounts.clear();
     let resetScores = 0;
@@ -307,8 +344,20 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
         resetScores += 1;
       }
     }
-    console.warn(`[admin] cooldowns cleared (${before} entries), soft-reset scores=${resetScores}`);
-    return json(res, 200, { ok: true, cleared: before, scores_soft_reset: resetScores });
+    console.warn(
+      `[admin] cooldowns cleared=${cleared} preserved=${preserved} force=${force} (before=${before}), soft-reset scores=${resetScores}`,
+    );
+    return json(res, 200, {
+      ok: true,
+      cleared,
+      preserved,
+      force,
+      before,
+      scores_soft_reset: resetScores,
+      hint: force
+        ? null
+        : "long cooldowns (left>300s) preserved; POST ?force=1 to clear all",
+    });
   }
 
   // ── /admin/scores ── score 排行 + cooldown/ledger 原因

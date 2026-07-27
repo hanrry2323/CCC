@@ -1,5 +1,4 @@
 {
-  "$comment": "CCC OpenCode 直连兜底配置(2026-07-25 密钥硬化)。当本机 relay :4002 不可达时,opencode-exec 通过 OPENCODE_CONFIG 切换到本文件跑直连。chmod 600,不要进 git。xfyun/zhipu 明文 key 只在本文件留一份(供降级);upstreams.json 内的 key 是 relay 上游凭据。",
   "$schema": "https://opencode.ai/config.json",
   "provider": {
     "xfyun": {

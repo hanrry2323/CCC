@@ -377,6 +377,8 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **M1 对话路径** | sidecar / 个人 Claude Code → **2017 编排面 relay**(`http://192.168.3.116:4000`,共享免费 flash 钥池 + HK 出口);可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`;默认模型 **`flash`**（OpenCode Zen `deepseek-v4-flash-free`） |
 | **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`(`OPENCODE_MODEL=loop/code`) |
 | **code 默认上游（硬 · 2026-07-27）** | OpenCode Zen **免费池**：`big-pickle` 主力 + `deepseek-v4-flash-free` 同档备份；多 key；**双出口**（直连 + `com.ccc.hk-egress-tunnel` `:18080`）。讯飞 xfyun **退役**；智谱仅 fail-open 末位（默认关）。扩 IP = 加 proxy URL 行，不做独立 IP 池守护进程 |
+| **冷却 / 限流（硬 · 2026-07-27）** | 429 + `Retry-After` >120s 一律按**日配额**冷却（采纳完整 RA，禁封顶 120s 反复撞钥）。`POST /admin/cooldowns/clear` **默认保留**剩余 >300s 的冷却；急救全清用 `?force=1`。列表：`GET /admin/cooldowns` |
+| **OpenCode 默认（硬 · 2026-07-27）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/code`（本机 `:4002` → relay `code`）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
 | **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
 | **日常简单活** | Desktop / Claude Code 默认 `flash` 吃免费流量;重活再选 `Pro`/`code`;勿再把 MiniMax 当对话默认 |
 | **对话口鉴权（硬 · 2026-07-27）** | M1 sidecar `:7788` **默认 `CCC_AGENT_AUTH=0`**（内网网页 `#/chat` 不弹 Token）；需要时再 `CCC_AGENT_AUTH=1`。Hub Basic Auth 不动 |

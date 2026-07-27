@@ -110,6 +110,70 @@ describe("fallback cooldown on upstream errors", () => {
     expect(sc.get("u1")?.ewma ?? 0.8).toBe(0.8);
   });
 
+  it("treats 429 + long Retry-After as day-quota even without FreeUsage type", async () => {
+    // Zen 免费池实测：message=Rate limit exceeded, retry-after≈18h，无 FreeUsageLimitError
+    const u1 = makeUp("u1");
+    const u2 = makeUp("u2");
+    const routing: RoutingResult = {
+      upstream: u1,
+      candidates: [u1, u2],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (url.includes("u1")) {
+        return new Response(
+          JSON.stringify({ error: { message: "Rate limit exceeded. Please try again later." } }),
+          { status: 429, headers: { "retry-after": "67561" } },
+        );
+      }
+      return new Response(okBody, { status: 200 });
+    }) as any;
+
+    const res = await streamWithFallback(routing, async (up) =>
+      fetch(up.base_url + "/chat/completions"),
+    );
+
+    expect(res.upstream!.name).toBe("u2");
+    const c = cool.get("u1")!;
+    const leftSec = Math.round((c.until - Date.now()) / 1000);
+    // 必须采纳长 Retry-After，禁止封顶 120s 后反复撞钥
+    expect(leftSec).toBeGreaterThanOrEqual(67500);
+    expect(sc.get("u1")?.ewma ?? 0.8).toBe(0.8);
+  });
+
+  it("caps short rate-limit Retry-After at 120s", async () => {
+    const u1 = makeUp("u1");
+    const u2 = makeUp("u2");
+    const routing: RoutingResult = {
+      upstream: u1,
+      candidates: [u1, u2],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (url.includes("u1")) {
+        return new Response(
+          JSON.stringify({ error: { message: "Rate limit exceeded" } }),
+          { status: 429, headers: { "retry-after": "90" } },
+        );
+      }
+      return new Response(okBody, { status: 200 });
+    }) as any;
+
+    await streamWithFallback(routing, async (up) =>
+      fetch(up.base_url + "/chat/completions"),
+    );
+
+    const leftSec = Math.round((cool.get("u1")!.until - Date.now()) / 1000);
+    expect(leftSec).toBeGreaterThanOrEqual(85);
+    expect(leftSec).toBeLessThanOrEqual(120);
+  });
+
   it("cools a 400 upstream error (transient gateway failure)", async () => {
     const u1 = makeUp("u1");
     const u2 = makeUp("u2");
