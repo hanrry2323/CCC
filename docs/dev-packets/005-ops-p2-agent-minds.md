@@ -28,7 +28,12 @@
 
 ## 5. 现状锚点
 
-- Hub `ops.py`：`out["agent_minds"] = {"ok": True, "items": minds}`
+- Hub `ops.py`：`agent_minds.items[]` 字段：
+  - `project_id` (str)
+  - `as_of` (可选)
+  - `board_summary` / `daily` / `weekly`（可选短文）
+  - `constraints_n` (Int 可选)
+  - 或 `error`（单项目失败）
 - Desktop `OpsSummary` **尚未**解码 `agent_minds`
 - OpsView 已有 DisclosureGroup「模型通道」可参照
 
