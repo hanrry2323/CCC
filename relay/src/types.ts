@@ -100,6 +100,8 @@ export interface ScoreRecord {
   lastSuccessTs: number; // 上次成功时间
   totalSuccess: number;  // 累计成功
   totalFail: number;     // 累计失败
+  /** 日配额类失败计数（不进 EWMA，仅观测） */
+  quotaHits?: number;
 }
 
 // ── Auth ──

@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { IncomingMessage, ServerResponse } from "http";
-import { route, affinityKey, affinitySet, affinityDeleteAll, resolveRequestTier } from "../router.js";
+import { route, affinityKey, affinitySet, resolveRequestTier } from "../router.js";
 import {
   streamWithFallback,
   nonStreamWithFallback,
@@ -15,9 +15,10 @@ import { cauth, cmay } from "../auth.js";
 import { logUsage } from "../usage.js";
 import { json, readBody } from "../http.js";
 import { cacheKey, cacheGet, cacheSet, prefixCacheKey, trackPrefix, isCacheableRequest, shouldCacheWrite } from "../cache.js";
-// CCC Relay 2026-07-25 门禁②补丁:流式/非流式超时走可配
 import { TIMEOUTS } from "../config.js";
 import { upstreamFetch } from "../egress.js";
+import { applyOpenAIPromptCache } from "../translator/anthropic.js";
+import { isPaidUpstream } from "../tiers.js";
 
 export async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const t0 = Date.now();
@@ -100,6 +101,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
           stream_options: { include_usage: true },
           ...(candidate.request_overrides || {}),
         };
+        applyOpenAIPromptCache(body, { promptCacheKey: affKey });
         try {
           // 勿用 CONNECT_MS 包整段 fetch：大 prompt TTFB 常 >8s，会把付费保底一起误杀
           return await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
@@ -232,7 +234,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
     applyTrailHeaders(res, result.upstream?.name, result.trail);
 
     if (!result.consumedOk && !result.stalledAfterWrite) {
-      if (affKey) affinityDeleteAll(affKey);
+      // 勿清 affinity
       if (!headersSent) {
         const retry = result.retryAfterSec || 60;
         res.setHeader("Retry-After", String(retry));
@@ -274,9 +276,11 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
       });
       if (streamOk) {
         recordProviderSuccess(result.upstream);
-        if (affKey && !ru.is_fallback) affinitySet(affKey, result.upstream.name);
-      } else if (affKey) {
-        affinityDeleteAll(affKey);
+        if (affKey) {
+          affinitySet(affKey, result.upstream.name, {
+            pinPaid: isPaidUpstream(result.upstream),
+          });
+        }
       }
     }
 
@@ -293,10 +297,12 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
       const signal = signals.length > 1 && typeof AbortSignal.any === "function"
         ? AbortSignal.any(signals)
         : signals[0];
+      const body: any = { ...b, model: cUpm, ...(candidate.request_overrides || {}) };
+      applyOpenAIPromptCache(body, { promptCacheKey: affKey });
       const resp = await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...b, model: cUpm, ...(candidate.request_overrides || {}) }),
+        body: JSON.stringify(body),
         signal,
       });
       const d = await resp.json();
@@ -309,7 +315,6 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
   applyTrailHeaders(res, result.upstream?.name, result.trail);
 
   if (!result.upstream) {
-    if (affKey) affinityDeleteAll(affKey);
     const retry = result.retryAfterSec || 60;
     res.setHeader("Retry-After", String(retry));
     return json(res, 503, {
@@ -345,7 +350,13 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
     latency_ms: Date.now() - t0,
   });
   recordProviderSuccess(result.upstream);
-  if (affKey && !ru.is_fallback) affinitySet(affKey, result.upstream.name);
+  if (affKey) {
+    affinitySet(affKey, result.upstream.name, {
+      pinPaid: isPaidUpstream(result.upstream),
+    });
+  }
+  const ctkNs = d.usage?.prompt_tokens_details?.cached_tokens || 0;
+  if (ctkNs > 0) res.setHeader("X-Upstream-Cached-Tokens", String(ctkNs));
   return json(res, 200, d);
 }
 

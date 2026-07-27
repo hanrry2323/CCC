@@ -25,7 +25,7 @@ export function anthropicToOpenAI(
   const hasCacheControl = detectCacheControl(req);
   const sysStr = extractSystemString(req.system);
   const sysMsg: ChatMessage | null = sysStr
-    ? { role: "system", content: sysStr, cache_control: { type: "ephemeral", ttl: "1h" } }
+    ? { role: "system", content: sysStr, cache_control: { type: "ephemeral", ttl: "24h" } }
     : null;
   const sys = sysMsg ? [sysMsg] : [];
   const msgs: ChatMessage[] = (req.messages || []).flatMap(anthropicMsgToOpenAI);
@@ -59,7 +59,7 @@ export function anthropicToOpenAI(
   if (req.tools?.length) {
     o.tools = normTools(req.tools);
     const tools = o.tools as Array<Record<string, unknown>>;
-    if (tools.length) tools[tools.length - 1]!.cache_control = { type: "ephemeral", ttl: "1h" };
+    if (tools.length) tools[tools.length - 1]!.cache_control = { type: "ephemeral", ttl: "24h" };
   }
   if (req.tool_choice && req.tool_choice.type !== "auto") {
     o.tool_choice = req.tool_choice.type === "any"
@@ -77,7 +77,7 @@ function stampTailCacheControl(msgs: ChatMessage[]): void {
   for (let i = msgs.length - 1; i >= 0 && left > 0; i--) {
     const m = msgs[i]!;
     if (m.role !== "user" && m.role !== "assistant") continue;
-    m.cache_control = { type: "ephemeral", ttl: "1h" };
+    m.cache_control = { type: "ephemeral", ttl: "24h" };
     left -= 1;
   }
 }
@@ -388,4 +388,28 @@ export function openAIResponseToAnthropic(
   };
 
   return ar;
+}
+
+/** OpenAI Chat 请求注入 Go prompt cache 字段（:4002 / OpenCode） */
+export function applyOpenAIPromptCache(
+  body: Record<string, unknown>,
+  opts?: { promptCacheKey?: string | null },
+): void {
+  (body as any).enable_prompt_cache = true;
+  (body as any).prompt_cache_retention = "24h";
+  const ck = (opts?.promptCacheKey || "").trim();
+  if (ck) (body as any).prompt_cache_key = ck.slice(0, 64);
+
+  const msgs = body.messages as ChatMessage[] | undefined;
+  if (Array.isArray(msgs) && msgs.length) {
+    const sys = msgs.find(m => m.role === "system");
+    if (sys && typeof sys === "object") {
+      (sys as any).cache_control = { type: "ephemeral", ttl: "24h" };
+    }
+    stampTailCacheControl(msgs);
+  }
+  const tools = body.tools as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(tools) && tools.length) {
+    tools[tools.length - 1]!.cache_control = { type: "ephemeral", ttl: "24h" };
+  }
 }

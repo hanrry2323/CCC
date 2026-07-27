@@ -39,42 +39,45 @@
 
 ---
 
-## 2.1 503 根因与付费保底（2026-07-27）
+## 2.1 503 根因与付费保底（2026-07-28 修订）
 
 进程 **LISTEN :4000** 仍可对 flash 回 **503**。常见不是「没配付费钥」，而是调度把付费排到墙钟之后：
 
 | 旧坑 | 新策略（已落地） |
 |------|------------------|
-| 免费钥 `fetch` 挂 60–90s → `budget:wall`，paid 未试 | 单次上游硬超时 **15s**（`LOOP_UPSTREAM_ATTEMPT_MS`） |
-| launchd `FAILOVER_MAX_MS=120000` / 12 次 | 默认 / 2017 plist：**90s / 8 次** |
-| paid `tier_priority=80` 永远垫底 | free 失败 → **PaidGuarantee**；多数 free 长冷却 → **paid-first** |
-| `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤3s**；free fetch → 90s 灰名单 |
-| 503 文案把未试 paid 写成「不可用」 | trail 可标 `paid_skipped_budget`；成功时 `X-Routed-Upstream: opencode-go-paid-flash` |
-| 大上下文仍 503：trail 已点到 paid 也是 `fetch` | **勿**用 `CONNECT_MS` Abort 包整段 fetch；首包后 clearTimeout |
-| trail 仍见 100s+ `fetch` | **peek 硬超时** free 10s / paid 25s；同请求按**出口**轮转 free（最多 4），勿一失败就钉 paid |
-| 付费兜底仍 502/断流 | flash free 全死时 **last-resort 含短冷却 paid**；墙钟默认 **90s** / paid 首包 **70s**；SSE keepalive + peek 立刻 flush |
+| 免费钥 `fetch` 挂 60–90s → `budget:wall`，paid 未试 | 单次 free 硬超时 **8s** / paid **25s**（`LOOP_UPSTREAM_ATTEMPT_*`） |
+| launchd 墙钟过大、白烧 free | 默认 / 2017 plist：**45s / 6 次**；force-paid 预留 = free attempt + peek_paid + 5s（**禁止**用满 ATTEMPT_PAID） |
+| paid `tier_priority=80` 永远垫底 | free **全部不可用** → **paid-first**（废除「≥50% 长冷却就全局 paid」） |
+| 日配额 429 当 IP RPM → 整出口封死 | **日配额只冷却该钥**；同出口 sibling 继续轮；RPM 才 `same-host-rl` |
+| 会话 last-2-user 换键 + paid 成功不粘 | 稳定 `x-session-id` / system+first_user；paid 成功 **钉 paid**（TTL≈24h，对齐 Go cache） |
+| 探针 `/models` 200 假绿 | free Zen **chat 探针**；admin `ready`/`cool_left`/`quota_hits` |
+| `fetch` 失败打 `provider_group` 整账号 | **禁止**；付费 fetch 冷却短；free fetch → 灰名单 |
+| 503 文案把未试 paid 写成「不可用」 | trail：`day-quota` / `same-host-rl` / `paid_forced` / `paid_pinned` |
+
+**会话计费粘性（硬）**：新会话仍 **free-first**；一旦本会话成功走 Go paid → **钉 paid** 到 cache 窗。这不是背叛免费优先，是避免 free↔paid 跳把 prompt cache 打冷（账单 10–20×）。
 
 **验收口径**：人为关掉全部 free flash 后，`POST /v1/messages` flash 应 **200** 且 `X-Routed-Upstream` = paid。  
-**看门狗（可选）**：`bash scripts/install-relay-flash-watchdog-plist.sh`（60s 探针，连续 3 次失败 kickstart）。
+同 `x-session-id` 连打 ≥5 轮：≥3 轮 `cached_tokens/prompt_tokens ≥ 0.7`（Go 口径见 `upstream_cache_token_ratio`）。  
+**看门狗（可选）**：`bash scripts/install-relay-flash-watchdog-plist.sh`。
 
-**勿做**：用 `?force=1` 清日额长冷却当「提稳」（只会反复撞 429）。
+**勿做**：用 `?force=1` 清日额长冷却当「提稳」；不把本地 L1 当 Agent 账单救命稻草（带 tools 几乎不命中）。
 
-### 2026-07-27 活体结论（轮转 vs 断任务）
+### 2026-07-28 活体结论
 
-- 直连探针：`opencode-go-a..j` **全部** `429` + `Retry-After≈10h`（日配额真耗尽，不是路由漏选）。
-- 此时正确行为 = **立刻走 `opencode-go-paid-flash`**，并用 keepalive/更长墙钟避免客户端掐死。
-- 免费钥恢复后：affinity 若钉在 paid，路由应**重新优先 free**（paid 留末位保底）。
+- 直连探针：free 日死时正确行为 = **立刻 `paid_forced`**，禁止先白烧 15s+ zombie free。
+- 免费钥恢复后：**已钉 paid 的会话不拆缓存**；**新会话**仍优先 free。
 
 ### 部署检查清单（2017）
 
 ```bash
 cd ~/program/CCC/relay && npm test && npm run build
-rsync -az dist/ mac2017:/Users/fan/program/CCC/relay/dist/   # 或在本机 2017 上 build
-# 对齐 plist：FAILOVER_MAX_MS=90000 ATTEMPT_*=15s/70s PEEK_*=10s/25s STALL_IDLE_MS=30000
+rsync -az dist/ mac2017:/Users/fan/program/CCC/relay/dist/
+# 对齐 plist：FAILOVER_MAX_MS=45000 ATTEMPT=8s/25s PEEK=6s/12s HEADERS=30s
+bash scripts/install-relay-plist.sh 2017   # 或 kickstart 前核对 EnvironmentVariables
 launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
-# 验收：小 ping + 大 body（~100KB）+ LAN；trail 禁止再出现 ~100s 的 *:fetch
 curl -sS 'http://127.0.0.1:4000/admin/trail?limit=10'
-curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('cache_hit_ratio'), d.get('cached_tokens'))"
+curl -sS 'http://127.0.0.1:4000/admin/upstreams' | python3 -c "import sys,json;d=json.load(sys.stdin);print([(u['name'],u.get('ready'),u.get('quota_hits')) for u in d.get('upstreams',d)[:5]])"
+curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('upstream_cache_token_ratio'), d.get('l1_hit_rate'))"
 ```
 
 ## 3. 现行拓扑（逻辑，不含密钥）

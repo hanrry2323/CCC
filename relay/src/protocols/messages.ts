@@ -4,14 +4,15 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { IncomingMessage, ServerResponse } from "http";
-import { route, affinityKey, affinitySet, affinityDeleteAll, resolveRequestTier } from "../router.js";
+import { route, affinityKey, affinitySet, resolveRequestTier } from "../router.js";
 import {
   streamWithFallback,
   nonStreamWithFallback,
   applyTrailHeaders,
   recordProviderSuccess,
 } from "../fallback.js";
-import { cleanThink, streamReadWithTimeout, agentDebugLog } from "../utils.js";
+import { isPaidUpstream } from "../tiers.js";
+import { cleanThink, streamReadWithTimeout } from "../utils.js";
 import {
   anthropicToOpenAI,
   openAIChunkToAnthropicSSE,
@@ -122,7 +123,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       {
         getBytesWritten: () => contentBytesWritten,
         onAttemptWait: () => {
-          // 换钥等待时先开 SSE 壳 + comment ping，避免客户端当死连接掐掉（不计 content lock）
+          // 仅在首次上游失败后由 fallback 回调；开 SSE 壳 + comment（不计 content lock）
           if (!headersSent) {
             res.writeHead(200, {
               "Content-Type": "text/event-stream",
@@ -274,17 +275,6 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     applyTrailHeaders(res, result.upstream?.name, result.trail);
 
     if (!result.consumedOk && !result.stalledAfterWrite) {
-      // #region agent log
-      agentDebugLog("D", "messages.ts:exhausted", "stream exhausted", {
-        headersSent,
-        contentBytesWritten,
-        errorCode: result.errorCode,
-        trail: (result.trail || []).map(t => `${t.name}:${t.reason}:${t.ms}`),
-        latencyMs: Date.now() - t0,
-        model: b.model,
-        stream: !!b.stream,
-      });
-      // #endregion
       // 勿清 affinity：保住 Go prompt_cache 会话粘性
       if (!headersSent) {
         const retry = result.retryAfterSec || 60;
@@ -328,7 +318,11 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       });
       if (streamOk) {
         recordProviderSuccess(result.upstream);
-        if (affKey && !ru.is_fallback) affinitySet(affKey, result.upstream.name);
+        if (affKey) {
+          affinitySet(affKey, result.upstream.name, {
+            pinPaid: isPaidUpstream(result.upstream),
+          });
+        }
         if (ctk > 0) {
           try { res.setHeader("X-Upstream-Cached-Tokens", String(ctk)); } catch { /* headers sent */ }
         }
@@ -366,7 +360,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
   applyTrailHeaders(res, nonStreamResult.upstream?.name, nonStreamResult.trail);
 
   if (!nonStreamResult.upstream) {
-    if (affKey) affinityDeleteAll(affKey);
+    // 勿清 affinity：保住 Go prompt_cache 会话粘性
     const retry = nonStreamResult.retryAfterSec || 60;
     res.setHeader("Retry-After", String(retry));
     return json(res, 503, {
@@ -397,7 +391,8 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       : "end_turn",
     stop_sequence: null,
     usage: {
-      input_tokens: d.usage?.prompt_tokens || 0,
+      input_tokens: Math.max(0, (d.usage?.prompt_tokens || 0) - (d.usage?.prompt_tokens_details?.cached_tokens || 0)),
+      cache_read_input_tokens: d.usage?.prompt_tokens_details?.cached_tokens || 0,
       output_tokens: d.usage?.completion_tokens || 0,
     },
   };
@@ -433,7 +428,13 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     latency_ms: Date.now() - t0,
   });
   recordProviderSuccess(nonStreamResult.upstream);
-  if (affKey && !ru.is_fallback) affinitySet(affKey, nonStreamResult.upstream.name);
+  if (affKey) {
+    affinitySet(affKey, nonStreamResult.upstream.name, {
+      pinPaid: isPaidUpstream(nonStreamResult.upstream),
+    });
+  }
+  const ctkNs = d.usage?.prompt_tokens_details?.cached_tokens || 0;
+  if (ctkNs > 0) res.setHeader("X-Upstream-Cached-Tokens", String(ctkNs));
   res.setHeader("X-Cache-Prefix", prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS");
   return json(res, 200, ar);
 }

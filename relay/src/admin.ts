@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getConfig, reloadConfig, getUpstreamsFile, isAutoReloadEnabled, assertValidUpstreamList, validateConfig, normalizeUpstream } from "./config.js";
-import { getTierSummary, getTierBlockReason } from "./tiers.js";
+import { getTierSummary, getTierBlockReason, isUpstreamOk } from "./tiers.js";
 import { probeAll } from "./health.js";
 import { used, todayStart } from "./auth.js";
 import { getAppContext } from "./context.js";
@@ -70,6 +70,8 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     const ts = todayStart();
     const data = cfg.all.map(u => {
       const scRec = getAllScores()[u.name];
+      const cd = cool.get(u.name);
+      const now = Date.now();
       return {
         name: u.name, base_url: u.base_url, models: u.models, tier: u.tier,
         tier_priority: u.tier_priority, upstream_model: u.upstream_model,
@@ -77,13 +79,18 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
         free: u.free || false, free_type: u.free_type || null,
         provider_group: u.provider_group || null,
         proxy: u.proxy || null,
-        health: hlt.get(u.name) || null, cooldown: cool.get(u.name)?.until || null,
+        health: hlt.get(u.name) || null,
+        probe_status: hlt.get(u.name)?.status || null,
+        cooldown: cd?.until || null,
+        cool_left: cd && cd.until > now ? Math.ceil((cd.until - now) / 1000) : 0,
+        ready: isUpstreamOk(u),
         used_today: used("upstream", u.name),
         req_today: usg.value.filter(x => x.timestamp >= ts && x.upstream === u.name).length,
         score: getScore(u.name),
         fail_streak: scRec?.failStreak ?? 0,
         total_success: scRec?.totalSuccess ?? 0,
         total_fail: scRec?.totalFail ?? 0,
+        quota_hits: scRec?.quotaHits ?? 0,
         ledger: u.quota ? ledgerSnapshot(u) : null,
         block_reason: getTierBlockReason(u),
       };
@@ -293,12 +300,20 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
       }
     }
 
+    const l1 = cacheStats();
+    const l1Hits = (l1 as any).hits ?? 0;
+    const l1Misses = (l1 as any).misses ?? 0;
+    const l1Total = l1Hits + l1Misses;
     return json(res, 200, {
       period: p,
       total,
       tokens,
       cached_tokens: cachedTokens,
+      /** @deprecated 用 upstream_cache_token_ratio；保留兼容 */
       cache_hit_ratio: tokens > 0 ? cachedTokens / tokens : 0,
+      upstream_cache_token_ratio: tokens > 0 ? cachedTokens / tokens : 0,
+      l1_hit_rate: l1Total > 0 ? l1Hits / l1Total : 0,
+      l1: { hits: l1Hits, misses: l1Misses },
       by_upstream: byU,
       by_client: byC,
       by_tier: byTier,
@@ -423,6 +438,10 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
   // ── /admin/health ──
   if (method === "GET" && pathname === "/admin/health") {
     return json(res, 200, getHealthStatus());
+  }
+  if (method === "POST" && pathname === "/admin/health/probe") {
+    await probeAll();
+    return json(res, 200, { ok: true, probed: cfg.all.length, health: getHealthStatus() });
   }
 
   // ── /admin/logs ──

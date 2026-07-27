@@ -189,6 +189,53 @@ describe("router", () => {
       expect(k1).toBe(k2);
       expect(k1!.startsWith("hdr:")).toBe(true);
     });
+
+    it("stable on system+first user; ignores later user turns", () => {
+      const sys = "You are helpful.";
+      const k1 = affinityKey(
+        [{ role: "user", content: "first" }, { role: "assistant", content: "ok" }, { role: "user", content: "second" }],
+        { system: sys },
+      );
+      const k2 = affinityKey(
+        [{ role: "user", content: "first" }, { role: "assistant", content: "ok" }, { role: "user", content: "third turn" }],
+        { system: sys },
+      );
+      expect(k1).toBe(k2);
+      const k3 = affinityKey([{ role: "user", content: "other first" }], { system: sys });
+      expect(k3).not.toBe(k1);
+    });
+
+    it("pinPaid keeps paid first when free recovers", () => {
+      const paid = {
+        name: "opencode-go-paid-flash",
+        base_url: "https://opencode.ai/zen/go/v1",
+        api_key: "sk",
+        tier: "flash" as const,
+        tier_priority: 80,
+        models: ["flash" as const],
+        upstream_model: "deepseek-v4-flash",
+        free: false,
+        billing: "opencode-go",
+      };
+      const free = {
+        name: "opencode-go-a",
+        base_url: "https://opencode.ai/zen/v1",
+        api_key: "sk",
+        tier: "flash" as const,
+        tier_priority: 1,
+        models: ["flash" as const],
+        upstream_model: "deepseek-v4-flash-free",
+        free: true,
+        billing: "zen-free",
+      };
+      writeFileSync(TEST_FILE, JSON.stringify([free, paid], null, 2));
+      resetConfig();
+      loadConfig(TEST_FILE);
+      affinitySet("pin-sess", paid.name, { pinPaid: true });
+      const r = route("flash", "pin-sess");
+      expect(r.upstream!.name).toBe(paid.name);
+      expect(r.candidates[0]!.name).toBe(paid.name);
+    });
   });
 
   describe("resolveRequestTier + fair RR", () => {
