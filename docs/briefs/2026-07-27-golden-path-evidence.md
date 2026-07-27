@@ -141,7 +141,7 @@
 
 ### 下一程
 
-- **010 已合入 main**（`43c0b7f`/`99dc205`/`f707782` 经 cherry-pick）：每 tick kb、`verified→testing`、opencode 无 tag 不 seed。须 **2017 Engine kickstart** 后再生效。  
+- **010 已合入 main**（`4305848`/`99dc205`/`f707782` 经 cherry-pick）：每 tick kb、`verified→testing`、opencode 无 tag 不 seed。须 **2017 Engine kickstart** 后再生效。  
 - OpenCode 默认模型对齐 relay `code`（停 `xfyun/code`）— **Cursor 双机配置**。  
 - 热更后用一小笔 docs 戳记 epic 再证 P-B/P-C（OpenCode 路径，勿 script_seed）。
 
