@@ -17,6 +17,7 @@ struct OpsView: View {
     @State private var showActions = false
     @State private var showFailures = false
     @State private var showChannelDetail = false
+    @State private var showUpstreamDaily = false
 
     private var preferredAmmoWorkspace: String {
         if let p = model.selectedProject, p.isDispatchable {
@@ -99,6 +100,10 @@ struct OpsView: View {
                             risksSection
                         }
                         .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    DisclosureGroup("模型通道", isExpanded: $showUpstreamDaily) {
+                        upstreamDailySection
                     }
                     .font(.system(size: 15, weight: .semibold))
                     DisclosureGroup("例外动作", isExpanded: $showActions) {
@@ -580,6 +585,46 @@ struct OpsView: View {
                     .foregroundStyle(CCCTheme.faint)
             } else {
                 emptyHint("暂无长 session 数据")
+            }
+        }
+    }
+
+    private var upstreamDailySection: some View {
+        let rows = model.opsUpstreamDaily
+        return Group {
+            if rows.isEmpty {
+                emptyHint("暂无用量数据")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(rows) { row in
+                        HStack(spacing: 8) {
+                            Text(row.name)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(CCCTheme.ink)
+                            Spacer(minLength: 4)
+                            if let r = row.requests_today {
+                                Text("\(r) 次")
+                                    .font(CCCTheme.caption)
+                                    .foregroundStyle(CCCTheme.secondary)
+                            }
+                            if let rate = row.success_rate {
+                                Text(String(format: "%.0f%%", rate * 100))
+                                    .font(CCCTheme.caption)
+                                    .foregroundStyle(rate >= 0.95 ? CCCTheme.nodeDone : CCCTheme.nodeWarn)
+                            } else if row.requests_today != nil {
+                                Text("—")
+                                    .font(CCCTheme.caption)
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                            if let cost = row.cost_usd, cost > 0 {
+                                Text(String(format: "$%.4f", cost))
+                                    .font(CCCTheme.caption)
+                                    .foregroundStyle(CCCTheme.faint)
+                            }
+                        }
+                        Divider()
+                    }
+                }
             }
         }
     }

@@ -646,3 +646,30 @@ struct OpsResourcesResp: Decodable {
     let mem_pct: Double?
     let disk_pct: Double?
 }
+
+// MARK: - Upstream daily (GET /api/ops/upstream-daily)
+
+struct OpsUpstreamDailyResp: Decodable {
+    let ok: Bool?
+    let upstreams: [OpsUpstreamDailyRow]?
+    let tier_totals: [String: OpsUpstreamTierTotal]?
+    let total_requests: Int?
+    let total_tokens: Int?
+    let total_cost: Double?
+}
+
+struct OpsUpstreamDailyRow: Identifiable, Decodable, Hashable {
+    var id: String { name }
+    let name: String
+    let tier: String?
+    let requests_today: Int?
+    let tokens_today: Int?
+    let success_rate: Double?
+    let avg_latency_ms: Double?
+    let cost_usd: Double?
+}
+
+struct OpsUpstreamTierTotal: Decodable, Hashable {
+    let requests: Int?
+    let tokens: Int?
+}

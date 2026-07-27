@@ -1020,6 +1020,10 @@ actor APIClient {
         try await send(try authedRequest("api/ops/summary"), as: OpsSummary.self)
     }
 
+    func fetchOpsUpstreamDaily() async throws -> OpsUpstreamDailyResp {
+        try await send(try authedRequest("api/ops/upstream-daily"), as: OpsUpstreamDailyResp.self)
+    }
+
     func fetchInboxProposals(includeAdopted: Bool = false) async throws -> InboxProposalsResp {
         let q = includeAdopted ? "?include_adopted=1" : ""
         return try await send(try authedRequest("api/desktop/proposals\(q)"), as: InboxProposalsResp.self)

@@ -189,6 +189,7 @@ final class AppModel: ObservableObject {
     @Published var opsBusy = false
     @Published var opsError: String?
     @Published var opsSummary: OpsSummary?
+    @Published var opsUpstreamDaily: [OpsUpstreamDailyRow] = []
     @Published var opsAdoptBusy = false
     @Published var opsAdoptError: String?
     /// 运维页合并：本机 sidecar 是否 ok（Hub 无法探 M1）
@@ -5154,6 +5155,11 @@ final class AppModel: ObservableObject {
             await probeLocalAgentForOps()
             if let props = try? await client.fetchInboxProposals() {
                 inboxProposals = props.proposals ?? []
+            }
+            if let daily = try? await client.fetchOpsUpstreamDaily() {
+                opsUpstreamDaily = daily.upstreams ?? []
+            } else {
+                opsUpstreamDaily = []
             }
             recomputeOpsDisplay()
         } catch {
