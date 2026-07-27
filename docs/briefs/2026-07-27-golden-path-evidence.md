@@ -344,3 +344,16 @@
 | v0.63 `nudge_bg_session` | **未做** — 仍占位；另开程，不计入 Layer1 |
 
 ---
+
+
+## 2026-07-28 · 程 B 启动（缩小 KPI）
+
+| 项 | 值 |
+|----|-----|
+| main | `949588b`（matrix `--apps`）+ Layer1 出门 `85f0b27` |
+| loop | `kpi-20260728-021455` · apps=`ccc-demo` · profile=`efficiency_six` · max_rounds=2 |
+| run | `stress-mx-20260728-kpi-r1` |
+| dispatch | e01–e04 + e08 **5/5 OK**（未投 qb） |
+| arm-wake | 3600s · evaluate 后写 gate brief |
+| 下一步 | wake 后 `evaluate`；PASS 停；FAIL 按 allowlist ≤2 项修 |
+
