@@ -32,7 +32,7 @@ _CCC_META_PREFIXES = (
 
 
 def _is_ccc_meta_path(path: str) -> bool:
-    p = (path or "").strip()
+    p = (path or "").strip().rstrip("/")
     while p.startswith("./"):
         p = p[2:]
     if p in _CCC_META_EXACT or p == ".ccc":
@@ -196,7 +196,7 @@ def _is_harness_noise_path(path: str) -> bool:
     p = (path or "").strip().replace("\\", "/")
     while p.startswith("./"):
         p = p[2:]
-    if p.startswith("docs/reports/") or p == "docs/reports":
+    if p == "docs" or p == "docs/" or p.startswith("docs/reports/") or p == "docs/reports":
         return True
     if p.startswith("docs/") and p.endswith("_NOTE.md"):
         return True
@@ -204,20 +204,35 @@ def _is_harness_noise_path(path: str) -> bool:
 
 
 def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
-    """ops / .ccc-only 卫生卡允许 DoD 提交编排产物。"""
+    """允许 DoD 提交 .ccc 编排产物：仅真 board_ops/ops/hygiene pipeline，
+    不含 doc_only / docs-only scope（后者若 dirty 应只 commit 业务 scope）。
+
+    同时从 phases scope 推断：全部 scope 在 .ccc/ 下也视为卫生卡。
+    """
     try:
         from _ccc_hygiene import (
             _load_phase_scopes,
             scopes_are_ccc_only,
-            task_skips_forced_pytest,
         )
-
-        if task_skips_forced_pytest(workspace, task_id, None):
-            return True
+        # Try reading task from board store to check pipeline/tags
+        try:
+            from _board_store import FileBoardStore
+            store = FileBoardStore(workspace)
+            task = None
+            for col in ("in_progress", "planned", "testing", "backlog", "verified", "abnormal"):
+                tasks = store.list_tasks(col)
+                task = next((t for t in tasks if t.get("id") == task_id), None)
+                if task:
+                    break
+            if task:
+                from _ccc_hygiene import _hygiene_is_board_ops
+                if _hygiene_is_board_ops(task):
+                    return True
+        except Exception:
+            pass
         return scopes_are_ccc_only(_load_phase_scopes(workspace, task_id))
     except Exception as exc:  # noqa: BLE001
-        # 2026-07-24 方案 0.1.3：清理 except:pass 裸吞，统一加 log
-        _log.warning("task_commit pytest_required silent_ignored: %s", str(exc))
+        _log.warning("task_commit hygiene_allow_ccc_meta silent_ignored: %s", str(exc))
         return False
 
 
@@ -282,15 +297,45 @@ def ensure_task_commit(
     # otherwise keep product non-empty and skip hygiene branch (R4 qb e05).
     hygiene = _hygiene_allow_ccc_meta(workspace, task_id)
     if hygiene:
+        # 卫生卡也只 add 本 task 相关的 .ccc meta，禁止扫全板 index/backlog 等无关脏。
         product = [
             p
             for p in all_paths
-            if _is_ccc_meta_path(p)
-            or p.startswith(".ccc/")
-            or p in (".ccc/state.md", ".ccc/agent-mind/decided.json")
-            or p.startswith(".ccc/agent-mind/")
-            or p.startswith(".ccc/lessons/")
+            if (
+                # task-specific board entry files
+                p.startswith(".ccc/board/")
+                and task_id in p
+            )
+            or (
+                # task-specific pids/plans/phases/reports/verdicts
+                p.startswith((".ccc/pids/", ".ccc/plans/", ".ccc/phases/",
+                              ".ccc/reports/", ".ccc/verdicts/"))
+                and task_id in p
+            )
+            or (
+                # essential orchestration metadata (NOT broad board index/state)
+                p in (".ccc/state.md", ".ccc/warnings.json", ".ccc/profile.md",
+                      ".ccc/flow-smoke.md")
+            )
         ]
+        # Fallback for directory-level ?? .ccc/ entries (untracked .ccc dir):
+        # when product is empty but all dirty paths are .ccc/ directory dirties,
+        # git add the full .ccc subdirs relevant to this task.
+        if not product and all(
+            _is_ccc_meta_path(p) or p.startswith(".ccc/") or _is_harness_noise_path(p)
+            for p in all_paths
+        ):
+            for d in (".ccc/board/", ".ccc/reports/", ".ccc/plans/", ".ccc/phases/",
+                      ".ccc/pids/", ".ccc/verdicts/"):
+                for f in sorted((workspace / d).rglob("*")):
+                    if not f.is_file():
+                        continue
+                    rel = str(f.relative_to(workspace))
+                    if rel not in product and task_id in rel:
+                        product.append(rel)
+            if product:
+                _log.info("[DoD] %s hygiene fallback expanded %d paths from dir dirt",
+                          task_id, len(product))
     elif product:
         # Scope-aware: only stage plan / result paths when known
         scope = set(_plan_scope_paths(workspace, task_id))
@@ -353,8 +398,6 @@ def ensure_task_commit(
             ):
                 if existing:
                     return True, "already_hygiene_noise_only", existing
-                # board_ops wrote .ccc/reports — should have been in product; if
-                # nothing staged, still fail clearly
             return (
                 False,
                 "no task_id commit and only .ccc/ meta dirty — "

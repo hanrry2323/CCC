@@ -47,6 +47,22 @@ def scopes_are_ccc_only(scopes: list[str]) -> bool:
     return True
 
 
+def _hygiene_is_board_ops(task: dict[str, Any] | None) -> bool:
+    """True only for explicit board_ops/ops/hygiene pipeline — NOT doc_only/docs scope.
+
+    Used by ensure_task_commit to decide whether .ccc meta may be auto-committed.
+    pipeline/tags only — intentionally narrower than task_skips_forced_pytest.
+    """
+    pipeline = _pipeline_from_task(task)
+    if pipeline in ("ops", "hygiene", "board", "board_ops"):
+        return True
+    if task:
+        tags = {str(t).lower() for t in (task.get("tags") or [])}
+        if tags & {"ops", "hygiene", "ccc-hygiene", "board_ops"}:
+            return True
+    return False
+
+
 def scopes_are_docs_only(scopes: list[str]) -> bool:
     """全部 scope 落在 docs/ 或纯 markdown 报告戳记（禁止强制全仓 pytest）。"""
     if not scopes:
