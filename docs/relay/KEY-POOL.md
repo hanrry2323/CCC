@@ -78,7 +78,9 @@ Desktop / Claude  ──►  2017 relay :4000
                          ├─ flash: zen-free 多钥（直连 + HK）prio=1
                          │         └─ 耗尽后 → opencode-go-paid-flash (Go) prio=80
                          ├─ Pro:   opencode-go-pro (Go · deepseek-v4-pro)
-                         └─ code:  zen-free（big-pickle + flash-free · 专钥）
+                         └─ code:  **Go 套餐** `opencode-go-paid-code`
+                                   （`zen/go/v1` + `deepseek-v4-flash`；与 paid-flash/pro 同钥）
+                                   旧 `opencode-code-a..d` 误配 zen/v1 后改 Go 仍无支付方式 → 已禁用
 ```
 
 - **HK**：`com.ccc.hk-egress-tunnel` → `proxy: http://127.0.0.1:18080`（仅免费钥轮换出口）  

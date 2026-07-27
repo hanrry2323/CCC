@@ -56,7 +56,7 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 | # | 门 | 验收 |
 |---|----|------|
 | G1 | **对话稳** | M1 Desktop / Claude Code / `:7788` 经 2017 relay `flash` 连续可用；鉴权默认关不挡内网 |
-| G2 | **写码通道** | OpenCode `code` 经 Zen 免费池（big-pickle + flash-free）+ 双出口；限流可轮换；xfyun 退役 |
+| G2 | **写码通道** | OpenCode `code` 经 **Go 套餐** `zen/go/v1`（`opencode-go-paid-code` / `deepseek-v4-flash`）；禁止 Go 钥误配 `zen/v1`；xfyun 退役 |
 | G3 | **运维敢开发** | Desktop Ops 四域灯：绿敢下任务；红一键交 Agent；P0–P2 已合入并发布二进制 |
 | G4 | **编排不假绿** | Engine 消费业务仓；hollow/verdict 真门；hang 收尸让下一卡；invent 硬关 |
 | G5 | **双机拓扑净** | Hub 隧道 `:17777`；Hub 环回绑；sidecar Hub 反代；fleet 绿；无 M1 第二树 |
