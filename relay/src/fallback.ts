@@ -7,27 +7,33 @@ import { classifyErr, StallError, getStallIdleMs } from "./utils.js";
 import { getAppContext } from "./context.js";
 import { bad } from "./health.js";
 import { recordOutcome, computeBackoffCooldown } from "./scoring.js";
-import { getConfig } from "./config.js";
+import { getConfig, TIMEOUTS } from "./config.js";
 import { ledgerReserve, ledgerSettle, ledgerMarkQuotaExhausted, ledgerWouldExceed } from "./ledger.js";
 import { affinityDeleteByUpstream } from "./router.js";
+import { isPaidUpstream } from "./tiers.js";
 
 const MAX_QUOTA_COOLDOWN = 4 * 3600;
 const MAX_PROVIDER_COOLDOWN = 30 * 60;
-const MAX_SAME_UPSTREAM_RETRIES = 2;
+/** 同钥重试：超时/网络失败不重试，其它最多 1 次（共 2 次） */
+const MAX_SAME_UPSTREAM_RETRIES = 1;
 const RETRY_DELAY_MS = 300;
 const PROVIDER_BREAKER_THRESHOLD = 3;
 const PROVIDER_BREAKER_SEC = 120;
 /** 突发限流 Retry-After 封顶；超过此值视为日配额耗尽（Zen 免费池常给到 UTC 重置） */
 const RATE_LIMIT_RETRY_AFTER_CAP = 120;
+const PAID_FETCH_COOLDOWN_SEC = 10;
+const FREE_FETCH_COOLDOWN_SEC = 20;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
 
 function failoverMaxAttempts(): number {
-  return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "10", 10) || 10);
+  return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
 }
 function failoverMaxMs(): number {
-  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
+  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "35000", 10) || 35_000);
 }
+
+export { isPaidUpstream };
 
 /** 同出口限流桶：base_url + proxy。不同 proxy（如 HK）视为不同 IP，不互跳。 */
 export function egressRateLimitKey(up: UpstreamConfig): string {
@@ -86,7 +92,9 @@ export function formatExhaustedMessage(
       const reason = failureReasons.get(u.name)!;
       if (reason.startsWith("HTTP ")) status = `不可用（${reason}）`;
       else if (reason === "empty") status = "不可用（空响应）";
-      else if (reason === "fetch") status = "不可用（网络错误）";
+      else if (reason === "fetch" || reason === "timeout") status = `不可用（网络错误${reason === "timeout" ? "/超时" : ""}）`;
+      else if (reason.startsWith("skipped")) status = `跳过（${reason}）`;
+      else if (reason === "paid_skipped_budget") status = "未试到（墙钟耗尽）";
       else status = `不可用（${reason}）`;
     } else if (u.enabled === false) {
       status = "已禁用";
@@ -113,6 +121,10 @@ interface MarkBadOpts {
 function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkBadOpts = {}): void {
   let sec = 20;
   const cls = classifyErr(errMsg);
+  const paid = isPaidUpstream(up);
+  const isFetchOrTimeout =
+    status === 0 &&
+    /fetch failed|attempt timeout|timeout|peek failed|UND_ERR|ECONN|ETIMEDOUT|aborted/i.test(errMsg);
   // Zen 免费池常回 429 "Rate limit exceeded" + 数小时 Retry-After（到日切），无 FreeUsage 类型也按日配额
   const longRetryAsQuota =
     status === 429 &&
@@ -124,6 +136,10 @@ function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkB
   const isRateLimit =
     !dailyQuota &&
     (status === 429 || (cls != null && !cls.quota && /rate|限流|超限|too many/i.test(errMsg)));
+  const isBalanceError =
+    status === 401 ||
+    status === 402 ||
+    /insufficient balance|payment required|billing here/i.test(errMsg);
 
   if (dailyQuota && opts.retryAfterSec && opts.retryAfterSec > 60) {
     // 免费通道日配额耗尽：上游给了 retry-after（通常到 UTC 午夜），直接采用
@@ -132,25 +148,38 @@ function markBad(up: UpstreamConfig, status: number, errMsg: string, opts: MarkB
   } else if (dailyQuota || cls?.quota) {
     sec = computeBackoffCooldown(up.name, cls?.sec ?? 300, MAX_QUOTA_COOLDOWN);
     ledgerMarkQuotaExhausted(up);
+  } else if (paid && isBalanceError) {
+    sec = Math.min(computeBackoffCooldown(up.name, 600, MAX_QUOTA_COOLDOWN), 3600);
+    console.warn(`[fallback] paid balance/auth fail ${up.name}: ${errMsg.slice(0, 80)}`);
   } else if (isRateLimit) {
     // 固定短冷却，禁止 EWMA 放大；有 Retry-After 则采纳但封顶 RATE_LIMIT_RETRY_AFTER_CAP
     const ra = opts.retryAfterSec && opts.retryAfterSec > 0 ? opts.retryAfterSec : (cls?.sec ?? 60);
     sec = Math.min(Math.max(ra, 15), RATE_LIMIT_RETRY_AFTER_CAP);
+  } else if (isFetchOrTimeout || /empty/i.test(errMsg)) {
+    sec = paid ? PAID_FETCH_COOLDOWN_SEC : FREE_FETCH_COOLDOWN_SEC;
   } else if (cls) {
-    sec = computeBackoffCooldown(up.name, cls.sec, MAX_PROVIDER_COOLDOWN);
-  } else if (/empty/i.test(errMsg)) sec = 20;
-  else if (status >= 500 || status === 529) sec = 30;
+    sec = paid
+      ? Math.min(computeBackoffCooldown(up.name, cls.sec, 120), 60)
+      : computeBackoffCooldown(up.name, cls.sec, MAX_PROVIDER_COOLDOWN);
+  } else if (status >= 500 || status === 529) sec = paid ? 15 : 30;
   else if (status === 400) sec = 15;
-  else sec = 30;
+  else sec = paid ? PAID_FETCH_COOLDOWN_SEC : 30;
 
   bad(up, sec, `h${status}:${errMsg.slice(0, 36)}`);
-  // 日配额 / 限流：不记 EWMA 失败（预期行为；否则低分×限流→多钥池假死）
-  if (!dailyQuota && !isRateLimit && !cls?.quota) {
+  // 日配额 / 限流 / 瞬态网络：不记 EWMA 失败（否则低分×限流→多钥池假死）
+  if (!dailyQuota && !isRateLimit && !cls?.quota && !isFetchOrTimeout) {
     recordOutcome(up.name, false);
   }
   if (cls?.quota || dailyQuota || isRateLimit) affinityDeleteByUpstream(up.name);
-  // 限流不打 provider breaker（同厂多钥各自独立；breaker 会误伤整组）
-  if (up.provider_group && !isRateLimit && !dailyQuota) {
+  // 限流 / 日配额 / 网络超时：不打 provider breaker（避免整账号团灭）
+  // 付费钥永不账号 breaker
+  if (
+    up.provider_group &&
+    !paid &&
+    !isRateLimit &&
+    !dailyQuota &&
+    !isFetchOrTimeout
+  ) {
     triggerProviderBreaker(up.provider_group, errMsg);
   }
 }
@@ -386,17 +415,21 @@ async function tryUpstreamStream(
       // Success peek — reserved held until protocol settles via logUsage/ledgerSettle
       return { ok: true, reader, upstream: up, firstLines, buffered };
     } catch (e) {
-      console.warn(`[fallback] stream fetch err ${up.name}: ${(e as Error).message.slice(0, 50)}`);
-      lastErr = "fetch";
+      const msg = (e as Error).message || "";
+      console.warn(`[fallback] stream fetch err ${up.name}: ${msg.slice(0, 50)}`);
+      lastErr = /timeout|aborted|TimeoutError/i.test(msg) ? "timeout" : "fetch";
+      // 超时不重试同钥，立刻换下一家
+      if (lastErr === "timeout") break;
     }
   }
 
   if (lastErr === "fetch") markBad(up, 0, "fetch failed after retries");
+  else if (lastErr === "timeout") markBad(up, 0, "attempt timeout");
   else if (lastErr === "peek") markBad(up, 0, "peek failed after retries");
   else if (lastErr === "empty") markBad(up, 0, "empty stream");
   ledgerSettle(up, {
     success: false,
-    rollbackRequest: lastErr === "fetch" || lastErr === "peek" || lastErr === "empty",
+    rollbackRequest: lastErr === "fetch" || lastErr === "timeout" || lastErr === "peek" || lastErr === "empty",
   });
   return { ok: false, lastErr, exhausted: true, platformError: false, httpStatus: lastStatus };
 }
@@ -451,9 +484,70 @@ function buildExhaustedResult(
   };
 }
 
+/** 挑选下一跳：付费保底插队（free 已失败 / 墙钟过半 / 预留最后 attempt） */
+export function selectNextCandidate(
+  candidates: UpstreamConfig[],
+  tried: Set<string>,
+  opts: {
+    budgetStart: number;
+    attempts: number;
+    freeFailCount: number;
+    failedPlatforms: Set<string>;
+    rateLimitedHosts: Set<string>;
+  },
+): UpstreamConfig | null {
+  const untried = candidates.filter(u => !tried.has(u.name));
+  if (!untried.length) return null;
+
+  const isBlocked = (u: UpstreamConfig): boolean =>
+    opts.failedPlatforms.has(u.base_url) ||
+    opts.rateLimitedHosts.has(egressRateLimitKey(u)) ||
+    !!ledgerWouldExceed(u);
+
+  const paidUsable = untried.filter(u => isPaidUpstream(u) && !isBlocked(u));
+  const wall = failoverMaxMs();
+  const maxAtt = failoverMaxAttempts();
+  const elapsed = Date.now() - opts.budgetStart;
+  const attemptsLeft = maxAtt - opts.attempts;
+
+  // 预留最后 1 次 attempt 给未试付费
+  if (paidUsable.length && attemptsLeft <= 1) {
+    const next = untried[0]!;
+    if (!isPaidUpstream(next) || isBlocked(next)) return paidUsable[0]!;
+  }
+
+  const forcePaid =
+    paidUsable.length > 0 &&
+    (opts.freeFailCount >= 1 ||
+      elapsed >= wall * 0.5 ||
+      elapsed + TIMEOUTS.ATTEMPT_MS >= wall);
+
+  if (forcePaid) {
+    // 先吐出同 host skip，保留 trail 可观测性
+    const next = untried[0]!;
+    if (isBlocked(next) && !isPaidUpstream(next)) return next;
+    return paidUsable[0]!;
+  }
+
+  return untried[0]!;
+}
+
+function markPaidSkippedBudget(
+  candidates: UpstreamConfig[],
+  tried: Set<string>,
+  failureReasons: Map<string, string>,
+): void {
+  for (const u of candidates) {
+    if (isPaidUpstream(u) && !tried.has(u.name) && !failureReasons.has(u.name)) {
+      failureReasons.set(u.name, "paid_skipped_budget");
+    }
+  }
+}
+
 /**
  * 带透明重试 + 预算 + trail 的流式转发。
  * 可选 consume：支持 stall 换渠（仅 bytesWritten===0）。
+ * PaidGuarantee：免费失败/墙钟过半时强制插队 Go 付费钥。
  */
 export async function streamWithFallback(
   routing: RoutingResult,
@@ -472,24 +566,52 @@ export async function streamWithFallback(
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
+  let freeFailCount = 0;
+  const tried = new Set<string>();
   const stallMs = getStallIdleMs();
 
-  for (const up of candidates) {
+  while (true) {
     if (attempts >= failoverMaxAttempts()) {
       pushTrail(trail, "*", "budget:attempts", budgetStart);
       break;
     }
-    if (Date.now() - budgetStart >= failoverMaxMs()) {
+    const wallHit = Date.now() - budgetStart >= failoverMaxMs();
+    if (wallHit) {
+      const paidUntried = candidates.find(
+        u => isPaidUpstream(u) && !tried.has(u.name) && !failedPlatforms.has(u.base_url)
+          && !rateLimitedHosts.has(egressRateLimitKey(u)) && !ledgerWouldExceed(u),
+      );
+      if (!paidUntried) {
+        markPaidSkippedBudget(candidates, tried, failureReasons);
+        pushTrail(trail, "*", "budget:wall", budgetStart);
+        break;
+      }
+      // 墙钟已尽但仍有未试付费 → 强制只试付费
+    }
+
+    const up = selectNextCandidate(candidates, tried, {
+      budgetStart,
+      attempts,
+      freeFailCount,
+      failedPlatforms,
+      rateLimitedHosts,
+    });
+    if (!up) break;
+
+    if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
+      markPaidSkippedBudget(candidates, tried, failureReasons);
       pushTrail(trail, "*", "budget:wall", budgetStart);
       break;
     }
 
     if (failedPlatforms.has(up.base_url)) {
+      tried.add(up.name);
       failureReasons.set(up.name, "skipped (same platform fault)");
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
     if (rateLimitedHosts.has(egressRateLimitKey(up))) {
+      tried.add(up.name);
       failureReasons.set(up.name, "skipped (same-host rate-limit)");
       pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
       continue;
@@ -497,22 +619,24 @@ export async function streamWithFallback(
 
     const exceed = ledgerWouldExceed(up);
     if (exceed) {
+      tried.add(up.name);
       failureReasons.set(up.name, `ledger:${exceed}`);
       pushTrail(trail, up.name, `ledger:${exceed}`, budgetStart);
       continue;
     }
 
+    tried.add(up.name);
     attempts += 1;
     const t0 = Date.now();
     const result = await tryUpstreamStream(up, streamFn, failedPlatforms);
     if (!result.ok) {
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
+      if (!isPaidUpstream(up)) freeFailCount += 1;
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
         rateLimitedHosts.add(egressRateLimitKey(up));
       } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-        // 非限流失败：错峰后再试同出口下一钥
-        await sleep(400);
+        await sleep(200);
       }
       continue;
     }
@@ -560,6 +684,7 @@ export async function streamWithFallback(
         ledgerSettle(up, { success: false, rollbackRequest: false });
         failureReasons.set(up.name, "stall");
         pushTrail(trail, up.name, "stall", t0);
+        if (!isPaidUpstream(up)) freeFailCount += 1;
         continue;
       }
 
@@ -595,6 +720,7 @@ export async function streamWithFallback(
           stalledAfterWrite: true,
         };
       }
+      if (!isPaidUpstream(up)) freeFailCount += 1;
     }
   }
 
@@ -665,12 +791,15 @@ async function tryUpstreamNonStream(
       ledgerSettle(up, { success: true, tokens: 0 });
       return { ok: true, body: d, upstream: up };
     } catch (e) {
-      console.warn(`[fallback] fetch err ${up.name}: ${(e as Error).message.slice(0, 50)}`);
-      lastErr = "fetch";
+      const msg = (e as Error).message || "";
+      console.warn(`[fallback] fetch err ${up.name}: ${msg.slice(0, 50)}`);
+      lastErr = /timeout|aborted|TimeoutError/i.test(msg) ? "timeout" : "fetch";
+      if (lastErr === "timeout") break;
     }
   }
 
   if (lastErr === "fetch") markBad(up, 0, "fetch failed after retries");
+  else if (lastErr === "timeout") markBad(up, 0, "attempt timeout");
   ledgerSettle(up, { success: false, rollbackRequest: true });
   return { ok: false, lastErr, platformError: false };
 }
@@ -686,33 +815,62 @@ export async function nonStreamWithFallback(
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
+  let freeFailCount = 0;
+  const tried = new Set<string>();
 
-  for (const up of candidates) {
+  while (true) {
     if (attempts >= failoverMaxAttempts()) {
       pushTrail(trail, "*", "budget:attempts", budgetStart);
       break;
     }
     if (Date.now() - budgetStart >= failoverMaxMs()) {
+      const paidUntried = candidates.find(
+        u => isPaidUpstream(u) && !tried.has(u.name) && !failedPlatforms.has(u.base_url)
+          && !rateLimitedHosts.has(egressRateLimitKey(u)) && !ledgerWouldExceed(u),
+      );
+      if (!paidUntried) {
+        markPaidSkippedBudget(candidates, tried, failureReasons);
+        pushTrail(trail, "*", "budget:wall", budgetStart);
+        break;
+      }
+    }
+
+    const up = selectNextCandidate(candidates, tried, {
+      budgetStart,
+      attempts,
+      freeFailCount,
+      failedPlatforms,
+      rateLimitedHosts,
+    });
+    if (!up) break;
+    if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
+      markPaidSkippedBudget(candidates, tried, failureReasons);
       pushTrail(trail, "*", "budget:wall", budgetStart);
       break;
     }
+
     if (failedPlatforms.has(up.base_url)) {
+      tried.add(up.name);
       failureReasons.set(up.name, "skipped (same platform fault)");
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
     if (rateLimitedHosts.has(egressRateLimitKey(up))) {
+      tried.add(up.name);
       failureReasons.set(up.name, "skipped (same-host rate-limit)");
       pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
       continue;
     }
+
     const exceed = ledgerWouldExceed(up);
     if (exceed) {
+      tried.add(up.name);
       failureReasons.set(up.name, `ledger:${exceed}`);
       pushTrail(trail, up.name, `ledger:${exceed}`, budgetStart);
       continue;
     }
 
+    tried.add(up.name);
     attempts += 1;
     const t0 = Date.now();
     const result = await tryUpstreamNonStream(up, fetchFn, failedPlatforms);
@@ -723,10 +881,11 @@ export async function nonStreamWithFallback(
     }
     failureReasons.set(up.name, result.lastErr);
     pushTrail(trail, up.name, result.lastErr, t0);
+    if (!isPaidUpstream(up)) freeFailCount += 1;
     if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
       rateLimitedHosts.add(egressRateLimitKey(up));
     } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-      await sleep(400);
+      await sleep(200);
     }
   }
 

@@ -7,6 +7,7 @@
 import type { TierId, UpstreamConfig } from "./types.js";
 import { getAppContext } from "./context.js";
 import { ledgerWouldExceed } from "./ledger.js";
+import { getConfig } from "./config.js";
 
 // ── Constants ──
 
@@ -24,6 +25,38 @@ export const TIER_FALLBACK: Partial<Record<TierId, TierId>> = {
 };
 
 // ── Public API ──
+
+/** 付费 / Go 套餐上游（flash 兜底保底用） */
+export function isPaidUpstream(u: UpstreamConfig): boolean {
+  if (u.free === false) return true;
+  if (u.billing === "opencode-go") return true;
+  return /\/zen\/go(\/|$)/i.test(u.base_url || "");
+}
+
+/** 长冷却（日配额类）剩余是否超过 thresholdMs */
+export function isLongCooldown(u: UpstreamConfig, thresholdMs = 300_000): boolean {
+  const cool = getAppContext().cooldowns.get(u.name);
+  return !!(cool && cool.until - Date.now() > thresholdMs);
+}
+
+/** flash：多数免费钥长冷却时，把 paid 提到候选第二位 */
+export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): UpstreamConfig[] {
+  if (tier !== "flash" || ordered.length < 2) return ordered;
+  const regFree = (getConfig().tiers.get("flash") || []).filter(
+    u => u.enabled !== false && !isPaidUpstream(u),
+  );
+  if (!regFree.length) return ordered;
+  const longN = regFree.filter(u => isLongCooldown(u)).length;
+  if (longN / regFree.length < 0.5) return ordered;
+
+  const paid = ordered.filter(isPaidUpstream);
+  const free = ordered.filter(u => !isPaidUpstream(u));
+  if (!paid.length || !free.length) return ordered;
+  console.warn(
+    `[route] flash free long-cooldown ${longN}/${regFree.length} → boost paid after first free`,
+  );
+  return [free[0]!, ...paid, ...free.slice(1)];
+}
 
 /** 判断 upstream 是否可用 */
 export function isUpstreamOk(u: UpstreamConfig): boolean {

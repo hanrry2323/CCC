@@ -5,16 +5,22 @@
 
 import { ProxyAgent, Agent, fetch as undiciFetch, type Dispatcher, type RequestInit as UndiciRequestInit } from "undici";
 import type { UpstreamConfig } from "./types.js";
+import { TIMEOUTS } from "./config.js";
 
 const _agents = new Map<string, Dispatcher>();
-const _direct = new Agent({
-  connect: { timeout: 30_000 },
-  bodyTimeout: 0,
-  headersTimeout: 120_000,
-  keepAliveTimeout: 60_000,
-});
 
-/** 解析上游 proxy 字段；支持 http:// / https:// / socks5:// */
+function makeDirectAgent(): Agent {
+  return new Agent({
+    connect: { timeout: TIMEOUTS.CONNECT_MS },
+    bodyTimeout: 0,
+    headersTimeout: Math.max(TIMEOUTS.HEADERS_MS, TIMEOUTS.ATTEMPT_MS + 5_000),
+    keepAliveTimeout: TIMEOUTS.KEEPALIVE_MS,
+  });
+}
+
+let _direct = makeDirectAgent();
+
+/** 解析上游 proxy 字段；支持 http(s):// 或 socks5://host:port */
 export function resolveUpstreamProxy(up: UpstreamConfig): string | null {
   const raw = (up.proxy || "").trim();
   if (!raw) return null;
@@ -31,8 +37,8 @@ export function getDispatcherForUpstream(up: UpstreamConfig): Dispatcher {
   if (!agent) {
     agent = new ProxyAgent({
       uri: proxy,
-      requestTls: { timeout: 30_000 },
-      proxyTls: { timeout: 30_000 },
+      requestTls: { timeout: TIMEOUTS.CONNECT_MS },
+      proxyTls: { timeout: TIMEOUTS.CONNECT_MS },
     });
     _agents.set(proxy, agent);
     console.log(`[egress] proxy agent ready: ${proxy}`);
@@ -40,10 +46,19 @@ export function getDispatcherForUpstream(up: UpstreamConfig): Dispatcher {
   return agent;
 }
 
+function mergeAbortSignals(a?: AbortSignal | null, b?: AbortSignal | null): AbortSignal | undefined {
+  if (!a && !b) return undefined;
+  if (!a) return b!;
+  if (!b) return a;
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([a, b]);
+  return b;
+}
+
 /** 带上游出口的 fetch（代理失败时抛错，由 fallback 换钥）
  *
  * 必须用 undici 自带的 fetch：Node 全局 fetch 与 npm undici.ProxyAgent
  * 混用会报 InvalidArgumentError: invalid onRequestStart method。
+ * 默认叠加 LOOP_UPSTREAM_ATTEMPT_MS 硬超时，避免单钥挂死吃光 failover 墙钟。
  */
 export async function upstreamFetch(
   up: UpstreamConfig,
@@ -51,8 +66,13 @@ export async function upstreamFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   const dispatcher = getDispatcherForUpstream(up);
-  // undici fetch 返回值与 Web Response 兼容；cast 给协议层用
-  return undiciFetch(url, { ...(init as UndiciRequestInit), dispatcher }) as unknown as Promise<Response>;
+  const attemptSignal = AbortSignal.timeout(TIMEOUTS.ATTEMPT_MS);
+  const signal = mergeAbortSignals(init.signal as AbortSignal | undefined, attemptSignal);
+  return undiciFetch(url, {
+    ...(init as UndiciRequestInit),
+    dispatcher,
+    signal,
+  }) as unknown as Promise<Response>;
 }
 
 /** 测试用：清空 agent 缓存 */
@@ -65,4 +85,5 @@ export function _resetEgressAgentsForTest(): void {
     }
   }
   _agents.clear();
+  _direct = makeDirectAgent();
 }

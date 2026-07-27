@@ -7,7 +7,7 @@
 
 import type { TierId, UpstreamConfig, RoutingResult } from "./types.js";
 import { TierRegistry } from "./config.js";
-import { isUpstreamOk, TIER_FALLBACK, getMinCooldownSec } from "./tiers.js";
+import { isUpstreamOk, TIER_FALLBACK, getMinCooldownSec, boostPaidCandidates } from "./tiers.js";
 import { getConfig } from "./config.js";
 import { getScore } from "./scoring.js";
 
@@ -260,9 +260,9 @@ function tryTier(
       const afUp = affinityGet(affKey, up.name);
       if (afUp) {
         const others = tierUp.filter(x => isUpstreamOk(x) && x.name !== afUp.name);
-        const candidates = [afUp, ...others];
+        const candidates = boostPaidCandidates([afUp, ...others], tier);
         return {
-          upstream: afUp,
+          upstream: candidates[0] || afUp,
           candidates,
           tier,
           is_fallback: false,
@@ -283,7 +283,7 @@ function tryTier(
       if (ap !== bp) return ap - bp;
       return getScore(b.name) - getScore(a.name);
     });
-    const ordered = fairPick(tier, sorted);
+    const ordered = boostPaidCandidates(fairPick(tier, sorted), tier);
     return {
       upstream: ordered[0],
       candidates: ordered,

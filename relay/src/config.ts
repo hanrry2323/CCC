@@ -24,7 +24,10 @@ let _prevNames = new Set<string>();
 // CCC Relay 2026-07-25 门禁②补丁：非流式/连接超时可配（Lesson 24 教训：30s 硬上限对长 LLM 任务不够）
 export const TIMEOUTS = {
   // connect-only timeout for streaming paths (ms);流式 body 由 undici bodyTimeout 兜底
-  CONNECT_MS: Number(process.env.LOOP_CONNECT_TIMEOUT_MS) || 30_000,
+  // 503 优化：默认 8s，避免单钥 connect 挂死拖垮 failover 墙钟
+  CONNECT_MS: Number(process.env.LOOP_CONNECT_TIMEOUT_MS) || 8_000,
+  // 单次上游尝试（含首包）硬上限；超时立刻换钥
+  ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 15_000,
   // total timeout for non-streaming LLM calls (ms);非流式必须放宽,默认 10 分钟
   NONSTREAM_MS: Number(process.env.LOOP_NONSTREAM_TIMEOUT_MS) || 600_000,
   // undici Agent: streaming body timeout (ms);无读活动超过此时长则断开

@@ -43,6 +43,8 @@ npm run build
 
 ## 2. relay 配置与密钥
 
+> **钥池权威**：Mac2017。完整手册（无密钥）见 [`KEY-POOL.md`](KEY-POOL.md)；**含密钥清单**仅本机 `~/.ccc/relay/KEY-INVENTORY.md`。
+
 ```bash
 mkdir -p ~/.ccc/relay
 chmod 700 ~/.ccc/relay
@@ -51,12 +53,17 @@ chmod 700 ~/.ccc/relay
 cp ~/program/CCC/templates/relay-upstreams.example.json ~/.ccc/relay/upstreams.json
 chmod 600 ~/.ccc/relay/upstreams.json
 
-# 编辑填真 key(三档必填)
-# flash → OpenCode Zen deepseek-v4-flash-free（多 key + 可选 HK :18080）
-# Pro   → 空档时回落 flash（可后续填付费档）
-# code  → Zen 免费池 big-pickle 主力 + flash-free 备份（讯飞 xfyun 退役）
+# 编辑填真 key（免费 / 收费必须分清）
+# 免费 Zen：base_url=https://opencode.ai/zen/v1
+#           model=deepseek-v4-flash-free / big-pickle · billing=zen-free · free=true
+#           可选 proxy=http://127.0.0.1:18080（HK）
+# 收费 Go ：base_url=https://opencode.ai/zen/go/v1   ← 不要写成 zen/v1
+#           flash 兜底：deepseek-v4-flash · tier_priority=80 · billing=opencode-go · free=false
+#           Pro：deepseek-v4-pro · tier=pro
 # 模板注释勿写进 JSON 的 $comment（OpenCode 拒收 unrecognized key）
 $EDITOR ~/.ccc/relay/upstreams.json
+# 改完后同步刷新本机清单（Cursor 运维会话维护）
+# ~/.ccc/relay/KEY-INVENTORY.md
 ```
 
 **三档契约检查**(填完后跑一次,缺档即报错):

@@ -233,7 +233,9 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     if (p === "7d") ps = now - 7 * DAY_MS;
     else if (p === "30d") ps = now - 30 * DAY_MS;
     else if (p === "1d") ps = now - DAY_MS;
-    else ps = todayStart();
+    else if (p === "1h") ps = now - 3600_000;
+    else if (p === "today") ps = todayStart();
+    else ps = todayStart(); // 未知 period 回落今日
     let f = usg.value.filter(r => r.timestamp >= ps);
     if (uf) f = f.filter(r => r.upstream === uf);
     if (cf) f = f.filter(r => r.client === cf);

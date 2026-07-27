@@ -2,7 +2,9 @@
 
 > **用途**：新开「专门维护中转站」的 Cursor 对话时，把本文件当开场 SSOT 附件。  
 > **权威**：冲突以 [`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」「三档契约 + 上游解耦」为准。  
-> **代码根**：`relay/`（TS）· 运行配置：`~/.ccc/relay/upstreams.json`（**禁止进 git**）· 部署：[`docs/relay/DEPLOY-2017.md`](../relay/DEPLOY-2017.md)
+> **代码根**：`relay/`（TS）· 运行配置：`~/.ccc/relay/upstreams.json`（**禁止进 git**）· 部署：[`docs/relay/DEPLOY-2017.md`](../relay/DEPLOY-2017.md)  
+> **钥池手册（无密钥）**：[`docs/relay/KEY-POOL.md`](../relay/KEY-POOL.md)  
+> **完整密钥清单**：仅 Mac2017 `~/.ccc/relay/KEY-INVENTORY.md`（0600；Cursor 运维会话保管，禁止进 git）
 
 ---
 
@@ -107,12 +109,27 @@ cd relay && npm test
 | Hanrry322 | 2 | flash×1 + code×1 | flash 直连（新）；code big-pickle HK |
 | **Tai223** | 2 | flash×2（`go-g`/`go-h`） | 1 HK + 1 直连 · **14:18 追加** |
 | **Bbd223** | 2 | flash×2（`go-i`/`go-j`） | 1 HK + 1 直连 · **14:18 追加** |
+| **Go 付费**（`...HP6Ul`） | 1 | `opencode-go-paid-flash` + `opencode-go-pro` | **`https://opencode.ai/zen/go/v1`**（非 zen/v1）；flash prio=80 末位兜底；Pro 启用 |
+
+> 注意：普通 `zen/v1` + `deepseek-v4-flash` 对该钥会 401；必须走 **Go** 端点。
 
 flash 启用合计 **10**（含降权旧 HK）。新 4 钥探针全 OK；relay flash 烟测 200。
 
 **拓扑**：flash **3 直连 + 3 HK**；code **专钥**（不与 flash 共用，降互抢日额）。HK=`:18080` 隧道活体 OK。  
 **探针**：6 条 flash 初始全 OK；随后旧 HK 钥 `go-d/e` 再触长 RA（~18h）属预期。  
 **扩容建议**：若还要拉长稳定窗口，优先再注册 **2–4 个新账号** 专补 **HK 车道**（旧 HK 钥今日额度已空）；同账号堆多钥收益有限。
+
+### P0 — 503 PaidGuarantee（2026-07-27 16:10 · 已落地）
+
+**根因**：LISTEN 仍 503 —— 免费钥慢死吃光墙钟，`opencode-go-paid-flash` 未试到；偶发 fetch 把 paid 与整账号一起惩罚；plist 曾 `FAILOVER=120s/12`。
+
+**代码**：`PaidGuarantee`（fallback）+ `boostPaidCandidates`（router）+ 单次尝试 15s + fetch 不 trip breaker + 付费 ≤10s 冷却。默认 `FAILOVER_MAX_MS=35000` / `ATTEMPTS=6`。vitest 160 绿。
+
+**2017 热更**：dist rsync + plist env 已改 + kickstart。验收：关掉全部 free flash → `X-Routed-Upstream: opencode-go-paid-flash` 200；LAN 同。
+
+**看门狗**：`com.ccc.relay.flash-watchdog`（60s）已装；连续 3 次 flash 失败 kickstart。
+
+文档：`docs/relay/KEY-POOL.md` §2.1 · authority「PaidGuarantee」。
 
 1. **确认 2017 relay 活**：LISTEN + `POST /v1/messages` flash 有响应；卡死则 kickstart，查 err 是否又刷 breaker。  
    → **2026-07-27 本会话**：kickstart 后本机 flash/Pro/code 均 200；LAN 偶发超时仍见（卡死看门狗仍 P1）。
@@ -126,7 +143,8 @@ flash 启用合计 **10**（含降权旧 HK）。新 4 钥探针全 OK；relay f
 4. **OpenCode 默认模型**：2017 `opencode.json` 从 `xfyun/code` → relay **`code`**（Zen `big-pickle` + flash-free 备份）；Engine 热更后金路径再证一笔 **真 code commit**。  
    → **已落地配置**：`model=loop/code` + `loop`→`:4002`；`OPENCODE_MODEL=loop/code` 在 Engine 进程环境；直连迁 `opencode.direct.json`。金路径真 commit 仍交金路径会话。
 5. **探活统一**：fleet / Ops 勿用会 404 的 `/health`；文档与 `_ops_probe` 对齐。  
-6. **卡死看门狗**：LISTEN 但 accept 不回 → launchd 或外部 probe 自动 kickstart（防 13:33 类静默挂）。
+6. **卡死看门狗**：LISTEN 但 accept 不回 → launchd 或外部 probe 自动 kickstart（防 13:33 类静默挂）。  
+   → **已装** `com.ccc.relay.flash-watchdog`（flash 503/超时路径）；进程假活但仍需偶发人工 `kickstart` 对照 err。
 7. **残账**：stream body `h0:Rate limit`（无 HTTP 429/RA）仍短冷却——可后续从 SSE 错误体抽 RA。
 
 ### P2 — 可排期

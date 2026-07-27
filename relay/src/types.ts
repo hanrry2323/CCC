@@ -41,6 +41,11 @@ export interface UpstreamConfig {
   };
   primary?: boolean;
   free?: boolean;
+  /** zen-free | opencode-go | zhipu-failover — 运维标注；路由付费保底认 free===false / zen/go / billing */
+  billing?: string;
+  account?: string;
+  account_family?: string;
+  lane?: string;
   free_type?: "recurring-daily" | "recurring-monthly" | "recurring-credit" | "recurring-uncapped" | "one-time-initial" | "keyless" | "discontinued";
   free_tokens_monthly?: number;
   free_pool_key?: string;
