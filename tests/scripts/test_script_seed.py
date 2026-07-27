@@ -126,6 +126,45 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     assert should_use_script_seed(ws, doc2) is False
 
 
+    # opencode + docs stamp title + no script-seed tag + scope empty → False
+    docs_title = {
+        "id": "docs-stamp-t1",
+        "title": "写入 Layer1 金路径文档戳记",
+        "description": "仅报告",
+        "executor": "opencode",
+        "tags": ["exec:opencode"],
+    }
+    (ws / ".ccc" / "plans" / "docs-stamp-t1.plan.md").write_text(
+        "## 范围\n-\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "docs-stamp-t1.phases.json").write_text(
+        json.dumps({"phase": 1, "scope": []}) + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, docs_title) is False, "docs stamp title no tag → False"
+
+    # opencode + 纸面 + no tag + scope=scripts/paper_intent_probe.py → False (default opencode)
+    paper_no_tag = {
+        "id": "paper-no-tag",
+        "title": "纸面意图探针可重放",
+        "description": "seed paper_intent_probe",
+        "executor": "opencode",
+        "tags": ["exec:opencode"],
+    }
+    (ws / ".ccc" / "plans" / "paper-no-tag.plan.md").write_text(
+        "## 验收\n- DRY_RUN=true python3 scripts/paper_intent_probe.py\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "paper-no-tag.phases.json").write_text(
+        json.dumps(
+            {"phase": 1, "scope": ["scripts/paper_intent_probe.py"]}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, paper_no_tag) is False, "opencode paper no tag → False (must have script-seed tag)"
+
     import subprocess
 
     subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)

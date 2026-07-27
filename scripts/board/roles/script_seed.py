@@ -91,6 +91,14 @@ def looks_like_intent_probe_seed(ws: Path, task: dict[str, Any]) -> bool:
         if not any("paper_intent_probe" in s.replace("\\", "/").lower() for s in scopes):
             return False
 
+    # 文档戳记 / 金路径类卡片 → 拒绝 seed（必须走 OpenCode 正常路径）
+    golden_stamps = (
+        "golden_path", "golden-path", "golden path",
+        "文档戳记", "金路径", "docs stamp", "GOLDEN_PATH",
+    )
+    if any(s in blob for s in golden_stamps):
+        return False
+
     # Explicit non-paper probe deliverable → OpenCode / normal path
     if any(
         "feature_counter_probe" in s
@@ -131,8 +139,11 @@ def should_use_script_seed(ws: Path, task: dict[str, Any]) -> bool:
     if not looks_like_intent_probe_seed(ws, task):
         return False
     exec_id = str(task.get("executor") or "").strip().lower()
-    # Explicit python/auto/cli OR opencode mis-routed probe (force seed)
-    if exec_id in ("python", "auto", "cli", "opencode", ""):
+    tags = {str(t).lower() for t in (task.get("tags") or [])}
+    # opencode: 仅当有显式 script-seed/intent-probe-seed tag 才 seed
+    if exec_id == "opencode":
+        return bool(tags & {"script-seed", "intent-probe-seed"})
+    if exec_id in ("python", "auto", "cli", ""):
         return True
     return False
 
