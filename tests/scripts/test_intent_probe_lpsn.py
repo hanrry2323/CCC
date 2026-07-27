@@ -37,6 +37,22 @@ def test_reject_shell_meta():
     assert not is_allowed_verify_cmd("pytest | tee out")
 
 
+def test_split_safe_and_chain_into_cmds():
+    """test -f X && grep -q Y X must not collapse to only test -f."""
+    from _intent_probe import extract_probe_commands
+
+    section = (
+        "## 验收\n"
+        "- test -f docs/reports/stamp.md && grep -q GOLDEN_PATH_OK docs/reports/stamp.md\n"
+    )
+    probes = extract_probe_commands(section)
+    assert "test -f docs/reports/stamp.md" in probes
+    assert "grep -q GOLDEN_PATH_OK docs/reports/stamp.md" in probes
+    # hostile chain still rejected as a whole (no partial rm)
+    bad = extract_probe_commands("## 验收\n- python3 -c 'x' && rm -rf /\n")
+    assert not any("rm " in p for p in bad)
+
+
 def test_acceptance_runs_dry_run_probe(tmp_path: Path):
     from _acceptance_gate import check_acceptance
 

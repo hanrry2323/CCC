@@ -106,7 +106,11 @@ _TRAILING_PROSE_RE = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
 
 
 def _candidates_from_list_item(item: str) -> list[str]:
-    """Allowlisted cmd from a list item; strip trailing Chinese / fullwidth prose."""
+    """Allowlisted cmd from a list item; strip trailing Chinese / fullwidth prose.
+
+    Simple ``cmd1 && cmd2`` chains are split into separate allowlisted cmds so
+    ``test -f x && grep -q Y x`` cannot collapse to only the ``test -f`` half.
+    """
     item = (item or "").strip()
     if not item or item.startswith("不"):
         return []
@@ -125,6 +129,20 @@ def _candidates_from_list_item(item: str) -> list[str]:
                     return cand
             return None
         return cmd
+
+    # Prefer splitting && before rejecting the whole line as shell-meta
+    if "&&" in item and "`" not in item and not any(
+        m in item for m in (";", "||", "|", ">", "<", "$(", "${")
+    ):
+        segs: list[str] = []
+        for part in item.split("&&"):
+            cleaned = _clean(part.strip())
+            if not cleaned:
+                segs = []
+                break
+            segs.append(cleaned)
+        if segs:
+            return segs
 
     if "`" in item:
         for m in re.finditer(r"`([^`]+)`", item):
