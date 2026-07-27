@@ -353,6 +353,7 @@ struct OpsView: View {
         let engOk = cluster?.engine_running == true
         let mode = cluster?.mode ?? "—"
         let hubOk = cluster?.hub_port_7777 != false
+        let tunnelOk = model.serverURLString.contains(":17777")
         return VStack(alignment: .leading, spacing: 10) {
             sectionTitle("集群与服务", systemImage: "server.rack")
             HStack(spacing: 10) {
@@ -364,7 +365,7 @@ struct OpsView: View {
                 domainChip(
                     title: "Hub",
                     ok: hubOk,
-                    subtitle: hubOk ? "7777 通" : "7777 异常"
+                    subtitle: hubOk ? "隧道 :17777" : "7777 异常"
                 )
                 domainChip(
                     title: "宕口",
@@ -372,6 +373,24 @@ struct OpsView: View {
                     subtitle: downN == 0 ? "全部正常" : "\(downN) 个异常"
                 )
             }
+            // 隧道状态行 — 与 chip 同级
+            HStack(spacing: 6) {
+                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                    .foregroundStyle(tunnelOk ? CCCTheme.nodeDone : CCCTheme.nodeFail)
+                    .font(.system(size: 14))
+                Text("com.ccc.hub-tunnel")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(CCCTheme.ink)
+                Text(tunnelOk ? "127.0.0.1:17777" : "未连")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(tunnelOk ? CCCTheme.nodeDone : CCCTheme.secondary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill((tunnelOk ? CCCTheme.nodeDone : CCCTheme.nodeFail).opacity(0.1))
+            )
             if let ports = cluster?.ports, !ports.isEmpty {
                 Text(
                     "端口 "
@@ -384,9 +403,6 @@ struct OpsView: View {
                 .font(CCCTheme.caption)
                 .foregroundStyle(CCCTheme.faint)
             }
-            Text("本机 Hub 隧道默认 127.0.0.1:17777（launchd com.ccc.hub-tunnel）")
-                .font(CCCTheme.caption)
-                .foregroundStyle(CCCTheme.faint)
         }
     }
 
