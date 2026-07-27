@@ -4,7 +4,7 @@
 **合入与审测只认 Cursor。** Desktop 对话 Agent 不要跑这些包。
 
 **偏好**：大包多 Phase、一次做完再回报，少跑碎卡片。  
-**主题纪律（2026-07-27）**：Ops/壳抛光主路径 **已收束**。009 为文档/SPA 收尾；**其后草稿工只接金路径断点的白名单缺陷包**（见 [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md)）。UI chip / 停更页类包 **不再新开**，除非金路径证据明确指向该文件。
+**主题纪律（2026-07-28）**：Layer1 **已正式出门**。Ops/壳抛光主路径 **已收束**（009 合入）。**无强制下一包**；草稿工**仅**接金路径断点白名单缺陷（见 [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md)）。UI chip / 停更页类包 **不再新开**。下一平台开程二选一：程 B 硬化或 Layer2 qb。
 
 ## 人怎么用
 

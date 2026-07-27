@@ -5,8 +5,8 @@
 > SSOT：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」· [`docs/product/dev-channel.md`](../product/dev-channel.md)  
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
-> **更新（2026-07-27）**：三层出门 + 协作评估 + 效率仪表；主路径从 Ops 抛光切到金路径证据。  
-**下一草稿包**：无强制下一包。Layer1 出门收口见下方「当前状态」；Layer2 qb 样板另开程。012 探活契约已落地。
+> **更新（2026-07-28）**：Layer1 **已正式出门（小业务）**；Ops 抛光主路径停；下一开程二选一（程 B 硬化 **或** Layer2 qb），勿两边同时开。  
+**下一草稿包**：无强制下一包；草稿工**仅**金路径白名单缺陷。Layer2 qb 样板另开程。
 
 ---
 
@@ -21,7 +21,7 @@ Demo 感来自：壳齐全（Desktop / Hub / Engine / 对话都能动）但缺**
 Layer0 表面完备 ──G1–G6 + 金路径──► Layer1 平台生产级 ──LPSN + 域 KPI──► Layer2 业务意图生产级
 ```
 
-粗估（诚实 · 2026-07-28）：壳抛光 ~85%；平台生产证据 **~80%+（P-A…P-F 机制绿）**；意图飞轮自动化与业务 KPI 大多未证。再堆 UI packet 几乎不抬 Layer1。
+粗估（诚实 · 2026-07-28 收尾）：壳抛光 ~85%；平台生产证据 **已出门（P-A…P-F + v6 outbox 同栈）**；意图飞轮自动化与业务 KPI 大多未证。再堆 UI packet **零**抬 Layer1。
 
 ---
 
@@ -42,8 +42,8 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 | ID | 指标 | 证据形态 | 状态 |
 |----|------|----------|------|
 | P-A | 对话不断 | M1 Desktop 连续对话 ≥30min 无假死；鉴权默认不挡 | **绿**（sidecar `/api/chat` 35min×11 轮 200；见 evidence 2026-07-28） |
-| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | **绿**（v4/v5） |
-| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **绿**（v5 verdict+released；Desktop transfer API） |
+| P-B | 写码通道 | 一笔 OpenCode `code` 任务真实落地 commit（非 mock） | **绿**（v4/v5/v6） |
+| P-C | 编排不假绿 | 同一业务小 epic：backlog→planned→testing→**hollow+verdict 文件**→released | **绿**（v6 Desktop outbox→released；v5 API） |
 | P-D | 失败可收 | 人为造一笔 FAIL：进 failures、可 reopen/quarantine，槽位释放 | **绿**（v4 hang 收尸） |
 | P-E | 双机净 | `:17777` 隧道 + fleet/patrol 绿；无 M1 业务第二树 | **绿**（`ccc-hub-probe` 契约；012） |
 | P-F | 运维敢下任务 | Ops 总灯绿时可下发；红灯可一键复制交 Agent | **绿**（`copy_payload` 已证；M1 fleet 绿；qb 僵尸 abnormal 已清，`ready_to_dispatch.ok` / `fleet_abnormal=0`；总灯 amber 仅 qb 脏树提示不挡下达） |
@@ -116,38 +116,44 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 ### 程 1–2 — Desktop Ops（已收束）
 
 - [x] P1 001–004 · P2 005–007 · 008 Hub/Desktop polish · App 重打包  
-- [ ] 009 文档/SPA 清理（可收尾；**不算 Layer1 进度**）  
-- **此后**：停止 Ops 抛光作主路径；草稿工仅接「金路径打回的白名单缺陷」包。
+- [x] 009 文档/SPA 清理（已合入；**不算 Layer1 进度**）  
+- **此后**：停止 Ops 抛光作主路径；草稿工仅接「金路径打回的白名单缺陷」包。**禁止**再开 UI chip / SPA 大包当进度。
 
-### 程 3 — 金路径证据（Cursor / 2017 · **现行主路径**）
+### 程 3 — 金路径证据（Cursor / 2017 · **已关门**）
 
 - [x] P-B / P-C / P-D（ccc-demo v4）  
 - [x] P-A sidecar ≥30min；P-E `ccc-hub-probe`；P-F `copy_payload` 点灯  
 - [x] Go `code`：`thinking.type=disabled`  
 - [x] **011** DoD hygiene（`0505ae9`）· **012** Hub 探活契约  
 - [x] v5 金路径（`layer1-v5-be97b57f` · 011 回归无 `.ccc/` 脏扫）  
-- [ ] HK 隧道 KeepAlive / patrol（观察）  
+- [x] **2017 热更 `fb5fb88`** + dual-host aligned + probe pass  
+- [x] **v6** Desktop outbox 同栈（`layer1-wrap-v6-golden-path-stamp-1d4efb18` → released · `7921b89`）  
+- [x] HK 隧道 KeepAlive 观察（hub-tunnel up；连续 version 探针 200）— 持续观察即可  
 - 断点记录：[`2026-07-27-golden-path-evidence.md`](./2026-07-27-golden-path-evidence.md)
 
-### 程 4 — 产品飞轮（单开 · 勿与 Ops 混）
+### 程 4 — 产品飞轮（**冻结 · 另开**）
 
 - LPSN / `intent_stable` / next_goal（见 [`lpsn-ship-gate.md`](../product/lpsn-ship-gate.md)）  
-- **仅当 Layer1 出门后再放大**
+- 飞轮自动化 T1–T4 **不**与 Ops/Layer1 收尾混开
 
-### 程 5 — 业务域 KPI（qb 样板）
+### 程 5 — 业务域 KPI（qb 样板 · **冻结 · 另开**）
 
 - 见 [`2026-07-27-qb-domain-ship-gate.md`](./2026-07-27-qb-domain-ship-gate.md)  
 - 与 CCC `intent_stable` **分离勾选**
+
+### 程 B — 平台硬化（**下一开程候选 · 不挡已出门**）
+
+- [ ] Stress KPI 缩小复跑（Relay/DoD/board 改动后）  
+- [ ] v0.63 `nudge_bg_session` 真注入 + E2E  
+- [ ] 周刊金路径烟测纪律（≥1 次/周 P-B/P-C tid）
 
 ---
 
 ## 还要多少步（依赖序 · 不虚报日历）
 
-1. 收束壳工作（009 可完即停 Ops 大包主路径）  
-2. Cursor 主导跑 Layer1 证据（程 3）  
-3. 金路径哪里断修哪里（此处才加大编排模型流量）  
-4. LPSN 门禁绿 + 人工样板  
-5. 才开「用 CCC 做业务生产」；qb 再挂业务 KPI
+1. ~~收束壳 / Layer1 证据~~ → **已完成（2026-07-28）**  
+2. **二选一**写进开程：程 B 硬化 **或** Layer2 qb 样板（**勿同时开**）  
+3. 才放大「用 CCC 做业务生产」产能叙事；qb 再挂域 KPI
 
 ---
 
@@ -163,19 +169,21 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 ---
 
-## 当前状态（2026-07-28）
+## 当前状态（2026-07-28 · Layer1 正式出门）
 
 | 项 | 状态 |
 |----|------|
 | Relay flash / code 免费池 | 已部署；Go thinking 关；持续观察限流 |
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
-| Desktop Ops P0–P2 + 008 polish | 已合入；App 已重打包 |
+| Desktop Ops P0–P2 + 008/009 | **已合入收束**；禁止再开 Ops/SPA 抛光主路径 |
 | Layer 0 表面完备 | **大体已到** |
-| Layer 1 金路径 P-A…P-F | **可出门（小业务）** — 见下句；诚实残留：Desktop App 人手点定稿未单跑；Hub 可下达已绿（qb 僵尸已清，amber=脏树提示） |
-| Layer 2 / qb 域 KPI | 清单已立；**冻结至本出门句之后另开** |
+| Layer 1 金路径 P-A…P-F | **已出门（小业务）** — 见下句；诚实残留：App UI 人手点定稿未单跑（outbox 同栈已证） |
+| 2017 / M1 版本 | **aligned** `fb5fb88` · probe pass · `ready_to_dispatch.ok` / `fleet_abnormal=0`（amber=qb 脏树） |
+| Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
-| 草稿工主路径 | Ops 抛光 **收束** → 仅金路径白名单缺陷 |
+| 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
+| 下一开程 | **二选一**：程 B（KPI 复跑 / v0.63 nudge）**或** Layer2 qb — **勿同时开** |
 
-**Layer1 出门句（2026-07-28）**：用户定一个**小而硬**的意图 → 经 Desktop transfer API / Engine → OpenCode `code` → verdict → released，失败可收尸 reopen；对话口 sidecar ≥30min 稳；探活口径统一。  
-**仍冻结**：qb 域 KPI / 飞轮自动化 / 产能承诺。
+**Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode `code` → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
+**仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。
 

@@ -297,3 +297,50 @@
 **G1 / P-A → 绿**（对话传输层 ≥30min 无假死）。诚实注：本笔为 Cursor 驱动 sidecar 浸泡，非人手在 Desktop App 点聊；与 Desktop 共用 `:7788`。
 
 ---
+
+## 2026-07-28 · Layer1 收尾核验（热更 + Desktop outbox v6）
+
+### A1 · 2017 热更 `fb5fb88`
+
+| 检查 | 结果 |
+|------|------|
+| 2017 拉主前 | `1b011e7` + 本地脏 `_board_store`/`board_repair`（已 `stash`） |
+| 2017 HEAD | **`fb5fb88`**（与 M1 / `origin/main` 对齐） |
+| kickstart | `com.ccc.chat-server` + `com.ccc.engine` |
+| `ccc-dual-host-check` | **aligned: yes** · hub `v0.62.0 fb5fb88` |
+| `ccc-hub-probe` | **OVERALL pass** |
+| Ops `ready_to_dispatch` | `ok=true` · `fleet_abnormal=0` · severity **amber**（qb 脏树提示，不挡下达） |
+
+### A2 · Desktop outbox → released（v6）
+
+| 项 | 值 |
+|----|-----|
+| epic | `layer1-wrap-v6-golden-path-stamp-1d4efb18` → **done** |
+| work | `layer1-wrap-v6-golden-path-stamp-1d4efb18-w1` → **released** |
+| 投递路径 | Desktop `transfer-outbox.json` → sidecar `flush_once` → Hub `POST /api/desktop/transfer`（与 App 确认后冲刷**同栈**） |
+| 戳记 | `docs/reports/ccc-layer1-golden-path-v6.md` · `GOLDEN_PATH_OK_V6` · `WRAPUP_2026_07_28` |
+| commit | `7921b89` — **仅**报告文件（无 `.ccc/`） |
+| verdict | PASS · `doc_only` · kb 同 tick → released |
+| 断点/修复 | 首扇出 plan 因 shell 转义把 scope 吃成 `STATUS.md` → prepare 失败；seed PENDING 戳记 + 修 plan/phases 后 OpenCode 一跑通 |
+
+### 勾选
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| P-B / P-C | **绿（收尾巩固）** | v6 OpenCode commit + verdict + released；011 无 hygiene 脏扫 |
+| P-C Desktop 同栈 | **绿（诚实）** | 走 Desktop **outbox→sidecar flush**（App 确认后唯一冲刷路径）；**非** App UI 人手点定稿模拟 |
+| P-E / P-F | **绿（热更后）** | dual-host aligned · probe pass · `fleet_abnormal=0` |
+| App UI 人手点 | **仍未单跑** | 残留观察项；机制与 outbox 同栈已证 |
+
+---
+
+## 2026-07-28 · 程 B 观察（不挡 Layer1 出门）
+
+| 项 | 结果 |
+|----|------|
+| Hub 隧道 KeepAlive | `com.ccc.hub-tunnel` **running**；连续 3× `GET /api/desktop/version` → 200（~0.18–0.21s） |
+| Relay / free 429 | 持续观察（不本笔重架构） |
+| Stress KPI 复跑 | **未跑** — 列入下一开程（Relay/DoD/board 改动后建议缩小复跑） |
+| v0.63 `nudge_bg_session` | **未做** — 仍占位；另开程，不计入 Layer1 |
+
+---

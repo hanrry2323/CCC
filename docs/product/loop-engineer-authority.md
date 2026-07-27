@@ -319,7 +319,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | L1 goals 结构 + `intent_stable` | `agent_mind` + `POST …/goals/{id}/status` |
 | 空闲优先产品目标 | `_project_baseline.next_product_goal` |
 | 出门清单 | [`lpsn-ship-gate.md`](lpsn-ship-gate.md) |
-| 平台生产三层出门 + 金路径 | [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · Layer0/1/2；证据 [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md) |
+| 平台生产三层出门 + 金路径 | [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · Layer0/1/2；**Layer1 已出门（2026-07-28）**；证据 [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md) |
 | 业务域 KPI（qb 样板 · 非 CCC 冒充盈利） | [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md) |
 | 飞轮自动化（规划 · 未实现） | [`../briefs/2026-07-24-lpsn-flywheel-auto.md`](../briefs/2026-07-24-lpsn-flywheel-auto.md) · T1 seed / T2 probed / T3 人点 stable / T4 next_goal |
 
@@ -379,7 +379,7 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **code 默认上游（硬 · 2026-07-27）** | **OpenCode Go 套餐**：`https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`（逻辑名 `code`；现行 `opencode-go-paid-code`，可与 paid-flash/pro 同钥）。**禁止**把 Go 套餐钥配到 `zen/v1` + `big-pickle`/`*-free`（会假 429/假余额）。Zen 免费写码池仅作可选旁路；讯飞 xfyun **退役**；智谱仅 fail-open 末位（默认关）。 |
 | **Go thinking 关（硬 · 2026-07-27）** | 所有 Go/`deepseek-v4-*` 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`（主机 `upstreams.json`，不进 git）。默认 thinking 会令 OpenAI 兼容口 `content=""`、只填 `reasoning_content` → OpenCode 空转 hang。手册：`docs/relay/KEY-POOL.md`。 |
 | **免费 vs 收费（硬 · 2026-07-27）** | **免费**=`zen/v1` + `*-free`/`big-pickle`（`billing=zen-free`）；**收费 Go 套餐**必须 `https://opencode.ai/zen/go/v1`（`billing=opencode-go`）。Go 钥误打 `zen/v1` 付费模型会假 401。flash 付费兜底=`opencode-go-paid-flash`（`tier_priority=80`）；Pro=`opencode-go-pro`。钥 SSOT=2017 `~/.ccc/relay/upstreams.json` + 本机 `KEY-INVENTORY.md`；仓内手册=`docs/relay/KEY-POOL.md`（无密钥） |
-| **PaidGuarantee（硬 · 2026-07-27）** | 免费池抖动时墙钟内**必试** Go 付费；默认 `FAILOVER_MAX_MS=90s` / free 按**出口**轮转（最多 4）再 paid / paid 首包 `70s` / peek 10s·25s；free 全死时 **last-resort 含短冷却 paid**（禁空候选 502）；SSE keepalive + peek 立刻 flush。见 `docs/relay/KEY-POOL.md` §503 |
+| **PaidGuarantee（硬 · 2026-07-28）** | 免费池抖动时墙钟内**必试** Go 付费；默认 `FAILOVER_MAX_MS=45s` / free attempt **8s** / paid **25s** / peek 6s·12s；**仅 zero 可用 free** 才 paid-first；日配额只冷却该钥（不封出口）；**会话钉 paid**（成功走 Go 后 TTL≈24h 保 prompt cache，≠背叛新会话 free-first）。见 `docs/relay/KEY-POOL.md` §503 |
 | **冷却 / 限流（硬 · 2026-07-27）** | 429 + `Retry-After` >120s 一律按**日配额**冷却（采纳完整 RA，禁封顶 120s 反复撞钥）。`POST /admin/cooldowns/clear` **默认保留**剩余 >300s 的冷却；急救全清用 `?force=1`。列表：`GET /admin/cooldowns` |
 | **OpenCode 默认（硬 · 2026-07-27）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/code`（本机 `:4002` → relay `code`）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
 | **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
@@ -694,22 +694,24 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 > 边界来源:CLAUDE.md 头部「人格独立」节 v0.39 已写"平台开发只认 Cursor";但未强制 M1 Desktop Claude Code 行为边界。本条把**共识变成执行规则**,由 sidecar / Cursor 规则双端 enforce(sidecar 检测 CCC 仓 cwd 写操作时拒 + Cursor 仍保留全 IDE 能力)。
 
-## 个人 Claude Code 草稿工（硬 · 2026-07-27 · 生产前完善期）
+## 个人 Claude Code 草稿工（硬 · 2026-07-27 · Layer1 已出门后）
 
 > **战略**：先把 CCC 做到生产级工具，再用 CCC 做业务生产。半成品上生产 = 空转。  
 > **分工**：中转站稳定后，**个人 Claude Code CLI**（接 Relay `flash`，非 Desktop Agent）可扛边界清晰的草稿量；**Cursor 写细指令 + 审合入 + 权威/双机**。  
-> 详路线：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · 指令包目录：[`docs/dev-packets/`](../dev-packets/README.md)
+> 详路线：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · 指令包目录：[`docs/dev-packets/`](../dev-packets/README.md)  
+> **状态（2026-07-28）**：Layer1 **已正式出门（小业务）**。日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主。草稿工**停用放大**——无强制下一包，**仅**接金路径打回的白名单缺陷。下一开程二选一：程 B 硬化 **或** Layer2 qb（勿同时开）。
 
 | 项 | 口径 |
 |----|------|
 | **合入 SSOT 仍只认 Cursor** | **禁止**把个人 Claude Code / Desktop Agent 当合入权威。上 main、改权威、双机热更、生产 `upstreams.json`/plist → **仅 Cursor**（或人在 Cursor 指导下点） |
 | **草稿工允许做什么** | 在**指定 feature branch / worktree**内，按 Cursor 下发的 **dev-packet** 改白名单文件；补测骨架；跑 packet 内验收命令 |
-| **草稿工禁止做什么** | 改 `loop-engineer-authority` / 红线 / 控制面；动生产密钥与 launchd；`git add -A`；强推 main；跨 packet 范围「顺手重构」；冒充 Desktop 产品大脑改 CCC |
+| **草稿工禁止做什么** | 改 `loop-engineer-authority` / 红线 / 控制面；动生产密钥与 launchd；`git add -A`；强推 main；跨 packet 范围「顺手重构」；冒充 Desktop 产品大脑改 CCC；**再开 Ops/SPA/UI 抛光大包** |
 | **协作节奏** | Cursor 写 packet → 人转发给个人 Claude Code → 人交回 diff/分支 → Cursor 审测合入（或打回修正包） |
 | **与双身份关系** | **不削弱**「Desktop Agent 禁改 CCC」。个人 CLI 草稿 ≠ Desktop 会话写仓 |
-| **何时停用放大** | CCC 达 **Layer1 平台生产出门**（见 production-readiness brief 三层出门 + 金路径 P-A…P-F）后，日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主，草稿工仅作配额旁路 |
+| **何时停用放大** | **已触发（2026-07-28）**：Layer1 平台生产出门后，草稿工仅作配额旁路（金路径白名单缺陷），禁止 Ops 抛光主路径 |
 | **生产出门分层（硬）** | **Layer0 表面完备 ≠ Layer1 平台生产**。敢承诺「用 CCC 跑业务开发」只认 Layer1（G1–G6 + 金路径证据）。Ops/UI 草稿合入 **不计入** 金路径。 |
 | **业务盈利边界（硬）** | **`released` / `code_landed` ≠ 业务完成**；**≠ 能盈利**。量化等业务须另立域 KPI（回撤/熔断/SLA/保活），与 `intent_stable` 分开勾；样板见 [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md)。Ops 抛光收束后，草稿工**仅**接金路径打回的白名单缺陷包。 |
+| **Layer1 出门句** | 见 production-readiness「当前状态」：Desktop outbox 同栈 → Engine → OpenCode → verdict → released（ccc-demo v6 已证）。**仍冻结** Layer2 / 飞轮自动 / invent / 产能 SLA。 |
 
 > 巡查口径：仓内**禁止**出现「用 Claude Code 当平台 IDE / 直接合入」的现行教法；允许出现「草稿工 + Cursor 合入」例外说明。
 

@@ -17,7 +17,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Skill + Prompt = 本次角色**（用户不选角色）。机制：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
 **v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
-**开发通道**：合入 = **仅 Cursor**；个人 Claude Code CLI = 草稿工（`docs/dev-packets/` + Relay flash）；Desktop Agent **禁改 CCC**。先生产级工具再业务生产：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](docs/briefs/2026-07-27-ccc-production-readiness.md)。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
+**开发通道**：合入 = **仅 Cursor**；个人 Claude Code CLI = 草稿工（`docs/dev-packets/` + Relay flash；**Layer1 已出门后仅金路径白名单缺陷，无强制下一包**）；Desktop Agent **禁改 CCC**。Layer1 平台生产级 **已出门（小业务）**；Layer2 qb / 飞轮自动仍冻结：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](docs/briefs/2026-07-27-ccc-production-readiness.md)。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。  
