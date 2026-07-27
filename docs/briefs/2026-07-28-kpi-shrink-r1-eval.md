@@ -29,6 +29,7 @@ R5（`stress-mx-20260723-kpi-r5`，双仓）曾 PASS。本轮为 **Layer1 出门
 
 1. **手工 seed**：OpenCode 卡曾因 `prepare`「scope 文件缺失」空转；seed `scripts/eff23r2_ccc_demo_{mod,util_a,util_b}.py` 后才启动。→ 平台修：缺失 in-tree leaf **放行**（见 `_role_tool.py`）。
 2. **板面孤儿**：evaluate 时仍见 `util-w1` 在 `abnormal`（reason 曾为 `reviewer 未产出 verdict`）且 `util-w2` planned；gate `work_abnormal_n`/`epic_done` 按效率报告 computed 仍绿（epic `split_status=done`）。不另开卫生 epic；清场归会话 board_ops 若需。
+   - **013 修复**（draft）：`enrich_computed` 从 `work_columns` + `works` 列表的 MAX 推导 `work_abnormal_n`；reviewer 无 verdict 退出前先写 FAIL verdict 文件。
 3. **干预**：非无人值守；Cursor 热更 + seed + evaluate。
 
 ## 下一步
