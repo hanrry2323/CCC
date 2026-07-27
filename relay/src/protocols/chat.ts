@@ -117,6 +117,17 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
       },
       {
         getBytesWritten: () => bytesWritten,
+        onAttemptWait: () => {
+          if (!headersSent) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+            });
+            headersSent = true;
+          }
+          if (res.writable) res.write(`: keepalive ${Date.now()}\n\n`);
+        },
         consume: async ({ reader, firstLines, buffered, stallMs }) => {
           // reset accumulators per attempt (stall failover)
           oaAcc.text = "";
@@ -169,6 +180,14 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
                   tt = p.usage.total_tokens || tt;
                   ctk = p.usage.prompt_tokens_details?.cached_tokens || ctk;
                 }
+                if (!headersSent) {
+                  res.writeHead(200, {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                  });
+                  headersSent = true;
+                }
                 const chunk = `data: ${JSON.stringify(p)}\n\n`;
                 res.write(chunk);
                 bytesWritten += chunk.length;
@@ -194,13 +213,12 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
             writeLines(extra);
           };
 
-          // Stall before any client write → failover; only flush after first successful read or stream end
+          // peek 已验证：立刻刷客户端
+          flushStart([]);
+
           while (true) {
             const { done, value } = await streamReadWithTimeout(reader, stallMs);
-            if (done) {
-              flushStart([]);
-              break;
-            }
+            if (done) break;
             buf += decoder.decode(value, { stream: true });
             const lines = buf.split("\n");
             buf = lines.pop() || "";
@@ -230,6 +248,9 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
     }
 
     if (result.stalledAfterWrite && res.writable) {
+      res.write(`data: ${JSON.stringify({
+        error: { message: "upstream stream stall", type: "api_error" },
+      })}\n\n`);
       res.write("data: [DONE]\n\n");
     }
 

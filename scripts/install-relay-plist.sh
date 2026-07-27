@@ -146,15 +146,15 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${HOST_TAG}</string>
     <!-- 墙钟/次数：免费快失败 + 付费大 prompt 首包；禁止 120s×12 空转 -->
     <key>FAILOVER_MAX_MS</key>
-    <string>60000</string>
+    <string>90000</string>
     <key>FAILOVER_MAX_ATTEMPTS</key>
-    <string>6</string>
+    <string>8</string>
     <key>LOOP_UPSTREAM_ATTEMPT_MS</key>
-    <string>20000</string>
+    <string>15000</string>
     <key>LOOP_UPSTREAM_ATTEMPT_PAID_MS</key>
-    <string>55000</string>
+    <string>70000</string>
     <key>LOOP_UPSTREAM_PEEK_MS</key>
-    <string>12000</string>
+    <string>10000</string>
     <key>LOOP_UPSTREAM_PEEK_PAID_MS</key>
     <string>25000</string>
     <key>LOOP_CONNECT_TIMEOUT_MS</key>

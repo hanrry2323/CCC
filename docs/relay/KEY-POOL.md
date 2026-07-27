@@ -46,24 +46,31 @@
 | 旧坑 | 新策略（已落地） |
 |------|------------------|
 | 免费钥 `fetch` 挂 60–90s → `budget:wall`，paid 未试 | 单次上游硬超时 **15s**（`LOOP_UPSTREAM_ATTEMPT_MS`） |
-| launchd `FAILOVER_MAX_MS=120000` / 12 次 | 默认 / 2017 plist：**60s / 6 次** |
+| launchd `FAILOVER_MAX_MS=120000` / 12 次 | 默认 / 2017 plist：**90s / 8 次** |
 | paid `tier_priority=80` 永远垫底 | free 失败 → **PaidGuarantee**；多数 free 长冷却 → **paid-first** |
-| `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤10s**；free fetch → 90s 灰名单 |
+| `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤3s**；free fetch → 90s 灰名单 |
 | 503 文案把未试 paid 写成「不可用」 | trail 可标 `paid_skipped_budget`；成功时 `X-Routed-Upstream: opencode-go-paid-flash` |
 | 大上下文仍 503：trail 已点到 paid 也是 `fetch` | **勿**用 `CONNECT_MS` Abort 包整段 fetch；首包后 clearTimeout |
-| trail 仍见 100s+ `fetch` | **peek 硬超时** free 12s / paid 25s；同请求最多 **2** 个 free |
+| trail 仍见 100s+ `fetch` | **peek 硬超时** free 10s / paid 25s；同请求按**出口**轮转 free（最多 4），勿一失败就钉 paid |
+| 付费兜底仍 502/断流 | flash free 全死时 **last-resort 含短冷却 paid**；墙钟默认 **90s** / paid 首包 **70s**；SSE keepalive + peek 立刻 flush |
 
 **验收口径**：人为关掉全部 free flash 后，`POST /v1/messages` flash 应 **200** 且 `X-Routed-Upstream` = paid。  
 **看门狗（可选）**：`bash scripts/install-relay-flash-watchdog-plist.sh`（60s 探针，连续 3 次失败 kickstart）。
 
 **勿做**：用 `?force=1` 清日额长冷却当「提稳」（只会反复撞 429）。
 
+### 2026-07-27 活体结论（轮转 vs 断任务）
+
+- 直连探针：`opencode-go-a..j` **全部** `429` + `Retry-After≈10h`（日配额真耗尽，不是路由漏选）。
+- 此时正确行为 = **立刻走 `opencode-go-paid-flash`**，并用 keepalive/更长墙钟避免客户端掐死。
+- 免费钥恢复后：affinity 若钉在 paid，路由应**重新优先 free**（paid 留末位保底）。
+
 ### 部署检查清单（2017）
 
 ```bash
 cd ~/program/CCC/relay && npm test && npm run build
 rsync -az dist/ mac2017:/Users/fan/program/CCC/relay/dist/   # 或在本机 2017 上 build
-# 对齐 plist：FAILOVER_MAX_MS=60000 ATTEMPT_*=20s/55s PEEK_*=12s/25s STALL_IDLE_MS=30000
+# 对齐 plist：FAILOVER_MAX_MS=90000 ATTEMPT_*=15s/70s PEEK_*=10s/25s STALL_IDLE_MS=30000
 launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
 # 验收：小 ping + 大 body（~100KB）+ LAN；trail 禁止再出现 ~100s 的 *:fetch
 curl -sS 'http://127.0.0.1:4000/admin/trail?limit=10'

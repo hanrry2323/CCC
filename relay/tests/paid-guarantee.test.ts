@@ -114,9 +114,9 @@ describe("isPaidUpstream / boostPaidCandidates", () => {
 describe("selectNextCandidate PaidGuarantee", () => {
   beforeEach(ctxReset);
 
-  it("forces paid after one free failure", () => {
-    const free1 = makeFree("free1");
-    const free2 = makeFree("free2");
+  it("forces paid after one free failure on same egress", () => {
+    const free1 = { ...makeFree("free1"), base_url: "https://opencode.ai/zen/v1" };
+    const free2 = { ...makeFree("free2"), base_url: "https://opencode.ai/zen/v1" };
     const paid = makePaid();
     const next = selectNextCandidate([free1, free2, paid], new Set(["free1"]), {
       budgetStart: Date.now(),
@@ -126,6 +126,24 @@ describe("selectNextCandidate PaidGuarantee", () => {
       rateLimitedHosts: new Set(),
     });
     expect(next?.name).toBe(paid.name);
+  });
+
+  it("tries other-egress free before paid", () => {
+    const free1 = { ...makeFree("free1"), base_url: "https://opencode.ai/zen/v1", proxy: "" };
+    const free2 = {
+      ...makeFree("free2"),
+      base_url: "https://opencode.ai/zen/v1",
+      proxy: "http://127.0.0.1:18080",
+    };
+    const paid = makePaid();
+    const next = selectNextCandidate([free1, free2, paid], new Set(["free1"]), {
+      budgetStart: Date.now(),
+      attempts: 1,
+      freeFailCount: 1,
+      failedPlatforms: new Set(),
+      rateLimitedHosts: new Set(),
+    });
+    expect(next?.name).toBe("free2");
   });
 
   it("reserves last attempt for paid", () => {
@@ -157,9 +175,9 @@ describe("streamWithFallback must reach paid", () => {
     cool.clear();
   });
 
-  it("tries paid after two free fetch failures", async () => {
-    const free1 = makeFree("free-a");
-    const free2 = makeFree("free-b");
+  it("tries paid after same-egress free fetch failures", async () => {
+    const free1 = { ...makeFree("free-a"), base_url: "https://opencode.ai/zen/v1" };
+    const free2 = { ...makeFree("free-b"), base_url: "https://opencode.ai/zen/v1" };
     const paid = makePaid();
     const routing: RoutingResult = {
       upstream: free1,
@@ -178,8 +196,31 @@ describe("streamWithFallback must reach paid", () => {
     });
     expect(res.upstream?.name).toBe(paid.name);
     expect(called).toContain(paid.name);
-    // 第一次 free 失败后应立即插队 paid，不必先耗尽全部 free
+    // 同 egress：第一次 free 失败后应插队 paid（sibling 被 same-host 或 forcePaid 跳过）
     expect(called.indexOf(paid.name)).toBeLessThanOrEqual(2);
+  });
+
+  it("rotates free across different egress before forcing paid", async () => {
+    const freeDirect = { ...makeFree("free-direct"), proxy: "" };
+    const freeHk = { ...makeFree("free-hk"), proxy: "http://127.0.0.1:18080" };
+    const paid = makePaid();
+    const routing: RoutingResult = {
+      upstream: freeDirect,
+      candidates: [freeDirect, freeHk, paid],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+    const called: string[] = [];
+    const res = await streamWithFallback(routing, async (up) => {
+      called.push(up.name);
+      if (up.name === paid.name) return new Response(okBody, { status: 200 });
+      throw new Error("fetch failed");
+    });
+    expect(res.upstream?.name).toBe(paid.name);
+    expect(called).toContain("free-direct");
+    expect(called).toContain("free-hk");
+    expect(called.indexOf("free-hk")).toBeLessThan(called.indexOf(paid.name));
   });
 
   it("aborts hung free fetch when wall clock expires", async () => {
@@ -324,7 +365,7 @@ describe("breaker tier: fetch does not fan-out", () => {
     expect(cool.get("acct-b")).toBeFalsy();
   });
 
-  it("paid fetch gets ≤10s cool and never trips breaker", () => {
+  it("paid fetch gets short cool (≤5s) and never trips breaker", () => {
     const paid: UpstreamConfig = {
       name: "paid-go",
       base_url: "https://opencode.ai/zen/go/v1",
@@ -339,7 +380,7 @@ describe("breaker tier: fetch does not fan-out", () => {
     };
     markBad(paid, 0, "attempt timeout");
     const left = Math.round((cool.get("paid-go")!.until - Date.now()) / 1000);
-    expect(left).toBeLessThanOrEqual(10);
-    expect(left).toBeGreaterThanOrEqual(8);
+    expect(left).toBeLessThanOrEqual(5);
+    expect(left).toBeGreaterThanOrEqual(2);
   });
 });

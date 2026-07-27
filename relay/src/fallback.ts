@@ -21,11 +21,14 @@ const PROVIDER_BREAKER_THRESHOLD = 3;
 const PROVIDER_BREAKER_SEC = 120;
 /** 突发限流 Retry-After 封顶；超过此值视为日配额耗尽（Zen 免费池常给到 UTC 重置） */
 const RATE_LIMIT_RETRY_AFTER_CAP = 120;
-const PAID_FETCH_COOLDOWN_SEC = 10;
+const PAID_FETCH_COOLDOWN_SEC = 3; // 付费超时勿长冷却：否则 free 全死时只剩空候选 → 502 断任务
 const FREE_FETCH_COOLDOWN_SEC = 20;
 const FETCH_GRAY_SEC = 90;
-const MAX_FREE_ATTEMPTS_PER_REQ = 2;
+/** 同请求最多试几个 free；按「不同出口」优先轮转，勿一失败就钉死 paid */
+const MAX_FREE_ATTEMPTS_PER_REQ = 4;
 const EGRESS_STAGGER_MS = 100;
+/** 给付费保底预留的墙钟余量（含 peek 余量） */
+const PAID_WALL_RESERVE_MS = 5_000;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
 
@@ -52,7 +55,8 @@ function failoverMaxAttempts(): number {
   return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
 }
 function failoverMaxMs(): number {
-  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "60000", 10) || 60_000);
+  // 付费 TTFB 常 20–55s；60s 墙钟几乎无余量 → 一碰 free 就 budget:wall 断任务
+  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "90000", 10) || 90_000);
 }
 
 export { isPaidUpstream };
@@ -531,6 +535,8 @@ export interface StreamFallbackOptions {
   consume?: (ctx: StreamConsumeCtx) => Promise<void>;
   /** 是否已向客户端写出 body（由 consume 更新，或外部闭包） */
   getBytesWritten?: () => number;
+  /** 换钥 / 等待上游时心跳（写 SSE comment），勿计入 content lock */
+  onAttemptWait?: () => void;
 }
 
 function buildExhaustedResult(
@@ -552,7 +558,27 @@ function buildExhaustedResult(
   };
 }
 
-/** 挑选下一跳：付费保底插队（free 已失败 / 墙钟过半 / 预留最后 attempt / 最多 2 个 free） */
+/** 是否还有未试的、不同出口的 free（direct vs HK 等） */
+export function hasUntriedFreeOtherEgress(
+  candidates: UpstreamConfig[],
+  tried: Set<string>,
+  isBlocked: (u: UpstreamConfig) => boolean,
+): boolean {
+  const triedEgress = new Set(
+    candidates
+      .filter(u => tried.has(u.name) && !isPaidUpstream(u))
+      .map(u => egressRateLimitKey(u)),
+  );
+  return candidates.some(
+    u =>
+      !tried.has(u.name) &&
+      !isPaidUpstream(u) &&
+      !isBlocked(u) &&
+      !triedEgress.has(egressRateLimitKey(u)),
+  );
+}
+
+/** 挑选下一跳：先按出口轮转 free，墙钟不够或出口耗尽再插队 paid */
 export function selectNextCandidate(
   candidates: UpstreamConfig[],
   tried: Set<string>,
@@ -579,12 +605,22 @@ export function selectNextCandidate(
   const elapsed = Date.now() - opts.budgetStart;
   const attemptsLeft = maxAtt - opts.attempts;
   const freeTried = candidates.filter(u => tried.has(u.name) && !isPaidUpstream(u)).length;
+  const wallLeft = wall - elapsed;
+  const otherEgressFree = hasUntriedFreeOtherEgress(candidates, tried, isBlocked);
 
   // 先吐出顺序上的 skip（同 host RL / platform），保留 trail 可观测性
   const head = untried[0]!;
   if (isBlocked(head) && !isPaidUpstream(head)) return head;
 
-  // 同请求最多试 MAX_FREE_ATTEMPTS_PER_REQ 个 free，其后强制 paid
+  // 墙钟余量不够付费首包 → 立刻 paid（禁止再烧 free）
+  if (
+    paidUsable.length &&
+    wallLeft <= TIMEOUTS.ATTEMPT_PAID_MS + PAID_WALL_RESERVE_MS
+  ) {
+    return paidUsable[0]!;
+  }
+
+  // 同请求 free 次数上限
   if (paidUsable.length && freeTried >= MAX_FREE_ATTEMPTS_PER_REQ) {
     return paidUsable[0]!;
   }
@@ -593,15 +629,20 @@ export function selectNextCandidate(
     if (!isPaidUpstream(head) || isBlocked(head)) return paidUsable[0]!;
   }
 
+  // 已有 free 失败：若还有「不同出口」的 free，继续轮转；否则强制 paid
+  // （旧逻辑 freeTried>=1 立刻 paid → HK/其它账号永远轮不到）
   const forcePaid =
     paidUsable.length > 0 &&
-    (opts.freeFailCount >= 1 ||
-      freeTried >= 1 ||
-      elapsed >= wall * 0.5 ||
-      elapsed + TIMEOUTS.ATTEMPT_PAID_MS >= wall);
+    ((opts.freeFailCount >= 1 && !otherEgressFree) ||
+      elapsed >= wall * 0.55 ||
+      wallLeft <= TIMEOUTS.ATTEMPT_PAID_MS + PAID_WALL_RESERVE_MS);
 
   if (forcePaid) return paidUsable[0]!;
 
+  // 优先未阻塞 free；同出口已 RL 的会被 isBlocked 跳过
+  const nextFree = untried.find(u => !isPaidUpstream(u) && !isBlocked(u));
+  if (nextFree) return nextFree;
+  if (paidUsable.length) return paidUsable[0]!;
   return untried.find(u => !isBlocked(u)) || head;
 }
 
@@ -644,6 +685,7 @@ export async function streamWithFallback(
   const stallMs = getStallIdleMs();
 
   while (true) {
+    options.onAttemptWait?.();
     if (attempts >= failoverMaxAttempts()) {
       pushTrail(trail, "*", "budget:attempts", budgetStart);
       break;

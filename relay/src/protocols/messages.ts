@@ -121,10 +121,24 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       },
       {
         getBytesWritten: () => contentBytesWritten,
+        onAttemptWait: () => {
+          // 换钥等待时先开 SSE 壳 + comment ping，避免客户端当死连接掐掉（不计 content lock）
+          if (!headersSent) {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+              "X-Cache-Prefix": prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS",
+            });
+            headersSent = true;
+          }
+          if (res.writable) res.write(`: keepalive ${Date.now()}\n\n`);
+        },
         consume: async ({ reader, firstLines, buffered, stallMs }) => {
           const decoder = new TextDecoder();
           let buf = buffered;
           let pendingFirst: string[] | null = firstLines;
+          let messageStartSent = false;
 
           const writeLines = (lines: string[]) => {
             for (const ln of lines) {
@@ -165,8 +179,6 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
                 }
                 const evs = openAIChunkToAnthropicSSE(p, oaiState);
                 for (const ev of evs) {
-                  const chunk = `data: ${JSON.stringify(ev)}\n\n`;
-                  // 推迟锁定渠道：message_start 不计入 contentBytes，stall 仍可换渠
                   if (!headersSent) {
                     res.writeHead(200, {
                       "Content-Type": "text/event-stream",
@@ -174,6 +186,9 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
                       "Connection": "keep-alive",
                       "X-Cache-Prefix": prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS",
                     });
+                    headersSent = true;
+                  }
+                  if (!messageStartSent) {
                     const start = `data: ${JSON.stringify({
                       type: "message_start",
                       message: {
@@ -184,18 +199,18 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
                     })}\n\n`;
                     res.write(start);
                     bytesWritten += start.length;
-                    headersSent = true;
+                    messageStartSent = true;
                   }
+                  const chunk = `data: ${JSON.stringify(ev)}\n\n`;
                   res.write(chunk);
                   bytesWritten += chunk.length;
-                  if (ev.type !== "message_start") contentBytesWritten += chunk.length;
+                  contentBytesWritten += chunk.length;
                 }
               } catch { /* ignore */ }
             }
           };
 
           const flushStart = (extra: string[]) => {
-            // 不在此 writeHead：等 writeLines 产出真实 delta 再锁定渠道（stall 可换渠）
             if (pendingFirst) {
               writeLines(pendingFirst);
               pendingFirst = null;
@@ -203,12 +218,12 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
             writeLines(extra);
           };
 
+          // peek 已验证有内容：立刻刷给客户端，勿再等下一轮 read（专治假死断流）
+          flushStart([]);
+
           while (true) {
             const { done, value } = await streamReadWithTimeout(reader, stallMs);
-            if (done) {
-              flushStart([]);
-              break;
-            }
+            if (done) break;
             buf += decoder.decode(value, { stream: true });
             const lines = buf.split("\n");
             buf = lines.pop() || "";

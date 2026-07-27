@@ -7,7 +7,7 @@
 
 import type { TierId, UpstreamConfig, RoutingResult } from "./types.js";
 import { TierRegistry } from "./config.js";
-import { isUpstreamOk, TIER_FALLBACK, getMinCooldownSec, boostPaidCandidates } from "./tiers.js";
+import { isUpstreamOk, TIER_FALLBACK, getMinCooldownSec, boostPaidCandidates, isPaidUpstream } from "./tiers.js";
 import { getConfig } from "./config.js";
 import { getScore } from "./scoring.js";
 
@@ -256,14 +256,38 @@ function tryTier(
   }
 
   // Session Affinity: 优先用绑定的上游 (R5: 跨 tier 复用, key 基于 upstream name)
+  // 例外：绑在 paid 上但免费池已恢复 → 放开轮转（paid 仍留候选末位保底）
   if (affKey && !isFb) {
-    const reg2 = getConfig();
-    // 检查所有可用的 upstream, 找到在当前 tier 内且绑定的
     for (const up of tierUp) {
       if (!isUpstreamOk(up)) continue;
       const afUp = affinityGet(affKey, up.name);
       if (afUp) {
         const others = tierUp.filter(x => isUpstreamOk(x) && x.name !== afUp.name);
+        if (isPaidUpstream(afUp)) {
+          const freeOk = others.filter(x => !isPaidUpstream(x));
+          if (freeOk.length >= 1) {
+            const preferProxy = process.env.LOOP_PREFER_PROXY === "1";
+            const freeSorted = freeOk.slice().sort((a, b) => {
+              const pd = (a.tier_priority ?? 99) - (b.tier_priority ?? 99);
+              if (pd !== 0) return pd;
+              const ap = (a.proxy || "").trim() ? 1 : 0;
+              const bp = (b.proxy || "").trim() ? 1 : 0;
+              if (ap !== bp) return preferProxy ? ap - bp : bp - ap;
+              return getScore(b.name) - getScore(a.name);
+            });
+            const candidates = boostPaidCandidates(
+              fairPick(tier, [...freeSorted, afUp, ...others.filter(isPaidUpstream)]),
+              tier,
+            );
+            return {
+              upstream: candidates[0] || freeSorted[0]!,
+              candidates,
+              tier,
+              is_fallback: false,
+              fallback_model: null,
+            };
+          }
+        }
         const candidates = boostPaidCandidates([afUp, ...others], tier);
         return {
           upstream: candidates[0] || afUp,
@@ -314,11 +338,29 @@ function tryTier(
     return tryTier("flash", true, affKey, reg, visited);
   }
 
-  // 显式 flash 且未开 LOOP_FLASH_FALLBACK_CODE：勿全局掉到 Pro/code（对话体感抽风）
+  // 显式 flash：free 全冷却时仍须带上付费兜底（含短冷却的 paid，禁止空候选 502 断任务）
   if (tier === "flash") {
+    const paidAll = tierUp
+      .filter(u => !!u.api_key && isPaidUpstream(u))
+      .sort((a, b) => (a.tier_priority ?? 99) - (b.tier_priority ?? 99));
+    if (paidAll.length) {
+      const paidOk = paidAll.filter(isUpstreamOk);
+      const candidates = paidOk.length ? paidOk : paidAll;
+      console.warn(
+        `[route] flash free unavailable → last-resort paid ${candidates[0]!.name}` +
+          (paidOk.length ? "" : " (short-cool bypass)"),
+      );
+      return {
+        upstream: candidates[0]!,
+        candidates,
+        tier,
+        is_fallback: true,
+        fallback_model: null,
+      };
+    }
     const minCd = getMinCooldownSec(tierUp);
     console.warn(
-      `[route] flash all unavailable; refuse Pro/code silent fallback (earliest recovery ~${minCd}s; LOOP_FLASH_FALLBACK_CODE=1 to enable)`,
+      `[route] flash all unavailable; no paid key configured (earliest recovery ~${minCd}s)`,
     );
     return {
       upstream: null,
