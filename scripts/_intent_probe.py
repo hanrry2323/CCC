@@ -33,6 +33,8 @@ VERIFY_CMD_ALLOW_PREFIXES = (
     "test -",
     "ls ",
     "test !",
+    "grep ",
+    "rg ",
     # Intent-probe shapes (authority LPSN · P)
     ".venv/bin/python",
     "python3 ",
