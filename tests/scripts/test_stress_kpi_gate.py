@@ -241,3 +241,50 @@ def test_enrich_computed_falls_back_to_work_columns(tmp_path):
     )
     enriched = GATE.enrich_computed(rep)
     assert enriched["computed"]["work_abnormal_n"] == 0
+
+
+def test_enrich_computed_max_of_both_sources():
+    """work_abnormal_n must be MAX of work_columns and works-list count.
+
+    This is the Phase B honesty fix: if works list has abnormal cards
+    but work_columns was filtered/stale, the higher count wins.
+    """
+    works = [
+        {
+            "id": "stress-run-w1",
+            "col": "abnormal",
+            "app": "ccc-demo",
+            "kind": "work",
+        }
+    ]
+    # work_columns says 0, works says 1 → enrichment must pick 1
+    rep = _minimal_report(
+        run="stress-run",
+        works=works,
+        work_columns={"released": 10, "abnormal": 0, "in_progress": 0},
+    )
+    enriched = GATE.enrich_computed(rep)
+    # The cross-check debug fields
+    assert enriched["computed"]["work_abnormal_from_cols"] == 0
+    assert enriched["computed"]["work_abnormal_from_works"] == 1
+    assert enriched["computed"]["work_abnormal_n"] == 1, (
+        f"expected 1 (MAX of 0 and 1), got {enriched['computed']['work_abnormal_n']}"
+    )
+
+    # Same report without works → falls back to work_columns
+    rep2 = _minimal_report(
+        run="stress-run",
+        works=[],
+        work_columns={"released": 10, "abnormal": 0, "in_progress": 0},
+    )
+    enriched2 = GATE.enrich_computed(rep2)
+    assert enriched2["computed"]["work_abnormal_n"] == 0
+
+
+def test_work_abnormal_from_works_debug_field():
+    """Debug fields work_abnormal_from_cols / from_works are always present."""
+    rep = _minimal_report()
+    enriched = GATE.enrich_computed(rep)
+    comp = enriched["computed"]
+    assert "work_abnormal_from_cols" in comp
+    assert "work_abnormal_from_works" in comp

@@ -85,6 +85,13 @@ def enrich_computed(report: dict[str, Any]) -> dict[str, Any]:
     if isinstance(pre, int):
         ghost = pre
 
+    # Derive work_abnormal_n from BOTH work_columns AND works list (honest MAX).
+    # work_columns is the source of truth from collect(); the works list cross-check
+    # catches stale work_columns that may have been filtered post-collect.
+    from_cols_abn = int((report.get("work_columns") or {}).get("abnormal") or 0)
+    from_works_abn = sum(1 for w in works if w.get("col") == "abnormal")
+    work_abnormal_n = max(from_cols_abn, from_works_abn)
+
     computed = {
         "epic_done_rate": epic_done_rate,
         "epic_ss_counts": ss_counts,
@@ -92,7 +99,9 @@ def enrich_computed(report: dict[str, Any]) -> dict[str, Any]:
         "epic_done_n": done,
         "dispatch_n": dispatch_n,
         "ghost_in_progress_n": ghost,
-        "work_abnormal_n": int((report.get("work_columns") or {}).get("abnormal") or 0),
+        "work_abnormal_n": work_abnormal_n,
+        "work_abnormal_from_cols": from_cols_abn,
+        "work_abnormal_from_works": from_works_abn,
         "work_in_progress_n": int((report.get("work_columns") or {}).get("in_progress") or 0),
     }
     out = dict(report)
