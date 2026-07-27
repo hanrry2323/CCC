@@ -25,6 +25,6 @@
 | ops-p1-upstream-panel | [`004-ops-p1-upstream-panel.md`](./004-ops-p1-upstream-panel.md) | **已合入** `0589a94` |
 | ops-p2-agent-minds | [`005-ops-p2-agent-minds.md`](./005-ops-p2-agent-minds.md) | **已合入** `fc37932` |
 | ops-p2-local-patrol-alerts | [`006-ops-p2-local-patrol-alerts.md`](./006-ops-p2-local-patrol-alerts.md) | **已合入** `ec73900` |
-| ops-p2-web-ops-redirect | [`007-ops-p2-web-ops-redirect.md`](./007-ops-p2-web-ops-redirect.md) | 待跑 |
+| ops-p2-web-ops-redirect | [`007-ops-p2-web-ops-redirect.md`](./007-ops-p2-web-ops-redirect.md) | **已合入** `c67e079` |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。
