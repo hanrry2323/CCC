@@ -141,9 +141,8 @@
 
 ### 下一程
 
-- 修 `verified→testing` allow / 审测后同 tick 必跑 kb（避免人工 `kb_role`）。  
-- OpenCode 默认模型对齐 relay `code`（停 `xfyun/code`）。  
-- script_seed 勿抢 docs-only 戳记卡。  
-- 再证 P-B：OpenCode 自 commit（或明确把 DoD recommit 记为合法落地口径）。
+- **指令包 [`010-golden-path-kb-script-seed`](../dev-packets/010-golden-path-kb-script-seed.md)**（Claude 草稿 → Cursor 合入）：`verified→testing` + 每 tick kb + script_seed 勿抢 opencode。  
+- OpenCode 默认模型对齐 relay `code`（停 `xfyun/code`）— **Cursor 双机配置，不进 010**。  
+- 010 合入并 Engine 热更后，再证 P-B：OpenCode 自 commit（或明确把 DoD recommit 记为合法落地口径）。
 
 ---

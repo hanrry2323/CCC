@@ -5,7 +5,8 @@
 > SSOT：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」· [`docs/product/dev-channel.md`](../product/dev-channel.md)  
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
-> **更新（2026-07-27）**：三层出门 + 协作评估 + 效率仪表；主路径从 Ops 抛光切到金路径证据。
+> **更新（2026-07-27）**：三层出门 + 协作评估 + 效率仪表；主路径从 Ops 抛光切到金路径证据。  
+**下一草稿包**：[`docs/dev-packets/010-golden-path-kb-script-seed.md`](../dev-packets/010-golden-path-kb-script-seed.md)（kb / 列迁移 / script_seed；Claude 写码 → Cursor 合入）。
 
 ---
 
