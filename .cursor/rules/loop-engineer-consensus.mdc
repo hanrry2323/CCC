@@ -67,7 +67,8 @@ alwaysApply: true
 - **同仓多 agent 纪律（硬 · 2026-07-25）**：同一工作树多 agent 并行改码必须 worktree 隔离，否则串行提交；**禁止 `git add -A`/`git add .` 全量提交**，只 add 本任务改动文件；提交前 `git status` 核对无他人改动混入。
 - **CCC Relay（硬 · 2026-07-25 · 推翻 v0.52「不恢复」口径）**：三档 `flash`/`Pro`/`code`；flash+code 协议转换；**flash**=Zen `deepseek-v4-flash-free`；**code**=Zen `big-pickle`(+flash-free) 多 key + 直连/HK 双出口；**Pro 空档**→回落 flash；讯飞退役。M1 `relay.m1` + 2017 `relay.2017`。**MiniMax-M3 已退役**。fail-open 只认 `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。详见 authority「CCC Relay」。
 - **对话口鉴权（硬 · 2026-07-27）**：sidecar `:7788` 默认 `CCC_AGENT_AUTH=0`，网页 `#/chat` 不弹 Token；Hub Basic Auth 不动。
-- **Desktop Ops 重构（规划 · 2026-07-27）**：运维短板按 P0–P2 四域壳/MCP/红点落地，见 authority「Desktop Ops 重构拆卡」+ `docs/briefs/2026-07-27-desktop-ops-refactor.md`（下程改 Swift）。
+- **Desktop Ops 重构（2026-07-27）**：P0 已合入；P1/P2 见 authority 拆卡 + `docs/briefs/2026-07-27-desktop-ops-refactor.md`；生产出门总路线 `docs/briefs/2026-07-27-ccc-production-readiness.md`。
+- **个人 Claude Code 草稿工（硬 · 2026-07-27）**：合入仍只认 Cursor；个人 CLI（Relay flash）仅按 `docs/dev-packets/` 在 feature branch 打草稿。**禁止** Desktop Agent 改 CCC；**禁止**草稿工改权威/强推 main。详见 authority「个人 Claude Code 草稿工」。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
 - **Ops 运维面（三面之一）**：对话定意图 / 编排跑卡 / **运维 = 给人看的健康灯 + 后台养系统**。Desktop 运维硬规则：**绿**=放心开发下任务；**橙**=可忽略不拦事；**红**=后台优先自愈，人只**一键复制交 Agent**（红=系统/配置问题，不把老板当维修工）。人看四域：总健康｜集群与服务（含端口）｜Agent 与 MCP｜仅红告警条。后台喂灯：日审/飞轮/容量/reap·patrol。Engine=前锋只消费队列；弹药旁路只进 `engine=true` 业务仓；禁 orch；日审 C/E/F 可 apply，D/G/H 升红，I 永不。**invent 硬关保留**。详见 authority「Ops 运维面」。
@@ -78,6 +79,6 @@ alwaysApply: true
 同步巡查卡：`references/authority-patrol.jsonl`。
 
 - **三档契约 + 上游解耦（硬 · 2026-07-25）**：下游只对接 `flash`/`Pro`/`code`；上游由 `relay/upstreams.json` 热替换。**禁止**客户端硬编码厂商 URL/key（仅 `upstreams.json` / `~/.ccc/relay/*` / `~/.ccc/relay-direct.url` / `~/.ccc/*.key`）。详见 authority「三档契约 + 上游解耦」。
-- **M1 Desktop Claude Code 双身份隔离（硬 · 2026-07-25）**：M1 Desktop Claude Code **仅做产品大脑**(接意图/拆大卡/Hub transfer/回答板面);**不再修改 CCC 仓**。CCC 平台开发 100% 走 Cursor(平台开发工具只认 Cursor 已是 v0.39 共识,本条强制执行)。若 M1 Claude Code 收到 `~/program/CCC` 路径下写操作请求,必须**明确转交 Cursor**,不直接改文件。详见 authority「M1 Desktop Claude Code 双身份隔离」。
+- **M1 Desktop Claude Code 双身份隔离（硬 · 2026-07-25）**：M1 Desktop Agent **仅做产品大脑**；**禁止**改 CCC 仓。合入平台代码只认 Cursor。个人 Claude Code CLI 草稿工例外见 authority「个人 Claude Code 草稿工」（非 Desktop 会话）。
 - **Claude --bg（已交付 · v0.62.0 · 仅 Mac2017）**：reviewer 长 session + Hub/Desktop 透出已上线；**nudge 真注入属 v0.63**（当前写文件占位）。**禁止**在 M1 起 Engine/--bg。详见 authority「Claude --bg 长任务」。
 - **双机拓扑（硬）**：M1=对话（sidecar+relay.m1+hub-tunnel）；Mac2017=编排（Hub+Board+Engine+relay.2017+apps）。禁止 M1 装/起 Hub/Board/Engine；禁止 M1 `engine=true` 业务第二树登记。

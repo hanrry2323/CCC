@@ -11,12 +11,15 @@ Desktop [`OpsView.swift`](../../desktop/Sources/CCCDesktop/OpsView.swift) 已有
 
 打开运维 = **四域灯板**：绿敢开发 / 橙可忽略 / 红一键交 Agent。不以舰队数卡为主叙事。
 
-## P0（下一程编译 Desktop）
+## P0（已合入 · 2026-07-27）
 
-1. **信息架构**：above-the-fold = ①总灯人话 ②集群/服务/隧道/端口 ③Agent+MCP+Relay 摘要 ④仅红告警。看板计数、failures、inbox、非红 risks → DisclosureGroup 或链到看板/右栏。
-2. **契约修复**：[`scripts/_ops_probe.py`](../../scripts/_ops_probe.py) envelope ports 映射 `alive`→`ok`；docs 统一 `items`（或改 Swift）；资源用 `resources_history` 或对齐 `cpu/mem_pct/disk_pct`；补 [`tests/scripts/test_ops_confidence.py`](../../tests/scripts/test_ops_confidence.py)。
-3. **MCP 探针**：填充 `domains.agent_mcp`；坏则红告警 + `copy_payload`；去掉「后续接入」占位。
-4. **全局红点**：后台轻量轮询 `severity`；侧栏「运维」角标 / 标题栏点；不必进运维页才知红。
+1. **信息架构** ✓ above-the-fold 四域壳  
+2. **契约修复** ✓ ports `ok` / docs `items` / resources  
+3. **MCP 探针** ✓ `domains.agent_mcp` + 红告警  
+4. **全局红点** ✓ 侧栏 severity 轮询  
+
+下一程 P1 指令包：[`../dev-packets/001-ops-p1-copy-vs-handoff.md`](../dev-packets/001-ops-p1-copy-vs-handoff.md) · [`../dev-packets/002-ops-p1-tunnel-row.md`](../dev-packets/002-ops-p1-tunnel-row.md)。  
+总路线：[`2026-07-27-ccc-production-readiness.md`](./2026-07-27-ccc-production-readiness.md)。
 
 ## P1
 

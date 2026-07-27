@@ -568,8 +568,8 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 | 程 | 做什么 |
 |----|--------|
-| **P0** | Ops 首页真四域壳（折叠看板计数/失败账）；修 `_ops_probe`↔Swift schema（ports `ok`、docs items、资源字段）；MCP 探针进③域与红告警；侧栏/标题栏全局红点轮询 |
-| **P1** | 域 chip 绿/橙/红（relay fail-open=橙）；折叠模型通道接 upstream-daily；显式 `:17777` 隧道行；告警「仅复制」vs「交给 Agent」 |
+| **P0** | **已合入**（2026-07-27）：四域壳、schema、MCP 红灯、侧栏红点 |
+| **P1** | 域 chip 绿/橙/红（relay fail-open=橙）；折叠模型通道接 upstream-daily；显式 `:17777` 隧道行；告警「仅复制」vs「交给 Agent」——指令包 `docs/dev-packets/` |
 | **P2** | 权威巡查 alerts 进红条；agent_minds 折叠；网页 `#/ops` 降级；重建 App 二进制发布三档 picker+运维 UI |
 
 ---
@@ -680,11 +680,28 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 |----|------|
 | **产品大脑** | M1 Desktop Claude Code **仅做产品大脑**:接用户意图、拆大卡、接 Hub transfer、回答板面问题、定稿/采纳 inbox |
 | **平台开发禁** | M1 Desktop Claude Code **不再修改 CCC 仓**;不论用户如何措辞请求,只要目标是改 `~/program/CCC` 下的文件,必须**明确转交 Cursor**,不直接改 |
-| **Cursor 独立** | CCC 平台开发 / 仓内改动 100% 走 Cursor(平台开发工具只认 Cursor 已是 v0.39 共识,本条仅**强制执行**);Cursor 走完整 IDE 能力(读/写/Bash/测/git),与 Desktop Agent **人格完全独立** |
+| **Cursor 独立** | CCC 平台开发 / 仓内**合入权威** 100% 走 Cursor(平台开发工具只认 Cursor 已是 v0.39 共识,本条仅**强制执行**);Cursor 走完整 IDE 能力(读/写/Bash/测/git),与 Desktop Agent **人格完全独立** |
 | **识别边界** | 看对话 cwd + 文件路径:任何 `~/program/CCC` 路径下的写操作请求 → 转 Cursor;其他(用户日常对话 / 业务仓 / docs) → 照常 |
 | **失败回环不属本条** | 产品大脑拆的大卡经 Hub transfer → 2017 Engine → product 角色(2017 Claude Code)扇出小任务 → dev 角色(OpenCode)写代码 → reviewer/tester 验收。失败由 2017 Engine 调度层(纯 Python,无 LLM)决定重试/重派,不属于双身份隔离范围 |
 
 > 边界来源:CLAUDE.md 头部「人格独立」节 v0.39 已写"平台开发只认 Cursor";但未强制 M1 Desktop Claude Code 行为边界。本条把**共识变成执行规则**,由 sidecar / Cursor 规则双端 enforce(sidecar 检测 CCC 仓 cwd 写操作时拒 + Cursor 仍保留全 IDE 能力)。
+
+## 个人 Claude Code 草稿工（硬 · 2026-07-27 · 生产前完善期）
+
+> **战略**：先把 CCC 做到生产级工具，再用 CCC 做业务生产。半成品上生产 = 空转。  
+> **分工**：中转站稳定后，**个人 Claude Code CLI**（接 Relay `flash`，非 Desktop Agent）可扛边界清晰的草稿量；**Cursor 写细指令 + 审合入 + 权威/双机**。  
+> 详路线：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · 指令包目录：[`docs/dev-packets/`](../dev-packets/README.md)
+
+| 项 | 口径 |
+|----|------|
+| **合入 SSOT 仍只认 Cursor** | **禁止**把个人 Claude Code / Desktop Agent 当合入权威。上 main、改权威、双机热更、生产 `upstreams.json`/plist → **仅 Cursor**（或人在 Cursor 指导下点） |
+| **草稿工允许做什么** | 在**指定 feature branch / worktree**内，按 Cursor 下发的 **dev-packet** 改白名单文件；补测骨架；跑 packet 内验收命令 |
+| **草稿工禁止做什么** | 改 `loop-engineer-authority` / 红线 / 控制面；动生产密钥与 launchd；`git add -A`；强推 main；跨 packet 范围「顺手重构」；冒充 Desktop 产品大脑改 CCC |
+| **协作节奏** | Cursor 写 packet → 人转发给个人 Claude Code → 人交回 diff/分支 → Cursor 审测合入（或打回修正包） |
+| **与双身份关系** | **不削弱**「Desktop Agent 禁改 CCC」。个人 CLI 草稿 ≠ Desktop 会话写仓 |
+| **何时停用放大** | CCC 达生产出门门禁（见 production-readiness brief）后，日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主，草稿工仅作配额旁路 |
+
+> 巡查口径：仓内**禁止**出现「用 Claude Code 当平台 IDE / 直接合入」的现行教法；允许出现「草稿工 + Cursor 合入」例外说明。
 
 ## Claude --bg 长任务（已交付 · v0.62.0 · 仅 Mac2017）
 
