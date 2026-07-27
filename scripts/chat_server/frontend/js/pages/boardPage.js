@@ -670,39 +670,15 @@ function bind() {
 }
 
 export async function mountBoard(el) {
-  // 每次进入看板：跟当前项目 / hash ?ws=，勿死钉 CCC
-  const want = preferredWorkspace();
-  if (_root) {
-    if (want && want !== _ws) {
-      _ws = want;
-      syncWsButtons();
-    }
-    await loadBoard();
-    if (!_timer) _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
-    return;
-  }
-  _root = el;
-  if (want) _ws = want;
-  el.innerHTML = html();
-  bind();
-  initEpicCollapsedDefault();
-  try {
-    const { mountEngineControlInBoard, refreshEngineControl } = await import(
-      '../components/engineControl.js'
-    );
-    const actions = el.querySelector('.board-toolbar-actions');
-    mountEngineControlInBoard(actions);
-    refreshEngineControl().catch(() => {});
-  } catch (_) {}
-  await loadConfig();
-  await loadBoard();
-  // Phase 3.1: polling 5s → 15s（diff 重绘 + 聚合端点已大幅降负载）
-  _timer = setInterval(() => loadBoard().catch(() => {}), 15000);
+  el.innerHTML =
+    '<div style="padding:48px 24px;max-width:480px;margin:0 auto;text-align:center;font-family:system-ui,sans-serif">' +
+    '<h2 style="font-size:20px;font-weight:600;margin:0 0 16px">看板已迁入 CCC Desktop</h2>' +
+    '<p style="font-size:14px;line-height:1.6;margin:0 0 12px">网页看板停更。请在 <strong>CCC Desktop</strong> 左侧选项目 / 看板查看。</p>' +
+    '<p style="font-size:13px;opacity:.75;margin:0 0 24px">急需排查可开 <a href="#/console" style="color:#0c4a6e;text-decoration:underline">#/console</a> SSH 兜底。</p>' +
+    '<p style="font-size:12px;opacity:.6"><a href="#/console">控制台</a></p>' +
+    '</div>';
 }
 
 export function unmountBoard() {
-  if (_timer) {
-    clearInterval(_timer);
-    _timer = null;
-  }
+  // 看板渲染已由 Desktop-first 通知替代，无 timer 或 listener 需清理
 }
