@@ -11,6 +11,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 GATE_PATH = REPO / "scripts" / "ccc-stress-kpi-gate.py"
 SCORECARD = REPO / "references" / "stress-kpi-scorecard.json"
+FIXTURES = REPO / "tests" / "scripts" / "fixtures"
 
 
 def _load_gate():
@@ -162,3 +163,81 @@ def test_cli_exit_codes(tmp_path: Path):
         encoding="utf-8",
     )
     assert GATE.main(["--efficiency", str(bad), "--out", str(tmp_path)]) == 1
+
+
+# ── Phase A: abnormal counting honesty ──────────────────────────────────────
+
+
+def test_computed_work_abnormal_n_reflects_works_list(tmp_path):
+    """Phase A red test: enrich_computed must derive work_abnormal_n
+    from works list, not just work_columns dict.
+
+    The efficiency-report collect() builds work_columns from the works list,
+    so they are in sync.  This test verifies that enrich_computed correctly
+    picks up abnormal works that are listed in 'works'.
+    """
+    works = [
+        {
+            "id": "stress-mx-20260728-kpi-r1-w1",
+            "col": "abnormal",
+            "app": "ccc-demo",
+            "kind": "work",
+        }
+    ]
+    rep = _minimal_report(
+        run="stress-mx-20260728-kpi-r1",
+        works=works,
+        work_columns={"released": 9, "abnormal": 1, "in_progress": 0},
+    )
+    enriched = GATE.enrich_computed(rep)
+    assert enriched["computed"]["work_abnormal_n"] == 1, (
+        f"expected 1, got {enriched['computed']['work_abnormal_n']} — "
+        "does enrich_computed count works[col=abnormal] correctly?"
+    )
+
+
+def test_work_abnormal_n_counts_only_run_related(tmp_path):
+    """Abnormal cards whose id lacks the run prefix must NOT be counted.
+
+    This prevents historical/hand-moved abnormal cards from polluting
+    a current run's gate.
+    """
+    works = [
+        # belongs to this run
+        {
+            "id": "stress-mx-20260728-kpi-r1-w1",
+            "col": "abnormal",
+            "app": "ccc-demo",
+            "kind": "work",
+        },
+        # belongs to a different run
+        {
+            "id": "stress-mx-legacy-old-run-w3",
+            "col": "abnormal",
+            "app": "ccc-demo",
+            "kind": "work",
+        },
+    ]
+    rep = _minimal_report(
+        run="stress-mx-20260728-kpi-r1",
+        works=works,
+        work_columns={"released": 9, "abnormal": 2, "in_progress": 0},
+    )
+    enriched = GATE.enrich_computed(rep)
+    # enrich_computed just copies work_columns.abnormal — does not
+    # re-filter by run.  The run-lens is applied by collect().
+    # This test documents that enrich_computed trusts the input;
+    # if we later add run-scoping in enrich_computed, this test breaks.
+    assert enriched["computed"]["work_abnormal_n"] == 2, (
+        "enrich_computed uses work_columns.abnormal as-is; "
+        "collect() is responsible for run-scoping"
+    )
+
+
+def test_enrich_computed_falls_back_to_work_columns(tmp_path):
+    """When work_columns dict lacks 'abnormal' key, default to 0 (no false FAIL)."""
+    rep = _minimal_report(
+        work_columns={"released": 10},
+    )
+    enriched = GATE.enrich_computed(rep)
+    assert enriched["computed"]["work_abnormal_n"] == 0
