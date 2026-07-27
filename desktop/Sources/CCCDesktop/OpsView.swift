@@ -288,12 +288,25 @@ struct OpsView: View {
                                 }
                             }
                             Spacer(minLength: 8)
-                            Button("交给 Agent") {
-                                Task { await handoffOpsAlert(alert) }
+                            HStack(spacing: 6) {
+                                Button("仅复制") {
+                                    _ = copyOpsAlertToPasteboard(alert)
+                                    model.opsCopiedHint = "已复制"
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        if model.opsCopiedHint == "已复制" {
+                                            model.opsCopiedHint = nil
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                Button("交给 Agent") {
+                                    Task { await handoffOpsAlert(alert) }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(CCCTheme.nodeFail)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(CCCTheme.nodeFail)
-                            .controlSize(.small)
                         }
                         .padding(12)
                         .background(
@@ -306,7 +319,8 @@ struct OpsView: View {
         }
     }
 
-    private func handoffOpsAlert(_ alert: OpsHealthAlert) async {
+    /// 组装告警文本并写入系统剪贴板，返回文本本身
+    private func copyOpsAlertToPasteboard(_ alert: OpsHealthAlert) -> String {
         let text = (alert.copy_payload?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
             ?? """
             【CCC 运维红灯】\(alert.title)
@@ -315,6 +329,11 @@ struct OpsView: View {
             """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        return text
+    }
+
+    private func handoffOpsAlert(_ alert: OpsHealthAlert) async {
+        let text = copyOpsAlertToPasteboard(alert)
         await model.handoffToOpsAgent(
             payload: text,
             sourceProjectId: window.projectId ?? model.selectedProjectId
