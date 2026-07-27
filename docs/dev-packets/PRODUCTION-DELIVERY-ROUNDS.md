@@ -28,13 +28,15 @@
 | 分支 | `draft/013-reviewer-verdict-kpi-honesty` |
 | 完成 | `work_abnormal_n` = MAX(cols, works)；quarantine 前写 FAIL verdict；测绿 |
 
-### R2 · 014 reviewer/`--bg` 空转与超时收尸
+### R2 · 014 reviewer/`--bg` 空转与超时收尸（**进行中**）
 
 | 项 | 内容 |
 |----|------|
-| 包 | `014-reviewer-bg-empty-verdict.md`（R1 合入后 Cursor 写包） |
-| 目标 | 减少 `reviewer 未产出 verdict`：超时/空输出必落 FAIL；bg wrapper 与 gates 对齐 |
-| 白名单方向 | `scripts/board/roles/reviewer.py` · `scripts/ccc-reviewer-bg.sh` · `scripts/engine/gates.py` · 相关测 |
+| 包 | [`014-reviewer-bg-empty-verdict.md`](./014-reviewer-bg-empty-verdict.md) |
+| 分支 | `draft/014-reviewer-bg-empty-verdict` |
+| Claude | `/loop` 跑完 Phase A→D |
+| Cursor | 严审；不合格打回；小问题自修合入 + 2017 热更 |
+| 目标 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；bg 与 `check_reviewer_async` 对齐 |
 | 完成 | 单测覆盖空输出/超时；禁止改权威 |
 
 ### R3 · 015 失败可收加固（reopen / quarantine 口径）
