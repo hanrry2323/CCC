@@ -177,6 +177,7 @@ export interface ChatMessage {
   tool_call_id?: string;
   tool_calls?: OpenAIToolCall[];
   reasoning_content?: string;
+  cache_control?: { type: string; ttl?: string };
 }
 
 export interface OpenAIToolCall {

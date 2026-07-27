@@ -87,6 +87,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
   // ── Stream ──
   if (stream) {
     let bytesWritten = 0;
+    let contentBytesWritten = 0;
     let headersSent = false;
     let streamOk = false;
     let pT = 0, tt = 0, ctk = 0;
@@ -96,10 +97,10 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
 
     const result = await streamWithFallback(
       ru,
-      async (candidate) => {
+      async (candidate, signal) => {
         const cFbm = ru.fallback_model || candidate.fallback_model || null;
         const cUpm = cFbm || candidate.upstream_model || b.model.replace(/^opencode-go\//, "");
-        const body = anthropicToOpenAI(b, cUpm);
+        const body = anthropicToOpenAI(b, cUpm, { promptCacheKey: affKey });
         body.stream = true;
         Object.assign(body, candidate.request_overrides || {});
         try {
@@ -108,13 +109,18 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
             method: "POST",
             headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
             body: JSON.stringify(body),
+            signal,
           });
-        } catch {
+        } catch (e) {
+          // 墙钟/attempt abort 必须冒泡，勿吞成 null 再同钥重试拖死
+          if (signal?.aborted || /timeout|aborted|TimeoutError/i.test((e as Error)?.name + (e as Error)?.message)) {
+            throw e;
+          }
           return null;
         }
       },
       {
-        getBytesWritten: () => bytesWritten,
+        getBytesWritten: () => contentBytesWritten,
         consume: async ({ reader, firstLines, buffered, stallMs }) => {
           const decoder = new TextDecoder();
           let buf = buffered;
@@ -160,33 +166,36 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
                 const evs = openAIChunkToAnthropicSSE(p, oaiState);
                 for (const ev of evs) {
                   const chunk = `data: ${JSON.stringify(ev)}\n\n`;
+                  // 推迟锁定渠道：message_start 不计入 contentBytes，stall 仍可换渠
+                  if (!headersSent) {
+                    res.writeHead(200, {
+                      "Content-Type": "text/event-stream",
+                      "Cache-Control": "no-cache",
+                      "Connection": "keep-alive",
+                      "X-Cache-Prefix": prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS",
+                    });
+                    const start = `data: ${JSON.stringify({
+                      type: "message_start",
+                      message: {
+                        id: respId, type: "message", role: "assistant", content: [], model: b.model,
+                        stop_reason: null, stop_sequence: null,
+                        usage: { input_tokens: 0, output_tokens: 0 },
+                      },
+                    })}\n\n`;
+                    res.write(start);
+                    bytesWritten += start.length;
+                    headersSent = true;
+                  }
                   res.write(chunk);
                   bytesWritten += chunk.length;
+                  if (ev.type !== "message_start") contentBytesWritten += chunk.length;
                 }
               } catch { /* ignore */ }
             }
           };
 
           const flushStart = (extra: string[]) => {
-            if (!headersSent) {
-              res.writeHead(200, {
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Cache-Prefix": prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS",
-              });
-              const start = `data: ${JSON.stringify({
-                type: "message_start",
-                message: {
-                  id: respId, type: "message", role: "assistant", content: [], model: b.model,
-                  stop_reason: null, stop_sequence: null,
-                  usage: { input_tokens: 0, output_tokens: 0 },
-                },
-              })}\n\n`;
-              res.write(start);
-              bytesWritten += start.length;
-              headersSent = true;
-            }
+            // 不在此 writeHead：等 writeLines 产出真实 delta 再锁定渠道（stall 可换渠）
             if (pendingFirst) {
               writeLines(pendingFirst);
               pendingFirst = null;
@@ -207,6 +216,15 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
           }
 
           if (res.writable) {
+            if (!headersSent) {
+              res.writeHead(200, {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Cache-Prefix": prefixHit.seen ? `HIT-${prefixHit.hitCount}` : "MISS",
+              });
+              headersSent = true;
+            }
             if (oaiState.thinkingOpen) {
               res.write(`data: ${JSON.stringify({ type: "content_block_stop", index: oaiState.thinkingIndex })}\n\n`);
               oaiState.thinkingOpen = false;
@@ -225,7 +243,11 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
             res.write(`data: ${JSON.stringify({
               type: "message_delta",
               delta: { stop_reason: acc.stopReason, stop_sequence: null },
-              usage: { output_tokens: tt || 0 },
+              usage: {
+                input_tokens: Math.max(0, pT - ctk),
+                cache_read_input_tokens: ctk,
+                output_tokens: Math.max(0, tt - pT),
+              },
             })}\n\n`);
             res.write(`data: ${JSON.stringify({ type: "message_stop" })}\n\n`);
           }
@@ -237,7 +259,7 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     applyTrailHeaders(res, result.upstream?.name, result.trail);
 
     if (!result.consumedOk && !result.stalledAfterWrite) {
-      if (affKey) affinityDeleteAll(affKey);
+      // 勿清 affinity：保住 Go prompt_cache 会话粘性
       if (!headersSent) {
         const retry = result.retryAfterSec || 60;
         res.setHeader("Retry-After", String(retry));
@@ -253,6 +275,10 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
     }
 
     if (result.stalledAfterWrite && res.writable) {
+      res.write(`data: ${JSON.stringify({
+        type: "error",
+        error: { type: "api_error", message: "upstream stream stall" },
+      })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: "message_stop" })}\n\n`);
     }
 
@@ -277,8 +303,9 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
       if (streamOk) {
         recordProviderSuccess(result.upstream);
         if (affKey && !ru.is_fallback) affinitySet(affKey, result.upstream.name);
-      } else if (affKey) {
-        affinityDeleteAll(affKey);
+        if (ctk > 0) {
+          try { res.setHeader("X-Upstream-Cached-Tokens", String(ctk)); } catch { /* headers sent */ }
+        }
       }
     }
 
@@ -287,17 +314,21 @@ export async function handleMessages(req: IncomingMessage, res: ServerResponse):
   }
 
   // ── Non-stream (with cache write) ──
-  const nonStreamResult = await nonStreamWithFallback(ru, async (candidate) => {
+  const nonStreamResult = await nonStreamWithFallback(ru, async (candidate, wallSignal) => {
     const cFbm = ru.fallback_model || candidate.fallback_model || null;
     const cUpm = cFbm || candidate.upstream_model || b.model.replace(/^opencode-go\//, "");
-    const body = Object.assign(anthropicToOpenAI(b, cUpm), candidate.request_overrides || {});
+    const body = Object.assign(anthropicToOpenAI(b, cUpm, { promptCacheKey: affKey }), candidate.request_overrides || {});
     try {
+      const signals = [AbortSignal.timeout(TIMEOUTS.NONSTREAM_MS), wallSignal].filter(Boolean) as AbortSignal[];
+      const signal = signals.length > 1 && typeof AbortSignal.any === "function"
+        ? AbortSignal.any(signals)
+        : signals[0];
       const resp = await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        // CCC Relay 2026-07-25:非流式超时可配(默认 600s),别再用 30s 硬切
-        signal: AbortSignal.timeout(TIMEOUTS.NONSTREAM_MS),
+        // CCC Relay 2026-07-25:非流式超时可配(默认 600s),别再用 30s 硬切；墙钟 signal 可打断
+        signal,
       });
       const d = await resp.json();
       return { response: resp, body: d };

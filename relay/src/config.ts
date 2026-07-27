@@ -29,6 +29,9 @@ export const TIMEOUTS = {
   ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 20_000,
   // 付费保底：大 prompt TTFB 常 >15s，给更长首包预算
   ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 55_000,
+  // peek（响应头之后读满首批 SSE）硬超时 — 专治 100s+ 卡死
+  PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 12_000,
+  PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 25_000,
   // total timeout for non-streaming LLM calls (ms);非流式必须放宽,默认 10 分钟
   NONSTREAM_MS: Number(process.env.LOOP_NONSTREAM_TIMEOUT_MS) || 600_000,
   // undici Agent: streaming body timeout (ms);无读活动超过此时长则断开

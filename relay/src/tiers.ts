@@ -39,7 +39,7 @@ export function isLongCooldown(u: UpstreamConfig, thresholdMs = 300_000): boolea
   return !!(cool && cool.until - Date.now() > thresholdMs);
 }
 
-/** flash：多数免费钥长冷却时，把 paid 提到候选第二位 */
+/** flash：多数免费钥长冷却时，把 paid 提到候选首位（保 Go 前缀缓存 + 少断流） */
 export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): UpstreamConfig[] {
   if (tier !== "flash" || ordered.length < 2) return ordered;
   const regFree = (getConfig().tiers.get("flash") || []).filter(
@@ -53,9 +53,9 @@ export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): Up
   const free = ordered.filter(u => !isPaidUpstream(u));
   if (!paid.length || !free.length) return ordered;
   console.warn(
-    `[route] flash free long-cooldown ${longN}/${regFree.length} → boost paid after first free`,
+    `[route] flash free long-cooldown ${longN}/${regFree.length} → paid-first (cache sticky)`,
   );
-  return [free[0]!, ...paid, ...free.slice(1)];
+  return [...paid, ...free];
 }
 
 /** 判断 upstream 是否可用 */

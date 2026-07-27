@@ -100,6 +100,26 @@ describe("anthropicToOpenAI", () => {
     expect(iu.url).toMatch(/^data:image\/jpeg;base64,xyz$/);
     expect(iu.detail).toBe("auto");
   });
+
+  it("enables OpenCode Go prompt cache fields for system/tools sessions", () => {
+    const req: AnthropicRequest = {
+      model: "flash",
+      messages: [
+        { role: "user", content: "a" },
+        { role: "assistant", content: "b" },
+        { role: "user", content: "c" },
+      ],
+      system: "You are helpful",
+      tools: [{ name: "t", description: "d", input_schema: { type: "object" } }],
+      max_tokens: 100,
+    };
+    const result = anthropicToOpenAI(req, "deepseek-v4-flash", { promptCacheKey: "sess-abc" }) as any;
+    expect(result.enable_prompt_cache).toBe(true);
+    expect(result.prompt_cache_retention).toBe("24h");
+    expect(result.prompt_cache_key).toBe("sess-abc");
+    expect(result.messages[0].role).toBe("system");
+    expect((result.messages[0] as any).cache_control?.type).toBe("ephemeral");
+  });
 });
 
 describe("openAIChunkToAnthropicSSE", () => {

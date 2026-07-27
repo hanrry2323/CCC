@@ -153,8 +153,14 @@ cat > "$PLIST" <<PLIST_EOF
     <string>20000</string>
     <key>LOOP_UPSTREAM_ATTEMPT_PAID_MS</key>
     <string>55000</string>
+    <key>LOOP_UPSTREAM_PEEK_MS</key>
+    <string>12000</string>
+    <key>LOOP_UPSTREAM_PEEK_PAID_MS</key>
+    <string>25000</string>
     <key>LOOP_CONNECT_TIMEOUT_MS</key>
     <string>8000</string>
+    <key>STALL_IDLE_MS</key>
+    <string>30000</string>
   </dict>
   <key>StandardOutPath</key>
   <string>${LOG_DIR}/ccc-relay-${HOST_TAG}.out.log</string>

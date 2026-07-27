@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { UpstreamConfig, RoutingResult, FallbackAttempt, TrailRecord } from "./types.js";
-import { classifyErr, StallError, getStallIdleMs } from "./utils.js";
+import { classifyErr, StallError, getStallIdleMs, streamReadWithTimeout } from "./utils.js";
 import { getAppContext } from "./context.js";
 import { bad } from "./health.js";
 import { recordOutcome, computeBackoffCooldown } from "./scoring.js";
@@ -23,8 +23,30 @@ const PROVIDER_BREAKER_SEC = 120;
 const RATE_LIMIT_RETRY_AFTER_CAP = 120;
 const PAID_FETCH_COOLDOWN_SEC = 10;
 const FREE_FETCH_COOLDOWN_SEC = 20;
+const FETCH_GRAY_SEC = 90;
+const MAX_FREE_ATTEMPTS_PER_REQ = 2;
+const EGRESS_STAGGER_MS = 100;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
+
+/** free 钥连续 fetch 失败灰名单（不进账号 breaker） */
+const _fetchGrayUntil = new Map<string, number>();
+
+export function markFetchGray(name: string, sec = FETCH_GRAY_SEC): void {
+  _fetchGrayUntil.set(name, Date.now() + sec * 1000);
+}
+export function isFetchGray(name: string): boolean {
+  const until = _fetchGrayUntil.get(name);
+  if (!until) return false;
+  if (until <= Date.now()) {
+    _fetchGrayUntil.delete(name);
+    return false;
+  }
+  return true;
+}
+export function _clearFetchGrayForTest(): void {
+  _fetchGrayUntil.clear();
+}
 
 function failoverMaxAttempts(): number {
   return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
@@ -219,6 +241,8 @@ export function recordProviderSuccess(up: UpstreamConfig): void {
 export async function peekStream(
   response: Response,
   peekLines: number = DEFAULT_PEEK_LINES,
+  peekTimeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<{
   reader: ReadableStreamDefaultReader<Uint8Array>;
   firstLines: string[];
@@ -230,9 +254,27 @@ export async function peekStream(
   let buff = "";
   const firstLines: string[] = [];
   let done = false;
+  const budget = peekTimeoutMs ?? TIMEOUTS.PEEK_MS;
+  const deadline = Date.now() + budget;
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  if (signal?.aborted) {
+    onAbort();
+    throw Object.assign(new Error("peek aborted"), { name: "TimeoutError" });
+  }
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (!done && firstLines.length < peekLines) {
-      const r = await reader.read();
+      if (signal?.aborted) {
+        throw Object.assign(new Error("peek aborted"), { name: "TimeoutError" });
+      }
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        reader.cancel().catch(() => {});
+        throw Object.assign(new Error("peek timeout"), { name: "TimeoutError" });
+      }
+      const r = await streamReadWithTimeout(reader, left);
       done = r.done!;
       if (r.value) {
         buff += decoder.decode(r.value, { stream: true });
@@ -244,6 +286,8 @@ export async function peekStream(
   } catch (e) {
     reader.cancel().catch(() => {});
     throw e;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
   return { reader, firstLines, buffered: buff, done };
 }
@@ -332,10 +376,15 @@ interface StreamTryFailure {
 
 type StreamTryResult = StreamTrySuccess | StreamTryFailure;
 
+/** streamFn 可接收墙钟 AbortSignal，以便 FAILOVER_MAX_MS 打断进行中的 fetch/peek */
+export type StreamFn = (up: UpstreamConfig, signal?: AbortSignal) => Promise<Response | null>;
+
 async function tryUpstreamStream(
   up: UpstreamConfig,
-  streamFn: (up: UpstreamConfig) => Promise<Response | null>,
+  streamFn: StreamFn,
   failedPlatforms: Set<string>,
+  signal?: AbortSignal,
+  wallDeadlineMs?: number,
 ): Promise<StreamTryResult> {
   let lastErr = "";
   let lastStatus = 0;
@@ -345,10 +394,18 @@ async function tryUpstreamStream(
   }
 
   for (let retry = 0; retry <= MAX_SAME_UPSTREAM_RETRIES; retry++) {
+    if (signal?.aborted) {
+      lastErr = "timeout";
+      break;
+    }
     if (retry > 0) await sleep(RETRY_DELAY_MS);
     try {
-      const resp = await streamFn(up);
+      const resp = await streamFn(up, signal);
       if (!resp) {
+        if (signal?.aborted) {
+          lastErr = "timeout";
+          break;
+        }
         lastErr = "fetch";
         continue;
       }
@@ -378,12 +435,20 @@ async function tryUpstreamStream(
       let firstLines: string[];
       let buffered: string;
       try {
-        const peeked = await peekStream(resp);
+        const basePeek = isPaidUpstream(up) ? TIMEOUTS.PEEK_PAID_MS : TIMEOUTS.PEEK_MS;
+        const wallLeft = wallDeadlineMs != null ? Math.max(1, wallDeadlineMs - Date.now()) : basePeek;
+        const peekMs = Math.min(basePeek, wallLeft);
+        const peeked = await peekStream(resp, DEFAULT_PEEK_LINES, peekMs, signal);
         reader = peeked.reader;
         firstLines = peeked.firstLines;
         buffered = peeked.buffered;
       } catch (e) {
-        console.warn(`[fallback] stream peek err ${up.name}: ${(e as Error).message.slice(0, 50)}`);
+        const msg = (e as Error).message || "";
+        console.warn(`[fallback] stream peek err ${up.name}: ${msg.slice(0, 50)}`);
+        if (/timeout|stall|abort/i.test(msg)) {
+          lastErr = "timeout";
+          break;
+        }
         lastErr = "peek";
         continue;
       }
@@ -427,6 +492,9 @@ async function tryUpstreamStream(
   else if (lastErr === "timeout") markBad(up, 0, "attempt timeout");
   else if (lastErr === "peek") markBad(up, 0, "peek failed after retries");
   else if (lastErr === "empty") markBad(up, 0, "empty stream");
+  if ((lastErr === "fetch" || lastErr === "timeout") && !isPaidUpstream(up)) {
+    markFetchGray(up.name);
+  }
   ledgerSettle(up, {
     success: false,
     rollbackRequest: lastErr === "fetch" || lastErr === "timeout" || lastErr === "peek" || lastErr === "empty",
@@ -484,7 +552,7 @@ function buildExhaustedResult(
   };
 }
 
-/** 挑选下一跳：付费保底插队（free 已失败 / 墙钟过半 / 预留最后 attempt） */
+/** 挑选下一跳：付费保底插队（free 已失败 / 墙钟过半 / 预留最后 attempt / 最多 2 个 free） */
 export function selectNextCandidate(
   candidates: UpstreamConfig[],
   tried: Set<string>,
@@ -502,34 +570,39 @@ export function selectNextCandidate(
   const isBlocked = (u: UpstreamConfig): boolean =>
     opts.failedPlatforms.has(u.base_url) ||
     opts.rateLimitedHosts.has(egressRateLimitKey(u)) ||
-    !!ledgerWouldExceed(u);
+    !!ledgerWouldExceed(u) ||
+    isFetchGray(u.name);
 
   const paidUsable = untried.filter(u => isPaidUpstream(u) && !isBlocked(u));
   const wall = failoverMaxMs();
   const maxAtt = failoverMaxAttempts();
   const elapsed = Date.now() - opts.budgetStart;
   const attemptsLeft = maxAtt - opts.attempts;
+  const freeTried = candidates.filter(u => tried.has(u.name) && !isPaidUpstream(u)).length;
 
-  // 预留最后 1 次 attempt 给未试付费
+  // 先吐出顺序上的 skip（同 host RL / platform），保留 trail 可观测性
+  const head = untried[0]!;
+  if (isBlocked(head) && !isPaidUpstream(head)) return head;
+
+  // 同请求最多试 MAX_FREE_ATTEMPTS_PER_REQ 个 free，其后强制 paid
+  if (paidUsable.length && freeTried >= MAX_FREE_ATTEMPTS_PER_REQ) {
+    return paidUsable[0]!;
+  }
+
   if (paidUsable.length && attemptsLeft <= 1) {
-    const next = untried[0]!;
-    if (!isPaidUpstream(next) || isBlocked(next)) return paidUsable[0]!;
+    if (!isPaidUpstream(head) || isBlocked(head)) return paidUsable[0]!;
   }
 
   const forcePaid =
     paidUsable.length > 0 &&
     (opts.freeFailCount >= 1 ||
+      freeTried >= 1 ||
       elapsed >= wall * 0.5 ||
       elapsed + TIMEOUTS.ATTEMPT_PAID_MS >= wall);
 
-  if (forcePaid) {
-    // 先吐出同 host skip，保留 trail 可观测性
-    const next = untried[0]!;
-    if (isBlocked(next) && !isPaidUpstream(next)) return next;
-    return paidUsable[0]!;
-  }
+  if (forcePaid) return paidUsable[0]!;
 
-  return untried[0]!;
+  return untried.find(u => !isBlocked(u)) || head;
 }
 
 function markPaidSkippedBudget(
@@ -551,7 +624,7 @@ function markPaidSkippedBudget(
  */
 export async function streamWithFallback(
   routing: RoutingResult,
-  streamFn: (up: UpstreamConfig) => Promise<Response | null>,
+  streamFn: StreamFn,
   opts?: StreamFallbackOptions | (() => string),
 ): Promise<StreamFallbackResult> {
   // 兼容旧签名 makeRequestSummary?: () => string
@@ -628,7 +701,24 @@ export async function streamWithFallback(
     tried.add(up.name);
     attempts += 1;
     const t0 = Date.now();
-    const result = await tryUpstreamStream(up, streamFn, failedPlatforms);
+    const wallDeadline = budgetStart + failoverMaxMs();
+    const wallLeft = wallDeadline - Date.now();
+    if (wallLeft <= 0 && !isPaidUpstream(up)) {
+      markPaidSkippedBudget(candidates, tried, failureReasons);
+      pushTrail(trail, "*", "budget:wall", budgetStart);
+      break;
+    }
+    // 墙钟可打断进行中的 fetch/peek（禁止单次拖死到 ATTEMPT 以外）
+    const attemptAc = new AbortController();
+    const wallTimer = setTimeout(() => {
+      attemptAc.abort(Object.assign(new Error("budget:wall"), { name: "TimeoutError" }));
+    }, Math.max(1, wallLeft > 0 ? wallLeft : (isPaidUpstream(up) ? TIMEOUTS.ATTEMPT_PAID_MS : 1)));
+    let result: StreamTryResult;
+    try {
+      result = await tryUpstreamStream(up, streamFn, failedPlatforms, attemptAc.signal, wallDeadline);
+    } finally {
+      clearTimeout(wallTimer);
+    }
     if (!result.ok) {
       failureReasons.set(up.name, result.lastErr);
       pushTrail(trail, up.name, result.lastErr, t0);
@@ -636,7 +726,7 @@ export async function streamWithFallback(
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
         rateLimitedHosts.add(egressRateLimitKey(up));
       } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-        await sleep(200);
+        await sleep(EGRESS_STAGGER_MS);
       }
       continue;
     }
@@ -740,8 +830,9 @@ export interface NonStreamResult {
 
 async function tryUpstreamNonStream(
   up: UpstreamConfig,
-  fetchFn: (up: UpstreamConfig) => Promise<{ response: Response; body: any } | null>,
+  fetchFn: (up: UpstreamConfig, signal?: AbortSignal) => Promise<{ response: Response; body: any } | null>,
   failedPlatforms: Set<string>,
+  signal?: AbortSignal,
 ): Promise<{ ok: true; body: any; upstream: UpstreamConfig } | { ok: false; lastErr: string; platformError: boolean }> {
   let lastErr = "";
 
@@ -750,9 +841,13 @@ async function tryUpstreamNonStream(
   }
 
   for (let retry = 0; retry <= MAX_SAME_UPSTREAM_RETRIES; retry++) {
+    if (signal?.aborted) {
+      lastErr = "timeout";
+      break;
+    }
     if (retry > 0) await sleep(RETRY_DELAY_MS);
     try {
-      const result = await fetchFn(up);
+      const result = await fetchFn(up, signal);
       if (!result) {
         lastErr = "fetch";
         continue;
@@ -806,7 +901,7 @@ async function tryUpstreamNonStream(
 
 export async function nonStreamWithFallback(
   routing: RoutingResult,
-  fetchFn: (up: UpstreamConfig) => Promise<{ response: Response; body: any } | null>,
+  fetchFn: (up: UpstreamConfig, signal?: AbortSignal) => Promise<{ response: Response; body: any } | null>,
 ): Promise<NonStreamResult> {
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
@@ -873,7 +968,18 @@ export async function nonStreamWithFallback(
     tried.add(up.name);
     attempts += 1;
     const t0 = Date.now();
-    const result = await tryUpstreamNonStream(up, fetchFn, failedPlatforms);
+    const wallDeadline = budgetStart + failoverMaxMs();
+    const wallLeft = wallDeadline - Date.now();
+    const attemptAc = new AbortController();
+    const wallTimer = setTimeout(() => {
+      attemptAc.abort(Object.assign(new Error("budget:wall"), { name: "TimeoutError" }));
+    }, Math.max(1, wallLeft > 0 ? wallLeft : (isPaidUpstream(up) ? TIMEOUTS.ATTEMPT_PAID_MS : 1)));
+    let result: Awaited<ReturnType<typeof tryUpstreamNonStream>>;
+    try {
+      result = await tryUpstreamNonStream(up, fetchFn, failedPlatforms, attemptAc.signal);
+    } finally {
+      clearTimeout(wallTimer);
+    }
     if (result.ok) {
       pushTrail(trail, up.name, "ok", t0);
       recordTrailRing(routing.tier, true, up.name, trail);
@@ -885,7 +991,7 @@ export async function nonStreamWithFallback(
     if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
       rateLimitedHosts.add(egressRateLimitKey(up));
     } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-      await sleep(200);
+      await sleep(EGRESS_STAGGER_MS);
     }
   }
 

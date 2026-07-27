@@ -20,12 +20,16 @@ import { normTools, stripThinkingDirectives } from "../utils.js";
 export function anthropicToOpenAI(
   req: AnthropicRequest,
   upstreamModel: string,
+  opts?: { promptCacheKey?: string | null },
 ): OpenAIChatRequest {
-  // 检测 Anthropic cache_control 断点，透传给上游启用 prompt caching
   const hasCacheControl = detectCacheControl(req);
   const sysStr = extractSystemString(req.system);
-  const sys = sysStr ? [{ role: "system" as const, content: sysStr }] : [];
+  const sysMsg: ChatMessage | null = sysStr
+    ? { role: "system", content: sysStr, cache_control: { type: "ephemeral", ttl: "1h" } }
+    : null;
+  const sys = sysMsg ? [sysMsg] : [];
   const msgs: ChatMessage[] = (req.messages || []).flatMap(anthropicMsgToOpenAI);
+  stampTailCacheControl(msgs);
   const finalMsgs = [...sys, ...msgs];
   if (finalMsgs.length === 0) finalMsgs.push({ role: "user", content: "hi" });
 
@@ -39,13 +43,24 @@ export function anthropicToOpenAI(
     stream: req.stream || false,
   };
 
-  // 如果原始请求有 cache_control，让上游也启用 prompt caching
-  if (hasCacheControl && sys.length > 0) {
-    (o as any).enable_prompt_cache = true;  // opencode.ai 兼容标记
+  const wantCache =
+    hasCacheControl ||
+    sys.length > 0 ||
+    (req.tools?.length ?? 0) > 0 ||
+    (req.messages?.length ?? 0) > 1;
+  if (wantCache) {
+    (o as any).enable_prompt_cache = true;
+    (o as any).prompt_cache_retention = "24h";
+    const ck = (opts?.promptCacheKey || "").trim();
+    if (ck) (o as any).prompt_cache_key = ck.slice(0, 64);
   }
 
   if (o.stream) o.stream_options = { include_usage: true };
-  if (req.tools?.length) o.tools = normTools(req.tools);
+  if (req.tools?.length) {
+    o.tools = normTools(req.tools);
+    const tools = o.tools as Array<Record<string, unknown>>;
+    if (tools.length) tools[tools.length - 1]!.cache_control = { type: "ephemeral", ttl: "1h" };
+  }
   if (req.tool_choice && req.tool_choice.type !== "auto") {
     o.tool_choice = req.tool_choice.type === "any"
       ? "required" as const
@@ -55,6 +70,16 @@ export function anthropicToOpenAI(
   }
 
   return o;
+}
+
+function stampTailCacheControl(msgs: ChatMessage[]): void {
+  let left = 2;
+  for (let i = msgs.length - 1; i >= 0 && left > 0; i--) {
+    const m = msgs[i]!;
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    m.cache_control = { type: "ephemeral", ttl: "1h" };
+    left -= 1;
+  }
 }
 
 function extractSystemString(system: string | ContentBlock[] | undefined): string {
@@ -81,6 +106,9 @@ function detectCacheControl(req: AnthropicRequest): boolean {
         if (typeof block === "object" && (block as ContentBlock).cache_control) return true;
       }
     }
+  }
+  for (const t of (req.tools || []) as Array<{ cache_control?: unknown }>) {
+    if (t && t.cache_control) return true;
   }
   return false;
 }
@@ -353,7 +381,8 @@ export function openAIResponseToAnthropic(
       : "end_turn",
     stop_sequence: null,
     usage: {
-      input_tokens: usage?.prompt_tokens || 0,
+      input_tokens: Math.max(0, (usage?.prompt_tokens || 0) - (usage?.prompt_tokens_details?.cached_tokens || 0)),
+      cache_read_input_tokens: usage?.prompt_tokens_details?.cached_tokens || 0,
       output_tokens: usage?.completion_tokens || 0,
     },
   };

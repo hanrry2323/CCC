@@ -46,16 +46,29 @@
 | 旧坑 | 新策略（已落地） |
 |------|------------------|
 | 免费钥 `fetch` 挂 60–90s → `budget:wall`，paid 未试 | 单次上游硬超时 **15s**（`LOOP_UPSTREAM_ATTEMPT_MS`） |
-| launchd `FAILOVER_MAX_MS=120000` / 12 次 | 默认 / 2017 plist：**35s / 6 次** |
-| paid `tier_priority=80` 永远垫底 | free 失败或墙钟过半 → **PaidGuarantee 插队**；多数 free 长冷却时 router **boost** paid 到第二位 |
-| `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤10s**，永不账号 breaker |
+| launchd `FAILOVER_MAX_MS=120000` / 12 次 | 默认 / 2017 plist：**60s / 6 次** |
+| paid `tier_priority=80` 永远垫底 | free 失败 → **PaidGuarantee**；多数 free 长冷却 → **paid-first** |
+| `fetch` 失败打 `provider_group` 整账号 120s | **禁止**；付费 fetch 冷却 **≤10s**；free fetch → 90s 灰名单 |
 | 503 文案把未试 paid 写成「不可用」 | trail 可标 `paid_skipped_budget`；成功时 `X-Routed-Upstream: opencode-go-paid-flash` |
-| 大上下文仍 503：trail 已点到 paid 也是 `fetch` | **勿**用 `CONNECT_MS` Abort 包整段 upstream fetch；首包超时拿到 Response 头后必须 **clearTimeout**，否则会杀长流 / 误杀付费 TTFB |
+| 大上下文仍 503：trail 已点到 paid 也是 `fetch` | **勿**用 `CONNECT_MS` Abort 包整段 fetch；首包后 clearTimeout |
+| trail 仍见 100s+ `fetch` | **peek 硬超时** free 12s / paid 25s；同请求最多 **2** 个 free |
 
 **验收口径**：人为关掉全部 free flash 后，`POST /v1/messages` flash 应 **200** 且 `X-Routed-Upstream` = paid。  
 **看门狗（可选）**：`bash scripts/install-relay-flash-watchdog-plist.sh`（60s 探针，连续 3 次失败 kickstart）。
 
 **勿做**：用 `?force=1` 清日额长冷却当「提稳」（只会反复撞 429）。
+
+### 部署检查清单（2017）
+
+```bash
+cd ~/program/CCC/relay && npm test && npm run build
+rsync -az dist/ mac2017:/Users/fan/program/CCC/relay/dist/   # 或在本机 2017 上 build
+# 对齐 plist：FAILOVER_MAX_MS=60000 ATTEMPT_*=20s/55s PEEK_*=12s/25s STALL_IDLE_MS=30000
+launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
+# 验收：小 ping + 大 body（~100KB）+ LAN；trail 禁止再出现 ~100s 的 *:fetch
+curl -sS 'http://127.0.0.1:4000/admin/trail?limit=10'
+curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('cache_hit_ratio'), d.get('cached_tokens'))"
+```
 
 ## 3. 现行拓扑（逻辑，不含密钥）
 

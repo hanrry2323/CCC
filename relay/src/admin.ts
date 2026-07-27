@@ -241,12 +241,14 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
     if (cf) f = f.filter(r => r.client === cf);
     const total = f.length;
     const tokens = f.reduce((s, r) => s + (r.total_tokens || 0), 0);
-    const byU: Record<string, { n: number; tk: number }> = {};
+    const cachedTokens = f.reduce((s, r) => s + (r.cached_tokens || 0), 0);
+    const byU: Record<string, { n: number; tk: number; cached: number }> = {};
     const byC: Record<string, { n: number; tk: number }> = {};
     for (const r of f) {
-      if (!byU[r.upstream]) byU[r.upstream] = { n: 0, tk: 0 };
+      if (!byU[r.upstream]) byU[r.upstream] = { n: 0, tk: 0, cached: 0 };
       byU[r.upstream].n++;
       byU[r.upstream].tk += r.total_tokens || 0;
+      byU[r.upstream].cached += r.cached_tokens || 0;
     }
     for (const r of f) {
       const c = r.client || "anonymous";
@@ -291,7 +293,18 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
       }
     }
 
-    return json(res, 200, { period: p, total, tokens, by_upstream: byU, by_client: byC, by_tier: byTier, trend: tr, hourly });
+    return json(res, 200, {
+      period: p,
+      total,
+      tokens,
+      cached_tokens: cachedTokens,
+      cache_hit_ratio: tokens > 0 ? cachedTokens / tokens : 0,
+      by_upstream: byU,
+      by_client: byC,
+      by_tier: byTier,
+      trend: tr,
+      hourly,
+    });
   }
 
   // ── /admin/cooldowns ── 运维：冷却列表（剩余秒 + 原因）

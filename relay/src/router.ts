@@ -97,7 +97,11 @@ export function affinityGet(key: string, upstreamName: string): UpstreamConfig |
 }
 
 export function affinitySet(key: string, upstreamName: string, _unusedTier?: string): void {
-  // _unusedTier 保留签名兼容旧调用, 实际不再使用
+  // 同一会话只保留一个上游绑定：否则 free/paid 多条并存时 route 仍先命中 prio=1 免费钥
+  const prefix = key + "::";
+  for (const k of [..._affinity.keys()]) {
+    if (k.startsWith(prefix)) _affinity.delete(k);
+  }
   const k = affinityK(key, upstreamName);
   _affinity.set(k, { upstream: upstreamName, at: Date.now() });
   if (_affinity.size > AFFINITY_MAX) {
@@ -272,15 +276,16 @@ function tryTier(
     }
   }
 
-  // 优先级优先；同档优先带 proxy 的出口（拆 IP）；再按评分；分数接近时 fair RR
+  // 优先级优先；默认同档 prefer direct（HK 慢）；LOOP_PREFER_PROXY=1 才优先 proxy
   const okList = tierUp.filter(isUpstreamOk);
   if (okList.length > 0) {
+    const preferProxy = process.env.LOOP_PREFER_PROXY === "1";
     const sorted = okList.slice().sort((a, b) => {
       const pd = (a.tier_priority ?? 99) - (b.tier_priority ?? 99);
       if (pd !== 0) return pd;
-      const ap = (a.proxy || "").trim() ? 0 : 1;
-      const bp = (b.proxy || "").trim() ? 0 : 1;
-      if (ap !== bp) return ap - bp;
+      const ap = (a.proxy || "").trim() ? 1 : 0;
+      const bp = (b.proxy || "").trim() ? 1 : 0;
+      if (ap !== bp) return preferProxy ? ap - bp : bp - ap; // default: direct(0) first
       return getScore(b.name) - getScore(a.name);
     });
     const ordered = boostPaidCandidates(fairPick(tier, sorted), tier);

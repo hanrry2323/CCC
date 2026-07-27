@@ -15,8 +15,8 @@ export class StallError extends Error {
 }
 
 export function getStallIdleMs(): number {
-  const n = parseInt(process.env.STALL_IDLE_MS || "45000", 10);
-  return Number.isFinite(n) && n > 0 ? n : 45_000;
+  const n = parseInt(process.env.STALL_IDLE_MS || "30000", 10);
+  return Number.isFinite(n) && n > 0 ? n : 30_000;
 }
 
 // ── 错误分类 ──

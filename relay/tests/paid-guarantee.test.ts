@@ -101,7 +101,7 @@ describe("isPaidUpstream / boostPaidCandidates", () => {
       // f3 not long cool — 2/3 >= 50%
       const ordered = [f1, f2, f3, paid];
       const boosted = boostPaidCandidates(ordered, "flash");
-      expect(boosted.map(u => u.name)).toEqual(["f1", paid.name, "f2", "f3"]);
+      expect(boosted.map(u => u.name)).toEqual([paid.name, "f1", "f2", "f3"]);
     } finally {
       resetConfig();
       if (prev === undefined) delete process.env.LOOP_UPSTREAMS_FILE;
@@ -180,6 +180,39 @@ describe("streamWithFallback must reach paid", () => {
     expect(called).toContain(paid.name);
     // 第一次 free 失败后应立即插队 paid，不必先耗尽全部 free
     expect(called.indexOf(paid.name)).toBeLessThanOrEqual(2);
+  });
+
+  it("aborts hung free fetch when wall clock expires", async () => {
+    const prev = process.env.FAILOVER_MAX_MS;
+    process.env.FAILOVER_MAX_MS = "400";
+    const free1 = makeFree("hang-free");
+    const paid = makePaid("hang-paid");
+    const routing: RoutingResult = {
+      upstream: free1,
+      candidates: [free1, paid],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+    const t0 = Date.now();
+    const res = await streamWithFallback(routing, async (up, signal) => {
+      if (up.name === paid.name) {
+        return new Response(okBody, { status: 200 });
+      }
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => resolve(), 30_000);
+        signal?.addEventListener("abort", () => {
+          clearTimeout(t);
+          reject(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
+        }, { once: true });
+      });
+      return null;
+    });
+    if (prev === undefined) delete process.env.FAILOVER_MAX_MS;
+    else process.env.FAILOVER_MAX_MS = prev;
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    // 墙钟打断 free 后应能落到 paid，或至少不拖死 30s
+    expect(res.upstream?.name === paid.name || res.errorCode === 503).toBe(true);
   });
 
   it("non-stream also reaches paid after free fail", async () => {

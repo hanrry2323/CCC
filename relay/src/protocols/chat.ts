@@ -90,7 +90,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
 
     const result = await streamWithFallback(
       ru,
-      async (candidate) => {
+      async (candidate, signal) => {
         const cFbm = ru.fallback_model || candidate.fallback_model || null;
         const cUpm = cFbm || candidate.upstream_model || b.model.replace(/^opencode-go\//, "");
         const body: any = {
@@ -106,8 +106,12 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
             method: "POST",
             headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
             body: JSON.stringify(body),
+            signal,
           });
-        } catch {
+        } catch (e) {
+          if (signal?.aborted || /timeout|aborted|TimeoutError/i.test((e as Error)?.name + (e as Error)?.message)) {
+            throw e;
+          }
           return null;
         }
       },
@@ -260,15 +264,19 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
   }
 
   // ── Non-stream ──
-  const result = await nonStreamWithFallback(ru, async (candidate) => {
+  const result = await nonStreamWithFallback(ru, async (candidate, wallSignal) => {
     const cFbm = ru.fallback_model || candidate.fallback_model || null;
     const cUpm = cFbm || candidate.upstream_model || b.model.replace(/^opencode-go\//, "");
     try {
+      const signals = [AbortSignal.timeout(TIMEOUTS.NONSTREAM_MS), wallSignal].filter(Boolean) as AbortSignal[];
+      const signal = signals.length > 1 && typeof AbortSignal.any === "function"
+        ? AbortSignal.any(signals)
+        : signals[0];
       const resp = await upstreamFetch(candidate, candidate.base_url + "/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${candidate.api_key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ ...b, model: cUpm, ...(candidate.request_overrides || {}) }),
-        signal: AbortSignal.timeout(TIMEOUTS.NONSTREAM_MS),
+        signal,
       });
       const d = await resp.json();
       return { response: resp, body: d };
