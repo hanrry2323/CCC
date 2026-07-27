@@ -20,6 +20,9 @@ from typing import Iterator, Generator
 
 from _board_store import FileBoardStore
 from board.context import set_workspace
+from _config import get_logger
+
+_log = get_logger("engine")
 
 _workspace_switch_lock = threading.RLock()
 _stores: dict[str, FileBoardStore] = {}
