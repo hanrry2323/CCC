@@ -157,6 +157,24 @@ struct OpsSummary: Decodable {
     let alerts: [OpsHealthAlert]?
     let amber_notes: [String]?
     let domains: OpsHealthDomains?
+    let agent_minds: OpsAgentMindsResp?
+}
+
+struct OpsAgentMindsResp: Decodable {
+    let ok: Bool?
+    let items: [OpsAgentMindItem]?
+    let error: String?
+}
+
+struct OpsAgentMindItem: Identifiable, Decodable, Hashable {
+    var id: String { project_id }
+    let project_id: String
+    let as_of: String?
+    let board_summary: String?
+    let daily: String?
+    let weekly: String?
+    let constraints_n: Int?
+    let error: String?
 }
 
 struct OpsHealthAlert: Identifiable, Hashable, Decodable {

@@ -18,6 +18,7 @@ struct OpsView: View {
     @State private var showFailures = false
     @State private var showChannelDetail = false
     @State private var showUpstreamDaily = false
+    @State private var showAgentMinds = false
 
     private var preferredAmmoWorkspace: String {
         if let p = model.selectedProject, p.isDispatchable {
@@ -104,6 +105,10 @@ struct OpsView: View {
                     .font(.system(size: 15, weight: .semibold))
                     DisclosureGroup("模型通道", isExpanded: $showUpstreamDaily) {
                         upstreamDailySection
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    DisclosureGroup("项目心智", isExpanded: $showAgentMinds) {
+                        agentMindsSection
                     }
                     .font(.system(size: 15, weight: .semibold))
                     DisclosureGroup("例外动作", isExpanded: $showActions) {
@@ -620,6 +625,58 @@ struct OpsView: View {
                                 Text(String(format: "$%.4f", cost))
                                     .font(CCCTheme.caption)
                                     .foregroundStyle(CCCTheme.faint)
+                            }
+                        }
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private var agentMindsSection: some View {
+        let resp = model.opsSummary?.agent_minds
+        let items = resp?.items ?? []
+        return Group {
+            if let err = resp?.error, !err.isEmpty {
+                Text("心智读取失败：\(err)")
+                    .font(CCCTheme.caption)
+                    .foregroundStyle(CCCTheme.nodeFail)
+            } else if items.isEmpty {
+                emptyHint("暂无心智摘要")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(items) { item in
+                        if let err = item.error, !err.isEmpty {
+                            Text("\(item.project_id)：\(err)")
+                                .font(CCCTheme.caption)
+                                .foregroundStyle(CCCTheme.nodeFail)
+                        } else {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(item.project_id)
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(CCCTheme.ink)
+                                    if let n = item.constraints_n, n > 0 {
+                                        Text("\(n) 约束")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(CCCTheme.faint)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Capsule().fill(CCCTheme.faint.opacity(0.15)))
+                                    }
+                                }
+                                if let s = item.board_summary ?? item.daily ?? item.weekly, !s.isEmpty {
+                                    Text(s)
+                                        .font(CCCTheme.caption)
+                                        .foregroundStyle(CCCTheme.secondary)
+                                        .lineLimit(3)
+                                }
+                                if let asOf = item.as_of, !asOf.isEmpty {
+                                    Text(asOf)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(CCCTheme.faint)
+                                }
                             }
                         }
                         Divider()
