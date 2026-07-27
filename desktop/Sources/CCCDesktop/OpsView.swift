@@ -382,7 +382,7 @@ struct OpsView: View {
                 domainChip(
                     title: "Hub",
                     ok: hubOk,
-                    subtitle: hubOk ? "隧道 :17777" : "7777 异常"
+                    subtitle: hubOk ? "编排 :7777" : "7777 异常"
                 )
                 domainChip(
                     title: "宕口",
