@@ -240,8 +240,6 @@ def ensure_task_commit(
     - Hygiene cards may stage .ccc meta only；docs/reports 等探针噪声不 dirty_block。
     """
     existing = find_task_commit(workspace, task_id)
-    if existing and (not pre_head or existing != pre_head):
-        return True, "already", existing
 
     try:
         st = subprocess.run(
@@ -257,6 +255,29 @@ def ensure_task_commit(
     dirty = (st.stdout or "").rstrip("\n")
     all_paths = _porcelain_paths(dirty)
     product = porcelain_product_paths(dirty)
+
+    # 已有 task_id commit 时：若 plan scope 仍脏，继续补 commit（防旧 PENDING 假绿）
+    if existing and (not pre_head or existing != pre_head):
+        scope = set(_plan_scope_paths(workspace, task_id))
+        scope |= set(_result_wrote_paths(workspace, task_id))
+        scope_dirty = [
+            p
+            for p in all_paths
+            if any(
+                s == p
+                or s.startswith(p.rstrip("/") + "/")
+                or p.startswith(s.rstrip("/") + "/")
+                for s in scope
+            )
+        ] if scope else []
+        if not scope_dirty:
+            return True, "already", existing
+        _log.info(
+            "[DoD] %s prior commit %s but scope still dirty %s — recommit",
+            task_id,
+            existing[:12],
+            scope_dirty[:6],
+        )
     # Detect hygiene BEFORE trusting empty-product — paper report dirty would
     # otherwise keep product non-empty and skip hygiene branch (R4 qb e05).
     hygiene = _hygiene_allow_ccc_meta(workspace, task_id)

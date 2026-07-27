@@ -163,6 +163,73 @@ def _run_cmds(ws: Path, cmds: list[str]) -> tuple[bool, list[dict[str, Any]]]:
     return run_probes(ws, cmds)
 
 
+_CMD_PATH_TOKEN = re.compile(
+    r"(?:^|[\s\"'`=(])((?:docs|src|scripts|tests|app|lib|\.ccc)/"
+    r"[A-Za-z0-9_./\-]+\.[A-Za-z0-9]+)"
+)
+
+
+def _paths_from_cmds(cmds: list[str]) -> list[str]:
+    """Best-effort file paths referenced by acceptance probe commands."""
+    paths: list[str] = []
+    for cmd in cmds:
+        for m in _CMD_PATH_TOKEN.finditer(cmd or ""):
+            p = (m.group(1) or "").strip().lstrip("./")
+            if p and p not in paths:
+                paths.append(p)
+    return paths
+
+
+def _paths_dirty_vs_commit(ws: Path, commit: str, paths: list[str]) -> list[str]:
+    """Return acceptance paths that differ from *commit* (incl. untracked)."""
+    if not commit or not paths:
+        return []
+    dirty: list[str] = []
+    uniq = []
+    for p in paths:
+        pp = (p or "").strip().lstrip("./")
+        if pp and pp not in uniq:
+            uniq.append(pp)
+    if not uniq:
+        return []
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--name-only", commit, "--", *uniq],
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if r.returncode == 0:
+            for ln in (r.stdout or "").splitlines():
+                n = (ln or "").strip().lstrip("./")
+                if n and n not in dirty:
+                    dirty.append(n)
+        r2 = subprocess.run(
+            ["git", "status", "--porcelain", "--", *uniq],
+            cwd=ws,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if r2.returncode == 0:
+            for raw in (r2.stdout or "").splitlines():
+                line = raw.rstrip("\n")
+                if len(line) < 4:
+                    continue
+                path = line[3:].strip()
+                if path.startswith('"') and path.endswith('"'):
+                    path = path[1:-1]
+                if " -> " in path:
+                    path = path.split(" -> ", 1)[-1].strip().strip('"')
+                path = path.lstrip("./")
+                if path and path not in dirty:
+                    dirty.append(path)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _log.warning("acceptance_gate dirty-vs-commit check failed: %s", exc)
+    return dirty
+
+
 def _allow_prose_acceptance(ws: Path, tid: str) -> bool:
     """业务卡禁止散文验收；仅 ops/卫生可 prose+commit。"""
     task = _load_task(ws, tid) or {}
@@ -223,6 +290,19 @@ def check_acceptance(
                 "bullets": bullets,
                 "cmds": cmds,
             }
+        # 禁止：工作树探针绿、但 task commit 仍是旧内容（OpenCode 未 commit 假绿）
+        if commit:
+            acc_paths = _paths_from_cmds(cmds) + _paths_from_bullets(bullets)
+            dirty = _paths_dirty_vs_commit(ws, commit, acc_paths)
+            if dirty:
+                return {
+                    "ok": False,
+                    "reason": "acceptance_uncommitted_vs_commit",
+                    "ran": ran,
+                    "bullets": bullets,
+                    "cmds": cmds,
+                    "paths": dirty,
+                }
         return {
             "ok": True,
             "reason": "acceptance_cmds_ok",

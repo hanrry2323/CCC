@@ -61,6 +61,65 @@ def test_acceptance_path_in_commit(ws_git: Path):
     assert r["ok"] is True
 
 
+def test_acceptance_cmds_refuse_uncommitted_vs_commit(ws_git: Path):
+    """WT probe green + old task commit still PENDING → refuse (no OpenCode commit 假绿)."""
+    from _acceptance_gate import check_acceptance
+
+    tid = "tid-w1"
+    stamp = ws_git / "docs" / "reports" / "stamp.md"
+    stamp.parent.mkdir(parents=True)
+    stamp.write_text("PENDING\n", encoding="utf-8")
+    subprocess.run(["git", "add", "docs/reports/stamp.md"], cwd=ws_git, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"feat({tid}): seed PENDING"],
+        cwd=ws_git,
+        check=True,
+        capture_output=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ws_git, text=True
+    ).strip()
+    stamp.write_text("GOLDEN_PATH_OK_V2\n", encoding="utf-8")
+    (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        "## 验收\n"
+        "- test -f docs/reports/stamp.md && "
+        "grep -q GOLDEN_PATH_OK_V2 docs/reports/stamp.md\n",
+        encoding="utf-8",
+    )
+    r = check_acceptance(ws_git, tid, commit=head)
+    assert r["ok"] is False
+    assert r["reason"] == "acceptance_uncommitted_vs_commit"
+
+
+def test_ensure_recommit_when_scope_dirty_after_prior_task_commit(ws_git: Path):
+    from _task_commit import ensure_task_commit, find_task_commit
+
+    tid = "tid-w1"
+    stamp = ws_git / "docs" / "reports" / "stamp.md"
+    stamp.parent.mkdir(parents=True)
+    stamp.write_text("PENDING\n", encoding="utf-8")
+    subprocess.run(["git", "add", "docs/reports/stamp.md"], cwd=ws_git, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"feat({tid}): seed PENDING"],
+        cwd=ws_git,
+        check=True,
+        capture_output=True,
+    )
+    prior = find_task_commit(ws_git, tid)
+    assert prior
+    (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        "## 范围\n- docs/reports/stamp.md\n",
+        encoding="utf-8",
+    )
+    stamp.write_text("GOLDEN_PATH_OK_V2\n", encoding="utf-8")
+    ok, why, h = ensure_task_commit(ws_git, tid)
+    assert ok is True
+    assert h != prior
+    assert "GOLDEN_PATH_OK_V2" in subprocess.check_output(
+        ["git", "show", f"{h}:docs/reports/stamp.md"], cwd=ws_git, text=True
+    )
+
+
 def test_salvage_refuses_without_acceptance(ws_git: Path, monkeypatch):
     from board.context import set_workspace
     from board.roles import dev as dev_mod

@@ -792,6 +792,38 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
     except Exception as exc:
         _log.warning("[salvage] %s acceptance gate error: %s", task_id, exc)
         return None
+    # OpenCode 已改工作树但未 commit：补 DoD commit 后再验一次
+    if not acc.get("ok") and acc.get("reason") == "acceptance_uncommitted_vs_commit":
+        cur_phase = None
+        try:
+            cur_phase = _current_running_phase(task_id)
+        except Exception:
+            cur_phase = None
+        ok_auto, why_auto, new_c = ensure_task_commit(
+            ws,
+            task_id,
+            phase_num=cur_phase if isinstance(cur_phase, int) else None,
+            pre_head="",
+        )
+        if ok_auto and new_c and new_c != commit:
+            _log.info(
+                "[salvage] %s DoD recommit after uncommitted acceptance: %s (%s)",
+                task_id,
+                why_auto,
+                new_c[:12],
+            )
+            commit = new_c
+            try:
+                acc = check_acceptance(ws, task_id, commit=commit)
+            except Exception as exc:
+                _log.warning("[salvage] %s acceptance recheck error: %s", task_id, exc)
+                return None
+        else:
+            _log.warning(
+                "[salvage] %s uncommitted acceptance but DoD recommit skipped: %s",
+                task_id,
+                why_auto,
+            )
     if not acc.get("ok"):
         _log.warning(
             "[salvage] %s refused: acceptance %s",
