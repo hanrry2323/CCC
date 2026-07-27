@@ -31,7 +31,7 @@
 
 - [x] authority / consensus / dev-channel 草稿工例外  
 - [x] 本 brief + `docs/dev-packets/` 模板与首包  
-- [ ] 试跑 1 张 packet → Claude Code → Cursor 审合入（验证节奏）
+- [x] 试跑 packet 链（P1 四张 + P2 agent-minds/patrol/web-ops）已跑通
 
 ### 程 1 — Desktop Ops P1（草稿工为主 · Cursor 审）
 
@@ -80,5 +80,6 @@
 | Relay flash / code 免费池 | 已部署；持续观察限流 |
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
 | Desktop Ops P0 | 已合入 |
-| Desktop Ops P1/P2 | 待程 1–2 |
-| 业务生产主路径 | **未开门**（本 brief 出门门禁） |
+| Desktop Ops P1 | 已合入（001–004） |
+| Desktop Ops P2 | agent-minds / 本地巡查红灯 / 网页 #/ops 停更 / App 已重打包 |
+| 业务生产主路径 | **未开门**（G1–G6 持续验收） |
