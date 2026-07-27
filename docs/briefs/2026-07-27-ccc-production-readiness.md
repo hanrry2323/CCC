@@ -124,7 +124,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] P-B / P-C / P-D 本笔（ccc-demo `layer1-v4-8155d39f` · 见 golden-path-evidence v4）  
 - [ ] P-A Desktop ≥30min；P-E health/401 口径；P-F 点灯  
 - [x] Go `code`：`thinking.type=disabled`（主机 `upstreams.json`，不进 git）  
-- [ ] **011** DoD hygiene 勿扫 `.ccc/**` 进业务 commit  
+- [x] **011** DoD hygiene 勿扫 `.ccc/**` 进业务 commit（`0505ae9`） 
 - [ ] HK 隧道 KeepAlive / fleet 探活（观察）  
 - 断点记录：[`2026-07-27-golden-path-evidence.md`](./2026-07-27-golden-path-evidence.md)
 

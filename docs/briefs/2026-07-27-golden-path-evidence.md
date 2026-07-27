@@ -219,7 +219,7 @@
 
 ### 下一程
 
-- **011**：DoD hygiene 禁止把非 plan scope（尤其 `.ccc/**`）扫进 auto-commit。  
+- **011 已合入** `0505ae9`：doc_only 不再 DoD 扫 `.ccc`；board_ops 仅 task-scoped meta。2017 须 `git pull` + Engine kickstart 后再证。  
 - P-A Desktop 30min；探活 path/401 口径。  
 - qb 业务探针金路径仍等 Layer1 余项收口后再开。
 
