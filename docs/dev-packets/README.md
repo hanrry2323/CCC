@@ -21,6 +21,7 @@
 | template | [`_TEMPLATE.md`](./_TEMPLATE.md) | 模板 |
 | ops-p1-copy-vs-handoff | [`001-ops-p1-copy-vs-handoff.md`](./001-ops-p1-copy-vs-handoff.md) | **已合入** |
 | ops-p1-tunnel-row | [`002-ops-p1-tunnel-row.md`](./002-ops-p1-tunnel-row.md) | **已合入** `956d579` |
-| ops-p1-domain-chips | [`003-ops-p1-domain-chips.md`](./003-ops-p1-domain-chips.md) | 待跑 |
+| ops-p1-domain-chips | [`003-ops-p1-domain-chips.md`](./003-ops-p1-domain-chips.md) | **已合入** `3755224` |
+| ops-p1-upstream-panel | [`004-ops-p1-upstream-panel.md`](./004-ops-p1-upstream-panel.md) | 待跑 |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。
