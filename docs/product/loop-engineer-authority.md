@@ -319,9 +319,12 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | L1 goals 结构 + `intent_stable` | `agent_mind` + `POST …/goals/{id}/status` |
 | 空闲优先产品目标 | `_project_baseline.next_product_goal` |
 | 出门清单 | [`lpsn-ship-gate.md`](lpsn-ship-gate.md) |
+| 平台生产三层出门 + 金路径 | [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · Layer0/1/2；证据 [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md) |
+| 业务域 KPI（qb 样板 · 非 CCC 冒充盈利） | [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md) |
 | 飞轮自动化（规划 · 未实现） | [`../briefs/2026-07-24-lpsn-flywheel-auto.md`](../briefs/2026-07-24-lpsn-flywheel-auto.md) · T1 seed / T2 probed / T3 人点 stable / T4 next_goal |
 
-平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。
+平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。  
+**硬边界**：平台 Layer1 出门 ≠ 业务 Layer2 出门；`intent_stable` 只证明「意图探针稳定」，不证明实盘盈利或风控达标。
 
 ---
 
@@ -699,7 +702,9 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 | **草稿工禁止做什么** | 改 `loop-engineer-authority` / 红线 / 控制面；动生产密钥与 launchd；`git add -A`；强推 main；跨 packet 范围「顺手重构」；冒充 Desktop 产品大脑改 CCC |
 | **协作节奏** | Cursor 写 packet → 人转发给个人 Claude Code → 人交回 diff/分支 → Cursor 审测合入（或打回修正包） |
 | **与双身份关系** | **不削弱**「Desktop Agent 禁改 CCC」。个人 CLI 草稿 ≠ Desktop 会话写仓 |
-| **何时停用放大** | CCC 达生产出门门禁（见 production-readiness brief）后，日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主，草稿工仅作配额旁路 |
+| **何时停用放大** | CCC 达 **Layer1 平台生产出门**（见 production-readiness brief 三层出门 + 金路径 P-A…P-F）后，日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主，草稿工仅作配额旁路 |
+| **生产出门分层（硬）** | **Layer0 表面完备 ≠ Layer1 平台生产**。敢承诺「用 CCC 跑业务开发」只认 Layer1（G1–G6 + 金路径证据）。Ops/UI 草稿合入 **不计入** 金路径。 |
+| **业务盈利边界（硬）** | **`released` / `code_landed` ≠ 业务完成**；**≠ 能盈利**。量化等业务须另立域 KPI（回撤/熔断/SLA/保活），与 `intent_stable` 分开勾；样板见 [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md)。Ops 抛光收束后，草稿工**仅**接金路径打回的白名单缺陷包。 |
 
 > 巡查口径：仓内**禁止**出现「用 Claude Code 当平台 IDE / 直接合入」的现行教法；允许出现「草稿工 + Cursor 合入」例外说明。
 

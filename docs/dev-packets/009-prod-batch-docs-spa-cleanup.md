@@ -2,7 +2,8 @@
 
 > **模式**：一次会话多阶段 · 一条总回报  
 > **分支**：`draft/prod-batch-docs-spa-cleanup`（从最新 `main`）  
-> **黑名单**：`upstreams.json` · `~/.ccc/**` · Dual-host · push main · Desktop Agent 改 CCC
+> **黑名单**：`upstreams.json` · `~/.ccc/**` · Dual-host · push main · Desktop Agent 改 CCC  
+> **定位**：壳/文档收尾包。合入后 **Ops 抛光主路径结束**；其后草稿工只接金路径白名单缺陷（见 production-readiness brief）。
 
 ## 总目标
 

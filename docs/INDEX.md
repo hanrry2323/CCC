@@ -20,8 +20,10 @@
 | 5 | [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) | 下阶段北星（壳 + Hub API） |
 | 5a | [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门门禁**（L→P→S→N） |
 | 5b | [`product/dev-channel.md`](product/dev-channel.md) | 谁改 CCC：Cursor 合入 · 个人 Claude Code 草稿工 · Desktop 禁改仓 |
-| 5d | [`briefs/2026-07-27-ccc-production-readiness.md`](briefs/2026-07-27-ccc-production-readiness.md) | **生产级出门门禁 + 分程**（先工具后生产） |
-| 5e | [`dev-packets/README.md`](dev-packets/README.md) | 转发给个人 Claude Code 的指令包 |
+| 5d | [`briefs/2026-07-27-ccc-production-readiness.md`](briefs/2026-07-27-ccc-production-readiness.md) | **生产级三层出门 + 分程**（先工具后生产；Ops 抛光已收束） |
+| 5e | [`dev-packets/README.md`](dev-packets/README.md) | 转发给个人 Claude Code 的指令包（金路径缺陷为主） |
+| 5f | [`briefs/2026-07-27-golden-path-evidence.md`](briefs/2026-07-27-golden-path-evidence.md) | Layer1 金路径探针与断点日志 |
+| 5g | [`briefs/2026-07-27-qb-domain-ship-gate.md`](briefs/2026-07-27-qb-domain-ship-gate.md) | qb 业务域 KPI（与 `intent_stable` 分勾） |
 | 5c | [`product/four-role-fluency-charter.md`](product/four-role-fluency-charter.md) | 四面协作 + 流畅基线 |
 | 6 | [`product/ccc-desktop-architecture.md`](product/ccc-desktop-architecture.md) | Desktop 产品形态 |
 | 7 | [`../STARTUP-BRIEF.md`](../STARTUP-BRIEF.md) | Agent 启动省 token |

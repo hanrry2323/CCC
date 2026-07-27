@@ -1,11 +1,12 @@
 # DEV-PACKET: \<id\>
 
 > 复制本文件全文发给**个人 Claude Code CLI**（非 Desktop Agent）。  
-> 合入权威 = Cursor。做完只提交到指定分支，**不要 push main**。
+> 合入权威 = Cursor。做完只提交到指定分支，**不要 push main**。  
+> **默认主题**：金路径 / Layer1 断点修复。Ops UI 抛光包已收束（见 `docs/dev-packets/README.md`）。
 
 ## 1. 目标（用户可见）
 
-一句话：做完后用户能看到什么。
+一句话：做完后用户能看到什么（优先写清对应 P-A…P-F / 断点 id）。
 
 ## 2. 分支与提交
 
