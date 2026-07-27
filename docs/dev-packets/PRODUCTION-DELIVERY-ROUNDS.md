@@ -20,15 +20,13 @@
 
 ## 轮次表（固定）
 
-### R1 · 013 门禁诚实（进行中）
+### R1 · 013 门禁诚实（**已合入**）
 
 | 项 | 内容 |
 |----|------|
 | 包 | [`013-reviewer-verdict-kpi-honesty.md`](./013-reviewer-verdict-kpi-honesty.md) |
 | 分支 | `draft/013-reviewer-verdict-kpi-honesty` |
-| Claude | `/loop` 跑完 Phase A→D |
-| Cursor | 严审；不合格打回；小问题自修合入 + 2017 热更 |
-| 完成 | `work_abnormal_n` 诚实；无 verdict→FAIL 文件；测绿 |
+| 完成 | `work_abnormal_n` = MAX(cols, works)；quarantine 前写 FAIL verdict；测绿 |
 
 ### R2 · 014 reviewer/`--bg` 空转与超时收尸
 
