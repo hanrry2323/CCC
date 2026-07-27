@@ -32,7 +32,7 @@ thread id 与 Desktop 相同：`{projectId}::…`。同一 thread 能续聊，�
 | 用途 | URL |
 |------|-----|
 | 聊 | `http://192.168.3.140:7788/`（sidecar 静态壳；**默认无 Token**；Hub API **同机反代→隧道**，不直连 2017 `:7777`） |
-| 看板 / 运维 / 下达 | `http://192.168.3.116:7777/#/board`（Hub Basic Auth `ccc`/`ccc`） |
+| 看板 / 运维 / 下达 | **CCC Desktop** 侧栏（网页 `#/board` `#/ops` 已停更，仅 `#/console` 做应急兜底） |
 
 对话 SPA 配置（与 Desktop 同构）：
 
@@ -74,7 +74,7 @@ SPA **设置**可持久化：`ccc_hub_base`、`ccc_agent_base`、`ccc_local_work
 ## 成功标准
 
 - 打开 **M1 `:7788/`** ≈ 远程用 Desktop 中栏（SSE 日志在 M1 sidecar）。
-- 打开 **2017** `#/board` / `#/ops` ≈ 远程用 Desktop 左栏运维/看板。
+- 打开 **2017** `#/console` 做应急排查；`#/board` `#/ops` 已停更，日常请用 Desktop 侧栏。
 - transfer / flow 行为与 Desktop 一致（过桥仍走 Hub；需 Hub CORS 允许 M1 Origin）。
 - **不**依赖 2017 产品级 `/api/agent` 反代；**不**在 2017 跑聊天槽。
 
