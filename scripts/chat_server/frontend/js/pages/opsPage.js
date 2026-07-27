@@ -797,34 +797,15 @@ async function runReview(apply) {
 }
 
 export async function mountOps(el) {
-  if (!_root) {
-    _root = el;
-    el.innerHTML = html();
-    _root.querySelector('#ops-refresh').addEventListener('click', () => poll().catch(() => {}));
-    _root.querySelector('#ops-copy-ports')?.addEventListener('click', () => {
-      const t = _root._portsCopyText || '';
-      navigator.clipboard?.writeText(t).then(
-        () => window.showToast?.('已复制端口表', 'success'),
-        () => window.showToast?.('复制失败', 'error')
-      );
-    });
-    _root.querySelector('#ops-run-dry')?.addEventListener('click', () => runReview(false));
-    _root.querySelector('#ops-run-apply')?.addEventListener('click', () => {
-      if (confirm('确认对已登记业务仓执行日审 --apply（仅 C/E/F 可建 ops-auto；禁 orch）？')) {
-        runReview(true);
-      }
-    });
-    _root.querySelectorAll('details.ops-fold').forEach((d) => {
-      d.addEventListener('toggle', () => persistFold(d));
-    });
-  }
-  await poll();
-  if (!_timer) _timer = setInterval(() => poll().catch(() => {}), 30000);
+  el.innerHTML =
+    '<div style="padding:48px 24px;max-width:480px;margin:0 auto;text-align:center;font-family:system-ui,sans-serif">' +
+    '<h2 style="font-size:20px;font-weight:600;margin:0 0 16px">运维已迁入 CCC Desktop</h2>' +
+    '<p style="font-size:14px;line-height:1.6;margin:0 0 12px">网页运维页停更。所有运维功能请在 <strong>CCC Desktop</strong> 中按 <kbd style="padding:2px 6px;background:#eee;border-radius:4px;font-size:13px">⌘3</kbd> 查看。</p>' +
+    '<p style="font-size:13px;opacity:.75;margin:0 0 24px">急需排查可开 <a href="#/console" style="color:#0c4a6e;text-decoration:underline">#/console</a> SSH 兜底。</p>' +
+    '<p style="font-size:12px;opacity:.6"><a href="#/board">返回看板</a></p>' +
+    '</div>';
 }
 
 export function unmountOps() {
-  if (_timer) {
-    clearInterval(_timer);
-    _timer = null;
-  }
+  // ops 渲染已由 Desktop-first 通知替代，无 timer 或 listener 需清理
 }
