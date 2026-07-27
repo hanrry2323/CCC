@@ -122,5 +122,11 @@ def _find_task_column(store: FileBoardStore, tid: str) -> str | None:
 
 def _ensure_task_in_testing(store: FileBoardStore, tid: str) -> None:
     """reviewer 可能提前挪 verified；拉回 testing 以便 tester/pytest 门禁。"""
-    if _find_task_column(store, tid) == "verified":
-        store.move_task(tid, "verified", "testing")
+    if _find_task_column(store, tid) != "verified":
+        return
+    ok = store.move_task(tid, "verified", "testing")
+    if not ok:
+        _log.warning(
+            "pullback verified→testing rejected for %s (column transitions missing?)",
+            tid,
+        )

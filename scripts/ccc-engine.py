@@ -2600,6 +2600,16 @@ def engine_loop(workspaces: list[Path]) -> None:
                 except Exception as exc:
                     engine_log(f"[testing-gate] {_ws_label(ws)}: {exc}")
 
+            # 每 tick：verified → kb → released（幂等，不依赖 idle / %6 窗口）
+            for ws in workspaces:
+                try:
+                    _activate_workspace(ws)
+                    _store2 = _get_store(ws)
+                    if _store2.list_tasks("verified"):
+                        _run_verified_kb_gate(ws)
+                except Exception as exc:
+                    engine_log(f"[kb-gate] {_ws_label(ws)}: {exc}")
+
             # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + 统计聚合
             if iteration % 6 == 0:
                 for ws in workspaces:
@@ -2626,10 +2636,6 @@ def engine_loop(workspaces: list[Path]) -> None:
                             _cleanup_zombie_pid_refs(ws)
                         except Exception as exc:
                             engine_log(f"[pids] {_ws_label(ws)} cleanup 异常: {exc}")
-                    # testing 已在每 tick 处理；此处不再重复
-                    # v0.38: verified → kb → released
-                    if _store.list_tasks("verified"):
-                        _run_verified_kb_gate(ws)
                     # v0.30: 定期统计聚合（即使系统忙）
                     try:
                         aggregate_stats(ws)

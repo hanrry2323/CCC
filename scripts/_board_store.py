@@ -68,7 +68,7 @@ COLUMN_TRANSITIONS: dict[str, list[str]] = {
     # testing→planned: verdict FAIL / gates 回滚后重跑（engine/gates.py）
     "planned": ["backlog", "in_progress", "abnormal", "testing"],
     "in_progress": ["planned"],
-    "testing": ["in_progress", "abnormal", "planned"],  # v0.31: patrol 推进
+    "testing": ["in_progress", "abnormal", "planned", "verified"],  # v0.31: patrol 推进; reviewer 提前 verified 后可拉回跑 tester
     "verified": ["testing"],
     "released": ["verified", "abnormal"],  # v0.31: patrol 已修复释放
     "backlog": [
