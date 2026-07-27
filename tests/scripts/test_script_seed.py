@@ -83,6 +83,25 @@ def test_should_use_script_seed_for_paper_probe(tmp_path: Path):
     )
     assert should_use_script_seed(ws, probe_feat) is False
 
+    # Tag "no-script-seed" must not match substring "script-seed"
+    doc = {
+        "id": "doc-stamp-w1",
+        "title": "写入 Layer1 金路径报告戳记（文档）",
+        "description": "仅更新 docs/reports/stamp.md",
+        "executor": "opencode",
+        "tags": ["exec:opencode", "no-script-seed"],
+        "note": "strip probe markers so opencode writes stamp (not script_seed)",
+    }
+    (ws / ".ccc" / "plans" / "doc-stamp-w1.plan.md").write_text(
+        "## 范围\ndocs/reports/stamp.md\n## 验收\n- grep -q GOLDEN_PATH_OK docs/reports/stamp.md\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "phases" / "doc-stamp-w1.phases.json").write_text(
+        json.dumps({"phase": 1, "scope": ["docs/reports/stamp.md"]}) + "\n",
+        encoding="utf-8",
+    )
+    assert should_use_script_seed(ws, doc) is False
+
 
     import subprocess
 

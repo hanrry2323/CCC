@@ -92,7 +92,8 @@ def looks_like_intent_probe_seed(ws: Path, task: dict[str, Any]) -> bool:
     if "feature_counter_probe" in blob and "paper_intent_probe" not in blob:
         return False
 
-    if any(m in blob for m in _PROBE_MARKERS_STRONG):
+    blob_for_markers = blob.replace("no-script-seed", " ").replace("not script_seed", " ")
+    if any(m in blob_for_markers for m in _PROBE_MARKERS_STRONG):
         return True
     if scopes and all(
         s.replace("\\", "/").endswith(_PROBE_NAME) or s.endswith("paper_intent_probe.py")

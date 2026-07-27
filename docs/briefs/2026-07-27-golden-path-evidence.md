@@ -75,8 +75,37 @@
 
 ---
 
-## 变更记录
+## 2026-07-27 · qb 金路径实跑（Cursor）
 
-| 日期 | 作者 | 摘要 |
-|------|------|------|
-| 2026-07-27 | Cursor | 首建；M1/2017 基线探针；P-C 未开跑（待 Desktop 定稿） |
+| 项 | 值 |
+|----|-----|
+| 仓 | `qb` `/Users/fan/program/apps/qb` |
+| epic | `ccc-qb-paper-0e331d93` |
+| work | `ccc-qb-paper-0e331d93-w1` |
+| 意图 | 写入 `docs/reports/ccc-layer1-golden-path.md`（含 `GOLDEN_PATH_OK`） |
+
+### 过程断点（真问题）
+
+1. **product 扇出挂死**：`claude --model flash` 长时间 0% CPU；杀进程后 Engine 才继续。  
+2. **标题含「探针」→ transfer 强制 `executor=python`**，script_seed 短路径抢走写报告卡。  
+3. **`no-script-seed` 标签假阳**：blob 子串匹配 `script-seed`（已修 `script_seed.py` + 单测）。  
+4. **script_seed 假绿进 verified/released**：未写 `GOLDEN_PATH_OK` 时仍 deterministic pass；戳记后由人工 commit `fbecbc16` 补上。  
+5. **无 `verdicts/<tid>.verdict.md`**：短路径审测未落 hollow+verdict 文件 → **P-C 未真过**。  
+6. **全量 `ccc-board.py regress` 误伤**：一次扫出 20 张回归卡；已 `board-repair archive`（`ui_hidden`）清场。
+
+### 勾选（诚实）
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| P-B | **未证** | 未出现 OpenCode `code` 真写码 commit（被 script_seed 短路） |
+| P-C | **未证** | 虽 `released` + epic `split_status=done`，缺 verdict/hollow；属假绿路径 |
+| 探针 | **局部** | `DRY_RUN=true python3 scripts/paper_intent_probe.py --env paper` → PASS |
+| 戳记 | **有** | `docs/reports/ccc-layer1-golden-path.md` 含 `GOLDEN_PATH_OK` |
+
+### 下一笔（qb）
+
+- 标题**禁止**单独「探针」字样（用「文档戳记 / 报告」）；`executor_intent=opencode` 且验收探针不要触发整卡 python 强制。  
+- 跟到 **verdict 文件落盘** 才勾 P-C。  
+- regress **只对目标 tid**，禁止无过滤全表 released。
+
+---
