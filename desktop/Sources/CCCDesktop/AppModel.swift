@@ -197,6 +197,7 @@ final class AppModel: ObservableObject {
     @Published var opsAgentRuntime: String?
     @Published var opsAgentModel: String?
     @Published var opsCopiedHint: String?
+    @Published var localPatrolAlerts: [OpsHealthAlert] = []
     /// 全局运维灯（Hub severity + sidecar + MCP）；侧栏红点不依赖进运维页
     @Published private(set) var opsDisplaySeverity: String = "amber"
     @Published private(set) var opsDisplayAlertCount: Int = 0
@@ -5161,19 +5162,66 @@ final class AppModel: ObservableObject {
             } else {
                 opsUpstreamDaily = []
             }
+            loadLocalPatrolAlerts()
             recomputeOpsDisplay()
         } catch {
             opsError = error.localizedDescription
+            loadLocalPatrolAlerts()
             recomputeOpsDisplay()
         }
     }
 
-    /// 合并 Hub severity + sidecar + domains.agent_mcp → 侧栏角标 / OpsView 总灯
+    /// 合并 Hub severity + sidecar + domains.agent_mcp + 本地巡查 → 侧栏角标 / OpsView 总灯
     func recomputeOpsDisplay() {
         let sev = OpsHealthDisplay.severity(summary: opsSummary, agentOk: opsAgentOk)
-        let n = OpsHealthDisplay.alerts(summary: opsSummary, agentOk: opsAgentOk).count
+        let n = OpsHealthDisplay.alerts(summary: opsSummary, agentOk: opsAgentOk, localPatrol: localPatrolAlerts).count
         if opsDisplaySeverity != sev { opsDisplaySeverity = sev }
         if opsDisplayAlertCount != n { opsDisplayAlertCount = n }
+    }
+
+    /// 读取 ~/.ccc/alerts/ 下最新权威巡查告警（失败静默）
+    private func loadLocalPatrolAlerts() {
+        let alertsDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ccc/alerts")
+        var items: [OpsHealthAlert] = []
+        defer { localPatrolAlerts = items }
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: alertsDir,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let patrol = contents
+            .filter { $0.pathExtension == "md" && $0.lastPathComponent.contains("authority-patrol") }
+            .sorted { a, b in
+                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return da > db
+            }
+            .prefix(5)
+        for url in patrol {
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let title: String = {
+                for line in trimmed.components(separatedBy: "\n") {
+                    let s = line.trimmingCharacters(in: .whitespaces)
+                    if s.hasPrefix("# ") { return String(s.dropFirst(2)).trimmingCharacters(in: .whitespaces) }
+                }
+                return url.deletingPathExtension().lastPathComponent
+            }()
+            let body = trimmed.dropFirst(title.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = String(body.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let payload = String(trimmed.prefix(4000))
+            items.append(OpsHealthAlert(
+                id: "patrol-\(url.lastPathComponent)",
+                title: title,
+                detail: detail.isEmpty ? nil : detail,
+                source: "authority-patrol",
+                severity: "red",
+                copy_payload: payload
+            ))
+        }
     }
 
     private func probeLocalAgentForOps() async {
@@ -5217,10 +5265,12 @@ final class AppModel: ObservableObject {
                 }
             }
             await probeLocalAgentForOps()
+            loadLocalPatrolAlerts()
             recomputeOpsDisplay()
         } catch {
             // Hub 不可达：仍探本机 sidecar，角标可反映 sidecar-down
             await probeLocalAgentForOps()
+            loadLocalPatrolAlerts()
             recomputeOpsDisplay()
         }
     }

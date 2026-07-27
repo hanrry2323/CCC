@@ -215,7 +215,7 @@ struct OpsView: View {
     }
 
     private var displayAlerts: [OpsHealthAlert] {
-        OpsHealthDisplay.alerts(summary: model.opsSummary, agentOk: model.opsAgentOk)
+        OpsHealthDisplay.alerts(summary: model.opsSummary, agentOk: model.opsAgentOk, localPatrol: model.localPatrolAlerts)
     }
 
     private var healthLampSection: some View {

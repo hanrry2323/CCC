@@ -358,8 +358,8 @@ struct OpsDomainMcpServer: Identifiable, Decodable, Hashable {
 // MARK: - Ops display merge (Hub severity + sidecar + MCP)
 
 enum OpsHealthDisplay {
-    /// Hub alerts + 本机 sidecar-down + domains.agent_mcp 红灯（去重）
-    static func alerts(summary: OpsSummary?, agentOk: Bool?) -> [OpsHealthAlert] {
+    /// Hub alerts + 本机 sidecar-down + domains.agent_mcp + 本地 ~/.ccc/alerts/ 巡查告警（去重）
+    static func alerts(summary: OpsSummary?, agentOk: Bool?, localPatrol: [OpsHealthAlert] = []) -> [OpsHealthAlert] {
         var list = summary?.alerts ?? []
         if agentOk == false {
             let payload = """
@@ -423,6 +423,12 @@ enum OpsHealthDisplay {
                         copy_payload: payload
                     )
                 )
+            }
+        }
+        // 本地 ~/.ccc/alerts/ 巡查告警（按 source+title 去重）
+        for patrol in localPatrol {
+            if !list.contains(where: { $0.source == patrol.source && $0.title == patrol.title }) {
+                list.append(patrol)
             }
         }
         return list
