@@ -3,6 +3,8 @@
 给**个人 Claude Code CLI**（接 Relay `flash`）用的可转发任务卡。  
 **合入与审测只认 Cursor。** Desktop 对话 Agent 不要跑这些包。
 
+**偏好**：大包多 Phase、一次做完再回报（见 `008-…`），少跑碎卡片。
+
 ## 人怎么用
 
 1. 打开一张 `NNN-*.md`，**整份复制**发给 Claude Code。  
@@ -26,5 +28,6 @@
 | ops-p2-agent-minds | [`005-ops-p2-agent-minds.md`](./005-ops-p2-agent-minds.md) | **已合入** `fc37932` |
 | ops-p2-local-patrol-alerts | [`006-ops-p2-local-patrol-alerts.md`](./006-ops-p2-local-patrol-alerts.md) | **已合入** `ec73900` |
 | ops-p2-web-ops-redirect | [`007-ops-p2-web-ops-redirect.md`](./007-ops-p2-web-ops-redirect.md) | **已合入** `c67e079` |
+| prod-batch-hub-desktop-polish | [`008-prod-batch-hub-desktop-polish.md`](./008-prod-batch-hub-desktop-polish.md) | 待跑（**大包三 Phase**） |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。

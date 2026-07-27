@@ -65,11 +65,12 @@
 
 ## 效率纪律
 
-1. **一张 packet 一事**；白名单路径；禁止 `git add -A`。  
-2. Claude Code **不 push main**；分支名 `draft/<packet-id>`。  
-3. Cursor 合入前必跑 packet「验收」；失败则改 packet 再发，不口头扯皮。  
-4. 权威/探针/隧道/鉴权 **不进**草稿包。  
-5. Desktop Agent **永不**当草稿工改 CCC。
+1. **优先大包长任务**（多 Phase、一次回报）：减少 Cursor↔人转发次数。小修小补仍可用单 Phase 包。  
+2. Claude Code **不 push main**；分支名 `draft/<packet-id>`；可多 commit。  
+3. **禁止** `git add -A`；只 add 白名单。  
+4. Cursor 合入前跑验收；失败则改 packet 再发。  
+5. 权威/探针生产态/鉴权密钥 **不进**草稿包。  
+6. Desktop Agent **永不**当草稿工改 CCC。
 
 ---
 
