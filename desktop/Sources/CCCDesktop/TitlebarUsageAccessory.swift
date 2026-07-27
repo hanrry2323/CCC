@@ -102,6 +102,8 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             guard let label else { return }
             let ink = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.82)
             let mute = NSColor(calibratedRed: 0.42, green: 0.38, blue: 0.34, alpha: 1)
+            let redC = NSColor(calibratedRed: 0.78, green: 0.28, blue: 0.22, alpha: 1)
+            let amberC = NSColor(calibratedRed: 0.82, green: 0.54, blue: 0.18, alpha: 1)
             let green = NSColor(calibratedRed: 0.28, green: 0.58, blue: 0.38, alpha: 1)
             let sepC = NSColor(calibratedRed: 0.165, green: 0.145, blue: 0.125, alpha: 0.30)
 
@@ -109,6 +111,27 @@ struct TitlebarUsageAccessory: NSViewRepresentable {
             let fontReg = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
             let fontSemi = NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
             let out = NSMutableAttributedString()
+
+            // 运维红点
+            let sev = model.opsDisplaySeverity
+            let alertN = model.opsDisplayAlertCount
+            if sev == "red" || alertN > 0 {
+                let dotC: NSColor = sev == "red" ? redC : amberC
+                out.append(NSAttributedString(
+                    string: "●",
+                    attributes: [.font: font, .foregroundColor: dotC]
+                ))
+                if alertN > 0 {
+                    out.append(NSAttributedString(
+                        string: "\(alertN)",
+                        attributes: [.font: fontReg, .foregroundColor: dotC]
+                    ))
+                }
+                out.append(NSAttributedString(
+                    string: "  ·  ",
+                    attributes: [.font: fontReg, .foregroundColor: sepC]
+                ))
+            }
 
             let daily = model.agentLLMDailyCount
             let recent = model.agentLLMRecent5s
