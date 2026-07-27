@@ -21,7 +21,7 @@
 
 | 步骤 | 文件 | 一句话 |
 |------|------|--------|
-| 1 | `01-hub-home.png` | 入口是 Desktop（网页 Hub 仅运维） |
+| 1 | `01-hub-home.png` | 入口是 Desktop（网页 Hub 已停更） |
 | 2 | `02-quick-actions.png` | 对齐 / 下一步 / 定稿 / 转任务 |
 | 3 | `03-dispatch-block.png` | 定稿输出可执行契约 |
 | 4 | `04-dispatch-card.png` | 下达并开工 + Skill 软偏好 |
@@ -118,7 +118,7 @@ open http://127.0.0.1:7777
 | `docs/INTRO.md` | 对外完整介绍 |
 | `docs/VISION.md` | 产品叙事 SSOT |
 | `desktop/` | CCC Desktop（SwiftUI 主客户端） |
-| `scripts/chat_server/` | Center Server API + 网页运维 Hub |
+| `scripts/chat_server/` | Center Server API + 网页 Hub（#/board #/ops 已停更，`#/console` 应急） |
 | `scripts/ccc-engine.py` | Loop 主循环 |
 | `scripts/ccc-board.py` | 看板与阶段能力调度 |
 | `skills/ccc-*/` | 阶段默认能力包 |
