@@ -4,7 +4,7 @@
 **合入与审测只认 Cursor。** Desktop 对话 Agent 不要跑这些包。
 
 **偏好**：大包多 Phase、一次做完再回报，少跑碎卡片。  
-**主题纪律（2026-07-28）**：Layer1 **已正式出门**。Ops/壳抛光主路径 **已收束**（009 合入）。**无强制下一包**；草稿工**仅**接金路径断点白名单缺陷（见 [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md)）。UI chip / 停更页类包 **不再新开**。下一平台开程二选一：程 B 硬化或 Layer2 qb。
+**主题纪律（2026-07-28）**：Layer1 **已正式出门**；程 B **已收口**（KPI PASS + v0.63）。Ops/壳抛光主路径 **已收束**。草稿工**仅**接金路径/门禁诚实白名单缺陷。下一开程：Layer2 qb **或** 观察 Relay——勿与飞轮自动同时开。
 
 ## 人怎么用
 
@@ -32,9 +32,10 @@
 | ops-p2-web-ops-redirect | [`007-ops-p2-web-ops-redirect.md`](./007-ops-p2-web-ops-redirect.md) | **已合入** `c67e079` |
 | prod-batch-hub-desktop-polish | [`008-prod-batch-hub-desktop-polish.md`](./008-prod-batch-hub-desktop-polish.md) | **已合入** `d0c601c`（大包三 Phase） |
 | prod-batch-docs-spa-cleanup | [`009-prod-batch-docs-spa-cleanup.md`](./009-prod-batch-docs-spa-cleanup.md) | **已合入**（壳收尾完成；Ops 抛光主路径结束） |
-| golden-path-kb-script-seed | [`010-golden-path-kb-script-seed.md`](./010-golden-path-kb-script-seed.md) | **已合入** `f707782`（cherry-pick 自 draft；未带入同分支 relay 提交） |
-| dod-hygiene-scope-guard | [`011-dod-hygiene-scope-guard.md`](./011-dod-hygiene-scope-guard.md) | **已合入** `0505ae9`（merge `d7b0c12`） |
-| hub-probe-health-contract | [`012-hub-probe-health-contract.md`](./012-hub-probe-health-contract.md) | **已落地**（Cursor 直改；`scripts/ccc-hub-probe.sh`） |
+| golden-path-kb-script-seed | [`010-golden-path-kb-script-seed.md`](./010-golden-path-kb-script-seed.md) | **已合入** `f707782` |
+| dod-hygiene-scope-guard | [`011-dod-hygiene-scope-guard.md`](./011-dod-hygiene-scope-guard.md) | **已合入** `0505ae9` |
+| hub-probe-health-contract | [`012-hub-probe-health-contract.md`](./012-hub-probe-health-contract.md) | **已落地** |
+| reviewer-verdict-kpi-honesty | [`013-reviewer-verdict-kpi-honesty.md`](./013-reviewer-verdict-kpi-honesty.md) | **待草稿工**（门禁诚实 + reviewer 无 verdict→FAIL） |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。  
 三层出门 / 金路径：[`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md)。

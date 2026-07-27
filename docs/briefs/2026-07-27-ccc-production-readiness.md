@@ -160,7 +160,8 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] prepare 新建文件 scope 放行（`_role_tool`）  
 - [x] v0.63 `nudge_bg_session` 真注入 + E2E smoke  
 - [x] HK 隧道 KeepAlive 观察（hub-tunnel up；连续 version 探针 200）  
-- [x] 周刊金路径烟测 checklist（见上「效率仪表」）
+- [x] 周刊金路径烟测 checklist（见上「效率仪表」）  
+- [ ] **013** reviewer 无 verdict→FAIL + KPI `work_abnormal_n` 诚实计数（[`../dev-packets/013-reviewer-verdict-kpi-honesty.md`](../dev-packets/013-reviewer-verdict-kpi-honesty.md) · 草稿工）
 
 ---
 
