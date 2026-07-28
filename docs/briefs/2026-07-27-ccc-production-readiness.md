@@ -163,7 +163,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] 周刊金路径烟测 checklist（见上「效率仪表」）  
 - [x] **013** reviewer 无 verdict→FAIL + KPI `work_abnormal_n` 诚实计数（[`../dev-packets/013-reviewer-verdict-kpi-honesty.md`](../dev-packets/013-reviewer-verdict-kpi-honesty.md) · 合入 `6fba8d0`）
 - [x] **014** reviewer/`--bg` 空输出与超时必落 verdict（[`../dev-packets/014-reviewer-bg-empty-verdict.md`](../dev-packets/014-reviewer-bg-empty-verdict.md) · 合入 `b3936c9`）
-- [ ] **015** reopen/quarantine 加固（**暂停** · Relay Flash 封印后 Cursor 自跑）
+- [x] **015** reopen/quarantine 加固（Cursor 自跑合入）
 
 ### 程 R — Relay Flash 单通道封印（**已完成 · 2026-07-28**）
 

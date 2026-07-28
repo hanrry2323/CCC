@@ -17,6 +17,7 @@ _relaunch_allowed / _run_reviewer_tester_gate 等在重试前先调 increment_re
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -125,6 +126,64 @@ def increment_retry_count(
             f"cannot persist retry_count={new_count}"
         )
     return new_count
+
+
+# ── auto-refeed 纯函数（Phase A: 可测试边界）────────────────────
+
+
+@dataclass
+class RefeedDecision:
+    """Result of _should_auto_refeed check."""
+
+    should: bool = False
+    reason: str = ""
+    """Machine-readable skip reason; empty when should=True."""
+
+
+_EXHAUSTED_KEYWORDS = frozenset(
+    {
+        "reviewer_fail_loop_exhausted",
+        "tester_fail_loop_exhausted",
+        "fail_loop_exhausted",
+        "重试耗尽",
+        "次全部失败",
+        "missing plan",
+        "缺 plan",
+        "缺 phases",
+    }
+)
+
+
+def should_auto_refeed(
+    *,
+    card_kind: str,
+    reason: str,
+    auto_retried: int,
+    max_auto_retry: int = 2,
+    has_pack_or_transient: bool = True,
+) -> RefeedDecision:
+    """Pure-function gate for _retry_abnormal_failures: should a card be auto-refeed?
+
+    Returns RefeedDecision — ``.should`` True only when ALL rules pass.
+
+    Rules (hard-coded):
+    - epic cards never refeed
+    - exhausted/permanent reason keywords → skip
+    - ``has_pack_or_transient`` (caller provides pack-exists or transient keyword hit) → skip
+    - ``auto_retried >= max_auto_retry`` → skip
+    """
+    if card_kind == "epic":
+        return RefeedDecision(should=False, reason="epic")
+    low = (reason or "").lower()
+    if any(m.lower() in low for m in _EXHAUSTED_KEYWORDS):
+        return RefeedDecision(should=False, reason="exhausted_keyword")
+    if classify_failure(reason) == "permanent":
+        return RefeedDecision(should=False, reason="permanent")
+    if not has_pack_or_transient:
+        return RefeedDecision(should=False, reason="no_pack_or_transient")
+    if auto_retried >= max_auto_retry:
+        return RefeedDecision(should=False, reason=f"max_retry_reached({auto_retried})")
+    return RefeedDecision(should=True, reason="")
 
 
 def can_retry(ws: Path, tid: str, store: FileBoardStore | None = None) -> bool:

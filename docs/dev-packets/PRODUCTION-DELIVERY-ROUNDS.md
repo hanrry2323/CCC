@@ -35,14 +35,12 @@
 | 包 | [`014-reviewer-bg-empty-verdict.md`](./014-reviewer-bg-empty-verdict.md) |
 | 完成 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；markers 清理含 timeout/exitcode；测绿 |
 
-### R3 · 015 失败可收加固（**暂停 · 待 Relay 封印后 Cursor 自跑**）
+### R3 · 015 失败可收加固（**已合入** · Cursor 自跑）
 
 | 项 | 内容 |
 |----|------|
 | 包 | [`015-failure-reopen-quarantine-harden.md`](./015-failure-reopen-quarantine-harden.md) |
-| 分支 | `draft/015-failure-reopen-quarantine-harden`（保留；WIP stash=`wip-015-during-relay-flash-seal`） |
-| 目标 | enabled 瞬态 abnormal 有限 reopen 测稳；quarantine reason 必含机读码 |
-| 完成 | 测绿；与 P-D 口径一致；不抬 quarantine 阈值乱杀 |
+| 完成 | `should_auto_refeed` 纯闸 + pid timeout 对称清理；机读码测绿；engine 早跳过 |
 
 ### R4 · 016 金路径回归包（**暂停 · 未写包**）
 

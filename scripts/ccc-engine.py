@@ -2922,6 +2922,31 @@ def _retry_abnormal_failures(ws: Path) -> None:
 
         reason = str(task.get("note") or task.get("abnormal_reason") or "")
         low = reason.lower()
+        # 015: pure gate (epic/exhausted/permanent/max) before heavier work
+        try:
+            from engine.failure_router import should_auto_refeed
+
+            _auto_n = int(retry_counts.get(tid, 0) or 0)
+            _dec = should_auto_refeed(
+                card_kind=kind_card or "work",
+                reason=reason,
+                auto_retried=_auto_n,
+                max_auto_retry=MAX_AUTO_RETRY,
+                has_pack_or_transient=True,  # pack check below may still skip
+            )
+            if not _dec.should and _dec.reason in (
+                "epic",
+                "exhausted_keyword",
+                "permanent",
+                f"max_retry_reached({_auto_n})",
+            ):
+                engine_log(
+                    f"[{label}] skip auto-retry {tid}: should_auto_refeed={_dec.reason}"
+                )
+                continue
+        except Exception as exc:
+            engine_log(f"[{label}] {tid} should_auto_refeed probe: {exc}")
+
         if any(m.lower() in low for m in _EXHAUSTED):
             engine_log(f"[{label}] skip auto-retry {tid}: exhausted/permanent marker")
             continue

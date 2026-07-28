@@ -26,10 +26,13 @@ _PID_SUFFIXES = (
     ".reviewer.out",
     ".reviewer.done",
     ".reviewer.pid",
+    ".reviewer.exitcode",   # 014/015: 对称清理
+    ".reviewer.timeout",    # 014/015: 超时标记对称清理
     ".tester.out",
     ".tester.done",
     ".tester.pid",
     ".tester.exitcode",
+    ".tester.timeout",      # 015: tester 超时标记对称清理
     ".dev.pid",
     ".opencode.pid",
     ".done",
