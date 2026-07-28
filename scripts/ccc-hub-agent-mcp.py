@@ -86,10 +86,11 @@ def hub_repair(
     to_col: str = "planned",
     reason: str = "desktop_agent_hub_tool",
 ) -> str:
-    """Board stewardship (Agent duty). Actions: status|archive|hide_done|reopen|purge_flow|clear_blockers.
+    """Board stewardship (Agent duty). Actions: status|archive|hide_done|reopen|purge_flow|clear_blockers|failure_pack.
 
     status/clear_blockers also cover stuck_running_epics (running with missing/no-inflight kids).
-    When abnormal/failed/ghost/orphan-running block progress: call clear_blockers — do not bounce user.
+    failure_pack: exhausted abnormal evidence for L3b epic optimize.
+    When abnormal/failed/ghost/orphan-running block progress: clear_blockers; if exhausted → optimize new epic.
     Do NOT ask the user to paste outbox/Terminal commands. Do NOT file hygiene epics.
     """
     return _dump(

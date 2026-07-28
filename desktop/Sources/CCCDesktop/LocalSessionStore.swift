@@ -889,6 +889,8 @@ enum LocalSessionStore {
         var hint: String?
         var prompt: String?
         var key: String?
+        var kind: String?
+        var buckets: String?
     }
 
     static var repairQueueURL: URL {
@@ -903,26 +905,69 @@ enum LocalSessionStore {
         大卡：\(epicId)
         摘要：\(hint)
         请严格按 references/board-auto-repair-sop.md：
-        hub_repair(status) → 可恢复先 reopen → clear_blockers（只归档不可恢复）→ 回报板面数字。
-        禁止先藏还可重试的 abnormal；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
+        hub_repair(status) → 可恢复先 reopen → clear_blockers（只归档不可恢复）→ 若 exhausted 则转 post-exhaust-epic-optimize-sop 出优化定稿。
+        禁止先藏还可重试的 abnormal；禁止只藏卡结束；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
         """
     }
 
-    static func enqueueRepair(projectId: String, epicId: String, hint: String, threadId: String) {
-        let key = "\(projectId)|\(epicId)"
+    static func optimizeSOPPrompt(projectId: String, epicId: String, hint: String, buckets: String) -> String {
+        """
+        【耗尽改大卡 · 自动 SOP · 勿问老板】
+        项目：\(projectId)
+        失败大卡：\(epicId)
+        摘要：\(hint)
+        失败桶：\(buckets.isEmpty ? "见 hub_repair failure_pack" : buckets)
+        请严格按 references/post-exhaust-epic-optimize-sop.md：
+        hub_repair(status|failure_pack) → 白话失败因（意图仍成立）→ clear_blockers 归档 → 优化 ccc-transfer（title/goal 对齐原意图；按桶缩小/修探针）。
+        禁止只藏卡结束；禁止 invent；禁止抬 Engine 重试上限；禁止写业务源码；禁止甩锅复制给对话。
+        """
+    }
+
+    static func isExhaustRepairHint(_ text: String) -> Bool {
+        let low = text.lowercased()
+        let keys = [
+            "hang_detected", "hang auto-restart", "short_path_fail",
+            "acceptance_cmd_failed", "fail_loop_exhausted", "unresolvable",
+            "phase graph", "retry budget", "耗尽",
+        ]
+        return keys.contains { low.contains($0) || text.contains($0) }
+    }
+
+    static func enqueueRepair(
+        projectId: String,
+        epicId: String,
+        hint: String,
+        threadId: String,
+        kind: String = "board_repair",
+        buckets: String = ""
+    ) {
+        let k = (kind == "epic_optimize") ? "epic_optimize" : "board_repair"
+        let key = "\(projectId)|\(epicId)|\(k)"
         let pending = loadRepairPending()
-        if pending.contains(where: { ($0.key ?? "\($0.project_id)|\($0.epic_id)") == key }) {
+        if pending.contains(where: {
+            let pk = $0.key ?? "\($0.project_id)|\($0.epic_id)|\($0.kind ?? "board_repair")"
+            return pk == key
+        }) {
             return
         }
-        let prompt = repairSOPPrompt(projectId: projectId, epicId: epicId, hint: hint)
+        let prompt: String = {
+            if k == "epic_optimize" {
+                return optimizeSOPPrompt(
+                    projectId: projectId, epicId: epicId, hint: hint, buckets: buckets
+                )
+            }
+            return repairSOPPrompt(projectId: projectId, epicId: epicId, hint: hint)
+        }()
         let row: [String: Any] = [
             "ts": ISO8601DateFormatter().string(from: Date()),
             "status": "pending",
+            "kind": k,
             "project_id": projectId,
             "epic_id": epicId,
             "thread_id": threadId,
             "hint": String(hint.prefix(400)),
-            "prompt": String(prompt.prefix(4000)),
+            "buckets": String(buckets.prefix(200)),
+            "prompt": String(prompt.prefix(4500)),
             "key": key,
         ]
         guard JSONSerialization.isValidJSONObject(row),

@@ -29,6 +29,7 @@ ALLOWED_ACTIONS = frozenset(
         "reopen",
         "purge_flow",
         "clear_blockers",
+        "failure_pack",
     }
 )
 
@@ -146,7 +147,7 @@ def settle_stuck_epics(
 
 
 def list_blockers(workspace: Path) -> dict[str, Any]:
-    """只读：列出挡 ready 的残卡（含孤儿 running epic / pending_no_fanout）。"""
+    """只读：列出挡 ready 的残卡（含孤儿 running epic / pending_no_fanout / exhausted）。"""
     store = FileBoardStore(workspace)
     abnormal: list[dict[str, Any]] = []
     failed_epics: list[dict[str, Any]] = []
@@ -158,12 +159,15 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
                 continue
             kind = t.get("card_kind") or "work"
             ss = str(t.get("split_status") or "")
+            note = str(t.get("note") or t.get("abnormal_reason") or "")
             item = {
                 "id": tid,
                 "column": col,
                 "title": str(t.get("title") or tid)[:80],
                 "card_kind": kind,
                 "split_status": ss,
+                "note": note[:240],
+                "parent_id": str(t.get("parent_id") or "")[:128],
             }
             if col == "abnormal":
                 abnormal.append(item)
@@ -173,14 +177,138 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
                 done_visible.append(item)
     stuck_running = list_stuck_running_epics(workspace)
     pending_nf = list_pending_no_fanout(workspace)
+    exhausted = build_exhausted_summary(workspace, abnormal)
     return {
         "abnormal": abnormal,
         "failed_epics": failed_epics,
         "done_visible_epics": done_visible,
         "stuck_running_epics": stuck_running,
         "pending_no_fanout": pending_nf,
+        "exhausted": exhausted,
+        "exhausted_count": len(exhausted),
         "blocker_count": len(abnormal) + len(failed_epics) + len(stuck_running),
         "pending_no_fanout_count": len(pending_nf),
+    }
+
+
+def build_exhausted_summary(
+    workspace: Path,
+    abnormal: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Abnormal works that should trigger L3b epic optimize (not Engine refeed)."""
+    try:
+        from _failure_buckets import classify_failure_bucket
+    except ImportError:
+        from scripts._failure_buckets import classify_failure_bucket  # type: ignore
+
+    store = FileBoardStore(workspace)
+    if abnormal is None:
+        abnormal = []
+        for t in store.list_tasks("abnormal", include_hidden=False):
+            abnormal.append(
+                {
+                    "id": t.get("id"),
+                    "note": str(t.get("note") or t.get("abnormal_reason") or ""),
+                    "card_kind": t.get("card_kind") or "work",
+                    "parent_id": t.get("parent_id"),
+                    "title": t.get("title"),
+                }
+            )
+    out: list[dict[str, Any]] = []
+    root = Path(workspace) / ".ccc"
+    for item in abnormal:
+        if (item.get("card_kind") or "work") == "epic":
+            continue
+        tid = str(item.get("id") or "").strip()
+        if not tid:
+            continue
+        _col, full = store.find_task(tid)
+        task = full or {
+            "id": tid,
+            "card_kind": "work",
+            "note": item.get("note"),
+        }
+        if is_recoverable_abnormal(workspace, task):
+            continue
+        reason = str(task.get("note") or task.get("abnormal_reason") or item.get("note") or "")
+        bucket = classify_failure_bucket(reason)
+        qdir = root / "quarantines" / tid / "board-repair"
+        rf = root / "pids" / f"{tid}.review_fail.md"
+        result = root / "reports" / f"{tid}.result.json"
+        result_head = ""
+        if result.is_file():
+            try:
+                result_head = result.read_text(encoding="utf-8", errors="replace")[:400]
+            except OSError:
+                result_head = ""
+        rf_head = ""
+        if rf.is_file():
+            try:
+                rf_head = rf.read_text(encoding="utf-8", errors="replace")[:400]
+            except OSError:
+                rf_head = ""
+        out.append(
+            {
+                "id": tid,
+                "title": str(item.get("title") or task.get("title") or tid)[:80],
+                "parent_id": str(item.get("parent_id") or task.get("parent_id") or "")[
+                    :128
+                ],
+                "reason_bucket": bucket,
+                "reason_head": reason[:200],
+                "quarantine_dir": str(qdir) if qdir.is_dir() else "",
+                "review_fail_head": rf_head,
+                "result_head": result_head,
+            }
+        )
+    return out
+
+
+def failure_pack(
+    workspace: Path,
+    *,
+    epic_id: str | None = None,
+) -> dict[str, Any]:
+    """One-shot evidence pack for Agent L3b optimize."""
+    blockers = list_blockers(workspace)
+    exhausted = list(blockers.get("exhausted") or [])
+    eid = (epic_id or "").strip()
+    if eid:
+        exhausted = [
+            x
+            for x in exhausted
+            if x.get("parent_id") == eid
+            or x.get("id") == eid
+            or str(x.get("id") or "").startswith(eid)
+        ]
+        # also include failed epic title
+        for fe in blockers.get("failed_epics") or []:
+            if fe.get("id") == eid:
+                exhausted.insert(
+                    0,
+                    {
+                        "id": eid,
+                        "title": fe.get("title"),
+                        "reason_bucket": "failed_epic",
+                        "reason_head": "epic split_status=failed",
+                        "quarantine_dir": "",
+                        "review_fail_head": "",
+                        "result_head": "",
+                    },
+                )
+                break
+    buckets = sorted(
+        {str(x.get("reason_bucket") or "") for x in exhausted if x.get("reason_bucket")}
+    )
+    return {
+        "ok": True,
+        "action": "failure_pack",
+        "epic_id": eid or None,
+        "exhausted": exhausted,
+        "buckets": buckets,
+        "failed_epics": blockers.get("failed_epics") or [],
+        "abnormal_count": len(blockers.get("abnormal") or []),
+        "sop": "references/post-exhaust-epic-optimize-sop.md",
     }
 
 
@@ -500,13 +628,23 @@ def _dev_auto_retry_count(workspace: Path, task_id: str) -> int:
 def is_recoverable_abnormal(workspace: Path, task: dict[str, Any]) -> bool:
     """True = 留给 reopen / Engine 有限重试；勿 ui_hidden 藏掉。
 
-    对齐 ``should_auto_refeed``：epic / permanent / exhausted / 达上限 → 可归档。
+    对齐 ``should_auto_refeed`` + ``is_exhaust_reason``：
+    epic / permanent / hang·short_path·fail_loop 耗尽 / 达上限 → 不可恢复（走 L3b）。
     """
     kind = str(task.get("card_kind") or "work")
     if kind == "epic":
         return False
     tid = str(task.get("id") or "")
     reason = str(task.get("note") or task.get("abnormal_reason") or "")
+    try:
+        from _failure_buckets import is_exhaust_reason
+    except ImportError:
+        try:
+            from scripts._failure_buckets import is_exhaust_reason  # type: ignore
+        except ImportError:
+            is_exhaust_reason = None  # type: ignore
+    if is_exhaust_reason is not None and is_exhaust_reason(reason):
+        return False
     auto_n = _dev_auto_retry_count(workspace, tid) if tid else 0
     try:
         from engine.failure_router import should_auto_refeed
@@ -757,8 +895,10 @@ def clear_blockers(
         "hide_done": done_hide,
         "purged": purged,
         "after": after,
+        "exhausted": blockers.get("exhausted") or [],
         "engine_wake": wake,
         "ready_hint": after["blocker_count"] == 0,
+        "needs_epic_optimize": bool(blockers.get("exhausted")),
     }
 
 
@@ -808,6 +948,8 @@ def run_repair(
             "action": act,
             **purge_flow_for_epic(project_id, str(eid)),
         }
+    elif act == "failure_pack":
+        result = failure_pack(workspace, epic_id=epic_id)
     else:  # clear_blockers
         result = {
             "ok": True,

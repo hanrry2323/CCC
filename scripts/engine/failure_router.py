@@ -150,6 +150,13 @@ _EXHAUSTED_KEYWORDS = frozenset(
         "missing plan",
         "缺 plan",
         "缺 phases",
+        # L3b: Engine already exhausted same-card path → Agent reformulate
+        "hang auto-restart 耗尽",
+        "short_path_fail_budget",
+        "retry budget 耗尽",
+        "phase graph unresolvable",
+        "unresolvable",
+        "plan_lint",
     }
 )
 

@@ -157,6 +157,8 @@ def build_fanout_prompt(
         f"**多步回归（startup_check+pytest+三件套等）除外，应拆 2～N 张**\n"
         f"- medium：优先 1–2 张；禁止为「好看」拆出无独立验收的空卡\n"
         f"- 每张子卡最多 {max_phases} 个 phase（优先 1 个）\n"
+        f"- **防 hang**：禁止把「改多文件 + 写全套单测 + 全绿 + 提交」堆进单 phase；"
+        f"OpenCode 易空转挂死。大验收清单拆成多 work，每卡 scope 窄、验收短\n"
         f"- 子卡 id：kebab-case，建议前缀 `{eid}-`\n"
         f"- 每张子卡必须可独立被开发模型消费（目标清晰、scope 明确、验收可执行）\n"
         f"- scope 路径必须可被 git 跟踪：勿选被 .gitignore 忽略的文件"

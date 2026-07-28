@@ -4259,11 +4259,15 @@ final class AppModel: ObservableObject {
         let eid = epicId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else { return }
         let tid = resolveFlowThreadId(projectId: pid, preferred: nil)
+        let exhaust = LocalSessionStore.isExhaustRepairHint(hint)
+        let kind = exhaust ? "epic_optimize" : "board_repair"
         LocalSessionStore.enqueueRepair(
             projectId: pid,
             epicId: eid.isEmpty ? "unknown" : eid,
             hint: hint,
-            threadId: tid
+            threadId: tid,
+            kind: kind,
+            buckets: exhaust ? "auto" : ""
         )
         flushRepairQueue(limit: 2)
     }
@@ -4277,25 +4281,37 @@ final class AppModel: ObservableObject {
             if n >= limit { break }
             let pid = item.project_id.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !pid.isEmpty else { continue }
-            let key = item.key ?? "\(item.project_id)|\(item.epic_id)"
+            let kind = (item.kind ?? "board_repair").trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = item.key ?? "\(item.project_id)|\(item.epic_id)|\(kind.isEmpty ? "board_repair" : kind)"
             let prompt = (item.prompt?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
                 $0.isEmpty ? nil : $0
-            } ?? LocalSessionStore.repairSOPPrompt(
-                projectId: pid,
-                epicId: item.epic_id,
-                hint: item.hint ?? ""
-            )
+            } ?? {
+                if kind == "epic_optimize" {
+                    return LocalSessionStore.optimizeSOPPrompt(
+                        projectId: pid,
+                        epicId: item.epic_id,
+                        hint: item.hint ?? "",
+                        buckets: item.buckets ?? ""
+                    )
+                }
+                return LocalSessionStore.repairSOPPrompt(
+                    projectId: pid,
+                    epicId: item.epic_id,
+                    hint: item.hint ?? ""
+                )
+            }()
             let tid = {
                 let t = (item.thread_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !t.isEmpty { return t }
                 return resolveFlowThreadId(projectId: pid, preferred: nil)
             }()
+            let label = kind == "epic_optimize" ? "耗尽改大卡 · 自动优化" : "编排自愈 · 自动处理中"
             sendUserMessage(
                 prompt,
                 projectId: pid,
                 threadId: tid,
                 stopAndSend: false,
-                displayText: "编排自愈 · 自动处理中"
+                displayText: label
             )
             LocalSessionStore.markRepairDone(key: key)
             n += 1

@@ -71,6 +71,10 @@ class TestShouldAutoRefeed:
             "missing plan",
             "缺 plan",
             "缺 phases",
+            "hang auto-restart 耗尽",
+            "short_path_fail_budget",
+            "retry budget 耗尽",
+            "phase graph unresolvable",
         ]
         for m in markers:
             d = should_auto_refeed(card_kind="work", reason=m, auto_retried=0)

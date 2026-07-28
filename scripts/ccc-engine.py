@@ -617,6 +617,28 @@ def _handle_short_path_failure(
             )
         except Exception as exc:
             _log.warning("[short_path_fail] ledger write failed: %s", exc)
+        # R1 pack：写入真实 why/stderr，供 L3b 优化 SOP 阅读
+        try:
+            from _failure_learning import write_review_fail_pack
+
+            stderr_tail = ""
+            rp = ws / ".ccc" / "reports" / f"{tid}.result.json"
+            if rp.is_file():
+                try:
+                    stderr_tail = rp.read_text(encoding="utf-8", errors="replace")[:1500]
+                except OSError:
+                    stderr_tail = ""
+            write_review_fail_pack(
+                ws,
+                tid,
+                status="abnormal",
+                extra=(
+                    f"short_path_fail_budget path={path} n={n}\nwhy={why}\n"
+                    f"result_tail:\n{stderr_tail}"
+                )[:2500],
+            )
+        except Exception as exc:
+            _log.debug("[short_path_fail] review_fail pack: %s", exc)
         # 与 quarantine 对齐：必入 failures.jsonl，清板后仍可复盘
         try:
             from _failure_ledger import record_failure, related_event_for_reason
@@ -636,6 +658,16 @@ def _handle_short_path_failure(
         except Exception:
             engine_log(f"[failures] short_path record_failure failed for {tid}: {_traceback.format_exc()[:300]}")
         store.update_index()
+        # L3b：短路径预算耗尽 → 入队改大卡（不抬 Engine 同卡重试）
+        try:
+            _enqueue_post_exhaust_optimize(
+                ws,
+                tid,
+                reason=f"short_path_fail_budget path={path} n={n}: {why}",
+                task=store.find_task(tid)[1] or {"id": tid},
+            )
+        except Exception as exc:
+            _log.debug("[short_path_fail] enqueue optimize: %s", exc)
         return True
     engine_log(f"[{label}] {tid} {path} FAILED ({n}/{_SHORT_PATH_FAIL_MAX}): {why}")
     if col_now == "in_progress":
@@ -2875,6 +2907,59 @@ def _retry_cooldown_seconds(retry_count: int) -> int:
     return min(int(cool), int(max_iv))
 
 
+def _workspace_project_id(ws: Path) -> str:
+    """Best-effort project_id for repair-queue (registry name or folder)."""
+    try:
+        from _workspace_registry import lookup_entry
+
+        ent = lookup_entry(str(ws))
+        if isinstance(ent, dict):
+            name = str(ent.get("name") or ent.get("id") or "").strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return Path(ws).name
+
+
+def _enqueue_post_exhaust_optimize(
+    ws: Path,
+    tid: str,
+    *,
+    reason: str,
+    task: dict | None = None,
+) -> None:
+    """L3b: exhausted abnormal → Agent epic_optimize queue (no invent / no budget raise)."""
+    try:
+        from _failure_buckets import classify_failure_bucket, is_exhaust_reason
+        from chat_server.services.repair_queue import enqueue_epic_optimize
+    except Exception as exc:
+        engine_log(f"[epic-optimize] import failed: {exc}")
+        return
+    if not is_exhaust_reason(reason):
+        # still enqueue when caller already decided skip (budget / permanent)
+        pass
+    task = task or {}
+    parent = str(task.get("parent_id") or "").strip() or tid
+    bucket = classify_failure_bucket(reason)
+    pid = _workspace_project_id(ws)
+    hint = f"{tid}: {reason}"[:400]
+    try:
+        out = enqueue_epic_optimize(
+            project_id=pid,
+            epic_id=parent,
+            hint=hint,
+            buckets=bucket,
+        )
+        engine_log(
+            f"[{_ws_label(ws)}] epic_optimize enqueue "
+            f"project={pid} epic={parent} bucket={bucket} "
+            f"deduped={out.get('deduped')} key={out.get('key')}"
+        )
+    except Exception as exc:
+        engine_log(f"[{_ws_label(ws)}] epic_optimize enqueue failed: {exc}")
+
+
 def _retry_abnormal_failures(ws: Path) -> None:
     """enabled 下有限回灌：仅业务仓 work 卡、瞬态、每卡 ≤2，走 reopen_task。
 
@@ -2958,17 +3043,21 @@ def _retry_abnormal_failures(ws: Path) -> None:
                 engine_log(
                     f"[{label}] skip auto-retry {tid}: should_auto_refeed={_dec.reason}"
                 )
+                if _dec.reason != "epic":
+                    _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
                 continue
         except Exception as exc:
             engine_log(f"[{label}] {tid} should_auto_refeed probe: {exc}")
 
         if any(m.lower() in low for m in _EXHAUSTED):
             engine_log(f"[{label}] skip auto-retry {tid}: exhausted/permanent marker")
+            _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
             continue
 
         kind = _classify_failure(reason, tid, task.get("note") or "")
         if kind == "permanent":
             engine_log(f"[{label}] skip auto-retry {tid}: 不可恢复错误（permanent）")
+            _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
             continue
 
         # 须有 review_fail 包，或 reason 命中瞬态关键字（兼容旧 quarantine）
@@ -3038,6 +3127,7 @@ def _retry_abnormal_failures(ws: Path) -> None:
             engine_log(
                 f"[{label}] {tid} retry budget 耗尽，跳过 auto-refeed"
             )
+            _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
             continue
         needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
         if minutes_since < needed_minutes:
