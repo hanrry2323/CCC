@@ -262,3 +262,35 @@ def test_hygiene_card_stages_task_specific_ccc(git_repo):
         "backlog for other tasks must NOT leak in hygiene commit"
     assert ".ccc/quarantines/some-task/reason.txt" not in files, \
         "quarantines for other tasks must NOT leak"
+
+
+def test_lessons_noise_does_not_dirty_block_clean_scope(git_repo):
+    """Verify-only: scope already clean + docs/lessons.md dirty must not dirty_block."""
+    from _task_commit import ensure_task_commit
+
+    repo = git_repo
+    tid = "verify-only-040"
+    # tracked scope files
+    cfg = repo / "config" / "paper_strategy.json"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('{"strategy":"unified_arb"}\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "seed config")
+
+    phases = repo / ".ccc" / "phases" / f"{tid}.phases.json"
+    phases.write_text(
+        '{"schema_version":"1.1"}\n'
+        '{"phase":1,"status":"pending","scope":["config/paper_strategy.json"],'
+        '"description":"verify only"}\n'
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", f"seed phases {tid}")
+
+    # harness noise only
+    _write_and_dirty(repo, "docs/lessons.md", "# lesson\n")
+    _write_and_dirty(repo, f".ccc/lessons/{tid}.json", '{"x":1}')
+    _write_and_dirty(repo, ".ccc/.product-fail-counter/foo.json", "{}")
+
+    ok, reason, commit = ensure_task_commit(repo, tid)
+    assert ok, f"expected pass on noise-only dirty, got: {reason}"
+    assert "dirty_block" not in reason

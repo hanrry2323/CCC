@@ -200,6 +200,11 @@ def _is_harness_noise_path(path: str) -> bool:
         return True
     if p.startswith("docs/") and p.endswith("_NOTE.md"):
         return True
+    # Engine / failure-learning side effects — not business deliverables
+    if p == "docs/lessons.md" or p.startswith("docs/lessons/"):
+        return True
+    if p.startswith(".ccc/lessons/") or p.startswith(".ccc/.product-fail-counter/"):
+        return True
     return False
 
 
@@ -366,6 +371,8 @@ def ensure_task_commit(
                     for s in scope
                 )
                 and not _is_harness_noise_path(p)
+                and not _is_ccc_meta_path(p)
+                and not p.startswith(".ccc/")
             ]
             if scoped:
                 if outside:
@@ -384,33 +391,65 @@ def ensure_task_commit(
                     existing,
                 )
             else:
-                # only harness noise outside scope — treat as no product to stage
+                # scope 已无待改；仅 harness/.ccc 噪音 → 不挡（验证-only / 已落地卡）
+                if existing:
+                    return True, "already_scope_clean_noise_only", existing
                 product = []
 
     if not product:
         if dirty:
-            # Hygiene with only harness noise left: no commit needed if already have one
-            if hygiene and all(
+            noise_only = all(
                 _is_ccc_meta_path(p)
                 or p.startswith(".ccc/")
                 or _is_harness_noise_path(p)
                 for p in all_paths
-            ):
+            )
+            # Hygiene with only harness noise left: no commit needed if already have one
+            if hygiene and noise_only:
                 if existing:
                     return True, "already_hygiene_noise_only", existing
+            # 验证-only / 范围已在盘上：噪音脏不挡；无 task_id commit 时写 stamp 过门
+            scope_paths = set(_plan_scope_paths(workspace, task_id)) | set(
+                _result_wrote_paths(workspace, task_id)
+            )
+            if scope_paths and noise_only:
+                if existing:
+                    return True, "already_scope_on_disk_noise_only", existing
+                stamp_rel = f".ccc/reports/{task_id}.verify-stamp.md"
+                stamp = workspace / stamp_rel
+                try:
+                    stamp.parent.mkdir(parents=True, exist_ok=True)
+                    stamp.write_text(
+                        f"# verify-stamp\n\ntask_id={task_id}\n"
+                        "scope already satisfied; harness noise only\n",
+                        encoding="utf-8",
+                    )
+                except OSError as exc:
+                    return False, f"verify_stamp_write_failed: {exc}", existing
+                product = [stamp_rel]
+            elif noise_only and existing:
+                return True, "already_noise_only", existing
+            else:
+                return (
+                    False,
+                    "no task_id commit and only .ccc/ meta dirty — "
+                    "agent did not land product changes"
+                    if not hygiene
+                    else "no task_id commit and hygiene tree has no .ccc changes to stage",
+                    existing,
+                )
+        else:
             return (
                 False,
-                "no task_id commit and only .ccc/ meta dirty — "
-                "agent did not land product changes"
-                if not hygiene
-                else "no task_id commit and hygiene tree has no .ccc changes to stage",
+                "no task_id commit and working tree clean — agent did not land changes",
                 existing,
             )
-        return (
-            False,
-            "no task_id commit and working tree clean — agent did not land changes",
-            existing,
-        )
+        if not product:
+            return (
+                False,
+                "no task_id commit and working tree clean — agent did not land changes",
+                existing,
+            )
 
     try:
         # Stage product paths only — never auto-commit board/state noise as DoD

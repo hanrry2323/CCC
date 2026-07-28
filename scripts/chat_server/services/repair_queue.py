@@ -150,11 +150,10 @@ def sop_prompt(*, project_id: str, epic_id: str, hint: str) -> str:
         f"项目：{project_id}\n"
         f"大卡：{epic_id}\n"
         f"摘要：{hint}\n"
-        "请严格按 references/board-auto-repair-sop.md：\n"
-        "hub_repair(status) → 可恢复先 reopen → clear_blockers（只归档不可恢复）"
-        "→ 若 exhausted 则转 post-exhaust-epic-optimize-sop 出优化定稿。\n"
-        "禁止先藏还可重试的 abnormal；禁止只藏卡结束；"
-        "禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。\n"
+        "请严格按 references/abnormal-solve-sop.md + board-auto-repair-sop.md：\n"
+        "取证定桶 → 已绿则结算；否则可恢复 reopen → clear_blockers（只归档不可恢复）"
+        "→ exhausted 则 post-exhaust 优化定稿。\n"
+        "禁止只藏卡/只 reopen 当结案；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。\n"
     )
 
 
@@ -171,8 +170,8 @@ def optimize_sop_prompt(
         f"失败大卡：{epic_id}\n"
         f"摘要：{hint}\n"
         f"失败桶：{buckets or '见 hub_repair failure_pack'}\n"
-        "请严格按 references/post-exhaust-epic-optimize-sop.md：\n"
-        "hub_repair(status|failure_pack) → 白话失败因（意图仍成立）→ "
+        "请严格按 references/abnormal-solve-sop.md + post-exhaust-epic-optimize-sop.md：\n"
+        "先查盘上是否已绿→已绿则结算；否则 failure_pack → 白话失败因 → "
         "clear_blockers 归档 → 优化 ccc-transfer（title/goal 对齐原意图；按桶缩小/修探针）。\n"
         "禁止只藏卡结束；禁止 invent；禁止抬 Engine 重试上限；禁止写业务源码；"
         "禁止甩锅复制给对话。\n"

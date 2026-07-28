@@ -231,9 +231,9 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 |----|------|
 | **提交** | Engine/DoD 在业务仓**当前分支（默认 main）**提交；`task_id`/`phase` 进 message；**不做** feature 旁支合入门禁；Cursor **事后总验**不挡产线 |
 | **进板后** | 人只确认下达；之后扇出/写码/审测/hang 收尸/有限 reopen **全自动** |
-| **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；**L2** Hub/`board_repair`：`clear_blockers` 先 reopen 可恢复再归档 permanent/failed/孤儿；**L3** Desktop/sidecar 清板 SOP 钩子；**L3b** 耗尽后 Agent **改大卡再开**（读证据→按失败桶优化 `ccc-transfer`，意图不变；见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图 |
-| **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；**耗尽后只藏卡不改大卡**；**先 `ui_hidden` 还可重试的 abnormal**；用 Cursor/Zed 当业务仓合入通道 |
-| **SOP** | 清板 [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) · 耗尽改大卡 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md) |
+| **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；**L2** Hub/`board_repair`：`clear_blockers` 先 reopen 可恢复再归档 permanent/failed/孤儿；**L3** Desktop/sidecar 清板 SOP 钩子；**L3b** 耗尽后 Agent **改大卡再开**（读证据→按失败桶优化 `ccc-transfer`，意图不变；见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图。**总闸**：[`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md)——**清障 ≠ 解决问题**；结案=根因消除且意图可再验收（已绿则结算，勿空投） |
+| **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；**耗尽后只藏卡不改大卡**；**先 `ui_hidden` 还可重试的 abnormal**；用 Cursor/Zed 当业务仓合入通道；**用「已归档/已 reopen」当向老板的完成话术** |
+| **SOP** | 总闸 [`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md) · 清板 [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) · 耗尽改大卡 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md) |
 
 #### Desktop 板务 · App Agent 本职（硬 · 2026-07-24 · 全功能）
 

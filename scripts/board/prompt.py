@@ -85,6 +85,9 @@ def build_dev_phase_prompt(
         f"**禁止** `~/.ccc/`\n"
         f"8. report 末尾必须单独一行写死字面量 `ALL SELF-CHECKS PASSED`"
         f"（门禁不代写、不接受同义改写；缺则 FAIL 并 abnormal）\n"
+        f"9. **已绿即停（防 hang）**：若本 phase 验收命令现跑已全绿、且 scope 无需再改，"
+        f"**立即**按第 3 条 commit（或确认已有含 task_id 的 commit）并结束；"
+        f"**禁止**继续重构/加测/「顺手优化」导致 OpenCode 空转被 hang 杀掉\n"
     )
 
 
