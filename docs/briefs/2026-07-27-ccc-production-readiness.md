@@ -178,9 +178,22 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 1. ~~收束壳 / Layer1 证据~~ → **已完成（2026-07-28）**  
 2. ~~程 B 硬化~~ → **已完成**（R1/R2 已合入；R3/R4 **暂停**）  
-3. **Relay Flash 封印**（Cursor 独立）→ [`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)  
-4. 再 Cursor 自跑 R3 015 → R4 016 → 平台生产交付总闸  
-5. 其后才开 Layer2 qb / 飞轮自动
+3. ~~**Relay Flash 封印**~~ → **已完成**（[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)）  
+4. ~~R3 015 → R4 016~~ → **已完成**（Cursor 自跑）  
+5. **平台生产交付封印** → **已勾**（见下节）  
+6. 其后才开 Layer2 qb / 飞轮自动
+
+---
+
+## 平台生产交付：完成（2026-07-28）
+
+- [x] R1–R4 合入 main（013–016）  
+- [x] Relay Flash 单通道封印（文档 + 2017 主机 + PaidGuarantee 活体）  
+- [x] hub-probe 隧道 OVERALL pass；`test_hub_probe_contract` 绿  
+- [x] 双机 pull 对齐（见本节合入后 `git rev-parse`）  
+- [x] 周刊金路径 checklist 仍有效（不新开 daemon）
+
+**下一开程才允许**：Layer2 qb 域 KPI / 飞轮自动（另清单）。
 
 ---
 
@@ -209,7 +222,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
-| 下一开程 | **主轨 = Relay Flash 封印**（Cursor）；R3/R4 暂停其后自跑；Layer2 qb 仍冻结 |
+| 下一开程 | **平台生产交付已封印**；下一开程才允许 Layer2 qb / 飞轮自动（勿与 invent 同时开） |
 
 **Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode **`loop/flash`** → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
 **仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。
