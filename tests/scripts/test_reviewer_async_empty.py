@@ -8,7 +8,6 @@ A3: 有 .reviewer.timeout (无 done) → 必须写 TIMEOUT verdict, 返回 TIMEO
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest

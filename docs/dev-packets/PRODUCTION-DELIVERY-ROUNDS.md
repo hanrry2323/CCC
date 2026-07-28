@@ -28,16 +28,13 @@
 | 分支 | `draft/013-reviewer-verdict-kpi-honesty` |
 | 完成 | `work_abnormal_n` = MAX(cols, works)；quarantine 前写 FAIL verdict；测绿 |
 
-### R2 · 014 reviewer/`--bg` 空转与超时收尸（**进行中**）
+### R2 · 014 reviewer/`--bg` 空转与超时收尸（**已合入**）
 
 | 项 | 内容 |
 |----|------|
 | 包 | [`014-reviewer-bg-empty-verdict.md`](./014-reviewer-bg-empty-verdict.md) |
 | 分支 | `draft/014-reviewer-bg-empty-verdict` |
-| Claude | `/loop` 跑完 Phase A→D |
-| Cursor | 严审；不合格打回；小问题自修合入 + 2017 热更 |
-| 目标 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；bg 与 `check_reviewer_async` 对齐 |
-| 完成 | 单测覆盖空输出/超时；`check_reviewer_async` 3 个缺口点均写 verdict 后返回；`.reviewer.timeout` 清理对称；禁止改权威 |
+| 完成 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；markers 清理含 timeout/exitcode；测绿 |
 
 ### R3 · 015 失败可收加固（reopen / quarantine 口径）
 

@@ -171,7 +171,7 @@ def _detect_review_kind(
 
 
 def _write_fail_verdict_async(ws: Path, task_id: str, reason: str) -> None:
-    """Write FAIL verdict (async path: no verdict dir on ws needed pre-exist)."""
+    """Write FAIL verdict on async path if none exists yet."""
     verdict_dir = ws / ".ccc" / "verdicts"
     verdict_dir.mkdir(parents=True, exist_ok=True)
     vf = verdict_dir / f"{task_id}.verdict.md"
@@ -181,6 +181,18 @@ def _write_fail_verdict_async(ws: Path, task_id: str, reason: str) -> None:
         f"# {task_id} Verdict\n\n"
         f"**Verdict:** FAIL\n\n"
         f"**Category:** fixable\n\n"
+        f"**Reason:** {reason}\n",
+        encoding="utf-8",
+    )
+
+
+def _write_timeout_verdict_async(ws: Path, task_id: str, reason: str) -> None:
+    """Write TIMEOUT verdict for bg max-wait expiry (ws-aware)."""
+    verdict_dir = ws / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    (verdict_dir / f"{task_id}.verdict.md").write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** TIMEOUT\n\n"
         f"**Reason:** {reason}\n",
         encoding="utf-8",
     )
@@ -777,15 +789,7 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
     if not is_done:
         # Phase 014: 优先检查 .reviewer.timeout —— bg.sh 超时后写此标记
         if timeout_file.exists():
-            _write_fail_verdict_async(ws, task_id, "reviewer_bg_timeout")
-            verdict_dir = ws / ".ccc" / "verdicts"
-            verdict_dir.mkdir(parents=True, exist_ok=True)
-            (verdict_dir / f"{task_id}.verdict.md").write_text(
-                f"# {task_id} Verdict\n\n"
-                f"**Verdict:** TIMEOUT\n\n"
-                f"**Reason:** reviewer_bg_timeout\n",
-                encoding="utf-8",
-            )
+            _write_timeout_verdict_async(ws, task_id, "reviewer_bg_timeout")
             _log.debug("[reviewer] %s .reviewer.timeout → TIMEOUT verdict", task_id)
             return {"status": "TIMEOUT", "reason": "reviewer_bg_timeout"}
         if pid_file.exists():
