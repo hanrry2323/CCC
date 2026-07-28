@@ -855,9 +855,9 @@ def _acceptance_bullets_for_phase(
 
 
 def _strip_acceptance_sections(text: str) -> str:
-    """Remove ## 验收/验证 blocks so we can rewrite with allowlisted probes."""
+    """Remove ## 验收/验证 blocks (incl. ``## 验收命令详解``) so we can rewrite."""
     return re.sub(
-        r"(^|\n)##\s*(?:验收|验证)\s*\n.*?(?=\n##\s|\Z)",
+        r"(^|\n)##\s*(?:验收|验证)[^\n]*\n.*?(?=\n##\s|\Z)",
         r"\1",
         text or "",
         flags=re.DOTALL | re.IGNORECASE,

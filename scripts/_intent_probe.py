@@ -113,21 +113,84 @@ def filter_verify_commands(cmds: list[str]) -> list[str]:
     return [c.strip() for c in cmds if is_allowed_verify_cmd(c)]
 
 
+def _is_acceptance_heading(line: str) -> bool:
+    s = (line or "").strip()
+    return s.startswith("## 验收") or s.startswith("## 验证")
+
+
+def _is_canonical_acceptance_heading(line: str) -> bool:
+    """Exact ``## 验收`` / ``## 验证`` (optional trailing spaces only).
+
+    Models often write ``## 验收命令详解``; that must not steal the real
+    ``## 验收`` block appended by seed repair.
+    """
+    s = (line or "").strip()
+    return s in ("## 验收", "## 验证") or s.startswith("## 验收\t") or s.startswith(
+        "## 验证\t"
+    )
+
+
 def extract_acceptance_section(text: str) -> str:
+    """Return the best ## 验收/验证 body (prefer canonical heading; else last)."""
     if not text:
         return ""
     lines = text.splitlines()
-    out: list[str] = []
-    in_sec = False
-    for line in lines:
-        if line.startswith("## 验收") or line.startswith("## 验证"):
-            in_sec = True
+    sections: list[tuple[bool, str]] = []
+    i = 0
+    while i < len(lines):
+        if not _is_acceptance_heading(lines[i]):
+            i += 1
             continue
-        if in_sec and line.startswith("## "):
+        canonical = _is_canonical_acceptance_heading(lines[i])
+        i += 1
+        body: list[str] = []
+        while i < len(lines) and not lines[i].startswith("## "):
+            body.append(lines[i])
+            i += 1
+        sections.append((canonical, "\n".join(body).strip()))
+    if not sections:
+        return ""
+    for canonical, body in reversed(sections):
+        if canonical and body:
+            return body
+    return sections[-1][1]
+
+
+def _candidates_from_prose_labeled_cmd(item: str) -> list[str]:
+    """Recover ``中文标签: pytest …`` / ``label: DRY_RUN=…`` list items."""
+    item = (item or "").strip()
+    if not item:
+        return []
+    out: list[str] = []
+    # Split on first ASCII colon used as label separator
+    if ":" in item:
+        after = item.split(":", 1)[1].strip()
+        if after:
+            out.extend(_candidates_from_list_item(after))
+    # Also try from first allowlisted verb token
+    for marker in (
+        "pytest ",
+        "python3 ",
+        "python ",
+        "DRY_RUN=",
+        "test -f ",
+        "test -d ",
+        "bash ",
+        "rg ",
+        "grep ",
+    ):
+        idx = item.find(marker)
+        if idx >= 0:
+            out.extend(_candidates_from_list_item(item[idx:]))
             break
-        if in_sec:
-            out.append(line)
-    return "\n".join(out).strip()
+    # de-dupe
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
 
 
 # bullet / numbered acceptance lines: "- cmd" · "1. cmd" · "1) cmd"
@@ -219,9 +282,16 @@ def extract_probe_commands(section_or_plan: str) -> list[str]:
             continue
         m = _LIST_ITEM_RE.match(s)
         if m:
-            cmds.extend(_candidates_from_list_item(s[m.end() :].strip()))
+            rest = s[m.end() :].strip()
+            got = _candidates_from_list_item(rest)
+            if not got:
+                got = _candidates_from_prose_labeled_cmd(rest)
+            cmds.extend(got)
         else:
-            cmds.extend(_candidates_from_list_item(s))
+            got = _candidates_from_list_item(s)
+            if not got:
+                got = _candidates_from_prose_labeled_cmd(s)
+            cmds.extend(got)
     # dedupe preserve order
     seen: set[str] = set()
     out: list[str] = []
