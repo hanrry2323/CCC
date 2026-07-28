@@ -162,7 +162,8 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] HK 隧道 KeepAlive 观察（hub-tunnel up；连续 version 探针 200）  
 - [x] 周刊金路径烟测 checklist（见上「效率仪表」）  
 - [x] **013** reviewer 无 verdict→FAIL + KPI `work_abnormal_n` 诚实计数（[`../dev-packets/013-reviewer-verdict-kpi-honesty.md`](../dev-packets/013-reviewer-verdict-kpi-honesty.md) · 合入 `6fba8d0`）
-- [x] **014** reviewer/`--bg` 空输出与超时必落 verdict（[`../dev-packets/014-reviewer-bg-empty-verdict.md`](../dev-packets/014-reviewer-bg-empty-verdict.md) · 合入 R2）
+- [x] **014** reviewer/`--bg` 空输出与超时必落 verdict（[`../dev-packets/014-reviewer-bg-empty-verdict.md`](../dev-packets/014-reviewer-bg-empty-verdict.md) · 合入 `b3936c9`）
+- [ ] **015** reopen/quarantine 加固（[`../dev-packets/015-failure-reopen-quarantine-harden.md`](../dev-packets/015-failure-reopen-quarantine-harden.md) · R3）
 
 ---
 

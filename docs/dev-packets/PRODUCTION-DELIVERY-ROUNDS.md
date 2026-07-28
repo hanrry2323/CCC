@@ -36,13 +36,15 @@
 | 分支 | `draft/014-reviewer-bg-empty-verdict` |
 | 完成 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；markers 清理含 timeout/exitcode；测绿 |
 
-### R3 · 015 失败可收加固（reopen / quarantine 口径）
+### R3 · 015 失败可收加固（reopen / quarantine 口径）（**进行中**）
 
 | 项 | 内容 |
 |----|------|
-| 包 | `015-failure-reopen-quarantine-harden.md`（R2 合入后写） |
-| 目标 | enabled 下瞬态 abnormal 有限 reopen 路径测稳；quarantine reason 必含可机读码 |
-| 白名单方向 | `scripts/_task_reopen.py` · `scripts/engine/failure_router.py` · `_failure_ledger` · 测 |
+| 包 | [`015-failure-reopen-quarantine-harden.md`](./015-failure-reopen-quarantine-harden.md) |
+| 分支 | `draft/015-failure-reopen-quarantine-harden` |
+| Claude | `/loop` 跑完 Phase A→D |
+| Cursor | 严审；不合格打回；小问题自修合入 + 2017 热更 |
+| 目标 | enabled 瞬态 abnormal 有限 reopen 测稳；quarantine reason 必含机读码 |
 | 完成 | 测绿；与 P-D 口径一致；不抬 quarantine 阈值乱杀 |
 
 ### R4 · 016 金路径回归包（平台测 + 文档封印）
