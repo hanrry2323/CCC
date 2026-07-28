@@ -35,7 +35,7 @@ alwaysApply: true
 - **App Agent 全功能（硬 · 1A/2A）**：任意项目卡默认 **engineer**（本机 CCC + Hub 含跨仓 `hub_repair`）；业务改码仍 transfer→Engine；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨。
 - **看板管家（硬）**：板务本职 = **当前会话 Agent**。禁止「请打开编排运维」当主路径；禁止教用户手写 `transfer-outbox`/Terminal。运维红灯 → 打开当前项目或 `ccc` 平台会话。
 - **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块。
-- **飞轮自动化（规划）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-24-lpsn-flywheel-auto.md`（未实现代码）。
+- **飞轮自动化（已实现 · 2026-07-28）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-28-flywheel-auto-open.md`（禁止自动 stable / invent）。
 - **Desktop 主路径（取代四段硬流程）**：聊意图（对齐基线=可选深扫，非硬门槛）→ 人确认下达（定稿/转任务）；「下一步」已降级为可选看仓况；核实并入定稿前静默 lens。凡进 backlog epic 必 wake Engine；未扇出须人话阻塞因。板堵本会话自清。
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
 - **项目脑包（硬 · qb 样板）**：按 project_id 注入权威仓 `CLAUDE.md` + 规划文（qb=`docs/DEV_PLAN_v1.1.md`，禁止平行 TODO.md）+ profile + decided；board=过程。SSOT：`docs/product/project-agent-brain.md`。舰队改造抄该文 Rollout 表。
@@ -69,7 +69,7 @@ alwaysApply: true
 - **对话口鉴权（硬 · 2026-07-27）**：sidecar `:7788` 默认 `CCC_AGENT_AUTH=0`，网页 `#/chat` 不弹 Token；Hub Basic Auth 不动。
 - **Desktop Ops 重构（2026-07-27）**：P0–P2 + 009 **已合入收束**；**禁止**再开 Ops/SPA 抛光主路径。生产出门总路线 `docs/briefs/2026-07-27-ccc-production-readiness.md`。
 - **个人 Claude Code 草稿工（硬 · 2026-07-28）**：合入仍只认 Cursor；**Layer1 已出门**后草稿工停用放大——无强制下一包，**仅**接金路径白名单缺陷。**禁止** Desktop Agent 改 CCC；**禁止**草稿工改权威/强推 main / 再开 UI 大包。详见 authority「个人 Claude Code 草稿工」。
-- **生产出门三层（硬 · 2026-07-28）**：Layer0 ≠ Layer1；**Layer1 已正式出门（小业务）**（G1–G6 + P-A…P-F + v6 Desktop outbox）。Layer2 qb 域 KPI / 飞轮自动化 / 产能 SLA **仍冻结**。下一开程二选一：程 B 硬化或 Layer2——勿同时开。SSOT：`docs/briefs/2026-07-27-ccc-production-readiness.md`。
+- **生产出门三层（硬 · 2026-07-28）**：Layer0 ≠ Layer1；**Layer1 已正式出门（小业务）**。Layer2 qb **遗留已清**（B4.2 实盘仍冻）。**下一开程 = 飞轮 T1–T4**（见 `2026-07-28-flywheel-auto-open.md`）；invent / 自动 stable 仍禁。SSOT：`docs/briefs/2026-07-27-ccc-production-readiness.md`。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
 - **Ops 运维面（三面之一）**：对话定意图 / 编排跑卡 / **运维 = 给人看的健康灯 + 后台养系统**。Desktop 运维硬规则：**绿**=放心开发下任务；**橙**=可忽略不拦事；**红**=后台优先自愈，人只**一键复制交 Agent**（红=系统/配置问题，不把老板当维修工）。人看四域：总健康｜集群与服务（含端口）｜Agent 与 MCP｜仅红告警条。后台喂灯：日审/飞轮/容量/reap·patrol。Engine=前锋只消费队列；弹药旁路只进 `engine=true` 业务仓；禁 orch；日审 C/E/F 可 apply，D/G/H 升红，I 永不。**invent 硬关保留**。详见 authority「Ops 运维面」。

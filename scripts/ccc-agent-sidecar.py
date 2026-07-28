@@ -817,6 +817,12 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     parts.append(block)
     if mblock:
         parts.append(mblock)
+        # T4: force next_product_goal visibility when digest mentions it or idle tip
+        if "next_product_goal" in (mblock or "") or "下一产品目标" in (mblock or ""):
+            parts.append(
+                "【飞轮 T4】空闲时优先推进 digest 中的 next_product_goal；"
+                "禁止用卫生/烟测 epic 顶替；人点 stable 前勿宣称意图完成。"
+            )
     if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
         parts.append(
             "【板务强制】本轮必须 hub_repair(clear_blockers) 并报告板面数字；"

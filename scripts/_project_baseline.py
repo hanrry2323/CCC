@@ -460,6 +460,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "inflight_active": baseline.get("inflight_active"),
         "workspace": baseline.get("workspace"),
         "project_id": baseline.get("project_id"),
+        "next_product_goal": baseline.get("next_product_goal"),
     }
     profile = (baseline.get("profile_excerpt") or "")[:800]
     state = (baseline.get("state_excerpt") or "")[:800]

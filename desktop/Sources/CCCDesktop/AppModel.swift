@@ -137,6 +137,10 @@ final class AppModel: ObservableObject {
     @Published var flowFanoutHint: String?
     /// Phase9：abnormal / failed 止损提示（右栏红条）
     @Published var flowStopLossHint: String?
+    /// LPSN · T3：当前项目 L1 unfinished/probed goals（FlowRail 标记稳定）
+    @Published var mindGoals: [MindGoal] = []
+    @Published var mindGoalsProjectId: String?
+    @Published var mindGoalBusy = false
     /// 避免同一 epic 反复 toast
     private var lastStopLossToastKey: String?
     /// 当前选中会话是否正在生成（按会话，非全局）
@@ -4363,6 +4367,9 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 await self.refreshEpicListOnly(projectId: pid, threadId: nil)
             }
+            Task { @MainActor in
+                await self.refreshMindGoals(projectId: pid)
+            }
             return
         }
 
@@ -4418,6 +4425,7 @@ final class AppModel: ObservableObject {
                 await refreshFlowNow(projectId: pid, threadId: tid)
             }
             reconcileFlowSSE()
+            await refreshMindGoals(projectId: pid)
         } catch {
             if isSelected {
                 flowEmptyMessage = "流程加载失败"
@@ -4426,6 +4434,53 @@ final class AppModel: ObservableObject {
                 snap.emptyMessage = "流程加载失败"
                 setProjectFlow(pid, snap)
             }
+        }
+    }
+
+    /// LPSN · T3：拉取当前项目未完成 / probed 目标供 FlowRail 标记稳定
+    @MainActor
+    func refreshMindGoals(projectId: String) async {
+        let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else {
+            mindGoals = []
+            mindGoalsProjectId = nil
+            return
+        }
+        do {
+            try await prepareClient(ensureAgent: false)
+            let resp = try await client.fetchMindDecided(projectId: pid)
+            let goals = (resp.decided?.goals ?? []).filter { g in
+                let s = (g.status ?? "planned").lowercased()
+                return s == "planned" || s == "probed"
+            }
+            mindGoals = goals
+            mindGoalsProjectId = pid
+        } catch {
+            // 非致命：右栏仍可编排
+            if mindGoalsProjectId == pid {
+                mindGoals = []
+            }
+        }
+    }
+
+    /// LPSN · T3：人点 intent_stable
+    @MainActor
+    func markMindGoalStable(projectId: String, goalId: String) async {
+        let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let gid = goalId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty, !gid.isEmpty else { return }
+        mindGoalBusy = true
+        defer { mindGoalBusy = false }
+        do {
+            try await prepareClient(ensureAgent: false)
+            _ = try await client.markMindGoalStatus(
+                projectId: pid,
+                goalId: gid,
+                status: "stable"
+            )
+            await refreshMindGoals(projectId: pid)
+        } catch {
+            lastError = "标记稳定失败：\(error.localizedDescription)"
         }
     }
 

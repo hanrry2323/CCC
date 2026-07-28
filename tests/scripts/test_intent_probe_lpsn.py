@@ -315,6 +315,79 @@ def test_agent_mind_structured_goals(tmp_path: Path):
     assert "code_landed" in dig["digest"] or "intent_stable" in dig["digest"].lower() or "已稳定" in dig["digest"]
 
 
+def test_t1_seed_goal_from_transfer(tmp_path: Path):
+    from chat_server.services import agent_mind
+
+    ws = tmp_path / "t1"
+    ws.mkdir()
+    (ws / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    body = {
+        "title": "纸面探针可重放",
+        "goal": "paper green",
+        "acceptance": ["DRY_RUN=true python3 scripts/paper_intent_probe.py"],
+        "pipeline": "feature",
+    }
+    seeded = agent_mind.maybe_seed_goal_from_transfer(ws, body)
+    assert seeded is not None
+    assert seeded["status"] == "planned"
+    assert "paper_intent_probe" in seeded["exit_condition"]
+    # second identical transfer must not duplicate
+    assert agent_mind.maybe_seed_goal_from_transfer(ws, body) is None
+    # hygiene skip
+    assert (
+        agent_mind.maybe_seed_goal_from_transfer(
+            ws, {"title": "卫生清场", "pipeline": "ops", "acceptance": ["python3 -c '1'"]}
+        )
+        is None
+    )
+
+
+def test_t2_regress_marks_probed(tmp_path: Path, monkeypatch):
+    from board.context import set_workspace
+    import board.roles.regress as regress_mod
+    from chat_server.services import agent_mind
+
+    ws = tmp_path / "t2"
+    ws.mkdir()
+    (ws / "scripts").mkdir()
+    (ws / "scripts" / "ok_probe.py").write_text("print('ok')\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=ws, check=True, capture_output=True)
+    for col in ("released", "backlog"):
+        (ws / ".ccc" / "board" / col).mkdir(parents=True)
+    (ws / ".ccc" / "plans").mkdir(parents=True)
+    tid = "released-t2"
+    (ws / ".ccc" / "board" / "released" / f"{tid}.jsonl").write_text(
+        json.dumps({"id": tid, "title": "纸面探针可重放", "card_kind": "work"}) + "\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        "## 验收\n- python3 scripts/ok_probe.py\n",
+        encoding="utf-8",
+    )
+    seeded = agent_mind.maybe_seed_goal_from_transfer(
+        ws,
+        {
+            "title": "纸面探针可重放",
+            "goal": "g",
+            "acceptance": ["python3 scripts/ok_probe.py"],
+            "pipeline": "feature",
+        },
+    )
+    assert seeded
+    set_workspace(ws)
+    monkeypatch.setenv("CCC_ROLE_LOCK_BYPASS", "1")
+    monkeypatch.setattr(regress_mod, "CCC_HOME", ws, raising=False)
+    out = regress_mod.regress_role()
+    assert out["results"]["passed"] == 1
+    assert seeded["id"] in (out["results"].get("probed_goals") or [])
+    d = agent_mind.load_decided(ws)
+    assert d["goals"][0]["status"] == "probed"
+
+
 def test_phase_lint_require_probe():
     from phase_lint import validate_plan_acceptance
 

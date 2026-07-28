@@ -83,6 +83,25 @@ with tempfile.TemporaryDirectory() as td:
     )
     assert not ok and any(e["code"] == "missing_intent_probe" for e in errors)
 
+    # T1 seed
+    ws2 = Path(td) / "t1"
+    ws2.mkdir()
+    (ws2 / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    seeded = agent_mind.maybe_seed_goal_from_transfer(
+        ws2,
+        {
+            "title": "flywheel seed",
+            "goal": "g",
+            "acceptance": ["python3 scripts/probe.py"],
+            "pipeline": "feature",
+        },
+    )
+    assert seeded and seeded["status"] == "planned"
+    agent_mind.mark_goal_status(ws2, seeded["id"], "probed", updated_by="regress")
+    assert agent_mind.load_decided(ws2)["goals"][0]["status"] == "probed"
+    dig = agent_mind.build_digest(ws2, project_id="t1", use_cache=False)
+    assert dig.get("next_product_goal") or "下一产品目标" in dig.get("digest", "")
+
 print("LPSN e2e gates OK")
 PY
 

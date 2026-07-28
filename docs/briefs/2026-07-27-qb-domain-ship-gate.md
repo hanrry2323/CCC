@@ -39,30 +39,30 @@
 |---|------|------|
 | B1.1 | 产品 goal 退出条件可执行（回测/纸面/契约命令） | L1 `decided.goals[].exit_condition` — **2026-07-28** `g-a61a67dd84` 已可执行 |
 | B1.2 | 探针覆盖「钱能不能保住」优先于 alpha | DEV_PLAN VIP→P1 排序可核对 — **勾** |
-| B1.3 | regress 挂了建回归 epic，不假装完成 | 板面 tid + `failures.jsonl` — **部分**（见开程 brief） |
+| B1.3 | regress 挂了建回归 epic，不假装完成 | 板面 tid + `failures.jsonl` — **勾**（假红已修；未假绿 intent） |
 
 ### B2 风控与熔断
 
 | # | 条件 | 证据 |
 |---|------|------|
 | B2.1 | 最大回撤 / 单日亏损上限有硬闸 | 配置 + 单测或纸面跑挂闸日志 — **勾**（risk.py + 45 tests） |
-| B2.2 | 异常行情 / 连通中断有停机或降级 | runbook + 至少一次演练记录 — **部分**（paper 双探针；无实盘断连） |
+| B2.2 | 异常行情 / 连通中断有停机或降级 | runbook + 至少一次演练记录 — **勾**（进程侧 unload；`docs/INCIDENTS/2026-07-28-disconnect-drill.md`；无实盘断连） |
 | B2.3 | 密钥与实盘开关不进对话默认路径 | 控制面/env 分离；禁止 Agent 自开实盘 — **勾**（DRY_RUN 强制） |
 
 ### B3 运行稳定
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B3.1 | 策略/行情进程保活（launchd/systemd 或等价） | plist/unit + `status` 绿 — **部分**（guardian/dashboard/dual loaded；缺 gateway/data-engine 模板） |
-| B3.2 | 崩溃可告警并可一键交 Agent/人 | 告警条或 Ops 红灯样例 — **部分**（guardian loaded；未造崩溃样例） |
+| B3.1 | 策略/行情进程保活（launchd/systemd 或等价） | plist/unit + `status` 绿 — **勾**（五模板齐；check_plist_health 0 error；socks/frontend warn） |
+| B3.2 | 崩溃可告警并可一键交 Agent/人 | 告警条或 Ops 红灯样例 — **勾**（同 INCIDENT 演练窗） |
 | B3.3 | 纸面连续跑窗口达标（时长由 DEV_PLAN 定） | 日志起止 + 无未解释断流 — **勾（薄 65s 双探针）** |
 
 ### B4 盈利与上线（禁止用代码合入替代）
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B4.1 | 纸面/testnet 达成 DEV_PLAN 写明的门槛 | 报告路径或看板指标截图 — **部分**（paper probe PASS） |
-| B4.2 | 实盘开关有人确认清单（非 Agent 自决） | 签字/会话确认记录 — **未勾**（本开程不开实盘） |
+| B4.1 | 纸面/testnet 达成 DEV_PLAN 写明的门槛 | `docs/reports/layer2-b41-paper-gate.md` — **勾（定性；DEV_PLAN 无数字 PnL）** |
+| B4.2 | 实盘开关有人确认清单（非 Agent 自决） | 签字/会话确认记录 — **未勾**（实盘仍冻结） |
 | B4.3 | 「能盈利」只认 B4.1–B4.2，**不认** `released` 张数 | 本表勾选状态 — **勾**（出门句诚实） |
 
 ---

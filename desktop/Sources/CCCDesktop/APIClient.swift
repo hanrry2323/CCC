@@ -1085,6 +1085,31 @@ actor APIClient {
         return try await send(req, as: FlowSnapshot.self, maxAttempts: 2)
     }
 
+    /// LPSN · T3: load L1 decided goals
+    func fetchMindDecided(projectId: String) async throws -> MindDecidedResp {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
+        var req = try authedRequest("api/desktop/mind/\(enc)/decided")
+        req.timeoutInterval = 8
+        return try await send(req, as: MindDecidedResp.self, maxAttempts: 2)
+    }
+
+    /// LPSN · T3: human mark goal stable / abandoned / probed
+    func markMindGoalStatus(projectId: String, goalId: String, status: String) async throws -> MindGoalStatusResp {
+        let penc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
+        let genc = goalId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? goalId
+        let body = try JSONSerialization.data(withJSONObject: [
+            "status": status,
+            "updated_by": "human",
+        ])
+        var req = try authedRequest(
+            "api/desktop/mind/\(penc)/goals/\(genc)/status",
+            method: "POST",
+            body: body
+        )
+        req.timeoutInterval = 10
+        return try await send(req, as: MindGoalStatusResp.self, maxAttempts: 2)
+    }
+
     /// 消费 flow SSE；每次 fanout/work_status 回调刷新建议
     func streamFlowEvents(
         projectId: String,

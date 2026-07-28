@@ -827,7 +827,19 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
         )
         wake = _hub_ensure_engine(workspace, tid)
 
-        return {
+        # LPSN · T1: seed L1 goal (hygiene exempt; never auto-stable)
+        seeded_goal = None
+        try:
+            from .projects import get_project_path
+            from ..services import agent_mind as _am
+
+            root = get_project_path(project_id)
+            if root:
+                seeded_goal = _am.maybe_seed_goal_from_transfer(Path(root), body)
+        except Exception as exc:
+            payload["goal_seed_warning"] = str(exc)[:200]
+
+        out = {
             "ok": True,
             "epic_id": tid,
             "workspace": workspace,
@@ -838,6 +850,13 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             "seeded": payload.get("seeded"),
             "idempotent_replay": False,
         }
+        if seeded_goal:
+            out["seeded_goal"] = {
+                "id": seeded_goal.get("id"),
+                "text": seeded_goal.get("text"),
+                "status": seeded_goal.get("status"),
+            }
+        return out
 
     if client_request_id:
         mutex = flow_events.client_request_mutex(project_id, client_request_id)

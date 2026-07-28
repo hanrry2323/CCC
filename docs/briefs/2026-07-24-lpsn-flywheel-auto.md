@@ -1,6 +1,6 @@
 # LPSN 飞轮自动化 · 规划（2026-07-24）
 
-> **状态**：规划已拍板 · **本轮不实现代码**  
+> **状态**：**已实现**（开程 [`2026-07-28-flywheel-auto-open.md`](./2026-07-28-flywheel-auto-open.md)）  
 > 权威：[`loop-engineer-authority.md`](../product/loop-engineer-authority.md) · LPSN · S/N  
 > 前置：App Agent Cursor 级语感 + 看板管家本职（对话内 `hub_repair`）已优先落地。
 

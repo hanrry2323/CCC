@@ -551,3 +551,37 @@ enum TaskPriority: String, CaseIterable, Codable {
         }
     }
 }
+
+// MARK: - LPSN mind goals (T3)
+
+struct MindGoal: Codable, Identifiable, Equatable, Hashable {
+    var id: String
+    var text: String?
+    var exit_condition: String?
+    var status: String?
+
+    var displayStatus: String {
+        (status ?? "planned").lowercased()
+    }
+
+    var isMarkableStable: Bool {
+        let s = displayStatus
+        return s == "planned" || s == "probed"
+    }
+}
+
+struct MindDecidedPayload: Codable, Equatable {
+    var goals: [MindGoal]?
+}
+
+struct MindDecidedResp: Codable, Equatable {
+    var ok: Bool?
+    var project_id: String?
+    var decided: MindDecidedPayload?
+}
+
+struct MindGoalStatusResp: Codable, Equatable {
+    var ok: Bool?
+    var project_id: String?
+    var decided: MindDecidedPayload?
+}

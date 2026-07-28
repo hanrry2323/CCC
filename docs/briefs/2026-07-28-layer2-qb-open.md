@@ -47,40 +47,38 @@
 |---|------|------|
 | B1.1 退出条件可执行 | **勾** | `g-a61a67dd84.exit_condition` = probe + 戳记文件 |
 | B1.2 钱优先于 alpha | **勾** | DEV_PLAN：「钱能不能保住 → alpha」；VIP→P1 排序 |
-| B1.3 regress 挂了不装完成 | **部分** | 本笔未开假绿 regress epic；全仓测红未标 intent 完成 |
+| B1.3 regress 挂了不装完成 | **勾** | 全仓测红已诚实记录；未标 intent 完成；tester doc_only 假红已修（CCC `f2012db`） |
 
 ### B2 风控与熔断
 
 | # | 状态 | 证据 |
 |---|------|------|
-| B2.1 日亏/回撤硬闸 | **勾** | `src/config/risk.py` `LossLimitsConfig.daily_max_loss_usd=10` / `max_drawdown_pct=0.10`；`gatekeeper`/`record_pnl` 存在；相关单测 **45 passed**（`-k gatekeeper\|daily_loss\|drawdown\|circuit`） |
-| B2.2 异常停机/降级演练 | **部分** | 有 `src/healthcheck/auto_downgrade.py`、`trading_circuit_breaker.py`；本开程演练 = paper DRY_RUN 双探针间隔 60s 均 PASS（连通软演练）。**未**做实盘断行情硬演练 |
+| B2.1 日亏/回撤硬闸 | **勾** | `src/config/risk.py` `LossLimitsConfig.daily_max_loss_usd=10` / `max_drawdown_pct=0.10`；相关单测 **45 passed** |
+| B2.2 异常停机/降级演练 | **勾**（进程侧） | qb `docs/INCIDENTS/2026-07-28-disconnect-drill.md` · unload dual-strategy 8s 再装；**未**做实盘断行情 |
 | B2.3 密钥/实盘不进对话默认 | **勾** | 探针强制 `DRY_RUN=true`；实盘开关不在本开程路径 |
 
 ### B3 运行稳定
 
 | # | 状态 | 证据 |
 |---|------|------|
-| B3.1 保活 plist | **部分** | 已装并 loaded：`com.qb.guardian` / `dashboard` / `dual-strategy`。**缺**仓内模板 `qb-data-engine.plist` / `qb-order-gateway.plist` → VIP live 仍 3 error（check_plist_health） |
-| B3.2 崩溃可告警 | **部分** | guardian loaded；未在本开程制造崩溃告警样例 |
+| B3.1 保活 plist | **勾**（VIP 模板） | `f7ddda14` 入库并装齐 `data-engine`/`order-gateway`；`check_plist_health` **0 error**（socks5/frontend 仍 warn） |
+| B3.2 崩溃可告警 | **勾**（演练窗） | 同 INCIDENT：dual unload 窗口 + guardian/launchd 可观测 |
 | B3.3 纸面窗口 | **勾**（薄） | `2026-07-28T04:43:27Z` → `04:44:32Z`（≈65s）两次 paper probe PASS |
 
 ### B4 盈利与上线
 
 | # | 状态 | 证据 |
 |---|------|------|
-| B4.1 纸面门槛 | **部分** | paper probe PASS；**未**对照 DEV_PLAN 全量盈利数字门槛出报告 |
-| B4.2 实盘人确认 | **未勾** | 本开程 **不开** 实盘 |
+| B4.1 纸面门槛 | **勾**（定性） | qb `docs/reports/layer2-b41-paper-gate.md`：DEV_PLAN 无数字 PnL；paper 绿 + 风控信封 |
+| B4.2 实盘人确认 | **未勾** | **仍冻结**实盘 |
 | B4.3 不认 released 张数 | **勾** | 出门句见下 |
 
 ---
 
-## Layer2 出门句（诚实 · 2026-07-28）
+## Layer2 出门句（诚实 · 2026-07-28 遗留清完）
 
-**可以说**：qb 已在 CCC 上跑通一笔意图的 **L（commit）→ P（paper 探针）→ S（人点 stable）**；风控日亏/回撤配置与相关单测存在；guardian/dashboard 保活已装；纸面短窗探针绿。
+**可以说**：qb 在 CCC 上意图可 **L→P→人点 S**；域表 B1–B3 与 B4.1（定性）有证据；VIP 五份 scripts 模板齐且 LaunchAgents 0 error。
 
-**不可以说**：qb 已生产级可盈利、可无人值守实盘、VIP live 全套 plist 齐、或 Layer2 全域 B 表全绿。
+**不可以说**：qb 已生产级可盈利、可无人值守实盘、B4.2 已开。
 
-**仍冻结**：飞轮 T1–T4 自动 · invent · 实盘开关 Agent 自开。
-
-**下一刀（域内）**：补 `order-gateway`/`data-engine` plist 模板并装齐 → VIP V5 checklist；可选实盘断连演练记 INCIDENTS；B4.1 纸面门槛报告。
+**下一开程**：飞轮 T1–T4（invent / 自动 stable / 实盘仍冻）。

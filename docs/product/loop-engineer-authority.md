@@ -321,7 +321,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | 出门清单 | [`lpsn-ship-gate.md`](lpsn-ship-gate.md) |
 | 平台生产三层出门 + 金路径 | [`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · Layer0/1/2；**Layer1 已出门（2026-07-28）**；证据 [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md) |
 | 业务域 KPI（qb 样板 · 非 CCC 冒充盈利） | [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md) |
-| 飞轮自动化（规划 · 未实现） | [`../briefs/2026-07-24-lpsn-flywheel-auto.md`](../briefs/2026-07-24-lpsn-flywheel-auto.md) · T1 seed / T2 probed / T3 人点 stable / T4 next_goal |
+| 飞轮自动化（已实现 · 2026-07-28） | [`../briefs/2026-07-28-flywheel-auto-open.md`](../briefs/2026-07-28-flywheel-auto-open.md) · T1 seed / T2 probed / T3 人点 stable / T4 next_goal；规划 [`../briefs/2026-07-24-lpsn-flywheel-auto.md`](../briefs/2026-07-24-lpsn-flywheel-auto.md) |
 
 平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。  
 **硬边界**：平台 Layer1 出门 ≠ 业务 Layer2 出门；`intent_stable` 只证明「意图探针稳定」，不证明实盘盈利或风控达标。

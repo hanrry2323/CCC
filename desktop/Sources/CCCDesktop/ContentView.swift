@@ -2107,6 +2107,10 @@ struct FlowRail: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 10)
 
+                    mindGoalsStrip
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+
                     if !(snap?.recentEpics ?? []).isEmpty {
                         taskStack
                             .padding(.horizontal, 12)
@@ -2348,6 +2352,47 @@ struct FlowRail: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(CCCTheme.chatBg)
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mindGoalsStrip: some View {
+        let pid = paneProjectId
+        let goals = (model.mindGoalsProjectId == pid) ? model.mindGoals : []
+        if let pid, !goals.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("意图目标")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(CCCTheme.faint)
+                ForEach(goals) { goal in
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(goal.text ?? goal.id)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(CCCTheme.ink)
+                                .lineLimit(2)
+                            Text(goal.displayStatus)
+                                .font(.system(size: 9))
+                                .foregroundStyle(CCCTheme.faint)
+                        }
+                        Spacer(minLength: 0)
+                        if goal.isMarkableStable {
+                            Button("标记稳定") {
+                                Task { await model.markMindGoalStable(projectId: pid, goalId: goal.id) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CCCTheme.accent)
+                            .controlSize(.mini)
+                            .disabled(model.mindGoalBusy)
+                        }
+                    }
+                    .padding(8)
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(CCCTheme.chatBg)

@@ -124,6 +124,37 @@ def regress_role() -> dict:
         if passed:
             results["passed"] += 1
             _log.info("[regress] ✓ %s", tid)
+            # LPSN · T2: mark matching L1 goal probed (never stable)
+            try:
+                from chat_server.services import agent_mind as _am
+            except ImportError:
+                try:
+                    from scripts.chat_server.services import agent_mind as _am  # type: ignore
+                except ImportError:
+                    _am = None  # type: ignore
+            if _am is not None:
+                try:
+                    decided = _am.load_decided(ws)
+                    match = _am.match_goal_for_probes(
+                        decided,
+                        title=str(task.get("title") or ""),
+                        probes=probes,
+                    )
+                    if match and str(match.get("status") or "") != "probed":
+                        _am.mark_goal_status(
+                            ws,
+                            str(match["id"]),
+                            "probed",
+                            updated_by="regress",
+                        )
+                        results.setdefault("probed_goals", []).append(match["id"])
+                        _log.info(
+                            "[regress] T2 probed goal %s for %s",
+                            match.get("id"),
+                            tid,
+                        )
+                except Exception as exc:
+                    _log.warning("[regress] T2 probed seed failed: %s", exc)
             continue
 
         results["failed"] += 1

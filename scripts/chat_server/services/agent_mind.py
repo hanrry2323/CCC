@@ -393,6 +393,107 @@ def mark_goal_status(
     )
 
 
+def _goal_matches_transfer(goal: dict[str, Any], title: str, goal_text: str) -> bool:
+    blob = f"{title} {goal_text}".lower()
+    text = str(goal.get("text") or "").lower()
+    if text and text[:24] in blob:
+        return True
+    if text and blob[:24] and blob[:24] in text:
+        return True
+    return False
+
+
+def maybe_seed_goal_from_transfer(
+    root: Path,
+    body: dict[str, Any],
+    *,
+    updated_by: str = "hub",
+) -> dict[str, Any] | None:
+    """T1: after product transfer succeeds, seed L1 goal if none match.
+
+    Hygiene / ops / .ccc-only transfers are skipped. Never writes stable.
+    """
+    try:
+        from _intent_probe import extract_probe_commands, is_hygiene_transfer
+    except ImportError:
+        try:
+            from scripts._intent_probe import (  # type: ignore
+                extract_probe_commands,
+                is_hygiene_transfer,
+            )
+        except ImportError:
+            return None
+
+    if is_hygiene_transfer(body):
+        return None
+    pipeline = str(body.get("pipeline") or "").strip().lower()
+    if pipeline in ("ops", "hygiene", "board_ops", "board"):
+        return None
+
+    title = str(body.get("title") or "").strip()
+    goal_text = str(body.get("goal") or title).strip()
+    if not title and not goal_text:
+        return None
+
+    acc = body.get("acceptance")
+    if isinstance(acc, list):
+        acc_blob = "\n".join(f"- {x}" for x in acc if str(x or "").strip())
+    else:
+        acc_blob = str(acc or "")
+    probes = extract_probe_commands(acc_blob) or extract_probe_commands(
+        str(body.get("plan_md") or "")
+    )
+    exit_c = probes[0] if probes else ""
+
+    decided = load_decided(root)
+    goals = list(decided.get("goals") or [])
+    for g in unfinished_product_goals(decided):
+        if _goal_matches_transfer(g, title, goal_text):
+            return None
+
+    # supersede: abandon prior unfinished when requested
+    if body.get("supersede_goals") is True or body.get("intent_supersede") is True:
+        for g in goals:
+            if isinstance(g, dict) and str(g.get("status") or "") in (
+                "planned",
+                "probed",
+            ):
+                g["status"] = "abandoned"
+
+    seeded = normalize_goal(
+        {
+            "text": title or goal_text,
+            "exit_condition": exit_c,
+            "status": "planned",
+        }
+    )
+    if not seeded:
+        return None
+    goals.append(seeded)
+    merge_decided(root, {"goals": goals}, updated_by=updated_by)
+    return seeded
+
+
+def match_goal_for_probes(
+    decided: dict[str, Any],
+    *,
+    title: str = "",
+    probes: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Find unfinished goal matching task title or probe exit_condition."""
+    probes = probes or []
+    unfinished = unfinished_product_goals(decided)
+    title_l = (title or "").lower()
+    for g in unfinished:
+        text = str(g.get("text") or "").lower()
+        if text and title_l and (text[:24] in title_l or title_l[:24] in text):
+            return g
+        exit_c = str(g.get("exit_condition") or "").strip()
+        if exit_c and any(exit_c in p or p in exit_c for p in probes):
+            return g
+    return unfinished[0] if len(unfinished) == 1 else None
+
+
 def format_digest(
     *,
     project_id: str,
@@ -438,6 +539,11 @@ def format_digest(
 
     goals = decided.get("goals") or []
     unfinished = unfinished_product_goals(decided)
+    nxt = next_product_goal(decided)
+    if nxt:
+        lines.append(
+            f"【下一产品目标 · next_product_goal】{goal_display(nxt)}"
+        )
     if unfinished:
         lines.append("未完成产品目标（优先推进，勿抢卫生/烟测）：")
         for g in unfinished[:6]:
