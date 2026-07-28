@@ -82,6 +82,8 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - **禁止**正文甩文件路径 / 类名 / pytest / hub 工具名。  
 - **对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「先开源」当收口；qb 对齐 **实盘人确认 + 回测可视化**。  
 - 中间件/运维栈（Redis、plist、Grafana…）与过程旁白（含英文）禁进正文。  
+- **意图卡首轮**：点卡进对话须先 2～4 句人话翻译（禁首轮甩路径/定稿块）；谈妥再定稿。  
+- **审查报告**：粘贴审阅结论 → 白话归纳 → 优化 `ccc-transfer`；CCC 全绿即可标稳定，三方 IDE 非硬门。  
 
 ---
 

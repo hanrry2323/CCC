@@ -2273,14 +2273,7 @@ struct FlowRail: View {
                         Spacer(minLength: 0)
                         if goal.isDiscussable {
                             Button("讨论方案") {
-                                let exit = (goal.exit_condition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                                let body = """
-                                【意图目标 · 讨论方案】
-                                目标：\(goal.text ?? goal.id)
-                                \(exit.isEmpty ? "" : "退出条件：\(exit)\n")
-                                请对齐现状后给出可执行方案；具备条件再出定稿块（ccc-transfer）。勿问我要不要入队。
-                                """
-                                copyToComposer(body)
+                                startIntentDiscuss(goal: goal, projectId: pid)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.mini)
@@ -2296,12 +2289,60 @@ struct FlowRail: View {
                         }
                     }
                     .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard goal.isDiscussable else { return }
+                        startIntentDiscuss(goal: goal, projectId: pid)
+                    }
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(CCCTheme.chatBg)
                     )
                 }
             }
+        }
+    }
+
+    /// 意图卡进对话：自动发送「先人话翻译」提示（Agent 收全文；气泡用短标）
+    private func intentDiscussPrompt(_ goal: MindGoal) -> String {
+        let title = (goal.text ?? goal.id).trimmingCharacters(in: .whitespacesAndNewlines)
+        let exit = (goal.exit_condition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = (goal.status ?? "planned").lowercased()
+        let stageHint: String = {
+            switch status {
+            case "probed": return "探针已过 · 可收口（人可点标记稳定）"
+            default: return "待讨论 / 待开发"
+            }
+        }()
+        return """
+        【意图卡 · 请先人话翻译】
+        goal_id: \(goal.id)
+        目标原文: \(title)
+        当前态: \(stageHint)
+        \(exit.isEmpty ? "" : "exit_condition（勿对老板朗读）: \(exit)\n")
+        硬要求（本轮第一条回复）：
+        1. 用 2～4 句白话说明：这张卡要做成什么、为何重要、现在处在哪一步、我接下来可以怎么选。
+        2. 禁止本轮正文出现文件路径、类名、命令、exit_condition 原文、ccc-transfer。
+        3. 未谈妥前不要定稿；谈妥且我说下达后再出定稿块。定稿时 title/goal 必须对齐上面「目标原文」，以免 intent_not_stable 门禁拒收。
+        4. 勿问我要不要入队。
+        """
+    }
+
+    private func startIntentDiscuss(goal: MindGoal, projectId: String) {
+        let prompt = intentDiscussPrompt(goal)
+        let short = String((goal.text ?? goal.id).prefix(28))
+        if model.canChat {
+            model.sendUserMessage(
+                prompt,
+                projectId: projectId,
+                threadId: window.threadId,
+                stopAndSend: true,
+                displayText: "意图说明 · \(short)"
+            )
+        } else {
+            model.fillComposer(text: prompt, threadId: window.threadId)
+            model.showToast("本机 Agent 未就绪 · 已填入输入框")
         }
     }
 

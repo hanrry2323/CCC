@@ -562,7 +562,7 @@ struct MindGoal: Codable, Identifiable, Equatable, Hashable {
 
     var displayStatus: String {
         switch (status ?? "planned").lowercased() {
-        case "probed": return "等待核验"
+        case "probed": return "探针已过 · 可收口"
         case "planned": return "待讨论"
         case "intent_stable", "stable": return "已稳定"
         default: return (status ?? "planned").lowercased()

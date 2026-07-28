@@ -199,6 +199,8 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 **Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。**对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「开源公开」当收口；谈 qb 成熟度对齐 **B4.2 实盘人确认 + B5 回测可视化**；Redis/plist/Grafana 等禁进正文。
 
+**意图卡人话 + 审查回流（硬 · 2026-07-29）**：点意图卡 /「讨论方案」→ Desktop 自动发「先人话翻译」提示；Agent **首轮** 2～4 句白话（禁路径/`ccc-transfer`）。谈妥 → 定稿 transfer（`title`/`goal` 对齐卡上原文）→ CCC 全绿（`released` + regress `probed`）即可标稳定；**不把**三方 IDE 当核验硬门。人偶发粘贴审查/diff 报告 → Agent 白话归纳 → **优化** `ccc-transfer`（可 `supersede_goals`）。人格：`hub_voice`「意图卡 · 首轮翻译」「审查报告回流」。
+
 #### Desktop 主路径（硬 · 2026-07-24 · 取代四段硬流程）
 
 ```text
