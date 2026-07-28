@@ -375,7 +375,7 @@ struct OpsView: View {
     private var clusterSummarySection: some View {
         let cluster = model.opsSummary?.domains?.cluster
         let downN = cluster?.down_ports_n ?? model.opsOverview?.down_ports?.count ?? 0
-        let engOk = cluster?.engine_running == true
+        let engRunning = cluster?.engine_running
         let mode = cluster?.mode ?? "—"
         let hubOk = cluster?.hub_port_7777 != false
         let tunnelOk = model.serverURLString.contains(":17777")
@@ -384,8 +384,18 @@ struct OpsView: View {
             HStack(spacing: 10) {
                 domainChip(
                     title: "Engine",
-                    tone: engOk ? (mode == "enabled" ? .green : .amber) : .red,
-                    subtitle: engOk ? "运行 · \(mode)" : "停 · \(mode)"
+                    tone: {
+                        if engRunning == true {
+                            return mode == "enabled" ? .green : .amber
+                        }
+                        if engRunning == false { return .red }
+                        return .gray  // null：探针未回，勿误报「停」
+                    }(),
+                    subtitle: {
+                        if engRunning == true { return "运行 · \(mode)" }
+                        if engRunning == false { return "停 · \(mode)" }
+                        return "未知 · \(mode)"
+                    }()
                 )
                 domainChip(
                     title: "Hub",

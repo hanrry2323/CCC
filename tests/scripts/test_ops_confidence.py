@@ -189,7 +189,49 @@ def test_ops_health_envelope_alive_maps_to_ok():
     assert any(a["id"] == "port-7775" for a in env["alerts"])
 
 
-def test_ops_health_envelope_mcp_fail_push_red():
+def test_ops_health_envelope_feiniu_down_is_amber_not_red():
+    """非 CCC 控制面宕口（feiniu Money Printer）不得拉总红。"""
+    from _ops_probe import ops_health_envelope
+
+    env = ops_health_envelope(
+        control={
+            "mode": "enabled",
+            "engine_running": True,
+            "hub_port_7777": True,
+            "invent_hard_disabled": True,
+        },
+        risks={"high": 0, "risks": []},
+        ready={"ok": True, "blockers": []},
+        logistics={"needs_attention": False},
+        resources_history={"summary": {"verdict": "headroom"}},
+        ports={"ports": {"7777": {"ok": True}, "7775": {"ok": True}}},
+        overview={
+            "down_ports": [
+                {
+                    "port": 18080,
+                    "name": "Money Printer Turbo",
+                    "host": "192.168.3.131",
+                    "machine": "feiniu",
+                    "alive": False,
+                }
+            ],
+            "alert_count": 1,
+        },
+        agent_mcp={
+            "ok": None,
+            "mcp_probed": True,
+            "servers": [],
+            "list": [],
+            "failed": [],
+            "note": "未配置 MCP（非红）",
+        },
+    )
+    assert env["severity"] == "amber"
+    assert env["alerts"] == []
+    assert env["domains"]["cluster"]["engine_running"] is True
+    assert env["domains"]["cluster"]["down_ports_n"] == 0
+    assert any("18080" in n or "非CCC" in n for n in (env.get("amber_notes") or []))
+
     from _ops_probe import ops_health_envelope
 
     bad_mcp = {

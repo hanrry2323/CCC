@@ -1340,6 +1340,34 @@ def probe_agent_mcp(*, entries: list[dict[str, Any]] | None = None) -> dict[str,
     }
 
 
+def _is_ccc_control_port_down(dp: dict[str, Any]) -> bool:
+    """True = CCC 控制面宕口（可升红）；False = 业务机/旁路（仅橙）。"""
+    machine = str(dp.get("machine") or "")
+    name = str(dp.get("name") or "")
+    host = str(dp.get("host") or "")
+    try:
+        port = int(dp.get("port") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    # 明确非 CCC
+    if machine in ("feiniu", "M1") or "生产机" in machine:
+        return False
+    if any(
+        k in name.lower()
+        for k in ("money printer", "medio", "ollama", "xianyu")
+    ):
+        return False
+    if host.startswith("192.168.3.131"):  # feiniu
+        return False
+    # CCC 编排口 / Mac2017
+    if port in (7775, 7776, 7777, 7778, 4000, 4002):
+        return True
+    if "Mac 2017" in machine or "CCC" in machine or "CCC" in name:
+        return True
+    # 未知默认不当红（避免外机拉红总灯）
+    return False
+
+
 def ops_health_envelope(
     *,
     control: dict[str, Any] | None = None,
@@ -1445,9 +1473,17 @@ def ops_health_envelope(
                 extra={"port": pnum, "host": (info or {}).get("host")},
             )
     down = ov.get("down_ports") or []
+    ccc_down: list[Any] = []
     if isinstance(down, list):
-        for dp in down[:8]:
+        for dp in down[:12]:
             if isinstance(dp, dict):
+                if not _is_ccc_control_port_down(dp):
+                    # feiniu / Money Printer 等非 CCC 控制面 → 橙，不拉总红
+                    pn = dp.get("port") or dp.get("name")
+                    host = dp.get("host") or dp.get("machine") or ""
+                    amber_notes.append(f"非CCC端口 {pn}@{host} 未响应")
+                    continue
+                ccc_down.append(dp)
                 pn = dp.get("port") or dp.get("name")
                 push_red(
                     f"down-{pn}",
@@ -1458,6 +1494,7 @@ def ops_health_envelope(
                 )
             elif dp:
                 push_red(f"down-{dp}", f"端口异常: {dp}", "", "ports")
+                ccc_down.append(dp)
 
     # --- capacity ---
     summary = hist.get("summary") if isinstance(hist.get("summary"), dict) else {}
@@ -1531,8 +1568,9 @@ def ops_health_envelope(
             "mode": ctrl.get("mode"),
             "hub_port_7777": ctrl.get("hub_port_7777"),
             "ports": ccc_ports,
-            "down_ports_n": len(down) if isinstance(down, list) else 0,
-            "alert_count": ov.get("alert_count"),
+            # 宕口计数只认 CCC 控制面，避免 feiniu 业务口拉红集群灯
+            "down_ports_n": len(ccc_down),
+            "alert_count": len(ccc_down),
         },
         "agent_mcp": mcp_domain,
         # CCC Relay 2026-07-25:三档 tier 用量 + 健康 + cache 命中率
