@@ -21,11 +21,11 @@
 
 ## A — CCC 侧（先决 · 非本清单主体）
 
-- [ ] 权威仓已 register；M1 **无**第二树  
-- [ ] 规划 SSOT = `docs/DEV_PLAN_v1.1.md`（CLAUDE 已声明）  
-- [ ] 业务 epic 验收含可重放探针（白名单；禁散文）  
-- [ ] 至少一笔产品意图：L → regress P → 人点 S（`intent_stable`）  
-- [ ] 空闲时下一卡来自 `next_product_goal`，非卫生 epic 当主业  
+- [x] 权威仓已 register；M1 **无**第二树  
+- [x] 规划 SSOT = `docs/DEV_PLAN_v1.1.md`（CLAUDE 已声明）  
+- [x] 业务 epic 验收含可重放探针（白名单；禁散文）  
+- [x] 至少一笔产品意图：L → regress P → 人点 S（`intent_stable`）— 见 [`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md)（L=commit；tester 全仓假红已诚实记录）  
+- [x] 空闲时下一卡来自 `next_product_goal`，非卫生 epic 当主业（本开程遵守）
 
 （细项见 LPSN 出门清单。）
 
@@ -37,33 +37,33 @@
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B1.1 | 产品 goal 退出条件可执行（回测/纸面/契约命令） | L1 `decided.goals[].exit_condition` |
-| B1.2 | 探针覆盖「钱能不能保住」优先于 alpha | DEV_PLAN VIP→P1 排序可核对 |
-| B1.3 | regress 挂了建回归 epic，不假装完成 | 板面 tid + `failures.jsonl` |
+| B1.1 | 产品 goal 退出条件可执行（回测/纸面/契约命令） | L1 `decided.goals[].exit_condition` — **2026-07-28** `g-a61a67dd84` 已可执行 |
+| B1.2 | 探针覆盖「钱能不能保住」优先于 alpha | DEV_PLAN VIP→P1 排序可核对 — **勾** |
+| B1.3 | regress 挂了建回归 epic，不假装完成 | 板面 tid + `failures.jsonl` — **部分**（见开程 brief） |
 
 ### B2 风控与熔断
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B2.1 | 最大回撤 / 单日亏损上限有硬闸 | 配置 + 单测或纸面跑挂闸日志 |
-| B2.2 | 异常行情 / 连通中断有停机或降级 | runbook + 至少一次演练记录 |
-| B2.3 | 密钥与实盘开关不进对话默认路径 | 控制面/env 分离；禁止 Agent 自开实盘 |
+| B2.1 | 最大回撤 / 单日亏损上限有硬闸 | 配置 + 单测或纸面跑挂闸日志 — **勾**（risk.py + 45 tests） |
+| B2.2 | 异常行情 / 连通中断有停机或降级 | runbook + 至少一次演练记录 — **部分**（paper 双探针；无实盘断连） |
+| B2.3 | 密钥与实盘开关不进对话默认路径 | 控制面/env 分离；禁止 Agent 自开实盘 — **勾**（DRY_RUN 强制） |
 
 ### B3 运行稳定
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B3.1 | 策略/行情进程保活（launchd/systemd 或等价） | plist/unit + `status` 绿 |
-| B3.2 | 崩溃可告警并可一键交 Agent/人 | 告警条或 Ops 红灯样例 |
-| B3.3 | 纸面连续跑窗口达标（时长由 DEV_PLAN 定） | 日志起止 + 无未解释断流 |
+| B3.1 | 策略/行情进程保活（launchd/systemd 或等价） | plist/unit + `status` 绿 — **部分**（guardian/dashboard/dual loaded；缺 gateway/data-engine 模板） |
+| B3.2 | 崩溃可告警并可一键交 Agent/人 | 告警条或 Ops 红灯样例 — **部分**（guardian loaded；未造崩溃样例） |
+| B3.3 | 纸面连续跑窗口达标（时长由 DEV_PLAN 定） | 日志起止 + 无未解释断流 — **勾（薄 65s 双探针）** |
 
 ### B4 盈利与上线（禁止用代码合入替代）
 
 | # | 条件 | 证据 |
 |---|------|------|
-| B4.1 | 纸面/testnet 达成 DEV_PLAN 写明的门槛 | 报告路径或看板指标截图 |
-| B4.2 | 实盘开关有人确认清单（非 Agent 自决） | 签字/会话确认记录 |
-| B4.3 | 「能盈利」只认 B4.1–B4.2，**不认** `released` 张数 | 本表勾选状态 |
+| B4.1 | 纸面/testnet 达成 DEV_PLAN 写明的门槛 | 报告路径或看板指标截图 — **部分**（paper probe PASS） |
+| B4.2 | 实盘开关有人确认清单（非 Agent 自决） | 签字/会话确认记录 — **未勾**（本开程不开实盘） |
+| B4.3 | 「能盈利」只认 B4.1–B4.2，**不认** `released` 张数 | 本表勾选状态 — **勾**（出门句诚实） |
 
 ---
 

@@ -222,7 +222,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
-| 下一开程 | **Layer2 qb 进行中**（[`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md)）；飞轮 T1–T4 / invent **继续冻结** |
+| 下一开程 | **Layer2 qb 进行中**（[`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md)：A 勾；B 部分勾；**未**宣称生产级盈利） |
 
 **Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode **`loop/flash`** → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
 **仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。
