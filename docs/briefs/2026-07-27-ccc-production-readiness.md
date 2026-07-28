@@ -5,7 +5,8 @@
 > SSOT：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」· [`docs/product/dev-channel.md`](../product/dev-channel.md)  
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
-> **更新（2026-07-28）**：Layer1 **已正式出门（小业务）**；Ops 抛光主路径停；**下一开程 = Layer2 qb（个人主路线）**。  
+> **更新（2026-07-28）**：Layer1 **已正式出门（小业务）**；Ops 抛光主路径停。  
+> **更新（2026-07-29）**：**下一开程 = qb 开发收口**（域门 **B4.2 实盘人确认** + **B5 回测可视化**）→ **维护态**；清单见 [`2026-07-27-qb-domain-ship-gate.md`](./2026-07-27-qb-domain-ship-gate.md)。  
 > **通道（同日）**：Relay **付费-only Go**（恰好 1 把启用 + 1 把人切备份）；免费/MiniMax 不进启用池。见 authority「模型通道简规」· [`../relay/KEY-POOL.md`](../relay/KEY-POOL.md)。  
 **下一草稿包**：无强制下一包；草稿工**仅**金路径白名单缺陷。
 

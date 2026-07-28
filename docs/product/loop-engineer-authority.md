@@ -47,19 +47,21 @@
 
 | 项目 | 定位 | 开发 | 日常维护 | 与 CCC |
 |------|------|------|----------|--------|
-| **qb** | CCC 产线养大的业务；后期走**自动化维护**对照 | **CCC**：Desktop 定意图 → Engine → OpenCode；平台本身用 Cursor | 目标：挂 CCC 飞轮/板务（复杂、叠编排） | **绑死**：权威仓在 2017，只经产线改码 |
+| **qb** | CCC 产线养大的**单机 VIP 套利引擎**；开发收口后走**自动化维护**对照 | **CCC**：Desktop 定意图 → Engine → OpenCode；平台本身用 Cursor | 收口后：飞轮 regress + 板务 + bugfix epic | **绑死**：权威仓在 2017，只经产线改码 |
 | **QuantHive** | **更单纯**的交易达成路径 | **Cursor** 把功能开发出来 | **Claude Code** 日常维护即可跑日常交易 | **独立**：不依赖 CCC 也能跑；**禁止**强行灌进 Hub/Engine 主路径 |
 
 | 项 | 口径 |
 |----|------|
 | **给谁** | **仅个人**（不做多用户卖点 / 不做对外产品化主路径） |
 | **对照实验** | qb = 测 CCC 叠加自动化的代价与收益；QuantHive = 测薄工具链能否稳定交易 |
-| **CCC 侧成功** | qb 硬意图走完 LPSN：`code_landed` → 探针可重放 → regress → 人点 `intent_stable`。**禁止**用 `released`/VERSION 冒充业务完成或能盈利 |
+| **CCC 侧成功（开发收口前）** | qb 硬意图走完 LPSN；**且**域门 **B4.2 实盘人确认** + **B5 回测可视化** 绿 → **开发阶段结束 → 维护态**。**禁止**用 `released`/VERSION/开源星数冒充业务完成或能盈利 |
+| **维护态（收口后默认）** | 只认：regress 回归 epic、生产 bugfix（人确认下达）、板务 `hub_repair`。**默认拒**新功能/扩所/跨机/开源公开；须人 `supersede_goals` + 新 L1 goal |
 | **QuantHive 侧成功** | Cursor 交付 + Claude 可维护 → **日常交易可用**（证据链自管；不套 CCC `intent_stable` 冒充） |
-| **停做** | Ops/SPA 抛光主路径；多厂商通道花样；invent；自动 `intent_stable`；把两轨揉成「一个量化大脑」 |
-| **下一开程（CCC）** | Layer2 **qb** 意图闭环（非 Ops 抛光；非免费钥池优化） |
+| **停做** | Ops/SPA 抛光主路径；多厂商通道花样；invent；自动 `intent_stable`；把两轨揉成「一个量化大脑」；用 GitHub 星评 qb |
+| **下一开程（CCC）** | qb **开发收口**：B4.2 实盘人确认 + B5 回测可视化 → 进入维护态（非 Ops 抛光；非开源排行榜） |
 | **知识脑（Codex）** | HP 分域：`domain=qb` / `domain=quanthive`；memory `/codex/topics/qb/` 与 `/codex/topics/quant-hive/` **分树**；交叉对照只写 `/codex/cross-ref/` 且标明「对照非合并」 |
-| **心智入口** | 路径五句 + **双轨独立** + Go 单活跃付费。其余 brief 当附录 |
+| **心智入口** | 路径五句 + **双轨独立** + qb 收口合同 + Go 单活跃付费。其余 brief 当附录 |
+| **域门 SSOT** | [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md)（B1–B5） |
 
 ---
 
@@ -195,7 +197,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 **对用户（硬 · Cursor 级语感）**：短人话先结论；自己跑透镜/心智/**板务**；**禁止**把 `transfer-outbox` / Terminal / Hub CLI / 执行器黑话教给老板；平台词只进 `ccc-transfer` 块内。板堵 → **本会话 `hub_repair`**，不甩锅。
 
-**Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。
+**Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。**对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「开源公开」当收口；谈 qb 成熟度对齐 **B4.2 实盘人确认 + B5 回测可视化**；Redis/plist/Grafana 等禁进正文。
 
 #### Desktop 主路径（硬 · 2026-07-24 · 取代四段硬流程）
 
@@ -389,7 +391,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | 飞轮自动化（已实现 · 2026-07-28） | [`../briefs/2026-07-28-flywheel-auto-open.md`](../briefs/2026-07-28-flywheel-auto-open.md) · T1 seed / T2 probed / T3 人点 stable / T4 next_goal；规划 [`../briefs/2026-07-24-lpsn-flywheel-auto.md`](../briefs/2026-07-24-lpsn-flywheel-auto.md) |
 
 平台只认这一条飞轮；扩 IDE / 堆角色 **不**填这个坑。  
-**硬边界**：平台 Layer1 出门 ≠ 业务 Layer2 出门；`intent_stable` 只证明「意图探针稳定」，不证明实盘盈利或风控达标。
+**硬边界**：平台 Layer1 出门 ≠ 业务 Layer2 出门；`intent_stable` 只证明「意图探针稳定」，不证明实盘盈利或风控达标。qb **开发收口**另须域门 **B4.2 + B5**（见 qb-domain-ship-gate）。
 
 ---
 

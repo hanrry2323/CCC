@@ -18,7 +18,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 **v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
 **四席（硬）**：**Cursor**=CCC合入 + QuantHive开发 · **Claude Code**=本机养机 + QuantHive日常维护 · **OpenCode**=仅 Engine（qb等） · **Codex**=知识/闲聊（双轨分域） · **Desktop**=qb产线控制面。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · authority「四席」「双轨业务」。  
-**双轨（硬）**：**qb**（CCC 养大）∥ **QuantHive**（Cursor+Claude 薄链）**完全独立**；禁止互为别名、禁止 CCC 接管 QuantHive。  
+**双轨（硬）**：**qb**（CCC 养大；收口=实盘人确认+回测可视化→维护态）∥ **QuantHive**（Cursor+Claude 薄链）**完全独立**；禁止互为别名、禁止 CCC 接管 QuantHive。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。  

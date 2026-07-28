@@ -40,10 +40,10 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
-- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；**对老板只聊方案与路线**（非代码路径/技术问答）；技术细节只进 `ccc-transfer`；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看。`plan_md` 与 `goal` 同向（门禁拒 `plan_goal_conflict`）。偶发卫生卡仍强制 `python`（禁假 committer）；板面残卡由**当前会话** `hub_repair` 清，禁止 Engine 卫生 epic 当主业。
+- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；**对老板只聊方案与路线**（非代码路径/技术问答）；技术细节只进 `ccc-transfer`；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看。`plan_md` 与 `goal` 同向（门禁拒 `plan_goal_conflict`）。对标/评分**禁止**以 GitHub 星当主轴、禁止默认「开源公开」当收口；qb 成熟度对齐 **实盘人确认 + 回测可视化**。偶发卫生卡仍强制 `python`（禁假 committer）；板面残卡由**当前会话** `hub_repair` 清，禁止 Engine 卫生 epic 当主业。
 - **App Agent 全功能（硬 · 1A/2A）**：任意项目卡默认 **engineer**（本机 CCC + Hub 含跨仓 `hub_repair`）；业务改码仍 transfer→Engine；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨。
 - **看板管家（硬）**：板务本职 = **当前会话 Agent**。禁止「请打开编排运维」当主路径；禁止教用户手写 `transfer-outbox`/Terminal。运维红灯 → 打开当前项目或 `ccc` 平台会话。
-- **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块。
+- **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块；禁止过程旁白（含英文）。
 - **飞轮自动化（已实现 · 2026-07-28）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-28-flywheel-auto-open.md`（禁止自动 stable / invent）。
 - **Desktop 主路径（取代四段硬流程）**：聊意图（对齐基线=可选深扫，非硬门槛）→ 人确认下达（定稿/转任务）；「下一步」已降级为可选看仓况；核实并入定稿前静默 lens。凡进 backlog epic 必 wake Engine；未扇出须人话阻塞因。板堵本会话自清。
 - **Desktop Agent 双层心智**：L0 不变核仅平台维护；L1 项目脑在 2017 `.ccc/agent-mind/`（系统编译观察 + Agent 提案决策）。禁止 Agent 改 L0 / invent 投卡当记忆。
@@ -74,12 +74,12 @@ alwaysApply: true
 - **产线提效（已落地）**：槽终态必释 / 脏 result 防御 / FAIL revert 必 abort / testing 限预算且先 launch / 短路径硬门 + `dev_path` 埋点 — 见 authority「产线提效综合方案」+ `docs/briefs/2026-07-22-opencode-lifecycle-stall.md`；**禁止**用只加 `MAX_CONCURRENT` 代替修闸门。
 - **三层架构 + loop-code 槽位化（硬 · 2026-07-25）**：① 前端（Desktop/:7788/手机）② 编排（CCC 自研 sidecar/Hub/Engine）③ 运行时**双槽**（对话槽契约=claude-agent-sdk 兼容；写码槽契约=executor-plugins，OpenCode 默认；两槽契约独立勿混）。**`loop-code` 是对话槽的槽位名不是具体工具**；候选=钉版 vendor 构建（现默认）/原版 claude/其他兼容 CLI（须先过 SDK 兼容验证）/SDK 自建。能力增强（supervisor/工人可视化/多 agent）**只做在②**，③保持哑运行时（零实现独有依赖）。**勿再**说 loop-code=「打通原版封闭功能的增强 fork」；vendor 构建价值=供应链稳定件（钉版+SHA256+配置/凭证隔离）。见 authority「三层架构与 loop-code 槽位化」。
 - **同仓多 agent 纪律（硬 · 2026-07-25）**：同一工作树多 agent 并行改码必须 worktree 隔离，否则串行提交；**禁止 `git add -A`/`git add .` 全量提交**，只 add 本任务改动文件；提交前 `git status` 核对无他人改动混入。
-- **双轨业务（硬 · 2026-07-28）**：**qb ∥ QuantHive 完全独立**。qb=CCC 产线养大（后期自动化维护对照）；QuantHive=Cursor 开发 + Claude Code 日常维护（更单纯交易路径）。禁止互为别名/合并知识树/用 CCC 接管 QuantHive。SSOT：authority「双轨业务」。
+- **双轨业务（硬 · 2026-07-28）**：**qb ∥ QuantHive 完全独立**。qb=CCC 产线养大的单机 VIP 套利引擎；**开发收口 = B4.2 实盘人确认 + B5 回测可视化** → 维护态（regress/bugfix/板务）；QuantHive=Cursor 开发 + Claude Code 日常维护。禁止互为别名/合并知识树/用 CCC 接管 QuantHive；禁止用 GitHub 星评 qb。SSOT：authority「双轨业务」· [`docs/briefs/2026-07-27-qb-domain-ship-gate.md`](docs/briefs/2026-07-27-qb-domain-ship-gate.md)。
 - **CCC Relay（硬 · 2026-07-28 · 付费-only 薄垫片）**：主对接仅 **`flash`**（`:4000`/`:4002` 同池；Pro/code 轮空）。Relay=协议翻译 + thinking 关 + **恰好 1 把启用的 Go 付费**（`zen/go/v1`+`deepseek-v4-flash`）；可留第 2 把备份但 `enabled=false`，**人通知后才切**。**三目标**：**快**（sole 跳 peek）· **缓存**（始终 Go prompt cache，KPI≥0.9）· **稳定**（禁 free/proxy/short-cool 空转）。**禁止**免费 Zen/GLM/MiniMax 进启用池。钥权威 2017 `~/.ccc/relay/`。手册：`docs/relay/KEY-POOL.md`。
 - **对话口鉴权（硬 · 2026-07-27）**：sidecar `:7788` 默认 `CCC_AGENT_AUTH=0`，网页 `#/chat` 不弹 Token；Hub Basic Auth 不动。
 - **Desktop Ops 重构（2026-07-27）**：P0–P2 + 009 **已合入收束**；**禁止**再开 Ops/SPA 抛光主路径。生产出门总路线 `docs/briefs/2026-07-27-ccc-production-readiness.md`。
 - **个人 Claude Code（硬 · 2026-07-28）**：**主职=本机运维 + QuantHive 日常维护**；合入仍只认 Cursor；草稿旁路仅金路径白名单缺陷。**禁止** Desktop / Claude / Codex / 个人 OpenCode 合入 CCC。详见 authority「四席工具定位」与「个人 Claude Code」。
-- **生产出门三层（硬 · 2026-07-28）**：Layer0 ≠ Layer1；**Layer1 已正式出门（小业务）**。**下一开程 = Layer2 qb 意图闭环**（CCC 轨）；QuantHive 另轨自管。飞轮最小链路可用，invent / 自动 stable 仍禁。SSOT：`docs/briefs/2026-07-27-ccc-production-readiness.md` · authority「双轨业务」。
+- **生产出门三层（硬 · 2026-07-28）**：Layer0 ≠ Layer1；**Layer1 已正式出门（小业务）**。**下一开程 = qb 开发收口（B4.2 实盘 + B5 回测可视化）→ 维护态**；QuantHive 另轨自管。飞轮最小链路可用，invent / 自动 stable 仍禁。SSOT：`docs/briefs/2026-07-27-ccc-production-readiness.md` · authority「双轨业务」· qb 域门。
 - **经验落盘**：给 Agent/平台自用 → 改 authority + 本 rule + `hub_voice`（+ 必要时 L1 constraint）；**禁止**另堆用户说明书/平行 brief。
 - **平台自动维护**：绿灯（对齐版本、清过时改法、修测、双机热更、止损清场）**不问老板**；红灯仅当 `scripts/ccc-authority-patrol.py` 发现违背权威 → 人话桌面通知 + `~/.ccc/alerts/`。硬卡：`references/authority-patrol.jsonl`。
 - **Ops 运维面（三面之一）**：对话定意图 / 编排跑卡 / **运维 = 给人看的健康灯 + 后台养系统**。Desktop 运维硬规则：**绿**=放心开发下任务；**橙**=可忽略不拦事；**红**=后台优先自愈，人只**一键复制交 Agent**（红=系统/配置问题，不把老板当维修工）。人看四域：总健康｜集群与服务（含端口）｜Agent 与 MCP｜仅红告警条。后台喂灯：日审/飞轮/容量/reap·patrol。Engine=前锋只消费队列；弹药旁路只进 `engine=true` 业务仓；禁 orch；日审 C/E/F 可 apply，D/G/H 升红，I 永不。**invent 硬关保留**。详见 authority「Ops 运维面」。

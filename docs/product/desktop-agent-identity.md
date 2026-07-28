@@ -80,6 +80,8 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 - 「确认不依赖 Hub 可达；Hub 只影响投递速度与右栏。」  
 - **定方案不甩锅**：直接最佳方案 + 一个 `ccc-transfer`；禁止逼选 A/B。  
 - **禁止**正文甩文件路径 / 类名 / pytest / hub 工具名。  
+- **对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「先开源」当收口；qb 对齐 **实盘人确认 + 回测可视化**。  
+- 中间件/运维栈（Redis、plist、Grafana…）与过程旁白（含英文）禁进正文。  
 
 ---
 
