@@ -11,7 +11,9 @@ sys.path.insert(0, str(SCRIPTS))
 from _opencode_quality_gate import (  # noqa: E402
     agent_declared_self_checks_passed,
     detect_hollow_opencode_run,
+    detect_hollow_phase_scope,
     report_has_self_checks_passed,
+    _scope_intersects_names,
 )
 from _task_commit import porcelain_product_paths  # noqa: E402
 from _workspace_isolation import cwd_hardgate_block  # noqa: E402
@@ -33,6 +35,78 @@ def test_detect_external_directory_auto_reject():
 def test_detect_clean_run_ok():
     raw = "wrote README.md\ncommit ok\n"
     assert detect_hollow_opencode_run(raw, "ALL SELF-CHECKS PASSED") is None
+
+
+def test_scope_intersects_names():
+    assert _scope_intersects_names(
+        ["tests/test_ccc_loop_r3_util.py"],
+        ["tests/test_ccc_loop_r3_util.py"],
+    )
+    assert not _scope_intersects_names(
+        ["tests/test_ccc_loop_r3_util.py"],
+        ["scripts/ccc_loop_r3_util.py"],
+    )
+
+
+def test_hollow_phase_reused_commit_without_scope(tmp_path):
+    """phase2 reusing phase1 commit that only touched scripts/ → hollow."""
+    import subprocess
+
+    ws = tmp_path / "app"
+    ws.mkdir()
+    subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"], cwd=ws, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"], cwd=ws, check=True, capture_output=True
+    )
+    (ws / "scripts").mkdir()
+    (ws / "tests").mkdir()
+    (ws / "scripts" / "ccc_loop_r3_util.py").write_text("def f():\n    return 1\n")
+    (ws / "tests" / "test_ccc_loop_r3_util.py").write_text("def test_f():\n    assert True\n")
+    subprocess.run(["git", "add", "-A"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=ws, check=True, capture_output=True
+    )
+    (ws / "scripts" / "ccc_loop_r3_util.py").write_text(
+        "def f():\n    return 1\n\ndef loop_r5_stamp():\n    return 'ok'\n"
+    )
+    subprocess.run(["git", "add", "-A"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "task-r5-w1 phase=1"],
+        cwd=ws,
+        check=True,
+        capture_output=True,
+    )
+    commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ws, text=True
+    ).strip()
+    phases = [
+        {"phase": 1, "status": "done", "commit": commit, "scope": ["scripts/ccc_loop_r3_util.py"]},
+        {
+            "phase": 2,
+            "status": "pending",
+            "commit": commit,
+            "scope": ["tests/test_ccc_loop_r3_util.py"],
+        },
+    ]
+    reason = detect_hollow_phase_scope(
+        ws,
+        phase_num=2,
+        scope=["tests/test_ccc_loop_r3_util.py"],
+        task_commit=commit,
+        phases=phases,
+    )
+    assert reason is not None
+    assert "reused commit" in reason
+    assert detect_hollow_phase_scope(
+        ws,
+        phase_num=1,
+        scope=["scripts/ccc_loop_r3_util.py"],
+        task_commit=commit,
+        phases=phases,
+    ) is None
 
 
 def test_report_marker():

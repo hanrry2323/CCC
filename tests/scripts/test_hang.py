@@ -254,6 +254,7 @@ def test_hang_stash_fail_frees_active_slot(tmp_path, monkeypatch):
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=0), \
+         mock.patch.object(hang, "_opencode_still_alive", return_value=[]), \
          mock.patch.object(hang, "_current_running_phase", return_value=1), \
          mock.patch.object(hang, "try_complete_if_gates_satisfied", return_value=None), \
          mock.patch("engine.active_tasks.release_dev_slot") as release_mock:
@@ -301,6 +302,7 @@ def test_hang_exhausted_returns_freed_and_quarantines(tmp_path, monkeypatch):
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=0) as reap, \
+         mock.patch.object(hang, "_opencode_still_alive", return_value=[]), \
          mock.patch.object(hang, "_current_running_phase", return_value=1), \
          mock.patch.object(hang, "try_complete_if_gates_satisfied", return_value=None):
         freed = hang._run_hang_auto_restart(ws, active)
@@ -312,3 +314,137 @@ def test_hang_exhausted_returns_freed_and_quarantines(tmp_path, monkeypatch):
     assert "hang_detected" in reason
     # post-kill + post-quarantine 至少两次 orphan reap
     assert reap.call_count >= 2
+
+
+def test_hang_no_progress_salvage_before_kill(tmp_path, monkeypatch):
+    """no_progress：先 salvage，成功则不 kill / 不 relaunch。"""
+    from engine import hang
+    from _board_store import FileBoardStore
+
+    ws = _make_ws(tmp_path)
+    store = FileBoardStore(ws)
+    _make_task(store, "t1", col="in_progress")
+    key = f"{ws.resolve()}|t1"
+    active = {
+        key: {
+            "workspace": ws,
+            "task_id": "t1",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+    hung = ws / ".ccc" / "pids" / "t1__p1.hung"
+    hung.write_text(
+        json.dumps({"task_id": "t1", "reason": "no_progress"}) + "\n",
+        encoding="utf-8",
+    )
+    (ws / ".ccc" / "pids" / "t1__p1.pid").write_text("99999")
+
+    counter_file = tmp_path / "engine-hang-retries.json"
+    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
+    hang._hang_retry_counter = {}
+
+    fake_eng = mock.Mock()
+    fake_eng._kill_process_tree = mock.Mock(return_value=True)
+    fake_eng._git_stash_ws = mock.Mock(return_value=True)
+    fake_eng._phase_market_subid = None
+
+    with mock.patch.object(hang, "_eng", return_value=fake_eng), \
+         mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch.object(hang, "_get_store", return_value=store), \
+         mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
+         mock.patch.object(hang, "kill_orphan_opencode", return_value=[]), \
+         mock.patch.object(hang, "_opencode_still_alive", return_value=[]), \
+         mock.patch.object(hang, "_current_running_phase", return_value=1), \
+         mock.patch.object(
+             hang,
+             "try_complete_if_gates_satisfied",
+             return_value={"status": "success"},
+         ), \
+         mock.patch("engine.active_tasks.release_dev_slot") as release_mock, \
+         mock.patch.object(hang, "dev_role_relaunch") as relaunch:
+        freed = hang._run_hang_auto_restart(ws, active)
+
+    assert freed is True
+    assert key not in active
+    fake_eng._kill_process_tree.assert_not_called()
+    relaunch.assert_not_called()
+    release_mock.assert_called()
+
+
+def test_hang_skips_relaunch_when_opencode_alive(tmp_path, monkeypatch):
+    """kill+reap 后 opencode 仍在 → 释槽，禁止 relaunch。"""
+    from engine import hang
+    from _board_store import FileBoardStore
+
+    ws = _make_ws(tmp_path)
+    store = FileBoardStore(ws)
+    _make_task(store, "t1", col="in_progress")
+    key = f"{ws.resolve()}|t1"
+    active = {
+        key: {
+            "workspace": ws,
+            "task_id": "t1",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    }
+    hung = ws / ".ccc" / "pids" / "t1__p1.hung"
+    hung.write_text(json.dumps({"task_id": "t1", "reason": "low_cpu_stale"}), encoding="utf-8")
+    (ws / ".ccc" / "pids" / "t1__p1.pid").write_text("99999")
+
+    counter_file = tmp_path / "engine-hang-retries.json"
+    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
+    hang._hang_retry_counter = {}
+
+    fake_eng = mock.Mock()
+    fake_eng._kill_process_tree = mock.Mock(return_value=False)
+    fake_eng._git_stash_ws = mock.Mock(return_value=True)
+    fake_eng._phase_market_subid = None
+
+    with mock.patch.object(hang, "_eng", return_value=fake_eng), \
+         mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch.object(hang, "_get_store", return_value=store), \
+         mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
+         mock.patch.object(hang, "kill_orphan_opencode", return_value=[]), \
+         mock.patch.object(hang, "_reap_orphans"), \
+         mock.patch.object(hang, "_opencode_still_alive", return_value=[(4242, 10)]), \
+         mock.patch.object(hang, "_current_running_phase", return_value=1), \
+         mock.patch.object(hang, "try_complete_if_gates_satisfied", return_value=None), \
+         mock.patch("engine.active_tasks.release_dev_slot") as release_mock, \
+         mock.patch.object(hang, "dev_role_relaunch") as relaunch:
+        freed = hang._run_hang_auto_restart(ws, active)
+
+    assert freed is True
+    assert key not in active
+    relaunch.assert_not_called()
+    fake_eng._git_stash_ws.assert_not_called()
+    release_mock.assert_called()
+
+
+def test_kill_process_tree_tries_killpg(monkeypatch):
+    """kill_process_tree 优先 killpg session。"""
+    from engine import process as proc
+
+    calls: list[tuple] = []
+
+    def fake_getpgid(pid):
+        return 5555
+
+    def fake_killpg(pgid, sig):
+        calls.append(("killpg", pgid, sig))
+        if sig == 15:  # SIGTERM — pretend still alive until SIGKILL
+            return None
+        raise ProcessLookupError()
+
+    def fake_kill(pid, sig):
+        calls.append(("kill", pid, sig))
+        if sig == 0:
+            raise ProcessLookupError()
+        return None
+
+    monkeypatch.setattr(proc.os, "getpgid", fake_getpgid)
+    monkeypatch.setattr(proc.os, "killpg", fake_killpg)
+    monkeypatch.setattr(proc.os, "kill", fake_kill)
+    monkeypatch.setattr(proc.time, "sleep", lambda *_: None)
+
+    assert proc.kill_process_tree(1234) is True
+    assert any(c[0] == "killpg" for c in calls)

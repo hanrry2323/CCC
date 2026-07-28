@@ -239,6 +239,26 @@ def build_plan_md(body: dict[str, Any]) -> str:
     )
 
 
+def _looks_like_util_probe_transfer(body: dict[str, Any]) -> bool:
+    """Single-file open-intent / scripts/*_probe.py mechanical transfer."""
+    title = str(body.get("title") or "").lower()
+    goal = str(body.get("goal") or "").lower()
+    plan = str(body.get("plan_md") or "").lower()
+    blob = f"{title}\n{goal}\n{plan}"
+    markers = (
+        "open-intent",
+        "open_intent",
+        "开放意图",
+        "ccc_open_intent",
+        "util_probe",
+    )
+    if any(m in blob for m in markers):
+        return True
+    if "scripts/" in blob and "_probe.py" in blob and "paper_intent_probe" not in blob:
+        return True
+    return False
+
+
 def resolve_complexity(body: dict[str, Any]) -> str:
     """归一 complexity；多步回归/冒烟禁止落 small（否则扇出强制单卡易 hang）。"""
     raw = str(body.get("complexity") or "medium").strip().lower()
@@ -246,6 +266,16 @@ def resolve_complexity(body: dict[str, Any]) -> str:
         raw = "small"
     if raw not in ("small", "medium", "large"):
         raw = "medium"
+
+    # Mechanical util/open-intent probes: allow small (metadata); reviewer uses util_probe kind
+    if _looks_like_util_probe_transfer(body) and raw == "medium":
+        acceptance = body.get("acceptance") or []
+        if not isinstance(acceptance, list):
+            acceptance = [acceptance]
+        acc_lines = [str(a) for a in acceptance if str(a).strip()]
+        if 0 < len(acc_lines) <= 3:
+            return "small"
+
     if raw != "small":
         return raw
 
@@ -322,11 +352,15 @@ def resolve_executor_intent(body: dict[str, Any]) -> str:
             "纸面探针",
             "script-seed",
             "intent-probe",
+            "open-intent",
+            "open_intent",
+            "开放意图",
+            "ccc_open_intent",
         )
     ) or (
         "探针" in title
         and not any(k in title for k in ("模块", "功能", "实现", "文档", "计数"))
-    )
+    ) or _looks_like_util_probe_transfer(body)
     if (hygiene or probe_epic) and intent in ("opencode", "auto", ""):
         return "python"
 

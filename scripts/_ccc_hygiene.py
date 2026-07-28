@@ -128,6 +128,7 @@ def task_skips_forced_pytest(
                 "script_seed",
                 "board_ops",
                 "feature_seed",
+                "util_probe",
             ):
                 return True
         except (OSError, json.JSONDecodeError) as exc:

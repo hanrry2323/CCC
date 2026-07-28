@@ -623,8 +623,23 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
                 ws, tid, commit=find_task_commit(ws, tid) or ""
             )
             if _acc.get("ok"):
-                skip_pytest = True
-                skip_reason = "acceptance_ok"
+                # R5：existence-only 验收绿不得跳过全仓 pytest
+                try:
+                    from _acceptance_strength import cmds_are_existence_only
+
+                    if cmds_are_existence_only(list(_acc.get("cmds") or [])):
+                        skip_pytest = False
+                        skip_reason = ""
+                        _engine_log(
+                            f"[{label}] {tid} acceptance existence-only "
+                            "→ keep engine pytest"
+                        )
+                    else:
+                        skip_pytest = True
+                        skip_reason = "acceptance_ok"
+                except Exception:
+                    skip_pytest = True
+                    skip_reason = "acceptance_ok"
         except Exception as exc:
             _engine_log(f"[{label}] {tid} acceptance skip-pytest probe: {exc}")
     if skip_pytest:
@@ -757,7 +772,7 @@ def _testing_gate_budget() -> tuple[int, float]:
 
 
 _SHORT_GATE_PATHS = frozenset(
-    {"script_seed", "feature_seed", "board_ops", "doc_only"}
+    {"script_seed", "feature_seed", "board_ops", "doc_only", "util_probe"}
 )
 
 
@@ -778,7 +793,16 @@ def _is_short_gate_task(ws: Path, task: dict) -> bool:
     tid = str(task.get("id") or "")
     if not tid:
         return False
-    return _result_dev_path(ws, tid) in _SHORT_GATE_PATHS
+    if _result_dev_path(ws, tid) in _SHORT_GATE_PATHS:
+        return True
+    try:
+        from board.roles.script_seed import should_use_util_probe
+
+        if should_use_util_probe(ws, task):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _ordered_testing_tasks(ws: Path, store) -> list[dict]:

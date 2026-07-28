@@ -57,6 +57,34 @@ HYGIENE_TITLE_MARKERS = (
 )
 
 
+def _strip_quoted_regions(s: str) -> str:
+    """Drop '...'/\"...\" spans so shell-meta checks ignore ``python3 -c`` payloads.
+
+    Without this, ``assert a(); assert b()`` inside ``-c "..."`` is rejected for
+    ``;`` and truncated to a useless partial probe (Desktop R5 false-green).
+    """
+    out: list[str] = []
+    i = 0
+    n = len(s or "")
+    while i < n:
+        ch = s[i]
+        if ch in ("'", '"'):
+            q = ch
+            i += 1
+            while i < n and s[i] != q:
+                if s[i] == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                i += 1
+            if i < n:
+                i += 1
+            out.append(" ")
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def strip_env_prefix(cmd: str) -> tuple[str, str]:
     """Return (env_prefix_including_trailing_space_or_empty, remainder)."""
     c = (cmd or "").strip()
@@ -70,8 +98,9 @@ def is_allowed_verify_cmd(cmd: str) -> bool:
     c = (cmd or "").strip()
     if not c or "\n" in c or "\r" in c:
         return False
+    check = _strip_quoted_regions(c)
     for bad in _SHELL_META:
-        if bad in c:
+        if bad in check:
             return False
     _, rem = strip_env_prefix(c)
     if not rem:

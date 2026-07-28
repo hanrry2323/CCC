@@ -443,6 +443,121 @@ def should_use_feature_seed(ws: Path, task: dict[str, Any]) -> bool:
     return exec_id in ("python", "auto", "cli", "opencode", "")
 
 
+_UTIL_PROBE_SCOPE_RE = re.compile(
+    r"^scripts/[\w.\-]+_probe\.py$",
+    re.IGNORECASE,
+)
+_UTIL_PROBE_TITLE_MARKERS = (
+    "open-intent",
+    "open_intent",
+    "开放意图",
+    "ccc_open_intent",
+    "util_probe",
+    "util-probe",
+)
+
+
+def _util_probe_py_scopes(ws: Path, tid: str) -> list[str]:
+    """Normalize phase scopes that look like scripts/*_probe.py (not paper)."""
+    out: list[str] = []
+    for s in _scopes(ws, tid):
+        s_n = s.replace("\\", "/").lstrip("./")
+        if "paper_intent_probe" in s_n.lower():
+            continue
+        if _UTIL_PROBE_SCOPE_RE.match(s_n) or (
+            s_n.startswith("scripts/")
+            and s_n.endswith("_probe.py")
+            and "/" not in s_n[len("scripts/") :]
+        ):
+            out.append(s_n)
+    return out
+
+
+def looks_like_mechanical_util_probe(ws: Path, task: dict[str, Any]) -> bool:
+    """True for single-file util/open-intent probes — deterministic review.
+
+    Matches open-intent R7–R9 style cards: ``scripts/*_probe.py`` (+ optional
+    sibling ``tests/test_*_probe.py``) with allowlisted acceptance only.
+    Excludes paper_intent_probe (script_seed) and docs/golden stamps.
+    """
+    if looks_like_intent_probe_seed(ws, task):
+        return False
+    if _feature_probe_target(ws, task):
+        return False
+
+    tid = str(task.get("id") or "")
+    blob = _blob_for_task(ws, task)
+    golden_stamps = (
+        "golden_path",
+        "golden-path",
+        "golden path",
+        "文档戳记",
+        "金路径",
+        "docs stamp",
+    )
+    if any(s in blob for s in golden_stamps):
+        return False
+
+    scopes = [s.replace("\\", "/").lstrip("./") for s in _scopes(ws, tid)]
+    probe_scopes = _util_probe_py_scopes(ws, tid)
+    title_l = str(task.get("title") or "").lower()
+    title_hit = any(m in title_l or m in blob for m in _UTIL_PROBE_TITLE_MARKERS)
+
+    # Allow optional companion test file alongside one probe module
+    code_scopes = [
+        s
+        for s in scopes
+        if s.endswith(".py")
+        and not s.startswith(".ccc/")
+        and "paper_intent" not in s.lower()
+    ]
+    if probe_scopes:
+        # At most one probe module; other py may only be tests/test_* matching it
+        if len(probe_scopes) > 1:
+            return False
+        probe = probe_scopes[0]
+        stem = Path(probe).stem  # e.g. ccc_open_intent_r8_probe
+        for s in code_scopes:
+            if s == probe:
+                continue
+            if s.startswith("tests/") and stem in s.replace("\\", "/"):
+                continue
+            # Non-matching py scope → not mechanical util probe
+            return False
+    elif title_hit:
+        # Title-only open-intent: require plan acceptance probes (checked below)
+        pass
+    else:
+        return False
+
+    # Acceptance must be allowlisted verify cmds (and non-empty when title-only)
+    plan = ws / ".ccc" / "plans" / f"{tid}.plan.md"
+    plan_text = ""
+    if plan.is_file():
+        plan_text = plan.read_text(encoding="utf-8", errors="replace")
+    cmds: list[str] = []
+    try:
+        from _intent_probe import extract_probe_commands, is_allowed_verify_cmd
+
+        cmds = extract_probe_commands(plan_text) if plan_text else []
+        if not cmds and title_hit and not probe_scopes:
+            return False
+        if cmds and not all(is_allowed_verify_cmd(c) for c in cmds):
+            return False
+        if not cmds and not probe_scopes:
+            return False
+    except Exception as exc:
+        _log.debug("util_probe acceptance check: %s", exc)
+        return False
+
+    return bool(probe_scopes or (title_hit and cmds))
+
+
+def should_use_util_probe(ws: Path, task: dict[str, Any]) -> bool:
+    """Reviewer/gates: route mechanical util probes to deterministic path."""
+    return looks_like_mechanical_util_probe(ws, task)
+
+
 def run_feature_seed(ws: Path, tid: str) -> dict[str, Any]:
     """Write scripts/*_feature_probe.py (not paper_intent_probe) + report + commit."""
     import time as _time

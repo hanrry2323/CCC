@@ -71,7 +71,8 @@ def test_doc_only_acceptance_does_not_append_cov_suite(tmp_path: Path):
     assert not any("cov-fail-under" in c for c in cmds)
 
 
-def test_business_card_still_appends_cov_when_no_pytest(tmp_path: Path):
+def test_empty_plan_falls_back_to_scripts_pytest_not_cov(tmp_path: Path):
+    """No plan probes → scripts/ tests fallback; cov only when that path lacks pytest."""
     from board.roles.tester import build_tester_verify_commands
 
     ws = tmp_path / "app"
@@ -82,9 +83,38 @@ def test_business_card_still_appends_cov_when_no_pytest(tmp_path: Path):
     (ws / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
         json.dumps({"phase": 1, "scope": ["src/main.py"]}) + "\n", encoding="utf-8"
     )
-    plan_cmds = ["python3 -c 'print(1)'"]
     cmds, skip = build_tester_verify_commands(
-        ws, tid, plan_commands=plan_cmds, task_meta={"id": tid, "title": "feature"}
+        ws, tid, plan_commands=[], task_meta={"id": tid, "title": "feature"}
     )
     assert skip is False
-    assert any("cov-fail-under" in c for c in cmds)
+    assert any("pytest" in c for c in cmds)
+    # scripts fallback already contains pytest → cov suite is not piled on
+    assert not any("cov-fail-under" in c for c in cmds)
+
+
+def test_plan_probes_do_not_append_cov_suite(tmp_path: Path):
+    """Open-intent / script_seed: plan python3 -c assert must not force qb cov."""
+    from board.roles.tester import build_tester_verify_commands
+
+    ws = tmp_path / "qb"
+    tid = "open-intent-r7-w1"
+    (ws / ".ccc" / "reports").mkdir(parents=True)
+    (ws / ".ccc" / "phases").mkdir(parents=True)
+    (ws / "pyproject.toml").write_text("[project]\nname='qb'\n", encoding="utf-8")
+    (ws / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
+        json.dumps({"phase": 1, "scope": ["scripts/ccc_open_intent_r7_probe.py"]})
+        + "\n",
+        encoding="utf-8",
+    )
+    plan_cmds = [
+        "test -f scripts/ccc_open_intent_r7_probe.py",
+        "python3 -m py_compile scripts/ccc_open_intent_r7_probe.py",
+        "python3 -c \"from scripts.ccc_open_intent_r7_probe import open_intent_r7_ok; "
+        "assert open_intent_r7_ok() == 'CCC_OPEN_INTENT_R7_OK v0.63'\"",
+    ]
+    cmds, skip = build_tester_verify_commands(
+        ws, tid, plan_commands=plan_cmds, task_meta={"id": tid, "title": "R7"}
+    )
+    assert skip is False
+    assert cmds == plan_cmds
+    assert not any("cov-fail-under" in c for c in cmds)

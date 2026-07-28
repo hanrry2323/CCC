@@ -430,10 +430,28 @@ def validate_plan_acceptance(
         try:
             from _intent_probe import extract_probe_commands
 
-            if not extract_probe_commands(plan_text):
+            cmds = extract_probe_commands(plan_text)
+            if not cmds:
                 errors.append(
                     "plan acceptance missing replayable intent probe command"
                 )
+            else:
+                from _acceptance_strength import (
+                    is_strong_enough,
+                    plan_is_hygiene_or_ops,
+                )
+
+                ok_s, reason_s = is_strong_enough(
+                    cmds,
+                    require_strong=True,
+                    exempt=plan_is_hygiene_or_ops(plan_text),
+                )
+                if not ok_s:
+                    errors.append(
+                        f"plan acceptance too weak ({reason_s}): "
+                        "need python3 -c/assert, pytest, grep, or DRY_RUN — "
+                        "not test -f only"
+                    )
         except ImportError as e:
             _log.debug("phase_lint intent_probe import: %s", e)
     return (len(errors) == 0), errors

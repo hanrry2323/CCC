@@ -59,6 +59,12 @@ def test_acceptance_runs_dry_run_probe(tmp_path: Path):
     ws = tmp_path / "app"
     ws.mkdir()
     subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"], cwd=ws, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"], cwd=ws, check=True, capture_output=True
+    )
     (ws / "scripts").mkdir()
     (ws / "scripts" / "paper_intent_probe.py").write_text(
         "import os,sys\n"
@@ -72,6 +78,10 @@ def test_acceptance_runs_dry_run_probe(tmp_path: Path):
         "## 验收\n"
         "- DRY_RUN=true python3 scripts/paper_intent_probe.py\n",
         encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "-A"], cwd=ws, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init probe"], cwd=ws, check=True, capture_output=True
     )
     r = check_acceptance(ws, tid, commit="HEAD")
     assert r["ok"] is True

@@ -533,20 +533,48 @@ def apply_fanout(
 
     children: list[dict] = []
     seen: set[str] = set()
-    for i, raw in enumerate(children_raw):
-        ch = _normalize_child(
-            raw,
-            epic_id=epic_id,
-            idx=i,
-            max_phases=max_phases,
-            workspace=store.workspace,
-        )
-        if ch["id"] == epic_id:
-            raise ValueError("child id must differ from epic")
-        if ch["id"] in seen:
-            raise ValueError(f"duplicate child id {ch['id']}")
-        seen.add(ch["id"])
-        children.append(ch)
+    work_raw = list(children_raw)
+    repaired_acceptance = False
+    for attempt in (0, 1):
+        children = []
+        seen = set()
+        try:
+            for i, raw in enumerate(work_raw):
+                ch = _normalize_child(
+                    raw,
+                    epic_id=epic_id,
+                    idx=i,
+                    max_phases=max_phases,
+                    workspace=store.workspace,
+                )
+                if ch["id"] == epic_id:
+                    raise ValueError("child id must differ from epic")
+                if ch["id"] in seen:
+                    raise ValueError(f"duplicate child id {ch['id']}")
+                seen.add(ch["id"])
+                children.append(ch)
+            break
+        except ValueError as exc:
+            err_s = str(exc)
+            if attempt == 0 and "plan_lint" in err_s.lower():
+                epic_plan = ""
+                try:
+                    pp = store.workspace / ".ccc" / "plans" / f"{epic_id}.plan.md"
+                    if pp.is_file():
+                        epic_plan = pp.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    pass
+                if not epic_plan:
+                    epic_plan = epic_brief or ""
+                work_raw = _repair_seeded_child_plans(work_raw, epic_plan=epic_plan)
+                repaired_acceptance = True
+                _log.warning(
+                    "[fanout] %s plan_lint → repair acceptance + retry once: %s",
+                    epic_id,
+                    err_s[:200],
+                )
+                continue
+            return {"ok": False, "error": err_s}
 
     _backfill_depends_on_tasks_from_epic_phases(
         store.workspace, epic_id, children
@@ -695,7 +723,14 @@ def apply_fanout(
     except Exception as e:
         _log.debug("product_fanout flow_event append: %s", e)
 
-    return {"ok": True, "child_ids": created, "color_group": color_group}
+    out: dict[str, Any] = {
+        "ok": True,
+        "child_ids": created,
+        "color_group": color_group,
+    }
+    if repaired_acceptance:
+        out["repaired_acceptance"] = True
+    return out
 
 
 _FLOW_PAST_PLANNED = frozenset(
@@ -722,10 +757,35 @@ def _scope_paths(phase: dict) -> list[str]:
 
 
 def _probe_touches_scope(cmd: str, scope: list[str]) -> bool:
+    """True if cmd mentions a scope path — including dotted import form.
+
+    Epic probes often use ``python3 -c "from scripts.foo import ..."`` while
+    phase.scope lists ``scripts/foo.py``. Substring match on the slash path
+    alone drops the hard assert and leaves only ``test -f`` / old pytest
+    (Desktop R5 false-green, 2026-07-28).
+    """
     if not scope:
         return True
     c = cmd or ""
-    return any(p in c for p in scope)
+    for p in scope:
+        if not p:
+            continue
+        if p in c:
+            return True
+        # scripts/foo.py → scripts.foo (and foo for bare import)
+        norm = p.replace("\\", "/").strip("/")
+        if norm.endswith(".py"):
+            dotted = norm[:-3].replace("/", ".")
+            if dotted and dotted in c:
+                return True
+            stem = dotted.rsplit(".", 1)[-1]
+            if stem and (
+                f"import {stem}" in c
+                or f"from {dotted}" in c
+                or f"from {stem}" in c
+            ):
+                return True
+    return False
 
 
 def _acceptance_bullets_for_phase(
@@ -784,6 +844,13 @@ def _acceptance_bullets_for_phase(
     # 禁止散文种子；scope 已在上方抽 path/cmd；仍空则给仓内必存在目录
     if not bullets:
         bullets.append("test -d .ccc/board")
+    # R5：纯 existence-only → 补 py_compile，避免 plan_lint/gate 拦死或假绿
+    try:
+        from _acceptance_strength import strengthen_existence_bullets
+
+        bullets = strengthen_existence_bullets(bullets, scope)
+    except Exception as exc:
+        _log.debug("strengthen_existence_bullets: %s", exc)
     return bullets
 
 

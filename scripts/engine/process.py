@@ -41,7 +41,45 @@ def collect_grandchildren(pid: int, acc: list[int]) -> None:
 
 
 def kill_process_tree(pid: int) -> bool:
-    """发 SIGTERM→等→SIGKILL 递归子进程。返回 True 表示进程最终已死。"""
+    """发 SIGTERM→等→SIGKILL；优先 killpg(session)，再递归子进程。
+
+    Returns True 表示目标进程最终已死（或不存在）。
+    hang-auto 路径依赖 session kill：runner bash 的 node 孙进程常不在
+    ``pgrep -P`` 直接树里，仅杀 runner 会留下 opencode 占槽。
+    """
+    # 1) Process group / session (matches opencode-runner.sh + salvage)
+    try:
+        pgid = os.getpgid(pid)
+    except (ProcessLookupError, PermissionError, OSError):
+        pgid = None
+    if pgid is not None and pgid > 0:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            return True
+        except (PermissionError, OSError) as exc:
+            _log.debug("killpg SIGTERM pgid=%s: %s", pgid, exc)
+        else:
+            time.sleep(2)
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            except (PermissionError, OSError):
+                pass
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError) as exc:
+                _log.debug("killpg SIGKILL pgid=%s: %s", pgid, exc)
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            except (PermissionError, OSError):
+                return True
+
+    # 2) Fallback: pgrep tree + parent (legacy)
     children: list[int] = []
     try:
         r = subprocess.run(

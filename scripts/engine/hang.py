@@ -458,6 +458,26 @@ def _force_release_hang_slot(
     active_tasks.pop(key, None)
 
 
+def _hung_reason(hung_path: Path) -> str:
+    try:
+        data = json.loads(hung_path.read_text(encoding="utf-8", errors="replace"))
+        if isinstance(data, dict):
+            return str(data.get("reason") or "").strip()
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    return ""
+
+
+def _opencode_still_alive(ws: Path) -> list[tuple[int, int]]:
+    try:
+        from _opencode_reap import list_opencode_for_workspace
+
+        return list_opencode_for_workspace(Path(ws).resolve())
+    except Exception as exc:
+        _engine_log(f"hang-auto list_opencode: {exc}")
+        return []
+
+
 def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
     """扫描 hung phase：kill→收尸→salvage/relaunch 或释槽。
 
@@ -473,9 +493,10 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
     pids_dir = ws / ".ccc" / "pids"
     freed = False
 
-    # Reap zombie opencode that blocks same-workspace serialization
+    # Any .hung → reap young orphans immediately (default 600s lets them block relaunch)
+    has_hung = bool(list(pids_dir.glob("*.hung"))) if pids_dir.is_dir() else False
     try:
-        kill_orphan_opencode(ws)
+        kill_orphan_opencode(ws, max_age_sec=0 if has_hung else 600)
     except Exception as exc:
         _engine_log(f"[{label}] orphan-opencode sweep: {exc}")
 
@@ -507,10 +528,41 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
             continue
 
         retries = _hang_retry_counter.get(key, 0)
+        hung_reason = _hung_reason(hung_path)
         _engine_log(
             f"[{label}] hang-auto: {tid} phase {cur_phase} 标记 hung "
-            f"(auto-retry {retries + 1}/{_MAX_HANG_RETRY})"
+            f"(auto-retry {retries + 1}/{_MAX_HANG_RETRY} reason={hung_reason or '?'})"
         )
+
+        def _do_salvage() -> dict | None:
+            try:
+                return try_complete_if_gates_satisfied(tid)
+            except Exception as exc:
+                _engine_log(f"[{label}] hang-auto: {tid} salvage 异常: {exc}")
+                return None
+
+        def _finish_salvage(salvaged: dict) -> bool:
+            nonlocal freed
+            if not (salvaged and salvaged.get("status") == "success"):
+                return False
+            _engine_log(
+                f"[{label}] hang-auto: {tid} gates satisfied → salvage testing "
+                f"(skip relaunch)"
+            )
+            _clear_hung_marker(hung_path, label)
+            _hang_retry_counter.pop(key, None)
+            _save_hang_retry_counter()
+            from engine.active_tasks import release_dev_slot
+
+            release_dev_slot(active_tasks, ws, tid, reap=True)
+            active_tasks.pop(key, None)
+            freed = True
+            return True
+
+        # no_progress: salvage BEFORE kill — deliverables often already on disk
+        if hung_reason == "no_progress":
+            if _finish_salvage(_do_salvage() or {}):
+                continue
 
         pid_path = pids_dir / f"{subid}.pid"
         pid: int | None = None
@@ -534,27 +586,35 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} 进程树已 kill")
             else:
                 _engine_log(f"[{label}] hang-auto: {tid} PID={pid} kill 失败，继续")
+                # Stale pid confuses claimed_alive / same-ws mutex
+                try:
+                    if pid_path.is_file():
+                        pid_path.unlink()
+                except OSError as exc:
+                    _engine_log(f"[{label}] hang-auto: unlink stale pid: {exc}")
         # kill 失败 / 缺 pid 也必收尸：同仓互斥靠 --dir 叶子
         _reap_orphans(ws, label, tid, tag="post-kill")
 
         # A2: 门禁已满足 → 收口 testing，禁止 relaunch
-        try:
-            salvaged = try_complete_if_gates_satisfied(tid)
-        except Exception as exc:
-            _engine_log(f"[{label}] hang-auto: {tid} salvage 异常: {exc}")
-            salvaged = None
-        if salvaged and salvaged.get("status") == "success":
+        if _finish_salvage(_do_salvage() or {}):
+            continue
+
+        # Still-alive opencode after kill+reap → never relaunch (db lock collision)
+        still = _opencode_still_alive(ws)
+        if still:
             _engine_log(
-                f"[{label}] hang-auto: {tid} gates satisfied → salvage testing "
-                f"(skip relaunch)"
+                f"[{label}] hang-auto: {tid} opencode still alive after reap "
+                f"pids={[p for p, _ in still]} → 释槽不 relaunch"
             )
             _clear_hung_marker(hung_path, label)
-            _hang_retry_counter.pop(key, None)
-            _save_hang_retry_counter()
-            from engine.active_tasks import release_dev_slot
-
-            release_dev_slot(active_tasks, ws, tid, reap=True)
-            active_tasks.pop(key, None)
+            _force_release_hang_slot(
+                ws=ws,
+                tid=tid,
+                key=key,
+                active_tasks=active_tasks,
+                label=label,
+                reason="opencode still alive after reap",
+            )
             freed = True
             continue
 

@@ -303,6 +303,31 @@ def check_acceptance(
                     "cmds": cmds,
                     "paths": dirty,
                 }
+        # R5：存在性-only 验收不得当业务真绿
+        try:
+            from _acceptance_strength import (
+                is_strong_enough,
+                task_exempt_from_strength,
+            )
+
+            exempt = task_exempt_from_strength(ws, tid) or (
+                allow_prose is True
+            ) or (
+                allow_prose is None and _allow_prose_acceptance(ws, tid)
+            )
+            ok_s, reason_s = is_strong_enough(
+                cmds, require_strong=True, exempt=exempt
+            )
+            if not ok_s:
+                return {
+                    "ok": False,
+                    "reason": reason_s,
+                    "ran": ran,
+                    "bullets": bullets,
+                    "cmds": cmds,
+                }
+        except Exception as exc:
+            _log.debug("acceptance strength: %s", exc)
         return {
             "ok": True,
             "reason": "acceptance_cmds_ok",

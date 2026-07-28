@@ -854,7 +854,25 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
         )
 
     cur_phase = _current_running_phase(task_id) or 1
-    # 记录 commit 到 phases + mark done
+    # hollow phase：salvage 不得绕过 scope 触碰检查
+    try:
+        from _opencode_quality_gate import detect_hollow_phase_scope
+
+        _ph_hollow = detect_hollow_phase_scope(
+            ws,
+            phase_num=int(cur_phase),
+            scope=_phase_scope(task_id, int(cur_phase)),
+            task_commit=commit or "",
+            phases=_load_phases(task_id),
+        )
+    except Exception as _ph_exc:
+        _log.warning("[salvage] %s hollow-phase check error: %s", task_id, _ph_exc)
+        _ph_hollow = None
+    if _ph_hollow:
+        _log.warning("[salvage] %s refused: %s", task_id, _ph_hollow)
+        return None
+
+    # 记录 commit 到 phases + mark done（仅当前 phase）
     phases_file = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
     if phases_file.is_file():
         try:
@@ -1362,6 +1380,7 @@ def dev_role_check_complete(task_id: str) -> dict:
             except OSError as e:
                 _log.warning("success marker unlink failed %s: %s", p, e)
         # G1/H1: 仅记录 git log --grep=task_id 的 commit（禁止 HEAD 降级）
+        # 只给【当前 phase】打 commit，禁止 setdefault 污染后续 phase（R5 phase2 空心复用）
         _phases_file = get_workspace() / ".ccc" / "phases" / f"{task_id}.phases.json"
         _hash = _find_task_commit_hash(task_id)
         if _phases_file.exists() and _hash:
@@ -1376,8 +1395,8 @@ def dev_role_check_complete(task_id: str) -> dict:
                         _d = json.loads(_line)
                         if "schema_version" in _d:
                             _d["commit"] = _hash
-                        else:
-                            _d.setdefault("commit", _hash)
+                        elif int(_d.get("phase", -1)) == int(cur_phase):
+                            _d["commit"] = _hash
                         _updated.append(json.dumps(_d, ensure_ascii=False) + "\n")
                     except json.JSONDecodeError:
                         _updated.append(_line + "\n")
@@ -1390,6 +1409,28 @@ def dev_role_check_complete(task_id: str) -> dict:
                 "[commit-gate] %s exit_code=0 但无含 task_id 的 commit（不记 HEAD）",
                 task_id,
             )
+        # hollow phase：phase>1 必须真正改到本 phase.scope（禁复用上一 phase commit）
+        try:
+            from _opencode_quality_gate import detect_hollow_phase_scope
+
+            _ph_hollow = detect_hollow_phase_scope(
+                get_workspace(),
+                phase_num=int(cur_phase),
+                scope=_phase_scope(task_id, int(cur_phase)),
+                task_commit=_hash or "",
+                phases=_load_phases(task_id),
+            )
+        except Exception as _ph_exc:
+            _log.warning("[hollow-phase] %s check error: %s", task_id, _ph_exc)
+            _ph_hollow = None
+        if _ph_hollow:
+            _log.error("[hollow-phase] %s: %s", task_id, _ph_hollow)
+            return {
+                "status": "failed",
+                "retry": 0,
+                "task_id": task_id,
+                "error": f"hollow-phase: {_ph_hollow}",
+            }
         # v0.38: 多 phase 续跑 — 先 peek 是否终态；终态则 H1 commit 门禁通过后再 mark done
         _phases_peek = []
         for _p in _load_phases(task_id):

@@ -140,6 +140,67 @@ def test_detect_review_kind_script_seed(ws_git: Path, monkeypatch):
     assert kind == "script_seed"
 
 
+def test_detect_review_kind_util_probe_open_intent(ws_git: Path):
+    """Open-intent single-file probe → util_probe even with complexity=medium."""
+    from board.context import set_workspace
+    from board.roles import reviewer as rev
+
+    set_workspace(ws_git)
+    tid = "open-intent-r8-w1"
+    (ws_git / ".ccc" / "phases").mkdir(parents=True, exist_ok=True)
+    (ws_git / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
+        json.dumps(
+            {
+                "phase": 1,
+                "scope": [
+                    "scripts/ccc_open_intent_r8_probe.py",
+                    "tests/test_ccc_open_intent_r8_probe.py",
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        "# Plan\n\n## 验收\n"
+        "- python3 -m py_compile scripts/ccc_open_intent_r8_probe.py\n"
+        "- python3 -c \"from scripts.ccc_open_intent_r8_probe import open_intent_r8_ok; "
+        "assert open_intent_r8_ok()=='CCC_OPEN_INTENT_R8_OK v0.63'\"\n"
+        "- python3 -m pytest -q tests/test_ccc_open_intent_r8_probe.py\n",
+        encoding="utf-8",
+    )
+    task = {
+        "id": tid,
+        "title": "CCC open-intent 闭环探针 R8",
+        "complexity": "medium",
+        "executor": "opencode",
+    }
+    kind = rev._detect_review_kind(ws_git, task, "", "")
+    assert kind == "util_probe"
+
+
+def test_transfer_open_intent_forces_python_and_small():
+    from chat_server.services.transfer_gate import (
+        resolve_complexity,
+        resolve_executor_intent,
+    )
+
+    body = {
+        "title": "CCC open-intent 闭环探针 R8",
+        "goal": "新建 scripts/ccc_open_intent_r8_probe.py",
+        "acceptance": [
+            "python3 -m py_compile scripts/ccc_open_intent_r8_probe.py",
+            "python3 -c \"assert True\"",
+            "python3 -m pytest -q tests/test_ccc_open_intent_r8_probe.py",
+        ],
+        "executor_intent": "opencode",
+        "complexity": "medium",
+        "pipeline": "dev",
+    }
+    assert resolve_executor_intent(body) == "python"
+    assert resolve_complexity(body) == "small"
+
+
 def test_tester_requires_pass_verdict(ws_git: Path):
     from board.roles.tester import _tester_verdict_allows_verified
     from board.context import set_workspace

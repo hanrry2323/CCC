@@ -166,15 +166,14 @@ def test_lint_fail_leaves_no_half_children(tmp_path):
     store.create_task({"id": "el", "title": "E"}, column="backlog")
     bad = _child("el-w1", "ok.py")
     bad["phases"][0]["scope"] = []  # empty scope → lint fail
-    try:
-        apply_fanout(
-            store,
-            store.list_tasks("backlog")[0],
-            children_raw=[bad],
-        )
-        assert False, "expected ValueError"
-    except ValueError as e:
-        assert "phase_lint" in str(e) or "scope" in str(e).lower()
+    result = apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[bad],
+    )
+    assert result.get("ok") is False
+    err = str(result.get("error") or "")
+    assert "phase_lint" in err or "scope" in err.lower()
     assert store.list_tasks("planned") == []
     _, epic = store.find_task("el")
     assert epic["split_status"] == "pending"
@@ -197,6 +196,30 @@ def test_seeded_phase_plan_preserves_epic_acceptance():
     out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
     assert "DRY_RUN=true" in out
     assert "完成本 phase：probe" not in out
+
+
+def test_probe_touches_scope_matches_dotted_import():
+    """python3 -c from scripts.foo import … must count as touching scripts/foo.py."""
+    from _product_fanout import _probe_touches_scope, _plan_md_for_seeded_phase
+
+    scope = ["scripts/ccc_loop_r3_util.py", "tests/test_ccc_loop_r3_util.py"]
+    assert _probe_touches_scope(
+        "python3 -c \"from scripts.ccc_loop_r3_util import loop_r5_stamp; assert loop_r5_stamp()=='X'\"",
+        scope,
+    )
+    epic = (
+        "# Plan\n\n## 验收\n"
+        "- python3 -m py_compile scripts/ccc_loop_r3_util.py\n"
+        "- python3 -c \"from scripts.ccc_loop_r3_util import loop_r5_stamp; assert loop_r5_stamp()=='CCC_DESKTOP_LOOP_R5_OK v0.63'\"\n"
+        "- python3 -m pytest -q tests/test_ccc_loop_r3_util.py\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "extend util",
+        "scope": scope,
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="r5")
+    assert "loop_r5_stamp" in out, out
 
 
 def test_seeded_phase_slice_inherits_epic_probes():

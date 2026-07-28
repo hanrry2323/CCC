@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 _log = logging.getLogger("ccc.opencode_quality_gate")
 
@@ -109,6 +110,130 @@ def detect_hollow_opencode_run(
             "use <workspace>/.ccc/ only"
         )
 
+    return None
+
+
+def _norm_repo_path(p: str) -> str:
+    return (p or "").strip().replace("\\", "/").lstrip("./")
+
+
+def _scope_intersects_names(scope: list[str], names: list[str]) -> bool:
+    scopes = [_norm_repo_path(s) for s in scope if _norm_repo_path(s)]
+    files = [_norm_repo_path(n) for n in names if _norm_repo_path(n)]
+    if not scopes or not files:
+        return False
+    for s in scopes:
+        for n in files:
+            if n == s or n.startswith(s.rstrip("/") + "/") or s.startswith(n.rstrip("/") + "/"):
+                return True
+            # directory scope
+            if s.endswith("/") and n.startswith(s):
+                return True
+    return False
+
+
+def _git_show_names(workspace: Path, commit: str) -> list[str]:
+    import subprocess
+
+    try:
+        r = subprocess.run(
+            ["git", "show", "--name-only", "--pretty=format:", commit],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _log.debug("hollow_phase git show: %s", e)
+        return []
+    if r.returncode != 0:
+        return []
+    return [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+
+
+def _git_diff_names(
+    workspace: Path, baseline: str, head: str, scope: list[str]
+) -> list[str]:
+    import subprocess
+
+    paths = [_norm_repo_path(s) for s in scope if _norm_repo_path(s)]
+    cmd = ["git", "diff", "--name-only", f"{baseline}..{head}", "--", *paths]
+    try:
+        r = subprocess.run(
+            cmd,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _log.debug("hollow_phase git diff: %s", e)
+        return []
+    if r.returncode != 0:
+        return []
+    return [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+
+
+def detect_hollow_phase_scope(
+    workspace: Path,
+    *,
+    phase_num: int,
+    scope: list[str],
+    task_commit: str,
+    phases: list[dict] | None = None,
+) -> str | None:
+    """Fail when phase>1 is marked done without touching its scope.
+
+    Desktop R5 (2026-07-28): phase 2 reused phase 1 commit; ``test_*.py`` unchanged
+    but phases.json still ``status=done``.
+    """
+    ws = Path(workspace)
+    scope_n = [_norm_repo_path(s) for s in (scope or []) if _norm_repo_path(s)]
+    if not scope_n or int(phase_num) <= 1:
+        return None
+    commit = (task_commit or "").strip()
+    if not commit:
+        return f"hollow phase {phase_num}: no task commit while scope={scope_n}"
+
+    prev_commit = None
+    for p in phases or []:
+        if not isinstance(p, dict) or "schema_version" in p:
+            continue
+        try:
+            pn = int(p.get("phase", -1))
+        except (TypeError, ValueError):
+            continue
+        if pn >= int(phase_num):
+            continue
+        c = str(p.get("commit") or "").strip()
+        if c:
+            prev_commit = c
+
+    names = _git_show_names(ws, commit)
+    in_commit = _scope_intersects_names(scope_n, names)
+
+    if prev_commit and prev_commit == commit:
+        if not in_commit:
+            return (
+                f"hollow phase {phase_num}: reused commit {commit[:12]} "
+                f"without touching scope {scope_n}"
+            )
+        return None
+
+    if prev_commit:
+        changed = _git_diff_names(ws, prev_commit, "HEAD", scope_n)
+        if not changed:
+            return (
+                f"hollow phase {phase_num}: no scope changes since "
+                f"{prev_commit[:12]} for {scope_n}"
+            )
+        return None
+
+    if not in_commit:
+        return (
+            f"hollow phase {phase_num}: commit {commit[:12]} "
+            f"does not touch scope {scope_n}"
+        )
     return None
 
 

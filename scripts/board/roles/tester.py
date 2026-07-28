@@ -106,10 +106,14 @@ def build_tester_verify_commands(
 ) -> tuple[list[str], bool]:
     """Resolve verify cmds + whether forced full-repo pytest was skipped.
 
-    Forced ``pytest tests/ --cov-fail-under=80`` is appended only for business
-    cards that do not already skip (doc_only / docs-only / hygiene / short path).
+    Forced ``pytest tests/ --cov-fail-under=80`` is appended only when the plan
+    has **no** acceptance probes and the card does not already skip (doc_only /
+    docs-only / hygiene / short path). Plan probes are authoritative — open-intent
+    / script_seed cards with ``python3 -c`` asserts must not be failed by qb's
+    full-suite cov gate (R7 ACCEPTANCE_FAIL after reviewer PASS).
     """
-    verify_commands = list(plan_commands or [])
+    plan_commands = list(plan_commands or [])
+    verify_commands = list(plan_commands)
     skip_forced = _task_skips_forced_pytest(ws, task_id, task_meta)
 
     if not verify_commands and not skip_forced:
@@ -118,9 +122,12 @@ def build_tester_verify_commands(
         ]
 
     has_pyproject = (ws / "pyproject.toml").exists()
+    # Plan already listed probes → do not pile on full-repo cov (even if none
+    # of the probes contain the substring "pytest").
     if (
         has_pyproject
         and not skip_forced
+        and not plan_commands
         and not any("pytest" in c for c in verify_commands)
     ):
         verify_commands.append(
