@@ -10,6 +10,7 @@ import { TierRegistry } from "./config.js";
 import { isUpstreamOk, TIER_FALLBACK, getMinCooldownSec } from "./tiers.js";
 import { getConfig } from "./config.js";
 import { getScore } from "./scoring.js";
+import { getAppContext } from "./context.js";
 
 // ── Session Affinity ──
 
@@ -353,6 +354,23 @@ function tryTier(
     const withKey = tierUp
       .filter(u => !!u.api_key && u.enabled !== false)
       .sort((a, b) => (a.tier_priority ?? 99) - (b.tier_priority ?? 99));
+    if (withKey.length === 1) {
+      // 单钥薄垫片：清掉瞬态冷却，禁止 short-cool bypass 空转
+      const only = withKey[0]!;
+      const coolMap = getAppContext().cooldowns;
+      const c = coolMap.get(only.name);
+      if (c && c.until > Date.now()) {
+        coolMap.delete(only.name);
+        console.warn(`[route] sole flash clear soft-cool ${only.name} (was: ${c.reason || "?"})`);
+      }
+      return {
+        upstream: only,
+        candidates: [only],
+        tier,
+        is_fallback: false,
+        fallback_model: null,
+      };
+    }
     if (withKey.length) {
       let candidates = withKey;
       if (affKey) {

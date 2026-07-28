@@ -72,3 +72,15 @@ def test_clear_verdict(tmp_path):
 def test_parse_verdict_status_fallback(tmp_path):
     assert gates._parse_verdict_status("**Verdict:** FALLBACK") == "FALLBACK"
     assert gates._parse_verdict_status("**Verdict:** QUARANTINED") == "QUARANTINED"
+
+
+def test_verdict_is_valid_pass_with_score_block(tmp_path):
+    """LLM reviewer 常在 PASS 后附 Score；解析仍须认 PASS（R3 回归）。"""
+    ws = tmp_path / "ws"
+    _write_verdict(
+        ws,
+        "t1",
+        "# t1 Verdict\n\n**Verdict:** PASS\n\n**Score:** 25/25\n",
+    )
+    assert gates._verdict_is_valid(ws, "t1")
+    assert not gates._verdict_is_timeout(ws, "t1")

@@ -104,15 +104,16 @@ describe("router", () => {
       expect(r.is_fallback).toBe(true);
     });
 
-    it("short-cool bypass when sole flash key cooled", () => {
+    it("clears soft-cool when sole flash key cooled", () => {
       getAppContext().cooldowns.clear();
       getAppContext().cooldowns.set("opencode-go-paid-flash", { until: Date.now() + 60000, reason: "rate-limit" });
 
       const r = route("flash");
-      // paid-only：仍可 bypass 短冷却，避免空候选 502
+      // 单钥：清冷却直出，禁止 short-cool bypass 空转
       expect(r.upstream).not.toBeNull();
       expect(r.upstream!.name).toBe("opencode-go-paid-flash");
-      expect(r.is_fallback).toBe(true);
+      expect(r.is_fallback).toBe(false);
+      expect(getAppContext().cooldowns.has("opencode-go-paid-flash")).toBe(false);
     });
   });
 

@@ -7,7 +7,7 @@ import { classifyErr, StallError, getStallIdleMs, streamReadWithTimeout, agentDe
 import { getAppContext } from "./context.js";
 import { bad } from "./health.js";
 import { recordOutcome, computeBackoffCooldown } from "./scoring.js";
-import { getConfig, TIMEOUTS } from "./config.js";
+import { getConfig, TIMEOUTS, streamPeekEnabled } from "./config.js";
 import { ledgerReserve, ledgerSettle, ledgerMarkQuotaExhausted, ledgerWouldExceed } from "./ledger.js";
 import { affinityDeleteByUpstream } from "./router.js";
 import { isPaidUpstream } from "./tiers.js";
@@ -86,7 +86,7 @@ function isDailyQuotaError(errType: string | undefined, errMsg: string): boolean
   return /usage limit reached|usage quota|额度用完|流量用完|配额|FreeUsage/i.test(errMsg);
 }
 
-const DEFAULT_PEEK_LINES = 5;
+const DEFAULT_PEEK_LINES = 2; // 多钥排障时才用；越少越少拖 TTFT
 
 function computeEarliestCooldownSec(candidates: UpstreamConfig[]): number {
   const cooldowns = getAppContext().cooldowns;
@@ -387,9 +387,12 @@ async function tryUpstreamStream(
   failedPlatforms: Set<string>,
   signal?: AbortSignal,
   wallDeadlineMs?: number,
+  opts?: { skipPeek?: boolean; soleUpstream?: boolean },
 ): Promise<StreamTryResult> {
   let lastErr = "";
   let lastStatus = 0;
+  const skipPeek = !!opts?.skipPeek;
+  const soleUpstream = !!opts?.soleUpstream;
 
   if (!ledgerReserve(up)) {
     return { ok: false, lastErr: `ledger:${ledgerWouldExceed(up) || "limit"}`, exhausted: true, platformError: false };
@@ -431,6 +434,22 @@ async function tryUpstreamStream(
         if (platErr) failedPlatforms.add(up.base_url);
         ledgerSettle(up, { success: false, rollbackRequest: resp.status !== 429 && resp.status < 500 });
         return { ok: false, lastErr, exhausted: true, platformError: platErr, httpStatus: resp.status };
+      }
+
+      // 单上游快路径：跳过 peek（多钥时代用 peek 筛坏钥；单钥只会白白卡 12s TTFT）
+      if (skipPeek) {
+        if (!resp.body) {
+          lastErr = "empty";
+          continue;
+        }
+        console.warn(`[fallback] sole-upstream fast-path skip peek ${up.name}`);
+        return {
+          ok: true,
+          reader: resp.body.getReader(),
+          upstream: up,
+          firstLines: [],
+          buffered: "",
+        };
       }
 
       let reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -501,10 +520,17 @@ async function tryUpstreamStream(
     }
   }
 
-  if (lastErr === "fetch") markBad(up, 0, "fetch failed after retries");
-  else if (lastErr === "timeout") markBad(up, 0, "attempt timeout");
-  else if (lastErr === "peek") markBad(up, 0, "peek failed after retries");
-  else if (lastErr === "empty") markBad(up, 0, "empty stream");
+  // 唯一钥：网络/peek 超时勿 markBad（会触发 short-cool bypass 空转，越修越慢）
+  const softNet =
+    soleUpstream && (lastErr === "fetch" || lastErr === "timeout" || lastErr === "peek");
+  if (!softNet) {
+    if (lastErr === "fetch") markBad(up, 0, "fetch failed after retries");
+    else if (lastErr === "timeout") markBad(up, 0, "attempt timeout");
+    else if (lastErr === "peek") markBad(up, 0, "peek failed after retries");
+    else if (lastErr === "empty") markBad(up, 0, "empty stream");
+  } else {
+    console.warn(`[fallback] sole-upstream soft-fail skip markBad ${up.name}: ${lastErr}`);
+  }
   if ((lastErr === "fetch" || lastErr === "timeout") && !isPaidUpstream(up)) {
     markFetchGray(up.name);
   }
@@ -625,6 +651,10 @@ export async function streamWithFallback(
     typeof opts === "function" || opts === undefined ? {} : opts;
 
   const { candidates } = routing;
+  const soleUpstream = candidates.length === 1;
+  // 快：默认不 peek；仅 LOOP_STREAM_PEEK=1 且多钥时才 peek
+  const skipPeek = soleUpstream || !streamPeekEnabled();
+  const maxAttempts = soleUpstream ? 1 : failoverMaxAttempts();
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
   /** 本请求刚撞 RPM 的钥：只跳过该钥 */
@@ -639,6 +669,9 @@ export async function streamWithFallback(
   agentDebugLog("A", "fallback.ts:streamWithFallback:start", "stream fallback start", {
     tier: routing.tier,
     candidateN: candidates.length,
+    soleUpstream,
+    skipPeek,
+    maxAttempts,
     wallMs: failoverMaxMs(),
     attemptPaidMs: TIMEOUTS.ATTEMPT_PAID_MS,
     peekPaidMs: TIMEOUTS.PEEK_PAID_MS,
@@ -648,7 +681,7 @@ export async function streamWithFallback(
 
   while (true) {
     options.onAttemptWait?.();
-    if (attempts >= failoverMaxAttempts()) {
+    if (attempts >= maxAttempts) {
       pushTrail(trail, "*", "budget:attempts", budgetStart);
       break;
     }
@@ -761,7 +794,10 @@ export async function streamWithFallback(
     }, armMs);
     let result: StreamTryResult;
     try {
-      result = await tryUpstreamStream(up, streamFn, failedPlatforms, attemptAc.signal, wallDeadline);
+      result = await tryUpstreamStream(up, streamFn, failedPlatforms, attemptAc.signal, wallDeadline, {
+        skipPeek,
+        soleUpstream,
+      });
     } finally {
       clearTimeout(wallTimer);
     }

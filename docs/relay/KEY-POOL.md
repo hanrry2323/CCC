@@ -28,6 +28,16 @@
 
 Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是多厂商调度站。
 
+### 三目标（硬 · 2026-07-28）
+
+| 目标 | 口径 |
+|------|------|
+| **快** | 单活跃钥 → **跳过 stream peek**（`LOOP_STREAM_PEEK` 默认关）；瞬态冷却不挡 sole 钥；`PEEK_*` 默认 3s（仅多钥排障时才用）；**出站连接池不限**（undici `connections=null`；入站不设 `maxConnections`） |
+| **缓存** | 每请求打 Go `enable_prompt_cache` + `prompt_cache_retention=24h` + sticky `prompt_cache_key`；KPI `upstream_cache_token_ratio` ≥0.9 |
+| **稳定** | 协议 shim + 直连 Go；禁止 free 池 / IP 轮换 / short-cool 空转；sole 失败不 `markBad` 自杀 |
+
+多钥 failover peek：**仅** `LOOP_STREAM_PEEK=1` 排障时开。
+
 | | **现行启用池** | **备份（禁用）** | **禁止启用** |
 |--|----------------|------------------|--------------|
 | 角色 | 恰好 **1** 把 Go 付费 | 第 2 把 Go 付费 | 免费 Zen / GLM / MiniMax / 其它厂商 |
@@ -38,6 +48,8 @@ Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是
 | 换钥 | — | **人通知后**把备份改 `enabled:true`、旧钥改 `false` | — |
 
 **踩坑**：Go 套餐钥若误配到 `zen/v1` + `deepseek-v4-flash` → **401 Insufficient balance**。必须 `zen/go/v1`。
+
+**踩坑（IPv6 · 2026-07-28）**：本网到 `opencode.ai` **IPv6 黑洞**（`curl -6` 超时、`curl -4` 秒级通）。Node `verbatim` 先 AAAA → 2017 Relay 表现为 sole flash `attempt timeout`、请求挂死。修复：`dist` 内 `preferIpv4Dns` + undici `connect.family=4`；plist `NODE_OPTIONS=--dns-result-order=ipv4first`。**M1 / 2017 须同构**（同 `proxy.js` + 同 plist 环境变量）；勿只 kickstart 不重装 plist。
 
 **IP 轮换退役**：`proxy` 视为遗留，flash **不得**再配。
 
@@ -55,7 +67,9 @@ Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是
 | KPI | `upstream_cache_token_ratio=cached/prompt`；活跃付费会话目标 **≥0.9** |
 
 **验收**：`POST /v1/messages` model=`flash` → **200** 且 `X-Routed-Upstream` = 当前启用的 paid。  
-同 `x-session-id` 连打 ≥5 轮：`cache_read / (input_tokens + cache_read)` 目标 **≥0.9**。
+同 `x-session-id` / 稳定 `prompt_cache_key` 连打 ≥5 轮：`cache_read / (input_tokens + cache_read)` 目标 **≥0.9**。  
+Codex `/v1/responses`：Relay 会把 `previous_response_id` 钉到同一 `prompt_cache_key`；换钥后前几轮冷缓存属正常。  
+看 OpenCode 账单时：**大 prompt 数 ≠ 全价**——要看 cache hit / 实价；Relay KPI：`/admin/usage` 的 `upstream_cache_token_ratio`。
 
 ### 部署检查清单（2017）
 

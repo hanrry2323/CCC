@@ -17,7 +17,7 @@ import { json, readBody } from "../http.js";
 import { cacheKey, cacheGet, cacheSet, prefixCacheKey, trackPrefix, isCacheableRequest, shouldCacheWrite } from "../cache.js";
 import { TIMEOUTS } from "../config.js";
 import { upstreamFetch } from "../egress.js";
-import { applyOpenAIPromptCache } from "../translator/anthropic.js";
+import { applyOpenAIPromptCache, extractCachedTokens } from "../translator/anthropic.js";
 import { isPaidUpstream } from "../tiers.js";
 
 export async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -180,7 +180,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
                   pT = p.usage.prompt_tokens || pT;
                   cT = p.usage.completion_tokens || cT;
                   tt = p.usage.total_tokens || tt;
-                  ctk = p.usage.prompt_tokens_details?.cached_tokens || ctk;
+                  ctk = extractCachedTokens(p.usage) || ctk;
                 }
                 if (!headersSent) {
                   res.writeHead(200, {
@@ -347,7 +347,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
     model: b.model,
     total_tokens: d.usage?.total_tokens || 0,
     prompt_tokens: d.usage?.prompt_tokens || 0,
-    cached_tokens: d.usage?.prompt_tokens_details?.cached_tokens || 0,
+    cached_tokens: extractCachedTokens(d.usage),
     success: true,
     latency_ms: Date.now() - t0,
   });
@@ -357,7 +357,7 @@ export async function handleChat(req: IncomingMessage, res: ServerResponse): Pro
       pinPaid: isPaidUpstream(result.upstream),
     });
   }
-  const ctkNs = d.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const ctkNs = extractCachedTokens(d.usage);
   if (ctkNs > 0) res.setHeader("X-Upstream-Cached-Tokens", String(ctkNs));
   return json(res, 200, d);
 }

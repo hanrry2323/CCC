@@ -399,6 +399,76 @@ def _normalize_child(
     }
 
 
+def _backfill_depends_on_tasks_from_epic_phases(
+    workspace: Path,
+    epic_id: str,
+    children: list[dict],
+) -> None:
+    """Claude 扇出常漏 depends_on_tasks；按 epic phases.json 的 depends_on 回填。
+
+    R4 回归：phase2 depends_on:[1] 但子卡 deps=None，仅靠同仓 OpenCode 串行碰巧有序。
+    seed 路径已自带链式 depends；此处只补空缺，不覆盖显式依赖。
+    """
+    if len(children) < 2:
+        return
+    phases_path = Path(workspace) / ".ccc" / "phases" / f"{epic_id}.phases.json"
+    if not phases_path.is_file():
+        return
+    phase_rows: list[dict] = []
+    try:
+        for line in phases_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict) and "phase" in obj:
+                phase_rows.append(obj)
+    except OSError as exc:
+        _log.debug("backfill depends read phases %s: %s", epic_id, exc)
+        return
+    if len(phase_rows) < 2:
+        return
+    n = min(len(phase_rows), len(children))
+    phase_num_to_idx: dict[int, int] = {}
+    for i in range(n):
+        try:
+            pnum = int(phase_rows[i].get("phase", i + 1))
+        except (TypeError, ValueError):
+            pnum = i + 1
+        phase_num_to_idx[pnum] = i
+    for i in range(n):
+        ch = children[i]
+        if ch.get("depends_on_tasks"):
+            continue
+        raw_deps = phase_rows[i].get("depends_on") or []
+        if isinstance(raw_deps, (int, float, str)):
+            raw_deps = [raw_deps]
+        if not isinstance(raw_deps, list) or not raw_deps:
+            continue
+        mapped: list[str] = []
+        for d in raw_deps:
+            try:
+                dep_num = int(d)
+            except (TypeError, ValueError):
+                continue
+            j = phase_num_to_idx.get(dep_num)
+            if j is not None and 0 <= j < len(children) and j != i:
+                wid = str(children[j].get("id") or "").strip()
+                if wid and wid not in mapped:
+                    mapped.append(wid)
+        if mapped:
+            ch["depends_on_tasks"] = mapped
+            _log.info(
+                "[fanout] %s backfill %s depends_on_tasks=%s",
+                epic_id,
+                ch.get("id"),
+                mapped,
+            )
+
+
 def _epic_default_executor(epic: dict) -> str:
     """从 epic tags/note/description 推断默认 executor（Desktop transfer 写入）。"""
     tags = epic.get("tags") or []
@@ -477,6 +547,10 @@ def apply_fanout(
             raise ValueError(f"duplicate child id {ch['id']}")
         seen.add(ch["id"])
         children.append(ch)
+
+    _backfill_depends_on_tasks_from_epic_phases(
+        store.workspace, epic_id, children
+    )
 
     color_group = epic.get("color_group") or assign_color_group(
         store.workspace, parent_group=None

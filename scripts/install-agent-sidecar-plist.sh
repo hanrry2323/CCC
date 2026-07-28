@@ -64,7 +64,7 @@ if [[ ! -f "${LOOP_CODE_CONFIG_DIR}/CLAUDE.md" ]]; then
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
-模型出口：CCC Relay flash（免费 OpenCode Zen）；M1 默认同编排面 2017:4000 共享钥池+HK 出口。
+模型出口：本机 CCC Relay flash（M1=relay.m1 :4000；勿默认指 LAN 2017）。
 禁止：已退役的 MiniMax-M3 / ai-loop-router、M1 本地 Hub/Board/Engine、业务第二树。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 CLAUDE_MD_EOF
@@ -108,7 +108,7 @@ esac
 # 可选上游（按优先级，互斥）：
 #   1) CCC_AGENT_UPSTREAM_118INK=1 → Anthropic 兼容中转（默认模型 claude-opus-4-8）
 #   2) CCC_AGENT_ROUTER / CCC_ANTHROPIC_BASE_URL → 显式 relay
-#   3) 默认：M1 对话机 → 2017 编排面 relay:4000（共享免费 flash + HK）；其它 → 本机 :4000
+#   3) 默认：本机 relay :4000（M1/2017 各自本地；禁 LAN 192.168.3.116:4000）
 # fail-open：CCC_RELAY_DIRECT_URL 或 ~/.ccc/relay-direct.url（MiniMax 已退役，无硬编码默认）
 # 鉴权：密钥写入 0600 文件，plist 只放 CCC_ANTHROPIC_TOKEN_FILE 路径（不落地明文）。
 AUTH_TOKEN_FILE=""
@@ -120,12 +120,9 @@ if [[ "$CCC_RELAY_DIRECT_URL_DEFAULT" == *"127.0.0.1:4000"* || "$CCC_RELAY_DIREC
   CCC_RELAY_DIRECT_URL_DEFAULT=""
 fi
 
-_hn="$(hostname | tr '[:upper:]' '[:lower:]')"
+# M1/2017 一律本机 relay（双机拓扑：M1=relay.m1，2017=relay.2017）。
+# 禁止默认指 LAN 192.168.3.116:4000（对话面会超时重试假死）；跨机仅 Hub 走 hub-tunnel。
 _default_relay="http://127.0.0.1:4000"
-# M1 对话面：共享 2017 免费 flash 池（含香港出口拆钥）；可用 CCC_ANTHROPIC_BASE_URL 改回本机
-if [[ "$_hn" == m1* || "$_hn" == *m1.local* ]]; then
-  _default_relay="http://192.168.3.116:4000"
-fi
 
 if [[ -n "${CCC_AGENT_UPSTREAM_118INK:-}" ]]; then
   # 118.ink 中转：Anthropic 兼容；Base URL **勿**带 /v1（SDK 会再拼 /v1/messages）

@@ -18,8 +18,64 @@ import { logUsage } from "../usage.js";
 import { json, readBody } from "../http.js";
 import { TIMEOUTS } from "../config.js";
 import { upstreamFetch } from "../egress.js";
-import { applyOpenAIPromptCache } from "../translator/anthropic.js";
+import { applyOpenAIPromptCache, extractCachedTokens } from "../translator/anthropic.js";
 import { isPaidUpstream } from "../tiers.js";
+
+/** previous_response_id → 稳定 prompt_cache_key（Codex 状态续写时首条 user 会变，必须钉住） */
+const _respCacheKey = new Map<string, { key: string; at: number }>();
+const RESP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const RESP_CACHE_MAX = 2000;
+
+function rememberRespCacheKey(responseId: string, key: string): void {
+  if (!responseId || !key) return;
+  const now = Date.now();
+  if (_respCacheKey.size > RESP_CACHE_MAX) {
+    for (const [k, v] of _respCacheKey) {
+      if (now - v.at > RESP_CACHE_TTL_MS) _respCacheKey.delete(k);
+    }
+    while (_respCacheKey.size > RESP_CACHE_MAX) {
+      const first = _respCacheKey.keys().next().value;
+      if (first == null) break;
+      _respCacheKey.delete(first);
+    }
+  }
+  _respCacheKey.set(responseId, { key, at: now });
+}
+
+function lookupRespCacheKey(previousId: unknown): string | null {
+  if (typeof previousId !== "string" || !previousId.trim()) return null;
+  const e = _respCacheKey.get(previousId.trim());
+  if (!e) return null;
+  if (Date.now() - e.at > RESP_CACHE_TTL_MS) {
+    _respCacheKey.delete(previousId.trim());
+    return null;
+  }
+  e.at = Date.now();
+  return e.key;
+}
+
+function resolveResponsesCacheKey(
+  b: any,
+  messages: Msg[],
+  headers: IncomingMessage["headers"],
+): string | null {
+  if (typeof b.prompt_cache_key === "string" && b.prompt_cache_key.trim()) {
+    return b.prompt_cache_key.trim().slice(0, 64);
+  }
+  const continued = lookupRespCacheKey(b.previous_response_id);
+  if (continued) return continued;
+  // conversation / user 字段（若客户端带）比「首条 user」更稳
+  if (typeof b.conversation === "string" && b.conversation.trim()) {
+    return ("conv:" + b.conversation.trim()).slice(0, 64);
+  }
+  if (b.conversation && typeof b.conversation === "object" && typeof b.conversation.id === "string") {
+    return ("conv:" + b.conversation.id).slice(0, 64);
+  }
+  if (typeof b.user === "string" && b.user.trim()) {
+    return ("user:" + b.user.trim()).slice(0, 64);
+  }
+  return affinityKey(messages, { headers, system: b.instructions });
+}
 
 type Msg = {
   role: string;
@@ -277,9 +333,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
     }
   }
 
-  const affKey =
-    (typeof b.prompt_cache_key === "string" && b.prompt_cache_key) ||
-    affinityKey(messages, { headers: req.headers, system: b.instructions });
+  const affKey = resolveResponsesCacheKey(b, messages, req.headers);
   const tier = resolveRequestTier(model, "flash");
   const ru = route(tier, affKey);
   const up = ru.upstream;
@@ -329,7 +383,17 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
       });
     }
 
+    const ctk = extractCachedTokens(result.body?.usage);
     const respObj = chatToResponses(result.body, model);
+    if (respObj?.usage) {
+      respObj.usage.input_tokens_details = {
+        ...(respObj.usage.input_tokens_details || {}),
+        cached_tokens: ctk,
+      };
+      respObj.usage.prompt_cache_hit_tokens = ctk;
+    }
+    if (respObj?.id && affKey) rememberRespCacheKey(respObj.id, affKey);
+    if (ctk > 0) res.setHeader("X-Upstream-Cached-Tokens", String(ctk));
     logUsage({
       timestamp: Date.now(),
       upstream: result.upstream.name,
@@ -337,6 +401,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
       model,
       total_tokens: respObj.usage?.total_tokens || 0,
       prompt_tokens: respObj.usage?.input_tokens || 0,
+      cached_tokens: ctk,
       success: true,
       latency_ms: Date.now() - t0,
     });
@@ -353,6 +418,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
   let pT = 0;
   let cT = 0;
   let tt = 0;
+  let ctk = 0;
   let textAcc = "";
   let messageStarted = false;
   let outputIndex = 0;
@@ -361,6 +427,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
   const msgId = `msg_${Date.now()}`;
   const itemId = `item_${Date.now()}`;
   const toolsByIndex = new Map<number, ToolAcc>();
+  if (affKey) rememberRespCacheKey(respId, affKey);
 
   const ensureCreated = () => {
     if (headersSent) return;
@@ -525,6 +592,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
             pT = obj.usage.prompt_tokens || pT;
             cT = obj.usage.completion_tokens || cT;
             tt = obj.usage.total_tokens || tt;
+            ctk = extractCachedTokens(obj.usage) || ctk;
           }
         };
 
@@ -658,6 +726,8 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
           input_tokens: pT,
           output_tokens: cT || Math.max(0, tt - pT),
           total_tokens: tt || pT + (cT || 0),
+          input_tokens_details: { cached_tokens: ctk },
+          prompt_cache_hit_tokens: ctk,
         },
       },
     });
@@ -665,6 +735,13 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
   }
 
   if (result.upstream) {
+    if (ctk > 0) {
+      try {
+        res.setHeader("X-Upstream-Cached-Tokens", String(ctk));
+      } catch {
+        /* headers may already be sent */
+      }
+    }
     logUsage({
       timestamp: Date.now(),
       upstream: result.upstream.name,
@@ -672,6 +749,7 @@ export async function handleResponses(req: IncomingMessage, res: ServerResponse)
       model,
       total_tokens: tt,
       prompt_tokens: pT,
+      cached_tokens: ctk,
       success: streamOk,
       latency_ms: Date.now() - t0,
     });

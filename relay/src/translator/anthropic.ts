@@ -22,13 +22,13 @@ export function anthropicToOpenAI(
   upstreamModel: string,
   opts?: { promptCacheKey?: string | null },
 ): OpenAIChatRequest {
-  const hasCacheControl = detectCacheControl(req);
   const sysStr = extractSystemString(req.system);
   const sysMsg: ChatMessage | null = sysStr
     ? { role: "system", content: sysStr, cache_control: { type: "ephemeral", ttl: "24h" } }
     : null;
   const sys = sysMsg ? [sysMsg] : [];
   const msgs: ChatMessage[] = (req.messages || []).flatMap(anthropicMsgToOpenAI);
+  stripStaleCacheControl(msgs);
   stampTailCacheControl(msgs);
   const finalMsgs = [...sys, ...msgs];
   if (finalMsgs.length === 0) finalMsgs.push({ role: "user", content: "hi" });
@@ -43,17 +43,11 @@ export function anthropicToOpenAI(
     stream: req.stream || false,
   };
 
-  const wantCache =
-    hasCacheControl ||
-    sys.length > 0 ||
-    (req.tools?.length ?? 0) > 0 ||
-    (req.messages?.length ?? 0) > 1;
-  if (wantCache) {
-    (o as any).enable_prompt_cache = true;
-    (o as any).prompt_cache_retention = "24h";
-    const ck = (opts?.promptCacheKey || "").trim();
-    if (ck) (o as any).prompt_cache_key = ck.slice(0, 64);
-  }
+  // 付费 Go：每轮都钉缓存（含首轮单条 user）
+  (o as any).enable_prompt_cache = true;
+  (o as any).prompt_cache_retention = "24h";
+  const ck = (opts?.promptCacheKey || "").trim();
+  if (ck) (o as any).prompt_cache_key = ck.slice(0, 64);
 
   if (o.stream) o.stream_options = { include_usage: true };
   if (req.tools?.length) {
@@ -70,6 +64,14 @@ export function anthropicToOpenAI(
   }
 
   return o;
+}
+
+function stripStaleCacheControl(msgs: ChatMessage[]): void {
+  for (const m of msgs) {
+    if (m && typeof m === "object" && "cache_control" in m) {
+      delete (m as any).cache_control;
+    }
+  }
 }
 
 function stampTailCacheControl(msgs: ChatMessage[]): void {
@@ -402,14 +404,35 @@ export function applyOpenAIPromptCache(
 
   const msgs = body.messages as ChatMessage[] | undefined;
   if (Array.isArray(msgs) && msgs.length) {
-    const sys = msgs.find(m => m.role === "system");
-    if (sys && typeof sys === "object") {
-      (sys as any).cache_control = { type: "ephemeral", ttl: "24h" };
+    // 清掉上一轮残留断点，再按「≤2 system + 末 2 轮」重打（对齐 Go 24h 会话缓存）
+    stripStaleCacheControl(msgs);
+    let sysLeft = 2;
+    for (const m of msgs) {
+      if (sysLeft <= 0) break;
+      if (m?.role === "system" && typeof m === "object") {
+        (m as any).cache_control = { type: "ephemeral", ttl: "24h" };
+        sysLeft -= 1;
+      }
     }
     stampTailCacheControl(msgs);
   }
   const tools = body.tools as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(tools) && tools.length) {
+    for (const t of tools) {
+      if (t && "cache_control" in t) delete t.cache_control;
+    }
     tools[tools.length - 1]!.cache_control = { type: "ephemeral", ttl: "24h" };
   }
+}
+
+/** 从上游 usage 抽出 cache 命中（Go 可能给 details 或 hit/miss 字段） */
+export function extractCachedTokens(usage: any): number {
+  if (!usage || typeof usage !== "object") return 0;
+  const details = usage.prompt_tokens_details || usage.input_tokens_details || {};
+  return (
+    Number(details.cached_tokens || 0) ||
+    Number(usage.prompt_cache_hit_tokens || 0) ||
+    Number(usage.cache_read_input_tokens || 0) ||
+    0
+  );
 }

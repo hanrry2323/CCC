@@ -9,15 +9,20 @@ import type { UpstreamConfig } from "./types.js";
 import { TIMEOUTS } from "./config.js";
 import { isPaidUpstream } from "./tiers.js";
 import { agentDebugLog } from "./utils.js";
+import { EGRESS_CONNECT_IPV4 } from "./dns-prefer-ipv4.js";
 
 const _agents = new Map<string, Dispatcher>();
 
 function makeDirectAgent(): Agent {
   return new Agent({
-    connect: { timeout: TIMEOUTS.CONNECT_MS },
+    // family:4 — 本网 IPv6 到 Go 上游黑洞，勿先走 AAAA
+    connect: { timeout: TIMEOUTS.CONNECT_MS, ...EGRESS_CONNECT_IPV4 },
     bodyTimeout: 0,
     headersTimeout: Math.max(TIMEOUTS.HEADERS_MS, TIMEOUTS.ATTEMPT_PAID_MS + 5_000),
     keepAliveTimeout: TIMEOUTS.KEEPALIVE_MS,
+    // 显式不限：多下游工具并行长流（SSE）时勿排队等池位
+    connections: null,
+    pipelining: 1,
   });
 }
 

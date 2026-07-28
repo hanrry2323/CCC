@@ -9,13 +9,18 @@ import { Agent, setGlobalDispatcher } from "undici";
 // CCC Relay 2026-07-25 门禁②补丁:显式 undici Agent 配 body/headers/keep-alive 超时
 // (Lesson 24: 默认 keep-alive 4s 太短,长 LLM 任务撞连接池回收)
 import { TIMEOUTS } from "./config.js";
+import { preferIpv4Dns, EGRESS_CONNECT_IPV4 } from "./dns-prefer-ipv4.js";
+
+// 本网 opencode.ai IPv6 黑洞：DNS + undici 一律 IPv4-first（对齐 M1 稳定出站）
+preferIpv4Dns();
 
 // 全局 dispatcher:统一所有 fetch() 出站的 socket / body / headers / keep-alive 行为
+// 不设 connections → undici 默认 null=不限并发（下游 Claude/OpenCode/Codex/Desktop 可同时打）
 setGlobalDispatcher(new Agent({
+  connect: { timeout: TIMEOUTS.CONNECT_MS, ...EGRESS_CONNECT_IPV4 },
   bodyTimeout: TIMEOUTS.BODY_MS,
   headersTimeout: TIMEOUTS.HEADERS_MS,
   keepAliveTimeout: TIMEOUTS.KEEPALIVE_MS,
-  connections: 256, // 适度高并发
   pipelining: 1,
 }));
 import { loadConfig, startConfigWatcher } from "./config.js";
@@ -109,6 +114,7 @@ export function startServer(opts: ServerOptions = {}): http.Server {
       }
     }
   });
+  // 入站不设 maxConnections（Node 默认 undefined=不限；切勿设 0，会被当成最多 0 条）
 
   server.listen(port, () => {
     console.log(`╔══════════════════════════════════════════════╗`);

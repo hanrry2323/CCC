@@ -470,6 +470,30 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     max_attempts = max(2, timeout_retries)
 
     for attempt in range(max_attempts):
+        # 已有有效 PASS：禁止再进 LLM reviewer（否则 budget 超时→留 testing→下 tick
+        # 又重跑 Claude，形成死循环；R3 7 行卡曾因此卡死）。
+        if _verdict_is_valid(ws, tid) and not _verdict_is_timeout(ws, tid):
+            try:
+                _reuse = _parse_verdict_status(
+                    _verdict_file(ws, tid).read_text(encoding="utf-8")
+                )
+            except OSError:
+                _reuse = None
+            if _reuse == "PASS":
+                _engine_log(
+                    f"[{label}] {tid} reuse existing PASS verdict — skip reviewer"
+                )
+                verdict_ok = True
+                break
+            if _reuse in ("FAIL", "FALLBACK", "QUARANTINED"):
+                _engine_log(
+                    f"[verdict-gate] [{label}] {tid} "
+                    f"existing verdict={_reuse} — 触发回滚（先于 reviewer）"
+                )
+                return _handle_fail_to_planned(
+                    ws, tid, store, status=str(_reuse), eng=eng
+                )
+
         # 2026-07-24 方案 P1-1：retry budget 跨层统一闸
         # 2026-07-25 修 P1-1:attempt=0 是首次正常执行,不算"重试";从 attempt>0 才递增。
         # 之前默认每次循环都 +1,把首次 attempt 也算成重试,会提前把 budget 耗光。
@@ -585,9 +609,27 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
         skip_pytest = task_skips_forced_pytest(ws, tid, task_meta)
     except Exception as exc:
         _engine_log(f"[{label}] {tid} hygiene pytest probe: {exc}")
+    # PASS + plan 验收已含可重放探针时：禁止再跑全仓 tests/（qb 等仓全量
+    # pytest 常 >180s 门禁预算，或缺可选依赖挂死；R3 曾因此卡死 testing）。
+    skip_reason = ""
+    if skip_pytest:
+        skip_reason = "hygiene/docs-only"
+    if not skip_pytest and verdict_ok:
+        try:
+            from _acceptance_gate import check_acceptance
+            from _task_commit import find_task_commit
+
+            _acc = check_acceptance(
+                ws, tid, commit=find_task_commit(ws, tid) or ""
+            )
+            if _acc.get("ok"):
+                skip_pytest = True
+                skip_reason = "acceptance_ok"
+        except Exception as exc:
+            _engine_log(f"[{label}] {tid} acceptance skip-pytest probe: {exc}")
     if skip_pytest:
         _engine_log(
-            f"[{label}] {tid} ops/ccc-hygiene — 跳过 engine 强制 pytest"
+            f"[{label}] {tid} 跳过 engine 强制全仓 pytest ({skip_reason})"
         )
     elif tests_dir.is_dir():
         exit_code, output = _run_pytest(ws)

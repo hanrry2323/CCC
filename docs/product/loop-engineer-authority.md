@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-28（**四席工具定死** + **个人主路线=qb** + **Relay 付费-only Go 单活跃钥** + 三层/loop-code + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
+> **状态**：现行 · 2026-07-28（**四席工具定死** + **双轨业务 qb∥QuantHive** + **Relay 付费-only Go 单活跃钥** + 三层/loop-code + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -21,35 +21,45 @@
 
 | 席位 | 职责（定死） | 禁止 |
 |------|--------------|------|
-| **Cursor** | CCC / 业务**主力开发**与合入权威 | 不当运维主入口；不当知识库主入口 |
-| **Claude Code**（个人 CLI） | **日常维护运维**（本机 `~/.ccc`、launchd、relay 探活、日志、板务辅助） | 不当合入 IDE；不扛功能开发主路径；不冒充 Desktop |
-| **OpenCode** | **仅** Engine 写码执行器（2017 `--dir` 权威仓） | 不当个人主力 IDE；不改 CCC 合入；不做人设聊天 |
-| **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | **尽量不开发**：不改 CCC / 业务权威仓、不当事开发 IDE |
-| **CCC Desktop** | 意图门 / 看板 / 下达 / 态势（产线控制面） | 不当第三套 IDE；不当知识库主入口 |
+| **Cursor** | **CCC** 合入权威；**QuantHive** 主力开发合入；平台/双轨对照改文档 | 不当运维主入口；不当知识库主入口 |
+| **Claude Code**（个人 CLI） | **①** 本机 CCC/relay/launchd 养机；**② QuantHive 日常维护**（交易侧运维，非合入大功能） | 不当 CCC/QuantHive 合入 IDE；不扛新功能主路径；不冒充 Desktop；**不**用 CCC 产线改 QuantHive |
+| **OpenCode** | **仅** Engine 写码执行器（2017 `--dir`；**qb** 等走 CCC 的仓） | 不当个人主力 IDE；不改 CCC 合入；不做人设聊天；**不**当 QuantHive 开发 IDE |
+| **Codex**（ChatGPT.app） | **知识管理 + 闲聊**（双轨分域记，禁止混成一个项目） | **尽量不开发**：不改 CCC / qb / QuantHive 权威仓 |
+| **CCC Desktop** | 意图门 / 看板 / 下达 / 态势（**qb 与其它挂 CCC 的仓**） | 不当第三套 IDE；不当知识库主入口；**不**管 QuantHive 开发主路径 |
 
 **串台禁令**：
 
-1. 开发请求 → **Cursor**（合入只认 Cursor）。  
-2. 运维 / 本机养机 → **Claude Code**。  
-3. 知识整理 / 闲聊 → **Codex**。  
-4. 产线意图 / 定稿下达 / 板面态势 → **Desktop**。  
-5. 业务仓批量写码 → **Hub→Engine→OpenCode**（不是个人 OpenCode IDE）。  
-6. **禁止** Claude Code / Codex / 个人 OpenCode 当 CCC 合入工具。
+1. CCC / QuantHive **开发合入** → **Cursor**。  
+2. 本机养机 **或** QuantHive 日常维护 → **Claude Code**。  
+3. 知识整理 / 闲聊 → **Codex**（qb 与 QuantHive **分路径**落盘）。  
+4. **qb**（及挂 CCC 的仓）产线意图 / 定稿下达 → **Desktop**。  
+5. **qb** 等业务仓批量写码 → **Hub→Engine→OpenCode**（不是个人 OpenCode IDE）。  
+6. **禁止** Claude Code / Codex / 个人 OpenCode 当 CCC 合入工具。  
+7. **禁止**把 qb 与 QuantHive 当同一系统或互为别名；**禁止**用 CCC 编排「接管」QuantHive。
 
 主机指令落盘：`~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.config/opencode/AGENTS.md`（M1 与 2017 同文）。
 
 ---
 
-## 个人主路线（硬 · 2026-07-28）
+## 双轨业务：qb ∥ QuantHive（硬 · 2026-07-28）
+
+> 两套都是量化，**完全独立**。同步跑，是为了对照「CCC 自动化产线」vs「Cursor 开发 + Claude 维护」两种方式。禁止合并仓库、禁止知识库混成一个项目、禁止用一套流程替代另一套。
+
+| 项目 | 定位 | 开发 | 日常维护 | 与 CCC |
+|------|------|------|----------|--------|
+| **qb** | CCC 产线养大的业务；后期走**自动化维护**对照 | **CCC**：Desktop 定意图 → Engine → OpenCode；平台本身用 Cursor | 目标：挂 CCC 飞轮/板务（复杂、叠编排） | **绑死**：权威仓在 2017，只经产线改码 |
+| **QuantHive** | **更单纯**的交易达成路径 | **Cursor** 把功能开发出来 | **Claude Code** 日常维护即可跑日常交易 | **独立**：不依赖 CCC 也能跑；**禁止**强行灌进 Hub/Engine 主路径 |
 
 | 项 | 口径 |
 |----|------|
-| **给谁** | **仅个人产线**（不做多用户卖点 / 不做对外产品化主路径） |
-| **主业务** | **qb**（量化系统）；CCC = 编排产线，用 CCC **自己开发养大** qb |
-| **成功** | qb 硬意图走完 LPSN：`code_landed` → 探针可重放 → regress 回流 → 人点 `intent_stable`。**禁止**用 `released`/VERSION 冒充业务完成或能盈利 |
-| **停做** | Ops/SPA 抛光主路径；多厂商通道花样；invent；自动 `intent_stable`；再堆平行文档当操作系统 |
-| **下一开程** | Layer2 qb 意图闭环（非 Ops 抛光；非免费钥池优化） |
-| **心智入口** | 日常只信：路径五句 + qb 主路线 + Go 单活跃付费。其余 brief 当附录 |
+| **给谁** | **仅个人**（不做多用户卖点 / 不做对外产品化主路径） |
+| **对照实验** | qb = 测 CCC 叠加自动化的代价与收益；QuantHive = 测薄工具链能否稳定交易 |
+| **CCC 侧成功** | qb 硬意图走完 LPSN：`code_landed` → 探针可重放 → regress → 人点 `intent_stable`。**禁止**用 `released`/VERSION 冒充业务完成或能盈利 |
+| **QuantHive 侧成功** | Cursor 交付 + Claude 可维护 → **日常交易可用**（证据链自管；不套 CCC `intent_stable` 冒充） |
+| **停做** | Ops/SPA 抛光主路径；多厂商通道花样；invent；自动 `intent_stable`；把两轨揉成「一个量化大脑」 |
+| **下一开程（CCC）** | Layer2 **qb** 意图闭环（非 Ops 抛光；非免费钥池优化） |
+| **知识脑（Codex）** | HP 分域：`domain=qb` / `domain=quanthive`；memory `/codex/topics/qb/` 与 `/codex/topics/quant-hive/` **分树**；交叉对照只写 `/codex/cross-ref/` 且标明「对照非合并」 |
+| **心智入口** | 路径五句 + **双轨独立** + Go 单活跃付费。其余 brief 当附录 |
 
 ---
 
@@ -432,6 +442,7 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **Go thinking 关（硬 · 2026-07-27）** | 所有 Go/`deepseek-v4-*` 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`（主机 `upstreams.json`，不进 git）。默认 thinking 会令 OpenAI 兼容口 `content=""`、只填 `reasoning_content` → OpenCode 空转 hang。手册：`docs/relay/KEY-POOL.md`。 |
 | **付费-only（硬 · 2026-07-28）** | **唯一启用上游**=`billing=opencode-go` · `https://opencode.ai/zen/go/v1` · `deepseek-v4-flash`。Go 钥误打 `zen/v1` 会假 401。免费/`zen-free`/智谱/MiniMax **不得** `enabled=true`。钥 SSOT=2017 `~/.ccc/relay/upstreams.json` + `KEY-INVENTORY.md`；手册=`docs/relay/KEY-POOL.md` |
 | **单活跃钥 + 缓存（取代 PaidGuarantee/free-first · 2026-07-28）** | 无免费池、无付费自动 RR。单活跃钥即天然会话钉；亲和仍可用 `x-session-id` / system+首条 user。主 KPI=`upstream_cache_token_ratio`（目标 **≥0.9**；勿把 L1/`cache_hit_ratio` 当账单）。额度用尽 → **人通知后**启用备份钥、关掉旧钥 |
+| **三目标（硬 · 2026-07-28）** | **快**（sole 跳 peek、不 short-cool 空转）· **缓存**（始终 Go prompt cache）· **稳定**（薄垫片+直连）；多钥 peek 仅 `LOOP_STREAM_PEEK=1`。手册=`docs/relay/KEY-POOL.md` |
 | **冷却 / 限流（硬 · 2026-07-27）** | 429 + `Retry-After` >120s 一律按**日配额**冷却（采纳完整 RA，禁封顶 120s 反复撞钥）。`POST /admin/cooldowns/clear` **默认保留**剩余 >300s 的冷却；急救全清用 `?force=1`。列表：`GET /admin/cooldowns` |
 | **OpenCode 默认（硬 · 2026-07-28）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/flash`（本机 `:4002` → relay **flash** 同池）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
 | **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |

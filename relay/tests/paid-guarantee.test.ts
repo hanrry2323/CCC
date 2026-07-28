@@ -115,6 +115,29 @@ describe("streamWithFallback paid-only", () => {
     expect(r.trail.some(t => t.reason === "ok" || t.reason === "active")).toBe(true);
   });
 
+  it("sole upstream skips peek — delayed first byte still succeeds under peek budget", async () => {
+    const up = paid("sole-slow");
+    const routing: RoutingResult = {
+      upstream: up,
+      candidates: [up],
+      tier: "flash",
+      is_fallback: false,
+      fallback_model: null,
+    };
+    // 若仍走 5-line/12s peek，此处延迟首包会被误杀；快路径应直接透传
+    const slow = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        await new Promise(r => setTimeout(r, 50));
+        controller.enqueue(new TextEncoder().encode(okBody));
+        controller.close();
+      },
+    });
+    const r = await streamWithFallback(routing, async () => new Response(slow, { status: 200 }));
+    expect(r.upstream?.name).toBe("sole-slow");
+    expect(r.firstLines).toEqual([]);
+    expect(cool.has(up.name)).toBe(false);
+  });
+
   it("fails over to second paid when first throws", async () => {
     const a = paid("paid-a");
     const b = paid("paid-b");

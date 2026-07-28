@@ -30,9 +30,9 @@ export const TIMEOUTS = {
   ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 8_000,
   // 付费保底：大 prompt TTFB 常 >15s，给更长首包预算（authority：25s）
   ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 25_000,
-  // peek（响应头之后读满首批 SSE）硬超时 — 专治 100s+ 卡死
-  PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 6_000,
-  PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 12_000,
+  // peek：多钥时代筛坏钥用；付费-only 单钥默认关闭（见 LOOP_STREAM_PEEK）
+  PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 3_000,
+  PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 3_000,
   // total timeout for non-streaming LLM calls (ms);非流式必须放宽,默认 10 分钟
   NONSTREAM_MS: Number(process.env.LOOP_NONSTREAM_TIMEOUT_MS) || 600_000,
   // undici Agent: streaming body timeout (ms);无读活动超过此时长则断开
@@ -42,6 +42,14 @@ export const TIMEOUTS = {
   // keep-alive socket idle timeout (ms);Lesson 24 教训:默认 4s 太短导致池化连接被服务端回收
   KEEPALIVE_MS: Number(process.env.LOOP_KEEPALIVE_TIMEOUT_MS) || 60_000,
 } as const;
+
+/** 流式 peek 总闸：默认关。多钥排障可 LOOP_STREAM_PEEK=1 */
+export function streamPeekEnabled(): boolean {
+  const v = (process.env.LOOP_STREAM_PEEK || "").trim().toLowerCase();
+  if (v === "1" || v === "true" || v === "yes" || v === "on") return true;
+  if (v === "0" || v === "false" || v === "no" || v === "off") return false;
+  return false; // 付费-only 薄垫片：默认不 peek
+}
 
 function isValidUpstream(u: unknown): boolean {
   if (!u || typeof u !== "object") return false;

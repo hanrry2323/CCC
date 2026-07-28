@@ -11,15 +11,18 @@
 
 | 席位 | 谁干 | 说明 |
 |------|------|------|
-| **Cursor** | 主力开发 + 合入 | 上 main、改权威、热更 2017、生产密钥；完整 IDE |
-| **Claude Code**（个人 CLI） | **日常运维** | `~/.ccc` / launchd / relay / 日志 / 板务辅助；**禁止**当合入 IDE |
-| **OpenCode** | **仅** Engine 写码槽 | 2017 `--dir` 权威仓；**禁止**当个人主力 IDE |
-| **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | **尽量不开发**；不改 CCC / 业务权威仓 |
-| **CCC Desktop** | 产线控制面 | 意图门 / 看板 / 下达 / 态势；**不当**第三 IDE / 知识库主入口 |
+| **Cursor** | 主力开发 + 合入 | **CCC** 合入；**QuantHive** 开发合入；热更 2017、生产密钥 |
+| **Claude Code**（个人 CLI） | 运维双职 | ① 本机 `~/.ccc` / launchd / relay；② **QuantHive 日常维护**；**禁止**当合入 IDE |
+| **OpenCode** | **仅** Engine 写码槽 | 2017 `--dir`（**qb** 等走 CCC）；**禁止**当 QuantHive / 个人主力 IDE |
+| **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | qb∥QuantHive **分域**；不改权威仓 |
+| **CCC Desktop** | 产线控制面 | **qb** 等挂 CCC：意图/看板/下达；**不管** QuantHive 开发主路径 |
 | **Engine Claude** | 编排执行器 | product / reviewer 等阶段；≠ 平台 IDE |
+
+**双轨（硬）**：**qb**（CCC 自动化养大）与 **QuantHive**（Cursor+Claude 薄链）**完全独立**，同步对照；禁止合并、禁止互为别名。见 authority「双轨业务」。
 
 **禁止**：Claude Code / Codex / 个人 OpenCode / Trae / Zed 当 CCC 合入工具。  
 **禁止**：Desktop Agent 改 CCC 合入；个人 Claude 冒充 Desktop。  
+**禁止**：用 CCC Hub/Engine「接管」QuantHive。  
 **配置家**：sidecar `CLAUDE_CONFIG_DIR=~/.ccc/loop-code`；Engine：`~/.ccc/engine-claude`。
 
 同模型（Relay `flash`）不改变分工。主机指令：`~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.config/opencode/AGENTS.md`。

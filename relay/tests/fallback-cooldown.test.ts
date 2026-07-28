@@ -252,8 +252,10 @@ describe("fallback cooldown on upstream errors", () => {
       return new Response(okBody, { status: 200 });
     }) as any;
 
-    const prev = process.env.STALL_IDLE_MS;
+    const prevStall = process.env.STALL_IDLE_MS;
+    const prevPeek = process.env.LOOP_STREAM_PEEK;
     process.env.STALL_IDLE_MS = "100";
+    process.env.LOOP_STREAM_PEEK = "1"; // 多钥 failover 依赖 peek；生产单钥默认关
     try {
       let bytes = 0;
       const res = await streamWithFallback(
@@ -272,8 +274,10 @@ describe("fallback cooldown on upstream errors", () => {
       expect(res.trail.some(t => t.reason === "stall")).toBe(true);
       expect(cool.get("stall-u1")).toBeTruthy();
     } finally {
-      if (prev === undefined) delete process.env.STALL_IDLE_MS;
-      else process.env.STALL_IDLE_MS = prev;
+      if (prevStall === undefined) delete process.env.STALL_IDLE_MS;
+      else process.env.STALL_IDLE_MS = prevStall;
+      if (prevPeek === undefined) delete process.env.LOOP_STREAM_PEEK;
+      else process.env.LOOP_STREAM_PEEK = prevPeek;
     }
   }, 15_000);
 
@@ -504,6 +508,9 @@ describe("v4.3 empty stream markBad", () => {
       fallback_model: null,
     };
 
+    const prevPeek = process.env.LOOP_STREAM_PEEK;
+    process.env.LOOP_STREAM_PEEK = "1"; // 空流检测靠 peek；生产单钥默认关
+
     // 仅 [DONE]、无 content → peek 判 empty
     const emptyBody = `data: [DONE]\n\n`;
     globalThis.fetch = vi.fn(async (url: string) => {
@@ -513,12 +520,17 @@ describe("v4.3 empty stream markBad", () => {
       return new Response(okBody, { status: 200 });
     }) as any;
 
-    const res = await streamWithFallback(routing, async (up) =>
-      fetch(up.base_url + "/chat/completions"),
-    );
+    try {
+      const res = await streamWithFallback(routing, async (up) =>
+        fetch(up.base_url + "/chat/completions"),
+      );
 
-    expect(res.upstream!.name).toBe("ok-u");
-    expect(cool.get("empty-u")).toBeTruthy();
-    expect(isUpstreamOk(u1)).toBe(false);
+      expect(res.upstream!.name).toBe("ok-u");
+      expect(cool.get("empty-u")).toBeTruthy();
+      expect(isUpstreamOk(u1)).toBe(false);
+    } finally {
+      if (prevPeek === undefined) delete process.env.LOOP_STREAM_PEEK;
+      else process.env.LOOP_STREAM_PEEK = prevPeek;
+    }
   });
 });

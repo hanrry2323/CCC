@@ -11,10 +11,19 @@ source "${CCC_HOME}/scripts/_ccc_launchd.sh"
 
 DO_START=false
 HOST_TAG=""
-for arg in "$@"; do
-  case "$arg" in
-    --start) DO_START=true ;;
-    --host)  shift; HOST_TAG="${1:-}" ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --start) DO_START=true; shift ;;
+    --host)
+      HOST_TAG="${2:-}"
+      if [[ -z "$HOST_TAG" ]]; then
+        echo "❌ --host 需要 m1 或 2017"; exit 1
+      fi
+      shift 2
+      ;;
+    *)
+      echo "❌ 未知参数: $1"; exit 1
+      ;;
   esac
 done
 
@@ -67,37 +76,33 @@ if [[ ! -f "${RELAY_HOME}/upstreams.json" ]]; then
   fi
 fi
 
-# 三档契约检查(只校验结构,不读 key 明文)
-# 兼容两种格式:① 顶层 JSON 数组(实际 relay 期望,config.ts:133)② 嵌套 tiers{} 字典
+# 付费-only 薄垫片：只强制 flash 档；Pro/code 轮空可不配
 if command -v python3 >/dev/null 2>&1; then
   python3 -c "
 import json, sys
 try:
     with open('${RELAY_HOME}/upstreams.json') as f:
         cfg = json.load(f)
-    # 格式 ①:顶层 JSON 数组
     if isinstance(cfg, list):
-        tiers = {u.get('tier'): u for u in cfg if isinstance(u, dict) and u.get('tier')}
-    # 格式 ②:嵌套 tiers{} 字典
+        tiers = {u.get('tier') for u in cfg if isinstance(u, dict) and u.get('tier')}
+        enabled = [u for u in cfg if isinstance(u, dict) and u.get('enabled') is not False and u.get('api_key')]
     elif isinstance(cfg, dict):
-        tiers = cfg.get('tiers') or cfg
+        tiers_map = cfg.get('tiers') or cfg
+        if not isinstance(tiers_map, dict):
+            print('❌ tiers 必须是 dict'); sys.exit(2)
+        tiers = set(tiers_map.keys())
+        enabled = []
+        for v in tiers_map.values():
+            if isinstance(v, dict):
+                for u in (v.get('upstreams') or v.get('providers') or []):
+                    if isinstance(u, dict) and u.get('enabled') is not False and u.get('api_key'):
+                        enabled.append(u)
     else:
         print('❌ upstreams.json 必须是 dict 或 list'); sys.exit(2)
-    if not isinstance(tiers, dict):
-        print('❌ tiers 必须是 dict'); sys.exit(2)
-    missing = [t for t in ('flash','Pro','code') if t not in tiers]
-    if missing:
-        print(f'❌ upstreams.json 缺三档必填: {missing}'); sys.exit(2)
-    for t, v in tiers.items():
-        if not isinstance(v, dict):
-            print(f'❌ tier {t} 必须是 dict'); sys.exit(2)
-        if isinstance(cfg, list):
-            # 数组格式每项本身就是 upstream
-            ups = [v]
-        else:
-            ups = v.get('upstreams') or v.get('providers') or []
-        if not isinstance(ups, list) or not ups:
-            print(f'❌ tier {t} 缺 upstreams[]'); sys.exit(2)
+    if 'flash' not in tiers:
+        print('❌ upstreams.json 缺 flash 档'); sys.exit(2)
+    if len(enabled) != 1:
+        print(f'❌ flash 启用钥须恰好 1 把（当前 {len(enabled)}）'); sys.exit(2)
 except FileNotFoundError:
     print('❌ upstreams.json 不存在'); sys.exit(2)
 " || { echo '❌ upstreams.json 校验失败,见上'; exit 1; }
@@ -144,21 +149,28 @@ cat > "$PLIST" <<PLIST_EOF
     <string>${RELAY_HOME}/clients.json</string>
     <key>LOOP_HOST_TAG</key>
     <string>${HOST_TAG}</string>
-    <!-- 墙钟/次数：免费快失败 + 付费大 prompt 首包；禁止 120s×12 空转 -->
+    <!-- 本网 IPv6→opencode.ai 黑洞；与 dist 内 family:4 双保险（M1/2017 同配） -->
+    <key>NODE_OPTIONS</key>
+    <string>--dns-result-order=ipv4first</string>
+    <!-- 付费-only 薄垫片：快/缓存/稳定；sole 跳 peek，禁止多钥时代长 peek -->
+    <key>LOOP_STREAM_PEEK</key>
+    <string>0</string>
     <key>FAILOVER_MAX_MS</key>
-    <string>90000</string>
+    <string>45000</string>
     <key>FAILOVER_MAX_ATTEMPTS</key>
-    <string>8</string>
+    <string>2</string>
     <key>LOOP_UPSTREAM_ATTEMPT_MS</key>
-    <string>15000</string>
+    <string>8000</string>
     <key>LOOP_UPSTREAM_ATTEMPT_PAID_MS</key>
-    <string>70000</string>
-    <key>LOOP_UPSTREAM_PEEK_MS</key>
-    <string>10000</string>
-    <key>LOOP_UPSTREAM_PEEK_PAID_MS</key>
     <string>25000</string>
+    <key>LOOP_UPSTREAM_PEEK_MS</key>
+    <string>3000</string>
+    <key>LOOP_UPSTREAM_PEEK_PAID_MS</key>
+    <string>3000</string>
     <key>LOOP_CONNECT_TIMEOUT_MS</key>
     <string>8000</string>
+    <key>LOOP_HEADERS_TIMEOUT_MS</key>
+    <string>30000</string>
     <key>STALL_IDLE_MS</key>
     <string>30000</string>
   </dict>
