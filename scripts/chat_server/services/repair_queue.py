@@ -153,6 +153,7 @@ def sop_prompt(*, project_id: str, epic_id: str, hint: str) -> str:
         "请严格按 references/abnormal-solve-sop.md + board-auto-repair-sop.md：\n"
         "取证定桶 → 已绿则结算；否则可恢复 reopen → clear_blockers（只归档不可恢复）"
         "→ exhausted 则 post-exhaust 优化定稿。\n"
+        "dirty_block/脏树：references/commit-folder-hygiene-sop.md（ccc_hygiene≠业务失败；禁 git add -A）。\n"
         "禁止只藏卡/只 reopen 当结案；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。\n"
     )
 
