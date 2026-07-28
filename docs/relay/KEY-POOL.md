@@ -24,7 +24,7 @@
 
 ## 2. Flash · 付费-only（硬 · 2026-07-28）
 
-**Claude Code + OpenCode 一律打 `flash` / `loop/flash`。** `:4000` 与 `:4002` 共用同一 flash 上游表。`Pro` / `code` **轮空**。
+**Claude Code + OpenCode 一律打 `flash` / `loop/flash`。** `:4000` 与 `:4002` 共用同一 flash 上游表。`Pro` / `code` **轮空**。个人 Codex（知识席）可走 `:4002` `/v1/responses`，非产线主路径。
 
 Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是多厂商调度站。
 
@@ -78,6 +78,8 @@ Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
                                     Pro / code: 轮空
                                     免费 / MiniMax: 不进启用池
 ```
+
+`:4002` 另提供 `POST /v1/responses`（Responses→chat 垫片；个人 OpenAI 兼容客户端可选，**非 CCC 产线主路径**；四席里对应 Codex 知识/聊天席）。
 
 - **DeepSeek V4 thinking（硬）**：Go 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`  
 - **fail-open**：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（与钥池正交）  

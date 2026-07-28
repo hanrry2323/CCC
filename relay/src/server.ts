@@ -29,6 +29,7 @@ import { startScorePersistence } from "./scoring.js";
 import type { ClientConfig } from "./types.js";
 import { handleMessages } from "./protocols/messages.js";
 import { handleChat } from "./protocols/chat.js";
+import { handleResponses } from "./protocols/responses.js";
 import { handleAdmin } from "./admin.js";
 import { handleDashboard } from "./dashboard.js";
 import { json, notFound } from "./http.js";
@@ -117,7 +118,10 @@ export function startServer(opts: ServerOptions = {}): http.Server {
     console.log(`╚══════════════════════════════════════════════╝`);
     console.log(`  Endpoints:`);
     if (mode === "anthropic" || mode === "all") console.log(`    POST /v1/messages          (Anthropic)`);
-    if (mode === "openai-chat" || mode === "all") console.log(`    POST /v1/chat/completions  (OpenAI Chat)`);
+    if (mode === "openai-chat" || mode === "all") {
+      console.log(`    POST /v1/chat/completions  (OpenAI Chat)`);
+      console.log(`    POST /v1/responses         (OpenAI Responses · Codex)`);
+    }
     console.log(`    GET  /admin/*              (Admin API)`);
     console.log(`    GET  /dashboard            (Dashboard)`);
   });
@@ -151,6 +155,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if ((mode === "openai-chat" || mode === "all") && method === "POST" && pathname === "/v1/chat/completions") {
     return handleChat(req, res);
+  }
+
+  if ((mode === "openai-chat" || mode === "all") && method === "POST" && pathname === "/v1/responses") {
+    return handleResponses(req, res);
+  }
+
+  // Codex / ChatGPT.app doctor 探活；逻辑档名 flash（上游仍是 Go paid）
+  if ((mode === "openai-chat" || mode === "all") && method === "GET" && pathname === "/v1/models") {
+    return json(res, 200, {
+      object: "list",
+      data: [
+        {
+          id: "flash",
+          object: "model",
+          created: 0,
+          owned_by: "ccc-relay",
+        },
+      ],
+    });
   }
 
   return notFound(res, pathname, mode);

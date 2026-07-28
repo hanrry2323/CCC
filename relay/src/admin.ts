@@ -483,7 +483,7 @@ export async function handleAdmin(req: IncomingMessage, res: ServerResponse, pat
       title: "下游接入指南 v3.5 — Tier 梯队路由",
       base_url: `http://127.0.0.1:${process.env.LOOP_PORT || "4100"}`,
       models: cfg.names,
-      endpoints: { claude: "/v1/messages", openai: "/v1/chat/completions" },
+      endpoints: { claude: "/v1/messages", openai: "/v1/chat/completions", responses: "/v1/responses" },
       auth: { headers: { "X-Client-Id": "your-id", "X-Client-Key": "your-key" } },
     });
   }

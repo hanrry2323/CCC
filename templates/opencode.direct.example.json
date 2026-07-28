@@ -1,31 +1,22 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/deepseek-v4-flash",
+  "small_model": "opencode-go/deepseek-v4-flash",
   "provider": {
-    "xfyun": {
+    "opencode-go": {
+      "name": "OpenCode Go paid（fail-open 直连 · thinking 须关）",
       "kind": "openai",
       "options": {
-        "baseURL": "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2",
-        "apiKey": "REPLACE-ME"
+        "baseURL": "https://opencode.ai/zen/go/v1",
+        "apiKey": "REPLACE-ME-GO-PAID-KEY"
       },
       "models": {
-        "code": {
-          "name": "astron-code-latest"
-        }
-      }
-    },
-    "zhipu": {
-      "kind": "openai",
-      "options": {
-        "baseURL": "https://open.bigmodel.cn/api/paas/v4",
-        "apiKey": "REPLACE-ME"
-      },
-      "models": {
-        "flash": {
-          "name": "glm-4-flash"
+        "deepseek-v4-flash": {
+          "id": "deepseek-v4-flash",
+          "limit": { "context": 200000, "output": 32000 },
+          "modalities": { "input": ["text"], "output": ["text"] }
         }
       }
     }
-  },
-  "small_model": "zhipu/flash",
-  "default_model": "xfyun/code"
+  }
 }

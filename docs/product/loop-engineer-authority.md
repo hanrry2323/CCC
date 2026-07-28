@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-28（**个人主路线=qb** + **Relay 仅付费 Go 单活跃钥** + 三层/loop-code 槽位 + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
+> **状态**：现行 · 2026-07-28（**四席工具定死** + **个人主路线=qb** + **Relay 付费-only Go 单活跃钥** + 三层/loop-code + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -12,6 +12,31 @@
 **人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。**
 
 （叙事：[`../VISION.md`](../VISION.md)。）
+
+---
+
+## 四席工具定位（硬 · 2026-07-28）
+
+同模型（Relay `flash`）**不**改变分工——靠角色约束，不靠比智力。通道：[`dev-channel.md`](dev-channel.md)。
+
+| 席位 | 职责（定死） | 禁止 |
+|------|--------------|------|
+| **Cursor** | CCC / 业务**主力开发**与合入权威 | 不当运维主入口；不当知识库主入口 |
+| **Claude Code**（个人 CLI） | **日常维护运维**（本机 `~/.ccc`、launchd、relay 探活、日志、板务辅助） | 不当合入 IDE；不扛功能开发主路径；不冒充 Desktop |
+| **OpenCode** | **仅** Engine 写码执行器（2017 `--dir` 权威仓） | 不当个人主力 IDE；不改 CCC 合入；不做人设聊天 |
+| **Codex**（ChatGPT.app） | **知识管理 + 闲聊** | **尽量不开发**：不改 CCC / 业务权威仓、不当事开发 IDE |
+| **CCC Desktop** | 意图门 / 看板 / 下达 / 态势（产线控制面） | 不当第三套 IDE；不当知识库主入口 |
+
+**串台禁令**：
+
+1. 开发请求 → **Cursor**（合入只认 Cursor）。  
+2. 运维 / 本机养机 → **Claude Code**。  
+3. 知识整理 / 闲聊 → **Codex**。  
+4. 产线意图 / 定稿下达 / 板面态势 → **Desktop**。  
+5. 业务仓批量写码 → **Hub→Engine→OpenCode**（不是个人 OpenCode IDE）。  
+6. **禁止** Claude Code / Codex / 个人 OpenCode 当 CCC 合入工具。
+
+主机指令落盘：`~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.config/opencode/AGENTS.md`（M1 与 2017 同文）。
 
 ---
 
@@ -398,7 +423,7 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | 项 | 口径 |
 |----|------|
 | **三档 tier = 全局契约** | `flash` / `Pro` / `code` 三逻辑名仍保留；**现行主对接仅 `flash`**。`Pro`/`code` **轮空**（无启用上游；`pro`→回落 flash） |
-| **协议转换范围** | `:4000`(Anthropic) / `:4002`(OpenAI chat) **都打同一 flash 池**；空 Pro 时客户端选 `pro` → relay 回落 `flash` |
+| **协议转换范围** | `:4000`(Anthropic) / `:4002`(OpenAI chat + **`/v1/responses`**) **都打同一 flash 池**；空 Pro 时客户端选 `pro` → relay 回落 `flash`。`/v1/responses` **仅**服务个人 Codex（知识/聊天席），**非** CCC 产线主路径 |
 | **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
 | **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
 | **Flash 单通道 · 付费-only（硬 · 2026-07-28）** | Claude Code + OpenCode **一律** `flash` / `loop/flash`。启用池**仅** Go 付费 `zen/go/v1`+`deepseek-v4-flash`；配置可留 2 把，**`enabled=true` 恰好 1**（备份钥人切）。**禁止**免费 Zen/GLM/MiniMax 进启用池。**IP/HK `proxy` 退役**。详见上文「模型通道简规」 |
@@ -721,26 +746,23 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 
 > 边界来源:CLAUDE.md 头部「人格独立」节 v0.39 已写"平台开发只认 Cursor";但未强制 M1 Desktop Claude Code 行为边界。本条把**共识变成执行规则**,由 sidecar / Cursor 规则双端 enforce(sidecar 检测 CCC 仓 cwd 写操作时拒 + Cursor 仍保留全 IDE 能力)。
 
-## 个人 Claude Code 草稿工（硬 · 2026-07-27 · Layer1 已出门后）
+## 个人 Claude Code（硬 · 2026-07-28 · 运维席；草稿旁路）
 
-> **战略**：先把 CCC 做到生产级工具，再用 CCC 做业务生产。半成品上生产 = 空转。  
-> **分工**：中转站稳定后，**个人 Claude Code CLI**（接 Relay `flash`，非 Desktop Agent）可扛边界清晰的草稿量；**Cursor 写细指令 + 审合入 + 权威/双机**。  
-> 详路线：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · 指令包目录：[`docs/dev-packets/`](../dev-packets/README.md)  
-> **状态（2026-07-28）**：Layer1 **已正式出门（小业务）**。日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主。草稿工**停用放大**——无强制下一包，**仅**接金路径打回的白名单缺陷。**下一开程 = Layer2 qb（个人主路线）**；Ops 抛光 / 免费钥池 / 多厂商通道 **禁止**再开。
+> **主职（定死）**：**日常维护运维**——本机 `~/.ccc`、launchd、relay 探活/kickstart、日志、板务辅助。见上文「四席工具定位」。  
+> **非主职**：功能开发 / 合入权威（→ Cursor）；产线意图（→ Desktop）；知识闲聊（→ Codex）。  
+> **草稿旁路**：Layer1 已出门后**停用放大**；**仅**接金路径打回的白名单 `dev-packets` 缺陷。详：[`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · [`../dev-packets/README.md`](../dev-packets/README.md)
 
 | 项 | 口径 |
 |----|------|
-| **合入 SSOT 仍只认 Cursor** | **禁止**把个人 Claude Code / Desktop Agent 当合入权威。上 main、改权威、双机热更、生产 `upstreams.json`/plist → **仅 Cursor**（或人在 Cursor 指导下点） |
-| **草稿工允许做什么** | 在**指定 feature branch / worktree**内，按 Cursor 下发的 **dev-packet** 改白名单文件；补测骨架；跑 packet 内验收命令 |
-| **草稿工禁止做什么** | 改 `loop-engineer-authority` / 红线 / 控制面；动生产密钥与 launchd；`git add -A`；强推 main；跨 packet 范围「顺手重构」；冒充 Desktop 产品大脑改 CCC；**再开 Ops/SPA/UI 抛光大包** |
-| **协作节奏** | Cursor 写 packet → 人转发给个人 Claude Code → 人交回 diff/分支 → Cursor 审测合入（或打回修正包） |
-| **与双身份关系** | **不削弱**「Desktop Agent 禁改 CCC」。个人 CLI 草稿 ≠ Desktop 会话写仓 |
-| **何时停用放大** | **已触发（2026-07-28）**：Layer1 平台生产出门后，草稿工仅作配额旁路（金路径白名单缺陷），禁止 Ops 抛光主路径 |
-| **生产出门分层（硬）** | **Layer0 表面完备 ≠ Layer1 平台生产**。敢承诺「用 CCC 跑业务开发」只认 Layer1（G1–G6 + 金路径证据）。Ops/UI 草稿合入 **不计入** 金路径。 |
-| **业务盈利边界（硬）** | **`released` / `code_landed` ≠ 业务完成**；**≠ 能盈利**。量化等业务须另立域 KPI（回撤/熔断/SLA/保活），与 `intent_stable` 分开勾；样板见 [`../briefs/2026-07-27-qb-domain-ship-gate.md`](../briefs/2026-07-27-qb-domain-ship-gate.md)。Ops 抛光收束后，草稿工**仅**接金路径打回的白名单缺陷包。 |
-| **Layer1 出门句** | 见 production-readiness「当前状态」：Desktop outbox 同栈 → Engine → OpenCode → verdict → released（ccc-demo v6 已证）。**仍冻结** Layer2 / 飞轮自动 / invent / 产能 SLA。 |
+| **合入 SSOT 仍只认 Cursor** | **禁止**把个人 Claude Code / Desktop Agent / Codex / 个人 OpenCode 当合入权威 |
+| **运维允许** | 读改本机配置与日志；relay/sidecar/hub-tunnel 探活与 kickstart；协助板务诊断（不替代 Desktop `hub_repair` 主路径） |
+| **运维禁止** | 上 main；改 `loop-engineer-authority` / 红线当「顺手」；功能开发主路径；冒充 Desktop |
+| **草稿旁路允许** | 指定 feature branch / worktree 内按 **dev-packet** 白名单改文件；跑 packet 验收 |
+| **草稿旁路禁止** | 改权威/控制面；动生产密钥；`git add -A`；强推 main；跨 packet 重构；Ops/SPA 抛光大包 |
+| **与四席关系** | 个人 CLI ≠ Desktop；≠ Cursor；≠ Codex；≠ Engine OpenCode |
+| **Layer1 / 盈利边界** | 同前：`released` ≠ 业务完成；Ops 抛光不计入金路径 |
 
-> 巡查口径：仓内**禁止**出现「用 Claude Code 当平台 IDE / 直接合入」的现行教法；允许出现「草稿工 + Cursor 合入」例外说明。
+> 巡查口径：仓内**禁止**「用 Claude Code / Codex / OpenCode 当平台合入 IDE」现行教法；允许「运维席 + 草稿旁路 + Cursor 合入」说明。
 
 ## Claude --bg 长任务（已交付 · v0.63.0 · 仅 Mac2017）
 

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for agents editing CCC in **Cursor**. You are the **platform developer** (full IDE capability on this repo). You are **not** the CCC Desktop dialogue agent; personalities are independent — Desktop Plan “no write” does **not** apply to you. Platform channel: Cursor only (R-15). Desktop = sidecar→loop-code; Engine Claude CLI/OpenCode = executors, not platform IDEs. See `docs/product/dev-channel.md` · `docs/product/loop-engineer-authority.md`（双 Agent 人格独立）.
+Guidance for agents editing CCC in **Cursor**. You are the **platform developer** (full IDE capability on this repo) — **四席里的开发席**。You are **not** Desktop / Claude Code ops / Codex knowledge / OpenCode personal IDE. Personalities independent — Desktop Plan “no write” does **not** apply to you. 合入只认 Cursor（R-15）。See `docs/product/dev-channel.md` · `docs/product/loop-engineer-authority.md`（四席工具定位 · 双 Agent 人格独立）.
 
 # CCC — Connect–Claude Code · Loop Engineer
 
@@ -13,7 +13,9 @@ Guidance for agents editing CCC in **Cursor**. You are the **platform developer*
 
 **共识落盘**：你我新共识先改 `loop-engineer-authority.md`（及 `.cursor/rules/loop-engineer-consensus.mdc`），禁止只留在聊天。
 
-**勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色；用 Claude Code/Trae/Zed 改 CCC 平台。
+**勿再对用户说**：接很多 IDE 当卖点；让用户先选固定角色；用 Claude Code/Codex/OpenCode/Trae/Zed 合入 CCC；把运维/知识席当成开发席。
+
+**四席**：Cursor=开发合入 · Claude Code=运维 · OpenCode=Engine 写码槽 · Codex=知识/闲聊 · Desktop=控制面。
 
 ---
 

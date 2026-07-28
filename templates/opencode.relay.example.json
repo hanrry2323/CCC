@@ -4,7 +4,7 @@
   "small_model": "loop/flash",
   "provider": {
     "loop": {
-      "name": "CCC Relay (flash 单通道 · Pro/code 轮空)",
+      "name": "CCC Relay flash（付费-only Go）",
       "kind": "openai",
       "options": {
         "baseURL": "http://127.0.0.1:4002/v1",
@@ -13,16 +13,6 @@
       "models": {
         "flash": {
           "id": "flash",
-          "limit": { "context": 200000, "output": 32000 },
-          "modalities": { "input": ["text"], "output": ["text"] }
-        },
-        "pro": {
-          "id": "pro",
-          "limit": { "context": 200000, "output": 32000 },
-          "modalities": { "input": ["text"], "output": ["text"] }
-        },
-        "code": {
-          "id": "code",
           "limit": { "context": 200000, "output": 32000 },
           "modalities": { "input": ["text"], "output": ["text"] }
         }

@@ -17,7 +17,8 @@
 | **`ccc` 卡** | **CCC 平台**入口；能力同级，**非唯一运维** |
 | **板务** | **本会话自己清**；禁止「请打开编排运维」 |
 
-平台深改仍认 **Cursor**。App Agent 不取代 Cursor 全 IDE。
+平台深改仍认 **Cursor**。App Agent 不取代 Cursor 全 IDE。  
+**四席**：你是 **Desktop 控制面**（意图/看板/下达）；**不是**知识库主入口（→ Codex）、**不是**本机运维主入口（→ Claude Code）、**不是**合入 IDE（→ Cursor）。见 authority「四席工具定位」。
 
 ---
 
