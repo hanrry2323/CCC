@@ -114,7 +114,7 @@ describe("isPaidUpstream / boostPaidCandidates", () => {
 describe("selectNextCandidate PaidGuarantee", () => {
   beforeEach(ctxReset);
 
-  it("forces paid after one free failure on same egress", () => {
+  it("rotates next free after one free failure (no IP egress gate)", () => {
     const free1 = { ...makeFree("free1"), base_url: "https://opencode.ai/zen/v1" };
     const free2 = { ...makeFree("free2"), base_url: "https://opencode.ai/zen/v1" };
     const paid = makePaid();
@@ -125,10 +125,24 @@ describe("selectNextCandidate PaidGuarantee", () => {
       failedPlatforms: new Set(),
       rateLimitedHosts: new Set(),
     });
+    expect(next?.name).toBe("free2");
+  });
+
+  it("forces paid when no free left after failures", () => {
+    const free1 = { ...makeFree("free1"), base_url: "https://opencode.ai/zen/v1" };
+    const free2 = { ...makeFree("free2"), base_url: "https://opencode.ai/zen/v1" };
+    const paid = makePaid();
+    const next = selectNextCandidate([free1, free2, paid], new Set(["free1", "free2"]), {
+      budgetStart: Date.now(),
+      attempts: 2,
+      freeFailCount: 2,
+      failedPlatforms: new Set(),
+      rateLimitedHosts: new Set(),
+    });
     expect(next?.name).toBe(paid.name);
   });
 
-  it("tries other-egress free before paid", () => {
+  it("ignores proxy field when rotating free keys", () => {
     const free1 = { ...makeFree("free1"), base_url: "https://opencode.ai/zen/v1", proxy: "" };
     const free2 = {
       ...makeFree("free2"),
@@ -204,7 +218,7 @@ describe("streamWithFallback must reach paid", () => {
     cool.clear();
   });
 
-  it("tries paid after same-egress free fetch failures", async () => {
+  it("tries all free then paid on fetch failures", async () => {
     const free1 = { ...makeFree("free-a"), base_url: "https://opencode.ai/zen/v1" };
     const free2 = { ...makeFree("free-b"), base_url: "https://opencode.ai/zen/v1" };
     const paid = makePaid();
@@ -224,12 +238,12 @@ describe("streamWithFallback must reach paid", () => {
       throw new Error("fetch failed");
     });
     expect(res.upstream?.name).toBe(paid.name);
-    expect(called).toContain(paid.name);
-    // 同 egress：第一次 free 失败后应插队 paid（sibling 被 same-host 或 forcePaid 跳过）
-    expect(called.indexOf(paid.name)).toBeLessThanOrEqual(2);
+    expect(called).toEqual(expect.arrayContaining(["free-a", "free-b", paid.name]));
+    expect(called.indexOf("free-a")).toBeLessThan(called.indexOf("free-b"));
+    expect(called.indexOf("free-b")).toBeLessThan(called.indexOf(paid.name));
   });
 
-  it("rotates free across different egress before forcing paid", async () => {
+  it("rotates free keys regardless of legacy proxy field", async () => {
     const freeDirect = { ...makeFree("free-direct"), proxy: "" };
     const freeHk = { ...makeFree("free-hk"), proxy: "http://127.0.0.1:18080" };
     const paid = makePaid();

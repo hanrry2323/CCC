@@ -26,7 +26,7 @@ const FREE_FETCH_COOLDOWN_SEC = 20;
 const FETCH_GRAY_SEC = 90;
 /** 同请求最多试几个 free；按「不同出口」优先轮转，勿一失败就钉死 paid */
 const MAX_FREE_ATTEMPTS_PER_REQ = 4;
-const EGRESS_STAGGER_MS = 100;
+const KEY_STAGGER_MS = 50;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
 /**
@@ -79,10 +79,24 @@ function paidWallReserveMs(): number {
 
 export { isPaidUpstream };
 
-/** 同出口限流桶：base_url + proxy。不同 proxy（如 HK）视为不同 IP，不互跳。 */
+/**
+ * 本请求内「刚撞 RPM」的钥名集合键。
+ * 2026-07-28：IP/proxy 出口轮换退役 — 429 只跳过该钥，不再按 base_url||proxy 封 sibling。
+ * @deprecated 名称保留兼容测试；语义 = upstream.name
+ */
 export function egressRateLimitKey(up: UpstreamConfig): string {
-  const proxy = (up.proxy || "").trim() || "direct";
-  return `${up.base_url}||${proxy}`;
+  return up.name;
+}
+
+/** @deprecated IP 轮换退役后恒为「还有未试 free」；保留导出以免外部引用炸 */
+export function hasUntriedFreeOtherEgress(
+  candidates: UpstreamConfig[],
+  tried: Set<string>,
+  isBlocked: (u: UpstreamConfig) => boolean,
+): boolean {
+  return candidates.some(
+    u => !tried.has(u.name) && !isPaidUpstream(u) && !isBlocked(u),
+  );
 }
 
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
@@ -587,27 +601,7 @@ function buildExhaustedResult(
   };
 }
 
-/** 是否还有未试的、不同出口的 free（direct vs HK 等） */
-export function hasUntriedFreeOtherEgress(
-  candidates: UpstreamConfig[],
-  tried: Set<string>,
-  isBlocked: (u: UpstreamConfig) => boolean,
-): boolean {
-  const triedEgress = new Set(
-    candidates
-      .filter(u => tried.has(u.name) && !isPaidUpstream(u))
-      .map(u => egressRateLimitKey(u)),
-  );
-  return candidates.some(
-    u =>
-      !tried.has(u.name) &&
-      !isPaidUpstream(u) &&
-      !isBlocked(u) &&
-      !triedEgress.has(egressRateLimitKey(u)),
-  );
-}
-
-/** 挑选下一跳：先按出口轮转 free，墙钟不够或出口耗尽再插队 paid */
+/** 挑选下一跳：免费钥快速轮换；墙钟不够或免费耗尽再插队 paid */
 export function selectNextCandidate(
   candidates: UpstreamConfig[],
   tried: Set<string>,
@@ -616,6 +610,7 @@ export function selectNextCandidate(
     attempts: number;
     freeFailCount: number;
     failedPlatforms: Set<string>;
+    /** 本请求内已 RPM 的钥名（仅该钥，不封 sibling） */
     rateLimitedHosts: Set<string>;
     /** 候选里无可用 free → 直接 paid */
     paidOnly?: boolean;
@@ -626,7 +621,7 @@ export function selectNextCandidate(
 
   const isBlocked = (u: UpstreamConfig): boolean =>
     opts.failedPlatforms.has(u.base_url) ||
-    opts.rateLimitedHosts.has(egressRateLimitKey(u)) ||
+    opts.rateLimitedHosts.has(u.name) ||
     !!ledgerWouldExceed(u) ||
     isFetchGray(u.name);
 
@@ -639,7 +634,7 @@ export function selectNextCandidate(
   const freeTried = candidates.filter(u => tried.has(u.name) && !isPaidUpstream(u)).length;
   const wallLeft = wall - elapsed;
   const reserve = paidWallReserveMs();
-  const otherEgressFree = hasUntriedFreeOtherEgress(candidates, tried, isBlocked);
+  const nextFreeUsable = untried.filter(u => !isPaidUpstream(u) && !isBlocked(u));
 
   // route() 已把 paid 放首位（pinPaid / boost / last-resort）：禁止再插队 free，禁止双付费 RR 换钉钥
   if (
@@ -654,7 +649,7 @@ export function selectNextCandidate(
     return pickPaid();
   }
 
-  // 先吐出顺序上的 skip（同 host RL / platform），保留 trail 可观测性
+  // 先吐出顺序上的 skip（本钥 RL / platform），保留 trail 可观测性
   const head = untried[0]!;
   if (isBlocked(head) && !isPaidUpstream(head)) return head;
 
@@ -672,18 +667,16 @@ export function selectNextCandidate(
     if (!isPaidUpstream(head) || isBlocked(head)) return pickPaid();
   }
 
-  // 已有 free 失败：若还有「不同出口」的 free，继续轮转；否则强制 paid
+  // 免费钥快切：还有未试 free 就继续；耗尽或墙钟过半才强制 paid
   const forcePaid =
     paidUsable.length > 0 &&
-    ((opts.freeFailCount >= 1 && !otherEgressFree) ||
+    ((opts.freeFailCount >= 1 && nextFreeUsable.length === 0) ||
       elapsed >= wall * 0.55 ||
       wallLeft <= reserve);
 
   if (forcePaid) return pickPaid();
 
-  // 优先未阻塞 free；同出口已 RL 的会被 isBlocked 跳过
-  const nextFree = untried.find(u => !isPaidUpstream(u) && !isBlocked(u));
-  if (nextFree) return nextFree;
+  if (nextFreeUsable.length) return nextFreeUsable[0]!;
   if (paidUsable.length) return pickPaid();
   return untried.find(u => !isBlocked(u)) || head;
 }
@@ -717,7 +710,7 @@ export async function streamWithFallback(
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
-  /** 同出口刚撞 RPM：本轮不再连打同 proxy 的其它钥（不同 egress 可继续试） */
+  /** 本请求刚撞 RPM 的钥：只跳过该钥，继续快切 sibling free */
   const rateLimitedHosts = new Set<string>();
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
@@ -754,7 +747,7 @@ export async function streamWithFallback(
     if (wallHit) {
       const paidUntried = candidates.find(
         u => isPaidUpstream(u) && !tried.has(u.name) && !failedPlatforms.has(u.base_url)
-          && !rateLimitedHosts.has(egressRateLimitKey(u)) && !ledgerWouldExceed(u),
+          && !rateLimitedHosts.has(u.name) && !ledgerWouldExceed(u),
       );
       if (!paidUntried) {
         markPaidSkippedBudget(candidates, tried, failureReasons);
@@ -792,10 +785,10 @@ export async function streamWithFallback(
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
-    if (rateLimitedHosts.has(egressRateLimitKey(up))) {
+    if (rateLimitedHosts.has(up.name)) {
       tried.add(up.name);
-      failureReasons.set(up.name, "skipped (same-host rate-limit)");
-      pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
+      failureReasons.set(up.name, "skipped (key rate-limit)");
+      pushTrail(trail, up.name, "skip:key-rl", budgetStart);
       continue;
     }
     if (isFetchGray(up.name)) {
@@ -842,7 +835,7 @@ export async function streamWithFallback(
           isPaidUpstream(u) &&
           !tried.has(u.name) &&
           !failedPlatforms.has(u.base_url) &&
-          !rateLimitedHosts.has(egressRateLimitKey(u)) &&
+          !rateLimitedHosts.has(u.name) &&
           !ledgerWouldExceed(u),
       );
     // 还有下一把付费时：单次最多 ATTEMPT_PAID，禁止一把拖满整墙钟导致第二把永远 0 成功
@@ -881,9 +874,9 @@ export async function streamWithFallback(
       // #endregion
       if (!isPaidUpstream(up)) freeFailCount += 1;
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
-        rateLimitedHosts.add(egressRateLimitKey(up));
-      } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-        await sleep(EGRESS_STAGGER_MS);
+        rateLimitedHosts.add(up.name);
+      } else {
+        await sleep(KEY_STAGGER_MS);
       }
       continue;
     }
@@ -1084,7 +1077,7 @@ export async function nonStreamWithFallback(
     if (Date.now() - budgetStart >= failoverMaxMs()) {
       const paidUntried = candidates.find(
         u => isPaidUpstream(u) && !tried.has(u.name) && !failedPlatforms.has(u.base_url)
-          && !rateLimitedHosts.has(egressRateLimitKey(u)) && !ledgerWouldExceed(u),
+          && !rateLimitedHosts.has(u.name) && !ledgerWouldExceed(u),
       );
       if (!paidUntried) {
         markPaidSkippedBudget(candidates, tried, failureReasons);
@@ -1119,10 +1112,10 @@ export async function nonStreamWithFallback(
       pushTrail(trail, up.name, "skip:platform", budgetStart);
       continue;
     }
-    if (rateLimitedHosts.has(egressRateLimitKey(up))) {
+    if (rateLimitedHosts.has(up.name)) {
       tried.add(up.name);
-      failureReasons.set(up.name, "skipped (same-host rate-limit)");
-      pushTrail(trail, up.name, "skip:same-host-rl", budgetStart);
+      failureReasons.set(up.name, "skipped (key rate-limit)");
+      pushTrail(trail, up.name, "skip:key-rl", budgetStart);
       continue;
     }
 
@@ -1158,9 +1151,9 @@ export async function nonStreamWithFallback(
     pushTrail(trail, up.name, result.lastErr, t0);
     if (!isPaidUpstream(up)) freeFailCount += 1;
     if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
-      rateLimitedHosts.add(egressRateLimitKey(up));
-    } else if (candidates.some(c => c.name !== up.name && egressRateLimitKey(c) === egressRateLimitKey(up))) {
-      await sleep(EGRESS_STAGGER_MS);
+      rateLimitedHosts.add(up.name);
+    } else {
+      await sleep(KEY_STAGGER_MS);
     }
   }
 

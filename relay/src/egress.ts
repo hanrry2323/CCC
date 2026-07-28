@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-//  Per-upstream egress（HTTP CONNECT / SOCKS 代理）
-//  用途：免费多钥拆到不同出口 IP，避免 OpenCode 同 IP RPM 整池假死
+//  Per-upstream egress（遗留 proxy 支持）
+//  2026-07-28：Flash 单通道退役 IP/HK 出口轮换；配置勿再写 proxy。
+//  仍保留 ProxyAgent 能力以免旧 JSON 炸；新拓扑一律直连。
 // ═══════════════════════════════════════════════════════════════
 
 import { ProxyAgent, Agent, fetch as undiciFetch, type Dispatcher, type RequestInit as UndiciRequestInit } from "undici";

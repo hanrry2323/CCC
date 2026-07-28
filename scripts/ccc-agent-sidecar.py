@@ -445,9 +445,9 @@ async def health():
     else:
         payload["models"] = ["flash", "pro", "code"]
         payload["model_labels"] = {
-            "flash": "opencode-go · deepseek-v4-flash-free",
-            "pro": "opencode-go-pro · deepseek-v4-pro",
-            "code": "xfyun-code · 写码档",
+            "flash": "opencode-go · deepseek-v4-flash-free (+ Go paid兜底)",
+            "pro": "idle · 回落 flash",
+            "code": "idle · 主对接已并 flash",
         }
         payload["model_source"] = "fallback"
     return payload

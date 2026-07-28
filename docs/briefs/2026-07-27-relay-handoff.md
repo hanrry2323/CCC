@@ -13,11 +13,13 @@
 ```text
 你是 Cursor 平台助手，专责 CCC Relay（中转站）。
 读 docs/briefs/2026-07-27-relay-handoff.md + authority「CCC Relay」。
-本会话主业：flash/Pro/code 可用、cooldown/限流、fail-open、OpenCode code 模型对齐 Zen；
-不要跑金路径/看板/Ops UI 抛光，除非阻塞中转站。
+本会话主业：Flash 单通道（Claude+OpenCode 一律 flash）、免费快切+双付费钉缓存、cooldown；
+Pro/code 轮空；IP/HK 出口轮换已退役。不要跑金路径/看板/Ops UI 抛光，除非阻塞中转站。
 改码只动 relay/ 与相关 launchd/脚本；合入前 vitest；热更后 kickstart 2017+M1。
 密钥只动 ~/.ccc/relay/upstreams.json，永不提交。
 ```
+
+> **2026-07-28 拓扑翻转**：主对接仅 flash；OpenCode=`loop/flash`；IP 轮换退役。详见 [`KEY-POOL.md`](../relay/KEY-POOL.md)。
 
 ---
 

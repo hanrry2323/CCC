@@ -19,10 +19,10 @@ if ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from 
 fi
 
 export PATH="${HOME}/.npm-global/bin:/opt/homebrew/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-# OpenCode 写码默认走本机 CCC Relay :4002 → Zen code 档（big-pickle + flash-free）
+# OpenCode 写码默认走本机 CCC Relay :4002 → flash 同池（免费快切 + Go 付费兜底）
 # fail-open：relay 不可达时 opencode-exec 切 ~/.config/opencode/opencode.direct.json
-export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/code}"
-# CCC Relay: product/reviewer Claude 默认走本机 relay :4000,模型 flash（免费 OpenCode Zen）
+export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/flash}"
+# CCC Relay: product/reviewer Claude 默认走本机 relay :4000,模型 flash
 # MiniMax-M3 已退役。fail-open 仅认 CCC_RELAY_DIRECT_URL / ~/.ccc/relay-direct.url
 # **不要**默认 export 厂商直连 URL，否则会跳过 relay 主路径。
 if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then

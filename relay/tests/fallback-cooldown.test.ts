@@ -390,7 +390,7 @@ describe("markBad cooldown backoff", () => {
     expect(dur).toBeLessThanOrEqual(605);
   });
 
-  it("same-host rate-limit skips sibling keys without cooling them", async () => {
+  it("rate-limit cools only that key; sibling free still tried", async () => {
     const shared = "https://opencode.ai/zen/v1";
     const u1: UpstreamConfig = { ...makeUp("go-a"), base_url: shared };
     const u2: UpstreamConfig = { ...makeUp("go-b"), base_url: shared };
@@ -402,6 +402,7 @@ describe("markBad cooldown backoff", () => {
       is_fallback: false,
       fallback_model: null,
     };
+    const called: string[] = [];
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).includes("opencode.ai")) {
         return new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429 });
@@ -409,17 +410,18 @@ describe("markBad cooldown backoff", () => {
       return new Response(okBody, { status: 200 });
     }) as any;
 
-    const res = await streamWithFallback(routing, async (up) =>
-      fetch(up.base_url + "/chat/completions"),
-    );
+    const res = await streamWithFallback(routing, async (up) => {
+      called.push(up.name);
+      return fetch(up.base_url + "/chat/completions");
+    });
     expect(res.upstream!.name).toBe("other");
     expect(cool.get("go-a")).toBeTruthy();
-    // 同 host 第二钥被 skip，不应进冷却
-    expect(cool.get("go-b")).toBeFalsy();
-    expect(res.trail.some(t => t.name === "go-b" && t.reason.includes("same-host"))).toBe(true);
+    // 钥级：sibling 仍被尝试（也会 429），不再因 same-host 跳过
+    expect(called).toContain("go-b");
+    expect(res.trail.some(t => t.name === "go-b" && t.reason.includes("same-host"))).toBe(false);
   });
 
-  it("same-host rate-limit does not skip siblings on a different proxy egress", async () => {
+  it("legacy proxy does not create a separate rate-limit lane", async () => {
     const shared = "https://opencode.ai/zen/v1";
     const direct: UpstreamConfig = { ...makeUp("go-direct"), base_url: shared };
     const viaHk: UpstreamConfig = {
@@ -434,15 +436,17 @@ describe("markBad cooldown backoff", () => {
       is_fallback: false,
       fallback_model: null,
     };
+    const called: string[] = [];
     const res = await streamWithFallback(routing, async (up) => {
-      if (!up.proxy) {
+      called.push(up.name);
+      if (up.name === "go-direct") {
         return new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429 });
       }
       return new Response(okBody, { status: 200 });
     });
     expect(res.upstream!.name).toBe("go-hk");
+    expect(called).toContain("go-hk");
     expect(res.trail.some(t => t.name === "go-hk" && t.reason === "ok")).toBe(true);
-    expect(res.trail.some(t => t.name === "go-hk" && t.reason.includes("same-host"))).toBe(false);
   });
 
   it("rate-limit cooldown stays short even when EWMA is tanked", () => {

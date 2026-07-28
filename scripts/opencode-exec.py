@@ -170,16 +170,22 @@ async def run_opencode(
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
-        # CCC Relay 2026-07-25:默认 loop/code(经本机 relay :4002 → Zen code 档)
-        # fail-open 时(OPENCODE_FAIL_OPEN=1 或 relay down)切 xfyun/code 直连
+        # CCC Relay 2026-07-28:默认 loop/flash（:4002 → flash 同池）
+        # fail-open 时(OPENCODE_FAIL_OPEN=1 或 relay down)切直连配置里的模型
         # 直连降级用 OPENCODE_CONFIG 指 ~/.config/opencode/opencode.direct.json
         model = os.environ.get("OPENCODE_MODEL", Config().model)
-        if model == "loop/code" and os.environ.get("OPENCODE_FAIL_OPEN") != "1":
-            # 探活 relay :4002 失败 → 切 xfyun/code 直连(opencode.direct.json)
+        if model.startswith("loop/") and os.environ.get("OPENCODE_FAIL_OPEN") != "1":
+            # 探活 relay :4002 失败 → 切直连(opencode.direct.json)
             direct_cfg = Path.home() / ".config" / "opencode" / "opencode.direct.json"
             if not _relay_4002_up():
                 if direct_cfg.exists():
-                    model = "xfyun/code"
+                    # 直连配置可能仍写 xfyun/zhipu；尊重该文件 model，否则退回 zhipu/flash
+                    try:
+                        import json as _json
+                        _d = _json.loads(direct_cfg.read_text(encoding="utf-8"))
+                        model = str(_d.get("model") or "zhipu/flash")
+                    except Exception:
+                        model = "zhipu/flash"
                     os.environ["OPENCODE_CONFIG"] = str(direct_cfg)
                     _log.warning(
                         "[fail-open] relay :4002 不可达, 切直连 model=%s config=%s",
@@ -187,7 +193,8 @@ async def run_opencode(
                     )
                 else:
                     _log.warning(
-                        "[fail-open] relay :4002 不可达且 %s 不存在, 仍尝试 loop/code", direct_cfg
+                        "[fail-open] relay :4002 不可达且 %s 不存在, 仍尝试 %s",
+                        direct_cfg, model,
                     )
         prompt_text = prompt_text.strip()
         if cfg is None:

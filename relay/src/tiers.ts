@@ -39,7 +39,9 @@ export function isLongCooldown(u: UpstreamConfig, thresholdMs = 300_000): boolea
   return !!(cool && cool.until - Date.now() > thresholdMs);
 }
 
-/** flash：多数免费钥长冷却时，把 paid 提到候选首位（保 Go 前缀缓存 + 少断流） */
+/** flash：多数免费钥长冷却时，把 paid 提到候选首位（保 Go 前缀缓存 + 少断流）
+ *  2026-07-28：与 IP 轮换无关；仅钥级长冷却占比。
+ */
 export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): UpstreamConfig[] {
   if (tier !== "flash" || ordered.length < 2) return ordered;
   const regFree = (getConfig().tiers.get("flash") || []).filter(

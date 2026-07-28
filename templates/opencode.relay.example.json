@@ -1,10 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "loop/code",
+  "model": "loop/flash",
   "small_model": "loop/flash",
   "provider": {
     "loop": {
-      "name": "CCC Relay (flash / Pro / code)",
+      "name": "CCC Relay (flash 单通道 · Pro/code 轮空)",
       "kind": "openai",
       "options": {
         "baseURL": "http://127.0.0.1:4002/v1",

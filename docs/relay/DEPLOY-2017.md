@@ -132,8 +132,8 @@ cp ~/program/CCC/templates/opencode.relay.example.json \
 chmod 600 ~/.config/opencode/opencode.json
 # 可选同步 ~/.opencode/opencode.json
 # opencode-exec 探 :4002 失败时自动切 xfyun/code + OPENCODE_CONFIG 指向 opencode.direct.json
-# Engine 默认 OPENCODE_MODEL=loop/code（scripts/ccc-engine.sh）
-# 验收:opencode run --model loop/code "ping" 走 relay；日志 [fail-open] 不出现即正常
+# Engine 默认 OPENCODE_MODEL=loop/flash（scripts/ccc-engine.sh）
+# 验收:opencode run --model loop/flash "ping" 走 relay；日志 [fail-open] 不出现即正常
 ```
 
 ---

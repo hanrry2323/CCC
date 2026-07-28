@@ -22,7 +22,7 @@ Engine 看板开发（Mac2017 → 本机 relay :4000/:4002）
 | M1 对话（sidecar `:7788`） | **loop-code**（arm64） | **2017 relay** `:4000`（`flash`） | `CCC_ANTHROPIC_BASE_URL` 改本机；fail-open → relay-direct.url |
 | M1 relay（`:4000`/`:4002`） | **CCC Relay M1**（可选） | — | `com.ccc.relay.m1` plist;三档 flash/Pro/code |
 | Engine product 扇出（2017） | **Claude** → relay → flash/Pro | **本机 relay** `:4000` | `AGENT_PLANNER_BASE_URL` env |
-| Engine dev 写码（2017） | **OpenCode** → relay `:4002` | **本机 relay** | `OPENCODE_MODEL=loop/code` |
+| Engine dev 写码（2017） | **OpenCode** → relay `:4002` | **本机 relay** | `OPENCODE_MODEL=loop/flash` |
 | 2017 relay（`:4000`/`:4002`） | **CCC Relay 2017** | — | `com.ccc.relay.2017` plist |
 
 ## 解析入口
@@ -35,7 +35,7 @@ Hub（2017）：不再需要对话 CLI（`/api/chat` 已删）。
 
 | 工具 | Server（2017）应指向 |
 |------|----------------------|
-| OpenCode（dev 写码） | **relay `:4002`**（`OPENCODE_MODEL=loop/code`）；探活失败自动切 `~/.config/opencode/opencode.direct.json` 直连（讯飞/智谱） |
+| OpenCode（dev 写码） | **relay `:4002`**（`OPENCODE_MODEL=loop/flash`）；探活失败自动切 `~/.config/opencode/opencode.direct.json` 直连 |
 | Claude（product / reviewer） | **relay `:4000`**（`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`）；fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
 | Engine 环境 | Engine 启动时自动设 `AGENT_PLANNER_BASE_URL`，无需手动配置 |
 
