@@ -9,15 +9,16 @@
 ## 固定顺序
 
 0. **先查是否其实已绿**：`git log --grep=<tid>` / 现跑 acceptance。若 commit 已含 task_id 且验收绿 → **结算到 testing**，不要再优化重投。  
-1. `hub_repair(status)` / `failure_pack`（可带 `epic_id`）→ 读 `exhausted[]`：`reason_bucket`、quarantine、review_fail 摘要  
+1. `hub_repair(status)` / `failure_pack`（可带 `epic_id`）→ 读 `exhausted[]`：`reason_bucket`、**`optimize_hint`**、`prior_transfer`、quarantine、review_fail 摘要  
 2. 人话 ≤3 句说明失败因（按桶：hang / acceptance_fail / phase_unresolvable …）——**意图仍成立，错在任务拆解或流程**  
 3. `hub_repair(clear_blockers)` 归档不可恢复残卡 + 沉底 failed epic + 剪幽灵轨（可恢复仍先 reopen，见清板 SOP）  
-4. 出 **优化** `ccc-transfer`：
+4. 出 **优化** `ccc-transfer`：**严格按各行 `optimize_hint`**（勿只抄原卡）：
    - `title`/`goal` **对齐原意图卡原文**（或显式 `supersede_goals=true`）
    - 按桶改法见下表
-   - `plan_md` 与 goal 同向；acceptance 可重放
+   - `plan_md` 与 goal 同向；acceptance 可重放（过 `transfer_gate` 强度门）
 5. 人确认下达（Desktop 确认卡）；进板后 Engine 全自动  
 6. **冷却**：同一意图自动优化大卡 ≤1 次；再失败升运维红（人改意图），禁止环
+7. **教训落盘**：系统写入 L1 `transfer_lessons`（digest「近期定卡教训」）；禁止 invent 当记忆
 
 ## 按失败桶定稿硬约束
 

@@ -115,20 +115,29 @@ def validate_transfer_payload(
     if not hygiene and acc_ok:
         # 分查 acceptance / plan：plan 内「## 验收」编号列表不得盖掉顶部 acceptance 子弹
         acc_norm = normalize_acceptance(acceptance)
-        has_probe = bool(
+        cmds = list(
             ip.extract_probe_commands(acc_norm)
             or ip.extract_probe_commands(plan_md)
         )
-        if not has_probe:
+        if not cmds:
             errors.append(
-                {
-                    "code": "missing_intent_probe",
-                    "message": (
-                        "业务 epic 的验收须含 ≥1 条可重放意图探针"
-                        "（如 DRY_RUN=true .venv/bin/python … / python3 … / pytest）"
-                    ),
-                }
+                _err(
+                    "missing_intent_probe",
+                    "业务 epic 的验收须含 ≥1 条可重放意图探针"
+                    "（如 DRY_RUN=true .venv/bin/python … / python3 … / pytest）",
+                    "acceptance 写可执行命令（pytest / python3 -c assert / DRY_RUN=…），"
+                    "禁止散文或 test -f 假绿。",
+                )
             )
+        else:
+            weak = _check_acceptance_strength(cmds, plan_md=plan_md)
+            if weak:
+                errors.append(weak)
+
+        if plan_md:
+            plan_err = _check_plan_preview(plan_md)
+            if plan_err:
+                errors.append(plan_err)
 
     if workspace and not hygiene:
         n_err = check_next_intent_gate(body, Path(workspace))
@@ -139,7 +148,115 @@ def validate_transfer_payload(
     if align_err:
         errors.append(align_err)
 
+    # Ensure every error carries fix_hint for Agent training loop
+    for e in errors:
+        if isinstance(e, dict) and "fix_hint" not in e:
+            e["fix_hint"] = _default_fix_hint(str(e.get("code") or ""))
+
     return (len(errors) == 0), errors
+
+
+def _err(code: str, message: str, fix_hint: str) -> dict[str, str]:
+    return {"code": code, "message": message, "fix_hint": fix_hint}
+
+
+def _default_fix_hint(code: str) -> str:
+    hints = {
+        "missing_title": "title 写 1–80 字可执行中文意图。",
+        "missing_goal": "goal 写清要做成什么；与 plan_md 同向。",
+        "missing_acceptance": "acceptance 至少一条可重放探针命令。",
+        "missing_pipeline": "pipeline 填 dev（或对应产线）。",
+        "missing_intent_probe": "加 pytest/python3/DRY_RUN 探针，禁散文验收。",
+        "acceptance_weak": "换成行为探针：pytest / python3 -c assert / DRY_RUN，禁 test -f。",
+        "plan_acceptance_weak": "plan_md 补 ## 验收 + 强探针；单意图单卡。",
+        "plan_scope_too_wide": "缩小 scope：单卡少文件、单顶层目录、单 phase。",
+        "plan_goal_conflict": "改齐 plan_md 与 goal（勿降 CLOSE/净 edge）。",
+        "intent_not_stable": "对齐未完成 L1 目标，或 supersede_goals / abandon_prior。",
+        "feasibility_blocked": "先解阻塞或改可行性评估后再定稿。",
+    }
+    return hints.get(code, "按拒因改 ccc-transfer 后再定稿；读 digest「近期定卡教训」。")
+
+
+def _check_acceptance_strength(
+    cmds: list[str], *, plan_md: str = ""
+) -> dict[str, str] | None:
+    """Reject existence-only false greens (R5) before board write."""
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _acceptance_strength import is_strong_enough, plan_is_hygiene_or_ops
+
+        ok_s, reason_s = is_strong_enough(
+            cmds,
+            require_strong=True,
+            exempt=plan_is_hygiene_or_ops(plan_md) if plan_md else False,
+        )
+        if not ok_s:
+            return _err(
+                "acceptance_weak",
+                f"验收探针过弱（{reason_s}）：禁止仅 test -f 等存在性假绿",
+                "acceptance 改为 pytest / python3 -c assert / DRY_RUN=true …；"
+                "对照 post-exhaust acceptance_fail 桶。",
+            )
+    except Exception:
+        pass
+    return None
+
+
+def _check_plan_preview(plan_md: str) -> dict[str, str] | None:
+    """Lightweight plan_md lint + scope width preview before backlog."""
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        import phase_lint
+
+        ok, errs = phase_lint.validate_plan_acceptance(
+            plan_md, require_probe=True
+        )
+        if not ok:
+            msg = "; ".join(str(e) for e in (errs or [])[:3]) or "plan_md 验收不合格"
+            return _err(
+                "plan_acceptance_weak",
+                msg,
+                "plan_md 必须有 ## 验收 + ≥1 条强探针；禁散文/弱探针。",
+            )
+    except Exception:
+        pass
+
+    # Multi-root scope / too many phases → hang risk (post-exhaust hang bucket)
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _plan_adopt import synthesize_phases_from_plan, backfill_scopes
+
+        phases = backfill_scopes(synthesize_phases_from_plan(plan_md), plan_md)
+        if len(phases) > 3:
+            return _err(
+                "plan_scope_too_wide",
+                f"plan 合成约 {len(phases)} 个 phase，易 hang；请压到 ≤2（优先 1）",
+                "hang 桶：单卡单 phase、scope≤少数文件；禁 Step1–6 一次做完。",
+            )
+        roots: set[str] = set()
+        for p in phases:
+            for s in p.get("scope") or []:
+                part = str(s).strip().replace("\\", "/").lstrip("./")
+                if not part:
+                    continue
+                top = part.split("/", 1)[0]
+                if top and top not in (".ccc",):
+                    roots.add(top)
+        if len(roots) > 3:
+            return _err(
+                "plan_scope_too_wide",
+                f"scope 跨 {len(roots)} 个顶层目录（{', '.join(sorted(roots)[:5])}），易串行 hang",
+                "缩小白名单到同一顶层（如仅 src/ 或仅 tests/）；对照 hang 优化 hint。",
+            )
+    except Exception:
+        pass
+    return None
 
 
 def validate_plan_goal_alignment(body: dict[str, Any]) -> dict | None:
@@ -197,13 +314,12 @@ def validate_plan_goal_alignment(body: dict[str, Any]) -> dict | None:
                 for k in ("不做 close", "不发 close", "上层", "不追踪", "保持 open")
             )
         ):
-            return {
-                "code": "plan_goal_conflict",
-                "message": (
-                    "plan_md 与 goal 冲突：goal 要求 CLOSE/反向平仓，"
-                    "但 plan 降级为不做 CLOSE / 交给上层。请改齐后再定稿。"
-                ),
-            }
+            return _err(
+                "plan_goal_conflict",
+                "plan_md 与 goal 冲突：goal 要求 CLOSE/反向平仓，"
+                "但 plan 降级为不做 CLOSE / 交给上层。请改齐后再定稿。",
+                "plan_md 写明 CLOSE_LONG/CLOSE_SHORT 与仓位追踪；禁止「交给上层」。",
+            )
 
     # Shared cost / net-edge: plan must not defer if goal requires it
     if any(k in g for k in ("共享 cost", "round_trip_cost", "净 edge", "净edge")):
@@ -211,10 +327,11 @@ def validate_plan_goal_alignment(body: dict[str, Any]) -> dict | None:
             k in p
             for k in ("不做净 edge", "延后扣费", "暂不抽 cost", "不做共享 cost")
         ):
-            return {
-                "code": "plan_goal_conflict",
-                "message": "plan_md 与 goal 冲突：goal 要求扣费/共享 cost，plan 却延后或不做。",
-            }
+            return _err(
+                "plan_goal_conflict",
+                "plan_md 与 goal 冲突：goal 要求扣费/共享 cost，plan 却延后或不做。",
+                "plan 必须落地共享 cost / 净 edge；禁止延后。",
+            )
 
     return None
 

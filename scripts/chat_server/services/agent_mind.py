@@ -32,7 +32,10 @@ ALLOWED_DECIDED_KEYS = (
     "constraints",
     "open_questions",
     "architecture_choices",
+    "transfer_lessons",
 )
+TRANSFER_LESSONS_MAX = 12
+TRANSFER_LESSON_HINT_MAX = 240
 GOAL_STATUSES = frozenset({"planned", "dispatched", "probed", "stable", "abandoned"})
 FORBIDDEN_DECIDED_SUBSTRINGS = (
     "enable engine",
@@ -252,9 +255,19 @@ def compile_observed(root: Path, *, project_id: str) -> dict[str, Any]:
     if git.get("dirty"):
         risks.append(f"工作区脏 {git.get('dirty_count') or 0} 处")
     if int(counts.get("abnormal") or 0) > 0:
-        risks.append(f"abnormal={counts.get('abnormal')}")
+        risks.append(f"abnormal={counts.get('abnormal')} → 本会话 hub_repair")
     if not board.get("ok", True) and board.get("error"):
         risks.append(str(board.get("error"))[:120])
+    # Exhausted / board-repair nudge for Agent self-heal training
+    try:
+        from chat_server.services.board_repair import list_blockers
+
+        bl = list_blockers(root)
+        ex_n = len(bl.get("exhausted") or [])
+        if ex_n:
+            risks.append(f"exhausted={ex_n} → failure_pack+优化定稿")
+    except Exception:
+        pass
 
     observed = {
         "schema_version": SCHEMA_VERSION,
@@ -287,6 +300,7 @@ def load_decided(root: Path) -> dict[str, Any]:
             "constraints": [],
             "open_questions": [],
             "architecture_choices": [],
+            "transfer_lessons": [],
             "updated_at": None,
             "updated_by": None,
         }
@@ -296,6 +310,7 @@ def load_decided(root: Path) -> dict[str, Any]:
         "constraints": [],
         "open_questions": [],
         "architecture_choices": [],
+        "transfer_lessons": [],
         "updated_at": data.get("updated_at"),
         "updated_by": data.get("updated_by"),
     }
@@ -322,7 +337,86 @@ def load_decided(root: Path) -> dict[str, Any]:
             if len(cleaned) >= DECIDED_LIST_MAX:
                 break
         out[k] = cleaned
+    out["transfer_lessons"] = _normalize_transfer_lessons(
+        data.get("transfer_lessons") or []
+    )
     return out
+
+
+def _normalize_transfer_lessons(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        epic_id = str(item.get("epic_id") or "").strip()[:128]
+        bucket = str(item.get("bucket") or "").strip()[:64]
+        hint = str(item.get("hint") or "").strip()[:TRANSFER_LESSON_HINT_MAX]
+        if not (epic_id or bucket or hint):
+            continue
+        out.append(
+            {
+                "ts": str(item.get("ts") or "")[:40],
+                "epic_id": epic_id,
+                "bucket": bucket or "other",
+                "title_snip": str(item.get("title_snip") or "")[:80],
+                "hint": hint,
+                "bad_pattern": str(item.get("bad_pattern") or "")[:160],
+                "good_fix": str(item.get("good_fix") or "")[:160],
+                "source": str(item.get("source") or "system")[:32],
+            }
+        )
+        if len(out) >= TRANSFER_LESSONS_MAX:
+            break
+    return out
+
+
+def append_transfer_lesson(
+    root: Path,
+    *,
+    epic_id: str = "",
+    bucket: str = "other",
+    title_snip: str = "",
+    hint: str = "",
+    bad_pattern: str = "",
+    good_fix: str = "",
+    source: str = "system",
+) -> dict[str, Any]:
+    """System-compiled epic craft lesson (not invent). Cap TRANSFER_LESSONS_MAX, newest first."""
+    root = Path(root)
+    cur = load_decided(root)
+    lesson = {
+        "ts": _now_iso(),
+        "epic_id": str(epic_id or "").strip()[:128],
+        "bucket": str(bucket or "other").strip()[:64] or "other",
+        "title_snip": str(title_snip or "").strip()[:80],
+        "hint": str(hint or "").strip()[:TRANSFER_LESSON_HINT_MAX],
+        "bad_pattern": str(bad_pattern or "").strip()[:160],
+        "good_fix": str(good_fix or "").strip()[:160],
+        "source": str(source or "system").strip()[:32] or "system",
+    }
+    if not (lesson["hint"] or lesson["bucket"] or lesson["epic_id"]):
+        return cur
+    # Dedup same epic+bucket within recent
+    existing = [
+        x
+        for x in (cur.get("transfer_lessons") or [])
+        if not (
+            x.get("epic_id") == lesson["epic_id"]
+            and x.get("bucket") == lesson["bucket"]
+            and lesson["epic_id"]
+        )
+    ]
+    cur["transfer_lessons"] = ([lesson] + existing)[:TRANSFER_LESSONS_MAX]
+    cur["schema_version"] = SCHEMA_VERSION
+    cur["updated_at"] = _now_iso()
+    cur["updated_by"] = "hub"
+    _atomic_write_json(decided_path(root), cur)
+    for key in list(_digest_cache.keys()):
+        if key.startswith(f"{root}:"):
+            _digest_cache.pop(key, None)
+    return cur
 
 
 def merge_decided(
@@ -334,7 +428,7 @@ def merge_decided(
     """字段级 upsert：同名字段整表替换（经清洗）；禁止投 backlog / 改 L0。"""
     cur = load_decided(root)
     by = (updated_by or "desktop-agent").strip() or "desktop-agent"
-    if by not in ("desktop-agent", "human", "hub", "regress"):
+    if by not in ("desktop-agent", "human", "hub", "regress", "system"):
         by = "desktop-agent"
 
     if "goals" in patch:
@@ -613,6 +707,17 @@ def format_digest(
             lines.append(f"{label}：")
             for it in items[:6]:
                 lines.append(f"- {it}")
+
+    lessons = decided.get("transfer_lessons") or []
+    if lessons:
+        lines.append("近期定卡教训（必读 · 勿重复同构失败）：")
+        for les in lessons[:5]:
+            if not isinstance(les, dict):
+                continue
+            bucket = les.get("bucket") or "?"
+            hint = (les.get("hint") or les.get("good_fix") or "")[:120]
+            snip = les.get("title_snip") or les.get("epic_id") or ""
+            lines.append(f"- [{bucket}] {snip}: {hint}".rstrip(": "))
 
     text = "\n".join(lines).strip() + "\n"
     if len(text) > DIGEST_MAX_CHARS:

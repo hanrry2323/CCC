@@ -919,7 +919,7 @@ enum LocalSessionStore {
         摘要：\(hint)
         失败桶：\(buckets.isEmpty ? "见 hub_repair failure_pack" : buckets)
         请严格按 references/post-exhaust-epic-optimize-sop.md + references/abnormal-solve-sop.md：
-        hub_repair(status|failure_pack) → 白话失败因（意图仍成立）→ clear_blockers 归档 → 优化 ccc-transfer（title/goal 对齐原意图；按桶缩小/修探针）。
+        hub_repair(failure_pack) → 读 exhausted[].optimize_hint + prior_transfer → 已绿则结算 → clear_blockers 归档 → 按 hint 优化 ccc-transfer（禁原样重下）。
         dirty/commit：references/commit-folder-hygiene-sop.md；禁止 invent；禁止抬 Engine 重试上限；禁止写业务源码；禁止甩锅复制给对话。
         """
     }

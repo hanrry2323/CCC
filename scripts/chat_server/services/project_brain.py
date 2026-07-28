@@ -19,6 +19,17 @@ PLAN_MAX = 1500
 BRAIN_MAX = 4500
 PLAN_INDEX_MAX = 40
 
+# Fallback when qb workspace has no .ccc/agent-mind/transfer_playbook.md
+_QB_TRANSFER_PLAYBOOK_FALLBACK = """反模式→正模式（定大卡）：
+1. hang/过拆：禁 Step1–6；1 work + 1 phase + 少数文件 scope。
+2. plan_goal_conflict：goal 要 CLOSE/净 edge，plan 禁止「交给上层/只发 OPEN」。
+3. acceptance_weak：禁 test -f；用 pytest / python3 -c / DRY_RUN。
+4. dirty_block：.ccc/lessons 是噪音非业务脏；勿投卫生 epic。
+5. ## 验收清单 ≠ ## 验收：sync tester 只认精确 ## 验收 + 白名单命令。
+6. 已绿即停：验收全绿立即 commit（含 task_id），禁止继续重构。
+7. 耗尽后：failure_pack.optimize_hint 改卡，禁止原样重下。
+"""
+
 _PLAN_INDEX_RE = re.compile(
     r"规划\s*/?\s*未来待办\s*\|\s*`?([^`|\n]+)`?",
     re.I,
@@ -278,6 +289,49 @@ def compile_brain(root: Path, *, project_id: str) -> dict[str, Any]:
         lines.append("—— decided 约束 ——")
         for c in constraints:
             lines.append(f"- {c}")
+
+    # Transfer craft lessons (system-compiled from exhaust / gate rejects)
+    lessons = decided.get("transfer_lessons") or []
+    if lessons:
+        lines.append("—— 近期定卡教训 ——")
+        for les in lessons[:5]:
+            if not isinstance(les, dict):
+                continue
+            bucket = les.get("bucket") or "?"
+            hint = (les.get("hint") or "")[:160]
+            snip = les.get("title_snip") or les.get("epic_id") or ""
+            lines.append(f"- [{bucket}] {snip}: {hint}")
+
+    # Bridge Engine .ccc/lessons (Desktop never saw these before)
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        import sys
+
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _lessons import get_recent_lessons
+
+        eng = get_recent_lessons(root, count=3)
+        if eng:
+            lines.append("—— Engine 失败课（.ccc/lessons）——")
+            for item in eng:
+                tid = str(item.get("task_id") or "")[:48]
+                err = str(item.get("error") or item.get("analysis") or "")[:120]
+                lines.append(f"- {tid}: {err}")
+    except Exception:
+        pass
+
+    # qb craft playbook (anti-patterns → fixes)
+    pid = (project_id or "").strip().lower()
+    if pid == "qb":
+        play = _read_capped(
+            root / ".ccc" / "agent-mind" / "transfer_playbook.md", 900
+        )
+        if not play:
+            play = _QB_TRANSFER_PLAYBOOK_FALLBACK
+        if play:
+            lines.append("—— qb 定卡反模式 ——")
+            lines.append(play)
 
     text = "\n".join(lines).strip() + "\n"
     if len(text) > BRAIN_MAX:

@@ -259,9 +259,44 @@ def build_exhausted_summary(
                 "quarantine_dir": str(qdir) if qdir.is_dir() else "",
                 "review_fail_head": rf_head,
                 "result_head": result_head,
+                "optimize_hint": _optimize_hint_for(bucket),
+                "prior_transfer": _prior_transfer_summary(workspace, tid, task),
             }
         )
     return out
+
+
+def _optimize_hint_for(bucket: str) -> str:
+    try:
+        from _failure_buckets import bucket_optimize_hints
+
+        return bucket_optimize_hints(str(bucket or "other"))
+    except Exception:
+        return "读 quarantine 证据后改任务拆解；意图对齐原 goal；禁 invent。"
+
+
+def _prior_transfer_summary(
+    workspace: Path, tid: str, task: dict[str, Any] | None
+) -> dict[str, str]:
+    """Head of seed plan + goal-ish fields for Agent rewrite."""
+    ws = Path(workspace)
+    task = task or {}
+    plan_head = ""
+    for cand in (
+        ws / ".ccc" / "plans" / f"{tid}.plan.md",
+        ws / ".ccc" / "plans" / f"{str(task.get('parent_id') or '').strip()}.plan.md",
+    ):
+        if cand.is_file():
+            try:
+                plan_head = cand.read_text(encoding="utf-8", errors="replace")[:600]
+            except OSError:
+                plan_head = ""
+            break
+    return {
+        "title": str(task.get("title") or "")[:80],
+        "goal": str(task.get("description") or task.get("goal") or "")[:300],
+        "plan_head": plan_head,
+    }
 
 
 def failure_pack(
@@ -300,6 +335,39 @@ def failure_pack(
     buckets = sorted(
         {str(x.get("reason_bucket") or "") for x in exhausted if x.get("reason_bucket")}
     )
+    # Enrich any rows missing hints (failed_epic inserts)
+    for row in exhausted:
+        if not row.get("optimize_hint"):
+            row["optimize_hint"] = _optimize_hint_for(
+                str(row.get("reason_bucket") or "other")
+            )
+        if not row.get("prior_transfer"):
+            row["prior_transfer"] = _prior_transfer_summary(
+                workspace, str(row.get("id") or ""), row
+            )
+    # Persist craft lessons for next Desktop turns
+    try:
+        from chat_server.services import agent_mind as _am
+    except ImportError:
+        try:
+            from . import agent_mind as _am
+        except ImportError:
+            _am = None  # type: ignore
+    if _am is not None:
+        for row in exhausted[:6]:
+            try:
+                _am.append_transfer_lesson(
+                    Path(workspace),
+                    epic_id=str(row.get("parent_id") or row.get("id") or ""),
+                    bucket=str(row.get("reason_bucket") or "other"),
+                    title_snip=str(row.get("title") or "")[:80],
+                    hint=str(row.get("optimize_hint") or "")[:240],
+                    bad_pattern=str(row.get("reason_head") or "")[:160],
+                    good_fix=str(row.get("optimize_hint") or "")[:160],
+                    source="failure_pack",
+                )
+            except Exception:
+                pass
     return {
         "ok": True,
         "action": "failure_pack",
@@ -309,6 +377,15 @@ def failure_pack(
         "failed_epics": blockers.get("failed_epics") or [],
         "abnormal_count": len(blockers.get("abnormal") or []),
         "sop": "references/post-exhaust-epic-optimize-sop.md",
+        "optimize_hints": [
+            {
+                "id": x.get("id"),
+                "bucket": x.get("reason_bucket"),
+                "hint": x.get("optimize_hint"),
+            }
+            for x in exhausted
+            if x.get("optimize_hint")
+        ],
     }
 
 

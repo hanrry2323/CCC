@@ -651,12 +651,38 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
 
     ok, errors = transfer_gate.validate_transfer_payload(body)
     if not ok:
+        # Gate reject → L1 lesson so Agent improves next draft
+        try:
+            pid = str(body.get("project_id") or body.get("project") or "").strip()
+            if pid:
+                ws_path = None
+                try:
+                    ws_path = _resolve_workspace(pid)
+                except Exception:
+                    ws_path = PROJECT_TO_WORKSPACE.get(pid)
+                if ws_path:
+                    from chat_server.services import agent_mind as _am
+
+                    e0 = errors[0] if errors else {}
+                    _am.append_transfer_lesson(
+                        Path(ws_path),
+                        epic_id="",
+                        bucket=str(e0.get("code") or "gate_reject"),
+                        title_snip=str(body.get("title") or "")[:80],
+                        hint=str(e0.get("fix_hint") or e0.get("message") or "")[:240],
+                        bad_pattern=str(e0.get("message") or "")[:160],
+                        good_fix=str(e0.get("fix_hint") or "")[:160],
+                        source="gate_reject",
+                    )
+        except Exception:
+            pass
         return JSONResponse(
             status_code=400,
             content={
                 "ok": False,
                 "error": errors[0]["code"] if errors else "gate_failed",
                 "errors": errors,
+                "fix_hint": (errors[0].get("fix_hint") if errors else None),
             },
         )
 

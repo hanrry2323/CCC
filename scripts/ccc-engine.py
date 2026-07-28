@@ -2974,6 +2974,23 @@ def _enqueue_post_exhaust_optimize(
         )
     except Exception as exc:
         engine_log(f"[{_ws_label(ws)}] epic_optimize enqueue failed: {exc}")
+    # Agent craft lesson (L1) — train next epic draft
+    try:
+        from _failure_buckets import bucket_optimize_hints
+        from chat_server.services import agent_mind as _am
+
+        _am.append_transfer_lesson(
+            Path(ws),
+            epic_id=parent,
+            bucket=bucket,
+            title_snip=str((task or {}).get("title") or tid)[:80],
+            hint=bucket_optimize_hints(bucket)[:240],
+            bad_pattern=str(reason or "")[:160],
+            good_fix=bucket_optimize_hints(bucket)[:160],
+            source="post_exhaust",
+        )
+    except Exception as exc:
+        engine_log(f"[{_ws_label(ws)}] transfer_lesson append failed: {exc}")
 
 
 def _retry_abnormal_failures(ws: Path) -> None:

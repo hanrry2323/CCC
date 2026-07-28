@@ -47,12 +47,15 @@ def test_gate_accepts_complete():
     body = {
         "title": "加一行 README",
         "goal": "在 README 加 DEMO 标记",
-        "acceptance": ["python3 -m pytest"],
+        "acceptance": ["python3 -m pytest -q tests/"],
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "ccc-demo",
         "executor_intent": "python",
-        "plan_md": "# Plan\n\n## 目标\nx\n",
+        "plan_md": (
+            "# Plan\n\n## 目标\nx\n\n## 验收\n\n"
+            "- python3 -m pytest -q tests/\n"
+        ),
     }
     ok, errors = transfer_gate.validate_transfer_payload(body)
     assert ok, errors
@@ -62,6 +65,44 @@ def test_gate_accepts_complete():
     assert "python" in desc
     plan = transfer_gate.build_plan_md(body)
     assert "## 验收" in plan
+
+
+def test_gate_rejects_existence_only_acceptance():
+    body = {
+        "title": "假绿探针卡",
+        "goal": "加能力",
+        "acceptance": ["test -f src/strategies/momentum.py"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": (
+            "# Plan\n\n## 目标\nx\n\n## 验收\n\n"
+            "- test -f src/strategies/momentum.py\n"
+        ),
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert not ok
+    codes = {e["code"] for e in errors}
+    assert "acceptance_weak" in codes or "plan_acceptance_weak" in codes
+    assert any(e.get("fix_hint") for e in errors)
+
+
+def test_gate_rejects_plan_without_acceptance_section():
+    body = {
+        "title": "缺验收节",
+        "goal": "做一件事",
+        "acceptance": ["python3 -m pytest -q tests/unit/test_x.py"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": "# Plan\n\n## 目标\n只写目标没有验收节\n",
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "plan_acceptance_weak" for e in errors)
+    assert any("fix_hint" in e for e in errors)
 
 
 def test_plan_goal_conflict_close_downgrade():
@@ -76,7 +117,9 @@ def test_plan_goal_conflict_close_downgrade():
         "executor_intent": "opencode",
         "plan_md": (
             "# Plan\n\n## 目标\n"
-            "策略仍只发 OPEN；CLOSE 交给上层处理；不追踪仓位；保持 OPEN。\n"
+            "策略仍只发 OPEN；CLOSE 交给上层处理；不追踪仓位；保持 OPEN。\n\n"
+            "## 验收\n\n"
+            "- python3 -m pytest tests/unit/test_momentum_fees.py -q\n"
         ),
     }
     err = transfer_gate.validate_plan_goal_alignment(body)
@@ -98,7 +141,9 @@ def test_plan_goal_alignment_ok_when_close_in_plan():
         "executor_intent": "opencode",
         "plan_md": (
             "# Plan\n\n## 目标\n"
-            "在 momentum 内发 CLOSE_LONG/CLOSE_SHORT；抽取共享 cost；算净 edge。\n"
+            "在 momentum 内发 CLOSE_LONG/CLOSE_SHORT；抽取共享 cost；算净 edge。\n\n"
+            "## 验收\n\n"
+            "- python3 -m pytest tests/unit/test_momentum_fees.py -q\n"
         ),
     }
     assert transfer_gate.validate_plan_goal_alignment(body) is None
