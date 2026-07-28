@@ -37,8 +37,8 @@
 | hub-probe-health-contract | [`012-hub-probe-health-contract.md`](./012-hub-probe-health-contract.md) | **已落地** |
 | reviewer-verdict-kpi-honesty | [`013-reviewer-verdict-kpi-honesty.md`](./013-reviewer-verdict-kpi-honesty.md) | **已合入** `6fba8d0`（R1 · 门禁诚实 + 无 verdict→FAIL） |
 | reviewer-bg-empty-verdict | [`014-reviewer-bg-empty-verdict.md`](./014-reviewer-bg-empty-verdict.md) | **已合入**（R2 · 空输出/超时必落 verdict） |
-| failure-reopen-quarantine-harden | [`015-failure-reopen-quarantine-harden.md`](./015-failure-reopen-quarantine-harden.md) | **进行中**（R3 · reopen/quarantine 机读码） |
-| **轮次 SSOT** | [`PRODUCTION-DELIVERY-ROUNDS.md`](./PRODUCTION-DELIVERY-ROUNDS.md) | 平台生产交付 · 固定 R1–R4 |
+| failure-reopen-quarantine-harden | [`015-failure-reopen-quarantine-harden.md`](./015-failure-reopen-quarantine-harden.md) | **暂停**（R3 · 待 Relay Flash 封印后 Cursor 自跑） |
+| **轮次 SSOT** | [`PRODUCTION-DELIVERY-ROUNDS.md`](./PRODUCTION-DELIVERY-ROUNDS.md) | R3/R4 暂停；主轨 Relay Flash 封印 |
 
 权威例外：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」。  
 三层出门 / 金路径：[`../briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · [`../briefs/2026-07-27-golden-path-evidence.md`](../briefs/2026-07-27-golden-path-evidence.md)。

@@ -55,8 +55,8 @@ G1–G6 **全部绿**，且下列金路径证据缺一不可：
 
 | # | 门 | 验收 |
 |---|----|------|
-| G1 | **对话稳** | M1 Desktop / Claude Code / `:7788` 经 2017 relay `flash` 连续可用；鉴权默认关不挡内网 |
-| G2 | **写码通道** | OpenCode `code` 经 **Go 套餐** `zen/go/v1`（`opencode-go-paid-code` / `deepseek-v4-flash`）；禁止 Go 钥误配 `zen/v1`；xfyun 退役 |
+| G1 | **对话稳** | M1 Desktop / Claude Code / `:7788` 经 2017 relay **`flash`** 连续可用；鉴权默认关不挡内网 |
+| G2 | **写码通道** | OpenCode **`loop/flash`** 经 2017 `:4002` → **同一 flash 池**（free 快切 + 2× Go `zen/go/v1` paid）；禁止 Go 钥误配 `zen/v1`；Pro/code 轮空；xfyun 退役 |
 | G3 | **运维敢开发** | Desktop Ops 四域灯：绿敢下任务；红一键交 Agent；P0–P2 已合入并发布二进制 |
 | G4 | **编排不假绿** | Engine 消费业务仓；hollow/verdict 真门；hang 收尸让下一卡；invent 硬关 |
 | G5 | **双机拓扑净** | Hub 隧道 `:17777`；Hub 环回绑；sidecar Hub 反代；fleet 绿；无 M1 第二树 |
@@ -163,16 +163,24 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] 周刊金路径烟测 checklist（见上「效率仪表」）  
 - [x] **013** reviewer 无 verdict→FAIL + KPI `work_abnormal_n` 诚实计数（[`../dev-packets/013-reviewer-verdict-kpi-honesty.md`](../dev-packets/013-reviewer-verdict-kpi-honesty.md) · 合入 `6fba8d0`）
 - [x] **014** reviewer/`--bg` 空输出与超时必落 verdict（[`../dev-packets/014-reviewer-bg-empty-verdict.md`](../dev-packets/014-reviewer-bg-empty-verdict.md) · 合入 `b3936c9`）
-- [ ] **015** reopen/quarantine 加固（[`../dev-packets/015-failure-reopen-quarantine-harden.md`](../dev-packets/015-failure-reopen-quarantine-harden.md) · R3）
+- [ ] **015** reopen/quarantine 加固（**暂停** · Relay Flash 封印后 Cursor 自跑）
+
+### 程 R — Relay Flash 单通道封印（**已完成 · 2026-07-28**）
+
+- [x] 文档：handoff / DEPLOY / G2 / STARTUP-BRIEF 对齐 Flash-only  
+- [x] 2017 主机：upstreams 无 flash `proxy`；恰好 2× Go paid；thinking off；OpenCode `loop/flash`  
+- [x] 活体：PaidGuarantee（关 free→paid 200）+ pinPaid 粘滞  
+- [x] `relay` vitest + dist 热更；证据 [`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)
 
 ---
 
 ## 还要多少步（依赖序 · 不虚报日历）
 
 1. ~~收束壳 / Layer1 证据~~ → **已完成（2026-07-28）**  
-2. ~~程 B 硬化~~ → **已完成**  
-3. **固定长任务 R1–R4**（Claude `/loop` + Cursor 审）→ [`../dev-packets/PRODUCTION-DELIVERY-ROUNDS.md`](../dev-packets/PRODUCTION-DELIVERY-ROUNDS.md) → **平台生产交付封印**  
-4. 封印后才开 Layer2 qb / 飞轮自动（另清单，勿插进 R1–R4）
+2. ~~程 B 硬化~~ → **已完成**（R1/R2 已合入；R3/R4 **暂停**）  
+3. **Relay Flash 封印**（Cursor 独立）→ [`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)  
+4. 再 Cursor 自跑 R3 015 → R4 016 → 平台生产交付总闸  
+5. 其后才开 Layer2 qb / 飞轮自动
 
 ---
 
@@ -192,7 +200,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 
 | 项 | 状态 |
 |----|------|
-| Relay flash / code 免费池 | 已部署；Go thinking 关；持续观察限流 |
+| Relay | **Flash 单通道**（`128129a`）；Pro/code 轮空；封印见 [`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md) |
 | Agent Token 默认关 + Hub 反代列项目 | 已落地 |
 | Desktop Ops P0–P2 + 008/009 | **已合入收束**；禁止再开 Ops/SPA 抛光主路径 |
 | Layer 0 表面完备 | **大体已到** |
@@ -201,8 +209,8 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
-| 下一开程 | 程 B **已收口**（KPI PASS + v0.63）；下一二选一仍：**Layer2 qb** 或继续观察 Relay — **勿与飞轮自动同时开** |
+| 下一开程 | **主轨 = Relay Flash 封印**（Cursor）；R3/R4 暂停其后自跑；Layer2 qb 仍冻结 |
 
-**Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode `code` → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
+**Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode **`loop/flash`** → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
 **仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。
 
