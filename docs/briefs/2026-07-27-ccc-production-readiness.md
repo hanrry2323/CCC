@@ -181,7 +181,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 3. ~~**Relay Flash 封印**~~ → **已完成**（[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)）  
 4. ~~R3 015 → R4 016~~ → **已完成**（Cursor 自跑）  
 5. **平台生产交付封印** → **已勾**（见下节）  
-6. 其后才开 Layer2 qb / 飞轮自动
+6. ~~其后才开 Layer2 qb / 飞轮自动~~ → **已开 Layer2 qb**（飞轮仍冻）
 
 ---
 
@@ -193,7 +193,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 - [x] 双机 pull 对齐（见本节合入后 `git rev-parse`）  
 - [x] 周刊金路径 checklist 仍有效（不新开 daemon）
 
-**下一开程才允许**：Layer2 qb 域 KPI / 飞轮自动（另清单）。
+**下一开程**：**Layer2 qb**（进行中）· 飞轮自动仍冻结。见 [`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md)。
 
 ---
 
@@ -222,7 +222,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 | Layer 2 / qb 域 KPI | 清单已立；**仍冻结** |
 | 业务生产主路径 | **可**用 CCC 跑 **小**业务开发（ccc-demo 级）；**不可**用 `released` 冒充 qb 意图稳定/盈利 |
 | 草稿工主路径 | **仅**金路径白名单缺陷；无强制下一包 |
-| 下一开程 | **平台生产交付已封印**；下一开程才允许 Layer2 qb / 飞轮自动（勿与 invent 同时开） |
+| 下一开程 | **Layer2 qb 进行中**（[`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md)）；飞轮 T1–T4 / invent **继续冻结** |
 
 **Layer1 出门句（2026-07-28 正式）**：用户定一个**小而硬**的意图 → Desktop 确认入队（outbox→sidecar→Hub）→ Engine → OpenCode **`loop/flash`** → hollow+verdict → released；失败可收尸 reopen；sidecar ≥30min 稳；探活口径统一；Ops 绿敢下 / 红一键交 Agent。  
 **仍冻结**：qb 域 KPI / 飞轮自动化 / 无人值守 invent / 产能 SLA 承诺。

@@ -4,7 +4,7 @@
 > **样板仓**：qb（量化）— 脑包见 [`../product/project-agent-brain.md`](../product/project-agent-brain.md)  
 > **平台出门**：[`2026-07-27-ccc-production-readiness.md`](./2026-07-27-ccc-production-readiness.md) Layer1  
 > **意图飞轮**：[`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md)  
-> **硬边界**：本清单是 **Layer2 业务域 KPI**。勾上 CCC 的 L/P/S **不等于** 能盈利、不等于实盘可开。
+> **开程（2026-07-28）**：[`2026-07-28-layer2-qb-open.md`](./2026-07-28-layer2-qb-open.md) · 飞轮自动本开程冻结。
 
 ---
 
