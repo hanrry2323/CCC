@@ -1317,7 +1317,7 @@ def _process_backlog(ws: Path) -> bool:
             engine_log(
                 f"[product] [{label}] {tid} relay 不可达 → 切 fail-open 直连继续(不 skip,不计数)"
             )
-            # 不 continue,让 _claude_env 拿不到 relay_url 时自动回退 MiniMax 直连
+            # 不 continue,让 _claude_env 拿不到 relay_url 时走 fail-open 直连
 
         # 3. 失败计数器（step decay；禁止 15min 清零 — 否则 smoke 死循环）
         _COUNTER_DECAY_SEC = 900  # 15 分钟最多减 1，不归零

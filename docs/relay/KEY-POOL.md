@@ -4,7 +4,7 @@
 > **运行配置（含密钥）**：2017 本机 `~/.ccc/relay/upstreams.json`（`chmod 600`）  
 > **完整密钥清单（仅 2017 本机）**：`~/.ccc/relay/KEY-INVENTORY.md`（`chmod 600`，**禁止进 git / 禁止同步到公开仓**）  
 > **M1**：`com.ccc.relay.m1` 为旁路；Desktop / 个人 Claude **默认打 2017** `http://192.168.3.116:4000`  
-> **冲突以** [`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」为准。
+> **冲突以** [`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人主路线 / 模型通道简规 / CCC Relay」为准。
 
 ---
 
@@ -12,52 +12,50 @@
 
 | 要做什么 | 去哪 |
 |----------|------|
-| 改上游钥 / 免费·收费分流 | **SSH `mac2017`** → 编辑 `~/.ccc/relay/upstreams.json` → `launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"` |
+| 改上游钥 / 启用哪一把付费 | **SSH `mac2017`** → 编辑 `~/.ccc/relay/upstreams.json` → `launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"` |
 | 看现在有哪些钥、账号、尾缀 | 2017：`less ~/.ccc/relay/KEY-INVENTORY.md` |
 | 看冷却 / 清短冷却 | `GET/POST http://127.0.0.1:4000/admin/cooldowns`（`?force=1` 全清） |
-| 探针免费 Zen | `LOOP_UPSTREAMS_FILE=~/.ccc/relay/upstreams.json node ~/program/CCC/relay/scripts/probe-opencode-go.mjs` |
+| 探针当前启用 Go | `LOOP_UPSTREAMS_FILE=~/.ccc/relay/upstreams.json node ~/program/CCC/relay/scripts/probe-opencode-go.mjs` |
 | 部署 / plist | [`DEPLOY-2017.md`](DEPLOY-2017.md) |
-| 会话移交包 | [`docs/briefs/2026-07-27-relay-handoff.md`](../briefs/2026-07-27-relay-handoff.md) |
 
 **红线**：密钥只进 `~/.ccc/relay/*`；仓内文档只写账号名 / `key_tail` / 角色，**永不写完整 `sk-`**。
 
 ---
 
-## 2. Flash 单通道（硬 · 2026-07-28）
+## 2. Flash · 付费-only（硬 · 2026-07-28）
 
-**Claude Code + OpenCode 一律打 `flash` / `loop/flash`。** `:4000` 与 `:4002` 共用同一 flash 上游表。`Pro` / `code` **轮空**（配置可留、`enabled:false`）。
+**Claude Code + OpenCode 一律打 `flash` / `loop/flash`。** `:4000` 与 `:4002` 共用同一 flash 上游表。`Pro` / `code` **轮空**。
 
-| | **免费（打头）** | **收费 OpenCode Go（兜底 ×2）** |
-|--|------------------|--------------------------------|
-| 字段 | `billing: "zen-free"` / `zhipu-failover` · `free: true` | `billing: "opencode-go"` · `free: false` |
-| API 根 | `https://opencode.ai/zen/v1`（或智谱等） | **`https://opencode.ai/zen/go/v1`** |
-| 典型模型 | `deepseek-v4-flash-free` · GLM-4.7 · `big-pickle` | `deepseek-v4-flash` |
-| 优先级 | `tier_priority=1` | `tier_priority=80` |
-| 出口 | **仅直连**（**禁止** `proxy` / HK 轮换） | 直连 |
-| 调度 | 钥级**快速轮换**（短 attempt） | 墙钟内必试；成功后 **pinPaid** |
+Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是多厂商调度站。
 
-**踩坑（已核实）**：Go 套餐钥若误配到 `zen/v1` + `deepseek-v4-flash`，会返回 **401 Insufficient balance**。必须 `zen/go/v1`。
+| | **现行启用池** | **备份（禁用）** | **禁止启用** |
+|--|----------------|------------------|--------------|
+| 角色 | 恰好 **1** 把 Go 付费 | 第 2 把 Go 付费 | 免费 Zen / GLM / MiniMax / 其它厂商 |
+| 字段 | `billing: "opencode-go"` · `free: false` · `enabled: true` | 同左 · `enabled: false` | `zen-free` / `zhipu-*` / MiniMax |
+| API 根 | **`https://opencode.ai/zen/go/v1`** | 同左 | — |
+| 模型 | `deepseek-v4-flash` | 同左 | `*-free` 等 |
+| 出口 | **仅直连**（**禁止** `proxy` / HK） | 同左 | — |
+| 换钥 | — | **人通知后**把备份改 `enabled:true`、旧钥改 `false` | — |
 
-**IP 轮换退役**：旧「半直连 + 半 HK `:18080`」会打冷 prompt cache，已拆除。`proxy` 字段视为遗留，flash **不得**再配。
+**踩坑**：Go 套餐钥若误配到 `zen/v1` + `deepseek-v4-flash` → **401 Insufficient balance**。必须 `zen/go/v1`。
+
+**IP 轮换退役**：`proxy` 视为遗留，flash **不得**再配。
+
+**已退役教法（勿再写现行）**：免费打头、PaidGuarantee、free-first、同会话双付费 RR、MiniMax 主力。
 
 ---
 
-## 2.1 PaidGuarantee + 缓存（2026-07-28）
+## 2.1 单活跃钥 + 缓存 KPI
 
 | 策略 | 口径 |
 |------|------|
-| 新会话 | **free-first**，免费钥快切 |
-| 免费耗尽 / 墙钟逼近 | 插队两把 Go 付费之一 |
-| 付费成功 | **钉 paid** TTL≈24h（free 恢复也不 unpin） |
-| 亲和键 | `x-session-id` / `x-request-id`，否则 system+**首条** user |
-| 禁 | 同会话双付费 RR；last-2-user 亲和；按出口封 sibling |
-| KPI | `upstream_cache_token_ratio=cached/prompt`；付费钉会话目标 **≥0.9** |
+| 启用数 | flash 付费 `enabled=true` **恰好 1** |
+| 会话 | 单钥 = 天然钉；亲和键可用 `x-session-id` / system+**首条** user |
+| 禁 | 双付费同时 `enabled`；自动 RR 切备份；复活免费池 |
+| KPI | `upstream_cache_token_ratio=cached/prompt`；活跃付费会话目标 **≥0.9** |
 
-默认：`FAILOVER_MAX_MS=45s` / free attempt **8s** / paid **25s** / peek 6s·12s。
-
-**验收**：人为关掉全部 free flash 后，`POST /v1/messages` flash 应 **200** 且 `X-Routed-Upstream` = paid。  
-同 `x-session-id` 连打 ≥5 轮（大 system + 累积 messages）：付费钉会话  
-`cache_read / (input_tokens + cache_read)` 目标 **≥0.9**（Anthropic 口径下 `input_tokens` 已扣缓存）。
+**验收**：`POST /v1/messages` model=`flash` → **200** 且 `X-Routed-Upstream` = 当前启用的 paid。  
+同 `x-session-id` 连打 ≥5 轮：`cache_read / (input_tokens + cache_read)` 目标 **≥0.9**。
 
 ### 部署检查清单（2017）
 
@@ -75,14 +73,15 @@ curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -c "import sys,
 ```
 Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
                                     │
-                                    └─ flash: zen-free 多钥（直连，快切）+ GLM 等
-                                              └─ 耗尽 → 2× opencode-go-paid-* (Go · deepseek-v4-flash)
+                                    └─ flash: 恰好 1× opencode-go-paid-* (Go · deepseek-v4-flash)
+                                              （另 1 把备份 enabled=false，人切）
                                     Pro / code: 轮空
+                                    免费 / MiniMax: 不进启用池
 ```
 
 - **DeepSeek V4 thinking（硬）**：Go 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`  
 - **fail-open**：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（与钥池正交）  
-- **HK 隧道**：不再作为 flash 必需；可保留作它用，但 **勿** 写回 upstreams `proxy`
+- **HK 隧道**：勿写回 upstreams `proxy`
 
 ---
 
@@ -90,21 +89,23 @@ Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
 
 | 字段 | 含义 |
 |------|------|
-| `billing` | `zen-free` \| `opencode-go` \| `zhipu-failover` |
+| `billing` | 现行启用只认 `opencode-go` |
 | `account` / `account_family` | 账号标签 |
-| `free` | 与 billing 一致 |
-| `description` | `[FREE-ZEN]` / `[PAID-GO]` / `[FREE-ZHIPU]` 开头 |
+| `free` | 启用行必须 `false` |
+| `enabled` | 付费备份用 `false`；免费行一律 `false` 或删除 |
+| `description` | `[PAID-GO]` / `[PAID-GO·BACKUP]` / `[DISABLED-FREE]` |
 | ~~`proxy` / `lane`~~ | **退役**；勿再写 |
 
 ---
 
-## 5. 加钥流程（Cursor / 运维）
+## 5. 加钥 / 切备份（Cursor / 运维）
 
-1. 人把新 `sk-` 交给 Cursor（本会话或新 Relay 会话）。  
+1. 人把新 `sk-` 交给 Cursor，或通知「切到备份钥」。  
 2. Cursor **只**写 2017 `~/.ccc/relay/upstreams.json`（并刷新 `KEY-INVENTORY.md`）。  
-3. 免费：`zen/v1` + `*-free` / GLM → **`tier=flash`**；收费 Go：`zen/go/v1` + 付费模型名 → flash prio=80（最多 2 启用）。  
-4. `kickstart` relay；探针 + `POST /v1/messages` 烟测。  
-5. **不要** `git commit` 任何含 `sk-` 的文件。
+3. 新/备份 Go：`zen/go/v1` + `deepseek-v4-flash` + thinking disabled；**全局仅一把** `enabled:true`。  
+4. `kickstart` relay；`POST /v1/messages` 烟测。  
+5. **不要** `git commit` 任何含 `sk-` 的文件。  
+6. **不要**为「省钱」重新启用免费池。
 
 ---
 
@@ -119,5 +120,5 @@ curl -sS http://127.0.0.1:4000/admin/cooldowns | python3 -m json.tool
 
 curl -sS -m 30 -D - -o /dev/null http://127.0.0.1:4000/v1/messages \
   -H 'content-type: application/json' \
-  -d '{"model":"flash","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}' | grep -iE 'HTTP/|X-Routed|X-Fallback'
+  -d '{"model":"flash","max_tokens":16,"messages":[{"role":"user","content":"ok"}]}'
 ```

@@ -1,6 +1,7 @@
 # Relay Flash 单通道封印证据（2026-07-28）
 
-> **权威**：[`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」· [`../relay/KEY-POOL.md`](../relay/KEY-POOL.md)  
+> **史 / 证据包**：本稿记录「免费池 + PaidGuarantee + 恰好 2× paid」封印当时状态。  
+> **现行（2026-07-28 午）**：付费-only · 恰好 **1** 把启用 Go · 第 2 把人切备份 · 免费/MiniMax 不进启用池 —— 见 authority「模型通道简规」· [`../relay/KEY-POOL.md`](../relay/KEY-POOL.md)。  
 > **仓内翻转**：`128129a` Flash-only  
 > **本文件无密钥**。
 

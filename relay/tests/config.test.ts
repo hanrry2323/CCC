@@ -11,32 +11,27 @@ const TEST_FILE = "/tmp/test-upstreams.json";
 
 const MINIMAL_UPSTREAMS: UpstreamConfig[] = [
   {
-    name: "minimax-m3",
-    base_url: "https://api.minimax.chat/v1",
+    name: "opencode-go-paid-flash",
+    base_url: "https://opencode.ai/zen/go/v1",
     api_key: "sk-test-key",
     tier: "flash",
     tier_priority: 1,
     models: ["flash"],
-    upstream_model: "minimax-m3",
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
   },
   {
-    name: "opencode-go-new",
-    base_url: "https://api.opencode.chat/v1",
+    name: "opencode-go-paid-flash-b",
+    base_url: "https://opencode.ai/zen/go/v1",
     api_key: "sk-test-key-2",
     tier: "flash",
     tier_priority: 2,
     models: ["flash"],
-    upstream_model: "gpt-4o-mini",
-  },
-  {
-    name: "glm-free",
-    base_url: "https://open.bigmodel.cn/api/paas/v4",
-    api_key: "sk-zhipu",
-    tier: "code",
-    tier_priority: 5,
-    models: ["code"],
-    upstream_model: "glm-4-flash",
-    free: true,
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
+    enabled: false,
   },
   {
     name: "a-pro-high",
@@ -46,15 +41,19 @@ const MINIMAL_UPSTREAMS: UpstreamConfig[] = [
     tier_priority: 1,
     models: ["pro"],
     upstream_model: "claude-opus-4",
+    enabled: false,
   },
   {
-    name: "zhipu-glm-flash",
-    base_url: "https://open.bigmodel.cn/api/paas/v4",
-    api_key: "sk-old",
+    name: "code-idle",
+    base_url: "https://opencode.ai/zen/go/v1",
+    api_key: "sk-code",
     tier: "code",
-    tier_priority: 99,
+    tier_priority: 1,
     models: ["code"],
-    upstream_model: "glm-4v-flash",
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
+    enabled: false,
   },
 ];
 
@@ -75,21 +74,18 @@ describe("config.ts", () => {
   it("loads upstreams and builds tier registry", () => {
     const reg = loadConfig(TEST_FILE);
 
-    expect(reg.all.length).toBe(5);
-    expect(reg.names).toEqual(["pro", "flash", "code"]);
-    expect(reg.tiers.has("pro")).toBe(true);
+    // enabled:false 不进运行时 all（备份钥人切后才 reload）
+    expect(reg.all.length).toBe(1);
+    expect(reg.names).toEqual(["flash"]);
     expect(reg.tiers.has("flash")).toBe(true);
-    expect(reg.tiers.has("code")).toBe(true);
   });
 
   it("sorts upstreams by tier_priority within each tier", () => {
     const reg = loadConfig(TEST_FILE);
 
     const flash = reg.tiers.get("flash")!;
-    expect(flash.length).toBe(2);
-    expect(flash[0].tier_priority).toBeLessThan(flash[1].tier_priority);
-    expect(flash[0].name).toBe("minimax-m3");
-    expect(flash[1].name).toBe("opencode-go-new");
+    expect(flash.length).toBe(1);
+    expect(flash[0].name).toBe("opencode-go-paid-flash");
   });
 
   it("handles empty models[] by falling back to tier field", () => {
@@ -120,24 +116,26 @@ describe("config.ts", () => {
 
   it("supports hot reload", () => {
     const reg1 = loadConfig(TEST_FILE);
-    expect(reg1.all.length).toBe(5);
+    expect(reg1.all.length).toBe(1);
 
-    // Add a new upstream
+    // Add a new enabled upstream
     const ups = [...MINIMAL_UPSTREAMS, {
       name: "new-upstream",
       base_url: "https://new.api/v1",
       api_key: "sk-new",
-      tier: "pro" as const,
+      tier: "flash" as const,
       tier_priority: 2,
-      models: ["pro" as const],
+      models: ["flash" as const],
       upstream_model: "gpt-5",
+      free: false,
+      billing: "opencode-go",
     }];
 
     writeTestConfig(ups);
     reloadConfig();
     const reg2 = getConfig();
-    expect(reg2.all.length).toBe(6);
-    expect(reg2.tiers.get("pro")?.length).toBe(2);
+    expect(reg2.all.length).toBe(2);
+    expect(reg2.tiers.get("flash")?.length).toBe(2);
   });
 
   it("validateConfig skips invalid entries and collects warnings", () => {

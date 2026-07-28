@@ -19,7 +19,7 @@ if ! python3 -c "import sys; sys.path.insert(0, r'''$CCC_HOME/scripts'''); from 
 fi
 
 export PATH="${HOME}/.npm-global/bin:/opt/homebrew/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-# OpenCode 写码默认走本机 CCC Relay :4002 → flash 同池（免费快切 + Go 付费兜底）
+# OpenCode 写码默认走本机 CCC Relay :4002 → flash（付费-only Go 单活跃钥）
 # fail-open：relay 不可达时 opencode-exec 切 ~/.config/opencode/opencode.direct.json
 export OPENCODE_MODEL="${OPENCODE_MODEL:-loop/flash}"
 # CCC Relay: product/reviewer Claude 默认走本机 relay :4000,模型 flash
@@ -29,7 +29,7 @@ if [[ -z "${ANTHROPIC_BASE_URL:-}" ]]; then
   export ANTHROPIC_BASE_URL="http://127.0.0.1:4000"
 fi
 if [[ -z "${ANTHROPIC_MODEL:-}" ]]; then
-  export ANTHROPIC_MODEL="flash"  # relay flash tier · deepseek-v4-flash-free
+  export ANTHROPIC_MODEL="flash"  # relay flash · Go deepseek-v4-flash（付费-only）
 fi
 export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
 if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/anthropic-auth-token" ]]; then

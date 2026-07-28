@@ -32,16 +32,17 @@ cd relay && npm ci && npm run build
 mkdir -p ~/.ccc/relay && chmod 700 ~/.ccc/relay
 cp ~/program/CCC/templates/relay-upstreams.example.json ~/.ccc/relay/upstreams.json
 chmod 600 ~/.ccc/relay/upstreams.json
-# 编辑真 key：
-# 免费：zen/v1 + *-free/GLM · billing=zen-free|zhipu-failover · free=true · 直连（禁止 proxy）
-# 收费：zen/go/v1 + deepseek-v4-flash · billing=opencode-go · free=false · tier_priority=80
-#        恰好 2 把启用；request_overrides.thinking.type=disabled
+# 编辑真 key（付费-only）：
+# 活跃：zen/go/v1 + deepseek-v4-flash · billing=opencode-go · free=false · enabled=true
+#        恰好 1 把启用；request_overrides.thinking.type=disabled
+# 备份：同结构第二把 · enabled=false（人通知后才切）
+# 禁止：zen-free / GLM / MiniMax 等启用；禁止 flash 挂 proxy
 # Pro/code：enabled:false（轮空）
 $EDITOR ~/.ccc/relay/upstreams.json
 # 同步刷新本机 KEY-INVENTORY.md（0600）
 ```
 
-**Flash 契约检查**（只需启用 flash；Pro/code 可轮空）：
+**Flash 契约检查**（付费-only：启用 flash 恰好 1 把付费；无启用免费；Pro/code 可轮空）：
 
 ```bash
 python3 -c "
@@ -50,10 +51,12 @@ cfg = json.load(open('$HOME/.ccc/relay/upstreams.json'))
 ups = cfg if isinstance(cfg, list) else cfg.get('upstreams') or []
 flash = [u for u in ups if u.get('enabled', True) is not False and (u.get('tier') or '').lower()=='flash']
 paid = [u for u in flash if not u.get('free', False)]
+free = [u for u in flash if u.get('free', False)]
 proxy = [u['name'] for u in flash if u.get('proxy')]
-print('flash_n', len(flash), 'paid_n', len(paid), 'proxy_flash', proxy or 'none')
+print('flash_n', len(flash), 'paid_n', len(paid), 'free_n', len(free), 'proxy_flash', proxy or 'none')
 assert flash, 'need enabled flash'
-assert len(paid) == 2, 'need exactly 2 paid Go flash'
+assert len(paid) == 1, 'need exactly 1 enabled paid Go flash'
+assert not free, 'free flash must not be enabled'
 assert not proxy, 'flash must not set proxy'
 print('OK')
 "
@@ -102,7 +105,7 @@ curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -m json.tool | 
 # 勿用 GET /health 判 Anthropic 口（易 404）
 ```
 
-PaidGuarantee / cache：见 KEY-POOL §2.1；证据 [`../briefs/2026-07-28-relay-flash-seal.md`](../briefs/2026-07-28-relay-flash-seal.md)。
+单活跃付费钥 / cache：见 KEY-POOL §2.1；旧 PaidGuarantee 证据见 [`../briefs/2026-07-28-relay-flash-seal.md`](../briefs/2026-07-28-relay-flash-seal.md)（史）。
 
 ---
 
@@ -125,10 +128,10 @@ launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
 
 | 现象 | 排查 |
 |------|------|
-| 503 / 慢 | cooldown：`GET/POST /admin/cooldowns`；付费是否试到（PaidGuarantee） |
+| 503 / 慢 | cooldown：`GET/POST /admin/cooldowns`；确认启用池是否只剩当前那一把付费 |
 | Go 401 | 钥误打 `zen/v1` → 改 `zen/go/v1` |
 | OpenCode 空转 | thinking 未关；确认 `thinking.type=disabled` |
 | 假红 | 勿用 `/health`；改 `POST /v1/messages` |
-| cache 低 | 检查 pinPaid / 禁 flash `proxy`（打冷缓存） |
+| cache 低 | 检查单活跃钥是否被换/双启用；禁 flash `proxy`（打冷缓存） |
 
 **SSOT**：authority「CCC Relay（硬 · 2026-07-28 · Flash 单通道）」。

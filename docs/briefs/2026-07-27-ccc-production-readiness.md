@@ -5,8 +5,9 @@
 > SSOT：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「个人 Claude Code 草稿工」· [`docs/product/dev-channel.md`](../product/dev-channel.md)  
 > 指令包：[`docs/dev-packets/`](../dev-packets/README.md)  
 > 冲突以 authority 为准；本 brief 是路线与出门清单，不是第二套真理。  
-> **更新（2026-07-28）**：Layer1 **已正式出门（小业务）**；Ops 抛光主路径停；下一开程二选一（程 B 硬化 **或** Layer2 qb），勿两边同时开。  
-**下一草稿包**：无强制下一包；草稿工**仅**金路径白名单缺陷。Layer2 qb 样板另开程。
+> **更新（2026-07-28）**：Layer1 **已正式出门（小业务）**；Ops 抛光主路径停；**下一开程 = Layer2 qb（个人主路线）**。  
+> **通道（同日）**：Relay **付费-only Go**（恰好 1 把启用 + 1 把人切备份）；免费/MiniMax 不进启用池。见 authority「模型通道简规」· [`../relay/KEY-POOL.md`](../relay/KEY-POOL.md)。  
+**下一草稿包**：无强制下一包；草稿工**仅**金路径白名单缺陷。
 
 ---
 
@@ -168,8 +169,8 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 ### 程 R — Relay Flash 单通道封印（**已完成 · 2026-07-28**）
 
 - [x] 文档：handoff / DEPLOY / G2 / STARTUP-BRIEF 对齐 Flash-only  
-- [x] 2017 主机：upstreams 无 flash `proxy`；恰好 2× Go paid；thinking off；OpenCode `loop/flash`  
-- [x] 活体：PaidGuarantee（关 free→paid 200）+ pinPaid 粘滞  
+- [x] 2017 主机：upstreams 无 flash `proxy`；付费-only 恰好 1× 启用 Go paid（+备份禁用）；thinking off；OpenCode `loop/flash`  
+- [x] 活体：PaidGuarantee（关 free→paid 200）+ pinPaid 粘滞（**史**；现行=付费-only 单活跃）  
 - [x] `relay` vitest + dist 热更；证据 [`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)
 
 ---
@@ -188,7 +189,7 @@ CCC 只保证到 **L（`code_landed`）+ P（探针可重放）+ S（`intent_sta
 ## 平台生产交付：完成（2026-07-28）
 
 - [x] R1–R4 合入 main（013–016）  
-- [x] Relay Flash 单通道封印（文档 + 2017 主机 + PaidGuarantee 活体）  
+- [x] Relay Flash 单通道封印（文档 + 2017 主机 + PaidGuarantee 活体）（**史**；其后改为付费-only）  
 - [x] hub-probe 隧道 OVERALL pass；`test_hub_probe_contract` 绿  
 - [x] 双机 pull 对齐（见本节合入后 `git rev-parse`）  
 - [x] 周刊金路径 checklist 仍有效（不新开 daemon）

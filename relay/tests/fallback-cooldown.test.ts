@@ -298,8 +298,8 @@ describe("fallback cooldown on upstream errors", () => {
       );
       expect(res.errorCode).toBe(503);
       expect(res.trail.some(t => t.reason === "budget:attempts" || t.name === "*")).toBe(true);
-      // only 2 upstreams attempted (plus maybe budget marker)
-      const attempted = res.trail.filter(t => t.name !== "*");
+      // attempt 次数受 FAILOVER_MAX_ATTEMPTS 约束；trail 可含 active 标注
+      const attempted = res.trail.filter(t => t.name !== "*" && t.reason !== "active");
       expect(attempted.length).toBeLessThanOrEqual(2);
     } finally {
       if (prev === undefined) delete process.env.FAILOVER_MAX_ATTEMPTS;

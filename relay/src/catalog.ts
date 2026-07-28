@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-//  AI Loop Router v3.5 — 免费模型目录
-//  从 data/free-models.json 加载, 生成 upstream 条目
-//  数据源: OmniRoute freeModelCatalog.data.ts
+//  DEPRECATED — 免费模型目录（档案）
+//  付费-only 后不再注入启用池；保留 load 供旧测试 / 考古。
+//  现行钥：~/.ccc/relay/upstreams.json（手维 Go paid）
 // ═══════════════════════════════════════════════════════════════
 
 import { readFileSync, existsSync } from "fs";

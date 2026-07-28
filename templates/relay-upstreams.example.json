@@ -1,49 +1,9 @@
 [
   {
-    "name": "opencode-go",
-    "tier": "flash",
-    "tier_priority": 1,
-    "base_url": "https://opencode.ai/zen/v1",
-    "upstream_model": "deepseek-v4-flash-free",
-    "models": ["flash"],
-    "api_key": "sk-xxx-REPLACE-ME",
-    "transcode": true,
-    "free": true,
-    "billing": "zen-free",
-    "provider_group": "opencode",
-    "description": "[FREE-ZEN] flash 免费 · deepseek-v4-flash-free（直连）"
-  },
-  {
-    "name": "opencode-go-b",
-    "tier": "flash",
-    "tier_priority": 1,
-    "base_url": "https://opencode.ai/zen/v1",
-    "upstream_model": "deepseek-v4-flash-free",
-    "models": ["flash"],
-    "api_key": "sk-xxx-REPLACE-ME",
-    "transcode": true,
-    "free": true,
-    "billing": "zen-free",
-    "provider_group": "opencode",
-    "description": "[FREE-ZEN] flash 免费副钥"
-  },
-  {
-    "name": "zhipu-glm-flash",
-    "tier": "flash",
-    "tier_priority": 2,
-    "base_url": "https://open.bigmodel.cn/api/paas/v4",
-    "upstream_model": "glm-4.7",
-    "models": ["flash"],
-    "api_key": "REPLACE-ME",
-    "transcode": true,
-    "free": true,
-    "billing": "zhipu-failover",
-    "description": "[FREE-ZHIPU] flash 免费 · GLM-4.7（自 code 迁入）"
-  },
-  {
     "name": "opencode-go-paid-flash",
     "tier": "flash",
-    "tier_priority": 80,
+    "tier_priority": 1,
+    "enabled": true,
     "base_url": "https://opencode.ai/zen/go/v1",
     "upstream_model": "deepseek-v4-flash",
     "models": ["flash"],
@@ -53,12 +13,13 @@
     "billing": "opencode-go",
     "provider_group": "opencode-go-paid",
     "request_overrides": { "thinking": { "type": "disabled" } },
-    "description": "[PAID-GO] flash 付费兜底 A · deepseek-v4-flash"
+    "description": "[PAID-GO] flash 活跃钥（恰好一把 enabled）"
   },
   {
     "name": "opencode-go-paid-flash-b",
     "tier": "flash",
-    "tier_priority": 80,
+    "tier_priority": 1,
+    "enabled": false,
     "base_url": "https://opencode.ai/zen/go/v1",
     "upstream_model": "deepseek-v4-flash",
     "models": ["flash"],
@@ -68,35 +29,6 @@
     "billing": "opencode-go",
     "provider_group": "opencode-go-paid-b",
     "request_overrides": { "thinking": { "type": "disabled" } },
-    "description": "[PAID-GO] flash 付费兜底 B · deepseek-v4-flash"
-  },
-  {
-    "name": "opencode-go-pro",
-    "tier": "pro",
-    "tier_priority": 1,
-    "enabled": false,
-    "base_url": "https://opencode.ai/zen/go/v1",
-    "upstream_model": "deepseek-v4-pro",
-    "models": ["pro"],
-    "api_key": "sk-xxx-REPLACE-ME",
-    "transcode": true,
-    "free": false,
-    "billing": "opencode-go",
-    "request_overrides": { "thinking": { "type": "disabled" } },
-    "description": "[IDLE] Pro 轮空（客户端 pro→flash 回落）"
-  },
-  {
-    "name": "opencode-code-idle",
-    "tier": "code",
-    "tier_priority": 1,
-    "enabled": false,
-    "base_url": "https://opencode.ai/zen/v1",
-    "upstream_model": "deepseek-v4-flash-free",
-    "models": ["code"],
-    "api_key": "sk-xxx-REPLACE-ME",
-    "transcode": true,
-    "free": true,
-    "billing": "zen-free",
-    "description": "[IDLE] code 轮空（主对接已并入 flash）"
+    "description": "[PAID-GO·BACKUP] 人通知后才启用"
   }
 ]

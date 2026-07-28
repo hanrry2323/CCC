@@ -1,9 +1,9 @@
-# CCC Relay 中转站 · 会话移交包（Flash 单通道 · 2026-07-28）
+# CCC Relay 中转站 · 会话移交包（付费-only · 2026-07-28）
 
 > **用途**：维护中转站时的开场 SSOT。  
-> **权威**：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」· [`docs/relay/KEY-POOL.md`](../relay/KEY-POOL.md)  
+> **权威**：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「模型通道简规 / CCC Relay」· [`docs/relay/KEY-POOL.md`](../relay/KEY-POOL.md)  
 > **代码**：`relay/` · 运行配置：2017 `~/.ccc/relay/upstreams.json`（**禁止进 git**）  
-> **封印证据**：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)  
+> **封印证据（史）**：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)  
 > **部署**：[`docs/relay/DEPLOY-2017.md`](../relay/DEPLOY-2017.md)
 
 ---
@@ -11,10 +11,11 @@
 ## 0. 开场指令
 
 ```text
-你是 Cursor 平台助手，专责 CCC Relay（中转站）。
-读本文件 + authority「CCC Relay」+ KEY-POOL.md。
-主业：Flash 单通道（Claude+OpenCode 一律 flash/loop/flash）、免费快切、
-2×Go paid + pinPaid 保 cache、cooldown；Pro/code 轮空；IP/HK 出口轮换已退役。
+你是 Cursor 平台助手，专责 CCC Relay（薄垫片）。
+读本文件 + authority「模型通道简规」+ KEY-POOL.md。
+主业：Flash 付费-only（Claude+OpenCode 一律 flash/loop/flash）、
+恰好 1 把启用 Go paid（第 2 把备份人切）、cache KPI、cooldown；
+Pro/code 轮空；免费/MiniMax 不进启用池；IP/HK 出口轮换已退役。
 不要跑金路径/看板/Ops UI，除非阻塞中转站。
 改码只动 relay/ 与相关 launchd/脚本；合入前 vitest；热更 kickstart 2017。
 密钥只动 ~/.ccc/relay/upstreams.json，永不提交。
@@ -27,11 +28,10 @@
 ```
 Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
                                     │
-                                    └─ flash 同池:
-                                         free Zen (~10) + GLM 等直连快切
-                                         └─ 耗尽/墙钟 → 恰好 2× Go paid (zen/go/v1)
-                                              └─ 成功后 pinPaid ~24h（保 prompt cache）
+                                    └─ flash: 恰好 1× Go paid (zen/go/v1 · deepseek-v4-flash)
+                                              （第 2 把备份 enabled=false，人切）
                                     Pro / code: 轮空（enabled:false；pro→回落 flash）
+                                    免费 / MiniMax: 不进启用池
 ```
 
 | 主机 | 服务 | 端口 | 说明 |
@@ -44,18 +44,18 @@ Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
 
 ---
 
-## 2. PaidGuarantee + 缓存（摘要）
+## 2. 单活跃付费 + 缓存（摘要）
 
 | 项 | 口径 |
 |----|------|
-| 墙钟 | `FAILOVER_MAX_MS=45s`；free attempt 8s；paid 25s；peek 6s/12s |
-| 新会话 | free-first；仅 **zero 可用 free** 才 paid-first |
-| 付费成功 | **pinPaid** TTL≈24h；亲和=`x-session-id` 或 system+**首条** user |
-| 禁 | 同会话双付费 RR；flash 挂 `proxy`；按出口封 sibling |
-| KPI | `upstream_cache_token_ratio=cached/prompt`；钉会话目标 **≥0.9** |
+| 启用池 | flash 付费 `enabled=true` **恰好 1**；第 2 把备份 `enabled=false` |
+| 免费 / MiniMax | **不进启用池**（已退役现行教法） |
+| 换钥 | 额度用尽 → **人通知后**手动切备份 |
+| KPI | `upstream_cache_token_ratio=cached/prompt`；活跃会话目标 **≥0.9** |
 | thinking | Go/`deepseek-v4-*` → `request_overrides.thinking.type=disabled` |
+| 禁 | 双付费同时 enabled；flash 挂 `proxy`；复活免费打头 |
 
-验收清单见 KEY-POOL §2.1。
+验收清单见 KEY-POOL §2.1。（旧 PaidGuarantee/free-first 仅作史，见 seal brief）
 
 ---
 
@@ -91,7 +91,7 @@ cd ~/program/CCC/relay && npm test
 1. 2017 flash `POST /v1/messages` 稳定 200；关全部 free 后仍 200 且 `X-Routed-Upstream`=paid。  
 2. 同 `x-session-id` 多轮后 `upstream_cache_token_ratio` 接近/≥0.9（付费钉会话）。  
 3. OpenCode / Engine 默认 **`loop/flash`**（非 xfyun、非 loop/code）。  
-4. flash upstreams **无** `proxy`；启用 Go paid **恰好 2**；thinking disabled。  
+4. flash upstreams **无** `proxy`；启用 Go paid **恰好 1**（另 1 备份 `enabled=false`）；thinking disabled。  
 5. `npm test` 绿；dist 热更 + kickstart；M1→2017 LAN 烟测 OK。
 
 证据：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)。

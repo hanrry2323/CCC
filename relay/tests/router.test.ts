@@ -14,22 +14,27 @@ const TEST_FILE = "/tmp/test-router-upstreams.json";
 
 const TEST_UPSTREAMS: UpstreamConfig[] = [
   {
-    name: "minimax-m3",
-    base_url: "https://api.minimax.chat/v1",
-    api_key: "sk-minimax",
+    name: "opencode-go-paid-flash",
+    base_url: "https://opencode.ai/zen/go/v1",
+    api_key: "sk-go-paid",
     tier: "flash",
     tier_priority: 1,
     models: ["flash"],
-    upstream_model: "minimax-m3",
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
   },
   {
-    name: "opencode-go-new",
-    base_url: "https://api.opencode.chat/v1",
-    api_key: "sk-opencode",
+    name: "opencode-go-paid-flash-b",
+    base_url: "https://opencode.ai/zen/go/v1",
+    api_key: "sk-go-paid-b",
     tier: "flash",
     tier_priority: 2,
     models: ["flash"],
-    upstream_model: "gpt-4o-mini",
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
+    enabled: false,
   },
   {
     name: "claude-opus",
@@ -39,25 +44,19 @@ const TEST_UPSTREAMS: UpstreamConfig[] = [
     tier_priority: 1,
     models: ["pro"],
     upstream_model: "claude-opus-4",
+    enabled: false,
   },
   {
-    name: "glm-free",
-    base_url: "https://open.bigmodel.cn/api/paas/v4",
-    api_key: "sk-glm",
+    name: "code-idle",
+    base_url: "https://opencode.ai/zen/go/v1",
+    api_key: "sk-code",
     tier: "code",
-    tier_priority: 5,
+    tier_priority: 1,
     models: ["code"],
-    upstream_model: "glm-4-flash",
-    free: true,
-  },
-  {
-    name: "zhipu-glm-flash",
-    base_url: "https://open.bigmodel.cn/api/paas/v4",
-    api_key: "sk-old",
-    tier: "code",
-    tier_priority: 99,
-    models: ["code"],
-    upstream_model: "glm-4v-flash",
+    upstream_model: "deepseek-v4-flash",
+    free: false,
+    billing: "opencode-go",
+    enabled: false,
   },
 ];
 
@@ -91,75 +90,56 @@ describe("router", () => {
   });
 
   describe("route()", () => {
-    it("returns the highest priority upstream for a tier", () => {
+    it("returns the sole enabled paid flash upstream", () => {
       const r = route("flash");
       expect(r.upstream).not.toBeNull();
-      expect(r.upstream!.name).toBe("minimax-m3");
-      expect(r.candidates.length).toBe(2);
+      expect(r.upstream!.name).toBe("opencode-go-paid-flash");
+      expect(r.candidates.length).toBe(1);
       expect(r.is_fallback).toBe(false);
     });
 
-    it("returns all ok candidates in the tier", () => {
+    it("falls back flash when code tier empty/disabled", () => {
       const r = route("code");
-      expect(r.candidates.length).toBe(2);
-      expect(r.candidates[0].name).toBe("glm-free");
-      expect(r.candidates[1].name).toBe("zhipu-glm-flash");
+      expect(r.upstream!.name).toBe("opencode-go-paid-flash");
+      expect(r.is_fallback).toBe(true);
     });
 
-    it("skips cooled-down upstreams", () => {
+    it("short-cool bypass when sole flash key cooled", () => {
       getAppContext().cooldowns.clear();
-      getAppContext().cooldowns.set("minimax-m3", { until: Date.now() + 60000, reason: "rate-limit" });
+      getAppContext().cooldowns.set("opencode-go-paid-flash", { until: Date.now() + 60000, reason: "rate-limit" });
 
       const r = route("flash");
+      // paid-only：仍可 bypass 短冷却，避免空候选 502
       expect(r.upstream).not.toBeNull();
-      expect(r.upstream!.name).toBe("opencode-go-new");
-    });
-
-    it("fails over when all tier upstreams are down", () => {
-      getAppContext().cooldowns.clear();
-      getAppContext().cooldowns.set("minimax-m3", { until: Date.now() + 60000, reason: "rate-limit" });
-      getAppContext().cooldowns.set("opencode-go-new", { until: Date.now() + 60000, reason: "rate-limit" });
-
-      const r = route("flash");
-      // 默认拒绝 flash→Pro/code 静默掉档
-      expect(r.upstream).toBeNull();
-      expect(r.candidates.length).toBe(0);
+      expect(r.upstream!.name).toBe("opencode-go-paid-flash");
       expect(r.is_fallback).toBe(true);
     });
   });
 
   describe("Session Affinity", () => {
     it("prefers affinity-bound upstream", () => {
-      // First request: no affinity
       const r1 = route("flash");
-      expect(r1.upstream!.name).toBe("minimax-m3");
+      expect(r1.upstream!.name).toBe("opencode-go-paid-flash");
 
-      // Simulate affinity set for this session
-      affinitySet("testkey", "opencode-go-new");
-
-      // Second request: should prefer affinity
+      affinitySet("testkey", "opencode-go-paid-flash");
       const r2 = route("flash", "testkey");
-      expect(r2.upstream!.name).toBe("opencode-go-new");
+      expect(r2.upstream!.name).toBe("opencode-go-paid-flash");
     });
 
-    it("respects cooldown even with affinity", () => {
-      affinitySet("testkey", "zhipu-glm-flash");
-
-      getAppContext().cooldowns.clear();
-      getAppContext().cooldowns.set("zhipu-glm-flash", { until: Date.now() + 60000, reason: "rate-limit" });
-
-      const r = route("code", "testkey");
-      // affinity upstream is cooled down → pick next ok one
-      expect(r.upstream!.name).toBe("glm-free");
+    it("affinity sticky to sole paid key", () => {
+      _clearAffinityForTest();
+      affinitySet("pin-sess", "opencode-go-paid-flash");
+      const r = route("flash", "pin-sess");
+      expect(r.upstream!.name).toBe("opencode-go-paid-flash");
+      expect(r.candidates[0]!.name).toBe("opencode-go-paid-flash");
     });
 
-    it("clears affinity on cooldown of bound upstream", () => {
-      affinitySet("clearkey", "minimax-m3");
-      affinityDelete("clearkey", "minimax-m3");
+    it("clears affinity on delete", () => {
+      affinitySet("clearkey", "opencode-go-paid-flash");
+      affinityDelete("clearkey", "opencode-go-paid-flash");
 
       const r = route("flash", "clearkey");
-      // affinity was cleared, normal order
-      expect(r.upstream!.name).toBe("minimax-m3");
+      expect(r.upstream!.name).toBe("opencode-go-paid-flash");
     });
   });
 
@@ -204,39 +184,6 @@ describe("router", () => {
       const k3 = affinityKey([{ role: "user", content: "other first" }], { system: sys });
       expect(k3).not.toBe(k1);
     });
-
-    it("pinPaid keeps paid first when free recovers", () => {
-      _clearAffinityForTest();
-      const paid = {
-        name: "opencode-go-paid-flash",
-        base_url: "https://opencode.ai/zen/go/v1",
-        api_key: "sk",
-        tier: "flash" as const,
-        tier_priority: 80,
-        models: ["flash" as const],
-        upstream_model: "deepseek-v4-flash",
-        free: false,
-        billing: "opencode-go",
-      };
-      const free = {
-        name: "opencode-go-a",
-        base_url: "https://opencode.ai/zen/v1",
-        api_key: "sk",
-        tier: "flash" as const,
-        tier_priority: 1,
-        models: ["flash" as const],
-        upstream_model: "deepseek-v4-flash-free",
-        free: true,
-        billing: "zen-free",
-      };
-      writeFileSync(TEST_FILE, JSON.stringify([free, paid], null, 2));
-      resetConfig();
-      loadConfig(TEST_FILE);
-      affinitySet("pin-sess", paid.name, { pinPaid: true });
-      const r = route("flash", "pin-sess");
-      expect(r.upstream!.name).toBe(paid.name);
-      expect(r.candidates[0]!.name).toBe(paid.name);
-    });
   });
 
   describe("resolveRequestTier + fair RR", () => {
@@ -269,9 +216,9 @@ describe("router", () => {
     });
 
     it("affinityDeleteByUpstream clears bindings", () => {
-      affinitySet("k1", "minimax-m3");
-      affinityDeleteByUpstream("minimax-m3");
-      expect(affinityGet("k1", "minimax-m3")).toBeNull();
+      affinitySet("k1", "opencode-go-paid-flash");
+      affinityDeleteByUpstream("opencode-go-paid-flash");
+      expect(affinityGet("k1", "opencode-go-paid-flash")).toBeNull();
     });
   });
 });

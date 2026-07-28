@@ -10,7 +10,7 @@ import { recordOutcome, computeBackoffCooldown } from "./scoring.js";
 import { getConfig, TIMEOUTS } from "./config.js";
 import { ledgerReserve, ledgerSettle, ledgerMarkQuotaExhausted, ledgerWouldExceed } from "./ledger.js";
 import { affinityDeleteByUpstream } from "./router.js";
-import { isPaidUpstream, isUpstreamOk } from "./tiers.js";
+import { isPaidUpstream } from "./tiers.js";
 
 const MAX_QUOTA_COOLDOWN = 4 * 3600;
 const MAX_PROVIDER_COOLDOWN = 30 * 60;
@@ -19,31 +19,14 @@ const MAX_SAME_UPSTREAM_RETRIES = 1;
 const RETRY_DELAY_MS = 300;
 const PROVIDER_BREAKER_THRESHOLD = 3;
 const PROVIDER_BREAKER_SEC = 120;
-/** 突发限流 Retry-After 封顶；超过此值视为日配额耗尽（Zen 免费池常给到 UTC 重置） */
+/** 突发限流 Retry-After 封顶；超过此值视为日配额耗尽 */
 const RATE_LIMIT_RETRY_AFTER_CAP = 120;
-const PAID_FETCH_COOLDOWN_SEC = 3; // 付费超时勿长冷却：否则 free 全死时只剩空候选 → 502 断任务
-const FREE_FETCH_COOLDOWN_SEC = 20;
+const PAID_FETCH_COOLDOWN_SEC = 3;
+const FREE_FETCH_COOLDOWN_SEC = 20; // 遗留：若配置仍含 free 行
 const FETCH_GRAY_SEC = 90;
-/** 同请求最多试几个 free；按「不同出口」优先轮转，勿一失败就钉死 paid */
-const MAX_FREE_ATTEMPTS_PER_REQ = 4;
 const KEY_STAGGER_MS = 50;
 const MAX_TRAIL_RING = 200;
 const TRAIL_HEADER_MAX = 512;
-/**
- * 按 route() 候选序取付费钥（钉钥在首位时禁止再 RR）。
- * 跨请求双付费轮转只在 router.fairPick；此处换钥仅作失败 failover。
- */
-function pickPaidInCandidateOrder(
-  candidates: UpstreamConfig[],
-  paidUsable: UpstreamConfig[],
-): UpstreamConfig {
-  if (paidUsable.length === 1) return paidUsable[0]!;
-  const usable = new Set(paidUsable.map(u => u.name));
-  for (const u of candidates) {
-    if (usable.has(u.name)) return u;
-  }
-  return paidUsable[0]!;
-}
 
 /** free 钥连续 fetch 失败灰名单（不进账号 breaker） */
 const _fetchGrayUntil = new Map<string, number>();
@@ -68,13 +51,7 @@ function failoverMaxAttempts(): number {
   return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
 }
 function failoverMaxMs(): number {
-  // 付费 TTFB 常 20–55s；60s 墙钟几乎无余量 → 一碰 free 就 budget:wall 断任务
   return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
-}
-
-/** 墙钟余量低于此值则不再试 free（对齐 2017 热更 dist） */
-function paidWallReserveMs(): number {
-  return TIMEOUTS.ATTEMPT_MS + TIMEOUTS.PEEK_PAID_MS + 5_000;
 }
 
 export { isPaidUpstream };
@@ -86,17 +63,6 @@ export { isPaidUpstream };
  */
 export function egressRateLimitKey(up: UpstreamConfig): string {
   return up.name;
-}
-
-/** @deprecated IP 轮换退役后恒为「还有未试 free」；保留导出以免外部引用炸 */
-export function hasUntriedFreeOtherEgress(
-  candidates: UpstreamConfig[],
-  tried: Set<string>,
-  isBlocked: (u: UpstreamConfig) => boolean,
-): boolean {
-  return candidates.some(
-    u => !tried.has(u.name) && !isPaidUpstream(u) && !isBlocked(u),
-  );
 }
 
 function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
@@ -601,84 +567,35 @@ function buildExhaustedResult(
   };
 }
 
-/** 挑选下一跳：免费钥快速轮换；墙钟不够或免费耗尽再插队 paid */
+/** 挑选下一跳：按候选序跳过已试/封锁；付费-only 无免费快切 */
 export function selectNextCandidate(
   candidates: UpstreamConfig[],
   tried: Set<string>,
   opts: {
     budgetStart: number;
     attempts: number;
-    freeFailCount: number;
+    freeFailCount?: number;
     failedPlatforms: Set<string>;
     /** 本请求内已 RPM 的钥名（仅该钥，不封 sibling） */
     rateLimitedHosts: Set<string>;
-    /** 候选里无可用 free → 直接 paid */
+    /** @deprecated 付费-only 后忽略 */
     paidOnly?: boolean;
   },
 ): UpstreamConfig | null {
-  const untried = candidates.filter(u => !tried.has(u.name));
-  if (!untried.length) return null;
-
   const isBlocked = (u: UpstreamConfig): boolean =>
     opts.failedPlatforms.has(u.base_url) ||
     opts.rateLimitedHosts.has(u.name) ||
     !!ledgerWouldExceed(u) ||
     isFetchGray(u.name);
 
-  const paidUsable = untried.filter(u => isPaidUpstream(u) && !isBlocked(u));
-  const pickPaid = () => pickPaidInCandidateOrder(candidates, paidUsable);
-  const wall = failoverMaxMs();
-  const maxAtt = failoverMaxAttempts();
-  const elapsed = Date.now() - opts.budgetStart;
-  const attemptsLeft = maxAtt - opts.attempts;
-  const freeTried = candidates.filter(u => tried.has(u.name) && !isPaidUpstream(u)).length;
-  const wallLeft = wall - elapsed;
-  const reserve = paidWallReserveMs();
-  const nextFreeUsable = untried.filter(u => !isPaidUpstream(u) && !isBlocked(u));
-
-  // route() 已把 paid 放首位（pinPaid / boost / last-resort）：禁止再插队 free，禁止双付费 RR 换钉钥
-  if (
-    paidUsable.length &&
-    candidates[0] &&
-    isPaidUpstream(candidates[0])
-  ) {
-    return pickPaid();
+  for (const u of candidates) {
+    if (tried.has(u.name)) continue;
+    if (isBlocked(u)) continue;
+    return u;
   }
-
-  if (opts.paidOnly && paidUsable.length) {
-    return pickPaid();
-  }
-
-  // 先吐出顺序上的 skip（本钥 RL / platform），保留 trail 可观测性
-  const head = untried[0]!;
-  if (isBlocked(head) && !isPaidUpstream(head)) return head;
-
-  // 墙钟余量不够付费首包 → 立刻 paid（禁止再烧 free）
-  if (paidUsable.length && wallLeft <= reserve) {
-    return pickPaid();
-  }
-
-  // 同请求 free 次数上限
-  if (paidUsable.length && freeTried >= MAX_FREE_ATTEMPTS_PER_REQ) {
-    return pickPaid();
-  }
-
-  if (paidUsable.length && attemptsLeft <= 1) {
-    if (!isPaidUpstream(head) || isBlocked(head)) return pickPaid();
-  }
-
-  // 免费钥快切：还有未试 free 就继续；耗尽或墙钟过半才强制 paid
-  const forcePaid =
-    paidUsable.length > 0 &&
-    ((opts.freeFailCount >= 1 && nextFreeUsable.length === 0) ||
-      elapsed >= wall * 0.55 ||
-      wallLeft <= reserve);
-
-  if (forcePaid) return pickPaid();
-
-  if (nextFreeUsable.length) return nextFreeUsable[0]!;
-  if (paidUsable.length) return pickPaid();
-  return untried.find(u => !isBlocked(u)) || head;
+  // 仍返回被封锁的头，便于 trail skip:* 可观测
+  const untried = candidates.find(u => !tried.has(u.name));
+  return untried || null;
 }
 
 function markPaidSkippedBudget(
@@ -696,7 +613,7 @@ function markPaidSkippedBudget(
 /**
  * 带透明重试 + 预算 + trail 的流式转发。
  * 可选 consume：支持 stall 换渠（仅 bytesWritten===0）。
- * PaidGuarantee：免费失败/墙钟过半时强制插队 Go 付费钥。
+ * 付费-only：候选序即启用钥（通常 1 把）；无免费快切。
  */
 export async function streamWithFallback(
   routing: RoutingResult,
@@ -710,26 +627,18 @@ export async function streamWithFallback(
   const { candidates } = routing;
   const failureReasons = new Map<string, string>();
   const failedPlatforms = new Set<string>();
-  /** 本请求刚撞 RPM 的钥：只跳过该钥，继续快切 sibling free */
+  /** 本请求刚撞 RPM 的钥：只跳过该钥 */
   const rateLimitedHosts = new Set<string>();
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
-  let freeFailCount = 0;
   const tried = new Set<string>();
   const stallMs = getStallIdleMs();
-  const paidOnlyReq = !candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
-  const pinPaidReq =
-    !!candidates[0] &&
-    isPaidUpstream(candidates[0]) &&
-    candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
-  let annotatedPaidReason = false;
+  let annotatedActive = false;
   // #region agent log
   agentDebugLog("A", "fallback.ts:streamWithFallback:start", "stream fallback start", {
     tier: routing.tier,
     candidateN: candidates.length,
-    paidOnlyReq,
-    pinPaidReq,
     wallMs: failoverMaxMs(),
     attemptPaidMs: TIMEOUTS.ATTEMPT_PAID_MS,
     peekPaidMs: TIMEOUTS.PEEK_PAID_MS,
@@ -760,17 +669,14 @@ export async function streamWithFallback(
     const up = selectNextCandidate(candidates, tried, {
       budgetStart,
       attempts,
-      freeFailCount,
       failedPlatforms,
       rateLimitedHosts,
-      paidOnly: paidOnlyReq,
     });
     if (!up) break;
 
-    if (!annotatedPaidReason && isPaidUpstream(up)) {
-      annotatedPaidReason = true;
-      if (paidOnlyReq) pushTrail(trail, up.name, "paid_forced", budgetStart);
-      else if (pinPaidReq) pushTrail(trail, up.name, "paid_pinned", budgetStart);
+    if (!annotatedActive) {
+      annotatedActive = true;
+      pushTrail(trail, up.name, "active", budgetStart);
     }
 
     if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
@@ -822,8 +728,6 @@ export async function streamWithFallback(
       paid: isPaidUpstream(up),
       attempts,
       wallLeft,
-      freeFailCount,
-      paidOnlyReq,
     });
     // #endregion
     // 墙钟可打断进行中的 fetch/peek（禁止单次拖死到 ATTEMPT 以外）
@@ -872,7 +776,6 @@ export async function streamWithFallback(
         paid: isPaidUpstream(up),
       });
       // #endregion
-      if (!isPaidUpstream(up)) freeFailCount += 1;
       if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
         rateLimitedHosts.add(up.name);
       } else {
@@ -924,8 +827,7 @@ export async function streamWithFallback(
         ledgerSettle(up, { success: false, rollbackRequest: false });
         failureReasons.set(up.name, "stall");
         pushTrail(trail, up.name, "stall", t0);
-        if (!isPaidUpstream(up)) freeFailCount += 1;
-        continue;
+          continue;
       }
 
       if (isStall) {
@@ -960,7 +862,6 @@ export async function streamWithFallback(
           stalledAfterWrite: true,
         };
       }
-      if (!isPaidUpstream(up)) freeFailCount += 1;
     }
   }
 
@@ -1060,14 +961,8 @@ export async function nonStreamWithFallback(
   const trail: FallbackAttempt[] = [];
   const budgetStart = Date.now();
   let attempts = 0;
-  let freeFailCount = 0;
   const tried = new Set<string>();
-  const paidOnlyReq = !candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
-  const pinPaidReq =
-    !!candidates[0] &&
-    isPaidUpstream(candidates[0]) &&
-    candidates.some(u => !isPaidUpstream(u) && isUpstreamOk(u));
-  let annotatedPaidReason = false;
+  let annotatedActive = false;
 
   while (true) {
     if (attempts >= failoverMaxAttempts()) {
@@ -1089,16 +984,13 @@ export async function nonStreamWithFallback(
     const up = selectNextCandidate(candidates, tried, {
       budgetStart,
       attempts,
-      freeFailCount,
       failedPlatforms,
       rateLimitedHosts,
-      paidOnly: paidOnlyReq,
     });
     if (!up) break;
-    if (!annotatedPaidReason && isPaidUpstream(up)) {
-      annotatedPaidReason = true;
-      if (paidOnlyReq) pushTrail(trail, up.name, "paid_forced", budgetStart);
-      else if (pinPaidReq) pushTrail(trail, up.name, "paid_pinned", budgetStart);
+    if (!annotatedActive) {
+      annotatedActive = true;
+      pushTrail(trail, up.name, "active", budgetStart);
     }
     if (Date.now() - budgetStart >= failoverMaxMs() && !isPaidUpstream(up)) {
       markPaidSkippedBudget(candidates, tried, failureReasons);
@@ -1149,7 +1041,6 @@ export async function nonStreamWithFallback(
     }
     failureReasons.set(up.name, result.lastErr);
     pushTrail(trail, up.name, result.lastErr, t0);
-    if (!isPaidUpstream(up)) freeFailCount += 1;
     if (/rate.?limit|限流|超限|too many requests/i.test(result.lastErr)) {
       rateLimitedHosts.add(up.name);
     } else {

@@ -7,7 +7,6 @@
 import type { TierId, UpstreamConfig } from "./types.js";
 import { getAppContext } from "./context.js";
 import { ledgerWouldExceed } from "./ledger.js";
-import { getConfig } from "./config.js";
 
 // ── Constants ──
 
@@ -26,7 +25,7 @@ export const TIER_FALLBACK: Partial<Record<TierId, TierId>> = {
 
 // ── Public API ──
 
-/** 付费 / Go 套餐上游（flash 兜底保底用） */
+/** 付费 / Go 套餐上游（日志与观测用） */
 export function isPaidUpstream(u: UpstreamConfig): boolean {
   if (u.free === false) return true;
   if (u.billing === "opencode-go") return true;
@@ -39,40 +38,13 @@ export function isLongCooldown(u: UpstreamConfig, thresholdMs = 300_000): boolea
   return !!(cool && cool.until - Date.now() > thresholdMs);
 }
 
-/** flash：多数免费钥长冷却时，把 paid 提到候选首位（保 Go 前缀缓存 + 少断流）
- *  2026-07-28：与 IP 轮换无关；仅钥级长冷却占比。
- */
-export function boostPaidCandidates(ordered: UpstreamConfig[], tier: TierId): UpstreamConfig[] {
-  if (tier !== "flash" || ordered.length < 2) return ordered;
-  const regFree = (getConfig().tiers.get("flash") || []).filter(
-    u => u.enabled !== false && !isPaidUpstream(u),
-  );
-  if (!regFree.length) return ordered;
-  const longN = regFree.filter(u => isLongCooldown(u)).length;
-  if (longN / regFree.length < 0.5) return ordered;
-
-  const paid = ordered.filter(isPaidUpstream);
-  const free = ordered.filter(u => !isPaidUpstream(u));
-  if (!paid.length || !free.length) return ordered;
-  console.warn(
-    `[route] flash free long-cooldown ${longN}/${regFree.length} → paid-first (cache sticky)`,
-  );
-  // 多把同档付费：RR，禁止永远钉第一把
-  const paidRotated =
-    paid.length > 1
-      ? (() => {
-          const idx = (_boostPaidRr++ % paid.length);
-          return [paid[idx]!, ...paid.filter((_, i) => i !== idx)];
-        })()
-      : paid;
-  return [...paidRotated, ...free];
+/** @deprecated 付费-only 后无免费池；保留空操作兼容旧测试导入 */
+export function boostPaidCandidates(ordered: UpstreamConfig[], _tier: TierId): UpstreamConfig[] {
+  return ordered;
 }
 
-let _boostPaidRr = 0;
-/** 测试用 */
-export function _resetBoostPaidRrForTest(): void {
-  _boostPaidRr = 0;
-}
+/** @deprecated */
+export function _resetBoostPaidRrForTest(): void {}
 
 /** 判断 upstream 是否可用 */
 export function isUpstreamOk(u: UpstreamConfig): boolean {

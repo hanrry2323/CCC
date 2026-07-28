@@ -17,16 +17,18 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Skill + Prompt = 本次角色**（用户不选角色）。机制：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
 **v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
-**开发通道**：合入 = **仅 Cursor**；个人 Claude Code CLI = 草稿工（`docs/dev-packets/` + Relay flash；**Layer1 已出门后仅金路径白名单缺陷，无强制下一包**）；Desktop Agent **禁改 CCC**。Layer1 平台生产级 **已出门（小业务）**；Layer2 qb / 飞轮自动仍冻结：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](docs/briefs/2026-07-27-ccc-production-readiness.md)。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
+**开发通道**：合入 = **仅 Cursor**；个人 Claude Code CLI = 草稿工（`docs/dev-packets/` + Relay flash；**Layer1 已出门后仅金路径白名单缺陷，无强制下一包**）；Desktop Agent **禁改 CCC**。Layer1 平台生产级 **已出门（小业务）**；**个人主路线 = qb（Layer2 意图闭环）**：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](docs/briefs/2026-07-27-ccc-production-readiness.md)。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md)。
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
 **共识**：Demo ≠ 上线 ≠ 符合意图（行业共性）；已注册 ≠ 可开工（先全面对齐）；共识必须写入 `loop-engineer-authority.md` 再应用。  
+**个人主路线**：CCC 养 **qb**；成功 = 探针 + `intent_stable`，非 `released`。  
+**Relay**：薄垫片；**付费-only Go**（恰好 1 把启用，第 2 把人切备份）；免费/MiniMax 不进启用池。手册：[`docs/relay/KEY-POOL.md`](docs/relay/KEY-POOL.md)。  
 **Vibe 真优势三句**：少而硬的意图 · 唯一权威路径 · 偏差默认用飞轮收——**不是**画布更细。  
 **LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。  
 **Ops 运维面**（对话/编排/运维三面之一）：给人看健康灯——**绿**敢开发、**橙**可忽略、**红**一键复制交 Agent；旁路自愈/供弹/巡查（弹药只进业务仓，禁 orch）。见 authority「Ops 运维面」。
 
-**勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」「Agent 画布当写码主控」。
+**勿再说**：「接很多 IDE」「先选 7 角色」「用 Claude Code / Trae / Zed 改 CCC 平台」「Agent 画布当写码主控」「免费打头 / PaidGuarantee / MiniMax 主力」。
 
 **4 个数字**：
 

@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-26（**三层架构 + loop-code 槽位化** + **CCC Relay** + **claude --bg（2017）**；Ops 运维面；Hub M1 隧道 `:17777`；双机拓扑：M1=对话 / 2017=编排）
+> **状态**：现行 · 2026-07-28（**个人主路线=qb** + **Relay 仅付费 Go 单活跃钥** + 三层/loop-code 槽位 + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -12,6 +12,33 @@
 **人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。**
 
 （叙事：[`../VISION.md`](../VISION.md)。）
+
+---
+
+## 个人主路线（硬 · 2026-07-28）
+
+| 项 | 口径 |
+|----|------|
+| **给谁** | **仅个人产线**（不做多用户卖点 / 不做对外产品化主路径） |
+| **主业务** | **qb**（量化系统）；CCC = 编排产线，用 CCC **自己开发养大** qb |
+| **成功** | qb 硬意图走完 LPSN：`code_landed` → 探针可重放 → regress 回流 → 人点 `intent_stable`。**禁止**用 `released`/VERSION 冒充业务完成或能盈利 |
+| **停做** | Ops/SPA 抛光主路径；多厂商通道花样；invent；自动 `intent_stable`；再堆平行文档当操作系统 |
+| **下一开程** | Layer2 qb 意图闭环（非 Ops 抛光；非免费钥池优化） |
+| **心智入口** | 日常只信：路径五句 + qb 主路线 + Go 单活跃付费。其余 brief 当附录 |
+
+---
+
+## 模型通道简规（硬 · 2026-07-28 · 付费-only）
+
+| 项 | 口径 |
+|----|------|
+| **Relay 角色** | **薄垫片**：Anthropic↔上游翻译 + `thinking` 关 + 固定打当前启用的 Go 付费钥。**不是**多厂商调度站 |
+| **上游** | **仅** OpenCode Go · `https://opencode.ai/zen/go/v1` · `deepseek-v4-flash` |
+| **免费钥** | **全部禁用/不进启用池**（Zen free / GLM / big-pickle 等）；**MiniMax 等已退役，禁止复活** |
+| **付费钥** | 配置可留 **2** 把备份；**运行时 `enabled=true` 恰好 1 把**；禁止同会话双付费自动 RR |
+| **换钥** | 额度/费用用尽 → **人通知后手动**改 `enabled` + kickstart；不做自动切备份 |
+| **KPI** | `upstream_cache_token_ratio=cached/prompt`（活跃付费会话目标 **≥0.9**） |
+| **手册** | [`../relay/KEY-POOL.md`](../relay/KEY-POOL.md) · 钥只在 2017 `~/.ccc/relay/` |
 
 ---
 
@@ -374,12 +401,12 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | **协议转换范围** | `:4000`(Anthropic) / `:4002`(OpenAI chat) **都打同一 flash 池**；空 Pro 时客户端选 `pro` → relay 回落 `flash` |
 | **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
 | **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
-| **Flash 单通道（硬 · 2026-07-28）** | Claude Code（M1/2017）与 OpenCode（M1/2017 Engine）**一律** `flash` / `loop/flash`。免费 Zen `deepseek-v4-flash-free`（~10 钥）+ 智谱 GLM-4.7 等免费项打头**快速钥轮换**；末位 **恰好 2** 把 Go 付费 `zen/go/v1`+`deepseek-v4-flash`（`tier_priority=80`）兜底。**IP/HK 出口轮换退役**（禁止 flash 挂 `proxy`；429/日额只冷却该钥，不封 sibling） |
+| **Flash 单通道 · 付费-only（硬 · 2026-07-28）** | Claude Code + OpenCode **一律** `flash` / `loop/flash`。启用池**仅** Go 付费 `zen/go/v1`+`deepseek-v4-flash`；配置可留 2 把，**`enabled=true` 恰好 1**（备份钥人切）。**禁止**免费 Zen/GLM/MiniMax 进启用池。**IP/HK `proxy` 退役**。详见上文「模型通道简规」 |
 | **M1 对话路径** | sidecar / 个人 Claude Code → **2017 编排面 relay**(`http://192.168.3.116:4000`,共享 flash 池);可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`;默认模型 **`flash`** |
 | **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`（`OPENCODE_MODEL=loop/flash`） |
 | **Go thinking 关（硬 · 2026-07-27）** | 所有 Go/`deepseek-v4-*` 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`（主机 `upstreams.json`，不进 git）。默认 thinking 会令 OpenAI 兼容口 `content=""`、只填 `reasoning_content` → OpenCode 空转 hang。手册：`docs/relay/KEY-POOL.md`。 |
-| **免费 vs 收费（硬 · 2026-07-28）** | **免费**=`zen/v1` + `*-free`/`big-pickle`/智谱 GLM 等（`billing=zen-free`/`zhipu-failover`，`free=true`）；**收费 Go**必须 `https://opencode.ai/zen/go/v1`（`billing=opencode-go`）。Go 钥误打 `zen/v1` 付费模型会假 401。flash 付费兜底=两把 `opencode-go-paid-*`（prio=80）。钥 SSOT=2017 `~/.ccc/relay/upstreams.json` + 本机 `KEY-INVENTORY.md`；仓内手册=`docs/relay/KEY-POOL.md`（无密钥） |
-| **PaidGuarantee（硬 · 2026-07-28）** | 免费池抖动时墙钟内**必试** Go 付费；默认 `FAILOVER_MAX_MS=45s` / free attempt **8s** / paid **25s** / peek 6s·12s；**仅 zero 可用 free** 才 paid-first；日配额/RPM **只冷却该钥**；**会话钉 paid**（成功走 Go 后 `pinPaid` TTL≈24h 保 prompt cache，亲和键=`x-session-id` 或 system+**首条**user，禁止 last-2-user；`:4000`/`:4002` 均打 `prompt_cache_*`；fallback 尊重候选序禁同会话双付费 RR；≠背叛新会话 free-first）。主 KPI=`upstream_cache_token_ratio=cached/prompt`（付费钉会话目标 **≥0.9**；勿把 L1/`cache_hit_ratio` 当账单）。见 `docs/relay/KEY-POOL.md` |
+| **付费-only（硬 · 2026-07-28）** | **唯一启用上游**=`billing=opencode-go` · `https://opencode.ai/zen/go/v1` · `deepseek-v4-flash`。Go 钥误打 `zen/v1` 会假 401。免费/`zen-free`/智谱/MiniMax **不得** `enabled=true`。钥 SSOT=2017 `~/.ccc/relay/upstreams.json` + `KEY-INVENTORY.md`；手册=`docs/relay/KEY-POOL.md` |
+| **单活跃钥 + 缓存（取代 PaidGuarantee/free-first · 2026-07-28）** | 无免费池、无付费自动 RR。单活跃钥即天然会话钉；亲和仍可用 `x-session-id` / system+首条 user。主 KPI=`upstream_cache_token_ratio`（目标 **≥0.9**；勿把 L1/`cache_hit_ratio` 当账单）。额度用尽 → **人通知后**启用备份钥、关掉旧钥 |
 | **冷却 / 限流（硬 · 2026-07-27）** | 429 + `Retry-After` >120s 一律按**日配额**冷却（采纳完整 RA，禁封顶 120s 反复撞钥）。`POST /admin/cooldowns/clear` **默认保留**剩余 >300s 的冷却；急救全清用 `?force=1`。列表：`GET /admin/cooldowns` |
 | **OpenCode 默认（硬 · 2026-07-28）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/flash`（本机 `:4002` → relay **flash** 同池）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
 | **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
@@ -674,7 +701,7 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 | 项 | 口径 |
 |----|------|
 | **下游只对接三档** | `flash` / `Pro` / `code` 三个逻辑名(由 relay 路由表定义);桌面端、Engine、OpenCode 等下游**绝不直接 import 上游服务商 URL 或 API key** |
-| **上游可换** | 上游实现细节(OpenCode Zen / 智谱 / 任何未来服务商)由 `relay/upstreams.json` 统一管理,可热替换(`watchFile` + `reloadConfig`)。**现行**：主对接仅 flash=免费池(`deepseek-v4-flash-free`+GLM 等)快切 + 2×Go 付费兜底；**Pro/code 轮空** |
+| **上游可换** | 上游细节由 `~/.ccc/relay/upstreams.json` 热替换。**现行**：flash=**仅 1 把启用的 Go 付费**（另 1 把备份 `enabled=false`）；免费/MiniMax **不进启用池**；**Pro/code 轮空** |
 | **变更边界** | 换上游 = 改 upstreams.json + 重启 relay,无需改下游任何代码。下游契约(`flash`/`Pro`/`code`)**稳定,基本不变** |
 | **禁止反模式** | 客户端代码出现 `api.minimaxi.com` / `api.anthropic.com` / `opencode.ai/zen/v1` 等具体 URL 或 `sk-...` 硬编码 key(仅 `upstreams.json` / `~/.ccc/relay/*` / `~/.ccc/*.key` 持有) |
 | **运行时降级** | 上游挂 / 限流 / 跑路:relay `EWMA 评分 + 配额账本` 触发自动切换同 tier 下游;客户端通过 `relay_is_up()` 探活 + `relay_direct_fallback()` 切直连(双层 fail-open) |
@@ -699,7 +726,7 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走 Cursor MCP）。
 > **战略**：先把 CCC 做到生产级工具，再用 CCC 做业务生产。半成品上生产 = 空转。  
 > **分工**：中转站稳定后，**个人 Claude Code CLI**（接 Relay `flash`，非 Desktop Agent）可扛边界清晰的草稿量；**Cursor 写细指令 + 审合入 + 权威/双机**。  
 > 详路线：[`docs/briefs/2026-07-27-ccc-production-readiness.md`](../briefs/2026-07-27-ccc-production-readiness.md) · 指令包目录：[`docs/dev-packets/`](../dev-packets/README.md)  
-> **状态（2026-07-28）**：Layer1 **已正式出门（小业务）**。日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主。草稿工**停用放大**——无强制下一包，**仅**接金路径打回的白名单缺陷。下一开程二选一：程 B 硬化 **或** Layer2 qb（勿同时开）。
+> **状态（2026-07-28）**：Layer1 **已正式出门（小业务）**。日常业务生产走 Hub→Engine；平台维护仍 Cursor 为主。草稿工**停用放大**——无强制下一包，**仅**接金路径打回的白名单缺陷。**下一开程 = Layer2 qb（个人主路线）**；Ops 抛光 / 免费钥池 / 多厂商通道 **禁止**再开。
 
 | 项 | 口径 |
 |----|------|
