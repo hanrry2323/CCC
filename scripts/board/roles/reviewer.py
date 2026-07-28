@@ -170,6 +170,22 @@ def _detect_review_kind(
     return "opencode"
 
 
+def _write_fail_verdict_async(ws: Path, task_id: str, reason: str) -> None:
+    """Write FAIL verdict (async path: no verdict dir on ws needed pre-exist)."""
+    verdict_dir = ws / ".ccc" / "verdicts"
+    verdict_dir.mkdir(parents=True, exist_ok=True)
+    vf = verdict_dir / f"{task_id}.verdict.md"
+    if vf.is_file():
+        return  # already has a verdict
+    vf.write_text(
+        f"# {task_id} Verdict\n\n"
+        f"**Verdict:** FAIL\n\n"
+        f"**Category:** fixable\n\n"
+        f"**Reason:** {reason}\n",
+        encoding="utf-8",
+    )
+
+
 def _write_timeout_verdict(task_id: str, reason: str) -> None:
     verdict_dir = get_workspace() / ".ccc" / "verdicts"
     verdict_dir.mkdir(parents=True, exist_ok=True)
@@ -757,7 +773,21 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
     is_done = done_file.exists()
 
     # 如果没 done 标记，检查进程是否还在跑
+    timeout_file = pids_dir / f"{task_id}.reviewer.timeout"
     if not is_done:
+        # Phase 014: 优先检查 .reviewer.timeout —— bg.sh 超时后写此标记
+        if timeout_file.exists():
+            _write_fail_verdict_async(ws, task_id, "reviewer_bg_timeout")
+            verdict_dir = ws / ".ccc" / "verdicts"
+            verdict_dir.mkdir(parents=True, exist_ok=True)
+            (verdict_dir / f"{task_id}.verdict.md").write_text(
+                f"# {task_id} Verdict\n\n"
+                f"**Verdict:** TIMEOUT\n\n"
+                f"**Reason:** reviewer_bg_timeout\n",
+                encoding="utf-8",
+            )
+            _log.debug("[reviewer] %s .reviewer.timeout → TIMEOUT verdict", task_id)
+            return {"status": "TIMEOUT", "reason": "reviewer_bg_timeout"}
         if pid_file.exists():
             try:
                 pid = int(pid_file.read_text().strip())
@@ -767,12 +797,15 @@ def check_reviewer_async(task_id: str, ws: Path) -> dict:
                 _log.debug("[reviewer] pid probe parse/lost %s: %s", pid_file, exc)
             except OSError as exc:
                 _log.debug("[reviewer] pid probe OSError %s: %s", pid_file, exc)
-        # 进程不在，判断为进程提前退出
+        # 进程不在，判断为进程提前退出 — 014: 写 FAIL verdict 再返回
+        _write_fail_verdict_async(ws, task_id, "process_exited_before_verdict")
         return {"status": "failed", "reason": "process exited before writing verdict"}
 
     # 读取输出
     output = result_file.read_text() if result_file.exists() else ""
     if not output.strip():
+        # 014: 空输出写 FAIL verdict 再返回
+        _write_fail_verdict_async(ws, task_id, "empty_reviewer_output")
         return {"status": "failed", "reason": "empty reviewer output"}
 
     try:
@@ -876,6 +909,8 @@ def _cleanup_reviewer_markers(pids_dir: Path, task_id: str) -> None:
         ".reviewer.done",
         ".reviewer.pid",
         ".reviewer.prompt.md",
+        ".reviewer.timeout",  # 014: 超时标记一并清理
+        ".reviewer.exitcode",  # 014: exitcode 标记一并清理
     ]:
         f = pids_dir / f"{task_id}{sfx}"
         try:
