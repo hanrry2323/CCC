@@ -28,6 +28,18 @@ function makeDirectAgent(): Agent {
 
 let _direct = makeDirectAgent();
 
+/** 超时/卡死 keep-alive 后丢弃直连池，避免 sole flash 被半开 socket 拖死整进程。 */
+export function recycleDirectAgent(reason = "manual"): void {
+  const old = _direct;
+  _direct = makeDirectAgent();
+  console.warn(`[egress] recycled direct agent (${reason})`);
+  try {
+    void old.close?.();
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 解析上游 proxy 字段；支持 http(s):// 或 socks5://host:port */
 export function resolveUpstreamProxy(up: UpstreamConfig): string | null {
   const raw = (up.proxy || "").trim();
@@ -130,17 +142,25 @@ export async function upstreamFetch(
     return resp as unknown as Response;
   } catch (e) {
     clearTimeout(timer);
+    const msg = String((e as Error)?.message || e);
     // #region agent log
     agentDebugLog("B", "egress.ts:upstreamFetch:err", "upstream fetch error", {
       up: up.name,
       elapsedMs: Date.now() - t0,
       attemptMs,
       name: (e as Error)?.name,
-      message: String((e as Error)?.message || e).slice(0, 120),
+      message: msg.slice(0, 120),
       initAborted: !!(init.signal as AbortSignal | undefined)?.aborted,
       attemptAborted: ac.signal.aborted,
     });
     // #endregion
+    // 直连池：attempt timeout / 连接类错误后强制换新 Agent（清半开 keep-alive）
+    if (
+      !resolveUpstreamProxy(up) &&
+      (ac.signal.aborted || /attempt timeout|UND_ERR|ECONN|ETIMEDOUT|fetch failed|aborted/i.test(msg))
+    ) {
+      recycleDirectAgent(ac.signal.aborted ? "attempt-timeout" : "fetch-err");
+    }
     throw e;
   }
 }
