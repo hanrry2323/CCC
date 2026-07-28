@@ -37,7 +37,7 @@
 | Claude | `/loop` 跑完 Phase A→D |
 | Cursor | 严审；不合格打回；小问题自修合入 + 2017 热更 |
 | 目标 | 空输出/早退→FAIL；`.timeout`→TIMEOUT；bg 与 `check_reviewer_async` 对齐 |
-| 完成 | 单测覆盖空输出/超时；禁止改权威 |
+| 完成 | 单测覆盖空输出/超时；`check_reviewer_async` 3 个缺口点均写 verdict 后返回；`.reviewer.timeout` 清理对称；禁止改权威 |
 
 ### R3 · 015 失败可收加固（reopen / quarantine 口径）
 
