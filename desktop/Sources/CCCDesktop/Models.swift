@@ -559,25 +559,34 @@ struct MindGoal: Codable, Identifiable, Equatable, Hashable {
     var text: String?
     var exit_condition: String?
     var status: String?
+    var linked_epic_id: String?
 
     var displayStatus: String {
         switch (status ?? "planned").lowercased() {
         case "probed": return "探针已过 · 可收口"
+        case "dispatched": return "编排中"
         case "planned": return "待讨论"
         case "intent_stable", "stable": return "已稳定"
         default: return (status ?? "planned").lowercased()
         }
     }
 
-    /// 仅 regress 探针绿（probed）才允许人点标记稳定
+    /// 仅 regress 探针绿（probed）才允许人点标记稳定（运维页）
     var isMarkableStable: Bool {
         (status ?? "").lowercased() == "probed"
     }
 
+    /// 右栏讨论：仅 planned
     var isDiscussable: Bool {
-        let s = (status ?? "planned").lowercased()
-        return s == "planned" || s == "probed"
+        (status ?? "planned").lowercased() == "planned"
     }
+}
+
+/// 运维意图收口行
+struct OpsIntentRow: Identifiable, Equatable {
+    var projectId: String
+    var goal: MindGoal
+    var id: String { "\(projectId)|\(goal.id)" }
 }
 
 struct MindDecidedPayload: Codable, Equatable {

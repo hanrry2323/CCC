@@ -2278,15 +2278,6 @@ struct FlowRail: View {
                             .buttonStyle(.bordered)
                             .controlSize(.mini)
                         }
-                        if goal.isMarkableStable {
-                            Button("标记稳定") {
-                                Task { await model.markMindGoalStable(projectId: pid, goalId: goal.id) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(CCCTheme.accent)
-                            .controlSize(.mini)
-                            .disabled(model.mindGoalBusy)
-                        }
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)

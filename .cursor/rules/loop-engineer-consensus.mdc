@@ -40,7 +40,7 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（定稿/转任务/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。  
-- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；**对老板只聊方案与路线**（非代码路径/技术问答）；技术细节只进 `ccc-transfer`；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看。`plan_md` 与 `goal` 同向（门禁拒 `plan_goal_conflict`）。对标/评分**禁止**以 GitHub 星当主轴、禁止默认「开源公开」当收口；qb 成熟度对齐 **实盘人确认 + 回测可视化**。**意图卡首轮**须人话翻译；**审查报告**可转优化定稿；CCC 全绿即可标稳定（非三方 IDE 硬门）。偶发卫生卡仍强制 `python`（禁假 committer）；板面残卡由**当前会话** `hub_repair` 清，禁止 Engine 卫生 epic 当主业。
+- **Desktop Agent 定方案**：讨论/定稿按意图直接给最佳方案；**对老板只聊方案与路线**（非代码路径/技术问答）；技术细节只进 `ccc-transfer`；禁止每轮甩拍板题、禁止定稿后再问要不要入队；定稿白话给人看。`plan_md` 与 `goal` 同向（门禁拒 `plan_goal_conflict`）。对标/评分**禁止**以 GitHub 星当主轴、禁止默认「开源公开」当收口；qb 成熟度对齐 **实盘人确认 + 回测可视化**。**意图卡首轮**须人话翻译；下达后右栏藏卡（`dispatched`），**收口在运维**；**审查报告**可转优化定稿。偶发卫生卡仍强制 `python`（禁假 committer）；板面残卡由**当前会话** `hub_repair` 清，禁止 Engine 卫生 epic 当主业。
 - **App Agent 全功能（硬 · 1A/2A）**：任意项目卡默认 **engineer**（本机 CCC + Hub 含跨仓 `hub_repair`）；业务改码仍 transfer→Engine；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨。
 - **看板管家（硬）**：板务本职 = **当前会话 Agent**。禁止「请打开编排运维」当主路径；禁止教用户手写 `transfer-outbox`/Terminal。运维红灯 → 打开当前项目或 `ccc` 平台会话。
 - **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进 `ccc-transfer` 块；禁止过程旁白（含英文）。

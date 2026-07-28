@@ -339,10 +339,15 @@ def test_t1_seed_goal_from_transfer(tmp_path: Path):
     }
     seeded = agent_mind.maybe_seed_goal_from_transfer(ws, body)
     assert seeded is not None
-    assert seeded["status"] == "planned"
+    assert seeded["status"] == "dispatched"
     assert "paper_intent_probe" in seeded["exit_condition"]
-    # second identical transfer must not duplicate
-    assert agent_mind.maybe_seed_goal_from_transfer(ws, body) is None
+    # second identical transfer must not duplicate; still returns matched goal as dispatched
+    again = agent_mind.maybe_seed_goal_from_transfer(ws, body)
+    assert again is not None
+    assert again["status"] == "dispatched"
+    assert again["id"] == seeded["id"]
+    d = agent_mind.load_decided(ws)
+    assert len([g for g in d["goals"] if g.get("status") != "abandoned"]) == 1
     # hygiene skip
     assert (
         agent_mind.maybe_seed_goal_from_transfer(
@@ -350,6 +355,61 @@ def test_t1_seed_goal_from_transfer(tmp_path: Path):
         )
         is None
     )
+
+
+def test_t1_marks_existing_planned_dispatched(tmp_path: Path):
+    from chat_server.services import agent_mind
+
+    ws = tmp_path / "t1b"
+    ws.mkdir()
+    (ws / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    agent_mind.merge_decided(
+        ws,
+        {
+            "goals": [
+                {
+                    "text": "P0 momentum 口径对齐：净 edge + CLOSE",
+                    "exit_condition": "pytest -q",
+                    "status": "planned",
+                }
+            ]
+        },
+    )
+    out = agent_mind.maybe_seed_goal_from_transfer(
+        ws,
+        {
+            "title": "P0 momentum 口径对齐：净 edge + CLOSE 平仓 + 单测 + paper 探针",
+            "goal": "对齐净 edge",
+            "acceptance": ["pytest -q"],
+            "pipeline": "feature",
+            "epic_id": "p0-momentum-edge-close-paper-74664552",
+        },
+    )
+    assert out is not None
+    assert out["status"] == "dispatched"
+    unfinished = agent_mind.unfinished_product_goals(agent_mind.load_decided(ws))
+    assert any(g.get("status") == "dispatched" for g in unfinished)
+    assert agent_mind.next_product_goal(agent_mind.load_decided(ws)) is None
+
+
+def test_next_product_goal_skips_dispatched(tmp_path: Path):
+    from chat_server.services import agent_mind
+
+    ws = tmp_path / "t1c"
+    ws.mkdir()
+    (ws / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    agent_mind.merge_decided(
+        ws,
+        {
+            "goals": [
+                {"text": "在飞意图 A", "status": "dispatched", "exit_condition": "x"},
+                {"text": "待讨论意图 B", "status": "planned", "exit_condition": "y"},
+            ]
+        },
+    )
+    nxt = agent_mind.next_product_goal(agent_mind.load_decided(ws))
+    assert nxt is not None
+    assert "待讨论" in nxt["text"] or nxt["status"] == "planned"
 
 
 def test_t2_regress_marks_probed(tmp_path: Path, monkeypatch):

@@ -137,10 +137,12 @@ final class AppModel: ObservableObject {
     @Published var flowFanoutHint: String?
     /// Phase9：abnormal / failed 止损提示（右栏红条）
     @Published var flowStopLossHint: String?
-    /// LPSN · T3：当前项目 L1 unfinished/probed goals（FlowRail 标记稳定）
+    /// LPSN：右栏只显 planned；运维收口列 probed/dispatched
     @Published var mindGoals: [MindGoal] = []
     @Published var mindGoalsProjectId: String?
     @Published var mindGoalBusy = false
+    @Published var opsIntentRows: [OpsIntentRow] = []
+    @Published var opsIntentBusy = false
     /// 避免同一 epic 反复 toast
     private var lastStopLossToastKey: String?
     /// 当前选中会话是否正在生成（按会话，非全局）
@@ -2591,6 +2593,9 @@ final class AppModel: ObservableObject {
         lastAnimatedEpicId = nil
         flowSplitGeneration &+= 1
         await bindFlowToThread(projectId: pid, threadId: tid, preferEpicId: eid)
+        // 定稿后意图卡应变 dispatched 并从右栏消失
+        await refreshMindGoals(projectId: pid)
+        await refreshOpsIntentGoals()
         // 仅当 flow/snapshot 真确认编排看见，才从 delivered 升 accepted
         if transferDeliveryByThread[tid] == .delivered,
            flowConfirmsOrchestrationAccepted(threadId: tid, epicId: eid) {
@@ -4415,7 +4420,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// LPSN · T3：拉取当前项目未完成 / probed 目标供 FlowRail 标记稳定
+    /// LPSN · T3：右栏只展示「待讨论」planned（dispatched/probed 不占右栏）
     @MainActor
     func refreshMindGoals(projectId: String) async {
         let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4428,8 +4433,7 @@ final class AppModel: ObservableObject {
             try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchMindDecided(projectId: pid)
             let goals = (resp.decided?.goals ?? []).filter { g in
-                let s = (g.status ?? "planned").lowercased()
-                return s == "planned" || s == "probed"
+                (g.status ?? "planned").lowercased() == "planned"
             }
             mindGoals = goals
             mindGoalsProjectId = pid
@@ -4441,14 +4445,55 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// LPSN · T3：人点 intent_stable
+    @MainActor
+    func refreshOpsIntentGoals() async {
+        let pids = projects.filter(\.isDispatchable).map(\.id)
+        guard !pids.isEmpty else {
+            opsIntentRows = []
+            return
+        }
+        do {
+            try await prepareClient(ensureAgent: false)
+        } catch {
+            return
+        }
+        var rows: [OpsIntentRow] = []
+        for pid in pids {
+            do {
+                let resp = try await client.fetchMindDecided(projectId: pid)
+                for g in resp.decided?.goals ?? [] {
+                    let s = (g.status ?? "").lowercased()
+                    guard s == "probed" || s == "dispatched" else { continue }
+                    rows.append(OpsIntentRow(projectId: pid, goal: g))
+                }
+            } catch {
+                continue
+            }
+        }
+        // probed 在前，便于收口
+        rows.sort { a, b in
+            let as_ = (a.goal.status ?? "").lowercased()
+            let bs = (b.goal.status ?? "").lowercased()
+            if as_ != bs {
+                return as_ == "probed" && bs != "probed"
+            }
+            return a.projectId < b.projectId
+        }
+        opsIntentRows = rows
+    }
+
+    /// LPSN · T3：人点 intent_stable（运维收口列表）
     @MainActor
     func markMindGoalStable(projectId: String, goalId: String) async {
         let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
         let gid = goalId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty, !gid.isEmpty else { return }
         mindGoalBusy = true
-        defer { mindGoalBusy = false }
+        opsIntentBusy = true
+        defer {
+            mindGoalBusy = false
+            opsIntentBusy = false
+        }
         do {
             try await prepareClient(ensureAgent: false)
             _ = try await client.markMindGoalStatus(
@@ -4457,8 +4502,11 @@ final class AppModel: ObservableObject {
                 status: "stable"
             )
             await refreshMindGoals(projectId: pid)
+            await refreshOpsIntentGoals()
+            showToast("已标记稳定")
         } catch {
             lastError = "标记稳定失败：\(error.localizedDescription)"
+            showToast("标记稳定失败：\(error.localizedDescription)")
         }
     }
 
@@ -5201,6 +5249,7 @@ final class AppModel: ObservableObject {
             }
             loadLocalPatrolAlerts()
             recomputeOpsDisplay()
+            await refreshOpsIntentGoals()
         } catch {
             opsError = error.localizedDescription
             loadLocalPatrolAlerts()

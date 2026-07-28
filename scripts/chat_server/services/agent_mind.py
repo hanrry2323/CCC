@@ -33,7 +33,7 @@ ALLOWED_DECIDED_KEYS = (
     "open_questions",
     "architecture_choices",
 )
-GOAL_STATUSES = frozenset({"planned", "probed", "stable", "abandoned"})
+GOAL_STATUSES = frozenset({"planned", "dispatched", "probed", "stable", "abandoned"})
 FORBIDDEN_DECIDED_SUBSTRINGS = (
     "enable engine",
     "invent",
@@ -176,8 +176,13 @@ def unfinished_product_goals(decided: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def next_product_goal(decided: dict[str, Any]) -> dict[str, Any] | None:
+    """Prefer discussable/closable goals; skip in-flight dispatched-only."""
     unfinished = unfinished_product_goals(decided)
-    return unfinished[0] if unfinished else None
+    for g in unfinished:
+        st = str(g.get("status") or "planned").lower()
+        if st != "dispatched":
+            return g
+    return None
 
 
 def _validate_decided_item(text: str) -> None:
@@ -409,9 +414,11 @@ def maybe_seed_goal_from_transfer(
     *,
     updated_by: str = "hub",
 ) -> dict[str, Any] | None:
-    """T1: after product transfer succeeds, seed L1 goal if none match.
+    """T1: after product transfer succeeds, mark matching L1 goal dispatched (or seed).
 
     Hygiene / ops / .ccc-only transfers are skipped. Never writes stable.
+    Matching unfinished goal → status=dispatched (hide from FlowRail).
+    New seed → dispatched (just transferred, not「待讨论」).
     """
     try:
         from _intent_probe import extract_probe_commands, is_hygiene_transfer
@@ -445,17 +452,51 @@ def maybe_seed_goal_from_transfer(
     )
     exit_c = probes[0] if probes else ""
 
+    epic_id = str(
+        body.get("epic_id") or body.get("task_id") or body.get("id") or ""
+    ).strip()
+
     decided = load_decided(root)
     goals = list(decided.get("goals") or [])
-    for g in unfinished_product_goals(decided):
-        if _goal_matches_transfer(g, title, goal_text):
+
+    # Match existing unfinished → mark dispatched (do not duplicate)
+    for i, raw in enumerate(goals):
+        g = normalize_goal(raw) if not isinstance(raw, dict) else raw
+        if not isinstance(g, dict):
+            continue
+        st = str(g.get("status") or "planned").lower()
+        if st in ("stable", "abandoned"):
+            continue
+        if not _goal_matches_transfer(g, title, goal_text):
+            continue
+        # patch in place (keep list slot)
+        if isinstance(goals[i], dict):
+            goals[i]["status"] = "dispatched"
+            if epic_id:
+                goals[i]["linked_epic_id"] = epic_id[:128]
+            if exit_c and not str(goals[i].get("exit_condition") or "").strip():
+                goals[i]["exit_condition"] = exit_c[:DECIDED_ITEM_MAX_CHARS]
+            updated = normalize_goal(goals[i])
+        else:
+            updated = normalize_goal(
+                {
+                    **g,
+                    "status": "dispatched",
+                    **({"linked_epic_id": epic_id[:128]} if epic_id else {}),
+                }
+            )
+            goals[i] = updated
+        if not updated:
             return None
+        merge_decided(root, {"goals": goals}, updated_by=updated_by)
+        return updated
 
     # supersede: abandon prior unfinished when requested
     if body.get("supersede_goals") is True or body.get("intent_supersede") is True:
         for g in goals:
             if isinstance(g, dict) and str(g.get("status") or "") in (
                 "planned",
+                "dispatched",
                 "probed",
             ):
                 g["status"] = "abandoned"
@@ -464,11 +505,15 @@ def maybe_seed_goal_from_transfer(
         {
             "text": title or goal_text,
             "exit_condition": exit_c,
-            "status": "planned",
+            "status": "dispatched",
+            **({"linked_epic_id": epic_id[:128]} if epic_id else {}),
         }
     )
     if not seeded:
         return None
+    # normalize_goal drops unknown keys — re-attach linked_epic_id if needed
+    if epic_id:
+        seeded["linked_epic_id"] = epic_id[:128]
     goals.append(seeded)
     merge_decided(root, {"goals": goals}, updated_by=updated_by)
     return seeded

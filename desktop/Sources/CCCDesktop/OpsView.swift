@@ -19,6 +19,7 @@ struct OpsView: View {
     @State private var showChannelDetail = false
     @State private var showUpstreamDaily = false
     @State private var showAgentMinds = false
+    @State private var showIntentClosure = true
 
     private var preferredAmmoWorkspace: String {
         if let p = model.selectedProject, p.isDispatchable {
@@ -70,6 +71,12 @@ struct OpsView: View {
                             inboxProposalsSection
                         }
                         .padding(.top, 8)
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+
+                    DisclosureGroup("意图收口", isExpanded: $showIntentClosure) {
+                        intentClosureSection
+                            .padding(.top, 8)
                     }
                     .font(.system(size: 15, weight: .semibold))
 
@@ -139,6 +146,7 @@ struct OpsView: View {
                 adoptWorkspace = preferredAmmoWorkspace
             }
             await model.refreshOps()
+            await model.refreshOpsIntentGoals()
         }
         .sheet(isPresented: $showAdoptSheet) {
             adoptSheet
@@ -635,6 +643,64 @@ struct OpsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var intentClosureSection: some View {
+        let rows = model.opsIntentRows
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("探针已过可标稳定；编排中只读。右栏只留待讨论意图。")
+                .font(CCCTheme.caption)
+                .foregroundStyle(CCCTheme.faint)
+            if rows.isEmpty {
+                emptyHint("暂无待收口 / 编排中意图")
+            } else {
+                ForEach(rows) { row in
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(row.projectId)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(CCCTheme.faint)
+                                Text(row.goal.displayStatus)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(
+                                        row.goal.isMarkableStable ? CCCTheme.nodeDone : CCCTheme.secondary
+                                    )
+                            }
+                            Text(row.goal.text ?? row.goal.id)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(CCCTheme.ink)
+                                .lineLimit(3)
+                        }
+                        Spacer(minLength: 0)
+                        if row.goal.isMarkableStable {
+                            Button("标记稳定") {
+                                Task {
+                                    await model.markMindGoalStable(
+                                        projectId: row.projectId,
+                                        goalId: row.goal.id
+                                    )
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CCCTheme.accent)
+                            .controlSize(.small)
+                            .disabled(model.opsIntentBusy || model.mindGoalBusy)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Divider()
+                }
+            }
+            Button {
+                Task { await model.refreshOpsIntentGoals() }
+            } label: {
+                Label("刷新意图", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(model.opsIntentBusy)
         }
     }
 
