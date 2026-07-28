@@ -84,6 +84,52 @@ def _filter_verify_commands(cmds: list[str]) -> list[str]:
     return out
 
 
+def _task_skips_forced_pytest(
+    ws: Path, task_id: str, task_meta: dict | None
+) -> bool:
+    """Single source for skip: docs/doc_only/hygiene — never a partial path allowlist."""
+    try:
+        from _ccc_hygiene import task_skips_forced_pytest
+
+        return bool(task_skips_forced_pytest(ws, task_id, task_meta))
+    except Exception as exc:
+        _log.warning("[tester] hygiene probe: %s", exc)
+        return False
+
+
+def build_tester_verify_commands(
+    ws: Path,
+    task_id: str,
+    *,
+    plan_commands: list[str] | None = None,
+    task_meta: dict | None = None,
+) -> tuple[list[str], bool]:
+    """Resolve verify cmds + whether forced full-repo pytest was skipped.
+
+    Forced ``pytest tests/ --cov-fail-under=80`` is appended only for business
+    cards that do not already skip (doc_only / docs-only / hygiene / short path).
+    """
+    verify_commands = list(plan_commands or [])
+    skip_forced = _task_skips_forced_pytest(ws, task_id, task_meta)
+
+    if not verify_commands and not skip_forced:
+        verify_commands = [
+            f"python3 -m pytest {ws / 'tests' / 'scripts'} -q --tb=line --timeout=60"
+        ]
+
+    has_pyproject = (ws / "pyproject.toml").exists()
+    if (
+        has_pyproject
+        and not skip_forced
+        and not any("pytest" in c for c in verify_commands)
+    ):
+        verify_commands.append(
+            "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
+        )
+
+    return _filter_verify_commands(verify_commands), skip_forced
+
+
 def launch_tester_async(task_id: str, ws: Path) -> dict:
     """异步启动 tester 验证子进程。
 
@@ -101,56 +147,35 @@ def launch_tester_async(task_id: str, ws: Path) -> dict:
 
     # 1. 从 plan 提取验证命令（共享 intent probe 解析）
     plan_file = ws / ".ccc" / "plans" / f"{task_id}.plan.md"
-    verify_commands: list[str] = []
+    plan_commands: list[str] = []
     if plan_file.exists():
-        verify_commands = extract_probe_commands(
+        plan_commands = extract_probe_commands(
             plan_file.read_text(encoding="utf-8", errors="replace")
         )
-    # fallback: 没有验收项，跑 pytest（卫生卡除外）
-    skip_forced = False
+
+    task_meta = None
     try:
-        from _ccc_hygiene import task_skips_forced_pytest
-        from _board_store import FileBoardStore
-
-        task_meta = None
-        try:
-            store = FileBoardStore(ws)
-            for col in (
-                "testing",
-                "in_progress",
-                "planned",
-                "verified",
-                "backlog",
-            ):
-                task_meta = next(
-                    (t for t in store.list_tasks(col) if t.get("id") == task_id),
-                    None,
-                )
-                if task_meta:
-                    break
-        except Exception:
-            task_meta = None
-        skip_forced = task_skips_forced_pytest(ws, task_id, task_meta)
+        store = FileBoardStore(ws)
+        for col in (
+            "testing",
+            "in_progress",
+            "planned",
+            "verified",
+            "backlog",
+        ):
+            task_meta = next(
+                (t for t in store.list_tasks(col) if t.get("id") == task_id),
+                None,
+            )
+            if task_meta:
+                break
     except Exception as exc:
-        _log.warning("[tester] hygiene probe: %s", exc)
+        _log.debug("[tester] task meta: %s", exc)
+        task_meta = None
 
-    if not verify_commands and not skip_forced:
-        verify_commands = [
-            f"python3 -m pytest {ws / 'tests' / 'scripts'} -q --tb=line --timeout=60"
-        ]
-
-    # 强制 baseline（业务卡）；ops/卫生 / .ccc-only 不追加全仓 pytest
-    has_pyproject = (ws / "pyproject.toml").exists()
-    if (
-        has_pyproject
-        and not skip_forced
-        and not any("pytest" in c for c in verify_commands)
-    ):
-        verify_commands.append(
-            "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
-        )
-
-    verify_commands = _filter_verify_commands(verify_commands)
+    verify_commands, skip_forced = build_tester_verify_commands(
+        ws, task_id, plan_commands=plan_commands, task_meta=task_meta
+    )
     if not verify_commands:
         if skip_forced:
             _log.info(
@@ -443,46 +468,12 @@ def tester_role() -> dict:
                     verify_commands.append(cmd)
 
         # fallback: 如果没有验收项，跑 pytest（卫生卡除外）
-        skip_forced = False
-        try:
-            from _ccc_hygiene import task_skips_forced_pytest
-
-            skip_forced = task_skips_forced_pytest(
-                get_workspace(), task_id, task
-            )
-        except Exception as exc:
-            _log.warning("[tester] hygiene probe: %s", exc)
-
-        # 短路径 / 文档卡：不强制全仓 cov pytest
-        try:
-            rp = get_workspace() / ".ccc" / "reports" / f"{task_id}.result.json"
-            if rp.is_file():
-                data = json.loads(rp.read_text(encoding="utf-8", errors="replace"))
-                if isinstance(data, dict) and str(data.get("path") or "").lower() in (
-                    "script_seed",
-                    "board_ops",
-                ):
-                    skip_forced = True
-        except Exception as exc:
-            _log.debug("[tester] path tag: %s", exc)
-
-        if not verify_commands and not skip_forced:
-            verify_commands = [
-                f"python3 -m pytest {get_workspace() / 'tests' / 'scripts'} -q --tb=line --timeout=60"
-            ]
-
-        # 强制 baseline（v0.21.3）：业务卡；ops/卫生/短路径不追加
-        has_pyproject = (get_workspace() / "pyproject.toml").exists()
-        if (
-            has_pyproject
-            and not skip_forced
-            and not any("pytest" in c for c in verify_commands)
-        ):
-            verify_commands.append(
-                "python3 -m pytest tests/ -q --tb=line --timeout=60 --cov=src --cov-fail-under=80"
-            )
-
-        verify_commands = _filter_verify_commands(verify_commands)
+        verify_commands, skip_forced = build_tester_verify_commands(
+            get_workspace(),
+            task_id,
+            plan_commands=verify_commands,
+            task_meta=task,
+        )
         if not verify_commands:
             if skip_forced:
                 _log.info(
