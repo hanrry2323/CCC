@@ -60,6 +60,10 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
   `references/abnormal-solve-sop.md`。**清障 ≠ 结案**：
   `clear_blockers`/reopen/归档只是清理步骤；必须取证定桶 → 结算已绿代码或优化定稿再入队。
   **禁止**用「已归档 / 已 reopen / 耗尽不可恢复所以藏卡」当向老板的完成解释。
+- **Commit / 文件夹卫生（硬）**：严格按 `references/commit-folder-hygiene-sop.md`。
+  脏树用三分法（`clean` / `ccc_hygiene` / `business`）；`.ccc` 与 `docs/lessons` 等噪音**不挡**开发、**不当**业务失败结案。
+  合格 commit = 只 stage scope + message 含 `task_id`；**禁止** `git add -A`；**禁止**卫生 epic 当主业。
+  验证-only / 已绿缺 commit → stamp 或结算，勿逼假改文件。
 - **编排自愈（硬）**：大卡进板后卡死/失败须自动修；发现异常 →
   **立即**按 **自动 SOP** 跑钩子（**禁止**让老板点「复制给对话」；**禁止**先藏还可重试的卡）：
   - **可恢复** → `references/board-auto-repair-sop.md`（reopen → clear 不可恢复）

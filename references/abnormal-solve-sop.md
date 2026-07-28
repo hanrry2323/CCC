@@ -22,11 +22,12 @@
 4. **分支**  
    - **盘上已满足验收**（有含 `task_id` 的 commit 或验收命令现跑全绿）→ **结算/salvage 进 testing**，禁止再「缩小重投」空转；缺 commit 则补合法 stamp，不重开巨型 OpenCode。  
    - **未满足** → 可恢复则 reopen；耗尽则 `clear_blockers` **之后必须**出优化 `ccc-transfer`（见 [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md)）。  
-5. **dirty_block / `.ccc`·`docs/lessons` 噪音** → 不当业务失败结案；先认噪音门禁，再让同卡过 commit-gate。  
+5. **dirty_block / `.ccc`·`docs/lessons` 噪音** → 不当业务失败结案；先认噪音门禁，再让同卡过 commit-gate（详见 [`commit-folder-hygiene-sop.md`](commit-folder-hygiene-sop.md)）。  
 6. 回报老板：用「根因 / 已改什么 / 现在板况」；**禁止**长篇辩护清障流程。
 
-## 与清板 / L3b 的关系
+## 与清板 / L3b / 卫生的关系
 
 - [`board-auto-repair-sop.md`](board-auto-repair-sop.md) = 板面卫生（reopen/归档）  
 - [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md) = 耗尽后**改大卡**  
-- **本文 = 总闸**：任何异常路径都必须落到「问题解决」定义上；前两文是手段不是终点。
+- [`commit-folder-hygiene-sop.md`](commit-folder-hygiene-sop.md) = **commit 范围 + 文件夹/脏树怎么解释与处理**  
+- **本文 = 异常总闸**：任何异常路径都必须落到「问题解决」定义上；其余文是手段不是终点。
