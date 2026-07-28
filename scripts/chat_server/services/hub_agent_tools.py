@@ -119,6 +119,12 @@ def hub_grep(
     return _request("GET", f"{hub_base()}/api/desktop/lens/{pid}/grep?{q}")
 
 
+def hub_modules(project_id: str) -> dict[str, Any]:
+    """Module directory index (packages + limited symbols) via Hub lens."""
+    pid = urllib.parse.quote((project_id or "").strip())
+    return _request("GET", f"{hub_base()}/api/desktop/lens/{pid}/modules")
+
+
 def hub_repair(
     project_id: str,
     action: str = "clear_blockers",

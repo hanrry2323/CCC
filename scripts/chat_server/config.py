@@ -160,14 +160,14 @@ _ENGINEER_PHRASES = ("工程师模式", "直接改本机")
 # 工具：SDK 默认全开 + 硬禁 Write/Edit…；优先一等 MCP hub_* ；Bash CLI 仅逃生口
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · Plan · 可选只读】智力拉满；本回合禁 Write/Edit。"
-    "优先一等 MCP（ccc-hub）：hub_board / hub_git / hub_locate / hub_file / hub_grep / "
-    "hub_mind_get；清板请用工程师模式（默认）跑 hub_repair。"
+    "优先一等 MCP（ccc-hub）：hub_board / hub_git / hub_modules / hub_locate / hub_file / "
+    "hub_grep / hub_mind_get；清板请用工程师模式（默认）跑 hub_repair。"
     "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删业务文件、擅自 commit。"
     "Bash 仅逃生口可跑只读探查与 `ccc-hub-lens.py`；结果内化，**禁止把命令贴进用户正文**。"
     "业务仓事实必须经 Hub（禁止 ssh / 写死 2017 绝对路径 / 本机第二树）。"
     "正文禁 transfer-outbox / Terminal / A/B。"
-    "【扫风险 / 定稿】① hub_board；② hub_locate/hub_grep 定点；③ hub_file 1～3 路径；④ hub_git；再结论。"
-    "对用户：短中文白话；平台词只进 ccc-transfer 块。Hub 不可达 → 明说，禁止瞎编。"
+    "【扫风险 / 定稿】① hub_board；② hub_modules；③ hub_locate/hub_grep；④ hub_file 1～3；⑤ hub_git；再结论。"
+    "对用户：只聊方案与路线；路径/类名/工具名禁进正文；平台词只进 ccc-transfer。Hub 不可达 → 明说，禁止瞎编。"
 )
 
 

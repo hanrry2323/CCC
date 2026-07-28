@@ -135,7 +135,88 @@ def validate_transfer_payload(
         if n_err:
             errors.append(n_err)
 
+    align_err = validate_plan_goal_alignment(body)
+    if align_err:
+        errors.append(align_err)
+
     return (len(errors) == 0), errors
+
+
+def validate_plan_goal_alignment(body: dict[str, Any]) -> dict | None:
+    """Reject plan_md that walks back capabilities promised in goal/title.
+
+    Example: goal requires CLOSE/平仓 but plan says「交给上层 / 不做 CLOSE / 只发 OPEN」.
+    """
+    goal = str(body.get("goal") or "")
+    title = str(body.get("title") or "")
+    plan = str(body.get("plan_md") or "")
+    if not plan.strip():
+        return None
+
+    g = f"{title}\n{goal}".lower()
+    p = plan.lower()
+
+    close_intent = any(
+        k in g
+        for k in (
+            "close_long",
+            "close_short",
+            "close_long/close_short",
+            "反向平仓",
+            "平仓动作",
+            "发 close",
+            "发出 close",
+            "close 动作",
+        )
+    ) or (
+        "close" in g
+        and any(k in g for k in ("平仓", "反向", "close_long", "close_short", "动作"))
+    )
+
+    if close_intent:
+        downgrade = any(
+            k in p
+            for k in (
+                "上层处理",
+                "交给上层",
+                "不追踪仓位",
+                "不做 close",
+                "不发 close",
+                "保持 open",
+                "仍只发 open",
+                "只发 open",
+                "简化处理为",
+                "close 交给",
+            )
+        )
+        # Explicit: plan keeps OPEN-only while goal asked for CLOSE
+        if downgrade or (
+            ("open_long" in p or "open_short" in p or "只发 open" in p)
+            and any(
+                k in p
+                for k in ("不做 close", "不发 close", "上层", "不追踪", "保持 open")
+            )
+        ):
+            return {
+                "code": "plan_goal_conflict",
+                "message": (
+                    "plan_md 与 goal 冲突：goal 要求 CLOSE/反向平仓，"
+                    "但 plan 降级为不做 CLOSE / 交给上层。请改齐后再定稿。"
+                ),
+            }
+
+    # Shared cost / net-edge: plan must not defer if goal requires it
+    if any(k in g for k in ("共享 cost", "round_trip_cost", "净 edge", "净edge")):
+        if any(
+            k in p
+            for k in ("不做净 edge", "延后扣费", "暂不抽 cost", "不做共享 cost")
+        ):
+            return {
+                "code": "plan_goal_conflict",
+                "message": "plan_md 与 goal 冲突：goal 要求扣费/共享 cost，plan 却延后或不做。",
+            }
+
+    return None
 
 
 def check_next_intent_gate(body: dict[str, Any], workspace: Path) -> dict | None:

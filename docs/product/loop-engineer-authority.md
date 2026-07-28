@@ -195,6 +195,8 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 **对用户（硬 · Cursor 级语感）**：短人话先结论；自己跑透镜/心智/**板务**；**禁止**把 `transfer-outbox` / Terminal / Hub CLI / 执行器黑话教给老板；平台词只进 `ccc-transfer` 块内。板堵 → **本会话 `hub_repair`**，不甩锅。
 
+**Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。
+
 #### Desktop 主路径（硬 · 2026-07-24 · 取代四段硬流程）
 
 ```text
@@ -464,7 +466,7 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 | 来源 | 用途 |
 |------|------|
 | Hub baseline | 开场（点时快照 + live board） |
-| Hub **只读透镜** `/api/desktop/lens/{id}/…` | live 看板 / locate / 文件 / grep / git |
+| Hub **只读透镜** `/api/desktop/lens/{id}/…` | live 看板 / **modules** / locate / 文件 / grep / git |
 | Hub **项目心智** `/api/desktop/mind/{id}/digest` | L1 观察脑+决策脑短摘要（每轮） |
 | 本机会话 | 已聊目标与约束（低于 digest/board） |
 | 本机 Read/Write/git | **CCC 平台仓**（engineer 默认；业务树仍禁第二树） |
@@ -473,7 +475,7 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 心智写入：`python3 scripts/ccc-mind-update.py <project_id> --constraint '…'`  
 禁止 sidecar `ssh mac2017` 探业务仓。问看板/文件 → **先透镜**；Hub 断 → 明说，禁止瞎编。
 
-**扫风险 / 下一步 / 定稿**：必须定点核实真代码（`locate`/`grep` → `file`），禁止只读文档交差；禁止全仓无脑扫。路径只认 `project_id` + 透镜相对路径。对齐基线非硬门槛，但下一步/定稿前仍须 live `board`+`git`。
+**扫风险 / 下一步 / 定稿**：必须定点核实真代码（`modules` → `locate`/`grep` → `file`），禁止只读文档交差；禁止全仓无脑扫；**未核实禁止断言模块有无**。路径只认 `project_id` + 透镜相对路径（**禁进用户正文**）。对齐基线非硬门槛，但下一步/定稿前仍须 live `board`+`git`。
 
 ---
 

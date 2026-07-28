@@ -64,6 +64,48 @@ def test_gate_accepts_complete():
     assert "## 验收" in plan
 
 
+def test_plan_goal_conflict_close_downgrade():
+    """goal 要 CLOSE/平仓，plan 却交给上层 → plan_goal_conflict。"""
+    body = {
+        "title": "momentum 口径：CLOSE + 净 edge",
+        "goal": "momentum 发 CLOSE_LONG/CLOSE_SHORT 反向平仓，并用共享 round_trip_cost 算净 edge",
+        "acceptance": ["python3 -m pytest tests/unit/test_momentum_fees.py -q"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": (
+            "# Plan\n\n## 目标\n"
+            "策略仍只发 OPEN；CLOSE 交给上层处理；不追踪仓位；保持 OPEN。\n"
+        ),
+    }
+    err = transfer_gate.validate_plan_goal_alignment(body)
+    assert err is not None
+    assert err["code"] == "plan_goal_conflict"
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "plan_goal_conflict" for e in errors)
+
+
+def test_plan_goal_alignment_ok_when_close_in_plan():
+    body = {
+        "title": "momentum CLOSE + 净 edge",
+        "goal": "实现 CLOSE_LONG/CLOSE_SHORT 与净 edge（共享 round_trip_cost）",
+        "acceptance": ["python3 -m pytest tests/unit/test_momentum_fees.py -q"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": (
+            "# Plan\n\n## 目标\n"
+            "在 momentum 内发 CLOSE_LONG/CLOSE_SHORT；抽取共享 cost；算净 edge。\n"
+        ),
+    }
+    assert transfer_gate.validate_plan_goal_alignment(body) is None
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert ok, errors
+
+
 def test_executor_python_stub(tmp_path):
     r = run_executor(
         {

@@ -96,7 +96,32 @@ def test_hub_lens_locate_aggregates_by_file(tmp_path: Path):
     assert "相对" in (data.get("hint") or "")
 
 
+def test_hub_lens_module_index(tmp_path: Path):
+    strategies = tmp_path / "src" / "strategies"
+    strategies.mkdir(parents=True)
+    (strategies / "momentum.py").write_text(
+        "class MomentumStrategy:\n    def on_bar(self):\n        return None\n",
+        encoding="utf-8",
+    )
+    (strategies / "unified_arb.py").write_text(
+        "class UnifiedArb:\n        pass\n",
+        encoding="utf-8",
+    )
+    data = hub_lens.collect_module_index(tmp_path, project_id="demo")
+    assert data["ok"] is True
+    assert data["package_count"] >= 1
+    paths = {p["path"] for p in data["packages"]}
+    assert "src/strategies" in paths
+    kids = next(p["children"] for p in data["packages"] if p["path"] == "src/strategies")
+    assert "momentum" in kids
+    assert "unified_arb" in kids
+    assert any("MomentumStrategy" in c for c in data["classes"])
+    assert "模块目录" in data["summary_line"]
+    assert "momentum" in data["summary_line"]
+
+
 def test_discuss_discipline_mentions_lens():
     assert "ccc-hub-lens" in config.DISCUSS_TOOL_DISCIPLINE
     assert "locate" in config.DISCUSS_TOOL_DISCIPLINE
+    assert "hub_modules" in config.DISCUSS_TOOL_DISCIPLINE
     assert "ssh" in config.DISCUSS_TOOL_DISCIPLINE.lower()

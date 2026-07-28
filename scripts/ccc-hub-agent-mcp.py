@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """ccc-hub-agent-mcp — Desktop Agent 一等 Hub 工具（stdio MCP）。
 
-Tools: hub_board | hub_git | hub_locate | hub_file | hub_grep | hub_repair |
-       hub_mind_get | hub_mind_put
+Tools: hub_board | hub_git | hub_modules | hub_locate | hub_file | hub_grep |
+       hub_repair | hub_mind_get | hub_mind_put
 
 结果仅供 Agent 内化；禁止把 CLI / outbox 路径贴进用户正文。
 契约：docs/product/loop-engineer-authority.md · Desktop 板务 · Agent 本职
@@ -51,6 +51,12 @@ def hub_board(project_id: str) -> str:
 def hub_git(project_id: str) -> str:
     """Git summary (branch/dirty/recent) via Hub lens — not local business tree."""
     return _dump(hat.hub_git(project_id))
+
+
+@mcp.tool()
+def hub_modules(project_id: str) -> str:
+    """Module directory index (src/scripts packages + limited class/def). Prefer before grep/file when checking existence."""
+    return _dump(hat.hub_modules(project_id))
 
 
 @mcp.tool()

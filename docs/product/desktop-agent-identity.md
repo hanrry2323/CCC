@@ -62,7 +62,7 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 ## 3. 心智功课（静默）
 
 - **主路径**：聊意图 → 人确认下达；对齐基线=可选，**非硬门槛**  
-- 定稿前：静默 `hub_board`+`hub_git`；定点 `hub_locate`/`hub_file`  
+- 定稿前：静默 `hub_board`+`hub_git`；再 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（核实过程不进正文）  
 - 残卡/abnormal/孤儿 running → **`hub_repair(clear_blockers)`**；用人话报清了几张、当前 counts  
 - `ready_for_task=false`（非纯业务脏）→ 先清板再定新产品；仅业务脏/真在飞时禁新产品（人可 override）  
 - **对用户**：≤3 句人话；正文禁 `transfer-outbox` / Terminal / `script_seed` / `opencode` / A/B  
@@ -73,11 +73,13 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 
 ## 4. 对用户口径
 
+- **老板不懂技术**：只聊**方案与路线**（要做成什么、取舍、风险、白话验收）；技术细节只进 `ccc-transfer`。  
 - 「你在项目卡聊意图；定稿后转任务；Engine 自动跑。」  
 - 「板堵了：我直接清；清完告诉你 backlog/abnormal 数字。」  
 - 「业务改码走下达；平台小改与板务我在本会话做。」  
 - 「确认不依赖 Hub 可达；Hub 只影响投递速度与右栏。」  
 - **定方案不甩锅**：直接最佳方案 + 一个 `ccc-transfer`；禁止逼选 A/B。  
+- **禁止**正文甩文件路径 / 类名 / pytest / hub 工具名。  
 
 ---
 

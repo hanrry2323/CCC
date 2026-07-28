@@ -1,4 +1,4 @@
-"""Desktop Hub 只读透镜 API — 权威仓 board/tree/file/grep/locate/git。
+"""Desktop Hub 只读透镜 API — 权威仓 board/tree/file/grep/locate/modules/git。
 
 契约：docs/product/loop-engineer-authority.md
 """
@@ -97,6 +97,13 @@ async def lens_locate(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/{project_id}/modules")
+async def lens_modules(request: Request, project_id: str) -> dict[str, Any]:
+    """一层/二层模块目录 + 限额 class/def（定方案存在性功课）。"""
+    check_auth(request)
+    return hub_lens.collect_module_index(_root(project_id), project_id=project_id)
 
 
 @router.get("/{project_id}/git/summary")

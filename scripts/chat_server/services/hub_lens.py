@@ -434,6 +434,136 @@ def collect_locate(
     }
 
 
+MAX_MODULE_PACKAGES = 48
+MAX_MODULE_CHILDREN = 24
+MAX_MODULE_CLASSES = 80
+MAX_MODULE_DEFS = 40
+_CLASS_RE = re.compile(r"^class\s+([A-Za-z_][\w]*)")
+_DEF_RE = re.compile(r"^def\s+([A-Za-z_][\w]*)")
+
+
+def collect_module_index(
+    root: Path,
+    *,
+    project_id: str,
+    max_packages: int = MAX_MODULE_PACKAGES,
+) -> dict[str, Any]:
+    """一层/二层模块目录 + 限额抽 class/关键 def（定方案前存在性功课）。"""
+    root = Path(root)
+    max_packages = max(1, min(int(max_packages or MAX_MODULE_PACKAGES), 80))
+    packages: list[dict[str, Any]] = []
+    classes: list[str] = []
+    defs: list[str] = []
+
+    scan_roots: list[Path] = []
+    for name in ("src", "scripts", "lib", "app"):
+        p = root / name
+        if p.is_dir():
+            scan_roots.append(p)
+    if not scan_roots and (root / "strategies").is_dir():
+        scan_roots.append(root / "strategies")
+
+    for base in scan_roots:
+        try:
+            level1 = sorted(
+                [d for d in base.iterdir() if d.is_dir() and d.name not in EXCLUDE_DIRS],
+                key=lambda p: p.name.lower(),
+            )
+        except OSError:
+            continue
+        for d1 in level1:
+            if len(packages) >= max_packages:
+                break
+            rel1 = str(d1.relative_to(root)).replace(os.sep, "/")
+            children: list[str] = []
+            try:
+                for child in sorted(d1.iterdir(), key=lambda p: p.name.lower()):
+                    if child.name in EXCLUDE_DIRS or child.name in EXCLUDE_FILE_NAMES:
+                        continue
+                    if child.is_dir():
+                        children.append(child.name)
+                    elif child.suffix == ".py" and child.name != "__init__.py":
+                        children.append(child.stem)
+                    if len(children) >= MAX_MODULE_CHILDREN:
+                        break
+            except OSError:
+                pass
+            packages.append({"path": rel1, "children": children})
+
+            # symbols from this package (depth ≤2 *.py)
+            py_files: list[Path] = []
+            try:
+                for fp in d1.rglob("*.py"):
+                    if any(part in EXCLUDE_DIRS for part in fp.parts):
+                        continue
+                    try:
+                        rel_depth = len(fp.relative_to(d1).parts)
+                    except ValueError:
+                        continue
+                    if rel_depth > 2:
+                        continue
+                    py_files.append(fp)
+                    if len(py_files) >= 30:
+                        break
+            except OSError:
+                pass
+            for fp in py_files:
+                if len(classes) >= MAX_MODULE_CLASSES and len(defs) >= MAX_MODULE_DEFS:
+                    break
+                try:
+                    text = fp.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                rel = str(fp.relative_to(root)).replace(os.sep, "/")
+                for line in text.splitlines()[:200]:
+                    if len(classes) < MAX_MODULE_CLASSES:
+                        m = _CLASS_RE.match(line)
+                        if m:
+                            classes.append(f"{rel}:{m.group(1)}")
+                    if len(defs) < MAX_MODULE_DEFS:
+                        m = _DEF_RE.match(line)
+                        if m and not m.group(1).startswith("_"):
+                            defs.append(f"{rel}:{m.group(1)}")
+
+    summary = format_module_index_line(packages)
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "as_of": _now_iso(),
+        "packages": packages,
+        "classes": classes[:MAX_MODULE_CLASSES],
+        "defs": defs[:MAX_MODULE_DEFS],
+        "summary_line": summary,
+        "package_count": len(packages),
+        "hint": "定方案前静默核实存在性；禁止把路径/类名写进用户正文",
+    }
+
+
+def format_module_index_line(packages: list[dict[str, Any]], *, max_len: int = 480) -> str:
+    """一行给人/脑包：`模块目录: strategies: momentum, …`。"""
+    if not packages:
+        return "模块目录:(空)"
+    parts: list[str] = []
+    for pkg in packages:
+        path = str(pkg.get("path") or "").strip()
+        kids = [str(c) for c in (pkg.get("children") or []) if str(c).strip()]
+        leaf = path.rsplit("/", 1)[-1] if path else "?"
+        if kids:
+            shown = ", ".join(kids[:12])
+            if len(kids) > 12:
+                shown += ", …"
+            parts.append(f"{leaf}: {shown}")
+        else:
+            parts.append(leaf)
+        joined = "；".join(parts)
+        if len(joined) >= max_len - 20:
+            break
+    text = "模块目录: " + "；".join(parts)
+    if len(text) > max_len:
+        return text[: max_len - 12].rstrip() + " …"
+    return text
+
+
 def collect_git_summary(root: Path, *, project_id: str) -> dict[str, Any]:
     def _run(args: list[str]) -> str:
         try:

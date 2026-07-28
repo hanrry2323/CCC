@@ -43,9 +43,10 @@
 - 出口：`GET /api/desktop/mind/{id}/digest` 字段 `brain`（文本，有长度帽）+ 结构化 `brain_meta`
 - sidecar：业务项目每轮与 live board 并行拉取；**`project_id=ccc` 编排运维不灌业务规划文**
 - 新鲜度：live board / lens git > brain/digest > 聊天 resume
-- 脑包**不作**代码细节终局（仍 hub_locate / hub_file）
+- 脑包**不作**代码细节终局（仍 `hub_modules` / hub_locate / hub_file）
+- 规划文截断：**按 decided.goals 关键词优先抽相关 `##` 节**（仍受 PLAN_MAX）；附廉价 `plan_index` + 透镜 `模块目录` 一行
 
-长度帽（约）：CLAUDE 2KB · profile 1KB · 规划文头 1.5KB · decided 摘要计入 digest 既有段。
+长度帽（约）：CLAUDE 2KB · profile 1KB · 规划文 1.5KB（goal 锚点）· decided 摘要计入 digest 既有段。
 
 ---
 
