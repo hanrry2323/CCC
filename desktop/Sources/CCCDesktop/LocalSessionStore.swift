@@ -903,8 +903,8 @@ enum LocalSessionStore {
         大卡：\(epicId)
         摘要：\(hint)
         请严格按 references/board-auto-repair-sop.md：
-        hub_repair(status) → clear_blockers → 必要 reopen 一次 → 回报板面数字。
-        禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
+        hub_repair(status) → 可恢复先 reopen → clear_blockers（只归档不可恢复）→ 回报板面数字。
+        禁止先藏还可重试的 abnormal；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
         """
     }
 

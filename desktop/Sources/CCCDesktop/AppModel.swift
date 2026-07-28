@@ -384,6 +384,10 @@ final class AppModel: ObservableObject {
         if !LocalSessionStore.isArchived(projectId: pid, threadId: tid) {
             hydrateThreadFromDisk(projectId: pid, threadId: tid)
         }
+        // 右栏 SSOT = projectFlow；冷启动须从 threadFlow 灌入，避免异常卡「重启消失」
+        if let flow = threadFlow[tid] {
+            setProjectFlow(pid, flow)
+        }
         applyFlowSnapshot(threadFlow[tid])
         syncLegacyChatMirror(from: tid)
         hydrateTransferDeliveryFromDisk()
@@ -4319,7 +4323,8 @@ final class AppModel: ObservableObject {
         } ?? preexisting?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let fast = fastEpic, !fast.isEmpty {
-            var snap = projectFlow[pid] ?? FlowThreadSnapshot(
+            let base = projectFlow[pid] ?? threadFlow[resolveFlowThreadId(projectId: pid, preferred: nil)]
+            var snap = base ?? FlowThreadSnapshot(
                 epicId: fast, epic: nil, works: [], headline: "",
                 recentEpics: projectFlow[pid]?.recentEpics ?? [],
                 emptyMessage: "编排同步中…", fanoutHint: nil

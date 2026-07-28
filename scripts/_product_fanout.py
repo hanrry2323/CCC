@@ -1158,9 +1158,11 @@ def refresh_epic_lifecycle(store: FileBoardStore, epic_id: str) -> str | None:
     patch: dict = {}
     if raw_ss != new:
         patch["split_status"] = new
-    # done 沉底：自动 ui_hidden，避免 Desktop 侧栏/看板灯把「已完成」当成还在跑
+    # done 沉底：自动 ui_hidden；离开 done（重开子卡）须揭开，否则右栏/Engine 当死卡
     if new == "done" and not epic.get("ui_hidden"):
         patch["ui_hidden"] = True
+    elif new != "done" and epic.get("ui_hidden"):
+        patch["ui_hidden"] = False
     if patch:
         store.patch_task(epic_id, patch)
         _log.info(

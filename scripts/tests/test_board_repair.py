@@ -131,7 +131,8 @@ def test_archive_hides_all_column_copies(ws, tmp_path, monkeypatch):
         json.dumps(abn, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     assert set(store.list_task_columns(tid)) == {"released", "abnormal"}
-    out = br.archive_tasks(ws, reason="test_dup")
+    # 显式 id：强制隐藏（无 id 时 recoverable 会被跳过）
+    out = br.archive_tasks(ws, [tid], reason="test_dup")
     assert tid in out["hidden"]
     for col in ("abnormal", "released"):
         obj = json.loads(
@@ -158,7 +159,7 @@ def test_archive_preserves_evidence_and_failures_jsonl(ws, tmp_path, monkeypatch
     )
     (stats / "failures.jsonl").write_text(fail_line, encoding="utf-8")
 
-    out = br.archive_tasks(ws, reason="test_preserve")
+    out = br.archive_tasks(ws, [tid], reason="test_preserve")
     assert tid in out["hidden"]
     ev_dir = ws / ".ccc" / "quarantines" / tid / "board-repair"
     assert (ev_dir / f"{tid}.review_fail.md").is_file()
@@ -257,16 +258,93 @@ def test_board_repair_status_and_clear(client, ws, tmp_path):
     d2 = r2.json()
     assert d2["ok"] is True
     assert d2.get("ready_hint") is True
+    recovered = d2.get("reopened_recoverable") or {}
+    assert "work-abn-1" in (recovered.get("reopened") or [])
 
     store = FileBoardStore(ws)
     _, failed = store.find_task("epic-fail-1")
     assert failed is not None
     assert failed.get("ui_hidden") is True
+    abn_col, abn = store.find_task("work-abn-1")
+    assert abn_col == "planned"
+    assert abn is not None
+    assert abn.get("ui_hidden") is not True
 
     assert fe.load_last_epic("demo") is None
     audit = tmp_path / "repair.jsonl"
     assert audit.is_file()
     assert "clear_blockers" in audit.read_text(encoding="utf-8")
+
+
+def test_archive_skips_recoverable_abnormal(ws, tmp_path, monkeypatch):
+    """无显式 id 时不得把可恢复 abnormal 藏掉。"""
+    monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))
+    from chat_server.services import board_repair as br
+
+    _seed_abnormal(ws, "work-keep")
+    out = br.archive_tasks(ws, reason="test_skip_recoverable")
+    assert "work-keep" not in out["hidden"]
+    assert any(
+        s.get("id") == "work-keep" and s.get("reason") == "recoverable_leave_for_retry"
+        for s in out.get("skipped") or []
+    )
+    store = FileBoardStore(ws)
+    col, task = store.find_task("work-keep")
+    assert col == "abnormal"
+    assert task.get("ui_hidden") is not True
+
+
+def test_clear_blockers_reopens_hidden_recoverable(ws, tmp_path, monkeypatch):
+    """已被误藏的 recoverable abnormal → clear_blockers 先揭开再 reopen。"""
+    monkeypatch.setenv("CCC_BOARD_REPAIR_LOG", str(tmp_path / "r.jsonl"))
+    monkeypatch.setenv("CCC_FLOW_EVENTS_LOG", str(tmp_path / "f.jsonl"))
+    from chat_server import config as hub_cfg
+    from chat_server.services import board_repair as br
+    from chat_server.services import flow_events as fe
+
+    monkeypatch.setattr(hub_cfg, "CHAT_DIR", tmp_path / "chat")
+    (tmp_path / "chat").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(fe, "events_log_path", lambda: tmp_path / "f.jsonl")
+
+    store = FileBoardStore(ws)
+    assert store.create_task(
+        {
+            "id": "epic-hid-1",
+            "title": "Was abandoned",
+            "card_kind": "epic",
+            "split_status": "done",
+            "status": "backlog",
+            "ui_hidden": True,
+            "child_ids": ["epic-hid-1-w1"],
+            "goal": "g",
+            "acceptance": ["a"],
+            "pipeline": "dev",
+        },
+        column="backlog",
+    )
+    assert store.create_task(
+        {
+            "id": "epic-hid-1-w1",
+            "title": "[ABNORMAL] child",
+            "card_kind": "work",
+            "status": "abnormal",
+            "ui_hidden": True,
+            "parent_id": "epic-hid-1",
+            "note": "connection timeout",
+            "goal": "g",
+            "acceptance": ["a"],
+            "pipeline": "dev",
+        },
+        column="abnormal",
+    )
+    out = br.clear_blockers(ws, "demo", reason="test_unhide_reopen")
+    assert "epic-hid-1-w1" in (out.get("reopened_recoverable") or {}).get("reopened", [])
+    col, child = store.find_task("epic-hid-1-w1")
+    assert col == "planned"
+    assert child.get("ui_hidden") is not True
+    _, epic = store.find_task("epic-hid-1")
+    assert epic.get("split_status") in ("planned", "running")
+    assert epic.get("ui_hidden") is not True
 
 
 def test_board_repair_purge_flow(client, ws):

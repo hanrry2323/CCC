@@ -35,6 +35,7 @@ ALLOWED_ACTIONS = frozenset(
 _ARCHIVE_COLS = ("abnormal", "backlog", "planned", "in_progress", "testing", "verified")
 _INFLIGHT_COLS = frozenset({"planned", "in_progress", "testing", "verified"})
 _STUCK_SPLIT = frozenset({"running", "planned", "active"})
+_MAX_AUTO_REOPEN = 8
 
 
 def _audit_path() -> Path:
@@ -480,6 +481,91 @@ def _preserve_failure_evidence(workspace: Path, task_id: str) -> dict[str, Any]:
     return {"ok": True, "copied": copied, "dir": str(dst)}
 
 
+def _dev_auto_retry_count(workspace: Path, task_id: str) -> int:
+    path = Path(workspace) / ".ccc" / ".dev_auto_retry.json"
+    if not path.is_file():
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    try:
+        return int(data.get(task_id, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def is_recoverable_abnormal(workspace: Path, task: dict[str, Any]) -> bool:
+    """True = 留给 reopen / Engine 有限重试；勿 ui_hidden 藏掉。
+
+    对齐 ``should_auto_refeed``：epic / permanent / exhausted / 达上限 → 可归档。
+    """
+    kind = str(task.get("card_kind") or "work")
+    if kind == "epic":
+        return False
+    tid = str(task.get("id") or "")
+    reason = str(task.get("note") or task.get("abnormal_reason") or "")
+    auto_n = _dev_auto_retry_count(workspace, tid) if tid else 0
+    try:
+        from engine.failure_router import should_auto_refeed
+
+        dec = should_auto_refeed(
+            card_kind=kind if kind in ("work", "task") else "work",
+            reason=reason,
+            auto_retried=auto_n,
+            max_auto_retry=2,
+            has_pack_or_transient=True,
+        )
+        return bool(dec.should)
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("is_recoverable_abnormal probe: %s", exc)
+        # 探针失败时宁可保留可重试，勿误藏
+        return True
+
+
+def reopen_recoverable_abnormals(
+    workspace: Path,
+    *,
+    max_n: int = _MAX_AUTO_REOPEN,
+    include_hidden: bool = True,
+) -> dict[str, Any]:
+    """先把可恢复 abnormal work 重开到 planned（含已被误藏的卡）。"""
+    store = FileBoardStore(workspace)
+    reopened: list[str] = []
+    skipped: list[dict[str, str]] = []
+    errors: list[dict[str, str]] = []
+    for task in store.list_tasks("abnormal", include_hidden=include_hidden):
+        if len(reopened) >= max_n:
+            break
+        tid = str(task.get("id") or "")
+        if not tid:
+            continue
+        if not is_recoverable_abnormal(workspace, task):
+            skipped.append({"id": tid, "reason": "not_recoverable"})
+            continue
+        try:
+            if task.get("ui_hidden"):
+                store.patch_task(tid, {"ui_hidden": False}, column="abnormal")
+            out = reopen_task(workspace, tid, to_col="planned", wake=False)
+            if out.get("ok"):
+                store.patch_task(tid, {"ui_hidden": False}, column="planned")
+                reopened.append(tid)
+            else:
+                errors.append(
+                    {"id": tid, "reason": str(out.get("error") or "reopen_failed")[:120]}
+                )
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"id": tid, "reason": f"{type(exc).__name__}: {exc}"[:120]})
+    return {
+        "reopened": reopened,
+        "skipped": skipped,
+        "errors": errors,
+        "count": len(reopened),
+    }
+
+
 def archive_tasks(
     workspace: Path,
     task_ids: list[str] | None = None,
@@ -488,6 +574,8 @@ def archive_tasks(
 ) -> dict[str, Any]:
     """隐藏残卡：abnormal / failed epic（及显式 task_ids）。数据保留，ui_hidden=true。
 
+    无显式 task_ids 时：**跳过可恢复 abnormal work**（留给 reopen/Engine），只藏
+    permanent/exhausted/达上限与 failed epic。显式 id 仍强制隐藏。
     failed epic 同时标 split_status=done（放弃），避免再计入活跃风险。
     隐藏前把 report/verdict/review_fail 等拷入 quarantines/<tid>/board-repair/；
     **不删** `.ccc/stats/failures.jsonl`。
@@ -516,6 +604,15 @@ def archive_tasks(
             continue
         if task.get("ui_hidden"):
             skipped.append({"id": tid, "reason": "already_hidden"})
+            continue
+        # 无显式 id：可恢复 abnormal work 禁止藏（防 SOP 误清导致「消失不重试」）
+        if (
+            not task_ids
+            and col == "abnormal"
+            and (task.get("card_kind") or "work") != "epic"
+            and is_recoverable_abnormal(workspace, task)
+        ):
+            skipped.append({"id": tid, "reason": "recoverable_leave_for_retry"})
             continue
         # 真在飞（planned/in_progress/testing）且非 abnormal/failed：须显式 id
         if (
@@ -586,7 +683,10 @@ def clear_blockers(
     *,
     reason: str = "desktop_clear_blockers",
 ) -> dict[str, Any]:
-    """一体：归档 abnormal+failed → 沉底孤儿 running → hide done → 剪幽灵轨。"""
+    """一体：先 reopen 可恢复 abnormal → 再归档永久失败/failed epic → 沉底孤儿。
+
+    禁止先藏可恢复卡（否则 Engine `_retry_abnormal_failures` 扫不到）。
+    """
     blockers = list_blockers(workspace)
     epic_ids = [
         x["id"] for x in blockers["failed_epics"]
@@ -598,6 +698,8 @@ def clear_blockers(
         x["id"] for x in blockers.get("stuck_running_epics") or []
     ]
 
+    # L0：可恢复 work 先重开（含误藏的 ui_hidden），再归档不可恢复
+    recovered = reopen_recoverable_abnormals(workspace, include_hidden=True)
     archived = archive_tasks(workspace, reason=reason)
     settled = settle_stuck_epics(workspace, project_id, reason=reason)
     # 显式再藏 abnormal 列（archive 无 id 时已覆盖）
@@ -649,6 +751,7 @@ def clear_blockers(
 
     return {
         "before": blockers,
+        "reopened_recoverable": recovered,
         "archived": archived,
         "settled_stuck": settled,
         "hide_done": done_hide,
