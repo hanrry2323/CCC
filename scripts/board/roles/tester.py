@@ -459,20 +459,31 @@ def tester_role() -> dict:
         verify_commands = []
         if plan_file.exists():
             content = plan_file.read_text()
-            in_verify = False
-            for line in content.split("\n"):
-                if line.startswith("## 验收") or line.startswith("## 验证"):
-                    in_verify = True
-                    continue
-                if in_verify and line.startswith("## "):
-                    break
-                if (
-                    in_verify
-                    and line.strip().startswith("- ")
-                    and not line.strip().startswith("- 不")
-                ):
-                    cmd = line.strip()[2:].strip()
-                    verify_commands.append(cmd)
+            # Prefer shared probe extractor (canonical ## 验收 only)
+            try:
+                from _intent_probe import extract_probe_commands
+
+                verify_commands = extract_probe_commands(content)
+            except Exception:
+                verify_commands = []
+            if not verify_commands:
+                in_verify = False
+                for line in content.split("\n"):
+                    # Exact heading only — ## 验收清单 must not steal probes
+                    if line.strip() in ("## 验收", "## 验证") or line.strip().startswith(
+                        ("## 验收\t", "## 验证\t")
+                    ):
+                        in_verify = True
+                        continue
+                    if in_verify and line.startswith("## "):
+                        break
+                    if (
+                        in_verify
+                        and line.strip().startswith("- ")
+                        and not line.strip().startswith("- 不")
+                    ):
+                        cmd = line.strip()[2:].strip().strip("`")
+                        verify_commands.append(cmd)
 
         # fallback: 如果没有验收项，跑 pytest（卫生卡除外）
         verify_commands, skip_forced = build_tester_verify_commands(

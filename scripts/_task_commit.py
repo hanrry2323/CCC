@@ -146,7 +146,22 @@ def _plan_scope_paths(workspace: Path, task_id: str) -> list[str]:
         if not stripped.startswith("- "):
             continue
         item = stripped[2:].strip().strip("`\"'*")
-        if "只改" in item or item.startswith("**"):
+        # Skip allow/deny labels; "不改文件**: a, b" must not become one fake scope path
+        if (
+            "只改" in item
+            or "不改" in item
+            or item.startswith("**")
+            or item.lower().startswith("scope")
+        ):
+            # Still harvest comma-separated paths after a label (e.g. scope：a, b)
+            if ("：" in item or ":" in item) and ("/" in item or ".py" in item):
+                tail = item.split("：", 1)[-1].split(":", 1)[-1]
+                for part in tail.split(","):
+                    part = part.strip().strip("`\"'*").rstrip(".")
+                    if part and ("/" in part or part.endswith(
+                        (".py", ".md", ".json", ".ts", ".js", ".sh", ".toml", ".yml", ".yaml")
+                    )):
+                        files.append(part)
             continue
         # drop trailing commentary
         for sep in ("（", "(", " —", " - "):

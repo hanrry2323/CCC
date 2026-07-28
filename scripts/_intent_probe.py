@@ -95,7 +95,7 @@ def strip_env_prefix(cmd: str) -> tuple[str, str]:
 
 
 def is_allowed_verify_cmd(cmd: str) -> bool:
-    c = (cmd or "").strip()
+    c = _strip_cmd_wrappers((cmd or "").strip())
     if not c or "\n" in c or "\r" in c:
         return False
     check = _strip_quoted_regions(c)
@@ -105,17 +105,40 @@ def is_allowed_verify_cmd(cmd: str) -> bool:
     _, rem = strip_env_prefix(c)
     if not rem:
         return False
+    rem = _strip_cmd_wrappers(rem)
+    if not rem:
+        return False
     low = rem.lower()
     return any(low.startswith(p.lower()) for p in VERIFY_CMD_ALLOW_PREFIXES)
 
 
+def _strip_cmd_wrappers(cmd: str) -> str:
+    """Drop markdown wrappers so `.venv/bin/python …` still allowlists."""
+    s = (cmd or "").strip()
+    if s.startswith("`") and s.endswith("`") and len(s) >= 2:
+        s = s[1:-1].strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+    return s
+
+
 def filter_verify_commands(cmds: list[str]) -> list[str]:
-    return [c.strip() for c in cmds if is_allowed_verify_cmd(c)]
+    out: list[str] = []
+    for c in cmds:
+        raw = (c or "").strip()
+        if not raw:
+            continue
+        cand = _strip_cmd_wrappers(raw)
+        if is_allowed_verify_cmd(cand):
+            out.append(cand)
+        elif is_allowed_verify_cmd(raw):
+            out.append(raw)
+    return out
 
 
 def _is_acceptance_heading(line: str) -> bool:
-    s = (line or "").strip()
-    return s.startswith("## 验收") or s.startswith("## 验证")
+    """Only exact ``## 验收`` / ``## 验证`` — not ``## 验收清单``."""
+    return _is_canonical_acceptance_heading(line)
 
 
 def _is_canonical_acceptance_heading(line: str) -> bool:
