@@ -145,7 +145,7 @@ def settle_stuck_epics(
 
 
 def list_blockers(workspace: Path) -> dict[str, Any]:
-    """只读：列出挡 ready 的残卡（含孤儿 running epic）。"""
+    """只读：列出挡 ready 的残卡（含孤儿 running epic / pending_no_fanout）。"""
     store = FileBoardStore(workspace)
     abnormal: list[dict[str, Any]] = []
     failed_epics: list[dict[str, Any]] = []
@@ -171,12 +171,235 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
             elif kind == "epic" and ss == "done" and col == "backlog":
                 done_visible.append(item)
     stuck_running = list_stuck_running_epics(workspace)
+    pending_nf = list_pending_no_fanout(workspace)
     return {
         "abnormal": abnormal,
         "failed_epics": failed_epics,
         "done_visible_epics": done_visible,
         "stuck_running_epics": stuck_running,
+        "pending_no_fanout": pending_nf,
         "blocker_count": len(abnormal) + len(failed_epics) + len(stuck_running),
+        "pending_no_fanout_count": len(pending_nf),
+    }
+
+
+def _parse_iso_age_sec(raw: str) -> float | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, time.time() - dt.timestamp())
+    except ValueError:
+        return None
+
+
+def _pending_refanout_state_path(workspace: Path) -> Path:
+    return Path(workspace) / ".ccc" / "stats" / "pending-refanout.json"
+
+
+def _load_refanout_state(workspace: Path) -> dict[str, Any]:
+    p = _pending_refanout_state_path(workspace)
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_refanout_state(workspace: Path, state: dict[str, Any]) -> None:
+    p = _pending_refanout_state_path(workspace)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        _log.warning("pending-refanout state write failed: %s", exc)
+
+
+def list_pending_no_fanout(
+    workspace: Path,
+    *,
+    min_age_sec: int | None = None,
+) -> list[dict[str, Any]]:
+    """pending epic 超时仍无子卡 → 扇出饿死信号。"""
+    age_lim = (
+        int(min_age_sec)
+        if min_age_sec is not None
+        else int(os.environ.get("CCC_PENDING_NO_FANOUT_SEC", "600"))
+    )
+    store = FileBoardStore(workspace)
+    out: list[dict[str, Any]] = []
+    for t in store.list_tasks("backlog", include_hidden=False):
+        if (t.get("card_kind") or "") != "epic":
+            continue
+        ss = str(t.get("split_status") or "pending").strip().lower()
+        if ss != "pending":
+            continue
+        tid = str(t.get("id") or "")
+        if not tid:
+            continue
+        kids = [str(k) for k in (t.get("child_ids") or []) if str(k).strip()]
+        if kids:
+            # 有 child_ids 但可能未落盘；有任一 child 文件则不算 no_fanout
+            has_child = False
+            for kid in kids:
+                if store.resolve_task_column(kid) or store.find_task(kid)[0]:
+                    has_child = True
+                    break
+            if has_child:
+                continue
+        age = _parse_iso_age_sec(str(t.get("updated_at") or t.get("created_at") or ""))
+        if age is None:
+            # fallback: board file mtime
+            col, _ = store.find_task(tid)
+            jp = Path(workspace) / ".ccc" / "board" / (col or "backlog") / f"{tid}.jsonl"
+            try:
+                age = max(0.0, time.time() - jp.stat().st_mtime)
+            except OSError:
+                age = 0.0
+        if age < age_lim:
+            continue
+        out.append(
+            {
+                "id": tid,
+                "column": "backlog",
+                "title": str(t.get("title") or tid)[:80],
+                "card_kind": "epic",
+                "split_status": ss,
+                "age_sec": int(age),
+                "min_age_sec": age_lim,
+                "reason": "pending_no_fanout",
+            }
+        )
+    return out
+
+
+def heal_pending_no_fanout(
+    workspace: Path,
+    project_id: str,
+    *,
+    reason: str = "engine_pending_no_fanout",
+    max_refanout: int = 1,
+) -> dict[str, Any]:
+    """对超时 pending epic：wake + 有限 1 次 fanout_from_seeded_epic。"""
+    pending = list_pending_no_fanout(workspace)
+    state = _load_refanout_state(workspace)
+    attempted: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    wake: dict[str, Any] | None = None
+
+    if pending:
+        try:
+            from _engine_wake import ensure_engine_for_task
+
+            wake = ensure_engine_for_task(
+                task_id=f"pending-refanout-{project_id}",
+                reason=reason,
+                workspace=workspace,
+                workspace_name=project_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            wake = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+    store = FileBoardStore(workspace)
+    for item in pending:
+        tid = item["id"]
+        st = state.get(tid) if isinstance(state.get(tid), dict) else {}
+        n = int(st.get("attempts") or 0)
+        if n >= max_refanout:
+            skipped.append({**item, "skip": "max_refanout", "attempts": n})
+            continue
+        row: dict[str, Any] = {"id": tid, "attempts_before": n}
+        try:
+            from _product_fanout import fanout_from_seeded_epic
+
+            _col, task = store.find_task(tid)
+            if not task:
+                row["ok"] = False
+                row["error"] = "missing_task"
+            else:
+                r = fanout_from_seeded_epic(store, task)
+                row["ok"] = bool(r.get("ok")) if isinstance(r, dict) else bool(r)
+                row["fanout"] = {
+                    k: r.get(k)
+                    for k in ("ok", "error", "child_ids", "split_status", "reason")
+                    if isinstance(r, dict) and k in r
+                }
+        except Exception as exc:  # noqa: BLE001
+            row["ok"] = False
+            row["error"] = f"{type(exc).__name__}: {exc}"[:240]
+        state[tid] = {
+            "attempts": n + 1,
+            "last_ts": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+            "reason": reason,
+            "ok": row.get("ok"),
+        }
+        attempted.append(row)
+
+    if attempted or skipped:
+        _save_refanout_state(workspace, state)
+        try:
+            ev = Path(workspace) / ".ccc" / "stats" / "events.jsonl"
+            ev.parent.mkdir(parents=True, exist_ok=True)
+            with ev.open("a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+                            "event": "pending_no_fanout_heal",
+                            "project_id": project_id,
+                            "attempted": [a.get("id") for a in attempted],
+                            "skipped": [s.get("id") for s in skipped],
+                            "reason": reason,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+
+    return {
+        "pending_before": pending,
+        "attempted": attempted,
+        "skipped_max": skipped,
+        "engine_wake": wake,
+        "needs_agent": bool(skipped)
+        or any(not a.get("ok") for a in attempted),
+    }
+
+
+def auto_heal_workspace(
+    workspace: Path,
+    project_id: str,
+    *,
+    reason: str = "engine_auto_heal",
+) -> dict[str, Any]:
+    """L1 确定性自愈：pending 有限重扇出 + 沉底孤儿 running。
+
+    全量 clear_blockers 留给 Agent SOP / 显式 hub_repair（避免每 tick 误归档可 reopen 的 abnormal）。
+    """
+    pending_r = heal_pending_no_fanout(workspace, project_id, reason=reason)
+    settled = settle_stuck_epics(workspace, project_id, reason=reason)
+    blockers = list_blockers(workspace)
+    needs = bool(pending_r.get("needs_agent")) or bool(blockers.get("failed_epics"))
+    return {
+        "pending_heal": pending_r,
+        "settled_stuck": settled,
+        "blockers": {
+            "abnormal": len(blockers.get("abnormal") or []),
+            "failed_epics": len(blockers.get("failed_epics") or []),
+            "pending_no_fanout": len(blockers.get("pending_no_fanout") or []),
+        },
+        "needs_agent": needs,
     }
 
 

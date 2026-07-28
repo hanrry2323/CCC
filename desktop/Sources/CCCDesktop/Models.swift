@@ -561,11 +561,21 @@ struct MindGoal: Codable, Identifiable, Equatable, Hashable {
     var status: String?
 
     var displayStatus: String {
-        (status ?? "planned").lowercased()
+        switch (status ?? "planned").lowercased() {
+        case "probed": return "等待核验"
+        case "planned": return "待讨论"
+        case "intent_stable", "stable": return "已稳定"
+        default: return (status ?? "planned").lowercased()
+        }
     }
 
+    /// 仅 regress 探针绿（probed）才允许人点标记稳定
     var isMarkableStable: Bool {
-        let s = displayStatus
+        (status ?? "").lowercased() == "probed"
+    }
+
+    var isDiscussable: Bool {
+        let s = (status ?? "planned").lowercased()
         return s == "planned" || s == "probed"
     }
 }

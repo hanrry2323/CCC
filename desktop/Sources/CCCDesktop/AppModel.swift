@@ -337,15 +337,6 @@ final class AppModel: ObservableObject {
             let (_, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }
             serverURLString = Self.hubTunnelURL
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H-HUB",
-                location: "AppModel.preferHubTunnelIfReady",
-                message: "migrated ccc.server LAN→tunnel",
-                data: ["from": cur, "to": Self.hubTunnelURL],
-                runId: "post-fix"
-            )
-            // #endregion
         } catch {
             // 隧道未起：保持 LAN，recover loop 继续探
         }
@@ -897,14 +888,6 @@ final class AppModel: ObservableObject {
     }
 
     private func setAgentModeNone(reason: String) {
-        // #region agent log
-        DebugAgentLog.log(
-            hypothesisId: "H1",
-            location: "AppModel.setAgentModeNone",
-            message: "agentMode→none (canChat false hides messageArea)",
-            data: ["reason": reason, "prevMode": agentMode, "selectedThreadId": selectedThreadId ?? ""]
-        )
-        // #endregion
         agentMode = "none"
         agentBadge = "本机 Agent 未就绪"
         startAgentRecoverLoopIfNeeded()
@@ -949,6 +932,7 @@ final class AppModel: ObservableObject {
         startProjectTaskPolling()
         startAgentUsageTicker()
         startOpsSeverityPoll()
+        flushRepairQueue(limit: 3)
         if ProcessInfo.processInfo.environment["CCC_DESKTOP_UI_SMOKE"] == "1" {
             // smoke 需等首轮 refresh 完成再发消息
             while hubSyncing {
@@ -1290,12 +1274,6 @@ final class AppModel: ObservableObject {
                     return
                 }
                 // 新会话 / 磁盘 miss：种空数组以结束「加载中」。空列表不再卸 messageArea（见 CodexChatPane）。
-                DebugAgentLog.log(
-                    hypothesisId: "H3",
-                    location: "AppModel.ensureThreadHydrated",
-                    message: "seed empty RAM (disk miss or new thread)",
-                    data: ["threadId": threadId, "projectId": pid]
-                )
                 threadMessages[threadId] = []
             }
             bumpThreadRevision(threadId)
@@ -1312,17 +1290,6 @@ final class AppModel: ObservableObject {
     func ensureThreadHydrated(projectId: String) {
         let recent = LocalSessionStore.threadsAsDesktop(projectId: projectId).first?.thread_id
         let tid = (recent?.isEmpty == false) ? recent! : threadIdForProject(projectId)
-        // #region agent log
-        if tid.hasSuffix("::main") {
-            DebugAgentLog.log(
-                hypothesisId: "H3",
-                location: "AppModel.ensureThreadHydrated(projectId:)",
-                message: "hydrating legacy ::main (no recent thread)",
-                data: ["projectId": projectId, "threadId": tid],
-                runId: "post-fix"
-            )
-        }
-        // #endregion
         ensureThreadHydrated(threadId: tid)
     }
 
@@ -1354,24 +1321,6 @@ final class AppModel: ObservableObject {
         } else {
             threadMessages[tid] = disk
         }
-        // #region agent log
-        let after = threadMessages[tid]?.count ?? -1
-        if after == 0 || (ram.count > 0 && after < ram.count) {
-            DebugAgentLog.log(
-                hypothesisId: "H3",
-                location: "AppModel.loadConversation",
-                message: "thread message count drop/empty after load",
-                data: [
-                    "threadId": tid,
-                    "ram": ram.count,
-                    "disk": disk.count,
-                    "after": after,
-                    "keepRam": keepRam,
-                    "streaming": streamingThreadIds.contains(tid),
-                ]
-            )
-        }
-        // #endregion
         if let flow = state.flow {
             if threadFlow[tid] == nil
                 || (threadFlow[tid]?.works.isEmpty == true && !flow.works.isEmpty) {
@@ -1768,29 +1717,6 @@ final class AppModel: ObservableObject {
         let diskScore = LocalSessionStore.messageScore(disk.messages)
         let ramScore = LocalSessionStore.messageScore(ram)
         if ram.isEmpty || diskScore > ramScore {
-            // #region agent log
-            if ram.count > 0, disk.messages.count < ram.count {
-                DebugAgentLog.log(
-                    hypothesisId: "H3",
-                    location: "AppModel.hydrateThreadFromDisk",
-                    message: "disk overwrite shrinks RAM",
-                    data: [
-                        "threadId": threadId,
-                        "ram": ram.count,
-                        "disk": disk.messages.count,
-                        "ramScore": ramScore,
-                        "diskScore": diskScore,
-                    ]
-                )
-            } else if ram.isEmpty, disk.messages.isEmpty {
-                DebugAgentLog.log(
-                    hypothesisId: "H3",
-                    location: "AppModel.hydrateThreadFromDisk",
-                    message: "hydrate keeps empty (ram+disk empty)",
-                    data: ["threadId": threadId]
-                )
-            }
-            // #endregion
             threadMessages[threadId] = disk.messages
         }
         if let flow = disk.flow, threadFlow[threadId] == nil || (threadFlow[threadId]?.works.isEmpty == true && !flow.works.isEmpty) {
@@ -2000,17 +1926,6 @@ final class AppModel: ObservableObject {
     }
 
     private func persistMessages(for threadId: String, _ msgs: [ChatMessage]) {
-        // #region agent log
-        let prev = threadMessages[threadId]?.count ?? 0
-        if prev > 0, msgs.isEmpty {
-            DebugAgentLog.log(
-                hypothesisId: "H3",
-                location: "AppModel.persistMessages",
-                message: "persist empty over non-empty RAM",
-                data: ["threadId": threadId, "prev": prev]
-            )
-        }
-        // #endregion
         threadMessages[threadId] = msgs
         bumpThreadRevision(threadId)
         syncLegacyChatMirror(from: threadId)
@@ -2381,6 +2296,7 @@ final class AppModel: ObservableObject {
         _ = await nudgeSidecarOutboxFlush()
         applyReceiptsFromDisk()
         reconcileTransferDeliveryWithOutbox()
+        flushRepairQueue(limit: 2)
         let after = LocalSessionStore.loadTransferReceipts()
         return after.filter { !before.contains($0.client_request_id) }.count
     }
@@ -2416,9 +2332,17 @@ final class AppModel: ObservableObject {
                 if cur.isEmpty || cur.hasPrefix("pending:") {
                     snap.epicId = eid
                     snap.headline = "已投递 · \(eid)"
-                    threadFlow[threadId] = snap
-                    bumpFlowRevision(threadId)
+                    let pid = Self.projectId(fromThreadId: threadId)
+                    if !pid.isEmpty {
+                        writeFlowSnap(projectId: pid, threadId: threadId, snap)
+                    } else {
+                        threadFlow[threadId] = snap
+                        bumpFlowRevision(threadId)
+                    }
                     persistCurrentThreadSnapshot(threadId: threadId)
+                    if !pid.isEmpty, !Self.isPendingEpicId(eid) {
+                        Task { await bindFlowToProject(projectId: pid, preferEpicId: eid) }
+                    }
                 }
             }
             let accepted = flowConfirmsOrchestrationAccepted(threadId: threadId, epicId: eid)
@@ -2727,8 +2651,8 @@ final class AppModel: ObservableObject {
         snap.fanoutHint = nil
         snap.stopLossHint = nil
         snap.recentEpics = recent
-        threadFlow[tid] = snap
-        bumpFlowRevision(tid)
+        // 右栏只读 projectFlow：必须双写，不能只改 threadFlow
+        writeFlowSnap(projectId: pid, threadId: tid, snap)
         if persistDisk {
             persistCurrentThreadSnapshot(threadId: tid)
         }
@@ -4320,6 +4244,55 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 编排异常 → 入队 + 自动向当前项目会话注入 SOP（人不点「复制给对话」）
+    private func triggerAutoBoardRepair(projectId: String, epicId: String, hint: String) {
+        let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let eid = epicId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else { return }
+        let tid = resolveFlowThreadId(projectId: pid, preferred: nil)
+        LocalSessionStore.enqueueRepair(
+            projectId: pid,
+            epicId: eid.isEmpty ? "unknown" : eid,
+            hint: hint,
+            threadId: tid
+        )
+        flushRepairQueue(limit: 2)
+    }
+
+    /// 冲刷 ~/.ccc/repair-queue.jsonl → 静默 sendUserMessage（关 App 再开也会 catch-up）
+    func flushRepairQueue(limit: Int = 3) {
+        let items = LocalSessionStore.loadRepairPending()
+        guard !items.isEmpty else { return }
+        var n = 0
+        for item in items {
+            if n >= limit { break }
+            let pid = item.project_id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pid.isEmpty else { continue }
+            let key = item.key ?? "\(item.project_id)|\(item.epic_id)"
+            let prompt = (item.prompt?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {
+                $0.isEmpty ? nil : $0
+            } ?? LocalSessionStore.repairSOPPrompt(
+                projectId: pid,
+                epicId: item.epic_id,
+                hint: item.hint ?? ""
+            )
+            let tid = {
+                let t = (item.thread_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !t.isEmpty { return t }
+                return resolveFlowThreadId(projectId: pid, preferred: nil)
+            }()
+            sendUserMessage(
+                prompt,
+                projectId: pid,
+                threadId: tid,
+                stopAndSend: false,
+                displayText: "编排自愈 · 自动处理中"
+            )
+            LocalSessionStore.markRepairDone(key: key)
+            n += 1
+        }
+    }
+
     /// 写 thread + project 双份；右栏 UI 只读 projectFlow
     private func writeFlowSnap(projectId: String, threadId: String, _ snap: FlowThreadSnapshot) {
         threadFlow[threadId] = snap
@@ -4759,7 +4732,7 @@ final class AppModel: ObservableObject {
                 at: 0
             )
         }
-        // Phase9：abnormal / failed 止损可见（右栏 + 一次性 toast）
+        // Phase9：abnormal / failed → 自动钩子 Agent SOP（禁等人点「复制给对话」）
         let hasAbnormal = works.contains(where: \.isFailed)
         let stopLoss = (stage == "failed" || hasAbnormal)
         if stopLoss {
@@ -4767,7 +4740,7 @@ final class AppModel: ObservableObject {
                 ?? snap.epic?.title
                 ?? eid
                 ?? "任务"
-            let hint = "编排异常：\(title) · 复制给对话，让 Agent 处理"
+            let hint = "编排异常：\(title) · 已自动交 Agent 处理"
             cached.stopLossHint = hint
             let toastKey = "\(projectId)|\(eid ?? "")|failed"
             if lastStopLossToastKey != toastKey {
@@ -4775,6 +4748,11 @@ final class AppModel: ObservableObject {
                 if isSelected {
                     showToast(hint)
                 }
+                triggerAutoBoardRepair(
+                    projectId: projectId,
+                    epicId: eid ?? "",
+                    hint: hint
+                )
             }
         } else {
             cached.stopLossHint = nil
@@ -4938,7 +4916,7 @@ final class AppModel: ObservableObject {
                                         return
                                     }
                                 }
-                                await self.refreshFlow(projectId: projectId)
+                await self.refreshFlow(projectId: projectId)
                             }
                             return
                         }
@@ -5003,8 +4981,7 @@ final class AppModel: ObservableObject {
         snap.stopLossHint = nil
         snap.recentEpics = keptRecent
         snap.emptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
-        threadFlow[tid] = snap
-        bumpFlowRevision(tid)
+        writeFlowSnap(projectId: projectId, threadId: tid, snap)
         if isSelected {
             recentEpics = keptRecent
             applyFlowSnapshot(snap)

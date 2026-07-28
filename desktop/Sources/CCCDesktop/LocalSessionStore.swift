@@ -877,4 +877,119 @@ enum LocalSessionStore {
         result.append(contentsOf: messages[keepStart...])
         return (result, true, rounds)
     }
+
+    // MARK: - Board auto-repair queue (~/.ccc/repair-queue.jsonl · 与 Python 共用)
+
+    struct RepairQueueItem: Codable, Hashable {
+        var ts: String?
+        var status: String?
+        var project_id: String
+        var epic_id: String
+        var thread_id: String?
+        var hint: String?
+        var prompt: String?
+        var key: String?
+    }
+
+    static var repairQueueURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ccc/repair-queue.jsonl")
+    }
+
+    static func repairSOPPrompt(projectId: String, epicId: String, hint: String) -> String {
+        """
+        【编排自愈 · 自动 SOP · 勿问老板】
+        项目：\(projectId)
+        大卡：\(epicId)
+        摘要：\(hint)
+        请严格按 references/board-auto-repair-sop.md：
+        hub_repair(status) → clear_blockers → 必要 reopen 一次 → 回报板面数字。
+        禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
+        """
+    }
+
+    static func enqueueRepair(projectId: String, epicId: String, hint: String, threadId: String) {
+        let key = "\(projectId)|\(epicId)"
+        let pending = loadRepairPending()
+        if pending.contains(where: { ($0.key ?? "\($0.project_id)|\($0.epic_id)") == key }) {
+            return
+        }
+        let prompt = repairSOPPrompt(projectId: projectId, epicId: epicId, hint: hint)
+        let row: [String: Any] = [
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "status": "pending",
+            "project_id": projectId,
+            "epic_id": epicId,
+            "thread_id": threadId,
+            "hint": String(hint.prefix(400)),
+            "prompt": String(prompt.prefix(4000)),
+            "key": key,
+        ]
+        guard JSONSerialization.isValidJSONObject(row),
+              let data = try? JSONSerialization.data(withJSONObject: row),
+              var line = String(data: data, encoding: .utf8) else { return }
+        line.append("\n")
+        let url = repairQueueURL
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            if let d = line.data(using: .utf8) {
+                try? handle.write(contentsOf: d)
+            }
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    static func loadRepairPending() -> [RepairQueueItem] {
+        let url = repairQueueURL
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        var out: [RepairQueueItem] = []
+        let dec = JSONDecoder()
+        for ln in text.split(whereSeparator: \.isNewline) {
+            let s = String(ln).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !s.isEmpty, let data = s.data(using: .utf8) else { continue }
+            guard let item = try? dec.decode(RepairQueueItem.self, from: data) else { continue }
+            if (item.status ?? "pending") == "pending" {
+                out.append(item)
+            }
+        }
+        return out
+    }
+
+    static func markRepairDone(key: String) {
+        let url = repairQueueURL
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        var newLines: [String] = []
+        let dec = JSONDecoder()
+        for ln in text.split(whereSeparator: \.isNewline) {
+            let s = String(ln).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !s.isEmpty, let data = s.data(using: .utf8) else { continue }
+            guard var obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                newLines.append(s)
+                continue
+            }
+            let k = (obj["key"] as? String)
+                ?? "\(obj["project_id"] as? String ?? "")|\(obj["epic_id"] as? String ?? "")"
+            if k == key {
+                obj["status"] = "done"
+                obj["done_ts"] = ISO8601DateFormatter().string(from: Date())
+                if JSONSerialization.isValidJSONObject(obj),
+                   let d = try? JSONSerialization.data(withJSONObject: obj),
+                   let line = String(data: d, encoding: .utf8) {
+                    newLines.append(line)
+                }
+            } else {
+                newLines.append(s)
+            }
+            _ = dec
+        }
+        try? (newLines.joined(separator: "\n") + (newLines.isEmpty ? "" : "\n"))
+            .write(to: url, atomically: true, encoding: .utf8)
+    }
 }

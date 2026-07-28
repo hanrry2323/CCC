@@ -656,21 +656,6 @@ struct CodexChatPaneBody: View {
         }
         .background(CCCTheme.chatBg)
         .onAppear {
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H5",
-                location: "CodexChatPane.onAppear",
-                message: "chat pane appear",
-                data: [
-                    "windowThreadId": window.threadId ?? "",
-                    "paneThreadId": paneThreadId ?? "",
-                    "msgCount": displayMessages.count,
-                    "agentMode": model.agentMode,
-                    "destination": String(describing: window.destination),
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
             if window.projectId == nil {
                 window.projectId = model.selectedProjectId
             }
@@ -693,19 +678,6 @@ struct CodexChatPaneBody: View {
             }
         }
         .onChange(of: window.threadId) { newTid in
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H2",
-                location: "CodexChatPane.onChange.threadId",
-                message: "window.threadId changed",
-                data: [
-                    "threadId": newTid ?? "",
-                    "msgCount": model.messagesForThread(newTid).count,
-                    "projectId": window.projectId ?? "",
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
             if let newTid, !newTid.isEmpty {
                 model.ensureThreadHydrated(threadId: newTid)
             }
@@ -713,78 +685,18 @@ struct CodexChatPaneBody: View {
             beginPaneSwitchTransition()
         }
         .onChange(of: model.agentMode) { mode in
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H1",
-                location: "CodexChatPane.onChange.agentMode",
-                message: "agentMode changed",
-                data: [
-                    "agentMode": mode,
-                    "canChat": model.canChat,
-                    "threadId": paneThreadId ?? "",
-                    "msgCount": model.messagesForThread(paneThreadId).count,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
         }
         .onChange(of: displayMessages.count) { newCount in
             let tid = paneThreadId ?? ""
-            // #region agent log
-            // 仅同一 threadId 下 count→0 才算冲刷；跨线程切换会误报
-            if lastDisplayMsgCount > 0, newCount == 0, !tid.isEmpty, tid == lastH6ThreadId {
-                DebugAgentLog.log(
-                    hypothesisId: "H6",
-                    location: "CodexChatPane.onChange.displayMessages",
-                    message: "displayMessages dropped to empty",
-                    data: [
-                        "prev": lastDisplayMsgCount,
-                        "threadId": tid,
-                        "windowThreadId": window.threadId ?? "",
-                        "agentMode": model.agentMode,
-                        "canChat": model.canChat,
-                        "destination": String(describing: window.destination),
-                        "opacity": paneContentOpacity,
-                    ],
-                    runId: "post-fix"
-                )
-            }
-            // #endregion
             lastDisplayMsgCount = newCount
             if !tid.isEmpty { lastH6ThreadId = tid }
             if newCount > 0 { lastNonEmptyMsgCount = newCount }
         }
         .onChange(of: window.destination) { dest in
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H7",
-                location: "CodexChatPane.onChange.destination",
-                message: "destination changed",
-                data: [
-                    "destination": String(describing: dest),
-                    "threadId": paneThreadId ?? "",
-                    "msgCount": displayMessages.count,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
         }
         .onChange(of: scenePhase) { phase in
             // A→B→A：窗体未必销毁，onAppear 不跑；激活时仍要瞬移最新，禁止扫历史
             if phase == .active {
-                // #region agent log
-                DebugAgentLog.log(
-                    hypothesisId: "H8",
-                    location: "CodexChatPane.onChange.scenePhase",
-                    message: "scene became active",
-                    data: [
-                        "threadId": paneThreadId ?? "",
-                        "msgCount": displayMessages.count,
-                        "agentMode": model.agentMode,
-                    ],
-                    runId: "post-fix"
-                )
-                // #endregion
                 pinBottomOnNextScroll()
                 bottomPinTick &+= 1
                 model.onForegroundResume()
@@ -831,21 +743,6 @@ struct CodexChatPaneBody: View {
         let gen = paneSwitchGeneration
         let msgCount = displayMessages.count
         let hasContent = msgCount > 0 || lastNonEmptyMsgCount > 0
-        // #region agent log
-        DebugAgentLog.log(
-            hypothesisId: "H4",
-            location: "CodexChatPane.beginPaneSwitchTransition",
-            message: hasContent ? "skip opacity hide (has content)" : "opacity→0",
-            data: [
-                "gen": gen,
-                "threadId": paneThreadId ?? "",
-                "msgCount": msgCount,
-                "lastNonEmpty": lastNonEmptyMsgCount,
-                "hasContent": hasContent,
-            ],
-            runId: "post-fix"
-        )
-        // #endregion
         if hasContent {
             var pin = Transaction()
             pin.disablesAnimations = true
@@ -871,29 +768,11 @@ struct CodexChatPaneBody: View {
         Task { @MainActor in
             await Task.yield()
             guard gen == paneSwitchGeneration else {
-                // #region agent log
-                DebugAgentLog.log(
-                    hypothesisId: "H4",
-                    location: "CodexChatPane.beginPaneSwitchTransition",
-                    message: "reveal aborted after yield1",
-                    data: ["gen": gen, "current": paneSwitchGeneration],
-                    runId: "post-fix"
-                )
-                // #endregion
                 return
             }
             bottomPinTick &+= 1
             await Task.yield()
             guard gen == paneSwitchGeneration else {
-                // #region agent log
-                DebugAgentLog.log(
-                    hypothesisId: "H4",
-                    location: "CodexChatPane.beginPaneSwitchTransition",
-                    message: "reveal aborted after yield2",
-                    data: ["gen": gen, "current": paneSwitchGeneration],
-                    runId: "post-fix"
-                )
-                // #endregion
                 return
             }
             var reveal = Transaction()
@@ -901,19 +780,6 @@ struct CodexChatPaneBody: View {
             withTransaction(reveal) {
                 paneContentOpacity = 1
             }
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H4",
-                location: "CodexChatPane.beginPaneSwitchTransition",
-                message: "opacity→1",
-                data: [
-                    "gen": gen,
-                    "threadId": paneThreadId ?? "",
-                    "msgCount": displayMessages.count,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
         }
     }
 
@@ -2083,6 +1949,14 @@ struct FlowRail: View {
         return model.flowSnapshot(forProject: paneProjectId)
     }
 
+    /// Scroll content identity — must change when projectFlowRevision bumps so cards rebuild without leave/return.
+    private var flowRailContentId: String {
+        let pid = paneProjectId ?? ""
+        let rev = model.projectFlowRevision[pid] ?? 0
+        let s = model.flowSnapshot(forProject: pid)
+        return "\(pid)|\(rev)|\(s?.epicId ?? "")|\(s?.recentEpics.count ?? 0)|\(s?.works.count ?? 0)"
+    }
+
     private static let boardChipCols: [(key: String, label: String)] = [
         ("backlog", "待办"),
         ("planned", "规划"),
@@ -2136,7 +2010,8 @@ struct FlowRail: View {
                             prominentFail: true,
                             onDismiss: {
                                 model.clearStopLossHint(projectId: paneProjectId, threadId: nil)
-                            }
+                            },
+                            primaryTitle: "再交 Agent"
                         )
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
@@ -2159,6 +2034,8 @@ struct FlowRail: View {
                     )
                     .padding(.bottom, 20)
                 }
+                // Force rebuild when projectFlow bumps (SSE/snapshot); leave/return remount was masking stale rail.
+                .id(flowRailContentId)
             }
         }
         .background(CCCTheme.sidebar)
@@ -2257,7 +2134,8 @@ struct FlowRail: View {
         text: String,
         prompt: String,
         prominentFail: Bool = false,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        primaryTitle: String = "复制给对话"
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(text)
@@ -2265,8 +2143,17 @@ struct FlowRail: View {
                 .foregroundStyle(CCCTheme.nodeFail)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button("复制给对话") {
-                    copyToComposer(prompt)
+                Button(primaryTitle) {
+                    if primaryTitle == "再交 Agent", let pid = paneProjectId {
+                        model.sendUserMessage(
+                            prompt,
+                            projectId: pid,
+                            threadId: window.threadId,
+                            displayText: "编排自愈 · 再交 Agent"
+                        )
+                    } else {
+                        copyToComposer(prompt)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(prominentFail ? CCCTheme.nodeFail : CCCTheme.accent)
@@ -2300,12 +2187,14 @@ struct FlowRail: View {
         let failed = (snap?.works ?? []).filter(\.isFailed)
         let names = failed.map { "· \($0.title)（\($0.displayStatus)）" }.joined(separator: "\n")
         return """
-        【编排异常 · 请帮我处理】
+        【编排自愈 · 自动 SOP · 勿问老板】
         项目：\(pid)
         大卡：\(snap?.epic?.title ?? eid)
         提示：\(hint)
         \(names.isEmpty ? "" : "失败步骤：\n\(names)\n")
-        请查看板 abnormal/失败原因，给出可执行的修复、reopen 或归档建议；不要让我去运维页翻日志。
+        请严格按 references/board-auto-repair-sop.md：
+        hub_repair(status) → clear_blockers → 必要 reopen 一次 → 回报板面数字。
+        禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
         """
     }
 
@@ -2382,6 +2271,20 @@ struct FlowRail: View {
                                 .foregroundStyle(CCCTheme.faint)
                         }
                         Spacer(minLength: 0)
+                        if goal.isDiscussable {
+                            Button("讨论方案") {
+                                let exit = (goal.exit_condition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                                let body = """
+                                【意图目标 · 讨论方案】
+                                目标：\(goal.text ?? goal.id)
+                                \(exit.isEmpty ? "" : "退出条件：\(exit)\n")
+                                请对齐现状后给出可执行方案；具备条件再出定稿块（ccc-transfer）。勿问我要不要入队。
+                                """
+                                copyToComposer(body)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                        }
                         if goal.isMarkableStable {
                             Button("标记稳定") {
                                 Task { await model.markMindGoalStable(projectId: pid, goalId: goal.id) }

@@ -2622,6 +2622,21 @@ def engine_loop(workspaces: list[Path]) -> None:
                         _retry_abnormal_failures(ws)
                     except Exception as exc:
                         engine_log(f"[abnormal-refeed] {_ws_label(ws)}: {exc}")
+                    # 编排自愈 L1：pending_no_fanout 有限重扇出 + 沉底孤儿 running
+                    try:
+                        from chat_server.services.board_repair import auto_heal_workspace
+
+                        pid = _ws_label(ws)
+                        heal = auto_heal_workspace(ws, pid, reason="engine_auto_heal")
+                        att = (heal.get("pending_heal") or {}).get("attempted") or []
+                        settled_n = (heal.get("settled_stuck") or {}).get("count") or 0
+                        if att or settled_n:
+                            engine_log(
+                                f"[auto-heal] [{pid}] refanout={len(att)} "
+                                f"settled_stuck={settled_n} needs_agent={heal.get('needs_agent')}"
+                            )
+                    except Exception as exc:
+                        engine_log(f"[auto-heal] {_ws_label(ws)}: {exc}")
                     # v0.36: 每 36 tick (~6min) 内存监控 + 残影 PID 清理
                     if iteration % 36 == 0:
                         try:

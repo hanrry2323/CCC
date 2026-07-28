@@ -325,6 +325,14 @@ def _post_transfer(item: dict[str, Any], timeout: float = 25.0) -> tuple[bool, s
 
 def flush_once(*, path: Path | None = None) -> dict[str, Any]:
     """同步冲刷一圈。返回摘要。"""
+    repair_pending = 0
+    try:
+        from chat_server.services.repair_queue import load_pending
+
+        repair_pending = len(load_pending())
+    except Exception:  # noqa: BLE001
+        repair_pending = 0
+
     p = path or outbox_path()
     claimed, pre_exhausted = _claim_batch(p)
     if not claimed:
@@ -336,6 +344,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
             "delivered": 0,
             "failed": pre_exhausted,
             "path": str(p),
+            "repair_pending": repair_pending,
         }
 
     delivered = 0
@@ -433,6 +442,12 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
         bumped=bumped,
         exhausted=exhausted,
     )
+    try:
+        from chat_server.services.repair_queue import load_pending as _load_repair
+
+        repair_pending = len(_load_repair())
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "ok": True,
         "pending": pending,
@@ -440,6 +455,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
         "failed": failed,
         "path": str(p),
         "details": details,
+        "repair_pending": repair_pending,
     }
 
 

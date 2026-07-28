@@ -113,20 +113,6 @@ private struct WindowRootView: View {
             } else {
                 model.ensureThreadHydrated(projectId: pid)
             }
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H5",
-                location: "WindowRootView.bindWindowProjectIfNeeded",
-                message: "window bound",
-                data: [
-                    "projectId": pid,
-                    "threadId": window.threadId ?? "",
-                    "modelSelected": model.selectedThreadId ?? "",
-                    "msgCount": model.messagesForThread(window.threadId).count,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
         }
     }
 

@@ -28,6 +28,7 @@ import phase_lint
 from board.context import get_workspace, set_workspace, board_dir, ccc_home
 from board.lock import (
     acquire_named_lock as _acquire_product_lock,
+
     release_named_lock as _release_product_lock,
 )
 from board.prompt import build_dev_phase_prompt
@@ -127,6 +128,31 @@ def _task_wants_version_bump(task: dict, ws: Path) -> bool:
     return False
 
 
+def _nudge_regress_after_release(moved_ids: list[str]) -> None:
+    """released 后写 nudge 并可选内联跑 regress（默认开；CCC_REGRESS_INLINE_ON_RELEASE=0 仅记账）。"""
+    ws = get_workspace()
+    path = ws / ".ccc" / "stats" / "regress-nudge.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "ts": now_iso(),
+        "event": "regress_nudge_after_release",
+        "task_ids": list(moved_ids),
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    if os.environ.get("CCC_REGRESS_INLINE_ON_RELEASE", "1").strip() == "0":
+        _log.info("[kb] regress nudge recorded (inline disabled): %s", moved_ids)
+        return
+    from board.roles.regress import regress_role
+
+    out = regress_role()
+    _log.info(
+        "[kb] regress after release moved=%s result_keys=%s",
+        moved_ids,
+        list(out.keys()) if isinstance(out, dict) else type(out),
+    )
+
+
 def kb_role() -> dict:
     """知识管理员: 扫 verified → 归档 + git tag → 挪 released → 收集 AGENTS.md 建议"""
     from _role_lock import assert_role_executor
@@ -218,6 +244,13 @@ def kb_role() -> dict:
         # ── Step 4: 挪 released ──
         move_task(task_id, "verified", "released")
         moved.append(task_id)
+
+    # LPSN · T2：released 后立刻 nudge regress（探针→probed），不靠等到 23:30
+    if moved:
+        try:
+            _nudge_regress_after_release(moved)
+        except Exception as exc:
+            _log.warning("[kb] regress nudge failed: %s", exc)
 
     # 去重 → 写 pending-agents-suggestions.md
     if all_suggestions:

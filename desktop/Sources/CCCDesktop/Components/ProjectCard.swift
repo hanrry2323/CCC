@@ -127,21 +127,6 @@ struct ProjectCard: View {
         }
         Task {
             await model.openProjectConversation(project.id, preferredThreadId: keepTid)
-            // #region agent log
-            DebugAgentLog.log(
-                hypothesisId: "H2",
-                location: "ProjectCard.openProject",
-                message: "after openProjectConversation",
-                data: [
-                    "projectId": project.id,
-                    "keepTid": keepTid ?? "",
-                    "windowThreadId": window.threadId ?? "",
-                    "modelSelected": model.selectedThreadId ?? "",
-                    "windowMsgCount": model.messagesForThread(window.threadId).count,
-                ],
-                runId: "post-fix"
-            )
-            // #endregion
             // preferred 已由 selectProject 钉死；仅当本窗尚无会话时跟模型
             guard keepTid == nil else {
                 if window.threadId != keepTid {

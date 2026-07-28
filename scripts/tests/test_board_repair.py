@@ -367,3 +367,54 @@ def test_hub_ensure_engine_enrichment_fields(monkeypatch):
     assert out["engine_running"] is False
     assert out.get("block_reason") == "engine_not_running"
     assert "Engine not running" in (out.get("message") or "")
+
+
+def test_list_pending_no_fanout_and_heal(ws, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+
+    from chat_server.services import board_repair as br
+
+    monkeypatch.setenv("CCC_PENDING_NO_FANOUT_SEC", "60")
+    store = FileBoardStore(ws)
+    old = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    assert store.create_task(
+        {
+            "id": "epic-starve-1",
+            "title": "starve",
+            "card_kind": "epic",
+            "split_status": "pending",
+            "created_at": old,
+            "updated_at": old,
+            "child_ids": [],
+            "goal": "g",
+            "acceptance": ["python3 -c 'print(1)'"],
+            "pipeline": "dev",
+        },
+        column="backlog",
+    )
+    listed = br.list_pending_no_fanout(ws)
+    assert any(x["id"] == "epic-starve-1" for x in listed)
+
+    calls = {"n": 0}
+
+    def fake_fanout(store, epic, **kwargs):
+        calls["n"] += 1
+        return {"ok": True, "child_ids": ["epic-starve-1-w1"]}
+
+    import _product_fanout as pf
+
+    monkeypatch.setattr(pf, "fanout_from_seeded_epic", fake_fanout)
+
+    def fake_wake(**kwargs):
+        return {"ok": True, "engine_running": True}
+
+    import _engine_wake as ew
+
+    monkeypatch.setattr(ew, "ensure_engine_for_task", fake_wake)
+
+    r1 = br.heal_pending_no_fanout(ws, "demo")
+    assert calls["n"] == 1
+    assert r1["attempted"]
+    r2 = br.heal_pending_no_fanout(ws, "demo")
+    assert calls["n"] == 1  # max 1 refanout
+    assert r2["skipped_max"]

@@ -26,6 +26,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Relay**：薄垫片；**付费-only Go**（恰好 1 把启用，第 2 把人切备份）；免费/MiniMax 不进启用池。手册：[`docs/relay/KEY-POOL.md`](docs/relay/KEY-POOL.md)。  
 **Vibe 真优势三句**：少而硬的意图 · 唯一权威路径 · 偏差默认用飞轮收——**不是**画布更细。  
 **LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
+**编排自愈（硬）**：大卡进板后必须自动跑完；卡死/失败自愈是基础指标（禁等人点「复制给对话」）；业务仓 **main** 由 CCC 提交。SOP：[`references/board-auto-repair-sop.md`](references/board-auto-repair-sop.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。  
 **Ops 运维面**（对话/编排/运维三面之一）：给人看健康灯——**绿**敢开发、**橙**可忽略、**红**一键复制交 Agent；旁路自愈/供弹/巡查（弹药只进业务仓，禁 orch）。见 authority「Ops 运维面」。
 

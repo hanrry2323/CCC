@@ -219,13 +219,27 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 - **「下一步」不是必经阶段**；核实并入定稿/转任务前静默 lens，或可选「看仓况」芯片。
 - 禁 `ssh`；能力靠透镜 + **本会话** `board-repair` + 提示词硬闸。
 - digest/STATUS 勾选不作终局；脚本+报告已在仅文档未勾 → S/同步，禁止 stamp 重开落地卡。
-- **凡进 backlog 的 epic 须带起 Engine 消费**；响应带 `engine_wake`（含 `engine_running` / `workspace_eligible`）；超时无 fanout → UI/Agent 明示原因（Engine 未跑 / 上游 / cap / epic=failed），禁止静默饿死。
+- **凡进 backlog 的 epic 须带起 Engine 消费**；响应带 `engine_wake`（含 `engine_running` / `workspace_eligible`）；超时无 fanout → **自动自愈**（见下「编排自愈」），禁止静默饿死、禁止等人点「复制给对话」。
+
+#### 编排自愈硬指标 + 业务仓 main 提交（硬 · 2026-07-29）
+
+> 大卡经人确认进入看板后，扇出→写码→审测→失败收尸/有限重试必须自动；**卡死/失败无人介入可恢复是 CCC 基础指标**。禁止以「请用户复制给对话」为修板主路径。业务仓提交在 **main（当前分支）**，Cursor 不做逐卡合入闸。
+
+| 项 | 口径 |
+|----|------|
+| **提交** | Engine/DoD 在业务仓**当前分支（默认 main）**提交；`task_id`/`phase` 进 message；**不做** feature 旁支合入门禁；Cursor **事后总验**不挡产线 |
+| **进板后** | 人只确认下达；之后扇出/写码/审测/hang 收尸/有限 reopen **全自动** |
+| **自愈分层** | L1 Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + wake；L2 Hub/`board_repair`：orphan running / 可清残卡；L3 Desktop/sidecar：**编排异常自动钩子**注入 Agent SOP（人不点）；L4 人仅红灯/改意图 |
+| **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；用 Cursor/Zed 当业务仓合入通道 |
+| **SOP** | [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) |
 
 #### Desktop 板务 · App Agent 本职（硬 · 2026-07-24 · 全功能）
 
 **看板维护是当前 Desktop App Agent 的本职**（任意项目卡，含业务与 `ccc`）。Engine 跑挂/退出留下的 `abnormal`/残卡/幽灵轨/**孤儿 running** → 经 Hub **`POST /api/desktop/board-repair`**（`hub_repair`，**可跨 project_id**）清场，**绝不**写业务源码。平台小改可对本机 CCC 走 engineer（Write/Edit）；深改仍认 Cursor。
 
-死循环禁区：板堵 → ready=false → 下不了新产品 → Agent 甩锅「请打开编排运维」或甩卫生 epic / Terminal outbox → 老板又当运维。**破法**：**本会话先 `clear_blockers` 再回话**，报告板面数字。
+**编排异常**（右栏 stopLoss / failed / abnormal）：系统**自动**注入 SOP 交 Agent（或 Engine 先确定性清），**禁止**把「复制给对话」当必经人机步骤。
+
+死循环禁区：板堵 → ready=false → 下不了新产品 → Agent 甩锅「请打开编排运维」或甩卫生 epic / Terminal outbox → 老板又当运维。**破法**：**自动自愈 + 本会话 `clear_blockers`**，报告板面数字。
 
 | 允许 | 禁止 |
 |------|------|

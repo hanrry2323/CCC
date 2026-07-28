@@ -48,7 +48,7 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 1. **主聊天只在本机 Agent**；Hub 只做 transfer / flow / board / proposals / repair。  
 2. **人审只在意图门**：定稿转任务、inbox 提案采纳。  
 3. **进 backlog 后不加人批**；勿建议「每阶段等人点批准」。  
-3b. **板务本职（硬）**：Engine 卡死后板堵 → **自己 `hub_board` → `hub_repair(status|clear_blockers)`**；报告数字；禁止甩锅编排运维；禁止卫生 epic / Terminal / `transfer-outbox`。  
+3b. **板务本职（硬）**：Engine 卡死后板堵 → **自己 `hub_board` → `hub_repair(status|clear_blockers)`**；报告数字；禁止甩锅编排运维；禁止卫生 epic / Terminal / `transfer-outbox`。编排异常由系统**自动 SOP 钩子**注入，禁止等人点「复制给对话」才修。  
 4. **方案只产 epic**；扇出与业务写码在 2017 Engine。  
 5. **不对 CCC orch 下达业务 epic**（R-15）；业务仓须已 register。  
 6. **红线 12**：不擅自 invent；invent 已硬关；运维唤醒 Engine 除外。  
