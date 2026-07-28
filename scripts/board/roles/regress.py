@@ -49,6 +49,13 @@ def regress_role() -> dict:
     if not tasks:
         return {"role": "regress", "info": "无已发布任务", "results": results}
 
+    try:
+        from _board_garbage import is_regress_eligible as _regress_ok
+    except ImportError:
+
+        def _regress_ok(t: dict) -> bool:  # type: ignore
+            return not t.get("ui_hidden")
+
     today = date.today().isoformat()
     ws = get_workspace()
     scripts_dir = ws / "scripts"
@@ -84,6 +91,13 @@ def regress_role() -> dict:
 
     for task in tasks:
         tid = task["id"]
+        # Probe/stamp/e2e/regress noise — never revive into backlog
+        if not _regress_ok(task):
+            results.setdefault("skipped_garbage", 0)
+            results["skipped_garbage"] += 1
+            _log.info("[regress] skip non-product/garbage %s", tid)
+            continue
+
         results["checked"] += 1
 
         task_py_ok = py_ok
@@ -101,25 +115,15 @@ def regress_role() -> dict:
             probe_ok, probe_ran = run_probes(ws, probes, timeout=120)
         else:
             results["skipped_no_probe"] += 1
-            _log.info("[regress] %s no allowlisted probes — aux checks only", tid)
+            _log.info(
+                "[regress] %s no allowlisted probes — skip (no regression epic)",
+                tid,
+            )
+            # 无意图探针时禁止用「脏树」造 regression-*（否则 harness 噪音会炸板）
+            continue
 
-        # Aux: unexpected dirty tree
-        diff_ok = True
-        r = sp.run(
-            ["git", "diff", "HEAD", "--stat"],
-            cwd=ws,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if r.stdout.strip():
-            diff_ok = False
-
-        # Fail when probes fail, or (no probes and) compile/diff fail
-        if probes:
-            passed = probe_ok and task_py_ok
-        else:
-            passed = task_py_ok and diff_ok
+        # Fail when probes fail (compile still gates)
+        passed = probe_ok and task_py_ok
 
         if passed:
             results["passed"] += 1
@@ -175,8 +179,6 @@ def regress_role() -> dict:
             )
         if not task_py_ok:
             bug_desc += "- py_compile 失败：代码有语法错误\n"
-        if not probes and not diff_ok:
-            bug_desc += "- git diff 非空：代码有意外改动\n"
         create_task(
             {
                 "id": bug_id,

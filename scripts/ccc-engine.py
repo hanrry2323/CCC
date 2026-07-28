@@ -1278,6 +1278,14 @@ def _process_backlog(ws: Path) -> bool:
     did_something = False
     for task in backlog:
         tid = task["id"]
+        try:
+            from _board_garbage import is_garbage_board_card
+
+            if is_garbage_board_card(tid, task):
+                engine_log(f"[product] [{label}] skip garbage epic/work {tid}")
+                continue
+        except ImportError:
+            pass
         key = _task_key(ws, tid)
         _task_data = normalize_task_view(task, column="backlog")
         kind = _task_data.get("card_kind") or "epic"
@@ -1900,6 +1908,14 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
     planned = store.list_tasks("planned")
     for task in planned:
         tid = task["id"]
+        try:
+            from _board_garbage import is_garbage_board_card
+
+            if is_garbage_board_card(tid, task):
+                engine_log(f"[{label}] skip garbage planned {tid}")
+                continue
+        except ImportError:
+            pass
         key = _task_key(ws, tid)
         if key in active_tasks:
             continue
