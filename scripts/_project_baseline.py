@@ -442,91 +442,112 @@ def _format_summary(
     return "\n".join(lines)
 
 
-def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
-    """发给 Desktop Agent 的对齐提示：后台深核技术；前台只聊项目方案。"""
+def _boss_product_brief(baseline: dict[str, Any]) -> str:
+    """给 Agent 内化的**产品白话摘要**——禁止塞原始 JSON / 字段名清单（会教模型用运维腔）。"""
     git = baseline.get("git") or {}
-    compact = {
-        "branch": git.get("branch"),
-        "dirty": git.get("dirty"),
-        "dirty_count": git.get("dirty_count"),
-        "dirty_kind": git.get("dirty_kind") or baseline.get("dirty_kind"),
-        "dirty_ccc_only": git.get("dirty_ccc_only")
-        if git.get("dirty_ccc_only") is not None
-        else baseline.get("dirty_ccc_only"),
-        "dirty_sample": (git.get("dirty_sample") or [])[:12],
-        "dirty_ccc_paths": (git.get("dirty_ccc_paths") or [])[:12],
-        "dirty_business_paths": (git.get("dirty_business_paths") or [])[:12],
-        "ahead_behind": git.get("ahead_behind"),
-        "recent_commits": git.get("recent_commits") or [],
-        "version": baseline.get("version"),
-        "hot_paths": baseline.get("hot_paths"),
-        "board": baseline.get("board"),
-        "top": (baseline.get("layout") or {}).get("top_entries", [])[:20],
-        "control": baseline.get("control"),
-        "risks": baseline.get("risks") or [],
-        "ready_for_task": baseline.get("ready_for_task"),
-        "can_dispatch": baseline.get("can_dispatch"),
-        "git_clean": baseline.get("git_clean"),
-        "pipeline_idle": baseline.get("pipeline_idle"),
-        "inflight_active": baseline.get("inflight_active"),
-        "workspace": baseline.get("workspace"),
-        "project_id": baseline.get("project_id"),
-        "next_product_goal": baseline.get("next_product_goal"),
-    }
-    profile = (baseline.get("profile_excerpt") or "")[:800]
-    state = (baseline.get("state_excerpt") or "")[:800]
-    claude = (baseline.get("claude_excerpt") or "")[:800]
+    ver = (baseline.get("version") or {}).get("VERSION") or "未知版本"
+    pid = baseline.get("project_id") or "本项目"
+    idle = bool(baseline.get("pipeline_idle"))
+    inflight = int(baseline.get("inflight_active") or 0)
+    if idle and inflight == 0:
+        pipe = "当前没有在飞开发，适合谈下一产品意图"
+    elif inflight > 0:
+        pipe = "还有开发在飞，先等这波做完再开新产品意图"
+    else:
+        pipe = "管道未完全空闲，谈下一步时先确认是否撞车"
+
+    kind = (git.get("dirty_kind") or baseline.get("dirty_kind") or "").strip()
+    ccc_only = git.get("dirty_ccc_only")
+    if ccc_only is None:
+        ccc_only = baseline.get("dirty_ccc_only")
+    if not git.get("dirty"):
+        dirt = "仓况干净"
+    elif kind == "ccc_hygiene" or ccc_only:
+        dirt = "只有编排痕迹未提交，不挡谈产品"
+    elif kind == "mixed":
+        dirt = "有少量未收好的业务改动，谈意图时留意别撞车；编排痕迹可忽略"
+    elif kind == "business":
+        dirt = "权威仓有未收好的业务改动，谈意图时留意别撞车"
+    else:
+        dirt = "仓里有未收尾改动，谈意图时留意"
+
+    ab = git.get("ahead_behind") or {}
+    ahead = int(ab.get("ahead") or 0)
+    backup = (
+        f"本地比远端多 {ahead} 次提交，记得备份推送（不挡谈下一步）"
+        if ahead > 0
+        else ""
+    )
+
+    nxt = baseline.get("next_product_goal") or {}
+    nxt_text = (nxt.get("text") or "").strip()
+    nxt_exit = (nxt.get("exit_condition") or "").strip()
+    nxt_status = (nxt.get("status") or "").strip()
+    if nxt_text:
+        goal_block = (
+            f"已拍板下一产品意图（status={nxt_status or 'unknown'}）：\n"
+            f"· 用人话转述给老板（要什么结果），**禁止**把配置路径/测试文件名念出来\n"
+            f"· 系统内化原文：{nxt_text[:500]}\n"
+        )
+        if nxt_exit:
+            goal_block += f"· 系统验收口径（勿对老板念命令）：{nxt_exit[:240]}\n"
+    else:
+        goal_block = "暂无已拍板的下一产品意图；结合项目定位与规划文给人最佳方向。\n"
+
+    lines = [
+        f"项目 {pid} · 版本 {ver}",
+        f"管道：{pipe}",
+        f"仓况：{dirt}",
+    ]
+    if backup:
+        lines.append(backup)
+    lines.append(goal_block.rstrip())
+    return "\n".join(lines)
+
+
+def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
+    """发给 Desktop Agent 的对齐提示：架构师出系列开发计划；禁止单功能闲聊。
+
+    硬教训：raw JSON / 禁词清单会教运维腔；「最佳 1 条」会缩成补单测式单点讨论。
+    """
+    profile = (baseline.get("profile_excerpt") or "")[:500]
+    claude = (baseline.get("claude_excerpt") or "")[:500]
+    brief = _boss_product_brief(baseline)
     return (
-        "【角色】你是 Desktop **架构/规划搭档**（和老板讨论项目往哪走）。"
-        "技术核对在后台做；**前台正文禁止运维口吻与技术堆砌**。\n\n"
-        "【对用户回复 · 硬】中文白话；先结论后理由；≤短文。"
-        "正文只讲：项目是什么、做到哪了、下一步该推什么产品意图、取舍与风险（人话）。"
-        "**禁止**正文出现：counts_raw / backlog=N / dirty_kind / ready_for_task / can_dispatch / "
-        "pipeline_idle / invent / Engine / OpenCode / `.ccc/` / pytest 路径 / tid / "
-        "hub_repair / lens / 文件树 / 提交哈希 / 「队列消费」「扇出」。"
-        "板务若已静默清完，最多一句「板面我已理顺」——**不要复述工具过程**。"
-        "技术细节若必须留给系统，只放在文末可选的一个 ```ccc-transfer```（未谈妥则不出块）。\n\n"
-        "# 任务：对齐项目基线（可选深扫 · 非转意图卡硬门槛）\n"
-        "代码权威在 Mac2017 登记仓；M1 **没有**业务源码第二树。\n"
-        "程序快照是开场材料；你仍须在作答前 **静默** live 核实（过程勿写入回复）：\n"
-        "  hub_board + hub_git（或等价透镜）；冲突以 live 为准。\n"
-        "板堵/残卡/孤儿 running：本会话静默 hub_repair(clear_blockers)，"
-        "清完再谈产品方向；禁止默认逼卫生 epic；禁止甩锅编排运维。\n"
-        "禁止对本机 git/Read 业务树（会串到平台仓）。Hub 断则人话说明「仓况暂时看不清」，勿瞎编。\n\n"
-        "## 后台静默核对（内化 · 勿复述字段名）\n"
-        "1. 快照 + live：版本、板是否空/堵、是否可开新产品意图、脏是编排噪音还是真业务改动。\n"
-        "2. 活跃板已过滤沉底卡；勿把磁盘残留文件数当待办。\n"
-        "3. invent 硬关 + 空板 → 编排闲置=正常，不是故障，**不要**当风险恐吓老板。\n"
-        "4. 仅编排产物脏 → 不当业务风险；ahead 未推 = 备份提醒，不挡讨论下一步产品。\n"
-        "5. 结合 CLAUDE/profile/state 建立「这是什么产品」；VERSION 以快照为准。\n"
-        "6. next_product_goal / 已拍板方向优先，勿逆着既定产品路线塞卫生活。\n\n"
-        "## 禁止对用户说\n"
-        "- 运维检修报告腔（「先跑 board」「counts 不一致」「index lag」）\n"
-        "- 建议降控制面 / 关机（除非对方问闲置）\n"
-        "- invent / 无人值守自造 / 进队后逐步人批 / 对 CCC orch 下业务卡\n"
-        "- 推销多 IDE / 固定角色 / 「请本机 clone」\n"
-        "- 把「可开工技术门闩」写成老板必懂的 checklist\n\n"
-        "## 输出格式（项目讨论 · 4 段 · 禁技术黑话）\n"
+        "【角色】你是老板的**架构师**（产品架构 + 交付路线）。"
+        "主交付物 = **一系列有序开发计划**（阶段路线图），不是围着某一个功能聊天。"
+        "老板要的是：从现在走到收口，中间要推哪几步、先后依赖、每步做成什么样子。"
+        "老板不是技术员——正文禁止检修报告、路径、测试名、命令。\n\n"
+        "【本轮任务】对齐项目基线后，直接给出可拍板的**系列开发计划**。"
+        "先结论；**禁止**工具旁白 / 英文过程句。"
+        "后台核实静默；板堵最多一句「板面我已理顺」。\n\n"
+        "【硬禁】\n"
+        "- 禁止把回复缩成「下一个小功能 / 补两条单测 / 改某个配置」的单点讨论\n"
+        "- 禁止 A/B 菜单逼选；禁止清卫生当主业\n"
+        "- 正文禁止路径、测试名、配置文件、命令、看板数字、提交哈希\n"
+        "- 本轮**禁止**输出 ```ccc-transfer```；末段只列整条链的白话标题；"
+        "老板要点「转意图卡」才开工\n"
+        "- 禁止建议降控制面/关机；闲置不是故障\n\n"
+        "【qb 等收口项目 · 内化】北星对齐实盘人确认 + 回测可视化；"
+        "计划须从现状排到收口，已拍板意图只是路线上的一站，不是整条计划。\n\n"
         "### 项目与进度\n"
         "- 这是什么产品（一句定位 + 版本人话）\n"
-        "- 现在走到哪一步（产品阶段，不是看板列名）\n"
-        "- 是否适合继续谈下一步意图（人话：可以聊 / 先等在飞做完 / 板面我已理顺）\n\n"
+        "- 现在走到哪（产品阶段，人话）\n"
+        "- 能否开系列计划（可以排 / 先等在飞做完 / 板面我已理顺）\n\n"
         "### 该留意什么\n"
-        "- 只写会挡**产品方向或发布**的事；空闲正常就写「当前没有挡事的异常」\n"
-        "- 编排卫生/未推送备份最多各一句人话，勿升格成主风险\n\n"
-        "### 建议往哪走\n"
-        "- 直接给**最佳 1 条产品方向**（对齐已拍板/下一产品目标）+ 一句为何现在做\n"
-        "- 可选一句次优带过；**禁止** A/B 菜单逼选；**禁止**把「清卫生」当最佳主业\n\n"
-        "### 若要落成意图卡\n"
-        "- 给 1 个**白话标题**（≤20 字）说明下一张意图卡该写什么；"
-        "或写「先聊清楚：…」——此时不出 ccc-transfer\n"
-        "- 未谈妥验收前不要甩 pytest/路径\n\n"
-        "请现在输出完整可见答复；禁止只回 No response requested 或空内容；"
-        "禁止先输出一长段工具旁白再给报告。\n\n"
-        f"程序快照（仅供你内化，禁止逐字段念给用户）：\n"
-        f"```json\n{json.dumps(compact, ensure_ascii=False)}\n```\n"
-        f"摘要：{baseline.get('summary', '')}\n"
-        + (f"\nCLAUDE/AGENTS 摘录：\n{claude}\n" if claude else "")
-        + (f"\nprofile 摘录：\n{profile}\n" if profile else "")
-        + (f"\nstate 摘录：\n{state}\n" if state else "")
+        "- 只写会挡整条路线或发布的事；没有就写「当前没有挡事的异常」\n"
+        "- 编排痕迹 / 未推送备份最多各一句\n\n"
+        "### 开发计划（系列 · 本轮主菜）\n"
+        "- 给出 **3～7 步有序阶段**（编号 1…N）；每步一句：**产品结果** + 为何此刻\n"
+        "- 标明**当前首刀**是哪一步；后续步骤写清依赖（人话）\n"
+        "- 已拍板的下一意图必须落进其中一站，但不得独占整份答复\n"
+        "- 每步必须是可独立验收的产品意图，不是实现 checklist\n\n"
+        "### 若要落成意图卡链\n"
+        "- 按上表顺序列出 1/N… 白话标题（每条 ≤20 字，产品结果口吻）\n"
+        "- 或写「先聊清楚：…」——此时不出标题列表\n\n"
+        "请现在直接输出完整可见答复。\n\n"
+        "【内化材料 · 禁止复述字段/原文堆砌】\n"
+        f"{brief}\n"
+        + (f"\n产品定位摘录：\n{claude}\n" if claude else "")
+        + (f"\n档案摘录：\n{profile}\n" if profile else "")
     )

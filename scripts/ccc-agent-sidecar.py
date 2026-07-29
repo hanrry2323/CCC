@@ -841,20 +841,18 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
-            "【对齐基线 · 强制】后台：hub_board+hub_git；残卡 clear_blockers。"
-            "前台：架构/规划讨论（项目与进度 / 该留意 / 建议往哪走 / 若要落成意图卡）。"
-            "禁止正文念 counts_raw、dirty_kind、ready_for_task、pytest、`.ccc/`、Engine、工具过程。"
-            "SOP references/align-baseline-sop.md。禁止零工具只复述快照。"
+            "【对齐基线 · 强制】你是架构师：交付 3～7 步系列开发计划到收口；"
+            "禁止缩成单功能；禁止工具旁白；本轮禁止 ccc-transfer；"
+            "正文只产品结果，路径/命令一字不进。SOP references/align-baseline-sop.md。"
         )
     if re.search(
-        r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|转意图卡|ccc-transfer|转任务契约|转任务)",
+        r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|转意图卡|ccc-transfer|转任务契约|转任务|下任务卡|跑通)",
         text,
         re.I,
     ):
         parts.append(
-            "【转意图卡 · 强制核实】作答前必须 hub_board + hub_git；"
-            "再按目标 hub_locate/hub_file 定点 1～3 路径。"
-            "板堵 → clear_blockers；仅业务脏/真在飞冲突时禁新产品（人可 override）。"
+            "【转意图卡 · 强制】正文只白话产品路线（禁路径/pytest）；"
+            "技术只进 ccc-transfer；多卡优先。作答前静默 hub_board+hub_git。"
             "收敛门：未对齐做什么/怎样算完则拒转。"
             "契约硬预算：单意图·1 phase·acceptance 1～3 条本卡强探针；"
             "禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡验收。"

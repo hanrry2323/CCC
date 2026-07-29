@@ -101,10 +101,11 @@ def test_ready_true_when_only_ccc_dirty(tmp_path: Path):
     assert bl["can_dispatch"] is True
     assert "仅编排产物" in "\n".join(bl["risks"]) or "卫生" in bl["summary"]
     prompt = baseline_prompt_for_claude(bl)
-    assert "dirty_kind" in prompt
-    assert "禁止说「可能是业务改动」" in prompt or "仅编排产物未提交" in prompt
-    assert "可下达任务" in prompt
+    # 白话摘要，不塞字段名
+    assert "dirty_kind" not in prompt
+    assert "编排痕迹" in prompt or "不挡谈产品" in prompt
     assert "≤20" in prompt or "20 字" in prompt
+    assert "ccc-transfer" in prompt
 
 
 def test_ready_false_when_business_dirty(tmp_path: Path):
