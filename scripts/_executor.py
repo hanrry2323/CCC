@@ -120,6 +120,12 @@ def _claude_env(*, relay_url: str | None = None) -> dict:
     elif not env.get("ANTHROPIC_BASE_URL"):
         # 三档契约:默认走 relay(:4000),上游由 upstreams.json 路由
         env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:4000"
+    # claude CLI 需要 ANTHROPIC_AUTH_TOKEN 才能连 relay（用户的 ~/.claude/settings.json 有此值，
+    # 但 engine 用独立 _sanitized_env + CLAUDE_CONFIG_DIR 不会继承）
+    if "ANTHROPIC_AUTH_TOKEN" not in env:
+        _token_path = Path.home() / ".ccc" / "anthropic-auth-token"
+        if _token_path.is_file():
+            env["ANTHROPIC_AUTH_TOKEN"] = _token_path.read_text(encoding="utf-8").strip()
     # Phase3：Engine 私有配置家（禁止落到个人 ~/.claude）
     try:
         from _claude_cli import (
