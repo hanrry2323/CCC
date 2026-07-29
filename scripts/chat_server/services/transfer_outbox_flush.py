@@ -481,16 +481,12 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
             )
             continue
 
-        # Gate / 永久 4xx：立刻 rejected 回执 + 进 failed，禁止空转 8 次
+        # Gate / 永久 4xx：写 rejected 回执并从 outbox 剔除。
+        # 禁止进 transfer-failed.json——否则 Desktop reconcile 会按 thread
+        # 永久盖成 failed，把后续成功投递「断链」。改卡靠 L1 lessons + receipt。
         if _is_permanent_transfer_reject(detail, payload):
             rejected += 1
-            failed += 1
             reason, hint = _reject_hint(payload, detail)
-            item = dict(item)
-            item["attempts"] = max(attempts + 1, MAX_ATTEMPTS)
-            item["last_error"] = reason[:500]
-            item["last_error_at"] = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
-            item["reject_fix_hint"] = hint
             try:
                 write_receipt(
                     client_request_id=crid,
@@ -507,9 +503,8 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                 _log.warning(
                     "rejected receipt write failed crid=%s: %s", crid, exc
                 )
-            exhausted.append(item)
             if crid:
-                delivered_crids.add(crid)  # 从 outbox 剔除（勿再 bumped）
+                delivered_crids.add(crid)  # 从 outbox 剔除（勿 bumped / 勿 failed）
             details.append(
                 {
                     "client_request_id": crid,

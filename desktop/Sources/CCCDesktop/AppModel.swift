@@ -2333,6 +2333,8 @@ final class AppModel: ObservableObject {
     func applyReceiptsFromDisk() {
         let receipts = LocalSessionStore.loadTransferReceipts()
         guard !receipts.isEmpty else { return }
+        // 每 thread 只认最新一条回执（receipts 新→旧），避免旧 rejected 盖掉新 delivered
+        var seenThread = Set<String>()
         for r in receipts {
             let crid = r.client_request_id.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !crid.isEmpty else { continue }
@@ -2351,8 +2353,12 @@ final class AppModel: ObservableObject {
                 }
                 return selectedThreadId ?? ""
             }()
+            if !threadId.isEmpty {
+                if seenThread.contains(threadId) { continue }
+                seenThread.insert(threadId)
+            }
 
-            // Gate 永久拒绝：徽章 failed，勿当已投递
+            // Gate 永久拒绝：仅当该 thread 最新回执是 rejected 才标 failed
             if r.isRejected {
                 LocalSessionStore.dequeueTransfer(clientRequestId: crid)
                 guard !threadId.isEmpty else { continue }
@@ -2377,6 +2383,10 @@ final class AppModel: ObservableObject {
             guard !eid.isEmpty else { continue }
             LocalSessionStore.dequeueTransfer(clientRequestId: crid)
             LocalSessionStore.dequeueFailedTransfer(clientRequestId: crid)
+            if !threadId.isEmpty {
+                // 同 thread 旧 gate/耗尽 failed 不得再盖徽章
+                LocalSessionStore.dequeueFailedTransfers(threadId: threadId)
+            }
             guard !threadId.isEmpty else { continue }
             if var snap = threadFlow[threadId] {
                 let cur = snap.epicId ?? ""
@@ -2412,7 +2422,13 @@ final class AppModel: ObservableObject {
                     copy[tid] = .queued
                 }
             } else if failedTids.contains(tid) {
-                copy[tid] = .failed
+                // 已 delivered/accepted 的 thread 不被陈旧 failed 盖掉（断链）
+                switch phase {
+                case .delivered, .accepted:
+                    break
+                default:
+                    copy[tid] = .failed
+                }
             } else if phase == .queued || phase == .delivering {
                 if let snap = threadFlow[tid],
                    let eid = snap.epicId?.trimmingCharacters(in: .whitespacesAndNewlines),

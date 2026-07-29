@@ -787,6 +787,18 @@ enum LocalSessionStore {
         writeFailedTransfers(q)
     }
 
+    /// 同 thread 投递已成功时清掉旧 failed，避免 reconcile 把徽章永久盖成 failed（断链）
+    static func dequeueFailedTransfers(threadId: String) {
+        let tid = threadId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tid.isEmpty else { return }
+        var q = loadFailedTransfers()
+        let before = q.count
+        q.removeAll { $0.thread_id == tid }
+        if q.count != before {
+            writeFailedTransfers(q)
+        }
+    }
+
     /// 失败条重回 outbox（attempts 归零），供「后台再试」
     @discardableResult
     static func requeueFailedTransfer(clientRequestId: String) -> TransferOutboxItem? {

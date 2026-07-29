@@ -91,7 +91,7 @@ def test_flush_persists_last_error_on_retry(tmp_path: Path):
 
 
 def test_flush_gate_reject_writes_rejected_receipt(tmp_path: Path):
-    """Gate 400 永久拒绝：立刻 rejected 回执 + 出 outbox，勿空转 8 次。"""
+    """Gate 400 永久拒绝：立刻 rejected 回执 + 出 outbox；不进 failed（防断链）。"""
     p = tmp_path / "transfer-outbox.json"
     p.write_text(json.dumps([_item(title="文档翻新")]), encoding="utf-8")
 
@@ -116,9 +116,9 @@ def test_flush_gate_reject_writes_rejected_receipt(tmp_path: Path):
 
     assert summary["delivered"] == 0
     assert summary.get("rejected") == 1
+    assert summary.get("failed") == 0
     assert flush.load_outbox(p) == []
-    failed = flush.load_failed(flush.failed_path(p))
-    assert len(failed) == 1
+    assert flush.load_failed(flush.failed_path(p)) == []
     receipts = flush.load_receipts(flush.receipts_path(p))
     assert len(receipts) == 1
     assert receipts[0]["status"] == "rejected"
