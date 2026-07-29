@@ -1,6 +1,6 @@
 # CCC Desktop 上线卡
 
-> **日期**：2026-07-22（对齐 v0.62.0 / 历史） · **范围**：内测（未公证）  
+> **日期**：2026-07-29（对齐 v0.64.0） · **范围**：内测（未公证）  
 > 架构 SSOT：[`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)  
 > 连接契约：[`../product/desktop-connection.md`](../product/desktop-connection.md) · 隧道：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md)  
 > 边界基线：[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)
@@ -56,7 +56,7 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 1. 打开 CCC Desktop（Hub = http://127.0.0.1:17777 隧道；勿默认 LAN :7777）
    — 自动探测/拉起本机 sidecar；状态栏看「本机 Agent」或「本机 Agent 未就绪」（禁止 Hub 聊天回退）
 2. 设置里为业务项目填「当前项目本机路径」（若本机有 checkout）
-3. 选业务项目 → 本机对话定稿 → 转任务（需 Hub）→ 右栏看编排实时回传
+3. 选业务项目 → 本机对话谈方案 → 点「转意图卡」（需 Hub 投递）→ 右栏看意图卡链 + 看板计数
 4. 看板/运维：Desktop 侧栏直接进（不再开浏览器）
 ```
 
@@ -76,8 +76,8 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 
 | # | 断言 | 验证 |
 |---|------|------|
-| B1 | Hub 断仍可本机聊；不能转任务有白话 | Desktop `canChat`/`canTransfer`；无 Hub chat fallback |
-| B2 | 转任务 → 2017 backlog epic；右栏见拆分 | `flow/snapshot` + `flow/events` SSE |
+| B1 | Hub 断仍可本机聊；不能转意图卡有白话 | Desktop `canChat`/`canTransfer`；无 Hub chat fallback |
+| B2 | 转意图卡 gate 绿 → 2017 backlog epic；右栏意图卡链 | `flow/snapshot` + mind goals |
 | B3 | Engine cwd = 2017 业务仓 | `/Users/fan/program/apps/<id>`；product-session `--workspace` 同路径 |
 | B4 | 闲聊全文不进 product/dev（仅 gate/plan） | Engine/board roles 无 `.ccc/chat` 读取；transfer 只带 gate 字段 |
 | B5 | 常态无 Desktop→Hub `/api/chat` | Hub `/api/chat` 路由已删（404）；`APIClient.streamChat` 走 sidecar |
@@ -125,8 +125,8 @@ ssh fan@192.168.3.116 'bash /Users/fan/program/CCC/scripts/ccc-autostart-guard.s
 左侧选中对话 (thread)
   → 仅加载该 thread 转出的 epic
   → 右栏显示「本对话编排」（实时 SSE）
-  → 转任务时写入 thread_id，深度绑定
-新对话 / 未转任务 → 右栏空态提示
+  → 转意图卡成功进代办时写入 thread_id，深度绑定
+新对话 / 未转意图卡 → 右栏空态提示
 ```
 
 ## 已知限制

@@ -276,6 +276,32 @@ def run_patrol() -> list[dict[str, Any]]:
     return findings
 
 
+def _alert_dir() -> Path:
+    return Path(os.environ.get("CCC_ALERT_DIR") or (Path.home() / ".ccc" / "alerts"))
+
+
+def _clear_resolved_patrol_alerts(*, dry_run: bool) -> int:
+    """GREEN 时归档过期 authority-patrol 告警，避免 Desktop 运维假红。"""
+    if dry_run:
+        return 0
+    alert_dir = _alert_dir()
+    if not alert_dir.is_dir():
+        return 0
+    resolved = alert_dir / "resolved"
+    moved = 0
+    for path in alert_dir.glob("*-authority-patrol.md"):
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+            dest = resolved / path.name
+            if dest.exists():
+                dest = resolved / f"{path.stem}-{os.getpid()}{path.suffix}"
+            path.replace(dest)
+            moved += 1
+        except OSError as e:
+            print(f"[patrol] archive alert failed {path.name}: {e}", file=sys.stderr)
+    return moved
+
+
 def _notify(findings: list[dict[str, Any]], *, dry_run: bool) -> None:
     if dry_run or not findings:
         return
@@ -290,7 +316,7 @@ def _notify(findings: list[dict[str, Any]], *, dry_run: bool) -> None:
         print(f"[patrol] notify script missing: {NOTIFY}", file=sys.stderr)
         return
     # also write a consolidated human alert
-    alert_dir = Path(os.environ.get("CCC_ALERT_DIR") or (Path.home() / ".ccc" / "alerts"))
+    alert_dir = _alert_dir()
     alert_dir.mkdir(parents=True, exist_ok=True)
     from datetime import datetime, timezone
 
@@ -347,6 +373,10 @@ def main() -> int:
 
     if findings and not args.quiet:
         _notify(findings, dry_run=args.dry_run)
+    elif not findings:
+        n = _clear_resolved_patrol_alerts(dry_run=args.dry_run)
+        if n:
+            print(f"[patrol] archived {n} stale alert(s)")
 
     return 2 if findings else 0
 

@@ -25,8 +25,10 @@
 ### 阶段能力包（Stage skill pack）
 `skills/ccc-*`：Engine 调度的默认阶段（product/dev/…）。**不是**角色超市货架。
 
-### 定稿 / 转任务 / CCC_DISPATCH
-Hub 上将方案固化为可执行任务（可挂 plan/phases，跳过 product）。
+### 转意图卡 / 意图卡 / 代办（v0.64+）
+- **转意图卡**：人显式触发；Agent 写 L1 `planned`（白话意图）。**≠** 直接定代办。
+- **代办**：`transfer_gate` 绿后自动进 backlog epic = Engine 开工令。
+- 旧称「定稿 / 转任务 / CCC_DISPATCH」仍可能出现在历史文；UI/SOP 现行名 = **转意图卡**。见 [`references/intent-card-sop.md`](../references/intent-card-sop.md)。
 
 ### 控制面（control.json）
 `disabled` | `ui` | `enabled` | `invent`。默认安全关闭常驻与自造。

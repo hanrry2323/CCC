@@ -39,14 +39,18 @@
 | 文档 | 说明 |
 |------|------|
 | [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) | **v0.60 LPSN 出门** |
-| [`releases/v0.62.0.md`](releases/v0.62.0.md) | **现行** reviewer `--bg` + bg_sessions + Hub/Desktop |
+| [`releases/v0.64.0.md`](releases/v0.64.0.md) | **现行** 意图卡供给（含原计划 0.65/0.66） |
+| [`references/intent-card-sop.md`](../references/intent-card-sop.md) | **转意图卡 SOP** |
+| [`product/desktop-flow-rail-ux.md`](product/desktop-flow-rail-ux.md) | 右栏：看板计数 + 意图卡链 |
+| [`releases/v0.63.0.md`](releases/v0.63.0.md) | bg nudge + KPI 缩小 |
+| [`releases/v0.62.0.md`](releases/v0.62.0.md) | reviewer `--bg` + bg_sessions + Hub/Desktop |
 | [`releases/v0.61.0.md`](releases/v0.61.0.md) | 三档契约 + fleet + 双机门禁 |
 | [`releases/v0.60.1.md`](releases/v0.60.1.md) | Desktop 发版 + 运维后勤对齐 + 产线闸门 |
 | [`releases/v0.60.0.md`](releases/v0.60.0.md) | LPSN 发布说明 |
 | [`product/hub-api-v1.md`](product/hub-api-v1.md) | **Hub API v1 契约**（transfer 幂等 / 投递三态） |
 | [`product/hub-remote-management.md`](product/hub-remote-management.md) | **双口远程**：M1 对话 `:7788` + Hub 经隧道 `:17777` |
 | [`product/hub-ssh-tunnel.md`](product/hub-ssh-tunnel.md) | **Hub SSH 隧道**：M1 稳定性主路径 |
-| [`product/transfer-gate.md`](product/transfer-gate.md) | 定稿 → transfer 字段 |
+| [`product/transfer-gate.md`](product/transfer-gate.md) | 转意图卡 → transfer_gate |
 | [`product/flow-events.md`](product/flow-events.md) | 右栏 / SSE |
 | [`product/desktop-connection.md`](product/desktop-connection.md) | 连接与本机会话 SSOT |
 | [`product/hub-shell-phase-status.md`](product/hub-shell-phase-status.md) | Hub-Shell 分阶段状态板（现行） |

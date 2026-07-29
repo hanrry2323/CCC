@@ -62,3 +62,15 @@ def test_patrol_cards_loadable():
         json.loads(line)
         n += 1
     assert n >= 8
+
+
+def test_patrol_green_archives_stale_alerts(tmp_path):
+    alert_dir = tmp_path / "alerts"
+    alert_dir.mkdir()
+    stale = alert_dir / "20260729-120000-L3-authority-patrol.md"
+    stale.write_text("# stale\n", encoding="utf-8")
+    cp = _run(env={"CCC_ALERT_DIR": str(alert_dir)})
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not stale.exists()
+    assert (alert_dir / "resolved" / stale.name).is_file()
+    assert "archived" in cp.stdout

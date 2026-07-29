@@ -1,9 +1,10 @@
 # CCC 正式启用卡 — Go Live
 
-> **日期**：2026-07-22 · **状态**：可正式使用（**主入口 = CCC Desktop**）  
-> **版本**：以根目录 `VERSION` 为准（当前 **v0.62.0** · CCC Relay + 三档契约）  
+> **日期**：2026-07-29 · **状态**：可正式使用（**主入口 = CCC Desktop**）  
+> **版本**：以根目录 `VERSION` 为准（当前 **v0.64.0** · 意图卡供给闭环）  
 > Desktop 上线卡：[`GO-LIVE-DESKTOP.md`](./GO-LIVE-DESKTOP.md)  
 > LPSN 出门：[`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md)  
+> 本版发布：[`../releases/v0.64.0.md`](../releases/v0.64.0.md)  
 > 详细盘点：[`fleet-hygiene-2026-07-18.md`](./fleet-hygiene-2026-07-18.md)（史）
 
 ## 开箱即用（每天这样用）
@@ -11,7 +12,7 @@
 ```text
 1. 打开 CCC Desktop（Hub 默认本机隧道 http://127.0.0.1:17777，账号 ccc/ccc）
 2. 选业务项目（不要选编排仓下达）
-3. 对话定稿 → 转任务（验收含可重放意图探针）→ 右栏看编排进度
+3. 战略讨论 → 人点「转意图卡」（验收含可重放意图探针）→ gate 绿自动进代办 → 右栏看意图卡链 + 看板计数
 4. Engine 自动：product → dev → review/test → kb → released（= code_landed）
 5. 意图稳定：regress 回放探针 → L1 mark intent_stable（见 LPSN）
 6. 需要看板/运维时用 Desktop 侧栏（网页 Hub `#/board` `#/ops` 已停更，仅 `#/console` 应急）

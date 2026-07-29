@@ -1,7 +1,8 @@
 # Getting Started — CCC Hub + Loop Engineer
 
-> 目标：陌生人 **10 分钟内**打开 Hub，走通「对齐 → 定稿 → 转任务」。  
-> 叙事见 [`VISION.md`](VISION.md)。端口权威：[`ccc-hub-ports.md`](ccc-hub-ports.md)。
+> 目标：陌生人 **10 分钟内**打开 Desktop，走通「战略讨论 → 转意图卡 → 自动进代办」。  
+> 叙事见 [`VISION.md`](VISION.md)。端口权威：[`ccc-hub-ports.md`](ccc-hub-ports.md)。  
+> v0.64 发布：[`releases/v0.64.0.md`](releases/v0.64.0.md)。
 
 ---
 
@@ -50,13 +51,13 @@ bash scripts/ccc-hub-dev.sh
 
 ## 3. 第一条闭环（只用人，不强制 Engine）
 
-在 Hub「对话」页：
+在 Desktop 项目卡：
 
-1. 选好项目（侧栏）  
-2. 点 **对齐基线** → 再点 **下一步**（可选）  
-3. 点 **定稿方案**，确认助手输出 `CCC_DISPATCH` 块  
-4. 点 **转任务** → 核对标题 → 可选 Skill 软偏好 → **下达并开工**  
-5. 打开 **看板**，应看到新任务；若已挂 plan/phases，可跳过 product 拆解  
+1. 选好业务项目（侧栏）  
+2. 战略讨论谈妥方案（对齐基线=可选）  
+3. 点 **转意图卡**，助手输出 `ccc-transfer` 契约  
+4. 系统写 L1 → `transfer_gate` 绿则**自动进代办**（红则卡停意图层改卡）  
+5. 右栏看意图卡链 + 看板计数；打开 **看板** 可见 backlog epic  
 
 此时若控制面仍是 `disabled` / `ui`，任务会落在板上，**不会**自动被 Engine 吃掉——这是刻意的安全默认。
 
@@ -94,7 +95,7 @@ bash scripts/ccc-autostart-guard.sh disable
 ```bash
 mkdir -p ~/program/myapp   # 若全新
 python3 scripts/ccc-init.py ~/program/myapp --register
-# 编辑 ~/program/myapp/CLAUDE.md 后，在 Hub 选该项目即可对话 / 转任务
+# 编辑 ~/program/myapp/CLAUDE.md 后，在 Desktop 选该项目即可对话 / 转意图卡
 ```
 
 路径须在 `~/program/` 下；`ccc-init` 会建七列看板 + 种子 CLAUDE.md。

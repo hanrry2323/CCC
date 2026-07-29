@@ -9,20 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.64.0] — 2026-07-29
 
+> **收尾说明**：计划中的 v0.65（多卡链）/ v0.66（耗尽回流）能力已并入本版，**不另发空号**。发布说明：[`docs/releases/v0.64.0.md`](docs/releases/v0.64.0.md)。
+
 ### Added
 - **意图卡供给闭环**：人点「转意图卡」→ Agent 起草 L1 `planned` → `transfer_gate` 绿才自动进代办；红停意图层（零 OpenCode）。三角色分责见 authority。
 - **`POST /api/desktop/mind/{id}/intent-cards`**：批量写 L1 planned（不写 backlog）。
 - **`POST /api/desktop/transfer/validate`**：gate dry-run。
 - **`references/intent-card-sop.md`**：收敛门 + 两段落盘 + fix_hint；旧 `finalize-transfer-sop.md` 重定向。
-- **耗尽回流**：`failure_pack` → `seed_planned_from_exhaust` 新 planned 意图卡（须人再点转）。
-- Desktop：快捷「转意图卡」；契约就绪自动 promotion；**多卡逐卡 gate（一卡红不堵链）**；右栏取消 work 拆解竖轨/大卡栈，保留看板计数 + 意图卡链。
+- **耗尽回流（原计划 0.66）**：`failure_pack` → `seed_planned_from_exhaust` 新 planned 意图卡（须人再点转）。
+- Desktop：快捷「转意图卡」；契约就绪自动 promotion；**多卡逐卡 gate（原计划 0.65；一卡红不堵链）**；右栏取消 work 拆解竖轨/大卡栈，保留看板计数 + 意图卡链。
 
 ### Changed
 - `hub_voice` / QuickPrompts：**战略规划优先**；禁未收敛自转；文案转任务→转意图卡。
 - 右栏 SSOT [`docs/product/desktop-flow-rail-ux.md`](docs/product/desktop-flow-rail-ux.md) 重写。
+- **权威巡查**：GREEN 时自动归档 `~/.ccc/alerts/*authority-patrol*.md`，避免 Desktop 运维假红。
 
 ### Tests
 - `test_intent_card_flow.py`：L1 upsert、不覆盖 dispatched、exhaust reflow、弱验收拒、SOP/voice 锁。
+- `test_authority_patrol.py`：GREEN 归档过期告警。
 
 ## [v0.63.0] — 2026-07-28
 

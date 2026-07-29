@@ -36,7 +36,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 | | |
 |--|--|
-| **Desktop + sidecar `:7788`** | 对话 / 意图 / 转任务（M1 主入口） |
+| **Desktop + sidecar `:7788`** | 对话 / 意图 / **转意图卡**（M1 主入口） |
 | **Hub `:7777`** | API host：transfer / flow / board / ops（Mac2017） |
 | **6+1 列看板** | backlog(epic) + planned→…→released(work) + abnormal |
 | **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
@@ -50,11 +50,13 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 ## 2. 人机路径（优先）
 
 ```text
-Desktop（M1）：对齐基线 → 下一步 → 定稿方案 → 转任务 → 下达
+Desktop（M1）：战略讨论 → 人点「转意图卡」→ L1 planned → gate 绿 → 自动进代办
      → POST /api/desktop/transfer → Mac2017 backlog epic
      →（2017 control=enabled）Engine 自动编排：product 扇出 → dev 写码 → review/test → kb → released
-     → 右栏 SSE 实时回传编排进度
+     → 右栏：看板计数 + 意图卡链（非 work 拆解竖轨）
 ```
+
+**v0.64**：转意图卡 ≠ 定代办；gate 红卡停意图层（零 OpenCode）。SOP：[`references/intent-card-sop.md`](references/intent-card-sop.md) · 发布：[`docs/releases/v0.64.0.md`](docs/releases/v0.64.0.md)。
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
@@ -116,7 +118,7 @@ backlog(epic 常驻) ──扇出──► planned(work) → in_progress → tes
                               └ abnormal ←──（work 失败；父 epic → failed）
 ```
 
-不可跳列（X4）。Hub 定稿转任务默认建 **epic**；若已种子 plan/phases 的单卡 work 可跳过 product。
+不可跳列（X4）。转意图卡经 gate 绿后默认建 **epic**；若已种子 plan/phases 的单卡 work 可跳过 product。
 
 ---
 
@@ -171,7 +173,7 @@ python3 scripts/ccc-board.py index
 
 ## 10. 调用链（1 行）
 
-老板在 Desktop（M1）定稿转任务（或「按 CCC 跑 X」）→ task 落 Mac2017 看板 →（2017 control=enabled）Engine 串行阶段能力包（product=Claude Code 扇出 / dev=OpenCode 写码）→ released。
+老板在 Desktop（M1）点「转意图卡」（或「按 CCC 跑 X」）→ gate 绿进 Mac2017 看板 →（2017 control=enabled）Engine 串行阶段能力包（product=Claude 扇出 / dev=OpenCode 写码）→ released。
 
 ---
 

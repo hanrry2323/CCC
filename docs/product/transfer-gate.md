@@ -1,21 +1,22 @@
-# 转任务聊透门禁（Transfer Gate）
+# 转意图卡门禁（Transfer Gate）
 
 > **对话面 → 编排面** 的过桥正门（信息流唯一下达通道）。  
 > 边界基线：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
-> 方案 Agent（本机）写入 **epic（待办大卡）** 前的硬门禁。失败必须 4xx + 机器可读原因。
+> SOP：[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)。  
+> Agent 写入 **epic（代办）** 前的硬门禁。失败必须 4xx + 机器可读原因 + `fix_hint`。
 
 ---
 
 ## 流程
 
 ```text
-对话 → 方案 Agent 输出 ```ccc-transfer``` JSON → Desktop「确认转任务」
-  → POST /api/desktop/transfer
-  → Gate 通过 → 仅创建 epic（backlog）
-  → Gate 失败 → 不写看板，返回 errors[]
+战略讨论 → 人点「转意图卡」→ Agent 输出 ```ccc-transfer``` → 写 L1 planned
+  → POST /api/desktop/transfer/validate（dry-run）
+  → 绿：POST /api/desktop/transfer → 仅创建 epic（backlog）+ wake
+  → 红：不写 backlog，卡留意图层，返回 errors[] / fix_hint
 ```
 
-Engine **之后**才扇出 work；转任务接口禁止直接写 planned work。
+Engine **之后**才扇出 work；转意图卡接口禁止直接写 planned work。
 
 ## 定稿协议（`ccc-transfer`）
 
