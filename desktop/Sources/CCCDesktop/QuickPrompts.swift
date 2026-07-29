@@ -78,33 +78,25 @@ enum QuickPrompts {
         "### 可否转意图卡\n可以 / 暂缓 — <一句理由>" +
         mustAnswer
 
-    /// UI 标题「转意图卡」；内部仍走 finalize 契约 → L1 → gate → 自动进代办
+    /// UI 标题「转意图卡」；一次点透 → 整条意图链（多卡），禁止一轮一张糊大卡
     static let finalize =
-        "用户已点「转意图卡」：请把本会话方案落成意图卡契约并推动进代办（不是只写右栏）。\n" +
+        "用户已点「转意图卡」：把本会话已谈妥的路线一次性落成**整条意图卡链**并推动进代办。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
-        "\n严格按 `references/intent-card-sop.md`（失败案例驱动）。\n" +
-        "**收敛门**：若「做什么 / 怎样算完 / 路线」未对齐，只回白话缺什么并**拒转**，不要出契约块。\n" +
-        "已收敛则立即出卡：禁止再列方案选项、禁止问「要不要入队」。\n" +
-        "**硬完成定义**：可见答复里必须有可过门的 ```ccc-transfer```；" +
-        "禁止只 hub_mind 写 L1 planned 当交差——右栏停尸不算进代办；" +
-        "系统会自动 gate→backlog→wake Engine，你负责出能跑通的卡。\n" +
-        "板面残卡优先 repair，勿默认卫生 epic；偶发卫生卡：executor_intent 必须 python。\n\n" +
-        "### 契约硬预算（违则不得进代办 / OpenCode）\n" +
-        "- 单意图 · 默认 1 work/1 phase · scope≤5 文件（同顶层）；大方案拆多张意图卡。\n" +
-        "- acceptance **仅 1～3 条强探针（优先 1～2）**，只验**本卡**意图：\n" +
-        "  ✅ `.venv/bin/python -m pytest -q <本卡测>` / `DRY_RUN=true .venv/bin/python <本卡脚本>` / 短 assert\n" +
-        "  ❌ `test -f`、散文、把 paper/e2e/下一张 L1 探针塞进本卡、同命令重复、排除路径写进 acceptance\n" +
-        "- plan_md 必有 `## 验收`（与 acceptance 同命令）；goal↔plan 同向（禁「交给上层」稀释 CLOSE/净 edge）。\n" +
-        "- title≤80；complexity 默认 medium；多步回归禁 small。\n" +
-        "- 被拒读 errors[].fix_hint；耗尽读 optimize_hint 开新意图卡（须人再点转），禁止原样重下。\n\n" +
-        "先用 2～4 句白话说明：做什么、验收长什么样、拆成几张意图（若多张）" +
-        "（不要堆任务 id / 绝对路径）。\n" +
-        "单意图：恰好一个 ```ccc-transfer``` JSON 块；多意图：多个块或一块含 cards:[]" +
-        "（title/goal/acceptance/pipeline/feasibility/feasibility_reason/" +
-        "executor_intent/complexity/plan_md 齐全）。\n" +
-        "可行性非 ok 时不要怂恿进代办。系统会先写意图卡，逐卡 gate 绿才自动进代办并拉起 Engine；一卡红不堵整链。" +
-        "起草前读 digest 近期定卡教训。" +
+        "\n严格按 `references/intent-card-sop.md`。\n" +
+        "**收敛门**：做什么/怎样算完/路线未齐 → 只回白话缺什么并拒转。\n" +
+        "已收敛：**禁止**再问要不要入队；**禁止**只出一张把多步路线糊成大卡。\n" +
+        "**多卡硬规则（1+3）**：路线含 ≥2 个可独立验收变化 → 必须多个 ```ccc-transfer``` " +
+        "或一块 JSON `cards:[...]`（每卡 1 意图 · 1 phase · 1～2 强探针）；" +
+        "真·单意图才允许单块。右栏应出现 1/N 链；系统逐卡 gate→进代办→wake Engine。\n" +
+        "硬完成：可见答复里必须有可过门契约块；禁只写 L1 交差。\n" +
+        "板堵先 repair；偶发卫生卡 executor_intent=python。\n\n" +
+        "### 每卡硬预算\n" +
+        "- scope≤5 文件同顶层；acceptance 1～2 条本卡强探针（pytest/DRY_RUN/assert）\n" +
+        "- ❌ test -f、散文、unit+paper 混装、把下一意图塞本卡\n" +
+        "- plan_md 必有 ## 验收；title≤80；默认 medium\n\n" +
+        "白话 2～4 句：整条路线拆成几张、每张怎样算完。\n" +
+        "然后输出全部契约块（字段齐）。起草前读 digest 近期定卡教训 + 若有 next_product_goal 一并纳入链。\n" +
         mustAnswer
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）

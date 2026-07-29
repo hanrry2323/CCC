@@ -192,6 +192,161 @@ def next_product_goal(decided: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _board_pipeline_idle(root: Path) -> bool:
+    """True when no active work/epic in flight (backlog pending epic alone OK)."""
+    try:
+        board = Path(root) / ".ccc" / "board"
+        for col in ("planned", "in_progress", "testing", "verified"):
+            d = board / col
+            if not d.is_dir():
+                continue
+            for p in d.glob("*.jsonl"):
+                try:
+                    import json
+
+                    t = json.loads(
+                        p.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+                    )
+                except Exception:
+                    return False
+                if t.get("ui_hidden"):
+                    continue
+                return False
+        # backlog: only idle if empty or all split_status done
+        bd = board / "backlog"
+        if bd.is_dir():
+            for p in bd.glob("*.jsonl"):
+                try:
+                    import json
+
+                    t = json.loads(
+                        p.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+                    )
+                except Exception:
+                    return False
+                if t.get("ui_hidden"):
+                    continue
+                split = str(t.get("split_status") or "pending").lower()
+                if split not in ("done",):
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def _next_plan_title_as_goal(
+    root: Path, project_id: str, decided: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Pick next DEV_PLAN section title not already stable/abandoned/dispatched."""
+    try:
+        from . import project_brain as _pb
+    except ImportError:
+        return None
+    claude = ""
+    try:
+        p = Path(root) / "CLAUDE.md"
+        if p.is_file():
+            claude = p.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        claude = ""
+    plan_rel = _pb.resolve_plan_path(Path(root), claude)
+    if not plan_rel:
+        return None
+    plan_path = Path(root) / plan_rel
+    if not plan_path.is_file():
+        return None
+    try:
+        full = plan_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    titles = _pb.plan_index_titles(full, limit=40)
+    known: set[str] = set()
+    for g in decided.get("goals") or []:
+        if not isinstance(g, dict):
+            continue
+        st = str(g.get("status") or "").lower()
+        if st in ("abandoned",):
+            continue
+        text = str(g.get("text") or "").strip().lower()
+        if text:
+            known.add(text[:48])
+    skip_kw = (
+        "卫生",
+        "烟测",
+        "戳记",
+        "changelog",
+        "readme",
+        "对齐基线",
+        "ops",
+    )
+    for title in titles:
+        t = str(title or "").strip()
+        if not t or t.startswith("("):
+            continue
+        # strip leading markdown marks from plan_index ("## Foo" / "# Plan")
+        bare = re.sub(r"^#{1,6}\s*", "", t).strip()
+        if not bare:
+            continue
+        # skip document H1 / meta
+        if bare.lower() in ("plan", "概述", "目录", "changelog", "修订", "规划"):
+            continue
+        if t.startswith("# ") and not t.startswith("##"):
+            continue
+        low = bare.lower()
+        if any(k in low for k in skip_kw):
+            continue
+        if low[:48] in known or any(low[:24] in k for k in known):
+            continue
+        return {
+            "text": bare[:DECIDED_ITEM_MAX_CHARS],
+            "exit_condition": "",
+            "status": "planned",
+            "source": "flywheel-idle",
+        }
+    return None
+
+
+def ensure_flywheel_planned_intent(
+    root: Path,
+    *,
+    project_id: str,
+    pipeline_idle: bool | None = None,
+) -> dict[str, Any] | None:
+    """Idle + no L1 planned → materialize next product intent as planned (rail only).
+
+    Does **not** write backlog / wake Engine. Human must click 转意图卡.
+    Never invents hygiene stamps.
+    """
+    root = Path(root)
+    decided = load_decided(root)
+    for g in decided.get("goals") or []:
+        if isinstance(g, dict) and str(g.get("status") or "").lower() == "planned":
+            return normalize_goal(g) or g
+
+    idle = _board_pipeline_idle(root) if pipeline_idle is None else bool(pipeline_idle)
+    if not idle:
+        return None
+
+    nxt = next_product_goal(decided)
+    if nxt and str(nxt.get("status") or "").lower() == "planned":
+        return nxt
+    # probed waits for human stable — do not auto-clone
+    if nxt and str(nxt.get("status") or "").lower() == "probed":
+        return None
+
+    card = _next_plan_title_as_goal(root, project_id, decided)
+    if not card:
+        return None
+    try:
+        out = upsert_planned_intent_cards(
+            root, [card], updated_by="flywheel-idle"
+        )
+        ups = out.get("goals_upserted") or []
+        return ups[0] if ups else None
+    except Exception:
+        return None
+
+
 def upsert_planned_intent_cards(
     root: Path,
     cards: list[Any],
@@ -232,6 +387,45 @@ def upsert_planned_intent_cards(
             continue
         if not ng:
             continue
+
+        # Refuse garbage stamp / Layer2 / VIP paper noise on the right rail
+        try:
+            from _board_garbage import is_garbage_board_card
+
+            blob = str(ng.get("text") or "")
+            if is_garbage_board_card(
+                str(ng.get("id") or blob[:40]),
+                {"title": blob, "id": str(ng.get("id") or "")},
+            ):
+                # abandon any matching planned; never add new planned garbage
+                for i, existing in enumerate(goals):
+                    eg = (
+                        normalize_goal(existing)
+                        if not isinstance(existing, dict)
+                        else existing
+                    )
+                    if not isinstance(eg, dict):
+                        continue
+                    same_id = str(eg.get("id") or "") == str(ng.get("id") or "")
+                    same_text = _goal_matches_transfer(
+                        eg, str(ng.get("text") or ""), str(ng.get("text") or "")
+                    )
+                    if same_id or same_text:
+                        if str(eg.get("status") or "").lower() == "planned":
+                            eg = dict(eg)
+                            eg["status"] = "abandoned"
+                            goals[i] = normalize_goal(eg) or eg
+                            upserted.append(goals[i])
+                        else:
+                            upserted.append(normalize_goal(eg) or eg)
+                        matched = True
+                        break
+                else:
+                    matched = True  # drop new garbage; do not append
+                if matched:
+                    continue
+        except Exception:
+            pass
 
         matched = False
         for i, existing in enumerate(goals):
@@ -602,6 +796,7 @@ def mark_goal_status(
     status: str,
     *,
     updated_by: str = "human",
+    project_id: str = "",
 ) -> dict[str, Any]:
     """Set one goal's status (intent_stable / abandoned / probed)."""
     status = (status or "").strip().lower()
@@ -616,11 +811,23 @@ def mark_goal_status(
             break
     if not found:
         raise ValueError(f"goal not found: {goal_id}")
-    return merge_decided(
+    out = merge_decided(
         root,
         {"goals": cur["goals"]},
         updated_by=updated_by,
     )
+    # 人点 stable 后：飞轮推下一产品意图到右栏 planned（仍须点转意图卡进代办）
+    if status == "stable":
+        try:
+            ensure_flywheel_planned_intent(
+                root,
+                project_id=(project_id or Path(root).name),
+                pipeline_idle=True,
+            )
+            out = load_decided(root)
+        except Exception:
+            pass
+    return out
 
 
 def _active_board_task_ids(workspace: Path | None) -> set[str]:
@@ -661,13 +868,32 @@ def abandon_orphan_planned_goals(
       - explicit goal_ids → those planned ids
       - abandon_all_planned → every planned
       - default → planned with linked_epic_id set but epic not on active board
-        (bare planned without link = 合法「待转」, never auto-kill)
+        **or** planned text/title matches board-garbage patterns (Layer2/VIP stamp…)
+        (bare planned without link = 合法「待转」, never auto-kill unless garbage)
     """
     cur = load_decided(root)
     goals = list(cur.get("goals") or [])
     active = _active_board_task_ids(workspace)
     want = {str(x) for x in (goal_ids or []) if str(x).strip()}
     abandoned: list[dict[str, Any]] = []
+
+    def _is_garbage_goal(g: dict[str, Any]) -> bool:
+        try:
+            from _board_garbage import is_garbage_board_card
+
+            text = str(g.get("text") or g.get("title") or "")
+            gid = str(g.get("id") or "")
+            return bool(
+                is_garbage_board_card(gid, {"title": text, "id": gid})
+                or is_garbage_board_card(text[:80], {"title": text})
+            )
+        except Exception:
+            low = str(g.get("text") or "").lower()
+            return any(
+                x in low
+                for x in ("layer2", "lpsn 证据", "vip-v5 paper", "戳记", "冒烟")
+            )
+
     for g in goals:
         if not isinstance(g, dict):
             continue
@@ -683,6 +909,8 @@ def abandon_orphan_planned_goals(
             is_orphan = True
         elif not want:
             if linked and linked not in active:
+                is_orphan = True
+            elif _is_garbage_goal(g):
                 is_orphan = True
         if not is_orphan:
             continue
@@ -953,6 +1181,11 @@ def build_digest(
             return cached
 
     observed = compile_observed(root, project_id=project_id)
+    # 飞轮 1+3：空闲且无 planned → 自动推下一产品意图到右栏（不进代办）
+    try:
+        ensure_flywheel_planned_intent(root, project_id=project_id)
+    except Exception:
+        pass
     decided = load_decided(root)
     digest_text = format_digest(
         project_id=project_id, observed=observed, decided=decided

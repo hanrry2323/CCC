@@ -4714,6 +4714,11 @@ final class AppModel: ObservableObject {
         }
         do {
             try await prepareClient(ensureAgent: false)
+            // 先清僵尸/垃圾 planned，避免右栏闪三张坟卡
+            _ = try? await client.abandonOrphanIntentCards(
+                projectId: pid,
+                allPlanned: false
+            )
             let resp = try await client.fetchMindDecided(projectId: pid)
             let goals = (resp.decided?.goals ?? []).filter { g in
                 (g.status ?? "planned").lowercased() == "planned"
@@ -4721,10 +4726,7 @@ final class AppModel: ObservableObject {
             mindGoals = goals
             mindGoalsProjectId = pid
         } catch {
-            // 非致命：右栏仍可编排
-            if mindGoalsProjectId == pid {
-                mindGoals = []
-            }
+            // Hub 瞬时失败：保留上次 goals，禁止清空造成「一会儿有一会儿没有」
         }
     }
 

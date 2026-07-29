@@ -195,7 +195,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | **Agent** | 人触发后按 [`../../references/intent-card-sop.md`](../../references/intent-card-sop.md) 起草 L1；可查 HP/社区；读 lessons | 禁未触发自转；禁 invent；禁 gate 红仍推进代办；禁开场运维说教 |
 | **系统** | 契约过 `transfer_gate` **仅绿**才 auto transfer→backlog+wake；右栏 L1 停尸由 `POST /transfer/promote-planned` 兜底推进 | 禁见结构化块就入队；override 须显式+`human_note`；禁让人盯右栏当推动器 |
 
-流程：战略讨论 → 人点转意图卡 → Agent 出可过门 `ccc-transfer`（写 L1）→ gate → 绿则自动进代办 **+ wake Engine**；红则卡留意图层 + `fix_hint` 改卡（改「要做成什么」须再问人）。**禁止**只写右栏 planned 当完成。
+流程：战略讨论 → 人点转意图卡 → Agent 出**整条意图链**（多卡优先的可过门 `ccc-transfer`）→ gate → 绿则自动进代办 **+ wake Engine**；红则卡留意图层 + `fix_hint`。空闲飞轮自动推下一 L1 `planned` 到右栏（**不**直灌 backlog）。**禁止**只写右栏当完成；**禁止**一轮糊一张大卡。
 
 **Agent 定方案（硬）**：**战略规划优先**（方案/路线/风险白话；可查 HP 知识库与社区资料）；板务仅在挡讨论/挡下达时静默自清。按用户意图给**最佳方案**并默认推进；**禁止**每轮甩拍板选择题、**禁止转意图卡后再问要不要入队**。仅当真缺不可逆信息才最多 1 问。白话给人看；契约折叠进块，不把 tid/路径当结论。**板面残卡清场**归 **当前 Desktop App Agent**（`hub_repair`），**禁止**默认逼卫生 epic，**禁止**甩锅「请打开编排运维」。偶发卫生卡：`executor_intent=python`；`pipeline=ops` 仍扇出。abnormal / 未核账在飞残卡禁止重复下达同目标（须先清板或人 override）。
 
@@ -220,10 +220,12 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 ```text
 战略讨论（自由聊；可查 HP/社区；对齐基线=可选）
   → 人点「转意图卡」（认白话意图）
-  → Agent 按 intent-card-sop 起草 ccc-transfer → 写 L1 planned
-  → transfer_gate 绿 → 自动进代办（outbox→Hub epic→wake Engine）
+  → Agent 一次拆整条意图链（多卡 ccc-transfer / cards:[]；真单意图才单块）
+  → transfer_gate 逐卡绿 → 自动进代办（outbox→Hub epic→wake Engine）
   → 若仅有右栏 L1、无本地草稿 → Hub promote-planned 兜底进代办+wake
   → 红 → 意图卡停留 + fix_hint 改卡（零 OpenCode）
+空闲飞轮：pipeline idle 且无 planned → 系统写下一产品 L1 planned（右栏）
+  → 仍须人点「转意图卡」才进代办（禁 invent）
 ```
 
 | 环节 | 人 | Agent / 系统 |

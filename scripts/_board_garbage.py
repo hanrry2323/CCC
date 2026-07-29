@@ -65,6 +65,8 @@ _GARBAGE_TITLE_SUBSTR = (
     "流水线烟测",
     "流水线绿灯",
     "纸面探针复验",
+    "VIP-V5 paper",
+    "门禁放行烟测",
 )
 
 _GARBAGE_TAGS = {

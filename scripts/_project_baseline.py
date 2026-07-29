@@ -364,6 +364,17 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
         from chat_server.services import agent_mind as _am
 
         decided = _am.load_decided(ws)
+        # 飞轮：空闲时把下一产品意图落到 L1 planned（右栏）；不进 backlog
+        if pipeline_idle and (git_clean or dirty_ccc_only):
+            try:
+                _am.ensure_flywheel_planned_intent(
+                    ws,
+                    project_id=str(result.get("project_id") or ws.name),
+                    pipeline_idle=True,
+                )
+                decided = _am.load_decided(ws)
+            except Exception as _fe:
+                _log.debug("flywheel planned materialize: %s", _fe)
         nxt = _am.next_product_goal(decided)
         result["next_product_goal"] = nxt
         if pipeline_idle and (git_clean or dirty_ccc_only) and nxt:
@@ -372,7 +383,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
                 + (
                     f"（exit: {str(nxt.get('exit_condition') or '')[:60]}）"
                     if nxt.get("exit_condition")
-                    else ""
+                    else " · 点「转意图卡」补探针并进代办"
                 )
             )
             result["risks"] = list(result.get("risks") or []) + [tip]

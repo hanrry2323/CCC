@@ -862,6 +862,7 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "硬完成：可见答复必须出可过门的 ccc-transfer；"
             "禁止只写右栏 L1 planned 当交差——右栏≠代办；"
             "系统会 promote→backlog→wake Engine。"
+            "多卡硬规则：路线≥2步必须多个 ccc-transfer 或 cards:[]，禁止一轮糊一张大卡。"
             "对用户：≤3 句人话 + 恰好一个或多个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
             "gate 绿后系统自动进代办并拉起 Engine；红则停意图层+fix_hint。"
         )

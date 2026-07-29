@@ -62,7 +62,13 @@ async def get_mind_observed(request: Request, project_id: str) -> dict[str, Any]
 @router.get("/{project_id}/decided")
 async def get_mind_decided(request: Request, project_id: str) -> dict[str, Any]:
     check_auth(request)
-    decided = agent_mind.load_decided(_root(project_id))
+    root = _root(project_id)
+    # 飞轮 1+3：空闲时自动推下一产品意图到右栏 planned
+    try:
+        agent_mind.ensure_flywheel_planned_intent(root, project_id=project_id)
+    except Exception:
+        pass
+    decided = agent_mind.load_decided(root)
     return {"ok": True, "project_id": project_id, "decided": decided}
 
 
