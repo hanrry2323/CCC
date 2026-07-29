@@ -127,6 +127,22 @@ def test_flush_gate_reject_writes_rejected_receipt(tmp_path: Path):
     assert any(d.get("status") == "rejected" for d in summary.get("details") or [])
 
 
+def test_flush_drops_orphan_without_client_request_id(tmp_path: Path):
+    """无 crid 的 outbox 条禁止 POST，否则会无限灌板。"""
+    p = tmp_path / "transfer-outbox.json"
+    orphan = _item()
+    orphan.pop("client_request_id", None)
+    orphan["title"] = "Layer2 orphan"
+    p.write_text(json.dumps([orphan]), encoding="utf-8")
+
+    with patch.object(flush, "_post_transfer") as mock_post:
+        summary = flush.flush_once(path=p)
+
+    mock_post.assert_not_called()
+    assert summary.get("rejected") == 1
+    assert flush.load_outbox(p) == []
+
+
 def test_is_permanent_transfer_reject():
     assert flush._is_permanent_transfer_reject(
         "http_400:x",

@@ -31,6 +31,13 @@ def test_regression_and_probe_are_garbage():
         "layer1-v2-966d70fa-w1",
         {"title": "写入 Layer1 文档戳记 v2"},
     )
+    assert is_garbage_board_card("layer2-lpsn-057eb089")
+    assert is_garbage_board_card(
+        "x",
+        {"title": "Layer2 开程：探针可重放 + LPSN 证据戳记"},
+    )
+    assert is_garbage_board_card("stress-mx-20260728-kpi-r1-ccc-demo-5c9ee397")
+    assert is_garbage_board_card("flow-smoke-b5f34766")
 
 
 def test_regress_eligible_skips_hidden_and_garbage():

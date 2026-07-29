@@ -47,6 +47,31 @@ def validate_transfer_payload(
             }
         )
 
+    # 垃圾戳记/冒烟/探针卫生卡：禁止进 backlog（与 _board_garbage 对齐）
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _board_garbage import is_garbage_board_card as _is_garbage
+
+        probe_id = str(body.get("epic_id") or "").strip() or title
+        if _is_garbage(
+            probe_id,
+            {"id": probe_id, "title": title, "tags": body.get("tags") or []},
+        ) or _is_garbage(
+            title.lower().replace(" ", "-")[:80],
+            {"id": "", "title": title, "tags": body.get("tags") or []},
+        ):
+            errors.append(
+                _err(
+                    "garbage_stamp_card",
+                    "禁止投递探针/戳记/冒烟/Layer2 LPSN 卫生卡",
+                    "改投真实业务意图（如 qb 域门 B4.2/B5）；戳记类勿进看板。",
+                )
+            )
+    except Exception:
+        pass  # intentional — optional garbage classifier
+
     goal = str(body.get("goal") or "").strip()
     if not goal:
         errors.append({"code": "missing_goal", "message": "需要明确目标（goal）"})
@@ -182,6 +207,7 @@ def _default_fix_hint(code: str) -> str:
         "plan_goal_conflict": "改齐 plan_md 与 goal（勿降 CLOSE/净 edge）。",
         "intent_not_stable": "对齐未完成 L1 目标，或 supersede_goals / abandon_prior。",
         "feasibility_blocked": "先解阻塞或改可行性评估后再定稿。",
+        "garbage_stamp_card": "禁止探针/戳记/冒烟/Layer2 LPSN 卫生卡；改投真实业务意图。",
     }
     return hints.get(code, "按拒因改 ccc-transfer 后再定稿；读 digest「近期定卡教训」。")
 

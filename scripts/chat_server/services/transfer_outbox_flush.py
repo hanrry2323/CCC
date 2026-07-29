@@ -266,14 +266,26 @@ def _claim_batch(path: Path) -> tuple[list[dict[str, Any]], int]:
         return claimed, exhausted_n
 
 
+def _orphan_fingerprint(item: dict[str, Any]) -> str:
+    return "|".join(
+        [
+            str(item.get("project_id") or "").strip(),
+            str(item.get("thread_id") or "").strip(),
+            str(item.get("title") or "").strip()[:80],
+        ]
+    )
+
+
 def _merge_after_flush(
     path: Path,
     *,
     delivered_crids: set[str],
     bumped: dict[str, dict[str, Any]],
     exhausted: list[dict[str, Any]],
+    drop_orphan_fps: set[str] | None = None,
 ) -> int:
     """锁内合并：删已投递；更新重试 attempts；写 failed；保留 Desktop 新入队项。"""
+    drop_fps = drop_orphan_fps or set()
     with outbox_file_lock(path):
         current = load_outbox(path)
         by_crid: dict[str, dict[str, Any]] = {}
@@ -285,6 +297,9 @@ def _merge_after_flush(
             if crid:
                 by_crid[crid] = x
             else:
+                # 无 crid 且已处理（成功/永久拒）→ 丢弃，否则会无限重投灌板
+                if _orphan_fingerprint(x) in drop_fps:
+                    continue
                 orphan.append(x)
         for crid, item in bumped.items():
             if crid in delivered_crids:
@@ -417,15 +432,43 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
     delivered_crids: set[str] = set()
     bumped: dict[str, dict[str, Any]] = {}
     exhausted: list[dict[str, Any]] = []
+    drop_orphan_fps: set[str] = set()
 
     for item in claimed:
-        crid = str(item.get("client_request_id") or "")
+        crid = str(item.get("client_request_id") or "").strip()
         attempts = int(item.get("attempts") or 0)
+
+        # 无 client_request_id → 禁止 POST（否则成功后无法删条，每 5s 新建一张 epic）
+        if not crid:
+            rejected += 1
+            drop_orphan_fps.add(_orphan_fingerprint(item))
+            try:
+                write_receipt(
+                    client_request_id=f"orphan-{_orphan_fingerprint(item)[:48]}",
+                    epic_id="",
+                    project_id=str(item.get("project_id") or ""),
+                    thread_id=str(item.get("thread_id") or ""),
+                    outbox=p,
+                    status="rejected",
+                    reason="missing_client_request_id",
+                    fix_hint="Desktop 入队须带 client_request_id；本条已丢弃，禁止重投灌板。",
+                    card_title=str(item.get("title") or ""),
+                )
+            except OSError as exc:
+                _log.warning("orphan reject receipt failed: %s", exc)
+            details.append(
+                {
+                    "client_request_id": "",
+                    "status": "rejected",
+                    "error": "missing_client_request_id",
+                }
+            )
+            continue
+
         ok, detail, payload = _post_transfer(item)
         if ok:
             delivered += 1
-            if crid:
-                delivered_crids.add(crid)
+            delivered_crids.add(crid)
             try:
                 write_receipt(
                     client_request_id=crid,
@@ -436,33 +479,32 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                     status="delivered",
                 )
                 # 强校验：投递成功后 receipts 必须能读回同 crid（防 hydrate 丢单）
-                if crid:
-                    recs = load_receipts(receipts_path(p))
+                recs = load_receipts(receipts_path(p))
+                if not any(
+                    str(r.get("client_request_id") or "") == crid for r in recs
+                ):
+                    _log.error(
+                        "receipt missing after write crid=%s — retry once",
+                        crid,
+                    )
+                    write_receipt(
+                        client_request_id=crid,
+                        epic_id=detail,
+                        project_id=str(item.get("project_id") or ""),
+                        thread_id=str(item.get("thread_id") or ""),
+                        outbox=p,
+                        status="delivered",
+                    )
+                    recs2 = load_receipts(receipts_path(p))
                     if not any(
-                        str(r.get("client_request_id") or "") == crid for r in recs
+                        str(r.get("client_request_id") or "") == crid
+                        for r in recs2
                     ):
                         _log.error(
-                            "receipt missing after write crid=%s — retry once",
+                            "receipt still missing after retry crid=%s epic=%s",
                             crid,
+                            detail,
                         )
-                        write_receipt(
-                            client_request_id=crid,
-                            epic_id=detail,
-                            project_id=str(item.get("project_id") or ""),
-                            thread_id=str(item.get("thread_id") or ""),
-                            outbox=p,
-                            status="delivered",
-                        )
-                        recs2 = load_receipts(receipts_path(p))
-                        if not any(
-                            str(r.get("client_request_id") or "") == crid
-                            for r in recs2
-                        ):
-                            _log.error(
-                                "receipt still missing after retry crid=%s epic=%s",
-                                crid,
-                                detail,
-                            )
             except OSError as exc:
                 # Hub 已收下；收据失败不得回滚投递，否则会卡死重试
                 _log.warning(
@@ -503,8 +545,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                 _log.warning(
                     "rejected receipt write failed crid=%s: %s", crid, exc
                 )
-            if crid:
-                delivered_crids.add(crid)  # 从 outbox 剔除（勿 bumped / 勿 failed）
+            delivered_crids.add(crid)  # 从 outbox 剔除（勿 bumped / 勿 failed）
             details.append(
                 {
                     "client_request_id": crid,
@@ -526,8 +567,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                 {"client_request_id": crid, "status": "exhausted", "error": detail}
             )
         else:
-            if crid:
-                bumped[crid] = item
+            bumped[crid] = item
             details.append(
                 {
                     "client_request_id": crid,
@@ -542,6 +582,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
         delivered_crids=delivered_crids,
         bumped=bumped,
         exhausted=exhausted,
+        drop_orphan_fps=drop_orphan_fps,
     )
     try:
         from chat_server.services.repair_queue import load_pending as _load_repair
