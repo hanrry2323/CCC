@@ -72,16 +72,20 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 `feasibility != ok` → **拒绝转任务**。
 
-### 验收写作（防门禁误杀）
+### 验收写作（防门禁误杀 · 防下游跑不动）
 
-- 验收 bullets：**可执行命令**，或「须入本次 commit 的交付路径」。
-- **排除/勿入**路径写在 `plan_md` 的「禁止」节，**不要**写进 `acceptance`（否则会被抽成必碰 path → `acceptance_paths_not_in_commit`）。
-- 不存在 committer 角色；**板面残卡优先 Hub `board-repair`**（`ccc-hub-lens.py repair`），禁止默认卫生 transfer。偶发卫生卡用 `executor_intent: python`（可走 board_ops 短路径，scope 限 `.ccc/**` 产物树）。
-- 运行时冒烟命令优先写 `.venv/bin/python` / `python3`，并显式带 `DRY_RUN=true`（勿裸 `python`）。
+细则：[`references/finalize-transfer-sop.md`](../../references/finalize-transfer-sop.md)。
+
+- **预算**：acceptance **1～3 条（优先 1～2）** 强探针，只证明**本卡**意图。
+- 验收 bullets：**可执行命令**（`.venv/bin/python -m pytest …` / `DRY_RUN=true .venv/bin/python …` / 短 assert）。
+- **禁止**：`test -f`、散文假绿、同命令重复、把 **paper/e2e/下一张 L1** 探针塞进本卡。
+- **排除/勿入**路径写在 `plan_md`「禁止」节，**不要**写进 `acceptance`。
+- 不存在 committer 角色；**板面残卡优先 Hub `board-repair`**。偶发卫生卡用 `executor_intent: python`。
+- `plan_md` 必有 `## 验收`（与 acceptance 同向）；默认 1 phase / 少数文件。
 
 ---
 
-## 错误码（`error` 字段）
+## 错误码（`error` / `errors[].code` · 均带 `fix_hint`）
 
 | code | 含义 |
 |------|------|
@@ -92,8 +96,17 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `feasibility_blocked` | Agent 评估不可执行 |
 | `project_not_dispatchable` | 项目不可下达（orch / 未登记） |
 | `invalid_executor_intent` | 未知执行面 |
+| `missing_intent_probe` | 无 pytest/python3/DRY_RUN 类强探针 |
+| `acceptance_weak` | 仅 `test -f` / 存在性假绿 |
+| `acceptance_too_wide` | 探针 >3 条（须压到 1～2） |
+| `acceptance_mixed_intent` | 本卡同时 unit + paper/e2e |
+| `plan_acceptance_weak` | plan 缺 `## 验收` 或弱探针 |
+| `plan_scope_too_wide` | phase/顶层目录过多 → hang |
+| `plan_goal_conflict` | goal 与 plan 方向冲突 |
+| `intent_not_stable` | 未对齐/未 supersede L1 未完意图 |
+| `role_lock_violation` | Desktop 禁直接写 work |
 
----
+完整 `fix_hint` 以 `transfer_gate.py` `_default_fix_hint` 为准。
 
 ## 成功响应
 

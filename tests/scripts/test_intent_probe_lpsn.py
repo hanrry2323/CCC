@@ -131,6 +131,48 @@ def test_transfer_accepts_strong_acceptance_even_if_plan_md_lacks_section():
     assert ok, errs
 
 
+def test_transfer_rejects_mixed_unit_and_paper_probe():
+    from chat_server.services import transfer_gate as tg
+
+    body = {
+        "title": "momentum 净 edge",
+        "goal": "CLOSE + 单测",
+        "acceptance": [
+            ".venv/bin/python -m pytest -q tests/unit/test_momentum_fees.py",
+            "DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper",
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+    }
+    ok, errs = tg.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "acceptance_mixed_intent" for e in errs)
+
+
+def test_transfer_rejects_too_many_probes():
+    from chat_server.services import transfer_gate as tg
+
+    body = {
+        "title": "过多探针",
+        "goal": "g",
+        "acceptance": [
+            ".venv/bin/python -m pytest -q tests/a.py",
+            ".venv/bin/python -m pytest -q tests/b.py",
+            ".venv/bin/python -m pytest -q tests/c.py",
+            ".venv/bin/python -m pytest -q tests/d.py",
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+    }
+    ok, errs = tg.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "acceptance_too_wide" for e in errs)
+
+
 def test_transfer_soft_trims_title_over_80():
     from chat_server.services import transfer_gate as tg
 

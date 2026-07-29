@@ -854,6 +854,9 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "【定稿/转任务 · 强制核实】作答前必须 hub_board + hub_git；"
             "再按目标 hub_locate/hub_file 定点 1～3 路径。"
             "板堵 → clear_blockers；仅业务脏/真在飞冲突时禁新产品 epic（人可 override）。"
+            "契约硬预算：单意图·1 phase·acceptance 1～3 条本卡强探针；"
+            "禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡验收。"
+            "细则 references/finalize-transfer-sop.md。"
             "对用户：≤3 句人话 + 可选一个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
         )
     return "\n".join(parts)

@@ -132,6 +132,9 @@ def validate_transfer_payload(
             weak = _check_acceptance_strength(cmds, plan_md=plan_md)
             if weak:
                 errors.append(weak)
+            budget = _check_acceptance_budget(cmds)
+            if budget:
+                errors.append(budget)
 
         if plan_md:
             # Hub 会用 acceptance 重建 plan_md；顶部已有强探针时，
@@ -172,6 +175,8 @@ def _default_fix_hint(code: str) -> str:
         "missing_pipeline": "pipeline 填 dev（或对应产线）。",
         "missing_intent_probe": "加 pytest/python3/DRY_RUN 探针，禁散文验收。",
         "acceptance_weak": "换成行为探针：pytest / python3 -c assert / DRY_RUN，禁 test -f。",
+        "acceptance_too_wide": "acceptance 压到 1～2 条本卡强探针；下一意图另开卡。",
+        "acceptance_mixed_intent": "本卡只留 unit/本卡脚本探针；paper/e2e 另开 L1 卡。",
         "plan_acceptance_weak": "plan_md 补 ## 验收 + 强探针；单意图单卡。",
         "plan_scope_too_wide": "缩小 scope：单卡少文件、单顶层目录、单 phase。",
         "plan_goal_conflict": "改齐 plan_md 与 goal（勿降 CLOSE/净 edge）。",
@@ -205,6 +210,50 @@ def _check_acceptance_strength(
             )
     except Exception:
         pass
+    return None
+
+
+def _check_acceptance_budget(cmds: list[str]) -> dict[str, str] | None:
+    """Cap probe count + ban mixing unit-card probes with later-stage e2e.
+
+    Failure case (qb 2026-07-29): fees/unit epic also demanded paper_intent_probe
+    → salvage acceptance_cmd_failed / hang. See finalize-transfer-sop.md.
+    """
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for c in cmds:
+        key = " ".join(str(c).split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        uniq.append(key)
+    if len(uniq) > 3:
+        return _err(
+            "acceptance_too_wide",
+            f"acceptance 抽出 {len(uniq)} 条探针（上限 3，建议 1～2）",
+            "只留本卡意图的 1～2 条 pytest/DRY_RUN；下一意图另开卡。"
+            "见 references/finalize-transfer-sop.md。",
+        )
+    joined = "\n".join(uniq).lower()
+    has_unit = "pytest" in joined or "python3 -c" in joined or "python -c" in joined
+    has_late = any(
+        x in joined
+        for x in (
+            "paper_intent_probe",
+            "paper-intent-probe",
+            "60s",
+            "end-to-end",
+            "e2e",
+        )
+    )
+    # unit + late-stage on same card → hang / acceptance_cmd_failed
+    if has_unit and has_late and len(uniq) >= 2:
+        return _err(
+            "acceptance_mixed_intent",
+            "本卡同时含单元探针与 paper/e2e 后期探针，易 hang",
+            "删掉 paper_intent_probe/e2e，只留本卡 pytest；"
+            "paper/Layer2 作为下一张 L1 目标另定稿。",
+        )
     return None
 
 

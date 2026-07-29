@@ -82,16 +82,24 @@ enum QuickPrompts {
         "请把本会话方案定稿成可转任务的契约包。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
-        "\n先核实仓库能否支撑目标，再写契约。板堵先 repair；仅业务脏/真在飞冲突时 feasibility=blocked。\n" +
+        "\n严格按 `references/finalize-transfer-sop.md`（失败案例驱动）。\n" +
+        "先核实仓库能否支撑目标；板堵先 repair；仅业务脏/真在飞冲突时 feasibility=blocked。\n" +
         "意图已够则**立即定稿**：禁止再列方案选项、禁止问「要不要入队/确认转任务」。\n" +
-        "板面残卡优先 repair，勿默认卫生 epic；偶发卫生卡：executor_intent 必须 python。\n" +
-        "验收条只写可执行命令或须入 commit 的交付路径；排除列表放 plan「禁止」节，勿写进 acceptance。\n" +
-        "提醒：转任务二级卡仅可改标题与备注；goal/acceptance/plan_md/执行面已锁，改方案须退回重定稿。\n\n" +
+        "板面残卡优先 repair，勿默认卫生 epic；偶发卫生卡：executor_intent 必须 python。\n\n" +
+        "### 契约硬预算（违则下游跑不动）\n" +
+        "- 单意图 · 默认 1 work/1 phase · scope≤5 文件（同顶层）。\n" +
+        "- acceptance **仅 1～3 条强探针（优先 1～2）**，只验**本卡**意图：\n" +
+        "  ✅ `.venv/bin/python -m pytest -q <本卡测>` / `DRY_RUN=true .venv/bin/python <本卡脚本>` / 短 assert\n" +
+        "  ❌ `test -f`、散文、把 paper/e2e/下一张 L1 探针塞进本卡、同命令重复、排除路径写进 acceptance\n" +
+        "- plan_md 必有 `## 验收`（与 acceptance 同命令）；goal↔plan 同向（禁「交给上层」稀释 CLOSE/净 edge）。\n" +
+        "- title≤80；complexity 默认 medium；多步回归禁 small。\n" +
+        "- 被拒读 errors[].fix_hint；耗尽读 optimize_hint 缩小后再出块，禁止原样重下。\n" +
+        "提醒：二级卡仅可改标题与备注；改方案须退回重定稿。\n\n" +
         "先用 2～4 句白话说明：做什么、验收长什么样、是否建议立刻转任务" +
-        "（用户可读结论；不要堆任务 id / 绝对路径）。\n" +
+        "（不要堆任务 id / 绝对路径）。\n" +
         "然后输出恰好一个 ```ccc-transfer``` JSON 块（title/goal/acceptance/pipeline/" +
-        "feasibility/feasibility_reason/executor_intent/plan_md 齐全）。\n" +
-        "feasibility 非 ok 时不要怂恿转任务；plan_md 含背景、范围、步骤、验收、风险。" +
+        "feasibility/feasibility_reason/executor_intent/complexity/plan_md 齐全）。\n" +
+        "feasibility 非 ok 时不要怂恿转任务。" +
         mustAnswer
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）

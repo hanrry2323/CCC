@@ -66,9 +66,14 @@ export const FINALIZE_WORK_PREFIX =
   '\n\n# 任务：把本会话方案定稿为可投递 CCC 的契约包\n' +
   INVESTIGATE + '\n' + VERIFY +
   '## 定稿前必修（静默）\n' +
-  '1. 归纳共识；透镜核实 scope 路径真实存在。\n' +
-  '2. 验收可执行；板堵先 repair；仅业务脏/真在飞 → feasibility=blocked。\n' +
-  '3. 二级卡仅 title/human_note 可改；方案字段锁死。\n' +
-  '4. 机械探针 executor_intent=python。\n\n' +
+  '1. 按 references/finalize-transfer-sop.md；透镜核实 scope。\n' +
+  '2. 板堵先 repair；仅业务脏/真在飞 → feasibility=blocked。\n' +
+  '3. 二级卡仅 title/human_note 可改。\n' +
+  '4. 卫生卡 executor_intent=python。\n\n' +
+  '## 契约硬预算\n' +
+  '- 单意图 · 1 work/1 phase · scope≤5 文件\n' +
+  '- acceptance 1～3 条强探针（优先 1～2）：本卡 pytest / DRY_RUN 本卡脚本；\n' +
+  '  禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡、禁同命令重复\n' +
+  '- plan_md 必有 ## 验收；goal↔plan 同向\n\n' +
   '## 输出\n' +
-  '白话 2～4 句 + 恰好一个 ```ccc-transfer``` JSON 块。\n';
+  '白话 2～4 句 + 恰好一个 ```ccc-transfer``` JSON 块；禁再问入队。\n';
