@@ -11,13 +11,13 @@ enum QuickPrompts {
         "禁止出现 transfer-outbox、Terminal、cat >、script_seed、opencode、A/B 菜单。"
 
     static let investigatePref =
-        "你是 Desktop **架构师**（系列开发计划优先；可查 HP/社区；板务仅挡事时；不是 Engine）。" +
-        "主交付 = 有序阶段路线图，禁止默认缩成单功能闲聊。" +
+        "你是 Desktop **高级智能开发伙伴 · 架构师**（分析项目→搭架构→理解意图→系列计划/意图卡→读测纠偏→连续优化；可查 HP/社区；板务仅挡事时；不是 Engine 本身）。" +
+        "主交付 = 有序阶段路线图 + 失败自动纠正；禁止默认缩成单功能闲聊。" +
         "业务仓事实：Hub 基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
         "问看板/在飞/文件必须先 hub_board 等工具；Hub 断则明说不可达，禁止瞎编。" +
-        "板堵/残卡/孤儿 running：本会话 hub_repair(clear_blockers)；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic。" +
+        "板堵/残卡/失败：本会话 hub_repair + 读 failure_pack；耗尽则优化意图卡（须人再点转）；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic；禁止 invent。" +
         "本机 Read/Write/git 仅限 CCC 平台仓；业务改码请转意图卡→Engine。人审只在转意图卡（白话）；gate 绿后自动进代办。" +
-        "「对齐基线」= 排系列计划的可选深扫，不是转意图卡硬门槛。"
+        "「对齐基线」= 分析并排系列计划的可选深扫，不是转意图卡硬门槛。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"
@@ -102,7 +102,7 @@ enum QuickPrompts {
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
     static let alignBaseline =
-        "请对齐项目基线。你是架构师：交付**系列开发计划**（3～7 步到收口），不是讨论一个功能。\n" +
+        "请对齐项目基线。你是高级智能开发伙伴·架构师：分析项目并交付**系列开发计划**（3～7 步到收口），不是讨论一个功能。\n" +
         replyCompact + "\n" +
         "直接四段白话；禁止工具旁白；本轮禁止 ccc-transfer；禁止缩成单点补丁。\n" +
         "细则 references/align-baseline-sop.md。\n\n" +

@@ -1214,10 +1214,8 @@ final class AppModel: ObservableObject {
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        // App Agent 全功能：任意项目默认工程师模式（可写本机 CCC + 板务）
-        if preferredToolMode != "discuss" {
-            preferredToolMode = "engineer"
-        }
+        // Desktop Agent Cursor 级全功能：任意项目强制 engineer（无工具阉割）
+        preferredToolMode = "engineer"
         ensureThreadHydrated(threadId: eagerTid)
         selectedThreadId = eagerTid
         if switching {
@@ -1649,18 +1647,20 @@ final class AppModel: ObservableObject {
     }
 
     func requestEngineerMode() {
+        // Cursor 级全功能：一键切换，无需确认弹窗
         if preferredToolMode == "engineer" {
             preferredToolMode = "discuss"
-            showToast("已切回规划模式（只读）")
+            showToast("已切到规划模式（可选只读）")
             return
         }
-        confirmEngineerMode = true
+        preferredToolMode = "engineer"
+        showToast("全功能模式：开发 / 定任务 / 优化（工具全开）")
     }
 
     func confirmEnableEngineerMode() {
         preferredToolMode = "engineer"
         confirmEngineerMode = false
-        showToast("工程师模式：可写本机 CCC + Hub 板务；业务改码仍定稿转任务")
+        showToast("全功能模式：开发 / 定任务 / 优化（工具全开）")
     }
 
     func revealChangedFiles(message: ChatMessage, projectId: String?) {
@@ -2694,7 +2694,7 @@ final class AppModel: ObservableObject {
         StreamSessionController.resolvePromptMode(forUserText: text)
     }
 
-    /// discuss = 可选只读；engineer = 默认全功能（本机 CCC + Hub 板务；业务改码仍 transfer）
+    /// discuss = 可选只读；engineer = 默认 Cursor 级全功能（开发/定任务/优化）
     static func toolMode(forUserText text: String) -> String {
         // 兼容旧调用：无偏好时只看口令
         StreamSessionController.resolveToolMode(preferred: "discuss", userText: text, projectId: nil)

@@ -32,3 +32,61 @@ def test_engineer_allowlist_includes_writes():
     tools = config.tools_for_mode("engineer")
     assert "Write" in tools
     assert "Edit" in tools
+
+
+def test_sdk_full_open_tools_engineer_only():
+    assert config.sdk_full_open_tools("engineer") is True
+    assert config.sdk_full_open_tools("discuss") is False
+    assert config.sdk_full_open_tools("") is False
+
+
+def test_claude_session_engineer_no_write_ban(monkeypatch):
+    """engineer = Cursor 级全开：空 allowlist、不禁 Write。"""
+    import chat_server.services.claude_session as cs
+
+    monkeypatch.setenv("CCC_HUB_MCP", "0")
+    mgr = cs.ClaudeSessionManager()
+
+    class _Opt:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(cs, "ClaudeAgentOptions", _Opt)
+    monkeypatch.setattr(cs.config, "require_claude_bin", lambda: "/bin/true")
+    monkeypatch.setattr(cs.config, "build_claude_env", lambda: {})
+    monkeypatch.setattr(mgr, "_ensure_sdk", lambda: None)
+
+    opt = mgr._build_options(
+        project_path="/tmp",
+        model="flash",
+        resume_session_id=None,
+        tool_mode="engineer",
+    )
+    assert opt.kwargs.get("allowed_tools") == []
+    assert "disallowed_tools" not in opt.kwargs
+    assert "Write" not in (opt.kwargs.get("disallowed_tools") or [])
+
+
+def test_claude_session_discuss_bans_write(monkeypatch):
+    import chat_server.services.claude_session as cs
+
+    monkeypatch.setenv("CCC_HUB_MCP", "0")
+    mgr = cs.ClaudeSessionManager()
+
+    class _Opt:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(cs, "ClaudeAgentOptions", _Opt)
+    monkeypatch.setattr(cs.config, "require_claude_bin", lambda: "/bin/true")
+    monkeypatch.setattr(cs.config, "build_claude_env", lambda: {})
+    monkeypatch.setattr(mgr, "_ensure_sdk", lambda: None)
+
+    opt = mgr._build_options(
+        project_path="/tmp",
+        model="flash",
+        resume_session_id=None,
+        tool_mode="discuss",
+    )
+    assert opt.kwargs.get("allowed_tools") == []
+    assert "Write" in opt.kwargs.get("disallowed_tools", [])

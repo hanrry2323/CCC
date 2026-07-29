@@ -475,10 +475,13 @@ class ClaudeSessionManager:
                     "[fail-open] relay :4000 不可达且未配置 CCC_RELAY_DIRECT_URL"
                     " / ~/.ccc/relay-direct.url（MiniMax 已退役）"
                 )
-        # SDK：allowed_tools 为空时不加 --allowedTools（= 默认全开）。
+        # SDK：allowed_tools 为空列表时不加 --allowedTools（= 默认全开）。
+        # engineer（默认）= Cursor 级全开：不加正向 allowlist、不禁写（MCP/Skill/Write 全可用）。
+        # discuss（显式）= 全开 + 硬禁写（勿正向 allowlist，否则 MCP/Skill 动态名被卡死）。
         # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
-        # discuss 默认：全开 + 硬禁写（勿正向 allowlist，否则 MCP/Skill 动态名被卡死）。
-        if explicit_allowed and not allowed_set:
+        if config.sdk_full_open_tools(mode):
+            kwargs["allowed_tools"] = []
+        elif explicit_allowed and not allowed_set:
             kwargs["allowed_tools"] = []
             deny = sorted(
                 set(config.CLAUDE_TOOL_ALLOWLIST_ENGINEER)
@@ -494,13 +497,11 @@ class ClaudeSessionManager:
                 }
             )
             kwargs["disallowed_tools"] = deny
-        elif mode == "discuss" and not explicit_allowed:
+        elif mode == "discuss":
             kwargs["allowed_tools"] = []
             kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         else:
             kwargs["allowed_tools"] = sorted(allowed_set)
-            if mode == "discuss":
-                kwargs["disallowed_tools"] = sorted(config.CLAUDE_TOOL_DISALLOW_DISCUSS)
         if resume_session_id:
             kwargs["resume"] = resume_session_id
         # Desktop：注入 ccc-hub MCP（透镜 / board-repair / mind）；discuss+engineer 均需要
@@ -757,12 +758,13 @@ class ClaudeSessionManager:
             mode, user_text=tool_src, prompt_mode=prompt_mode
         )
         _log.info(
-            "stream_turn tools hub_sid=%s mode=%s prompt_mode=%s n_tools=%d tools=%s",
+            "stream_turn tools hub_sid=%s mode=%s prompt_mode=%s full_open=%s n_tools=%d tools=%s",
             hub_session_id,
             mode,
             prompt_mode,
+            config.sdk_full_open_tools(mode),
             len(turn_tools),
-            sorted(turn_tools),
+            sorted(turn_tools) if turn_tools else ["*"],
         )
 
         slot = await self._get_or_create_slot(

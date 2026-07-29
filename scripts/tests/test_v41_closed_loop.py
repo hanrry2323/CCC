@@ -92,7 +92,7 @@ def test_baseline_collect(tmp_path):
     assert bl["version"]["VERSION"] == "v9.9.9"
     assert "control" in bl and "mode" in bl["control"]
     prompt = baseline_prompt_for_claude(bl)
-    assert "基线" in prompt or "架构师" in prompt
+    assert "基线" in prompt or "架构师" in prompt or "开发伙伴" in prompt
     assert "降控制面" in prompt
     assert "项目与进度" in prompt
     assert "开发计划" in prompt
@@ -106,6 +106,12 @@ def test_baseline_collect(tmp_path):
     assert "git log -5" not in prompt
     assert "用户要看见过程轨" not in prompt
     assert "建议往哪走" not in prompt  # 已改为开发计划（系列）
+    # 巡查硬卡标记须仍在 hub_voice
+    from pathlib import Path
+    hv = Path(__file__).resolve().parents[1] / "chat_server" / "hub_voice.py"
+    text = hv.read_text(encoding="utf-8")
+    for m in ("对老板怎么聊", "方案与路线", "hub_modules", "plan_md"):
+        assert m in text, m
 
 
 def test_daily_review_dry_run(tmp_path):

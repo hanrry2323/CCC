@@ -36,7 +36,7 @@ enum StreamSessionController {
         return modelPickerOptions.first(where: { $0.id == id })?.label ?? id
     }
 
-    /// discuss = 可选只读；engineer = 默认全功能（本机 CCC 可写 + Hub 板务）
+    /// discuss = 可选只读；engineer = 默认 Cursor 级全功能（开发/定任务/优化，工具全开）
     static func resolveToolMode(
         preferred: String,
         userText: String,
@@ -50,10 +50,10 @@ enum StreamSessionController {
         if t.contains("规划模式") || t.contains("只读讨论") {
             return "discuss"
         }
-        if t.contains("工程师模式") || t.contains("直接改本机") {
+        if t.contains("工程师模式") || t.contains("直接改本机") || t.contains("全功能") {
             return "engineer"
         }
-        // App Agent 全功能：默认 engineer
+        // Desktop Agent Cursor 级全功能：默认 engineer
         return "engineer"
     }
 
@@ -82,7 +82,7 @@ enum StreamSessionController {
             let kind = a.isImage ? "图片" : "文件"
             lines.append("- \(kind): \(a.path)")
         }
-        lines.append("请结合上述本地路径阅读（工程师模式才可改文件）。")
+        lines.append("请结合上述本地路径阅读（全功能模式可直接改文件）。")
         return lines.joined(separator: "\n")
     }
 

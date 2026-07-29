@@ -1308,7 +1308,7 @@ struct CodexChatPaneBody: View {
                 Button {
                     model.requestEngineerMode()
                 } label: {
-                    Text(model.preferredToolMode == "engineer" ? "工程师" : "规划")
+                    Text(model.preferredToolMode == "engineer" ? "全功能" : "规划")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(
                             model.preferredToolMode == "engineer"
@@ -1317,7 +1317,7 @@ struct CodexChatPaneBody: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("规划=可选只读；工程师=默认全功能（可写本机 CCC + Hub 板务）；业务仓改码请定稿转任务")
+                .help("全功能=Cursor 级（开发/定任务/优化，工具全开）；规划=可选只读")
 
                 Button {
                     pickComposerAttachment()
@@ -1438,16 +1438,16 @@ struct CodexChatPaneBody: View {
             .frame(maxWidth: CCCTheme.chatMaxWidth)
             .frame(maxWidth: .infinity)
             .confirmationDialog(
-                "开启工程师模式？",
+                "开启全功能模式？",
                 isPresented: $model.confirmEngineerMode,
                 titleVisibility: .visible
             ) {
-                Button("开启（可改本机文件）", role: .destructive) {
+                Button("开启（Cursor 级能力）", role: .destructive) {
                     model.confirmEnableEngineerMode()
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("默认工程师模式（全功能）：可写本机 CCC、Hub 板务。规划模式为可选只读。业务仓改码请定稿转任务。")
+                Text("全功能：开发、定任务、优化；工具全开。规划模式为可选只读。")
             }
         }
         .padding(.horizontal, 28)
@@ -2542,8 +2542,8 @@ struct SettingsView: View {
                     model.showToast("对话模型：\(name)")
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
-                    Text("规划（Plan · 不可改码）").tag("discuss")
-                    Text("工程师（可写本机 CCC）").tag("engineer")
+                    Text("规划（可选只读）").tag("discuss")
+                    Text("全功能（Cursor 级 · 默认）").tag("engineer")
                 }
                 if !model.sidecarReportedModel.isEmpty {
                     Text("Sidecar 报告：\(model.sidecarReportedModel)")

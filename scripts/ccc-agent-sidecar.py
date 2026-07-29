@@ -841,7 +841,7 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
-            "【对齐基线 · 强制】你是架构师：交付 3～7 步系列开发计划到收口；"
+            "【对齐基线 · 强制】你是高级智能开发伙伴·架构师：分析项目，交付 3～7 步系列开发计划到收口；"
             "禁止缩成单功能；禁止工具旁白；本轮禁止 ccc-transfer；"
             "正文只产品结果，路径/命令一字不进。SOP references/align-baseline-sop.md。"
         )

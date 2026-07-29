@@ -133,41 +133,41 @@ DANGEROUS_PATTERN = re.compile(
     r")"
 )
 
-# F-SEC-03: Claude CLI 允许的工具（allowlist）；未列出的工具名应被拒绝
-# discuss = Plan 模式（全智力只读：可子代理/检索，禁止写业务仓）；engineer = 显式解锁本机改文件
-# Bash 在 discuss 中保留：对齐基线/定稿等关键路径需要 `git status` / `git log`（纪律限制为只读命令）。
-# Task/Agent：只读调研/审查/代码地图类子代理（子代理同样禁写）。
+# F-SEC-03: 工具门禁（2026-07-29 · Cursor 级全开）
+# engineer（默认）= Cursor 级：SDK 不加正向 allowlist、不禁写（MCP/Skill/Write 全开）
+# discuss（显式可选）= 只读：空 allowlist + 硬禁 Write/Edit…
+# Bash 在 discuss 中保留：对齐基线等需 git status / git log。
 # 外网工具允许；挂死由 CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 回收，禁止靠删能力「止血」。
 CLAUDE_TOOL_ALLOWLIST_DISCUSS = frozenset({
     "Read", "Glob", "Grep", "LS", "Bash", "TodoWrite", "WebFetch", "WebSearch",
     "Task", "Agent",
 })
+# 名义全集（测试/观测）；engineer 真正下发 = 空 allowlist（全开），见 _build_options
 CLAUDE_TOOL_ALLOWLIST_ENGINEER = frozenset({
     "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
     "LS", "Bash", "NotebookEdit", "TodoWrite", "WebFetch", "WebSearch",
     "Task", "Agent",
 })
-# 硬闸：discuss 非空 allowlist 时显式 disallowed（不靠自觉）
+# 硬闸：仅显式 discuss 时 disallowed（不靠自觉）
 CLAUDE_TOOL_DISALLOW_DISCUSS = frozenset({
     "Write", "Edit", "MultiEdit", "NotebookEdit",
 })
-# 兼容旧引用：全量 = 工程师模式
+# 兼容旧引用：全量 = 工程师模式名义集
 CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
-_ENGINEER_PHRASES = ("工程师模式", "直接改本机")
+_ENGINEER_PHRASES = ("工程师模式", "直接改本机", "全功能")
 
-# discuss = 可选只读；默认已是 engineer 全功能（1A/2A）
-# 工具：SDK 默认全开 + 硬禁 Write/Edit…；优先一等 MCP hub_* ；Bash CLI 仅逃生口
+# discuss = 显式可选只读；默认 engineer = Cursor 级全功能（开发/定任务/优化，无工具阉割）
 DISCUSS_TOOL_DISCIPLINE = (
-    "【工具纪律 · Plan · 可选只读】智力拉满；本回合禁 Write/Edit。"
+    "【工具纪律 · Plan · 显式只读】本回合禁 Write/Edit。"
     "优先一等 MCP（ccc-hub）：hub_board / hub_git / hub_modules / hub_locate / hub_file / "
-    "hub_grep / hub_mind_get；清板请用工程师模式（默认）跑 hub_repair。"
+    "hub_grep / hub_mind_get；要改文件请切回工程师/全功能模式跑 hub_repair 与 Write。"
     "硬禁：Write / Edit / MultiEdit / NotebookEdit、装包、推远程、删业务文件、擅自 commit。"
     "Bash 仅逃生口可跑只读探查与 `ccc-hub-lens.py`；结果内化，**禁止把命令贴进用户正文**。"
     "业务仓事实必须经 Hub（禁止 ssh / 写死 2017 绝对路径 / 本机第二树）。"
     "正文禁 transfer-outbox / Terminal / A/B。"
     "【扫风险 / 定稿】① hub_board；② hub_modules；③ hub_locate/hub_grep；④ hub_file 1～3；⑤ hub_git；再结论。"
-    "对用户：只聊方案与路线；路径/类名/工具名禁进正文；平台词只进 ccc-transfer。Hub 不可达 → 明说，禁止瞎编。"
+    "Hub 不可达 → 明说，禁止瞎编。"
 )
 
 
@@ -179,8 +179,8 @@ def resolve_tool_mode(
 ) -> str:
     """返回 discuss | engineer。
 
-    App Agent 全功能（1A/2A）：**默认 engineer**（含任意 project_id）。
-    显式 discuss → 只读；口令/短语仍可升 engineer。不再因业务仓强制打回 discuss。
+    Desktop Agent Cursor 级全功能：**默认 engineer**（含任意 project_id）。
+    仅显式 discuss → 只读；口令/短语可升 engineer。不再因业务仓强制打回 discuss。
     """
     _ = project_id
     t = (explicit or "").strip().lower()
@@ -197,17 +197,21 @@ def tools_for_mode(
     user_text: str = "",
     prompt_mode: str | None = None,
 ) -> frozenset:
-    """discuss = 只读全集（SDK 侧空 allowlist + 硬禁写）；engineer = 含写工具。
+    """名义工具集（测试/观测）。
 
-    已取消 light 零工具 / 剥 Web：短闲聊靠纪律「直接答」，不靠掏空 allowlist。
-    discuss 不再用正向 allowlist 卡死 MCP/Skill 等动态工具名——只禁 Write/Edit。
-    user_text / prompt_mode 保留参数兼容旧调用方。
+    engineer 真正下发 SDK = 空 allowlist + 无 disallowed（Cursor 级全开），
+    见 ClaudeSessionManager._build_options；勿再用正向 allowlist 卡 MCP/Skill。
+    discuss = 名义只读集；SDK 侧空 allowlist + 硬禁写。
     """
     _ = (user_text, prompt_mode)
     if (mode or "").strip().lower() == "engineer":
         return CLAUDE_TOOL_ALLOWLIST_ENGINEER
-    # 兼容测试/观测：名义全集；真正下发给 SDK 见 ClaudeSessionManager._build_options
     return CLAUDE_TOOL_ALLOWLIST_DISCUSS
+
+
+def sdk_full_open_tools(mode: str) -> bool:
+    """engineer = Cursor 级全开（不加 --allowedTools / 不禁写）。"""
+    return (mode or "").strip().lower() == "engineer"
 
 
 # 兼容旧测试/调用：critical / plan 判定仍可用于观测，不再驱动剥工具

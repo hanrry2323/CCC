@@ -17,15 +17,15 @@
 看板权威 = 同上 .ccc/board（Hub 透镜 live）
 远端备份 = GitHub（不是对话 cwd）
 M1        = 无业务第二树；baseline 开场 + 透镜 live
-平台仓    = 本机 CCC（仅 ccc 可工程师模式）
+平台仓    = 本机 CCC（Desktop Agent engineer 默认可改；合入权威仍认 Cursor）
 ```
 
 1. 编排 SSOT = 2017 `apps/<name>`。  
-2. 对话 = Desktop + sidecar；业务事实走 Hub，不走本机业务 clone。  
+2. 对话 = Desktop + sidecar（全功能 Agent）；业务事实走 Hub，不走本机业务 clone。  
 3. 一项目一对话 `{id}::main`。  
 4. 不对 CCC orch 下达业务 epic。  
-5. 红线 12：不擅自 enable。  
-6. 写码只在 2017 Engine；业务仓拒绝工程师模式。
+5. 红线 12：不擅自 enable invent。  
+6. 业务写码只在 2017 Engine；Desktop 默认 engineer（Cursor 级全开），不是「业务拒绝工程师」。
 
 ---
 

@@ -40,10 +40,10 @@ alwaysApply: true
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
 - 前台只确认意图（**转意图卡**/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。
-- **意图卡供给（硬 · v0.64.0 · 1+3）**：Desktop Agent = **架构师**——对齐基线出**系列开发计划**（3～7 步到收口），禁止缩成单功能闲聊。人点「转意图卡」→ 整条计划落成多卡链 → gate 绿自动进代办+wake。空闲飞轮推下一 L1 `planned`；**进代办仍须人点转**（禁 invent）。SOP：`intent-card-sop.md` · `align-baseline-sop.md`。
-- **Desktop Agent 定方案**：**架构师排系列计划优先**（可查 HP/社区）；正文只聊路线与产品结果；技术细节只进契约块；禁止每轮甩拍板题、禁止转卡后再问入队；`plan_md` 与 `goal` 同向。**意图卡首轮**须人话翻译；下达后 `dispatched`；**收口在运维**。板务仅挡事时清；禁止 Engine 卫生 epic 主业。
-- **Desktop 主路径**：架构师排计划 → 人点转意图卡落成整条链 → L1 + gate → 自动进代办；右栏 = 意图卡（`planned` 仅）+ 看板计数。对齐基线=排系列计划；**前台路线、后台技术核实**（`references/align-baseline-sop.md`）。凡进 backlog epic 必 wake Engine。
-- **App Agent 全功能（硬 · 1A/2A）**：任意项目卡默认 **engineer**（本机 CCC + Hub 含跨仓 `hub_repair`）；业务改码仍 transfer→Engine；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨。
+- **意图卡供给（硬 · v0.64.0 · 1+3）**：Desktop Agent = **高级智能开发伙伴 · 架构师**（分析→架构→意图→系列计划/意图卡→读测→失败纠偏→连续优化）。对齐基线出 3～7 步计划；人点「转意图卡」→ 整条多卡链 → gate 绿进代办+wake。空闲飞轮推下一 L1 `planned`；**进代办仍须人点转**（禁 invent）。SOP：`intent-card-sop.md` · `align-baseline-sop.md` · `desktop-agent-identity.md`。
+- **Desktop Agent 定方案**：**架构师闭环优先**（可查 HP/社区）；正文只聊路线与产品结果；技术细节只进契约块；失败读证据优化改卡；禁止每轮甩拍板题、禁止转卡后再问入队；`plan_md` 与 `goal` 同向。**意图卡首轮**须人话翻译；下达后 `dispatched`；**收口在运维**。板务仅挡事时清；禁止 Engine 卫生 epic 主业。
+- **Desktop 主路径**：架构师分析/排计划 → 人点转意图卡落成整条链 → L1 + gate → Engine 跑 → Agent 读结论纠偏；右栏 = 意图卡（`planned` 仅）+ 看板计数。对齐基线=排系列计划；**前台路线、后台技术核实**（`references/align-baseline-sop.md`）。凡进 backlog epic 必 wake Engine。
+- **App Agent 全功能（硬 · Cursor 级 · 2026-07-29）**：任意项目卡默认 **engineer = SDK 工具全开**（无正向 allowlist、无写禁）；可**开发、定任务、优化**；本机 CCC + Hub（含跨仓 `hub_repair`）；业务改码仍 transfer→Engine（拓扑）；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨；显式 discuss 才只读。
 - **看板管家（硬）**：板务本职 = **当前会话 Agent**。禁止「请打开编排运维」当主路径；禁止教用户手写 `transfer-outbox`/Terminal。运维红灯 → 打开当前项目或 `ccc` 平台会话。
 - **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进契约块；禁止过程旁白（含英文）。
 - **飞轮自动化（已实现 · 2026-07-28）**：transfer seed L1 goal → regress 标 probed → 人点 stable → idle 推 next_goal；见 `docs/briefs/2026-07-28-flywheel-auto-open.md`（禁止自动 stable / invent）。

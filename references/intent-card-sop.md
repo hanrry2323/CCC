@@ -1,8 +1,9 @@
-# 转意图卡 SOP（Agent · 失败案例驱动）
+# 转意图卡 SOP（架构师开发伙伴 · 失败案例驱动）
 
 > **谁用**：Desktop App Agent（快捷「转意图卡」/ `ccc-transfer` 契约块）。  
-> **目的**：人认白话意图后，起草**精准意图卡**；`transfer_gate` 绿才自动进代办（Engine 开工）。禁止糊卡进 OpenCode。  
-> **SSOT 链**：本文件 → `hub_voice`「转意图卡纪律」→ `QuickPrompts.finalize`（UI 名「转意图卡」）→ `transfer_gate` → qb `transfer_playbook`。  
+> **目的**：架构师理解意图后，起草**精准意图卡链**；`transfer_gate` 绿才自动进代办。禁止糊卡；失败后读证据优化改卡。  
+> **身份**：[`docs/product/desktop-agent-identity.md`](../docs/product/desktop-agent-identity.md)  
+> **SSOT 链**：本文件 → `hub_voice`「转意图卡纪律」→ `QuickPrompts.finalize` → `transfer_gate`。  
 > **旧名**：`finalize-transfer-sop.md`（重定向到本文）。
 
 ---
@@ -12,14 +13,15 @@
 | 角色 | 权责 |
 |------|------|
 | **人** | 唯一**发起**「转意图卡」；只审白话路线：整条计划要走到哪、每步怎样算完；飞轮推到右栏的下一意图仍须人点转才进代办 |
-| **Agent** | **架构师**：人触发后把已排的**系列开发计划**落成**整条意图卡链**（多卡优先）；未收敛拒转；gate 红按 `fix_hint` 改卡 |
-| **系统** | `transfer_gate` **仅绿**才 auto 进代办；空闲飞轮自动写下一 L1 `planned`（不写 backlog） |
+| **Agent** | **高级智能开发伙伴 · 架构师**：分析→架构→意图→把系列计划落成**整条意图卡链**；入队后读测/失败自动纠偏（优化卡须人再点转）；gate 红按 `fix_hint` 改卡 |
+| **系统** | `transfer_gate` **仅绿**才 auto 进代办；Engine 跑写码/审测；空闲飞轮写下一 L1 `planned`（不写 backlog） |
 
 **转意图卡 ≠ 定代办**。代办 = Engine 弹药；卡错则全错。
 
 **架构师口径**：对齐基线先排 3～7 步系列计划；转意图卡 = 整条计划入链，禁止只落「当前一个小功能」。  
 **一次点透 → 整条链（1）**：系列 ≥2 步 → 必须多块 `ccc-transfer` / `cards:[]`；禁止一轮一张糊大卡。  
-**飞轮空闲（3）**：板空闲且无 planned → 系统从规划文推下一产品意图到右栏；进代办仍须人点「转意图卡」。
+**飞轮空闲（3）**：板空闲且无 planned → 系统从规划文推下一产品意图到右栏；进代办仍须人点「转意图卡」。  
+**失败纠偏**：读 `failure_pack` / verdict / 审查报告 → 优化新意图卡；禁止只归档交差；禁止 invent。
 
 ---
 
