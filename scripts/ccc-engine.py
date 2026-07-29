@@ -2152,6 +2152,41 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             engine_log(
                 f"[{label}] 启动 {tid} 失败: {launch_r['error']}{skip_tag}"
             )
+            # #region agent log
+            try:
+                import json as _json
+                import time as _time
+                from pathlib import Path as _P
+
+                _col_now, _ = store.find_task(tid)
+                _payload = {
+                    "sessionId": "7c1253",
+                    "hypothesisId": "C",
+                    "location": "ccc-engine.py:launch_error",
+                    "message": "launch_failed_left_in_column",
+                    "data": {
+                        "tid": tid,
+                        "error": str(launch_r.get("error") or "")[:200],
+                        "skip_retry": bool(launch_r.get("skip_retry")),
+                        "column_after": _col_now,
+                        "salvage": launch_r.get("salvage"),
+                    },
+                    "timestamp": int(_time.time() * 1000),
+                    "runId": "stuck-board-1",
+                }
+                _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
+                for _dp in (
+                    _P.home() / ".ccc" / "debug-7c1253.log",
+                    _P("/Users/apple/program/CCC/.cursor/debug-7c1253.log"),
+                ):
+                    try:
+                        _dp.parent.mkdir(parents=True, exist_ok=True)
+                        _dp.open("a", encoding="utf-8").write(_line)
+                    except OSError:
+                        pass
+            except Exception:
+                pass
+            # #endregion
             continue
         if not _register_active(active_tasks, ws, tid, complexity=complexity):
             _release_opencode_slot(tkey, 1)
