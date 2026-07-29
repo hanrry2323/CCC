@@ -119,6 +119,8 @@ final class AppModel: ObservableObject {
     private var threadIntentDispatchPending: [String: Bool] = [:]
     /// v0.65：同轮多意图卡草稿（逐卡 gate；一卡红不堵链）
     private var threadPendingIntentDrafts: [String: [TransferDraft]] = [:]
+    /// 防止 refreshTransferDraft / 连点重复 promote 把 MainActor+Hub 打满卡死
+    private var intentPromoteInFlight: Set<String> = []
     /// 右栏拆分动画世代（works 0→N 时递增；切会话重置）
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
@@ -600,14 +602,18 @@ final class AppModel: ObservableObject {
             return candidate
         }
 
-        // 尝试自启
+        // 尝试自启（必须离 MainActor：ensureRunning 内有 Thread.sleep / semaphore，会整 App 卡死）
         statusText = "连接 Agent…"
         let homeHint = cccHomePath.trimmingCharacters(in: .whitespacesAndNewlines)
         let agentBase = agentURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        let launch = AgentSidecarLauncher.ensureRunning(
-            cccHomeHint: homeHint.isEmpty ? nil : homeHint,
-            agentBase: agentBase.isEmpty ? AgentSidecarLauncher.defaultAgentBase : agentBase
-        )
+        let launchHome = homeHint.isEmpty ? nil : homeHint
+        let launchBase = agentBase.isEmpty ? AgentSidecarLauncher.defaultAgentBase : agentBase
+        let launch = await Task.detached(priority: .userInitiated) {
+            AgentSidecarLauncher.ensureRunning(
+                cccHomeHint: launchHome,
+                agentBase: launchBase
+            )
+        }.value
         if launch.launched, let home = launch.cccHome, cccHomePath.isEmpty {
             cccHomePath = home
         }
@@ -3690,17 +3696,46 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 统一入口：人发起转意图卡 → L1 → gate → 自动进代办
+    /// 统一入口：有就绪契约 → L1→gate→代办；否则发「转意图卡」快捷让 Agent 起草（勿空打 Hub 卡死 UI）
     func beginIntentCardDispatch(threadId: String? = nil) {
         let tid = threadId ?? selectedThreadId
         guard let tid else {
             showToast("请先选择项目")
             return
         }
-        threadIntentDispatchPending[tid] = true
         if threadPendingIntentDrafts[tid] == nil, let d = threadTransferDraft[tid] {
             threadPendingIntentDrafts[tid] = [d]
         }
+        let drafts = threadPendingIntentDrafts[tid]
+            ?? (threadTransferDraft[tid].map { [$0] } ?? [])
+        let ready = drafts.filter(\.isGateReady)
+        if ready.isEmpty {
+            let form = transferForm(for: tid)
+            var d = TransferDraft(source: "form")
+            d.title = form.title
+            d.goal = form.goal
+            d.acceptance = form.acceptance
+            d.pipeline = form.pipeline
+            d.feasibility = form.feasibility
+            d.feasibilityReason = form.feasibilityReason
+            d.executorIntent = form.executor
+            d.complexity = form.complexity
+            d.bumpVersion = form.bumpVersion
+            d.planMd = form.planMd
+            if d.isGateReady {
+                threadPendingIntentDrafts[tid] = [d]
+            } else {
+                // 无契约：走 Agent 起草，禁止空 promote 连打 Hub
+                applyQuickPrompt(
+                    QuickPrompts.finalize,
+                    uiLabel: "转意图卡",
+                    projectId: Self.projectId(fromThreadId: tid),
+                    threadId: tid
+                )
+                return
+            }
+        }
+        threadIntentDispatchPending[tid] = true
         Task { await promoteIntentCardToBacklog(threadId: tid) }
     }
 
@@ -3747,8 +3782,10 @@ final class AppModel: ObservableObject {
         applyTransferDraft(d, fallbackContent: nil, threadId: tid)
         if d.isGateReady { setTransferDelivery(tid, .draft) }
         threadPendingIntentDrafts[tid] = all.filter { $0.isGateReady || !$0.title.isEmpty }
-        // 人已点转意图卡 → L1 落盘 + 逐卡 gate 绿则自动进代办
-        if threadIntentDispatchPending[tid] == true, all.contains(where: \.isGateReady) {
+        // 人已点转意图卡 → L1 落盘 + 逐卡 gate 绿则自动进代办（单飞，防流式/连点打爆）
+        if threadIntentDispatchPending[tid] == true,
+           all.contains(where: \.isGateReady),
+           !intentPromoteInFlight.contains(tid) {
             Task { await promoteIntentCardToBacklog(threadId: tid) }
         }
     }
@@ -3757,8 +3794,15 @@ final class AppModel: ObservableObject {
     func promoteIntentCardToBacklog(threadId: String) async {
         let tid = threadId
         guard threadIntentDispatchPending[tid] == true else { return }
+        guard !intentPromoteInFlight.contains(tid) else { return }
+        intentPromoteInFlight.insert(tid)
+        defer { intentPromoteInFlight.remove(tid) }
+
         let pid = Self.projectId(fromThreadId: tid)
-        guard !pid.isEmpty else { return }
+        guard !pid.isEmpty else {
+            threadIntentDispatchPending[tid] = false
+            return
+        }
 
         var drafts = threadPendingIntentDrafts[tid] ?? []
         if drafts.isEmpty, let one = threadTransferDraft[tid] {
@@ -3782,7 +3826,15 @@ final class AppModel: ObservableObject {
         }
 
         let ready = drafts.filter(\.isGateReady)
-        guard !ready.isEmpty else { return }
+        guard !ready.isEmpty else {
+            // 无就绪契约：清 pending，避免一直挂着；由 Agent 起草后再触发
+            threadIntentDispatchPending[tid] = false
+            return
+        }
+
+        // 先清 pending，避免助手流结束再次 refreshTransferDraft 重入 promote
+        threadIntentDispatchPending[tid] = false
+        threadPendingIntentDrafts[tid] = nil
 
         // 1) 全部先写 L1 planned（规划面）
         let l1Cards: [[String: Any]] = ready.map { d in
@@ -3795,7 +3847,9 @@ final class AppModel: ObservableObject {
             ] as [String: Any]
         }
         do {
-            try await prepareClient(projectId: pid)
+            await Task.yield()
+            // Hub-only：禁止 ensureAgent（会同步拉 sidecar 卡死 UI）
+            try await prepareClient(projectId: pid, ensureAgent: false)
             _ = try await client.upsertIntentCards(projectId: pid, cards: l1Cards)
             await refreshMindGoals(projectId: pid)
             showToast("意图卡 \(ready.count) 张已写入 · 逐卡过门…")
@@ -3807,6 +3861,7 @@ final class AppModel: ObservableObject {
         var okN = 0
         var failHints: [String] = []
         for (idx, d) in ready.enumerated() {
+            await Task.yield()
             let title = String(d.title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
             let goal = d.goal.trimmingCharacters(in: .whitespacesAndNewlines)
             let accLines = d.acceptanceLines
@@ -3857,8 +3912,6 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 350_000_000)
         }
 
-        threadIntentDispatchPending[tid] = false
-        threadPendingIntentDrafts[tid] = nil
         if okN > 0, failHints.isEmpty {
             showToast("已进代办 \(okN) 张意图卡")
         } else if okN > 0 {
