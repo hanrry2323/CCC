@@ -109,6 +109,14 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 完整 `fix_hint` 以 `transfer_gate.py` `_default_fix_hint` 为准。
 
+## 失败回流（硬 · 2026-07-29）
+
+Gate 红**禁止静默丢弃**：
+
+1. **HTTP**：`errors[]` + 顶层 `fix_hint`（`/transfer` → 4xx；`/transfer/validate` → 200 + `ok:false`）
+2. **L1**：业务仓 `.ccc/agent-mind/decided.json` → `transfer_lessons[]`（`source=gate_reject`）；digest「近期定卡教训」；Agent `hub_mind_get` 可读
+3. **回执**：sidecar 冲刷遇永久 4xx → `transfer-receipts.json` 写 `status=rejected` + `fix_hint`（勿空转 8 次）；Desktop hydrate 徽章 `failed`
+
 ## 成功响应
 
 ```json

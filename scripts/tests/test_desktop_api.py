@@ -434,6 +434,7 @@ def test_intent_cards_upsert_and_abandon(client, tmp_path, monkeypatch):
 def test_transfer_validate_dry_run(client, tmp_path, monkeypatch):
     root = tmp_path / "ws2"
     root.mkdir()
+    (root / ".ccc" / "agent-mind").mkdir(parents=True)
     _stub_demo_project(monkeypatch, root)
 
     weak = client.post(
@@ -451,5 +452,34 @@ def test_transfer_validate_dry_run(client, tmp_path, monkeypatch):
         },
     )
     assert weak.status_code == 200, weak.text
-    assert weak.json().get("ok") is False
-    assert weak.json().get("dry_run") is True
+    body = weak.json()
+    assert body.get("ok") is False
+    assert body.get("dry_run") is True
+    assert body.get("fix_hint") or (body.get("errors") or [{}])[0].get("fix_hint")
+    # Gate 红须回流 L1，供 Agent hub_mind_get / digest 读到
+    decided_p = root / ".ccc" / "agent-mind" / "decided.json"
+    assert decided_p.is_file(), "validate reject must write transfer_lessons"
+    decided = json.loads(decided_p.read_text(encoding="utf-8"))
+    lessons = decided.get("transfer_lessons") or []
+    assert lessons, "expected transfer_lessons on gate reject"
+    assert lessons[0].get("source") == "gate_reject"
+    assert lessons[0].get("hint") or lessons[0].get("bucket")
+
+
+def test_transfer_gate_400_writes_lesson(client, tmp_path, monkeypatch):
+    root = tmp_path / "ws-gate"
+    (root / ".ccc" / "agent-mind").mkdir(parents=True)
+    _stub_demo_project(monkeypatch, root)
+
+    r = client.post(
+        "/api/desktop/transfer",
+        auth=_auth(),
+        json={"project_id": "demo", "title": "x"},
+    )
+    assert r.status_code == 400
+    body = r.json()
+    assert body["ok"] is False
+    decided = json.loads(
+        (root / ".ccc" / "agent-mind" / "decided.json").read_text(encoding="utf-8")
+    )
+    assert decided.get("transfer_lessons")

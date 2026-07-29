@@ -661,6 +661,15 @@ enum LocalSessionStore {
         var project_id: String
         var thread_id: String
         var delivered_at: String
+        /// delivered（缺省）| rejected（gate 永久拒绝）
+        var status: String?
+        var reason: String?
+        var fix_hint: String?
+        var card_title: String?
+
+        var isRejected: Bool {
+            (status ?? "delivered").lowercased() == "rejected"
+        }
     }
 
     /// advisory flock；与 Python `transfer-outbox.lock` 互通

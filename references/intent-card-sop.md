@@ -112,7 +112,7 @@
 
 | 现象 | 怎么改 |
 |------|--------|
-| Gate 4xx | 读 `errors[].fix_hint` + code，改卡再出块（意图层停留） |
+| Gate 红 | 读 `errors[].fix_hint`；**必读** L1 digest「近期定卡教训」/`transfer_lessons`（validate 与投递红均写）；本机 `transfer-receipts.json` 可有 `status=rejected`；改卡再出块（意图层停留，**禁止声称已进代办**） |
 | hang / `acceptance_cmd_failed` | 砍 acceptance 到 1～2 条本卡 pytest；挪走 e2e/probe |
 | 耗尽 | `post-exhaust-epic-optimize-sop`：归档旧卡 → 按桶缩小 → **新意图卡**（须人再点转） |
 | 假绿 / revert 来回 | 禁「先 revert 再 restore」当修法；验绿即停并 commit |

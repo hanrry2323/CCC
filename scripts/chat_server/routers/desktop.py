@@ -344,9 +344,45 @@ async def transfer_to_epic(request: Request):
     return await _transfer_epic_from_body(body)
 
 
+def _record_gate_reject_lesson(body: dict[str, Any], errors: list[dict]) -> None:
+    """Gate 红 → L1 transfer_lessons，供 Desktop Agent hub_mind_get / digest 必读。"""
+    try:
+        pid = str(body.get("project_id") or body.get("project") or "").strip()
+        if not pid:
+            return
+        ws_path = None
+        try:
+            ws_path = get_project_path(pid)
+        except Exception:
+            ws_path = PROJECT_TO_WORKSPACE.get(pid)
+        if not ws_path:
+            return
+        root = Path(str(ws_path))
+        if not root.is_dir():
+            return
+        from chat_server.services import agent_mind as _am
+
+        e0 = errors[0] if errors else {}
+        _am.append_transfer_lesson(
+            root,
+            epic_id="",
+            bucket=str(e0.get("code") or "gate_reject"),
+            title_snip=str(body.get("title") or "")[:80],
+            hint=str(e0.get("fix_hint") or e0.get("message") or "")[:240],
+            bad_pattern=str(e0.get("message") or "")[:160],
+            good_fix=str(e0.get("fix_hint") or "")[:160],
+            source="gate_reject",
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("transfer_lessons write on gate_reject failed: %s", exc)
+
+
 @router.post("/transfer/validate")
 async def transfer_validate(request: Request):
-    """Dry-run transfer_gate：不写 backlog / 不 wake。用于意图卡→代办前预检。"""
+    """Dry-run transfer_gate：不写 backlog / 不 wake。用于意图卡→代办前预检。
+
+    红时仍写 L1 transfer_lessons（与 /transfer 拒绝同闭环），避免 Agent 以为已过门。
+    """
     check_auth(request)
     body = await request.json()
     if not isinstance(body, dict):
@@ -354,10 +390,13 @@ async def transfer_validate(request: Request):
     from ..services import transfer_gate
 
     ok, errors = transfer_gate.validate_transfer_payload(body)
+    if not ok:
+        _record_gate_reject_lesson(body, errors)
     return {
         "ok": bool(ok),
         "errors": errors if not ok else [],
         "dry_run": True,
+        "fix_hint": (errors[0].get("fix_hint") if errors else None),
     }
 
 
@@ -669,30 +708,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
     ok, errors = transfer_gate.validate_transfer_payload(body)
     if not ok:
         # Gate reject → L1 lesson so Agent improves next draft
-        try:
-            pid = str(body.get("project_id") or body.get("project") or "").strip()
-            if pid:
-                ws_path = None
-                try:
-                    ws_path = _resolve_workspace(pid)
-                except Exception:
-                    ws_path = PROJECT_TO_WORKSPACE.get(pid)
-                if ws_path:
-                    from chat_server.services import agent_mind as _am
-
-                    e0 = errors[0] if errors else {}
-                    _am.append_transfer_lesson(
-                        Path(ws_path),
-                        epic_id="",
-                        bucket=str(e0.get("code") or "gate_reject"),
-                        title_snip=str(body.get("title") or "")[:80],
-                        hint=str(e0.get("fix_hint") or e0.get("message") or "")[:240],
-                        bad_pattern=str(e0.get("message") or "")[:160],
-                        good_fix=str(e0.get("fix_hint") or "")[:160],
-                        source="gate_reject",
-                    )
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("transfer_lessons write on gate_reject failed: %s", exc)
+        _record_gate_reject_lesson(body, errors)
         return JSONResponse(
             status_code=400,
             content={
@@ -714,12 +730,14 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
     # LPSN · N: after workspace known — block next product intent until S/abandon
     n_err = transfer_gate.check_next_intent_gate(body, Path(workspace))
     if n_err:
+        _record_gate_reject_lesson(body, [n_err])
         return JSONResponse(
             status_code=400,
             content={
                 "ok": False,
                 "error": n_err["code"],
                 "errors": [n_err],
+                "fix_hint": n_err.get("fix_hint"),
             },
         )
 

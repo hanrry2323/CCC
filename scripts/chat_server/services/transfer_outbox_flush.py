@@ -191,25 +191,43 @@ def save_receipts(items: list[dict[str, Any]], path: Path | None = None) -> None
 def write_receipt(
     *,
     client_request_id: str,
-    epic_id: str,
-    project_id: str,
-    thread_id: str,
+    epic_id: str = "",
+    project_id: str = "",
+    thread_id: str = "",
     outbox: Path | None = None,
+    status: str = "delivered",
+    reason: str = "",
+    fix_hint: str = "",
+    card_title: str = "",
 ) -> None:
-    """投递成功收据；Desktop reopen hydrate 优先读此文件。"""
+    """投递回执；Desktop reopen hydrate 优先读此文件。
+
+    status=delivered：须有 epic_id。
+    status=rejected：gate/永久 4xx；epic_id 可空，须带 reason/fix_hint。
+    """
     crid = (client_request_id or "").strip()
+    st = (status or "delivered").strip().lower() or "delivered"
     eid = (epic_id or "").strip()
-    if not crid or not eid:
+    if not crid:
+        return
+    if st == "delivered" and not eid:
         return
     p = receipts_path(outbox)
     q = load_receipts(p)
-    rec = {
+    now = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+    rec: dict[str, Any] = {
         "client_request_id": crid,
         "epic_id": eid,
         "project_id": (project_id or "").strip(),
         "thread_id": (thread_id or "").strip(),
-        "delivered_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        "delivered_at": now,
+        "status": st,
     }
+    if st == "rejected":
+        rec["reason"] = str(reason or "")[:500]
+        rec["fix_hint"] = str(fix_hint or "")[:240]
+        rec["card_title"] = str(card_title or "")[:80]
+        rec["rejected_at"] = now
     replaced = False
     for i, row in enumerate(q):
         if isinstance(row, dict) and row.get("client_request_id") == crid:
@@ -284,6 +302,49 @@ def _merge_after_flush(
         return len(remaining)
 
 
+def _parse_hub_error_payload(body_txt: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(body_txt) if body_txt else {}
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _is_permanent_transfer_reject(detail: str, payload: dict[str, Any]) -> bool:
+    """Gate / 角色锁 / 业务 4xx：勿重试 8 次；5xx/超时仍重试。"""
+    if isinstance(payload, dict):
+        if payload.get("ok") is False and (
+            payload.get("errors") or payload.get("error") or payload.get("fix_hint")
+        ):
+            return True
+    d = (detail or "").lower()
+    for code in ("http_400", "http_422", "http_401", "http_403", "http_404"):
+        if d.startswith(code):
+            return True
+    return False
+
+
+def _reject_hint(payload: dict[str, Any], detail: str) -> tuple[str, str]:
+    """Return (reason, fix_hint) from Hub error payload."""
+    errors = payload.get("errors") if isinstance(payload, dict) else None
+    e0 = errors[0] if isinstance(errors, list) and errors else {}
+    if not isinstance(e0, dict):
+        e0 = {}
+    reason = str(
+        e0.get("message")
+        or payload.get("error")
+        or detail
+        or "gate_rejected"
+    )[:500]
+    hint = str(
+        e0.get("fix_hint")
+        or payload.get("fix_hint")
+        or e0.get("message")
+        or reason
+    )[:240]
+    return reason, hint
+
+
 def _post_transfer(item: dict[str, Any], timeout: float = 25.0) -> tuple[bool, str, dict[str, Any]]:
     """Return (ok, detail, response_json)."""
     body = {
@@ -317,8 +378,9 @@ def _post_transfer(item: dict[str, Any], timeout: float = 25.0) -> tuple[bool, s
                 return True, str(payload.get("epic_id")), payload
             return False, str(payload.get("error") or "empty epic"), payload
     except urllib.error.HTTPError as e:
-        body_txt = e.read().decode("utf-8", errors="replace")[:400]
-        return False, f"http_{e.code}:{body_txt}", {}
+        body_txt = e.read().decode("utf-8", errors="replace")[:2000]
+        payload = _parse_hub_error_payload(body_txt)
+        return False, f"http_{e.code}:{body_txt[:400]}", payload
     except Exception as e:
         return False, f"{type(e).__name__}:{e}", {}
 
@@ -343,12 +405,14 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
             "pending": pending,
             "delivered": 0,
             "failed": pre_exhausted,
+            "rejected": 0,
             "path": str(p),
             "repair_pending": repair_pending,
         }
 
     delivered = 0
     failed = pre_exhausted
+    rejected = 0
     details: list[dict[str, Any]] = []
     delivered_crids: set[str] = set()
     bumped: dict[str, dict[str, Any]] = {}
@@ -369,6 +433,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                     project_id=str(item.get("project_id") or ""),
                     thread_id=str(item.get("thread_id") or ""),
                     outbox=p,
+                    status="delivered",
                 )
                 # 强校验：投递成功后 receipts 必须能读回同 crid（防 hydrate 丢单）
                 if crid:
@@ -386,6 +451,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                             project_id=str(item.get("project_id") or ""),
                             thread_id=str(item.get("thread_id") or ""),
                             outbox=p,
+                            status="delivered",
                         )
                         recs2 = load_receipts(receipts_path(p))
                         if not any(
@@ -414,6 +480,46 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
                 }
             )
             continue
+
+        # Gate / 永久 4xx：立刻 rejected 回执 + 进 failed，禁止空转 8 次
+        if _is_permanent_transfer_reject(detail, payload):
+            rejected += 1
+            failed += 1
+            reason, hint = _reject_hint(payload, detail)
+            item = dict(item)
+            item["attempts"] = max(attempts + 1, MAX_ATTEMPTS)
+            item["last_error"] = reason[:500]
+            item["last_error_at"] = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+            item["reject_fix_hint"] = hint
+            try:
+                write_receipt(
+                    client_request_id=crid,
+                    epic_id="",
+                    project_id=str(item.get("project_id") or ""),
+                    thread_id=str(item.get("thread_id") or ""),
+                    outbox=p,
+                    status="rejected",
+                    reason=reason,
+                    fix_hint=hint,
+                    card_title=str(item.get("title") or ""),
+                )
+            except OSError as exc:
+                _log.warning(
+                    "rejected receipt write failed crid=%s: %s", crid, exc
+                )
+            exhausted.append(item)
+            if crid:
+                delivered_crids.add(crid)  # 从 outbox 剔除（勿再 bumped）
+            details.append(
+                {
+                    "client_request_id": crid,
+                    "status": "rejected",
+                    "error": reason[:200],
+                    "fix_hint": hint,
+                }
+            )
+            continue
+
         item = dict(item)
         item["attempts"] = attempts + 1
         item["last_error"] = str(detail)[:500]
@@ -453,6 +559,7 @@ def flush_once(*, path: Path | None = None) -> dict[str, Any]:
         "pending": pending,
         "delivered": delivered,
         "failed": failed,
+        "rejected": rejected,
         "path": str(p),
         "details": details,
         "repair_pending": repair_pending,
@@ -479,7 +586,7 @@ async def flush_loop(
     while not stop.is_set():
         try:
             summary = await asyncio.to_thread(flush_once)
-            if summary.get("delivered") or summary.get("failed"):
+            if summary.get("delivered") or summary.get("failed") or summary.get("rejected"):
                 _log.info("outbox flush %s", summary)
         except Exception:
             _log.exception("outbox flush error")

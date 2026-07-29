@@ -80,14 +80,60 @@ def test_flush_persists_last_error_on_retry(tmp_path: Path):
     with patch.object(
         flush,
         "_post_transfer",
-        return_value=(False, "http_400:missing_intent_probe", {}),
+        return_value=(False, "TimeoutError:hub down", {}),
     ):
         flush.flush_once(path=p)
 
     left = flush.load_outbox(p)
     assert len(left) == 1
     assert left[0]["attempts"] == 1
-    assert "missing_intent_probe" in left[0].get("last_error", "")
+    assert "TimeoutError" in left[0].get("last_error", "")
+
+
+def test_flush_gate_reject_writes_rejected_receipt(tmp_path: Path):
+    """Gate 400 永久拒绝：立刻 rejected 回执 + 出 outbox，勿空转 8 次。"""
+    p = tmp_path / "transfer-outbox.json"
+    p.write_text(json.dumps([_item(title="文档翻新")]), encoding="utf-8")
+
+    payload = {
+        "ok": False,
+        "error": "invalid_executor_intent",
+        "errors": [
+            {
+                "code": "invalid_executor_intent",
+                "message": "未知执行面: bogus",
+                "fix_hint": "executor_intent 须为 opencode/python/…",
+            }
+        ],
+        "fix_hint": "executor_intent 须为 opencode/python/…",
+    }
+    with patch.object(
+        flush,
+        "_post_transfer",
+        return_value=(False, "http_400:invalid_executor_intent", payload),
+    ):
+        summary = flush.flush_once(path=p)
+
+    assert summary["delivered"] == 0
+    assert summary.get("rejected") == 1
+    assert flush.load_outbox(p) == []
+    failed = flush.load_failed(flush.failed_path(p))
+    assert len(failed) == 1
+    receipts = flush.load_receipts(flush.receipts_path(p))
+    assert len(receipts) == 1
+    assert receipts[0]["status"] == "rejected"
+    assert "executor_intent" in (receipts[0].get("fix_hint") or "")
+    assert receipts[0].get("card_title") == "文档翻新"
+    assert any(d.get("status") == "rejected" for d in summary.get("details") or [])
+
+
+def test_is_permanent_transfer_reject():
+    assert flush._is_permanent_transfer_reject(
+        "http_400:x",
+        {"ok": False, "errors": [{"code": "x", "message": "m"}]},
+    )
+    assert not flush._is_permanent_transfer_reject("TimeoutError:x", {})
+    assert not flush._is_permanent_transfer_reject("http_502:bad gateway", {})
 
 
 def test_flush_once_retries_on_transient(tmp_path: Path):

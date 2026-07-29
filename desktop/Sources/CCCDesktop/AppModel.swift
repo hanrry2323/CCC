@@ -2318,7 +2318,15 @@ final class AppModel: ObservableObject {
         reconcileTransferDeliveryWithOutbox()
         flushRepairQueue(limit: 2)
         let after = LocalSessionStore.loadTransferReceipts()
-        return after.filter { !before.contains($0.client_request_id) }.count
+        let newly = after.filter { !before.contains($0.client_request_id) }
+        if let rej = newly.first(where: \.isRejected) {
+            let hint = (rej.fix_hint ?? rej.reason ?? "门禁未过")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !hint.isEmpty {
+                showToast("意图卡未过门（未进代办）：\(hint)", holdSeconds: 12)
+            }
+        }
+        return newly.filter { !$0.isRejected }.count
     }
 
     /// 把 sidecar 写下的 receipts 合入右栏 / 徽章（App 再开也诚实）
@@ -2327,8 +2335,7 @@ final class AppModel: ObservableObject {
         guard !receipts.isEmpty else { return }
         for r in receipts {
             let crid = r.client_request_id.trimmingCharacters(in: .whitespacesAndNewlines)
-            let eid = r.epic_id.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !crid.isEmpty, !eid.isEmpty else { continue }
+            guard !crid.isEmpty else { continue }
             let tid = r.thread_id.trimmingCharacters(in: .whitespacesAndNewlines)
             let threadId: String = {
                 if !tid.isEmpty { return tid }
@@ -2344,6 +2351,30 @@ final class AppModel: ObservableObject {
                 }
                 return selectedThreadId ?? ""
             }()
+
+            // Gate 永久拒绝：徽章 failed，勿当已投递
+            if r.isRejected {
+                LocalSessionStore.dequeueTransfer(clientRequestId: crid)
+                guard !threadId.isEmpty else { continue }
+                setTransferDelivery(threadId, .failed)
+                let hint = (r.fix_hint ?? r.reason ?? "门禁未过")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let title = (r.card_title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !hint.isEmpty {
+                    let pid = Self.projectId(fromThreadId: threadId)
+                    if !pid.isEmpty {
+                        recordMindGateFail(
+                            projectId: pid,
+                            title: title.isEmpty ? "意图卡" : title,
+                            hint: hint
+                        )
+                    }
+                }
+                continue
+            }
+
+            let eid = r.epic_id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !eid.isEmpty else { continue }
             LocalSessionStore.dequeueTransfer(clientRequestId: crid)
             LocalSessionStore.dequeueFailedTransfer(clientRequestId: crid)
             guard !threadId.isEmpty else { continue }
