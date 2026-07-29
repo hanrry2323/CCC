@@ -53,7 +53,6 @@ _GARBAGE_ID_SUBSTR = (
 
 _GARBAGE_TITLE_SUBSTR = (
     "戳记",
-    "探针",
     "冒烟",
     "stamp=",
     "loop probe",
@@ -96,7 +95,7 @@ def is_garbage_board_card(
         return True
     title = str((task or {}).get("title") or "").lower()
     if any(s.lower() in title for s in _GARBAGE_TITLE_SUBSTR):
-        # allow real L3b titles that happen to contain 探针? none today
+        # bare 探针 removed 2026-07-29: 业务 work title "编写 e2e_pipeline_probe.py 统一探针"不该拦截
         if "l3b" in low and ("momentum" in low or "testnet-40bps" in low):
             return False
         return True
