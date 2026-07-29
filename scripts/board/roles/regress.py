@@ -122,8 +122,19 @@ def regress_role() -> dict:
             # 无意图探针时禁止用「脏树」造 regression-*（否则 harness 噪音会炸板）
             continue
 
-        # Fail when probes fail (compile still gates)
-        passed = probe_ok and task_py_ok
+        # Intent probes are the gate. Project-wide py_compile is advisory only —
+        # one broken unrelated script must NOT bounce every released card to backlog
+        # (that recreates planned→salvage→testing→released→regress loops).
+        if not task_py_ok:
+            results.setdefault("py_warn", 0)
+            results["py_warn"] += 1
+            _log.warning(
+                "[regress] %s project py_compile dirty (%d files) — advisory only; "
+                "pass/fail follows probes",
+                tid,
+                len(failed_py),
+            )
+        passed = probe_ok
 
         if passed:
             results["passed"] += 1

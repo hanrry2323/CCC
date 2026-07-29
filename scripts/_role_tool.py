@@ -22,36 +22,6 @@ if TYPE_CHECKING:
 _log = get_logger("role_tool")
 
 
-# #region agent log
-def _dbg(hypothesis_id: str, location: str, message: str, data: dict | None = None) -> None:
-    import json as _json
-    import time as _time
-
-    payload = {
-        "sessionId": "7c1253",
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(_time.time() * 1000),
-        "runId": "stuck-board-1",
-    }
-    line = _json.dumps(payload, ensure_ascii=False) + "\n"
-    for p in (
-        Path.home() / ".ccc" / "debug-7c1253.log",
-        Path("/Users/apple/program/CCC/.cursor/debug-7c1253.log"),
-    ):
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            with p.open("a", encoding="utf-8") as f:
-                f.write(line)
-        except OSError:
-            pass
-
-
-# #endregion
-
-
 def _read_phases_json(ws: Path, task_id: str) -> list[dict] | None:
     """读 phases.json，返回 phase list（含 schema 行）。"""
     pf = ws / ".ccc" / "phases" / f"{task_id}.phases.json"
@@ -127,20 +97,6 @@ def prepare_role_call(
     if cur is None:
         # 所有 phase 已 done 或 failed → 不是正常启动场景
         statuses = {p.get("status", "?") for p in phases}
-        col, _task = store.find_task(task_id)
-        # #region agent log
-        _dbg(
-            "A",
-            "_role_tool.py:prepare_role_call",
-            "no_pending_phase",
-            {
-                "task_id": task_id,
-                "column": col,
-                "statuses": sorted(statuses),
-                "phase_n": len(phases),
-            },
-        )
-        # #endregion
         return False, f"当前无待执行 phase（statuses: {', '.join(sorted(statuses))}）"
 
     # 3. scope 路径校验（当前 phase）

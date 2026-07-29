@@ -6,7 +6,6 @@ Used by regress skip + hard quarantine. Real business cards (e.g. qb L3b) stay.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,10 @@ _GARBAGE_ID_SUBSTR = (
     "gate-retest-",
     "human-supervised-",
     "epic-backlog-8-done",
+    # 旧 momentum/testnet 失败尝试（精确 id，禁止前缀误杀新 epic）
+    "p0-momentum-cost-edge-close-d6df424d",
+    "p0-momentum-edge-close-272fb4ce",
+    "p0-momentum-edge-close-paper-74664552",
 )
 
 _GARBAGE_TITLE_SUBSTR = (
@@ -69,9 +72,6 @@ def is_garbage_board_card(
         return False
     low = tid.lower()
     if any(s in low for s in _GARBAGE_ID_SUBSTR):
-        return True
-    # superseded momentum/testnet attempts (L3b keep ids do not match these)
-    if re.match(r"^p0-momentum-(cost-edge-close|edge-close-272|edge-close-paper)", low):
         return True
     if "testnet-40bps-paper-strategy-json-ma-cro" in low:
         return True

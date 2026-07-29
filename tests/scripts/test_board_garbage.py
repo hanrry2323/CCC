@@ -16,6 +16,13 @@ def test_l3b_keep_not_garbage():
     assert not is_garbage_board_card("testnet-40bps-paper-strategy-l3b-04f14509")
 
 
+def test_new_momentum_cost_edge_epic_not_garbage():
+    """前缀误杀回归：新业务 epic 不得因旧 id 子串被 skip。"""
+    assert not is_garbage_board_card("p0-momentum-cost-edge-close-5f90684d")
+    assert is_garbage_board_card("p0-momentum-cost-edge-close-d6df424d")
+    assert is_garbage_board_card("p0-momentum-edge-close-272fb4ce-w1")
+
+
 def test_regression_and_probe_are_garbage():
     assert is_garbage_board_card("regression-ccc-v0-63-desktop-loop-probe-x-20260729-1")
     assert is_garbage_board_card("ccc-open-intent-r10-c18b830d-w1")

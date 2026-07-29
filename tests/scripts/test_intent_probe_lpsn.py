@@ -111,6 +111,26 @@ def test_transfer_requires_probe_for_business():
     assert ok, errs
 
 
+def test_transfer_accepts_strong_acceptance_even_if_plan_md_lacks_section():
+    """Agent 常带草稿 plan_md；顶部 acceptance 已有强探针时不得因缺 ## 验收整单拒。"""
+    from chat_server.services import transfer_gate as tg
+
+    body = {
+        "title": "探针连通烟测",
+        "goal": "验证 transfer 门禁",
+        "acceptance": [
+            ".venv/bin/python -m pytest -q tests/unit/test_mvp_thresholds.py",
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": "# 烟测\n\n仅连通草稿，无验收节\n",
+    }
+    ok, errs = tg.validate_transfer_payload(body)
+    assert ok, errs
+
+
 def test_transfer_soft_trims_title_over_80():
     from chat_server.services import transfer_gate as tg
 

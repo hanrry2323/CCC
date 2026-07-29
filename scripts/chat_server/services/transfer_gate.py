@@ -115,10 +115,9 @@ def validate_transfer_payload(
     if not hygiene and acc_ok:
         # 分查 acceptance / plan：plan 内「## 验收」编号列表不得盖掉顶部 acceptance 子弹
         acc_norm = normalize_acceptance(acceptance)
-        cmds = list(
-            ip.extract_probe_commands(acc_norm)
-            or ip.extract_probe_commands(plan_md)
-        )
+        acc_cmds = list(ip.extract_probe_commands(acc_norm) or [])
+        plan_cmds = list(ip.extract_probe_commands(plan_md) or []) if plan_md else []
+        cmds = acc_cmds or plan_cmds
         if not cmds:
             errors.append(
                 _err(
@@ -135,7 +134,12 @@ def validate_transfer_payload(
                 errors.append(weak)
 
         if plan_md:
-            plan_err = _check_plan_preview(plan_md)
+            # Hub 会用 acceptance 重建 plan_md；顶部已有强探针时，
+            # 不要因 Agent 草稿 plan 缺「## 验收」整单 400（会误报成「投递失败/Hub 问题」）。
+            plan_err = _check_plan_preview(
+                plan_md,
+                require_acceptance_section=not bool(acc_cmds),
+            )
             if plan_err:
                 errors.append(plan_err)
 
@@ -204,26 +208,32 @@ def _check_acceptance_strength(
     return None
 
 
-def _check_plan_preview(plan_md: str) -> dict[str, str] | None:
+def _check_plan_preview(
+    plan_md: str,
+    *,
+    require_acceptance_section: bool = True,
+) -> dict[str, str] | None:
     """Lightweight plan_md lint + scope width preview before backlog."""
-    try:
-        scripts = Path(__file__).resolve().parents[2]
-        if str(scripts) not in sys.path:
-            sys.path.insert(0, str(scripts))
-        import phase_lint
+    if require_acceptance_section:
+        try:
+            scripts = Path(__file__).resolve().parents[2]
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            import phase_lint
 
-        ok, errs = phase_lint.validate_plan_acceptance(
-            plan_md, require_probe=True
-        )
-        if not ok:
-            msg = "; ".join(str(e) for e in (errs or [])[:3]) or "plan_md 验收不合格"
-            return _err(
-                "plan_acceptance_weak",
-                msg,
-                "plan_md 必须有 ## 验收 + ≥1 条强探针；禁散文/弱探针。",
+            ok, errs = phase_lint.validate_plan_acceptance(
+                plan_md, require_probe=True
             )
-    except Exception:
-        pass
+            if not ok:
+                msg = "; ".join(str(e) for e in (errs or [])[:3]) or "plan_md 验收不合格"
+                return _err(
+                    "plan_acceptance_weak",
+                    msg,
+                    "plan_md 必须有 ## 验收 + ≥1 条强探针；禁散文/弱探针。"
+                    "（也可只在 acceptance 写强探针，Hub 会补 plan。）",
+                )
+        except Exception:
+            pass
 
     # Multi-root scope / too many phases → hang risk (post-exhaust hang bucket)
     try:

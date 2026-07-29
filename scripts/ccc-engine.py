@@ -1306,6 +1306,22 @@ def _process_backlog(ws: Path) -> bool:
             if phases_file.exists() and plan_file.exists():
                 if key in _product_inflight:
                     _finalize_or_gc_product_key(ws, tid, key)
+                # phases 全 done → 直接 testing，禁止丢回 planned 空转
+                try:
+                    from _role_tool import _read_phases_json
+
+                    _ph = _read_phases_json(ws, tid) or []
+                    _st = {str(p.get("status") or "?") for p in _ph}
+                except Exception:
+                    _st = set()
+                if _st and not (_st - {"done"}):
+                    if store.move_task(tid, "backlog", "testing"):
+                        engine_log(
+                            f"[product] [{label}] work {tid} phases done → testing（跳过 planned）"
+                        )
+                        _log_stats(ws, "move", tid, from_col="backlog", to_col="testing")
+                        did_something = True
+                    continue
                 if store.move_task(tid, "backlog", "planned"):
                     engine_log(f"[product] [{label}] work {tid} → planned（兼容单卡）")
                     _log_stats(ws, "move", tid, from_col="backlog", to_col="planned")
@@ -1936,34 +1952,6 @@ def _salvage_phases_done_planned(
         engine_log(
             f"[{label}] {tid} salvage: phases all done + planned → testing（破空转）"
         )
-        # #region agent log
-        try:
-            import json as _json
-            import time as _time
-            from pathlib import Path as _P
-
-            _payload = {
-                "sessionId": "7c1253",
-                "hypothesisId": "A",
-                "location": "ccc-engine.py:_salvage_phases_done_planned",
-                "message": "salvaged_to_testing",
-                "data": {"tid": tid, "statuses": sorted(statuses)},
-                "timestamp": int(_time.time() * 1000),
-                "runId": "post-fix",
-            }
-            _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
-            for _dp in (
-                _P.home() / ".ccc" / "debug-7c1253.log",
-                _P("/Users/apple/program/CCC/.cursor/debug-7c1253.log"),
-            ):
-                try:
-                    _dp.parent.mkdir(parents=True, exist_ok=True)
-                    _dp.open("a", encoding="utf-8").write(_line)
-                except OSError:
-                    pass
-        except Exception:
-            pass
-        # #endregion
         return "testing"
     return None
 
@@ -2225,45 +2213,9 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                 f"[{label}] 启动 {tid} 失败: {launch_r['error']}{skip_tag}"
             )
             # phases 全 done 却仍 planned → 推进 testing（禁空转死循环）
-            salvaged_to = None
             err_s = str(launch_r.get("error") or "")
             if launch_r.get("skip_retry") and "无待执行 phase" in err_s and "done" in err_s:
-                salvaged_to = _salvage_phases_done_planned(ws, tid, store, label=label)
-            # #region agent log
-            try:
-                import json as _json
-                import time as _time
-                from pathlib import Path as _P
-
-                _col_now, _ = store.find_task(tid)
-                _payload = {
-                    "sessionId": "7c1253",
-                    "hypothesisId": "C",
-                    "location": "ccc-engine.py:launch_error",
-                    "message": "launch_failed_after_salvage_attempt",
-                    "data": {
-                        "tid": tid,
-                        "error": err_s[:200],
-                        "skip_retry": bool(launch_r.get("skip_retry")),
-                        "column_after": _col_now,
-                        "salvage": salvaged_to,
-                    },
-                    "timestamp": int(_time.time() * 1000),
-                    "runId": "post-fix",
-                }
-                _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
-                for _dp in (
-                    _P.home() / ".ccc" / "debug-7c1253.log",
-                    _P("/Users/apple/program/CCC/.cursor/debug-7c1253.log"),
-                ):
-                    try:
-                        _dp.parent.mkdir(parents=True, exist_ok=True)
-                        _dp.open("a", encoding="utf-8").write(_line)
-                    except OSError:
-                        pass
-            except Exception:
-                pass
-            # #endregion
+                _salvage_phases_done_planned(ws, tid, store, label=label)
             continue
         if not _register_active(active_tasks, ws, tid, complexity=complexity):
             _release_opencode_slot(tkey, 1)
