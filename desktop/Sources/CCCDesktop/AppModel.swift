@@ -4528,7 +4528,7 @@ final class AppModel: ObservableObject {
                 await refreshFlowNow(projectId: pid, threadId: tid)
             }
             reconcileFlowSSE()
-            await abandonOrphanIntentCards(projectId: pid)
+            // 不在 bind 热路径同步 abandon（MainActor+Hub 会卡死 App）；孤儿清理由运维/显式 API
             await refreshMindGoals(projectId: pid)
         } catch {
             if isSelected {
@@ -4550,7 +4550,6 @@ final class AppModel: ObservableObject {
             mindGoalsProjectId = nil
             return
         }
-        pruneRailDispatchFlashes()
         do {
             try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchMindDecided(projectId: pid)
@@ -4589,9 +4588,10 @@ final class AppModel: ObservableObject {
         return mindGateFailByProject[projectId]?[key]
     }
 
+    /// 纯读：禁止在 View body 路径里 mutate（否则 @Published → 死循环卡死）
     func railDispatchedFlashes(forProject projectId: String) -> [RailDispatchFlash] {
-        pruneRailDispatchFlashes()
-        return railDispatchFlashes.filter { $0.projectId == projectId }
+        let now = Date()
+        return railDispatchFlashes.filter { $0.projectId == projectId && $0.until > now }
     }
 
     private func mindGateKey(_ title: String) -> String {
@@ -4621,7 +4621,9 @@ final class AppModel: ObservableObject {
             title: String(title.prefix(48)),
             until: Date().addingTimeInterval(5)
         )
-        railDispatchFlashes.append(flash)
+        var next = railDispatchFlashes
+        next.append(flash)
+        railDispatchFlashes = next
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 5_200_000_000)
             pruneRailDispatchFlashes()
@@ -4630,10 +4632,9 @@ final class AppModel: ObservableObject {
 
     private func pruneRailDispatchFlashes() {
         let now = Date()
-        let before = railDispatchFlashes.count
-        railDispatchFlashes.removeAll { $0.until <= now }
-        if railDispatchFlashes.count != before {
-            objectWillChange.send()
+        let next = railDispatchFlashes.filter { $0.until > now }
+        if next.count != railDispatchFlashes.count {
+            railDispatchFlashes = next
         }
     }
 
