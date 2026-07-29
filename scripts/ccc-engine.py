@@ -533,6 +533,125 @@ def _log_opencode_done(
 
 # KPI R4: short-path fail budget — ban 1Hz planned↔in_progress storm
 _SHORT_PATH_FAIL_MAX = 3
+_ACCEPTANCE_FAIL_MAX = 2
+
+
+def _acceptance_fail_file(ws: Path, tid: str) -> Path:
+    return Path(ws) / ".ccc" / "pids" / f"{tid}.acceptance_fails"
+
+
+def _bump_acceptance_fail(ws: Path, tid: str, why: str) -> int:
+    p = _acceptance_fail_file(ws, tid)
+    n = 0
+    try:
+        if p.is_file():
+            raw = p.read_text(encoding="utf-8", errors="replace").strip()
+            n = int(raw.split()[0]) if raw else 0
+    except Exception:
+        n = 0
+    n += 1
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"{n} {why[:200]}\n", encoding="utf-8")
+    except Exception as exc:
+        _log.warning("[acceptance_fail] marker write failed for %s: %s", tid, exc)
+    return n
+
+
+def _work_acceptance_is_weak_or_mixed(ws: Path, tid: str) -> bool:
+    """True when work plan acceptance is weak/mixed — accelerate exhaust."""
+    try:
+        from _intent_probe import extract_probe_commands
+        from _acceptance_strength import work_acceptance_gate_errors
+
+        plan = Path(ws) / ".ccc" / "plans" / f"{tid}.plan.md"
+        text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
+        cmds = extract_probe_commands(text) or []
+        return bool(work_acceptance_gate_errors(cmds))
+    except Exception:
+        return False
+
+
+def _handle_acceptance_fail_budget(
+    ws: Path,
+    tid: str,
+    store,
+    *,
+    label: str,
+    why: str,
+) -> bool:
+    """≥2 acceptance_cmd_failed (or weak plan) → abnormal + optimize. True=consumed."""
+    n = _bump_acceptance_fail(ws, tid, why)
+    weak = _work_acceptance_is_weak_or_mixed(ws, tid)
+    _log_stats(
+        ws,
+        "acceptance_fail_retry",
+        tid,
+        n=n,
+        max=_ACCEPTANCE_FAIL_MAX,
+        why=str(why)[:200],
+        weak_or_mixed=weak,
+    )
+    if n < _ACCEPTANCE_FAIL_MAX and not (weak and n >= 1):
+        engine_log(
+            f"[{label}] {tid} acceptance fail {n}/{_ACCEPTANCE_FAIL_MAX}: {why}"
+        )
+        return False
+    engine_log(
+        f"[{label}] {tid} acceptance fail budget {n}/{_ACCEPTANCE_FAIL_MAX}"
+        f" weak={weak} → abnormal ({why})"
+    )
+    col_now = store.find_task(tid)[0]
+    from_col = col_now
+    if col_now == "in_progress":
+        store.move_task(tid, "in_progress", "abnormal")
+    elif col_now == "planned":
+        store.move_task(tid, "planned", "abnormal")
+    try:
+        store.patch_task(
+            tid,
+            {
+                "note": (
+                    ((store.find_task(tid)[1] or {}).get("note") or "")
+                    + f"\n[{label}] acceptance_fail_budget n={n}: {why}"
+                )[-2000:]
+            },
+        )
+    except Exception as exc:
+        _log.warning("[acceptance_fail] patch note: %s", exc)
+    try:
+        from _failure_ledger import record_failure, related_event_for_reason
+
+        fail_reason = f"acceptance_fail_budget n={n}: {why}"
+        record_failure(
+            ws,
+            task_id=tid,
+            role="dev",
+            reason=fail_reason,
+            phase=1,
+            from_col=from_col,
+            to_col="abnormal",
+            related_stats_event=related_event_for_reason(
+                fail_reason, default="acceptance_fail"
+            ),
+            extra={"n": n, "weak_or_mixed": weak},
+        )
+    except Exception:
+        engine_log(
+            f"[failures] acceptance_fail record failed for {tid}: "
+            f"{_traceback.format_exc()[:300]}"
+        )
+    store.update_index()
+    try:
+        _enqueue_post_exhaust_optimize(
+            ws,
+            tid,
+            reason=f"acceptance_fail_budget n={n}: {why}",
+            task=store.find_task(tid)[1] or {"id": tid},
+        )
+    except Exception as exc:
+        _log.debug("[acceptance_fail] enqueue optimize: %s", exc)
+    return True
 
 
 def _short_path_fail_file(ws: Path, tid: str) -> Path:
@@ -866,6 +985,12 @@ def _handle_task_result(
             store.update_index()
             return True
         cur = _current_running_phase(tid)
+        err_l = str(err or result.get("error") or "").lower()
+        if "acceptance-gate" in err_l or "acceptance_cmd_failed" in err_l:
+            if _handle_acceptance_fail_budget(
+                ws, tid, store, label=label, why=str(err or result.get("error") or "")[:300]
+            ):
+                return True
         engine_log(f"[{label}] {tid} 失败 (retry={retry}), relaunch phase {cur}")
         if not _relaunch_allowed(ws, tid, cur):
             return False

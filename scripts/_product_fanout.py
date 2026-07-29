@@ -793,9 +793,10 @@ def _probe_touches_scope(cmd: str, scope: list[str]) -> bool:
 def _acceptance_bullets_for_phase(
     *, body: str, epic_plan: str, phase: dict, desc: str
 ) -> list[str]:
-    """Phase work 的 ## 验收：本相路径可验 + 触及本 scope 的 epic 探针。
+    """Phase work 的 ## 验收：本相强探针优先；禁 existence 堆 + unit/paper 混装。
 
-    禁止把整 epic 的未来交付探针全塞进每张小卡（salvage 会提前跑挂）。
+    有 behavioral epic/body 探针触及 scope 时，只保留 1～2 条强探针，
+    **不再**为每个 scope 文件 prepend ``test -f``（否则 salvage 假绿/假红空转）。
     """
     try:
         from _intent_probe import extract_probe_commands, is_allowed_verify_cmd
@@ -816,26 +817,19 @@ def _acceptance_bullets_for_phase(
         seen.add(c)
         bullets.append(c)
 
-    # 1) phase 正文里已有的可执行命令（整段扫描，不依赖 ## 验收）
+    # 1) phase 正文里已有的可执行命令
     if extract_probe_commands:
         for c in extract_probe_commands(body or ""):
             if _probe_touches_scope(c, scope):
                 _add(c)
 
-    # 2) scope 文件/目录存在性（最小可验）
-    for p in scope:
-        if p.endswith("/") or p in (".ccc/board", ".ccc") or p.rstrip("/").endswith("board"):
-            _add(f"test -d {p.rstrip('/')}")
-        elif "/" in p or p.endswith((".py", ".md", ".sh", ".json", ".ts", ".js")):
-            _add(f"test -f {p}")
-
-    # 3) epic ## 验收里触及本 scope 的探针（含 DRY_RUN 探针脚本本身）
+    # 2) epic ## 验收里触及本 scope 的探针（优先于 existence）
     if extract_probe_commands:
         for c in extract_probe_commands(epic_plan or ""):
             if _probe_touches_scope(c, scope):
                 _add(c)
 
-    # 4) 仍无白名单探针时：用 py_compile / 合成说明兜底（plan_lint）
+    # 3) 仍无探针：py_compile / 最后才 existence（harden 会再削）
     if extract_probe_commands and not extract_probe_commands(
         "## 验收\n" + "\n".join(f"- {b}" for b in bullets)
     ):
@@ -843,16 +837,44 @@ def _acceptance_bullets_for_phase(
             if p.endswith(".py"):
                 _add(f"python3 -m py_compile {p}")
                 break
-    # 禁止散文种子；scope 已在上方抽 path/cmd；仍空则给仓内必存在目录
+        if not bullets:
+            for p in scope:
+                if p.endswith("/") or p in (".ccc/board", ".ccc") or p.rstrip(
+                    "/"
+                ).endswith("board"):
+                    _add(f"test -d {p.rstrip('/')}")
+                elif "/" in p or p.endswith(
+                    (".py", ".md", ".sh", ".json", ".ts", ".js")
+                ):
+                    _add(f"test -f {p}")
     if not bullets:
+        # 无 scope 时给 compile-ish fallback 而非 board 假绿；仍交 harden
         bullets.append("test -d .ccc/board")
-    # R5：纯 existence-only → 补 py_compile，避免 plan_lint/gate 拦死或假绿
-    try:
-        from _acceptance_strength import strengthen_existence_bullets
 
-        bullets = strengthen_existence_bullets(bullets, scope)
+    # 二次门禁：剥 paper/e2e、去 existence 堆、帽 1～2 强探针
+    try:
+        from _acceptance_strength import (
+            harden_work_acceptance_bullets,
+            work_acceptance_gate_errors,
+        )
+
+        # non-paper phase: strip late-stage probes
+        desc_l = f"{desc or ''} {phase.get('description') or ''}".lower()
+        strip_late = not any(
+            x in desc_l for x in ("paper", "e2e", "probe", "端到端")
+        )
+        bullets = harden_work_acceptance_bullets(
+            bullets, scope=scope, max_n=2, strip_late=strip_late
+        )
+        # if still failing strength (existence-only), force py_compile once more
+        errs = work_acceptance_gate_errors(bullets)
+        if any(e.get("code") == "acceptance_weak" for e in errs):
+            for p in scope:
+                if str(p).endswith(".py"):
+                    bullets = [f"python3 -m py_compile {p}"]
+                    break
     except Exception as exc:
-        _log.debug("strengthen_existence_bullets: %s", exc)
+        _log.debug("harden_work_acceptance_bullets: %s", exc)
     return bullets
 
 

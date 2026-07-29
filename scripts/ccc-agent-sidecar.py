@@ -865,6 +865,31 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "对用户：≤3 句人话 + 恰好一个或多个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
             "gate 绿后系统自动进代办并拉起 Engine；红则停意图层+fix_hint。"
         )
+        # Force last transfer_lessons into the turn (digest may be truncated)
+        lesson_lines = []
+        for line in (mblock or "").splitlines():
+            if line.strip().startswith("- [") and (
+                "acceptance" in line
+                or "garbage" in line
+                or "exhaust" in line
+                or "weak" in line
+                or "stamp" in line
+                or "混装" in line
+                or "pytest" in line.lower()
+            ):
+                lesson_lines.append(line.strip())
+            if "近期定卡教训" in line:
+                lesson_lines.append(line.strip())
+        if lesson_lines:
+            parts.append(
+                "【近期定卡教训 · 必读前 3 条】勿重复同构失败：\n"
+                + "\n".join(lesson_lines[:4])
+            )
+        else:
+            parts.append(
+                "【近期定卡教训】起草前读 digest「近期定卡教训」；"
+                "禁 unit+paper_intent_probe+test -f 同卡（qb momentum 坏样）。"
+            )
     return "\n".join(parts)
 
 

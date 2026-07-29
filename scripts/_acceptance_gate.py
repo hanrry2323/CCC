@@ -283,12 +283,21 @@ def check_acceptance(
             from _intent_probe import ran_has_hang
 
             hang = ran_has_hang(ran)
+            strength = ""
+            try:
+                from _acceptance_strength import classify_cmds
+
+                strength = classify_cmds(cmds)
+            except Exception:
+                strength = ""
             return {
                 "ok": False,
                 "reason": "hang_detected" if hang else "acceptance_cmd_failed",
                 "ran": ran,
                 "bullets": bullets,
                 "cmds": cmds,
+                "acceptance_strength": strength,
+                "probe_count": len(cmds),
             }
         # 禁止：工作树探针绿、但 task commit 仍是旧内容（OpenCode 未 commit 假绿）
         if commit:

@@ -196,6 +196,39 @@ def test_seeded_phase_plan_preserves_epic_acceptance():
     out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
     assert "DRY_RUN=true" in out
     assert "完成本 phase：probe" not in out
+    # second gate: with behavioral probe, no existence heap
+    assert "test -f" not in out
+
+
+def test_fanout_strips_paper_and_caps_strong_probes():
+    """unit scope + epic mixed unit/paper → work 仅强探针、无 test -f 堆。"""
+    from _intent_probe import extract_probe_commands
+    from _product_fanout import _plan_md_for_seeded_phase
+
+    epic = (
+        "# Plan\n\n## 验收\n"
+        "- .venv/bin/python -m pytest -q tests/unit/test_momentum_fees.py\n"
+        "- .venv/bin/python -m pytest -q tests/unit/test_unified_arb_fees.py\n"
+        "- DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py\n"
+        "- test -f src/utils/cost.py\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "cost + fees unit",
+        "scope": [
+            "src/utils/cost.py",
+            "tests/unit/test_momentum_fees.py",
+            "tests/unit/test_unified_arb_fees.py",
+            "scripts/paper_intent_probe.py",
+        ],
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
+    probes = extract_probe_commands(out)
+    assert probes, out
+    assert len(probes) <= 2, probes
+    assert not any("test -f" in c for c in probes), probes
+    assert not any("paper_intent_probe" in c for c in probes), probes
+    assert any("pytest" in c for c in probes), probes
 
 
 def test_probe_touches_scope_matches_dotted_import():

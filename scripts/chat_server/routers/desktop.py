@@ -435,6 +435,22 @@ async def transfer_promote_planned(request: Request):
     delivered: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for i, row in enumerate(previews):
+        if row.get("idempotent"):
+            delivered.append(
+                {
+                    "goal_id": row.get("goal_id"),
+                    "title": row.get("title"),
+                    "epic_id": row.get("epic_id"),
+                    "ok": True,
+                    "idempotent": True,
+                    "engine_wake": {
+                        "ok": True,
+                        "mode": "idempotent",
+                        "message": "already_inflight",
+                    },
+                }
+            )
+            continue
         if not row.get("ok") or not row.get("payload"):
             if row.get("errors"):
                 _record_gate_reject_lesson(

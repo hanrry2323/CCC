@@ -28,6 +28,7 @@ _QB_TRANSFER_PLAYBOOK_FALLBACK = """反模式→正模式（定大卡）：
 5. ## 验收清单 ≠ ## 验收：sync tester 只认精确 ## 验收 + 白名单命令。
 6. 已绿即停：验收全绿立即 commit（含 task_id），禁止继续重构。
 7. 耗尽后：failure_pack.optimize_hint 改卡，禁止原样重下。
+8. 混装禁：禁 unit pytest + paper_intent_probe + test -f 同卡（momentum 坏样 → acceptance_cmd_failed 空转）；paper/Layer2 另开 L1。
 """
 
 _PLAN_INDEX_RE = re.compile(

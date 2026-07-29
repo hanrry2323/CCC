@@ -119,6 +119,96 @@ def strengthen_existence_bullets(
     return out
 
 
+_LATE_STAGE_MARKERS = (
+    "paper_intent_probe",
+    "paper-intent-probe",
+    "60s",
+    "end-to-end",
+    "e2e",
+)
+
+
+def is_late_stage_probe(cmd: str) -> bool:
+    """paper / e2e / long-running probes that must not ride on unit work cards."""
+    low = (cmd or "").lower()
+    return any(m in low for m in _LATE_STAGE_MARKERS)
+
+
+def is_behavioral_probe(cmd: str) -> bool:
+    return classify_cmd(cmd) == "behavioral"
+
+
+def harden_work_acceptance_bullets(
+    bullets: list[str],
+    *,
+    scope: list[str] | None = None,
+    max_n: int = 2,
+    strip_late: bool = True,
+) -> list[str]:
+    """Fanout second gate: prefer 1～2 strong probes; drop existence heap + mixed late.
+
+    When ≥1 behavioral probe exists, drop pure ``test -f/-d``. Cap at max_n.
+    Strip paper/e2e when strip_late (default for non-paper phases).
+    """
+    cleaned = [str(c).strip() for c in (bullets or []) if str(c).strip()]
+    if strip_late:
+        cleaned = [c for c in cleaned if not is_late_stage_probe(c)]
+    behavioral = [c for c in cleaned if is_behavioral_probe(c)]
+    if behavioral:
+        out = behavioral[: max(1, max_n)]
+    else:
+        # keep compile / whatever remains, then strengthen
+        non_exist = [
+            c for c in cleaned if classify_cmd(c) != "existence_only"
+        ]
+        out = (non_exist or cleaned)[: max(1, max_n)]
+        out = strengthen_existence_bullets(out, scope or [])
+        # still existence-only after strengthen? keep py_compile result
+        if cmds_are_existence_only(out) and scope:
+            out = strengthen_existence_bullets(out, scope)
+    # final cap
+    return out[: max(1, max_n)] if out else out
+
+
+def work_acceptance_gate_errors(cmds: list[str]) -> list[dict[str, str]]:
+    """Mirror transfer_gate budget/strength for fanout work plans."""
+    errs: list[dict[str, str]] = []
+    uniq = []
+    seen: set[str] = set()
+    for c in cmds or []:
+        key = " ".join(str(c).split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        uniq.append(key)
+    ok_s, reason = is_strong_enough(uniq, require_strong=True)
+    if not ok_s:
+        errs.append(
+            {
+                "code": "acceptance_weak",
+                "message": f"work 验收过弱（{reason}）",
+            }
+        )
+    if len(uniq) > 3:
+        errs.append(
+            {
+                "code": "acceptance_too_wide",
+                "message": f"work 验收 {len(uniq)} 条（上限 3）",
+            }
+        )
+    joined = "\n".join(uniq).lower()
+    has_unit = "pytest" in joined or "python3 -c" in joined or "python -c" in joined
+    has_late = any(m in joined for m in _LATE_STAGE_MARKERS)
+    if has_unit and has_late and len(uniq) >= 2:
+        errs.append(
+            {
+                "code": "acceptance_mixed_intent",
+                "message": "work 同时含 unit 与 paper/e2e",
+            }
+        )
+    return errs
+
+
 def task_exempt_from_strength(ws: Any, tid: str, task: dict[str, Any] | None = None) -> bool:
     """ops / hygiene / doc_only / short paths skip strength gate."""
     task = task or {}
