@@ -33,9 +33,9 @@ def test_parse_infra_machines_and_ports():
     assert "Server" in mac["role"] or "CCC" in mac["role"]
     assert 7777 in data["ports"]
     assert 7775 in data["ports"]
-    # ai-loop-router 已退役，infrastructure 用 ~~ 划掉后不应再探针
-    assert 4000 not in data["ports"]
-    assert 4002 not in data["ports"]
+    # CCC Relay 2026-07-25:中转站回归(:4000 anthropic/:4002 openai-chat),端口在 CCC 组内
+    assert 4000 in data["ports"]
+    assert 4002 in data["ports"]
     assert data["ports"][7777]["host"] == "192.168.3.116"
     assert data["ports"][7777]["machine"] == "Mac 2017"
     # deprecated strikethrough port should be skipped

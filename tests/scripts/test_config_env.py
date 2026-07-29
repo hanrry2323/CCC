@@ -73,7 +73,7 @@ def test_config_exposes_sub_dataclasses():
 def test_config_backward_compat():
     """旧字段保留,默认值与改造前一致。"""
     c = Config()
-    assert c.model == "loop/code"  # 旧字段未动
+    assert c.model == "loop/flash"  # 2026-07-28 Flash 单通道 · :4002
     assert c.max_retry == 5
     assert c.task_retry_budget == 8
     assert c.max_wallclock == 7200

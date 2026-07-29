@@ -92,8 +92,8 @@ def test_transfer_requires_probe_for_business():
     from chat_server.services import transfer_gate as tg
 
     body = {
-        "title": "paper 可重放探针",
-        "goal": "意图探针绿",
+        "title": "momentum 净 edge 关闭",
+        "goal": "CLOSE 逻辑 + 单测绿",
         "acceptance": ["README 写了 stamp"],
         "pipeline": "dev",
         "feasibility": "ok",
@@ -116,8 +116,8 @@ def test_transfer_accepts_strong_acceptance_even_if_plan_md_lacks_section():
     from chat_server.services import transfer_gate as tg
 
     body = {
-        "title": "探针连通烟测",
-        "goal": "验证 transfer 门禁",
+        "title": "momentum 收益率口径对齐",
+        "goal": "代码 + 单测覆盖",
         "acceptance": [
             ".venv/bin/python -m pytest -q tests/unit/test_mvp_thresholds.py",
         ],
@@ -125,7 +125,7 @@ def test_transfer_accepts_strong_acceptance_even_if_plan_md_lacks_section():
         "feasibility": "ok",
         "project_id": "qb",
         "executor_intent": "opencode",
-        "plan_md": "# 烟测\n\n仅连通草稿，无验收节\n",
+        "plan_md": "# 草稿\n\n仅连通草稿，无验收节\n",
     }
     ok, errs = tg.validate_transfer_payload(body)
     assert ok, errs
@@ -176,11 +176,11 @@ def test_transfer_rejects_too_many_probes():
 def test_transfer_soft_trims_title_over_80():
     from chat_server.services import transfer_gate as tg
 
-    long_title = "VIP-V5 纸面 DRY_RUN=true 可重放验收探针绿（STATUS「上线前」第 1 项 · 脚本+STATUS+regress+history 四件套）"
+    long_title = "momentum 净 edge CLOSE 收益率口径对齐 + 单测覆盖（STATUS「上线前」第 1 项 · 脚本+单测+regress+history 四件套）"
     assert len(long_title) > 80
     body = {
         "title": long_title,
-        "goal": "探针绿",
+        "goal": "对齐收益率口径",
         "acceptance": [
             "DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper",
         ],
@@ -493,7 +493,7 @@ def test_t2_regress_marks_probed(tmp_path: Path, monkeypatch):
     (ws / ".ccc" / "plans").mkdir(parents=True)
     tid = "released-t2"
     (ws / ".ccc" / "board" / "released" / f"{tid}.jsonl").write_text(
-        json.dumps({"id": tid, "title": "纸面探针可重放", "card_kind": "work"}) + "\n",
+        json.dumps({"id": tid, "title": "margin 收益率对齐", "card_kind": "work"}) + "\n",
         encoding="utf-8",
     )
     (ws / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
@@ -503,7 +503,7 @@ def test_t2_regress_marks_probed(tmp_path: Path, monkeypatch):
     seeded = agent_mind.maybe_seed_goal_from_transfer(
         ws,
         {
-            "title": "纸面探针可重放",
+            "title": "margin 收益率对齐",
             "goal": "g",
             "acceptance": ["python3 scripts/ok_probe.py"],
             "pipeline": "feature",
