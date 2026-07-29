@@ -2438,6 +2438,9 @@ def engine_loop(workspaces: list[Path]) -> None:
         try:
             if _apply_dispatch_wake(workspaces):
                 workspaces[:] = _prioritize_wake_workspace(workspaces, _wake_priority_workspace)
+                # 即使 degraded_mode 也强制 bypass 让新卡进 product
+                _intake_bypass_degraded = True
+                _intake_bypass_ticks_left = _INTAKE_BYPASS_TICKS
         except Exception as exc:
             engine_log(f"[wake] apply dispatch wake failed: {exc}")
         if _intake_bypass_ticks_left > 0:
