@@ -92,9 +92,9 @@ def test_fanout_from_seeded_epic(tmp_path):
     plan = (
         "# Plan\n\n## 目标\n- do x\n\n"
         "## Phase 1: cleanup\n"
-        "clean dirt\n\n## 验收\n- `echo ok` 输出 ok\n\n"
+        "clean dirt\n\n## 验收\n- `python3 -m py_compile scripts/cleanup.py` 输出 ok\n\n"
         "## Phase 2: feature\n"
-        "build crawler\n\n## 验收\n- `test -f README.md` 成功\n"
+        "build crawler\n\n## 验收\n- `python3 -m py_compile src/crawlers/foo.py` 成功\n"
     )
     (root / ".ccc" / "plans" / f"{epic_id}.plan.md").write_text(plan)
     phases = (
@@ -105,7 +105,7 @@ def test_fanout_from_seeded_epic(tmp_path):
                 "phase": 1,
                 "status": "pending",
                 "description": "提交脏树 + 删 util",
-                "scope": ["README.md"],
+                "scope": ["scripts/cleanup.py"],
                 "subtasks": {"1.1": "touch"},
                 "timeout": 60,
                 "depends_on": [],
@@ -117,7 +117,7 @@ def test_fanout_from_seeded_epic(tmp_path):
                 "phase": 2,
                 "status": "pending",
                 "description": "实现省级药采爬虫",
-                "scope": ["src/crawlers/"],
+                "scope": ["src/crawlers/foo.py"],
                 "subtasks": {"2.1": "impl"},
                 "timeout": 120,
                 "depends_on": [1],

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # _ccc_launchd.sh — shared launchd helpers for CCC install scripts (v0.39.1)
 # Source from install-*.sh after CCC_HOME is set.
 #

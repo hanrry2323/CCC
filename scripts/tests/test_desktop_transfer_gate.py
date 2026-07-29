@@ -88,7 +88,8 @@ def test_gate_rejects_existence_only_acceptance():
     assert any(e.get("fix_hint") for e in errors)
 
 
-def test_gate_rejects_plan_without_acceptance_section():
+def test_gate_allows_plan_without_acceptance_section_when_body_probes_strong():
+    """顶部 acceptance 已有强探针时，草稿 plan 缺「## 验收」不整单 400（Hub 会补）。"""
     body = {
         "title": "缺验收节",
         "goal": "做一件事",
@@ -100,9 +101,26 @@ def test_gate_rejects_plan_without_acceptance_section():
         "plan_md": "# Plan\n\n## 目标\n只写目标没有验收节\n",
     }
     ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert ok, errors
+
+
+def test_gate_rejects_plan_without_acceptance_when_no_body_probes():
+    """acceptance 提不出探针且 plan 缺 ## 验收 → 拒。"""
+    body = {
+        "title": "缺验收节",
+        "goal": "做一件事",
+        "acceptance": ["完成即可"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "plan_md": "# Plan\n\n## 目标\n只写目标没有验收节\n",
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
     assert not ok
-    assert any(e["code"] == "plan_acceptance_weak" for e in errors)
-    assert any("fix_hint" in e for e in errors)
+    codes = {e["code"] for e in errors}
+    assert "missing_intent_probe" in codes or "plan_acceptance_weak" in codes
+    assert any(e.get("fix_hint") for e in errors)
 
 
 def test_plan_goal_conflict_close_downgrade():

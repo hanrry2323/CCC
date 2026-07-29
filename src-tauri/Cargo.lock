@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "ccc-cockpit-desktop"
-version = "0.52.2"
+version = "0.64.1"
 dependencies = [
  "libc",
  "pico-args",

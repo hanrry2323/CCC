@@ -77,6 +77,7 @@ from pathlib import Path
 
 sys.path.insert(0, "scripts")
 from board.context import set_workspace
+import board.roles.reviewer as rev
 
 spec = importlib.util.spec_from_file_location(
     "ccc_board", Path("scripts/ccc-board.py").resolve()
@@ -86,11 +87,12 @@ spec.loader.exec_module(mod)
 set_workspace(Path("$WORKSPACE"))
 
 # 强制 medium 走 LLM，但 mock 成 unavailable → stay FALLBACK
-mod._review_with_llm = lambda *a, **k: {
+# （函数在 board.roles.reviewer，不在 ccc-board 模块顶层）
+rev._review_with_llm = lambda *a, **k: {
     "verdict": "fallback",
     "reason": "mock claude unavailable",
 }
-mod._classify_review_size = lambda _stat: ("medium", 20)
+rev._classify_review_size = lambda _stat: ("medium", 20)
 
 result = mod.reviewer_role()
 vf = Path("$WORKSPACE") / ".ccc/verdicts/e2e-green.verdict.md"

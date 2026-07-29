@@ -165,10 +165,7 @@ def _git_init(ws: Path):
 
 def test_commit_gate_rejects_without_task_commit(board, monkeypatch):
     mod, ws = board
-    # 2026-07-24 重构：commit gate helpers 迁到 board.roles.dev
-    # 且 DoD 行为从"拒绝"改为"auto-commit"（scripts/board/roles/dev.py:548-588）：
-    # 工作区干净但无 task_id commit 时，_require_task_commit_for_testing
-    # 调 ensure_task_commit 自动补一个。
+    # 干净树 / 仅 .ccc 元数据脏：禁止假绿 auto-commit，须有产品改动
     from board.roles import dev as _dev
 
     monkeypatch.delenv("CCC_SKIP_COMMIT_GATE", raising=False)
@@ -176,12 +173,9 @@ def test_commit_gate_rejects_without_task_commit(board, monkeypatch):
     tid = "gate-no-commit"
     _dev._capture_task_pre_head(tid)
     ok, why, h = _dev._require_task_commit_for_testing(tid)
-    # DoD auto-commit：应当 ok=True（commit 已自动补上），并返回真实 commit hash
-    assert ok is True, why
-    assert len(h) == 40
-    # 验证 auto-commit 确实带 task_id
-    assert tid in _dev._find_task_commit_hash(tid) or True  # auto commit 可能写在 message
-
+    assert ok is False, why
+    assert "did not land" in why
+    assert not h or len(h) in (0, 40)
 
 def test_commit_gate_accepts_new_task_commit(board, monkeypatch):
     mod, ws = board

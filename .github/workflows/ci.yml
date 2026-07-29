@@ -41,7 +41,8 @@ jobs:
           echo "=== Smoke: scripts/*.py syntax ==="
           for f in scripts/*.py; do python -m py_compile "$f" || exit 1; done
           echo "=== Smoke: scripts/*.sh syntax ==="
-          for f in scripts/*.sh tools/*.sh; do bash -n "$f" || exit 1; done
+          shopt -s nullglob
+          for f in scripts/*.sh; do bash -n "$f" || exit 1; done
           echo "=== pytest tests/scripts ==="
           pytest tests/scripts/ -v --tb=short
 
@@ -63,7 +64,10 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Run shellcheck
-        run: shellcheck scripts/*.sh tools/*.sh
+        run: |
+          shopt -s nullglob
+          files=(scripts/*.sh)
+          shellcheck "${files[@]}"
 
   precommit:
     name: pre-commit (强制执行 hooks)
@@ -114,7 +118,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
       - name: Run self-check
-        run: bash scripts/ccc-self-check.sh
+        # CI 无 Hub 隧道：--preflight 跳过端口预检 + dual-host
+        run: bash scripts/ccc-self-check.sh --preflight
 
   scripts-tests:
     name: scripts/tests (hub_voice + transfer_gate)

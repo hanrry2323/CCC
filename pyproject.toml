@@ -20,7 +20,7 @@ ignore = [
   "UP007",  # Optional[X] vs X | None — 保留旧风格兼容
   "UP017",  # timezone.utc vs datetime.UTC — 保留旧风格
   "UP035",  # typing.Iterator vs collections.abc — 保留旧风格
-  "UP045",  # Optional[X] 同上
+  # UP045 = 新版 ruff 对 Optional 的别名；CI 钉 ruff 0.8.6 不认识，勿写入 ignore
   "F841",   # unused variable（部分测试占位，**渐进收紧**：新代码不应新增）
   "I001",   # import sorting（现有大量模块未排序，**渐进收紧**：新模块应排序）
 ]
