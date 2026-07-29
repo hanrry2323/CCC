@@ -80,12 +80,15 @@ enum QuickPrompts {
 
     /// UI 标题「转意图卡」；内部仍走 finalize 契约 → L1 → gate → 自动进代办
     static let finalize =
-        "用户已点「转意图卡」：请把本会话方案落成意图卡契约（不是直接定代办）。\n" +
+        "用户已点「转意图卡」：请把本会话方案落成意图卡契约并推动进代办（不是只写右栏）。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
         "\n严格按 `references/intent-card-sop.md`（失败案例驱动）。\n" +
         "**收敛门**：若「做什么 / 怎样算完 / 路线」未对齐，只回白话缺什么并**拒转**，不要出契约块。\n" +
         "已收敛则立即出卡：禁止再列方案选项、禁止问「要不要入队」。\n" +
+        "**硬完成定义**：可见答复里必须有可过门的 ```ccc-transfer```；" +
+        "禁止只 hub_mind 写 L1 planned 当交差——右栏停尸不算进代办；" +
+        "系统会自动 gate→backlog→wake Engine，你负责出能跑通的卡。\n" +
         "板面残卡优先 repair，勿默认卫生 epic；偶发卫生卡：executor_intent 必须 python。\n\n" +
         "### 契约硬预算（违则不得进代办 / OpenCode）\n" +
         "- 单意图 · 默认 1 work/1 phase · scope≤5 文件（同顶层）；大方案拆多张意图卡。\n" +
@@ -100,7 +103,7 @@ enum QuickPrompts {
         "单意图：恰好一个 ```ccc-transfer``` JSON 块；多意图：多个块或一块含 cards:[]" +
         "（title/goal/acceptance/pipeline/feasibility/feasibility_reason/" +
         "executor_intent/complexity/plan_md 齐全）。\n" +
-        "可行性非 ok 时不要怂恿进代办。系统会先写意图卡，逐卡 gate 绿才自动进代办；一卡红不堵整链。" +
+        "可行性非 ok 时不要怂恿进代办。系统会先写意图卡，逐卡 gate 绿才自动进代办并拉起 Engine；一卡红不堵整链。" +
         "起草前读 digest 近期定卡教训。" +
         mustAnswer
 

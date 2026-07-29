@@ -91,12 +91,15 @@
 
 ---
 
-## 4. 两段落盘
+## 4. 两段落盘（系统推进 · 人不守夜）
 
-1. **转意图卡成功** = 写/更新 L1 `planned`（右栏意图卡链）。此时 **Engine 尚未消费**。
-2. **进代办** = 同卡契约 `validate_transfer_payload` **绿** → 自动 transfer → backlog epic + wake。  
+1. **转意图卡成功** = 写/更新 L1 `planned`（右栏意图卡链）。此时 **Engine 尚未消费**——**不算完成**。
+2. **进代办** = 同卡契约 `validate_transfer_payload` **绿** → 自动 transfer → backlog epic + **wake Engine**。  
+   - Desktop 解析 `ccc-transfer` 后自动 L1→gate→outbox；若 Agent **只写了右栏 L1**，Hub `POST /transfer/promote-planned` 兜底推进。
    - **红**：卡留意图层；按 `fix_hint` 改卡再检；**零 OpenCode**。  
    - 改卡若动到「要做成什么」的白话含义 → **必须再用人话问人**，不得静默改意图硬过门。
+3. **谁推动**：人点「转意图卡」= 唯一发起；之后 **系统**（Desktop promote / Hub promote-planned / transfer wake）负责进代办与拉起 Engine。**禁止**让人盯右栏或手动「确认进代办」当主路径。
+4. **Agent 硬完成**：可见答复里出可过门的 `ccc-transfer`；禁止只 mind 写 L1 交差；禁止 `clear_blockers`/归档话术冒充已开工。
 
 ---
 

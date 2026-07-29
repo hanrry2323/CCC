@@ -859,8 +859,11 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "契约硬预算：单意图·1 phase·acceptance 1～3 条本卡强探针；"
             "禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡验收。"
             "细则 references/intent-card-sop.md。"
-            "对用户：≤3 句人话 + 可选一个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
-            "gate 绿后系统自动进代办；红则停意图层。"
+            "硬完成：可见答复必须出可过门的 ccc-transfer；"
+            "禁止只写右栏 L1 planned 当交差——右栏≠代办；"
+            "系统会 promote→backlog→wake Engine。"
+            "对用户：≤3 句人话 + 恰好一个或多个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
+            "gate 绿后系统自动进代办并拉起 Engine；红则停意图层+fix_hint。"
         )
     return "\n".join(parts)
 

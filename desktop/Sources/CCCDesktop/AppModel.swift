@@ -3212,6 +3212,16 @@ final class AppModel: ObservableObject {
             if let asst = (threadMessages[threadId] ?? []).last(where: { $0.id == assistantId }) {
                 refreshTransferDraft(from: asst.content, threadId: threadId)
             }
+            // Agent 只写了 L1 / 无 ccc-transfer 时：人点转意图卡后仍须推进代办
+            if threadIntentDispatchPending[threadId] == true,
+               !intentPromoteInFlight.contains(threadId) {
+                let hasReady = (threadPendingIntentDrafts[threadId] ?? [])
+                    .contains(where: \.isGateReady)
+                    || (threadTransferDraft[threadId]?.isGateReady == true)
+                if !hasReady {
+                    Task { await promoteIntentCardToBacklog(threadId: threadId) }
+                }
+            }
             // 本机立即落盘 + Hub 异步镜像
             flushDiskSave()
             // 显示压缩（异步，不打断当前流）
@@ -3838,6 +3848,7 @@ final class AppModel: ObservableObject {
     }
 
     /// v0.64/0.65：意图卡 →（gate）→ 自动代办。多卡逐张；红则该卡停意图层，不堵整链。
+    /// 无本地 ccc-transfer 草稿时：Hub promote-planned 推进右栏 L1 planned（防停尸）。
     func promoteIntentCardToBacklog(threadId: String) async {
         let tid = threadId
         guard threadIntentDispatchPending[tid] == true else { return }
@@ -3874,8 +3885,8 @@ final class AppModel: ObservableObject {
 
         let ready = drafts.filter(\.isGateReady)
         guard !ready.isEmpty else {
-            // 无就绪契约：清 pending，避免一直挂着；由 Agent 起草后再触发
-            threadIntentDispatchPending[tid] = false
+            // 无本地契约：推右栏已有 L1 planned → backlog；勿清 pending（Agent 可能还在起草）
+            await promotePlannedFromL1(projectId: pid, threadId: tid, clearPendingOnIdle: false)
             return
         }
 
@@ -3960,11 +3971,62 @@ final class AppModel: ObservableObject {
         }
 
         if okN > 0, failHints.isEmpty {
-            showToast("已进代办 \(okN) 张意图卡")
+            showToast("已进代办 \(okN) 张意图卡 · Engine 已唤醒")
         } else if okN > 0 {
             showToast("进代办 \(okN) 张；未过门 \(failHints.count)：\(failHints[0])", holdSeconds: 12)
         } else if let h = failHints.first {
             showToast("意图卡未过门（未进代办）：\(h)", holdSeconds: 12)
+        }
+
+        // 兜底：右栏仍有 planned（Agent 只写了 L1）→ Hub 再推一轮
+        if okN == 0 || !failHints.isEmpty {
+            await promotePlannedFromL1(projectId: pid, threadId: tid, clearPendingOnIdle: true)
+        }
+    }
+
+    /// Hub：把右栏 L1 planned 过 gate → backlog + wake Engine。人点转意图卡后的停尸兜底。
+    private func promotePlannedFromL1(
+        projectId: String,
+        threadId: String,
+        clearPendingOnIdle: Bool
+    ) async {
+        do {
+            await Task.yield()
+            try await prepareClient(projectId: projectId, ensureAgent: false)
+            let resp = try await client.promotePlannedIntentCards(
+                projectId: projectId,
+                threadId: threadId
+            )
+            let delivered = resp.delivered_count ?? 0
+            let rejected = resp.rejected_count ?? 0
+            await refreshMindGoals(projectId: projectId)
+            if delivered > 0 {
+                threadIntentDispatchPending[threadId] = false
+                let wake = resp.engine_woken == true ? " · Engine 已唤醒" : ""
+                showToast("右栏意图卡已进代办 \(delivered) 张\(wake)")
+                if let title = resp.delivered?.first?.title {
+                    pushRailDispatchFlash(projectId: projectId, title: title)
+                }
+            } else if rejected > 0 {
+                threadIntentDispatchPending[threadId] = false
+                let hint = resp.rejected?.first?.fix_hint
+                    ?? resp.rejected?.first?.errors?.first?.message
+                    ?? "契约未过门"
+                showToast("右栏意图卡未过门：\(hint)", holdSeconds: 12)
+                if let t = resp.rejected?.first?.title {
+                    recordMindGateFail(projectId: projectId, title: t, hint: hint)
+                }
+            } else if clearPendingOnIdle {
+                // 无 planned 可推：结束本轮，避免永久挂起
+                threadIntentDispatchPending[threadId] = false
+            }
+            // else：keep pending — Agent 可能还在起草 ccc-transfer
+        } catch {
+            // Hub 断：保留 pending，恢复后再推
+            showToast(
+                "推进代办失败：\(friendlyHubError(error, action: "进代办"))",
+                holdSeconds: 8
+            )
         }
     }
 

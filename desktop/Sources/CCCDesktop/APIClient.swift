@@ -1164,6 +1164,29 @@ actor APIClient {
         return try await send(req, as: TransferValidateResp.self, maxAttempts: 2)
     }
 
+    /// 右栏 L1 planned → gate 绿则进代办 + wake Engine（防意图卡停尸）
+    func promotePlannedIntentCards(
+        projectId: String,
+        threadId: String? = nil,
+        goalIds: [String]? = nil
+    ) async throws -> PromotePlannedResp {
+        var payload: [String: Any] = ["project_id": projectId]
+        if let threadId, !threadId.isEmpty {
+            payload["thread_id"] = threadId
+        }
+        if let goalIds, !goalIds.isEmpty {
+            payload["goal_ids"] = goalIds
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        var req = try authedRequest(
+            "api/desktop/transfer/promote-planned",
+            method: "POST",
+            body: body
+        )
+        req.timeoutInterval = 45
+        return try await send(req, as: PromotePlannedResp.self, maxAttempts: 2)
+    }
+
     /// 消费 flow SSE；每次 fanout/work_status 回调刷新建议
     func streamFlowEvents(
         projectId: String,

@@ -400,6 +400,128 @@ async def transfer_validate(request: Request):
     }
 
 
+@router.post("/transfer/promote-planned")
+async def transfer_promote_planned(request: Request):
+    """把 L1 planned 意图卡批量过 gate → backlog + wake Engine。
+
+    人点「转意图卡」后右栏不得停尸：Desktop / Agent 可调此接口推进代办。
+    body: { project_id, thread_id?, goal_ids? }
+    """
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    project_id = str(body.get("project_id") or body.get("project") or "").strip()
+    if not project_id:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "project_id required"},
+        )
+    thread_id = str(body.get("thread_id") or f"{project_id}::main").strip()
+    goal_ids = body.get("goal_ids") if isinstance(body.get("goal_ids"), list) else None
+
+    from ..services import intent_promote as ip
+
+    root_s = get_project_path(project_id)
+    if not root_s:
+        return JSONResponse(
+            status_code=404,
+            content={"ok": False, "error": f"unknown project: {project_id}"},
+        )
+    root = Path(root_s)
+    previews = ip.dry_run_promote_payloads(
+        project_id, root, thread_id=thread_id, goal_ids=goal_ids
+    )
+    delivered: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for i, row in enumerate(previews):
+        if not row.get("ok") or not row.get("payload"):
+            if row.get("errors"):
+                _record_gate_reject_lesson(
+                    {
+                        "project_id": project_id,
+                        "title": row.get("title") or "",
+                    },
+                    row["errors"],
+                )
+            rejected.append(row)
+            continue
+        payload = dict(row["payload"])
+        if i > 0:
+            payload["supersede_goals"] = True
+        resp = await _transfer_epic_from_body(payload)
+        if isinstance(resp, JSONResponse):
+            try:
+                raw = resp.body
+                if isinstance(raw, (bytes, bytearray, memoryview)):
+                    content = json.loads(bytes(raw).decode("utf-8"))
+                else:
+                    content = {"ok": False, "error": "transfer_failed"}
+            except Exception:
+                content = {"ok": False, "error": "transfer_failed"}
+            status = int(resp.status_code)
+        elif isinstance(resp, dict):
+            content = resp
+            status = 200 if content.get("ok") else 400
+        else:
+            content = {"ok": False, "error": "transfer_failed"}
+            status = 500
+        if status < 300 and content.get("ok"):
+            # mark L1 goal dispatched（transfer seed 也会匹配；显式兜底）
+            try:
+                from ..services import agent_mind as _am
+
+                gid = str(row.get("goal_id") or "").strip()
+                if gid:
+                    _am.mark_goal_status(
+                        root, gid, "dispatched", updated_by="promote-planned"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("mark dispatched after promote failed: %s", exc)
+            delivered.append(
+                {
+                    "goal_id": row.get("goal_id"),
+                    "title": row.get("title"),
+                    "epic_id": content.get("epic_id"),
+                    "engine_wake": content.get("engine_wake"),
+                    "ok": True,
+                }
+            )
+        else:
+            errs = content.get("errors") or [
+                {
+                    "code": content.get("error") or "transfer_failed",
+                    "message": str(content.get("error") or "transfer failed"),
+                }
+            ]
+            _record_gate_reject_lesson(
+                {"project_id": project_id, "title": row.get("title") or ""},
+                errs if isinstance(errs, list) else [errs],
+            )
+            rejected.append(
+                {
+                    "goal_id": row.get("goal_id"),
+                    "title": row.get("title"),
+                    "ok": False,
+                    "errors": errs,
+                    "fix_hint": content.get("fix_hint"),
+                }
+            )
+
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "delivered": delivered,
+        "rejected": rejected,
+        "delivered_count": len(delivered),
+        "rejected_count": len(rejected),
+        "engine_woken": any(
+            isinstance(x.get("engine_wake"), dict) and x["engine_wake"].get("ok")
+            for x in delivered
+        ),
+    }
+
+
 @router.post("/board-repair")
 async def board_repair(request: Request):
     """Desktop Agent 板务白名单：清残卡 / 剪幽灵轨 / 有限 reopen。不写业务源码。"""

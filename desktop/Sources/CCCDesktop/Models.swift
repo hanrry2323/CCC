@@ -626,3 +626,23 @@ struct TransferValidateError: Codable, Equatable {
     var message: String?
     var fix_hint: String?
 }
+
+/// L1 planned → gate → backlog + wake Engine
+struct PromotePlannedResp: Codable, Equatable {
+    var ok: Bool?
+    var project_id: String?
+    var delivered_count: Int?
+    var rejected_count: Int?
+    var engine_woken: Bool?
+    var delivered: [PromotePlannedItem]?
+    var rejected: [PromotePlannedItem]?
+}
+
+struct PromotePlannedItem: Codable, Equatable {
+    var goal_id: String?
+    var title: String?
+    var epic_id: String?
+    var ok: Bool?
+    var fix_hint: String?
+    var errors: [TransferValidateError]?
+}
