@@ -142,6 +142,27 @@ def _claude_env(*, relay_url: str | None = None) -> dict:
         fallback = str(Path.home() / ".ccc" / "engine-claude")
         Path(fallback).mkdir(parents=True, exist_ok=True)
         env["CLAUDE_CONFIG_DIR"] = fallback
+    # Engine 独立配置目录可能未信任 workspace → claude CLI 报 trust 错误
+    try:
+        import json as _json
+        _claude_json = Path(env["CLAUDE_CONFIG_DIR"]) / ".claude.json"
+        if _claude_json.is_file():
+            _cd = _json.loads(_claude_json.read_text(encoding="utf-8"))
+            changed = False
+            if "projects" not in _cd:
+                _cd["projects"] = {}
+            ws_path = env.get("CLAUDE_PROJECT_DIR", "")
+            if ws_path and ws_path not in _cd["projects"]:
+                _cd["projects"][ws_path] = {"hasTrustDialogAccepted": True}
+                changed = True
+            for _ww in ["/Users/fan/program/apps/qb", "/Users/fan/program/CCC", "/Users/fan/program/apps/ccc-demo"]:
+                if _ww not in _cd["projects"]:
+                    _cd["projects"][_ww] = {"hasTrustDialogAccepted": True}
+                    changed = True
+            if changed:
+                _claude_json.write_text(_json.dumps(_cd, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     return env
 
 
