@@ -1896,6 +1896,78 @@ def _launch_parallel_group(
         return False, {}
 
 
+def _salvage_phases_done_planned(
+    ws: Path,
+    tid: str,
+    store,
+    *,
+    label: str,
+) -> str | None:
+    """When all phases are done but card stuck in planned, advance to testing.
+
+    Prevents hot-loop: prepare fails (no pending phase) every tick while column stays planned.
+    """
+    col, task = store.find_task(tid)
+    if col != "planned" or not task:
+        return None
+    try:
+        from _role_tool import _read_phases_json
+
+        phases = _read_phases_json(Path(ws), tid) or []
+    except Exception:
+        phases = []
+    if not phases:
+        return None
+    statuses = {str(p.get("status") or "?") for p in phases}
+    if not statuses or statuses - {"done"}:
+        # any non-done → not this salvage
+        return None
+    if store.move_task(tid, "planned", "testing"):
+        store.patch_task(
+            tid,
+            {
+                "status": "testing",
+                "note": (
+                    str(task.get("note") or "")
+                    + "\n[engine] salvage_phases_done→testing"
+                ).strip(),
+            },
+        )
+        engine_log(
+            f"[{label}] {tid} salvage: phases all done + planned → testing（破空转）"
+        )
+        # #region agent log
+        try:
+            import json as _json
+            import time as _time
+            from pathlib import Path as _P
+
+            _payload = {
+                "sessionId": "7c1253",
+                "hypothesisId": "A",
+                "location": "ccc-engine.py:_salvage_phases_done_planned",
+                "message": "salvaged_to_testing",
+                "data": {"tid": tid, "statuses": sorted(statuses)},
+                "timestamp": int(_time.time() * 1000),
+                "runId": "post-fix",
+            }
+            _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
+            for _dp in (
+                _P.home() / ".ccc" / "debug-7c1253.log",
+                _P("/Users/apple/program/CCC/.cursor/debug-7c1253.log"),
+            ):
+                try:
+                    _dp.parent.mkdir(parents=True, exist_ok=True)
+                    _dp.open("a", encoding="utf-8").write(_line)
+                except OSError:
+                    pass
+        except Exception:
+            pass
+        # #endregion
+        return "testing"
+    return None
+
+
 def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
     """从 planned 启动一个 task。返回 True 表示已启动。
 
@@ -2152,6 +2224,11 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
             engine_log(
                 f"[{label}] 启动 {tid} 失败: {launch_r['error']}{skip_tag}"
             )
+            # phases 全 done 却仍 planned → 推进 testing（禁空转死循环）
+            salvaged_to = None
+            err_s = str(launch_r.get("error") or "")
+            if launch_r.get("skip_retry") and "无待执行 phase" in err_s and "done" in err_s:
+                salvaged_to = _salvage_phases_done_planned(ws, tid, store, label=label)
             # #region agent log
             try:
                 import json as _json
@@ -2163,16 +2240,16 @@ def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
                     "sessionId": "7c1253",
                     "hypothesisId": "C",
                     "location": "ccc-engine.py:launch_error",
-                    "message": "launch_failed_left_in_column",
+                    "message": "launch_failed_after_salvage_attempt",
                     "data": {
                         "tid": tid,
-                        "error": str(launch_r.get("error") or "")[:200],
+                        "error": err_s[:200],
                         "skip_retry": bool(launch_r.get("skip_retry")),
                         "column_after": _col_now,
-                        "salvage": launch_r.get("salvage"),
+                        "salvage": salvaged_to,
                     },
                     "timestamp": int(_time.time() * 1000),
-                    "runId": "stuck-board-1",
+                    "runId": "post-fix",
                 }
                 _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
                 for _dp in (
