@@ -162,6 +162,41 @@ async def post_intent_cards(request: Request, project_id: str) -> Any:
     }
 
 
+@router.post("/{project_id}/intent-cards/abandon-orphans")
+async def post_abandon_orphan_intent_cards(request: Request, project_id: str) -> Any:
+    """Clear zombie planned intent cards from the right rail (→ abandoned).
+
+    body: { goal_ids?: [], all_planned?: bool, updated_by? }
+    Default: abandon planned with no linked epic / linked epic not on board.
+    """
+    check_auth(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    root = _root(project_id)
+    result = agent_mind.abandon_orphan_planned_goals(
+        root,
+        workspace=root,
+        goal_ids=body.get("goal_ids") if isinstance(body.get("goal_ids"), list) else None,
+        abandon_all_planned=bool(body.get("all_planned") or body.get("abandon_all_planned")),
+        updated_by=str(body.get("updated_by") or "desktop-orphan-clean"),
+    )
+    digest = agent_mind.build_digest(
+        root, project_id=project_id, use_cache=False, persist=True
+    )
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "abandoned_count": result.get("abandoned_count"),
+        "abandoned": result.get("abandoned"),
+        "decided": result.get("decided"),
+        "next_product_goal": digest.get("next_product_goal"),
+    }
+
+
 @router.post("/{project_id}/goals/{goal_id}/status")
 async def post_goal_status(
     request: Request, project_id: str, goal_id: str

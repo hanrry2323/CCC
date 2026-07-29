@@ -565,8 +565,9 @@ struct MindGoal: Codable, Identifiable, Equatable, Hashable {
         switch (status ?? "planned").lowercased() {
         case "probed": return "探针已过 · 可收口"
         case "dispatched": return "编排中"
-        case "planned": return "待讨论"
+        case "planned": return "待转"
         case "intent_stable", "stable": return "已稳定"
+        case "abandoned": return "已归档"
         default: return (status ?? "planned").lowercased()
         }
     }
@@ -576,8 +577,8 @@ struct MindGoal: Codable, Identifiable, Equatable, Hashable {
         (status ?? "").lowercased() == "probed"
     }
 
-    /// 右栏讨论：仅 planned
-    var isDiscussable: Bool {
+    /// 右栏仅展示尚未进代办的 planned（无讨论按钮）
+    var isRailVisible: Bool {
         (status ?? "planned").lowercased() == "planned"
     }
 }
@@ -587,6 +588,14 @@ struct OpsIntentRow: Identifiable, Equatable {
     var projectId: String
     var goal: MindGoal
     var id: String { "\(projectId)|\(goal.id)" }
+}
+
+/// 右栏短暂「已进代办」角标
+struct RailDispatchFlash: Identifiable, Equatable {
+    var id: String
+    var projectId: String
+    var title: String
+    var until: Date
 }
 
 struct MindDecidedPayload: Codable, Equatable {

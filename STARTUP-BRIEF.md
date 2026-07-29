@@ -1,7 +1,7 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **版本**：`VERSION`（**v0.64.0**）  
+> **版本**：`VERSION`（**v0.64.1**）  
 > **边界**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
 > **北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) · **索引**：[`docs/INDEX.md`](docs/INDEX.md)  
 > **正式启用**：[`docs/ops/GO-LIVE.md`](docs/ops/GO-LIVE.md)
@@ -56,7 +56,7 @@ Desktop（M1）：战略讨论 → 人点「转意图卡」→ L1 planned → ga
      → 右栏：看板计数 + 意图卡链（非 work 拆解竖轨）
 ```
 
-**v0.64**：转意图卡 ≠ 定代办；gate 红卡停意图层（零 OpenCode）。SOP：[`references/intent-card-sop.md`](references/intent-card-sop.md) · 发布：[`docs/releases/v0.64.0.md`](docs/releases/v0.64.0.md)。
+**v0.64+**：转意图卡 ≠ 定代办；gate 红卡停意图层（零 OpenCode）。SOP：[`references/intent-card-sop.md`](references/intent-card-sop.md) · 发布：[`docs/releases/v0.64.1.md`](docs/releases/v0.64.1.md)。
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  

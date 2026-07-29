@@ -42,7 +42,7 @@ alwaysApply: true
 - 前台只确认意图（**转意图卡**/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。
 - **意图卡供给（硬 · v0.64.0）**：人发起转意图卡 → Agent 起草 L1 → **`transfer_gate` 绿才自动进代办**；红停意图层。转意图卡 ≠ 定代办；代办=Engine 开工令。原计划 0.65 多卡链 / 0.66 耗尽回流已并入本版。SOP：`references/intent-card-sop.md` · 发布：`docs/releases/v0.64.0.md`。
 - **Desktop Agent 定方案**：**战略规划优先**（可查 HP/社区）；讨论按意图给最佳方案；**对老板只聊方案与路线**；技术细节只进契约块；禁止每轮甩拍板题、禁止转卡后再问入队；`plan_md` 与 `goal` 同向。**意图卡首轮**须人话翻译；下达后 `dispatched`；**收口在运维**；审查报告可转优化意图卡。板务仅挡事时清；禁止 Engine 卫生 epic 主业。
-- **Desktop 主路径**：战略讨论 → 人点转意图卡 → L1 + gate → 自动进代办；右栏 = 意图卡链 + 看板计数（**取消** work 拆解卡为主叙事）。凡进 backlog epic 必 wake Engine。
+- **Desktop 主路径**：战略讨论 → 人点转意图卡 → L1 + gate → 自动进代办；右栏 = 意图卡（`planned` 仅）+ 看板计数（**无「讨论方案」按钮**；**取消** work 拆解卡为主叙事）。凡进 backlog epic 必 wake Engine。
 - **App Agent 全功能（硬 · 1A/2A）**：任意项目卡默认 **engineer**（本机 CCC + Hub 含跨仓 `hub_repair`）；业务改码仍 transfer→Engine；`ccc`=平台仓入口非唯一运维。**取消**「业务只讨论 / 板务交 ccc」分轨。
 - **看板管家（硬）**：板务本职 = **当前会话 Agent**。禁止「请打开编排运维」当主路径；禁止教用户手写 `transfer-outbox`/Terminal。运维红灯 → 打开当前项目或 `ccc` 平台会话。
 - **对用户语感（硬）**：短人话、自跑工具；禁止把 outbox/CLI/执行器黑话甩给老板；平台词只进契约块；禁止过程旁白（含英文）。

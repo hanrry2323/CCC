@@ -119,6 +119,18 @@ def test_failure_pack_and_exhausted(ws_board):
     )
     assert out.get("ok") is True
     assert out.get("action") == "failure_pack"
+    reflowed = out.get("intent_cards_reflowed") or []
+    assert isinstance(reflowed, list)
+    assert len(reflowed) >= 1
+    from chat_server.services import agent_mind as am
+
+    decided = am.load_decided(ws)
+    planned = [
+        g
+        for g in (decided.get("goals") or [])
+        if isinstance(g, dict) and g.get("status") == "planned"
+    ]
+    assert planned, "failure_pack should seed planned intent card"
 
 
 @pytest.fixture()

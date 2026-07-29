@@ -123,7 +123,7 @@ final class AppModel: ObservableObject {
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
 
-    @Published var flowEmptyMessage = "编排空闲 · 下一笔定稿后出现在这里"
+    @Published var flowEmptyMessage = "编排空闲 · 谈妥后点「转意图卡」"
     @Published var flowWorks: [FlowWork] = []
     @Published var flowEpic: FlowEpic?
     @Published var flowHeadline: String = ""
@@ -147,6 +147,10 @@ final class AppModel: ObservableObject {
     @Published var mindGoalBusy = false
     @Published var opsIntentRows: [OpsIntentRow] = []
     @Published var opsIntentBusy = false
+    /// projectId → goalKey → fix_hint（validate 红，右栏「未过门」）
+    @Published private(set) var mindGateFailByProject: [String: [String: String]] = [:]
+    /// 刚进代办的短暂角标（3～5s）
+    @Published private(set) var railDispatchFlashes: [RailDispatchFlash] = []
     /// 避免同一 epic 反复 toast
     private var lastStopLossToastKey: String?
     /// 当前选中会话是否正在生成（按会话，非全局）
@@ -2620,7 +2624,7 @@ final class AppModel: ObservableObject {
         return threadIdForProject(projectId)
     }
 
-    /// 一点击：右栏立刻出现大卡骨架（pending:client_request_id）
+    /// v0.64.1: 右栏不再写假 pending epic（看板条 Δ 为主信号）
     private func insertOptimisticTransferRail(
         tid: String,
         pid: String,
@@ -2630,51 +2634,7 @@ final class AppModel: ObservableObject {
         pipeline: String,
         persistDisk: Bool = true
     ) {
-        let pendingId = "pending:\(requestId)"
-        let epic = FlowEpic(
-            id: pendingId,
-            title: title,
-            split_status: "pending",
-            column: "backlog",
-            goal_summary: String(goal.prefix(200)),
-            pipeline: pipeline,
-            user_stage: "pending",
-            headline: "已交接 · 编排同步中…",
-            description: goal
-        )
-        let ref = FlowEpicRef(
-            epic_id: pendingId,
-            title: title,
-            updated_at: ISO8601DateFormatter().string(from: Date()),
-            thread_id: tid,
-            user_stage: "pending"
-        )
-        var snap = threadFlow[tid] ?? FlowThreadSnapshot(
-            epicId: pendingId, epic: epic, works: [], headline: "已交接 · 编排同步中…",
-            recentEpics: [], emptyMessage: "已交接 · 编排同步中…", fanoutHint: nil
-        )
-        var recent = snap.recentEpics
-        recent.removeAll { $0.epic_id.hasPrefix("pending:") }
-        recent.insert(ref, at: 0)
-        snap.epicId = pendingId
-        snap.epic = epic
-        snap.works = []
-        snap.headline = "已交接 · 编排同步中…"
-        snap.emptyMessage = "已交接 · 编排同步中…"
-        snap.fanoutHint = nil
-        snap.stopLossHint = nil
-        snap.recentEpics = recent
-        // 右栏只读 projectFlow：必须双写，不能只改 threadFlow
-        writeFlowSnap(projectId: pid, threadId: tid, snap)
-        if persistDisk {
-            persistCurrentThreadSnapshot(threadId: tid)
-        }
-        if selectedThreadId == tid || selectedProjectId == pid {
-            applyFlowSnapshot(snap)
-            currentEpicId = pendingId
-        }
-        flowSplitGeneration &+= 1
-        reconcileFlowSSE()
+        _ = (tid, pid, requestId, title, goal, pipeline, persistDisk)
     }
 
     static func promptMode(forUserText text: String) -> String {
@@ -3676,7 +3636,7 @@ final class AppModel: ObservableObject {
         previewMarkdown = t
     }
 
-    /// 从某条助手消息打开转任务（预填）；多窗必须带 projectId/threadId
+    /// 从某条助手消息打开转意图卡（预填契约 → L1→gate→代办）
     func openTransfer(
         fromAssistantContent content: String,
         projectId: String? = nil,
@@ -3688,12 +3648,19 @@ final class AppModel: ObservableObject {
             showToast("请先选择项目")
             return
         }
-        applyTransferDraft(
-            TransferDraftParser.parse(from: content),
-            fallbackContent: content,
-            threadId: tid
-        )
-        presentTransferSheet(threadId: tid)
+        let all = TransferDraftParser.parseAll(from: content)
+        if !all.isEmpty {
+            setThreadTransferDraft(tid, all.first)
+            threadPendingIntentDrafts[tid] = all.filter { $0.isGateReady || !$0.title.isEmpty }
+            applyTransferDraft(all.first, fallbackContent: content, threadId: tid)
+        } else {
+            applyTransferDraft(
+                TransferDraftParser.parse(from: content),
+                fallbackContent: content,
+                threadId: tid
+            )
+        }
+        beginIntentCardDispatch(threadId: tid)
     }
 
     func openTransferSheet(projectId: String? = nil, threadId: String? = nil) {
@@ -3723,7 +3690,21 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 一键确认定稿条 → 直接提交（字段已齐）
+    /// 统一入口：人发起转意图卡 → L1 → gate → 自动进代办
+    func beginIntentCardDispatch(threadId: String? = nil) {
+        let tid = threadId ?? selectedThreadId
+        guard let tid else {
+            showToast("请先选择项目")
+            return
+        }
+        threadIntentDispatchPending[tid] = true
+        if threadPendingIntentDrafts[tid] == nil, let d = threadTransferDraft[tid] {
+            threadPendingIntentDrafts[tid] = [d]
+        }
+        Task { await promoteIntentCardToBacklog(threadId: tid) }
+    }
+
+    /// 确认条「进代办」→ 同一 funnel（仍过 gate）
     func confirmPendingTransfer(threadId: String? = nil) {
         let tid = threadId ?? selectedThreadId
         let draft = tid.flatMap { threadTransferDraft[$0] } ?? pendingTransferDraft
@@ -3733,7 +3714,7 @@ final class AppModel: ObservableObject {
         }
         applyTransferDraft(d, fallbackContent: nil, threadId: tid)
         if d.isGateReady {
-            Task { await submitTransfer(threadId: tid) }
+            beginIntentCardDispatch(threadId: tid)
         } else {
             presentTransferSheet(threadId: tid)
         }
@@ -3854,14 +3835,24 @@ final class AppModel: ObservableObject {
                         ?? v.errors?.first?.message
                         ?? "契约未过门"
                     failHints.append("「\(title)」\(hint)")
+                    recordMindGateFail(projectId: pid, title: title, hint: hint)
                     continue
                 }
             } catch {
-                // Hub 不可达：仍排队该卡
+                // Hub 不可达：卡已在 L1；不入队（零 OpenCode）
+                failHints.append("「\(title)」Hub 不可达 · 卡已写意图层 · 恢复后再过门")
+                recordMindGateFail(
+                    projectId: pid,
+                    title: title,
+                    hint: "Hub 不可达 · 恢复后再过门"
+                )
+                continue
             }
+            clearMindGateFail(projectId: pid, title: title)
             applyTransferDraft(d, fallbackContent: nil, threadId: tid)
             await submitTransfer(threadId: tid)
             okN += 1
+            pushRailDispatchFlash(projectId: pid, title: title)
             // 短暂间隔，避免 outbox 同 tid 冲撞
             try? await Task.sleep(nanoseconds: 350_000_000)
         }
@@ -4183,20 +4174,13 @@ final class AppModel: ObservableObject {
             """
         }()
 
-        // 一点击：立刻收确认卡 + 右栏乐观大卡，再后台 outbox
+        // 看板条 Δ 为主信号；不再写假 pending epic 进右栏
         let requestId = UUID().uuidString
-        insertOptimisticTransferRail(
-            tid: tid,
-            pid: pid,
-            requestId: requestId,
-            title: title,
-            goal: goal,
-            pipeline: pipeline,
-            persistDisk: false
-        )
+        _ = requestId
         resetTransferForm(threadId: tid)
         dismissTransferSheet(threadId: tid)
         mutateTransferForm(tid) { $0.error = nil }
+        Task { await refreshProjectTaskState() }
 
         let cx = form.complexity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let complexity = ["small", "medium", "large"].contains(cx) ? cx : "medium"
@@ -4544,6 +4528,7 @@ final class AppModel: ObservableObject {
                 await refreshFlowNow(projectId: pid, threadId: tid)
             }
             reconcileFlowSSE()
+            await abandonOrphanIntentCards(projectId: pid)
             await refreshMindGoals(projectId: pid)
         } catch {
             if isSelected {
@@ -4556,7 +4541,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// LPSN · T3：右栏只展示「待讨论」planned（dispatched/probed 不占右栏）
+    /// LPSN · T3：右栏只展示尚未进代办的 planned
     @MainActor
     func refreshMindGoals(projectId: String) async {
         let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4565,6 +4550,7 @@ final class AppModel: ObservableObject {
             mindGoalsProjectId = nil
             return
         }
+        pruneRailDispatchFlashes()
         do {
             try await prepareClient(ensureAgent: false)
             let resp = try await client.fetchMindDecided(projectId: pid)
@@ -4578,6 +4564,76 @@ final class AppModel: ObservableObject {
             if mindGoalsProjectId == pid {
                 mindGoals = []
             }
+        }
+    }
+
+    /// 清理僵尸 planned（无 linked epic / epic 不在板）→ abandoned
+    @MainActor
+    func abandonOrphanIntentCards(projectId: String, allPlanned: Bool = false) async {
+        let pid = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else { return }
+        do {
+            try await prepareClient(ensureAgent: false)
+            _ = try await client.abandonOrphanIntentCards(
+                projectId: pid,
+                allPlanned: allPlanned
+            )
+            await refreshMindGoals(projectId: pid)
+        } catch {
+            // 非致命
+        }
+    }
+
+    func mindGateFailHint(projectId: String, goal: MindGoal) -> String? {
+        let key = mindGateKey(goal.text ?? goal.id)
+        return mindGateFailByProject[projectId]?[key]
+    }
+
+    func railDispatchedFlashes(forProject projectId: String) -> [RailDispatchFlash] {
+        pruneRailDispatchFlashes()
+        return railDispatchFlashes.filter { $0.projectId == projectId }
+    }
+
+    private func mindGateKey(_ title: String) -> String {
+        String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80)).lowercased()
+    }
+
+    private func recordMindGateFail(projectId: String, title: String, hint: String) {
+        var m = mindGateFailByProject[projectId] ?? [:]
+        m[mindGateKey(title)] = hint
+        mindGateFailByProject[projectId] = m
+    }
+
+    private func clearMindGateFail(projectId: String, title: String) {
+        guard var m = mindGateFailByProject[projectId] else { return }
+        m.removeValue(forKey: mindGateKey(title))
+        if m.isEmpty {
+            mindGateFailByProject.removeValue(forKey: projectId)
+        } else {
+            mindGateFailByProject[projectId] = m
+        }
+    }
+
+    private func pushRailDispatchFlash(projectId: String, title: String) {
+        let flash = RailDispatchFlash(
+            id: UUID().uuidString,
+            projectId: projectId,
+            title: String(title.prefix(48)),
+            until: Date().addingTimeInterval(5)
+        )
+        railDispatchFlashes.append(flash)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_200_000_000)
+            pruneRailDispatchFlashes()
+        }
+    }
+
+    private func pruneRailDispatchFlashes() {
+        let now = Date()
+        let before = railDispatchFlashes.count
+        railDispatchFlashes.removeAll { $0.until <= now }
+        if railDispatchFlashes.count != before {
+            objectWillChange.send()
         }
     }
 

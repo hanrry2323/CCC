@@ -139,12 +139,16 @@ def normalize_goal(item: Any) -> dict[str, Any] | None:
         status = "planned"
     gid = str(item.get("id") or "").strip() or _goal_id_from_text(text)
     exit_c = str(item.get("exit_condition") or item.get("probe") or "").strip()
-    return {
+    out: dict[str, Any] = {
         "id": gid[:64],
         "text": text[:DECIDED_ITEM_MAX_CHARS],
         "exit_condition": exit_c[:DECIDED_ITEM_MAX_CHARS],
         "status": status,
     }
+    linked = str(item.get("linked_epic_id") or "").strip()
+    if linked:
+        out["linked_epic_id"] = linked[:128]
+    return out
 
 
 def goal_display(g: dict[str, Any] | str) -> str:
@@ -617,6 +621,87 @@ def mark_goal_status(
         {"goals": cur["goals"]},
         updated_by=updated_by,
     )
+
+
+def _active_board_task_ids(workspace: Path | None) -> set[str]:
+    """Ids currently on board (any column except released/quarantine folders)."""
+    if workspace is None or not workspace.is_dir():
+        return set()
+    board = workspace / ".ccc" / "board"
+    if not board.is_dir():
+        return set()
+    ids: set[str] = set()
+    for col in (
+        "backlog",
+        "planned",
+        "in_progress",
+        "testing",
+        "verified",
+        "abnormal",
+    ):
+        d = board / col
+        if not d.is_dir():
+            continue
+        for p in d.glob("*.jsonl"):
+            ids.add(p.stem)
+    return ids
+
+
+def abandon_orphan_planned_goals(
+    root: Path,
+    *,
+    workspace: Path | None = None,
+    goal_ids: list[str] | None = None,
+    abandon_all_planned: bool = False,
+    updated_by: str = "orphan-abandon",
+) -> dict[str, Any]:
+    """Mark zombie planned intent cards abandoned so the right rail does not pile graves.
+
+    Orphan rules:
+      - explicit goal_ids → those planned ids
+      - abandon_all_planned → every planned
+      - default → planned with linked_epic_id set but epic not on active board
+        (bare planned without link = 合法「待转」, never auto-kill)
+    """
+    cur = load_decided(root)
+    goals = list(cur.get("goals") or [])
+    active = _active_board_task_ids(workspace)
+    want = {str(x) for x in (goal_ids or []) if str(x).strip()}
+    abandoned: list[dict[str, Any]] = []
+    for g in goals:
+        if not isinstance(g, dict):
+            continue
+        st = str(g.get("status") or "planned").lower()
+        if st != "planned":
+            continue
+        gid = str(g.get("id") or "")
+        linked = str(g.get("linked_epic_id") or "").strip()
+        is_orphan = False
+        if want and gid in want:
+            is_orphan = True
+        elif abandon_all_planned:
+            is_orphan = True
+        elif not want:
+            if linked and linked not in active:
+                is_orphan = True
+        if not is_orphan:
+            continue
+        g["status"] = "abandoned"
+        abandoned.append(dict(g))
+    if not abandoned:
+        return {
+            "ok": True,
+            "abandoned_count": 0,
+            "abandoned": [],
+            "decided": cur,
+        }
+    out = merge_decided(root, {"goals": goals}, updated_by=updated_by)
+    return {
+        "ok": True,
+        "abandoned_count": len(abandoned),
+        "abandoned": abandoned,
+        "decided": out,
+    }
 
 
 def _goal_matches_transfer(goal: dict[str, Any], title: str, goal_text: str) -> bool:

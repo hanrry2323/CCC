@@ -37,10 +37,10 @@ export const FIXED_ACTIONS = [
   },
   {
     id: 'finalize-plan',
-    label: '定稿方案',
+    label: '转意图卡',
     kind: 'prompt',
-    uiLabel: '定稿方案',
-    title: '产出 ccc-transfer 契约；定稿前可自由讨论',
+    uiLabel: '转意图卡',
+    title: '产出 ccc-transfer 契约；gate 绿自动进代办（Hub SPA 已 deprecated）',
     prompt: '', // set from FINALIZE_PLAN_PROMPT below
   },
   {
@@ -60,9 +60,9 @@ export const FIXED_ACTIONS = [
   },
   {
     id: 'transfer-task',
-    label: '转任务',
+    label: '转意图卡(编辑)',
     kind: 'transfer',
-    title: '核标题并下达看板（需先定稿）；勿与「下达任务」混淆',
+    title: '打开契约编辑（deprecated SPA）；主路径=转意图卡自动过门',
   },
   {
     id: 'task',

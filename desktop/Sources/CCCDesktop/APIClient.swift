@@ -1127,6 +1127,31 @@ actor APIClient {
         return try await send(req, as: MindDecidedResp.self, maxAttempts: 2)
     }
 
+    /// 清理僵尸 planned 意图卡（→ abandoned）
+    @discardableResult
+    func abandonOrphanIntentCards(
+        projectId: String,
+        goalIds: [String]? = nil,
+        allPlanned: Bool = false
+    ) async throws -> MindDecidedResp {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
+        var payload: [String: Any] = ["updated_by": "desktop-orphan-clean"]
+        if let goalIds, !goalIds.isEmpty {
+            payload["goal_ids"] = goalIds
+        }
+        if allPlanned {
+            payload["all_planned"] = true
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        var req = try authedRequest(
+            "api/desktop/mind/\(enc)/intent-cards/abandon-orphans",
+            method: "POST",
+            body: body
+        )
+        req.timeoutInterval = 12
+        return try await send(req, as: MindDecidedResp.self, maxAttempts: 2)
+    }
+
     /// Dry-run transfer_gate（不写 backlog）
     func validateTransfer(_ payload: [String: Any]) async throws -> TransferValidateResp {
         let body = try JSONSerialization.data(withJSONObject: payload)

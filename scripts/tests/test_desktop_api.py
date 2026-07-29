@@ -199,11 +199,11 @@ def test_transfer_preserves_non_main_thread_id(client, monkeypatch):
                 "thread_id": "demo::494276D0",
                 "title": "第二笔",
                 "goal": "再加一行",
-                "acceptance": ["test -f README.md"],
+                "acceptance": ["pytest -q -k smoke"],
                 "pipeline": "dev",
                 "feasibility": "ok",
                 "executor_intent": "opencode",
-                "plan_md": "# P\n\n## 验收\n- x\n",
+                "plan_md": "# P\n\n## 验收\n- pytest -q -k smoke\n",
             },
         )
     assert r.status_code == 200, r.text
@@ -376,3 +376,80 @@ def test_flow_snapshot_reads_columns(client, monkeypatch):
     assert d.get("empty") is False
     assert d["epic"]["id"] == "e1"
     assert d["works"][0]["executor"] == "python"
+
+
+def _stub_demo_project(monkeypatch, root: Path):
+    from chat_server.routers import projects as proj
+
+    monkeypatch.setitem(
+        proj.PROJECTS,
+        "demo",
+        {
+            "name": "demo",
+            "path": str(root),
+            "role": "app",
+            "engine_eligible": True,
+        },
+    )
+    monkeypatch.setitem(proj.PROJECT_TO_WORKSPACE, "demo", "demo")
+    monkeypatch.setattr(proj, "get_project_path", lambda pid: str(root))
+
+
+def test_intent_cards_upsert_and_abandon(client, tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    (root / ".ccc" / "agent-mind").mkdir(parents=True)
+    (root / ".ccc" / "board" / "backlog").mkdir(parents=True)
+    _stub_demo_project(monkeypatch, root)
+
+    r = client.post(
+        "/api/desktop/mind/demo/intent-cards",
+        auth=_auth(),
+        json={
+            "cards": [
+                {
+                    "title": "HTTP意图卡",
+                    "goal": "写 L1 不进板",
+                    "exit_condition": "pytest -q t",
+                }
+            ]
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("goals_upserted")
+    decided = (root / ".ccc" / "agent-mind" / "decided.json").read_text(encoding="utf-8")
+    assert "HTTP意图卡" in decided or "写 L1" in decided
+    assert not any((root / ".ccc" / "board" / "backlog").glob("*.jsonl"))
+
+    r2 = client.post(
+        "/api/desktop/mind/demo/intent-cards/abandon-orphans",
+        auth=_auth(),
+        json={"all_planned": True},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json().get("abandoned_count", 0) >= 1
+
+
+def test_transfer_validate_dry_run(client, tmp_path, monkeypatch):
+    root = tmp_path / "ws2"
+    root.mkdir()
+    _stub_demo_project(monkeypatch, root)
+
+    weak = client.post(
+        "/api/desktop/transfer/validate",
+        auth=_auth(),
+        json={
+            "project_id": "demo",
+            "title": "弱",
+            "goal": "existence",
+            "acceptance": ["test -f a.py"],
+            "pipeline": "dev",
+            "feasibility": "ok",
+            "plan_md": "# Plan\n## 目标\nx\n## 验收\n- test -f a.py\n",
+            "card_kind": "epic",
+        },
+    )
+    assert weak.status_code == 200, weak.text
+    assert weak.json().get("ok") is False
+    assert weak.json().get("dry_run") is True

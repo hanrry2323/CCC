@@ -713,7 +713,7 @@ struct CodexChatPaneBody: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("主路径")
                     .font(.system(size: 12, weight: .medium))
-                Text("① 聊透意图（对齐基线可选）→ ②「定稿」锁方案 → ③ 转任务确认。板堵时 Agent 可直接修残卡，不必再投卫生卡。")
+                Text("① 聊透意图（对齐基线可选）→ ②「转意图卡」→ gate 绿自动进代办。板堵时 Agent 可直接修残卡。")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1019,9 +1019,9 @@ struct CodexChatPaneBody: View {
                                     .foregroundStyle(CCCTheme.faint)
                                     .frame(maxWidth: .infinity, alignment: .center)
                                 VStack(alignment: .leading, spacing: 10) {
-                                    emptyStep(num: "1", title: "聊透意图", detail: "对齐基线可选深扫；直接聊也能定稿下达")
-                                    emptyStep(num: "2", title: "点「定稿」", detail: "生成契约并锁方案（二级卡不可改正文）")
-                                    emptyStep(num: "3", title: "确认转任务", detail: "仅可改标题与备注；Engine 自动消费")
+                                    emptyStep(num: "1", title: "聊透意图", detail: "对齐基线可选深扫；直接聊也能转意图卡")
+                                    emptyStep(num: "2", title: "点「转意图卡」", detail: "写 L1 意图卡；gate 绿自动进代办")
+                                    emptyStep(num: "3", title: "看板跟进度", detail: "右栏看板条 Δ；运维收口 probed")
                                 }
                                 .padding(16)
                                 .frame(maxWidth: 420)
@@ -1044,7 +1044,7 @@ struct CodexChatPaneBody: View {
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel("空对话引导：聊透目标，定稿，确认转任务")
+                            .accessibilityLabel("空对话引导：聊透目标，转意图卡，自动进代办")
                             }
                         }
                         ForEach(displayMessages) { msg in
@@ -1276,9 +1276,9 @@ struct CodexChatPaneBody: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button {
-                    model.openTransferSheet(projectId: window.projectId, threadId: window.threadId)
+                    model.beginIntentCardDispatch(threadId: window.threadId)
                 } label: {
-                    Text("转任务")
+                    Text("转意图卡")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(
                             model.canTransfer(projectId: window.projectId)
@@ -1288,9 +1288,9 @@ struct CodexChatPaneBody: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.canTransfer(projectId: window.projectId))
-                .help("把定稿方案写入待办大卡；右侧展开本对话编排")
-                .accessibilityLabel("转任务")
-                .accessibilityHint("确认门禁后投递 epic")
+                .help("写意图卡 → gate 绿自动进代办；红则卡停意图层")
+                .accessibilityLabel("转意图卡")
+                .accessibilityHint("L1 落盘后经门禁进代办")
 
                 Picker("", selection: $model.preferredModel) {
                     ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
@@ -1335,7 +1335,7 @@ struct CodexChatPaneBody: View {
                         .foregroundStyle(CCCTheme.faint)
                         .lineLimit(2)
                 } else if model.transferDraft(for: paneThreadId) == nil, !displayMessages.isEmpty {
-                    Text("方案成熟后点「定稿」，再确认转任务")
+                    Text("方案成熟后点「转意图卡」")
                         .font(.system(size: 10.5))
                         .foregroundStyle(CCCTheme.faint)
                         .lineLimit(1)
@@ -1530,12 +1530,12 @@ struct CodexChatPaneBody: View {
                         )
                     }
                     quickChip(
-                        "定稿",
-                        help: "核实后生成契约并锁方案；转任务二级卡仅可改标题与备注"
+                        "转意图卡",
+                        help: "谈妥后起草意图卡；gate 绿自动进代办，红则停意图层"
                     ) {
                         model.applyQuickPrompt(
                             QuickPrompts.finalize,
-                            uiLabel: "定稿",
+                            uiLabel: "转意图卡",
                             projectId: paneProjectId,
                             threadId: paneThreadId
                         )
@@ -1879,7 +1879,7 @@ struct MessageActionBar: View {
                 }
                 actionBtn("预览") { model.previewMessage(content) }
                 if model.canTransfer(projectId: window.projectId) {
-                    actionBtn("转任务") {
+                    actionBtn("转意图卡") {
                         model.openTransfer(
                             fromAssistantContent: content,
                             projectId: window.projectId,
@@ -1934,8 +1934,6 @@ struct FlowRail: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var window: WindowChatState
     /// 排队/历史默认折叠
-    @State private var historyExpanded = false
-
     /// 右栏跟本窗项目，不跟单个会话
     private var paneProjectId: String? {
         if let pid = window.projectId, !pid.isEmpty { return pid }
@@ -2067,7 +2065,7 @@ struct FlowRail: View {
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.faint)
             } else {
-                Text("定稿下达后显示编排")
+                Text("谈妥后显示意图卡 · 进代办看看板条")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.faint)
             }
@@ -2244,86 +2242,49 @@ struct FlowRail: View {
     private var mindGoalsStrip: some View {
         let pid = paneProjectId
         let goals = (model.mindGoalsProjectId == pid) ? model.mindGoals : []
-        if let pid, !goals.isEmpty {
+        let flashes = pid.map { model.railDispatchedFlashes(forProject: $0) } ?? []
+        if let pid, !goals.isEmpty || !flashes.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text("意图目标")
+                Text("意图卡")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(CCCTheme.faint)
-                ForEach(goals) { goal in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(goal.text ?? goal.id)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(CCCTheme.ink)
-                                .lineLimit(2)
-                            Text(goal.displayStatus)
+                ForEach(Array(goals.enumerated()), id: \.element.id) { idx, goal in
+                    let n = goals.count
+                    let gateFail = model.mindGateFailHint(projectId: pid, goal: goal)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("[\(idx + 1)/\(n)] \(goal.text ?? goal.id)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(CCCTheme.ink)
+                            .lineLimit(2)
+                        Text(gateFail != nil ? "未过门" : "待转")
+                            .font(.system(size: 9))
+                            .foregroundStyle(gateFail != nil ? CCCTheme.nodeFail : CCCTheme.faint)
+                        if let gateFail, !gateFail.isEmpty {
+                            Text(gateFail)
                                 .font(.system(size: 9))
                                 .foregroundStyle(CCCTheme.faint)
-                        }
-                        Spacer(minLength: 0)
-                        if goal.isDiscussable {
-                            Button("讨论方案") {
-                                startIntentDiscuss(goal: goal, projectId: pid)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
+                                .lineLimit(2)
                         }
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard goal.isDiscussable else { return }
-                        startIntentDiscuss(goal: goal, projectId: pid)
-                    }
                     .background(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(CCCTheme.chatBg)
                     )
                 }
+                ForEach(flashes, id: \.id) { flash in
+                    Text("已进代办 · \(flash.title)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(CCCTheme.accent)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(CCCTheme.chatBg)
+                        )
+                }
             }
-        }
-    }
-
-    /// 意图卡进对话：自动发送「先人话翻译」提示（Agent 收全文；气泡用短标）
-    private func intentDiscussPrompt(_ goal: MindGoal) -> String {
-        let title = (goal.text ?? goal.id).trimmingCharacters(in: .whitespacesAndNewlines)
-        let exit = (goal.exit_condition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let status = (goal.status ?? "planned").lowercased()
-        let stageHint: String = {
-            switch status {
-            case "probed": return "探针已过 · 可收口（人可点标记稳定）"
-            default: return "待讨论 / 待开发"
-            }
-        }()
-        return """
-        【意图卡 · 请先人话翻译】
-        goal_id: \(goal.id)
-        目标原文: \(title)
-        当前态: \(stageHint)
-        \(exit.isEmpty ? "" : "exit_condition（勿对老板朗读）: \(exit)\n")
-        硬要求（本轮第一条回复）：
-        1. 用 2～4 句白话说明：这张卡要做成什么、为何重要、现在处在哪一步、我接下来可以怎么选。
-        2. 禁止本轮正文出现文件路径、类名、命令、exit_condition 原文、ccc-transfer。
-        3. 未谈妥前不要转意图卡；谈妥且我点「转意图卡」后再出契约块。title/goal 必须对齐上面「目标原文」，以免 intent_not_stable 门禁拒收。
-        4. 勿问我要不要入队。gate 绿后系统自动进代办。
-        """
-    }
-
-    private func startIntentDiscuss(goal: MindGoal, projectId: String) {
-        let prompt = intentDiscussPrompt(goal)
-        let short = String((goal.text ?? goal.id).prefix(28))
-        if model.canChat {
-            model.sendUserMessage(
-                prompt,
-                projectId: projectId,
-                threadId: window.threadId,
-                stopAndSend: true,
-                displayText: "意图说明 · \(short)"
-            )
-        } else {
-            model.fillComposer(text: prompt, threadId: window.threadId)
-            model.showToast("本机 Agent 未就绪 · 已填入输入框")
         }
     }
 
@@ -2334,102 +2295,6 @@ struct FlowRail: View {
             return cur.title ?? cur.epic_id
         }
         return snap?.epic?.title ?? eid
-    }
-
-    /// 纵向任务栈：当前展开 + 排队/历史默认折叠
-    private var taskStack: some View {
-        let epics = snap?.recentEpics ?? []
-        let currentId = snap?.epicId
-        let current = epics.first(where: { $0.epic_id == currentId })
-            ?? (currentId.map {
-                FlowEpicRef(
-                    epic_id: $0,
-                    title: snap?.epic?.title,
-                    updated_at: nil,
-                    thread_id: nil,
-                    user_stage: snap?.epic?.user_stage
-                )
-            })
-        let history = epics.filter { $0.epic_id != currentId }
-
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("大卡")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(CCCTheme.faint)
-            if let cur = current {
-                taskStackRow(cur, expanded: true)
-            }
-            if !history.isEmpty {
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        historyExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: historyExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(CCCTheme.faint)
-                        Text("排队 / 历史（\(history.count)）")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(CCCTheme.faint)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.top, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if historyExpanded {
-                    ForEach(history) { epic in
-                        Button {
-                            Task {
-                                await model.selectEpic(
-                                    epic.epic_id,
-                                    projectId: paneProjectId,
-                                    threadId: nil
-                                )
-                            }
-                        } label: {
-                            taskStackRow(epic, expanded: false)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    private func taskStackRow(_ epic: FlowEpicRef, expanded: Bool) -> some View {
-        let stage = (epic.user_stage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let stageLabel = stage.isEmpty ? (expanded ? "进行中" : "") : stage
-        let done = stage.lowercased() == "done"
-        return HStack(alignment: .center, spacing: 8) {
-            Image(systemName: expanded ? "chevron.down" : "circle")
-                .font(.system(size: expanded ? 9 : 7, weight: .semibold))
-                .foregroundStyle(done ? CCCTheme.faint : (expanded ? CCCTheme.accent : CCCTheme.secondary))
-                .frame(width: 12)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(epic.title ?? epic.epic_id)
-                    .font(.system(size: 11, weight: expanded ? .semibold : .regular))
-                    .foregroundStyle(done ? CCCTheme.faint : CCCTheme.ink)
-                    .lineLimit(expanded ? 2 : 1)
-                if !stageLabel.isEmpty {
-                    Text(stageLabel)
-                        .font(.system(size: 10))
-                        .foregroundStyle(done ? CCCTheme.faint : CCCTheme.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, expanded ? 8 : 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(expanded
-                      ? CCCTheme.accent.opacity(0.08)
-                      : CCCTheme.faint.opacity(done ? 0.06 : 0.04))
-        )
-        .opacity(done && !expanded ? 0.72 : 1)
     }
 }
 
@@ -2452,12 +2317,12 @@ struct TransferSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("转任务")
+                Text("转意图卡")
                     .font(.system(size: 20, weight: .semibold))
                     .tracking(-0.4)
                 Spacer()
                 if !draft.source.isEmpty {
-                    Text(draft.source == "ccc-transfer" ? "来源定稿" : "启发式预填")
+                    Text(draft.source == "ccc-transfer" ? "来源契约" : "启发式预填")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(CCCTheme.faint)
                         .padding(.horizontal, 8)
@@ -2467,8 +2332,8 @@ struct TransferSheet: View {
             }
             Text(
                 planLocked
-                    ? "定稿方案已锁；仅可改标题与备注（含定时说明）。改方案请退回对话重定稿。"
-                    : "启发式预填可改意图；建议先点「定稿」锁方案。纠错：退回对话重定稿。"
+                    ? "契约已锁；仅可改标题与备注。改方案请退回对话再转意图卡。"
+                    : "启发式预填可改意图；建议先点「转意图卡」出契约。纠错：退回对话重转。"
             )
                 .font(CCCTheme.callout)
                 .foregroundStyle(CCCTheme.faint)
@@ -2599,9 +2464,10 @@ struct TransferSheet: View {
                     loadDraftFromModel()
                 }
                 .foregroundStyle(CCCTheme.secondary)
-                Button("确认转任务") {
+                Button("确认转意图卡") {
                     model.commitTransferForm(threadId, draft)
-                    Task { await model.submitTransfer(threadId: threadId) }
+                    model.beginIntentCardDispatch(threadId: threadId)
+                    model.dismissTransferSheet(threadId: threadId)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(CCCTheme.accent)

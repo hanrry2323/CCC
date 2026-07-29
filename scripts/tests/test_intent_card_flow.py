@@ -151,3 +151,73 @@ def test_hub_voice_strategy_first():
     assert "转意图卡" in HUB_BOSS_VOICE
     assert "intent-card-sop.md" in HUB_BOSS_VOICE
     assert "禁止**未触发自转" in HUB_BOSS_VOICE or "禁止** Agent 未触发自转" in HUB_BOSS_VOICE or "禁止**未触发" in HUB_BOSS_VOICE or "未触发自转" in HUB_BOSS_VOICE
+
+
+def test_abandon_orphan_keeps_bare_planned(mind_root: Path):
+    from chat_server.services import agent_mind as am
+
+    am.upsert_planned_intent_cards(
+        mind_root,
+        [{"text": "待转合法卡", "exit_condition": "pytest -q t"}],
+        updated_by="t",
+    )
+    out = am.abandon_orphan_planned_goals(mind_root, workspace=mind_root)
+    assert out["abandoned_count"] == 0
+    planned = [
+        g
+        for g in am.load_decided(mind_root)["goals"]
+        if isinstance(g, dict) and g.get("status") == "planned"
+    ]
+    assert len(planned) == 1
+
+
+def test_abandon_stale_linked_and_all_planned(mind_root: Path):
+    from chat_server.services import agent_mind as am
+
+    am.upsert_planned_intent_cards(
+        mind_root,
+        [{"text": "僵尸链", "exit_condition": "pytest -q t"}],
+        updated_by="t",
+    )
+    path = am.decided_path(mind_root)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["goals"][0]["linked_epic_id"] = "epic-gone"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    out = am.abandon_orphan_planned_goals(mind_root, workspace=mind_root)
+    assert out["abandoned_count"] == 1
+    assert am.load_decided(mind_root)["goals"][0]["status"] == "abandoned"
+
+    am.upsert_planned_intent_cards(
+        mind_root,
+        [{"text": "再清一批", "exit_condition": "pytest -q t"}],
+        updated_by="t",
+    )
+    out2 = am.abandon_orphan_planned_goals(
+        mind_root, workspace=mind_root, abandon_all_planned=True
+    )
+    assert out2["abandoned_count"] >= 1
+    planned = [
+        g
+        for g in am.load_decided(mind_root)["goals"]
+        if isinstance(g, dict) and g.get("status") == "planned"
+    ]
+    assert planned == []
+
+
+def test_multi_card_upsert_order_preserved(mind_root: Path):
+    from chat_server.services import agent_mind as am
+
+    titles = ["卡甲", "卡乙", "卡丙"]
+    am.upsert_planned_intent_cards(
+        mind_root,
+        [{"text": t, "exit_condition": "pytest -q t"} for t in titles],
+        updated_by="t",
+    )
+    planned = [
+        g
+        for g in am.load_decided(mind_root)["goals"]
+        if isinstance(g, dict) and g.get("status") == "planned"
+    ]
+    texts = [g.get("text") for g in planned]
+    for t in titles:
+        assert t in texts

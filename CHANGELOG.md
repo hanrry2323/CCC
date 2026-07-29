@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.64.1] — 2026-07-29
+
+### Changed
+- **右栏意图卡**：区名「意图卡」；`1/N`；态「待转/未过门」；**去掉「讨论方案」按钮**；短暂「已进代办」角标。
+- **入口统一**：转意图卡 / Sheet / 进代办 / 消息动作 → `beginIntentCardDispatch`（L1→gate→代办）；validate 失败或 Hub 不可达**不入队**。
+- 删 `FlowCanvasView` / 右栏 `taskStack`；停假 pending epic 轨。
+- 僵尸 planned：`POST …/intent-cards/abandon-orphans`（默认仅清 stale linked；`all_planned` 显式清坟）。
+
+### Tests
+- abandon / multi-card / HTTP intent-cards+validate / failure_pack `intent_cards_reflowed`
+
+详见 [`docs/releases/v0.64.1.md`](docs/releases/v0.64.1.md)。
+
 ## [v0.64.0] — 2026-07-29
 
 > **收尾说明**：计划中的 v0.65（多卡链）/ v0.66（耗尽回流）能力已并入本版，**不另发空号**。发布说明：[`docs/releases/v0.64.0.md`](docs/releases/v0.64.0.md)。
