@@ -188,6 +188,130 @@ def next_product_goal(decided: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def upsert_planned_intent_cards(
+    root: Path,
+    cards: list[Any],
+    *,
+    updated_by: str = "desktop-agent",
+) -> dict[str, Any]:
+    """Write/update L1 *planned* intent cards (规划面). Does **not** create backlog.
+
+    Each card: {id?, text|title|goal, exit_condition?}. Existing match by id or text
+    prefix; status forced to planned unless already dispatched/probed/stable.
+    Returns {ok, goals_upserted, decided}.
+    """
+    if not isinstance(cards, list) or not cards:
+        raise ValueError("cards must be a non-empty list")
+    decided = load_decided(root)
+    goals = list(decided.get("goals") or [])
+    upserted: list[dict[str, Any]] = []
+
+    for raw in cards:
+        if isinstance(raw, str):
+            ng = normalize_goal(raw)
+        elif isinstance(raw, dict):
+            text = str(
+                raw.get("text") or raw.get("title") or raw.get("goal") or ""
+            ).strip()
+            if not text:
+                continue
+            payload = {
+                "id": raw.get("id"),
+                "text": text,
+                "exit_condition": raw.get("exit_condition")
+                or raw.get("probe")
+                or "",
+                "status": "planned",
+            }
+            ng = normalize_goal(payload)
+        else:
+            continue
+        if not ng:
+            continue
+
+        matched = False
+        for i, existing in enumerate(goals):
+            eg = normalize_goal(existing) if not isinstance(existing, dict) else existing
+            if not isinstance(eg, dict):
+                continue
+            same_id = str(eg.get("id") or "") == str(ng.get("id") or "")
+            same_text = _goal_matches_transfer(
+                eg, str(ng.get("text") or ""), str(ng.get("text") or "")
+            )
+            if not (same_id or same_text):
+                continue
+            st = str(eg.get("status") or "planned").lower()
+            if st in ("stable", "abandoned", "dispatched", "probed"):
+                # do not clobber in-flight / closed
+                matched = True
+                upserted.append(normalize_goal(eg) or eg)
+                break
+            merged = dict(eg)
+            merged["text"] = ng["text"]
+            if ng.get("exit_condition"):
+                merged["exit_condition"] = ng["exit_condition"]
+            merged["status"] = "planned"
+            goals[i] = normalize_goal(merged) or merged
+            upserted.append(goals[i])
+            matched = True
+            break
+        if not matched:
+            goals.append(ng)
+            upserted.append(ng)
+
+    if not upserted:
+        raise ValueError("no valid intent cards in payload")
+
+    cur = merge_decided(root, {"goals": goals}, updated_by=updated_by)
+    return {
+        "ok": True,
+        "goals_upserted": upserted,
+        "decided": cur,
+    }
+
+
+def seed_planned_from_exhaust(
+    root: Path,
+    *,
+    title: str,
+    goal: str = "",
+    exit_condition: str = "",
+    optimize_hint: str = "",
+    prior_epic_id: str = "",
+    updated_by: str = "exhaust-reflow",
+) -> dict[str, Any] | None:
+    """v0.66: after exhaust, open a new *planned* intent card (须人再点转).
+
+    Never writes backlog / never marks dispatched.
+    """
+    text = (goal or title or "").strip()
+    if not text:
+        return None
+    card: dict[str, Any] = {
+        "text": text[:DECIDED_ITEM_MAX_CHARS],
+        "exit_condition": (exit_condition or "")[:DECIDED_ITEM_MAX_CHARS],
+        "status": "planned",
+    }
+    if prior_epic_id:
+        card["id"] = _goal_id_from_text(f"reflow-{prior_epic_id}-{text}")[:64]
+    out = upsert_planned_intent_cards(root, [card], updated_by=updated_by)
+    if optimize_hint and out.get("ok"):
+        try:
+            append_transfer_lesson(
+                root,
+                epic_id=prior_epic_id,
+                bucket="exhaust_reflow",
+                title_snip=text[:80],
+                hint=str(optimize_hint)[:400],
+                bad_pattern="retry_exhausted",
+                good_fix="new_planned_intent_card",
+                source=updated_by,
+            )
+        except Exception:
+            pass
+    return out
+
+
 def _validate_decided_item(text: str) -> None:
     low = text.lower()
     for bad in FORBIDDEN_DECIDED_SUBSTRINGS:

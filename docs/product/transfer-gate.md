@@ -74,7 +74,7 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 ### 验收写作（防门禁误杀 · 防下游跑不动）
 
-细则：[`references/finalize-transfer-sop.md`](../../references/finalize-transfer-sop.md)。
+细则：[`references/intent-card-sop.md`](../../references/intent-card-sop.md)（旧名 finalize-transfer-sop 已重定向）。
 
 - **预算**：acceptance **1～3 条（优先 1～2）** 强探针，只证明**本卡**意图。
 - 验收 bullets：**可执行命令**（`.venv/bin/python -m pytest …` / `DRY_RUN=true .venv/bin/python …` / 短 assert）。

@@ -220,7 +220,7 @@ def _check_acceptance_budget(cmds: list[str]) -> dict[str, str] | None:
     """Cap probe count + ban mixing unit-card probes with later-stage e2e.
 
     Failure case (qb 2026-07-29): fees/unit epic also demanded paper_intent_probe
-    → salvage acceptance_cmd_failed / hang. See finalize-transfer-sop.md.
+    → salvage acceptance_cmd_failed / hang. See intent-card-sop.md.
     """
     uniq: list[str] = []
     seen: set[str] = set()
@@ -235,7 +235,7 @@ def _check_acceptance_budget(cmds: list[str]) -> dict[str, str] | None:
             "acceptance_too_wide",
             f"acceptance 抽出 {len(uniq)} 条探针（上限 3，建议 1～2）",
             "只留本卡意图的 1～2 条 pytest/DRY_RUN；下一意图另开卡。"
-            "见 references/finalize-transfer-sop.md。",
+            "见 references/intent-card-sop.md。",
         )
     joined = "\n".join(uniq).lower()
     has_unit = "pytest" in joined or "python3 -c" in joined or "python -c" in joined

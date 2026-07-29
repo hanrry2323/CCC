@@ -60,11 +60,30 @@ struct TransferDraft: Equatable {
 enum TransferDraftParser {
     /// 从助手正文解析 fenced `ccc-transfer` JSON
     static func parse(from content: String) -> TransferDraft? {
-        guard let jsonText = extractFence(content, language: "ccc-transfer") else { return nil }
-        guard let data = jsonText.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
+        parseAll(from: content).first
+    }
 
+    /// v0.65：解析全部 `ccc-transfer` 块（大方案多意图卡）；顺序保留
+    static func parseAll(from content: String) -> [TransferDraft] {
+        let fences = extractAllFences(content, language: "ccc-transfer")
+        var out: [TransferDraft] = []
+        for jsonText in fences {
+            guard let data = jsonText.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            // 单块内 cards: [...] 展开为多卡
+            if let cards = obj["cards"] as? [[String: Any]], !cards.isEmpty {
+                for c in cards {
+                    if let d = draftFromObject(c) { out.append(d) }
+                }
+                continue
+            }
+            if let d = draftFromObject(obj) { out.append(d) }
+        }
+        return out
+    }
+
+    private static func draftFromObject(_ obj: [String: Any]) -> TransferDraft? {
         var draft = TransferDraft(source: "ccc-transfer")
         draft.title = stringField(obj, "title")
         draft.goal = stringField(obj, "goal")
@@ -126,15 +145,23 @@ enum TransferDraftParser {
     }
 
     private static func extractFence(_ text: String, language: String) -> String? {
+        extractAllFences(text, language: language).first
+    }
+
+    private static func extractAllFences(_ text: String, language: String) -> [String] {
         let pattern = "```\\s*\(language)\\s*\\r?\\n([\\s\\S]*?)\\r?\\n```"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
+            return []
         }
         let ns = text as NSString
         let range = NSRange(location: 0, length: ns.length)
-        guard let match = regex.firstMatch(in: text, options: [], range: range),
-              match.numberOfRanges >= 2
-        else { return nil }
-        return ns.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+        var out: [String] = []
+        regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
+            guard let match, match.numberOfRanges >= 2 else { return }
+            let body = ns.substring(with: match.range(at: 1))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { out.append(body) }
+        }
+        return out
     }
 }

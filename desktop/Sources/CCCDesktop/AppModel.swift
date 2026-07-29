@@ -115,6 +115,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var threadTransferDraft: [String: TransferDraft] = [:]
     /// 转任务表单字段按 thread 隔离（不仅是 draft 条）
     @Published private(set) var threadTransferForms: [String: TransferFormState] = [:]
+    /// v0.64：人点「转意图卡」后，契约就绪则自动 L1→gate→代办（免技术二次确认）
+    private var threadIntentDispatchPending: [String: Bool] = [:]
+    /// v0.65：同轮多意图卡草稿（逐卡 gate；一卡红不堵链）
+    private var threadPendingIntentDrafts: [String: [TransferDraft]] = [:]
     /// 右栏拆分动画世代（works 0→N 时递增；切会话重置）
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
@@ -3527,6 +3531,12 @@ final class AppModel: ObservableObject {
         activeQuickAction = uiLabel
         showToast("已开始：\(uiLabel)")
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        let pid = projectId ?? selectedProjectId
+        let tid = pid.map { resolveThreadId(projectId: $0, preferred: threadId) } ?? selectedThreadId
+        // 人点「转意图卡」= 发起权；契约就绪后自动进代办（仍过 gate）
+        if let tid, uiLabel.contains("转意图卡") || uiLabel == "定稿" {
+            threadIntentDispatchPending[tid] = true
+        }
         sendUserMessage(
             prompt,
             projectId: projectId,
@@ -3742,18 +3752,128 @@ final class AppModel: ObservableObject {
     /// 助手回复结束后刷新定稿条（按 thread 隔离）
     func refreshTransferDraft(from content: String, threadId: String? = nil) {
         let tid = threadId ?? selectedThreadId
+        let all = TransferDraftParser.parseAll(from: content)
         guard let tid else {
-            if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
+            if let d = all.first, d.isGateReady || !d.title.isEmpty {
                 pendingTransferDraft = d
             }
             return
         }
         // 已交接/投递中：禁止从助手消息把确认卡复活
         if shouldSuppressTransferDraft(for: tid) { return }
-        if let d = TransferDraftParser.parse(from: content), d.isGateReady || !d.title.isEmpty {
-            setThreadTransferDraft(tid, d)
+        guard let d = all.first, d.isGateReady || !d.title.isEmpty else { return }
+        setThreadTransferDraft(tid, d)
+        applyTransferDraft(d, fallbackContent: nil, threadId: tid)
+        if d.isGateReady { setTransferDelivery(tid, .draft) }
+        threadPendingIntentDrafts[tid] = all.filter { $0.isGateReady || !$0.title.isEmpty }
+        // 人已点转意图卡 → L1 落盘 + 逐卡 gate 绿则自动进代办
+        if threadIntentDispatchPending[tid] == true, all.contains(where: \.isGateReady) {
+            Task { await promoteIntentCardToBacklog(threadId: tid) }
+        }
+    }
+
+    /// v0.64/0.65：意图卡 →（gate）→ 自动代办。多卡逐张；红则该卡停意图层，不堵整链。
+    func promoteIntentCardToBacklog(threadId: String) async {
+        let tid = threadId
+        guard threadIntentDispatchPending[tid] == true else { return }
+        let pid = Self.projectId(fromThreadId: tid)
+        guard !pid.isEmpty else { return }
+
+        var drafts = threadPendingIntentDrafts[tid] ?? []
+        if drafts.isEmpty, let one = threadTransferDraft[tid] {
+            drafts = [one]
+        }
+        // 表单回落单卡
+        if drafts.isEmpty {
+            let form = transferForm(for: tid)
+            var d = TransferDraft(source: "form")
+            d.title = form.title
+            d.goal = form.goal
+            d.acceptance = form.acceptance
+            d.pipeline = form.pipeline
+            d.feasibility = form.feasibility
+            d.feasibilityReason = form.feasibilityReason
+            d.executorIntent = form.executor
+            d.complexity = form.complexity
+            d.bumpVersion = form.bumpVersion
+            d.planMd = form.planMd
+            drafts = [d]
+        }
+
+        let ready = drafts.filter(\.isGateReady)
+        guard !ready.isEmpty else { return }
+
+        // 1) 全部先写 L1 planned（规划面）
+        let l1Cards: [[String: Any]] = ready.map { d in
+            let acc = d.acceptanceLines
+            return [
+                "title": String(d.title.prefix(80)),
+                "goal": d.goal,
+                "text": d.goal.isEmpty ? d.title : d.goal,
+                "exit_condition": acc.first ?? "",
+            ] as [String: Any]
+        }
+        do {
+            try await prepareClient(projectId: pid)
+            _ = try await client.upsertIntentCards(projectId: pid, cards: l1Cards)
+            await refreshMindGoals(projectId: pid)
+            showToast("意图卡 \(ready.count) 张已写入 · 逐卡过门…")
+        } catch {
+            showToast("意图卡写入失败：\(friendlyHubError(error, action: "转意图卡"))", holdSeconds: 8)
+            return
+        }
+
+        var okN = 0
+        var failHints: [String] = []
+        for (idx, d) in ready.enumerated() {
+            let title = String(d.title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+            let goal = d.goal.trimmingCharacters(in: .whitespacesAndNewlines)
+            let accLines = d.acceptanceLines
+            var payload: [String: Any] = [
+                "project_id": pid,
+                "title": title,
+                "goal": goal.isEmpty ? title : goal,
+                "acceptance": accLines,
+                "pipeline": d.pipeline,
+                "feasibility": d.feasibility,
+                "feasibility_reason": d.feasibilityReason,
+                "executor_intent": d.executorIntent,
+                "complexity": d.complexity,
+                "bump_version": d.bumpVersion,
+                "plan_md": d.planMd,
+                "card_kind": "epic",
+            ]
+            // 多卡时仅第一张后用 supersede 避免 intent_not_stable 互堵
+            if idx > 0 {
+                payload["supersede_goals"] = true
+            }
+            do {
+                let v = try await client.validateTransfer(payload)
+                if v.ok != true {
+                    let hint = v.errors?.first?.fix_hint
+                        ?? v.errors?.first?.message
+                        ?? "契约未过门"
+                    failHints.append("「\(title)」\(hint)")
+                    continue
+                }
+            } catch {
+                // Hub 不可达：仍排队该卡
+            }
             applyTransferDraft(d, fallbackContent: nil, threadId: tid)
-            if d.isGateReady { setTransferDelivery(tid, .draft) }
+            await submitTransfer(threadId: tid)
+            okN += 1
+            // 短暂间隔，避免 outbox 同 tid 冲撞
+            try? await Task.sleep(nanoseconds: 350_000_000)
+        }
+
+        threadIntentDispatchPending[tid] = false
+        threadPendingIntentDrafts[tid] = nil
+        if okN > 0, failHints.isEmpty {
+            showToast("已进代办 \(okN) 张意图卡")
+        } else if okN > 0 {
+            showToast("进代办 \(okN) 张；未过门 \(failHints.count)：\(failHints[0])", holdSeconds: 12)
+        } else if let h = failHints.first {
+            showToast("意图卡未过门（未进代办）：\(h)", holdSeconds: 12)
         }
     }
 

@@ -344,6 +344,23 @@ async def transfer_to_epic(request: Request):
     return await _transfer_epic_from_body(body)
 
 
+@router.post("/transfer/validate")
+async def transfer_validate(request: Request):
+    """Dry-run transfer_gate：不写 backlog / 不 wake。用于意图卡→代办前预检。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    from ..services import transfer_gate
+
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    return {
+        "ok": bool(ok),
+        "errors": errors if not ok else [],
+        "dry_run": True,
+    }
+
+
 @router.post("/board-repair")
 async def board_repair(request: Request):
     """Desktop Agent 板务白名单：清残卡 / 剪幽灵轨 / 有限 reopen。不写业务源码。"""

@@ -22,17 +22,17 @@ def test_wrap_hub_prompt_prefixes_and_idempotent():
     assert again.count("【Desktop 对话人格") == 1
     assert "禁止" in HUB_BOSS_VOICE
     assert "ccc-transfer" in HUB_BOSS_VOICE
-    assert "定稿块" in HUB_BOSS_VOICE
+    assert "意图卡" in HUB_BOSS_VOICE or "定稿" in HUB_BOSS_VOICE
     assert "Mac2017 Engine" in HUB_BOSS_VOICE
     assert "ai-loop-router" in HUB_BOSS_VOICE  # 禁止已退役口径
     assert "M1 本地 Hub" in HUB_BOSS_VOICE or "业务第二树" in HUB_BOSS_VOICE
 
 
 def test_transfer_outbox_mental_model_locked():
-    """转任务闭环口径：入队方 / 冲刷器 / 禁误说（防 Agent 读 flush.py 串台）。"""
+    """转意图卡闭环口径：入队方 / 冲刷器 / 禁误说（防 Agent 读 flush.py 串台）。"""
     from hub_voice import HUB_BOSS_VOICE
 
-    assert "转任务闭环" in HUB_BOSS_VOICE
+    assert "转意图卡闭环" in HUB_BOSS_VOICE or "转任务闭环" in HUB_BOSS_VOICE
     assert "确认入队方 = Desktop App" in HUB_BOSS_VOICE
     assert "唯一冲刷器 = sidecar" in HUB_BOSS_VOICE
     assert "禁止**把 sidecar" in HUB_BOSS_VOICE or "禁止把 sidecar" in HUB_BOSS_VOICE
@@ -73,8 +73,10 @@ def test_identity_core_keywords_subset_of_voice():
         "不是** Cursor",
     ):
         assert needle in identity or needle.replace("**", "") in identity
-    for needle in ("双层心智", "转任务闭环", "L0 不变核", "确认入队方 = Desktop App"):
-        assert needle in HUB_BOSS_VOICE
+    for needle in ("双层心智", "转意图卡闭环", "L0 不变核", "确认入队方 = Desktop App"):
+        assert needle in HUB_BOSS_VOICE or (
+            needle == "转意图卡闭环" and "转任务闭环" in HUB_BOSS_VOICE
+        )
 
 
 def test_light_mode_short_prefix():
@@ -85,8 +87,9 @@ def test_light_mode_short_prefix():
     out = wrap_hub_prompt("稳态OK", mode="light")
     assert "老板模式" in out
     assert "Desktop 对话人格" in out
-    assert "ccc-transfer" in out or "定稿块" in out
+    assert "ccc-transfer" in out or "定稿块" in out or "意图卡" in out
     assert resolve_prompt_mode("请定稿转任务", requested="light") == "full"
+    assert resolve_prompt_mode("请转意图卡", requested="light") == "full"
     full = wrap_hub_prompt("请定稿转任务", mode="light")
     assert "老板模式" in full
     # 退役常量仍保留，供兼容引用
@@ -101,7 +104,7 @@ def test_legacy_hub_marker_idempotent():
 
 
 def test_two_stage_flow_locked_in_voice():
-    """主路径两段；对齐基线非硬门槛；板堵优先 board-repair；定稿后二级卡仅 title/备注。"""
+    """主路径：战略讨论→转意图卡；对齐基线非硬门槛；板堵优先 board-repair。"""
     from hub_voice import HUB_BOSS_VOICE
 
     assert "主路径" in HUB_BOSS_VOICE
@@ -109,18 +112,24 @@ def test_two_stage_flow_locked_in_voice():
     assert "board-repair" in HUB_BOSS_VOICE or "repair" in HUB_BOSS_VOICE
     assert "ready_for_task=false" in HUB_BOSS_VOICE
     assert "human_note" in HUB_BOSS_VOICE
-    assert "退回对话重定稿" in HUB_BOSS_VOICE
+    assert "转意图卡" in HUB_BOSS_VOICE
+    assert "战略" in HUB_BOSS_VOICE
     assert "四段流程" not in HUB_BOSS_VOICE
 
 
 def test_sidecar_finalize_forces_lens_verify():
-    """定稿不依赖点对齐基线，sidecar 仍注入强制 board+git；板堵优先 repair。"""
+    """转意图卡不依赖点对齐基线，sidecar 仍注入强制 board+git；板堵优先 repair。"""
     import re
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[1] / "ccc-agent-sidecar.py").read_text(
         encoding="utf-8"
     )
-    assert "定稿 · 强制核实" in src or "定稿/转任务 · 强制核实" in src
+    assert (
+        "转意图卡 · 强制核实" in src
+        or "定稿 · 强制核实" in src
+        or "定稿/转任务 · 强制核实" in src
+    )
     assert "board-repair" in src or "repair" in src
-    assert re.search(r"定稿|ccc-transfer|转任务契约", src)
+    assert re.search(r"转意图卡|定稿|ccc-transfer|转任务契约", src)
+    assert "intent-card-sop.md" in src or "finalize-transfer-sop.md" in src

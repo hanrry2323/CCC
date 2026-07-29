@@ -5,18 +5,18 @@ import Foundation
 enum QuickPrompts {
     static let replyCompact =
         "用中文白话回复我；先结论（≤3 句）后理由。" +
-        "不要复述工具过程、不要大段代码、不要裸 JSON（定稿块除外）。" +
+        "不要复述工具过程、不要大段代码、不要裸 JSON（意图卡契约块除外）。" +
         "不要编造未核实的事实。工具跑完后必须写出完整可见答复，" +
         "禁止只回 No response requested 或空内容。" +
         "禁止出现 transfer-outbox、Terminal、cat >、script_seed、opencode、A/B 菜单。"
 
     static let investigatePref =
-        "你是 Desktop 全功能 App Agent（意图/定稿/板务/本机 CCC 小改；不是 Engine 角色）。" +
+        "你是 Desktop 战略/产品搭档（方案优先；可查 HP/社区；板务仅挡事时；不是 Engine）。" +
         "业务仓事实：Hub 基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
         "问看板/在飞/文件必须先 hub_board 等工具；Hub 断则明说不可达，禁止瞎编。" +
         "板堵/残卡/孤儿 running：本会话 hub_repair(clear_blockers)；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic。" +
-        "本机 Read/Write/git 仅限 CCC 平台仓；业务改码请定稿转任务。人审只在定稿/采纳；进队后全自动。" +
-        "「对齐基线」是深对齐可选路径，不是定稿/转任务的硬门槛。"
+        "本机 Read/Write/git 仅限 CCC 平台仓；业务改码请转意图卡→Engine。人审只在转意图卡（白话）；gate 绿后自动进代办。" +
+        "「对齐基线」是深对齐可选路径，不是转意图卡硬门槛。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"
@@ -27,13 +27,13 @@ enum QuickPrompts {
         "再按目标 hub_locate/hub_file 定点读 1～3 个关键相对路径。\n" +
         "先内化：ready_for_task / inflight / dirty_kind / pipeline_idle。" +
         "ready_for_task=false 或 inflight>0（非纯业务脏）：hub_repair(clear_blockers)，" +
-        "再谈产品 epic；仅业务脏/真在飞冲突时禁新产品 epic（人可显式 override）。\n" +
+        "再谈产品意图；仅业务脏/真在飞冲突时禁新产品（人可显式 override）。\n" +
         "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
         "禁止向用户输出 Hub CLI / transfer-outbox / Terminal 教程。\n"
 
     static let builtinPrompts: [(title: String, prompt: String)] = [
         ("看仓况", nextStep),
-        ("定稿", finalize),
+        ("转意图卡", finalize),
         ("扫风险", scanRisks),
         ("对齐基线", alignBaseline),
         ("刷新看板", refreshBoard),
@@ -55,7 +55,7 @@ enum QuickPrompts {
 
     /// 旧名「下一步」：已降级为可选「看仓况」，非下达必经阶段
     static let nextStep =
-        "请帮我看一下当前仓况（可选步骤，非定稿必经）。\n" +
+        "请帮我看一下当前仓况（可选步骤，非转意图卡必经）。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
         "\n继承本会话已聊目标与约束，结合**核实后的**仓库现状给出**最佳方案**并默认按它推进。\n" +
@@ -73,33 +73,35 @@ enum QuickPrompts {
         "\n对照本会话方案与仓库真实状态；无证据不夸大。\n\n" +
         "请按这个结构回答：\n" +
         "### 风险（按严重度，最多 5 条）\n" +
-        "- 会怎样坏 / 谁受影响 / 是否挡转任务；无则「无明显风险」\n" +
+        "- 会怎样坏 / 谁受影响 / 是否挡转意图卡；无则「无明显风险」\n" +
         "### 建议处理顺序\n1～3 步（直接定顺序，勿问我选哪条）。\n" +
-        "### 可否定稿转任务\n可以 / 暂缓 — <一句理由>" +
+        "### 可否转意图卡\n可以 / 暂缓 — <一句理由>" +
         mustAnswer
 
+    /// UI 标题「转意图卡」；内部仍走 finalize 契约 → L1 → gate → 自动进代办
     static let finalize =
-        "请把本会话方案定稿成可转任务的契约包。\n" +
+        "用户已点「转意图卡」：请把本会话方案落成意图卡契约（不是直接定代办）。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
-        "\n严格按 `references/finalize-transfer-sop.md`（失败案例驱动）。\n" +
-        "先核实仓库能否支撑目标；板堵先 repair；仅业务脏/真在飞冲突时 feasibility=blocked。\n" +
-        "意图已够则**立即定稿**：禁止再列方案选项、禁止问「要不要入队/确认转任务」。\n" +
+        "\n严格按 `references/intent-card-sop.md`（失败案例驱动）。\n" +
+        "**收敛门**：若「做什么 / 怎样算完 / 路线」未对齐，只回白话缺什么并**拒转**，不要出契约块。\n" +
+        "已收敛则立即出卡：禁止再列方案选项、禁止问「要不要入队」。\n" +
         "板面残卡优先 repair，勿默认卫生 epic；偶发卫生卡：executor_intent 必须 python。\n\n" +
-        "### 契约硬预算（违则下游跑不动）\n" +
-        "- 单意图 · 默认 1 work/1 phase · scope≤5 文件（同顶层）。\n" +
+        "### 契约硬预算（违则不得进代办 / OpenCode）\n" +
+        "- 单意图 · 默认 1 work/1 phase · scope≤5 文件（同顶层）；大方案拆多张意图卡。\n" +
         "- acceptance **仅 1～3 条强探针（优先 1～2）**，只验**本卡**意图：\n" +
         "  ✅ `.venv/bin/python -m pytest -q <本卡测>` / `DRY_RUN=true .venv/bin/python <本卡脚本>` / 短 assert\n" +
         "  ❌ `test -f`、散文、把 paper/e2e/下一张 L1 探针塞进本卡、同命令重复、排除路径写进 acceptance\n" +
         "- plan_md 必有 `## 验收`（与 acceptance 同命令）；goal↔plan 同向（禁「交给上层」稀释 CLOSE/净 edge）。\n" +
         "- title≤80；complexity 默认 medium；多步回归禁 small。\n" +
-        "- 被拒读 errors[].fix_hint；耗尽读 optimize_hint 缩小后再出块，禁止原样重下。\n" +
-        "提醒：二级卡仅可改标题与备注；改方案须退回重定稿。\n\n" +
-        "先用 2～4 句白话说明：做什么、验收长什么样、是否建议立刻转任务" +
+        "- 被拒读 errors[].fix_hint；耗尽读 optimize_hint 开新意图卡（须人再点转），禁止原样重下。\n\n" +
+        "先用 2～4 句白话说明：做什么、验收长什么样、拆成几张意图（若多张）" +
         "（不要堆任务 id / 绝对路径）。\n" +
-        "然后输出恰好一个 ```ccc-transfer``` JSON 块（title/goal/acceptance/pipeline/" +
-        "feasibility/feasibility_reason/executor_intent/complexity/plan_md 齐全）。\n" +
-        "feasibility 非 ok 时不要怂恿转任务。" +
+        "单意图：恰好一个 ```ccc-transfer``` JSON 块；多意图：多个块或一块含 cards:[]" +
+        "（title/goal/acceptance/pipeline/feasibility/feasibility_reason/" +
+        "executor_intent/complexity/plan_md 齐全）。\n" +
+        "可行性非 ok 时不要怂恿进代办。系统会先写意图卡，逐卡 gate 绿才自动进代办；一卡红不堵整链。" +
+        "起草前读 digest 近期定卡教训。" +
         mustAnswer
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
@@ -113,7 +115,7 @@ enum QuickPrompts {
         "### 风险\n挡下达或发布的事；空板闲置可写正常\n" +
         "### 已做板务（若有）\nrepair 动作与结果\n" +
         "### 建议下一步\n直接给最佳 1 条（含理由）；勿列菜单逼选\n" +
-        "### 可下达任务\n适合转任务的 1 个标题，或不适合时写「先处理：…」" +
+        "### 可转意图卡\n适合的 1 个白话标题，或不适合时写「先处理：…」" +
         mustAnswer
 
     /// 刷新看板事实：强制走 Hub live lens（sidecar 会注入 board）
@@ -126,6 +128,6 @@ enum QuickPrompts {
         "\n\n请按这个结构回答：\n" +
         "### 在飞\n列 planned/in_progress/testing/verified 的 tid 与标题；无则写「无」\n" +
         "### 计数\n各列数字 + as_of\n" +
-        "### 说明\n一句：是否与扇出/转任务一致" +
+        "### 说明\n一句：是否与意图卡/代办一致" +
         mustAnswer
 }

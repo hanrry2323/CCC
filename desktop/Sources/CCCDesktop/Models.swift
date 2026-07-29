@@ -604,3 +604,16 @@ struct MindGoalStatusResp: Codable, Equatable {
     var project_id: String?
     var decided: MindDecidedPayload?
 }
+
+/// Dry-run transfer_gate 响应
+struct TransferValidateResp: Codable, Equatable {
+    var ok: Bool?
+    var dry_run: Bool?
+    var errors: [TransferValidateError]?
+}
+
+struct TransferValidateError: Codable, Equatable {
+    var code: String?
+    var message: String?
+    var fix_hint: String?
+}

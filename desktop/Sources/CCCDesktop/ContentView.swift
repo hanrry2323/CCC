@@ -783,12 +783,12 @@ struct CodexChatPaneBody: View {
         }
     }
 
-    /// 定稿 JSON 就绪后的一键转任务条
+    /// 意图卡契约就绪后的确认条（自动 promotion 失败时仍可手动进代办）
     private var transferConfirmBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("确认转任务")
+                    Text("意图卡就绪")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(CCCTheme.ink)
                     Text(model.transferDraft(for: paneThreadId)?.previewLine ?? "")
@@ -796,7 +796,7 @@ struct CodexChatPaneBody: View {
                         .foregroundStyle(CCCTheme.secondary)
                         .lineLimit(2)
                     if let d = model.transferDraft(for: paneThreadId) {
-                        Text("产线 \(d.pipeline) · 验收 \(d.acceptanceLines.count) 条")
+                        Text("产线 \(d.pipeline) · 验收 \(d.acceptanceLines.count) 条 · gate 绿后自动进代办")
                             .font(.system(size: 10.5))
                             .foregroundStyle(CCCTheme.faint)
                     }
@@ -812,7 +812,7 @@ struct CodexChatPaneBody: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.faint)
-                Button("确认转任务") { model.confirmPendingTransfer(threadId: paneThreadId) }
+                Button("进代办") { model.confirmPendingTransfer(threadId: paneThreadId) }
                     .buttonStyle(.borderedProminent)
                     .tint(CCCTheme.accent)
                     .controlSize(.small)
@@ -1985,10 +1985,15 @@ struct FlowRail: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 10)
 
-                    if !(snap?.recentEpics ?? []).isEmpty {
-                        taskStack
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 8)
+                    // v0.64：取消大卡栈 + work 拆解竖轨；老板用看板计数 + 意图卡链判断状态
+                    if (snap?.recentEpics ?? []).isEmpty,
+                       (model.mindGoalsProjectId == paneProjectId ? model.mindGoals : []).isEmpty {
+                        Text(snap?.emptyMessage
+                            ?? "编排空闲 · 谈妥方案后点「转意图卡」")
+                            .font(.system(size: 11))
+                            .foregroundStyle(CCCTheme.faint)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 12)
                     }
 
                     if let hint = snap?.fanoutHint {
@@ -2017,22 +2022,7 @@ struct FlowRail: View {
                         .padding(.bottom, 8)
                     }
 
-                    FlowCanvasView(
-                        epic: snap?.epic,
-                        epicId: snap?.epicId,
-                        works: snap?.works ?? [],
-                        headline: snap?.headline ?? "",
-                        emptyMessage: snap?.emptyMessage
-                            ?? "编排空闲·等定稿下达（与对话故障无关）",
-                        splitGeneration: model.flowSplitGeneration,
-                        projectId: paneProjectId,
-                        threadId: nil,
-                        onAskAgent: {
-                            copyToComposer(agentPromptFailedWorks())
-                        },
-                        onSelectNode: { model.openNodeDetail(id: $0, projectId: paneProjectId) }
-                    )
-                    .padding(.bottom, 20)
+                    Color.clear.frame(height: 12)
                 }
                 // Force rebuild when projectFlow bumps (SSE/snapshot); leave/return remount was masking stale rail.
                 .id(flowRailContentId)
@@ -2315,8 +2305,8 @@ struct FlowRail: View {
         硬要求（本轮第一条回复）：
         1. 用 2～4 句白话说明：这张卡要做成什么、为何重要、现在处在哪一步、我接下来可以怎么选。
         2. 禁止本轮正文出现文件路径、类名、命令、exit_condition 原文、ccc-transfer。
-        3. 未谈妥前不要定稿；谈妥且我说下达后再出定稿块。定稿时 title/goal 必须对齐上面「目标原文」，以免 intent_not_stable 门禁拒收。
-        4. 勿问我要不要入队。
+        3. 未谈妥前不要转意图卡；谈妥且我点「转意图卡」后再出契约块。title/goal 必须对齐上面「目标原文」，以免 intent_not_stable 门禁拒收。
+        4. 勿问我要不要入队。gate 绿后系统自动进代办。
         """
     }
 

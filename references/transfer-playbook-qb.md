@@ -1,7 +1,7 @@
 # qb 定卡反模式（Agent 培养 · 非用户说明书）
 
 > 注入：`project_brain`（`project_id=qb`）或权威仓 `.ccc/agent-mind/transfer_playbook.md`  
-> 细则：`references/finalize-transfer-sop.md` · `transfer_gate` · `post-exhaust-epic-optimize-sop`
+> 细则：`references/intent-card-sop.md` · `transfer_gate` · `post-exhaust-epic-optimize-sop`
 
 | 反模式 | 正模式 | 真实失败 |
 |--------|--------|----------|

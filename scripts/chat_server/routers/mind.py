@@ -111,6 +111,57 @@ async def put_mind_decided(request: Request, project_id: str) -> Any:
     }
 
 
+@router.post("/{project_id}/intent-cards")
+async def post_intent_cards(request: Request, project_id: str) -> Any:
+    """转意图卡：写入 L1 planned（规划面）。不写 backlog。
+
+    body: { cards: [{title|text|goal, exit_condition?, id?}, ...], updated_by? }
+    或单卡字段 title/goal/exit_condition。
+    """
+    check_auth(request)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400, content={"ok": False, "error": "invalid_json"}
+        )
+    if not isinstance(body, dict):
+        return JSONResponse(
+            status_code=400, content={"ok": False, "error": "body_must_be_object"}
+        )
+    cards = body.get("cards")
+    if not isinstance(cards, list) or not cards:
+        # single-card shorthand
+        if body.get("title") or body.get("goal") or body.get("text"):
+            cards = [body]
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "cards_required"},
+            )
+    root = _root(project_id)
+    try:
+        result = agent_mind.upsert_planned_intent_cards(
+            root,
+            cards,
+            updated_by=str(body.get("updated_by") or "desktop-agent"),
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=400, content={"ok": False, "error": str(exc)[:200]}
+        )
+    digest = agent_mind.build_digest(
+        root, project_id=project_id, use_cache=False, persist=True
+    )
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "goals_upserted": result.get("goals_upserted"),
+        "decided": result.get("decided"),
+        "next_product_goal": digest.get("next_product_goal"),
+    }
+
+
 @router.post("/{project_id}/goals/{goal_id}/status")
 async def post_goal_status(
     request: Request, project_id: str, goal_id: str

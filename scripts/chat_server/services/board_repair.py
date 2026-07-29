@@ -354,6 +354,7 @@ def failure_pack(
         except ImportError:
             _am = None  # type: ignore
     if _am is not None:
+        reflowed: list[dict[str, Any]] = []
         for row in exhausted[:6]:
             try:
                 _am.append_transfer_lesson(
@@ -368,6 +369,37 @@ def failure_pack(
                 )
             except Exception as exc:  # noqa: BLE001
                 _log.warning("transfer_lessons from failure_pack failed: %s", exc)
+            # v0.66: 回流新 planned 意图卡（须人再点转；不写 backlog）
+            try:
+                title = str(row.get("title") or row.get("id") or "").strip()
+                if title:
+                    prior = str(row.get("parent_id") or row.get("id") or "")
+                    pt = row.get("prior_transfer")
+                    goal = ""
+                    exit_c = ""
+                    if isinstance(pt, dict):
+                        goal = str(pt.get("goal") or "")
+                        exit_c = str(pt.get("acceptance0") or "")
+                    seeded = _am.seed_planned_from_exhaust(
+                        Path(workspace),
+                        title=f"优化：{title}"[:200],
+                        goal=goal or title,
+                        exit_condition=exit_c,
+                        optimize_hint=str(row.get("optimize_hint") or ""),
+                        prior_epic_id=prior,
+                        updated_by="failure_pack",
+                    )
+                    if seeded and seeded.get("ok"):
+                        reflowed.append(
+                            {
+                                "prior_id": prior,
+                                "goals_upserted": seeded.get("goals_upserted"),
+                            }
+                        )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("intent reflow from failure_pack failed: %s", exc)
+    else:
+        reflowed = []
     return {
         "ok": True,
         "action": "failure_pack",
@@ -377,6 +409,7 @@ def failure_pack(
         "failed_epics": blockers.get("failed_epics") or [],
         "abnormal_count": len(blockers.get("abnormal") or []),
         "sop": "references/post-exhaust-epic-optimize-sop.md",
+        "intent_cards_reflowed": reflowed,
         "optimize_hints": [
             {
                 "id": x.get("id"),

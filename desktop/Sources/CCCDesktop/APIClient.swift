@@ -1110,6 +1110,35 @@ actor APIClient {
         return try await send(req, as: MindGoalStatusResp.self, maxAttempts: 2)
     }
 
+    /// v0.64: 转意图卡 → 写 L1 planned（不写 backlog）
+    @discardableResult
+    func upsertIntentCards(projectId: String, cards: [[String: Any]]) async throws -> MindDecidedResp {
+        let enc = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
+        let body = try JSONSerialization.data(withJSONObject: [
+            "cards": cards,
+            "updated_by": "desktop-agent",
+        ])
+        var req = try authedRequest(
+            "api/desktop/mind/\(enc)/intent-cards",
+            method: "POST",
+            body: body
+        )
+        req.timeoutInterval = 12
+        return try await send(req, as: MindDecidedResp.self, maxAttempts: 2)
+    }
+
+    /// Dry-run transfer_gate（不写 backlog）
+    func validateTransfer(_ payload: [String: Any]) async throws -> TransferValidateResp {
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        var req = try authedRequest(
+            "api/desktop/transfer/validate",
+            method: "POST",
+            body: body
+        )
+        req.timeoutInterval = 12
+        return try await send(req, as: TransferValidateResp.self, maxAttempts: 2)
+    }
+
     /// 消费 flow SSE；每次 fanout/work_status 回调刷新建议
     func streamFlowEvents(
         projectId: String,
