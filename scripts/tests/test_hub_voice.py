@@ -114,6 +114,8 @@ def test_two_stage_flow_locked_in_voice():
     assert "human_note" in HUB_BOSS_VOICE
     assert "转意图卡" in HUB_BOSS_VOICE
     assert "战略" in HUB_BOSS_VOICE
+    assert "align-baseline-sop" in HUB_BOSS_VOICE
+    assert "架构/规划" in HUB_BOSS_VOICE or "不是运维" in HUB_BOSS_VOICE
     assert "四段流程" not in HUB_BOSS_VOICE
 
 

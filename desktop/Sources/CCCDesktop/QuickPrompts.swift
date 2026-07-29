@@ -106,16 +106,18 @@ enum QuickPrompts {
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
     static let alignBaseline =
-        "请帮我对齐当前项目基线（深对齐 · 可选，非硬门槛）。\n" +
+        "请帮我对齐当前项目基线（可选深扫 · 非硬门槛）。\n" +
         replyCompact + "\n" + investigatePref +
+        "\n你是**架构/规划搭档**：后台静默 hub_board+hub_git（残卡则 repair）；" +
+        "**前台只做项目讨论**，禁止运维报告腔与技术字段。\n" +
+        "细则 references/align-baseline-sop.md。\n" +
         verifyRitual +
-        "\n若发现 abnormal/failed/幽灵轨：先 `repair … clear_blockers`，再给建议；禁止默认逼卫生 transfer。\n\n" +
+        "\n禁止正文出现：counts_raw、dirty_kind、ready_for_task、pytest 路径、`.ccc/`、Engine、tid。\n\n" +
         "请按这个结构回答：\n" +
-        "### 现状\n- 定位（含版本）\n- 阶段 / 是否可开工（ready / inflight / dirty_kind）\n" +
-        "### 风险\n挡下达或发布的事；空板闲置可写正常\n" +
-        "### 已做板务（若有）\nrepair 动作与结果\n" +
-        "### 建议下一步\n直接给最佳 1 条（含理由）；勿列菜单逼选\n" +
-        "### 可转意图卡\n适合的 1 个白话标题，或不适合时写「先处理：…」" +
+        "### 项目与进度\n定位 + 走到哪 + 能否继续谈下一步（人话）\n" +
+        "### 该留意什么\n只挡产品/发布的事；空闲正常就直说\n" +
+        "### 建议往哪走\n最佳 1 条产品方向 + 一句理由；勿 A/B；勿卫生主业\n" +
+        "### 若要落成意图卡\n白话标题 ≤20 字，或「先聊清楚：…」" +
         mustAnswer
 
     /// 刷新看板事实：强制走 Hub live lens（sidecar 会注入 board）

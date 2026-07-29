@@ -841,9 +841,10 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
         )
     if re.search(r"对齐(项目)?基线|任务：对齐项目基线", text):
         parts.append(
-            "【对齐基线 · 强制】深对齐可选、非硬门槛；作答前必须 hub_board + hub_git；"
-            "若 ready=false / abnormal / failed / stuck_running：clear_blockers；"
-            "禁止默认逼用户投卫生 epic；禁止零工具只复述注入快照。"
+            "【对齐基线 · 强制】后台：hub_board+hub_git；残卡 clear_blockers。"
+            "前台：架构/规划讨论（项目与进度 / 该留意 / 建议往哪走 / 若要落成意图卡）。"
+            "禁止正文念 counts_raw、dirty_kind、ready_for_task、pytest、`.ccc/`、Engine、工具过程。"
+            "SOP references/align-baseline-sop.md。禁止零工具只复述快照。"
         )
     if re.search(
         r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|转意图卡|ccc-transfer|转任务契约|转任务)",

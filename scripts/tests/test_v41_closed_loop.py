@@ -93,11 +93,15 @@ def test_baseline_collect(tmp_path):
     assert "control" in bl and "mode" in bl["control"]
     prompt = baseline_prompt_for_claude(bl)
     assert "项目基线" in prompt or "基线" in prompt
-    assert "禁止建议降控制面" in prompt
+    assert "禁止建议降控制面" in prompt or "降控制面" in prompt
     assert "Mac2017" in prompt or "Hub" in prompt
     assert "第二树" in prompt or "快照" in prompt
-    assert "invent_hard_disabled" in prompt
+    assert "invent_hard_disabled" in prompt  # still in JSON compact for agent internalization
+    assert "项目与进度" in prompt
+    assert "架构/规划" in prompt or "项目讨论" in prompt
+    assert "counts_raw" in prompt  # banned list must mention
     assert "git log -5" not in prompt
+    assert "用户要看见过程轨" not in prompt
 
 
 def test_daily_review_dry_run(tmp_path):
