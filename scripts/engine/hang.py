@@ -35,6 +35,22 @@ _MEM_KILL_MB = 1500
 _NO_PROGRESS_SEC = int(os.environ.get("CCC_PHASE_NO_PROGRESS_SEC", "300") or "300")
 
 
+def _is_opencode_node(pid: int) -> bool:
+    """True when PID is a node process (opencode run is a node CLI)."""
+    if pid <= 0:
+        return False
+    try:
+        r = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode != 0:
+            return False
+        return "node" in (r.stdout.strip() or "").lower()
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+
 def _no_progress_sec() -> int:
     return max(60, min(_NO_PROGRESS_SEC, 7200))
 
@@ -63,10 +79,17 @@ def _resolve_alive_pid(pids_dir: Path, tid: str, subid: str) -> tuple[int | None
     return None, None
 
 
-def _activity_mtime(ws: Path, tid: str) -> float:
-    """Latest mtime among result/report/pid markers and common smoke deliverables."""
+_OPCODE_DB = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+
+
+def _activity_mtime(ws: Path, tid: str, *, include_global: bool = False) -> float:
+    """Latest mtime among result/report/pid markers and common smoke deliverables.
+
+    When *include_global=True* also checks git reflog (git commands update it)
+    and opencode global db — for low_cpu_stale grace only, not no_progress.
+    """
     latest = 0.0
-    candidates = [
+    candidates: list[Path] = [
         ws / ".ccc" / "reports" / f"{tid}.result.json",
         ws / ".ccc" / "reports" / f"{tid}.report.md",
         ws / ".ccc" / "pids" / f"{tid}.pid",
@@ -74,6 +97,11 @@ def _activity_mtime(ws: Path, tid: str) -> float:
         ws / ".ccc" / "flow-smoke.md",
         ws / "docs" / "flow-smoke.md",
     ]
+    if include_global:
+        candidates.extend([
+            ws / ".git" / "logs" / "HEAD",
+            _OPCODE_DB,
+        ])
     for p in candidates:
         try:
             if p.is_file():
@@ -99,7 +127,7 @@ def _is_no_progress(*, ws: Path, tid: str, started_ts: float, now_ts: float) -> 
     elapsed = now_ts - started_ts
     if elapsed < need:
         return False, 0.0, ""
-    act = _activity_mtime(ws, tid)
+    act = _activity_mtime(ws, tid, include_global=False)
     # No activity file → idle since start; else idle since last activity
     last = act if act > 0 else started_ts
     idle = now_ts - last
@@ -257,6 +285,12 @@ def _check_and_mark_hung_unlocked(ws: Path, active_tasks: dict[str, dict]) -> No
                 )
             continue
 
+        # OpenCode (node) AI 思考间隙 CPU 自然归零，但不等同 hang。
+        # 3 分钟窗口内刚启动的 node 任务不应被 low_cpu_stale 误杀。
+        _opencode_paused = cpu <= 0.0 and _is_opencode_node(pid)
+        if _opencode_paused and elapsed < _HANG_CHECK_INTERVAL_SEC * 2:
+            continue
+
         if elapsed < _HANG_CHECK_INTERVAL_SEC:
             continue
 
@@ -310,8 +344,9 @@ def _check_and_mark_hung_unlocked(ws: Path, active_tasks: dict[str, dict]) -> No
         if cpu > 0.0 and elapsed < _HANG_BUSY_MAX_SEC:
             continue
 
-        _latest = _activity_mtime(ws, tid)
-        if _latest and (now.timestamp() - _latest) < 120 and cpu <= 0.0:
+        _latest = _activity_mtime(ws, tid, include_global=True)
+        _activity_grace = _HANG_CHECK_INTERVAL_SEC * (2 if _is_opencode_node(pid) else 1)
+        if _latest and (now.timestamp() - _latest) < _activity_grace and cpu <= 0.0:
             continue
 
         marker = {
