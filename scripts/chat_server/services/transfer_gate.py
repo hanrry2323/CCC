@@ -208,8 +208,11 @@ def _check_acceptance_strength(
                 "acceptance 改为 pytest / python3 -c assert / DRY_RUN=true …；"
                 "对照 post-exhaust acceptance_fail 桶。",
             )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger("ccc.transfer_gate").warning(
+            "acceptance strength check failed: %s", exc
+        )
     return None
 
 
@@ -281,8 +284,11 @@ def _check_plan_preview(
                     "plan_md 必须有 ## 验收 + ≥1 条强探针；禁散文/弱探针。"
                     "（也可只在 acceptance 写强探针，Hub 会补 plan。）",
                 )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger("ccc.transfer_gate").warning(
+                "plan_md probe strength check failed: %s", exc
+            )
 
     # Multi-root scope / too many phases → hang risk (post-exhaust hang bucket)
     try:
@@ -313,8 +319,11 @@ def _check_plan_preview(
                 f"scope 跨 {len(roots)} 个顶层目录（{', '.join(sorted(roots)[:5])}），易串行 hang",
                 "缩小白名单到同一顶层（如仅 src/ 或仅 tests/）；对照 hang 优化 hint。",
             )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger("ccc.transfer_gate").warning(
+            "plan scope width check failed: %s", exc
+        )
     return None
 
 

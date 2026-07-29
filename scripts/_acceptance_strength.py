@@ -149,6 +149,9 @@ def task_exempt_from_strength(ws: Any, tid: str, task: dict[str, Any] | None = N
                     "doc_only",
                     "board_ops",
                 )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger("ccc.acceptance_strength").warning(
+            "read plan meta for doc_only/board_ops failed: %s", exc
+        )
     return False

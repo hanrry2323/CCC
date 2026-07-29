@@ -266,8 +266,11 @@ def compile_observed(root: Path, *, project_id: str) -> dict[str, Any]:
         ex_n = len(bl.get("exhausted") or [])
         if ex_n:
             risks.append(f"exhausted={ex_n} → failure_pack+优化定稿")
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger("ccc.agent_mind").warning(
+            "list_blockers for observed risks failed: %s", exc
+        )
 
     observed = {
         "schema_version": SCHEMA_VERSION,

@@ -141,7 +141,7 @@ def record_call(
         with open(_TELEMETRY_FILE, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
-        pass  # 静默失败，不阻塞主流程
+        pass  # intentional — telemetry must not block main flow
 
     return record
 
@@ -178,7 +178,7 @@ def _rotate_if_needed() -> None:
                 shutil.copyfileobj(f_in, f_out)
         _TELEMETRY_FILE.unlink()
     except OSError:
-        pass  # 静默失败
+        pass  # intentional — rotate failure must not block telemetry
 
 
 def estimate_tokens(text: str) -> int:

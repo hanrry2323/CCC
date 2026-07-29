@@ -163,7 +163,7 @@ def test_testing_gate_respects_max_per_tick(tmp_path: Path, monkeypatch):
     ]
     calls: list[str] = []
 
-    monkeypatch.setattr(gates, "_activate_workspace", lambda w: None)
+    monkeypatch.setattr("engine.workspace._activate_workspace", lambda w: w)
     monkeypatch.setattr(gates, "_get_store", lambda w: store)
     monkeypatch.setattr(gates, "_ws_label", lambda w: "ws")
     monkeypatch.setattr(gates, "_testing_gate_budget", lambda: (1, 180.0))
@@ -195,7 +195,7 @@ def test_testing_gate_short_path_first(tmp_path: Path, monkeypatch):
     ]
     calls: list[str] = []
 
-    monkeypatch.setattr(gates, "_activate_workspace", lambda w: None)
+    monkeypatch.setattr("engine.workspace._activate_workspace", lambda w: w)
     monkeypatch.setattr(gates, "_get_store", lambda w: store)
     monkeypatch.setattr(gates, "_ws_label", lambda w: "ws")
     monkeypatch.setattr(gates, "_testing_gate_budget", lambda: (2, 180.0))

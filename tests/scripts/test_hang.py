@@ -97,6 +97,7 @@ def test_check_and_mark_hung_skips_abnormal(tmp_path, monkeypatch):
     # mock 防止真实 ps 调用
     with mock.patch.object(hang, "_eng", return_value=None), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_find_task_column", return_value="abnormal"):
         hang._check_and_mark_hung(ws, active)
     # 无 .hung 文件产生
@@ -142,6 +143,7 @@ def test_check_and_mark_hung_writes_marker_on_low_cpu_long_elapsed(tmp_path, mon
     # mock engine 模块（_eng 返回 None → 走 fallback subid）
     with mock.patch.object(hang, "_eng", return_value=None), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch("engine.hang.os.kill", side_effect=fake_kill), \
          mock.patch("engine.hang.subprocess.run", side_effect=fake_run), \
@@ -184,6 +186,7 @@ def test_check_and_mark_hung_skips_when_done_marker_exists(tmp_path, monkeypatch
 
     with mock.patch.object(hang, "_eng", return_value=None), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch("board.phase._current_running_phase", return_value=1):
         hang._check_and_mark_hung(ws, active)
@@ -251,6 +254,7 @@ def test_hang_stash_fail_frees_active_slot(tmp_path, monkeypatch):
 
     with mock.patch.object(hang, "_eng", return_value=fake_eng), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=0), \
@@ -299,6 +303,7 @@ def test_hang_exhausted_returns_freed_and_quarantines(tmp_path, monkeypatch):
 
     with mock.patch.object(hang, "_eng", return_value=fake_eng), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=0) as reap, \
@@ -350,6 +355,7 @@ def test_hang_no_progress_salvage_before_kill(tmp_path, monkeypatch):
 
     with mock.patch.object(hang, "_eng", return_value=fake_eng), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=[]), \
@@ -402,6 +408,7 @@ def test_hang_skips_relaunch_when_opencode_alive(tmp_path, monkeypatch):
 
     with mock.patch.object(hang, "_eng", return_value=fake_eng), \
          mock.patch.object(hang, "_activate_workspace"), \
+         mock.patch("engine.workspace._activate_workspace", side_effect=lambda w: w), \
          mock.patch.object(hang, "_get_store", return_value=store), \
          mock.patch.object(hang, "_find_task_column", return_value="in_progress"), \
          mock.patch.object(hang, "kill_orphan_opencode", return_value=[]), \

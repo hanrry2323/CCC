@@ -564,8 +564,8 @@ def apply_fanout(
                     pp = store.workspace / ".ccc" / "plans" / f"{epic_id}.plan.md"
                     if pp.is_file():
                         epic_plan = pp.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    pass
+                except OSError as exc:
+                    _log.warning("read epic plan %s failed: %s", epic_id, exc)
                 if not epic_plan:
                     epic_plan = epic_brief or ""
                 work_raw = _repair_seeded_child_plans(work_raw, epic_plan=epic_plan)

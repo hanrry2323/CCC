@@ -19,6 +19,7 @@ from engine.workspace import (
     _find_task_column,
     _get_store,
     _ws_label,
+    workspace_scope,
 )
 
 _log = get_logger("engine")
@@ -156,10 +157,14 @@ def _save_hang_retry_counter() -> None:
 
 def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
     """扫描 active_tasks 中的 running phase，检测 hung 条件并写 .hung marker。"""
+    with workspace_scope(ws):
+        return _check_and_mark_hung_unlocked(ws, active_tasks)
+
+
+def _check_and_mark_hung_unlocked(ws: Path, active_tasks: dict[str, dict]) -> None:
     from datetime import datetime as _dt
 
     eng = _eng()
-    _activate_workspace(ws)
     label = _ws_label(ws)
     pids_dir = ws / ".ccc" / "pids"
     now = _dt.now(timezone.utc)
@@ -464,7 +469,7 @@ def _hung_reason(hung_path: Path) -> str:
         if isinstance(data, dict):
             return str(data.get("reason") or "").strip()
     except (OSError, json.JSONDecodeError, TypeError):
-        pass
+        pass  # intentional — hung reason file missing/corrupt → empty
     return ""
 
 
@@ -485,10 +490,14 @@ def _run_hang_auto_restart(ws: Path, active_tasks: dict[str, dict]) -> bool:
         True 若本仓因 hang 路径释放了槽（salvage / quarantine / stash 失败强制释槽），
         供主循环同 tick 优先 ``_try_launch_planned``。
     """
+    with workspace_scope(ws):
+        return _run_hang_auto_restart_unlocked(ws, active_tasks)
+
+
+def _run_hang_auto_restart_unlocked(ws: Path, active_tasks: dict[str, dict]) -> bool:
     global _hang_retry_counter
 
     eng = _eng()
-    _activate_workspace(ws)
     label = _ws_label(ws)
     pids_dir = ws / ".ccc" / "pids"
     freed = False

@@ -12,7 +12,7 @@ from _executor import _sanitized_env
 from board.phase import _current_running_phase, _load_phases
 from board.roles import kb_role, reviewer_role, tester_role
 from engine.workspace import (
-    _activate_workspace,
+    workspace_scope,
     _ensure_task_in_testing,
     _find_task_column,
     _get_store,
@@ -455,8 +455,11 @@ def _handle_fail_to_planned(
 
 def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
     """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。"""
+    with workspace_scope(ws):
+        return _run_reviewer_tester_gate_unlocked(ws, tid)
+
+def _run_reviewer_tester_gate_unlocked(ws: Path, tid: str) -> bool:
     eng = _eng()
-    _activate_workspace(ws)
     store = _get_store(ws)
     label = _ws_label(ws)
 
@@ -733,8 +736,11 @@ def _refresh_parent_epic(ws: Path, work_tid: str) -> None:
 
 def _run_verified_kb_gate(ws: Path) -> None:
     """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。"""
+    with workspace_scope(ws):
+        return _run_verified_kb_gate_unlocked(ws)
+
+def _run_verified_kb_gate_unlocked(ws: Path) -> None:
     eng = _eng()
-    _activate_workspace(ws)
     store = _get_store(ws)
     verified = store.list_tasks("verified")
     if not verified:
@@ -800,8 +806,8 @@ def _is_short_gate_task(ws: Path, task: dict) -> bool:
 
         if should_use_util_probe(ws, task):
             return True
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        _engine_log("[util_probe] should_use_util_probe check failed: %s", str(exc))
     return False
 
 
@@ -962,7 +968,10 @@ def _run_testing_tasks_gate(ws: Path) -> None:
     单次门禁也受墙钟约束：超时杀 pytest/claude 进程树，留 testing，下一 tick 续。
     短路径优先 + 每 tick 多张，避免干净板上 gate_wall≈200s 的空等（gate-clean 基线）。
     """
-    _activate_workspace(ws)
+    with workspace_scope(ws):
+        return _run_testing_tasks_gate_unlocked(ws)
+
+def _run_testing_tasks_gate_unlocked(ws: Path) -> None:
     store = _get_store(ws)
     label = _ws_label(ws)
     max_n, budget_s = _testing_gate_budget()

@@ -140,8 +140,11 @@ def mark_done(key: str) -> None:
             new_lines.append(ln)
     try:
         path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""), encoding="utf-8")
-    except OSError:
-        pass
+    except OSError as exc:
+        import logging
+        logging.getLogger("ccc.repair_queue").warning(
+            "repair-queue rewrite failed: %s", exc
+        )
 
 
 def optimize_sop_prompt(

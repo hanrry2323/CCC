@@ -25,7 +25,7 @@ from pathlib import Path
 
 from _config import Config
 from _utils import now_iso_utc
-from engine.workspace import _activate_workspace, _get_store
+from engine.workspace import _get_store, workspace_scope
 
 _log = logging.getLogger("ccc.engine.task_registry")
 
@@ -218,11 +218,11 @@ def finalize_or_gc_product_key(ws: Path, tid: str, key: str) -> str:
     if has_done or alive or has_out:
         via = "done" if has_done else ("alive" if alive else "out")
         try:
-            _activate_workspace(ws)
-            _log.info("[product] finalize via %s: %s", via, tid)
-            import ccc_board
+            with workspace_scope(ws):
+                _log.info("[product] finalize via %s: %s", via, tid)
+                import ccc_board
 
-            result = ccc_board.check_product_async(tid)
+                result = ccc_board.check_product_async(tid)
         except Exception as exc:
             _log.info("[product] GC check %s 异常: %s", tid, exc)
             result = {"status": "running"}

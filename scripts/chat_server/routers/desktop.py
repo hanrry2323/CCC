@@ -674,8 +674,8 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                         good_fix=str(e0.get("fix_hint") or "")[:160],
                         source="gate_reject",
                     )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("transfer_lessons write on gate_reject failed: %s", exc)
         return JSONResponse(
             status_code=400,
             content={

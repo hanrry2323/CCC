@@ -486,8 +486,11 @@ def collect_module_index(
                         children.append(child.stem)
                     if len(children) >= MAX_MODULE_CHILDREN:
                         break
-            except OSError:
-                pass
+            except OSError as exc:
+                import logging
+                logging.getLogger("ccc.hub_lens").warning(
+                    "list module children failed for %s: %s", rel1, exc
+                )
             packages.append({"path": rel1, "children": children})
 
             # symbols from this package (depth ≤2 *.py)
@@ -505,8 +508,11 @@ def collect_module_index(
                     py_files.append(fp)
                     if len(py_files) >= 30:
                         break
-            except OSError:
-                pass
+            except OSError as exc:
+                import logging
+                logging.getLogger("ccc.hub_lens").warning(
+                    "walk package py files failed: %s", exc
+                )
             for fp in py_files:
                 if len(classes) >= MAX_MODULE_CLASSES and len(defs) >= MAX_MODULE_DEFS:
                     break

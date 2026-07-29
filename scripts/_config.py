@@ -107,7 +107,7 @@ class RelayEnv:
         try:
             env.probe_timeout = float(os.environ.get("CCC_RELAY_PROBE_TIMEOUT", env.probe_timeout))
         except ValueError:
-            pass
+            pass  # intentional — bad env float → keep default probe_timeout
         return env
 
 

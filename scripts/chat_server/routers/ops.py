@@ -341,7 +341,6 @@ async def ops_bg_sessions(request: Request):
     check_auth(request)
     import json
     from pathlib import Path
-    from engine.active_tasks import _BG_SESSIONS_FILE
 
     state_file = Path(os.environ.get(
         "CCC_BG_SESSIONS_FILE",

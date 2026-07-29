@@ -30,7 +30,7 @@ class TestHangReason:
         )
 
     def test_check_and_mark_hung_contains_hang_detected(self):
-        from engine.hang import _check_and_mark_hung as fn
+        from engine.hang import _check_and_mark_hung_unlocked as fn
 
         body = _src(fn)
         hang_count = body.count("hang_detected")
@@ -43,7 +43,7 @@ class TestQuarantineReason:
     """gates.py 等 quarantine reason 须含稳定的 snake_case 码。"""
 
     def test_retry_budget_exhausted_contains_code(self):
-        from engine.gates import _run_reviewer_tester_gate as fn
+        from engine.gates import _run_reviewer_tester_gate_unlocked as fn
 
         body = _src(fn)
         assert (

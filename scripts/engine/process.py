@@ -66,7 +66,7 @@ def kill_process_tree(pid: int) -> bool:
             except ProcessLookupError:
                 return True
             except (PermissionError, OSError):
-                pass
+                pass  # intentional — pid exists but not killable; try killpg
             try:
                 os.killpg(pgid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError, OSError) as exc:

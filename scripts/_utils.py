@@ -96,7 +96,7 @@ import urllib.error as _urllib_error
 
 # v0.62.0 阶段 5 P2-1 补漏:多 host/port 缓存(原全局单槽会互相覆盖)
 # key: (host, port) tuple;每 host/port 独立 10s 缓存
-_RELAY_UP_CACHE: dict[tuple[str, int], dict] = {}
+_RELAY_UP_CACHE: dict[tuple[str, int], dict[str, float | bool]] = {}
 
 
 def relay_is_up(
@@ -123,8 +123,11 @@ def relay_is_up(
                     host = _p.hostname or "127.0.0.1"
                 if port is None:
                     port = _p.port or 4000
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                import logging as _logging
+                _logging.getLogger("ccc.utils").warning(
+                    "CCC_RELAY_BASE_URL parse failed: %s", exc
+                )
         if host is None:
             host = "127.0.0.1"
         if port is None:
@@ -133,8 +136,8 @@ def relay_is_up(
     now = _time.monotonic()
     cache_key = (host, port)
     cached = _RELAY_UP_CACHE.get(cache_key)
-    if cached is not None and (now - cached["ts"]) < 10.0:
-        return cached["up"]
+    if cached is not None and (now - float(cached["ts"])) < 10.0:
+        return bool(cached["up"])
     up = False
     try:
         with _urllib_request.urlopen(

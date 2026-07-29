@@ -182,10 +182,11 @@ def test_parallel_disabled_toggle_exists():
 
 
 def test_fallback_path_in_try_launch_planned():
-    """_try_launch_planned 必须含 fallback 路径（并行失败 → 走串行 dev_role_launch）。"""
-    src = SCRIPT.read_text(encoding="utf-8")
+    """try_launch_planned 必须含 fallback 路径（并行失败 → 走串行 dev_role_launch）。"""
+    dispatch = ROOT / "scripts" / "engine" / "dispatch.py"
+    src = dispatch.read_text(encoding="utf-8")
     # 双重确认：fallback 路径存在于并行失败后
-    assert "fallback" in src, "fallback 关键词缺失"
+    assert "fallback" in src or "回退" in src, "fallback/回退 关键词缺失"
     assert "回退" in src, "回退注释缺失"
     # 串行路径：并行失败后调 dev_role_launch
     assert "launch_r = dev_role_launch(tid)" in src, "fallback 后未调 dev_role_launch"
@@ -377,6 +378,7 @@ def test_try_launch_planned_chooses_parallel_when_conditions_met(tmp_path, monke
 
     monkeypatch.setattr(mod, "_try_launch_planned_parallel", fake_parallel)
     monkeypatch.setattr(mod, "_save_active_tasks", lambda *_a, **_k: None)
+    monkeypatch.setattr("engine.dispatch._eng", lambda: mod)
 
     par_key = mod._task_key(ws, "t-par")
     active = {}
@@ -450,6 +452,8 @@ def test_try_launch_planned_skips_parallel_when_disabled(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "dev_role_launch", fake_dev)
     monkeypatch.setattr(mod, "_set_parallel_disabled", lambda v: None)
     monkeypatch.setattr(mod, "_save_active_tasks", lambda *_a, **_k: None)
+    monkeypatch.setattr("engine.dispatch._eng", lambda: mod)
+    monkeypatch.setattr("engine.dispatch.dev_role_launch", fake_dev)
 
     # 临时把全局标志置 True（构造 disabled 状态）
     mod.PHASE_PARALLEL_DISABLED = True

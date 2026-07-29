@@ -66,6 +66,8 @@ def test_no_progress_marks_hung_with_task_pid(tmp_path, monkeypatch):
 
     with mock.patch.object(hang, "_eng", return_value=None), mock.patch.object(
         hang, "_activate_workspace"
+    ), mock.patch(
+        "engine.workspace._activate_workspace", side_effect=lambda w: w
     ), mock.patch.object(
         hang, "_find_task_column", return_value="in_progress"
     ), mock.patch(

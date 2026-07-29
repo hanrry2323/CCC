@@ -248,8 +248,8 @@ def _hygiene_allow_ccc_meta(workspace: Path, task_id: str) -> bool:
                 from _ccc_hygiene import _hygiene_is_board_ops
                 if _hygiene_is_board_ops(task):
                     return True
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("board_ops hygiene check failed for %s: %s", task_id, exc)
         return scopes_are_ccc_only(_load_phase_scopes(workspace, task_id))
     except Exception as exc:  # noqa: BLE001
         _log.warning("task_commit hygiene_allow_ccc_meta silent_ignored: %s", str(exc))

@@ -126,6 +126,7 @@ from engine.slots import (  # noqa: E402
 from engine import workspace as _engine_workspace  # noqa: E402
 from engine.workspace import (  # noqa: E402
     _activate_workspace,
+    workspace_scope,
     _ensure_task_in_testing,
     _find_task_column,
     _get_store,
@@ -1264,7 +1265,11 @@ def _process_backlog(ws: Path) -> bool:
     if _degraded_mode and not (_intake_bypass_degraded or _intake_bypass_ticks_left > 0):
         return False
 
-    _activate_workspace(ws)
+    with workspace_scope(ws):
+        return _process_backlog_unlocked(ws)
+
+
+def _process_backlog_unlocked(ws: Path) -> bool:
     store = _get_store(ws)
     label = _ws_label(ws)
     from _board_store import normalize_task_view
@@ -1285,7 +1290,7 @@ def _process_backlog(ws: Path) -> bool:
                 engine_log(f"[product] [{label}] skip garbage epic/work {tid}")
                 continue
         except ImportError:
-            pass
+            pass  # intentional — optional _board_garbage
         key = _task_key(ws, tid)
         _task_data = normalize_task_view(task, column="backlog")
         kind = _task_data.get("card_kind") or "epic"
@@ -1959,281 +1964,11 @@ def _salvage_phases_done_planned(
 def _try_launch_planned(ws: Path, active_tasks: dict[str, dict]) -> bool:
     """从 planned 启动一个 task。返回 True 表示已启动。
 
-    v0.28.2: 当 executable phase 数 >= 2 且未禁用并行时，走并行分支；
-    失败时 fallback 到单 phase 串行 dev_role_launch。
+    2026-07-29 Wave C：实现迁入 engine.dispatch.try_launch_planned。
     """
-    _activate_workspace(ws)
-    store = _get_store(ws)
-    label = _ws_label(ws)
-    planned = store.list_tasks("planned")
-    for task in planned:
-        tid = task["id"]
-        try:
-            from _board_garbage import is_garbage_board_card
+    from engine.dispatch import try_launch_planned
 
-            if is_garbage_board_card(tid, task):
-                engine_log(f"[{label}] skip garbage planned {tid}")
-                continue
-        except ImportError:
-            pass
-        key = _task_key(ws, tid)
-        if key in active_tasks:
-            continue
-        # 只调度 work 小卡（epic 永不进入 planned）
-        from _board_store import normalize_task_view as _norm
-
-        tview = _norm(task, column="planned")
-        if tview.get("card_kind") == "epic":
-            engine_log(f"[{label}] 跳过误入 planned 的 epic {tid}")
-            continue
-        plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
-        phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
-        if not plan_file.exists() or not phases_file.exists():
-            continue
-
-        phases = _load_phases(tid, ws)
-        executable: set[int] = set()
-        if phases:
-            executable, blocked, skipped = _resolve_phase_dependencies(phases)
-            if blocked or skipped:
-                _apply_phase_status_updates(tid, blocked, skipped)
-                engine_log(
-                    f"[{label}] {tid} phase 依赖解析: executable={sorted(executable)} "
-                    f"blocked={sorted(blocked)} skipped={sorted(skipped)}"
-                )
-            if phases and all(p.get("status") in ("skipped", "failed") or (p.get("phase") in skipped) for p in phases):
-                engine_log(f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动")
-                continue
-
-        complexity = task.get("complexity", "medium")
-        # F-FLOW-05: task 级 depends_on_tasks — 依赖未 released 则跳过
-        deps = task.get("depends_on_tasks") or []
-        if isinstance(deps, str):
-            deps = [deps]
-        if deps:
-            released_ids = {t["id"] for t in store.list_tasks("released")}
-            blocked = [d for d in deps if d not in released_ids]
-            if blocked:
-                engine_log(f"[{label}] {tid} 等待 task 依赖: {blocked}（未 released）")
-                continue
-        if not _can_accept_dev(active_tasks):
-            return False
-        engine_log(f"[{label}] 取新 task: {tid} (complexity={complexity})")
-
-        # ── v0.28.2: 并行分支 ──
-        # 条件：executable phase >= 2 + 未被全局禁用
-        # 跨顶层目录 fan-out（src+dashboard+tests）→ 强制串行（stress-2）
-        # 不满足则直接走单 phase dev_role_launch（原有路径）
-        force_serial = False
-        if phases and executable and len(executable) >= 2:
-            force_serial = _force_serial_multi_root(phases, executable, ws=ws, tid=tid)
-            if force_serial:
-                engine_log(f"[{label}] {tid} multi-root scope/acceptance → 强制串行 (skip phase parallel)")
-        if phases and executable and len(executable) >= 2 and not PHASE_PARALLEL_DISABLED and not force_serial:
-            groups = _group_parallel_phases(phases, executable)
-            if groups and len(groups[0]) >= 2:
-                plan_content = plan_file.read_text(encoding="utf-8")
-                timeout_s = _lookup_phase_timeout(tid, phases)
-                ok = _try_launch_planned_parallel(ws, tid, groups, plan_content, timeout_s)
-                if ok:
-                    if not store.move_task(tid, "planned", "in_progress"):
-                        engine_log(
-                            f"[engine] [{_ws_label(ws)}] move {tid} planned→in_progress 失败，不注册 active_task"
-                        )
-                        continue  # 作用于外层 for task in planned
-                    if not _register_active(
-                        active_tasks,
-                        ws,
-                        tid,
-                        complexity=complexity,
-                        mode="parallel",
-                    ):
-                        engine_log(f"[{label}] {tid} 并行已启动但槽满，无法登记（异常）")
-                        continue
-                    store.update_index()
-                    return True
-                # 并行启动失败 → 回退串行
-                engine_log(f"[{label}] {tid} 并行启动失败，回退 dev_role_launch 串行")
-
-        # v0.34: 系统性失败检测 — 同类 task 在 abnormal 过多则直接熔断
-        _abnormal_tasks = store.list_tasks("abnormal")
-        # 取 task id 前缀（前 3 段）做同类匹配：audit-review-20260716 → 匹配 audit-review-*
-        _prefix = "-".join(tid.split("-")[:3])
-        _similar_failures = sum(
-            1 for t in _abnormal_tasks if isinstance(t.get("id"), str) and t["id"].startswith(_prefix)
-        )
-        if _similar_failures >= 5:
-            engine_log(f"[{label}] {tid} 同类任务已有 {_similar_failures} 个在 abnormal，系统性失败 → 直接熔断，不重试")
-            store.move_task(tid, "planned", "abnormal")
-            store.update_index()
-            continue
-
-        # v0.34 (Phase2): 异常流量检测 — 单 task 单角色 1h 内 > 20 次 → 跳闸隔离
-        if _check_abnormal_traffic(tid, "executor"):
-            engine_log(f"[{label}] {tid} executor 调用过于频繁（1h>20），疑似死循环 → abnormal")
-            _record_failure_pattern("abnormal-traffic-executor")
-            store.move_task(tid, "planned", "abnormal")
-            store.update_index()
-            continue
-
-        tkey = _task_key(ws, tid)
-        # 短路径硬门（P5）：board_ops / script_seed / feature_seed 不占 OpenCode 槽，
-        # 必须在同仓互斥检查之前 —— 否则纸面/卫生卡被活 opencode 拖成 queue_wait 地板。
-        short_path: str | None = None
-        try:
-            from board.roles.board_ops import run_board_ops, should_use_board_ops
-            from board.roles.script_seed import (
-                run_feature_seed,
-                run_script_seed,
-                should_use_feature_seed,
-                should_use_script_seed,
-            )
-
-            task_meta = next(
-                (t for t in store.list_tasks("planned") if t.get("id") == tid),
-                None,
-            )
-            if task_meta and should_use_script_seed(ws, task_meta):
-                short_path = "script_seed"
-                engine_log(f"[{label}] {tid} script_seed short path (intent probe, no opencode; bypass same-ws mutex)")
-                if store.find_task(tid)[0] == "planned":
-                    store.move_task(tid, "planned", "in_progress")
-                seed_r = run_script_seed(ws, tid)
-                if not seed_r.get("ok"):
-                    return _handle_short_path_failure(
-                        ws,
-                        tid,
-                        store,
-                        label=label,
-                        path="script_seed",
-                        why=str(seed_r.get("error") or seed_r.get("why") or seed_r)[:300],
-                    )
-                _clear_short_path_fail(ws, tid)
-                _log_stats(
-                    ws,
-                    "dev_path",
-                    tid,
-                    path="script_seed",
-                    ok=True,
-                )
-                # P0 KPI: short-path OK must advance — never leave done+in_progress ghost
-                col_now = store.find_task(tid)[0]
-                if col_now == "in_progress":
-                    store.move_task(tid, "in_progress", "testing")
-                    engine_log(f"[{label}] {tid} script_seed OK → testing")
-                store.update_index()
-                return True
-            if task_meta and should_use_feature_seed(ws, task_meta):
-                short_path = "feature_seed"
-                engine_log(
-                    f"[{label}] {tid} feature_seed short path (feature probe, no opencode; bypass same-ws mutex)"
-                )
-                if store.find_task(tid)[0] == "planned":
-                    store.move_task(tid, "planned", "in_progress")
-                feat_r = run_feature_seed(ws, tid)
-                if not feat_r.get("ok"):
-                    return _handle_short_path_failure(
-                        ws,
-                        tid,
-                        store,
-                        label=label,
-                        path="feature_seed",
-                        why=str(feat_r.get("error") or feat_r.get("why") or feat_r)[:300],
-                    )
-                _clear_short_path_fail(ws, tid)
-                _log_stats(
-                    ws,
-                    "dev_path",
-                    tid,
-                    path="feature_seed",
-                    ok=True,
-                )
-                col_now = store.find_task(tid)[0]
-                if col_now == "in_progress":
-                    store.move_task(tid, "in_progress", "testing")
-                    engine_log(f"[{label}] {tid} feature_seed OK → testing")
-                store.update_index()
-                return True
-            if task_meta and should_use_board_ops(ws, task_meta):
-                short_path = "board_ops"
-                engine_log(f"[{label}] {tid} board_ops short path (no opencode; bypass same-ws mutex)")
-                if store.find_task(tid)[0] == "planned":
-                    store.move_task(tid, "planned", "in_progress")
-                ops_r = run_board_ops(ws, tid)
-                if not ops_r.get("ok"):
-                    return _handle_short_path_failure(
-                        ws,
-                        tid,
-                        store,
-                        label=label,
-                        path="board_ops",
-                        why=str(ops_r.get("why") or ops_r)[:300],
-                    )
-                _clear_short_path_fail(ws, tid)
-                _log_stats(
-                    ws,
-                    "dev_path",
-                    tid,
-                    path="board_ops",
-                    ok=True,
-                )
-                col_now = store.find_task(tid)[0]
-                if col_now == "in_progress":
-                    store.move_task(tid, "in_progress", "testing")
-                    engine_log(f"[{label}] {tid} board_ops OK → testing")
-                store.update_index()
-                return True
-        except Exception as _bo_exc:
-            if short_path:
-                return _handle_short_path_failure(
-                    ws,
-                    tid,
-                    store,
-                    label=label,
-                    path=short_path,
-                    why=str(_bo_exc)[:300],
-                )
-            engine_log(f"[{label}] {tid} board_ops/script_seed probe error: {_bo_exc}")
-
-        # 同仓互斥：仅挡 OpenCode 路径（P1：死 pid+.done 不挡）
-        if _workspace_blocks_new_opencode(ws, active_tasks):
-            engine_log(f"[engine] [{label}] 同仓已有 active opencode，延后启动 {tid}")
-            continue
-
-        if not _try_acquire_opencode_slot(tkey):
-            engine_log(
-                f"[engine] opencode 槽忙（全局 {_GLOBAL_OPENCODE_COUNT}/{_GLOBAL_OPENCODE_MAX} 或同仓互斥），等待"
-            )
-            continue
-        launch_r = dev_role_launch(tid)
-        if "error" in launch_r:
-            _release_opencode_slot(tkey, 1)
-            skip_tag = "（非重试性）" if launch_r.get("skip_retry") else ""
-            engine_log(
-                f"[{label}] 启动 {tid} 失败: {launch_r['error']}{skip_tag}"
-            )
-            # phases 全 done 却仍 planned → 推进 testing（禁空转死循环）
-            err_s = str(launch_r.get("error") or "")
-            if launch_r.get("skip_retry") and "无待执行 phase" in err_s and "done" in err_s:
-                _salvage_phases_done_planned(ws, tid, store, label=label)
-            continue
-        if not _register_active(active_tasks, ws, tid, complexity=complexity):
-            _release_opencode_slot(tkey, 1)
-            engine_log(f"[{label}] {tid} launch 成功但槽满，拒绝登记")
-            continue
-        _log_stats(
-            ws,
-            "opencode_start",
-            tid,
-            complexity=complexity,
-            pid=launch_r.get("pid"),
-            mode="serial",
-            path="opencode",
-        )
-        _log_stats(ws, "dev_path", tid, path="opencode", ok=True)
-        store.update_index()
-        return True
-    return False
+    return try_launch_planned(ws, active_tasks)
 
 
 def _lookup_phase_timeout(tid: str, phases: list[dict]) -> int:
@@ -2997,8 +2732,8 @@ def _workspace_project_id(ws: Path) -> str:
             name = str(ent.get("name") or ent.get("id") or "").strip()
             if name:
                 return name
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        engine_log(f"[repair-queue] workspace_project_id lookup failed: {exc}")
     return Path(ws).name
 
 

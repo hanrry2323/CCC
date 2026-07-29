@@ -32,7 +32,7 @@ class NoStoreStaticMiddleware(BaseHTTPMiddleware):
                     try:
                         del response.headers[h]
                     except KeyError:
-                        pass
+                        pass  # intentional — header may already be absent
                 return response
             # 无版本 → 不缓存（开发期热改可见）
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

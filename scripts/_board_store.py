@@ -12,7 +12,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterator, Optional
 
 from _config import get_logger
 from _utils import now_iso as _utils_now_iso
@@ -124,7 +124,7 @@ _BACKLOG_SPLIT_RANK = {
 _BACKLOG_FRONT = frozenset({"pending", "planned", "running"})
 
 
-def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list[str]]:
+def validate_task_jsonl(data: dict[str, Any], *, strict: bool = False) -> tuple[bool, list[str]]:
     """CCC Board Protocol 校验入口（事实依据：references/board-task-schema.md §4）
 
     Returns:
@@ -166,7 +166,7 @@ def validate_task_jsonl(data: dict, *, strict: bool = False) -> tuple[bool, list
     return (len(errors) == 0), errors
 
 
-def _validate_rule_id(data: dict) -> str | None:
+def _validate_rule_id(data: dict[str, Any]) -> str | None:
     """规则 1: id 必填 + sanitize 后非 invalid + 无特殊字符"""
     raw_id = data.get("id")
     if raw_id is None or not str(raw_id).strip():
@@ -180,7 +180,7 @@ def _validate_rule_id(data: dict) -> str | None:
         return None
 
 
-def _validate_rule_title(data: dict) -> str | None:
+def _validate_rule_title(data: dict[str, Any]) -> str | None:
     """规则 2: title 必填且非空字符串（≤ TITLE_MAX）"""
     title = data.get("title")
     if title is None or not str(title).strip():
@@ -190,7 +190,7 @@ def _validate_rule_title(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_status(data: dict) -> str | None:
+def _validate_rule_status(data: dict[str, Any]) -> str | None:
     """规则 3: status 必填 ∈ COLUMNS"""
     status = data.get("status")
     if status is None or str(status).strip() == "":
@@ -200,7 +200,7 @@ def _validate_rule_status(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_timestamps(data: dict) -> str | None:
+def _validate_rule_timestamps(data: dict[str, Any]) -> str | None:
     """规则 4: created_at / updated_at 必填，ISO 8601（v0.28.1: 接受 +08:00 或 Z）"""
     errors: list[str] = []
     for field in ("created_at", "updated_at"):
@@ -217,7 +217,7 @@ def _validate_rule_timestamps(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_description(data: dict) -> str | None:
+def _validate_rule_description(data: dict[str, Any]) -> str | None:
     """规则 5: description 类型=str（可空）"""
     desc = data.get("description", "")
     if desc is not None and not isinstance(desc, str):
@@ -227,7 +227,7 @@ def _validate_rule_description(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_assignee(data: dict) -> str | None:
+def _validate_rule_assignee(data: dict[str, Any]) -> str | None:
     """规则 6: assignee 类型=str|None"""
     assignee = data.get("assignee")
     if assignee is not None and not isinstance(assignee, str):
@@ -235,7 +235,7 @@ def _validate_rule_assignee(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_tags(data: dict) -> str | None:
+def _validate_rule_tags(data: dict[str, Any]) -> str | None:
     """规则 7: tags 类型=list[str]"""
     tags = data.get("tags", [])
     if tags is not None:
@@ -248,7 +248,7 @@ def _validate_rule_tags(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_note(data: dict) -> str | None:
+def _validate_rule_note(data: dict[str, Any]) -> str | None:
     """规则 8: note 类型=str|None"""
     note = data.get("note")
     if note is not None and not isinstance(note, str):
@@ -256,7 +256,7 @@ def _validate_rule_note(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_schema_version(data: dict) -> str | None:
+def _validate_rule_schema_version(data: dict[str, Any]) -> str | None:
     """规则 9: schema_version 必填类型检查"""
     schema_version = data.get("schema_version")
     if schema_version is not None and not isinstance(schema_version, str):
@@ -264,7 +264,7 @@ def _validate_rule_schema_version(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_color_group(data: dict) -> str | None:
+def _validate_rule_color_group(data: dict[str, Any]) -> str | None:
     """规则 10: color_group 缺省 None；若存在 ∈ [A-Z] 单字符"""
     color_group = data.get("color_group")
     if color_group is not None:
@@ -275,7 +275,7 @@ def _validate_rule_color_group(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_color_depth(data: dict) -> str | None:
+def _validate_rule_color_depth(data: dict[str, Any]) -> str | None:
     """规则 11: color_depth 缺省 0；若存在 ≥ 0 整数"""
     color_depth = data.get("color_depth")
     if color_depth is not None:
@@ -286,7 +286,7 @@ def _validate_rule_color_depth(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_complexity(data: dict) -> str | None:
+def _validate_rule_complexity(data: dict[str, Any]) -> str | None:
     """规则 12: complexity 必须 'small'|'medium'|'large'（v0.28.1: 任务复杂度分流）"""
     complexity = data.get("complexity")
     if complexity is not None:
@@ -295,7 +295,7 @@ def _validate_rule_complexity(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_card_kind(data: dict) -> str | None:
+def _validate_rule_card_kind(data: dict[str, Any]) -> str | None:
     """规则 13: card_kind ∈ {epic, work}"""
     kind = data.get("card_kind")
     if kind is not None and kind not in CARD_KINDS:
@@ -303,7 +303,7 @@ def _validate_rule_card_kind(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_parent_id(data: dict) -> str | None:
+def _validate_rule_parent_id(data: dict[str, Any]) -> str | None:
     """规则 14: parent_id 为 str|None；若有则须合法 id"""
     pid = data.get("parent_id")
     if pid is None:
@@ -315,7 +315,7 @@ def _validate_rule_parent_id(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_split_status(data: dict) -> str | None:
+def _validate_rule_split_status(data: dict[str, Any]) -> str | None:
     """规则 15: split_status ∈ 五态（含存量 active/blocked 别名）；work 可空"""
     ss = data.get("split_status")
     if ss is None or ss == "":
@@ -326,7 +326,7 @@ def _validate_rule_split_status(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_child_ids(data: dict) -> str | None:
+def _validate_rule_child_ids(data: dict[str, Any]) -> str | None:
     """规则 16: child_ids 为 list[str]"""
     kids = data.get("child_ids")
     if kids is None:
@@ -339,7 +339,7 @@ def _validate_rule_child_ids(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_ui_hidden(data: dict) -> str | None:
+def _validate_rule_ui_hidden(data: dict[str, Any]) -> str | None:
     """规则 17: ui_hidden 为 bool"""
     h = data.get("ui_hidden")
     if h is not None and not isinstance(h, bool):
@@ -347,14 +347,14 @@ def _validate_rule_ui_hidden(data: dict) -> str | None:
     return None
 
 
-def _validate_rule_epic_column(data: dict) -> str | None:
+def _validate_rule_epic_column(data: dict[str, Any]) -> str | None:
     """规则 18: epic 只能停留在 backlog"""
     if data.get("card_kind") == "epic" and data.get("status") not in (None, "backlog"):
         return "epic: status must be backlog"
     return None
 
 
-def _validate_strict_mode(data: dict) -> str | None:
+def _validate_strict_mode(data: dict[str, Any]) -> str | None:
     """strict 模式：拒绝未知字段（仅在 validate_task_jsonl(..., strict=True) 时调用）"""
     allowed = {
         "id",
@@ -387,7 +387,7 @@ def _validate_strict_mode(data: dict) -> str | None:
     return None
 
 
-def fill_task_defaults(data: dict, *, column: str | None = None) -> dict:
+def fill_task_defaults(data: dict[str, Any], *, column: str | None = None) -> dict[str, Any]:
     """补默认字段；存量无 card_kind 时按列推断 epic/work。"""
     out = dict(data)
     out.setdefault("schema_version", "1.2")
@@ -418,7 +418,7 @@ def fill_task_defaults(data: dict, *, column: str | None = None) -> dict:
     return out
 
 
-def normalize_task_view(task: dict, *, column: str | None = None) -> dict:
+def normalize_task_view(task: dict[str, Any], *, column: str | None = None) -> dict[str, Any]:
     """读路径补齐字段（不写盘）。"""
     return fill_task_defaults(task, column=column or task.get("status"))
 
@@ -476,7 +476,7 @@ def _acquire_lock(lockfile: Path, timeout_s: float = 30.0) -> object:
     return acquire_board_lock(lockfile, timeout_s=timeout_s)
 
 
-def _release_lock(lock_obj) -> None:
+def _release_lock(lock_obj: object) -> None:
     """释放文件锁（flock unlock）。"""
     from board.lock import release_board_lock
 
@@ -530,7 +530,7 @@ class FileBoardStore:
         # 兜底：裸 workspace 时建全 7 列 + events 目录（v0.22 N1 修）
         for col in COLUMNS:
             (self.board / col).mkdir(parents=True, exist_ok=True)
-        self._list_cache: dict[str, tuple[float, list[dict]]] = {}
+        self._list_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         # update_index() 写入；_sync_state_md() 复用，避免紧跟 move 之后再扫一次。
         self._index_counts_cache: dict[str, int] | None = None
 
@@ -540,7 +540,7 @@ class FileBoardStore:
         """写锁（5s 超时，强清残留）"""
         return _acquire_lock(self.lockfile, timeout_s=5.0)
 
-    def _unlock(self, lock_obj) -> None:
+    def _unlock(self, lock_obj: object) -> None:
         _release_lock(lock_obj)
 
     def _column_signature(self, column: str) -> float:
@@ -571,7 +571,7 @@ class FileBoardStore:
 
     # ── 核心 CRUD ──
 
-    def create_task(self, data: dict, column: str = "backlog") -> bool:
+    def create_task(self, data: dict[str, Any], column: str = "backlog") -> bool:
         """创建新 task（含 epic/work 字段补默认）"""
         now = now_iso()
         seed = dict(data)
@@ -648,7 +648,7 @@ class FileBoardStore:
                 task["executor_spec"] = executor_spec
             hints = data.get("hints")
             if isinstance(hints, dict):
-                clean_hints: dict = {}
+                clean_hints: dict[str, Any] = {}
                 skills = hints.get("skills")
                 if isinstance(skills, list):
                     clean_skills = [
@@ -675,7 +675,7 @@ class FileBoardStore:
 
     def list_tasks(
         self, column: str, *, include_hidden: bool = False
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """读某列所有 task。
 
         backlog：pending/planned/running 在前（新→旧），failed 可处理，done 沉底；默认隐藏 ui_hidden。
@@ -700,7 +700,7 @@ class FileBoardStore:
         if cached is not None and cached[0] == sig and not include_hidden:
             return cached[1]
 
-        tasks: list[dict] = []
+        tasks: list[dict[str, Any]] = []
         for f in sorted(col_dir.glob("*.jsonl")):
             try:
                 raw = f.read_text(encoding="utf-8")
@@ -785,7 +785,7 @@ class FileBoardStore:
             self._list_cache[cache_key] = (sig, result)
         return result
 
-    def find_task(self, task_id: str) -> tuple[str | None, dict | None]:
+    def find_task(self, task_id: str) -> tuple[str | None, dict[str, Any] | None]:
         """查找 task 所在列与内容。返回 (column, task)。"""
         task_id = sanitize_id(task_id)
         for col in COLUMNS:
@@ -812,7 +812,7 @@ class FileBoardStore:
         """多副本时取权威列（abnormal 优先，否则流水线最远）。"""
         return pick_canonical_column(self.list_task_columns(task_id))
 
-    def resolve_task(self, task_id: str) -> tuple[str | None, dict | None]:
+    def resolve_task(self, task_id: str) -> tuple[str | None, dict[str, Any] | None]:
         """按权威列读取 task（避免 find_task 先命中靠前幽灵列）。"""
         task_id = sanitize_id(task_id)
         col = self.resolve_task_column(task_id)
@@ -826,7 +826,7 @@ class FileBoardStore:
             return None, None
 
     def patch_task(
-        self, task_id: str, fields: dict, *, column: str | None = None
+        self, task_id: str, fields: dict[str, Any], *, column: str | None = None
     ) -> bool:
         """原地更新 task 字段（不换列）。用于 epic split_status/child_ids/color 等。
 
@@ -1014,7 +1014,7 @@ class FileBoardStore:
         return success
 
     def _emit_work_status_flow_event(
-        self, task: dict, task_id: str, from_col: str, to_col: str
+        self, task: dict[str, Any], task_id: str, from_col: str, to_col: str
     ) -> None:
         """H-2: work 卡列迁移成功 → 主动 append work_status（失败不阻塞）。"""
         if from_col == to_col:
@@ -1027,7 +1027,7 @@ class FileBoardStore:
             from chat_server.services import flow_events as _fe
             from _product_fanout import _project_id_for_workspace
 
-            payload: dict = {
+            payload: dict[str, Any] = {
                 "work_id": task_id,
                 "status": to_col,
                 "from": from_col,
@@ -1048,7 +1048,7 @@ class FileBoardStore:
                 exc,
             )
 
-    def update_index(self) -> dict:
+    def update_index(self) -> dict[str, Any]:
         """更新 .ccc/board/index.json 状态总览（加锁防并发）
 
         顺带把 7 列计数回填到 _sync_state_md 可复用的内存缓存，避免紧随其后的
@@ -1147,7 +1147,7 @@ class FileBoardStore:
             self._sync_state_md()
 
     def _archive_to_quarantine(
-        self, task_id: str, task: dict, reason: str, from_col: str
+        self, task_id: str, task: dict[str, Any], reason: str, from_col: str
     ) -> Path | None:
         """v0.28.0: 内部方法，调模块级 quarantine_store_content
 
@@ -1177,11 +1177,11 @@ class FileBoardStore:
 
         return None
 
-    def get_timeline(self, task_id: Optional[str] = None) -> list[dict]:
+    def get_timeline(self, task_id: Optional[str] = None) -> list[dict[str, Any]]:
         """从 events/*.events.jsonl 读取 timeline 事件"""
         if not self.events_dir.exists():
             return []
-        events: list[dict] = []
+        events: list[dict[str, Any]] = []
         if task_id:
             task_id = sanitize_id(task_id)
             event_file = self.events_dir / f"{task_id}.events.jsonl"
@@ -1422,7 +1422,7 @@ def quarantine_store_content(task_id: str, content_path: Optional[Path] = None) 
         return False
 
 
-def _iter_quarantine_entries(quarantine_dir: Path):
+def _iter_quarantine_entries(quarantine_dir: Path) -> Iterator[Path]:
     """v0.28.0 (H-004): 迭代所有非 index.json 的 quarantine 副本（文件或目录）。"""
     if not quarantine_dir.exists():
         return

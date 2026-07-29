@@ -21,7 +21,6 @@ ignore = [
   "UP017",  # timezone.utc vs datetime.UTC — 保留旧风格
   "UP035",  # typing.Iterator vs collections.abc — 保留旧风格
   "UP045",  # Optional[X] 同上
-  "F401",   # unused import（部分模块为 side-effect 导入，**渐进收紧**：新代码应显式 `# noqa: F401`）
   "F841",   # unused variable（部分测试占位，**渐进收紧**：新代码不应新增）
   "I001",   # import sorting（现有大量模块未排序，**渐进收紧**：新模块应排序）
 ]
@@ -40,9 +39,8 @@ ignore = [
 "scripts/ccc-engine.py" = ["F401", "E402"]  # 角色文件未到 hot-path 前不动
 "scripts/ccc-board.py" = ["F401"]
 "scripts/board/roles/*.py" = ["F401"]
-# 2026-07-24 方案 1.1：dispatch.py / failure_router.py 是新建骨架，
-# 函数尚未从 ccc-engine.py 搬入；F401/F841 是预期的临时状态
-"scripts/engine/dispatch.py" = ["F401", "F841"]
+# 2026-07-29 Wave C：dispatch.py 已承载 try_launch_planned；仅保留 F841 宽松
+"scripts/engine/dispatch.py" = ["F841"]
 "scripts/engine/failure_router.py" = ["F401", "F841"]
 
 [tool.ruff.lint.isort]
@@ -79,9 +77,12 @@ files = [
     "scripts/_config.py",
     "scripts/_utils.py",
     "scripts/_jsonl_rotate.py",
+    "scripts/_board_store.py",
 ]
 # 翻绿模块与已翻绿模块间有依赖，逐文件 strict 检查
 strict = true
+# Wave D: 依赖未翻绿模块（fastapi/chat_server）不阻断已翻绿文件
+follow_imports = "silent"
 # 后续轮次按方案 2.1 表逆序推进：
 # 第 4 轮 _board_store.py / 第 5 轮 engine/gates.py / 第 6 轮 engine/slots.py
 # 第 7+ 轮 board/roles/*.py / 最后 ccc-engine.py

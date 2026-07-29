@@ -318,8 +318,11 @@ def compile_brain(root: Path, *, project_id: str) -> dict[str, Any]:
                 tid = str(item.get("task_id") or "")[:48]
                 err = str(item.get("error") or item.get("analysis") or "")[:120]
                 lines.append(f"- {tid}: {err}")
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger("ccc.project_brain").warning(
+            "append exhausted engine items failed: %s", exc
+        )
 
     # qb craft playbook (anti-patterns → fixes)
     pid = (project_id or "").strip().lower()

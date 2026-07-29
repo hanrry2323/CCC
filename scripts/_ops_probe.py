@@ -371,8 +371,8 @@ def fetch_router_upstream_daily(
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             usage_relay = json.loads(resp.read().decode("utf-8", errors="replace"))
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("usage-relay fetch failed: %s", exc)
 
     by_upstream_api: dict[str, dict] = {}
     tier_map: dict[str, str] = {}
@@ -387,8 +387,8 @@ def fetch_router_upstream_daily(
                 for u in upstreams:
                     if isinstance(u, dict) and u.get("name"):
                         tier_map[u["name"]] = u.get("tier", "unknown")
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("upstreams.json tier_map parse failed: %s", exc)
 
     # 2) 从本地 usage.json 补成功率+延迟
     records = _load_usage_file(usage_path)

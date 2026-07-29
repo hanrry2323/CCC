@@ -95,7 +95,9 @@ def test_finalize_via_out_calls_check(tmp_path: Path, monkeypatch: pytest.Monkey
     from engine import task_registry as _task_registry
 
     monkeypatch.setitem(sys.modules, "ccc_board", _Board)
-    monkeypatch.setattr(_task_registry, "_activate_workspace", lambda _ws: None)
+    monkeypatch.setattr(
+        "engine.workspace._activate_workspace", lambda _ws: Path(_ws).resolve()
+    )
     monkeypatch.setattr(eng, "engine_log", lambda *_a, **_k: None)
 
     outcome = eng._finalize_or_gc_product_key(ws, tid, key)

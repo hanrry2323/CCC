@@ -366,8 +366,8 @@ def failure_pack(
                     good_fix=str(row.get("optimize_hint") or "")[:160],
                     source="failure_pack",
                 )
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("transfer_lessons from failure_pack failed: %s", exc)
     return {
         "ok": True,
         "action": "failure_pack",
@@ -570,8 +570,8 @@ def heal_pending_no_fanout(
                     )
                     + "\n"
                 )
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.warning("flow-events prune write failed: %s", exc)
 
     return {
         "pending_before": pending,

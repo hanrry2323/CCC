@@ -1304,7 +1304,7 @@ def _review_with_llm(
                 if data.get("verdict") in ("pass", "fail"):
                     return data
             except json.JSONDecodeError:
-                pass  # 继续 fallback 解析
+                pass  # intentional — continue markdown JSON fallback
 
         # 次优：从 markdown 代码块提取 JSON（匹配首 { 到末 }）
         m = _re.search(

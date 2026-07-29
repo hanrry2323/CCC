@@ -453,7 +453,6 @@ class LongLivedSession:
         原实现只用 kill -0,僵尸也返 True;现加 ps state 检测,真死时返 False。
         """
         try:
-            import os as _os
             os.kill(self.pid, 0)
         except (OSError, ProcessLookupError):
             return False
@@ -468,7 +467,7 @@ class LongLivedSession:
             if state.startswith("Z"):
                 return False
         except Exception:
-            pass  # ps 失败时保守按 alive 处理(原行为)
+            pass  # intentional — ps fail → conservative alive (legacy)
         return True
 
     def heartbeat(self) -> None:
@@ -554,7 +553,7 @@ def register_bg_session(
                         f"[bg-session] register {key} 杀旧 wrapper pid={old_pid} (SIGTERM)"
                     )
             except (OSError, ProcessLookupError):
-                pass
+                pass  # intentional — old wrapper already gone
         sess = LongLivedSession(
             task_id=task_id, role=role, session_id=session_id,
             pid=pid, model=model,

@@ -16,7 +16,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Generator
+from typing import Generator
 
 from _board_store import FileBoardStore
 from board.context import set_workspace
@@ -69,18 +69,20 @@ def workspace_scope(ws: Path) -> Generator[WorkspaceContext, None, None]:
     用法：
         with workspace_scope(ws):
             # 此 block 内 get_current_workspace() 返回 ctx
-            dev_role_launch(tid)  # 内部可用 get_current_workspace() 取 ws/store
+            # 且 board.context / ccc_board lazy 已切换到该 ws
 
-    退出 block 时自动清理 _thread_local.ctx，避免泄漏到下一个 block。
+    必须先走 _activate_workspace（set_workspace + reset_lazy），再挂 thread-local；
+    否则仅设 ctx 不会切换 ContextVar，跨仓会污染。
     """
-    resolved = ws.resolve()
+    resolved = _activate_workspace(ws)
     store = _get_store(resolved)
     ctx = WorkspaceContext(ws=resolved, store=store)
+    prev = getattr(_thread_local, "ctx", None)
     _thread_local.ctx = ctx
     try:
         yield ctx
     finally:
-        _thread_local.ctx = None
+        _thread_local.ctx = prev
 
 
 def _reset_board_lazy() -> None:
