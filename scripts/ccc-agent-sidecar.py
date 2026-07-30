@@ -846,23 +846,24 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "正文只产品结果，路径/命令一字不进。SOP references/align-baseline-sop.md。"
         )
     if re.search(
-        r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|转意图卡|ccc-transfer|转任务契约|转任务|下任务卡|跑通)",
+        r"(下一步|看仓况|规划下一步|最佳下一步|帮我规划|定稿|转意图卡|ccc-transfer|转任务契约|转任务|下任务卡|跑通|开发|投意图链|意图链)",
         text,
         re.I,
     ):
         parts.append(
-            "【转意图卡 · 强制】正文只白话产品路线（禁路径/pytest）；"
+            "【意图链自动投 · 强制】正文只白话产品路线（禁路径/pytest）；"
             "技术只进 ccc-transfer；多卡优先。作答前静默 hub_board+hub_git。"
-            "收敛门：未对齐做什么/怎样算完则拒转。"
+            "收敛门：未对齐做什么/怎样算完则拒投。意图已收敛则必须自动出契约（禁止等人点转意图卡按钮）。"
             "契约硬预算：单意图·1 phase·acceptance 1～3 条本卡强探针；"
-            "禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡验收。"
-            "细则 references/intent-card-sop.md。"
+            "禁 test -f、禁把 paper/e2e/下一 L1 塞进本卡验收、禁敏感路径。"
+            "细则 references/intent-card-sop.md + references/intent-chain-dev-sop.md。"
             "硬完成：可见答复必须出可过门的 ccc-transfer；"
             "禁止只写右栏 L1 planned 当交差——右栏≠代办；"
             "系统会 promote→backlog→wake Engine。"
             "多卡硬规则：路线≥2步必须多个 ccc-transfer 或 cards:[]，禁止一轮糊一张大卡。"
             "对用户：≤3 句人话 + 恰好一个或多个 ccc-transfer；禁止 A/B、禁止 outbox/Terminal。"
             "gate 绿后系统自动进代办并拉起 Engine；红则停意图层+fix_hint。"
+            "失败：按 abnormal-solve / post-exhaust 自愈并自动再投；禁止甩锅复制给对话。"
         )
         # Force last transfer_lessons into the turn (digest may be truncated)
         lesson_lines = []

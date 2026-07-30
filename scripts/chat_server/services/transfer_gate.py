@@ -180,12 +180,56 @@ def validate_transfer_payload(
     if align_err:
         errors.append(align_err)
 
+    # FlowWeave 启发：敏感路径不得进意图卡 scope（薄能力 · 产线门禁）
+    sens_err = _check_sensitive_scope(body)
+    if sens_err:
+        errors.append(sens_err)
+
     # Ensure every error carries fix_hint for Agent training loop
     for e in errors:
         if isinstance(e, dict) and "fix_hint" not in e:
             e["fix_hint"] = _default_fix_hint(str(e.get("code") or ""))
 
     return (len(errors) == 0), errors
+
+
+def _check_sensitive_scope(body: dict[str, Any]) -> dict[str, str] | None:
+    """拒把 .env / credentials / control.json 等写入 scope。"""
+    try:
+        scripts = Path(__file__).resolve().parents[2]
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        from _diff_check import check_paths, any_blocked
+
+        paths: list[str] = []
+        for key in ("scope", "files", "paths"):
+            val = body.get(key)
+            if isinstance(val, list):
+                paths.extend(str(x) for x in val if str(x).strip())
+            elif isinstance(val, str) and val.strip():
+                paths.append(val.strip())
+        plan_md = str(body.get("plan_md") or "")
+        for line in plan_md.splitlines():
+            s = line.strip().lstrip("-*").strip()
+            if not s or s.startswith("#"):
+                continue
+            # 启发式：像路径的行
+            if "/" in s or s.endswith((".py", ".ts", ".js", ".md", ".json", ".yaml", ".yml", ".env")):
+                # 去掉行内说明
+                token = s.split()[0].strip("`")
+                if token and not token.startswith("http"):
+                    paths.append(token)
+        flags = check_paths(paths)
+        if any_blocked(flags):
+            sample = ", ".join(f.get("path") or "" for f in flags if f.get("level") == "block")[:120]
+            return _err(
+                "sensitive_scope",
+                f"意图卡 scope 含敏感路径：{sample}",
+                "从 scope/plan 去掉 .env、credentials、密钥、control.json；改业务源码路径。",
+            )
+    except Exception:
+        pass  # intentional — optional safety net
+    return None
 
 
 def _err(code: str, message: str, fix_hint: str) -> dict[str, str]:
@@ -208,6 +252,7 @@ def _default_fix_hint(code: str) -> str:
         "intent_not_stable": "对齐未完成 L1 目标，或 supersede_goals / abandon_prior。",
         "feasibility_blocked": "先解阻塞或改可行性评估后再定稿。",
         "garbage_stamp_card": "禁止探针/戳记/冒烟/Layer2 LPSN 卫生卡；改投真实业务意图。",
+        "sensitive_scope": "从 scope/plan 去掉 .env/密钥/control.json；只写业务源码路径。",
     }
     return hints.get(code, "按拒因改 ccc-transfer 后再定稿；读 digest「近期定卡教训」。")
 

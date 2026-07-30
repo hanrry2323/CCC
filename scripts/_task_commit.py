@@ -398,6 +398,16 @@ def ensure_task_commit(
                     )
                 product = scoped
             elif outside:
+                # 盘上 scope 已绿（有 task_id commit）时：仓根垃圾/无关脏不挡 DoD
+                # （qb 真案：Author: 空文件 + dashboard/ 残留 → 假 dirty_block）
+                if existing:
+                    _log.info(
+                        "[DoD] %s scope clean with existing commit; "
+                        "leave outside dirty unstaged: %s",
+                        task_id,
+                        outside[:8],
+                    )
+                    return True, "already_outside_dirty_scope_clean", existing
                 sample = ", ".join(outside[:6])
                 return (
                     False,

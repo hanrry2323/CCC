@@ -294,3 +294,40 @@ def test_lessons_noise_does_not_dirty_block_clean_scope(git_repo):
     ok, reason, commit = ensure_task_commit(repo, tid)
     assert ok, f"expected pass on noise-only dirty, got: {reason}"
     assert "dirty_block" not in reason
+
+
+# ---------------------------------------------------------------------------
+# Test: existing task commit + outside junk must NOT dirty_block (qb Author: case)
+# ---------------------------------------------------------------------------
+
+def test_existing_commit_outside_junk_ok(git_repo):
+    """Scope already committed; root junk (Author:/unrelated) must not block DoD."""
+    from _task_commit import ensure_task_commit
+
+    repo = git_repo
+    tid = "outside-junk-006"
+
+    (repo / "scripts").mkdir(exist_ok=True)
+    (repo / "scripts" / "b5.py").write_text("print('ok')\n")
+    _git(repo, "add", "scripts/b5.py")
+    _git(repo, "commit", "-m", f"{tid} phase=1: landed")
+
+    phases = repo / ".ccc" / "phases"
+    phases.mkdir(parents=True, exist_ok=True)
+    (phases / f"{tid}.phases.json").write_text(
+        '{"schema_version":"1.1"}\n'
+        '{"phase":1,"status":"done","scope":["scripts/b5.py"],'
+        '"description":"landed"}\n',
+        encoding="utf-8",
+    )
+
+    (repo / "Author:").write_text("")
+    dash = repo / "dashboard" / "frontend" / "dashboard"
+    dash.mkdir(parents=True, exist_ok=True)
+    (dash / "x.js").write_text("// junk\n")
+    (repo / "docs" / "reports").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "reports" / "b5.md").write_text("# report\n")
+
+    ok, reason, commit = ensure_task_commit(repo, tid)
+    assert ok, f"expected ok with existing commit, got: {reason}"
+    assert "dirty_block" not in reason

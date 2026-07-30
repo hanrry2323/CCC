@@ -1,7 +1,7 @@
 import Foundation
 
 /// Hub / Desktop 快捷条语义（内置 + 自定义）
-/// 设计：功课对齐 Cursor；结尾必须是明确的用户请求，避免 loop-code 合成 “No response requested.”
+/// v0.65：UI 只保留「对齐基线」「扫风险」；意图链由 Agent 理解后自动投出（勿靠人点转意图卡）。
 enum QuickPrompts {
     static let replyCompact =
         "用中文白话回复我；先结论（≤3 句）后理由。" +
@@ -11,13 +11,14 @@ enum QuickPrompts {
         "禁止出现 transfer-outbox、Terminal、cat >、script_seed、opencode、A/B 菜单。"
 
     static let investigatePref =
-        "你是 Desktop **高级智能开发伙伴 · 架构师**（分析项目→搭架构→理解意图→系列计划/意图卡→读测纠偏→连续优化；可查 HP/社区；板务仅挡事时；不是 Engine 本身）。" +
+        "你是 Desktop **高级智能开发伙伴 · 架构师**（分析→架构→理解意图→**自动投意图链**→读测纠偏→连续优化；可查 HP/社区；板务仅挡事时；不是 Engine 本身）。" +
         "主交付 = 有序阶段路线图 + 失败自动纠正；禁止默认缩成单功能闲聊。" +
         "业务仓事实：Hub 基线 + 一等 hub_* 工具 / 透镜 live；M1 无业务源码第二树。" +
         "问看板/在飞/文件必须先 hub_board 等工具；Hub 断则明说不可达，禁止瞎编。" +
-        "板堵/残卡/失败：本会话 hub_repair + 读 failure_pack；耗尽则优化意图卡（须人再点转）；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic；禁止 invent。" +
-        "本机 Read/Write/git 仅限 CCC 平台仓；业务改码请转意图卡→Engine。人审只在转意图卡（白话）；gate 绿后自动进代办。" +
-        "「对齐基线」= 分析并排系列计划的可选深扫，不是转意图卡硬门槛。"
+        "板堵/残卡/失败：本会话 hub_repair + 读 failure_pack；耗尽则**自动**优化意图卡并投链；禁止甩锅「打开编排运维」；禁止教贴命令；禁止卫生 epic；禁止 invent。" +
+        "本机 Read/Write/git 仅限 CCC 平台仓；业务改码经意图卡→Engine。" +
+        "意图收敛后**自动**出 ccc-transfer（系统 gate 绿→进代办）；**禁止**等人点「转意图卡」按钮。" +
+        "「对齐基线」= 分析并排系列计划的可选深扫，不是投链硬门槛。"
 
     static let mustAnswer =
         "\n\n请现在开始执行，并直接把完整答复写给我。"
@@ -32,12 +33,10 @@ enum QuickPrompts {
         "禁止把卫生/烟测/README stamp/仅勾 STATUS 当产品主业。\n" +
         "禁止向用户输出 Hub CLI / transfer-outbox / Terminal 教程。\n"
 
+    /// UI 内置快捷：仅对齐基线 + 扫风险
     static let builtinPrompts: [(title: String, prompt: String)] = [
-        ("看仓况", nextStep),
-        ("转意图卡", finalize),
-        ("扫风险", scanRisks),
         ("对齐基线", alignBaseline),
-        ("刷新看板", refreshBoard),
+        ("扫风险", scanRisks),
     ]
 
     private static let customKey = "ccc.customPrompts"
@@ -54,17 +53,17 @@ enum QuickPrompts {
         UserDefaults.standard.set(data, forKey: customKey)
     }
 
-    /// 旧名「下一步」：已降级为可选「看仓况」，非下达必经阶段
+    /// 内部保留：Agent 自动投链 / 用户口述「开发/下达」时 sidecar 注入用（无 UI 按钮）
     static let nextStep =
-        "请帮我看一下当前仓况（可选步骤，非转意图卡必经）。\n" +
+        "请帮我看一下当前仓况（可选，非主路径）。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
         "\n继承本会话已聊目标与约束，结合**核实后的**仓库现状给出**最佳方案**并默认按它推进。\n" +
-        "不必先点「对齐基线」。板堵先 repair；禁止甩 A/B 菜单让我选；仅当真缺不可逆信息时最多 1 问。\n\n" +
+        "板堵先 repair；禁止甩 A/B 菜单；意图已收敛则直接出 ccc-transfer 自动投链。\n\n" +
         "请按这个结构回答：\n" +
-        "### 判断\n一句：现在最该推进什么（含是否可开工 / 板是否堵；若已 repair 说明结果）。\n" +
-        "### 最佳方案\n要做什么、为什么现在做、不做会怎样；默认按此执行。\n" +
-        "### 备选（可选，一句）\n若有明显次优，一句带过；不要逼我拍板。" +
+        "### 判断\n一句：现在最该推进什么。\n" +
+        "### 最佳方案\n要做什么、为什么现在做；默认按此执行。\n" +
+        "### 备选（可选，一句）\n若有明显次优，一句带过。" +
         mustAnswer
 
     static let scanRisks =
@@ -74,30 +73,30 @@ enum QuickPrompts {
         "\n对照本会话方案与仓库真实状态；无证据不夸大。\n\n" +
         "请按这个结构回答：\n" +
         "### 风险（按严重度，最多 5 条）\n" +
-        "- 会怎样坏 / 谁受影响 / 是否挡转意图卡；无则「无明显风险」\n" +
+        "- 会怎样坏 / 谁受影响 / 是否挡意图链；无则「无明显风险」\n" +
         "### 建议处理顺序\n1～3 步（直接定顺序，勿问我选哪条）。\n" +
-        "### 可否转意图卡\n可以 / 暂缓 — <一句理由>" +
+        "### 可否投意图链\n可以 / 暂缓 — <一句理由>" +
         mustAnswer
 
-    /// UI 标题「转意图卡」；把已排的系列计划一次落成多卡链
+    /// 内部：Agent 自动投链文案（无「转意图卡」按钮；用户说开发/下达时等同）
     static let finalize =
-        "用户已点「转意图卡」：把本会话已排妥的**系列开发计划**一次性落成整条意图卡链并推动进代办。\n" +
+        "把本会话已排妥的**系列开发计划**一次性落成整条意图卡链并推动进代办（系统自动路径，勿等人点按钮）。\n" +
         replyCompact + "\n" + investigatePref +
         verifyRitual +
-        "\n严格按 `references/intent-card-sop.md`。\n" +
-        "**收敛门**：整条路线未齐（阶段/怎样算完）→ 只回白话缺什么并拒转。\n" +
+        "\n严格按 `references/intent-card-sop.md` + `references/intent-chain-dev-sop.md`。\n" +
+        "**收敛门**：整条路线未齐（阶段/怎样算完）→ 只回白话缺什么并拒投。\n" +
         "已收敛：**禁止**再问要不要入队；**禁止**只落当前首刀、丢掉后续阶段。\n" +
-        "**多卡硬规则（架构师）**：系列计划 ≥2 步 → 必须多个 ```ccc-transfer``` " +
+        "**多卡硬规则**：系列计划 ≥2 步 → 必须多个 ```ccc-transfer``` " +
         "或一块 JSON `cards:[...]`（每卡 1 阶段意图 · 1 phase · 1～2 强探针）；" +
-        "真·单意图才允许单块。右栏应出现 1/N 链；系统逐卡 gate→进代办→wake Engine。\n" +
+        "真·单意图才允许单块。系统逐卡 gate→进代办→wake Engine。\n" +
         "硬完成：可见答复里必须有可过门契约块；禁只写 L1 交差。\n" +
         "板堵先 repair；偶发卫生卡 executor_intent=python。\n\n" +
         "### 每卡硬预算\n" +
         "- scope≤5 文件同顶层；acceptance 1～2 条本卡强探针（pytest/DRY_RUN/assert）\n" +
-        "- ❌ test -f、散文、unit+paper 混装、把下一意图塞本卡\n" +
+        "- ❌ test -f、散文、unit+paper 混装、把下一意图塞本卡、敏感路径(.env/密钥)\n" +
         "- plan_md 必有 ## 验收；title≤80；默认 medium\n\n" +
-        "白话 2～4 句：整条计划拆成几张、每张怎样算完（**产品结果口吻**；正文禁止念路径/pytest）。\n" +
-        "然后输出全部契约块（技术字段只进块内）。起草前读 digest 教训 + next_product_goal 纳入链。\n" +
+        "白话 2～4 句：整条计划拆成几张、每张怎样算完。\n" +
+        "然后输出全部契约块（技术字段只进块内）。起草前读 digest 教训 + next_product_goal。\n" +
         mustAnswer
 
     /// 备用文案：正常路径走 Hub baseline API（AppModel.alignBaseline）
@@ -109,10 +108,10 @@ enum QuickPrompts {
         "### 项目与进度\n定位 + 走到哪 + 能否开系列计划\n" +
         "### 该留意什么\n只挡整条路线/发布；无则「当前没有挡事的异常」\n" +
         "### 开发计划（系列）\n3～7 步有序阶段；标明当前首刀与依赖；每步产品结果\n" +
-        "### 若要落成意图卡链\n1/N… 白话标题 ≤20 字" +
+        "### 若要落成意图卡链\n1/N… 白话标题 ≤20 字（人确认路线后你自动投链，勿等人点按钮）" +
         mustAnswer
 
-    /// 刷新看板事实：强制走 Hub live lens（sidecar 会注入 board）
+    /// 内部保留：无 UI 按钮；Agent 可自行 hub_board 刷新
     static let refreshBoard =
         "请刷新看板事实：当前权威仓在飞什么？\n" +
         replyCompact + "\n" + investigatePref +

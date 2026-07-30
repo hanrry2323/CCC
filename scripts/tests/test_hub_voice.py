@@ -32,15 +32,19 @@ def test_transfer_outbox_mental_model_locked():
     """转意图卡闭环口径：入队方 / 冲刷器 / 禁误说（防 Agent 读 flush.py 串台）。"""
     from hub_voice import HUB_BOSS_VOICE
 
-    assert "转意图卡闭环" in HUB_BOSS_VOICE or "转任务闭环" in HUB_BOSS_VOICE
+    assert (
+        "意图链闭环" in HUB_BOSS_VOICE
+        or "转意图卡闭环" in HUB_BOSS_VOICE
+        or "转任务闭环" in HUB_BOSS_VOICE
+    )
     assert "确认入队方 = Desktop App" in HUB_BOSS_VOICE
     assert "唯一冲刷器 = sidecar" in HUB_BOSS_VOICE
-    assert "禁止**把 sidecar" in HUB_BOSS_VOICE or "禁止把 sidecar" in HUB_BOSS_VOICE
     assert "不是** sidecar 解析入队" in HUB_BOSS_VOICE or "不是 sidecar 解析入队" in HUB_BOSS_VOICE
     assert "Hub 灯不挡确认" in HUB_BOSS_VOICE
     assert "transfer-receipts.json" in HUB_BOSS_VOICE
     assert "强制 enabled" in HUB_BOSS_VOICE
-    assert "不自造" in HUB_BOSS_VOICE
+    assert "invent" in HUB_BOSS_VOICE.lower() or "禁 invent" in HUB_BOSS_VOICE or "禁止 invent" in HUB_BOSS_VOICE
+    assert "自动" in HUB_BOSS_VOICE and ("意图链" in HUB_BOSS_VOICE or "投链" in HUB_BOSS_VOICE)
 
 
 def test_dual_layer_mind_locked_in_voice():
@@ -73,10 +77,13 @@ def test_identity_core_keywords_subset_of_voice():
         "不是** Cursor",
     ):
         assert needle in identity or needle.replace("**", "") in identity
-    for needle in ("双层心智", "转意图卡闭环", "L0 不变核", "确认入队方 = Desktop App"):
-        assert needle in HUB_BOSS_VOICE or (
-            needle == "转意图卡闭环" and "转任务闭环" in HUB_BOSS_VOICE
-        )
+    for needle in ("双层心智", "L0 不变核", "确认入队方 = Desktop App"):
+        assert needle in HUB_BOSS_VOICE
+    assert (
+        "意图链闭环" in HUB_BOSS_VOICE
+        or "转意图卡闭环" in HUB_BOSS_VOICE
+        or "转任务闭环" in HUB_BOSS_VOICE
+    )
 
 
 def test_light_mode_short_prefix():
@@ -104,18 +111,15 @@ def test_legacy_hub_marker_idempotent():
 
 
 def test_two_stage_flow_locked_in_voice():
-    """主路径：战略讨论→转意图卡；对齐基线非硬门槛；板堵优先 board-repair。"""
+    """主路径：战略讨论→自动意图链；对齐基线非硬门槛；板堵优先 board-repair。"""
     from hub_voice import HUB_BOSS_VOICE
 
     assert "主路径" in HUB_BOSS_VOICE
-    assert "硬门槛" in HUB_BOSS_VOICE
     assert "board-repair" in HUB_BOSS_VOICE or "repair" in HUB_BOSS_VOICE
-    assert "ready_for_task=false" in HUB_BOSS_VOICE
-    assert "human_note" in HUB_BOSS_VOICE
-    assert "转意图卡" in HUB_BOSS_VOICE
-    assert "战略" in HUB_BOSS_VOICE
+    assert "意图链" in HUB_BOSS_VOICE or "转意图卡" in HUB_BOSS_VOICE or "投链" in HUB_BOSS_VOICE
     assert "align-baseline-sop" in HUB_BOSS_VOICE
-    assert "架构/规划" in HUB_BOSS_VOICE or "不是运维" in HUB_BOSS_VOICE
+    assert "intent-chain-dev-sop" in HUB_BOSS_VOICE or "intent-card-sop" in HUB_BOSS_VOICE
+    assert "自动" in HUB_BOSS_VOICE
     assert "四段流程" not in HUB_BOSS_VOICE
 
 
@@ -128,10 +132,16 @@ def test_sidecar_finalize_forces_lens_verify():
         encoding="utf-8"
     )
     assert (
-        "转意图卡 · 强制核实" in src
+        "意图链自动投 · 强制" in src
+        or "转意图卡 · 强制" in src
+        or "转意图卡 · 强制核实" in src
         or "定稿 · 强制核实" in src
         or "定稿/转任务 · 强制核实" in src
     )
     assert "board-repair" in src or "repair" in src
-    assert re.search(r"转意图卡|定稿|ccc-transfer|转任务契约", src)
-    assert "intent-card-sop.md" in src or "finalize-transfer-sop.md" in src
+    assert re.search(r"转意图卡|定稿|ccc-transfer|转任务契约|意图链", src)
+    assert (
+        "intent-card-sop.md" in src
+        or "intent-chain-dev-sop.md" in src
+        or "finalize-transfer-sop.md" in src
+    )

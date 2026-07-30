@@ -180,6 +180,23 @@ def _paths_from_cmds(cmds: list[str]) -> list[str]:
     return paths
 
 
+def _is_acc_harness_noise(path: str) -> bool:
+    """验收产物噪声：docs/reports 每次跑探针会改，不得触发 uncommitted_vs_commit。"""
+    try:
+        from _task_commit import _is_harness_noise_path
+
+        return bool(_is_harness_noise_path(path))
+    except Exception:
+        p = (path or "").strip().replace("\\", "/")
+        return (
+            p.startswith("docs/reports/")
+            or p == "docs/reports"
+            or p == "docs/lessons.md"
+            or p.startswith("docs/lessons/")
+            or p.startswith(".ccc/")
+        )
+
+
 def _paths_dirty_vs_commit(ws: Path, commit: str, paths: list[str]) -> list[str]:
     """Return acceptance paths that differ from *commit* (incl. untracked)."""
     if not commit or not paths:
@@ -203,7 +220,7 @@ def _paths_dirty_vs_commit(ws: Path, commit: str, paths: list[str]) -> list[str]
         if r.returncode == 0:
             for ln in (r.stdout or "").splitlines():
                 n = (ln or "").strip().lstrip("./")
-                if n and n not in dirty:
+                if n and n not in dirty and not _is_acc_harness_noise(n):
                     dirty.append(n)
         r2 = subprocess.run(
             ["git", "status", "--porcelain", "--", *uniq],
@@ -223,7 +240,7 @@ def _paths_dirty_vs_commit(ws: Path, commit: str, paths: list[str]) -> list[str]
                 if " -> " in path:
                     path = path.split(" -> ", 1)[-1].strip().strip('"')
                 path = path.lstrip("./")
-                if path and path not in dirty:
+                if path and path not in dirty and not _is_acc_harness_noise(path):
                     dirty.append(path)
     except (OSError, subprocess.TimeoutExpired) as exc:
         _log.warning("acceptance_gate dirty-vs-commit check failed: %s", exc)

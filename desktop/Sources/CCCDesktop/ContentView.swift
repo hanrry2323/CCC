@@ -517,6 +517,8 @@ struct CodexChatPaneBody: View {
     @State private var needsInstantBottomPin: Bool = true
     /// 流式跟滚节流桶（字数/120 + toolSteps）
     @State private var lastStreamScrollBucket: Int = -1
+    /// 视口高度稳态：禁止 GeometryReader 读数直接喂 LazyVStack Spacer（会 AttributeGraph 死循环卡死 App）
+    @State private var stableViewportHeight: CGFloat = 640
     /// 触发 ScrollViewReader 内再钉一次（scene 激活时 onAppear 不一定重跑）
     @State private var bottomPinTick: UInt64 = 0
     /// 切会话过渡：先遮罩 + 圆圈，再缓慢露出内容（掩盖瞬时闪屏）
@@ -713,7 +715,7 @@ struct CodexChatPaneBody: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("主路径")
                     .font(.system(size: 12, weight: .medium))
-                Text("① 聊透意图（对齐基线可选）→ ②「转意图卡」→ gate 绿自动进代办。板堵时 Agent 可直接修残卡。")
+                Text("① 聊透意图（对齐基线可选）→ ② Agent 自动投意图链 → ③ Engine 开发/验收/自愈。板堵时 Agent 可直接修残卡。")
                     .font(.system(size: 11))
                     .foregroundStyle(CCCTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1019,9 +1021,9 @@ struct CodexChatPaneBody: View {
                                     .foregroundStyle(CCCTheme.faint)
                                     .frame(maxWidth: .infinity, alignment: .center)
                                 VStack(alignment: .leading, spacing: 10) {
-                                    emptyStep(num: "1", title: "聊透意图", detail: "对齐基线可选深扫；直接聊也能转意图卡")
-                                    emptyStep(num: "2", title: "点「转意图卡」", detail: "写 L1 意图卡；gate 绿自动进代办")
-                                    emptyStep(num: "3", title: "看板跟进度", detail: "右栏看板条 Δ；运维收口 probed")
+                                    emptyStep(num: "1", title: "聊透意图", detail: "对齐基线/扫风险可选；直接聊定目标")
+                                    emptyStep(num: "2", title: "自动意图链", detail: "Agent 理解后自动投多卡链；gate 绿进代办")
+                                    emptyStep(num: "3", title: "自动开发验收", detail: "Engine 跑码/审测；失败自愈；右栏看板 Δ")
                                 }
                                 .padding(16)
                                 .frame(maxWidth: 420)
@@ -1044,7 +1046,7 @@ struct CodexChatPaneBody: View {
                             .frame(maxWidth: .infinity)
                             .padding(.bottom, 24)
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel("空对话引导：聊透目标，转意图卡，自动进代办")
+                            .accessibilityLabel("空对话引导：聊透目标，自动意图链，自动进代办")
                             }
                         }
                         ForEach(displayMessages) { msg in
@@ -1124,9 +1126,9 @@ struct CodexChatPaneBody: View {
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorId)
-                        // 底部约 1/3 空槽：最新轮偏上，流式向下长时内容上推、留白保持
+                        // 底部约 1/3 空槽：用稳定视口高，禁止每帧 geometry→Spacer→再量 geometry
                         Spacer().frame(
-                            height: max(geometry.size.height * Self.chatBottomReserveFraction, 120)
+                            height: max(stableViewportHeight * Self.chatBottomReserveFraction, 120)
                         )
                     }
                     .frame(maxWidth: CCCTheme.chatMaxWidth)
@@ -1135,30 +1137,37 @@ struct CodexChatPaneBody: View {
                     .padding(.top, 8)
                 }
                 .onAppear {
+                    Self.applyViewportHeight(geometry.size.height, into: &stableViewportHeight)
                     // 窗体重入 / 首次进入：瞬移跟随位，勿从上往下刷
                     pinBottomOnNextScroll()
                     scroll(proxy)
                 }
+                .onChange(of: geometry.size.height) { newH in
+                    Self.applyViewportHeight(newH, into: &stableViewportHeight)
+                }
                 .onChange(of: bottomPinTick) { _ in scroll(proxy) }
                 .onChange(of: displayMessages.count) { _ in scroll(proxy) }
-                .onChange(of: displayMessages.last?.content) { _ in scroll(proxy) }
+                // 流式内容：只跟 bucket（字数/工具步），勿每 token 触发 scrollTo（会打爆 LazyVStack）
                 .onChange(of: displayMessages.last?.toolSteps.count) { _ in scroll(proxy) }
-                // 仅消息修订触发滚动；勿绑 flow 修订（已从 threadRevision 拆出）
                 .onChange(of: model.threadRevision[paneThreadId ?? ""]) { _ in scroll(proxy) }
                 .onChange(of: model.pendingScrollMessageId) { mid in
-                    guard let mid,
-                          let msg = displayMessages.first(where: { $0.id.uuidString.caseInsensitiveCompare(mid) == .orderedSame })
-                    else { return }
-                    let id = "\(paneThreadId ?? "")-\(msg.id)"
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        // 定位到该条时仍靠上，下方留给上下文
-                        proxy.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.25))
-                    }
-                    model.pendingScrollMessageId = nil
+                    scrollToPendingMessage(mid, proxy: proxy)
                 }
                 // 禁止订阅全局 selectedThreadId：他窗切项会清掉本窗滚动钉，导致切回时动画扫历史
             }
         }
+    }
+
+    private func scrollToPendingMessage(_ mid: String?, proxy: ScrollViewProxy) {
+        guard let mid else { return }
+        guard let msg = displayMessages.first(where: {
+            $0.id.uuidString.caseInsensitiveCompare(mid) == .orderedSame
+        }) else { return }
+        let id = "\(paneThreadId ?? "")-\(msg.id)"
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.25))
+        }
+        model.pendingScrollMessageId = nil
     }
 
     private func emptyStep(num: String, title: String, detail: String) -> some View {
@@ -1187,10 +1196,18 @@ struct CodexChatPaneBody: View {
 
     /// 对话栏底部留白比例（视口高度）
     private static let chatBottomReserveFraction: CGFloat = 1.0 / 3.0
+    /// 视口高变化小于此阈值不回写，打断 GeometryReader 反馈环
+    private static let viewportHeightHysteresis: CGFloat = 12
 
     /// tip 落在视口 2/3 处 → 下方正好约 1/3 空白
     private static var chatFollowAnchor: UnitPoint {
         UnitPoint(x: 0.5, y: 1 - chatBottomReserveFraction)
+    }
+
+    private static func applyViewportHeight(_ raw: CGFloat, into height: inout CGFloat) {
+        guard raw > 1 else { return }
+        if abs(raw - height) < viewportHeightHysteresis { return }
+        height = raw
     }
 
     /// 底部留约 1/3：流式跟 tip；结算后钉**最后一条消息**（避免 LazyVStack+大 spacer 假空白）
@@ -1246,9 +1263,9 @@ struct CodexChatPaneBody: View {
             return
         }
 
-        // 2) 流式：节流跟滚，始终保持底部约 1/3 空
+        // 2) 流式：更大节流桶，始终保持底部约 1/3 空（防主线程 LazyVStack 空转）
         if let last, last.isStreaming, last.role == "assistant" {
-            let bucket = last.content.count / 80 + last.toolSteps.count * 1_000
+            let bucket = last.content.count / 160 + last.toolSteps.count * 1_000
             if lastScrollTargetId == tip, bucket == lastStreamScrollBucket {
                 return
             }
@@ -1275,23 +1292,6 @@ struct CodexChatPaneBody: View {
             quickActionBar
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Button {
-                    model.beginIntentCardDispatch(threadId: window.threadId)
-                } label: {
-                    Text("转意图卡")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(
-                            model.canTransfer(projectId: window.projectId)
-                                ? CCCTheme.accent
-                                : CCCTheme.faint
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!model.canTransfer(projectId: window.projectId))
-                .help("写意图卡 → gate 绿自动进代办；红则卡停意图层")
-                .accessibilityLabel("转意图卡")
-                .accessibilityHint("L1 落盘后经门禁进代办")
-
                 Picker("", selection: $model.preferredModel) {
                     ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
                         Text(opt.label).tag(opt.id)
@@ -1335,7 +1335,7 @@ struct CodexChatPaneBody: View {
                         .foregroundStyle(CCCTheme.faint)
                         .lineLimit(2)
                 } else if model.transferDraft(for: paneThreadId) == nil, !displayMessages.isEmpty {
-                    Text("方案成熟后点「转意图卡」")
+                    Text("谈妥后 Agent 自动投意图链")
                         .font(.system(size: 10.5))
                         .foregroundStyle(CCCTheme.faint)
                         .lineLimit(1)
@@ -1498,7 +1498,7 @@ struct CodexChatPaneBody: View {
                 HStack(spacing: 6) {
                     quickChip(
                         "对齐基线",
-                        help: "深对齐：Hub 快照+透镜；可选，不是定稿/转任务硬门槛；残卡优先板务修复"
+                        help: "深对齐：Hub 快照+透镜；可选，不是投链硬门槛；残卡优先板务修复"
                     ) {
                         Task {
                             await model.alignBaseline(
@@ -1508,41 +1508,8 @@ struct CodexChatPaneBody: View {
                         }
                     }
                     quickChip(
-                        "刷新看板",
-                        help: "经 Hub 只读透镜 live 读权威仓在飞任务（覆盖过期记忆）"
-                    ) {
-                        model.applyQuickPrompt(
-                            QuickPrompts.refreshBoard,
-                            uiLabel: "刷新看板",
-                            projectId: paneProjectId,
-                            threadId: paneThreadId
-                        )
-                    }
-                    quickChip(
-                        "看仓况",
-                        help: "可选：lens 核实 board/git；板堵则先 board-repair，非下达必经步骤"
-                    ) {
-                        model.applyQuickPrompt(
-                            QuickPrompts.nextStep,
-                            uiLabel: "看仓况",
-                            projectId: paneProjectId,
-                            threadId: paneThreadId
-                        )
-                    }
-                    quickChip(
-                        "转意图卡",
-                        help: "谈妥后起草意图卡；gate 绿自动进代办，红则停意图层"
-                    ) {
-                        model.applyQuickPrompt(
-                            QuickPrompts.finalize,
-                            uiLabel: "转意图卡",
-                            projectId: paneProjectId,
-                            threadId: paneThreadId
-                        )
-                    }
-                    quickChip(
                         "扫风险",
-                        help: "按严重度列出场景/发布/下达风险，并判断能否转任务"
+                        help: "按严重度列出场景/发布/意图链风险，并判断能否自动投链"
                     ) {
                         model.applyQuickPrompt(
                             QuickPrompts.scanRisks,
@@ -1772,10 +1739,11 @@ struct CodexMessageRow: View {
                 return "…"
             }
             if message.isStreaming {
-                // 流式中仍可能半截 fence；尽量不把半截 JSON 当结论
-                return TransferDraftParser.humanVisibleMarkdown(from: raw).isEmpty
-                    ? (raw.contains("```ccc-transfer") ? "正在生成定稿结论…" : raw)
-                    : TransferDraftParser.humanVisibleMarkdown(from: raw)
+                // 流式禁止正则剥 fence：半截 JSON + 每帧 layout 会把主线程打满卡死
+                if raw.contains("```ccc-transfer") {
+                    return "正在生成定稿结论…"
+                }
+                return raw
             }
             let human = TransferDraftParser.humanVisibleMarkdown(from: raw)
             return human.isEmpty && transferJSON != nil ? "已定稿（见下方确认转任务）" : human
@@ -1813,7 +1781,7 @@ struct CodexMessageRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.18), value: message.isStreaming)
+                .animation(nil, value: message.isStreaming)
             }
             if let json = transferJSON, !message.isStreaming {
                 DisclosureGroup("转任务契约（给 Engine）") {
@@ -1878,15 +1846,6 @@ struct MessageActionBar: View {
                     )
                 }
                 actionBtn("预览") { model.previewMessage(content) }
-                if model.canTransfer(projectId: window.projectId) {
-                    actionBtn("转意图卡") {
-                        model.openTransfer(
-                            fromAssistantContent: content,
-                            projectId: window.projectId,
-                            threadId: window.threadId
-                        )
-                    }
-                }
             }
             Spacer(minLength: 0)
         }
@@ -1987,7 +1946,7 @@ struct FlowRail: View {
                     if (snap?.recentEpics ?? []).isEmpty,
                        (model.mindGoalsProjectId == paneProjectId ? model.mindGoals : []).isEmpty {
                         Text(snap?.emptyMessage
-                            ?? "编排空闲 · 谈妥方案后点「转意图卡」")
+                            ?? "编排空闲 · 谈妥后 Agent 自动投意图链")
                             .font(.system(size: 11))
                             .foregroundStyle(CCCTheme.faint)
                             .padding(.horizontal, 14)
@@ -2317,7 +2276,7 @@ struct TransferSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("转意图卡")
+                Text("意图卡")
                     .font(.system(size: 20, weight: .semibold))
                     .tracking(-0.4)
                 Spacer()
@@ -2332,8 +2291,8 @@ struct TransferSheet: View {
             }
             Text(
                 planLocked
-                    ? "契约已锁；仅可改标题与备注。改方案请退回对话再转意图卡。"
-                    : "启发式预填可改意图；建议先点「转意图卡」出契约。纠错：退回对话重转。"
+                    ? "契约已锁；仅可改标题与备注。改方案请退回对话让 Agent 重投。"
+                    : "启发式预填可改意图；主路径由 Agent 自动投链。纠错：退回对话重投。"
             )
                 .font(CCCTheme.callout)
                 .foregroundStyle(CCCTheme.faint)
@@ -2464,7 +2423,7 @@ struct TransferSheet: View {
                     loadDraftFromModel()
                 }
                 .foregroundStyle(CCCTheme.secondary)
-                Button("确认转意图卡") {
+                Button("确认投链") {
                     model.commitTransferForm(threadId, draft)
                     model.beginIntentCardDispatch(threadId: threadId)
                     model.dismissTransferSheet(threadId: threadId)
@@ -2684,10 +2643,10 @@ struct DesktopHelpSheet: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 helpRow("1", "选左侧业务项目", "进入该项目的方案对话（一项目可多会话）。")
-                helpRow("2", "聊透意图", "对齐基线=可选深扫，非硬门槛；也可直接聊定稿。板堵时 Agent 用 board-repair 清残卡。")
-                helpRow("3", "定稿", "点「定稿」生成契约并锁方案（目标/验收/正文不可在二级卡改）。")
-                helpRow("4", "转任务", "二级卡仅可改标题与备注；确认后进待办，Engine 自动消费；未扇出会明示阻塞因。")
-                helpRow("5", "看板 / 运维", "侧栏切换；看全局队列与集群健康，再「回对话」。")
+                helpRow("2", "聊透意图", "对齐基线/扫风险可选；板堵时 Agent 用 board-repair 清残卡。")
+                helpRow("3", "自动意图链", "谈妥后 Agent 自动出契约并投链；gate 绿进代办，无需点按钮。")
+                helpRow("4", "自动开发验收", "Engine 写码/审测；失败自愈或优化新 epic；禁止等人修板。")
+                helpRow("5", "看板 / 运维", "侧栏切换；看全局队列与集群健康。")
             }
 
             Divider()

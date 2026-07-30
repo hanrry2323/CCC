@@ -125,7 +125,7 @@ final class AppModel: ObservableObject {
     @Published var flowSplitGeneration: UInt64 = 0
     private var lastAnimatedEpicId: String?
 
-    @Published var flowEmptyMessage = "编排空闲 · 谈妥后点「转意图卡」"
+    @Published var flowEmptyMessage = "编排空闲 · 谈妥后 Agent 自动投意图链"
     @Published var flowWorks: [FlowWork] = []
     @Published var flowEpic: FlowEpic?
     @Published var flowHeadline: String = ""
@@ -2156,7 +2156,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Phase 1.4 + Stability: delta 热路径——就地改 content；切回后 UUID 仍在 RAM 时可续写。
-    /// 小 delta 合批：≥30ms 才把累积 chunk 写入 RAM；tool/status/done 立即处理；
+    /// 小 delta 合批：≥80ms 才把累积 chunk 写入 RAM；tool/status/done 立即处理；
     /// 流末/cancel/error 强制 flush。
     private var pendingDeltaThreadId: String?
     private var pendingDeltaAssistantId: UUID?
@@ -2182,7 +2182,7 @@ final class AppModel: ObservableObject {
         }
         if pendingDeltaTask == nil {
             pendingDeltaTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 35_000_000)
+                try? await Task.sleep(nanoseconds: 80_000_000)
                 self?.flushPendingDelta()
             }
         }
@@ -3556,8 +3556,8 @@ final class AppModel: ObservableObject {
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         let pid = projectId ?? selectedProjectId
         let tid = pid.map { resolveThreadId(projectId: $0, preferred: threadId) } ?? selectedThreadId
-        // 人点「转意图卡」= 发起权；契约就绪后自动进代办（仍过 gate）
-        if let tid, uiLabel.contains("转意图卡") || uiLabel == "定稿" {
+        // 人点「转意图卡」已退役；保留口令兼容（口述定稿/下达）
+        if let tid, uiLabel.contains("转意图卡") || uiLabel == "定稿" || uiLabel.contains("投意图链") {
             threadIntentDispatchPending[tid] = true
         }
         sendUserMessage(
@@ -3839,10 +3839,10 @@ final class AppModel: ObservableObject {
         applyTransferDraft(d, fallbackContent: nil, threadId: tid)
         if d.isGateReady { setTransferDelivery(tid, .draft) }
         threadPendingIntentDrafts[tid] = all.filter { $0.isGateReady || !$0.title.isEmpty }
-        // 人已点转意图卡 → L1 落盘 + 逐卡 gate 绿则自动进代办（单飞，防流式/连点打爆）
-        if threadIntentDispatchPending[tid] == true,
-           all.contains(where: \.isGateReady),
+        // v0.65：Agent 产出可过门契约 → 自动投链（不等人点按钮）
+        if all.contains(where: \.isGateReady),
            !intentPromoteInFlight.contains(tid) {
+            threadIntentDispatchPending[tid] = true
             Task { await promoteIntentCardToBacklog(threadId: tid) }
         }
     }

@@ -183,6 +183,8 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | 立刻关 sheet、徽章 `queued`、可继续聊 | 入本机 outbox；**sidecar 常驻 flush** → Hub；成功写 `transfer-receipts.json` |
 | 看板始终画列（可空） | 拉板失败保留快照 + 短超时，不整页死白 |
 
+**意图链自动投（硬 · 2026-07-30）**：人聊定意图 → Agent **自动**出多卡链 → gate → Engine；Desktop 快捷仅「对齐基线」「扫风险」（已删刷新看板/看仓况/转意图卡）。标准 SOP：[`../../references/intent-chain-dev-sop.md`](../../references/intent-chain-dev-sop.md)。FlowWeave 对照：[`../briefs/2026-07-30-flowweave-vs-ccc.md`](../briefs/2026-07-30-flowweave-vs-ccc.md)（不做成第二 FlowWeave）。
+
 **意图卡供给闭环（硬 · 2026-07-29 · v0.64.0）**：
 
 > 人只确认「要做成什么」；Agent 起草意图卡；**系统 `transfer_gate` 不过绝不进代办**。  
@@ -191,11 +193,11 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 | 角色 | 做什么 | 不做什么 |
 |------|--------|----------|
-| **人** | 战略收敛后**显式**点「转意图卡」；只审白话意图/验收 | 不审路径/pytest；不手写代办；未谈妥不乱点 |
-| **Agent** | 人触发后按 [`../../references/intent-card-sop.md`](../../references/intent-card-sop.md) 起草 L1；可查 HP/社区；读 lessons | 禁未触发自转；禁 invent；禁 gate 红仍推进代办；禁开场运维说教 |
+| **人** | 聊清要做成什么/怎样算完；可选对齐基线/扫风险 | 不审路径/pytest；不手写代办；不点「转意图卡」按钮（已删） |
+| **Agent** | 意图收敛后按 [`../../references/intent-card-sop.md`](../../references/intent-card-sop.md) **自动**起草并投链；可查 HP/社区；读 lessons；失败自愈 | 禁未收敛自投；禁 invent；禁 gate 红仍推进代办；禁开场运维说教 |
 | **系统** | 契约过 `transfer_gate` **仅绿**才 auto transfer→backlog+wake；右栏 L1 停尸由 `POST /transfer/promote-planned` 兜底推进 | 禁见结构化块就入队；override 须显式+`human_note`；禁让人盯右栏当推动器 |
 
-流程：架构师分析/排系列计划（对齐基线可选）→ 人点转意图卡 → Agent 出**整条计划对应的意图卡链**（多卡优先）→ gate → 绿则自动进代办 **+ wake Engine** → Agent **读测/失败证据并纠偏**（优化卡须人再点转）→ 连续下一站。空闲飞轮自动推下一 L1 `planned` 到右栏（**不**直灌 backlog）。**禁止**只写右栏当完成；**禁止**缩成单功能闲聊；**禁止**一轮糊一张大卡；**禁止**只归档当失败结案。
+流程：架构师分析/排系列计划（对齐基线可选）→ 意图收敛后 Agent **自动**出**整条意图卡链**（多卡优先）→ gate → 绿则自动进代办 **+ wake Engine** → Agent **读测/失败证据并纠偏**（优化卡自动再投）→ 连续下一站。空闲飞轮自动推下一 L1 `planned` 到右栏（**不**直灌 backlog）。**禁止**只写右栏当完成；**禁止**缩成单功能闲聊；**禁止**一轮糊一张大卡；**禁止**只归档当失败结案；**禁止**等人点「转意图卡」。
 
 **Agent 定方案（硬）**：**高级智能开发伙伴 · 架构师**——分析项目 → 搭建架构与系列计划（3～7 步到收口）→ 理解意图 → 意图卡链 → **跟进 Engine 验收/测试结论 → 失败自动纠正（repair / 优化改卡）→ 连续下一站**。正文只聊路线与产品结果；**禁止**默认缩成「下一个小功能」。按用户意图定最佳系列计划并默认推进；**禁止**每轮甩拍板选择题、**禁止转意图卡后再问要不要入队**。仅当真缺不可逆信息才最多 1 问。白话给人看；契约折叠进块。读 failure_pack/verdict/审查报告时用人话归纳，**禁止**把报告原文念给老板。**板面残卡清场**归 **当前 Desktop App Agent**（`hub_repair`），**禁止**默认逼卫生 epic，**禁止**甩锅「请打开编排运维」。偶发卫生卡：`executor_intent=python`；`pipeline=ops` 仍扇出。abnormal / 未核账在飞残卡禁止重复下达同目标（须先清板或人 override）。身份 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。
 
@@ -214,27 +216,27 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 **Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。**对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「开源公开」当收口；谈 qb 成熟度对齐 **B4.2 实盘人确认 + B5 回测可视化**；Redis/plist/Grafana 等禁进正文。
 
-**意图卡人话 + 审查回流（硬 · 2026-07-29 → v0.64.1）**：中间栏自然讨论方案（Agent 首轮可用人话翻译；**右栏无「讨论方案」按钮**）。谈妥 → 人点**转意图卡** → Agent 起草 L1 → gate 绿自动进代办（`title`/`goal` 对齐卡原文）→ L1 **`dispatched`**，右栏意图卡链移除（看板待办 Δ 为主信号）。CCC 全绿 → `probed` **收口在运维页**；人点标记稳定 → `stable`。僵尸 `planned` → `abandoned`（右栏不堆坟）。人偶发粘贴审查报告 → Agent 白话归纳 → **优化意图卡**（可 `supersede_goals`）。人格：`hub_voice`「意图卡 · 首轮翻译」「审查报告回流」。
+**意图卡人话 + 审查回流（硬 · 2026-07-29 → v0.64.1）**：中间栏自然讨论方案（Agent 首轮可用人话翻译；**右栏无「讨论方案」按钮**）。谈妥 → Agent **自动**起草 L1 并投链 → gate 绿自动进代办（`title`/`goal` 对齐卡原文）→ L1 **`dispatched`**，右栏意图卡链移除（看板待办 Δ 为主信号）。CCC 全绿 → `probed` **收口在运维页**；人点标记稳定 → `stable`。僵尸 `planned` → `abandoned`（右栏不堆坟）。人偶发粘贴审查报告 → Agent 白话归纳 → **优化意图卡**（可 `supersede_goals`）。人格：`hub_voice`「意图卡 · 首轮翻译」「审查报告回流」。
 
 #### Desktop 主路径（硬 · 2026-07-29 · 意图卡两段）
 
 ```text
 架构师排系列计划（自由聊 / 对齐基线；可查 HP/社区）
-  → 人点「转意图卡」（认整条路线）
-  → Agent 一次把系列计划落成多卡 ccc-transfer / cards:[]（真单意图才单块）
+  → 意图收敛（人聊定 / 说开发·下达·跑通）
+  → Agent 一次把系列计划落成多卡 ccc-transfer / cards:[]（真单意图才单块）并自动投链
   → transfer_gate 逐卡绿 → 自动进代办（outbox→Hub epic→wake Engine）
   → 若仅有右栏 L1、无本地草稿 → Hub promote-planned 兜底进代办+wake
   → 红 → 意图卡停留 + fix_hint 改卡（零 OpenCode）
 空闲飞轮：pipeline idle 且无 planned → 系统写下一产品 L1 planned（右栏）
-  → 仍须人点「转意图卡」才进代办（禁 invent）
+  → Agent 理解后自动再投才进代办（禁 invent 直灌）
 ```
 
 | 环节 | 人 | Agent / 系统 |
 |------|-----|----------------|
 | 战略讨论 | 自由聊 | **架构师排系列计划**；可查知识库/社区；可选「对齐基线」；**禁止**开场运维说教；**禁止**缩成单功能 |
 | 对齐基线 | 可点；**非硬门槛** | 交付 **3～7 步开发计划**到收口；本轮不出契约块；见 [`../../references/align-baseline-sop.md`](../../references/align-baseline-sop.md) |
-| 看仓况 | 可选芯片 | lens；**不是**下达必经 |
-| **转意图卡** | 显式一点 | 收敛门：未谈妥拒转；出契约；写 L1；**不是**直接定代办 |
+| 扫风险 | 可选芯片 | 风险清单；**不是**下达必经 |
+| **自动意图链** | 聊定即可 | Agent 收敛后自动出契约；gate 质控；**不是**跳过门禁 |
 | **gate→代办** | 不审技术字段 | 仅绿 auto transfer；红停意图层 |
 | 入队后 | 继续聊 | `task_dispatch`+wake；看板计数看状态；右栏**不**堆 work 拆解卡 |
 
@@ -252,7 +254,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | **提交** | Engine/DoD 在业务仓**当前分支（默认 main）**提交；`task_id`/`phase` 进 message；**不做** feature 旁支合入门禁；Cursor **事后总验**不挡产线 |
 | **进板后** | 人只确认下达；之后扇出/写码/审测/hang 收尸/有限 reopen **全自动** |
 | **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；**L2** Hub/`board_repair`：`clear_blockers` 先 reopen 可恢复再归档 permanent/failed/孤儿；**L3** Desktop/sidecar 清板 SOP 钩子；**L3b** 耗尽后 Agent **改大卡再开**（读证据→按失败桶优化 `ccc-transfer`，意图不变；见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图。**总闸**：[`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md)——**清障 ≠ 解决问题**；结案=根因消除且意图可再验收（已绿则结算，勿空投） |
-| **Agent 定卡培养闭环（硬 · 2026-07-29）** | 培养 Desktop Agent 定**意图卡**/纠板，**禁止**靠 Cursor 反复救火。① **入学考试**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`/过宽 scope/**验收>3 条**/**unit+paper混装**，返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**（快捷「转意图卡」注入；旧名 `finalize-transfer-sop.md` 重定向）。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡**（须人再点转）。⑤ **扇出二次门禁（硬 · 2026-07-29）**：product fanout 写 work `## 验收` 后须再过强度门——有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条；`acceptance_cmd_failed` 连败≥2（弱/混装可提前）→ abnormal + 优化 L1，禁空转 relaunch。⑥ **promote 薄 plan**：`promote-planned` 拒无真实路径的 boilerplate，须完整 `ccc-transfer` 才进 OpenCode |
+| **Agent 定卡培养闭环（硬 · 2026-07-29）** | 培养 Desktop Agent 定**意图卡**/纠板，**禁止**靠 Cursor 反复救火。① **入学考试**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`/过宽 scope/**验收>3 条**/**unit+paper混装**，返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**（注入 `intent-card-sop` + `intent-chain-dev-sop`；旧名 `finalize-transfer-sop.md` 重定向）。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡并自动再投**。⑤ **扇出二次门禁（硬 · 2026-07-29）**：product fanout 写 work `## 验收` 后须再过强度门——有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条；`acceptance_cmd_failed` 连败≥2（弱/混装可提前）→ abnormal + 优化 L1，禁空转 relaunch。⑥ **promote 薄 plan**：`promote-planned` 拒无真实路径的 boilerplate，须完整 `ccc-transfer` 才进 OpenCode |
 | **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；**耗尽后只藏卡不改大卡**；**先 `ui_hidden` 还可重试的 abnormal**；用 Cursor/Zed 当业务仓合入通道；**用「已归档/已 reopen」当向老板的完成话术** |
 | **SOP** | 总闸 [`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md) · 清板 [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) · 耗尽改大卡 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md) · **Commit/文件夹卫生** [`../../references/commit-folder-hygiene-sop.md`](../../references/commit-folder-hygiene-sop.md)（脏树三分法；噪音不挡；禁 `git add -A`；禁卫生 epic 主业） · **垃圾卡硬清** `scripts/_board_garbage.py`（探针/戳记/`regression-*` 移出看板；regress **无意图探针不建回归卡**；禁脏树 alone 炸板） |
 

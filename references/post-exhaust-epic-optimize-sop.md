@@ -16,7 +16,7 @@
    - `title`/`goal` **对齐原意图卡原文**（或显式 `supersede_goals=true`）
    - 按桶改法见下表
    - `plan_md` 与 goal 同向；acceptance 可重放（过 `transfer_gate` 强度门）
-5. **`failure_pack` 会回流 L1 `planned` 意图卡**（右栏可见）；人点「转意图卡」后再进代办；**禁止** Agent 自转自入队  
+5. **`failure_pack` 会回流 L1 `planned` 意图卡**（右栏可见）；Agent 出优化 `ccc-transfer` 后**系统自动投链**进代办；**禁止**只写右栏交差；**禁止** invent 无证据自造  
 6. **冷却**：同一意图自动优化 ≤1 次；再失败升运维红（人改意图），禁止环
 7. **教训落盘**：系统写入 L1 `transfer_lessons`（digest「近期定卡教训」）；禁止 invent 当记忆
 
@@ -40,8 +40,8 @@
 摘要：{hint}
 失败桶：{buckets}
 请严格按 references/abnormal-solve-sop.md + post-exhaust-epic-optimize-sop.md：
-先查盘上是否已绿→已绿则结算；否则 failure_pack → 白话失败因 → clear_blockers → 优化 ccc-transfer。
-禁止只藏卡结束；禁止 invent；禁止抬重试；禁止写业务源码；禁止甩锅复制给对话。
+先查盘上是否已绿→已绿则结算；否则 failure_pack → 白话失败因 → clear_blockers → 优化 ccc-transfer 并自动投链。
+禁止只藏卡结束；禁止 invent；禁止抬重试；禁止写业务源码；禁止甩锅复制给对话；禁止等人点「转意图卡」。
 ```
 
 ## 与同卡重试边界
