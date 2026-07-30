@@ -746,6 +746,38 @@ def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
     return out
 
 
+def _fetch_hub_repair_queue(project_id: str) -> tuple[bool, str]:
+    """Claim pending L3b/board_repair SOP from Hub (2017 queue via tunnel)."""
+    import urllib.error
+    import urllib.request
+
+    pid = (project_id or "").strip()
+    if not pid:
+        return False, ""
+    url = f"{_hub_base()}/api/desktop/repair-queue/claim"
+    payload = json.dumps({"project_id": pid, "limit": 1}).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={
+                **_hub_auth_headers(),
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        if not isinstance(data, dict) or not data.get("ok"):
+            return False, ""
+        block = str(data.get("inject_block") or "").strip()
+        if not block:
+            return True, ""
+        return True, block
+    except Exception:
+        return False, ""
+
+
 def _fetch_hub_mind_digest(project_id: str) -> tuple[bool, str]:
     """Return (ok, digest_or_error_block)."""
     import time
@@ -806,14 +838,16 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "【CCC 平台入口】本机 CCC 可 Read/Write/Edit；不灌业务规划当产品搭档；"
             "禁止对 orch 投业务 epic。"
         )
-    # board + mind 并行，缩短每轮首包前等待
+    # board + mind + repair-queue 并行（L3b 强制注入）
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         fut_board = pool.submit(_fetch_hub_lens_board, pid)
         fut_mind = pool.submit(_fetch_hub_mind_digest, pid)
+        fut_rq = pool.submit(_fetch_hub_repair_queue, pid)
         _ok, block = fut_board.result()
         _mok, mblock = fut_mind.result()
+        _rok, rq_block = fut_rq.result()
     parts.append(block)
     if mblock:
         parts.append(mblock)
@@ -823,10 +857,13 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
                 "【飞轮 T4】空闲时优先推进 digest 中的 next_product_goal；"
                 "禁止用卫生/烟测 epic 顶替；人点 stable 前勿宣称意图完成。"
             )
+    if rq_block:
+        parts.append(rq_block)
     if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
         parts.append(
             "【板务强制】本轮必须 hub_repair(clear_blockers) 并报告板面数字；"
-            "禁止甩锅、禁止 outbox/Terminal。"
+            "若 status.exhausted / repair_queue 有 pending → failure_pack 后"
+            "**优化意图链并自动投链**；禁止只藏卡结案；禁止甩锅、禁止 outbox/Terminal。"
         )
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(

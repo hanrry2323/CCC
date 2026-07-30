@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.65.3] — 2026-07-30
+
+### Fixed
+- **自愈 exhaust 过宽**：`is_exhaust_reason` 仅认耗尽标记（对齐 `should_auto_refeed`），不再把凡 hang/acceptance_fail 当不可恢复；`clear_blockers` 可正确 reopen 瞬态 abnormal。
+- **失败桶假红**：`acceptance-gate` / `acceptance_empty_bullets`、`dirty_block`、`reviewer 未产出 verdict`、`product async timeout` 正确分桶 + optimize_hint（2017 qb/hp/medio 实测）。
+- **L3b 队列积压**：Engine 写入的 `repair-queue` 经 Hub `POST /api/desktop/repair-queue/claim` + sidecar 每轮注入；禁止 29 条 pending 静默堆着。
+
+### Added
+- 盘点 brief：`docs/briefs/2026-07-30-self-heal-inventory.md`
+- `hub_repair(status).repair_queue`；sidecar 并行 claim
+- 单测：`test_self_heal_buckets` · `test_repair_queue_claim`
+
+### Changed
+- authority / consensus / SOP / hub_voice：修板后必须再投链；桶表扩 dirty/reviewer/product
+
 ## [v0.65.2] — 2026-07-30
 
 ### Fixed

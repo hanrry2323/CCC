@@ -17,11 +17,11 @@
 
 1. **取证**（勿先讲故事）  
    `hub_repair(status|failure_pack)` + 读 `review_fail` / `result.json` / quarantine / `git log --grep=<tid>`  
-2. **定桶**（hang / acceptance_fail / dirty_block / phase_unresolvable / fail_loop …）  
+2. **定桶**（hang / acceptance_fail / dirty_block / reviewer_timeout / product_timeout / phase_unresolvable / fail_loop …；见 `scripts/_failure_buckets.py`）  
 3. **人话 ≤3 句**：失败因 + **意图是否仍成立** + 下一步是改卡还是结算已绿代码  
 4. **分支**  
    - **盘上已满足验收**（有含 `task_id` 的 commit 或验收命令现跑全绿）→ **结算/salvage 进 testing**，禁止再「缩小重投」空转；缺 commit 则补合法 stamp，不重开巨型 OpenCode。  
-   - **未满足** → 可恢复则 reopen；耗尽则 `clear_blockers` **之后必须**出优化 `ccc-transfer`（见 [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md)）。  
+   - **未满足** → 可恢复则 reopen（**先 reopen 再藏卡**）；耗尽则 `clear_blockers` **之后必须**出优化意图链并**自动投** `ccc-transfer`（见 [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md)）；sidecar 会注入 repair-queue SOP。  
 5. **dirty_block / `.ccc`·`docs/lessons` 噪音** → 不当业务失败结案；先认噪音门禁，再让同卡过 commit-gate（详见 [`commit-folder-hygiene-sop.md`](commit-folder-hygiene-sop.md)）。  
 6. 回报老板：用「根因 / 已改什么 / 现在板况」；**禁止**长篇辩护清障流程。
 

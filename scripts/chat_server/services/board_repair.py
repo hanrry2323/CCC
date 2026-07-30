@@ -146,7 +146,11 @@ def settle_stuck_epics(
     }
 
 
-def list_blockers(workspace: Path) -> dict[str, Any]:
+def list_blockers(
+    workspace: Path,
+    *,
+    project_id: str = "",
+) -> dict[str, Any]:
     """只读：列出挡 ready 的残卡（含孤儿 running epic / pending_no_fanout / exhausted）。"""
     store = FileBoardStore(workspace)
     abnormal: list[dict[str, Any]] = []
@@ -178,6 +182,7 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
     stuck_running = list_stuck_running_epics(workspace)
     pending_nf = list_pending_no_fanout(workspace)
     exhausted = build_exhausted_summary(workspace, abnormal)
+    repair_q = _repair_queue_snapshot(project_id=(project_id or "").strip())
     return {
         "abnormal": abnormal,
         "failed_epics": failed_epics,
@@ -188,7 +193,41 @@ def list_blockers(workspace: Path) -> dict[str, Any]:
         "exhausted_count": len(exhausted),
         "blocker_count": len(abnormal) + len(failed_epics) + len(stuck_running),
         "pending_no_fanout_count": len(pending_nf),
+        "repair_queue": repair_q,
     }
+
+
+def _repair_queue_snapshot(project_id: str) -> dict[str, Any]:
+    """Pending L3b / board_repair hooks for this host (Engine writes on 2017)."""
+    try:
+        from chat_server.services import repair_queue as rq
+    except ImportError:
+        try:
+            from . import repair_queue as rq
+        except ImportError:
+            return {"pending_count": 0, "pending": []}
+    try:
+        if project_id:
+            pending = rq.pending_for_project(project_id, limit=8)
+        else:
+            pending = rq.load_pending()[:8]
+        return {
+            "pending_count": len(pending) if project_id else len(rq.load_pending()),
+            "pending": [
+                {
+                    "key": x.get("key"),
+                    "kind": x.get("kind"),
+                    "epic_id": x.get("epic_id"),
+                    "buckets": x.get("buckets"),
+                    "hint": str(x.get("hint") or "")[:160],
+                    "ts": x.get("ts"),
+                }
+                for x in pending
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("repair_queue snapshot: %s", exc)
+        return {"pending_count": 0, "pending": [], "error": str(exc)[:120]}
 
 
 def build_exhausted_summary(
@@ -1035,7 +1074,11 @@ def run_repair(
 
     result: dict[str, Any]
     if act == "status":
-        result = {"ok": True, "action": act, **list_blockers(workspace)}
+        result = {
+            "ok": True,
+            "action": act,
+            **list_blockers(workspace, project_id=project_id),
+        }
     elif act == "archive":
         result = {
             "ok": True,

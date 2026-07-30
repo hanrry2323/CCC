@@ -25,10 +25,17 @@
 大卡：{epic_id}
 摘要：{hint}
 请严格按 references/abnormal-solve-sop.md + board-auto-repair-sop.md：
-取证定桶 → 已绿则结算；否则可恢复 reopen → clear 不可恢复 → exhausted 则 post-exhaust 优化定稿。
+取证定桶 → 已绿则结算；否则可恢复 reopen → clear 不可恢复 → exhausted 则 post-exhaust **优化意图链并自动投链**。
 禁止只藏卡/只 reopen 当结案；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。
 ```
 
+## 系统钩子（v0.65.3+）
+
+- Engine 耗尽 → `~/.ccc/repair-queue.jsonl`（`epic_optimize`）
+- Hub `POST /api/desktop/repair-queue/claim` → sidecar 每轮注入 SOP
+- `hub_repair(status).repair_queue` 可见 pending；`failure_pack` 回流 planned + lessons
+- **修板后必须再投链或结算已绿**；禁止队列只积压不消费
+
 ## 冷却
 
-同一 `project_id|epic_id` 自动注入 ≤1 次 / 会话窗；未清干净或优化失败 → 红灯通知，不无限刷 Agent。
+同一 `project_id|epic_id` 自动注入 ≤1 次 / 会话窗（claim→injected）；未清干净或优化失败 → 红灯通知，不无限刷 Agent。

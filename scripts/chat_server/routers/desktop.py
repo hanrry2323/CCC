@@ -538,6 +538,32 @@ async def transfer_promote_planned(request: Request):
     }
 
 
+@router.post("/repair-queue/claim")
+async def repair_queue_claim(request: Request):
+    """L3b：sidecar 经隧道领取本机（2017）pending repair-queue，注入 Agent 强制优化投链。"""
+    check_auth(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    project_id = str(body.get("project_id") or body.get("project") or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id required")
+    try:
+        limit = int(body.get("limit") or 1)
+    except (TypeError, ValueError):
+        limit = 1
+    from ..services import repair_queue as rq
+
+    claimed = rq.claim_for_inject(project_id=project_id, limit=limit)
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "claimed": claimed,
+        "count": len(claimed),
+        "inject_block": rq.format_inject_block(claimed),
+    }
+
+
 @router.post("/board-repair")
 async def board_repair(request: Request):
     """Desktop Agent 板务白名单：清残卡 / 剪幽灵轨 / 有限 reopen。不写业务源码。"""

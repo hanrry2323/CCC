@@ -25,11 +25,13 @@
 | 桶 | 新大卡必须 |
 |----|------------|
 | **hang** | 1 work、scope≤少数文件、单 phase；acceptance 仅短 `pytest`/`python3`；禁「Step1–6 一次做完」；`complexity` 诚实；plan 写死「验收已绿立即 commit 退出」 |
-| **acceptance_fail** | 先修可重放探针；acceptance 与 scope 同向；`executor_intent` 匹配；禁散文假绿 |
+| **acceptance_fail** | 先修可重放探针（禁空 bullets / existence-only）；认 `### 验收` 与 `acceptance-gate`；acceptance 与 scope 同向；`executor_intent` 匹配；禁散文假绿 |
 | **phase_unresolvable** | 重写可执行 phases；单卡单 phase 优先；禁依赖 product regen |
 | **fail_loop_exhausted** | 读 review_fail/verdict 后改 plan/验收；勿原样重下 |
 | **stale_inflight** | 缩小卡面、优先短路径 |
-| **dirty_block（噪音）** | 非意图失败：`.ccc`/lessons 噪音不该挡；平台修门禁后同卡 reopen，勿当业务失败改意图 |
+| **dirty_block（噪音）** | 非意图失败：Author: / `docs/reports` / `.ccc`/lessons 噪音不该挡；平台修门禁后同卡 reopen，勿当业务失败改意图；禁卫生 epic |
+| **reviewer_timeout** | 瞬态未出 verdict/TIMEOUT → 优先 reopen 或短路径确定性审；反复再缩小；禁 invent |
+| **product_timeout** | 扇出异步超时 → 缩小 epic、单 work、明确 CHILDREN；禁巨型扇出 |
 
 ## 自动钩子文案模板
 
