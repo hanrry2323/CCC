@@ -369,7 +369,7 @@ def failure_pack(
                 )
             except Exception as exc:  # noqa: BLE001
                 _log.warning("transfer_lessons from failure_pack failed: %s", exc)
-            # v0.66: 回流新 planned 意图卡（须人再点转；不写 backlog）
+            # v0.65+: 回流新 planned 意图卡；Agent 须自动投优化链（不写 backlog）
             try:
                 title = str(row.get("title") or row.get("id") or "").strip()
                 if title:

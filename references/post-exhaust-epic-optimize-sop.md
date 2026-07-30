@@ -16,7 +16,7 @@
    - `title`/`goal` **对齐原意图卡原文**（或显式 `supersede_goals=true`）
    - 按桶改法见下表
    - `plan_md` 与 goal 同向；acceptance 可重放（过 `transfer_gate` 强度门）
-5. **`failure_pack` 会回流 L1 `planned` 意图卡**（右栏可见）；Agent 出优化 `ccc-transfer` 后**系统自动投链**进代办；**禁止**只写右栏交差；**禁止** invent 无证据自造  
+5. **`failure_pack` 会回流 L1 `planned` 意图卡**（右栏可见）；Agent 出优化 `ccc-transfer` 后**必须自动投链**进代办；**禁止**只写右栏交差；**禁止** invent 无证据自造；**禁止**等人点「转意图卡」  
 6. **冷却**：同一意图自动优化 ≤1 次；再失败升运维红（人改意图），禁止环
 7. **教训落盘**：系统写入 L1 `transfer_lessons`（digest「近期定卡教训」）；禁止 invent 当记忆
 

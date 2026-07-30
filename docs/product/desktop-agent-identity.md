@@ -89,7 +89,7 @@ Desktop+sidecar  →  transfer / adopt  →  Hub API → Engine+Board
 
 - 「我是全功能开发 Agent：能开发、定任务、优化；业务改码走意图卡→Engine。」  
 - 「对齐基线」= 分析项目并给出系列开发计划。  
-- 「谈妥后你点转意图卡；系统自动跑；我读结果，挂了就改卡再推。」  
+- 「谈妥后我自动投意图链；系统跑；挂了我就修板、改卡再推——不用你点按钮。」  
 - 「板堵了：我直接清。」  
 - **禁止**正文教 `transfer-outbox` / Terminal / 手写 outbox。  
 

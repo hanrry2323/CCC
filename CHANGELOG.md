@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.65.0] — 2026-07-30
+
+> **正式上线**：意图链开发（Agent 自动投链）+ 平台任务自愈（修板 + 优化意图链）。  
+> 发布说明：[`docs/releases/v0.65.0.md`](docs/releases/v0.65.0.md)。
+
+### Added
+- **意图链自动投（产品主路径）**：Desktop Agent 理解意图后**自动**出多卡 `ccc-transfer` → `transfer_gate` 绿进代办 + wake；**无**「转意图卡」按钮。SOP：`intent-chain-dev-sop.md` · `intent-card-sop.md`。
+- **编排自愈强化**：板堵/abnormal → Agent **必须** `hub_repair` + 读 `failure_pack`；可恢复 reopen；耗尽后按 `optimize_hint` **自动投优化意图链**（禁只归档藏卡）。总闸 `abnormal-solve-sop.md`。
+- Desktop 快捷仅保留「对齐基线」「扫风险」。
+
+### Changed
+- `hub_voice` / identity / STARTUP-BRIEF / transfer-gate：口径从「人点转意图卡」改为 **Agent 自动投链**；清障 ≠ 结案。
+- 权威 / consensus：标明 v0.65 已上线能力；下一步 = qb 维护态 + 舰队其余验收。
+- VERSION SSOT = `VERSION` 文件；README badge 对齐。
+
+### Tests
+- hub_voice / repair_queue / post-exhaust / intent-chain 相关锁测保持绿；自愈 prompt 强制含「自动投」。
+
 ## [v0.64.1] — 2026-07-29
 
 ### Changed

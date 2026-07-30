@@ -163,8 +163,10 @@ def optimize_sop_prompt(
         "请严格按 references/abnormal-solve-sop.md + post-exhaust-epic-optimize-sop.md：\n"
         "1) hub_repair(failure_pack) — 读每条 exhausted 的 optimize_hint + prior_transfer\n"
         "2) 已绿则结算；否则 clear_blockers 归档旧卡\n"
-        "3) **按 optimize_hint 改出新 ccc-transfer**（title/goal 对齐原意图；缩小/修探针）\n"
-        "禁止原样重下；禁止只藏卡结束；禁止 invent；禁止抬 Engine 重试；禁止写业务源码。\n"
+        "3) **按 optimize_hint 改出优化意图链 ccc-transfer（可多卡）并自动投链**"
+        "（title/goal 对齐原意图；缩小/修探针；gate 绿即进代办）\n"
+        "禁止等人点「转意图卡」；禁止原样重下；禁止只藏卡结束；"
+        "禁止 invent；禁止抬 Engine 重试；禁止写业务源码。\n"
         "dirty/commit：references/commit-folder-hygiene-sop.md。\n"
     )
 
@@ -177,7 +179,8 @@ def sop_prompt(*, project_id: str, epic_id: str, hint: str) -> str:
         f"摘要：{hint}\n"
         "请严格按 references/abnormal-solve-sop.md + board-auto-repair-sop.md：\n"
         "取证定桶 → 已绿则结算；否则可恢复 reopen → clear_blockers（只归档不可恢复）"
-        "→ exhausted 则 hub_repair(failure_pack) 按 optimize_hint 优化定稿。\n"
+        "→ exhausted 则 hub_repair(failure_pack) 按 optimize_hint **优化意图链并自动投链**。\n"
         "dirty_block/脏树：references/commit-folder-hygiene-sop.md（ccc_hygiene≠业务失败；禁 git add -A）。\n"
-        "禁止只藏卡/只 reopen 当结案；禁止甩锅让老板复制/去运维页；禁止 invent；禁止写业务源码。\n"
+        "禁止只藏卡/只 reopen 当结案；禁止等人点按钮；禁止甩锅让老板复制/去运维页；"
+        "禁止 invent；禁止写业务源码。\n"
     )

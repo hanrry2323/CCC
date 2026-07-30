@@ -66,8 +66,10 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
   **立即**按 **自动 SOP** 跑钩子（**禁止**让老板点「复制给对话」；**禁止**先藏还可重试的卡）：
   - **可恢复** → `references/board-auto-repair-sop.md`（reopen → clear 不可恢复）
   - **重试耗尽** → `references/post-exhaust-epic-optimize-sop.md`：
-    读证据 → 归档旧 epic → **优化新意图卡并自动投链**；**禁止只藏卡结束**
+    读证据 → 归档旧 epic → **优化意图链并自动投链**（可多卡）；**禁止只藏卡结束**；**禁止等人点按钮**
   - 总闸始终是 `abnormal-solve-sop.md`（清障后必须落到「解决了」定义）
+- **红灯/板堵强制动作（v0.65）**：本轮若 live board 有 abnormal/failed/exhausted/孤儿 running，
+  **必须先** `hub_repair(status|failure_pack)`，再按桶结算或**自动投优化意图链**；禁止只口头解释。
 - 发现 abnormal/failed/幽灵轨/孤儿 running → `hub_board` → `hub_repair` → reopen 或优化卡或结算。
 - **禁止**投卫生 epic、禁止教 outbox/Terminal、禁止甩锅。
 

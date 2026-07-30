@@ -62,14 +62,17 @@ def test_acceptance_path_in_commit(ws_git: Path):
 
 
 def test_acceptance_cmds_refuse_uncommitted_vs_commit(ws_git: Path):
-    """WT probe green + old task commit still PENDING → refuse (no OpenCode commit 假绿)."""
+    """WT probe green + old task commit still PENDING → refuse (no OpenCode commit 假绿).
+
+    用业务路径（非 docs/reports harness 噪声）覆盖 uncommitted_vs_commit。
+    """
     from _acceptance_gate import check_acceptance
 
     tid = "tid-w1"
-    stamp = ws_git / "docs" / "reports" / "stamp.md"
-    stamp.parent.mkdir(parents=True)
+    stamp = ws_git / "src" / "stamp_marker.py"
+    stamp.parent.mkdir(parents=True, exist_ok=True)
     stamp.write_text("PENDING\n", encoding="utf-8")
-    subprocess.run(["git", "add", "docs/reports/stamp.md"], cwd=ws_git, check=True, capture_output=True)
+    subprocess.run(["git", "add", "src/stamp_marker.py"], cwd=ws_git, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", f"feat({tid}): seed PENDING"],
         cwd=ws_git,
@@ -82,8 +85,8 @@ def test_acceptance_cmds_refuse_uncommitted_vs_commit(ws_git: Path):
     stamp.write_text("GOLDEN_PATH_OK_V2\n", encoding="utf-8")
     (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
         "## 验收\n"
-        "- test -f docs/reports/stamp.md && "
-        "grep -q GOLDEN_PATH_OK_V2 docs/reports/stamp.md\n",
+        "- test -f src/stamp_marker.py && "
+        "grep -q GOLDEN_PATH_OK_V2 src/stamp_marker.py\n",
         encoding="utf-8",
     )
     r = check_acceptance(ws_git, tid, commit=head)

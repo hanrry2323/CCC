@@ -1,8 +1,10 @@
 # CCC 战略地图
 
 > **按需阅读**：先读 [`VISION.md`](VISION.md) + 根目录 `STARTUP-BRIEF.md`；需要全景再读本文。  
-> **当前版本**：以根目录 `VERSION` 为准（**v0.62.0**）。  
-> **现行产品真理**：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) · LPSN 出门 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) · 北星 [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md)。  
+> **当前版本**：以根目录 `VERSION` 为准（**v0.65.0**）。  
+> **已上线（v0.65）**：意图链自动投 + 编排自愈（修板 + 优化意图链）；快捷仅对齐基线/扫风险。  
+> **下一步**：qb 维护态（B4.2/B5）· 舰队其余窄卡验收 · qxo origin 分歧人裁决。  
+> **现行产品真理**：[`product/loop-engineer-authority.md`](product/loop-engineer-authority.md) · LPSN 出门 [`product/lpsn-ship-gate.md`](product/lpsn-ship-gate.md) · 北星 [`product/hub-shell-roadmap.md`](product/hub-shell-roadmap.md) · 发布 [`releases/v0.65.0.md`](releases/v0.65.0.md)。  
 > 下文含范式演进史；与权威冲突时以 VERSION / authority / CHANGELOG 为准（**本文非日常 SSOT**）。
 
 ---

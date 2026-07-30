@@ -1,6 +1,6 @@
 """L1 planned 意图卡 → gate → backlog epic + wake Engine.
 
-人点「转意图卡」后：右栏 planned 不得长期停尸——系统必须推进代办。
+Agent 自动投链 / 口述下达后：右栏 planned 不得长期停尸——系统必须推进代办。
 """
 
 from __future__ import annotations

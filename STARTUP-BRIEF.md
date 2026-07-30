@@ -1,7 +1,7 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **版本**：`VERSION`（**v0.64.1**）  
+> **版本**：`VERSION`（**v0.65.0**）  
 > **边界**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
 > **北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) · **索引**：[`docs/INDEX.md`](docs/INDEX.md)  
 > **正式启用**：[`docs/ops/GO-LIVE.md`](docs/ops/GO-LIVE.md)
@@ -26,7 +26,8 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **Relay**：薄垫片；**付费-only Go**（恰好 1 把启用，第 2 把人切备份）；免费/MiniMax 不进启用池。手册：[`docs/relay/KEY-POOL.md`](docs/relay/KEY-POOL.md)。  
 **Vibe 真优势三句**：少而硬的意图 · 唯一权威路径 · 偏差默认用飞轮收——**不是**画布更细。  
 **LPSN（v0.60）**：`released`/VERSION 只到 `code_landed`；意图完成 = 探针可重放 + regress + L1 `intent_stable`。出门：[`docs/product/lpsn-ship-gate.md`](docs/product/lpsn-ship-gate.md)。  
-**编排自愈（硬）**：大卡进板后必须自动跑完；卡死/失败自愈是基础指标（禁等人点「复制给对话」）；业务仓 **main** 由 CCC 提交。SOP：[`references/board-auto-repair-sop.md`](references/board-auto-repair-sop.md)。  
+**编排自愈（硬）**：大卡进板后必须自动跑完；卡死/失败 → Agent **修板 + 优化意图链并自动投**（禁等人点按钮 / 禁只藏卡）；业务仓 **main** 由 CCC 提交。SOP：[`references/abnormal-solve-sop.md`](references/abnormal-solve-sop.md) · [`references/board-auto-repair-sop.md`](references/board-auto-repair-sop.md)。  
+**v0.65 已上线**：意图链自动投 + 平台任务自愈；快捷仅对齐基线/扫风险。见 [`docs/releases/v0.65.0.md`](docs/releases/v0.65.0.md)。  
 **平台维护**：绿灯自动干；违背权威才人话报警（`python3 scripts/ccc-authority-patrol.py`）。  
 **Ops 运维面**（对话/编排/运维三面之一）：给人看健康灯——**绿**敢开发、**橙**可忽略、**红**一键复制交 Agent；旁路自愈/供弹/巡查（弹药只进业务仓，禁 orch）。见 authority「Ops 运维面」。
 
@@ -36,7 +37,7 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 
 | | |
 |--|--|
-| **Desktop + sidecar `:7788`** | 对话 / 意图 / **转意图卡**（M1 主入口） |
+| **Desktop + sidecar `:7788`** | 对话 / 意图 / **Agent 自动投意图链**（M1 主入口） |
 | **Hub `:7777`** | API host：transfer / flow / board / ops（Mac2017） |
 | **6+1 列看板** | backlog(epic) + planned→…→released(work) + abnormal |
 | **阶段能力包** | product / dev / reviewer / tester / ops / kb / regress（默认可插拔 Skill，非角色超市） |
@@ -50,13 +51,15 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 ## 2. 人机路径（优先）
 
 ```text
-Desktop（M1）：战略讨论 → 人点「转意图卡」→ L1 planned → gate 绿 → 自动进代办
+Desktop（M1）：聊透意图（对齐基线/扫风险可选）
+     → Agent 自动出意图链 ccc-transfer → gate 绿 → 进代办 + wake
      → POST /api/desktop/transfer → Mac2017 backlog epic
-     →（2017 control=enabled）Engine 自动编排：product 扇出 → dev 写码 → review/test → kb → released
-     → 右栏：看板计数 + 意图卡链（非 work 拆解竖轨）
+     →（2017 control=enabled）Engine：product 扇出 → dev → review/test → kb → released
+     → 失败：Agent hub_repair + 优化意图链再投（禁只藏卡）
+     → 右栏：看板计数 + 意图卡链
 ```
 
-**v0.64+**：转意图卡 ≠ 定代办；gate 红卡停意图层（零 OpenCode）。SOP：[`references/intent-card-sop.md`](references/intent-card-sop.md) · 发布：[`docs/releases/v0.64.1.md`](docs/releases/v0.64.1.md)。
+**v0.65**：意图链由 Agent **自动投**（已删「转意图卡」按钮）；gate 红停意图层（零 OpenCode）。自愈：修板 + 优化链。SOP：[`references/intent-chain-dev-sop.md`](references/intent-chain-dev-sop.md) · 发布：[`docs/releases/v0.65.0.md`](docs/releases/v0.65.0.md)。
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  

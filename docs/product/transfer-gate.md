@@ -10,13 +10,13 @@
 ## 流程
 
 ```text
-战略讨论 → 人点「转意图卡」→ Agent 输出 ```ccc-transfer``` → 写 L1 planned
+聊透意图 → Agent 自动输出 ```ccc-transfer```（多卡链）→（可写 L1 planned）
   → POST /api/desktop/transfer/validate（dry-run）
   → 绿：POST /api/desktop/transfer → 仅创建 epic（backlog）+ wake
   → 红：不写 backlog，卡留意图层，返回 errors[] / fix_hint
 ```
 
-Engine **之后**才扇出 work；转意图卡接口禁止直接写 planned work。
+Engine **之后**才扇出 work；transfer 接口禁止直接写 planned work。**无**「转意图卡」按钮——发起方 = Agent 自动投链。
 
 ## 定稿协议（`ccc-transfer`）
 

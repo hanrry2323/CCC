@@ -39,7 +39,7 @@ alwaysApply: true
 
 以下是 **CCC 产品**对 Desktop / Hub / Engine 的约束，便于你实现与改文档时对齐；**不是**把你降成 Desktop Agent：
 
-- 前台只确认意图（**转意图卡**/切页）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。
+- 前台只确认意图（聊透 / 切页；**Agent 自动投意图链**）；**确认不依赖 Hub 可达**；Hub 连通·重试·卡死·投递一律后台。**唯一冲刷器 = sidecar**（Desktop 只入队+nudge）。关 App 不停：sidecar 冲刷 outbox → Hub。再开 = hydrate（优先 receipts）+ 后台 catch-up。耗尽进 failed；**Hub 恢复自动 requeue**；transfer 成功会 `task_dispatch` 强制 enabled。
 - **意图链自动投（硬 · 2026-07-30）**：Desktop Agent = **高级智能开发伙伴 · 架构师**（分析→架构→意图→**自动投意图链**→读测→失败自愈→连续优化）。对齐基线出 3～7 步计划；意图收敛后 Agent 自动出多卡链 → gate 绿进代办+wake。Desktop 快捷仅「对齐基线」「扫风险」（已删刷新看板/看仓况/转意图卡）。空闲飞轮推下一 L1 `planned`；进代办由 Agent 再理解后自动投（禁 invent）。SOP：`intent-chain-dev-sop.md` · `intent-card-sop.md` · `align-baseline-sop.md` · `desktop-agent-identity.md`。FlowWeave 对照：`docs/briefs/2026-07-30-flowweave-vs-ccc.md`（不做成第二 FlowWeave）。
 - **Desktop Agent 定方案**：**架构师闭环优先**（可查 HP/社区）；正文只聊路线与产品结果；技术细节只进契约块；失败读证据优化改卡并自动再投；禁止每轮甩拍板题、禁止投链后再问入队；`plan_md` 与 `goal` 同向。**意图卡首轮**须人话翻译；下达后 `dispatched`；**收口在运维**。板务仅挡事时清；禁止 Engine 卫生 epic 主业。
 - **Desktop 主路径**：架构师分析/排计划 → Agent 自动投整条意图链 → L1 + gate → Engine 跑 → Agent 读结论纠偏；右栏 = 意图卡（`planned` 仅）+ 看板计数。对齐基线=排系列计划；**前台路线、后台技术核实**（`references/align-baseline-sop.md`）。凡进 backlog epic 必 wake Engine。
@@ -52,7 +52,7 @@ alwaysApply: true
 - 业务事实：Hub baseline 开场 + **只读透镜 live**；禁止业务仓本机第二树；禁止 sidecar `ssh` 探/写业务仓。  
 - **M1→Hub 主路径** = 本机 SSH 隧道 `127.0.0.1:17777`（`com.ccc.hub-tunnel`）；**禁止**把 LAN `192.168.3.116:7777` 当 Desktop/sidecar 默认。详见 `docs/product/hub-ssh-tunnel.md`。  
 - **Desktop 右栏** = 项目态势（看板计数 + 意图卡链），跟左侧项目绑定、不跟单会话；见 `docs/product/desktop-flow-rail-ux.md`。  
-- 业务仓源码禁止本机/Hub 直写；改码只经转意图卡→gate→代办→Engine。App Agent 默认可写本机 CCC + 板务。  
+- 业务仓源码禁止本机/Hub 直写；改码只经意图链（Agent 自动投）→gate→代办→Engine。App Agent 默认可写本机 CCC + 板务。  
 - **已注册 ≠ 可开工**：正式开发前全面对齐。  
 - Demo ≠ 上线 ≠ 稳定符合意图；CCC 做闭环后半段。  
 - **Vibe 真优势三句（硬）**：① 人定少而硬的意图；② 系统强制同一权威路径（下达→写码仓→门禁）；③ 偏差当默认，用 verdict/回滚/重试/飞轮收——**不是**图更细、也不是节点里叠对话/指令。禁止把 Agent 工作流画布当写码主控卖点。  

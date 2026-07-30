@@ -43,6 +43,17 @@ def test_optimize_sop_prompt_contains_buckets():
     assert "post-exhaust-epic-optimize-sop" in p
     assert "hang,acceptance_fail" in p
     assert "禁止只藏卡结束" in p
+    assert "自动投" in p
+
+
+def test_board_repair_sop_prompt_requires_auto_transfer():
+    from chat_server.services import repair_queue as rq
+
+    p = rq.sop_prompt(project_id="medio-0", epic_id="e1", hint="abnormal")
+    assert "编排自愈" in p
+    assert "自动投" in p
+    assert "禁止只藏卡" in p
+    assert "禁止 invent" in p
 
 
 def test_enqueue_epic_optimize_dedupe(tmp_path, monkeypatch):
