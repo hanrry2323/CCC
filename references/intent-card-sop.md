@@ -102,8 +102,10 @@
 
 1. **意图卡落盘** = 写/更新 L1 `planned`（右栏）。Engine 尚未消费——**不算完成**。
 2. **进代办** = 契约 `validate_transfer_payload` **绿** → 自动 transfer → backlog + **wake Engine**。  
-   - Desktop 解析 `ccc-transfer` 后 **自动** L1→gate→outbox（不等人点按钮）。  
-   - 若 Agent 只写了右栏 L1，Hub `POST /transfer/promote-planned` 兜底。  
+   - Desktop 解析 `ccc-transfer` 后 **自动** L1→gate→outbox（不等人点按钮）。
+   - **硬完成判定**：投后须 `hub_board` 见 backlog/planned 计数上升；禁止只凭「已写出 ccc-transfer」口头宣称已投入。
+   - 若 Agent 只写了右栏 L1，Hub `POST /transfer/promote-planned` 兜底。
+   - 上一笔已 delivered/accepted 且编排空闲时，Desktop **必须**仍解析并自动投下一链（不得永久 suppress）。
    - **红**：卡留意图层；按 `fix_hint` 改卡再投；**零 OpenCode**。  
    - 改卡若动到白话意图含义 → **必须再用人话问人**。
 3. **谁推动**：Agent 理解后出契约 = 发起；之后 **系统** promote / wake。**禁止**让人盯右栏或点「转意图卡」。

@@ -426,13 +426,15 @@ final class AppModel: ObservableObject {
         for item in LocalSessionStore.loadFailedTransfers() {
             map[item.thread_id] = .failed
         }
-        // 无 outbox 但有未完成 epic → 已投递/已受理（sidecar 可能已在关 App 期间投完）
+        // 无 outbox 但有**活跃** epic → 已投递/已受理（sidecar 可能已在关 App 期间投完）
+        // 空轨幽灵（有 id 无 works/epic）不写 delivered，否则永久挡住下一轮自动投链
         for (tid, snap) in threadFlow {
             if map[tid] != nil { continue }
             let eid = (snap.epicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !eid.isEmpty, !eid.hasPrefix("pending:") else { continue }
             let stage = (snap.epic?.user_stage ?? "").lowercased()
             if stage == "done" { continue }
+            if snap.epic == nil && snap.works.isEmpty { continue }
             if snap.works.isEmpty {
                 map[tid] = .delivered
             } else {
@@ -4030,11 +4032,32 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// 该 thread 已有进行中编排或投递态时，禁止再弹出确认卡
+    /// 编排空闲：无活跃 epic / 已 sunk·done / 幽灵绑定（有 id 无 works）→ 允许下一轮自动投链。
+    private func isThreadOrchestrationIdle(_ threadId: String) -> Bool {
+        guard let snap = threadFlow[threadId] else { return true }
+        let eid = (snap.epicId ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if eid.isEmpty { return true }
+        if eid.hasPrefix("pending:") { return false }
+        let stage = (snap.epic?.user_stage ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if stage == "done" { return true }
+        // 空轨幽灵：上一笔已清 works 但仍残留 epicId → 视为空闲，勿挡自动投
+        if snap.epic == nil && snap.works.isEmpty { return true }
+        return false
+    }
+
+    /// 该 thread 投递在途或活跃编排时，禁止再弹/解析定稿卡（避免重入）。
+    /// 硬修复（hp 投不进）：`.delivered`/`.accepted` 在编排空闲后**不得**永久挡住下一轮 `ccc-transfer` 自动投链。
     private func shouldSuppressTransferDraft(for threadId: String) -> Bool {
         if let phase = transferDeliveryByThread[threadId] {
             switch phase {
-            case .queued, .delivering, .delivered, .accepted:
+            case .queued, .delivering:
+                return true
+            case .delivered, .accepted:
+                // 上一笔已投完且板面空闲 → 放行新意图链
+                if isThreadOrchestrationIdle(threadId) { break }
                 return true
             case .draft, .failed:
                 break
@@ -4045,6 +4068,7 @@ final class AppModel: ObservableObject {
               !eid.isEmpty
         else { return false }
         if eid.hasPrefix("pending:") { return true }
+        if isThreadOrchestrationIdle(threadId) { return false }
         let stage = (threadFlow[threadId]?.epic?.user_stage ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -5025,6 +5049,15 @@ final class AppModel: ObservableObject {
             threadFlow[tid] = cached
             bumpFlowRevision(tid)
             setProjectFlow(projectId, cached)
+            // 空闲后清投递徽章，允许下一轮 ccc-transfer 自动投链（勿永久停在 delivered）
+            if let phase = transferDeliveryByThread[tid] {
+                switch phase {
+                case .delivered, .accepted:
+                    setTransferDelivery(tid, .draft)
+                default:
+                    break
+                }
+            }
             if isSelected {
                 applyFlowSnapshot(cached)
                 currentEpicId = nil
@@ -5098,6 +5131,14 @@ final class AppModel: ObservableObject {
             threadFlow[tid] = cached
             bumpFlowRevision(tid)
             setProjectFlow(projectId, cached)
+            if let phase = transferDeliveryByThread[tid] {
+                switch phase {
+                case .delivered, .accepted:
+                    setTransferDelivery(tid, .draft)
+                default:
+                    break
+                }
+            }
             if isSelected {
                 applyFlowSnapshot(cached)
                 lastAnimatedEpicId = nil

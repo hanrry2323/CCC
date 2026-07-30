@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.65.2] — 2026-07-30
+
+### Fixed
+- **Desktop 自动投链永久 suppress（hp 投不进）**：上一笔 `delivered`/`accepted` 或空轨幽灵 `epicId` 会挡住后续 `ccc-transfer` 解析与自动入队。编排空闲后放行下一链；snapshot empty/done 时清投递徽章。
+- **心智 constraints 脏串**：Agent 误传 `{text,...}` dict 时不再 `str(dict)` 进 digest；`achieved`/`done` 目标态归一为 `probed`。
+- **SOP/hub_voice**：明确 `ccc-transfer` 由 Desktop 解析入队；投后须 `hub_board` 核验，禁止口头宣称已投入。
+
+### Tests
+- `test_merge_decided_constraint_dict_and_achieved_alias`
+
 ## [v0.65.1] — 2026-07-30
 
 ### Fixed

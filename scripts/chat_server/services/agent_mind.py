@@ -135,6 +135,9 @@ def normalize_goal(item: Any) -> dict[str, Any] | None:
     if not text:
         return None
     status = str(item.get("status") or "planned").strip().lower()
+    # Agent 常写 achieved/done/complete → 归一到 probed（code_landed 待 regress/stable）
+    if status in ("achieved", "done", "complete", "completed", "finished"):
+        status = "probed"
     if status not in GOAL_STATUSES:
         status = "planned"
     gid = str(item.get("id") or "").strip() or _goal_id_from_text(text)
@@ -478,7 +481,7 @@ def seed_planned_from_exhaust(
     prior_epic_id: str = "",
     updated_by: str = "exhaust-reflow",
 ) -> dict[str, Any] | None:
-    """v0.66: after exhaust, open a new *planned* intent card (须人再点转).
+    """v0.66: after exhaust, open a new *planned* intent card（Agent 须再出 ccc-transfer 自动投）.
 
     Never writes backlog / never marks dispatched.
     """
@@ -770,7 +773,28 @@ def merge_decided(
             raise ValueError(f"{k} must be a list of strings")
         cleaned: list[str] = []
         for item in raw:
-            s = str(item).strip()
+            if isinstance(item, dict):
+                # Agent 常误传 {text,status,source}；落盘成可读字符串，勿 str(dict)
+                s = str(
+                    item.get("text")
+                    or item.get("constraint")
+                    or item.get("title")
+                    or ""
+                ).strip()
+            else:
+                s = str(item).strip()
+            if not s:
+                continue
+            # 兜底：历史脏数据 "{'text': '...'}" → 抽 text
+            if s.startswith("{") and "'text'" in s:
+                try:
+                    import ast
+
+                    obj = ast.literal_eval(s)
+                    if isinstance(obj, dict) and obj.get("text"):
+                        s = str(obj["text"]).strip()
+                except Exception:
+                    pass
             if not s:
                 continue
             _validate_decided_item(s)
@@ -816,7 +840,7 @@ def mark_goal_status(
         {"goals": cur["goals"]},
         updated_by=updated_by,
     )
-    # 人点 stable 后：飞轮推下一产品意图到右栏 planned（仍须点转意图卡进代办）
+    # 人点 stable 后：飞轮推下一产品意图到右栏 planned；进代办由 Agent 自动投链（禁 invent）
     if status == "stable":
         try:
             ensure_flywheel_planned_intent(

@@ -22,6 +22,7 @@
 | 项 | 硬规则 |
 |----|--------|
 | 触发 | 用户聊定目标 / 说「开发/下达/跑通」/ 对齐基线后确认路线 → **你自动出 `ccc-transfer`** |
+| 入队核验 | 出块后立刻 `hub_board`：backlog 须上涨；**禁止**只凭「已写出契约」宣称已投入 |
 | 多卡 | 系列 ≥2 步 → 多块或 `cards:[]`；禁一轮糊一张大卡 |
 | scope | ≤5 文件同顶层；**禁** `.env`/密钥/`control.json`（`sensitive_scope`） |
 | acceptance | 1～2 条本卡强探针（pytest / DRY_RUN / assert）；禁 `test -f`、unit+paper 混装 |

@@ -82,6 +82,38 @@ def test_merge_decided_and_forbidden(tmp_path: Path):
         assert "forbidden" in str(exc).lower() or "enable" in str(exc).lower()
 
 
+def test_merge_decided_constraint_dict_and_achieved_alias(tmp_path: Path):
+    ws = tmp_path / "app4"
+    ws.mkdir()
+    _seed_board(ws)
+
+    out = agent_mind.merge_decided(
+        ws,
+        {
+            "constraints": [
+                {
+                    "text": "权威仓仅 Mac2017",
+                    "status": "active",
+                    "source": "platform",
+                },
+                "{'text': '禁业务第二树', 'status': 'active'}",
+            ],
+            "goals": [
+                {
+                    "text": "入口对齐",
+                    "exit_condition": "pytest 全绿",
+                    "status": "achieved",
+                }
+            ],
+        },
+        updated_by="desktop-agent",
+    )
+    assert out["constraints"] == ["权威仓仅 Mac2017", "禁业务第二树"]
+    g = out["goals"][0]
+    assert g["status"] == "probed"  # achieved → probed
+    assert "入口对齐" in g["text"]
+
+
 def test_digest_cache(tmp_path: Path):
     ws = tmp_path / "app3"
     ws.mkdir()

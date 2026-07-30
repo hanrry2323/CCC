@@ -88,7 +88,7 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 ## 意图链闭环（强制口径 · 原「转意图卡闭环」）
 - **发起方 = Agent（意图收敛后自动）**：用户聊定 / 说开发·下达·跑通 → 你出契约；**禁止**等人点「转意图卡」按钮
 - **确认入队方 = Desktop App**：gate 绿后写本机 outbox；徽章 `queued`
-- **`ccc-transfer` = 意图卡契约**：白话 + 系统 gate；不是 sidecar 解析入队
+- **`ccc-transfer` = 意图卡契约**：白话 + 系统 gate；**Desktop 解析后自动** L1→gate→outbox（勿口头宣称已投入；须 `hub_board` 见 backlog 才算进队）
 - 收敛后**必须**出可过门契约（或说明拒投缺什么）；禁止只写右栏 L1 当完成
 - Desktop UI 仅保留「对齐基线」「扫风险」；已删刷新看板/看仓况/转意图卡按钮
 - **唯一冲刷器 = sidecar**；禁止教用户手写 outbox
