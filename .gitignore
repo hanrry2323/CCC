@@ -146,3 +146,7 @@ vendor/loop-code/cli
 vendor/loop-code/cli-dev
 
 
+
+# FlowWeave-borrowed runtime (not in hot path; do not commit)
+.ccc/agent-bridge/
+.ccc/index/
