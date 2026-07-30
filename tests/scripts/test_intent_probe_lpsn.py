@@ -14,6 +14,42 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 
+def test_extract_acceptance_h3_and_reference_cmds():
+    """Product often nests ``### 验收`` under 验收清单; must not yield empty_bullets."""
+    from _intent_probe import extract_acceptance_section, extract_probe_commands
+    from _acceptance_gate import check_acceptance
+
+    plan = (
+        "## 验收清单\n"
+        "- [ ] 散文勾选不算门禁\n"
+        "\n"
+        "### 验收\n"
+        "- [脚本存在]（参考：`test -f scripts/run_testnet.sh`）\n"
+        "- [bash 语法]（参考：`bash -n scripts/run_testnet.sh`）\n"
+        "\n"
+        "## Commit 计划\n"
+        "- ignore\n"
+    )
+    sec = extract_acceptance_section(plan)
+    assert "test -f scripts/run_testnet.sh" in sec
+    probes = extract_probe_commands(plan)
+    assert "test -f scripts/run_testnet.sh" in probes
+    assert "bash -n scripts/run_testnet.sh" in probes
+
+    # Gate: missing file → cmds fail, NOT acceptance_empty_bullets / missing_acceptance
+    import tempfile
+
+    ws = Path(tempfile.mkdtemp()) / "app"
+    ws.mkdir()
+    subprocess.run(["git", "init"], cwd=ws, check=True, capture_output=True)
+    (ws / ".ccc" / "plans").mkdir(parents=True)
+    (ws / ".ccc" / "plans" / "w1.plan.md").write_text(plan, encoding="utf-8")
+    r = check_acceptance(ws, "w1", commit="")
+    assert r["reason"] != "acceptance_empty_bullets"
+    assert r["reason"] != "missing_acceptance"
+    assert r.get("cmds") or r.get("bullets")
+
+
 def test_strip_env_and_allow_dry_run_venv():
     from _intent_probe import (
         extract_probe_commands,

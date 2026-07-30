@@ -88,8 +88,8 @@ export async function openSettings() {
     '"/>' +
     '</div>' +
     '<div class="settings-row settings-row-col">' +
-    '<span class="settings-label">本机路径 map（JSON：project_id → M1 绝对路径）</span>' +
-    '<textarea class="settings-textarea" id="settings-workspace-map" rows="4" placeholder=\'{"ccc-demo":"/Users/apple/program/apps/ccc-demo"}\'>' +
+    '<span class="settings-label">本机路径 map（JSON：仅可选平台仓 ccc → M1 CCC；禁止业务第二树）</span>' +
+    '<textarea class="settings-textarea" id="settings-workspace-map" rows="4" placeholder=\'{"ccc":"/Users/apple/program/CCC"}\'>' +
     _esc(mapText) +
     '</textarea>' +
     '</div>' +

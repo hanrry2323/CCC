@@ -137,19 +137,20 @@ def filter_verify_commands(cmds: list[str]) -> list[str]:
 
 
 def _is_acceptance_heading(line: str) -> bool:
-    """Only exact ``## 验收`` / ``## 验证`` — not ``## 验收清单``."""
+    """Exact ``##/### 验收`` / ``验证`` — not ``## 验收清单`` / ``## 验收命令详解``."""
     return _is_canonical_acceptance_heading(line)
 
 
 def _is_canonical_acceptance_heading(line: str) -> bool:
-    """Exact ``## 验收`` / ``## 验证`` (optional trailing spaces only).
+    """Exact ``## 验收`` / ``## 验证`` / ``### 验收`` / ``### 验证`` (opt. trailing spaces).
 
-    Models often write ``## 验收命令详解``; that must not steal the real
-    ``## 验收`` block appended by seed repair.
+    Models often write ``## 验收命令详解`` or ``## 验收清单``; those must not steal
+    the real ``## 验收`` / ``### 验收`` block. Product fan-out frequently nests
+    ``### 验收`` under a checklist heading — treat that as canonical too.
     """
     s = (line or "").strip()
-    return s in ("## 验收", "## 验证") or s.startswith("## 验收\t") or s.startswith(
-        "## 验证\t"
+    return s in ("## 验收", "## 验证", "### 验收", "### 验证") or s.startswith(
+        ("## 验收\t", "## 验证\t", "### 验收\t", "### 验证\t")
     )
 
 
@@ -282,7 +283,7 @@ def _candidates_from_list_item(item: str) -> list[str]:
 def extract_probe_commands(section_or_plan: str) -> list[str]:
     """Pull allowlisted commands from an acceptance section or full plan."""
     section = section_or_plan or ""
-    if "## 验收" in section or "## 验证" in section:
+    if any(h in section for h in ("## 验收", "## 验证", "### 验收", "### 验证")):
         extracted = extract_acceptance_section(section)
         if extracted:
             section = extracted

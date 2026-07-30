@@ -383,7 +383,7 @@ def collect_baseline(workspace: Path, *, project_id: str = "") -> dict[str, Any]
                 + (
                     f"（exit: {str(nxt.get('exit_condition') or '')[:60]}）"
                     if nxt.get("exit_condition")
-                    else " · 点「转意图卡」补探针并进代办"
+                    else " · Agent 理解后自动投意图链补探针并进代办"
                 )
             )
             result["risks"] = list(result.get("risks") or []) + [tip]
@@ -525,7 +525,7 @@ def baseline_prompt_for_claude(baseline: dict[str, Any]) -> str:
         "- 禁止 A/B 菜单逼选；禁止清卫生当主业\n"
         "- 正文禁止路径、测试名、配置文件、命令、看板数字、提交哈希\n"
         "- 本轮**禁止**输出 ```ccc-transfer```；末段只列整条链的白话标题；"
-        "老板要点「转意图卡」才开工\n"
+        "对齐基线只排计划；意图收敛后再**自动投链**开工（勿等人点转意图卡）\n"
         "- 禁止建议降控制面/关机；闲置不是故障\n\n"
         "【qb 等收口项目 · 内化】北星对齐实盘人确认 + 回测可视化；"
         "计划须从现状排到收口，已拍板意图只是路线上的一站，不是整条计划。\n\n"

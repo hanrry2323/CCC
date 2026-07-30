@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.65.1] — 2026-07-30
+
+### Fixed
+- **验收假红**：`### 验收`（嵌在「验收清单」下）现可被 `extract_acceptance_section` / gate 认作权威段，避免 `acceptance_empty_bullets` 误杀已落地代码。
+- **口径漂移**：对齐基线 tip / GETTING-STARTED / GO-LIVE 从「人点转意图卡」改为 Agent 自动投链；Hub SPA settings map 示例禁止业务第二树路径。
+
+### Tests
+- `test_extract_acceptance_h3_and_reference_cmds` 锁 `### 验收` + `（参考：\`cmd\`）` 探针抽取。
+
 ## [v0.65.0] — 2026-07-30
 
 > **正式上线**：意图链开发（Agent 自动投链）+ 平台任务自愈（修板 + 优化意图链）。  

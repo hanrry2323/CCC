@@ -1,6 +1,6 @@
 # CCC Desktop 上线卡
 
-> **日期**：2026-07-29（对齐 v0.64.0） · **范围**：内测（未公证）  
+> **日期**：2026-07-30（对齐 v0.65.0） · **范围**：内测（未公证）  
 > 架构 SSOT：[`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md)  
 > 连接契约：[`../product/desktop-connection.md`](../product/desktop-connection.md) · 隧道：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md)  
 > 边界基线：[`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md)

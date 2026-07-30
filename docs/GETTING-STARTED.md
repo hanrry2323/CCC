@@ -1,6 +1,6 @@
 # Getting Started — CCC Hub + Loop Engineer
 
-> 目标：陌生人 **10 分钟内**打开 Desktop，走通「战略讨论 → 转意图卡 → 自动进代办」。  
+> 目标：陌生人 **10 分钟内**打开 Desktop，走通「战略讨论 → Agent 自动投意图链 → 自动进代办」。  
 > 叙事见 [`VISION.md`](VISION.md)。端口权威：[`ccc-hub-ports.md`](ccc-hub-ports.md)。  
 > v0.64 发布：[`releases/v0.64.0.md`](releases/v0.64.0.md)。
 
@@ -54,9 +54,9 @@ bash scripts/ccc-hub-dev.sh
 在 Desktop 项目卡：
 
 1. 选好业务项目（侧栏）  
-2. 战略讨论谈妥方案（对齐基线=可选）  
-3. 点 **转意图卡**，助手输出 `ccc-transfer` 契约  
-4. 系统写 L1 → `transfer_gate` 绿则**自动进代办**（红则卡停意图层改卡）  
+2. 战略讨论谈妥方案（对齐基线=可选深扫）  
+3. 意图收敛后 Agent **自动**输出整条 `ccc-transfer` 意图链（勿等人点「转意图卡」；UI 已无该按钮）  
+4. 系统写 L1 → `transfer_gate` 绿则**自动进代办**（红则该卡停意图层改卡，不堵整链）  
 5. 右栏看意图卡链 + 看板计数；打开 **看板** 可见 backlog epic  
 
 此时若控制面仍是 `disabled` / `ui`，任务会落在板上，**不会**自动被 Engine 吃掉——这是刻意的安全默认。
@@ -95,7 +95,7 @@ bash scripts/ccc-autostart-guard.sh disable
 ```bash
 mkdir -p ~/program/myapp   # 若全新
 python3 scripts/ccc-init.py ~/program/myapp --register
-# 编辑 ~/program/myapp/CLAUDE.md 后，在 Desktop 选该项目即可对话 / 转意图卡
+# 编辑 ~/program/myapp/CLAUDE.md 后，在 Desktop 选该项目即可对话 / 自动投意图链
 ```
 
 路径须在 `~/program/` 下；`ccc-init` 会建七列看板 + 种子 CLAUDE.md。
