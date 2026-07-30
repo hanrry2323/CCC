@@ -17,6 +17,27 @@ KIND_BOARD_REPAIR = "board_repair"
 KIND_EPIC_OPTIMIZE = "epic_optimize"
 VALID_KINDS = frozenset({KIND_BOARD_REPAIR, KIND_EPIC_OPTIMIZE})
 
+# Desktop/Hub 用 qxo；仓目录/Engine folder 常写 qx-observer — claim 须互通
+_PROJECT_ALIASES: dict[str, frozenset[str]] = {
+    "qxo": frozenset({"qxo", "qx-observer"}),
+    "qx-observer": frozenset({"qxo", "qx-observer"}),
+}
+
+
+def canonical_project_id(project_id: str) -> str:
+    """Normalize folder aliases to Desktop project_id (qx-observer → qxo)."""
+    pid = (project_id or "").strip()
+    if pid == "qx-observer":
+        return "qxo"
+    return pid
+
+
+def project_id_match_set(project_id: str) -> frozenset[str]:
+    pid = (project_id or "").strip()
+    if not pid:
+        return frozenset()
+    return _PROJECT_ALIASES.get(pid, frozenset({pid}))
+
 
 def queue_path() -> Path:
     raw = os.environ.get("CCC_REPAIR_QUEUE", "").strip()
@@ -36,7 +57,7 @@ def enqueue(
     buckets: str = "",
 ) -> dict[str, Any]:
     """同一 project|epic|kind 去重：已有 pending 则跳过。"""
-    pid = (project_id or "").strip()
+    pid = canonical_project_id(project_id)
     eid = (epic_id or "").strip()
     k = (kind or KIND_BOARD_REPAIR).strip() or KIND_BOARD_REPAIR
     if k not in VALID_KINDS:
@@ -45,9 +66,11 @@ def enqueue(
     path = queue_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = load_pending()
+    match_ids = project_id_match_set(pid)
     if any(
-        f"{x.get('project_id')}|{x.get('epic_id')}|{x.get('kind') or KIND_BOARD_REPAIR}"
-        == key
+        str(x.get("project_id") or "") in match_ids
+        and str(x.get("epic_id") or "") == eid
+        and (x.get("kind") or KIND_BOARD_REPAIR) == k
         for x in existing
     ):
         return {"ok": True, "deduped": True, "key": key, "kind": k}
@@ -157,10 +180,11 @@ def mark_done(key: str) -> None:
 
 
 def pending_for_project(project_id: str, *, limit: int = 8) -> list[dict[str, Any]]:
-    pid = (project_id or "").strip()
+    pid = canonical_project_id(project_id)
     if not pid:
         return []
-    out = [x for x in load_pending() if str(x.get("project_id") or "") == pid]
+    match_ids = project_id_match_set(pid)
+    out = [x for x in load_pending() if str(x.get("project_id") or "") in match_ids]
     return out[: max(1, min(int(limit or 8), 20))]
 
 
@@ -173,9 +197,9 @@ def claim_for_inject(
 
     Engine enqueues on Mac2017 ``~/.ccc/repair-queue.jsonl``; Hub serves claim
     so M1 sidecar (via tunnel) can inject L3b SOP. Does not invent / does not
-    write backlog.
+    write backlog. ``qxo`` ↔ ``qx-observer`` alias so Desktop claim hits Engine rows.
     """
-    pid = (project_id or "").strip()
+    pid = canonical_project_id(project_id)
     if not pid:
         return []
     n = max(1, min(int(limit or 1), 5))
@@ -183,8 +207,17 @@ def claim_for_inject(
     for row in pending_for_project(pid, limit=n):
         key = str(row.get("key") or "")
         if not key:
+            # legacy row may use folder name in key; rebuild from fields
+            old_pid = str(row.get("project_id") or "")
+            eid = str(row.get("epic_id") or "")
+            k = str(row.get("kind") or KIND_BOARD_REPAIR)
+            key = f"{old_pid}|{eid}|{k}" if old_pid and eid else ""
+        if not key:
             continue
         mark_status(key, "injected")
+        # surface canonical id to Agent inject block
+        row = dict(row)
+        row["project_id"] = pid
         claimed.append(row)
         if len(claimed) >= n:
             break

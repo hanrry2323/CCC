@@ -12,6 +12,39 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 
+def test_claim_qxo_alias_matches_qx_observer(tmp_path, monkeypatch):
+    """Desktop project_id=qxo must claim Engine rows written as qx-observer."""
+    from chat_server.services import repair_queue as rq
+
+    q = tmp_path / "repair-queue.jsonl"
+    monkeypatch.setenv("CCC_REPAIR_QUEUE", str(q))
+    # Legacy Engine enqueue used folder name before alias fix
+    q.write_text(
+        json.dumps(
+            {
+                "ts": "2026-07-30T13:00:00+08:00",
+                "status": "pending",
+                "kind": "epic_optimize",
+                "project_id": "qx-observer",
+                "epic_id": "v9-s1b",
+                "thread_id": "",
+                "hint": "hang",
+                "buckets": "hang",
+                "prompt": "x",
+                "key": "qx-observer|v9-s1b|epic_optimize",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    claimed = rq.claim_for_inject(project_id="qxo", limit=2)
+    assert len(claimed) == 1
+    assert claimed[0]["epic_id"] == "v9-s1b"
+    assert claimed[0]["project_id"] == "qxo"
+    assert rq.load_pending() == []
+
+
 def test_claim_for_inject_marks_injected(tmp_path, monkeypatch):
     from chat_server.services import repair_queue as rq
 

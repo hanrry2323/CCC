@@ -54,12 +54,22 @@
 
 | 项 | 硬上限 | 失败若违反 |
 |----|--------|------------|
-| 意图 | **1** 个可命名变化 | hang / 扇出糊成多 phase |
-| work / phase | **1** work · **1** phase（默认） | `plan_scope_too_wide` / hang |
-| scope | **≤5** 文件或同顶层 1 目录；禁敏感路径 | hang / `sensitive_scope` |
+| 意图 | **1** 个可命名变化（大方案→**多卡链**） | hang / 扇出糊成多 phase |
+| work / phase | **1** work · **1** phase（默认；medium 最多 2） | `plan_scope_too_wide` / hang |
+| scope | **≤5** 文件或同顶层 ≤2 目录；禁敏感路径 | hang / `sensitive_scope` |
 | acceptance | **1～3** 条强探针，**优先 1～2** | `acceptance_cmd_failed` / hang |
 | title | ≤80 字可执行中文 | 软裁 / 难对齐 L1 |
 | complexity | 默认 `medium`；多步回归禁 `small` | 门禁误跳路径 |
+| **文/码** | 纯文档/changelog/VERSION/脑包 → **Agent 轨**（禁 OpenCode） | `text_task_agent_track` |
+
+### 文/码分轨（硬 · 2026-07-30）
+
+| 轨 | 谁 | 例子 |
+|----|-----|------|
+| **文本** | 对话 Agent（Hub mind / 本机 CCC） | 规划叙述、decided、changelog 文案、SOP |
+| **代码** | Engine → OpenCode（或 script_seed） | `.py`/`.rs` 实现 + pytest/cargo 探针 |
+
+评估 SSOT：[`docs/briefs/2026-07-30-granularity-text-code-commit.md`](../docs/briefs/2026-07-30-granularity-text-code-commit.md)。
 
 ### acceptance 白名单（强）
 

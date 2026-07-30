@@ -114,6 +114,35 @@ def test_merge_decided_constraint_dict_and_achieved_alias(tmp_path: Path):
     assert "入口对齐" in g["text"]
 
 
+def test_load_decided_and_heal_dirty_constraint_repr(tmp_path: Path):
+    ws = tmp_path / "app5"
+    ws.mkdir()
+    _seed_board(ws)
+    mind = ws / ".ccc" / "agent-mind"
+    mind.mkdir(parents=True, exist_ok=True)
+    (mind / "decided.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "goals": [],
+                "constraints": [
+                    "{'text': '权威仓仅 Mac2017', 'status': 'active', 'source': 'platform'}"
+                ],
+                "open_questions": [],
+                "architecture_choices": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    loaded = agent_mind.load_decided(ws)
+    assert loaded["constraints"] == ["权威仓仅 Mac2017"]
+    healed = agent_mind.heal_decided_disk(ws)
+    assert healed["constraints"] == ["权威仓仅 Mac2017"]
+    on_disk = json.loads((mind / "decided.json").read_text(encoding="utf-8"))
+    assert on_disk["constraints"] == ["权威仓仅 Mac2017"]
+
+
 def test_digest_cache(tmp_path: Path):
     ws = tmp_path / "app3"
     ws.mkdir()

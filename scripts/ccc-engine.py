@@ -2851,7 +2851,10 @@ def _retry_cooldown_seconds(retry_count: int) -> int:
 
 
 def _workspace_project_id(ws: Path) -> str:
-    """Best-effort project_id for repair-queue (registry name or folder)."""
+    """Best-effort project_id for repair-queue (registry name or folder).
+
+    Align with Desktop/Hub：qx-observer 仓 → qxo（否则 L3b claim 按 qxo 取空）。
+    """
     try:
         from _workspace_registry import lookup_entry
 
@@ -2859,10 +2862,15 @@ def _workspace_project_id(ws: Path) -> str:
         if isinstance(ent, dict):
             name = str(ent.get("name") or ent.get("id") or "").strip()
             if name:
+                if name == "qx-observer":
+                    return "qxo"
                 return name
     except Exception as exc:  # noqa: BLE001
         engine_log(f"[repair-queue] workspace_project_id lookup failed: {exc}")
-    return Path(ws).name
+    folder = Path(ws).name
+    if folder == "qx-observer":
+        return "qxo"
+    return folder
 
 
 def _enqueue_post_exhaust_optimize(

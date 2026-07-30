@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -185,12 +186,215 @@ def validate_transfer_payload(
     if sens_err:
         errors.append(sens_err)
 
+    # 文/码分轨 + OpenCode 颗粒度（2026-07-30）
+    if not hygiene:
+        text_err = _check_text_task_agent_track(body)
+        if text_err:
+            errors.append(text_err)
+        gran_err = _check_opencode_work_granularity(body)
+        if gran_err:
+            errors.append(gran_err)
+
     # Ensure every error carries fix_hint for Agent training loop
     for e in errors:
         if isinstance(e, dict) and "fix_hint" not in e:
             e["fix_hint"] = _default_fix_hint(str(e.get("code") or ""))
 
     return (len(errors) == 0), errors
+
+
+_CODE_EXTS = (
+    ".py",
+    ".rs",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".go",
+    ".java",
+    ".swift",
+    ".kt",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".sh",
+    ".toml",
+    ".yaml",
+    ".yml",
+)
+_TEXT_NAME_HINTS = (
+    "changelog",
+    "claude.md",
+    "agents.md",
+    "goal.md",
+    "dev-plan",
+    "dev_plan",
+    "readme",
+    "version",
+    "agent-mind",
+    "decided.json",
+    "digest.md",
+    "sop.md",
+    "authority",
+)
+_TEXT_PATH_PREFIXES = (
+    "docs/",
+    ".ccc/agent-mind/",
+    "references/",
+)
+
+
+def _collect_scope_paths(body: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    for key in ("scope", "files", "paths"):
+        val = body.get(key)
+        if isinstance(val, list):
+            paths.extend(str(x).strip() for x in val if str(x).strip())
+        elif isinstance(val, str) and val.strip():
+            paths.append(val.strip())
+    plan_md = str(body.get("plan_md") or "")
+    in_scope = False
+    for line in plan_md.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            low = s.lstrip("#").strip().lower()
+            in_scope = low.startswith("范围") or low.startswith("scope")
+            continue
+        if not in_scope:
+            continue
+        item = s.lstrip("-*").strip().strip("`")
+        if not item or item.startswith("http"):
+            continue
+        token = item.split()[0]
+        if "/" in token or "." in token:
+            paths.append(token)
+    # dedupe preserve order
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in paths:
+        key = p.replace("\\", "/").lstrip("./")
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def _is_text_only_path(path: str) -> bool:
+    p = path.replace("\\", "/").lstrip("./").lower()
+    if any(p.startswith(pref) for pref in _TEXT_PATH_PREFIXES):
+        return True
+    if p in ("version", "changelog.md", "changelog", "claude.md", "agents.md"):
+        return True
+    if any(h in p for h in _TEXT_NAME_HINTS) and not p.endswith(_CODE_EXTS):
+        # VERSION file (no ext)
+        if p == "version" or p.endswith("/version"):
+            return True
+        if p.endswith((".md", ".txt", ".rst", ".json")):
+            return True
+    if p.endswith((".md", ".txt", ".rst")) and not any(
+        x in p for x in ("test", "spec")
+    ):
+        return True
+    return False
+
+
+def _is_code_path(path: str) -> bool:
+    p = path.replace("\\", "/").lstrip("./").lower()
+    if p.endswith(_CODE_EXTS):
+        return True
+    if "/tests/" in f"/{p}" or p.startswith("tests/"):
+        return True
+    if p.startswith("src/") or p.startswith("app/") or p.startswith("scripts/"):
+        return not _is_text_only_path(p)
+    return False
+
+
+def _check_text_task_agent_track(body: dict[str, Any]) -> dict[str, str] | None:
+    """纯文案/脑包/changelog 卡不得进 OpenCode 产线（文/码分轨）。"""
+    pipeline = str(body.get("pipeline") or "dev").strip().lower()
+    if pipeline in ("ops", "hygiene", "board", "board_ops"):
+        return None
+    intent = str(body.get("executor_intent") or "opencode").strip().lower()
+    # python/script 短路径仍可能误吃文案；一律拒纯文，逼 Agent 自轨
+    if intent not in ("opencode", "python", "auto", ""):
+        return None
+    paths = _collect_scope_paths(body)
+    title = str(body.get("title") or "")
+    goal = str(body.get("goal") or "")
+    blob = f"{title}\n{goal}".lower()
+    text_markers = (
+        "changelog",
+        "更新 version",
+        "bump version",
+        "版本正规化",
+        "写文档",
+        "补文档",
+        "规划文",
+        "dev-plan",
+        "对齐文档",
+        "agent-mind",
+        "decided",
+        "只改文档",
+        "文案",
+    )
+    looks_text_intent = any(m in blob for m in text_markers)
+    if paths:
+        if all(_is_text_only_path(p) for p in paths) and not any(
+            _is_code_path(p) for p in paths
+        ):
+            return _err(
+                "text_task_agent_track",
+                f"纯文本 scope（{', '.join(paths[:4])}）不得进 OpenCode 产线",
+                "文/码分轨：文档/changelog/VERSION/脑包由对话 Agent（Hub mind / 本机 CCC）完成；"
+                "只把含 src|tests|scripts 代码实现的卡 transfer。见 "
+                "docs/briefs/2026-07-30-granularity-text-code-commit.md。",
+            )
+    elif looks_text_intent:
+        # 无显式 scope 但标题目标是文案
+        acc = body.get("acceptance") or []
+        if not isinstance(acc, list):
+            acc = [acc]
+        acc_join = "\n".join(str(a) for a in acc).lower()
+        codeish = any(
+            x in acc_join
+            for x in ("pytest", "cargo test", "npm test", "python3 -c", "DRY_RUN")
+        ) and not all(
+            any(t in str(a).lower() for t in ("version", "changelog", "grep -q", "docs/"))
+            for a in acc
+            if str(a).strip()
+        )
+        if not codeish:
+            return _err(
+                "text_task_agent_track",
+                "标题/目标像纯文案任务，缺少代码 scope",
+                "文案/版本叙述/脑包勿投产线；Agent 自轨完成。代码实现另开小卡（scope≤5 文件 + pytest）。",
+            )
+    return None
+
+
+def _check_opencode_work_granularity(body: dict[str, Any]) -> dict[str, str] | None:
+    """OpenCode 只接小而硬：scope≤5 文件；phase≤2（优先 1）。"""
+    paths = _collect_scope_paths(body)
+    if len(paths) > 5:
+        return _err(
+            "plan_scope_too_wide",
+            f"scope 列出 {len(paths)} 个文件（上限 5）",
+            "大意图拆多张意图卡；每张给 OpenCode 的 work：≤5 文件 · 1 phase · 1～2 强探针。",
+        )
+    # tighten phase cap already in _check_plan_preview (>3); also soft-check plan steps
+    plan = str(body.get("plan_md") or "")
+    step_hits = len(
+        re.findall(r"(?m)^(?:#{2,3}\s*)?(?:步骤|Step)\s*\d+", plan)
+    ) + len(re.findall(r"(?m)^\d+\.\s+\S+", plan))
+    if step_hits >= 6:
+        return _err(
+            "plan_scope_too_wide",
+            f"plan 步骤约 {step_hits} 步，易 OpenCode hang",
+            "禁止 Step1–6 一把梭；拆成多张小意图卡，每卡单步实现。",
+        )
+    return None
 
 
 def _check_sensitive_scope(body: dict[str, Any]) -> dict[str, str] | None:
@@ -247,12 +451,13 @@ def _default_fix_hint(code: str) -> str:
         "acceptance_too_wide": "acceptance 压到 1～2 条本卡强探针；下一意图另开卡。",
         "acceptance_mixed_intent": "本卡只留 unit/本卡脚本探针；paper/e2e 另开 L1 卡。",
         "plan_acceptance_weak": "plan_md 补 ## 验收 + 强探针；单意图单卡。",
-        "plan_scope_too_wide": "缩小 scope：单卡少文件、单顶层目录、单 phase。",
+        "plan_scope_too_wide": "缩小 scope：单卡≤5 文件、单顶层目录、单 phase；大意图拆多卡。",
         "plan_goal_conflict": "改齐 plan_md 与 goal（勿降 CLOSE/净 edge）。",
         "intent_not_stable": "对齐未完成 L1 目标，或 supersede_goals / abandon_prior。",
         "feasibility_blocked": "先解阻塞或改可行性评估后再定稿。",
         "garbage_stamp_card": "禁止探针/戳记/冒烟/Layer2 LPSN 卫生卡；改投真实业务意图。",
         "sensitive_scope": "从 scope/plan 去掉 .env/密钥/control.json；只写业务源码路径。",
+        "text_task_agent_track": "文案/changelog/VERSION/脑包由对话 Agent 完成，勿进 OpenCode；代码另开小卡。",
     }
     return hints.get(code, "按拒因改 ccc-transfer 后再定稿；读 digest「近期定卡教训」。")
 
@@ -369,22 +574,31 @@ def _check_plan_preview(
         from _plan_adopt import synthesize_phases_from_plan, backfill_scopes
 
         phases = backfill_scopes(synthesize_phases_from_plan(plan_md), plan_md)
-        if len(phases) > 3:
+        if len(phases) > 2:
             return _err(
                 "plan_scope_too_wide",
                 f"plan 合成约 {len(phases)} 个 phase，易 hang；请压到 ≤2（优先 1）",
-                "hang 桶：单卡单 phase、scope≤少数文件；禁 Step1–6 一次做完。",
+                "OpenCode 只接小卡：单卡单 phase、scope≤5 文件；禁 Step1–6 一次做完。",
             )
         roots: set[str] = set()
+        file_count = 0
         for p in phases:
-            for s in p.get("scope") or []:
+            scopes = p.get("scope") or []
+            file_count += len([s for s in scopes if str(s).strip()])
+            for s in scopes:
                 part = str(s).strip().replace("\\", "/").lstrip("./")
                 if not part:
                     continue
                 top = part.split("/", 1)[0]
                 if top and top not in (".ccc",):
                     roots.add(top)
-        if len(roots) > 3:
+        if file_count > 5:
+            return _err(
+                "plan_scope_too_wide",
+                f"plan phases 合计 scope≈{file_count} 文件（上限 5）",
+                "拆多张意图卡；每张给 OpenCode ≤5 文件。",
+            )
+        if len(roots) > 2:
             return _err(
                 "plan_scope_too_wide",
                 f"scope 跨 {len(roots)} 个顶层目录（{', '.join(sorted(roots)[:5])}），易串行 hang",

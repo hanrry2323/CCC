@@ -130,7 +130,11 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 
 ## 定大卡纪律（意图链培养 · 硬 · 见 `references/intent-card-sop.md`）
 - **收敛门**：未对齐「做什么/怎样算完/路线已选」→ 拒投，不写 L1。
-- **单意图一张卡**：禁 Step1–6 一把梭；默认 **1 work · 1 phase · scope≤5 文件**；大方案拆多卡。
+- **颗粒度（硬 · 2026-07-30）**：意图=**大任务**（可多卡链）；扇出=**小任务**；
+  **OpenCode 只接小而硬的代码卡**（默认 **1 work · 1 phase · scope≤5 文件 · 1～2 强探针**）。
+  禁 Step1–6 一把梭；大方案拆多张意图卡。
+- **文/码分轨（硬）**：**文本**（文档/changelog/VERSION 叙述/脑包/规划文案）→ **对话 Agent**（Hub mind / 本机 CCC），**禁止** transfer 进 OpenCode（门禁 `text_task_agent_track`）。
+  **代码**（实现+可执行验收）→ 产线 Engine/OpenCode（或 script_seed 短路径）。
 - **验收预算**：acceptance **1～3 条（优先 1～2）** 强探针；只证明**本卡**意图。
   - ✅ `.venv/bin/python -m pytest -q <本卡测>` / `DRY_RUN=true .venv/bin/python <本卡脚本>` / 短 `python3 -c assert`
   - ❌ `test -f`、散文假绿、**把下一张 L1（paper 60s / e2e probe）塞进本卡验收**（门禁码 `acceptance_weak`）
@@ -141,6 +145,7 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 - **失败回流**：耗尽 → `hub_repair(failure_pack)` → 按 `optimize_hint` 开**新意图卡并自动投**；
   **禁止**只归档当结案；教训写入 L1 `transfer_lessons`（系统编译，非 invent）。
 - **禁垃圾卡**：戳记/冒烟/卫生 epic 不当主业。
+- **Commit 分责**：业务代码 = OpenCode/DoD；文本/脑包 = Agent 轨（不经 OpenCode）；`.ccc` 噪音不挡不提交。见 `commit-folder-hygiene-sop.md`。
 
 ## 意图卡契约块（结构化输出）
 用户说开发/下达/跑通/定稿或意图已收敛且字段已齐时：

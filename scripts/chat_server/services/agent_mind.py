@@ -50,6 +50,32 @@ _PIPELINE_ONLY_GOAL_RE = re.compile(
 )
 
 
+def _coerce_decided_str_item(item: Any) -> str:
+    """Agent 常误传 dict / repr(dict)；统一成可读 text 字符串。"""
+    if isinstance(item, dict):
+        s = str(
+            item.get("text")
+            or item.get("constraint")
+            or item.get("title")
+            or ""
+        ).strip()
+    else:
+        s = str(item).strip()
+    if not s:
+        return ""
+    # 历史脏数据 "{'text': '...'}" → 抽 text
+    if s.startswith("{") and ("'text'" in s or '"text"' in s):
+        try:
+            import ast
+
+            obj = ast.literal_eval(s)
+            if isinstance(obj, dict) and obj.get("text"):
+                s = str(obj["text"]).strip()
+        except Exception:
+            pass
+    return s
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -659,7 +685,7 @@ def load_decided(root: Path) -> dict[str, Any]:
             continue
         cleaned: list[str] = []
         for item in raw:
-            s = str(item).strip()
+            s = _coerce_decided_str_item(item)
             if s:
                 cleaned.append(s[:DECIDED_ITEM_MAX_CHARS])
             if len(cleaned) >= DECIDED_LIST_MAX:
@@ -669,6 +695,42 @@ def load_decided(root: Path) -> dict[str, Any]:
         data.get("transfer_lessons") or []
     )
     return out
+
+
+def heal_decided_disk(root: Path) -> dict[str, Any]:
+    """Rewrite decided.json if constraints were dirty repr/dict; no invent."""
+    root = Path(root)
+    path = decided_path(root)
+    raw = _load_json(path)
+    if not raw:
+        return load_decided(root)
+    cleaned = load_decided(root)
+    dirty = False
+    for k in ("constraints", "open_questions", "architecture_choices"):
+        before = raw.get(k) or []
+        after = cleaned.get(k) or []
+        if before != after:
+            dirty = True
+            break
+        for item in before if isinstance(before, list) else []:
+            if isinstance(item, dict) or (
+                isinstance(item, str)
+                and item.strip().startswith("{")
+                and ("'text'" in item or '"text"' in item)
+            ):
+                dirty = True
+                break
+        if dirty:
+            break
+    if dirty:
+        cleaned["schema_version"] = SCHEMA_VERSION
+        cleaned["updated_at"] = _now_iso()
+        cleaned["updated_by"] = cleaned.get("updated_by") or "hub"
+        _atomic_write_json(path, cleaned)
+        for key in list(_digest_cache.keys()):
+            if key.startswith(f"{root}:"):
+                _digest_cache.pop(key, None)
+    return cleaned
 
 
 def _normalize_transfer_lessons(raw: Any) -> list[dict[str, Any]]:
@@ -773,28 +835,7 @@ def merge_decided(
             raise ValueError(f"{k} must be a list of strings")
         cleaned: list[str] = []
         for item in raw:
-            if isinstance(item, dict):
-                # Agent 常误传 {text,status,source}；落盘成可读字符串，勿 str(dict)
-                s = str(
-                    item.get("text")
-                    or item.get("constraint")
-                    or item.get("title")
-                    or ""
-                ).strip()
-            else:
-                s = str(item).strip()
-            if not s:
-                continue
-            # 兜底：历史脏数据 "{'text': '...'}" → 抽 text
-            if s.startswith("{") and "'text'" in s:
-                try:
-                    import ast
-
-                    obj = ast.literal_eval(s)
-                    if isinstance(obj, dict) and obj.get("text"):
-                        s = str(obj["text"]).strip()
-                except Exception:
-                    pass
+            s = _coerce_decided_str_item(item)
             if not s:
                 continue
             _validate_decided_item(s)
@@ -1208,6 +1249,10 @@ def build_digest(
     # 飞轮 1+3：空闲且无 planned → 自动推下一产品意图到右栏（不进代办）
     try:
         ensure_flywheel_planned_intent(root, project_id=project_id)
+    except Exception:
+        pass
+    try:
+        heal_decided_disk(root)
     except Exception:
         pass
     decided = load_decided(root)

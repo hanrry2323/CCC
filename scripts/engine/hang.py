@@ -285,12 +285,6 @@ def _check_and_mark_hung_unlocked(ws: Path, active_tasks: dict[str, dict]) -> No
                 )
             continue
 
-        # OpenCode (node) AI 思考间隙 CPU 自然归零，但不等同 hang。
-        # 3 分钟窗口内刚启动的 node 任务不应被 low_cpu_stale 误杀。
-        _opencode_paused = cpu <= 0.0 and _is_opencode_node(pid)
-        if _opencode_paused and elapsed < _HANG_CHECK_INTERVAL_SEC * 2:
-            continue
-
         if elapsed < _HANG_CHECK_INTERVAL_SEC:
             continue
 
@@ -316,6 +310,12 @@ def _check_and_mark_hung_unlocked(ws: Path, active_tasks: dict[str, dict]) -> No
             _engine_log(
                 f"[{label}] hang-detect: {tid} ps 输出无法解析: {result.stdout!r}"
             )
+            continue
+
+        # OpenCode (node) AI 思考间隙 CPU 自然归零，但不等同 hang。
+        # 须在拿到 cpu 之后判断；刚启动窗口内勿 low_cpu_stale 误杀。
+        _opencode_paused = cpu <= 0.0 and _is_opencode_node(pid)
+        if _opencode_paused and elapsed < _HANG_CHECK_INTERVAL_SEC * 2:
             continue
 
         get_proc_rss_mb = getattr(eng, "_get_proc_rss_mb", None) if eng else None

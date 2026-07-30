@@ -25,14 +25,17 @@
 | 禁止 | `git add -A` / `git add .`；把无关 `.ccc/board|stats|quarantines` 打进业务 commit |
 | 已绿 | 验收命令已全绿且 scope 无待改 → **立即**按上表 commit（或确认已有含 task_id 的 commit）并结束；**禁止**继续重构导致 hang |
 
-### A2. 谁负责 commit
+### A2. 谁负责 commit（分责 · 2026-07-30）
 
-| 角色 | 职责 |
-|------|------|
-| OpenCode（dev） | 优先自己按 A1 commit；写完即停 |
-| Engine DoD（`ensure_task_commit`） | 兜底：只 stage 白名单；噪音留下不挡 |
-| Desktop Agent | **不**手搓业务仓 git；发现缺 commit / dirty_block → 按本文 + abnormal-solve 推进结算或改卡 |
-| Cursor | 只合入 **CCC 平台仓**；业务仓不直写 |
+| 对象 | 谁 | 职责 |
+|------|-----|------|
+| **业务源码 + 本卡测试** | OpenCode 优先；**Engine DoD** `ensure_task_commit` 兜底 | 只 stage scope；message 含 `task_id`；写完即停 |
+| **文本 / 脑包 / 规划叙述** | **对话 Agent**（Hub mind；本机 CCC 可写平台文档） | **不**经 OpenCode；**不**为纯文案开产线卡 |
+| **`.ccc` / lessons 噪音** | 无人「业务 commit」 | 留盘；`ccc_hygiene` **不挡** ready |
+| Desktop Agent | 不手搓业务仓 git | dirty_block → 本文 + abnormal-solve；禁卫生 epic |
+| Cursor | 只合入 **CCC 平台仓** | 业务仓不直写 |
+
+评估：[`docs/briefs/2026-07-30-granularity-text-code-commit.md`](../docs/briefs/2026-07-30-granularity-text-code-commit.md)。
 
 ### A3. 脏树三分法（解释板况时必须用）
 

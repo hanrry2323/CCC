@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.65.4] — 2026-07-30
+
+### Fixed
+- **Engine hang 崩溃**：`hang.py` 在取得 `cpu` 之前引用 → `UnboundLocalError` 打断主循环（2017 qx-observer 实测）。
+- **L3b claim 空转**：`qxo` ↔ `qx-observer` 项目别名互通；Engine enqueue 规范化为 `qxo`。
+- **心智脏串**：`load_decided` / `heal_decided_disk` 归一 `{'text':…}` 约束；digest 自动愈合。
+
+### Added
+- **颗粒度 + 文/码分轨 + commit 分责**：评估 `docs/briefs/2026-07-30-granularity-text-code-commit.md`
+  - `transfer_gate`：`text_task_agent_track`；scope≤5；phase≤2；Step≥6 拒
+  - fanout：`detect_oversized_work_children`；prompt 强制小而硬代码卡
+  - SOP / hub_voice / authority / consensus 对齐
+
+### Tests
+- `test_desktop_transfer_gate`（文轨/过大 scope）· `test_product_fanout` oversized · `test_repair_queue_claim` qxo 别名 · `test_agent_mind` heal
+
 ## [v0.65.3] — 2026-07-30
 
 ### Fixed

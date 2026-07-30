@@ -180,6 +180,73 @@ def test_lint_fail_leaves_no_half_children(tmp_path):
     assert not epic.get("child_ids")
 
 
+def test_oversized_work_child_rejected(tmp_path):
+    from _product_fanout import detect_oversized_work_children
+
+    scopes = [f"src/a{i}.py" for i in range(6)]
+    child = {
+        "id": "e-w1",
+        "title": "太大",
+        "description": "d",
+        "plan_md": "# t\n\n## 验收\n- pytest -q\n",
+        "phases": [
+            {
+                "phase": 1,
+                "status": "pending",
+                "description": "d",
+                "scope": scopes,
+                "subtasks": {"1.1": "pending"},
+                "timeout": 60,
+                "commit": None,
+                "notes": "",
+            }
+        ],
+    }
+    err = detect_oversized_work_children([child], epic={"complexity": "medium"})
+    assert err and "oversized" in err and "6" in err
+
+    store = FileBoardStore(tmp_path)
+    store.create_task(
+        {"id": "eo", "title": "E", "card_kind": "epic", "complexity": "small"},
+        column="backlog",
+    )
+    multi_phase = {
+        "id": "eo-w1",
+        "title": "两 phase",
+        "description": "d",
+        "plan_md": "# t\n\n## 验收\n- pytest -q tests/t.py\n",
+        "phases": [
+            {
+                "phase": 1,
+                "status": "pending",
+                "description": "a",
+                "scope": ["a.py"],
+                "subtasks": {"1.1": "pending"},
+                "timeout": 60,
+                "commit": None,
+                "notes": "",
+            },
+            {
+                "phase": 2,
+                "status": "pending",
+                "description": "b",
+                "scope": ["b.py"],
+                "subtasks": {"2.1": "pending"},
+                "timeout": 60,
+                "commit": None,
+                "notes": "",
+            },
+        ],
+    }
+    result = apply_fanout(
+        store,
+        store.list_tasks("backlog")[0],
+        children_raw=[multi_phase],
+    )
+    assert result.get("ok") is False
+    assert "oversized" in str(result.get("error") or "")
+
+
 def test_seeded_phase_plan_preserves_epic_acceptance():
     from _product_fanout import _plan_md_for_seeded_phase
 

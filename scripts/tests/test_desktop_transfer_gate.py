@@ -15,6 +15,72 @@ from _board_store import FileBoardStore  # noqa: E402
 from _product_fanout import apply_fanout  # noqa: E402
 
 
+def test_gate_rejects_text_task_agent_track():
+    body = {
+        "title": "hp v0.1.0 版本正规化：VERSION+CHANGELOG+规划文",
+        "goal": "VERSION+CHANGELOG+规划文对齐",
+        "acceptance": ["grep -q v0.1.0 VERSION"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "hp",
+        "executor_intent": "opencode",
+        "plan_md": (
+            "# Plan\n\n## 范围\n- VERSION\n- CHANGELOG.md\n- docs/dev-plan.md\n\n"
+            "## 验收\n- grep -q v0.1.0 VERSION\n"
+        ),
+        "scope": ["VERSION", "CHANGELOG.md", "docs/dev-plan.md"],
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "text_task_agent_track" for e in errors)
+
+
+def test_gate_rejects_scope_over_five_files():
+    files = [f"src/m{i}.py" for i in range(6)]
+    body = {
+        "title": "一次改六个模块",
+        "goal": "加能力",
+        "acceptance": ["python3 -m pytest -q tests/test_m0.py"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "scope": files,
+        "plan_md": (
+            "# Plan\n\n## 范围\n"
+            + "\n".join(f"- {f}" for f in files)
+            + "\n\n## 验收\n- python3 -m pytest -q tests/test_m0.py\n"
+        ),
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert not ok
+    assert any(e["code"] == "plan_scope_too_wide" for e in errors)
+
+
+def test_gate_accepts_small_code_card():
+    body = {
+        "title": "补 url_safety 单测",
+        "goal": "拒绝广播地址",
+        "acceptance": [
+            "cargo test -p medio-core test_broadcast_ipv4_rejected -- --exact"
+        ],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "medio-0",
+        "executor_intent": "opencode",
+        "scope": [
+            "src/backend/core/src/infra/url_safety.rs",
+        ],
+        "plan_md": (
+            "# Plan\n\n## 范围\n- src/backend/core/src/infra/url_safety.rs\n\n"
+            "## 验收\n"
+            "- cargo test -p medio-core test_broadcast_ipv4_rejected -- --exact\n"
+        ),
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert ok, errors
+
+
 def test_gate_rejects_incomplete():
     ok, errors = transfer_gate.validate_transfer_payload(
         {"title": "x", "project_id": "demo"}

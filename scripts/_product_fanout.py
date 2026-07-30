@@ -72,6 +72,54 @@ def _is_multi_step_regression(epic: dict) -> bool:
     return sum(1 for m in markers if m in blob) >= 3
 
 
+def detect_oversized_work_children(
+    children_raw: list[dict], *, epic: dict | None = None
+) -> str | None:
+    """OpenCode 只接小卡：单 work ≤1 phase（优先）、scope≤5 文件；纯文卡拒。"""
+    epic = epic or {}
+    complexity = str(epic.get("complexity") or "medium").lower()
+    max_phases = 1 if complexity in ("small", "sm") else 2
+    for ch in children_raw:
+        if not isinstance(ch, dict):
+            continue
+        cid = str(ch.get("id") or "?")
+        phases = ch.get("phases") or []
+        if not isinstance(phases, list):
+            phases = []
+        if len(phases) > max_phases:
+            return (
+                f"oversized: work {cid} has {len(phases)} phases "
+                f"(max {max_phases} for complexity={complexity or 'medium'}); "
+                f"OpenCode 只接小而硬单卡，请拆子卡"
+            )
+        scopes: list[str] = []
+        for ph in phases:
+            if not isinstance(ph, dict):
+                continue
+            for s in ph.get("scope") or []:
+                t = str(s).strip()
+                if t:
+                    scopes.append(t)
+        # also plan_md ## 范围
+        plan = str(ch.get("plan_md") or "")
+        if "VERSION" in plan and "CHANGELOG" in plan and ".py" not in plan:
+            title = str(ch.get("title") or "")
+            if any(
+                x in title.lower()
+                for x in ("version", "changelog", "文档", "规划")
+            ):
+                return (
+                    f"text_track: work {cid} looks doc/VERSION-only; "
+                    f"文案轨归对话 Agent，勿扇出给 OpenCode"
+                )
+        if len(scopes) > 5:
+            return (
+                f"oversized: work {cid} scope has {len(scopes)} files (max 5); "
+                f"拆小或收窄白名单"
+            )
+    return None
+
+
 def detect_write_commit_oversplit(children_raw: list[dict], *, epic: dict | None = None) -> str | None:
     """Detect write-file vs commit-only split. Return error message or None."""
     if not children_raw or len(children_raw) < 2:
@@ -137,8 +185,15 @@ def build_fanout_prompt(
     eid = epic["id"]
     return (
         f"你是 CCC 产品经理。待办里的是**大卡 epic**，你必须把它拆成多张**小卡 work**，"
-        f"供低质量开发模型直接执行。\n"
+        f"供低质量开发模型（OpenCode）直接执行。\n"
         f"**禁止**只给原卡写一个巨大 plan 后原样推进；必须扇出子卡。\n"
+        f"**颗粒度硬门（2026-07-30）**：\n"
+        f"- 意图=大任务；扇出=小任务；OpenCode **只**接小而硬的**代码**卡\n"
+        f"- 每个 work：**恰好 1 个 phase**（medium 最多 2）、scope **≤5 文件**、"
+        f"验收 **1～2 条**强探针（pytest/DRY_RUN/assert）\n"
+        f"- **禁止**把文档/CHANGELOG/VERSION/脑包/规划叙述扇给 OpenCode"
+        f"（文案轨=对话 Agent）\n"
+        f"- **禁止** Step1–6 一把梭；写+commit 必须同卡，勿拆成「只写」「只提交」\n"
         f"**工作目录硬门**：workspace=`{workspace.resolve()}`；"
         f"所有 scope 路径必须落在该目录下。\n"
         f"硬门：每个子卡 plan 必须含 `## 验收` 或 `## 验证`；"
@@ -522,6 +577,11 @@ def apply_fanout(
     if oversplit:
         _log.error("[fanout] %s %s", epic_id, oversplit)
         return {"ok": False, "error": oversplit}
+
+    oversized = detect_oversized_work_children(children_raw, epic=epic)
+    if oversized:
+        _log.error("[fanout] %s %s", epic_id, oversized)
+        return {"ok": False, "error": oversized}
 
     try:
         from executors.registry import normalize_executor
