@@ -187,9 +187,10 @@ def test_transfer_rejects_mixed_unit_and_paper_probe():
     assert any(e["code"] == "acceptance_mixed_intent" for e in errs)
 
 
-def test_transfer_rejects_too_many_probes():
+def test_transfer_rejects_too_many_probes(monkeypatch):
     from chat_server.services import transfer_gate as tg
 
+    monkeypatch.setenv("CCC_MIN_PIPELINE", "0")  # 史径上限 3
     body = {
         "title": "过多探针",
         "goal": "g",

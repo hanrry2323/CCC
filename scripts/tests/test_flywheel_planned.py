@@ -8,7 +8,8 @@ from pathlib import Path
 from chat_server.services import agent_mind as am
 
 
-def test_ensure_flywheel_planned_from_dev_plan(tmp_path: Path) -> None:
+def test_ensure_flywheel_planned_from_dev_plan(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CCC_FLYWHEEL_AUTO", "1")
     root = tmp_path / "qb"
     (root / ".ccc" / "agent-mind").mkdir(parents=True)
     for col in ("backlog", "planned", "in_progress", "testing"):

@@ -186,14 +186,15 @@ def validate_transfer_payload(
     if sens_err:
         errors.append(sens_err)
 
-    # 文/码分轨 + OpenCode 颗粒度（2026-07-30）
+    # 文/码分轨；OpenCode 颗粒度仅史径（最小路径：长意图不挡 scope≤5）
     if not hygiene:
         text_err = _check_text_task_agent_track(body)
         if text_err:
             errors.append(text_err)
-        gran_err = _check_opencode_work_granularity(body)
-        if gran_err:
-            errors.append(gran_err)
+        if not _min_pipeline_on():
+            gran_err = _check_opencode_work_granularity(body)
+            if gran_err:
+                errors.append(gran_err)
 
     # Ensure every error carries fix_hint for Agent training loop
     for e in errors:
@@ -374,16 +375,25 @@ def _check_text_task_agent_track(body: dict[str, Any]) -> dict[str, str] | None:
     return None
 
 
+def _min_pipeline_on() -> bool:
+    try:
+        from engine.min_pipeline import enabled as _mp_on
+
+        return bool(_mp_on())
+    except Exception:
+        return True  # fail-open to thin gate
+
+
 def _check_opencode_work_granularity(body: dict[str, Any]) -> dict[str, str] | None:
-    """OpenCode 只接小而硬：scope≤5 文件；phase≤2（优先 1）。"""
+    """史径：OpenCode 小卡 scope≤5。最小路径下 transfer 不调用本函数。"""
     paths = _collect_scope_paths(body)
     if len(paths) > 5:
         return _err(
             "plan_scope_too_wide",
             f"scope 列出 {len(paths)} 个文件（上限 5）",
-            "大意图拆多张意图卡；每张给 OpenCode 的 work：≤5 文件 · 1 phase · 1～2 强探针。",
+            "大意图拆多张意图卡；每张给 OpenCode 的 work：≤5 文件 · 1 phase · 1～2 强探针。"
+            "（最小路径下此检查已关；oversized 改在 fanout 拦内部 work。）",
         )
-    # tighten phase cap already in _check_plan_preview (>3); also soft-check plan steps
     plan = str(body.get("plan_md") or "")
     step_hits = len(
         re.findall(r"(?m)^(?:#{2,3}\s*)?(?:步骤|Step)\s*\d+", plan)
@@ -392,7 +402,7 @@ def _check_opencode_work_granularity(body: dict[str, Any]) -> dict[str, str] | N
         return _err(
             "plan_scope_too_wide",
             f"plan 步骤约 {step_hits} 步，易 OpenCode hang",
-            "禁止 Step1–6 一把梭；拆成多张小意图卡，每卡单步实现。",
+            "禁止 Step1–6 一把梭；Engine plan 阶段再拆内部 work。",
         )
     return None
 
@@ -506,12 +516,14 @@ def _check_acceptance_budget(cmds: list[str]) -> dict[str, str] | None:
             continue
         seen.add(key)
         uniq.append(key)
-    if len(uniq) > 3:
+    # 最小路径：长意图可多探针（上限 8）；史径仍 3
+    max_probes = 8 if _min_pipeline_on() else 3
+    if len(uniq) > max_probes:
         return _err(
             "acceptance_too_wide",
-            f"acceptance 抽出 {len(uniq)} 条探针（上限 3，建议 1～2）",
-            "只留本卡意图的 1～2 条 pytest/DRY_RUN；下一意图另开卡。"
-            "见 references/intent-card-sop.md。",
+            f"acceptance 抽出 {len(uniq)} 条探针（上限 {max_probes}）",
+            "压到可执行探针；长意图可多条，但仍禁纸面散文。"
+            "见 docs/product/loop-engineer-authority.md 最小可跑通 v1。",
         )
     joined = "\n".join(uniq).lower()
     has_unit = "pytest" in joined or "python3 -c" in joined or "python -c" in joined
@@ -574,6 +586,9 @@ def _check_plan_preview(
         from _plan_adopt import synthesize_phases_from_plan, backfill_scopes
 
         phases = backfill_scopes(synthesize_phases_from_plan(plan_md), plan_md)
+        # 最小路径：长意图 plan 可多 phase；内部 work oversized 由 fanout 拦
+        if _min_pipeline_on():
+            return None
         if len(phases) > 2:
             return _err(
                 "plan_scope_too_wide",

@@ -88,7 +88,7 @@ def test_force_serial_multi_root_scopes():
     import ast
     from pathlib import Path as _Path
 
-    src = (ROOT / "scripts" / "ccc-engine.py").read_text(encoding="utf-8")
+    src = (ROOT / "scripts" / "engine" / "_launch_impl.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     ns: dict = {"Path": _Path}
     for node in tree.body:

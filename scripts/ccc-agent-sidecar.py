@@ -838,16 +838,22 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
             "【CCC 平台入口】本机 CCC 可 Read/Write/Edit；不灌业务规划当产品搭档；"
             "禁止对 orch 投业务 epic。"
         )
-    # board + mind + repair-queue 并行（L3b 强制注入）
+    # board + mind；L3b repair-queue 仅史径/显式开关
     from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        from engine.min_pipeline import l3b_repair_queue_enabled as _l3b_on
+    except Exception:
+        def _l3b_on() -> bool:
+            return False
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         fut_board = pool.submit(_fetch_hub_lens_board, pid)
         fut_mind = pool.submit(_fetch_hub_mind_digest, pid)
-        fut_rq = pool.submit(_fetch_hub_repair_queue, pid)
+        fut_rq = pool.submit(_fetch_hub_repair_queue, pid) if _l3b_on() else None
         _ok, block = fut_board.result()
         _mok, mblock = fut_mind.result()
-        _rok, rq_block = fut_rq.result()
+        _rok, rq_block = (False, "") if fut_rq is None else fut_rq.result()
     parts.append(block)
     if mblock:
         parts.append(mblock)
@@ -860,11 +866,18 @@ def _lens_context_for_turn(project_id: str, user_text: str) -> str:
     if rq_block:
         parts.append(rq_block)
     if re.search(r"abnormal\s*[:=]\s*[1-9]|failed|异常", block or "", re.I):
-        parts.append(
-            "【板务强制】本轮必须 hub_repair(clear_blockers) 并报告板面数字；"
-            "若 status.exhausted / repair_queue 有 pending → failure_pack 后"
-            "**优化意图链并自动投链**；禁止只藏卡结案；禁止甩锅、禁止 outbox/Terminal。"
-        )
+        if _l3b_on():
+            parts.append(
+                "【板务强制】本轮必须 hub_repair(clear_blockers) 并报告板面数字；"
+                "若 status.exhausted / repair_queue 有 pending → failure_pack 后"
+                "**优化意图链并自动投链**；禁止只藏卡结案；禁止甩锅、禁止 outbox/Terminal。"
+            )
+        else:
+            parts.append(
+                "【板务 · 最小路径】本轮 hub_repair(clear_blockers) 清可恢复残卡；"
+                "耗尽卡读 evidence/transfer_lessons → **优化长意图并自动再投**；"
+                "禁止只藏卡结案；禁止 L3b 空转；禁止甩锅、禁止 outbox/Terminal。"
+            )
     text = user_text or ""
     if _LIVE_REPO_RE.search(text) or re.search(
         r"(扫风险|定稿|核实|审查|locate|实现|代码)", text, re.I

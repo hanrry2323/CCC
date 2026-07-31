@@ -75,14 +75,13 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 ### 验收写作（防门禁误杀 · 防下游跑不动）
 
-细则：[`references/intent-card-sop.md`](../../references/intent-card-sop.md)（旧名 finalize-transfer-sop 已重定向）。
+细则：[`references/intent-card-sop.md`](../../references/intent-card-sop.md)。
 
-- **预算**：acceptance **1～3 条（优先 1～2）** 强探针，只证明**本卡**意图。
-- 验收 bullets：**可执行命令**（`.venv/bin/python -m pytest …` / `DRY_RUN=true .venv/bin/python …` / 短 assert）。
-- **禁止**：`test -f`、散文假绿、同命令重复、把 **paper/e2e/下一张 L1** 探针塞进本卡。
-- **排除/勿入**路径写在 `plan_md`「禁止」节，**不要**写进 `acceptance`。
-- 不存在 committer 角色；**板面残卡优先 Hub `board-repair`**。偶发卫生卡用 `executor_intent: python`。
-- `plan_md` 必有 `## 验收`（与 acceptance 同向）；默认 1 phase / 少数文件。
+- **最小可跑通 v1（默认）**：长意图 epic 须 `goal` + ≥1 条可执行探针；**不**用 scope≤5 / phase≤2 挡用户级长意图。内部 work oversized 由 fanout 拦。
+- **史径**（`CCC_MIN_PIPELINE=0`）：acceptance 1～3 条；scope≤5；phase≤2。
+- 验收 bullets：**可执行命令**（pytest / DRY_RUN / assert）。
+- **禁止**：`test -f`、散文假绿、本卡混装 unit+paper/e2e。
+- 纯文案/脑包 → `text_task_agent_track`（对话 Agent 自轨，勿进 OpenCode）。
 
 ---
 

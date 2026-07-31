@@ -1,6 +1,6 @@
 # Loop Engineer — 事实权威与人机共识（SSOT）
 
-> **状态**：现行 · 2026-07-28（**四席工具定死** + **双轨业务 qb∥QuantHive** + **Relay 付费-only Go 单活跃钥** + 三层/loop-code + Hub 隧道 `:17777`；M1=对话 / 2017=编排）
+> **状态**：现行 · 2026-07-31（**最小可跑通 v1** + 四席 + 双轨 qb∥QuantHive + Relay 付费-only + 三层/loop-code + Hub 隧道 `:17777`）
 > **谁读**：老板 / Desktop Agent / Hub·sidecar / Cursor 改平台。  
 > **冲突时以本文为准。** 边界流程：[`dialogue-orchestration-boundary.md`](dialogue-orchestration-boundary.md)。  
 > **规则**：你我共识 → **写入本文（或明确指向本文的一节）** → 再改代码/人格；禁止只留在聊天里。
@@ -9,9 +9,53 @@
 
 ## 一句话（开发路径）
 
-**人定意图 → Hub 下达 → Engine 编排扇出 → 权威仓写码 → 验收纠错 → 回流飞轮；全程只认一个权威仓。**
+**人定长意图 → Hub 薄门禁下达 → Engine 自动 plan→code→verify→done → 权威仓写码；全程只认一个权威仓。**
 
 （叙事：[`../VISION.md`](../VISION.md)。）
+
+---
+
+## 最小可跑通 v1（硬 · 2026-07-31）
+
+> **目标**：用户在 Desktop 提**总体开发需求**（长意图）→ Agent 定意图门并自动投链 → Engine **无人值守**跑完开发/验收/必要文档。中间不要求 SSH、补卡、当修板工。  
+> **开关**：`CCC_MIN_PIPELINE=1`（**默认开**）；`=0` 回退叠层自愈（L3b repair-queue 等史径）。实现：`scripts/engine/min_pipeline.py`。
+
+### 五态（产品语义）
+
+| 语义 | 磁盘列别名（兼容） | 谁跑 |
+|------|-------------------|------|
+| `queued` | `backlog` epic | 等 Engine |
+| `plan` | product 扇出 → `planned` | **Claude**（对话槽 / Engine planner） |
+| `code` | `in_progress` | **OpenCode**（写码槽） |
+| `verify` | `testing`（单入口，非 reviewer∥tester 双跳主叙事） | 探针硬门 + Claude 副闸 |
+| `done` / `blocked` | `released` / `abnormal` | 终态；blocked 带证据回 Desktop Agent |
+
+用户只盯**长 epic**；内部 work 切片是编排细节，不推到用户当主交互。
+
+### 双槽（Claude + OpenCode）
+
+| 槽 | 职责 | 不做 |
+|----|------|------|
+| **Claude**（loop-code / SDK） | 聊透意图；产出/改长 epic；文本轨；plan；verify 副闸 | 不当业务仓写码主执行器 |
+| **OpenCode** | 权威仓代码 + 本卡测 + DoD commit | 不吃纯文案；不做人设闲聊 |
+
+### 薄门禁（transfer）
+
+长意图 epic **只**硬查：`goal` + ≥1 条可执行验收探针（禁 existence-only）+ 非纯文案进 OpenCode + 敏感路径。  
+**禁止**用「scope≤5 / phase≤2」挡**用户级长意图**。内部 work 的 oversized 只在 **fanout** 边界拦（`_product_fanout.detect_oversized_work_children`）。
+
+### 本阶段冻结（不当热路径）
+
+- L3b `repair-queue` 入队 / claim 注入主路径（耗尽 → `blocked` + 证据包 + transfer_lessons；Agent 改意图再投）
+- stress-kpi / invent / 卫生 epic / Ops 抛光 / 飞轮自动开下一目标 / intent_stable 自动化
+- reviewer + tester + kb **三跳串联叙事**（实现可复用，产品入口 = `verify`）
+- 平行 phase 大编排当默认
+
+### 保留核
+
+意图门 · 权威仓单写 · 对话/编排分离 · 探针/hollow 防假绿 · hang 收尸释槽 · 双机拓扑 · invent 硬关。
+
+史径（v0.65 叠层自愈 / 入学考试≤5 文件）见下文「编排自愈」「意图卡供给」——**与本节冲突时以本节为准**（`CCC_MIN_PIPELINE=1`）。
 
 ---
 

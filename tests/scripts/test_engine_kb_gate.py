@@ -309,7 +309,7 @@ class TestEngineLoopKbGatePlacement:
         """
         import ast
 
-        engine_path = ROOT / "scripts" / "ccc-engine.py"
+        engine_path = ROOT / "scripts" / "engine" / "_loop_impl.py"
         source_lines = engine_path.read_text(encoding="utf-8").splitlines()
         tree = ast.parse("\n".join(source_lines))
 
@@ -371,7 +371,7 @@ class TestEngineLoopKbGatePlacement:
         """
         import ast
 
-        engine_path = ROOT / "scripts" / "ccc-engine.py"
+        engine_path = ROOT / "scripts" / "engine" / "_loop_impl.py"
         source_lines = engine_path.read_text(encoding="utf-8").splitlines()
         tree = ast.parse("\n".join(source_lines))
 

@@ -21,19 +21,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPT = ROOT / "scripts" / "ccc-engine.py"
+LAUNCH_IMPL = ROOT / "scripts" / "engine" / "_launch_impl.py"
 
 
 def _load_group_function():
-    """AST 提取 _group_parallel_phases 函数（绕开 ccc-board 的 pre-existing 缩进 bug）。"""
-    src = SCRIPT.read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name == "_group_parallel_phases":
-            mod = ast.Module(body=[node], type_ignores=[])
-            pyc = compile(mod, str(SCRIPT), "exec")
-            ns: dict = {}
-            exec(pyc, ns)
-            return ns["_group_parallel_phases"]
+    """AST 提取 _group_parallel_phases（实现已迁入 engine/_launch_impl.py）。"""
+    for path in (LAUNCH_IMPL, SCRIPT):
+        src = path.read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "_group_parallel_phases":
+                mod = ast.Module(body=[node], type_ignores=[])
+                pyc = compile(mod, str(path), "exec")
+                ns: dict = {}
+                exec(pyc, ns)
+                return ns["_group_parallel_phases"]
     raise RuntimeError("_group_parallel_phases not found")
 
 
@@ -194,7 +196,7 @@ def test_fallback_path_in_try_launch_planned():
 
 def test_parallel_log_marker_emitted():
     """日志标记 [parallel] 必须存在于 launch_parallel_group / try_launch_planned_parallel。"""
-    src = SCRIPT.read_text(encoding="utf-8")
+    src = LAUNCH_IMPL.read_text(encoding="utf-8")
     assert "[parallel]" in src, "[parallel] 日志标记缺失"
 
 
@@ -205,7 +207,7 @@ def test_parallel_log_marker_emitted():
 
 def test_threadpool_fallback_sets_disabled():
     """_launch_parallel_group 在 ThreadPoolExecutor 异常时调 _set_parallel_disabled(True)。"""
-    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+    tree = ast.parse(LAUNCH_IMPL.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == "_launch_parallel_group":
             mod_src = ast.unparse(ast.Module(body=[node], type_ignores=[]))
@@ -230,7 +232,7 @@ def test_check_parallel_task_complete_advances_groups_serially():
       - 推到「下一个 group」后 return still_running，不跳多个
       - 全 group 完成后写 marker file + return task_complete_*
     """
-    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+    tree = ast.parse(LAUNCH_IMPL.read_text(encoding="utf-8"))
     for node in tree.body:
         if (
             isinstance(node, ast.FunctionDef)

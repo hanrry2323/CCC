@@ -98,10 +98,15 @@ def test_write_engine_restart_function():
 
 def test_event_points():
     """测试所有四个事件点（按 2026-07 设计：signal handler 用动态 name 变量）"""
-    with open("/Users/apple/program/CCC/scripts/ccc-engine.py") as f:
-        content = f.read()
+    sources = [
+        Path("/Users/apple/program/CCC/scripts/ccc-engine.py").read_text(encoding="utf-8"),
+        Path("/Users/apple/program/CCC/scripts/engine/_loop_impl.py").read_text(
+            encoding="utf-8"
+        ),
+    ]
+    content = "\n".join(sources)
 
-    # started: 字面量
+    # started: 字面量（engine_loop 在 _loop_impl）
     if '_write_engine_restart("started")' in content:
         print("✓ [启动事件] 调用点存在")
     else:

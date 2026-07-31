@@ -345,7 +345,15 @@ def ensure_flywheel_planned_intent(
 
     Does **not** write backlog / wake Engine. Human must click 转意图卡.
     Never invents hygiene stamps.
+    最小可跑通默认关飞轮（CCC_FLYWHEEL_AUTO / min_pipeline.flywheel_auto_open_enabled）。
     """
+    try:
+        from engine.min_pipeline import flywheel_auto_open_enabled
+
+        if not flywheel_auto_open_enabled():
+            return None
+    except Exception:
+        pass
     root = Path(root)
     decided = load_decided(root)
     for g in decided.get("goals") or []:

@@ -1,4 +1,4 @@
-"""engine.gates — testing/verified 列门禁（reviewer/tester/pytest/kb）。"""
+"""engine.gates — testing/verified 列门禁（verify 单入口 = reviewer+tester+pytest/kb）。"""
 from __future__ import annotations
 
 import json
@@ -454,9 +454,14 @@ def _handle_fail_to_planned(
 
 
 def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
-    """reviewer verdict + tester + engine pytest 双门禁。通过才移 verified。"""
+    """verify 单入口（史名保留）：reviewer verdict + tester + pytest → verified。"""
     with workspace_scope(ws):
         return _run_reviewer_tester_gate_unlocked(ws, tid)
+
+
+def run_verify_gate(ws: Path, tid: str) -> bool:
+    """最小可跑通产品名：等同 _run_reviewer_tester_gate。"""
+    return _run_reviewer_tester_gate(ws, tid)
 
 def _run_reviewer_tester_gate_unlocked(ws: Path, tid: str) -> bool:
     eng = _eng()

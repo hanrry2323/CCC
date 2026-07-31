@@ -35,7 +35,31 @@ def test_gate_rejects_text_task_agent_track():
     assert any(e["code"] == "text_task_agent_track" for e in errors)
 
 
-def test_gate_rejects_scope_over_five_files():
+def test_gate_accepts_long_intent_over_five_files_min_pipeline(monkeypatch):
+    """最小路径：长意图 epic 不被 scope≤5 挡；oversized 改在 fanout 拦 work。"""
+    monkeypatch.delenv("CCC_MIN_PIPELINE", raising=False)  # default on
+    files = [f"src/m{i}.py" for i in range(6)]
+    body = {
+        "title": "总体能力升级：六模块串联",
+        "goal": "完成跨模块总体开发需求",
+        "acceptance": ["python3 -m pytest -q tests/test_m0.py"],
+        "pipeline": "dev",
+        "feasibility": "ok",
+        "project_id": "qb",
+        "executor_intent": "opencode",
+        "scope": files,
+        "plan_md": (
+            "# Plan\n\n## 范围\n"
+            + "\n".join(f"- {f}" for f in files)
+            + "\n\n## 验收\n- python3 -m pytest -q tests/test_m0.py\n"
+        ),
+    }
+    ok, errors = transfer_gate.validate_transfer_payload(body)
+    assert ok, errors
+
+
+def test_gate_rejects_scope_over_five_files_legacy(monkeypatch):
+    monkeypatch.setenv("CCC_MIN_PIPELINE", "0")
     files = [f"src/m{i}.py" for i in range(6)]
     body = {
         "title": "一次改六个模块",

@@ -26,6 +26,7 @@ from board.roles.ops import ops_role
 from board.roles.kb import kb_role
 from board.roles.audit import audit_role
 from board.roles.regress import regress_role
+from board.roles.verify import verify_role, run_verify_gate
 
 __all__ = [
     "product_role",
@@ -41,6 +42,8 @@ __all__ = [
     "tester_role",
     "launch_tester_async",
     "check_tester_async",
+    "verify_role",
+    "run_verify_gate",
     "ops_role",
     "kb_role",
     "audit_role",
