@@ -589,6 +589,7 @@ def main(proposal_id: str, project_id: str) -> dict:
             "skill_ref": skill_ref,
             "prompt_ref": prompt_ref,
             "fallback": bool(fr.get("fallback")),
+            "main_chain_error": fr.get("main_chain_error") or "",  # R-TRACE: 主链路失败原因
             "tagged_cards": tagged,
             "timing_ms": {
                 "read": read_ms,
@@ -606,6 +607,7 @@ def main(proposal_id: str, project_id: str) -> dict:
             "epic_id": epic_id,
             "error": "",
             "claude_session_id": fr.get("claude_session_id") or "",
+            "main_chain_error": fr.get("main_chain_error") or "",
         }
     except Exception as exc:
         _log.error("splitter main: %s", exc, exc_info=True)
