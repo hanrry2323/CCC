@@ -25,11 +25,13 @@
 
 | 项 | 值 |
 |----|-----|
-| HEAD（e2e 收口） | `2c5de2b8`（含 salvage→budget 修） |
+| HEAD（v1.2 文档戳） | 见 git `main`（含 fanout 保真 / verify_gate / verify 一扇门） |
 | `CCC_MIN_PIPELINE` | unset → enabled=True |
 | `CCC_L3B_REPAIR_QUEUE` | unset → l3b=False |
-| Engine PID | `36585`（`com.ccc.engine`） |
+| Engine | `com.ccc.engine`（合入后 kickstart） |
 | workspaces | `apps/ccc-demo` |
+
+> v1.2 复验 tid 写在下方「v1.2 复验」节（步骤 5）。
 
 ## 2017 实测（ccc-demo）
 

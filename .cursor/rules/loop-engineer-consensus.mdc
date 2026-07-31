@@ -20,7 +20,7 @@ alwaysApply: true
 
 人定长意图 → Hub 薄门禁下达 → Engine 自动 plan→code→verify→done → 权威仓写码；全程只认一个权威仓。
 
-- **最小可跑通 v1（硬 · 2026-07-31）**：用户单位=长 epic；Agent 自动投链；五态 `queued/plan/code/verify/done|blocked`；双槽 Claude+OpenCode；transfer **不**用 scope≤5 挡长意图（oversized 只拦内部 work）；默认 `CCC_MIN_PIPELINE=1` 冻结 L3b/stress/飞轮热路径。SSOT：authority「最小可跑通 v1」。
+- **最小可跑通 v1（硬 · 2026-07-31 · v1.1=v0.66.0 收口 · v1.2 探针保真）**：用户单位=长 epic；Agent 自动投链；五态 `queued/plan/code/verify/done|blocked`；双槽 Claude+OpenCode；transfer **不**用 scope≤5 挡长意图（oversized 只拦内部 work）；fanout **保真** epic 强探针；默认 `CCC_MIN_PIPELINE=1` 冻结 L3b/stress/飞轮热路径。SSOT：authority「最小可跑通 v1」· [`docs/briefs/2026-07-31-min-pipeline-v1.2.md`](docs/briefs/2026-07-31-min-pipeline-v1.2.md)。
 
 ## 四席工具（硬 · 2026-07-28）
 

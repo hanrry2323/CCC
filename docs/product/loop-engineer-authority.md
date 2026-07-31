@@ -17,6 +17,7 @@
 
 ## 最小可跑通 v1（硬 · 2026-07-31）
 
+> **状态**：**v1.1 已收口**（`VERSION≥v0.66.0`）· **v1.2** = 探针保真 + 二次瘦身 + verify 一扇门（见 [`../briefs/2026-07-31-min-pipeline-v1.2.md`](../briefs/2026-07-31-min-pipeline-v1.2.md)）。  
 > **目标**：用户在 Desktop 提**总体开发需求**（长意图）→ Agent 定意图门并自动投链 → Engine **无人值守**跑完开发/验收/必要文档。中间不要求 SSH、补卡、当修板工。  
 > **开关**：`CCC_MIN_PIPELINE=1`（**默认开**）；`=0` 回退叠层自愈（L3b repair-queue 等史径）。实现：`scripts/engine/min_pipeline.py`。
 
@@ -42,7 +43,8 @@
 ### 薄门禁（transfer）
 
 长意图 epic **只**硬查：`goal` + ≥1 条可执行验收探针（禁 existence-only）+ 非纯文案进 OpenCode + 敏感路径。  
-**禁止**用「scope≤5 / phase≤2」挡**用户级长意图**。内部 work 的 oversized 只在 **fanout** 边界拦（`_product_fanout.detect_oversized_work_children`）。
+**禁止**用「scope≤5 / phase≤2」挡**用户级长意图**。内部 work 的 oversized 只在 **fanout** 边界拦（`_product_fanout.detect_oversized_work_children`）。  
+seeded fanout **必须保真** epic 强探针（禁静默换成 `py_compile`）；异相路径探针仍按 phase 隔离。
 
 ### 本阶段冻结（不当热路径）
 
@@ -55,7 +57,7 @@
 
 意图门 · 权威仓单写 · 对话/编排分离 · 探针/hollow 防假绿 · hang 收尸释槽 · 双机拓扑 · invent 硬关。
 
-史径（v0.65 叠层自愈 / 入学考试≤5 文件）见下文「编排自愈」「意图卡供给」——**与本节冲突时以本节为准**（`CCC_MIN_PIPELINE=1`）。
+史径说明：下文「编排自愈 / 意图卡供给」里的 **入学考试≤5 文件 · phase≤2** 仅约束 **fanout 内部 work** 或 **`CCC_MIN_PIPELINE=0`**；**不得**用来挡用户长意图 epic。与本节冲突时以本节为准。
 
 ---
 
@@ -298,7 +300,8 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | **提交** | Engine/DoD 在业务仓**当前分支（默认 main）**提交；`task_id`/`phase` 进 message；**不做** feature 旁支合入门禁；Cursor **事后总验**不挡产线 |
 | **进板后** | 人只确认下达；之后扇出/写码/审测/hang 收尸/有限 reopen **全自动** |
 | **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；耗尽 → `~/.ccc/repair-queue.jsonl`（`epic_optimize`）。**L2** Hub/`board_repair`：`clear_blockers` **先 reopen 可恢复**再归档 permanent/exhausted/failed/孤儿；`failure_pack` 写 `optimize_hint`+lessons+回流 planned；`status.repair_queue` 可见 pending；**`POST /api/desktop/repair-queue/claim`** 供 M1 sidecar 领取注入。**L3** Desktop/sidecar：透镜并行 claim + 板堵强制 repair；**修板后必须再投链或结算已绿**。**L3b** 耗尽后 Agent 按桶优化 `ccc-transfer` **并自动投链**（见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图。**总闸**：[`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md)——**清障 ≠ 解决问题**。盘点：[`../briefs/2026-07-30-self-heal-inventory.md`](../briefs/2026-07-30-self-heal-inventory.md)。**`is_exhaust_reason`** 仅认耗尽标记（对齐 `should_auto_refeed`），禁止凡 acceptance/hang 即藏卡 |
-| **Agent 定卡培养闭环（硬 · 2026-07-29 → v0.65.4）** | 培养 Desktop Agent 定**意图卡**/纠板，**禁止**靠 Cursor 反复救火。① **入学考试**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`/过宽 scope（**≤5 文件 · phase≤2**）/**验收>3 条**/**unit+paper混装**/**纯文案进 OpenCode**（`text_task_agent_track`），返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**。⑤ **扇出二次门禁**：有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条；**oversized work**（scope>5 / 多 phase / 纯文卡）拒扇出。⑥ **颗粒度+文码分轨+commit 分责**：意图=大、扇出=小；OpenCode **只**接代码小卡；文本/脑包=对话 Agent；业务代码 commit=OpenCode/DoD；评估 [`../briefs/2026-07-30-granularity-text-code-commit.md`](../briefs/2026-07-30-granularity-text-code-commit.md)。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡并自动再投**。⑦ **promote 薄 plan**：拒无真实路径 boilerplate。⑧ **repair-queue**：`qxo`↔`qx-observer` 别名互通 claim |
+| **Agent 定卡培养闭环（硬 · 2026-07-29 → v0.65.4 · min-pipeline 校正 2026-07-31）** | 培养 Desktop Agent 定**意图卡**/纠板，**禁止**靠 Cursor 反复救火。① **入学考试（work/fanout 或史径 `CCC_MIN_PIPELINE=0`）**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`；**用户长意图不挡 scope≤5**（见上「最小可跑通」）；oversized 拦 **fanout work**（**≤5 文件 · phase≤2**）/**验收>3 条**/**unit+paper混装**/**纯文案进 OpenCode**（`text_task_agent_track`），返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**。⑤ **扇出二次门禁**：有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条、**保真 epic 强探针**；**oversized work**（scope>5 / 多 phase / 纯文卡）拒扇出。⑥ **颗粒度+文码分轨+commit 分责**：意图=大、扇出=小；OpenCode **只**接代码小卡；文本/脑包=对话 Agent；业务代码 commit=OpenCode/DoD；评估 [`../briefs/2026-07-30-granularity-text-code-commit.md`](../briefs/2026-07-30-granularity-text-code-commit.md)。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡并自动再投**。⑦ **promote 薄 plan**：拒无真实路径 boilerplate。⑧ **repair-queue**：min 路径默认关；史径 `qxo`↔`qx-observer` 别名互通 claim |
+
 | **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；**耗尽后只藏卡不改大卡**；**先 `ui_hidden` 还可重试的 abnormal**；用 Cursor/Zed 当业务仓合入通道；**用「已归档/已 reopen」当向老板的完成话术** |
 | **SOP** | 总闸 [`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md) · 清板 [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) · 耗尽改大卡 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md) · **Commit/文件夹卫生** [`../../references/commit-folder-hygiene-sop.md`](../../references/commit-folder-hygiene-sop.md)（**分责**：代码=DoD；文本=Agent；噪音不挡；禁 `git add -A`；禁卫生 epic 主业） · **垃圾卡硬清** `scripts/_board_garbage.py`（探针/戳记/`regression-*` 移出看板；regress **无意图探针不建回归卡**；禁脏树 alone 炸板） |
 
