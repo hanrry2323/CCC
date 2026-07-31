@@ -560,3 +560,184 @@ python3 scripts/ccc-submit-proposal.py docs/intent-proposals/stage5-smoke.md --p
 4. transfer_gate 校验 → Engine 消费
 
 后续：Engine 自动消费 work 子卡到 released（OpenCode 写码 + 验收探针），无需人工干预。
+
+---
+
+## 十一、多任务闭环压力验证（5 类 skill · 2026-07-31）
+
+### 目的
+
+一次性跑 5 个覆盖全部 skill 的任务，验证完整链路（方案→拆卡→Engine 消费→验收→released），并用埋点数据发现瓶颈与缺陷。
+
+### 5 个任务设计
+
+| # | proposal | skill | pipeline | 目标 |
+|---|----------|-------|----------|------|
+| t1 | `f509abdf` | write-code | dev | 工具函数 parse_pct |
+| t2 | `e7a4ff54` | script-seed | dev | 纸面探针脚本 |
+| t3 | `ebaf4354` | bug-fix | dev | 修复负数解析 |
+| t4 | `72c447aa` | ops | ops | 看板卫生检查 |
+| t5 | `556feb51` | code-review | dev | 审查报告 |
+
+### 拆卡阶段埋点（实测 · 全部成功）
+
+| 任务 | total_ms | read | epic | fanout | attach | wake | 状态 |
+|------|----------|------|------|--------|--------|------|------|
+| t1 | 245 | 0 | 183 | 23 | 28 | 123 | ok cards=1 |
+| t2 | 560 | 0 | 491 | 58 | 56 | 283 | ok cards=1 |
+| t3 | 332 | 0 | 187 | 25 | 24 | 128 | ok cards=1 |
+| t4 | 427 | 0 | 259 | 38 | 37 | 171 | ok cards=1 |
+| t5 | 475 | 0 | 345 | 37 | 47 | 247 | ok cards=1 |
+
+**拆卡结论**：拆卡链路全部正常（<600ms），每张卡附 `skill_ref@9b6598d`。埋点发现 `create_epic` 耗时波动大（183-491ms），疑似 FileBoardStore 首次索引加载。
+
+### Engine 消费阶段（实测 · 5/5 全部失败 → abnormal）
+
+| 任务 | 产物 | 失败原因（note/日志） |
+|------|------|----------------------|
+| t1 | ❌ stage5_t1_util.py 未创建 | acceptance_cmd_failed (n=2) |
+| t2 | ❌ 被 script_seed 劫持写 paper_intent_probe.py | acceptance_cmd_failed |
+| t3 | ❌ stage5_t3_fix.py 未创建（auto-commit 空 .ccc） | acceptance_cmd_failed (n=2) |
+| t4 | ❌ stage5_t4_ops_report.py 未创建 | acceptance_cmd_failed (n=2) |
+| t5 | ❌ stage5_t5_review.md 未创建 | acceptance_cmd_failed (n=2) |
+
+---
+
+## 十二、根因诊断（5 个任务共性问题）
+
+### P0-1：验收命令格式约定不匹配「## 验收」标题（核心根因）
+
+**现象**：5 张卡全部 `acceptance_cmd_failed`。
+
+**根因**：`_intent_probe.extract_acceptance_section` 只认 `## 验收` / `## 验证` / `### 验收` / `### 验证`（[L139-154](file:///Users/apple/program/CCC/scripts/_intent_probe.py#L139-L154) 精确匹配）。我的方案文件用 `# 验收意图`（一级 + "意图"后缀），不匹配。
+
+**证据链**：
+- `phase_lint.validate_plan_acceptance(t1-plan)` → `ok=False errs=['plan missing ## 验收 or ## 验证 section']`
+- transfer_gate 通过（因 `acceptance` 字段有显式命令 → `require_acceptance_section=False` 跳过 plan 校验）
+- Engine 消费时用 `extract_acceptance_section(plan.md)` 从 plan 找验收 → 空 → `check_acceptance` 返回 failure
+
+**影响**：所有 fallback 拆卡的 work 卡，若 plan_md 无 `## 验收` 节，验收命令不会被提取执行 → 必然 abnormal。
+
+### P0-2：fallback 产物文件未被执行器创建
+
+**现象**：t1/t3/t4/t5 的产物（`.py`/`.md`）在 qb 仓 scripts/ 下均不存在；git log 只有 `.ccc/` 内部文件被 auto-commit。
+
+**根因**：fallback 拆卡时 plan 的验收命令与 `# 验收意图` 不匹配，OpenCode 执行器 prompt 里**没有可执行的验收依赖**，模型不明确要创建的具体文件（`scope=[]`，phases `subtasks` 为占位 `1.1`），OpenCode 自由发挥未产出目标文件。
+
+**证据**：t1 exec.log 显示 `exit_code=-15`（SIGTERM 超时），stderr 泄漏 `ls scripts/` 输出，说明 OpenCode 用 bash 试探而非写码。
+
+### P0-3：script-seed 短路径劫持产物路径
+
+**现象**：t2 的 `wrote=["scripts/paper_intent_probe.py"]`（script_seed 短路径写死），但验收要的 `stage5_t2_probe.py`，路径不匹配 → 验收失败。
+
+**根因**：script_seed skill 的短路径机械落地到固定 `paper_intent_probe.py`，不读验收字段指定的目标路径。
+
+### P1-1：splitter 埋点发现 create_epic 耗时抖动
+
+**现象**：create_epic 183-491ms 波动。
+
+**根因**：FileBoardStore 首次构建索引。非阻塞。
+
+### P1-2：result.json 双 JSON 粘连 ✅ 复测已自愈
+
+**现象**：第一轮 t1 result.json 是两个相邻 JSON（1968B + 1184B）粘连。
+
+**根因**：opencode-exec 输出被污染，两个 phase 结果写入同一文件未追加分隔。
+
+**复测**：R-1/R-2 修复后新 t1 result.json 已是单 JSON（正常），P1-2 未再现。
+
+### P0-4（第二轮实测新增 · 决定性）：opencode-exec 长 prompt 非交互执行卡死
+
+**现象**：R-1/R-2 修复后再跑 5 任务，拆卡 5/5 成功且 plan/phases/scope 全正确，但 Engine 消费 5/5 全部 `exit_code=-15`（SIGTERM 超时）、stdout 空、stderr 仅 `> build · flash` banner；产物文件（`.py`/`.md`）均未创建；临时 prompt 文件残留在 `~/.ccc/prompts/`（finally 异常未 unlink）。
+
+**根因（对照实验证实）**：
+- `opencode run say hi`（短 prompt）→ ✅ exit=0，正常
+- `opencode run '用 Write 工具创建文件 scripts/zz_test_write.py...'`（短·纯创建）→ ✅ exit=0，文件创建成功（21B）
+- **但 Engine 任务的 prompt >200 字符 → 走 `--file` 附件 + `message="Read attached file and execute the instructions inside."`（opencode-exec L219-225）** → 复杂验收驱动 prompt 在非交互一次性模式无法完成多轮工具调用（Read plan→解析→Write→git commit→跑测试）→ 卡死 → 超时 `-15`。
+
+**影响**：所有 fallback 拆卡的 work 卡（长 prompt）进 Engine 后被 opencode-exec 超时杀掉 → 产物不落地 → `acceptance_cmd_failed` → abnormal。这是**执行器级瓶颈**，不是 stage5 拆卡/验收格式问题（后者 R-1/R-2 已修好）。
+
+**修复**：见 R-6（opencode-exec 模型/执行策略，属独立工程，需单独评估）。
+
+### 5 任务两轮执行对比（实测）
+
+| 轮次 | 拆卡 | plan/phases | Engine 消费 | 产物 | 根因 |
+|------|------|-------------|-------------|------|------|
+| 1（旧方案） | 5/5 ok | scope=[] 占位 | 5/5 abnormal | 无 | P0-1+R-1缺失 + P0-2 |
+| 2（R-1/R-2 后） | 5/5 ok | scope写实 + `## 验收` | 5/5 abnormal(exit -15) | 无 | **P0-4 执行器超时** |
+
+**结论**：stage5 拆卡闭环链路（方案→提交→落盘→拆卡→附 skill_ref→plan/phases）已完全验证通过。剩余阻塞在 **opencode-exec 对长任务 prompt 的非交互执行稳定性**，属 Engine 执行层改造，非本 plan 范围。
+
+---
+
+## 十三、总修复计划（R-*）
+
+### R-1：验收节 SDP 一统 —— 方案文件必须用 `## 验收` 二级标题（先决）✅ 已实现
+
+**目标**：让所有新方案文件与 `_intent_probe` / `phase_lint` 的验收解析对齐。
+
+**改动**：
+- ✅ 更新 5 个方案文件 t1-t5：`# 验收意图` → `## 验收`（已验证 `validate_plan_acceptance == True`）。
+- 待补：`docs/intent-proposals/intent-proposal-sop.md` 写明强制 `## 验收` 二级标题。
+- 待补：`ccc-submit-proposal.py` 提交前用 `phase_lint.validate_plan_acceptance` 预检，不合格直接 4xx 阻止坏方案。
+
+**验证**：✅ `validate_plan_acceptance(t-plan) == True`（5/5 通过）。
+
+### R-2：fallback 拆卡产物确定性 —— phases scope/subtasks 写实 ✅ 已实现
+
+**目标**：fallback 不依赖 OpenCode 自由发挥，产物路径确定。
+
+**改动**：
+- ✅ `_fallback_create_work` 从方案 `# 范围` 解析目标文件路径 → 写入 phases 的 `scope` 数组（新增 `_extract_scope_from_md` + `_extract_paths_from_acceptance` 兜底）。
+- ✅ phases `subtasks` 改为 `{ "1.1": "created <file>" }` 语义。
+- ✅ 方案 body 直接作 plan_md，天然含 `## 验收` 节。
+
+**实测效果**（R-2 后重跑 t1）：scope=`['scripts/stage5_t1_util.py']`，subtasks=`{'1.1': 'created scripts/stage5_t1_util.py'}`，plan 含 `## 验收`。
+
+**验证**：R-2 拆卡层 5/5 成功（含埋点）。**但产物仍未创建** → 见新根因 P0-4（执行器瓶颈，非拆卡/验收问题）。
+
+### R-3：script-seed 短路径尊重验收目标路径
+
+**目标**：script_seed 落地目标文件而非固定 paper_intent_probe.py。
+
+**改动**：script_seed skill 的落地路径从 work 卡 `scope` / plan 验收中取（fallback 已写 scope）。
+
+**验证**：t2 重跑后 `stage5_t2_probe.py` 存在。
+
+### R-4：埋点补齐 —— 验收阶段耗时与失败码
+
+**目标**：让 verify 器能区分「验收未提取」vs「验收命令执行失败」vs「产物缺失」。
+
+**改动**：
+- `_acceptance_gate.check_acceptance` 返回结果里补 `extracted_section_heading`（用哪个标题提取的）。
+- verify 器 `ccc-stage5-verify.py` 增加验收段诊断（读 `.ccc/pids/<tid>.acceptance_fails`）。
+
+### R-5：opencode-exec result.json 防粘连 ✅ 复测已无
+
+**目标**：result.json 单 JSON 输出。第二轮实测未再现，可视为自愈。
+
+### R-6（新增 · 阻塞项）：opencode-exec 长 prompt 非交互执行策略（独立工程）
+
+**目标**：让 Engine 能稳定执行含 plan 的复杂任务，避免 `--file + Read attached file` 模式卡死。
+
+**改动方向（需独立评估，不在本 plan 范围内）**：
+- 分叉 prompt 策略：把「任务说明（短）」放 positionals，plan/验收（长）作为 `--file` 附件，message 不再写 "Read attached file" 而是直接给可执行短指令。
+- 或加 model_kind 白名单：验证 `build · flash` 对长 prompt 的支持，必要时 fallback 到强模型。
+- opencode-exec 临时 prompt 文件 finally 必 unlink（防残留泄漏）。
+
+### 已完成项（commit 112d488）
+
+- ✅ R-1：5 个方案文件 `## 验收` 格式（`validate_plan_acceptance` 5/5 通过）
+- ✅ R-2：fallback phases scope 写实 + subtasks（复测 t1 scope 正确 + plan 含 `## 验收`）
+- ✅ 埋点：splitter 阶段耗时 + verify 汇总器 `ccc-stage5-verify.py`
+- ✅ 测试：`pytest tests/` 相关用例全绿
+
+### 修复优先级与重跑验证
+
+```
+R-1 (验收节格式) ✅ → R-2 (产物确定性) ✅ → 拆卡链路已验证 5/5 ok
+剩余阻塞：R-6 (opencode-exec 执行器策略) — 独立工程，覆盖后重跑才可达 released
+R-3/R-4 视 R-6 解决后验证
+```
+
+**验收标准（当前状态）**：拆卡层 5/5 success（侧链已通）；产物/Engine 消费依赖 R-6。
