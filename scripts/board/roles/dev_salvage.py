@@ -5,6 +5,8 @@ Extracted from board.roles.dev (min-pipeline v1.2 slim).
 from __future__ import annotations
 
 import json
+import os
+import signal
 from pathlib import Path
 
 from _config import get_logger
