@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.66.0] — 2026-07-31
+
+### Added
+- **最小可跑通收口**：`CCC_MIN_PIPELINE` 默认开；薄门禁长意图；verify→done 跳过 kb LLM；L3b repair-queue 默认关。
+- 发布说明：[`docs/releases/v0.66.0.md`](docs/releases/v0.66.0.md) · 金路径：[`docs/briefs/2026-07-31-min-pipeline-golden.md`](docs/briefs/2026-07-31-min-pipeline-golden.md)
+
+### Fixed
+- **salvage 验收失败空转**：`acceptance_failed` 上抛 Engine `acceptance_fail_budget`（reopen≤2 → abnormal）。
+
+### Changed
+- `ccc-engine.py` 胶水 &lt;400 行（observability/health/heartbeat/cli 等迁出）。
+
+---
+
 ## [v0.65.4] — 2026-07-30
 
 ### Fixed

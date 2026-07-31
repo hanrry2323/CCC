@@ -58,6 +58,19 @@ def _task(**overrides: str) -> dict:
 class TestRunVerifiedKbGate:
     """_run_verified_kb_gate: verified→kb→released, idempotent, no crash on error."""
 
+    @pytest.fixture(autouse=True)
+    def _legacy_kb_llm_path(self, monkeypatch):
+        """这些用例锁定史径 kb LLM；默认 min-pipeline 会快通跳过 kb_role。"""
+        import importlib
+
+        from engine import min_pipeline as mp
+
+        monkeypatch.setenv("CCC_MIN_PIPELINE", "0")
+        importlib.reload(mp)
+        yield
+        monkeypatch.setenv("CCC_MIN_PIPELINE", "1")
+        importlib.reload(mp)
+
     def test_empty_verified_is_noop(self, tmp_path: Path):
         """No verified tasks → gate returns after early-exit, kb_role not called."""
         from engine.gates import _run_verified_kb_gate

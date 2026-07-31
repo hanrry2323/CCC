@@ -1,7 +1,7 @@
 # CCC Startup Brief
 
 > **读完 = 知道 CCC 怎么用。** 其他文件按需 grep。目标：启动 token 可控。  
-> **版本**：`VERSION`（**v0.65.0**）  
+> **版本**：`VERSION`（**v0.66.0**）  
 > **边界**：[`docs/product/dialogue-orchestration-boundary.md`](docs/product/dialogue-orchestration-boundary.md)  
 > **北星**：[`docs/product/hub-shell-roadmap.md`](docs/product/hub-shell-roadmap.md) · **索引**：[`docs/INDEX.md`](docs/INDEX.md)  
 > **正式启用**：[`docs/ops/GO-LIVE.md`](docs/ops/GO-LIVE.md)
