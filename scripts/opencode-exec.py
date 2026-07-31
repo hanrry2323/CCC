@@ -72,32 +72,34 @@ def build_opencode_run_cmd(
 
     - ``cwd`` **必填**（缺则 raise）
     - ``--dir``：会话/工树绑定到目标仓
-    - ``--pure``：默认开，禁用全局 MCP filesystem（根为 ~/program）跨仓写入
+    - ``--auto``：R-13 默认开，自动批准写文件操作（否则非交互模式无法创建产物）
+    - ``--pure``：R-13 默认关（opencode 1.17.13 --pure 导致 exit 255 无输出）
+      如需启用设 CCC_OPENCODE_PURE=1
     """
     from _workspace_isolation import require_cwd
 
     ws = require_cwd(cwd)
     if pure is None:
-        pure = os.environ.get("CCC_OPENCODE_PURE", "1") not in (
-            "0",
-            "false",
-            "False",
-            "no",
+        pure = os.environ.get("CCC_OPENCODE_PURE", "0") in (
+            "1",
+            "true",
+            "True",
+            "yes",
         )
     cmd: list[str] = [opencode_bin, "run", "--model", model]
     if pure:
         cmd.append("--pure")
+    # R-13: --auto 必须开启，否则非交互模式下 opencode 无法批准写文件操作
+    auto = os.environ.get("CCC_OPENCODE_AUTO", "1") not in (
+        "0",
+        "false",
+        "False",
+        "no",
+    )
+    if auto:
+        cmd.append("--auto")
     cmd.extend(["--dir", str(ws)])
-    if prompt_file:
-        cmd.extend(
-            [
-                message or "Read attached file and execute the instructions inside.",
-                "--file",
-                str(prompt_file),
-            ]
-        )
-    else:
-        cmd.append(message if message else "execute")
+    cmd.append(message if message else "execute")
     return cmd
 
 
@@ -236,42 +238,17 @@ async def run_opencode(
         prompt_text = prompt_text.strip()
         if cfg is None:
             cfg = Config()
-        if len(prompt_text) > 200:
-            # R-3: 长 prompt 执行策略 — 避免 "Read attached file" 非交互卡死
-            # 旧版 message="Read attached file and execute the instructions inside."
-            # 在非交互一次性模式下无法完成多轮工具调用 → 卡死 → 超时
-            # 新版：提取任务核心动作作为短可执行 message，plan 全文作 --file 附件
-            # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
-            # Bug 1+3 修：临时文件必须在 run 完 unlink（finally 兜底）
-            # v0.24.7 (A24-12): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600
-            import tempfile
-
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                suffix=".md", prefix="opencode-prompt-", dir=str(PROMPT_DIR)
-            )
-            try:
-                os.write(tmp_fd, prompt_text.encode("utf-8"))
-            finally:
-                os.close(tmp_fd)
-            os.chmod(tmp_path, 0o600)
-            # R-3: 提取核心动作作为短可执行 message
-            short_action = _extract_core_action(prompt_text)
-            # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
-            cmd = build_opencode_run_cmd(
-                opencode_bin,
-                model,
-                message=short_action,
-                prompt_file=tmp_path,
-                cwd=cwd,
-            )
-        else:
-            short_prompt = prompt_text if prompt_text else "execute"
-            cmd = build_opencode_run_cmd(
-                opencode_bin,
-                model,
-                message=short_prompt,
-                cwd=cwd,
-            )
+        # R-13: 直接用完整 prompt 作为 message（不截断、不用 --file）
+        # R-3 的 --file 策略失败：opencode 1.17 的 --file 是"附件"，模型不会
+        # 自动读取附件内容作为指令，导致 short_action message 太短模型不知道做什么
+        # 完整 prompt 3-5KB 远低于 macOS MAX_ARG_STRLEN(256KB)，可直接作 positional
+        full_prompt = prompt_text if prompt_text else "execute"
+        cmd = build_opencode_run_cmd(
+            opencode_bin,
+            model,
+            message=full_prompt,
+            cwd=cwd,
+        )
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import signal as _sig
