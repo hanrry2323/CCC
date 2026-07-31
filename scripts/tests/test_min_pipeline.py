@@ -34,7 +34,7 @@ def test_min_pipeline_legacy_l3b(monkeypatch):
 
 
 def test_semantic_aliases():
-    from engine.min_pipeline import column_of, semantic_of
+    from engine.min_pipeline import column_of, semantic_counts, semantic_of
 
     assert column_of("queued") == "backlog"
     assert column_of("verify") == "testing"
@@ -42,6 +42,11 @@ def test_semantic_aliases():
     assert column_of("blocked") == "abnormal"
     assert semantic_of("testing") == "verify"
     assert semantic_of("in_progress") == "code"
+    assert semantic_of("verified") == "verify"
+    sc = semantic_counts({"testing": 2, "verified": 1, "released": 3, "abnormal": 1})
+    assert sc["verify"] == 3
+    assert sc["done"] == 3
+    assert sc["blocked"] == 1
 
 
 def test_long_intent_transfer_green(monkeypatch):

@@ -58,3 +58,22 @@ def semantic_of(column: str) -> str:
 
 def column_of(semantic: str) -> str:
     return SEMANTIC_TO_COLUMN.get(str(semantic or "").strip(), str(semantic or ""))
+
+
+def semantic_counts(column_counts: dict[str, int]) -> dict[str, int]:
+    """Map disk column counts → product five-state counts (for Hub/Desktop)."""
+    out: dict[str, int] = {
+        "queued": 0,
+        "plan": 0,
+        "code": 0,
+        "verify": 0,
+        "done": 0,
+        "blocked": 0,
+    }
+    for col, n in (column_counts or {}).items():
+        sem = semantic_of(str(col))
+        if sem in out:
+            out[sem] += int(n or 0)
+        elif str(col) in out:
+            out[str(col)] += int(n or 0)
+    return out

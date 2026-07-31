@@ -236,7 +236,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                 if not did_something:
                     break
 
-            # 每 tick 抽干 testing（短路径优先、限张）；避免每 60s 才审 → gate_wall 空等
+            # 每 tick：testing → verify 一扇门（内部可复用 reviewer/tester）
             for ws in workspaces:
                 try:
                     _activate_workspace(ws)
@@ -244,9 +244,9 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if _store.list_tasks("testing"):
                         _run_testing_tasks_gate(ws)
                 except Exception as exc:
-                    engine_log(f"[testing-gate] {_ws_label(ws)}: {exc}")
+                    engine_log(f"[verify-gate] {_ws_label(ws)}: {exc}")
 
-            # 每 tick：verified → kb → released（幂等，不依赖 idle / %6 窗口）
+            # 每 tick：verified → done（min-pipeline kb 快通）
             for ws in workspaces:
                 try:
                     _activate_workspace(ws)
@@ -254,7 +254,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if _store2.list_tasks("verified"):
                         _run_verified_kb_gate(ws)
                 except Exception as exc:
-                    engine_log(f"[kb-gate] {_ws_label(ws)}: {exc}")
+                    engine_log(f"[verify→done] {_ws_label(ws)}: {exc}")
 
             # 每 6 轮（~60s）跑一次 degraded 检测 + stale check + 统计聚合
             if iteration % 6 == 0:
@@ -368,7 +368,7 @@ def engine_loop(workspaces: list[Path]) -> None:
                     if test_tasks:
                         label = _ws_label(ws)
                         engine_log(
-                            f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 reviewer+tester 门禁（限预算）"
+                            f"[{label}] idle: testing 列有 {len(test_tasks)} 个任务，跑 verify 门禁（限预算）"
                         )
                         _run_testing_tasks_gate(ws)
                     if _store2.list_tasks("verified"):

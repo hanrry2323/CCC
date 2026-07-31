@@ -461,7 +461,10 @@ def _run_reviewer_tester_gate(ws: Path, tid: str) -> bool:
 
 
 def run_verify_gate(ws: Path, tid: str) -> bool:
-    """最小可跑通产品名：等同 _run_reviewer_tester_gate。"""
+    """最小可跑通唯一验收入口（verify → done|blocked）。
+
+    内部复用 reviewer 副闸 + tester 探针 + pytest；产品叙事不再强调双跳。
+    """
     return _run_reviewer_tester_gate(ws, tid)
 
 def _run_reviewer_tester_gate_unlocked(ws: Path, tid: str) -> bool:
@@ -944,10 +947,10 @@ def _run_reviewer_tester_gate_budgeted(
 
 
 def _run_testing_tasks_gate(ws: Path) -> None:
-    """对 testing 列跑 reviewer/tester 门禁（限张 + 限时，产线提效 P4）。
+    """verify 一扇门：扫 testing 列（限张 + 限时）。
 
+    内部复用 reviewer 副闸 + tester；min-pipeline 日志用 verify 叙事。
     单次门禁也受墙钟约束：超时杀 pytest/claude 进程树，留 testing，下一 tick 续。
-    短路径优先 + 每 tick 多张，避免干净板上 gate_wall≈200s 的空等（gate-clean 基线）。
     """
     with workspace_scope(ws):
         return _run_testing_tasks_gate_unlocked(ws)
@@ -958,22 +961,28 @@ def _run_testing_tasks_gate_unlocked(ws: Path) -> None:
     max_n, budget_s = _testing_gate_budget()
     deadline = time.monotonic() + budget_s
     done_n = 0
+    try:
+        from engine.min_pipeline import enabled as _min_on
+    except Exception:
+        def _min_on() -> bool:
+            return True
+    gate_tag = "verify" if _min_on() else "testing"
     for task in _ordered_testing_tasks(ws, store):
         if done_n >= max_n:
             _engine_log(
-                f"[{label}] testing 门禁达每 tick 上限 {max_n}，余卡下 tick"
+                f"[{label}] {gate_tag} 门禁达每 tick 上限 {max_n}，余卡下 tick"
             )
             break
         remaining = deadline - time.monotonic()
         if remaining <= 5.0:
             _engine_log(
-                f"[{label}] testing 门禁墙钟预算 {budget_s:.0f}s 耗尽，余卡下 tick"
+                f"[{label}] {gate_tag} 门禁墙钟预算 {budget_s:.0f}s 耗尽，余卡下 tick"
             )
             break
         tid = task["id"]
         card_timeout = _per_card_gate_timeout(ws, task, remaining)
         _engine_log(
-            f"[{label}] testing 门禁: {tid} "
+            f"[{label}] {gate_tag} 门禁: {tid} "
             f"({done_n + 1}/{max_n}, budget={remaining:.0f}s, "
             f"card={card_timeout:.0f}s, short={_is_short_gate_task(ws, task)})"
         )

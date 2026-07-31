@@ -1,28 +1,30 @@
-"""board.roles.verify — 最小可跑通单一验收入口（verify）。
+"""board.roles.verify — 最小可跑通唯一验收入口（verify）。
 
-产品语义：plan→code→**verify**→done。
-实现复用 reviewer（Claude 副闸）+ tester（探针）+ engine pytest；
-对外叙事不再强调双跳。权威：loop-engineer-authority「最小可跑通 v1」。
+产品语义：plan → code → **verify** → done|blocked。
+实现可复用 reviewer（Claude 副闸）+ tester（探针）+ engine pytest；
+对外日志与 mind 文案只认 verify 一扇门，不再主推「先 reviewer 再 tester 再 kb」。
+
+权威：docs/product/loop-engineer-authority.md「最小可跑通 v1」。
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from board.roles.reviewer import reviewer_role
-from board.roles.tester import tester_role
-
 
 def verify_role() -> None:
-    """兼容角色调度名：先 reviewer 再 tester（与门禁顺序对齐由 gates 统一）。"""
+    """兼容角色名：委托 engine 统一门禁顺序（勿在角色层另开双跳叙事）。"""
+    from board.roles.reviewer import reviewer_role
+    from board.roles.tester import tester_role
+
     reviewer_role()
     tester_role()
 
 
 def run_verify_gate(ws: Path, tid: str) -> bool:
-    """单一 verify 入口 → 委托 engine.gates reviewer+tester 门禁。"""
-    from engine.gates import _run_reviewer_tester_gate
+    """唯一 verify 入口 → engine.gates.run_verify_gate。"""
+    from engine.gates import run_verify_gate as _gate
 
-    return _run_reviewer_tester_gate(ws, tid)
+    return _gate(ws, tid)
 
 
 __all__ = ["verify_role", "run_verify_gate"]
