@@ -103,6 +103,9 @@ def test_event_points():
         Path("/Users/apple/program/CCC/scripts/engine/_loop_impl.py").read_text(
             encoding="utf-8"
         ),
+        Path("/Users/apple/program/CCC/scripts/engine/_cli_impl.py").read_text(
+            encoding="utf-8"
+        ),
     ]
     content = "\n".join(sources)
 
@@ -133,11 +136,15 @@ def test_event_points():
 
 def test_atexit_registration():
     """测试 atexit 注册"""
-    with open("/Users/apple/program/CCC/scripts/ccc-engine.py") as f:
-        content = f.read()
+    content = (
+        Path("/Users/apple/program/CCC/scripts/ccc-engine.py").read_text(encoding="utf-8")
+        + "\n"
+        + Path("/Users/apple/program/CCC/scripts/engine/_cli_impl.py").read_text(
+            encoding="utf-8"
+        )
+    )
 
     if "atexit.register" in content:
-        # Check it's in main function (should be before signal registration)
         if "def _final_restart_log" in content:
             print("✓ atexit 注册函数 _final_restart_log 定义存在")
         else:
