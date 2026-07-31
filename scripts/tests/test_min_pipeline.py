@@ -138,7 +138,7 @@ def test_kb_fast_path_skips_kb_role(tmp_path, monkeypatch):
     monkeypatch.delenv("CCC_MIN_PIPELINE", raising=False)
     from _board_store import FileBoardStore
     from engine.gates import _run_verified_kb_gate
-    import engine.gates as gates_mod
+    import engine.verify_gate as gates_mod
 
     ws = tmp_path / "app"
     for col in ("verified", "released", "testing", "planned", "backlog", "in_progress"):

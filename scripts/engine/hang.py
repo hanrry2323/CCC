@@ -14,6 +14,14 @@ from _executor import _sanitized_env
 from _utils import now_iso
 from board.phase import _current_running_phase
 from board.roles.dev import dev_role_relaunch, try_complete_if_gates_satisfied
+from engine.hang_support import (
+    _HANG_COUNTER_FILE,  # noqa: F401 — re-export for ccc-engine
+    clear_hung_marker as _clear_hung_marker_impl,
+    hang_retry_counter,
+    hung_reason as _hung_reason_impl,
+    load_hang_retry_counter as _load_hang_retry_counter_impl,
+    save_hang_retry_counter as _save_hang_retry_counter_impl,
+)
 from engine.workspace import (
     _activate_workspace,
     _find_task_column,
@@ -26,8 +34,8 @@ _log = get_logger("engine")
 cfg = Config()
 
 _MAX_HANG_RETRY = 1
-_hang_retry_counter: dict[str, int] = {}
-_HANG_COUNTER_FILE = Path.home() / ".ccc" / "engine-hang-retries.json"
+# Shared mutable counter (hang_support owns storage)
+_hang_retry_counter = hang_retry_counter()
 _HANG_CHECK_INTERVAL_SEC = 120
 _HANG_BUSY_MAX_SEC = 3600
 _MEM_KILL_MB = 1500
@@ -155,32 +163,14 @@ def _engine_log(msg: str, *args: str) -> None:
 
 
 def _load_hang_retry_counter() -> None:
-    """F-ARCH-01: 从磁盘恢复 hang 重试计数。"""
+    _load_hang_retry_counter_impl()
+    # keep module-level alias pointing at shared dict
     global _hang_retry_counter
-    try:
-        if _HANG_COUNTER_FILE.is_file():
-            data = json.loads(_HANG_COUNTER_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                _hang_retry_counter = {str(k): int(v) for k, v in data.items()}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        _hang_retry_counter = {}
+    _hang_retry_counter = hang_retry_counter()
 
 
 def _save_hang_retry_counter() -> None:
-    """F-ARCH-01: 持久化 hang 重试计数。"""
-    try:
-        _HANG_COUNTER_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _HANG_COUNTER_FILE.write_text(
-            json.dumps(_hang_retry_counter, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError as exc:
-        # 修复 stability-audit-2026-07-24 类别②：hang 重试计数写失败不再静默
-        import logging
-
-        logging.getLogger("ccc").warning(
-            "[hang] counter write failed for %s: %s", _HANG_COUNTER_FILE, exc
-        )
+    _save_hang_retry_counter_impl()
 
 
 def _check_and_mark_hung(ws: Path, active_tasks: dict[str, dict]) -> None:
@@ -430,10 +420,11 @@ def kill_orphan_opencode(ws: Path, *, max_age_sec: int = 600) -> list[int]:
 
 
 def _clear_hung_marker(hung_path: Path, label: str) -> None:
-    try:
-        hung_path.unlink()
-    except OSError as exc:
-        _engine_log(f"[{label}] hang-auto: 清理 {hung_path.name} 失败: {exc}")
+    _clear_hung_marker_impl(hung_path, label, log=_engine_log)
+
+
+def _hung_reason(hung_path: Path) -> str:
+    return _hung_reason_impl(hung_path)
 
 
 def _reap_orphans(ws: Path, label: str, tid: str, *, tag: str) -> None:
@@ -496,16 +487,6 @@ def _force_release_hang_slot(
         _save_hang_retry_counter()
     release_dev_slot(active_tasks, ws, tid, reap=True)
     active_tasks.pop(key, None)
-
-
-def _hung_reason(hung_path: Path) -> str:
-    try:
-        data = json.loads(hung_path.read_text(encoding="utf-8", errors="replace"))
-        if isinstance(data, dict):
-            return str(data.get("reason") or "").strip()
-    except (OSError, json.JSONDecodeError, TypeError):
-        pass  # intentional — hung reason file missing/corrupt → empty
-    return ""
 
 
 def _opencode_still_alive(ws: Path) -> list[tuple[int, int]]:

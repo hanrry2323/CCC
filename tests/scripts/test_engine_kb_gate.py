@@ -78,7 +78,7 @@ class TestRunVerifiedKbGate:
         ws = _make_ws(tmp_path)
         FileBoardStore(ws)  # ensure dirs exist
 
-        with patch("engine.gates.kb_role") as mock_kb:
+        with patch("engine.verify_gate.kb_role") as mock_kb:
             _run_verified_kb_gate(ws)
 
         mock_kb.assert_not_called()
@@ -95,8 +95,8 @@ class TestRunVerifiedKbGate:
         )
 
         with (
-            patch("engine.gates.kb_role", return_value={"moved": ["kb-t1"]}) as mock_kb,
-            patch("engine.gates._refresh_parent_epic") as mock_refresh,
+            patch("engine.verify_gate.kb_role", return_value={"moved": ["kb-t1"]}) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic") as mock_refresh,
         ):
             _run_verified_kb_gate(ws)
 
@@ -116,8 +116,8 @@ class TestRunVerifiedKbGate:
             )
 
         with (
-            patch("engine.gates.kb_role", return_value={"moved": ["kb-t0", "kb-t2"]}) as mock_kb,
-            patch("engine.gates._refresh_parent_epic") as mock_refresh,
+            patch("engine.verify_gate.kb_role", return_value={"moved": ["kb-t0", "kb-t2"]}) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic") as mock_refresh,
         ):
             _run_verified_kb_gate(ws)
 
@@ -140,8 +140,8 @@ class TestRunVerifiedKbGate:
         )
 
         with (
-            patch("engine.gates.kb_role", side_effect=ValueError("kb oops")) as mock_kb,
-            patch("engine.gates._refresh_parent_epic") as mock_refresh,
+            patch("engine.verify_gate.kb_role", side_effect=ValueError("kb oops")) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic") as mock_refresh,
         ):
             # Should not raise
             _run_verified_kb_gate(ws)
@@ -165,8 +165,8 @@ class TestRunVerifiedKbGate:
         )
 
         with (
-            patch("engine.gates.kb_role", return_value=None) as mock_kb,
-            patch("engine.gates._refresh_parent_epic") as mock_refresh,
+            patch("engine.verify_gate.kb_role", return_value=None) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic") as mock_refresh,
         ):
             _run_verified_kb_gate(ws)
 
@@ -185,8 +185,8 @@ class TestRunVerifiedKbGate:
         )
 
         with (
-            patch("engine.gates.kb_role", return_value={"moved": []}) as mock_kb,
-            patch("engine.gates._refresh_parent_epic") as mock_refresh,
+            patch("engine.verify_gate.kb_role", return_value={"moved": []}) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic") as mock_refresh,
         ):
             _run_verified_kb_gate(ws)
 
@@ -219,14 +219,14 @@ class TestRunVerifiedKbGate:
                     moved_ids.append(tid)
             return {"moved": moved_ids}
 
-        with patch("engine.gates.kb_role", side_effect=_kb_role_side) as mock_kb:
+        with patch("engine.verify_gate.kb_role", side_effect=_kb_role_side) as mock_kb:
             _run_verified_kb_gate(ws)
 
         assert mock_kb.call_count == 1
         assert "kb-idemp" in moved_ids
 
         # Second call: no verified tasks remain → no-op
-        with patch("engine.gates.kb_role") as mock_kb2:
+        with patch("engine.verify_gate.kb_role") as mock_kb2:
             _run_verified_kb_gate(ws)
 
         mock_kb2.assert_not_called()
@@ -247,8 +247,8 @@ class TestRunVerifiedKbGate:
         )
 
         with (
-            patch("engine.gates.kb_role", return_value={"moved": ["kb-activate"]}) as mock_kb,
-            patch("engine.gates._refresh_parent_epic"),
+            patch("engine.verify_gate.kb_role", return_value={"moved": ["kb-activate"]}) as mock_kb,
+            patch("engine.verify_gate.refresh_parent_epic"),
         ):
             _run_verified_kb_gate(ws)
 
@@ -272,8 +272,8 @@ class TestRunVerifiedKbGate:
         # but we can check that the gate runs to completion without error
         # and that the store is still usable afterwards.
         with (
-            patch("engine.gates.kb_role", return_value={"moved": ["kb-index"]}),
-            patch("engine.gates._refresh_parent_epic"),
+            patch("engine.verify_gate.kb_role", return_value={"moved": ["kb-index"]}),
+            patch("engine.verify_gate.refresh_parent_epic"),
         ):
             _run_verified_kb_gate(ws)
 

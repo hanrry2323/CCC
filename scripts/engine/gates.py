@@ -10,7 +10,8 @@ from pathlib import Path
 from _config import Config, get_logger
 from _executor import _sanitized_env
 from board.phase import _current_running_phase, _load_phases
-from board.roles import kb_role, reviewer_role, tester_role
+from board.roles import reviewer_role, tester_role
+from board.roles import kb_role  # re-export for tests patching engine.gates.kb_role
 from engine.workspace import (
     workspace_scope,
     _ensure_task_in_testing,
@@ -718,85 +719,26 @@ def _run_reviewer_tester_gate_unlocked(ws: Path, tid: str) -> bool:
 
 
 def _refresh_parent_epic(ws: Path, work_tid: str) -> None:
-    """子卡进入 verified/released 后立刻刷新 parent epic 五态。"""
-    try:
-        store = _get_store(ws)
-        _col, task = store.find_task(work_tid)
-        parent = (task or {}).get("parent_id")
-        if not parent:
-            from _board_store import normalize_task_view as _ntv
+    from engine.verify_gate import refresh_parent_epic
 
-            task = _ntv(task or {"id": work_tid}, column=_col or "testing")
-            parent = task.get("parent_id")
-        if not parent:
-            return
-        from _product_fanout import refresh_epic_lifecycle
-
-        new = refresh_epic_lifecycle(store, str(parent))
-        if new:
-            _engine_log(f"[{_ws_label(ws)}] epic {parent} refresh → {new}")
-    except Exception as exc:
-        _engine_log(f"[{_ws_label(ws)}] refresh parent epic for {work_tid}: {exc}")
+    return refresh_parent_epic(ws, work_tid)
 
 
 def _run_verified_kb_gate(ws: Path) -> None:
     """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。
 
     最小可跑通：跳过 kb LLM，verified→released 快通（语义 done）。
+    实现迁至 ``engine.verify_gate``。
     """
-    with workspace_scope(ws):
-        return _run_verified_kb_gate_unlocked(ws)
+    from engine.verify_gate import run_verified_kb_gate
+
+    return run_verified_kb_gate(ws)
+
 
 def _run_verified_kb_gate_unlocked(ws: Path) -> None:
-    eng = _eng()
-    store = _get_store(ws)
-    verified = store.list_tasks("verified")
-    if not verified:
-        return
-    label = _ws_label(ws)
+    from engine.verify_gate import run_verified_kb_gate_unlocked
 
-    try:
-        from engine.min_pipeline import enabled as _min_on
-    except Exception:
-        def _min_on() -> bool:
-            return True
-
-    if _min_on():
-        _engine_log(
-            f"[{label}] [min-pipeline] verify→done skip kb LLM "
-            f"({len(verified)} verified)"
-        )
-        for task in verified:
-            tid = str(task.get("id") or "")
-            if not tid:
-                continue
-            ok = store.move_task(tid, "verified", "released")
-            if ok:
-                if eng:
-                    try:
-                        eng._log_stats(
-                            ws, "move", tid, from_col="verified", to_col="released",
-                            path="min_pipeline_kb_fast",
-                        )
-                    except Exception as exc:
-                        _log.debug("kb-fast stats: %s", exc)
-                _engine_log(f"[{label}] {tid} ✓ min-pipeline → released")
-                _refresh_parent_epic(ws, tid)
-        store.update_index()
-        return
-
-    _engine_log(f"[{label}] verified 列有 {len(verified)} 个任务，跑 kb_role")
-    try:
-        result = kb_role()
-        moved = (result or {}).get("moved") or []
-        for tid in moved:
-            if eng:
-                eng._log_stats(ws, "move", tid, from_col="verified", to_col="released")
-            _engine_log(f"[{label}] {tid} ✓ kb → released")
-            _refresh_parent_epic(ws, tid)
-        store.update_index()
-    except Exception as exc:
-        _engine_log(f"[{label}] kb_role 异常: {exc}")
+    return run_verified_kb_gate_unlocked(ws)
 
 
 def _testing_gate_budget() -> tuple[int, float]:
