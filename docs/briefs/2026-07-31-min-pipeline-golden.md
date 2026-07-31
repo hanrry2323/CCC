@@ -33,6 +33,35 @@
 
 > v1.2 复验 tid 写在下方「v1.2 复验」节（步骤 5）。
 
+## v1.2 复验（2017 · 无人工改探针）
+
+| 项 | 值 |
+|----|-----|
+| HEAD | `5b454f34`+（fanout 保真已合入） |
+| Engine PID | `38820` |
+
+### FAIL（探针保真）
+
+| 项 | 值 |
+|----|-----|
+| epic | `demo-v12-failpath-assert-8423-468a5777` |
+| child | `…-w1` → **abnormal** |
+| child plan | 仍含 `assert False, 'v12_forced_fail'`（**无** `py_compile` 替换） |
+| budget | `acceptance_fail_budget n=2`；`min-pipeline: skip L3b`；无 repair-queue |
+
+### Happy
+
+| 项 | 值 |
+|----|-----|
+| epic | `demo-v12b-happy-stamp-8792-048d9166` |
+| child | `…-w1` → **released** |
+| DoD | `f3f4ffb` |
+| 日志 | `✓ min-pipeline → released` |
+
+### qb 交接
+
+平台大重构停损：日常长意图可重复 + 探针保真已证。下一开程 → **qb B4.2 实盘 + B5 回测可视化**（[`2026-07-27-qb-domain-ship-gate.md`](2026-07-27-qb-domain-ship-gate.md)）；平台仅修挡 qb 的硬 bug。
+
 ## 2017 实测（ccc-demo）
 
 ### Happy path（长意图 → OpenCode commit → verify → done）

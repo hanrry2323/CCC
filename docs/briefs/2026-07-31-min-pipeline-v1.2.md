@@ -4,11 +4,16 @@
 
 ## 步骤
 
-1. **fanout 探针保真** — epic 强探针不得静默换成 `py_compile`（`_product_fanout`）
-2. **二次瘦身** — `verify_gate` / `hang_support` / `dev_salvage`
-3. **verify 一扇门** — loop/gates 叙事；`semantic_counts`
-4. **权威对齐** — authority + consensus + golden
-5. **2017 复验 + qb 交接** — 无人工改探针 FAIL；开程 → B4.2/B5
+1. **fanout 探针保真** — done（`8b6a59e`）
+2. **二次瘦身** — done（`62e1d41`）
+3. **verify 一扇门** — done（`a965e72`）
+4. **权威对齐** — done（`5b454f3`）
+5. **2017 复验 + qb 交接** — done（见 golden「v1.2 复验」）
+
+## qb 开程（平台停损后）
+
+- 域门：[`2026-07-27-qb-domain-ship-gate.md`](2026-07-27-qb-domain-ship-gate.md)（B4.2 实盘人确认 + B5 回测可视化）
+- 平台：仅修挡 qb 的硬 bug；不重开 L3b/stress/Ops 主路径
 
 ## 不做
 

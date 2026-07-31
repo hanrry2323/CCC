@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.66.1] — 2026-07-31
+
+### Fixed
+- **fanout 探针保真**：epic 强探针不再被静默换成 `py_compile`；异相路径仍隔离。
+
+### Changed
+- verify 一扇门叙事；`verify_gate` / `hang_support` / `dev_salvage` 抽出。
+- 发布：[`docs/releases/v0.66.1.md`](docs/releases/v0.66.1.md)
+
+---
+
 ## [v0.66.0] — 2026-07-31
 
 ### Added
