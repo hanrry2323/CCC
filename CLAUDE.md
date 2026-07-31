@@ -82,8 +82,8 @@ bash scripts/ccc-hub-dev.sh
 ### Loop：Hub → Engine → 阶段能力包 → 执行器
 
 ```
-Hub（定稿→epic）→ backlog(大卡常驻)
-  → Claude product 扇出 → planned(work×N)；epic split_status=planned
+IDE 谈方案 → 写方案文件 → Hub API → 业务仓 .ccc/intent-proposals/ → Claude 后台程序拆卡
+  → backlog(大卡常驻 epic) → planned(work×N)；epic split_status=planned
   → Engine：dev(opencode --dir) → testing → reviewer+tester → verified → kb → released
   → 全部子卡 released → epic split_status=done 沉底
   → 任子卡 abnormal → epic split_status=failed（仍留 backlog，需人处理）

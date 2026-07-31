@@ -23,7 +23,7 @@ def test_gate_rejects_text_task_agent_track():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "hp",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 范围\n- VERSION\n- CHANGELOG.md\n- docs/dev-plan.md\n\n"
             "## 验收\n- grep -q v0.1.0 VERSION\n"
@@ -46,7 +46,7 @@ def test_gate_accepts_long_intent_over_five_files_min_pipeline(monkeypatch):
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "scope": files,
         "plan_md": (
             "# Plan\n\n## 范围\n"
@@ -68,7 +68,7 @@ def test_gate_rejects_scope_over_five_files_legacy(monkeypatch):
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "scope": files,
         "plan_md": (
             "# Plan\n\n## 范围\n"
@@ -91,7 +91,7 @@ def test_gate_accepts_small_code_card():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "medio-0",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "scope": [
             "src/backend/core/src/infra/url_safety.rs",
         ],
@@ -126,7 +126,7 @@ def test_gate_rejects_feasibility_blocked():
             "feasibility": "blocked",
             "feasibility_reason": "范围不清",
             "project_id": "ccc-demo",
-            "executor_intent": "opencode",
+            "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         }
     )
     assert not ok
@@ -141,7 +141,7 @@ def test_gate_accepts_complete():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "ccc-demo",
-        "executor_intent": "python",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 目标\nx\n\n## 验收\n\n"
             "- python3 -m pytest -q tests/\n"
@@ -149,7 +149,7 @@ def test_gate_accepts_complete():
     }
     ok, errors = transfer_gate.validate_transfer_payload(body)
     assert ok, errors
-    assert transfer_gate.resolve_executor_intent(body) == "python"
+    assert transfer_gate.resolve_skill_ref(body) == "skills/write-code"
     desc = transfer_gate.build_epic_description(body)
     assert "Transfer Gate" in desc
     assert "python" in desc
@@ -165,7 +165,7 @@ def test_gate_rejects_existence_only_acceptance():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 目标\nx\n\n## 验收\n\n"
             "- test -f src/strategies/momentum.py\n"
@@ -187,7 +187,7 @@ def test_gate_allows_plan_without_acceptance_section_when_body_probes_strong():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": "# Plan\n\n## 目标\n只写目标没有验收节\n",
     }
     ok, errors = transfer_gate.validate_transfer_payload(body)
@@ -203,7 +203,7 @@ def test_gate_rejects_plan_without_acceptance_when_no_body_probes():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": "# Plan\n\n## 目标\n只写目标没有验收节\n",
     }
     ok, errors = transfer_gate.validate_transfer_payload(body)
@@ -222,7 +222,7 @@ def test_plan_goal_conflict_close_downgrade():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 目标\n"
             "策略仍只发 OPEN；CLOSE 交给上层处理；不追踪仓位；保持 OPEN。\n\n"
@@ -246,7 +246,7 @@ def test_plan_goal_alignment_ok_when_close_in_plan():
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "qb",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 目标\n"
             "在 momentum 内发 CLOSE_LONG/CLOSE_SHORT；抽取共享 cost；算净 edge。\n\n"

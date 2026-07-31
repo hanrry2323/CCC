@@ -65,7 +65,7 @@ def test_long_intent_transfer_green(monkeypatch):
         "pipeline": "dev",
         "feasibility": "ok",
         "project_id": "ccc-demo",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "scope": files,
         "plan_md": (
             "# Plan\n\n## 目标\n总体开发需求\n\n## 范围\n"

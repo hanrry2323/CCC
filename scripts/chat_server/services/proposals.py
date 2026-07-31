@@ -74,7 +74,8 @@ def _proposal_from_path(path: Path, *, status_default: str) -> dict[str, Any]:
         "status": meta.get("status") or status_default,
         "pipeline": meta.get("pipeline") or "dev",
         "complexity": meta.get("complexity") or "small",
-        "executor_intent": meta.get("executor_intent") or "python",
+        "skill_ref": meta.get("skill_ref") or "skills/write-code",
+        "prompt_ref": meta.get("prompt_ref") or "prompts/write-code-prompt",
         "acceptance": [
             a.strip()
             for a in (meta.get("acceptance") or "").split("|")
@@ -102,7 +103,8 @@ def proposal_to_transfer_body(prop: dict[str, Any], *, client_request_id: str) -
         "acceptance": acc,
         "pipeline": prop.get("pipeline") or "dev",
         "feasibility": "ok",
-        "executor_intent": prop.get("executor_intent") or "python",
+        "skill_ref": prop.get("skill_ref") or "skills/write-code",
+        "prompt_ref": prop.get("prompt_ref") or "prompts/write-code-prompt",
         "complexity": prop.get("complexity") or "small",
         "plan_md": plan,
     }

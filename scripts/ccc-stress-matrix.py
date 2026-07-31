@@ -68,7 +68,8 @@ class Scenario:
     acceptance: list[str]
     plan_md: str
     pipeline: str = "dev"
-    executor_intent: str = "opencode"
+    skill_ref: str = "skills/write-code"
+    prompt_ref: str = "prompts/write-code-prompt"
     complexity: str = "small"
     expect_http: int = 200
     expect_error: str | None = None
@@ -163,7 +164,7 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
                 f"## Phase 1\n- `{paper}`\n\n"
                 f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
             ),
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
             notes="P5 path=script_seed",
         ),
@@ -182,7 +183,7 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
                 f"禁止写 paper_intent_probe.py；须 DRY_RUN 可跑\n\n"
                 f"## 验收\n- test -f {probe}\n- DRY_RUN=true python3 {probe}\n"
             ),
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
             notes="P5 path=feature_seed (deterministic; ban paper hijack)",
         ),
@@ -199,7 +200,7 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
                 "## 验收\n- test -d .ccc/board\n"
             ),
             pipeline="ops",
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
             notes="P5 path=board_ops|python",
         ),
@@ -252,7 +253,7 @@ def scenarios_efficiency_v2(app: str, *, stem_prefix: str = "eff23") -> list[Sce
                 f"## Phase 1\n- `{paper}`\n\n"
                 f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
             ),
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
             notes="P5 script_seed stability + duration_s fill",
         ),
@@ -341,7 +342,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
                 f"## Phase 1\n- `{paper}`\n\n"
                 f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
             ),
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
         ),
         Scenario(
@@ -376,7 +377,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
                 "## 验收\n- test -d .ccc/board\n"
             ),
             pipeline="ops",
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
         ),
         Scenario(
@@ -444,7 +445,7 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
                 f"## Phase 1\n- `{paper}`\n\n"
                 f"## 验收\n- test -f {paper}\n- DRY_RUN=true python3 {paper}\n"
             ),
-            executor_intent="python",
+            skill_ref="skills/script-seed", prompt_ref="prompts/write-code-prompt",
             complexity="small",
         ),
     ]
@@ -484,7 +485,8 @@ def transfer(app: str, sc: Scenario) -> dict[str, Any]:
         "pipeline": sc.pipeline,
         "feasibility": "ok",
         "feasibility_reason": "",
-        "executor_intent": sc.executor_intent,
+        "skill_ref": sc.skill_ref,
+        "prompt_ref": sc.prompt_ref,
         "complexity": sc.complexity,
         "bump_version": False,
         "plan_md": sc.plan_md,

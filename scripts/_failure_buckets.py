@@ -98,7 +98,7 @@ def bucket_optimize_hints(bucket: str) -> str:
     if bucket == "acceptance_fail":
         return (
             "acceptance_fail：先修可重放探针（禁空 bullets / existence-only）；"
-            "acceptance 与 scope 同向；executor_intent 与验收匹配；禁散文假绿；"
+            "acceptance 与 scope 同向；skill_ref 与验收匹配；禁散文假绿；"
             "认 ### 验收 与 acceptance-gate 同权威。"
         )
     if bucket == "phase_unresolvable":

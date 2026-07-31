@@ -1,17 +1,17 @@
 # 意图链开发 SOP（标准流程 · 对话 Agent 强制）
 
-> **谁用**：Desktop App Agent（sidecar → loop-code）。  
+> **谁用**：IDE（只谈方案 + 写方案文件）+ Claude 后台程序（拆卡 + 飞轮）。  
 > **权威**：`docs/product/loop-engineer-authority.md` · 身份 `desktop-agent-identity.md`  
-> **配套**：[`intent-card-sop.md`](intent-card-sop.md)（写卡）· [`abnormal-solve-sop.md`](abnormal-solve-sop.md)（失败总闸）· [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md)（耗尽改大卡）· [`align-baseline-sop.md`](align-baseline-sop.md)（可选深扫）  
-> **硬路径**：理解意图 → **自动投意图链** → Engine 开发 → 自动验收 → **失败自愈**（不等用户点按钮 / 复制修板）。
+> **配套**：[`intent-proposal-sop.md`](intent-proposal-sop.md)（方案文件入口）· [`intent-card-sop.md`](intent-card-sop.md)（写卡）· [`abnormal-solve-sop.md`](abnormal-solve-sop.md)（失败总闸）· [`post-exhaust-epic-optimize-sop.md`](post-exhaust-epic-optimize-sop.md)（耗尽改大卡）· [`align-baseline-sop.md`](align-baseline-sop.md)（可选深扫）  
+> **硬路径**：IDE 谈方案 → 写方案文件 → Claude 后台程序拆卡 → gate → Engine 开发 → 自动验收 → **失败自愈**（不等用户点按钮 / 复制修板）。
 
 ---
 
 ## 0. 一句话
 
-人只谈「要做成什么」；你理解后**自动**落成多卡意图链并过 gate；系统 Engine 写码/审测；失败你按证据修或优化新 epic——**禁止**把「请用户点转意图卡 / 复制给对话 / 手动修板」当主路径。
+人只谈「要做成什么」；IDE 写方案文件；Claude 后台程序消费方案后拆卡成多卡意图链并过 gate；系统 Engine 写码/审测；失败由 Claude 后台程序按证据修或优化新 epic——**禁止**把「请用户点转意图卡 / 复制给对话 / 手动修板」当主路径。
 
-**仍禁 invent**（红线 12）：空闲不得无意图自造 backlog；飞轮只推 L1 `planned`。
+**仍禁 invent**（红线 12）：空闲不得无意图自造 backlog；飞轮由 Claude 后台程序执行，只推 L1 `planned`。
 
 ---
 
@@ -21,8 +21,8 @@
 
 | 项 | 硬规则 |
 |----|--------|
-| 触发 | 用户聊定目标 / 说「开发/下达/跑通」/ 对齐基线后确认路线 → **你自动出 `ccc-transfer`** |
-| 入队核验 | 出块后立刻 `hub_board`：backlog 须上涨；**禁止**只凭「已写出契约」宣称已投入 |
+| 触发 | 用户聊定目标 / 说「开发/下达/跑通」/ 对齐基线后确认路线 → **IDE 写方案文件 → Claude 后台程序出 `ccc-transfer`** |
+| 入队核验 | 方案文件提交后立刻 `hub_board`：backlog 须上涨；**禁止**只凭「已写出契约」宣称已投入 |
 | 多卡 | 系列 ≥2 步 → 多块或 `cards:[]`；禁一轮糊一张大卡 |
 | scope | ≤5 文件同顶层；**禁** `.env`/密钥/`control.json`（`sensitive_scope`） |
 | acceptance | 1～2 条本卡强探针（pytest / DRY_RUN / assert）；禁 `test -f`、unit+paper 混装 |
@@ -77,7 +77,7 @@
 | **对齐基线** | 可选深扫 → 系列计划（本轮不出契约） |
 | **扫风险** | 风险清单 + 可否投链 |
 
-已删按钮：刷新看板 / 看仓况 / 转意图卡。看板由你静默 `hub_board`；投链由你自动。
+已删按钮：刷新看板 / 看仓况 / 转意图卡。看板由你静默 `hub_board`；投链由 Claude 后台程序自动。
 
 ---
 

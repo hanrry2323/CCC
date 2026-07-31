@@ -18,7 +18,7 @@
 ## 最小可跑通 v1（硬 · 2026-07-31）
 
 > **状态**：**v1.1 已收口**（`VERSION≥v0.66.0`）· **v1.2** = 探针保真 + 二次瘦身 + verify 一扇门（见 [`../briefs/2026-07-31-min-pipeline-v1.2.md`](../briefs/2026-07-31-min-pipeline-v1.2.md)）。  
-> **目标**：用户在 Desktop 提**总体开发需求**（长意图）→ Agent 定意图门并自动投链 → Engine **无人值守**跑完开发/验收/必要文档。中间不要求 SSH、补卡、当修板工。  
+> **目标**：用户在 Desktop 提**总体开发需求**（长意图）→ IDE 写方案文件 → Claude 后台程序拆卡投链 → Engine **无人值守**跑完开发/验收/必要文档。中间不要求 SSH、补卡、当修板工。
 > **开关**：`CCC_MIN_PIPELINE=1`（**默认开**）；`=0` 回退叠层自愈（L3b repair-queue 等史径）。实现：`scripts/engine/min_pipeline.py`。
 
 ### 五态（产品语义）
@@ -37,7 +37,8 @@
 
 | 槽 | 职责 | 不做 |
 |----|------|------|
-| **Claude**（loop-code / SDK） | 聊透意图；产出/改长 epic；文本轨；plan；verify 副闸 | 不当业务仓写码主执行器 |
+| **Claude**（loop-code / SDK） | 聊透意图；写方案文件；文本轨；verify 副闸 | 不当业务仓写码主执行器；不拆卡（拆卡归 Claude 后台程序） |
+| **Claude 后台程序**（Mac 2017·无记忆） | 消费方案文件 → 从 Skill/Prompt 库组装软链接 → 拆卡产出意图卡链；飞轮推下一 L1 | 不谈方案（归 IDE）；不写业务源码（归 Engine）；无个人记忆 |
 | **OpenCode** | 权威仓代码 + 本卡测 + DoD commit | 不吃纯文案；不做人设闲聊 |
 
 ### 薄门禁（transfer）
@@ -61,7 +62,7 @@ seeded fanout **必须保真** epic 强探针（禁静默换成 `py_compile`）�
 
 ---
 
-## 席位工具定位（硬 · 2026-07-28）
+## 席位工具定位（硬 · 2026-07-28 · 升级 2026-07-31）
 
 同模型（Relay `flash`）**不**改变分工——靠角色约束，不靠比智力。通道：[`dev-channel.md`](dev-channel.md)。
 
@@ -72,6 +73,7 @@ seeded fanout **必须保真** epic 强探针（禁静默换成 `py_compile`）�
 | **OpenCode** | Engine 写码执行器（2017 `--dir`；**qb** 等走 CCC 的仓） | 不当个人主力 IDE；不做人设聊天 |
 | **Codex**（ChatGPT.app） | **知识管理 + 闲聊**（双轨分域记，禁止混成一个项目） | **尽量不开发**：不改 CCC / qb / QuantHive 权威仓 |
 | **CCC Desktop** | 意图门 / 看板 / 下达 / 态势（**qb 与其它挂 CCC 的仓**） | 不当第三套 IDE；不当知识库主入口；**不**管 QuantHive 开发主路径 |
+| **Claude 后台程序**（Mac 2017·无记忆） | 消费方案文件 → 从 Skill/Prompt 库组装软链接 → 拆卡产出意图卡链；飞轮推下一 L1 | 不谈方案（归 IDE）；不写业务源码（归 Engine）；无个人记忆 |
 
 **串台禁令**：
 
@@ -82,6 +84,7 @@ seeded fanout **必须保真** epic 强探针（禁静默换成 `py_compile`）�
 5. **qb** 等业务仓批量写码 → **Hub→Engine→OpenCode**（不是个人 OpenCode IDE）。  
 6. **禁止** Codex / Trae / Zed 当 CCC 合入工具；Claude Code 与 OpenCode 为授权开发工具。  
 7. **禁止**把 qb 与 QuantHive 当同一系统或互为别名；**禁止**用 CCC 编排「接管」QuantHive。
+8. **禁止** Claude 后台程序（拆卡+飞轮）≠ Engine Claude（编排执行器）≠ Desktop 对话 Agent（谈方案）≠ 个人 Claude Code（运维）——四个 Claude 角色不可串台。
 
 主机指令落盘：`~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.config/opencode/AGENTS.md`（M1 与 2017 同文）。
 
@@ -130,7 +133,7 @@ seeded fanout **必须保真** epic 强探针（禁静默换成 `py_compile`）�
 | | **开发工具（Claude/OpenCode）（平台合入）** | **Desktop Agent（对话面 · 全功能）** |
 |--|------------------------|------------------------------|
 | 在哪 | 开发工具（Claude/OpenCode） · 本仓 `/Users/apple/program/CCC` | M1 App · sidecar → loop-code |
-| 职责 | **CCC 平台合入权威**：读/写/跑测/提交/排障 | **全功能开发 Agent**：开发、定任务、优化、读测纠偏、板务；工具全功能全开 |
+| 职责 | **CCC 平台合入权威**：读/写/跑测/提交/排障 | **方案讨论 Agent**：谈方案、写方案文件、读测纠偏、板务；**不拆卡**（拆卡归 Claude 后台程序） |
 | 人格 SSOT | 本仓 `.cursor/rules/` + [`dev-channel.md`](dev-channel.md) | [`desktop-agent-identity.md`](desktop-agent-identity.md) + `hub_voice.py` |
 | 工具门禁 | 无 Desktop discuss allowlist | **默认 engineer = SDK 全开**（不加正向 allowlist、不禁写）；仅显式 discuss=只读；业务权威仓改码仍 transfer→Engine |
 
@@ -225,34 +228,35 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 | 前台（人确认） | 后台（系统扛） |
 |----------------|----------------|
-| 战略讨论 / 聊透意图 / 切看板（**无**转意图卡按钮） | Hub 连通、投递、重试、卡死恢复；**Agent 自动投链** |
+| 战略讨论 / 聊透意图 / 切看板（**无**转意图卡按钮） | Hub 连通、投递、重试、卡死恢复；**Claude 后台程序拆卡投链** |
 | 立刻关 sheet、徽章 `queued`、可继续聊 | 入本机 outbox；**sidecar 常驻 flush** → Hub；成功写 `transfer-receipts.json` |
 | 看板始终画列（可空） | 拉板失败保留快照 + 短超时，不整页死白 |
 
-**意图链自动投（硬 · 2026-07-30）**：人聊定意图 → Agent **自动**出多卡链 → gate → Engine；Desktop 快捷仅「对齐基线」「扫风险」（已删刷新看板/看仓况/转意图卡）。标准 SOP：[`../../references/intent-chain-dev-sop.md`](../../references/intent-chain-dev-sop.md)。FlowWeave 对照：[`../briefs/2026-07-30-flowweave-vs-ccc.md`](../briefs/2026-07-30-flowweave-vs-ccc.md)（不做成第二 FlowWeave）。
+**意图链自动投（硬 · 2026-07-31 架构升级）**：人聊定方案 → IDE 写方案文件 → Claude 后台程序拆卡 → gate → Engine；Desktop 快捷仅「对齐基线」「扫风险」（已删刷新看板/看仓况/转意图卡）。标准 SOP：[`../../references/intent-chain-dev-sop.md`](../../references/intent-chain-dev-sop.md)。新架构总览：[`ccc-new-architecture-overview.md`](ccc-new-architecture-overview.md)。
 
 **意图卡供给闭环（硬 · 2026-07-29 · v0.64.0 → v0.65.0 正式上线）**：
 
-> 人只确认「要做成什么」；Agent 起草意图卡；**系统 `transfer_gate` 不过绝不进代办**。  
+> 人只确认「要做成什么」；IDE 写方案文件；**Claude 后台程序**消费方案后拆卡；**系统 `transfer_gate` 不过绝不进代办**。  
 > **出契约 ≠ 定代办**；自动进代办 = 放行，不是跳过质控。代办卡 = Engine 开工令（OpenCode→审测）；**卡错则全错**。  
-> **v0.65.0 正式上线**：多卡意图链由 Agent **自动投**；耗尽回流后 Agent **自动投优化链**（禁等人点按钮）。发布：[`../releases/v0.65.0.md`](../releases/v0.65.0.md)。
+> **2026-07-31 架构升级**：拆卡人从 Desktop Agent 改为 Claude 后台程序（Mac 2017·无记忆）；IDE 只谈方案+写方案文件。详见 [`ccc-new-architecture-overview.md`](ccc-new-architecture-overview.md)。
 
 | 角色 | 做什么 | 不做什么 |
 |------|--------|----------|
 | **人** | 聊清要做成什么/怎样算完；可选对齐基线/扫风险 | 不审路径/pytest；不手写代办；不点「转意图卡」按钮（已删） |
-| **Agent** | 意图收敛后按 [`../../references/intent-card-sop.md`](../../references/intent-card-sop.md) **自动**起草并投链；可查 HP/社区；读 lessons；失败自愈 | 禁未收敛自投；禁 invent；禁 gate 红仍推进代办；禁开场运维说教 |
+| **IDE/Agent** | 意图收敛后**写方案文件**（不拆卡）；可查 HP/社区；读 lessons | 禁拆卡（归 Claude 后台程序）；禁 invent；禁 gate 红仍推进代办；禁开场运维说教 |
+| **Claude 后台程序** | 消费方案文件 → 从 Skill/Prompt 库组装软链接 → 产出意图卡链 → gate → backlog；耗尽优化新卡并再投；飞轮推下一 L1 | 禁谈方案（归 IDE）；禁写业务源码（归 Engine）；无个人记忆 |
 | **系统** | 契约过 `transfer_gate` **仅绿**才 auto transfer→backlog+wake；右栏 L1 停尸由 `POST /transfer/promote-planned` 兜底推进 | 禁见结构化块就入队；override 须显式+`human_note`；禁让人盯右栏当推动器 |
 
-流程：架构师分析/排系列计划（对齐基线可选）→ 意图收敛后 Agent **自动**出**整条意图卡链**（多卡优先）→ gate → 绿则自动进代办 **+ wake Engine** → Agent **读测/失败证据并纠偏**（优化卡自动再投）→ 连续下一站。空闲飞轮自动推下一 L1 `planned` 到右栏（**不**直灌 backlog）。**禁止**只写右栏当完成；**禁止**缩成单功能闲聊；**禁止**一轮糊一张大卡；**禁止**只归档当失败结案；**禁止**等人点「转意图卡」。
+流程：架构师分析/排系列计划（对齐基线可选）→ 意图收敛后 IDE **写方案文件** → Claude 后台程序消费方案 → 从 Skill/Prompt 库组装软链接 → 产出**整条意图卡链**（多卡优先）→ gate → 绿则自动进代办 **+ wake Engine** → Agent **读测/失败证据并纠偏**（优化卡由后台程序自动再投）→ 连续下一站。空闲飞轮由 Claude 后台程序自动推下一 L1 `planned` 到右栏（**不**直灌 backlog）。**禁止**只写右栏当完成；**禁止**缩成单功能闲聊；**禁止**一轮糊一张大卡；**禁止**只归档当失败结案；**禁止**等人点「转意图卡」。
 
-**Agent 定方案（硬）**：**高级智能开发伙伴 · 架构师**——分析项目 → 搭建架构与系列计划（3～7 步到收口）→ 理解意图 → 意图卡链 → **跟进 Engine 验收/测试结论 → 失败自动纠正（repair / 优化改卡）→ 连续下一站**。正文只聊路线与产品结果；**禁止**默认缩成「下一个小功能」。按用户意图定最佳系列计划并默认推进；**禁止**每轮甩拍板选择题、**禁止转意图卡后再问要不要入队**。仅当真缺不可逆信息才最多 1 问。白话给人看；契约折叠进块。读 failure_pack/verdict/审查报告时用人话归纳，**禁止**把报告原文念给老板。**板面残卡清场**归 **当前 Desktop App Agent**（`hub_repair`），**禁止**默认逼卫生 epic，**禁止**甩锅「请打开编排运维」。偶发卫生卡：`executor_intent=python`；`pipeline=ops` 仍扇出。abnormal / 未核账在飞残卡禁止重复下达同目标（须先清板或人 override）。身份 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。
+**Agent 定方案（硬）**：**高级智能开发伙伴 · 架构师**——分析项目 → 搭建架构与系列计划（3～7 步到收口）→ 理解意图 → **写方案文件**（不拆卡；拆卡归 Claude 后台程序）→ **跟进 Engine 验收/测试结论 → 失败自动纠正（repair / 优化改卡由后台程序再投）→ 连续下一站**。正文只聊路线与产品结果；**禁止**默认缩成「下一个小功能」。按用户意图定最佳系列计划并默认推进；**禁止**每轮甩拍板选择题、**禁止转意图卡后再问要不要入队**。仅当真缺不可逆信息才最多 1 问。白话给人看；契约折叠进块。读 failure_pack/verdict/审查报告时用人话归纳，**禁止**把报告原文念给老板。**板面残卡清场**归 **当前 Desktop App Agent**（`hub_repair`），**禁止**默认逼卫生 epic，**禁止**甩锅「请打开编排运维」。偶发卫生卡：`skill_ref` 指向 ops 类 Skill；`pipeline=ops` 仍扇出。abnormal / 未核账在飞残卡禁止重复下达同目标（须先清板或人 override）。身份 SSOT：[`desktop-agent-identity.md`](desktop-agent-identity.md)。
 
 **Desktop App Agent 全功能（硬 · 2026-07-24 · 升级 2026-07-29 · 全功能）**：
 
 | 项 | 口径 |
 |----|------|
 | **单一人格** | 每个 Desktop 项目卡（含 `ccc`）同一套**全功能开发 Agent**；取消「业务只讨论 / 板务唯一交 ccc」分轨 |
-| **默认权限** | **engineer = 全功能全开**：SDK 不加正向 allowlist、不禁写；本机可改 CCC；全套 Hub（透镜 / mind / **跨仓 hub_repair**）；可开发、定任务、优化 |
+| **默认权限** | **engineer = 全功能全开**：SDK 不加正向 allowlist、不禁写；本机可改 CCC；全套 Hub（透镜 / mind / **跨仓 hub_repair**）；可开发、优化；**不拆卡**（拆卡归 Claude 后台程序） |
 | **业务改码** | 权威仓在 2017 → 仍经 **定稿 → transfer → Engine**（拓扑约束，不是能力阉割）；禁 M1 业务第二树；禁 sidecar `ssh` 写业务仓 |
 | **`ccc` 卡** | **平台仓入口**；能力与业务卡同级，**非唯一运维人格** |
 | **板务** | **当前会话自己清**；禁止「请打开编排运维」当主路径 |
@@ -262,19 +266,18 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 
 **Desktop 对老板（硬 · 方案与路线）**：老板不懂技术；正文只聊要做成什么 / 取舍 / 风险 / 白话验收；**禁止**把对话变成技术问答或甩 `src/`、类名、`pytest`、hub 工具名。定方案前静默 `hub_modules`→`hub_locate`/`hub_grep`→`hub_file`（未核实禁断言有无）；核实过程不进正文。`plan_md` 须与 `goal` 同向——`transfer_gate` 拒收 `plan_goal_conflict`（如 goal 要 CLOSE、plan 写「交给上层」）。**对标/评分**：禁止以 GitHub 星/社区当主轴；禁止默认「开源公开」当收口；谈 qb 成熟度对齐 **B4.2 实盘人确认 + B5 回测可视化**；Redis/plist/Grafana 等禁进正文。
 
-**意图卡人话 + 审查回流（硬 · 2026-07-29 → v0.64.1）**：中间栏自然讨论方案（Agent 首轮可用人话翻译；**右栏无「讨论方案」按钮**）。谈妥 → Agent **自动**起草 L1 并投链 → gate 绿自动进代办（`title`/`goal` 对齐卡原文）→ L1 **`dispatched`**，右栏意图卡链移除（看板待办 Δ 为主信号）。CCC 全绿 → `probed` **收口在运维页**；人点标记稳定 → `stable`。僵尸 `planned` → `abandoned`（右栏不堆坟）。人偶发粘贴审查报告 → Agent 白话归纳 → **优化意图卡**（可 `supersede_goals`）。人格：`hub_voice`「意图卡 · 首轮翻译」「审查报告回流」。
+**意图卡人话 + 审查回流（硬 · 2026-07-29 → v0.64.1）**：中间栏自然讨论方案（Agent 首轮可用人话翻译；**右栏无「讨论方案」按钮**）。谈妥 → IDE 写方案文件 → Claude 后台程序拆卡起草 L1 并投链 → gate 绿自动进代办（`title`/`goal` 对齐卡原文）→ L1 **`dispatched`**，右栏意图卡链移除（看板待办 Δ 为主信号）。CCC 全绿 → `probed` **收口在运维页**；人点标记稳定 → `stable`。僵尸 `planned` → `abandoned`（右栏不堆坟）。人偶发粘贴审查报告 → Agent 白话归纳 → **优化意图卡**（可 `supersede_goals`）。人格：`hub_voice`「意图卡 · 首轮翻译」「审查报告回流」。
 
 #### Desktop 主路径（硬 · 2026-07-29 · 意图卡两段）
 
 ```text
 架构师排系列计划（自由聊 / 对齐基线；可查 HP/社区）
   → 意图收敛（人聊定 / 说开发·下达·跑通）
-  → Agent 一次把系列计划落成多卡 ccc-transfer / cards:[]（真单意图才单块）并自动投链
-  → transfer_gate 逐卡绿 → 自动进代办（outbox→Hub epic→wake Engine）
-  → 若仅有右栏 L1、无本地草稿 → Hub promote-planned 兜底进代办+wake
+  → IDE 写方案文件 → ccc-submit-proposal → Hub API → 落盘业务仓 .ccc/intent-proposals/
+  → Claude 后台程序消费方案 → 从 Skill/Prompt 库组装软链接 → 产出多卡 ccc-transfer / cards:[]（真单意图才单块）
+  → transfer_gate 逐卡绿 → 自动进代办（backlog+wake Engine）
   → 红 → 意图卡停留 + fix_hint 改卡（零 OpenCode）
-空闲飞轮：pipeline idle 且无 planned → 系统写下一产品 L1 planned（右栏）
-  → Agent 理解后自动再投才进代办（禁 invent 直灌）
+空闲飞轮：pipeline idle 且无 planned → Claude 后台程序写下一产品 L1 planned（右栏）→ 自动拆卡投递（禁 invent 直灌）
 ```
 
 | 环节 | 人 | Agent / 系统 |
@@ -282,7 +285,7 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 | 战略讨论 | 自由聊 | **架构师排系列计划**；可查知识库/社区；可选「对齐基线」；**禁止**开场运维说教；**禁止**缩成单功能 |
 | 对齐基线 | 可点；**非硬门槛** | 交付 **3～7 步开发计划**到收口；本轮不出契约块；见 [`../../references/align-baseline-sop.md`](../../references/align-baseline-sop.md) |
 | 扫风险 | 可选芯片 | 风险清单；**不是**下达必经 |
-| **自动意图链** | 聊定即可 | Agent 收敛后自动出契约；gate 质控；**不是**跳过门禁 |
+| **自动意图链** | 聊定即可 | IDE 写方案文件 → Claude 后台程序拆卡出契约；gate 质控；**不是**跳过门禁 |
 | **gate→代办** | 不审技术字段 | 仅绿 auto transfer；红停意图层 |
 | 入队后 | 继续聊 | `task_dispatch`+wake；看板计数看状态；右栏**不**堆 work 拆解卡 |
 
@@ -299,8 +302,8 @@ Vibe coding 里真正值钱的**不是「图更细」**，而是这三条——�
 |----|------|
 | **提交** | Engine/DoD 在业务仓**当前分支（默认 main）**提交；`task_id`/`phase` 进 message；**不做** feature 旁支合入门禁；开发工具（Claude/OpenCode）**事后总验**不挡产线 |
 | **进板后** | 人只确认下达；之后扇出/写码/审测/hang 收尸/有限 reopen **全自动** |
-| **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；耗尽 → `~/.ccc/repair-queue.jsonl`（`epic_optimize`）。**L2** Hub/`board_repair`：`clear_blockers` **先 reopen 可恢复**再归档 permanent/exhausted/failed/孤儿；`failure_pack` 写 `optimize_hint`+lessons+回流 planned；`status.repair_queue` 可见 pending；**`POST /api/desktop/repair-queue/claim`** 供 M1 sidecar 领取注入。**L3** Desktop/sidecar：透镜并行 claim + 板堵强制 repair；**修板后必须再投链或结算已绿**。**L3b** 耗尽后 Agent 按桶优化 `ccc-transfer` **并自动投链**（见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图。**总闸**：[`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md)——**清障 ≠ 解决问题**。盘点：[`../briefs/2026-07-30-self-heal-inventory.md`](../briefs/2026-07-30-self-heal-inventory.md)。**`is_exhaust_reason`** 仅认耗尽标记（对齐 `should_auto_refeed`），禁止凡 acceptance/hang 即藏卡 |
-| **Agent 定卡培养闭环（硬 · 2026-07-29 → v0.65.4 · min-pipeline 校正 2026-07-31）** | 培养 Desktop Agent 定**意图卡**/纠板，**禁止**靠开发工具（Claude/OpenCode）反复救火。① **入学考试（work/fanout 或史径 `CCC_MIN_PIPELINE=0`）**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`；**用户长意图不挡 scope≤5**（见上「最小可跑通」）；oversized 拦 **fanout work**（**≤5 文件 · phase≤2**）/**验收>3 条**/**unit+paper混装**/**纯文案进 OpenCode**（`text_task_agent_track`），返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**。⑤ **扇出二次门禁**：有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条、**保真 epic 强探针**；**oversized work**（scope>5 / 多 phase / 纯文卡）拒扇出。⑥ **颗粒度+文码分轨+commit 分责**：意图=大、扇出=小；OpenCode **只**接代码小卡；文本/脑包=对话 Agent；业务代码 commit=OpenCode/DoD；评估 [`../briefs/2026-07-30-granularity-text-code-commit.md`](../briefs/2026-07-30-granularity-text-code-commit.md)。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡并自动再投**。⑦ **promote 薄 plan**：拒无真实路径 boilerplate。⑧ **repair-queue**：min 路径默认关；史径 `qxo`↔`qx-observer` 别名互通 claim |
+| **自愈分层** | **L1** Engine：`pending_no_fanout` 有限重扇出 + hang 收尸 + 瞬态 abnormal 有限 reopen（不抬预算）+ wake；耗尽 → `~/.ccc/repair-queue.jsonl`（`epic_optimize`）。**L2** Hub/`board_repair`：`clear_blockers` **先 reopen 可恢复**再归档 permanent/exhausted/failed/孤儿；`failure_pack` 写 `optimize_hint`+lessons+回流 planned；`status.repair_queue` 可见 pending；**`POST /api/desktop/repair-queue/claim`** 供 M1 sidecar 领取注入。**L3** Desktop/sidecar：透镜并行 claim + 板堵强制 repair；**修板后必须再投链或结算已绿**。**L3b 耗尽后 Claude 后台程序按桶优化 `ccc-transfer` **并自动投链**（见 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md)）；**L4** 人仅红灯/改意图。**总闸**：[`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md)——**清障 ≠ 解决问题**。盘点：[`../briefs/2026-07-30-self-heal-inventory.md`](../briefs/2026-07-30-self-heal-inventory.md)。**`is_exhaust_reason`** 仅认耗尽标记（对齐 `should_auto_refeed`），禁止凡 acceptance/hang 即藏卡 |
+| **Agent 定卡培养闭环（硬 · 2026-07-29 → v0.65.4 · min-pipeline 校正 2026-07-31）** | 培养 Claude 后台程序定**意图卡**；Desktop Agent 纠板，**禁止**靠开发工具（Claude/OpenCode）反复救火。① **入学考试（work/fanout 或史径 `CCC_MIN_PIPELINE=0`）**：`transfer_gate` 拒弱探针/假绿/`plan` 无 `## 验收`；**用户长意图不挡 scope≤5**（见上「最小可跑通」）；oversized 拦 **fanout work**（**≤5 文件 · phase≤2**）/**验收>3 条**/**unit+paper混装**/**纯文案进 OpenCode**（`text_task_agent_track`），返回 `fix_hint`；② **失败记忆**：`decided.transfer_lessons[]` + digest（**validate 与 /transfer 红均写**；sidecar 永久 4xx 写 `transfer-receipts.json` `status=rejected`，禁静默空转）；③ **处方改卡**：`failure_pack.optimize_hint`；④ **qb 反模式** + **[`../../references/intent-card-sop.md`](../../references/intent-card-sop.md)**。⑤ **扇出二次门禁**：有强探针则禁 `test -f` 堆、剥 paper/e2e、帽 1～2 条、**保真 epic 强探针**；**oversized work**（scope>5 / 多 phase / 纯文卡）拒扇出。⑥ **颗粒度+文码分轨+commit 分责**：意图=大、扇出=小；OpenCode **只**接代码小卡；文本/脑包=对话 Agent；业务代码 commit=OpenCode/DoD；评估 [`../briefs/2026-07-30-granularity-text-code-commit.md`](../briefs/2026-07-30-granularity-text-code-commit.md)。禁 invent / 禁抬重试 / 禁自动 stable；**耗尽回流新意图卡并自动再投**。⑦ **promote 薄 plan**：拒无真实路径 boilerplate。⑧ **repair-queue**：min 路径默认关；史径 `qxo`↔`qx-observer` 别名互通 claim |
 
 | **禁止** | 新修板 UI 当主路径；invent；自动 `intent_stable`；无限重试同一烂卡；**耗尽后只藏卡不改大卡**；**先 `ui_hidden` 还可重试的 abnormal**；用 Zed 当业务仓合入通道；**用「已归档/已 reopen」当向老板的完成话术** |
 | **SOP** | 总闸 [`../../references/abnormal-solve-sop.md`](../../references/abnormal-solve-sop.md) · 清板 [`../../references/board-auto-repair-sop.md`](../../references/board-auto-repair-sop.md) · 耗尽改大卡 [`../../references/post-exhaust-epic-optimize-sop.md`](../../references/post-exhaust-epic-optimize-sop.md) · **Commit/文件夹卫生** [`../../references/commit-folder-hygiene-sop.md`](../../references/commit-folder-hygiene-sop.md)（**分责**：代码=DoD；文本=Agent；噪音不挡；禁 `git add -A`；禁卫生 epic 主业） · **垃圾卡硬清** `scripts/_board_garbage.py`（探针/戳记/`regression-*` 移出看板；regress **无意图探针不建回归卡**；禁脏树 alone 炸板） |
@@ -571,7 +574,7 @@ CLI：`python3 scripts/ccc-hub-lens.py board|locate|tree|file|grep|git <project_
 
 | 项目 | 规则 |
 |------|------|
-| 任意 Desktop 项目卡 | **默认 engineer**：SDK 工具全开（无正向 allowlist、无写禁）；可本机改 CCC；全套 Hub（含跨仓 `hub_repair`）；可开发 / 定任务 / 优化 |
+| 任意 Desktop 项目卡 | **默认 engineer**：SDK 工具全开（无正向 allowlist、无写禁）；可本机改 CCC；全套 Hub（含跨仓 `hub_repair`）；可开发 / 优化；**不拆卡**（拆卡归 Claude 后台程序） |
 | 显式 discuss | 可选只读（禁 Write/Edit）；仍可用透镜/板务只读 status；**不是默认** |
 | 业务仓源码 | **禁止**本机/Hub 直写（无第二树）；只经 **定稿 → transfer → Engine** |
 
@@ -605,7 +608,7 @@ Desktop 代码定位 = 透镜 `locate`（业务仓不走开发工具（Claude/Op
 | product | plan/phases/扇出；不写源码 | cwd=2017 apps |
 | dev | 仅 plan 白名单 | 红线 3 |
 | reviewer/tester | verdict/report | Verdict 落盘才算 |
-| 讨论 Agent（Plan） | 无业务写 | 透镜只读 + `ccc-transfer`；可子代理调研 |
+| 讨论 Agent（Plan） | 无业务写 | 透镜只读 + **写方案文件**（不输出 ccc-transfer；拆卡归 Claude 后台程序）；可子代理调研 |
 
 ---
 

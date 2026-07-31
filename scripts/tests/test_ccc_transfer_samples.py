@@ -22,7 +22,7 @@ SAMPLES = [
         "acceptance": ["打开列表可见第 1 页", "滚到底自动加载下一页"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "登录超时提示",
@@ -30,7 +30,7 @@ SAMPLES = [
         "acceptance": ["过期后点任意页看到提示", "确认后回到登录页"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "导出 CSV",
@@ -38,7 +38,7 @@ SAMPLES = [
         "acceptance": ["点导出得到 .csv", "文件含表头与当前筛选行"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "python",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "夜间静默推送关",
@@ -46,7 +46,7 @@ SAMPLES = [
         "acceptance": ["配置保存成功", "窗口内无推送发送记录"],
         "pipeline": "ops",
         "feasibility": "ok",
-        "executor_intent": "cli",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "搜索防抖",
@@ -54,7 +54,7 @@ SAMPLES = [
         "acceptance": ["连打只发最后一次请求", "结果与最后关键字一致"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "空状态插画",
@@ -62,7 +62,7 @@ SAMPLES = [
         "acceptance": ["清空数据后可见空态", "按钮可跳到新建"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "备份开关",
@@ -70,7 +70,7 @@ SAMPLES = [
         "acceptance": ["开关状态可持久", "开启后目录出现当日备份"],
         "pipeline": "ops",
         "feasibility": "ok",
-        "executor_intent": "cli",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "评论字数上限",
@@ -78,7 +78,7 @@ SAMPLES = [
         "acceptance": ["501 字提交失败", "提示含字数上限"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "主题跟随系统",
@@ -86,7 +86,7 @@ SAMPLES = [
         "acceptance": ["系统切深色后界面跟随", "手动选浅色后保持浅色"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
     {
         "title": "健康检查脚本",
@@ -94,7 +94,7 @@ SAMPLES = [
         "acceptance": ["脚本退出码 0", "输出含 7777 与 VERSION"],
         "pipeline": "ops",
         "feasibility": "ok",
-        "executor_intent": "python",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
     },
 ]
 
@@ -127,7 +127,7 @@ def main() -> int:
             "acceptance": parsed["acceptance"],
             "pipeline": parsed["pipeline"],
             "feasibility": parsed["feasibility"],
-            "executor_intent": parsed.get("executor_intent") or "opencode",
+            "skill_ref": parsed.get("skill_ref") or "skills/write-code", "prompt_ref": parsed.get("prompt_ref") or "prompts/write-code-prompt",
             "plan_md": parsed.get("plan_md") or "x",
         }
         ok_flag, errs = validate_transfer_payload(payload)

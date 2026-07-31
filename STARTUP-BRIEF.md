@@ -59,7 +59,7 @@ Desktop（M1）：聊透意图（对齐基线/扫风险可选）
      → 右栏：看板计数 + 意图卡链
 ```
 
-**v0.65**：意图链由 Agent **自动投**（已删「转意图卡」按钮）；gate 红停意图层（零 OpenCode）。自愈：修板 + 优化链。SOP：[`references/intent-chain-dev-sop.md`](references/intent-chain-dev-sop.md) · 发布：[`docs/releases/v0.65.0.md`](docs/releases/v0.65.0.md)。
+**v0.65**：方案文件经 Claude 后台程序拆卡 → gate 绿进代办（已删「转意图卡」按钮）；gate 红停意图层（零 OpenCode）。自愈：修板 + 优化链。SOP：[`references/intent-chain-dev-sop.md`](references/intent-chain-dev-sop.md) · 发布：[`docs/releases/v0.65.0.md`](docs/releases/v0.65.0.md)。
 
 端口与账密：[`docs/ccc-hub-ports.md`](docs/ccc-hub-ports.md)（`ccc` / `ccc`）  
 上手：[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)  
@@ -121,7 +121,7 @@ backlog(epic 常驻) ──扇出──► planned(work) → in_progress → tes
                               └ abnormal ←──（work 失败；父 epic → failed）
 ```
 
-不可跳列（X4）。转意图卡经 gate 绿后默认建 **epic**；若已种子 plan/phases 的单卡 work 可跳过 product。
+不可跳列（X4）。方案文件经 Claude 后台程序拆卡 → gate 绿后建 **epic**；若已种子 plan/phases 的单卡 work 可跳过 product。
 
 ---
 
@@ -176,7 +176,7 @@ python3 scripts/ccc-board.py index
 
 ## 10. 调用链（1 行）
 
-老板在 Desktop（M1）点「转意图卡」（或「按 CCC 跑 X」）→ gate 绿进 Mac2017 看板 →（2017 control=enabled）Engine 串行阶段能力包（product=Claude 扇出 / dev=OpenCode 写码）→ released。
+老板在 Desktop（M1）聊方案 → IDE 写方案文件 → ccc-submit-proposal → gate 绿进 Mac2017 看板 →（2017 control=enabled）Engine 串行阶段能力包（product=Claude 扇出 / dev=OpenCode 写码）→ released。
 
 ---
 

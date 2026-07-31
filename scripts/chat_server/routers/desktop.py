@@ -635,7 +635,7 @@ async def proactive_epic(request: Request):
 
 
 async def _proactive_epic_from_body(body: dict[str, Any]):
-    """Proactive 投递：等价进 backlog；executor_intent=bug；不调用 engine wake。"""
+    """Proactive 投递：等价进 backlog；skill_ref=skills/bug-fix；不调用 engine wake。"""
     errors: list[dict[str, str]] = []
     project_id = str(body.get("project_id") or body.get("project") or "").strip()
     if not project_id:
@@ -709,7 +709,7 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
             "column": "backlog",
         }
 
-    # 合成 transfer 等价体；executor_intent=bug（扇出 normalize → opencode）
+    # 合成 transfer 等价体；skill_ref=skills/bug-fix（扇出 normalize → opencode）
     transfer_body: dict[str, Any] = {
         "project_id": project_id,
         "title": title,
@@ -717,7 +717,8 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
         "acceptance": acceptance,
         "pipeline": str(body.get("pipeline") or "dev").strip() or "dev",
         "feasibility": "ok",
-        "executor_intent": "bug",
+        "skill_ref": "skills/bug-fix",
+        "prompt_ref": "prompts/bug-fix-prompt",
         "plan_md": str(body.get("plan_md") or "").strip(),
         "thread_id": str(body.get("thread_id") or "").strip()
         or flow_events.canonical_conversation_id(project_id),
@@ -739,7 +740,7 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
         )
 
     description = transfer_gate.build_epic_description(
-        {**transfer_body, "executor_intent": "bug"}
+        {**transfer_body, "skill_ref": "skills/bug-fix"}
     )
     # 追加 proactive 元数据（不改 transfer 契约字段）
     description = (
@@ -748,14 +749,15 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
         + f"- payload_hash: {_proactive_payload_hash(payload)}\n"
     )[:10000]
     plan_md = transfer_gate.build_plan_md(
-        {**transfer_body, "executor_intent": "bug"}
+        {**transfer_body, "skill_ref": "skills/bug-fix"}
     )
 
     note = json.dumps(
         {
             "transfer_gate": {
                 "pipeline": transfer_body["pipeline"],
-                "executor_intent": "bug",
+                "skill_ref": "skills/bug-fix",
+                "prompt_ref": "prompts/bug-fix-prompt",
                 "feasibility": "ok",
                 "skills_hint": [],
                 "thread_id": transfer_body["thread_id"],
@@ -821,7 +823,7 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
             "title": title,
             "project_id": project_id,
             "workspace": workspace,
-            "executor_intent": "bug",
+            "skill_ref": "skills/bug-fix",
             "thread_id": thread_id,
             "source": source,
             "proactive": True,
@@ -845,7 +847,7 @@ async def _proactive_epic_from_body(body: dict[str, Any]):
         "project_id": project_id,
         "workspace": workspace,
         "column": "backlog",
-        "executor_intent": "bug",
+        "skill_ref": "skills/bug-fix",
         "seeded": payload_out.get("seeded"),
     }
 
@@ -941,10 +943,10 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                 "engine_wake": {"ok": True, "mode": "idempotent", "message": "replay"},
             }
 
-        executor_intent = transfer_gate.resolve_executor_intent(body)
+        skill_ref = transfer_gate.resolve_skill_ref(body)
         complexity = transfer_gate.resolve_complexity(body)
         description = transfer_gate.build_epic_description(
-            {**body, "executor_intent": executor_intent, "complexity": complexity}
+            {**body, "skill_ref": skill_ref, "complexity": complexity}
         )
         plan_md = transfer_gate.build_plan_md(body)
 
@@ -954,7 +956,8 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             {
                 "transfer_gate": {
                     "pipeline": body.get("pipeline"),
-                    "executor_intent": executor_intent,
+                    "skill_ref": skill_ref,
+                    "prompt_ref": body.get("prompt_ref") or "",
                     "complexity": complexity,
                     "feasibility": "ok",
                     "skills_hint": body.get("skills_hint") or [],
@@ -966,7 +969,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             ensure_ascii=False,
         )
 
-        tags = ["desktop-transfer", f"exec:{executor_intent}"]
+        tags = ["desktop-transfer", f"skill:{skill_ref}"]
         if bump_version:
             tags.append("bump-version")
         task_body: dict[str, Any] = {
@@ -1038,7 +1041,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
                 "title": title,
                 "project_id": project_id,
                 "workspace": workspace,
-                "executor_intent": executor_intent,
+                "skill_ref": skill_ref,
                 "thread_id": thread_id,
             },
         )
@@ -1070,7 +1073,7 @@ async def _transfer_epic_from_body(body: dict[str, Any]):
             "workspace": workspace,
             "column": "backlog",
             "project_id": project_id,
-            "executor_intent": executor_intent,
+            "skill_ref": skill_ref,
             "engine_wake": wake,
             "seeded": payload.get("seeded"),
             "idempotent_replay": False,
@@ -1132,6 +1135,119 @@ async def adopt_inbox_proposal(request: Request, prop_id: str):
     result["proposal_id"] = prop["id"]
     result["adopted"] = True
     return result
+
+
+# ── Intent proposals（新架构 · 方案 → splitter 拆卡）────────
+
+
+@router.post("/proposal")
+async def submit_intent_proposal(request: Request):
+    """接收 M1 方案文件 → 落盘业务仓 → 入串行队列 → 触发 splitter 拆卡。
+
+    契约：docs/product/ccc-new-architecture-overview.md 四层分工。
+    Body: {project_id, proposal_md, title, skill_ref, prompt_ref}
+    """
+    check_auth(request)
+    from ..services import intent_proposals as ip_svc
+
+    body = await request.json()
+    project_id = str(body.get("project_id") or "").strip()
+    proposal_md = str(body.get("proposal_md") or "").strip()
+    title = str(body.get("title") or "").strip()
+    skill_ref = str(body.get("skill_ref") or "skills/write-code").strip()
+    prompt_ref = str(body.get("prompt_ref") or "prompts/write-code-prompt").strip()
+
+    if not project_id:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "missing_project_id"},
+        )
+    if not proposal_md:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "missing_proposal_md"},
+        )
+    if not title:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "missing_title"},
+        )
+
+    # 解析业务仓路径
+    try:
+        workspace_root = Path(get_project_path(project_id))
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": f"unknown_project:{project_id}"},
+        )
+
+    # 校验 skill_ref / prompt_ref 存在性（与 transfer_gate 一致）
+    if not transfer_gate._validate_skill_ref(skill_ref):
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": f"invalid_skill_ref:{skill_ref}"},
+        )
+    if not transfer_gate._validate_prompt_ref(prompt_ref):
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": f"invalid_prompt_ref:{prompt_ref}"},
+        )
+
+    proposal_id = ip_svc.generate_proposal_id(title, project_id)
+    ip_svc.save_proposal(
+        workspace_root,
+        proposal_id,
+        project_id=project_id,
+        title=title,
+        proposal_md=proposal_md,
+        skill_ref=skill_ref,
+        prompt_ref=prompt_ref,
+    )
+    ip_svc.enqueue(workspace_root, proposal_id, project_id)
+    ip_svc.append_result(
+        workspace_root,
+        proposal_id,
+        {"status": "queued", "project_id": project_id, "title": title[:80]},
+    )
+    ip_svc.trigger_splitter(
+        proposal_id,
+        project_id,
+        workspace_root=workspace_root,
+    )
+    return {
+        "ok": True,
+        "proposal_id": proposal_id,
+        "status": "queued",
+        "project_id": project_id,
+        "result_url": f"/api/desktop/proposal/{proposal_id}/result?project_id={project_id}",
+    }
+
+
+@router.get("/proposal/{proposal_id}/result")
+async def get_intent_proposal_result(
+    request: Request,
+    proposal_id: str,
+    project_id: str = "",
+):
+    """读拆卡审计日志，返回状态摘要。"""
+    check_auth(request)
+    from ..services import intent_proposals as ip_svc
+
+    if not project_id:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "missing_project_id"},
+        )
+    try:
+        workspace_root = Path(get_project_path(project_id))
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": f"unknown_project:{project_id}"},
+        )
+    summary = ip_svc.read_result(workspace_root, proposal_id)
+    return {"ok": True, "proposal_id": proposal_id, **summary}
 
 
 # ── Flow events / snapshot ────────────────────────────────

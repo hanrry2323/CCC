@@ -527,29 +527,41 @@ def _backfill_depends_on_tasks_from_epic_phases(
 
 
 def _epic_default_executor(epic: dict) -> str:
-    """从 epic tags/note/description 推断默认 executor（Desktop transfer 写入）。"""
+    """从 epic tags/note 读 skill_ref 推断默认 executor（新架构 · 硬切换）。
+
+    新架构：epic note/tags 带 skill_ref（如 skills/write-code），
+    通过 transfer_gate.resolve_executor_from_skill 推断执行器。
+    旧 executor_intent 字段不再读取（硬切换）。
+    """
+    # 延迟导入避免循环依赖
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from chat_server.services.transfer_gate import resolve_executor_from_skill
+    except Exception:
+        return "opencode"
+
     tags = epic.get("tags") or []
     for t in tags:
         s = str(t or "")
-        if s.startswith("exec:"):
-            return s.split(":", 1)[1].strip().lower() or "opencode"
+        if s.startswith("skill:"):
+            skill_ref = s.split(":", 1)[1].strip()
+            if skill_ref:
+                return resolve_executor_from_skill(skill_ref)
+
     note = epic.get("note")
     if isinstance(note, str) and note.strip().startswith("{"):
         try:
             data = json.loads(note)
-            intent = (
-                (data.get("transfer_gate") or {}).get("executor_intent")
+            skill_ref = (
+                (data.get("transfer_gate") or {}).get("skill_ref")
                 if isinstance(data, dict)
                 else None
             )
-            if intent:
-                return str(intent).strip().lower()
+            if skill_ref:
+                return resolve_executor_from_skill(skill_ref)
         except json.JSONDecodeError as e:
-            _log.debug("product_fanout read executor_intent note: %s", e)
-    desc = str(epic.get("description") or "")
-    m = re.search(r"executor_intent:\s*(\w+)", desc)
-    if m:
-        return m.group(1).strip().lower()
+            _log.debug("product_fanout read skill_ref note: %s", e)
+
     return "opencode"
 
 

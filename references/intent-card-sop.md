@@ -1,7 +1,7 @@
 # 意图卡 SOP（架构师开发伙伴 · 自动投链）
 
-> **谁用**：Desktop App Agent（理解意图后自动出 `ccc-transfer`；**无**「转意图卡」按钮）。  
-> **目的**：架构师理解意图后，起草**精准意图卡链**；`transfer_gate` 绿才自动进代办。禁止糊卡；失败后读证据优化改卡并**再自动投链**。  
+> **谁用**：IDE（谈方案 + 写方案文件）+ Claude 后台程序（消费方案文件后拆卡产出 `ccc-transfer`）。  
+> **目的**：IDE 架构师理解意图后写方案文件；Claude 后台程序消费方案后起草**精准意图卡链**；`transfer_gate` 绿才自动进代办。禁止糊卡；失败后读证据优化改卡并**再自动投链**。  
 > **身份**：[`docs/product/desktop-agent-identity.md`](../docs/product/desktop-agent-identity.md)  
 > **全流程**：[`intent-chain-dev-sop.md`](intent-chain-dev-sop.md)  
 > **SSOT 链**：本文件 → `hub_voice` → sidecar 注入 → `transfer_gate`。  
@@ -14,16 +14,17 @@
 | 角色 | 权责 |
 |------|------|
 | **人** | 聊清「要做成什么 / 怎样算完」；可选「对齐基线」「扫风险」；**不**靠点「转意图卡」按钮发起 |
-| **Agent** | **高级智能开发伙伴 · 架构师**：分析→架构→意图→**自动**落成整条意图卡链；入队后读测/失败自动纠偏；耗尽优化新卡并**自动再投**；gate 红按 `fix_hint` 改卡 |
-| **系统** | `transfer_gate` **仅绿**才 auto 进代办；Engine 跑写码/审测；空闲飞轮写下一 L1 `planned`（不写 backlog；禁 invent） |
+| **IDE/Agent** | 分析→架构→意图→**写方案文件**（不拆卡） |
+| **Claude 后台程序**（Mac 2017·无记忆） | 消费方案→落成意图卡链→耗尽优化新卡并再投（多职能含飞轮）；入队后读测/失败自动纠偏；gate 红按 `fix_hint` 改卡 |
+| **系统** | `transfer_gate` **仅绿**才 auto 进代办；Engine 跑写码/审测；**Claude 后台程序**空闲飞轮写下一 L1 `planned`（不写 backlog；禁 invent） |
 
 **出契约 ≠ 定代办**。代办 = Engine 弹药；卡错则全错。  
-**发起权 = Agent 在意图收敛后自动投链**（用户口述「开发/下达/跑通」等同触发）。  
+**发起权 = IDE 写方案文件；投链权 = Claude 后台程序**（用户口述「开发/下达/跑通」等同触发）。  
 **仍禁 invent**：无用户意图时不得自造 backlog。
 
-**架构师口径**：对齐基线先排 3～7 步系列计划；投链 = 整条计划入链，禁止只落「当前一个小功能」。  
+**架构师口径**：对齐基线先排 3～7 步系列计划；Claude 后台程序拆卡投链 = 整条计划入链，禁止只落「当前一个小功能」。  
 **一次投透 → 整条链**：系列 ≥2 步 → 必须多块 `ccc-transfer` / `cards:[]`；禁止一轮一张糊大卡。  
-**飞轮空闲**：板空闲且无 planned → 系统从规划文推下一产品意图到右栏；**进代办须 Agent 再理解并自动投**（仍禁 invent 直灌）。  
+**飞轮空闲**：板空闲且无 planned → 系统从规划文推下一产品意图到右栏；**进代办须 Claude 后台程序自动拆卡投递**（仍禁 invent 直灌）。  
 **失败纠偏**：读 `failure_pack` / verdict → 优化新意图卡并自动投；禁止只归档交差。
 
 ---
@@ -61,6 +62,9 @@
 | title | ≤80 字可执行中文 | 软裁 / 难对齐 L1 |
 | complexity | 默认 `medium`；多步回归禁 `small` | 门禁误跳路径 |
 | **文/码** | 纯文档/changelog/VERSION/脑包 → **Agent 轨**（禁 OpenCode） | `text_task_agent_track` |
+| `skill_ref` | Skill 库路径引用（必填，如 `skills/code-review`） | `missing_skill_ref` / `invalid_skill_ref` |
+| `prompt_ref` | Prompt 库路径引用（必填，如 `prompts/code-review-prompt`） | `missing_prompt_ref` |
+| `prompt_inline` | 内联补充上下文（可选） | — |
 
 ### 文/码分轨（硬 · 2026-07-30）
 
@@ -110,23 +114,23 @@
 
 ## 4. 两段落盘（系统推进 · 人不守夜）
 
-1. **意图卡落盘** = 写/更新 L1 `planned`（右栏）。Engine 尚未消费——**不算完成**。
+1. **意图卡落盘** = Claude 后台程序消费方案后写/更新 L1 `planned`（右栏）。Engine 尚未消费——**不算完成**。
 2. **进代办** = 契约 `validate_transfer_payload` **绿** → 自动 transfer → backlog + **wake Engine**。  
-   - Desktop 解析 `ccc-transfer` 后 **自动** L1→gate→outbox（不等人点按钮）。
+   - Claude 后台程序产出 `ccc-transfer` → gate → backlog（不等人点按钮）。
    - **硬完成判定**：投后须 `hub_board` 见 backlog/planned 计数上升；禁止只凭「已写出 ccc-transfer」口头宣称已投入。
    - 若 Agent 只写了右栏 L1，Hub `POST /transfer/promote-planned` 兜底。
    - 上一笔已 delivered/accepted 且编排空闲时，Desktop **必须**仍解析并自动投下一链（不得永久 suppress）。
    - **红**：卡留意图层；按 `fix_hint` 改卡再投；**零 OpenCode**。  
    - 改卡若动到白话意图含义 → **必须再用人话问人**。
 3. **谁推动**：Agent 理解后出契约 = 发起；之后 **系统** promote / wake。**禁止**让人盯右栏或点「转意图卡」。
-4. **Agent 硬完成**：可见答复里出可过门的 `ccc-transfer`；禁止只 mind 写 L1 交差。
+4. **IDE 硬完成**：写出方案文件并提交；禁止只 mind 写 L1 交差。
 
 ---
 
 ## 5. 对用户输出
 
 1. 白话 **2～4 句**：做什么、怎么算验收过、拆成几张意图。
-2. 一个或多个 ` ```ccc-transfer` **块**（字段齐）；禁止再问「要不要入队」。
+2. 方案文件路径/摘要（IDE 不再输出 `ccc-transfer` 块，那是 Claude 后台程序的活）；禁止再问「要不要入队」。
 3. 正文禁平台黑话；路径/命令只进块内。
 
 ---

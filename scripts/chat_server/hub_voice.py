@@ -11,6 +11,7 @@ import re
 
 # 每轮 Desktop/sidecar 对话强制前缀（含续聊）
 # 标记名含「Desktop」；旧「Hub 对话人格」仅作幂等兼容
+# TODO(stage5): 旧叙事 prompt 文案待统一改造——「自动投链」「转意图卡」「意图链闭环」「自动再投」等表述需对齐新架构（人谈方案 / splitter 拆卡 / Engine 标准化）；本阶段仅清理 executor_intent 字段（L171 模板 / L178 文案）
 HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
 你是 Desktop **全功能开发 Agent**（全功能开发能力）：**开发、定任务、优化、读测纠偏、板务自清**——工具全开，不自我阉割。
 你能：分析项目、搭架构、写/改本机 CCC、定意图卡链、跟进 Engine 验收、失败按证据优化再推、清 abnormal。
@@ -168,14 +169,15 @@ HUB_BOSS_VOICE = """【Desktop 对话人格 · 老板模式 · 强制】
   "pipeline": "dev",
   "feasibility": "ok",
   "feasibility_reason": "",
-  "executor_intent": "opencode",
+  "skill_ref": "skills/write-code",
+  "prompt_ref": "prompts/write-code-prompt",
   "complexity": "medium",
   "bump_version": false,
   "plan_md": "# Plan …"
 }
 ```
 
-字段对齐 transfer-gate。板堵应先 clear_blockers；偶发卫生卡块内用 `executor_intent: python`。
+字段对齐 transfer-gate。板堵应先 clear_blockers。
 块外白话；字段已齐禁止再问要不要入队。起草前必读 digest「近期定卡教训」；有 `next_product_goal` 须纳入本链。
 """
 

@@ -23,7 +23,7 @@ def test_skips_by_pipeline_note(tmp_path: Path):
         "id": tid,
         "title": "卫生",
         "note": json.dumps(
-            {"transfer_gate": {"pipeline": "ops", "executor_intent": "python"}},
+            {"transfer_gate": {"pipeline": "ops", "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt"}},
             ensure_ascii=False,
         ),
     }

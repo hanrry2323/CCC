@@ -548,7 +548,8 @@ def _transfer_payload_fingerprint(body: Any) -> str | None:
         "pipeline",
         "feasibility",
         "feasibility_reason",
-        "executor_intent",
+        "skill_ref",
+        "prompt_ref",
         "complexity",
     )
     parts = []

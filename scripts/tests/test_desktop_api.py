@@ -149,7 +149,7 @@ def test_transfer_creates_epic_only(client, monkeypatch):
                 "acceptance": ["pytest tests/ -q"],
                 "pipeline": "dev",
                 "feasibility": "ok",
-                "executor_intent": "opencode",
+                "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
                 "plan_md": "# P\n\n## 验收\n- x\n",
             },
         )
@@ -202,7 +202,7 @@ def test_transfer_preserves_non_main_thread_id(client, monkeypatch):
                 "acceptance": ["pytest -q -k smoke"],
                 "pipeline": "dev",
                 "feasibility": "ok",
-                "executor_intent": "opencode",
+                "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
                 "plan_md": "# P\n\n## 验收\n- pytest -q -k smoke\n",
             },
         )
@@ -258,7 +258,7 @@ def test_transfer_same_thread_queues_two_epics(client, monkeypatch):
         "acceptance": ["python3 -m pytest"],
         "pipeline": "dev",
         "feasibility": "ok",
-        "executor_intent": "opencode",
+        "skill_ref": "skills/write-code", "prompt_ref": "prompts/write-code-prompt",
         "plan_md": "# P\n\n## 验收\n- pytest tests/ -q\n",
     }
     with patch.object(desk, "board_proxy", new=AsyncMock(return_value=FakeResp())):

@@ -10,17 +10,18 @@
 ## 流程
 
 ```text
-聊透意图 → Agent 自动输出 ```ccc-transfer```（多卡链）→（可写 L1 planned）
+IDE 写方案文件 → Hub API → 业务仓 `.ccc/intent-proposals/`
+  → Claude 后台程序消费方案 → 拆卡 → 产出 `ccc-transfer`（多卡链）
   → POST /api/desktop/transfer/validate（dry-run）
   → 绿：POST /api/desktop/transfer → 仅创建 epic（backlog）+ wake
   → 红：不写 backlog，卡留意图层，返回 errors[] / fix_hint
 ```
 
-Engine **之后**才扇出 work；transfer 接口禁止直接写 planned work。**无**「转意图卡」按钮——发起方 = Agent 自动投链。
+Engine **之后**才扇出 work；transfer 接口禁止直接写 planned work。**无**「转意图卡」按钮——发起方 = IDE 写方案文件 → Claude 后台程序拆卡投递。
 
 ## 定稿协议（`ccc-transfer`）
 
-方案 Agent 在聊透后于回复末尾输出**恰好一个** fenced 块：
+定稿主体 = 方案文件（IDE 写）；`ccc-transfer` 块由 Claude 后台程序消费方案后产出：
 
 ````markdown
 ```ccc-transfer
@@ -31,7 +32,8 @@ Engine **之后**才扇出 work；transfer 接口禁止直接写 planned work。
   "pipeline": "dev",
   "feasibility": "ok",
   "feasibility_reason": "",
-  "executor_intent": "opencode",
+  "skill_ref": "skills/code-review",
+  "prompt_ref": "prompts/code-review-prompt",
   "plan_md": "# Plan …"
 }
 ```
@@ -43,7 +45,7 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 
 | 来源 `source` | 人可改 | 只读（须退回对话重定稿才能改） |
 |---------------|--------|--------------------------------|
-| `ccc-transfer`（正式定稿） | **title**、**human_note**（备注/定时说明） | goal、acceptance、plan_md、pipeline、executor_intent、complexity、feasibility、bump_version |
+| `ccc-transfer`（正式定稿） | **title**、**human_note**（备注/定时说明）、`prompt_inline` | goal、acceptance、plan_md、pipeline、`skill_ref`、`prompt_ref`、complexity、feasibility、bump_version |
 | `heuristic`（无正式定稿） | 意图与执行偏好可改（建议先点「定稿」锁方案） | — |
 
 改方案 = 退回对话 → 再点「定稿」出新契约；禁止在二级卡改已锁 `plan_md`/验收后假装「只改了标题」。
@@ -60,8 +62,10 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `acceptance` | 验收意图（至少一条，可含命令） |
 | `pipeline` | 产线/执行意图：如 `dev` / `video` / `ops` 或自由文本。**`ops` 不跳过 Engine 扇出**（仍 epic→product→work） |
 | `feasibility` | `ok` \| `blocked`；`blocked` 时必须有 `feasibility_reason` |
-| `executor_intent` | 偏好执行面：`opencode`（默认）\| `python` \| `ollama` \| `cli` \| `auto`。**看板/产物卫生**（pipeline=`ops`/`hygiene`/`board*` 或标题含归档/回收 abnormal 等）若填 `opencode`/`auto`，Hub **强制归一为 `python`**，避免假 committer + OpenCode 半提交 |
-| `skills_hint` | 可选 string[]，软偏好供 Engine 扇出参考 |
+| `skill_ref` | 必填 string，Skill 库路径引用（如 `skills/code-review`），相对 `references/` |
+| `prompt_ref` | 必填 string，Prompt 库路径引用（如 `prompts/code-review-prompt`），相对 `references/` |
+| `skills_hint` | 可选 string[]，与 `skill_ref`/`prompt_ref` 软链接库对齐的辅助提示，供 Engine 扇出参考 |
+| `prompt_inline` | 可选 string；Claude 后台程序组装时内联补充本卡特定上下文 |
 | `plan_md` | 方案正文（Markdown） |
 | `complexity` | 可选；`small`/`medium`/`large`（仅规模提示，**不**跳过审测）。**Hub 会抬升**：多步回归/三件套冒烟（acceptance 可执行条 ≥3，或命中 startup_check+pytest+三件套等）若填 `small` → **强制 `medium`**，避免扇出锁死单卡 |
 | `bump_version` | 可选 bool；默认 false。true 时 kb 才升 VERSION |
@@ -95,7 +99,9 @@ Desktop 解析后展示一键确认条；无块时仍可启发式预填 + 表单
 | `missing_pipeline` | 无产线/项目意图 |
 | `feasibility_blocked` | Agent 评估不可执行 |
 | `project_not_dispatchable` | 项目不可下达（orch / 未登记） |
-| `invalid_executor_intent` | 未知执行面 |
+| `missing_skill_ref` | 缺少 `skill_ref`；fix_hint="需要指定 Skill 库路径引用（如 skills/code-review）" |
+| `invalid_skill_ref` | `skill_ref` 路径不存在；fix_hint="Skill 库中未找到该路径，检查 references/skills/ 目录" |
+| `missing_prompt_ref` | 缺少 `prompt_ref`；fix_hint="需要指定 Prompt 库路径引用" |
 | `missing_intent_probe` | 无 pytest/python3/DRY_RUN 类强探针 |
 | `acceptance_weak` | 仅 `test -f` / 存在性假绿 |
 | `acceptance_too_wide` | 探针 >3 条（须压到 1～2） |

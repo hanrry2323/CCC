@@ -10,10 +10,52 @@ import sys
 from pathlib import Path
 from typing import Any
 
-VALID_EXECUTOR_INTENTS = frozenset(
-    {"opencode", "python", "ollama", "cli", "auto"}
-)
 VALID_FEASIBILITY = frozenset({"ok", "blocked"})
+
+
+def _references_root() -> Path:
+    """references/ 库根路径（platform 仓 CCC）。"""
+    return Path(__file__).resolve().parents[3] / "references"
+
+
+def _validate_skill_ref(skill_ref: str) -> bool:
+    """检查 references/skills/<path>/skill.md 是否存在。
+
+    skill_ref 形如 'skills/write-code' 或 'skills/write-code@a1b2c3d'（带 hash 时只校验路径部分）。
+    """
+    if not skill_ref:
+        return False
+    # 去掉 @<hash> 后缀
+    path_part = skill_ref.split("@", 1)[0].strip("/")
+    if not path_part.startswith("skills/"):
+        return False
+    skill_md = _references_root() / path_part / "skill.md"
+    return skill_md.is_file()
+
+
+def _validate_prompt_ref(prompt_ref: str) -> bool:
+    """检查 references/prompts/<path>.md 是否存在。
+
+    prompt_ref 形如 'prompts/write-code-prompt' 或 'prompts/write-code-prompt@a1b2c3d'。
+    """
+    if not prompt_ref:
+        return False
+    path_part = prompt_ref.split("@", 1)[0].strip("/")
+    if not path_part.startswith("prompts/"):
+        return False
+    prompt_md = _references_root() / f"{path_part}.md"
+    return prompt_md.is_file()
+
+
+# 旧 executor_intent → skill_ref 映射（向后兼容，硬切换过渡期仅记 warning）
+_EXECUTOR_INTENT_TO_SKILL_REF = {
+    "opencode": "skills/write-code",
+    "python": "skills/script-seed",
+    "cli": "skills/ops",
+    "ollama": "skills/write-code",
+    "auto": "skills/write-code",
+    "bug": "skills/bug-fix",
+}
 
 
 def _intent_probe():
@@ -116,14 +158,44 @@ def validate_transfer_payload(
             }
         )
 
-    intent = str(body.get("executor_intent") or "opencode").strip().lower()
-    if intent not in VALID_EXECUTOR_INTENTS:
+    # skill_ref / prompt_ref 必填校验（新架构 · 硬切换）
+    skill_ref = str(body.get("skill_ref") or "").strip()
+    if not skill_ref:
         errors.append(
             {
-                "code": "invalid_executor_intent",
-                "message": f"未知执行面: {intent}",
+                "code": "missing_skill_ref",
+                "message": "需要 Skill 库路径引用（skill_ref，如 skills/write-code）",
             }
         )
+    elif not _validate_skill_ref(skill_ref):
+        errors.append(
+            {
+                "code": "invalid_skill_ref",
+                "message": f"Skill 库路径不存在: {skill_ref}",
+            }
+        )
+
+    prompt_ref = str(body.get("prompt_ref") or "").strip()
+    if not prompt_ref:
+        errors.append(
+            {
+                "code": "missing_prompt_ref",
+                "message": "需要 Prompt 库路径引用（prompt_ref，如 prompts/write-code-prompt）",
+            }
+        )
+    elif not _validate_prompt_ref(prompt_ref):
+        errors.append(
+            {
+                "code": "invalid_prompt_ref",
+                "message": f"Prompt 库路径不存在: {prompt_ref}",
+            }
+        )
+
+    # 旧字段 executor_intent 向后兼容：若存在且无 skill_ref，映射并记 warning（不阻断）
+    legacy_intent = str(body.get("executor_intent") or "").strip().lower()
+    if legacy_intent and not skill_ref:
+        # 硬切换期：旧字段仅用于映射推断，不再做枚举校验
+        pass
 
     project_id = str(body.get("project_id") or body.get("project") or "").strip()
     if not project_id:
@@ -317,9 +389,10 @@ def _check_text_task_agent_track(body: dict[str, Any]) -> dict[str, str] | None:
     pipeline = str(body.get("pipeline") or "dev").strip().lower()
     if pipeline in ("ops", "hygiene", "board", "board_ops"):
         return None
-    intent = str(body.get("executor_intent") or "opencode").strip().lower()
-    # python/script 短路径仍可能误吃文案；一律拒纯文，逼 Agent 自轨
-    if intent not in ("opencode", "python", "auto", ""):
+    # 新架构：从 skill_ref 推断执行器；write-code/script-seed/ops 类才查纯文
+    skill_ref = str(body.get("skill_ref") or "").strip().lower()
+    # 非写码类 skill（如 code-review）不查纯文分轨
+    if skill_ref and not skill_ref.startswith(("skills/write-code", "skills/script-seed", "skills/ops")):
         return None
     paths = _collect_scope_paths(body)
     title = str(body.get("title") or "")
@@ -755,7 +828,8 @@ def build_epic_description(body: dict[str, Any]) -> str:
     goal = str(body.get("goal") or "").strip()
     acc = normalize_acceptance(body.get("acceptance"))
     pipeline = str(body.get("pipeline") or "").strip()
-    intent = str(body.get("executor_intent") or "opencode").strip().lower()
+    skill_ref = str(body.get("skill_ref") or "").strip()
+    prompt_ref = str(body.get("prompt_ref") or "").strip()
     plan_md = str(body.get("plan_md") or "").strip()
     skills = body.get("skills_hint") or []
     if not isinstance(skills, list):
@@ -767,7 +841,8 @@ def build_epic_description(body: dict[str, Any]) -> str:
     parts = [
         "## Transfer Gate",
         f"- pipeline: {pipeline}",
-        f"- executor_intent: {intent}",
+        f"- skill_ref: {skill_ref}",
+        f"- prompt_ref: {prompt_ref}",
         "- feasibility: ok",
         f"- bump_version: {'true' if bump else 'false'}",
     ]
@@ -888,54 +963,78 @@ def resolve_complexity(body: dict[str, Any]) -> str:
     return raw
 
 
-def resolve_executor_intent(body: dict[str, Any]) -> str:
-    """归一执行面。卫生卡 / 机械意图探针强制 python。"""
-    intent = str(body.get("executor_intent") or "opencode").strip().lower()
-    pipeline = str(body.get("pipeline") or "").strip().lower()
-    title = str(body.get("title") or "").strip().lower()
-    goal = str(body.get("goal") or "").strip().lower()
-    blob = f"{pipeline} {title} {goal}"
-    acc = normalize_acceptance(body.get("acceptance")).lower()
-    plan = str(body.get("plan_md") or "").lower()
-    blob_full = f"{blob} {acc} {plan}"
+def resolve_skill_ref(body: dict[str, Any]) -> str:
+    """归一 skill_ref。
 
-    ip = _intent_probe()
-    hygiene = ip.is_hygiene_transfer(body) or any(
-        k in blob
-        for k in (
-            "git add",
-            "单 commit",
-            "committer",
-        )
-    )
-    # LPSN 机械探针：整卡都是探针种子时才强制 python（勿因验收里顺带一条探针就锁死整 epic）
-    title_l = title.lower()
-    probe_epic = any(
-        k in title_l
-        for k in (
-            "paper_intent_probe",
-            "意图探针",
-            "纸面探针",
-            "script-seed",
-            "intent-probe",
-            "open-intent",
-            "open_intent",
-            "开放意图",
-            "ccc_open_intent",
-        )
-    ) or (
-        "探针" in title
-        and not any(k in title for k in ("模块", "功能", "实现", "文档", "计数"))
-    ) or _looks_like_util_probe_transfer(body)
-    if (hygiene or probe_epic) and intent in ("opencode", "auto", ""):
-        return "python"
+    新架构（硬切换）：
+    - 优先读 body['skill_ref']
+    - 缺失时从旧 executor_intent 映射（向后兼容，记 warning 到 stderr）
+    - 仍缺失则兜底 skills/write-code
+    """
+    skill_ref = str(body.get("skill_ref") or "").strip()
+    if skill_ref:
+        return skill_ref
 
-    if intent == "auto":
-        if "python" in pipeline or pipeline in ("py", "script"):
-            return "python"
-        if "ollama" in pipeline:
-            return "ollama"
-        if pipeline in ("cli", "shell", "ops"):
-            return "cli"
+    # 向后兼容：从旧 executor_intent 映射
+    legacy_intent = str(body.get("executor_intent") or "").strip().lower()
+    if legacy_intent and legacy_intent in _EXECUTOR_INTENT_TO_SKILL_REF:
+        import sys as _sys
+        print(
+            f"[transfer_gate] WARNING: body 无 skill_ref，从旧 executor_intent={legacy_intent!r} "
+            f"映射为 skill_ref={_EXECUTOR_INTENT_TO_SKILL_REF[legacy_intent]!r}",
+            file=_sys.stderr,
+        )
+        return _EXECUTOR_INTENT_TO_SKILL_REF[legacy_intent]
+
+    # 兜底
+    return "skills/write-code"
+
+
+def resolve_executor_from_skill(skill_ref: str) -> str:
+    """从 skill_ref 推断默认执行器。
+
+    读 references/skills/<path>/skill.md 的「默认执行器」字段；
+    缺失或读取失败则兜底 opencode。
+    """
+    if not skill_ref:
         return "opencode"
-    return intent if intent in VALID_EXECUTOR_INTENTS else "opencode"
+
+    path_part = skill_ref.split("@", 1)[0].strip("/")
+    skill_md = _references_root() / path_part / "skill.md"
+    if not skill_md.is_file():
+        return "opencode"
+
+    try:
+        content = skill_md.read_text(encoding="utf-8")
+        # 解析「默认执行器：xxx」或「默认执行器 | xxx」格式
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("默认执行器"):
+                # 提取冒号或竖线后的值
+                for sep in ("：", ":", "|"):
+                    if sep in line:
+                        executor = line.split(sep, 1)[1].strip().lower()
+                        # 去掉括号注释
+                        if "（" in executor:
+                            executor = executor.split("（", 1)[0].strip()
+                        if executor:
+                            return executor
+                        break
+    except Exception:
+        pass
+
+    return "opencode"
+
+
+# ===== 以下为旧 executor_intent 归一逻辑的史径保留（仅供 _epic_default_executor 过渡期复用）=====
+# 新架构下应使用 resolve_skill_ref + resolve_executor_from_skill，不再直接调用 resolve_executor_intent。
+
+
+def resolve_executor_intent(body: dict[str, Any]) -> str:
+    """[已废弃 · 史径保留] 归一执行面。新架构请用 resolve_skill_ref + resolve_executor_from_skill。
+
+    仍保留供 _product_fanout._epic_default_executor 过渡期调用；
+    新代码禁止调用本函数。
+    """
+    skill_ref = resolve_skill_ref(body)
+    return resolve_executor_from_skill(skill_ref)
