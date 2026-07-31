@@ -58,7 +58,7 @@ def build_opencode_run_cmd(
     opencode_bin: str,
     model: str,
     *,
-    message: str,
+    message: str | None = None,
     prompt_file: str | None = None,
     cwd: str | Path | None = None,
     pure: bool | None = None,
@@ -75,6 +75,8 @@ def build_opencode_run_cmd(
     - ``--auto``：R-13 默认开，自动批准写文件操作（否则非交互模式无法创建产物）
     - ``--pure``：R-13 默认关（opencode 1.17.13 --pure 导致 exit 255 无输出）
       如需启用设 CCC_OPENCODE_PURE=1
+    - R-14: ``message=None`` 时不 append positional，prompt 走 stdin
+      （opencode 1.17 长 prompt >2KB 作 positional 会被 SIGTERM，stdin 方式稳定）
     """
     from _workspace_isolation import require_cwd
 
@@ -99,7 +101,9 @@ def build_opencode_run_cmd(
     if auto:
         cmd.append("--auto")
     cmd.extend(["--dir", str(ws)])
-    cmd.append(message if message else "execute")
+    # R-14: message 为 None 时不 append positional，prompt 走 stdin
+    if message is not None:
+        cmd.append(message)
     return cmd
 
 
@@ -201,11 +205,15 @@ async def run_opencode(
     opencode_bin: str = "opencode",
     cfg: Config | None = None,
 ) -> dict:
-    """起 opencode run 子进程，prompt 走 positionals（opencode 1.17 协议）
+    """起 opencode run 子进程，prompt 走 stdin（R-14）
 
     cmd 参数：可注入自定义命令（测试用）。默认调 opencode run --model code。
+    R-14: 默认走 stdin 传 prompt（长 positional 会导致 opencode 1.17 SIGTERM）
     """
     tmp_path = None
+    # R-14: full_prompt 用于 stdin 传入；cmd 注入模式下不走 stdin
+    full_prompt = prompt_text.strip() if prompt_text else "execute"
+    _use_stdin = cmd is None  # 仅默认（非注入）路径走 stdin
     if cmd is None:
         # opencode 1.17 run 协议：message 走 positionals（不是 stdin）
         # 截断 prompt 到 200 字符（防命令行超长）；长 prompt 走 prompt_file
@@ -238,15 +246,16 @@ async def run_opencode(
         prompt_text = prompt_text.strip()
         if cfg is None:
             cfg = Config()
-        # R-13: 直接用完整 prompt 作为 message（不截断、不用 --file）
-        # R-3 的 --file 策略失败：opencode 1.17 的 --file 是"附件"，模型不会
-        # 自动读取附件内容作为指令，导致 short_action message 太短模型不知道做什么
-        # 完整 prompt 3-5KB 远低于 macOS MAX_ARG_STRLEN(256KB)，可直接作 positional
-        full_prompt = prompt_text if prompt_text else "execute"
+        # R-14: prompt 走 stdin（不传 message positional）
+        # R-13 的 positional message 策略在长 prompt（>2KB）下导致 opencode SIGTERM
+        # 实测 2026-08-01：cat prompt.md | opencode run --auto --dir <ws> 正常工作
+        # 而 opencode run --auto --dir <ws> "$LONG_PROMPT" 会在 ~10s 后 exit -15
+        # 根因：opencode 1.17.13 CLI 在长 positional 参数下有未知的 SIGTERM bug
+        # stdin 方式：opencode 无 message positional 时自动从 stdin 读 prompt
         cmd = build_opencode_run_cmd(
             opencode_bin,
             model,
-            message=full_prompt,
+            message=None,  # R-14: 不传 positional，走 stdin
             cwd=cwd,
         )
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
@@ -255,7 +264,7 @@ async def run_opencode(
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
-        stdin=asyncio.subprocess.DEVNULL,  # 显式不吃 stdin
+        stdin=asyncio.subprocess.PIPE if _use_stdin else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
@@ -322,8 +331,10 @@ async def run_opencode(
     started = time.time()
     result: dict | None = None
     try:
+        # R-14: prompt 通过 stdin 传给 opencode（避免长 positional SIGTERM bug）
+        stdin_input = full_prompt.encode("utf-8") if _use_stdin and full_prompt else None
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(),
+            proc.communicate(input=stdin_input),
             timeout=timeout,
         )
         duration = time.time() - started
