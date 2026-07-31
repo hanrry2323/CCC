@@ -22,4 +22,4 @@ prompt_ref: prompts/write-code-prompt
 ## 验收
 
 - `DRY_RUN=true python3 -c "from pathlib import Path; assert Path('scripts/stage5_t1_util.py').is_file()"`
-- `DRY_RUN=true python3 -c "import sys; sys.path.insert(0,'scripts'); from stage5_t1_util import parse_pct; assert parse_pct('12.3%') == 0.123; print('ok')"`
+- `DRY_RUN=true python3 -c "import sys; sys.path.insert(0,'scripts'); from stage5_t1_util import parse_pct; assert abs(parse_pct('12.3%') - 0.123) < 1e-9; print('ok')"`
