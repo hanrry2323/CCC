@@ -19,7 +19,7 @@ prompt_ref: prompts/write-code-prompt
 2. 实现 `def parse_pct(s: str) -> float`：将 "12.3%" 解析为 0.123
 3. 写一行 assert 验证
 
-# 验收意图
+## 验收
 
 - `DRY_RUN=true python3 -c "from pathlib import Path; assert Path('scripts/stage5_t1_util.py').is_file()"`
 - `DRY_RUN=true python3 -c "import sys; sys.path.insert(0,'scripts'); from stage5_t1_util import parse_pct; assert parse_pct('12.3%') == 0.123; print('ok')"`

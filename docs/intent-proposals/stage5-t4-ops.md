@@ -20,7 +20,7 @@ pipeline: ops
 2. 检查 `.ccc/board/index.json` 存在
 3. 输出检查结果到 `scripts/stage5_t4_ops_report.py`
 
-# 验收意图
+## 验收
 
 - `DRY_RUN=true python3 -c "from pathlib import Path; assert Path('.ccc/board').is_dir()"`
 - `DRY_RUN=true python3 -c "from pathlib import Path; assert Path('scripts/stage5_t4_ops_report.py').is_file()"`

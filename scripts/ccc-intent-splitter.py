@@ -207,6 +207,53 @@ def _append_audit(workspace: Path, proposal_id: str, event: dict) -> None:
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
+def _extract_scope_from_md(md: str) -> list[str]:
+    """从 `# 范围` / `## 范围` 节解析目标文件路径列表。"""
+    if not md:
+        return []
+    lines = md.splitlines()
+    in_scope = False
+    paths: list[str] = []
+    for line in lines:
+        s = line.strip()
+        low = s.lstrip("#").strip().lower()
+        if s.startswith("#"):
+            in_scope = low in ("范围", "scope", "目标文件")
+            continue
+        if not in_scope:
+            continue
+        item = s.lstrip("-*").strip().strip("`").strip()
+        if not item or item.startswith(("http", "#", "--")):
+            continue
+        # 提取文件路径（排除说明文字）
+        m = re.search(r"([A-Za-z0-9_./\-]+\.(?:py|md|sh|json|yaml|yml|txt|toml))", item)
+        if m:
+            paths.append(m.group(1).lstrip("./"))
+    return paths
+
+
+def _extract_paths_from_acceptance(md: str) -> list[str]:
+    """从验收命令里提取涉及的产物路径（兜底）。"""
+    if not md:
+        return []
+    acc_section = []
+    in_acc = False
+    for line in md.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            in_acc = s.lstrip("#").strip() in ("验收", "验证")
+            continue
+        if in_acc:
+            acc_section.append(line)
+    scope: list[str] = []
+    for line in acc_section:
+        for m in re.finditer(r"([A-Za-z0-9_./\-]+\.py)", line):
+            p = m.group(1).lstrip("./")
+            if p not in scope:
+                scope.append(p)
+    return scope
+
+
 def _run_fanout(store, epic: dict, workspace: Path, proposal_id: str) -> dict:
     """调 Claude 拆卡 + apply_fanout 落盘。返回 {ok, child_ids, error}。
 
@@ -321,6 +368,12 @@ def _fallback_create_work(
         if not existing:
             return {"ok": False, "error": f"fallback create work failed: {work_id}"}
 
+    # 从方案 # 范围 解析目标文件路径 → phases scope（产物确定性）
+    scope = _extract_scope_from_md(plan_md)
+    if not scope:
+        # 兜底：从验收命令里找文件路径
+        scope = _extract_paths_from_acceptance(plan_md)
+
     # 生成 plan + phases 文件（Engine dispatch 必需）
     plan_dir = workspace / ".ccc" / "plans"
     phases_dir = workspace / ".ccc" / "phases"
@@ -332,8 +385,8 @@ def _fallback_create_work(
         "phase": 1,
         "status": "pending",
         "description": title[:200],
-        "scope": [],  # OpenCode 会从 plan_md 推断
-        "subtasks": {"1.1": "pending"},
+        "scope": scope,
+        "subtasks": {f"1.{i+1}": f"created {s}" for i, s in enumerate(scope)},
         "timeout": 300,
         "commit": None,
         "notes": "intent-splitter-fallback",

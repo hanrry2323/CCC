@@ -19,6 +19,6 @@ prompt_ref: prompts/write-code-prompt
 2. 实现 `def paper_check() -> str`：返回 "paper-ok"
 3. DRY_RUN 模式下直接可执行
 
-# 验收意图
+## 验收
 
 - `DRY_RUN=true python3 scripts/stage5_t2_probe.py`

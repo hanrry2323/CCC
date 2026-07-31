@@ -19,7 +19,7 @@ prompt_ref: prompts/bug-fix-prompt
 2. 实现 `def parse_pct_fixed(s: str) -> float`：负数格式 "-12.3%" 解析为 -0.123
 3. 写 assert 验证负数路径
 
-# 验收意图
+## 验收
 
 - `DRY_RUN=true python3 -c "from pathlib import Path; assert Path('scripts/stage5_t3_fix.py').is_file()"`
 - `DRY_RUN=true python3 -c "import sys; sys.path.insert(0,'scripts'); from stage5_t3_fix import parse_pct_fixed; assert parse_pct_fixed('-12.3%') == -0.123; print('ok')"`

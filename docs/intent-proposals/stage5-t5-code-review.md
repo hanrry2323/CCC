@@ -19,6 +19,6 @@ prompt_ref: prompts/code-review-prompt
 2. 审查函数正确性、边界处理、命名规范
 3. 输出审查报告到 `scripts/stage5_t5_review.md`，至少 3 条审查意见
 
-# 验收意图
+## 验收
 
 - `DRY_RUN=true python3 -c "from pathlib import Path; p=Path('scripts/stage5_t5_review.md'); assert p.is_file() and len(p.read_text()) > 100"`
