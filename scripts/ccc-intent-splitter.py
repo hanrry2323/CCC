@@ -208,7 +208,10 @@ def _append_audit(workspace: Path, proposal_id: str, event: dict) -> None:
 
 
 def _run_fanout(store, epic: dict, workspace: Path, proposal_id: str) -> dict:
-    """调 Claude 拆卡 + apply_fanout 落盘。返回 {ok, child_ids, error}。"""
+    """调 Claude 拆卡 + apply_fanout 落盘。返回 {ok, child_ids, error}。
+
+    SDK 不可用时 fallback：直接从方案 plan_md 创建单张 work 子卡。
+    """
     from _product_fanout import apply_fanout, build_fanout_prompt, parse_fanout_output
     from _product_session import run_contract_loop_sync
 
@@ -241,7 +244,12 @@ def _run_fanout(store, epic: dict, workspace: Path, proposal_id: str) -> dict:
         gate_fn=_gate_epic,
     )
     if not sess.get("ok"):
-        return {"ok": False, "error": sess.get("error") or "epic session failed"}
+        # fallback：SDK 不可用时直接创建单张 work 子卡
+        _log.warning(
+            "splitter SDK 不可用 (%s)，走 fallback 单 phase 拆卡",
+            sess.get("error", "")[:80],
+        )
+        return _fallback_create_work(store, epic, workspace, proposal_id)
 
     _brief, children = parse_fanout_output(sess.get("output") or "")
     fr = apply_fanout(
@@ -257,6 +265,73 @@ def _run_fanout(store, epic: dict, workspace: Path, proposal_id: str) -> dict:
         "ok": True,
         "child_ids": fr.get("child_ids") or [],
         "claude_session_id": sess.get("claude_session_id") or "",
+    }
+
+
+def _fallback_create_work(
+    store,
+    epic: dict,
+    workspace: Path,
+    proposal_id: str,
+) -> dict:
+    """SDK 不可用时 fallback：从方案 plan_md 直接创建单张 work 子卡。
+
+    绕过 apply_fanout，直接 create_task 到 planned 列。
+    """
+    epic_id = epic["id"]
+    work_id = f"{epic_id}-w1"
+    title = epic.get("title") or proposal_id
+    description = epic.get("description") or epic.get("plan_md") or ""
+    skill_ref = ""
+    prompt_ref = ""
+    note_raw = epic.get("note") or ""
+    if isinstance(note_raw, str) and note_raw.strip().startswith("{"):
+        try:
+            note_data = json.loads(note_raw)
+            tg = note_data.get("transfer_gate") or {}
+            skill_ref = tg.get("skill_ref") or ""
+            prompt_ref = tg.get("prompt_ref") or ""
+        except json.JSONDecodeError:
+            pass
+
+    work_data = {
+        "id": work_id,
+        "title": title[:80],
+        "description": description[:1500],
+        "card_kind": "work",
+        "complexity": "small",
+        "parent_id": epic_id,
+        "note": json.dumps({
+            "transfer_gate": {
+                "skill_ref": skill_ref,
+                "prompt_ref": prompt_ref,
+                "pipeline": "dev",
+                "feasibility": "ok",
+                "source": "intent-splitter-fallback",
+            },
+            "fallback": True,
+        }, ensure_ascii=False)[:2000],
+        "tags": ["intent-proposal", "fallback", f"proposal:{proposal_id}"],
+    }
+    if not store.create_task(work_data, column="planned"):
+        col, existing = store.find_task(work_id)
+        if not existing:
+            return {"ok": False, "error": f"fallback create work failed: {work_id}"}
+
+    # 更新 epic child_ids + split_status
+    try:
+        store.patch_task(epic_id, {
+            "child_ids": [work_id],
+            "split_status": "planned",
+        })
+    except Exception as exc:
+        _log.warning("fallback patch epic %s: %s", epic_id, exc)
+
+    return {
+        "ok": True,
+        "child_ids": [work_id],
+        "claude_session_id": "",
+        "fallback": True,
     }
 
 
