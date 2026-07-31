@@ -247,6 +247,61 @@ def test_oversized_work_child_rejected(tmp_path):
     assert "oversized" in str(result.get("error") or "")
 
 
+def test_seeded_preserves_pathless_fail_assert():
+    """Epic 故意失败探针不得被静默换成 py_compile（v1.2 保真）。"""
+    from _intent_probe import extract_probe_commands
+    from _product_fanout import _plan_md_for_seeded_phase, _repair_seeded_child_plans
+
+    epic = (
+        "# Plan\n\n## 目标\n故意 FAIL\n\n## 范围\n"
+        "- scripts/write_intentional_fail.py\n\n"
+        "## 验收\n"
+        "- python3 -c \"assert False, 'intentional fail'\"\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "write marker",
+        "scope": ["scripts/write_intentional_fail.py", "INTENTIONAL_FAIL.txt"],
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
+    probes = extract_probe_commands(out)
+    assert any("assert False" in c for c in probes), probes
+    assert not any("py_compile" in c for c in probes), probes
+
+    repaired = _repair_seeded_child_plans(
+        [
+            {
+                "title": "w1",
+                "plan_md": out,
+                "phases": [ph],
+            }
+        ],
+        epic_plan=epic,
+    )
+    probes2 = extract_probe_commands(repaired[0]["plan_md"])
+    assert any("assert False" in c for c in probes2), probes2
+    assert not any("py_compile" in c for c in probes2), probes2
+
+
+def test_seeded_preserves_systemexit_fail_probe():
+    from _intent_probe import extract_probe_commands
+    from _product_fanout import _plan_md_for_seeded_phase
+
+    epic = (
+        "# Plan\n\n## 验收\n"
+        "- python3 -c \"raise SystemExit('forced_fail')\"\n"
+    )
+    ph = {
+        "phase": 1,
+        "description": "failpath",
+        "scope": ["scripts/failpath_marker.py", "FAILPATH_MARK"],
+    }
+    out = _plan_md_for_seeded_phase(epic, ph, phase_num=1, title="w1")
+    probes = extract_probe_commands(out)
+    assert any("forced_fail" in c or "SystemExit" in c for c in probes), probes
+    assert not any("py_compile" in c for c in probes), probes
+
+
 def test_seeded_phase_plan_preserves_epic_acceptance():
     from _product_fanout import _plan_md_for_seeded_phase
 

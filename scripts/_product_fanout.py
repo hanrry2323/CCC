@@ -850,13 +850,51 @@ def _probe_touches_scope(cmd: str, scope: list[str]) -> bool:
     return False
 
 
+_PATHISH_IN_CMD = re.compile(
+    r"(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]+"
+)
+
+
+def _probe_refs_foreign_path(cmd: str, scope: list[str]) -> bool:
+    """True when cmd names a file path that is not in this phase scope.
+
+    Pathless probes (``python3 -c \"assert False\"``) are global — not foreign.
+    Multi-phase: ``scripts/other_probe.py`` must not ride on a code-only phase.
+    """
+    if _probe_touches_scope(cmd, scope):
+        return False
+    paths = _PATHISH_IN_CMD.findall(cmd or "")
+    return bool(paths)
+
+
+def _is_strong_epic_probe(cmd: str) -> bool:
+    """Behavioral / intent probe that must survive seeded fanout rewrite."""
+    c = (cmd or "").strip()
+    if not c:
+        return False
+    try:
+        from _acceptance_strength import classify_cmd, is_behavioral_probe
+
+        if is_behavioral_probe(c) or classify_cmd(c) == "behavioral":
+            return True
+    except Exception:
+        pass
+    try:
+        from _intent_probe import looks_like_intent_probe
+
+        return bool(looks_like_intent_probe(c))
+    except Exception:
+        return False
+
+
 def _acceptance_bullets_for_phase(
     *, body: str, epic_plan: str, phase: dict, desc: str
 ) -> list[str]:
     """Phase work 的 ## 验收：本相强探针优先；禁 existence 堆 + unit/paper 混装。
 
-    有 behavioral epic/body 探针触及 scope 时，只保留 1～2 条强探针，
-    **不再**为每个 scope 文件 prepend ``test -f``（否则 salvage 假绿/假红空转）。
+    Epic 上已有强探针时：**保真继承**（触及 scope 的优先；无触及则继承
+    非异相路径的全局强探针）。仅当 epic 验收为空/散文/existence-only 时
+    才允许 ``py_compile`` 补强——禁止把 ``assert False`` 静默换成 compile。
     """
     try:
         from _intent_probe import extract_probe_commands, is_allowed_verify_cmd
@@ -877,36 +915,49 @@ def _acceptance_bullets_for_phase(
         seen.add(c)
         bullets.append(c)
 
+    epic_cmds: list[str] = []
+    if extract_probe_commands:
+        epic_cmds = list(extract_probe_commands(epic_plan or "") or [])
+
     # 1) phase 正文里已有的可执行命令
     if extract_probe_commands:
         for c in extract_probe_commands(body or ""):
             if _probe_touches_scope(c, scope):
                 _add(c)
 
-    # 2) epic ## 验收里触及本 scope 的探针（优先于 existence）
-    if extract_probe_commands:
-        for c in extract_probe_commands(epic_plan or ""):
-            if _probe_touches_scope(c, scope):
+    # 2) epic ## 验收里触及本 scope 的探针
+    for c in epic_cmds:
+        if _probe_touches_scope(c, scope):
+            _add(c)
+
+    # 2b) 强探针保真：未触及 scope 但仍是全局意图探针 → 原样继承
+    #     （禁止 assert False / SystemExit 被丢掉后换成 py_compile）
+    #     异相路径探针（其它 phase 的脚本）不继承。
+    strong_epic = [c for c in epic_cmds if _is_strong_epic_probe(c)]
+    has_strong_in_bullets = any(_is_strong_epic_probe(b) for b in bullets)
+    if strong_epic and not has_strong_in_bullets:
+        for c in strong_epic:
+            if not _probe_refs_foreign_path(c, scope):
                 _add(c)
 
-    # 3) 仍无探针：py_compile / 最后才 existence（harden 会再削）
-    if extract_probe_commands and not extract_probe_commands(
-        "## 验收\n" + "\n".join(f"- {b}" for b in bullets)
-    ):
-        for p in scope:
-            if p.endswith(".py"):
-                _add(f"python3 -m py_compile {p}")
-                break
-        if not bullets:
+    # 3) 仍无强探针且 epic 亦无强探针：才允许 py_compile / existence 补强
+    epic_has_strong = bool(strong_epic)
+    if extract_probe_commands and not any(_is_strong_epic_probe(b) for b in bullets):
+        if not epic_has_strong:
             for p in scope:
-                if p.endswith("/") or p in (".ccc/board", ".ccc") or p.rstrip(
-                    "/"
-                ).endswith("board"):
-                    _add(f"test -d {p.rstrip('/')}")
-                elif "/" in p or p.endswith(
-                    (".py", ".md", ".sh", ".json", ".ts", ".js")
-                ):
-                    _add(f"test -f {p}")
+                if p.endswith(".py"):
+                    _add(f"python3 -m py_compile {p}")
+                    break
+            if not bullets:
+                for p in scope:
+                    if p.endswith("/") or p in (".ccc/board", ".ccc") or p.rstrip(
+                        "/"
+                    ).endswith("board"):
+                        _add(f"test -d {p.rstrip('/')}")
+                    elif "/" in p or p.endswith(
+                        (".py", ".md", ".sh", ".json", ".ts", ".js")
+                    ):
+                        _add(f"test -f {p}")
     if not bullets:
         # 无 scope 时给 compile-ish fallback 而非 board 假绿；仍交 harden
         bullets.append("test -d .ccc/board")
@@ -915,6 +966,7 @@ def _acceptance_bullets_for_phase(
     try:
         from _acceptance_strength import (
             harden_work_acceptance_bullets,
+            is_behavioral_probe,
             work_acceptance_gate_errors,
         )
 
@@ -923,12 +975,17 @@ def _acceptance_bullets_for_phase(
         strip_late = not any(
             x in desc_l for x in ("paper", "e2e", "probe", "端到端")
         )
+        preserved_strong = [b for b in bullets if _is_strong_epic_probe(b)]
         bullets = harden_work_acceptance_bullets(
             bullets, scope=scope, max_n=2, strip_late=strip_late
         )
+        # harden 不得剥掉 epic 强探针；若被剥光则回填
+        if preserved_strong and not any(is_behavioral_probe(b) for b in bullets):
+            bullets = preserved_strong[:2]
         # if still failing strength (existence-only), force py_compile once more
+        # — 但 epic 已有强探针时禁止用 compile 顶替
         errs = work_acceptance_gate_errors(bullets)
-        if any(e.get("code") == "acceptance_weak" for e in errs):
+        if any(e.get("code") == "acceptance_weak" for e in errs) and not epic_has_strong:
             for p in scope:
                 if str(p).endswith(".py"):
                     bullets = [f"python3 -m py_compile {p}"]
@@ -986,8 +1043,8 @@ def _plan_md_for_seeded_phase(
 ) -> str:
     """从 epic plan 切出对应 Phase 段。
 
-    切不到时下发 epic 正文，但 **一律** 用 `_acceptance_bullets_for_phase`
-    重写 ## 验收（禁止散文种子 → plan_lint → Claude 慢扇出）。
+    切不到时下发 epic 正文；## 验收经 `_acceptance_bullets_for_phase`：
+    **强探针保真**，散文/弱验收才补白名单探针。
     """
     src = plan_md or ""
     # Match ## Phase N / ## Phase N: / ## 阶段 N
