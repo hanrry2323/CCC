@@ -1,6 +1,6 @@
 # 金路径证据：最小可跑通 v1 · 长意图（2026-07-31）
 
-> 对应权威「最小可跑通 v1」。本轮以**单测 + 契约**证明薄门禁 / 五态别名 / L3b 冻结 / verify 入口；产线真跑一笔长意图在 2017 合入后补 tid。
+> 对应权威「最小可跑通 v1」。本轮以**单测 + 契约**证明薄门禁 / 五态别名 / L3b 冻结 / verify 入口；**2017 产线真跑**补 tid。
 
 ## 契约证据（本仓 pytest）
 
@@ -12,6 +12,7 @@
 | 五态别名 | `test_semantic_aliases` |
 | L3b 默认关 | `test_min_pipeline_default_on` · `test_enqueue_skips_l3b_under_min_pipeline` |
 | verify 入口 | `test_verify_role_exports` · `board/roles/verify.py` · `engine.gates.run_verify_gate` |
+| salvage → budget | `tests/scripts/test_gate_salvage.py::test_salvage_acceptance_failed_surfaces_for_budget` |
 
 ## 双槽
 
@@ -20,17 +21,42 @@
 | Claude | Desktop sidecar → loop-code；Engine plan（product）；verify 副闸（reviewer） |
 | OpenCode | Engine code（dev_role_launch / `_executor`） |
 
-## 2017 合入观测（2026-07-31）
+## 2017 合入观测
 
 | 项 | 值 |
 |----|-----|
-| HEAD | `9841a846`（含 `16b615e` min-pipeline v1） |
+| HEAD（e2e 收口） | `2c5de2b8`（含 salvage→budget 修） |
 | `CCC_MIN_PIPELINE` | unset → enabled=True |
 | `CCC_L3B_REPAIR_QUEUE` | unset → l3b=False |
-| Engine | launchd `com.ccc.engine`；合入后曾因 `_stats_server_impl` 在 attach 时误触发 `__main__` 崩（已修） |
-| workspaces | 启动日志见 `apps/ccc-demo` |
+| Engine PID | `36585`（`com.ccc.engine`） |
+| workspaces | `apps/ccc-demo` |
 
-## 待 2017 合入后补
+## 2017 实测（ccc-demo）
 
-- [ ] Desktop 白话长意图 → outbox → Hub → Engine plan→code→verify→done（记 tid）
-- [ ] 人为 FAIL → blocked + transfer_lessons → Agent 改意图再投（无 L3b 空转）
+### Happy path（长意图 → OpenCode commit → verify → done）
+
+| 项 | 值 |
+|----|-----|
+| epic | `demo-v11-7021-4deca25e`（scope>5 薄门禁） |
+| child | `demo-v11-7021-4deca25e-w1` → **released** |
+| DoD commit | `8005c43` |
+| 语义 | plan→code→verify→done；日志 `[min-pipeline] verify→done skip kb LLM` |
+
+| 项 | 值 |
+|----|-----|
+| epic | `demo-minpipe-ok-v11b-7099-63392d5d` |
+| child | `…-w1` → **released** |
+| DoD commits | `f760708` / `69946c8`（含 `MINPIPE_OK` + `scripts/write_minpipe_ok.py`） |
+| 日志 | `✓ min-pipeline → released`；epic `split_status=done` |
+
+### FAIL path（探针永炸 → reopen≤2 → blocked；无 L3b）
+
+| 项 | 值 |
+|----|-----|
+| epic | `demo-failpath-reopen-budget-v11g-7466-9afb756e` |
+| child | `…-w1` → **abnormal**（blocked） |
+| 证据 | `acceptance fail 1/2` → relaunch → `acceptance fail budget 2/2 → abnormal` |
+| L3b | **无** `~/.ccc/repair-queue.jsonl`；日志 `min-pipeline: skip L3b repair-queue` |
+| lessons | `decided.transfer_lessons` 含 `source=post_exhaust` / `bucket=acceptance_fail` / epic_id 上表 |
+
+> 注：product 扇出偶发把「故意 assert False」改写成 `py_compile`（`v11f-7209` 误绿）。FAIL 实测在 fanout 后改探针为 `raise SystemExit('forced_fail')`，并合入 salvage→budget 修（`2c5de2b`）。
