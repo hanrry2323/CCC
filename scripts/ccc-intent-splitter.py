@@ -382,6 +382,7 @@ def main(proposal_id: str, project_id: str) -> dict:
         return {"ok": False, "error": msg}
 
     try:
+        _t0 = time.monotonic()
         _append_audit(workspace, proposal_id, {
             "status": "running",
             "project_id": project_id,
@@ -390,7 +391,9 @@ def main(proposal_id: str, project_id: str) -> dict:
 
         # 1. 读方案
         try:
+            _t1 = time.monotonic()
             prop = _read_proposal(workspace, proposal_id)
+            read_ms = int((time.monotonic() - _t1) * 1000)
         except Exception as exc:
             _append_audit(workspace, proposal_id, {"status": "failed", "error": str(exc)})
             return {"ok": False, "error": str(exc)}
@@ -398,6 +401,7 @@ def main(proposal_id: str, project_id: str) -> dict:
         # 2. 创建 epic 卡到 backlog
         from _board_store import FileBoardStore
 
+        _t2 = time.monotonic()
         store = FileBoardStore(workspace)
         epic_id = f"{proposal_id}-epic"
         skill_ref = prop["skill_ref"]
@@ -437,20 +441,26 @@ def main(proposal_id: str, project_id: str) -> dict:
             return {"ok": False, "error": msg}
 
         # 4. fanout 拆卡
+        _t3 = time.monotonic()
         fr = _run_fanout(store, epic_task, workspace, proposal_id)
+        fanout_ms = int((time.monotonic() - _t3) * 1000)
         if not fr.get("ok"):
             _append_audit(workspace, proposal_id, {
                 "status": "failed",
                 "error": fr.get("error") or "fanout failed",
+                "timing_ms": {"read": read_ms, "fanout": fanout_ms},
             })
             return {"ok": False, "error": fr.get("error")}
 
         child_ids = fr.get("child_ids") or []
 
         # 5. 给子卡附 skill_ref@<hash>
+        _t4 = time.monotonic()
         tagged = _attach_skill_version(store, child_ids, skill_ref, prompt_ref)
+        attach_ms = int((time.monotonic() - _t4) * 1000)
 
         # 6. wake engine
+        _t5 = time.monotonic()
         try:
             from _engine_wake import ensure_engine_for_task
             ensure_engine_for_task(
@@ -461,8 +471,10 @@ def main(proposal_id: str, project_id: str) -> dict:
             )
         except Exception as exc:
             _log.warning("wake engine: %s", exc)
+        wake_ms = int((time.monotonic() - _t5) * 1000)
 
-        # 7. 审计完成
+        # 7. 审计完成（含阶段耗时埋点）
+        total_ms = int((time.monotonic() - _t0) * 1000)
         _append_audit(workspace, proposal_id, {
             "status": "ok",
             "cards_produced": len(child_ids),
@@ -471,6 +483,16 @@ def main(proposal_id: str, project_id: str) -> dict:
             "claude_session_id": fr.get("claude_session_id") or "",
             "skill_ref": skill_ref,
             "prompt_ref": prompt_ref,
+            "fallback": bool(fr.get("fallback")),
+            "tagged_cards": tagged,
+            "timing_ms": {
+                "read": read_ms,
+                "create_epic": int((time.monotonic() - _t2) * 1000),
+                "fanout": fanout_ms,
+                "attach": attach_ms,
+                "wake": wake_ms,
+                "total": total_ms,
+            },
         })
         return {
             "ok": True,
