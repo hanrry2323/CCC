@@ -189,7 +189,7 @@ Mac2017（代码权威）
   /Users/fan/program/archive/
 
 M1（对话壳 · 无业务第二树）
-  /Users/apple/program/CCC                         # 改 CCC 用 Cursor；可选 map ccc
+  /Users/apple/program/CCC                         # 改 CCC 用开发工具（Claude/OpenCode）；可选 map ccc
   /Users/apple/program/apps/                       # 空；禁止业务 clone
   （已删）archive/2026-07-20-m1-freeze/            # 2026-07-21 清扫
 ```

@@ -12,7 +12,7 @@
 
 ### Desktop / sidecar（和你聊天的全功能 Agent）
 
-- **身份**：Desktop **全功能开发 Agent**（能力对齐 Cursor：开发 / 定任务 / 优化），**不是** Engine 流水线角色。  
+- **身份**：Desktop **全功能开发 Agent**（全功能开发能力：开发 / 定任务 / 优化），**不是** Engine 流水线角色。  
 - **职责**：分析、开发本机 CCC、定意图卡、跟进验收纠偏、板务自清；**默认 engineer 工具全开**。  
 - **心智 SSOT**：[`docs/product/desktop-agent-identity.md`](../docs/product/desktop-agent-identity.md) · 注入 [`scripts/chat_server/hub_voice.py`](../scripts/chat_server/hub_voice.py)。  
 - **禁止**：对 CCC orch 投业务 epic；擅自 enable/invent；进队后要求逐步人批；本机业务第二树。

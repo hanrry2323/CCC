@@ -49,6 +49,8 @@ Relay = **薄垫片**（协议翻译 + `thinking` 关 + 固定上游），不是
 
 **踩坑**：Go 套餐钥若误配到 `zen/v1` + `deepseek-v4-flash` → **401 Insufficient balance**。必须 `zen/go/v1`。
 
+**踩坑（大 Write / 长 tool 流 · 2026-07-31）**：Claude 在 ~50k 上下文后一次性 `Write` 整文件时，上游 Go 常需 1～3 分钟吐 tool_args。旧默认 `FAILOVER_MAX_MS=45s`×2 ≈90s、`STALL_IDLE_MS=30s` 会误杀 → 客户端 `API error · Retrying`。现行默认：`FAILOVER_MAX_MS=180000`、`LOOP_UPSTREAM_ATTEMPT_PAID_MS=90000`、`LOOP_HEADERS_TIMEOUT_MS=120000`、`STALL_IDLE_MS=120000`（`install-relay-plist.sh` + dist 默认；M1/2017 同构）。
+
 **踩坑（IPv6 · 2026-07-28）**：本网到 `opencode.ai` **IPv6 黑洞**（`curl -6` 超时、`curl -4` 秒级通）。Node `verbatim` 先 AAAA → 2017 Relay 表现为 sole flash `attempt timeout`、请求挂死。修复：`dist` 内 `preferIpv4Dns` + undici `connect.family=4`；plist `NODE_OPTIONS=--dns-result-order=ipv4first`；超时后 **recycleDirectAgent** 清半开 keep-alive。**M1 / 2017 须同构**（同 `proxy.js` + 同 plist 环境变量）；勿只 kickstart 不重装 plist。
 
 **踩坑（客户端误指 LAN · 2026-07-28）**：M1 上 Claude / OpenCode / Codex **必须**打本机 `127.0.0.1:4000` / `:4002`。若仍写 `192.168.3.116:4000|4002`，会在 2017 卡死时把 Desktop/运维席一起拖成「连不上」，并反向打挂编排面 Relay。

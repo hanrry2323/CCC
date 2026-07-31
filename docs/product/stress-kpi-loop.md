@@ -14,11 +14,11 @@
 | 层 | 内容 | 自动化 |
 |----|------|--------|
 | A 量测 | baseline / dispatch / efficiency report / KPI gate | **全自动脚本** |
-| B 定时 | 投递后 sleep 1h → 唤醒 Cursor 审查 | **Cursor loop / arm-wake** |
-| C 优化 | 按 `primary_fail` + allowlist 改平台 | **Cursor Agent**（禁止无人乱改） |
+| B 定时 | 投递后 sleep 1h → 唤醒开发工具（Claude/OpenCode）审查 | **开发工具（Claude/OpenCode） loop / arm-wake** |
+| C 优化 | 按 `primary_fail` + allowlist 改平台 | **开发工具（Claude/OpenCode） Agent**（禁止无人乱改） |
 | D 再投 | `continue` 下一 round | 脚本；须 C 已部署 2017 |
 
-**不要**指望无 Cursor 的 cron 自己改产线代码。高自动化 = A+B+D 稳，C 有门禁。
+**不要**指望无开发工具（Claude/OpenCode）的 cron 自己改产线代码。高自动化 = A+B+D 稳，C 有门禁。
 
 ## 轮次评估
 
@@ -29,7 +29,7 @@
 | R3 | 短路径绕互斥 + scope DoD | 纸面堵在 OpenCode 后；脏树 |
 | R4 | 短路径失败预算 + feature_seed | board_ops 1Hz 空转；e04 OpenCode 不稳 |
 | R5 | queue **独立卡**口径 + 卫生 dirty 豁免 | 依赖链地板误伤主门；paper 报告挡卫生 |
-| 后 | **去 e05**；板面清场归 Cursor | 卫生不靠 Engine epic |
+| 后 | **去 e05**；板面清场归开发工具（Claude/OpenCode） | 卫生不靠 Engine epic |
 
 **推荐 4、上限 5**（写在 scorecard）。
 

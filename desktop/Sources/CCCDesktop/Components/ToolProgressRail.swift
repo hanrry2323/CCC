@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Tool progress（Cursor 式：默认折叠 + 一句轮播 + 分段进度轨）
+// MARK: - Tool progress（现代式：默认折叠 + 一句轮播 + 分段进度轨）
 
 struct ToolStep: Identifiable, Hashable, Codable {
     enum Status: String, Hashable, Codable { case running, done, error }

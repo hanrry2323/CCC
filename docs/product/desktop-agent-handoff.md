@@ -1,7 +1,7 @@
 # Desktop Agent 交接：业务仓迁移与接入
 
 > **给 Desktop Agent / Hub·sidecar 的短交接**（日常心智）。  
-> **不是** Cursor 平台开发助手的人格说明——Cursor 与 Desktop **人格独立**，见 [`loop-engineer-authority.md`](loop-engineer-authority.md)。  
+> **不是** 开发工具（Claude/OpenCode）平台开发助手的人格说明——开发工具（Claude/OpenCode）与 Desktop **人格独立**，见 [`loop-engineer-authority.md`](loop-engineer-authority.md)。  
 > 五仓舰队迁移运维清单（仅执行迁移时打开）：[`../deploy/fleet-apps-migration-2026-07.md`](../deploy/fleet-apps-migration-2026-07.md)。  
 > 单仓步骤 SSOT：[`../runbooks/app-migrate-register-desktop.md`](../runbooks/app-migrate-register-desktop.md)。  
 > 触发：「迁移到 2017」「接入 CCC」「桌面端怎么打开项目」「下一步做什么」。
@@ -17,7 +17,7 @@
 看板权威 = 同上 .ccc/board（Hub 透镜 live）
 远端备份 = GitHub（不是对话 cwd）
 M1        = 无业务第二树；baseline 开场 + 透镜 live
-平台仓    = 本机 CCC（Desktop Agent engineer 默认可改；合入权威仍认 Cursor）
+平台仓    = 本机 CCC（Desktop Agent engineer 默认可改；合入权威仍走开发工具（Claude/OpenCode））
 ```
 
 1. 编排 SSOT = 2017 `apps/<name>`。  
@@ -25,7 +25,7 @@ M1        = 无业务第二树；baseline 开场 + 透镜 live
 3. 一项目一对话 `{id}::main`。  
 4. 不对 CCC orch 下达业务 epic。  
 5. 红线 12：不擅自 enable invent。  
-6. 业务写码只在 2017 Engine；Desktop 默认 engineer（Cursor 级全开），不是「业务拒绝工程师」。
+6. 业务写码只在 2017 Engine；Desktop 默认 engineer（全功能全开），不是「业务拒绝工程师」。
 
 ---
 
@@ -36,7 +36,7 @@ M1        = 无业务第二树；baseline 开场 + 透镜 live
 | orch | Mac2017 | `/Users/fan/program/CCC` |
 | 业务 app（权威） | Mac2017 | `/Users/fan/program/apps/<name>` |
 | 远端备份 | GitHub | 各仓 `origin` |
-| CCC 平台副本 | M1 | `/Users/apple/program/CCC`（改 CCC 用 Cursor，不下达） |
+| CCC 平台副本 | M1 | `/Users/apple/program/CCC`（改 CCC 用开发工具（Claude/OpenCode），不下达） |
 | 业务仓副本 | M1 | **不保留**（禁止 `~/program/apps/<业务>`、禁止旧顶层、禁止 archive 当工作区） |
 
 **生产 apps（2017）**：`ccc-demo`、`clawmed-ccc`、`xianyu`、`qb`、`qx-observer`、`hp`、`medio-0`。  

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.1",
+  "goals": [
+    {
+      "id": "g-14d07e4b59",
+      "text": "加标记",
+      "exit_condition": "pytest tests/ -q",
+      "status": "dispatched"
+    },
+    {
+      "id": "g-79a4094e48",
+      "text": "第二笔",
+      "exit_condition": "pytest -q -k smoke",
+      "status": "dispatched"
+    },
+    {
+      "id": "g-c6daf0d6e6",
+      "text": "第一笔",
+      "exit_condition": "python3 -m pytest",
+      "status": "dispatched"
+    }
+  ],
+  "constraints": [],
+  "open_questions": [],
+  "architecture_choices": [],
+  "transfer_lessons": [],
+  "updated_at": "2026-07-31T05:33:12Z",
+  "updated_by": "hub"
+}

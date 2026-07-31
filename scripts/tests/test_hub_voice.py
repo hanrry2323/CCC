@@ -74,7 +74,7 @@ def test_identity_core_keywords_subset_of_voice():
         "双层心智",
         "确认不依赖 Hub",
         "红线 12",
-        "不是** Cursor",
+        "不是**某个 IDE",
     ):
         assert needle in identity or needle.replace("**", "") in identity
     for needle in ("双层心智", "L0 不变核", "确认入队方 = Desktop App"):

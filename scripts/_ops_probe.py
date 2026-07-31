@@ -1151,7 +1151,7 @@ def _alert_suggest(alert_id: str, source: str) -> str:
         return "控制面须 `enabled`（`bash scripts/ccc-autostart-guard.sh enable --start`）"
     if "mcp" in sid or src == "mcp":
         return "核对 ~/.config/opencode/opencode.json mcp 段与远端 URL；本机 MCP 查 command 是否在 PATH"
-    return "按标题与机器字段在 Cursor/对话 Agent 侧排查平台组件"
+    return "按标题与机器字段在开发工具/对话 Agent 侧排查平台组件"
 
 
 def _port_ok(info: Any) -> bool | None:
@@ -1166,7 +1166,7 @@ def _port_ok(info: Any) -> bool | None:
 
 
 def _load_mcp_entries() -> list[dict[str, Any]]:
-    """Collect MCP server entries from local OpenCode / Cursor configs."""
+    """Collect MCP server entries from local OpenCode / IDE configs."""
     entries: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -1203,19 +1203,28 @@ def _load_mcp_entries() -> list[dict[str, Any]]:
         except Exception as e:
             _log.debug("ops_probe load opencode mcp: %s", e)
 
-    cursor_mcp = Path.home() / ".cursor" / "mcp.json"
-    if cursor_mcp.is_file():
+    # 可配置的 IDE MCP 配置源（env CCC_MCP_CONFIG_PATHS 覆盖默认路径）
+    import os
+
+    default_ide_mcp_paths = [str(Path.home() / ".cursor" / "mcp.json")]
+    ide_mcp_paths_str = os.environ.get("CCC_MCP_CONFIG_PATHS", "")
+    ide_mcp_paths = ide_mcp_paths_str.split(":") if ide_mcp_paths_str else default_ide_mcp_paths
+    for mcp_path_str in ide_mcp_paths:
+        mcp_path = Path(mcp_path_str).expanduser()
+        if not mcp_path.is_file():
+            continue
+        source_label = mcp_path.parent.name  # e.g. ".cursor" → "cursor"
         try:
-            data = json.loads(cursor_mcp.read_text(encoding="utf-8"))
+            data = json.loads(mcp_path.read_text(encoding="utf-8"))
             servers = None
             if isinstance(data, dict):
                 servers = data.get("mcpServers") or data.get("mcp")
             if isinstance(servers, dict):
                 for name, raw in servers.items():
                     if isinstance(raw, dict):
-                        _add(str(name), raw, source="cursor")
+                        _add(str(name), raw, source=source_label)
         except Exception as e:
-            _log.debug("ops_probe load cursor mcp: %s", e)
+            _log.debug("ops_probe load %s mcp: %s", source_label, e)
 
     return entries
 

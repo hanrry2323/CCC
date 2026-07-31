@@ -1,8 +1,8 @@
-# Commit 与文件夹卫生 SOP（Agent / Engine / Cursor）
+# Commit 与文件夹卫生 SOP（Agent / Engine / Claude/OpenCode）
 
 > **权威**：`docs/product/loop-engineer-authority.md`「编排自愈硬指标」+ 同仓多 agent 纪律  
 > **关联**：[`abnormal-solve-sop.md`](abnormal-solve-sop.md) · DoD=`scripts/_task_commit.py` · 脏树分类=`scripts/_project_baseline.py`  
-> **对象**：Desktop Agent 定稿/解释板况 · Engine OpenCode 落盘 · Cursor 合入平台时对齐  
+> **对象**：Desktop Agent 定稿/解释板况 · Engine OpenCode 落盘 · 开发工具（Claude/OpenCode）合入平台时对齐  
 > **禁止**：把「脏树很大」当成业务失败结案；禁止 `git add -A` / `git add .`；禁止卫生 epic 当主业；禁止 invent
 
 ---
@@ -33,7 +33,7 @@
 | **文本 / 脑包 / 规划叙述** | **对话 Agent**（Hub mind；本机 CCC 可写平台文档） | **不**经 OpenCode；**不**为纯文案开产线卡 |
 | **`.ccc` / lessons 噪音** | 无人「业务 commit」 | 留盘；`ccc_hygiene` **不挡** ready |
 | Desktop Agent | 不手搓业务仓 git | dirty_block → 本文 + abnormal-solve；禁卫生 epic |
-| Cursor | 只合入 **CCC 平台仓** | 业务仓不直写 |
+| Claude/OpenCode | 只合入 **CCC 平台仓** | 业务仓不直写 |
 
 评估：[`docs/briefs/2026-07-30-granularity-text-code-commit.md`](../docs/briefs/2026-07-30-granularity-text-code-commit.md)。
 

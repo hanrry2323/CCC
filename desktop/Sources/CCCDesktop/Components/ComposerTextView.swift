@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Codex/Cursor 式输入：回车发送 · Shift+回车换行 · 可点选聚焦 · 矮条高度
+/// 现代 IDE 式输入：回车发送 · Shift+回车换行 · 可点选聚焦 · 矮条高度
 ///
 /// IME 注意：中文等组字期间 `string` 含 marked 拼音，但 SwiftUI `@Binding` 往往仍是上屏前的正文。
 /// 若 `updateNSView` 用 binding 回写 `tv.string`，会直接打断输入法（表现为打到十几/二十来字「闪一下」丢拼音）。

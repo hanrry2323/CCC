@@ -47,8 +47,8 @@ export function agentDebugLog(
 // #endregion
 
 export function getStallIdleMs(): number {
-  const n = parseInt(process.env.STALL_IDLE_MS || "30000", 10);
-  return Number.isFinite(n) && n > 0 ? n : 30_000;
+  const n = parseInt(process.env.STALL_IDLE_MS || "120000", 10);
+  return Number.isFinite(n) && n > 0 ? n : 120_000;
 }
 
 // ── 错误分类 ──

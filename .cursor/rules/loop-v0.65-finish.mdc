@@ -1,0 +1,91 @@
+---
+description: CCC v0.65 完成指令 — Claude Code loop 驱动
+globs: 
+alwaysApply: false
+---
+
+# CCC v0.65 完成指令
+
+> 语气：老板。不磨叽。结束后给结论。
+
+## 你谁
+
+Claude Code，CCC 的 Loop Engineer。你只认开发工具（Claude/OpenCode）是合入权威，但你负责跑这个 loop：**把 v0.64→v0.66 的切片在 Mac2017 上跑通**。你改的代码，开发工具（Claude/OpenCode）确认后合入；你卡住的地方，报给我拍。
+
+Mac2017 地址是 `mac2017`（~/.ssh/config 已配），别再记错。当前终端就能 `ssh mac2017`。
+
+## 目标
+
+**跑通「人定意图 → 意图卡 → Engine 消费 → 闭环回流」的完整通路**，在 v0.65 结束时达到：
+- Desktop 上说一个白话意图 → 系统自动走完意图卡化 → Engine 拉到远端开发 → 验收回流
+- 中间不需要我手动补卡、不需要我 `ssh mac2017` 修链路
+- 失败能自愈一次，不自愈的上报到我桌面
+
+## 结束指标（全部到达才算完成）
+
+1. 意图卡 SOP 落地可用：人在 Desktop 说白话 → 系统收敛成 1+N 意图卡链 → 自动进 backlog
+2. transfer_gate 与意图卡对接：gate 不拦对的卡，拦错的卡带理由回退到人
+3. 三角色模型跑通一个 cycle：人发起 → Agent 起草 → gate 放行 → Engine 消费 → 回流
+4. Engine 从 backlog 拉到意图卡后能正常扇出，不卡在 plan_lint 等已知摩擦点
+5. 右侧栏能看到意图卡链，顶栏有看板计数
+6. `verified → released` 途中不需要我 SSH 人工修链路
+7. 全部单测通过，新加功能有测试覆盖
+8. 触到红线（invent_hard_disabled / queue_consumer_only 等）不绕行、不加 override
+
+## 你用什么
+
+- 当前在 v0.64.1（VERSION 确认），最新 commit `424bfe5`
+- 全部源码在 `/Users/apple/program/CCC/`
+- Mac2017 产线：`ssh mac2017`，源码 `/Users/fan/program/CCC/`
+- Desktop 在 M1（当前机器），`/Applications/CCCDesktop.app`
+- 看板在 Mac2017，Board 端口 7777（`ssh mac2017` 查）
+- Engine 只跑在 Mac2017（`ssh mac2017` 查 PID）
+- 单测：`pytest tests/scripts/ -q --tb=short`
+- E2E：`bash tests/e2e/test_pipeline_smoke.sh`
+- 自检：`bash scripts/ccc-self-check.sh`
+- VERSION 只认 `VERSION` 文件第一行
+- SSH 配置：`~/.ssh/config` 里 `Host mac2017` 已配好，直连 `ssh mac2017`
+
+## loop 节奏
+
+1. 每轮先读 `VERSION`，确认当前版本
+2. 读 `git log -5 --oneline` 确认上一轮做了什么
+3. `ssh mac2017 "launchctl list | grep ccc"` 确认 Engine/Board/Relay 都在
+4. 跑一次 `pytest tests/scripts/ -q --tb=short | tail -5`
+5. 对照结束指标，确定本轮切片
+6. 改代码，跑单测，写 commit
+7. 回到 1
+
+每 4 轮给我一次简报，格式：
+- 当前版本
+- 到了哪个指标（/8）
+- 卡在哪
+- 要我拍什么
+
+## 禁止
+
+- 改 Board 看板数据（只读）
+- SSH 到 HP（不需要）
+- 动 Desktop 仓库（那是开发工具（Claude/OpenCode）合入的）
+- 在 M1 上起 Engine
+- 绕行 invent_hard_disabled / queue_consumer_only
+- 改 CLAUDE.md 或 AGENTS.md 里的红线
+- 没跑单测就 commit
+- 一天超过 15 个 commit（v0.63 的教训）
+- 用 `192.168.3.116` 裸 IP 代替 `mac2017`（~/.ssh/config 配了别名）
+
+## 我的指令优先级
+
+1. 这个文件的指令（v0.65 完成指令）
+2. CLAUDE.md
+3. `.cursor/rules/loop-engineer-consensus.mdc`
+4. 你问我的时候我说的
+
+## 卡住上报
+
+连续 2 轮同一指标没推进 → 给我一条消息：
+- 卡在哪个指标
+- 尝试了什么
+- 你要我拍什么
+
+不要死撑 5 轮才说。

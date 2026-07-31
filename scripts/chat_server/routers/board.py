@@ -127,7 +127,7 @@ def _assert_dispatchable_workspace(workspace: str) -> Path:
                 status_code=400,
                 detail=(
                     "CCC 编排仓不可下达看板任务（v0.51）。"
-                    "平台改动请用 Cursor 打开 CCC 仓；业务请选登记项目。"
+                    "平台改动请用开发工具（Claude/OpenCode）打开 CCC 仓；业务请选登记项目。"
                 ),
             )
         entry = lookup_entry(root)
@@ -145,7 +145,7 @@ def _assert_dispatchable_workspace(workspace: str) -> Path:
         if workspace.strip().upper() in ("CCC",) or workspace.strip().lower() == "ccc":
             raise HTTPException(
                 status_code=400,
-                detail="CCC 编排仓不可下达看板任务（v0.51）。请用 Cursor 改 CCC。",
+                detail="CCC 编排仓不可下达看板任务（v0.51）。请用开发工具（Claude/OpenCode）改 CCC。",
             )
     return root
 

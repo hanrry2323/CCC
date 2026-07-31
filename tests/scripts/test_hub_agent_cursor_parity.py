@@ -120,7 +120,7 @@ def test_voice_declares_full_power_agent():
 
     assert "全功能开发 Agent" in HUB_BOSS_VOICE
     assert "开发、定任务、优化" in HUB_BOSS_VOICE or "开发 / 定任务 / 优化" in HUB_BOSS_VOICE
-    assert "Cursor 级" in HUB_BOSS_VOICE or "能力对齐 Cursor" in HUB_BOSS_VOICE
+    assert "全功能" in HUB_BOSS_VOICE or "全功能开发能力" in HUB_BOSS_VOICE
 
 
 def test_discuss_discipline_prefers_hub_tools():

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""CCC stress KPI loop — dispatch → wait → gate → (Cursor optimize) → redispatch.
+"""CCC stress KPI loop — dispatch → wait → gate → (dev-tool optimize) → redispatch.
 
 State: ~/.ccc/stress-matrix/kpi-loop-state.json
 Scorecard: references/stress-kpi-scorecard.json
 
-Typical (Mac2017 measure + M1 Cursor optimize):
+Typical (Mac2017 measure + M1 dev-tool optimize):
 
   python3 scripts/ccc-stress-kpi-loop.py init --apps ccc-demo,qb --max-rounds 5
   python3 scripts/ccc-stress-kpi-loop.py dispatch          # baseline + transfer
   python3 scripts/ccc-stress-kpi-loop.py arm-wake --seconds 3600
-  # Cursor loop wakes → evaluate → optimize allowlist → continue|pass
+  # dev-tool loop wakes → evaluate → optimize allowlist → continue|pass
 
   python3 scripts/ccc-stress-kpi-loop.py evaluate
   python3 scripts/ccc-stress-kpi-loop.py status
   python3 scripts/ccc-stress-kpi-loop.py continue          # next round if FAIL + budget
 
-Autopilot policy: measure/gate/redispatch can be scripted; **code change only via Cursor**
+Autopilot policy: measure/gate/redispatch can be scripted; **code change only via dev tools (Claude/OpenCode)**
 with scorecard allowlist (see references/stress-kpi-scorecard.json autopilot).
 """
 
@@ -91,7 +91,7 @@ def cmd_init(apps: list[str], max_rounds: int, profile: str) -> int:
         "runs": [],
         "created_at": _now(),
         "policy": sc.get("autopilot") or {},
-        "note": "code_change=cursor_agent_only; measure/gate/redispatch scriptable",
+        "note": "code_change=dev_tools_only; measure/gate/redispatch scriptable",
     }
     save_state(state)
     print(json.dumps(state, ensure_ascii=False, indent=2))
@@ -219,7 +219,7 @@ def cmd_evaluate(state: dict[str, Any], run: str | None) -> int:
 
 
 def cmd_continue(state: dict[str, Any]) -> int:
-    """After Cursor optimize+deploy: start next dispatch if budget left."""
+    """After dev-tool optimize+deploy: start next dispatch if budget left."""
     if state.get("status") == "passed":
         print("PASS — nothing to continue")
         return 0
@@ -261,7 +261,7 @@ def wake_prompt(state: dict[str, Any], seconds: int) -> str:
 
 
 def cmd_arm_wake(state: dict[str, Any], seconds: int) -> int:
-    """Print a one-shot shell the Cursor agent should background with notify_on_output."""
+    """Print a one-shot shell the dev-tool agent should background with notify_on_output."""
     prompt = wake_prompt(state, seconds)
     payload = json.dumps({"prompt": prompt}, ensure_ascii=False)
     # Escape for embedding in single-quoted shell is painful; write prompt file instead
@@ -281,7 +281,7 @@ date '+wake_at=%Y-%m-%dT%H:%M:%S%z'
     save_state(state)
     print(f"wrote {prompt_path}")
     print(f"wrote {sh_path}")
-    print("--- Cursor agent: run this in background with notify_on_output ---")
+    print("--- dev-tool agent: run this in background with notify_on_output ---")
     print(f"bash {sh_path}")
     print(f"notify pattern: ^{sentinel}")
     print("--- prompt preview ---")

@@ -419,7 +419,7 @@ bash scripts/opencode-watchdog.sh; echo "exit=$?"  # 期望 0
 
 **反例（违规）**：
 - ❌ "v0.8 路线会用到，先留着" → 删，今天没用就是死代码
-- ❌ "也许未来有用户用 Cursor，先写好 adapter" → 删，等真有用户再写
+- ❌ "也许未来有用户用已退役 IDE，先写好 adapter" → 删，等真有用户再写
 - ❌ "测试先留着，万一以后加回来" → 删，git history 永远可查
 - ❌ "成本报告以后做 SaaS 会用到" → 删，按需重写更简单
 
@@ -637,7 +637,7 @@ fi
 
 #### 红线 R-15：禁止 CCC 本体经看板自消费（v0.51 orch 分离）
 
-- **规则**：不得将 CCC 编排仓（`role=orch` / `engine=false`）的平台需求投进 CCC backlog，由 Engine 跑 product/dev/reviewer/tester/kb。平台缺陷一律在 **CCC 仓用 Cursor（或指定 IDE）改一次**，全局生效。
+- **规则**：不得将 CCC 编排仓（`role=orch` / `engine=false`）的平台需求投进 CCC backlog，由 Engine 跑 product/dev/reviewer/tester/kb。平台缺陷一律在 **CCC 仓用开发工具（Claude/OpenCode 或指定 IDE）改一次**，全局生效。
 - **Why**：自 Loop 把「编排底座」与「业务执行」搅在一起，导致无统一维护窗口、业务仓就地 fork 平台补丁。
 - **机制**：
   1. `~/.ccc/workspaces.json`：CCC `role=orch`、`engine=false`

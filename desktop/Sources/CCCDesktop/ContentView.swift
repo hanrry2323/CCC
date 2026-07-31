@@ -493,7 +493,7 @@ private struct SidebarThreadRow: View {
         }
     }
 }
-// MARK: - Chat（Cursor 节奏：消息区占满 + 输入条贴底）
+// MARK: - Chat（现代节奏：消息区占满 + 输入条贴底）
 
 struct CodexChatPane: View {
     @EnvironmentObject var model: AppModel
@@ -1317,7 +1317,7 @@ struct CodexChatPaneBody: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("全功能=Cursor 级（开发/定任务/优化，工具全开）；规划=可选只读")
+                .help("全功能（开发/定任务/优化，工具全开）；规划=可选只读")
 
                 Button {
                     pickComposerAttachment()
@@ -1442,7 +1442,7 @@ struct CodexChatPaneBody: View {
                 isPresented: $model.confirmEngineerMode,
                 titleVisibility: .visible
             ) {
-                Button("开启（Cursor 级能力）", role: .destructive) {
+                Button("开启（全功能能力）", role: .destructive) {
                     model.confirmEnableEngineerMode()
                 }
                 Button("取消", role: .cancel) {}
@@ -2502,7 +2502,7 @@ struct SettingsView: View {
                 }
                 Picker("默认工具模式", selection: $model.preferredToolMode) {
                     Text("规划（可选只读）").tag("discuss")
-                    Text("全功能（Cursor 级 · 默认）").tag("engineer")
+                    Text("全功能（默认）").tag("engineer")
                 }
                 if !model.sidecarReportedModel.isEmpty {
                     Text("Sidecar 报告：\(model.sidecarReportedModel)")

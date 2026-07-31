@@ -50,7 +50,7 @@
 ### 应坚持说的
 
 - Connect Claude Code · **Loop Engineer**  
-- **平台开发只认 Cursor**（不更换工具）  
+- **平台开发走开发工具（Claude/OpenCode）**（不更换工具）  
 - **Desktop 是主入口**（三栏：项目 · 方案对话 · 编排流程）
 - **自由编排 + 多执行面**；Skill + Prompt = 本次角色（无穷角色）
 - **方案 Agent（本机）只写待办大卡**；Engine（中心机）负责扇出与远端执行

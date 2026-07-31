@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// 真·系统侧栏材质（Cursor/Codex 同款）。比平铺灰高级得多。
+/// 真·系统侧栏材质（现代 IDE 同款）。比平铺灰高级得多。
 struct VibrancyBackground: NSViewRepresentable {
     var material: NSVisualEffectView.Material = .sidebar
 

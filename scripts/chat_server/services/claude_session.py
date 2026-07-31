@@ -476,7 +476,7 @@ class ClaudeSessionManager:
                     " / ~/.ccc/relay-direct.url（MiniMax 已退役）"
                 )
         # SDK：allowed_tools 为空列表时不加 --allowedTools（= 默认全开）。
-        # engineer（默认）= Cursor 级全开：不加正向 allowlist、不禁写（MCP/Skill/Write 全可用）。
+        # engineer（默认）= 全功能全开：不加正向 allowlist、不禁写（MCP/Skill/Write 全可用）。
         # discuss（显式）= 全开 + 硬禁写（勿正向 allowlist，否则 MCP/Skill 动态名被卡死）。
         # 零工具轮次必须显式 disallowed_tools，否则短问仍会 WebFetch 挂死。
         if config.sdk_full_open_tools(mode):

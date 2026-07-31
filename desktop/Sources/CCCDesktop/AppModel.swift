@@ -1216,7 +1216,7 @@ final class AppModel: ObservableObject {
         selectedProjectId = id
         persistedProjectId = id
         expandedProjectIds.insert(id)
-        // Desktop Agent Cursor 级全功能：任意项目强制 engineer（无工具阉割）
+        // Desktop Agent 全功能：任意项目强制 engineer（无工具阉割）
         preferredToolMode = "engineer"
         ensureThreadHydrated(threadId: eagerTid)
         selectedThreadId = eagerTid
@@ -1649,7 +1649,7 @@ final class AppModel: ObservableObject {
     }
 
     func requestEngineerMode() {
-        // Cursor 级全功能：一键切换，无需确认弹窗
+        // 全功能：一键切换，无需确认弹窗
         if preferredToolMode == "engineer" {
             preferredToolMode = "discuss"
             showToast("已切到规划模式（可选只读）")
@@ -2696,7 +2696,7 @@ final class AppModel: ObservableObject {
         StreamSessionController.resolvePromptMode(forUserText: text)
     }
 
-    /// discuss = 可选只读；engineer = 默认 Cursor 级全功能（开发/定任务/优化）
+    /// discuss = 可选只读；engineer = 默认 全功能（开发/定任务/优化）
     static func toolMode(forUserText text: String) -> String {
         // 兼容旧调用：无偏好时只看口令
         StreamSessionController.resolveToolMode(preferred: "discuss", userText: text, projectId: nil)

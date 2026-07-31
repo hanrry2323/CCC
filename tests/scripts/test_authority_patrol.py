@@ -47,7 +47,7 @@ def test_patrol_red_on_affirmative_alt_ide(tmp_path, monkeypatch):
         data = json.loads(cp.stdout)
         assert data["ok"] is False
         ids = {f["id"] for f in data["findings"]}
-        assert "dev-channel-cursor-only" in ids
+        assert "dev-channel-dev-tools-only" in ids
     finally:
         planted.unlink(missing_ok=True)
 

@@ -133,8 +133,8 @@ DANGEROUS_PATTERN = re.compile(
     r")"
 )
 
-# F-SEC-03: 工具门禁（2026-07-29 · Cursor 级全开）
-# engineer（默认）= Cursor 级：SDK 不加正向 allowlist、不禁写（MCP/Skill/Write 全开）
+# F-SEC-03: 工具门禁（2026-07-29 · 全功能全开）
+# engineer（默认）= 全功能：SDK 不加正向 allowlist、不禁写（MCP/Skill/Write 全开）
 # discuss（显式可选）= 只读：空 allowlist + 硬禁 Write/Edit…
 # Bash 在 discuss 中保留：对齐基线等需 git status / git log。
 # 外网工具允许；挂死由 CHAT_FIRST_EVENT_TIMEOUT / CHAT_TOOL_STALL_TIMEOUT 回收，禁止靠删能力「止血」。
@@ -157,7 +157,7 @@ CLAUDE_TOOL_ALLOWLIST = CLAUDE_TOOL_ALLOWLIST_ENGINEER
 
 _ENGINEER_PHRASES = ("工程师模式", "直接改本机", "全功能")
 
-# discuss = 显式可选只读；默认 engineer = Cursor 级全功能（开发/定任务/优化，无工具阉割）
+# discuss = 显式可选只读；默认 engineer = 全功能全功能（开发/定任务/优化，无工具阉割）
 DISCUSS_TOOL_DISCIPLINE = (
     "【工具纪律 · Plan · 显式只读】本回合禁 Write/Edit。"
     "优先一等 MCP（ccc-hub）：hub_board / hub_git / hub_modules / hub_locate / hub_file / "
@@ -179,7 +179,7 @@ def resolve_tool_mode(
 ) -> str:
     """返回 discuss | engineer。
 
-    Desktop Agent Cursor 级全功能：**默认 engineer**（含任意 project_id）。
+    Desktop Agent 全功能全功能：**默认 engineer**（含任意 project_id）。
     仅显式 discuss → 只读；口令/短语可升 engineer。不再因业务仓强制打回 discuss。
     """
     _ = project_id
@@ -199,7 +199,7 @@ def tools_for_mode(
 ) -> frozenset:
     """名义工具集（测试/观测）。
 
-    engineer 真正下发 SDK = 空 allowlist + 无 disallowed（Cursor 级全开），
+    engineer 真正下发 SDK = 空 allowlist + 无 disallowed（全功能全开），
     见 ClaudeSessionManager._build_options；勿再用正向 allowlist 卡 MCP/Skill。
     discuss = 名义只读集；SDK 侧空 allowlist + 硬禁写。
     """
@@ -210,7 +210,7 @@ def tools_for_mode(
 
 
 def sdk_full_open_tools(mode: str) -> bool:
-    """engineer = Cursor 级全开（不加 --allowedTools / 不禁写）。"""
+    """engineer = 全功能全开（不加 --allowedTools / 不禁写）。"""
     return (mode or "").strip().lower() == "engineer"
 
 

@@ -17,7 +17,7 @@ M1 Desktop = 对话意图 + **运维健康灯**；Mac2017 = 编排引擎与远�
 
 | 面 | 机器 | 负责 | 明确不负责 |
 |----|------|------|------------|
-| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 全功能开发 Agent：开发 / 定任务 / 优化；产出 **epic 大卡**；本机会话 SSOT；业务事实 = Hub baseline + **只读透镜 live**；承接运维红灯复制包 | 不扇出 work、不跑 Engine、**不保留业务源码第二树**；默认 `tool_mode=engineer`（Cursor 级全开）；仅显式 discuss=只读 |
+| **对话面** | **M1**（Desktop + Sidecar + loop-code） | 全功能开发 Agent：开发 / 定任务 / 优化；产出 **epic 大卡**；本机会话 SSOT；业务事实 = Hub baseline + **只读透镜 live**；承接运维红灯复制包 | 不扇出 work、不跑 Engine、**不保留业务源码第二树**；默认 `tool_mode=engineer`（全功能全开）；仅显式 discuss=只读 |
 | **编排面** | **Mac2017**（Hub + Board + Engine + 业务仓） | 收 epic → 扇出 → 远端开发/验收/归档；右栏状态回传 | 不当主聊天窗口；不依赖 M1 本地 cwd |
 | **运维面** | **Desktop OpsView + Hub Ops API**（探针在 2017 / 本机 sidecar） | **总灯绿/橙/红**；集群·端口·Agent·MCP；红灯一键复制交对话 Agent；旁路自愈/供弹/巡查/飞轮 | 不数卡当主叙事；不把老板当维修工；不 invent；不替代 transfer |
 

@@ -21,7 +21,7 @@
 ### Step 1：开 task
 
 - 来源：老板 issue / backlog / Desktop 定稿 transfer
-- **平台改动执行者：仅 Cursor**（禁止 Trae / 个人 Claude Code 改本仓）
+- **平台改动执行者：走开发工具（Claude/OpenCode）**（禁止 Trae / 个人 Claude Code 改本仓）
 - **要求**：每个 task 必须先在 `.ccc/plans/<task>.plan.md` 起，不写 plan 不开干
 - **红线 5**：plan 无论改动多少必须生成 phases.json
 
@@ -160,7 +160,7 @@ Refs:
 | 5 | report.md 真实 stdout | `head -50 .ccc/reports/<task>.report.md`，必须含原始输出不是总结 |
 | 6 | commit message 含 verification 段 | `git log -1 --format=%B` |
 
-### 4.2 平台改动自检（Cursor）
+### 4.2 平台改动自检（Claude/OpenCode）
 
 平台本仓改动提交前建议：
 
@@ -169,7 +169,7 @@ pytest tests/scripts/ -q --tb=short
 bash scripts/ccc-self-check.sh
 ```
 
-（历史「Trae 自检 4 项」已退役；平台开发只认 Cursor。）
+（历史「Trae 自检 4 项」已退役；平台开发走开发工具（Claude/OpenCode）。）
 
 ### 4.3 Escalation 规则
 
@@ -219,7 +219,7 @@ bash scripts/ccc-self-check.sh
 | `scripts/<name>.py` 新建 | `tests/scripts/test_<name>_smoke.py` ≥5 cases |
 | `scripts/<name>.sh` 改 | `bash -n` + 至少 1 个 smoke test |
 | `references/red-lines.md` 改 | `tests/cluster/test-capability-required.py` 还 PASS |
-| SKILL.md 改 | Cursor 本仓加载 + pytest / self-check |
+| SKILL.md 改 | Claude/OpenCode 本仓加载 + pytest / self-check |
 | `~/.gitignore` 改 | 验证 `git ls-files` 不误入 |
 
 ### 6.2 测试命名

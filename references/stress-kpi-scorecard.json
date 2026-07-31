@@ -136,7 +136,7 @@
   "autopilot": {
     "measure_report_gate": "full_auto",
     "redispatch": "auto_if_gate_fail_and_rounds_left",
-    "code_change": "cursor_agent_only",
+    "code_change": "dev_tools_only",
     "code_change_allowlist": [
       "short_path_advance_after_done",
       "l0_diff_stat_gradable_or_fixable",

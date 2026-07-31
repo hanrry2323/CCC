@@ -28,8 +28,8 @@ export const TIMEOUTS = {
   // 单次上游「等到响应头」上限（首包后必须解除，否则会杀长流）
   // free：快失败以便换钥/paid（2017 plist / authority：8s）
   ATTEMPT_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_MS) || 8_000,
-  // 付费保底：大 prompt TTFB 常 >15s，给更长首包预算（authority：25s）
-  ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 25_000,
+  // 付费保底：大 prompt / 大 Write tool_args TTFB 可很长（2026-07-31：90s）
+  ATTEMPT_PAID_MS: Number(process.env.LOOP_UPSTREAM_ATTEMPT_PAID_MS) || 90_000,
   // peek：多钥时代筛坏钥用；付费-only 单钥默认关闭（见 LOOP_STREAM_PEEK）
   PEEK_MS: Number(process.env.LOOP_UPSTREAM_PEEK_MS) || 3_000,
   PEEK_PAID_MS: Number(process.env.LOOP_UPSTREAM_PEEK_PAID_MS) || 3_000,
@@ -38,7 +38,7 @@ export const TIMEOUTS = {
   // undici Agent: streaming body timeout (ms);无读活动超过此时长则断开
   BODY_MS: Number(process.env.LOOP_BODY_TIMEOUT_MS) || 600_000,
   // undici Agent: headers 等待超时 (ms) — 须 ≥ ATTEMPT_PAID
-  HEADERS_MS: Number(process.env.LOOP_HEADERS_TIMEOUT_MS) || 30_000,
+  HEADERS_MS: Number(process.env.LOOP_HEADERS_TIMEOUT_MS) || 120_000,
   // keep-alive socket idle timeout (ms);Lesson 24 教训:默认 4s 太短导致池化连接被服务端回收
   KEEPALIVE_MS: Number(process.env.LOOP_KEEPALIVE_TIMEOUT_MS) || 60_000,
 } as const;

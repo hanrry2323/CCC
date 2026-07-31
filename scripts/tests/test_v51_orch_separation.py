@@ -33,7 +33,7 @@ def test_assert_dispatchable_rejects_orch(tmp_path, monkeypatch):
         board_router._assert_dispatchable_workspace("CCC")
     assert ei.value.status_code == 400
     detail = str(ei.value.detail)
-    assert "编排" in detail or "Cursor" in detail or "orch" in detail.lower()
+    assert "编排" in detail or "开发工具" in detail or "orch" in detail.lower()
 
 
 def test_assert_dispatchable_allows_app(tmp_path, monkeypatch):

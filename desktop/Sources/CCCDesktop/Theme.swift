@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Claude 色调 + Cursor 中栏节奏（字号上调、对比加强，减轻糊眼）
+/// Claude 色调 + 现代中栏节奏（字号上调、对比加强，减轻糊眼）
 enum CCCTheme {
     /// 对话区：略深暖色，贴近侧栏，避免刺眼白
     static let chatBg = Color(red: 0.948, green: 0.932, blue: 0.908)
@@ -37,7 +37,7 @@ enum CCCTheme {
     static let usageActive = Color(red: 0.28, green: 0.58, blue: 0.38)
     static let usageIdle = Color(red: 0.78, green: 0.28, blue: 0.22)
 
-    /// Cursor 式：偏细字重 + 略松行距
+    /// 现代式：偏细字重 + 略松行距
     static let title = Font.system(size: 22, weight: .light, design: .serif)
     static let body = Font.system(size: 14.5, weight: .light, design: .default)
     static let callout = Font.system(size: 13, weight: .light, design: .default)
@@ -47,7 +47,7 @@ enum CCCTheme {
     /// 消息列表块间距
     static let messageStackSpacing: CGFloat = 22
 
-    /// Cursor 式：输入区略扁、内容区更宽
+    /// 现代式：输入区略扁、内容区更宽
     static let radiusComposer: CGFloat = 12
     static let chatMaxWidth: CGFloat = 760
     /// unified toolbar 已占顶栏，侧栏顶距收紧

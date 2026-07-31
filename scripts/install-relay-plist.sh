@@ -153,16 +153,17 @@ cat > "$PLIST" <<PLIST_EOF
     <key>NODE_OPTIONS</key>
     <string>--dns-result-order=ipv4first</string>
     <!-- 付费-only 薄垫片：快/缓存/稳定；sole 跳 peek，禁止多钥时代长 peek -->
+    <!-- 大 Write/长 tool 流：墙钟与 stall 放宽，避免 ~50k 上下文 + 整文件 tool_args 被 45s×2 误杀 -->
     <key>LOOP_STREAM_PEEK</key>
     <string>0</string>
     <key>FAILOVER_MAX_MS</key>
-    <string>45000</string>
+    <string>180000</string>
     <key>FAILOVER_MAX_ATTEMPTS</key>
     <string>2</string>
     <key>LOOP_UPSTREAM_ATTEMPT_MS</key>
     <string>8000</string>
     <key>LOOP_UPSTREAM_ATTEMPT_PAID_MS</key>
-    <string>25000</string>
+    <string>90000</string>
     <key>LOOP_UPSTREAM_PEEK_MS</key>
     <string>3000</string>
     <key>LOOP_UPSTREAM_PEEK_PAID_MS</key>
@@ -170,9 +171,9 @@ cat > "$PLIST" <<PLIST_EOF
     <key>LOOP_CONNECT_TIMEOUT_MS</key>
     <string>8000</string>
     <key>LOOP_HEADERS_TIMEOUT_MS</key>
-    <string>30000</string>
+    <string>120000</string>
     <key>STALL_IDLE_MS</key>
-    <string>30000</string>
+    <string>120000</string>
   </dict>
   <key>StandardOutPath</key>
   <string>${LOG_DIR}/ccc-relay-${HOST_TAG}.out.log</string>

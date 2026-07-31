@@ -26,7 +26,7 @@ Hub 里选哪个项目，Claude 就 **`cwd` 到哪个仓库根**；读 **`{该�
 Hub 选 foo 发消息          ──cwd──► /…/foo + 注入 foo/CLAUDE.md
 Hub「下达并开工」→ foo     ──登记──► ~/.ccc/workspaces.json (role=app)
 Engine enable              ──消费──► 仅 engine-eligible apps（不跑 CCC orch）
-Hub「下达」→ CCC           ──拒绝──► 400（请用 Cursor 改 CCC）
+Hub「下达」→ CCC           ──拒绝──► 400（请用开发工具（Claude/OpenCode）改 CCC）
 ```
 
 路径须在 **`~/program/` 下**（或 CCC 本体），否则 Board 安全策略不会列入 Hub。

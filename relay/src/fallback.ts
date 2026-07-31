@@ -51,7 +51,7 @@ function failoverMaxAttempts(): number {
   return Math.max(1, parseInt(process.env.FAILOVER_MAX_ATTEMPTS || "6", 10) || 6);
 }
 function failoverMaxMs(): number {
-  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "45000", 10) || 45_000);
+  return Math.max(1000, parseInt(process.env.FAILOVER_MAX_MS || "180000", 10) || 180_000);
 }
 
 export { isPaidUpstream };

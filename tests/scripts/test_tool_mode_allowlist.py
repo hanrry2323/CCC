@@ -41,7 +41,7 @@ def test_sdk_full_open_tools_engineer_only():
 
 
 def test_claude_session_engineer_no_write_ban(monkeypatch):
-    """engineer = Cursor 级全开：空 allowlist、不禁 Write。"""
+    """engineer = 全功能全开：空 allowlist、不禁 Write。"""
     import chat_server.services.claude_session as cs
 
     monkeypatch.setenv("CCC_HUB_MCP", "0")

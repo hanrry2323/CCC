@@ -16,8 +16,8 @@ CCC = **Connect–Claude Code** = **Loop Engineer**
 **对话面（Desktop + loop-code）** 定意图产 epic；**编排面（Engine + Board）** 远端开发；中间只交 transfer / flow。  
 **Skill + Prompt = 本次角色**（用户不选角色）。机制：[`docs/product/role-formation.md`](docs/product/role-formation.md)
 
-**v0.51+**：CCC 本体 = **orch**（**Cursor 改**）；Engine **只跑业务 apps**（R-15）。  
-**四席（硬）**：**Cursor**=CCC合入 + QuantHive开发 · **Claude Code**=本机养机 + QuantHive日常维护 · **OpenCode**=仅 Engine（qb等） · **Codex**=知识/闲聊（双轨分域） · **Desktop**=qb产线控制面。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · authority「四席」「双轨业务」。  
+**v0.51+**：CCC 本体 = **orch**（**开发工具（Claude/OpenCode）改**）；Engine **只跑业务 apps**（R-15）。  
+**席位（硬）**：**Claude/OpenCode**=CCC合入 + QuantHive开发 · **Claude Code**=本机养机 + QuantHive日常维护 · **OpenCode**=仅 Engine（qb等） · **Codex**=知识/闲聊（双轨分域） · **Desktop**=qb产线控制面。SSOT：[`docs/product/dev-channel.md`](docs/product/dev-channel.md) · authority「席位」「双轨业务」。  
 **双轨（硬）**：**qb**（CCC 养大；收口=实盘人确认+回测可视化→维护态）∥ **QuantHive**（Cursor+Claude 薄链）**完全独立**；禁止互为别名、禁止 CCC 接管 QuantHive。  
 **人格独立**：**Cursor ≠ Desktop Agent**；Desktop Plan「不写码」只约束桌面对话，不限制 Cursor。见 [`docs/product/loop-engineer-authority.md`](docs/product/loop-engineer-authority.md)。
 
@@ -134,7 +134,7 @@ backlog(epic 常驻) ──扇出──► planned(work) → in_progress → tes
 - **1** 不动系统文件 / 密钥  
 - **11** Verdict 必须落文件（口头 PASS 无效）  
 - **12** 禁止 agent 自主启用 CCC  
-- **R-15** 禁止 CCC 本体经看板自消费（平台改动用 Cursor）  
+- **R-15** 禁止 CCC 本体经看板自消费（平台改动用开发工具（Claude/OpenCode））  
 - **X4** 每 phase 走看板  
 
 ---

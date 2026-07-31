@@ -361,7 +361,6 @@ def _attach_engine_impls() -> None:
     _engine_loop.attach(g)
     _engine_stats.attach(g)
     _engine_cli.attach(g)
-    _engine_compat_board.attach(g)
 
 
 _attach_engine_impls()

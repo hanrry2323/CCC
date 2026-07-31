@@ -20,7 +20,7 @@ alwaysApply: true
 | 访问方式 | 当前终端 | `ssh mac2017`（~/.ssh/config 已配） |
 | CCC 源码 | `/Users/apple/program/CCC/`（只读副本） | `/Users/fan/program/CCC/`（可读写，git push 从这里发） |
 | 跑什么 | CCCDesktop.app + relay.m1 + hub-tunnel | Hub(:7777) + Board(:7775) + Engine(PID 62332) + Relay + Chat-server |
-| 你怎么改 | 改完 push 到 GitHub | Cursor 在那边合入后才生效 |
+| 你怎么改 | 改完 push 到 GitHub | 开发工具（Claude/OpenCode）在那边合入后才生效 |
 | 你怎么查 | `ssh mac2017` 连过去看 | 日志、看板、Engine 状态全在那 |
 
 ## 你每次启动要做的事
@@ -40,18 +40,18 @@ ssh mac2017 "cd /Users/fan/program/CCC && cat VERSION && launchctl list | grep c
 ## 禁止
 
 - ❌ 说「M1 上跑 Engine」— M1 不跑 Engine
-- ❌ 说「本地改了等同步」— 改完 push，Cursor 在 2017 合入
+- ❌ 说「本地改了等同步」— 改完 push，开发工具（Claude/OpenCode）在 2017 合入
 - ❌ 臆测 Mac2017 上的代码状态 — ssh 看，或查 git log
-- ❌ 在 M1 上改完直接 ssh 到 2017 执行 —— 合入走 Cursor，你只改 M1 副本
-- ❌ 往 Mac2017 的 `/Users/fan/program/CCC/` 直接推 commit（那是 Cursor 的合入目标）
-- ❌ 说「两棵树自动同步」— 没有自动同步，M1 push → Cursor pull → 合入
+- ❌ 在 M1 上改完直接 ssh 到 2017 执行 —— 合入走开发工具（Claude/OpenCode），你只改 M1 副本
+- ❌ 往 Mac2017 的 `/Users/fan/program/CCC/` 直接推 commit（那是开发工具（Claude/OpenCode）的合入目标）
+- ❌ 说「两棵树自动同步」— 没有自动同步，M1 push → 开发工具（Claude/OpenCode） pull → 合入
 
 ## 你改代码的流向
 
 ```
 M1 改代码 → git add + git commit + git push
-   → Cursor 在 Mac2017 上 git pull → 合入 → 跑测试 → 验证
+   → 开发工具（Claude/OpenCode）在 Mac2017 上 git pull → 合入 → 跑测试 → 验证
    → 生效
 ```
 
-你的 commit 到达 Mac2017 需要经过 Cursor 合入，不是直通。
+你的 commit 到达 Mac2017 需要经过开发工具（Claude/OpenCode）合入，不是直通。

@@ -8,7 +8,7 @@
 #   3. 在 ~/.claude/skills/ccc-protocol/ 创建 symlink（如果 Claude Code skills 路径存在）
 #   4. 在 ~/.zcode/skills/ccc-protocol 创建 symlink（如果 ZCode skills 路径存在）
 #   5. --check 模式: 验证安装状态 (6 项)
-#   6. 输出 Cursor/AGENTS.md 引用片段
+#   6. 输出开发工具/AGENTS.md 引用片段
 #
 # 用法:
 #   bash install-ccc-as-skill.sh          # 执行安装
@@ -73,8 +73,8 @@ check_install() {
     echo "         Run without --check to install, or link manually: ln -sfn $CCC_DIR $MAVIS_TARGET"
   fi
 
-  # 4–5. 个人 Claude Code / ZCode symlink — 已退役（平台开发只认 Cursor）
-  echo "  [SKIP] Claude Code / ZCode skill symlink（退役；平台改动只用 Cursor，见 docs/product/dev-channel.md）"
+  # 4–5. 个人 Claude Code / ZCode symlink — 已退役（平台开发用 Claude/OpenCode）
+  echo "  [SKIP] Claude Code / ZCode skill symlink（退役；平台改动用 Claude/OpenCode，见 docs/product/dev-channel.md）"
   if [ -L "$CLAUDE_TARGET" ] || [ -L "$ZCODE_TARGET" ]; then
     echo "  [INFO] 若仍存在旧 symlink，可手动删除；不影响 Engine 执行器"
   fi
@@ -114,13 +114,13 @@ do_install() {
   ln -sfn "$CCC_DIR" "$MAVIS_TARGET"
   echo "  [OK] Mavis: $MAVIS_TARGET → $CCC_DIR"
 
-  # --- Claude Code / ZCode symlink — 退役（平台只认 Cursor）---
+  # --- Claude Code / ZCode symlink — 退役（平台用 Claude/OpenCode）---
   echo "  [SKIP] Claude Code / ZCode skill symlink（退役；见 docs/product/dev-channel.md）"
 
   echo ""
 
   # --- Output setup snippets ---
-  echo "=== Cursor（唯一平台开发工具）==="
+  echo "=== 平台开发工具（Claude / OpenCode）==="
   echo ""
   echo "权威：docs/product/loop-engineer-authority.md · docs/product/dev-channel.md"
   echo "SKILL： $CCC_DIR/SKILL.md"

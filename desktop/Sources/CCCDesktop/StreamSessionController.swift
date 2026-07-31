@@ -36,7 +36,7 @@ enum StreamSessionController {
         return modelPickerOptions.first(where: { $0.id == id })?.label ?? id
     }
 
-    /// discuss = 可选只读；engineer = 默认 Cursor 级全功能（开发/定任务/优化，工具全开）
+    /// discuss = 可选只读；engineer = 默认 全功能（开发/定任务/优化，工具全开）
     static func resolveToolMode(
         preferred: String,
         userText: String,
@@ -53,7 +53,7 @@ enum StreamSessionController {
         if t.contains("工程师模式") || t.contains("直接改本机") || t.contains("全功能") {
             return "engineer"
         }
-        // Desktop Agent Cursor 级全功能：默认 engineer
+        // Desktop Agent 全功能：默认 engineer
         return "engineer"
     }
 

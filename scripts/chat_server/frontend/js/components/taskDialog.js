@@ -50,7 +50,7 @@ export async function openTaskDialog(prefill = {}) {
   );
   if (!dispatchable.length) {
     window.showToast?.(
-      '无业务项目可下达。CCC 编排仓请用 Cursor 改；请先登记业务仓。',
+      '无业务项目可下达。CCC 编排仓请用开发工具（Claude/OpenCode）改；请先登记业务仓。',
       'error'
     );
     return;
@@ -128,7 +128,7 @@ export async function openTaskDialog(prefill = {}) {
     const meta = projects.find((p) => p.id === projectId);
     if (meta && (meta.role === 'orch' || meta.engine_eligible === false)) {
       window.showToast?.(
-        'CCC 编排仓不可下达。平台请用 Cursor 改 CCC；业务请选登记项目。',
+        'CCC 编排仓不可下达。平台请用开发工具（Claude/OpenCode）改 CCC；业务请选登记项目。',
         'error'
       );
       return;
