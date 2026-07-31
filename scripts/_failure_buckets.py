@@ -15,6 +15,9 @@ def classify_failure_bucket(reason: str) -> str:
     low = text.lower()
 
     # Specific buckets first (order matters)
+    # R-COLD: opencode 冷启动 rc=247 优先识别
+    if "rc=247" in low or "cold_start" in low or "cold start" in low:
+        return "cold_start"
     if "dirty_block" in low or "ccc_hygiene" in low:
         return "dirty_block"
     if (
@@ -90,6 +93,11 @@ def is_exhaust_reason(reason: str) -> bool:
 
 def bucket_optimize_hints(bucket: str) -> str:
     """Hard constraints for Agent new-epic transfer (zh)."""
+    if bucket == "cold_start":
+        return (
+            "cold_start：opencode 冷启动超时——下次重试前先 warmup 预热；"
+            "timeout 抬到 600s+；检查 relay :4002 连接稳定性；禁 invent。"
+        )
     if bucket == "hang":
         return (
             "hang：新 epic 必须更小——优先 1 张 work、scope≤少数文件、单 phase；"
@@ -162,3 +170,29 @@ def summarize_exhausted_tasks(
             }
         )
     return out
+
+
+# R-UNIFY: 统一耗尽关键词，供 failure_router.should_auto_refeed 复用
+EXHAUST_MARKERS = (
+    "fail_loop_exhausted",
+    "重试耗尽",
+    "次全部失败",
+    "retry budget exceeded",
+    "budget 耗尽",
+    "retry budget 耗尽",
+    "acceptance_fail_budget",
+    "short_path_fail_budget",
+    "max_retry",
+    "reviewer_fail_loop_exhausted",
+    "tester_fail_loop_exhausted",
+    "滞留",
+    "stale_inflight",
+    "plan_lint",
+    "phase graph unresolvable",
+    "unresolvable",
+    "missing plan",
+    "缺 plan",
+    "缺 phases",
+    "hang auto-restart 耗尽",
+)
+

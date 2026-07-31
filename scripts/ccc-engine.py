@@ -196,6 +196,9 @@ _log_dir = Path(os.environ.get("HOME", str(Path.home()))) / ".ccc" / "logs"
 _log_dir.mkdir(parents=True, exist_ok=True)
 _log_file = str(_log_dir / "engine.log")
 add_file_handler("engine", _log_file, when="midnight", interval=1, backup_count=7)
+# R-TELEMETRY: 自愈/reopen 独立日志，便于排查（不混入 engine.log）
+add_file_handler("engine.recover", str(_log_dir / "recover.log"), when="midnight", interval=1, backup_count=7)
+add_file_handler("task_reopen", str(_log_dir / "reopen.log"), when="midnight", interval=1, backup_count=7)
 
 
 _log.info(

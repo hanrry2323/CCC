@@ -191,10 +191,9 @@ def _handle_short_path_failure(
     if n >= _SHORT_PATH_FAIL_MAX:
         engine_log(f"[{label}] {tid} {path} fail budget {n}/{_SHORT_PATH_FAIL_MAX} → abnormal ({why})")
         from_col = col_now
-        if col_now == "in_progress":
-            store.move_task(tid, "in_progress", "abnormal")
-        elif col_now == "planned":
-            store.move_task(tid, "planned", "abnormal")
+        # R-TESTING: 增加 testing 列，与 _handle_acceptance_fail_budget 的 R-10 对齐
+        if col_now in ("in_progress", "planned", "testing"):
+            store.move_task(tid, col_now, "abnormal")
         try:
             store.patch_task(
                 tid,

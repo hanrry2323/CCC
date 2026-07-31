@@ -77,6 +77,9 @@ if command -v timeout &>/dev/null; then
     cat > "$RESULT_FILE" <<WALLCLOCK_EOF
 {"error": "wallclock timeout after ${MAX_WALLCLOCK}s", "phase": "${TASK_ID}", "rc": 124}
 WALLCLOCK_EOF
+  elif [ $RC -eq 247 ]; then
+    # R-COLD: opencode 冷启动超时，标记 cold_start 供 bucket 分类
+    python3 -c "import json; json.dump({'error':'opencode cold-start timeout','rc':247,'cold_start':True}, open('$RESULT_FILE','w'))"
   fi
 else
   # fallback: timeout(1) 不存在时的纯 bash 兜底（macOS 常见）

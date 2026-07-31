@@ -938,7 +938,8 @@ def dev_role_relaunch(task_id: str, *, prev_reason: str = "") -> dict:
         bucket = classify_failure_bucket(prev_reason)
         retry_count = get_retry_budget(get_workspace(), task_id)
 
-        if bucket == "timeout" and retry_count >= 2:
+        if bucket == "timeout" and retry_count >= 1:
+            # R-WARMUP: 首次重试即放宽（retry>=1），不再等 retry>=2
             # 切短 prompt：只传当前 phase 的 scope + acceptance，去掉 plan 全文
             _log.info(
                 "[dev-relaunch] %s timeout bucket, retry=%d → 切短 prompt + 放宽 timeout",
@@ -947,7 +948,17 @@ def dev_role_relaunch(task_id: str, *, prev_reason: str = "") -> dict:
             prompt = _compose_compact_phase_prompt(task_id, cur_phase, plan_content)
             timeout_s = int(timeout_s * 1.5)  # 适度放宽
             bucket_applied = True
-        elif bucket == "reviewer_timeout" and retry_count >= 2:
+        elif bucket == "cold_start" and retry_count >= 1:
+            # R-COLD: cold_start bucket — 切短 prompt + 放宽 timeout 到 600s+
+            _log.info(
+                "[dev-relaunch] %s cold_start bucket, retry=%d → 切短 prompt + timeout≥600s",
+                task_id, retry_count,
+            )
+            prompt = _compose_compact_phase_prompt(task_id, cur_phase, plan_content)
+            timeout_s = max(timeout_s, 600)
+            bucket_applied = True
+        elif bucket == "reviewer_timeout" and retry_count >= 1:
+            # R-WARMUP: 首次重试即切短 prompt（retry>=1）
             _log.info(
                 "[dev-relaunch] %s reviewer_timeout bucket, retry=%d → 切短 prompt",
                 task_id, retry_count,

@@ -196,6 +196,42 @@ def check_residual_watchdog(script_dir: Path) -> bool:
     return rc in (0, 3)
 
 
+async def _warmup_opencode(opencode_bin: str, model: str, cwd: Path | None) -> bool:
+    """R-WARMUP: opencode 冷启动预热 — 跑极短 prompt 让模型加载/session 初始化。
+
+    带 30s 短超时，失败静默（不阻塞主流程）。
+    成功后 opencode 后续启动走热路径，避免 rc=247。
+    """
+    proc = None
+    try:
+        warmup_cmd = build_opencode_run_cmd(
+            opencode_bin, model, message="ok", cwd=cwd
+        )
+        proc = await asyncio.create_subprocess_exec(
+            *warmup_cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+            start_new_session=True,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=30)
+        _log.info("[warmup] ok (rc=%s)", proc.returncode)
+        return True
+    except (TimeoutError, asyncio.CancelledError):
+        _log.warning("[warmup] timeout (30s)，继续主流程")
+        if proc is not None:
+            try:
+                import signal as _sig
+                await _kill_process_group(proc.pid, _sig.SIGKILL)
+            except Exception:
+                pass
+        return False
+    except Exception as exc:
+        _log.warning("[warmup] 失败: %s，继续主流程", exc)
+        return False
+
+
 async def run_opencode(
     phase_id: str,
     prompt_text: str,
@@ -258,6 +294,10 @@ async def run_opencode(
             message=None,  # R-14: 不传 positional，走 stdin
             cwd=cwd,
         )
+    # R-WARMUP: 冷启动预热 — stdin 模式下先跑短 prompt 让 opencode session 初始化
+    if _use_stdin and full_prompt:
+        await _warmup_opencode(opencode_bin, model, cwd)
+
     # 红线 X2 修（v0.11b-fix）：用 process group 启动
     # 这样 kill pgid 会级联到 opencode 起的 node 孙子进程
     import signal as _sig
@@ -347,6 +387,10 @@ async def run_opencode(
             "pid": proc.pid,
             "killed": False,
         }
+        # R-COLD: opencode 冷启动 rc=247 显式标记，供 bucket 分类使用
+        if proc.returncode == 247:
+            result["cold_start"] = True
+            _log.warning("[opencode] rc=247 cold-start timeout detected")
         return result
     except (TimeoutError, asyncio.CancelledError) as exc:
         # 红线 X2: 超时/取消必杀（用 killpg 级联到整个 process group）

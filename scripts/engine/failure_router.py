@@ -140,25 +140,10 @@ class RefeedDecision:
     """Machine-readable skip reason; empty when should=True."""
 
 
-_EXHAUSTED_KEYWORDS = frozenset(
-    {
-        "reviewer_fail_loop_exhausted",
-        "tester_fail_loop_exhausted",
-        "fail_loop_exhausted",
-        "重试耗尽",
-        "次全部失败",
-        "missing plan",
-        "缺 plan",
-        "缺 phases",
-        # L3b: Engine already exhausted same-card path → Agent reformulate
-        "hang auto-restart 耗尽",
-        "short_path_fail_budget",
-        "retry budget 耗尽",
-        "phase graph unresolvable",
-        "unresolvable",
-        "plan_lint",
-    }
-)
+# R-UNIFY: 耗尽关键词统一从 _failure_buckets 导入，避免双源不一致
+from _failure_buckets import EXHAUST_MARKERS as _EXHAUSTED_KEYWORDS
+
+_EXHAUSTED_KEYWORDS = frozenset(_EXHAUSTED_KEYWORDS)
 
 
 def should_auto_refeed(

@@ -226,7 +226,12 @@ def _extract_scope_from_md(md: str) -> list[str]:
         if not item or item.startswith(("http", "#", "--")):
             continue
         # 提取文件路径（排除说明文字）
-        m = re.search(r"([A-Za-z0-9_./\-]+\.(?:py|md|sh|json|yaml|yml|txt|toml))", item)
+        # R-SCOPE: 扩展文件扩展名识别（ts/js/go/rs/java/c/cpp/h/vue/css/html）
+        # 注意：cpp/css/html 必须排在 c/h 之前，否则 c 会先匹配（正则交替非贪婪）
+        m = re.search(
+            r"([A-Za-z0-9_./\-]+\.(?:py|md|sh|json|yaml|yml|txt|toml|ts|js|go|rs|java|cpp|css|html|vue|h|c))",
+            item,
+        )
         if m:
             paths.append(m.group(1).lstrip("./"))
     return paths
@@ -247,7 +252,11 @@ def _extract_paths_from_acceptance(md: str) -> list[str]:
             acc_section.append(line)
     scope: list[str] = []
     for line in acc_section:
-        for m in re.finditer(r"([A-Za-z0-9_./\-]+\.py)", line):
+        # R-SCOPE: 扩展验收命令中的文件路径识别（与 _extract_scope_from_md 对齐）
+        for m in re.finditer(
+            r"([A-Za-z0-9_./\-]+\.(?:py|md|sh|json|yaml|yml|txt|toml|ts|js|go|rs|java|cpp|css|html|vue|h|c))",
+            line,
+        ):
             p = m.group(1).lstrip("./")
             if p not in scope:
                 scope.append(p)
@@ -281,22 +290,33 @@ def _run_fanout(store, epic: dict, workspace: Path, proposal_id: str) -> dict:
         return text, (_brief, children)
 
     task_id = epic["id"]
-    sess = run_contract_loop_sync(
-        prompt=prompt,
-        workspace=workspace,
-        task_id=task_id,
-        mode="epic",
-        model="flash",
-        validate_fn=_validate_epic,
-        gate_fn=_gate_epic,
-    )
+    # R-GRACEFUL: 主链路任何异常都走 fallback，而非直接 failed
+    try:
+        sess = run_contract_loop_sync(
+            prompt=prompt,
+            workspace=workspace,
+            task_id=task_id,
+            mode="epic",
+            model="flash",
+            validate_fn=_validate_epic,
+            gate_fn=_gate_epic,
+        )
+    except Exception as exc:
+        _log.warning("splitter 主链路异常 (%s)，走 fallback", exc)
+        return _fallback_create_work(
+            store, epic, workspace, proposal_id,
+            main_chain_error=str(exc)[:200],
+        )
     if not sess.get("ok"):
         # fallback：SDK 不可用时直接创建单张 work 子卡
         _log.warning(
-            "splitter SDK 不可用 (%s)，走 fallback 单 phase 拆卡",
+            "splitter 主链路失败 (%s)，走 fallback 单 phase 拆卡",
             sess.get("error", "")[:80],
         )
-        return _fallback_create_work(store, epic, workspace, proposal_id)
+        return _fallback_create_work(
+            store, epic, workspace, proposal_id,
+            main_chain_error=sess.get("error", ""),
+        )
 
     _brief, children = parse_fanout_output(sess.get("output") or "")
     fr = apply_fanout(
@@ -320,6 +340,8 @@ def _fallback_create_work(
     epic: dict,
     workspace: Path,
     proposal_id: str,
+    *,
+    main_chain_error: str = "",
 ) -> dict:
     """SDK 不可用时 fallback：从方案 plan_md 直接创建单张 work 子卡。
 
@@ -439,6 +461,7 @@ def _fallback_create_work(
         "child_ids": [work_id],
         "claude_session_id": "",
         "fallback": True,
+        "main_chain_error": main_chain_error,  # R-TRACE: 主链路失败原因
     }
 
 
@@ -534,7 +557,11 @@ def main(proposal_id: str, project_id: str) -> dict:
 
         # 5. 给子卡附 skill_ref@<hash>
         _t4 = time.monotonic()
-        tagged = _attach_skill_version(store, child_ids, skill_ref, prompt_ref)
+        # R-DEDUP: fallback 子卡 note 已自带 skill_ref/prompt_ref，跳过冗余 attach
+        if fr.get("fallback"):
+            tagged = 0
+        else:
+            tagged = _attach_skill_version(store, child_ids, skill_ref, prompt_ref)
         attach_ms = int((time.monotonic() - _t4) * 1000)
 
         # 6. wake engine

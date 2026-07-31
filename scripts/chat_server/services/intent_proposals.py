@@ -184,6 +184,37 @@ def trigger_splitter(
     ]
     if workspace_root:
         env["CCC_TARGET_WORKSPACE"] = str(Path(workspace_root).resolve())
+
+    # R-CHECK: 主链路前置探测（不阻塞，仅记录到 result.jsonl）
+    main_chain_ready = True
+    main_chain_error = ""
+    try:
+        import claude_agent_sdk  # noqa: F401
+    except ImportError:
+        main_chain_ready = False
+        main_chain_error = "claude-agent-sdk not installed"
+    try:
+        import sys as _sys
+        _scripts_dir = str(config.PROJECT_ROOT / "scripts")
+        if _scripts_dir not in _sys.path:
+            _sys.path.insert(0, _scripts_dir)
+        from _claude_cli import resolve_claude_cli
+        resolve_claude_cli(require=False)
+    except Exception as exc:
+        main_chain_ready = False
+        main_chain_error = (
+            f"{main_chain_error}; claude cli: {exc}" if main_chain_error else str(exc)
+        )
+    if not main_chain_ready and workspace_root:
+        append_result(
+            workspace_root, proposal_id,
+            {"status": "warning", "main_chain": "not_ready", "error": main_chain_error},
+        )
+        _log.warning(
+            "splitter 主链路未就绪 proposal=%s: %s（将走 fallback）",
+            proposal_id, main_chain_error,
+        )
+
     try:
         # 非阻塞 Popen；splitter 自己消费队列 + flock 单实例
         proc = subprocess.Popen(

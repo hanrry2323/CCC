@@ -37,6 +37,7 @@ _PID_SUFFIXES = (
     ".opencode.pid",
     ".done",
     ".acceptance_fails",    # R-9: 验收失败计数器，reopen 时必须清理（避免 refeed 后只剩 1 次机会）
+    ".short_path_fails",    # R-CLEAN: 与 .acceptance_fails 对称，reopen 时清理短路径失败计数
 )
 
 
@@ -116,9 +117,13 @@ def reopen_task(
 
     if reset_fail_loops:
         try:
-            store.patch_task(task_id, {"review_fail_loops": 0})
+            store.patch_task(task_id, {
+                "review_fail_loops": 0,
+                "retry_count": 0,  # R-RESET: 同步重置 retry budget，避免旧任务永久死亡
+            })
+            _log.info("reset review_fail_loops=0 + retry_count=0 for %s", task_id)
         except Exception as exc:
-            _log.warning("reset review_fail_loops %s: %s", task_id, exc)
+            _log.warning("reset review_fail_loops/retry_count %s: %s", task_id, exc)
 
     epic_refresh = None
     try:
