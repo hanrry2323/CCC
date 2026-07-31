@@ -92,7 +92,3 @@ def _run_stats_server(port: int) -> None:
 
     t = threading.Thread(target=_serve, name="ccc-stats-http", daemon=True)
     t.start()
-
-
-if __name__ == "__main__":
-    main()

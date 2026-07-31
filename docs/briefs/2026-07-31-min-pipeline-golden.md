@@ -20,6 +20,16 @@
 | Claude | Desktop sidecar → loop-code；Engine plan（product）；verify 副闸（reviewer） |
 | OpenCode | Engine code（dev_role_launch / `_executor`） |
 
+## 2017 合入观测（2026-07-31）
+
+| 项 | 值 |
+|----|-----|
+| HEAD | `9841a846`（含 `16b615e` min-pipeline v1） |
+| `CCC_MIN_PIPELINE` | unset → enabled=True |
+| `CCC_L3B_REPAIR_QUEUE` | unset → l3b=False |
+| Engine | launchd `com.ccc.engine`；合入后曾因 `_stats_server_impl` 在 attach 时误触发 `__main__` 崩（已修） |
+| workspaces | 启动日志见 `apps/ccc-demo` |
+
 ## 待 2017 合入后补
 
 - [ ] Desktop 白话长意图 → outbox → Hub → Engine plan→code→verify→done（记 tid）
