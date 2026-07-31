@@ -587,6 +587,42 @@ def _run_hang_auto_restart_unlocked(ws: Path, active_tasks: dict[str, dict]) -> 
 
         def _finish_salvage(salvaged: dict) -> bool:
             nonlocal freed
+            # Probe permanently failing: feed Engine acceptance_fail_budget
+            # (same path as check_complete) instead of salvage-refuse forever.
+            if salvaged and salvaged.get("status") == "acceptance_failed":
+                handle = getattr(eng, "_handle_task_result", None) if eng else None
+                if handle is None:
+                    return False
+                result = {
+                    "status": "failed",
+                    "retry": 0,
+                    "task_id": tid,
+                    "error": salvaged.get("error")
+                    or "acceptance-gate: acceptance_cmd_failed",
+                }
+                try:
+                    removed = bool(
+                        handle(ws, tid, result, complexity="medium")
+                    )
+                except Exception as exc:
+                    _engine_log(
+                        f"[{label}] hang-auto: {tid} acceptance_failed handle: {exc}"
+                    )
+                    return False
+                if not removed:
+                    return False
+                _engine_log(
+                    f"[{label}] hang-auto: {tid} acceptance fail budget → abnormal"
+                )
+                _clear_hung_marker(hung_path, label)
+                _hang_retry_counter.pop(key, None)
+                _save_hang_retry_counter()
+                from engine.active_tasks import release_dev_slot
+
+                release_dev_slot(active_tasks, ws, tid, reap=True)
+                active_tasks.pop(key, None)
+                freed = True
+                return True
             if not (salvaged and salvaged.get("status") == "success"):
                 return False
             _engine_log(

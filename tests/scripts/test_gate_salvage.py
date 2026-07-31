@@ -246,4 +246,73 @@ def test_smoke_salvage_rejects_gitignore_only_file(tmp_path: Path, monkeypatch):
     set_workspace(ws)
     assert dev_mod._smoke_deliverable_satisfied(tid) is False
     monkeypatch.setenv("CCC_SKIP_COMMIT_GATE", "1")
-    assert dev_mod.try_complete_if_gates_satisfied(tid) is None
+    out = dev_mod.try_complete_if_gates_satisfied(tid)
+    # Rejected: either early None (no commit/smoke) or acceptance_failed surface.
+    assert out is None or out.get("status") == "acceptance_failed"
+
+
+def test_salvage_acceptance_failed_surfaces_for_budget(ws_git: Path, monkeypatch):
+    """Forced-fail probe must not return None (Engine needs acceptance_fail_budget)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from board.context import set_workspace
+    from board.roles import dev as dev_mod
+
+    set_workspace(ws_git)
+    tid = "flow-green-abc-w1"
+    task = {
+        "id": tid,
+        "title": "写入并提交",
+        "description": "smoke",
+        "status": "in_progress",
+        "created_at": "2026-07-20T00:00:00+08:00",
+        "updated_at": "2026-07-20T00:00:00+08:00",
+        "card_kind": "work",
+        "complexity": "small",
+        "schema_version": "1.2",
+        "ui_hidden": False,
+        "child_ids": [],
+        "parent_id": "flow-green-abc",
+        "split_status": None,
+        "color_group": "A",
+        "color_depth": 1,
+        "tags": [],
+        "assignee": None,
+        "note": None,
+    }
+    (ws_git / ".ccc" / "board" / "in_progress" / f"{tid}.jsonl").write_text(
+        json.dumps(task) + "\n"
+    )
+    (ws_git / ".ccc" / "phases" / f"{tid}.phases.json").write_text(
+        '{"schema_version":"1.1"}\n'
+        + json.dumps(
+            {
+                "phase": 1,
+                "status": "pending",
+                "description": "write",
+                "scope": [".ccc/flow-smoke.md"],
+                "subtasks": {"1.1": "pending"},
+                "timeout": 1800,
+                "commit": None,
+                "notes": "",
+            }
+        )
+        + "\n"
+    )
+    (ws_git / ".ccc" / "reports" / f"{tid}.result.json").write_text(
+        json.dumps({"exit_code": 0, "stdout": "done\nALL SELF-CHECKS PASSED\n"})
+    )
+    (ws_git / ".ccc" / "reports" / f"{tid}.report.md").write_text(
+        f"# {tid}\n\nALL SELF-CHECKS PASSED\n"
+    )
+    (ws_git / ".ccc" / "plans").mkdir(parents=True, exist_ok=True)
+    (ws_git / ".ccc" / "plans" / f"{tid}.plan.md").write_text(
+        "# Plan\n\n## 验收\n- python3 -c \"raise SystemExit('forced_fail')\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CCC_SKIP_COMMIT_GATE", "1")
+    out = dev_mod.try_complete_if_gates_satisfied(tid)
+    assert out is not None
+    assert out["status"] == "acceptance_failed"
+    assert "acceptance" in str(out.get("error") or "").lower()

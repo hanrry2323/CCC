@@ -825,12 +825,20 @@ def try_complete_if_gates_satisfied(task_id: str) -> dict | None:
                 why_auto,
             )
     if not acc.get("ok"):
+        reason = str(acc.get("reason") or "acceptance_failed")
         _log.warning(
             "[salvage] %s refused: acceptance %s",
             task_id,
-            acc.get("reason"),
+            reason,
         )
-        return None
+        # Surface to Engine acceptance_fail_budget (reopen≤2 → abnormal).
+        # Returning None left cards stuck in salvage refuse loops while PID alive.
+        return {
+            "status": "acceptance_failed",
+            "task_id": task_id,
+            "error": f"acceptance-gate: {reason}",
+            "reason": reason,
+        }
 
     declared = agent_declared_self_checks_passed(report, result_raw)
     smoke_ok = _smoke_deliverable_satisfied(task_id)
@@ -1189,6 +1197,14 @@ def dev_role_check_complete(task_id: str) -> dict:
         salvaged = try_complete_if_gates_satisfied(task_id)
         if salvaged and salvaged.get("status") in ("success", "phase_done"):
             return salvaged
+        if salvaged and salvaged.get("status") == "acceptance_failed":
+            return {
+                "status": "failed",
+                "retry": 0,
+                "task_id": task_id,
+                "error": salvaged.get("error")
+                or "acceptance-gate: acceptance_cmd_failed",
+            }
         # G4: 检查 PID 是否存活（重启后 .pid 可能指向已死进程）
         pid_path = get_workspace() / ".ccc" / "pids" / f"{task_id}.pid"
         if pid_path.exists():
@@ -1344,6 +1360,14 @@ def dev_role_check_complete(task_id: str) -> dict:
             salvaged = try_complete_if_gates_satisfied(task_id)
             if salvaged and salvaged.get("status") == "success":
                 return salvaged
+            if salvaged and salvaged.get("status") == "acceptance_failed":
+                return {
+                    "status": "failed",
+                    "retry": 0,
+                    "task_id": task_id,
+                    "error": salvaged.get("error")
+                    or "acceptance-gate: acceptance_cmd_failed",
+                }
             _log.error(
                 "[gate] %s report/result 缺少 'ALL SELF-CHECKS PASSED'（不代写）",
                 task_id,
