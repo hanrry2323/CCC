@@ -16,6 +16,10 @@ from board.phase import _load_phases
 from board.roles.dev import dev_role_launch
 from engine.workspace import _get_store, _ws_label, workspace_scope
 
+# R-4: planned 跳过计数器 — 连续 N tick 缺文件/prepare 失败后挪 abnormal
+# 模块级 dict，Engine 重启时重置（重启后 6 tick ≈ 1min 才会再挪，可接受）
+_planned_skip_counter: dict[str, int] = {}
+
 
 def _eng():
     # Prefer test module aliases first so pytest twins don't steal each other
@@ -102,6 +106,10 @@ def try_launch_planned_unlocked(ws: Path, active_tasks: dict[str, dict]) -> bool
             pass  # intentional — optional _board_garbage
         key = e._task_key(ws, tid)
         if key in active_tasks:
+            # R-4 A2: 加 debug 日志（避免噪声，但可追踪残留 entry）
+            e.engine_log(
+                f"[{label}] {tid} 在 planned 但 active_tasks 残留 key={key}，跳过",
+            )
             continue
         # 只调度 work 小卡（epic 永不进入 planned）
         from _board_store import normalize_task_view as _norm
@@ -113,7 +121,33 @@ def try_launch_planned_unlocked(ws: Path, active_tasks: dict[str, dict]) -> bool
         plan_file = ws / ".ccc" / "plans" / f"{tid}.plan.md"
         phases_file = ws / ".ccc" / "phases" / f"{tid}.phases.json"
         if not plan_file.exists() or not phases_file.exists():
+            # R-4 A1: 加日志 + 累计计数器，连续 6 tick（~1min）后挪 abnormal
+            missing = "plan" if not plan_file.exists() else "phases"
+            skip_n = _planned_skip_counter.get(tid, 0) + 1
+            _planned_skip_counter[tid] = skip_n
+            if skip_n >= 6:
+                e.engine_log(
+                    f"[{label}] {tid} 缺 {missing} 文件连续 {skip_n} tick → abnormal"
+                )
+                try:
+                    store.move_task(tid, "planned", "abnormal")
+                    store.patch_task(
+                        tid,
+                        {"note": f"engine: 缺 {missing} 文件连续 {skip_n} tick"},
+                    )
+                    store.update_index()
+                    _planned_skip_counter.pop(tid, None)
+                except Exception as exc:
+                    e.engine_log(
+                        f"[{label}] {tid} 缺文件挪 abnormal 失败: {exc}"
+                    )
+            else:
+                e.engine_log(
+                    f"[{label}] {tid} 缺 {missing} 文件 (skip={skip_n}/6) → 跳过"
+                )
             continue
+        # 文件存在则重置计数器
+        _planned_skip_counter.pop(tid, None)
 
         phases = _load_phases(tid, ws)
         executable: set[int] = set()
@@ -129,9 +163,21 @@ def try_launch_planned_unlocked(ws: Path, active_tasks: dict[str, dict]) -> bool
                 p.get("status") in ("skipped", "failed") or (p.get("phase") in skipped)
                 for p in phases
             ):
+                # R-4 A5: phases 全 skipped/failed → 挪 abnormal 触发自愈或人工介入
                 e.engine_log(
-                    f"[{label}] {tid} 所有 phase 被跳过（依赖失败链），跳过 task 启动"
+                    f"[{label}] {tid} 所有 phase 被跳过（依赖失败链）→ abnormal"
                 )
+                try:
+                    store.move_task(tid, "planned", "abnormal")
+                    store.patch_task(
+                        tid,
+                        {"note": "engine: 所有 phase 被跳过（依赖失败链）"},
+                    )
+                    store.update_index()
+                except Exception as exc:
+                    e.engine_log(
+                        f"[{label}] {tid} phases 全 skipped 挪 abnormal 失败: {exc}"
+                    )
                 continue
 
         complexity = task.get("complexity", "medium")
@@ -354,6 +400,23 @@ def try_launch_planned_unlocked(ws: Path, active_tasks: dict[str, dict]) -> bool
                 and "done" in err_s
             ):
                 e._salvage_phases_done_planned(ws, tid, store, label=label)
+            elif launch_r.get("skip_retry"):
+                # R-4 A4: 非重试性失败（prepare_role_call 失败等）→ 挪 abnormal
+                # 避免留 planned 导致 1Hz storm 空转
+                e.engine_log(
+                    f"[{label}] {tid} 启动非重试性失败 → abnormal: {err_s[:200]}"
+                )
+                try:
+                    store.move_task(tid, "planned", "abnormal")
+                    store.patch_task(
+                        tid,
+                        {"note": f"engine: prepare_role_call fail: {err_s[:300]}"},
+                    )
+                    store.update_index()
+                except Exception as exc:
+                    e.engine_log(
+                        f"[{label}] {tid} skip_retry 挪 abnormal 失败: {exc}"
+                    )
             continue
         if not e._register_active(
             active_tasks, ws, tid, complexity=complexity

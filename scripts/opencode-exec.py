@@ -101,6 +101,43 @@ def build_opencode_run_cmd(
     return cmd
 
 
+def _extract_core_action(prompt_text: str) -> str:
+    """R-3: 从长 prompt 提取核心可执行动作作为短 message。
+
+    避免 "Read attached file and execute the instructions inside." 在非交互
+    一次性模式下卡死。提取策略：
+    1. 优先找 "## 目标" / "## 目的" 节的第一行
+    2. 其次找 "创建" / "实现" / "修复" / "审查" 等动词开头的第一行
+    3. 兜底：取前 150 字符（去换行）
+
+    返回 ≤200 字符的短可执行指令。
+    """
+    if not prompt_text:
+        return "execute"
+    lines = [l.strip() for l in prompt_text.splitlines() if l.strip()]
+    # 策略 1：找 "## 目标" / "## 目的" 节
+    in_target = False
+    for line in lines:
+        low = line.lstrip("#").strip().lower()
+        if line.startswith("#"):
+            in_target = low in ("目标", "目的", "goal", "objective", "任务")
+            continue
+        if in_target and not line.startswith("#"):
+            candidate = line.lstrip("-*").strip()
+            if candidate and len(candidate) >= 4:
+                return candidate[:200]
+    # 策略 2：找动词开头的第一行
+    action_verbs = ("创建", "实现", "修复", "审查", "编写", "修改", "删除", "重构", "添加", "生成", "执行")
+    for line in lines:
+        if any(line.startswith(v) or line.lstrip("-*").startswith(v) for v in action_verbs):
+            candidate = line.lstrip("-*").strip()
+            if candidate:
+                return candidate[:200]
+    # 策略 3：兜底取前 150 字符（去换行）
+    flat = " ".join(prompt_text.split())
+    return (flat[:150] + "...") if len(flat) > 150 else flat
+
+
 async def _kill_process_group(pgid: int, sig: int) -> None:
     try:
         os.killpg(pgid, sig)
@@ -200,11 +237,13 @@ async def run_opencode(
         if cfg is None:
             cfg = Config()
         if len(prompt_text) > 200:
-            # 长 prompt：写临时文件，用 --file 附件 + 短指令
+            # R-3: 长 prompt 执行策略 — 避免 "Read attached file" 非交互卡死
+            # 旧版 message="Read attached file and execute the instructions inside."
+            # 在非交互一次性模式下无法完成多轮工具调用 → 卡死 → 超时
+            # 新版：提取任务核心动作作为短可执行 message，plan 全文作 --file 附件
             # Lesson 33 实证：positionals 截断会让模型只看到半句 prompt
             # Bug 1+3 修：临时文件必须在 run 完 unlink（finally 兜底）
-            # v0.24.7 (A24-12): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600，
-            # 防 /tmp 下被同用户其他进程读取 prompt（可能含 plan/凭据）
+            # v0.24.7 (A24-12): 写到 ~/.ccc/prompts/ 私有目录 + mode 0o600
             import tempfile
 
             tmp_fd, tmp_path = tempfile.mkstemp(
@@ -215,11 +254,13 @@ async def run_opencode(
             finally:
                 os.close(tmp_fd)
             os.chmod(tmp_path, 0o600)
+            # R-3: 提取核心动作作为短可执行 message
+            short_action = _extract_core_action(prompt_text)
             # 短 message 必须在 --file 前（opencode 1.17 参数顺序约束）
             cmd = build_opencode_run_cmd(
                 opencode_bin,
                 model,
-                message="Read attached file and execute the instructions inside.",
+                message=short_action,
                 prompt_file=tmp_path,
                 cwd=cwd,
             )

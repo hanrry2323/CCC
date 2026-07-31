@@ -36,6 +36,7 @@ _PID_SUFFIXES = (
     ".dev.pid",
     ".opencode.pid",
     ".done",
+    ".acceptance_fails",    # R-9: 验收失败计数器，reopen 时必须清理（避免 refeed 后只剩 1 次机会）
 )
 
 

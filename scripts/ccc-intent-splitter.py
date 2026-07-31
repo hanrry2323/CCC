@@ -400,6 +400,31 @@ def _fallback_create_work(
     (phases_dir / f"{work_id}.phases.json").write_text(phases_body, encoding="utf-8")
     _log.info("[splitter-fallback] %s plan+phases 已生成", work_id)
 
+    # R-12: phases 格式校验 — 确保 _load_phases 能正确解析，避免 dispatch 静默跳过
+    try:
+        from board.phase import _load_phases
+        loaded = _load_phases(work_id, workspace)
+        if not loaded:
+            raise ValueError("phases.json 加载后为空")
+        _log.info(
+            "[splitter-fallback] %s phases 校验通过 (%d phases)", work_id, len(loaded)
+        )
+    except Exception as exc:
+        _log.error("[splitter-fallback] %s phases 格式错误: %s", work_id, exc)
+        # 不 raise — 让 dispatch 自己处理（已加日志）
+
+    # R-5: 写 engine.wake 立即唤醒 Engine，避免深睡 60s 延迟
+    try:
+        from _engine_wake import write_wake
+        write_wake(
+            reason="intent-splitter-fallback",
+            task_id=work_id,
+            workspace=workspace,
+        )
+        _log.info("[splitter-fallback] %s engine.wake 已写入", work_id)
+    except Exception as exc:
+        _log.warning("[splitter-fallback] %s write_wake 失败: %s", work_id, exc)
+
     # 更新 epic child_ids + split_status
     try:
         store.patch_task(epic_id, {

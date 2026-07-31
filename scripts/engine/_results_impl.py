@@ -73,10 +73,10 @@ def _handle_acceptance_fail_budget(
     )
     col_now = store.find_task(tid)[0]
     from_col = col_now
-    if col_now == "in_progress":
-        store.move_task(tid, "in_progress", "abnormal")
-    elif col_now == "planned":
-        store.move_task(tid, "planned", "abnormal")
+    # R-10: 补全 testing 列 — 旧版只处理 in_progress/planned，testing 列验收失败
+    # 会导致 task 不移动但 note 已写，自愈扫不到
+    if col_now in ("in_progress", "planned", "testing"):
+        store.move_task(tid, col_now, "abnormal")
     try:
         store.patch_task(
             tid,

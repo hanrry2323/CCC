@@ -137,8 +137,12 @@ def _retry_abnormal_failures(ws: Path) -> None:
 
     recovery = getattr(cfg, "breaker_recovery_seconds", _BREAKER_RECOVERY_SECONDS)
     if _breaker_open and time.time() - _breaker_since < recovery:
-        engine_log(f"[{_ws_label(ws)}] 熔断中，跳过 abnormal 重试")
-        return
+        # R-6: fail-open 后任务继续跑，自愈不依赖 relay（reopen_task 是本地文件操作）
+        # 旧版直接 return 会导致 abnormal 任务不被消费 — 头号嫌疑
+        engine_log(
+            f"[{_ws_label(ws)}] 熔断中，但仍扫 abnormal（自愈不依赖 relay）"
+        )
+        # 不 return，继续往下
 
     try:
         from _workspace_registry import is_orch_path
@@ -261,41 +265,55 @@ def _retry_abnormal_failures(ws: Path) -> None:
             continue
 
         # v0.62.1: 前置校验 — 不通过不扣 retry budget
+        # R-8: acceptance 类任务进 abnormal 时 phases 全 done，prepare_role_call
+        # 返回"无待执行 phase"导致自愈跳过。这里跳过 prepare 检查， reopen 后
+        # 调 align_phases_after_revert 重置 phase 状态。
         try:
             from _role_tool import prepare_role_call
 
-            ok, reason = prepare_role_call(tid, ws)
+            ok, prep_reason = prepare_role_call(tid, ws)
             if not ok:
-                engine_log(
-                    f"[{label}] {tid} prepare 校验失败 ({reason})，跳过，不扣 retry budget"
-                )
-                continue
+                # R-8: "无待执行 phase" 是 acceptance 类任务的常态，不作为跳过理由
+                # 其它原因（scope 越界/pids 不可写）仍跳过
+                if "无待执行 phase" in str(prep_reason):
+                    engine_log(
+                        f"[{label}] {tid} prepare: {prep_reason}（acceptance 类常态，"
+                        f"reopen 后 align_phases 重置）"
+                    )
+                else:
+                    engine_log(
+                        f"[{label}] {tid} prepare 校验失败 ({prep_reason})，跳过，不扣 retry budget"
+                    )
+                    continue
         except Exception as exc:
             engine_log(f"[{label}] {tid} prepare_role_call error: {exc}")
             continue
 
-        # 2026-07-24 方案 P1-1：retry budget 跨层统一闸（auto + review + hang）
-        # 2026-07-25 修 P0-2:auto-refeed 改用 increment_retry_count(主动递增+抛异常),
-        # 与 reviewer/hang 三路径一致;不依赖 caller 后续再 increment。
+        # R-7: 调整 increment 顺序 — cooldown/reopen 先行，成功才扣 budget
+        # 旧版顺序：increment → cooldown check → reopen，导致 P13/P14 烧预算
+        # 新版顺序：cooldown check → reopen → increment
+        needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
+        if minutes_since < needed_minutes:
+            engine_log(
+                f"[{label}] {tid} cooldown {minutes_since:.1f}/{needed_minutes:.1f}min，"
+                f"跳过（不扣 budget）"
+            )
+            continue
+
         from engine.failure_router import (
             MAX_TASK_RETRY_BUDGET,
             RetryBudgetExceeded,
             increment_retry_count,
         )
 
-        try:
-            _used = increment_retry_count(ws, tid, store)
+        # 先预检 budget（不递增），耗尽则跳过
+        from engine.failure_router import get_retry_budget
+        _used_now = get_retry_budget(ws, tid, store)
+        if _used_now >= MAX_TASK_RETRY_BUDGET:
             engine_log(
-                f"[{label}] {tid} auto-refeed retry {_used}/{MAX_TASK_RETRY_BUDGET}"
-            )
-        except RetryBudgetExceeded:
-            engine_log(
-                f"[{label}] {tid} retry budget 耗尽，跳过 auto-refeed"
+                f"[{label}] {tid} retry budget 耗尽 ({_used_now}/{MAX_TASK_RETRY_BUDGET})，跳过 auto-refeed"
             )
             _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
-            continue
-        needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
-        if minutes_since < needed_minutes:
             continue
 
         try:
@@ -322,12 +340,43 @@ def _retry_abnormal_failures(ws: Path) -> None:
                     )
             rr = reopen_task(ws, tid, to_col="planned", wake=True)
             if not rr.get("ok"):
-                raise RuntimeError(rr.get("error") or "reopen failed")
+                # R-7: reopen 失败不扣 budget
+                engine_log(
+                    f"[{label}] {tid} reopen failed: {rr.get('error')}，不扣 budget"
+                )
+                continue
+
+            # R-8: reopen 成功后重置 acceptance phase 状态，让 prepare_role_call 通过
+            try:
+                from _failure_learning import align_phases_after_revert
+                align_phases_after_revert(ws, tid)
+                engine_log(f"[{label}] {tid} align_phases_after_revert 已重置 phase 状态")
+            except ImportError:
+                pass  # 旧版无此函数
+            except Exception as exc:
+                engine_log(f"[{label}] {tid} align_phases_after_revert: {exc}")
+
+            # R-7: reopen 成功后才扣 budget
+            try:
+                _used = increment_retry_count(ws, tid, store)
+            except RetryBudgetExceeded:
+                engine_log(
+                    f"[{label}] {tid} increment_retry_count 超限（并发竞争），回滚 move"
+                )
+                # 回滚：把 task 挪回 abnormal
+                try:
+                    store.move_task(tid, "planned", "abnormal")
+                    store.update_index()
+                except Exception:
+                    pass
+                _enqueue_post_exhaust_optimize(ws, tid, reason=reason, task=task)
+                continue
+
             retry_counts[tid] = auto_retried + 1
             engine_log(
                 f"[{label}] auto-refeed #{auto_retried + 1}/{MAX_AUTO_RETRY}: "
                 f"{tid} (冷却 {minutes_since:.0f}/{needed_minutes:.0f}min, "
-                f"{kind}) → planned"
+                f"{kind}) → planned (budget {_used}/{MAX_TASK_RETRY_BUDGET})"
             )
             moved_tasks.append(tid)
         except Exception as e:

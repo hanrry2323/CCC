@@ -741,3 +741,413 @@ R-3/R-4 视 R-6 解决后验证
 ```
 
 **验收标准（当前状态）**：拆卡层 5/5 success（侧链已通）；产物/Engine 消费依赖 R-6。
+
+---
+
+## 十四、用户严厉质询与全面复盘（2026-07-31 · 第三轮）
+
+> **用户原话**："投递的5个任务全部失败，然后CCC流程还没有启动自愈流程，这个算是什么成功呢？你的这个修复计划就没有考虑到这些吗？"
+>
+> **用户追加**："你说的这些流程都应该落地，不要问某一个，而是把全流程，从任务的制定到执行，然后还有验收失败过后的重新投入。重新回到任务流程修正，这些在CCC流程里面都是有相关的内容的。"
+
+### 14.1 诚实的复盘
+
+R-1~R-6 的修复计划存在**严重缺失**：
+
+1. **误判成功标准**：把"拆卡 5/5 ok"等同于"闭环走通"，实际上 5/5 全部 abnormal = 闭环彻底失败
+2. **逃避执行层修复**：R-6（opencode-exec 长 prompt）被标"独立工程，不在本 plan 范围内"——但没有执行层修复，闭环永远不通
+3. **完全遗漏自愈层**：R-1~R-6 没有任何一条覆盖 `_retry_abnormal_failures`，没回答"5 个 abnormal 任务为什么没被自愈消费"
+4. **完全遗漏重新投入层**：reopen_task 后如何被重新拾取、是否换策略，全部没覆盖
+5. **完全遗漏 planned 卡死**：用户上一条消息已提示"任务到了已规划，但是没有动了 column=planned"，但修复计划没回答
+
+### 14.2 端到端全流程断点清单（4 个子调查实证）
+
+通过 4 个并行子调查（dispatch 流转 / 验收→abnormal / 自愈层 / 重新投入层），实证得到 **6 类共 30+ 个断点**：
+
+#### A. 拆卡 → 执行流转层（planned 卡死）6 个断点
+
+| 编号 | 位置 | 现象 | 严重度 |
+|------|------|------|--------|
+| A1 | [dispatch.py:115-116](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L115-L116) | plan/phases 文件不存在 → **完全静默 continue，无日志** | P0 |
+| A2 | [dispatch.py:104-105](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L104-L105) | key in active_tasks → 静默 continue（残留 entry 永远挡该 task） | P0 |
+| A3 | [dispatch.py:150-151](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L150-L151) | 槽满 return False，planned 任务**不排 pending_relaunch**，被 pending_relaunch 反复插队 | P1 |
+| A4 | [dispatch.py:344-357](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L344-L357) | prepare_role_call 失败 skip_retry=True → 不挪 abnormal，**1Hz storm 空转** | P0 |
+| A5 | [dispatch.py:128-135](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L128-L135) | phases 全 skipped → 不挪 abnormal | P1 |
+| A6 | [dispatch.py:142-149](file:///Users/apple/program/CCC/scripts/engine/dispatch.py#L142-L149) | depends_on_tasks 未 released，若依赖进 abnormal → 永久卡 | P1 |
+
+#### B. 执行层（opencode-exec 长 prompt）1 个断点（已记录为 P0-4）
+
+| 编号 | 位置 | 现象 |
+|------|------|------|
+| B1 | [opencode-exec.py:202-223](file:///Users/apple/program/CCC/scripts/opencode-exec.py#L202-L223) | prompt >200 字符 → `--file` + `message="Read attached file and execute the instructions inside."` → 非交互卡死 → exit -1/124/143 |
+
+#### C. 验收失败 → abnormal 流转层 8 个断点
+
+| 编号 | 位置 | 现象 | 严重度 |
+|------|------|------|--------|
+| C1 | [dev.py:842-856](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L842-L856) | `.acceptance_fails` 计数器 reopen 后**永不清理**，refeed 后只剩 1 次验收机会 | P0 |
+| C2 | [hang.py:573-606](file:///Users/apple/program/CCC/scripts/engine/hang.py#L573-L606) | hang 路径 acceptance_failed 双重 relaunch（_handle_task_result + hang.py:763） | P0 |
+| C3 | [dev.py:1050/1268](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L1050) | exit_code!=0 不走 acceptance gate，验收探针超时被误判为普通失败 | P1 |
+| C4 | failure_router.py:143-161 vs _failure_buckets.py:68-88 | exhaust 关键字表不一致：`acceptance_fail_budget` Engine 不跳过、board_repair 归档，行为竞争 | P1 |
+| C5 | [_intent_probe.py:144-154](file:///Users/apple/program/CCC/scripts/_intent_probe.py#L144-L154) | acceptance 标题识别过严，`## 验收清单`/`## Acceptance` 不识别 | P2 |
+| C6 | [_results_impl.py:477-514](file:///Users/apple/program/CCC/scripts/engine/_results_impl.py#L477-L514) | quarantine 路径不写 acceptance note，note 为"重试3次全部失败"命中 exhaust 永久封锁 | P1 |
+| C7 | [_recover_retry_impl.py:391-394](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L391-L394) | _check_stale note 不含 exhaust 关键字，refeed 可能重复触发同样问题 | P2 |
+| C8 | [_results_impl.py:76-79](file:///Users/apple/program/CCC/scripts/engine/_results_impl.py#L76-L79) | acceptance_fail_budget from_col 不全，**testing 列漏掉**（task 不移动但 note 已写） | P0 |
+
+#### D. 自愈层（_retry_abnormal_failures）17 条跳过路径
+
+**函数级 3 条**（整个 ws 全部 abnormal 被跳过）：
+
+| 编号 | 触发 | 行号 | 严重度 |
+|------|------|------|--------|
+| D-F1 | 熔断 `_breaker_open` 且未过 120s recovery | [_recover_retry_impl.py:139-141](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L139-L141) | **P0 头号嫌疑**：fail-open 后任务继续跑但自愈被关 |
+| D-F2 | `is_orch_path(ws)` True | 146-147 | 正常 |
+| D-F3 | registry import 失败 + CCC 启发式命中 | 150-151 | 正常 |
+
+**任务级 14 条**（单个 task 被 continue）：
+
+| 编号 | 触发 | 行号 | 是否扣 budget |
+|------|------|------|--------------|
+| D-P1 | card_kind == "epic" | 181-182 | 否 |
+| D-P2 | 裸 backlog 杂卡 | 184-186 | 否 |
+| D-P3 | should_auto_refeed 拒绝（epic/exhausted/permanent/max_retry） | 195-213 | 否 |
+| D-P3b | should_auto_refeed **抛异常不 continue 漏判** | 214-215 | 否 |
+| D-P4 | 命中 _EXHAUSTED 8 条旧关键字 | 217-220 | 否 |
+| D-P5 | classify_failure == "permanent" | 222-226 | 否 |
+| D-P6 | 无 pack 且无 transient/keyword 命中 | 242-243 | 否 |
+| D-P7 | 无 updated_at/created_at | 250-252 | 否 |
+| D-P8 | 时间戳 parse 失败 | 253-257 | 否 |
+| D-P9 | retry_counts[tid] >= MAX_AUTO_RETRY(2) | 259-261 | 否 |
+| D-P10 | prepare_role_call "无待执行 phase"（acceptance 类必中） | 264-272 | 否 |
+| D-P11 | prepare_role_call 抛异常 | 273-275 | 否 |
+| D-P12 | RetryBudgetExceeded（task retry_count > 8） | 286-296 | 是 |
+| **D-P13** | **冷却未到但已 increment（烧 budget）** | 297-299 | **是 · 致命** |
+| **D-P14** | **reopen_task 失败已 increment（烧 budget）** | 301-334 | **是 · 致命** |
+
+**针对 `acceptance_cmd_failed (n=2)` 这个 note 的命运追踪**：
+- 字符串本身不命中任何 exhaust/permanent 关键字 → 理论上可被 refeed
+- **真正拦截它的是 D-P10**（acceptance 已 done，prepare_role_call 返回"无待执行 phase"）
+- 以及潜在的 D-F1（熔断）+ D-P13/P14（烧预算）
+
+#### E. 重新投入层 3 个断点
+
+| 编号 | 位置 | 现象 | 严重度 |
+|------|------|------|--------|
+| E1 | [_task_reopen.py:75-154](file:///Users/apple/program/CCC/scripts/_task_reopen.py#L75-L154) | reopen_task **不感知失败原因**，不读 note/retry_count，只做机械搬卡 | P0 |
+| E2 | [board/roles/dev.py:491-505,760-914](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L491-L505) | dev_role_launch/relaunch **不接收 retry_count**，prompt/timeout/model 完全不变，原样重跑 | P0 |
+| E3 | [_failure_buckets.py:91-137](file:///Users/apple/program/CCC/scripts/_failure_buckets.py#L91-L137) | bucket_optimize_hints 只是 hint 文本给下个 epic，**不是执行层策略切换** | P1 |
+
+**核心结论**：对 opencode-exec 长 prompt 超时这类确定性失败，重投会陷入"相同输入→相同超时→耗尽 budget→abnormal"的固定路径。
+
+#### F. 拆卡层唤醒 1 个断点
+
+| 编号 | 位置 | 现象 |
+|------|------|------|
+| F1 | [ccc-intent-splitter.py](file:///Users/apple/program/CCC/scripts/ccc-intent-splitter.py) | fallback 拆卡后未写 `~/.ccc/engine.wake`，Engine 深睡时最长 60s 延迟 |
+
+### 14.3 真正的根因链（端到端）
+
+```
+[拆卡层 ok] 方案 → 提交 → 拆卡 → plan/phases/scope ✅
+      ↓ (F1: 未写 engine.wake，深睡延迟)
+[执行层 ❌] (B1: opencode-exec 长 prompt 非交互卡死) → exit -1 → 产物不落地
+      ↓
+[验收层 ❌] (C3: exit!=0 不走 acceptance gate) → retry 计数器路径
+      ↓ (C1: .acceptance_fails 不清理) (C8: testing 列漏掉)
+[abnormal 入库] note = "acceptance_fail_budget n=2: acceptance-gate: acceptance_cmd_failed"
+      ↓
+[自愈层 ❌]
+   ├ D-F1: 熔断（fail-open 关自愈）→ 整 ws return
+   ├ D-P10: prepare_role_call "无待执行 phase"（acceptance 类必中）→ continue
+   ├ D-P13: 冷却未到已 increment → 烧 budget
+   └ D-P14: reopen 失败已 increment → 烧 budget
+      ↓
+[重新投入层 ❌]
+   ├ E1: reopen 不感知失败原因
+   ├ E2: dev_role_launch 原样重跑（相同 prompt → 相同超时）
+   └ E3: bucket hint 只是文本，不切策略
+      ↓
+[结果] 5/5 abnormal + 自愈未启动 + 重新投入必败 = 闭环彻底失败
+```
+
+---
+
+## 十五、完整修复计划 R-1 ~ R-12（端到端全流程覆盖）
+
+> **原则**（用户指示）：全流程都要落地，不要问某一个。从任务制定到执行，到验收失败后的重新投入，到回到任务流程修正，全部覆盖。
+
+### R-1：验收节 SDP 一统 ✅ 已完成
+
+（见第十三章 R-1）
+
+### R-2：fallback 拆卡产物确定性 ✅ 已完成
+
+（见第十三章 R-2）
+
+### R-3：opencode-exec 长 prompt 执行策略（提级必修，原 R-6）
+
+**目标**：让 Engine 能稳定执行含 plan 的复杂任务，避免 `--file + Read attached file` 模式卡死。
+
+**根因**：[opencode-exec.py:202-223](file:///Users/apple/program/CCC/scripts/opencode-exec.py#L202-L223) 当 prompt >200 字符时，写临时文件 + 用 `message="Read attached file and execute the instructions inside."`。这条 message 在非交互一次性模式下，模型无法完成多轮工具调用（Read plan→解析→Write→git commit→跑测试）→ 卡死 → 超时。
+
+**改动**：
+1. **分叉 prompt 策略**：把「任务说明（短，可执行）」放 positionals，plan/验收（长）作为 `--file` 附件。message 改为直接给可执行短指令，例如：
+   ```python
+   # 提取任务核心动作（前 150 字符）作为 message
+   short_action = _extract_core_action(prompt_text)  # "创建 scripts/stage5_t1_util.py 并实现 utils 工具函数"
+   cmd = build_opencode_run_cmd(
+       opencode_bin, model,
+       message=short_action,  # 短可执行指令
+       prompt_file=tmp_path,  # plan 全文作附件
+       cwd=cwd,
+   )
+   ```
+2. **model_kind 白名单**：长 prompt 任务 fallback 到强模型（如 `loop/sonnet` 而非 `loop/flash`）
+3. **临时 prompt 文件 finally 必 unlink**（防残留泄漏，已部分实现，需复核）
+
+**验证**：t1 重跑后 `exit_code=0`，`scripts/stage5_t1_util.py` 文件创建成功。
+
+### R-4：dispatch 静默跳过修复（A1/A2/A4/A5）
+
+**目标**：消除 planned 列的"静默卡死"，让所有跳过都有日志，连续跳过 N 次后挪 abnormal 触发人工介入。
+
+**改动**（[dispatch.py](file:///Users/apple/program/CCC/scripts/engine/dispatch.py)）：
+
+1. **A1 修复**（L115-116）：plan/phases 不存在时加日志 + 累计计数器，连续 6 tick（~1min）后挪 abnormal：
+   ```python
+   if not plan_file.exists() or not phases_file.exists():
+       missing = "plan" if not plan_file.exists() else "phases"
+       engine_log(f"[{label}] {tid} 缺 {missing} 文件 → 跳过")
+       skip_n = _planned_skip_counter.get(tid, 0) + 1
+       _planned_skip_counter[tid] = skip_n
+       if skip_n >= 6:
+           store.move_task(tid, "planned", "abnormal")
+           store.patch_task(tid, {"note": f"engine: 缺 {missing} 文件连续 {skip_n} tick"})
+           store.update_index()
+       continue
+   ```
+
+2. **A2 修复**（L104-105）：key in active_tasks 加 debug 日志。
+
+3. **A4 修复**（L344-357）：prepare_role_call 失败 skip_retry=True 时挪 abnormal 而非留 planned：
+   ```python
+   if launch_r.get("skip_retry"):
+       engine_log(f"[{label}] {tid} 启动非重试性失败: {err_s} → abnormal")
+       store.move_task(tid, "planned", "abnormal")
+       store.patch_task(tid, {"note": f"engine: prepare_role_call fail: {err_s[:300]}"})
+       store.update_index()
+       continue
+   ```
+
+4. **A5 修复**（L128-135）：phases 全 skipped 时挪 abnormal。
+
+**验证**：planned 列无静默卡死，所有跳过可从 engine.log 追踪。
+
+### R-5：fallback 拆卡后写 engine.wake（F1）
+
+**目标**：fallback 拆卡后立即唤醒 Engine，避免深睡 60s 延迟。
+
+**改动**（[ccc-intent-splitter.py:_fallback_create_work](file:///Users/apple/program/CCC/scripts/ccc-intent-splitter.py)）：在写完 plan/phases 后加：
+```python
+from _engine_wake import write_wake
+write_wake(reason="intent-splitter-fallback", task_id=work_id, workspace=workspace)
+```
+
+**验证**：fallback 拆卡后 Engine 在 ≤10s 内拾取（而非 60s）。
+
+### R-6：自愈层熔断 fail-open 不关自愈（D-F1）
+
+**目标**：消除"头号嫌疑"——fail-open 后任务继续跑但自愈被关 120s。
+
+**根因**：[_health_impl.py:131-150](file:///Users/apple/program/CCC/scripts/engine/_health_impl.py#L131-L150) `_check_degraded` 在 `_is_upstream_healthy()` 返回 False 时设 `_breaker_open=True`，然后 [_recover_retry_impl.py:139-141](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L139-L141) 整个 `_retry_abnormal_failures` return。但 2026-07-25 共识是 fail-open（任务继续跑），自愈本身不依赖 relay（reopen_task 是本地文件操作），不应被熔断。
+
+**改动**（[_recover_retry_impl.py:138-141](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L138-L141)）：删除 F1 的 return，或改为只在 `is_orch_path` 时 return：
+```python
+# 旧：熔断直接 return
+# if _breaker_open and time.time() - _breaker_since < recovery:
+#     engine_log(f"[{_ws_label(ws)}] 熔断中，跳过 abnormal 重试")
+#     return
+
+# 新：熔断仍扫 abnormal（自愈不依赖 relay）
+if _breaker_open and time.time() - _breaker_since < recovery:
+    engine_log(f"[{_ws_label(ws)}] 熔断中，但仍扫 abnormal（自愈不依赖 relay）")
+    # 不 return，继续往下
+```
+
+**验证**：relay 抖动时 abnormal 任务仍被 refeed。
+
+### R-7：自愈层 increment 顺序修复（D-P13/P14 烧预算）
+
+**目标**：消除"致命 bug"——冷却未到/reopen 失败时已 increment，烧光 8 次 budget。
+
+**根因**：[_recover_retry_impl.py:286-335](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L286-L335) 当前顺序：`increment → cooldown check → reopen`，导致 P13（冷却未到）和 P14（reopen 失败）都已扣 budget。
+
+**改动**：调整顺序为 `cooldown check → prepare_role_call → reopen → increment`：
+```python
+# 1. cooldown 先行（不扣 budget）
+needed_minutes = _retry_cooldown_seconds(auto_retried) / 60
+if minutes_since < needed_minutes:
+    engine_log(f"[{label}] {tid} cooldown {minutes_since:.1f}/{needed_minutes:.1f}min")
+    continue
+
+# 2. prepare_role_call 已在前面（P10/P11）
+
+# 3. reopen 先试，成功才 increment
+rr = reopen_task(ws, tid, to_col="planned", wake=True)
+if not rr.get("ok"):
+    engine_log(f"[{label}] {tid} reopen failed: {rr.get('error')}，不扣 budget")
+    continue
+
+# 4. 成功后才扣 budget
+_used = increment_retry_count(ws, tid, store)
+retry_counts[tid] = auto_retried + 1
+```
+
+**验证**：reopen 失败/冷却未到时 retry_count 不递增。
+
+### R-8：自愈层 acceptance 类 phase 重置（D-P10）
+
+**目标**：消除"核心拦截点"——acceptance 类任务进 abnormal 时 phases 全 done，prepare_role_call 返回"无待执行 phase"导致自愈跳过。
+
+**根因**：[_role_tool.py:95-99](file:///Users/apple/program/CCC/scripts/_role_tool.py#L95-L99) `prepare_role_call` 检查所有 phase 状态，acceptance 是最后一 phase，跑完进 abnormal 时全 done → 返回 `(False, "当前无待执行 phase")` → [_recover_retry_impl.py:264-272](file:///Users/apple/program/CCC/scripts/engine/_recover_retry_impl.py#L264-L272) 跳过。
+
+**改动**：在 `_retry_abnormal_failures` 的 reopen 成功后调 `align_phases_after_revert`（[_failure_learning.py:133](file:///Users/apple/program/CCC/scripts/_failure_learning.py#L133)）把最后一个 done phase 改回 pending：
+```python
+rr = reopen_task(ws, tid, to_col="planned", wake=True)
+if not rr.get("ok"):
+    continue
+
+# 重置 acceptance phase 状态，让 prepare_role_call 通过
+try:
+    from _failure_learning import align_phases_after_revert
+    align_phases_after_revert(ws, tid)
+except Exception as exc:
+    engine_log(f"[{label}] {tid} align_phases_after_revert: {exc}")
+```
+
+**验证**：acceptance 类 abnormal 任务被 refeed 后能重新进入 in_progress。
+
+### R-9：.acceptance_fails 计数器 reopen 时清理（C1）
+
+**目标**：消除"refeed 后只剩 1 次验收机会"——`.ccc/pids/{tid}.acceptance_fails` 在 reopen 后不清理，下次验收失败立即进 abnormal。
+
+**改动**：
+1. [_task_reopen.py:clear_task_pid_markers](file:///Users/apple/program/CCC/scripts/_task_reopen.py) 加入 `.acceptance_fails`：
+   ```python
+   # 在 clear_task_pid_markers 的清理列表中加入
+   _markers_to_clean = [
+       ".product.*", ".reviewer.*", ".tester.*",
+       ".dev.pid", ".opencode.pid", ".done",
+       ".exitcode", ".result.json", ".prompt.md",
+       ".acceptance_fails",  # 新增
+   ]
+   ```
+2. 或在 `dev_role_relaunch`（[dev.py:842-856](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L842-L856)）的清理列表加入 `.acceptance_fails`。
+
+**验证**：reopen 后 `.acceptance_fails` 不存在，验收失败计数从 0 开始。
+
+### R-10：acceptance_fail_budget from_col 补全（C8）
+
+**目标**：消除"testing 列漏掉"——task 在 testing 时验收失败，acceptance_fail_budget 不移动 task 但 note 已写。
+
+**改动**（[_results_impl.py:76-79](file:///Users/apple/program/CCC/scripts/engine/_results_impl.py#L76-L79)）：
+```python
+# 旧：
+# if col_now == "in_progress":
+#     store.move_task(tid, "in_progress", "abnormal")
+# elif col_now == "planned":
+#     store.move_task(tid, "planned", "abnormal")
+
+# 新：
+if col_now in ("in_progress", "planned", "testing"):
+    store.move_task(tid, col_now, "abnormal")
+```
+
+**验证**：testing 列验收失败的任务能正确进入 abnormal。
+
+### R-11：重投入层 bucket-aware 策略切换（E1/E2/E3）
+
+**目标**：消除"原样重跑必败"——reopen 后 dev_role_launch 感知失败原因，按 bucket 切策略。
+
+**根因**：[board/roles/dev.py:491-505](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L491-L505) `_compose_dev_prompt` 不接收 retry_count，[dev.py:760-914](file:///Users/apple/program/CCC/scripts/board/roles/dev.py#L760-L914) `dev_role_launch/relaunch` prompt/timeout/model 全不变。
+
+**改动**（[board/roles/dev.py:dev_role_relaunch](file:///Users/apple/program/CCC/scripts/board/roles/dev.py)）：
+```python
+def dev_role_relaunch(task_id, *, prev_reason: str = ""):
+    # ... 现有逻辑 ...
+    
+    # 新增：bucket-aware 策略切换
+    bucket = classify_failure_bucket(prev_reason or "")
+    retry_count = store.get_retry_count(task_id)
+    
+    if bucket == "timeout" and retry_count >= 2:
+        # 切短 prompt：只传当前 phase 的 scope + acceptance，去掉 plan 全文
+        prompt = _compose_compact_phase_prompt(task_id, cur_phase)
+        timeout_s = int(timeout_s * 1.5)  # 适度放宽
+        engine_log(f"[dev-relaunch] {task_id} timeout bucket, retry={retry_count} → 短 prompt + 放宽 timeout")
+    elif bucket == "reviewer_timeout":
+        # 换确定性短路径审，不跑长 opencode
+        ...
+    
+    # ... 启动 opencode-exec ...
+```
+
+**验证**：timeout 类失败重跑时切短 prompt，不再原样超时。
+
+### R-12：fallback 拆卡 phases 格式校验（A1 配套）
+
+**目标**：确保 fallback 拆卡写的 phases.json 格式正确，避免 A1 静默跳过。
+
+**改动**（[ccc-intent-splitter.py:_fallback_create_work](file:///Users/apple/program/CCC/scripts/ccc-intent-splitter.py)）：写完 phases.json 后立即用 `_load_phases` 验证：
+```python
+# 写完 phases.json 后
+try:
+    from board.phase import _load_phases
+    loaded = _load_phases(work_id, workspace)
+    if not loaded:
+        raise ValueError("phases.json 加载后为空")
+    _log.info("[splitter-fallback] %s phases 校验通过 (%d phases)", work_id, len(loaded))
+except Exception as exc:
+    _log.error("[splitter-fallback] %s phases 格式错误: %s", work_id, exc)
+    raise
+```
+
+**验证**：fallback 拆卡后 phases.json 必定可被 `_load_phases` 正确解析。
+
+### 15.1 修复优先级与依赖关系
+
+```
+[执行层] R-3 (opencode-exec 长 prompt) ──┐
+                                         ├─→ R-11 (bucket-aware 策略)
+[流转层] R-4 (dispatch 静默跳过)         │
+        R-5 (engine.wake)               │
+        R-12 (phases 校验)              │
+                                         │
+[验收层] R-9 (.acceptance_fails 清理)   │
+        R-10 (from_col 补全)            │
+                                         │
+[自愈层] R-6 (熔断不关自愈) ─────────────┤
+        R-7 (increment 顺序)            │
+        R-8 (acceptance phase 重置) ────┘
+```
+
+**所有 R-3~R-12 必须全部落地**，缺一则闭环不通。
+
+### 15.2 验收标准（修正）
+
+**旧（错误）**：拆卡层 5/5 success（侧链已通）
+
+**新（正确）**：
+- ✅ 拆卡层 5/5 success（已达成）
+- ✅ 执行层 5/5 exit_code=0 + 产物落地
+- ✅ 验收层 5/5 acceptance_cmd_passed
+- ✅ 自愈层：人为制造 1 个 abnormal 任务，30s 内被 refeed
+- ✅ 重新投入层：timeout 类失败重跑时切短 prompt
+- ✅ **端到端 5/5 任务达到 released**（最终验收标准）
+
+### 15.3 落地顺序
+
+1. **第一批（执行层+流转层）**：R-3 + R-4 + R-5 + R-12
+2. **第二批（验收层+自愈层）**：R-6 + R-7 + R-8 + R-9 + R-10
+3. **第三批（重新投入层）**：R-11
+4. **第四批（端到端验证）**：重跑 5 任务，验收 5/5 released

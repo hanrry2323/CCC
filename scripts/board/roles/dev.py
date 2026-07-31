@@ -505,6 +505,54 @@ def _compose_dev_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
     )
 
 
+def _compose_compact_phase_prompt(task_id: str, phase_num: int, plan_content: str) -> str:
+    """R-11: 紧凑 phase prompt — 只传当前 phase 的 scope + 验收命令，去掉 plan 全文。
+
+    用于 timeout bucket 重跑：避免长 plan 全文导致 opencode-exec 非 interactive 卡死。
+    保留：cwd 硬门 + scope + 验收命令（从 plan 提取 ## 验收 节）。
+    去掉：plan 全文（减小 prompt 长度，让 opencode 能在单次工具调用内完成）。
+    """
+    scope = _phase_scope(task_id, phase_num)
+    # 从 plan 提取 ## 验收 节
+    acceptance_section = ""
+    if plan_content:
+        in_acc = False
+        acc_lines = []
+        for line in plan_content.splitlines():
+            s = line.strip()
+            if s.startswith("#"):
+                low = s.lstrip("#").strip().lower()
+                in_acc = low in ("验收", "验证", "acceptance")
+                if in_acc:
+                    acc_lines.append(s)
+                continue
+            if in_acc:
+                acc_lines.append(line)
+        acceptance_section = "\n".join(acc_lines).strip()
+
+    # 提取目标文件路径（从 scope）
+    scope_files = ", ".join(scope) if scope else "(未指定)"
+    # 构造紧凑 prompt
+    prompt = f"""# 任务（紧凑模式 · timeout 重跑）
+
+## 当前 Phase
+Phase {phase_num}
+
+## 目标文件
+{scope_files}
+
+## 验收
+{acceptance_section or "(从 plan.md 的 ## 验收 节读取)"}
+
+## 执行要求
+1. 用 Write 工具创建/修改上述目标文件
+2. 执行验收命令确认产物正确
+3. 不要做超出 scope 的工作
+4. 完成后 git add + commit（消息含 task_id={task_id}）
+"""
+    return prompt
+
+
 def _task_pre_head_path(task_id: str) -> Path:
     return get_workspace() / ".ccc" / "pids" / f"{task_id}.pre_head"
 
@@ -818,13 +866,17 @@ def dev_role_launch(task_id: str) -> dict:
     return {"ok": True, "task_id": task_id, "pid": proc.pid}
 
 
-def dev_role_relaunch(task_id: str) -> dict:
+def dev_role_relaunch(task_id: str, *, prev_reason: str = "") -> dict:
     """引擎用：失败重试时重新启 opencode（task 已在 in_progress 不挪列）
 
     与 dev_role_launch 的区别：
     - 不检查 planned，直接读 plan+phases
     - 不挪列（已在 in_progress）
     - 清理旧的 .done/exitcode 后重新启动
+
+    R-11: bucket-aware 策略切换 — 读 task note/retry_count，按失败桶切策略：
+    - timeout bucket + retry>=2 → 切短 prompt（只传 scope+acceptance）+ 放宽 timeout
+    - 其它 bucket → 原样重跑（保持向后兼容）
     """
 
     task_id = sanitize_id(task_id)
@@ -865,7 +917,50 @@ def dev_role_relaunch(task_id: str) -> dict:
     # 从 phases.json 读 timeout
     timeout_s = _load_timeout(cphases, default=cfg.default_timeout)
     plan_content = cplan.read_text()
-    prompt = _compose_dev_prompt(task_id, cur_phase, plan_content)
+
+    # R-11: bucket-aware 策略切换
+    bucket_applied = False
+    try:
+        from _failure_buckets import classify_failure_bucket
+        from engine.failure_router import get_retry_budget
+
+        # 读 task note 作为失败原因（若未显式传 prev_reason）
+        if not prev_reason:
+            try:
+                from _board_store import FileBoardStore
+                _store = FileBoardStore(get_workspace())
+                _col, _task = _store.find_task(task_id)
+                if _task:
+                    prev_reason = str(_task.get("note") or _task.get("abnormal_reason") or "")
+            except Exception:
+                pass
+
+        bucket = classify_failure_bucket(prev_reason)
+        retry_count = get_retry_budget(get_workspace(), task_id)
+
+        if bucket == "timeout" and retry_count >= 2:
+            # 切短 prompt：只传当前 phase 的 scope + acceptance，去掉 plan 全文
+            _log.info(
+                "[dev-relaunch] %s timeout bucket, retry=%d → 切短 prompt + 放宽 timeout",
+                task_id, retry_count,
+            )
+            prompt = _compose_compact_phase_prompt(task_id, cur_phase, plan_content)
+            timeout_s = int(timeout_s * 1.5)  # 适度放宽
+            bucket_applied = True
+        elif bucket == "reviewer_timeout" and retry_count >= 2:
+            _log.info(
+                "[dev-relaunch] %s reviewer_timeout bucket, retry=%d → 切短 prompt",
+                task_id, retry_count,
+            )
+            prompt = _compose_compact_phase_prompt(task_id, cur_phase, plan_content)
+            bucket_applied = True
+    except ImportError:
+        pass  # 旧版无 classify_failure_bucket
+    except Exception as exc:
+        _log.warning("[dev-relaunch] %s bucket-aware 失败，原样重跑: %s", task_id, exc)
+
+    if not bucket_applied:
+        prompt = _compose_dev_prompt(task_id, cur_phase, plan_content)
 
     pids_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = str(pids_dir / f"{task_id}.prompt.md")
