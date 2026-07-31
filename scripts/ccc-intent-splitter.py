@@ -277,11 +277,14 @@ def _fallback_create_work(
     """SDK 不可用时 fallback：从方案 plan_md 直接创建单张 work 子卡。
 
     绕过 apply_fanout，直接 create_task 到 planned 列。
+    必须生成 .ccc/plans/<tid>.plan.md + .ccc/phases/<tid>.phases.json，
+    否则 Engine dispatch.try_launch_planned 会跳过（缺 plan/phases 文件）。
     """
     epic_id = epic["id"]
     work_id = f"{epic_id}-w1"
     title = epic.get("title") or proposal_id
     description = epic.get("description") or epic.get("plan_md") or ""
+    plan_md = epic.get("plan_md") or description
     skill_ref = ""
     prompt_ref = ""
     note_raw = epic.get("note") or ""
@@ -299,7 +302,7 @@ def _fallback_create_work(
         "title": title[:80],
         "description": description[:1500],
         "card_kind": "work",
-        "complexity": "small",
+        "complexity": "medium",  # 与 product role fanout 一致，避免被跳过
         "parent_id": epic_id,
         "note": json.dumps({
             "transfer_gate": {
@@ -317,6 +320,32 @@ def _fallback_create_work(
         col, existing = store.find_task(work_id)
         if not existing:
             return {"ok": False, "error": f"fallback create work failed: {work_id}"}
+
+    # 生成 plan + phases 文件（Engine dispatch 必需）
+    plan_dir = workspace / ".ccc" / "plans"
+    phases_dir = workspace / ".ccc" / "phases"
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    phases_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / f"{work_id}.plan.md").write_text(plan_md, encoding="utf-8")
+    # phases 格式：第一行 schema_version，后续每行一个 phase JSON
+    phase = {
+        "phase": 1,
+        "status": "pending",
+        "description": title[:200],
+        "scope": [],  # OpenCode 会从 plan_md 推断
+        "subtasks": {"1.1": "pending"},
+        "timeout": 300,
+        "commit": None,
+        "notes": "intent-splitter-fallback",
+    }
+    phases_body = (
+        json.dumps({"schema_version": "1.1"}, ensure_ascii=False)
+        + "\n"
+        + json.dumps(phase, ensure_ascii=False)
+        + "\n"
+    )
+    (phases_dir / f"{work_id}.phases.json").write_text(phases_body, encoding="utf-8")
+    _log.info("[splitter-fallback] %s plan+phases 已生成", work_id)
 
     # 更新 epic child_ids + split_status
     try:
