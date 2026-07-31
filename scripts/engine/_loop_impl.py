@@ -300,29 +300,37 @@ def engine_loop(workspaces: list[Path]) -> None:
                     # v0.30: 定期统计聚合（即使系统忙）
                     try:
                         aggregate_stats(ws)
-                        # v0.31: 自适应调参（读 summary.json → 调整 timeout/retry）
+                        # v0.31: 自适应调参 — 最小路径跳过（非热路径）
+                        _skip_tune = False
                         try:
-                            summary = load_summary(ws)
-                            if summary and summary.get("total_events", 0) > 5:
-                                task_stats = summary.get("task_stats", {})
-                                total = task_stats.get("total", 0)
-                                failed = task_stats.get("failed", 0)
-                                if total > 0:
-                                    fail_rate = failed / total
-                                    if fail_rate > 0.4 and MAX_RETRY < 5:
-                                        engine_log(
-                                            f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (adjusting)"
-                                        )
-                                        MAX_RETRY = min(MAX_RETRY + 1, 5)
-                                        ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
-                                    elif fail_rate < 0.1 and MAX_RETRY > 2:
-                                        engine_log(
-                                            f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (reducing)"
-                                        )
-                                        MAX_RETRY = max(MAX_RETRY - 1, 2)
-                                        ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
-                        except Exception as exc:
-                            engine_log(f"[auto-tune] error: {exc}")
+                            from engine.min_pipeline import enabled as _mp
+
+                            _skip_tune = bool(_mp())
+                        except Exception:
+                            _skip_tune = True
+                        if not _skip_tune:
+                            try:
+                                summary = load_summary(ws)
+                                if summary and summary.get("total_events", 0) > 5:
+                                    task_stats = summary.get("task_stats", {})
+                                    total = task_stats.get("total", 0)
+                                    failed = task_stats.get("failed", 0)
+                                    if total > 0:
+                                        fail_rate = failed / total
+                                        if fail_rate > 0.4 and MAX_RETRY < 5:
+                                            engine_log(
+                                                f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (adjusting)"
+                                            )
+                                            MAX_RETRY = min(MAX_RETRY + 1, 5)
+                                            ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
+                                        elif fail_rate < 0.1 and MAX_RETRY > 2:
+                                            engine_log(
+                                                f"[auto-tune] fail_rate={fail_rate:.0%}, MAX_RETRY={MAX_RETRY} (reducing)"
+                                            )
+                                            MAX_RETRY = max(MAX_RETRY - 1, 2)
+                                            ccc_board.MAX_RETRY = MAX_RETRY  # F-ROLE-04
+                            except Exception as exc:
+                                engine_log(f"[auto-tune] error: {exc}")
                     except Exception as exc:
                         engine_log(f"[stats] periodic aggregate error for {ws.name}: {exc}")
             ws_first_running: dict[str, str | None] = {}

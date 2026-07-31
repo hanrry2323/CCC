@@ -131,3 +131,35 @@ def test_enqueue_skips_l3b_under_min_pipeline(tmp_path, monkeypatch):
     # default home/.ccc/repair-queue — under tmp HOME
     rq = tmp_path / ".ccc" / "repair-queue.jsonl"
     assert not rq.is_file() or rq.read_text().strip() == ""
+
+
+def test_kb_fast_path_skips_kb_role(tmp_path, monkeypatch):
+    """min 路径：verified→released 不调 kb_role。"""
+    monkeypatch.delenv("CCC_MIN_PIPELINE", raising=False)
+    from _board_store import FileBoardStore
+    from engine.gates import _run_verified_kb_gate
+    import engine.gates as gates_mod
+
+    ws = tmp_path / "app"
+    for col in ("verified", "released", "testing", "planned", "backlog", "in_progress"):
+        (ws / ".ccc" / "board" / col).mkdir(parents=True)
+    store = FileBoardStore(ws)
+    import json
+    tid = "w-fast-done"
+    (ws / ".ccc" / "board" / "verified" / f"{tid}.jsonl").write_text(
+        json.dumps({"id": tid, "title": "done", "card_kind": "work"}) + "\n",
+        encoding="utf-8",
+    )
+    called = {"n": 0}
+
+    def _boom():
+        called["n"] += 1
+        raise AssertionError("kb_role must not run under min pipeline")
+
+    monkeypatch.setattr(gates_mod, "kb_role", _boom)
+    # ensure workspace_scope / _get_store see this ws
+    monkeypatch.setenv("CCC_WORKSPACE", str(ws))
+    _run_verified_kb_gate(ws)
+    assert called["n"] == 0
+    released = {t["id"] for t in FileBoardStore(ws).list_tasks("released")}
+    assert tid in released

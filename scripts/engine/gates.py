@@ -740,7 +740,10 @@ def _refresh_parent_epic(ws: Path, work_tid: str) -> None:
 
 
 def _run_verified_kb_gate(ws: Path) -> None:
-    """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。"""
+    """v0.38: 扫 verified → kb_role → released（补齐 7 角色闭环）。
+
+    最小可跑通：跳过 kb LLM，verified→released 快通（语义 done）。
+    """
     with workspace_scope(ws):
         return _run_verified_kb_gate_unlocked(ws)
 
@@ -751,6 +754,37 @@ def _run_verified_kb_gate_unlocked(ws: Path) -> None:
     if not verified:
         return
     label = _ws_label(ws)
+
+    try:
+        from engine.min_pipeline import enabled as _min_on
+    except Exception:
+        def _min_on() -> bool:
+            return True
+
+    if _min_on():
+        _engine_log(
+            f"[{label}] [min-pipeline] verify→done skip kb LLM "
+            f"({len(verified)} verified)"
+        )
+        for task in verified:
+            tid = str(task.get("id") or "")
+            if not tid:
+                continue
+            ok = store.move_task(tid, "verified", "released")
+            if ok:
+                if eng:
+                    try:
+                        eng._log_stats(
+                            ws, "move", tid, from_col="verified", to_col="released",
+                            path="min_pipeline_kb_fast",
+                        )
+                    except Exception as exc:
+                        _log.debug("kb-fast stats: %s", exc)
+                _engine_log(f"[{label}] {tid} ✓ min-pipeline → released")
+                _refresh_parent_epic(ws, tid)
+        store.update_index()
+        return
+
     _engine_log(f"[{label}] verified 列有 {len(verified)} 个任务，跑 kb_role")
     try:
         result = kb_role()
