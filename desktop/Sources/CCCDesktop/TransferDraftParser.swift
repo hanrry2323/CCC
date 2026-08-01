@@ -7,6 +7,9 @@ struct TransferFormState: Equatable {
     var acceptance: String = ""
     var pipeline: String = "dev"
     var executor: String = "opencode"
+    /// 显式 skill_ref/prompt_ref（定稿块给出时）；空 = 投递时按 executor 映射
+    var skillRef: String = ""
+    var promptRef: String = ""
     var feasibility: String = "ok"
     var feasibilityReason: String = ""
     var planMd: String = ""
@@ -27,6 +30,9 @@ struct TransferDraft: Equatable {
     var feasibility: String = "ok"
     var feasibilityReason: String = ""
     var executorIntent: String = "opencode"
+    /// 定稿块显式 Skill/Prompt 库路径引用；空 = 投递时按 executor 映射（对齐 transfer-gate.md）
+    var skillRef: String = ""
+    var promptRef: String = ""
     var planMd: String = ""
     var complexity: String = "medium"
     var bumpVersion: Bool = false
@@ -91,6 +97,9 @@ enum TransferDraftParser {
         draft.feasibility = stringField(obj, "feasibility", default: "ok").lowercased()
         draft.feasibilityReason = stringField(obj, "feasibility_reason")
         draft.executorIntent = stringField(obj, "executor_intent", default: "opencode").lowercased()
+        // 库路径引用保留原样（大小写敏感，勿 lowercase）
+        draft.skillRef = stringField(obj, "skill_ref")
+        draft.promptRef = stringField(obj, "prompt_ref")
         draft.planMd = stringField(obj, "plan_md")
         draft.complexity = stringField(obj, "complexity", default: "medium").lowercased()
         if let b = obj["bump_version"] as? Bool {
@@ -163,5 +172,43 @@ enum TransferDraftParser {
             if !body.isEmpty { out.append(body) }
         }
         return out
+    }
+}
+
+/// skill_ref / prompt_ref 解析：显式 draft/fence 值优先；否则按 executor_intent 映射；
+/// 对齐 transfer_gate.py（_EXECUTOR_INTENT_TO_SKILL_REF）与 web dispatchCard.js（SKILL_TO_PROMPT_REF）。
+/// 默认 skills/write-code + prompts/write-code-prompt（与 sidecar outbox flush 兜底一致）。
+enum SkillRefResolver {
+    static let defaultSkillRef = "skills/write-code"
+    static let defaultPromptRef = "prompts/write-code-prompt"
+
+    private static let executorToSkillRef: [String: String] = [
+        "opencode": "skills/write-code",
+        "python": "skills/script-seed",
+        "cli": "skills/ops",
+        "ollama": "skills/write-code",
+        "auto": "skills/write-code",
+        "bug": "skills/bug-fix",
+    ]
+
+    private static let skillToPromptRef: [String: String] = [
+        "skills/write-code": "prompts/write-code-prompt",
+        "skills/bug-fix": "prompts/bug-fix-prompt",
+        "skills/code-review": "prompts/code-review-prompt",
+        "skills/ops": "prompts/write-code-prompt",
+        "skills/script-seed": "prompts/write-code-prompt",
+    ]
+
+    /// fallback（定稿块显式 skill_ref）优先；否则按 executor 映射；再兜底 write-code
+    static func skillRef(forExecutor raw: String, fallback: String?) -> String {
+        let explicit = (fallback ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+        let exec = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return executorToSkillRef[exec] ?? defaultSkillRef
+    }
+
+    static func promptRef(forSkill skillRef: String) -> String {
+        let s = skillRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        return skillToPromptRef[s] ?? defaultPromptRef
     }
 }

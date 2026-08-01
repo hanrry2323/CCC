@@ -37,7 +37,7 @@ _RUN_DEBOUNCE: dict[str, float] = {}
 _RUN_LOCK = Lock()
 
 PORT_GROUPS = (
-    # 2026-08-01 relay 清理:M1 ai-loop-router :4100/:4102, 退役 CCC relay(:4000/:4002)
+    # 2026-08-01 relay 清理:M1 ai-loop-router :4100/:4102, 旧 CCC relay 已退役
     ("CCC", (4100, 4102, 7775, 7777, 7778)),
     ("HP", (8080, 8082, 8083)),
     ("qb", (8095, 8096)),

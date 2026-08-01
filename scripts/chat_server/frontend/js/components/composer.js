@@ -5,6 +5,7 @@ import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAt
 import { handleSlashInput, hideSlashMenu } from './slash.js';
 import { initComposerActionDock } from './fixedActions.js';
 import { isCurrentTabStreaming, syncStreamingFlagForActiveTab } from '../streamRegistry.js';
+import { agentUrl } from '../ports.js';
 
 export function initComposer() {
   const input = document.getElementById('composer-input');
@@ -59,7 +60,7 @@ export function initComposer() {
       state.set('model', modelSelect.value);
     });
     // 模型档位以 sidecar /health 为准：仅保留可用档，避免硬编码死选项
-    fetch('/health')
+    fetch(agentUrl('/health'))
       .then((r) => (r.ok ? r.json() : null))
       .then((h) => {
         const models = h && Array.isArray(h.models) ? h.models : [];
