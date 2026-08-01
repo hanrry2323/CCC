@@ -5,6 +5,8 @@ import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.j
 import { workspaceOf } from '../components/boardPanel.js';
 import { dialogueEntryUrl } from '../ports.js';
 import { epicColumnSig } from '../boardSigs.js';
+import { createLoadGate } from '../boardLoadGate.js';
+import { filterEpicsBySplit, matchesKeyword, sortTasks } from '../boardFilter.js';
 
 export { epicLifecycleLabel, normalizeEpicSplitStatus };
 
@@ -78,6 +80,13 @@ let _showHidden = false;
 let _moving = new Set(); // in-flight 守卫：同一卡移动中忽略重击
 let _wsNames = [];
 let _indicatorBusy = false;
+// 窗口 J: client-side 筛选/排序（后端无 q/status/sort 参数）
+let _filterQ = '';
+let _filterStatus = '';
+let _sortKey = 'default';
+let _filterDebounce = null;
+// 窗口 J: 轮询与移卡竞态门（suppress 挂起重绘 + latest-wins 丢旧响应）
+const _gate = createLoadGate();
 
 function esc(s) {
   if (!s) return '';
@@ -221,6 +230,8 @@ function renderEpicCol() {
   const cols = _state.columns || {}; // B3 防御：columns 缺失不白屏
   let tasks = cols.backlog || [];
   if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
+  // 窗口 J: client-side 筛选 — 大卡 split_status + 关键词；released 集保持完整，进度条刷新不受筛选影响
+  tasks = filterEpicsBySplit(tasks, _filterStatus).filter((t) => matchesKeyword(t, _filterQ));
   // Phase 3.1 + A2: diff 重绘 — 签名含 released 子卡计数，子卡发布即刷新进度条
   const releasedIds = new Set((cols.released || []).map((x) => x.id));
   const sig = epicColumnSig(tasks, releasedIds);
@@ -252,14 +263,21 @@ function renderEpicCol() {
   if (nb && epicScroll) nb.scrollTop = epicScroll;
 }
 
+/** 窗口 J: 流列视图 — 关键词过滤 + 排序（渲染与 diff 签名共用同一列表）。 */
+function _viewWork(col) {
+  let tasks = (_state.columns[col] || []).filter(
+    (t) => (t.card_kind || 'work') !== 'epic'
+  );
+  if (_filterQ) tasks = tasks.filter((t) => matchesKeyword(t, _filterQ));
+  return sortTasks(tasks, _sortKey);
+}
+
 function renderFlowCols() {
   const host = _root.querySelector('#board-flow');
   // Phase 3.1: diff 重绘 — 只重建变化的列
   const newSigs = {};
   for (const col of FLOW_COLS) {
-    let tasks = (_state.columns[col] || []).filter(
-      (t) => (t.card_kind || 'work') !== 'epic'
-    );
+    const tasks = _viewWork(col);
     newSigs[col] = tasks.map((t) => t.id + ':' + (t.updated_at || '')).join('|');
   }
   // 首次或列数不匹配 → 全重建
@@ -292,9 +310,7 @@ function renderFlowCols() {
 }
 
 function _buildFlowCol(col, _sig) {
-  let tasks = (_state.columns[col] || []).filter(
-    (t) => (t.card_kind || 'work') !== 'epic'
-  );
+  const tasks = _viewWork(col);
   const d = document.createElement('div');
   d.className = 'board-col';
   const cards = tasks.length
@@ -342,6 +358,22 @@ function html() {
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
     <span class="st" id="board-st">·</span>
+  </div>
+  <div class="board-toolbar-filters">
+    <input type="search" id="board-filter-q" class="board-filter-input" placeholder="筛选关键词（标题/ID/描述）" aria-label="筛选关键词">
+    <select id="board-filter-status" aria-label="大卡状态筛选" title="按待办大卡拆分状态筛选">
+      <option value="">全部状态</option>
+      <option value="pending">未规划</option>
+      <option value="planned">已规划</option>
+      <option value="running">开发中</option>
+      <option value="done">已完成</option>
+      <option value="failed">失败</option>
+    </select>
+    <select id="board-sort" aria-label="排序" title="流转列排序">
+      <option value="default">默认顺序</option>
+      <option value="updated">最近更新</option>
+      <option value="title">按标题</option>
+    </select>
   </div>
   <div class="board-main">
     <div class="board-layout" id="board-layout">
@@ -486,10 +518,14 @@ async function refreshAllWsIndicators() {
 }
 
 function updateSummary() {
-  const epics = (_state.columns.backlog || []).filter((t) => !t.ui_hidden);
+  // 窗口 J: 计数跟随筛选视图（关键词/大卡状态过滤后）
+  const epics = filterEpicsBySplit(
+    (_state.columns.backlog || []).filter((t) => !t.ui_hidden),
+    _filterStatus
+  ).filter((t) => matchesKeyword(t, _filterQ));
   let flow = 0;
   for (const c of ['planned', 'in_progress', 'testing', 'verified']) {
-    flow += (_state.columns[c] || []).length;
+    flow += _viewWork(c).length;
   }
   _root.querySelector('#board-st').textContent =
     _ws + ` · 待办 ${epics.length} · 流转中 ${flow}`;
@@ -502,14 +538,23 @@ function renderCols() {
 }
 
 async function loadBoard() {
+  // 窗口 J: 移卡 in-flight 期间轮询挂起（不发请求）；晚到的旧响应按 seq 丢弃（消闪回）
+  const seq = _gate.begin();
+  if (seq === null) return;
   const q =
     '/api/board?workspace=' +
     encodeURIComponent(_ws) +
     (_showHidden ? '&include_hidden=1' : '');
-  const r = await apiGet(q);
-  _state = r;
-  renderCols();
-  refreshAllWsIndicators().catch(() => {});
+  try {
+    const r = await apiGet(q);
+    if (!_gate.isLatest(seq)) return;
+    _state = r;
+    renderCols();
+    refreshAllWsIndicators().catch(() => {});
+  } catch (err) {
+    // 仅最新请求的错误向上抛（轮询 catch 吞 / 移卡后重载可见）
+    if (_gate.isLatest(seq)) throw err;
+  }
 }
 
 async function moveTask(id, from, to) {
@@ -520,12 +565,15 @@ async function moveTask(id, from, to) {
   // B1: in-flight 守卫 — 双击/连点第二击直接忽略，避免旧 from 404 静默失败
   if (_moving.has(id)) return;
   _moving.add(id);
+  // 窗口 J: 移卡写操作期间挂起轮询；resume 后重载为最新 seq，移卡结果必为新渲染
+  _gate.suppress();
   try {
     await apiPost('/api/tasks/move', { id, from, to, workspace: _ws });
   } catch (err) {
     window.showToast?.(err && err.message ? err.message : '移卡失败', 'error');
   } finally {
     _moving.delete(id);
+    _gate.resume();
   }
   await loadBoard();
 }
@@ -622,6 +670,25 @@ function bind() {
   _root.querySelector('#board-show-hidden').addEventListener('change', (e) => {
     _showHidden = !!e.target.checked;
     loadBoard();
+  });
+  // 窗口 J: 筛选/排序纯本地视图 — 变更只重绘，不重新请求
+  const qInput = _root.querySelector('#board-filter-q');
+  if (qInput) {
+    qInput.addEventListener('input', () => {
+      clearTimeout(_filterDebounce);
+      _filterDebounce = setTimeout(() => {
+        _filterQ = qInput.value.trim();
+        renderCols();
+      }, 150);
+    });
+  }
+  _root.querySelector('#board-filter-status')?.addEventListener('change', (e) => {
+    _filterStatus = e.target.value;
+    renderCols();
+  });
+  _root.querySelector('#board-sort')?.addEventListener('change', (e) => {
+    _sortKey = e.target.value;
+    renderCols();
   });
   _root.querySelector('#board-epic-toggle')?.addEventListener('click', () => {
     const layout = _root.querySelector('#board-layout');
