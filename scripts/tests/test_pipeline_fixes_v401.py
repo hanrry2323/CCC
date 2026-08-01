@@ -38,7 +38,7 @@ def test_upstream_4xx_is_healthy(monkeypatch):
 
     # Use real HTTPError
     err = urllib.error.HTTPError(
-        url="http://127.0.0.1:4000/v1/messages",
+        url="http://127.0.0.1:4100/v1/messages",
         code=401,
         msg="Unauthorized",
         hdrs=None,
@@ -60,7 +60,7 @@ def test_upstream_strict_requires_200(monkeypatch):
     import urllib.error
 
     err = urllib.error.HTTPError(
-        url="http://127.0.0.1:4000/v1/messages",
+        url="http://127.0.0.1:4100/v1/messages",
         code=401,
         msg="Unauthorized",
         hdrs=None,

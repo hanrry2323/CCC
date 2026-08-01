@@ -4,10 +4,10 @@
   "small_model": "loop/flash",
   "provider": {
     "loop": {
-      "name": "CCC Relay flash（付费-only Go）",
+      "name": "M1 ai-loop-router flash（付费-only Go）",
       "kind": "openai",
       "options": {
-        "baseURL": "http://127.0.0.1:4002/v1",
+        "baseURL": "http://127.0.0.1:4102/v1",
         "apiKey": "sk-relay"
       },
       "models": {

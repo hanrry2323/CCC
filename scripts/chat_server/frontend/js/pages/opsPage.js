@@ -325,7 +325,7 @@ function renderRelay(relay) {
   el.innerHTML = `
     <div class="ops-row" style="margin-bottom:8px">
       <span class="ops-pill ops-pill-green">● relay 在线</span>
-      <span class="ops-hint">${escapeHtml(relay.host || '127.0.0.1')}:${relay.port || 4000} · 三档契约 flash/Pro/code</span>
+      <span class="ops-hint">${escapeHtml(relay.host || '127.0.0.1')}:${relay.port || 4100} · 三档契约 flash/Pro/code</span>
     </div>
     <table class="ops-table">
       <thead><tr>

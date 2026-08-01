@@ -14,13 +14,13 @@ import _utils as u  # noqa: E402
 
 def test_get_relay_url_prefers_anthropic(monkeypatch):
     monkeypatch.delenv("AGENT_PLANNER_BASE_URL", raising=False)
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000/anthropic")
-    assert u.get_relay_url() == "http://127.0.0.1:4000/anthropic"
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:4100/anthropic")
+    assert u.get_relay_url() == "http://127.0.0.1:4100/anthropic"
 
 
 def test_get_relay_url_agent_planner_wins(monkeypatch):
     monkeypatch.setenv("AGENT_PLANNER_BASE_URL", "https://example.test/anthropic")
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:4000/anthropic")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:4100/anthropic")
     assert u.get_relay_url() == "https://example.test/anthropic"
 
 

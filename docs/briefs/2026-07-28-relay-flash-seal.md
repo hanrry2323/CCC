@@ -39,7 +39,7 @@
 | flash `proxy` | **none** |
 | Go paid URL | 均为 `zen/go/v1` |
 | thinking disabled | paid 两钥均 OK |
-| `~/.config/opencode/opencode.json` | `loop/flash` → `:4002` |
+| `~/.config/opencode/opencode.json` | `loop/flash` → `:4102` |
 | `~/.opencode/opencode.json` | 原 `loop/code` → **已改为** `loop/flash`（bak=`opencode.json.bak-flash-seal`） |
 | `ccc-engine.sh` | pull 后 `OPENCODE_MODEL` 默认 `loop/flash` |
 | launchd | `com.ccc.relay.2017` + `com.ccc.relay.flash-watchdog` |
@@ -69,8 +69,8 @@
 
 | 路径 | 结果 |
 |------|------|
-| 2017 `:4000` flash | 200 · free 钥 |
-| M1 → `192.168.3.116:4000` | 200 · `opencode-go-f` |
+| 2017 `:4100` flash | 200 · free 钥 |
+| M1 → `192.168.3.116:4100` | 200 · `opencode-go-f` |
 | vitest | **170/170** pass |
 | dist rsync + kickstart | 完成 |
 

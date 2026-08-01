@@ -69,9 +69,9 @@ def now_iso_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# v0.61.0 三档契约:默认走 relay(:4000),上游由 upstreams.json 路由
-# （旧 MiniMax 直连已不再是默认出口）
-_DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4000"
+# v0.61.0 三档契约:默认走 M1 ai-loop-router(:4100),上游由 upstreams.json 路由
+# （旧 CCC relay(:4000) 已退役，统一由 ai-loop-router 接管）
+_DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4100"
 
 
 def get_relay_url() -> str:
@@ -104,9 +104,8 @@ def relay_is_up(
 ) -> bool:
     """CCC Relay 2026-07-25:sidecar/Engine 共享探活(10s 缓存)。
 
-    2026-07-25 修 P0-3:无参时从 `CCC_RELAY_BASE_URL` env 解析(向后兼容
-    旧 sidecar 行为 — 旧实现读 `os.environ.get("CCC_RELAY_BASE_URL")`
-    拼探活 URL);env 也无则 127.0.0.1:4000 默认。
+    2026-08-01 relay 清理:默认指向 M1 ai-loop-router(:4100)。
+    env 也无则 127.0.0.1:4100 默认。
 
     10s 缓存:同 host/port 重复调用不发请求(全局单槽缓存,多 host 并发
     会互相覆盖,见 P2-1 backlog)。
@@ -131,7 +130,7 @@ def relay_is_up(
         if host is None:
             host = "127.0.0.1"
         if port is None:
-            port = 4000
+            port = 4100
 
     now = _time.monotonic()
     cache_key = (host, port)
@@ -159,7 +158,7 @@ def relay_direct_fallback() -> str:
 
     优先序：`CCC_RELAY_DIRECT_URL` → `~/.ccc/relay-direct.url`。
     未配置则返回空串（调用方不得伪造成功；主路径应保 relay 常驻）。
-    若误配成本机 relay(:4000) 则视为无效，避免 fail-open 空转。
+    若误配成本机 relay(:4100) 则视为无效，避免 fail-open 空转。
     """
     import os as _os
     from pathlib import Path as _Path
@@ -175,6 +174,6 @@ def relay_direct_fallback() -> str:
     if not raw:
         return ""
     low = raw.rstrip("/").lower()
-    if "127.0.0.1:4000" in low or "localhost:4000" in low:
+    if "127.0.0.1:4100" in low or "localhost:4100" in low:
         return ""
     return raw

@@ -42,7 +42,7 @@ if [[ -n "$AGENT_TOKEN" ]]; then
   AGENT_AUTH_H=(-H "Authorization: Bearer ${AGENT_TOKEN}" -H "X-CCC-Agent-Token: ${AGENT_TOKEN}")
 fi
 
-# 1) Sidecar launchd 常驻 + 模型出口走 Relay flash（:4000）
+# 1) Sidecar launchd 常驻 + 模型出口走 M1 ai-loop-router flash（:4100）
 bash scripts/install-agent-sidecar-plist.sh --start >/tmp/ccc-sidecar-install.log 2>&1 || true
 check "sidecar health" curl -fsS --max-time 3 "${AGENT}/health" >/dev/null
 check "sidecar launchd" bash -c "launchctl print gui/\$(id -u)/com.ccc.agent-sidecar >/dev/null 2>&1"
@@ -55,13 +55,13 @@ check "sidecar warm" bash -c '
     curl -fsS --max-time 5 -X POST "'"${AGENT}"'/warm" -H "Content-Type: application/json" -d "{}" | grep -q "\"ok\""
   fi
 '
-# 模型出口：主路径本机 Relay :4000；fail-open 直连不得与 relay 同址
-check "sidecar→relay:4000" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "127.0.0.1:4000"'
+# 模型出口：主路径 M1 ai-loop-router :4100；fail-open 直连不得与 relay 同址
+check "sidecar→relay:4100" bash -c 'plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "127.0.0.1:4100"'
 check "sidecar fail-open≠relay" bash -c '
   plutil -p "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null | grep -q "CCC_RELAY_DIRECT_URL" || exit 0
   direct=$(plutil -extract EnvironmentVariables.CCC_RELAY_DIRECT_URL raw "$HOME/Library/LaunchAgents/com.ccc.agent-sidecar.plist" 2>/dev/null || true)
   [[ -z "$direct" ]] && exit 0
-  [[ "$direct" != *":4000"* ]]
+  [[ "$direct" != *":4100"* ]]
 '
 
 # 1c) 本机会话目录可写（Desktop LocalSessionStore 同根）

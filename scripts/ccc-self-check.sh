@@ -112,7 +112,7 @@ check_prompt_injection_guards() {
 
 # ── 8. 端口预检(lsof) — 报告各端口 LISTEN 数(WARN,不当 HARD 拦)──
 check_ports_listening() {
-    local ports="4000 4002 7775 7777 7788"
+    local ports="4100 4102 7775 7777 7788"
     local any_listening=0
     local report=""
     for p in $ports; do

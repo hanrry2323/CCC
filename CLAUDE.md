@@ -259,7 +259,7 @@ scripts/chat_server/            # FastAPI 模块化后端
 | 写码槽（OpenCode，Engine dev） | 后台写码（dev） | **Relay 路由** `code` 档（讯飞/智谱）；备用 `~/.config/opencode` |
 
 三档契约(2026-07-25):下游只对接 `flash`/`Pro`/`code` 逻辑名,上游由 `relay/upstreams.json` 统一路由。  
-旧独立仓名 `ai-loop-router` 已退役；功能 = 仓内 `relay/`，端口仍 `:4000`/`:4002`。详见 `docs/deploy/topology.md` · `docs/executors/overview.md`。
+旧独立仓名 `ai-loop-router` 已退役；功能由现行 M1 的 ai-loop-router 接管，端口 `:4100`/`:4102`。详见 `docs/deploy/topology.md` · `docs/executors/overview.md`。
 
 ---
 

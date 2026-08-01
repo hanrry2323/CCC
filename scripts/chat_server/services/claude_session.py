@@ -461,18 +461,18 @@ class ClaudeSessionManager:
         }
         # CCC Relay 2026-07-25 fail-open:探活失败时 env 覆盖直连 URL。
         # 关键:只覆盖本次 SDK options 的 env 局部 dict,不改 os.environ,
-        # 避免多请求并发 race;后续请求 plist env 仍指 :4000。
+        # 避免多请求并发 race;后续请求 plist env 仍指 :4100。
         if not relay_is_up():
             fb = relay_direct_fallback()
             if fb:
                 kwargs["env"]["ANTHROPIC_BASE_URL"] = fb
                 _log.info(
-                    "[fail-open] relay :4000 不可达, 切直连 base_url=%s",
+                    "[fail-open] M1 ai-loop-router :4100 不可达, 切直连 base_url=%s",
                     fb,
                 )
             else:
                 _log.warning(
-                    "[fail-open] relay :4000 不可达且未配置 CCC_RELAY_DIRECT_URL"
+                    "[fail-open] M1 ai-loop-router :4100 不可达且未配置 CCC_RELAY_DIRECT_URL"
                     " / ~/.ccc/relay-direct.url（MiniMax 已退役）"
                 )
         # SDK：allowed_tools 为空列表时不加 --allowedTools（= 默认全开）。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 com.ccc.relay.flash-watchdog（60s StartInterval）— 仅 Mac2017
+# 安装 com.ccc.relay.flash-watchdog（60s StartInterval）— 探 M1 ai-loop-router
 set -euo pipefail
 
 CCC_HOME="${CCC_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -34,9 +34,9 @@ cat > "$PLIST" <<PLIST_EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>CCC_RELAY_URL</key>
-    <string>http://127.0.0.1:4000</string>
+    <string>http://192.168.3.140:4100</string>
     <key>CCC_RELAY_LABEL</key>
-    <string>com.ccc.relay.2017</string>
+    <string>com.ai-loop-router</string>
   </dict>
 </dict>
 </plist>
@@ -46,5 +46,5 @@ plutil -lint "$PLIST" >/dev/null
 launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl kickstart -k "gui/$(id -u)/${LABEL}" 2>/dev/null || true
-echo "✓ ${LABEL} installed (60s flash probe → kickstart com.ccc.relay.2017 after 3 fails)"
+echo "✓ ${LABEL} installed (60s flash probe → kickstart com.ai-loop-router on M1 after 3 fails)"
 echo "  log: ${LOG_DIR}/ccc-relay-flash-watchdog.log"

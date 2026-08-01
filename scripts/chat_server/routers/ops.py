@@ -238,9 +238,9 @@ async def ops_quality(request: Request):
 
 @router.get("/api/ops/router-usage")
 async def ops_router_usage(request: Request, refresh: int = 0):
-    """兼容端点：实拉本机 CCC Relay `GET :4000/admin/stats`（三档用量+healthy）。
+    """兼容端点：实拉 M1 ai-loop-router `GET :4100/admin/stats`（三档用量+healthy）。
 
-    旧名 router-usage 保留；ai-loop-router 独立仓已退役，功能=仓内 `relay/`。
+    旧名 router-usage 保留；CCC relay/ 已退役，统一由 ai-loop-router 接管。
     """
     check_auth(request)
     _ = refresh
@@ -250,7 +250,7 @@ async def ops_router_usage(request: Request, refresh: int = 0):
 
 
 @router.get("/api/ops/upstream-daily")
-async def ops_upstream_daily(request: Request, upstream: str = "", host: str = "127.0.0.1", port: int = 4000):
+async def ops_upstream_daily(request: Request, upstream: str = "", host: str = "127.0.0.1", port: int = 4100):
     """每上游今日调用量+Token+成功率+延迟+成本估算。
 
     v0.61.0 Phase 1+3:从 relay /admin/usage + 本地 usage.json 聚合。
@@ -271,7 +271,7 @@ async def ops_upstream_daily(request: Request, upstream: str = "", host: str = "
 
 
 @router.get("/api/ops/upstream-trend")
-async def ops_upstream_trend(request: Request, days: int = 7, host: str = "127.0.0.1", port: int = 4000):
+async def ops_upstream_trend(request: Request, days: int = 7, host: str = "127.0.0.1", port: int = 4100):
     """近 N 天每日趋势(总量+by_upstream)。
 
     v0.61.0 Phase 1:从 relay /admin/usage?period={days}d 聚合。
@@ -283,7 +283,7 @@ async def ops_upstream_trend(request: Request, days: int = 7, host: str = "127.0
 
 
 @router.get("/api/ops/upstream-efficiency")
-async def ops_upstream_efficiency(request: Request, host: str = "127.0.0.1", port: int = 4000):
+async def ops_upstream_efficiency(request: Request, host: str = "127.0.0.1", port: int = 4100):
     """每上游健康评分+冷却状态+成功率(来自 relay scores + admin upstreams)。
 
     v0.61.0 Phase 2:从 relay /admin/scores + /admin/upstreams 聚合。

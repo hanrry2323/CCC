@@ -1,15 +1,15 @@
 # CCC 部署拓扑 — Server / Client
 
-> SSOT：服务端与客户端职责。更新日期：2026-07-26（三档契约 + CCC Relay）。  
+> SSOT：服务端与客户端职责。更新日期：2026-08-01（Relay 清理：单 ai-loop-router 实例）。  
 > 相关：[`server-layout.md`](server-layout.md) · [`desktop.md`](desktop.md) · [`../product/dev-channel.md`](../product/dev-channel.md) · [`../product/ccc-desktop-architecture.md`](../product/ccc-desktop-architecture.md) · [`../product/dialogue-orchestration-boundary.md`](../product/dialogue-orchestration-boundary.md) · [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)
 
 ---
 
 ## 一句话
 
-**M1 = 对话脑（Desktop + loop-code）；Mac2017 = 编排手（Hub + Board + Engine + 业务仓）。**  
+**M1 = 对话脑（Desktop + loop-code + ai-loop-router）；Mac2017 = 编排手（Hub + Board + Engine + 业务仓）。**  
 中间只交结构化信息流（transfer / flow）。  
-**模型出口：CCC Relay 路由**（三档 `flash`/`Pro`/`code`，上游由 `relay/upstreams.json` 统一管理）。
+**模型出口：ai-loop-router 路由**（三档 `flash`/`Pro`/`code`，上游由 `~/program/ai-loop-router/upstreams.json` 统一管理）。
 
 ---
 
@@ -31,29 +31,30 @@
 
 | 路径 | 执行器 | 模型路由 | 故障降级 |
 |------|--------|----------|----------|
-| M1 对话（Desktop → sidecar `:7788`） | loop-code（arm64） | **2017 Relay** `http://192.168.3.116:4000`（`flash`；可改本机 `relay.m1`） | `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
-| Engine product 扇出 | Claude | **本机 CCC Relay 2017** `AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000` | 同上 fail-open 直连文件 |
-| Engine dev 写码 | OpenCode | **本机 CCC Relay 2017** `:4002`（`code` 档） | 探活失败切直连兜底（见 `opencode.direct.json`） |
+| M1 对话（Desktop → sidecar `:7788`） | loop-code（arm64） | **本机 ai-loop-router** `http://127.0.0.1:4100`（`flash`） | `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url` |
+| Engine product 扇出 | Claude | **M1 ai-loop-router** `AGENT_PLANNER_BASE_URL=http://192.168.3.140:4100` | 同上 fail-open 直连文件 |
+| Engine dev 写码 | OpenCode | **M1 ai-loop-router** `:4102`（`code` 档） | 探活失败切直连兜底（见 `opencode.direct.json`） |
 
-> 三档契约（2026-07-25 硬共识）：下游只对接 `flash`/`Pro`/`code` 逻辑名，上游由 `relay/upstreams.json` 统一路由。  
+> 三档契约：下游只对接 `flash`/`Pro`/`code` 逻辑名，上游由 `ai-loop-router/upstreams.json` 统一路由。  
 > 详见 [`../product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「三档契约 + 上游解耦」。
 
-旧独立仓名 `ai-loop-router` 已退役；功能并入 CCC 仓 `relay/` 作为 **CCC Relay**，端口仍 `:4000`/`:4002`。  
-旧 `com.ai-loop-router` plist 已移至 `~/Library/LaunchAgents/disabled-ccc/`。
+**CCC 仓内 relay/ 已拆出**（2026-08-01），使用独立项目 `~/program/ai-loop-router`（端口 4100/4102）。  
+旧 `com.ccc.relay.m1` / `com.ccc.relay.2017` plist 已退役。
 
 ---
 
 ## 端口
 
-### M1（对话面）
+### M1（对话面 + 中转站）
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
 | **7788** | CCC Agent Sidecar | Desktop **与远程浏览器**对话热路径；launchd `com.ccc.agent-sidecar` KeepAlive |
-| **4000** | CCC Relay M1 | `com.ccc.relay.m1`（同 sidecar 生命周期）；三档路由 / Anthropic 协议转换 |
+| **4100** | ai-loop-router | Anthropic 协议转换（flash tier）；`com.ai-loop-router` |
+| **4102** | ai-loop-router | OpenAI Chat 协议转换（code tier）；同进程 |
 | **17777** | Hub SSH 隧道（本机） | `com.ccc.hub-tunnel`：`ssh -L` → 2017 `:7777`；**Desktop/sidecar 默认 Hub URL** |
 
-Sidecar → **2017 relay** `:4000`（主路径，免费 flash）；可改本机 `relay.m1`。relay 不可达时 fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（禁硬编码厂商 URL；MiniMax-M3 已退役）。  
+Sidecar → **本机 ai-loop-router** `:4100`（主路径，flash）。relay 不可达时 fail-open → `CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（禁硬编码厂商 URL）。  
 Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · 热路径：[`../product/desktop-agent-sidecar.md`](../product/desktop-agent-sidecar.md) · [`desktop.md`](desktop.md) · 双口：[`../product/hub-remote-management.md`](../product/hub-remote-management.md)。
 
 ### Mac2017（编排面）
@@ -62,8 +63,8 @@ Hub 传输：[`../product/hub-ssh-tunnel.md`](../product/hub-ssh-tunnel.md) · �
 |------|------|------|
 | **7777** | CCC Hub | 本机 +（历史）局域网；**M1 客户端勿再默认直连** |
 | **7775** | Board API | 优先仅本机；由 Hub 反代 |
-| **4000** | CCC Relay 2017 | `com.ccc.relay.2017`（同 Engine 生命周期）；Claude product/reviewer 出口，Anthropic 协议 |
-| **4002** | CCC Relay 2017 | OpenCode dev 写码出口，openai-chat 协议 |
+
+Mac2017 **不再运行 relay 实例**。所有模型请求通过 `http://192.168.3.140:4100` / `:4102` 走 M1 的 ai-loop-router。
 
 M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）  
 2017 本机 Hub：`http://127.0.0.1:7777`  
@@ -75,9 +76,9 @@ M1 Desktop / 编排 API：**`http://127.0.0.1:17777`**（SSH 隧道）
 
 ```text
 M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
-  → Engine product（Claude → relay :4000 → flash 档）→ planned work×N
-  → Engine dev（OpenCode → relay :4002 → code 档）→ in_progress → testing
-  → reviewer（Claude → relay :4000 → flash 档）+ tester → verified
+  → Engine product（Claude → M1 ai-loop-router :4100 → flash 档）→ planned work×N
+  → Engine dev（OpenCode → M1 ai-loop-router :4102 → code 档）→ in_progress → testing
+  → reviewer（Claude → M1 ai-loop-router :4100 → flash 档）+ tester → verified
   → kb → released → epic split_status=done
 ```
 
@@ -135,5 +136,5 @@ M1 定稿 → POST /api/desktop/transfer → backlog epic (pending)
 
 ## 执行器
 
-- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ **2017 relay** `:4000`（`flash`；可改本机 `relay.m1`）  
-- **看板开发（Mac2017）**：OpenCode → relay `:4002`（`code` 档）。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)
+- **对话方案 Agent（M1）**：loop-code（arm64，sidecar）→ **本机 ai-loop-router** `:4100`（`flash`）  
+- **看板开发（Mac2017）**：OpenCode → **M1 ai-loop-router** `:4102`（`code` 档）。契约：[`../product/executor-plugins.md`](../product/executor-plugins.md)

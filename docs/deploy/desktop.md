@@ -28,11 +28,11 @@ http://192.168.3.116:7777
 
 | 工具 | 上游 |
 |------|------|
-| Desktop ↔ sidecar ↔ loop-code | Relay **`flash`**（M1→2017 `:4000` OK；可改本机 `relay.m1`） |
-| Engine Claude（product/reviewer） | Relay **`flash`** / **`Pro`**（`:4000`） |
-| Engine OpenCode（dev） | Relay **`code`**（`:4002`） |
+| Desktop ↔ sidecar ↔ loop-code | ai-loop-router **`flash`**（M1→ai-loop-router `:4100` OK；可改本机 `relay.m1`） |
+| Engine Claude（product/reviewer） | ai-loop-router **`flash`** / **`Pro`**（`:4100`） |
+| Engine OpenCode（dev） | ai-loop-router **`code`**（`:4102`） |
 
-CCC Relay（`:4000` Anthropic 协议 / `:4002` openai-chat）**现行**。fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。见 [`topology.md`](topology.md)。  
+ai-loop-router（M1 中转站）（`:4100` Anthropic 协议 / `:4102` openai-chat）**现行**。fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。见 [`topology.md`](topology.md)。  
 Desktop **应用内**快选三档 `flash`/`Pro`/`code`。SSOT：[`../product/dev-channel.md`](../product/dev-channel.md)。
 
 ## 运行与打包
@@ -77,7 +77,7 @@ sidecar 随仓更新后需 `kickstart` 一次才能加载新 Python（见 sideca
 | `POST /api/desktop/transfer` | 聊透门禁 → epic |
 | `GET /api/desktop/flow/events` | SSE |
 | `GET /api/desktop/flow/snapshot` | 右栏快照 |
-| `GET /api/ops/router-usage` | **真实**（relay `GET :4000/admin/usage`）；Desktop 顶栏也显示实时用量 |
+| `GET /api/ops/router-usage` | **真实**（ai-loop-router `GET :4100/admin/usage`）；Desktop 顶栏也显示实时用量 |
 
 
 端到端冒烟：`bash scripts/smoke-desktop-e2e.sh`

@@ -19,7 +19,7 @@
 **快速 sanity check**（任何不确认的时候跑这条）：
 
 ```bash
-echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p
+echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4100 claude -p
 # 期望输出：2（或类似的简短回答）
 # 不期望输出："老板好" 等默认开场白
 ```
@@ -61,7 +61,7 @@ ccc commit <workspace> <task> --phase N # 仅指定 phase
 ## 标准模板
 
 ```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
+ANTHROPIC_BASE_URL=http://127.0.0.1:4100 \
 claude -p "$(cat <<'EOF'
 你是 CCC 框架的 Executor（独立 Claude session，不是 Planner）。
 

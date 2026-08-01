@@ -522,33 +522,35 @@ M1：**无**业务源码第二树；`localWorkspaceMap` 仅可选 `ccc` → 本�
 
 ## CCC Relay（硬 · 2026-07-25 · 中转站回归 + 深度整合）
 
-推翻 v0.52「不恢复 ai-loop-router」口径。恢复中转站并入 CCC 仓为 **CCC Relay** 子系统。
+推翻 v0.52「不恢复 ai-loop-router」口径。恢复中转站并入 CCC 仓为 **CCC Relay** 子系统。  
+**2026-08-01 更新**：CCC 仓内 `relay/` 已拆出，使用独立项目 `~/program/ai-loop-router`（端口 4100/4102）。  
+Mac2017 不再运行 relay 实例，所有请求走 M1 的 ai-loop-router。
 
 | 项 | 口径 |
 |----|------|
 | **三档 tier = 全局契约** | `flash` / `Pro` / `code` 三逻辑名仍保留；**现行主对接仅 `flash`**。`Pro`/`code` **轮空**（无启用上游；`pro`→回落 flash） |
-| **协议转换范围** | `:4000`(Anthropic) / `:4002`(OpenAI chat + **`/v1/responses`**) **都打同一 flash 池**；空 Pro 时客户端选 `pro` → relay 回落 `flash`。`/v1/responses` **仅**服务个人 Codex（知识/聊天席），**非** CCC 产线主路径 |
-| **代码归属** | 已并入 CCC 仓 `relay/`(原 `~/program/ai-loop-router`);`dist/` gitignore,2017 本地 `npm ci && npm run build` |
-| **M1 / 2017 双实例** | M1 `com.ccc.relay.m1`(同 sidecar 生命周期,服务桌面端);2017 `com.ccc.relay.2017`(同 Engine 生命周期,服务编排面);两实例独立 plist,各自 `~/.ccc/relay/upstreams.json` |
+| **协议转换范围** | `:4100`(Anthropic) / `:4102`(OpenAI chat + **`/v1/responses`**) **都打同一 flash 池**；空 Pro 时客户端选 `pro` → relay 回落 `flash`。`/v1/responses` **仅**服务个人 Codex（知识/聊天席），**非** CCC 产线主路径 |
+| **代码归属** | 独立项目 `~/program/ai-loop-router`（原 CCC 仓 `relay/` 已拆出）；`dist/` gitignore，M1 本地 `npm ci && npm run build` |
+| **单实例** | M1 `com.ai-loop-router`（端口 4100/4102）；**Mac2017 不运行 relay 实例**，通过 `http://192.168.3.140:4100` 连接 M1。旧 `com.ccc.relay.m1` / `com.ccc.relay.2017` 已退役 |
 | **Flash 单通道 · 付费-only（硬 · 2026-07-28）** | Claude Code + OpenCode **一律** `flash` / `loop/flash`。启用池**仅** Go 付费 `zen/go/v1`+`deepseek-v4-flash`；配置可留 2 把，**`enabled=true` 恰好 1**（备份钥人切）。**禁止**免费 Zen/GLM/MiniMax 进启用池。**IP/HK `proxy` 退役**。详见上文「模型通道简规」 |
-| **M1 对话路径** | sidecar / 个人 Claude Code → **2017 编排面 relay**(`http://192.168.3.116:4000`,共享 flash 池);可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`;默认模型 **`flash`** |
-| **2017 编排路径** | Engine claude → 本机 relay(`AGENT_PLANNER_BASE_URL=http://127.0.0.1:4000`,flash);OpenCode dev → `:4002`（`OPENCODE_MODEL=loop/flash`） |
+| **M1 对话路径** | sidecar / 个人 Claude Code → **本机 ai-loop-router**(`http://127.0.0.1:4100`,flash);默认模型 **`flash`** |
+| **2017 编排路径** | Engine claude → **M1 ai-loop-router**(`AGENT_PLANNER_BASE_URL=http://192.168.3.140:4100`,flash);OpenCode dev → **M1 ai-loop-router** `:4102`（`OPENCODE_MODEL=loop/flash`） |
 | **Go thinking 关（硬 · 2026-07-27）** | 所有 Go/`deepseek-v4-*` 上游须 `request_overrides: { "thinking": { "type": "disabled" } }`（主机 `upstreams.json`，不进 git）。默认 thinking 会令 OpenAI 兼容口 `content=""`、只填 `reasoning_content` → OpenCode 空转 hang。手册：`docs/relay/KEY-POOL.md`。 |
-| **付费-only（硬 · 2026-07-28）** | **唯一启用上游**=`billing=opencode-go` · `https://opencode.ai/zen/go/v1` · `deepseek-v4-flash`。Go 钥误打 `zen/v1` 会假 401。免费/`zen-free`/智谱/MiniMax **不得** `enabled=true`。钥 SSOT=2017 `~/.ccc/relay/upstreams.json` + `KEY-INVENTORY.md`；手册=`docs/relay/KEY-POOL.md` |
+| **付费-only（硬 · 2026-07-28）** | **唯一启用上游**=`billing=opencode-go` · `https://opencode.ai/zen/go/v1` · `deepseek-v4-flash`。Go 钥误打 `zen/v1` 会假 401。免费/`zen-free`/智谱/MiniMax **不得** `enabled=true`。钥 SSOT=M1 `~/.ccc/relay/upstreams.json` + `KEY-INVENTORY.md`；手册=`docs/relay/KEY-POOL.md` |
 | **单活跃钥 + 缓存（取代 PaidGuarantee/free-first · 2026-07-28）** | 无免费池、无付费自动 RR。单活跃钥即天然会话钉；亲和仍可用 `x-session-id` / system+首条 user。主 KPI=`upstream_cache_token_ratio`（目标 **≥0.9**；勿把 L1/`cache_hit_ratio` 当账单）。额度用尽 → **人通知后**启用备份钥、关掉旧钥 |
 | **三目标（硬 · 2026-07-28）** | **快**（sole 跳 peek、不 short-cool 空转）· **缓存**（始终 Go prompt cache）· **稳定**（薄垫片+直连）；多钥 peek 仅 `LOOP_STREAM_PEEK=1`。手册=`docs/relay/KEY-POOL.md` |
 | **冷却 / 限流（硬 · 2026-07-27）** | 429 + `Retry-After` >120s 一律按**日配额**冷却（采纳完整 RA，禁封顶 120s 反复撞钥）。`POST /admin/cooldowns/clear` **默认保留**剩余 >300s 的冷却；急救全清用 `?force=1`。列表：`GET /admin/cooldowns` |
-| **OpenCode 默认（硬 · 2026-07-28）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/flash`（本机 `:4002` → relay **flash** 同池）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
-| **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4000`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
+| **OpenCode 默认（硬 · 2026-07-28）** | Engine/`ccc-engine.sh` 默认 `OPENCODE_MODEL=loop/flash`（M1 `:4102` → relay **flash** 同池）；`~/.config/opencode/opencode.json` 只留 `loop` provider；直连兜底 `opencode.direct.json`（禁 `$comment` 键） |
+| **fail-open 红线(不可协商)** | relay 探活失败时客户端降级**真直连**:`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`;**禁止**硬编码厂商 URL、**禁止**默认指回本机 `:4100`。**MiniMax-M3 已退役**(2026-07-26),未配置直连文件则只打日志、不假装成功 |
 | **日常主路径** | Desktop / Claude Code / OpenCode **一律 flash**；`Pro`/`code` 轮空勿当主业 |
 | **对话口鉴权（硬 · 2026-07-27）** | M1 sidecar `:7788` **默认 `CCC_AGENT_AUTH=0`**（内网网页 `#/chat` 不弹 Token）；需要时再 `CCC_AGENT_AUTH=1`。Hub Basic Auth 不动 |
 | **双机拓扑(硬)** | M1 **不**跑 Hub/Board/Engine；Hub 仅 Mac2017；M1 Desktop/sidecar 默认 `http://127.0.0.1:17777` 隧道；**禁止** M1 业务第二树 / 伪 `engine=true` 登记 |
-| **Ops Relay 用量** | Hub envelope `domains.relay` = **2017 编排面**用量；M1 对话面用量不在本表合并 |
-| **门禁②(已补)** | `relay/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |
-| **观测回流** | `_ops_probe.fetch_router_usage` 真实现(GET `:4000/admin/usage`);`PORT_GROUPS` 加 4000/4002;ops summary `domains.relay`;Desktop 卡片 + Titlebar 复显 |
-| **Desktop 模型快选** | sidecar `/health` 动态拉 relay 真实三档,不再硬编码 4 个假选项;**真三档**取代「伪四档」 |
-| **密钥收拢** | 编排面上游 key 收至 `~/.ccc/relay/upstreams.json` 单点(0600);`opencode.json` 明文由 relay 兜底,Phase 5 收敛 |
-| **旧文件废弃** | `templates/ccc-config.sh` `AGENT_PLANNER_BASE_URL=:4000` 由「退役残留」复活为「现行」;`docs/executors/overview.md` 等口径同步翻转 |
+| **Ops Relay 用量** | Hub envelope `domains.relay` = **M1 ai-loop-router** 用量；Mac2017 编排面通过 LAN 消费 |
+| **门禁②(已补)** | `ai-loop-router/src/protocols/{messages,chat}.ts` 非流式 `AbortSignal.timeout(30_000)` 改可配 `LOOP_NONSTREAM_TIMEOUT_MS`(默认 600s);`server.ts` 显式 `Agent(bodyTimeout/headersTimeout/keepAliveTimeout)`,根除 Lesson 24 长任务断连 |
+| **观测回流** | `_ops_probe.fetch_router_usage` 真实现(GET `:4100/admin/usage`);`PORT_GROUPS` 加 4100/4102;ops summary `domains.relay`;Desktop 卡片 + Titlebar 复显 |
+| **Desktop 模型快选** | sidecar `/health` 动态拉 ai-loop-router 真实三档,不再硬编码 4 个假选项;**真三档**取代「伪四档」 |
+| **密钥收拢** | 上游 key 收至 M1 `~/.ccc/relay/upstreams.json` 单点(0600);`opencode.json` 明文由 relay 兜底,Phase 5 收敛 |
+| **旧文件废弃** | `templates/ccc-config.sh` 由「退役残留」复活为「现行」;`docs/executors/overview.md` 等口径同步翻转 |
 
 ---
 

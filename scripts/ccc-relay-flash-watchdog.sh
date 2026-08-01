@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# CCC Relay flash 探针看门狗（2017）
-# 每轮 POST /v1/messages flash；连续失败达阈值 → kickstart com.ccc.relay.2017
+# CCC Relay flash 探针看门狗（2026-08-01 已切 M1 ai-loop-router）
+# 每轮 POST /v1/messages flash；连续失败达阈值 → kickstart com.ai-loop-router
 #
 # 用法：
 #   bash scripts/ccc-relay-flash-watchdog.sh          # 单次探针
@@ -9,8 +9,8 @@
 
 set -euo pipefail
 
-RELAY_URL="${CCC_RELAY_URL:-http://127.0.0.1:4000}"
-LABEL="${CCC_RELAY_LABEL:-com.ccc.relay.2017}"
+RELAY_URL="${CCC_RELAY_URL:-http://127.0.0.1:4100}"
+LABEL="${CCC_RELAY_LABEL:-com.ai-loop-router}"
 FAIL_FILE="${CCC_RELAY_WD_STATE:-$HOME/.ccc/relay/flash-watchdog.fail}"
 LOG_DIR="${CCC_RELAY_WD_LOG_DIR:-$HOME/.ccc/logs}"
 MAX_FAIL="${CCC_RELAY_WD_MAX_FAIL:-3}"

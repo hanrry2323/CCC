@@ -46,8 +46,8 @@
 
 ## Desktop / 模型
 
-- sidecar 默认 Relay **`flash`**（M1→2017 `:4000`）。  
-- Codex 个人席走 `:4002` `/v1/responses`（垫片；非产线主路径）。  
+- sidecar 默认 ai-loop-router **`flash`**（M1→ai-loop-router `:4100`）。  
+- Codex 个人席走 `:4102` `/v1/responses`（垫片；非产线主路径）。  
 - fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`。  
 - 与个人 Claude shell `ANTHROPIC_*` 可共用中转站，**会话身份**与 Desktop 隔离。
 

@@ -96,7 +96,7 @@ def bucket_optimize_hints(bucket: str) -> str:
     if bucket == "cold_start":
         return (
             "cold_start：opencode 冷启动超时——下次重试前先 warmup 预热；"
-            "timeout 抬到 600s+；检查 relay :4002 连接稳定性；禁 invent。"
+            "timeout 抬到 600s+；检查 M1 ai-loop-router :4102 连接稳定性；禁 invent。"
         )
     if bucket == "hang":
         return (

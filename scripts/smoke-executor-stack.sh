@@ -7,7 +7,7 @@ FAIL=0
 
 echo "== CCC smoke-executor-stack =="
 echo "CCC_HOME=$CCC_HOME"
-echo "note: CCC Relay 恢复 :4000（Claude）/ :4002（OpenCode）；fail-open 切直连"
+echo "note: 2026-08-01 relay 清理: M1 ai-loop-router :4100（Claude）/ :4102（OpenCode）；fail-open 切直连"
 
 echo "-- resolve_claude_cli (default) --"
 DEFAULT_BIN="$(
@@ -50,7 +50,7 @@ fi
 
 if [[ "${SMOKE_CLAUDE_P:-}" == "1" && -n "$DEFAULT_BIN" ]]; then
   echo "-- claude -p smoke --"
-  BASE="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4000}"
+  BASE="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4100}"
   if printf 'Reply with exactly: OK\n' | ANTHROPIC_BASE_URL="$BASE" timeout 90 "$DEFAULT_BIN" -p --model "${ANTHROPIC_MODEL:-flash}" 2>/dev/null | tail -5; then
     echo "OK  claude -p"
   else

@@ -58,12 +58,12 @@ _endpoints() {
     cat <<EOF
 hub|${SERVER}/api/desktop/version
 sidecar|http://127.0.0.1:7788/health
-relay|http://127.0.0.1:4000/admin/status
+relay|http://127.0.0.1:4100/admin/status
 EOF
   else
     cat <<EOF
 hub|http://127.0.0.1:7777/api/desktop/version
-relay|http://127.0.0.1:4000/admin/status
+relay|http://127.0.0.1:4100/admin/status
 board|http://127.0.0.1:7775/
 EOF
   fi

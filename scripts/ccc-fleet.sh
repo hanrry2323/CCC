@@ -33,9 +33,9 @@ HOST_TAG="$(_host_tag)"
 
 # 完整 label 表(2017 + M1 共 12 个;含老 batch2 / flywheel / loop-monitor / opencode-serve
 # 保留作 backward-compat:disabled-ccc/ 里有这些 plist,bootout 时全收)
+# 2026-08-01 relay 清理：Mac2017 不再运行 relay 实例
 ALL_LABELS_2017=(
   "com.ccc.hk-egress-tunnel"
-  "com.ccc.relay.2017"
   "com.ccc.board"
   "com.ccc.chat-server"
   "com.ccc.engine"
@@ -45,7 +45,7 @@ ALL_LABELS_2017=(
   "com.ccc.opencode-serve"
 )
 ALL_LABELS_M1=(
-  "com.ccc.relay.m1"
+  "com.ai-loop-router"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
   "com.ccc.flywheel-scan"
@@ -68,13 +68,13 @@ fi
 # batch2-autonomy 依赖 engine(2017 专属)
 # opencode-serve 独立(单独跑 dev session)
 TIER_UI_M1=(
-  "com.ccc.relay.m1"
+  "com.ai-loop-router"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
 )
+# 2026-08-01 relay 清理：Mac2017 不再运行 relay 实例
 TIER_ALL_2017=(
   "com.ccc.hk-egress-tunnel"
-  "com.ccc.relay.2017"
   "com.ccc.board"
   "com.ccc.chat-server"
   "com.ccc.engine"
@@ -84,11 +84,12 @@ TIER_ALL_2017=(
   "com.ccc.opencode-serve"
 )
 TIER_ALL_M1=(
-  "com.ccc.relay.m1"
+  "com.ai-loop-router"
   "com.ccc.hub-tunnel"
   "com.ccc.agent-sidecar"
 )
 # 反向序:用于 stop
+# 2026-08-01 relay 清理：Mac2017 不再运行 relay 实例
 TIER_ALL_2017_REV=(
   "com.ccc.batch2-autonomy"
   "com.ccc.opencode-serve"
@@ -97,7 +98,6 @@ TIER_ALL_2017_REV=(
   "com.ccc.engine"
   "com.ccc.chat-server"
   "com.ccc.board"
-  "com.ccc.relay.2017"
   "com.ccc.hk-egress-tunnel"
 )
 
@@ -105,7 +105,7 @@ TIER_ALL_2017_REV=(
 _probe_url() {
   local label=$1
   case "$label" in
-    com.ccc.relay.*)    echo "http://127.0.0.1:4000/admin/status" ;;
+    com.ai-loop-router) echo "http://127.0.0.1:4100/admin/status" ;;
     com.ccc.board)      echo "http://127.0.0.1:7775/" ;;  # /health 会 302；根路径 200
     com.ccc.chat-server) echo "http://127.0.0.1:7777/api/desktop/projects" ;;
     com.ccc.engine)     echo "" ;;  # engine 无独立 health 端点,看 launchd 状态
@@ -279,13 +279,13 @@ start() {
 
   # 端口预检(避免双实例抢端口)
   if [[ "$HOST_TAG" == "2017" ]]; then
-    for port in 4000 4002 7775 7777; do
+    for port in 7775 7777; do
       if _port_in_use "$port"; then
         _log "WARN: 端口 $port 已被占,可能存在旧实例"
       fi
     done
   else
-    for port in 4000 7788 17777; do
+    for port in 4100 7788 17777; do
       if _port_in_use "$port"; then
         _log "WARN: 端口 $port 已被占,可能存在旧实例"
       fi
@@ -350,13 +350,13 @@ stop() {
       tier=("${TIER_ALL_2017_REV[@]}")
     else
       # M1 反向:agent-sidecar → hub-tunnel → relay
-      tier=("com.ccc.agent-sidecar" "com.ccc.hub-tunnel" "com.ccc.relay.m1")
+      tier=("com.ccc.agent-sidecar" "com.ccc.hub-tunnel" "com.ai-loop-router")
     fi
   elif [[ "$target" == "ui-tier" ]]; then
     if [[ "$HOST_TAG" != "m1" ]]; then
       _log "❌ ui-tier 仅 M1 模式"; return 1
     fi
-    tier=("com.ccc.agent-sidecar" "com.ccc.hub-tunnel" "com.ccc.relay.m1")
+    tier=("com.ccc.agent-sidecar" "com.ccc.hub-tunnel" "com.ai-loop-router")
   elif [[ "$target" == "engine" ]]; then
     tier=("com.ccc.engine")
   else
@@ -416,9 +416,10 @@ status() {
   fi
   local overall="green"
   # 核心编排组件（缺失/挂 → red）；其余 optional（flywheel 等）缺失不拉红
+  # 2026-08-01 relay 清理：Mac2017 不再运行 relay，仅 M1 有 com.ai-loop-router
   local -a core_labels=(
-    "com.ccc.relay.2017" "com.ccc.board" "com.ccc.chat-server" "com.ccc.engine"
-    "com.ccc.relay.m1" "com.ccc.hub-tunnel" "com.ccc.agent-sidecar"
+    "com.ai-loop-router" "com.ccc.board" "com.ccc.chat-server" "com.ccc.engine"
+    "com.ccc.hub-tunnel" "com.ccc.agent-sidecar"
   )
   printf "%-32s %-12s %-12s %s\n" "LABEL" "LOAD" "PROBE" "DETAIL"
   for label in "${labels[@]}"; do

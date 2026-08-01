@@ -47,11 +47,11 @@ bash scripts/install-agent-sidecar-plist.sh --start
 launchctl kickstart -k "gui/$(id -u)/com.ccc.agent-sidecar"
 ```
 
-验收：`curl http://127.0.0.1:7788/health`（出口应为 relay `:4000`；plist `ANTHROPIC_BASE_URL` 含 `:4000`）。
+验收：`curl http://127.0.0.1:7788/health`（出口应为 ai-loop-router `:4100`；plist `ANTHROPIC_BASE_URL` 含 `:4100`）。
 
-模型默认：**Relay `flash`**。M1 → 2017 Relay `http://192.168.3.116:4000`（可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`）；`ANTHROPIC_MODEL=flash`。  
+模型默认：**Relay `flash`**。M1 → ai-loop-router `http://127.0.0.1:4100`（可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`）；`ANTHROPIC_MODEL=flash`。  
 fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`（禁硬编码厂商 URL；MiniMax-M3 已退役）。  
-旧独立仓名 `ai-loop-router` 退役；功能 = 仓内 `relay/`，端口仍 `:4000`/`:4002`。
+旧独立仓名 `ai-loop-router` 已退役；功能由现行 ai-loop-router 接管，端口 `:4100`/`:4102`。
 
 ### 暂停：118.ink（opus 4.8）
 

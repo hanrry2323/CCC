@@ -46,7 +46,7 @@ export CCC_AGENT_HOST="${CCC_AGENT_HOST:-127.0.0.1}"
 export CCC_AGENT_PORT="${CCC_AGENT_PORT:-7788}"
 export CCC_AGENT_CWD="${CCC_AGENT_CWD:-$ROOT}"
 export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.ccc/loop-code}"
-export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-${CCC_AGENT_ROUTER:-http://127.0.0.1:4000}}"
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-${CCC_AGENT_ROUTER:-http://127.0.0.1:4100}}"
 export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-flash}"
 
 mkdir -p "$CLAUDE_CONFIG_DIR"
@@ -56,8 +56,8 @@ if [[ ! -f "${CLAUDE_CONFIG_DIR}/CLAUDE.md" ]]; then
 
 你是 **Desktop 对话面** 的产品/架构搭档（本机 sidecar → loop-code）。
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
-模型出口：本机 CCC Relay `:4000`；relay 不可达时 fail-open 直连。
-禁止：已退役 ai-loop-router、M1 本地 Hub/Board/Engine、业务第二树。
+模型出口：M1 ai-loop-router `:4100`；relay 不可达时 fail-open 直连。
+禁止：已退役 CCC relay(:4000)、M1 本地 Hub/Board/Engine、业务第二树。
 CLAUDE_MD_EOF
 fi
 

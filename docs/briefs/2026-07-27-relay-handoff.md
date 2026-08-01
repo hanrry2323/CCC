@@ -1,10 +1,11 @@
 # CCC Relay 中转站 · 会话移交包（付费-only · 2026-07-28）
 
 > **用途**：维护中转站时的开场 SSOT。  
+> **2026-08-01 更新**：CCC 仓内 `relay/` 已拆出，Mac2017 不再运行 relay 实例。  
+> 使用独立项目 `~/program/ai-loop-router`（M1，端口 4100/4102）。Mac2017 通过 LAN 连接。  
 > **权威**：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「模型通道简规 / CCC Relay」· [`docs/relay/KEY-POOL.md`](../relay/KEY-POOL.md)  
-> **代码**：`relay/` · 运行配置：2017 `~/.ccc/relay/upstreams.json`（**禁止进 git**）  
-> **封印证据（史）**：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)  
-> **部署**：[`docs/relay/DEPLOY-2017.md`](../relay/DEPLOY-2017.md)
+> **代码**：`~/program/ai-loop-router/` · 运行配置：M1 `~/.ccc/relay/upstreams.json`（**禁止进 git**）  
+> **封印证据（史）**：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)
 
 ---
 
@@ -17,7 +18,7 @@
 恰好 1 把启用 Go paid（第 2 把备份人切）、cache KPI、cooldown；
 Pro/code 轮空；免费/MiniMax 不进启用池；IP/HK 出口轮换已退役。
 不要跑金路径/看板/Ops UI，除非阻塞中转站。
-改码只动 relay/ 与相关 launchd/脚本；合入前 vitest；热更 kickstart 2017。
+改码只动 ~/program/ai-loop-router/ 与相关 launchd/脚本；合入前 vitest；热更 kickstart M1。
 密钥只动 ~/.ccc/relay/upstreams.json，永不提交。
 ```
 
@@ -26,7 +27,7 @@ Pro/code 轮空；免费/MiniMax 不进启用池；IP/HK 出口轮换已退役�
 ## 1. 现行拓扑（硬）
 
 ```
-Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
+Desktop / Claude / OpenCode  ──►  M1 ai-loop-router :4100 / :4102
                                     │
                                     └─ flash: 恰好 1× Go paid (zen/go/v1 · deepseek-v4-flash)
                                               （第 2 把备份 enabled=false，人切）
@@ -36,11 +37,12 @@ Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
 
 | 主机 | 服务 | 端口 | 说明 |
 |------|------|------|------|
-| 2017 | `com.ccc.relay.2017` | `:4000` Anthropic · `:4002` OpenAI chat | **编排权威**；钥 SSOT |
-| M1 | `com.ccc.relay.m1` | `:4000` | 旁路；Desktop/Claude **默认打 2017 LAN** |
+| M1 | `com.ai-loop-router` | `:4100` Anthropic · `:4102` OpenAI chat | **唯一 relay 实例**；钥 SSOT |
+| Mac2017 | — | — | 通过 `http://192.168.3.140:4100` 连接 M1 relay |
 | M1 | Hub 隧道 | `127.0.0.1:17777` | **与 relay 无关** |
 
-**已退役（勿恢复为 flash 主路径）**：HK `:18080` 出口轮换、`proxy` 字段挂 flash、OpenCode `loop/code` / xfyun 默认、真三档并行主业。
+**已退役（勿恢复为 flash 主路径）**：HK `:18080` 出口轮换、`proxy` 字段挂 flash、OpenCode `loop/code` / xfyun 默认、真三档并行主业。  
+**CCC 仓内 relay/ 已拆出**（2026-08-01），`com.ccc.relay.m1` / `com.ccc.relay.2017` plist 已退役。
 
 ---
 
@@ -63,36 +65,42 @@ Desktop / Claude / OpenCode  ──►  2017 relay :4000 / :4002
 
 | 工作 | 谁 |
 |------|-----|
-| 活体排障 / kickstart / 改钥 | **本机 Cursor**（SSH 2017） |
+| 活体排障 / kickstart / 改钥 | **M1 本机**（或 SSH） |
 | relay TS + vitest | Cursor（本开程不用 Claude 草稿工） |
 | 金路径 / 板面 | 另轨；与中转站正交 |
 
 ---
 
-## 4. 常用命令（2017）
+## 4. 常用命令（M1）
 
 ```bash
-launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
-curl -sS -m 5 -X POST 'http://127.0.0.1:4000/admin/cooldowns/clear'
-curl -sS -m 30 -D - -o /dev/null http://127.0.0.1:4000/v1/messages \
+launchctl kickstart -k "gui/$(id -u)/com.ai-loop-router"
+curl -sS -m 5 -X POST 'http://127.0.0.1:4100/admin/cooldowns/clear'
+curl -sS -m 30 -D - -o /dev/null http://127.0.0.1:4100/v1/messages \
   -H 'content-type: application/json' \
   -d '{"model":"flash","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}' \
   | grep -iE 'HTTP/|X-Routed|X-Fallback'
-curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -m json.tool | head
-cd ~/program/CCC/relay && npm test
+curl -sS 'http://127.0.0.1:4100/admin/usage?period=1h' | python3 -m json.tool | head
+cd ~/program/ai-loop-router && npm test
 ```
 
 探活：**勿**用 Anthropic `GET /health`（易 404 假红）；用 `POST /v1/messages` / admin / dashboard。
+
+## Mac2017 上验证
+
+```bash
+curl -sS http://192.168.3.140:4100/admin/status | head -5
+```
 
 ---
 
 ## 5. 验收句（Flash 封印）
 
-1. 2017 flash `POST /v1/messages` 稳定 200；关全部 free 后仍 200 且 `X-Routed-Upstream`=paid。  
+1. M1 flash `POST /v1/messages` 稳定 200；关全部 free 后仍 200 且 `X-Routed-Upstream`=paid。  
 2. 同 `x-session-id` 多轮后 `upstream_cache_token_ratio` 接近/≥0.9（付费钉会话）。  
 3. OpenCode / Engine 默认 **`loop/flash`**（非 xfyun、非 loop/code）。  
 4. flash upstreams **无** `proxy`；启用 Go paid **恰好 1**（另 1 备份 `enabled=false`）；thinking disabled。  
-5. `npm test` 绿；dist 热更 + kickstart；M1→2017 LAN 烟测 OK。
+5. `npm test` 绿；dist 热更 + kickstart；Mac2017→M1 LAN 烟测 OK。
 
 证据：[`2026-07-28-relay-flash-seal.md`](./2026-07-28-relay-flash-seal.md)。
 

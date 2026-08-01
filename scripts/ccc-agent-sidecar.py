@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CCC Desktop local Agent Sidecar.
 
-Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → 本机 relay :4000 → 上游 LLM
+Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → M1 ai-loop-router :4100 → 上游 LLM
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
 Security (2026-07-27):
@@ -11,7 +11,7 @@ Security (2026-07-27):
   - /health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \\
+  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://127.0.0.1:4100 \\
     .venv-hub/bin/python scripts/ccc-agent-sidecar.py
 """
 
@@ -45,12 +45,12 @@ os.environ.setdefault(
     "CLAUDE_CONFIG_DIR",
     str(Path.home() / ".ccc" / "loop-code"),
 )
-# 默认走 relay(:4000)；CCC_AGENT_ROUTER / CCC_ANTHROPIC_BASE_URL 可覆盖（三档契约）
+# 默认走 M1 ai-loop-router(:4100)；CCC_AGENT_ROUTER / CCC_ANTHROPIC_BASE_URL 可覆盖（三档契约）
 os.environ.setdefault(
     "ANTHROPIC_BASE_URL",
     os.environ.get("CCC_AGENT_ROUTER")
     or os.environ.get("CCC_ANTHROPIC_BASE_URL")
-    or "http://127.0.0.1:4000",
+    or "http://127.0.0.1:4100",
 )
 
 
@@ -326,10 +326,10 @@ def _normalize_project_path(project_path: str) -> str | None:
     return None
 
 
-# ── CCC Relay 2026-07-25 ───────────────────────────────────────────
-# sidecar /health 拉 relay :4000/admin/upstreams 真实三档目录,替代硬编码伪档
+# ── CCC Relay 2026-08-01 ───────────────────────────────────────────
+# sidecar /health 拉 M1 ai-loop-router :4100/admin/upstreams 真实三档目录
 # Desktop 模型快选 = relay 三档契约(flash/pro/code)
-_RELAY_BASE = (os.environ.get("CCC_RELAY_BASE_URL") or "http://127.0.0.1:4000").rstrip("/")
+_RELAY_BASE = (os.environ.get("CCC_RELAY_BASE_URL") or "http://127.0.0.1:4100").rstrip("/")
 _RELAY_CATALOG_TTL = 30.0
 _RELAY_CATALOG: dict = {"ts": 0.0, "models": None, "labels": None}
 

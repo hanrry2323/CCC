@@ -15,11 +15,11 @@ Desktop UI ←localhost SSE→ ccc-agent-sidecar (:7788)
 Desktop UI ──PUT messages(+tool_steps)备份 / transfer / flow──→ Hub（M1：`127.0.0.1:17777` 隧道）
 ```
 
-**模型出口默认**：CCC Relay **`flash`**（日常免费档）。  
-M1 Desktop/sidecar → **2017 Relay** `http://192.168.3.116:4000`（共享钥池；可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`）。  
+**模型出口默认**：ai-loop-router **`flash`**（日常免费档）。  
+M1 Desktop/sidecar → **M1 ai-loop-router** `http://127.0.0.1:4100`（共享钥池；可用 `CCC_ANTHROPIC_BASE_URL` 改回本机 `relay.m1`）。  
 默认模型逻辑名 **`flash`**；App 内快选三档 `flash`/`Pro`/`code`。  
 fail-open：`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`（**禁止**硬编码厂商 URL；MiniMax-M3 已退役）。  
-旧独立仓名 `ai-loop-router` 已退役；功能 = 仓内 `relay/`，端口仍 `:4000`/`:4002`。
+旧独立仓名 `ai-loop-router` 已退役；功能由现行 ai-loop-router 接管，端口 `:4100`/`:4102`。
 
 ## 启动（launchd 常驻）
 
@@ -32,14 +32,14 @@ fail-open：`CCC_RELAY_DIRECT_URL` 或 `~/.ccc/relay-direct.url`（**禁止**硬
 bash scripts/ccc-agent-sidecar.sh          # 前台
 bash scripts/ccc-agent-sidecar.sh status
 bash scripts/ccc-agent-sidecar.sh stop
-# 默认 relay flash（2017:4000）；覆盖：CCC_ANTHROPIC_BASE_URL / ANTHROPIC_MODEL=flash
+# 默认 relay flash（M1 ai-loop-router:4100）；覆盖：CCC_ANTHROPIC_BASE_URL / ANTHROPIC_MODEL=flash
 ```
 
-健康检查：`curl -s http://127.0.0.1:7788/health`（期望出口指向 relay `:4000`，模型档 `flash`）  
+健康检查：`curl -s http://127.0.0.1:7788/health`（期望出口指向 ai-loop-router `:4100`，模型档 `flash`）  
 若日志出现 `Too many open files`：`bash scripts/install-agent-sidecar-plist.sh --start`（plist 已抬高 FD 上限）后重开 Desktop。  
 日志：`~/Library/Logs/CCC/agent-sidecar.log` / `.err`  
 plist：`~/Library/LaunchAgents/com.ccc.agent-sidecar.plist`  
-验收：plist 中 `ANTHROPIC_BASE_URL` 指向 relay `:4000`（2017 或本机），且 `ANTHROPIC_AUTH_TOKEN` **不是** `sk-trae-real-token-not-needed`。
+验收：plist 中 `ANTHROPIC_BASE_URL` 指向 ai-loop-router `:4100`（M1 本机），且 `ANTHROPIC_AUTH_TOKEN` **不是** `sk-trae-real-token-not-needed`。
 
 
 ## 热路径可靠性（slot / warm / UX）
@@ -118,7 +118,7 @@ curl -s http://127.0.0.1:7788/health
 # Mac2017（SSH host mac2017）
 cd ~/program/CCC && git pull --ff-only origin main && git rev-parse --short HEAD
 launchctl kickstart -k "gui/$(id -u)/com.ccc.chat-server"
-# relay usage：GET :4000/admin/usage；Hub ops 透传；Desktop 顶栏复显
+# relay usage：GET :4100/admin/usage；Hub ops 透传；Desktop 顶栏复显
 curl -s -u ccc:ccc http://127.0.0.1:7777/api/ops/overview | head -c 200; echo
 ```
 

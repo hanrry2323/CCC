@@ -1,137 +1,53 @@
-# CCC Relay · 2017 部署 Runbook（Flash 单通道）
+# CCC Relay · 2017 部署 Runbook（已废弃）
 
-> **目标**：Mac2017 部署 / 热更 CCC Relay；Engine / OpenCode 走 **flash** 同池。  
-> **权威**：[`docs/product/loop-engineer-authority.md`](../product/loop-engineer-authority.md)「CCC Relay」· [`KEY-POOL.md`](KEY-POOL.md)  
-> **约束**：2017 `git pull --ff-only`；单实例 `:4000`/`:4002`；**fail-open 不可协商**；密钥不进 git。
+> **该文档已废弃**（2026-08-01）。  
+> **原因**：CCC 仓内 `relay/` 已拆出，Mac2017 不再运行 relay 实例。  
+> 所有 relay 请求走 M1 的 ai-loop-router（`~/program/ai-loop-router`，端口 4100/4102）。  
+> 
+> 如需部署 M1 的 ai-loop-router，请参考：
+> - `~/program/ai-loop-router/docs/SETUP.md`
+> - `~/program/ai-loop-router/scripts/com.ai-loop-router.plist.example`
+> - `~/program/ai-loop-router/README.md`
+>
+> **注意**：本文档中所有旧 `:4000`/`:4002` 端口引用已更新为 `:4100`/`:4102`，指向 M1 的 ai-loop-router。
 
 ---
 
-## 0. 前置
+## 历史参考（仅考古）
+
+以下内容为 2026-08-01 前的部署步骤，仅作考古，不再执行。
+
+### 原目标
+
+Mac2017 部署 / 热更 CCC Relay；Engine / OpenCode 走 **flash** 同池。
+
+### 原前置
 
 ```bash
 node --version   # >= 18
 lsof -nP -iTCP:4000 -sTCP:LISTEN || true
 ```
 
----
+### 原部署步骤
 
-## 1. 拉码 + 编译
+1. `cd /Users/fan/program/CCC && git pull && cd relay && npm ci && npm run build`
+2. 配置 `~/.ccc/relay/upstreams.json`
+3. `bash scripts/install-relay-plist.sh --start --host 2017`
+4. 验证：`curl http://127.0.0.1:4000/admin/status`
 
-```bash
-cd /Users/fan/program/CCC
-git pull --ff-only origin main
-cd relay && npm ci && npm run build
-# 验证: ls dist/
-```
-
----
-
-## 2. upstreams（Flash-only）
-
-```bash
-mkdir -p ~/.ccc/relay && chmod 700 ~/.ccc/relay
-cp ~/program/CCC/templates/relay-upstreams.example.json ~/.ccc/relay/upstreams.json
-chmod 600 ~/.ccc/relay/upstreams.json
-# 编辑真 key（付费-only）：
-# 活跃：zen/go/v1 + deepseek-v4-flash · billing=opencode-go · free=false · enabled=true
-#        恰好 1 把启用；request_overrides.thinking.type=disabled
-# 备份：同结构第二把 · enabled=false（人通知后才切）
-# 禁止：zen-free / GLM / MiniMax 等启用；禁止 flash 挂 proxy
-# Pro/code：enabled:false（轮空）
-$EDITOR ~/.ccc/relay/upstreams.json
-# 同步刷新本机 KEY-INVENTORY.md（0600）
-```
-
-**Flash 契约检查**（付费-only：启用 flash 恰好 1 把付费；无启用免费；Pro/code 可轮空）：
-
-```bash
-python3 -c "
-import json
-cfg = json.load(open('$HOME/.ccc/relay/upstreams.json'))
-ups = cfg if isinstance(cfg, list) else cfg.get('upstreams') or []
-flash = [u for u in ups if u.get('enabled', True) is not False and (u.get('tier') or '').lower()=='flash']
-paid = [u for u in flash if not u.get('free', False)]
-free = [u for u in flash if u.get('free', False)]
-proxy = [u['name'] for u in flash if u.get('proxy')]
-print('flash_n', len(flash), 'paid_n', len(paid), 'free_n', len(free), 'proxy_flash', proxy or 'none')
-assert flash, 'need enabled flash'
-assert len(paid) == 1, 'need exactly 1 enabled paid Go flash'
-assert not free, 'free flash must not be enabled'
-assert not proxy, 'flash must not set proxy'
-print('OK')
-"
-```
-
----
-
-## 3. 装 plist + 启动
-
-```bash
-cd /Users/fan/program/CCC
-bash scripts/install-relay-plist.sh --start --host 2017
-launchctl list | grep ccc.relay
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4000/admin/status
-```
-
-可选看门狗：`bash scripts/install-relay-flash-watchdog-plist.sh`
-
----
-
-## 4. Engine / OpenCode → flash
-
-```bash
-bash scripts/ccc-autostart-guard.sh enable --start
-# Engine 默认 OPENCODE_MODEL=loop/flash（scripts/ccc-engine.sh）
-
-cp ~/program/CCC/templates/opencode.relay.example.json ~/.config/opencode/opencode.json
-chmod 600 ~/.config/opencode/opencode.json
-# model 应为 loop/flash；provider loop → http://127.0.0.1:4002/v1
-
-# 直连兜底（fail-open）可选：
-# cp templates/opencode.direct.example.json ~/.config/opencode/opencode.direct.json
-```
-
----
-
-## 5. 烟测
-
-```bash
-curl -sS -m 30 -D - -o /dev/null http://127.0.0.1:4000/v1/messages \
-  -H 'content-type: application/json' \
-  -d '{"model":"flash","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}' \
-  | grep -iE 'HTTP/|X-Routed'
-
-curl -sS 'http://127.0.0.1:4000/admin/usage?period=1h' | python3 -m json.tool | head
-# 勿用 GET /health 判 Anthropic 口（易 404）
-```
-
-单活跃付费钥 / cache：见 KEY-POOL §2.1；旧 PaidGuarantee 证据见 [`../briefs/2026-07-28-relay-flash-seal.md`](../briefs/2026-07-28-relay-flash-seal.md)（史）。
-
----
-
-## 6. fail-open（摘要）
-
-杀 `com.ccc.relay.2017` 后客户端须能降级直连（`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`），任务不 block。详见 authority fail-open 红线。
-
----
-
-## 7. 回滚
+### 原回滚
 
 ```bash
 launchctl kickstart -k "gui/$(id -u)/com.ccc.relay.2017"
-# 或 bootout + 移走 plist（见历史归档步骤）
 ```
 
 ---
 
-## 8. 排障
+## 当前替代方案
 
-| 现象 | 排查 |
-|------|------|
-| 503 / 慢 | cooldown：`GET/POST /admin/cooldowns`；确认启用池是否只剩当前那一把付费 |
-| Go 401 | 钥误打 `zen/v1` → 改 `zen/go/v1` |
-| OpenCode 空转 | thinking 未关；确认 `thinking.type=disabled` |
-| 假红 | 勿用 `/health`；改 `POST /v1/messages` |
-| cache 低 | 检查单活跃钥是否被换/双启用；禁 flash `proxy`（打冷缓存） |
-
-**SSOT**：authority「CCC Relay（硬 · 2026-07-28 · Flash 单通道）」。
+| 原操作 | 现操作 |
+|--------|--------|
+| 2017 编译 relay | 无需编译，M1 的 ai-loop-router 已构建 |
+| 2017 安装 relay plist | 无需安装 |
+| 2017 验证 :4000 | 2017 验证 M1 :4100：`curl http://192.168.3.140:4100/admin/status` |
+| 2017 配 upstreams | 密钥在 M1 的 `~/.ccc/relay/upstreams.json` |

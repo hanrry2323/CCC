@@ -16,7 +16,7 @@ from _config import AgentEnv, Config, EngineEnv, HubEnv, RelayEnv
 def test_relay_env_defaults():
     """无 env 时 RelayEnv 走默认。"""
     env = RelayEnv()
-    assert env.base_url == "http://127.0.0.1:4000"
+    assert env.base_url == "http://127.0.0.1:4100"
     assert env.direct_url == ""
     assert env.upstream_config == ""
     assert env.admin_status_path == "/admin/status"
@@ -73,7 +73,7 @@ def test_config_exposes_sub_dataclasses():
 def test_config_backward_compat():
     """旧字段保留,默认值与改造前一致。"""
     c = Config()
-    assert c.model == "loop/flash"  # 2026-07-28 Flash 单通道 · :4002
+    assert c.model == "loop/flash"  # 2026-08-01 Flash 单通道 · ai-loop-router :4100
     assert c.max_retry == 5
     assert c.task_retry_budget == 8
     assert c.max_wallclock == 7200
@@ -81,9 +81,9 @@ def test_config_backward_compat():
 
 
 def test_config_old_and_new_consistent():
-    """Config.relay.base_url 与 ccc-engine.sh 默认 :4000 一致(契约验证)。"""
+    """Config.relay.base_url 与 ai-loop-router :4100 一致(契约验证)。"""
     c = Config()
-    assert c.relay.base_url == "http://127.0.0.1:4000"
+    assert c.relay.base_url == "http://127.0.0.1:4100"
     assert c.engine.retry_budget == 8
     assert c.agent.port == 7788
     # Hub URL 默认含 :17777(M1 隧道);Hub 真实端口 7777 在 ccc-fleet / chat-server plist

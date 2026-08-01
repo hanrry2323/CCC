@@ -14,7 +14,7 @@
 | Hub（2017 / 排障 LAN） | `http://192.168.3.116:7777`（**非** Desktop/sidecar 默认） |
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`** |
 | 远程浏览器聊 | **M1 `:7788`**（与 Desktop 同口；勿开 2017 `#/chat` 当产品路径） |
-| Mac2017 编排面 | Engine = Claude→CCC Relay flash；dev = OpenCode→Relay `:4002` code 档（fail-open 直连） |
+| Mac2017 编排面 | Engine = Claude→ai-loop-router flash；dev = OpenCode→ai-loop-router `:4102` code 档（fail-open 直连） |
 | 网页 Hub | **编排口 / 已停更兼容**（`#/board` `#/ops` → Desktop 侧栏；`#/console` 应急） |
 | 意图完成口径 | `released` ≠ 完成；见 [`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md) |
 
@@ -42,7 +42,7 @@ Hub `:7777/#/chat` 会跳转对话口。详见 [`../product/hub-remote-managemen
 ```text
 M1 对话面（意图工具）             信息流（仅契约）              Mac2017 编排面（队列消费）
 Desktop (SwiftUI)                POST /api/desktop/transfer    Hub :7777 (API host · 默认 127.0.0.1)
-Sidecar :7788 → Relay :4000 ─────────────────────────────────► Board :7775
+Sidecar :7788 → ai-loop-router :4100 ─────────────────────────────────► Board :7775
 loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engine
 本机 sessions 落盘                                          Claude→relay flash · OpenCode→code
 ```
@@ -83,7 +83,7 @@ loop-code cli (arm64)  ◄── SSE flow: epic/fanout/works ────  Engin
 | B4 | 闲聊全文不进 product/dev（仅 gate/plan） | Engine/board roles 无 `.ccc/chat` 读取；transfer 只带 gate 字段 |
 | B5 | 常态无 Desktop→Hub `/api/chat` | Hub `/api/chat` 路由已删（404）；`APIClient.streamChat` 走 sidecar |
 | — | PUT messages = 备份 | 响应 `role=backup`；Engine 不读 |
-| — | sidecar → Relay flash（:4000） | plist `ANTHROPIC_BASE_URL` 含 `:4000`（M1 可指 2017 LAN） |
+| — | sidecar → ai-loop-router flash（:4100） | plist `ANTHROPIC_BASE_URL` 含 `:4100`（M1 可指 2017 LAN） |
 | — | 2017 Engine `enabled` | `ccc-autostart-guard.sh enable --start`；`mode=enabled` |
 
 ## 常用命令

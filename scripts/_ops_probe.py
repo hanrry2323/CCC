@@ -37,8 +37,8 @@ _RUN_DEBOUNCE: dict[str, float] = {}
 _RUN_LOCK = Lock()
 
 PORT_GROUPS = (
-    # CCC Relay 2026-07-25:中转站回归(:4000 anthropic/:4002 openai-chat),纳入 CCC 端口组健康探针
-    ("CCC", (4000, 4002, 7775, 7777, 7778)),
+    # 2026-08-01 relay 清理:M1 ai-loop-router :4100/:4102, 退役 CCC relay(:4000/:4002)
+    ("CCC", (4100, 4102, 7775, 7777, 7778)),
     ("HP", (8080, 8082, 8083)),
     ("qb", (8095, 8096)),
 )
@@ -225,11 +225,11 @@ def _empty_router_tiers() -> dict[str, dict[str, int]]:
 def fetch_router_usage(
     *,
     host: str = "127.0.0.1",
-    port: int = 4000,
+    port: int = 4100,
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
-    """CCC Relay:真拉 relay :4000/admin/stats（含 healthy/upstreams）,30s 缓存。
+    """CCC Relay:真拉 M1 ai-loop-router :4100/admin/stats（含 healthy/upstreams）,30s 缓存。
 
     旧 /admin/usage 只有 by_tier.n/tk，Desktop 运维会显示全 0；改读 /admin/stats。
     返回三档键统一为 flash / Pro / code（relay 内部 pro 小写映射到 Pro）。
@@ -327,12 +327,12 @@ def _today_records(records: list[dict]) -> list[dict]:
 def fetch_router_upstream_daily(
     *,
     host: str = "127.0.0.1",
-    port: int = 4000,
+    port: int = 4100,
     timeout: float = 2.5,
     use_cache: bool = True,
     usage_path: str | None = None,
 ) -> dict:
-    """CCC Relay 2026-07-26:每上游今日调用量+token。
+    """CCC Relay 2026-08-01:每上游今日调用量+token(ai-loop-router :4100)。
 
     从 relay /admin/usage?period=1d 取 by_upstream(调用数+token)，
     再读本地 usage.json 补充每上游成功率+平均延迟+今日成本。
@@ -455,12 +455,12 @@ def fetch_router_upstream_daily(
 def fetch_router_upstream_trend(
     *,
     host: str = "127.0.0.1",
-    port: int = 4000,
+    port: int = 4100,
     days: int = 7,
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
-    """CCC Relay 2026-07-26:近 N 天每上游每日趋势。
+    """CCC Relay 2026-08-01:近 N 天每上游每日趋势(ai-loop-router :4100)。
 
     从 relay /admin/usage?period={days}d 拿 trend(日 token 总量)
     和 by_upstream 的每日调用明细。
@@ -1369,7 +1369,7 @@ def _is_ccc_control_port_down(dp: dict[str, Any]) -> bool:
     if host.startswith("192.168.3.131"):  # feiniu
         return False
     # CCC 编排口 / Mac2017
-    if port in (7775, 7776, 7777, 7778, 4000, 4002):
+    if port in (7775, 7776, 7777, 7778, 4100, 4102):
         return True
     if "Mac 2017" in machine or "CCC" in machine or "CCC" in name:
         return True

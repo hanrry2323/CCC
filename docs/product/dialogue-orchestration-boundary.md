@@ -81,7 +81,7 @@ Desktop 右栏投影 **本机 `boundEpicId`** 对应的 epic/works。同一对�
 | Engine | Mac2017 `com.ccc.engine`（控制面 `enabled`） | 远端开发闭环；product=Claude→Relay `flash`，dev=OpenCode→Relay `code` |
 | 业务仓看板 | Mac2017 `apps/<id>/.ccc/board` | 编排权威状态 |
 | 本机会话 | M1 `~/Library/Application Support/CCCDesktop/sessions/` | 对话权威；Hub 镜像为辅 |
-| 模型出口 | CCC Relay 三档 `flash`/`Pro`/`code`（`:4000`/`:4002`） | fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`；详见 authority |
+| 模型出口 | ai-loop-router 三档 `flash`/`Pro`/`code`（`:4100`/`:4102`） | fail-open：`CCC_RELAY_DIRECT_URL` / `~/.ccc/relay-direct.url`；详见 authority |
 
 ---
 

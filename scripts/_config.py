@@ -89,7 +89,7 @@ class RelayEnv:
     上游实现细节(MiniMax/Anthropic/OpenCode Zen/讯飞/智谱)在本类被换,
     与下游解耦。
     """
-    base_url: str = "http://127.0.0.1:4000"      # CCC_RELAY_BASE_URL
+    base_url: str = "http://127.0.0.1:4100"      # CCC_RELAY_BASE_URL (ai-loop-router)
     direct_url: str = ""                           # CCC_RELAY_DIRECT_URL
     upstream_config: str = ""                       # LOOP_UPSTREAMS_FILE(留空走 ~/.ccc/relay/upstreams.json)
     admin_status_path: str = "/admin/status"
@@ -139,7 +139,7 @@ class AgentEnv:
     hub_url: str = "http://127.0.0.1:17777"         # CCC_HUB_URL(同上)
     auth_required: bool = True                      # CCC_AGENT_AUTH(默认强制鉴权)
     upstream_model: str = "flash"                  # ANTHROPIC_MODEL
-    relay_base_url: str = "http://127.0.0.1:4000"  # CCC_RELAY_BASE_URL(侧文件用,同 RelayEnv.base_url)
+    relay_base_url: str = "http://127.0.0.1:4100"  # CCC_RELAY_BASE_URL(侧文件用,同 RelayEnv.base_url, ai-loop-router)
     relay_direct_url: str = ""                      # CCC_RELAY_DIRECT_URL
 
     @classmethod
@@ -212,7 +212,7 @@ class Config:
     # 被 board-server.py 依赖的 board_path 函数使用
 
     # ── 模型 ──
-    model: str = "loop/flash"  # dev_role 默认(2026-07-28 Flash 单通道 · :4002)
+    model: str = "loop/flash"  # dev_role 默认(2026-08-01 Flash 单通道 · ai-loop-router :4100)
 
     # ── 标准默认值 ──
     DEFAULT_RETRY: int = 3  # phase 默认重试次数（无 retry 字段时用）

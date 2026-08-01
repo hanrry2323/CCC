@@ -29,7 +29,7 @@
 | Sidecar `/api/projects` | 含 `qb`/`ccc-demo` 等 · `engine_eligible` | 列项通（反代） |
 | 隧道 `/api/desktop/projects` | **401 Unauthorized** | 断点：Desktop/隧道鉴权与 sidecar 默认无 auth 不一致，排查时勿当「Hub 挂了」 |
 | Hub `/api/health`（17777 与 2017:7777） | **404** | 断点：健康探针路径需对齐（勿用错 path 判死） |
-| 2017 relay `:4000/health` | anthropic 模式 Not found | 用正确探活（fleet probe 已 up） |
+| 2017 relay `:4100/health` | anthropic 模式 Not found | 用正确探活（fleet probe 已 up） |
 
 ### qb 板面快照（权威仓 `/Users/fan/program/apps/qb`）
 
@@ -192,7 +192,7 @@
 | 戳记 | `docs/reports/ccc-layer1-golden-path-v4.md` 含 `GOLDEN_PATH_OK_V4` |
 | OpenCode 自 commit | `c250b6f` — `phase1: update golden path v4 with UTC + GOLDEN_PATH_OK_V4`（仅该报告文件） |
 | transfer | Hub `executor_intent=opencode`（非 Desktop UI 点选；`feasibility=ok`） |
-| Engine 模型 | `OPENCODE_MODEL=loop/code` → relay `:4002` → `opencode-go-paid-code` |
+| Engine 模型 | `OPENCODE_MODEL=loop/code` → ai-loop-router `:4102` → `opencode-go-paid-code` |
 
 ### 过程（真问题 → 处置）
 

@@ -876,7 +876,7 @@ Executor ← 跑 Claude Code CLI + ANTHROPIC_BASE_URL=4000 + ANTHROPIC_MODEL=fla
 
 **关键事实**：
 - `claude -p` 是 Claude Code CLI 命令（不在 Mavis framework 内），直接调 Claude
-- env `ANTHROPIC_BASE_URL=http://127.0.0.1:4000` 让 Claude Code CLI 走 ai-loop-router 而非直连 Anthropic
+- env `ANTHROPIC_BASE_URL=http://127.0.0.1:4100` 让 Claude Code CLI 走 ai-loop-router 而非直连 Anthropic
 - ai-loop-router 是 qb 项目的中转站（2026-06-20 上线），提供 `flash`/`code` 2 个 tier，背后转 Claude
 - **完全不需要 Mavis provider 注册 anthropic** — `claude -p` 是独立通路
 
@@ -917,7 +917,7 @@ Executor ← 跑 Claude Code CLI + ANTHROPIC_BASE_URL=4000 + ANTHROPIC_MODEL=fla
 2. **不是** `mavis session new <agent>`？                             [ ] 是
 3. prompt 文件包含红线段（不动源代码 / 不写 verdict / 不跳阶段）？   [ ] 是
 4. 写明"你不是 Planner"避免 role confusion？                          [ ] 是
-5. env ANTHROPIC_BASE_URL=http://127.0.0.1:4000 在 Executor 上下文生效？
+5. env ANTHROPIC_BASE_URL=http://127.0.0.1:4100 在 Executor 上下文生效？
                                                                      [ ] 是 (测试: claude -p --model flash 'echo hello' < 5s)
 ```
 
@@ -1422,7 +1422,7 @@ Layer 1 (单 agent 擅长)              Layer 2 (CCC 跨平台调度)
 
 **Sanity check**（任何怀疑就跑这条）：
 ```bash
-echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4000 claude -p
+echo "用一句话回答：1+1=?" | ANTHROPIC_BASE_URL=http://127.0.0.1:4100 claude -p
 # 期望: "2" 或类似简答
 # 不期望: "老板好" 等默认开场白
 ```
@@ -1721,7 +1721,7 @@ check "X" "cd $ABC_ROOT && grep -q foo file"
 
 **问题**：v0.8 重构时 `opencode run --model flash` 一直返回 `Unexpected server error`。**v0.9a 排查**发现：
 - `~/.opencode/opencode.json` 注册的 `flash` 全名是 `loop/flash`（provider `loop` + model `flash`）
-- `loop` provider 走 `http://localhost:4002/v1` 中转站
+- `loop` provider 走 `http://localhost:4102/v1` 中转站
 - 裸 `flash` → opencode 找不到该 model → 返 server error
 
 **真相**：

@@ -74,7 +74,7 @@ if ! bash "$SCRIPT_DIR/opencode-watchdog.sh" >> "$LOG_FILE" 2>&1; then
   fi
 fi
 
-# --- Step 1.5: CCC Relay 中转站健康检查（relay/ :4000）---
+# --- Step 1.5: 跳过中转站健康检查（relay/ 已退役，统一走 ai-loop-router）---
 # OpenCode 走本机 opencode.json（讯飞等直连）；relay 不可达时 fail-open 切直连。
 log "Step 1.5: skip retired ai-loop-router health (OpenCode uses local provider config)"
 

@@ -33,9 +33,9 @@ def test_parse_infra_machines_and_ports():
     assert "Server" in mac["role"] or "CCC" in mac["role"]
     assert 7777 in data["ports"]
     assert 7775 in data["ports"]
-    # CCC Relay 2026-07-25:中转站回归(:4000 anthropic/:4002 openai-chat),端口在 CCC 组内
-    assert 4000 in data["ports"]
-    assert 4002 in data["ports"]
+    # CCC Relay 2026-08-01:ai-loop-router M1(:4100 anthropic/:4102 openai-chat),端口在 CCC 组内
+    assert 4100 in data["ports"]
+    assert 4102 in data["ports"]
     assert data["ports"][7777]["host"] == "192.168.3.116"
     assert data["ports"][7777]["machine"] == "Mac 2017"
     # deprecated strikethrough port should be skipped
@@ -121,7 +121,7 @@ def test_port_groups_cover_ccc():
 def test_fetch_router_usage_relay_down():
     """CCC Relay 2026-07-25:fetch 实际拉 relay,无可达 relay → ok=False, source=relay_down, 软失败。"""
     out = op.fetch_router_usage(use_cache=False)
-    # 跑测试时本地 :4000 不一定有 relay;接受 ok=False+source=relay_down 与 ok=True 两种
+    # 跑测试时本地 :4100 不一定有 relay;接受 ok=False+source=relay_down 与 ok=True 两种
     if not out["ok"]:
         assert out["source"] in ("relay_down", "retired")
         # down 兜底:三档零值,不抛

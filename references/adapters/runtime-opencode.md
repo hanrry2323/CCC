@@ -140,8 +140,8 @@ opencode run --model loop/flash "msg"   # 唯一允许
 
 **模型映射**（v0.9a 实测）：
 - 对外名称：`flash`（CLAUDE.md 红线：唯一对外模型名）
-- 实际 opencode 模型：`loop/flash`（走 `localhost:4002` 中转站，~/.opencode/opencode.json 注册）
-- 中转站：AI Loop Router `http://localhost:4002/v1`
+- 实际 opencode 模型：`loop/flash`（走 M1 `localhost:4102` ai-loop-router，~/.opencode/opencode.json 注册）
+- 中转站：AI Loop Router `http://localhost:4102/v1`（M1）
 
 **禁止**：
 - 省略 `--model`（落到 opencode 默认值 `loop/code`，不是 flash）

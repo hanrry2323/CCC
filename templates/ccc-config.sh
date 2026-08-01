@@ -51,4 +51,4 @@ export DEV_MAX_EXEC_TIME="${DEV_MAX_EXEC_TIME:-3600}"  # 单次执行最大秒�
 
 # === opencode CLI 调用 ===
 export AGENT_PLANNER="${AGENT_PLANNER:-claude}"
-export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4000}"
+export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4100}"

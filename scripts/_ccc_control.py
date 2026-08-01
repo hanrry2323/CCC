@@ -270,7 +270,7 @@ def set_mode(mode: Mode, *, reason: str = "", source: str = "cli") -> dict[str, 
         # M1：enabled 也不写 engine；ui_paths = 对话栈
         _start_paths = []
         _ui_paths = [
-            "launchd:com.ccc.relay.m1",
+            "launchd:com.ai-loop-router",
             "launchd:com.ccc.hub-tunnel",
             "launchd:com.ccc.agent-sidecar",
         ]
