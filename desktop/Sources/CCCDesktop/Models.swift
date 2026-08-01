@@ -285,6 +285,9 @@ struct TransferRequest: Encodable {
     let feasibility_reason: String?
     let executor_intent: String
     let skills_hint: [String]
+    /// stage5 硬切换：transfer-gate 必填（missing → 400）。库路径引用，如 skills/write-code。
+    let skill_ref: String
+    let prompt_ref: String
     let plan_md: String
     let complexity: String
     /// Hub API v1 幂等键；重复提交返回已有 epic

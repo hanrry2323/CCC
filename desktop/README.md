@@ -34,7 +34,7 @@ swift run CCCDesktop
 
 | 键 | 默认 |
 |----|------|
-| Server | `http://192.168.3.116:7777` |
+| Server | `http://127.0.0.1:17777`（本机 SSH 隧道；LAN `:7777` 仅排障） |
 | 用户/密码 | `ccc` / `ccc` |
 
 环境变量等价：启动前可设 `CCC_SERVER`（应用内 `@AppStorage` 优先）。

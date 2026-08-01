@@ -3925,6 +3925,8 @@ final class AppModel: ObservableObject {
             let title = String(d.title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
             let goal = d.goal.trimmingCharacters(in: .whitespacesAndNewlines)
             let accLines = d.acceptanceLines
+            // stage5 硬切换：gate 必填 skill_ref/prompt_ref；定稿块显式值优先，否则按执行面映射
+            let skillRef = SkillRefResolver.skillRef(forExecutor: d.executorIntent, fallback: d.skillRef)
             var payload: [String: Any] = [
                 "project_id": pid,
                 "title": title,
@@ -3934,6 +3936,8 @@ final class AppModel: ObservableObject {
                 "feasibility": d.feasibility,
                 "feasibility_reason": d.feasibilityReason,
                 "executor_intent": d.executorIntent,
+                "skill_ref": skillRef,
+                "prompt_ref": SkillRefResolver.promptRef(forSkill: skillRef),
                 "complexity": d.complexity,
                 "bump_version": d.bumpVersion,
                 "plan_md": d.planMd,
@@ -4178,6 +4182,8 @@ final class AppModel: ObservableObject {
             if !d.feasibility.isEmpty { form.feasibility = d.feasibility }
             form.feasibilityReason = d.feasibilityReason
             if !d.executorIntent.isEmpty { form.executor = d.executorIntent }
+            if !d.skillRef.isEmpty { form.skillRef = d.skillRef }
+            if !d.promptRef.isEmpty { form.promptRef = d.promptRef }
             if !d.planMd.isEmpty { form.planMd = d.planMd }
             if !d.complexity.isEmpty { form.complexity = d.complexity }
             form.bumpVersion = d.bumpVersion
@@ -4371,6 +4377,8 @@ final class AppModel: ObservableObject {
         let cx = form.complexity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let complexity = ["small", "medium", "large"].contains(cx) ? cx : "medium"
         let note = form.humanNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        // stage5 硬切换：outbox 带 skill_ref/prompt_ref，sidecar flush 直接透传（不落默认 write-code）
+        let skillRef = SkillRefResolver.skillRef(forExecutor: form.executor, fallback: form.skillRef)
         let outboxItem = LocalSessionStore.TransferOutboxItem(
             client_request_id: requestId,
             project_id: pid,
@@ -4387,7 +4395,9 @@ final class AppModel: ObservableObject {
             bump_version: form.bumpVersion,
             human_note: note,
             attempts: 0,
-            saved_at: ISO8601DateFormatter().string(from: Date())
+            saved_at: ISO8601DateFormatter().string(from: Date()),
+            skill_ref: skillRef,
+            prompt_ref: SkillRefResolver.promptRef(forSkill: skillRef)
         )
         setTransferDelivery(tid, .queued)
 
@@ -6082,6 +6092,8 @@ final class AppModel: ObservableObject {
             return
         }
         // R12：Hub 往返不锁全局 busy
+        // stage5 硬切换：gate 必填 skill_ref/prompt_ref，由执行面映射
+        let skillRef = SkillRefResolver.skillRef(forExecutor: form.executor, fallback: nil)
         let req = TransferRequest(
             project_id: projectId,
             thread_id: tid,
@@ -6093,6 +6105,8 @@ final class AppModel: ObservableObject {
             feasibility_reason: nil,
             executor_intent: form.executor,
             skills_hint: [],
+            skill_ref: skillRef,
+            prompt_ref: SkillRefResolver.promptRef(forSkill: skillRef),
             plan_md: form.goal,
             complexity: form.complexity,
             client_request_id: UUID().uuidString
