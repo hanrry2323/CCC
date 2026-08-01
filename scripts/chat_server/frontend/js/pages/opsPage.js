@@ -3,12 +3,16 @@
 import { apiGet, apiPost } from '../api.js';
 import { dialogueEntryUrl } from '../ports.js';
 import { dailyItems } from '../opsSelectors.js';
+import { collectRedItems, redCount } from '../opsRed.js';
 
 let _root = null;
 let _timer = null;
 let _lastAgg = null;
+// 窗口 J: 「只看红灯」开关状态（持久化，避免重进页面丢状态）
+let _redOnly = false;
 
 const FOLD_KEY = 'ccc.ops.fold';
+const RED_ONLY_KEY = 'ccc.ops.redonly';
 
 function esc(s) {
   if (s == null) return '';
@@ -69,12 +73,18 @@ function html() {
     <span class="ops-sub">后勤态势 · 供弹 · 红灯</span>
     <span style="flex:1"></span>
     <a class="hub-btn" href="#/console">控制台</a>
+    <button type="button" class="hub-btn" id="ops-red-toggle" title="只看告警与红灯项" aria-pressed="false"><span class="btn-txt">只看红灯</span> <span class="badge" id="ops-red-n">0</span></button>
     <button type="button" class="hub-btn" id="ops-refresh">刷新</button>
   </div>
 
   <div class="ops-section">
     <h3>状态</h3>
     <div id="ops-status" class="ops-card ops-status-bar"></div>
+  </div>
+
+  <div class="ops-section" id="ops-red-aggregate" hidden>
+    <h3>红灯聚合 <span class="badge" id="ops-red-aggregate-n">0</span></h3>
+    <div id="ops-red-list" class="ops-card"></div>
   </div>
 
   <div class="ops-section">
@@ -532,6 +542,67 @@ function renderAlerts(agg) {
   el.innerHTML = htmlOut;
 }
 
+const RED_DOMAIN_LABELS = {
+  risks: '风险',
+  ports: '端口',
+  machines: '机器',
+  deploy: '部署',
+  workspaces: '工作区',
+  engine: 'Engine',
+  relay: 'relay',
+};
+
+/** 窗口 J: 红灯聚合渲染 — collectRedItems 结果按 severity 排序展示。 */
+function renderRedAggregate(items) {
+  const el = _root.querySelector('#ops-red-list');
+  const nEl = _root.querySelector('#ops-red-aggregate-n');
+  if (nEl) nEl.textContent = String(items.length);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = '<div class="ops-empty">当前无红灯/告警</div>';
+    return;
+  }
+  const order = { high: 0, warn: 1 };
+  const sorted = items
+    .slice()
+    .sort((a, b) => (order[a.severity] ?? 2) - (order[b.severity] ?? 2));
+  el.innerHTML = sorted
+    .map(
+      (it) => `<div class="ops-red-item ops-red-sev-${esc(it.severity)}">
+        <span class="ops-red-tag">${esc(RED_DOMAIN_LABELS[it.domain] || it.domain)}</span>
+        <div class="ops-red-body">
+          <div class="title">${esc(it.title)}</div>
+          ${it.detail ? `<div class="detail">${esc(it.detail)}</div>` : ''}
+        </div>
+      </div>`
+    )
+    .join('');
+}
+
+/** 窗口 J: 「只看红灯」切换 — 纯显示层：聚合区显隐 + root 类控制冗余域隐藏。 */
+function applyRedOnly(on) {
+  on = !!on;
+  const changed = on !== _redOnly;
+  _redOnly = on;
+  _root?.classList.toggle('ops-red-only', on);
+  const btn = _root?.querySelector('#ops-red-toggle');
+  if (btn) {
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const txt = btn.querySelector('.btn-txt');
+    if (txt) txt.textContent = on ? '退出只看红灯' : '只看红灯';
+  }
+  const aggEl = _root?.querySelector('#ops-red-aggregate');
+  if (aggEl) aggEl.hidden = !on;
+  if (changed) {
+    try {
+      localStorage.setItem(RED_ONLY_KEY, on ? '1' : '0');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
 function renderRisksLow(d) {
   const el = _root.querySelector('#ops-risks-low');
   const n = _root.querySelector('#ops-risk-n');
@@ -782,6 +853,12 @@ async function poll() {
 
   renderAuto(agg.auto || { tasks: [] });
   renderAdoptables(agg);
+
+  // 窗口 J: 红灯聚合 — 各域渲染保持原样（降级不变），聚合只读 data 不回写
+  const redItems = collectRedItems(agg);
+  const nEl = _root.querySelector('#ops-red-n');
+  if (nEl) nEl.textContent = String(redCount(redItems));
+  renderRedAggregate(redItems);
 }
 
 async function runReview(apply) {
@@ -801,6 +878,18 @@ async function runReview(apply) {
 export async function mountOps(el) {
   _root = el;
   el.innerHTML = html();
+
+  // 窗口 J: 恢复「只看红灯」状态 + 绑定切换
+  try {
+    _redOnly = localStorage.getItem(RED_ONLY_KEY) === '1';
+  } catch (_) {
+    _redOnly = false;
+  }
+  applyRedOnly(_redOnly);
+  const redToggle = el.querySelector('#ops-red-toggle');
+  if (redToggle) {
+    redToggle.addEventListener('click', () => applyRedOnly(!_redOnly));
+  }
 
   // 刷新按钮
   const refreshBtn = el.querySelector('#ops-refresh');

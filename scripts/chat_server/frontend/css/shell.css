@@ -195,6 +195,33 @@ body.hub-mode #app {
   flex-shrink: 0;
 }
 
+/* 窗口 J: 看板筛选/排序第二行（client-side，后端无 q/status/sort） */
+.board-toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--ccc-border-subtle);
+  background: var(--ccc-bg-surface);
+}
+
+.board-toolbar-filters input,
+.board-toolbar-filters select {
+  font-family: var(--ccc-font-sans);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--ccc-radius-sm);
+  border: 1px solid var(--ccc-border-base);
+  background: var(--ccc-bg-layer);
+  color: var(--ccc-text-base);
+}
+
+.board-filter-input {
+  min-width: 220px;
+  max-width: 320px;
+}
+
 .board-ws {
   font-size: 12px;
   color: var(--ccc-text-muted);
@@ -951,6 +978,66 @@ body.hub-mode #app {
   background: var(--ccc-bg-layer);
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+/* 窗口 J: 「只看红灯」— 聚合区 + toggle + 隐藏冗余域 */
+#ops-red-aggregate[hidden] {
+  display: none;
+}
+
+.ops-red-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--ccc-border-base);
+  border-radius: var(--ccc-radius-sm);
+  background: var(--ccc-bg-layer);
+}
+
+.ops-red-item .ops-red-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ops-red-item .title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ops-red-item .detail {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-top: 2px;
+}
+
+.ops-red-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: var(--ccc-text-muted);
+  background: var(--ccc-bg-surface);
+  border: 1px solid var(--ccc-border-subtle);
+}
+
+.ops-red-sev-high { border-left-color: #c44; }
+.ops-red-sev-warn { border-left-color: #c99870; }
+.ops-red-sev-high .ops-red-tag { color: #c44; border-color: #c44; }
+.ops-red-sev-warn .ops-red-tag { color: #a86a00; border-color: #c99870; }
+
+#ops-red-toggle.active {
+  border-color: var(--ccc-bg-accent);
+  color: var(--ccc-bg-accent);
+  font-weight: 600;
+}
+
+.ops-page.ops-red-only .ops-fold,
+.ops-page.ops-red-only #ops-logistics,
+.ops-page.ops-red-only #ops-auto,
+.ops-page.ops-red-only #ops-adoptables {
+  display: none;
 }
 
 .ops-hint {
