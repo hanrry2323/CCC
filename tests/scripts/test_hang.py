@@ -65,13 +65,13 @@ def test_hang_retry_counter_persistence(tmp_path, monkeypatch):
 
 
 def test_hang_counter_corrupt_file_resets(tmp_path, monkeypatch):
+    from engine import hang, hang_support
+
     counter_file = tmp_path / "engine-hang-retries.json"
     counter_file.write_text("not json {", encoding="utf-8")
-    monkeypatch.setattr("engine.hang._HANG_COUNTER_FILE", counter_file)
+    monkeypatch.setattr(hang_support, "_HANG_COUNTER_FILE", counter_file)
 
-    from engine import hang
-
-    hang._hang_retry_counter = {"stale": 99}
+    hang_support._hang_retry_counter.update({"stale": 99})
     hang._load_hang_retry_counter()
     assert hang._hang_retry_counter == {}
 
