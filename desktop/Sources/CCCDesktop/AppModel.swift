@@ -3922,31 +3922,10 @@ final class AppModel: ObservableObject {
         var failHints: [String] = []
         for (idx, d) in ready.enumerated() {
             await Task.yield()
-            let title = String(d.title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
-            let goal = d.goal.trimmingCharacters(in: .whitespacesAndNewlines)
-            let accLines = d.acceptanceLines
+            let title = TransferRequestBuilder.normalizedTitle(d.title)
             // stage5 硬切换：gate 必填 skill_ref/prompt_ref；定稿块显式值优先，否则按执行面映射
-            let skillRef = SkillRefResolver.skillRef(forExecutor: d.executorIntent, fallback: d.skillRef)
-            var payload: [String: Any] = [
-                "project_id": pid,
-                "title": title,
-                "goal": goal.isEmpty ? title : goal,
-                "acceptance": accLines,
-                "pipeline": d.pipeline,
-                "feasibility": d.feasibility,
-                "feasibility_reason": d.feasibilityReason,
-                "executor_intent": d.executorIntent,
-                "skill_ref": skillRef,
-                "prompt_ref": SkillRefResolver.promptRef(forSkill: skillRef),
-                "complexity": d.complexity,
-                "bump_version": d.bumpVersion,
-                "plan_md": d.planMd,
-                "card_kind": "epic",
-            ]
             // 多卡时仅第一张后用 supersede 避免 intent_not_stable 互堵
-            if idx > 0 {
-                payload["supersede_goals"] = true
-            }
+            let payload = TransferRequestBuilder.gatePayload(from: d, projectId: pid, supersedeGoals: idx > 0)
             do {
                 let v = try await client.validateTransfer(payload)
                 if v.ok != true {
@@ -4264,17 +4243,7 @@ final class AppModel: ObservableObject {
     }
 
     private func normalizeAcceptance(_ text: String) -> String {
-        text
-            .split(separator: "\n")
-            .map { line -> String in
-                var s = String(line).trimmingCharacters(in: .whitespaces)
-                while s.hasPrefix("-") || s.hasPrefix("*") {
-                    s = String(s.dropFirst()).trimmingCharacters(in: .whitespaces)
-                }
-                return s
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        AcceptanceText.bulletStrippedJoined(text)
     }
 
     private func extractSection(_ text: String, names: [String]) -> String? {
@@ -4321,14 +4290,10 @@ final class AppModel: ObservableObject {
         }
         let form = transferForm(for: tid)
         // Hub gate 标题 ≤80；超长软裁，避免 outbox 8 次耗尽仍无人感知
-        let titleRaw = form.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = String(titleRaw.prefix(80))
-        let goal = form.goal.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pipeline = form.pipeline.trimmingCharacters(in: .whitespacesAndNewlines)
-        let accLines = form.acceptance
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        let title = TransferRequestBuilder.normalizedTitle(form.title)
+        let goal = TransferRequestBuilder.normalizedGoal(form.goal)
+        let pipeline = TransferRequestBuilder.normalizedPipeline(form.pipeline)
+        let accLines = AcceptanceText.plainLines(form.acceptance)
         if title.isEmpty || goal.isEmpty || pipeline.isEmpty || accLines.isEmpty {
             mutateTransferForm(tid) { $0.error = "请填齐：标题、目标、产线、至少一条验收" }
             showToast("转任务失败：请填齐标题、目标、产线与验收")
@@ -4374,30 +4339,14 @@ final class AppModel: ObservableObject {
         mutateTransferForm(tid) { $0.error = nil }
         Task { await refreshProjectTaskState() }
 
-        let cx = form.complexity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let complexity = ["small", "medium", "large"].contains(cx) ? cx : "medium"
-        let note = form.humanNote.trimmingCharacters(in: .whitespacesAndNewlines)
         // stage5 硬切换：outbox 带 skill_ref/prompt_ref，sidecar flush 直接透传（不落默认 write-code）
-        let skillRef = SkillRefResolver.skillRef(forExecutor: form.executor, fallback: form.skillRef)
-        let outboxItem = LocalSessionStore.TransferOutboxItem(
-            client_request_id: requestId,
-            project_id: pid,
-            thread_id: tid,
-            title: title,
-            goal: goal,
-            acceptance: accLines,
-            pipeline: pipeline,
-            feasibility: form.feasibility,
-            feasibility_reason: form.feasibility == "blocked" ? form.feasibilityReason : nil,
-            executor_intent: form.executor,
-            plan_md: planBody,
-            complexity: complexity,
-            bump_version: form.bumpVersion,
-            human_note: note,
-            attempts: 0,
-            saved_at: ISO8601DateFormatter().string(from: Date()),
-            skill_ref: skillRef,
-            prompt_ref: SkillRefResolver.promptRef(forSkill: skillRef)
+        let outboxItem = TransferRequestBuilder.outboxItem(
+            projectId: pid,
+            threadId: tid,
+            form: form,
+            planBody: planBody,
+            clientRequestId: requestId,
+            savedAt: ISO8601DateFormatter().string(from: Date())
         )
         setTransferDelivery(tid, .queued)
 
@@ -6083,33 +6032,18 @@ final class AppModel: ObservableObject {
 
     func createManualEpic(projectId: String, form: ManualEpicForm) async {
         let tid = threadIdForProject( projectId)
-        let accLines = form.acceptance
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        let accLines = AcceptanceText.plainLines(form.acceptance)
         guard !form.title.isEmpty, !form.goal.isEmpty, !form.pipeline.isEmpty, !accLines.isEmpty else {
             showToast("请填齐标题、目标、产线与验收")
             return
         }
         // R12：Hub 往返不锁全局 busy
         // stage5 硬切换：gate 必填 skill_ref/prompt_ref，由执行面映射
-        let skillRef = SkillRefResolver.skillRef(forExecutor: form.executor, fallback: nil)
-        let req = TransferRequest(
-            project_id: projectId,
-            thread_id: tid,
-            title: form.title,
-            goal: form.goal,
-            acceptance: accLines,
-            pipeline: form.pipeline,
-            feasibility: "ok",
-            feasibility_reason: nil,
-            executor_intent: form.executor,
-            skills_hint: [],
-            skill_ref: skillRef,
-            prompt_ref: SkillRefResolver.promptRef(forSkill: skillRef),
-            plan_md: form.goal,
-            complexity: form.complexity,
-            client_request_id: UUID().uuidString
+        let req = TransferRequestBuilder.request(
+            projectId: projectId,
+            threadId: tid,
+            form: form,
+            clientRequestId: UUID().uuidString
         )
         do {
             try await prepareClient(ensureAgent: false)
