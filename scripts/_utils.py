@@ -70,14 +70,14 @@ def now_iso_utc() -> str:
 
 
 # v0.61.0 三档契约:默认走 M1 ai-loop-router(:4100),上游由 upstreams.json 路由
-# （旧 CCC relay(:4000) 已退役，统一由 ai-loop-router 接管）
+# （旧 CCC relay 已退役，统一由 ai-loop-router 接管）
 _DEFAULT_AGENT_PLANNER_URL = "http://127.0.0.1:4100"
 
 
 def get_relay_url() -> str:
     """取 Claude Anthropic 兼容出口 URL（健康检查 / product 共用）。
 
-    优先级：AGENT_PLANNER_BASE_URL → ANTHROPIC_BASE_URL → relay :4000 默认。
+    优先级：AGENT_PLANNER_BASE_URL → ANTHROPIC_BASE_URL → relay :4100 默认。
     """
     import os
     for key in ("AGENT_PLANNER_BASE_URL", "ANTHROPIC_BASE_URL"):
@@ -121,7 +121,7 @@ def relay_is_up(
                 if host is None:
                     host = _p.hostname or "127.0.0.1"
                 if port is None:
-                    port = _p.port or 4000
+                    port = _p.port or 4100
             except Exception as exc:  # noqa: BLE001
                 import logging as _logging
                 _logging.getLogger("ccc.utils").warning(
