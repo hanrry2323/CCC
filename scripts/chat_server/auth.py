@@ -36,6 +36,15 @@ def viewer_password() -> str:
     return os.environ.get("CCC_HUB_VIEWER_PASS", "").strip()
 
 
+def require_bearer() -> bool:
+    """CCC_AUTH_REQUIRE_BEARER=1 → 仅 Bearer 会话 token（拒绝 Basic，401）。
+
+    默认 off → Basic 兼容（legacy 全权 + 迁移 debug 日志）。
+    每次调用读 env（镜像 viewer_password），测试 monkeypatch 即切两态。
+    """
+    return os.environ.get("CCC_AUTH_REQUIRE_BEARER", "").strip().lower() in ("1", "true", "yes")
+
+
 def _issue_session(role: str) -> str:
     global _session_issue_count
     token = secrets.token_urlsafe(32)
@@ -157,6 +166,22 @@ def check_auth(request: Request) -> dict:
     if bearer:
         request.state.ccc_auth_scheme = "bearer"
         return bearer
+    if require_bearer():
+        # REQUIRED（CCC_AUTH_REQUIRE_BEARER=1）：仅 Bearer；Basic → 401。
+        # 例外：POST /api/auth/token 直调 _principal_from_basic（引导换 token），不经过本门。
+        _log.warning(
+            "basic auth rejected on %s (CCC_AUTH_REQUIRE_BEARER=1)",
+            request.url.path,
+        )
+        _auth_failures[ip].append(time.monotonic())
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Bearer session token required (CCC_AUTH_REQUIRE_BEARER=1); "
+                "obtain via POST /api/auth/token"
+            ),
+            headers={"WWW-Authenticate": 'Bearer realm="CCC Chat"'},
+        )
     principal = _principal_from_basic(request.headers.get("Authorization", ""))
     if principal is not None:
         request.state.ccc_auth_scheme = "basic"
