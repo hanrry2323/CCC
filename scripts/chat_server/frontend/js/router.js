@@ -1,7 +1,7 @@
 /** CCC Hub hash router — #/board | #/ops | #/console | #/chat
  *
  * Hub = 编排口（看板/运维）；对话口在 M1 :7788。
- * 在 Hub(:7777) 打开 #/chat → 跳转 M1 dialogue_url（非产品聊入口）。
+ * 在 Hub(:7777) 打开 #/chat → 显示内联跳转提示（不再强制跳转）。
  * 见 docs/product/hub-remote-management.md
  */
 
@@ -21,10 +21,6 @@ export function currentRoute() {
 
 export function navigate(route) {
   const r = ROUTES.includes(route) ? route : DEFAULT_ROUTE;
-  if (r === 'chat' && !isDialogueShell()) {
-    redirectHubChatToDialogue();
-    return;
-  }
   if (currentRoute() === r && location.hash) {
     applyRoute(r);
     return;
@@ -44,8 +40,8 @@ export function initRouter(onChange) {
   }
 }
 
-/** Hub 编排机上的 #/chat → 外跳 M1 对话口。 */
-export function redirectHubChatToDialogue() {
+/** Hub 编排机上的 #/chat → 内联渲染跳转提示，不再自动跳转。 */
+function showHubChatNotice() {
   const url = dialogueEntryUrl();
   const view = document.getElementById('view-chat');
   if (view) {
@@ -59,14 +55,6 @@ export function redirectHubChatToDialogue() {
       '<p style="font-size:12px;margin-top:14px;opacity:.6"><a href="#/board">返回看板</a></p>' +
       '</div>';
   }
-  // 自动跳转（可被用户点「返回看板」打断前已导航）
-  try {
-    if (!sessionStorage.getItem('ccc_skip_dialogue_redirect')) {
-      location.assign(url);
-    }
-  } catch (_) {
-    location.assign(url);
-  }
 }
 
 export function applyRoute(route) {
@@ -78,7 +66,7 @@ export function applyRoute(route) {
     document.querySelectorAll('.hub-nav-link[data-route]').forEach((el) => {
       el.classList.toggle('active', el.dataset.route === 'chat');
     });
-    redirectHubChatToDialogue();
+    showHubChatNotice();
     if (_onChange) _onChange('chat');
     return;
   }

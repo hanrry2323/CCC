@@ -60,7 +60,7 @@ function persistFold(el) {
 function html() {
   const f = (id, def = false) => (foldOpen(id, def) ? ' open' : '');
   return `
-<div class="ops-page">
+<div class="ops-page hub-page">
   <div class="orch-hint">编排口 · 运维。对话请开 <a href="http://192.168.3.140:7788/">M1 :7788</a></div>
   <div class="ops-bar">
     <h2>运维</h2>
@@ -82,7 +82,7 @@ function html() {
 
   <div class="ops-section">
     <h3>需关注 <span class="badge" id="ops-alert-n">0</span></h3>
-    <div id="ops-alerts"></div>
+    <div id="ops-alerts" class="ops-card"></div>
   </div>
 
   <details class="ops-fold" data-fold="fleet"${f('fleet')}>
@@ -111,7 +111,7 @@ function html() {
       </div>
       <div class="ops-section">
         <h3>工作区 Diff</h3>
-        <div id="ops-workspaces"></div>
+        <div id="ops-workspaces" class="ops-card"></div>
       </div>
       <div class="ops-section">
         <h3>知识库</h3>
@@ -135,16 +135,16 @@ function html() {
       <div class="ops-grid-2">
         <div class="ops-section">
           <h3>文档债</h3>
-          <div id="ops-docs"></div>
+          <div id="ops-docs" class="ops-card"></div>
         </div>
         <div class="ops-section">
           <h3>质量日摘要</h3>
-          <div id="ops-quality"></div>
+          <div id="ops-quality" class="ops-card"></div>
         </div>
       </div>
       <div class="ops-section">
         <h3>其它风险 <span class="badge" id="ops-risk-n">0</span></h3>
-        <div id="ops-risks-low"></div>
+        <div id="ops-risks-low" class="ops-card"></div>
       </div>
     </div>
   </details>
@@ -152,7 +152,7 @@ function html() {
   <div class="ops-section">
     <h3>弹药队列 <span class="badge" id="ops-auto-n">0</span></h3>
     <p class="ops-hint">只读 · ops-auto / daily-review backlog（业务仓）</p>
-    <div id="ops-auto"></div>
+    <div id="ops-auto" class="ops-card"></div>
   </div>
 
   <details class="ops-fold" data-fold="actions"${f('actions')}>
@@ -166,7 +166,7 @@ function html() {
       </div>
       <div class="ops-section">
         <h3>可采纳项（有业务仓 workspace）</h3>
-        <div id="ops-adoptables"></div>
+        <div id="ops-adoptables" class="ops-card"></div>
       </div>
     </div>
   </details>

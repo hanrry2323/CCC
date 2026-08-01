@@ -1,6 +1,2 @@
-(function () {
-  var saved = localStorage.getItem('ccc-theme') || localStorage.getItem('opencode-color-scheme');
-  var theme = saved === 'light' || saved === 'dark' ? saved
-    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme', theme);
-})();
+// 暗色模式已取消，始终使用 light 主题
+document.documentElement.setAttribute('data-theme', 'light');

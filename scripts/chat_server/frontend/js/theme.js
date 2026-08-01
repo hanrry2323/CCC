@@ -14,7 +14,7 @@ export function getThemeScheme() {
 }
 
 export function setThemeScheme(scheme) {
-  const val = scheme === 'light' || scheme === 'dark' || scheme === 'system' ? scheme : 'system';
+  const val = scheme === 'light' || scheme === 'system' ? scheme : 'system';
   localStorage.setItem(THEME_KEY, val);
   localStorage.removeItem(LEGACY_KEY);
   applyTheme(val);
@@ -22,15 +22,11 @@ export function setThemeScheme(scheme) {
 }
 
 export function applyTheme(scheme) {
-  const resolved = scheme || getThemeScheme();
-  const isDark =
-    resolved === 'dark' ||
-    (resolved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  // 暗色模式已取消，始终使用 light 主题
+  document.documentElement.setAttribute('data-theme', 'light');
 }
 
 export function toggleLightDark() {
-  const current = getThemeScheme();
-  const next = current === 'dark' ? 'light' : 'dark';
-  return setThemeScheme(next);
+  // 暗色模式已取消，始终为 light
+  return setThemeScheme('light');
 }

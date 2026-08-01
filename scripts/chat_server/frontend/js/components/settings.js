@@ -60,9 +60,8 @@ export async function openSettings() {
     '<div class="settings-row">' +
     '<span class="settings-label">主题</span>' +
     '<select class="settings-select" id="settings-theme">' +
-    '<option value="system">跟随系统</option>' +
     '<option value="light">浅色</option>' +
-    '<option value="dark">深色</option>' +
+    '<option value="system">跟随系统</option>' +
     '</select>' +
     '</div>' +
     '</div>' +

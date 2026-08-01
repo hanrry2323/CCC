@@ -15,8 +15,8 @@ function esc(s) {
 
 function html() {
   return `
-<div class="console-page">
-  <div style="background:#f5f0e8;border-bottom:1px solid #d4cdc0;padding:6px 16px;font-size:13px;text-align:center;color:#5a4f42;font-family:system-ui,sans-serif">
+<div class="console-page hub-page">
+  <div class="console-banner">
     控制台为 SSH/应急兜底；日常看板与运维请用 <strong>CCC Desktop</strong>。
   </div>
   <div class="console-bar">

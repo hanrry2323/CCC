@@ -17,10 +17,7 @@ export function initTitlebar() {
     });
   }
 
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    const scheme = getThemeScheme();
-    if (scheme === 'system') applyTheme('system');
-  });
+  // 暗色模式已取消，不再监听系统主题变化
 
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {

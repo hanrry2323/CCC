@@ -316,14 +316,14 @@ function _buildFlowCol(col, _sig) {
 
 function html() {
   return `
-<div class="board-page">
+<div class="board-page hub-page">
   <div class="orch-hint">编排口 · 看板。对话请开 <a href="http://192.168.3.140:7788/">M1 :7788</a></div>
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
-      <button type="button" class="primary" id="board-new">+ 新建大卡</button>
-      <button type="button" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
-      <button type="button" id="board-epic-toggle" class="board-epic-toggle" title="收起/展开待办大卡">大卡</button>
+      <button type="button" class="hub-btn primary" id="board-new">+ 新建大卡</button>
+      <button type="button" class="hub-btn" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
+      <button type="button" class="hub-btn board-epic-toggle" id="board-epic-toggle" title="收起/展开待办大卡">大卡</button>
       <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
     </div>
     <div class="board-ws-btns" id="board-ws-btns" role="group" aria-label="项目"></div>
@@ -344,8 +344,8 @@ function html() {
     <label>描述</label><textarea id="board-fde" placeholder="方案要点 / 给 Claude 拆分的上下文"></textarea>
     <label>看板</label><select id="board-fws"></select>
     <div class="btns">
-      <button type="button" id="board-cancel">取消</button>
-      <button type="button" class="primary" id="board-mk">创建</button>
+      <button type="button" class="hub-btn" id="board-cancel">取消</button>
+      <button type="button" class="hub-btn primary" id="board-mk">创建</button>
     </div>
   </div>
 </div>
@@ -359,7 +359,7 @@ function html() {
       <div id="board-dmt" style="padding:6px 0;border-top:1px solid var(--ccc-border-subtle);font-size:11px"></div>
       <div id="board-devs"><h3 style="font-size:11px;color:var(--ccc-text-muted)">活动流</h3></div>
     </div>
-    <div class="btns" style="margin-top:10px"><button type="button" id="board-dclose">关闭</button></div>
+    <div class="btns" style="margin-top:10px"><button type="button" class="hub-btn" id="board-dclose">关闭</button></div>
   </div>
 </div>`;
 }
