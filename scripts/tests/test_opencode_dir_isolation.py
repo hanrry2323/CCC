@@ -26,7 +26,9 @@ from _workspace_isolation import (  # noqa: E402
 )
 
 
-def test_build_cmd_includes_dir_and_pure(tmp_path):
+def test_build_cmd_includes_dir_without_pure_by_default(monkeypatch, tmp_path):
+    # R-13: --pure 默认关（opencode 1.17.13 --pure 导致 exit 255 无输出）
+    monkeypatch.delenv("CCC_OPENCODE_PURE", raising=False)
     cmd = build_opencode_run_cmd(
         "opencode",
         "loop/code",
@@ -35,8 +37,19 @@ def test_build_cmd_includes_dir_and_pure(tmp_path):
     )
     assert "--dir" in cmd
     assert str(tmp_path.resolve()) in cmd
-    assert "--pure" in cmd
+    assert "--pure" not in cmd
     assert cmd[cmd.index("--dir") + 1] == str(tmp_path.resolve())
+
+
+def test_build_cmd_includes_pure_when_env_set(monkeypatch, tmp_path):
+    monkeypatch.setenv("CCC_OPENCODE_PURE", "1")
+    cmd = build_opencode_run_cmd(
+        "opencode",
+        "loop/code",
+        message="do it",
+        cwd=tmp_path,
+    )
+    assert "--pure" in cmd
 
 
 def test_build_cmd_requires_cwd():
@@ -44,7 +57,8 @@ def test_build_cmd_requires_cwd():
         build_opencode_run_cmd("opencode", "loop/code", message="x", cwd=None)
 
 
-def test_build_cmd_with_prompt_file_keeps_dir(tmp_path):
+def test_build_cmd_with_prompt_file_keeps_dir_without_file_flag(tmp_path):
+    # R-14: prompt 走 stdin，不再传 --file（长 positional 会被 opencode 1.17 SIGTERM）
     cmd = build_opencode_run_cmd(
         "opencode",
         "loop/code",
@@ -53,7 +67,7 @@ def test_build_cmd_with_prompt_file_keeps_dir(tmp_path):
         cwd=tmp_path,
     )
     assert "--dir" in cmd
-    assert "--file" in cmd
+    assert "--file" not in cmd
 
 
 def test_require_cwd_rejects_empty():
