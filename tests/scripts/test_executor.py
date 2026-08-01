@@ -130,7 +130,9 @@ class TestOpenCodeExecutor:
                     "long-p", long_prompt, timeout=5, cwd=str(tmp_path)
                 )
                 cmd = popen.call_args[0][0]
-                assert "--file" in cmd
+                # R-14: 长 prompt 走 stdin，不再传 --file（对齐 scripts/tests/test_opencode_dir_isolation.py）
+                assert "--file" not in cmd
+                assert "Read attached file and execute the instructions inside." in cmd
 
     def test_executor_protocol_not_implemented(self):
         from _executor import Executor

@@ -57,7 +57,7 @@ if [[ ! -f "${CLAUDE_CONFIG_DIR}/CLAUDE.md" ]]; then
 你是 **Desktop 对话面** 的产品/架构搭档（本机 sidecar → loop-code）。
 帮用户定意图、定稿可下达的 epic；转任务后由 **Mac2017 Engine** 自动编排。
 模型出口：M1 ai-loop-router `:4100`；relay 不可达时 fail-open 直连。
-禁止：已退役 CCC relay(:4000)、M1 本地 Hub/Board/Engine、业务第二树。
+禁止：已退役旧 relay（现 M1 ai-loop-router :4100/:4102）、M1 本地 Hub/Board/Engine、业务第二树。
 CLAUDE_MD_EOF
 fi
 
