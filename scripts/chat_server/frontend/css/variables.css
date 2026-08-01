@@ -76,6 +76,8 @@
   --ccc-overlay-scrim: rgba(40, 30, 20, 0.28);
   --ccc-success: #3d7a5a;
   --ccc-danger: #b54a3a;
+  /* chat 感知层警告（断连横幅/模型档位提示，窗口 1 任务 I） */
+  --ccc-warn: #b45309;
   /* relay fail-open 降级提示专用琥珀（「橙不是红」规范） */
   --ops-amber: #b45309;
 }

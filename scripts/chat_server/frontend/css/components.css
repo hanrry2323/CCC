@@ -2717,3 +2717,33 @@
   color: #b45309;
   font-weight: 600;
 }
+
+/* ── chat 感知层（窗口 1 任务 I）：断连横幅 + 模型档位警告 ──────────── */
+.chat-conn-banner {
+  background: var(--ccc-bg-layer);
+  border-bottom: 1px solid var(--ccc-danger);
+  color: var(--ccc-danger);
+  padding: 6px var(--ccc-space-lg);
+  font-size: var(--ccc-font-size-sm, 13px);
+  text-align: center;
+}
+.chat-conn-banner[hidden] {
+  display: none;
+}
+.chat-model-warn {
+  background: var(--ccc-bg-layer);
+  border-top: 1px solid var(--ccc-warn);
+  border-bottom: 1px solid var(--ccc-warn);
+  color: var(--ccc-warn);
+  padding: 6px var(--ccc-space-lg);
+  font-size: var(--ccc-font-size-xs, 12px);
+}
+.chat-model-warn[hidden] {
+  display: none;
+}
+/* 首包等待：打字气泡切成文字态 */
+.typing-wait {
+  font-size: var(--ccc-font-size-sm, 13px);
+  color: var(--ccc-text-muted);
+  animation: none;
+}

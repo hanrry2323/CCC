@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { hubUrl, agentUrl } from './ports.js';
 import { friendlyChatError } from './chatErrors.js';
 import { getToken, clearToken } from './auth.js';
+import { reportConnectionFailure } from './chatStatus.js';
 
 /** Hub 请求头：Bearer 会话 token（无 token → 空头；登录换 token 走 auth.js login）。 */
 function _headers(json = true) {
@@ -46,10 +47,17 @@ async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
 /** Agent sidecar 请求（Bearer）；禁止走 Hub /api/agent 反代。 */
 async function _fetchAgent(pathOrUrl, options = {}, json = true) {
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : agentUrl(pathOrUrl);
-  let resp = await fetch(url, {
-    ...options,
-    headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
-  });
+  let resp;
+  try {
+    resp = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
+    });
+  } catch (e) {
+    // 网络层抛错（sidecar 不可达）→ 上报断连横幅，再按原路径抛出
+    reportConnectionFailure();
+    throw e;
+  }
   if (resp.status === 401) {
     sessionStorage.removeItem('ccc_agent_token');
     localStorage.removeItem('ccc_agent_token');
@@ -356,7 +364,12 @@ export async function streamChat(
     }
   } catch (e) {
     if (e.name !== 'AbortError') {
-      onError('网络错误: ' + e.message);
+      // TypeError = fetch 网络层失败（sidecar 不可达）→ 友好文案，不裸显 "Failed to fetch"
+      const msg =
+        e instanceof TypeError
+          ? friendlyChatError(503, null)
+          : '网络错误: ' + e.message;
+      onError(msg);
     }
   } finally {
     if (!opts.abortController) {

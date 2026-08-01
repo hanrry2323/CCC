@@ -121,3 +121,74 @@ def test_auth_role_and_headers():
         assert(JSON.stringify(m.authHeaders('')) === '{}', '无 token 空头');
         """,
     )
+
+
+def test_chat_status_conn_state_machine():
+    """断连状态机：failure → down（幂等）；recovery → ok（窗口 I）。"""
+    _run_pure(
+        "js/chatStatus.js",
+        r"""
+        assert(m.nextConnStatus(m.CONN_OK, 'failure') === m.CONN_DOWN, 'failure → down');
+        assert(m.nextConnStatus(m.CONN_DOWN, 'failure') === m.CONN_DOWN, 'down+failure 幂等');
+        assert(m.nextConnStatus(m.CONN_DOWN, 'recovery') === m.CONN_OK, 'recovery → ok');
+        assert(m.nextConnStatus(m.CONN_OK, 'recovery') === m.CONN_OK, 'ok+recovery 保持');
+        """,
+    )
+
+
+def test_chat_status_classify_health():
+    """健康判定：正常 models → ok；空 models → empty-models；fetch 失败 → unreachable。"""
+    _run_pure(
+        "js/chatStatus.js",
+        r"""
+        assert(
+          m.classifyHealth({ fetchFailed: false, payload: { models: ['flash'] } }) === m.HEALTH_OK,
+          '正常 models → ok',
+        );
+        assert(
+          m.classifyHealth({ fetchFailed: false, payload: { models: [] } }) === m.HEALTH_EMPTY_MODELS,
+          '空 models → empty-models',
+        );
+        assert(
+          m.classifyHealth({ fetchFailed: false, payload: null }) === m.HEALTH_EMPTY_MODELS,
+          'payload null → empty-models',
+        );
+        assert(
+          m.classifyHealth({ fetchFailed: false, payload: { models: 'x' } }) === m.HEALTH_EMPTY_MODELS,
+          'models 非数组 → empty-models',
+        );
+        assert(
+          m.classifyHealth({ fetchFailed: true, payload: null }) === m.HEALTH_UNREACHABLE,
+          'fetch 失败 → unreachable',
+        );
+        assert(m.classifyHealth(null) === m.HEALTH_UNREACHABLE, 'null → unreachable');
+        """,
+    )
+
+
+def test_chat_status_health_warn_text():
+    """模型档位警告文案：ok → ''；两种异常态 → 非空。"""
+    _run_pure(
+        "js/chatStatus.js",
+        r"""
+        assert(m.healthWarnText(m.HEALTH_OK) === '', 'ok → 无警告');
+        assert(m.healthWarnText(m.HEALTH_UNREACHABLE).length > 0, 'unreachable → 有警告');
+        assert(m.healthWarnText(m.HEALTH_EMPTY_MODELS).length > 0, 'empty-models → 有警告');
+        assert(m.connBannerText().length > 0, '断连横幅文案非空');
+        """,
+    )
+
+
+def test_chat_status_wait_hint_text():
+    """首包等待提示：超时且无首包 → 文案；有首包/未超时 → ''。"""
+    _run_pure(
+        "js/chatStatus.js",
+        r"""
+        assert(m.waitHintText(1000, 12000, false) === '', '未超时 → 空');
+        assert(m.waitHintText(12000, 12000, false).length > 0, '超时无首包 → 提示');
+        assert(m.waitHintText(20000, 12000, false).length > 0, '超时更长 → 提示');
+        assert(m.waitHintText(20000, 12000, true) === '', '有首包 → 空');
+        assert(m.waitHintText(0, 0, false).length > 0, 'elapsed=timeout=0 边界 → 提示');
+        assert(m.waitHintText(0, 0, true) === '', 'elapsed=0 有首包 → 空');
+        """,
+    )
