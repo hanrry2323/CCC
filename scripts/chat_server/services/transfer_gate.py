@@ -990,6 +990,45 @@ def resolve_skill_ref(body: dict[str, Any]) -> str:
     return "skills/write-code"
 
 
+def _extract_default_executor(content: str) -> str:
+    """从 skill.md 内容提取「默认执行器」值。
+
+    支持两种格式（库内 skill.md 实测为后者）：
+    - 同行：``默认执行器：python`` / ``默认执行器 | python``（允许 ``## 默认执行器`` 标题前缀）
+    - 换行：``## 默认执行器`` 后下一非空非标题行为值
+    """
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # 去掉 markdown 标题前缀（如 "## 默认执行器"）
+        title = stripped.lstrip("#").strip()
+        if not title.startswith("默认执行器"):
+            continue
+        # 格式一：同行分隔符
+        for sep in ("：", ":", "|"):
+            if sep in title:
+                executor = title.split(sep, 1)[1].strip().lower()
+                if "（" in executor:
+                    executor = executor.split("（", 1)[0].strip()
+                if executor:
+                    return executor
+                break
+        # 格式二：值在下一非空行（标题行后，跳过空行/后续标题）
+        for j in range(i + 1, len(lines)):
+            nxt = lines[j].strip()
+            if not nxt:
+                continue
+            if nxt.startswith("#") or nxt.startswith("默认执行器"):
+                break
+            executor = nxt.split("：", 1)[-1].split(":", 1)[-1].split("|", 1)[-1].strip().lower()
+            if "（" in executor:
+                executor = executor.split("（", 1)[0].strip()
+            if executor:
+                return executor
+            break
+    return ""
+
+
 def resolve_executor_from_skill(skill_ref: str) -> str:
     """从 skill_ref 推断默认执行器。
 
@@ -1005,21 +1044,9 @@ def resolve_executor_from_skill(skill_ref: str) -> str:
         return "opencode"
 
     try:
-        content = skill_md.read_text(encoding="utf-8")
-        # 解析「默认执行器：xxx」或「默认执行器 | xxx」格式
-        for line in content.splitlines():
-            line = line.strip()
-            if line.startswith("默认执行器"):
-                # 提取冒号或竖线后的值
-                for sep in ("：", ":", "|"):
-                    if sep in line:
-                        executor = line.split(sep, 1)[1].strip().lower()
-                        # 去掉括号注释
-                        if "（" in executor:
-                            executor = executor.split("（", 1)[0].strip()
-                        if executor:
-                            return executor
-                        break
+        executor = _extract_default_executor(skill_md.read_text(encoding="utf-8"))
+        if executor:
+            return executor
     except Exception:
         pass
 

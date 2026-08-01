@@ -30,24 +30,29 @@ def test_paths_from_bullets_skips_exclude_context():
     assert not any("on-hold" in p for p in paths)
 
 
-def test_resolve_executor_ops_opencode_becomes_python():
+def test_resolve_executor_ops_skill_maps_cli_not_opencode():
+    """新架构：ops/卫生卡声明 skills/ops → 执行器 cli（禁 opencode hang）。"""
     from chat_server.services import transfer_gate as tg
 
     assert (
         tg.resolve_executor_intent(
-            {"pipeline": "ops", "executor_intent": "opencode", "title": "x"}
+            {
+                "pipeline": "ops",
+                "title": "x",
+                "skill_ref": "skills/ops",
+            }
         )
-        == "python"
+        == "cli"
     )
     assert (
         tg.resolve_executor_intent(
             {
                 "pipeline": "dev",
-                "executor_intent": "opencode",
                 "title": "回收 abnormal 产物并单 commit",
+                "skill_ref": "skills/ops",
             }
         )
-        == "python"
+        == "cli"
     )
 
 

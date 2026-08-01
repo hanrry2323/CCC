@@ -194,11 +194,31 @@ def test_transfer_open_intent_forces_python_and_small():
             "python3 -m pytest -q tests/test_ccc_open_intent_r8_probe.py",
         ],
         "executor_intent": "opencode",
+        "skill_ref": "skills/script-seed",
+        "prompt_ref": "prompts/write-code-prompt",
         "complexity": "medium",
         "pipeline": "dev",
     }
+    # open-intent 机械探针 → skills/script-seed → 执行器 python（禁 opencode hang）
     assert resolve_executor_intent(body) == "python"
     assert resolve_complexity(body) == "small"
+
+
+def test_resolve_executor_from_skill_maps_library():
+    """skill.md「默认执行器」为标题+下一行值格式；解析不得退回 opencode。
+
+    回归：resolve_executor_from_skill 此前只认「同行冒号/竖线」，对库内
+    ``## 默认执行器\\n\\npython`` 格式返回空 → 探针卡被误判 opencode 易 hang。
+    """
+    from chat_server.services.transfer_gate import resolve_executor_from_skill
+
+    assert resolve_executor_from_skill("skills/script-seed") == "python"
+    assert resolve_executor_from_skill("skills/ops") == "cli"
+    assert resolve_executor_from_skill("skills/write-code") == "opencode"
+    assert resolve_executor_from_skill("skills/bug-fix") == "opencode"
+    # 缺失/空 → 兜底 opencode（不抛）
+    assert resolve_executor_from_skill("skills/not-exist") == "opencode"
+    assert resolve_executor_from_skill("") == "opencode"
 
 
 def test_tester_requires_pass_verdict(ws_git: Path):
