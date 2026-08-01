@@ -110,6 +110,9 @@ enum LocalSessionStore {
         var feasibility: String
         var feasibility_reason: String?
         var executor_intent: String
+        /// skill_ref/prompt_ref：sidecar outbox flush 直接透传，避免默认落 write-code 丢执行面
+        var skill_ref: String
+        var prompt_ref: String
         var plan_md: String
         var complexity: String
         var bump_version: Bool
@@ -119,7 +122,8 @@ enum LocalSessionStore {
 
         enum CodingKeys: String, CodingKey {
             case client_request_id, project_id, thread_id, title, goal, acceptance
-            case pipeline, feasibility, feasibility_reason, executor_intent, plan_md
+            case pipeline, feasibility, feasibility_reason, executor_intent
+            case skill_ref, prompt_ref, plan_md
             case complexity, bump_version, human_note, attempts, saved_at
         }
 
@@ -139,7 +143,9 @@ enum LocalSessionStore {
             bump_version: Bool = false,
             human_note: String = "",
             attempts: Int,
-            saved_at: String
+            saved_at: String,
+            skill_ref: String = SkillRefResolver.defaultSkillRef,
+            prompt_ref: String = SkillRefResolver.defaultPromptRef
         ) {
             self.client_request_id = client_request_id
             self.project_id = project_id
@@ -151,6 +157,8 @@ enum LocalSessionStore {
             self.feasibility = feasibility
             self.feasibility_reason = feasibility_reason
             self.executor_intent = executor_intent
+            self.skill_ref = skill_ref
+            self.prompt_ref = prompt_ref
             self.plan_md = plan_md
             self.complexity = complexity
             self.bump_version = bump_version
@@ -171,6 +179,11 @@ enum LocalSessionStore {
             feasibility = try c.decode(String.self, forKey: .feasibility)
             feasibility_reason = try c.decodeIfPresent(String.self, forKey: .feasibility_reason)
             executor_intent = try c.decode(String.self, forKey: .executor_intent)
+            // 旧盘项无 skill_ref/prompt_ref：兜底 write-code（兼容硬切换前 queued 项）
+            skill_ref = try c.decodeIfPresent(String.self, forKey: .skill_ref)
+                ?? SkillRefResolver.defaultSkillRef
+            prompt_ref = try c.decodeIfPresent(String.self, forKey: .prompt_ref)
+                ?? SkillRefResolver.defaultPromptRef
             plan_md = try c.decode(String.self, forKey: .plan_md)
             complexity = try c.decodeIfPresent(String.self, forKey: .complexity) ?? "medium"
             bump_version = try c.decodeIfPresent(Bool.self, forKey: .bump_version) ?? false

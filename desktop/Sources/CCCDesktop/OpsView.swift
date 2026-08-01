@@ -771,7 +771,7 @@ struct OpsView: View {
         guard let relay = relay else { return "未拉取" }
         if relay.ok == true {
             let host = relay.host ?? "127.0.0.1"
-            let port = relay.port ?? 4000
+            let port = relay.port ?? 4100
             return "\(host):\(port) · 三档"
         }
         if relay.ok == false { return "fail-open 直连" }
