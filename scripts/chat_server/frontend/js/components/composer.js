@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { sendMessage, removeTyping, updateComposerState, runBaselineAlign } from './message.js';
+import { sendMessage, removeTyping, updateComposerState, runBaselineAlign, removeStreamingCursors } from './message.js';
 import { cancelStream } from '../api.js';
 import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAttachments } from './attachments.js';
 import { handleSlashInput, hideSlashMenu } from './slash.js';
@@ -50,6 +50,7 @@ export function initComposer() {
     cancelStream(state.get('activeTabId'));
     syncStreamingFlagForActiveTab();
     removeTyping(state.get('activeTabId'));
+    removeStreamingCursors(state.get('activeTabId')); // C1: 取消后清残留光标
     updateComposerState();
   });
 

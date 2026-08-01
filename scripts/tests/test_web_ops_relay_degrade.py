@@ -107,3 +107,29 @@ def test_relay_ok_true_tiers(client, monkeypatch):
     assert relay["ok"] is True
     assert set(relay["tiers"]) == {"flash", "Pro", "code"}
     assert relay["total"]["upstreams"] == 6
+
+
+def test_ops_daily_reports_shape(client, monkeypatch):
+    """契约对齐：后端 daily 只发 reports 键 → summary 透传（前端 dailyItems 数据源）。"""
+    import _ops_probe
+
+    monkeypatch.setattr(
+        _ops_probe,
+        "list_daily_reviews",
+        lambda *a, **k: {
+            "reports": [
+                {
+                    "workspace": "demo",
+                    "name": "r1",
+                    "path": "/x/.ccc/daily/2026-08-01.md",
+                    "mtime": "2026-08-01T09:00:00+08:00",
+                    "size": 10,
+                }
+            ]
+        },
+    )
+    r = client.get("/api/ops/summary", auth=_auth())
+    assert r.status_code == 200, r.text[:500]
+    daily = r.json().get("daily") or {}
+    reports = daily.get("reports") or []
+    assert any(x.get("workspace") == "demo" for x in reports)

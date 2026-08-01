@@ -2706,3 +2706,14 @@
   gap: 8px;
   margin-top: 10px;
 }
+
+/* 聊天错误气泡（A2）：琥珀底 + 重试按钮 */
+.msg-error .bubble.bubble-error {
+  background: rgba(180, 83, 9, 0.08);
+  border: 1px solid rgba(180, 83, 9, 0.3);
+  color: var(--ccc-text-base);
+}
+.msg-error .retry-btn {
+  color: #b45309;
+  font-weight: 600;
+}
