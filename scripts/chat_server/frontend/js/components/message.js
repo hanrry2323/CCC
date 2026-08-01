@@ -2,6 +2,7 @@ import { state } from '../state.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml, ts, scrollToBottom } from '../utils.js';
 import { streamChat, putDesktopThreadMessages } from '../api.js';
+import { WAIT_HINT_TEXT } from '../chatStatus.js';
 import { refreshSidebar } from './sidebar.js';
 import {
   createProgressRail,
@@ -264,6 +265,19 @@ export function removeTyping(tabId) {
   if (el) el.remove();
 }
 
+/** 首包超时：把打字气泡切成「等待模型响应…」文本（无气泡则忽略）。 */
+export function showWaitHint(tabId) {
+  const el = document.getElementById(typingId(tabId));
+  if (!el) return;
+  const dots = el.querySelectorAll('.typing-dot');
+  dots.forEach((d) => d.remove());
+  const bubble = el.querySelector('.bubble');
+  if (bubble) {
+    bubble.classList.add('typing-wait');
+    bubble.textContent = WAIT_HINT_TEXT;
+  }
+}
+
 function setStreamingIndicator() {
   const el = document.getElementById('streaming-indicator');
   if (!el) return;
@@ -334,6 +348,11 @@ export async function sendMessage(text, attachments = [], opts = {}) {
   let msgs = (state.get('currentMessages') || []).slice();
   let sid = state.get('currentSessionId') || ownerTabId;
 
+  // 首包等待 watch：12s 无首包 → 打字气泡切成「等待模型响应…」
+  const WAIT_HINT_MS = 12000;
+  let waitTimer = null;
+  let firstPacketAt = 0;
+
   // Reserve stream slot before mutating UI (max concurrent)
   const abort = beginStream(ownerTabId, sid, { projectId: ownerProject });
   if (!abort) {
@@ -368,6 +387,14 @@ export async function sendMessage(text, attachments = [], opts = {}) {
       }
     }
     showTyping(container, ownerTabId);
+    // 首包超时：长时间无响应（模型未开始吐）→ 切「等待模型响应…」
+    if (!waitTimer) {
+      waitTimer = setTimeout(() => {
+        if (fullContent === '' && firstPacketAt === 0) {
+          showWaitHint(ownerTabId);
+        }
+      }, WAIT_HINT_MS);
+    }
   }
 
   persistTabMessages(ownerTabId, msgs, sid, ownerProject);
@@ -457,6 +484,11 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     project,
     (type, data) => {
       if (type === 'delta') {
+        if (firstPacketAt === 0) firstPacketAt = Date.now();
+        if (waitTimer) {
+          clearTimeout(waitTimer);
+          waitTimer = null;
+        }
         ensureAssistantShell();
         fullContent += data;
         scheduleMarkdownPaint();
@@ -485,6 +517,10 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     },
     (sessionId) => {
       sid = sessionId || sid;
+      if (waitTimer) {
+        clearTimeout(waitTimer);
+        waitTimer = null;
+      }
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentSessionId', sid);
         ensureAssistantShell();
@@ -539,6 +575,10 @@ export async function sendMessage(text, attachments = [], opts = {}) {
         .catch(() => {});
     },
     (errorText) => {
+      if (waitTimer) {
+        clearTimeout(waitTimer);
+        waitTimer = null;
+      }
       if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
         // C2: 清掉残留 partial 气泡（含闪烁光标），DOM 与 state 一致

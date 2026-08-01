@@ -104,3 +104,65 @@ def test_boot_auth_gate():
     src = _read("js/app.js")
     assert "ensureAuthenticated" in src, "启动登录门"
     assert "waitForAuth" in src, "登录等待"
+
+
+# ── 窗口 I: 7788 对话壳感知层（断连横幅 / 模型警告 / 首包等待 / 切 tab 保留）──
+
+
+def test_chat_status_module_exports():
+    src = _read("js/chatStatus.js")
+    for name in [
+        "initChatStatus",
+        "reportConnectionFailure",
+        "reportConnectionRecovery",
+        "classifyHealth",
+        "healthWarnText",
+        "waitHintText",
+        "connBannerText",
+    ]:
+        assert ("export function " + name) in src, "chatStatus 导出 " + name
+
+
+def test_chat_status_uses_agent_url_health():
+    src = _read("js/chatStatus.js")
+    assert "agentUrl('/health')" in src, "chatStatus 用 agentUrl('/health')"
+    assert "fetch('/health')" not in src, "chatStatus 不得裸 fetch('/health')"
+
+
+def test_api_reports_connection_failure():
+    src = _read("js/api.js")
+    assert "reportConnectionFailure" in src, "api._fetchAgent 网络失败上报断连"
+    assert "friendlyChatError(503" in src or "friendlyChatError(503," in src, "streamChat TypeError 用友好文案"
+
+
+def test_message_wait_hint():
+    src = _read("js/components/message.js")
+    assert "showWaitHint" in src, "message 有 showWaitHint"
+    assert "WAIT_HINT_TEXT" in src, "message 引用首包等待文案"
+
+
+def test_app_inits_chat_status():
+    src = _read("js/app.js")
+    assert "initChatStatus" in src, "app 启动初始化感知层"
+    assert "showTyping(container, tab.id)" in src or "showTyping(container, tab.id))" in src, "流式 tab 切回重挂 typing"
+
+
+def test_switch_tab_does_not_cancel_stream():
+    app = _read("js/app.js")
+    switch_block = app.split("switch-tab")[1].split("close-tab")[0]
+    assert "cancelStream" not in switch_block, "switch-tab 不取消流（切 tab 保留在途流）"
+    assert "cancelStream" in app, "close-tab 取消流（仅关闭时）"
+    reg = _read("js/streamRegistry.js")
+    assert "export function beginStream" in reg, "streamRegistry 按 tab 开流"
+    assert "export function syncStreamingFlagForActiveTab" in reg, "切 tab 对齐 streaming 标志"
+
+
+def test_chat_status_css_classes():
+    css = _read("css/components.css")
+    assert ".chat-conn-banner" in css, "断连横幅样式"
+    assert ".chat-model-warn" in css, "模型警告样式"
+    assert ".typing-wait" in css, "首包等待文字态样式"
+
+
+def test_chat_warn_token():
+    assert "--ccc-warn" in _read("css/variables.css"), "感知层警告 token"

@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { generateId, desktopThreadId } from './utils.js';
 import { loadProjects, loadSession, loadHubConfig } from './api.js';
+import { initChatStatus } from './chatStatus.js';
 import { applyTheme, getThemeScheme } from './theme.js';
 import { initTitlebar, renderTabs } from './components/titlebar.js';
 import { initComposer, setupProjectSelect } from './components/composer.js';
@@ -79,6 +80,19 @@ function showTabContent(tab) {
     m.syncStreamingFlagForActiveTab();
   });
   import('./components/message.js').then((m) => m.updateComposerState());
+  // 流式 tab 切回：仍在途且尚无 assistant 内容 → 重挂 typing（恢复「等待中」感知）
+  import('./streamRegistry.js').then((m) => {
+    if (!m.isTabStreaming(tab.id)) return;
+    const hasAssistant = (tab.messages || []).some(
+      (msg) => msg.role === 'assistant' && String(msg.content || '').trim()
+    );
+    if (hasAssistant) return;
+    const container = messagesElForTab(tab.id);
+    if (!container) return;
+    import('./components/message.js').then((msg) => {
+      msg.showTyping(container, tab.id);
+    });
+  });
 }
 
 function renderPaneByTabId(tabId) {
@@ -327,6 +341,9 @@ async function init() {
     window.showToast('项目加载失败: ' + e.message, 'error');
     initAppSidebar([]);
   }
+
+  // 感知层：注入断连横幅/模型警告元素 + 启动 30s 健康轮询
+  initChatStatus();
 
   const project =
     state.get('currentProject') ||
