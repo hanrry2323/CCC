@@ -153,7 +153,7 @@ scripts/chat_server/            # FastAPI 模块化后端
     ├── index.html              # SPA 壳
     ├── css/                    # 样式
     └── js/
-        ├── router.js           # #/board | #/console | #/ops（#/chat 已删）
+        ├── router.js           # #/board | #/ops | #/console | #/chat（内联跳转提示，非对话入口）
         ├── app.js              # 主应用
         ├── state.js            # 全局状态
         ├── api.js              # API 客户端
@@ -161,7 +161,7 @@ scripts/chat_server/            # FastAPI 模块化后端
         └── pages/              # boardPage / consolePage / opsPage
 ```
 
-**架构对齐**：对话主入口 = **M1 Desktop + sidecar `:7788` + arm64 loop-code**；Hub `/api/chat` 路由已删；网页 SPA 仅运维/兼容（看板/运维已迁入 Desktop）。
+**架构对齐**：对话主入口 = **M1 Desktop + sidecar `:7788` + arm64 loop-code**；Hub `/api/chat` 路由已删；网页 SPA 提供**看板/运维 web 视图**（`#/board` `#/ops` 已恢复，2026-07-31；日常主入口仍 Desktop 侧栏）。
 
 | 端口 | 服务 | 说明 |
 |------|------|------|

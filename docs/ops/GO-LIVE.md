@@ -15,7 +15,7 @@
 3. 战略讨论 → Agent 自动投意图链（验收含可重放意图探针；勿等人点「转意图卡」）→ gate 绿自动进代办 → 右栏意图卡链 + 看板计数
 4. Engine 自动：product → dev → review/test → kb → released（= code_landed）
 5. 意图稳定：regress 回放探针 → L1 mark intent_stable（见 LPSN）
-6. 需要看板/运维时用 Desktop 侧栏（网页 Hub `#/board` `#/ops` 已停更，仅 `#/console` 应急）
+6. 需要看板/运维时用 Desktop 侧栏（网页 Hub `#/board` `#/ops` 可用，2026-07-31 已恢复；`#/console` 应急）
 ```
 
 Mac2017 后勤定时（可选，减负）：`bash scripts/install-ops-plist.sh install --enable --apply-ammo`；regress 用 [`../deploy/launchd/com.ccc.regress.plist.example`](../deploy/launchd/com.ccc.regress.plist.example)（WorkingDirectory=业务仓）。弹药禁打 CCC orch。
