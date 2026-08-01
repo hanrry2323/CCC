@@ -35,7 +35,7 @@ export AGENT_PLANNER_BASE_URL="${AGENT_PLANNER_BASE_URL:-http://127.0.0.1:4100}"
 if [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" && -f "${HOME}/.ccc/anthropic-auth-token" ]]; then
   export ANTHROPIC_AUTH_TOKEN="$(tr -d '[:space:]' < "${HOME}/.ccc/anthropic-auth-token")"
 elif [[ -z "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-  export ANTHROPIC_AUTH_TOKEN="ccc-relay-flash"
+  export ANTHROPIC_AUTH_TOKEN="loop-router-flash"
 fi
 # Phase3：Engine 私有配置家（与个人 ~/.claude 切割；仍用 x86 原版 claude）
 export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.ccc/engine-claude}"
