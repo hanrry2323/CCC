@@ -50,18 +50,18 @@ def _make_task(store, tid: str, col: str = "in_progress") -> None:
 
 def test_hang_retry_counter_persistence(tmp_path, monkeypatch):
     """F-ARCH-01: hang retry counter 持久化到磁盘"""
+    from engine import hang, hang_support
+
     counter_file = tmp_path / "engine-hang-retries.json"
-    monkeypatch.setattr("engine.hang._HANG_COUNTER_FILE", counter_file)
-
-    from engine import hang
-
-    hang._hang_retry_counter = {"key1": 1, "key2": 2}
-    hang._save_hang_retry_counter()
+    # 计数器存储归 engine.hang_support（v0.66 自 hang.py 拆分）；monkeypatch 其路径与字典
+    monkeypatch.setattr(hang_support, "_HANG_COUNTER_FILE", counter_file)
+    hang_support._hang_retry_counter.update({"key1": 1, "key2": 2})
+    hang._save_hang_retry_counter()  # 委托到 hang_support.save
     assert counter_file.is_file()
 
-    hang._hang_retry_counter = {}
+    hang_support._hang_retry_counter.clear()
     hang._load_hang_retry_counter()
-    assert hang._hang_retry_counter == {"key1": 1, "key2": 2}
+    assert hang_support._hang_retry_counter == {"key1": 1, "key2": 2}
 
 
 def test_hang_counter_corrupt_file_resets(tmp_path, monkeypatch):
@@ -195,19 +195,19 @@ def test_check_and_mark_hung_skips_when_done_marker_exists(tmp_path, monkeypatch
 
 def test_hang_retry_counter_capped_at_max(tmp_path, monkeypatch):
     """_MAX_HANG_RETRY 上限保护：reload 后仍生效。"""
-    from engine import hang
+    from engine import hang, hang_support
 
     monkeypatch.setattr(hang, "_MAX_HANG_RETRY", 2)
     assert hang._MAX_HANG_RETRY == 2
     # counter 文件读写后值被 clamp 在 _MAX_HANG_RETRY 之内（按业务语义不强制，
     # 这里只断言 reload 不丢失既有计数）
     counter_file = tmp_path / "engine-hang-retries.json"
-    monkeypatch.setattr(hang, "_HANG_COUNTER_FILE", counter_file)
-    hang._hang_retry_counter = {"k": 99}
+    monkeypatch.setattr(hang_support, "_HANG_COUNTER_FILE", counter_file)
+    hang_support._hang_retry_counter.update({"k": 99})
     hang._save_hang_retry_counter()
-    hang._hang_retry_counter = {}
+    hang_support._hang_retry_counter.clear()
     hang._load_hang_retry_counter()
-    assert hang._hang_retry_counter["k"] == 99
+    assert hang_support._hang_retry_counter["k"] == 99
 
 
 def test_hang_scheme_a_defaults():
