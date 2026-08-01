@@ -116,6 +116,12 @@ actor APIClient {
     private(set) var chatBaseURL: URL?
     /// 本机业务仓路径（sidecar cwd）；空则 sidecar 用默认
     private(set) var localProjectPath: String?
+    /// 本机 Agent 登录账号（默认空 → 无默认弱口令；未配置时降级共享密钥或明确报错）
+    private(set) var agentUser: String
+    /// 本机 Agent 登录密码（默认空；只进内存，不落盘）
+    private(set) var agentPassword: String
+    /// 测试注入的共享密钥（非 nil 时覆盖 `CCC_AGENT_TOKEN`/`~/.ccc/agent-token` 读取）
+    private var agentSharedSecret: String?
     /// 短请求（列表/看板）
     private let session: URLSession
     /// 对话 SSE（可多路；与 flow 分离，避免抢同一连接池）
@@ -126,17 +132,32 @@ actor APIClient {
     private var hubToken = HubTokenState()
     /// in-flight token 获取去重（并发请求只打一次 /api/auth/token）
     private var tokenFetchTask: Task<String?, Never>?
+    /// 7788 Agent 会话 token 生命周期（账号密码 → 会话 token）
+    private var agentTokenState = AgentTokenState()
+    /// in-flight agent-login 去重（并发 7788 请求只打一次登录）
+    private var agentLoginTask: Task<AgentLoginResult, Never>?
+    /// 最近一次 Agent 鉴权失败原因（最终 401 报错文案用）
+    private var agentLastAuthFailure: AgentAuthFailure?
 
     init(
         baseURL: URL,
         user: String = "ccc",
         password: String = "ccc",
         /// 测试注入：自定义 URLProtocol（默认空 → 生产行为不变）
-        urlProtocolClasses: [URLProtocol.Type] = []
+        urlProtocolClasses: [URLProtocol.Type] = [],
+        /// 本机 Agent 登录账号（默认空 → 无默认弱口令）
+        agentUser: String = "",
+        /// 本机 Agent 登录密码（默认空）
+        agentPassword: String = "",
+        /// 测试注入：共享密钥覆盖（默认 nil → 生产读 `CCC_AGENT_TOKEN`/`~/.ccc/agent-token`）
+        agentSharedSecret: String? = nil
     ) {
         self.baseURL = baseURL
         self.user = user
         self.password = password
+        self.agentUser = agentUser
+        self.agentPassword = agentPassword
+        self.agentSharedSecret = agentSharedSecret
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 45
         cfg.timeoutIntervalForResource = 120
@@ -179,17 +200,28 @@ actor APIClient {
         user: String,
         password: String,
         chatBaseURL: URL? = nil,
-        localProjectPath: String? = nil
+        localProjectPath: String? = nil,
+        agentUser: String? = nil,
+        agentPassword: String? = nil
     ) {
         let credChanged = baseURL != self.baseURL || user != self.user || password != self.password
         self.baseURL = baseURL
         self.user = user
         self.password = password
-        self.chatBaseURL = chatBaseURL
-        self.localProjectPath = localProjectPath
         if credChanged {
             // 换 Hub / 换账密 → 旧 token 作废，下个请求用新凭证换 token
             hubToken.invalidate()
+        }
+        let agentBaseChanged = chatBaseURL != self.chatBaseURL
+        // 在赋值前比对凭证变化（换地址/账号/密码 → 旧会话 token 作废，下轮请求用新凭证重登）
+        let agentUserChanged = (agentUser != nil) && (agentUser != self.agentUser)
+        let agentPassChanged = (agentPassword != nil) && (agentPassword != self.agentPassword)
+        self.chatBaseURL = chatBaseURL
+        self.localProjectPath = localProjectPath
+        if let agentUser { self.agentUser = agentUser }
+        if let agentPassword { self.agentPassword = agentPassword }
+        if agentBaseChanged || agentUserChanged || agentPassChanged {
+            agentTokenState.invalidate()
         }
     }
 
@@ -206,8 +238,12 @@ actor APIClient {
 
     var usesLocalAgent: Bool { chatBaseURL != nil }
 
-    /// 本机 sidecar 共享密钥：`CCC_AGENT_TOKEN` 或 `~/.ccc/agent-token`
+    /// 本机 sidecar 共享密钥：`CCC_AGENT_TOKEN` 或 `~/.ccc/agent-token`（兼容窗口降级用）。
+    /// 非 nil 即显式覆盖（含空串 = 禁用共享密钥；测试注入用），生产默认 nil 走环境/文件。
     private var agentToken: String {
+        if let override = agentSharedSecret {
+            return override
+        }
         if let env = ProcessInfo.processInfo.environment["CCC_AGENT_TOKEN"]?
             .trimmingCharacters(in: .whitespacesAndNewlines), !env.isEmpty
         {
@@ -219,11 +255,157 @@ actor APIClient {
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func applyAgentAuth(_ req: inout URLRequest) {
-        let tok = agentToken
-        guard !tok.isEmpty else { return }
-        req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
-        req.setValue(tok, forHTTPHeaderField: "X-CCC-Agent-Token")
+    // MARK: - 7788 Agent 鉴权（账号密码 → 会话 token；401 重登一次有界）
+
+    /// Agent 鉴权失败原因（最终 401 报错文案用）
+    enum AgentAuthFailure {
+        /// 未配置凭证 且 无共享密钥
+        case notConfigured
+        /// 已配置凭证但 agent-login 被拒（账号/密码错误；不降级掩盖配置错误）
+        case loginFailed
+    }
+
+    /// agent-login 结果（区分「被拒」与「端点不可用」，决定是否降级共享密钥）
+    private enum AgentLoginResult {
+        case token(String)
+        /// 服务端拒绝登录（401/403：账号或密码错误）
+        case rejected
+        /// 端点不存在 / 超时 / 传输失败（旧 sidecar 未实现登录 或 网络抖）→ 兼容窗口降级
+        case unavailable
+    }
+
+    private func hasAgentCredentials() -> Bool {
+        !agentUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !agentPassword.isEmpty
+    }
+
+    /// 决策本次 7788 请求用的 Agent 鉴权头。
+    /// - 有效会话 token → Bearer
+    /// - 凭证已配置 → `POST /api/auth/agent-login` 换 token；被拒 → `.loginFailed`（不降级）
+    /// - 端点不可用（旧 sidecar）→ 降级共享密钥（兼容窗口）；无共享密钥 → `.loginFailed`
+    /// - 凭证未配置 → 降级共享密钥；无共享密钥 → `.notConfigured`
+    private func resolveAgentAuthHeader(forceReauth: Bool = false) async -> (header: String?, failure: AgentAuthFailure?) {
+        if !forceReauth, agentTokenState.isValid(now: Date()), let token = agentTokenState.token {
+            return (header: "Bearer \(token)", failure: nil)
+        }
+        if hasAgentCredentials() {
+            switch await performAgentLogin() {
+            case .token(let token):
+                return (header: "Bearer \(token)", failure: nil)
+            case .rejected:
+                agentLastAuthFailure = .loginFailed
+                return (header: nil, failure: .loginFailed)
+            case .unavailable:
+                // 兼容窗口：旧 sidecar 无 agent-login → 共享密钥；无密钥则明确报错
+                let secret = agentToken
+                if !secret.isEmpty {
+                    return (header: "Bearer \(secret)", failure: nil)
+                }
+                agentLastAuthFailure = .loginFailed
+                return (header: nil, failure: .loginFailed)
+            }
+        }
+        // 未配置凭证：降级共享密钥（兼容窗口，不断链）；无共享密钥 → 明确报错
+        let secret = agentToken
+        if !secret.isEmpty {
+            return (header: "Bearer \(secret)", failure: nil)
+        }
+        agentLastAuthFailure = .notConfigured
+        return (header: nil, failure: .notConfigured)
+    }
+
+    /// POST /api/auth/agent-login（账号密码 → 会话 token）；in-flight 去重
+    private func performAgentLogin() async -> AgentLoginResult {
+        if let task = agentLoginTask {
+            return await task.value
+        }
+        let task = Task { [weak self] in await self?.performAgentLoginInner() ?? .unavailable }
+        agentLoginTask = task
+        defer { agentLoginTask = nil }
+        return await task.value
+    }
+
+    private func performAgentLoginInner() async -> AgentLoginResult {
+        guard let base = chatBaseURL else { return .unavailable }
+        guard let url = URL(string: "api/auth/agent-login", relativeTo: base) else {
+            return .unavailable
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            // 契约 key：user（report-K §四；非 username）
+            "user": agentUser.trimmingCharacters(in: .whitespacesAndNewlines),
+            "password": agentPassword,
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 15
+        do {
+            let (data, resp) = try await session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(code) {
+                guard let obj = try? JSONDecoder().decode(AgentLoginResponse.self, from: data) else {
+                    return .unavailable
+                }
+                agentTokenState.store(
+                    token: obj.token,
+                    // expires_in = 相对秒（不是 ISO 时间戳）；无则 nil → 靠 401 重登兜底
+                    expiresAt: obj.expires_in.map { Date().addingTimeInterval(TimeInterval($0)) }
+                )
+                return .token(obj.token)
+            }
+            if code == 401 || code == 403 { return .rejected }
+            return .unavailable
+        } catch {
+            return .unavailable
+        }
+    }
+
+    /// 401 → 清会话 token → 强制重登/降级 → 新 Bearer；失败 nil（调用方报错，不无限重试）
+    private func freshAgentBearerHeader() async -> String? {
+        agentTokenState.recordBearer401()
+        let (header, _) = await resolveAgentAuthHeader(forceReauth: true)
+        return header
+    }
+
+    /// 为请求注入 Agent 鉴权头（Bearer + 兼容 X-CCC-Agent-Token）
+    private func setAgentAuth(_ req: inout URLRequest, _ header: String?) {
+        guard let header, header.hasPrefix("Bearer ") else { return }
+        req.setValue(header, forHTTPHeaderField: "Authorization")
+        req.setValue(String(header.dropFirst(7)), forHTTPHeaderField: "X-CCC-Agent-Token")
+    }
+
+    /// 为 7788 请求注入 Agent 鉴权头（执行点调用；无可用头则不发，交由调用方处理 401）
+    private func applyAgentAuth(_ req: inout URLRequest) async {
+        let (header, _) = await resolveAgentAuthHeader()
+        setAgentAuth(&req, header)
+    }
+
+    /// 最终 401 的清晰报错文案（区分未配置 / 登录被拒 / 通用失效）
+    private func agentAuthErrorMessage(code: Int) -> String {
+        switch agentLastAuthFailure {
+        case .notConfigured:
+            return "本机 Agent 未配置登录凭证（\(code)）。请在设置中填写「本机对话 Agent → 登录账号/密码」"
+        case .loginFailed:
+            return "本机 Agent 登录失败（\(code)）：账号或密码错误。请在设置中重新配置"
+        case nil:
+            return "本机 Agent 鉴权失败（\(code)）：会话 token 失效。请在设置中检查账号密码"
+        }
+    }
+
+    /// 执行带 Agent 鉴权的 7788 短请求；401 → 重登一次 → 重试一次（有界）。
+    /// 返回 (data, statusCode)；传输错误抛给调用方（fire-and-forget 路径 catch 即可）。
+    private func agentData(for req: URLRequest) async throws -> (Data, Int) {
+        var active = req
+        await applyAgentAuth(&active)
+        var (data, resp) = try await session.data(for: active)
+        var code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401, let header = await freshAgentBearerHeader() {
+            setAgentAuth(&active, header)
+            (data, resp) = try await session.data(for: active)
+            code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        }
+        return (data, code)
     }
 
     /// 探测本机 sidecar `/health`；可选回填 capabilities
@@ -302,7 +484,6 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAgentAuth(&req)
         var body: [String: Any] = [:]
         if let projectPath, !projectPath.isEmpty {
             body["project_path"] = projectPath
@@ -323,8 +504,8 @@ actor APIClient {
         // 真预连可能 15–40s；失败不阻塞发消息
         req.timeoutInterval = projectPath == nil ? 8 : 45
         do {
-            let (data, resp) = try await session.data(for: req)
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            let (data, code) = try await agentData(for: req)
+            guard code == 200 else {
                 return WarmResult(httpOk: false, slotConnected: false)
             }
             guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -358,7 +539,6 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAgentAuth(&req)
         let body: [String: Any] = [
             "project_path": projectPath,
             "session_id": sessionId,
@@ -366,7 +546,7 @@ actor APIClient {
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         req.timeoutInterval = 5
-        _ = try? await session.data(for: req)
+        _ = try? await agentData(for: req)
     }
 
     /// 通知 sidecar 压缩 agent session：drop slot + 新 slot 注入摘要
@@ -376,7 +556,6 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAgentAuth(&req)
         let body: [String: Any] = [
             "project_path": projectPath,
             "session_id": sessionId,
@@ -384,7 +563,7 @@ actor APIClient {
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         req.timeoutInterval = 30
-        _ = try? await session.data(for: req)
+        _ = try? await agentData(for: req)
     }
 
     static func makeBaseURL(from raw: String) -> URL? {
@@ -775,21 +954,36 @@ actor APIClient {
         guard let url = URL(string: "api/chat", relativeTo: chatBase) else {
             throw APIError.badURL
         }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
-        applyAgentAuth(&req)
-        req.httpBody = data
-        let (bytes, resp) = try await chatSession.bytes(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        // 401 有界重登一次：首轮带当前 token；401 → 清 token → 重登 → 重试一次
+        var lastFailure: AgentAuthFailure?
+        func startStream(forceReauth: Bool) async throws -> (URLSession.AsyncBytes, URLResponse) {
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
+            req.httpBody = data
+            let (header, failure) = await resolveAgentAuthHeader(forceReauth: forceReauth)
+            if let failure { lastFailure = failure }
+            setAgentAuth(&req, header)
+            return try await chatSession.bytes(for: req)
+        }
+        var (bytes, resp) = try await startStream(forceReauth: false)
+        var code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401 {
+            agentTokenState.recordBearer401()
+            (bytes, resp) = try await startStream(forceReauth: true)
+            code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        }
         if !(200..<300).contains(code) {
             var errBody = ""
             for try await line in bytes.lines { errBody += line; if errBody.count > 400 { break } }
-            if code == 401 || code == 503 {
+            if code == 401 {
+                throw APIError.http(code, agentAuthErrorMessage(code: code))
+            }
+            if code == 503 {
                 throw APIError.http(
                     code,
-                    "本机 Agent 鉴权失败（\(code)）。请确认 ~/.ccc/agent-token 存在，并重装 Desktop：bash desktop/scripts/package-baseline.sh && cp -R desktop/.build/CCCDesktop.app /Applications/"
+                    "本机 Agent 未就绪（503）。请确认 sidecar 已启动，并重装 Desktop：bash desktop/scripts/package-baseline.sh && cp -R desktop/.build/CCCDesktop.app /Applications/"
                 )
             }
             throw APIError.http(code, errBody)
@@ -1008,10 +1202,11 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.timeoutInterval = 30
-        applyAgentAuth(&req)
-        let (data, resp) = try await session.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let (data, code) = try await agentData(for: req)
         guard (200..<300).contains(code) else {
+            if code == 401 {
+                throw APIError.http(code, agentAuthErrorMessage(code: code))
+            }
             let body = String(data: data, encoding: .utf8) ?? ""
             throw APIError.http(code, body)
         }
