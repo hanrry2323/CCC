@@ -88,12 +88,17 @@ python3 scripts/ccc-failure-report.py --last 20
 
 ## 闭环步骤（角色名 = 给人看；自动化 = prompt+skill+harness）
 
+> v0.66 最小可跑通起：**verify 一扇门**（`CCC_MIN_PIPELINE=1` 默认开）。
+> reviewer/tester 只写 verdict 不挪列；`gates` 在 verdict + tester + pytest 全过后
+> testing→verified，再 kb 快通 → released（跳过 kb LLM）。「reviewer+tester+kb 三跳」
+> 是史径叙事（见 authority「最小可跑通 v1」）。
+
 ```
 对齐基线 → 下一步 → 下达 backlog → wake Engine
   → product(Claude+skill) → plan/phases 硬 lint → planned
   → dev(OpenCode+scope) → testing（测试/验收）
-  → pytest 硬门 → reviewer(Claude+skill) → verified
-  → kb 程序发布 → released
+  → verify 一扇门：reviewer verdict + tester 探针 + pytest → verified
+  → kb 快通 → released
   → daily-diff-review（A–J）→ 必要时再 backlog+wake
 失败 → ledger → Hub 重开 → planned+wake
 ```
