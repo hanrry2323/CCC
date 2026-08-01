@@ -58,6 +58,28 @@ export function initComposer() {
     modelSelect.addEventListener('change', () => {
       state.set('model', modelSelect.value);
     });
+    // 模型档位以 sidecar /health 为准：仅保留可用档，避免硬编码死选项
+    fetch('/health')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((h) => {
+        const models = h && Array.isArray(h.models) ? h.models : [];
+        if (!models.length) return;
+        const labels = (h && h.model_labels) || {};
+        const cur = state.get('model');
+        const keep = models.includes(cur) ? cur : models[0];
+        modelSelect.innerHTML = '';
+        for (const m of models) {
+          const opt = document.createElement('option');
+          opt.value = m;
+          const label = labels[m];
+          opt.textContent =
+            label && label.includes('idle') ? m + '（idle）' : m;
+          modelSelect.appendChild(opt);
+        }
+        modelSelect.value = keep;
+        state.set('model', keep);
+      })
+      .catch(() => {});
   }
 
   const toolModeSelect = document.getElementById('tool-mode-select');

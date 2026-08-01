@@ -176,7 +176,7 @@ async function onHubRoute(route) {
     dialogue
       ? 'CCC'
       : route === 'chat' ? 'CCC Hub · 远程对话' :
-        route === 'board' ? 'CCC Hub · 看板（停更，请用 Desktop）' :
+        route === 'board' ? 'CCC Hub · 看板' :
         route === 'console' ? 'CCC Hub · 控制台' :
         route === 'ops' ? 'CCC Hub · 运维' :
         'CCC Hub';

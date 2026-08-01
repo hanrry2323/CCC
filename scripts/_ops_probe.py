@@ -224,16 +224,18 @@ def _empty_router_tiers() -> dict[str, dict[str, int]]:
 
 def fetch_router_usage(
     *,
-    host: str = "127.0.0.1",
+    host: str | None = None,
     port: int = 4100,
     timeout: float = 2.5,
     use_cache: bool = True,
 ) -> dict:
     """CCC Relay:真拉 M1 ai-loop-router :4100/admin/stats（含 healthy/upstreams）,30s 缓存。
+    host 默认 127.0.0.1；2017 Hub 侧可用 env CCC_ROUTER_HOST 指向 M1（192.168.3.140）。
 
     旧 /admin/usage 只有 by_tier.n/tk，Desktop 运维会显示全 0；改读 /admin/stats。
     返回三档键统一为 flash / Pro / code（relay 内部 pro 小写映射到 Pro）。
     """
+    host = host or os.environ.get("CCC_ROUTER_HOST", "127.0.0.1")
     cache_key = ("router_usage", host, port)
     now = time.monotonic()
     if use_cache and cache_key in _CACHE:
