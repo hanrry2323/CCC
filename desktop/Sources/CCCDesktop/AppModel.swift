@@ -343,8 +343,10 @@ final class AppModel: ObservableObject {
         guard let url = URL(string: "\(Self.hubTunnelURL)/api/desktop/config") else { return }
         var req = URLRequest(url: url)
         req.timeoutInterval = 2
-        let token = Data("\(authUser):\(authPass)".utf8).base64EncodedString()
-        req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
+        // 认证走 Bearer 收敛（复用 APIClient 认证层；含 token 获取/降级）
+        if let header = await client.hubAuthorizationHeader() {
+            req.setValue(header, forHTTPHeaderField: "Authorization")
+        }
         do {
             let (_, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }
