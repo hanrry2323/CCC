@@ -194,8 +194,11 @@ def test_transfer_coerce_probe_to_python():
         "goal": "落地 paper_intent_probe",
         "pipeline": "dev",
         "executor_intent": "opencode",
+        "skill_ref": "skills/script-seed",
+        "prompt_ref": "prompts/write-code-prompt",
         "acceptance": [
             "DRY_RUN=true .venv/bin/python scripts/paper_intent_probe.py --env paper"
         ],
     }
+    # 机械探针卡 → skills/script-seed → 执行器 python（禁 opencode hang）
     assert tg.resolve_executor_intent(body) == "python"

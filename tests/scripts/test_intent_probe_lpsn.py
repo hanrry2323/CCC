@@ -135,6 +135,8 @@ def test_transfer_requires_probe_for_business():
         "feasibility": "ok",
         "project_id": "demo",
         "executor_intent": "opencode",
+        "skill_ref": "skills/write-code",
+        "prompt_ref": "prompts/write-code-prompt",
     }
     ok, errs = tg.validate_transfer_payload(body)
     assert not ok
@@ -161,6 +163,8 @@ def test_transfer_accepts_strong_acceptance_even_if_plan_md_lacks_section():
         "feasibility": "ok",
         "project_id": "qb",
         "executor_intent": "opencode",
+        "skill_ref": "skills/write-code",
+        "prompt_ref": "prompts/write-code-prompt",
         "plan_md": "# 草稿\n\n仅连通草稿，无验收节\n",
     }
     ok, errs = tg.validate_transfer_payload(body)
@@ -225,6 +229,8 @@ def test_transfer_soft_trims_title_over_80():
         "feasibility": "ok",
         "project_id": "qb",
         "executor_intent": "opencode",
+        "skill_ref": "skills/write-code",
+        "prompt_ref": "prompts/write-code-prompt",
     }
     ok, errs = tg.validate_transfer_payload(body)
     assert ok, errs
@@ -246,6 +252,8 @@ def test_transfer_probe_survives_plan_numbered_acceptance():
         "feasibility": "ok",
         "project_id": "ccc-demo",
         "executor_intent": "opencode",
+        "skill_ref": "skills/write-code",
+        "prompt_ref": "prompts/write-code-prompt",
         "plan_md": (
             "# Plan\n\n## 步骤\nw1/w2/w3/w4\n\n## 验收\n"
             "1. DRY_RUN=true python3 scripts/mid_fanout_w4_probe.py 退出码 0\n"
@@ -294,10 +302,13 @@ def test_transfer_hygiene_skips_probe():
         "feasibility": "ok",
         "project_id": "demo",
         "executor_intent": "opencode",
+        "skill_ref": "skills/ops",
+        "prompt_ref": "prompts/write-code-prompt",
     }
     ok, errs = tg.validate_transfer_payload(body)
     assert ok, errs
-    assert tg.resolve_executor_intent(body) == "python"
+    # 新架构：ops 卡声明 skills/ops → 执行器 cli（禁 opencode hang）
+    assert tg.resolve_executor_intent(body) == "cli"
 
 
 def test_next_intent_gate_blocks(tmp_path: Path):

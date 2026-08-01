@@ -119,20 +119,31 @@ class TestOpenCodeExecutor:
         pids_dir.mkdir(parents=True)
         opids.mkdir(parents=True)
         long_prompt = "x" * 250
+        prompt_written: list[str] = []
+        orig_write_text = Path.write_text
+
+        def _trace_write(self, *a, **k):
+            s = str(self)
+            if "prompt-" in s and s.endswith(".md"):
+                prompt_written.append(s)
+            return orig_write_text(self, *a, **k)
+
         with patch.object(Path, "home", return_value=tmp_path):
-            with patch("subprocess.Popen") as popen:
-                proc = MagicMock()
-                proc.pid = 1
-                proc.returncode = 0
-                proc.communicate.return_value = (b"", b"")
-                popen.return_value = proc
-                OpenCodeExecutor(Config()).execute(
-                    "long-p", long_prompt, timeout=5, cwd=str(tmp_path)
-                )
-                cmd = popen.call_args[0][0]
-                # R-14: 长 prompt 走 stdin，不再传 --file（对齐 scripts/tests/test_opencode_dir_isolation.py）
-                assert "--file" not in cmd
-                assert "Read attached file and execute the instructions inside." in cmd
+            with patch.object(Path, "write_text", _trace_write):
+                with patch("subprocess.Popen") as popen:
+                    proc = MagicMock()
+                    proc.pid = 1
+                    proc.returncode = 0
+                    proc.communicate.return_value = (b"", b"")
+                    popen.return_value = proc
+                    OpenCodeExecutor(Config()).execute(
+                        "long-p", long_prompt, timeout=5, cwd=str(tmp_path)
+                    )
+                    cmd = popen.call_args[0][0]
+        # R-14：prompt 走 stdin / 临时文件，--file 已从命令移除（opencode 1.17
+        # 长 positional/--file 会 SIGTERM）。临时文件用后即删，执行期间存在。
+        assert "--file" not in cmd
+        assert len(prompt_written) == 1, "long prompt should be written to a temp file"
 
     def test_executor_protocol_not_implemented(self):
         from _executor import Executor
