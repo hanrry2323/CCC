@@ -186,13 +186,13 @@
 <script src="/js/shell-ui.js?v=20260724boardws1"></script>
 <div id="login-view" class="login-view" hidden>
   <div class="login-card">
-    <div class="login-title">CCC Hub 登录</div>
+    <div class="login-title" id="login-title">CCC Hub 登录</div>
     <form class="login-form" autocomplete="off">
       <label>用户名<input id="login-user" name="user" placeholder="operator 或 viewer" autocomplete="username"></label>
       <label>密码<input id="login-pass" name="pass" type="password" placeholder="••••••••" autocomplete="current-password"></label>
       <div class="login-error" id="login-error"></div>
       <button type="submit" id="login-btn" class="hub-btn primary">登录</button>
-      <p class="login-hint">operator = 编排账密（写权限）；viewer = 只读（需服务端配置 CCC_HUB_VIEWER_PASS）。</p>
+      <p class="login-hint" id="login-hint">operator = 编排账密（写权限）；viewer = 只读（需服务端配置 CCC_HUB_VIEWER_PASS）。</p>
     </form>
   </div>
 </div>

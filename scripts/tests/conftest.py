@@ -10,10 +10,15 @@ import pytest
 
 
 def pytest_configure(config):
-    """pytest 启动时确保 cwd/.ccc/phases/ 存在"""
+    """pytest 启动时确保 phases 目录存在。
+
+    test_phase_lint 用运行时 Path.cwd()/".ccc"/"phases"；而部分测试（test_audit_role 等）
+    模块级 os.chdir(scripts) 不还原，会污染后续 cwd —— 故 cwd 与 SCRIPTS 两处都建。
+    """
     cwd = Path.cwd()
-    phases_dir = cwd / ".ccc" / "phases"
-    phases_dir.mkdir(parents=True, exist_ok=True)
+    (cwd / ".ccc" / "phases").mkdir(parents=True, exist_ok=True)
+    scripts_phases = Path(__file__).resolve().parent / ".ccc" / "phases"
+    scripts_phases.mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture(autouse=True)
