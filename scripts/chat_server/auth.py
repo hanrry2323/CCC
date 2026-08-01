@@ -11,6 +11,10 @@ from . import config
 _auth_failures: dict[str, list[float]] = defaultdict(list)
 _AUTH_WINDOW_S = 60.0
 _AUTH_MAX_FAILS = 20
+# 每次 check_auth 递增；每 _AUTH_PRUNE_INTERVAL 次全局清扫过期桶，
+# 防轮换 IP 攻击者让 _auth_failures 无界增长（冷 IP 桶永不自行清理）。
+_AUTH_PRUNE_INTERVAL = 100
+_auth_call_count = 0
 
 # v0.51.0 (P1-1): 默认不信任 X-Forwarded-For（防伪造绕过 IP 限速）。
 # 仅当部署在反向代理后且显式配置 CCC_TRUST_PROXY=1 时启用。
@@ -29,8 +33,23 @@ def _client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _sweep_stale_auth_buckets(now: float) -> None:
+    """周期清理：桶内最近失败已滑出窗口（或空）的 IP 直接移除。"""
+    stale = [
+        ip
+        for ip, ts in _auth_failures.items()
+        if not ts or now - ts[-1] >= _AUTH_WINDOW_S
+    ]
+    for ip in stale:
+        _auth_failures.pop(ip, None)
+
+
 def _rate_limit_auth(ip: str) -> None:
+    global _auth_call_count
     now = time.monotonic()
+    _auth_call_count += 1
+    if _auth_call_count % _AUTH_PRUNE_INTERVAL == 0:
+        _sweep_stale_auth_buckets(now)
     bucket = [t for t in _auth_failures[ip] if now - t < _AUTH_WINDOW_S]
     _auth_failures[ip] = bucket
     if len(bucket) >= _AUTH_MAX_FAILS:

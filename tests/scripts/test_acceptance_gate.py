@@ -156,7 +156,12 @@ def test_salvage_refuses_without_acceptance(ws_git: Path, monkeypatch):
         json.dumps({"stdout": "ALL SELF-CHECKS PASSED\n"})
     )
     monkeypatch.setenv("CCC_SKIP_COMMIT_GATE", "1")
-    assert dev_mod.try_complete_if_gates_satisfied(tid) is None
+    # v0.66.0 契约：salvage 验收失败上抛 Engine acceptance_fail_budget
+    # （结构化 dict，不再是返回 None 静默拒绝，防卡 salvage refuse 循环）
+    r = dev_mod.try_complete_if_gates_satisfied(tid)
+    assert r is not None
+    assert r["status"] == "acceptance_failed"
+    assert r["reason"] == "missing_acceptance"
 
 
 def test_hub_lens_filters_hidden_done(tmp_path: Path):

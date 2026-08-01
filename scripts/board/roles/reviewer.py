@@ -59,7 +59,6 @@ from board.roles.common import (
     now_iso,
     _quarantine,
     list_tasks,
-    move_task,
     create_task,
     update_index,
     _get_cfg,
@@ -302,7 +301,7 @@ def _review_deterministic_path(
             f"**Probes:** {acc.get('reason')}\n",
             encoding="utf-8",
         )
-    move_task(task_id, "testing", "verified")
+    # 移动权归 gates（verify 一扇门）：reviewer 只写 verdict，不挪列
     _log.info("[reviewer] %s ✓ %s deterministic pass", task_id, kind)
     return True
 
@@ -349,8 +348,8 @@ def _apply_reviewer_llm_fallback(
 ) -> bool:
     """处理 medium/large LLM fallback。
 
-    返回 True 仅表示「已移 verified」——当前策略下永远为 False
-    （FALLBACK 禁止写成 PASS，禁止静默过门）。
+    返回 True 仅表示「已放行」——当前策略下永远为 False
+    （FALLBACK 禁止写成 PASS，禁止静默过门；移动权归 gates）。
     """
     mode = _reviewer_fallback_mode()
     detail = reason_detail or "unknown"
@@ -1463,7 +1462,10 @@ def clear_stale_review_locks(
 
 
 def reviewer_role() -> dict:
-    """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 通过则挪 verified
+    """代码审查员: 扫 testing → LLM 审查 git diff + plan 验收清单 → 写 PASS/FAIL verdict
+
+    不挪列：移动权归 gates（verify 一扇门）。CLI 单独调用留 testing，
+    Engine gate 在 verdict + tester + pytest 全过后统一 testing→verified。
 
     v0.24.1: 按变更量分级
       - small (≤10 行): 跳过 LLM，仅 py_compile 静态检查
@@ -1513,7 +1515,7 @@ def reviewer_role() -> dict:
 
 
 def _review_one_task(task_id: str) -> bool:
-    """单个 task 的 reviewer 处理（v0.24.5 抽取，便于 advisory lock 包住）。返回是否移 verified。
+    """单个 task 的 reviewer 处理（v0.24.5 抽取，便于 advisory lock 包住）。返回是否评审通过（写 PASS verdict，不挪列）。
 
     v0.24.5 (A24-03/A24-04): medium/large 类 LLM fallback 一律 quarantine + L2 告警，
     禁止仅凭 py_compile 或 plan 验收清单静默 verified（v0.23 G2 bypass 复发红线）。
@@ -1660,7 +1662,7 @@ def _review_one_task(task_id: str) -> bool:
                 task_id,
                 f"small-class py_compile+acceptance pass ({total_lines} lines)",
             )
-            move_task(task_id, "testing", "verified")
+            # 移动权归 gates（verify 一扇门）：reviewer 只写 verdict
             _log.info(
                 "[reviewer] %s ✓ small-class static pass (%s 行)", task_id, total_lines
             )
@@ -1692,7 +1694,7 @@ def _review_one_task(task_id: str) -> bool:
                     task_id,
                     f"small-class acceptance pass ({acc.get('reason')})",
                 )
-                move_task(task_id, "testing", "verified")
+                # 移动权归 gates（verify 一扇门）：reviewer 只写 verdict
                 _log.info("[reviewer] %s ✓ small-class acceptance pass", task_id)
                 return True
             _quarantine(
@@ -1795,7 +1797,7 @@ def _review_one_task(task_id: str) -> bool:
                 encoding="utf-8",
             )
             return False
-        move_task(task_id, "testing", "verified")
+        # 移动权归 gates（verify 一扇门）：reviewer 只写 verdict
         _log.info("[reviewer] %s ✓ LLM pass", task_id)
         return True
     if verdict == "fail":

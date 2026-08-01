@@ -126,7 +126,11 @@ def _find_task_column(store: FileBoardStore, tid: str) -> str | None:
 
 
 def _ensure_task_in_testing(store: FileBoardStore, tid: str) -> None:
-    """reviewer 可能提前挪 verified；拉回 testing 以便 tester/pytest 门禁。"""
+    """兜底：异常情况下 task 若已到 verified，拉回 testing 以便 tester/pytest 门禁。
+
+    verify 一扇门后 reviewer/tester 不再直接挪 verified；本函数作为防御，
+    防遗留路径（如手动 CLI reviewer）把 task 提前推到 verified。
+    """
     if _find_task_column(store, tid) != "verified":
         return
     ok = store.move_task(tid, "verified", "testing")

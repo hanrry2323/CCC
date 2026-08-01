@@ -446,7 +446,10 @@ def _tester_verdict_allows_verified(task_id: str) -> bool:
 
 
 def tester_role() -> dict:
-    """测试工程师: 扫 testing → 按 plan 跑验证 → 通过则挪 verified"""
+    """测试工程师: 扫 testing → 按 plan 跑验证 → 写 PASS/FAIL verdict（不挪列）
+
+    移动权归 gates（verify 一扇门）：verdict + tester + pytest 全过后统一 testing→verified。
+    """
     from _role_lock import assert_role_executor
 
     assert_role_executor("tester", "pytest")
@@ -501,8 +504,8 @@ def tester_role() -> dict:
                 # 仍要求 PASS verdict（缺 verdict 不得 verified）
                 if not _tester_verdict_allows_verified(task_id):
                     continue
-                if move_task(task_id, "testing", "verified"):
-                    moved.append(task_id)
+                # 移动权归 gates（verify 一扇门）：tester 只跑探针，不挪列
+                moved.append(task_id)
                 continue
             _log.warning("[tester] %s: no allowlisted cmds, skip", task_id)
             continue
@@ -607,7 +610,7 @@ def tester_role() -> dict:
         if all_ok:
             if not _tester_verdict_allows_verified(task_id):
                 continue
-            move_task(task_id, "testing", "verified")
+            # 移动权归 gates（verify 一扇门）：tester 只跑探针，不挪列
             moved.append(task_id)
             _log.info("[tester] %s ✓（验证 {len(verify_commands)} 项）", task_id)
     return {"role": "tester", "moved": moved, "counts": update_index()}
