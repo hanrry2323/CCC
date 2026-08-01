@@ -18,14 +18,14 @@
 | 网页 Hub | **看板/运维 web 视图**（`#/board` `#/ops` 已恢复，2026-07-31；日常主入口 Desktop 侧栏；`#/console` 应急） |
 | 意图完成口径 | `released` ≠ 完成；见 [`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md) |
 
-默认账号：`ccc` / `ccc`。
+默认账号：`ccc` / `ccc`（Basic，**默认态**全权兼容；Hub 设 `CCC_AUTH_REQUIRE_BEARER=1` 后普通端点只认 Bearer 会话 token，仅 `POST /api/auth/token` 仍用 Basic 换 token）。
 
 ## 双口远程验收（浏览器）
 
 | URL | 用途 |
 |-----|------|
 | `http://192.168.3.140:7788/` | **对话口**（默认无 Token；内网自用） |
-| `http://192.168.3.116:7777/#/board` | **编排口**（Hub Basic `ccc`/`ccc`） |
+| `http://192.168.3.116:7777/#/board` | **编排口**（Hub Basic `ccc`/`ccc`，默认态；REQUIRED 态需 Bearer token） |
 
 ```bash
 # 双口烟测（勿以 2017 为 chat origin）

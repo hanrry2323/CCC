@@ -171,3 +171,44 @@ def test_expired_token_401(monkeypatch):
 
     auth._sessions[tok]["expires"] = time.monotonic() - 1
     assert c.get("/api/auth/session", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+
+
+# ── REQUIRED 态（CCC_AUTH_REQUIRE_BEARER=1，窗口 E） ──
+
+
+def _required_client(monkeypatch, *, viewer_pass: str = ""):
+    monkeypatch.setenv("CCC_AUTH_REQUIRE_BEARER", "1")
+    return _client(monkeypatch, viewer_pass=viewer_pass)
+
+
+def test_require_bearer_basic_401(monkeypatch):
+    """on 态：普通端点 Basic → 401（Bearer 仅剩 token 引导口）。"""
+    c = _required_client(monkeypatch)
+    r = c.get("/api/auth/session", auth=("ccc", "ccc"))
+    assert r.status_code == 401
+    assert r.headers.get("www-authenticate", "").lower().startswith("bearer")
+
+
+def test_require_bearer_bearer_ok(monkeypatch):
+    """on 态：登录换 token（Basic 引导）→ Bearer 探活 200。"""
+    c = _required_client(monkeypatch)
+    tok = c.post("/api/auth/token", auth=("ccc", "ccc")).json()["token"]
+    assert tok
+    r = c.get("/api/auth/session", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    assert r.json()["role"] == "operator"
+
+
+def test_require_bearer_login_bootstrap(monkeypatch):
+    """on 态：POST /api/auth/token 仍接受 Basic（唯一引导口，不死锁）。"""
+    c = _required_client(monkeypatch)
+    r = c.post("/api/auth/token", auth=("ccc", "ccc"))
+    assert r.status_code == 200, r.text
+    assert r.json()["scheme"] == "bearer"
+
+
+def test_require_bearer_write_basic_401(monkeypatch):
+    """on 态：写端点 Basic → 401（require_write 继承开关）。"""
+    c = _required_client(monkeypatch)
+    r = c.post("/api/desktop/transfer", auth=("ccc", "ccc"), json={})
+    assert r.status_code == 401

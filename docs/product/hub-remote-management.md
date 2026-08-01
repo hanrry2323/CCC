@@ -68,6 +68,7 @@ SPA **设置**可持久化：`ccc_hub_base`、`ccc_agent_base`、`ccc_local_work
 - Hub 默认 `CORS_ORIGIN_REGEX` 含 `192.168.*` / `10.*`，以便 M1 SPA Origin 调编排 API。plist **勿**用仅 localhost 的旧 regex 盖掉。
 - Sidecar 听 `0.0.0.0` 仅假设 **内网**；**默认关闭**对话 Token（`CCC_AGENT_AUTH=0`）。需要时再 `CCC_AGENT_AUTH=1`。
 - 浏览器不再强制索要 agent token。
+- **Hub 编排口两态**（Mac2017 Hub 环境变量 `CCC_AUTH_REQUIRE_BEARER`，默认 off）：off = Basic `ccc`/`ccc` 全权兼容（现状）；on = 普通端点仅 Bearer 会话 token（Basic → 401），唯一保留 Basic 的面是 `POST /api/auth/token` 登录引导。Basic 调用方迁移：先 `POST /api/auth/token`（Basic 一次）换 Bearer 再发请求；SPA 已 token 原生，自动适配。
 
 ---
 

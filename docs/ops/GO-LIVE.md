@@ -28,6 +28,19 @@ Mac2017 后勤定时（可选，减负）：`bash scripts/install-ops-plist.sh i
 | Board API（Server 本机） | http://127.0.0.1:7775 |
 | Engine stats（Server 本机） | http://127.0.0.1:7776/api/stats |
 
+## Hub 鉴权两态（`CCC_AUTH_REQUIRE_BEARER`）
+
+Hub 默认账密 `ccc`/`ccc`（Basic），过渡期按 **operator 全权**兼容。可设环境变量切换为仅 Bearer：
+
+| 态 | 设置 | Basic 行为 | 适用 |
+|----|------|-----------|------|
+| **兼容（默认）** | 不设 / `0` | operator/viewer 全权放行（迁移 debug 日志） | 现状；Desktop/sidecar/工具链零破坏 |
+| **REQUIRED** | `CCC_AUTH_REQUIRE_BEARER=1` | 普通端点 **401**；仅 `POST /api/auth/token` 仍接受 Basic 换 token | 强制走会话 token |
+
+- 会话 token：`POST /api/auth/token`（Basic 凭证一次）→ Bearer，TTL 1h，重启失效。
+- **迁移**：Basic 调用方（sidecar `_hub_auth_headers`、ccc-hub-lens 等工具）改走 token 端点换 Bearer，内存缓存 + 到期重换；SPA 前端已 token 原生。
+- **回滚**：取消该 env 即回到兼容态，不停服务。
+
 ## 角色分工（记住就够）
 
 | 你要做的事 | 去哪 |
