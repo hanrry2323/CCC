@@ -28,7 +28,7 @@ export function engineControlHtml(idPrefix = 'eng') {
     `<div class="engine-control" id="${idPrefix}-engine-control" title="Engine 状态">` +
       `<span class="engine-led off" id="${idPrefix}-engine-led" aria-hidden="true"></span>` +
       `<span class="engine-label" id="${idPrefix}-engine-label">Engine</span>` +
-      `<button type="button" class="engine-toggle-btn" id="${idPrefix}-engine-toggle" title="启动 / 停止 Engine">启动</button>` +
+      `<button type="button" class="engine-toggle-btn" id="${idPrefix}-engine-toggle" title="启动 / 停止 Engine" data-write>启动</button>` +
     `</div>`
   );
 }

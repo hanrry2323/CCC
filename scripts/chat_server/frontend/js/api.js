@@ -1,44 +1,13 @@
 import { state } from './state.js';
 import { hubUrl, agentUrl } from './ports.js';
 import { friendlyChatError } from './chatErrors.js';
+import { getToken, clearToken } from './auth.js';
 
-/** Hub Basic Auth：默认用户名/密码均为 ccc。
- * 自定义口令只进 sessionStorage（会话级），不再把默认口令长期写入 localStorage。
- */
-function _authHeader(forcePrompt = false) {
-  // 一次性清掉旧长口令 / 默认口令的 localStorage 残留
-  if (!localStorage.getItem('ccc_hub_auth_v3')) {
-    localStorage.removeItem('ccc_chat_pass');
-    // 勿清 ccc_agent_token：设置页持久化在 localStorage
-    localStorage.setItem('ccc_hub_auth_v3', '1');
-  }
-  let user = sessionStorage.getItem('ccc_chat_user')
-    || localStorage.getItem('ccc_chat_user')
-    || 'ccc';
-  let pass = forcePrompt
-    ? ''
-    : (sessionStorage.getItem('ccc_chat_pass') || 'ccc');
-  if (!pass) {
-    pass = window.prompt('CCC Hub 密码（用户名/密码默认均为 ccc）') || '';
-    if (pass && pass !== 'ccc') {
-      sessionStorage.setItem('ccc_chat_pass', pass);
-    }
-  } else if (pass !== 'ccc') {
-    sessionStorage.setItem('ccc_chat_pass', pass);
-  }
-  if (!sessionStorage.getItem('ccc_chat_user') && !localStorage.getItem('ccc_chat_user')) {
-    sessionStorage.setItem('ccc_chat_user', user);
-  }
-  return 'Basic ' + btoa(user + ':' + pass);
-}
-
-function _clearAuth() {
-  sessionStorage.removeItem('ccc_chat_pass');
-  localStorage.removeItem('ccc_chat_pass');
-}
-
-function _headers(json = true, forcePrompt = false) {
-  const h = { Authorization: _authHeader(forcePrompt) };
+/** Hub 请求头：Bearer 会话 token（无 token → 空头；登录换 token 走 auth.js login）。 */
+function _headers(json = true) {
+  const h = {};
+  const tok = getToken();
+  if (tok) h.Authorization = 'Bearer ' + tok;
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }
@@ -60,20 +29,16 @@ function _agentHeaders(json = true, forcePrompt = false) {
   return h;
 }
 
-/** Hub 请求（Basic Auth + hubBase）。 */
+/** Hub 请求（Bearer token + hubBase）。401 → 清 token + 登录引导（不白屏不弹裸错误）。 */
 async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : hubUrl(pathOrUrl);
-  let resp = await fetch(url, {
+  const resp = await fetch(url, {
     ...options,
-    headers: { ...(options.headers || {}), ..._headers(json, false) },
+    headers: { ...(options.headers || {}), ..._headers(json) },
   });
   if (resp.status === 401) {
-    _clearAuth();
-    window.showToast?.('认证失败，请重新输入密码', 'error');
-    resp = await fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), ..._headers(json, true) },
-    });
+    clearToken();
+    window.dispatchEvent(new CustomEvent('ccc-auth-required'));
   }
   return resp;
 }

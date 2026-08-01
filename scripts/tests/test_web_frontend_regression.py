@@ -70,3 +70,37 @@ def test_chat_error_bubble_markers():
 def test_chat_composer_cancel_clears_cursor():
     src = _read("js/components/composer.js")
     assert "removeStreamingCursors" in src, "composer 取消 handler 清光标"
+
+
+# ── 窗口 A3: 登录 + 会话 token 结构锁 ──────────────────────────────
+
+
+def test_api_bearer_header_no_hardcoded_basic():
+    src = _read("js/api.js")
+    assert "getToken" in src, "api.js 用会话 token"
+    assert "ccc:ccc" not in src, "api.js 不硬编码默认账密"
+    assert "window.prompt" not in src, "不再弹窗要 Basic 密码"
+
+
+def test_login_view_and_logout_in_html():
+    html = _read("index.html")
+    assert 'id="login-view"' in html, "登录视图存在"
+    assert 'id="auth-logout"' in html, "退出按钮存在"
+
+
+def test_token_sessionstorage_only():
+    src = _read("js/auth.js")
+    assert "sessionStorage.setItem" in src, "token 写 sessionStorage"
+    assert "localStorage.setItem" not in src, "token 不落 localStorage"
+
+
+def test_write_buttons_tagged():
+    assert "data-write" in _read("js/pages/boardPage.js"), "看板写按钮标注"
+    assert "data-write" in _read("js/pages/opsPage.js"), "运维写按钮标注"
+    assert "data-write" in _read("js/pages/consolePage.js"), "控制台写按钮标注"
+
+
+def test_boot_auth_gate():
+    src = _read("js/app.js")
+    assert "ensureAuthenticated" in src, "启动登录门"
+    assert "waitForAuth" in src, "登录等待"

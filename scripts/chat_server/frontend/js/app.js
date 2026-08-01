@@ -223,6 +223,11 @@ function applyShellMode() {
 async function init() {
   applyShellMode();
   applyTheme(getThemeScheme());
+  // 窗口 A3: Hub 壳登录门（对话壳走 sidecar 鉴权，不强制）
+  const auth = await import('./auth.js');
+  auth.initAuth();
+  const authed = await auth.ensureAuthenticated();
+  if (!authed) await auth.waitForAuth();
   initRouter(onHubRoute);
   initTitlebar();
   initDualPaneControls(generateId);
