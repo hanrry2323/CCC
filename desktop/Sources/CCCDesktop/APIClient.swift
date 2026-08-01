@@ -122,8 +122,18 @@ actor APIClient {
     private let chatSession: URLSession
     /// 流程 SSE（全 App 1 条）
     private let flowSession: URLSession
+    /// Hub 会话 token 生命周期（Bearer 收敛；内存缓存，服务端重启失效）
+    private var hubToken = HubTokenState()
+    /// in-flight token 获取去重（并发请求只打一次 /api/auth/token）
+    private var tokenFetchTask: Task<String?, Never>?
 
-    init(baseURL: URL, user: String = "ccc", password: String = "ccc") {
+    init(
+        baseURL: URL,
+        user: String = "ccc",
+        password: String = "ccc",
+        /// 测试注入：自定义 URLProtocol（默认空 → 生产行为不变）
+        urlProtocolClasses: [URLProtocol.Type] = []
+    ) {
         self.baseURL = baseURL
         self.user = user
         self.password = password
@@ -134,6 +144,9 @@ actor APIClient {
         cfg.waitsForConnectivity = false
         // 短请求：列表/看板/用量；与 flow SSE 分 session，避免互相堵
         cfg.httpMaximumConnectionsPerHost = 4
+        if !urlProtocolClasses.isEmpty {
+            cfg.protocolClasses = urlProtocolClasses + (cfg.protocolClasses ?? [])
+        }
         self.session = URLSession(configuration: cfg)
 
         let chatCfg = URLSessionConfiguration.default
@@ -143,6 +156,9 @@ actor APIClient {
         // 本机 sidecar 可多路并行（对话面禁止 Hub chat）
         chatCfg.httpMaximumConnectionsPerHost = 4
         chatCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        if !urlProtocolClasses.isEmpty {
+            chatCfg.protocolClasses = urlProtocolClasses + (chatCfg.protocolClasses ?? [])
+        }
         self.chatSession = URLSession(configuration: chatCfg)
 
         let flowCfg = URLSessionConfiguration.default
@@ -152,6 +168,9 @@ actor APIClient {
         flowCfg.waitsForConnectivity = false
         flowCfg.httpMaximumConnectionsPerHost = 1
         flowCfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        if !urlProtocolClasses.isEmpty {
+            flowCfg.protocolClasses = urlProtocolClasses + (flowCfg.protocolClasses ?? [])
+        }
         self.flowSession = URLSession(configuration: flowCfg)
     }
 
@@ -162,18 +181,27 @@ actor APIClient {
         chatBaseURL: URL? = nil,
         localProjectPath: String? = nil
     ) {
+        let credChanged = baseURL != self.baseURL || user != self.user || password != self.password
         self.baseURL = baseURL
         self.user = user
         self.password = password
         self.chatBaseURL = chatBaseURL
         self.localProjectPath = localProjectPath
+        if credChanged {
+            // 换 Hub / 换账密 → 旧 token 作废，下个请求用新凭证换 token
+            hubToken.invalidate()
+        }
     }
 
     /// 仅刷新 Hub 地址/账密（顶栏用量轮询）；不碰 sidecar cwd
     func updateHubEndpoint(baseURL: URL, user: String, password: String) {
+        let credChanged = baseURL != self.baseURL || user != self.user || password != self.password
         self.baseURL = baseURL
         self.user = user
         self.password = password
+        if credChanged {
+            hubToken.invalidate()
+        }
     }
 
     var usesLocalAgent: Bool { chatBaseURL != nil }
@@ -375,10 +403,86 @@ actor APIClient {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
-        let token = Data("\(user):\(password)".utf8).base64EncodedString()
-        req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
+        // 认证由执行点注入（Bearer 收敛）：见 injectHubAuth / resolveHubAuthHeader
         req.httpBody = body
         return req
+    }
+
+    // MARK: - Hub 认证（Bearer 收敛；Basic 仅在换取 token / 降级回退）
+
+    /// 唯一 Basic 头构造点（白名单：token 换取 + 降级回退）
+    private func basicAuthHeader() -> String {
+        let token = Data("\(user):\(password)".utf8).base64EncodedString()
+        return "Basic \(token)"
+    }
+
+    /// 供 AppModel 等外部构造带认证的请求头（探活等轻量路径）
+    func hubAuthorizationHeader() async -> String? {
+        await resolveHubAuthHeader()
+    }
+
+    /// 为请求注入 Hub 认证头（actor 内部执行点调用）
+    func injectHubAuth(_ req: inout URLRequest) async {
+        guard let header = await resolveHubAuthHeader() else { return }
+        req.setValue(header, forHTTPHeaderField: "Authorization")
+    }
+
+    /// 决策本次用哪个凭证：有效 Bearer → 近 TTL 刷新 → Basic 换 token → 失败降级 Basic
+    private func resolveHubAuthHeader() async -> String? {
+        if hubToken.isValid(now: Date()) {
+            guard let token = hubToken.token else { return basicAuthHeader() }
+            return "Bearer \(token)"
+        }
+        if hubToken.isDegrading(now: Date()) {
+            return basicAuthHeader()
+        }
+        if let token = await fetchAndStoreToken() {
+            return "Bearer \(token)"
+        }
+        // 获取失败：进降级窗口，本次回退 Basic（服务端 CCC_AUTH_REQUIRE_BEARER 未开时仍放行 → 不断链）
+        hubToken.recordFetchFailure(now: Date())
+        return basicAuthHeader()
+    }
+
+    /// POST /api/auth/token（Basic 换取）；in-flight 去重
+    private func fetchAndStoreToken() async -> String? {
+        if let task = tokenFetchTask {
+            return await task.value
+        }
+        let task = Task { [weak self] in await self?.performTokenFetch() }
+        tokenFetchTask = task
+        defer { tokenFetchTask = nil }
+        return await task.value
+    }
+
+    private func performTokenFetch() async -> String? {
+        guard let url = URL(string: "api/auth/token", relativeTo: baseURL) else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Basic 只在此换取 token 时出现（B2 契约）
+        req.setValue(basicAuthHeader(), forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        do {
+            let (data, resp) = try await session.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            guard let obj = try? JSONDecoder().decode(HubTokenResponse.self, from: data) else {
+                return nil
+            }
+            hubToken.store(token: obj.token, role: obj.role, expiresAt: HubTokenStateSupport.parseExpiry(obj.expires_at))
+            return obj.token
+        } catch {
+            return nil
+        }
+    }
+
+    /// 401 → 清 token → 重取 Bearer；成功返回新 Bearer 头，无则 nil（调用方报错，不无限重试）
+    private func freshBearerHeader() async -> String? {
+        hubToken.recordBearer401(now: Date())
+        guard let header = await resolveHubAuthHeader(), header.hasPrefix("Bearer ") else {
+            return nil
+        }
+        return header
     }
 
     private func send<T: Decodable>(
@@ -387,12 +491,25 @@ actor APIClient {
         maxAttempts: Int = 3
     ) async throws -> T {
         let attempts = max(1, min(maxAttempts, 3))
+        var req = req
+        // Hub 认证注入：Bearer 收敛（含 token 获取/刷新/降级）
+        await injectHubAuth(&req)
         return try await HubRequestGate.shared.withPermit {
+            var activeReq = req
             var lastError: Error?
+            var authRetried = false
             for attempt in 1...attempts {
                 do {
-                    let (data, resp) = try await self.session.data(for: req)
+                    let (data, resp) = try await self.session.data(for: activeReq)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    if code == 401, !authRetried {
+                        // token 过期 / 吊销 / 服务端重启 → 重取一次再试（有界）
+                        authRetried = true
+                        if let header = await self.freshBearerHeader() {
+                            activeReq.setValue(header, forHTTPHeaderField: "Authorization")
+                            continue
+                        }
+                    }
                     if !(200..<300).contains(code) {
                         if let err = try? JSONDecoder().decode(APIErrorBody.self, from: data),
                            let gates = err.errors, !gates.isEmpty {
@@ -428,9 +545,21 @@ actor APIClient {
 
     /// POST/PUT 不解 JSON body，只回状态码（用于 move/hide/reopen 等写动作）
     func sendVoid(_ req: URLRequest) async throws -> (Data, Int) {
-        try await HubRequestGate.shared.withPermit {
-            let (data, resp) = try await self.session.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        var req = req
+        await injectHubAuth(&req)
+        return try await HubRequestGate.shared.withPermit {
+            var activeReq = req
+            var authRetried = false
+            let (data, resp) = try await self.session.data(for: activeReq)
+            var code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 401, !authRetried {
+                authRetried = true
+                if let header = await self.freshBearerHeader() {
+                    activeReq.setValue(header, forHTTPHeaderField: "Authorization")
+                    let (d2, r2) = try await self.session.data(for: activeReq)
+                    return (d2, (r2 as? HTTPURLResponse)?.statusCode ?? 0)
+                }
+            }
             return (data, code)
         }
     }
@@ -895,13 +1024,24 @@ actor APIClient {
         var urlReq = try authedRequest("api/desktop/transfer", method: "POST", body: data)
         // Hub 抖动时勿用默认 45s×3 把 UI 卡死在「投递中」
         urlReq.timeoutInterval = 25
+        await injectHubAuth(&urlReq)
         let maxAttempts = 2
         return try await HubRequestGate.shared.withPermit {
+            var activeReq = urlReq
             var attempt = 1
+            var authRetried = false
             while true {
                 do {
-                    let (respData, resp) = try await self.session.data(for: urlReq)
+                    let (respData, resp) = try await self.session.data(for: activeReq)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    if code == 401, !authRetried {
+                        // token 过期/吊销 → 重取一次再试（有界）
+                        authRetried = true
+                        if let header = await self.freshBearerHeader() {
+                            activeReq.setValue(header, forHTTPHeaderField: "Authorization")
+                            continue
+                        }
+                    }
                     if respData.isEmpty {
                         throw APIError.decode("empty transfer body")
                     }
@@ -1199,7 +1339,9 @@ actor APIClient {
             let e = epicId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? epicId
             path += "&epic_id=\(e)"
         }
-        let req = try authedRequest(path)
+        var req = try authedRequest(path)
+        // Flow SSE 连 Hub：注入 Bearer（含 token 获取/刷新）
+        await injectHubAuth(&req)
         let (bytes, resp) = try await flowSession.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(code) {
