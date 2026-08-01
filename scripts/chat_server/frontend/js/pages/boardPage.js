@@ -3,6 +3,7 @@
 import { apiGet, apiPost } from '../api.js';
 import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.js';
 import { workspaceOf } from '../components/boardPanel.js';
+import { dialogueEntryUrl } from '../ports.js';
 
 export { epicLifecycleLabel, normalizeEpicSplitStatus };
 
@@ -317,7 +318,7 @@ function _buildFlowCol(col, _sig) {
 function html() {
   return `
 <div class="board-page hub-page">
-  <div class="orch-hint">编排口 · 看板。对话请开 <a href="http://192.168.3.140:7788/">M1 :7788</a></div>
+  <div class="orch-hint">编排口 · 看板。对话请开 <a href="${dialogueEntryUrl()}">M1 :7788</a></div>
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
