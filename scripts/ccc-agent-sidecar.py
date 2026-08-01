@@ -4,22 +4,23 @@
 Hot path: Desktop → 127.0.0.1:7788 → ClaudeSDKClient → M1 ai-loop-router :4100 → 上游 LLM
 Hub remains for threads sync / transfer / flow SSE (not on the chat hot path).
 
-Security (2026-07-27):
-  - 对话口默认 CCC_AGENT_AUTH=0（内网）；CCC_AGENT_AUTH=1 才强制 Token
-  - Hub API 经 sidecar 同机反代打隧道（浏览器不直连 2017 LAN :7777）
-  - project_path 必须落在 allowlist 根下
-  - /health 不暴露完整 cli 路径
+Security (2026-08-02, 窗口 K):
+  - 对话口**账号密码登录**：`CCC_AGENT_AUTH_USER/PASS` env 或 `~/.ccc/agent-auth.json`(0600)。
+    未配置 → 拒绝登录并明确提示，**无任何默认弱口令**（禁 ccc/ccc/空密码）。
+  - 会话 token：`POST /api/auth/agent-login` → 内存 Bearer（TTL 1h）；`/api/*` 全端口加门。
+  - 旧共享密钥（CCC_AGENT_TOKEN / ~/.ccc/agent-token）仅为 **Desktop 兼容窗口**（窗口 2 迁移后移除）。
+  - Hub API 经 sidecar 同机反代打隧道（浏览器不直连 2017 LAN :7777）；反代也需 agent 登录。
+  - project_path 必须落在 allowlist 根下；/health 不暴露完整 cli 路径
 
 Usage:
-  CCC_AGENT_PORT=7788 CCC_AGENT_TOKEN=... ANTHROPIC_BASE_URL=http://127.0.0.1:4100 \\
-    .venv-hub/bin/python scripts/ccc-agent-sidecar.py
+  CCC_AGENT_PORT=7788 CCC_AGENT_AUTH=1 CCC_AGENT_AUTH_USER=... CCC_AGENT_AUTH_PASS=... \\
+    ANTHROPIC_BASE_URL=http://127.0.0.1:4100 .venv-hub/bin/python scripts/ccc-agent-sidecar.py
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
 import json
 import logging
 import os
@@ -105,6 +106,11 @@ from chat_server.services.claude_client import (  # noqa: E402
     stream_chat,
 )
 from chat_server.hub_voice import wrap_hub_prompt  # noqa: E402
+from _agent_auth import (  # noqa: E402 窗口 K：账号密码鉴权（凭证/会话/授权/router）
+    AGENT_AUTH_ROUTER,
+    authorize_agent_request,
+    credentials_configured,
+)
 HOST = os.environ.get("CCC_AGENT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CCC_AGENT_PORT", "7788"))
 DEFAULT_CWD = os.environ.get("CCC_AGENT_CWD", str(ROOT))
@@ -180,6 +186,10 @@ app = FastAPI(
     lifespan=_sidecar_lifespan,
 )
 
+# 窗口 K：账号密码登录端点。必须在 catch-all Hub 反代（/api/{path:path}）之前注册，
+# FastAPI 按注册顺序先匹配 —— 否则 /api/auth/agent-* 会被兜底转发到 Hub。
+app.include_router(AGENT_AUTH_ROUTER)
+
 
 # 对话 SPA 在本机 :7788；若 Hub 页跨域打 sidecar，允许内网 Origin
 _cors_regex = os.environ.get(
@@ -232,26 +242,23 @@ def _auth_enforced() -> bool:
 
 
 def _check_agent_auth(request: Request) -> JSONResponse | None:
-    """共享密钥。默认强制 Bearer / X-CCC-Agent-Token。"""
+    """7788 全端口鉴权门：agent-login 会话 token 优先；旧共享密钥为 Desktop 兼容窗口。
+
+    `_auth_enforced()` 关（CCC_AGENT_AUTH=0/off/false/open）→ 放行。
+    未配置凭证 / 无会话 token → 401；「未配置登录凭证」提示由登录端点负责。
+    """
     if not _auth_enforced():
         return None
-    expected = _effective_token()
-    if not expected:
-        return JSONResponse(
-            {
-                "detail": "CCC_AGENT_TOKEN unset — run: bash scripts/install-agent-sidecar-plist.sh --start",
-            },
-            status_code=503,
-        )
-    auth = (request.headers.get("authorization") or "").strip()
-    got = ""
-    if auth.lower().startswith("bearer "):
-        got = auth[7:].strip()
-    if not got:
-        got = (request.headers.get("x-ccc-agent-token") or "").strip()
-    if not got or not hmac.compare_digest(got, expected):
-        return JSONResponse({"detail": "unauthorized"}, status_code=401)
-    return None
+    scheme = authorize_agent_request(
+        request.headers.get("authorization") or "",
+        request.headers.get("x-ccc-agent-token") or "",
+        legacy_token=_effective_token(),
+    )
+    if scheme is not None:
+        if scheme == "legacy":
+            _log.debug("agent auth via legacy shared-secret (compat window)")
+        return None
+    return JSONResponse({"detail": "unauthorized"}, status_code=401)
 
 
 def _allowed_roots() -> list[Path]:
@@ -409,6 +416,7 @@ async def health():
         "loop_code_version": loop_code_version() or None,
         "loop_code_sha256_prefix": loop_code_sha256_prefix() or None,
         "auth_required": _auth_enforced(),
+        "auth_configured": credentials_configured(),
         "default_cwd": DEFAULT_CWD,
         "shell": "dialogue",
         # Desktop / sidecar 默认 = 本机隧道（硬共识）
@@ -1130,7 +1138,11 @@ def _hub_proxy_skip(path: str) -> bool:
     p = (path or "").lstrip("/")
     if p in {"chat", "shell-config"}:
         return True
-    if p.startswith("session/") or p.startswith("outbox/"):
+    if (
+        p.startswith("auth/")  # 窗口 K：agent-login / agent-session / agent-logout
+        or p.startswith("session/")
+        or p.startswith("outbox/")
+    ):
         return True
     return False
 
@@ -1192,7 +1204,11 @@ async def hub_api_proxy(path: str, request: Request):
 
     Hub 仅绑环回时，LAN 打开 :7788/#/chat 无法直连 :7777；项目列表等走此反代。
     须注册在具体 /api/* 路由之后，避免抢占 /api/chat。
+    窗口 K：全端口加门 —— 未登录 LAN 用户不能借 sidecar 的 Hub 会话读写看板/运维。
     """
+    denied = _check_agent_auth(request)
+    if denied is not None:
+        return denied
     if _hub_proxy_skip(path):
         return JSONResponse({"detail": "not found"}, status_code=404)
     q = request.url.query

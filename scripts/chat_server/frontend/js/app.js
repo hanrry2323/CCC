@@ -237,11 +237,19 @@ function applyShellMode() {
 async function init() {
   applyShellMode();
   applyTheme(getThemeScheme());
-  // 窗口 A3: Hub 壳登录门（对话壳走 sidecar 鉴权，不强制）
-  const auth = await import('./auth.js');
-  auth.initAuth();
-  const authed = await auth.ensureAuthenticated();
-  if (!authed) await auth.waitForAuth();
+  // 登录门：Hub 壳走 A3 auth.js；对话壳走 agentAuth.js（7788 账号密码，窗口 K）
+  const { isDialogueShell } = await import('./ports.js');
+  if (isDialogueShell()) {
+    const agentAuth = await import('./agentAuth.js');
+    agentAuth.initAgentAuth();
+    const authed = await agentAuth.ensureAgentAuthenticated();
+    if (!authed) await agentAuth.waitForAgentAuth();
+  } else {
+    const auth = await import('./auth.js');
+    auth.initAuth();
+    const authed = await auth.ensureAuthenticated();
+    if (!authed) await auth.waitForAuth();
+  }
   initRouter(onHubRoute);
   initTitlebar();
   initDualPaneControls(generateId);

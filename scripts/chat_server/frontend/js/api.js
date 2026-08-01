@@ -1,30 +1,28 @@
 import { state } from './state.js';
-import { hubUrl, agentUrl } from './ports.js';
+import { hubUrl, agentUrl, isDialogueShell } from './ports.js';
 import { friendlyChatError } from './chatErrors.js';
 import { getToken, clearToken } from './auth.js';
+import { getAgentToken, clearAgentToken } from './agentAuth.js';
 import { reportConnectionFailure } from './chatStatus.js';
 
 /** Hub 请求头：Bearer 会话 token（无 token → 空头；登录换 token 走 auth.js login）。 */
 function _headers(json = true) {
   const h = {};
-  const tok = getToken();
-  if (tok) h.Authorization = 'Bearer ' + tok;
+  // 对话壳：Hub API 走 sidecar 反代（窗口 K 已加门），Bearer 用 agent 会话 token。
+  if (isDialogueShell()) {
+    const at = getAgentToken();
+    if (at) h.Authorization = 'Bearer ' + at;
+  } else {
+    const tok = getToken();
+    if (tok) h.Authorization = 'Bearer ' + tok;
+  }
   if (json) h['Content-Type'] = 'application/json';
   return h;
 }
 
-function _agentToken(_forcePrompt = false) {
-  // 内网默认无鉴权；若曾手动存过 token 仍可带上。不再弹窗索要 Token。
-  return (
-    sessionStorage.getItem('ccc_agent_token') ||
-    localStorage.getItem('ccc_agent_token') ||
-    ''
-  ).trim();
-}
-
-function _agentHeaders(json = true, forcePrompt = false) {
+function _agentHeaders(json = true) {
   const h = {};
-  const tok = _agentToken(forcePrompt);
+  const tok = getAgentToken();
   if (tok) h.Authorization = 'Bearer ' + tok;
   if (json) h['Content-Type'] = 'application/json';
   return h;
@@ -38,8 +36,13 @@ async function _fetchWithAuth(pathOrUrl, options = {}, json = true) {
     headers: { ...(options.headers || {}), ..._headers(json) },
   });
   if (resp.status === 401) {
-    clearToken();
-    window.dispatchEvent(new CustomEvent('ccc-auth-required'));
+    if (isDialogueShell()) {
+      clearAgentToken();
+      window.dispatchEvent(new CustomEvent('ccc-agent-auth-required'));
+    } else {
+      clearToken();
+      window.dispatchEvent(new CustomEvent('ccc-auth-required'));
+    }
   }
   return resp;
 }
@@ -51,7 +54,7 @@ async function _fetchAgent(pathOrUrl, options = {}, json = true) {
   try {
     resp = await fetch(url, {
       ...options,
-      headers: { ...(options.headers || {}), ..._agentHeaders(json, false) },
+      headers: { ...(options.headers || {}), ..._agentHeaders(json) },
     });
   } catch (e) {
     // 网络层抛错（sidecar 不可达）→ 上报断连横幅，再按原路径抛出
@@ -59,12 +62,8 @@ async function _fetchAgent(pathOrUrl, options = {}, json = true) {
     throw e;
   }
   if (resp.status === 401) {
-    sessionStorage.removeItem('ccc_agent_token');
-    localStorage.removeItem('ccc_agent_token');
-    window.showToast?.(
-      '对话口鉴权已开启但未通过：请关鉴权（默认）或配置服务端 Token',
-      'error'
-    );
+    clearAgentToken();
+    window.dispatchEvent(new CustomEvent('ccc-agent-auth-required'));
   }
   return resp;
 }
