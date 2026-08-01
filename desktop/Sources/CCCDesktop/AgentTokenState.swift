@@ -41,10 +41,10 @@ struct AgentTokenState {
     }
 }
 
-/// POST /api/auth/agent-login 响应（task-K 契约；report-K 回后校准）
+/// POST /api/auth/agent-login 响应（窗口 K 契约：`{token, role, expires_in}`，report-K §四）
 struct AgentLoginResponse: Decodable {
     let token: String
-    let expires_at: String?
-    let ttl_s: Int?
+    /// 会话 TTL 秒（sidecar `CCC_AGENT_SESSION_TTL` 默认 3600）
+    let expires_in: Int?
     let scheme: String?
 }

@@ -17,17 +17,12 @@ final class AgentLoginTests: XCTestCase {
     private let hub = URL(string: "http://127.0.0.1:17777/")!
     private let agent = URL(string: "http://127.0.0.1:7788/")!
 
-    private var isoFormatter: ISO8601DateFormatter {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
-        return f
-    }
-
-    private func loginJSON(_ token: String, expiresIn: TimeInterval = 3600) -> [String: Any] {
+    /// mock 登录响应：契约 `{token, role, expires_in}`（report-K §四）
+    private func loginJSON(_ token: String, expiresIn: Int = 3600) -> [String: Any] {
         [
             "token": token,
-            "expires_at": isoFormatter.string(from: Date().addingTimeInterval(expiresIn)),
-            "ttl_s": 3600,
+            "role": "operator",
+            "expires_in": expiresIn,
             "scheme": "bearer",
         ]
     }
@@ -121,9 +116,13 @@ final class AgentLoginTests: XCTestCase {
         XCTAssertEqual(state.loginCalls, 1)
         XCTAssertEqual(state.outboxCalls, 1)
         XCTAssertEqual(state.outboxAuthHeaders, ["Bearer agent-tok1"])
-        // 账号密码走 body（不是默认弱口令）
-        XCTAssertTrue(state.loginBodies[0].contains("alice"))
-        XCTAssertTrue(state.loginBodies[0].contains("s3cret"))
+        // 账号密码走 body；契约 key 为 user（report-K §四）
+        let loginBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(state.loginBodies[0].utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(loginBody["user"] as? String, "alice")
+        XCTAssertEqual(loginBody["password"] as? String, "s3cret")
+        XCTAssertNil(loginBody["username"], "契约 key 应为 user，不是 username")
     }
 
     func testAgentLoginCachedNoRelogin() async throws {

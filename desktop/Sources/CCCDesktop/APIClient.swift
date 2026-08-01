@@ -334,7 +334,8 @@ actor APIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
-            "username": agentUser.trimmingCharacters(in: .whitespacesAndNewlines),
+            // 契约 key：user（report-K §四；非 username）
+            "user": agentUser.trimmingCharacters(in: .whitespacesAndNewlines),
             "password": agentPassword,
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
@@ -348,7 +349,8 @@ actor APIClient {
                 }
                 agentTokenState.store(
                     token: obj.token,
-                    expiresAt: HubTokenStateSupport.parseExpiry(obj.expires_at)
+                    // expires_in = 相对秒（不是 ISO 时间戳）；无则 nil → 靠 401 重登兜底
+                    expiresAt: obj.expires_in.map { Date().addingTimeInterval(TimeInterval($0)) }
                 )
                 return .token(obj.token)
             }
