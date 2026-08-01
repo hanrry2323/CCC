@@ -195,6 +195,12 @@ body.hub-mode #app {
   flex-shrink: 0;
 }
 
+.board-ws {
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-bottom: 8px;
+}
+
 .board-ws-btns {
   display: flex;
   align-items: center;
@@ -1035,6 +1041,12 @@ body.hub-mode #app {
   color: #a33;
   background: rgba(196, 68, 68, 0.1);
   border-color: rgba(196, 68, 68, 0.3);
+}
+
+.ops-pill-green {
+  color: #1a6b32;
+  background: rgba(42, 157, 74, 0.12);
+  border-color: rgba(42, 157, 74, 0.35);
 }
 
 .ops-empty {

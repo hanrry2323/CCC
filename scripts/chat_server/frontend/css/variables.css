@@ -76,4 +76,6 @@
   --ccc-overlay-scrim: rgba(40, 30, 20, 0.28);
   --ccc-success: #3d7a5a;
   --ccc-danger: #b54a3a;
+  /* relay fail-open 降级提示专用琥珀（「橙不是红」规范） */
+  --ops-amber: #b45309;
 }
