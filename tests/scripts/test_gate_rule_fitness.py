@@ -221,6 +221,33 @@ def test_resolve_executor_from_skill_maps_library():
     assert resolve_executor_from_skill("") == "opencode"
 
 
+def test_epic_default_executor_from_skill_tag():
+    """fanout 从 epic skill tag 推断执行器；不得因 NameError 静默退回 opencode。
+
+    回归：_product_fanout 未 import sys，_epic_default_executor 里
+    sys.path.insert 抛 NameError → except 吞掉 → 恒返回 opencode，
+    script-seed 声明失效（探针卡仍 opencode 易 hang）。
+    """
+    from _product_fanout import _epic_default_executor
+
+    assert (
+        _epic_default_executor(
+            {"id": "e1", "tags": ["skill:skills/script-seed"], "note": None}
+        )
+        == "python"
+    )
+    assert (
+        _epic_default_executor(
+            {"id": "e2", "tags": ["skill:skills/ops"], "note": None}
+        )
+        == "cli"
+    )
+    # 无 skill 信息 → 兜底 opencode（不抛）
+    assert (
+        _epic_default_executor({"id": "e3", "tags": [], "note": None}) == "opencode"
+    )
+
+
 def test_tester_requires_pass_verdict(ws_git: Path):
     from board.roles.tester import _tester_verdict_allows_verified
     from board.context import set_workspace
