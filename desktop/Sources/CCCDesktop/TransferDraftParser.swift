@@ -49,10 +49,7 @@ struct TransferDraft: Equatable {
     }
 
     var acceptanceLines: [String] {
-        acceptance
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        AcceptanceText.plainLines(acceptance)
     }
 
     var previewLine: String {
