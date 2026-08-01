@@ -160,6 +160,21 @@ def read_result(workspace_root: Path | str, proposal_id: str) -> dict[str, Any]:
     }
 
 
+def _is_splitter_running() -> bool:
+    """检查 splitter 锁文件是否被占用，避免重复启动。"""
+    import fcntl
+    try:
+        fp = open(SPLITTER_LOCK, "w")
+        fcntl.flock(fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+        fp.close()
+        return False  # 锁未被占用
+    except BlockingIOError:
+        return True  # 锁被占用，splitter 正在运行
+    except Exception:
+        return False
+
+
 def trigger_splitter(
     proposal_id: str,
     project_id: str,
@@ -216,6 +231,19 @@ def trigger_splitter(
         )
 
     try:
+        # R-DEDUP: 如果已有 splitter 在运行，跳过启动新进程
+        # 因为正在运行的 splitter（WP2.1）会消费所有 pending 方案
+        if _is_splitter_running():
+            _log.info(
+                "splitter 已在运行，跳过 proposal=%s（将排队消费）", proposal_id
+            )
+            if workspace_root:
+                append_result(
+                    workspace_root, proposal_id,
+                    {"status": "queued", "note": "splitter 已在运行，排队消费中"},
+                )
+            return None
+
         # 非阻塞 Popen；splitter 自己消费队列 + flock 单实例
         proc = subprocess.Popen(
             cmd,

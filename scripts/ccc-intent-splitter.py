@@ -465,9 +465,185 @@ def _fallback_create_work(
     }
 
 
+def _read_last_status(result_file: Path) -> str:
+    """读取 result.jsonl 最后一行的事件状态。"""
+    try:
+        last_status = ""
+        for line in result_file.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            evt = json.loads(line)
+            status = str(evt.get("status") or "")
+            if status:
+                last_status = status
+        return last_status
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
+def _scan_pending_proposals(workspace: Path, primary_id: str) -> list[str]:
+    """扫描 intent-proposals 目录，返回所有待消费的 proposal_id 列表。
+
+    primary_id 排在最前，其他按 mtime 排序。
+    """
+    prop_dir = workspace / ".ccc" / "intent-proposals"
+    if not prop_dir.is_dir():
+        return [primary_id]
+
+    pending = []
+    for f in sorted(prop_dir.glob("*.md"), key=lambda p: p.stat().st_mtime):
+        pid = f.stem
+        if not pid:
+            continue
+        result_file = prop_dir / f"{pid}.result.jsonl"
+        if result_file.exists():
+            last_status = _read_last_status(result_file)
+            if last_status in ("ok", "failed"):
+                continue
+        pending.append(pid)
+
+    # primary_id 排最前，其余去重
+    seen = {primary_id}
+    ordered = [primary_id]
+    for pid in pending:
+        if pid not in seen:
+            seen.add(pid)
+            ordered.append(pid)
+    return ordered
+
+
+def _process_one(workspace: Path, project_id: str, proposal_id: str) -> dict:
+    """处理单个 proposal：读方案 → 创建 epic → fanout → 附 skill_ref → wake engine → 审计。"""
+    _t0 = time.monotonic()
+    _append_audit(workspace, proposal_id, {
+        "status": "running",
+        "project_id": project_id,
+        "workspace": str(workspace),
+    })
+
+    # 1. 读方案
+    try:
+        _t1 = time.monotonic()
+        prop = _read_proposal(workspace, proposal_id)
+        read_ms = int((time.monotonic() - _t1) * 1000)
+    except Exception as exc:
+        _append_audit(workspace, proposal_id, {"status": "failed", "error": str(exc)})
+        return {"ok": False, "error": str(exc), "proposal_id": proposal_id}
+
+    # 2. 创建 epic 卡到 backlog
+    from _board_store import FileBoardStore
+
+    _t2 = time.monotonic()
+    store = FileBoardStore(workspace)
+    epic_id = f"{proposal_id}-epic"
+    skill_ref = prop["skill_ref"]
+    prompt_ref = prop["prompt_ref"]
+    note = json.dumps({
+        "transfer_gate": {
+            "skill_ref": skill_ref,
+            "prompt_ref": prompt_ref,
+            "pipeline": "dev",
+            "feasibility": "ok",
+            "source": "intent-splitter",
+        }
+    }, ensure_ascii=False)
+    epic_data = {
+        "id": epic_id,
+        "title": prop["title"],
+        "description": prop["description"],
+        "card_kind": "epic",
+        "split_status": "pending",
+        "complexity": "medium",
+        "note": note[:2000],
+        "tags": ["intent-proposal", f"skill:{skill_ref}", f"proposal:{proposal_id}"],
+    }
+    if not store.create_task(epic_data, column="backlog"):
+        col, existing = store.find_task(epic_id)
+        if not existing:
+            msg = f"create epic failed: {epic_id}"
+            _append_audit(workspace, proposal_id, {"status": "failed", "error": msg})
+            return {"ok": False, "error": msg, "proposal_id": proposal_id}
+
+    # 3. 读取已创建的 epic
+    _col, epic_task = store.find_task(epic_id)
+    if not epic_task:
+        msg = f"epic not found after create: {epic_id}"
+        _append_audit(workspace, proposal_id, {"status": "failed", "error": msg})
+        return {"ok": False, "error": msg, "proposal_id": proposal_id}
+
+    # 4. fanout 拆卡
+    _t3 = time.monotonic()
+    fr = _run_fanout(store, epic_task, workspace, proposal_id)
+    fanout_ms = int((time.monotonic() - _t3) * 1000)
+    if not fr.get("ok"):
+        _append_audit(workspace, proposal_id, {
+            "status": "failed",
+            "error": fr.get("error") or "fanout failed",
+            "timing_ms": {"read": read_ms, "fanout": fanout_ms},
+        })
+        return {"ok": False, "error": fr.get("error"), "proposal_id": proposal_id}
+
+    child_ids = fr.get("child_ids") or []
+
+    # 5. 给子卡附 skill_ref@<hash>
+    _t4 = time.monotonic()
+    if fr.get("fallback"):
+        tagged = 0
+    else:
+        tagged = _attach_skill_version(store, child_ids, skill_ref, prompt_ref)
+    attach_ms = int((time.monotonic() - _t4) * 1000)
+
+    # 6. wake engine
+    _t5 = time.monotonic()
+    try:
+        from _engine_wake import ensure_engine_for_task
+        ensure_engine_for_task(
+            reason=f"intent-splitter:{proposal_id}",
+            task_id=epic_id,
+            workspace=workspace,
+            workspace_name=project_id,
+        )
+    except Exception as exc:
+        _log.warning("wake engine: %s", exc)
+    wake_ms = int((time.monotonic() - _t5) * 1000)
+
+    # 7. 审计完成（含阶段耗时埋点）
+    total_ms = int((time.monotonic() - _t0) * 1000)
+    _append_audit(workspace, proposal_id, {
+        "status": "ok",
+        "cards_produced": len(child_ids),
+        "child_ids": child_ids,
+        "epic_id": epic_id,
+        "claude_session_id": fr.get("claude_session_id") or "",
+        "skill_ref": skill_ref,
+        "prompt_ref": prompt_ref,
+        "fallback": bool(fr.get("fallback")),
+        "main_chain_error": fr.get("main_chain_error") or "",
+        "tagged_cards": tagged,
+        "timing_ms": {
+            "read": read_ms,
+            "create_epic": int((time.monotonic() - _t2) * 1000),
+            "fanout": fanout_ms,
+            "attach": attach_ms,
+            "wake": wake_ms,
+            "total": total_ms,
+        },
+    })
+    return {
+        "ok": True,
+        "cards_produced": len(child_ids),
+        "child_ids": child_ids,
+        "epic_id": epic_id,
+        "error": "",
+        "proposal_id": proposal_id,
+        "claude_session_id": fr.get("claude_session_id") or "",
+        "main_chain_error": fr.get("main_chain_error") or "",
+    }
+
+
 def main(proposal_id: str, project_id: str) -> dict:
-    """主流程：读方案 → 创建 epic → fanout → 附 skill_ref → wake engine → 审计。"""
-    # 单实例保护
+    """主流程：单实例 → 消费所有 pending 方案。"""
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     lock_fp = open(LOCK_FILE, "w")
     try:
@@ -479,142 +655,38 @@ def main(proposal_id: str, project_id: str) -> dict:
     workspace = _resolve_workspace(project_id)
     if not workspace.is_dir():
         msg = f"workspace 不存在: {workspace}"
-        _append_audit(workspace, proposal_id, {"status": "failed", "error": msg})
+        _log.error("splitter: %s", msg)
         return {"ok": False, "error": msg}
 
     try:
-        _t0 = time.monotonic()
-        _append_audit(workspace, proposal_id, {
-            "status": "running",
-            "project_id": project_id,
-            "workspace": str(workspace),
-        })
+        # R-CONSUME: 拿到锁后扫描所有 pending 方案，逐个消费
+        pending_ids = _scan_pending_proposals(workspace, proposal_id)
+        _log.info(
+            "splitter 将消费 %d 个 pending 方案: %s", len(pending_ids), pending_ids
+        )
 
-        # 1. 读方案
-        try:
-            _t1 = time.monotonic()
-            prop = _read_proposal(workspace, proposal_id)
-            read_ms = int((time.monotonic() - _t1) * 1000)
-        except Exception as exc:
-            _append_audit(workspace, proposal_id, {"status": "failed", "error": str(exc)})
-            return {"ok": False, "error": str(exc)}
+        results = []
+        all_ok = True
+        for pid in pending_ids:
+            _log.info("splitter 消费 pending proposal=%s", pid)
+            result = _process_one(workspace, project_id, pid)
+            results.append(result)
+            if not result.get("ok"):
+                all_ok = False
+                _log.warning(
+                    "splitter proposal=%s 失败: %s", pid, result.get("error", "")
+                )
 
-        # 2. 创建 epic 卡到 backlog
-        from _board_store import FileBoardStore
-
-        _t2 = time.monotonic()
-        store = FileBoardStore(workspace)
-        epic_id = f"{proposal_id}-epic"
-        skill_ref = prop["skill_ref"]
-        prompt_ref = prop["prompt_ref"]
-        note = json.dumps({
-            "transfer_gate": {
-                "skill_ref": skill_ref,
-                "prompt_ref": prompt_ref,
-                "pipeline": "dev",
-                "feasibility": "ok",
-                "source": "intent-splitter",
-            }
-        }, ensure_ascii=False)
-        epic_data = {
-            "id": epic_id,
-            "title": prop["title"],
-            "description": prop["description"],
-            "card_kind": "epic",
-            "split_status": "pending",
-            "complexity": "medium",
-            "note": note[:2000],
-            "tags": ["intent-proposal", f"skill:{skill_ref}", f"proposal:{proposal_id}"],
-        }
-        if not store.create_task(epic_data, column="backlog"):
-            # 可能已存在（重试）；尝试 find
-            col, existing = store.find_task(epic_id)
-            if not existing:
-                msg = f"create epic failed: {epic_id}"
-                _append_audit(workspace, proposal_id, {"status": "failed", "error": msg})
-                return {"ok": False, "error": msg}
-
-        # 3. 读取已创建的 epic（apply_fanout 需要完整 task dict）
-        _col, epic_task = store.find_task(epic_id)
-        if not epic_task:
-            msg = f"epic not found after create: {epic_id}"
-            _append_audit(workspace, proposal_id, {"status": "failed", "error": msg})
-            return {"ok": False, "error": msg}
-
-        # 4. fanout 拆卡
-        _t3 = time.monotonic()
-        fr = _run_fanout(store, epic_task, workspace, proposal_id)
-        fanout_ms = int((time.monotonic() - _t3) * 1000)
-        if not fr.get("ok"):
-            _append_audit(workspace, proposal_id, {
-                "status": "failed",
-                "error": fr.get("error") or "fanout failed",
-                "timing_ms": {"read": read_ms, "fanout": fanout_ms},
-            })
-            return {"ok": False, "error": fr.get("error")}
-
-        child_ids = fr.get("child_ids") or []
-
-        # 5. 给子卡附 skill_ref@<hash>
-        _t4 = time.monotonic()
-        # R-DEDUP: fallback 子卡 note 已自带 skill_ref/prompt_ref，跳过冗余 attach
-        if fr.get("fallback"):
-            tagged = 0
-        else:
-            tagged = _attach_skill_version(store, child_ids, skill_ref, prompt_ref)
-        attach_ms = int((time.monotonic() - _t4) * 1000)
-
-        # 6. wake engine
-        _t5 = time.monotonic()
-        try:
-            from _engine_wake import ensure_engine_for_task
-            ensure_engine_for_task(
-                reason=f"intent-splitter:{proposal_id}",
-                task_id=epic_id,
-                workspace=workspace,
-                workspace_name=project_id,
-            )
-        except Exception as exc:
-            _log.warning("wake engine: %s", exc)
-        wake_ms = int((time.monotonic() - _t5) * 1000)
-
-        # 7. 审计完成（含阶段耗时埋点）
-        total_ms = int((time.monotonic() - _t0) * 1000)
-        _append_audit(workspace, proposal_id, {
-            "status": "ok",
-            "cards_produced": len(child_ids),
-            "child_ids": child_ids,
-            "epic_id": epic_id,
-            "claude_session_id": fr.get("claude_session_id") or "",
-            "skill_ref": skill_ref,
-            "prompt_ref": prompt_ref,
-            "fallback": bool(fr.get("fallback")),
-            "main_chain_error": fr.get("main_chain_error") or "",  # R-TRACE: 主链路失败原因
-            "tagged_cards": tagged,
-            "timing_ms": {
-                "read": read_ms,
-                "create_epic": int((time.monotonic() - _t2) * 1000),
-                "fanout": fanout_ms,
-                "attach": attach_ms,
-                "wake": wake_ms,
-                "total": total_ms,
-            },
-        })
         return {
-            "ok": True,
-            "cards_produced": len(child_ids),
-            "child_ids": child_ids,
-            "epic_id": epic_id,
-            "error": "",
-            "claude_session_id": fr.get("claude_session_id") or "",
-            "main_chain_error": fr.get("main_chain_error") or "",
+            "ok": all_ok,
+            "results": results,
+            "cards_produced": sum(
+                r.get("cards_produced") or 0 for r in results
+            ),
+            "proposal_count": len(results),
         }
     except Exception as exc:
         _log.error("splitter main: %s", exc, exc_info=True)
-        try:
-            _append_audit(workspace, proposal_id, {"status": "failed", "error": str(exc)})
-        except Exception:
-            pass
         return {"ok": False, "error": str(exc)}
     finally:
         try:

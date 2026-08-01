@@ -342,6 +342,27 @@ def parse_fanout_output(output: str) -> tuple[str, list[dict]]:
         children = _loads_children_json(cm.group(1))
         return brief, children
 
+    # R-FALLBACK: 宽松回退 — 处理 LLM 把 CHILDREN 包在 markdown code fence 内的情况
+    if not cm:
+        # 1. 去 fence（strip ```json / ``` 包裹）
+        stripped = re.sub(r'```(?:json)?\s*', '', output, flags=re.I)
+        # 2. 找 ---CHILDREN--- 残片
+        cm = re.search(
+            r"---CHILDREN---\s*\n?(.*?)\n?---END_CHILDREN---", stripped, re.DOTALL
+        )
+        if cm:
+            children = _loads_children_json(cm.group(1))
+            return brief, children
+    if not cm:
+        # 3. 直接找最外层 JSON 数组（LLM 完全没输出标记时的最后兜底）
+        bracket_match = re.search(r'(\[\s*\{.*?\}\s*\])', output, re.DOTALL)
+        if bracket_match:
+            try:
+                children = _loads_children_json(bracket_match.group(1))
+                return brief, children
+            except (ValueError, json.JSONDecodeError):
+                pass
+
     # 兼容回退：单卡 PLAN+PHASES → 一张 work
     plan_m = re.search(
         r"---PLAN---\s*\n?(.*?)\n?---END_PLAN---", output, re.DOTALL

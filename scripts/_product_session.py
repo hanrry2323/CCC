@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 _log = logging.getLogger("ccc.product.session")
 
-MAX_MICRO_LOOPS = int(os.environ.get("CCC_PRODUCT_MICRO_LOOPS", "5") or "5")
+MAX_MICRO_LOOPS = int(os.environ.get("CCC_PRODUCT_MICRO_LOOPS", "8") or "8")
 MAX_MICRO_LOOPS = max(1, min(MAX_MICRO_LOOPS, 12))
 
 
@@ -132,6 +132,8 @@ async def run_contract_loop(
         if mode == "work"
         else "\n\n硬约束：只输出 ---EPIC_BRIEF--- / ---CHILDREN--- 契约块；"
         "CHILDREN 必须是可 json.loads 的 JSON 数组。"
+        "**禁止**包在 markdown code fence（```json```）内，"
+        "直接输出纯文本契约块。"
     )
 
     user_msg = prompt + repair_hint
@@ -225,11 +227,13 @@ async def run_contract_loop(
             except Exception as exc:
                 last_error = str(exc)
                 _log.warning(
-                    "[product-session] %s loop %d/%d lint/parse: %s",
+                    "[product-session] %s loop %d/%d %s\noutput(%.0f): %s",
                     task_id,
                     i + 1,
                     loops,
                     last_error[:200],
+                    len(turn_text),
+                    turn_text[:300],
                 )
                 user_msg = (
                     f"契约校验失败，请在同一任务上修正后重新完整输出契约块。\n"
