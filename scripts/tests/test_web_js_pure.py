@@ -106,3 +106,18 @@ def test_ops_selectors_daily_items():
         assert(JSON.stringify(m.dailyItems({})) === '[]', '空对象 → []');
         """,
     )
+
+
+def test_auth_role_and_headers():
+    """鉴权纯函数：canWriteRole / authHeaders（窗口 A3）。"""
+    _run_pure(
+        "js/auth.js",
+        r"""
+        assert(m.canWriteRole('operator') === true, 'operator 可写');
+        assert(m.canWriteRole('viewer') === false, 'viewer 只读');
+        assert(m.canWriteRole('') === false, '无角色只读');
+        const h = m.authHeaders('tok123');
+        assert(h.Authorization === 'Bearer tok123', 'Bearer 头');
+        assert(JSON.stringify(m.authHeaders('')) === '{}', '无 token 空头');
+        """,
+    )

@@ -163,8 +163,8 @@ function html() {
       <div class="ops-section">
         <h3>日审（业务仓 all-apps）</h3>
         <p class="ops-hint">默认 dry-run；apply 仅 C/E/F。禁 CCC orch。</p>
-        <button type="button" class="hub-btn" id="ops-run-dry">dry-run</button>
-        <button type="button" class="hub-btn" id="ops-run-apply">apply 建卡</button>
+        <button type="button" class="hub-btn" id="ops-run-dry" data-write>dry-run</button>
+        <button type="button" class="hub-btn" id="ops-run-apply" data-write>apply 建卡</button>
       </div>
       <div class="ops-section">
         <h3>可采纳项（有业务仓 workspace）</h3>
@@ -496,7 +496,7 @@ function riskCard(r, { adopt = false } = {}) {
     <div class="detail">${esc(r.detail || '')}</div>
     ${
       canAdopt
-        ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc(r.title)}" data-detail="${esc(r.detail || '')}" data-ws="${esc(ws)}">采纳为任务</button>`
+        ? `<button type="button" class="hub-btn ops-adopt-btn" data-title="${esc(r.title)}" data-detail="${esc(r.detail || '')}" data-ws="${esc(ws)}" data-write>采纳为任务</button>`
         : ''
     }
   </div>`;
@@ -703,7 +703,7 @@ function renderAdoptables(agg) {
         return `<div class="ops-risk sev-${esc(f.severity || 'low')}">
         <div class="title">${esc(f.title)}</div>
         <div class="detail">${esc(f.suggestion || '')}</div>
-        <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('文档: ' + (f.title || ''))}" data-detail="${esc(f.suggestion || '')}" data-ws="${esc(ws)}" data-tags="docs">采纳为任务</button>
+        <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('文档: ' + (f.title || ''))}" data-detail="${esc(f.suggestion || '')}" data-ws="${esc(ws)}" data-tags="docs" data-write>采纳为任务</button>
       </div>`;
       })
       .join('');
@@ -716,7 +716,7 @@ function renderAdoptables(agg) {
         const ws = (w.workspace || '').trim();
         return `<div class="ops-card" style="margin-bottom:8px">
         <b>${esc(ws)}</b> · 24h ${esc(w.commits_24h)}
-        <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('质量跟进: ' + ws)}" data-detail="${esc((w.commit_sample || []).join('\\n'))}" data-ws="${esc(ws)}" data-tags="quality">建议入队打磨</button>
+        <button type="button" class="hub-btn ops-adopt-btn" data-title="${esc('质量跟进: ' + ws)}" data-detail="${esc((w.commit_sample || []).join('\\n'))}" data-ws="${esc(ws)}" data-tags="quality" data-write>建议入队打磨</button>
       </div>`;
       })
       .join('');

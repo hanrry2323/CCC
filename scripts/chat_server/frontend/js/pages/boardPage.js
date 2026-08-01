@@ -316,8 +316,8 @@ function _buildFlowCol(col, _sig) {
               <div class="ti">${esc(t.title)}</div>
               ${parent}
               <div class="ac">
-                ${pv ? '<button type="button" class="mv-prev">←</button>' : ''}
-                ${nx ? '<button type="button" class="mv-next">→</button>' : ''}
+                ${pv ? '<button type="button" class="mv-prev" data-write>←</button>' : ''}
+                ${nx ? '<button type="button" class="mv-next" data-write>→</button>' : ''}
               </div>
               ${copyBtnHtml()}
             </div>`;
@@ -335,8 +335,8 @@ function html() {
   <div class="board-toolbar">
     <h2>看板</h2>
     <div class="board-toolbar-actions">
-      <button type="button" class="hub-btn primary" id="board-new">+ 新建大卡</button>
-      <button type="button" class="hub-btn" id="board-clean-done" title="隐藏已完成大卡">清理已完成</button>
+      <button type="button" class="hub-btn primary" id="board-new" data-write>+ 新建大卡</button>
+      <button type="button" class="hub-btn" id="board-clean-done" title="隐藏已完成大卡" data-write>清理已完成</button>
       <button type="button" class="hub-btn board-epic-toggle" id="board-epic-toggle" title="收起/展开待办大卡">大卡</button>
       <label class="board-toggle"><input type="checkbox" id="board-show-hidden"> 显示已隐藏</label>
     </div>

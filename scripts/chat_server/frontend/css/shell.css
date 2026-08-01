@@ -1330,3 +1330,95 @@ body.dialogue-mode #hub-views {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ── 窗口 A3: 登录视图 + 登录态 chip + 只读(ro-viewer) 写按钮置灰 ── */
+.hub-auth {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.hub-auth-role {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ccc-border-subtle);
+  color: var(--ccc-text-muted);
+}
+.hub-auth-logout {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ccc-border-base);
+  background: transparent;
+  color: var(--ccc-text-secondary);
+  cursor: pointer;
+}
+.hub-auth-logout:hover {
+  background: var(--ccc-bg-hover);
+}
+
+.login-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ccc-bg-deep);
+}
+.login-card {
+  width: min(360px, 88vw);
+  padding: 28px 26px;
+  border-radius: var(--ccc-radius-lg);
+  background: var(--ccc-bg-surface);
+  box-shadow: var(--ccc-shadow-lg);
+  border: 1px solid var(--ccc-border-base);
+}
+.login-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ccc-text-base);
+  margin-bottom: 18px;
+}
+.login-form label {
+  display: block;
+  font-size: 12px;
+  color: var(--ccc-text-muted);
+  margin-bottom: 12px;
+}
+.login-form input {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ccc-border-base);
+  background: var(--ccc-bg-base);
+  color: var(--ccc-text-base);
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.login-error {
+  min-height: 18px;
+  font-size: 12px;
+  color: #b45309;
+  margin: 4px 0 8px;
+}
+.login-form .hub-btn {
+  width: 100%;
+}
+.login-hint {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--ccc-text-faint);
+  line-height: 1.5;
+}
+
+/* 只读账户（viewer）：写按钮置灰，点击由 auth.js 拦截给提示 */
+body.ro-viewer [data-write] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

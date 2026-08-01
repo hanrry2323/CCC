@@ -145,7 +145,7 @@ function renderFailures(rows) {
       (f) => `<div class="row console-fail-row" data-tid="${esc(f.task_id || '')}">
       <span class="time">${esc((f.ts || '').replace('T', ' ').slice(0, 16))}</span>
       <span><b>${esc(f.task_id || '')}</b> · ${esc(f.role || '')} · ${esc(f.reason || '')}</span>
-      ${f.task_id ? '<button type="button" class="console-reopen-btn" data-tid="' + esc(f.task_id) + '">重开</button>' : ''}
+      ${f.task_id ? '<button type="button" class="console-reopen-btn" data-tid="' + esc(f.task_id) + '" data-write>重开</button>' : ''}
     </div>`
     )
     .join('');
