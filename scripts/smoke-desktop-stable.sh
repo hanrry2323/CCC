@@ -10,7 +10,14 @@ AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
-AUTH=(-u "${USER}:${PASS}")
+# 统一走 Bearer 会话 token（窗口 G）；换发失败回退 Basic（开关 off 不断链）
+HUB_TOKEN="$(bash "${ROOT}/scripts/ccc-hub-token.sh" "$SERVER" "$USER" "$PASS" 2>/dev/null || true)"
+export HUB_TOKEN
+if [[ -n "$HUB_TOKEN" ]]; then
+  AUTH=(-H "Authorization: Bearer $HUB_TOKEN")
+else
+  AUTH=(-u "${USER}:${PASS}")
+fi
 PROJECT="${CCC_DESKTOP_SMOKE_PROJECT:-ccc-demo}"
 # M1 无业务第二树：sidecar cwd 用平台仓；业务事实靠 Hub baseline
 WS="${CCC_LOCAL_WORKSPACE:-$ROOT}"
@@ -122,10 +129,14 @@ if curl -fsS --max-time 5 "${AUTH[@]}" "${SERVER}/api/desktop/config" >/tmp/ccc-
   TID1="smoke-stable-a-$$"
   TID2="smoke-stable-b-$$"
   check "hub dual thread put" python3 - <<PY
-import json, urllib.request, base64, sys
+import json, os, urllib.request, base64, sys
 server = "${SERVER}".rstrip("/")
-auth = base64.b64encode(b"${USER}:${PASS}").decode()
-headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
+tok = os.environ.get("HUB_TOKEN", "").strip()
+if tok:
+    headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+else:
+    auth = base64.b64encode(b"${USER}:${PASS}").decode()
+    headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
 
 def put(tid, content):
     url = f"{server}/api/desktop/threads/{tid}/messages"
@@ -218,18 +229,23 @@ PY
 # 10) PUT messages 备份语义（Hub 可达时）
 if [[ -f /tmp/ccc-stable-hub-config.json ]] && grep -q '"ok"' /tmp/ccc-stable-hub-config.json 2>/dev/null; then
   check "hub messages PUT is backup" python3 - <<PY
-import json, urllib.request, base64, sys
+import json, os, urllib.request, base64, sys
 server = "${SERVER}".rstrip("/")
-auth = base64.b64encode(b"${USER}:${PASS}").decode()
+tok = os.environ.get("HUB_TOKEN", "").strip()
 tid = "smoke-backup-$$"
 url = f"{server}/api/desktop/threads/{tid}/messages"
 body = json.dumps({
     "project_id": "${PROJECT}",
     "messages": [{"role": "user", "content": "backup-probe"}],
 }).encode()
+auth_hdr = (
+    f"Bearer {tok}"
+    if tok
+    else "Basic " + base64.b64encode(b"${USER}:${PASS}").decode()
+)
 req = urllib.request.Request(
     url, data=body,
-    headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
+    headers={"Authorization": auth_hdr, "Content-Type": "application/json"},
     method="PUT",
 )
 with urllib.request.urlopen(req, timeout=15) as resp:

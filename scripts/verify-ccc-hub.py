@@ -2,16 +2,16 @@
 """verify-ccc-hub.py — CCC Hub 端到端自检（账密 ccc/ccc，端口 7777/7775）。"""
 from __future__ import annotations
 
-import base64
 import json
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+import _hub_auth
+
 HUB = "http://127.0.0.1:7777"
 BOARD = "http://127.0.0.1:7775"
-AUTH = "Basic " + base64.b64encode(b"ccc:ccc").decode()
 ROOT = Path(__file__).resolve().parent.parent
 
 ok = 0
@@ -31,7 +31,8 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 def http(url: str, auth: bool = True, method: str = "GET", body: bytes | None = None):
     req = urllib.request.Request(url, data=body, method=method)
     if auth:
-        req.add_header("Authorization", AUTH)
+        for key, value in _hub_auth.hub_headers(base=HUB).items():
+            req.add_header(key, value)
     if body is not None:
         req.add_header("Content-Type", "application/json")
     try:

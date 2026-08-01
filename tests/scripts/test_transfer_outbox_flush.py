@@ -206,23 +206,41 @@ def test_flush_once_exhaust_on_retry_writes_failed(tmp_path: Path):
 
 
 def test_hub_auth_prefers_ccc_hub_auth(monkeypatch):
+    """Bearer 换发失败时回退 Basic，凭据以 CCC_HUB_AUTH 优先（窗口 G 迁移）。"""
+    import base64
+    import urllib.request
+
+    from _hub_auth import _TOKEN_CACHE
+
+    _TOKEN_CACHE.clear()
     monkeypatch.setenv("CCC_HUB_AUTH", "hubuser:hubpass")
     monkeypatch.delenv("CCC_CHAT_USER", raising=False)
     monkeypatch.delenv("CCC_CHAT_PASS", raising=False)
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("no-hub"))
+    )
     h = flush.hub_auth_header()
-    import base64
-
+    assert h["Authorization"].startswith("Basic ")
     raw = base64.b64decode(h["Authorization"].split(" ", 1)[1]).decode()
     assert raw == "hubuser:hubpass"
 
 
 def test_hub_auth_falls_back_chat_user(monkeypatch):
+    """无 CCC_HUB_AUTH 时回退 CCC_CHAT_USER/PASS。"""
+    import base64
+    import urllib.request
+
+    from _hub_auth import _TOKEN_CACHE
+
+    _TOKEN_CACHE.clear()
     monkeypatch.delenv("CCC_HUB_AUTH", raising=False)
     monkeypatch.setenv("CCC_CHAT_USER", "u")
     monkeypatch.setenv("CCC_CHAT_PASS", "p")
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("no-hub"))
+    )
     h = flush.hub_auth_header()
-    import base64
-
+    assert h["Authorization"].startswith("Basic ")
     raw = base64.b64decode(h["Authorization"].split(" ", 1)[1]).decode()
     assert raw == "u:p"
 

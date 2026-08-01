@@ -16,12 +16,22 @@ CRID="empty-retry-$(date +%s)-$$"
 STATE="/tmp/ccc-empty-retry-state-$$"
 rm -f "$STATE"
 
+# 统一走 Bearer 会话 token（窗口 G）；换发失败回退 Basic（开关 off 不断链）
+HUB_TOKEN="$(bash "${ROOT}/scripts/ccc-hub-token.sh" "$UPSTREAM" "$USER" "$PASS" 2>/dev/null || true)"
+export HUB_TOKEN
+
 python3 - "$UPSTREAM" "$PROXY_PORT" "$USER" "$PASS" "$STATE" <<'PY' &
-import base64, json, sys, urllib.request
+import base64, json, os, sys, urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 upstream, port, user, passwd, state_path = sys.argv[1:6]
-auth = "Basic " + base64.b64encode(f"{user}:{passwd}".encode()).decode()
+tok = os.environ.get("HUB_TOKEN", "").strip()
+if tok:
+    auth_headers = {"Authorization": "Bearer " + tok}
+else:
+    auth_headers = {
+        "Authorization": "Basic " + base64.b64encode(f"{user}:{passwd}".encode()).decode()
+    }
 count = {"n": 0}
 
 class H(BaseHTTPRequestHandler):
@@ -44,7 +54,7 @@ class H(BaseHTTPRequestHandler):
             upstream.rstrip("/") + self.path,
             data=body,
             headers={
-                "Authorization": auth,
+                **auth_headers,
                 "Content-Type": self.headers.get("Content-Type") or "application/json",
             },
             method="POST",
@@ -64,7 +74,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         req = urllib.request.Request(
             upstream.rstrip("/") + self.path,
-            headers={"Authorization": auth},
+            headers=dict(auth_headers),
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = resp.read()
@@ -83,7 +93,11 @@ sleep 0.4
 echo "== empty-transfer-retry via proxy :${PROXY_PORT} → ${UPSTREAM} =="
 
 # Probe upstream
-curl -sf --connect-timeout 5 -u "${USER}:${PASS}" "${UPSTREAM}/api/desktop/projects" >/dev/null
+if [[ -n "$HUB_TOKEN" ]]; then
+  curl -sf --connect-timeout 5 -H "Authorization: Bearer $HUB_TOKEN" "${UPSTREAM}/api/desktop/projects" >/dev/null
+else
+  curl -sf --connect-timeout 5 -u "${USER}:${PASS}" "${UPSTREAM}/api/desktop/projects" >/dev/null
+fi
 
 BODY=$(python3 - <<PY
 import json

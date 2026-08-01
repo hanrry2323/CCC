@@ -119,7 +119,7 @@ _probe_url() {
 _probe_auth() {
   local label=$1
   case "$label" in
-    com.ccc.chat-server) echo "-u ccc:ccc" ;;
+    com.ccc.chat-server) echo "-u ${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}" ;;
     *) echo "" ;;
   esac
 }

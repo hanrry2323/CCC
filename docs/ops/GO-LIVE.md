@@ -38,8 +38,19 @@ Hub 默认账密 `ccc`/`ccc`（Basic），过渡期按 **operator 全权**兼容
 | **REQUIRED** | `CCC_AUTH_REQUIRE_BEARER=1` | 普通端点 **401**；仅 `POST /api/auth/token` 仍接受 Basic 换 token | 强制走会话 token |
 
 - 会话 token：`POST /api/auth/token`（Basic 凭证一次）→ Bearer，TTL 1h，重启失效。
-- **迁移**：Basic 调用方（sidecar `_hub_auth_headers`、ccc-hub-lens 等工具）改走 token 端点换 Bearer，内存缓存 + 到期重换；SPA 前端已 token 原生。
 - **回滚**：取消该 env 即回到兼容态，不停服务。
+
+### 已迁移调用方（scripts 侧统一走 `_hub_auth` / `ccc-hub-token.sh`，2026-08-01 窗口 G）
+
+| 类 | 调用方 | 机制 |
+|----|--------|------|
+| 工具 | `ccc-hub-lens.py` · `ccc-mind-update.py` · `ccc-submit-proposal.py` · `verify-ccc-hub.py` · `ccc-stress-matrix.py` | `_hub_auth.hub_headers()`（Bearer 优先，换发失败回退 Basic） |
+| Hub 服务 | `chat_server/services/hub_agent_tools.py` · `transfer_outbox_flush.py` | `_hub_auth` 薄壳 + 401 重取 |
+| 对话链 | `ccc-agent-sidecar.py`（`_hub_auth_headers` → `_hub_auth`；`_hub_proxy_sync` 401 自愈） | Desktop→sidecar→Hub 全程 Bearer |
+| Shell | `ccc-hub-probe.sh` · `smoke-hub-empty-transfer-retry.sh` · `smoke-desktop-stable.sh` | `ccc-hub-token.sh` 换 Bearer，空 token 回退 `-u` |
+
+- 其余 `-u` env 驱动 demo/ops 脚本（`smoke-ccc-demo-*`、`smoke-qb-biz-small.sh` 等）与 `ccc-fleet.sh` 为**已知残留**：非硬编码（env 派生），开关 on 前需同样迁移；`smoke-hub-outage-outbox.sh` 内 ssh 远程恢复探针为远程 Hub 自身鉴权校验（保留 `-u ccc:ccc`）。
+- `_ccc_control.py` 无任何 Hub HTTP 请求（no-op，无需迁移）。
 
 ## 角色分工（记住就够）
 

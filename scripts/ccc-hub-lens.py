@@ -23,7 +23,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import sys
@@ -35,20 +34,11 @@ from typing import Any
 DEFAULT_HUB = os.environ.get("CCC_HUB_URL", "http://127.0.0.1:17777").rstrip("/")
 
 
-def resolve_hub_basic_auth() -> str:
-    """Hub Basic Auth user:pass。优先 CCC_HUB_AUTH，否则 CCC_CHAT_USER/PASS，默认 ccc:ccc。"""
-    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if explicit:
-        return explicit
-    user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
-    passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
-    return f"{user}:{passwd}"
-
-
 def _auth_header() -> dict[str, str]:
-    auth = resolve_hub_basic_auth()
-    token = base64.b64encode(auth.encode()).decode()
-    return {"Authorization": f"Basic {token}"}
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）。"""
+    from _hub_auth import hub_headers
+
+    return hub_headers()
 
 
 def _get(url: str, timeout: float = 12.0) -> dict[str, Any]:

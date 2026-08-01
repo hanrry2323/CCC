@@ -3,7 +3,7 @@
 #
 # 权威口径（禁止用错 path 判死）：
 #   - Hub **无** GET /api/health（404 = 预期，不是挂了）
-#   - Hub 可达性 = GET /api/desktop/projects（或 /api/desktop/version）+ Basic Auth
+#   - Hub 可达性 = GET /api/desktop/projects（或 /api/desktop/version）+ Bearer 会话 token（换发失败回退 Basic）
 #   - 无 auth → 401 = 预期（Hub 开鉴权；sidecar /health 默认无 auth —— 设计差异）
 #   - 对话口 = M1 GET :7788/health（与 Hub 分离）
 #
@@ -22,7 +22,13 @@ SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 USER="${CCC_CHAT_USER:-ccc}"
 PASS="${CCC_CHAT_PASS:-ccc}"
 AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
-AUTH=(-u "${USER}:${PASS}")
+# 统一走 Bearer 会话 token（窗口 G）；换发失败回退 Basic（开关 off 不断链）
+HUB_TOKEN="$(bash "${ROOT}/scripts/ccc-hub-token.sh" "$SERVER" "$USER" "$PASS" 2>/dev/null || true)"
+if [[ -n "$HUB_TOKEN" ]]; then
+  AUTH=(-H "Authorization: Bearer $HUB_TOKEN")
+else
+  AUTH=(-u "${USER}:${PASS}")
+fi
 
 fail=0
 note() { echo "[probe] $*"; }
@@ -46,7 +52,7 @@ if [[ "$code" == "401" ]]; then
 else
   # 若本机关了 auth，放宽为 200 并注明
   if [[ "$code" == "200" ]]; then
-    note "WARN: projects no-auth returned 200 (AUTH may be disabled); still prefer -u for probes"
+    note "WARN: projects no-auth returned 200 (AUTH may be disabled); still prefer Bearer for probes"
   else
     bad "Hub projects no-auth expected 401 (or 200 if auth off), got ${code}"
   fi
@@ -56,7 +62,7 @@ fi
 code=$(curl -sS -m 8 -o /tmp/ccc-hub-projects.body -w '%{http_code}' \
   "${AUTH[@]}" "${SERVER}/api/desktop/projects" 2>/dev/null || echo 000)
 if [[ "$code" == "200" ]]; then
-  ok "Hub /api/desktop/projects + Basic Auth → 200"
+  ok "Hub /api/desktop/projects + auth → 200"
 else
   bad "Hub /api/desktop/projects + auth expected 200, got ${code} — tunnel/Hub down?"
 fi
