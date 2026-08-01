@@ -267,7 +267,11 @@ class OpenCodeExecutor(Executor):
         _spec.loader.exec_module(_mod)
         _build_cmd = _mod.build_opencode_run_cmd
 
-        if len(prompt_text) > 200:
+        # R-14：长 prompt 走 stdin（opencode 1.17 长 positional 会 SIGTERM），
+        # 同时落盘一份临时文件供审计/复现；命令不引用该文件。
+        use_stdin = len(prompt_text) > 200
+        tmp_path = None
+        if use_stdin:
             pids_dir = Path.home() / ".ccc" / "pids"
             pids_dir.mkdir(parents=True, exist_ok=True)
             import uuid as _uuid
@@ -281,7 +285,7 @@ class OpenCodeExecutor(Executor):
             cmd = _build_cmd(
                 opencode_bin,
                 model,
-                message="Read attached file and execute the instructions inside.",
+                message=None,  # R-14: 不传 positional，prompt 走 stdin
                 prompt_file=tmp_path,
                 cwd=cwd,
             )
@@ -300,7 +304,7 @@ class OpenCodeExecutor(Executor):
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if use_stdin else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,
@@ -313,7 +317,10 @@ class OpenCodeExecutor(Executor):
             # task_id 从 phase_id 推断：tid 或 tid__pN
             _tid = phase_id.split("__")[0] if phase_id else ""
             try:
-                stdout, stderr = proc.communicate(timeout=timeout)
+                stdout, stderr = proc.communicate(
+                    input=prompt_text.encode("utf-8") if use_stdin else None,
+                    timeout=timeout,
+                )
                 duration = time.time() - started
                 out_s = stdout.decode("utf-8", errors="replace")
                 err_s = stderr.decode("utf-8", errors="replace")
