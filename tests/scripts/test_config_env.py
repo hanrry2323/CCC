@@ -99,3 +99,4 @@ def test_anthropic_base_url_consistency_check():
     """
     c = Config()
     assert c.agent.relay_base_url == c.relay.base_url
+    assert c.agent.relay_base_url == "http://127.0.0.1:4100"  # ai-loop-router 权威端口(4100)

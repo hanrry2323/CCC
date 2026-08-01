@@ -65,7 +65,7 @@ if [[ ! -f "${LOOP_CODE_CONFIG_DIR}/CLAUDE.md" ]]; then
 你不是 Hub 聊天窗口，不是 Engine 的 product/dev/reviewer。
 
 模型出口：M1 ai-loop-router flash（:4100；勿默认指 LAN 2017）。
-禁止：已退役的 MiniMax-M3 / CCC relay(:4000)、M1 本地 Hub/Board/Engine、业务第二树。
+禁止：已退役的 MiniMax-M3 / 旧 relay（现 M1 ai-loop-router :4100/:4102）、M1 本地 Hub/Board/Engine、业务第二树。
 身份 SSOT：CCC 仓 `docs/product/desktop-agent-identity.md`。
 CLAUDE_MD_EOF
 fi
@@ -146,7 +146,7 @@ else
   _tok="${ANTHROPIC_AUTH_TOKEN:-}"
   if [[ -z "$_tok" || "$_tok" == "sk-trae-real-token-not-needed" ]]; then
     # relay 主路径不需要厂商真 key；写占位 token 供 SDK 填头
-    _tok="ccc-relay-flash"
+    _tok="loop-router-flash"
   fi
   AUTH_TOKEN_FILE="$AUTH_TOKEN_STORE"
   (umask 077; printf '%s\n' "$_tok" > "$AUTH_TOKEN_FILE")
