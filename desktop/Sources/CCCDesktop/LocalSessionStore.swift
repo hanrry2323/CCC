@@ -6,7 +6,17 @@ import Darwin
 enum LocalSessionStore {
     private static let fm = FileManager.default
 
+    #if DEBUG
+    /// 单测注入：指向临时目录，避免触碰真实 Application Support（release 不编译此变量，生产行为不变）
+    static var testRootOverride: URL?
+    #endif
+
     static var rootURL: URL {
+        #if DEBUG
+        if let testRootOverride {
+            return testRootOverride
+        }
+        #endif
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         return base.appendingPathComponent("CCCDesktop", isDirectory: true)

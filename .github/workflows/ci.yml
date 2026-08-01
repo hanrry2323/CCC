@@ -1,5 +1,5 @@
 # CCC CI — GitHub Actions
-# Jobs: version-sync, pytest, ruff, shellcheck, precommit, e2e, selfcheck, scripts-tests
+# Jobs: version-sync, pytest, ruff, shellcheck, precommit, e2e, selfcheck, scripts-tests, swift-test
 # Triggers: push, PR
 # NOTE: CCC is a SKILL not a Python project — most jobs run on `push` only,
 # PRs are documented but optional (because main branch is the source of truth).
@@ -135,3 +135,11 @@ jobs:
           pip install fastapi uvicorn pydantic pytest pytest-asyncio httpx requests
       - name: Run scripts/tests
         run: pytest scripts/tests/ -v --tb=short
+
+  swift-test:
+    name: swift-test (desktop)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run desktop Swift tests
+        run: cd desktop && swift test

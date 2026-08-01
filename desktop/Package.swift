@@ -12,5 +12,9 @@ let package = Package(
             name: "CCCDesktop",
             path: "Sources/CCCDesktop"
         ),
+        .testTarget(
+            name: "CCCDesktopTests",
+            dependencies: ["CCCDesktop"]
+        ),
     ]
 )
