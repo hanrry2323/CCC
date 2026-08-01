@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { hubUrl, agentUrl } from './ports.js';
+import { friendlyChatError } from './chatErrors.js';
 
 /** Hub Basic Auth：默认用户名/密码均为 ccc。
  * 自定义口令只进 sessionStorage（会话级），不再把默认口令长期写入 localStorage。
@@ -342,16 +343,7 @@ export async function streamChat(
     if (!resp.ok) {
       const errBody = await resp.json().catch(() => ({}));
       const detail = errBody.detail || errBody.message || errBody.error;
-      const errText =
-        resp.status === 401
-          ? '对话口鉴权已开启但未通过（默认已关；勿弹 Token）'
-          : resp.status === 403
-            ? detail || 'project_path 不被 sidecar 允许（检查 workspace map）'
-            : resp.status === 502 || resp.status === 503
-              ? detail || 'M1 sidecar 不可达（检查 :7788）'
-              : resp.status === 429
-                ? '并发会话已满或会话忙，请稍候'
-                : detail || '请求失败: HTTP ' + resp.status;
+      const errText = friendlyChatError(resp.status, detail);
       onError(errText);
       return;
     }
