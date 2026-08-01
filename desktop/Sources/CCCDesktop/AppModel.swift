@@ -29,6 +29,9 @@ final class AppModel: ObservableObject {
     @AppStorage("ccc.selectedProject") var persistedProjectId: String = ""
     /// 本机 Agent Sidecar（loop-code 热路径）；空则只用 Hub
     @AppStorage("ccc.agent") var agentURLString: String = "http://127.0.0.1:7788"
+    /// 本机 Agent 登录账号/密码（默认空 → 无默认弱口令；未配置时对话明确提示，不白屏）
+    @AppStorage("ccc.agentUser") var agentUser: String = ""
+    @AppStorage("ccc.agentPass") var agentPass: String = ""
     /// 全局本机工作区 fallback（sidecar cwd）
     @AppStorage("ccc.localWorkspace") var localWorkspacePath: String = ""
     /// JSON: projectId → 本机绝对路径
@@ -564,7 +567,9 @@ final class AppModel: ObservableObject {
             user: authUser,
             password: authPass,
             chatBaseURL: chatURL,
-            localProjectPath: localPath
+            localProjectPath: localPath,
+            agentUser: agentUser,
+            agentPassword: agentPass
         )
     }
 
@@ -3302,7 +3307,14 @@ final class AppModel: ObservableObject {
                     setStatusImmediate("本条失败 · \(lastTurnFailure?.shortLabel ?? "错误")")
                 }
                 if apiErr?.isNonRetryableAuthOrClient == true {
-                    showToast("对话失败（鉴权/路径）：\(msg)。请检查 ~/.ccc/agent-token 并执行 bash scripts/install-agent-sidecar-plist.sh --start")
+                    // msg 已含明确指引（未配置凭证 / 登录失败 / 重装）时不再追加旧 agent-token 提示
+                    let hasGuidance = msg.contains("请") || msg.contains("设置")
+                        || msg.contains("确认") || msg.contains("重装")
+                    if hasGuidance {
+                        showToast("对话失败（鉴权/路径）：\(msg)")
+                    } else {
+                        showToast("对话失败（鉴权/路径）：\(msg)。请检查 ~/.ccc/agent-token 并执行 bash scripts/install-agent-sidecar-plist.sh --start")
+                    }
                 } else {
                     showToast("对话失败：\(lastTurnFailure?.shortLabel ?? msg)")
                 }

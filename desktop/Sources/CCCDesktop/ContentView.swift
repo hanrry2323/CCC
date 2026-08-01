@@ -2490,6 +2490,8 @@ struct SettingsView: View {
 
             Section {
                 TextField("本机 Agent", text: $model.agentURLString)
+                TextField("登录账号", text: $model.agentUser)
+                SecureField("登录密码", text: $model.agentPass)
                 TextField("CCC 仓根（拉起 sidecar）", text: $model.cccHomePath)
                 Picker("对话模型", selection: $model.preferredModel) {
                     ForEach(StreamSessionController.modelPickerOptions, id: \.id) { opt in
@@ -2526,7 +2528,7 @@ struct SettingsView: View {
             } header: {
                 Text("本机对话 Agent")
             } footer: {
-                Text("模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游由 relay upstreams.json 路由（三档契约：flash/Pro/code）。不改 shell / 个人 Claude。")
+                Text("登录账号/密码：对话口走账号密码换取会话 token（无默认口令）。未填写时对话会提示配置，不静默。模型在 App 内选择（持久化 ccc.preferredModel），按请求传 sidecar。上游由 relay upstreams.json 路由（三档契约：flash/Pro/code）。不改 shell / 个人 Claude。")
             }
 
             Section {
