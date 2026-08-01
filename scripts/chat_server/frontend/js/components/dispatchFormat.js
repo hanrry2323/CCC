@@ -27,7 +27,7 @@ function _asStringArray(v) {
 
 /**
  * @returns {object} 统一字段：ok, source, title, goal, acceptance, pipeline,
- *   feasibility, feasibility_reason, executor_intent, skills_hint, plan_md,
+ *   feasibility, feasibility_reason, skill_ref, prompt_ref, skills_hint, plan_md,
  *   complexity, summary, error?
  */
 export function parseDispatchBlock(text) {
@@ -62,7 +62,8 @@ export function parseDispatchBlock(text) {
       pipeline: String(obj.pipeline || 'dev').trim() || 'dev',
       feasibility: String(obj.feasibility || 'ok').trim() || 'ok',
       feasibility_reason: String(obj.feasibility_reason || '').trim(),
-      executor_intent: String(obj.executor_intent || 'opencode').trim() || 'opencode',
+      skill_ref: String(obj.skill_ref || '').trim() || 'skills/write-code',
+      prompt_ref: String(obj.prompt_ref || '').trim() || 'prompts/write-code-prompt',
       skills_hint: skills,
       plan_md: plan_md || ('# Plan\n\n## 目标\n' + (goal || title) + '\n'),
       complexity: ['small', 'medium', 'large'].includes(complexity)
@@ -113,7 +114,8 @@ export function parseDispatchBlock(text) {
     pipeline: 'dev',
     feasibility: 'ok',
     feasibility_reason: '',
-    executor_intent: 'opencode',
+    skill_ref: 'skills/write-code',
+    prompt_ref: 'prompts/write-code-prompt',
     skills_hint: [],
     plan_md,
     complexity: ['small', 'medium', 'large'].includes(complexity)

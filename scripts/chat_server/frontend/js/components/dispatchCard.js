@@ -15,6 +15,29 @@ import { parseDispatchBlock, findLatestDispatch } from './dispatchFormat.js';
 
 const MAX_SKILLS = 3;
 
+// skill_ref → prompt_ref（对齐 references/skills/*/skill.md 声明的 Prompt；
+// ops/script-seed 无独立 prompt，复用写码 prompt）。transfer-gate 硬校验这两个字段必填。
+const SKILL_TO_PROMPT_REF = {
+  'skills/write-code': 'prompts/write-code-prompt',
+  'skills/bug-fix': 'prompts/bug-fix-prompt',
+  'skills/code-review': 'prompts/code-review-prompt',
+  'skills/ops': 'prompts/write-code-prompt',
+  'skills/script-seed': 'prompts/write-code-prompt',
+};
+const DEFAULT_SKILL_REF = 'skills/write-code';
+const DEFAULT_PROMPT_REF = 'prompts/write-code-prompt';
+
+/** 按所选 Skill 推断 skill_ref（id 或 skills/xxx 均可）；无匹配则用定稿块显式值，再兜底 write-code。 */
+function resolveSkillRef(skillIds, fallbackRef) {
+  const known = Object.keys(SKILL_TO_PROMPT_REF);
+  for (const id of skillIds || []) {
+    const ref = id.indexOf('skills/') === 0 ? id : 'skills/' + id;
+    if (known.indexOf(ref) >= 0) return ref;
+  }
+  if (fallbackRef && known.indexOf(fallbackRef) >= 0) return fallbackRef;
+  return DEFAULT_SKILL_REF;
+}
+
 function ensureHost() {
   let host = document.getElementById('dispatch-card-host');
   if (host) return host;
@@ -328,6 +351,8 @@ export async function showDispatchCard(opts = {}) {
       'http-' + Date.now().toString(36) + '-' + (generateId?.() || Math.random().toString(36).slice(2, 8));
 
     try {
+      const skillRef = resolveSkillRef(skills, parsed.skill_ref);
+      const promptRef = SKILL_TO_PROMPT_REF[skillRef] || DEFAULT_PROMPT_REF;
       const payload = {
         project_id: projectId,
         thread_id: threadId,
@@ -338,7 +363,8 @@ export async function showDispatchCard(opts = {}) {
         pipeline: parsed.pipeline || 'dev',
         feasibility: parsed.feasibility || 'ok',
         feasibility_reason: parsed.feasibility_reason || '',
-        executor_intent: parsed.executor_intent || 'opencode',
+        skill_ref: skillRef,
+        prompt_ref: promptRef,
         skills_hint: skills,
         plan_md: parsed.plan_md || '',
         complexity: parsed.complexity || 'medium',
