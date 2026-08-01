@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-from ..auth import check_auth
+from ..auth import check_auth, require_write
 from ..services.board_client import board_proxy
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
 
@@ -349,7 +349,7 @@ def _enforce_epic_only_create(body: dict) -> None:
 @router.post("/api/board/proxy/tasks")
 async def board_proxy_create_task(request: Request):
     """Create backlog epic；默认禁止 phases 跳过 product（安全对齐 2026-07-19）。"""
-    check_auth(request)
+    require_write(request)  # 建卡写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -400,7 +400,7 @@ async def board_proxy_create_task(request: Request):
 
 @router.post("/api/board/proxy/tasks/move")
 async def board_proxy_move_task(request: Request):
-    check_auth(request)
+    require_write(request)  # 移动任务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -549,7 +549,7 @@ async def native_task_events(request: Request, task_id: str, workspace: str = "C
 @router.post("/api/tasks")
 async def native_create_task(request: Request):
     """Thin proxy；仅允许创建 epic（禁止 work 绕过 transfer）。"""
-    check_auth(request)
+    require_write(request)  # 建卡写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -573,7 +573,7 @@ async def native_create_task(request: Request):
 
 @router.post("/api/tasks/move")
 async def native_move_task(request: Request):
-    check_auth(request)
+    require_write(request)  # 移动任务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -584,7 +584,7 @@ async def native_move_task(request: Request):
 @router.post("/api/tasks/hide-completed-epics")
 async def hide_completed_epics(request: Request):
     """隐藏待办中已完成（split_status=done）的大卡；数据保留。"""
-    check_auth(request)
+    require_write(request)  # 隐藏已完成 epic 写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         body = {}
@@ -597,7 +597,7 @@ async def hide_completed_epics(request: Request):
 @router.post("/api/tasks/reopen")
 async def native_reopen_task(request: Request):
     """v0.42: 从 abnormal/testing 重开到 planned/in_progress + wake Engine。"""
-    check_auth(request)
+    require_write(request)  # 重开任务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -753,7 +753,7 @@ async def runtime_status(request: Request, workspace: str = "CCC"):
 @router.post("/api/engine/start")
 async def engine_start(request: Request):
     """Hub 手动启动 Engine（enabled + launchd）。"""
-    check_auth(request)
+    require_write(request)  # 启动 Engine 控制面：operator 才可
     import sys
 
     scripts = Path(__file__).resolve().parents[3] / "scripts"
@@ -767,7 +767,7 @@ async def engine_start(request: Request):
 @router.post("/api/engine/stop")
 async def engine_stop(request: Request):
     """Hub 手动停止 Engine（ui + bootout）。"""
-    check_auth(request)
+    require_write(request)  # 停止 Engine 控制面：operator 才可
     import sys
 
     scripts = Path(__file__).resolve().parents[3] / "scripts"

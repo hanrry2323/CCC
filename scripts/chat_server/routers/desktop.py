@@ -23,7 +23,7 @@ _log = logging.getLogger("ccc.chat_server.desktop")
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..auth import check_auth
+from ..auth import check_auth, require_write
 from ..services import flow_events
 from ..services import session_store as store
 from ..services import transfer_gate
@@ -337,7 +337,7 @@ def _make_epic_id(title: str) -> str:
 @router.post("/transfer")
 async def transfer_to_epic(request: Request):
     """聊透门禁通过后仅创建 backlog epic。"""
-    check_auth(request)
+    require_write(request)  # 转任务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -407,7 +407,7 @@ async def transfer_promote_planned(request: Request):
     人点「转意图卡」后右栏不得停尸：Desktop / Agent 可调此接口推进代办。
     body: { project_id, thread_id?, goal_ids? }
     """
-    check_auth(request)
+    require_write(request)  # 转任务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -541,7 +541,7 @@ async def transfer_promote_planned(request: Request):
 @router.post("/repair-queue/claim")
 async def repair_queue_claim(request: Request):
     """L3b：sidecar 经隧道领取本机（2017）pending repair-queue，注入 Agent 强制优化投链。"""
-    check_auth(request)
+    require_write(request)  # 领取/结算 repair-queue：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -567,7 +567,7 @@ async def repair_queue_claim(request: Request):
 @router.post("/board-repair")
 async def board_repair(request: Request):
     """Desktop Agent 板务白名单：清残卡 / 剪幽灵轨 / 有限 reopen。不写业务源码。"""
-    check_auth(request)
+    require_write(request)  # 板务写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -627,7 +627,7 @@ async def board_repair(request: Request):
 @router.post("/proactive-epic")
 async def proactive_epic(request: Request):
     """F4-3: CI / git hook 等外部信号 → backlog bug epic（不 wake Engine）。"""
-    check_auth(request)
+    require_write(request)  # 建卡写看板：operator 才可
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="JSON object required")
@@ -1110,7 +1110,7 @@ async def list_inbox_proposals(request: Request, include_adopted: int = 0):
 @router.post("/proposals/{prop_id}/adopt")
 async def adopt_inbox_proposal(request: Request, prop_id: str):
     """人审采纳：提案 → transfer；未采纳绝不进 backlog。"""
-    check_auth(request)
+    require_write(request)  # 采纳投链：operator 才可
     from ..services import proposals as proposals_svc
 
     prop = proposals_svc.get_proposal(prop_id)
@@ -1147,7 +1147,7 @@ async def submit_intent_proposal(request: Request):
     契约：docs/product/ccc-new-architecture-overview.md 四层分工。
     Body: {project_id, proposal_md, title, skill_ref, prompt_ref}
     """
-    check_auth(request)
+    require_write(request)  # 投方案落盘业务仓：operator 才可
     from ..services import intent_proposals as ip_svc
 
     body = await request.json()

@@ -15,7 +15,7 @@
 | 对话方案 Agent | **M1 本机 sidecar `:7788` + arm64 `vendor/loop-code/cli`** |
 | 远程浏览器聊 | **M1 `:7788`**（与 Desktop 同口；勿开 2017 `#/chat` 当产品路径） |
 | Mac2017 编排面 | Engine = Claude→ai-loop-router flash；dev = OpenCode→ai-loop-router `:4102` code 档（fail-open 直连） |
-| 网页 Hub | **编排口 / 已停更兼容**（`#/board` `#/ops` → Desktop 侧栏；`#/console` 应急） |
+| 网页 Hub | **看板/运维 web 视图**（`#/board` `#/ops` 已恢复，2026-07-31；日常主入口 Desktop 侧栏；`#/console` 应急） |
 | 意图完成口径 | `released` ≠ 完成；见 [`../product/lpsn-ship-gate.md`](../product/lpsn-ship-gate.md) |
 
 默认账号：`ccc` / `ccc`。

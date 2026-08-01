@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ..auth import check_auth
+from ..auth import check_auth, require_write
 from .projects import PROJECTS, PROJECT_TO_WORKSPACE, reload_projects
 from _ops_probe import fetch_router_usage  # CCC Relay 2026-07-25(模块顶层,避免 ops_summary lazy NameError)
 from _utils import now_iso as _now_iso  # v0.62.0 阶段 3:bg-sessions 端点返 ts
@@ -111,7 +111,7 @@ class DailyReviewRunBody(BaseModel):
 
 @router.post("/api/ops/daily-review/run")
 async def ops_daily_review_run(request: Request, body: DailyReviewRunBody):
-    check_auth(request)
+    require_write(request)  # 日审 apply 写业务仓：operator 才可
     from _ops_probe import resolve_ammo_workspace, run_daily_review
 
     if body.all_apps:
