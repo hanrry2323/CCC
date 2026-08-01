@@ -56,7 +56,8 @@ description: CCC 开发工程师 — 扫 planned，调 opencode 写代码，产�
 
 ## 代码参考
 
-- `scripts/ccc-board.py` `dev_role_launch()` — 入口
-- `scripts/ccc-board.py` `_launch_parallel_phase()` — 单 phase Popen
+- `scripts/board/roles/dev.py` `dev_role_launch()` — 入口
+- `scripts/engine/_launch_impl.py` `_launch_parallel_phase()` — 单 phase Popen
 - `scripts/opencode-runner.sh` — 墙钟断路器（`timeout -k 30 $MAX_WALLCLOCK`）
+- `scripts/opencode-exec.py` — opencode 执行器（Stage 5-7：改用 stdin 传 prompt，默认 --auto）
 - `templates/executor-prompt.template.md` — 执行器 prompt 模板（含 6 条自检）

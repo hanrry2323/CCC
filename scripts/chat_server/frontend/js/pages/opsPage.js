@@ -797,15 +797,52 @@ async function runReview(apply) {
 }
 
 export async function mountOps(el) {
-  el.innerHTML =
-    '<div style="padding:48px 24px;max-width:480px;margin:0 auto;text-align:center;font-family:system-ui,sans-serif">' +
-    '<h2 style="font-size:20px;font-weight:600;margin:0 0 16px">运维已迁入 CCC Desktop</h2>' +
-    '<p style="font-size:14px;line-height:1.6;margin:0 0 12px">网页运维页停更。所有运维功能请在 <strong>CCC Desktop</strong> 中按 <kbd style="padding:2px 6px;background:#eee;border-radius:4px;font-size:13px">⌘3</kbd> 查看。</p>' +
-    '<p style="font-size:13px;opacity:.75;margin:0 0 24px">急需排查可开 <a href="#/console" style="color:#0c4a6e;text-decoration:underline">#/console</a> SSH 兜底。</p>' +
-    '<p style="font-size:12px;opacity:.6"><a href="#/board">返回看板</a></p>' +
-    '</div>';
+  _root = el;
+  el.innerHTML = html();
+
+  // 刷新按钮
+  const refreshBtn = el.querySelector('#ops-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      await poll();
+      refreshBtn.disabled = false;
+    });
+  }
+
+  // 复制端口表
+  const copyBtn = el.querySelector('#ops-copy-ports');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      if (_root._portsCopyText) {
+        navigator.clipboard.writeText(_root._portsCopyText)
+          .then(() => window.showToast?.('端口表已复制', 'success'))
+          .catch(() => window.showToast?.('复制失败', 'error'));
+      }
+    });
+  }
+
+  // dry-run / apply 日审
+  const dryBtn = el.querySelector('#ops-run-dry');
+  const applyBtn = el.querySelector('#ops-run-apply');
+  if (dryBtn) dryBtn.addEventListener('click', () => runReview(false));
+  if (applyBtn) applyBtn.addEventListener('click', () => runReview(true));
+
+  // 折叠状态持久化
+  el.querySelectorAll('details[data-fold]').forEach((d) => {
+    d.addEventListener('toggle', () => persistFold(d));
+  });
+
+  // 启动轮询
+  await poll();
+  _timer = setInterval(poll, 15000);
 }
 
 export function unmountOps() {
-  // ops 渲染已由 Desktop-first 通知替代，无 timer 或 listener 需清理
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
+  _root = null;
+  _lastAgg = null;
 }

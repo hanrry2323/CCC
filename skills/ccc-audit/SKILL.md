@@ -81,7 +81,7 @@ python3 scripts/ccc-board.py audit --workspace /path/to/ws --since "4 hours ago"
 
 ## 代码参考
 
-- `scripts/ccc-board.py` `audit_role()` — 入口（多 ws 并发调度）
+- `scripts/board/roles/audit.py` `audit_role()` — 入口（多 ws 并发调度）
 - `scripts/board/roles/audit.py` `_audit_run_one(ws, since)` — 单 ws 处理链
 - `scripts/board/roles/audit.py` `_audit_lint(ws)` — ruff + mypy 门禁
 - `scripts/board/roles/audit.py` `_audit_classify(ws, commits, lint_out, mypy_out)` — 启发式分类

@@ -51,7 +51,7 @@ Hub 定稿 → backlog(epic) → Claude 扇出 → planned(work×N) → in_progr
 
 ## 代码参考
 
-- `scripts/_product_fanout.py` — 扇出解析与落盘
-- `scripts/ccc-board.py` `launch_product_async` / `product_role`
+- `scripts/_product_fanout.py` — 扇出解析与落盘（含 `_epic_default_executor_from_skill`）
+- `scripts/board/roles/product.py` `launch_product_async` / `product_role`
 - `scripts/phase_lint.py` — 子卡硬门
 - `references/board-task-schema.md` — epic/work 契约
