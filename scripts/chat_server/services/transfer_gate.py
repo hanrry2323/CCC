@@ -191,12 +191,9 @@ def validate_transfer_payload(
             }
         )
 
-    # 旧字段 executor_intent 向后兼容：若存在且无 skill_ref，映射并记 warning（不阻断）
-    legacy_intent = str(body.get("executor_intent") or "").strip().lower()
-    if legacy_intent and not skill_ref:
-        # 硬切换期：旧字段仅用于映射推断，不再做枚举校验
-        pass
-
+    # 硬切换：skill_ref/prompt_ref 必填，旧 executor_intent 不足以进板。
+    # 旧格式的迁移映射（executor_intent → skill_ref）只在 epic 写路径
+    # resolve_skill_ref() 里做兜底；本校验不在这里回退（意图卡须显式声明 Skill）。
     project_id = str(body.get("project_id") or body.get("project") or "").strip()
     if not project_id:
         errors.append(
