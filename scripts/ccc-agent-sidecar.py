@@ -703,18 +703,10 @@ _hub_mind_cache: dict[str, tuple[float, tuple[bool, str]]] = {}
 
 
 def _hub_auth_headers() -> dict[str, str]:
-    """与 ccc-hub-lens 同一套 Hub Basic 默认（ccc:ccc）。"""
-    import base64
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）。"""
+    from _hub_auth import hub_headers
 
-    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if explicit:
-        auth = explicit
-    else:
-        user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
-        passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
-        auth = f"{user}:{passwd}"
-    token = base64.b64encode(auth.encode()).decode()
-    return {"Authorization": f"Basic {token}"}
+    return hub_headers()
 
 
 def _fetch_hub_lens_board(project_id: str) -> tuple[bool, str]:
@@ -1152,31 +1144,43 @@ def _hub_proxy_sync(
     import urllib.error
     import urllib.request
 
-    headers = dict(_hub_auth_headers())
-    if content_type:
-        headers["Content-Type"] = content_type
-    req = urllib.request.Request(url, data=body or None, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read()
+    def attempt() -> tuple[int, dict[str, str], bytes, int | None]:
+        headers = dict(_hub_auth_headers())
+        if content_type:
+            headers["Content-Type"] = content_type
+        req = urllib.request.Request(
+            url, data=body or None, method=method, headers=headers
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read()
+                out_headers = {
+                    k: v
+                    for k, v in resp.headers.items()
+                    if k.lower()
+                    in {"content-type", "cache-control", "x-request-id"}
+                }
+                return int(resp.status), out_headers, raw, None
+        except urllib.error.HTTPError as exc:
+            raw = exc.read() if exc.fp else b""
             out_headers = {
                 k: v
-                for k, v in resp.headers.items()
-                if k.lower()
-                in {"content-type", "cache-control", "x-request-id"}
+                for k, v in (exc.headers.items() if exc.headers else [])
+                if k.lower() in {"content-type"}
             }
-            return int(resp.status), out_headers, raw
-    except urllib.error.HTTPError as exc:
-        raw = exc.read() if exc.fp else b""
-        out_headers = {
-            k: v
-            for k, v in (exc.headers.items() if exc.headers else [])
-            if k.lower() in {"content-type"}
-        }
-        return int(exc.code), out_headers, raw
-    except Exception as exc:
-        payload = json.dumps({"detail": f"hub proxy error: {exc}"}).encode()
-        return 502, {"content-type": "application/json"}, payload
+            return int(exc.code), out_headers, raw, int(exc.code)
+        except Exception as exc:
+            payload = json.dumps({"detail": f"hub proxy error: {exc}"}).encode()
+            return 502, {"content-type": "application/json"}, payload, None
+
+    status, out_headers, raw, err_code = attempt()
+    if err_code == 401:
+        # 会话 token 过期 → 清缓存重取一次（开关 on 态自愈）
+        from _hub_auth import hub_invalidate
+
+        hub_invalidate()
+        status, out_headers, raw, _ = attempt()
+    return status, out_headers, raw
 
 
 @app.api_route(

@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import fcntl
 import json
 import logging
@@ -63,16 +62,10 @@ def hub_base() -> str:
 
 
 def hub_auth_header() -> dict[str, str]:
-    """与 lens/sidecar 对齐：优先 CCC_HUB_AUTH，再 CCC_CHAT_USER/PASS，默认 ccc:ccc。"""
-    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if explicit:
-        auth = explicit
-    else:
-        user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
-        password = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
-        auth = f"{user}:{password}"
-    token = base64.b64encode(auth.encode()).decode()
-    return {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）+ Content-Type。"""
+    from _hub_auth import hub_headers
+
+    return hub_headers(content_type=True)
 
 
 @contextmanager
@@ -382,23 +375,36 @@ def _post_transfer(item: dict[str, Any], timeout: float = 25.0) -> tuple[bool, s
     }
     url = f"{hub_base()}/api/desktop/transfer"
     data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=hub_auth_header(), method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            payload = json.loads(raw) if raw else {}
-            ok = bool(payload.get("ok", True)) and bool(
-                str(payload.get("epic_id") or "").strip()
-            )
-            if ok:
-                return True, str(payload.get("epic_id")), payload
-            return False, str(payload.get("error") or "empty epic"), payload
-    except urllib.error.HTTPError as e:
-        body_txt = e.read().decode("utf-8", errors="replace")[:2000]
-        payload = _parse_hub_error_payload(body_txt)
-        return False, f"http_{e.code}:{body_txt[:400]}", payload
-    except Exception as e:
-        return False, f"{type(e).__name__}:{e}", {}
+
+    def attempt() -> tuple[bool, str, dict[str, Any]]:
+        req = urllib.request.Request(
+            url, data=data, headers=hub_auth_header(), method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                payload = json.loads(raw) if raw else {}
+                ok = bool(payload.get("ok", True)) and bool(
+                    str(payload.get("epic_id") or "").strip()
+                )
+                if ok:
+                    return True, str(payload.get("epic_id")), payload
+                return False, str(payload.get("error") or "empty epic"), payload
+        except urllib.error.HTTPError as e:
+            body_txt = e.read().decode("utf-8", errors="replace")[:2000]
+            payload = _parse_hub_error_payload(body_txt)
+            return False, f"http_{e.code}:{body_txt[:400]}", payload
+        except Exception as e:
+            return False, f"{type(e).__name__}:{e}", {}
+
+    ok, detail, payload = attempt()
+    if not ok and detail.startswith("http_401"):
+        # 会话 token 过期 → 清缓存重取一次（开关 on 态自愈）
+        from _hub_auth import hub_invalidate
+
+        hub_invalidate()
+        ok, detail, payload = attempt()
+    return ok, detail, payload
 
 
 def flush_once(*, path: Path | None = None) -> dict[str, Any]:

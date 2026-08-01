@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import re
@@ -24,8 +23,6 @@ import urllib.request
 from pathlib import Path
 
 HUB_URL = os.environ.get("CCC_HUB_URL", "http://127.0.0.1:17777").rstrip("/")
-HUB_USER = os.environ.get("CCC_CHAT_USER", "ccc")
-HUB_PASS = os.environ.get("CCC_CHAT_PASS", "ccc")
 OUTBOX_DIR = Path.home() / ".ccc" / "proposal-outbox"
 DEFAULT_SKILL_REF = "skills/write-code"
 DEFAULT_PROMPT_REF = "prompts/write-code-prompt"
@@ -50,8 +47,10 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
 
 
 def _auth_header() -> dict[str, str]:
-    token = base64.b64encode(f"{HUB_USER}:{HUB_PASS}".encode()).decode()
-    return {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）+ Content-Type。"""
+    from _hub_auth import hub_headers
+
+    return hub_headers(content_type=True)
 
 
 def _post_to_hub(body: dict) -> dict:
@@ -181,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, OSError) as exc:
         out = _write_outbox(request_body)
         print(f"[outbox] Hub 不可达 ({exc}) → 已落盘 {out}", file=sys.stderr)
-        print(f"[outbox] 重试: ccc-submit-proposal --flush-outbox", file=sys.stderr)
+        print("[outbox] 重试: ccc-submit-proposal --flush-outbox", file=sys.stderr)
         return 1
 
     if not result.get("ok"):

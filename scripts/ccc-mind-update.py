@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import sys
@@ -33,18 +32,10 @@ def _hub() -> str:
 
 
 def _auth_header() -> dict[str, str]:
-    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if explicit:
-        auth = explicit
-    else:
-        user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
-        passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
-        auth = f"{user}:{passwd}"
-    token = base64.b64encode(auth.encode()).decode()
-    return {
-        "Authorization": f"Basic {token}",
-        "Content-Type": "application/json",
-    }
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）+ Content-Type。"""
+    from _hub_auth import hub_headers
+
+    return hub_headers(content_type=True)
 
 
 def _get_decided(project_id: str) -> dict[str, Any]:

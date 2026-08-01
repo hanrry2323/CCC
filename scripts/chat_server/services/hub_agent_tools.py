@@ -5,13 +5,14 @@ Used by scripts/ccc-hub-agent-mcp.py and tests. Prefer MCP tools over pasting CL
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+import _hub_auth
 
 
 def hub_base() -> str:
@@ -23,18 +24,8 @@ def hub_base() -> str:
 
 
 def auth_header() -> dict[str, str]:
-    explicit = (os.environ.get("CCC_HUB_AUTH") or "").strip()
-    if explicit:
-        auth = explicit
-    else:
-        user = (os.environ.get("CCC_CHAT_USER") or "ccc").strip() or "ccc"
-        passwd = (os.environ.get("CCC_CHAT_PASS") or "ccc").strip() or "ccc"
-        auth = f"{user}:{passwd}"
-    token = base64.b64encode(auth.encode()).decode()
-    return {
-        "Authorization": f"Basic {token}",
-        "Content-Type": "application/json",
-    }
+    """统一 Hub 认证头（Bearer 会话 token；换发失败回退 Basic）+ Content-Type。"""
+    return _hub_auth.hub_headers(content_type=True)
 
 
 def _request(
@@ -45,37 +36,45 @@ def _request(
     timeout: float = 20.0,
 ) -> dict[str, Any]:
     data = None
-    headers = auth_header()
     if body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="replace")[:800]
-        return {
-            "ok": False,
-            "error": f"http_{e.code}",
-            "detail": err_body,
-            "url": url,
-        }
-    except Exception as exc:
-        return {
-            "ok": False,
-            "error": "unreachable",
-            "detail": f"{type(exc).__name__}: {exc}",
-            "url": url,
-        }
-    try:
-        parsed = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError:
-        return {"ok": False, "error": "bad_json", "detail": raw[:400], "url": url}
-    if isinstance(parsed, dict):
-        if "ok" not in parsed:
-            parsed = {**parsed, "ok": True}
-        return parsed
-    return {"ok": True, "data": parsed}
+
+    def attempt() -> tuple[dict[str, Any], int]:
+        req = urllib.request.Request(url, data=data, headers=auth_header(), method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")[:800]
+            return {
+                "ok": False,
+                "error": f"http_{e.code}",
+                "detail": err_body,
+                "url": url,
+            }, e.code
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": "unreachable",
+                "detail": f"{type(exc).__name__}: {exc}",
+                "url": url,
+            }, 0
+        try:
+            parsed = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "bad_json", "detail": raw[:400], "url": url}, 200
+        if isinstance(parsed, dict):
+            if "ok" not in parsed:
+                parsed = {**parsed, "ok": True}
+            return parsed, 200
+        return {"ok": True, "data": parsed}, 200
+
+    result, code = attempt()
+    if code == 401:
+        # 会话 token 过期 → 清缓存重取一次（开关 on 态自愈）
+        _hub_auth.hub_invalidate()
+        result, _ = attempt()
+    return result
 
 
 def hub_board(project_id: str) -> dict[str, Any]:

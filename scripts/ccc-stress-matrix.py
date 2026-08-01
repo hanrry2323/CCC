@@ -16,7 +16,6 @@ Usage (Mac2017):
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import sys
@@ -27,8 +26,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import _hub_auth
+
 HUB = "http://127.0.0.1:7777"
-AUTH = base64.b64encode(b"ccc:ccc").decode()
 _DEFAULT_APPS = ("ccc-demo", "qb")
 APPS: tuple[str, ...] = _DEFAULT_APPS
 # Defaults overridden by --run / --profile / --apps in main()
@@ -453,26 +453,32 @@ def scenarios_legacy10(app: str) -> list[Scenario]:
 
 def _http_json(method: str, url: str, body: dict | None = None) -> tuple[int, Any]:
     data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Basic {AUTH}",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            raw = r.read().decode()
-            return r.status, json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode()
+
+    def attempt() -> tuple[int, Any]:
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method=method,
+            headers=_hub_auth.hub_headers(base=HUB, content_type=True),
+        )
         try:
-            payload = json.loads(raw) if raw else {}
-        except json.JSONDecodeError:
-            payload = {"raw": raw[:500]}
-        return e.code, payload
+            with urllib.request.urlopen(req, timeout=90) as r:
+                raw = r.read().decode()
+                return r.status, json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode()
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                payload = {"raw": raw[:500]}
+            return e.code, payload
+
+    status, payload = attempt()
+    if status == 401:
+        # 会话 token 过期 → 清缓存重取一次（开关 on 态自愈）
+        _hub_auth.hub_invalidate(base=HUB)
+        status, payload = attempt()
+    return status, payload
 
 
 def transfer(app: str, sc: Scenario) -> dict[str, Any]:

@@ -98,7 +98,7 @@ AGENT="${CCC_AGENT:-http://127.0.0.1:7788}"
 SERVER="${CCC_SERVER:-http://127.0.0.1:17777}"
 
 check "hub reachable (dual)" \
-    bash -c "curl -fsS --max-time 5 -u ccc:ccc \"$SERVER/api/desktop/config\" >/dev/null"
+    bash -c "curl -fsS --max-time 5 -u \"${CCC_CHAT_USER:-ccc}:${CCC_CHAT_PASS:-ccc}\" \"$SERVER/api/desktop/config\" >/dev/null"
 check "agent reachable (dual)" \
     bash -c "curl -fsS --max-time 3 \"$AGENT/health\" >/dev/null"
 check "smoke-hub-outage-outbox (dual)" \
