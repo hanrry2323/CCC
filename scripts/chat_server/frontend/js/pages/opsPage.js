@@ -2,6 +2,7 @@
 
 import { apiGet, apiPost } from '../api.js';
 import { dialogueEntryUrl } from '../ports.js';
+import { dailyItems } from '../opsSelectors.js';
 
 let _root = null;
 let _timer = null;
@@ -550,7 +551,7 @@ function renderDaily(d) {
     el.innerHTML = `<p class="ops-hint">${esc(d?.error || '无数据')}</p>`;
     return;
   }
-  const items = d.items || d.reviews || [];
+  const items = dailyItems(d); // 兼容 items/reviews（旧）/reports（后端现发）
   if (!items.length) {
     el.innerHTML = '<p class="ops-hint">暂无日审报告</p>';
     return;

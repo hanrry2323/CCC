@@ -278,3 +278,81 @@ def test_board_store_29_cards_move_events(tmp_path):
     assert ev["from"] == "planned"
     assert ev["to"] == "in_progress"
     assert ev["timestamp"]
+
+
+# ── A2 扩展：筛选透传 / 排序 / 拖拽稳定性 / epic 聚合数据源 ─────────────
+
+
+def test_board_include_hidden_passthrough(client, board_api):
+    """筛选无回归：显示已隐藏 → /api/board?include_hidden=1 透传 Board API。"""
+    r = client.get(
+        "/api/board",
+        params={"workspace": "demo", "include_hidden": "1"},
+        auth=_auth(),
+    )
+    assert r.status_code == 200, r.text
+    call = board_api.calls[-1]
+    assert call["params"].get("workspace") == "demo"
+    assert call["params"].get("include_hidden") == "1"
+
+
+def test_board_store_planned_sorted_by_created_at_id(tmp_path):
+    """排序无回归：planned 流列按 (created_at, id) 升序（服务端排序，前端不重排）。"""
+    store = _make_store(tmp_path)
+    for i, cid in enumerate(["b", "a", "c"]):
+        ts = f"2026-08-01T10:0{i}:00+08:00"
+        ok = store.create_task(
+            {
+                "id": cid,
+                "title": cid,
+                "card_kind": "work",
+                "status": "planned",
+                "created_at": ts,
+                "updated_at": ts,
+            },
+            column="planned",
+        )
+        assert ok, f"create {cid}"
+    ids = [t["id"] for t in store.list_tasks("planned")]
+    assert ids == ["b", "a", "c"], f"按 created_at 升序: {ids}"
+
+
+def test_board_store_invalid_move_returns_false(tmp_path):
+    """拖拽稳定性：白名单外迁移（in_progress→released 跳步）返回 False 不炸。"""
+    from _board_store import now_iso
+
+    store = _make_store(tmp_path)
+    ts = now_iso()
+    assert store.create_task(
+        {"id": "t1", "title": "t", "card_kind": "work", "status": "in_progress", "created_at": ts},
+        column="in_progress",
+    )
+    # 需经 testing→verified，跳步被 COLUMN_TRANSITIONS 拒绝，非崩溃
+    assert store.move_task("t1", "in_progress", "released") is False
+
+
+def test_board_store_epic_progress_source(tmp_path):
+    """epic 聚合视图数据源：子卡一路到 released 后 released 列含它（前端进度计数）。"""
+    from _board_store import now_iso
+
+    store = _make_store(tmp_path)
+    ts = now_iso()
+    assert store.create_task(
+        {"id": "ep1", "title": "大卡", "card_kind": "epic", "child_ids": ["w1", "w2"], "created_at": ts},
+        column="backlog",
+    )
+    for wid in ("w1", "w2"):
+        assert store.create_task(
+            {"id": wid, "title": wid, "card_kind": "work", "status": "planned", "created_at": ts},
+            column="planned",
+        )
+    for f, t in (
+        ("planned", "in_progress"),
+        ("in_progress", "testing"),
+        ("testing", "verified"),
+        ("verified", "released"),
+    ):
+        assert store.move_task("w1", f, t), f"{f}→{t}"
+    released = [x["id"] for x in store.list_tasks("released")]
+    assert "w1" in released
+    assert "w2" not in released

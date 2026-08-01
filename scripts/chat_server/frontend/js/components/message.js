@@ -98,6 +98,31 @@ export function renderMessage(container, role, content, appendToLast) {
   return div;
 }
 
+/** C3/C4: 错误气泡 — 琥珀样式 + 重试按钮（复用标准 actions，重试=重新生成最后一条）。 */
+export function renderErrorBubble(container, text, onRetry) {
+  const el = renderMessage(container, 'assistant', text);
+  el.classList.add('msg-error');
+  const bubble = el.querySelector('.bubble');
+  if (bubble) bubble.classList.add('bubble-error');
+  const actions = el.querySelector('.msg-actions');
+  if (actions) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'msg-action-btn retry-btn';
+    btn.textContent = '重试';
+    btn.addEventListener('click', () => onRetry && onRetry());
+    actions.insertBefore(btn, actions.firstChild);
+  }
+  return el;
+}
+
+/** C1: 移除某 tab 内残留的 streaming 光标（取消/错误后清理，避免「假流式」）。 */
+export function removeStreamingCursors(tabId) {
+  const container = tabId ? messagesElForTab(tabId) : activeMessagesEl();
+  if (!container) return;
+  container.querySelectorAll('.streaming-cursor').forEach((el) => el.remove());
+}
+
 function editMessage(msgEl, container) {
   if (isCurrentTabStreaming()) {
     window.showToast?.('生成中不可编辑，请先取消或等完成', 'error');
@@ -516,11 +541,18 @@ export async function sendMessage(text, attachments = [], opts = {}) {
     (errorText) => {
       if (canPaint(ownerTabId, ownerProject)) {
         removeTyping(ownerTabId);
-        renderMessage(paintContainer(ownerTabId), 'assistant', errorText);
+        // C2: 清掉残留 partial 气泡（含闪烁光标），DOM 与 state 一致
+        if (msgDiv && msgDiv.parentNode) msgDiv.remove();
+        // C3/C4: 琥珀错误气泡 + 重试按钮
+        renderErrorBubble(
+          paintContainer(ownerTabId),
+          errorText,
+          () => regenerateLast()
+        );
       }
       const finalMsgs = msgs
         .filter((m) => !(m.role === 'assistant' && m.partial))
-        .concat([{ role: 'assistant', content: errorText, mode: 'chat' }]);
+        .concat([{ role: 'assistant', content: errorText, mode: 'chat', kind: 'error' }]);
       persistTabMessages(ownerTabId, finalMsgs, sid, ownerProject);
       if (canPaint(ownerTabId, ownerProject)) {
         state.set('currentMessages', finalMsgs);
@@ -583,6 +615,11 @@ export function loadMessages(data) {
     }
     if (msg.partial && msg.role === 'assistant' && el) {
       el.classList.add('msg-partial');
+    }
+    if (msg.kind === 'error' && el) {
+      el.classList.add('msg-error');
+      const b = el.querySelector('.bubble');
+      if (b) b.classList.add('bubble-error');
     }
   }
   if (data.reply && !msgs.some((m) => m.role === 'assistant')) {

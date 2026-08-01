@@ -4,6 +4,7 @@ import { apiGet, apiPost } from '../api.js';
 import { epicLifecycleLabel, normalizeEpicSplitStatus } from '../epicLifecycle.js';
 import { workspaceOf } from '../components/boardPanel.js';
 import { dialogueEntryUrl } from '../ports.js';
+import { epicColumnSig } from '../boardSigs.js';
 
 export { epicLifecycleLabel, normalizeEpicSplitStatus };
 
@@ -74,6 +75,7 @@ let _timer = null;
 let _state = { columns: {}, counts: {} };
 let _ws = 'CCC';
 let _showHidden = false;
+let _moving = new Set(); // in-flight 守卫：同一卡移动中忽略重击
 let _wsNames = [];
 let _indicatorBusy = false;
 
@@ -216,12 +218,15 @@ async function copyCardTask(card) {
 
 function renderEpicCol() {
   const host = _root.querySelector('#board-epic');
-  let tasks = _state.columns.backlog || [];
+  const cols = _state.columns || {}; // B3 防御：columns 缺失不白屏
+  let tasks = cols.backlog || [];
   if (!_showHidden) tasks = tasks.filter((t) => !t.ui_hidden);
-  // Phase 3.1: diff 重绘 — id 列表未变则跳过 innerHTML 重建
-  const sig = tasks.map((t) => t.id + ':' + (t.split_status || '') + ':' + (t.updated_at || '')).join('|');
+  // Phase 3.1 + A2: diff 重绘 — 签名含 released 子卡计数，子卡发布即刷新进度条
+  const releasedIds = new Set((cols.released || []).map((x) => x.id));
+  const sig = epicColumnSig(tasks, releasedIds);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
+  const epicScroll = (host.querySelector('.board-col-body') || {}).scrollTop || 0;
   const cards = tasks.length
     ? tasks
         .map((t) => {
@@ -242,6 +247,9 @@ function renderEpicCol() {
         .join('')
     : '<div class="board-empty">暂无大卡</div>';
   host.innerHTML = `<div class="board-col board-col-epic"><div class="board-col-h"><span><span class="board-dot" style="background:${COLORS.backlog}"></span>待办 · 大卡</span><span class="ct">${tasks.length}</span></div><div class="board-col-body">${cards}</div></div>`;
+  // B4: 重绘后保留滚动位置
+  const nb = host.querySelector('.board-col-body');
+  if (nb && epicScroll) nb.scrollTop = epicScroll;
 }
 
 function renderFlowCols() {
@@ -271,8 +279,13 @@ function renderFlowCols() {
     const col = FLOW_COLS[i];
     if (prevSigs[col] !== newSigs[col]) {
       const oldEl = existingCols[i];
+      // B4: 重绘前存滚动位置，替换后还原（列内容变化不再跳到顶部）
+      const oldBody = oldEl.querySelector('.board-col-body');
+      const scrollTop = oldBody ? oldBody.scrollTop : 0;
       const newEl = _buildFlowCol(col, newSigs[col]);
       oldEl.replaceWith(newEl);
+      const newBody = newEl.querySelector('.board-col-body');
+      if (newBody && scrollTop) newBody.scrollTop = scrollTop;
     }
   }
   host.dataset.sigs = JSON.stringify(newSigs);
@@ -504,7 +517,16 @@ async function moveTask(id, from, to) {
     window.showToast?.('待办大卡不可移入流转列', 'error');
     return;
   }
-  await apiPost('/api/tasks/move', { id, from, to, workspace: _ws });
+  // B1: in-flight 守卫 — 双击/连点第二击直接忽略，避免旧 from 404 静默失败
+  if (_moving.has(id)) return;
+  _moving.add(id);
+  try {
+    await apiPost('/api/tasks/move', { id, from, to, workspace: _ws });
+  } catch (err) {
+    window.showToast?.(err && err.message ? err.message : '移卡失败', 'error');
+  } finally {
+    _moving.delete(id);
+  }
   await loadBoard();
 }
 
