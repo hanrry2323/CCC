@@ -2,10 +2,12 @@
 
 字段：ID / 状态 / 项目 / 执行体 / 分派时间 / 回写时间 / 打回次数。
 线路图桶（P3 占位）：未开发 / 开发中 / 已开发待验收 / 已验收待确认 / 确认可用 / 有问题。
+状态归桶：带括号变体（如 `打回（原因）`）按括号前基础态归桶；明细保留全串。
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # 字段缺失时的容错值
@@ -32,6 +34,20 @@ STATE_TO_ROADMAP: dict[str, str] = {
     "已关闭": "确认可用",
     "打回": "有问题",
 }
+
+
+def base_state(state: str) -> str:
+    """状态归一：取括号前基础态（与 loader `_strip_parenthetical` 同款逻辑）。
+
+    - `打回（原因）` → `打回`；`待分派（实现）` → `待分派`；`已回写（有条件）` → `已回写`
+    - 空值 / `未知` / 剥离后为空 → `未知`
+
+    归桶/计数用基础态；明细（BoardItem.state / to_dict()）保留原文全串。
+    """
+    if not state or state.strip() == UNKNOWN:
+        return UNKNOWN
+    base = re.split(r"[（(]", state, maxsplit=1)[0].strip()
+    return base or UNKNOWN
 
 
 @dataclass(frozen=True)

@@ -133,3 +133,60 @@ class TestStateCounts:
             "已关闭": 0,
             "打回": 0,
         }
+
+
+class TestStateNormalization:
+    """带括号状态变体：按基础态归桶；明细保留全串；未知归未知桶。"""
+
+    def test_variant_buckets_to_base_state(self) -> None:
+        items = [
+            _item("a", state="待分派（实现）"),
+            _item("b", state="打回（原因）"),
+            _item("c", state="已回写（有条件）"),
+        ]
+        view = view_realtime(items)
+        assert len(view["待分派"]) == 1
+        assert len(view["打回"]) == 1
+        assert len(view["已回写"]) == 1
+
+    def test_detail_keeps_full_state(self) -> None:
+        items = [_item("b", state="打回（原因）")]
+        view = view_realtime(items)
+        assert view["打回"][0]["state"] == "打回（原因）"
+        assert view["打回"][0]["id"] == "b"
+
+    def test_variant_roadmap_and_counts(self) -> None:
+        items = [
+            _item("a", state="待分派（实现）"),
+            _item("b", state="打回（原因）"),
+            _item("c", state="已回写（有条件）"),
+        ]
+        counts = {row["bucket"]: row["count"] for row in roadmap_aggregate(items)}
+        assert counts["未开发"] == 1
+        assert counts["已开发待验收"] == 1
+        assert counts["有问题"] == 1
+        assert state_counts(items) == {
+            "待分派": 1,
+            "执行中": 0,
+            "已回写": 1,
+            "已关闭": 0,
+            "打回": 1,
+        }
+
+    def test_variant_by_project_states(self) -> None:
+        items = [
+            _item("a", state="打回（原因）", project="PRJ-X"),
+            _item("b", state="打回（原因）", project="PRJ-X"),
+        ]
+        rows = view_by_project(items)
+        assert rows[0]["states"]["打回"] == 2
+
+    def test_unknown_state_to_unknown_bucket(self) -> None:
+        items = [_item("a", state="怪异值"), _item("b", state="")]
+        view = view_realtime(items)
+        assert len(view["未知"]) == 2
+
+    def test_recent_keeps_full_state(self) -> None:
+        items = [_item("b", state="打回（原因）", written="2026-08-02")]
+        recent = view_recent(items, now=date(2026, 8, 2), days=7)
+        assert recent[0]["state"] == "打回（原因）"

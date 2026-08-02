@@ -10,7 +10,14 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from server.board.models import ROADMAP_BUCKETS, STATE_TO_ROADMAP, STATES, UNKNOWN, BoardItem
+from server.board.models import (
+    ROADMAP_BUCKETS,
+    STATE_TO_ROADMAP,
+    STATES,
+    UNKNOWN,
+    BoardItem,
+    base_state,
+)
 
 
 def _parse_date(value: str) -> date | None:
@@ -22,10 +29,14 @@ def _parse_date(value: str) -> date | None:
 
 
 def view_realtime(items: list[BoardItem]) -> dict[str, list[dict]]:
-    """实时视图：按状态分组（只含非空组；未知状态归入「未知」）。"""
+    """实时视图：按基础态分组（只含非空组；未知状态归入「未知」）。
+
+    组键用 `base_state`（括号前基础态）；组内明细的 `state` 保留原文全串。
+    """
     grouped: dict[str, list[dict]] = {state: [] for state in STATES}
     for item in items:
-        bucket = item.state if item.state in grouped else UNKNOWN
+        base = base_state(item.state)
+        bucket = base if base in grouped else UNKNOWN
         grouped.setdefault(bucket, []).append(item.to_dict())
     return {state: entries for state, entries in grouped.items() if entries}
 
@@ -60,7 +71,10 @@ def view_by_project(items: list[BoardItem]) -> list[dict]:
             {
                 "project": project,
                 "count": len(members),
-                "states": {state: sum(1 for i in members if i.state == state) for state in STATES},
+                "states": {
+                    state: sum(1 for i in members if base_state(i.state) == state)
+                    for state in STATES
+                },
             }
         )
     return rows
@@ -70,12 +84,14 @@ def roadmap_aggregate(items: list[BoardItem]) -> list[dict]:
     """线路图聚合（P3 占位）：§2 状态 → 桶计数。"""
     counts = {bucket: 0 for bucket in ROADMAP_BUCKETS}
     for item in items:
-        bucket = STATE_TO_ROADMAP.get(item.state)
+        bucket = STATE_TO_ROADMAP.get(base_state(item.state))
         if bucket is not None:
             counts[bucket] += 1
     return [{"bucket": bucket, "count": counts[bucket]} for bucket in ROADMAP_BUCKETS]
 
 
 def state_counts(items: list[BoardItem]) -> dict[str, int]:
-    """顶部徽章：契约 §2 各状态计数。"""
-    return {state: sum(1 for i in items if i.state == state) for state in STATES}
+    """顶部徽章：契约 §2 各状态计数（按基础态）。"""
+    return {
+        state: sum(1 for i in items if base_state(i.state) == state) for state in STATES
+    }

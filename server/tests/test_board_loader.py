@@ -71,6 +71,13 @@ class TestParseCard:
         item = parse_card(_write(tmp_path, "T96.md", content))
         assert item.executor == "纯名字"
 
+    def test_parse_state_with_parenthesis(self, tmp_path: Path) -> None:
+        """带括号状态变体：明细保留全串；基础态=打回 → 隐含打回次数 1。"""
+        content = "# 任务卡 T95 · 变体\n\n> 执行体：某工具 · 状态：打回（原因） · 日期：2026-08-01\n"
+        item = parse_card(_write(tmp_path, "T95.md", content))
+        assert item.state == "打回（原因）"
+        assert item.reject_count == 1
+
 
 class TestLoadDispatchCards:
     """扫描目录 + 真实任务卡。"""

@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from server.board.models import UNKNOWN, BoardItem
+from server.board.models import UNKNOWN, BoardItem, base_state
 
 # `# 任务卡 T3 · 标题`（MULTILINE：^/$ 按行锚定）
 _TITLE_RE = re.compile(r"^#\s*任务卡\s+(\S+)\s*[·\-]\s*(.+?)\s*$", re.MULTILINE)
@@ -76,7 +76,8 @@ def parse_card(path: Path | str) -> BoardItem:
 
     reject_match = _REJECT_RE.search(text)
     reject_count = int(reject_match.group(1)) if reject_match else 0
-    if reject_count == 0 and meta.get("状态", "").strip() == "打回":
+    # 状态为「打回」（含括号变体如 `打回（原因）`）时隐含至少 1 次打回
+    if reject_count == 0 and base_state(meta.get("状态", UNKNOWN)) == "打回":
         reject_count = 1
 
     return BoardItem(
