@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    CCC Board Scheduler — 看板定时重导出
+    部署前请替换以下占位变量：
+      $PROJECT_ROOT  → CCC 仓库绝对路径
+      $PYTHON_BIN    → Python 解释器绝对路径
+      $LOG_DIR       → 日志目录绝对路径
+      $USERNAME      → 运行用户
+  -->
+  <key>Label</key>
+  <string>com.ccc.board-scheduler</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>$PYTHON_BIN</string>
+    <string>-m</string>
+    <string>server.board.scheduler</string>
+    <string>--watch</string>
+    <string>--interval</string>
+    <string>60</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>$PROJECT_ROOT</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>$LOG_DIR/board-scheduler.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>$LOG_DIR/board-scheduler.stderr.log</string>
+
+  <key>UserName</key>
+  <string>$USERNAME</string>
+
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
+</dict>
+</plist>
