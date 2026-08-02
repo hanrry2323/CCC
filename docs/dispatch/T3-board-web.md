@@ -1,7 +1,7 @@
 # 任务卡 T3 · 任务看板——board 数据模型 + 三视图 + web 页面（Claude Code 执行）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§2 状态模型 / §4 看板数据模型 / §8 拓扑）· 管理席：Codex
-> 执行体：Claude Code（CLI）· 验收：Codex · 状态：待分派 · 日期：2026-08-02
+> 执行体：Claude Code（CLI）· 验收：Codex · 状态：已关闭 · 日期：2026-08-02
 > 依赖：T1-R、T2（均已验收通过，`server/` 骨架 + Engine 就绪）
 
 ## 目标
