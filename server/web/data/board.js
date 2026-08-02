@@ -3,22 +3,22 @@ window.BOARD_DATA = {
   "generated_at": "2026-08-02",
   "states": {
     "待分派": 0,
-    "执行中": 1,
-    "已回写": 0,
+    "执行中": 0,
+    "已回写": 1,
     "已关闭": 20,
     "打回": 3
   },
   "views": {
     "realtime": {
-      "执行中": [
+      "已回写": [
         {
           "id": "T17",
           "title": "全量验收 + 问题修复（Claude Code 执行）",
-          "state": "执行中",
+          "state": "已回写",
           "project": "INT-120",
           "executor": "Claude Code",
           "dispatched_at": "2026-08-02",
-          "written_at": "未知",
+          "written_at": "2026-08-02",
           "reject_count": 0
         }
       ],
@@ -279,6 +279,16 @@ window.BOARD_DATA = {
         "reject_count": 1
       },
       {
+        "id": "T17",
+        "title": "全量验收 + 问题修复（Claude Code 执行）",
+        "state": "已回写",
+        "project": "INT-120",
+        "executor": "Claude Code",
+        "dispatched_at": "2026-08-02",
+        "written_at": "2026-08-02",
+        "reject_count": 0
+      },
+      {
         "id": "T2",
         "title": "Engine 薄驱动核心（Claude Code 执行）",
         "state": "已关闭",
@@ -325,8 +335,8 @@ window.BOARD_DATA = {
         "count": 24,
         "states": {
           "待分派": 0,
-          "执行中": 1,
-          "已回写": 0,
+          "执行中": 0,
+          "已回写": 1,
           "已关闭": 20,
           "打回": 3
         }
@@ -341,11 +351,11 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "开发中",
-        "count": 1
+        "count": 0
       },
       {
         "bucket": "已开发待验收",
-        "count": 0
+        "count": 1
       },
       {
         "bucket": "已验收待确认",
@@ -371,11 +381,11 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "开发中",
-            "count": 1
+            "count": 0
           },
           {
             "bucket": "已开发待验收",
-            "count": 0
+            "count": 1
           },
           {
             "bucket": "已验收待确认",
@@ -400,22 +410,22 @@ window.BOARD_DATA = {
         },
         {
           "bucket": "开发中",
+          "items": []
+        },
+        {
+          "bucket": "已开发待验收",
           "items": [
             {
               "id": "T17",
               "title": "全量验收 + 问题修复（Claude Code 执行）",
-              "state": "执行中",
+              "state": "已回写",
               "project": "INT-120",
               "executor": "Claude Code",
               "dispatched_at": "2026-08-02",
-              "written_at": "未知",
+              "written_at": "2026-08-02",
               "reject_count": 0
             }
           ]
-        },
-        {
-          "bucket": "已开发待验收",
-          "items": []
         },
         {
           "bucket": "已验收待确认",

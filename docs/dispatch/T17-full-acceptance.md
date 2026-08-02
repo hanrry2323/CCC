@@ -1,7 +1,7 @@
 # 任务卡 T17 · 全量验收 + 问题修复（Claude Code 执行）
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1 · 决策：ccc-refactor-方案-定稿 v2 · 管理席：Codex
-> 执行体：Claude Code（CLI）· 最终验收：Codex · 状态：执行中 · 日期：2026-08-02
+> 执行体：Claude Code（CLI）· 最终验收：Codex · 状态：已回写 · 日期：2026-08-02
 > 定位：M4 前最后一道大闸。对 T0–T16 全链路做独立全量验收（不看回写、只信取证），发现问题并修复 P0/P1。
 
 ## 目标
@@ -47,4 +47,28 @@
 
 ## 回写区
 
-（Claude Code 回写）
+**执行体**：Claude Code（CLI）· **日期**：2026-08-02
+
+**结果摘要（人话一句）**：对 T0–T16 全链路独立验收无 P0；修复 3 个 P1（loader 状态断言按基础态、web API 模式适配 T16 鉴权、README 鉴权章节过期）+ 6 个零风险 P2，`server/tests/` 171 全绿、三扫描零命中、`scripts/` 零改动、运行面零接触。
+
+**报告路径**：`docs/acceptance-full-2026-08-02.md`
+
+**问题分级统计**：P0 = 0 · P1 = 3（全部已修）· P2 = 10（6 顺手已修，4 登记）
+
+**修复 commit**：`5a19fd6` `chore(acceptance): T17 全量验收——取证/对照/修复 + 报告`（13 文件：server 修复 10 + 报告 + 卡头执行中 + board.js 重导出）
+> 本卡回写 commit 见 git log（`docs(dispatch): T17 回写`）。
+
+**遗留清单**（详见报告 §5）：
+- `scripts/` 退役（第二阶段）：未放行——2017 旧引擎仍运行、qb 产线仍引用 `scripts/`、老板未放行；`legacy-phase2-plan.md` 含完整步骤与回滚
+- `relay/dist/` 清理：第一阶段待执行项
+- `tests/scripts/test_authority_patrol.py` 2 失败：T0 清场归档所致预存遗留，修复需改 `scripts/` 测试（违反零改动纪律）
+- 2017 旧引擎停止 / 调用方切换（T8）：均待老板放行
+- P2 登记项（不改历史/需决策）：T15 归档 mv 混入 T16 commit `88cf04a`、T8-X 执行体字段解析、executors 备注 QXMAP、cluster DEFAULT_SERVICES 硬编码、server/ W292 预存债
+
+**红线校验**：
+- `scripts/` 零改动 ✓（重构区间实测 0 次）
+- 三扫描（S1–S4 + 明文密钥 + 外脑依赖）零命中 ✓
+- 运行面零接触（未部署/未迁移/未启动/未注册）✓
+- 未删除任何文件（仅编辑/新增）✓
+- 未读外脑（qx-map/HP），契约 L4 表由任务卡内联引用重建并注明来源 ✓
+- 工作树仅剩 2 个预存无关改动（`decided.json`、`_update_handoff.py`），未带入提交 ✓

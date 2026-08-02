@@ -172,9 +172,9 @@
 - `ruff check <改动 .py>` 无新增错误（仅预存 W292）✅
 - `python3 -m py_compile` / `plutil -lint` 通过 ✅
 
-**提交**（真实 hash 见 T17 卡回写区）：
-- 修复提交：`chore(acceptance): T17 全量验收——取证/对照/修复 + 报告`
-- 回写提交：`docs(dispatch): T17 回写——卡头状态 + 回写区 + board.js 重导出`
+**提交**：
+- 修复提交：`5a19fd6` `chore(acceptance): T17 全量验收——取证/对照/修复 + 报告`（13 文件：server 修复 + 报告 + 卡头执行中 + board.js 重导出）
+- 回写提交：`docs(dispatch): T17 回写——卡头状态 + 回写区 + board.js 重导出`（T17 卡 → 已回写）
 
 ---
 
