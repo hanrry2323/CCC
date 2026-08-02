@@ -261,6 +261,50 @@ body {
   color: var(--faint);
 }
 
+/* ── 对话视图（T19） ── */
+.chat-input {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  min-width: 120px;
+}
+.chat-input:focus { outline: none; border-color: var(--cyan); }
+.chat-input-wide { flex: 1; min-width: 240px; }
+.chat-messages {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 8px 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.chat-msg {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-msg:last-child { border-bottom: none; }
+.chat-role {
+  flex: 0 0 36px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+  padding-top: 2px;
+}
+.chat-msg-assistant .chat-role { color: var(--emerald); }
+.chat-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 空态 */
 .empty { color: var(--faint); padding: 20px; text-align: center; font-size: 14px; }
 

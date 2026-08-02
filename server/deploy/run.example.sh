@@ -38,3 +38,17 @@ echo "[INFO] Engine port: $ENGINE_PORT"
 
 exec "$PYTHON_BIN" -m server.engine.main \
   --config "$CONFIG_ENV"
+
+# ── Web Server 启动示例（T19 壳迁移后接管 7788 对话口） ──
+# 用法：bash run-web.sh [--config /path/to/config.env]
+# 占位变量：$PYTHON_BIN / $WEB_HOST / $WEB_PORT / $CONFIG_ENV
+#
+# set -euo pipefail
+# SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# CONFIG_ENV="${CCC_CONFIG_ENV:-${PROJECT_ROOT}/server/config/config.env}"
+# if [[ $# -ge 2 && "$1" == "--config" ]]; then CONFIG_ENV="$2"; fi
+# if [[ ! -f "$CONFIG_ENV" ]]; then echo "[FATAL] config not found: $CONFIG_ENV" >&2; exit 1; fi
+# set -a; source "$CONFIG_ENV"; set +a
+# : "${PYTHON_BIN:?}"; : "${WEB_HOST:?}"; : "${WEB_PORT:?}"
+# exec "$PYTHON_BIN" -m server.web.server --host "$WEB_HOST" --port "$WEB_PORT"

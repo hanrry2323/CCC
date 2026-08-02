@@ -22,6 +22,7 @@
     <button class="tab" data-view="roadmap">线路图</button>
     <button class="tab" data-view="cluster">集群</button>
     <button class="tab" data-view="ops">运维</button>
+    <button class="tab" data-view="chat">对话</button>
   </nav>
 
   <main class="content">
@@ -31,6 +32,29 @@
     <section id="view-roadmap" class="view" aria-label="线路图视图"></section>
     <section id="view-cluster" class="view" aria-label="集群状态视图"></section>
     <section id="view-ops" class="view" aria-label="运维视图"></section>
+    <section id="view-chat" class="view" aria-label="对话视图">
+      <div class="card" id="chat-card">
+        <div id="login-area">
+          <h3>登录对话</h3>
+          <p class="meta">登录后可对话（走新服务端 /conversation，转发配置的模型上游）。</p>
+          <div class="chip-row">
+            <input id="login-user" type="text" placeholder="账号" class="chat-input" />
+            <input id="login-pass" type="password" placeholder="密码" class="chat-input" />
+            <button id="login-btn" class="hub-btn">登录</button>
+          </div>
+          <p id="login-msg" class="meta"></p>
+        </div>
+        <div id="chat-area" style="display:none">
+          <h3>对话</h3>
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chip-row">
+            <input id="chat-input" type="text" placeholder="输入消息…" class="chat-input chat-input-wide" />
+            <button id="chat-send" class="hub-btn">发送</button>
+          </div>
+          <p id="chat-msg" class="meta"></p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="foot">静态看板 · 数据来自任务卡导出 · <span id="data-source">零 API</span></footer>
@@ -54,5 +78,6 @@
   <script src="data/board.js"></script>
   <script src="data/cluster.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/chat.js"></script>
 </body>
 </html>

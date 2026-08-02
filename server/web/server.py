@@ -16,11 +16,15 @@ API:
     GET  /board/by_project    → 按项目分类（需 Bearer token）
     GET  /board/roadmap       → 线路图聚合（需 Bearer token）
     GET  /board/states        → 状态统计（需 Bearer token）
-    POST /conversation        → 对话（回声占位，需 Bearer token）
+    POST /conversation        → 对话（转发配置的模型上游，需 Bearer token）
     GET  /conversation        → 对话历史（需 Bearer token）
 
 鉴权: Bearer token 鉴权，token 通过 POST /session 获取。
       环境变量: CCC_WEB_USERNAME, CCC_WEB_PASSWORD_HASH, CCC_WEB_TOKEN_TTL。
+
+对话上游: 通过 RELAY_UPSTREAM_URL / RELAY_UPSTREAM_KEY /
+          CCC_CONV_MODEL_NAME / CCC_CONV_UPSTREAM_PATH 配置；
+          缺配置返回 503，上游失败返回 502（不落历史）。
 """
 
 from __future__ import annotations
@@ -32,6 +36,8 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -67,10 +73,101 @@ def _get_token_ttl() -> int:
     """读取 token 有效期（秒），支持运行时环境变量注入。"""
     return int(os.environ.get("CCC_WEB_TOKEN_TTL", "3600"))
 
+
+# ── 对话上游配置（从环境变量读取；支持运行时刷新） ──
+def _get_conv_upstream_base() -> str:
+    """上游 base URL（如 http://<relay-host>:<port>），无尾斜杠。"""
+    return os.environ.get("RELAY_UPSTREAM_URL", "").rstrip("/")
+
+
+def _get_conv_upstream_key() -> str:
+    """上游 Bearer 密钥（可空）。"""
+    return os.environ.get("RELAY_UPSTREAM_KEY", "")
+
+
+def _get_conv_model_name() -> str:
+    """对话模型名（如 flash / Pro / code）。"""
+    return os.environ.get("CCC_CONV_MODEL_NAME", "").strip()
+
+
+def _get_conv_upstream_path() -> str:
+    """上游 chat completions 路径（默认 /v1/chat/completions）。"""
+    return os.environ.get("CCC_CONV_UPSTREAM_PATH", "/v1/chat/completions").strip() or "/v1/chat/completions"
+
+
+def _get_conv_upstream_timeout() -> int:
+    """上游请求超时（秒，默认 60）。"""
+    try:
+        return int(os.environ.get("CCC_CONV_UPSTREAM_TIMEOUT", "60"))
+    except ValueError:
+        return 60
+
+
 # 内存 token 存储: {token: {"username": str, "expires_at": float}}
 _tokens: dict[str, dict[str, Any]] = {}
 # 对话历史（内存列表）
 _conversations: list[dict[str, Any]] = []
+
+# 对话历史转发给上游的最大轮数（user+assistant 算一轮）
+_CONV_HISTORY_TURNS = 10
+
+
+def _forward_to_upstream(message: str, history: list[dict[str, Any]]) -> tuple[bool, str, int]:
+    """转发用户消息到配置的模型上游（OpenAI chat completions 格式）。
+
+    返回 (success, reply_or_error, status_code)：
+    - 缺配置 → (False, "upstream not configured", 503)
+    - 上游成功 → (True, reply, 200)
+    - 上游失败 → (False, error_msg, 502)
+    """
+    base = _get_conv_upstream_base()
+    model = _get_conv_model_name()
+    if not base or not model:
+        return (False, "upstream not configured (RELAY_UPSTREAM_URL / CCC_CONV_MODEL_NAME)", 503)
+    url = base + _get_conv_upstream_path()
+    # 构造 messages：最近 N 轮历史 + 当前消息
+    messages: list[dict[str, str]] = []
+    recent = history[-(2 * _CONV_HISTORY_TURNS):] if history else []
+    for entry in recent:
+        role = entry.get("role", "")
+        content = entry.get("message", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+    payload = json.dumps({
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    key = _get_conv_upstream_key()
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+    try:
+        with urllib.request.urlopen(req, timeout=_get_conv_upstream_timeout()) as resp:
+            raw = resp.read().decode("utf-8")
+            data = json.loads(raw)
+            # OpenAI 格式：choices[0].message.content
+            choices = data.get("choices") or []
+            if not choices:
+                return (False, "upstream returned no choices", 502)
+            reply = (choices[0].get("message") or {}).get("content", "")
+            if not reply:
+                return (False, "upstream returned empty content", 502)
+            return (True, reply, 200)
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")[:200]
+        except OSError:
+            pass
+        return (False, f"upstream HTTP {exc.code}: {body}", 502)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return (False, f"upstream connect failed: {exc}", 502)
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+        return (False, f"upstream decode failed: {exc}", 502)
 
 # ── 免鉴权的路径前缀 ──
 _NO_AUTH_PATHS = frozenset({"/health", "/session"})
@@ -198,7 +295,7 @@ class _APIHandler(BaseHTTPRequestHandler):
         self._send_json({"token": token, "expires_at": expires_at, "ttl_s": ttl})
 
     def _handle_conversation_post(self):
-        """POST /conversation：对话（回声占位）。"""
+        """POST /conversation：转发到配置的模型上游并返回回复。"""
         body = self._read_body()
         if not body:
             self._send_json({"error": "invalid request body"}, 400)
@@ -207,19 +304,14 @@ class _APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send_json({"error": "message required"}, 400)
             return
-        reply = f"echo: {message}"
-        entry = {
-            "role": "user",
-            "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        _conversations.append(entry)
-        reply_entry = {
-            "role": "assistant",
-            "message": reply,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        _conversations.append(reply_entry)
+        success, reply, status = _forward_to_upstream(message, list(_conversations))
+        if not success:
+            # 上游未配置(503)或失败(502)：不落历史
+            self._send_json({"error": reply}, status)
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        _conversations.append({"role": "user", "message": message, "timestamp": now})
+        _conversations.append({"role": "assistant", "message": reply, "timestamp": now})
         self._send_json({"reply": reply})
 
     def _handle_conversation_get(self):

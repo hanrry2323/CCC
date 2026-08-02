@@ -197,40 +197,186 @@ class TestAuth:
 # ── 对话测试 ──
 
 
-class TestConversation:
-    """对话接口（回声占位）。"""
+class _MockUpstream:
+    """模拟上游 chat completions 服务（用于 /conversation 转发测试）。"""
 
-    def test_conversation_round_trip(self, api_server):
-        """POST /conversation 往返：发消息应返回回声。"""
+    def __init__(self, reply: str = "mock-reply", status: int = 200, fail_once: bool = False):
+        self.reply = reply
+        self.status = status
+        self.fail_once = fail_once
+        self._failed = False
+        self.received_requests: list[dict] = []
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length else b""
+                try:
+                    body = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    body = {}
+                outer.received_requests.append({
+                    "path": self.path,
+                    "authorization": self.headers.get("Authorization", ""),
+                    "body": body,
+                })
+                if outer.fail_once and not outer._failed:
+                    outer._failed = True
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"mock fail"}')
+                    return
+                self.send_response(outer.status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                if outer.status == 200:
+                    resp = {"choices": [{"message": {"content": outer.reply}}]}
+                    self.wfile.write(json.dumps(resp).encode("utf-8"))
+                else:
+                    self.wfile.write(b'{"error":"mock error"}')
+
+        self._server = HTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    @property
+    def url(self) -> str:
+        addr = self._server.server_address
+        return f"http://{addr[0]}:{addr[1]}"
+
+    def stop(self):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+@pytest.fixture
+def mock_upstream():
+    """启动模拟上游（默认返回 mock-reply），返回实例。"""
+    srv = _MockUpstream(reply="mock-reply", status=200).start()
+    yield srv
+    srv.stop()
+
+
+def _set_conv_env(upstream_url: str, model: str = "flash", key: str = "test-key"):
+    """设置对话上游环境变量（运行时刷新）。"""
+    os.environ["RELAY_UPSTREAM_URL"] = upstream_url
+    os.environ["RELAY_UPSTREAM_KEY"] = key
+    os.environ["CCC_CONV_MODEL_NAME"] = model
+
+
+def _clear_conv_env():
+    """清除对话上游环境变量。"""
+    for k in ("RELAY_UPSTREAM_URL", "RELAY_UPSTREAM_KEY", "CCC_CONV_MODEL_NAME"):
+        os.environ.pop(k, None)
+
+
+class TestConversation:
+    """/conversation 转发上游测试：缺配置 503、上游成功往返、上游失败 502、鉴权不回归。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_conversation_state(self):
+        """每个测试前清空对话历史与上游 env，避免跨用例污染。"""
+        from server.web import server as srv_mod
+        srv_mod._conversations.clear()
+        _clear_conv_env()
+        yield
+        srv_mod._conversations.clear()
+        _clear_conv_env()
+
+    def test_conversation_no_upstream_503(self, api_server):
+        """缺上游配置返回 503。"""
+        _clear_conv_env()
         token = _get_token(api_server)
         status, data = _post(api_server, "/conversation", {"message": "hello"}, token=token)
-        assert status == 200
-        assert data["reply"] == "echo: hello"
+        assert status == 503
+        assert "error" in data
+        assert "not configured" in data["error"]
 
-    def test_conversation_history(self, api_server):
-        """GET /conversation 应返回对话历史。"""
-        token = _get_token(api_server)
-        # 先发一条消息
-        _post(api_server, "/conversation", {"message": "first"}, token=token)
-        # 获取历史
-        status, data = _get(api_server, "/conversation", token=token)
-        assert status == 200
-        assert "messages" in data
-        # 应包含 user 和 assistant 两条消息
-        assert len(data["messages"]) >= 2
-        assert data["messages"][-2]["role"] == "user"
-        assert data["messages"][-1]["role"] == "assistant"
+    def test_conversation_upstream_success(self, api_server, mock_upstream):
+        """上游成功往返：返回真实模型回复（非 echo:）。"""
+        _set_conv_env(mock_upstream.url, model="flash", key="test-key")
+        try:
+            token = _get_token(api_server)
+            status, data = _post(api_server, "/conversation", {"message": "hi"}, token=token)
+            assert status == 200
+            assert data["reply"] == "mock-reply"
+            # 上游应收到正确 payload
+            assert len(mock_upstream.received_requests) == 1
+            req = mock_upstream.received_requests[0]
+            assert req["authorization"] == "Bearer test-key"
+            assert req["body"]["model"] == "flash"
+            assert req["body"]["messages"][-1] == {"role": "user", "content": "hi"}
+            assert req["body"]["stream"] is False
+        finally:
+            _clear_conv_env()
+
+    def test_conversation_upstream_failure_502(self, api_server, mock_upstream):
+        """上游失败返回 502 且不落历史。"""
+        # 让 mock 返回 500
+        mock_upstream.status = 500
+        _set_conv_env(mock_upstream.url, model="flash")
+        try:
+            token = _get_token(api_server)
+            status, data = _post(api_server, "/conversation", {"message": "fail"}, token=token)
+            assert status == 502
+            assert "error" in data
+            # 历史应为空（失败不落历史）
+            status, data = _get(api_server, "/conversation", token=token)
+            assert status == 200
+            assert len(data["messages"]) == 0
+        finally:
+            _clear_conv_env()
+
+    def test_conversation_history_after_success(self, api_server, mock_upstream):
+        """成功对话后历史应包含 user + assistant 两条。"""
+        _set_conv_env(mock_upstream.url, model="flash")
+        try:
+            token = _get_token(api_server)
+            _post(api_server, "/conversation", {"message": "first"}, token=token)
+            status, data = _get(api_server, "/conversation", token=token)
+            assert status == 200
+            assert len(data["messages"]) >= 2
+            assert data["messages"][-2]["role"] == "user"
+            assert data["messages"][-2]["message"] == "first"
+            assert data["messages"][-1]["role"] == "assistant"
+            assert data["messages"][-1]["message"] == "mock-reply"
+        finally:
+            _clear_conv_env()
 
     def test_conversation_no_auth(self, api_server):
-        """未鉴权的对话请求返回 401。"""
+        """未鉴权的对话请求返回 401（不触达上游）。"""
+        _clear_conv_env()
         status, data = _post(api_server, "/conversation", {"message": "hello"})
         assert status == 401
 
     def test_conversation_empty_message(self, api_server):
-        """空消息返回 400。"""
+        """空消息返回 400（不触达上游）。"""
+        _clear_conv_env()
         token = _get_token(api_server)
         status, data = _post(api_server, "/conversation", {"message": ""}, token=token)
         assert status == 400
+
+    def test_conversation_no_key_header(self, api_server, mock_upstream):
+        """未配置 RELAY_UPSTREAM_KEY 时上游请求不带 Authorization。"""
+        _set_conv_env(mock_upstream.url, model="flash", key="")
+        try:
+            token = _get_token(api_server)
+            _post(api_server, "/conversation", {"message": "hi"}, token=token)
+            assert len(mock_upstream.received_requests) == 1
+            assert mock_upstream.received_requests[0]["authorization"] == ""
+        finally:
+            _clear_conv_env()
 
 
 # ── 健康检查 ──

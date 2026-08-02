@@ -32,6 +32,12 @@ final class AppModel: ObservableObject {
     /// 本机 Agent 登录账号/密码（默认空 → 无默认弱口令；未配置时对话明确提示，不白屏）
     @AppStorage("ccc.agentUser") var agentUser: String = ""
     @AppStorage("ccc.agentPass") var agentPass: String = ""
+    /// T19 壳迁移：新服务端（server/web/server.py）接管 7788 对话口
+    /// 默认开启，对话走 /conversation（非流式，接大脑）；关闭则回退旧 sidecar /api/chat（SSE）
+    @AppStorage("ccc.useNewServer") var useNewServer: Bool = true
+    @AppStorage("ccc.newServerURL") var newServerURLString: String = "http://127.0.0.1:7788"
+    @AppStorage("ccc.newServerUser") var newServerUser: String = ""
+    @AppStorage("ccc.newServerPass") var newServerPass: String = ""
     /// 全局本机工作区 fallback（sidecar cwd）
     @AppStorage("ccc.localWorkspace") var localWorkspacePath: String = ""
     /// JSON: projectId → 本机绝对路径
@@ -107,6 +113,9 @@ final class AppModel: ObservableObject {
     /// 快捷条进行中标签（对齐基线/下一步/…）；点按时立即置位，流结束清空
     @Published var activeQuickAction: String? = nil
     @Published var showSettingsHint = false
+    /// T19 新服务端登录状态（账号密码 → token）
+    @Published var newServerLoggedIn: Bool = false
+    @Published var newServerLoginError: String?
 
     /// 当前打开的转任务 sheet 所属 thread；nil=未打开（多窗只有匹配 tid 的窗弹 sheet）
     @Published var transferSheetThreadId: String?
@@ -571,6 +580,12 @@ final class AppModel: ObservableObject {
             agentUser: agentUser,
             agentPassword: agentPass
         )
+        // T19 壳迁移：配置新服务端地址（对话走 /conversation）
+        let newServerURL: URL? = {
+            guard useNewServer else { return nil }
+            return APIClient.makeBaseURL(from: newServerURLString)
+        }()
+        await client.configureNewServer(url: newServerURL)
     }
 
     /// 探测（10s 缓存）→ 失败则拉起 sidecar → 再探测；失败标「未就绪」并后台重探
@@ -1025,6 +1040,140 @@ final class AppModel: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
             if toast == msg { toast = nil }
+        }
+    }
+
+    // MARK: - T19 新服务端登录与对话
+
+    /// 登录新服务端：账号密码 → token（设置页登录按钮调用）
+    func loginNewServer() async {
+        guard useNewServer else {
+            newServerLoginError = "未启用新服务端（设置中打开开关）"
+            return
+        }
+        guard let url = APIClient.makeBaseURL(from: newServerURLString) else {
+            newServerLoginError = "新服务端地址无效"
+            return
+        }
+        await client.configureNewServer(url: url)
+        let user = newServerUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty, !newServerPass.isEmpty else {
+            newServerLoginError = "请填写账号和密码"
+            return
+        }
+        do {
+            _ = try await client.loginToNewServer(username: user, password: newServerPass)
+            newServerLoggedIn = true
+            newServerLoginError = nil
+            showToast("新服务端登录成功")
+        } catch let apiErr as APIError {
+            newServerLoggedIn = false
+            newServerLoginError = apiErr.localizedDescription
+        } catch {
+            newServerLoggedIn = false
+            newServerLoginError = "登录失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 登出新服务端（清 token）
+    func logoutNewServer() {
+        Task { await client.configureNewServer(url: nil) }
+        newServerLoggedIn = false
+        showToast("已登出新服务端")
+    }
+
+    // MARK: - T19 新服务端非流式对话路径
+
+    /// 新服务端对话（非流式）：user 消息入气泡 → POST /conversation → assistant 回复入气泡。
+    /// 401 清 token 提示重登；其它错误以 assistant 气泡文案呈现，不抛出。
+    /// 仅在 useNewServer=true 时由 sendUserMessageAndWait 路由进入，不触及旧 sidecar 流式路径。
+    private func runNewServerChat(
+        projectId: String,
+        threadId: String,
+        text: String,
+        displayText: String? = nil
+    ) async {
+        let turnId = UUID().uuidString
+        activeTurnIds[threadId] = turnId
+        setThreadStreaming(threadId, true)
+        activeChatThreadId = threadId
+        defer {
+            setThreadStreaming(threadId, false)
+            if activeChatThreadId == threadId {
+                activeChatThreadId = streamingThreadIds.first
+            }
+            chatTasks[threadId] = nil
+            if activeTurnIds[threadId] == turnId {
+                activeTurnIds.removeValue(forKey: threadId)
+            }
+            let flowGen = threadSwitchGeneration
+            Task { [flowGen, projectId] in
+                guard self.threadSwitchGeneration == flowGen else { return }
+                await self.refreshFlow(projectId: projectId)
+            }
+        }
+
+        let userMsg = ChatMessage(role: "user", content: text, displayContent: displayText)
+        let assistantId = UUID()
+        mutateThreadMessages(threadId: threadId) { msgs in
+            msgs.append(userMsg)
+            msgs.append(ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true))
+        }
+
+        // 未登录 → 直接提示，不触达网络
+        if !newServerLoggedIn {
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].content = "请先在「设置 → 新服务端（T19）」登录后再对话。"
+                msgs[idx].isStreaming = false
+            }
+            return
+        }
+
+        setThreadStreamStatus(threadId, "新服务端生成中…")
+        if selectedThreadId == threadId {
+            setStatusImmediate("新服务端生成中…")
+        }
+
+        do {
+            try Task.checkCancellation()
+            // 幂等配置新服务端地址（prepareClient 中也会配，这里兜底）
+            if let url = APIClient.makeBaseURL(from: newServerURLString) {
+                await client.configureNewServer(url: url)
+            }
+            let reply = try await client.sendConversation(message: text)
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].content = reply
+                msgs[idx].isStreaming = false
+            }
+        } catch is CancellationError {
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].content = "（已停止）"
+                msgs[idx].isStreaming = false
+            }
+        } catch let apiErr as APIError {
+            var is401 = false
+            if case .http(let code, _) = apiErr, code == 401 { is401 = true }
+            if is401 {
+                newServerLoggedIn = false
+                newServerLoginError = "会话已过期，请重新登录"
+            }
+            let errText = is401
+                ? "会话已过期（401），请在「设置 → 新服务端（T19）」重新登录。"
+                : "对话失败：\(apiErr.localizedDescription)"
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].content = errText
+                msgs[idx].isStreaming = false
+            }
+        } catch {
+            mutateThreadMessages(threadId: threadId) { msgs in
+                guard let idx = msgs.firstIndex(where: { $0.id == assistantId }) else { return }
+                msgs[idx].content = "对话失败：\(error.localizedDescription)"
+                msgs[idx].isStreaming = false
+            }
         }
     }
 
@@ -2913,6 +3062,45 @@ final class AppModel: ObservableObject {
             }
             syncLegacyChatMirror(from: threadId)
         }
+        // T19 壳迁移：新服务端对话路径（非流式 /conversation），独立于旧 sidecar 流式路径。
+        // useNewServer=true → 走 runNewServerChat；false → 回退旧 sidecar（下方 canChat + runChatStream）。
+        if useNewServer {
+            if streamingThreadIds.contains(threadId) {
+                if stopAndSend {
+                    let previous = chatTasks[threadId]
+                    cancelChat(threadId: threadId, silent: true)
+                    if previous != nil { await previous?.value }
+                } else {
+                    showToast("正在生成，请先点停止")
+                    setComposerBounce(trimmed, threadId: threadId)
+                    activeQuickAction = nil
+                    return false
+                }
+            } else if chatTasks[threadId] != nil {
+                chatTasks[threadId] = nil
+            }
+            let others = streamingThreadIds.filter { $0 != threadId }.count
+            if others >= Self.maxParallelLocalChats {
+                showToast("已有 \(Self.maxParallelLocalChats) 路在生成，请先停止一路再发")
+                setComposerBounce(trimmed, threadId: threadId)
+                activeQuickAction = nil
+                return false
+            }
+            let shownNs = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let task = Task { [weak self] in
+                guard let self else { return }
+                await self.runNewServerChat(
+                    projectId: pid,
+                    threadId: threadId,
+                    text: trimmed,
+                    displayText: (shownNs?.isEmpty == false) ? shownNs : nil
+                )
+            }
+            chatTasks[threadId] = task
+            await task.value
+            return true
+        }
+
         if !canChat {
             showToast("本机 Agent 未就绪。请执行 bash scripts/install-agent-sidecar-plist.sh --start")
             setComposerBounce(trimmed, threadId: threadId)

@@ -2544,6 +2544,33 @@ struct SettingsView: View {
                 Text("本机工作区")
             }
 
+            // T19 壳迁移：新服务端（server/web/server.py）对话接入
+            Section {
+                Toggle("启用新服务端对话（T19）", isOn: $model.useNewServer)
+                TextField("新服务端地址", text: $model.newServerURLString)
+                    .disabled(!model.useNewServer)
+                TextField("账号", text: $model.newServerUser)
+                    .disabled(!model.useNewServer)
+                SecureField("密码", text: $model.newServerPass)
+                    .disabled(!model.useNewServer)
+                HStack {
+                    if model.newServerLoggedIn {
+                        Button("登出") { model.logoutNewServer() }
+                    } else {
+                        Button("登录") { Task { await model.loginNewServer() } }
+                            .disabled(!model.useNewServer)
+                    }
+                    Spacer()
+                    Text(model.newServerLoggedIn ? "已登录" : (model.newServerLoginError ?? "未登录"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(model.newServerLoggedIn ? .green : .secondary)
+                }
+            } header: {
+                Text("新服务端（T19 壳迁移）")
+            } footer: {
+                Text("启用后对话走 /conversation（非流式，接大脑，账号密码换 Bearer token）。关闭则回退旧 sidecar 流式。默认地址指向本机新服务端。")
+            }
+
             Section {
                 Button("重新连接") { Task { await model.reconnect() } }
                 Button("打开用法说明") { model.isHelpPresented = true }

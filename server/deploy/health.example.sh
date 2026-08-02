@@ -58,3 +58,23 @@ cat <<EOF
   "config_file": "${CONFIG_ENV}"
 }
 EOF
+
+# ── Web Server 健康检查示例（T19 壳迁移后探活 7788） ──
+# 用法：bash health-web.sh [--config /path/to/config.env]
+# 输出 JSON 供监控探活。
+#
+# WEB_HOST="${WEB_HOST:-127.0.0.1}"
+# WEB_PORT="${WEB_PORT:-7788}"
+# WEB_UP=false
+# if curl -sf "http://${WEB_HOST}:${WEB_PORT}/health" >/dev/null 2>&1; then
+#   WEB_UP=true
+# fi
+# cat <<EOF
+# {
+#   "service": "ccc-web-server",
+#   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+#   "web_up": $WEB_UP,
+#   "web_host": "${WEB_HOST}",
+#   "web_port": "${WEB_PORT}"
+# }
+# EOF
