@@ -1,7 +1,7 @@
 # 任务卡 T22 · 2017 代码流转 + 新栈部署（2017 单端落地 · 中转站走 6100/6102）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 运行拓扑终态：2017 单端）/ §9 红线 · 依据：老板 2026-08-02 中转站双轨决议（M1 4100/4102 长期保留；2017 6100/6102 CCC 专用，使用方仅 2017 Claude Code + OpenCode，均 flash 档位）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 > 放行确认：老板 2026-08-02「按照决议修改下一步指令」→ 即启动 2017 部署；M1 侧服务（web-server 7788 等）本卡**不停**，双轨并行验证，停用时机另定。
 
 ## 目标
@@ -136,3 +136,23 @@
 3. ✅ 对话经 `127.0.0.1:6102`（flash）出真实回复 `{"reply":"OK"}`；Claude Code 2017 配置（ANTHROPIC_BASE_URL=6100）未动；M1 4100/4102（PID 63542）与 M1 7788（PID 63928）零接触（PID 对比未变）。
 4. ✅ 全接口冒烟通过（health/session/board.snapshot/board.states/ops.summary/conversation + 401）；engine `--once` exit 0；scheduler `--once` 导出 29 卡 exit 0。
 5. ✅ 零硬编码（端口/路径/账号/上游地址全配置化）、无密钥进 git（config.env/executors.json gitignore 覆盖 + 三扫描零命中）、M1 工作树仅剩预存 2 项（`.ccc/agent-mind/decided.json` + `_update_handoff.py`）；真实提交（b494f79 + 本回写 commit）；卡头状态已同步（待分派 → 已回写）。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 代码流转 | M1 `d33f36c`（含 b494f79/f494ac8）已 push；2017 `git pull` 后 HEAD = `d33f36c`，`server/` 齐全，旧栈改动备份于 `~/.ccc/backup-20260802-pre-deploy/` ✅ |
+| 2017 三服务 | SSH 实测：web-server PID 12021（`*:7788`）、engine PID 12023（`--config .../config.env`）、board-scheduler PID 12025（`--watch --interval 60`）全在跑 ✅ |
+| 中转站决议 | 2017 实测 `/conversation` → `{"reply":"确认"}`（经 `127.0.0.1:6102` flash 真实回复）；2017 Claude Code `6100`/OpenCode `6102` 配置原样未动；M1 4100/4102（PID 63542）与 M1 7788（PID 63928）PID 对比未变 ✅ |
+| 全链路 | 2017 本机实测：`/health` 200、`/session` 换 token、`/board/states` `{"待分派":1,"已关闭":25,"打回":3}`、`/ops/summary` 3 节点全可达、无 token 401 ✅ |
+| engine/scheduler | 2017 `engine --once` exit 0（JSON 正常）；`board-scheduler --once` 导出 29 卡 ✅ |
+| 配置安全 | `config.env`（17 keys，上游 6102、账号 ccc、PYTHON_BIN 指向 .venv-hub）+ `executors.json` 均 gitignore 覆盖，无密钥进 git；M1 三扫描零命中 ✅ |
+| 工作树 | M1 仅剩预存 2 项；2017 pull 后干净 ✅ |
+
+**验收发现并修复（P2 → 已闭环）**：`server/web/data/board.js` 被 git 跟踪而 scheduler 每 60 秒重写 → 2017 工作树持续脏、pull 冲突。已修复：`.gitignore` 增加 board.js/cluster.js + `git rm --cached`（M1 commit `d33f36c`，已 push）；2017 同步后工作树干净，board.js 由 scheduler 自动重建（实测 65s 后 24805 bytes 恢复），`file://` 本地数据源不受影响（M1 磁盘文件仍在）。
+
+**结论**：2017 单端落地完成，新栈三服务常驻，对话按决议走 6102 flash，M1 双轨零接触；契约 §8 终态拓扑达成。
