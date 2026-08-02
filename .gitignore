@@ -19,6 +19,10 @@ __pycache__/
 credentials.*
 *credentials*.json
 secrets.*
+
+# CCC server config (local overrides, never commit)
+server/config/config.env
+server/config/executors.json
 # Hub chat venv (claude-agent-sdk)
 .venv-hub/
 .claude/
