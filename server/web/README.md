@@ -12,6 +12,7 @@
 ## 关键约定
 
 - **数据源可切换**：页面支持「本地 board.js / HTTP API」两种来源（URL 参数 `?api=http://host:port` 决定），API 不可用时回退本地数据。
+- **API 模式鉴权**：T16 起所有 `/board/*` 接口需 Bearer token；页面通过 `?token=<token>` 参数注入鉴权头（token 由 `POST /session` 换取）。无 token 时接口 401，页面静默回退本地 `board.js`。
 - **零 API 模式**：无 `?api` 参数时，数据以 `window.BOARD_DATA = {...}` 变量注入（`data/board.js`），`file://` 可直接打开。
 - 页面不直连 `board/` 内部；数据由 `board/export.py` 或 HTTP API 提供。
 - 视觉沿用架构全景页（`docs/ccc-refactor-architecture.html`）CSS 令牌与深/浅主题。
@@ -48,12 +49,15 @@ python3 -m server.web.server --port 9999
 
 | 方法 | 路径 | 响应 | 说明 |
 |------|------|------|------|
-| GET | `/health` | `{"status": "ok"}` | 健康检查 |
-| GET | `/board/realtime` | `{状态名: [明细...]}` | 实时视图（按状态分组） |
-| GET | `/board/recent` | `[明细...]` | 7 天回写视图（按回写时间倒序） |
-| GET | `/board/by_project` | `[{project, count, states}]` | 按项目分类 |
-| GET | `/board/roadmap` | `{overview, by_project}` | 线路图聚合 |
-| GET | `/board/states` | `{状态名: 计数}` | 状态徽章计数 |
+| GET | `/health` | `{"status": "ok"}` | 健康检查（无鉴权） |
+| POST | `/session` | `{token, expires_at, ttl_s}` | 账号密码换 token（无鉴权） |
+| GET | `/board/realtime` | `{状态名: [明细...]}` | 实时视图（按状态分组，需 Bearer token） |
+| GET | `/board/recent` | `[明细...]` | 7 天回写视图（按回写时间倒序，需 Bearer token） |
+| GET | `/board/by_project` | `[{project, count, states}]` | 按项目分类（需 Bearer token） |
+| GET | `/board/roadmap` | `{overview, by_project}` | 线路图聚合（需 Bearer token） |
+| GET | `/board/states` | `{状态名: 计数}` | 状态徽章计数（需 Bearer token） |
+| POST | `/conversation` | `{reply}` | 对话回声占位（需 Bearer token，接大脑留接口） |
+| GET | `/conversation` | `{messages: [...]}` | 对话历史（需 Bearer token） |
 
 ### 响应示例
 
@@ -65,14 +69,14 @@ GET /board/by_project → [{"project": "INT-120", "count": 3, "states": {"待分
 GET /board/roadmap → {"overview": [{"bucket": "未开发", "count": 1}, ...], "by_project": [...]}
 ```
 
-### 鉴权
+### 鉴权（T16 已实现）
 
-> **⚠️ 上线前必须在所有接口前加鉴权**
->
-> 本卡仅实现只读接口，**未加鉴权**。生产部署必须：
-> 1. 在所有接口前加账号密码 + 会话 token 鉴权
-> 2. 写接口（后续卡）额外鉴权
-> 3. 鉴权密钥走环境变量，不硬编码
+> 所有 `/board/*` 与 `/conversation` 接口均需 `Authorization: Bearer <token>`；`/health` 与 `/session` 免鉴权。
+
+- 账号/密码/有效期走环境变量：`CCC_WEB_USERNAME` / `CCC_WEB_PASSWORD_HASH`（SHA-256）/ `CCC_WEB_TOKEN_TTL`，不落库、不硬编码（占位见 `config/config.example.env`）。
+- token 由 `POST /session` 签发（HMAC-SHA256，内存 store，过期即拒）；生产建议改用持久化/签名 token 方案。
+- 前端 API 模式通过 `?token=<token>` 注入鉴权头；无 token 时接口 401 并回退本地 `board.js`。
+- 鉴权未配置时 `POST /session` 返回 500「server auth not configured」（预期行为）。
 
 ## 施工入口
 

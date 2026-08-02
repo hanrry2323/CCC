@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  CCC 独立中转站 launchd 配置 — 模板
+  CCC 独立中转站进程编排配置 — 模板
   部署前替换占位变量 $PROJECT_ROOT / $NODE_BIN / $LOOP_ANTHROPIC_PORT / $LOOP_OPENAI_PORT / $LOG_DIR
 
   安装（替换占位后复制到 LaunchAgents）:

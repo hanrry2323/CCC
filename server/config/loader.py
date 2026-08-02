@@ -85,8 +85,12 @@ def load_config(env_path: str | Path) -> dict[str, Any]:
 
     empty_required = [k for k in REQUIRED_KEYS if not raw.get(k)]
     if empty_required:
+        hint = ""
+        if "EXECUTOR_REGISTRY_PATH" in empty_required:
+            hint = "；请复制 config/executors.example.json 为 executors.json 并填写路径"
         raise ConfigError(
             f"required config keys are empty: {', '.join(sorted(empty_required))}"
+            f"{hint}"
         )
 
     result: dict[str, Any] = {}

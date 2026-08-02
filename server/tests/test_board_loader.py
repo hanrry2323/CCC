@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from server.board.loader import load_dispatch_cards, parse_card
+from server.board.models import base_state
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DISPATCH_DIR = PROJECT_ROOT / "docs" / "dispatch"
@@ -94,4 +95,5 @@ class TestLoadDispatchCards:
         ids = {item.id for item in items}
         assert {"T1", "T1-R", "T2", "T3"} <= ids
         for item in items:
-            assert item.state in {"待分派", "执行中", "已回写", "已关闭", "打回", "未知"}
+            # 契约 §2 允许括号变体（如「打回（原因）」），断言按基础态归并
+            assert base_state(item.state) in {"待分派", "执行中", "已回写", "已关闭", "打回", "未知"}

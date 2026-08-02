@@ -69,7 +69,7 @@ class ClusterSnapshot:
 def parse_cluster_targets(cfg: dict[str, Any]) -> list[tuple[str, int]]:
     """从配置解析采集目标列表。
 
-    CLUSTER_TARGETS 格式：逗号分隔 host:port，如 "localhost:7777,localhost:7775"
+    CLUSTER_TARGETS 格式：逗号分隔 host:port，如 "localhost:PORT1,localhost:PORT2"
     空字符串返回空列表。
     """
     raw = cfg.get("CLUSTER_TARGETS", "").strip()

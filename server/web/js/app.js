@@ -5,6 +5,11 @@
   var DATA = window.BOARD_DATA || { states: {}, views: {}, roadmap: [] };
   var CLUSTER = window.CLUSTER_DATA || { nodes: [], services: [], collected_at: "" };
   var API_BASE = window.API_BASE_URL || null;
+  // T16 起 board 接口需 Bearer token：由 URL `?token=` 参数注入，无则 401 回退本地
+  var API_HEADERS = {};
+  if (window.BOARD_TOKEN) {
+    API_HEADERS["Authorization"] = "Bearer " + window.BOARD_TOKEN;
+  }
   var TONES = { 待分派: "amber", 执行中: "cyan", 已回写: "violet", 已关闭: "emerald", 打回: "rose" };
   var STATUS_TONES = { 正常: "emerald", 异常: "rose", 未知: "faint" };
 
@@ -13,11 +18,11 @@
     if (!API_BASE) return Promise.resolve(null);
     var base = API_BASE.replace(/\/+$/, "");
     return Promise.all([
-      fetch(base + "/board/realtime").then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/recent").then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/by_project").then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/roadmap").then(function (r) { return r.ok ? r.json() : null; }),
-      fetch(base + "/board/states").then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/realtime", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/recent", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/by_project", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/roadmap", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(base + "/board/states", { headers: API_HEADERS }).then(function (r) { return r.ok ? r.json() : null; }),
     ]).then(function (results) {
       return {
         source: "HTTP API",

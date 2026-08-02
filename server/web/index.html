@@ -43,6 +43,12 @@
         window.API_BASE_URL = decodeURIComponent(m[1]);
         console.log('[web] HTTP API 模式:', window.API_BASE_URL);
       }
+      // T16 起 board 接口需鉴权：?token=<token> 注入 Bearer 头（token 由 POST /session 换取）
+      var t = location.search.match(/[?&]token=([^&]+)/);
+      if (t) {
+        window.BOARD_TOKEN = decodeURIComponent(t[1]);
+        console.log('[web] HTTP API 鉴权 token 已注入');
+      }
     })();
   </script>
   <script src="data/board.js"></script>

@@ -6,10 +6,10 @@
   - kb_list(domain?) → 列出域内条目 [{id, section, source}]
 
 用法：
-    python3 -m server.kb.mcp_server                    # 启动 MCP stdio server
-    python3 -m server.kb.mcp_server --selftest          # 自测（启动→调用三工具→退出）
-    python3 -m server.kb.mcp_server --list-tools        # 列出工具清单
-    python3 -m server.kb.mcp_server --reindex           # 重建索引
+    $PYTHON_BIN -m server.kb.mcp_server                # 启动 MCP stdio server
+    $PYTHON_BIN -m server.kb.mcp_server --selftest      # 自测（启动→调用三工具→退出）
+    $PYTHON_BIN -m server.kb.mcp_server --list-tools    # 列出工具清单
+    $PYTHON_BIN -m server.kb.mcp_server --reindex       # 重建索引
 """
 
 from __future__ import annotations

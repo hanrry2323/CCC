@@ -3,13 +3,25 @@ window.BOARD_DATA = {
   "generated_at": "2026-08-02",
   "states": {
     "待分派": 0,
-    "执行中": 0,
+    "执行中": 1,
     "已回写": 0,
     "已关闭": 20,
     "打回": 3
   },
   "views": {
     "realtime": {
+      "执行中": [
+        {
+          "id": "T17",
+          "title": "全量验收 + 问题修复（Claude Code 执行）",
+          "state": "执行中",
+          "project": "INT-120",
+          "executor": "Claude Code",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        }
+      ],
       "已关闭": [
         {
           "id": "T1-R",
@@ -310,10 +322,10 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 23,
+        "count": 24,
         "states": {
           "待分派": 0,
-          "执行中": 0,
+          "执行中": 1,
           "已回写": 0,
           "已关闭": 20,
           "打回": 3
@@ -329,7 +341,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "开发中",
-        "count": 0
+        "count": 1
       },
       {
         "bucket": "已开发待验收",
@@ -351,7 +363,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 23,
+        "count": 24,
         "buckets": [
           {
             "bucket": "未开发",
@@ -359,7 +371,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "开发中",
-            "count": 0
+            "count": 1
           },
           {
             "bucket": "已开发待验收",
@@ -388,7 +400,18 @@ window.BOARD_DATA = {
         },
         {
           "bucket": "开发中",
-          "items": []
+          "items": [
+            {
+              "id": "T17",
+              "title": "全量验收 + 问题修复（Claude Code 执行）",
+              "state": "执行中",
+              "project": "INT-120",
+              "executor": "Claude Code",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            }
+          ]
         },
         {
           "bucket": "已开发待验收",
