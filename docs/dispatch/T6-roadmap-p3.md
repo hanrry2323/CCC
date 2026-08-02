@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§4 看板 / D5 线路图）
 > 管理席：Claude Code（调度窗口）· 执行体：Trae（窗口 A）· 验收：Claude Code
-> 状态：待分派 · 日期：2026-08-02
+> 状态：已关闭 · 日期：2026-08-02
 > 前置：T3/T3-R/T5（已验收通过）· **并行：T7/P4（worktree trae-b-p4）**
 > 工作区：`/Users/apple/program/CCC/.worktrees/trae-a-p3`（分支 `feat/p3-roadmap`）
 
@@ -73,3 +73,9 @@
 | 六桶齐备，空桶有明确归属；「确认可用」是唯一人工动作 | ✅ 六桶齐备，「已验收待确认」为预留空桶；按钮占位 |
 | 测试全绿；硬编码扫描零字面量 | ✅ 92 passed；零字面量 |
 | 分支提交真实（feat/p3-roadmap 未碰 T7 区） | ✅ commit `4c20b74`；T7 区零变更 |
+
+## 验收通过（Claude Code · 2026-08-02）
+
+- 独立复核：92 测试全绿（我跑）；T6 范围代码零硬编码（排除 T4 deploy 模板后）；未碰 T7 区；分支已合入 main（`a7ac29b`）
+- 更正：Trae 回写未同步卡头状态（契约 §3），验收席代改「已关闭」
+- ⚠️ 遗留发现：**T4 部署模板**（`server/deploy/com.ccc.router.plist` + `start-ccc-router.sh`）硬编码 `/Users/fan/...` 绝对路径与 6100/6102/4100/4102 端口——违反 T4 自身验收标准「硬编码扫描零字面量」，需补修（转 T4 补丁卡）
