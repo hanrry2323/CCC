@@ -1,0 +1,36 @@
+[
+  {
+    "name": "ccc-flash-main",
+    "tier": "flash",
+    "tier_priority": 0,
+    "base_url": "https://opencode.ai/zen/go/v1",
+    "upstream_model": "deepseek-v4-flash",
+    "models": ["flash"],
+    "api_key": "sk-your-opencode-key-here",
+    "transcode": true,
+    "free": false,
+    "provider_group": "ccc-opencode-go",
+    "account": "ccc_go_paid",
+    "account_family": "CCC-Go-paid",
+    "enabled": true,
+    "description": "CCC 独立中转站 · 6100/6102 · Mac2017 独立实例",
+    "_note": "替换 api_key 为实际 key，通过 env 注入，不入 git"
+  },
+  {
+    "name": "ccc-code-zhipu",
+    "tier": "code",
+    "tier_priority": 0,
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "api_key": "your-zhipu-api-key-here",
+    "models": ["code"],
+    "upstream_model": "glm-4-flash",
+    "provider_group": "ccc-zhipu",
+    "free": true,
+    "free_type": "recurring-uncapped",
+    "enabled": true,
+    "request_overrides": {
+      "thinking": { "type": "disabled" }
+    },
+    "_note": "智谱 GLM-4-Flash 免费不限次 · code 档兜底"
+  }
+]

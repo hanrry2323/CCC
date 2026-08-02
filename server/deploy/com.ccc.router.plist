@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CCC 独立中转站 launchd 配置 — Mac2017 独立实例
+  监听 :6100 (Anthropic) / :6102 (OpenAI Chat)
+  与 M1 :4100/:4102 并存、互不冲突
+
+  安装:
+    cp com.ccc.router.plist ~/Library/LaunchAgents/com.ccc.router.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ccc.router.plist
+
+  卸载:
+    launchctl bootout gui/$(id -u)/com.ccc.router
+    rm ~/Library/LaunchAgents/com.ccc.router.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ccc.router</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/fan/program/apps/ai-loop-router-ccc/dist/proxy.js</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>LOOP_ANTHROPIC_PORT</key>
+        <string>6100</string>
+        <key>LOOP_OPENAI_PORT</key>
+        <string>6102</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/Users/fan/program/apps/ai-loop-router-ccc</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/fan/program/apps/ai-loop-router-ccc/logs/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/fan/program/apps/ai-loop-router-ccc/logs/stderr.log</string>
+</dict>
+</plist>
