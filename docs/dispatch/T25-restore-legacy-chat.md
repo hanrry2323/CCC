@@ -1,7 +1,7 @@
 # 任务卡 T25 · 找回旧对话页（chat_server/frontend 完整恢复 + 协议适配新服务端）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 多壳=同一 API 契约的不同客户端；对话口账号密码+token）· 依据：老板 2026-08-03 指示「HTTP 对话页用之前的代码找回，UI 保持 Claude Code 风格」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 > 背景：老板验收反馈——T24 重做的对话页为简版、不可接受；旧成熟对话页（`docs/archive/legacy-retired-2026-08-02/scripts/chat_server/frontend/`，512K，Claude 暖米色 + 橙红风格）必须完整找回并作为对话界面。
 
 ## 目标
