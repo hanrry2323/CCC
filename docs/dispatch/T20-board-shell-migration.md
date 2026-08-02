@@ -1,7 +1,7 @@
 # 任务卡 T20 · 看板壳迁移（桌面端看板读取切新服务端 + 旧 7775 下线；移动任务改文档流转）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§4 看板派生 / §8 壳零业务逻辑 / §3 状态同步）· 依据：T13/T16/T19（新服务端已就绪）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-02
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-02
 > 放行确认：老板 2026-08-02 明确「看板壳迁移，出指令」；T19 已把对话口切到新服务端（7788），本卡继续把桌面端看板读取切过去。
 
 ## 目标
@@ -68,6 +68,23 @@
 - 7775：恢复备份 plist 并 `launchctl bootstrap`，或重启原进程（代码未删，仅停进程）。
 - 代码回滚：`git revert` 本卡提交。
 - 触发条件：新服务端三接口冒烟失败 / 桌面端看板不可读 / 7777 意外中断 / 老板或管理席要求。
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-02）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交/工作树 | `96ff0de`（4 文件 +335/-6）+ `5a44890` 真实；`git status` 仅剩预存 2 项 ✅ |
+| 只读三接口 | 7788 实测：`/board/snapshot` 200（columns 按状态分组、counts=待分派0/执行中0/已回写1/已关闭23/打回3、workspace=INT-120）；`/board/summaries` 200；`/tasks/T19` 200（含验收标准）；`/tasks/NOEXIST` 404；无 token 401 ✅ |
+| 测试 | 独立跑 `pytest server/tests/` → **184 passed**（174+10，无回归）✅ |
+| 桌面端 | 独立跑 `swift build` → Build complete；`useNewServer` 分支覆盖 refreshBoard/fetchTaskDetail/refreshProjectTaskState/refreshProjectStats；`mapNewServerCounts` 中文五态→英文兼容；moveBoardTask/hideCompletedEpics 改 toast 提示（不调写接口）✅ |
+| 运行面 | 7775 进程清空（lsof 无监听）；7777 仍在（PID 97748）；7788 = 新 PID 54954（kickstart 后加载新代码）；4100（node 63542）/6100（node 69311）/2017 零接触 ✅ |
+| 三扫描 | 新增 diff 零硬编码/零密钥/零外脑依赖（S1–S4 全干净）✅ |
+
+**遗留登记（P2 · T21 前置）**：`reopenBoardTask`（BoardView 重开打回任务）与 `reopenOpsTask`（OpsView）仍调用旧 Hub 写接口 `client.reopenTask`——契约精神同类（壳零业务逻辑），但验收标准未含此项故不构成打回；**7777 下线（T21）前必须收口为文档流转提示**，否则届时断链。
 
 ## 验收标准（Codex 按此验收）
 

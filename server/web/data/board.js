@@ -5,7 +5,7 @@ window.BOARD_DATA = {
     "待分派": 0,
     "执行中": 0,
     "已回写": 0,
-    "已关闭": 23,
+    "已关闭": 24,
     "打回": 3
   },
   "views": {
@@ -139,6 +139,16 @@ window.BOARD_DATA = {
           "executor": "Claude Code",
           "dispatched_at": "2026-08-02",
           "written_at": "2026-08-02",
+          "reject_count": 0
+        },
+        {
+          "id": "T20",
+          "title": "看板壳迁移（桌面端看板读取切新服务端 + 旧 7775 下线；移动任务改文档流转）（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
           "reject_count": 0
         },
         {
@@ -350,12 +360,12 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 26,
+        "count": 27,
         "states": {
           "待分派": 0,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 23,
+          "已关闭": 24,
           "打回": 3
         }
       }
@@ -381,7 +391,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 23
+        "count": 24
       },
       {
         "bucket": "有问题",
@@ -391,7 +401,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 26,
+        "count": 27,
         "buckets": [
           {
             "bucket": "未开发",
@@ -411,7 +421,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 23
+            "count": 24
           },
           {
             "bucket": "有问题",
@@ -569,6 +579,16 @@ window.BOARD_DATA = {
               "executor": "Claude Code",
               "dispatched_at": "2026-08-02",
               "written_at": "2026-08-02",
+              "reject_count": 0
+            },
+            {
+              "id": "T20",
+              "title": "看板壳迁移（桌面端看板读取切新服务端 + 旧 7775 下线；移动任务改文档流转）（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
               "reject_count": 0
             },
             {
