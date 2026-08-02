@@ -1,7 +1,7 @@
 # 任务卡 T25 · 找回旧对话页（chat_server/frontend 完整恢复 + 协议适配新服务端）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 多壳=同一 API 契约的不同客户端；对话口账号密码+token）· 依据：老板 2026-08-03 指示「HTTP 对话页用之前的代码找回，UI 保持 Claude Code 风格」· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已关闭 · 日期：2026-08-03
 > 背景：老板验收反馈——T24 重做的对话页为简版、不可接受；旧成熟对话页（`docs/archive/legacy-retired-2026-08-02/scripts/chat_server/frontend/`，512K，Claude 暖米色 + 橙红风格）必须完整找回并作为对话界面。
 
 ## 目标
@@ -125,3 +125,24 @@
 - [x] 2. 协议适配生效：`/session` 登录、`/conversation` 对话（真实回复）、`/conversation` 历史；无任何旧 `/api/*` 调用
 - [x] 3. 网页直开 `http://192.168.3.116:7788/` 即旧对话页；看板/运维可访问
 - [x] 4. `pytest` 全绿（54）；语法检查通过；真实提交 `8705f2e`；M1 工作树仅剩预存 2 项无关改动
+
+---
+
+## 验收区（Codex 独立取证 · 2026-08-03）
+
+**结论：通过 ✅**（不看回写，全部实测）
+
+| 验收项 | 独立取证结果 |
+|--------|--------------|
+| 提交 | `8705f2e`（56 文件：50 rename + 8 改动）+ `25b14e6`/`eb9d0e6` 回写真实；已 push，2017 HEAD=8705f2e ✅ |
+| 视觉零改动 | CSS 6 文件全 R100 纯移动；index.html/组件 js 均 rename；仅 auth/agentAuth/composer/message 4 个协议文件改动（R070–R099）✅ |
+| 根路径=旧对话页 | 2017 实测 `/` 返回旧页（多标签/侧栏/主题入口在）；页面引用 `/css/*`、`/js/*` 全 200 ✅ |
+| 协议适配 | `api.js` 实测全映射新协议：`/board/summaries` 项目、`/conversation` 历史+对话、`/board/snapshot`、`/board/roadmap`；无 `/api/auth`、`/api/chat`、`/api/board/proxy`、`/api/desktop` 调用（dispatchCard.js 仅注释提及且未挂载=死代码）✅ |
+| 功能链路 | 跨机实测：登录 → `/board/states`（待分派1/已关闭29/打回3）→ `/ops/summary`（green）→ `/conversation`（`{"reply":"OK。"}` 经 6102）全 200 ✅ |
+| 测试 | 独立跑 `pytest server/tests/` → **206 passed**（197+9 新用例）；JS `node --check` 全过 ✅ |
+| 三扫描 | 新增 diff 零硬编码/零密钥/零外脑（命中均为 CSS mask 属性与事件名，非敏感）✅ |
+| 工作树 | M1 仅剩预存 2 项；2017 工作树干净 ✅ |
+
+**结论**：旧成熟对话页完整找回并恢复为网页默认界面，视觉零改动，协议收敛到新服务端；网页直开 7788 即原版对话体验。
+
+**遗留登记**：`legacy-chat/js/components/dispatchCard.js` 为未挂载死代码（注释含旧协议描述），下次清理轮删除或按新方案重写。
