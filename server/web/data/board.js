@@ -2,23 +2,23 @@ window.BOARD_DATA = {
   "source": "任务卡文档",
   "generated_at": "2026-08-02",
   "states": {
-    "待分派": 1,
+    "待分派": 0,
     "执行中": 0,
-    "已回写": 0,
+    "已回写": 1,
     "已关闭": 3,
     "打回": 1
   },
   "views": {
     "realtime": {
-      "待分派": [
+      "已回写": [
         {
           "id": "T3-R",
           "title": "看板状态归一（Claude Code 执行）",
-          "state": "待分派",
+          "state": "已回写",
           "project": "INT-120",
           "executor": "Claude Code",
           "dispatched_at": "2026-08-02",
-          "written_at": "未知",
+          "written_at": "2026-08-02",
           "reject_count": 0
         }
       ],
@@ -99,6 +99,16 @@ window.BOARD_DATA = {
         "reject_count": 0
       },
       {
+        "id": "T3-R",
+        "title": "看板状态归一（Claude Code 执行）",
+        "state": "已回写",
+        "project": "INT-120",
+        "executor": "Claude Code",
+        "dispatched_at": "2026-08-02",
+        "written_at": "2026-08-02",
+        "reject_count": 0
+      },
+      {
         "id": "T3",
         "title": "任务看板——board 数据模型 + 三视图 + web 页面（Claude Code 执行）",
         "state": "已关闭",
@@ -114,9 +124,9 @@ window.BOARD_DATA = {
         "project": "INT-120",
         "count": 5,
         "states": {
-          "待分派": 1,
+          "待分派": 0,
           "执行中": 0,
-          "已回写": 0,
+          "已回写": 1,
           "已关闭": 3,
           "打回": 1
         }
@@ -126,7 +136,7 @@ window.BOARD_DATA = {
   "roadmap": [
     {
       "bucket": "未开发",
-      "count": 1
+      "count": 0
     },
     {
       "bucket": "开发中",
@@ -134,7 +144,7 @@ window.BOARD_DATA = {
     },
     {
       "bucket": "已开发待验收",
-      "count": 0
+      "count": 1
     },
     {
       "bucket": "已验收待确认",
