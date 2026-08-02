@@ -1,0 +1,72 @@
+"""board 视图数据模型（契约 §4）。
+
+字段：ID / 状态 / 项目 / 执行体 / 分派时间 / 回写时间 / 打回次数。
+线路图桶（P3 占位）：未开发 / 开发中 / 已开发待验收 / 已验收待确认 / 确认可用 / 有问题。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+# 字段缺失时的容错值
+UNKNOWN = "未知"
+
+# 契约 §2 五态
+STATES: tuple[str, ...] = ("待分派", "执行中", "已回写", "已关闭", "打回")
+
+# P3 线路图桶（占位；已验收待确认 为预留空桶）
+ROADMAP_BUCKETS: tuple[str, ...] = (
+    "未开发",
+    "开发中",
+    "已开发待验收",
+    "已验收待确认",
+    "确认可用",
+    "有问题",
+)
+
+# 契约 §2 状态 → 线路图桶 映射（占位，P3 可调）
+STATE_TO_ROADMAP: dict[str, str] = {
+    "待分派": "未开发",
+    "执行中": "开发中",
+    "已回写": "已开发待验收",
+    "已关闭": "确认可用",
+    "打回": "有问题",
+}
+
+
+@dataclass(frozen=True)
+class BoardItem:
+    """一张任务卡派生出的看板视图行。
+
+    Attributes:
+        id: 任务卡 ID（如 T3）。
+        title: 任务卡标题。
+        state: 契约 §2 状态。
+        project: 所属项目（关联字段括号前部分）。
+        executor: 执行体（括号前部分）。
+        dispatched_at: 分派时间（元数据日期，YYYY-MM-DD）。
+        written_at: 回写时间（回写区日期，YYYY-MM-DD）。
+        reject_count: 打回次数（无显式字段按 0）。
+    """
+
+    id: str
+    title: str
+    state: str = UNKNOWN
+    project: str = UNKNOWN
+    executor: str = UNKNOWN
+    dispatched_at: str = UNKNOWN
+    written_at: str = UNKNOWN
+    reject_count: int = 0
+
+    def to_dict(self) -> dict[str, str | int]:
+        """转纯字典（JSON 可序列化）。"""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "state": self.state,
+            "project": self.project,
+            "executor": self.executor,
+            "dispatched_at": self.dispatched_at,
+            "written_at": self.written_at,
+            "reject_count": self.reject_count,
+        }
