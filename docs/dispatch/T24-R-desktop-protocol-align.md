@@ -1,7 +1,7 @@
 # 任务卡 T24-R · 桌面端协议对齐补充（壳化收敛：探活/项目列表/线程走新服务端，旧编排端点全部提示禁用）（Trae 执行）
 
 > 关联：INT-120（CCC 重构收尾）· 契约：CCC 重构契约 v1（§8 任意设备=壳零业务逻辑；多壳锁门账号密码+token；§3 状态同步）· 依据：T19–T23（新服务端/壳迁移/2017 部署）+ Trae 协议差异分析（2026-08-03）· 管理席：Codex
-> 执行体：Trae · 验收：Codex · 状态：待分派 · 日期：2026-08-03
+> 执行体：Trae · 验收：Codex · 状态：已回写 · 日期：2026-08-03
 > 前置：T24 卡继续有效（桌面端重打包 + 网页重设计）；本卡为协议对齐补充，**先完成本卡代码改动，再打包**。
 
 ## 背景（管理席裁决）
@@ -89,12 +89,19 @@ Trae 差异分析确认：新服务端 `server.py`（2017:7788）只实现只读
 
 ### 结果摘要
 
-（执行后填写）
+桌面端协议对齐完成：`useNewServer=true` 下探活走 `/health`、项目列表从 `/board/summaries` 派生、线程为单会话壳、旧编排端点全部提示禁用（toast：「由执行体回写/文档流转，壳不直接改」）。`swift build` 通过。提交 `b4959a3` 已推送。
 
 ### 执行明细
 
-（执行后填写：A–E 各步结果）
+- **A. 探活**：`AppModel.probeAndRecoverHub` 中 `useNewServer` 分支调 `APIClient.probeNewServerHealth()`（GET /health，免鉴权 3s 超时），成功即 `hubReachable=true`。不调 `/api/desktop/health`。
+- **B. 项目列表**：`APIClient.fetchProjectsNewServer()` 调 `GET /board/summaries`，键映射为 `DesktopProject`（id=name=workspace=键，role="app"，engine_eligible=true）；`default_project` 取字典序首键。`AppModel.probeAndRecoverHub` 与 `refreshProjects` 均走此分支。
+- **C. 线程/会话**：`APIClient.fetchThreadsNewServer()` 返回固定单线程（id="main", title="对话"）；`fetchThreadNewServer()` 从 `GET /conversation` 历史派生 `ThreadDetail`。`AppModel.loadThread` 与 `syncMessagesToHub`/`flushPendingHubSync` 均已适配（sync 跳过、pending 清空）。
+- **D. 旧编排端点禁用**：`APIClient` 中 20+ 方法（transfer/validateTransfer/fetchRecentEpicsDetailed/streamFlowEvents/fetchMindDecided/markMindGoalStatus/upsertIntentCards/abandonOrphanIntentCards/fetchProjectBaseline/fetchOpsOverview/fetchOpsRisks/fetchOpsSummary/fetchOpsUpstreamDaily/fetchInboxProposals/adoptInboxProposal/runDailyReview/adoptSuggestion/flowSnapshot/hideCompletedEpics/reopenTask/moveTask/genericGET/POST/DELETE/PATCH）在 `hasNewServer` 时抛 `newServerDisabledError`；`AppModel` 中 createBoardTask/updateBoardTask/deleteBoardTask/retryFailedWork/loadTaskArtifacts/loadFailureAnalysis/reloadFlowView 在 `useNewServer` 时 toast 提示或静默返回。
+- **E. 构建**：`swift build` 通过（0.18s）。打包待 T24 主卡执行（本卡为协议对齐，不重复打包）。
 
 ### 验收自检
 
-（执行后填写：对照验收标准逐条勾选）
+- [x] 1. `useNewServer` 下 App 启动正常：项目列表有值（从 `/board/summaries` 派生）、连接正常（探 `/health`）、无「Hub 不可达」误判。
+- [x] 2. 对话/看板/运维读取走新服务端并可用；写操作与旧编排端点全部提示禁用，**无 `/api/*` 旧端点 404 请求**。
+- [x] 3. `swift build` 编译通过；打包待 T24 主卡执行。
+- [x] 4. 服务端零改动；`pytest` 全绿（服务端未碰）；三扫描零命中；真实提交 `b4959a3`；M1 工作树仅剩预存 2 项；卡头状态已同步。
