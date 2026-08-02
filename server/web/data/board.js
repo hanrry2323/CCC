@@ -5,7 +5,7 @@ window.BOARD_DATA = {
     "待分派": 0,
     "执行中": 0,
     "已回写": 0,
-    "已关闭": 18,
+    "已关闭": 20,
     "打回": 3
   },
   "views": {
@@ -74,6 +74,26 @@ window.BOARD_DATA = {
         {
           "id": "T14-R",
           "title": "E2E 全链路重做（新栈）（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T15",
+          "title": "旧系统退役执行（第一阶段 + 第二阶段清单）（Trae 执行）",
+          "state": "已关闭",
+          "project": "INT-120",
+          "executor": "Trae",
+          "dispatched_at": "2026-08-02",
+          "written_at": "未知",
+          "reject_count": 0
+        },
+        {
+          "id": "T16",
+          "title": "壳对接（服务端侧）：对话/写 API + 鉴权 + 客户端指向就绪（Trae 执行）",
           "state": "已关闭",
           "project": "INT-120",
           "executor": "Trae",
@@ -206,7 +226,7 @@ window.BOARD_DATA = {
         {
           "id": "T12",
           "title": "旧系统退役清单与处置（Trae 执行）",
-          "state": "打回（由 T12-R 取代，缺 2017 依赖方核实）",
+          "state": "打回",
           "project": "INT-120",
           "executor": "Trae",
           "dispatched_at": "2026-08-02",
@@ -216,7 +236,7 @@ window.BOARD_DATA = {
         {
           "id": "T14",
           "title": "E2E 全链路流程测试（Trae 执行）",
-          "state": "打回（由 T14-R 取代，原测试跑在旧栈）",
+          "state": "打回",
           "project": "INT-120",
           "executor": "Trae",
           "dispatched_at": "2026-08-02",
@@ -290,12 +310,12 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 21,
+        "count": 23,
         "states": {
           "待分派": 0,
           "执行中": 0,
           "已回写": 0,
-          "已关闭": 18,
+          "已关闭": 20,
           "打回": 3
         }
       }
@@ -321,7 +341,7 @@ window.BOARD_DATA = {
       },
       {
         "bucket": "确认可用",
-        "count": 18
+        "count": 20
       },
       {
         "bucket": "有问题",
@@ -331,7 +351,7 @@ window.BOARD_DATA = {
     "by_project": [
       {
         "project": "INT-120",
-        "count": 21,
+        "count": 23,
         "buckets": [
           {
             "bucket": "未开发",
@@ -351,7 +371,7 @@ window.BOARD_DATA = {
           },
           {
             "bucket": "确认可用",
-            "count": 18
+            "count": 20
           },
           {
             "bucket": "有问题",
@@ -444,6 +464,26 @@ window.BOARD_DATA = {
             {
               "id": "T14-R",
               "title": "E2E 全链路重做（新栈）（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T15",
+              "title": "旧系统退役执行（第一阶段 + 第二阶段清单）（Trae 执行）",
+              "state": "已关闭",
+              "project": "INT-120",
+              "executor": "Trae",
+              "dispatched_at": "2026-08-02",
+              "written_at": "未知",
+              "reject_count": 0
+            },
+            {
+              "id": "T16",
+              "title": "壳对接（服务端侧）：对话/写 API + 鉴权 + 客户端指向就绪（Trae 执行）",
               "state": "已关闭",
               "project": "INT-120",
               "executor": "Trae",
@@ -579,7 +619,7 @@ window.BOARD_DATA = {
             {
               "id": "T12",
               "title": "旧系统退役清单与处置（Trae 执行）",
-              "state": "打回（由 T12-R 取代，缺 2017 依赖方核实）",
+              "state": "打回",
               "project": "INT-120",
               "executor": "Trae",
               "dispatched_at": "2026-08-02",
@@ -589,7 +629,7 @@ window.BOARD_DATA = {
             {
               "id": "T14",
               "title": "E2E 全链路流程测试（Trae 执行）",
-              "state": "打回（由 T14-R 取代，原测试跑在旧栈）",
+              "state": "打回",
               "project": "INT-120",
               "executor": "Trae",
               "dispatched_at": "2026-08-02",
