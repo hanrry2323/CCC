@@ -46,4 +46,30 @@
 
 ## 回写区
 
-（Trae-A 回写）
+**Trae-A 执行完成** · 2026-08-02
+
+**结果摘要**：D5 线路图三层派生视图实现完成——后端三层查询（总览/单项目/项目线路图）+ 六桶齐备（「已验收待确认」为预留空桶）+ 前端三层导航 + 状态桶渲染 + 「确认可用」按钮占位。
+
+**测试输出**：92 passed in 0.31s（新增 9 个线路图测试，原有 83 不回归）
+
+**硬编码扫描**：零字面量（IP/端口/路径全无硬编码）
+
+**分支 commit hash**：`4c20b74cf9d328ab52c75ffa44e3fac26ea2aa98`
+
+**变更文件**（7 文件，+618/-43）：
+- `server/board/queries.py` — 新增 `roadmap_overview`/`roadmap_by_project`/`roadmap_project_detail`
+- `server/board/export.py` — 导出三层结构
+- `server/web/js/app.js` — 三层导航 + 桶渲染 + 确认可用按钮
+- `server/web/css/style.css` — 导航/项目卡片/按钮样式
+- `server/web/data/board.js` — 再生数据
+- `server/tests/test_board_queries.py` — 新增 9 测试
+- `server/tests/test_board_export.py` — 验证三层结构
+
+**验收自检对照表**：
+
+| 验收标准 | 状态 |
+|----------|------|
+| 线路图三层可查询（总览/单项目/项目线路图），状态自动聚合 | ✅ 三层查询实现 |
+| 六桶齐备，空桶有明确归属；「确认可用」是唯一人工动作 | ✅ 六桶齐备，「已验收待确认」为预留空桶；按钮占位 |
+| 测试全绿；硬编码扫描零字面量 | ✅ 92 passed；零字面量 |
+| 分支提交真实（feat/p3-roadmap 未碰 T7 区） | ✅ commit `4c20b74`；T7 区零变更 |
