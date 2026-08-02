@@ -1,14 +1,13 @@
 /**
  * agentAuth.js — 7788 对话口账号密码登录门（窗口 K）。
  *
- * 对话壳（:7788）登录门：POST /api/auth/agent-login 换会话 token（内存 TTL 1h），
- * token 只进 sessionStorage（不落 localStorage）；401 → 清 token + 弹登录门引导重登。
+ * 对话壳（:7788）登录门：POST /session 换 token（JSON body {username, password}），
+ * 返回 {token, ttl_s, expires_at}；token 落 localStorage（键 ccc_agent_token）；
+ * 401 → 清 token + 弹登录门引导重登。
  * 服务端未配置凭证 → 登录 503「未配置登录凭证」，前端据此给出明确提示（无默认弱口令）。
  */
 
-import { agentUrl } from './ports.js';
-
-const AGENT_TOKEN_KEY = 'ccc_agent_session';
+const AGENT_TOKEN_KEY = 'ccc_agent_token';
 
 let _authResolvers = [];
 
@@ -18,11 +17,11 @@ function _resolvePending() {
   pending.forEach((r) => r());
 }
 
-// ── token 存取（sessionStorage，不落 localStorage）────────
+// ── token 存取（localStorage）────────────────────────────
 
 export function getAgentToken() {
   try {
-    return sessionStorage.getItem(AGENT_TOKEN_KEY) || '';
+    return localStorage.getItem(AGENT_TOKEN_KEY) || '';
   } catch (_) {
     return '';
   }
@@ -30,13 +29,13 @@ export function getAgentToken() {
 
 export function setAgentToken(token) {
   try {
-    sessionStorage.setItem(AGENT_TOKEN_KEY, token || '');
+    localStorage.setItem(AGENT_TOKEN_KEY, token || '');
   } catch (_) {}
 }
 
 export function clearAgentToken() {
   try {
-    sessionStorage.removeItem(AGENT_TOKEN_KEY);
+    localStorage.removeItem(AGENT_TOKEN_KEY);
   } catch (_) {}
 }
 
@@ -54,10 +53,10 @@ export function agentHeaders() {
 
 /** 登录：账号密码 → 会话 token。401 → 凭证错；503 → 未配置。 */
 export async function agentLogin(user, pass) {
-  const resp = await fetch(agentUrl('/api/auth/agent-login'), {
+  const resp = await fetch('/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user: user || '', password: pass || '' }),
+    body: JSON.stringify({ username: user || '', password: pass || '' }),
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -74,23 +73,17 @@ export async function agentLogin(user, pass) {
   return data;
 }
 
-/** 登出：吊销会话 token（幂等；网络失败忽略）。 */
+/** 登出：只清 localStorage，不再调后端。 */
 export async function agentLogout() {
-  try {
-    await fetch(agentUrl('/api/auth/agent-logout'), {
-      method: 'POST',
-      headers: agentHeaders(),
-    });
-  } catch (_) {}
   clearAgentToken();
   applyAgentRoleUI();
 }
 
-/** 探活：GET /api/auth/agent-session；无效 → 清 token + false。 */
+/** 探活：GET /health（带 Bearer token）；200 → true，否则清 token 返回 false。 */
 export async function probeAgentSession() {
   if (!hasAgentToken()) return false;
   try {
-    const resp = await fetch(agentUrl('/api/auth/agent-session'), {
+    const resp = await fetch('/health', {
       headers: agentHeaders(),
     });
     if (!resp.ok) {
@@ -191,7 +184,7 @@ export function initAgentAuth({ onAuthenticated } = {}) {
 export async function ensureAgentAuthenticated() {
   let health = null;
   try {
-    const resp = await fetch(agentUrl('/health'));
+    const resp = await fetch('/health');
     if (resp.ok) health = await resp.json().catch(() => null);
   } catch (_) {
     health = null;
@@ -218,5 +211,3 @@ export async function ensureAgentAuthenticated() {
 export function waitForAgentAuth() {
   return new Promise((resolve) => _authResolvers.push(resolve));
 }
-
-export { AGENT_TOKEN_KEY };

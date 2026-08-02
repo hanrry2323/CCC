@@ -5,7 +5,6 @@ import { fileToAttachment, renderAttachmentChips, clearAttachments, getPendingAt
 import { handleSlashInput, hideSlashMenu } from './slash.js';
 import { initComposerActionDock } from './fixedActions.js';
 import { isCurrentTabStreaming, syncStreamingFlagForActiveTab } from '../streamRegistry.js';
-import { agentUrl } from '../ports.js';
 
 export function initComposer() {
   const input = document.getElementById('composer-input');
@@ -60,28 +59,18 @@ export function initComposer() {
     modelSelect.addEventListener('change', () => {
       state.set('model', modelSelect.value);
     });
-    // 模型档位以 sidecar /health 为准：仅保留可用档，避免硬编码死选项
-    fetch(agentUrl('/health'))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((h) => {
-        const models = h && Array.isArray(h.models) ? h.models : [];
-        if (!models.length) return;
-        const labels = (h && h.model_labels) || {};
-        const cur = state.get('model');
-        const keep = models.includes(cur) ? cur : models[0];
-        modelSelect.innerHTML = '';
-        for (const m of models) {
-          const opt = document.createElement('option');
-          opt.value = m;
-          const label = labels[m];
-          opt.textContent =
-            label && label.includes('idle') ? m + '（idle）' : m;
-          modelSelect.appendChild(opt);
-        }
-        modelSelect.value = keep;
-        state.set('model', keep);
-      })
-      .catch(() => {});
+    // 静态模型选项：不再从 /health 动态获取
+    const staticModels = ['flash', 'Pro', 'code', 'sonnet', 'haiku'];
+    modelSelect.innerHTML = '';
+    for (const m of staticModels) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      modelSelect.appendChild(opt);
+    }
+    const cur = state.get('model');
+    modelSelect.value = staticModels.includes(cur) ? cur : 'flash';
+    state.set('model', modelSelect.value);
   }
 
   const toolModeSelect = document.getElementById('tool-mode-select');

@@ -181,15 +181,17 @@ def _forward_to_upstream(message: str, history: list[dict[str, Any]]) -> tuple[b
 _NO_AUTH_PATHS = frozenset({"/health", "/session"})
 
 
-# ── 静态托管（T23：浏览器直开 7788 看页面） ──
+# ── 静态托管（T23：浏览器直开 7788 看页面；T25：旧对话页 legacy-chat/） ──
 # 白名单：仅这些路径免鉴权返回静态文件（页面本身是登录入口）。
 _STATIC_WEB_ROOT = _PROJECT_ROOT / "server" / "web"
+# 旧对话页根目录（T25：legacy-chat/ 下的文件通过前缀匹配自动托管）
+_STATIC_LEGACY_CHAT_ROOT = _STATIC_WEB_ROOT / "legacy-chat"
 # 路径 → 磁盘文件相对 web 根的映射（显式白名单，禁止目录穿越）
 _STATIC_WHITELIST: dict[str, str] = {
-    "/": "index.html",
-    "/index.html": "index.html",
+    "/": "legacy-chat/index.html",
+    "/index.html": "legacy-chat/index.html",
     "/css/style.css": "css/style.css",
-    "/js/app.js": "js/app.js",
+    "/js/app.js": "legacy-chat/js/app.js",
     "/js/chat.js": "js/chat.js",
     "/data/board.js": "data/board.js",
     "/data/cluster.js": "data/cluster.js",
@@ -200,24 +202,33 @@ def _resolve_static_file(path: str) -> tuple[Path, str] | None:
     """将请求路径解析为磁盘文件 + Content-Type；非白名单或穿越返回 None。
 
     防穿越策略：
-    1. 仅白名单内的路径允许（显式映射，不接受任意路径）；
-    2. resolve() 后必须仍在 _STATIC_WEB_ROOT 内；
-    3. 必须是普通文件。
+    1. 白名单命中优先（显式映射）；
+    2. 白名单未命中时尝试 legacy-chat/ 目录（T25：旧对话页资源）；
+    3. resolve() 后必须仍在对应的根目录内；
+    4. 必须是普通文件。
     """
     # 去 query + fragment，path 已是 do_GET 处理后的纯 path
     rel = _STATIC_WHITELIST.get(path)
-    if not rel:
+    if rel:
+        target = (_STATIC_WEB_ROOT / rel).resolve()
+        try:
+            target.relative_to(_STATIC_WEB_ROOT.resolve())
+        except ValueError:
+            return None
+        if target.is_file():
+            ctype, _ = mimetypes.guess_type(target.name)
+            return target, ctype or "application/octet-stream"
         return None
-    target = (_STATIC_WEB_ROOT / rel).resolve()
+    # 白名单未命中 → 尝试 legacy-chat/ 目录（T25）
+    legacy_path = (_STATIC_LEGACY_CHAT_ROOT / path.lstrip("/")).resolve()
     try:
-        target.relative_to(_STATIC_WEB_ROOT.resolve())
+        legacy_path.relative_to(_STATIC_LEGACY_CHAT_ROOT.resolve())
     except ValueError:
-        # 越界：不在 web 根内
         return None
-    if not target.is_file():
-        return None
-    ctype, _ = mimetypes.guess_type(target.name)
-    return target, ctype or "application/octet-stream"
+    if legacy_path.is_file():
+        ctype, _ = mimetypes.guess_type(legacy_path.name)
+        return legacy_path, ctype or "application/octet-stream"
+    return None
 
 
 # ── 看板兼容接口辅助（T20：BoardSnapshot / BoardSummaries / TaskDetail） ──

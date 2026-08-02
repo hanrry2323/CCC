@@ -1,22 +1,22 @@
 /**
- * auth.js — Hub 会话登录态（窗口 A3）。
+ * auth.js — 新服务端会话登录态。
  *
- * 登录门只作用于 Hub 壳（直连 :7777）；对话壳(:7788) 的 Hub API 走 sidecar 代理
- * （sidecar 自带 Hub Basic），不强制登录，避免破坏 Desktop/sidecar 链路。
- * token 只进 sessionStorage（会话级，不落 localStorage）；Basic 凭证只在登录换 token 时用一次。
+ * 登录门：POST /session（JSON body）换 Bearer token，存 localStorage。
+ * 探活：GET /health 带 Bearer token。
+ * token 落 localStorage（持久会话），每次启动探活确认有效性。
  */
 
 import { state } from './state.js';
-import { hubUrl, isDialogueShell } from './ports.js';
+import { hubUrl } from './ports.js';
 
-const TOKEN_KEY = 'ccc_hub_token';
-const ROLE_KEY = 'ccc_hub_role';
+const TOKEN_KEY = 'ccc_chat_token';
+const ROLE_KEY = 'ccc_chat_role';
 
-// ── token / role 存取（sessionStorage）───────────────────────────
+// ── token / role 存取（localStorage）──────────────────────────────
 
 export function getToken() {
   try {
-    return sessionStorage.getItem(TOKEN_KEY) || '';
+    return localStorage.getItem(TOKEN_KEY) || '';
   } catch (_) {
     return '';
   }
@@ -24,7 +24,7 @@ export function getToken() {
 
 export function getRole() {
   try {
-    return sessionStorage.getItem(ROLE_KEY) || '';
+    return localStorage.getItem(ROLE_KEY) || '';
   } catch (_) {
     return '';
   }
@@ -63,8 +63,8 @@ function _emit(role) {
 
 export function setToken(token, role) {
   try {
-    sessionStorage.setItem(TOKEN_KEY, token || '');
-    sessionStorage.setItem(ROLE_KEY, role || '');
+    localStorage.setItem(TOKEN_KEY, token || '');
+    localStorage.setItem(ROLE_KEY, role || '');
   } catch (_) {
     /* ignore */
   }
@@ -75,8 +75,8 @@ export function setToken(token, role) {
 
 export function clearToken() {
   try {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ROLE_KEY);
   } catch (_) {
     /* ignore */
   }
@@ -87,51 +87,42 @@ export function clearToken() {
 
 // ── 登录 / 登出 / 探活 ───────────────────────────────────────────
 
-/** 登录：Basic 凭证换 Bearer token（Basic 仅此一次；401 → throw 凭证错）。 */
+/** 登录：用户名密码换 Bearer token（401 → throw 凭证错）。 */
 export async function login(user, pass) {
-  const resp = await fetch(hubUrl('/api/auth/token'), {
+  const resp = await fetch(hubUrl('/session'), {
     method: 'POST',
-    headers: {
-      Authorization: 'Basic ' + btoa((user || '') + ':' + (pass || '')),
-    },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: user || '', password: pass || '' }),
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     if (resp.status === 401) throw new Error('账号或密码错误');
     throw new Error(data.detail || ('登录失败: HTTP ' + resp.status));
   }
-  setToken(data.token, data.role);
+  setToken(data.token, 'operator');
   return data;
 }
 
-/** 登出：吊销 Bearer token（幂等；网络失败忽略）。 */
+/** 登出：只清本地 token，不再调后端。 */
 export async function logout() {
-  try {
-    await fetch(hubUrl('/api/auth/logout'), {
-      method: 'POST',
-      headers: authHeaders(),
-    });
-  } catch (_) {
-    /* ignore */
-  }
   clearToken();
 }
 
-/** 探活：GET /api/auth/session；无效 → 清 token。返回 role 或 null。 */
+/** 探活：GET /health；无效 → 清 token。返回 'operator' 或 null。 */
 export async function probeSession() {
   if (!isAuthenticated()) return null;
   try {
-    const resp = await fetch(hubUrl('/api/auth/session'), {
+    const resp = await fetch(hubUrl('/health'), {
       headers: authHeaders(),
     });
     if (!resp.ok) {
       clearToken();
       return null;
     }
-    const data = await resp.json().catch(() => ({}));
-    const role = data.role || getRole();
+    // 200 即有效，返回固定角色 'operator'
+    const role = 'operator';
     setToken(getToken(), role);
-    return role || null;
+    return role;
   } catch (_) {
     return null;
   }
@@ -168,7 +159,7 @@ export function applyRoleUI(role) {
 
 /**
  * 初始化：绑定登录表单 / 登出按钮 / 运行期 401（ccc-auth-required）。
- * 对话壳收到 auth-required → toast；Hub 壳 → 登录视图（不白屏不弹裸错误）。
+ * 收到 auth-required → 显示登录视图。
  */
 export function initAuth({ onAuthenticated } = {}) {
   // viewer 下写按钮全局拦截（data-write 标注；后端 require_write 403 是硬门）
@@ -186,11 +177,7 @@ export function initAuth({ onAuthenticated } = {}) {
     true
   );
   document.addEventListener('ccc-auth-required', () => {
-    if (isDialogueShell()) {
-      window.showToast?.('Hub 鉴权失效，请检查对话口配置', 'error');
-    } else {
-      showLogin();
-    }
+    showLogin();
   });
 
   const view = document.getElementById('login-view');
@@ -225,12 +212,8 @@ export function initAuth({ onAuthenticated } = {}) {
   }
 }
 
-/** 启动门：Hub 壳必须有有效 token 才放行；否则显示登录视图并等待。 */
+/** 启动门：必须有有效 token 才放行；否则显示登录视图并等待。 */
 export async function ensureAuthenticated() {
-  if (isDialogueShell()) {
-    applyRoleUI(getRole());
-    return true;
-  }
   const role = await probeSession();
   if (role) {
     hideLogin();

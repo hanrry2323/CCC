@@ -410,12 +410,13 @@ class TestHealth:
 class TestStaticHosting:
     """静态白名单路径免鉴权返回磁盘文件；目录穿越 404；非白名单 API 无 token 401。"""
 
-    def test_root_returns_html(self, api_server):
-        """GET / 返回 index.html（200 + text/html）。"""
+    def test_root_returns_legacy_chat_html(self, api_server):
+        """GET / 返回 legacy-chat/index.html（200 + text/html）。"""
         status, body_text = _get_raw(api_server, "/")
         assert status == 200
         assert "<html" in body_text.lower()
-        assert "<title>CCC 看板</title>" in body_text
+        assert "<title>CCC</title>" in body_text
+        assert "legacy-retired" not in body_text
 
     def test_index_html(self, api_server):
         """GET /index.html 200。"""
@@ -423,19 +424,66 @@ class TestStaticHosting:
         assert status == 200
         assert "<html" in body_text.lower()
 
-    def test_js_app_js(self, api_server):
-        """GET /js/app.js 200 + JavaScript content-type。"""
+    def test_legacy_chat_js_app_js(self, api_server):
+        """GET /js/app.js 200 + 旧对话页 app.js 内容。"""
         status, body_text = _get_raw(api_server, "/js/app.js")
         assert status == 200
-        assert "CCC 看板" in body_text or "fetchApiData" in body_text
+        assert "switchToProjectTab" in body_text or "initRouter" in body_text
 
-    def test_css_style_css(self, api_server):
-        """GET /css/style.css 200。"""
-        status, _ = _get_raw(api_server, "/css/style.css")
+    def test_legacy_chat_css_variables(self, api_server):
+        """GET /css/variables.css 200（旧对话页样式）。"""
+        status, _ = _get_raw(api_server, "/css/variables.css")
         assert status == 200
 
-    def test_data_board_js(self, api_server):
-        """GET /data/board.js 200。"""
+    def test_legacy_chat_css_base(self, api_server):
+        """GET /css/base.css 200。"""
+        status, _ = _get_raw(api_server, "/css/base.css")
+        assert status == 200
+
+    def test_legacy_chat_css_themes(self, api_server):
+        """GET /css/themes.css 200。"""
+        status, _ = _get_raw(api_server, "/css/themes.css")
+        assert status == 200
+
+    def test_legacy_chat_css_components(self, api_server):
+        """GET /css/components.css 200。"""
+        status, _ = _get_raw(api_server, "/css/components.css")
+        assert status == 200
+
+    def test_legacy_chat_css_shell(self, api_server):
+        """GET /css/shell.css 200。"""
+        status, _ = _get_raw(api_server, "/css/shell.css")
+        assert status == 200
+
+    def test_legacy_chat_js_ports(self, api_server):
+        """GET /js/ports.js 200。"""
+        status, _ = _get_raw(api_server, "/js/ports.js")
+        assert status == 200
+
+    def test_legacy_chat_js_theme_init(self, api_server):
+        """GET /js/theme-init.js 200。"""
+        status, _ = _get_raw(api_server, "/js/theme-init.js")
+        assert status == 200
+
+    def test_legacy_chat_js_shell_ui(self, api_server):
+        """GET /js/shell-ui.js 200。"""
+        status, _ = _get_raw(api_server, "/js/shell-ui.js")
+        assert status == 200
+
+    def test_legacy_chat_js_components(self, api_server):
+        """GET /js/components/composer.js 200（组件文件）。"""
+        status, _ = _get_raw(api_server, "/js/components/composer.js")
+        assert status == 200
+
+    def test_legacy_chat_js_pages(self, api_server):
+        """GET /js/pages/boardPage.js 200（页面文件）。"""
+        status, _ = _get_raw(api_server, "/js/pages/boardPage.js")
+        assert status == 200
+
+    def test_board_page_still_accessible(self, api_server):
+        """原有看板页静态文件仍可访问。"""
+        status, _ = _get_raw(api_server, "/css/style.css")
+        assert status == 200
         status, _ = _get_raw(api_server, "/data/board.js")
         assert status == 200
 
