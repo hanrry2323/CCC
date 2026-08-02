@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（D4 定时任务 / §4 看板）
 > 管理席：Claude Code（调度窗口）· 执行体：Trae · 验收：Codex + Claude Code 双验证
-> 状态：打回 · 打回次数：1 · 日期：2026-08-02
+> 状态：已关闭 · 打回次数：1 · 日期：2026-08-02
 > 前置：T3（已验收通过）；解决 T3 遗留 3（board.js 重导出定时化）
 
 ## 目标
@@ -46,7 +46,7 @@
 
 **执行体**：Trae
 **日期**：2026-08-02
-**实现 commit**：（待提交）
+**实现 commit**：`fb69fca`
 
 ### 结果摘要
 
@@ -108,7 +108,7 @@ $ timeout 3 python3 -m server.board.scheduler --watch --interval 1 ...
 |---|---------|------|------|
 | 1 | 定时重导出可独立运行（`--once` 一次 + 定时两种模式） | PASS | `--once` 输出 7 cards；`--watch` 3 轮轮询正常 |
 | 2 | board.js 在任务卡变更后自动更新；失败时旧版保留 + 日志 | PASS | `export_safe` 写临时文件 → rename 原子替换；mock 异常测试保留旧文件 |
-| 3 | 既有 74 用例不回归；硬编码扫描零字面量；提交真实 | PASS | 74 原有用例全通过；`/Users` / 字面端口零命中；（commit 待提交） |
+| 3 | 既有 74 用例不回归；硬编码扫描零字面量；提交真实 | PASS | 74 原有用例全通过；`/Users` / 字面端口零命中；commit `fb69fca` |
 | 4 | 定时默认只读，无业务动作、不派发任务 | PASS | `scheduler.py` 只调用 `load_dispatch_cards` + `export_board`，零 engine/dispatch 依赖 |
 
 ## 验收打回（Claude Code 双验证 · 2026-08-02）
@@ -120,3 +120,9 @@ $ timeout 3 python3 -m server.board.scheduler --watch --interval 1 ...
 | 1 | 实现未提交：`scheduler.py` / `com.ccc.board-scheduler.plist` / `test_board_scheduler.py` 全在工作树，git log 无任何提交 | 提交 `chore(board):` 前缀，显式路径 add（scheduler.py + plist + 测试文件），回写真实 commit hash | git log 可见提交；工作树只剩 2 预存项 |
 
 > 重验通过线：① git log 可见提交、工作树只剩 2 预存项；② 83 用例仍全绿；③ 硬编码扫描零命中；④ 卡头状态更新为「已回写」。
+
+## 重验通过（Claude Code · 2026-08-02）
+
+- 问题 1 已修：`fb69fca` 提交（scheduler.py / com.ccc.board-scheduler.plist / test_board_scheduler.py）
+- 实测：83 用例全绿（独立跑）、硬编码扫描零命中、卡头已回写
+- 收尾：卡回写提交后工作树收敛 → 验收通过，状态改「已关闭」

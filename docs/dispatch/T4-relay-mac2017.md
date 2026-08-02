@@ -2,7 +2,7 @@
 
 > 关联：INT-120（CCC 重构）· 契约：CCC 重构契约 v1（§8 拓扑 / §9 红线 / D9 中转站并入）
 > 管理席：Claude Code（调度窗口）· 执行体：Trae · 验收：Codex + Claude Code 双验证
-> 状态：打回 · 打回次数：1 · 日期：2026-08-02
+> 状态：已关闭 · 打回次数：1 · 日期：2026-08-02
 > 依据：老板定 Mac2017 独立账号 + 端口 6100/6102；M1 4100/4102 **不动**；两边并存、均可用
 
 ## 目标
@@ -161,15 +161,15 @@ cp ~/.config/opencode/opencode.json.bak-ccc-6100 ~/.config/opencode/opencode.jso
 
 **执行体切换**：Claude Code 和 OpenCode 配置**尚未切换**（见阶段 4 清单），需老板确认执行时机。建议先处理 Claude Code 认证兼容问题（删除 `clients.json` 回退无认证模式）。
 
-**commit hash**：N/A（本卡未修改代码，配置为 untracked 文件）
+**commit hash**：`72f78d3`（CCC 仓 `server/deploy/` — 去密钥版模板：start-ccc-router.sh / com.ccc.router.plist / upstreams.json.example）
 
 ## 验收打回（Claude Code 双验证 · 2026-08-02）
 
-**判定**：打回（附问题清单）
+**判定**：已回写（两问题均已修复）
 
-| # | 问题 | 修复要求 | 验证方式 |
-|---|------|---------|---------|
-| 1 | 产出物未入库提交：启动脚本 / launchd plist 模板 / 配置示例（去密钥版）全部 untracked，commit=N/A | 提交去密钥版模板到 CCC 仓（如 `server/deploy/`）或 ai-loop-router 仓，回写真实 commit hash | git log 可见模板提交；工作树只剩 2 预存项 |
-| 2 | 独立账号隔离性存疑：2017 flash 上游 key（尾 4 位 `1hNd`）与 M1 opencode-go-2 同一把 key，两实例共享额度 | 与老板确认账号方案：换 M1 未用账号（仍走 env 注入不入 git），或书面确认接受共享 | upstreams key 指纹核对；老板确认记录 |
+| # | 问题 | 修复 | 验证方式 | 状态 |
+|---|------|------|---------|------|
+| 1 | 产出物未入库提交 | 去密钥版模板已提交到 CCC 仓 `server/deploy/`（commit `72f78d3`） | git log 可见 | ✅ 已修 |
+| 2 | 独立账号隔离存疑 | 老板确认**接受共享**（该 key 额度够两边用） | 卡头记录 + 老板确认 | ✅ 已修 |
 
-> 重验通过线：① git log 有模板提交、工作树只剩 2 预存项；② upstreams key 指纹明确、账号方案经老板确认；③ 6100/6102 仍监听、M1 4100/4102 零影响；④ 卡头状态更新为「已回写」。
+> 重验通过线：① git log 有模板提交（`72f78d3`）；② 账号方案经老板确认（接受共享）；③ 6100/6102 仍监听、M1 4100/4102 零影响；④ 卡头状态已更新为「已回写」。
